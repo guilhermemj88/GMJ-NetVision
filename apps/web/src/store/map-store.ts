@@ -4,7 +4,7 @@ import {
   createLocalId,
   type AddDeviceResult,
   type CreateLinkInput,
-  type Device,
+  type HostRecord,
   type LinkDisplayStyle,
   type LinkMetricDisplay,
   type MapPreferences,
@@ -24,6 +24,7 @@ export type Selection =
   | null;
 export type OpenPanel =
   'add-device' | 'create-link' | 'discovery' | 'settings' | 'maps' | 'rotation' | null;
+export type WorkspaceView = 'MAP' | 'HOSTS';
 
 export interface NocRotationState {
   active: boolean;
@@ -41,6 +42,7 @@ interface MapState {
   maps: MapSummary[];
   activeMapId: string | null;
   map: NetworkMap | null;
+  view: WorkspaceView;
   editMode: boolean;
   selection: Selection;
   panel: OpenPanel;
@@ -54,6 +56,7 @@ interface MapState {
   removeMapSummary: (mapId: string) => void;
   setActiveMap: (mapId: string) => void;
   setMap: (map: NetworkMap) => void;
+  setView: (view: WorkspaceView) => void;
   setEditMode: (enabled: boolean) => void;
   setSelection: (selection: Selection) => void;
   setPanel: (panel: OpenPanel) => void;
@@ -63,13 +66,16 @@ interface MapState {
   setLinkDisplayStyle: (style: LinkDisplayStyle) => void;
   setLinkMetricDisplay: (display: LinkMetricDisplay) => void;
   setViewport: (viewport: MapSettings['viewport']) => void;
+  setMapScales: (
+    scales: Partial<Pick<MapSettings, 'nodeScale' | 'linkScale' | 'labelScale'>>,
+  ) => void;
   moveNode: (nodeId: string, position: Position) => void;
   setNodeLocked: (nodeId: string, locked: boolean) => void;
   applyLayout: (positions: Map<string, Position>) => void;
   addLink: (input: CreateLinkInput, serverLink?: NetworkLink) => void;
   replaceLink: (link: NetworkLink) => void;
   removeLink: (linkId: string) => void;
-  addDevice: (device: Device, position: Position, node?: AddDeviceResult['node']) => void;
+  addDevice: (device: HostRecord, position: Position, node?: AddDeviceResult['node']) => void;
   removeDevice: (deviceId: string) => void;
   startRotation: (
     options: Omit<NocRotationState, 'active' | 'currentIndex' | 'paused' | 'nextSwitchAt'>,
@@ -166,6 +172,7 @@ export const useMapStore = create<MapState>((set) => ({
   maps: [],
   activeMapId: null,
   map: null,
+  view: 'MAP',
   editMode: false,
   selection: null,
   panel: null,
@@ -213,6 +220,7 @@ export const useMapStore = create<MapState>((set) => ({
       dirty: false,
     });
   },
+  setView: (view) => set({ view, editMode: false, selection: null, panel: null }),
   setEditMode: (editMode) => set({ editMode, panel: null }),
   setSelection: (selection) => set({ selection }),
   setPanel: (panel) => set({ panel }),
@@ -264,6 +272,22 @@ export const useMapStore = create<MapState>((set) => ({
       const map = { ...state.map, settings: { ...state.map.settings, viewport } };
       persistSettings(map);
       return { map };
+    }),
+  setMapScales: (scales) =>
+    set((state) => {
+      if (!state.map) return state;
+      const clamp = (value: number) => Math.min(200, Math.max(50, value));
+      const map = {
+        ...state.map,
+        settings: {
+          ...state.map.settings,
+          ...(scales.nodeScale === undefined ? {} : { nodeScale: clamp(scales.nodeScale) }),
+          ...(scales.linkScale === undefined ? {} : { linkScale: clamp(scales.linkScale) }),
+          ...(scales.labelScale === undefined ? {} : { labelScale: clamp(scales.labelScale) }),
+        },
+      };
+      persistSettings(map);
+      return { map, dirty: true };
     }),
   moveNode: (nodeId, position) =>
     set((state) => {

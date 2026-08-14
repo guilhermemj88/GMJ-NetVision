@@ -5,9 +5,15 @@ import {
   createDemoHistory,
   type CreateLinkInput,
   type CreateMapInput,
+  type CreateHostInput,
+  type AssistedDiscoveryPreview,
+  type ConnectionTestResult,
+  type DiscoveryApplyResult,
+  type DiscoveryApplySelection,
   type DeviceType,
   type DiscoveryReview,
   type HistoryPeriod,
+  type HostRecord,
   type MapPlaylist,
   type MapSummary,
   type MetricPoint,
@@ -15,6 +21,9 @@ import {
   type NetworkMap,
   type Position,
   type UpdateMapInput,
+  type UpdateHostInput,
+  type ZabbixImportPreview,
+  type ZabbixImportResult,
 } from '@gmj/shared';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333';
@@ -160,6 +169,75 @@ export function addDevice(mapId: string, input: AddDeviceInput) {
 
 export function deleteDevice(mapId: string, id: string) {
   return request<void>(`/api/maps/${mapId}/devices/${id}`, { method: 'DELETE' });
+}
+
+export async function getHosts(query = ''): Promise<HostRecord[]> {
+  try {
+    return await request<HostRecord[]>(`/api/hosts${query ? `?${query}` : ''}`);
+  } catch {
+    return cloneDemoMaps()[0]?.devices ?? [];
+  }
+}
+
+export function getHost(hostId: string) {
+  return request<HostRecord>(`/api/hosts/${hostId}`);
+}
+
+export function createHost(input: CreateHostInput) {
+  return request<HostRecord>('/api/hosts', { method: 'POST', body: JSON.stringify(input) });
+}
+
+export function updateHost(hostId: string, input: UpdateHostInput) {
+  return request<HostRecord>(`/api/hosts/${hostId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteHost(hostId: string) {
+  return request<void>(`/api/hosts/${hostId}`, { method: 'DELETE' });
+}
+
+export function addHostToMap(hostId: string, mapId: string, position: Position) {
+  return request<AddDeviceResult>(`/api/hosts/${hostId}/maps`, {
+    method: 'POST',
+    body: JSON.stringify({ mapId, position }),
+  });
+}
+
+export function previewZabbixImport() {
+  return request<ZabbixImportPreview>('/api/hosts/import/zabbix/preview', { method: 'POST' });
+}
+
+export function importZabbixHosts(previewId: string, hostIds: string[]) {
+  return request<ZabbixImportResult>('/api/hosts/import/zabbix', {
+    method: 'POST',
+    body: JSON.stringify({ previewId, hostIds }),
+  });
+}
+
+export function testHostSource(hostId: string, source: 'zabbix' | 'ssh' | 'snmp') {
+  return request<ConnectionTestResult>(`/api/hosts/${hostId}/test/${source}`, {
+    method: 'POST',
+  });
+}
+
+export function previewAssistedDiscovery(hostId: string, mapId: string) {
+  return request<AssistedDiscoveryPreview>(`/api/hosts/${hostId}/discovery/preview`, {
+    method: 'POST',
+    body: JSON.stringify({ mapId }),
+  });
+}
+
+export function applyAssistedDiscovery(
+  hostId: string,
+  previewId: string,
+  selections: DiscoveryApplySelection[],
+) {
+  return request<DiscoveryApplyResult>(`/api/hosts/${hostId}/discovery/apply`, {
+    method: 'POST',
+    body: JSON.stringify({ previewId, selections }),
+  });
 }
 
 export async function getHistory(

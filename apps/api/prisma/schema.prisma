@@ -79,6 +79,49 @@ enum MatchStatus {
   AMBIGUOUS
 }
 
+enum HostOrigin {
+  MANUAL
+  ZABBIX
+  DISCOVERY
+  IMPORTED
+}
+
+enum SourceKind {
+  ZABBIX
+  SSH
+  SNMP
+}
+
+enum SourceConnectionState {
+  DISABLED
+  CONFIGURED
+  CONNECTED
+  FAILED
+}
+
+enum SnmpVersion {
+  SNMP_V2C
+  SNMP_V3
+}
+
+enum SnmpSecurityLevel {
+  NO_AUTH_NO_PRIV
+  AUTH_NO_PRIV
+  AUTH_PRIV
+}
+
+enum SnmpAuthProtocol {
+  MD5
+  SHA
+  SHA256
+}
+
+enum SnmpPrivacyProtocol {
+  DES
+  AES
+  AES256
+}
+
 model Map {
   id                String            @id @default(cuid())
   name              String
@@ -88,6 +131,9 @@ model Map {
   nodeDisplayMode   NodeDisplayMode   @default(ICON_2D)
   linkDisplayStyle  LinkDisplayStyle  @default(HYBRID)
   linkMetricDisplay LinkMetricDisplay @default(BOTH)
+  nodeScale         Float             @default(100)
+  linkScale         Float             @default(100)
+  labelScale        Float             @default(100)
   viewport          Json?
   filters           Json?
   nodes             MapNode[]
@@ -113,61 +159,97 @@ model MapNode {
 }
 
 model Device {
-  id                 String                @id @default(cuid())
-  name               String
-  hostname           String
-  ip                 String
-  vendor             String?
-  model              String?
-  status             DeviceStatus          @default(UNKNOWN)
-  deviceType         String
-  site               String?
-  source             String
-  discoveryMethod    String                 @default("AUTO")
-  uptimeSeconds      BigInt?
-  cpuPercent         Float?
-  memoryPercent      Float?
-  interfaces         Interface[]
-  mapNodes           MapNode[]
-  sourceLinks        Link[]                 @relation("LinkSourceDevice")
-  targetLinks        Link[]                 @relation("LinkTargetDevice")
-  sourceMappings     DeviceSourceMapping[]
-  discoveryJobs      DiscoveryJob[]
-  snmpCredentialId   String?
-  sshCredentialId    String?
-  snmpCredential     SnmpCredential?        @relation(fields: [snmpCredentialId], references: [id])
-  sshCredential      SshCredential?         @relation(fields: [sshCredentialId], references: [id])
-  createdAt          DateTime                @default(now())
-  updatedAt          DateTime                @updatedAt
+  id                  String                @id @default(cuid())
+  name                String
+  displayName         String
+  hostname            String
+  ip                  String
+  managementIp        String
+  vendor              String?
+  model               String?
+  description         String                @default("")
+  notes               String                @default("")
+  origin              HostOrigin            @default(MANUAL)
+  status              DeviceStatus          @default(UNKNOWN)
+  deviceType          String
+  site                String?
+  source              String
+  discoveryMethod     String                @default("AUTO")
+  useZabbix           Boolean               @default(false)
+  zabbixHostId        String?
+  zabbixHostName      String?
+  zabbixInterfaceId   String?
+  zabbixIp            String?
+  sshEnabled          Boolean               @default(false)
+  sshHost             String?
+  sshPort             Int                   @default(22)
+  sshUsername         String?
+  sshAuthentication   String?
+  snmpEnabled         Boolean               @default(false)
+  snmpVersion         SnmpVersion?
+  snmpHost            String?
+  snmpPort            Int                   @default(161)
+  snmpUsername        String?
+  snmpSecurityLevel   SnmpSecurityLevel?
+  snmpAuthProtocol    SnmpAuthProtocol?
+  snmpPrivacyProtocol SnmpPrivacyProtocol?
+  lastPollingAt       DateTime?
+  lastDiscoveryAt     DateTime?
+  uptimeSeconds       BigInt?
+  cpuPercent          Float?
+  memoryPercent       Float?
+  interfaces          Interface[]
+  mapNodes            MapNode[]
+  sourceLinks         Link[]                @relation("LinkSourceDevice")
+  targetLinks         Link[]                @relation("LinkTargetDevice")
+  sourceMappings      DeviceSourceMapping[]
+  discoveryJobs       DiscoveryJob[]
+  sourceHealth        DeviceSourceHealth[]
+  snmpCredentialId    String?
+  sshCredentialId     String?
+  snmpCredential      SnmpCredential?       @relation(fields: [snmpCredentialId], references: [id])
+  sshCredential       SshCredential?        @relation(fields: [sshCredentialId], references: [id])
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
 
   @@index([hostname])
   @@index([ip])
+  @@index([managementIp])
+  @@index([zabbixHostId])
 }
 
 model Interface {
-  id             String                   @id @default(cuid())
-  deviceId       String
-  name           String
-  alias          String?
-  description    String?
-  ifIndex        Int
-  mac            String?
-  mtu            Int?
-  speedBps       BigInt?
-  adminStatus    String
-  operStatus     InterfaceStatus          @default(UNKNOWN)
-  device         Device                   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  sourceLinks    Link[]                    @relation("LinkSourceInterface")
-  targetLinks    Link[]                    @relation("LinkTargetInterface")
-  sourceMappings InterfaceSourceMapping[]
-  createdAt      DateTime                 @default(now())
-  updatedAt      DateTime                 @updatedAt
+  id                String                   @id @default(cuid())
+  deviceId          String
+  name              String
+  alias             String?
+  description       String?
+  ifIndex           Int
+  mac               String?
+  mtu               Int?
+  speedBps          BigInt?
+  adminStatus       String
+  operStatus        InterfaceStatus          @default(UNKNOWN)
+  rxItemId          String?
+  txItemId          String?
+  statusItemId      String?
+  inErrorsItemId    String?
+  outErrorsItemId   String?
+  inDiscardsItemId  String?
+  outDiscardsItemId String?
+  dataSources       Json?
+  device            Device                   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  sourceLinks       Link[]                   @relation("LinkSourceInterface")
+  targetLinks       Link[]                   @relation("LinkTargetInterface")
+  sourceMappings    InterfaceSourceMapping[]
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
 
   @@unique([deviceId, ifIndex])
 }
 
 model Link {
-  id                String          @id @default(cuid())
+  id                String             @id @default(cuid())
   mapId             String
   sourceDeviceId    String
   sourceInterfaceId String
@@ -175,20 +257,20 @@ model Link {
   targetInterfaceId String
   capacityBps       BigInt
   autoCapacityBps   BigInt?
-  capacitySource    CapacitySource  @default(AUTO)
+  capacitySource    CapacitySource     @default(AUTO)
   label             String?
-  status            DeviceStatus    @default(UNKNOWN)
-  discoverySource   DiscoverySource @default(MANUAL)
+  status            DeviceStatus       @default(UNKNOWN)
+  discoverySource   DiscoverySource    @default(MANUAL)
   metricSource      String
   visualStyle       LinkDisplayStyle?
   metricDisplay     LinkMetricDisplay?
-  map               Map             @relation(fields: [mapId], references: [id], onDelete: Cascade)
-  sourceDevice      Device          @relation("LinkSourceDevice", fields: [sourceDeviceId], references: [id])
-  sourceInterface   Interface       @relation("LinkSourceInterface", fields: [sourceInterfaceId], references: [id])
-  targetDevice      Device          @relation("LinkTargetDevice", fields: [targetDeviceId], references: [id])
-  targetInterface   Interface       @relation("LinkTargetInterface", fields: [targetInterfaceId], references: [id])
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
+  map               Map                @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  sourceDevice      Device             @relation("LinkSourceDevice", fields: [sourceDeviceId], references: [id])
+  sourceInterface   Interface          @relation("LinkSourceInterface", fields: [sourceInterfaceId], references: [id])
+  targetDevice      Device             @relation("LinkTargetDevice", fields: [targetDeviceId], references: [id])
+  targetInterface   Interface          @relation("LinkTargetInterface", fields: [targetInterfaceId], references: [id])
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
   @@index([mapId])
   @@index([sourceDeviceId])
@@ -218,17 +300,17 @@ model MapPlaylistItem {
 }
 
 model DataSource {
-  id          String   @id @default(cuid())
-  name        String
-  type        String
-  baseUrl     String?
-  enabled     Boolean  @default(true)
-  config      Json?
-  secret      Bytes?
-  mappings    DeviceSourceMapping[]
-  interfaces  InterfaceSourceMapping[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String                   @id @default(cuid())
+  name       String
+  type       String
+  baseUrl    String?
+  enabled    Boolean                  @default(true)
+  config     Json?
+  secret     Bytes?
+  mappings   DeviceSourceMapping[]
+  interfaces InterfaceSourceMapping[]
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime                 @updatedAt
 }
 
 model SnmpCredential {
@@ -277,6 +359,22 @@ model InterfaceSourceMapping {
   @@unique([dataSourceId, externalId])
 }
 
+model DeviceSourceHealth {
+  id            String                @id @default(cuid())
+  deviceId      String
+  source        SourceKind
+  state         SourceConnectionState @default(CONFIGURED)
+  lastSuccess   DateTime?
+  lastFailure   DateTime?
+  lastErrorSafe String?
+  device        Device                @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  createdAt     DateTime              @default(now())
+  updatedAt     DateTime              @updatedAt
+
+  @@unique([deviceId, source])
+  @@index([source, state])
+}
+
 model DiscoveryJob {
   id        String             @id @default(cuid())
   deviceId  String
@@ -290,14 +388,14 @@ model DiscoveryJob {
 }
 
 model DiscoveryResult {
-  id             String          @id @default(cuid())
-  jobId          String
-  localPort      String
-  remotePort     String
-  remoteIdentity Json
-  matchStatus    MatchStatus     @default(UNMATCHED)
+  id              String       @id @default(cuid())
+  jobId           String
+  localPort       String
+  remotePort      String
+  remoteIdentity  Json
+  matchStatus     MatchStatus  @default(UNMATCHED)
   matchedDeviceId String?
-  accepted       Boolean         @default(false)
-  job            DiscoveryJob    @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  createdAt      DateTime        @default(now())
+  accepted        Boolean      @default(false)
+  job             DiscoveryJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt       DateTime     @default(now())
 }

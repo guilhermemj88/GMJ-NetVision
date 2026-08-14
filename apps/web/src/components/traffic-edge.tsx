@@ -18,6 +18,8 @@ export interface TrafficEdgeData extends Record<string, unknown> {
   metricDisplay: LinkMetricDisplay;
   related: boolean;
   emphasized: boolean;
+  linkScale: number;
+  labelScale: number;
 }
 
 export type TrafficFlowEdge = Edge<TrafficEdgeData, 'traffic'>;
@@ -51,7 +53,16 @@ export function TrafficEdge({
   });
   if (!data) return null;
 
-  const { link, showTraffic, showUtilization, showLabels, related, emphasized } = data;
+  const {
+    link,
+    showTraffic,
+    showUtilization,
+    showLabels,
+    related,
+    emphasized,
+    linkScale,
+    labelScale,
+  } = data;
   const displayStyle = link.visualStyle ?? data.displayStyle;
   const requestedMetricDisplay = link.metricDisplay ?? data.metricDisplay;
   const metricDisplay = showUtilization
@@ -68,10 +79,9 @@ export function TrafficEdge({
   const toneB = link.status === 'DOWN' ? 'down' : utilizationLevel(bToA.utilization).toLowerCase();
   const worstTone =
     link.status === 'DOWN' ? 'down' : utilizationLevel(maxUtilization).toLowerCase();
-  const width = Math.max(
-    2,
-    Math.min(8, 1.8 + Math.log10(Math.max(link.capacityBps, 1_000_000_000)) - 8.5),
-  );
+  const width =
+    Math.max(2, Math.min(8, 1.8 + Math.log10(Math.max(link.capacityBps, 1_000_000_000)) - 8.5)) *
+    (linkScale / 100);
   const distance = Math.hypot(targetX - sourceX, targetY - sourceY) || 1;
   const offsetX = (-(targetY - sourceY) / distance) * 4;
   const offsetY = ((targetX - sourceX) / distance) * 4;
@@ -150,7 +160,9 @@ export function TrafficEdge({
         <EdgeLabelRenderer>
           <div
             className={`edge-metric edge-metric--${displayStyle.toLowerCase()} edge-metric--${worstTone} ${related ? '' : 'is-dimmed'}`}
-            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+            style={{
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px) scale(${labelScale / 100})`,
+            }}
           >
             <span>A → B</span>
             <strong>{metricText(aToB.bps, aToB.utilization, metricDisplay)}</strong>

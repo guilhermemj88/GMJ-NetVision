@@ -35,6 +35,7 @@ import { useMutation } from '@tanstack/react-query';
 import { deleteLink as deleteLinkRequest, updateLink as updateLinkRequest } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
 import { MetricCharts } from './metric-charts';
+import { AssistedDiscoveryReview } from './assisted-discovery-review';
 
 export function ContextDrawer() {
   const map = useMapStore((state) => state.map);
@@ -100,10 +101,11 @@ function DrawerShell({
 }
 
 function DeviceDrawer({ deviceId, onClose }: { deviceId: string; onClose: () => void }) {
-  const [tab, setTab] = useState<'overview' | 'interfaces'>('overview');
+  const [tab, setTab] = useState<'overview' | 'interfaces' | 'monitoring' | 'access' | 'discovery'>(
+    'overview',
+  );
   const map = useMapStore((state) => state.map);
   const setSelection = useMapStore((state) => state.setSelection);
-  const setPanel = useMapStore((state) => state.setPanel);
   const device = map?.devices.find((item) => item.id === deviceId);
   if (!device) return null;
   const count = (status: NetworkInterface['operStatus']) =>
@@ -127,6 +129,27 @@ function DeviceDrawer({ deviceId, onClose }: { deviceId: string; onClose: () => 
           onClick={() => setTab('interfaces')}
         >
           <List size={14} /> Interfaces <em>{device.interfaces.length}</em>
+        </button>
+        <button
+          type="button"
+          className={tab === 'monitoring' ? 'is-active' : ''}
+          onClick={() => setTab('monitoring')}
+        >
+          <CircleGauge size={14} /> Monitoring
+        </button>
+        <button
+          type="button"
+          className={tab === 'access' ? 'is-active' : ''}
+          onClick={() => setTab('access')}
+        >
+          <ServerCog size={14} /> Access
+        </button>
+        <button
+          type="button"
+          className={tab === 'discovery' ? 'is-active' : ''}
+          onClick={() => setTab('discovery')}
+        >
+          <Radar size={14} /> Discovery
         </button>
       </div>
       {tab === 'overview' ? (
@@ -197,7 +220,7 @@ function DeviceDrawer({ deviceId, onClose }: { deviceId: string; onClose: () => 
             />
           </section>
           <div className="drawer-actions">
-            <Button variant="secondary" onClick={() => setPanel('discovery')}>
+            <Button variant="secondary" onClick={() => setTab('discovery')}>
               <Radar size={15} /> Descobrir vizinhos
             </Button>
             <Button variant="ghost" onClick={() => setTab('interfaces')}>
@@ -205,11 +228,96 @@ function DeviceDrawer({ deviceId, onClose }: { deviceId: string; onClose: () => 
             </Button>
           </div>
         </>
-      ) : (
+      ) : tab === 'interfaces' ? (
         <InterfaceList
           interfaces={device.interfaces}
           onSelect={(item) => setSelection({ kind: 'interface', id: item.id, deviceId: device.id })}
         />
+      ) : tab === 'monitoring' ? (
+        <>
+          <section className="drawer-section">
+            <SectionTitle icon={<Activity size={14} />} label="FONTES DE MONITORAMENTO" />
+            <div className="drawer-source-health">
+              {(['ZABBIX', 'SSH', 'SNMP'] as const).map((source) => (
+                <div
+                  key={source}
+                  className={`source-pill source-pill--${device.sourceHealth[source].state.toLowerCase()}`}
+                >
+                  <span>{source}</span>
+                  <strong>{device.sourceHealth[source].state}</strong>
+                  <small>{device.sourceHealth[source].lastErrorSafe ?? 'Sem erro recente'}</small>
+                </div>
+              ))}
+            </div>
+          </section>
+          <section className="drawer-section">
+            <SectionTitle icon={<Clock3 size={14} />} label="COLETA" />
+            <div className="info-grid">
+              <Info
+                label="Último polling"
+                value={
+                  device.lastPollingAt
+                    ? new Date(device.lastPollingAt).toLocaleString('pt-BR')
+                    : 'Nunca'
+                }
+              />
+              <Info
+                label="Último discovery"
+                value={
+                  device.lastDiscoveryAt
+                    ? new Date(device.lastDiscoveryAt).toLocaleString('pt-BR')
+                    : 'Nunca'
+                }
+              />
+              <Info label="Métricas" value={device.useZabbix ? 'Preferir Zabbix' : device.source} />
+              <Info label="Interfaces" value={`${device.interfaces.length} normalizadas`} />
+            </div>
+          </section>
+        </>
+      ) : tab === 'access' ? (
+        <section className="drawer-section drawer-access">
+          <SectionTitle icon={<ServerCog size={14} />} label="ACESSOS COMPLEMENTARES" />
+          <Info
+            label="Zabbix"
+            value={
+              device.useZabbix
+                ? `Configurado · host ${device.zabbix?.hostId ?? '—'}`
+                : 'Desabilitado'
+            }
+          />
+          <Info
+            label="SSH"
+            value={
+              device.sshEnabled
+                ? device.ssh?.credentialConfigured
+                  ? 'Configurado · segredo protegido'
+                  : 'Habilitado sem credencial'
+                : 'Desabilitado'
+            }
+          />
+          <Info
+            label="SNMP"
+            value={
+              device.snmpEnabled
+                ? `${device.snmp?.version ?? ''} · ${device.snmp?.credentialConfigured ? 'segredo protegido' : 'sem credencial'}`
+                : 'Desabilitado'
+            }
+          />
+          <p>Nenhuma senha, community ou token é exposto neste drawer.</p>
+        </section>
+      ) : (
+        <section className="drawer-section drawer-discovery">
+          <SectionTitle icon={<Radar size={14} />} label="DESCOBERTA ASSISTIDA" />
+          <Info
+            label="Última descoberta"
+            value={
+              device.lastDiscoveryAt
+                ? new Date(device.lastDiscoveryAt).toLocaleString('pt-BR')
+                : 'Nunca'
+            }
+          />
+          <AssistedDiscoveryReview host={device} mapId={map!.id} />
+        </section>
       )}
     </DrawerShell>
   );

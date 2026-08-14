@@ -8,3 +8,4 @@ coverage/
 apps/api/src/generated/
 *.tsbuildinfo
 .edge-smoke-profile*/
+.artifacts/

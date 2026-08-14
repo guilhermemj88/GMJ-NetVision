@@ -1,7 +1,7 @@
 import type {
-  Device,
   DeviceStatus,
   DeviceType,
+  HostRecord,
   MetricPoint,
   NetworkInterface,
   NetworkLink,
@@ -41,8 +41,25 @@ function makeInterfaces(
       txErrors: index === count - 1 ? 4 : 0,
       rxDiscards: index === count - 1 ? 9 : 0,
       txDiscards: index === count - 1 ? 2 : 0,
+      rxItemId: `zbx-${deviceId}-${1000 + index}-rx`,
+      txItemId: `zbx-${deviceId}-${1000 + index}-tx`,
+      statusItemId: `zbx-${deviceId}-${1000 + index}-status`,
+      inErrorsItemId: `zbx-${deviceId}-${1000 + index}-rx-errors`,
+      outErrorsItemId: `zbx-${deviceId}-${1000 + index}-tx-errors`,
+      inDiscardsItemId: `zbx-${deviceId}-${1000 + index}-rx-discards`,
+      outDiscardsItemId: `zbx-${deviceId}-${1000 + index}-tx-discards`,
+      dataSources: ['DEMO', 'ZABBIX', 'SNMP'],
     };
   });
+}
+
+function sourceHealth(enabled: boolean) {
+  return {
+    state: enabled ? ('CONNECTED' as const) : ('DISABLED' as const),
+    lastSuccess: enabled ? now : null,
+    lastFailure: null,
+    lastErrorSafe: null,
+  };
 }
 
 function device(
@@ -55,7 +72,10 @@ function device(
   site: string,
   status: DeviceStatus,
   load: number,
-): Device {
+): HostRecord {
+  const useZabbix = type !== 'internet' && type !== 'customers';
+  const sshEnabled = ['core', 'edge', 'aggregation'].includes(type);
+  const snmpEnabled = type !== 'internet' && type !== 'customers';
   return {
     id,
     name,
@@ -67,6 +87,53 @@ function device(
     deviceType: type,
     site,
     source: 'DEMO',
+    displayName: name,
+    managementIp: ip,
+    description: `${vendor} ${model} em ${site}`,
+    notes: '',
+    origin: useZabbix ? 'ZABBIX' : 'MANUAL',
+    useZabbix,
+    zabbix: useZabbix
+      ? {
+          hostId: `10${load}`,
+          hostName: name,
+          primaryInterfaceId: `20${load}`,
+          ip,
+        }
+      : null,
+    sshEnabled,
+    ssh: sshEnabled
+      ? {
+          host: ip,
+          port: 22,
+          username: 'netvision',
+          credentialConfigured: true,
+          authenticationType: 'PASSWORD',
+        }
+      : null,
+    snmpEnabled,
+    snmp: snmpEnabled
+      ? {
+          version: 'SNMP_V2C',
+          host: ip,
+          port: 161,
+          username: '',
+          securityLevel: 'NO_AUTH_NO_PRIV',
+          authProtocol: null,
+          privacyProtocol: null,
+          credentialConfigured: true,
+        }
+      : null,
+    sourceHealth: {
+      ZABBIX: sourceHealth(useZabbix),
+      SSH: sourceHealth(sshEnabled),
+      SNMP: sourceHealth(snmpEnabled),
+    },
+    lastPollingAt: useZabbix ? now : null,
+    lastDiscoveryAt: snmpEnabled || sshEnabled ? now : null,
+    mapIds: [],
+    mapCount: 0,
+    createdAt: now,
     discoveryMethod: 'AUTO',
     uptimeSeconds: 11_286_400 + load * 10_000,
     ...(status === 'DOWN' ? {} : { cpuPercent: 31 + load, memoryPercent: 48 + load * 0.7 }),
@@ -75,7 +142,7 @@ function device(
   };
 }
 
-export const demoDevices: Device[] = [
+export const demoDevices: HostRecord[] = [
   device(
     'internet',
     'INTERNET',
@@ -300,6 +367,9 @@ export const demoMap: NetworkMap = {
       showInterfaces: false,
     },
     viewport: { x: 0, y: 0, zoom: 0.8 },
+    nodeScale: 100,
+    linkScale: 100,
+    labelScale: 100,
   },
   devices: demoDevices,
   nodes: demoDevices.map((item, index) => ({
@@ -379,6 +449,13 @@ export const demoMaps: NetworkMap[] = [
     },
   ),
 ];
+
+for (const host of demoDevices) {
+  host.mapIds = demoMaps
+    .filter((map) => map.nodes.some((node) => node.deviceId === host.id))
+    .map((map) => map.id);
+  host.mapCount = host.mapIds.length;
+}
 
 const periodSettings = {
   '15m': { count: 30, stepMs: 30_000 },

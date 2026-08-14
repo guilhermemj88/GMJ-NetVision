@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { HistoryPeriod, UpdateMapInput } from '@gmj/shared';
+import { CredentialVault } from './application/credential-vault';
 import { DiscoveryService } from './application/discovery-service';
 import { config } from './config';
+import { registerHostRoutes } from './host-routes';
 import { DemoMetricAdapter } from './infrastructure/metrics/demo-adapter';
 import { ZabbixAdapter } from './infrastructure/metrics/zabbix-adapter';
 import { DemoMapRepository } from './infrastructure/persistence/demo-map-repository';
@@ -44,6 +46,9 @@ const mapSettingsSchema = z.object({
     })
     .optional(),
   viewport: z.object({ x: z.number(), y: z.number(), zoom: z.number().positive() }).optional(),
+  nodeScale: z.number().min(50).max(200).optional(),
+  linkScale: z.number().min(50).max(200).optional(),
+  labelScale: z.number().min(50).max(200).optional(),
 });
 const createMapSchema = z.object({
   name: z.string().min(1).max(80),
@@ -83,9 +88,18 @@ const deviceSchema = z.object({
 });
 
 export function registerRoutes(app: FastifyInstance): void {
-  const maps = new DemoMapRepository();
+  const vault = config.CREDENTIAL_ENCRYPTION_KEY
+    ? new CredentialVault(config.CREDENTIAL_ENCRYPTION_KEY)
+    : null;
+  const maps = new DemoMapRepository(vault);
   const metrics = new DemoMetricAdapter();
   const discovery = new DiscoveryService([new DemoTopologyAdapter()]);
+  const zabbix =
+    config.ZABBIX_URL && config.ZABBIX_TOKEN
+      ? new ZabbixAdapter(config.ZABBIX_URL, config.ZABBIX_TOKEN, config.ZABBIX_AUTH_MODE)
+      : null;
+
+  registerHostRoutes(app, { maps, discovery, zabbix });
 
   app.get('/health', async () => ({ status: 'ok', demoMode: config.DEMO_MODE }));
 
@@ -225,12 +239,31 @@ export function registerRoutes(app: FastifyInstance): void {
       : reply.code(404).send({ message: 'Device not found' });
   });
 
-  app.get('/api/interfaces/:interfaceId/history', async (request) => {
+  app.get('/api/interfaces/:interfaceId/history', async (request, reply) => {
     const { interfaceId } = z.object({ interfaceId: z.string() }).parse(request.params);
     const { period } = z
       .object({ period: z.enum(['15m', '1h', '6h', '24h', '7d']).default('1h') })
       .parse(request.query);
+    if (zabbix && interfaceId.startsWith('zabbix-interface-')) {
+      try {
+        return await zabbix.getHistory(interfaceId, period as HistoryPeriod);
+      } catch {
+        return reply.code(502).send({ message: 'Falha segura ao consultar histórico no Zabbix' });
+      }
+    }
     return metrics.getHistory(interfaceId, period as HistoryPeriod);
+  });
+
+  app.get('/api/interfaces/:interfaceId/metrics', async (request, reply) => {
+    const { interfaceId } = z.object({ interfaceId: z.string() }).parse(request.params);
+    if (zabbix && interfaceId.startsWith('zabbix-interface-')) {
+      try {
+        return await zabbix.getMetrics(interfaceId);
+      } catch {
+        return reply.code(502).send({ message: 'Falha segura ao consultar métricas no Zabbix' });
+      }
+    }
+    return reply.code(409).send({ message: 'Interface sem fonte de métricas em tempo real' });
   });
 
   app.post('/api/maps/:mapId/devices/:deviceId/discover', async (request, reply) => {
@@ -246,7 +279,7 @@ export function registerRoutes(app: FastifyInstance): void {
       return { configured: false, status: 'not_configured' };
     }
     try {
-      const result = await new ZabbixAdapter(config.ZABBIX_URL, config.ZABBIX_TOKEN).healthcheck();
+      const result = await zabbix!.healthcheck();
       return { configured: true, status: 'connected', ...result };
     } catch (error) {
       return reply.code(502).send({
@@ -261,6 +294,6 @@ export function registerRoutes(app: FastifyInstance): void {
     if (!config.ZABBIX_URL || !config.ZABBIX_TOKEN) {
       return reply.code(409).send({ message: 'Zabbix is not configured' });
     }
-    return new ZabbixAdapter(config.ZABBIX_URL, config.ZABBIX_TOKEN).getDevices();
+    return zabbix!.getDevices();
   });
 }

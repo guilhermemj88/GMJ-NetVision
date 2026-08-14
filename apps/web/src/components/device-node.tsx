@@ -1,5 +1,6 @@
 'use client';
 
+import type { CSSProperties } from 'react';
 import type { Device, MapNode as DomainMapNode, NodeDisplayMode } from '@gmj/shared';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import {
@@ -23,6 +24,8 @@ export interface DeviceNodeData extends Record<string, unknown> {
   editMode: boolean;
   showInterfaces: boolean;
   displayMode: NodeDisplayMode;
+  nodeScale: number;
+  labelScale: number;
 }
 
 export type DeviceFlowNode = Node<DeviceNodeData, 'device'>;
@@ -57,11 +60,17 @@ function DeviceIcon({ type, large }: { type: Device['deviceType']; large: boolea
 }
 
 export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
-  const { device, mapNode, editMode, showInterfaces, displayMode } = data;
+  const { device, mapNode, editMode, showInterfaces, displayMode, nodeScale, labelScale } = data;
   const isIcon = displayMode !== 'CARD';
   return (
     <div
       className={`device-node device-node--${displayMode.toLowerCase()} status-${device.status.toLowerCase()} ${selected ? 'is-selected' : ''} ${mapNode.locked ? 'is-locked' : ''}`}
+      style={
+        {
+          '--node-scale': nodeScale / 100,
+          '--node-label-scale': labelScale / 100,
+        } as CSSProperties
+      }
       title={`${device.name} · ${device.ip} · ${device.status}`}
     >
       <Handle type="target" position={Position.Left} isConnectable={editMode} />

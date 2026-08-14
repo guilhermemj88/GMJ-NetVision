@@ -38,6 +38,7 @@ export function MapControls() {
   const setNodeDisplayMode = useMapStore((state) => state.setNodeDisplayMode);
   const setLinkDisplayStyle = useMapStore((state) => state.setLinkDisplayStyle);
   const setLinkMetricDisplay = useMapStore((state) => state.setLinkMetricDisplay);
+  const setMapScales = useMapStore((state) => state.setMapScales);
 
   const fullscreen = async () => {
     if (document.fullscreenElement) await document.exitFullscreen();
@@ -46,6 +47,13 @@ export function MapControls() {
 
   const persist = (settings: MapSettingsUpdate) => {
     if (map) void updateNetworkMap(map.id, { settings }).catch(() => undefined);
+  };
+
+  const changeScales = (
+    scales: Partial<Pick<MapSettingsUpdate, 'nodeScale' | 'linkScale' | 'labelScale'>>,
+  ) => {
+    setMapScales(scales);
+    persist(scales);
   };
 
   return (
@@ -80,6 +88,41 @@ export function MapControls() {
             setLinkMetricDisplay(value);
             persist({ linkMetricDisplay: value });
           }}
+        />
+        <div className="scale-presets" aria-label="Presets de escala">
+          <span>Escala</span>
+          {(
+            [
+              ['Compacto', 80],
+              ['Normal', 100],
+              ['Grande', 130],
+            ] as const
+          ).map(([label, value]) => (
+            <button
+              type="button"
+              key={value}
+              onClick={() =>
+                changeScales({ nodeScale: value, linkScale: value, labelScale: value })
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <ScaleControl
+          label="Nós"
+          value={map?.settings.nodeScale ?? 100}
+          onChange={(nodeScale) => changeScales({ nodeScale })}
+        />
+        <ScaleControl
+          label="Links"
+          value={map?.settings.linkScale ?? 100}
+          onChange={(linkScale) => changeScales({ linkScale })}
+        />
+        <ScaleControl
+          label="Labels"
+          value={map?.settings.labelScale ?? 100}
+          onChange={(labelScale) => changeScales({ labelScale })}
         />
       </div>
 
@@ -129,6 +172,38 @@ export function MapControls() {
         <Share2 size={12} className="map-controls__mode" />
       </div>
     </>
+  );
+}
+
+function ScaleControl({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <div className="scale-control">
+      <span>{label}</span>
+      <button type="button" aria-label={`Reduzir ${label}`} onClick={() => onChange(value - 10)}>
+        −
+      </button>
+      <input
+        aria-label={`Escala de ${label}`}
+        type="range"
+        min="50"
+        max="200"
+        step="10"
+        value={value}
+        onChange={(event) => onChange(Number(event.target.value))}
+      />
+      <output>{value}%</output>
+      <button type="button" aria-label={`Aumentar ${label}`} onClick={() => onChange(value + 10)}>
+        +
+      </button>
+    </div>
   );
 }
 

@@ -24,6 +24,9 @@ describe('demo domain', () => {
     expect(demoMaps.filter((map) => map.isDefault)).toHaveLength(1);
     expect(demoMaps.every((map) => map.devices.length === demoMap.devices.length)).toBe(true);
     expect(demoMaps[1]?.nodes.length).toBeLessThan(demoMap.nodes.length);
+    expect(demoMaps.every((map) => map.settings.nodeScale === 100)).toBe(true);
+    expect(demoMaps.every((map) => map.settings.linkScale === 100)).toBe(true);
+    expect(demoMaps.every((map) => map.settings.labelScale === 100)).toBe(true);
   });
 
   it('keeps canonical full-duplex directions and classifies threshold boundaries', () => {

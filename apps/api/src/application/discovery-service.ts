@@ -29,28 +29,45 @@ export class DiscoveryService {
   }
 
   async discover(device: Device, devices: Device[]): Promise<DiscoveryReview> {
-    const method = device.discoveryMethod;
-    const ordered =
-      method === 'SNMP'
-        ? this.adapters.filter((adapter) => adapter.kind === 'LLDP_SNMP')
-        : method === 'SSH'
-          ? this.adapters.filter((adapter) => adapter.kind === 'LLDP_SSH')
-          : this.adapters;
+    const access = device as Device & { snmpEnabled?: boolean; sshEnabled?: boolean };
+    const method = access.snmpEnabled ? 'SNMP' : access.sshEnabled ? 'SSH' : device.discoveryMethod;
+    const ordered = access.snmpEnabled
+      ? [
+          ...this.adapters.filter((adapter) => adapter.kind === 'LLDP_SNMP'),
+          ...(access.sshEnabled
+            ? this.adapters.filter((adapter) => adapter.kind === 'LLDP_SSH')
+            : []),
+        ]
+      : access.sshEnabled
+        ? this.adapters.filter((adapter) => adapter.kind === 'LLDP_SSH')
+        : method === 'SNMP'
+          ? this.adapters.filter((adapter) => adapter.kind === 'LLDP_SNMP')
+          : method === 'SSH'
+            ? this.adapters.filter((adapter) => adapter.kind === 'LLDP_SSH')
+            : this.adapters;
     const warnings: string[] = [];
+    const discovered = [];
 
     for (const adapter of ordered) {
       try {
         const neighbors = (await adapter.discoverNeighbors(device)).map((neighbor) =>
           this.correlate(neighbor, devices),
         );
-        if (neighbors.length > 0) return { deviceId: device.id, method, neighbors, warnings };
-        warnings.push(`${adapter.kind}: nenhum vizinho retornado`);
-      } catch (error) {
-        warnings.push(
-          `${adapter.kind}: ${error instanceof Error ? error.message : 'falha desconhecida'}`,
-        );
+        discovered.push(...neighbors);
+        if (neighbors.length === 0) warnings.push(`${adapter.kind}: nenhum vizinho retornado`);
+      } catch {
+        warnings.push(`${adapter.kind}: falha segura durante a consulta`);
       }
     }
-    return { deviceId: device.id, method, neighbors: [], warnings };
+    const unique = discovered.filter(
+      (neighbor, index, all) =>
+        all.findIndex(
+          (candidate) =>
+            normalize(candidate.localPort) === normalize(neighbor.localPort) &&
+            normalize(candidate.remoteChassisId || candidate.remoteSystemName) ===
+              normalize(neighbor.remoteChassisId || neighbor.remoteSystemName),
+        ) === index,
+    );
+    return { deviceId: device.id, method, neighbors: unique, warnings };
   }
 }

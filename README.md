@@ -119,6 +119,23 @@ O schema está em `apps/api/prisma/schema.prisma`. O repositório demo em memór
 | `CREDENTIAL_ENCRYPTION_KEY` | chave base64 de 32 bytes para AES-256-GCM | obrigatória antes de salvar segredos |
 | `ZABBIX_URL`                | endpoint base do Zabbix                   | vazio                                |
 | `ZABBIX_TOKEN`              | token usado somente pela API              | vazio                                |
+| `ZABBIX_AUTH_MODE`          | `AUTH_FIELD` (Zabbix 6.0) ou `BEARER`     | `AUTH_FIELD`                         |
+
+### Inventário global de Hosts
+
+A navegação principal agora alterna entre **Mapa** e **Hosts**. Hosts é o inventário global: permite pesquisar, filtrar e ordenar equipamentos, cadastrar/editar configurações independentes de Zabbix, SSH e SNMP, inspecionar interfaces normalizadas, testar fontes, excluir e adicionar um Device existente a qualquer mapa sem duplicá-lo.
+
+**Importar do Zabbix** executa primeiro um preview de `host.get`/`item.get`. O operador pesquisa, filtra e seleciona os hosts desejados; somente a seleção entra no inventário e nenhum `MapNode` é criado automaticamente. Segredos digitados no formulário só são aceitos quando `CREDENTIAL_ENCRYPTION_KEY` é válida e nunca reaparecem nos payloads de leitura.
+
+Os endpoints novos usam o prefixo `/api`:
+
+- `GET/POST /api/hosts`, `GET/PATCH/DELETE /api/hosts/:hostId`;
+- `POST /api/hosts/import/zabbix/preview` e `POST /api/hosts/import/zabbix`;
+- `GET /api/hosts/:hostId/interfaces` e `POST /api/hosts/:hostId/maps`;
+- `POST /api/hosts/:hostId/test/{zabbix|ssh|snmp}`;
+- `POST /api/hosts/:hostId/discovery/preview` e `POST /api/hosts/:hostId/discovery/apply`.
+
+Preview de importação e de descoberta é somente leitura. A descoberta só altera inventário/mapa no endpoint `apply`, evita Device/MapNode/link duplicados e exige escolha manual quando a correlação é ambígua.
 
 Gere uma chave local com:
 
@@ -148,6 +165,8 @@ Em `WEATHERMAP`, os sentidos `A_TO_B` e `B_TO_A` usam faixas, setas, métricas e
 
 A capacidade pode vir automaticamente da menor velocidade entre as interfaces ou ser sobrescrita em Mbps/Gbps. Criação e edição de enlace também aceitam estilo e métrica locais, que sobrepõem a preferência global do mapa.
 
+Cada mapa também guarda `nodeScale`, `linkScale` e `labelScale` entre 50% e 200%. Os presets Compacto (80%), Normal (100%) e Grande (130%) ajustam os três valores; sliders e botões permitem refinamento independente. Escala é um multiplicador visual e não altera zoom, coordenadas, capacidade, throughput ou utilização. Mapas duplicados e a rotação NOC preservam os valores próprios de cada mapa.
+
 IDs locais são gerados por `createLocalId`: o helper usa `globalThis.crypto.randomUUID()` quando disponível e cai com segurança para `Date.now()` mais `Math.random()` em browsers antigos ou ambientes restritos.
 
 ### Múltiplos mapas e NOC Mode
@@ -170,7 +189,9 @@ O transporte `SshClient` também é injetável. Cisco IOS, IOS XE, IOS XR, chave
 
 ## Zabbix
 
-`ZabbixAdapter` usa JSON-RPC exclusivamente no backend e já implementa chamada autenticada, healthcheck e listagem/normalização inicial de hosts. O mapeamento de itens Zabbix para interfaces e as consultas de histórico ainda são stubs explícitos.
+`ZabbixAdapter` usa JSON-RPC exclusivamente no backend. Ele implementa `apiinfo.version`, `host.get`, `item.get`, `history.get`, healthcheck, métricas atuais e agrupamento automático de interfaces por `ifIndex`. Para Zabbix 6.0, o padrão é enviar o API token no campo JSON-RPC `auth`; `BEARER` permanece como estratégia configurável para ambientes que o suportam.
+
+Itens de RX, TX, status, erros e discards são correlacionados pelos padrões `net.if.*[if*.X]`, e seus `itemid` ficam associados à interface normalizada. Erros públicos omitem o token e o campo `data` devolvido pelo Zabbix.
 
 A correlação de identidade usa hostname, IP e nomes normalizados, retornando `MATCHED`, `UNMATCHED` ou `AMBIGUOUS`; resultados ambíguos nunca são aceitos silenciosamente.
 
@@ -212,6 +233,6 @@ npm run format:check
 
 - o CRUD do mapa usa memória na API; o schema PostgreSQL está pronto, mas ainda não é o repositório ativo;
 - SNMP e SSH reais exigem a implementação dos transportes injetáveis;
-- Zabbix lista hosts, porém mapeamento de interfaces/items e históricos reais ainda não estão implementados;
-- descoberta demo aceita apenas vizinhos já correlacionados; cadastro de vizinho desconhecido abre o editor manual;
+- os transportes concretos SNMP/SSH ainda precisam ser ligados aos contratos injetáveis; em `DEMO_MODE` a descoberta usa o adapter demonstrativo;
+- a descoberta é incremental e deliberadamente não recursiva; vizinhos desconhecidos podem ser adicionados como não monitorados;
 - não há autenticação/RBAC nesta primeira versão.

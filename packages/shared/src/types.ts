@@ -26,6 +26,14 @@ export type LinkMetricDisplay = 'THROUGHPUT' | 'UTILIZATION' | 'BOTH' | 'NONE';
 export type LinkDirection = 'A_TO_B' | 'B_TO_A';
 export type CapacitySource = 'AUTO' | 'MANUAL';
 export type UtilizationLevel = 'NORMAL' | 'ATTENTION' | 'HIGH' | 'CRITICAL' | 'INCONSISTENT';
+export type HostOrigin = 'MANUAL' | 'ZABBIX' | 'DISCOVERY' | 'IMPORTED';
+export type SourceKind = 'ZABBIX' | 'SSH' | 'SNMP';
+export type SourceConnectionState =
+  'DISABLED' | 'CONFIGURED' | 'CONNECTED' | 'FAILED' | 'TIMEOUT' | 'AUTH_INVALID' | 'UNREACHABLE';
+export type SnmpVersion = 'SNMP_V2C' | 'SNMP_V3';
+export type SnmpSecurityLevel = 'NO_AUTH_NO_PRIV' | 'AUTH_NO_PRIV' | 'AUTH_PRIV';
+export type SnmpAuthProtocol = 'MD5' | 'SHA' | 'SHA256';
+export type SnmpPrivacyProtocol = 'DES' | 'AES' | 'AES256';
 
 export interface Position {
   x: number;
@@ -52,6 +60,47 @@ export interface NetworkInterface {
   txErrors: number;
   rxDiscards: number;
   txDiscards: number;
+  rxItemId?: string | null;
+  txItemId?: string | null;
+  statusItemId?: string | null;
+  inErrorsItemId?: string | null;
+  outErrorsItemId?: string | null;
+  inDiscardsItemId?: string | null;
+  outDiscardsItemId?: string | null;
+  dataSources?: Array<'ZABBIX' | 'SNMP' | 'SSH' | 'DEMO'>;
+}
+
+export interface SourceHealth {
+  state: SourceConnectionState;
+  lastSuccess: string | null;
+  lastFailure: string | null;
+  lastErrorSafe: string | null;
+}
+
+export interface ZabbixHostBinding {
+  hostId: string;
+  hostName: string;
+  primaryInterfaceId: string;
+  ip: string;
+}
+
+export interface SshAccessSummary {
+  host: string;
+  port: number;
+  username: string;
+  credentialConfigured: boolean;
+  authenticationType: 'PASSWORD' | 'PRIVATE_KEY';
+}
+
+export interface SnmpAccessSummary {
+  version: SnmpVersion;
+  host: string;
+  port: number;
+  username: string;
+  securityLevel: SnmpSecurityLevel;
+  authProtocol: SnmpAuthProtocol | null;
+  privacyProtocol: SnmpPrivacyProtocol | null;
+  credentialConfigured: boolean;
 }
 
 export interface Device {
@@ -73,6 +122,26 @@ export interface Device {
   interfaces: NetworkInterface[];
 }
 
+export interface HostRecord extends Device {
+  displayName: string;
+  managementIp: string;
+  description: string;
+  notes: string;
+  origin: HostOrigin;
+  useZabbix: boolean;
+  zabbix: ZabbixHostBinding | null;
+  sshEnabled: boolean;
+  ssh: SshAccessSummary | null;
+  snmpEnabled: boolean;
+  snmp: SnmpAccessSummary | null;
+  sourceHealth: Record<SourceKind, SourceHealth>;
+  lastPollingAt: string | null;
+  lastDiscoveryAt: string | null;
+  mapIds: string[];
+  mapCount: number;
+  createdAt: string;
+}
+
 export interface MapNode {
   id: string;
   mapId: string;
@@ -83,7 +152,7 @@ export interface MapNode {
 }
 
 export interface AddDeviceResult {
-  device: Device;
+  device: HostRecord;
   node: MapNode;
 }
 
@@ -136,7 +205,7 @@ export interface NetworkMap {
   isDefault: boolean;
   settings: MapSettings;
   nodes: MapNode[];
-  devices: Device[];
+  devices: HostRecord[];
   links: NetworkLink[];
   createdAt: string;
   updatedAt: string;
@@ -154,6 +223,9 @@ export interface MapSettings {
   linkMetricDisplay: LinkMetricDisplay;
   filters: MapPreferences;
   viewport: MapViewport;
+  nodeScale: number;
+  linkScale: number;
+  labelScale: number;
 }
 
 export interface MapSummary {
@@ -189,6 +261,140 @@ export interface MapSettingsUpdate {
   linkMetricDisplay?: LinkMetricDisplay;
   filters?: Partial<MapPreferences>;
   viewport?: Partial<MapViewport>;
+  nodeScale?: number;
+  linkScale?: number;
+  labelScale?: number;
+}
+
+export interface HostBasicInput {
+  hostname: string;
+  displayName: string;
+  managementIp: string;
+  vendor: string;
+  model: string;
+  deviceType: DeviceType;
+  site: string;
+  description: string;
+  notes: string;
+  origin: HostOrigin;
+}
+
+export interface ZabbixHostInput {
+  enabled: boolean;
+  hostId: string;
+  hostName: string;
+  primaryInterfaceId: string;
+  ip: string;
+}
+
+export interface SshHostInput {
+  enabled: boolean;
+  host: string;
+  port: number;
+  username: string;
+  password?: string;
+  clearCredential?: boolean;
+}
+
+export interface SnmpHostInput {
+  enabled: boolean;
+  version: SnmpVersion;
+  host: string;
+  port: number;
+  community?: string;
+  username: string;
+  securityLevel: SnmpSecurityLevel;
+  authProtocol: SnmpAuthProtocol | null;
+  authPassword?: string;
+  privacyProtocol: SnmpPrivacyProtocol | null;
+  privacyPassword?: string;
+  clearCredential?: boolean;
+}
+
+export interface CreateHostInput extends HostBasicInput {
+  zabbix: ZabbixHostInput;
+  ssh: SshHostInput;
+  snmp: SnmpHostInput;
+}
+
+export type UpdateHostInput = Partial<HostBasicInput> & {
+  zabbix?: ZabbixHostInput;
+  ssh?: SshHostInput;
+  snmp?: SnmpHostInput;
+};
+
+export interface ConnectionTestResult {
+  source: SourceKind;
+  state: Exclude<SourceConnectionState, 'CONFIGURED'>;
+  message: string;
+  checkedAt: string;
+  version?: string;
+}
+
+export interface ZabbixHostCandidate {
+  hostId: string;
+  hostname: string;
+  displayName: string;
+  managementIp: string;
+  primaryInterfaceId: string;
+  vendor: string;
+  model: string;
+  status: DeviceStatus;
+  alreadyRegistered: boolean;
+  matchedHostId: string | null;
+  interfaceCount: number;
+}
+
+export interface ZabbixImportPreview {
+  id: string;
+  version: string;
+  demoMode: boolean;
+  hosts: ZabbixHostCandidate[];
+  createdAt: string;
+}
+
+export interface ZabbixImportResult {
+  imported: HostRecord[];
+  skippedHostIds: string[];
+}
+
+export type NeighborInventoryState =
+  'PRESENT_IN_MAP' | 'REGISTERED' | 'NOT_REGISTERED' | 'AMBIGUOUS';
+export type NeighborZabbixState = 'FOUND' | 'NOT_FOUND' | 'AMBIGUOUS';
+
+export interface AssistedDiscoveredNeighbor extends DiscoveredNeighbor {
+  inventoryState: NeighborInventoryState;
+  zabbixState: NeighborZabbixState;
+  mapPresent: boolean;
+  linkExists: boolean;
+  candidateDeviceIds: string[];
+  zabbixCandidate: ZabbixHostCandidate | null;
+}
+
+export interface AssistedDiscoveryPreview {
+  id: string;
+  hostId: string;
+  mapId: string;
+  method: DiscoveryMethod;
+  neighbors: AssistedDiscoveredNeighbor[];
+  warnings: string[];
+  createdAt: string;
+}
+
+export type DiscoveryApplyAction = 'ADD' | 'ADD_UNMONITORED' | 'LINK_ONLY' | 'IGNORE';
+
+export interface DiscoveryApplySelection {
+  neighborId: string;
+  action: DiscoveryApplyAction;
+  selectedDeviceId?: string;
+}
+
+export interface DiscoveryApplyResult {
+  map: NetworkMap;
+  createdHosts: string[];
+  addedNodes: string[];
+  createdLinks: string[];
+  skipped: string[];
 }
 
 export interface MapPlaylistItem {

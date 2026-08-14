@@ -3,18 +3,35 @@ import {
   cloneDemoMaps,
   createLocalId,
   type AddDeviceResult,
+  type AssistedDiscoveryPreview,
+  type AssistedDiscoveredNeighbor,
+  type ConnectionTestResult,
+  type CreateHostInput,
   type CreateLinkInput,
   type CreateMapInput,
-  type Device,
   type DeviceType,
+  type DiscoveryApplyResult,
+  type DiscoveryApplySelection,
+  type DiscoveryReview,
+  type HostRecord,
+  type MapNode,
   type MapPlaylist,
   type MapSettings,
   type MapSummary,
+  type NetworkInterface,
   type NetworkLink,
   type NetworkMap,
   type Position,
+  type SnmpHostInput,
+  type SourceHealth,
+  type SshHostInput,
+  type UpdateHostInput,
   type UpdateMapInput,
+  type ZabbixHostCandidate,
+  type ZabbixImportPreview,
+  type ZabbixImportResult,
 } from '@gmj/shared';
+import type { CredentialVault } from '../../application/credential-vault';
 
 export interface NodePositionUpdate {
   nodeId: string;
@@ -33,6 +50,11 @@ export interface CreateDeviceInput {
   position: Position;
 }
 
+interface StoredCredentialPair {
+  ssh?: Buffer;
+  snmp?: Buffer;
+}
+
 type StoredMap = Omit<NetworkMap, 'devices'>;
 
 const blankSettings: MapSettings = {
@@ -47,14 +69,72 @@ const blankSettings: MapSettings = {
     showInterfaces: false,
   },
   viewport: { x: 0, y: 0, zoom: 1 },
+  nodeScale: 100,
+  linkScale: 100,
+  labelScale: 100,
 };
 
+function disabledHealth(): SourceHealth {
+  return { state: 'DISABLED', lastSuccess: null, lastFailure: null, lastErrorSafe: null };
+}
+
+function configuredHealth(enabled: boolean): SourceHealth {
+  return enabled
+    ? { state: 'CONFIGURED', lastSuccess: null, lastFailure: null, lastErrorSafe: null }
+    : disabledHealth();
+}
+
+function normalize(value: string | undefined | null): string {
+  return (value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function defaultInterfaces(deviceId: string, source: 'DEMO' | 'ZABBIX' | 'SNMP' = 'DEMO') {
+  return Array.from({ length: 2 }, (_, index): NetworkInterface => ({
+    id: createLocalId('interface'),
+    deviceId,
+    name: `GE0/0/${index + 1}`,
+    alias: '',
+    description: 'Interface cadastrada pelo inventário',
+    ifIndex: index + 1,
+    mac: '',
+    mtu: 1500,
+    speedBps: 1_000_000_000,
+    adminStatus: 'UP',
+    operStatus: 'UNKNOWN',
+    rxBps: 0,
+    txBps: 0,
+    rxUtilization: 0,
+    txUtilization: 0,
+    rxErrors: 0,
+    txErrors: 0,
+    rxDiscards: 0,
+    txDiscards: 0,
+    rxItemId: null,
+    txItemId: null,
+    statusItemId: null,
+    inErrorsItemId: null,
+    outErrorsItemId: null,
+    inDiscardsItemId: null,
+    outDiscardsItemId: null,
+    dataSources: [source],
+  }));
+}
+
+export class CredentialEncryptionUnavailableError extends Error {
+  constructor() {
+    super('Credential encryption is not configured');
+  }
+}
+
 export class DemoMapRepository {
-  private readonly devices: Device[];
+  private devices: HostRecord[];
   private maps: StoredMap[];
   private playlists: MapPlaylist[];
+  private readonly credentials = new Map<string, StoredCredentialPair>();
+  private readonly zabbixPreviews = new Map<string, ZabbixImportPreview>();
+  private readonly discoveryPreviews = new Map<string, AssistedDiscoveryPreview>();
 
-  constructor() {
+  constructor(private readonly vault: CredentialVault | null = null) {
     const maps = cloneDemoMaps();
     this.devices = structuredClone(maps[0]?.devices ?? []);
     this.maps = maps.map(({ devices: _devices, ...map }) => map);
@@ -70,6 +150,471 @@ export class DemoMapRepository {
         updatedAt: timestamp,
       },
     ];
+    this.refreshMembership();
+  }
+
+  listHosts(): HostRecord[] {
+    this.refreshMembership();
+    return structuredClone(this.devices);
+  }
+
+  getHost(hostId: string): HostRecord | null {
+    this.refreshMembership();
+    const host = this.devices.find((item) => item.id === hostId);
+    return host ? structuredClone(host) : null;
+  }
+
+  createHost(input: CreateHostInput, interfaces?: NetworkInterface[]): HostRecord {
+    this.assertCredentialEncryption(input.ssh, input.snmp);
+    const duplicate = this.devices.find(
+      (host) =>
+        normalize(host.hostname) === normalize(input.hostname) ||
+        (input.managementIp && host.managementIp === input.managementIp),
+    );
+    if (duplicate) return structuredClone(duplicate);
+
+    const id = createLocalId('host');
+    const timestamp = new Date().toISOString();
+    const host: HostRecord = {
+      id,
+      name: input.displayName,
+      displayName: input.displayName,
+      hostname: input.hostname,
+      ip: input.managementIp,
+      managementIp: input.managementIp,
+      vendor: input.vendor,
+      model: input.model,
+      status: 'UNKNOWN',
+      deviceType: input.deviceType,
+      site: input.site,
+      description: input.description,
+      notes: input.notes,
+      origin: input.origin,
+      source: input.zabbix.enabled ? 'ZABBIX' : 'MANUAL',
+      discoveryMethod: input.snmp.enabled ? 'SNMP' : input.ssh.enabled ? 'SSH' : 'MANUAL',
+      useZabbix: input.zabbix.enabled,
+      zabbix: input.zabbix.enabled
+        ? {
+            hostId: input.zabbix.hostId,
+            hostName: input.zabbix.hostName,
+            primaryInterfaceId: input.zabbix.primaryInterfaceId,
+            ip: input.zabbix.ip,
+          }
+        : null,
+      sshEnabled: false,
+      ssh: null,
+      snmpEnabled: false,
+      snmp: null,
+      sourceHealth: {
+        ZABBIX: configuredHealth(input.zabbix.enabled),
+        SSH: disabledHealth(),
+        SNMP: disabledHealth(),
+      },
+      lastPollingAt: null,
+      lastDiscoveryAt: null,
+      uptimeSeconds: 0,
+      updatedAt: timestamp,
+      createdAt: timestamp,
+      interfaces: (interfaces?.length ? interfaces : defaultInterfaces(id)).map((item) => ({
+        ...item,
+        deviceId: id,
+      })),
+      mapIds: [],
+      mapCount: 0,
+    };
+    this.devices.push(host);
+    this.applySsh(host, input.ssh);
+    this.applySnmp(host, input.snmp);
+    return structuredClone(host);
+  }
+
+  updateHost(hostId: string, input: UpdateHostInput): HostRecord | null {
+    const host = this.findHost(hostId);
+    if (!host) return null;
+    this.assertCredentialEncryption(input.ssh, input.snmp);
+    if (input.hostname !== undefined) host.hostname = input.hostname;
+    if (input.displayName !== undefined) {
+      host.displayName = input.displayName;
+      host.name = input.displayName;
+    }
+    if (input.managementIp !== undefined) {
+      host.managementIp = input.managementIp;
+      host.ip = input.managementIp;
+    }
+    if (input.vendor !== undefined) host.vendor = input.vendor;
+    if (input.model !== undefined) host.model = input.model;
+    if (input.deviceType !== undefined) host.deviceType = input.deviceType;
+    if (input.site !== undefined) host.site = input.site;
+    if (input.description !== undefined) host.description = input.description;
+    if (input.notes !== undefined) host.notes = input.notes;
+    if (input.origin !== undefined) host.origin = input.origin;
+    if (input.zabbix) {
+      host.useZabbix = input.zabbix.enabled;
+      host.zabbix = input.zabbix.enabled
+        ? {
+            hostId: input.zabbix.hostId,
+            hostName: input.zabbix.hostName,
+            primaryInterfaceId: input.zabbix.primaryInterfaceId,
+            ip: input.zabbix.ip,
+          }
+        : null;
+      host.sourceHealth.ZABBIX = configuredHealth(input.zabbix.enabled);
+    }
+    if (input.ssh) this.applySsh(host, input.ssh);
+    if (input.snmp) this.applySnmp(host, input.snmp);
+    host.discoveryMethod = host.snmpEnabled ? 'SNMP' : host.sshEnabled ? 'SSH' : 'MANUAL';
+    host.updatedAt = new Date().toISOString();
+    return this.getHost(hostId);
+  }
+
+  deleteHost(hostId: string): boolean {
+    if (!this.findHost(hostId)) return false;
+    this.devices = this.devices.filter((host) => host.id !== hostId);
+    this.credentials.delete(hostId);
+    this.maps.forEach((map) => {
+      map.nodes = map.nodes.filter((node) => node.deviceId !== hostId);
+      map.links = map.links.filter(
+        (link) => link.sourceDeviceId !== hostId && link.targetDeviceId !== hostId,
+      );
+      this.touch(map);
+    });
+    return true;
+  }
+
+  addHostToMap(hostId: string, mapId: string, position: Position): AddDeviceResult | null {
+    const host = this.findHost(hostId);
+    const map = this.findMap(mapId);
+    if (!host || !map) return null;
+    const existing = map.nodes.find((node) => node.deviceId === hostId);
+    const node: MapNode = existing ?? {
+      id: createLocalId('node'),
+      mapId,
+      deviceId: hostId,
+      position,
+      locked: false,
+      positionSource: 'MANUAL',
+    };
+    if (!existing) map.nodes.push(node);
+    this.touch(map);
+    this.refreshMembership();
+    return { device: structuredClone(host), node: structuredClone(node) };
+  }
+
+  storeZabbixPreview(
+    candidates: ZabbixHostCandidate[],
+    version: string,
+    demoMode: boolean,
+  ): ZabbixImportPreview {
+    const hosts = candidates.map((candidate) => {
+      const matched = this.matchHost(candidate.hostname, candidate.managementIp, candidate.hostId);
+      return {
+        ...candidate,
+        alreadyRegistered: Boolean(matched),
+        matchedHostId: matched?.id ?? null,
+      };
+    });
+    const preview: ZabbixImportPreview = {
+      id: createLocalId('zabbix-preview'),
+      version,
+      demoMode,
+      hosts,
+      createdAt: new Date().toISOString(),
+    };
+    this.zabbixPreviews.set(preview.id, structuredClone(preview));
+    return preview;
+  }
+
+  importZabbixHosts(
+    previewId: string,
+    hostIds: string[],
+    interfacesByHostId: Map<string, NetworkInterface[]> = new Map(),
+  ): ZabbixImportResult | null {
+    const preview = this.zabbixPreviews.get(previewId);
+    if (!preview) return null;
+    const imported: HostRecord[] = [];
+    const skippedHostIds: string[] = [];
+    for (const hostId of hostIds) {
+      const candidate = preview.hosts.find((item) => item.hostId === hostId);
+      if (
+        !candidate ||
+        candidate.alreadyRegistered ||
+        this.matchHost(candidate.hostname, candidate.managementIp, hostId)
+      ) {
+        skippedHostIds.push(hostId);
+        continue;
+      }
+      const host = this.createHost(
+        {
+          hostname: candidate.hostname,
+          displayName: candidate.displayName,
+          managementIp: candidate.managementIp,
+          vendor: candidate.vendor,
+          model: candidate.model,
+          deviceType: 'generic',
+          site: '',
+          description: `Importado do Zabbix ${preview.version}`,
+          notes: '',
+          origin: 'ZABBIX',
+          zabbix: {
+            enabled: true,
+            hostId: candidate.hostId,
+            hostName: candidate.hostname,
+            primaryInterfaceId: candidate.primaryInterfaceId,
+            ip: candidate.managementIp,
+          },
+          ssh: { enabled: false, host: candidate.managementIp, port: 22, username: '' },
+          snmp: {
+            enabled: false,
+            version: 'SNMP_V2C',
+            host: candidate.managementIp,
+            port: 161,
+            username: '',
+            securityLevel: 'NO_AUTH_NO_PRIV',
+            authProtocol: null,
+            privacyProtocol: null,
+          },
+        },
+        interfacesByHostId.get(hostId),
+      );
+      const stored = this.findHost(host.id)!;
+      stored.status = candidate.status;
+      stored.lastPollingAt = preview.createdAt;
+      stored.sourceHealth.ZABBIX = {
+        state: 'CONNECTED',
+        lastSuccess: preview.createdAt,
+        lastFailure: null,
+        lastErrorSafe: null,
+      };
+      imported.push(this.getHost(host.id)!);
+    }
+    return { imported, skippedHostIds };
+  }
+
+  createDiscoveryPreview(
+    hostId: string,
+    mapId: string,
+    review: DiscoveryReview,
+    zabbixCandidates: ZabbixHostCandidate[],
+  ): AssistedDiscoveryPreview | null {
+    const map = this.findMap(mapId);
+    const sourceHost = this.findHost(hostId);
+    if (!map || !sourceHost || !map.nodes.some((node) => node.deviceId === hostId)) return null;
+    const neighbors: AssistedDiscoveredNeighbor[] = review.neighbors.map((neighbor) => {
+      const identities = [
+        normalize(neighbor.remoteSystemName),
+        normalize(neighbor.remoteManagementAddress),
+        normalize(neighbor.remoteChassisId),
+      ].filter(Boolean);
+      const inventoryMatches = this.devices.filter((host) =>
+        [host.hostname, host.displayName, host.managementIp]
+          .map(normalize)
+          .some((identity) => identities.includes(identity)),
+      );
+      const zabbixMatches = zabbixCandidates.filter((candidate) =>
+        [candidate.hostname, candidate.displayName, candidate.managementIp]
+          .map(normalize)
+          .some((identity) => identities.includes(identity)),
+      );
+      const matchedHost = inventoryMatches.length === 1 ? inventoryMatches[0] : undefined;
+      const mapPresent = Boolean(
+        matchedHost && map.nodes.some((node) => node.deviceId === matchedHost.id),
+      );
+      const linkExists = Boolean(
+        matchedHost &&
+        map.links.some(
+          (link) =>
+            (link.sourceDeviceId === hostId && link.targetDeviceId === matchedHost.id) ||
+            (link.sourceDeviceId === matchedHost.id && link.targetDeviceId === hostId),
+        ),
+      );
+      return {
+        ...neighbor,
+        matchStatus:
+          inventoryMatches.length === 1
+            ? 'MATCHED'
+            : inventoryMatches.length > 1
+              ? 'AMBIGUOUS'
+              : 'UNMATCHED',
+        ...(matchedHost ? { matchedDeviceId: matchedHost.id } : {}),
+        inventoryState:
+          inventoryMatches.length > 1
+            ? 'AMBIGUOUS'
+            : matchedHost
+              ? mapPresent
+                ? 'PRESENT_IN_MAP'
+                : 'REGISTERED'
+              : 'NOT_REGISTERED',
+        zabbixState:
+          zabbixMatches.length === 1
+            ? 'FOUND'
+            : zabbixMatches.length > 1
+              ? 'AMBIGUOUS'
+              : 'NOT_FOUND',
+        mapPresent,
+        linkExists,
+        candidateDeviceIds: inventoryMatches.map((host) => host.id),
+        zabbixCandidate: zabbixMatches.length === 1 ? zabbixMatches[0]! : null,
+      };
+    });
+    const preview: AssistedDiscoveryPreview = {
+      id: createLocalId('discovery-preview'),
+      hostId,
+      mapId,
+      method: review.method,
+      neighbors,
+      warnings: review.warnings,
+      createdAt: new Date().toISOString(),
+    };
+    this.discoveryPreviews.set(preview.id, structuredClone(preview));
+    return preview;
+  }
+
+  applyDiscovery(
+    previewId: string,
+    selections: DiscoveryApplySelection[],
+  ): DiscoveryApplyResult | null {
+    const preview = this.discoveryPreviews.get(previewId);
+    const map = preview ? this.findMap(preview.mapId) : undefined;
+    const sourceHost = preview ? this.findHost(preview.hostId) : undefined;
+    if (!preview || !map || !sourceHost) return null;
+    const createdHosts: string[] = [];
+    const addedNodes: string[] = [];
+    const createdLinks: string[] = [];
+    const skipped: string[] = [];
+    const sourceNode = map.nodes.find((node) => node.deviceId === sourceHost.id);
+
+    selections.forEach((selection, index) => {
+      const neighbor = preview.neighbors.find((item) => item.id === selection.neighborId);
+      if (!neighbor || selection.action === 'IGNORE') {
+        if (neighbor) skipped.push(neighbor.id);
+        return;
+      }
+      let target = selection.selectedDeviceId
+        ? this.findHost(selection.selectedDeviceId)
+        : neighbor.matchedDeviceId
+          ? this.findHost(neighbor.matchedDeviceId)
+          : null;
+      if (!target && neighbor.zabbixCandidate && selection.action === 'ADD') {
+        const result = this.storeZabbixPreview([neighbor.zabbixCandidate], 'discovery', false);
+        target =
+          this.importZabbixHosts(result.id, [neighbor.zabbixCandidate.hostId])?.imported[0] ?? null;
+        if (target) createdHosts.push(target.id);
+      }
+      if (!target && selection.action === 'ADD_UNMONITORED') {
+        target = this.createHost({
+          hostname: neighbor.remoteSystemName,
+          displayName: neighbor.remoteSystemName,
+          managementIp: neighbor.remoteManagementAddress ?? '',
+          vendor: '',
+          model: '',
+          deviceType: neighbor.capabilities.includes('router') ? 'router' : 'switch',
+          site: sourceHost.site,
+          description: neighbor.systemDescription ?? 'Host descoberto via LLDP',
+          notes: '',
+          origin: 'DISCOVERY',
+          zabbix: { enabled: false, hostId: '', hostName: '', primaryInterfaceId: '', ip: '' },
+          ssh: {
+            enabled: false,
+            host: neighbor.remoteManagementAddress ?? '',
+            port: 22,
+            username: '',
+          },
+          snmp: {
+            enabled: false,
+            version: 'SNMP_V2C',
+            host: neighbor.remoteManagementAddress ?? '',
+            port: 161,
+            username: '',
+            securityLevel: 'NO_AUTH_NO_PRIV',
+            authProtocol: null,
+            privacyProtocol: null,
+          },
+        });
+        createdHosts.push(target.id);
+      }
+      if (!target) {
+        skipped.push(neighbor.id);
+        return;
+      }
+
+      let targetNode = map.nodes.find((node) => node.deviceId === target!.id);
+      if (!targetNode && selection.action !== 'LINK_ONLY') {
+        targetNode = {
+          id: createLocalId('node'),
+          mapId: map.id,
+          deviceId: target.id,
+          position: {
+            x: (sourceNode?.position.x ?? 500) + 260,
+            y: (sourceNode?.position.y ?? 350) + (index - selections.length / 2) * 130,
+          },
+          locked: false,
+          positionSource: 'AUTO',
+        };
+        map.nodes.push(targetNode);
+        addedNodes.push(targetNode.id);
+      }
+      if (!targetNode) {
+        skipped.push(neighbor.id);
+        return;
+      }
+      const duplicate = map.links.some(
+        (link) =>
+          (link.sourceDeviceId === sourceHost.id && link.targetDeviceId === target!.id) ||
+          (link.sourceDeviceId === target!.id && link.targetDeviceId === sourceHost.id),
+      );
+      if (duplicate) {
+        skipped.push(neighbor.id);
+        return;
+      }
+      const sourceInterface = this.ensureInterface(sourceHost, neighbor.localPort);
+      const targetInterface = this.ensureInterface(target, neighbor.remotePort);
+      const capacity = Math.max(1, Math.min(sourceInterface.speedBps, targetInterface.speedBps));
+      const link = this.createLink(map.id, {
+        sourceDeviceId: sourceHost.id,
+        sourceInterfaceId: sourceInterface.id,
+        targetDeviceId: target.id,
+        targetInterfaceId: targetInterface.id,
+        capacityBps: capacity,
+        autoCapacityBps: capacity,
+        capacitySource: 'AUTO',
+        label: 'LLDP DISCOVERED',
+        metricSource: target.useZabbix || sourceHost.useZabbix ? 'ZABBIX' : 'DEMO',
+        visualStyle: null,
+        metricDisplay: null,
+      });
+      if (link) {
+        const stored = map.links.find((item) => item.id === link.id);
+        if (stored) stored.discoverySource = neighbor.source;
+        createdLinks.push(link.id);
+      }
+    });
+    this.discoveryPreviews.delete(previewId);
+    sourceHost.lastDiscoveryAt = new Date().toISOString();
+    this.touch(map);
+    this.refreshMembership();
+    return {
+      map: this.materialize(map),
+      createdHosts,
+      addedNodes,
+      createdLinks,
+      skipped,
+    };
+  }
+
+  updateSourceHealth(hostId: string, result: ConnectionTestResult): HostRecord | null {
+    const host = this.findHost(hostId);
+    if (!host) return null;
+    const now = result.checkedAt;
+    host.sourceHealth[result.source] = {
+      state: result.state,
+      lastSuccess:
+        result.state === 'CONNECTED' ? now : host.sourceHealth[result.source].lastSuccess,
+      lastFailure: result.state === 'CONNECTED' || result.state === 'DISABLED' ? null : now,
+      lastErrorSafe:
+        result.state === 'CONNECTED' || result.state === 'DISABLED' ? null : result.message,
+    };
+    host.updatedAt = now;
+    return this.getHost(hostId);
   }
 
   listMaps(): MapSummary[] {
@@ -98,11 +643,7 @@ export class DemoMapRepository {
           description: input.description,
           mode: input.mode,
           isDefault: false,
-          nodes: source.nodes.map((node) => ({
-            ...node,
-            id: createLocalId('node'),
-            mapId: id,
-          })),
+          nodes: source.nodes.map((node) => ({ ...node, id: createLocalId('node'), mapId: id })),
           links: source.links.map((link) => ({
             ...link,
             id: createLocalId('link'),
@@ -126,6 +667,7 @@ export class DemoMapRepository {
           updatedAt: timestamp,
         };
     this.maps.push(map);
+    this.refreshMembership();
     return this.materialize(map);
   }
 
@@ -165,6 +707,7 @@ export class DemoMapRepository {
       updatedAt: new Date().toISOString(),
     }));
     if (map.isDefault && this.maps[0]) this.maps[0].isDefault = true;
+    this.refreshMembership();
     return true;
   }
 
@@ -303,75 +846,164 @@ export class DemoMapRepository {
   addDevice(mapId: string, input: CreateDeviceInput): AddDeviceResult | null {
     const map = this.findMap(mapId);
     if (!map) return null;
-    const id = createLocalId('device');
-    const timestamp = new Date().toISOString();
-    const device: Device = {
-      id,
-      name: input.name,
+    const host = this.createHost({
       hostname: input.hostname,
-      ip: input.ip,
+      displayName: input.name,
+      managementIp: input.ip,
       vendor: input.vendor,
       model: input.model,
-      site: input.site,
-      status: 'UNKNOWN',
       deviceType: input.deviceType,
-      source: 'MANUAL',
-      discoveryMethod: 'MANUAL',
-      uptimeSeconds: 0,
-      updatedAt: timestamp,
-      interfaces: Array.from({ length: 2 }, (_, index) => ({
-        id: `${id}-if-${index + 1}`,
-        deviceId: id,
-        name: `GE0/0/${index + 1}`,
-        alias: '',
-        description: 'Manual interface',
-        ifIndex: index + 1,
-        mac: '',
-        mtu: 1500,
-        speedBps: 1_000_000_000,
-        adminStatus: 'UP',
-        operStatus: 'UNKNOWN',
-        rxBps: 0,
-        txBps: 0,
-        rxUtilization: 0,
-        txUtilization: 0,
-        rxErrors: 0,
-        txErrors: 0,
-        rxDiscards: 0,
-        txDiscards: 0,
-      })),
-    };
-    this.devices.push(device);
-    const node = {
-      id: createLocalId('node'),
-      mapId,
-      deviceId: id,
-      position: input.position,
-      locked: false,
-      positionSource: 'MANUAL' as const,
-    };
-    map.nodes.push(node);
-    this.touch(map);
-    return structuredClone({ device, node });
+      site: input.site,
+      description: '',
+      notes: '',
+      origin: 'MANUAL',
+      zabbix: { enabled: false, hostId: '', hostName: '', primaryInterfaceId: '', ip: '' },
+      ssh: { enabled: false, host: input.ip, port: 22, username: '' },
+      snmp: {
+        enabled: false,
+        version: 'SNMP_V2C',
+        host: input.ip,
+        port: 161,
+        username: '',
+        securityLevel: 'NO_AUTH_NO_PRIV',
+        authProtocol: null,
+        privacyProtocol: null,
+      },
+    });
+    return this.addHostToMap(host.id, mapId, input.position);
   }
 
   deleteDevice(mapId: string, deviceId: string): boolean {
     const map = this.findMap(mapId);
     if (!map || !map.nodes.some((item) => item.deviceId === deviceId)) return false;
-    // Device is global; removing it here only removes its membership from this map.
     map.nodes = map.nodes.filter((item) => item.deviceId !== deviceId);
     map.links = map.links.filter(
       (item) => item.sourceDeviceId !== deviceId && item.targetDeviceId !== deviceId,
     );
     this.touch(map);
+    this.refreshMembership();
     return true;
+  }
+
+  private applySsh(host: HostRecord, input: SshHostInput): void {
+    host.sshEnabled = input.enabled;
+    if (!input.enabled) {
+      host.ssh = null;
+      host.sourceHealth.SSH = disabledHealth();
+      return;
+    }
+    const stored = this.credentials.get(host.id) ?? {};
+    if (input.clearCredential) delete stored.ssh;
+    if (input.password) {
+      if (!this.vault) throw new CredentialEncryptionUnavailableError();
+      stored.ssh = this.vault.encrypt({ type: 'PASSWORD', password: input.password });
+    }
+    this.credentials.set(host.id, stored);
+    host.ssh = {
+      host: input.host || host.managementIp,
+      port: input.port,
+      username: input.username,
+      credentialConfigured: Boolean(stored.ssh),
+      authenticationType: 'PASSWORD',
+    };
+    host.sourceHealth.SSH = configuredHealth(true);
+  }
+
+  private assertCredentialEncryption(
+    ssh: SshHostInput | undefined,
+    snmp: SnmpHostInput | undefined,
+  ): void {
+    if (
+      !this.vault &&
+      (Boolean(ssh?.password) ||
+        Boolean(snmp?.community) ||
+        Boolean(snmp?.authPassword) ||
+        Boolean(snmp?.privacyPassword))
+    ) {
+      throw new CredentialEncryptionUnavailableError();
+    }
+  }
+
+  private applySnmp(host: HostRecord, input: SnmpHostInput): void {
+    host.snmpEnabled = input.enabled;
+    if (!input.enabled) {
+      host.snmp = null;
+      host.sourceHealth.SNMP = disabledHealth();
+      return;
+    }
+    const stored = this.credentials.get(host.id) ?? {};
+    if (input.clearCredential) delete stored.snmp;
+    const hasNewSecret = Boolean(input.community || input.authPassword || input.privacyPassword);
+    if (hasNewSecret) {
+      if (!this.vault) throw new CredentialEncryptionUnavailableError();
+      stored.snmp = this.vault.encrypt({
+        version: input.version,
+        ...(input.community ? { community: input.community } : {}),
+        ...(input.authPassword ? { authPassword: input.authPassword } : {}),
+        ...(input.privacyPassword ? { privacyPassword: input.privacyPassword } : {}),
+      });
+    }
+    this.credentials.set(host.id, stored);
+    host.snmp = {
+      version: input.version,
+      host: input.host || host.managementIp,
+      port: input.port,
+      username: input.username,
+      securityLevel: input.securityLevel,
+      authProtocol: input.authProtocol,
+      privacyProtocol: input.privacyProtocol,
+      credentialConfigured: Boolean(stored.snmp),
+    };
+    host.sourceHealth.SNMP = configuredHealth(true);
+  }
+
+  private ensureInterface(host: HostRecord, name: string): NetworkInterface {
+    const existing = host.interfaces.find(
+      (item) =>
+        normalize(item.name) === normalize(name) || normalize(item.alias) === normalize(name),
+    );
+    if (existing) return existing;
+    const networkInterface: NetworkInterface = {
+      ...defaultInterfaces(host.id, 'SNMP')[0]!,
+      id: createLocalId('interface'),
+      name,
+      alias: '',
+      description: 'Interface descoberta por LLDP',
+      ifIndex: Math.max(0, ...host.interfaces.map((item) => item.ifIndex)) + 1,
+      dataSources: ['SNMP'],
+    };
+    host.interfaces.push(networkInterface);
+    return networkInterface;
   }
 
   private findMap(mapId: string): StoredMap | undefined {
     return this.maps.find((item) => item.id === mapId);
   }
 
+  private findHost(hostId: string): HostRecord | undefined {
+    return this.devices.find((item) => item.id === hostId);
+  }
+
+  private matchHost(hostname: string, ip: string, zabbixHostId?: string): HostRecord | undefined {
+    return this.devices.find(
+      (host) =>
+        normalize(host.hostname) === normalize(hostname) ||
+        Boolean(ip && host.managementIp === ip) ||
+        Boolean(zabbixHostId && host.zabbix?.hostId === zabbixHostId),
+    );
+  }
+
+  private refreshMembership(): void {
+    this.devices.forEach((host) => {
+      host.mapIds = this.maps
+        .filter((map) => map.nodes.some((node) => node.deviceId === host.id))
+        .map((map) => map.id);
+      host.mapCount = host.mapIds.length;
+    });
+  }
+
   private materialize(map: StoredMap): NetworkMap {
+    this.refreshMembership();
     return structuredClone({ ...map, devices: this.devices });
   }
 

@@ -19,7 +19,6 @@ import {
   Radar,
   ServerCog,
   ShieldCheck,
-  Sparkles,
   Star,
   Trash2,
   X,
@@ -30,7 +29,6 @@ import {
   type CapacitySource,
   type CreateLinkInput,
   type DeviceType,
-  type DiscoveredNeighbor,
   type LinkDisplayStyle,
   type LinkMetricDisplay,
   type MapMode,
@@ -40,13 +38,13 @@ import {
   createLink,
   createNetworkMap,
   deleteNetworkMap,
-  discoverNeighbors,
   duplicateNetworkMap,
   savePlaylist,
   updateNetworkMap,
   type AddDeviceInput,
 } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
+import { AssistedDiscoveryReview } from './assisted-discovery-review';
 
 export function ActionPanels() {
   const panel = useMapStore((state) => state.panel);
@@ -384,11 +382,37 @@ function AddDevicePanel() {
         {
           id,
           ...form,
+          displayName: form.name,
+          managementIp: form.ip,
+          description: '',
+          notes: '',
+          origin: 'MANUAL',
           status: 'UNKNOWN',
           source: 'MANUAL',
           discoveryMethod: 'MANUAL',
+          useZabbix: false,
+          zabbix: null,
+          sshEnabled: false,
+          ssh: null,
+          snmpEnabled: false,
+          snmp: null,
+          sourceHealth: {
+            ZABBIX: {
+              state: 'DISABLED',
+              lastSuccess: null,
+              lastFailure: null,
+              lastErrorSafe: null,
+            },
+            SSH: { state: 'DISABLED', lastSuccess: null, lastFailure: null, lastErrorSafe: null },
+            SNMP: { state: 'DISABLED', lastSuccess: null, lastFailure: null, lastErrorSafe: null },
+          },
+          lastPollingAt: null,
+          lastDiscoveryAt: null,
           uptimeSeconds: 0,
+          createdAt: timestamp,
           updatedAt: timestamp,
+          mapIds: map ? [map.id] : [],
+          mapCount: map ? 1 : 0,
           interfaces: [
             {
               id: `${id}-if-1`,
@@ -502,80 +526,17 @@ function DiscoveryPanel() {
   const map = useMapStore((state) => state.map);
   const selection = useMapStore((state) => state.selection);
   const setPanel = useMapStore((state) => state.setPanel);
-  const addLinkToStore = useMapStore((state) => state.addLink);
-  const showToast = useMapStore((state) => state.showToast);
   const devices =
     map?.nodes.flatMap((node) => {
       const device = map.devices.find((item) => item.id === node.deviceId);
       return device ? [device] : [];
     }) ?? [];
-  const initialDeviceId =
-    selection?.kind === 'device'
-      ? selection.id
-      : (devices.find((item) => item.id === 'core-01')?.id ?? devices[0]?.id ?? '');
-  const [deviceId, setDeviceId] = useState(initialDeviceId);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const mutation = useMutation({
-    mutationFn: () => discoverNeighbors(map?.id ?? '', deviceId),
-    onSuccess: (review) =>
-      setSelected(
-        new Set(
-          review.neighbors.filter((item) => item.matchStatus === 'MATCHED').map((item) => item.id),
-        ),
-      ),
-  });
-  const source = map?.devices.find((item) => item.id === deviceId);
-  const toggle = (id: string) =>
-    setSelected((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  const accept = () => {
-    if (!map || !source || !mutation.data) return;
-    let added = 0;
-    mutation.data.neighbors
-      .filter((neighbor) => selected.has(neighbor.id) && neighbor.matchedDeviceId)
-      .forEach((neighbor) => {
-        const target = map.devices.find((item) => item.id === neighbor.matchedDeviceId);
-        const sourceInterface =
-          source.interfaces.find((item) => item.name === neighbor.localPort) ??
-          source.interfaces[0];
-        const targetInterface =
-          target?.interfaces.find((item) => item.name === neighbor.remotePort) ??
-          target?.interfaces[0];
-        if (
-          !target ||
-          !sourceInterface ||
-          !targetInterface ||
-          map.links.some(
-            (link) =>
-              (link.sourceDeviceId === source.id && link.targetDeviceId === target.id) ||
-              (link.sourceDeviceId === target.id && link.targetDeviceId === source.id),
-          )
-        )
-          return;
-        addLinkToStore({
-          sourceDeviceId: source.id,
-          sourceInterfaceId: sourceInterface.id,
-          targetDeviceId: target.id,
-          targetInterfaceId: targetInterface.id,
-          capacityBps: Math.min(sourceInterface.speedBps, targetInterface.speedBps),
-          autoCapacityBps: Math.min(sourceInterface.speedBps, targetInterface.speedBps),
-          capacitySource: 'AUTO',
-          label: 'LLDP DISCOVERED',
-          metricSource: 'DEMO',
-          visualStyle: null,
-          metricDisplay: null,
-        });
-        added += 1;
-      });
-    setPanel(null);
-    showToast(added ? `${added} enlace(s) adicionado(s)` : 'Vizinhos já presentes no mapa');
-  };
+  const [deviceId, setDeviceId] = useState(
+    selection?.kind === 'device' ? selection.id : (devices[0]?.id ?? ''),
+  );
+  const source = devices.find((device) => device.id === deviceId);
   return (
-    <PanelShell eyebrow="TOPOLOGY ENGINE" title="Descobrir vizinhos">
+    <PanelShell eyebrow="TOPOLOGY ENGINE" title="Descoberta assistida">
       <div className="panel-body discovery-panel">
         <div className="discovery-source">
           <div>
@@ -585,13 +546,7 @@ function DiscoveryPanel() {
               <strong>{source?.name ?? 'Selecione'}</strong>
             </span>
           </div>
-          <select
-            value={deviceId}
-            onChange={(event) => {
-              setDeviceId(event.target.value);
-              mutation.reset();
-            }}
-          >
+          <select value={deviceId} onChange={(event) => setDeviceId(event.target.value)}>
             {devices.map((device) => (
               <option key={device.id} value={device.id}>
                 {device.name}
@@ -599,125 +554,27 @@ function DiscoveryPanel() {
             ))}
           </select>
           <div className="method-order">
-            <Badge tone="info">AUTO</Badge>
+            <Badge tone="info">PREVIEW</Badge>
             <span>SNMP</span>
             <ChevronRight size={12} />
             <span>SSH</span>
-            <ChevronRight size={12} />
-            <span>Manual</span>
           </div>
-          <Button variant="primary" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
-            {mutation.isPending ? (
-              <LoaderCircle className="spin" size={15} />
-            ) : (
-              <Sparkles size={15} />
-            )}{' '}
-            Consultar LLDP
-          </Button>
         </div>
-        {!mutation.data && !mutation.isPending && (
+        {source && map ? (
+          <AssistedDiscoveryReview host={source} mapId={map.id} onApplied={() => setPanel(null)} />
+        ) : (
           <div className="discovery-empty">
-            <Radar size={34} />
-            <strong>Pronto para descobrir</strong>
-            <span>A consulta normaliza LLDP e mostra sugestões antes de alterar o mapa.</span>
-          </div>
-        )}
-        {mutation.isPending && (
-          <div className="discovery-empty">
-            <LoaderCircle className="spin" size={30} />
-            <strong>Consultando equipamento…</strong>
-            <span>SNMP primeiro; SSH como fallback.</span>
-          </div>
-        )}
-        {mutation.data && (
-          <div className="neighbor-results">
-            <div className="neighbor-results__title">
-              <strong>{mutation.data.neighbors.length} vizinhos encontrados</strong>
-              <span>Revise antes de adicionar</span>
-            </div>
-            {mutation.data.neighbors.map((neighbor) => (
-              <NeighborRow
-                key={neighbor.id}
-                neighbor={neighbor}
-                selected={selected.has(neighbor.id)}
-                sourceName={source?.name ?? ''}
-                onToggle={() => toggle(neighbor.id)}
-                onRegister={() => {
-                  setPanel('add-device');
-                }}
-              />
-            ))}
-            {mutation.data.warnings.map((warning) => (
-              <small className="discovery-warning" key={warning}>
-                {warning}
-              </small>
-            ))}
+            <Radar size={28} />
+            <strong>Mapa sem equipamento inicial</strong>
           </div>
         )}
       </div>
       <footer>
         <Button variant="ghost" onClick={() => setPanel(null)}>
-          Cancelar
-        </Button>
-        <Button variant="primary" disabled={!mutation.data || selected.size === 0} onClick={accept}>
-          <Check size={15} /> Adicionar selecionados ({selected.size})
+          Fechar
         </Button>
       </footer>
     </PanelShell>
-  );
-}
-
-function NeighborRow({
-  neighbor,
-  selected,
-  sourceName,
-  onToggle,
-  onRegister,
-}: {
-  neighbor: DiscoveredNeighbor;
-  selected: boolean;
-  sourceName: string;
-  onToggle: () => void;
-  onRegister: () => void;
-}) {
-  return (
-    <div className={`neighbor-row ${selected ? 'is-selected' : ''}`}>
-      <button
-        type="button"
-        className="neighbor-check"
-        onClick={onToggle}
-        disabled={neighbor.matchStatus !== 'MATCHED'}
-      >
-        {selected && <Check size={13} />}
-      </button>
-      <div className="neighbor-route">
-        <span>
-          <strong>{sourceName}</strong>
-          <small>{neighbor.localPort}</small>
-        </span>
-        <Link2 size={16} />
-        <span>
-          <strong>{neighbor.remoteSystemName}</strong>
-          <small>{neighbor.remotePort}</small>
-        </span>
-      </div>
-      <Badge
-        tone={
-          neighbor.matchStatus === 'MATCHED'
-            ? 'up'
-            : neighbor.matchStatus === 'AMBIGUOUS'
-              ? 'warning'
-              : 'neutral'
-        }
-      >
-        {neighbor.matchStatus}
-      </Badge>
-      {neighbor.matchStatus === 'UNMATCHED' && (
-        <Button compact variant="secondary" onClick={onRegister}>
-          Cadastrar
-        </Button>
-      )}
-    </div>
   );
 }
 

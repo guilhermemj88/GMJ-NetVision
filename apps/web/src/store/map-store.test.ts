@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import type { MapSummary } from '@gmj/shared';
+import { cloneDemoMaps, type MapSummary } from '@gmj/shared';
 import { useMapStore } from './map-store';
 
 const maps: MapSummary[] = ['backbone', 'access'].map((id, index) => ({
@@ -40,5 +40,33 @@ describe('NOC rotation state', () => {
     expect(useMapStore.getState().rotation.paused).toBe(true);
     useMapStore.getState().stopRotation();
     expect(useMapStore.getState().rotation.active).toBe(false);
+  });
+});
+
+describe('map visual scales', () => {
+  afterEach(() => useMapStore.setState({ map: null, dirty: false }));
+
+  it('clamps independent scales without changing persisted node coordinates', () => {
+    const map = cloneDemoMaps()[0]!;
+    const positions = map.nodes.map((node) => ({ ...node.position }));
+    useMapStore.getState().setMap(map);
+    useMapStore.getState().setMapScales({ nodeScale: 70, linkScale: 150, labelScale: 250 });
+
+    expect(useMapStore.getState().map?.settings).toMatchObject({
+      nodeScale: 70,
+      linkScale: 150,
+      labelScale: 200,
+    });
+    expect(useMapStore.getState().map?.nodes.map((node) => node.position)).toEqual(positions);
+  });
+
+  it('loads the scale preferences that belong to each map during NOC rotation', () => {
+    const [first, second] = cloneDemoMaps();
+    first!.settings.nodeScale = 80;
+    second!.settings.nodeScale = 130;
+    useMapStore.getState().setMap(first!);
+    expect(useMapStore.getState().map?.settings.nodeScale).toBe(80);
+    useMapStore.getState().setMap(second!);
+    expect(useMapStore.getState().map?.settings.nodeScale).toBe(130);
   });
 });

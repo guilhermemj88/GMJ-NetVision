@@ -85,6 +85,8 @@ export function NetworkCanvas() {
             editMode,
             showInterfaces: preferences.showInterfaces,
             displayMode: map.settings.nodeDisplayMode,
+            nodeScale: map.settings.nodeScale,
+            labelScale: map.settings.labelScale,
           },
         },
       ];
@@ -110,6 +112,8 @@ export function NetworkCanvas() {
                 showLabels: preferences.showLabels,
                 displayStyle: map.settings.linkDisplayStyle,
                 metricDisplay: map.settings.linkMetricDisplay,
+                linkScale: map.settings.linkScale,
+                labelScale: map.settings.labelScale,
                 related:
                   selection?.kind !== 'device' ||
                   link.sourceDeviceId === selection.id ||
