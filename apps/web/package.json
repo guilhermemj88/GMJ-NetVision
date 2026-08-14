@@ -1,0 +1,35 @@
+{
+  "name": "@gmj/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack -p 3000",
+    "build": "next build",
+    "start": "next start -p 3000",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dagrejs/dagre": "^1.1.5",
+    "@gmj/shared": "*",
+    "@gmj/ui": "*",
+    "@tanstack/react-query": "^5.85.5",
+    "@xyflow/react": "^12.8.4",
+    "lucide-react": "^0.542.0",
+    "next": "^16.3.1",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "recharts": "^3.1.2",
+    "zustand": "^5.0.8"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.12",
+    "@types/dagre": "^0.7.53",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.0.2",
+    "jsdom": "^26.1.0",
+    "tailwindcss": "^4.1.12",
+    "vitest": "^3.2.4"
+  }
+}

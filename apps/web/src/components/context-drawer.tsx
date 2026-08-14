@@ -1,0 +1,494 @@
+'use client';
+
+import { useState } from 'react';
+import { Badge, Button } from '@gmj/ui';
+import {
+  Activity,
+  ArrowDownToLine,
+  ArrowLeft,
+  ArrowUpFromLine,
+  Cable,
+  ChevronRight,
+  CircleGauge,
+  Clock3,
+  Cpu,
+  Database,
+  HardDrive,
+  List,
+  Pencil,
+  Radar,
+  ServerCog,
+  Trash2,
+  X,
+} from 'lucide-react';
+import {
+  formatBitsPerSecond,
+  formatDuration,
+  type NetworkInterface,
+  type NetworkLink,
+} from '@gmj/shared';
+import { useMutation } from '@tanstack/react-query';
+import { deleteLink as deleteLinkRequest, updateLink as updateLinkRequest } from '@/lib/api';
+import { useMapStore } from '@/store/map-store';
+import { MetricCharts } from './metric-charts';
+
+export function ContextDrawer() {
+  const map = useMapStore((state) => state.map);
+  const selection = useMapStore((state) => state.selection);
+  const setSelection = useMapStore((state) => state.setSelection);
+  if (!map || !selection) return null;
+
+  if (selection.kind === 'link') {
+    const link = map.links.find((item) => item.id === selection.id);
+    return link ? <LinkDrawer link={link} onClose={() => setSelection(null)} /> : null;
+  }
+  if (selection.kind === 'interface') {
+    const device = map.devices.find((item) => item.id === selection.deviceId);
+    const networkInterface = device?.interfaces.find((item) => item.id === selection.id);
+    return device && networkInterface ? (
+      <InterfaceDrawer
+        networkInterface={networkInterface}
+        deviceName={device.name}
+        onBack={() => setSelection({ kind: 'device', id: device.id })}
+        onClose={() => setSelection(null)}
+      />
+    ) : null;
+  }
+  const device = map.devices.find((item) => item.id === selection.id);
+  return device ? <DeviceDrawer deviceId={device.id} onClose={() => setSelection(null)} /> : null;
+}
+
+function DrawerShell({
+  children,
+  eyebrow,
+  title,
+  status,
+  onClose,
+  onBack,
+}: {
+  children: React.ReactNode;
+  eyebrow: string;
+  title: string;
+  status?: string;
+  onClose: () => void;
+  onBack?: () => void;
+}) {
+  return (
+    <aside className="context-drawer">
+      <header className="drawer-header">
+        {onBack && (
+          <button type="button" aria-label="Voltar" onClick={onBack}>
+            <ArrowLeft size={17} />
+          </button>
+        )}
+        <div>
+          <span>{eyebrow}</span>
+          <h2>{title}</h2>
+        </div>
+        {status && <Badge tone={status}>{status}</Badge>}
+        <button type="button" aria-label="Fechar" className="drawer-close" onClick={onClose}>
+          <X size={18} />
+        </button>
+      </header>
+      <div className="drawer-scroll">{children}</div>
+    </aside>
+  );
+}
+
+function DeviceDrawer({ deviceId, onClose }: { deviceId: string; onClose: () => void }) {
+  const [tab, setTab] = useState<'overview' | 'interfaces'>('overview');
+  const map = useMapStore((state) => state.map);
+  const setSelection = useMapStore((state) => state.setSelection);
+  const setPanel = useMapStore((state) => state.setPanel);
+  const device = map?.devices.find((item) => item.id === deviceId);
+  if (!device) return null;
+  const count = (status: NetworkInterface['operStatus']) =>
+    device.interfaces.filter((item) => item.operStatus === status).length;
+  const totalRx = device.interfaces.reduce((sum, item) => sum + item.rxBps, 0);
+  const totalTx = device.interfaces.reduce((sum, item) => sum + item.txBps, 0);
+
+  return (
+    <DrawerShell eyebrow="EQUIPAMENTO" title={device.name} status={device.status} onClose={onClose}>
+      <div className="drawer-tabs">
+        <button
+          type="button"
+          className={tab === 'overview' ? 'is-active' : ''}
+          onClick={() => setTab('overview')}
+        >
+          <Activity size={14} /> Visão geral
+        </button>
+        <button
+          type="button"
+          className={tab === 'interfaces' ? 'is-active' : ''}
+          onClick={() => setTab('interfaces')}
+        >
+          <List size={14} /> Interfaces <em>{device.interfaces.length}</em>
+        </button>
+      </div>
+      {tab === 'overview' ? (
+        <>
+          <section className="drawer-section">
+            <SectionTitle icon={<ServerCog size={14} />} label="IDENTIDADE" />
+            <div className="info-grid">
+              <Info label="Hostname" value={device.hostname} mono />
+              <Info label="IP de gestão" value={device.ip} mono />
+              <Info label="Fabricante" value={device.vendor} />
+              <Info label="Modelo" value={device.model} />
+              <Info label="Site" value={device.site} />
+              <Info label="Origem" value={device.source} />
+            </div>
+            <div className="uptime-row">
+              <Clock3 size={14} /> Uptime <strong>{formatDuration(device.uptimeSeconds)}</strong>
+              <span>Atualizado agora</span>
+            </div>
+          </section>
+          <section className="drawer-section">
+            <SectionTitle icon={<Cable size={14} />} label="SAÚDE DAS INTERFACES" />
+            <div className="interface-summary">
+              <div>
+                <strong>{device.interfaces.length}</strong>
+                <span>Total</span>
+              </div>
+              <div className="up">
+                <strong>{count('UP')}</strong>
+                <span>Up</span>
+              </div>
+              <div className="down">
+                <strong>{count('DOWN')}</strong>
+                <span>Down</span>
+              </div>
+              <div className="warning">
+                <strong>{count('WARNING')}</strong>
+                <span>Warning</span>
+              </div>
+            </div>
+            <div className="throughput-pair">
+              <div>
+                <ArrowDownToLine size={15} />
+                <span>
+                  RX TOTAL<small>{formatBitsPerSecond(totalRx)}</small>
+                </span>
+              </div>
+              <div>
+                <ArrowUpFromLine size={15} />
+                <span>
+                  TX TOTAL<small>{formatBitsPerSecond(totalTx)}</small>
+                </span>
+              </div>
+            </div>
+          </section>
+          <section className="drawer-section">
+            <SectionTitle icon={<CircleGauge size={14} />} label="RECURSOS" />
+            <ResourceBar
+              icon={<Cpu size={15} />}
+              label="CPU"
+              value={device.cpuPercent ?? 0}
+              available={device.cpuPercent !== undefined}
+            />
+            <ResourceBar
+              icon={<HardDrive size={15} />}
+              label="Memória"
+              value={device.memoryPercent ?? 0}
+              available={device.memoryPercent !== undefined}
+            />
+          </section>
+          <div className="drawer-actions">
+            <Button variant="secondary" onClick={() => setPanel('discovery')}>
+              <Radar size={15} /> Descobrir vizinhos
+            </Button>
+            <Button variant="ghost" onClick={() => setTab('interfaces')}>
+              Ver interfaces <ChevronRight size={15} />
+            </Button>
+          </div>
+        </>
+      ) : (
+        <InterfaceList
+          interfaces={device.interfaces}
+          onSelect={(item) => setSelection({ kind: 'interface', id: item.id, deviceId: device.id })}
+        />
+      )}
+    </DrawerShell>
+  );
+}
+
+function InterfaceList({
+  interfaces,
+  onSelect,
+}: {
+  interfaces: NetworkInterface[];
+  onSelect: (value: NetworkInterface) => void;
+}) {
+  return (
+    <section className="interface-list">
+      <div className="interface-list__head">
+        <span>PORTA / ALIAS</span>
+        <span>TRÁFEGO</span>
+        <span>STATUS</span>
+      </div>
+      {interfaces.map((item) => (
+        <button type="button" key={item.id} onClick={() => onSelect(item)}>
+          <span className={`port-dot status-${item.operStatus.toLowerCase()}`} />
+          <span className="interface-list__name">
+            <strong>{item.name}</strong>
+            <small>{item.alias || item.description}</small>
+          </span>
+          <span className="interface-list__traffic">
+            <small>↓ {formatBitsPerSecond(item.rxBps)}</small>
+            <small>↑ {formatBitsPerSecond(item.txBps)}</small>
+          </span>
+          <Badge tone={item.operStatus}>{item.operStatus}</Badge>
+          <ChevronRight size={14} />
+        </button>
+      ))}
+    </section>
+  );
+}
+
+function InterfaceDrawer({
+  networkInterface: item,
+  deviceName,
+  onBack,
+  onClose,
+}: {
+  networkInterface: NetworkInterface;
+  deviceName: string;
+  onBack: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <DrawerShell
+      eyebrow={`${deviceName} / INTERFACE`}
+      title={item.name}
+      status={item.operStatus}
+      onBack={onBack}
+      onClose={onClose}
+    >
+      <section className="drawer-section">
+        <SectionTitle icon={<Cable size={14} />} label="DETALHES DA PORTA" />
+        <div className="info-grid">
+          <Info label="Alias" value={item.alias || '—'} />
+          <Info label="ifIndex" value={String(item.ifIndex)} mono />
+          <Info label="MAC" value={item.mac || '—'} mono />
+          <Info label="MTU" value={String(item.mtu)} mono />
+          <Info label="Velocidade" value={formatBitsPerSecond(item.speedBps)} />
+          <Info label="Admin / Oper" value={`${item.adminStatus} / ${item.operStatus}`} />
+        </div>
+        <p className="interface-description">{item.description}</p>
+      </section>
+      <section className="drawer-section live-metrics">
+        <SectionTitle icon={<Activity size={14} />} label="MÉTRICAS ATUAIS" />
+        <div className="metric-hero">
+          <div className="rx">
+            <span>RX ATUAL</span>
+            <strong>{formatBitsPerSecond(item.rxBps)}</strong>
+            <small>{item.rxUtilization.toFixed(1)}% utilização</small>
+          </div>
+          <div className="tx">
+            <span>TX ATUAL</span>
+            <strong>{formatBitsPerSecond(item.txBps)}</strong>
+            <small>{item.txUtilization.toFixed(1)}% utilização</small>
+          </div>
+        </div>
+        <div className="counter-row">
+          <Counter label="Erros RX" value={item.rxErrors} />
+          <Counter label="Erros TX" value={item.txErrors} />
+          <Counter label="Discards RX" value={item.rxDiscards} />
+          <Counter label="Discards TX" value={item.txDiscards} />
+        </div>
+      </section>
+      <MetricCharts networkInterface={item} />
+    </DrawerShell>
+  );
+}
+
+function LinkDrawer({ link, onClose }: { link: NetworkLink; onClose: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [label, setLabel] = useState(link.label);
+  const [capacity, setCapacity] = useState(link.capacityBps / 1_000_000_000);
+  const map = useMapStore((state) => state.map);
+  const editMode = useMapStore((state) => state.editMode);
+  const removeLink = useMapStore((state) => state.removeLink);
+  const replaceLink = useMapStore((state) => state.replaceLink);
+  const showToast = useMapStore((state) => state.showToast);
+  const source = map?.devices.find((item) => item.id === link.sourceDeviceId);
+  const target = map?.devices.find((item) => item.id === link.targetDeviceId);
+  const sourceInterface = source?.interfaces.find((item) => item.id === link.sourceInterfaceId);
+  const targetInterface = target?.interfaces.find((item) => item.id === link.targetInterfaceId);
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      updateLinkRequest(link.id, {
+        label,
+        capacityBps: capacity * 1_000_000_000,
+        metricSource: link.metricSource,
+      }),
+    onSuccess: (updated) => {
+      replaceLink(updated);
+      setEditing(false);
+      showToast('Enlace atualizado');
+    },
+    onError: () => {
+      replaceLink({
+        ...link,
+        label,
+        capacityBps: capacity * 1_000_000_000,
+        updatedAt: new Date().toISOString(),
+      });
+      setEditing(false);
+      showToast('Enlace atualizado localmente');
+    },
+  });
+  const remove = () => {
+    removeLink(link.id);
+    void deleteLinkRequest(link.id).catch(() => undefined);
+    showToast('Enlace removido');
+  };
+
+  return (
+    <DrawerShell eyebrow="ENLACE" title={link.label} status={link.status} onClose={onClose}>
+      <div className="link-route">
+        <Endpoint
+          label="PONTA A"
+          device={source?.name ?? '—'}
+          networkInterface={sourceInterface?.name ?? '—'}
+        />
+        <div className="link-route__line">
+          <span />
+          <Cable size={16} />
+          <span />
+        </div>
+        <Endpoint
+          label="PONTA B"
+          device={target?.name ?? '—'}
+          networkInterface={targetInterface?.name ?? '—'}
+        />
+      </div>
+      <section className="drawer-section">
+        <SectionTitle icon={<Activity size={14} />} label="TRÁFEGO BIDIRECIONAL" />
+        <div className="metric-hero">
+          <div className="rx">
+            <span>A ← B</span>
+            <strong>{formatBitsPerSecond(link.rxBps)}</strong>
+            <small>{link.rxUtilization.toFixed(1)}% utilização</small>
+          </div>
+          <div className="tx">
+            <span>A → B</span>
+            <strong>{formatBitsPerSecond(link.txBps)}</strong>
+            <small>{link.txUtilization.toFixed(1)}% utilização</small>
+          </div>
+        </div>
+        <div className="capacity-bar">
+          <span style={{ width: `${Math.max(link.rxUtilization, link.txUtilization)}%` }} />
+          <small>Capacidade {formatBitsPerSecond(link.capacityBps)}</small>
+        </div>
+      </section>
+      <section className="drawer-section">
+        <SectionTitle icon={<Database size={14} />} label="ORIGEM E QUALIDADE" />
+        <div className="info-grid">
+          <Info label="Descoberta" value={link.discoverySource.replace('_', ' / ')} />
+          <Info label="Métricas" value={link.metricSource} />
+          <Info label="Erros RX / TX" value={`${link.rxErrors} / ${link.txErrors}`} />
+          <Info label="Discards RX / TX" value={`${link.rxDiscards} / ${link.txDiscards}`} />
+        </div>
+      </section>
+      {editing && (
+        <section className="drawer-section edit-link-form">
+          <label>
+            Label
+            <input value={label} onChange={(event) => setLabel(event.target.value)} />
+          </label>
+          <label>
+            Capacidade (Gbps)
+            <input
+              type="number"
+              min="0.1"
+              value={capacity}
+              onChange={(event) => setCapacity(Number(event.target.value))}
+            />
+          </label>
+          <div>
+            <Button variant="ghost" onClick={() => setEditing(false)}>
+              Cancelar
+            </Button>
+            <Button variant="primary" onClick={() => updateMutation.mutate()}>
+              Salvar alterações
+            </Button>
+          </div>
+        </section>
+      )}
+      {editMode && !editing && (
+        <div className="drawer-actions">
+          <Button variant="secondary" onClick={() => setEditing(true)}>
+            <Pencil size={15} /> Editar enlace
+          </Button>
+          <Button variant="danger" onClick={remove}>
+            <Trash2 size={15} /> Excluir
+          </Button>
+        </div>
+      )}
+    </DrawerShell>
+  );
+}
+
+function SectionTitle({ icon, label }: { icon: React.ReactNode; label: string }) {
+  return (
+    <h3 className="section-title">
+      {icon}
+      {label}
+    </h3>
+  );
+}
+function Info({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="info">
+      <span>{label}</span>
+      <strong className={mono ? 'mono' : ''}>{value}</strong>
+    </div>
+  );
+}
+function ResourceBar({
+  icon,
+  label,
+  value,
+  available,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: number;
+  available: boolean;
+}) {
+  return (
+    <div className="resource-bar">
+      {icon}
+      <span>{label}</span>
+      <div>
+        <i style={{ width: `${value}%` }} />
+      </div>
+      <strong>{available ? `${value.toFixed(0)}%` : 'N/D'}</strong>
+    </div>
+  );
+}
+function Counter({ label, value }: { label: string; value: number }) {
+  return (
+    <div>
+      <span>{label}</span>
+      <strong>{value.toLocaleString('pt-BR')}</strong>
+    </div>
+  );
+}
+function Endpoint({
+  label,
+  device,
+  networkInterface,
+}: {
+  label: string;
+  device: string;
+  networkInterface: string;
+}) {
+  return (
+    <div className="endpoint">
+      <span>{label}</span>
+      <strong>{device}</strong>
+      <small>{networkInterface}</small>
+    </div>
+  );
+}
