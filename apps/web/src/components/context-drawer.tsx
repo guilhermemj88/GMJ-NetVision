@@ -22,8 +22,12 @@ import {
   X,
 } from 'lucide-react';
 import {
+  calculateUtilization,
   formatBitsPerSecond,
   formatDuration,
+  type CapacitySource,
+  type LinkDisplayStyle,
+  type LinkMetricDisplay,
   type NetworkInterface,
   type NetworkLink,
 } from '@gmj/shared';
@@ -304,7 +308,16 @@ function InterfaceDrawer({
 function LinkDrawer({ link, onClose }: { link: NetworkLink; onClose: () => void }) {
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(link.label);
-  const [capacity, setCapacity] = useState(link.capacityBps / 1_000_000_000);
+  const initialUnit = link.capacityBps >= 1_000_000_000 ? 'GBPS' : 'MBPS';
+  const [capacitySource, setCapacitySource] = useState<CapacitySource>(link.capacitySource);
+  const [capacityUnit, setCapacityUnit] = useState<'MBPS' | 'GBPS'>(initialUnit);
+  const [capacity, setCapacity] = useState(
+    link.capacityBps / (initialUnit === 'GBPS' ? 1_000_000_000 : 1_000_000),
+  );
+  const [visualStyle, setVisualStyle] = useState<LinkDisplayStyle | ''>(link.visualStyle ?? '');
+  const [metricDisplay, setMetricDisplay] = useState<LinkMetricDisplay | ''>(
+    link.metricDisplay ?? '',
+  );
   const map = useMapStore((state) => state.map);
   const editMode = useMapStore((state) => state.editMode);
   const removeLink = useMapStore((state) => state.removeLink);
@@ -314,12 +327,41 @@ function LinkDrawer({ link, onClose }: { link: NetworkLink; onClose: () => void 
   const target = map?.devices.find((item) => item.id === link.targetDeviceId);
   const sourceInterface = source?.interfaces.find((item) => item.id === link.sourceInterfaceId);
   const targetInterface = target?.interfaces.find((item) => item.id === link.targetInterfaceId);
+  const capacityBps =
+    capacitySource === 'AUTO'
+      ? link.autoCapacityBps
+      : capacity * (capacityUnit === 'GBPS' ? 1_000_000_000 : 1_000_000);
+  const editedLink: NetworkLink = {
+    ...link,
+    label,
+    capacityBps,
+    capacitySource,
+    visualStyle: visualStyle || null,
+    metricDisplay: metricDisplay || null,
+    directions: {
+      A_TO_B: {
+        ...link.directions.A_TO_B,
+        utilization: calculateUtilization(link.directions.A_TO_B.bps, capacityBps),
+      },
+      B_TO_A: {
+        ...link.directions.B_TO_A,
+        utilization: calculateUtilization(link.directions.B_TO_A.bps, capacityBps),
+      },
+    },
+    txUtilization: calculateUtilization(link.directions.A_TO_B.bps, capacityBps),
+    rxUtilization: calculateUtilization(link.directions.B_TO_A.bps, capacityBps),
+    updatedAt: new Date().toISOString(),
+  };
   const updateMutation = useMutation({
     mutationFn: () =>
-      updateLinkRequest(link.id, {
+      updateLinkRequest(link.mapId, link.id, {
         label,
-        capacityBps: capacity * 1_000_000_000,
+        capacityBps,
+        autoCapacityBps: link.autoCapacityBps,
+        capacitySource,
         metricSource: link.metricSource,
+        visualStyle: visualStyle || null,
+        metricDisplay: metricDisplay || null,
       }),
     onSuccess: (updated) => {
       replaceLink(updated);
@@ -327,21 +369,18 @@ function LinkDrawer({ link, onClose }: { link: NetworkLink; onClose: () => void 
       showToast('Enlace atualizado');
     },
     onError: () => {
-      replaceLink({
-        ...link,
-        label,
-        capacityBps: capacity * 1_000_000_000,
-        updatedAt: new Date().toISOString(),
-      });
+      replaceLink(editedLink);
       setEditing(false);
       showToast('Enlace atualizado localmente');
     },
   });
   const remove = () => {
     removeLink(link.id);
-    void deleteLinkRequest(link.id).catch(() => undefined);
+    void deleteLinkRequest(link.mapId, link.id).catch(() => undefined);
     showToast('Enlace removido');
   };
+  const aToB = link.directions.A_TO_B;
+  const bToA = link.directions.B_TO_A;
 
   return (
     <DrawerShell eyebrow="ENLACE" title={link.label} status={link.status} onClose={onClose}>
@@ -367,18 +406,22 @@ function LinkDrawer({ link, onClose }: { link: NetworkLink; onClose: () => void 
         <div className="metric-hero">
           <div className="rx">
             <span>A ← B</span>
-            <strong>{formatBitsPerSecond(link.rxBps)}</strong>
-            <small>{link.rxUtilization.toFixed(1)}% utilização</small>
+            <strong>{formatBitsPerSecond(bToA.bps)}</strong>
+            <small>{bToA.utilization.toFixed(1)}% utilização</small>
           </div>
           <div className="tx">
             <span>A → B</span>
-            <strong>{formatBitsPerSecond(link.txBps)}</strong>
-            <small>{link.txUtilization.toFixed(1)}% utilização</small>
+            <strong>{formatBitsPerSecond(aToB.bps)}</strong>
+            <small>{aToB.utilization.toFixed(1)}% utilização</small>
           </div>
         </div>
         <div className="capacity-bar">
-          <span style={{ width: `${Math.max(link.rxUtilization, link.txUtilization)}%` }} />
-          <small>Capacidade {formatBitsPerSecond(link.capacityBps)}</small>
+          <span
+            style={{ width: `${Math.min(100, Math.max(aToB.utilization, bToA.utilization))}%` }}
+          />
+          <small>
+            Capacidade {formatBitsPerSecond(link.capacityBps)} · {link.capacitySource}
+          </small>
         </div>
       </section>
       <section className="drawer-section">
@@ -397,13 +440,61 @@ function LinkDrawer({ link, onClose }: { link: NetworkLink; onClose: () => void 
             <input value={label} onChange={(event) => setLabel(event.target.value)} />
           </label>
           <label>
-            Capacidade (Gbps)
+            Origem da capacidade
+            <select
+              value={capacitySource}
+              onChange={(event) => setCapacitySource(event.target.value as CapacitySource)}
+            >
+              <option value="AUTO">Automática pelas interfaces</option>
+              <option value="MANUAL">Manual</option>
+            </select>
+          </label>
+          <label>
+            Capacidade
             <input
               type="number"
-              min="0.1"
+              min="0.01"
               value={capacity}
+              disabled={capacitySource === 'AUTO'}
               onChange={(event) => setCapacity(Number(event.target.value))}
             />
+          </label>
+          <label>
+            Unidade
+            <select
+              value={capacityUnit}
+              disabled={capacitySource === 'AUTO'}
+              onChange={(event) => setCapacityUnit(event.target.value as 'MBPS' | 'GBPS')}
+            >
+              <option value="MBPS">Mbps</option>
+              <option value="GBPS">Gbps</option>
+            </select>
+          </label>
+          <label>
+            Visual deste enlace
+            <select
+              value={visualStyle}
+              onChange={(event) => setVisualStyle(event.target.value as LinkDisplayStyle | '')}
+            >
+              <option value="">Herdar do mapa</option>
+              <option value="FLOW">Flow</option>
+              <option value="WEATHERMAP">Weathermap</option>
+              <option value="HYBRID">Hybrid</option>
+              <option value="MINIMAL">Minimal</option>
+            </select>
+          </label>
+          <label>
+            Métrica deste enlace
+            <select
+              value={metricDisplay}
+              onChange={(event) => setMetricDisplay(event.target.value as LinkMetricDisplay | '')}
+            >
+              <option value="">Herdar do mapa</option>
+              <option value="THROUGHPUT">Throughput</option>
+              <option value="UTILIZATION">Utilização</option>
+              <option value="BOTH">Ambos</option>
+              <option value="NONE">Nenhuma</option>
+            </select>
           </label>
           <div>
             <Button variant="ghost" onClick={() => setEditing(false)}>

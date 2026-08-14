@@ -1,24 +1,51 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Badge, Button } from '@gmj/ui';
 import {
   Check,
+  ArrowDown,
+  ArrowUp,
   ChevronRight,
   Database,
   KeyRound,
   Link2,
   LoaderCircle,
+  Map as MapIcon,
+  MonitorPlay,
+  Copy,
+  Pencil,
   Plus,
   Radar,
   ServerCog,
   ShieldCheck,
   Sparkles,
+  Star,
+  Trash2,
   X,
 } from 'lucide-react';
 import { useMutation } from '@tanstack/react-query';
-import type { CreateLinkInput, DeviceType, DiscoveredNeighbor } from '@gmj/shared';
-import { addDevice, createLink, discoverNeighbors, type AddDeviceInput } from '@/lib/api';
+import {
+  createLocalId,
+  type CapacitySource,
+  type CreateLinkInput,
+  type DeviceType,
+  type DiscoveredNeighbor,
+  type LinkDisplayStyle,
+  type LinkMetricDisplay,
+  type MapMode,
+} from '@gmj/shared';
+import {
+  addDevice,
+  createLink,
+  createNetworkMap,
+  deleteNetworkMap,
+  discoverNeighbors,
+  duplicateNetworkMap,
+  savePlaylist,
+  updateNetworkMap,
+  type AddDeviceInput,
+} from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
 
 export function ActionPanels() {
@@ -27,6 +54,8 @@ export function ActionPanels() {
   if (panel === 'add-device') return <AddDevicePanel />;
   if (panel === 'discovery') return <DiscoveryPanel />;
   if (panel === 'settings') return <SettingsPanel />;
+  if (panel === 'maps') return <MapManagerPanel />;
+  if (panel === 'rotation') return <RotationPanel />;
   return null;
 }
 
@@ -69,7 +98,11 @@ function CreateLinkPanel() {
   const setPanel = useMapStore((state) => state.setPanel);
   const addLinkToStore = useMapStore((state) => state.addLink);
   const showToast = useMapStore((state) => state.showToast);
-  const devices = map?.devices ?? [];
+  const devices =
+    map?.nodes.flatMap((node) => {
+      const device = map.devices.find((item) => item.id === node.deviceId);
+      return device ? [device] : [];
+    }) ?? [];
   const [sourceId, setSourceId] = useState(pending?.sourceDeviceId ?? devices[0]?.id ?? '');
   const [targetId, setTargetId] = useState(pending?.targetDeviceId ?? devices[1]?.id ?? '');
   const source = devices.find((item) => item.id === sourceId);
@@ -77,8 +110,26 @@ function CreateLinkPanel() {
   const [sourceInterfaceId, setSourceInterfaceId] = useState('');
   const [targetInterfaceId, setTargetInterfaceId] = useState('');
   const [capacity, setCapacity] = useState(100);
+  const [capacityUnit, setCapacityUnit] = useState<'Mbps' | 'Gbps'>('Gbps');
+  const [capacitySource, setCapacitySource] = useState<CapacitySource>('AUTO');
   const [label, setLabel] = useState('100G BACKBONE');
   const [metricSource, setMetricSource] = useState<'DEMO' | 'ZABBIX'>('DEMO');
+  const [visualStyle, setVisualStyle] = useState<LinkDisplayStyle | null>(null);
+  const [metricDisplay, setMetricDisplay] = useState<LinkMetricDisplay | null>(null);
+  const selectedSourceInterface = source?.interfaces.find(
+    (item) => item.id === (sourceInterfaceId || source.interfaces[0]?.id),
+  );
+  const selectedTargetInterface = target?.interfaces.find(
+    (item) => item.id === (targetInterfaceId || target.interfaces[0]?.id),
+  );
+  const autoCapacityBps = Math.max(
+    1,
+    Math.min(
+      selectedSourceInterface?.speedBps ?? 1_000_000_000,
+      selectedTargetInterface?.speedBps ?? 1_000_000_000,
+    ),
+  );
+  const manualCapacityBps = capacity * (capacityUnit === 'Gbps' ? 1_000_000_000 : 1_000_000);
 
   const input: CreateLinkInput | null =
     source && target
@@ -87,9 +138,13 @@ function CreateLinkPanel() {
           sourceInterfaceId: sourceInterfaceId || source.interfaces[0]?.id || '',
           targetDeviceId: target.id,
           targetInterfaceId: targetInterfaceId || target.interfaces[0]?.id || '',
-          capacityBps: capacity * 1_000_000_000,
+          capacityBps: capacitySource === 'AUTO' ? autoCapacityBps : manualCapacityBps,
+          autoCapacityBps,
+          capacitySource,
           label,
           metricSource,
+          visualStyle,
+          metricDisplay,
         }
       : null;
 
@@ -97,7 +152,7 @@ function CreateLinkPanel() {
     mutationFn: async () => {
       if (!input || !input.sourceInterfaceId || !input.targetInterfaceId)
         throw new Error('Selecione as interfaces');
-      return createLink(input);
+      return createLink(map?.id ?? '', input);
     },
     onSuccess: (link) => {
       if (input) addLinkToStore(input, link);
@@ -187,7 +242,25 @@ function CreateLinkPanel() {
             </label>
           </div>
         </div>
-        <div className="form-grid">
+        <div className="capacity-source-picker">
+          <span>Origem da capacidade</span>
+          <button
+            type="button"
+            className={capacitySource === 'AUTO' ? 'is-active' : ''}
+            onClick={() => setCapacitySource('AUTO')}
+          >
+            Automática pela interface
+          </button>
+          <button
+            type="button"
+            className={capacitySource === 'MANUAL' ? 'is-active' : ''}
+            onClick={() => setCapacitySource('MANUAL')}
+          >
+            Manual (sobrescreve)
+          </button>
+          <small>Detectada: {(autoCapacityBps / 1_000_000_000).toFixed(0)} Gbps</small>
+        </div>
+        <div className="form-grid form-grid--link-options">
           <label>
             Capacidade
             <input
@@ -195,9 +268,20 @@ function CreateLinkPanel() {
               min="0.1"
               step="0.1"
               value={capacity}
+              disabled={capacitySource === 'AUTO'}
               onChange={(event) => setCapacity(Number(event.target.value))}
             />
-            <small>Gbps</small>
+          </label>
+          <label>
+            Unidade
+            <select
+              value={capacityUnit}
+              disabled={capacitySource === 'AUTO'}
+              onChange={(event) => setCapacityUnit(event.target.value as 'Mbps' | 'Gbps')}
+            >
+              <option>Gbps</option>
+              <option>Mbps</option>
+            </select>
           </label>
           <label>
             Label
@@ -211,6 +295,36 @@ function CreateLinkPanel() {
             >
               <option value="DEMO">Demo</option>
               <option value="ZABBIX">Zabbix</option>
+            </select>
+          </label>
+          <label>
+            Estilo visual
+            <select
+              value={visualStyle ?? ''}
+              onChange={(event) =>
+                setVisualStyle((event.target.value || null) as LinkDisplayStyle | null)
+              }
+            >
+              <option value="">Herdar do mapa</option>
+              <option value="FLOW">Flow</option>
+              <option value="WEATHERMAP">Weathermap</option>
+              <option value="HYBRID">Hybrid</option>
+              <option value="MINIMAL">Minimal</option>
+            </select>
+          </label>
+          <label>
+            Métrica exibida
+            <select
+              value={metricDisplay ?? ''}
+              onChange={(event) =>
+                setMetricDisplay((event.target.value || null) as LinkMetricDisplay | null)
+              }
+            >
+              <option value="">Herdar do mapa</option>
+              <option value="THROUGHPUT">Throughput</option>
+              <option value="UTILIZATION">Utilização %</option>
+              <option value="BOTH">Ambos</option>
+              <option value="NONE">Nenhum</option>
             </select>
           </label>
         </div>
@@ -240,6 +354,7 @@ function CreateLinkPanel() {
 }
 
 function AddDevicePanel() {
+  const map = useMapStore((state) => state.map);
   const setPanel = useMapStore((state) => state.setPanel);
   const addDeviceToStore = useMapStore((state) => state.addDevice);
   const showToast = useMapStore((state) => state.showToast);
@@ -256,15 +371,15 @@ function AddDevicePanel() {
   const update = (key: keyof AddDeviceInput, value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
   const mutation = useMutation({
-    mutationFn: () => addDevice(form),
-    onSuccess: (device) => {
-      addDeviceToStore(device, form.position);
+    mutationFn: () => addDevice(map?.id ?? '', form),
+    onSuccess: ({ device, node }) => {
+      addDeviceToStore(device, form.position, node);
       setPanel(null);
       showToast('Equipamento adicionado');
     },
     onError: () => {
       const timestamp = new Date().toISOString();
-      const id = `local-${crypto.randomUUID()}`;
+      const id = createLocalId('device');
       addDeviceToStore(
         {
           id,
@@ -389,14 +504,19 @@ function DiscoveryPanel() {
   const setPanel = useMapStore((state) => state.setPanel);
   const addLinkToStore = useMapStore((state) => state.addLink);
   const showToast = useMapStore((state) => state.showToast);
+  const devices =
+    map?.nodes.flatMap((node) => {
+      const device = map.devices.find((item) => item.id === node.deviceId);
+      return device ? [device] : [];
+    }) ?? [];
   const initialDeviceId =
     selection?.kind === 'device'
       ? selection.id
-      : (map?.devices.find((item) => item.id === 'core-01')?.id ?? map?.devices[0]?.id ?? '');
+      : (devices.find((item) => item.id === 'core-01')?.id ?? devices[0]?.id ?? '');
   const [deviceId, setDeviceId] = useState(initialDeviceId);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const mutation = useMutation({
-    mutationFn: () => discoverNeighbors(deviceId),
+    mutationFn: () => discoverNeighbors(map?.id ?? '', deviceId),
     onSuccess: (review) =>
       setSelected(
         new Set(
@@ -442,8 +562,12 @@ function DiscoveryPanel() {
           targetDeviceId: target.id,
           targetInterfaceId: targetInterface.id,
           capacityBps: Math.min(sourceInterface.speedBps, targetInterface.speedBps),
+          autoCapacityBps: Math.min(sourceInterface.speedBps, targetInterface.speedBps),
+          capacitySource: 'AUTO',
           label: 'LLDP DISCOVERED',
           metricSource: 'DEMO',
+          visualStyle: null,
+          metricDisplay: null,
         });
         added += 1;
       });
@@ -468,7 +592,7 @@ function DiscoveryPanel() {
               mutation.reset();
             }}
           >
-            {map?.devices.map((device) => (
+            {devices.map((device) => (
               <option key={device.id} value={device.id}>
                 {device.name}
               </option>
@@ -666,5 +790,390 @@ function SettingsPanel() {
         </Button>
       </footer>
     </PanelShell>
+  );
+}
+
+function MapManagerPanel() {
+  const maps = useMapStore((state) => state.maps);
+  const currentMap = useMapStore((state) => state.map);
+  const activeMapId = useMapStore((state) => state.activeMapId);
+  const setActiveMap = useMapStore((state) => state.setActiveMap);
+  const setMap = useMapStore((state) => state.setMap);
+  const upsertMapSummary = useMapStore((state) => state.upsertMapSummary);
+  const removeMapSummary = useMapStore((state) => state.removeMapSummary);
+  const showToast = useMapStore((state) => state.showToast);
+  const setPanel = useMapStore((state) => state.setPanel);
+  const [selectedId, setSelectedId] = useState(activeMapId ?? maps[0]?.id ?? '');
+  const selected = maps.find((map) => map.id === selectedId);
+  const [name, setName] = useState(selected?.name ?? '');
+  const [description, setDescription] = useState(selected?.description ?? '');
+  const [mode, setMode] = useState<MapMode>(selected?.mode ?? 'HYBRID');
+  const [creating, setCreating] = useState<'EMPTY' | 'DUPLICATE' | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    const item = maps.find((map) => map.id === selectedId);
+    if (!item) return;
+    setName(item.name);
+    setDescription(item.description);
+    setMode(item.mode);
+  }, [maps, selectedId]);
+
+  const save = async () => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      const updated = await updateNetworkMap(selected.id, { name, description, mode });
+      upsertMapSummary(updated);
+      if (currentMap?.id === updated.id) setMap(updated);
+      showToast('Mapa atualizado');
+    } catch {
+      showToast('Não foi possível atualizar o mapa');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const create = async () => {
+    setBusy(true);
+    try {
+      const created = await createNetworkMap({
+        name: name || 'Novo mapa',
+        description,
+        mode,
+        sourceMapId: creating === 'DUPLICATE' ? selectedId || null : null,
+      });
+      upsertMapSummary(created);
+      setMap(created);
+      setSelectedId(created.id);
+      setCreating(null);
+      showToast(creating === 'DUPLICATE' ? 'Mapa duplicado' : 'Mapa vazio criado');
+    } catch {
+      showToast('API necessária para criar mapas persistentes');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const duplicate = async () => {
+    if (!selected) return;
+    setBusy(true);
+    try {
+      const created = await duplicateNetworkMap(
+        selected.id,
+        `${selected.name} — Cópia`,
+        selected.description,
+      );
+      upsertMapSummary(created);
+      setMap(created);
+      setSelectedId(created.id);
+      showToast('Mapa duplicado');
+    } catch {
+      showToast('Não foi possível duplicar o mapa');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const makeDefault = async () => {
+    if (!selected) return;
+    try {
+      const updated = await updateNetworkMap(selected.id, { isDefault: true });
+      upsertMapSummary(updated);
+      showToast('Mapa padrão atualizado');
+    } catch {
+      showToast('Não foi possível definir o mapa padrão');
+    }
+  };
+
+  const remove = async () => {
+    if (!selected || !window.confirm(`Excluir o mapa “${selected.name}”?`)) return;
+    try {
+      await deleteNetworkMap(selected.id);
+      removeMapSummary(selected.id);
+      setSelectedId(maps.find((map) => map.id !== selected.id)?.id ?? '');
+      showToast('Mapa excluído; equipamentos globais preservados');
+    } catch {
+      showToast('O último mapa não pode ser excluído');
+    }
+  };
+
+  return (
+    <PanelShell eyebrow="MAP ENGINE" title="Gerenciar mapas">
+      <div className="panel-body map-manager">
+        <aside className="map-manager__list">
+          <div className="map-manager__list-head">
+            <span>MAPAS</span>
+            <strong>{maps.length}</strong>
+          </div>
+          {maps.map((item) => (
+            <button
+              type="button"
+              key={item.id}
+              className={selectedId === item.id ? 'is-active' : ''}
+              onClick={() => {
+                setSelectedId(item.id);
+                setCreating(null);
+              }}
+            >
+              <MapIcon size={16} />
+              <span>
+                <strong>{item.name}</strong>
+                <small>
+                  {item.nodeCount} nodes · {item.linkCount} links
+                </small>
+              </span>
+              {item.isDefault && <Star size={12} />}
+            </button>
+          ))}
+          <Button
+            compact
+            variant="secondary"
+            onClick={() => {
+              setCreating('EMPTY');
+              setName('Novo mapa');
+              setDescription('');
+              setMode('HYBRID');
+            }}
+          >
+            <Plus size={14} /> Novo mapa
+          </Button>
+        </aside>
+        <section className="map-manager__editor">
+          <div className="map-manager__eyebrow">
+            {creating === 'EMPTY'
+              ? 'NOVO MAPA VAZIO'
+              : creating === 'DUPLICATE'
+                ? 'DUPLICAR MAPA'
+                : 'PROPRIEDADES'}
+          </div>
+          <label>
+            Nome
+            <input value={name} onChange={(event) => setName(event.target.value)} />
+          </label>
+          <label>
+            Descrição
+            <textarea
+              value={description}
+              onChange={(event) => setDescription(event.target.value)}
+            />
+          </label>
+          <label>
+            Modo
+            <select value={mode} onChange={(event) => setMode(event.target.value as MapMode)}>
+              <option value="MANUAL">Manual</option>
+              <option value="AUTO">Auto</option>
+              <option value="HYBRID">Hybrid</option>
+            </select>
+          </label>
+          {creating && (
+            <div className="map-create-options">
+              <button
+                type="button"
+                className={creating === 'EMPTY' ? 'is-active' : ''}
+                onClick={() => setCreating('EMPTY')}
+              >
+                <Plus size={18} />
+                <strong>Mapa vazio</strong>
+                <span>Começar sem nodes ou links</span>
+              </button>
+              <button
+                type="button"
+                className={creating === 'DUPLICATE' ? 'is-active' : ''}
+                onClick={() => setCreating('DUPLICATE')}
+              >
+                <Copy size={18} />
+                <strong>Duplicar atual</strong>
+                <span>Copiar topologia e preferências</span>
+              </button>
+            </div>
+          )}
+          {!creating && selected && (
+            <div className="map-manager__actions">
+              <Button
+                compact
+                variant="ghost"
+                onClick={() => {
+                  setActiveMap(selected.id);
+                  setPanel(null);
+                }}
+              >
+                <MapIcon size={14} /> Abrir
+              </Button>
+              <Button compact variant="ghost" onClick={() => void duplicate()}>
+                <Copy size={14} /> Duplicar
+              </Button>
+              <Button
+                compact
+                variant="ghost"
+                disabled={selected.isDefault}
+                onClick={() => void makeDefault()}
+              >
+                <Star size={14} /> Tornar padrão
+              </Button>
+              <Button compact variant="danger" onClick={() => void remove()}>
+                <Trash2 size={14} /> Excluir
+              </Button>
+            </div>
+          )}
+        </section>
+      </div>
+      <footer>
+        <Button variant="ghost" onClick={() => setPanel(null)}>
+          Fechar
+        </Button>
+        <Button
+          variant="primary"
+          disabled={!name.trim() || busy}
+          onClick={() => void (creating ? create() : save())}
+        >
+          {creating ? <Plus size={15} /> : <Pencil size={15} />}
+          {creating ? 'Criar mapa' : 'Salvar alterações'}
+        </Button>
+      </footer>
+    </PanelShell>
+  );
+}
+
+function RotationPanel() {
+  const maps = useMapStore((state) => state.maps);
+  const startRotation = useMapStore((state) => state.startRotation);
+  const setPanel = useMapStore((state) => state.setPanel);
+  const [mapIds, setMapIds] = useState(() => maps.map((map) => map.id));
+  const [intervalSeconds, setIntervalSeconds] = useState(60);
+  const [hideTopBar, setHideTopBar] = useState(false);
+  const [hideControls, setHideControls] = useState(false);
+  const [pauseOnInteraction, setPauseOnInteraction] = useState(true);
+
+  const toggle = (mapId: string) =>
+    setMapIds((current) =>
+      current.includes(mapId) ? current.filter((id) => id !== mapId) : [...current, mapId],
+    );
+  const move = (mapId: string, offset: number) =>
+    setMapIds((current) => {
+      const index = current.indexOf(mapId);
+      const nextIndex = index + offset;
+      if (index < 0 || nextIndex < 0 || nextIndex >= current.length) return current;
+      const next = [...current];
+      [next[index], next[nextIndex]] = [next[nextIndex]!, next[index]!];
+      return next;
+    });
+  const start = () => {
+    if (mapIds.length === 0) return;
+    startRotation({
+      mapIds,
+      intervalSeconds,
+      hideTopBar,
+      hideControls,
+      pauseOnInteraction,
+    });
+    void savePlaylist({
+      id: 'noc-main',
+      name: 'NOC Principal',
+      rotationIntervalSeconds: intervalSeconds,
+      mapIds,
+      isDefault: true,
+    }).catch(() => undefined);
+  };
+
+  return (
+    <PanelShell eyebrow="PRESENTATION ENGINE" title="NOC Rotation Mode">
+      <div className="panel-body rotation-config">
+        <section>
+          <h3>MAPAS E ORDEM DA ROTAÇÃO</h3>
+          <div className="rotation-map-list">
+            {maps.map((map) => {
+              const order = mapIds.indexOf(map.id);
+              return (
+                <div key={map.id} className={order >= 0 ? 'is-selected' : ''}>
+                  <button type="button" className="rotation-check" onClick={() => toggle(map.id)}>
+                    {order >= 0 && <Check size={13} />}
+                  </button>
+                  <MapIcon size={15} />
+                  <span>
+                    <strong>{map.name}</strong>
+                    <small>{map.description}</small>
+                  </span>
+                  {order >= 0 && <Badge tone="info">{order + 1}</Badge>}
+                  <button type="button" disabled={order <= 0} onClick={() => move(map.id, -1)}>
+                    <ArrowUp size={13} />
+                  </button>
+                  <button
+                    type="button"
+                    disabled={order < 0 || order === mapIds.length - 1}
+                    onClick={() => move(map.id, 1)}
+                  >
+                    <ArrowDown size={13} />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+        <section className="rotation-options">
+          <h3>INTERVALO</h3>
+          <select
+            value={intervalSeconds}
+            onChange={(event) => setIntervalSeconds(Number(event.target.value))}
+          >
+            <option value={30}>30 segundos</option>
+            <option value={60}>1 minuto</option>
+            <option value={120}>2 minutos</option>
+            <option value={300}>5 minutos</option>
+            <option value={600}>10 minutos</option>
+          </select>
+          <h3>APRESENTAÇÃO</h3>
+          <ToggleOption
+            label="Ocultar barra superior"
+            checked={hideTopBar}
+            onChange={setHideTopBar}
+          />
+          <ToggleOption
+            label="Ocultar controles do mapa"
+            checked={hideControls}
+            onChange={setHideControls}
+          />
+          <ToggleOption
+            label="Pausar quando houver interação"
+            checked={pauseOnInteraction}
+            onChange={setPauseOnInteraction}
+          />
+        </section>
+      </div>
+      <footer>
+        <span className="rotation-summary">{mapIds.length} mapa(s) selecionado(s)</span>
+        <Button variant="ghost" onClick={() => setPanel(null)}>
+          Cancelar
+        </Button>
+        <Button variant="primary" disabled={mapIds.length === 0} onClick={start}>
+          <MonitorPlay size={15} /> Iniciar NOC Mode
+        </Button>
+      </footer>
+    </PanelShell>
+  );
+}
+
+function ToggleOption({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (value: boolean) => void;
+}) {
+  return (
+    <label className="toggle-option">
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        className={checked ? 'is-active' : ''}
+        onClick={() => onChange(!checked)}
+      >
+        <span />
+      </button>
+      {label}
+    </label>
   );
 }

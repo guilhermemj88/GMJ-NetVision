@@ -1,11 +1,14 @@
 'use client';
 
 import { Badge, Button } from '@gmj/ui';
-import { Compass, Settings, Sparkles } from 'lucide-react';
+import { ChevronDown, Compass, MapPinned, MonitorPlay, Settings, Sparkles } from 'lucide-react';
 import { useMapStore } from '@/store/map-store';
 
 export function TopBar() {
   const map = useMapStore((state) => state.map);
+  const maps = useMapStore((state) => state.maps);
+  const activeMapId = useMapStore((state) => state.activeMapId);
+  const setActiveMap = useMapStore((state) => state.setActiveMap);
   const editMode = useMapStore((state) => state.editMode);
   const setEditMode = useMapStore((state) => state.setEditMode);
   const setPanel = useMapStore((state) => state.setPanel);
@@ -25,10 +28,22 @@ export function TopBar() {
         </div>
       </div>
       <div className="topbar__divider" />
-      <div className="map-identity">
+      <label className="map-selector">
         <span>MAPA ATIVO</span>
-        <strong>{map.name}</strong>
-      </div>
+        <div>
+          <select value={activeMapId ?? ''} onChange={(event) => setActiveMap(event.target.value)}>
+            {maps.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={13} />
+        </div>
+      </label>
+      <Button compact variant="ghost" aria-label="Gerenciar mapas" onClick={() => setPanel('maps')}>
+        <MapPinned size={15} />
+      </Button>
       <Badge tone="hybrid">{map.mode}</Badge>
       <div className="topbar__spacer" />
       <div className="source-status">
@@ -37,6 +52,9 @@ export function TopBar() {
         <strong>DEMO</strong>
       </div>
       <time title={new Date(map.updatedAt).toLocaleString('pt-BR')}>Atualizado agora</time>
+      <Button compact variant="ghost" onClick={() => setPanel('rotation')}>
+        <MonitorPlay size={15} /> NOC
+      </Button>
       <Button
         compact
         variant={editMode ? 'primary' : 'secondary'}

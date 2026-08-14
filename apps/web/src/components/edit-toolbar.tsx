@@ -34,6 +34,7 @@ export function EditToolbar() {
     mutationFn: async () => {
       if (!map) return;
       await savePositions(
+        map.id,
         map.nodes.map((node) => ({
           nodeId: node.id,
           position: node.position,
@@ -57,11 +58,11 @@ export function EditToolbar() {
   const removeSelected = () => {
     if (selection?.kind === 'link') {
       removeLink(selection.id);
-      void deleteLink(selection.id).catch(() => undefined);
+      void deleteLink(map.id, selection.id).catch(() => undefined);
       showToast('Enlace removido');
     } else if (selection?.kind === 'device') {
       removeDevice(selection.id);
-      void deleteDevice(selection.id).catch(() => undefined);
+      void deleteDevice(map.id, selection.id).catch(() => undefined);
       showToast('Equipamento removido');
     }
   };
