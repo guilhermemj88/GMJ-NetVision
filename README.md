@@ -6,6 +6,12 @@ Esta primeira versão funcional entrega um backbone ISP demonstrativo com 13 equ
 
 ## O que já funciona
 
+- catálogo com múltiplos mapas, seletor na barra superior, CRUD, mapa padrão, mapa vazio e duplicação;
+- `Device` global associado a cada mapa por `MapNode`, sem duplicar inventário entre visões;
+- modos de node `ICON_2D`, `ICON_3D` e `CARD`, persistidos por mapa;
+- estilos de enlace `FLOW`, `WEATHERMAP`, `HYBRID` e `MINIMAL`;
+- métricas `A_TO_B` e `B_TO_A` independentes, com throughput, percentual e cor por utilização;
+- NOC Rotation Mode com playlist ordenada, intervalos, loop, pausa, navegação, countdown e fullscreen;
 - mapa interativo com zoom, pan, fit view, tela cheia e topologia responsiva;
 - 13 equipamentos e 16 enlaces de demonstração, incluindo Internet, IX, borda, core, agregação, OLTs e clientes;
 - seleção, drag, lock/unlock e persistência local das posições;
@@ -134,6 +140,22 @@ sourceDevice + sourceInterface <-> targetDevice + targetInterface
 
 Topologia e métricas mantêm fontes independentes (`discoverySource` e `metricSource`).
 
+### Visual do mapa e enlaces
+
+O painel **Visual do mapa**, no canto superior direito do canvas, troca entre ícones 2D, ícones 3D discretos e os cards originais. No mesmo painel é possível escolher o estilo global dos enlaces e se o label mostra throughput, utilização, ambos ou nada. As escolhas pertencem ao mapa ativo, são gravadas na API e possuem fallback em `localStorage`.
+
+Em `WEATHERMAP`, os sentidos `A_TO_B` e `B_TO_A` usam faixas, setas, métricas e cores independentes. Em `FLOW` e `MINIMAL`, o pior sentido define a cor resumida. As faixas padrão são: normal abaixo de 40%, atenção de 40% a 70%, alto de 70% a 90%, crítico de 90% a 100% e inconsistente acima de 100%. O cálculo nunca soma os sentidos de um enlace full-duplex.
+
+A capacidade pode vir automaticamente da menor velocidade entre as interfaces ou ser sobrescrita em Mbps/Gbps. Criação e edição de enlace também aceitam estilo e métrica locais, que sobrepõem a preferência global do mapa.
+
+IDs locais são gerados por `createLocalId`: o helper usa `globalThis.crypto.randomUUID()` quando disponível e cai com segurança para `Date.now()` mais `Math.random()` em browsers antigos ou ambientes restritos.
+
+### Múltiplos mapas e NOC Mode
+
+O botão ao lado do seletor de mapas abre o gerenciador para criar, renomear, descrever, duplicar, excluir, abrir ou definir o mapa padrão. Um equipamento é global; sua presença, posição e lock em cada visão são representados por um `MapNode` próprio.
+
+O botão **NOC** abre a configuração da rotação. Selecione e ordene os mapas, escolha 30 segundos, 1, 2, 5 ou 10 minutos e defina se barra superior e controles devem ser ocultados. A apresentação roda continuamente e oferece anterior, próximo, pausar/retomar, fullscreen, saída e countdown. Quando habilitada, qualquer seleção no mapa pausa a rotação para inspeção.
+
 ## Descoberta LLDP via SNMP
 
 `LldpSnmpDiscoveryAdapter` implementa o contrato `TopologyDiscoveryAdapter` e encapsula a LLDP-MIB padrão. A primeira estrutura normaliza chassis ID, system name/description, porta local/remota, descrição de porta e identidade do vizinho sem expor OIDs ao frontend.
@@ -183,7 +205,7 @@ npm run format:check
 5. implementar aprovação persistida dos `DiscoveryResult` e criação transacional de links;
 6. drivers Cisco IOS/IOS XE/IOS XR e fallback genérico;
 7. descoberta recursiva com limites, fila, cancelamento e rate limiting;
-8. autenticação, RBAC, múltiplos mapas e auditoria;
+8. autenticação, RBAC, playlists nomeadas e auditoria;
 9. coleta SNMP futura baseada em tempo real entre amostras, conforme [docs/SNMP_COUNTERS.md](docs/SNMP_COUNTERS.md).
 
 ## Limitações conhecidas do MVP
@@ -192,5 +214,4 @@ npm run format:check
 - SNMP e SSH reais exigem a implementação dos transportes injetáveis;
 - Zabbix lista hosts, porém mapeamento de interfaces/items e históricos reais ainda não estão implementados;
 - descoberta demo aceita apenas vizinhos já correlacionados; cadastro de vizinho desconhecido abre o editor manual;
-- a seleção do modo do mapa é apresentada visualmente, mas a troca/persistência ainda não está ligada à API;
 - não há autenticação/RBAC nesta primeira versão.

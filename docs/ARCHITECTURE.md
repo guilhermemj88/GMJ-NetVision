@@ -35,7 +35,19 @@ O token fica apenas no processo da API. Nomes de item, IDs externos e particular
 
 ## Persistência
 
-O schema Prisma modela `Map`, `MapNode`, `Device`, `Interface`, `Link`, `DataSource`, credenciais, mappings e jobs/resultados de descoberta. As ligações físicas usam foreign keys para as duas interfaces.
+O schema Prisma modela `Map`, `MapNode`, `Device`, `Interface`, `Link`, `MapPlaylist`, `MapPlaylistItem`, `DataSource`, credenciais, mappings e jobs/resultados de descoberta. As ligações físicas usam foreign keys para as duas interfaces.
+
+`Device` pertence ao inventário global. `MapNode` é a associação entre um equipamento e uma visão e concentra posição, lock e origem da posição. Assim, um mesmo equipamento pode aparecer em vários mapas sem duplicação, com coordenadas diferentes. Cada `Map` mantém seus links exibidos, viewport, filtros e modos visuais.
+
+`MapPlaylistItem` mantém a ordem explícita de cada mapa em uma playlist. O NOC Mode consome essa ordem e gira indefinidamente até o operador sair; o intervalo permanece em segundos para aceitar valores personalizados no futuro.
+
+## Métricas direcionais de enlace
+
+O contrato canônico de `NetworkLink` mantém `A_TO_B` e `B_TO_A`. Cada direção possui `bps` e `utilization`, calculado contra a capacidade full-duplex sem somar tráfego. Os campos RX/TX antigos permanecem apenas como aliases de compatibilidade.
+
+`utilizationLevel(value, thresholds)` recebe thresholds como parâmetro. A configuração padrão implementa 40/70/90/100, mas o classificador não depende desses valores fixos e pode receber uma política por tenant ou mapa futuramente.
+
+`capacitySource=AUTO` usa a capacidade inferida das interfaces; `MANUAL` torna `capacityBps` a sobrescrita efetiva, preservando `autoCapacityBps` para retorno ao modo automático.
 
 O modo demo usa `DemoMapRepository`, isolado da camada HTTP. A troca por `PrismaMapRepository` não deve alterar rotas nem o domínio compartilhado.
 
