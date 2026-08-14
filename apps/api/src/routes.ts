@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { HistoryPeriod } from '@gmj/shared';
+import type { HistoryPeriod, UpdateMapInput } from '@gmj/shared';
 import { DiscoveryService } from './application/discovery-service';
 import { config } from './config';
 import { DemoMetricAdapter } from './infrastructure/metrics/demo-adapter';
@@ -23,8 +23,40 @@ const linkSchema = z.object({
   targetDeviceId: z.string().min(1),
   targetInterfaceId: z.string().min(1),
   capacityBps: z.number().positive(),
+  autoCapacityBps: z.number().positive(),
+  capacitySource: z.enum(['AUTO', 'MANUAL']),
   label: z.string().max(80),
   metricSource: z.enum(['DEMO', 'ZABBIX']),
+  visualStyle: z.enum(['FLOW', 'WEATHERMAP', 'HYBRID', 'MINIMAL']).nullable(),
+  metricDisplay: z.enum(['THROUGHPUT', 'UTILIZATION', 'BOTH', 'NONE']).nullable(),
+});
+const mapSettingsSchema = z.object({
+  nodeDisplayMode: z.enum(['ICON_2D', 'ICON_3D', 'CARD']).optional(),
+  linkDisplayStyle: z.enum(['FLOW', 'WEATHERMAP', 'HYBRID', 'MINIMAL']).optional(),
+  linkMetricDisplay: z.enum(['THROUGHPUT', 'UTILIZATION', 'BOTH', 'NONE']).optional(),
+  filters: z
+    .object({
+      showTraffic: z.boolean().optional(),
+      showUtilization: z.boolean().optional(),
+      showLabels: z.boolean().optional(),
+      showOffline: z.boolean().optional(),
+      showInterfaces: z.boolean().optional(),
+    })
+    .optional(),
+  viewport: z.object({ x: z.number(), y: z.number(), zoom: z.number().positive() }).optional(),
+});
+const createMapSchema = z.object({
+  name: z.string().min(1).max(80),
+  description: z.string().max(500).default(''),
+  mode: z.enum(['MANUAL', 'AUTO', 'HYBRID']).default('HYBRID'),
+  sourceMapId: z.string().nullable().default(null),
+});
+const updateMapSchema = z.object({
+  name: z.string().min(1).max(80).optional(),
+  description: z.string().max(500).optional(),
+  mode: z.enum(['MANUAL', 'AUTO', 'HYBRID']).optional(),
+  isDefault: z.boolean().optional(),
+  settings: mapSettingsSchema.optional(),
 });
 const deviceSchema = z.object({
   name: z.string().min(1).max(80),
@@ -56,6 +88,70 @@ export function registerRoutes(app: FastifyInstance): void {
   const discovery = new DiscoveryService([new DemoTopologyAdapter()]);
 
   app.get('/health', async () => ({ status: 'ok', demoMode: config.DEMO_MODE }));
+
+  app.get('/api/maps', async () => maps.listMaps());
+
+  app.get('/api/maps/default', async (_request, reply) => {
+    const map = maps.getDefaultMap();
+    return map ?? reply.code(404).send({ message: 'No maps available' });
+  });
+
+  app.post('/api/maps', async (request, reply) => {
+    const map = maps.createMap(createMapSchema.parse(request.body));
+    return reply.code(201).send(map);
+  });
+
+  app.patch('/api/maps/:mapId', async (request, reply) => {
+    const { mapId } = mapIdParams.parse(request.params);
+    const map = maps.updateMap(mapId, updateMapSchema.parse(request.body) as UpdateMapInput);
+    return map ?? reply.code(404).send({ message: 'Map not found' });
+  });
+
+  app.post('/api/maps/:mapId/duplicate', async (request, reply) => {
+    const { mapId } = mapIdParams.parse(request.params);
+    const source = maps.getMap(mapId);
+    if (!source) return reply.code(404).send({ message: 'Map not found' });
+    const body = z
+      .object({ name: z.string().min(1).max(80), description: z.string().max(500).optional() })
+      .parse(request.body);
+    return reply.code(201).send(
+      maps.createMap({
+        name: body.name,
+        description: body.description ?? source.description,
+        mode: source.mode,
+        sourceMapId: mapId,
+      }),
+    );
+  });
+
+  app.delete('/api/maps/:mapId', async (request, reply) => {
+    const { mapId } = mapIdParams.parse(request.params);
+    return maps.deleteMap(mapId)
+      ? reply.code(204).send()
+      : reply.code(409).send({ message: 'Map not found or last remaining map' });
+  });
+
+  app.get('/api/playlists', async () => maps.listPlaylists());
+
+  app.post('/api/playlists', async (request, reply) => {
+    const body = z
+      .object({
+        id: z.string().optional(),
+        name: z.string().min(1).max(80),
+        rotationIntervalSeconds: z.number().int().min(5).max(86_400),
+        mapIds: z.array(z.string()).min(1),
+        isDefault: z.boolean().default(false),
+      })
+      .parse(request.body);
+    const playlistInput = {
+      ...(body.id ? { id: body.id } : {}),
+      name: body.name,
+      rotationIntervalSeconds: body.rotationIntervalSeconds,
+      mapIds: body.mapIds,
+      isDefault: body.isDefault,
+    };
+    return reply.code(201).send(maps.savePlaylist(playlistInput));
+  });
 
   app.get('/api/maps/:mapId', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
@@ -93,7 +189,15 @@ export function registerRoutes(app: FastifyInstance): void {
   app.patch('/api/maps/:mapId/links/:linkId', async (request, reply) => {
     const { mapId, linkId } = linkParams.parse(request.params);
     const body = linkSchema
-      .pick({ capacityBps: true, label: true, metricSource: true })
+      .pick({
+        capacityBps: true,
+        autoCapacityBps: true,
+        capacitySource: true,
+        label: true,
+        metricSource: true,
+        visualStyle: true,
+        metricDisplay: true,
+      })
       .parse(request.body);
     const link = maps.updateLink(mapId, linkId, body);
     return link ?? reply.code(404).send({ message: 'Link not found' });
@@ -108,9 +212,9 @@ export function registerRoutes(app: FastifyInstance): void {
 
   app.post('/api/maps/:mapId/devices', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
-    const device = maps.addDevice(mapId, deviceSchema.parse(request.body));
-    return device
-      ? reply.code(201).send(device)
+    const result = maps.addDevice(mapId, deviceSchema.parse(request.body));
+    return result
+      ? reply.code(201).send(result)
       : reply.code(404).send({ message: 'Map not found' });
   });
 

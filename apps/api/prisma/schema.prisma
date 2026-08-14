@@ -19,6 +19,31 @@ enum PositionSource {
   MANUAL
 }
 
+enum NodeDisplayMode {
+  ICON_2D
+  ICON_3D
+  CARD
+}
+
+enum LinkDisplayStyle {
+  FLOW
+  WEATHERMAP
+  HYBRID
+  MINIMAL
+}
+
+enum LinkMetricDisplay {
+  THROUGHPUT
+  UTILIZATION
+  BOTH
+  NONE
+}
+
+enum CapacitySource {
+  AUTO
+  MANUAL
+}
+
 enum DeviceStatus {
   UP
   DOWN
@@ -55,13 +80,21 @@ enum MatchStatus {
 }
 
 model Map {
-  id        String    @id @default(cuid())
-  name      String
-  mode      MapMode   @default(HYBRID)
-  nodes     MapNode[]
-  links     Link[]
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id                String            @id @default(cuid())
+  name              String
+  description       String            @default("")
+  mode              MapMode           @default(HYBRID)
+  isDefault         Boolean           @default(false)
+  nodeDisplayMode   NodeDisplayMode   @default(ICON_2D)
+  linkDisplayStyle  LinkDisplayStyle  @default(HYBRID)
+  linkMetricDisplay LinkMetricDisplay @default(BOTH)
+  viewport          Json?
+  filters           Json?
+  nodes             MapNode[]
+  links             Link[]
+  playlistItems     MapPlaylistItem[]
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
 }
 
 model MapNode {
@@ -141,10 +174,14 @@ model Link {
   targetDeviceId    String
   targetInterfaceId String
   capacityBps       BigInt
+  autoCapacityBps   BigInt?
+  capacitySource    CapacitySource  @default(AUTO)
   label             String?
   status            DeviceStatus    @default(UNKNOWN)
   discoverySource   DiscoverySource @default(MANUAL)
   metricSource      String
+  visualStyle       LinkDisplayStyle?
+  metricDisplay     LinkMetricDisplay?
   map               Map             @relation(fields: [mapId], references: [id], onDelete: Cascade)
   sourceDevice      Device          @relation("LinkSourceDevice", fields: [sourceDeviceId], references: [id])
   sourceInterface   Interface       @relation("LinkSourceInterface", fields: [sourceInterfaceId], references: [id])
@@ -156,6 +193,28 @@ model Link {
   @@index([mapId])
   @@index([sourceDeviceId])
   @@index([targetDeviceId])
+}
+
+model MapPlaylist {
+  id                      String            @id @default(cuid())
+  name                    String
+  rotationIntervalSeconds Int               @default(60)
+  isDefault               Boolean           @default(false)
+  items                   MapPlaylistItem[]
+  createdAt               DateTime          @default(now())
+  updatedAt               DateTime          @updatedAt
+}
+
+model MapPlaylistItem {
+  playlistId String
+  mapId      String
+  order      Int
+  playlist   MapPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  map        Map         @relation(fields: [mapId], references: [id], onDelete: Cascade)
+
+  @@id([playlistId, mapId])
+  @@unique([playlistId, order])
+  @@index([mapId])
 }
 
 model DataSource {

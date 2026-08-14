@@ -8,6 +8,7 @@ import type {
   NetworkMap,
   Position,
 } from './types';
+import { calculateUtilization } from './format';
 
 const now = new Date('2026-08-14T15:32:00.000Z').toISOString();
 
@@ -250,10 +251,24 @@ export const demoLinks: NetworkLink[] = linkPairs.map(
     targetDeviceId: target,
     targetInterfaceId: findInterface(target, (index + 1) % 2).id,
     capacityBps: capacity * 1_000_000_000,
+    autoCapacityBps: capacity * 1_000_000_000,
+    capacitySource: 'AUTO',
     label: `${capacity}G BACKBONE`,
     status,
     discoverySource: index < 10 ? 'LLDP_SNMP' : 'LLDP_SSH',
     metricSource: 'DEMO',
+    visualStyle: null,
+    metricDisplay: null,
+    directions: {
+      A_TO_B: {
+        bps: tx * 1_000_000_000,
+        utilization: calculateUtilization(tx * 1_000_000_000, capacity * 1_000_000_000),
+      },
+      B_TO_A: {
+        bps: tx * 0.68 * 1_000_000_000,
+        utilization: calculateUtilization(tx * 0.68 * 1_000_000_000, capacity * 1_000_000_000),
+      },
+    },
     rxBps: tx * 0.68 * 1_000_000_000,
     txBps: tx * 1_000_000_000,
     rxUtilization: capacity === 0 ? 0 : (tx * 0.68 * 100) / capacity,
@@ -270,7 +285,22 @@ export const demoLinks: NetworkLink[] = linkPairs.map(
 export const demoMap: NetworkMap = {
   id: 'backbone-main',
   name: 'Backbone Principal',
+  description: 'Visão consolidada do backbone metropolitano e acessos principais.',
   mode: 'HYBRID',
+  isDefault: true,
+  settings: {
+    nodeDisplayMode: 'ICON_2D',
+    linkDisplayStyle: 'HYBRID',
+    linkMetricDisplay: 'BOTH',
+    filters: {
+      showTraffic: true,
+      showUtilization: true,
+      showLabels: true,
+      showOffline: true,
+      showInterfaces: false,
+    },
+    viewport: { x: 0, y: 0, zoom: 0.8 },
+  },
   devices: demoDevices,
   nodes: demoDevices.map((item, index) => ({
     id: `node-${item.id}`,
@@ -281,8 +311,74 @@ export const demoMap: NetworkMap = {
     positionSource: item.id === 'internet' || item.id === 'customers' ? 'MANUAL' : 'AUTO',
   })),
   links: demoLinks,
+  createdAt: now,
   updatedAt: now,
 };
+
+function demoMapVariant(
+  id: string,
+  name: string,
+  description: string,
+  deviceIds: string[],
+  settings: NetworkMap['settings'],
+): NetworkMap {
+  const included = new Set(deviceIds);
+  return {
+    id,
+    name,
+    description,
+    mode: 'HYBRID',
+    isDefault: false,
+    settings,
+    devices: demoDevices,
+    nodes: demoMap.nodes
+      .filter((node) => included.has(node.deviceId))
+      .map((node) => ({ ...node, id: `${id}-${node.id}`, mapId: id, locked: false })),
+    links: demoLinks
+      .filter((link) => included.has(link.sourceDeviceId) && included.has(link.targetDeviceId))
+      .map((link) => ({ ...link, id: `${id}-${link.id}`, mapId: id })),
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export const demoMaps: NetworkMap[] = [
+  demoMap,
+  demoMapVariant(
+    'bgp-operators',
+    'BGP / Operadoras',
+    'Trânsito IP, IX e redundância entre os roteadores de borda e core.',
+    ['internet', 'ix-bh', 'edge-01', 'fw-01', 'core-01', 'core-02'],
+    {
+      ...demoMap.settings,
+      nodeDisplayMode: 'ICON_3D',
+      linkDisplayStyle: 'WEATHERMAP',
+      linkMetricDisplay: 'BOTH',
+    },
+  ),
+  demoMapVariant(
+    'access-olts',
+    'Acesso / OLTs',
+    'Distribuição de acesso, agregadores, OLTs e nuvem de clientes.',
+    [
+      'core-01',
+      'core-02',
+      'agg-centro',
+      'agg-norte',
+      'agg-oeste',
+      'olt-centro',
+      'olt-norte',
+      'olt-oeste',
+      'customers',
+    ],
+    {
+      ...demoMap.settings,
+      nodeDisplayMode: 'ICON_2D',
+      linkDisplayStyle: 'FLOW',
+      linkMetricDisplay: 'UTILIZATION',
+    },
+  ),
+];
 
 const periodSettings = {
   '15m': { count: 30, stepMs: 30_000 },
@@ -316,4 +412,8 @@ export function createDemoHistory(
 
 export function cloneDemoMap(): NetworkMap {
   return structuredClone(demoMap);
+}
+
+export function cloneDemoMaps(): NetworkMap[] {
+  return structuredClone(demoMaps);
 }
