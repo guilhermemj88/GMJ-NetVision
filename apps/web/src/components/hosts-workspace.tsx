@@ -314,7 +314,17 @@ export function HostsWorkspace() {
                   <strong>{host.mapCount}</strong>
                 </td>
                 <td>
-                  <ChevronRight size={15} />
+                  <button
+                    type="button"
+                    className="row-quick-action"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedId(host.id);
+                    }}
+                    aria-label={`Abrir detalhes do host ${host.hostname}`}
+                  >
+                    <ChevronRight size={15} />
+                  </button>
                 </td>
               </tr>
             ))}

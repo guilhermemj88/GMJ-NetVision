@@ -232,6 +232,20 @@ export function registerRoutes(app: FastifyInstance): void {
       : reply.code(404).send({ message: 'Map not found' });
   });
 
+  app.post('/api/maps/:mapId/nodes', async (request, reply) => {
+    const { mapId } = mapIdParams.parse(request.params);
+    const body = z.object({ deviceIds: z.array(z.string().min(1)).min(1) }).parse(request.body);
+    const map = maps.getMap(mapId);
+    if (!map) return reply.code(404).send({ message: 'Map not found' });
+
+    const created = maps.addHostsToMap(mapId, body.deviceIds, {
+      x: 520 + (map.nodes.length % 6) * 80,
+      y: 360 + (map.nodes.length % 4) * 70,
+    });
+
+    return reply.code(201).send({ created, skipped: body.deviceIds.filter((deviceId) => map.nodes.some((node) => node.deviceId === deviceId)) });
+  });
+
   app.delete('/api/maps/:mapId/devices/:deviceId', async (request, reply) => {
     const { mapId, deviceId } = deviceParams.parse(request.params);
     return maps.deleteDevice(mapId, deviceId)

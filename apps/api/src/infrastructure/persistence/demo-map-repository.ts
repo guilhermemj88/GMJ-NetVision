@@ -300,6 +300,26 @@ export class DemoMapRepository {
     return { device: structuredClone(host), node: structuredClone(node) };
   }
 
+  addHostsToMap(mapId: string, deviceIds: string[], seedPosition: Position = { x: 520, y: 340 }): AddDeviceResult[] {
+    const map = this.findMap(mapId);
+    if (!map) return [];
+    const created: AddDeviceResult[] = [];
+
+    deviceIds.forEach((deviceId, index) => {
+      if (map.nodes.some((node) => node.deviceId === deviceId)) return;
+      const host = this.findHost(deviceId);
+      if (!host) return;
+      const position = {
+        x: seedPosition.x + (index % 4) * 120 - 180,
+        y: seedPosition.y + Math.floor(index / 4) * 90,
+      };
+      const result = this.addHostToMap(deviceId, mapId, position);
+      if (result) created.push(result);
+    });
+
+    return created;
+  }
+
   storeZabbixPreview(
     candidates: ZabbixHostCandidate[],
     version: string,

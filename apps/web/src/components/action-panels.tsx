@@ -17,13 +17,15 @@ import {
   Pencil,
   Plus,
   Radar,
+  Search,
+  Network,
   ServerCog,
   ShieldCheck,
   Star,
   Trash2,
   X,
 } from 'lucide-react';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   createLocalId,
   type CapacitySource,
@@ -35,10 +37,12 @@ import {
 } from '@gmj/shared';
 import {
   addDevice,
+  addHostsToMap,
   createLink,
   createNetworkMap,
   deleteNetworkMap,
   duplicateNetworkMap,
+  getHosts,
   savePlaylist,
   updateNetworkMap,
   type AddDeviceInput,
@@ -356,6 +360,24 @@ function AddDevicePanel() {
   const setPanel = useMapStore((state) => state.setPanel);
   const addDeviceToStore = useMapStore((state) => state.addDevice);
   const showToast = useMapStore((state) => state.showToast);
+  const [mode, setMode] = useState<'existing' | 'manual'>('existing');
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<string[]>([]);
+  const { data: hosts = [] } = useQuery({
+    queryKey: ['hosts'],
+    queryFn: () => getHosts(),
+  });
+  const availableHosts = (hosts ?? []).filter(
+    (host) => !map?.nodes.some((node) => node.deviceId === host.id),
+  );
+  const filteredHosts = availableHosts.filter((host) => {
+    const text = search.trim().toLowerCase();
+    if (!text) return true;
+    return [host.hostname, host.displayName, host.managementIp, host.vendor, host.model]
+      .join(' ')
+      .toLowerCase()
+      .includes(text);
+  });
   const [form, setForm] = useState<AddDeviceInput>({
     name: 'NEW-DEVICE-01',
     hostname: 'new-device-01',
@@ -366,9 +388,11 @@ function AddDevicePanel() {
     deviceType: 'generic',
     position: { x: 700, y: 700 },
   });
+
   const update = (key: keyof AddDeviceInput, value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
-  const mutation = useMutation({
+
+  const manualMutation = useMutation({
     mutationFn: () => addDevice(map?.id ?? '', form),
     onSuccess: ({ device, node }) => {
       addDeviceToStore(device, form.position, node);
@@ -443,6 +467,33 @@ function AddDevicePanel() {
       showToast('Equipamento adicionado localmente');
     },
   });
+
+  const existingMutation = useMutation({
+    mutationFn: async () => {
+      if (!map) throw new Error('Mapa não carregado');
+      const result = await addHostsToMap(map.id, selected, {
+        x: 520 + (map.nodes.length % 5) * 110,
+        y: 320 + (map.nodes.length % 4) * 90,
+      });
+      return result;
+    },
+    onSuccess: (result) => {
+      result.created.forEach(({ device, node }) => {
+        addDeviceToStore(device, node.position, node);
+      });
+      setPanel(null);
+      showToast(
+        result.created.length > 0
+          ? `${result.created.length} host${result.created.length > 1 ? 's' : ''} adicionado${result.created.length > 1 ? 's' : ''} ao mapa`
+          : 'Nenhum host foi adicionado',
+      );
+    },
+    onError: () => {
+      setPanel(null);
+      showToast('Não foi possível adicionar os hosts selecionados');
+    },
+  });
+
   const types: DeviceType[] = [
     'core',
     'router',
@@ -454,69 +505,154 @@ function AddDevicePanel() {
     'server',
     'generic',
   ];
+
   return (
     <PanelShell eyebrow="EDITOR MANUAL" title="Adicionar equipamento">
-      <div className="panel-body form-grid form-grid--device">
-        <label>
-          Nome
-          <input value={form.name} onChange={(event) => update('name', event.target.value)} />
-        </label>
-        <label>
-          Hostname
-          <input
-            value={form.hostname}
-            onChange={(event) => update('hostname', event.target.value)}
-          />
-        </label>
-        <label>
-          IP de gestão
-          <input value={form.ip} onChange={(event) => update('ip', event.target.value)} />
-        </label>
-        <label>
-          Tipo
-          <select
-            value={form.deviceType}
-            onChange={(event) => update('deviceType', event.target.value)}
+      <div className="panel-body">
+        <div className="segmented-control" role="tablist" aria-label="Tipo de equipamento">
+          <button
+            type="button"
+            className={mode === 'existing' ? 'is-active' : ''}
+            onClick={() => setMode('existing')}
           >
-            {types.map((type) => (
-              <option key={type}>{type}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Fabricante
-          <input
-            value={form.vendor}
-            onChange={(event) => update('vendor', event.target.value)}
-            placeholder="Huawei, Cisco…"
-          />
-        </label>
-        <label>
-          Modelo
-          <input value={form.model} onChange={(event) => update('model', event.target.value)} />
-        </label>
-        <label className="span-2">
-          Site
-          <input value={form.site} onChange={(event) => update('site', event.target.value)} />
-        </label>
-        <div className="panel-note span-2">
-          <Plus size={16} />
-          <span>
-            O equipamento será criado no centro do viewport e poderá ser movido livremente.
-          </span>
+            Host existente
+          </button>
+          <button
+            type="button"
+            className={mode === 'manual' ? 'is-active' : ''}
+            onClick={() => setMode('manual')}
+          >
+            Novo manual
+          </button>
         </div>
+
+        {mode === 'existing' ? (
+          <div className="existing-host-picker">
+            <label className="hosts-search hosts-search--compact">
+              <Search size={15} />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Pesquisar hostname, IP, fabricante…"
+              />
+            </label>
+
+            <div className="host-selection-toolbar">
+              <button
+                type="button"
+                className="tiny-button"
+                onClick={() =>
+                  setSelected(
+                    selected.length === filteredHosts.length ? [] : filteredHosts.map((host) => host.id),
+                  )
+                }
+              >
+                {selected.length === filteredHosts.length ? 'Desmarcar todos' : 'Selecionar todos'}
+              </button>
+              <span>{selected.length} selecionado{selected.length === 1 ? '' : 's'}</span>
+            </div>
+
+            <div className="host-selection-list">
+              {filteredHosts.length === 0 && (
+                <div className="hosts-empty hosts-empty--tight">
+                  <Network /> Nenhum host disponível no inventário.
+                </div>
+              )}
+              {filteredHosts.map((host) => {
+                const checked = selected.includes(host.id);
+                return (
+                  <label key={host.id} className={`host-select-row ${checked ? 'is-checked' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() =>
+                        setSelected((current) =>
+                          current.includes(host.id)
+                            ? current.filter((id) => id !== host.id)
+                            : [...current, host.id],
+                        )
+                      }
+                    />
+                    <div>
+                      <strong>{host.hostname}</strong>
+                      <span>
+                        {host.managementIp} · {host.vendor || '—'} · {host.model || '—'}
+                      </span>
+                    </div>
+                    <small>{host.useZabbix ? 'Zabbix' : host.sshEnabled ? 'SSH' : host.snmpEnabled ? 'SNMP' : 'Manual'}</small>
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        ) : (
+          <div className="panel-body form-grid form-grid--device">
+            <label>
+              Nome
+              <input value={form.name} onChange={(event) => update('name', event.target.value)} />
+            </label>
+            <label>
+              Hostname
+              <input value={form.hostname} onChange={(event) => update('hostname', event.target.value)} />
+            </label>
+            <label>
+              IP de gestão
+              <input value={form.ip} onChange={(event) => update('ip', event.target.value)} />
+            </label>
+            <label>
+              Tipo
+              <select value={form.deviceType} onChange={(event) => update('deviceType', event.target.value)}>
+                {types.map((type) => (
+                  <option key={type}>{type}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Fabricante
+              <input
+                value={form.vendor}
+                onChange={(event) => update('vendor', event.target.value)}
+                placeholder="Huawei, Cisco…"
+              />
+            </label>
+            <label>
+              Modelo
+              <input value={form.model} onChange={(event) => update('model', event.target.value)} />
+            </label>
+            <label className="span-2">
+              Site
+              <input value={form.site} onChange={(event) => update('site', event.target.value)} />
+            </label>
+            <div className="panel-note span-2">
+              <Plus size={16} />
+              <span>
+                O equipamento será criado no centro do viewport e poderá ser movido livremente.
+              </span>
+            </div>
+          </div>
+        )}
       </div>
       <footer>
         <Button variant="ghost" onClick={() => setPanel(null)}>
           Cancelar
         </Button>
-        <Button
-          variant="primary"
-          disabled={!form.name || !form.hostname || !form.ip || mutation.isPending}
-          onClick={() => mutation.mutate()}
-        >
-          <Plus size={15} /> Adicionar
-        </Button>
+        {mode === 'existing' ? (
+          <Button
+            variant="primary"
+            disabled={selected.length === 0 || existingMutation.isPending}
+            onClick={() => existingMutation.mutate()}
+          >
+            <Plus size={15} /> Adicionar selecionados
+          </Button>
+        ) : (
+          <Button
+            variant="primary"
+            disabled={!form.name || !form.hostname || !form.ip || manualMutation.isPending}
+            onClick={() => manualMutation.mutate()}
+          >
+            <Plus size={15} /> Adicionar
+          </Button>
+        )}
       </footer>
     </PanelShell>
   );

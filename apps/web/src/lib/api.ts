@@ -205,6 +205,13 @@ export function addHostToMap(hostId: string, mapId: string, position: Position) 
   });
 }
 
+export function addHostsToMap(mapId: string, deviceIds: string[], seedPosition?: Position) {
+  return request<{ created: AddDeviceResult[]; skipped: string[] }>(`/api/maps/${mapId}/nodes`, {
+    method: 'POST',
+    body: JSON.stringify({ deviceIds, seedPosition }),
+  });
+}
+
 export function previewZabbixImport() {
   return request<ZabbixImportPreview>('/api/hosts/import/zabbix/preview', { method: 'POST' });
 }
