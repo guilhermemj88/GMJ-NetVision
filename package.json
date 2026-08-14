@@ -1,0 +1,51 @@
+{
+  "name": "gmj-netvision",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n web,api -c cyan,green \"npm run dev -w @gmj/web\" \"npm run dev -w @gmj/api\"",
+    "dev:web": "npm run dev -w @gmj/web",
+    "dev:api": "npm run dev -w @gmj/api",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "db:generate": "npm run db:generate -w @gmj/api",
+    "db:migrate": "npm run db:migrate -w @gmj/api",
+    "db:studio": "npm run db:studio -w @gmj/api"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.34.0",
+    "@types/node": "^22.18.0",
+    "concurrently": "^9.2.1",
+    "esbuild": "^0.28.2",
+    "eslint": "^9.34.0",
+    "eslint-config-next": "^16.3.1",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "globals": "^16.3.0",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.41.0"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  },
+  "overrides": {
+    "tsup": {
+      "esbuild": "0.28.2"
+    },
+    "vite": {
+      "esbuild": "0.28.2"
+    },
+    "bundle-require": {
+      "esbuild": "0.28.2"
+    }
+  }
+}
