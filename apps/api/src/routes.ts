@@ -1,0 +1,162 @@
+import type { FastifyInstance } from 'fastify';
+import { z } from 'zod';
+import type { HistoryPeriod } from '@gmj/shared';
+import { DiscoveryService } from './application/discovery-service';
+import { config } from './config';
+import { DemoMetricAdapter } from './infrastructure/metrics/demo-adapter';
+import { ZabbixAdapter } from './infrastructure/metrics/zabbix-adapter';
+import { DemoMapRepository } from './infrastructure/persistence/demo-map-repository';
+import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-adapter';
+
+const mapIdParams = z.object({ mapId: z.string().min(1) });
+const nodeParams = z.object({ mapId: z.string().min(1), nodeId: z.string().min(1) });
+const deviceParams = z.object({ mapId: z.string().min(1), deviceId: z.string().min(1) });
+const linkParams = z.object({ mapId: z.string().min(1), linkId: z.string().min(1) });
+const positionSchema = z.object({
+  nodeId: z.string().min(1),
+  position: z.object({ x: z.number().finite(), y: z.number().finite() }),
+  locked: z.boolean().optional(),
+});
+const linkSchema = z.object({
+  sourceDeviceId: z.string().min(1),
+  sourceInterfaceId: z.string().min(1),
+  targetDeviceId: z.string().min(1),
+  targetInterfaceId: z.string().min(1),
+  capacityBps: z.number().positive(),
+  label: z.string().max(80),
+  metricSource: z.enum(['DEMO', 'ZABBIX']),
+});
+const deviceSchema = z.object({
+  name: z.string().min(1).max(80),
+  hostname: z.string().min(1).max(255),
+  ip: z.string().min(1).max(45),
+  vendor: z.string().max(80),
+  model: z.string().max(80),
+  site: z.string().max(80),
+  deviceType: z.enum([
+    'core',
+    'router',
+    'switch',
+    'aggregation',
+    'edge',
+    'olt',
+    'firewall',
+    'server',
+    'internet',
+    'ix',
+    'customers',
+    'generic',
+  ]),
+  position: z.object({ x: z.number(), y: z.number() }),
+});
+
+export function registerRoutes(app: FastifyInstance): void {
+  const maps = new DemoMapRepository();
+  const metrics = new DemoMetricAdapter();
+  const discovery = new DiscoveryService([new DemoTopologyAdapter()]);
+
+  app.get('/health', async () => ({ status: 'ok', demoMode: config.DEMO_MODE }));
+
+  app.get('/api/maps/:mapId', async (request, reply) => {
+    const { mapId } = mapIdParams.parse(request.params);
+    const map = maps.getMap(mapId);
+    return map ?? reply.code(404).send({ message: 'Map not found' });
+  });
+
+  app.put('/api/maps/:mapId/nodes/positions', async (request, reply) => {
+    const { mapId } = mapIdParams.parse(request.params);
+    const body = z.object({ nodes: z.array(positionSchema).min(1) }).parse(request.body);
+    const map = maps.updatePositions(
+      mapId,
+      body.nodes.map((node) => ({
+        nodeId: node.nodeId,
+        position: node.position,
+        ...(node.locked === undefined ? {} : { locked: node.locked }),
+      })),
+    );
+    return map ?? reply.code(404).send({ message: 'Map not found' });
+  });
+
+  app.patch('/api/maps/:mapId/nodes/:nodeId/lock', async (request, reply) => {
+    const { mapId, nodeId } = nodeParams.parse(request.params);
+    const { locked } = z.object({ locked: z.boolean() }).parse(request.body);
+    const map = maps.setNodeLocked(mapId, nodeId, locked);
+    return map ?? reply.code(404).send({ message: 'Map or node not found' });
+  });
+
+  app.post('/api/maps/:mapId/links', async (request, reply) => {
+    const { mapId } = mapIdParams.parse(request.params);
+    const link = maps.createLink(mapId, linkSchema.parse(request.body));
+    return link ? reply.code(201).send(link) : reply.code(404).send({ message: 'Map not found' });
+  });
+
+  app.patch('/api/maps/:mapId/links/:linkId', async (request, reply) => {
+    const { mapId, linkId } = linkParams.parse(request.params);
+    const body = linkSchema
+      .pick({ capacityBps: true, label: true, metricSource: true })
+      .parse(request.body);
+    const link = maps.updateLink(mapId, linkId, body);
+    return link ?? reply.code(404).send({ message: 'Link not found' });
+  });
+
+  app.delete('/api/maps/:mapId/links/:linkId', async (request, reply) => {
+    const { mapId, linkId } = linkParams.parse(request.params);
+    return maps.deleteLink(mapId, linkId)
+      ? reply.code(204).send()
+      : reply.code(404).send({ message: 'Link not found' });
+  });
+
+  app.post('/api/maps/:mapId/devices', async (request, reply) => {
+    const { mapId } = mapIdParams.parse(request.params);
+    const device = maps.addDevice(mapId, deviceSchema.parse(request.body));
+    return device
+      ? reply.code(201).send(device)
+      : reply.code(404).send({ message: 'Map not found' });
+  });
+
+  app.delete('/api/maps/:mapId/devices/:deviceId', async (request, reply) => {
+    const { mapId, deviceId } = deviceParams.parse(request.params);
+    return maps.deleteDevice(mapId, deviceId)
+      ? reply.code(204).send()
+      : reply.code(404).send({ message: 'Device not found' });
+  });
+
+  app.get('/api/interfaces/:interfaceId/history', async (request) => {
+    const { interfaceId } = z.object({ interfaceId: z.string() }).parse(request.params);
+    const { period } = z
+      .object({ period: z.enum(['15m', '1h', '6h', '24h', '7d']).default('1h') })
+      .parse(request.query);
+    return metrics.getHistory(interfaceId, period as HistoryPeriod);
+  });
+
+  app.post('/api/maps/:mapId/devices/:deviceId/discover', async (request, reply) => {
+    const { mapId, deviceId } = deviceParams.parse(request.params);
+    const map = maps.getMap(mapId);
+    const device = map?.devices.find((item) => item.id === deviceId);
+    if (!map || !device) return reply.code(404).send({ message: 'Device not found' });
+    return discovery.discover(device, map.devices);
+  });
+
+  app.get('/api/integrations/zabbix/status', async (_request, reply) => {
+    if (!config.ZABBIX_URL || !config.ZABBIX_TOKEN) {
+      return { configured: false, status: 'not_configured' };
+    }
+    try {
+      const result = await new ZabbixAdapter(config.ZABBIX_URL, config.ZABBIX_TOKEN).healthcheck();
+      return { configured: true, status: 'connected', ...result };
+    } catch (error) {
+      return reply.code(502).send({
+        configured: true,
+        status: 'error',
+        message: error instanceof Error ? error.message : 'Unknown Zabbix error',
+      });
+    }
+  });
+
+  app.get('/api/integrations/zabbix/hosts', async (_request, reply) => {
+    if (!config.ZABBIX_URL || !config.ZABBIX_TOKEN) {
+      return reply.code(409).send({ message: 'Zabbix is not configured' });
+    }
+    return new ZabbixAdapter(config.ZABBIX_URL, config.ZABBIX_TOKEN).getDevices();
+  });
+}

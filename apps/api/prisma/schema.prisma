@@ -1,0 +1,244 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum MapMode {
+  MANUAL
+  AUTO
+  HYBRID
+}
+
+enum PositionSource {
+  AUTO
+  MANUAL
+}
+
+enum DeviceStatus {
+  UP
+  DOWN
+  WARNING
+  UNKNOWN
+}
+
+enum InterfaceStatus {
+  UP
+  DOWN
+  DISABLED
+  WARNING
+  UNKNOWN
+}
+
+enum DiscoverySource {
+  MANUAL
+  LLDP_SNMP
+  LLDP_SSH
+}
+
+enum DiscoveryJobStatus {
+  PENDING
+  RUNNING
+  REVIEW
+  COMPLETED
+  FAILED
+}
+
+enum MatchStatus {
+  MATCHED
+  UNMATCHED
+  AMBIGUOUS
+}
+
+model Map {
+  id        String    @id @default(cuid())
+  name      String
+  mode      MapMode   @default(HYBRID)
+  nodes     MapNode[]
+  links     Link[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model MapNode {
+  id             String         @id @default(cuid())
+  mapId          String
+  deviceId       String
+  x              Float
+  y              Float
+  locked         Boolean        @default(false)
+  positionSource PositionSource @default(AUTO)
+  map            Map            @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  device         Device         @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@unique([mapId, deviceId])
+  @@index([deviceId])
+}
+
+model Device {
+  id                 String                @id @default(cuid())
+  name               String
+  hostname           String
+  ip                 String
+  vendor             String?
+  model              String?
+  status             DeviceStatus          @default(UNKNOWN)
+  deviceType         String
+  site               String?
+  source             String
+  discoveryMethod    String                 @default("AUTO")
+  uptimeSeconds      BigInt?
+  cpuPercent         Float?
+  memoryPercent      Float?
+  interfaces         Interface[]
+  mapNodes           MapNode[]
+  sourceLinks        Link[]                 @relation("LinkSourceDevice")
+  targetLinks        Link[]                 @relation("LinkTargetDevice")
+  sourceMappings     DeviceSourceMapping[]
+  discoveryJobs      DiscoveryJob[]
+  snmpCredentialId   String?
+  sshCredentialId    String?
+  snmpCredential     SnmpCredential?        @relation(fields: [snmpCredentialId], references: [id])
+  sshCredential      SshCredential?         @relation(fields: [sshCredentialId], references: [id])
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  @@index([hostname])
+  @@index([ip])
+}
+
+model Interface {
+  id             String                   @id @default(cuid())
+  deviceId       String
+  name           String
+  alias          String?
+  description    String?
+  ifIndex        Int
+  mac            String?
+  mtu            Int?
+  speedBps       BigInt?
+  adminStatus    String
+  operStatus     InterfaceStatus          @default(UNKNOWN)
+  device         Device                   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  sourceLinks    Link[]                    @relation("LinkSourceInterface")
+  targetLinks    Link[]                    @relation("LinkTargetInterface")
+  sourceMappings InterfaceSourceMapping[]
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+
+  @@unique([deviceId, ifIndex])
+}
+
+model Link {
+  id                String          @id @default(cuid())
+  mapId             String
+  sourceDeviceId    String
+  sourceInterfaceId String
+  targetDeviceId    String
+  targetInterfaceId String
+  capacityBps       BigInt
+  label             String?
+  status            DeviceStatus    @default(UNKNOWN)
+  discoverySource   DiscoverySource @default(MANUAL)
+  metricSource      String
+  map               Map             @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  sourceDevice      Device          @relation("LinkSourceDevice", fields: [sourceDeviceId], references: [id])
+  sourceInterface   Interface       @relation("LinkSourceInterface", fields: [sourceInterfaceId], references: [id])
+  targetDevice      Device          @relation("LinkTargetDevice", fields: [targetDeviceId], references: [id])
+  targetInterface   Interface       @relation("LinkTargetInterface", fields: [targetInterfaceId], references: [id])
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  @@index([mapId])
+  @@index([sourceDeviceId])
+  @@index([targetDeviceId])
+}
+
+model DataSource {
+  id          String   @id @default(cuid())
+  name        String
+  type        String
+  baseUrl     String?
+  enabled     Boolean  @default(true)
+  config      Json?
+  secret      Bytes?
+  mappings    DeviceSourceMapping[]
+  interfaces  InterfaceSourceMapping[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SnmpCredential {
+  id               String   @id @default(cuid())
+  name             String
+  version          String
+  port             Int      @default(161)
+  encryptedPayload Bytes
+  devices          Device[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model SshCredential {
+  id               String   @id @default(cuid())
+  name             String
+  port             Int      @default(22)
+  username         String
+  encryptedPayload Bytes
+  devices          Device[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model DeviceSourceMapping {
+  id           String      @id @default(cuid())
+  deviceId     String
+  dataSourceId String
+  externalId   String
+  matchStatus  MatchStatus @default(UNMATCHED)
+  matchReason  String?
+  device       Device      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  dataSource   DataSource  @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+
+  @@unique([dataSourceId, externalId])
+}
+
+model InterfaceSourceMapping {
+  id           String     @id @default(cuid())
+  interfaceId  String
+  dataSourceId String
+  externalId   String
+  interface    Interface  @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
+  dataSource   DataSource @relation(fields: [dataSourceId], references: [id], onDelete: Cascade)
+
+  @@unique([dataSourceId, externalId])
+}
+
+model DiscoveryJob {
+  id        String             @id @default(cuid())
+  deviceId  String
+  method    String
+  status    DiscoveryJobStatus @default(PENDING)
+  error     String?
+  device    Device             @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  results   DiscoveryResult[]
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+}
+
+model DiscoveryResult {
+  id             String          @id @default(cuid())
+  jobId          String
+  localPort      String
+  remotePort     String
+  remoteIdentity Json
+  matchStatus    MatchStatus     @default(UNMATCHED)
+  matchedDeviceId String?
+  accepted       Boolean         @default(false)
+  job            DiscoveryJob    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt      DateTime        @default(now())
+}
