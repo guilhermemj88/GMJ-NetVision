@@ -1344,52 +1344,63 @@ button {
   justify-content: center;
   gap: 7px;
   padding: 8px 7px;
-  border-left-width: 1px;
-  border-radius: 9px;
-  background: rgba(13, 22, 28, 0.82);
-  backdrop-filter: blur(5px);
+  border: none;
+  border-left-width: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+.device-node--icon_2d::after,
+.device-node--icon_3d::after {
+  display: none;
 }
 .device-node--icon_2d .device-node__icon,
 .device-node--icon_3d .device-node__icon {
-  width: 43px;
-  height: 43px;
-  border-radius: 8px;
+  width: 52px;
+  height: 52px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  display: grid;
+  place-items: center;
+}
+.device-node__svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
 }
 .device-node--icon_2d .device-node__copy,
 .device-node--icon_3d .device-node__copy {
   width: 100%;
   text-align: center;
+  gap: 0;
 }
 .device-node--icon_2d .device-node__copy strong,
 .device-node--icon_3d .device-node__copy strong {
+  display: block;
   font-size: 9px;
+  line-height: 1.2;
+  letter-spacing: 0.02em;
+  white-space: normal;
+  word-break: break-word;
+  color: var(--text);
 }
 .device-node--icon_2d .device-node__copy span,
 .device-node--icon_3d .device-node__copy span {
-  display: block;
-  font-size: 7px;
+  display: none;
 }
 .device-node--icon_3d {
-  height: 100px;
-  border-color: color-mix(in srgb, currentColor 35%, #233640);
-  background: linear-gradient(155deg, rgba(42, 59, 67, 0.95), rgba(10, 17, 22, 0.97) 62%), #101b21;
-  box-shadow:
-    0 15px 24px rgba(0, 0, 0, 0.48),
-    inset 1px 1px rgba(255, 255, 255, 0.1),
-    inset -2px -3px rgba(0, 0, 0, 0.28);
-  transform: perspective(220px) rotateX(3deg);
-}
-.device-node--icon_3d:hover {
-  transform: perspective(220px) rotateX(1deg) translateY(-3px);
+  transform: none;
 }
 .device-node--icon_3d .device-node__icon {
-  transform: perspective(100px) rotateX(7deg) rotateY(-6deg);
-  border-width: 1px 2px 3px 1px;
-  background: linear-gradient(145deg, rgba(255, 255, 255, 0.09), rgba(0, 0, 0, 0.18));
-  box-shadow:
-    5px 7px 10px rgba(0, 0, 0, 0.34),
-    inset 1px 1px rgba(255, 255, 255, 0.11),
-    0 0 18px color-mix(in srgb, currentColor 15%, transparent);
+  transform: perspective(120px) rotateX(8deg) rotateY(-8deg);
+  filter: drop-shadow(0 10px 8px rgba(0, 0, 0, 0.32));
+}
+.device-node--icon_3d .device-node__copy strong {
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
 }
 .device-tooltip {
   display: none;
