@@ -272,12 +272,49 @@ export class DemoMapRepository {
     this.devices = this.devices.filter((host) => host.id !== hostId);
     this.credentials.delete(hostId);
     this.maps.forEach((map) => {
+      const hadNode = map.nodes.some((node) => node.deviceId === hostId);
+      const hadLink = map.links.some(
+        (link) => link.sourceDeviceId === hostId || link.targetDeviceId === hostId,
+      );
       map.nodes = map.nodes.filter((node) => node.deviceId !== hostId);
       map.links = map.links.filter(
         (link) => link.sourceDeviceId !== hostId && link.targetDeviceId !== hostId,
       );
-      this.touch(map);
+      if (hadNode || hadLink) this.touch(map);
     });
+    this.zabbixPreviews.forEach((preview, previewId) => {
+      this.zabbixPreviews.set(previewId, {
+        ...preview,
+        hosts: preview.hosts.map((candidate) =>
+          candidate.matchedHostId === hostId
+            ? { ...candidate, alreadyRegistered: false, matchedHostId: null }
+            : candidate,
+        ),
+      });
+    });
+    this.discoveryPreviews.forEach((preview, previewId) => {
+      if (preview.hostId === hostId) {
+        this.discoveryPreviews.delete(previewId);
+        return;
+      }
+      this.discoveryPreviews.set(previewId, {
+        ...preview,
+        neighbors: preview.neighbors.map((neighbor) => {
+          if (neighbor.matchedDeviceId !== hostId) return neighbor;
+          const withoutMatch = { ...neighbor };
+          delete withoutMatch.matchedDeviceId;
+          return {
+            ...withoutMatch,
+            matchStatus: 'UNMATCHED',
+            inventoryState: 'NOT_REGISTERED',
+            mapPresent: false,
+            linkExists: false,
+            candidateDeviceIds: neighbor.candidateDeviceIds.filter((id) => id !== hostId),
+          };
+        }),
+      });
+    });
+    this.refreshMembership();
     return true;
   }
 

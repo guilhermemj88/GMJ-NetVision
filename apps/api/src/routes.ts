@@ -87,10 +87,16 @@ const deviceSchema = z.object({
   position: z.object({ x: z.number(), y: z.number() }),
 });
 
-export function registerRoutes(app: FastifyInstance): void {
-  const vault = config.CREDENTIAL_ENCRYPTION_KEY
-    ? new CredentialVault(config.CREDENTIAL_ENCRYPTION_KEY)
-    : null;
+interface RouteRegistrationOptions {
+  credentialEncryptionKey?: string | null;
+}
+
+export function registerRoutes(app: FastifyInstance, options: RouteRegistrationOptions = {}): void {
+  const credentialEncryptionKey =
+    options.credentialEncryptionKey === undefined
+      ? config.CREDENTIAL_ENCRYPTION_KEY
+      : options.credentialEncryptionKey;
+  const vault = credentialEncryptionKey ? new CredentialVault(credentialEncryptionKey) : null;
   const maps = new DemoMapRepository(vault);
   const metrics = new DemoMetricAdapter();
   const discovery = new DiscoveryService([new DemoTopologyAdapter()]);

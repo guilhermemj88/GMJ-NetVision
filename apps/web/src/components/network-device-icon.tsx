@@ -1,230 +1,166 @@
 'use client';
 
-import type { CSSProperties } from 'react';
-import { useState } from 'react';
+import type { NetworkDeviceIconType } from '@/lib/device-appearance';
 
-export type NetworkDeviceIconType =
-  | 'router'
-  | 'switch'
-  | 'core-switch'
-  | 'aggregation'
-  | 'olt'
-  | 'onu'
-  | 'firewall'
-  | 'server'
-  | 'wireless'
-  | 'cloud'
-  | 'bras'
-  | 'generic'
-  | 'unknown';
+export type { NetworkDeviceIconType } from '@/lib/device-appearance';
 
 export type NetworkDeviceIconVariant = '2d' | '3d';
 
-export function resolveNetworkDeviceIconAsset(
-  type: NetworkDeviceIconType,
-  variant: NetworkDeviceIconVariant,
-): string {
-  const normalized = (type ?? 'generic').toString().toLowerCase();
-  const safeType = normalized === 'unknown' ? 'generic' : normalized;
-  const iconMap: Record<string, string> = {
-    router: 'router',
-    switch: 'switch',
-    'core-switch': 'switch',
-    aggregation: 'switch',
-    olt: 'olt',
-    onu: 'onu',
-    firewall: 'firewall',
-    server: 'server',
-    wireless: 'wireless',
-    cloud: 'cloud',
-    internet: 'cloud',
-    provider: 'cloud',
-    upstream: 'cloud',
-    bras: 'bras',
-    bng: 'bras',
-    generic: 'generic',
-  };
-
-  const resolved = iconMap[safeType] ?? 'generic';
-  return `/network-icons/${resolved}-${variant}.svg`;
-}
-
-function FallbackGlyph({
-  type,
-  variant,
-  status,
-  size,
-}: {
-  type: NetworkDeviceIconType;
-  variant: NetworkDeviceIconVariant;
-  status: string;
-  size: number;
-}) {
-  const common = {
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: variant === '3d' ? 1.7 : 1.5,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-    opacity: 1,
-  };
-
-  const strokeColor = status === 'down' ? '#ff6b6b' : status === 'warning' ? '#f7b955' : '#7fe3ff';
-  const activeCommon = {
-    ...common,
-    stroke: strokeColor,
-  };
-
-  const iconMap: Record<string, string> = {
-    router: 'router',
-    switch: 'switch',
-    'core-switch': 'switch',
-    aggregation: 'switch',
-    olt: 'olt',
-    onu: 'onu',
-    firewall: 'firewall',
-    server: 'server',
-    wireless: 'wireless',
-    cloud: 'cloud',
-    bras: 'bras',
-  };
-
-  const resolvedType = iconMap[type] ?? 'generic';
-
-  const baseProps = {
-    width: size,
-    height: size,
-    viewBox: '0 0 64 64',
-    className: 'device-node__svg',
-    role: 'img',
-    'aria-label': `${resolvedType} device icon (fallback)`,
-    style: { overflow: 'visible' } as CSSProperties,
-  };
-
-  switch (resolvedType) {
-    case 'router':
-      return (
-        <svg {...baseProps}>
-          <path {...common} d="M14 29h36M18 22h28v16H18z" />
-          <path {...common} d="M26 22v-6m12 6v-6M22 38v10m20-10v10M18 46h28" />
-          <path {...activeCommon} d="M20 25h24" opacity={0.75} />
-        </svg>
-      );
-    case 'switch':
-      return (
-        <svg {...baseProps}>
-          <rect {...common} x="16" y="18" width="32" height="28" rx="3" />
-          <path {...common} d="M24 18v28M40 18v28M16 26h32M16 38h32" opacity={0.8} />
-          <path {...activeCommon} d="M18 52h28" />
-        </svg>
-      );
-    case 'olt':
-      return (
-        <svg {...baseProps}>
-          <path {...common} d="M16 42l9-18h14l9 18" />
-          <path {...common} d="M24 24h16M26 32h12M18 46h28" />
-          <path {...activeCommon} d="M20 46V18m24 28V18" opacity={0.7} />
-        </svg>
-      );
-    case 'onu':
-      return (
-        <svg {...baseProps}>
-          <rect {...common} x="18" y="22" width="28" height="22" rx="2" />
-          <path {...common} d="M24 18h16M22 50h20M25 30h14" opacity={0.8} />
-          <path {...activeCommon} d="M32 14v8" />
-        </svg>
-      );
-    case 'firewall':
-      return (
-        <svg {...baseProps}>
-          <path {...common} d="M32 12l18 8v14c0 10-6 18-18 22-12-4-18-12-18-22V20l18-8z" />
-          <path {...activeCommon} d="M24 30h16M22 38h20" opacity={0.7} />
-        </svg>
-      );
-    case 'server':
-      return (
-        <svg {...baseProps}>
-          <rect {...common} x="22" y="12" width="20" height="40" rx="3" />
-          <path {...common} d="M26 22h12M26 30h12M26 38h12" opacity={0.8} />
-          <path {...activeCommon} d="M32 52v-6" />
-        </svg>
-      );
-    case 'wireless':
-      return (
-        <svg {...baseProps}>
-          <path {...common} d="M18 36c7-9 21-9 28 0" />
-          <path {...common} d="M22 42c5-6 15-6 20 0" />
-          <path {...common} d="M26 48c3-3 9-3 12 0" />
-          <circle {...activeCommon} cx="32" cy="22" r="6" />
-        </svg>
-      );
-    case 'cloud':
-      return (
-        <svg {...baseProps}>
-          <path {...common} d="M18 38c-2-11 7-18 17-16 5-6 17-4 20 7 5 1 8 6 7 11-1 7-8 12-16 12H28c-10 0-17-7-16-14z" />
-          <path {...activeCommon} d="M22 42h20" opacity={0.7} />
-        </svg>
-      );
-    case 'bras':
-      return (
-        <svg {...baseProps}>
-          <path {...common} d="M18 24h28v16H18z" />
-          <path {...common} d="M14 32h-4M50 32h4M24 18v-6M40 18v-6M26 24l-8 18M38 24l8 18" opacity={0.75} />
-        </svg>
-      );
-    case 'generic':
-    default:
-      return (
-        <svg {...baseProps}>
-          <circle {...common} cx="32" cy="24" r="11" />
-          <path {...common} d="M16 46h32M22 46V34m20 12V34" opacity={0.8} />
-          <circle {...activeCommon} cx="32" cy="24" r="5" opacity={0.8} />
-        </svg>
-      );
-  }
-}
-
-export function NetworkDeviceIcon({
-  type,
-  variant,
-  status,
-  size = 52,
-}: {
+interface NetworkDeviceIconProps {
   type: NetworkDeviceIconType;
   variant: NetworkDeviceIconVariant;
   status?: string;
   size?: number;
-}) {
-  const [loadFailed, setLoadFailed] = useState(false);
-  const assetPath = resolveNetworkDeviceIconAsset(type, variant);
-  const safeStatus = status ?? 'up';
+}
 
-  return (
-    <div
-      className="network-device-icon"
-      style={{
-        width: size,
-        height: size,
-        display: 'grid',
-        placeItems: 'center',
-        color: 'currentColor',
-        overflow: 'visible',
-      }}
-    >
-      {!loadFailed ? (
-        <img
-          src={assetPath}
-          alt={`${type} device icon`}
-          width={size}
-          height={size}
-          className="device-node__svg"
-          onError={() => setLoadFailed(true)}
-          style={{ overflow: 'visible', color: 'currentColor' }}
+const common = {
+  fill: 'none',
+  stroke: 'currentColor',
+  strokeLinecap: 'round' as const,
+  strokeLinejoin: 'round' as const,
+};
+
+function assertNever(value: never): never {
+  throw new Error(`Unsupported network device icon: ${String(value)}`);
+}
+
+function DeviceGlyph({ type }: { type: NetworkDeviceIconType }) {
+  switch (type) {
+    case 'CORE_ROUTER':
+      return (
+        <>
+          <path
+            {...common}
+            d="M12 32h40M32 12v40M12 32l7-6m-7 6 7 6m33-6-7-6m7 6-7 6M32 12l-6 7m6-7 6 7m-6 33-6-7m6 7 6-7"
+          />
+          <circle {...common} cx="32" cy="32" r="7" />
+        </>
+      );
+    case 'EDGE_ROUTER':
+      return (
+        <>
+          <circle {...common} cx="17" cy="40" r="5" />
+          <circle {...common} cx="32" cy="19" r="5" />
+          <circle {...common} cx="49" cy="37" r="5" />
+          <path {...common} d="M21 36l8-12m7-1 9 10M22 42l22-3" />
+        </>
+      );
+    case 'ROUTER':
+      return (
+        <>
+          <path {...common} d="M14 32h36m-7-7 7 7-7 7M32 14v36m-7-7 7 7 7-7" />
+          <circle {...common} cx="32" cy="32" r="14" />
+        </>
+      );
+    case 'CORE_SWITCH':
+      return (
+        <>
+          <rect {...common} x="14" y="16" width="36" height="32" rx="5" />
+          <path {...common} d="M22 25h20M22 32h20M22 39h20" />
+          <circle {...common} cx="18" cy="25" r="1" />
+          <circle {...common} cx="46" cy="39" r="1" />
+        </>
+      );
+    case 'SWITCH':
+      return (
+        <>
+          <rect {...common} x="12" y="22" width="40" height="20" rx="4" />
+          <path {...common} d="M20 30h5m4 0h5m4 0h6M20 36h5m4 0h5m4 0h6" />
+        </>
+      );
+    case 'AGGREGATION':
+      return (
+        <>
+          <circle {...common} cx="15" cy="18" r="4" />
+          <circle {...common} cx="15" cy="46" r="4" />
+          <circle {...common} cx="49" cy="32" r="5" />
+          <path {...common} d="M19 18h7c7 0 7 14 15 14h3M19 46h7c7 0 7-14 15-14" />
+        </>
+      );
+    case 'OLT':
+      return (
+        <>
+          <path {...common} d="M24 47h16M27 47l5-27 5 27M29 34h6M30 27h4" />
+          <path
+            {...common}
+            d="M20 22c-5 5-5 13 0 18M44 22c5 5 5 13 0 18M15 17c-8 8-8 22 0 30M49 17c8 8 8 22 0 30"
+          />
+        </>
+      );
+    case 'ONU':
+      return (
+        <>
+          <rect {...common} x="16" y="22" width="32" height="25" rx="5" />
+          <path {...common} d="M24 22v-6h16v6M23 32h18M23 38h11" />
+          <circle {...common} cx="41" cy="38" r="1" />
+        </>
+      );
+    case 'FIREWALL':
+      return (
+        <>
+          <path {...common} d="M32 12l18 7v13c0 11-7 18-18 22-11-4-18-11-18-22V19l18-7z" />
+          <path {...common} d="M20 27h24M20 35h24M25 27v8m14-8v8m-7 0v8" />
+        </>
+      );
+    case 'SERVER':
+      return (
+        <>
+          <rect {...common} x="18" y="13" width="28" height="38" rx="4" />
+          <path {...common} d="M23 23h18M23 32h18M23 41h18" />
+          <circle {...common} cx="38" cy="19" r="1" />
+          <circle {...common} cx="42" cy="19" r="1" />
+        </>
+      );
+    case 'WIRELESS':
+      return (
+        <>
+          <path {...common} d="M12 25c11-11 29-11 40 0M19 33c7-7 19-7 26 0M26 41c3-3 9-3 12 0" />
+          <circle {...common} cx="32" cy="48" r="2" />
+        </>
+      );
+    case 'CLOUD':
+      return (
+        <path
+          {...common}
+          d="M20 46h25c8 0 12-5 12-11s-5-10-11-10c-3-8-14-11-21-5-8-2-15 4-15 12 0 8 5 14 10 14z"
         />
-      ) : null}
-      {loadFailed && (
-        <FallbackGlyph type={type} variant={variant} status={safeStatus} size={size} />
-      )}
-    </div>
+      );
+    case 'BNG':
+      return (
+        <>
+          <circle {...common} cx="32" cy="32" r="10" />
+          <circle {...common} cx="32" cy="32" r="3" />
+          <path
+            {...common}
+            d="M32 22V12M32 52V42M22 32H12M52 32H42M25 25l-7-7m28 28-7-7m0-14 7-7M18 46l7-7"
+          />
+        </>
+      );
+    case 'CUSTOM':
+      return <path {...common} d="M32 12l5 14 15 1-12 9 4 15-12-8-12 8 4-15-12-9 15-1 5-14z" />;
+    case 'GENERIC':
+      return (
+        <>
+          <path {...common} d="M32 12l18 10v20L32 52 14 42V22l18-10z" />
+          <circle {...common} cx="32" cy="32" r="7" />
+        </>
+      );
+  }
+  return assertNever(type);
+}
+
+export function NetworkDeviceIcon({ type, variant, size = 32 }: NetworkDeviceIconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 64 64"
+      className={`device-node__svg device-node__svg--${variant}`}
+      role="img"
+      aria-label={`${type.toLowerCase().replaceAll('_', ' ')} device icon`}
+      strokeWidth={variant === '3d' ? 2.4 : 2.1}
+    >
+      <DeviceGlyph type={type} />
+    </svg>
   );
 }

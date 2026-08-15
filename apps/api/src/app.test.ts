@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from './app';
 
@@ -197,6 +197,25 @@ describe('GMJ NetVision API', () => {
     expect(
       map.json().nodes.filter((node: { deviceId: string }) => node.deviceId === created.json().id),
     ).toHaveLength(1);
+    const core = map.json().devices.find((device: { id: string }) => device.id === 'core-01');
+    const relatedLink = await app.inject({
+      method: 'POST',
+      url: '/api/maps/backbone-main/links',
+      payload: {
+        sourceDeviceId: created.json().id,
+        sourceInterfaceId: created.json().interfaces[0].id,
+        targetDeviceId: core.id,
+        targetInterfaceId: core.interfaces[0].id,
+        capacityBps: 1_000_000_000,
+        autoCapacityBps: 1_000_000_000,
+        capacitySource: 'AUTO',
+        label: 'host deletion test',
+        metricSource: 'DEMO',
+        visualStyle: null,
+        metricDisplay: null,
+      },
+    });
+    expect(relatedLink.statusCode).toBe(201);
 
     const edited = await app.inject({
       method: 'PATCH',
@@ -204,9 +223,139 @@ describe('GMJ NetVision API', () => {
       payload: { displayName: 'LAB Router atualizado' },
     });
     expect(edited.json().displayName).toBe('LAB Router atualizado');
+    const removed = await app.inject({
+      method: 'DELETE',
+      url: `/api/hosts/${created.json().id}`,
+    });
+    expect(removed.statusCode).toBe(204);
     expect(
-      (await app.inject({ method: 'DELETE', url: `/api/hosts/${created.json().id}` })).statusCode,
-    ).toBe(204);
+      (await app.inject({ method: 'GET', url: `/api/hosts/${created.json().id}` })).statusCode,
+    ).toBe(404);
+    const mapAfterDelete = await app.inject({ method: 'GET', url: '/api/maps/backbone-main' });
+    expect(
+      mapAfterDelete
+        .json()
+        .nodes.some((node: { deviceId: string }) => node.deviceId === created.json().id),
+    ).toBe(false);
+    expect(
+      mapAfterDelete
+        .json()
+        .links.some(
+          (link: { sourceDeviceId: string; targetDeviceId: string }) =>
+            link.sourceDeviceId === created.json().id || link.targetDeviceId === created.json().id,
+        ),
+    ).toBe(false);
+  });
+
+  it('removes a host from multiple maps without leaving orphan nodes or links', async () => {
+    const mapIds = ['backbone-main', 'bgp-operators', 'access-olts'];
+    const existing = await app.inject({ method: 'GET', url: '/api/hosts/core-01' });
+    expect(existing.statusCode).toBe(200);
+    expect(existing.json().mapCount).toBe(mapIds.length);
+
+    for (const mapId of mapIds) {
+      const map = await app.inject({ method: 'GET', url: `/api/maps/${mapId}` });
+      expect(
+        map.json().nodes.some((node: { deviceId: string }) => node.deviceId === 'core-01'),
+      ).toBe(true);
+      expect(
+        map
+          .json()
+          .links.some(
+            (link: { sourceDeviceId: string; targetDeviceId: string }) =>
+              link.sourceDeviceId === 'core-01' || link.targetDeviceId === 'core-01',
+          ),
+      ).toBe(true);
+    }
+
+    expect((await app.inject({ method: 'DELETE', url: '/api/hosts/core-01' })).statusCode).toBe(
+      204,
+    );
+
+    for (const mapId of mapIds) {
+      const map = await app.inject({ method: 'GET', url: `/api/maps/${mapId}` });
+      const nodeDeviceIds = new Set(
+        map.json().nodes.map((node: { deviceId: string }) => node.deviceId),
+      );
+      expect(nodeDeviceIds.has('core-01')).toBe(false);
+      expect(
+        map
+          .json()
+          .links.some(
+            (link: { sourceDeviceId: string; targetDeviceId: string }) =>
+              link.sourceDeviceId === 'core-01' || link.targetDeviceId === 'core-01',
+          ),
+      ).toBe(false);
+      expect(
+        map
+          .json()
+          .links.every(
+            (link: { sourceDeviceId: string; targetDeviceId: string }) =>
+              nodeDeviceIds.has(link.sourceDeviceId) && nodeDeviceIds.has(link.targetDeviceId),
+          ),
+      ).toBe(true);
+    }
+  });
+
+  it('removes a Zabbix host only from NetVision and allows importing it again', async () => {
+    const payload = {
+      hostname: 'zabbix-delete-01',
+      displayName: 'Zabbix Delete 01',
+      managementIp: '10.251.0.1',
+      vendor: 'Huawei',
+      model: 'S6730',
+      deviceType: 'switch',
+      site: 'Lab',
+      description: 'Importado do Zabbix',
+      notes: '',
+      origin: 'ZABBIX',
+      zabbix: {
+        enabled: true,
+        hostId: 'zbx-delete-01',
+        hostName: 'zabbix-delete-01',
+        primaryInterfaceId: 'zbx-if-01',
+        ip: '10.251.0.1',
+      },
+      ssh: { enabled: false, host: '10.251.0.1', port: 22, username: '' },
+      snmp: {
+        enabled: false,
+        version: 'SNMP_V2C',
+        host: '10.251.0.1',
+        port: 161,
+        username: '',
+        securityLevel: 'NO_AUTH_NO_PRIV',
+        authProtocol: null,
+        privacyProtocol: null,
+      },
+    };
+    const created = await app.inject({ method: 'POST', url: '/api/hosts', payload });
+    expect(created.statusCode).toBe(201);
+    const externalFetch = vi.spyOn(globalThis, 'fetch');
+
+    try {
+      const removed = await app.inject({
+        method: 'DELETE',
+        url: `/api/hosts/${created.json().id}`,
+      });
+      expect(removed.statusCode).toBe(204);
+      expect(externalFetch).not.toHaveBeenCalled();
+    } finally {
+      externalFetch.mockRestore();
+    }
+
+    const importedAgain = await app.inject({ method: 'POST', url: '/api/hosts', payload });
+    expect(importedAgain.statusCode).toBe(201);
+    expect(importedAgain.json().id).not.toBe(created.json().id);
+    expect(importedAgain.json()).toMatchObject({ origin: 'ZABBIX', useZabbix: true });
+  });
+
+  it('returns 404 when deleting a host that does not exist', async () => {
+    const response = await app.inject({
+      method: 'DELETE',
+      url: '/api/hosts/host-that-does-not-exist',
+    });
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ message: 'Host not found' });
   });
 
   it('keeps Zabbix import as preview/select/apply and does not add nodes automatically', async () => {
@@ -258,6 +407,8 @@ describe('GMJ NetVision API', () => {
   });
 
   it('rejects plaintext credentials when encryption is not configured', async () => {
+    await app.close();
+    app = await buildApp({ credentialEncryptionKey: null });
     const response = await app.inject({
       method: 'POST',
       url: '/api/hosts',

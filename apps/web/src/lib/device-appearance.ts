@@ -20,7 +20,8 @@ export const DEVICE_ICON_TYPES = [
 ] as const;
 
 export type DeviceIconType = (typeof DEVICE_ICON_TYPES)[number];
-export type ResolvedDeviceIconType = Exclude<DeviceIconType, 'AUTO'>;
+export type NetworkDeviceIconType = Exclude<DeviceIconType, 'AUTO'>;
+export type ResolvedDeviceIconType = NetworkDeviceIconType;
 
 export const DEVICE_ICON_OPTIONS: ReadonlyArray<{ value: DeviceIconType; label: string }> = [
   { value: 'AUTO', label: 'Automático' },
@@ -60,7 +61,7 @@ function isDeviceIconType(value: string | null): value is DeviceIconType {
 export function resolveDeviceIconType(
   device: DeviceAppearanceSource,
   preference: DeviceIconType = 'AUTO',
-): ResolvedDeviceIconType {
+): NetworkDeviceIconType {
   if (preference !== 'AUTO') return preference;
 
   const type = device.deviceType?.toLowerCase() ?? 'generic';

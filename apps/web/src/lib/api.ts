@@ -195,7 +195,9 @@ export function updateHost(hostId: string, input: UpdateHostInput) {
 }
 
 export function deleteHost(hostId: string) {
-  return request<void>(`/api/hosts/${hostId}`, { method: 'DELETE' });
+  const normalizedHostId = hostId.trim();
+  if (!normalizedHostId) return Promise.reject(new Error('Host ID is required'));
+  return request<void>(`/api/hosts/${encodeURIComponent(normalizedHostId)}`, { method: 'DELETE' });
 }
 
 export function addHostToMap(hostId: string, mapId: string, position: Position) {

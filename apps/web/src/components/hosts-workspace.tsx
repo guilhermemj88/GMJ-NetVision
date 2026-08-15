@@ -45,7 +45,9 @@ import {
   setDeviceIconPreference,
   type DeviceIconType,
 } from '@/lib/device-appearance';
+import { useMapStore } from '@/store/map-store';
 import { AssistedDiscoveryReview } from './assisted-discovery-review';
+import { HostDeleteConfirmation } from './host-delete-confirmation';
 import { NetworkDeviceIcon } from './network-device-icon';
 
 type DetailTab = 'overview' | 'interfaces' | 'monitoring' | 'access' | 'discovery';
@@ -153,6 +155,8 @@ export function HostsWorkspace() {
   const [editing, setEditing] = useState<HostRecord | 'new' | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [mapHost, setMapHost] = useState<HostRecord | null>(null);
+  const [deleteCandidate, setDeleteCandidate] = useState<HostRecord | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const hosts = useMemo(() => {
     const text = search.trim().toLowerCase();
@@ -183,12 +187,36 @@ export function HostsWorkspace() {
 
   const selected = (hostsQuery.data ?? []).find((host) => host.id === selectedId) ?? null;
   const remove = useMutation({
-    mutationFn: deleteHost,
-    onSuccess: async () => {
-      setSelectedId(null);
-      await client.invalidateQueries({ queryKey: ['hosts'] });
-      await client.invalidateQueries({ queryKey: ['map'] });
+    mutationFn: async (hostId: string) => {
+      if (!hostId.trim()) throw new Error('Host inválido para exclusão.');
+      return deleteHost(hostId);
     },
+    onSuccess: async (_result, hostId) => {
+      const mapState = useMapStore.getState();
+      if (mapState.map) {
+        mapState.setMap({
+          ...mapState.map,
+          devices: mapState.map.devices.filter((device) => device.id !== hostId),
+          nodes: mapState.map.nodes.filter((node) => node.deviceId !== hostId),
+          links: mapState.map.links.filter(
+            (link) => link.sourceDeviceId !== hostId && link.targetDeviceId !== hostId,
+          ),
+        });
+      }
+      setDeviceIconPreference(hostId, 'AUTO');
+      setDeleteCandidate(null);
+      setDeleteError(null);
+      setSelectedId(null);
+      await Promise.all([
+        client.invalidateQueries({ queryKey: ['hosts'] }),
+        client.invalidateQueries({ queryKey: ['maps'] }),
+        client.invalidateQueries({ queryKey: ['map'] }),
+      ]);
+    },
+    onError: () =>
+      setDeleteError(
+        'Não foi possível excluir o host. Nenhum dado foi removido da tela; tente novamente.',
+      ),
   });
 
   return (
@@ -358,8 +386,27 @@ export function HostsWorkspace() {
           onEdit={() => setEditing(selected)}
           onMap={() => setMapHost(selected)}
           onDelete={() => {
-            if (window.confirm(`Excluir ${selected.hostname} do inventário e dos mapas?`))
-              remove.mutate(selected.id);
+            setDeleteError(null);
+            setDeleteCandidate(selected);
+          }}
+        />
+      )}
+      {deleteCandidate && (
+        <HostDeleteConfirmation
+          host={deleteCandidate}
+          pending={remove.isPending}
+          error={deleteError}
+          onCancel={() => {
+            if (remove.isPending) return;
+            setDeleteCandidate(null);
+            setDeleteError(null);
+          }}
+          onConfirm={() => {
+            if (!deleteCandidate.id.trim()) {
+              setDeleteError('Não foi possível identificar o host para exclusão.');
+              return;
+            }
+            remove.mutate(deleteCandidate.id);
           }}
         />
       )}
