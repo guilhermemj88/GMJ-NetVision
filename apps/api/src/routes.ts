@@ -9,6 +9,7 @@ import { DemoMetricAdapter } from './infrastructure/metrics/demo-adapter';
 import { ZabbixAdapter } from './infrastructure/metrics/zabbix-adapter';
 import { DemoMapRepository } from './infrastructure/persistence/demo-map-repository';
 import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-adapter';
+import { SnmpService } from './infrastructure/snmp/snmp-service';
 
 const mapIdParams = z.object({ mapId: z.string().min(1) });
 const nodeParams = z.object({ mapId: z.string().min(1), nodeId: z.string().min(1) });
@@ -100,12 +101,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const maps = new DemoMapRepository(vault);
   const metrics = new DemoMetricAdapter();
   const discovery = new DiscoveryService([new DemoTopologyAdapter()]);
+  const snmp = new SnmpService(maps);
   const zabbix =
     config.ZABBIX_URL && config.ZABBIX_TOKEN
       ? new ZabbixAdapter(config.ZABBIX_URL, config.ZABBIX_TOKEN, config.ZABBIX_AUTH_MODE)
       : null;
 
-  registerHostRoutes(app, { maps, discovery, zabbix });
+  registerHostRoutes(app, { maps, discovery, snmp, zabbix });
 
   app.get('/health', async () => ({ status: 'ok', demoMode: config.DEMO_MODE }));
 

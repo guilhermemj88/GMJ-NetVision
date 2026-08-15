@@ -17,6 +17,7 @@ import {
   CredentialEncryptionUnavailableError,
   type DemoMapRepository,
 } from './infrastructure/persistence/demo-map-repository';
+import type { SnmpService } from './infrastructure/snmp/snmp-service';
 
 const hostIdParams = z.object({ hostId: z.string().min(1) });
 const sourceParams = z.object({
@@ -176,10 +177,11 @@ export function registerHostRoutes(
   dependencies: {
     maps: DemoMapRepository;
     discovery: DiscoveryService;
+    snmp: SnmpService;
     zabbix: ZabbixAdapter | null;
   },
 ): void {
-  const { maps, discovery, zabbix } = dependencies;
+  const { maps, discovery, snmp, zabbix } = dependencies;
 
   app.get('/api/hosts', async (request) => {
     const query = z
@@ -297,6 +299,17 @@ export function registerHostRoutes(
         result = safeConnectionResult('ZABBIX', 'CONNECTED', 'Conectado', version);
       } catch {
         result = safeConnectionResult('ZABBIX', 'FAILED', 'Falha ao consultar o Zabbix');
+      }
+    } else if (source === 'SNMP' && !config.DEMO_MODE) {
+      try {
+        const { state, message } = await snmp.testConnectivity(host);
+        result = safeConnectionResult('SNMP', state, message);
+      } catch (error) {
+        result = safeConnectionResult(
+          'SNMP',
+          'FAILED',
+          `Erro ao testar SNMP: ${error instanceof Error ? error.message : 'Erro desconhecido'}`,
+        );
       }
     } else if (config.DEMO_MODE) {
       result = safeConnectionResult(source, 'CONNECTED', 'Conectado pelo adapter demonstrativo');

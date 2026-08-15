@@ -1014,6 +1014,30 @@ export class DemoMapRepository {
     host.sourceHealth.SNMP = configuredHealth(true);
   }
 
+  /**
+   * Get decrypted SNMP credentials for a host.
+   * Returns community and auth details in plaintext (only in memory).
+   * Never logs or exposes this data.
+   */
+  async getDecryptedSnmpCredentials(
+    hostId: string,
+  ): Promise<{ community?: string; authPassword?: string; privacyPassword?: string } | null> {
+    const stored = this.credentials.get(hostId);
+    if (!stored?.snmp || !this.vault) {
+      return null;
+    }
+    try {
+      const decrypted = this.vault.decrypt(stored.snmp) as Record<string, unknown>;
+      return {
+        ...(typeof decrypted.community === 'string' ? { community: decrypted.community } : {}),
+        ...(typeof decrypted.authPassword === 'string' ? { authPassword: decrypted.authPassword } : {}),
+        ...(typeof decrypted.privacyPassword === 'string' ? { privacyPassword: decrypted.privacyPassword } : {}),
+      };
+    } catch {
+      return null;
+    }
+  }
+
   private ensureInterface(host: HostRecord, name: string): NetworkInterface {
     const existing = host.interfaces.find(
       (item) =>
