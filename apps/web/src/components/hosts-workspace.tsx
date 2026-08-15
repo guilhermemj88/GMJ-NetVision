@@ -38,7 +38,15 @@ import {
   testHostSource,
   updateHost,
 } from '@/lib/api';
+import {
+  DEVICE_ICON_OPTIONS,
+  getDeviceIconPreference,
+  resolveDeviceIconType,
+  setDeviceIconPreference,
+  type DeviceIconType,
+} from '@/lib/device-appearance';
 import { AssistedDiscoveryReview } from './assisted-discovery-review';
+import { NetworkDeviceIcon } from './network-device-icon';
 
 type DetailTab = 'overview' | 'interfaces' | 'monitoring' | 'access' | 'discovery';
 
@@ -681,15 +689,34 @@ function HostForm({
   const [form, setForm] = useState<CreateHostInput>(() =>
     host ? inputFromHost(host) : emptyHost(),
   );
+  const [iconType, setIconType] = useState<DeviceIconType>(() =>
+    host ? getDeviceIconPreference(host.id) : 'AUTO',
+  );
   const [error, setError] = useState<string | null>(null);
   const mutation = useMutation({
     mutationFn: () => (host ? updateHost(host.id, form) : createHost(form)),
-    onSuccess: onSaved,
+    onSuccess: (savedHost) => {
+      setDeviceIconPreference(savedHost.id, iconType);
+      onSaved(savedHost);
+    },
     onError: () =>
       setError('Não foi possível salvar. Verifique os campos e a chave de criptografia.'),
   });
   const basic = (key: keyof CreateHostInput, value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
+  const previewIconType = resolveDeviceIconType(
+    {
+      displayName: form.displayName,
+      hostname: form.hostname,
+      model: form.model,
+      vendor: form.vendor,
+      deviceType: form.deviceType,
+    },
+    iconType,
+  );
+  const previewIconLabel = DEVICE_ICON_OPTIONS.find(
+    (option) => option.value === previewIconType,
+  )?.label;
   return (
     <div className="modal-backdrop">
       <section className="host-form-modal">
@@ -793,6 +820,38 @@ function HostForm({
                   onChange={(event) => basic('notes', event.target.value)}
                 />
               </label>
+            </div>
+          </fieldset>
+          <fieldset className="host-appearance-field">
+            <legend>Aparência</legend>
+            <div className="host-appearance-editor">
+              <label>
+                Ícone
+                <select
+                  value={iconType}
+                  onChange={(event) => setIconType(event.target.value as DeviceIconType)}
+                >
+                  {DEVICE_ICON_OPTIONS.map((option) => (
+                    <option value={option.value} key={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="host-icon-preview">
+                <span>Prévia</span>
+                <div
+                  className={`host-icon-preview__orb status-${host?.status.toLowerCase() ?? 'unknown'}`}
+                >
+                  <NetworkDeviceIcon
+                    type={previewIconType}
+                    variant="2d"
+                    status={host?.status.toLowerCase() ?? 'unknown'}
+                    size={30}
+                  />
+                </div>
+                <small>{previewIconLabel}</small>
+              </div>
             </div>
           </fieldset>
           <AccessField

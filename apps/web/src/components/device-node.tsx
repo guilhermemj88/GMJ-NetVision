@@ -1,9 +1,15 @@
 'use client';
 
-import type { CSSProperties } from 'react';
+import { useCallback, useSyncExternalStore, type CSSProperties } from 'react';
 import type { Device, MapNode as DomainMapNode, NodeDisplayMode } from '@gmj/shared';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { LockKeyhole } from 'lucide-react';
+import {
+  getDeviceIconPreference,
+  resolveDeviceIconType,
+  subscribeDeviceIconPreference,
+  type DeviceIconType,
+} from '@/lib/device-appearance';
 import { NetworkDeviceIcon } from './network-device-icon';
 
 export interface DeviceNodeData extends Record<string, unknown> {
@@ -18,46 +24,16 @@ export interface DeviceNodeData extends Record<string, unknown> {
 
 export type DeviceFlowNode = Node<DeviceNodeData, 'device'>;
 
-type NetworkIconKind =
-  | 'router'
-  | 'switch'
-  | 'core-switch'
-  | 'aggregation'
-  | 'olt'
-  | 'onu'
-  | 'firewall'
-  | 'server'
-  | 'wireless'
-  | 'cloud'
-  | 'bras'
-  | 'generic';
-
-function normalizeDeviceKind(device: Device): NetworkIconKind {
-  const text = `${device.name} ${device.hostname} ${device.model} ${device.vendor} ${device.deviceType}`.toLowerCase();
-
-  if (/onu|ont|olt|optical/.test(text)) return 'onu';
-  if (/bng|bras/.test(text)) return 'bras';
-  if (/fw|firewall|fortigate|fgt|pa-/.test(text)) return 'firewall';
-  if (/ap|wifi|wireless|wlan/.test(text)) return 'wireless';
-  if (/cloud|internet|provider|upstream|peer|backbone|operadora|external|wan/.test(text) || device.deviceType === 'internet' || device.deviceType === 'ix') {
-    return 'cloud';
-  }
-  if (/s6730|s6720|s6750|s[0-9]{3,}|switch|core/.test(text)) return 'switch';
-  if (/ne40|ne8000|asr|mx|ccr|rtr|router|pe router|p router/.test(text)) return 'router';
-  if (device.deviceType === 'core') return 'core-switch';
-  if (device.deviceType === 'aggregation') return 'aggregation';
-  if (device.deviceType === 'server') return 'server';
-  if (device.deviceType === 'olt') return 'olt';
-  if (device.deviceType === 'firewall') return 'firewall';
-  if (device.deviceType === 'switch') return 'switch';
-  if (device.deviceType === 'router') return 'router';
-  if (device.deviceType === 'generic') return 'generic';
-  return 'generic';
-}
-
 export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
   const { device, mapNode, editMode, showInterfaces, displayMode, nodeScale, labelScale } = data;
-  const kind = normalizeDeviceKind(device);
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => subscribeDeviceIconPreference(device.id, onStoreChange),
+    [device.id],
+  );
+  const getSnapshot = useCallback(() => getDeviceIconPreference(device.id), [device.id]);
+  const getServerSnapshot = useCallback((): DeviceIconType => 'AUTO', []);
+  const preference = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const iconType = resolveDeviceIconType(device, preference);
   const iconVariant = displayMode === 'ICON_3D' ? '3d' : '2d';
 
   return (
@@ -73,7 +49,12 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
     >
       <Handle type="target" position={Position.Left} isConnectable={editMode} />
       <div className="device-node__icon">
-        <NetworkDeviceIcon type={kind} variant={iconVariant} status={device.status.toLowerCase()} size={52} />
+        <NetworkDeviceIcon
+          type={iconType}
+          variant={iconVariant}
+          status={device.status.toLowerCase()}
+          size={32}
+        />
         <span className="status-pulse" />
       </div>
       <div className="device-node__copy">
