@@ -5,21 +5,23 @@ export class CredentialVault {
 
   constructor(base64Key: string) {
     this.key = Buffer.from(base64Key, 'base64');
-    if (this.key.length !== 32)
+    if (this.key.length !== 32) {
       throw new Error('Credential encryption key must decode to 32 bytes');
+    }
   }
 
-  encrypt(value: Record<string, unknown>): Buffer {
+  encrypt(value: Record<string, unknown>): Buffer<ArrayBuffer> {
     const iv = randomBytes(12);
     const cipher = createCipheriv('aes-256-gcm', this.key, iv);
     const encrypted = Buffer.concat([cipher.update(JSON.stringify(value), 'utf8'), cipher.final()]);
-    return Buffer.concat([iv, cipher.getAuthTag(), encrypted]);
+    return Buffer.from(Buffer.concat([iv, cipher.getAuthTag(), encrypted])) as Buffer<ArrayBuffer>;
   }
 
-  decrypt(payload: Buffer): Record<string, unknown> {
-    const iv = payload.subarray(0, 12);
-    const tag = payload.subarray(12, 28);
-    const encrypted = payload.subarray(28);
+  decrypt(payload: Uint8Array): Record<string, unknown> {
+    const buffer = Buffer.from(payload);
+    const iv = buffer.subarray(0, 12);
+    const tag = buffer.subarray(12, 28);
+    const encrypted = buffer.subarray(28);
     const decipher = createDecipheriv('aes-256-gcm', this.key, iv);
     decipher.setAuthTag(tag);
     return JSON.parse(

@@ -199,6 +199,7 @@ model Device {
   cpuPercent          Float?
   memoryPercent       Float?
   interfaces          Interface[]
+  metricSamples       DeviceMetricSample[]
   mapNodes            MapNode[]
   sourceLinks         Link[]                @relation("LinkSourceDevice")
   targetLinks         Link[]                @relation("LinkTargetDevice")
@@ -207,8 +208,8 @@ model Device {
   sourceHealth        DeviceSourceHealth[]
   snmpCredentialId    String?
   sshCredentialId     String?
-  snmpCredential      SnmpCredential?       @relation(fields: [snmpCredentialId], references: [id])
-  sshCredential       SshCredential?        @relation(fields: [sshCredentialId], references: [id])
+  snmpCredential      SnmpCredential?        @relation(fields: [snmpCredentialId], references: [id])
+  sshCredential       SshCredential?         @relation(fields: [sshCredentialId], references: [id])
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
 
@@ -239,6 +240,7 @@ model Interface {
   outDiscardsItemId String?
   dataSources       Json?
   device            Device                   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  metricSamples     InterfaceMetricSample[]
   sourceLinks       Link[]                   @relation("LinkSourceInterface")
   targetLinks       Link[]                   @relation("LinkTargetInterface")
   sourceMappings    InterfaceSourceMapping[]
@@ -246,6 +248,37 @@ model Interface {
   updatedAt         DateTime                 @updatedAt
 
   @@unique([deviceId, ifIndex])
+}
+
+model DeviceMetricSample {
+  id            BigInt   @id @default(autoincrement())
+  deviceId      String
+  timestamp     DateTime @default(now())
+  uptimeSeconds BigInt?
+  sysName       String?
+  sysDescr      String?
+  sysObjectId   String?
+  device        Device   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId, timestamp])
+}
+
+model InterfaceMetricSample {
+  id          BigInt          @id @default(autoincrement())
+  interfaceId String
+  timestamp   DateTime        @default(now())
+  inOctets    BigInt
+  outOctets   BigInt
+  rxBps       Float
+  txBps       Float
+  inErrors    BigInt          @default(0)
+  outErrors   BigInt          @default(0)
+  inDiscards  BigInt          @default(0)
+  outDiscards BigInt          @default(0)
+  operStatus  InterfaceStatus @default(UNKNOWN)
+  interface   Interface       @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
+
+  @@index([interfaceId, timestamp])
 }
 
 model Link {

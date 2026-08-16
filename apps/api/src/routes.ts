@@ -7,9 +7,12 @@ import { config } from './config';
 import { registerHostRoutes } from './host-routes';
 import { DemoMetricAdapter } from './infrastructure/metrics/demo-adapter';
 import { ZabbixAdapter } from './infrastructure/metrics/zabbix-adapter';
+import { DemoHostRepositoryAdapter } from './infrastructure/persistence/demo-host-repository-adapter';
 import { DemoMapRepository } from './infrastructure/persistence/demo-map-repository';
-import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-adapter';
+import { createPrismaHostRepository, PrismaHostRepository } from './infrastructure/persistence/prisma-host-repository';
+import { SnmpPoller } from './infrastructure/snmp/snmp-poller';
 import { SnmpService } from './infrastructure/snmp/snmp-service';
+import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-adapter';
 
 const mapIdParams = z.object({ mapId: z.string().min(1) });
 const nodeParams = z.object({ mapId: z.string().min(1), nodeId: z.string().min(1) });
@@ -37,15 +40,13 @@ const mapSettingsSchema = z.object({
   nodeDisplayMode: z.enum(['ICON_2D', 'ICON_3D', 'CARD']).optional(),
   linkDisplayStyle: z.enum(['FLOW', 'WEATHERMAP', 'HYBRID', 'MINIMAL']).optional(),
   linkMetricDisplay: z.enum(['THROUGHPUT', 'UTILIZATION', 'BOTH', 'NONE']).optional(),
-  filters: z
-    .object({
-      showTraffic: z.boolean().optional(),
-      showUtilization: z.boolean().optional(),
-      showLabels: z.boolean().optional(),
-      showOffline: z.boolean().optional(),
-      showInterfaces: z.boolean().optional(),
-    })
-    .optional(),
+  filters: z.object({
+    showTraffic: z.boolean().optional(),
+    showUtilization: z.boolean().optional(),
+    showLabels: z.boolean().optional(),
+    showOffline: z.boolean().optional(),
+    showInterfaces: z.boolean().optional(),
+  }).optional(),
   viewport: z.object({ x: z.number(), y: z.number(), zoom: z.number().positive() }).optional(),
   nodeScale: z.number().min(50).max(200).optional(),
   linkScale: z.number().min(50).max(200).optional(),
@@ -71,20 +72,7 @@ const deviceSchema = z.object({
   vendor: z.string().max(80),
   model: z.string().max(80),
   site: z.string().max(80),
-  deviceType: z.enum([
-    'core',
-    'router',
-    'switch',
-    'aggregation',
-    'edge',
-    'olt',
-    'firewall',
-    'server',
-    'internet',
-    'ix',
-    'customers',
-    'generic',
-  ]),
+  deviceType: z.enum(['core', 'router', 'switch', 'aggregation', 'edge', 'olt', 'firewall', 'server', 'internet', 'ix', 'customers', 'generic']),
   position: z.object({ x: z.number(), y: z.number() }),
 });
 
@@ -93,23 +81,40 @@ interface RouteRegistrationOptions {
 }
 
 export function registerRoutes(app: FastifyInstance, options: RouteRegistrationOptions = {}): void {
-  const credentialEncryptionKey =
-    options.credentialEncryptionKey === undefined
-      ? config.CREDENTIAL_ENCRYPTION_KEY
-      : options.credentialEncryptionKey;
+  const credentialEncryptionKey = options.credentialEncryptionKey === undefined
+    ? config.CREDENTIAL_ENCRYPTION_KEY
+    : options.credentialEncryptionKey;
   const vault = credentialEncryptionKey ? new CredentialVault(credentialEncryptionKey) : null;
+
+  // Maps remain on the legacy repository for now. Host inventory, credentials, interfaces and
+  // SNMP history use PostgreSQL whenever DEMO_MODE=false.
   const maps = new DemoMapRepository(vault);
+  const hosts = config.DEMO_MODE
+    ? new DemoHostRepositoryAdapter(maps)
+    : createPrismaHostRepository(vault);
   const metrics = new DemoMetricAdapter();
   const discovery = new DiscoveryService([new DemoTopologyAdapter()]);
-  const snmp = new SnmpService(maps);
-  const zabbix =
-    config.ZABBIX_URL && config.ZABBIX_TOKEN
-      ? new ZabbixAdapter(config.ZABBIX_URL, config.ZABBIX_TOKEN, config.ZABBIX_AUTH_MODE)
-      : null;
+  const snmp = new SnmpService(hosts);
+  const poller = new SnmpPoller(hosts, snmp, config.SNMP_POLL_INTERVAL_SECONDS * 1000);
+  const zabbix = config.ZABBIX_URL && config.ZABBIX_TOKEN
+    ? new ZabbixAdapter(config.ZABBIX_URL, config.ZABBIX_TOKEN, config.ZABBIX_AUTH_MODE)
+    : null;
 
-  registerHostRoutes(app, { maps, discovery, snmp, zabbix });
+  registerHostRoutes(app, { maps, hosts, discovery, snmp, zabbix });
 
-  app.get('/health', async () => ({ status: 'ok', demoMode: config.DEMO_MODE }));
+  app.addHook('onReady', async () => {
+    if (!config.DEMO_MODE && config.SNMP_POLLING_ENABLED) poller.start();
+  });
+  app.addHook('onClose', async () => {
+    poller.stop();
+    if (hosts instanceof PrismaHostRepository) await hosts.disconnect();
+  });
+
+  app.get('/health', async () => ({
+    status: 'ok',
+    demoMode: config.DEMO_MODE,
+    snmpPolling: !config.DEMO_MODE && config.SNMP_POLLING_ENABLED,
+  }));
 
   app.get('/api/maps', async () => maps.listMaps());
 
@@ -133,17 +138,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     const { mapId } = mapIdParams.parse(request.params);
     const source = maps.getMap(mapId);
     if (!source) return reply.code(404).send({ message: 'Map not found' });
-    const body = z
-      .object({ name: z.string().min(1).max(80), description: z.string().max(500).optional() })
-      .parse(request.body);
-    return reply.code(201).send(
-      maps.createMap({
-        name: body.name,
-        description: body.description ?? source.description,
-        mode: source.mode,
-        sourceMapId: mapId,
-      }),
-    );
+    const body = z.object({ name: z.string().min(1).max(80), description: z.string().max(500).optional() }).parse(request.body);
+    return reply.code(201).send(maps.createMap({
+      name: body.name,
+      description: body.description ?? source.description,
+      mode: source.mode,
+      sourceMapId: mapId,
+    }));
   });
 
   app.delete('/api/maps/:mapId', async (request, reply) => {
@@ -156,15 +157,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   app.get('/api/playlists', async () => maps.listPlaylists());
 
   app.post('/api/playlists', async (request, reply) => {
-    const body = z
-      .object({
-        id: z.string().optional(),
-        name: z.string().min(1).max(80),
-        rotationIntervalSeconds: z.number().int().min(5).max(86_400),
-        mapIds: z.array(z.string()).min(1),
-        isDefault: z.boolean().default(false),
-      })
-      .parse(request.body);
+    const body = z.object({
+      id: z.string().optional(),
+      name: z.string().min(1).max(80),
+      rotationIntervalSeconds: z.number().int().min(5).max(86_400),
+      mapIds: z.array(z.string()).min(1),
+      isDefault: z.boolean().default(false),
+    }).parse(request.body);
     const playlistInput = {
       ...(body.id ? { id: body.id } : {}),
       name: body.name,
@@ -184,14 +183,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   app.put('/api/maps/:mapId/nodes/positions', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
     const body = z.object({ nodes: z.array(positionSchema).min(1) }).parse(request.body);
-    const map = maps.updatePositions(
-      mapId,
-      body.nodes.map((node) => ({
-        nodeId: node.nodeId,
-        position: node.position,
-        ...(node.locked === undefined ? {} : { locked: node.locked }),
-      })),
-    );
+    const map = maps.updatePositions(mapId, body.nodes.map((node) => ({
+      nodeId: node.nodeId,
+      position: node.position,
+      ...(node.locked === undefined ? {} : { locked: node.locked }),
+    })));
     return map ?? reply.code(404).send({ message: 'Map not found' });
   });
 
@@ -210,17 +206,15 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   app.patch('/api/maps/:mapId/links/:linkId', async (request, reply) => {
     const { mapId, linkId } = linkParams.parse(request.params);
-    const body = linkSchema
-      .pick({
-        capacityBps: true,
-        autoCapacityBps: true,
-        capacitySource: true,
-        label: true,
-        metricSource: true,
-        visualStyle: true,
-        metricDisplay: true,
-      })
-      .parse(request.body);
+    const body = linkSchema.pick({
+      capacityBps: true,
+      autoCapacityBps: true,
+      capacitySource: true,
+      label: true,
+      metricSource: true,
+      visualStyle: true,
+      metricDisplay: true,
+    }).parse(request.body);
     const link = maps.updateLink(mapId, linkId, body);
     return link ?? reply.code(404).send({ message: 'Link not found' });
   });
@@ -235,9 +229,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   app.post('/api/maps/:mapId/devices', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
     const result = maps.addDevice(mapId, deviceSchema.parse(request.body));
-    return result
-      ? reply.code(201).send(result)
-      : reply.code(404).send({ message: 'Map not found' });
+    return result ? reply.code(201).send(result) : reply.code(404).send({ message: 'Map not found' });
   });
 
   app.post('/api/maps/:mapId/nodes', async (request, reply) => {
@@ -245,13 +237,14 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     const body = z.object({ deviceIds: z.array(z.string().min(1)).min(1) }).parse(request.body);
     const map = maps.getMap(mapId);
     if (!map) return reply.code(404).send({ message: 'Map not found' });
-
     const created = maps.addHostsToMap(mapId, body.deviceIds, {
       x: 520 + (map.nodes.length % 6) * 80,
       y: 360 + (map.nodes.length % 4) * 70,
     });
-
-    return reply.code(201).send({ created, skipped: body.deviceIds.filter((deviceId) => map.nodes.some((node) => node.deviceId === deviceId)) });
+    return reply.code(201).send({
+      created,
+      skipped: body.deviceIds.filter((deviceId) => map.nodes.some((node) => node.deviceId === deviceId)),
+    });
   });
 
   app.delete('/api/maps/:mapId/devices/:deviceId', async (request, reply) => {
@@ -263,27 +256,24 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   app.get('/api/interfaces/:interfaceId/history', async (request, reply) => {
     const { interfaceId } = z.object({ interfaceId: z.string() }).parse(request.params);
-    const { period } = z
-      .object({ period: z.enum(['15m', '1h', '6h', '24h', '7d']).default('1h') })
-      .parse(request.query);
+    const { period } = z.object({ period: z.enum(['15m', '1h', '6h', '24h', '7d']).default('1h') }).parse(request.query);
     if (zabbix && interfaceId.startsWith('zabbix-interface-')) {
-      try {
-        return await zabbix.getHistory(interfaceId, period as HistoryPeriod);
-      } catch {
-        return reply.code(502).send({ message: 'Falha segura ao consultar histórico no Zabbix' });
-      }
+      try { return await zabbix.getHistory(interfaceId, period as HistoryPeriod); }
+      catch { return reply.code(502).send({ message: 'Falha segura ao consultar histórico no Zabbix' }); }
     }
+    if (!config.DEMO_MODE) return hosts.getInterfaceHistory(interfaceId, period as HistoryPeriod);
     return metrics.getHistory(interfaceId, period as HistoryPeriod);
   });
 
   app.get('/api/interfaces/:interfaceId/metrics', async (request, reply) => {
     const { interfaceId } = z.object({ interfaceId: z.string() }).parse(request.params);
     if (zabbix && interfaceId.startsWith('zabbix-interface-')) {
-      try {
-        return await zabbix.getMetrics(interfaceId);
-      } catch {
-        return reply.code(502).send({ message: 'Falha segura ao consultar métricas no Zabbix' });
-      }
+      try { return await zabbix.getMetrics(interfaceId); }
+      catch { return reply.code(502).send({ message: 'Falha segura ao consultar métricas no Zabbix' }); }
+    }
+    if (!config.DEMO_MODE) {
+      const current = await hosts.getInterfaceMetrics(interfaceId);
+      return current ?? reply.code(404).send({ message: 'Ainda não há amostras SNMP para esta interface' });
     }
     return reply.code(409).send({ message: 'Interface sem fonte de métricas em tempo real' });
   });
@@ -297,9 +287,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
 
   app.get('/api/integrations/zabbix/status', async (_request, reply) => {
-    if (!config.ZABBIX_URL || !config.ZABBIX_TOKEN) {
-      return { configured: false, status: 'not_configured' };
-    }
+    if (!config.ZABBIX_URL || !config.ZABBIX_TOKEN) return { configured: false, status: 'not_configured' };
     try {
       const result = await zabbix!.healthcheck();
       return { configured: true, status: 'connected', ...result };
@@ -313,9 +301,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
 
   app.get('/api/integrations/zabbix/hosts', async (_request, reply) => {
-    if (!config.ZABBIX_URL || !config.ZABBIX_TOKEN) {
-      return reply.code(409).send({ message: 'Zabbix is not configured' });
-    }
+    if (!config.ZABBIX_URL || !config.ZABBIX_TOKEN) return reply.code(409).send({ message: 'Zabbix is not configured' });
     return zabbix!.getDevices();
   });
 }
