@@ -49,6 +49,7 @@ export class SnmpService {
         ['1.3.6.1.2.1.1.1.0'], // sysDescr
         {
           community,
+          version: 'v2c',
           port: device.snmp.port,
         },
       );
@@ -156,10 +157,12 @@ export class SnmpService {
       const [hcInOctets, hcOutOctets] = await Promise.all([
         this.client.walk(device.snmp.host, '1.3.6.1.2.1.31.1.1.1.6', {
           community,
+          version: 'v2c',
           port: device.snmp.port,
         }),
         this.client.walk(device.snmp.host, '1.3.6.1.2.1.31.1.1.1.10', {
           community,
+          version: 'v2c',
           port: device.snmp.port,
         }),
       ]);

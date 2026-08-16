@@ -31,18 +31,24 @@ export class SnmpClientImpl implements SnmpClient {
     options?: { community?: string; version?: 'v2c' | 'v3'; port?: number },
   ): Promise<SnmpVarBind[]> {
     return new Promise((resolve, reject) => {
+      if (options?.version === 'v3') {
+        reject(new Error('SNMPv3 is not implemented by SnmpClientImpl'));
+        return;
+      }
+
       const community = options?.community ?? 'public';
       const port = options?.port ?? 161;
       const session = snmp.createSession(host, community, {
         port,
         timeout: this.timeout,
         retries: this.retries,
+        version: snmp.Version2c,
       });
 
       session.get(oids, (error: Error | null, varbinds: snmp.VarBind[]) => {
         session.close();
         if (error) {
-          reject(this.normalizeError(error, host));
+          reject(this.normalizeError(error, host, port));
           return;
         }
         const result: SnmpVarBind[] = varbinds
@@ -69,19 +75,25 @@ export class SnmpClientImpl implements SnmpClient {
     options?: { community?: string; version?: 'v2c' | 'v3'; port?: number },
   ): Promise<SnmpVarBind[]> {
     return new Promise((resolve, reject) => {
+      if (options?.version === 'v3') {
+        reject(new Error('SNMPv3 is not implemented by SnmpClientImpl'));
+        return;
+      }
+
       const community = options?.community ?? 'public';
       const port = options?.port ?? 161;
       const session = snmp.createSession(host, community, {
         port,
         timeout: this.timeout,
         retries: this.retries,
+        version: snmp.Version2c,
       });
 
       const result: SnmpVarBind[] = [];
       const doneCb = (error?: Error) => {
         session.close();
         if (error) {
-          reject(this.normalizeError(error, host));
+          reject(this.normalizeError(error, host, port));
           return;
         }
         resolve(result);
@@ -120,6 +132,7 @@ export class SnmpClientImpl implements SnmpClient {
         port,
         timeout: 3000,
         retries: 1,
+        version: snmp.Version2c,
       });
 
       session.get(['1.3.6.1.2.1.1.1.0'], (error: Error | null) => {
@@ -148,11 +161,11 @@ export class SnmpClientImpl implements SnmpClient {
    * Normalize errors to user-safe messages.
    * Never expose community or auth details.
    */
-  private normalizeError(error: Error, host: string): Error {
+  private normalizeError(error: Error, host: string, port: number): Error {
     const message = error.message?.toLowerCase() ?? '';
 
     if (message.includes('timeout')) {
-      return new Error(`SNMP timeout connecting to ${host}:161`);
+      return new Error(`SNMP timeout connecting to ${host}:${port}`);
     }
     if (message.includes('econnrefused') || message.includes('unreachable')) {
       return new Error(`Host ${host} is unreachable`);

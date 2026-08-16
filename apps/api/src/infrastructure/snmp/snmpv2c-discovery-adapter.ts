@@ -110,7 +110,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
       const values = await this.client.get(
         host,
         [SYSTEM_OIDS.sysName, SYSTEM_OIDS.sysDescription],
-        { community, port: 161 },
+        { community, version: 'v2c', port: 161 },
       );
 
       const byOid = new Map(values.map((v) => [v.oid, v.value]));
@@ -157,38 +157,47 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
       ] = await Promise.all([
         this.client.walk(hostRecord.snmp.host, IF_MIB_OIDS.ifIndex, {
           community: snmpCommunity,
+          version: 'v2c',
           port: hostRecord.snmp.port,
         }),
         this.client.walk(hostRecord.snmp.host, IF_MIB_OIDS.ifDescr, {
           community: snmpCommunity,
+          version: 'v2c',
           port: hostRecord.snmp.port,
         }),
         this.client.walk(hostRecord.snmp.host, IF_MIB_OIDS.ifSpeed, {
           community: snmpCommunity,
+          version: 'v2c',
           port: hostRecord.snmp.port,
         }),
         this.client.walk(hostRecord.snmp.host, IF_MIB_OIDS.ifPhysAddress, {
           community: snmpCommunity,
+          version: 'v2c',
           port: hostRecord.snmp.port,
         }),
         this.client.walk(hostRecord.snmp.host, IF_MIB_OIDS.ifAdminStatus, {
           community: snmpCommunity,
+          version: 'v2c',
           port: hostRecord.snmp.port,
         }),
         this.client.walk(hostRecord.snmp.host, IF_MIB_OIDS.ifOperStatus, {
           community: snmpCommunity,
+          version: 'v2c',
           port: hostRecord.snmp.port,
         }),
         this.client.walk(hostRecord.snmp.host, IF_MIB_OIDS.ifName, {
           community: snmpCommunity,
+          version: 'v2c',
           port: hostRecord.snmp.port,
         }),
         this.client.walk(hostRecord.snmp.host, IF_MIB_OIDS.ifHighSpeed, {
           community: snmpCommunity,
+          version: 'v2c',
           port: hostRecord.snmp.port,
         }),
         this.client.walk(hostRecord.snmp.host, IF_MIB_OIDS.ifAlias, {
           community: snmpCommunity,
+          version: 'v2c',
           port: hostRecord.snmp.port,
         }),
       ]);

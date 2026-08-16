@@ -16,6 +16,7 @@ declare module 'net-snmp' {
     port?: number;
     timeout?: number;
     retries?: number;
+    version?: number;
   }
 
   export function createSession(
@@ -23,6 +24,9 @@ declare module 'net-snmp' {
     community: string,
     options?: SessionOptions,
   ): Session;
+
+  export const Version1: number;
+  export const Version2c: number;
 
   export function isVarbindError(varbind: VarBind): boolean;
 }
