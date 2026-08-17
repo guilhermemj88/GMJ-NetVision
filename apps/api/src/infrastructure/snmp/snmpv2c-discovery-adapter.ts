@@ -26,14 +26,25 @@ const SYSTEM_OIDS = {
   sysDescription: '1.3.6.1.2.1.1.1.0',
 } as const;
 
+type VarBind = { oid: string; value: string | number | Uint8Array };
+
 function getOidSuffix(oid: string, base: string): string {
   return oid.substring(base.length).replace(/^\./, '');
+}
+
+function textValue(value: string | number | Uint8Array | undefined): string {
+  if (value === undefined) return '';
+  if (value instanceof Uint8Array) {
+    return Buffer.from(value).toString('utf8').replace(/\0+$/g, '').trim();
+  }
+  return String(value).replace(/\0+$/g, '').trim();
 }
 
 function normalizeStatus(value: unknown): 'UP' | 'DOWN' {
   let num = 0;
   if (typeof value === 'string') num = parseInt(value, 10);
   else if (typeof value === 'number') num = value;
+  else if (value instanceof Uint8Array) num = parseInt(textValue(value), 10);
   return num === 1 ? 'UP' : 'DOWN';
 }
 
@@ -49,6 +60,7 @@ function parseSpeed(value: unknown): number {
   let num = 0;
   if (typeof value === 'string') num = parseInt(value, 10);
   else if (typeof value === 'number') num = value;
+  else if (value instanceof Uint8Array) num = parseInt(textValue(value), 10);
   return Math.max(0, num || 0);
 }
 
@@ -57,7 +69,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
   private readonly client: SnmpClientImpl;
 
   constructor(private readonly repository: HostRepository) {
-    this.client = new SnmpClientImpl(5000, 2);
+    this.client = new SnmpClientImpl(3000, 1);
   }
 
   async discoverDevice(host: string): Promise<DeviceIdentity> {
@@ -72,8 +84,8 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
         { community, version: 'v2c', port: 161 },
       );
       const byOid = new Map(values.map((value) => [value.oid, value.value]));
-      const hostname = String(byOid.get(SYSTEM_OIDS.sysName) ?? '').trim();
-      const systemDescription = String(byOid.get(SYSTEM_OIDS.sysDescription) ?? '').trim();
+      const hostname = textValue(byOid.get(SYSTEM_OIDS.sysName));
+      const systemDescription = textValue(byOid.get(SYSTEM_OIDS.sysDescription));
       return {
         ...(hostname ? { hostname } : {}),
         managementAddress: host,
@@ -94,18 +106,22 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     if (!snmpCommunity) return [];
 
     try {
-      const [indices, descrs, speeds, physAddrs, adminStates, operStates, names, highSpeeds, aliases] =
-        await Promise.all([
-          this.walk(hostRecord, IF_MIB_OIDS.ifIndex, snmpCommunity),
-          this.walk(hostRecord, IF_MIB_OIDS.ifDescr, snmpCommunity),
-          this.walk(hostRecord, IF_MIB_OIDS.ifSpeed, snmpCommunity),
-          this.walk(hostRecord, IF_MIB_OIDS.ifPhysAddress, snmpCommunity),
-          this.walk(hostRecord, IF_MIB_OIDS.ifAdminStatus, snmpCommunity),
-          this.walk(hostRecord, IF_MIB_OIDS.ifOperStatus, snmpCommunity),
-          this.walk(hostRecord, IF_MIB_OIDS.ifName, snmpCommunity),
-          this.walk(hostRecord, IF_MIB_OIDS.ifHighSpeed, snmpCommunity),
-          this.walk(hostRecord, IF_MIB_OIDS.ifAlias, snmpCommunity),
-        ]);
+      // Discover the minimum identity set first. These walks are deliberately
+      // sequential to avoid hammering devices that are sensitive to parallel SNMP.
+      const indices = await this.walk(hostRecord, IF_MIB_OIDS.ifIndex, snmpCommunity);
+      if (!indices.length) return [];
+
+      const names = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifName, snmpCommunity);
+      const descrs = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifDescr, snmpCommunity);
+
+      // Enrichment is optional. A missing/unsupported MIB column must not make
+      // the entire interface discovery fail after ifIndex was already obtained.
+      const adminStates = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifAdminStatus, snmpCommunity);
+      const operStates = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifOperStatus, snmpCommunity);
+      const highSpeeds = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifHighSpeed, snmpCommunity);
+      const speeds = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifSpeed, snmpCommunity);
+      const aliases = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifAlias, snmpCommunity);
+      const physAddrs = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifPhysAddress, snmpCommunity);
 
       const descByIndex = this.indexMap(descrs, IF_MIB_OIDS.ifDescr);
       const speedByIndex = this.indexMap(speeds, IF_MIB_OIDS.ifSpeed);
@@ -116,12 +132,14 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
       const highSpeedByIndex = this.indexMap(highSpeeds, IF_MIB_OIDS.ifHighSpeed);
       const aliasByIndex = this.indexMap(aliases, IF_MIB_OIDS.ifAlias);
 
-      return indices.map((indexVb) => {
-        const ifIndex = parseInt(String(indexVb.value), 10);
+      return indices.flatMap((indexVb) => {
+        const ifIndex = parseInt(textValue(indexVb.value), 10);
+        if (!Number.isInteger(ifIndex) || ifIndex <= 0) return [];
         const suffix = String(ifIndex);
-        const description = String(descByIndex.get(suffix) ?? '');
-        const name = String(nameByIndex.get(suffix) ?? description ?? `if${ifIndex}`);
-        const alias = String(aliasByIndex.get(suffix) ?? '');
+        const description = textValue(descByIndex.get(suffix));
+        const discoveredName = textValue(nameByIndex.get(suffix));
+        const name = discoveredName || description || `if${ifIndex}`;
+        const alias = textValue(aliasByIndex.get(suffix));
         const mac = formatMac(macByIndex.get(suffix) ?? '');
         const adminStatus = normalizeStatus(adminByIndex.get(suffix) ?? '2');
         const operStatus = normalizeStatus(operByIndex.get(suffix) ?? '2');
@@ -130,7 +148,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
           ? parseSpeed(highSpeed) * 1_000_000
           : parseSpeed(speedByIndex.get(suffix) ?? 0);
 
-        return {
+        return [{
           id: createLocalId('interface'),
           deviceId: device.id,
           name,
@@ -151,7 +169,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
           rxDiscards: 0,
           txDiscards: 0,
           dataSources: ['SNMP'],
-        } satisfies NetworkInterface;
+        } satisfies NetworkInterface];
       });
     } catch (error) {
       throw new Error(
@@ -164,7 +182,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     return [];
   }
 
-  private walk(host: HostRecord, oid: string, community: string) {
+  private walk(host: HostRecord, oid: string, community: string): Promise<VarBind[]> {
     return this.client.walk(host.snmp!.host, oid, {
       community,
       version: 'v2c',
@@ -172,10 +190,15 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     });
   }
 
-  private indexMap(
-    varbinds: Array<{ oid: string; value: string | number | Uint8Array }>,
-    baseOid: string,
-  ): Map<string, string | number | Uint8Array> {
+  private async safeWalk(host: HostRecord, oid: string, community: string): Promise<VarBind[]> {
+    try {
+      return await this.walk(host, oid, community);
+    } catch {
+      return [];
+    }
+  }
+
+  private indexMap(varbinds: VarBind[], baseOid: string): Map<string, string | number | Uint8Array> {
     const map = new Map<string, string | number | Uint8Array>();
     for (const varbind of varbinds) {
       const suffix = getOidSuffix(varbind.oid, baseOid);

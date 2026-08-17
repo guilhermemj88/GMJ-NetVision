@@ -1,12 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type {
+  AddDeviceResult,
   ConnectionTestResult,
   CreateHostInput,
   DiscoveryApplySelection,
   HostOrigin,
   HostRecord,
   NetworkInterface,
+  Position,
   SourceKind,
   UpdateHostInput,
   ZabbixHostCandidate,
@@ -39,6 +41,10 @@ const createHostSchema = z.object({ ...basicHostFields, zabbix: zabbixInput, ssh
 const updateHostSchema = z.object({
   hostname: basicHostFields.hostname.optional(), displayName: basicHostFields.displayName.optional(), managementIp: basicHostFields.managementIp.optional(), vendor: basicHostFields.vendor.optional(), model: basicHostFields.model.optional(), deviceType: basicHostFields.deviceType.optional(), site: basicHostFields.site.optional(), description: basicHostFields.description.optional(), notes: basicHostFields.notes.optional(), origin: basicHostFields.origin.optional(), zabbix: zabbixInput.optional(), ssh: sshInput.optional(), snmp: snmpInput.optional(),
 });
+
+interface MapMembershipRepository {
+  addHostToMap(hostId: string, mapId: string, position: Position): AddDeviceResult | null | Promise<AddDeviceResult | null>;
+}
 
 function safeConnectionResult(source: SourceKind, state: ConnectionTestResult['state'], message: string, version?: string): ConnectionTestResult {
   return { source, state, message, checkedAt: new Date().toISOString(), ...(version ? { version } : {}) };
@@ -99,14 +105,15 @@ function importInput(record: HostRecord): CreateHostInput {
 export function registerHostRoutes(
   app: FastifyInstance,
   dependencies: {
-    maps: DemoMapRepository;
+    legacyMaps: DemoMapRepository;
+    mapMembership: MapMembershipRepository;
     hosts: HostRepository;
     discovery: DiscoveryService;
     snmp: SnmpService;
     zabbix: ZabbixAdapter | null;
   },
 ): void {
-  const { maps, hosts, discovery, snmp, zabbix } = dependencies;
+  const { legacyMaps, mapMembership, hosts, discovery, snmp, zabbix } = dependencies;
 
   app.get('/api/hosts', async (request) => {
     const query = z.object({
@@ -117,8 +124,8 @@ export function registerHostRoutes(
 
   app.post('/api/hosts/import/zabbix/preview', async (_request, reply) => {
     try {
-      const data = await zabbixCandidates(maps, zabbix);
-      return maps.storeZabbixPreview(data.candidates, data.version, data.demoMode);
+      const data = await zabbixCandidates(legacyMaps, zabbix);
+      return legacyMaps.storeZabbixPreview(data.candidates, data.version, data.demoMode);
     } catch {
       return reply.code(502).send({ message: 'Falha segura ao consultar o Zabbix' });
     }
@@ -130,7 +137,7 @@ export function registerHostRoutes(
     if (zabbix) {
       await Promise.all(body.hostIds.map(async (hostId) => interfaces.set(hostId, await zabbix.getInterfaces(hostId))));
     }
-    const result = maps.importZabbixHosts(body.previewId, body.hostIds, interfaces);
+    const result = legacyMaps.importZabbixHosts(body.previewId, body.hostIds, interfaces);
     if (!result) return reply.code(404).send({ message: 'Preview expirado ou inexistente' });
     const imported = [];
     for (const record of result.imported) imported.push(await hosts.createHost(importInput(record), record.interfaces));
@@ -202,8 +209,8 @@ export function registerHostRoutes(
   app.post('/api/hosts/:hostId/maps', async (request, reply) => {
     const { hostId } = hostIdParams.parse(request.params);
     const body = z.object({ mapId: z.string().min(1), position: z.object({ x: z.number().finite(), y: z.number().finite() }) }).parse(request.body);
-    const result = maps.addHostToMap(hostId, body.mapId, body.position);
-    return result ? reply.code(201).send(result) : reply.code(409).send({ message: 'Host persistido, mas ainda não está sincronizado com o repositório legado de mapas' });
+    const result = await mapMembership.addHostToMap(hostId, body.mapId, body.position);
+    return result ? reply.code(201).send(result) : reply.code(404).send({ message: 'Host ou mapa não encontrado' });
   });
 
   app.post('/api/hosts/:hostId/test/:source', async (request, reply) => {
@@ -238,20 +245,22 @@ export function registerHostRoutes(
     const inventory = await hosts.listHosts();
     const review = await discovery.discover(host, inventory);
     let candidates: ZabbixHostCandidate[] = [];
-    try { candidates = (await zabbixCandidates(maps, zabbix)).candidates; }
+    try { candidates = (await zabbixCandidates(legacyMaps, zabbix)).candidates; }
     catch { review.warnings.push('ZABBIX: correlação indisponível; discovery LLDP preservado'); }
-    const preview = maps.createDiscoveryPreview(hostId, mapId, review, candidates);
-    return preview ?? reply.code(409).send({ message: 'Discovery de mapa ainda depende do repositório legado de mapas' });
+    if (!config.DEMO_MODE) return reply.code(501).send({ message: 'Aplicação automática de discovery ao mapa persistido ainda não está habilitada' });
+    const preview = legacyMaps.createDiscoveryPreview(hostId, mapId, review, candidates);
+    return preview ?? reply.code(409).send({ message: 'Não foi possível preparar o discovery deste mapa' });
   });
 
   app.post('/api/hosts/:hostId/discovery/apply', async (request, reply) => {
     hostIdParams.parse(request.params);
+    if (!config.DEMO_MODE) return reply.code(501).send({ message: 'Aplicação automática de discovery ao mapa persistido ainda não está habilitada' });
     const body = z.object({
       previewId: z.string().min(1),
       selections: z.array(z.object({ neighborId: z.string().min(1), action: z.enum(['ADD', 'ADD_UNMONITORED', 'LINK_ONLY', 'IGNORE']), selectedDeviceId: z.string().optional() })).min(1),
     }).parse(request.body);
     const selections = body.selections.map((selection) => ({ neighborId: selection.neighborId, action: selection.action, ...(selection.selectedDeviceId ? { selectedDeviceId: selection.selectedDeviceId } : {}) })) satisfies DiscoveryApplySelection[];
-    const result = maps.applyDiscovery(body.previewId, selections);
+    const result = legacyMaps.applyDiscovery(body.previewId, selections);
     return result ?? reply.code(404).send({ message: 'Preview expirado ou inexistente' });
   });
 }

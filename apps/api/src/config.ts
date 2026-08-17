@@ -18,4 +18,16 @@ const envSchema = z.object({
   SNMP_POLL_INTERVAL_SECONDS: z.coerce.number().int().min(15).default(60),
 });
 
-export const config = envSchema.parse(process.env);
+const parsed = envSchema.parse(process.env);
+const isTest = process.env.NODE_ENV === 'test';
+
+// Tests must not inherit production integration settings from the host running
+// the suite. Keeping them in demo mode prevents accidental PostgreSQL, SNMP or
+// Zabbix access and makes the API tests deterministic on deployment servers.
+export const config = {
+  ...parsed,
+  DEMO_MODE: isTest ? true : parsed.DEMO_MODE,
+  SNMP_POLLING_ENABLED: isTest ? false : parsed.SNMP_POLLING_ENABLED,
+  ZABBIX_URL: isTest ? undefined : parsed.ZABBIX_URL,
+  ZABBIX_TOKEN: isTest ? undefined : parsed.ZABBIX_TOKEN,
+};

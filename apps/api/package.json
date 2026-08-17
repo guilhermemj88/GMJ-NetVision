@@ -7,7 +7,7 @@
     "dev": "tsx watch src/server.ts",
     "prebuild": "prisma generate",
     "build": "tsup",
-    "start": "node dist/server.js",
+    "start": "node dist/server.cjs",
     "pretypecheck": "prisma generate",
     "typecheck": "tsc --noEmit",
     "pretest": "prisma generate",

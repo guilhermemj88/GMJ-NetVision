@@ -18,13 +18,6 @@ export class SnmpClientImpl implements SnmpClient {
     this.retries = retries;
   }
 
-  /**
-   * Perform SNMP GET on specified OIDs.
-   * @param host Target host/IP
-   * @param oids OIDs to retrieve
-   * @param options SNMP options (community for v2c, auth for v3, port)
-   * @returns Array of OID/value pairs
-   */
   async get(
     host: string,
     oids: string[],
@@ -62,13 +55,6 @@ export class SnmpClientImpl implements SnmpClient {
     });
   }
 
-  /**
-   * Perform SNMP WALK on OID subtree.
-   * @param host Target host/IP
-   * @param oid Root OID to walk
-   * @param options SNMP options (community for v2c, auth for v3, port)
-   * @returns Array of all OID/value pairs in subtree
-   */
   async walk(
     host: string,
     oid: string,
@@ -90,7 +76,14 @@ export class SnmpClientImpl implements SnmpClient {
       });
 
       const result: SnmpVarBind[] = [];
+      const seenOids = new Set<string>();
+      const subtreePrefix = `${oid}.`;
+      const maxVarbinds = 4096;
+      let finished = false;
+
       const doneCb = (error?: Error) => {
+        if (finished) return;
+        finished = true;
         session.close();
         if (error) {
           reject(this.normalizeError(error, host, port));
@@ -100,13 +93,34 @@ export class SnmpClientImpl implements SnmpClient {
       };
 
       const feedCb = (varbinds: snmp.VarBind | snmp.VarBind[]) => {
+        if (finished) return;
         const binds = Array.isArray(varbinds) ? varbinds : [varbinds];
         for (const vb of binds) {
-          if (!snmp.isVarbindError(vb)) {
-            result.push({
-              oid: vb.oid,
-              value: this.normalizeValue(vb.value),
-            });
+          if (finished) return;
+          if (snmp.isVarbindError(vb)) continue;
+
+          // Some agents incorrectly continue a walk outside the requested
+          // subtree. Stop locally instead of accepting unrelated OIDs forever.
+          if (!vb.oid.startsWith(subtreePrefix)) {
+            doneCb();
+            return;
+          }
+
+          // Protect against buggy agents returning the same OID repeatedly.
+          if (seenOids.has(vb.oid)) {
+            doneCb(new Error('SNMP walk repeated OID'));
+            return;
+          }
+          seenOids.add(vb.oid);
+
+          result.push({
+            oid: vb.oid,
+            value: this.normalizeValue(vb.value),
+          });
+
+          if (result.length >= maxVarbinds) {
+            doneCb(new Error(`SNMP walk exceeded safety limit of ${maxVarbinds} values`));
+            return;
           }
         }
       };
@@ -115,13 +129,6 @@ export class SnmpClientImpl implements SnmpClient {
     });
   }
 
-  /**
-   * Test SNMP connectivity by performing a simple GET.
-   * @param host Target host/IP
-   * @param port SNMP port (default 161)
-   * @param community SNMP community (default 'public')
-   * @returns true if reachable, false otherwise
-   */
   async testConnectivity(
     host: string,
     port: number = 161,
@@ -142,53 +149,34 @@ export class SnmpClientImpl implements SnmpClient {
     });
   }
 
-  /**
-   * Normalize SNMP value for external use.
-   * Converts snmp.js internal types to serializable values.
-   */
   private normalizeValue(value: unknown): string | number | Uint8Array {
-    if (value instanceof Buffer) {
-      return new Uint8Array(value);
-    }
-    if (typeof value === 'number' || typeof value === 'string') {
-      return value;
-    }
-    // Convert other types to string representation
+    if (value instanceof Buffer) return new Uint8Array(value);
+    if (typeof value === 'number' || typeof value === 'string') return value;
     return String(value ?? '');
   }
 
-  /**
-   * Normalize errors to user-safe messages.
-   * Never expose community or auth details.
-   */
   private normalizeError(error: Error, host: string, port: number): Error {
     const message = error.message?.toLowerCase() ?? '';
-
-    if (message.includes('timeout')) {
-      return new Error(`SNMP timeout connecting to ${host}:${port}`);
-    }
+    if (message.includes('timeout')) return new Error(`SNMP timeout connecting to ${host}:${port}`);
     if (message.includes('econnrefused') || message.includes('unreachable')) {
       return new Error(`Host ${host} is unreachable`);
     }
     if (message.includes('authentication') || message.includes('badversion')) {
-      return new Error(
-        'SNMP authentication failed - check community/credentials and version compatibility',
-      );
+      return new Error('SNMP authentication failed - check community/credentials and version compatibility');
     }
     if (message.includes('nosuchobject') || message.includes('nosuchinstance')) {
       return new Error('SNMP object not found on target');
     }
-
+    if (message.includes('repeated oid')) {
+      return new Error(`SNMP walk repeated an OID on ${host}:${port}`);
+    }
+    if (message.includes('safety limit')) {
+      return new Error(`SNMP walk exceeded safety limit on ${host}:${port}`);
+    }
     return new Error(`SNMP error connecting to ${host}`);
   }
 }
 
-/**
- * Create SNMP client configured for specific host.
- * @param host Target host configuration
- * @param port Optional SNMP port override
- * @returns SnmpClient ready for use
- */
 export function createSnmpClient(
   _host?: string,
   _port?: number,

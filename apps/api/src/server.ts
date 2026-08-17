@@ -1,11 +1,15 @@
 import { buildApp } from './app';
 import { config } from './config';
 
-const app = await buildApp();
+async function main() {
+  const app = await buildApp();
 
-try {
-  await app.listen({ port: config.PORT, host: config.HOST });
-} catch (error) {
-  app.log.error(error);
-  process.exit(1);
+  try {
+    await app.listen({ port: config.PORT, host: config.HOST });
+  } catch (error) {
+    app.log.error(error);
+    process.exit(1);
+  }
 }
+
+void main();

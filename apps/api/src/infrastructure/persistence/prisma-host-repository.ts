@@ -12,7 +12,7 @@ import {
   type UpdateHostInput,
 } from '@gmj/shared';
 import type { CredentialVault } from '../../application/credential-vault';
-import { PrismaClient } from '../../generated/prisma/index.js';
+import { Prisma, PrismaClient } from '../../generated/prisma/index.js';
 import { CredentialEncryptionUnavailableError } from './demo-map-repository';
 import type {
   DeviceMetricSampleInput,
@@ -58,6 +58,20 @@ function historyStart(period: HistoryPeriod): Date {
   return new Date(Date.now() - milliseconds[period]);
 }
 
+type LatestMetricRow = {
+  interfaceId: string;
+  timestamp: Date;
+  inOctets: bigint;
+  outOctets: bigint;
+  rxBps: number;
+  txBps: number;
+  inErrors: bigint;
+  outErrors: bigint;
+  inDiscards: bigint;
+  outDiscards: bigint;
+  operStatus: string;
+};
+
 export class PrismaHostRepository implements HostRepository {
   constructor(
     private readonly prisma: PrismaClient,
@@ -69,33 +83,46 @@ export class PrismaHostRepository implements HostRepository {
   }
 
   async listHosts(): Promise<HostRecord[]> {
+    // Do not include metricSamples through Prisma relations here. With a growing
+    // telemetry table, relation orderBy/take and Prisma distinct processing can
+    // force expensive scans/materialization. Load devices/interfaces first, then
+    // fetch exactly one indexed sample per interface with LATERAL below.
     const devices = await this.prisma.device.findMany({
       include: {
-        interfaces: {
-          orderBy: { ifIndex: 'asc' },
-          include: { metricSamples: { orderBy: { timestamp: 'desc' }, take: 1 } },
-        },
+        interfaces: { orderBy: { ifIndex: 'asc' } },
         mapNodes: { select: { mapId: true } },
         sourceHealth: true,
       },
       orderBy: { hostname: 'asc' },
     });
-    return devices.map((device) => this.toHostRecord(device));
+    const latest = await this.loadLatestMetrics(devices.flatMap((device) => device.interfaces.map((item) => item.id)));
+    return devices.map((device) => this.toHostRecord({
+      ...device,
+      interfaces: device.interfaces.map((item) => ({
+        ...item,
+        metricSamples: latest.has(item.id) ? [latest.get(item.id)!] : [],
+      })),
+    }));
   }
 
   async getHost(hostId: string): Promise<HostRecord | null> {
     const device = await this.prisma.device.findUnique({
       where: { id: hostId },
       include: {
-        interfaces: {
-          orderBy: { ifIndex: 'asc' },
-          include: { metricSamples: { orderBy: { timestamp: 'desc' }, take: 1 } },
-        },
+        interfaces: { orderBy: { ifIndex: 'asc' } },
         mapNodes: { select: { mapId: true } },
         sourceHealth: true,
       },
     });
-    return device ? this.toHostRecord(device) : null;
+    if (!device) return null;
+    const latest = await this.loadLatestMetrics(device.interfaces.map((item) => item.id));
+    return this.toHostRecord({
+      ...device,
+      interfaces: device.interfaces.map((item) => ({
+        ...item,
+        metricSamples: latest.has(item.id) ? [latest.get(item.id)!] : [],
+      })),
+    });
   }
 
   async createHost(input: CreateHostInput, interfaces: NetworkInterface[] = []): Promise<HostRecord> {
@@ -366,18 +393,49 @@ export class PrismaHostRepository implements HostRepository {
   }
 
   async getLatestCounterSnapshots(hostId: string): Promise<Map<number, InterfaceCounterSnapshot>> {
-    const rows = await this.prisma.interfaceMetricSample.findMany({
-      where: { interface: { deviceId: hostId } },
-      orderBy: { timestamp: 'desc' },
-      distinct: ['interfaceId'],
-      include: { interface: { select: { ifIndex: true } } },
-    });
+    // One backward index lookup per interface. This stays O(number of interfaces)
+    // even after InterfaceMetricSample contains millions of historical rows.
+    const rows = await this.prisma.$queryRaw<Array<LatestMetricRow & { ifIndex: number }>>(Prisma.sql`
+      SELECT
+        i."ifIndex" AS "ifIndex",
+        s."interfaceId" AS "interfaceId",
+        s."timestamp" AS "timestamp",
+        s."inOctets" AS "inOctets",
+        s."outOctets" AS "outOctets",
+        s."rxBps" AS "rxBps",
+        s."txBps" AS "txBps",
+        s."inErrors" AS "inErrors",
+        s."outErrors" AS "outErrors",
+        s."inDiscards" AS "inDiscards",
+        s."outDiscards" AS "outDiscards",
+        s."operStatus"::text AS "operStatus"
+      FROM "Interface" i
+      JOIN LATERAL (
+        SELECT
+          m."interfaceId",
+          m."timestamp",
+          m."inOctets",
+          m."outOctets",
+          m."rxBps",
+          m."txBps",
+          m."inErrors",
+          m."outErrors",
+          m."inDiscards",
+          m."outDiscards",
+          m."operStatus"
+        FROM "InterfaceMetricSample" m
+        WHERE m."interfaceId" = i."id"
+        ORDER BY m."timestamp" DESC
+        LIMIT 1
+      ) s ON TRUE
+      WHERE i."deviceId" = ${hostId}
+    `);
     return new Map(
       rows.map((row) => [
-        row.interface.ifIndex,
+        row.ifIndex,
         {
           interfaceId: row.interfaceId,
-          ifIndex: row.interface.ifIndex,
+          ifIndex: row.ifIndex,
           timestamp: row.timestamp,
           inOctets: row.inOctets,
           outOctets: row.outOctets,
@@ -470,6 +528,44 @@ export class PrismaHostRepository implements HostRepository {
       txDiscards: safeNumber(row.outDiscards),
       operStatus: row.operStatus,
     };
+  }
+
+  private async loadLatestMetrics(interfaceIds: string[]): Promise<Map<string, LatestMetricRow>> {
+    if (!interfaceIds.length) return new Map();
+    const rows = await this.prisma.$queryRaw<LatestMetricRow[]>(Prisma.sql`
+      SELECT
+        i."id" AS "interfaceId",
+        s."timestamp" AS "timestamp",
+        s."inOctets" AS "inOctets",
+        s."outOctets" AS "outOctets",
+        s."rxBps" AS "rxBps",
+        s."txBps" AS "txBps",
+        s."inErrors" AS "inErrors",
+        s."outErrors" AS "outErrors",
+        s."inDiscards" AS "inDiscards",
+        s."outDiscards" AS "outDiscards",
+        s."operStatus"::text AS "operStatus"
+      FROM "Interface" i
+      JOIN LATERAL (
+        SELECT
+          m."timestamp",
+          m."inOctets",
+          m."outOctets",
+          m."rxBps",
+          m."txBps",
+          m."inErrors",
+          m."outErrors",
+          m."inDiscards",
+          m."outDiscards",
+          m."operStatus"
+        FROM "InterfaceMetricSample" m
+        WHERE m."interfaceId" = i."id"
+        ORDER BY m."timestamp" DESC
+        LIMIT 1
+      ) s ON TRUE
+      WHERE i."id" IN (${Prisma.join(interfaceIds)})
+    `);
+    return new Map(rows.map((row) => [row.interfaceId, row]));
   }
 
   private toHostRecord(device: {

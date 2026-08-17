@@ -85,10 +85,10 @@ export function TopBar() {
         </>
       )}
       <div className="topbar__spacer" />
-      <div className="source-status">
+      <div className="source-status" title="Dados carregados pela API NetVision">
         <span className="source-status__dot" />
         <span>FONTE</span>
-        <strong>DEMO</strong>
+        <strong>API</strong>
       </div>
       {map && <time title={new Date(map.updatedAt).toLocaleString('pt-BR')}>Atualizado agora</time>}
       {view === 'MAP' && (

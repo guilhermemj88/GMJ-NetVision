@@ -26,6 +26,8 @@ const INTERFACE_OIDS = {
   operStatus: '1.3.6.1.2.1.2.2.1.8',
 } as const;
 
+const MIN_COUNTER_SAMPLE_SECONDS = 45;
+
 interface CounterRow {
   ifIndex: number;
   inOctets: bigint;
@@ -37,6 +39,8 @@ interface CounterRow {
   operStatus: InterfaceStatus;
   timestamp: Date;
 }
+
+type VarBind = { oid: string; value: string | number | Uint8Array };
 
 export interface SnmpPollResult {
   hostId: string;
@@ -51,9 +55,10 @@ export interface SnmpPollResult {
 export class SnmpService {
   private readonly client: SnmpClientImpl;
   private readonly discoveryAdapter: SnmpV2cDiscoveryAdapter;
+  private readonly activePolls = new Map<string, Promise<SnmpPollResult>>();
 
   constructor(private readonly repository: HostRepository) {
-    this.client = new SnmpClientImpl(5000, 2);
+    this.client = new SnmpClientImpl(3000, 1);
     this.discoveryAdapter = new SnmpV2cDiscoveryAdapter(repository);
   }
 
@@ -112,6 +117,17 @@ export class SnmpService {
   }
 
   async pollHost(device: HostRecord): Promise<SnmpPollResult> {
+    const running = this.activePolls.get(device.id);
+    if (running) return running;
+
+    const poll = this.pollHostUnlocked(device).finally(() => {
+      if (this.activePolls.get(device.id) === poll) this.activePolls.delete(device.id);
+    });
+    this.activePolls.set(device.id, poll);
+    return poll;
+  }
+
+  private async pollHostUnlocked(device: HostRecord): Promise<SnmpPollResult> {
     if (!device.snmpEnabled || !device.snmp?.host) throw new Error('SNMP não está habilitado para este host');
     if (device.snmp.version !== 'SNMP_V2C') throw new Error('SNMPv3 ainda não está implementado');
     const community = await this.requireCommunity(device.id);
@@ -122,11 +138,10 @@ export class SnmpService {
       currentDevice = (await this.repository.getHost(device.id)) ?? currentDevice;
     }
 
-    const [system, counters, previous] = await Promise.all([
-      this.collectSystem(currentDevice, community),
-      this.collectCounters(currentDevice, community),
-      this.repository.getLatestCounterSnapshots(currentDevice.id),
-    ]);
+    const previousPromise = this.repository.getLatestCounterSnapshots(currentDevice.id);
+    const system = await this.collectSystem(currentDevice, community);
+    const counters = await this.collectCounters(currentDevice, community);
+    const previous = await previousPromise;
 
     const byIndex = new Map(currentDevice.interfaces.map((item) => [item.ifIndex, item]));
     const samples: InterfaceMetricSampleInput[] = [];
@@ -135,6 +150,14 @@ export class SnmpService {
       if (!networkInterface) continue;
       const prior = previous.get(counter.ifIndex);
       const seconds = prior ? (counter.timestamp.getTime() - prior.timestamp.getTime()) / 1000 : 0;
+
+      // Several network platforms cache interface counters for a short interval.
+      // A manual poll right after the scheduled poll can therefore return the same
+      // counters and create a false zero-rate sample. Skip rate samples until there
+      // is enough elapsed time for the counter delta to be meaningful.
+      if (prior && seconds > 0 && seconds < MIN_COUNTER_SAMPLE_SECONDS) continue;
+      if (prior && counter.timestamp <= prior.timestamp) continue;
+
       const rxBps = this.calculateBps(counter.inOctets, prior?.inOctets, seconds);
       const txBps = this.calculateBps(counter.outOctets, prior?.outOctets, seconds);
       samples.push({
@@ -178,26 +201,27 @@ export class SnmpService {
     const snmpCommunity = community ?? (await this.requireCommunity(device.id));
     const options = { community: snmpCommunity, version: 'v2c' as const, port: device.snmp.port };
 
-    const [hcIn, hcOut, inErrors, outErrors, inDiscards, outDiscards, operStatus] = await Promise.all([
-      this.client.walk(device.snmp.host, INTERFACE_OIDS.hcInOctets, options),
-      this.client.walk(device.snmp.host, INTERFACE_OIDS.hcOutOctets, options),
-      this.client.walk(device.snmp.host, INTERFACE_OIDS.inErrors, options),
-      this.client.walk(device.snmp.host, INTERFACE_OIDS.outErrors, options),
-      this.client.walk(device.snmp.host, INTERFACE_OIDS.inDiscards, options),
-      this.client.walk(device.snmp.host, INTERFACE_OIDS.outDiscards, options),
-      this.client.walk(device.snmp.host, INTERFACE_OIDS.operStatus, options),
-    ]);
+    let hcIn = await this.safeWalk(device.snmp.host, INTERFACE_OIDS.hcInOctets, options);
+    let hcOut = await this.safeWalk(device.snmp.host, INTERFACE_OIDS.hcOutOctets, options);
 
     let inOctets = this.toBigIntIndexMap(hcIn);
     let outOctets = this.toBigIntIndexMap(hcOut);
     if (!inOctets.size || !outOctets.size) {
-      const [legacyIn, legacyOut] = await Promise.all([
-        this.client.walk(device.snmp.host, INTERFACE_OIDS.inOctets, options),
-        this.client.walk(device.snmp.host, INTERFACE_OIDS.outOctets, options),
-      ]);
+      hcIn = [];
+      hcOut = [];
+      const legacyIn = await this.client.walk(device.snmp.host, INTERFACE_OIDS.inOctets, options);
+      const legacyOut = await this.client.walk(device.snmp.host, INTERFACE_OIDS.outOctets, options);
       inOctets = this.toBigIntIndexMap(legacyIn);
       outOctets = this.toBigIntIndexMap(legacyOut);
     }
+
+    if (!inOctets.size && !outOctets.size) return counters;
+
+    const inErrors = await this.safeWalk(device.snmp.host, INTERFACE_OIDS.inErrors, options);
+    const outErrors = await this.safeWalk(device.snmp.host, INTERFACE_OIDS.outErrors, options);
+    const inDiscards = await this.safeWalk(device.snmp.host, INTERFACE_OIDS.inDiscards, options);
+    const outDiscards = await this.safeWalk(device.snmp.host, INTERFACE_OIDS.outDiscards, options);
+    const operStatus = await this.safeWalk(device.snmp.host, INTERFACE_OIDS.operStatus, options);
 
     const inErrorsMap = this.toBigIntIndexMap(inErrors);
     const outErrorsMap = this.toBigIntIndexMap(outErrors);
@@ -206,11 +230,11 @@ export class SnmpService {
     const statusMap = new Map(operStatus.map((item) => [this.extractIfIndex(item.oid), item.value]));
     const now = new Date();
 
-    for (const [ifIndex, inValue] of inOctets) {
-      if (ifIndex === null) continue;
+    const indexes = new Set<number>([...inOctets.keys(), ...outOctets.keys()]);
+    for (const ifIndex of indexes) {
       counters.set(ifIndex, {
         ifIndex,
-        inOctets: inValue,
+        inOctets: inOctets.get(ifIndex) ?? 0n,
         outOctets: outOctets.get(ifIndex) ?? 0n,
         inErrors: inErrorsMap.get(ifIndex) ?? 0n,
         outErrors: outErrorsMap.get(ifIndex) ?? 0n,
@@ -221,6 +245,18 @@ export class SnmpService {
       });
     }
     return counters;
+  }
+
+  private async safeWalk(
+    host: string,
+    oid: string,
+    options: { community: string; version: 'v2c'; port: number },
+  ): Promise<VarBind[]> {
+    try {
+      return await this.client.walk(host, oid, options);
+    } catch {
+      return [];
+    }
   }
 
   private async collectSystem(device: HostRecord, community: string): Promise<DeviceMetricSampleInput> {
@@ -246,9 +282,7 @@ export class SnmpService {
     return credentials.community;
   }
 
-  private toBigIntIndexMap(
-    varbinds: Array<{ oid: string; value: string | number | Uint8Array }>,
-  ): Map<number, bigint> {
+  private toBigIntIndexMap(varbinds: VarBind[]): Map<number, bigint> {
     const result = new Map<number, bigint>();
     for (const varbind of varbinds) {
       const index = this.extractIfIndex(varbind.oid);

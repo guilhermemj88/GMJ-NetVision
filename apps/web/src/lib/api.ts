@@ -1,8 +1,5 @@
 import {
-  cloneDemoMaps,
-  createLocalId,
   type AddDeviceResult,
-  createDemoHistory,
   type CreateLinkInput,
   type CreateMapInput,
   type CreateHostInput,
@@ -26,47 +23,45 @@ import {
   type ZabbixImportResult,
 } from '@gmj/shared';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333';
+function apiUrl(): string {
+  const configured = process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/+$/, '');
+
+  if (typeof window === 'undefined') {
+    return configured || 'http://127.0.0.1:3333';
+  }
+
+  // A URL localhost embutida no bundle aponta para o computador do operador,
+  // não para o servidor NetVision. Em produção, use o mesmo hostname da Web
+  // e a porta pública da API quando não houver uma URL externa explícita.
+  const configuredIsLocal = configured
+    ? /^https?:\/\/(localhost|127\.0\.0\.1)(?::|\/|$)/i.test(configured)
+    : false;
+  if (configured && !configuredIsLocal) return configured;
+
+  return `${window.location.protocol}//${window.location.hostname}:3333`;
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, {
+  const headers = new Headers(init?.headers);
+  if (typeof init?.body === 'string' && !headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  const response = await fetch(`${apiUrl()}${path}`, {
     ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
+    headers,
   });
   if (!response.ok) throw new Error(`API ${response.status}`);
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
-function mapSummary(map: NetworkMap): MapSummary {
-  return {
-    id: map.id,
-    name: map.name,
-    description: map.description,
-    mode: map.mode,
-    isDefault: map.isDefault,
-    nodeCount: map.nodes.length,
-    linkCount: map.links.length,
-    createdAt: map.createdAt,
-    updatedAt: map.updatedAt,
-  };
+export function getMaps(): Promise<MapSummary[]> {
+  return request<MapSummary[]>('/api/maps');
 }
 
-export async function getMaps(): Promise<MapSummary[]> {
-  try {
-    return await request<MapSummary[]>('/api/maps');
-  } catch {
-    return cloneDemoMaps().map(mapSummary);
-  }
-}
-
-export async function getMap(mapId: string): Promise<NetworkMap> {
-  try {
-    return await request<NetworkMap>(`/api/maps/${mapId}`);
-  } catch {
-    const maps = cloneDemoMaps();
-    return maps.find((map) => map.id === mapId) ?? maps[0]!;
-  }
+export function getMap(mapId: string): Promise<NetworkMap> {
+  return request<NetworkMap>(`/api/maps/${mapId}`);
 }
 
 export function createNetworkMap(input: CreateMapInput) {
@@ -171,12 +166,8 @@ export function deleteDevice(mapId: string, id: string) {
   return request<void>(`/api/maps/${mapId}/devices/${id}`, { method: 'DELETE' });
 }
 
-export async function getHosts(query = ''): Promise<HostRecord[]> {
-  try {
-    return await request<HostRecord[]>(`/api/hosts${query ? `?${query}` : ''}`);
-  } catch {
-    return cloneDemoMaps()[0]?.devices ?? [];
-  }
+export function getHosts(query = ''): Promise<HostRecord[]> {
+  return request<HostRecord[]>(`/api/hosts${query ? `?${query}` : ''}`);
 }
 
 export function getHost(hostId: string) {
@@ -249,50 +240,12 @@ export function applyAssistedDiscovery(
   });
 }
 
-export async function getHistory(
-  interfaceId: string,
-  period: HistoryPeriod,
-): Promise<MetricPoint[]> {
-  try {
-    return await request<MetricPoint[]>(`/api/interfaces/${interfaceId}/history?period=${period}`);
-  } catch {
-    return createDemoHistory(interfaceId, period);
-  }
+export function getHistory(interfaceId: string, period: HistoryPeriod): Promise<MetricPoint[]> {
+  return request<MetricPoint[]>(`/api/interfaces/${interfaceId}/history?period=${period}`);
 }
 
-export async function discoverNeighbors(mapId: string, deviceId: string): Promise<DiscoveryReview> {
-  try {
-    return await request<DiscoveryReview>(`/api/maps/${mapId}/devices/${deviceId}/discover`, {
-      method: 'POST',
-    });
-  } catch {
-    return {
-      deviceId,
-      method: 'AUTO',
-      warnings: ['API indisponível; exibindo descoberta simulada local.'],
-      neighbors: [
-        {
-          id: createLocalId('discovery'),
-          localDeviceId: deviceId,
-          localPort: '100GE1/0/1',
-          remoteSystemName: 'AGG-CENTRO-01',
-          remotePort: '100GE1/0/48',
-          capabilities: ['bridge', 'router'],
-          source: 'LLDP_SNMP',
-          matchStatus: 'MATCHED',
-          matchedDeviceId: 'agg-centro',
-        },
-        {
-          id: createLocalId('discovery'),
-          localDeviceId: deviceId,
-          localPort: '10GE1/0/8',
-          remoteSystemName: 'SW-UNKNOWN',
-          remotePort: 'XGE0/0/1',
-          capabilities: ['bridge'],
-          source: 'LLDP_SNMP',
-          matchStatus: 'UNMATCHED',
-        },
-      ],
-    };
-  }
+export function discoverNeighbors(mapId: string, deviceId: string): Promise<DiscoveryReview> {
+  return request<DiscoveryReview>(`/api/maps/${mapId}/devices/${deviceId}/discover`, {
+    method: 'POST',
+  });
 }

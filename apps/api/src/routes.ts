@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { HistoryPeriod, UpdateMapInput } from '@gmj/shared';
+import type { CreateHostInput, HistoryPeriod, UpdateMapInput } from '@gmj/shared';
 import { CredentialVault } from './application/credential-vault';
 import { DiscoveryService } from './application/discovery-service';
 import { config } from './config';
@@ -9,6 +9,7 @@ import { DemoMetricAdapter } from './infrastructure/metrics/demo-adapter';
 import { ZabbixAdapter } from './infrastructure/metrics/zabbix-adapter';
 import { DemoHostRepositoryAdapter } from './infrastructure/persistence/demo-host-repository-adapter';
 import { DemoMapRepository } from './infrastructure/persistence/demo-map-repository';
+import { PrismaMapRepository } from './infrastructure/persistence/prisma-map-repository';
 import { createPrismaHostRepository, PrismaHostRepository } from './infrastructure/persistence/prisma-host-repository';
 import { SnmpPoller } from './infrastructure/snmp/snmp-poller';
 import { SnmpService } from './infrastructure/snmp/snmp-service';
@@ -86,12 +87,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     : options.credentialEncryptionKey;
   const vault = credentialEncryptionKey ? new CredentialVault(credentialEncryptionKey) : null;
 
-  // Maps remain on the legacy repository for now. Host inventory, credentials, interfaces and
-  // SNMP history use PostgreSQL whenever DEMO_MODE=false.
-  const maps = new DemoMapRepository(vault);
+  const legacyMaps = new DemoMapRepository(vault);
   const hosts = config.DEMO_MODE
-    ? new DemoHostRepositoryAdapter(maps)
+    ? new DemoHostRepositoryAdapter(legacyMaps)
     : createPrismaHostRepository(vault);
+  const productionMaps = config.DEMO_MODE ? null : new PrismaMapRepository(hosts);
+  const maps = productionMaps ?? legacyMaps;
   const metrics = new DemoMetricAdapter();
   const discovery = new DiscoveryService([new DemoTopologyAdapter()]);
   const snmp = new SnmpService(hosts);
@@ -100,13 +101,22 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     ? new ZabbixAdapter(config.ZABBIX_URL, config.ZABBIX_TOKEN, config.ZABBIX_AUTH_MODE)
     : null;
 
-  registerHostRoutes(app, { maps, hosts, discovery, snmp, zabbix });
+  registerHostRoutes(app, { legacyMaps, mapMembership: maps, hosts, discovery, snmp, zabbix });
 
   app.addHook('onReady', async () => {
+    if (productionMaps && !(await productionMaps.listMaps()).length) {
+      await productionMaps.createMap({
+        name: 'Mapa Principal',
+        description: 'Topologia persistida do NetVision',
+        mode: 'HYBRID',
+        sourceMapId: null,
+      });
+    }
     if (!config.DEMO_MODE && config.SNMP_POLLING_ENABLED) poller.start();
   });
   app.addHook('onClose', async () => {
     poller.stop();
+    if (productionMaps) await productionMaps.disconnect();
     if (hosts instanceof PrismaHostRepository) await hosts.disconnect();
   });
 
@@ -119,27 +129,27 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   app.get('/api/maps', async () => maps.listMaps());
 
   app.get('/api/maps/default', async (_request, reply) => {
-    const map = maps.getDefaultMap();
+    const map = await maps.getDefaultMap();
     return map ?? reply.code(404).send({ message: 'No maps available' });
   });
 
   app.post('/api/maps', async (request, reply) => {
-    const map = maps.createMap(createMapSchema.parse(request.body));
+    const map = await maps.createMap(createMapSchema.parse(request.body));
     return reply.code(201).send(map);
   });
 
   app.patch('/api/maps/:mapId', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
-    const map = maps.updateMap(mapId, updateMapSchema.parse(request.body) as UpdateMapInput);
+    const map = await maps.updateMap(mapId, updateMapSchema.parse(request.body) as UpdateMapInput);
     return map ?? reply.code(404).send({ message: 'Map not found' });
   });
 
   app.post('/api/maps/:mapId/duplicate', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
-    const source = maps.getMap(mapId);
+    const source = await maps.getMap(mapId);
     if (!source) return reply.code(404).send({ message: 'Map not found' });
     const body = z.object({ name: z.string().min(1).max(80), description: z.string().max(500).optional() }).parse(request.body);
-    return reply.code(201).send(maps.createMap({
+    return reply.code(201).send(await maps.createMap({
       name: body.name,
       description: body.description ?? source.description,
       mode: source.mode,
@@ -149,7 +159,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   app.delete('/api/maps/:mapId', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
-    return maps.deleteMap(mapId)
+    return await maps.deleteMap(mapId)
       ? reply.code(204).send()
       : reply.code(409).send({ message: 'Map not found or last remaining map' });
   });
@@ -171,19 +181,19 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       mapIds: body.mapIds,
       isDefault: body.isDefault,
     };
-    return reply.code(201).send(maps.savePlaylist(playlistInput));
+    return reply.code(201).send(await maps.savePlaylist(playlistInput));
   });
 
   app.get('/api/maps/:mapId', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
-    const map = maps.getMap(mapId);
+    const map = await maps.getMap(mapId);
     return map ?? reply.code(404).send({ message: 'Map not found' });
   });
 
   app.put('/api/maps/:mapId/nodes/positions', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
     const body = z.object({ nodes: z.array(positionSchema).min(1) }).parse(request.body);
-    const map = maps.updatePositions(mapId, body.nodes.map((node) => ({
+    const map = await maps.updatePositions(mapId, body.nodes.map((node) => ({
       nodeId: node.nodeId,
       position: node.position,
       ...(node.locked === undefined ? {} : { locked: node.locked }),
@@ -194,13 +204,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   app.patch('/api/maps/:mapId/nodes/:nodeId/lock', async (request, reply) => {
     const { mapId, nodeId } = nodeParams.parse(request.params);
     const { locked } = z.object({ locked: z.boolean() }).parse(request.body);
-    const map = maps.setNodeLocked(mapId, nodeId, locked);
+    const map = await maps.setNodeLocked(mapId, nodeId, locked);
     return map ?? reply.code(404).send({ message: 'Map or node not found' });
   });
 
   app.post('/api/maps/:mapId/links', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
-    const link = maps.createLink(mapId, linkSchema.parse(request.body));
+    const link = await maps.createLink(mapId, linkSchema.parse(request.body));
     return link ? reply.code(201).send(link) : reply.code(404).send({ message: 'Map not found' });
   });
 
@@ -215,41 +225,63 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       visualStyle: true,
       metricDisplay: true,
     }).parse(request.body);
-    const link = maps.updateLink(mapId, linkId, body);
+    const link = await maps.updateLink(mapId, linkId, body);
     return link ?? reply.code(404).send({ message: 'Link not found' });
   });
 
   app.delete('/api/maps/:mapId/links/:linkId', async (request, reply) => {
     const { mapId, linkId } = linkParams.parse(request.params);
-    return maps.deleteLink(mapId, linkId)
+    return await maps.deleteLink(mapId, linkId)
       ? reply.code(204).send()
       : reply.code(404).send({ message: 'Link not found' });
   });
 
   app.post('/api/maps/:mapId/devices', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
-    const result = maps.addDevice(mapId, deviceSchema.parse(request.body));
+    const body = deviceSchema.parse(request.body);
+    if (config.DEMO_MODE) {
+      const result = legacyMaps.addDevice(mapId, body);
+      return result ? reply.code(201).send(result) : reply.code(404).send({ message: 'Map not found' });
+    }
+    const input: CreateHostInput = {
+      hostname: body.hostname,
+      displayName: body.name,
+      managementIp: body.ip,
+      vendor: body.vendor,
+      model: body.model,
+      deviceType: body.deviceType,
+      site: body.site,
+      description: '',
+      notes: '',
+      origin: 'MANUAL',
+      zabbix: { enabled: false, hostId: '', hostName: '', primaryInterfaceId: '', ip: '' },
+      ssh: { enabled: false, host: body.ip, port: 22, username: '' },
+      snmp: { enabled: false, version: 'SNMP_V2C', host: body.ip, port: 161, username: '', securityLevel: 'NO_AUTH_NO_PRIV', authProtocol: null, privacyProtocol: null },
+    };
+    const host = await hosts.createHost(input);
+    const result = await productionMaps!.addHostToMap(host.id, mapId, body.position);
     return result ? reply.code(201).send(result) : reply.code(404).send({ message: 'Map not found' });
   });
 
   app.post('/api/maps/:mapId/nodes', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
     const body = z.object({ deviceIds: z.array(z.string().min(1)).min(1) }).parse(request.body);
-    const map = maps.getMap(mapId);
+    const map = await maps.getMap(mapId);
     if (!map) return reply.code(404).send({ message: 'Map not found' });
-    const created = maps.addHostsToMap(mapId, body.deviceIds, {
+    const existing = new Set(map.nodes.map((node) => node.deviceId));
+    const created = await maps.addHostsToMap(mapId, body.deviceIds, {
       x: 520 + (map.nodes.length % 6) * 80,
       y: 360 + (map.nodes.length % 4) * 70,
     });
     return reply.code(201).send({
       created,
-      skipped: body.deviceIds.filter((deviceId) => map.nodes.some((node) => node.deviceId === deviceId)),
+      skipped: body.deviceIds.filter((deviceId) => existing.has(deviceId)),
     });
   });
 
   app.delete('/api/maps/:mapId/devices/:deviceId', async (request, reply) => {
     const { mapId, deviceId } = deviceParams.parse(request.params);
-    return maps.deleteDevice(mapId, deviceId)
+    return await maps.deleteDevice(mapId, deviceId)
       ? reply.code(204).send()
       : reply.code(404).send({ message: 'Device not found' });
   });
@@ -280,7 +312,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   app.post('/api/maps/:mapId/devices/:deviceId/discover', async (request, reply) => {
     const { mapId, deviceId } = deviceParams.parse(request.params);
-    const map = maps.getMap(mapId);
+    const map = await maps.getMap(mapId);
     const device = map?.devices.find((item) => item.id === deviceId);
     if (!map || !device) return reply.code(404).send({ message: 'Device not found' });
     return discovery.discover(device, map.devices);
