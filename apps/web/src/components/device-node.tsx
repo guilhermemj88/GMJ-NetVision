@@ -11,6 +11,7 @@ import {
   type DeviceIconType,
 } from '@/lib/device-appearance';
 import { NetworkDeviceIcon } from './network-device-icon';
+import { DEVICE_HANDLE_SIDES } from '@/lib/edge-handles';
 
 export interface DeviceNodeData extends Record<string, unknown> {
   device: Device;
@@ -23,6 +24,13 @@ export interface DeviceNodeData extends Record<string, unknown> {
 }
 
 export type DeviceFlowNode = Node<DeviceNodeData, 'device'>;
+
+const handlePositions = {
+  left: Position.Left,
+  right: Position.Right,
+  top: Position.Top,
+  bottom: Position.Bottom,
+} as const;
 
 export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
   const { device, mapNode, editMode, showInterfaces, displayMode, nodeScale, labelScale } = data;
@@ -47,7 +55,15 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
       }
       title={`${device.name} · ${device.ip} · ${device.status}`}
     >
-      <Handle type="target" position={Position.Left} isConnectable={editMode} />
+      {DEVICE_HANDLE_SIDES.map((side) => (
+        <Handle
+          key={side}
+          id={side}
+          type="source"
+          position={handlePositions[side]}
+          isConnectable={editMode}
+        />
+      ))}
       <div className="device-node__icon">
         <NetworkDeviceIcon
           type={iconType}
@@ -75,7 +91,6 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
           {device.site} · {device.status}
         </small>
       </div>
-      <Handle type="source" position={Position.Right} isConnectable={editMode} />
     </div>
   );
 }

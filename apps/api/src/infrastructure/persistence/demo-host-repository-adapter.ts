@@ -12,6 +12,7 @@ import type {
   InterfaceCounterSnapshot,
   InterfaceMetricSampleInput,
   SnmpCredentialSecret,
+  SshCredentialSecret,
 } from './host-repository';
 import type { DemoMapRepository } from './demo-map-repository';
 import type { ConnectionTestResult } from '@gmj/shared';
@@ -45,6 +46,10 @@ export class DemoHostRepositoryAdapter implements HostRepository {
 
   async getDecryptedSnmpCredentials(hostId: string): Promise<SnmpCredentialSecret | null> {
     return this.repository.getDecryptedSnmpCredentials(hostId);
+  }
+
+  async getDecryptedSshCredentials(hostId: string): Promise<SshCredentialSecret | null> {
+    return this.repository.getDecryptedSshCredentials(hostId);
   }
 
   async replaceInterfaces(_hostId: string, interfaces: NetworkInterface[]): Promise<NetworkInterface[]> {

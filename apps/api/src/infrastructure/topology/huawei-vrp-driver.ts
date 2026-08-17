@@ -9,7 +9,7 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
   }
 
   interfaceCommands(): string[] {
-    return ['screen-length 0 temporary', 'display interface brief'];
+    return ['screen-length 0 temporary', 'display interface description'];
   }
 
   neighborCommands(): string[] {
@@ -32,17 +32,22 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
     const lines = output.split(/\r?\n/);
     let ifIndex = 1;
     return lines.flatMap((line) => {
-      const match = line.match(/^([A-Za-z][\w./-]+)\s+(up|down|\*down)\s+(up|down|\*down)\s+/i);
+      const match = line.match(
+        /^\s*([A-Za-z0-9][\w./-]+)\s+(up|down|\*down)\s+(up|down|\*down)(?:\s+(.*?))?\s*$/i,
+      );
       if (!match?.[1] || !match[2] || !match[3]) return [];
       const name = match[1];
-      const adminUp = match[2].toLowerCase() === 'up';
-      const operUp = match[3].toLowerCase() === 'up';
+      const physicalState = match[2].toLowerCase();
+      const protocolState = match[3].toLowerCase();
+      const adminUp = !physicalState.startsWith('*');
+      const operUp = physicalState === 'up' && protocolState === 'up';
+      const configuredDescription = match[4]?.trim() ?? '';
       return [
         {
           id: `${deviceId}-ssh-${ifIndex}`,
           deviceId,
           name,
-          alias: '',
+          alias: configuredDescription,
           description: '',
           ifIndex: ifIndex++,
           mac: '',
@@ -58,6 +63,7 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
           txErrors: 0,
           rxDiscards: 0,
           txDiscards: 0,
+          dataSources: ['SSH'],
         },
       ];
     });

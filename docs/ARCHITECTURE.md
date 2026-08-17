@@ -33,6 +33,30 @@ Web -> API GMJ -> MetricSourceAdapter -> Zabbix API
 
 O token fica apenas no processo da API. Nomes de item, IDs externos e particularidades do Zabbix são convertidos no backend para chaves canônicas como `interface.rx.bps` e `interface.errors.rx`.
 
+## Identidade e enriquecimento de interfaces
+
+O IF-MIB é a fonte autoritativa de `ifIndex`, `ifName`, `ifDescr`, `ifAlias`, estados,
+velocidade e counters. A apresentação usa `ifName` como nome técnico (com fallback para
+`ifDescr` e, por último, `if{index}`), mantém `ifDescr` em `description` e mantém
+`ifAlias` em `alias`.
+
+Em hosts Huawei com SSH habilitado, o backend reutiliza o driver VRP para executar
+`display interface description`. A correlação normaliza apenas diferenças simples de
+prefixo, caixa, espaços e pontuação. Uma descrição SSH preenche `alias` somente quando
+o IF-MIB não forneceu um alias útil. Portas SSH sem correlação não são persistidas,
+pois não possuem um `ifIndex` confiável. `dataSources` registra `SNMP` e `SSH` após a
+fusão. Falha no complemento SSH não invalida uma descoberta SNMP válida.
+
+O `sysName` observado é armazenado em `DeviceMetricSample` e exposto como
+`detectedHostname`. Ele nunca atualiza automaticamente `Device.hostname`.
+
+## Pontos de conexão do mapa
+
+Cada node expõe handles à esquerda, direita, acima e abaixo. O par usado por um link é
+derivado em tempo de renderização a partir da posição relativa dos nodes. Como os IDs
+dos handles não fazem parte do modelo persistido de `Link`, mapas anteriores continuam
+compatíveis e passam a usar a rota mais curta sem migration.
+
 ## Persistência
 
 O schema Prisma modela `Map`, `MapNode`, `Device`, `Interface`, `Link`, `MapPlaylist`, `MapPlaylistItem`, `DataSource`, credenciais, mappings e jobs/resultados de descoberta. As ligações físicas usam foreign keys para as duas interfaces.

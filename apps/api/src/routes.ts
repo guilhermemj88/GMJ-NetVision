@@ -13,6 +13,7 @@ import { PrismaMapRepository } from './infrastructure/persistence/prisma-map-rep
 import { createPrismaHostRepository, PrismaHostRepository } from './infrastructure/persistence/prisma-host-repository';
 import { SnmpPoller } from './infrastructure/snmp/snmp-poller';
 import { SnmpService } from './infrastructure/snmp/snmp-service';
+import { SshInterfaceService } from './infrastructure/ssh/ssh-interface-service';
 import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-adapter';
 
 const mapIdParams = z.object({ mapId: z.string().min(1) });
@@ -95,13 +96,14 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const maps = productionMaps ?? legacyMaps;
   const metrics = new DemoMetricAdapter();
   const discovery = new DiscoveryService([new DemoTopologyAdapter()]);
-  const snmp = new SnmpService(hosts);
+  const ssh = new SshInterfaceService(hosts);
+  const snmp = new SnmpService(hosts, ssh);
   const poller = new SnmpPoller(hosts, snmp, config.SNMP_POLL_INTERVAL_SECONDS * 1000);
   const zabbix = config.ZABBIX_URL && config.ZABBIX_TOKEN
     ? new ZabbixAdapter(config.ZABBIX_URL, config.ZABBIX_TOKEN, config.ZABBIX_AUTH_MODE)
     : null;
 
-  registerHostRoutes(app, { legacyMaps, mapMembership: maps, hosts, discovery, snmp, zabbix });
+  registerHostRoutes(app, { legacyMaps, mapMembership: maps, hosts, discovery, snmp, ssh, zabbix });
 
   app.addHook('onReady', async () => {
     if (productionMaps && !(await productionMaps.listMaps()).length) {

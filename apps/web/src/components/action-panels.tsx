@@ -201,7 +201,7 @@ function CreateLinkPanel() {
               >
                 {source?.interfaces.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.name} · {item.alias}
+                    {item.name}{item.alias ? ` · ${item.alias}` : ''}
                   </option>
                 ))}
               </select>
@@ -237,7 +237,7 @@ function CreateLinkPanel() {
               >
                 {target?.interfaces.map((item) => (
                   <option key={item.id} value={item.id}>
-                    {item.name} · {item.alias}
+                    {item.name}{item.alias ? ` · ${item.alias}` : ''}
                   </option>
                 ))}
               </select>

@@ -11,6 +11,7 @@ import type {
   SourceKind,
   ZabbixHostCandidate,
 } from '@gmj/shared';
+import { formatBitsPerSecond } from '@gmj/shared';
 import { Badge, Button } from '@gmj/ui';
 import {
   Check,
@@ -515,6 +516,13 @@ function HostDetail({
                 <dt>Status</dt>
                 <dd>{host.status}</dd>
               </div>
+              {host.detectedHostname
+                && host.detectedHostname.toLowerCase() !== host.hostname.toLowerCase() && (
+                <div>
+                  <dt>sysName detectado</dt>
+                  <dd>{host.detectedHostname} (hostname cadastrado preservado)</dd>
+                </div>
+              )}
               <div>
                 <dt>Mapas</dt>
                 <dd>{host.mapCount}</dd>
@@ -538,7 +546,8 @@ function HostDetail({
               <article key={networkInterface.id}>
                 <div>
                   <strong>{networkInterface.name}</strong>
-                  <span>{networkInterface.alias || networkInterface.description}</span>
+                  <span>Descrição: {networkInterface.alias || '—'}</span>
+                  <small>ifDescr: {networkInterface.description || '—'}</small>
                 </div>
                 <dl>
                   <div>
@@ -546,25 +555,28 @@ function HostDetail({
                     <dd>{networkInterface.ifIndex}</dd>
                   </div>
                   <div>
-                    <dt>Status</dt>
-                    <dd>{networkInterface.operStatus}</dd>
+                    <dt>Admin / Oper</dt>
+                    <dd>{networkInterface.adminStatus} / {networkInterface.operStatus}</dd>
                   </div>
                   <div>
                     <dt>Velocidade</dt>
-                    <dd>{(networkInterface.speedBps / 1e9).toFixed(1)} Gbps</dd>
+                    <dd>{formatBitsPerSecond(networkInterface.speedBps)}</dd>
                   </div>
                   <div>
-                    <dt>Itens</dt>
-                    <dd>
-                      {
-                        [
-                          networkInterface.rxItemId,
-                          networkInterface.txItemId,
-                          networkInterface.statusItemId,
-                        ].filter(Boolean).length
-                      }
-                      /3
-                    </dd>
+                    <dt>RX / TX</dt>
+                    <dd>{formatBitsPerSecond(networkInterface.rxBps)} / {formatBitsPerSecond(networkInterface.txBps)}</dd>
+                  </div>
+                  <div>
+                    <dt>Erros RX / TX</dt>
+                    <dd>{networkInterface.rxErrors} / {networkInterface.txErrors}</dd>
+                  </div>
+                  <div>
+                    <dt>Descartes RX / TX</dt>
+                    <dd>{networkInterface.rxDiscards} / {networkInterface.txDiscards}</dd>
+                  </div>
+                  <div>
+                    <dt>Fontes</dt>
+                    <dd>{networkInterface.dataSources?.join(' + ') || '—'}</dd>
                   </div>
                 </dl>
               </article>

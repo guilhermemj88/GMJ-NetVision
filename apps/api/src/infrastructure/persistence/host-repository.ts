@@ -14,6 +14,10 @@ export interface SnmpCredentialSecret {
   privacyPassword?: string;
 }
 
+export interface SshCredentialSecret {
+  password?: string;
+}
+
 export interface InterfaceCounterSnapshot {
   interfaceId: string;
   ifIndex: number;
@@ -48,6 +52,7 @@ export interface HostRepository {
   deleteHost(hostId: string): Promise<boolean>;
   updateSourceHealth(hostId: string, result: ConnectionTestResult): Promise<void>;
   getDecryptedSnmpCredentials(hostId: string): Promise<SnmpCredentialSecret | null>;
+  getDecryptedSshCredentials(hostId: string): Promise<SshCredentialSecret | null>;
   replaceInterfaces(hostId: string, interfaces: NetworkInterface[]): Promise<NetworkInterface[]>;
   getLatestCounterSnapshots(hostId: string): Promise<Map<number, InterfaceCounterSnapshot>>;
   saveSnmpPoll(

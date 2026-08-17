@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import {
   Background,
   BackgroundVariant,
+  ConnectionMode,
   ReactFlow,
   applyNodeChanges,
   useEdgesState,
@@ -21,6 +22,7 @@ import { DeviceNode, type DeviceFlowNode } from './device-node';
 import { TrafficEdge, type TrafficFlowEdge } from './traffic-edge';
 import { MapControls } from './map-controls';
 import { EditToolbar } from './edit-toolbar';
+import { selectEdgeHandles } from '@/lib/edge-handles';
 
 const nodeTypes = { device: DeviceNode };
 const edgeTypes = { traffic: TrafficEdge };
@@ -96,13 +98,21 @@ export function NetworkCanvas() {
   const domainEdges = useMemo<TrafficFlowEdge[]>(() => {
     if (!map) return [];
     const visible = new Set(domainNodes.map((node) => node.id));
-    return map.links.flatMap((link) =>
-      visible.has(link.sourceDeviceId) && visible.has(link.targetDeviceId)
-        ? [
+    const positions = new Map(map.nodes.map((node) => [node.deviceId, node.position]));
+    return map.links.flatMap((link) => {
+      const sourcePosition = positions.get(link.sourceDeviceId);
+      const targetPosition = positions.get(link.targetDeviceId);
+      if (!visible.has(link.sourceDeviceId) || !visible.has(link.targetDeviceId)) return [];
+      const handles = sourcePosition && targetPosition
+        ? selectEdgeHandles(sourcePosition, targetPosition)
+        : { sourceHandle: 'right' as const, targetHandle: 'left' as const };
+      return [
             {
               id: link.id,
               source: link.sourceDeviceId,
               target: link.targetDeviceId,
+              sourceHandle: handles.sourceHandle,
+              targetHandle: handles.targetHandle,
               type: 'traffic',
               selectable: true,
               data: {
@@ -123,9 +133,8 @@ export function NetworkCanvas() {
                   (link.sourceDeviceId === selection.id || link.targetDeviceId === selection.id),
               },
             },
-          ]
-        : [],
-    );
+          ];
+    });
   }, [
     domainNodes,
     map,
@@ -206,6 +215,7 @@ export function NetworkCanvas() {
           if (mapNode) moveNode(mapNode.id, node.position);
         }}
         onConnect={onConnect}
+        connectionMode={ConnectionMode.Loose}
         nodesConnectable={editMode}
         nodesDraggable={editMode}
         fitView

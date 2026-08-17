@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HostRecord } from '@gmj/shared';
 import type { HostRepository } from '../persistence/host-repository';
+import type { DeviceMetricSampleInput } from '../persistence/host-repository';
 import { SnmpClientImpl } from './snmp-client-impl';
 import { SnmpService } from './snmp-service';
 
@@ -55,6 +56,7 @@ function repository(credentials: { community?: string } | null = { community: 'p
     deleteHost: vi.fn(),
     updateSourceHealth: vi.fn(),
     getDecryptedSnmpCredentials: vi.fn().mockResolvedValue(credentials),
+    getDecryptedSshCredentials: vi.fn().mockResolvedValue(null),
     replaceInterfaces: vi.fn().mockImplementation(async (_hostId, interfaces) => interfaces),
     getLatestCounterSnapshots: vi.fn().mockResolvedValue(new Map()),
     saveSnmpPoll: vi.fn(),
@@ -115,6 +117,53 @@ describe('SnmpService', () => {
     }));
     expect(result.state).toBe('AUTH_INVALID');
     expect(result.message).not.toContain('public');
+  });
+
+  it('preserves the close-poll guard and stores detected sysName without renaming the host', async () => {
+    const now = new Date();
+    const networkInterface = {
+      id: 'if-1', deviceId: 'test-1', name: '100GE0/0/1', alias: '', description: '100GE0/0/1',
+      ifIndex: 1, mac: '', mtu: 1500, speedBps: 100_000_000_000,
+      adminStatus: 'UP' as const, operStatus: 'UP' as const,
+      rxBps: 0, txBps: 0, rxUtilization: 0, txUtilization: 0,
+      rxErrors: 0, txErrors: 0, rxDiscards: 0, txDiscards: 0, dataSources: ['SNMP' as const],
+    };
+    const repo = repository();
+    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(new Map([[1, {
+      interfaceId: 'if-1', ifIndex: 1, timestamp: new Date(now.getTime() - 30_000),
+      inOctets: 100n, outOctets: 200n, inErrors: 0n, outErrors: 0n,
+      inDiscards: 0n, outDiscards: 0n,
+    }]]));
+    const service = new SnmpService(repo);
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[1, {
+      ifIndex: 1, timestamp: now, inOctets: 120n, outOctets: 230n,
+      inErrors: 0n, outErrors: 0n, inDiscards: 0n, outDiscards: 0n, operStatus: 'UP',
+    }]]));
+    const internals = service as unknown as {
+      collectSystem: () => Promise<DeviceMetricSampleInput>;
+    };
+    vi.spyOn(internals, 'collectSystem').mockResolvedValue({
+      timestamp: now, uptimeSeconds: 123n, sysName: 'different-device-sysname',
+    });
+    const device = host({
+      hostname: 'registered-hostname', interfaces: [networkInterface],
+      lastDiscoveryAt: now.toISOString(), snmpEnabled: true,
+      snmp: {
+        version: 'SNMP_V2C', host: '192.168.1.1', port: 161, username: '',
+        securityLevel: 'NO_AUTH_NO_PRIV', authProtocol: null, privacyProtocol: null,
+        credentialConfigured: true,
+      },
+    });
+
+    await service.pollHost(device);
+
+    expect(repo.saveSnmpPoll).toHaveBeenCalledWith(
+      device.id,
+      expect.objectContaining({ sysName: 'different-device-sysname' }),
+      [],
+    );
+    expect(repo.updateHost).not.toHaveBeenCalled();
+    expect(device.hostname).toBe('registered-hostname');
   });
 });
 

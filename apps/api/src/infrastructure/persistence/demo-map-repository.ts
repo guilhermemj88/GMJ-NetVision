@@ -1038,6 +1038,18 @@ export class DemoMapRepository {
     }
   }
 
+  /** Decrypts an SSH password only for the backend transport. */
+  async getDecryptedSshCredentials(hostId: string): Promise<{ password?: string } | null> {
+    const stored = this.credentials.get(hostId);
+    if (!stored?.ssh || !this.vault) return null;
+    try {
+      const decrypted = this.vault.decrypt(stored.ssh);
+      return typeof decrypted.password === 'string' ? { password: decrypted.password } : null;
+    } catch {
+      return null;
+    }
+  }
+
   private ensureInterface(host: HostRecord, name: string): NetworkInterface {
     const existing = host.interfaces.find(
       (item) =>

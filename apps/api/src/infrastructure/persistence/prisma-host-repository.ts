@@ -20,6 +20,7 @@ import type {
   InterfaceCounterSnapshot,
   InterfaceMetricSampleInput,
   SnmpCredentialSecret,
+  SshCredentialSecret,
 } from './host-repository';
 
 function disabledHealth(): SourceHealth {
@@ -90,6 +91,7 @@ export class PrismaHostRepository implements HostRepository {
     const devices = await this.prisma.device.findMany({
       include: {
         interfaces: { orderBy: { ifIndex: 'asc' } },
+        metricSamples: { orderBy: { timestamp: 'desc' }, take: 1, select: { sysName: true } },
         mapNodes: { select: { mapId: true } },
         sourceHealth: true,
       },
@@ -110,6 +112,7 @@ export class PrismaHostRepository implements HostRepository {
       where: { id: hostId },
       include: {
         interfaces: { orderBy: { ifIndex: 'asc' } },
+        metricSamples: { orderBy: { timestamp: 'desc' }, take: 1, select: { sysName: true } },
         mapNodes: { select: { mapId: true } },
         sourceHealth: true,
       },
@@ -376,10 +379,23 @@ export class PrismaHostRepository implements HostRepository {
     }
   }
 
+  async getDecryptedSshCredentials(hostId: string): Promise<SshCredentialSecret | null> {
+    if (!this.vault) return null;
+    const device = await this.prisma.device.findUnique({
+      where: { id: hostId },
+      select: { sshCredential: { select: { encryptedPayload: true } } },
+    });
+    if (!device?.sshCredential) return null;
+    try {
+      const decrypted = this.vault.decrypt(Buffer.from(device.sshCredential.encryptedPayload));
+      return typeof decrypted.password === 'string' ? { password: decrypted.password } : null;
+    } catch {
+      return null;
+    }
+  }
+
   async replaceInterfaces(hostId: string, interfaces: NetworkInterface[]): Promise<NetworkInterface[]> {
-    const incoming = new Set(interfaces.map((item) => item.ifIndex));
     await this.prisma.$transaction(async (tx) => {
-      await tx.interface.deleteMany({ where: { deviceId: hostId, ifIndex: { notIn: [...incoming] } } });
       for (const item of interfaces) {
         await tx.interface.upsert({
           where: { deviceId_ifIndex: { deviceId: hostId, ifIndex: item.ifIndex } },
@@ -620,6 +636,7 @@ export class PrismaHostRepository implements HostRepository {
       lastFailure: Date | null;
       lastErrorSafe: string | null;
     }>;
+    metricSamples: Array<{ sysName: string | null }>;
     interfaces: Array<{
       id: string;
       deviceId: string;
@@ -774,6 +791,7 @@ export class PrismaHostRepository implements HostRepository {
       sourceHealth,
       lastPollingAt: device.lastPollingAt?.toISOString() ?? null,
       lastDiscoveryAt: device.lastDiscoveryAt?.toISOString() ?? null,
+      detectedHostname: device.metricSamples[0]?.sysName ?? null,
       mapIds,
       mapCount: mapIds.length,
       createdAt: device.createdAt.toISOString(),

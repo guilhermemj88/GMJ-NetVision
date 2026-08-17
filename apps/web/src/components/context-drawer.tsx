@@ -333,7 +333,7 @@ function InterfaceList({
   return (
     <section className="interface-list">
       <div className="interface-list__head">
-        <span>PORTA / ALIAS</span>
+        <span>NOME / DESCRIÇÃO</span>
         <span>TRÁFEGO</span>
         <span>STATUS</span>
       </div>
@@ -342,7 +342,7 @@ function InterfaceList({
           <span className={`port-dot status-${item.operStatus.toLowerCase()}`} />
           <span className="interface-list__name">
             <strong>{item.name}</strong>
-            <small>{item.alias || item.description}</small>
+            <small>{item.alias || 'Sem descrição configurada'}</small>
           </span>
           <span className="interface-list__traffic">
             <small>↓ {formatBitsPerSecond(item.rxBps)}</small>
@@ -378,14 +378,15 @@ function InterfaceDrawer({
       <section className="drawer-section">
         <SectionTitle icon={<Cable size={14} />} label="DETALHES DA PORTA" />
         <div className="info-grid">
-          <Info label="Alias" value={item.alias || '—'} />
+          <Info label="Descrição / ifAlias" value={item.alias || '—'} />
+          <Info label="ifDescr" value={item.description || '—'} />
           <Info label="ifIndex" value={String(item.ifIndex)} mono />
           <Info label="MAC" value={item.mac || '—'} mono />
           <Info label="MTU" value={String(item.mtu)} mono />
           <Info label="Velocidade" value={formatBitsPerSecond(item.speedBps)} />
           <Info label="Admin / Oper" value={`${item.adminStatus} / ${item.operStatus}`} />
+          <Info label="Fontes" value={item.dataSources?.join(' + ') || '—'} />
         </div>
-        <p className="interface-description">{item.description}</p>
       </section>
       <section className="drawer-section live-metrics">
         <SectionTitle icon={<Activity size={14} />} label="MÉTRICAS ATUAIS" />

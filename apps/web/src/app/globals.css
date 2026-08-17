@@ -1466,14 +1466,24 @@ button {
     0 0 16px color-mix(in srgb, currentColor 20%, transparent);
 }
 .device-node .react-flow__handle {
-  top: calc(var(--orb-top) + var(--orb-size) / 2);
   margin: 0;
 }
 .device-node .react-flow__handle[data-handlepos='left'] {
+  top: calc(var(--orb-top) + var(--orb-size) / 2);
   left: calc((100% - var(--orb-size)) / 2);
 }
 .device-node .react-flow__handle[data-handlepos='right'] {
+  top: calc(var(--orb-top) + var(--orb-size) / 2);
   right: calc((100% - var(--orb-size)) / 2);
+}
+.device-node .react-flow__handle[data-handlepos='top'] {
+  top: var(--orb-top);
+  left: 50%;
+}
+.device-node .react-flow__handle[data-handlepos='bottom'] {
+  top: calc(var(--orb-top) + var(--orb-size));
+  bottom: auto;
+  left: 50%;
 }
 .device-tooltip {
   display: none;

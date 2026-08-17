@@ -19,6 +19,7 @@ import { demoZabbixCandidates, type ZabbixAdapter } from './infrastructure/metri
 import { CredentialEncryptionUnavailableError, type DemoMapRepository } from './infrastructure/persistence/demo-map-repository';
 import type { HostRepository } from './infrastructure/persistence/host-repository';
 import type { SnmpService } from './infrastructure/snmp/snmp-service';
+import type { SshInterfaceService } from './infrastructure/ssh/ssh-interface-service';
 
 const hostIdParams = z.object({ hostId: z.string().min(1) });
 const sourceParams = z.object({ hostId: z.string().min(1), source: z.enum(['zabbix', 'ssh', 'snmp']) });
@@ -110,10 +111,11 @@ export function registerHostRoutes(
     hosts: HostRepository;
     discovery: DiscoveryService;
     snmp: SnmpService;
+    ssh: SshInterfaceService;
     zabbix: ZabbixAdapter | null;
   },
 ): void {
-  const { legacyMaps, mapMembership, hosts, discovery, snmp, zabbix } = dependencies;
+  const { legacyMaps, mapMembership, hosts, discovery, snmp, ssh, zabbix } = dependencies;
 
   app.get('/api/hosts', async (request) => {
     const query = z.object({
@@ -231,6 +233,9 @@ export function registerHostRoutes(
     } else if (source === 'SNMP' && !config.DEMO_MODE) {
       const { state, message } = await snmp.testConnectivity(host);
       result = safeConnectionResult('SNMP', state, message);
+    } else if (source === 'SSH' && !config.DEMO_MODE) {
+      const { state, message } = await ssh.testConnectivity(host);
+      result = safeConnectionResult('SSH', state, message);
     } else if (config.DEMO_MODE) result = safeConnectionResult(source, 'CONNECTED', 'Conectado pelo adapter demonstrativo');
     else result = safeConnectionResult(source, 'FAILED', `Transporte ${source} não configurado no servidor`);
     await hosts.updateSourceHealth(hostId, result);

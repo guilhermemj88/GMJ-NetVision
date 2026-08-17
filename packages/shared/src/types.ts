@@ -137,6 +137,8 @@ export interface HostRecord extends Device {
   sourceHealth: Record<SourceKind, SourceHealth>;
   lastPollingAt: string | null;
   lastDiscoveryAt: string | null;
+  /** Latest sysName observed through SNMP; never replaces the registered hostname. */
+  detectedHostname?: string | null;
   mapIds: string[];
   mapCount: number;
   createdAt: string;

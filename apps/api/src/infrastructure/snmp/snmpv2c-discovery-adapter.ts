@@ -40,12 +40,24 @@ function textValue(value: string | number | Uint8Array | undefined): string {
   return String(value).replace(/\0+$/g, '').trim();
 }
 
-function normalizeStatus(value: unknown): 'UP' | 'DOWN' {
+function numericValue(value: unknown): number {
   let num = 0;
   if (typeof value === 'string') num = parseInt(value, 10);
   else if (typeof value === 'number') num = value;
   else if (value instanceof Uint8Array) num = parseInt(textValue(value), 10);
-  return num === 1 ? 'UP' : 'DOWN';
+  return num;
+}
+
+function normalizeAdminStatus(value: unknown): 'UP' | 'DOWN' {
+  return numericValue(value) === 1 ? 'UP' : 'DOWN';
+}
+
+function normalizeOperStatus(value: unknown): NetworkInterface['operStatus'] {
+  const num = numericValue(value);
+  if (num === 1) return 'UP';
+  if (num === 2) return 'DOWN';
+  if (num === 6) return 'DISABLED';
+  return 'UNKNOWN';
 }
 
 function formatMac(value: string | number | Uint8Array): string {
@@ -141,11 +153,11 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
         const name = discoveredName || description || `if${ifIndex}`;
         const alias = textValue(aliasByIndex.get(suffix));
         const mac = formatMac(macByIndex.get(suffix) ?? '');
-        const adminStatus = normalizeStatus(adminByIndex.get(suffix) ?? '2');
-        const operStatus = normalizeStatus(operByIndex.get(suffix) ?? '2');
-        const highSpeed = highSpeedByIndex.get(suffix);
-        const speedBps = highSpeed
-          ? parseSpeed(highSpeed) * 1_000_000
+        const adminStatus = normalizeAdminStatus(adminByIndex.get(suffix));
+        const operStatus = normalizeOperStatus(operByIndex.get(suffix));
+        const highSpeedMbps = parseSpeed(highSpeedByIndex.get(suffix));
+        const speedBps = highSpeedMbps > 0
+          ? highSpeedMbps * 1_000_000
           : parseSpeed(speedByIndex.get(suffix) ?? 0);
 
         return [{

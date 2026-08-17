@@ -6,6 +6,7 @@ import type {
 } from '../persistence/host-repository';
 import { SnmpClientImpl } from './snmp-client-impl';
 import { SnmpV2cDiscoveryAdapter } from './snmpv2c-discovery-adapter';
+import type { SshInterfaceService } from '../ssh/ssh-interface-service';
 
 const SYSTEM_OIDS = {
   sysDescr: '1.3.6.1.2.1.1.1.0',
@@ -27,6 +28,7 @@ const INTERFACE_OIDS = {
 } as const;
 
 const MIN_COUNTER_SAMPLE_SECONDS = 45;
+const INTERFACE_REFRESH_MILLISECONDS = 6 * 60 * 60 * 1000;
 
 interface CounterRow {
   ifIndex: number;
@@ -57,7 +59,10 @@ export class SnmpService {
   private readonly discoveryAdapter: SnmpV2cDiscoveryAdapter;
   private readonly activePolls = new Map<string, Promise<SnmpPollResult>>();
 
-  constructor(private readonly repository: HostRepository) {
+  constructor(
+    private readonly repository: HostRepository,
+    private readonly sshInterfaces?: SshInterfaceService,
+  ) {
     this.client = new SnmpClientImpl(3000, 1);
     this.discoveryAdapter = new SnmpV2cDiscoveryAdapter(repository);
   }
@@ -112,8 +117,25 @@ export class SnmpService {
 
   async discoverAndPersistInterfaces(device: HostRecord): Promise<NetworkInterface[]> {
     const discovered = await this.discoverInterfaces(device);
-    if (!discovered.length) return [];
-    return this.repository.replaceInterfaces(device.id, discovered);
+    if (!discovered.length) throw new Error('SNMP IF-MIB returned no valid interfaces');
+    let merged = discovered;
+    if (device.sshEnabled && this.sshInterfaces) {
+      try {
+        merged = await this.sshInterfaces.enrichInterfaces(device, discovered);
+        await this.repository.updateSourceHealth(device.id, {
+          source: 'SSH', state: 'CONNECTED',
+          message: 'Descrições de interfaces complementadas via SSH Huawei',
+          checkedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        await this.repository.updateSourceHealth(device.id, {
+          source: 'SSH', state: 'FAILED',
+          message: error instanceof Error ? error.message : 'SSH interface enrichment failed',
+          checkedAt: new Date().toISOString(),
+        });
+      }
+    }
+    return this.repository.replaceInterfaces(device.id, merged);
   }
 
   async pollHost(device: HostRecord): Promise<SnmpPollResult> {
@@ -133,9 +155,18 @@ export class SnmpService {
     const community = await this.requireCommunity(device.id);
 
     let currentDevice = device;
-    if (!currentDevice.interfaces.length) {
-      await this.discoverAndPersistInterfaces(currentDevice);
-      currentDevice = (await this.repository.getHost(device.id)) ?? currentDevice;
+    const lastDiscovery = currentDevice.lastDiscoveryAt
+      ? new Date(currentDevice.lastDiscoveryAt).getTime()
+      : 0;
+    const shouldRefreshInterfaces = !currentDevice.interfaces.length
+      || Date.now() - lastDiscovery >= INTERFACE_REFRESH_MILLISECONDS;
+    if (shouldRefreshInterfaces) {
+      try {
+        await this.discoverAndPersistInterfaces(currentDevice);
+        currentDevice = (await this.repository.getHost(device.id)) ?? currentDevice;
+      } catch (error) {
+        if (!currentDevice.interfaces.length) throw error;
+      }
     }
 
     const previousPromise = this.repository.getLatestCounterSnapshots(currentDevice.id);
@@ -265,6 +296,7 @@ export class SnmpService {
       version: 'v2c',
       port: device.snmp!.port,
     });
+    if (!values.length) throw new Error('SNMP system request returned no valid values');
     const byOid = new Map(values.map((value) => [value.oid, value.value]));
     const uptimeHundredths = this.parseCounter(byOid.get(SYSTEM_OIDS.sysUpTime) ?? 0);
     return {
