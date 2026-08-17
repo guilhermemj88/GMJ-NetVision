@@ -1,0 +1,8 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^cd c:\\\\projetos\\\\GMJ-NetVision\\\\apps\\\\api ; npm install net-snmp$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}
