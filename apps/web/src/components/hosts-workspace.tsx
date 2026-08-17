@@ -567,12 +567,24 @@ function HostDetail({
                     <dd>{formatBitsPerSecond(networkInterface.rxBps)} / {formatBitsPerSecond(networkInterface.txBps)}</dd>
                   </div>
                   <div>
-                    <dt>Erros RX / TX</dt>
+                    <dt>Erros RX / TX agora</dt>
                     <dd>{networkInterface.rxErrors} / {networkInterface.txErrors}</dd>
                   </div>
                   <div>
-                    <dt>Descartes RX / TX</dt>
+                    <dt>Descartes RX / TX agora</dt>
                     <dd>{networkInterface.rxDiscards} / {networkInterface.txDiscards}</dd>
+                  </div>
+                  <div>
+                    <dt>Óptico RX / TX</dt>
+                    <dd>
+                      {networkInterface.rxPowerDbm == null ? 'N/D' : `${networkInterface.rxPowerDbm.toFixed(2)} dBm`}
+                      {' / '}
+                      {networkInterface.txPowerDbm == null ? 'N/D' : `${networkInterface.txPowerDbm.toFixed(2)} dBm`}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Fonte óptica</dt>
+                    <dd>{networkInterface.opticalSource ?? 'N/D'}</dd>
                   </div>
                   <div>
                     <dt>Fontes</dt>

@@ -1266,6 +1266,29 @@ button {
   border: 1px solid var(--cyan);
   background: rgba(69, 183, 217, 0.07);
 }
+.smart-guide {
+  position: absolute;
+  z-index: 8;
+  pointer-events: none;
+  background: #45d7ff;
+  box-shadow: 0 0 7px rgba(69, 215, 255, 0.8);
+}
+.smart-guide--vertical {
+  width: 1px;
+  transform: translateX(-0.5px);
+}
+.smart-guide--horizontal {
+  height: 1px;
+  transform: translateY(-0.5px);
+}
+.smart-guide-target {
+  position: absolute;
+  z-index: 7;
+  pointer-events: none;
+  border: 1px solid rgba(69, 215, 255, 0.82);
+  border-radius: 6px;
+  box-shadow: 0 0 0 3px rgba(69, 215, 255, 0.1);
+}
 .react-flow__handle {
   width: 8px;
   height: 8px;
@@ -2338,6 +2361,10 @@ button {
 .counter-row strong {
   color: #aebfc7;
   font: 500 11px var(--font-mono);
+}
+.counter-row small {
+  color: #667983;
+  font: 500 7px var(--font-mono);
 }
 .charts-section {
   padding: 20px;

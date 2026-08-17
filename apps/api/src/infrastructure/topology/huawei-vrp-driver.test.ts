@@ -21,4 +21,18 @@ Eth-Trunk3                       down  down
     });
     expect(interfaces[2]).toMatchObject({ name: 'Eth-Trunk3', alias: '', operStatus: 'DOWN' });
   });
+
+  it('parses common VRP optical labels and rejects implausible dBm values', () => {
+    const output = `
+100GE 0/0/1 transceiver information:
+  Current RX Power (dBm) : -3.42
+  TxPower(dBm) = -2.11
+XGigabitEthernet0/0/2 transceiver information:
+  RxPower (dBm): -120
+  Current TX Power (dBm): 99
+`;
+    expect(new HuaweiVrpDriver().parseOpticalPower(output)).toEqual([
+      { name: '100GE 0/0/1', rxPowerDbm: -3.42, txPowerDbm: -2.11 },
+    ]);
+  });
 });

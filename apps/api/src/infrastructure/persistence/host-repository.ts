@@ -33,6 +33,10 @@ export interface InterfaceCounterSnapshot {
 export interface InterfaceMetricSampleInput extends InterfaceCounterSnapshot {
   rxBps: number;
   txBps: number;
+  inErrorsDelta: bigint;
+  outErrorsDelta: bigint;
+  inDiscardsDelta: bigint;
+  outDiscardsDelta: bigint;
   operStatus: NetworkInterface['operStatus'];
 }
 
@@ -42,6 +46,7 @@ export interface DeviceMetricSampleInput {
   sysName?: string;
   sysDescr?: string;
   sysObjectId?: string;
+  cpuPercent?: number;
 }
 
 export interface HostRepository {
@@ -54,6 +59,7 @@ export interface HostRepository {
   getDecryptedSnmpCredentials(hostId: string): Promise<SnmpCredentialSecret | null>;
   getDecryptedSshCredentials(hostId: string): Promise<SshCredentialSecret | null>;
   replaceInterfaces(hostId: string, interfaces: NetworkInterface[]): Promise<NetworkInterface[]>;
+  updateInterfaceOptics(hostId: string, interfaces: NetworkInterface[]): Promise<void>;
   getLatestCounterSnapshots(hostId: string): Promise<Map<number, InterfaceCounterSnapshot>>;
   saveSnmpPoll(
     hostId: string,

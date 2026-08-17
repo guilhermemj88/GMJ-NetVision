@@ -279,6 +279,10 @@ model InterfaceMetricSample {
   outErrors   BigInt          @default(0)
   inDiscards  BigInt          @default(0)
   outDiscards BigInt          @default(0)
+  inErrorsDelta    BigInt      @default(0)
+  outErrorsDelta   BigInt      @default(0)
+  inDiscardsDelta  BigInt      @default(0)
+  outDiscardsDelta BigInt      @default(0)
   operStatus  InterfaceStatus @default(UNKNOWN)
   interface   Interface       @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
 

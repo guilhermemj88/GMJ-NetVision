@@ -1,5 +1,6 @@
 import type { DiscoveredNeighbor, NetworkInterface } from '@gmj/shared';
 import type { DeviceIdentity, SshDeviceDriver } from '../../domain/ports';
+import { normalizeOpticalDbm } from './optical-power';
 
 export interface HuaweiOpticalReading {
   name: string;
@@ -80,21 +81,23 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
   }
 
   parseOpticalPower(output: string): HuaweiOpticalReading[] {
-    const starts = [...output.matchAll(/^\s*([^\s]+)\s+transceiver information\s*:/gim)];
+    const starts = [...output.matchAll(/^\s*(.+?)\s+transceiver information\s*:/gim)];
     return starts.flatMap((match, index) => {
       const name = match[1]?.trim();
       if (!name || match.index === undefined) return [];
       const end = starts[index + 1]?.index ?? output.length;
       const block = output.slice(match.index, end);
-      const rx = block.match(/(?:Current\s+)?RX\s+Power\s*\(dB[Mm]\)\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1];
-      const tx = block.match(/(?:Current\s+)?TX\s+Power\s*\(dB[Mm]\)\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1];
-      const rxPowerDbm = rx === undefined ? null : Number(rx);
-      const txPowerDbm = tx === undefined ? null : Number(tx);
-      if (!Number.isFinite(rxPowerDbm ?? Number.NaN) && !Number.isFinite(txPowerDbm ?? Number.NaN)) return [];
+      const rx = block.match(/(?:Current\s*)?R\s*X\s*Power\s*(?:\(\s*dBm\s*\))?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i)?.[1]
+        ?? block.match(/RxPower\s*(?:\(\s*dBm\s*\))?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i)?.[1];
+      const tx = block.match(/(?:Current\s*)?T\s*X\s*Power\s*(?:\(\s*dBm\s*\))?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i)?.[1]
+        ?? block.match(/TxPower\s*(?:\(\s*dBm\s*\))?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i)?.[1];
+      const rxPowerDbm = normalizeOpticalDbm(rx);
+      const txPowerDbm = normalizeOpticalDbm(tx);
+      if (rxPowerDbm === null && txPowerDbm === null) return [];
       return [{
         name,
-        rxPowerDbm: Number.isFinite(rxPowerDbm ?? Number.NaN) ? rxPowerDbm : null,
-        txPowerDbm: Number.isFinite(txPowerDbm ?? Number.NaN) ? txPowerDbm : null,
+        rxPowerDbm,
+        txPowerDbm,
       }];
     });
   }

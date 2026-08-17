@@ -21,6 +21,18 @@ export function normalizeInterfaceName(value: string): string {
   return normalized.toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+/** Returns normalized full text plus any Huawei interface token embedded in it. */
+export function interfaceNameKeys(value: string): string[] {
+  const keys = new Set<string>();
+  const full = normalizeInterfaceName(value);
+  if (full) keys.add(full);
+  const embedded = value.match(
+    /(?:100GE|HundredGigabitEthernet|40GE|FortyGigabitEthernet|10GE|TenGigabitEthernet|XGE|XGigabitEthernet|GE|GigabitEthernet|Eth-?Trunk)\s*[0-9][0-9/.-]*/i,
+  )?.[0];
+  if (embedded) keys.add(normalizeInterfaceName(embedded));
+  return [...keys];
+}
+
 function hasUsefulAlias(networkInterface: NetworkInterface): boolean {
   const alias = networkInterface.alias.trim();
   if (!alias || /^(?:-|--|n\/?a|none|null|unknown|interface)$/i.test(alias)) return false;

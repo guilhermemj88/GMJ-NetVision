@@ -56,6 +56,8 @@ export class DemoHostRepositoryAdapter implements HostRepository {
     return interfaces;
   }
 
+  async updateInterfaceOptics(_hostId: string, _interfaces: NetworkInterface[]): Promise<void> {}
+
   async getLatestCounterSnapshots(_hostId: string): Promise<Map<number, InterfaceCounterSnapshot>> {
     return new Map();
   }

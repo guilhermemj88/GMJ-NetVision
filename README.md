@@ -45,6 +45,7 @@ packages/
 docs/
   ARCHITECTURE.md       responsabilidades e fluxos internos
   SNMP_COUNTERS.md      regras para a futura coleta de counters
+  SNMP_PROFILES_AND_ENRICHMENT.md  perfis, DDM, SSH e smart guides
 ```
 
 A separação central é:
@@ -120,6 +121,7 @@ O schema está em `apps/api/prisma/schema.prisma`. O repositório demo em memór
 | `ZABBIX_URL`                | endpoint base do Zabbix                   | vazio                                |
 | `ZABBIX_TOKEN`              | token usado somente pela API              | vazio                                |
 | `ZABBIX_AUTH_MODE`          | `AUTH_FIELD` (Zabbix 6.0) ou `BEARER`     | `AUTH_FIELD`                         |
+| `OPTICAL_POLL_INTERVAL_SECONDS` | intervalo do enrichment óptico SNMP/SSH | `300` (mínimo `60`)                  |
 
 ### Inventário global de Hosts
 
@@ -148,6 +150,8 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 Ative **Editar mapa** na barra superior. O toolbar permite adicionar equipamentos, criar enlaces, excluir a seleção, auto-organizar, bloquear/desbloquear, descobrir vizinhos e salvar.
 
 Arrastar um node define `positionSource=MANUAL`. Nodes com `locked=true` nunca são movidos pelo auto-layout. Em `HYBRID`, o layout também preserva posições manuais sempre que possível. As posições são salvas na API e, como tolerância a falhas do modo demo, em `localStorage`.
+
+Durante o arraste em modo de edição, guias temporárias alinham suavemente os centros horizontal e vertical de nodes próximos. A tolerância acompanha o zoom e somente a posição final é persistida.
 
 Um link sempre representa explicitamente:
 

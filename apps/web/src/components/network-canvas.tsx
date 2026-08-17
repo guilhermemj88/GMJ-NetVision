@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Background,
   BackgroundVariant,
   ConnectionMode,
   ReactFlow,
+  ViewportPortal,
   applyNodeChanges,
   useEdgesState,
   useNodesState,
@@ -14,6 +15,7 @@ import {
   type Connection,
   type EdgeMouseHandler,
   type NodeMouseHandler,
+  type OnNodeDrag,
   type OnNodesChange,
 } from '@xyflow/react';
 import { getMap, getMaps, updateNetworkMap } from '@/lib/api';
@@ -23,13 +25,31 @@ import { TrafficEdge, type TrafficFlowEdge } from './traffic-edge';
 import { MapControls } from './map-controls';
 import { EditToolbar } from './edit-toolbar';
 import { selectEdgeHandles } from '@/lib/edge-handles';
+import {
+  calculateSmartAlignment,
+  type AlignmentGuide,
+  type AlignmentNode,
+} from '@/lib/smart-alignment';
 
 const nodeTypes = { device: DeviceNode };
 const edgeTypes = { traffic: TrafficEdge };
+const DEFAULT_NODE_WIDTH = 82;
+const DEFAULT_NODE_HEIGHT = 80;
+
+function alignmentNode(node: DeviceFlowNode): AlignmentNode {
+  return {
+    id: node.id,
+    position: node.position,
+    width: node.measured?.width ?? node.width ?? DEFAULT_NODE_WIDTH,
+    height: node.measured?.height ?? node.height ?? DEFAULT_NODE_HEIGHT,
+  };
+}
 
 export function NetworkCanvas() {
   const flow = useReactFlow();
   const viewportMapId = useRef<string | null>(null);
+  const snappedPosition = useRef<{ nodeId: string; position: { x: number; y: number } } | null>(null);
+  const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuide[]>([]);
   const catalogQuery = useQuery({ queryKey: ['maps'], queryFn: getMaps });
   const activeMapId = useMapStore((state) => state.activeMapId);
   const map = useMapStore((state) => state.map);
@@ -165,6 +185,28 @@ export function NetworkCanvas() {
     [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
   );
 
+  const onNodeDrag: OnNodeDrag<DeviceFlowNode> = useCallback(
+    (_event, draggedNode) => {
+      if (!editMode) return;
+      setNodes((current) => {
+        const dragged = alignmentNode(draggedNode);
+        const others = current.filter((node) => node.id !== draggedNode.id).map(alignmentNode);
+        const result = calculateSmartAlignment(dragged, others, 8 / flow.getZoom(), true);
+        setAlignmentGuides(result.guides);
+        snappedPosition.current = { nodeId: draggedNode.id, position: result.position };
+        return current.map((node) => node.id === draggedNode.id
+          ? { ...node, position: result.position }
+          : node);
+      });
+    },
+    [editMode, flow, setNodes],
+  );
+
+  const clearAlignment = useCallback(() => {
+    setAlignmentGuides([]);
+    snappedPosition.current = null;
+  }, []);
+
   const onConnect = useCallback(
     (connection: Connection) => {
       if (!editMode || !connection.source || !connection.target || connection.source === connection.target) return;
@@ -193,6 +235,7 @@ export function NetworkCanvas() {
         edgeTypes={edgeTypes}
         onNodesChange={onNodesChange}
         onNodeClick={onNodeClick}
+        onNodeDrag={onNodeDrag}
         onEdgeClick={onEdgeClick}
         onPaneClick={() => {
           setSelection(null);
@@ -200,7 +243,11 @@ export function NetworkCanvas() {
         }}
         onNodeDragStop={(_event, node) => {
           const mapNode = map?.nodes.find((item) => item.deviceId === node.id);
-          if (mapNode) moveNode(mapNode.id, node.position);
+          const finalPosition = snappedPosition.current?.nodeId === node.id
+            ? snappedPosition.current.position
+            : node.position;
+          if (mapNode) moveNode(mapNode.id, finalPosition);
+          clearAlignment();
         }}
         onConnect={onConnect}
         connectionMode={ConnectionMode.Loose}
@@ -220,6 +267,29 @@ export function NetworkCanvas() {
         }}
       >
         <Background variant={BackgroundVariant.Dots} gap={30} size={1} color="#24313c" />
+        {editMode && alignmentGuides.length > 0 && (
+          <ViewportPortal>
+            {alignmentGuides.map((guide) => (
+              <div key={`${guide.axis}-${guide.targetId}`}>
+                <div
+                  className={`smart-guide smart-guide--${guide.axis}`}
+                  style={guide.axis === 'vertical'
+                    ? { left: guide.coordinate, top: guide.start, height: Math.max(1, guide.end - guide.start) }
+                    : { left: guide.start, top: guide.coordinate, width: Math.max(1, guide.end - guide.start) }}
+                />
+                <div
+                  className="smart-guide-target"
+                  style={{
+                    left: guide.target.position.x,
+                    top: guide.target.position.y,
+                    width: guide.target.width,
+                    height: guide.target.height,
+                  }}
+                />
+              </div>
+            ))}
+          </ViewportPortal>
+        )}
         {!rotation.hideControls && <MapControls />}
         {editMode && !rotation.active && <EditToolbar />}
       </ReactFlow>

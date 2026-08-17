@@ -1,7 +1,7 @@
 import type { HostRecord, NetworkInterface, SourceConnectionState } from '@gmj/shared';
 import type { HostRepository } from '../persistence/host-repository';
 import { HuaweiVrpDriver } from '../topology/huawei-vrp-driver';
-import { mergeSnmpAndSshInterfaces, normalizeInterfaceName } from '../topology/interface-correlation';
+import { interfaceNameKeys, mergeSnmpAndSshInterfaces } from '../topology/interface-correlation';
 import { SshClientImpl } from './ssh-client-impl';
 
 export class SshInterfaceService {
@@ -36,16 +36,25 @@ export class SshInterfaceService {
     if (!sshInterfaces.length) throw new Error('SSH display interface description returned no valid interfaces');
     const merged = mergeSnmpAndSshInterfaces(snmpInterfaces, sshInterfaces);
 
-    // SNMP is authoritative/preferred for optical DDM. Only ask SSH for the
-    // transceiver data when SNMP did not provide any optical power values.
-    const hasSnmpOptics = merged.some((item) => item.rxPowerDbm != null || item.txPowerDbm != null);
-    return hasSnmpOptics ? merged : this.enrichOpticalPower(device, merged);
+    // Fallback is evaluated per interface. SNMP data on one port must not stop
+    // SSH from filling a different port that has no DDM through SNMP.
+    return this.enrichOpticalPower(device, merged);
   }
 
   async enrichOpticalPower(
     device: HostRecord,
     interfaces: NetworkInterface[],
+    snmpFreshAfter?: Date,
   ): Promise<NetworkInterface[]> {
+    const needsFallback = interfaces.some((networkInterface) => {
+      const hasSnmpPower = networkInterface.opticalSource === 'SNMP'
+        && (networkInterface.rxPowerDbm != null || networkInterface.txPowerDbm != null);
+      if (!hasSnmpPower) return true;
+      if (!snmpFreshAfter) return false;
+      return !networkInterface.opticalUpdatedAt
+        || new Date(networkInterface.opticalUpdatedAt) < snmpFreshAfter;
+    });
+    if (!needsFallback) return interfaces;
     if (!device.sshEnabled || !device.ssh?.host || !device.ssh.username) return interfaces;
     const credentials = await this.repository.getDecryptedSshCredentials(device.id);
     if (!credentials?.password) throw new Error('SSH credential not configured');
@@ -62,12 +71,22 @@ export class SshInterfaceService {
     const readings = driver.parseOpticalPower(commandResult.stdout);
     if (!readings.length) return interfaces;
 
-    const byName = new Map(readings.map((reading) => [normalizeInterfaceName(reading.name), reading]));
+    const byName = new Map(readings.flatMap((reading) =>
+      interfaceNameKeys(reading.name).map((key) => [key, reading] as const),
+    ));
     const now = new Date().toISOString();
     return interfaces.map((networkInterface) => {
-      if (networkInterface.rxPowerDbm != null || networkInterface.txPowerDbm != null) return networkInterface;
-      const reading = byName.get(normalizeInterfaceName(networkInterface.name))
-        ?? byName.get(normalizeInterfaceName(networkInterface.description));
+      const hasSnmpPower = networkInterface.opticalSource === 'SNMP'
+        && (networkInterface.rxPowerDbm != null || networkInterface.txPowerDbm != null);
+      const snmpUpdatedAt = networkInterface.opticalUpdatedAt
+        ? new Date(networkInterface.opticalUpdatedAt)
+        : null;
+      if (hasSnmpPower && (!snmpFreshAfter || (snmpUpdatedAt && snmpUpdatedAt >= snmpFreshAfter))) {
+        return networkInterface;
+      }
+      const reading = [...interfaceNameKeys(networkInterface.name), ...interfaceNameKeys(networkInterface.description)]
+        .map((key) => byName.get(key))
+        .find(Boolean);
       if (!reading) return networkInterface;
       return {
         ...networkInterface,

@@ -388,6 +388,15 @@ function InterfaceDrawer({
           <Info label="Fontes" value={item.dataSources?.join(' + ') || '—'} />
         </div>
       </section>
+      <section className="drawer-section">
+        <SectionTitle icon={<CircleGauge size={14} />} label="ÓPTICO" />
+        <div className="info-grid">
+          <Info label="RX óptico" value={formatOpticalPower(item.rxPowerDbm)} mono />
+          <Info label="TX óptico" value={formatOpticalPower(item.txPowerDbm)} mono />
+          <Info label="Fonte" value={item.opticalSource ?? 'N/D'} />
+          <Info label="Atualizado" value={formatOpticalTimestamp(item.opticalUpdatedAt)} />
+        </div>
+      </section>
       <section className="drawer-section live-metrics">
         <SectionTitle icon={<Activity size={14} />} label="MÉTRICAS ATUAIS" />
         <div className="metric-hero">
@@ -403,10 +412,10 @@ function InterfaceDrawer({
           </div>
         </div>
         <div className="counter-row">
-          <Counter label="Erros RX" value={item.rxErrors} />
-          <Counter label="Erros TX" value={item.txErrors} />
-          <Counter label="Discards RX" value={item.rxDiscards} />
-          <Counter label="Discards TX" value={item.txDiscards} />
+          <Counter label="Erros RX agora" value={item.rxErrors} total={item.rxErrorsTotal} />
+          <Counter label="Erros TX agora" value={item.txErrors} total={item.txErrorsTotal} />
+          <Counter label="Discards RX agora" value={item.rxDiscards} total={item.rxDiscardsTotal} />
+          <Counter label="Discards TX agora" value={item.txDiscards} total={item.txDiscardsTotal} />
         </div>
       </section>
       <MetricCharts networkInterface={item} />
@@ -667,11 +676,22 @@ function ResourceBar({
     </div>
   );
 }
-function Counter({ label, value }: { label: string; value: number }) {
+function formatOpticalPower(value: number | null | undefined): string {
+  return value == null ? 'N/D' : `${value.toFixed(2)} dBm`;
+}
+
+function formatOpticalTimestamp(value: string | null | undefined): string {
+  if (!value) return 'N/D';
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? 'N/D' : date.toLocaleString('pt-BR');
+}
+
+function Counter({ label, value, total }: { label: string; value: number; total: number | undefined }) {
   return (
     <div>
       <span>{label}</span>
       <strong>{value.toLocaleString('pt-BR')}</strong>
+      {total !== undefined && <small>Total: {total.toLocaleString('pt-BR')}</small>}
     </div>
   );
 }

@@ -182,6 +182,17 @@ export function registerHostRoutes(
     return host?.interfaces ?? reply.code(404).send({ message: 'Host not found' });
   });
 
+  app.get('/api/hosts/:hostId/snmp-profile', async (request, reply) => {
+    const { hostId } = hostIdParams.parse(request.params);
+    const host = await hosts.getHost(hostId);
+    if (!host) return reply.code(404).send({ message: 'Host not found' });
+    return snmp.getProfileDiagnostic(hostId) ?? {
+      deviceId: hostId,
+      profileId: null,
+      message: 'O perfil será avaliado no próximo polling SNMP',
+    };
+  });
+
   app.post('/api/hosts/:hostId/interfaces/discover', async (request, reply) => {
     const { hostId } = hostIdParams.parse(request.params);
     const host = await hosts.getHost(hostId);

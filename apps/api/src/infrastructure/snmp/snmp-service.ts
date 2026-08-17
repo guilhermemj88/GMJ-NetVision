@@ -7,6 +7,10 @@ import type {
 import { SnmpClientImpl } from './snmp-client-impl';
 import { SnmpV2cDiscoveryAdapter } from './snmpv2c-discovery-adapter';
 import type { SshInterfaceService } from '../ssh/ssh-interface-service';
+import { SnmpProfileMetricService } from './profile-metric-service';
+import type { SnmpProfileDiagnostic } from './profiles/types';
+import { calculateCounterDelta } from './counter-delta';
+import { decodeSnmpText } from './snmp-text';
 
 const SYSTEM_OIDS = {
   sysDescr: '1.3.6.1.2.1.1.1.0',
@@ -58,13 +62,21 @@ export class SnmpService {
   private readonly client: SnmpClientImpl;
   private readonly discoveryAdapter: SnmpV2cDiscoveryAdapter;
   private readonly activePolls = new Map<string, Promise<SnmpPollResult>>();
+  private readonly profileMetrics: SnmpProfileMetricService;
+  private readonly lastOpticalAttempts = new Map<string, number>();
 
   constructor(
     private readonly repository: HostRepository,
     private readonly sshInterfaces?: SshInterfaceService,
+    private readonly opticalIntervalMs: number = 300_000,
   ) {
     this.client = new SnmpClientImpl(3000, 1);
     this.discoveryAdapter = new SnmpV2cDiscoveryAdapter(repository);
+    this.profileMetrics = new SnmpProfileMetricService(this.client);
+  }
+
+  getProfileDiagnostic(deviceId: string): SnmpProfileDiagnostic | null {
+    return this.profileMetrics.getDiagnostic(deviceId);
   }
 
   async testConnectivity(device: HostRecord): Promise<{
@@ -169,8 +181,28 @@ export class SnmpService {
       }
     }
 
+    const snmp = currentDevice.snmp;
+    if (!snmp) throw new Error('SNMP não está habilitado para este host');
+
     const previousPromise = this.repository.getLatestCounterSnapshots(currentDevice.id);
     const system = await this.collectSystem(currentDevice, community);
+    try {
+      const profile = await this.profileMetrics.collect(
+        currentDevice.id,
+        snmp.host,
+        { community, version: 'v2c', port: snmp.port },
+        {
+          vendor: currentDevice.vendor,
+          model: currentDevice.model,
+          ...(system.sysObjectId ? { sysObjectId: system.sysObjectId } : {}),
+          ...(system.sysDescr ? { sysDescr: system.sysDescr } : {}),
+          ...(system.sysName ? { sysName: system.sysName } : {}),
+        },
+      );
+      if (profile.cpuPercent !== undefined) system.cpuPercent = profile.cpuPercent;
+    } catch {
+      // A vendor metric is optional and must never stop IF-MIB traffic polling.
+    }
     const counters = await this.collectCounters(currentDevice, community);
     const previous = await previousPromise;
 
@@ -203,11 +235,16 @@ export class SnmpService {
         outErrors: counter.outErrors,
         inDiscards: counter.inDiscards,
         outDiscards: counter.outDiscards,
+        inErrorsDelta: calculateCounterDelta(counter.inErrors, prior?.inErrors),
+        outErrorsDelta: calculateCounterDelta(counter.outErrors, prior?.outErrors),
+        inDiscardsDelta: calculateCounterDelta(counter.inDiscards, prior?.inDiscards),
+        outDiscardsDelta: calculateCounterDelta(counter.outDiscards, prior?.outDiscards),
         operStatus: counter.operStatus,
       });
     }
 
     await this.repository.saveSnmpPoll(currentDevice.id, system, samples);
+    await this.refreshOpticalPower(currentDevice, community);
     await this.repository.updateSourceHealth(currentDevice.id, {
       source: 'SNMP',
       state: 'CONNECTED',
@@ -224,6 +261,32 @@ export class SnmpService {
       ...(system.sysObjectId ? { sysObjectId: system.sysObjectId } : {}),
       ...(system.uptimeSeconds !== undefined ? { uptimeSeconds: Number(system.uptimeSeconds) } : {}),
     };
+  }
+
+  private async refreshOpticalPower(device: HostRecord, community: string): Promise<void> {
+    const now = Date.now();
+    const lastAttempt = this.lastOpticalAttempts.get(device.id) ?? 0;
+    if (now - lastAttempt < this.opticalIntervalMs) return;
+    this.lastOpticalAttempts.set(device.id, now);
+    const startedAt = new Date(now);
+
+    try {
+      let interfaces = await this.discoveryAdapter.enrichOpticalPower(
+        device,
+        device.interfaces,
+        community,
+      );
+      if (device.sshEnabled && this.sshInterfaces) {
+        try {
+          interfaces = await this.sshInterfaces.enrichOpticalPower(device, interfaces, startedAt);
+        } catch {
+          // SSH DDM is a per-interface fallback; its failure does not affect SNMP.
+        }
+      }
+      await this.repository.updateInterfaceOptics(device.id, interfaces);
+    } catch {
+      // Optional DDM enrichment must never fail the traffic poll.
+    }
   }
 
   async collectCounters(device: HostRecord, community?: string): Promise<Map<number, CounterRow>> {
@@ -362,8 +425,6 @@ export class SnmpService {
   }
 
   private textValue(value: string | number | Uint8Array | undefined): string {
-    if (value === undefined) return '';
-    if (value instanceof Uint8Array) return Buffer.from(value).toString('utf8').replace(/\0+$/g, '').trim();
-    return String(value).trim();
+    return decodeSnmpText(value);
   }
 }

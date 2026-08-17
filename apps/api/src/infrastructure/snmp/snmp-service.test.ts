@@ -58,6 +58,7 @@ function repository(credentials: { community?: string } | null = { community: 'p
     getDecryptedSnmpCredentials: vi.fn().mockResolvedValue(credentials),
     getDecryptedSshCredentials: vi.fn().mockResolvedValue(null),
     replaceInterfaces: vi.fn().mockImplementation(async (_hostId, interfaces) => interfaces),
+    updateInterfaceOptics: vi.fn(),
     getLatestCounterSnapshots: vi.fn().mockResolvedValue(new Map()),
     saveSnmpPoll: vi.fn(),
     getInterfaceHistory: vi.fn().mockResolvedValue([]),
@@ -134,7 +135,7 @@ describe('SnmpService', () => {
       inOctets: 100n, outOctets: 200n, inErrors: 0n, outErrors: 0n,
       inDiscards: 0n, outDiscards: 0n,
     }]]));
-    const service = new SnmpService(repo);
+    const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
     vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[1, {
       ifIndex: 1, timestamp: now, inOctets: 120n, outOctets: 230n,
       inErrors: 0n, outErrors: 0n, inDiscards: 0n, outDiscards: 0n, operStatus: 'UP',
@@ -164,6 +165,75 @@ describe('SnmpService', () => {
     );
     expect(repo.updateHost).not.toHaveBeenCalled();
     expect(device.hostname).toBe('registered-hostname');
+  });
+
+  it('persists cumulative error/discard counters plus non-negative interval deltas', async () => {
+    const now = new Date();
+    const networkInterface = {
+      id: 'if-1', deviceId: 'test-1', name: 'GE0/0/1', alias: '', description: 'GE0/0/1',
+      ifIndex: 1, mac: '', mtu: 1500, speedBps: 1_000_000_000,
+      adminStatus: 'UP' as const, operStatus: 'UP' as const, rxBps: 0, txBps: 0,
+      rxUtilization: 0, txUtilization: 0, rxErrors: 0, txErrors: 0, rxDiscards: 0,
+      txDiscards: 0, dataSources: ['SNMP' as const],
+    };
+    const repo = repository();
+    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(new Map([[1, {
+      interfaceId: 'if-1', ifIndex: 1, timestamp: new Date(now.getTime() - 60_000),
+      inOctets: 100n, outOctets: 200n, inErrors: 7054n, outErrors: 2n,
+      inDiscards: 9n, outDiscards: 8n,
+    }]]));
+    const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[1, {
+      ifIndex: 1, timestamp: now, inOctets: 200n, outOctets: 300n,
+      inErrors: 7057n, outErrors: 2n, inDiscards: 2n, outDiscards: 10n, operStatus: 'UP',
+    }]]));
+    const internals = service as unknown as { collectSystem: () => Promise<DeviceMetricSampleInput> };
+    vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
+    const polledHost = host({
+      interfaces: [networkInterface], lastDiscoveryAt: now.toISOString(), snmpEnabled: true,
+      snmp: {
+        version: 'SNMP_V2C', host: '192.168.1.1', port: 161, username: '',
+        securityLevel: 'NO_AUTH_NO_PRIV', authProtocol: null, privacyProtocol: null,
+        credentialConfigured: true,
+      },
+    });
+
+    await service.pollHost(polledHost);
+
+    expect(repo.saveSnmpPoll).toHaveBeenCalledWith(polledHost.id, expect.any(Object), [
+      expect.objectContaining({
+        inErrors: 7057n, inErrorsDelta: 3n,
+        outErrors: 2n, outErrorsDelta: 0n,
+        inDiscards: 2n, inDiscardsDelta: 2n,
+        outDiscards: 10n, outDiscardsDelta: 2n,
+      }),
+    ]);
+  });
+
+  it('limits heavy optical enrichment to the configured interval', async () => {
+    const repo = repository();
+    const service = new SnmpService(repo, undefined, 300_000);
+    const polledHost = host({
+      snmpEnabled: true,
+      snmp: {
+        version: 'SNMP_V2C', host: '192.168.1.1', port: 161, username: '',
+        securityLevel: 'NO_AUTH_NO_PRIV', authProtocol: null, privacyProtocol: null,
+        credentialConfigured: true,
+      },
+    });
+    const internals = service as unknown as {
+      refreshOpticalPower: (device: HostRecord, community: string) => Promise<void>;
+      discoveryAdapter: {
+        enrichOpticalPower: (device: HostRecord, interfaces: HostRecord['interfaces'], community: string) => Promise<HostRecord['interfaces']>;
+      };
+    };
+    const enrichment = vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([]);
+
+    await internals.refreshOpticalPower(polledHost, 'secret');
+    await internals.refreshOpticalPower(polledHost, 'secret');
+
+    expect(enrichment).toHaveBeenCalledTimes(1);
+    expect(repo.updateInterfaceOptics).toHaveBeenCalledTimes(1);
   });
 });
 

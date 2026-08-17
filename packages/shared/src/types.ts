@@ -57,6 +57,10 @@ export interface NetworkInterface {
   txErrors: number;
   rxDiscards: number;
   txDiscards: number;
+  rxErrorsTotal?: number;
+  txErrorsTotal?: number;
+  rxDiscardsTotal?: number;
+  txDiscardsTotal?: number;
   rxPowerDbm?: number | null;
   txPowerDbm?: number | null;
   opticalSource?: 'SNMP' | 'SSH' | null;

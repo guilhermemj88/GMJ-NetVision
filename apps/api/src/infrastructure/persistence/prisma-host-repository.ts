@@ -22,6 +22,7 @@ import type {
   SnmpCredentialSecret,
   SshCredentialSecret,
 } from './host-repository';
+import { normalizeLegacySnmpText } from '../snmp/snmp-text';
 
 function disabledHealth(): SourceHealth {
   return { state: 'DISABLED', lastSuccess: null, lastFailure: null, lastErrorSafe: null };
@@ -70,6 +71,10 @@ type LatestMetricRow = {
   outErrors: bigint;
   inDiscards: bigint;
   outDiscards: bigint;
+  inErrorsDelta: bigint;
+  outErrorsDelta: bigint;
+  inDiscardsDelta: bigint;
+  outDiscardsDelta: bigint;
   operStatus: string;
 };
 
@@ -388,16 +393,32 @@ export class PrismaHostRepository implements HostRepository {
 
   async replaceInterfaces(hostId: string, interfaces: NetworkInterface[]): Promise<NetworkInterface[]> {
     await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.interface.findMany({ where: { deviceId: hostId } });
+      const existingByIndex = new Map(existing.map((item) => [item.ifIndex, item]));
       for (const item of interfaces) {
         await tx.interface.upsert({
           where: { deviceId_ifIndex: { deviceId: hostId, ifIndex: item.ifIndex } },
           create: { deviceId: hostId, ...this.interfaceCreateData(item) },
-          update: this.interfaceUpdateData(item),
+          update: this.interfaceUpdateData(item, existingByIndex.get(item.ifIndex)),
         });
       }
       await tx.device.update({ where: { id: hostId }, data: { lastDiscoveryAt: new Date() } });
     });
     return (await this.getHost(hostId))?.interfaces ?? [];
+  }
+
+  async updateInterfaceOptics(hostId: string, interfaces: NetworkInterface[]): Promise<void> {
+    if (!interfaces.length) return;
+    await this.prisma.$transaction(interfaces.map((item) => this.prisma.interface.updateMany({
+      where: { deviceId: hostId, ifIndex: item.ifIndex },
+      data: {
+        rxPowerDbm: item.rxPowerDbm ?? null,
+        txPowerDbm: item.txPowerDbm ?? null,
+        opticalSource: item.opticalSource ?? null,
+        opticalUpdatedAt: item.opticalUpdatedAt ? new Date(item.opticalUpdatedAt) : null,
+        dataSources: item.dataSources ?? ['SNMP'],
+      },
+    })));
   }
 
   async getLatestCounterSnapshots(hostId: string): Promise<Map<number, InterfaceCounterSnapshot>> {
@@ -456,6 +477,7 @@ export class PrismaHostRepository implements HostRepository {
         data: {
           lastPollingAt: deviceSample.timestamp,
           ...(deviceSample.uptimeSeconds !== undefined ? { uptimeSeconds: deviceSample.uptimeSeconds } : {}),
+          ...(deviceSample.cpuPercent !== undefined ? { cpuPercent: deviceSample.cpuPercent } : {}),
           status: 'UP',
         },
       });
@@ -482,6 +504,10 @@ export class PrismaHostRepository implements HostRepository {
             outErrors: sample.outErrors,
             inDiscards: sample.inDiscards,
             outDiscards: sample.outDiscards,
+            inErrorsDelta: sample.inErrorsDelta,
+            outErrorsDelta: sample.outErrorsDelta,
+            inDiscardsDelta: sample.inDiscardsDelta,
+            outDiscardsDelta: sample.outDiscardsDelta,
             operStatus: sample.operStatus,
           })),
         });
@@ -498,10 +524,10 @@ export class PrismaHostRepository implements HostRepository {
       timestamp: row.timestamp.toISOString(),
       rxBps: row.rxBps,
       txBps: row.txBps,
-      rxErrors: safeNumber(row.inErrors),
-      txErrors: safeNumber(row.outErrors),
-      rxDiscards: safeNumber(row.inDiscards),
-      txDiscards: safeNumber(row.outDiscards),
+      rxErrors: safeNumber(row.inErrorsDelta),
+      txErrors: safeNumber(row.outErrorsDelta),
+      rxDiscards: safeNumber(row.inDiscardsDelta),
+      txDiscards: safeNumber(row.outDiscardsDelta),
     }));
   }
 
@@ -519,10 +545,14 @@ export class PrismaHostRepository implements HostRepository {
       txBps: row.txBps,
       rxUtilization: speedBps > 0 ? (row.rxBps / speedBps) * 100 : 0,
       txUtilization: speedBps > 0 ? (row.txBps / speedBps) * 100 : 0,
-      rxErrors: safeNumber(row.inErrors),
-      txErrors: safeNumber(row.outErrors),
-      rxDiscards: safeNumber(row.inDiscards),
-      txDiscards: safeNumber(row.outDiscards),
+      rxErrors: safeNumber(row.inErrorsDelta),
+      txErrors: safeNumber(row.outErrorsDelta),
+      rxDiscards: safeNumber(row.inDiscardsDelta),
+      txDiscards: safeNumber(row.outDiscardsDelta),
+      rxErrorsTotal: safeNumber(row.inErrors),
+      txErrorsTotal: safeNumber(row.outErrors),
+      rxDiscardsTotal: safeNumber(row.inDiscards),
+      txDiscardsTotal: safeNumber(row.outDiscards),
       operStatus: row.operStatus,
     };
   }
@@ -541,6 +571,10 @@ export class PrismaHostRepository implements HostRepository {
         s."outErrors" AS "outErrors",
         s."inDiscards" AS "inDiscards",
         s."outDiscards" AS "outDiscards",
+        s."inErrorsDelta" AS "inErrorsDelta",
+        s."outErrorsDelta" AS "outErrorsDelta",
+        s."inDiscardsDelta" AS "inDiscardsDelta",
+        s."outDiscardsDelta" AS "outDiscardsDelta",
         s."operStatus"::text AS "operStatus"
       FROM "Interface" i
       JOIN LATERAL (
@@ -554,6 +588,10 @@ export class PrismaHostRepository implements HostRepository {
           m."outErrors",
           m."inDiscards",
           m."outDiscards",
+          m."inErrorsDelta",
+          m."outErrorsDelta",
+          m."inDiscardsDelta",
+          m."outDiscardsDelta",
           m."operStatus"
         FROM "InterfaceMetricSample" m
         WHERE m."interfaceId" = i."id"
@@ -584,7 +622,11 @@ export class PrismaHostRepository implements HostRepository {
       rxPowerDbm: number | null; txPowerDbm: number | null; opticalSource: string | null; opticalUpdatedAt: Date | null;
       rxItemId: string | null; txItemId: string | null; statusItemId: string | null; inErrorsItemId: string | null;
       outErrorsItemId: string | null; inDiscardsItemId: string | null; outDiscardsItemId: string | null; dataSources: unknown;
-      metricSamples: Array<{ rxBps: number; txBps: number; inErrors: bigint; outErrors: bigint; inDiscards: bigint; outDiscards: bigint }>;
+      metricSamples: Array<{
+        rxBps: number; txBps: number; inErrors: bigint; outErrors: bigint;
+        inDiscards: bigint; outDiscards: bigint; inErrorsDelta: bigint; outErrorsDelta: bigint;
+        inDiscardsDelta: bigint; outDiscardsDelta: bigint;
+      }>;
     }>;
   }): HostRecord {
     const health = new Map(device.sourceHealth.map((item) => [item.source, item]));
@@ -614,9 +656,9 @@ export class PrismaHostRepository implements HostRepository {
       return {
         id: item.id,
         deviceId: item.deviceId,
-        name: item.name,
-        alias: item.alias ?? '',
-        description: item.description ?? '',
+        name: normalizeLegacySnmpText(item.name),
+        alias: normalizeLegacySnmpText(item.alias ?? ''),
+        description: normalizeLegacySnmpText(item.description ?? ''),
         ifIndex: item.ifIndex,
         mac: item.mac ?? '',
         mtu: item.mtu ?? 0,
@@ -627,10 +669,14 @@ export class PrismaHostRepository implements HostRepository {
         txBps,
         rxUtilization: speedBps > 0 ? (rxBps / speedBps) * 100 : 0,
         txUtilization: speedBps > 0 ? (txBps / speedBps) * 100 : 0,
-        rxErrors: safeNumber(sample?.inErrors),
-        txErrors: safeNumber(sample?.outErrors),
-        rxDiscards: safeNumber(sample?.inDiscards),
-        txDiscards: safeNumber(sample?.outDiscards),
+        rxErrors: safeNumber(sample?.inErrorsDelta),
+        txErrors: safeNumber(sample?.outErrorsDelta),
+        rxDiscards: safeNumber(sample?.inDiscardsDelta),
+        txDiscards: safeNumber(sample?.outDiscardsDelta),
+        rxErrorsTotal: safeNumber(sample?.inErrors),
+        txErrorsTotal: safeNumber(sample?.outErrors),
+        rxDiscardsTotal: safeNumber(sample?.inDiscards),
+        txDiscardsTotal: safeNumber(sample?.outDiscards),
         rxPowerDbm: item.rxPowerDbm,
         txPowerDbm: item.txPowerDbm,
         opticalSource: item.opticalSource === 'SNMP' || item.opticalSource === 'SSH' ? item.opticalSource : null,
@@ -730,8 +776,39 @@ export class PrismaHostRepository implements HostRepository {
     };
   }
 
-  private interfaceUpdateData(item: NetworkInterface) {
-    return this.interfaceCreateData(item);
+  private interfaceUpdateData(
+    item: NetworkInterface,
+    existing?: {
+      name: string; alias: string | null; description: string | null; mac: string | null;
+      mtu: number | null; speedBps: bigint | null; rxPowerDbm: number | null; txPowerDbm: number | null;
+      opticalSource: string | null; opticalUpdatedAt: Date | null; dataSources: unknown;
+    },
+  ) {
+    const validText = (value: string): boolean => {
+      const trimmed = value.trim();
+      return Boolean(trimmed) && !/^\d+(?:,\d+)+$/.test(trimmed);
+    };
+    const existingSources = Array.isArray(existing?.dataSources)
+      ? existing.dataSources as NetworkInterface['dataSources']
+      : [];
+    return {
+      ...this.interfaceCreateData(item),
+      name: validText(item.name) ? item.name : existing?.name ?? item.name,
+      alias: validText(item.alias) ? item.alias : existing?.alias ?? null,
+      description: validText(item.description) ? item.description : existing?.description ?? null,
+      mac: item.mac || existing?.mac || null,
+      mtu: item.mtu > 0 ? item.mtu : existing?.mtu ?? null,
+      speedBps: item.speedBps > 0
+        ? BigInt(Math.trunc(item.speedBps))
+        : existing?.speedBps ?? 0n,
+      rxPowerDbm: item.rxPowerDbm ?? existing?.rxPowerDbm ?? null,
+      txPowerDbm: item.txPowerDbm ?? existing?.txPowerDbm ?? null,
+      opticalSource: item.opticalSource ?? existing?.opticalSource ?? null,
+      opticalUpdatedAt: item.opticalUpdatedAt
+        ? new Date(item.opticalUpdatedAt)
+        : existing?.opticalUpdatedAt ?? null,
+      dataSources: [...new Set([...(existingSources ?? []), ...(item.dataSources ?? ['SNMP'])])],
+    };
   }
 
   private assertCredentialEncryption(input: CreateHostInput | UpdateHostInput): void {

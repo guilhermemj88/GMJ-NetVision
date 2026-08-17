@@ -2,8 +2,10 @@ import type { Device, DiscoveredNeighbor, NetworkInterface, HostRecord } from '@
 import { createLocalId } from '@gmj/shared';
 import type { DeviceIdentity, TopologyDiscoveryAdapter } from '../../domain/ports';
 import type { HostRepository } from '../persistence/host-repository';
-import { normalizeInterfaceName } from '../topology/interface-correlation';
+import { interfaceNameKeys } from '../topology/interface-correlation';
+import { microWattsToDbm } from '../topology/optical-power';
 import { SnmpClientImpl } from './snmp-client-impl';
+import { decodeSnmpText } from './snmp-text';
 
 const IF_MIB_OIDS = {
   ifIndex: '1.3.6.1.2.1.2.2.1.1',
@@ -47,19 +49,11 @@ function getOidSuffix(oid: string, base: string): string {
   return oid.substring(base.length).replace(/^\./, '');
 }
 
-function textValue(value: string | number | Uint8Array | undefined): string {
-  if (value === undefined) return '';
-  if (value instanceof Uint8Array) {
-    return Buffer.from(value).toString('utf8').replace(/\0+$/g, '').trim();
-  }
-  return String(value).replace(/\0+$/g, '').trim();
-}
-
 function numericValue(value: unknown): number {
   let num = 0;
   if (typeof value === 'string') num = Number(value.trim());
   else if (typeof value === 'number') num = value;
-  else if (value instanceof Uint8Array) num = Number(textValue(value));
+  else if (value instanceof Uint8Array) num = Number(decodeSnmpText(value));
   return Number.isFinite(num) ? num : 0;
 }
 
@@ -88,13 +82,6 @@ function parseSpeed(value: unknown): number {
   return Math.max(0, num || 0);
 }
 
-function microWattsToDbm(value: unknown): number | null {
-  const microWatts = numericValue(value);
-  if (!Number.isFinite(microWatts) || microWatts <= 0) return null;
-  const dbm = 10 * Math.log10(microWatts / 1000);
-  return Number.isFinite(dbm) ? Math.round(dbm * 100) / 100 : null;
-}
-
 export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
   readonly kind = 'LLDP_SNMP' as const;
   private readonly client: SnmpClientImpl;
@@ -115,8 +102,8 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
         { community, version: 'v2c', port: 161 },
       );
       const byOid = new Map(values.map((value) => [value.oid, value.value]));
-      const hostname = textValue(byOid.get(SYSTEM_OIDS.sysName));
-      const systemDescription = textValue(byOid.get(SYSTEM_OIDS.sysDescription));
+      const hostname = decodeSnmpText(byOid.get(SYSTEM_OIDS.sysName));
+      const systemDescription = decodeSnmpText(byOid.get(SYSTEM_OIDS.sysDescription));
       return {
         ...(hostname ? { hostname } : {}),
         managementAddress: host,
@@ -168,13 +155,13 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
       const now = new Date().toISOString();
 
       return indices.flatMap((indexVb) => {
-        const ifIndex = parseInt(textValue(indexVb.value), 10);
+        const ifIndex = parseInt(decodeSnmpText(indexVb.value), 10);
         if (!Number.isInteger(ifIndex) || ifIndex <= 0) return [];
         const suffix = String(ifIndex);
-        const description = textValue(descByIndex.get(suffix));
-        const discoveredName = textValue(nameByIndex.get(suffix));
+        const description = decodeSnmpText(descByIndex.get(suffix));
+        const discoveredName = decodeSnmpText(nameByIndex.get(suffix));
         const name = discoveredName || description || `if${ifIndex}`;
-        const alias = textValue(aliasByIndex.get(suffix));
+        const alias = decodeSnmpText(aliasByIndex.get(suffix));
         const mac = formatMac(macByIndex.get(suffix) ?? '');
         const adminStatus = normalizeAdminStatus(adminByIndex.get(suffix));
         const operStatus = normalizeOperStatus(operByIndex.get(suffix));
@@ -182,8 +169,9 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
         const speedBps = highSpeedMbps > 0
           ? highSpeedMbps * 1_000_000
           : parseSpeed(speedByIndex.get(suffix) ?? 0);
-        const optical = opticalByName.get(normalizeInterfaceName(name))
-          ?? opticalByName.get(normalizeInterfaceName(description));
+        const optical = [...interfaceNameKeys(name), ...interfaceNameKeys(description)]
+          .map((key) => opticalByName.get(key))
+          .find(Boolean);
 
         return [{
           id: createLocalId('interface'),
@@ -225,6 +213,35 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     return [];
   }
 
+  async enrichOpticalPower(
+    device: HostRecord,
+    interfaces: NetworkInterface[],
+    community?: string,
+  ): Promise<NetworkInterface[]> {
+    if (!device.snmp?.host || !device.snmp.port) return interfaces;
+    const snmpCommunity = community ?? (await this.getSnmpCommunity(device.id));
+    if (!snmpCommunity) return interfaces;
+    const physicalNames = await this.safeWalk(device, ENTITY_MIB_OIDS.physicalName, snmpCommunity);
+    const opticalRx = await this.safeWalk(device, HUAWEI_OPTICAL_OIDS.rxPowerUw, snmpCommunity);
+    const opticalTx = await this.safeWalk(device, HUAWEI_OPTICAL_OIDS.txPowerUw, snmpCommunity);
+    const readings = this.opticalByInterfaceName(physicalNames, opticalRx, opticalTx);
+    const now = new Date().toISOString();
+
+    return interfaces.map((networkInterface) => {
+      const reading = [...interfaceNameKeys(networkInterface.name), ...interfaceNameKeys(networkInterface.description)]
+        .map((key) => readings.get(key))
+        .find(Boolean);
+      if (!reading) return networkInterface;
+      return {
+        ...networkInterface,
+        rxPowerDbm: reading.rxPowerDbm,
+        txPowerDbm: reading.txPowerDbm,
+        opticalSource: 'SNMP',
+        opticalUpdatedAt: now,
+      };
+    });
+  }
+
   private walk(host: HostRecord, oid: string, community: string): Promise<VarBind[]> {
     return this.client.walk(host.snmp!.host, oid, {
       community,
@@ -260,12 +277,12 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     const txByIndex = this.indexMap(txValues, HUAWEI_OPTICAL_OIDS.txPowerUw);
     const result = new Map<string, OpticalReading>();
     for (const [index, rawName] of namesByIndex) {
-      const key = normalizeInterfaceName(textValue(rawName));
-      if (!key) continue;
       const rxPowerDbm = microWattsToDbm(rxByIndex.get(index));
       const txPowerDbm = microWattsToDbm(txByIndex.get(index));
       if (rxPowerDbm === null && txPowerDbm === null) continue;
-      result.set(key, { rxPowerDbm, txPowerDbm });
+      for (const key of interfaceNameKeys(decodeSnmpText(rawName))) {
+        result.set(key, { rxPowerDbm, txPowerDbm });
+      }
     }
     return result;
   }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { NetworkInterface } from '@gmj/shared';
-import { mergeSnmpAndSshInterfaces, normalizeInterfaceName } from './interface-correlation';
+import { interfaceNameKeys, mergeSnmpAndSshInterfaces, normalizeInterfaceName } from './interface-correlation';
 
 function networkInterface(overrides: Partial<NetworkInterface>): NetworkInterface {
   return {
@@ -18,6 +18,10 @@ describe('interface source correlation', () => {
     expect(normalizeInterfaceName('XGigabitEthernet 0/0/1')).toBe(
       normalizeInterfaceName('XGE0/0/1'),
     );
+  });
+
+  it('extracts an interface name embedded in an entity/transceiver label', () => {
+    expect(interfaceNameKeys('Optical module 100GE 0/0/1 transceiver')).toContain('100ge001');
   });
 
   it('fills an empty SNMP alias from SSH without losing IF-MIB fields', () => {

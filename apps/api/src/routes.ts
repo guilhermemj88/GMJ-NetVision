@@ -97,7 +97,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const metrics = new DemoMetricAdapter();
   const discovery = new DiscoveryService([new DemoTopologyAdapter()]);
   const ssh = new SshInterfaceService(hosts);
-  const snmp = new SnmpService(hosts, ssh);
+  const snmp = new SnmpService(
+    hosts,
+    ssh,
+    config.OPTICAL_POLL_INTERVAL_SECONDS * 1000,
+  );
   const poller = new SnmpPoller(hosts, snmp, config.SNMP_POLL_INTERVAL_SECONDS * 1000);
   const zabbix = config.ZABBIX_URL && config.ZABBIX_TOKEN
     ? new ZabbixAdapter(config.ZABBIX_URL, config.ZABBIX_TOKEN, config.ZABBIX_AUTH_MODE)

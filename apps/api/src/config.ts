@@ -16,6 +16,7 @@ const envSchema = z.object({
     .default('false')
     .transform((value) => value === 'true'),
   SNMP_POLL_INTERVAL_SECONDS: z.coerce.number().int().min(15).default(60),
+  OPTICAL_POLL_INTERVAL_SECONDS: z.coerce.number().int().min(60).default(300),
 });
 
 const parsed = envSchema.parse(process.env);
