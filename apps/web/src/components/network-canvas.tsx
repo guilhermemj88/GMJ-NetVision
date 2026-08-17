@@ -75,23 +75,21 @@ export function NetworkCanvas() {
     return map.nodes.flatMap((mapNode) => {
       const device = map.devices.find((item) => item.id === mapNode.deviceId);
       if (!device || (!preferences.showOffline && device.status === 'DOWN')) return [];
-      return [
-        {
-          id: device.id,
-          type: 'device',
-          position: mapNode.position,
-          draggable: editMode && !mapNode.locked,
-          data: {
-            device,
-            mapNode,
-            editMode,
-            showInterfaces: preferences.showInterfaces,
-            displayMode: map.settings.nodeDisplayMode,
-            nodeScale: map.settings.nodeScale,
-            labelScale: map.settings.labelScale,
-          },
+      return [{
+        id: device.id,
+        type: 'device',
+        position: mapNode.position,
+        draggable: editMode && !mapNode.locked,
+        data: {
+          device,
+          mapNode,
+          editMode,
+          showInterfaces: preferences.showInterfaces,
+          displayMode: map.settings.nodeDisplayMode,
+          nodeScale: map.settings.nodeScale,
+          labelScale: map.settings.labelScale,
         },
-      ];
+      }];
     });
   }, [editMode, map, preferences.showInterfaces, preferences.showOffline]);
 
@@ -99,6 +97,7 @@ export function NetworkCanvas() {
     if (!map) return [];
     const visible = new Set(domainNodes.map((node) => node.id));
     const positions = new Map(map.nodes.map((node) => [node.deviceId, node.position]));
+    const devices = new Map(map.devices.map((device) => [device.id, device]));
     return map.links.flatMap((link) => {
       const sourcePosition = positions.get(link.sourceDeviceId);
       const targetPosition = positions.get(link.targetDeviceId);
@@ -106,43 +105,38 @@ export function NetworkCanvas() {
       const handles = sourcePosition && targetPosition
         ? selectEdgeHandles(sourcePosition, targetPosition)
         : { sourceHandle: 'right' as const, targetHandle: 'left' as const };
-      return [
-            {
-              id: link.id,
-              source: link.sourceDeviceId,
-              target: link.targetDeviceId,
-              sourceHandle: handles.sourceHandle,
-              targetHandle: handles.targetHandle,
-              type: 'traffic',
-              selectable: true,
-              data: {
-                link,
-                showTraffic: preferences.showTraffic,
-                showUtilization: preferences.showUtilization,
-                showLabels: preferences.showLabels,
-                displayStyle: map.settings.linkDisplayStyle,
-                metricDisplay: map.settings.linkMetricDisplay,
-                linkScale: map.settings.linkScale,
-                labelScale: map.settings.labelScale,
-                related:
-                  selection?.kind !== 'device' ||
-                  link.sourceDeviceId === selection.id ||
-                  link.targetDeviceId === selection.id,
-                emphasized:
-                  selection?.kind === 'device' &&
-                  (link.sourceDeviceId === selection.id || link.targetDeviceId === selection.id),
-              },
-            },
-          ];
+      const sourceInterface = devices.get(link.sourceDeviceId)?.interfaces.find((item) => item.id === link.sourceInterfaceId);
+      const targetInterface = devices.get(link.targetDeviceId)?.interfaces.find((item) => item.id === link.targetInterfaceId);
+      return [{
+        id: link.id,
+        source: link.sourceDeviceId,
+        target: link.targetDeviceId,
+        sourceHandle: handles.sourceHandle,
+        targetHandle: handles.targetHandle,
+        type: 'traffic',
+        selectable: true,
+        data: {
+          link,
+          ...(sourceInterface ? { sourceInterface } : {}),
+          ...(targetInterface ? { targetInterface } : {}),
+          showTraffic: preferences.showTraffic,
+          showUtilization: preferences.showUtilization,
+          showLabels: preferences.showLabels,
+          displayStyle: map.settings.linkDisplayStyle,
+          metricDisplay: map.settings.linkMetricDisplay,
+          linkScale: map.settings.linkScale,
+          labelScale: map.settings.labelScale,
+          related:
+            selection?.kind !== 'device' ||
+            link.sourceDeviceId === selection.id ||
+            link.targetDeviceId === selection.id,
+          emphasized:
+            selection?.kind === 'device' &&
+            (link.sourceDeviceId === selection.id || link.targetDeviceId === selection.id),
+        },
+      }];
     });
-  }, [
-    domainNodes,
-    map,
-    preferences.showLabels,
-    preferences.showTraffic,
-    preferences.showUtilization,
-    selection,
-  ]);
+  }, [domainNodes, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, selection]);
 
   const [nodes, setNodes] = useNodesState<DeviceFlowNode>([]);
   const [edges, setEdges] = useEdgesState<TrafficFlowEdge>([]);
@@ -173,13 +167,7 @@ export function NetworkCanvas() {
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      if (
-        !editMode ||
-        !connection.source ||
-        !connection.target ||
-        connection.source === connection.target
-      )
-        return;
+      if (!editMode || !connection.source || !connection.target || connection.source === connection.target) return;
       setPendingLink({ sourceDeviceId: connection.source, targetDeviceId: connection.target });
       setPanel('create-link');
     },
@@ -228,9 +216,7 @@ export function NetworkCanvas() {
         panOnDrag={!editMode || [1, 2]}
         onMoveEnd={(_event, viewport) => {
           setViewport(viewport);
-          if (map) {
-            void updateNetworkMap(map.id, { settings: { viewport } }).catch(() => undefined);
-          }
+          if (map) void updateNetworkMap(map.id, { settings: { viewport } }).catch(() => undefined);
         }}
       >
         <Background variant={BackgroundVariant.Dots} gap={30} size={1} color="#24313c" />
@@ -240,26 +226,15 @@ export function NetworkCanvas() {
       <div className="map-watermark">
         <span>LIVE TOPOLOGY</span>
         <strong>
-          {map?.nodes.filter((node) =>
-            map.devices.some((device) => device.id === node.deviceId && device.status === 'UP'),
-          ).length ?? 0}{' '}
-          UP
+          {map?.nodes.filter((node) => map.devices.some((device) => device.id === node.deviceId && device.status === 'UP')).length ?? 0} UP
         </strong>
         <i />
         <strong className="warning">
-          {map?.nodes.filter((node) =>
-            map.devices.some(
-              (device) => device.id === node.deviceId && device.status === 'WARNING',
-            ),
-          ).length ?? 0}{' '}
-          WARNING
+          {map?.nodes.filter((node) => map.devices.some((device) => device.id === node.deviceId && device.status === 'WARNING')).length ?? 0} WARNING
         </strong>
         <i />
         <strong className="down">
-          {map?.nodes.filter((node) =>
-            map.devices.some((device) => device.id === node.deviceId && device.status === 'DOWN'),
-          ).length ?? 0}{' '}
-          DOWN
+          {map?.nodes.filter((node) => map.devices.some((device) => device.id === node.deviceId && device.status === 'DOWN')).length ?? 0} DOWN
         </strong>
       </div>
     </main>

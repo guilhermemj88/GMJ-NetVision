@@ -1,0 +1,5 @@
+ALTER TABLE "Interface"
+  ADD COLUMN "rxPowerDbm" DOUBLE PRECISION,
+  ADD COLUMN "txPowerDbm" DOUBLE PRECISION,
+  ADD COLUMN "opticalSource" TEXT,
+  ADD COLUMN "opticalUpdatedAt" TIMESTAMP(3);

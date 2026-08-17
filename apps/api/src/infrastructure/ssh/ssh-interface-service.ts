@@ -1,7 +1,7 @@
 import type { HostRecord, NetworkInterface, SourceConnectionState } from '@gmj/shared';
 import type { HostRepository } from '../persistence/host-repository';
 import { HuaweiVrpDriver } from '../topology/huawei-vrp-driver';
-import { mergeSnmpAndSshInterfaces } from '../topology/interface-correlation';
+import { mergeSnmpAndSshInterfaces, normalizeInterfaceName } from '../topology/interface-correlation';
 import { SshClientImpl } from './ssh-client-impl';
 
 export class SshInterfaceService {
@@ -17,8 +17,8 @@ export class SshInterfaceService {
     try {
       const interfaces = await this.discoverInterfaces(device);
       return interfaces.length
-        ? { state: 'CONNECTED', message: `SSH Huawei respondeu com ${interfaces.length} interfaces` }
-        : { state: 'FAILED', message: 'SSH respondeu, mas o comando Huawei não retornou interfaces válidas' };
+        ? { state: 'CONNECTED', message: `SSH respondeu ao display interface description com ${interfaces.length} interfaces` }
+        : { state: 'FAILED', message: 'SSH respondeu, mas display interface description não retornou interfaces válidas' };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'SSH transport failed';
       if (message.toLowerCase().includes('authentication')) return { state: 'AUTH_INVALID', message };
@@ -33,18 +33,60 @@ export class SshInterfaceService {
     snmpInterfaces: NetworkInterface[],
   ): Promise<NetworkInterface[]> {
     const sshInterfaces = await this.discoverInterfaces(device);
-    if (!sshInterfaces.length) throw new Error('SSH Huawei returned no valid interface descriptions');
-    return mergeSnmpAndSshInterfaces(snmpInterfaces, sshInterfaces);
+    if (!sshInterfaces.length) throw new Error('SSH display interface description returned no valid interfaces');
+    const merged = mergeSnmpAndSshInterfaces(snmpInterfaces, sshInterfaces);
+
+    // SNMP is authoritative/preferred for optical DDM. Only ask SSH for the
+    // transceiver data when SNMP did not provide any optical power values.
+    const hasSnmpOptics = merged.some((item) => item.rxPowerDbm != null || item.txPowerDbm != null);
+    return hasSnmpOptics ? merged : this.enrichOpticalPower(device, merged);
+  }
+
+  async enrichOpticalPower(
+    device: HostRecord,
+    interfaces: NetworkInterface[],
+  ): Promise<NetworkInterface[]> {
+    if (!device.sshEnabled || !device.ssh?.host || !device.ssh.username) return interfaces;
+    const credentials = await this.repository.getDecryptedSshCredentials(device.id);
+    if (!credentials?.password) throw new Error('SSH credential not configured');
+
+    const driver = new HuaweiVrpDriver();
+    const client = new SshClientImpl({
+      port: device.ssh.port,
+      username: device.ssh.username,
+      password: credentials.password,
+    });
+    const results = await client.execute(device.ssh.host, driver.opticalCommands());
+    const commandResult = results.at(-1);
+    if (!commandResult || commandResult.exitCode !== 0) throw new Error('Huawei optical SSH command failed');
+    const readings = driver.parseOpticalPower(commandResult.stdout);
+    if (!readings.length) return interfaces;
+
+    const byName = new Map(readings.map((reading) => [normalizeInterfaceName(reading.name), reading]));
+    const now = new Date().toISOString();
+    return interfaces.map((networkInterface) => {
+      if (networkInterface.rxPowerDbm != null || networkInterface.txPowerDbm != null) return networkInterface;
+      const reading = byName.get(normalizeInterfaceName(networkInterface.name))
+        ?? byName.get(normalizeInterfaceName(networkInterface.description));
+      if (!reading) return networkInterface;
+      return {
+        ...networkInterface,
+        rxPowerDbm: reading.rxPowerDbm,
+        txPowerDbm: reading.txPowerDbm,
+        opticalSource: 'SSH',
+        opticalUpdatedAt: now,
+        dataSources: [...new Set([...(networkInterface.dataSources ?? ['SNMP']), 'SSH' as const])],
+      };
+    });
   }
 
   private async discoverInterfaces(device: HostRecord): Promise<NetworkInterface[]> {
     if (!device.sshEnabled || !device.ssh?.host || !device.ssh.username) return [];
-    if (!device.vendor.toLowerCase().includes('huawei')) {
-      throw new Error(`SSH interface discovery is not supported for vendor ${device.vendor || 'unknown'}`);
-    }
     const credentials = await this.repository.getDecryptedSshCredentials(device.id);
     if (!credentials?.password) throw new Error('SSH credential not configured');
 
+    // Many imported hosts have vendor empty/unknown even when the target is
+    // Huawei VRP. Do not block the explicit SSH test based on inventory metadata.
     const driver = new HuaweiVrpDriver();
     const client = new SshClientImpl({
       port: device.ssh.port,

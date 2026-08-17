@@ -2,6 +2,7 @@ import type { Device, DiscoveredNeighbor, NetworkInterface, HostRecord } from '@
 import { createLocalId } from '@gmj/shared';
 import type { DeviceIdentity, TopologyDiscoveryAdapter } from '../../domain/ports';
 import type { HostRepository } from '../persistence/host-repository';
+import { normalizeInterfaceName } from '../topology/interface-correlation';
 import { SnmpClientImpl } from './snmp-client-impl';
 
 const IF_MIB_OIDS = {
@@ -26,7 +27,21 @@ const SYSTEM_OIDS = {
   sysDescription: '1.3.6.1.2.1.1.1.0',
 } as const;
 
+const ENTITY_MIB_OIDS = {
+  physicalName: '1.3.6.1.2.1.47.1.1.1.1.7',
+} as const;
+
+const HUAWEI_OPTICAL_OIDS = {
+  rxPowerUw: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.8',
+  txPowerUw: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.9',
+} as const;
+
 type VarBind = { oid: string; value: string | number | Uint8Array };
+
+type OpticalReading = {
+  rxPowerDbm: number | null;
+  txPowerDbm: number | null;
+};
 
 function getOidSuffix(oid: string, base: string): string {
   return oid.substring(base.length).replace(/^\./, '');
@@ -42,10 +57,10 @@ function textValue(value: string | number | Uint8Array | undefined): string {
 
 function numericValue(value: unknown): number {
   let num = 0;
-  if (typeof value === 'string') num = parseInt(value, 10);
+  if (typeof value === 'string') num = Number(value.trim());
   else if (typeof value === 'number') num = value;
-  else if (value instanceof Uint8Array) num = parseInt(textValue(value), 10);
-  return num;
+  else if (value instanceof Uint8Array) num = Number(textValue(value));
+  return Number.isFinite(num) ? num : 0;
 }
 
 function normalizeAdminStatus(value: unknown): 'UP' | 'DOWN' {
@@ -69,11 +84,15 @@ function formatMac(value: string | number | Uint8Array): string {
 }
 
 function parseSpeed(value: unknown): number {
-  let num = 0;
-  if (typeof value === 'string') num = parseInt(value, 10);
-  else if (typeof value === 'number') num = value;
-  else if (value instanceof Uint8Array) num = parseInt(textValue(value), 10);
+  const num = numericValue(value);
   return Math.max(0, num || 0);
+}
+
+function microWattsToDbm(value: unknown): number | null {
+  const microWatts = numericValue(value);
+  if (!Number.isFinite(microWatts) || microWatts <= 0) return null;
+  const dbm = 10 * Math.log10(microWatts / 1000);
+  return Number.isFinite(dbm) ? Math.round(dbm * 100) / 100 : null;
 }
 
 export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
@@ -118,22 +137,25 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     if (!snmpCommunity) return [];
 
     try {
-      // Discover the minimum identity set first. These walks are deliberately
-      // sequential to avoid hammering devices that are sensitive to parallel SNMP.
       const indices = await this.walk(hostRecord, IF_MIB_OIDS.ifIndex, snmpCommunity);
       if (!indices.length) return [];
 
       const names = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifName, snmpCommunity);
       const descrs = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifDescr, snmpCommunity);
-
-      // Enrichment is optional. A missing/unsupported MIB column must not make
-      // the entire interface discovery fail after ifIndex was already obtained.
       const adminStates = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifAdminStatus, snmpCommunity);
       const operStates = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifOperStatus, snmpCommunity);
       const highSpeeds = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifHighSpeed, snmpCommunity);
       const speeds = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifSpeed, snmpCommunity);
       const aliases = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifAlias, snmpCommunity);
       const physAddrs = await this.safeWalk(hostRecord, IF_MIB_OIDS.ifPhysAddress, snmpCommunity);
+
+      // Huawei exposes optical DDM through HUAWEI-ENTITY-EXTENT-MIB. The index
+      // is entPhysicalIndex, so correlate it to the IF-MIB interface by
+      // entPhysicalName. Unsupported devices simply return no optical data.
+      const physicalNames = await this.safeWalk(hostRecord, ENTITY_MIB_OIDS.physicalName, snmpCommunity);
+      const opticalRx = await this.safeWalk(hostRecord, HUAWEI_OPTICAL_OIDS.rxPowerUw, snmpCommunity);
+      const opticalTx = await this.safeWalk(hostRecord, HUAWEI_OPTICAL_OIDS.txPowerUw, snmpCommunity);
+      const opticalByName = this.opticalByInterfaceName(physicalNames, opticalRx, opticalTx);
 
       const descByIndex = this.indexMap(descrs, IF_MIB_OIDS.ifDescr);
       const speedByIndex = this.indexMap(speeds, IF_MIB_OIDS.ifSpeed);
@@ -143,6 +165,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
       const nameByIndex = this.indexMap(names, IF_MIB_OIDS.ifName);
       const highSpeedByIndex = this.indexMap(highSpeeds, IF_MIB_OIDS.ifHighSpeed);
       const aliasByIndex = this.indexMap(aliases, IF_MIB_OIDS.ifAlias);
+      const now = new Date().toISOString();
 
       return indices.flatMap((indexVb) => {
         const ifIndex = parseInt(textValue(indexVb.value), 10);
@@ -159,6 +182,8 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
         const speedBps = highSpeedMbps > 0
           ? highSpeedMbps * 1_000_000
           : parseSpeed(speedByIndex.get(suffix) ?? 0);
+        const optical = opticalByName.get(normalizeInterfaceName(name))
+          ?? opticalByName.get(normalizeInterfaceName(description));
 
         return [{
           id: createLocalId('interface'),
@@ -180,6 +205,12 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
           txErrors: 0,
           rxDiscards: 0,
           txDiscards: 0,
+          ...(optical ? {
+            rxPowerDbm: optical.rxPowerDbm,
+            txPowerDbm: optical.txPowerDbm,
+            opticalSource: 'SNMP' as const,
+            opticalUpdatedAt: now,
+          } : {}),
           dataSources: ['SNMP'],
         } satisfies NetworkInterface];
       });
@@ -217,6 +248,26 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
       if (suffix) map.set(suffix, varbind.value);
     }
     return map;
+  }
+
+  private opticalByInterfaceName(
+    names: VarBind[],
+    rxValues: VarBind[],
+    txValues: VarBind[],
+  ): Map<string, OpticalReading> {
+    const namesByIndex = this.indexMap(names, ENTITY_MIB_OIDS.physicalName);
+    const rxByIndex = this.indexMap(rxValues, HUAWEI_OPTICAL_OIDS.rxPowerUw);
+    const txByIndex = this.indexMap(txValues, HUAWEI_OPTICAL_OIDS.txPowerUw);
+    const result = new Map<string, OpticalReading>();
+    for (const [index, rawName] of namesByIndex) {
+      const key = normalizeInterfaceName(textValue(rawName));
+      if (!key) continue;
+      const rxPowerDbm = microWattsToDbm(rxByIndex.get(index));
+      const txPowerDbm = microWattsToDbm(txByIndex.get(index));
+      if (rxPowerDbm === null && txPowerDbm === null) continue;
+      result.set(key, { rxPowerDbm, txPowerDbm });
+    }
+    return result;
   }
 
   private async getSnmpCommunity(deviceId: string): Promise<string | null> {

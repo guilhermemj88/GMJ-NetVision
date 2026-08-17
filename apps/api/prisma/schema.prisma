@@ -231,6 +231,10 @@ model Interface {
   speedBps          BigInt?
   adminStatus       String
   operStatus        InterfaceStatus          @default(UNKNOWN)
+  rxPowerDbm        Float?
+  txPowerDbm        Float?
+  opticalSource     String?
+  opticalUpdatedAt  DateTime?
   rxItemId          String?
   txItemId          String?
   statusItemId      String?

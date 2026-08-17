@@ -1,6 +1,12 @@
 import type { DiscoveredNeighbor, NetworkInterface } from '@gmj/shared';
 import type { DeviceIdentity, SshDeviceDriver } from '../../domain/ports';
 
+export interface HuaweiOpticalReading {
+  name: string;
+  rxPowerDbm: number | null;
+  txPowerDbm: number | null;
+}
+
 export class HuaweiVrpDriver implements SshDeviceDriver {
   readonly vendor = 'Huawei VRP';
 
@@ -10,6 +16,10 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
 
   interfaceCommands(): string[] {
     return ['screen-length 0 temporary', 'display interface description'];
+  }
+
+  opticalCommands(): string[] {
+    return ['screen-length 0 temporary', 'display transceiver verbose'];
   }
 
   neighborCommands(): string[] {
@@ -66,6 +76,26 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
           dataSources: ['SSH'],
         },
       ];
+    });
+  }
+
+  parseOpticalPower(output: string): HuaweiOpticalReading[] {
+    const starts = [...output.matchAll(/^\s*([^\s]+)\s+transceiver information\s*:/gim)];
+    return starts.flatMap((match, index) => {
+      const name = match[1]?.trim();
+      if (!name || match.index === undefined) return [];
+      const end = starts[index + 1]?.index ?? output.length;
+      const block = output.slice(match.index, end);
+      const rx = block.match(/(?:Current\s+)?RX\s+Power\s*\(dB[Mm]\)\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1];
+      const tx = block.match(/(?:Current\s+)?TX\s+Power\s*\(dB[Mm]\)\s*:\s*(-?\d+(?:\.\d+)?)/i)?.[1];
+      const rxPowerDbm = rx === undefined ? null : Number(rx);
+      const txPowerDbm = tx === undefined ? null : Number(tx);
+      if (!Number.isFinite(rxPowerDbm ?? Number.NaN) && !Number.isFinite(txPowerDbm ?? Number.NaN)) return [];
+      return [{
+        name,
+        rxPowerDbm: Number.isFinite(rxPowerDbm ?? Number.NaN) ? rxPowerDbm : null,
+        txPowerDbm: Number.isFinite(txPowerDbm ?? Number.NaN) ? txPowerDbm : null,
+      }];
     });
   }
 

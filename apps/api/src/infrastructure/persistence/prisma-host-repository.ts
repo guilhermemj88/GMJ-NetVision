@@ -84,10 +84,6 @@ export class PrismaHostRepository implements HostRepository {
   }
 
   async listHosts(): Promise<HostRecord[]> {
-    // Do not include metricSamples through Prisma relations here. With a growing
-    // telemetry table, relation orderBy/take and Prisma distinct processing can
-    // force expensive scans/materialization. Load devices/interfaces first, then
-    // fetch exactly one indexed sample per interface with LATERAL below.
     const devices = await this.prisma.device.findMany({
       include: {
         interfaces: { orderBy: { ifIndex: 'asc' } },
@@ -328,12 +324,8 @@ export class PrismaHostRepository implements HostRepository {
     if (!existing) return false;
     await this.prisma.$transaction(async (tx) => {
       await tx.device.delete({ where: { id: hostId } });
-      if (existing.snmpCredentialId) {
-        await tx.snmpCredential.deleteMany({ where: { id: existing.snmpCredentialId } });
-      }
-      if (existing.sshCredentialId) {
-        await tx.sshCredential.deleteMany({ where: { id: existing.sshCredentialId } });
-      }
+      if (existing.snmpCredentialId) await tx.snmpCredential.deleteMany({ where: { id: existing.snmpCredentialId } });
+      if (existing.sshCredentialId) await tx.sshCredential.deleteMany({ where: { id: existing.sshCredentialId } });
     });
     return true;
   }
@@ -409,8 +401,6 @@ export class PrismaHostRepository implements HostRepository {
   }
 
   async getLatestCounterSnapshots(hostId: string): Promise<Map<number, InterfaceCounterSnapshot>> {
-    // One backward index lookup per interface. This stays O(number of interfaces)
-    // even after InterfaceMetricSample contains millions of historical rows.
     const rows = await this.prisma.$queryRaw<Array<LatestMetricRow & { ifIndex: number }>>(Prisma.sql`
       SELECT
         i."ifIndex" AS "ifIndex",
@@ -446,29 +436,20 @@ export class PrismaHostRepository implements HostRepository {
       ) s ON TRUE
       WHERE i."deviceId" = ${hostId}
     `);
-    return new Map(
-      rows.map((row) => [
-        row.ifIndex,
-        {
-          interfaceId: row.interfaceId,
-          ifIndex: row.ifIndex,
-          timestamp: row.timestamp,
-          inOctets: row.inOctets,
-          outOctets: row.outOctets,
-          inErrors: row.inErrors,
-          outErrors: row.outErrors,
-          inDiscards: row.inDiscards,
-          outDiscards: row.outDiscards,
-        },
-      ]),
-    );
+    return new Map(rows.map((row) => [row.ifIndex, {
+      interfaceId: row.interfaceId,
+      ifIndex: row.ifIndex,
+      timestamp: row.timestamp,
+      inOctets: row.inOctets,
+      outOctets: row.outOctets,
+      inErrors: row.inErrors,
+      outErrors: row.outErrors,
+      inDiscards: row.inDiscards,
+      outDiscards: row.outDiscards,
+    }]));
   }
 
-  async saveSnmpPoll(
-    hostId: string,
-    deviceSample: DeviceMetricSampleInput,
-    samples: InterfaceMetricSampleInput[],
-  ): Promise<void> {
+  async saveSnmpPoll(hostId: string, deviceSample: DeviceMetricSampleInput, samples: InterfaceMetricSampleInput[]): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       await tx.device.update({
         where: { id: hostId },
@@ -585,113 +566,43 @@ export class PrismaHostRepository implements HostRepository {
   }
 
   private toHostRecord(device: {
-    id: string;
-    name: string;
-    displayName: string;
-    hostname: string;
-    ip: string;
-    managementIp: string;
-    vendor: string | null;
-    model: string | null;
-    description: string;
-    notes: string;
-    origin: string;
-    status: string;
-    deviceType: string;
-    site: string | null;
-    source: string;
-    discoveryMethod: string;
-    useZabbix: boolean;
-    zabbixHostId: string | null;
-    zabbixHostName: string | null;
-    zabbixInterfaceId: string | null;
-    zabbixIp: string | null;
-    sshEnabled: boolean;
-    sshHost: string | null;
-    sshPort: number;
-    sshUsername: string | null;
-    sshAuthentication: string | null;
-    snmpEnabled: boolean;
-    snmpVersion: string | null;
-    snmpHost: string | null;
-    snmpPort: number;
-    snmpUsername: string | null;
-    snmpSecurityLevel: string | null;
-    snmpAuthProtocol: string | null;
-    snmpPrivacyProtocol: string | null;
-    lastPollingAt: Date | null;
-    lastDiscoveryAt: Date | null;
-    uptimeSeconds: bigint | null;
-    cpuPercent: number | null;
-    memoryPercent: number | null;
-    snmpCredentialId: string | null;
-    sshCredentialId: string | null;
-    createdAt: Date;
-    updatedAt: Date;
+    id: string; name: string; displayName: string; hostname: string; ip: string; managementIp: string;
+    vendor: string | null; model: string | null; description: string; notes: string; origin: string; status: string;
+    deviceType: string; site: string | null; source: string; discoveryMethod: string; useZabbix: boolean;
+    zabbixHostId: string | null; zabbixHostName: string | null; zabbixInterfaceId: string | null; zabbixIp: string | null;
+    sshEnabled: boolean; sshHost: string | null; sshPort: number; sshUsername: string | null; sshAuthentication: string | null;
+    snmpEnabled: boolean; snmpVersion: string | null; snmpHost: string | null; snmpPort: number; snmpUsername: string | null;
+    snmpSecurityLevel: string | null; snmpAuthProtocol: string | null; snmpPrivacyProtocol: string | null;
+    lastPollingAt: Date | null; lastDiscoveryAt: Date | null; uptimeSeconds: bigint | null; cpuPercent: number | null;
+    memoryPercent: number | null; snmpCredentialId: string | null; sshCredentialId: string | null; createdAt: Date; updatedAt: Date;
     mapNodes: Array<{ mapId: string }>;
-    sourceHealth: Array<{
-      source: string;
-      state: string;
-      lastSuccess: Date | null;
-      lastFailure: Date | null;
-      lastErrorSafe: string | null;
-    }>;
+    sourceHealth: Array<{ source: string; state: string; lastSuccess: Date | null; lastFailure: Date | null; lastErrorSafe: string | null }>;
     metricSamples: Array<{ sysName: string | null }>;
     interfaces: Array<{
-      id: string;
-      deviceId: string;
-      name: string;
-      alias: string | null;
-      description: string | null;
-      ifIndex: number;
-      mac: string | null;
-      mtu: number | null;
-      speedBps: bigint | null;
-      adminStatus: string;
-      operStatus: string;
-      rxItemId: string | null;
-      txItemId: string | null;
-      statusItemId: string | null;
-      inErrorsItemId: string | null;
-      outErrorsItemId: string | null;
-      inDiscardsItemId: string | null;
-      outDiscardsItemId: string | null;
-      dataSources: unknown;
-      metricSamples: Array<{
-        rxBps: number;
-        txBps: number;
-        inErrors: bigint;
-        outErrors: bigint;
-        inDiscards: bigint;
-        outDiscards: bigint;
-      }>;
+      id: string; deviceId: string; name: string; alias: string | null; description: string | null; ifIndex: number;
+      mac: string | null; mtu: number | null; speedBps: bigint | null; adminStatus: string; operStatus: string;
+      rxPowerDbm: number | null; txPowerDbm: number | null; opticalSource: string | null; opticalUpdatedAt: Date | null;
+      rxItemId: string | null; txItemId: string | null; statusItemId: string | null; inErrorsItemId: string | null;
+      outErrorsItemId: string | null; inDiscardsItemId: string | null; outDiscardsItemId: string | null; dataSources: unknown;
+      metricSamples: Array<{ rxBps: number; txBps: number; inErrors: bigint; outErrors: bigint; inDiscards: bigint; outDiscards: bigint }>;
     }>;
   }): HostRecord {
     const health = new Map(device.sourceHealth.map((item) => [item.source, item]));
     const sourceHealth = Object.fromEntries(
       (['ZABBIX', 'SSH', 'SNMP'] as SourceKind[]).map((source) => {
         const row = health.get(source);
-        return [
-          source,
-          row
-            ? {
-                state: row.state,
-                lastSuccess: row.lastSuccess?.toISOString() ?? null,
-                lastFailure: row.lastFailure?.toISOString() ?? null,
-                lastErrorSafe: row.lastErrorSafe,
-              }
-            : source === 'ZABBIX'
-              ? device.useZabbix
-                ? configuredHealth()
-                : disabledHealth()
-              : source === 'SSH'
-                ? device.sshEnabled
-                  ? configuredHealth()
-                  : disabledHealth()
-                : device.snmpEnabled
-                  ? configuredHealth()
-                  : disabledHealth(),
-        ];
+        return [source, row
+          ? {
+              state: row.state,
+              lastSuccess: row.lastSuccess?.toISOString() ?? null,
+              lastFailure: row.lastFailure?.toISOString() ?? null,
+              lastErrorSafe: row.lastErrorSafe,
+            }
+          : source === 'ZABBIX'
+            ? device.useZabbix ? configuredHealth() : disabledHealth()
+            : source === 'SSH'
+              ? device.sshEnabled ? configuredHealth() : disabledHealth()
+              : device.snmpEnabled ? configuredHealth() : disabledHealth()];
       }),
     ) as HostRecord['sourceHealth'];
 
@@ -720,6 +631,10 @@ export class PrismaHostRepository implements HostRepository {
         txErrors: safeNumber(sample?.outErrors),
         rxDiscards: safeNumber(sample?.inDiscards),
         txDiscards: safeNumber(sample?.outDiscards),
+        rxPowerDbm: item.rxPowerDbm,
+        txPowerDbm: item.txPowerDbm,
+        opticalSource: item.opticalSource === 'SNMP' || item.opticalSource === 'SSH' ? item.opticalSource : null,
+        opticalUpdatedAt: item.opticalUpdatedAt?.toISOString() ?? null,
         rxItemId: item.rxItemId,
         txItemId: item.txItemId,
         statusItemId: item.statusItemId,
@@ -757,37 +672,28 @@ export class PrismaHostRepository implements HostRepository {
       notes: device.notes,
       origin: device.origin as HostRecord['origin'],
       useZabbix: device.useZabbix,
-      zabbix: device.useZabbix
-        ? {
-            hostId: device.zabbixHostId ?? '',
-            hostName: device.zabbixHostName ?? '',
-            primaryInterfaceId: device.zabbixInterfaceId ?? '',
-            ip: device.zabbixIp ?? device.managementIp,
-          }
-        : null,
+      zabbix: device.useZabbix ? {
+        hostId: device.zabbixHostId ?? '', hostName: device.zabbixHostName ?? '', primaryInterfaceId: device.zabbixInterfaceId ?? '', ip: device.zabbixIp ?? device.managementIp,
+      } : null,
       sshEnabled: device.sshEnabled,
-      ssh: device.sshEnabled
-        ? {
-            host: device.sshHost ?? device.managementIp,
-            port: device.sshPort,
-            username: device.sshUsername ?? '',
-            credentialConfigured: Boolean(device.sshCredentialId),
-            authenticationType: device.sshAuthentication === 'PRIVATE_KEY' ? 'PRIVATE_KEY' : 'PASSWORD',
-          }
-        : null,
+      ssh: device.sshEnabled ? {
+        host: device.sshHost ?? device.managementIp,
+        port: device.sshPort,
+        username: device.sshUsername ?? '',
+        credentialConfigured: Boolean(device.sshCredentialId),
+        authenticationType: device.sshAuthentication === 'PRIVATE_KEY' ? 'PRIVATE_KEY' : 'PASSWORD',
+      } : null,
       snmpEnabled: device.snmpEnabled,
-      snmp: device.snmpEnabled
-        ? {
-            version: (device.snmpVersion ?? 'SNMP_V2C') as NonNullable<HostRecord['snmp']>['version'],
-            host: device.snmpHost ?? device.managementIp,
-            port: device.snmpPort,
-            username: device.snmpUsername ?? '',
-            securityLevel: (device.snmpSecurityLevel ?? 'NO_AUTH_NO_PRIV') as NonNullable<HostRecord['snmp']>['securityLevel'],
-            authProtocol: device.snmpAuthProtocol as NonNullable<HostRecord['snmp']>['authProtocol'],
-            privacyProtocol: device.snmpPrivacyProtocol as NonNullable<HostRecord['snmp']>['privacyProtocol'],
-            credentialConfigured: Boolean(device.snmpCredentialId),
-          }
-        : null,
+      snmp: device.snmpEnabled ? {
+        version: (device.snmpVersion ?? 'SNMP_V2C') as NonNullable<HostRecord['snmp']>['version'],
+        host: device.snmpHost ?? device.managementIp,
+        port: device.snmpPort,
+        username: device.snmpUsername ?? '',
+        securityLevel: (device.snmpSecurityLevel ?? 'NO_AUTH_NO_PRIV') as NonNullable<HostRecord['snmp']>['securityLevel'],
+        authProtocol: device.snmpAuthProtocol as NonNullable<HostRecord['snmp']>['authProtocol'],
+        privacyProtocol: device.snmpPrivacyProtocol as NonNullable<HostRecord['snmp']>['privacyProtocol'],
+        credentialConfigured: Boolean(device.snmpCredentialId),
+      } : null,
       sourceHealth,
       lastPollingAt: device.lastPollingAt?.toISOString() ?? null,
       lastDiscoveryAt: device.lastDiscoveryAt?.toISOString() ?? null,
@@ -809,6 +715,10 @@ export class PrismaHostRepository implements HostRepository {
       speedBps: BigInt(Math.max(0, Math.trunc(item.speedBps))),
       adminStatus: item.adminStatus,
       operStatus: item.operStatus,
+      rxPowerDbm: item.rxPowerDbm ?? null,
+      txPowerDbm: item.txPowerDbm ?? null,
+      opticalSource: item.opticalSource ?? null,
+      opticalUpdatedAt: item.opticalUpdatedAt ? new Date(item.opticalUpdatedAt) : null,
       rxItemId: item.rxItemId ?? null,
       txItemId: item.txItemId ?? null,
       statusItemId: item.statusItemId ?? null,
