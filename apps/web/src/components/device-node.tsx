@@ -75,7 +75,8 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
       </div>
       <div className="device-node__copy">
         <strong>{device.name}</strong>
-        {displayMode === 'CARD' && <span>{device.site}</span>}
+        <span>{device.ip}</span>
+        {displayMode === 'CARD' && <em>{device.site}</em>}
       </div>
       {mapNode.locked && <LockKeyhole className="device-node__lock" size={13} />}
       {showInterfaces && (

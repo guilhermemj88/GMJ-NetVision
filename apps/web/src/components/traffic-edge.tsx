@@ -27,11 +27,12 @@ export interface TrafficEdgeData extends Record<string, unknown> {
 
 export type TrafficFlowEdge = Edge<TrafficEdgeData, 'traffic'>;
 
-function metricText(bps: number, utilization: number, display: LinkMetricDisplay): string {
-  if (display === 'THROUGHPUT') return formatBitsPerSecond(bps);
-  if (display === 'UTILIZATION') return `${utilization.toFixed(0)}%`;
-  if (display === 'BOTH') return `${formatBitsPerSecond(bps)} (${utilization.toFixed(0)}%)`;
-  return '';
+function throughputText(bps: number): string {
+  return formatBitsPerSecond(bps);
+}
+
+function utilizationText(utilization: number): string {
+  return `${utilization.toFixed(0)}%`;
 }
 
 function opticalText(networkInterface?: NetworkInterface): string | null {
@@ -39,8 +40,7 @@ function opticalText(networkInterface?: NetworkInterface): string | null {
   const rx = networkInterface.rxPowerDbm;
   const tx = networkInterface.txPowerDbm;
   if (rx == null && tx == null) return null;
-  const source = networkInterface.opticalSource ? ` · ${networkInterface.opticalSource}` : '';
-  return `Óptico RX ${rx == null ? '—' : `${rx.toFixed(2)} dBm`} · TX ${tx == null ? '—' : `${tx.toFixed(2)} dBm`}${source}`;
+  return `RX ${rx == null ? '—' : `${rx.toFixed(2)} dBm`} · TX ${tx == null ? '—' : `${tx.toFixed(2)} dBm`}`;
 }
 
 export function TrafficEdge({
@@ -61,7 +61,7 @@ export function TrafficEdge({
     targetX,
     targetY,
     targetPosition,
-    curvature: 0.35,
+    curvature: 0.3,
   });
   if (!data) return null;
 
@@ -92,9 +92,9 @@ export function TrafficEdge({
   const toneA = link.status === 'DOWN' ? 'down' : utilizationLevel(aToB.utilization).toLowerCase();
   const toneB = link.status === 'DOWN' ? 'down' : utilizationLevel(bToA.utilization).toLowerCase();
   const worstTone = link.status === 'DOWN' ? 'down' : utilizationLevel(maxUtilization).toLowerCase();
-  const width = Math.max(1.1, Math.min(2.6, 1.15 + Math.log10(Math.max(link.capacityBps, 1_000_000_000)) - 9.2)) * (linkScale / 100);
+  const width = Math.max(2.4, Math.min(5.2, 2.6 + Math.log10(Math.max(link.capacityBps, 1_000_000_000)) - 9.2)) * (linkScale / 100);
   const distance = Math.hypot(targetX - sourceX, targetY - sourceY) || 1;
-  const laneGap = Math.max(2.1, Math.min(4.5, 1.9 + width * 0.4));
+  const laneGap = Math.max(3.2, Math.min(7, 3.4 + width * 0.5));
   const offsetX = (-(targetY - sourceY) / distance) * laneGap;
   const offsetY = ((targetX - sourceX) / distance) * laneGap;
   const classes = `${selected ? 'is-selected' : ''} ${related ? '' : 'is-dimmed'} ${emphasized ? 'is-emphasized' : ''}`;
@@ -102,13 +102,15 @@ export function TrafficEdge({
   const showMetric = showLabels && displayStyle !== 'MINIMAL' && (
     metricDisplay !== 'NONE' || opticalText(sourceInterface) !== null || opticalText(targetInterface) !== null
   );
-  const chevronScale = Math.max(0.72, Math.min(1.45, linkScale / 100));
-  const chevronPath = `M ${-3.2 * chevronScale} ${-2.6 * chevronScale} L ${1.2 * chevronScale} 0 L ${-3.2 * chevronScale} ${2.6 * chevronScale}`;
-  const chevronCount = Math.max(3, Math.min(6, Math.round(distance / 95)));
-  const durationA = Math.max(0.72, 2.65 - aToB.utilization / 58);
-  const durationB = Math.max(0.78, 2.85 - bToA.utilization / 55);
+  const chevronScale = Math.max(1, Math.min(1.8, linkScale / 80));
+  const chevronPath = `M ${-4.5 * chevronScale} ${-3.4 * chevronScale} L ${1.4 * chevronScale} 0 L ${-4.5 * chevronScale} ${3.4 * chevronScale}`;
+  const chevronCount = Math.max(3, Math.min(9, Math.round(distance / 65)));
+  const durationA = Math.max(0.8, 3 - aToB.utilization / 60);
+  const durationB = Math.max(0.85, 3.2 - bToA.utilization / 58);
   const sourceOptical = opticalText(sourceInterface);
   const targetOptical = opticalText(targetInterface);
+  const displayThroughput = metricDisplay === 'THROUGHPUT' || metricDisplay === 'BOTH';
+  const displayUtilization = metricDisplay === 'UTILIZATION' || metricDisplay === 'BOTH';
 
   return (
     <>
@@ -118,6 +120,8 @@ export function TrafficEdge({
 
       {directional && (
         <>
+          <path d={path} transform={`translate(${offsetX} ${offsetY})`} className={`traffic-edge traffic-edge--halo traffic-edge--${toneA} ${classes}`} style={{ strokeWidth: width + 5 }} />
+          <path d={path} transform={`translate(${-offsetX} ${-offsetY})`} className={`traffic-edge traffic-edge--halo traffic-edge--${toneB} ${classes}`} style={{ strokeWidth: width + 5 }} />
           <path d={path} transform={`translate(${offsetX} ${offsetY})`} className={`traffic-edge traffic-edge--lane traffic-edge--${toneA} ${classes}`} style={{ strokeWidth: width }} />
           <path d={path} transform={`translate(${-offsetX} ${-offsetY})`} className={`traffic-edge traffic-edge--lane traffic-edge--lane-reverse traffic-edge--${toneB} ${classes}`} style={{ strokeWidth: width }} />
         </>
@@ -127,14 +131,14 @@ export function TrafficEdge({
         <>
           <g transform={`translate(${offsetX} ${offsetY})`}>
             {Array.from({ length: chevronCount }, (_, index) => (
-              <path d={chevronPath} className={`traffic-chevron traffic-edge--${toneA} ${classes}`} style={{ strokeWidth: Math.max(1.1, Math.min(1.8, width * 0.55)) }} key={`a-to-b-${index}`}>
+              <path d={chevronPath} className={`traffic-chevron traffic-edge--${toneA} ${classes}`} style={{ strokeWidth: Math.max(1.5, Math.min(2.6, width * 0.62)) }} key={`a-to-b-${index}`}>
                 <animateMotion path={path} dur={`${durationA}s`} begin={`${-(index * durationA) / chevronCount}s`} repeatCount="indefinite" rotate="auto" />
               </path>
             ))}
           </g>
           <g transform={`translate(${-offsetX} ${-offsetY})`}>
             {Array.from({ length: chevronCount }, (_, index) => (
-              <path d={chevronPath} className={`traffic-chevron traffic-chevron--reverse traffic-edge--${toneB} ${classes}`} style={{ strokeWidth: Math.max(1.1, Math.min(1.8, width * 0.55)) }} key={`b-to-a-${index}`}>
+              <path d={chevronPath} className={`traffic-chevron traffic-chevron--reverse traffic-edge--${toneB} ${classes}`} style={{ strokeWidth: Math.max(1.5, Math.min(2.6, width * 0.62)) }} key={`b-to-a-${index}`}>
                 <animateMotion path={path} dur={`${durationB}s`} begin={`${-(index * durationB) / chevronCount}s`} repeatCount="indefinite" rotate="auto-reverse" keyPoints="1;0" keyTimes="0;1" calcMode="linear" />
               </path>
             ))}
@@ -151,14 +155,20 @@ export function TrafficEdge({
           >
             {metricDisplay !== 'NONE' && (
               <>
-                <span>A → B</span>
-                <strong>{metricText(aToB.bps, aToB.utilization, metricDisplay)}</strong>
-                <span>B → A</span>
-                <strong>{metricText(bToA.bps, bToA.utilization, metricDisplay)}</strong>
+                <div className="edge-metric__row">
+                  <span className="edge-metric__arrow">A→B</span>
+                  {displayThroughput && <strong>{throughputText(aToB.bps)}</strong>}
+                  {displayUtilization && <em>{utilizationText(aToB.utilization)}</em>}
+                </div>
+                <div className="edge-metric__row">
+                  <span className="edge-metric__arrow edge-metric__arrow--reverse">B→A</span>
+                  {displayThroughput && <strong>{throughputText(bToA.bps)}</strong>}
+                  {displayUtilization && <em>{utilizationText(bToA.utilization)}</em>}
+                </div>
               </>
             )}
-            {sourceOptical && <small>{sourceInterface?.name}: {sourceOptical}</small>}
-            {targetOptical && <small>{targetInterface?.name}: {targetOptical}</small>}
+            {sourceOptical && <small>{sourceInterface?.name} · {sourceOptical}</small>}
+            {targetOptical && <small>{targetInterface?.name} · {targetOptical}</small>}
           </div>
         </EdgeLabelRenderer>
       )}

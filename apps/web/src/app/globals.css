@@ -1304,10 +1304,10 @@ button {
 
 .device-node {
   zoom: var(--node-scale, 1);
-  --orb-size: 56px;
-  --orb-top: 3px;
-  width: 82px;
-  height: 88px;
+  --orb-size: 46px;
+  --orb-top: 2px;
+  width: 64px;
+  height: 70px;
   position: relative;
   display: block;
   padding: 0;
@@ -1342,16 +1342,16 @@ button {
   width: var(--orb-size);
   height: var(--orb-size);
   overflow: visible;
-  border: 1px solid color-mix(in srgb, currentColor 62%, #263945);
+  border: 1px solid color-mix(in srgb, currentColor 58%, #263945);
   border-radius: 50%;
   background:
-    radial-gradient(circle at 38% 31%, rgba(51, 82, 96, 0.66), transparent 33%),
-    radial-gradient(circle, #14252e 0, #0c181f 60%, #071015 100%);
+    radial-gradient(circle at 38% 31%, rgba(51, 82, 96, 0.6), transparent 32%),
+    radial-gradient(circle, #13232b 0, #0b171d 60%, #060e13 100%);
   box-shadow:
-    inset 0 0 0 3px rgba(3, 9, 12, 0.72),
-    inset 0 1px rgba(255, 255, 255, 0.08),
-    0 0 0 4px color-mix(in srgb, currentColor 8%, transparent),
-    0 0 15px color-mix(in srgb, currentColor 18%, transparent);
+    inset 0 0 0 3px rgba(3, 9, 12, 0.68),
+    inset 0 1px rgba(255, 255, 255, 0.07),
+    0 0 0 3px color-mix(in srgb, currentColor 9%, transparent),
+    0 0 11px color-mix(in srgb, currentColor 20%, transparent);
   color: currentColor;
   transition:
     border-color 0.15s,
@@ -1361,25 +1361,25 @@ button {
 .device-node__icon::before {
   content: '';
   position: absolute;
-  inset: -6px;
-  border: 1px solid color-mix(in srgb, currentColor 16%, transparent);
+  inset: -5px;
+  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
   border-radius: 50%;
   pointer-events: none;
 }
 .device-node:hover .device-node__icon {
   border-color: color-mix(in srgb, currentColor 85%, #d9f6ff);
   box-shadow:
-    inset 0 0 0 3px rgba(3, 9, 12, 0.72),
-    0 0 0 4px color-mix(in srgb, currentColor 12%, transparent),
-    0 0 19px color-mix(in srgb, currentColor 30%, transparent);
+    inset 0 0 0 3px rgba(3, 9, 12, 0.68),
+    0 0 0 3px color-mix(in srgb, currentColor 12%, transparent),
+    0 0 14px color-mix(in srgb, currentColor 28%, transparent);
 }
 .device-node.is-selected .device-node__icon {
   border-color: #8de6fa;
   box-shadow:
-    inset 0 0 0 3px rgba(3, 9, 12, 0.75),
-    0 0 0 3px rgba(71, 191, 220, 0.15),
-    0 0 0 6px rgba(71, 191, 220, 0.08),
-    0 0 20px color-mix(in srgb, currentColor 30%, transparent);
+    inset 0 0 0 3px rgba(3, 9, 12, 0.72),
+    0 0 0 3px rgba(71, 191, 220, 0.14),
+    0 0 0 5px rgba(71, 191, 220, 0.07),
+    0 0 15px color-mix(in srgb, currentColor 28%, transparent);
 }
 .status-pulse {
   position: absolute;
@@ -1399,8 +1399,8 @@ button {
   position: absolute;
   z-index: 3;
   left: 50%;
-  top: calc(var(--orb-top) + var(--orb-size) + 10px);
-  width: 136px;
+  top: calc(var(--orb-top) + var(--orb-size) + 7px);
+  width: 128px;
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -1413,14 +1413,23 @@ button {
 .device-node__copy strong {
   overflow: hidden;
   text-overflow: ellipsis;
-  font: 650 9px/1.25 var(--font-mono);
+  font: 650 8.5px/1.25 var(--font-mono);
   letter-spacing: 0.025em;
   white-space: nowrap;
-  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.82);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.85);
 }
 .device-node__copy span {
-  color: #667d89;
-  font-size: 8px;
+  color: #607683;
+  font-size: 7px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+.device-node__copy em {
+  color: #566b78;
+  font-size: 7px;
+  font-style: normal;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1451,18 +1460,18 @@ button {
 }
 .device-node--icon_2d,
 .device-node--icon_3d {
-  width: 82px;
-  height: 88px;
+  width: 64px;
+  height: 70px;
 }
 .device-node--icon_3d {
-  --orb-size: 60px;
-  width: 86px;
-  height: 92px;
+  --orb-size: 48px;
+  width: 68px;
+  height: 74px;
 }
 .device-node--card {
-  --orb-size: 64px;
-  width: 92px;
-  height: 102px;
+  --orb-size: 52px;
+  width: 76px;
+  height: 84px;
 }
 .device-node__svg {
   width: 32px;
@@ -1473,8 +1482,8 @@ button {
 .device-node__svg--3d {
   filter: drop-shadow(0 1px rgba(255, 255, 255, 0.13)) drop-shadow(0 4px 5px rgba(0, 0, 0, 0.45));
 }
-.device-node--icon_2d .device-node__copy span,
-.device-node--icon_3d .device-node__copy span {
+.device-node--icon_2d .device-node__copy em,
+.device-node--icon_3d .device-node__copy em {
   display: none;
 }
 .device-node--icon_3d .device-node__icon {
@@ -1555,12 +1564,17 @@ button {
   fill: none;
 }
 .traffic-edge--base {
-  stroke: #334c58;
-  opacity: 0.7;
+  stroke: #314a56;
+  opacity: 0.78;
 }
 .traffic-edge--lane {
-  opacity: 0.54;
+  opacity: 0.9;
   stroke-linecap: round;
+}
+.traffic-edge--halo {
+  opacity: 0.16;
+  stroke-linecap: round;
+  pointer-events: none;
 }
 .traffic-edge.is-dimmed,
 .traffic-chevron.is-dimmed {
@@ -1584,22 +1598,26 @@ button {
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: 0.88;
+  opacity: 0.95;
   pointer-events: none;
-  filter: drop-shadow(0 0 2px currentColor);
+  filter: drop-shadow(0 0 3px currentColor);
 }
 .traffic-edge--normal {
   stroke: #43c59e;
+  color: #43c59e;
 }
 .traffic-edge--attention {
   stroke: #d8bd50;
+  color: #d8bd50;
 }
 .traffic-edge--high {
   stroke: #e18a42;
+  color: #e18a42;
 }
 .traffic-edge--critical,
 .traffic-edge--down {
   stroke: #df686a;
+  color: #df686a;
 }
 .traffic-edge--lane.traffic-edge--down {
   stroke-dasharray: 5 5;
@@ -1607,6 +1625,7 @@ button {
 }
 .traffic-edge--inconsistent {
   stroke: #d766ce;
+  color: #d766ce;
   stroke-dasharray: 5 4;
   filter: drop-shadow(0 0 3px rgba(215, 102, 206, 0.55));
 }
@@ -1619,40 +1638,52 @@ button {
 .edge-metric {
   pointer-events: none;
   position: absolute;
-  display: grid;
-  grid-template-columns: auto auto;
-  gap: 2px 7px;
-  min-width: 116px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 108px;
   padding: 4px 7px;
-  border: 1px solid #2c3e48;
-  border-radius: 3px;
-  background: rgba(11, 18, 23, 0.9);
-  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.35);
+  border: 1px solid #2a3a44;
+  border-radius: 5px;
+  background: rgba(8, 14, 18, 0.78);
+  backdrop-filter: blur(4px);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
   color: #8fa3ad;
   font: 500 8px var(--font-mono);
   white-space: nowrap;
 }
-.edge-metric span:first-child {
+.edge-metric__row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0 6px;
+  align-items: baseline;
+}
+.edge-metric__arrow {
   color: #6fb9ca;
 }
-.edge-metric span:nth-of-type(2) {
+.edge-metric__arrow--reverse {
   color: #6db29f;
 }
 .edge-metric strong {
-  color: #bed0d8;
+  color: #c8dae2;
   text-align: right;
   font-weight: 550;
 }
-.edge-metric.is-dimmed {
-  opacity: 0.18;
-}
 .edge-metric em {
-  position: absolute;
-  right: -20px;
-  top: 4px;
-  color: #8da0a9;
+  color: #7fa0ad;
   font-size: 7px;
   font-style: normal;
+}
+.edge-metric small {
+  display: block;
+  color: #6b8591;
+  font-size: 7px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  padding-top: 2px;
+  margin-top: 1px;
+}
+.edge-metric.is-dimmed {
+  opacity: 0.18;
 }
 .edge-metric--attention,
 .edge-metric--high {

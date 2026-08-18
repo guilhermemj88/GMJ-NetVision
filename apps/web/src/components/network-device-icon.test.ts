@@ -33,4 +33,16 @@ describe('NetworkDeviceIcon', () => {
     expect(coreRouter).not.toBe(coreSwitch);
     expect(edgeRouter).not.toBe(coreSwitch);
   });
+
+  it('renders unique vector content for every icon type', () => {
+    const rendered = new Set(iconTypes.map(renderIcon));
+    expect(rendered.size).toBe(iconTypes.length);
+  });
+
+  it('renders drawing primitives for every icon type', () => {
+    for (const iconType of iconTypes) {
+      const markup = renderIcon(iconType);
+      expect(markup).toMatch(/<(path|circle|rect)/);
+    }
+  });
 });

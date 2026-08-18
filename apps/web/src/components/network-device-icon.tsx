@@ -29,11 +29,10 @@ function DeviceGlyph({ type }: { type: NetworkDeviceIconType }) {
     case 'CORE_ROUTER':
       return (
         <>
-          <path
-            {...common}
-            d="M12 32h40M32 12v40M12 32l7-6m-7 6 7 6m33-6-7-6m7 6-7 6M32 12l-6 7m6-7 6 7m-6 33-6-7m6 7 6-7"
-          />
+          <circle {...common} cx="32" cy="32" r="14" />
           <circle {...common} cx="32" cy="32" r="7" />
+          <path {...common} d="M32 5v8M32 51v8M5 32h8M51 32h8" />
+          <path {...common} d="M32 5l-3 4m3-4 3 4M32 59l-3-4m3 4 3-4M5 32l4-3m-4 3 4 3M59 32l-4-3m4 3-4 3" />
         </>
       );
     case 'EDGE_ROUTER':
@@ -48,74 +47,78 @@ function DeviceGlyph({ type }: { type: NetworkDeviceIconType }) {
     case 'ROUTER':
       return (
         <>
-          <path {...common} d="M14 32h36m-7-7 7 7-7 7M32 14v36m-7-7 7 7 7-7" />
-          <circle {...common} cx="32" cy="32" r="14" />
+          <circle {...common} cx="32" cy="32" r="12" />
+          <path {...common} d="M32 7v9M32 48v9M7 32h9M48 32h9" />
+          <path {...common} d="M32 7l-3 4m3-4 3 4M32 57l-3-4m3 4 3-4M7 32l4-3m-4 3 4 3M57 32l-4-3m4 3-4 3" />
         </>
       );
     case 'CORE_SWITCH':
       return (
         <>
-          <rect {...common} x="14" y="16" width="36" height="32" rx="5" />
-          <path {...common} d="M22 25h20M22 32h20M22 39h20" />
-          <circle {...common} cx="18" cy="25" r="1" />
-          <circle {...common} cx="46" cy="39" r="1" />
+          <rect {...common} x="12" y="20" width="40" height="24" rx="5" />
+          <rect {...common} x="19" y="26" width="26" height="12" rx="2" />
+          <path {...common} d="M32 12v8M32 44v8" />
+          <path {...common} d="M32 12l-4 5m4-5 4 5M32 52l-4-5m4 5 4-5" />
         </>
       );
     case 'SWITCH':
       return (
         <>
-          <rect {...common} x="12" y="22" width="40" height="20" rx="4" />
-          <path {...common} d="M20 30h5m4 0h5m4 0h6M20 36h5m4 0h5m4 0h6" />
+          <rect {...common} x="13" y="22" width="38" height="20" rx="4" />
+          <path {...common} d="M32 14v8M32 42v8" />
+          <path {...common} d="M32 14l-4 5m4-5 4 5M32 50l-4-5m4 5 4-5" />
+          <path {...common} d="M21 28h5m9 0h5M21 36h5m9 0h5" />
         </>
       );
     case 'AGGREGATION':
       return (
         <>
-          <circle {...common} cx="15" cy="18" r="4" />
-          <circle {...common} cx="15" cy="46" r="4" />
-          <circle {...common} cx="49" cy="32" r="5" />
-          <path {...common} d="M19 18h7c7 0 7 14 15 14h3M19 46h7c7 0 7-14 15-14" />
+          <rect {...common} x="24" y="26" width="16" height="12" rx="3" />
+          <path {...common} d="M12 22l12 7M12 42l12-7M52 22l-12 7M52 42l-12-7" />
         </>
       );
     case 'OLT':
       return (
         <>
-          <path {...common} d="M24 47h16M27 47l5-27 5 27M29 34h6M30 27h4" />
-          <path
-            {...common}
-            d="M20 22c-5 5-5 13 0 18M44 22c5 5 5 13 0 18M15 17c-8 8-8 22 0 30M49 17c8 8 8 22 0 30"
-          />
+          <rect {...common} x="17" y="16" width="30" height="14" rx="3" />
+          <path {...common} d="M24 16v-6M32 16v-8M40 16v-6" />
+          <path {...common} d="M20 30l-7 9M27 30l-3 11M32 30v12M37 30l3 11M44 30l7 9" />
         </>
       );
     case 'ONU':
       return (
         <>
-          <rect {...common} x="16" y="22" width="32" height="25" rx="5" />
-          <path {...common} d="M24 22v-6h16v6M23 32h18M23 38h11" />
-          <circle {...common} cx="41" cy="38" r="1" />
+          <rect {...common} x="16" y="26" width="32" height="18" rx="4" />
+          <path {...common} d="M32 26v-8" />
+          <path {...common} d="M32 18l-4 5m4-5 4 5" />
+          <circle {...common} cx="23" cy="35" r="1.6" />
+          <circle {...common} cx="41" cy="35" r="1.6" />
+          <path {...common} d="M23 41h6M35 41h6" />
         </>
       );
     case 'FIREWALL':
       return (
         <>
-          <path {...common} d="M32 12l18 7v13c0 11-7 18-18 22-11-4-18-11-18-22V19l18-7z" />
-          <path {...common} d="M20 27h24M20 35h24M25 27v8m14-8v8m-7 0v8" />
+          <path {...common} d="M32 10l17 6v12c0 10-7 16-17 20-10-4-17-10-17-20V16l17-6z" />
+          <path {...common} d="M32 21c3 3.5 3 7 0 10-3-3-3-6.5 0-10z" />
         </>
       );
     case 'SERVER':
       return (
         <>
-          <rect {...common} x="18" y="13" width="28" height="38" rx="4" />
-          <path {...common} d="M23 23h18M23 32h18M23 41h18" />
-          <circle {...common} cx="38" cy="19" r="1" />
-          <circle {...common} cx="42" cy="19" r="1" />
+          <rect {...common} x="16" y="14" width="32" height="36" rx="4" />
+          <path {...common} d="M22 22h20M22 32h20M22 42h20" />
+          <circle {...common} cx="41" cy="19" r="1.6" />
+          <circle {...common} cx="41" cy="29" r="1.6" />
         </>
       );
     case 'WIRELESS':
       return (
         <>
-          <path {...common} d="M12 25c11-11 29-11 40 0M19 33c7-7 19-7 26 0M26 41c3-3 9-3 12 0" />
-          <circle {...common} cx="32" cy="48" r="2" />
+          <path {...common} d="M14 25c11-9 25-9 36 0" />
+          <path {...common} d="M20 33c7-5 17-5 24 0" />
+          <path {...common} d="M26 41c3-2 9-2 12 0" />
+          <circle {...common} cx="32" cy="49" r="2.2" />
         </>
       );
     case 'CLOUD':
@@ -128,12 +131,10 @@ function DeviceGlyph({ type }: { type: NetworkDeviceIconType }) {
     case 'BNG':
       return (
         <>
-          <circle {...common} cx="32" cy="32" r="10" />
+          <circle {...common} cx="32" cy="32" r="12" />
+          <path {...common} d="M21 32h22" />
           <circle {...common} cx="32" cy="32" r="3" />
-          <path
-            {...common}
-            d="M32 22V12M32 52V42M22 32H12M52 32H42M25 25l-7-7m28 28-7-7m0-14 7-7M18 46l7-7"
-          />
+          <path {...common} d="M32 20v3M32 41v3" />
         </>
       );
     case 'CUSTOM':
@@ -141,8 +142,8 @@ function DeviceGlyph({ type }: { type: NetworkDeviceIconType }) {
     case 'GENERIC':
       return (
         <>
-          <path {...common} d="M32 12l18 10v20L32 52 14 42V22l18-10z" />
-          <circle {...common} cx="32" cy="32" r="7" />
+          <path {...common} d="M32 11l17 10v22L32 53 15 43V21l17-10z" />
+          <circle {...common} cx="32" cy="32" r="5" />
         </>
       );
   }

@@ -33,8 +33,8 @@ import {
 
 const nodeTypes = { device: DeviceNode };
 const edgeTypes = { traffic: TrafficEdge };
-const DEFAULT_NODE_WIDTH = 82;
-const DEFAULT_NODE_HEIGHT = 80;
+const DEFAULT_NODE_WIDTH = 64;
+const DEFAULT_NODE_HEIGHT = 70;
 
 function alignmentNode(node: DeviceFlowNode): AlignmentNode {
   return {
@@ -266,7 +266,7 @@ export function NetworkCanvas() {
           if (map) void updateNetworkMap(map.id, { settings: { viewport } }).catch(() => undefined);
         }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={30} size={1} color="#24313c" />
+        <Background variant={BackgroundVariant.Dots} gap={editMode ? 28 : 34} size={editMode ? 1.2 : 1} color={editMode ? '#26343f' : '#1b2832'} />
         {editMode && alignmentGuides.length > 0 && (
           <ViewportPortal>
             {alignmentGuides.map((guide) => (
