@@ -1,5 +1,6 @@
 export type MapMode = 'MANUAL' | 'AUTO' | 'HYBRID';
 export type PositionSource = 'AUTO' | 'MANUAL';
+export type NodeKind = 'DEVICE' | 'GENERIC';
 export type DeviceStatus = 'UP' | 'DOWN' | 'WARNING' | 'UNKNOWN';
 export type InterfaceStatus = DeviceStatus | 'DISABLED';
 export type DeviceType =
@@ -88,13 +89,13 @@ export interface HostRecord extends Device {
   displayName: string; managementIp: string; description: string; notes: string; origin: HostOrigin; useZabbix: boolean; zabbix: ZabbixHostBinding | null; sshEnabled: boolean; ssh: SshAccessSummary | null; snmpEnabled: boolean; snmp: SnmpAccessSummary | null; sourceHealth: Record<SourceKind, SourceHealth>; lastPollingAt: string | null; lastDiscoveryAt: string | null; detectedHostname?: string | null; mapIds: string[]; mapCount: number; createdAt: string;
 }
 
-export interface MapNode { id: string; mapId: string; deviceId: string; position: Position; locked: boolean; positionSource: PositionSource; }
+export interface MapNode { id: string; mapId: string; deviceId: string | null; nodeKind: NodeKind; genericType: string | null; label: string | null; position: Position; locked: boolean; positionSource: PositionSource; }
 export interface AddDeviceResult { device: HostRecord; node: MapNode; }
 export interface DirectionalLinkMetric { bps: number; utilization: number; }
 export interface LinkThresholds { attention: number; high: number; critical: number; maximum: number; }
 
 export interface NetworkLink {
-  id: string; mapId: string; sourceDeviceId: string; sourceInterfaceId: string; targetDeviceId: string; targetInterfaceId: string; capacityBps: number; autoCapacityBps: number; capacitySource: CapacitySource; label: string; status: DeviceStatus; discoverySource: DiscoverySource; metricSource: MetricSource; visualStyle: LinkDisplayStyle | null; metricDisplay: LinkMetricDisplay | null; directions: Record<LinkDirection, DirectionalLinkMetric>; rxBps: number; txBps: number; rxUtilization: number; txUtilization: number; rxErrors: number; txErrors: number; rxDiscards: number; txDiscards: number; createdAt: string; updatedAt: string;
+  id: string; mapId: string; sourceDeviceId: string | null; sourceInterfaceId: string | null; targetDeviceId: string | null; targetInterfaceId: string | null; sourceNodeId: string | null; targetNodeId: string | null; capacityBps: number; autoCapacityBps: number; capacitySource: CapacitySource; label: string; status: DeviceStatus; discoverySource: DiscoverySource; metricSource: MetricSource; visualStyle: LinkDisplayStyle | null; metricDisplay: LinkMetricDisplay | null; directions: Record<LinkDirection, DirectionalLinkMetric>; rxBps: number; txBps: number; rxUtilization: number; txUtilization: number; rxErrors: number; txErrors: number; rxDiscards: number; txDiscards: number; createdAt: string; updatedAt: string;
 }
 
 export interface NetworkMap { id: string; name: string; description: string; mode: MapMode; isDefault: boolean; settings: MapSettings; nodes: MapNode[]; devices: HostRecord[]; links: NetworkLink[]; createdAt: string; updatedAt: string; }
@@ -131,7 +132,8 @@ export interface DiscoveredNeighbor {
   id: string; localDeviceId: string; localPort: string; localIfIndex?: number; localPortSubtype?: number; localMac?: string; remoteSystemName: string; remoteChassisId?: string; remoteManagementAddress?: string; remotePort: string; remotePortDescription?: string; systemDescription?: string; capabilities: string[]; source: Exclude<DiscoverySource, 'MANUAL'>; matchStatus: MatchStatus; matchedDeviceId?: string;
 }
 export interface DiscoveryReview { deviceId: string; method: DiscoveryMethod; neighbors: DiscoveredNeighbor[]; warnings: string[]; }
-export interface CreateLinkInput { sourceDeviceId: string; sourceInterfaceId: string; targetDeviceId: string; targetInterfaceId: string; capacityBps: number; autoCapacityBps: number; capacitySource: CapacitySource; label: string; metricSource: MetricSource; visualStyle: LinkDisplayStyle | null; metricDisplay: LinkMetricDisplay | null; }
+export interface CreateLinkInput { sourceDeviceId?: string | null; sourceInterfaceId?: string | null; targetDeviceId?: string | null; targetInterfaceId?: string | null; sourceNodeId?: string | null; targetNodeId?: string | null; capacityBps: number; autoCapacityBps: number; capacitySource: CapacitySource; label: string; metricSource: MetricSource; visualStyle: LinkDisplayStyle | null; metricDisplay: LinkMetricDisplay | null; }
+export interface CreateGenericNodeInput { type: string; label: string; position: Position; }
 export interface MapPreferences { showTraffic: boolean; showUtilization: boolean; showLabels: boolean; showOffline: boolean; showInterfaces: boolean; }
 
 export type LldpConfidence = 'CONFIRMED' | 'PROBABLE' | 'AMBIGUOUS' | 'UNKNOWN_NEIGHBOR';

@@ -19,6 +19,11 @@ enum PositionSource {
   MANUAL
 }
 
+enum NodeKind {
+  DEVICE
+  GENERIC
+}
+
 enum NodeDisplayMode {
   ICON_2D
   ICON_3D
@@ -146,13 +151,18 @@ model Map {
 model MapNode {
   id             String         @id @default(cuid())
   mapId          String
-  deviceId       String
+  deviceId       String?
+  nodeKind       NodeKind       @default(DEVICE)
+  genericType    String?
+  label          String?
   x              Float
   y              Float
   locked         Boolean        @default(false)
   positionSource PositionSource @default(AUTO)
   map            Map            @relation(fields: [mapId], references: [id], onDelete: Cascade)
-  device         Device         @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  device         Device?        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  sourceLinks    Link[]         @relation("LinkSourceNode")
+  targetLinks    Link[]         @relation("LinkTargetNode")
 
   @@unique([mapId, deviceId])
   @@index([deviceId])
@@ -292,10 +302,12 @@ model InterfaceMetricSample {
 model Link {
   id                String             @id @default(cuid())
   mapId             String
-  sourceDeviceId    String
-  sourceInterfaceId String
-  targetDeviceId    String
-  targetInterfaceId String
+  sourceDeviceId    String?
+  sourceInterfaceId String?
+  targetDeviceId    String?
+  targetInterfaceId String?
+  sourceNodeId      String?
+  targetNodeId      String?
   capacityBps       BigInt
   autoCapacityBps   BigInt?
   capacitySource    CapacitySource     @default(AUTO)
@@ -306,16 +318,20 @@ model Link {
   visualStyle       LinkDisplayStyle?
   metricDisplay     LinkMetricDisplay?
   map               Map                @relation(fields: [mapId], references: [id], onDelete: Cascade)
-  sourceDevice      Device             @relation("LinkSourceDevice", fields: [sourceDeviceId], references: [id])
-  sourceInterface   Interface          @relation("LinkSourceInterface", fields: [sourceInterfaceId], references: [id])
-  targetDevice      Device             @relation("LinkTargetDevice", fields: [targetDeviceId], references: [id])
-  targetInterface   Interface          @relation("LinkTargetInterface", fields: [targetInterfaceId], references: [id])
+  sourceDevice      Device?            @relation("LinkSourceDevice", fields: [sourceDeviceId], references: [id], onDelete: Restrict)
+  sourceInterface   Interface?         @relation("LinkSourceInterface", fields: [sourceInterfaceId], references: [id], onDelete: Restrict)
+  targetDevice      Device?            @relation("LinkTargetDevice", fields: [targetDeviceId], references: [id], onDelete: Restrict)
+  targetInterface   Interface?         @relation("LinkTargetInterface", fields: [targetInterfaceId], references: [id], onDelete: Restrict)
+  sourceNode        MapNode?           @relation("LinkSourceNode", fields: [sourceNodeId], references: [id], onDelete: Cascade)
+  targetNode        MapNode?           @relation("LinkTargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
   @@index([mapId])
   @@index([sourceDeviceId])
   @@index([targetDeviceId])
+  @@index([sourceNodeId])
+  @@index([targetNodeId])
 }
 
 model MapPlaylist {

@@ -34,10 +34,12 @@ import {
   type LinkDisplayStyle,
   type LinkMetricDisplay,
   type MapMode,
+  type NetworkInterface,
 } from '@gmj/shared';
 import {
   addDevice,
   addHostsToMap,
+  createGenericNode,
   createLink,
   createNetworkMap,
   deleteNetworkMap,
@@ -47,6 +49,7 @@ import {
   updateNetworkMap,
   type AddDeviceInput,
 } from '@/lib/api';
+import { GENERIC_NODE_TYPES } from '@/lib/device-appearance';
 import { useMapStore } from '@/store/map-store';
 import { AssistedDiscoveryReview } from './assisted-discovery-review';
 
@@ -54,6 +57,7 @@ export function ActionPanels() {
   const panel = useMapStore((state) => state.panel);
   if (panel === 'create-link') return <CreateLinkPanel />;
   if (panel === 'add-device') return <AddDevicePanel />;
+  if (panel === 'add-generic-node') return <AddGenericNodePanel />;
   if (panel === 'discovery') return <DiscoveryPanel />;
   if (panel === 'settings') return <SettingsPanel />;
   if (panel === 'maps') return <MapManagerPanel />;
@@ -93,6 +97,10 @@ function PanelShell({
   );
 }
 
+type LinkEndpoint =
+  | { kind: 'device'; id: string; name: string; interfaces: NetworkInterface[] }
+  | { kind: 'node'; id: string; name: string };
+
 function CreateLinkPanel() {
   const map = useMapStore((state) => state.map);
   const pending = useMapStore((state) => state.pendingLink);
@@ -100,30 +108,43 @@ function CreateLinkPanel() {
   const setPanel = useMapStore((state) => state.setPanel);
   const addLinkToStore = useMapStore((state) => state.addLink);
   const showToast = useMapStore((state) => state.showToast);
-  const devices =
-    map?.nodes.flatMap((node) => {
-      const device = map.devices.find((item) => item.id === node.deviceId);
-      return device ? [device] : [];
+  const endpoints: LinkEndpoint[] =
+    map?.nodes.flatMap((node): LinkEndpoint[] => {
+      if (node.deviceId) {
+        const device = map.devices.find((item) => item.id === node.deviceId);
+        return device
+          ? [{ kind: 'device', id: device.id, name: device.name, interfaces: device.interfaces }]
+          : [];
+      }
+      return [{ kind: 'node', id: node.id, name: node.label || node.genericType || 'Node' }];
     }) ?? [];
-  const [sourceId, setSourceId] = useState(pending?.sourceDeviceId ?? devices[0]?.id ?? '');
-  const [targetId, setTargetId] = useState(pending?.targetDeviceId ?? devices[1]?.id ?? '');
-  const source = devices.find((item) => item.id === sourceId);
-  const target = devices.find((item) => item.id === targetId);
+  const [sourceId, setSourceId] = useState(pending?.sourceId ?? endpoints[0]?.id ?? '');
+  const [targetId, setTargetId] = useState(
+    pending?.targetId ?? endpoints[1]?.id ?? endpoints[0]?.id ?? '',
+  );
+  const source = endpoints.find((item) => item.id === sourceId);
+  const target = endpoints.find((item) => item.id === targetId);
   const [sourceInterfaceId, setSourceInterfaceId] = useState('');
   const [targetInterfaceId, setTargetInterfaceId] = useState('');
   const [capacity, setCapacity] = useState(100);
   const [capacityUnit, setCapacityUnit] = useState<'Mbps' | 'Gbps'>('Gbps');
   const [capacitySource, setCapacitySource] = useState<CapacitySource>('AUTO');
-  const [label, setLabel] = useState('100G BACKBONE');
+  const [label, setLabel] = useState('LINK');
   const [metricSource, setMetricSource] = useState<'DEMO' | 'ZABBIX'>('DEMO');
   const [visualStyle, setVisualStyle] = useState<LinkDisplayStyle | null>(null);
   const [metricDisplay, setMetricDisplay] = useState<LinkMetricDisplay | null>(null);
-  const selectedSourceInterface = source?.interfaces.find(
-    (item) => item.id === (sourceInterfaceId || source.interfaces[0]?.id),
-  );
-  const selectedTargetInterface = target?.interfaces.find(
-    (item) => item.id === (targetInterfaceId || target.interfaces[0]?.id),
-  );
+  const selectedSourceInterface =
+    source?.kind === 'device'
+      ? source.interfaces.find(
+          (item) => item.id === (sourceInterfaceId || source.interfaces[0]?.id),
+        )
+      : undefined;
+  const selectedTargetInterface =
+    target?.kind === 'device'
+      ? target.interfaces.find(
+          (item) => item.id === (targetInterfaceId || target.interfaces[0]?.id),
+        )
+      : undefined;
   const autoCapacityBps = Math.max(
     1,
     Math.min(
@@ -136,10 +157,18 @@ function CreateLinkPanel() {
   const input: CreateLinkInput | null =
     source && target
       ? {
-          sourceDeviceId: source.id,
-          sourceInterfaceId: sourceInterfaceId || source.interfaces[0]?.id || '',
-          targetDeviceId: target.id,
-          targetInterfaceId: targetInterfaceId || target.interfaces[0]?.id || '',
+          ...(source.kind === 'device'
+            ? {
+                sourceDeviceId: source.id,
+                sourceInterfaceId: sourceInterfaceId || source.interfaces[0]?.id || '',
+              }
+            : { sourceNodeId: source.id }),
+          ...(target.kind === 'device'
+            ? {
+                targetDeviceId: target.id,
+                targetInterfaceId: targetInterfaceId || target.interfaces[0]?.id || '',
+              }
+            : { targetNodeId: target.id }),
           capacityBps: capacitySource === 'AUTO' ? autoCapacityBps : manualCapacityBps,
           autoCapacityBps,
           capacitySource,
@@ -150,10 +179,15 @@ function CreateLinkPanel() {
         }
       : null;
 
+  const canSubmit =
+    Boolean(input) &&
+    sourceId !== targetId &&
+    (source?.kind !== 'device' || Boolean(input?.sourceInterfaceId)) &&
+    (target?.kind !== 'device' || Boolean(input?.targetInterfaceId));
+
   const mutation = useMutation({
     mutationFn: async () => {
-      if (!input || !input.sourceInterfaceId || !input.targetInterfaceId)
-        throw new Error('Selecione as interfaces');
+      if (!input) throw new Error('Selecione os endpoints');
       return createLink(map?.id ?? '', input);
     },
     onSuccess: (link) => {
@@ -163,7 +197,7 @@ function CreateLinkPanel() {
       showToast('Enlace criado');
     },
     onError: () => {
-      if (input?.sourceInterfaceId && input.targetInterfaceId) {
+      if (input) {
         addLinkToStore(input);
         setPendingLink(null);
         setPanel(null);
@@ -186,26 +220,28 @@ function CreateLinkPanel() {
                   setSourceInterfaceId('');
                 }}
               >
-                {devices.map((item) => (
+                {endpoints.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
                 ))}
               </select>
             </label>
-            <label>
-              Interface
-              <select
-                value={sourceInterfaceId || source?.interfaces[0]?.id}
-                onChange={(event) => setSourceInterfaceId(event.target.value)}
-              >
-                {source?.interfaces.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}{item.alias ? ` · ${item.alias}` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {source?.kind === 'device' && (
+              <label>
+                Interface
+                <select
+                  value={sourceInterfaceId || source.interfaces[0]?.id}
+                  onChange={(event) => setSourceInterfaceId(event.target.value)}
+                >
+                  {source.interfaces.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}{item.alias ? ` · ${item.alias}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
           <div className="link-form-route__connector">
             <span />
@@ -222,26 +258,28 @@ function CreateLinkPanel() {
                   setTargetInterfaceId('');
                 }}
               >
-                {devices.map((item) => (
+                {endpoints.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.name}
                   </option>
                 ))}
               </select>
             </label>
-            <label>
-              Interface
-              <select
-                value={targetInterfaceId || target?.interfaces[0]?.id}
-                onChange={(event) => setTargetInterfaceId(event.target.value)}
-              >
-                {target?.interfaces.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}{item.alias ? ` · ${item.alias}` : ''}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {target?.kind === 'device' && (
+              <label>
+                Interface
+                <select
+                  value={targetInterfaceId || target.interfaces[0]?.id}
+                  onChange={(event) => setTargetInterfaceId(event.target.value)}
+                >
+                  {target.interfaces.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}{item.alias ? ` · ${item.alias}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
           </div>
         </div>
         <div className="capacity-source-picker">
@@ -333,8 +371,8 @@ function CreateLinkPanel() {
         <div className="panel-note">
           <ShieldCheck size={16} />
           <span>
-            O enlace representa exatamente as duas interfaces selecionadas. A coleta de métricas é
-            independente da origem da topologia.
+            O enlace pode conectar equipamentos (com interface) ou nodes conceituais. A coleta de
+            métricas é independente da origem da topologia.
           </span>
         </div>
       </div>
@@ -344,11 +382,92 @@ function CreateLinkPanel() {
         </Button>
         <Button
           variant="primary"
-          disabled={!input || sourceId === targetId || mutation.isPending}
+          disabled={!canSubmit || mutation.isPending}
           onClick={() => mutation.mutate()}
         >
           {mutation.isPending ? <LoaderCircle className="spin" size={15} /> : <Link2 size={15} />}{' '}
           Criar link
+        </Button>
+      </footer>
+    </PanelShell>
+  );
+}
+
+function AddGenericNodePanel() {
+  const map = useMapStore((state) => state.map);
+  const setPanel = useMapStore((state) => state.setPanel);
+  const addGenericNodeToStore = useMapStore((state) => state.addGenericNode);
+  const showToast = useMapStore((state) => state.showToast);
+  const [type, setType] = useState<string>(GENERIC_NODE_TYPES[0]?.value ?? 'CLOUD');
+  const [label, setLabel] = useState('INTERNET');
+
+  const mutation = useMutation({
+    mutationFn: () =>
+      createGenericNode(map?.id ?? '', {
+        type,
+        label,
+        position: { x: 700, y: 700 },
+      }),
+    onSuccess: (node) => {
+      addGenericNodeToStore(node);
+      setPanel(null);
+      showToast('Node conceitual adicionado');
+    },
+    onError: () => {
+      addGenericNodeToStore({
+        id: createLocalId('node'),
+        mapId: map?.id ?? '',
+        deviceId: null,
+        nodeKind: 'GENERIC',
+        genericType: type,
+        label,
+        position: { x: 700, y: 700 },
+        locked: false,
+        positionSource: 'MANUAL',
+      });
+      setPanel(null);
+      showToast('Node adicionado localmente (API offline)');
+    },
+  });
+
+  return (
+    <PanelShell eyebrow="EDITOR MANUAL" title="Novo node conceitual">
+      <div className="panel-body">
+        <div className="form-grid">
+          <label>
+            Tipo / ícone
+            <select value={type} onChange={(event) => setType(event.target.value)}>
+              {GENERIC_NODE_TYPES.map((item) => (
+                <option key={item.value} value={item.value}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Nome
+            <input value={label} onChange={(event) => setLabel(event.target.value)} />
+          </label>
+        </div>
+        <div className="panel-note">
+          <Network size={16} />
+          <span>
+            Nodes conceituais representam topologia (Internet, IX, clientes, datacenter…) sem um
+            host monitorado. Eles não entram no inventário e não são consultados por SNMP/SSH.
+          </span>
+        </div>
+      </div>
+      <footer>
+        <Button variant="ghost" onClick={() => setPanel(null)}>
+          Cancelar
+        </Button>
+        <Button
+          variant="primary"
+          disabled={!label.trim() || mutation.isPending}
+          onClick={() => mutation.mutate()}
+        >
+          {mutation.isPending ? <LoaderCircle className="spin" size={15} /> : <Plus size={15} />}{' '}
+          Adicionar
         </Button>
       </footer>
     </PanelShell>

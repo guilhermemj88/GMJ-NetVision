@@ -86,13 +86,17 @@ export function makeLink(
   partial: Partial<NetworkLink> & {
     id: string;
     mapId: string;
-    sourceDeviceId: string;
-    sourceInterfaceId: string;
-    targetDeviceId: string;
-    targetInterfaceId: string;
+    sourceDeviceId?: string | null;
+    sourceInterfaceId?: string | null;
+    targetDeviceId?: string | null;
+    targetInterfaceId?: string | null;
   },
 ): NetworkLink {
   return {
+    sourceDeviceId: null,
+    sourceInterfaceId: null,
+    targetDeviceId: null,
+    targetInterfaceId: null,
     capacityBps: 1_000_000_000,
     autoCapacityBps: 1_000_000_000,
     capacitySource: 'AUTO',
@@ -102,6 +106,8 @@ export function makeLink(
     metricSource: 'DEMO',
     visualStyle: null,
     metricDisplay: null,
+    sourceNodeId: null,
+    targetNodeId: null,
     directions: {
       A_TO_B: { bps: 0, utilization: 0 },
       B_TO_A: { bps: 0, utilization: 0 },

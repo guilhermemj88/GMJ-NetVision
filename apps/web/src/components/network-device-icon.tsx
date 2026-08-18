@@ -137,6 +137,76 @@ function DeviceGlyph({ type }: { type: NetworkDeviceIconType }) {
           <path {...common} d="M32 20v3M32 41v3" />
         </>
       );
+    case 'IX':
+      return (
+        <>
+          <circle {...common} cx="32" cy="32" r="5" />
+          <path {...common} d="M32 27V18M32 37v9M27 32h-9M37 32h9" />
+          <path {...common} d="M18 18l10 10M46 18L36 28M18 46l10-10M46 46L36 36" />
+          <circle {...common} cx="18" cy="18" r="3" />
+          <circle {...common} cx="46" cy="18" r="3" />
+          <circle {...common} cx="18" cy="46" r="3" />
+          <circle {...common} cx="46" cy="46" r="3" />
+        </>
+      );
+    case 'CUSTOMERS':
+      return (
+        <>
+          <circle {...common} cx="19" cy="24" r="5" />
+          <path {...common} d="M10 44c0-6 4-10 9-10s9 4 9 10" />
+          <circle {...common} cx="45" cy="24" r="5" />
+          <path {...common} d="M36 44c0-6 4-10 9-10s9 4 9 10" />
+        </>
+      );
+    case 'CARRIER':
+      return (
+        <>
+          <circle {...common} cx="15" cy="32" r="6" />
+          <circle {...common} cx="32" cy="32" r="4" />
+          <circle {...common} cx="49" cy="32" r="6" />
+          <path {...common} d="M21 32h7M36 32h7" />
+        </>
+      );
+    case 'TRANSPORT':
+      return (
+        <>
+          <path {...common} d="M12 32h40" />
+          <path {...common} d="M36 24l8 8-8 8" />
+          <path {...common} d="M28 24l-8 8 8 8" />
+        </>
+      );
+    case 'DATACENTER':
+      return (
+        <>
+          <path {...common} d="M16 52V20l8-6h16l8 6v32" />
+          <path {...common} d="M16 28h32M16 38h32" />
+          <path {...common} d="M24 24v-4M32 24v-4M40 24v-4" />
+        </>
+      );
+    case 'SERVICE':
+      return (
+        <>
+          <path {...common} d="M32 12l16 9v22l-16 9-16-9V21l16-9z" />
+          <circle {...common} cx="32" cy="32" r="4" />
+        </>
+      );
+    case 'PEER':
+      return (
+        <>
+          <circle {...common} cx="24" cy="32" r="10" />
+          <circle {...common} cx="40" cy="32" r="10" />
+          <path {...common} d="M34 32h-4" />
+        </>
+      );
+    case 'CLUSTER':
+      return (
+        <>
+          <circle {...common} cx="22" cy="22" r="6" />
+          <circle {...common} cx="42" cy="22" r="6" />
+          <circle {...common} cx="32" cy="44" r="6" />
+          <path {...common} d="M28 22h4M24.5 27.4l5 11.2M39.5 27.4l-5 11.2" />
+        </>
+      );
     case 'CUSTOM':
       return <path {...common} d="M32 12l5 14 15 1-12 9 4 15-12-8-12 8 4-15-12-9 15-1 5-14z" />;
     case 'GENERIC':

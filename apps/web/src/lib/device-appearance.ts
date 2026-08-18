@@ -15,6 +15,14 @@ export const DEVICE_ICON_TYPES = [
   'WIRELESS',
   'CLOUD',
   'BNG',
+  'IX',
+  'CUSTOMERS',
+  'CARRIER',
+  'TRANSPORT',
+  'DATACENTER',
+  'SERVICE',
+  'PEER',
+  'CLUSTER',
   'GENERIC',
   'CUSTOM',
 ] as const;
@@ -38,6 +46,14 @@ export const DEVICE_ICON_OPTIONS: ReadonlyArray<{ value: DeviceIconType; label: 
   { value: 'WIRELESS', label: 'Wireless' },
   { value: 'CLOUD', label: 'Cloud / Internet' },
   { value: 'BNG', label: 'BNG / BRAS' },
+  { value: 'IX', label: 'IX / PTT' },
+  { value: 'CUSTOMERS', label: 'Clientes' },
+  { value: 'CARRIER', label: 'Operadora / Backbone' },
+  { value: 'TRANSPORT', label: 'Link IP / Transporte' },
+  { value: 'DATACENTER', label: 'Datacenter' },
+  { value: 'SERVICE', label: 'Serviço genérico' },
+  { value: 'PEER', label: 'Rede externa / Parceiro' },
+  { value: 'CLUSTER', label: 'Grupo lógico / Cluster' },
   { value: 'GENERIC', label: 'Genérico' },
   { value: 'CUSTOM', label: 'Personalizado' },
 ];
@@ -77,15 +93,6 @@ export function resolveDeviceIconType(
     return 'FIREWALL';
   }
   if (/\b(wireless|wi-fi|wifi|wlan|access point)\b|\bap[-_\d]/.test(text)) return 'WIRELESS';
-  if (type === 'customers') return 'GENERIC';
-  if (
-    type === 'internet' ||
-    type === 'ix' ||
-    /\b(internet|cloud|upstream|provider|peer)\b/.test(text)
-  ) {
-    return 'CLOUD';
-  }
-  if (type === 'server') return 'SERVER';
 
   const looksLikeSwitch = /\b(s6730|s6720|s6750|s5735|catalyst|switch)\b/.test(text);
   const looksLikeRouter = /\b(ne8000|ne40|asr|mx\d+|ccr|router)\b/.test(text);
@@ -95,6 +102,21 @@ export function resolveDeviceIconType(
   if (type === 'aggregation') return 'AGGREGATION';
   if (type === 'switch') return /\bcore\b/.test(text) ? 'CORE_SWITCH' : 'SWITCH';
   if (type === 'router') return 'ROUTER';
+  if (type === 'server') return 'SERVER';
+
+  if (type === 'ix' || /\b(ixs?|ixp|ptt|peering|exchange)\b/.test(text)) return 'IX';
+  if (type === 'customers' || /\b(clientes?|customers?|assinantes?|subscribers?)\b/.test(text)) {
+    return 'CUSTOMERS';
+  }
+  if (/\b(datacenters?|data[- ]centers?)\b/.test(text)) return 'DATACENTER';
+  if (/\b(carriers?|operadoras?|backbones?|transits?)\b/.test(text)) return 'CARRIER';
+  if (/\b(transportes?|circuitos?|circuits?|uplinks?|link ip)\b/.test(text)) return 'TRANSPORT';
+  if (/\b(servi[çc]os?|services?)\b/.test(text)) return 'SERVICE';
+  if (/\b(parceiros?|peers?|parcerias?|rede externa|externos?|external)\b/.test(text)) return 'PEER';
+  if (/\b(clusters?|grupos? l[óo]gicos?|logical)\b/.test(text)) return 'CLUSTER';
+  if (type === 'internet' || /\b(internet|clouds?|nuvens?|upstreams?|providers?)\b/.test(text)) {
+    return 'CLOUD';
+  }
 
   if (/\bne8000\b/.test(text) || looksLikeRouter) return 'ROUTER';
   if (/\bs6730\b/.test(text) || looksLikeSwitch) return 'SWITCH';
@@ -137,4 +159,25 @@ export function subscribeDeviceIconPreference(
     window.removeEventListener(DEVICE_ICON_CHANGE_EVENT, onCustomChange);
     window.removeEventListener('storage', onStorage);
   };
+}
+
+/** Icon types that make sense for conceptual (non-host) map nodes. */
+export const GENERIC_NODE_TYPES: ReadonlyArray<{ value: NetworkDeviceIconType; label: string }> = [
+  { value: 'CLOUD', label: 'Internet / Cloud' },
+  { value: 'IX', label: 'IX / PTT' },
+  { value: 'CUSTOMERS', label: 'Clientes' },
+  { value: 'CARRIER', label: 'Operadora / Backbone' },
+  { value: 'TRANSPORT', label: 'Link IP / Transporte' },
+  { value: 'DATACENTER', label: 'Datacenter' },
+  { value: 'SERVICE', label: 'Serviço' },
+  { value: 'PEER', label: 'Rede externa / Parceiro' },
+  { value: 'CLUSTER', label: 'Grupo lógico / Cluster' },
+  { value: 'GENERIC', label: 'Genérico' },
+];
+
+export function normalizeGenericIconType(value: string | null | undefined): NetworkDeviceIconType {
+  if (value && (DEVICE_ICON_TYPES as readonly string[]).includes(value) && value !== 'AUTO') {
+    return value as NetworkDeviceIconType;
+  }
+  return 'GENERIC';
 }

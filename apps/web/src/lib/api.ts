@@ -3,6 +3,7 @@ import {
   type CreateLinkInput,
   type CreateMapInput,
   type CreateHostInput,
+  type CreateGenericNodeInput,
   type AssistedDiscoveryPreview,
   type ConnectionTestResult,
   type DiscoveryApplyResult,
@@ -11,6 +12,7 @@ import {
   type DiscoveryReview,
   type HistoryPeriod,
   type HostRecord,
+  type MapNode,
   type MapPlaylist,
   type MapSummary,
   type MetricPoint,
@@ -164,6 +166,17 @@ export function addDevice(mapId: string, input: AddDeviceInput) {
 
 export function deleteDevice(mapId: string, id: string) {
   return request<void>(`/api/maps/${mapId}/devices/${id}`, { method: 'DELETE' });
+}
+
+export function createGenericNode(mapId: string, input: CreateGenericNodeInput) {
+  return request<MapNode>(`/api/maps/${mapId}/generic-nodes`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteMapNode(mapId: string, nodeId: string) {
+  return request<void>(`/api/maps/${mapId}/nodes/${nodeId}`, { method: 'DELETE' });
 }
 
 export function getHosts(query = ''): Promise<HostRecord[]> {

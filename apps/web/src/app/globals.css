@@ -1306,6 +1306,9 @@ button {
   zoom: var(--node-scale, 1);
   --orb-size: 46px;
   --orb-top: 2px;
+  --device-color: #6b8491;
+  --device-ring: var(--device-color);
+  --status-color: #6b8491;
   width: 64px;
   height: 70px;
   position: relative;
@@ -1313,23 +1316,92 @@ button {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #78909c;
+  color: var(--device-color);
 }
 .device-node::after {
   display: none;
 }
 .device-node.status-up {
-  color: var(--green);
+  --device-ring: var(--device-color);
+  --status-color: #2ee6a8;
 }
 .device-node.status-warning {
-  color: var(--amber);
+  --device-ring: var(--amber);
+  --status-color: var(--amber);
 }
 .device-node.status-down {
-  color: var(--red);
-  filter: saturate(0.75);
+  --device-ring: var(--red);
+  --status-color: var(--red);
 }
 .device-node.status-unknown {
-  color: #78909c;
+  --device-ring: #6b8491;
+  --status-color: #6b8491;
+  filter: saturate(0.25) brightness(0.92);
+}
+.device-node--type-core-router,
+.device-node--type-router {
+  --device-color: #45c2ee;
+}
+.device-node--type-edge-router,
+.device-node--type-bng {
+  --device-color: #4d9de0;
+}
+.device-node--type-core-switch {
+  --device-color: #35a3c0;
+}
+.device-node--type-switch {
+  --device-color: #3193ae;
+}
+.device-node--type-aggregation {
+  --device-color: #41c992;
+}
+.device-node--type-olt {
+  --device-color: #9b6cf2;
+}
+.device-node--type-onu {
+  --device-color: #3ec4b4;
+}
+.device-node--type-firewall {
+  --device-color: #f0735a;
+}
+.device-node--type-server {
+  --device-color: #63b0ce;
+}
+.device-node--type-wireless {
+  --device-color: #3bc3bd;
+}
+.device-node--type-cloud {
+  --device-color: #4bd6e8;
+}
+.device-node--type-ix {
+  --device-color: #7aa8e8;
+}
+.device-node--type-customers {
+  --device-color: #5fc8d8;
+}
+.device-node--type-carrier {
+  --device-color: #5f8de0;
+}
+.device-node--type-transport {
+  --device-color: #4fc0c8;
+}
+.device-node--type-datacenter {
+  --device-color: #5fa8d8;
+}
+.device-node--type-service {
+  --device-color: #8a9fb0;
+}
+.device-node--type-peer {
+  --device-color: #58c9a8;
+}
+.device-node--type-cluster {
+  --device-color: #8f7ae0;
+}
+.device-node--type-generic {
+  --device-color: #6b8491;
+}
+.device-node--type-custom {
+  --device-color: #7c8fa0;
 }
 .device-node__icon {
   position: absolute;
@@ -1342,7 +1414,7 @@ button {
   width: var(--orb-size);
   height: var(--orb-size);
   overflow: visible;
-  border: 1px solid color-mix(in srgb, currentColor 58%, #263945);
+  border: 1px solid color-mix(in srgb, var(--device-ring) 58%, #263945);
   border-radius: 50%;
   background:
     radial-gradient(circle at 38% 31%, rgba(51, 82, 96, 0.6), transparent 32%),
@@ -1350,9 +1422,9 @@ button {
   box-shadow:
     inset 0 0 0 3px rgba(3, 9, 12, 0.68),
     inset 0 1px rgba(255, 255, 255, 0.07),
-    0 0 0 3px color-mix(in srgb, currentColor 9%, transparent),
-    0 0 11px color-mix(in srgb, currentColor 20%, transparent);
-  color: currentColor;
+    0 0 0 3px color-mix(in srgb, var(--device-ring) 9%, transparent),
+    0 0 11px color-mix(in srgb, var(--device-ring) 22%, transparent);
+  color: var(--device-color);
   transition:
     border-color 0.15s,
     box-shadow 0.15s,
@@ -1362,16 +1434,16 @@ button {
   content: '';
   position: absolute;
   inset: -5px;
-  border: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--device-ring) 14%, transparent);
   border-radius: 50%;
   pointer-events: none;
 }
 .device-node:hover .device-node__icon {
-  border-color: color-mix(in srgb, currentColor 85%, #d9f6ff);
+  border-color: color-mix(in srgb, var(--device-ring) 85%, #d9f6ff);
   box-shadow:
     inset 0 0 0 3px rgba(3, 9, 12, 0.68),
-    0 0 0 3px color-mix(in srgb, currentColor 12%, transparent),
-    0 0 14px color-mix(in srgb, currentColor 28%, transparent);
+    0 0 0 3px color-mix(in srgb, var(--device-ring) 12%, transparent),
+    0 0 14px color-mix(in srgb, var(--device-ring) 28%, transparent);
 }
 .device-node.is-selected .device-node__icon {
   border-color: #8de6fa;
@@ -1379,7 +1451,7 @@ button {
     inset 0 0 0 3px rgba(3, 9, 12, 0.72),
     0 0 0 3px rgba(71, 191, 220, 0.14),
     0 0 0 5px rgba(71, 191, 220, 0.07),
-    0 0 15px color-mix(in srgb, currentColor 28%, transparent);
+    0 0 15px color-mix(in srgb, var(--device-ring) 28%, transparent);
 }
 .status-pulse {
   position: absolute;
@@ -1389,8 +1461,8 @@ button {
   top: 2px;
   border: 1px solid #0e171d;
   border-radius: 50%;
-  background: currentColor;
-  box-shadow: 0 0 7px currentColor;
+  background: var(--status-color);
+  box-shadow: 0 0 7px var(--status-color);
 }
 .device-node.status-down .status-pulse {
   animation: pulse 1.5s infinite;
@@ -1493,9 +1565,9 @@ button {
   box-shadow:
     inset 0 -8px 12px rgba(0, 0, 0, 0.34),
     inset 0 2px rgba(255, 255, 255, 0.1),
-    0 0 0 4px color-mix(in srgb, currentColor 9%, transparent),
+    0 0 0 4px color-mix(in srgb, var(--device-ring) 9%, transparent),
     0 8px 13px rgba(0, 0, 0, 0.34),
-    0 0 16px color-mix(in srgb, currentColor 20%, transparent);
+    0 0 16px color-mix(in srgb, var(--device-ring) 20%, transparent);
 }
 .device-node .react-flow__handle {
   margin: 0;
@@ -1552,7 +1624,7 @@ button {
   font: 8px var(--font-mono);
 }
 .device-tooltip small {
-  color: currentColor;
+  color: var(--status-color);
   font-size: 8px;
 }
 .device-node--icon_2d:hover .device-tooltip,
@@ -1565,30 +1637,30 @@ button {
 }
 .traffic-edge--base {
   stroke: #314a56;
-  opacity: 0.78;
+  opacity: 0.7;
 }
 .traffic-edge--lane {
-  opacity: 0.9;
+  opacity: 0.85;
   stroke-linecap: round;
 }
 .traffic-edge--halo {
-  opacity: 0.16;
+  opacity: 0.1;
   stroke-linecap: round;
   pointer-events: none;
 }
 .traffic-edge.is-dimmed,
 .traffic-chevron.is-dimmed {
-  opacity: 0.12;
+  opacity: 0.1;
 }
 .traffic-edge.is-emphasized,
 .traffic-chevron.is-emphasized {
   opacity: 1;
-  filter: drop-shadow(0 0 4px currentColor);
+  filter: drop-shadow(0 0 3px currentColor);
 }
 .traffic-edge--base.traffic-edge--down {
-  stroke: #6f3336;
-  stroke-dasharray: 5 5;
-  opacity: 0.8;
+  stroke: #554548;
+  stroke-dasharray: 4 5;
+  opacity: 0.7;
 }
 .traffic-edge--base.is-selected {
   stroke: #dceff5;
@@ -1600,34 +1672,78 @@ button {
   stroke-linejoin: round;
   opacity: 0.95;
   pointer-events: none;
-  filter: drop-shadow(0 0 3px currentColor);
+  filter: drop-shadow(0 0 2.4px currentColor);
 }
+
+/* Tone colors for the base path and the A→B direction. */
 .traffic-edge--normal {
-  stroke: #43c59e;
-  color: #43c59e;
+  stroke: #40c8e8;
+  color: #40c8e8;
 }
 .traffic-edge--attention {
-  stroke: #d8bd50;
-  color: #d8bd50;
+  stroke: #dfb847;
+  color: #dfb847;
 }
 .traffic-edge--high {
-  stroke: #e18a42;
-  color: #e18a42;
+  stroke: #eb9340;
+  color: #eb9340;
 }
-.traffic-edge--critical,
+.traffic-edge--critical {
+  stroke: #e24b4b;
+  color: #e24b4b;
+}
 .traffic-edge--down {
-  stroke: #df686a;
-  color: #df686a;
+  stroke: #6e5558;
+  color: #6e5558;
 }
-.traffic-edge--lane.traffic-edge--down {
-  stroke-dasharray: 5 5;
-  opacity: 0.62;
+.traffic-edge--unknown {
+  stroke: #718894;
+  color: #718894;
 }
 .traffic-edge--inconsistent {
   stroke: #d766ce;
   color: #d766ce;
   stroke-dasharray: 5 4;
   filter: drop-shadow(0 0 3px rgba(215, 102, 206, 0.55));
+}
+
+/* B→A keeps its own identity (violet / magenta family). */
+.traffic-edge--ba.traffic-edge--normal {
+  stroke: #9575f0;
+  color: #9575f0;
+}
+.traffic-edge--ba.traffic-edge--attention {
+  stroke: #c578e0;
+  color: #c578e0;
+}
+.traffic-edge--ba.traffic-edge--high {
+  stroke: #e052c8;
+  color: #e052c8;
+}
+.traffic-edge--ba.traffic-edge--critical {
+  stroke: #e03b5c;
+  color: #e03b5c;
+}
+.traffic-edge--ba.traffic-edge--down {
+  stroke: #5f4649;
+  color: #5f4649;
+}
+.traffic-edge--ba.traffic-edge--unknown {
+  stroke: #718894;
+  color: #718894;
+}
+.traffic-edge--ba.traffic-edge--inconsistent {
+  stroke: #e07ac8;
+  color: #e07ac8;
+}
+
+.traffic-edge--lane.traffic-edge--down {
+  stroke-dasharray: 4 5;
+  opacity: 0.6;
+}
+.traffic-edge--lane.traffic-edge--unknown {
+  stroke-dasharray: 2 5;
+  opacity: 0.7;
 }
 .traffic-edge__hitarea {
   fill: none;
@@ -1662,7 +1778,7 @@ button {
   color: #6fb9ca;
 }
 .edge-metric__arrow--reverse {
-  color: #6db29f;
+  color: #a98de8;
 }
 .edge-metric strong {
   color: #c8dae2;

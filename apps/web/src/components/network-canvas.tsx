@@ -21,6 +21,7 @@ import {
 import { getMap, getMaps, updateNetworkMap } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
 import { DeviceNode, type DeviceFlowNode } from './device-node';
+import { GenericNode, type GenericFlowNode } from './generic-node';
 import { TrafficEdge, type TrafficFlowEdge } from './traffic-edge';
 import { MapControls } from './map-controls';
 import { EditToolbar } from './edit-toolbar';
@@ -31,12 +32,13 @@ import {
   type AlignmentNode,
 } from '@/lib/smart-alignment';
 
-const nodeTypes = { device: DeviceNode };
+const nodeTypes = { device: DeviceNode, generic: GenericNode };
 const edgeTypes = { traffic: TrafficEdge };
+type MapFlowNode = DeviceFlowNode | GenericFlowNode;
 const DEFAULT_NODE_WIDTH = 64;
 const DEFAULT_NODE_HEIGHT = 70;
 
-function alignmentNode(node: DeviceFlowNode): AlignmentNode {
+function alignmentNode(node: MapFlowNode): AlignmentNode {
   return {
     id: node.id,
     position: node.position,
@@ -90,21 +92,36 @@ export function NetworkCanvas() {
     window.setTimeout(() => void flow.setViewport(map.settings.viewport, { duration: 280 }), 30);
   }, [flow, map]);
 
-  const domainNodes = useMemo<DeviceFlowNode[]>(() => {
+  const domainNodes = useMemo<MapFlowNode[]>(() => {
     if (!map) return [];
-    return map.nodes.flatMap((mapNode) => {
-      const device = map.devices.find((item) => item.id === mapNode.deviceId);
-      if (!device || (!preferences.showOffline && device.status === 'DOWN')) return [];
+    return map.nodes.flatMap((mapNode): MapFlowNode[] => {
+      if (mapNode.deviceId) {
+        const device = map.devices.find((item) => item.id === mapNode.deviceId);
+        if (!device || (!preferences.showOffline && device.status === 'DOWN')) return [];
+        return [{
+          id: device.id,
+          type: 'device',
+          position: mapNode.position,
+          draggable: editMode && !mapNode.locked,
+          data: {
+            device,
+            mapNode,
+            editMode,
+            showInterfaces: preferences.showInterfaces,
+            displayMode: map.settings.nodeDisplayMode,
+            nodeScale: map.settings.nodeScale,
+            labelScale: map.settings.labelScale,
+          },
+        }];
+      }
       return [{
-        id: device.id,
-        type: 'device',
+        id: mapNode.id,
+        type: 'generic',
         position: mapNode.position,
         draggable: editMode && !mapNode.locked,
         data: {
-          device,
           mapNode,
           editMode,
-          showInterfaces: preferences.showInterfaces,
           displayMode: map.settings.nodeDisplayMode,
           nodeScale: map.settings.nodeScale,
           labelScale: map.settings.labelScale,
@@ -116,21 +133,29 @@ export function NetworkCanvas() {
   const domainEdges = useMemo<TrafficFlowEdge[]>(() => {
     if (!map) return [];
     const visible = new Set(domainNodes.map((node) => node.id));
-    const positions = new Map(map.nodes.map((node) => [node.deviceId, node.position]));
+    const positions = new Map(map.nodes.map((node) => [node.deviceId ?? node.id, node.position]));
     const devices = new Map(map.devices.map((device) => [device.id, device]));
     return map.links.flatMap((link) => {
-      const sourcePosition = positions.get(link.sourceDeviceId);
-      const targetPosition = positions.get(link.targetDeviceId);
-      if (!visible.has(link.sourceDeviceId) || !visible.has(link.targetDeviceId)) return [];
+      const sourceKey = link.sourceDeviceId ?? link.sourceNodeId ?? '';
+      const targetKey = link.targetDeviceId ?? link.targetNodeId ?? '';
+      const sourcePosition = positions.get(sourceKey);
+      const targetPosition = positions.get(targetKey);
+      if (!visible.has(sourceKey) || !visible.has(targetKey)) return [];
       const handles = sourcePosition && targetPosition
         ? selectEdgeHandles(sourcePosition, targetPosition)
         : { sourceHandle: 'right' as const, targetHandle: 'left' as const };
-      const sourceInterface = devices.get(link.sourceDeviceId)?.interfaces.find((item) => item.id === link.sourceInterfaceId);
-      const targetInterface = devices.get(link.targetDeviceId)?.interfaces.find((item) => item.id === link.targetInterfaceId);
+      const sourceInterface = link.sourceDeviceId
+        ? devices.get(link.sourceDeviceId)?.interfaces.find((item) => item.id === link.sourceInterfaceId)
+        : undefined;
+      const targetInterface = link.targetDeviceId
+        ? devices.get(link.targetDeviceId)?.interfaces.find((item) => item.id === link.targetInterfaceId)
+        : undefined;
+      const selectedId =
+        selection?.kind === 'device' || selection?.kind === 'node' ? selection.id : null;
       return [{
         id: link.id,
-        source: link.sourceDeviceId,
-        target: link.targetDeviceId,
+        source: sourceKey,
+        target: targetKey,
         sourceHandle: handles.sourceHandle,
         targetHandle: handles.targetHandle,
         type: 'traffic',
@@ -146,32 +171,29 @@ export function NetworkCanvas() {
           metricDisplay: map.settings.linkMetricDisplay,
           linkScale: map.settings.linkScale,
           labelScale: map.settings.labelScale,
-          related:
-            selection?.kind !== 'device' ||
-            link.sourceDeviceId === selection.id ||
-            link.targetDeviceId === selection.id,
-          emphasized:
-            selection?.kind === 'device' &&
-            (link.sourceDeviceId === selection.id || link.targetDeviceId === selection.id),
+          related: !selectedId || sourceKey === selectedId || targetKey === selectedId,
+          emphasized: Boolean(selectedId) && (sourceKey === selectedId || targetKey === selectedId),
         },
       }];
     });
   }, [domainNodes, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, selection]);
 
-  const [nodes, setNodes] = useNodesState<DeviceFlowNode>([]);
+  const [nodes, setNodes] = useNodesState<MapFlowNode>([]);
   const [edges, setEdges] = useEdgesState<TrafficFlowEdge>([]);
 
   useEffect(() => setNodes(domainNodes), [domainNodes, setNodes]);
   useEffect(() => setEdges(domainEdges), [domainEdges, setEdges]);
 
-  const onNodesChange: OnNodesChange<DeviceFlowNode> = useCallback(
+  const onNodesChange: OnNodesChange<MapFlowNode> = useCallback(
     (changes) => setNodes((current) => applyNodeChanges(changes, current)),
     [setNodes],
   );
 
-  const onNodeClick: NodeMouseHandler<DeviceFlowNode> = useCallback(
+  const onNodeClick: NodeMouseHandler<MapFlowNode> = useCallback(
     (_event, node) => {
-      setSelection({ kind: 'device', id: node.id });
+      setSelection(
+        node.type === 'generic' ? { kind: 'node', id: node.id } : { kind: 'device', id: node.id },
+      );
       if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
     },
     [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
@@ -185,7 +207,7 @@ export function NetworkCanvas() {
     [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
   );
 
-  const onNodeDrag: OnNodeDrag<DeviceFlowNode> = useCallback(
+  const onNodeDrag: OnNodeDrag<MapFlowNode> = useCallback(
     (_event, draggedNode) => {
       if (!editMode) return;
       setNodes((current) => {
@@ -210,7 +232,7 @@ export function NetworkCanvas() {
   const onConnect = useCallback(
     (connection: Connection) => {
       if (!editMode || !connection.source || !connection.target || connection.source === connection.target) return;
-      setPendingLink({ sourceDeviceId: connection.source, targetDeviceId: connection.target });
+      setPendingLink({ sourceId: connection.source, targetId: connection.target });
       setPanel('create-link');
     },
     [editMode, setPanel, setPendingLink],
@@ -228,7 +250,7 @@ export function NetworkCanvas() {
 
   return (
     <main className="map-shell">
-      <ReactFlow<DeviceFlowNode, TrafficFlowEdge>
+      <ReactFlow<MapFlowNode, TrafficFlowEdge>
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
@@ -242,7 +264,7 @@ export function NetworkCanvas() {
           if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
         }}
         onNodeDragStop={(_event, node) => {
-          const mapNode = map?.nodes.find((item) => item.deviceId === node.id);
+          const mapNode = map?.nodes.find((item) => (item.deviceId ?? item.id) === node.id);
           const finalPosition = snappedPosition.current?.nodeId === node.id
             ? snappedPosition.current.position
             : node.position;

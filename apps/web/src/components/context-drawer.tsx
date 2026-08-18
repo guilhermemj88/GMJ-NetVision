@@ -15,6 +15,7 @@ import {
   Database,
   HardDrive,
   List,
+  Network,
   Pencil,
   Radar,
   ServerCog,
@@ -28,6 +29,7 @@ import {
   type CapacitySource,
   type LinkDisplayStyle,
   type LinkMetricDisplay,
+  type MapNode,
   type NetworkInterface,
   type NetworkLink,
 } from '@gmj/shared';
@@ -58,6 +60,10 @@ export function ContextDrawer() {
         onClose={() => setSelection(null)}
       />
     ) : null;
+  }
+  if (selection.kind === 'node') {
+    const node = map.nodes.find((item) => item.id === selection.id);
+    return node ? <GenericNodeDrawer node={node} onClose={() => setSelection(null)} /> : null;
   }
   const device = map.devices.find((item) => item.id === selection.id);
   return device ? <DeviceDrawer deviceId={device.id} onClose={() => setSelection(null)} /> : null;
@@ -443,6 +449,8 @@ function LinkDrawer({ link, onClose }: { link: NetworkLink; onClose: () => void 
   const showToast = useMapStore((state) => state.showToast);
   const source = map?.devices.find((item) => item.id === link.sourceDeviceId);
   const target = map?.devices.find((item) => item.id === link.targetDeviceId);
+  const sourceNode = map?.nodes.find((item) => item.id === link.sourceNodeId);
+  const targetNode = map?.nodes.find((item) => item.id === link.targetNodeId);
   const sourceInterface = source?.interfaces.find((item) => item.id === link.sourceInterfaceId);
   const targetInterface = target?.interfaces.find((item) => item.id === link.targetInterfaceId);
   const capacityBps =
@@ -505,7 +513,7 @@ function LinkDrawer({ link, onClose }: { link: NetworkLink; onClose: () => void 
       <div className="link-route">
         <Endpoint
           label="PONTA A"
-          device={source?.name ?? '—'}
+          device={source?.name ?? sourceNode?.label ?? '—'}
           networkInterface={sourceInterface?.name ?? '—'}
         />
         <div className="link-route__line">
@@ -515,7 +523,7 @@ function LinkDrawer({ link, onClose }: { link: NetworkLink; onClose: () => void 
         </div>
         <Endpoint
           label="PONTA B"
-          device={target?.name ?? '—'}
+          device={target?.name ?? targetNode?.label ?? '—'}
           networkInterface={targetInterface?.name ?? '—'}
         />
       </div>
@@ -634,6 +642,26 @@ function LinkDrawer({ link, onClose }: { link: NetworkLink; onClose: () => void 
           </Button>
         </div>
       )}
+    </DrawerShell>
+  );
+}
+
+function GenericNodeDrawer({ node, onClose }: { node: MapNode; onClose: () => void }) {
+  return (
+    <DrawerShell
+      eyebrow="NODE CONCEITUAL"
+      title={node.label ?? node.genericType ?? 'Node'}
+      status="UNKNOWN"
+      onClose={onClose}
+    >
+      <section className="drawer-section">
+        <SectionTitle icon={<Network size={14} />} label="TOPOLOGIA" />
+        <div className="info-grid">
+          <Info label="Tipo / ícone" value={node.genericType ?? 'GENERIC'} />
+          <Info label="Posição" value={`${Math.round(node.position.x)} × ${Math.round(node.position.y)}`} />
+          <Info label="Trava" value={node.locked ? 'Bloqueado' : 'Livre'} />
+        </div>
+      </section>
     </DrawerShell>
   );
 }

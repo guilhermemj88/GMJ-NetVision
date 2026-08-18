@@ -13,7 +13,7 @@ interface HostSource {
   listHosts(): Promise<HostRecord[]>;
 }
 
-function linkKey(interfaceA: string, interfaceB: string): string {
+function linkKey(interfaceA: string | null | undefined, interfaceB: string | null | undefined): string {
   return [interfaceA, interfaceB].sort().join('|');
 }
 

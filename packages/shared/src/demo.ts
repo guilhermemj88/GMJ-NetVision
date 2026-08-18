@@ -317,6 +317,8 @@ export const demoLinks: NetworkLink[] = linkPairs.map(
     sourceInterfaceId: findInterface(source, index % 2).id,
     targetDeviceId: target,
     targetInterfaceId: findInterface(target, (index + 1) % 2).id,
+    sourceNodeId: null,
+    targetNodeId: null,
     capacityBps: capacity * 1_000_000_000,
     autoCapacityBps: capacity * 1_000_000_000,
     capacitySource: 'AUTO',
@@ -376,6 +378,9 @@ export const demoMap: NetworkMap = {
     id: `node-${item.id}`,
     mapId: 'backbone-main',
     deviceId: item.id,
+    nodeKind: 'DEVICE',
+    genericType: null,
+    label: null,
     position: positions[item.id] ?? { x: 100 + index * 100, y: 300 },
     locked: item.id === 'internet' || item.id === 'customers',
     positionSource: item.id === 'internet' || item.id === 'customers' ? 'MANUAL' : 'AUTO',
@@ -402,10 +407,16 @@ function demoMapVariant(
     settings,
     devices: demoDevices,
     nodes: demoMap.nodes
-      .filter((node) => included.has(node.deviceId))
+      .filter((node) => node.deviceId !== null && included.has(node.deviceId))
       .map((node) => ({ ...node, id: `${id}-${node.id}`, mapId: id, locked: false })),
     links: demoLinks
-      .filter((link) => included.has(link.sourceDeviceId) && included.has(link.targetDeviceId))
+      .filter(
+        (link) =>
+          link.sourceDeviceId !== null &&
+          link.targetDeviceId !== null &&
+          included.has(link.sourceDeviceId) &&
+          included.has(link.targetDeviceId),
+      )
       .map((link) => ({ ...link, id: `${id}-${link.id}`, mapId: id })),
     createdAt: now,
     updatedAt: now,

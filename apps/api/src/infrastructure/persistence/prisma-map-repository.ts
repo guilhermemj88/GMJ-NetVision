@@ -2,6 +2,7 @@ import {
   calculateUtilization,
   createLocalId,
   type AddDeviceResult,
+  type CreateGenericNodeInput,
   type CreateLinkInput,
   type CreateMapInput,
   type HostRecord,
@@ -72,7 +73,10 @@ function settingsFromRow(row: {
 function nodeFromRow(row: {
   id: string;
   mapId: string;
-  deviceId: string;
+  deviceId: string | null;
+  nodeKind: string;
+  genericType: string | null;
+  label: string | null;
   x: number;
   y: number;
   locked: boolean;
@@ -82,6 +86,9 @@ function nodeFromRow(row: {
     id: row.id,
     mapId: row.mapId,
     deviceId: row.deviceId,
+    nodeKind: row.nodeKind as MapNode['nodeKind'],
+    genericType: row.genericType,
+    label: row.label,
     position: { x: row.x, y: row.y },
     locked: row.locked,
     positionSource: row.positionSource as MapNode['positionSource'],
@@ -164,6 +171,9 @@ export class PrismaMapRepository {
             data: {
               mapId: map.id,
               deviceId: node.deviceId,
+              nodeKind: node.nodeKind,
+              genericType: node.genericType,
+              label: node.label,
               x: node.x,
               y: node.y,
               locked: node.locked,
@@ -179,6 +189,8 @@ export class PrismaMapRepository {
               sourceInterfaceId: link.sourceInterfaceId,
               targetDeviceId: link.targetDeviceId,
               targetInterfaceId: link.targetInterfaceId,
+              sourceNodeId: link.sourceNodeId,
+              targetNodeId: link.targetNodeId,
               capacityBps: link.capacityBps,
               autoCapacityBps: link.autoCapacityBps,
               capacitySource: link.capacitySource,
@@ -322,6 +334,30 @@ export class PrismaMapRepository {
     return this.createDiscoveredLink(mapId, input, 'MANUAL');
   }
 
+  async addGenericNode(mapId: string, input: CreateGenericNodeInput): Promise<MapNode | null> {
+    const map = await this.prisma.map.findUnique({ where: { id: mapId }, select: { id: true } });
+    if (!map) return null;
+    const node = await this.prisma.mapNode.create({
+      data: {
+        mapId,
+        deviceId: null,
+        nodeKind: 'GENERIC',
+        genericType: input.type,
+        label: input.label,
+        x: input.position.x,
+        y: input.position.y,
+        locked: false,
+        positionSource: 'MANUAL',
+      },
+    });
+    return nodeFromRow(node);
+  }
+
+  async deleteNode(mapId: string, nodeId: string): Promise<boolean> {
+    const result = await this.prisma.mapNode.deleteMany({ where: { id: nodeId, mapId } });
+    return result.count > 0;
+  }
+
   async createDiscoveredLink(
     mapId: string,
     input: CreateLinkInput,
@@ -332,10 +368,12 @@ export class PrismaMapRepository {
     const row = await this.prisma.link.create({
       data: {
         mapId,
-        sourceDeviceId: input.sourceDeviceId,
-        sourceInterfaceId: input.sourceInterfaceId,
-        targetDeviceId: input.targetDeviceId,
-        targetInterfaceId: input.targetInterfaceId,
+        sourceDeviceId: input.sourceDeviceId ?? null,
+        sourceInterfaceId: input.sourceInterfaceId ?? null,
+        targetDeviceId: input.targetDeviceId ?? null,
+        targetInterfaceId: input.targetInterfaceId ?? null,
+        sourceNodeId: input.sourceNodeId ?? null,
+        targetNodeId: input.targetNodeId ?? null,
         capacityBps: BigInt(Math.max(1, Math.trunc(input.capacityBps))),
         autoCapacityBps: BigInt(Math.max(1, Math.trunc(input.autoCapacityBps))),
         capacitySource: input.capacitySource,
@@ -392,9 +430,9 @@ export class PrismaMapRepository {
     labelScale: number;
     viewport: unknown;
     filters: unknown;
-    nodes: Array<{ id: string; mapId: string; deviceId: string; x: number; y: number; locked: boolean; positionSource: string }>;
+    nodes: Array<{ id: string; mapId: string; deviceId: string | null; nodeKind: string; genericType: string | null; label: string | null; x: number; y: number; locked: boolean; positionSource: string }>;
     links: Array<{
-      id: string; mapId: string; sourceDeviceId: string; sourceInterfaceId: string; targetDeviceId: string; targetInterfaceId: string;
+      id: string; mapId: string; sourceDeviceId: string | null; sourceInterfaceId: string | null; targetDeviceId: string | null; targetInterfaceId: string | null; sourceNodeId: string | null; targetNodeId: string | null;
       capacityBps: bigint; autoCapacityBps: bigint | null; capacitySource: string; label: string | null; status: string;
       discoverySource: string; metricSource: string; visualStyle: string | null; metricDisplay: string | null; createdAt: Date; updatedAt: Date;
     }>;
@@ -418,12 +456,16 @@ export class PrismaMapRepository {
   }
 
   private materializeLink(row: {
-    id: string; mapId: string; sourceDeviceId: string; sourceInterfaceId: string; targetDeviceId: string; targetInterfaceId: string;
+    id: string; mapId: string; sourceDeviceId: string | null; sourceInterfaceId: string | null; targetDeviceId: string | null; targetInterfaceId: string | null; sourceNodeId: string | null; targetNodeId: string | null;
     capacityBps: bigint; autoCapacityBps: bigint | null; capacitySource: string; label: string | null; status: string;
     discoverySource: string; metricSource: string; visualStyle: string | null; metricDisplay: string | null; createdAt: Date; updatedAt: Date;
   }, devices: HostRecord[]): NetworkLink {
-    const source = devices.find((device) => device.id === row.sourceDeviceId)?.interfaces.find((item) => item.id === row.sourceInterfaceId);
-    const target = devices.find((device) => device.id === row.targetDeviceId)?.interfaces.find((item) => item.id === row.targetInterfaceId);
+    const source = row.sourceDeviceId
+      ? devices.find((device) => device.id === row.sourceDeviceId)?.interfaces.find((item) => item.id === row.sourceInterfaceId)
+      : undefined;
+    const target = row.targetDeviceId
+      ? devices.find((device) => device.id === row.targetDeviceId)?.interfaces.find((item) => item.id === row.targetInterfaceId)
+      : undefined;
     const capacityBps = safeNumber(row.capacityBps);
     const aToB = source ? source.txBps : target?.rxBps ?? 0;
     const bToA = source ? source.rxBps : target?.txBps ?? 0;
@@ -434,6 +476,8 @@ export class PrismaMapRepository {
       sourceInterfaceId: row.sourceInterfaceId,
       targetDeviceId: row.targetDeviceId,
       targetInterfaceId: row.targetInterfaceId,
+      sourceNodeId: row.sourceNodeId,
+      targetNodeId: row.targetNodeId,
       capacityBps,
       autoCapacityBps: safeNumber(row.autoCapacityBps) || capacityBps,
       capacitySource: row.capacitySource as NetworkLink['capacitySource'],

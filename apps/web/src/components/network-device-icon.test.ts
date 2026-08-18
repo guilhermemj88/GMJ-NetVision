@@ -16,7 +16,7 @@ function renderIcon(type: NetworkDeviceIconType): string {
 
 describe('NetworkDeviceIcon', () => {
   it('renders every resolved icon type through the canonical union', () => {
-    expect(iconTypes).toHaveLength(15);
+    expect(iconTypes).toHaveLength(23);
     for (const iconType of iconTypes) {
       expect(renderIcon(iconType)).toContain(
         `${iconType.toLowerCase().replaceAll('_', ' ')} device icon`,

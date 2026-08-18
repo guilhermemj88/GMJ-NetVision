@@ -6,6 +6,7 @@ import {
   type AssistedDiscoveryPreview,
   type AssistedDiscoveredNeighbor,
   type ConnectionTestResult,
+  type CreateGenericNodeInput,
   type CreateHostInput,
   type CreateLinkInput,
   type CreateMapInput,
@@ -327,6 +328,9 @@ export class DemoMapRepository {
       id: createLocalId('node'),
       mapId,
       deviceId: hostId,
+      nodeKind: 'DEVICE',
+      genericType: null,
+      label: null,
       position,
       locked: false,
       positionSource: 'MANUAL',
@@ -600,6 +604,9 @@ export class DemoMapRepository {
           id: createLocalId('node'),
           mapId: map.id,
           deviceId: target.id,
+          nodeKind: 'DEVICE',
+          genericType: null,
+          label: null,
           position: {
             x: (sourceNode?.position.x ?? 500) + 260,
             y: (sourceNode?.position.y ?? 350) + (index - selections.length / 2) * 130,
@@ -829,6 +836,37 @@ export class DemoMapRepository {
     return this.createDiscoveredLink(mapId, input, 'MANUAL');
   }
 
+  addGenericNode(mapId: string, input: CreateGenericNodeInput): MapNode | null {
+    const map = this.findMap(mapId);
+    if (!map) return null;
+    const node: MapNode = {
+      id: createLocalId('node'),
+      mapId,
+      deviceId: null,
+      nodeKind: 'GENERIC',
+      genericType: input.type,
+      label: input.label,
+      position: input.position,
+      locked: false,
+      positionSource: 'MANUAL',
+    };
+    map.nodes.push(node);
+    this.touch(map);
+    return structuredClone(node);
+  }
+
+  deleteNode(mapId: string, nodeId: string): boolean {
+    const map = this.findMap(mapId);
+    if (!map || !map.nodes.some((item) => item.id === nodeId)) return false;
+    map.nodes = map.nodes.filter((item) => item.id !== nodeId);
+    map.links = map.links.filter(
+      (item) => item.sourceNodeId !== nodeId && item.targetNodeId !== nodeId,
+    );
+    this.touch(map);
+    this.refreshMembership();
+    return true;
+  }
+
   createDiscoveredLink(
     mapId: string,
     input: CreateLinkInput,
@@ -840,7 +878,19 @@ export class DemoMapRepository {
     const link: NetworkLink = {
       id: createLocalId('link'),
       mapId,
-      ...input,
+      sourceDeviceId: input.sourceDeviceId ?? null,
+      sourceInterfaceId: input.sourceInterfaceId ?? null,
+      targetDeviceId: input.targetDeviceId ?? null,
+      targetInterfaceId: input.targetInterfaceId ?? null,
+      sourceNodeId: input.sourceNodeId ?? null,
+      targetNodeId: input.targetNodeId ?? null,
+      capacityBps: input.capacityBps,
+      autoCapacityBps: input.autoCapacityBps,
+      capacitySource: input.capacitySource,
+      label: input.label,
+      metricSource: input.metricSource,
+      visualStyle: input.visualStyle,
+      metricDisplay: input.metricDisplay,
       status: 'UP',
       discoverySource,
       directions: {

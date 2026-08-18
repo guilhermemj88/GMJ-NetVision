@@ -1,6 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { CreateHostInput, HistoryPeriod, HostRecord, LldpApplySelection, UpdateMapInput } from '@gmj/shared';
+import type { CreateHostInput, CreateLinkInput, HistoryPeriod, HostRecord, LldpApplySelection, UpdateMapInput } from '@gmj/shared';
 import type { LldpSnmpTargetProvider, LldpSshSessionFactory, TopologyDiscoveryAdapter, TopologyPreviewStore } from './domain/ports';
 import { CredentialVault } from './application/credential-vault';
 import { DiscoveryService } from './application/discovery-service';
@@ -37,10 +37,12 @@ const positionSchema = z.object({
   locked: z.boolean().optional(),
 });
 const linkSchema = z.object({
-  sourceDeviceId: z.string().min(1),
-  sourceInterfaceId: z.string().min(1),
-  targetDeviceId: z.string().min(1),
-  targetInterfaceId: z.string().min(1),
+  sourceDeviceId: z.string().min(1).nullable().optional(),
+  sourceInterfaceId: z.string().min(1).nullable().optional(),
+  targetDeviceId: z.string().min(1).nullable().optional(),
+  targetInterfaceId: z.string().min(1).nullable().optional(),
+  sourceNodeId: z.string().min(1).nullable().optional(),
+  targetNodeId: z.string().min(1).nullable().optional(),
   capacityBps: z.number().positive(),
   autoCapacityBps: z.number().positive(),
   capacitySource: z.enum(['AUTO', 'MANUAL']),
@@ -48,6 +50,11 @@ const linkSchema = z.object({
   metricSource: z.enum(['DEMO', 'ZABBIX']),
   visualStyle: z.enum(['FLOW', 'WEATHERMAP', 'HYBRID', 'MINIMAL']).nullable(),
   metricDisplay: z.enum(['THROUGHPUT', 'UTILIZATION', 'BOTH', 'NONE']).nullable(),
+});
+const genericNodeSchema = z.object({
+  type: z.string().min(1).max(40),
+  label: z.string().min(1).max(120),
+  position: z.object({ x: z.number().finite(), y: z.number().finite() }),
 });
 const mapSettingsSchema = z.object({
   nodeDisplayMode: z.enum(['ICON_2D', 'ICON_3D', 'CARD']).optional(),
@@ -275,7 +282,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   app.post('/api/maps/:mapId/links', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
-    const link = await maps.createLink(mapId, linkSchema.parse(request.body));
+    const link = await maps.createLink(mapId, linkSchema.parse(request.body) as CreateLinkInput);
     return link ? reply.code(201).send(link) : reply.code(404).send({ message: 'Map not found' });
   });
 
@@ -342,6 +349,19 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       created,
       skipped: body.deviceIds.filter((deviceId) => existing.has(deviceId)),
     });
+  });
+
+  app.post('/api/maps/:mapId/generic-nodes', async (request, reply) => {
+    const { mapId } = mapIdParams.parse(request.params);
+    const node = await maps.addGenericNode(mapId, genericNodeSchema.parse(request.body));
+    return node ? reply.code(201).send(node) : reply.code(404).send({ message: 'Map not found' });
+  });
+
+  app.delete('/api/maps/:mapId/nodes/:nodeId', async (request, reply) => {
+    const { mapId, nodeId } = nodeParams.parse(request.params);
+    return await maps.deleteNode(mapId, nodeId)
+      ? reply.code(204).send()
+      : reply.code(404).send({ message: 'Node not found' });
   });
 
   app.delete('/api/maps/:mapId/devices/:deviceId', async (request, reply) => {

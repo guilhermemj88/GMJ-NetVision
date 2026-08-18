@@ -89,12 +89,13 @@ export function TrafficEdge({
   const aToB = link.directions.A_TO_B;
   const bToA = link.directions.B_TO_A;
   const maxUtilization = Math.max(aToB.utilization, bToA.utilization);
-  const toneA = link.status === 'DOWN' ? 'down' : utilizationLevel(aToB.utilization).toLowerCase();
-  const toneB = link.status === 'DOWN' ? 'down' : utilizationLevel(bToA.utilization).toLowerCase();
-  const worstTone = link.status === 'DOWN' ? 'down' : utilizationLevel(maxUtilization).toLowerCase();
-  const width = Math.max(2.4, Math.min(5.2, 2.6 + Math.log10(Math.max(link.capacityBps, 1_000_000_000)) - 9.2)) * (linkScale / 100);
+  const statusTone = link.status === 'DOWN' ? 'down' : link.status === 'UNKNOWN' ? 'unknown' : null;
+  const toneA = statusTone ?? utilizationLevel(aToB.utilization).toLowerCase();
+  const toneB = statusTone ?? utilizationLevel(bToA.utilization).toLowerCase();
+  const worstTone = statusTone ?? utilizationLevel(maxUtilization).toLowerCase();
+  const width = Math.max(1.2, Math.min(2.6, 1.4 + Math.log10(Math.max(link.capacityBps, 1_000_000_000)) - 9.2)) * (linkScale / 100);
   const distance = Math.hypot(targetX - sourceX, targetY - sourceY) || 1;
-  const laneGap = Math.max(3.2, Math.min(7, 3.4 + width * 0.5));
+  const laneGap = Math.max(2.2, Math.min(4.6, 2.2 + width * 0.7));
   const offsetX = (-(targetY - sourceY) / distance) * laneGap;
   const offsetY = ((targetX - sourceX) / distance) * laneGap;
   const classes = `${selected ? 'is-selected' : ''} ${related ? '' : 'is-dimmed'} ${emphasized ? 'is-emphasized' : ''}`;
@@ -102,9 +103,9 @@ export function TrafficEdge({
   const showMetric = showLabels && displayStyle !== 'MINIMAL' && (
     metricDisplay !== 'NONE' || opticalText(sourceInterface) !== null || opticalText(targetInterface) !== null
   );
-  const chevronScale = Math.max(1, Math.min(1.8, linkScale / 80));
-  const chevronPath = `M ${-4.5 * chevronScale} ${-3.4 * chevronScale} L ${1.4 * chevronScale} 0 L ${-4.5 * chevronScale} ${3.4 * chevronScale}`;
-  const chevronCount = Math.max(3, Math.min(9, Math.round(distance / 65)));
+  const chevronScale = Math.max(0.9, Math.min(1.5, linkScale / 90));
+  const chevronPath = `M ${-2.6 * chevronScale} ${-2.2 * chevronScale} L ${1.2 * chevronScale} 0 L ${-2.6 * chevronScale} ${2.2 * chevronScale}`;
+  const chevronCount = Math.max(3, Math.min(11, Math.round(distance / 46)));
   const durationA = Math.max(0.8, 3 - aToB.utilization / 60);
   const durationB = Math.max(0.85, 3.2 - bToA.utilization / 58);
   const sourceOptical = opticalText(sourceInterface);
@@ -120,10 +121,10 @@ export function TrafficEdge({
 
       {directional && (
         <>
-          <path d={path} transform={`translate(${offsetX} ${offsetY})`} className={`traffic-edge traffic-edge--halo traffic-edge--${toneA} ${classes}`} style={{ strokeWidth: width + 5 }} />
-          <path d={path} transform={`translate(${-offsetX} ${-offsetY})`} className={`traffic-edge traffic-edge--halo traffic-edge--${toneB} ${classes}`} style={{ strokeWidth: width + 5 }} />
-          <path d={path} transform={`translate(${offsetX} ${offsetY})`} className={`traffic-edge traffic-edge--lane traffic-edge--${toneA} ${classes}`} style={{ strokeWidth: width }} />
-          <path d={path} transform={`translate(${-offsetX} ${-offsetY})`} className={`traffic-edge traffic-edge--lane traffic-edge--lane-reverse traffic-edge--${toneB} ${classes}`} style={{ strokeWidth: width }} />
+          <path d={path} transform={`translate(${offsetX} ${offsetY})`} className={`traffic-edge traffic-edge--halo traffic-edge--ab traffic-edge--${toneA} ${classes}`} style={{ strokeWidth: width + 4 }} />
+          <path d={path} transform={`translate(${-offsetX} ${-offsetY})`} className={`traffic-edge traffic-edge--halo traffic-edge--ba traffic-edge--${toneB} ${classes}`} style={{ strokeWidth: width + 4 }} />
+          <path d={path} transform={`translate(${offsetX} ${offsetY})`} className={`traffic-edge traffic-edge--lane traffic-edge--ab traffic-edge--${toneA} ${classes}`} style={{ strokeWidth: width }} />
+          <path d={path} transform={`translate(${-offsetX} ${-offsetY})`} className={`traffic-edge traffic-edge--lane traffic-edge--lane-reverse traffic-edge--ba traffic-edge--${toneB} ${classes}`} style={{ strokeWidth: width }} />
         </>
       )}
 
@@ -131,14 +132,14 @@ export function TrafficEdge({
         <>
           <g transform={`translate(${offsetX} ${offsetY})`}>
             {Array.from({ length: chevronCount }, (_, index) => (
-              <path d={chevronPath} className={`traffic-chevron traffic-edge--${toneA} ${classes}`} style={{ strokeWidth: Math.max(1.5, Math.min(2.6, width * 0.62)) }} key={`a-to-b-${index}`}>
+              <path d={chevronPath} className={`traffic-chevron traffic-edge--ab traffic-edge--${toneA} ${classes}`} style={{ strokeWidth: Math.max(1.1, Math.min(2, width * 1.15)) }} key={`a-to-b-${index}`}>
                 <animateMotion path={path} dur={`${durationA}s`} begin={`${-(index * durationA) / chevronCount}s`} repeatCount="indefinite" rotate="auto" />
               </path>
             ))}
           </g>
           <g transform={`translate(${-offsetX} ${-offsetY})`}>
             {Array.from({ length: chevronCount }, (_, index) => (
-              <path d={chevronPath} className={`traffic-chevron traffic-chevron--reverse traffic-edge--${toneB} ${classes}`} style={{ strokeWidth: Math.max(1.5, Math.min(2.6, width * 0.62)) }} key={`b-to-a-${index}`}>
+              <path d={chevronPath} className={`traffic-chevron traffic-chevron--reverse traffic-edge--ba traffic-edge--${toneB} ${classes}`} style={{ strokeWidth: Math.max(1.1, Math.min(2, width * 1.15)) }} key={`b-to-a-${index}`}>
                 <animateMotion path={path} dur={`${durationB}s`} begin={`${-(index * durationB) / chevronCount}s`} repeatCount="indefinite" rotate="auto-reverse" keyPoints="1;0" keyTimes="0;1" calcMode="linear" />
               </path>
             ))}

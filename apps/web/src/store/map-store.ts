@@ -7,6 +7,7 @@ import {
   type HostRecord,
   type LinkDisplayStyle,
   type LinkMetricDisplay,
+  type MapNode,
   type MapPreferences,
   type MapSettings,
   type MapSummary,
@@ -19,11 +20,19 @@ import { create } from 'zustand';
 
 export type Selection =
   | { kind: 'device'; id: string }
+  | { kind: 'node'; id: string }
   | { kind: 'link'; id: string }
   | { kind: 'interface'; id: string; deviceId: string }
   | null;
 export type OpenPanel =
-  'add-device' | 'create-link' | 'discovery' | 'settings' | 'maps' | 'rotation' | null;
+  | 'add-device'
+  | 'add-generic-node'
+  | 'create-link'
+  | 'discovery'
+  | 'settings'
+  | 'maps'
+  | 'rotation'
+  | null;
 export type WorkspaceView = 'MAP' | 'HOSTS';
 
 export interface NocRotationState {
@@ -46,7 +55,7 @@ interface MapState {
   editMode: boolean;
   selection: Selection;
   panel: OpenPanel;
-  pendingLink: { sourceDeviceId?: string; targetDeviceId?: string } | null;
+  pendingLink: { sourceId?: string; targetId?: string } | null;
   preferences: MapPreferences;
   rotation: NocRotationState;
   dirty: boolean;
@@ -76,6 +85,8 @@ interface MapState {
   replaceLink: (link: NetworkLink) => void;
   removeLink: (linkId: string) => void;
   addDevice: (device: HostRecord, position: Position, node?: AddDeviceResult['node']) => void;
+  addGenericNode: (node: MapNode) => void;
+  removeNode: (nodeId: string) => void;
   removeDevice: (deviceId: string) => void;
   startRotation: (
     options: Omit<NocRotationState, 'active' | 'currentIndex' | 'paused' | 'nextSwitchAt'>,
@@ -332,7 +343,19 @@ export const useMapStore = create<MapState>((set) => ({
       const link: NetworkLink = serverLink ?? {
         id: createLocalId('link'),
         mapId: state.map.id,
-        ...input,
+        sourceDeviceId: input.sourceDeviceId ?? null,
+        sourceInterfaceId: input.sourceInterfaceId ?? null,
+        targetDeviceId: input.targetDeviceId ?? null,
+        targetInterfaceId: input.targetInterfaceId ?? null,
+        sourceNodeId: input.sourceNodeId ?? null,
+        targetNodeId: input.targetNodeId ?? null,
+        capacityBps: input.capacityBps,
+        autoCapacityBps: input.autoCapacityBps,
+        capacitySource: input.capacitySource,
+        label: input.label,
+        metricSource: input.metricSource,
+        visualStyle: input.visualStyle,
+        metricDisplay: input.metricDisplay,
         status: 'UP',
         discoverySource: 'MANUAL',
         directions: {
@@ -388,12 +411,40 @@ export const useMapStore = create<MapState>((set) => ({
                   id: createLocalId('node'),
                   mapId: state.map.id,
                   deviceId: device.id,
+                  nodeKind: 'DEVICE',
+                  genericType: null,
+                  label: null,
                   position,
                   locked: false,
                   positionSource: 'MANUAL',
                 },
               ],
             },
+            dirty: true,
+          }
+        : state,
+    ),
+  addGenericNode: (node) =>
+    set((state) =>
+      state.map
+        ? {
+            map: { ...state.map, nodes: [...state.map.nodes, node] },
+            dirty: true,
+          }
+        : state,
+    ),
+  removeNode: (nodeId) =>
+    set((state) =>
+      state.map
+        ? {
+            map: {
+              ...state.map,
+              nodes: state.map.nodes.filter((node) => node.id !== nodeId),
+              links: state.map.links.filter(
+                (link) => link.sourceNodeId !== nodeId && link.targetNodeId !== nodeId,
+              ),
+            },
+            selection: null,
             dirty: true,
           }
         : state,

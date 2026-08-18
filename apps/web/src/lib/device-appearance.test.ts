@@ -36,6 +36,36 @@ describe('device icon appearance', () => {
         model: 'Subscriber Cloud',
         deviceType: 'customers',
       }),
-    ).toBe('GENERIC');
+    ).toBe('CUSTOMERS');
+  });
+
+  it('maps conceptual topology elements to their own generic icons', () => {
+    expect(resolveDeviceIconType({ hostname: 'IX-SP', deviceType: 'ix' })).toBe('IX');
+    expect(resolveDeviceIconType({ hostname: 'PTT-SP', deviceType: 'generic' })).toBe('IX');
+    expect(resolveDeviceIconType({ hostname: 'Clientes Varejo', deviceType: 'generic' })).toBe(
+      'CUSTOMERS',
+    );
+    expect(resolveDeviceIconType({ hostname: 'Operadora A', deviceType: 'generic' })).toBe(
+      'CARRIER',
+    );
+    expect(resolveDeviceIconType({ hostname: 'Backbone Nacional', deviceType: 'generic' })).toBe(
+      'CARRIER',
+    );
+    expect(resolveDeviceIconType({ hostname: 'Link IP Matriz', deviceType: 'generic' })).toBe(
+      'TRANSPORT',
+    );
+    expect(resolveDeviceIconType({ hostname: 'Datacenter SP', deviceType: 'generic' })).toBe(
+      'DATACENTER',
+    );
+    expect(
+      resolveDeviceIconType({ hostname: 'Serviço de Autenticação', deviceType: 'generic' }),
+    ).toBe('SERVICE');
+    expect(
+      resolveDeviceIconType({ hostname: 'Rede Externa Parceiro', deviceType: 'generic' }),
+    ).toBe('PEER');
+    expect(resolveDeviceIconType({ hostname: 'Cluster Lógico', deviceType: 'generic' })).toBe(
+      'CLUSTER',
+    );
+    expect(resolveDeviceIconType({ hostname: 'Internet', deviceType: 'internet' })).toBe('CLOUD');
   });
 });

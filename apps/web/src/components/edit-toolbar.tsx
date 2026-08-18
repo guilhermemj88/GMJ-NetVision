@@ -14,7 +14,7 @@ import {
 import { useMutation } from '@tanstack/react-query';
 import { useReactFlow } from '@xyflow/react';
 import { createAutoLayout } from '@/lib/layout';
-import { deleteDevice, deleteLink, savePositions } from '@/lib/api';
+import { deleteDevice, deleteLink, deleteMapNode, savePositions } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
 
 export function EditToolbar() {
@@ -25,6 +25,7 @@ export function EditToolbar() {
   const setNodeLocked = useMapStore((state) => state.setNodeLocked);
   const applyLayout = useMapStore((state) => state.applyLayout);
   const removeDevice = useMapStore((state) => state.removeDevice);
+  const removeNode = useMapStore((state) => state.removeNode);
   const removeLink = useMapStore((state) => state.removeLink);
   const markSaved = useMapStore((state) => state.markSaved);
   const showToast = useMapStore((state) => state.showToast);
@@ -51,8 +52,8 @@ export function EditToolbar() {
 
   if (!map) return null;
   const selectedNode =
-    selection?.kind === 'device'
-      ? map.nodes.find((node) => node.deviceId === selection.id)
+    selection?.kind === 'device' || selection?.kind === 'node'
+      ? map.nodes.find((node) => (node.deviceId ?? node.id) === selection.id)
       : undefined;
 
   const removeSelected = () => {
@@ -60,6 +61,10 @@ export function EditToolbar() {
       removeLink(selection.id);
       void deleteLink(map.id, selection.id).catch(() => undefined);
       showToast('Enlace removido');
+    } else if (selection?.kind === 'node') {
+      removeNode(selection.id);
+      void deleteMapNode(map.id, selection.id).catch(() => undefined);
+      showToast('Node removido');
     } else if (selection?.kind === 'device') {
       removeDevice(selection.id);
       void deleteDevice(map.id, selection.id).catch(() => undefined);
@@ -81,6 +86,9 @@ export function EditToolbar() {
       <div className="edit-toolbar__separator" />
       <Button compact variant="ghost" onClick={() => setPanel('add-device')}>
         <Plus size={15} /> Equipamento
+      </Button>
+      <Button compact variant="ghost" onClick={() => setPanel('add-generic-node')}>
+        <Plus size={15} /> Node conceitual
       </Button>
       <Button compact variant="ghost" onClick={() => setPanel('create-link')}>
         <Cable size={15} /> Criar enlace

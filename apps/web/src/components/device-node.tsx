@@ -46,7 +46,7 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
 
   return (
     <div
-      className={`device-node device-node--${displayMode.toLowerCase()} status-${device.status.toLowerCase()} ${selected ? 'is-selected' : ''} ${mapNode.locked ? 'is-locked' : ''}`}
+      className={`device-node device-node--${displayMode.toLowerCase()} device-node--type-${iconType.toLowerCase().replaceAll('_', '-')} status-${device.status.toLowerCase()} ${selected ? 'is-selected' : ''} ${mapNode.locked ? 'is-locked' : ''}`}
       style={
         {
           '--node-scale': nodeScale / 100,
