@@ -2,25 +2,53 @@
 
 import { useMemo, useState } from 'react';
 import type {
-  AssistedDiscoveredNeighbor,
-  AssistedDiscoveryPreview,
-  DiscoveryApplyAction,
-  DiscoveryApplySelection,
   HostRecord,
+  LldpAdjacencyProposal,
+  LldpApplyAction,
+  LldpApplySelection,
+  LldpTopologyPreview,
 } from '@gmj/shared';
-import { Button } from '@gmj/ui';
+import { Badge, Button } from '@gmj/ui';
 import { CheckCircle2, LoaderCircle, Radar, TriangleAlert } from 'lucide-react';
-import { applyAssistedDiscovery, previewAssistedDiscovery } from '@/lib/api';
+import { applyLldp, getMap, previewHostLldp } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
 
-function defaultAction(neighbor: AssistedDiscoveredNeighbor): DiscoveryApplyAction {
-  if (neighbor.linkExists) return 'IGNORE';
-  if (neighbor.mapPresent) return 'LINK_ONLY';
-  if (neighbor.inventoryState === 'AMBIGUOUS' || neighbor.zabbixState === 'AMBIGUOUS') {
+function defaultAction(adjacency: LldpAdjacencyProposal): LldpApplyAction {
+  if (adjacency.duplicate || adjacency.existingLinkId) return 'IGNORE';
+  if (adjacency.confidence === 'AMBIGUOUS' || adjacency.confidence === 'UNKNOWN_NEIGHBOR') {
     return 'IGNORE';
   }
-  if (neighbor.inventoryState === 'REGISTERED' || neighbor.zabbixState === 'FOUND') return 'ADD';
-  return 'ADD_UNMONITORED';
+  return 'CREATE_LINK';
+}
+
+function confidenceTone(confidence: LldpAdjacencyProposal['confidence']): string {
+  switch (confidence) {
+    case 'CONFIRMED':
+      return 'up';
+    case 'PROBABLE':
+      return 'info';
+    case 'AMBIGUOUS':
+      return 'ambiguous';
+    default:
+      return 'down';
+  }
+}
+
+function friendlyError(message: string): string {
+  const text = message.toLowerCase();
+  if (/credential not configured|credencial/.test(text)) {
+    return 'Credencial SNMP/SSH indisponível para este equipamento';
+  }
+  if (/not enabled|não está habilitad/.test(text)) {
+    return 'Acesso SNMP/SSH não está habilitado para este equipamento';
+  }
+  if (/no ssh driver|no ssh transport/.test(text)) {
+    return 'Driver SSH indisponível para este fabricante';
+  }
+  if (/timeout|timed ?out|econnrefused|unreachable|enetunreach/.test(text)) {
+    return 'Equipamento não respondeu LLDP (timeout/conexão)';
+  }
+  return message;
 }
 
 export function AssistedDiscoveryReview({
@@ -32,14 +60,15 @@ export function AssistedDiscoveryReview({
   mapId: string;
   onApplied?: () => void;
 }) {
-  const [preview, setPreview] = useState<AssistedDiscoveryPreview | null>(null);
-  const [selections, setSelections] = useState<Record<string, DiscoveryApplySelection>>({});
+  const [preview, setPreview] = useState<LldpTopologyPreview | null>(null);
+  const [selections, setSelections] = useState<Record<string, LldpApplySelection>>({});
   const [pending, setPending] = useState<'preview' | 'apply' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const setMap = useMapStore((state) => state.setMap);
 
   const selectedCount = useMemo(
-    () => Object.values(selections).filter((selection) => selection.action !== 'IGNORE').length,
+    () =>
+      Object.values(selections).filter((selection) => selection.action === 'CREATE_LINK').length,
     [selections],
   );
 
@@ -47,18 +76,18 @@ export function AssistedDiscoveryReview({
     setPending('preview');
     setMessage(null);
     try {
-      const result = await previewAssistedDiscovery(host.id, mapId);
+      const result = await previewHostLldp(host.id, mapId);
       setPreview(result);
       setSelections(
         Object.fromEntries(
-          result.neighbors.map((neighbor) => [
-            neighbor.id,
-            { neighborId: neighbor.id, action: defaultAction(neighbor) },
+          result.adjacencies.map((adjacency) => [
+            adjacency.id,
+            { adjacencyId: adjacency.id, action: defaultAction(adjacency) },
           ]),
         ),
       );
-    } catch {
-      setMessage('Não foi possível consultar vizinhos com segurança.');
+    } catch (error) {
+      setMessage(friendlyError(error instanceof Error ? error.message : ''));
     } finally {
       setPending(null);
     }
@@ -69,15 +98,18 @@ export function AssistedDiscoveryReview({
     setPending('apply');
     setMessage(null);
     try {
-      const result = await applyAssistedDiscovery(host.id, preview.id, Object.values(selections));
-      setMap(result.map);
+      const result = await applyLldp(mapId, preview.id, Object.values(selections));
+      const refreshed = await getMap(mapId);
+      setMap(refreshed);
       setMessage(
-        `${result.addedNodes.length} nó(s) e ${result.createdLinks.length} enlace(s) aplicados.`,
+        `${result.createdLinks.length} enlace(s) criado(s) · ${result.skipped.length} ignorado(s).`,
       );
       setPreview(null);
       onApplied?.();
-    } catch {
-      setMessage('A revisão expirou ou não pôde ser aplicada. Nada foi alterado.');
+    } catch (error) {
+      setMessage(
+        error instanceof Error ? error.message : 'A revisão expirou ou não pôde ser aplicada.',
+      );
     } finally {
       setPending(null);
     }
@@ -87,7 +119,7 @@ export function AssistedDiscoveryReview({
     return (
       <div className="discovery-empty">
         <Radar size={22} />
-        <strong>Descoberta incremental</strong>
+        <strong>Descoberta LLDP</strong>
         <p>Consulta LLDP por SNMP e usa SSH como fallback. O preview não altera o mapa.</p>
         <Button variant="primary" onClick={() => void loadPreview()} disabled={pending !== null}>
           {pending === 'preview' ? (
@@ -106,8 +138,11 @@ export function AssistedDiscoveryReview({
     <div className="discovery-review">
       <div className="discovery-review__summary">
         <div>
-          <strong>{preview.neighbors.length} vizinho(s) encontrados</strong>
-          <span>Método: {preview.method} · nenhuma alteração aplicada</span>
+          <strong>{preview.adjacencies.length} adjacência(s) encontrada(s)</strong>
+          <span>
+            {preview.stats.confirmed} confirmada · {preview.stats.probable} provável ·{' '}
+            {preview.stats.ambiguous} ambígua
+          </span>
         </div>
         <Button compact variant="ghost" onClick={() => void loadPreview()}>
           Atualizar preview
@@ -119,74 +154,58 @@ export function AssistedDiscoveryReview({
         </div>
       ))}
       <div className="discovery-neighbors">
-        {preview.neighbors.map((neighbor) => {
-          const selection = selections[neighbor.id]!;
+        {preview.adjacencies.map((adjacency) => {
+          const selection = selections[adjacency.id]!;
+          const disabled = adjacency.duplicate || Boolean(adjacency.existingLinkId);
           return (
-            <article key={neighbor.id} className="discovery-neighbor">
+            <article key={adjacency.id} className="discovery-neighbor">
               <header>
                 <div>
-                  <strong>{neighbor.remoteSystemName}</strong>
-                  <span>{neighbor.remoteManagementAddress ?? 'IP não informado'}</span>
+                  <strong>{adjacency.targetHostname}</strong>
+                  <span>
+                    {adjacency.sourceHostname} · {adjacency.sourcePort} → {adjacency.targetPort}
+                  </span>
                 </div>
-                <select
-                  value={selection.action}
-                  onChange={(event) =>
-                    setSelections((current) => ({
-                      ...current,
-                      [neighbor.id]: {
-                        ...selection,
-                        action: event.target.value as DiscoveryApplyAction,
-                      },
-                    }))
-                  }
-                >
-                  <option value="ADD">Adicionar nó + link</option>
-                  <option value="LINK_ONLY">Criar somente link</option>
-                  <option value="ADD_UNMONITORED">Adicionar não monitorado</option>
-                  <option value="IGNORE">Ignorar</option>
-                </select>
+                <Badge tone={confidenceTone(adjacency.confidence)}>
+                  {adjacency.confidence}
+                </Badge>
               </header>
+              <select
+                value={selection.action}
+                disabled={disabled}
+                onChange={(event) =>
+                  setSelections((current) => ({
+                    ...current,
+                    [adjacency.id]: {
+                      adjacencyId: adjacency.id,
+                      action: event.target.value as LldpApplyAction,
+                    },
+                  }))
+                }
+              >
+                <option value="CREATE_LINK">Criar link</option>
+                <option value="IGNORE">Ignorar</option>
+              </select>
               <dl>
                 <div>
-                  <dt>Local</dt>
-                  <dd>{neighbor.localPort}</dd>
+                  <dt>Fonte</dt>
+                  <dd>{adjacency.source.replace('LLDP_', '')}</dd>
                 </div>
                 <div>
-                  <dt>Remota</dt>
-                  <dd>{neighbor.remotePort}</dd>
+                  <dt>Endereço remoto</dt>
+                  <dd>{adjacency.targetManagementAddress ?? '—'}</dd>
                 </div>
                 <div>
-                  <dt>Inventário</dt>
-                  <dd>{neighbor.inventoryState}</dd>
+                  <dt>Interface local</dt>
+                  <dd>{adjacency.sourceInterfaceId ?? 'não resolvida'}</dd>
                 </div>
                 <div>
-                  <dt>Zabbix</dt>
-                  <dd>{neighbor.zabbixState}</dd>
+                  <dt>Interface remota</dt>
+                  <dd>{adjacency.targetInterfaceId ?? 'não resolvida'}</dd>
                 </div>
               </dl>
-              {neighbor.candidateDeviceIds.length > 1 && (
-                <label>
-                  Correspondência ambígua
-                  <select
-                    value={selection.selectedDeviceId ?? ''}
-                    onChange={(event) => {
-                      const selectedDeviceId = event.target.value;
-                      const next: DiscoveryApplySelection = selectedDeviceId
-                        ? { neighborId: neighbor.id, action: 'ADD', selectedDeviceId }
-                        : { neighborId: neighbor.id, action: 'IGNORE' };
-                      setSelections((current) => ({ ...current, [neighbor.id]: next }));
-                    }}
-                  >
-                    <option value="">Selecione manualmente</option>
-                    {neighbor.candidateDeviceIds.map((deviceId) => (
-                      <option value={deviceId} key={deviceId}>
-                        {deviceId}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              {neighbor.linkExists && (
+              {adjacency.reasons.length > 0 && <small>{adjacency.reasons.join(' · ')}</small>}
+              {disabled && (
                 <small>
                   <CheckCircle2 size={12} /> Link já existe
                 </small>
@@ -203,7 +222,7 @@ export function AssistedDiscoveryReview({
           onClick={() => void apply()}
         >
           {pending === 'apply' && <LoaderCircle className="spin" size={15} />}
-          Adicionar selecionados
+          Aplicar selecionados
         </Button>
       </footer>
       {message && <div className="discovery-result">{message}</div>}

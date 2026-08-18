@@ -104,11 +104,24 @@ export function TrafficEdge({
     metricDisplay !== 'NONE' || opticalText(sourceInterface) !== null || opticalText(targetInterface) !== null
   );
   const chevronScale = Math.max(0.8, Math.min(1.35, linkScale / 100));
-  const chevronPath = `M ${-1.9 * chevronScale} ${-1.6 * chevronScale} L ${0.8 * chevronScale} 0 L ${-1.9 * chevronScale} ${1.6 * chevronScale}`;
-  const chevronCount = Math.max(6, Math.min(40, Math.round(distance / 15)));
-  const chevronStroke = Math.max(1, Math.min(1.7, width * 1.1));
-  const durationA = Math.max(1.5, Math.min(3.2, 3.2 - aToB.utilization / 70));
-  const durationB = Math.max(1.5, Math.min(3.4, 3.4 - bToA.utilization / 68));
+  const chevronPathFor = (scale: number) =>
+    `M ${-1.9 * scale} ${-1.6 * scale} L ${0.8 * scale} 0 L ${-1.9 * scale} ${1.6 * scale}`;
+  const baseChevronStroke = Math.max(1, Math.min(1.5, width * 1.05));
+  // Chevron train: each wave grows from a small, faint tail into a bright head,
+  // then a short empty gap separates it from the next wave. The whole train
+  // advances along the lane continuously.
+  const waveSize = 6;
+  const gapSlots = 3;
+  const slotCount = Math.max(waveSize + gapSlots, Math.min(32, Math.round(distance / 20)));
+  const waveCount = Math.floor(slotCount / (waveSize + gapSlots));
+  const chevrons = Array.from({ length: waveCount * waveSize }, (_, index) => {
+    const waveIndex = Math.floor(index / waveSize);
+    const intra = index % waveSize;
+    const slot = waveIndex * (waveSize + gapSlots) + intra;
+    const progress = intra / (waveSize - 1);
+    return { slot, progress };
+  });
+  const duration = Math.max(4.5, 7 - maxUtilization / 40);
   const sourceOptical = opticalText(sourceInterface);
   const targetOptical = opticalText(targetInterface);
   const displayThroughput = metricDisplay === 'THROUGHPUT' || metricDisplay === 'BOTH';
@@ -132,18 +145,36 @@ export function TrafficEdge({
       {showTraffic && link.status !== 'DOWN' && displayStyle !== 'MINIMAL' && (
         <>
           <g transform={`translate(${offsetX} ${offsetY})`}>
-            {Array.from({ length: chevronCount }, (_, index) => (
-              <path d={chevronPath} className={`traffic-chevron traffic-edge--ab traffic-edge--${toneA} ${classes}`} style={{ strokeWidth: chevronStroke }} key={`a-to-b-${index}`}>
-                <animateMotion path={path} dur={`${durationA}s`} begin={`${-(index * durationA) / chevronCount}s`} repeatCount="indefinite" rotate="auto" calcMode="linear" keyPoints="0;1" keyTimes="0;1" />
-              </path>
-            ))}
+            {chevrons.map(({ slot, progress }, index) => {
+              const sizeFactor = 0.55 + 1.25 * progress;
+              const strokeOpacity = 0.3 + 0.7 * progress;
+              return (
+                <path
+                  key={`a-to-b-${index}`}
+                  d={chevronPathFor(chevronScale * sizeFactor)}
+                  className={`traffic-chevron traffic-edge--ab traffic-edge--${toneA} ${classes}`}
+                  style={{ strokeWidth: baseChevronStroke * sizeFactor, strokeOpacity }}
+                >
+                  <animateMotion path={path} dur={`${duration}s`} begin={`${-(slot * duration) / slotCount}s`} repeatCount="indefinite" rotate="auto" calcMode="linear" keyPoints="0;1" keyTimes="0;1" />
+                </path>
+              );
+            })}
           </g>
           <g transform={`translate(${-offsetX} ${-offsetY})`}>
-            {Array.from({ length: chevronCount }, (_, index) => (
-              <path d={chevronPath} className={`traffic-chevron traffic-chevron--reverse traffic-edge--ba traffic-edge--${toneB} ${classes}`} style={{ strokeWidth: chevronStroke }} key={`b-to-a-${index}`}>
-                <animateMotion path={path} dur={`${durationB}s`} begin={`${-(index * durationB) / chevronCount}s`} repeatCount="indefinite" rotate="auto-reverse" keyPoints="1;0" keyTimes="0;1" calcMode="linear" />
-              </path>
-            ))}
+            {chevrons.map(({ slot, progress }, index) => {
+              const sizeFactor = 0.55 + 1.25 * progress;
+              const strokeOpacity = 0.3 + 0.7 * progress;
+              return (
+                <path
+                  key={`b-to-a-${index}`}
+                  d={chevronPathFor(chevronScale * sizeFactor)}
+                  className={`traffic-chevron traffic-chevron--reverse traffic-edge--ba traffic-edge--${toneB} ${classes}`}
+                  style={{ strokeWidth: baseChevronStroke * sizeFactor, strokeOpacity }}
+                >
+                  <animateMotion path={path} dur={`${duration}s`} begin={`${-(slot * duration) / slotCount}s`} repeatCount="indefinite" rotate="auto-reverse" keyPoints="1;0" keyTimes="0;1" calcMode="linear" />
+                </path>
+              );
+            })}
           </g>
         </>
       )}

@@ -376,4 +376,75 @@ describe('TopologyPreviewService', () => {
     expect(preview.adjacencies[0]?.source).toBe('LLDP_SNMP');
     expect(preview.adjacencies[0]?.targetPortDescription).toBe('FROM-SNMP');
   });
+
+  it('discovers a single host without mutating the map', async () => {
+    const a = hostA();
+    const b = hostB();
+    const adapter = new FakeTopologyAdapter('LLDP_SNMP', new Map([
+      ['host-a', [neighbor({ remoteManagementAddress: '10.0.0.2' })]],
+    ]));
+    const repo = new FakeLinkRepository(makeMap({ id: 'map-1' }));
+    const service = new TopologyPreviewService(
+      [adapter],
+      { listHosts: async () => [a, b] },
+      repo,
+      new InMemoryTopologyPreviewStore(),
+    );
+    const preview = await service.discoverHost('host-a', 'map-1');
+    expect(preview.stats.hostsQueried).toBe(1);
+    expect(preview.adjacencies).toHaveLength(1);
+    expect(preview.adjacencies[0]).toMatchObject({
+      sourceHostId: 'host-a',
+      targetHostId: 'host-b',
+    });
+    expect(repo.createCalls).toBe(0);
+  });
+
+  it('falls back to SSH for a single host when SNMP returns nothing', async () => {
+    const a = makeHost({
+      id: 'host-a',
+      hostname: 'bhe-a',
+      managementIp: '10.0.0.1',
+      sshEnabled: true,
+      interfaces: [makeInterface({ id: 'a-if', deviceId: 'host-a', name: '100GE1/0/1', ifIndex: 1001 })],
+    });
+    const b = hostB();
+    const snmp = new FakeTopologyAdapter('LLDP_SNMP', new Map([['host-a', []]]));
+    const ssh = new FakeTopologyAdapter('LLDP_SSH', new Map([
+      ['host-a', [neighbor({ source: 'LLDP_SSH', remoteManagementAddress: '10.0.0.2' })]],
+    ]));
+    const service = new TopologyPreviewService(
+      [snmp, ssh],
+      { listHosts: async () => [a, b] },
+      new FakeLinkRepository(makeMap({ id: 'map-1' })),
+      new InMemoryTopologyPreviewStore(),
+    );
+    const preview = await service.discoverHost('host-a', 'map-1');
+    expect(snmp.calls).toBe(1);
+    expect(ssh.calls).toBe(1);
+    expect(preview.adjacencies[0]?.source).toBe('LLDP_SSH');
+  });
+
+  it('warns when a single host has no access configured', async () => {
+    const a = makeHost({
+      id: 'host-a',
+      hostname: 'bhe-a',
+      managementIp: '10.0.0.1',
+      snmpEnabled: false,
+      sshEnabled: false,
+      interfaces: [makeInterface({ id: 'a-if', deviceId: 'host-a', name: '100GE1/0/1', ifIndex: 1001 })],
+    });
+    const adapter = new FakeTopologyAdapter('LLDP_SNMP', new Map());
+    const service = new TopologyPreviewService(
+      [adapter],
+      { listHosts: async () => [a, hostB()] },
+      new FakeLinkRepository(makeMap({ id: 'map-1' })),
+      new InMemoryTopologyPreviewStore(),
+    );
+    const preview = await service.discoverHost('host-a', 'map-1');
+    expect(preview.warnings.some((warning) => warning.includes('SNMP e SSH desabilitados'))).toBe(
+      true,
+    );
+    expect(preview.stats.hostsFailed).toBe(1);
+  });
 });

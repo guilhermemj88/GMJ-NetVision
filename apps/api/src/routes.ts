@@ -417,6 +417,21 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     }
   });
 
+  app.post('/api/hosts/:hostId/lldp/discover', async (request, reply) => {
+    const { hostId } = z.object({ hostId: z.string().min(1) }).parse(request.params);
+    const { mapId, deepValidation } = z.object({
+      mapId: z.string().min(1),
+      deepValidation: z.boolean().optional().default(false),
+    }).parse(request.body);
+    try {
+      return await topologyPreview.discoverHost(hostId, mapId, { deepValidation });
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : 'Falha segura na descoberta LLDP',
+      });
+    }
+  });
+
   app.post('/api/topology/lldp/preview', async (request, reply) => {
     const { previewId } = z.object({ previewId: z.string().min(1) }).parse(request.body);
     const preview = await topologyPreviewStore.load(previewId);

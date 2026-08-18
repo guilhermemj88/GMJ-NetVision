@@ -12,6 +12,9 @@ import {
   type DiscoveryReview,
   type HistoryPeriod,
   type HostRecord,
+  type LldpApplyResult,
+  type LldpApplySelection,
+  type LldpTopologyPreview,
   type MapNode,
   type MapPlaylist,
   type MapSummary,
@@ -53,7 +56,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers,
   });
-  if (!response.ok) throw new Error(`API ${response.status}`);
+  if (!response.ok) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? `API ${response.status}`);
+  }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
@@ -239,6 +245,20 @@ export function previewAssistedDiscovery(hostId: string, mapId: string) {
   return request<AssistedDiscoveryPreview>(`/api/hosts/${hostId}/discovery/preview`, {
     method: 'POST',
     body: JSON.stringify({ mapId }),
+  });
+}
+
+export function previewHostLldp(hostId: string, mapId: string) {
+  return request<LldpTopologyPreview>(`/api/hosts/${hostId}/lldp/discover`, {
+    method: 'POST',
+    body: JSON.stringify({ mapId }),
+  });
+}
+
+export function applyLldp(mapId: string, previewId: string, selections: LldpApplySelection[]) {
+  return request<LldpApplyResult>(`/api/topology/lldp/apply`, {
+    method: 'POST',
+    body: JSON.stringify({ previewId, mapId, selections }),
   });
 }
 

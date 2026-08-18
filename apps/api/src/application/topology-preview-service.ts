@@ -90,50 +90,9 @@ export class TopologyPreviewService {
     const queried = hosts.filter((host) => host.snmpEnabled || host.sshEnabled);
 
     for (const host of queried) {
-      const snmpAdapters = host.snmpEnabled
-        ? this.adapters.filter((adapter) => adapter.kind === 'LLDP_SNMP')
-        : [];
-      const sshAdapters = host.sshEnabled
-        ? this.adapters.filter((adapter) => adapter.kind === 'LLDP_SSH')
-        : [];
-
-      const snmpNeighbors: DiscoveredNeighbor[] = [];
-      let hostProduced = false;
-
-      // SNMP LLDP is the primary source.
-      for (const adapter of snmpAdapters) {
-        try {
-          const result = await adapter.discoverNeighbors(host);
-          snmpNeighbors.push(...result);
-          hostProduced = hostProduced || result.length > 0;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
-          warnings.push(`${hostLabel(host)}: ${adapter.kind} falhou de forma segura (${message})`);
-        }
-      }
-
-      const snmpObservations = snmpNeighbors.map((neighbor) => this.correlation.observe(neighbor, hosts));
-      for (const observation of snmpObservations) observations.push(observation);
-
-      // SSH fallback: SNMP empty, SNMP incomplete/ambiguous, or explicit deep validation.
-      const needsSsh = sshAdapters.length > 0
-        && this.shouldFallbackToSsh(snmpNeighbors, snmpObservations, deepValidation);
-
-      if (needsSsh) {
-        for (const adapter of sshAdapters) {
-          try {
-            const result = await adapter.discoverNeighbors(host);
-            hostProduced = hostProduced || result.length > 0;
-            for (const neighbor of result) {
-              observations.push(this.correlation.observe(neighbor, hosts));
-            }
-          } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            warnings.push(`${hostLabel(host)}: ${adapter.kind} falhou de forma segura (${message})`);
-          }
-        }
-      }
-
+      const { observations: hostObservations, hostProduced } =
+        await this.discoverHostObservations(host, hosts, deepValidation, warnings);
+      observations.push(...hostObservations);
       if (!hostProduced) hostsFailed += 1;
     }
 
@@ -158,6 +117,113 @@ export class TopologyPreviewService {
     };
     await this.store.save(preview, this.rawResults(observations));
     return preview;
+  }
+
+  /**
+   * Discovers LLDP neighbors for a single host (SNMP first, SSH fallback) and
+   * persists a reviewable preview. The map is never mutated here.
+   */
+  async discoverHost(
+    hostId: string,
+    mapId: string,
+    options: { deepValidation?: boolean } = {},
+  ): Promise<LldpTopologyPreview> {
+    const map = await this.links.getMap(mapId);
+    if (!map) throw new Error('Map not found');
+    const hosts = await this.hostsSource.listHosts();
+    const host = hosts.find((item) => item.id === hostId);
+    if (!host) throw new Error('Host not found');
+    const existingLinkKeys = new Set(map.links.map(linkKey));
+    const existingLinkIds = new Map(map.links.map((link) => [linkKey(link), link.id]));
+    const deepValidation = options.deepValidation ?? false;
+    const warnings: string[] = [];
+
+    if (!host.snmpEnabled && !host.sshEnabled) {
+      warnings.push(`${hostLabel(host)}: SNMP e SSH desabilitados — configure um acesso para descobrir vizinhos`);
+    }
+
+    const { observations, hostProduced } =
+      await this.discoverHostObservations(host, hosts, deepValidation, warnings);
+
+    if (observations.length === 0) {
+      warnings.push(`${hostLabel(host)}: nenhuma adjacência LLDP encontrada`);
+    }
+
+    const adjacencies = this.buildAdjacencies(observations, existingLinkKeys, existingLinkIds, warnings, hosts);
+    const stats: LldpTopologyPreview['stats'] = {
+      hostsQueried: 1,
+      hostsFailed: hostProduced ? 0 : 1,
+      adjacencies: adjacencies.length,
+      confirmed: adjacencies.filter((item) => item.confidence === 'CONFIRMED').length,
+      probable: adjacencies.filter((item) => item.confidence === 'PROBABLE').length,
+      ambiguous: adjacencies.filter((item) => item.confidence === 'AMBIGUOUS').length,
+      unknownNeighbor: adjacencies.filter((item) => item.confidence === 'UNKNOWN_NEIGHBOR').length,
+    };
+
+    const preview: LldpTopologyPreview = {
+      id: createLocalId('lldp-preview'),
+      mapId,
+      createdAt: new Date().toISOString(),
+      stats,
+      adjacencies,
+      warnings,
+    };
+    await this.store.save(preview, this.rawResults(observations));
+    return preview;
+  }
+
+  private async discoverHostObservations(
+    host: HostRecord,
+    hosts: HostRecord[],
+    deepValidation: boolean,
+    warnings: string[],
+  ): Promise<{ observations: LldpObservation[]; hostProduced: boolean }> {
+    const snmpAdapters = host.snmpEnabled
+      ? this.adapters.filter((adapter) => adapter.kind === 'LLDP_SNMP')
+      : [];
+    const sshAdapters = host.sshEnabled
+      ? this.adapters.filter((adapter) => adapter.kind === 'LLDP_SSH')
+      : [];
+
+    const observations: LldpObservation[] = [];
+    const snmpNeighbors: DiscoveredNeighbor[] = [];
+    let hostProduced = false;
+
+    // SNMP LLDP is the primary source.
+    for (const adapter of snmpAdapters) {
+      try {
+        const result = await adapter.discoverNeighbors(host);
+        snmpNeighbors.push(...result);
+        hostProduced = hostProduced || result.length > 0;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        warnings.push(`${hostLabel(host)}: ${adapter.kind} falhou de forma segura (${message})`);
+      }
+    }
+
+    const snmpObservations = snmpNeighbors.map((neighbor) => this.correlation.observe(neighbor, hosts));
+    observations.push(...snmpObservations);
+
+    // SSH fallback: SNMP empty, SNMP incomplete/ambiguous, or explicit deep validation.
+    const needsSsh = sshAdapters.length > 0
+      && this.shouldFallbackToSsh(snmpNeighbors, snmpObservations, deepValidation);
+
+    if (needsSsh) {
+      for (const adapter of sshAdapters) {
+        try {
+          const result = await adapter.discoverNeighbors(host);
+          hostProduced = hostProduced || result.length > 0;
+          for (const neighbor of result) {
+            observations.push(this.correlation.observe(neighbor, hosts));
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          warnings.push(`${hostLabel(host)}: ${adapter.kind} falhou de forma segura (${message})`);
+        }
+      }
+    }
+
+    return { observations, hostProduced };
   }
 
   private rawResults(observations: LldpObservation[]): TopologyRawDiscoveryResult[] {
