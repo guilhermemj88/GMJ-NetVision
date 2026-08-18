@@ -1,9 +1,14 @@
 import type {
+  CreateLinkInput,
   Device,
   DiscoveredNeighbor,
+  DiscoverySource,
   HistoryPeriod,
+  LldpTopologyPreview,
   MetricPoint,
   NetworkInterface,
+  NetworkLink,
+  NetworkMap,
 } from '@gmj/shared';
 
 export interface DeviceIdentity {
@@ -48,6 +53,7 @@ export interface SshDeviceDriver {
   identityCommands(): string[];
   interfaceCommands(): string[];
   neighborCommands(): string[];
+  neighborInterfaceCommands?(neighborInterface: string): string[];
   parseIdentity(output: string): DeviceIdentity;
   parseInterfaces(deviceId: string, output: string): NetworkInterface[];
   parseNeighbors(deviceId: string, output: string): DiscoveredNeighbor[];
@@ -58,7 +64,63 @@ export interface SnmpVarBind {
   value: string | number | Uint8Array;
 }
 
+export interface SnmpRequestOptions {
+  community?: string;
+  version?: 'v2c' | 'v3';
+  port?: number;
+}
+
 export interface SnmpClient {
-  walk(host: string, oid: string): Promise<SnmpVarBind[]>;
-  get(host: string, oids: string[]): Promise<SnmpVarBind[]>;
+  walk(host: string, oid: string, options?: SnmpRequestOptions): Promise<SnmpVarBind[]>;
+  get(host: string, oids: string[], options?: SnmpRequestOptions): Promise<SnmpVarBind[]>;
+}
+
+export interface LldpSnmpTarget {
+  host: string;
+  port: number;
+  community: string;
+}
+
+export interface LldpSnmpTargetProvider {
+  resolve(device: Device): Promise<LldpSnmpTarget>;
+}
+
+export interface LldpSshSession {
+  client: SshClient;
+  host: string;
+}
+
+export interface LldpSshSessionFactory {
+  open(device: Device): Promise<LldpSshSession>;
+}
+
+/**
+ * Minimal contract the topology apply service needs from a map repository.
+ * Both the demo and Prisma implementations satisfy it; return types may be
+ * synchronous or asynchronous, so the service awaits without assumptions.
+ */
+export interface TopologyLinkRepository {
+  getMap(mapId: string): NetworkMap | null | Promise<NetworkMap | null>;
+  createDiscoveredLink(
+    mapId: string,
+    input: CreateLinkInput,
+    discoverySource: DiscoverySource,
+  ): NetworkLink | null | Promise<NetworkLink | null>;
+}
+export interface TopologyRawDiscoveryResult {
+  deviceId: string;
+  method: Exclude<DiscoverySource, 'MANUAL'>;
+  neighbors: DiscoveredNeighbor[];
+}
+
+/**
+ * Persists a derived LLDP topology preview so it survives an API restart.
+ * The demo/test implementation keeps previews in memory.
+ */
+export interface TopologyPreviewStore {
+  save(
+    preview: LldpTopologyPreview,
+    rawResults: TopologyRawDiscoveryResult[],
+  ): void | Promise<void>;
+  load(previewId: string): LldpTopologyPreview | null | Promise<LldpTopologyPreview | null>;
 }

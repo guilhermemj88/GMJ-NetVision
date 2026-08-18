@@ -24,7 +24,14 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
   }
 
   neighborCommands(): string[] {
-    return ['screen-length 0 temporary', 'display lldp neighbor brief', 'display lldp neighbor'];
+    return ['screen-length 0 temporary', 'display lldp neighbor brief'];
+  }
+
+  neighborInterfaceCommands(neighborInterface: string): string[] {
+    return [
+      'screen-length 0 temporary',
+      `display lldp neighbor interface ${neighborInterface} verbose`,
+    ];
   }
 
   parseIdentity(output: string): DeviceIdentity {
@@ -103,6 +110,12 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
   }
 
   parseNeighbors(deviceId: string, output: string): DiscoveredNeighbor[] {
+    const verbose = this.parseNeighborsVerbose(deviceId, output);
+    if (verbose.length) return verbose;
+    return this.parseNeighborsBrief(deviceId, output);
+  }
+
+  private parseNeighborsVerbose(deviceId: string, output: string): DiscoveredNeighbor[] {
     const blocks = output.split(/-{8,}/);
     return blocks.flatMap((block, index) => {
       const localPort = block.match(/Local interface\s*:\s*(.+)/i)?.[1]?.trim();
@@ -120,6 +133,34 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
           ...(chassis ? { remoteChassisId: chassis } : {}),
           remotePort,
           ...(description ? { remotePortDescription: description } : {}),
+          capabilities: [],
+          source: 'LLDP_SSH' as const,
+          matchStatus: 'UNMATCHED' as const,
+        },
+      ];
+    });
+  }
+
+  /**
+   * Parses `display lldp neighbor brief`, whose columns are
+   * Local Intf | Neighbor Dev | Neighbor Intf | Exptime(s).
+   */
+  parseNeighborsBrief(deviceId: string, output: string): DiscoveredNeighbor[] {
+    const lines = output.split(/\r?\n/);
+    const headerPattern = /local\s+intf|neighbor\s+dev|exptime/i;
+    const separatorPattern = /^-{3,}/;
+    return lines.flatMap((line, index) => {
+      if (!line.trim() || headerPattern.test(line) || separatorPattern.test(line)) return [];
+      const parts = line.trim().split(/\s+/).filter(Boolean);
+      if (parts.length < 3) return [];
+      const [localPort, remoteSystemName, remotePort] = parts as [string, string, string];
+      return [
+        {
+          id: `ssh-${deviceId}-brief-${index}`,
+          localDeviceId: deviceId,
+          localPort,
+          remoteSystemName,
+          remotePort,
           capabilities: [],
           source: 'LLDP_SSH' as const,
           matchStatus: 'UNMATCHED' as const,

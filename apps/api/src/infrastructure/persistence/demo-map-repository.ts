@@ -826,6 +826,14 @@ export class DemoMapRepository {
   }
 
   createLink(mapId: string, input: CreateLinkInput): NetworkLink | null {
+    return this.createDiscoveredLink(mapId, input, 'MANUAL');
+  }
+
+  createDiscoveredLink(
+    mapId: string,
+    input: CreateLinkInput,
+    discoverySource: NetworkLink['discoverySource'],
+  ): NetworkLink | null {
     const map = this.findMap(mapId);
     if (!map) return null;
     const timestamp = new Date().toISOString();
@@ -834,7 +842,7 @@ export class DemoMapRepository {
       mapId,
       ...input,
       status: 'UP',
-      discoverySource: 'MANUAL',
+      discoverySource,
       directions: {
         A_TO_B: { bps: 0, utilization: 0 },
         B_TO_A: { bps: 0, utilization: 0 },

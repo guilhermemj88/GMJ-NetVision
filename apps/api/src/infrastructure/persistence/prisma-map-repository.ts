@@ -319,6 +319,14 @@ export class PrismaMapRepository {
   }
 
   async createLink(mapId: string, input: CreateLinkInput): Promise<NetworkLink | null> {
+    return this.createDiscoveredLink(mapId, input, 'MANUAL');
+  }
+
+  async createDiscoveredLink(
+    mapId: string,
+    input: CreateLinkInput,
+    discoverySource: NetworkLink['discoverySource'],
+  ): Promise<NetworkLink | null> {
     const map = await this.prisma.map.findUnique({ where: { id: mapId }, select: { id: true } });
     if (!map) return null;
     const row = await this.prisma.link.create({
@@ -333,7 +341,7 @@ export class PrismaMapRepository {
         capacitySource: input.capacitySource,
         label: input.label,
         status: 'UNKNOWN',
-        discoverySource: 'MANUAL',
+        discoverySource,
         metricSource: input.metricSource,
         visualStyle: input.visualStyle,
         metricDisplay: input.metricDisplay,

@@ -128,11 +128,12 @@ function sanitize(value: unknown): unknown {
   return value;
 }
 
-async function apiRequest(method: "GET" | "POST", route: string): Promise<string> {
+async function apiRequest(method: "GET" | "POST", route: string, requestBody?: unknown): Promise<string> {
   try {
     const response = await fetch(`${API_BASE_URL}${route}`, {
       method,
-      headers: { accept: "application/json" },
+      headers: { accept: "application/json", ...(requestBody !== undefined ? { "content-type": "application/json" } : {}) },
+      body: requestBody !== undefined ? JSON.stringify(requestBody) : undefined,
       signal: AbortSignal.timeout(30_000),
     });
     const text = await response.text();
@@ -208,6 +209,10 @@ function createNetVisionMcpServer() {
   server.registerTool("api_discover_interfaces", { title: "Discover SNMP Interfaces", description: "Run SNMP interface discovery for a persisted host and persist the discovered interfaces.", inputSchema: z.object({ hostId: z.string().min(1) }) }, async ({ hostId }) => textResult(await apiRequest("POST", `/api/hosts/${encodeURIComponent(hostId)}/interfaces/discover`)));
   server.registerTool("api_poll_host", { title: "Poll Host SNMP", description: "Run one manual SNMP poll for a persisted host. Automatic polling remains unchanged.", inputSchema: z.object({ hostId: z.string().min(1) }) }, async ({ hostId }) => textResult(await apiRequest("POST", `/api/hosts/${encodeURIComponent(hostId)}/poll`)));
   server.registerTool("api_interface_history", { title: "Interface Metric History", description: "Read persisted interface metric history for a supported period.", inputSchema: z.object({ interfaceId: z.string().min(1), period: z.enum(["15m", "1h", "6h", "24h", "7d"]).default("1h") }) }, async ({ interfaceId, period }) => textResult(await apiRequest("GET", `/api/interfaces/${encodeURIComponent(interfaceId)}/history?period=${period}`)));
+
+  server.registerTool("discover_lldp_topology", { title: "Discover LLDP Topology", description: "Discover the LLDP adjacency topology for all SNMP/SSH-enabled hosts of a map and return a review preview. SSH is used as a fallback only. This operation does not change the database.", inputSchema: z.object({ mapId: z.string().min(1), deepValidation: z.boolean().optional() }) }, async ({ mapId, deepValidation }) => textResult(await apiRequest("POST", "/api/topology/lldp/discover", { mapId, ...(deepValidation !== undefined ? { deepValidation } : {}) })));
+  server.registerTool("preview_lldp_topology", { title: "Preview LLDP Topology", description: "Return a previously discovered LLDP topology preview by ID without changing anything.", inputSchema: z.object({ previewId: z.string().min(1) }) }, async ({ previewId }) => textResult(await apiRequest("POST", "/api/topology/lldp/preview", { previewId })));
+  server.registerTool("apply_lldp_topology", { title: "Apply LLDP Topology", description: "Create only the selected (CREATE_LINK) LLDP adjacency links on a map. Ambiguous or unknown neighbors are never applied.", inputSchema: z.object({ previewId: z.string().min(1), mapId: z.string().min(1), selections: z.array(z.object({ adjacencyId: z.string().min(1), action: z.enum(["CREATE_LINK", "IGNORE"]) })).min(1) }) }, async ({ previewId, mapId, selections }) => textResult(await apiRequest("POST", "/api/topology/lldp/apply", { previewId, mapId, selections })));
 
   return server;
 }

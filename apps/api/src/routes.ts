@@ -1,20 +1,31 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { CreateHostInput, HistoryPeriod, UpdateMapInput } from '@gmj/shared';
+import type { CreateHostInput, HistoryPeriod, HostRecord, LldpApplySelection, UpdateMapInput } from '@gmj/shared';
+import type { LldpSnmpTargetProvider, LldpSshSessionFactory, TopologyDiscoveryAdapter, TopologyPreviewStore } from './domain/ports';
 import { CredentialVault } from './application/credential-vault';
 import { DiscoveryService } from './application/discovery-service';
+import { TopologyApplyService } from './application/topology-apply-service';
+import { TopologyPreviewService } from './application/topology-preview-service';
 import { config } from './config';
 import { registerHostRoutes } from './host-routes';
 import { DemoMetricAdapter } from './infrastructure/metrics/demo-adapter';
 import { ZabbixAdapter } from './infrastructure/metrics/zabbix-adapter';
 import { DemoHostRepositoryAdapter } from './infrastructure/persistence/demo-host-repository-adapter';
 import { DemoMapRepository } from './infrastructure/persistence/demo-map-repository';
+import { InMemoryTopologyPreviewStore } from './infrastructure/persistence/in-memory-topology-preview-store';
 import { PrismaMapRepository } from './infrastructure/persistence/prisma-map-repository';
+import { PrismaTopologyPreviewStore } from './infrastructure/persistence/prisma-topology-preview-store';
 import { createPrismaHostRepository, PrismaHostRepository } from './infrastructure/persistence/prisma-host-repository';
+import type { HostRepository } from './infrastructure/persistence/host-repository';
+import { SnmpClientImpl } from './infrastructure/snmp/snmp-client-impl';
 import { SnmpPoller } from './infrastructure/snmp/snmp-poller';
 import { SnmpService } from './infrastructure/snmp/snmp-service';
+import { SshClientImpl } from './infrastructure/ssh/ssh-client-impl';
 import { SshInterfaceService } from './infrastructure/ssh/ssh-interface-service';
 import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-adapter';
+import { HuaweiVrpDriver } from './infrastructure/topology/huawei-vrp-driver';
+import { LldpSnmpDiscoveryAdapter } from './infrastructure/topology/lldp-snmp-adapter';
+import { LldpSshDiscoveryAdapter } from './infrastructure/topology/lldp-ssh-adapter';
 
 const mapIdParams = z.object({ mapId: z.string().min(1) });
 const nodeParams = z.object({ mapId: z.string().min(1), nodeId: z.string().min(1) });
@@ -82,6 +93,46 @@ interface RouteRegistrationOptions {
   credentialEncryptionKey?: string | null;
 }
 
+function buildTopologyAdapters(hosts: HostRepository): TopologyDiscoveryAdapter[] {
+  if (config.DEMO_MODE) return [new DemoTopologyAdapter()];
+
+  const snmpClient = new SnmpClientImpl(3000, 1);
+  const snmpTargetProvider: LldpSnmpTargetProvider = {
+    async resolve(device) {
+      const host = device as HostRecord;
+      if (!host.snmpEnabled || !host.snmp?.host || !host.snmp.port) {
+        throw new Error('SNMP não está habilitado para este host');
+      }
+      const credentials = await hosts.getDecryptedSnmpCredentials(host.id);
+      const community = credentials?.community;
+      if (!community) throw new Error('SNMP credential not configured');
+      return { host: host.snmp.host, port: host.snmp.port, community };
+    },
+  };
+
+  const sshSessionFactory: LldpSshSessionFactory = {
+    async open(device) {
+      const host = device as HostRecord;
+      if (!host.sshEnabled || !host.ssh?.host || !host.ssh.username) {
+        throw new Error('SSH não está habilitado para este host');
+      }
+      const credentials = await hosts.getDecryptedSshCredentials(host.id);
+      if (!credentials?.password) throw new Error('SSH credential not configured');
+      const client = new SshClientImpl({
+        port: host.ssh.port,
+        username: host.ssh.username,
+        password: credentials.password,
+      });
+      return { client, host: host.ssh.host };
+    },
+  };
+
+  return [
+    new LldpSnmpDiscoveryAdapter(snmpClient, snmpTargetProvider),
+    new LldpSshDiscoveryAdapter([new HuaweiVrpDriver()], sshSessionFactory),
+  ];
+}
+
 export function registerRoutes(app: FastifyInstance, options: RouteRegistrationOptions = {}): void {
   const credentialEncryptionKey = options.credentialEncryptionKey === undefined
     ? config.CREDENTIAL_ENCRYPTION_KEY
@@ -107,6 +158,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     ? new ZabbixAdapter(config.ZABBIX_URL, config.ZABBIX_TOKEN, config.ZABBIX_AUTH_MODE)
     : null;
 
+  const topologyAdapters = buildTopologyAdapters(hosts);
+  const topologyPreviewStore: TopologyPreviewStore = config.DEMO_MODE
+    ? new InMemoryTopologyPreviewStore()
+    : new PrismaTopologyPreviewStore();
+  const topologyPreview = new TopologyPreviewService(topologyAdapters, hosts, maps, topologyPreviewStore);
+  const topologyApply = new TopologyApplyService(maps, hosts);
+
   registerHostRoutes(app, { legacyMaps, mapMembership: maps, hosts, discovery, snmp, ssh, zabbix });
 
   app.addHook('onReady', async () => {
@@ -123,6 +181,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   app.addHook('onClose', async () => {
     poller.stop();
     if (productionMaps) await productionMaps.disconnect();
+    if (topologyPreviewStore instanceof PrismaTopologyPreviewStore) await topologyPreviewStore.disconnect();
     if (hosts instanceof PrismaHostRepository) await hosts.disconnect();
   });
 
@@ -322,6 +381,47 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     const device = map?.devices.find((item) => item.id === deviceId);
     if (!map || !device) return reply.code(404).send({ message: 'Device not found' });
     return discovery.discover(device, map.devices);
+  });
+
+  app.post('/api/topology/lldp/discover', async (request, reply) => {
+    const { mapId, deepValidation } = z.object({
+      mapId: z.string().min(1),
+      deepValidation: z.boolean().optional().default(false),
+    }).parse(request.body);
+    try {
+      return await topologyPreview.discover(mapId, { deepValidation });
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : 'Falha segura na descoberta LLDP',
+      });
+    }
+  });
+
+  app.post('/api/topology/lldp/preview', async (request, reply) => {
+    const { previewId } = z.object({ previewId: z.string().min(1) }).parse(request.body);
+    const preview = await topologyPreviewStore.load(previewId);
+    return preview ?? reply.code(404).send({ message: 'Preview expirado ou inexistente' });
+  });
+
+  app.post('/api/topology/lldp/apply', async (request, reply) => {
+    const body = z.object({
+      previewId: z.string().min(1),
+      mapId: z.string().min(1),
+      selections: z.array(z.object({
+        adjacencyId: z.string().min(1),
+        action: z.enum(['CREATE_LINK', 'IGNORE']),
+      })).min(1),
+    }).parse(request.body);
+    const preview = await topologyPreviewStore.load(body.previewId);
+    if (!preview) return reply.code(404).send({ message: 'Preview expirado ou inexistente' });
+    const selections = body.selections as LldpApplySelection[];
+    try {
+      return await topologyApply.apply(body.mapId, preview, selections);
+    } catch (error) {
+      return reply.code(409).send({
+        message: error instanceof Error ? error.message : 'Falha segura ao aplicar topologia LLDP',
+      });
+    }
   });
 
   app.get('/api/integrations/zabbix/status', async (_request, reply) => {

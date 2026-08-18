@@ -128,8 +128,70 @@ export interface MapPlaylist { id: string; name: string; rotationIntervalSeconds
 export interface MetricPoint { timestamp: string; rxBps: number; txBps: number; rxErrors: number; txErrors: number; rxDiscards: number; txDiscards: number; }
 
 export interface DiscoveredNeighbor {
-  id: string; localDeviceId: string; localPort: string; remoteSystemName: string; remoteChassisId?: string; remoteManagementAddress?: string; remotePort: string; remotePortDescription?: string; systemDescription?: string; capabilities: string[]; source: Exclude<DiscoverySource, 'MANUAL'>; matchStatus: MatchStatus; matchedDeviceId?: string;
+  id: string; localDeviceId: string; localPort: string; localIfIndex?: number; localPortSubtype?: number; localMac?: string; remoteSystemName: string; remoteChassisId?: string; remoteManagementAddress?: string; remotePort: string; remotePortDescription?: string; systemDescription?: string; capabilities: string[]; source: Exclude<DiscoverySource, 'MANUAL'>; matchStatus: MatchStatus; matchedDeviceId?: string;
 }
 export interface DiscoveryReview { deviceId: string; method: DiscoveryMethod; neighbors: DiscoveredNeighbor[]; warnings: string[]; }
 export interface CreateLinkInput { sourceDeviceId: string; sourceInterfaceId: string; targetDeviceId: string; targetInterfaceId: string; capacityBps: number; autoCapacityBps: number; capacitySource: CapacitySource; label: string; metricSource: MetricSource; visualStyle: LinkDisplayStyle | null; metricDisplay: LinkMetricDisplay | null; }
 export interface MapPreferences { showTraffic: boolean; showUtilization: boolean; showLabels: boolean; showOffline: boolean; showInterfaces: boolean; }
+
+export type LldpConfidence = 'CONFIRMED' | 'PROBABLE' | 'AMBIGUOUS' | 'UNKNOWN_NEIGHBOR';
+export type LldpApplyAction = 'CREATE_LINK' | 'IGNORE';
+
+export interface LldpCorrelationSignal {
+  kind: 'MANAGEMENT_IP' | 'CHASSIS_ID' | 'SYSTEM_NAME' | 'REMOTE_INTERFACE' | 'PORT_ID' | 'PORT_DESCRIPTION' | 'MAC';
+  value: string;
+}
+
+export interface LldpAdjacencyProposal {
+  id: string;
+  sourceHostId: string;
+  sourceHostname: string;
+  sourcePort: string;
+  sourceIfIndex: number | null;
+  sourceInterfaceId: string | null;
+  sourceSpeedBps: number | null;
+  targetHostId: string | null;
+  targetHostname: string;
+  targetManagementAddress: string | null;
+  targetChassisId: string | null;
+  targetPort: string;
+  targetPortDescription: string | null;
+  targetInterfaceId: string | null;
+  targetSpeedBps: number | null;
+  confidence: LldpConfidence;
+  signals: LldpCorrelationSignal[];
+  reasons: string[];
+  duplicate: boolean;
+  existingLinkId: string | null;
+  source: Exclude<DiscoverySource, 'MANUAL'>;
+}
+
+export interface LldpTopologyStats {
+  hostsQueried: number;
+  hostsFailed: number;
+  adjacencies: number;
+  confirmed: number;
+  probable: number;
+  ambiguous: number;
+  unknownNeighbor: number;
+}
+
+export interface LldpTopologyPreview {
+  id: string;
+  mapId: string;
+  createdAt: string;
+  stats: LldpTopologyStats;
+  adjacencies: LldpAdjacencyProposal[];
+  warnings: string[];
+}
+
+export interface LldpApplySelection {
+  adjacencyId: string;
+  action: LldpApplyAction;
+}
+
+export interface LldpApplyResult {
+  mapId: string;
+  createdLinks: string[];
+  skipped: string[];
+}
