@@ -1414,7 +1414,7 @@ button {
   width: var(--orb-size);
   height: var(--orb-size);
   overflow: visible;
-  border: 1px solid color-mix(in srgb, var(--device-ring) 58%, #263945);
+  border: 1px solid color-mix(in srgb, var(--device-ring) 62%, #263945);
   border-radius: 50%;
   background:
     radial-gradient(circle at 38% 31%, rgba(51, 82, 96, 0.6), transparent 32%),
@@ -1422,8 +1422,8 @@ button {
   box-shadow:
     inset 0 0 0 3px rgba(3, 9, 12, 0.68),
     inset 0 1px rgba(255, 255, 255, 0.07),
-    0 0 0 3px color-mix(in srgb, var(--device-ring) 9%, transparent),
-    0 0 11px color-mix(in srgb, var(--device-ring) 22%, transparent);
+    0 0 0 3px color-mix(in srgb, var(--device-ring) 12%, transparent),
+    0 0 14px color-mix(in srgb, var(--device-ring) 28%, transparent);
   color: var(--device-color);
   transition:
     border-color 0.15s,
@@ -1434,7 +1434,7 @@ button {
   content: '';
   position: absolute;
   inset: -5px;
-  border: 1px solid color-mix(in srgb, var(--device-ring) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--device-ring) 18%, transparent);
   border-radius: 50%;
   pointer-events: none;
 }
@@ -1640,11 +1640,11 @@ button {
   opacity: 0.7;
 }
 .traffic-edge--lane {
-  opacity: 0.85;
+  opacity: 0.8;
   stroke-linecap: round;
 }
 .traffic-edge--halo {
-  opacity: 0.1;
+  opacity: 0.14;
   stroke-linecap: round;
   pointer-events: none;
 }
@@ -1670,9 +1670,9 @@ button {
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: 0.95;
+  opacity: 0.9;
   pointer-events: none;
-  filter: drop-shadow(0 0 2.4px currentColor);
+  filter: drop-shadow(0 0 2px currentColor);
 }
 
 /* Tone colors for the base path and the A→B direction. */
@@ -1756,22 +1756,22 @@ button {
   position: absolute;
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  min-width: 108px;
-  padding: 4px 7px;
-  border: 1px solid #2a3a44;
-  border-radius: 5px;
-  background: rgba(8, 14, 18, 0.78);
-  backdrop-filter: blur(4px);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  gap: 1px;
+  min-width: 96px;
+  padding: 3px 6px;
+  border: 1px solid #263741;
+  border-radius: 4px;
+  background: rgba(6, 11, 15, 0.82);
+  backdrop-filter: blur(3px);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
   color: #8fa3ad;
-  font: 500 8px var(--font-mono);
+  font: 500 7.5px var(--font-mono);
   white-space: nowrap;
 }
 .edge-metric__row {
   display: grid;
   grid-template-columns: auto 1fr auto;
-  gap: 0 6px;
+  gap: 0 5px;
   align-items: baseline;
 }
 .edge-metric__arrow {
