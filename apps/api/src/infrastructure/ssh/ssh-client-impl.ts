@@ -23,16 +23,33 @@ export class SshClientImpl implements SshClient {
       keepaliveCountMax: 2,
     };
 
-    await new Promise<void>((resolve, reject) => {
+    let rejectConnectionFailure: (error: Error) => void = () => undefined;
+    const connectionFailure = new Promise<never>((_resolve, reject) => {
+      rejectConnectionFailure = reject;
+    });
+
+    // Keep this listener for the full lifetime of the ssh2 Client. ssh2 can emit
+    // more than one error while a transport is being torn down; using once()
+    // leaves a later error unhandled and can terminate the whole API process.
+    connection.on('error', (error) => {
+      rejectConnectionFailure(this.safeError(error));
+    });
+
+    const ready = new Promise<void>((resolve) => {
       connection.once('ready', resolve);
-      connection.once('error', (error) => reject(this.safeError(error)));
       connection.connect(config);
     });
 
     try {
+      await Promise.race([ready, connectionFailure]);
+
       // Huawei VRP is a stateful CLI. A single shell channel ensures the
       // screen-length command applies to the display command that follows.
-      return [await this.executeShell(connection, commands)];
+      const result = await Promise.race([
+        this.executeShell(connection, commands),
+        connectionFailure,
+      ]);
+      return [result];
     } finally {
       connection.end();
     }
@@ -75,9 +92,9 @@ export class SshClientImpl implements SshClient {
     });
   }
 
-  private safeError(error: Error & { code?: string }): Error {
-    const code = error.code?.toLowerCase() ?? '';
-    const message = error.message.toLowerCase();
+  private safeError(error: Error & { code?: unknown }): Error {
+    const code = String(error.code ?? '').toLowerCase();
+    const message = String(error.message ?? '').toLowerCase();
     if (code.includes('auth') || message.includes('authentication')) {
       return new Error('SSH authentication failed');
     }
