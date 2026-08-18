@@ -32,6 +32,7 @@ export type OpenPanel =
   | 'settings'
   | 'maps'
   | 'rotation'
+  | 'public-links'
   | null;
 export type WorkspaceView = 'MAP' | 'HOSTS';
 
@@ -51,6 +52,8 @@ interface MapState {
   maps: MapSummary[];
   activeMapId: string | null;
   map: NetworkMap | null;
+  readOnly: boolean;
+  publicMaps: NetworkMap[];
   view: WorkspaceView;
   editMode: boolean;
   selection: Selection;
@@ -65,6 +68,8 @@ interface MapState {
   removeMapSummary: (mapId: string) => void;
   setActiveMap: (mapId: string) => void;
   setMap: (map: NetworkMap) => void;
+  setReadOnly: (value: boolean) => void;
+  loadPublicMaps: (maps: NetworkMap[]) => void;
   setView: (view: WorkspaceView) => void;
   setEditMode: (enabled: boolean) => void;
   setSelection: (selection: Selection) => void;
@@ -183,6 +188,8 @@ export const useMapStore = create<MapState>((set) => ({
   maps: [],
   activeMapId: null,
   map: null,
+  readOnly: false,
+  publicMaps: [],
   view: 'MAP',
   editMode: false,
   selection: null,
@@ -231,6 +238,8 @@ export const useMapStore = create<MapState>((set) => ({
       dirty: false,
     });
   },
+  setReadOnly: (readOnly) => set({ readOnly }),
+  loadPublicMaps: (publicMaps) => set({ publicMaps }),
   setView: (view) => set({ view, editMode: false, selection: null, panel: null }),
   setEditMode: (editMode) => set({ editMode, panel: null }),
   setSelection: (selection) => set({ selection }),
@@ -467,7 +476,7 @@ export const useMapStore = create<MapState>((set) => ({
         : state,
     ),
   startRotation: (options) =>
-    set({
+    set((state) => ({
       rotation: {
         ...options,
         active: true,
@@ -476,11 +485,13 @@ export const useMapStore = create<MapState>((set) => ({
         nextSwitchAt: Date.now() + options.intervalSeconds * 1000,
       },
       activeMapId: options.mapIds[0] ?? null,
-      map: null,
+      map: state.readOnly
+        ? (state.publicMaps.find((item) => item.id === options.mapIds[0]) ?? null)
+        : null,
       editMode: false,
       selection: null,
       panel: null,
-    }),
+    })),
   stopRotation: () => set({ rotation: rotationDefaults }),
   setRotationPaused: (paused) =>
     set((state) => ({
@@ -497,14 +508,17 @@ export const useMapStore = create<MapState>((set) => ({
       if (!state.rotation.active || state.rotation.mapIds.length === 0) return state;
       const length = state.rotation.mapIds.length;
       const currentIndex = (state.rotation.currentIndex + offset + length) % length;
+      const nextMapId = state.rotation.mapIds[currentIndex] ?? state.activeMapId;
       return {
         rotation: {
           ...state.rotation,
           currentIndex,
           nextSwitchAt: Date.now() + state.rotation.intervalSeconds * 1000,
         },
-        activeMapId: state.rotation.mapIds[currentIndex] ?? state.activeMapId,
-        map: null,
+        activeMapId: nextMapId,
+        map: state.readOnly
+          ? (state.publicMaps.find((item) => item.id === nextMapId) ?? null)
+          : null,
         selection: null,
       };
     }),

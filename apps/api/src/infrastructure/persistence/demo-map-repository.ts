@@ -792,7 +792,7 @@ export class DemoMapRepository {
       this.playlists = this.playlists.map((item) => ({ ...item, isDefault: false }));
     }
     const playlist: MapPlaylist = {
-      id: existing?.id ?? createLocalId('playlist'),
+      id: existing?.id ?? input.id ?? createLocalId('playlist'),
       name: input.name,
       rotationIntervalSeconds: input.rotationIntervalSeconds,
       isDefault: input.isDefault,

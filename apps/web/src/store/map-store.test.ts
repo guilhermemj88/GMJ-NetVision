@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { cloneDemoMaps, type MapSummary } from '@gmj/shared';
+import { cloneDemoMaps, type MapSummary, type NetworkMap } from '@gmj/shared';
 import { useMapStore } from './map-store';
 
 const maps: MapSummary[] = ['backbone', 'access'].map((id, index) => ({
@@ -40,6 +40,35 @@ describe('NOC rotation state', () => {
     expect(useMapStore.getState().rotation.paused).toBe(true);
     useMapStore.getState().stopRotation();
     expect(useMapStore.getState().rotation.active).toBe(false);
+  });
+});
+
+describe('public NOC rotation', () => {
+  afterEach(() => {
+    useMapStore.getState().stopRotation();
+    useMapStore.setState({ maps: [], activeMapId: null, map: null, readOnly: false, publicMaps: [] });
+  });
+
+  it('rotates through cached public maps without refetching', () => {
+    const publicMaps: NetworkMap[] = ['backbone', 'access'].map((id) => ({
+      ...cloneDemoMaps()[0]!,
+      id,
+      name: id,
+    }));
+    useMapStore.getState().loadPublicMaps(publicMaps);
+    useMapStore.getState().setReadOnly(true);
+    useMapStore.getState().startRotation({
+      mapIds: publicMaps.map((map) => map.id),
+      intervalSeconds: 30,
+      hideTopBar: true,
+      hideControls: true,
+      pauseOnInteraction: false,
+    });
+
+    expect(useMapStore.getState().map?.id).toBe('backbone');
+    useMapStore.getState().rotateBy(1);
+    expect(useMapStore.getState().map?.id).toBe('access');
+    expect(useMapStore.getState().activeMapId).toBe('access');
   });
 });
 

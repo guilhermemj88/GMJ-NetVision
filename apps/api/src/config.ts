@@ -17,6 +17,8 @@ const envSchema = z.object({
     .transform((value) => value === 'true'),
   SNMP_POLL_INTERVAL_SECONDS: z.coerce.number().int().min(15).default(60),
   OPTICAL_POLL_INTERVAL_SECONDS: z.coerce.number().int().min(60).default(300),
+  SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(7),
+  DEMO_ADMIN_PASSWORD: z.string().min(6).default('netvision'),
 });
 
 const parsed = envSchema.parse(process.env);

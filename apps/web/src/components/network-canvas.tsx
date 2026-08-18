@@ -47,12 +47,12 @@ function alignmentNode(node: MapFlowNode): AlignmentNode {
   };
 }
 
-export function NetworkCanvas() {
+export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
   const flow = useReactFlow();
   const viewportMapId = useRef<string | null>(null);
   const snappedPosition = useRef<{ nodeId: string; position: { x: number; y: number } } | null>(null);
   const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuide[]>([]);
-  const catalogQuery = useQuery({ queryKey: ['maps'], queryFn: getMaps });
+  const catalogQuery = useQuery({ queryKey: ['maps'], queryFn: getMaps, enabled: !readOnly });
   const activeMapId = useMapStore((state) => state.activeMapId);
   const map = useMapStore((state) => state.map);
   const setCatalog = useMapStore((state) => state.setCatalog);
@@ -71,16 +71,17 @@ export function NetworkCanvas() {
   const mapQuery = useQuery({
     queryKey: ['map', activeMapId],
     queryFn: () => getMap(activeMapId!),
-    enabled: Boolean(activeMapId),
+    enabled: Boolean(activeMapId) && !readOnly,
   });
 
   useEffect(() => {
-    if (catalogQuery.data) setCatalog(catalogQuery.data);
-  }, [catalogQuery.data, setCatalog]);
+    if (!readOnly && catalogQuery.data) setCatalog(catalogQuery.data);
+  }, [catalogQuery.data, readOnly, setCatalog]);
 
   useEffect(() => {
+    if (readOnly) return;
     if (mapQuery.data && (!map || map.id !== mapQuery.data.id)) setMap(mapQuery.data);
-  }, [map, mapQuery.data, setMap]);
+  }, [map, mapQuery.data, readOnly, setMap]);
 
   useEffect(() => {
     if (!map) {
@@ -191,20 +192,22 @@ export function NetworkCanvas() {
 
   const onNodeClick: NodeMouseHandler<MapFlowNode> = useCallback(
     (_event, node) => {
+      if (readOnly) return;
       setSelection(
         node.type === 'generic' ? { kind: 'node', id: node.id } : { kind: 'device', id: node.id },
       );
       if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
     },
-    [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
+    [readOnly, rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
   );
 
   const onEdgeClick: EdgeMouseHandler<TrafficFlowEdge> = useCallback(
     (_event, edge) => {
+      if (readOnly) return;
       setSelection({ kind: 'link', id: edge.id });
       if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
     },
-    [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
+    [readOnly, rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
   );
 
   const onNodeDrag: OnNodeDrag<MapFlowNode> = useCallback(
@@ -285,7 +288,9 @@ export function NetworkCanvas() {
         panOnDrag={!editMode || [1, 2]}
         onMoveEnd={(_event, viewport) => {
           setViewport(viewport);
-          if (map) void updateNetworkMap(map.id, { settings: { viewport } }).catch(() => undefined);
+          if (map && !readOnly) {
+            void updateNetworkMap(map.id, { settings: { viewport } }).catch(() => undefined);
+          }
         }}
       >
         <Background variant={BackgroundVariant.Dots} gap={editMode ? 28 : 34} size={editMode ? 1.2 : 1} color={editMode ? '#26343f' : '#1b2832'} />
@@ -312,8 +317,8 @@ export function NetworkCanvas() {
             ))}
           </ViewportPortal>
         )}
-        {!rotation.hideControls && <MapControls />}
-        {editMode && !rotation.active && <EditToolbar />}
+        {!rotation.hideControls && !readOnly && <MapControls />}
+        {editMode && !rotation.active && !readOnly && <EditToolbar />}
       </ReactFlow>
       <div className="map-watermark">
         <span>LIVE TOPOLOGY</span>

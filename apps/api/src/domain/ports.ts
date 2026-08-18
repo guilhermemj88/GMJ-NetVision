@@ -53,6 +53,8 @@ export interface SshDeviceDriver {
   identityCommands(): string[];
   interfaceCommands(): string[];
   neighborCommands(): string[];
+  neighborFallbackCommands?(): string[];
+  shouldFallbackNeighborCommand?(output: string): boolean;
   neighborInterfaceCommands?(neighborInterface: string): string[];
   parseIdentity(output: string): DeviceIdentity;
   parseInterfaces(deviceId: string, output: string): NetworkInterface[];

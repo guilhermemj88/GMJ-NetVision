@@ -127,6 +127,17 @@ enum SnmpPrivacyProtocol {
   AES256
 }
 
+enum Role {
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+enum PublicViewType {
+  MAP
+  NOC
+}
+
 model Map {
   id                String            @id @default(cuid())
   name              String
@@ -144,6 +155,7 @@ model Map {
   nodes             MapNode[]
   links             Link[]
   playlistItems     MapPlaylistItem[]
+  publicViews       PublicView[]
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
 }
@@ -340,6 +352,7 @@ model MapPlaylist {
   rotationIntervalSeconds Int               @default(60)
   isDefault               Boolean           @default(false)
   items                   MapPlaylistItem[]
+  publicViews             PublicView[]
   createdAt               DateTime          @default(now())
   updatedAt               DateTime          @updatedAt
 }
@@ -464,4 +477,46 @@ model LldpTopologyPreview {
   createdAt DateTime @default(now())
 
   @@index([mapId])
+}
+
+model User {
+  id           String    @id @default(cuid())
+  username     String    @unique
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         Role      @default(VIEWER)
+  enabled      Boolean   @default(true)
+  sessions     Session[]
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model PublicView {
+  id         String         @id @default(cuid())
+  token      String         @unique
+  name       String
+  type       PublicViewType
+  mapId      String?
+  playlistId String?
+  enabled    Boolean        @default(true)
+  expiresAt  DateTime?
+  map        Map?           @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  playlist   MapPlaylist?   @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([mapId])
+  @@index([playlistId])
 }

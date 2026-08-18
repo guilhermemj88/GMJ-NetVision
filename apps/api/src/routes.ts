@@ -1,22 +1,42 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { CreateHostInput, CreateLinkInput, HistoryPeriod, HostRecord, LldpApplySelection, UpdateMapInput } from '@gmj/shared';
+import type {
+  AuthUser,
+  CreateHostInput,
+  CreateLinkInput,
+  Device,
+  HistoryPeriod,
+  HostRecord,
+  LldpApplySelection,
+  NetworkMap,
+  PublicMapView,
+  PublicView,
+  PublicViewResponse,
+  PublicViewType,
+  UpdateMapInput,
+} from '@gmj/shared';
 import type { LldpSnmpTargetProvider, LldpSshSessionFactory, TopologyDiscoveryAdapter, TopologyPreviewStore } from './domain/ports';
 import { CredentialVault } from './application/credential-vault';
 import { DiscoveryService } from './application/discovery-service';
+import { AuthService, randomToken } from './application/auth-service';
 import { TopologyApplyService } from './application/topology-apply-service';
 import { TopologyPreviewService } from './application/topology-preview-service';
 import { config } from './config';
 import { registerHostRoutes } from './host-routes';
 import { DemoMetricAdapter } from './infrastructure/metrics/demo-adapter';
 import { ZabbixAdapter } from './infrastructure/metrics/zabbix-adapter';
+import { DemoAuthRepository } from './infrastructure/persistence/demo-auth-repository';
 import { DemoHostRepositoryAdapter } from './infrastructure/persistence/demo-host-repository-adapter';
 import { DemoMapRepository } from './infrastructure/persistence/demo-map-repository';
+import { DemoPublicViewRepository } from './infrastructure/persistence/demo-public-view-repository';
 import { InMemoryTopologyPreviewStore } from './infrastructure/persistence/in-memory-topology-preview-store';
+import { PrismaAuthRepository } from './infrastructure/persistence/prisma-auth-repository';
 import { PrismaMapRepository } from './infrastructure/persistence/prisma-map-repository';
+import { PrismaPublicViewRepository } from './infrastructure/persistence/prisma-public-view-repository';
 import { PrismaTopologyPreviewStore } from './infrastructure/persistence/prisma-topology-preview-store';
 import { createPrismaHostRepository, PrismaHostRepository } from './infrastructure/persistence/prisma-host-repository';
 import type { HostRepository } from './infrastructure/persistence/host-repository';
+import type { PublicViewRecord } from './infrastructure/persistence/public-view-repository';
 import { SnmpClientImpl } from './infrastructure/snmp/snmp-client-impl';
 import { SnmpPoller } from './infrastructure/snmp/snmp-poller';
 import { SnmpService } from './infrastructure/snmp/snmp-service';
@@ -55,6 +75,22 @@ const genericNodeSchema = z.object({
   type: z.string().min(1).max(40),
   label: z.string().min(1).max(120),
   position: z.object({ x: z.number().finite(), y: z.number().finite() }),
+});
+const loginSchema = z.object({
+  usernameOrEmail: z.string().min(1).max(255),
+  password: z.string().min(1).max(1024),
+});
+const publicViewSchema = z.object({
+  name: z.string().min(1).max(120),
+  type: z.enum(['MAP', 'NOC']),
+  mapId: z.string().min(1).nullable().optional(),
+  playlistId: z.string().min(1).nullable().optional(),
+  expiresAt: z.coerce.date().nullable().optional(),
+});
+const publicViewPatchSchema = z.object({
+  name: z.string().min(1).max(120).optional(),
+  enabled: z.boolean().optional(),
+  expiresAt: z.coerce.date().nullable().optional(),
 });
 const mapSettingsSchema = z.object({
   nodeDisplayMode: z.enum(['ICON_2D', 'ICON_3D', 'CARD']).optional(),
@@ -98,6 +134,7 @@ const deviceSchema = z.object({
 
 interface RouteRegistrationOptions {
   credentialEncryptionKey?: string | null;
+  requireAuth?: boolean;
 }
 
 function buildTopologyAdapters(hosts: HostRepository): TopologyDiscoveryAdapter[] {
@@ -152,6 +189,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     : createPrismaHostRepository(vault);
   const productionMaps = config.DEMO_MODE ? null : new PrismaMapRepository(hosts);
   const maps = productionMaps ?? legacyMaps;
+  const authRepository = config.DEMO_MODE ? new DemoAuthRepository() : new PrismaAuthRepository();
+  const auth = new AuthService(authRepository, config.SESSION_TTL_DAYS);
+  const publicViewRepository = config.DEMO_MODE
+    ? new DemoPublicViewRepository()
+    : new PrismaPublicViewRepository();
   const metrics = new DemoMetricAdapter();
   const discovery = new DiscoveryService([new DemoTopologyAdapter()]);
   const ssh = new SshInterfaceService(hosts);
@@ -175,6 +217,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   registerHostRoutes(app, { legacyMaps, mapMembership: maps, hosts, discovery, snmp, ssh, zabbix });
 
   app.addHook('onReady', async () => {
+    if (config.DEMO_MODE) await auth.ensureDemoAdmin(config.DEMO_ADMIN_PASSWORD);
     if (productionMaps && !(await productionMaps.listMaps()).length) {
       await productionMaps.createMap({
         name: 'Mapa Principal',
@@ -190,6 +233,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     if (productionMaps) await productionMaps.disconnect();
     if (topologyPreviewStore instanceof PrismaTopologyPreviewStore) await topologyPreviewStore.disconnect();
     if (hosts instanceof PrismaHostRepository) await hosts.disconnect();
+    if (authRepository instanceof PrismaAuthRepository) await authRepository.disconnect();
+    if (publicViewRepository instanceof PrismaPublicViewRepository) await publicViewRepository.disconnect();
   });
 
   app.get('/health', async () => ({
@@ -197,6 +242,160 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     demoMode: config.DEMO_MODE,
     snmpPolling: !config.DEMO_MODE && config.SNMP_POLLING_ENABLED,
   }));
+
+  // ---- Authentication ----
+  const isPublicApiPath = (pathname: string) =>
+    pathname === '/api/auth/login' || pathname.startsWith('/api/public/');
+
+  app.addHook('preHandler', async (request, reply) => {
+    const pathname = request.url.split('?')[0] ?? '';
+    if (!pathname.startsWith('/api/') || isPublicApiPath(pathname)) return;
+    if (!(options.requireAuth ?? !config.DEMO_MODE)) return;
+    const user = await auth.userForToken(request.cookies.netvision_session);
+    if (!user) return reply.code(401).send({ message: 'Não autenticado' });
+    (request as { user?: AuthUser }).user = user;
+  });
+
+  app.post('/api/auth/login', async (request, reply) => {
+    const { usernameOrEmail, password } = loginSchema.parse(request.body);
+    const result = await auth.login(usernameOrEmail, password);
+    if (!result) return reply.code(401).send({ message: 'Credenciais inválidas' });
+    reply.setCookie('netvision_session', result.token, {
+      httpOnly: true,
+      secure: 'auto',
+      sameSite: 'lax',
+      path: '/',
+      maxAge: config.SESSION_TTL_DAYS * 86_400,
+    });
+    return { user: result.user };
+  });
+
+  app.post('/api/auth/logout', async (request, reply) => {
+    await auth.logout(request.cookies.netvision_session);
+    reply.clearCookie('netvision_session', { path: '/' });
+    return { ok: true };
+  });
+
+  app.get('/api/auth/me', async (request, reply) => {
+    const user = await auth.userForToken(request.cookies.netvision_session);
+    if (!user) return reply.code(401).send({ message: 'Não autenticado' });
+    return { user };
+  });
+
+  // ---- Public read-only views ----
+  const toPublicDevice = (host: HostRecord): Device => ({
+    id: host.id,
+    name: host.name,
+    hostname: host.hostname,
+    ip: host.ip,
+    vendor: host.vendor,
+    model: host.model,
+    status: host.status,
+    deviceType: host.deviceType,
+    site: host.site,
+    source: host.source,
+    discoveryMethod: host.discoveryMethod,
+    uptimeSeconds: host.uptimeSeconds,
+    ...(host.cpuPercent !== undefined ? { cpuPercent: host.cpuPercent } : {}),
+    ...(host.memoryPercent !== undefined ? { memoryPercent: host.memoryPercent } : {}),
+    updatedAt: host.updatedAt,
+    interfaces: host.interfaces,
+  });
+
+  const toPublicMap = (map: NetworkMap): PublicMapView => ({
+    id: map.id,
+    name: map.name,
+    description: map.description,
+    mode: map.mode,
+    settings: map.settings,
+    nodes: map.nodes,
+    devices: map.devices.map(toPublicDevice),
+    links: map.links,
+    updatedAt: map.updatedAt,
+  });
+
+  const toPublicView = (view: PublicViewRecord): PublicView => ({
+    id: view.id,
+    token: view.token,
+    name: view.name,
+    type: view.type,
+    mapId: view.mapId,
+    playlistId: view.playlistId,
+    enabled: view.enabled,
+    expiresAt: view.expiresAt ? view.expiresAt.toISOString() : null,
+    createdAt: view.createdAt.toISOString(),
+    updatedAt: view.updatedAt.toISOString(),
+  });
+
+  app.get('/api/public/view/:token', async (request, reply) => {
+    const { token } = z.object({ token: z.string().min(1) }).parse(request.params);
+    const view = await publicViewRepository.findByToken(token);
+    if (!view || !view.enabled) {
+      return reply.code(404).send({ message: 'Link público não encontrado' });
+    }
+    if (view.expiresAt && view.expiresAt.getTime() < Date.now()) {
+      return reply.code(410).send({ message: 'Link público expirado' });
+    }
+
+    if (view.type === 'MAP') {
+      const map = await maps.getMap(view.mapId ?? '');
+      if (!map) return reply.code(404).send({ message: 'Mapa não encontrado' });
+      return { type: 'MAP' as const, map: toPublicMap(map) } satisfies PublicViewResponse;
+    }
+
+    const playlists = await maps.listPlaylists();
+    const playlist = playlists.find((item) => item.id === view.playlistId);
+    if (!playlist) return reply.code(404).send({ message: 'Playlist não encontrada' });
+    const playlistMaps = (await Promise.all(playlist.items.map((item) => maps.getMap(item.mapId))))
+      .filter((item): item is NetworkMap => Boolean(item))
+      .map(toPublicMap);
+    return {
+      type: 'NOC' as const,
+      playlist: {
+        id: playlist.id,
+        name: playlist.name,
+        rotationIntervalSeconds: playlist.rotationIntervalSeconds,
+        maps: playlistMaps,
+      },
+    } satisfies PublicViewResponse;
+  });
+
+  // ---- Public view management (authenticated) ----
+  app.get('/api/public-views', async () => {
+    const views = await publicViewRepository.list();
+    return views.map(toPublicView);
+  });
+
+  app.post('/api/public-views', async (request, reply) => {
+    const body = publicViewSchema.parse(request.body);
+    const view = await publicViewRepository.create({
+      token: randomToken(),
+      name: body.name,
+      type: body.type as PublicViewType,
+      mapId: body.mapId ?? null,
+      playlistId: body.playlistId ?? null,
+      expiresAt: body.expiresAt ?? null,
+    });
+    return reply.code(201).send(toPublicView(view));
+  });
+
+  app.patch('/api/public-views/:id', async (request, reply) => {
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+    const body = publicViewPatchSchema.parse(request.body);
+    const view = await publicViewRepository.update(id, {
+      ...(body.name !== undefined ? { name: body.name } : {}),
+      ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
+      ...(body.expiresAt !== undefined ? { expiresAt: body.expiresAt } : {}),
+    });
+    return view ? toPublicView(view) : reply.code(404).send({ message: 'Link público não encontrado' });
+  });
+
+  app.delete('/api/public-views/:id', async (request, reply) => {
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+    return await publicViewRepository.remove(id)
+      ? reply.code(204).send()
+      : reply.code(404).send({ message: 'Link público não encontrado' });
+  });
 
   app.get('/api/maps', async () => maps.listMaps());
 

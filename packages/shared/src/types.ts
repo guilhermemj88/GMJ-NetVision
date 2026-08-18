@@ -197,3 +197,76 @@ export interface LldpApplyResult {
   createdLinks: string[];
   skipped: string[];
 }
+
+export type Role = 'ADMIN' | 'OPERATOR' | 'VIEWER';
+export type PublicViewType = 'MAP' | 'NOC';
+
+export interface AuthUser {
+  id: string;
+  username: string;
+  email: string;
+  name: string;
+  role: Role;
+}
+
+export interface AuthStatus {
+  required: boolean;
+  user: AuthUser | null;
+}
+
+export interface LoginInput {
+  usernameOrEmail: string;
+  password: string;
+}
+
+export interface PublicView {
+  id: string;
+  token: string;
+  name: string;
+  type: PublicViewType;
+  mapId: string | null;
+  playlistId: string | null;
+  enabled: boolean;
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PublicMapView {
+  id: string;
+  name: string;
+  description: string;
+  mode: MapMode;
+  settings: MapSettings;
+  nodes: MapNode[];
+  devices: Device[];
+  links: NetworkLink[];
+  updatedAt: string;
+}
+
+export interface PublicPlaylistView {
+  id: string;
+  name: string;
+  rotationIntervalSeconds: number;
+  maps: PublicMapView[];
+}
+
+export interface PublicViewResponse {
+  type: PublicViewType;
+  map?: PublicMapView;
+  playlist?: PublicPlaylistView;
+}
+
+export interface CreatePublicViewInput {
+  name: string;
+  type: PublicViewType;
+  mapId?: string | null;
+  playlistId?: string | null;
+  expiresAt?: string | null;
+}
+
+export interface UpdatePublicViewInput {
+  name?: string;
+  enabled?: boolean;
+  expiresAt?: string | null;
+}

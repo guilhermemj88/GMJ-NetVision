@@ -52,12 +52,14 @@ import {
 import { GENERIC_NODE_TYPES } from '@/lib/device-appearance';
 import { useMapStore } from '@/store/map-store';
 import { AssistedDiscoveryReview } from './assisted-discovery-review';
+import { PublicLinksPanel } from './public-links-manager';
 
 export function ActionPanels() {
   const panel = useMapStore((state) => state.panel);
   if (panel === 'create-link') return <CreateLinkPanel />;
   if (panel === 'add-device') return <AddDevicePanel />;
   if (panel === 'add-generic-node') return <AddGenericNodePanel />;
+  if (panel === 'public-links') return <PublicLinksPanel />;
   if (panel === 'discovery') return <DiscoveryPanel />;
   if (panel === 'settings') return <SettingsPanel />;
   if (panel === 'maps') return <MapManagerPanel />;

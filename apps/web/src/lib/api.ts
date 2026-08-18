@@ -1,9 +1,11 @@
 import {
   type AddDeviceResult,
+  type AuthUser,
   type CreateLinkInput,
   type CreateMapInput,
   type CreateHostInput,
   type CreateGenericNodeInput,
+  type CreatePublicViewInput,
   type AssistedDiscoveryPreview,
   type ConnectionTestResult,
   type DiscoveryApplyResult,
@@ -15,6 +17,7 @@ import {
   type LldpApplyResult,
   type LldpApplySelection,
   type LldpTopologyPreview,
+  type LoginInput,
   type MapNode,
   type MapPlaylist,
   type MapSummary,
@@ -22,8 +25,11 @@ import {
   type NetworkLink,
   type NetworkMap,
   type Position,
+  type PublicView,
+  type PublicViewResponse,
   type UpdateMapInput,
   type UpdateHostInput,
+  type UpdatePublicViewInput,
   type ZabbixImportPreview,
   type ZabbixImportResult,
 } from '@gmj/shared';
@@ -66,6 +72,47 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function getMaps(): Promise<MapSummary[]> {
   return request<MapSummary[]>('/api/maps');
+}
+
+export function login(input: LoginInput) {
+  return request<{ user: AuthUser }>('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function logout() {
+  return request<{ ok: boolean }>('/api/auth/logout', { method: 'POST' });
+}
+
+export function getMe() {
+  return request<{ user: AuthUser }>('/api/auth/me');
+}
+
+export function getPublicView(token: string) {
+  return request<PublicViewResponse>(`/api/public/view/${encodeURIComponent(token)}`);
+}
+
+export function listPublicViews() {
+  return request<PublicView[]>('/api/public-views');
+}
+
+export function createPublicView(input: CreatePublicViewInput) {
+  return request<PublicView>('/api/public-views', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updatePublicView(id: string, input: UpdatePublicViewInput) {
+  return request<PublicView>(`/api/public-views/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function deletePublicView(id: string) {
+  return request<void>(`/api/public-views/${id}`, { method: 'DELETE' });
 }
 
 export function getMap(mapId: string): Promise<NetworkMap> {

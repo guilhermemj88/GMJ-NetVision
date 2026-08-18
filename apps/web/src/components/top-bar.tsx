@@ -4,6 +4,8 @@ import { Badge, Button } from '@gmj/ui';
 import {
   ChevronDown,
   Compass,
+  Globe,
+  LogOut,
   MapPinned,
   MonitorPlay,
   Server,
@@ -11,6 +13,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { useMapStore } from '@/store/map-store';
+import { useAuth } from '@/app/providers';
 
 export function TopBar() {
   const map = useMapStore((state) => state.map);
@@ -22,6 +25,7 @@ export function TopBar() {
   const setPanel = useMapStore((state) => state.setPanel);
   const view = useMapStore((state) => state.view);
   const setView = useMapStore((state) => state.setView);
+  const { user, logout } = useAuth();
   if (!map && view === 'MAP') return <header className="topbar topbar--loading" />;
 
   return (
@@ -109,6 +113,14 @@ export function TopBar() {
           <Button
             compact
             variant="ghost"
+            aria-label="Links públicos"
+            onClick={() => setPanel('public-links')}
+          >
+            <Globe size={15} /> Links
+          </Button>
+          <Button
+            compact
+            variant="ghost"
             aria-label="Configurações"
             onClick={() => setPanel('settings')}
           >
@@ -116,6 +128,11 @@ export function TopBar() {
           </Button>
         </>
       )}
+      <div className="topbar__divider" />
+      {user && <span className="topbar-user" title={user.email}>{user.name || user.username}</span>}
+      <Button compact variant="ghost" aria-label="Sair" title="Sair" onClick={() => void logout()}>
+        <LogOut size={15} />
+      </Button>
     </header>
   );
 }
