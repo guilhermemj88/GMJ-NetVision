@@ -3844,12 +3844,6 @@ label > small {
   font: 600 10px var(--font-mono);
 }
 
-.public-viewer {
-  width: 100vw;
-  height: 100vh;
-  position: relative;
-}
-
 .public-error {
   width: 100vw;
   height: 100vh;

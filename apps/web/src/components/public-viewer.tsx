@@ -1,13 +1,10 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { ReactFlowProvider } from '@xyflow/react';
 import { getPublicView } from '@/lib/api';
 import type { NetworkMap } from '@gmj/shared';
 import { useMapStore } from '@/store/map-store';
-import { NetworkCanvas } from './network-canvas';
-import { NocControls } from './noc-controls';
-import { ContextDrawer } from './context-drawer';
+import { NetworkWorkspace } from './network-workspace';
 
 export function PublicViewer({ token, kind }: { token: string; kind: 'MAP' | 'NOC' }) {
   const setPublicMap = useMapStore((state) => state.setPublicMap);
@@ -16,7 +13,6 @@ export function PublicViewer({ token, kind }: { token: string; kind: 'MAP' | 'NO
   const startRotation = useMapStore((state) => state.startRotation);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-  const [noc, setNoc] = useState(false);
 
   useEffect(() => {
     if (!token) return;
@@ -41,7 +37,6 @@ export function PublicViewer({ token, kind }: { token: string; kind: 'MAP' | 'NO
             hideControls: true,
             pauseOnInteraction: false,
           });
-          setNoc(true);
           setReady(true);
           return;
         }
@@ -75,13 +70,5 @@ export function PublicViewer({ token, kind }: { token: string; kind: 'MAP' | 'NO
     );
   }
 
-  return (
-    <div className="netvision-app public-viewer">
-      <ReactFlowProvider>
-        <NetworkCanvas readOnly />
-        <ContextDrawer />
-      </ReactFlowProvider>
-      {noc && <NocControls />}
-    </div>
-  );
+  return <NetworkWorkspace publicMode />;
 }

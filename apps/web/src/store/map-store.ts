@@ -238,6 +238,7 @@ export const useMapStore = create<MapState>((set) => ({
       map: restored,
       activeMapId: restored.id,
       preferences: restored.settings.filters,
+      readOnly: false,
       dirty: false,
     });
   },
@@ -247,6 +248,7 @@ export const useMapStore = create<MapState>((set) => ({
       activeMapId: map.id,
       preferences: map.settings.filters,
       readOnly: true,
+      view: 'MAP',
       editMode: false,
       selection: null,
       panel: null,

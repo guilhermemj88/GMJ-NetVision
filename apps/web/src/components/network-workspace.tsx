@@ -10,26 +10,30 @@ import { NocControls } from './noc-controls';
 import { useMapStore } from '@/store/map-store';
 import { HostsWorkspace } from './hosts-workspace';
 
-export function NetworkWorkspace() {
+export function NetworkWorkspace({ publicMode = false }: { publicMode?: boolean }) {
   const toast = useMapStore((state) => state.toast);
   const rotation = useMapStore((state) => state.rotation);
   const view = useMapStore((state) => state.view);
   const setView = useMapStore((state) => state.setView);
-  const topBarHidden = view === 'MAP' && rotation.active && rotation.hideTopBar;
+  const readOnly = useMapStore((state) => state.readOnly);
+  const fullBleed = rotation.active && rotation.hideTopBar;
+
   useEffect(() => {
+    if (publicMode) return;
     if (new URLSearchParams(window.location.search).get('view') === 'hosts') setView('HOSTS');
-  }, [setView]);
+  }, [publicMode, setView]);
+
   return (
     <div
-      className={`netvision-app ${rotation.active ? 'netvision-app--noc' : ''} ${topBarHidden ? 'netvision-app--noc-no-topbar' : ''}`}
+      className={`netvision-app ${rotation.active ? 'netvision-app--noc' : ''} ${fullBleed ? 'netvision-app--noc-no-topbar' : ''}`}
     >
-      {!topBarHidden && <TopBar />}
-      {view === 'HOSTS' ? (
+      {!publicMode && !fullBleed && <TopBar />}
+      {view === 'HOSTS' && !publicMode ? (
         <HostsWorkspace />
       ) : (
         <>
           <ReactFlowProvider>
-            <NetworkCanvas />
+            <NetworkCanvas readOnly={readOnly} />
           </ReactFlowProvider>
           <ContextDrawer />
           <ActionPanels />
