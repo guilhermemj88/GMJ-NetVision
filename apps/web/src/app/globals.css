@@ -67,6 +67,11 @@ button {
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
 }
+.topbar--placeholder {
+  background: #0c1319;
+  box-shadow: none;
+  pointer-events: none;
+}
 .brand {
   display: flex;
   align-items: center;

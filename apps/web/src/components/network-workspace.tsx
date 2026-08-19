@@ -27,7 +27,11 @@ export function NetworkWorkspace({ publicMode = false }: { publicMode?: boolean 
     <div
       className={`netvision-app ${rotation.active ? 'netvision-app--noc' : ''} ${fullBleed ? 'netvision-app--noc-no-topbar' : ''}`}
     >
-      {!publicMode && !fullBleed && <TopBar />}
+      {!fullBleed && (publicMode ? (
+        <header className="topbar topbar--placeholder" aria-hidden="true" />
+      ) : (
+        <TopBar />
+      ))}
       {view === 'HOSTS' && !publicMode ? (
         <HostsWorkspace />
       ) : (
@@ -36,7 +40,7 @@ export function NetworkWorkspace({ publicMode = false }: { publicMode?: boolean 
             <NetworkCanvas readOnly={readOnly} />
           </ReactFlowProvider>
           <ContextDrawer />
-          <ActionPanels />
+          {!publicMode && <ActionPanels />}
           <NocControls />
         </>
       )}
