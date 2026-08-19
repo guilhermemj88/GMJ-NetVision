@@ -1636,8 +1636,8 @@ button {
   fill: none;
 }
 .traffic-edge--base {
-  stroke: #314a56;
-  opacity: 0.7;
+  stroke: #22333d;
+  opacity: 0.38;
 }
 .traffic-edge--lane {
   opacity: 0.8;
@@ -1670,9 +1670,7 @@ button {
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: 0.9;
   pointer-events: none;
-  filter: drop-shadow(0 0 2px currentColor);
 }
 
 /* Tone colors for the base path and the A→B direction. */
