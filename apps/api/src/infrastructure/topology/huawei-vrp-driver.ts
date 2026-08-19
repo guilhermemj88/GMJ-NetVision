@@ -18,8 +18,12 @@ function looksLikeInterface(value: string, allowNumeric = false): boolean {
   if (!/^[A-Za-z0-9][A-Za-z0-9./:_-]*$/.test(candidate)) return false;
   if (/^\d+$/.test(candidate)) return allowNumeric;
   if (!/\d/.test(candidate)) return false;
-  return candidate.includes('/')
-    || /^(?:Eth-?Trunk|Port-Channel|Bundle-Ether|Vlanif|LoopBack|MEth|Ethernet|GigabitEthernet|XGigabitEthernet|\d*(?:X?GE|FE))/i.test(candidate);
+  return (
+    candidate.includes('/') ||
+    /^(?:Eth-?Trunk|Port-Channel|Bundle-Ether|Vlanif|LoopBack|MEth|Ethernet|GigabitEthernet|XGigabitEthernet|\d*(?:X?GE|FE))/i.test(
+      candidate,
+    )
+  );
 }
 
 export class HuaweiVrpDriver implements SshDeviceDriver {
@@ -47,9 +51,10 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
 
   shouldFallbackNeighborCommand(output: string): boolean {
     if (this.parseNeighbors('probe', output).length > 0) return false;
-    const reportsNoNeighbors = /\bno\s+(?:lldp\s+)?neighbou?rs?\b/i.test(output)
-      || /\b(?:has|total(?:\s+entries\s+displayed)?\s*[:=]?)\s*0\s+neighbou?r/i.test(output)
-      || /\b0\s+neighbou?r\(s\)/i.test(output);
+    const reportsNoNeighbors =
+      /\bno\s+(?:lldp\s+)?neighbou?rs?\b/i.test(output) ||
+      /\b(?:has|total(?:\s+entries\s+displayed)?\s*[:=]?)\s*0\s+neighbou?r/i.test(output) ||
+      /\b0\s+neighbou?r\(s\)/i.test(output);
     return !reportsNoNeighbors;
   }
 
@@ -120,18 +125,24 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
       if (!name || match.index === undefined) return [];
       const end = starts[index + 1]?.index ?? output.length;
       const block = output.slice(match.index, end);
-      const rx = block.match(/(?:Current\s*)?R\s*X\s*Power\s*(?:\(\s*dBm\s*\))?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i)?.[1]
-        ?? block.match(/RxPower\s*(?:\(\s*dBm\s*\))?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i)?.[1];
-      const tx = block.match(/(?:Current\s*)?T\s*X\s*Power\s*(?:\(\s*dBm\s*\))?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i)?.[1]
-        ?? block.match(/TxPower\s*(?:\(\s*dBm\s*\))?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i)?.[1];
+      const rx =
+        block.match(
+          /(?:Current\s*)?R\s*X\s*Power\s*(?:\(\s*dBm\s*\))?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i,
+        )?.[1] ?? block.match(/RxPower\s*(?:\(\s*dBm\s*\))?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i)?.[1];
+      const tx =
+        block.match(
+          /(?:Current\s*)?T\s*X\s*Power\s*(?:\(\s*dBm\s*\))?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i,
+        )?.[1] ?? block.match(/TxPower\s*(?:\(\s*dBm\s*\))?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i)?.[1];
       const rxPowerDbm = normalizeOpticalDbm(rx);
       const txPowerDbm = normalizeOpticalDbm(tx);
       if (rxPowerDbm === null && txPowerDbm === null) return [];
-      return [{
-        name,
-        rxPowerDbm,
-        txPowerDbm,
-      }];
+      return [
+        {
+          name,
+          rxPowerDbm,
+          txPowerDbm,
+        },
+      ];
     });
   }
 
@@ -148,7 +159,10 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
 
     const flush = (): void => {
       if (currentLines.some((line) => line.trim())) {
-        candidates.push({ localPort: currentLocalPort, lines: currentLines });
+        candidates.push({
+          ...(currentLocalPort ? { localPort: currentLocalPort } : {}),
+          lines: currentLines,
+        });
       }
       currentLines = [];
     };
@@ -174,8 +188,8 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
 
     return candidates.flatMap((candidate, index) => {
       const block = candidate.lines.join('\n');
-      const localPort = field(block, /^\s*Local\s+interface\s*:\s*(.+?)\s*$/im)
-        ?? candidate.localPort;
+      const localPort =
+        field(block, /^\s*Local\s+interface\s*:\s*(.+?)\s*$/im) ?? candidate.localPort;
       const systemName = field(block, /^\s*System\s+name\s*:\s*(.+?)\s*$/im);
       const chassis = field(block, /^\s*Chassis\s+ID\s*:\s*(.+?)\s*$/im);
       const systemDescription = field(block, /^\s*System\s+description\s*:\s*(.+?)\s*$/im);
@@ -187,15 +201,15 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
         block,
         /^\s*Management\s+address(?:\s+value)?\s*:\s*(.+?)\s*$/im,
       );
-      const capabilitiesValue = field(
-        block,
-        /^\s*System\s+capabilities\s+enabled\s*:\s*(.+?)\s*$/im,
-      ) ?? field(
-        block,
-        /^\s*System\s+capabilities\s+supported\s*:\s*(.+?)\s*$/im,
-      ) ?? field(block, /^\s*System\s+capabilities\s*:\s*(.+?)\s*$/im);
+      const capabilitiesValue =
+        field(block, /^\s*System\s+capabilities\s+enabled\s*:\s*(.+?)\s*$/im) ??
+        field(block, /^\s*System\s+capabilities\s+supported\s*:\s*(.+?)\s*$/im) ??
+        field(block, /^\s*System\s+capabilities\s*:\s*(.+?)\s*$/im);
       const capabilities = capabilitiesValue
-        ? capabilitiesValue.split(/[\s,]+/).map((item) => item.trim().toLowerCase()).filter(Boolean)
+        ? capabilitiesValue
+            .split(/[\s,]+/)
+            .map((item) => item.trim().toLowerCase())
+            .filter(Boolean)
         : [];
       return [
         {

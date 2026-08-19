@@ -25,18 +25,39 @@ export class LldpSshDiscoveryAdapter implements TopologyDiscoveryAdapter {
 
   private deviceForHost(host: string): Device {
     return {
-      id: '', name: '', hostname: host, ip: host, vendor: '', model: '',
-      status: 'UNKNOWN', deviceType: 'generic', site: '', source: 'ZABBIX',
-      discoveryMethod: 'SSH', uptimeSeconds: 0, updatedAt: '', interfaces: [],
+      id: '',
+      name: '',
+      hostname: host,
+      ip: host,
+      vendor: '',
+      model: '',
+      status: 'UNKNOWN',
+      deviceType: 'generic',
+      site: '',
+      source: 'ZABBIX',
+      discoveryMethod: 'SSH',
+      uptimeSeconds: 0,
+      updatedAt: '',
+      interfaces: [],
     };
   }
 
   private driverFor(device: Pick<Device, 'vendor'>): SshDeviceDriver {
+    const vendor = device.vendor.trim().toLowerCase();
     const driver = this.drivers.find((candidate) =>
-      device.vendor.toLowerCase().includes(candidate.vendor.split(' ')[0]?.toLowerCase() ?? ''),
+      vendor.includes(candidate.vendor.split(' ')[0]?.toLowerCase() ?? ''),
     );
-    if (!driver) throw new Error(`No SSH driver configured for vendor ${device.vendor}`);
-    return driver;
+    if (driver) return driver;
+
+    // Inventory imported before vendor enrichment commonly has an empty or
+    // unknown vendor. With a single registered driver there is no ambiguity;
+    // known non-Huawei vendors still fail closed instead of receiving VRP commands.
+    if ((!vendor || vendor === 'unknown') && this.drivers.length === 1) return this.drivers[0]!;
+    throw new Error(`No SSH driver configured for vendor ${device.vendor || 'unknown'}`);
+  }
+
+  private stdout(results: Awaited<ReturnType<SshClient['execute']>>): string {
+    return results.map((result) => result.stdout).join('\n');
   }
 
   async discoverDevice(host: string): Promise<DeviceIdentity> {
@@ -55,7 +76,22 @@ export class LldpSshDiscoveryAdapter implements TopologyDiscoveryAdapter {
     const driver = this.driverFor(device);
     const { client, host } = await this.session(device);
     const results = await client.execute(host, driver.neighborCommands());
-    return driver.parseNeighbors(device.id, results.map((result) => result.stdout).join('\n'));
+    const output = this.stdout(results);
+    const neighbors = driver.parseNeighbors(device.id, output);
+    if (neighbors.length > 0) return neighbors;
+
+    const fallbackCommands = driver.neighborFallbackCommands?.();
+    if (!fallbackCommands?.length) return neighbors;
+    const diagnosticOutput = results
+      .map((result) => `${result.stdout}\n${result.stderr}`)
+      .join('\n');
+    const commandFailed = results.some((result) => result.exitCode !== 0);
+    const shouldFallback =
+      commandFailed || (driver.shouldFallbackNeighborCommand?.(diagnosticOutput) ?? true);
+    if (!shouldFallback) return neighbors;
+
+    const fallbackResults = await client.execute(host, fallbackCommands);
+    return driver.parseNeighbors(device.id, this.stdout(fallbackResults));
   }
 
   async discoverInterfaces(device: Device): Promise<NetworkInterface[]> {
