@@ -30,6 +30,11 @@ export type TrafficFlowEdge = Edge<TrafficEdgeData, 'traffic'>;
 const EDGE_CURVATURE = 0.24;
 // Half of the visual separation between the two chevron tracks (~5 px total).
 const LANE_HALF_GAP = 2.6;
+// Direction color families (kept distinct as utilization intensifies).
+const HUE_A = 190; // cyan / blue
+const HUE_B = 265; // violet / magenta
+
+type FlowLevel = 'normal' | 'attention' | 'high' | 'critical' | 'down' | 'unknown';
 
 function throughputText(bps: number): string {
   return formatBitsPerSecond(bps);
@@ -50,26 +55,117 @@ function toneClass(tone: string): string {
   }
 }
 
-function toneColor(tone: string, reverse = false): string {
-  if (reverse) {
-    switch (tone) {
-      case 'attention': return '#c578e0';
-      case 'high': return '#e052c8';
-      case 'critical': return '#e03b5c';
-      case 'down': return '#5f4649';
-      case 'unknown': return '#718894';
-      default: return '#9575f0';
-    }
-  }
+function hsl(hue: number, saturation: number, lightness: number): string {
+  return `hsl(${hue.toFixed(0)}, ${saturation.toFixed(0)}%, ${lightness.toFixed(0)}%)`;
+}
 
-  switch (tone) {
-    case 'attention': return '#dfb847';
-    case 'high': return '#eb9340';
-    case 'critical': return '#e24b4b';
+function flowLevel(utilization: number): FlowLevel {
+  return utilizationLevel(utilization).toLowerCase() as FlowLevel;
+}
+
+// Utilization drives saturation/lightness, keeping each direction's hue family.
+function flowColor(hue: number, level: FlowLevel): string {
+  switch (level) {
+    case 'critical': return hsl(hue, 100, 54);
+    case 'high': return hsl(hue, 95, 56);
+    case 'attention': return hsl(hue, 84, 63);
     case 'down': return '#6e5558';
     case 'unknown': return '#718894';
-    default: return '#40c8e8';
+    default: return hsl(hue, 58, 72);
   }
+}
+
+function flowGlow(level: FlowLevel): number {
+  switch (level) {
+    case 'critical': return 9;
+    case 'high': return 6.5;
+    case 'attention': return 4;
+    case 'down':
+    case 'unknown': return 1.5;
+    default: return 2.5;
+  }
+}
+
+interface ChevronBandProps {
+  idPrefix: string;
+  path: string;
+  color: string;
+  glow: number;
+  duration: number;
+  begin: number;
+  reverse: boolean;
+  chevronPath: string;
+  clusterCount: number;
+  trailCount: number;
+  clusterStep: number;
+  trailStep: number;
+  opacity: number;
+}
+
+function ChevronBand({
+  idPrefix,
+  path,
+  color,
+  glow,
+  duration,
+  begin,
+  reverse,
+  chevronPath,
+  clusterCount,
+  trailCount,
+  clusterStep,
+  trailStep,
+  opacity,
+}: ChevronBandProps) {
+  const rotate = reverse ? 'auto-reverse' : 'auto';
+  const keyPoints = reverse ? '1;0' : '0;1';
+  const glowFilter = `drop-shadow(0 0 ${glow}px ${color})`;
+
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      {Array.from({ length: clusterCount }, (_, index) => (
+        <path
+          key={`${idPrefix}-c-${index}`}
+          d={chevronPath}
+          className="traffic-chevron"
+          style={{ stroke: color, color, opacity, filter: glowFilter }}
+        >
+          <animateMotion
+            path={path}
+            dur={`${duration}s`}
+            begin={`${begin + index * clusterStep}s`}
+            repeatCount="indefinite"
+            rotate={rotate}
+            keyPoints={keyPoints}
+            keyTimes="0;1"
+            calcMode="linear"
+          />
+        </path>
+      ))}
+      {Array.from({ length: trailCount }, (_, index) => {
+        const fade = (trailCount - index) / (trailCount + 1);
+        return (
+          <path
+            key={`${idPrefix}-t-${index}`}
+            d={chevronPath}
+            className="traffic-chevron"
+            style={{ stroke: color, color, opacity: opacity * fade, filter: glowFilter }}
+          >
+            <animateMotion
+              path={path}
+              dur={`${duration}s`}
+              begin={`${begin + clusterCount * clusterStep + (index + 1) * trailStep}s`}
+              repeatCount="indefinite"
+              rotate={rotate}
+              keyPoints={keyPoints}
+              keyTimes="0;1"
+              calcMode="linear"
+            />
+          </path>
+        );
+      })}
+    </g>
+  );
 }
 
 export function TrafficEdge({
@@ -119,9 +215,9 @@ export function TrafficEdge({
   const bToA = link.directions.B_TO_A;
   const maxUtilization = Math.max(aToB.utilization, bToA.utilization);
   const statusTone = link.status === 'DOWN' ? 'down' : link.status === 'UNKNOWN' ? 'unknown' : null;
-  const toneA = statusTone ?? utilizationLevel(aToB.utilization).toLowerCase();
-  const toneB = statusTone ?? utilizationLevel(bToA.utilization).toLowerCase();
-  const worstTone = statusTone ?? utilizationLevel(maxUtilization).toLowerCase();
+  const levelA: FlowLevel = statusTone ?? flowLevel(aToB.utilization);
+  const levelB: FlowLevel = statusTone ?? flowLevel(bToA.utilization);
+  const worstTone = statusTone ?? flowLevel(maxUtilization);
 
   const width = Math.max(1, Math.min(1.8, 1.05 + Math.log10(Math.max(link.capacityBps, 1_000_000_000)) - 9.2)) * (linkScale / 100);
   const classes = `${selected ? 'is-selected' : ''} ${related ? '' : 'is-dimmed'} ${emphasized ? 'is-emphasized' : ''}`;
@@ -130,10 +226,15 @@ export function TrafficEdge({
 
   const displayThroughput = metricDisplay === 'THROUGHPUT' || metricDisplay === 'BOTH';
   const displayUtilization = metricDisplay === 'UTILIZATION' || metricDisplay === 'BOTH';
-  const duration = Math.max(3.5, 6.4 - maxUtilization / 32);
-  const chevronCount = displayStyle === 'HYBRID' ? 7 : 5;
-  const chevronScale = Math.max(0.7, Math.min(1.25, linkScale / 100));
-  const chevronPath = `M ${-2.7 * chevronScale} ${-2.2 * chevronScale} L ${1.6 * chevronScale} 0 L ${-2.7 * chevronScale} ${2.2 * chevronScale}`;
+  const duration = Math.max(2.6, 6.8 - maxUtilization / 20);
+  const density = 1 - Math.min(0.35, maxUtilization / 320);
+  const chevronScale = Math.max(0.85, Math.min(1.15, linkScale / 100));
+  const clusterSpacing = 5.6 * chevronScale * density;
+  const trailSpacing = 7 * chevronScale * density;
+  const clusterCount = displayStyle === 'HYBRID' ? 5 : 4;
+  const trailCount = 3;
+  const bandCount = 2;
+  const chevronPath = `M ${-2.9 * chevronScale} ${-2.3 * chevronScale} L ${1.8 * chevronScale} 0 L ${-2.9 * chevronScale} ${2.3 * chevronScale}`;
 
   // Perpendicular normal of the source→target segment. Both lanes are the same
   // bézier translated along this normal, which keeps their separation constant
@@ -167,9 +268,18 @@ export function TrafficEdge({
       })[0]
     : path;
 
-  const colorA = toneColor(toneA);
-  const colorB = toneColor(toneB, true);
+  const colorA = flowColor(HUE_A, levelA);
+  const colorB = flowColor(HUE_B, levelB);
+  const glowBoost = emphasized || selected ? 1.35 : 1;
+  const bandOpacity = emphasized || selected ? 1 : 0.92;
   const renderLanes = directional && showTraffic && link.status !== 'DOWN' && related;
+
+  // Convert pixel spacing into animation-time offsets so the clustered
+  // chevrons travel together as one wave while each one stays exactly on its
+  // lane path (important for curved links).
+  const approxLength = Math.max(40, segmentLength * 1.15);
+  const clusterStep = (duration * clusterSpacing) / approxLength;
+  const trailStep = (duration * trailSpacing) / approxLength;
 
   return (
     <>
@@ -182,43 +292,42 @@ export function TrafficEdge({
 
       {renderLanes && (
         <>
-          {Array.from({ length: chevronCount }, (_, index) => {
-            const begin = -((index * duration) / chevronCount);
-            return (
-              <g key={`a-to-b-${index}`} style={{ pointerEvents: 'none' }}>
-                <path d={chevronPath} className={`traffic-chevron ${toneClass(toneA)} ${classes}`}>
-                  <animateMotion
-                    path={laneAPath}
-                    dur={`${duration}s`}
-                    begin={`${begin}s`}
-                    repeatCount="indefinite"
-                    rotate="auto"
-                    calcMode="linear"
-                  />
-                </path>
-              </g>
-            );
-          })}
-
-          {Array.from({ length: chevronCount }, (_, index) => {
-            const begin = -((index * duration) / chevronCount) - duration / (chevronCount * 2);
-            return (
-              <g key={`b-to-a-${index}`} style={{ pointerEvents: 'none' }}>
-                <path d={chevronPath} className={`traffic-chevron traffic-edge--ba ${toneClass(toneB)} ${classes}`}>
-                  <animateMotion
-                    path={laneBPath}
-                    dur={`${duration}s`}
-                    begin={`${begin}s`}
-                    repeatCount="indefinite"
-                    rotate="auto-reverse"
-                    keyPoints="1;0"
-                    keyTimes="0;1"
-                    calcMode="linear"
-                  />
-                </path>
-              </g>
-            );
-          })}
+          {Array.from({ length: bandCount }, (_, band) => (
+            <ChevronBand
+              key={`a-to-b-${band}`}
+              idPrefix="a-to-b"
+              path={laneAPath}
+              color={colorA}
+              glow={flowGlow(levelA) * glowBoost}
+              duration={duration}
+              begin={-((band * duration) / bandCount)}
+              reverse={false}
+              chevronPath={chevronPath}
+              clusterCount={clusterCount}
+              trailCount={trailCount}
+              clusterStep={clusterStep}
+              trailStep={trailStep}
+              opacity={bandOpacity}
+            />
+          ))}
+          {Array.from({ length: bandCount }, (_, band) => (
+            <ChevronBand
+              key={`b-to-a-${band}`}
+              idPrefix="b-to-a"
+              path={laneBPath}
+              color={colorB}
+              glow={flowGlow(levelB) * glowBoost}
+              duration={duration}
+              begin={-((band * duration) / bandCount) - duration / (bandCount * 2)}
+              reverse
+              chevronPath={chevronPath}
+              clusterCount={clusterCount}
+              trailCount={trailCount}
+              clusterStep={clusterStep}
+              trailStep={trailStep}
+              opacity={bandOpacity}
+            />
+          ))}
         </>
       )}
 
