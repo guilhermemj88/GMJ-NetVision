@@ -42,18 +42,16 @@ function apiUrl(): string {
   const configured = process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/+$/, '');
 
   if (typeof window === 'undefined') {
+    // Server-side requests need an absolute URL.
     return configured || 'http://127.0.0.1:3333';
   }
 
-  // A URL localhost embutida no bundle aponta para o computador do operador,
-  // não para o servidor NetVision. Em produção, use o mesmo hostname da Web
-  // e a porta pública da API quando não houver uma URL externa explícita.
-  const configuredIsLocal = configured
-    ? /^https?:\/\/(localhost|127\.0\.0\.1)(?::|\/|$)/i.test(configured)
-    : false;
-  if (configured && !configuredIsLocal) return configured;
-
-  return `${window.location.protocol}//${window.location.hostname}:3333`;
+  // Client-side: use the same origin and let Next.js rewrite /api/* to the
+  // internal API. This keeps NAT/reverse proxy setups working with only the
+  // web port exposed. An explicit non-local API URL still takes precedence.
+  if (!configured) return '';
+  const configuredIsLocal = /^https?:\/\/(localhost|127\.0\.0\.1)(?::|\/|$)/i.test(configured);
+  return configuredIsLocal ? '' : configured;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
