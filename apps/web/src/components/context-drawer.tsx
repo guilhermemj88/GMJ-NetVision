@@ -515,6 +515,8 @@ function LinkDrawer({ link, onClose }: { link: NetworkLink; onClose: () => void 
           label="PONTA A"
           device={source?.name ?? sourceNode?.label ?? '—'}
           networkInterface={sourceInterface?.name ?? '—'}
+          rxDbm={sourceInterface?.rxPowerDbm}
+          txDbm={sourceInterface?.txPowerDbm}
         />
         <div className="link-route__line">
           <span />
@@ -525,6 +527,8 @@ function LinkDrawer({ link, onClose }: { link: NetworkLink; onClose: () => void 
           label="PONTA B"
           device={target?.name ?? targetNode?.label ?? '—'}
           networkInterface={targetInterface?.name ?? '—'}
+          rxDbm={targetInterface?.rxPowerDbm}
+          txDbm={targetInterface?.txPowerDbm}
         />
       </div>
       <section className="drawer-section">
@@ -727,16 +731,23 @@ function Endpoint({
   label,
   device,
   networkInterface,
+  rxDbm,
+  txDbm,
 }: {
   label: string;
   device: string;
   networkInterface: string;
+  rxDbm?: number | null | undefined;
+  txDbm?: number | null | undefined;
 }) {
   return (
     <div className="endpoint">
       <span>{label}</span>
       <strong>{device}</strong>
       <small>{networkInterface}</small>
+      {(rxDbm != null || txDbm != null) && (
+        <em>RX {formatOpticalPower(rxDbm)} · TX {formatOpticalPower(txDbm)}</em>
+      )}
     </div>
   );
 }

@@ -28,8 +28,8 @@ export interface TrafficEdgeData extends Record<string, unknown> {
 export type TrafficFlowEdge = Edge<TrafficEdgeData, 'traffic'>;
 
 const EDGE_CURVATURE = 0.24;
-// Half of the visual separation between the two parallel traffic lanes.
-const LANE_HALF_GAP = 3.6;
+// Half of the visual separation between the two chevron tracks (~5 px total).
+const LANE_HALF_GAP = 2.6;
 
 function throughputText(bps: number): string {
   return formatBitsPerSecond(bps);
@@ -37,14 +37,6 @@ function throughputText(bps: number): string {
 
 function utilizationText(utilization: number): string {
   return `${utilization.toFixed(0)}%`;
-}
-
-function opticalText(networkInterface?: NetworkInterface): string | null {
-  if (!networkInterface) return null;
-  const rx = networkInterface.rxPowerDbm;
-  const tx = networkInterface.txPowerDbm;
-  if (rx == null && tx == null) return null;
-  return `RX ${rx == null ? '—' : `${rx.toFixed(2)} dBm`} · TX ${tx == null ? '—' : `${tx.toFixed(2)} dBm`}`;
 }
 
 function toneClass(tone: string): string {
@@ -104,8 +96,6 @@ export function TrafficEdge({
 
   const {
     link,
-    sourceInterface,
-    targetInterface,
     showTraffic,
     showUtilization,
     showLabels,
@@ -136,17 +126,13 @@ export function TrafficEdge({
   const width = Math.max(1, Math.min(1.8, 1.05 + Math.log10(Math.max(link.capacityBps, 1_000_000_000)) - 9.2)) * (linkScale / 100);
   const classes = `${selected ? 'is-selected' : ''} ${related ? '' : 'is-dimmed'} ${emphasized ? 'is-emphasized' : ''}`;
   const directional = displayStyle !== 'MINIMAL';
-  const showMetric = showLabels && displayStyle !== 'MINIMAL' && (
-    metricDisplay !== 'NONE' || opticalText(sourceInterface) !== null || opticalText(targetInterface) !== null
-  );
+  const showMetric = showLabels && displayStyle !== 'MINIMAL' && metricDisplay !== 'NONE';
 
-  const sourceOptical = opticalText(sourceInterface);
-  const targetOptical = opticalText(targetInterface);
   const displayThroughput = metricDisplay === 'THROUGHPUT' || metricDisplay === 'BOTH';
   const displayUtilization = metricDisplay === 'UTILIZATION' || metricDisplay === 'BOTH';
   const duration = Math.max(3.5, 6.4 - maxUtilization / 32);
-  const chevronCount = displayStyle === 'HYBRID' ? 6 : 4;
-  const chevronScale = Math.max(0.85, Math.min(1.3, linkScale / 100));
+  const chevronCount = displayStyle === 'HYBRID' ? 7 : 5;
+  const chevronScale = Math.max(0.7, Math.min(1.25, linkScale / 100));
   const chevronPath = `M ${-2.7 * chevronScale} ${-2.2 * chevronScale} L ${1.6 * chevronScale} 0 L ${-2.7 * chevronScale} ${2.2 * chevronScale}`;
 
   // Perpendicular normal of the source→target segment. Both lanes are the same
@@ -157,7 +143,7 @@ export function TrafficEdge({
   const segmentLength = Math.hypot(segmentX, segmentY) || 1;
   const normalX = -segmentY / segmentLength;
   const normalY = segmentX / segmentLength;
-  const gap = LANE_HALF_GAP * (linkScale / 100);
+  const gap = Math.max(2, LANE_HALF_GAP * (linkScale / 100));
   const laneAPath = directional
     ? getBezierPath({
         sourceX: sourceX + normalX * gap,
@@ -181,8 +167,6 @@ export function TrafficEdge({
       })[0]
     : path;
 
-  const laneStrokeWidth = Math.max(1.3, width * 1.05);
-  const haloStrokeWidth = laneStrokeWidth + 2.6;
   const colorA = toneColor(toneA);
   const colorB = toneColor(toneB, true);
   const renderLanes = directional && showTraffic && link.status !== 'DOWN' && related;
@@ -198,27 +182,6 @@ export function TrafficEdge({
 
       {renderLanes && (
         <>
-          <path
-            d={laneAPath}
-            className={`traffic-edge traffic-edge--halo ${toneClass(toneA)} ${classes}`}
-            style={{ strokeWidth: haloStrokeWidth }}
-          />
-          <path
-            d={laneBPath}
-            className={`traffic-edge traffic-edge--halo traffic-edge--ba ${toneClass(toneB)} ${classes}`}
-            style={{ strokeWidth: haloStrokeWidth }}
-          />
-          <path
-            d={laneAPath}
-            className={`traffic-edge traffic-edge--lane ${toneClass(toneA)} ${classes}`}
-            style={{ strokeWidth: laneStrokeWidth }}
-          />
-          <path
-            d={laneBPath}
-            className={`traffic-edge traffic-edge--lane traffic-edge--ba ${toneClass(toneB)} ${classes}`}
-            style={{ strokeWidth: laneStrokeWidth }}
-          />
-
           {Array.from({ length: chevronCount }, (_, index) => {
             const begin = -((index * duration) / chevronCount);
             return (
@@ -267,22 +230,16 @@ export function TrafficEdge({
             className={`edge-metric edge-metric--${displayStyle.toLowerCase()} edge-metric--${worstTone} ${related ? '' : 'is-dimmed'}`}
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px) scale(${labelScale / 100})` }}
           >
-            {metricDisplay !== 'NONE' && (
-              <>
-                <div className="edge-metric__row">
-                  <span className="edge-metric__swatch" style={{ backgroundColor: colorA }} />
-                  {displayThroughput && <strong>{throughputText(aToB.bps)}</strong>}
-                  {displayUtilization && <em>{utilizationText(aToB.utilization)}</em>}
-                </div>
-                <div className="edge-metric__row">
-                  <span className="edge-metric__swatch" style={{ backgroundColor: colorB }} />
-                  {displayThroughput && <strong>{throughputText(bToA.bps)}</strong>}
-                  {displayUtilization && <em>{utilizationText(bToA.utilization)}</em>}
-                </div>
-              </>
-            )}
-            {sourceOptical && <small>{sourceInterface?.name} · {sourceOptical}</small>}
-            {targetOptical && <small>{targetInterface?.name} · {targetOptical}</small>}
+            <div className="edge-metric__row">
+              <span className="edge-metric__swatch" style={{ backgroundColor: colorA }} />
+              {displayThroughput && <strong>{throughputText(aToB.bps)}</strong>}
+              {displayUtilization && <em>{utilizationText(aToB.utilization)}</em>}
+            </div>
+            <div className="edge-metric__row">
+              <span className="edge-metric__swatch" style={{ backgroundColor: colorB }} />
+              {displayThroughput && <strong>{throughputText(bToA.bps)}</strong>}
+              {displayUtilization && <em>{utilizationText(bToA.utilization)}</em>}
+            </div>
           </div>
         </EdgeLabelRenderer>
       )}
