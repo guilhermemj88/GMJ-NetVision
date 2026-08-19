@@ -27,6 +27,10 @@ export interface TrafficEdgeData extends Record<string, unknown> {
 
 export type TrafficFlowEdge = Edge<TrafficEdgeData, 'traffic'>;
 
+const EDGE_CURVATURE = 0.24;
+// Half of the visual separation between the two parallel traffic lanes.
+const LANE_HALF_GAP = 3.6;
+
 function throughputText(bps: number): string {
   return formatBitsPerSecond(bps);
 }
@@ -43,15 +47,26 @@ function opticalText(networkInterface?: NetworkInterface): string | null {
   return `RX ${rx == null ? '—' : `${rx.toFixed(2)} dBm`} · TX ${tx == null ? '—' : `${tx.toFixed(2)} dBm`}`;
 }
 
+function toneClass(tone: string): string {
+  switch (tone) {
+    case 'attention': return 'traffic-edge--attention';
+    case 'high': return 'traffic-edge--high';
+    case 'critical': return 'traffic-edge--critical';
+    case 'down': return 'traffic-edge--down';
+    case 'unknown': return 'traffic-edge--unknown';
+    default: return 'traffic-edge--normal';
+  }
+}
+
 function toneColor(tone: string, reverse = false): string {
   if (reverse) {
     switch (tone) {
       case 'attention': return '#c578e0';
       case 'high': return '#e052c8';
       case 'critical': return '#e03b5c';
-      case 'down': return '#71545a';
+      case 'down': return '#5f4649';
       case 'unknown': return '#718894';
-      default: return '#a98cff';
+      default: return '#9575f0';
     }
   }
 
@@ -59,9 +74,9 @@ function toneColor(tone: string, reverse = false): string {
     case 'attention': return '#dfb847';
     case 'high': return '#eb9340';
     case 'critical': return '#e24b4b';
-    case 'down': return '#71545a';
+    case 'down': return '#6e5558';
     case 'unknown': return '#718894';
-    default: return '#43d6f4';
+    default: return '#40c8e8';
   }
 }
 
@@ -83,7 +98,7 @@ export function TrafficEdge({
     targetX,
     targetY,
     targetPosition,
-    curvature: 0.24,
+    curvature: EDGE_CURVATURE,
   });
   if (!data) return null;
 
@@ -130,72 +145,113 @@ export function TrafficEdge({
   const displayThroughput = metricDisplay === 'THROUGHPUT' || metricDisplay === 'BOTH';
   const displayUtilization = metricDisplay === 'UTILIZATION' || metricDisplay === 'BOTH';
   const duration = Math.max(3.5, 6.4 - maxUtilization / 32);
-  const packetCount = displayStyle === 'HYBRID' ? 5 : 3;
-  const packetScale = Math.max(0.82, Math.min(1.25, linkScale / 100));
-  const cableStroke = selected ? '#b9dce5' : link.status === 'DOWN' ? '#5a474a' : '#38505c';
-  const cableOpacity = related ? (emphasized ? 0.95 : 0.68) : 0.16;
-  const cableDash = link.status === 'DOWN' ? '5 5' : link.status === 'UNKNOWN' ? '2 5' : undefined;
-  const arrowPath = `M ${-3.1 * packetScale} ${-2.1 * packetScale} L ${2.8 * packetScale} 0 L ${-3.1 * packetScale} ${2.1 * packetScale} Z`;
+  const chevronCount = displayStyle === 'HYBRID' ? 6 : 4;
+  const chevronScale = Math.max(0.85, Math.min(1.3, linkScale / 100));
+  const chevronPath = `M ${-2.7 * chevronScale} ${-2.2 * chevronScale} L ${1.6 * chevronScale} 0 L ${-2.7 * chevronScale} ${2.2 * chevronScale}`;
+
+  // Perpendicular normal of the source→target segment. Both lanes are the same
+  // bézier translated along this normal, which keeps their separation constant
+  // for straight links and preserves the exact same curvature for curved links.
+  const segmentX = targetX - sourceX;
+  const segmentY = targetY - sourceY;
+  const segmentLength = Math.hypot(segmentX, segmentY) || 1;
+  const normalX = -segmentY / segmentLength;
+  const normalY = segmentX / segmentLength;
+  const gap = LANE_HALF_GAP * (linkScale / 100);
+  const laneAPath = directional
+    ? getBezierPath({
+        sourceX: sourceX + normalX * gap,
+        sourceY: sourceY + normalY * gap,
+        sourcePosition,
+        targetX: targetX + normalX * gap,
+        targetY: targetY + normalY * gap,
+        targetPosition,
+        curvature: EDGE_CURVATURE,
+      })[0]
+    : path;
+  const laneBPath = directional
+    ? getBezierPath({
+        sourceX: sourceX - normalX * gap,
+        sourceY: sourceY - normalY * gap,
+        sourcePosition,
+        targetX: targetX - normalX * gap,
+        targetY: targetY - normalY * gap,
+        targetPosition,
+        curvature: EDGE_CURVATURE,
+      })[0]
+    : path;
+
+  const laneStrokeWidth = Math.max(1.3, width * 1.05);
+  const haloStrokeWidth = laneStrokeWidth + 2.6;
+  const colorA = toneColor(toneA);
+  const colorB = toneColor(toneB, true);
+  const renderLanes = directional && showTraffic && link.status !== 'DOWN' && related;
 
   return (
     <>
       <path
         id={id}
         d={path}
-        className={`traffic-edge ${classes}`}
-        style={{
-          fill: 'none',
-          stroke: cableStroke,
-          strokeWidth: displayStyle === 'MINIMAL' ? Math.max(1.1, width) : Math.max(1.15, width * 1.08),
-          strokeLinecap: 'round',
-          strokeDasharray: cableDash,
-          opacity: cableOpacity,
-          filter: selected ? 'drop-shadow(0 0 3px rgba(90, 195, 220, 0.7))' : 'none',
-        }}
+        className={`traffic-edge traffic-edge--base ${statusTone ? toneClass(statusTone) : ''} ${classes}`}
+        style={{ strokeWidth: width }}
       />
 
-      {directional && related && link.status !== 'DOWN' && (
-        <path
-          d={path}
-          className="traffic-edge"
-          style={{
-            fill: 'none',
-            stroke: '#0b151b',
-            strokeWidth: Math.max(3.2, width + 2.5),
-            strokeLinecap: 'round',
-            opacity: 0.28,
-            pointerEvents: 'none',
-          }}
-        />
-      )}
-
-      {showTraffic && directional && link.status !== 'DOWN' && related && (
+      {renderLanes && (
         <>
-          {Array.from({ length: packetCount }, (_, index) => {
-            const begin = -((index * duration) / packetCount);
-            const color = toneColor(toneA);
+          <path
+            d={laneAPath}
+            className={`traffic-edge traffic-edge--halo ${toneClass(toneA)} ${classes}`}
+            style={{ strokeWidth: haloStrokeWidth }}
+          />
+          <path
+            d={laneBPath}
+            className={`traffic-edge traffic-edge--halo traffic-edge--ba ${toneClass(toneB)} ${classes}`}
+            style={{ strokeWidth: haloStrokeWidth }}
+          />
+          <path
+            d={laneAPath}
+            className={`traffic-edge traffic-edge--lane ${toneClass(toneA)} ${classes}`}
+            style={{ strokeWidth: laneStrokeWidth }}
+          />
+          <path
+            d={laneBPath}
+            className={`traffic-edge traffic-edge--lane traffic-edge--ba ${toneClass(toneB)} ${classes}`}
+            style={{ strokeWidth: laneStrokeWidth }}
+          />
+
+          {Array.from({ length: chevronCount }, (_, index) => {
+            const begin = -((index * duration) / chevronCount);
             return (
               <g key={`a-to-b-${index}`} style={{ pointerEvents: 'none' }}>
-                <circle r={1.45 * packetScale} fill={color} opacity={0.82} style={{ filter: `drop-shadow(0 0 2px ${color})` }}>
-                  <animateMotion path={path} dur={`${duration}s`} begin={`${begin}s`} repeatCount="indefinite" rotate="auto" calcMode="linear" />
-                </circle>
-                <path d={arrowPath} fill={color} opacity={0.95} style={{ filter: `drop-shadow(0 0 2px ${color})` }}>
-                  <animateMotion path={path} dur={`${duration}s`} begin={`${begin + 0.2}s`} repeatCount="indefinite" rotate="auto" calcMode="linear" />
+                <path d={chevronPath} className={`traffic-chevron ${toneClass(toneA)} ${classes}`}>
+                  <animateMotion
+                    path={laneAPath}
+                    dur={`${duration}s`}
+                    begin={`${begin}s`}
+                    repeatCount="indefinite"
+                    rotate="auto"
+                    calcMode="linear"
+                  />
                 </path>
               </g>
             );
           })}
 
-          {Array.from({ length: packetCount }, (_, index) => {
-            const begin = -((index * duration) / packetCount) - duration / (packetCount * 2);
-            const color = toneColor(toneB, true);
+          {Array.from({ length: chevronCount }, (_, index) => {
+            const begin = -((index * duration) / chevronCount) - duration / (chevronCount * 2);
             return (
               <g key={`b-to-a-${index}`} style={{ pointerEvents: 'none' }}>
-                <circle r={1.35 * packetScale} fill={color} opacity={0.76} style={{ filter: `drop-shadow(0 0 2px ${color})` }}>
-                  <animateMotion path={path} dur={`${duration}s`} begin={`${begin}s`} repeatCount="indefinite" keyPoints="1;0" keyTimes="0;1" calcMode="linear" />
-                </circle>
-                <path d={arrowPath} fill={color} opacity={0.9} style={{ filter: `drop-shadow(0 0 2px ${color})` }}>
-                  <animateMotion path={path} dur={`${duration}s`} begin={`${begin + 0.2}s`} repeatCount="indefinite" rotate="auto-reverse" keyPoints="1;0" keyTimes="0;1" calcMode="linear" />
+                <path d={chevronPath} className={`traffic-chevron traffic-edge--ba ${toneClass(toneB)} ${classes}`}>
+                  <animateMotion
+                    path={laneBPath}
+                    dur={`${duration}s`}
+                    begin={`${begin}s`}
+                    repeatCount="indefinite"
+                    rotate="auto-reverse"
+                    keyPoints="1;0"
+                    keyTimes="0;1"
+                    calcMode="linear"
+                  />
                 </path>
               </g>
             );
@@ -214,12 +270,12 @@ export function TrafficEdge({
             {metricDisplay !== 'NONE' && (
               <>
                 <div className="edge-metric__row">
-                  <span className="edge-metric__arrow">A→B</span>
+                  <span className="edge-metric__swatch" style={{ backgroundColor: colorA }} />
                   {displayThroughput && <strong>{throughputText(aToB.bps)}</strong>}
                   {displayUtilization && <em>{utilizationText(aToB.utilization)}</em>}
                 </div>
                 <div className="edge-metric__row">
-                  <span className="edge-metric__arrow edge-metric__arrow--reverse">B→A</span>
+                  <span className="edge-metric__swatch" style={{ backgroundColor: colorB }} />
                   {displayThroughput && <strong>{throughputText(bToA.bps)}</strong>}
                   {displayUtilization && <em>{utilizationText(bToA.utilization)}</em>}
                 </div>

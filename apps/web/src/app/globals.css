@@ -1780,6 +1780,13 @@ button {
 .edge-metric__arrow--reverse {
   color: #a98de8;
 }
+.edge-metric__swatch {
+  width: 7px;
+  height: 7px;
+  flex: none;
+  border-radius: 2px;
+  align-self: center;
+}
 .edge-metric strong {
   color: #c8dae2;
   text-align: right;
