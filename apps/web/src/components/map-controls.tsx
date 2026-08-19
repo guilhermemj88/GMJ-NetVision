@@ -150,6 +150,7 @@ export function MapControls() {
           {(
             [
               ['showTraffic', 'Tráfego'],
+              ['showTrafficAnimation', 'Animação'],
               ['showUtilization', 'Utilização'],
               ['showLabels', 'Labels'],
               ['showOffline', 'Offline'],

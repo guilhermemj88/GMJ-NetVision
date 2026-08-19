@@ -125,6 +125,7 @@ const mapSettingsSchema = z.object({
     showLabels: z.boolean().optional(),
     showOffline: z.boolean().optional(),
     showInterfaces: z.boolean().optional(),
+    showTrafficAnimation: z.boolean().optional(),
   }).optional(),
   viewport: z.object({ x: z.number(), y: z.number(), zoom: z.number().positive() }).optional(),
   nodeScale: z.number().min(50).max(200).optional(),

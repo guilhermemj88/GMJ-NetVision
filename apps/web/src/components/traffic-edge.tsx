@@ -17,6 +17,7 @@ export interface TrafficEdgeData extends Record<string, unknown> {
   showTraffic: boolean;
   showUtilization: boolean;
   showLabels: boolean;
+  showTrafficAnimation: boolean;
   displayStyle: LinkDisplayStyle;
   metricDisplay: LinkMetricDisplay;
   related: boolean;
@@ -83,6 +84,17 @@ function flowGlow(level: FlowLevel): number {
     case 'down':
     case 'unknown': return 1.5;
     default: return 2.5;
+  }
+}
+
+function staticOpacity(level: FlowLevel): number {
+  switch (level) {
+    case 'critical': return 0.92;
+    case 'high': return 0.78;
+    case 'attention': return 0.66;
+    case 'down':
+    case 'unknown': return 0.5;
+    default: return 0.55;
   }
 }
 
@@ -179,6 +191,8 @@ interface ChevronWaveProps {
   peak: number;
   waveWidth: number;
   strokeWidth: number;
+  animated: boolean;
+  staticOpacity: number;
 }
 
 function ChevronWave({
@@ -193,6 +207,8 @@ function ChevronWave({
   peak,
   waveWidth,
   strokeWidth,
+  animated,
+  staticOpacity,
 }: ChevronWaveProps) {
   const glowFilter = `drop-shadow(0 0 ${glow}px ${color})`;
   const keyTimes = `0; ${0.5 - waveWidth}; 0.5; ${0.5 + waveWidth}; 1`;
@@ -211,19 +227,21 @@ function ChevronWave({
             d={chevronPath}
             className="traffic-chevron"
             transform={`translate(${point.x} ${point.y}) rotate(${angle})`}
-            opacity={base}
+            opacity={animated ? base : staticOpacity}
             style={{ stroke: color, color, strokeWidth, filter: glowFilter }}
           >
-            <animate
-              attributeName="opacity"
-              values={values}
-              keyTimes={keyTimes}
-              keySplines={keySplines}
-              dur={`${duration}s`}
-              begin={`${begin}s`}
-              repeatCount="indefinite"
-              calcMode="spline"
-            />
+            {animated && (
+              <animate
+                attributeName="opacity"
+                values={values}
+                keyTimes={keyTimes}
+                keySplines={keySplines}
+                dur={`${duration}s`}
+                begin={`${begin}s`}
+                repeatCount="indefinite"
+                calcMode="spline"
+              />
+            )}
           </path>
         );
       })}
@@ -258,6 +276,7 @@ export function TrafficEdge({
     showTraffic,
     showUtilization,
     showLabels,
+    showTrafficAnimation,
     related,
     emphasized,
     linkScale,
@@ -364,6 +383,8 @@ export function TrafficEdge({
             peak={wavePeak}
             waveWidth={waveWidth}
             strokeWidth={chevronStrokeWidth}
+            animated={showTrafficAnimation}
+            staticOpacity={staticOpacity(levelA)}
           />
           <ChevronWave
             idPrefix="b-to-a"
@@ -377,6 +398,8 @@ export function TrafficEdge({
             peak={wavePeak}
             waveWidth={waveWidth}
             strokeWidth={chevronStrokeWidth}
+            animated={showTrafficAnimation}
+            staticOpacity={staticOpacity(levelB)}
           />
         </>
       )}

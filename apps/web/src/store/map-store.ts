@@ -110,6 +110,7 @@ const preferenceDefaults: MapPreferences = {
   showLabels: true,
   showOffline: true,
   showInterfaces: false,
+  showTrafficAnimation: true,
 };
 
 const rotationDefaults: NocRotationState = {

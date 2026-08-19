@@ -367,6 +367,7 @@ export const demoMap: NetworkMap = {
       showLabels: true,
       showOffline: true,
       showInterfaces: false,
+      showTrafficAnimation: true,
     },
     viewport: { x: 0, y: 0, zoom: 0.8 },
     nodeScale: 100,

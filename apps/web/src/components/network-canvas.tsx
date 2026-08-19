@@ -168,6 +168,7 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
           showTraffic: preferences.showTraffic,
           showUtilization: preferences.showUtilization,
           showLabels: preferences.showLabels,
+          showTrafficAnimation: preferences.showTrafficAnimation,
           displayStyle: map.settings.linkDisplayStyle,
           metricDisplay: map.settings.linkMetricDisplay,
           linkScale: map.settings.linkScale,
@@ -177,7 +178,7 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
         },
       }];
     });
-  }, [domainNodes, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, selection]);
+  }, [domainNodes, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, preferences.showTrafficAnimation, selection]);
 
   const [nodes, setNodes] = useNodesState<MapFlowNode>([]);
   const [edges, setEdges] = useEdgesState<TrafficFlowEdge>([]);

@@ -68,6 +68,7 @@ const blankSettings: MapSettings = {
     showLabels: true,
     showOffline: true,
     showInterfaces: false,
+    showTrafficAnimation: true,
   },
   viewport: { x: 0, y: 0, zoom: 1 },
   nodeScale: 100,

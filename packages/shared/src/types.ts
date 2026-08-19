@@ -134,7 +134,7 @@ export interface DiscoveredNeighbor {
 export interface DiscoveryReview { deviceId: string; method: DiscoveryMethod; neighbors: DiscoveredNeighbor[]; warnings: string[]; }
 export interface CreateLinkInput { sourceDeviceId?: string | null; sourceInterfaceId?: string | null; targetDeviceId?: string | null; targetInterfaceId?: string | null; sourceNodeId?: string | null; targetNodeId?: string | null; capacityBps: number; autoCapacityBps: number; capacitySource: CapacitySource; label: string; metricSource: MetricSource; visualStyle: LinkDisplayStyle | null; metricDisplay: LinkMetricDisplay | null; }
 export interface CreateGenericNodeInput { type: string; label: string; position: Position; }
-export interface MapPreferences { showTraffic: boolean; showUtilization: boolean; showLabels: boolean; showOffline: boolean; showInterfaces: boolean; }
+export interface MapPreferences { showTraffic: boolean; showUtilization: boolean; showLabels: boolean; showOffline: boolean; showInterfaces: boolean; showTrafficAnimation: boolean; }
 
 export type LldpConfidence = 'CONFIRMED' | 'PROBABLE' | 'AMBIGUOUS' | 'UNKNOWN_NEIGHBOR';
 export type LldpApplyAction = 'CREATE_LINK' | 'IGNORE';
