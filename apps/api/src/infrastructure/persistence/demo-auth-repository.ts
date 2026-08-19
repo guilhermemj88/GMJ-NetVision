@@ -32,6 +32,10 @@ export class DemoAuthRepository implements AuthRepository {
     return user && user.enabled ? user : null;
   }
 
+  async findUserById(id: string): Promise<AuthUserRecord | null> {
+    return this.users.get(id) ?? null;
+  }
+
   async createSession(userId: string, expiresAt: Date): Promise<{ token: string }> {
     const token = randomToken();
     this.sessions.set(hashToken(token), { userId, expiresAt });
@@ -72,5 +76,52 @@ export class DemoAuthRepository implements AuthRepository {
 
   async countUsers(): Promise<number> {
     return this.users.size;
+  }
+
+  async listUsers(): Promise<AuthUserRecord[]> {
+    return [...this.users.values()].sort((left, right) =>
+      left.username.localeCompare(right.username, 'pt-BR'),
+    );
+  }
+
+  async createUser(input: {
+    username: string;
+    email: string;
+    name: string;
+    passwordHash: string;
+    role: AuthUserRecord['role'];
+    enabled?: boolean;
+  }): Promise<AuthUserRecord> {
+    const user: AuthUserRecord = {
+      id: `user-${input.username}`,
+      username: input.username,
+      email: input.email,
+      name: input.name,
+      role: input.role,
+      enabled: input.enabled ?? true,
+      passwordHash: input.passwordHash,
+    };
+    this.users.set(user.id, user);
+    return user;
+  }
+
+  async updateUser(
+    id: string,
+    input: {
+      email?: string;
+      name?: string;
+      role?: AuthUserRecord['role'];
+      enabled?: boolean;
+      passwordHash?: string;
+    },
+  ): Promise<AuthUserRecord | null> {
+    const user = this.users.get(id);
+    if (!user) return null;
+    if (input.email !== undefined) user.email = input.email;
+    if (input.name !== undefined) user.name = input.name;
+    if (input.role !== undefined) user.role = input.role;
+    if (input.enabled !== undefined) user.enabled = input.enabled;
+    if (input.passwordHash !== undefined) user.passwordHash = input.passwordHash;
+    return user;
   }
 }

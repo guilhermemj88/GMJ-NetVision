@@ -33,6 +33,7 @@ export type OpenPanel =
   | 'maps'
   | 'rotation'
   | 'public-links'
+  | 'users'
   | null;
 export type WorkspaceView = 'MAP' | 'HOSTS';
 

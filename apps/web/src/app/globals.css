@@ -3097,6 +3097,82 @@ label > small {
   color: #627680;
   font-size: 8px;
 }
+.users-create-actions {
+  display: flex;
+  align-items: flex-end;
+}
+.users-create-actions .nv-button {
+  width: 100%;
+  justify-content: center;
+}
+.users-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.user-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.4fr) 74px 140px 150px auto auto;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 12px;
+  border: 1px solid #273942;
+  border-radius: 4px;
+  background: #111a21;
+}
+.user-row__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.user-row__identity strong {
+  color: #c2d2d9;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-row__identity span {
+  color: #6f8793;
+  font: 9px var(--font-mono);
+}
+.user-row__identity small {
+  color: #546a75;
+  font-size: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.user-row select,
+.user-row input {
+  height: 32px;
+}
+.user-row .users-success,
+.user-row .users-error {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.users-empty {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 16px;
+  border: 1px dashed #2a404a;
+  border-radius: 4px;
+  color: #67808b;
+  font-size: 10px;
+}
+.users-success {
+  margin: 8px 0 0;
+  color: #67c98a;
+  font-size: 9px;
+}
+.users-error {
+  margin: 8px 0 0;
+  color: #e38585;
+  font-size: 9px;
+}
 .map-manager {
   min-height: 420px;
   display: grid;

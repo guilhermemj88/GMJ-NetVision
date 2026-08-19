@@ -14,11 +14,12 @@ import type {
   PublicViewResponse,
   PublicViewType,
   UpdateMapInput,
+  UpdateUserInput,
 } from '@gmj/shared';
 import type { LldpSnmpTargetProvider, LldpSshSessionFactory, TopologyDiscoveryAdapter, TopologyPreviewStore } from './domain/ports';
 import { CredentialVault } from './application/credential-vault';
 import { DiscoveryService } from './application/discovery-service';
-import { AuthService, randomToken } from './application/auth-service';
+import { AuthService, randomToken, UserAlreadyExistsError } from './application/auth-service';
 import { TopologyApplyService } from './application/topology-apply-service';
 import { TopologyPreviewService } from './application/topology-preview-service';
 import { config } from './config';
@@ -79,6 +80,28 @@ const genericNodeSchema = z.object({
 const loginSchema = z.object({
   usernameOrEmail: z.string().min(1).max(255),
   password: z.string().min(1).max(1024),
+});
+const createUserSchema = z.object({
+  username: z
+    .string()
+    .min(3)
+    .max(64)
+    .regex(/^[a-zA-Z0-9._-]+$/, 'Usuário deve conter apenas letras, números, pontos, traços e underscores'),
+  email: z.string().email().max(255),
+  name: z.string().min(1).max(120),
+  password: z.string().min(6).max(1024),
+  role: z.enum(['ADMIN', 'OPERATOR', 'VIEWER']),
+});
+const updateUserSchema = z.object({
+  email: z.string().email().max(255).optional(),
+  name: z.string().min(1).max(120).optional(),
+  role: z.enum(['ADMIN', 'OPERATOR', 'VIEWER']).optional(),
+  enabled: z.boolean().optional(),
+  password: z.string().min(6).max(1024).optional(),
+});
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(1024),
+  newPassword: z.string().min(6).max(1024),
 });
 const publicViewSchema = z.object({
   name: z.string().min(1).max(120),
@@ -217,7 +240,21 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   registerHostRoutes(app, { legacyMaps, mapMembership: maps, hosts, discovery, snmp, ssh, zabbix });
 
   app.addHook('onReady', async () => {
-    if (config.DEMO_MODE) await auth.ensureDemoAdmin(config.DEMO_ADMIN_PASSWORD);
+    if (config.DEMO_MODE) {
+      await auth.ensureDefaultAdmin({
+        username: 'admin',
+        email: 'admin@netvision.local',
+        name: 'Administrador',
+        password: config.DEMO_ADMIN_PASSWORD,
+      });
+    } else {
+      await auth.ensureDefaultAdmin({
+        username: config.DEFAULT_ADMIN_USERNAME,
+        email: config.DEFAULT_ADMIN_EMAIL,
+        name: config.DEFAULT_ADMIN_NAME,
+        password: config.DEFAULT_ADMIN_PASSWORD,
+      });
+    }
     if (productionMaps && !(await productionMaps.listMaps()).length) {
       await productionMaps.createMap({
         name: 'Mapa Principal',
@@ -280,6 +317,58 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     const user = await auth.userForToken(request.cookies.netvision_session);
     if (!user) return reply.code(401).send({ message: 'Não autenticado' });
     return { user };
+  });
+
+  // ---- User management (ADMIN only) ----
+  const currentUser = (request: unknown): AuthUser | null => (request as { user?: AuthUser }).user ?? null;
+  const isAdmin = (request: unknown): boolean => currentUser(request)?.role === 'ADMIN';
+
+  app.get('/api/users', async (request, reply) => {
+    if (!isAdmin(request)) return reply.code(403).send({ message: 'Apenas administradores' });
+    return auth.listUsers();
+  });
+
+  app.post('/api/users', async (request, reply) => {
+    if (!isAdmin(request)) return reply.code(403).send({ message: 'Apenas administradores' });
+    try {
+      return reply.code(201).send(await auth.createUser(createUserSchema.parse(request.body)));
+    } catch (error) {
+      if (error instanceof UserAlreadyExistsError) {
+        return reply.code(409).send({ message: error.message });
+      }
+      throw error;
+    }
+  });
+
+  app.patch('/api/users/:id', async (request, reply) => {
+    if (!isAdmin(request)) return reply.code(403).send({ message: 'Apenas administradores' });
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+    try {
+      const updated = await auth.updateUser(id, updateUserSchema.parse(request.body) as UpdateUserInput);
+      return updated ?? reply.code(404).send({ message: 'Usuário não encontrado' });
+    } catch (error) {
+      if (error instanceof UserAlreadyExistsError) {
+        return reply.code(409).send({ message: error.message });
+      }
+      throw error;
+    }
+  });
+
+  app.post('/api/users/:id/password', async (request, reply) => {
+    if (!isAdmin(request)) return reply.code(403).send({ message: 'Apenas administradores' });
+    const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
+    const { password } = z.object({ password: z.string().min(6).max(1024) }).parse(request.body);
+    const changed = await auth.setUserPassword(id, password);
+    return changed ? { ok: true } : reply.code(404).send({ message: 'Usuário não encontrado' });
+  });
+
+  app.post('/api/users/me/password', async (request, reply) => {
+    const user = currentUser(request);
+    if (!user) return reply.code(401).send({ message: 'Não autenticado' });
+    const { currentPassword, newPassword } = changePasswordSchema.parse(request.body);
+    const changed = await auth.changeOwnPassword(user.id, currentPassword, newPassword);
+    if (!changed) return reply.code(401).send({ message: 'Senha atual inválida' });
+    return { ok: true };
   });
 
   // ---- Public read-only views ----

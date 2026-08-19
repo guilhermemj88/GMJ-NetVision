@@ -10,18 +10,20 @@ import {
   useState,
   type ReactNode,
 } from 'react';
-import { getMe, logout as logoutRequest } from '@/lib/api';
-import type { AuthUser } from '@gmj/shared';
+import { getMe, login as loginRequest, logout as logoutRequest } from '@/lib/api';
+import type { AuthUser, LoginInput } from '@gmj/shared';
 
 interface AuthState {
   user: AuthUser | null;
   loading: boolean;
+  signIn: (input: LoginInput) => Promise<void>;
   logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState>({
   user: null,
   loading: true,
+  signIn: async () => undefined,
   logout: async () => undefined,
 });
 
@@ -45,39 +47,57 @@ export function Providers({ children }: { children: ReactNode }) {
   );
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [checkedPath, setCheckedPath] = useState<string | null>(null);
   const pathname = usePathname();
   const router = useRouter();
-
-  const refresh = useCallback(async () => {
-    try {
-      const response = await getMe();
-      setUser(response.user);
-    } catch {
-      setUser(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   useEffect(() => {
     if (isPublicPath(pathname)) {
       setUser(null);
       setLoading(false);
+      setCheckedPath(pathname);
       return;
     }
-    void refresh();
-  }, [pathname, refresh]);
+
+    let cancelled = false;
+    setLoading(true);
+    getMe()
+      .then((response) => {
+        if (cancelled) return;
+        setUser(response.user);
+        setCheckedPath(pathname);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setUser(null);
+        setCheckedPath(pathname);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
 
   useEffect(() => {
-    if (!loading && !user && !isPublicPath(pathname)) {
+    if (!loading && checkedPath === pathname && !user && !isPublicPath(pathname)) {
       router.replace('/login');
     }
-  }, [loading, user, pathname, router]);
+  }, [loading, checkedPath, user, pathname, router]);
+
+  const signIn = useCallback(async (input: LoginInput) => {
+    const response = await loginRequest(input);
+    setUser(response.user);
+    setCheckedPath('/');
+    setLoading(false);
+  }, []);
 
   const logout = useCallback(async () => {
     await logoutRequest().catch(() => undefined);
     setUser(null);
     setLoading(false);
+    setCheckedPath('/login');
     router.replace('/login');
   }, [router]);
 
@@ -92,7 +112,9 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <QueryClientProvider client={client}>
-      <AuthContext.Provider value={{ user, loading, logout }}>{children}</AuthContext.Provider>
+      <AuthContext.Provider value={{ user, loading, signIn, logout }}>
+        {children}
+      </AuthContext.Provider>
     </QueryClientProvider>
   );
 }

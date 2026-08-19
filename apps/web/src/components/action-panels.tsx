@@ -53,6 +53,7 @@ import { GENERIC_NODE_TYPES } from '@/lib/device-appearance';
 import { useMapStore } from '@/store/map-store';
 import { AssistedDiscoveryReview } from './assisted-discovery-review';
 import { PublicLinksPanel } from './public-links-manager';
+import { UsersPanel } from './users-manager';
 
 export function ActionPanels() {
   const panel = useMapStore((state) => state.panel);
@@ -64,6 +65,7 @@ export function ActionPanels() {
   if (panel === 'settings') return <SettingsPanel />;
   if (panel === 'maps') return <MapManagerPanel />;
   if (panel === 'rotation') return <RotationPanel />;
+  if (panel === 'users') return <UsersPanel />;
   return null;
 }
 

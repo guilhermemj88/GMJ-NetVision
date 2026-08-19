@@ -219,6 +219,36 @@ export interface LoginInput {
   password: string;
 }
 
+export interface UserAccount {
+  id: string;
+  username: string;
+  email: string;
+  name: string;
+  role: Role;
+  enabled: boolean;
+}
+
+export interface CreateUserInput {
+  username: string;
+  email: string;
+  name: string;
+  password: string;
+  role: Role;
+}
+
+export interface UpdateUserInput {
+  email?: string;
+  name?: string;
+  role?: Role;
+  enabled?: boolean;
+  password?: string;
+}
+
+export interface ChangePasswordInput {
+  currentPassword: string;
+  newPassword: string;
+}
+
 export interface PublicView {
   id: string;
   token: string;

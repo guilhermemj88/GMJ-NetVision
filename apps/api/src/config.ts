@@ -18,7 +18,11 @@ const envSchema = z.object({
   SNMP_POLL_INTERVAL_SECONDS: z.coerce.number().int().min(15).default(60),
   OPTICAL_POLL_INTERVAL_SECONDS: z.coerce.number().int().min(60).default(300),
   SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(7),
-  DEMO_ADMIN_PASSWORD: z.string().min(6).default('netvision'),
+  DEMO_ADMIN_PASSWORD: z.string().min(1).default('admin'),
+  DEFAULT_ADMIN_USERNAME: z.string().min(1).default('admin'),
+  DEFAULT_ADMIN_EMAIL: z.string().email().default('admin@netvision.local'),
+  DEFAULT_ADMIN_NAME: z.string().default('Administrador'),
+  DEFAULT_ADMIN_PASSWORD: z.string().min(1).default('admin'),
 });
 
 const parsed = envSchema.parse(process.env);

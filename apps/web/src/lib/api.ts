@@ -1,11 +1,13 @@
 import {
   type AddDeviceResult,
   type AuthUser,
+  type ChangePasswordInput,
   type CreateLinkInput,
   type CreateMapInput,
   type CreateHostInput,
   type CreateGenericNodeInput,
   type CreatePublicViewInput,
+  type CreateUserInput,
   type AssistedDiscoveryPreview,
   type ConnectionTestResult,
   type DiscoveryApplyResult,
@@ -30,6 +32,8 @@ import {
   type UpdateMapInput,
   type UpdateHostInput,
   type UpdatePublicViewInput,
+  type UpdateUserInput,
+  type UserAccount,
   type ZabbixImportPreview,
   type ZabbixImportResult,
 } from '@gmj/shared';
@@ -60,6 +64,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const response = await fetch(`${apiUrl()}${path}`, {
     ...init,
+    credentials: 'include',
     headers,
   });
   if (!response.ok) {
@@ -87,6 +92,38 @@ export function logout() {
 
 export function getMe() {
   return request<{ user: AuthUser }>('/api/auth/me');
+}
+
+export function listUsers() {
+  return request<UserAccount[]>('/api/users');
+}
+
+export function createUser(input: CreateUserInput) {
+  return request<UserAccount>('/api/users', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateUser(id: string, input: UpdateUserInput) {
+  return request<UserAccount>(`/api/users/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function setUserPassword(id: string, password: string) {
+  return request<{ ok: boolean }>(`/api/users/${id}/password`, {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  });
+}
+
+export function changeOwnPassword(input: ChangePasswordInput) {
+  return request<{ ok: boolean }>('/api/users/me/password', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export function getPublicView(token: string) {

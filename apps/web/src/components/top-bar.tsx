@@ -11,6 +11,7 @@ import {
   Server,
   Settings,
   Sparkles,
+  Users,
 } from 'lucide-react';
 import { useMapStore } from '@/store/map-store';
 import { useAuth } from '@/app/providers';
@@ -126,6 +127,16 @@ export function TopBar() {
           >
             <Settings size={16} />
           </Button>
+          {user?.role === 'ADMIN' && (
+            <Button
+              compact
+              variant="ghost"
+              aria-label="Usuários e senhas"
+              onClick={() => setPanel('users')}
+            >
+              <Users size={15} /> Usuários
+            </Button>
+          )}
         </>
       )}
       <div className="topbar__divider" />

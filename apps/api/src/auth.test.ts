@@ -25,7 +25,7 @@ describe('Auth and public views', () => {
     const login = await app.inject({
       method: 'POST',
       url: '/api/auth/login',
-      payload: { usernameOrEmail: 'admin', password: 'netvision' },
+      payload: { usernameOrEmail: 'admin', password: 'admin' },
     });
     expect(login.statusCode).toBe(200);
     cookie = sessionCookie(login.headers);
@@ -47,7 +47,7 @@ describe('Auth and public views', () => {
     const response = await app.inject({
       method: 'POST',
       url: '/api/auth/login',
-      payload: { usernameOrEmail: 'admin', password: 'netvision' },
+      payload: { usernameOrEmail: 'admin', password: 'admin' },
     });
     expect(response.statusCode).toBe(200);
     expect(response.json().user).toMatchObject({ username: 'admin', role: 'ADMIN' });

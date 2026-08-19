@@ -3,10 +3,11 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { LoaderCircle, LockKeyhole, UserRound } from 'lucide-react';
-import { login } from '@/lib/api';
+import { useAuth } from '@/app/providers';
 
 export default function LoginPage() {
   const router = useRouter();
+  const { signIn } = useAuth();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -18,7 +19,7 @@ export default function LoginPage() {
     setPending(true);
     setError(null);
     try {
-      await login({ usernameOrEmail: identifier.trim(), password });
+      await signIn({ usernameOrEmail: identifier.trim(), password });
       router.replace('/');
     } catch {
       setError('Usuário ou senha inválidos.');
