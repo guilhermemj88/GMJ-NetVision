@@ -7,9 +7,10 @@ import type { NetworkMap } from '@gmj/shared';
 import { useMapStore } from '@/store/map-store';
 import { NetworkCanvas } from './network-canvas';
 import { NocControls } from './noc-controls';
+import { ContextDrawer } from './context-drawer';
 
 export function PublicViewer({ token, kind }: { token: string; kind: 'MAP' | 'NOC' }) {
-  const setMap = useMapStore((state) => state.setMap);
+  const setPublicMap = useMapStore((state) => state.setPublicMap);
   const setReadOnly = useMapStore((state) => state.setReadOnly);
   const loadPublicMaps = useMapStore((state) => state.loadPublicMaps);
   const startRotation = useMapStore((state) => state.startRotation);
@@ -25,8 +26,7 @@ export function PublicViewer({ token, kind }: { token: string; kind: 'MAP' | 'NO
         const view = await getPublicView(token);
         if (cancelled) return;
         if (kind === 'MAP' && view.type === 'MAP' && view.map) {
-          setReadOnly(true);
-          setMap(view.map as unknown as NetworkMap);
+          setPublicMap(view.map as unknown as NetworkMap);
           setReady(true);
           return;
         }
@@ -55,7 +55,7 @@ export function PublicViewer({ token, kind }: { token: string; kind: 'MAP' | 'NO
     return () => {
       cancelled = true;
     };
-  }, [token, kind, setMap, setReadOnly, loadPublicMaps, startRotation]);
+  }, [token, kind, setPublicMap, setReadOnly, loadPublicMaps, startRotation]);
 
   if (error) {
     return (
@@ -79,6 +79,7 @@ export function PublicViewer({ token, kind }: { token: string; kind: 'MAP' | 'NO
     <div className="netvision-app public-viewer">
       <ReactFlowProvider>
         <NetworkCanvas readOnly />
+        <ContextDrawer />
       </ReactFlowProvider>
       {noc && <NocControls />}
     </div>

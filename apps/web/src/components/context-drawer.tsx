@@ -43,11 +43,14 @@ export function ContextDrawer() {
   const map = useMapStore((state) => state.map);
   const selection = useMapStore((state) => state.selection);
   const setSelection = useMapStore((state) => state.setSelection);
+  const readOnly = useMapStore((state) => state.readOnly);
   if (!map || !selection) return null;
 
   if (selection.kind === 'link') {
     const link = map.links.find((item) => item.id === selection.id);
-    return link ? <LinkDrawer link={link} onClose={() => setSelection(null)} /> : null;
+    return link ? (
+      <LinkDrawer link={link} readOnly={readOnly} onClose={() => setSelection(null)} />
+    ) : null;
   }
   if (selection.kind === 'interface') {
     const device = map.devices.find((item) => item.id === selection.deviceId);
@@ -56,6 +59,7 @@ export function ContextDrawer() {
       <InterfaceDrawer
         networkInterface={networkInterface}
         deviceName={device.name}
+        readOnly={readOnly}
         onBack={() => setSelection({ kind: 'device', id: device.id })}
         onClose={() => setSelection(null)}
       />
@@ -66,7 +70,9 @@ export function ContextDrawer() {
     return node ? <GenericNodeDrawer node={node} onClose={() => setSelection(null)} /> : null;
   }
   const device = map.devices.find((item) => item.id === selection.id);
-  return device ? <DeviceDrawer deviceId={device.id} onClose={() => setSelection(null)} /> : null;
+  return device ? (
+    <DeviceDrawer deviceId={device.id} readOnly={readOnly} onClose={() => setSelection(null)} />
+  ) : null;
 }
 
 function DrawerShell({
@@ -106,7 +112,15 @@ function DrawerShell({
   );
 }
 
-function DeviceDrawer({ deviceId, onClose }: { deviceId: string; onClose: () => void }) {
+function DeviceDrawer({
+  deviceId,
+  readOnly,
+  onClose,
+}: {
+  deviceId: string;
+  readOnly: boolean;
+  onClose: () => void;
+}) {
   const [tab, setTab] = useState<'overview' | 'interfaces' | 'monitoring' | 'access' | 'discovery'>(
     'overview',
   );
@@ -118,47 +132,52 @@ function DeviceDrawer({ deviceId, onClose }: { deviceId: string; onClose: () => 
     device.interfaces.filter((item) => item.operStatus === status).length;
   const totalRx = device.interfaces.reduce((sum, item) => sum + item.rxBps, 0);
   const totalTx = device.interfaces.reduce((sum, item) => sum + item.txBps, 0);
+  const activeTab = readOnly && (tab === 'access' || tab === 'discovery') ? 'overview' : tab;
 
   return (
     <DrawerShell eyebrow="EQUIPAMENTO" title={device.name} status={device.status} onClose={onClose}>
       <div className="drawer-tabs">
         <button
           type="button"
-          className={tab === 'overview' ? 'is-active' : ''}
+          className={activeTab === 'overview' ? 'is-active' : ''}
           onClick={() => setTab('overview')}
         >
           <Activity size={14} /> Visão geral
         </button>
         <button
           type="button"
-          className={tab === 'interfaces' ? 'is-active' : ''}
+          className={activeTab === 'interfaces' ? 'is-active' : ''}
           onClick={() => setTab('interfaces')}
         >
           <List size={14} /> Interfaces <em>{device.interfaces.length}</em>
         </button>
         <button
           type="button"
-          className={tab === 'monitoring' ? 'is-active' : ''}
+          className={activeTab === 'monitoring' ? 'is-active' : ''}
           onClick={() => setTab('monitoring')}
         >
           <CircleGauge size={14} /> Monitoring
         </button>
-        <button
-          type="button"
-          className={tab === 'access' ? 'is-active' : ''}
-          onClick={() => setTab('access')}
-        >
-          <ServerCog size={14} /> Access
-        </button>
-        <button
-          type="button"
-          className={tab === 'discovery' ? 'is-active' : ''}
-          onClick={() => setTab('discovery')}
-        >
-          <Radar size={14} /> Discovery
-        </button>
+        {!readOnly && (
+          <button
+            type="button"
+            className={activeTab === 'access' ? 'is-active' : ''}
+            onClick={() => setTab('access')}
+          >
+            <ServerCog size={14} /> Access
+          </button>
+        )}
+        {!readOnly && (
+          <button
+            type="button"
+            className={activeTab === 'discovery' ? 'is-active' : ''}
+            onClick={() => setTab('discovery')}
+          >
+            <Radar size={14} /> Discovery
+          </button>
+        )}
       </div>
-      {tab === 'overview' ? (
+      {activeTab === 'overview' ? (
         <>
           <section className="drawer-section">
             <SectionTitle icon={<ServerCog size={14} />} label="IDENTIDADE" />
@@ -226,20 +245,22 @@ function DeviceDrawer({ deviceId, onClose }: { deviceId: string; onClose: () => 
             />
           </section>
           <div className="drawer-actions">
-            <Button variant="secondary" onClick={() => setTab('discovery')}>
-              <Radar size={15} /> Descobrir vizinhos
-            </Button>
+            {!readOnly && (
+              <Button variant="secondary" onClick={() => setTab('discovery')}>
+                <Radar size={15} /> Descobrir vizinhos
+              </Button>
+            )}
             <Button variant="ghost" onClick={() => setTab('interfaces')}>
               Ver interfaces <ChevronRight size={15} />
             </Button>
           </div>
         </>
-      ) : tab === 'interfaces' ? (
+      ) : activeTab === 'interfaces' ? (
         <InterfaceList
           interfaces={device.interfaces}
           onSelect={(item) => setSelection({ kind: 'interface', id: item.id, deviceId: device.id })}
         />
-      ) : tab === 'monitoring' ? (
+      ) : activeTab === 'monitoring' ? (
         <>
           <section className="drawer-section">
             <SectionTitle icon={<Activity size={14} />} label="FONTES DE MONITORAMENTO" />
@@ -280,7 +301,7 @@ function DeviceDrawer({ deviceId, onClose }: { deviceId: string; onClose: () => 
             </div>
           </section>
         </>
-      ) : tab === 'access' ? (
+      ) : activeTab === 'access' ? (
         <section className="drawer-section drawer-access">
           <SectionTitle icon={<ServerCog size={14} />} label="ACESSOS COMPLEMENTARES" />
           <Info
@@ -365,11 +386,13 @@ function InterfaceList({
 function InterfaceDrawer({
   networkInterface: item,
   deviceName,
+  readOnly,
   onBack,
   onClose,
 }: {
   networkInterface: NetworkInterface;
   deviceName: string;
+  readOnly: boolean;
   onBack: () => void;
   onClose: () => void;
 }) {
@@ -424,12 +447,20 @@ function InterfaceDrawer({
           <Counter label="Discards TX agora" value={item.txDiscards} total={item.txDiscardsTotal} />
         </div>
       </section>
-      <MetricCharts networkInterface={item} />
+      {!readOnly && <MetricCharts networkInterface={item} />}
     </DrawerShell>
   );
 }
 
-function LinkDrawer({ link, onClose }: { link: NetworkLink; onClose: () => void }) {
+function LinkDrawer({
+  link,
+  readOnly,
+  onClose,
+}: {
+  link: NetworkLink;
+  readOnly: boolean;
+  onClose: () => void;
+}) {
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(link.label);
   const initialUnit = link.capacityBps >= 1_000_000_000 ? 'GBPS' : 'MBPS';
@@ -563,7 +594,7 @@ function LinkDrawer({ link, onClose }: { link: NetworkLink; onClose: () => void 
           <Info label="Discards RX / TX" value={`${link.rxDiscards} / ${link.txDiscards}`} />
         </div>
       </section>
-      {editing && (
+      {editing && !readOnly && (
         <section className="drawer-section edit-link-form">
           <label>
             Label
@@ -636,7 +667,7 @@ function LinkDrawer({ link, onClose }: { link: NetworkLink; onClose: () => void 
           </div>
         </section>
       )}
-      {editMode && !editing && (
+      {editMode && !readOnly && !editing && (
         <div className="drawer-actions">
           <Button variant="secondary" onClick={() => setEditing(true)}>
             <Pencil size={15} /> Editar enlace

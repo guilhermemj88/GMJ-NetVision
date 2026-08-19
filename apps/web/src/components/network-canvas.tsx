@@ -83,6 +83,13 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
     if (mapQuery.data && (!map || map.id !== mapQuery.data.id)) setMap(mapQuery.data);
   }, [map, mapQuery.data, readOnly, setMap]);
 
+  const hasSavedViewport = Boolean(
+    map?.settings.viewport &&
+      Number.isFinite(map.settings.viewport.x) &&
+      Number.isFinite(map.settings.viewport.y) &&
+      Number.isFinite(map.settings.viewport.zoom),
+  );
+
   useEffect(() => {
     if (!map) {
       viewportMapId.current = null;
@@ -90,8 +97,10 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
     }
     if (viewportMapId.current === map.id) return;
     viewportMapId.current = map.id;
-    window.setTimeout(() => void flow.setViewport(map.settings.viewport, { duration: 280 }), 30);
-  }, [flow, map]);
+    if (hasSavedViewport) {
+      window.setTimeout(() => void flow.setViewport(map.settings.viewport, { duration: 280 }), 30);
+    }
+  }, [flow, map, hasSavedViewport]);
 
   const domainNodes = useMemo<MapFlowNode[]>(() => {
     if (!map) return [];
@@ -193,22 +202,20 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
 
   const onNodeClick: NodeMouseHandler<MapFlowNode> = useCallback(
     (_event, node) => {
-      if (readOnly) return;
       setSelection(
         node.type === 'generic' ? { kind: 'node', id: node.id } : { kind: 'device', id: node.id },
       );
       if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
     },
-    [readOnly, rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
+    [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
   );
 
   const onEdgeClick: EdgeMouseHandler<TrafficFlowEdge> = useCallback(
     (_event, edge) => {
-      if (readOnly) return;
       setSelection({ kind: 'link', id: edge.id });
       if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
     },
-    [readOnly, rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
+    [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
   );
 
   const onNodeDrag: OnNodeDrag<MapFlowNode> = useCallback(
@@ -279,7 +286,7 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
         connectionMode={ConnectionMode.Loose}
         nodesConnectable={editMode}
         nodesDraggable={editMode}
-        fitView
+        fitView={!hasSavedViewport}
         fitViewOptions={{ padding: 0.16 }}
         minZoom={0.25}
         maxZoom={2.2}
@@ -288,8 +295,9 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
         selectionOnDrag={editMode}
         panOnDrag={!editMode || [1, 2]}
         onMoveEnd={(_event, viewport) => {
+          if (readOnly) return;
           setViewport(viewport);
-          if (map && !readOnly) {
+          if (map) {
             void updateNetworkMap(map.id, { settings: { viewport } }).catch(() => undefined);
           }
         }}

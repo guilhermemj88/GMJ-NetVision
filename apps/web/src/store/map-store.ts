@@ -69,6 +69,7 @@ interface MapState {
   removeMapSummary: (mapId: string) => void;
   setActiveMap: (mapId: string) => void;
   setMap: (map: NetworkMap) => void;
+  setPublicMap: (map: NetworkMap) => void;
   setReadOnly: (value: boolean) => void;
   loadPublicMaps: (maps: NetworkMap[]) => void;
   setView: (view: WorkspaceView) => void;
@@ -240,6 +241,17 @@ export const useMapStore = create<MapState>((set) => ({
       dirty: false,
     });
   },
+  setPublicMap: (map) =>
+    set({
+      map,
+      activeMapId: map.id,
+      preferences: map.settings.filters,
+      readOnly: true,
+      editMode: false,
+      selection: null,
+      panel: null,
+      dirty: false,
+    }),
   setReadOnly: (readOnly) => set({ readOnly }),
   loadPublicMaps: (publicMaps) => set({ publicMaps }),
   setView: (view) => set({ view, editMode: false, selection: null, panel: null }),
