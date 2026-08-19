@@ -3909,12 +3909,17 @@ label > small {
 }
 .public-link-item {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px 12px;
   border: 1px solid #263741;
   border-radius: 6px;
   background: #0d151b;
+}
+.public-link-item__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 .public-link-item.is-disabled {
   opacity: 0.6;
@@ -3943,4 +3948,14 @@ label > small {
 .public-link-item__copy span {
   color: #78929d;
   font: 500 10px var(--font-mono);
+}
+.public-link-item__url {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid #22343e;
+  border-radius: 5px;
+  background: #060b0f;
+  color: #a9c7d3;
+  font: 500 11px var(--font-mono);
 }
