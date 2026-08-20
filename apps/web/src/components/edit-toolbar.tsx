@@ -14,7 +14,13 @@ import {
 import { useMutation } from '@tanstack/react-query';
 import { useReactFlow } from '@xyflow/react';
 import { createAutoLayout } from '@/lib/layout';
-import { deleteDevice, deleteLink, deleteMapNode, savePositions } from '@/lib/api';
+import {
+  deleteDevice,
+  deleteLink,
+  deleteMapNode,
+  savePositions,
+  updateNetworkMap,
+} from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
 
 export function EditToolbar() {
@@ -27,6 +33,7 @@ export function EditToolbar() {
   const removeDevice = useMapStore((state) => state.removeDevice);
   const removeNode = useMapStore((state) => state.removeNode);
   const removeLink = useMapStore((state) => state.removeLink);
+  const setMap = useMapStore((state) => state.setMap);
   const markSaved = useMapStore((state) => state.markSaved);
   const showToast = useMapStore((state) => state.showToast);
   const dirty = useMapStore((state) => state.dirty);
@@ -34,19 +41,23 @@ export function EditToolbar() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!map) return;
-      await savePositions(
+      await updateNetworkMap(map.id, { settings: map.settings });
+      return savePositions(
         map.id,
         map.nodes.map((node) => ({
           nodeId: node.id,
           position: node.position,
+          positionSource: node.positionSource,
           locked: node.locked,
         })),
       );
     },
-    onSuccess: markSaved,
-    onError: () => {
+    onSuccess: (savedMap) => {
+      if (savedMap) setMap(savedMap);
       markSaved();
-      showToast('Posições salvas localmente (API offline)');
+    },
+    onError: () => {
+      showToast('Falha ao salvar mapa no servidor');
     },
   });
 

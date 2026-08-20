@@ -3,6 +3,7 @@ import type {
   CreateHostInput,
   HistoryPeriod,
   HostRecord,
+  InterfaceSearchResult,
   MetricPoint,
   NetworkInterface,
   UpdateHostInput,
@@ -51,6 +52,7 @@ export interface DeviceMetricSampleInput {
 
 export interface HostRepository {
   listHosts(): Promise<HostRecord[]>;
+  searchInterfaces(query: string, limit: number): Promise<InterfaceSearchResult[]>;
   getHost(hostId: string): Promise<HostRecord | null>;
   createHost(input: CreateHostInput, interfaces?: NetworkInterface[]): Promise<HostRecord>;
   updateHost(hostId: string, input: UpdateHostInput): Promise<HostRecord | null>;

@@ -1,5 +1,12 @@
+// @vitest-environment jsdom
+
 import { afterEach, describe, expect, it } from 'vitest';
-import { cloneDemoMaps, type MapSummary, type NetworkMap } from '@gmj/shared';
+import {
+  cloneDemoMaps,
+  type InterfaceSearchResult,
+  type MapSummary,
+  type NetworkMap,
+} from '@gmj/shared';
 import { useMapStore } from './map-store';
 
 const maps: MapSummary[] = ['backbone', 'access'].map((id, index) => ({
@@ -73,7 +80,45 @@ describe('public NOC rotation', () => {
 });
 
 describe('map visual scales', () => {
-  afterEach(() => useMapStore.setState({ map: null, dirty: false }));
+  afterEach(() => {
+    window.localStorage.clear();
+    useMapStore.setState({ map: null, dirty: false });
+  });
+
+  it('uses the backend map and removes stale legacy local geometry', () => {
+    const map = cloneDemoMaps()[0]!;
+    const firstNode = map.nodes[0]!;
+    const backendPosition = { ...firstNode.position };
+    window.localStorage.setItem(
+      `gmj:positions:${map.id}`,
+      JSON.stringify({ [firstNode.id]: { x: 9999, y: 8888 } }),
+    );
+    window.localStorage.setItem(
+      `gmj:settings:${map.id}`,
+      JSON.stringify({ ...map.settings, viewport: { x: 900, y: 800, zoom: 2 } }),
+    );
+
+    useMapStore.getState().setMap(map);
+
+    expect(useMapStore.getState().map?.nodes[0]?.position).toEqual(backendPosition);
+    expect(useMapStore.getState().map?.settings.viewport).toEqual(map.settings.viewport);
+    expect(window.localStorage.getItem(`gmj:positions:${map.id}`)).toBeNull();
+    expect(window.localStorage.getItem(`gmj:settings:${map.id}`)).toBeNull();
+  });
+
+  it('keeps unsaved node movement in memory instead of persistent local storage', () => {
+    const map = cloneDemoMaps()[0]!;
+    const firstNode = map.nodes[0]!;
+    useMapStore.getState().setMap(map);
+
+    useMapStore.getState().moveNode(firstNode.id, { x: 123, y: 456 });
+
+    expect(useMapStore.getState().map?.nodes[0]).toMatchObject({
+      position: { x: 123, y: 456 },
+      positionSource: 'MANUAL',
+    });
+    expect(window.localStorage.getItem(`gmj:positions:${map.id}`)).toBeNull();
+  });
 
   it('clamps independent scales without changing persisted node coordinates', () => {
     const map = cloneDemoMaps()[0]!;
@@ -97,5 +142,80 @@ describe('map visual scales', () => {
     expect(useMapStore.getState().map?.settings.nodeScale).toBe(80);
     useMapStore.getState().setMap(second!);
     expect(useMapStore.getState().map?.settings.nodeScale).toBe(130);
+  });
+});
+
+describe('global interface search navigation', () => {
+  afterEach(() => {
+    useMapStore.setState({
+      activeMapId: null,
+      map: null,
+      selection: null,
+      focusRequest: null,
+      pendingInterfaceNavigation: null,
+      hostDetailRequest: null,
+      view: 'MAP',
+    });
+  });
+
+  function resultFor(map: NetworkMap): InterfaceSearchResult {
+    const node = map.nodes.find((item) => item.deviceId)!;
+    const device = map.devices.find((item) => item.id === node.deviceId)!;
+    const networkInterface = device.interfaces[0]!;
+    return {
+      interfaceId: networkInterface.id,
+      deviceId: device.id,
+      hostname: device.hostname,
+      deviceName: device.name,
+      interfaceName: networkInterface.name,
+      alias: networkInterface.alias,
+      description: networkInterface.description,
+      ifIndex: networkInterface.ifIndex,
+      status: networkInterface.operStatus,
+      ip: device.managementIp,
+      vlan: null,
+      maps: [{ id: map.id, name: map.name }],
+    };
+  }
+
+  it('selects the interface and requests smooth focus on the current map', () => {
+    const map = cloneDemoMaps()[0]!;
+    const result = resultFor(map);
+    useMapStore.getState().setMap(map);
+
+    useMapStore.getState().openInterfaceOnMap(result, map.id);
+
+    expect(useMapStore.getState().selection).toEqual({
+      kind: 'interface',
+      id: result.interfaceId,
+      deviceId: result.deviceId,
+    });
+    expect(useMapStore.getState().focusRequest?.deviceId).toBe(result.deviceId);
+  });
+
+  it('waits for another map to load before opening its interface', () => {
+    const [current, target] = cloneDemoMaps();
+    const result = resultFor(target!);
+    useMapStore.getState().setMap(current!);
+
+    useMapStore.getState().openInterfaceOnMap(result, target!.id);
+    expect(useMapStore.getState().activeMapId).toBe(target!.id);
+    expect(useMapStore.getState().selection).toBeNull();
+
+    useMapStore.getState().setMap(target!);
+    expect(useMapStore.getState().selection).toMatchObject({
+      kind: 'interface',
+      id: result.interfaceId,
+      deviceId: result.deviceId,
+    });
+  });
+
+  it('routes inventory-only results to host details', () => {
+    useMapStore.getState().openHostDetails('host-without-map');
+
+    expect(useMapStore.getState()).toMatchObject({
+      view: 'HOSTS',
+      hostDetailRequest: 'host-without-map',
+    });
   });
 });

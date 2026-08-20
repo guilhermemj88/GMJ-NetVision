@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   CreateHostInput,
@@ -143,6 +143,8 @@ function inputFromHost(host: HostRecord): CreateHostInput {
 
 export function HostsWorkspace() {
   const client = useQueryClient();
+  const hostDetailRequest = useMapStore((state) => state.hostDetailRequest);
+  const clearHostDetailRequest = useMapStore((state) => state.clearHostDetailRequest);
   const hostsQuery = useQuery({ queryKey: ['hosts'], queryFn: () => getHosts() });
   const mapsQuery = useQuery({ queryKey: ['maps'], queryFn: getMaps });
   const [search, setSearch] = useState('');
@@ -152,10 +154,16 @@ export function HostsWorkspace() {
     'hostname',
   );
   const [descending, setDescending] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(hostDetailRequest);
   const [editing, setEditing] = useState<HostRecord | 'new' | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [mapHost, setMapHost] = useState<HostRecord | null>(null);
+
+  useEffect(() => {
+    if (!hostDetailRequest) return;
+    setSelectedId(hostDetailRequest);
+    clearHostDetailRequest();
+  }, [clearHostDetailRequest, hostDetailRequest]);
   const [deleteCandidate, setDeleteCandidate] = useState<HostRecord | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 

@@ -89,6 +89,26 @@ export interface HostRecord extends Device {
   displayName: string; managementIp: string; description: string; notes: string; origin: HostOrigin; useZabbix: boolean; zabbix: ZabbixHostBinding | null; sshEnabled: boolean; ssh: SshAccessSummary | null; snmpEnabled: boolean; snmp: SnmpAccessSummary | null; sourceHealth: Record<SourceKind, SourceHealth>; lastPollingAt: string | null; lastDiscoveryAt: string | null; detectedHostname?: string | null; mapIds: string[]; mapCount: number; createdAt: string;
 }
 
+export interface InterfaceSearchMap {
+  id: string;
+  name: string;
+}
+
+export interface InterfaceSearchResult {
+  interfaceId: string;
+  deviceId: string;
+  hostname: string;
+  deviceName: string;
+  interfaceName: string;
+  alias: string;
+  description: string;
+  ifIndex: number;
+  status: InterfaceStatus;
+  ip: string | null;
+  vlan: number | null;
+  maps: InterfaceSearchMap[];
+}
+
 export interface MapNode { id: string; mapId: string; deviceId: string | null; nodeKind: NodeKind; genericType: string | null; label: string | null; position: Position; locked: boolean; positionSource: PositionSource; }
 export interface AddDeviceResult { device: HostRecord; node: MapNode; }
 export interface DirectionalLinkMetric { bps: number; utilization: number; }
@@ -133,6 +153,7 @@ export interface DiscoveredNeighbor {
 }
 export interface DiscoveryReview { deviceId: string; method: DiscoveryMethod; neighbors: DiscoveredNeighbor[]; warnings: string[]; }
 export interface CreateLinkInput { sourceDeviceId?: string | null; sourceInterfaceId?: string | null; targetDeviceId?: string | null; targetInterfaceId?: string | null; sourceNodeId?: string | null; targetNodeId?: string | null; capacityBps: number; autoCapacityBps: number; capacitySource: CapacitySource; label: string; metricSource: MetricSource; visualStyle: LinkDisplayStyle | null; metricDisplay: LinkMetricDisplay | null; }
+export type UpdateLinkInput = Pick<CreateLinkInput, 'capacityBps' | 'autoCapacityBps' | 'capacitySource' | 'label' | 'metricSource' | 'visualStyle' | 'metricDisplay'> & Pick<CreateLinkInput, 'sourceInterfaceId' | 'targetInterfaceId'>;
 export interface CreateGenericNodeInput { type: string; label: string; position: Position; }
 export interface MapPreferences { showTraffic: boolean; showUtilization: boolean; showLabels: boolean; showOffline: boolean; showInterfaces: boolean; showTrafficAnimation: boolean; }
 

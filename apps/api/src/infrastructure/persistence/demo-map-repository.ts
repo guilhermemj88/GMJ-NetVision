@@ -27,6 +27,7 @@ import {
   type SourceHealth,
   type SshHostInput,
   type UpdateHostInput,
+  type UpdateLinkInput,
   type UpdateMapInput,
   type ZabbixHostCandidate,
   type ZabbixImportPreview,
@@ -37,6 +38,7 @@ import type { CredentialVault } from '../../application/credential-vault';
 export interface NodePositionUpdate {
   nodeId: string;
   position: Position;
+  positionSource?: MapNode['positionSource'];
   locked?: boolean;
 }
 
@@ -817,7 +819,7 @@ export class DemoMapRepository {
       return {
         ...node,
         position: update.position,
-        positionSource: 'MANUAL',
+        positionSource: update.positionSource ?? 'MANUAL',
         ...(update.locked === undefined ? {} : { locked: update.locked }),
       };
     });
@@ -917,16 +919,7 @@ export class DemoMapRepository {
   updateLink(
     mapId: string,
     linkId: string,
-    input: Pick<
-      CreateLinkInput,
-      | 'capacityBps'
-      | 'autoCapacityBps'
-      | 'capacitySource'
-      | 'label'
-      | 'metricSource'
-      | 'visualStyle'
-      | 'metricDisplay'
-    >,
+    input: UpdateLinkInput,
   ): NetworkLink | null {
     const map = this.findMap(mapId);
     if (!map) return null;

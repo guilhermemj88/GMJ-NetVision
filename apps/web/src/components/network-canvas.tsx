@@ -67,6 +67,8 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
   const rotation = useMapStore((state) => state.rotation);
   const setRotationPaused = useMapStore((state) => state.setRotationPaused);
   const setViewport = useMapStore((state) => state.setViewport);
+  const focusRequest = useMapStore((state) => state.focusRequest);
+  const clearFocusRequest = useMapStore((state) => state.clearFocusRequest);
 
   const mapQuery = useQuery({
     queryKey: ['map', activeMapId],
@@ -139,6 +141,19 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
       }];
     });
   }, [editMode, map, preferences.showInterfaces, preferences.showOffline]);
+
+  useEffect(() => {
+    if (!focusRequest) return;
+    const node = domainNodes.find((item) => item.id === focusRequest.deviceId);
+    if (!node) return;
+    const width = node.measured?.width ?? node.width ?? DEFAULT_NODE_WIDTH;
+    const height = node.measured?.height ?? node.height ?? DEFAULT_NODE_HEIGHT;
+    void flow.setCenter(node.position.x + width / 2, node.position.y + height / 2, {
+      duration: 650,
+      zoom: Math.max(1.05, flow.getZoom()),
+    });
+    clearFocusRequest(focusRequest.requestId);
+  }, [clearFocusRequest, domainNodes, flow, focusRequest]);
 
   const domainEdges = useMemo<TrafficFlowEdge[]>(() => {
     if (!map) return [];

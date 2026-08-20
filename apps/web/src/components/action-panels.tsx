@@ -52,6 +52,7 @@ import {
 import { GENERIC_NODE_TYPES } from '@/lib/device-appearance';
 import { useMapStore } from '@/store/map-store';
 import { AssistedDiscoveryReview } from './assisted-discovery-review';
+import { firstInterfaceId, InterfacePicker } from './interface-picker';
 import { PublicLinksPanel } from './public-links-manager';
 import { UsersPanel } from './users-manager';
 
@@ -137,16 +138,22 @@ function CreateLinkPanel() {
   const [metricSource, setMetricSource] = useState<'DEMO' | 'ZABBIX'>('DEMO');
   const [visualStyle, setVisualStyle] = useState<LinkDisplayStyle | null>(null);
   const [metricDisplay, setMetricDisplay] = useState<LinkMetricDisplay | null>(null);
+  const defaultSourceInterfaceId = source?.kind === 'device'
+    ? firstInterfaceId(source.interfaces)
+    : '';
+  const defaultTargetInterfaceId = target?.kind === 'device'
+    ? firstInterfaceId(target.interfaces)
+    : '';
   const selectedSourceInterface =
     source?.kind === 'device'
       ? source.interfaces.find(
-          (item) => item.id === (sourceInterfaceId || source.interfaces[0]?.id),
+          (item) => item.id === (sourceInterfaceId || defaultSourceInterfaceId),
         )
       : undefined;
   const selectedTargetInterface =
     target?.kind === 'device'
       ? target.interfaces.find(
-          (item) => item.id === (targetInterfaceId || target.interfaces[0]?.id),
+          (item) => item.id === (targetInterfaceId || defaultTargetInterfaceId),
         )
       : undefined;
   const autoCapacityBps = Math.max(
@@ -164,13 +171,13 @@ function CreateLinkPanel() {
           ...(source.kind === 'device'
             ? {
                 sourceDeviceId: source.id,
-                sourceInterfaceId: sourceInterfaceId || source.interfaces[0]?.id || '',
+                sourceInterfaceId: sourceInterfaceId || defaultSourceInterfaceId,
               }
             : { sourceNodeId: source.id }),
           ...(target.kind === 'device'
             ? {
                 targetDeviceId: target.id,
-                targetInterfaceId: targetInterfaceId || target.interfaces[0]?.id || '',
+                targetInterfaceId: targetInterfaceId || defaultTargetInterfaceId,
               }
             : { targetNodeId: target.id }),
           capacityBps: capacitySource === 'AUTO' ? autoCapacityBps : manualCapacityBps,
@@ -232,19 +239,14 @@ function CreateLinkPanel() {
               </select>
             </label>
             {source?.kind === 'device' && (
-              <label>
-                Interface
-                <select
-                  value={sourceInterfaceId || source.interfaces[0]?.id}
-                  onChange={(event) => setSourceInterfaceId(event.target.value)}
-                >
-                  {source.interfaces.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}{item.alias ? ` · ${item.alias}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="form-field">
+                <span>Interface</span>
+                <InterfacePicker
+                  interfaces={source.interfaces}
+                  value={sourceInterfaceId || defaultSourceInterfaceId}
+                  onChange={setSourceInterfaceId}
+                />
+              </div>
             )}
           </div>
           <div className="link-form-route__connector">
@@ -270,19 +272,14 @@ function CreateLinkPanel() {
               </select>
             </label>
             {target?.kind === 'device' && (
-              <label>
-                Interface
-                <select
-                  value={targetInterfaceId || target.interfaces[0]?.id}
-                  onChange={(event) => setTargetInterfaceId(event.target.value)}
-                >
-                  {target.interfaces.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name}{item.alias ? ` · ${item.alias}` : ''}
-                    </option>
-                  ))}
-                </select>
-              </label>
+              <div className="form-field">
+                <span>Interface</span>
+                <InterfacePicker
+                  interfaces={target.interfaces}
+                  value={targetInterfaceId || defaultTargetInterfaceId}
+                  onChange={setTargetInterfaceId}
+                />
+              </div>
             )}
           </div>
         </div>

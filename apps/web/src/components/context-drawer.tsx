@@ -38,6 +38,7 @@ import { deleteLink as deleteLinkRequest, updateLink as updateLinkRequest } from
 import { useMapStore } from '@/store/map-store';
 import { MetricCharts } from './metric-charts';
 import { AssistedDiscoveryReview } from './assisted-discovery-review';
+import { InterfacePicker } from './interface-picker';
 
 export function ContextDrawer() {
   const map = useMapStore((state) => state.map);
@@ -463,6 +464,8 @@ function LinkDrawer({
 }) {
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(link.label);
+  const [sourceInterfaceId, setSourceInterfaceId] = useState(link.sourceInterfaceId ?? '');
+  const [targetInterfaceId, setTargetInterfaceId] = useState(link.targetInterfaceId ?? '');
   const initialUnit = link.capacityBps >= 1_000_000_000 ? 'GBPS' : 'MBPS';
   const [capacitySource, setCapacitySource] = useState<CapacitySource>(link.capacitySource);
   const [capacityUnit, setCapacityUnit] = useState<'MBPS' | 'GBPS'>(initialUnit);
@@ -484,14 +487,26 @@ function LinkDrawer({
   const targetNode = map?.nodes.find((item) => item.id === link.targetNodeId);
   const sourceInterface = source?.interfaces.find((item) => item.id === link.sourceInterfaceId);
   const targetInterface = target?.interfaces.find((item) => item.id === link.targetInterfaceId);
+  const editedSourceInterface = source?.interfaces.find((item) => item.id === sourceInterfaceId);
+  const editedTargetInterface = target?.interfaces.find((item) => item.id === targetInterfaceId);
+  const autoCapacityBps = Math.max(
+    1,
+    Math.min(
+      editedSourceInterface?.speedBps ?? link.autoCapacityBps,
+      editedTargetInterface?.speedBps ?? link.autoCapacityBps,
+    ),
+  );
   const capacityBps =
     capacitySource === 'AUTO'
-      ? link.autoCapacityBps
+      ? autoCapacityBps
       : capacity * (capacityUnit === 'GBPS' ? 1_000_000_000 : 1_000_000);
   const editedLink: NetworkLink = {
     ...link,
     label,
+    sourceInterfaceId: sourceInterfaceId || null,
+    targetInterfaceId: targetInterfaceId || null,
     capacityBps,
+    autoCapacityBps,
     capacitySource,
     visualStyle: visualStyle || null,
     metricDisplay: metricDisplay || null,
@@ -512,9 +527,11 @@ function LinkDrawer({
   const updateMutation = useMutation({
     mutationFn: () =>
       updateLinkRequest(link.mapId, link.id, {
+        sourceInterfaceId: sourceInterfaceId || null,
+        targetInterfaceId: targetInterfaceId || null,
         label,
         capacityBps,
-        autoCapacityBps: link.autoCapacityBps,
+        autoCapacityBps,
         capacitySource,
         metricSource: link.metricSource,
         visualStyle: visualStyle || null,
@@ -596,6 +613,26 @@ function LinkDrawer({
       </section>
       {editing && !readOnly && (
         <section className="drawer-section edit-link-form">
+          {source && (
+            <div className="form-field">
+              <span>Interface da ponta A</span>
+              <InterfacePicker
+                interfaces={source.interfaces}
+                value={sourceInterfaceId}
+                onChange={setSourceInterfaceId}
+              />
+            </div>
+          )}
+          {target && (
+            <div className="form-field">
+              <span>Interface da ponta B</span>
+              <InterfacePicker
+                interfaces={target.interfaces}
+                value={targetInterfaceId}
+                onChange={setTargetInterfaceId}
+              />
+            </div>
+          )}
           <label>
             Label
             <input value={label} onChange={(event) => setLabel(event.target.value)} />
@@ -657,7 +694,7 @@ function LinkDrawer({
               <option value="NONE">Nenhuma</option>
             </select>
           </label>
-          <div>
+          <div className="edit-link-form__actions">
             <Button variant="ghost" onClick={() => setEditing(false)}>
               Cancelar
             </Button>

@@ -53,6 +53,22 @@ No `apply`, cada vizinho recebe uma ação explícita:
 
 Matches ambíguos permanecem ignorados até o operador selecionar um Device. O fluxo não dispara descoberta recursiva.
 
+## Busca global de interfaces e VLAN
+
+`GET /api/interfaces/search` pesquisa o inventário no backend por nome da interface, alias, descrição, `ifIndex`, hostname/nome do equipamento e IP de gerenciamento. A rota usa a autenticação normal da API, exige pelo menos 2 caracteres e limita a resposta a no máximo 50 itens. O frontend aplica debounce de 250 ms e solicita 40 itens inicialmente.
+
+VLAN ainda não é um atributo estruturado de `Interface`/`NetworkInterface`. Também não existe endereço IP próprio por interface; o IP retornado pela busca é o IP de gerenciamento do equipamento. Por isso, a busca atual não infere VLAN por regex no nome e retorna `vlan: null`.
+
+Para suportar VLAN corretamente, será necessário modelar e popular, no mínimo:
+
+- endereços por interface (endereço, prefixo e, quando aplicável, VRF);
+- VLANs e associações por interface, incluindo modo tagged/untagged e PVID;
+- encapsulação de subinterfaces, separada do nome exibido da porta;
+- coleta normalizada via Q-BRIDGE-MIB/adapters de fabricante e enriquecimento SSH;
+- índices de busca para VLAN, endereços e associações após a origem desses dados estar definida.
+
+Nenhuma migration de VLAN foi criada nesta etapa.
+
 ## Limitações atuais
 
 - O servidor em execução ainda usa `DemoMapRepository` em memória; o schema e a migration PostgreSQL estão prontos, mas falta ligar um repositório Prisma transacional às mesmas portas.

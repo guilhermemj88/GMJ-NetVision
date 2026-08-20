@@ -124,6 +124,14 @@ export function registerHostRoutes(
     return filterHosts(await hosts.listHosts(), query);
   });
 
+  app.get('/api/interfaces/search', async (request) => {
+    const { q, limit } = z.object({
+      q: z.string().trim().min(2).max(160),
+      limit: z.coerce.number().int().min(1).max(50).default(40),
+    }).parse(request.query);
+    return hosts.searchInterfaces(q, limit);
+  });
+
   app.post('/api/hosts/import/zabbix/preview', async (_request, reply) => {
     try {
       const data = await zabbixCandidates(legacyMaps, zabbix);

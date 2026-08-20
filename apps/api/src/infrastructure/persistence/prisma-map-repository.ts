@@ -15,6 +15,7 @@ import {
   type NetworkMap,
   type Position,
   type UpdateMapInput,
+  type UpdateLinkInput,
 } from '@gmj/shared';
 import { PrismaClient } from '../../generated/prisma/index.js';
 import type { HostRepository } from './host-repository';
@@ -293,7 +294,7 @@ export class PrismaMapRepository {
       data: {
         x: update.position.x,
         y: update.position.y,
-        positionSource: 'MANUAL',
+        positionSource: update.positionSource ?? 'MANUAL',
         ...(update.locked === undefined ? {} : { locked: update.locked }),
       },
     })));
@@ -389,10 +390,12 @@ export class PrismaMapRepository {
     return this.materializeLink(row, await this.hosts.listHosts());
   }
 
-  async updateLink(mapId: string, linkId: string, input: Pick<CreateLinkInput, 'capacityBps' | 'autoCapacityBps' | 'capacitySource' | 'label' | 'metricSource' | 'visualStyle' | 'metricDisplay'>): Promise<NetworkLink | null> {
+  async updateLink(mapId: string, linkId: string, input: UpdateLinkInput): Promise<NetworkLink | null> {
     const result = await this.prisma.link.updateMany({
       where: { id: linkId, mapId },
       data: {
+        ...(input.sourceInterfaceId === undefined ? {} : { sourceInterfaceId: input.sourceInterfaceId }),
+        ...(input.targetInterfaceId === undefined ? {} : { targetInterfaceId: input.targetInterfaceId }),
         capacityBps: BigInt(Math.max(1, Math.trunc(input.capacityBps))),
         autoCapacityBps: BigInt(Math.max(1, Math.trunc(input.autoCapacityBps))),
         capacitySource: input.capacitySource,

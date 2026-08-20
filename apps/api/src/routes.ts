@@ -55,6 +55,7 @@ const linkParams = z.object({ mapId: z.string().min(1), linkId: z.string().min(1
 const positionSchema = z.object({
   nodeId: z.string().min(1),
   position: z.object({ x: z.number().finite(), y: z.number().finite() }),
+  positionSource: z.enum(['AUTO', 'MANUAL']).optional(),
   locked: z.boolean().optional(),
 });
 const linkSchema = z.object({
@@ -557,6 +558,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     const map = await maps.updatePositions(mapId, body.nodes.map((node) => ({
       nodeId: node.nodeId,
       position: node.position,
+      ...(node.positionSource === undefined ? {} : { positionSource: node.positionSource }),
       ...(node.locked === undefined ? {} : { locked: node.locked }),
     })));
     return map ?? reply.code(404).send({ message: 'Map not found' });
@@ -578,6 +580,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   app.patch('/api/maps/:mapId/links/:linkId', async (request, reply) => {
     const { mapId, linkId } = linkParams.parse(request.params);
     const body = linkSchema.pick({
+      sourceInterfaceId: true,
+      targetInterfaceId: true,
       capacityBps: true,
       autoCapacityBps: true,
       capacitySource: true,
@@ -586,7 +590,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       visualStyle: true,
       metricDisplay: true,
     }).parse(request.body);
-    const link = await maps.updateLink(mapId, linkId, body);
+    const { sourceInterfaceId, targetInterfaceId, ...fields } = body;
+    const link = await maps.updateLink(mapId, linkId, {
+      ...fields,
+      ...(sourceInterfaceId === undefined ? {} : { sourceInterfaceId }),
+      ...(targetInterfaceId === undefined ? {} : { targetInterfaceId }),
+    });
     return link ?? reply.code(404).send({ message: 'Link not found' });
   });
 

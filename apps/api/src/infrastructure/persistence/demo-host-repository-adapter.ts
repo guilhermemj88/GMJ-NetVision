@@ -2,6 +2,7 @@ import type {
   CreateHostInput,
   HistoryPeriod,
   HostRecord,
+  InterfaceSearchResult,
   MetricPoint,
   NetworkInterface,
   UpdateHostInput,
@@ -22,6 +23,46 @@ export class DemoHostRepositoryAdapter implements HostRepository {
 
   async listHosts(): Promise<HostRecord[]> {
     return this.repository.listHosts();
+  }
+
+  async searchInterfaces(query: string, limit: number): Promise<InterfaceSearchResult[]> {
+    const normalized = query.trim().toLocaleLowerCase('pt-BR');
+    const numeric = /^\d+$/.test(normalized) ? Number(normalized) : null;
+    const maps = this.repository.listMaps();
+    const mapNames = new Map(maps.map((map) => [map.id, map.name]));
+
+    return this.repository.listHosts().flatMap((host) =>
+      host.interfaces.flatMap((networkInterface) => {
+        const matches = [
+          networkInterface.name,
+          networkInterface.alias,
+          networkInterface.description,
+          host.hostname,
+          host.displayName,
+          host.managementIp,
+        ].some((value) => value.toLocaleLowerCase('pt-BR').includes(normalized))
+          || (numeric !== null && networkInterface.ifIndex === numeric);
+        if (!matches) return [];
+        return [{
+          interfaceId: networkInterface.id,
+          deviceId: host.id,
+          hostname: host.hostname,
+          deviceName: host.displayName || host.name,
+          interfaceName: networkInterface.name,
+          alias: networkInterface.alias,
+          description: networkInterface.description,
+          ifIndex: networkInterface.ifIndex,
+          status: networkInterface.operStatus,
+          ip: host.managementIp || null,
+          vlan: null,
+          maps: host.mapIds.map((mapId) => ({ id: mapId, name: mapNames.get(mapId) ?? mapId })),
+        } satisfies InterfaceSearchResult];
+      }),
+    ).sort((left, right) =>
+      left.hostname.localeCompare(right.hostname, 'pt-BR', { numeric: true, sensitivity: 'base' })
+      || left.interfaceName.localeCompare(right.interfaceName, 'pt-BR', { numeric: true, sensitivity: 'base' })
+      || left.ifIndex - right.ifIndex
+    ).slice(0, limit);
   }
 
   async getHost(hostId: string): Promise<HostRecord | null> {

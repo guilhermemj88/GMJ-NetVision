@@ -29,11 +29,9 @@ export interface TrafficEdgeData extends Record<string, unknown> {
 export type TrafficFlowEdge = Edge<TrafficEdgeData, 'traffic'>;
 
 const EDGE_CURVATURE = 0.24;
-// Half of the visual separation between the two chevron tracks (~5 px total).
 const LANE_HALF_GAP = 2.6;
-// Direction color families (kept distinct as utilization intensifies).
-const HUE_A = 190; // cyan / blue
-const HUE_B = 265; // violet / magenta
+const HUE_A = 190;
+const HUE_B = 285;
 
 type FlowLevel = 'normal' | 'attention' | 'high' | 'critical' | 'down' | 'unknown';
 
@@ -64,189 +62,56 @@ function flowLevel(utilization: number): FlowLevel {
   return utilizationLevel(utilization).toLowerCase() as FlowLevel;
 }
 
-// Utilization drives saturation/lightness, keeping each direction's hue family.
 function flowColor(hue: number, level: FlowLevel): string {
   switch (level) {
-    case 'critical': return hsl(hue, 100, 54);
-    case 'high': return hsl(hue, 95, 56);
-    case 'attention': return hsl(hue, 84, 63);
+    case 'critical': return hsl(hue, 100, 56);
+    case 'high': return hsl(hue, 91, 60);
+    case 'attention': return hsl(hue, 78, 66);
     case 'down': return '#6e5558';
     case 'unknown': return '#718894';
     default: return hsl(hue, 58, 72);
   }
 }
 
-function flowGlow(level: FlowLevel): number {
-  switch (level) {
-    case 'critical': return 9;
-    case 'high': return 6.5;
-    case 'attention': return 4;
-    case 'down':
-    case 'unknown': return 1.5;
-    default: return 2.5;
-  }
-}
-
 function staticOpacity(level: FlowLevel): number {
   switch (level) {
-    case 'critical': return 0.92;
-    case 'high': return 0.78;
-    case 'attention': return 0.66;
+    case 'critical': return 0.94;
+    case 'high': return 0.82;
+    case 'attention': return 0.7;
     case 'down':
-    case 'unknown': return 0.5;
-    default: return 0.55;
+    case 'unknown': return 0.48;
+    default: return 0.56;
   }
 }
 
-type CubicBezier = {
-  p0: [number, number];
-  p1: [number, number];
-  p2: [number, number];
-  p3: [number, number];
-};
-
-function parseCubicBezier(path: string): CubicBezier | null {
-  const numbers = path.replace(/[MC]/g, ' ').match(/-?\d+(?:\.\d+)?/g);
-  if (!numbers || numbers.length !== 8) return null;
-  const values = numbers.map(Number);
-  const [x0 = 0, y0 = 0, x1 = 0, y1 = 0, x2 = 0, y2 = 0, x3 = 0, y3 = 0] = values;
-  return {
-    p0: [x0, y0],
-    p1: [x1, y1],
-    p2: [x2, y2],
-    p3: [x3, y3],
-  };
-}
-
-function cubicPoint(bezier: CubicBezier, t: number): [number, number] {
-  const { p0, p1, p2, p3 } = bezier;
-  const mt = 1 - t;
-  const x = mt * mt * mt * p0[0] + 3 * mt * mt * t * p1[0] + 3 * mt * t * t * p2[0] + t * t * t * p3[0];
-  const y = mt * mt * mt * p0[1] + 3 * mt * mt * t * p1[1] + 3 * mt * t * t * p2[1] + t * t * t * p3[1];
-  return [x, y];
-}
-
-function cubicTangent(bezier: CubicBezier, t: number): [number, number] {
-  const { p0, p1, p2, p3 } = bezier;
-  const mt = 1 - t;
-  const dx = 3 * mt * mt * (p1[0] - p0[0]) + 6 * mt * t * (p2[0] - p1[0]) + 3 * t * t * (p3[0] - p2[0]);
-  const dy = 3 * mt * mt * (p1[1] - p0[1]) + 6 * mt * t * (p2[1] - p1[1]) + 3 * t * t * (p3[1] - p2[1]);
-  return [dx, dy];
-}
-
-interface ChevronPoint {
-  x: number;
-  y: number;
-  angle: number;
-}
-
-// Evenly space `count` chevrons along the lane path, each aligned to the local
-// tangent so curved links keep a uniform separation between the two lanes.
-function sampleChevrons(path: string, count: number): ChevronPoint[] {
-  const bezier = parseCubicBezier(path);
-  if (!bezier || count <= 0) return [];
-
-  const SAMPLES = 48;
-  const points: Array<[number, number]> = [cubicPoint(bezier, 0)];
-  const lengths: number[] = [0];
-  for (let i = 1; i <= SAMPLES; i++) {
-    const t = i / SAMPLES;
-    const point = cubicPoint(bezier, t);
-    const previous = points[points.length - 1] ?? [0, 0];
-    const last = lengths[lengths.length - 1] ?? 0;
-    lengths.push(last + Math.hypot(point[0] - previous[0], point[1] - previous[1]));
-    points.push(point);
+function flowDuration(level: FlowLevel): number {
+  switch (level) {
+    case 'critical': return 3.8;
+    case 'high': return 4.6;
+    case 'attention': return 5.8;
+    default: return 7;
   }
+}
 
-  const total = lengths[lengths.length - 1] ?? 0;
-  if (total <= 0) return [];
-
-  const chevrons: ChevronPoint[] = [];
-  for (let i = 0; i < count; i++) {
-    const target = ((i + 0.5) / count) * total;
-    let segment = 0;
-    while (segment < lengths.length - 1 && (lengths[segment + 1] ?? 0) < target) segment += 1;
-    const segmentStart = lengths[segment] ?? 0;
-    const segmentEnd = lengths[segment + 1] ?? segmentStart;
-    const segmentLength = segmentEnd - segmentStart || 1;
-    const local = (target - segmentStart) / segmentLength;
-    const t = (segment + local) / SAMPLES;
-    const point = cubicPoint(bezier, t);
-    const tangent = cubicTangent(bezier, t);
-    const angle = (Math.atan2(tangent[1], tangent[0]) * 180) / Math.PI;
-    chevrons.push({ x: point[0], y: point[1], angle });
+function flowDash(level: FlowLevel): string {
+  switch (level) {
+    case 'critical': return '4 7';
+    case 'high': return '3.5 8';
+    case 'attention': return '3 9';
+    case 'unknown': return '2 8';
+    default: return '2.5 10';
   }
-  return chevrons;
 }
 
-interface ChevronWaveProps {
-  idPrefix: string;
-  points: ChevronPoint[];
-  color: string;
-  glow: number;
-  duration: number;
-  reverse: boolean;
-  chevronPath: string;
-  base: number;
-  peak: number;
-  waveWidth: number;
-  strokeWidth: number;
-  animated: boolean;
-  staticOpacity: number;
-}
-
-function ChevronWave({
-  idPrefix,
-  points,
-  color,
-  glow,
-  duration,
-  reverse,
-  chevronPath,
-  base,
-  peak,
-  waveWidth,
-  strokeWidth,
-  animated,
-  staticOpacity,
-}: ChevronWaveProps) {
-  const glowFilter = `drop-shadow(0 0 ${glow}px ${color})`;
-  const keyTimes = `0; ${0.5 - waveWidth}; 0.5; ${0.5 + waveWidth}; 1`;
-  const values = `${base}; ${base}; ${peak}; ${base}; ${base}`;
-  const keySplines = '0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1;0.4 0 0.6 1';
-
-  return (
-    <g style={{ pointerEvents: 'none' }}>
-      {points.map((point, index) => {
-        const s = points.length > 1 ? index / (points.length - 1) : 0;
-        const begin = reverse ? -s * duration : (s - 1) * duration;
-        const angle = point.angle + (reverse ? 180 : 0);
-        return (
-          <path
-            key={`${idPrefix}-${index}`}
-            d={chevronPath}
-            className="traffic-chevron"
-            transform={`translate(${point.x} ${point.y}) rotate(${angle})`}
-            opacity={animated ? base : staticOpacity}
-            style={{ stroke: color, color, strokeWidth, filter: glowFilter }}
-          >
-            {animated && (
-              <animate
-                attributeName="opacity"
-                values={values}
-                keyTimes={keyTimes}
-                keySplines={keySplines}
-                dur={`${duration}s`}
-                begin={`${begin}s`}
-                repeatCount="indefinite"
-                calcMode="spline"
-              />
-            )}
-          </path>
-        );
-      })}
-    </g>
-  );
+function flowFilter(
+  color: string,
+  level: FlowLevel,
+  emphasized: boolean,
+): string | undefined {
+  if (emphasized) return `drop-shadow(0 0 3px ${color})`;
+  if (level === 'critical') return `drop-shadow(0 0 4px ${color})`;
+  if (level === 'high') return `drop-shadow(0 0 2px ${color})`;
+  return undefined;
 }
 
 export function TrafficEdge({
@@ -301,64 +166,33 @@ export function TrafficEdge({
   const levelB: FlowLevel = statusTone ?? flowLevel(bToA.utilization);
   const worstTone = statusTone ?? flowLevel(maxUtilization);
 
-  const width = Math.max(1, Math.min(1.8, 1.05 + Math.log10(Math.max(link.capacityBps, 1_000_000_000)) - 9.2)) * (linkScale / 100);
+  const width = Math.max(
+    1,
+    Math.min(
+      1.8,
+      1.05 + Math.log10(Math.max(link.capacityBps, 1_000_000_000)) - 9.2,
+    ),
+  ) * (linkScale / 100);
   const classes = `${selected ? 'is-selected' : ''} ${related ? '' : 'is-dimmed'} ${emphasized ? 'is-emphasized' : ''}`;
   const directional = displayStyle !== 'MINIMAL';
-  const showMetric = showLabels && displayStyle !== 'MINIMAL' && metricDisplay !== 'NONE';
-
+  const showMetric = showLabels && directional && metricDisplay !== 'NONE';
   const displayThroughput = metricDisplay === 'THROUGHPUT' || metricDisplay === 'BOTH';
   const displayUtilization = metricDisplay === 'UTILIZATION' || metricDisplay === 'BOTH';
-  const duration = Math.max(2.6, 6.8 - maxUtilization / 20);
-  const chevronScale = Math.max(0.85, Math.min(1.15, linkScale / 100));
-  const chevronPath = `M ${-2.9 * chevronScale} ${-2.3 * chevronScale} L ${1.8 * chevronScale} 0 L ${-2.9 * chevronScale} ${2.3 * chevronScale}`;
 
-  // Perpendicular normal of the source→target segment. Both lanes are the same
-  // bézier translated along this normal, which keeps their separation constant
-  // for straight links and preserves the exact same curvature for curved links.
   const segmentX = targetX - sourceX;
   const segmentY = targetY - sourceY;
   const segmentLength = Math.hypot(segmentX, segmentY) || 1;
   const normalX = -segmentY / segmentLength;
   const normalY = segmentX / segmentLength;
   const gap = Math.max(2, LANE_HALF_GAP * (linkScale / 100));
-  const laneAPath = directional
-    ? getBezierPath({
-        sourceX: sourceX + normalX * gap,
-        sourceY: sourceY + normalY * gap,
-        sourcePosition,
-        targetX: targetX + normalX * gap,
-        targetY: targetY + normalY * gap,
-        targetPosition,
-        curvature: EDGE_CURVATURE,
-      })[0]
-    : path;
-  const laneBPath = directional
-    ? getBezierPath({
-        sourceX: sourceX - normalX * gap,
-        sourceY: sourceY - normalY * gap,
-        sourcePosition,
-        targetX: targetX - normalX * gap,
-        targetY: targetY - normalY * gap,
-        targetPosition,
-        curvature: EDGE_CURVATURE,
-      })[0]
-    : path;
-
+  const laneATransform = `translate(${normalX * gap} ${normalY * gap})`;
+  const laneBTransform = `translate(${-normalX * gap} ${-normalY * gap})`;
   const colorA = flowColor(HUE_A, levelA);
   const colorB = flowColor(HUE_B, levelB);
-  const glowBoost = emphasized || selected ? 1.35 : 1;
+  const isEmphasized = Boolean(emphasized || selected);
   const renderLanes = directional && showTraffic && link.status !== 'DOWN' && related;
-
-  // Lane density: shorter spacing and more chevrons when utilization is high.
-  const approxLength = Math.max(40, segmentLength * 1.15);
-  const chevronSpacing = Math.max(6, 8 - maxUtilization / 40);
-  const chevronCount = Math.max(6, Math.min(26, Math.round(approxLength / chevronSpacing)));
-  const waveBase = 0.28;
-  const wavePeak = emphasized || selected ? 1 : 0.95;
-  const waveWidth = 0.18;
-  const chevronStrokeWidth = Math.max(1.2, width * 0.8);
-  const aToBPoints = renderLanes ? sampleChevrons(laneAPath, chevronCount) : [];
-  const bToAPoints = renderLanes ? sampleChevrons(laneBPath, chevronCount) : [];
+  const animateLanes = showTrafficAnimation && link.status !== 'UNKNOWN';
+  const laneWidth = Math.max(1, width * (isEmphasized ? 1.15 : 0.88));
 
   return (
     <>
@@ -371,35 +205,39 @@ export function TrafficEdge({
 
       {renderLanes && (
         <>
-          <ChevronWave
-            idPrefix="a-to-b"
-            points={aToBPoints}
-            color={colorA}
-            glow={flowGlow(levelA) * glowBoost}
-            duration={duration}
-            reverse={false}
-            chevronPath={chevronPath}
-            base={waveBase}
-            peak={wavePeak}
-            waveWidth={waveWidth}
-            strokeWidth={chevronStrokeWidth}
-            animated={showTrafficAnimation}
-            staticOpacity={staticOpacity(levelA)}
+          <path
+            d={path}
+            transform={laneATransform}
+            data-flow-direction="A_TO_B"
+            data-throughput-bps={aToB.bps}
+            data-utilization={aToB.utilization}
+            className={`traffic-edge traffic-edge--flow traffic-edge--a-to-b ${animateLanes ? 'traffic-edge--animated' : ''} ${classes}`}
+            style={{
+              stroke: colorA,
+              color: colorA,
+              strokeWidth: laneWidth,
+              strokeDasharray: flowDash(levelA),
+              opacity: staticOpacity(levelA),
+              filter: flowFilter(colorA, levelA, isEmphasized),
+              ...(animateLanes ? { animationDuration: `${flowDuration(levelA)}s` } : {}),
+            }}
           />
-          <ChevronWave
-            idPrefix="b-to-a"
-            points={bToAPoints}
-            color={colorB}
-            glow={flowGlow(levelB) * glowBoost}
-            duration={duration}
-            reverse
-            chevronPath={chevronPath}
-            base={waveBase}
-            peak={wavePeak}
-            waveWidth={waveWidth}
-            strokeWidth={chevronStrokeWidth}
-            animated={showTrafficAnimation}
-            staticOpacity={staticOpacity(levelB)}
+          <path
+            d={path}
+            transform={laneBTransform}
+            data-flow-direction="B_TO_A"
+            data-throughput-bps={bToA.bps}
+            data-utilization={bToA.utilization}
+            className={`traffic-edge traffic-edge--flow traffic-edge--b-to-a ${animateLanes ? 'traffic-edge--animated' : ''} ${classes}`}
+            style={{
+              stroke: colorB,
+              color: colorB,
+              strokeWidth: laneWidth,
+              strokeDasharray: flowDash(levelB),
+              opacity: staticOpacity(levelB),
+              filter: flowFilter(colorB, levelB, isEmphasized),
+              ...(animateLanes ? { animationDuration: `${flowDuration(levelB)}s` } : {}),
+            }}
           />
         </>
       )}

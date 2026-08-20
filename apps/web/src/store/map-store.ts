@@ -5,6 +5,7 @@ import {
   type AddDeviceResult,
   type CreateLinkInput,
   type HostRecord,
+  type InterfaceSearchResult,
   type LinkDisplayStyle,
   type LinkMetricDisplay,
   type MapNode,
@@ -37,6 +38,11 @@ export type OpenPanel =
   | null;
 export type WorkspaceView = 'MAP' | 'HOSTS';
 
+export interface MapFocusRequest {
+  deviceId: string;
+  requestId: number;
+}
+
 export interface NocRotationState {
   active: boolean;
   mapIds: string[];
@@ -64,6 +70,10 @@ interface MapState {
   rotation: NocRotationState;
   dirty: boolean;
   toast: string | null;
+  focusRequest: MapFocusRequest | null;
+  pendingInterfaceNavigation: { mapId: string; deviceId: string; interfaceId: string } | null;
+  hostDetailRequest: string | null;
+  focusSequence: number;
   setCatalog: (maps: MapSummary[]) => void;
   upsertMapSummary: (map: NetworkMap) => void;
   removeMapSummary: (mapId: string) => void;
@@ -75,6 +85,10 @@ interface MapState {
   setView: (view: WorkspaceView) => void;
   setEditMode: (enabled: boolean) => void;
   setSelection: (selection: Selection) => void;
+  openInterfaceOnMap: (result: InterfaceSearchResult, mapId: string) => void;
+  clearFocusRequest: (requestId: number) => void;
+  openHostDetails: (hostId: string) => void;
+  clearHostDetailRequest: () => void;
   setPanel: (panel: OpenPanel) => void;
   setPendingLink: (value: MapState['pendingLink']) => void;
   setPreference: (key: keyof MapPreferences) => void;
@@ -126,51 +140,14 @@ const rotationDefaults: NocRotationState = {
   pauseOnInteraction: true,
 };
 
-function restoreLocalState(map: NetworkMap): NetworkMap {
-  if (typeof window === 'undefined') return map;
-  const savedPositions = window.localStorage.getItem(`gmj:positions:${map.id}`);
-  const savedSettings = window.localStorage.getItem(`gmj:settings:${map.id}`);
-  let restored = map;
+function clearLegacyLocalState(mapId: string): void {
+  if (typeof window === 'undefined') return;
   try {
-    if (savedPositions) {
-      const positions = JSON.parse(savedPositions) as Record<string, Position>;
-      restored = {
-        ...restored,
-        nodes: restored.nodes.map((node) => {
-          const position = positions[node.id];
-          return position ? { ...node, position, positionSource: 'MANUAL' } : node;
-        }),
-      };
-    }
-    if (savedSettings) {
-      const settings = JSON.parse(savedSettings) as MapSettings;
-      restored = {
-        ...restored,
-        settings: {
-          ...restored.settings,
-          ...settings,
-          filters: { ...restored.settings.filters, ...settings.filters },
-          viewport: { ...restored.settings.viewport, ...settings.viewport },
-        },
-      };
-    }
+    window.localStorage.removeItem(`gmj:positions:${mapId}`);
+    window.localStorage.removeItem(`gmj:settings:${mapId}`);
   } catch {
-    return map;
+    // Storage can be unavailable in privacy-restricted browser contexts.
   }
-  return restored;
-}
-
-function persistPositions(map: NetworkMap): void {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(
-    `gmj:positions:${map.id}`,
-    JSON.stringify(Object.fromEntries(map.nodes.map((node) => [node.id, node.position]))),
-  );
-}
-
-function persistSettings(map: NetworkMap): void {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(`gmj:settings:${map.id}`, JSON.stringify(map.settings));
 }
 
 function summaryFromMap(map: NetworkMap): MapSummary {
@@ -202,6 +179,10 @@ export const useMapStore = create<MapState>((set) => ({
   rotation: rotationDefaults,
   dirty: false,
   toast: null,
+  focusRequest: null,
+  pendingInterfaceNavigation: null,
+  hostDetailRequest: null,
+  focusSequence: 0,
   setCatalog: (maps) =>
     set((state) => ({
       maps,
@@ -231,15 +212,44 @@ export const useMapStore = create<MapState>((set) => ({
       map: state.activeMapId === mapId ? null : state.map,
     })),
   setActiveMap: (activeMapId) =>
-    set({ activeMapId, map: null, selection: null, panel: null, dirty: false }),
-  setMap: (map) => {
-    const restored = restoreLocalState(map);
     set({
-      map: restored,
-      activeMapId: restored.id,
-      preferences: restored.settings.filters,
-      readOnly: false,
+      activeMapId,
+      map: null,
+      selection: null,
+      panel: null,
+      pendingInterfaceNavigation: null,
+      focusRequest: null,
       dirty: false,
+    }),
+  setMap: (map) => {
+    clearLegacyLocalState(map.id);
+    set((state) => {
+      const pending = state.pendingInterfaceNavigation?.mapId === map.id
+        ? state.pendingInterfaceNavigation
+        : null;
+      const canOpen = Boolean(
+        pending
+        && map.devices.some((device) =>
+          device.id === pending.deviceId
+          && device.interfaces.some((networkInterface) => networkInterface.id === pending.interfaceId),
+        ),
+      );
+      const focusSequence = canOpen ? state.focusSequence + 1 : state.focusSequence;
+      return {
+        map,
+        activeMapId: map.id,
+        preferences: map.settings.filters,
+        readOnly: false,
+        selection: canOpen && pending
+          ? { kind: 'interface' as const, id: pending.interfaceId, deviceId: pending.deviceId }
+          : state.selection,
+        focusRequest: canOpen && pending
+          ? { deviceId: pending.deviceId, requestId: focusSequence }
+          : state.focusRequest,
+        pendingInterfaceNavigation: pending ? null : state.pendingInterfaceNavigation,
+        focusSequence,
+        dirty: false,
+      };
     });
   },
   setPublicMap: (map) =>
@@ -259,6 +269,44 @@ export const useMapStore = create<MapState>((set) => ({
   setView: (view) => set({ view, editMode: false, selection: null, panel: null }),
   setEditMode: (editMode) => set({ editMode, panel: null }),
   setSelection: (selection) => set({ selection }),
+  openInterfaceOnMap: (result, mapId) =>
+    set((state) => {
+      if (state.map?.id === mapId) {
+        const focusSequence = state.focusSequence + 1;
+        return {
+          view: 'MAP' as const,
+          selection: {
+            kind: 'interface' as const,
+            id: result.interfaceId,
+            deviceId: result.deviceId,
+          },
+          focusRequest: { deviceId: result.deviceId, requestId: focusSequence },
+          pendingInterfaceNavigation: null,
+          focusSequence,
+          panel: null,
+        };
+      }
+      return {
+        view: 'MAP' as const,
+        editMode: false,
+        activeMapId: mapId,
+        map: null,
+        selection: null,
+        panel: null,
+        focusRequest: null,
+        pendingInterfaceNavigation: {
+          mapId,
+          deviceId: result.deviceId,
+          interfaceId: result.interfaceId,
+        },
+        dirty: false,
+      };
+    }),
+  clearFocusRequest: (requestId) =>
+    set((state) => state.focusRequest?.requestId === requestId ? { focusRequest: null } : state),
+  openHostDetails: (hostDetailRequest) =>
+    set({ view: 'HOSTS', editMode: false, selection: null, panel: null, hostDetailRequest }),
+  clearHostDetailRequest: () => set({ hostDetailRequest: null }),
   setPanel: (panel) => set({ panel }),
   setPendingLink: (pendingLink) => set({ pendingLink }),
   setPreference: (key) =>
@@ -269,7 +317,6 @@ export const useMapStore = create<MapState>((set) => ({
         ...state.map,
         settings: { ...state.map.settings, filters: preferences },
       };
-      persistSettings(map);
       return { map, preferences, dirty: true };
     }),
   setNodeDisplayMode: (nodeDisplayMode) =>
@@ -279,7 +326,6 @@ export const useMapStore = create<MapState>((set) => ({
         ...state.map,
         settings: { ...state.map.settings, nodeDisplayMode },
       };
-      persistSettings(map);
       return { map, dirty: true };
     }),
   setLinkDisplayStyle: (linkDisplayStyle) =>
@@ -289,7 +335,6 @@ export const useMapStore = create<MapState>((set) => ({
         ...state.map,
         settings: { ...state.map.settings, linkDisplayStyle },
       };
-      persistSettings(map);
       return { map, dirty: true };
     }),
   setLinkMetricDisplay: (linkMetricDisplay) =>
@@ -299,14 +344,12 @@ export const useMapStore = create<MapState>((set) => ({
         ...state.map,
         settings: { ...state.map.settings, linkMetricDisplay },
       };
-      persistSettings(map);
       return { map, dirty: true };
     }),
   setViewport: (viewport) =>
     set((state) => {
       if (!state.map) return state;
       const map = { ...state.map, settings: { ...state.map.settings, viewport } };
-      persistSettings(map);
       return { map };
     }),
   setMapScales: (scales) =>
@@ -322,7 +365,6 @@ export const useMapStore = create<MapState>((set) => ({
           ...(scales.labelScale === undefined ? {} : { labelScale: clamp(scales.labelScale) }),
         },
       };
-      persistSettings(map);
       return { map, dirty: true };
     }),
   moveNode: (nodeId, position) =>
@@ -334,7 +376,6 @@ export const useMapStore = create<MapState>((set) => ({
           node.id === nodeId ? { ...node, position, positionSource: 'MANUAL' as const } : node,
         ),
       };
-      persistPositions(map);
       return { map, dirty: true };
     }),
   setNodeLocked: (nodeId, locked) =>
@@ -353,12 +394,16 @@ export const useMapStore = create<MapState>((set) => ({
       if (!state.map) return state;
       const map = {
         ...state.map,
-        nodes: state.map.nodes.map((node) => ({
-          ...node,
-          position: positions.get(node.id) ?? node.position,
-        })),
+        nodes: state.map.nodes.map((node) => {
+          const position = positions.get(node.id) ?? node.position;
+          const changed = position.x !== node.position.x || position.y !== node.position.y;
+          return {
+            ...node,
+            position,
+            positionSource: changed ? ('AUTO' as const) : node.positionSource,
+          };
+        }),
       };
-      persistPositions(map);
       return { map, dirty: true };
     }),
   addLink: (input, serverLink) =>

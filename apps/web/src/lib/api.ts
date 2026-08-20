@@ -16,6 +16,7 @@ import {
   type DiscoveryReview,
   type HistoryPeriod,
   type HostRecord,
+  type InterfaceSearchResult,
   type LldpApplyResult,
   type LldpApplySelection,
   type LldpTopologyPreview,
@@ -30,6 +31,7 @@ import {
   type PublicView,
   type PublicViewResponse,
   type UpdateMapInput,
+  type UpdateLinkInput,
   type UpdateHostInput,
   type UpdatePublicViewInput,
   type UpdateUserInput,
@@ -75,6 +77,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function getMaps(): Promise<MapSummary[]> {
   return request<MapSummary[]>('/api/maps');
+}
+
+export function searchInterfaces(query: string, limit = 40): Promise<InterfaceSearchResult[]> {
+  const params = new URLSearchParams({ q: query, limit: String(limit) });
+  return request<InterfaceSearchResult[]>(`/api/interfaces/search?${params}`);
 }
 
 export function login(input: LoginInput) {
@@ -195,7 +202,12 @@ export function savePlaylist(input: {
 
 export function savePositions(
   mapId: string,
-  nodes: Array<{ nodeId: string; position: Position; locked?: boolean }>,
+  nodes: Array<{
+    nodeId: string;
+    position: Position;
+    positionSource?: MapNode['positionSource'];
+    locked?: boolean;
+  }>,
 ) {
   return request<NetworkMap>(`/api/maps/${mapId}/nodes/positions`, {
     method: 'PUT',
@@ -213,16 +225,7 @@ export function createLink(mapId: string, input: CreateLinkInput) {
 export function updateLink(
   mapId: string,
   id: string,
-  input: Pick<
-    CreateLinkInput,
-    | 'capacityBps'
-    | 'autoCapacityBps'
-    | 'capacitySource'
-    | 'label'
-    | 'metricSource'
-    | 'visualStyle'
-    | 'metricDisplay'
-  >,
+  input: UpdateLinkInput,
 ) {
   return request<NetworkLink>(`/api/maps/${mapId}/links/${id}`, {
     method: 'PATCH',

@@ -4,6 +4,7 @@ import {
   type CreateHostInput,
   type HistoryPeriod,
   type HostRecord,
+  type InterfaceSearchResult,
   type InterfaceStatus,
   type MetricPoint,
   type NetworkInterface,
@@ -105,6 +106,68 @@ export class PrismaHostRepository implements HostRepository {
         ...item,
         metricSamples: latest.has(item.id) ? [latest.get(item.id)!] : [],
       })),
+    }));
+  }
+
+  async searchInterfaces(query: string, limit: number): Promise<InterfaceSearchResult[]> {
+    const normalized = query.trim();
+    const numericIfIndex = /^\d+$/.test(normalized) ? Number(normalized) : null;
+    const rows = await this.prisma.interface.findMany({
+      where: {
+        OR: [
+          { name: { contains: normalized, mode: 'insensitive' } },
+          { alias: { contains: normalized, mode: 'insensitive' } },
+          { description: { contains: normalized, mode: 'insensitive' } },
+          ...(numericIfIndex === null ? [] : [{ ifIndex: numericIfIndex }]),
+          {
+            device: {
+              is: {
+                OR: [
+                  { hostname: { contains: normalized, mode: 'insensitive' } },
+                  { displayName: { contains: normalized, mode: 'insensitive' } },
+                  { name: { contains: normalized, mode: 'insensitive' } },
+                  { managementIp: { contains: normalized, mode: 'insensitive' } },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      select: {
+        id: true,
+        name: true,
+        alias: true,
+        description: true,
+        ifIndex: true,
+        operStatus: true,
+        device: {
+          select: {
+            id: true,
+            hostname: true,
+            name: true,
+            displayName: true,
+            managementIp: true,
+            mapNodes: { select: { map: { select: { id: true, name: true } } } },
+          },
+        },
+      },
+      orderBy: [{ device: { hostname: 'asc' } }, { ifIndex: 'asc' }],
+      take: limit,
+    });
+
+    return rows.map((row) => ({
+      interfaceId: row.id,
+      deviceId: row.device.id,
+      hostname: row.device.hostname,
+      deviceName: row.device.displayName || row.device.name,
+      interfaceName: row.name,
+      alias: row.alias ?? '',
+      description: row.description ?? '',
+      ifIndex: row.ifIndex,
+      status: statusFromDb(row.operStatus),
+      ip: row.device.managementIp || null,
+      vlan: null,
+      maps: row.device.mapNodes.map(({ map }) => map),
     }));
   }
 

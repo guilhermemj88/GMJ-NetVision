@@ -72,6 +72,21 @@ describe('Auth and public views', () => {
     expect(response.statusCode).toBe(200);
   });
 
+  it('keeps global interface search behind normal authentication', async () => {
+    const anonymous = await app.inject({
+      method: 'GET',
+      url: '/api/interfaces/search?q=GE',
+    });
+    expect(anonymous.statusCode).toBe(401);
+
+    const authenticated = await authed({
+      method: 'GET',
+      url: '/api/interfaces/search?q=GE&limit=3',
+    });
+    expect(authenticated.statusCode).toBe(200);
+    expect(authenticated.json().length).toBeLessThanOrEqual(3);
+  });
+
   it('logs out and invalidates the session', async () => {
     const logout = await authed({ method: 'POST', url: '/api/auth/logout' });
     expect(logout.statusCode).toBe(200);

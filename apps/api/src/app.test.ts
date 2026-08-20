@@ -130,6 +130,24 @@ describe('GMJ NetVision API', () => {
     ).toEqual({ x: 123, y: 456 });
   });
 
+  it('persists the position source supplied by the layout editor', async () => {
+    const response = await app.inject({
+      method: 'PUT',
+      url: '/api/maps/backbone-main/nodes/positions',
+      payload: {
+        nodes: [{
+          nodeId: 'node-core-01',
+          position: { x: 222, y: 333 },
+          positionSource: 'AUTO',
+        }],
+      },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(
+      response.json().nodes.find((node: { id: string }) => node.id === 'node-core-01'),
+    ).toMatchObject({ position: { x: 222, y: 333 }, positionSource: 'AUTO' });
+  });
+
   it('returns normalized discovery suggestions for review', async () => {
     const response = await app.inject({
       method: 'POST',
@@ -156,6 +174,53 @@ describe('GMJ NetVision API', () => {
       expect(host.snmp ?? {}).not.toHaveProperty('privacyPassword');
       expect(host.zabbix ?? {}).not.toHaveProperty('token');
     }
+  });
+
+  it('searches the global interface inventory by name, alias, description and ifIndex', async () => {
+    const byName = await app.inject({
+      method: 'GET',
+      url: '/api/interfaces/search?q=100GE1%2F0%2F1',
+    });
+    expect(byName.statusCode).toBe(200);
+    expect(byName.json().length).toBeGreaterThan(0);
+    expect(byName.json()[0]).toMatchObject({
+      interfaceName: '100GE1/0/1',
+      ifIndex: 1000,
+      vlan: null,
+    });
+    expect(byName.json()[0]).toHaveProperty('maps');
+
+    const byAlias = await app.inject({
+      method: 'GET',
+      url: '/api/interfaces/search?q=uplink-primary',
+    });
+    expect(byAlias.json().some((item: { alias: string }) => item.alias === 'UPLINK-PRIMARY')).toBe(true);
+
+    const byDescription = await app.inject({
+      method: 'GET',
+      url: '/api/interfaces/search?q=backbone%20optical',
+    });
+    expect(byDescription.json().some((item: { description: string }) =>
+      item.description === 'Backbone optical link')).toBe(true);
+
+    const byIfIndex = await app.inject({ method: 'GET', url: '/api/interfaces/search?q=1000' });
+    expect(byIfIndex.json().every((item: { ifIndex: number }) => item.ifIndex === 1000)).toBe(true);
+  });
+
+  it('limits interface search results and returns an empty list when nothing matches', async () => {
+    const limited = await app.inject({
+      method: 'GET',
+      url: '/api/interfaces/search?q=GE&limit=2',
+    });
+    expect(limited.statusCode).toBe(200);
+    expect(limited.json()).toHaveLength(2);
+
+    const empty = await app.inject({
+      method: 'GET',
+      url: '/api/interfaces/search?q=definitely-no-such-interface',
+    });
+    expect(empty.statusCode).toBe(200);
+    expect(empty.json()).toEqual([]);
   });
 
   it('creates, edits, maps and removes a manual host without duplicating Device', async () => {

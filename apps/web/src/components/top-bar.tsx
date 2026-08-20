@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useMapStore } from '@/store/map-store';
 import { useAuth } from '@/app/providers';
+import { GlobalInterfaceSearch } from './global-interface-search';
 
 export function TopBar() {
   const map = useMapStore((state) => state.map);
@@ -89,6 +90,7 @@ export function TopBar() {
           <Badge tone="hybrid">{map.mode}</Badge>
         </>
       )}
+      {view === 'MAP' && map && <GlobalInterfaceSearch />}
       <div className="topbar__spacer" />
       <div className="source-status" title="Dados carregados pela API NetVision">
         <span className="source-status__dot" />

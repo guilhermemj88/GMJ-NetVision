@@ -149,7 +149,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 
 Ative **Editar mapa** na barra superior. O toolbar permite adicionar equipamentos, criar enlaces, excluir a seleção, auto-organizar, bloquear/desbloquear, descobrir vizinhos e salvar.
 
-Arrastar um node define `positionSource=MANUAL`. Nodes com `locked=true` nunca são movidos pelo auto-layout. Em `HYBRID`, o layout também preserva posições manuais sempre que possível. As posições são salvas na API e, como tolerância a falhas do modo demo, em `localStorage`.
+Arrastar um node define `positionSource=MANUAL`. Nodes com `locked=true` nunca são movidos pelo auto-layout. Em `HYBRID`, o layout também preserva posições manuais sempre que possível. Posições, settings e viewport salvos têm o backend como fonte oficial; chaves legadas de geometria em `localStorage` são descartadas ao carregar o mapa.
 
 Durante o arraste em modo de edição, guias temporárias alinham suavemente os centros horizontal e vertical de nodes próximos. A tolerância acompanha o zoom e somente a posição final é persistida.
 
