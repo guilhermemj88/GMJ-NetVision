@@ -28,9 +28,6 @@ export class SshClientImpl implements SshClient {
       rejectConnectionFailure = reject;
     });
 
-    // Keep this listener for the full lifetime of the ssh2 Client. ssh2 can emit
-    // more than one error while a transport is being torn down; using once()
-    // leaves a later error unhandled and can terminate the whole API process.
     connection.on('error', (error) => {
       rejectConnectionFailure(this.safeError(error));
     });
@@ -42,9 +39,6 @@ export class SshClientImpl implements SshClient {
 
     try {
       await Promise.race([ready, connectionFailure]);
-
-      // Huawei VRP is a stateful CLI. A single shell channel ensures the
-      // screen-length command applies to the display command that follows.
       const result = await Promise.race([
         this.executeShell(connection, commands),
         connectionFailure,
@@ -62,32 +56,56 @@ export class SshClientImpl implements SshClient {
           reject(this.safeError(error));
           return;
         }
+
         let stdout = '';
         let stderr = '';
         let settled = false;
+        let declinedInitialPasswordChange = false;
+        let commandsSent = false;
+
         const timeout = setTimeout(() => {
           if (settled) return;
           settled = true;
           stream.close();
           reject(new Error('SSH command timeout'));
         }, (this.options.readyTimeout ?? 8_000) + 7_000);
+
+        const initialPasswordPrompt = /(initial password poses security risks|password needs to be changed|change now\?\s*\[y\/n\]\s*:)/i;
+        const cliPrompt = /(?:^|[\r\n])\s*(?:<[^>\r\n]+>|\[[^\]\r\n]+\])\s*$/;
+
+        const handleStdout = (chunk: string): void => {
+          stdout += chunk;
+
+          if (!declinedInitialPasswordChange && initialPasswordPrompt.test(stdout)) {
+            declinedInitialPasswordChange = true;
+            stream.write('N\r\n');
+            return;
+          }
+
+          if (!commandsSent && cliPrompt.test(stdout)) {
+            commandsSent = true;
+            stream.end(`${commands.join('\r\n')}\r\nquit\r\n`);
+          }
+        };
+
         stream.setEncoding('utf8');
-        stream.on('data', (data: string | Buffer) => { stdout += data.toString(); });
+        stream.on('data', (data: string | Buffer) => handleStdout(data.toString()));
         stream.stderr.setEncoding('utf8');
         stream.stderr.on('data', (data: string | Buffer) => { stderr += data.toString(); });
+
         stream.once('close', () => {
           if (settled) return;
           settled = true;
           clearTimeout(timeout);
           resolve({ stdout, stderr, exitCode: 0 });
         });
+
         stream.once('error', (streamError: Error) => {
           if (settled) return;
           settled = true;
           clearTimeout(timeout);
           reject(this.safeError(streamError));
         });
-        stream.end(`${commands.join('\n')}\nquit\n`);
       });
     });
   }

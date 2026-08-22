@@ -37,6 +37,7 @@ const edgeTypes = { traffic: TrafficEdge };
 type MapFlowNode = DeviceFlowNode | GenericFlowNode;
 const DEFAULT_NODE_WIDTH = 64;
 const DEFAULT_NODE_HEIGHT = 70;
+const MAP_REFRESH_INTERVAL_MS = 30_000;
 
 function alignmentNode(node: MapFlowNode): AlignmentNode {
   return {
@@ -74,6 +75,8 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
     queryKey: ['map', activeMapId],
     queryFn: () => getMap(activeMapId!),
     enabled: Boolean(activeMapId) && !readOnly,
+    refetchInterval: MAP_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: true,
   });
 
   useEffect(() => {
@@ -82,8 +85,8 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
 
   useEffect(() => {
     if (readOnly) return;
-    if (mapQuery.data && (!map || map.id !== mapQuery.data.id)) setMap(mapQuery.data);
-  }, [map, mapQuery.data, readOnly, setMap]);
+    if (mapQuery.data) setMap(mapQuery.data);
+  }, [mapQuery.data, readOnly, setMap]);
 
   const hasSavedViewport = Boolean(
     map?.settings.viewport &&
@@ -221,16 +224,14 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
         node.type === 'generic' ? { kind: 'node', id: node.id } : { kind: 'device', id: node.id },
       );
       if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
-    },
-    [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
+    }, [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
   );
 
   const onEdgeClick: EdgeMouseHandler<TrafficFlowEdge> = useCallback(
     (_event, edge) => {
       setSelection({ kind: 'link', id: edge.id });
       if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
-    },
-    [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
+    }, [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
   );
 
   const onNodeDrag: OnNodeDrag<MapFlowNode> = useCallback(
@@ -246,8 +247,7 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
           ? { ...node, position: result.position }
           : node);
       });
-    },
-    [editMode, flow, setNodes],
+    }, [editMode, flow, setNodes],
   );
 
   const clearAlignment = useCallback(() => {
@@ -260,8 +260,7 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
       if (!editMode || !connection.source || !connection.target || connection.source === connection.target) return;
       setPendingLink({ sourceId: connection.source, targetId: connection.target });
       setPanel('create-link');
-    },
-    [editMode, setPanel, setPendingLink],
+    }, [editMode, setPanel, setPendingLink],
   );
 
   if ((catalogQuery.isPending || mapQuery.isPending) && !map) {
