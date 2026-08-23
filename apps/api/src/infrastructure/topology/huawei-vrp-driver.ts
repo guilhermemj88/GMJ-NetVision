@@ -1,4 +1,4 @@
-import type { DiscoveredNeighbor, NetworkInterface } from '@gmj/shared';
+import type { DiscoveredNeighbor, NetworkInterface, OpticalLaneReading } from '@gmj/shared';
 import type { DeviceIdentity, SshDeviceDriver } from '../../domain/ports';
 import { normalizeOpticalDbm } from './optical-power';
 
@@ -6,6 +6,7 @@ export interface HuaweiOpticalReading {
   name: string;
   rxPowerDbm: number | null;
   txPowerDbm: number | null;
+  opticalLanes: OpticalLaneReading[];
 }
 
 function field(block: string, pattern: RegExp): string | undefined {
@@ -24,6 +25,43 @@ function looksLikeInterface(value: string, allowNumeric = false): boolean {
       candidate,
     )
   );
+}
+
+function parseLaneSection(block: string, label: RegExp): Map<number, number> {
+  const lines = block.split(/\r?\n/);
+  const result = new Map<number, number>();
+  let collecting = false;
+
+  for (const line of lines) {
+    if (!collecting) {
+      if (!label.test(line)) continue;
+      collecting = true;
+    } else {
+      const metricHeading = line.match(/^\s*(TxPower|RxPower|Current|Temp|Voltage)\b/i)?.[1];
+      if (metricHeading && !label.test(line)) break;
+    }
+
+    for (const match of line.matchAll(/(-?\d+(?:\.\d+)?)\s*\(lane(\d+)\)/gi)) {
+      const value = Number(match[1]);
+      const lane = Number(match[2]);
+      if (Number.isFinite(value) && Number.isInteger(lane)) result.set(lane, value);
+    }
+  }
+  return result;
+}
+
+function parseOpticalLanes(block: string): OpticalLaneReading[] {
+  const tx = parseLaneSection(block, /^\s*TxPower\s*\(\s*dBm\s*\)/i);
+  const rx = parseLaneSection(block, /^\s*RxPower\s*\(\s*dBm\s*\)/i);
+  const bias = parseLaneSection(block, /^\s*Current\s*\(\s*mA\s*\)/i);
+  const lanes = [...new Set([...tx.keys(), ...rx.keys(), ...bias.keys()])].sort((a, b) => a - b);
+
+  return lanes.map((lane) => ({
+    lane,
+    rxPowerDbm: normalizeOpticalDbm(rx.get(lane)),
+    txPowerDbm: normalizeOpticalDbm(tx.get(lane)),
+    ...(bias.has(lane) ? { biasCurrentMa: bias.get(lane) ?? null } : {}),
+  }));
 }
 
 export class HuaweiVrpDriver implements SshDeviceDriver {
@@ -119,12 +157,14 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
   }
 
   parseOpticalPower(output: string): HuaweiOpticalReading[] {
-    const starts = [...output.matchAll(/^\s*(.+?)\s+transceiver information\s*:/gim)];
+    const starts = [...output.matchAll(/^\s*(?:Port\s+)?(.+?)\s+transceiver(?:\s+diagnostic)?\s+information\s*:/gim)];
     return starts.flatMap((match, index) => {
       const name = match[1]?.trim();
       if (!name || match.index === undefined) return [];
       const end = starts[index + 1]?.index ?? output.length;
       const block = output.slice(match.index, end);
+      const opticalLanes = parseOpticalLanes(block);
+
       const rx =
         block.match(
           /(?:Current\s*)?R\s*X\s*Power\s*(?:\(\s*dBm\s*\))?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i,
@@ -133,14 +173,17 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
         block.match(
           /(?:Current\s*)?T\s*X\s*Power\s*(?:\(\s*dBm\s*\))?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i,
         )?.[1] ?? block.match(/TxPower\s*(?:\(\s*dBm\s*\))?\s*[:=]\s*(-?\d+(?:\.\d+)?)/i)?.[1];
-      const rxPowerDbm = normalizeOpticalDbm(rx);
-      const txPowerDbm = normalizeOpticalDbm(tx);
-      if (rxPowerDbm === null && txPowerDbm === null) return [];
+
+      const lane0 = opticalLanes.find((lane) => lane.lane === 0) ?? opticalLanes[0];
+      const rxPowerDbm = normalizeOpticalDbm(rx) ?? lane0?.rxPowerDbm ?? null;
+      const txPowerDbm = normalizeOpticalDbm(tx) ?? lane0?.txPowerDbm ?? null;
+      if (rxPowerDbm === null && txPowerDbm === null && opticalLanes.length === 0) return [];
       return [
         {
           name,
           rxPowerDbm,
           txPowerDbm,
+          opticalLanes,
         },
       ];
     });

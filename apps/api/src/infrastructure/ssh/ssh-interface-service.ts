@@ -49,6 +49,8 @@ export class SshInterfaceService {
     const needsFallback = interfaces.some((networkInterface) => {
       const hasSnmpPower = networkInterface.opticalSource === 'SNMP'
         && (networkInterface.rxPowerDbm != null || networkInterface.txPowerDbm != null);
+      const hasLaneData = (networkInterface.opticalLanes?.length ?? 0) > 1;
+      if (hasLaneData) return false;
       if (!hasSnmpPower) return true;
       if (!snmpFreshAfter) return false;
       return !networkInterface.opticalUpdatedAt
@@ -81,18 +83,19 @@ export class SshInterfaceService {
       const snmpUpdatedAt = networkInterface.opticalUpdatedAt
         ? new Date(networkInterface.opticalUpdatedAt)
         : null;
-      if (hasSnmpPower && (!snmpFreshAfter || (snmpUpdatedAt && snmpUpdatedAt >= snmpFreshAfter))) {
-        return networkInterface;
-      }
       const reading = [...interfaceNameKeys(networkInterface.name), ...interfaceNameKeys(networkInterface.description)]
         .map((key) => byName.get(key))
         .find(Boolean);
       if (!reading) return networkInterface;
+
+      const shouldKeepFreshSnmpScalar = hasSnmpPower
+        && (!snmpFreshAfter || (snmpUpdatedAt && snmpUpdatedAt >= snmpFreshAfter));
       return {
         ...networkInterface,
-        rxPowerDbm: reading.rxPowerDbm,
-        txPowerDbm: reading.txPowerDbm,
-        opticalSource: 'SSH',
+        rxPowerDbm: shouldKeepFreshSnmpScalar ? networkInterface.rxPowerDbm : reading.rxPowerDbm,
+        txPowerDbm: shouldKeepFreshSnmpScalar ? networkInterface.txPowerDbm : reading.txPowerDbm,
+        opticalLanes: reading.opticalLanes.length ? reading.opticalLanes : networkInterface.opticalLanes,
+        opticalSource: reading.opticalLanes.length ? 'SSH' : shouldKeepFreshSnmpScalar ? 'SNMP' : 'SSH',
         opticalUpdatedAt: now,
         dataSources: [...new Set([...(networkInterface.dataSources ?? ['SNMP']), 'SSH' as const])],
       };

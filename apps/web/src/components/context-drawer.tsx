@@ -426,6 +426,18 @@ function InterfaceDrawer({
           <Info label="Fonte" value={item.opticalSource ?? 'N/D'} />
           <Info label="Atualizado" value={formatOpticalTimestamp(item.opticalUpdatedAt)} />
         </div>
+        {(item.opticalLanes?.length ?? 0) > 0 && (
+          <div className="info-grid">
+            {item.opticalLanes!.map((lane) => (
+              <Info
+                key={lane.lane}
+                label={`Lane ${lane.lane}`}
+                value={`RX ${formatOpticalPower(lane.rxPowerDbm)} · TX ${formatOpticalPower(lane.txPowerDbm)}${lane.biasCurrentMa == null ? '' : ` · Bias ${lane.biasCurrentMa.toFixed(2)} mA`}`}
+                mono
+              />
+            ))}
+          </div>
+        )}
       </section>
       <section className="drawer-section live-metrics">
         <SectionTitle icon={<Activity size={14} />} label="MÉTRICAS ATUAIS" />

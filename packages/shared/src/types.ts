@@ -38,6 +38,13 @@ export type SnmpPrivacyProtocol = 'DES' | 'AES' | 'AES256';
 
 export interface Position { x: number; y: number; }
 
+export interface OpticalLaneReading {
+  lane: number;
+  rxPowerDbm: number | null;
+  txPowerDbm: number | null;
+  biasCurrentMa?: number | null;
+}
+
 export interface NetworkInterface {
   id: string;
   deviceId: string;
@@ -62,8 +69,9 @@ export interface NetworkInterface {
   txErrorsTotal?: number;
   rxDiscardsTotal?: number;
   txDiscardsTotal?: number;
-  rxPowerDbm?: number | null;
-  txPowerDbm?: number | null;
+  rxPowerDbm?: number | null | undefined;
+  txPowerDbm?: number | null | undefined;
+  opticalLanes?: OpticalLaneReading[] | null | undefined;
   opticalSource?: 'SNMP' | 'SSH' | null;
   opticalUpdatedAt?: string | null;
   rxItemId?: string | null;

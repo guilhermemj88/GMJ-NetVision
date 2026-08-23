@@ -230,8 +230,8 @@ model Device {
   sourceHealth        DeviceSourceHealth[]
   snmpCredentialId    String?
   sshCredentialId     String?
-  snmpCredential      SnmpCredential?        @relation(fields: [snmpCredentialId], references: [id])
-  sshCredential       SshCredential?         @relation(fields: [sshCredentialId], references: [id])
+  snmpCredential      SnmpCredential?       @relation(fields: [snmpCredentialId], references: [id])
+  sshCredential       SshCredential?        @relation(fields: [sshCredentialId], references: [id])
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
 
@@ -255,6 +255,7 @@ model Interface {
   operStatus        InterfaceStatus          @default(UNKNOWN)
   rxPowerDbm        Float?
   txPowerDbm        Float?
+  opticalLanes      Json?
   opticalSource     String?
   opticalUpdatedAt  DateTime?
   rxItemId          String?
@@ -290,23 +291,23 @@ model DeviceMetricSample {
 }
 
 model InterfaceMetricSample {
-  id          BigInt          @id @default(autoincrement())
-  interfaceId String
-  timestamp   DateTime        @default(now())
-  inOctets    BigInt
-  outOctets   BigInt
-  rxBps       Float
-  txBps       Float
-  inErrors    BigInt          @default(0)
-  outErrors   BigInt          @default(0)
-  inDiscards  BigInt          @default(0)
-  outDiscards BigInt          @default(0)
-  inErrorsDelta    BigInt      @default(0)
-  outErrorsDelta   BigInt      @default(0)
-  inDiscardsDelta  BigInt      @default(0)
-  outDiscardsDelta BigInt      @default(0)
-  operStatus  InterfaceStatus @default(UNKNOWN)
-  interface   Interface       @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
+  id               BigInt          @id @default(autoincrement())
+  interfaceId      String
+  timestamp        DateTime        @default(now())
+  inOctets         BigInt
+  outOctets        BigInt
+  rxBps            Float
+  txBps            Float
+  inErrors         BigInt          @default(0)
+  outErrors        BigInt          @default(0)
+  inDiscards       BigInt          @default(0)
+  outDiscards      BigInt          @default(0)
+  inErrorsDelta    BigInt          @default(0)
+  outErrorsDelta   BigInt          @default(0)
+  inDiscardsDelta  BigInt          @default(0)
+  outDiscardsDelta BigInt          @default(0)
+  operStatus       InterfaceStatus @default(UNKNOWN)
+  interface        Interface       @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
 
   @@index([interfaceId, timestamp])
 }
@@ -324,8 +325,8 @@ model Link {
   autoCapacityBps   BigInt?
   capacitySource    CapacitySource     @default(AUTO)
   label             String?
-  status            DeviceStatus       @default(UNKNOWN)
-  discoverySource   DiscoverySource    @default(MANUAL)
+  status            DeviceStatus      @default(UNKNOWN)
+  discoverySource   DiscoverySource   @default(MANUAL)
   metricSource      String
   visualStyle       LinkDisplayStyle?
   metricDisplay     LinkMetricDisplay?

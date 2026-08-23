@@ -44,6 +44,36 @@ function statusFromDb(value: string): InterfaceStatus {
     : 'UNKNOWN';
 }
 
+function opticalLanesFromDb(value: unknown): NetworkInterface['opticalLanes'] {
+  if (!Array.isArray(value)) return null;
+  const lanes = value.flatMap((item) => {
+    if (!item || typeof item !== 'object') return [];
+    const candidate = item as Record<string, unknown>;
+    const lane = Number(candidate.lane);
+    if (!Number.isInteger(lane) || lane < 0) return [];
+    const rx = candidate.rxPowerDbm;
+    const tx = candidate.txPowerDbm;
+    const bias = candidate.biasCurrentMa;
+    return [{
+      lane,
+      rxPowerDbm: typeof rx === 'number' && Number.isFinite(rx) ? rx : null,
+      txPowerDbm: typeof tx === 'number' && Number.isFinite(tx) ? tx : null,
+      ...(typeof bias === 'number' && Number.isFinite(bias) ? { biasCurrentMa: bias } : {}),
+    }];
+  });
+  return lanes.length ? lanes.sort((a, b) => a.lane - b.lane) : null;
+}
+
+function opticalLanesToDb(value: NetworkInterface['opticalLanes']): Prisma.InputJsonValue | typeof Prisma.DbNull {
+  if (!value?.length) return Prisma.DbNull;
+  return value.map((lane) => ({
+    lane: lane.lane,
+    rxPowerDbm: lane.rxPowerDbm,
+    txPowerDbm: lane.txPowerDbm,
+    ...(lane.biasCurrentMa === undefined ? {} : { biasCurrentMa: lane.biasCurrentMa }),
+  })) as Prisma.InputJsonValue;
+}
+
 function persistedHealthState(state: ConnectionTestResult['state']): 'DISABLED' | 'CONFIGURED' | 'CONNECTED' | 'FAILED' {
   if (state === 'DISABLED') return 'DISABLED';
   if (state === 'CONNECTED') return 'CONNECTED';
@@ -477,6 +507,7 @@ export class PrismaHostRepository implements HostRepository {
       data: {
         rxPowerDbm: item.rxPowerDbm ?? null,
         txPowerDbm: item.txPowerDbm ?? null,
+        ...(item.opticalLanes?.length ? { opticalLanes: opticalLanesToDb(item.opticalLanes) } : {}),
         opticalSource: item.opticalSource ?? null,
         opticalUpdatedAt: item.opticalUpdatedAt ? new Date(item.opticalUpdatedAt) : null,
         dataSources: item.dataSources ?? ['SNMP'],
@@ -682,7 +713,7 @@ export class PrismaHostRepository implements HostRepository {
     interfaces: Array<{
       id: string; deviceId: string; name: string; alias: string | null; description: string | null; ifIndex: number;
       mac: string | null; mtu: number | null; speedBps: bigint | null; adminStatus: string; operStatus: string;
-      rxPowerDbm: number | null; txPowerDbm: number | null; opticalSource: string | null; opticalUpdatedAt: Date | null;
+      rxPowerDbm: number | null; txPowerDbm: number | null; opticalLanes: unknown; opticalSource: string | null; opticalUpdatedAt: Date | null;
       rxItemId: string | null; txItemId: string | null; statusItemId: string | null; inErrorsItemId: string | null;
       outErrorsItemId: string | null; inDiscardsItemId: string | null; outDiscardsItemId: string | null; dataSources: unknown;
       metricSamples: Array<{
@@ -742,6 +773,7 @@ export class PrismaHostRepository implements HostRepository {
         txDiscardsTotal: safeNumber(sample?.outDiscards),
         rxPowerDbm: item.rxPowerDbm,
         txPowerDbm: item.txPowerDbm,
+        opticalLanes: opticalLanesFromDb(item.opticalLanes),
         opticalSource: item.opticalSource === 'SNMP' || item.opticalSource === 'SSH' ? item.opticalSource : null,
         opticalUpdatedAt: item.opticalUpdatedAt?.toISOString() ?? null,
         rxItemId: item.rxItemId,
@@ -826,6 +858,7 @@ export class PrismaHostRepository implements HostRepository {
       operStatus: item.operStatus,
       rxPowerDbm: item.rxPowerDbm ?? null,
       txPowerDbm: item.txPowerDbm ?? null,
+      opticalLanes: opticalLanesToDb(item.opticalLanes),
       opticalSource: item.opticalSource ?? null,
       opticalUpdatedAt: item.opticalUpdatedAt ? new Date(item.opticalUpdatedAt) : null,
       rxItemId: item.rxItemId ?? null,
@@ -844,7 +877,7 @@ export class PrismaHostRepository implements HostRepository {
     existing?: {
       name: string; alias: string | null; description: string | null; mac: string | null;
       mtu: number | null; speedBps: bigint | null; rxPowerDbm: number | null; txPowerDbm: number | null;
-      opticalSource: string | null; opticalUpdatedAt: Date | null; dataSources: unknown;
+      opticalLanes: unknown; opticalSource: string | null; opticalUpdatedAt: Date | null; dataSources: unknown;
     },
   ) {
     const validText = (value: string): boolean => {
@@ -854,6 +887,7 @@ export class PrismaHostRepository implements HostRepository {
     const existingSources = Array.isArray(existing?.dataSources)
       ? existing.dataSources as NetworkInterface['dataSources']
       : [];
+    const existingOpticalLanes = opticalLanesFromDb(existing?.opticalLanes);
     return {
       ...this.interfaceCreateData(item),
       name: validText(item.name) ? item.name : existing?.name ?? item.name,
@@ -866,6 +900,7 @@ export class PrismaHostRepository implements HostRepository {
         : existing?.speedBps ?? 0n,
       rxPowerDbm: item.rxPowerDbm ?? existing?.rxPowerDbm ?? null,
       txPowerDbm: item.txPowerDbm ?? existing?.txPowerDbm ?? null,
+      opticalLanes: opticalLanesToDb(item.opticalLanes?.length ? item.opticalLanes : existingOpticalLanes),
       opticalSource: item.opticalSource ?? existing?.opticalSource ?? null,
       opticalUpdatedAt: item.opticalUpdatedAt
         ? new Date(item.opticalUpdatedAt)
