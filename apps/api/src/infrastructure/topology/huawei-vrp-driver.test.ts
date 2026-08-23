@@ -71,4 +71,56 @@ Voltage(V)         3.24            2.80        3.70       normal
       },
     ]);
   });
+
+  it('builds and parses the per-interface 100GE diagnostic command flow', () => {
+    const driver = new HuaweiVrpDriver();
+    expect(driver.opticalEnrichmentCommands(['100GE 0/0/2'], false)).toEqual([
+      'screen-length 0 temporary',
+      'display transceiver diagnosis interface 100GE0/0/2',
+    ]);
+    expect(driver.parseOpticalPower(multiLaneDiagnostic('100GE0/0/2'))[0]).toMatchObject({
+      name: '100GE0/0/2',
+      opticalLanes: [
+        { lane: 0, rxPowerDbm: -12.1, txPowerDbm: 0.2, biasCurrentMa: 60.1 },
+        { lane: 1, rxPowerDbm: -12.2, txPowerDbm: 0.3, biasCurrentMa: 60.2 },
+        { lane: 2, rxPowerDbm: -12.3, txPowerDbm: 0.4, biasCurrentMa: 60.3 },
+        { lane: 3, rxPowerDbm: -12.4, txPowerDbm: 0.5, biasCurrentMa: 60.4 },
+      ],
+    });
+  });
+
+  it('builds and parses the equivalent per-interface 40GE diagnostic command flow', () => {
+    const driver = new HuaweiVrpDriver();
+    expect(driver.opticalEnrichmentCommands(['40GE0/0/1'], false)).toEqual([
+      'screen-length 0 temporary',
+      'display transceiver diagnosis interface 40GE0/0/1',
+    ]);
+    expect(driver.parseOpticalPower(multiLaneDiagnostic('40GE0/0/1'))[0]).toMatchObject({
+      name: '40GE0/0/1',
+      rxPowerDbm: -12.1,
+      txPowerDbm: 0.2,
+      opticalLanes: expect.arrayContaining([
+        expect.objectContaining({ lane: 3, rxPowerDbm: -12.4, txPowerDbm: 0.5 }),
+      ]),
+    });
+  });
 });
+
+function multiLaneDiagnostic(name: string): string {
+  return `
+<HUAWEI>display transceiver diagnosis interface ${name}
+Port ${name} transceiver diagnostic information:
+TxPower(dBm)        0.20 (lane0)
+                    0.30 (lane1)
+                    0.40 (lane2)
+                    0.50 (lane3)
+RxPower(dBm)      -12.10 (lane0)
+                  -12.20 (lane1)
+                  -12.30 (lane2)
+                  -12.40 (lane3)
+Current(mA)        60.10 (lane0)
+                   60.20 (lane1)
+                   60.30 (lane2)
+                   60.40 (lane3)
+`;
+}

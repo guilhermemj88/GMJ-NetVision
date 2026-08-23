@@ -27,6 +27,11 @@ function looksLikeInterface(value: string, allowNumeric = false): boolean {
   );
 }
 
+export function huaweiMultiLaneInterfaceName(value: string): string | null {
+  const compact = value.trim().replace(/\s+/g, '');
+  return /^(?:40|100)GE\d+(?:\/\d+){2,}$/i.test(compact) ? compact : null;
+}
+
 function parseLaneSection(block: string, label: RegExp): Map<number, number> {
   const lines = block.split(/\r?\n/);
   const result = new Map<number, number>();
@@ -77,6 +82,18 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
 
   opticalCommands(): string[] {
     return ['screen-length 0 temporary', 'display transceiver verbose'];
+  }
+
+  opticalEnrichmentCommands(interfaceNames: string[], includeVerbose: boolean): string[] {
+    const candidates = [...new Set(interfaceNames.flatMap((name) => {
+      const commandName = huaweiMultiLaneInterfaceName(name);
+      return commandName ? [commandName] : [];
+    }))];
+    return [
+      'screen-length 0 temporary',
+      ...(includeVerbose ? ['display transceiver verbose'] : []),
+      ...candidates.map((name) => `display transceiver diagnosis interface ${name}`),
+    ];
   }
 
   neighborCommands(): string[] {
