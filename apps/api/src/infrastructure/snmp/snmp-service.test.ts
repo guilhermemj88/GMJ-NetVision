@@ -210,6 +210,48 @@ describe('SnmpService', () => {
     ]);
   });
 
+  it('calculates bps from the actual elapsed time when polling is irregular', async () => {
+    const now = new Date('2026-08-23T12:01:15.000Z');
+    const networkInterface = {
+      id: 'if-1', deviceId: 'test-1', name: '100GE0/0/1', alias: '', description: '',
+      ifIndex: 1, mac: '', mtu: 1500, speedBps: 100_000_000_000,
+      adminStatus: 'UP' as const, operStatus: 'UP' as const,
+      rxBps: 0, txBps: 0, rxUtilization: 0, txUtilization: 0,
+      rxErrors: 0, txErrors: 0, rxDiscards: 0, txDiscards: 0, dataSources: ['SNMP' as const],
+    };
+    const repo = repository();
+    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(new Map([[1, {
+      interfaceId: 'if-1', ifIndex: 1, timestamp: new Date('2026-08-23T12:00:00.000Z'),
+      inOctets: 1_000n, outOctets: 2_000n, inErrors: 0n, outErrors: 0n,
+      inDiscards: 0n, outDiscards: 0n,
+    }]]));
+    const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[1, {
+      ifIndex: 1, timestamp: now,
+      inOctets: 8_500n, outOctets: 17_000n,
+      inErrors: 0n, outErrors: 0n, inDiscards: 0n, outDiscards: 0n, operStatus: 'UP',
+    }]]));
+    const internals = service as unknown as { collectSystem: () => Promise<DeviceMetricSampleInput> };
+    vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
+    const polledHost = host({
+      interfaces: [networkInterface], lastDiscoveryAt: new Date().toISOString(), snmpEnabled: true,
+      snmp: {
+        version: 'SNMP_V2C', host: '192.168.1.1', port: 161, username: '',
+        securityLevel: 'NO_AUTH_NO_PRIV', authProtocol: null, privacyProtocol: null,
+        credentialConfigured: true,
+      },
+    });
+
+    await service.pollHost(polledHost);
+
+    expect(repo.saveSnmpPoll).toHaveBeenCalledWith(polledHost.id, expect.any(Object), [
+      expect.objectContaining({
+        rxBps: 800,
+        txBps: 1_600,
+      }),
+    ]);
+  });
+
   it('limits heavy optical enrichment to the configured interval', async () => {
     const repo = repository();
     const service = new SnmpService(repo, undefined, 300_000);

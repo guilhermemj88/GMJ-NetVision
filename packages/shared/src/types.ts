@@ -25,6 +25,7 @@ export type NodeDisplayMode = 'ICON_2D' | 'ICON_3D' | 'CARD';
 export type LinkDisplayStyle = 'FLOW' | 'WEATHERMAP' | 'HYBRID' | 'MINIMAL';
 export type LinkMetricDisplay = 'THROUGHPUT' | 'UTILIZATION' | 'BOTH' | 'NONE';
 export type LinkDirection = 'A_TO_B' | 'B_TO_A';
+export type LinkTrafficConsistency = 'CONSISTENT' | 'DIVERGENT' | 'UNKNOWN';
 export type CapacitySource = 'AUTO' | 'MANUAL';
 export type UtilizationLevel = 'NORMAL' | 'ATTENTION' | 'HIGH' | 'CRITICAL' | 'INCONSISTENT';
 export type HostOrigin = 'MANUAL' | 'ZABBIX' | 'DISCOVERY' | 'IMPORTED';
@@ -69,6 +70,8 @@ export interface NetworkInterface {
   txErrorsTotal?: number;
   rxDiscardsTotal?: number;
   txDiscardsTotal?: number;
+  telemetryAvailable?: boolean;
+  telemetryUpdatedAt?: string | null;
   rxPowerDbm?: number | null | undefined;
   txPowerDbm?: number | null | undefined;
   opticalLanes?: OpticalLaneReading[] | null | undefined;
@@ -119,7 +122,14 @@ export interface InterfaceSearchResult {
 
 export interface MapNode { id: string; mapId: string; deviceId: string | null; nodeKind: NodeKind; genericType: string | null; label: string | null; position: Position; locked: boolean; positionSource: PositionSource; }
 export interface AddDeviceResult { device: HostRecord; node: MapNode; }
-export interface DirectionalLinkMetric { bps: number; utilization: number; }
+export interface DirectionalLinkMetric {
+  bps: number;
+  utilization: number;
+  txBps: number | null;
+  observedRxBps: number | null;
+  deltaPercent: number | null;
+  consistency: LinkTrafficConsistency;
+}
 export interface LinkThresholds { attention: number; high: number; critical: number; maximum: number; }
 
 export interface NetworkLink {
@@ -154,7 +164,17 @@ export interface DiscoveryApplySelection { neighborId: string; action: Discovery
 export interface DiscoveryApplyResult { map: NetworkMap; createdHosts: string[]; addedNodes: string[]; createdLinks: string[]; skipped: string[]; }
 export interface MapPlaylistItem { mapId: string; order: number; }
 export interface MapPlaylist { id: string; name: string; rotationIntervalSeconds: number; isDefault: boolean; items: MapPlaylistItem[]; createdAt: string; updatedAt: string; }
-export interface MetricPoint { timestamp: string; rxBps: number; txBps: number; rxErrors: number; txErrors: number; rxDiscards: number; txDiscards: number; }
+export interface MetricPoint {
+  timestamp: string;
+  rxBps: number;
+  txBps: number;
+  rxBpsMax?: number;
+  txBpsMax?: number;
+  rxErrors: number;
+  txErrors: number;
+  rxDiscards: number;
+  txDiscards: number;
+}
 
 export interface DiscoveredNeighbor {
   id: string; localDeviceId: string; localPort: string; localIfIndex?: number; localPortSubtype?: number; localMac?: string; remoteSystemName: string; remoteChassisId?: string; remoteManagementAddress?: string; remotePort: string; remotePortDescription?: string; systemDescription?: string; capabilities: string[]; source: Exclude<DiscoverySource, 'MANUAL'>; matchStatus: MatchStatus; matchedDeviceId?: string;

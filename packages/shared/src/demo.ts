@@ -332,10 +332,18 @@ export const demoLinks: NetworkLink[] = linkPairs.map(
       A_TO_B: {
         bps: tx * 1_000_000_000,
         utilization: calculateUtilization(tx * 1_000_000_000, capacity * 1_000_000_000),
+        txBps: tx * 1_000_000_000,
+        observedRxBps: tx * 1_000_000_000,
+        deltaPercent: 0,
+        consistency: 'CONSISTENT',
       },
       B_TO_A: {
         bps: tx * 0.68 * 1_000_000_000,
         utilization: calculateUtilization(tx * 0.68 * 1_000_000_000, capacity * 1_000_000_000),
+        txBps: tx * 0.68 * 1_000_000_000,
+        observedRxBps: tx * 0.68 * 1_000_000_000,
+        deltaPercent: 0,
+        consistency: 'CONSISTENT',
       },
     },
     rxBps: tx * 0.68 * 1_000_000_000,
@@ -474,7 +482,7 @@ const periodSettings = {
   '1h': { count: 60, stepMs: 60_000 },
   '6h': { count: 72, stepMs: 300_000 },
   '24h': { count: 96, stepMs: 900_000 },
-  '7d': { count: 84, stepMs: 7_200_000 },
+  '7d': { count: 168, stepMs: 3_600_000 },
 } as const;
 
 export function createDemoHistory(

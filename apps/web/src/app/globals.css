@@ -2718,6 +2718,17 @@ button {
 .chart-block__legend .tx {
   color: #58abd5;
 }
+.chart-block__legend--history {
+  margin: 0 5px;
+  padding: 7px 0;
+  border-top: 1px solid #1d2b33;
+}
+.chart-block__legend--history strong {
+  color: #6f838d;
+  font-size: 8px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
 .chart-pair {
   display: grid;
   grid-template-columns: 1fr 1fr;

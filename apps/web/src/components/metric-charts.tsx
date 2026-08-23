@@ -37,7 +37,10 @@ export function MetricCharts({ networkInterface }: { networkInterface: NetworkIn
     label: timeLabel(point.timestamp, period),
     rxGbps: point.rxBps / 1_000_000_000,
     txGbps: point.txBps / 1_000_000_000,
+    rxMaxGbps: point.rxBpsMax === undefined ? null : point.rxBpsMax / 1_000_000_000,
+    txMaxGbps: point.txBpsMax === undefined ? null : point.txBpsMax / 1_000_000_000,
   }));
+  const lastHistorical = history.data?.at(-1);
 
   return (
     <section className="charts-section">
@@ -62,9 +65,20 @@ export function MetricCharts({ networkInterface }: { networkInterface: NetworkIn
 
       <div className="chart-block">
         <div className="chart-block__legend">
-          <strong>RX / TX</strong>
+          <strong>ATUAL</strong>
           <span className="rx">RX {formatBitsPerSecond(networkInterface.rxBps)}</span>
           <span className="tx">TX {formatBitsPerSecond(networkInterface.txBps)}</span>
+        </div>
+        <div className="chart-block__legend chart-block__legend--history">
+          <strong>HISTÓRICO · última amostra</strong>
+          {lastHistorical ? (
+            <>
+              <span className="rx">RX {formatBitsPerSecond(lastHistorical.rxBps)}</span>
+              <span className="tx">TX {formatBitsPerSecond(lastHistorical.txBps)}</span>
+            </>
+          ) : (
+            <span>Sem amostras no período</span>
+          )}
         </div>
         <ResponsiveContainer width="100%" height={185}>
           <AreaChart data={data} margin={{ top: 8, right: 4, left: -22, bottom: 0 }}>
@@ -101,7 +115,7 @@ export function MetricCharts({ networkInterface }: { networkInterface: NetworkIn
               }}
             />
             <Area
-              type="monotone"
+              type="linear"
               dataKey="rxGbps"
               name="RX Gbps"
               stroke="#43d6b5"
@@ -110,12 +124,32 @@ export function MetricCharts({ networkInterface }: { networkInterface: NetworkIn
               dot={false}
             />
             <Area
-              type="monotone"
+              type="linear"
               dataKey="txGbps"
               name="TX Gbps"
               stroke="#44a8e8"
               fill="url(#txFill)"
               strokeWidth={1.7}
+              dot={false}
+            />
+            <Area
+              type="linear"
+              dataKey="rxMaxGbps"
+              name="Pico RX Gbps"
+              stroke="#73e6c9"
+              fill="none"
+              strokeWidth={1}
+              strokeDasharray="3 4"
+              dot={false}
+            />
+            <Area
+              type="linear"
+              dataKey="txMaxGbps"
+              name="Pico TX Gbps"
+              stroke="#75c7f3"
+              fill="none"
+              strokeWidth={1}
+              strokeDasharray="3 4"
               dot={false}
             />
           </AreaChart>
@@ -136,7 +170,7 @@ function SmallMetricChart({
   rxKey,
   txKey,
 }: {
-  data: Array<Record<string, string | number>>;
+  data: Array<Record<string, string | number | null | undefined>>;
   title: string;
   rxKey: 'rxErrors' | 'rxDiscards';
   txKey: 'txErrors' | 'txDiscards';

@@ -27,6 +27,7 @@ import {
   formatBitsPerSecond,
   formatDuration,
   type CapacitySource,
+  type DirectionalLinkMetric,
   type LinkDisplayStyle,
   type LinkMetricDisplay,
   type MapNode,
@@ -39,6 +40,18 @@ import { useMapStore } from '@/store/map-store';
 import { MetricCharts } from './metric-charts';
 import { AssistedDiscoveryReview } from './assisted-discovery-review';
 import { InterfacePicker } from './interface-picker';
+
+function trafficValidation(metric: DirectionalLinkMetric): string {
+  const tx = metric.txBps == null ? 'TX indisponível' : `TX ${formatBitsPerSecond(metric.txBps)}`;
+  const rx = metric.observedRxBps == null
+    ? 'RX observado indisponível'
+    : `RX observado ${formatBitsPerSecond(metric.observedRxBps)}`;
+  if (metric.consistency === 'UNKNOWN' || metric.deltaPercent == null) {
+    return `${tx} / ${rx} · sem validação entre pontas`;
+  }
+  const state = metric.consistency === 'CONSISTENT' ? 'consistente' : 'divergente';
+  return `${tx} / ${rx} · ${state} (${metric.deltaPercent.toFixed(1)}%)`;
+}
 
 export function ContextDrawer() {
   const map = useMapStore((state) => state.map);
@@ -619,6 +632,8 @@ function LinkDrawer({
         <div className="info-grid">
           <Info label="Descoberta" value={link.discoverySource.replace('_', ' / ')} />
           <Info label="Métricas" value={link.metricSource} />
+          <Info label="A → B (validação)" value={trafficValidation(aToB)} />
+          <Info label="B → A (validação)" value={trafficValidation(bToA)} />
           <Info label="Erros RX / TX" value={`${link.rxErrors} / ${link.txErrors}`} />
           <Info label="Discards RX / TX" value={`${link.rxDiscards} / ${link.txDiscards}`} />
         </div>

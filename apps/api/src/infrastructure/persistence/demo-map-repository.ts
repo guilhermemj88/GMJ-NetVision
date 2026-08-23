@@ -897,8 +897,14 @@ export class DemoMapRepository {
       status: 'UP',
       discoverySource,
       directions: {
-        A_TO_B: { bps: 0, utilization: 0 },
-        B_TO_A: { bps: 0, utilization: 0 },
+        A_TO_B: {
+          bps: 0, utilization: 0, txBps: null, observedRxBps: null,
+          deltaPercent: null, consistency: 'UNKNOWN',
+        },
+        B_TO_A: {
+          bps: 0, utilization: 0, txBps: null, observedRxBps: null,
+          deltaPercent: null, consistency: 'UNKNOWN',
+        },
       },
       rxBps: 0,
       txBps: 0,

@@ -87,8 +87,14 @@ describe('TrafficEdge lightweight flow renderer', () => {
   it('passes directional throughput and utilization through unchanged', () => {
     const markup = renderEdge({
       directions: {
-        A_TO_B: { bps: 1_250_000_000, utilization: 62.5 },
-        B_TO_A: { bps: 480_000_000, utilization: 24 },
+        A_TO_B: {
+          bps: 1_250_000_000, utilization: 62.5, txBps: 1_250_000_000,
+          observedRxBps: 1_240_000_000, deltaPercent: 0.8, consistency: 'CONSISTENT',
+        },
+        B_TO_A: {
+          bps: 480_000_000, utilization: 24, txBps: 480_000_000,
+          observedRxBps: 470_000_000, deltaPercent: 2.08, consistency: 'CONSISTENT',
+        },
       },
     });
 

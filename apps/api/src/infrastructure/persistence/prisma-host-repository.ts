@@ -1,4 +1,5 @@
 import {
+  aggregateMetricHistory,
   createLocalId,
   type ConnectionTestResult,
   type CreateHostInput,
@@ -614,7 +615,7 @@ export class PrismaHostRepository implements HostRepository {
       where: { interfaceId, timestamp: { gte: historyStart(period) } },
       orderBy: { timestamp: 'asc' },
     });
-    return rows.map((row) => ({
+    return aggregateMetricHistory(rows.map((row) => ({
       timestamp: row.timestamp.toISOString(),
       rxBps: row.rxBps,
       txBps: row.txBps,
@@ -622,7 +623,7 @@ export class PrismaHostRepository implements HostRepository {
       txErrors: safeNumber(row.outErrorsDelta),
       rxDiscards: safeNumber(row.inDiscardsDelta),
       txDiscards: safeNumber(row.outDiscardsDelta),
-    }));
+    })), period);
   }
 
   async getInterfaceMetrics(interfaceId: string): Promise<Record<string, number | string> | null> {
@@ -717,7 +718,7 @@ export class PrismaHostRepository implements HostRepository {
       rxItemId: string | null; txItemId: string | null; statusItemId: string | null; inErrorsItemId: string | null;
       outErrorsItemId: string | null; inDiscardsItemId: string | null; outDiscardsItemId: string | null; dataSources: unknown;
       metricSamples: Array<{
-        rxBps: number; txBps: number; inErrors: bigint; outErrors: bigint;
+        timestamp: Date; rxBps: number; txBps: number; inErrors: bigint; outErrors: bigint;
         inDiscards: bigint; outDiscards: bigint; inErrorsDelta: bigint; outErrorsDelta: bigint;
         inDiscardsDelta: bigint; outDiscardsDelta: bigint;
       }>;
@@ -771,6 +772,8 @@ export class PrismaHostRepository implements HostRepository {
         txErrorsTotal: safeNumber(sample?.outErrors),
         rxDiscardsTotal: safeNumber(sample?.inDiscards),
         txDiscardsTotal: safeNumber(sample?.outDiscards),
+        telemetryAvailable: Boolean(sample),
+        telemetryUpdatedAt: sample?.timestamp.toISOString() ?? null,
         rxPowerDbm: item.rxPowerDbm,
         txPowerDbm: item.txPowerDbm,
         opticalLanes: opticalLanesFromDb(item.opticalLanes),

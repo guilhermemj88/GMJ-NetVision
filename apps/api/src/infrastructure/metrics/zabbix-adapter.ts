@@ -1,4 +1,5 @@
 import {
+  aggregateMetricHistory,
   type Device,
   type DeviceStatus,
   type HistoryPeriod,
@@ -148,6 +149,7 @@ export function normalizeZabbixInterfaceItems(
         txErrors: safeNumber(metrics.outErrors?.lastvalue),
         rxDiscards: safeNumber(metrics.inDiscards?.lastvalue),
         txDiscards: safeNumber(metrics.outDiscards?.lastvalue),
+        telemetryAvailable: Boolean(metrics.rx || metrics.tx),
         rxItemId: metrics.rx?.itemid ?? null,
         txItemId: metrics.tx?.itemid ?? null,
         statusItemId: metrics.status?.itemid ?? null,
@@ -320,7 +322,7 @@ export class ZabbixAdapter implements MetricSourceAdapter {
       if (value.itemid === networkInterface.txItemId) point.txBps = safeNumber(value.value);
       byClock.set(value.clock, point);
     });
-    return [...byClock.values()];
+    return aggregateMetricHistory([...byClock.values()], period);
   }
 
   async healthcheck(): Promise<{ version: string }> {

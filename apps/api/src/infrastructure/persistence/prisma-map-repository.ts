@@ -1,6 +1,8 @@
 import {
   calculateUtilization,
   createLocalId,
+  directionalLinkMetrics,
+  linkStatusFromInterfaces,
   type AddDeviceResult,
   type CreateGenericNodeInput,
   type CreateLinkInput,
@@ -97,11 +99,16 @@ function nodeFromRow(row: {
   };
 }
 
-function linkStatus(source: NetworkInterface | undefined, target: NetworkInterface | undefined): NetworkLink['status'] {
-  if (!source && !target) return 'UNKNOWN';
-  if (source?.operStatus === 'DOWN' || source?.operStatus === 'DISABLED' || target?.operStatus === 'DOWN' || target?.operStatus === 'DISABLED') return 'DOWN';
-  if (source?.operStatus === 'UP' && target?.operStatus === 'UP') return 'UP';
-  return 'UNKNOWN';
+function findLinkInterface(
+  devices: HostRecord[],
+  deviceId: string | null,
+  interfaceId: string | null,
+): NetworkInterface | undefined {
+  if (!interfaceId) return undefined;
+  const scoped = deviceId
+    ? devices.find((device) => device.id === deviceId)?.interfaces.find((item) => item.id === interfaceId)
+    : undefined;
+  return scoped ?? devices.flatMap((device) => device.interfaces).find((item) => item.id === interfaceId);
 }
 
 export class PrismaMapRepository {
@@ -464,15 +471,12 @@ export class PrismaMapRepository {
     capacityBps: bigint; autoCapacityBps: bigint | null; capacitySource: string; label: string | null; status: string;
     discoverySource: string; metricSource: string; visualStyle: string | null; metricDisplay: string | null; createdAt: Date; updatedAt: Date;
   }, devices: HostRecord[]): NetworkLink {
-    const source = row.sourceDeviceId
-      ? devices.find((device) => device.id === row.sourceDeviceId)?.interfaces.find((item) => item.id === row.sourceInterfaceId)
-      : undefined;
-    const target = row.targetDeviceId
-      ? devices.find((device) => device.id === row.targetDeviceId)?.interfaces.find((item) => item.id === row.targetInterfaceId)
-      : undefined;
+    const source = findLinkInterface(devices, row.sourceDeviceId, row.sourceInterfaceId);
+    const target = findLinkInterface(devices, row.targetDeviceId, row.targetInterfaceId);
     const capacityBps = safeNumber(row.capacityBps);
-    const aToB = source ? source.txBps : target?.rxBps ?? 0;
-    const bToA = source ? source.rxBps : target?.txBps ?? 0;
+    const directions = directionalLinkMetrics(source, target, capacityBps);
+    const aToB = directions.A_TO_B.bps;
+    const bToA = directions.B_TO_A.bps;
     return {
       id: row.id,
       mapId: row.mapId,
@@ -486,15 +490,12 @@ export class PrismaMapRepository {
       autoCapacityBps: safeNumber(row.autoCapacityBps) || capacityBps,
       capacitySource: row.capacitySource as NetworkLink['capacitySource'],
       label: row.label ?? '',
-      status: linkStatus(source, target),
+      status: linkStatusFromInterfaces(source, target),
       discoverySource: row.discoverySource as NetworkLink['discoverySource'],
       metricSource: row.metricSource as NetworkLink['metricSource'],
       visualStyle: row.visualStyle as NetworkLink['visualStyle'],
       metricDisplay: row.metricDisplay as NetworkLink['metricDisplay'],
-      directions: {
-        A_TO_B: { bps: aToB, utilization: calculateUtilization(aToB, capacityBps) },
-        B_TO_A: { bps: bToA, utilization: calculateUtilization(bToA, capacityBps) },
-      },
+      directions,
       rxBps: bToA,
       txBps: aToB,
       rxUtilization: calculateUtilization(bToA, capacityBps),
