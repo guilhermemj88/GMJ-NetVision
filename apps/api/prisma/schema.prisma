@@ -242,37 +242,40 @@ model Device {
 }
 
 model Interface {
-  id                String                   @id @default(cuid())
-  deviceId          String
-  name              String
-  alias             String?
-  description       String?
-  ifIndex           Int
-  mac               String?
-  mtu               Int?
-  speedBps          BigInt?
-  adminStatus       String
-  operStatus        InterfaceStatus          @default(UNKNOWN)
-  rxPowerDbm        Float?
-  txPowerDbm        Float?
-  opticalLanes      Json?
-  opticalSource     String?
-  opticalUpdatedAt  DateTime?
-  rxItemId          String?
-  txItemId          String?
-  statusItemId      String?
-  inErrorsItemId    String?
-  outErrorsItemId   String?
-  inDiscardsItemId  String?
-  outDiscardsItemId String?
-  dataSources       Json?
-  device            Device                   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  metricSamples     InterfaceMetricSample[]
-  sourceLinks       Link[]                   @relation("LinkSourceInterface")
-  targetLinks       Link[]                   @relation("LinkTargetInterface")
-  sourceMappings    InterfaceSourceMapping[]
-  createdAt         DateTime                 @default(now())
-  updatedAt         DateTime                 @updatedAt
+  id                    String                   @id @default(cuid())
+  deviceId              String
+  name                  String
+  alias                 String?
+  description           String?
+  ifIndex               Int
+  mac                   String?
+  mtu                   Int?
+  speedBps              BigInt?
+  adminStatus           String
+  operStatus            InterfaceStatus          @default(UNKNOWN)
+  rxPowerDbm            Float?
+  txPowerDbm            Float?
+  opticalLanes          Json?
+  opticalLaneSource     String?
+  opticalLanesUpdatedAt DateTime?
+  opticalSource         String?
+  opticalUpdatedAt      DateTime?
+  rxItemId              String?
+  txItemId              String?
+  statusItemId          String?
+  inErrorsItemId        String?
+  outErrorsItemId       String?
+  inDiscardsItemId      String?
+  outDiscardsItemId     String?
+  dataSources           Json?
+  device                Device                   @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  metricSamples         InterfaceMetricSample[]
+  opticalSamples        InterfaceOpticalSample[]
+  sourceLinks           Link[]                   @relation("LinkSourceInterface")
+  targetLinks           Link[]                   @relation("LinkTargetInterface")
+  sourceMappings        InterfaceSourceMapping[]
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
 
   @@unique([deviceId, ifIndex])
 }
@@ -312,6 +315,18 @@ model InterfaceMetricSample {
   @@index([interfaceId, timestamp])
 }
 
+model InterfaceOpticalSample {
+  id           BigInt    @id @default(autoincrement())
+  interfaceId  String
+  timestamp    DateTime  @default(now())
+  rxPowerDbm   Float?
+  txPowerDbm   Float?
+  opticalLanes Json?
+  interface    Interface @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
+
+  @@index([interfaceId, timestamp])
+}
+
 model Link {
   id                String             @id @default(cuid())
   mapId             String
@@ -325,8 +340,8 @@ model Link {
   autoCapacityBps   BigInt?
   capacitySource    CapacitySource     @default(AUTO)
   label             String?
-  status            DeviceStatus      @default(UNKNOWN)
-  discoverySource   DiscoverySource   @default(MANUAL)
+  status            DeviceStatus       @default(UNKNOWN)
+  discoverySource   DiscoverySource    @default(MANUAL)
   metricSource      String
   visualStyle       LinkDisplayStyle?
   metricDisplay     LinkMetricDisplay?

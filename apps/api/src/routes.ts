@@ -680,6 +680,14 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     return metrics.getHistory(interfaceId, period as HistoryPeriod);
   });
 
+  app.get('/api/interfaces/:interfaceId/optical-history', async (request) => {
+    const { interfaceId } = z.object({ interfaceId: z.string() }).parse(request.params);
+    const { period } = z.object({
+      period: z.enum(['15m', '1h', '6h', '24h', '7d']).default('1h'),
+    }).parse(request.query);
+    return hosts.getInterfaceOpticalHistory(interfaceId, period as HistoryPeriod);
+  });
+
   app.get('/api/interfaces/:interfaceId/metrics', async (request, reply) => {
     const { interfaceId } = z.object({ interfaceId: z.string() }).parse(request.params);
     if (zabbix && interfaceId.startsWith('zabbix-interface-')) {

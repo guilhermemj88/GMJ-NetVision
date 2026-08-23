@@ -75,6 +75,8 @@ export interface NetworkInterface {
   rxPowerDbm?: number | null | undefined;
   txPowerDbm?: number | null | undefined;
   opticalLanes?: OpticalLaneReading[] | null | undefined;
+  opticalLaneSource?: 'SNMP' | 'SSH' | null;
+  opticalLanesUpdatedAt?: string | null;
   opticalSource?: 'SNMP' | 'SSH' | null;
   opticalUpdatedAt?: string | null;
   rxItemId?: string | null;
@@ -170,10 +172,41 @@ export interface MetricPoint {
   txBps: number;
   rxBpsMax?: number;
   txBpsMax?: number;
+  sampleCount?: number;
   rxErrors: number;
   txErrors: number;
   rxDiscards: number;
   txDiscards: number;
+}
+
+export interface InterfaceOpticalSample {
+  timestamp: string;
+  rxPowerDbm: number | null;
+  txPowerDbm: number | null;
+  opticalLanes: OpticalLaneReading[];
+}
+
+export interface OpticalLaneHistoryPoint {
+  lane: number;
+  sampleCount: number;
+  rxAvg: number | null;
+  rxMin: number | null;
+  rxMax: number | null;
+  txAvg: number | null;
+  txMin: number | null;
+  txMax: number | null;
+}
+
+export interface OpticalHistoryPoint {
+  timestamp: string;
+  sampleCount: number;
+  rxAvg: number | null;
+  rxMin: number | null;
+  rxMax: number | null;
+  txAvg: number | null;
+  txMin: number | null;
+  txMax: number | null;
+  lanes: OpticalLaneHistoryPoint[];
 }
 
 export interface DiscoveredNeighbor {

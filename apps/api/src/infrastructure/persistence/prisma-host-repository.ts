@@ -1,6 +1,8 @@
 import {
   aggregateMetricHistory,
+  aggregateOpticalHistory,
   createLocalId,
+  opticalSampleFromInterface,
   type ConnectionTestResult,
   type CreateHostInput,
   type HistoryPeriod,
@@ -9,6 +11,7 @@ import {
   type InterfaceStatus,
   type MetricPoint,
   type NetworkInterface,
+  type OpticalHistoryPoint,
   type SourceHealth,
   type SourceKind,
   type UpdateHostInput,
@@ -501,19 +504,53 @@ export class PrismaHostRepository implements HostRepository {
     return (await this.getHost(hostId))?.interfaces ?? [];
   }
 
-  async updateInterfaceOptics(hostId: string, interfaces: NetworkInterface[]): Promise<void> {
+  async updateInterfaceOptics(
+    hostId: string,
+    interfaces: NetworkInterface[],
+    collectedAfter?: Date,
+  ): Promise<void> {
     if (!interfaces.length) return;
-    await this.prisma.$transaction(interfaces.map((item) => this.prisma.interface.updateMany({
-      where: { deviceId: hostId, ifIndex: item.ifIndex },
-      data: {
-        rxPowerDbm: item.rxPowerDbm ?? null,
-        txPowerDbm: item.txPowerDbm ?? null,
-        ...(item.opticalLanes?.length ? { opticalLanes: opticalLanesToDb(item.opticalLanes) } : {}),
-        opticalSource: item.opticalSource ?? null,
-        opticalUpdatedAt: item.opticalUpdatedAt ? new Date(item.opticalUpdatedAt) : null,
-        dataSources: item.dataSources ?? ['SNMP'],
-      },
-    })));
+    const uniqueByIfIndex = new Map<number, NetworkInterface>();
+    for (const item of interfaces) {
+      if (item.deviceId === hostId && !uniqueByIfIndex.has(item.ifIndex)) {
+        uniqueByIfIndex.set(item.ifIndex, item);
+      }
+    }
+    const uniqueInterfaces = [...uniqueByIfIndex.values()];
+    const sampledAt = new Date();
+    const samples = uniqueInterfaces.flatMap((item) => {
+      const sample = opticalSampleFromInterface(item, sampledAt, collectedAfter);
+      return sample ? [{ interfaceId: item.id, ...sample }] : [];
+    });
+
+    await this.prisma.$transaction(async (tx) => {
+      await Promise.all(uniqueInterfaces.map((item) => tx.interface.updateMany({
+        where: { deviceId: hostId, ifIndex: item.ifIndex },
+        data: {
+          rxPowerDbm: item.rxPowerDbm ?? null,
+          txPowerDbm: item.txPowerDbm ?? null,
+          ...(item.opticalLanes?.length ? { opticalLanes: opticalLanesToDb(item.opticalLanes) } : {}),
+          opticalLaneSource: item.opticalLaneSource ?? null,
+          opticalLanesUpdatedAt: item.opticalLanesUpdatedAt
+            ? new Date(item.opticalLanesUpdatedAt)
+            : null,
+          opticalSource: item.opticalSource ?? null,
+          opticalUpdatedAt: item.opticalUpdatedAt ? new Date(item.opticalUpdatedAt) : null,
+          dataSources: item.dataSources ?? ['SNMP'],
+        },
+      })));
+      if (samples.length) {
+        await tx.interfaceOpticalSample.createMany({
+          data: samples.map((sample) => ({
+            interfaceId: sample.interfaceId,
+            timestamp: new Date(sample.timestamp),
+            rxPowerDbm: sample.rxPowerDbm,
+            txPowerDbm: sample.txPowerDbm,
+            opticalLanes: opticalLanesToDb(sample.opticalLanes),
+          })),
+        });
+      }
+    });
   }
 
   async getLatestCounterSnapshots(hostId: string): Promise<Map<number, InterfaceCounterSnapshot>> {
@@ -626,6 +663,22 @@ export class PrismaHostRepository implements HostRepository {
     })), period);
   }
 
+  async getInterfaceOpticalHistory(
+    interfaceId: string,
+    period: HistoryPeriod,
+  ): Promise<OpticalHistoryPoint[]> {
+    const rows = await this.prisma.interfaceOpticalSample.findMany({
+      where: { interfaceId, timestamp: { gte: historyStart(period) } },
+      orderBy: { timestamp: 'asc' },
+    });
+    return aggregateOpticalHistory(rows.map((row) => ({
+      timestamp: row.timestamp.toISOString(),
+      rxPowerDbm: row.rxPowerDbm,
+      txPowerDbm: row.txPowerDbm,
+      opticalLanes: opticalLanesFromDb(row.opticalLanes) ?? [],
+    })), period);
+  }
+
   async getInterfaceMetrics(interfaceId: string): Promise<Record<string, number | string> | null> {
     const row = await this.prisma.interfaceMetricSample.findFirst({
       where: { interfaceId },
@@ -714,7 +767,9 @@ export class PrismaHostRepository implements HostRepository {
     interfaces: Array<{
       id: string; deviceId: string; name: string; alias: string | null; description: string | null; ifIndex: number;
       mac: string | null; mtu: number | null; speedBps: bigint | null; adminStatus: string; operStatus: string;
-      rxPowerDbm: number | null; txPowerDbm: number | null; opticalLanes: unknown; opticalSource: string | null; opticalUpdatedAt: Date | null;
+      rxPowerDbm: number | null; txPowerDbm: number | null; opticalLanes: unknown;
+      opticalLaneSource: string | null; opticalLanesUpdatedAt: Date | null;
+      opticalSource: string | null; opticalUpdatedAt: Date | null;
       rxItemId: string | null; txItemId: string | null; statusItemId: string | null; inErrorsItemId: string | null;
       outErrorsItemId: string | null; inDiscardsItemId: string | null; outDiscardsItemId: string | null; dataSources: unknown;
       metricSamples: Array<{
@@ -777,6 +832,10 @@ export class PrismaHostRepository implements HostRepository {
         rxPowerDbm: item.rxPowerDbm,
         txPowerDbm: item.txPowerDbm,
         opticalLanes: opticalLanesFromDb(item.opticalLanes),
+        opticalLaneSource: item.opticalLaneSource === 'SNMP' || item.opticalLaneSource === 'SSH'
+          ? item.opticalLaneSource
+          : null,
+        opticalLanesUpdatedAt: item.opticalLanesUpdatedAt?.toISOString() ?? null,
         opticalSource: item.opticalSource === 'SNMP' || item.opticalSource === 'SSH' ? item.opticalSource : null,
         opticalUpdatedAt: item.opticalUpdatedAt?.toISOString() ?? null,
         rxItemId: item.rxItemId,
@@ -862,6 +921,10 @@ export class PrismaHostRepository implements HostRepository {
       rxPowerDbm: item.rxPowerDbm ?? null,
       txPowerDbm: item.txPowerDbm ?? null,
       opticalLanes: opticalLanesToDb(item.opticalLanes),
+      opticalLaneSource: item.opticalLaneSource ?? null,
+      opticalLanesUpdatedAt: item.opticalLanesUpdatedAt
+        ? new Date(item.opticalLanesUpdatedAt)
+        : null,
       opticalSource: item.opticalSource ?? null,
       opticalUpdatedAt: item.opticalUpdatedAt ? new Date(item.opticalUpdatedAt) : null,
       rxItemId: item.rxItemId ?? null,
@@ -880,7 +943,8 @@ export class PrismaHostRepository implements HostRepository {
     existing?: {
       name: string; alias: string | null; description: string | null; mac: string | null;
       mtu: number | null; speedBps: bigint | null; rxPowerDbm: number | null; txPowerDbm: number | null;
-      opticalLanes: unknown; opticalSource: string | null; opticalUpdatedAt: Date | null; dataSources: unknown;
+      opticalLanes: unknown; opticalLaneSource: string | null; opticalLanesUpdatedAt: Date | null;
+      opticalSource: string | null; opticalUpdatedAt: Date | null; dataSources: unknown;
     },
   ) {
     const validText = (value: string): boolean => {
@@ -904,6 +968,10 @@ export class PrismaHostRepository implements HostRepository {
       rxPowerDbm: item.rxPowerDbm ?? existing?.rxPowerDbm ?? null,
       txPowerDbm: item.txPowerDbm ?? existing?.txPowerDbm ?? null,
       opticalLanes: opticalLanesToDb(item.opticalLanes?.length ? item.opticalLanes : existingOpticalLanes),
+      opticalLaneSource: item.opticalLaneSource ?? existing?.opticalLaneSource ?? null,
+      opticalLanesUpdatedAt: item.opticalLanesUpdatedAt
+        ? new Date(item.opticalLanesUpdatedAt)
+        : existing?.opticalLanesUpdatedAt ?? null,
       opticalSource: item.opticalSource ?? existing?.opticalSource ?? null,
       opticalUpdatedAt: item.opticalUpdatedAt
         ? new Date(item.opticalUpdatedAt)

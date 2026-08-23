@@ -22,7 +22,6 @@ export function aggregateMetricHistory(
   period: HistoryPeriod,
 ): MetricPoint[] {
   const bucketMilliseconds = historyBucketMilliseconds(period);
-  if (bucketMilliseconds === null) return points.map((point) => ({ ...point }));
 
   type Bucket = {
     timestamp: number;
@@ -45,7 +44,9 @@ export function aggregateMetricHistory(
   for (const point of ordered) {
     const pointTimestamp = Date.parse(point.timestamp);
     if (!Number.isFinite(pointTimestamp)) continue;
-    const timestamp = Math.floor(pointTimestamp / bucketMilliseconds) * bucketMilliseconds;
+    const timestamp = bucketMilliseconds === null
+      ? pointTimestamp
+      : Math.floor(pointTimestamp / bucketMilliseconds) * bucketMilliseconds;
     const bucket = buckets.get(timestamp) ?? {
       timestamp,
       count: 0,
@@ -58,9 +59,10 @@ export function aggregateMetricHistory(
       rxDiscards: 0,
       txDiscards: 0,
     };
-    bucket.count += 1;
-    bucket.rxBps += point.rxBps;
-    bucket.txBps += point.txBps;
+    const sampleCount = point.sampleCount ?? 1;
+    bucket.count += sampleCount;
+    bucket.rxBps += point.rxBps * sampleCount;
+    bucket.txBps += point.txBps * sampleCount;
     bucket.rxBpsMax = Math.max(bucket.rxBpsMax, point.rxBpsMax ?? point.rxBps);
     bucket.txBpsMax = Math.max(bucket.txBpsMax, point.txBpsMax ?? point.txBps);
     bucket.rxErrors += point.rxErrors;
@@ -76,6 +78,7 @@ export function aggregateMetricHistory(
     txBps: bucket.txBps / bucket.count,
     rxBpsMax: bucket.rxBpsMax,
     txBpsMax: bucket.txBpsMax,
+    sampleCount: bucket.count,
     rxErrors: bucket.rxErrors,
     txErrors: bucket.txErrors,
     rxDiscards: bucket.rxDiscards,

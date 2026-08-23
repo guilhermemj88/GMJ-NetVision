@@ -6,18 +6,39 @@ import { formatBitsPerSecond } from '@gmj/shared';
 import { useQuery } from '@tanstack/react-query';
 import {
   Area,
-  AreaChart,
   CartesianGrid,
+  ComposedChart,
   Line,
   LineChart,
   ResponsiveContainer,
+  Scatter,
   Tooltip,
   XAxis,
   YAxis,
 } from 'recharts';
 import { getHistory } from '@/lib/api';
+import { withTemporalGapMarkers } from '@/lib/chart-history';
 
 const periods: HistoryPeriod[] = ['15m', '1h', '6h', '24h', '7d'];
+export const TRAFFIC_CURVE_TYPE = 'stepAfter' as const;
+export const TRAFFIC_PEAK_RENDERING = 'SCATTER' as const;
+export const TRAFFIC_PEAK_HAS_LINE = false;
+
+export function trafficPeakValue(average: number, maximum: number | undefined): number | null {
+  return maximum !== undefined && maximum > average ? maximum : null;
+}
+
+type TrafficChartDatum = TrafficChartPoint & {
+  label: string;
+  rxGbps: number | null;
+  txGbps: number | null;
+  rxMaxGbps: number | null;
+  txMaxGbps: number | null;
+  rxErrors: number;
+  txErrors: number;
+  rxDiscards: number;
+  txDiscards: number;
+};
 
 function timeLabel(value: string, period: HistoryPeriod): string {
   const date = new Date(value);
@@ -32,13 +53,33 @@ export function MetricCharts({ networkInterface }: { networkInterface: NetworkIn
     queryKey: ['history', networkInterface.id, period],
     queryFn: () => getHistory(networkInterface.id, period),
   });
-  const data = (history.data ?? []).map((point) => ({
+  const rawData: TrafficChartDatum[] = (history.data ?? []).map((point) => ({
     ...point,
     label: timeLabel(point.timestamp, period),
     rxGbps: point.rxBps / 1_000_000_000,
     txGbps: point.txBps / 1_000_000_000,
-    rxMaxGbps: point.rxBpsMax === undefined ? null : point.rxBpsMax / 1_000_000_000,
-    txMaxGbps: point.txBpsMax === undefined ? null : point.txBpsMax / 1_000_000_000,
+    rxMaxGbps: trafficPeakValue(point.rxBps, point.rxBpsMax) === null
+      ? null
+      : (point.rxBpsMax ?? 0) / 1_000_000_000,
+    txMaxGbps: trafficPeakValue(point.txBps, point.txBpsMax) === null
+      ? null
+      : (point.txBpsMax ?? 0) / 1_000_000_000,
+    sampleCount: point.sampleCount ?? 1,
+  }));
+  const data = withTemporalGapMarkers<TrafficChartDatum>(rawData, period, (timestamp) => ({
+    timestamp,
+    label: timeLabel(timestamp, period),
+    rxBps: 0,
+    txBps: 0,
+    rxErrors: 0,
+    txErrors: 0,
+    rxDiscards: 0,
+    txDiscards: 0,
+    rxGbps: null,
+    txGbps: null,
+    rxMaxGbps: null,
+    txMaxGbps: null,
+    sampleCount: 0,
   }));
   const lastHistorical = history.data?.at(-1);
 
@@ -80,8 +121,12 @@ export function MetricCharts({ networkInterface }: { networkInterface: NetworkIn
             <span>Sem amostras no período</span>
           )}
         </div>
+        <div className="chart-series-key">
+          <span className="chart-series-key__average">MÉDIA · área em degraus</span>
+          <span className="chart-series-key__peak">PICO · marcador isolado</span>
+        </div>
         <ResponsiveContainer width="100%" height={185}>
-          <AreaChart data={data} margin={{ top: 8, right: 4, left: -22, bottom: 0 }}>
+          <ComposedChart data={data} margin={{ top: 8, right: 4, left: -22, bottom: 0 }}>
             <defs>
               <linearGradient id="rxFill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="#43d6b5" stopOpacity={0.3} />
@@ -106,53 +151,45 @@ export function MetricCharts({ networkInterface }: { networkInterface: NetworkIn
               axisLine={false}
               unit="G"
             />
-            <Tooltip
-              contentStyle={{
-                background: '#101820',
-                border: '1px solid #2a3d49',
-                borderRadius: 6,
-                fontSize: 11,
-              }}
-            />
+            <Tooltip content={(props) => (
+              <TrafficHistoryTooltip
+                active={props.active}
+                payload={props.payload as unknown as ReadonlyArray<{ payload?: TrafficChartPoint }> | undefined}
+              />
+            )} />
             <Area
-              type="linear"
+              type={TRAFFIC_CURVE_TYPE}
               dataKey="rxGbps"
               name="RX Gbps"
               stroke="#43d6b5"
               fill="url(#rxFill)"
               strokeWidth={1.7}
               dot={false}
+              connectNulls={false}
             />
             <Area
-              type="linear"
+              type={TRAFFIC_CURVE_TYPE}
               dataKey="txGbps"
               name="TX Gbps"
               stroke="#44a8e8"
               fill="url(#txFill)"
               strokeWidth={1.7}
               dot={false}
+              connectNulls={false}
             />
-            <Area
-              type="linear"
+            <Scatter
               dataKey="rxMaxGbps"
               name="Pico RX Gbps"
-              stroke="#73e6c9"
-              fill="none"
-              strokeWidth={1}
-              strokeDasharray="3 4"
-              dot={false}
+              fill="#73e6c9"
+              line={TRAFFIC_PEAK_HAS_LINE}
             />
-            <Area
-              type="linear"
+            <Scatter
               dataKey="txMaxGbps"
               name="Pico TX Gbps"
-              stroke="#75c7f3"
-              fill="none"
-              strokeWidth={1}
-              strokeDasharray="3 4"
-              dot={false}
+              fill="#75c7f3"
+              line={TRAFFIC_PEAK_HAS_LINE}
             />
-          </AreaChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
 
@@ -161,6 +198,36 @@ export function MetricCharts({ networkInterface }: { networkInterface: NetworkIn
         <SmallMetricChart data={data} title="Discards" rxKey="rxDiscards" txKey="txDiscards" />
       </div>
     </section>
+  );
+}
+
+export type TrafficChartPoint = {
+  timestamp: string;
+  sampleCount: number;
+  rxBps: number;
+  txBps: number;
+  rxBpsMax?: number;
+  txBpsMax?: number;
+};
+
+export function TrafficHistoryTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: ReadonlyArray<{ payload?: TrafficChartPoint }> | undefined;
+}) {
+  const point = payload?.find((item) => item.payload)?.payload;
+  if (!active || !point || point.sampleCount === 0) return null;
+  return (
+    <div className="chart-tooltip">
+      <strong>{new Date(point.timestamp).toLocaleString('pt-BR')}</strong>
+      <span>RX média {formatBitsPerSecond(point.rxBps)}</span>
+      <span>RX máximo {formatBitsPerSecond(point.rxBpsMax ?? point.rxBps)}</span>
+      <span>TX média {formatBitsPerSecond(point.txBps)}</span>
+      <span>TX máximo {formatBitsPerSecond(point.txBpsMax ?? point.txBps)}</span>
+      <small>{point.sampleCount} amostra{point.sampleCount === 1 ? '' : 's'} no bucket</small>
+    </div>
   );
 }
 

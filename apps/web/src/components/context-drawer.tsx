@@ -38,6 +38,7 @@ import { useMutation } from '@tanstack/react-query';
 import { deleteLink as deleteLinkRequest, updateLink as updateLinkRequest } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
 import { MetricCharts } from './metric-charts';
+import { OpticalHistoryCharts } from './optical-history-charts';
 import { AssistedDiscoveryReview } from './assisted-discovery-review';
 import { InterfacePicker } from './interface-picker';
 
@@ -438,6 +439,12 @@ function InterfaceDrawer({
           <Info label="TX óptico" value={formatOpticalPower(item.txPowerDbm)} mono />
           <Info label="Fonte" value={item.opticalSource ?? 'N/D'} />
           <Info label="Atualizado" value={formatOpticalTimestamp(item.opticalUpdatedAt)} />
+          {(item.opticalLanes?.length ?? 0) > 0 && (
+            <Info
+              label="Fonte das lanes"
+              value={item.opticalLaneSource ?? (item.dataSources?.includes('SSH') ? 'SSH' : 'N/D')}
+            />
+          )}
         </div>
         {(item.opticalLanes?.length ?? 0) > 0 && (
           <div className="info-grid">
@@ -452,6 +459,7 @@ function InterfaceDrawer({
           </div>
         )}
       </section>
+      {!readOnly && <OpticalHistoryCharts networkInterface={item} />}
       <section className="drawer-section live-metrics">
         <SectionTitle icon={<Activity size={14} />} label="MÉTRICAS ATUAIS" />
         <div className="metric-hero">
