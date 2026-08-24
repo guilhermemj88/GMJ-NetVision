@@ -27,6 +27,7 @@ import {
   type MetricPoint,
   type NetworkLink,
   type NetworkMap,
+  type OpticalHistoryPoint,
   type Position,
   type PublicView,
   type PublicViewResponse,
@@ -360,6 +361,15 @@ export function applyAssistedDiscovery(
 
 export function getHistory(interfaceId: string, period: HistoryPeriod): Promise<MetricPoint[]> {
   return request<MetricPoint[]>(`/api/interfaces/${interfaceId}/history?period=${period}`);
+}
+
+export function getOpticalHistory(
+  interfaceId: string,
+  period: HistoryPeriod,
+): Promise<OpticalHistoryPoint[]> {
+  return request<OpticalHistoryPoint[]>(
+    `/api/interfaces/${interfaceId}/optical-history?period=${period}`,
+  );
 }
 
 export function discoverNeighbors(mapId: string, deviceId: string): Promise<DiscoveryReview> {
