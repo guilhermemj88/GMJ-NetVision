@@ -135,6 +135,8 @@ describe('Huawei SSH interface enrichment', () => {
     const execute = vi.spyOn(SshClientImpl.prototype, 'execute');
     const interfaces = [networkInterface('100GE0/0/2', {
       ...freshSnmp,
+      opticalLaneSource: 'SSH',
+      opticalLanesUpdatedAt: '2026-08-23T12:00:01.000Z',
       opticalLanes: [
         { lane: 0, rxPowerDbm: -12, txPowerDbm: 0.1 },
         { lane: 1, rxPowerDbm: -13, txPowerDbm: 0.2 },

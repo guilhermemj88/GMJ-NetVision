@@ -6,6 +6,7 @@ import type {
   InterfaceSearchResult,
   MetricPoint,
   NetworkInterface,
+  OpticalHistoryPoint,
   UpdateHostInput,
 } from '@gmj/shared';
 
@@ -61,7 +62,11 @@ export interface HostRepository {
   getDecryptedSnmpCredentials(hostId: string): Promise<SnmpCredentialSecret | null>;
   getDecryptedSshCredentials(hostId: string): Promise<SshCredentialSecret | null>;
   replaceInterfaces(hostId: string, interfaces: NetworkInterface[]): Promise<NetworkInterface[]>;
-  updateInterfaceOptics(hostId: string, interfaces: NetworkInterface[]): Promise<void>;
+  updateInterfaceOptics(
+    hostId: string,
+    interfaces: NetworkInterface[],
+    collectedAfter?: Date,
+  ): Promise<void>;
   getLatestCounterSnapshots(hostId: string): Promise<Map<number, InterfaceCounterSnapshot>>;
   saveSnmpPoll(
     hostId: string,
@@ -69,5 +74,9 @@ export interface HostRepository {
     samples: InterfaceMetricSampleInput[],
   ): Promise<void>;
   getInterfaceHistory(interfaceId: string, period: HistoryPeriod): Promise<MetricPoint[]>;
+  getInterfaceOpticalHistory(
+    interfaceId: string,
+    period: HistoryPeriod,
+  ): Promise<OpticalHistoryPoint[]>;
   getInterfaceMetrics(interfaceId: string): Promise<Record<string, number | string> | null>;
 }

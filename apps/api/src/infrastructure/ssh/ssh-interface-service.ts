@@ -14,6 +14,17 @@ function hasValidLaneData(networkInterface: NetworkInterface): boolean {
   );
 }
 
+function hasFreshLaneData(
+  networkInterface: NetworkInterface,
+  collectedAfter?: Date,
+): boolean {
+  if (!hasValidLaneData(networkInterface)) return false;
+  if (!collectedAfter) return true;
+  if (!networkInterface.opticalLanesUpdatedAt) return false;
+  const updatedAt = new Date(networkInterface.opticalLanesUpdatedAt);
+  return Number.isFinite(updatedAt.getTime()) && updatedAt >= collectedAfter;
+}
+
 function hasFreshSnmpPower(
   networkInterface: NetworkInterface,
   snmpFreshAfter?: Date,
@@ -73,7 +84,7 @@ export class SshInterfaceService {
     // Huawei 40GE/100GE port independently require the per-interface SSH query.
     const multiLaneCandidates = interfaces.filter((networkInterface) =>
       huaweiMultiLaneInterfaceName(networkInterface.name) !== null
-      && !hasValidLaneData(networkInterface)
+      && !hasFreshLaneData(networkInterface, snmpFreshAfter)
     );
     const needsScalarFallback = interfaces.some((networkInterface) =>
       !hasFreshSnmpPower(networkInterface, snmpFreshAfter)
@@ -131,6 +142,10 @@ export class SshInterfaceService {
         rxPowerDbm: keepSnmpRx ? networkInterface.rxPowerDbm : reading.rxPowerDbm,
         txPowerDbm: keepSnmpTx ? networkInterface.txPowerDbm : reading.txPowerDbm,
         opticalLanes: usedSshLanes ? reading.opticalLanes : networkInterface.opticalLanes,
+        ...(usedSshLanes ? {
+          opticalLaneSource: 'SSH' as const,
+          opticalLanesUpdatedAt: now,
+        } : {}),
         ...(opticalSource === undefined ? {} : { opticalSource }),
         opticalUpdatedAt: now,
         dataSources: [...new Set([...(networkInterface.dataSources ?? ['SNMP']), 'SSH' as const])],

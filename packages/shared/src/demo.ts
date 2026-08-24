@@ -495,10 +495,15 @@ export function createDemoHistory(
   return Array.from({ length: config.count }, (_, index) => {
     const wave = Math.sin((index + seed) / 6) * 0.08 + Math.sin((index + seed) / 17) * 0.04;
     const base = 19_000_000_000 + (seed % 14) * 700_000_000;
+    const rxBps = Math.max(0, base * (0.78 + wave));
+    const txBps = Math.max(0, base * (1.02 + wave * 1.2));
     return {
       timestamp: new Date(end - (config.count - 1 - index) * config.stepMs).toISOString(),
-      rxBps: Math.max(0, base * (0.78 + wave)),
-      txBps: Math.max(0, base * (1.02 + wave * 1.2)),
+      rxBps,
+      txBps,
+      rxBpsMax: rxBps,
+      txBpsMax: txBps,
+      sampleCount: 1,
       rxErrors: Math.max(0, Math.round(Math.sin(index / 7) * 2 + 2)),
       txErrors: Math.max(0, Math.round(Math.cos(index / 9) * 1.5 + 1)),
       rxDiscards: Math.max(0, Math.round(Math.sin(index / 11) + 1)),

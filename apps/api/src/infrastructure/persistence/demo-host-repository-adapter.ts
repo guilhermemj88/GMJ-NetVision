@@ -5,6 +5,7 @@ import type {
   InterfaceSearchResult,
   MetricPoint,
   NetworkInterface,
+  OpticalHistoryPoint,
   UpdateHostInput,
 } from '@gmj/shared';
 import type {
@@ -97,7 +98,11 @@ export class DemoHostRepositoryAdapter implements HostRepository {
     return interfaces;
   }
 
-  async updateInterfaceOptics(_hostId: string, _interfaces: NetworkInterface[]): Promise<void> {}
+  async updateInterfaceOptics(
+    _hostId: string,
+    _interfaces: NetworkInterface[],
+    _collectedAfter?: Date,
+  ): Promise<void> {}
 
   async getLatestCounterSnapshots(_hostId: string): Promise<Map<number, InterfaceCounterSnapshot>> {
     return new Map();
@@ -110,6 +115,13 @@ export class DemoHostRepositoryAdapter implements HostRepository {
   ): Promise<void> {}
 
   async getInterfaceHistory(_interfaceId: string, _period: HistoryPeriod): Promise<MetricPoint[]> {
+    return [];
+  }
+
+  async getInterfaceOpticalHistory(
+    _interfaceId: string,
+    _period: HistoryPeriod,
+  ): Promise<OpticalHistoryPoint[]> {
     return [];
   }
 

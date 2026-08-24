@@ -19,6 +19,21 @@ describe('GMJ NetVision API', () => {
     expect(response.json().devices).toHaveLength(13);
   });
 
+  it('exposes optical history with the supported period contract', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/interfaces/core-01-if-1/optical-history?period=6h',
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual([]);
+
+    const invalid = await app.inject({
+      method: 'GET',
+      url: '/api/interfaces/core-01-if-1/optical-history?period=30d',
+    });
+    expect(invalid.statusCode).toBe(400);
+  });
+
   it('lists maps and maintains exactly one default view', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/maps' });
     expect(response.statusCode).toBe(200);

@@ -283,7 +283,7 @@ export class SnmpService {
           // SSH DDM is a per-interface fallback; its failure does not affect SNMP.
         }
       }
-      await this.repository.updateInterfaceOptics(device.id, interfaces);
+      await this.repository.updateInterfaceOptics(device.id, interfaces, startedAt);
     } catch {
       // Optional DDM enrichment must never fail the traffic poll.
     }
