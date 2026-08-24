@@ -2246,6 +2246,7 @@ button {
   background: #111b22;
 }
 .drawer-header > button {
+  flex: 0 0 auto;
   width: 30px;
   height: 30px;
   display: grid;
@@ -2255,11 +2256,27 @@ button {
   color: #738791;
   cursor: pointer;
 }
-.drawer-header > div {
+.drawer-header > .drawer-header__identity {
   min-width: 0;
   flex: 1;
 }
-.drawer-header span {
+.drawer-header > .verify-host-action {
+  min-width: 0;
+  flex: 0 0 auto;
+  align-items: stretch;
+}
+.drawer-header > .verify-host-action .nv-button {
+  height: 31px;
+  padding: 0 9px;
+  font: 600 8px var(--font-mono);
+}
+.drawer-header > .verify-host-action small {
+  display: none;
+}
+.drawer-header > .nv-badge {
+  flex: 0 0 auto;
+}
+.drawer-header__identity > span {
   color: #69808b;
   font: 600 8px var(--font-mono);
   letter-spacing: 0.12em;
@@ -2526,17 +2543,6 @@ button {
 .drawer-actions .nv-button:first-child {
   flex: 1;
 }
-.drawer-actions .verify-host-action {
-  flex: 1;
-  align-items: stretch;
-}
-.drawer-actions .verify-host-action .nv-button {
-  width: 100%;
-}
-.drawer-actions .verify-host-action small {
-  text-align: left;
-}
-
 .interface-list {
   padding-bottom: 20px;
 }
@@ -4011,6 +4017,15 @@ label > small {
   .context-drawer {
     width: 430px;
   }
+  .drawer-header {
+    gap: 8px;
+    padding: 0 12px;
+  }
+  .drawer-header > .verify-host-action .nv-button {
+    gap: 4px;
+    padding: 0 7px;
+    font-size: 7px;
+  }
   .visual-controls {
     width: 350px;
   }
@@ -4049,6 +4064,28 @@ label > small {
   }
   .context-drawer {
     width: 100%;
+  }
+  .drawer-header {
+    gap: 6px;
+    padding: 0 8px;
+  }
+  .drawer-header h2 {
+    font-size: 12px;
+  }
+  .drawer-header > button {
+    width: 27px;
+  }
+  .drawer-header > .verify-host-action .nv-button {
+    gap: 3px;
+    padding: 0 6px;
+    font-size: 7px;
+  }
+  .drawer-header > .verify-host-action .nv-button svg {
+    width: 12px;
+    height: 12px;
+  }
+  .drawer-header > .nv-badge {
+    padding: 0 5px;
   }
   .edit-toolbar {
     min-width: 0;

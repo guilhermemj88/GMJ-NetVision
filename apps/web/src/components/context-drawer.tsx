@@ -74,7 +74,9 @@ export function ContextDrawer() {
     return device && networkInterface ? (
       <InterfaceDrawer
         networkInterface={networkInterface}
+        deviceId={device.id}
         deviceName={device.name}
+        snmpEnabled={device.snmpEnabled}
         readOnly={readOnly}
         onBack={() => setSelection({ kind: 'device', id: device.id })}
         onClose={() => setSelection(null)}
@@ -96,6 +98,7 @@ function DrawerShell({
   eyebrow,
   title,
   status,
+  verifyHost,
   onClose,
   onBack,
 }: {
@@ -103,6 +106,7 @@ function DrawerShell({
   eyebrow: string;
   title: string;
   status?: string;
+  verifyHost?: { hostId: string; enabled: boolean };
   onClose: () => void;
   onBack?: () => void;
 }) {
@@ -114,10 +118,13 @@ function DrawerShell({
             <ArrowLeft size={17} />
           </button>
         )}
-        <div>
+        <div className="drawer-header__identity">
           <span>{eyebrow}</span>
           <h2>{title}</h2>
         </div>
+        {verifyHost && (
+          <VerifyHostButton hostId={verifyHost.hostId} enabled={verifyHost.enabled} compact />
+        )}
         {status && <Badge tone={status}>{status}</Badge>}
         <button type="button" aria-label="Fechar" className="drawer-close" onClick={onClose}>
           <X size={18} />
@@ -151,7 +158,15 @@ function DeviceDrawer({
   const activeTab = readOnly && (tab === 'access' || tab === 'discovery') ? 'overview' : tab;
 
   return (
-    <DrawerShell eyebrow="EQUIPAMENTO" title={device.name} status={device.status} onClose={onClose}>
+    <DrawerShell
+      eyebrow="EQUIPAMENTO"
+      title={device.name}
+      status={device.status}
+      {...(!readOnly
+        ? { verifyHost: { hostId: device.id, enabled: device.snmpEnabled } }
+        : {})}
+      onClose={onClose}
+    >
       <div className="drawer-tabs">
         <button
           type="button"
@@ -261,9 +276,6 @@ function DeviceDrawer({
             />
           </section>
           <div className="drawer-actions">
-            {!readOnly && (
-              <VerifyHostButton hostId={device.id} enabled={device.snmpEnabled} compact />
-            )}
             {!readOnly && (
               <Button variant="secondary" onClick={() => setTab('discovery')}>
                 <Radar size={15} /> Descobrir vizinhos
@@ -404,13 +416,17 @@ function InterfaceList({
 
 function InterfaceDrawer({
   networkInterface: item,
+  deviceId,
   deviceName,
+  snmpEnabled,
   readOnly,
   onBack,
   onClose,
 }: {
   networkInterface: NetworkInterface;
+  deviceId: string;
   deviceName: string;
+  snmpEnabled: boolean;
   readOnly: boolean;
   onBack: () => void;
   onClose: () => void;
@@ -420,6 +436,7 @@ function InterfaceDrawer({
       eyebrow={`${deviceName} / INTERFACE`}
       title={item.name}
       status={item.operStatus}
+      {...(!readOnly ? { verifyHost: { hostId: deviceId, enabled: snmpEnabled } } : {})}
       onBack={onBack}
       onClose={onClose}
     >
