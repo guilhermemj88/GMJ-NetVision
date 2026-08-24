@@ -41,6 +41,7 @@ import { MetricCharts } from './metric-charts';
 import { OpticalHistoryCharts } from './optical-history-charts';
 import { AssistedDiscoveryReview } from './assisted-discovery-review';
 import { InterfacePicker } from './interface-picker';
+import { VerifyHostButton } from './verify-host-button';
 
 function trafficValidation(metric: DirectionalLinkMetric): string {
   const tx = metric.txBps == null ? 'TX indisponível' : `TX ${formatBitsPerSecond(metric.txBps)}`;
@@ -260,6 +261,9 @@ function DeviceDrawer({
             />
           </section>
           <div className="drawer-actions">
+            {!readOnly && (
+              <VerifyHostButton hostId={device.id} enabled={device.snmpEnabled} compact />
+            )}
             {!readOnly && (
               <Button variant="secondary" onClick={() => setTab('discovery')}>
                 <Radar size={15} /> Descobrir vizinhos

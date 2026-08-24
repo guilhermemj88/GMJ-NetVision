@@ -42,6 +42,12 @@ export interface InterfaceMetricSampleInput extends InterfaceCounterSnapshot {
   operStatus: NetworkInterface['operStatus'];
 }
 
+export interface InterfaceStatusUpdate {
+  ifIndex: number;
+  adminStatus?: NetworkInterface['adminStatus'];
+  operStatus?: NetworkInterface['operStatus'];
+}
+
 export interface DeviceMetricSampleInput {
   timestamp: Date;
   uptimeSeconds?: bigint;
@@ -62,6 +68,7 @@ export interface HostRepository {
   getDecryptedSnmpCredentials(hostId: string): Promise<SnmpCredentialSecret | null>;
   getDecryptedSshCredentials(hostId: string): Promise<SshCredentialSecret | null>;
   replaceInterfaces(hostId: string, interfaces: NetworkInterface[]): Promise<NetworkInterface[]>;
+  updateInterfaceStatuses(hostId: string, statuses: InterfaceStatusUpdate[]): Promise<void>;
   updateInterfaceOptics(
     hostId: string,
     interfaces: NetworkInterface[],

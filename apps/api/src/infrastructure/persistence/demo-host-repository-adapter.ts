@@ -13,6 +13,7 @@ import type {
   HostRepository,
   InterfaceCounterSnapshot,
   InterfaceMetricSampleInput,
+  InterfaceStatusUpdate,
   SnmpCredentialSecret,
   SshCredentialSecret,
 } from './host-repository';
@@ -96,6 +97,10 @@ export class DemoHostRepositoryAdapter implements HostRepository {
 
   async replaceInterfaces(_hostId: string, interfaces: NetworkInterface[]): Promise<NetworkInterface[]> {
     return interfaces;
+  }
+
+  async updateInterfaceStatuses(hostId: string, statuses: InterfaceStatusUpdate[]): Promise<void> {
+    this.repository.updateInterfaceStatuses(hostId, statuses);
   }
 
   async updateInterfaceOptics(

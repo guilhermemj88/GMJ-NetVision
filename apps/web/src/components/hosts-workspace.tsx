@@ -49,6 +49,7 @@ import {
 import { useMapStore } from '@/store/map-store';
 import { AssistedDiscoveryReview } from './assisted-discovery-review';
 import { HostDeleteConfirmation } from './host-delete-confirmation';
+import { VerifyHostButton } from './verify-host-button';
 import { NetworkDeviceIcon } from './network-device-icon';
 
 type DetailTab = 'overview' | 'interfaces' | 'monitoring' | 'access' | 'discovery';
@@ -661,6 +662,7 @@ function HostDetail({
         <Button compact variant="ghost" onClick={onDelete}>
           <Trash2 size={14} /> Excluir
         </Button>
+        <VerifyHostButton hostId={host.id} enabled={host.snmpEnabled} compact />
         <Button compact variant="secondary" onClick={onMap}>
           <MapPinned size={14} /> Adicionar ao mapa
         </Button>

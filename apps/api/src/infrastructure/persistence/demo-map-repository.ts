@@ -34,6 +34,7 @@ import {
   type ZabbixImportResult,
 } from '@gmj/shared';
 import type { CredentialVault } from '../../application/credential-vault';
+import type { InterfaceStatusUpdate } from './host-repository';
 
 export interface NodePositionUpdate {
   nodeId: string;
@@ -682,6 +683,19 @@ export class DemoMapRepository {
     };
     host.updatedAt = now;
     return this.getHost(hostId);
+  }
+
+  updateInterfaceStatuses(hostId: string, statuses: InterfaceStatusUpdate[]): void {
+    const host = this.findHost(hostId);
+    if (!host) return;
+    const byIfIndex = new Map(statuses.map((status) => [status.ifIndex, status]));
+    for (const networkInterface of host.interfaces) {
+      const status = byIfIndex.get(networkInterface.ifIndex);
+      if (!status) continue;
+      if (status.adminStatus !== undefined) networkInterface.adminStatus = status.adminStatus;
+      if (status.operStatus !== undefined) networkInterface.operStatus = status.operStatus;
+    }
+    host.updatedAt = new Date().toISOString();
   }
 
   listMaps(): MapSummary[] {

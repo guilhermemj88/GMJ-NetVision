@@ -24,6 +24,7 @@ import type {
   HostRepository,
   InterfaceCounterSnapshot,
   InterfaceMetricSampleInput,
+  InterfaceStatusUpdate,
   SnmpCredentialSecret,
   SshCredentialSecret,
 } from './host-repository';
@@ -502,6 +503,26 @@ export class PrismaHostRepository implements HostRepository {
       await tx.device.update({ where: { id: hostId }, data: { lastDiscoveryAt: new Date() } });
     });
     return (await this.getHost(hostId))?.interfaces ?? [];
+  }
+
+  async updateInterfaceStatuses(hostId: string, statuses: InterfaceStatusUpdate[]): Promise<void> {
+    const byIfIndex = new Map<number, InterfaceStatusUpdate>();
+    for (const status of statuses) {
+      if (Number.isInteger(status.ifIndex) && status.ifIndex > 0) {
+        byIfIndex.set(status.ifIndex, status);
+      }
+    }
+    if (!byIfIndex.size) return;
+
+    await this.prisma.$transaction(async (tx) => {
+      await Promise.all([...byIfIndex.values()].map((status) => tx.interface.updateMany({
+        where: { deviceId: hostId, ifIndex: status.ifIndex },
+        data: {
+          ...(status.adminStatus !== undefined ? { adminStatus: status.adminStatus } : {}),
+          ...(status.operStatus !== undefined ? { operStatus: status.operStatus } : {}),
+        },
+      })));
+    });
   }
 
   async updateInterfaceOptics(

@@ -76,6 +76,17 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+export interface HostPollResult {
+  hostId: string;
+  polledAt: string;
+  interfacesChecked: number;
+  interfaceSamples: number;
+  sysName?: string;
+  sysDescr?: string;
+  sysObjectId?: string;
+  uptimeSeconds?: number;
+}
+
 export function getMaps(): Promise<MapSummary[]> {
   return request<MapSummary[]>('/api/maps');
 }
@@ -277,6 +288,14 @@ export function getHosts(query = ''): Promise<HostRecord[]> {
 
 export function getHost(hostId: string) {
   return request<HostRecord>(`/api/hosts/${hostId}`);
+}
+
+export function pollHost(hostId: string): Promise<HostPollResult> {
+  const normalizedHostId = hostId.trim();
+  if (!normalizedHostId) return Promise.reject(new Error('Host ID is required'));
+  return request<HostPollResult>(`/api/hosts/${encodeURIComponent(normalizedHostId)}/poll`, {
+    method: 'POST',
+  });
 }
 
 export function createHost(input: CreateHostInput) {

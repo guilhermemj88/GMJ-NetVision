@@ -3,6 +3,7 @@ import type {
   DeviceMetricSampleInput,
   HostRepository,
   InterfaceMetricSampleInput,
+  InterfaceStatusUpdate,
 } from '../persistence/host-repository';
 import { SnmpClientImpl } from './snmp-client-impl';
 import { SnmpV2cDiscoveryAdapter } from './snmpv2c-discovery-adapter';
@@ -20,6 +21,8 @@ const SYSTEM_OIDS = {
 } as const;
 
 const INTERFACE_OIDS = {
+  adminStatus: '1.3.6.1.2.1.2.2.1.7',
+  operStatus: '1.3.6.1.2.1.2.2.1.8',
   hcInOctets: '1.3.6.1.2.1.31.1.1.1.6',
   hcOutOctets: '1.3.6.1.2.1.31.1.1.1.10',
   inOctets: '1.3.6.1.2.1.2.2.1.10',
@@ -28,7 +31,6 @@ const INTERFACE_OIDS = {
   outErrors: '1.3.6.1.2.1.2.2.1.20',
   inDiscards: '1.3.6.1.2.1.2.2.1.13',
   outDiscards: '1.3.6.1.2.1.2.2.1.19',
-  operStatus: '1.3.6.1.2.1.2.2.1.8',
 } as const;
 
 const MIN_COUNTER_SAMPLE_SECONDS = 45;
@@ -42,7 +44,6 @@ interface CounterRow {
   outErrors: bigint;
   inDiscards: bigint;
   outDiscards: bigint;
-  operStatus: InterfaceStatus;
   timestamp: Date;
 }
 
@@ -51,6 +52,7 @@ type VarBind = { oid: string; value: string | number | Uint8Array };
 export interface SnmpPollResult {
   hostId: string;
   polledAt: string;
+  interfacesChecked: number;
   interfaceSamples: number;
   sysName?: string;
   sysDescr?: string;
@@ -184,6 +186,9 @@ export class SnmpService {
     const snmp = currentDevice.snmp;
     if (!snmp) throw new Error('SNMP não está habilitado para este host');
 
+    const statuses = await this.collectInterfaceStatuses(currentDevice, community);
+    await this.repository.updateInterfaceStatuses(currentDevice.id, [...statuses.values()]);
+
     const previousPromise = this.repository.getLatestCounterSnapshots(currentDevice.id);
     const system = await this.collectSystem(currentDevice, community);
     try {
@@ -239,7 +244,7 @@ export class SnmpService {
         outErrorsDelta: calculateCounterDelta(counter.outErrors, prior?.outErrors),
         inDiscardsDelta: calculateCounterDelta(counter.inDiscards, prior?.inDiscards),
         outDiscardsDelta: calculateCounterDelta(counter.outDiscards, prior?.outDiscards),
-        operStatus: counter.operStatus,
+        operStatus: statuses.get(counter.ifIndex)?.operStatus ?? networkInterface.operStatus,
       });
     }
 
@@ -248,13 +253,14 @@ export class SnmpService {
     await this.repository.updateSourceHealth(currentDevice.id, {
       source: 'SNMP',
       state: 'CONNECTED',
-      message: `Polling SNMP concluído com ${samples.length} interfaces`,
+      message: `Polling SNMP concluído com ${statuses.size} interfaces verificadas e ${samples.length} amostras`,
       checkedAt: system.timestamp.toISOString(),
     });
 
     return {
       hostId: currentDevice.id,
       polledAt: system.timestamp.toISOString(),
+      interfacesChecked: statuses.size,
       interfaceSamples: samples.length,
       ...(system.sysName ? { sysName: system.sysName } : {}),
       ...(system.sysDescr ? { sysDescr: system.sysDescr } : {}),
@@ -289,6 +295,35 @@ export class SnmpService {
     }
   }
 
+  async collectInterfaceStatuses(
+    device: HostRecord,
+    community?: string,
+  ): Promise<Map<number, InterfaceStatusUpdate>> {
+    const statuses = new Map<number, InterfaceStatusUpdate>();
+    if (!device.snmpEnabled || !device.snmp?.host) return statuses;
+    const snmpCommunity = community ?? (await this.requireCommunity(device.id));
+    const options = { community: snmpCommunity, version: 'v2c' as const, port: device.snmp.port };
+    const [adminRows, operRows] = await Promise.all([
+      this.safeWalk(device.snmp.host, INTERFACE_OIDS.adminStatus, options),
+      this.safeWalk(device.snmp.host, INTERFACE_OIDS.operStatus, options),
+    ]);
+    const adminByIndex = this.toRawIndexMap(adminRows);
+    const operByIndex = this.toRawIndexMap(operRows);
+    const ifIndexes = new Set([...adminByIndex.keys(), ...operByIndex.keys()]);
+
+    for (const ifIndex of ifIndexes) {
+      const adminStatus = this.parseAdminStatus(adminByIndex.get(ifIndex));
+      const operStatus = this.parseOperStatus(operByIndex.get(ifIndex));
+      if (adminStatus === undefined && operStatus === undefined) continue;
+      statuses.set(ifIndex, {
+        ifIndex,
+        ...(adminStatus !== undefined ? { adminStatus } : {}),
+        ...(operStatus !== undefined ? { operStatus } : {}),
+      });
+    }
+    return statuses;
+  }
+
   async collectCounters(device: HostRecord, community?: string): Promise<Map<number, CounterRow>> {
     const counters = new Map<number, CounterRow>();
     if (!device.snmpEnabled || !device.snmp?.host) return counters;
@@ -315,13 +350,11 @@ export class SnmpService {
     const outErrors = await this.safeWalk(device.snmp.host, INTERFACE_OIDS.outErrors, options);
     const inDiscards = await this.safeWalk(device.snmp.host, INTERFACE_OIDS.inDiscards, options);
     const outDiscards = await this.safeWalk(device.snmp.host, INTERFACE_OIDS.outDiscards, options);
-    const operStatus = await this.safeWalk(device.snmp.host, INTERFACE_OIDS.operStatus, options);
 
     const inErrorsMap = this.toBigIntIndexMap(inErrors);
     const outErrorsMap = this.toBigIntIndexMap(outErrors);
     const inDiscardsMap = this.toBigIntIndexMap(inDiscards);
     const outDiscardsMap = this.toBigIntIndexMap(outDiscards);
-    const statusMap = new Map(operStatus.map((item) => [this.extractIfIndex(item.oid), item.value]));
     const now = new Date();
 
     const indexes = new Set<number>([...inOctets.keys(), ...outOctets.keys()]);
@@ -334,7 +367,6 @@ export class SnmpService {
         outErrors: outErrorsMap.get(ifIndex) ?? 0n,
         inDiscards: inDiscardsMap.get(ifIndex) ?? 0n,
         outDiscards: outDiscardsMap.get(ifIndex) ?? 0n,
-        operStatus: this.parseOperStatus(statusMap.get(ifIndex)),
         timestamp: now,
       });
     }
@@ -386,6 +418,15 @@ export class SnmpService {
     return result;
   }
 
+  private toRawIndexMap(varbinds: VarBind[]): Map<number, VarBind['value']> {
+    const result = new Map<number, VarBind['value']>();
+    for (const varbind of varbinds) {
+      const index = this.extractIfIndex(varbind.oid);
+      if (index !== null) result.set(index, varbind.value);
+    }
+    return result;
+  }
+
   private extractIfIndex(oid: string): number | null {
     const value = parseInt(oid.split('.').at(-1) ?? '', 10);
     return Number.isInteger(value) && value > 0 ? value : null;
@@ -416,12 +457,25 @@ export class SnmpService {
     return Number.isFinite(value) && value >= 0 ? value : 0;
   }
 
-  private parseOperStatus(value: string | number | Uint8Array | undefined): InterfaceStatus {
+  private parseAdminStatus(
+    value: string | number | Uint8Array | undefined,
+  ): NetworkInterface['adminStatus'] | undefined {
+    const numeric = typeof value === 'number' ? value : parseInt(this.textValue(value), 10);
+    if (numeric === 1) return 'UP';
+    if (numeric === 2 || numeric === 3) return 'DOWN';
+    return undefined;
+  }
+
+  private parseOperStatus(
+    value: string | number | Uint8Array | undefined,
+  ): InterfaceStatus | undefined {
     const numeric = typeof value === 'number' ? value : parseInt(this.textValue(value), 10);
     if (numeric === 1) return 'UP';
     if (numeric === 2) return 'DOWN';
+    if (numeric === 3 || numeric === 4 || numeric === 5) return 'UNKNOWN';
     if (numeric === 6) return 'DISABLED';
-    return 'UNKNOWN';
+    if (numeric === 7) return 'DOWN';
+    return undefined;
   }
 
   private textValue(value: string | number | Uint8Array | undefined): string {

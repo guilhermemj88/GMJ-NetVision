@@ -81,3 +81,29 @@ describe('PrismaHostRepository optical persistence', () => {
     expect(transactionClient.interfaceOpticalSample.createMany).not.toHaveBeenCalled();
   });
 });
+
+describe('PrismaHostRepository interface status persistence', () => {
+  it('updates statuses by host and ifIndex without overwriting a missing operStatus', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const transactionClient = { interface: { updateMany } };
+    const prisma = {
+      $transaction: vi.fn(async (operation: (tx: typeof transactionClient) => Promise<void>) =>
+        operation(transactionClient)),
+    };
+    const repository = new PrismaHostRepository(prisma as never, null);
+
+    await repository.updateInterfaceStatuses('device-1', [
+      { ifIndex: 23, adminStatus: 'UP', operStatus: 'UP' },
+      { ifIndex: 24, adminStatus: 'UP' },
+    ]);
+
+    expect(updateMany).toHaveBeenNthCalledWith(1, {
+      where: { deviceId: 'device-1', ifIndex: 23 },
+      data: { adminStatus: 'UP', operStatus: 'UP' },
+    });
+    expect(updateMany).toHaveBeenNthCalledWith(2, {
+      where: { deviceId: 'device-1', ifIndex: 24 },
+      data: { adminStatus: 'UP' },
+    });
+  });
+});
