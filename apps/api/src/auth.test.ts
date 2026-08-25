@@ -5,7 +5,9 @@ import { buildApp } from './app';
 function sessionCookie(headers: unknown): string {
   const setCookie = (headers as Record<string, unknown>)['set-cookie'];
   const list = Array.isArray(setCookie) ? setCookie : [setCookie];
-  const value = list.find((item) => typeof item === 'string' && item.startsWith('netvision_session='));
+  const value = list.find(
+    (item) => typeof item === 'string' && item.startsWith('netvision_session='),
+  );
   return (value ?? '').split(';')[0] ?? '';
 }
 
@@ -118,6 +120,19 @@ describe('Auth and public views', () => {
     expect(device).not.toHaveProperty('zabbix');
     expect(device).not.toHaveProperty('sourceHealth');
     expect(device).not.toHaveProperty('notes');
+
+    const mpls = await app.inject({
+      method: 'GET',
+      url: `/api/public/view/${token}/hosts/${device.id}/mpls`,
+    });
+    expect(mpls.statusCode).toBe(200);
+    expect(mpls.json()).toMatchObject({ supported: false, source: 'SNMP', vsis: [] });
+
+    const outsideMap = await app.inject({
+      method: 'GET',
+      url: `/api/public/view/${token}/hosts/not-in-this-map/mpls`,
+    });
+    expect(outsideMap.statusCode).toBe(404);
   });
 
   it('serves a NOC public view with its playlist maps', async () => {

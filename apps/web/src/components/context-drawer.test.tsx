@@ -19,6 +19,7 @@ vi.mock('@/lib/api', async (importOriginal) => ({
 vi.mock('./metric-charts', () => ({ MetricCharts: () => null }));
 vi.mock('./optical-history-charts', () => ({ OpticalHistoryCharts: () => null }));
 vi.mock('./assisted-discovery-review', () => ({ AssistedDiscoveryReview: () => null }));
+vi.mock('./mpls-panel', () => ({ MplsPanel: () => <div data-testid="mpls-panel" /> }));
 
 function findButton(container: HTMLElement, label: string): HTMLButtonElement {
   const button = [...container.querySelectorAll('button')].find((item) =>
@@ -82,11 +83,21 @@ describe('ContextDrawer verification action', () => {
     expect(verificationButtons(container)).toHaveLength(1);
     expect(container.querySelector('.drawer-actions .verify-host-action')).toBeNull();
 
-    for (const tab of ['Interfaces', 'Monitoring', 'Access', 'Discovery']) {
+    for (const tab of ['Interfaces', 'MPLS', 'Monitoring', 'Access', 'Discovery']) {
       await act(async () => findButton(container, tab).click());
       expect(container.querySelector('.drawer-header .verify-host-action')).not.toBeNull();
       expect(verificationButtons(container)).toHaveLength(1);
     }
+  });
+
+  it('keeps MPLS between Interfaces and Monitoring in the operational tab order', () => {
+    const labels = [...container.querySelectorAll('.drawer-tabs button')].map((button) =>
+      button.textContent?.trim(),
+    );
+    expect(labels[0]).toContain('Visão geral');
+    expect(labels[1]).toContain('Interfaces');
+    expect(labels[2]).toContain('MPLS');
+    expect(labels[3]).toContain('Monitoring');
   });
 
   it('keeps a compact host poll action in the interface header and uses the equipment id', async () => {

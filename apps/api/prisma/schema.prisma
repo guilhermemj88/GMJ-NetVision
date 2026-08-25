@@ -138,6 +138,56 @@ enum PublicViewType {
   NOC
 }
 
+enum MplsSource {
+  SNMP
+}
+
+enum MplsStatus {
+  UP
+  DOWN
+  DEGRADED
+  ADMIN_DOWN
+  UNKNOWN
+}
+
+enum MplsVsiOperationalStatus {
+  UP
+  DOWN
+  ADMIN_DOWN
+  UNKNOWN
+}
+
+enum MplsAdminStatus {
+  UP
+  DOWN
+  UNKNOWN
+}
+
+enum MplsPwStatus {
+  DOWN
+  UP
+  PLUG_OUT
+  BACKUP
+  UNKNOWN
+}
+
+enum MplsPwState {
+  DOWN
+  UP
+  UNKNOWN
+}
+
+enum MplsPwWorkingState {
+  MASTER
+  BACKUP
+  UNKNOWN
+}
+
+enum MplsEntityType {
+  VSI
+  PW
+}
+
 model Map {
   id                String            @id @default(cuid())
   name              String
@@ -232,6 +282,11 @@ model Device {
   sshCredentialId     String?
   snmpCredential      SnmpCredential?       @relation(fields: [snmpCredentialId], references: [id])
   sshCredential       SshCredential?        @relation(fields: [sshCredentialId], references: [id])
+  mplsState           MplsDeviceState?
+  mplsVsis            MplsVsi[]
+  mplsPws             MplsPw[]              @relation("MplsPwHost")
+  remoteMplsPws       MplsPw[]              @relation("MplsPwRemoteHost")
+  mplsStateEvents     MplsStateEvent[]
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
 
@@ -274,10 +329,108 @@ model Interface {
   sourceLinks           Link[]                   @relation("LinkSourceInterface")
   targetLinks           Link[]                   @relation("LinkTargetInterface")
   sourceMappings        InterfaceSourceMapping[]
+  mplsVsis              MplsVsi[]
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
 
   @@unique([deviceId, ifIndex])
+}
+
+model MplsDeviceState {
+  id            String     @id @default(cuid())
+  hostId        String     @unique
+  supported     Boolean    @default(false)
+  source        MplsSource @default(SNMP)
+  lastPollingAt DateTime?
+  lastSuccessAt DateTime?
+  lastFailureAt DateTime?
+  lastErrorSafe String?
+  host          Device     @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model MplsVsi {
+  id                String                   @id @default(cuid())
+  hostId            String
+  name              String
+  signalingType     String                   @default("UNKNOWN")
+  rd                String?
+  vsiId             Int?
+  status            MplsStatus               @default(UNKNOWN)
+  operationalStatus MplsVsiOperationalStatus @default(UNKNOWN)
+  adminStatus       MplsAdminStatus          @default(UNKNOWN)
+  mtu               Int?
+  vcType            String                   @default("UNKNOWN")
+  tunnelPolicy      String?
+  description       String?
+  vlanId            Int?
+  localInterfaceId  String?
+  source            MplsSource               @default(SNMP)
+  lastSeenAt        DateTime
+  host              Device                   @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  localInterface    Interface?               @relation(fields: [localInterfaceId], references: [id], onDelete: SetNull)
+  pws               MplsPw[]
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+
+  @@unique([hostId, name])
+  @@index([hostId])
+  @@index([operationalStatus])
+  @@index([status])
+  @@index([lastSeenAt])
+  @@index([localInterfaceId])
+}
+
+model MplsPw {
+  id            String             @id @default(cuid())
+  hostId        String
+  mplsVsiId     String
+  vsiName       String
+  pwId          Int
+  remoteIp      String
+  remoteHostId  String?
+  tunnelPolicy  String?
+  pwType        String             @default("UNKNOWN")
+  inboundLabel  Int?
+  outboundLabel Int?
+  status        MplsPwStatus       @default(UNKNOWN)
+  state         MplsPwState        @default(UNKNOWN)
+  workingState  MplsPwWorkingState @default(UNKNOWN)
+  upStartTime   DateTime?
+  upSumTime     BigInt?
+  source        MplsSource         @default(SNMP)
+  lastSeenAt    DateTime
+  host          Device             @relation("MplsPwHost", fields: [hostId], references: [id], onDelete: Cascade)
+  vsi           MplsVsi            @relation(fields: [mplsVsiId], references: [id], onDelete: Cascade)
+  remoteHost    Device?            @relation("MplsPwRemoteHost", fields: [remoteHostId], references: [id], onDelete: SetNull)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@unique([hostId, vsiName, pwId, remoteIp])
+  @@index([hostId])
+  @@index([mplsVsiId])
+  @@index([remoteIp])
+  @@index([remoteHostId])
+  @@index([status])
+  @@index([lastSeenAt])
+}
+
+model MplsStateEvent {
+  id             BigInt         @id @default(autoincrement())
+  hostId         String
+  entityType     MplsEntityType
+  entityId       String
+  vsiName        String
+  pwId           Int?
+  remoteIp       String?
+  previousStatus String
+  currentStatus  String
+  occurredAt     DateTime       @default(now())
+  host           Device         @relation(fields: [hostId], references: [id], onDelete: Cascade)
+
+  @@index([hostId, occurredAt])
+  @@index([entityType, entityId, occurredAt])
 }
 
 model DeviceMetricSample {

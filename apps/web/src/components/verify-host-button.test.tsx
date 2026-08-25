@@ -65,7 +65,10 @@ describe('VerifyHostButton', () => {
     });
 
     const button = container.querySelector('button')!;
-    await act(async () => button.click());
+    await act(async () => {
+      button.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
 
     expect(pollHost).toHaveBeenCalledWith('huawei-s6750');
     expect(button.disabled).toBe(true);
@@ -88,6 +91,7 @@ describe('VerifyHostButton', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['interfaces', 'huawei-s6750'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['map'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['history'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['host-mpls', 'huawei-s6750'] });
     expect(showToast).toHaveBeenCalledWith(
       'Equipamento atualizado com sucesso · 42 interfaces verificadas',
     );

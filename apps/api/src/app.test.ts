@@ -20,6 +20,17 @@ describe('GMJ NetVision API', () => {
     expect(response.json().devices).toHaveLength(13);
   });
 
+  it('returns MPLS unavailable without generating demo data', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/hosts/core-01/mpls' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      supported: false,
+      source: 'SNMP',
+      summary: { vsiTotal: 0, pwTotal: 0 },
+      vsis: [],
+    });
+  });
+
   it('exposes optical history with the supported period contract', async () => {
     const response = await app.inject({
       method: 'GET',
@@ -36,23 +47,30 @@ describe('GMJ NetVision API', () => {
   });
 
   it('returns Lane 0..N from the optical-history endpoint', async () => {
-    const history = vi.spyOn(DemoHostRepositoryAdapter.prototype, 'getInterfaceOpticalHistory')
-      .mockResolvedValue([{
-        timestamp: '2026-08-23T12:00:00.000Z',
-        sampleCount: 1,
-        rxAvg: -3.71, rxMin: -3.71, rxMax: -3.71,
-        txAvg: 0.77, txMin: 0.77, txMax: 0.77,
-        lanes: [0, 2, 5].map((lane) => ({
-          lane,
+    const history = vi
+      .spyOn(DemoHostRepositoryAdapter.prototype, 'getInterfaceOpticalHistory')
+      .mockResolvedValue([
+        {
+          timestamp: '2026-08-23T12:00:00.000Z',
           sampleCount: 1,
-          rxAvg: -3.71 + lane,
-          rxMin: -3.71 + lane,
-          rxMax: -3.71 + lane,
-          txAvg: 0.77 + lane,
-          txMin: 0.77 + lane,
-          txMax: 0.77 + lane,
-        })),
-      }]);
+          rxAvg: -3.71,
+          rxMin: -3.71,
+          rxMax: -3.71,
+          txAvg: 0.77,
+          txMin: 0.77,
+          txMax: 0.77,
+          lanes: [0, 2, 5].map((lane) => ({
+            lane,
+            sampleCount: 1,
+            rxAvg: -3.71 + lane,
+            rxMin: -3.71 + lane,
+            rxMax: -3.71 + lane,
+            txAvg: 0.77 + lane,
+            txMin: 0.77 + lane,
+            txMax: 0.77 + lane,
+          })),
+        },
+      ]);
 
     const response = await app.inject({
       method: 'GET',
@@ -180,11 +198,13 @@ describe('GMJ NetVision API', () => {
       method: 'PUT',
       url: '/api/maps/backbone-main/nodes/positions',
       payload: {
-        nodes: [{
-          nodeId: 'node-core-01',
-          position: { x: 222, y: 333 },
-          positionSource: 'AUTO',
-        }],
+        nodes: [
+          {
+            nodeId: 'node-core-01',
+            position: { x: 222, y: 333 },
+            positionSource: 'AUTO',
+          },
+        ],
       },
     });
     expect(response.statusCode).toBe(200);
@@ -239,14 +259,19 @@ describe('GMJ NetVision API', () => {
       method: 'GET',
       url: '/api/interfaces/search?q=uplink-primary',
     });
-    expect(byAlias.json().some((item: { alias: string }) => item.alias === 'UPLINK-PRIMARY')).toBe(true);
+    expect(byAlias.json().some((item: { alias: string }) => item.alias === 'UPLINK-PRIMARY')).toBe(
+      true,
+    );
 
     const byDescription = await app.inject({
       method: 'GET',
       url: '/api/interfaces/search?q=backbone%20optical',
     });
-    expect(byDescription.json().some((item: { description: string }) =>
-      item.description === 'Backbone optical link')).toBe(true);
+    expect(
+      byDescription
+        .json()
+        .some((item: { description: string }) => item.description === 'Backbone optical link'),
+    ).toBe(true);
 
     const byIfIndex = await app.inject({ method: 'GET', url: '/api/interfaces/search?q=1000' });
     expect(byIfIndex.json().every((item: { ifIndex: number }) => item.ifIndex === 1000)).toBe(true);

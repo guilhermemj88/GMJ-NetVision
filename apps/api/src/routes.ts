@@ -16,7 +16,12 @@ import type {
   UpdateMapInput,
   UpdateUserInput,
 } from '@gmj/shared';
-import type { LldpSnmpTargetProvider, LldpSshSessionFactory, TopologyDiscoveryAdapter, TopologyPreviewStore } from './domain/ports';
+import type {
+  LldpSnmpTargetProvider,
+  LldpSshSessionFactory,
+  TopologyDiscoveryAdapter,
+  TopologyPreviewStore,
+} from './domain/ports';
 import { CredentialVault } from './application/credential-vault';
 import { DiscoveryService } from './application/discovery-service';
 import { AuthService, randomToken, UserAlreadyExistsError } from './application/auth-service';
@@ -24,6 +29,7 @@ import { TopologyApplyService } from './application/topology-apply-service';
 import { TopologyPreviewService } from './application/topology-preview-service';
 import { config } from './config';
 import { registerHostRoutes } from './host-routes';
+import { registerMplsRoutes } from './mpls-routes';
 import { DemoMetricAdapter } from './infrastructure/metrics/demo-adapter';
 import { ZabbixAdapter } from './infrastructure/metrics/zabbix-adapter';
 import { DemoAuthRepository } from './infrastructure/persistence/demo-auth-repository';
@@ -35,12 +41,19 @@ import { PrismaAuthRepository } from './infrastructure/persistence/prisma-auth-r
 import { PrismaMapRepository } from './infrastructure/persistence/prisma-map-repository';
 import { PrismaPublicViewRepository } from './infrastructure/persistence/prisma-public-view-repository';
 import { PrismaTopologyPreviewStore } from './infrastructure/persistence/prisma-topology-preview-store';
-import { createPrismaHostRepository, PrismaHostRepository } from './infrastructure/persistence/prisma-host-repository';
+import {
+  createPrismaHostRepository,
+  PrismaHostRepository,
+} from './infrastructure/persistence/prisma-host-repository';
 import type { HostRepository } from './infrastructure/persistence/host-repository';
 import type { PublicViewRecord } from './infrastructure/persistence/public-view-repository';
 import { SnmpClientImpl } from './infrastructure/snmp/snmp-client-impl';
 import { SnmpPoller } from './infrastructure/snmp/snmp-poller';
 import { SnmpService } from './infrastructure/snmp/snmp-service';
+import { DemoMplsRepository } from './infrastructure/mpls/demo-mpls-repository';
+import { HuaweiVplsSnmpCollector } from './infrastructure/mpls/huawei-vpls-snmp';
+import { MplsPollingService } from './infrastructure/mpls/mpls-polling-service';
+import { PrismaMplsRepository } from './infrastructure/mpls/prisma-mpls-repository';
 import { SshClientImpl } from './infrastructure/ssh/ssh-client-impl';
 import { SshInterfaceService } from './infrastructure/ssh/ssh-interface-service';
 import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-adapter';
@@ -87,7 +100,10 @@ const createUserSchema = z.object({
     .string()
     .min(3)
     .max(64)
-    .regex(/^[a-zA-Z0-9._-]+$/, 'Usuário deve conter apenas letras, números, pontos, traços e underscores'),
+    .regex(
+      /^[a-zA-Z0-9._-]+$/,
+      'Usuário deve conter apenas letras, números, pontos, traços e underscores',
+    ),
   email: z.string().email().max(255),
   name: z.string().min(1).max(120),
   password: z.string().min(6).max(1024),
@@ -120,14 +136,16 @@ const mapSettingsSchema = z.object({
   nodeDisplayMode: z.enum(['ICON_2D', 'ICON_3D', 'CARD']).optional(),
   linkDisplayStyle: z.enum(['FLOW', 'WEATHERMAP', 'HYBRID', 'MINIMAL']).optional(),
   linkMetricDisplay: z.enum(['THROUGHPUT', 'UTILIZATION', 'BOTH', 'NONE']).optional(),
-  filters: z.object({
-    showTraffic: z.boolean().optional(),
-    showUtilization: z.boolean().optional(),
-    showLabels: z.boolean().optional(),
-    showOffline: z.boolean().optional(),
-    showInterfaces: z.boolean().optional(),
-    showTrafficAnimation: z.boolean().optional(),
-  }).optional(),
+  filters: z
+    .object({
+      showTraffic: z.boolean().optional(),
+      showUtilization: z.boolean().optional(),
+      showLabels: z.boolean().optional(),
+      showOffline: z.boolean().optional(),
+      showInterfaces: z.boolean().optional(),
+      showTrafficAnimation: z.boolean().optional(),
+    })
+    .optional(),
   viewport: z.object({ x: z.number(), y: z.number(), zoom: z.number().positive() }).optional(),
   nodeScale: z.number().min(50).max(200).optional(),
   linkScale: z.number().min(50).max(200).optional(),
@@ -153,7 +171,20 @@ const deviceSchema = z.object({
   vendor: z.string().max(80),
   model: z.string().max(80),
   site: z.string().max(80),
-  deviceType: z.enum(['core', 'router', 'switch', 'aggregation', 'edge', 'olt', 'firewall', 'server', 'internet', 'ix', 'customers', 'generic']),
+  deviceType: z.enum([
+    'core',
+    'router',
+    'switch',
+    'aggregation',
+    'edge',
+    'olt',
+    'firewall',
+    'server',
+    'internet',
+    'ix',
+    'customers',
+    'generic',
+  ]),
   position: z.object({ x: z.number(), y: z.number() }),
 });
 
@@ -203,9 +234,10 @@ function buildTopologyAdapters(hosts: HostRepository): TopologyDiscoveryAdapter[
 }
 
 export function registerRoutes(app: FastifyInstance, options: RouteRegistrationOptions = {}): void {
-  const credentialEncryptionKey = options.credentialEncryptionKey === undefined
-    ? config.CREDENTIAL_ENCRYPTION_KEY
-    : options.credentialEncryptionKey;
+  const credentialEncryptionKey =
+    options.credentialEncryptionKey === undefined
+      ? config.CREDENTIAL_ENCRYPTION_KEY
+      : options.credentialEncryptionKey;
   const vault = credentialEncryptionKey ? new CredentialVault(credentialEncryptionKey) : null;
 
   const legacyMaps = new DemoMapRepository(vault);
@@ -222,24 +254,37 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const metrics = new DemoMetricAdapter();
   const discovery = new DiscoveryService([new DemoTopologyAdapter()]);
   const ssh = new SshInterfaceService(hosts);
+  const mplsRepository = config.DEMO_MODE ? new DemoMplsRepository() : new PrismaMplsRepository();
+  const mplsPolling = new MplsPollingService(
+    new HuaweiVplsSnmpCollector(new SnmpClientImpl(3000, 1)),
+    mplsRepository,
+  );
   const snmp = new SnmpService(
     hosts,
     ssh,
     config.OPTICAL_POLL_INTERVAL_SECONDS * 1000,
+    mplsPolling,
   );
   const poller = new SnmpPoller(hosts, snmp, config.SNMP_POLL_INTERVAL_SECONDS * 1000);
-  const zabbix = config.ZABBIX_URL && config.ZABBIX_TOKEN
-    ? new ZabbixAdapter(config.ZABBIX_URL, config.ZABBIX_TOKEN, config.ZABBIX_AUTH_MODE)
-    : null;
+  const zabbix =
+    config.ZABBIX_URL && config.ZABBIX_TOKEN
+      ? new ZabbixAdapter(config.ZABBIX_URL, config.ZABBIX_TOKEN, config.ZABBIX_AUTH_MODE)
+      : null;
 
   const topologyAdapters = buildTopologyAdapters(hosts);
   const topologyPreviewStore: TopologyPreviewStore = config.DEMO_MODE
     ? new InMemoryTopologyPreviewStore()
     : new PrismaTopologyPreviewStore();
-  const topologyPreview = new TopologyPreviewService(topologyAdapters, hosts, maps, topologyPreviewStore);
+  const topologyPreview = new TopologyPreviewService(
+    topologyAdapters,
+    hosts,
+    maps,
+    topologyPreviewStore,
+  );
   const topologyApply = new TopologyApplyService(maps, hosts);
 
   registerHostRoutes(app, { legacyMaps, mapMembership: maps, hosts, discovery, snmp, ssh, zabbix });
+  registerMplsRoutes(app, { hosts, mpls: mplsRepository });
 
   app.addHook('onReady', async () => {
     if (config.DEMO_MODE) {
@@ -270,10 +315,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   app.addHook('onClose', async () => {
     poller.stop();
     if (productionMaps) await productionMaps.disconnect();
-    if (topologyPreviewStore instanceof PrismaTopologyPreviewStore) await topologyPreviewStore.disconnect();
+    if (topologyPreviewStore instanceof PrismaTopologyPreviewStore)
+      await topologyPreviewStore.disconnect();
     if (hosts instanceof PrismaHostRepository) await hosts.disconnect();
     if (authRepository instanceof PrismaAuthRepository) await authRepository.disconnect();
-    if (publicViewRepository instanceof PrismaPublicViewRepository) await publicViewRepository.disconnect();
+    if (publicViewRepository instanceof PrismaPublicViewRepository)
+      await publicViewRepository.disconnect();
+    if (mplsRepository instanceof PrismaMplsRepository) await mplsRepository.disconnect();
   });
 
   app.get('/health', async () => ({
@@ -322,7 +370,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
 
   // ---- User management (ADMIN only) ----
-  const currentUser = (request: unknown): AuthUser | null => (request as { user?: AuthUser }).user ?? null;
+  const currentUser = (request: unknown): AuthUser | null =>
+    (request as { user?: AuthUser }).user ?? null;
   const isAdmin = (request: unknown): boolean => currentUser(request)?.role === 'ADMIN';
 
   app.get('/api/users', async (request, reply) => {
@@ -346,7 +395,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     if (!isAdmin(request)) return reply.code(403).send({ message: 'Apenas administradores' });
     const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
     try {
-      const updated = await auth.updateUser(id, updateUserSchema.parse(request.body) as UpdateUserInput);
+      const updated = await auth.updateUser(
+        id,
+        updateUserSchema.parse(request.body) as UpdateUserInput,
+      );
       return updated ?? reply.code(404).send({ message: 'Usuário não encontrado' });
     } catch (error) {
       if (error instanceof UserAlreadyExistsError) {
@@ -418,6 +470,20 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     updatedAt: view.updatedAt.toISOString(),
   });
 
+  const publicViewContainsHost = async (token: string, hostId: string): Promise<boolean> => {
+    const view = await publicViewRepository.findByToken(token);
+    if (!view || !view.enabled || (view.expiresAt && view.expiresAt.getTime() < Date.now()))
+      return false;
+    if (view.type === 'MAP') {
+      const map = await maps.getMap(view.mapId ?? '');
+      return Boolean(map?.devices.some((device) => device.id === hostId));
+    }
+    const playlist = (await maps.listPlaylists()).find((item) => item.id === view.playlistId);
+    if (!playlist) return false;
+    const playlistMaps = await Promise.all(playlist.items.map((item) => maps.getMap(item.mapId)));
+    return playlistMaps.some((map) => map?.devices.some((device) => device.id === hostId));
+  };
+
   app.get('/api/public/view/:token', async (request, reply) => {
     const { token } = z.object({ token: z.string().min(1) }).parse(request.params);
     const view = await publicViewRepository.findByToken(token);
@@ -478,12 +544,14 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       ...(body.enabled !== undefined ? { enabled: body.enabled } : {}),
       ...(body.expiresAt !== undefined ? { expiresAt: body.expiresAt } : {}),
     });
-    return view ? toPublicView(view) : reply.code(404).send({ message: 'Link público não encontrado' });
+    return view
+      ? toPublicView(view)
+      : reply.code(404).send({ message: 'Link público não encontrado' });
   });
 
   app.delete('/api/public-views/:id', async (request, reply) => {
     const { id } = z.object({ id: z.string().min(1) }).parse(request.params);
-    return await publicViewRepository.remove(id)
+    return (await publicViewRepository.remove(id))
       ? reply.code(204).send()
       : reply.code(404).send({ message: 'Link público não encontrado' });
   });
@@ -510,18 +578,22 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     const { mapId } = mapIdParams.parse(request.params);
     const source = await maps.getMap(mapId);
     if (!source) return reply.code(404).send({ message: 'Map not found' });
-    const body = z.object({ name: z.string().min(1).max(80), description: z.string().max(500).optional() }).parse(request.body);
-    return reply.code(201).send(await maps.createMap({
-      name: body.name,
-      description: body.description ?? source.description,
-      mode: source.mode,
-      sourceMapId: mapId,
-    }));
+    const body = z
+      .object({ name: z.string().min(1).max(80), description: z.string().max(500).optional() })
+      .parse(request.body);
+    return reply.code(201).send(
+      await maps.createMap({
+        name: body.name,
+        description: body.description ?? source.description,
+        mode: source.mode,
+        sourceMapId: mapId,
+      }),
+    );
   });
 
   app.delete('/api/maps/:mapId', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
-    return await maps.deleteMap(mapId)
+    return (await maps.deleteMap(mapId))
       ? reply.code(204).send()
       : reply.code(409).send({ message: 'Map not found or last remaining map' });
   });
@@ -529,13 +601,15 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   app.get('/api/playlists', async () => maps.listPlaylists());
 
   app.post('/api/playlists', async (request, reply) => {
-    const body = z.object({
-      id: z.string().optional(),
-      name: z.string().min(1).max(80),
-      rotationIntervalSeconds: z.number().int().min(5).max(86_400),
-      mapIds: z.array(z.string()).min(1),
-      isDefault: z.boolean().default(false),
-    }).parse(request.body);
+    const body = z
+      .object({
+        id: z.string().optional(),
+        name: z.string().min(1).max(80),
+        rotationIntervalSeconds: z.number().int().min(5).max(86_400),
+        mapIds: z.array(z.string()).min(1),
+        isDefault: z.boolean().default(false),
+      })
+      .parse(request.body);
     const playlistInput = {
       ...(body.id ? { id: body.id } : {}),
       name: body.name,
@@ -555,12 +629,15 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   app.put('/api/maps/:mapId/nodes/positions', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
     const body = z.object({ nodes: z.array(positionSchema).min(1) }).parse(request.body);
-    const map = await maps.updatePositions(mapId, body.nodes.map((node) => ({
-      nodeId: node.nodeId,
-      position: node.position,
-      ...(node.positionSource === undefined ? {} : { positionSource: node.positionSource }),
-      ...(node.locked === undefined ? {} : { locked: node.locked }),
-    })));
+    const map = await maps.updatePositions(
+      mapId,
+      body.nodes.map((node) => ({
+        nodeId: node.nodeId,
+        position: node.position,
+        ...(node.positionSource === undefined ? {} : { positionSource: node.positionSource }),
+        ...(node.locked === undefined ? {} : { locked: node.locked }),
+      })),
+    );
     return map ?? reply.code(404).send({ message: 'Map not found' });
   });
 
@@ -579,17 +656,19 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   app.patch('/api/maps/:mapId/links/:linkId', async (request, reply) => {
     const { mapId, linkId } = linkParams.parse(request.params);
-    const body = linkSchema.pick({
-      sourceInterfaceId: true,
-      targetInterfaceId: true,
-      capacityBps: true,
-      autoCapacityBps: true,
-      capacitySource: true,
-      label: true,
-      metricSource: true,
-      visualStyle: true,
-      metricDisplay: true,
-    }).parse(request.body);
+    const body = linkSchema
+      .pick({
+        sourceInterfaceId: true,
+        targetInterfaceId: true,
+        capacityBps: true,
+        autoCapacityBps: true,
+        capacitySource: true,
+        label: true,
+        metricSource: true,
+        visualStyle: true,
+        metricDisplay: true,
+      })
+      .parse(request.body);
     const { sourceInterfaceId, targetInterfaceId, ...fields } = body;
     const link = await maps.updateLink(mapId, linkId, {
       ...fields,
@@ -601,7 +680,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   app.delete('/api/maps/:mapId/links/:linkId', async (request, reply) => {
     const { mapId, linkId } = linkParams.parse(request.params);
-    return await maps.deleteLink(mapId, linkId)
+    return (await maps.deleteLink(mapId, linkId))
       ? reply.code(204).send()
       : reply.code(404).send({ message: 'Link not found' });
   });
@@ -611,7 +690,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     const body = deviceSchema.parse(request.body);
     if (config.DEMO_MODE) {
       const result = legacyMaps.addDevice(mapId, body);
-      return result ? reply.code(201).send(result) : reply.code(404).send({ message: 'Map not found' });
+      return result
+        ? reply.code(201).send(result)
+        : reply.code(404).send({ message: 'Map not found' });
     }
     const input: CreateHostInput = {
       hostname: body.hostname,
@@ -626,11 +707,22 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       origin: 'MANUAL',
       zabbix: { enabled: false, hostId: '', hostName: '', primaryInterfaceId: '', ip: '' },
       ssh: { enabled: false, host: body.ip, port: 22, username: '' },
-      snmp: { enabled: false, version: 'SNMP_V2C', host: body.ip, port: 161, username: '', securityLevel: 'NO_AUTH_NO_PRIV', authProtocol: null, privacyProtocol: null },
+      snmp: {
+        enabled: false,
+        version: 'SNMP_V2C',
+        host: body.ip,
+        port: 161,
+        username: '',
+        securityLevel: 'NO_AUTH_NO_PRIV',
+        authProtocol: null,
+        privacyProtocol: null,
+      },
     };
     const host = await hosts.createHost(input);
     const result = await productionMaps!.addHostToMap(host.id, mapId, body.position);
-    return result ? reply.code(201).send(result) : reply.code(404).send({ message: 'Map not found' });
+    return result
+      ? reply.code(201).send(result)
+      : reply.code(404).send({ message: 'Map not found' });
   });
 
   app.post('/api/maps/:mapId/nodes', async (request, reply) => {
@@ -657,46 +749,82 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   app.delete('/api/maps/:mapId/nodes/:nodeId', async (request, reply) => {
     const { mapId, nodeId } = nodeParams.parse(request.params);
-    return await maps.deleteNode(mapId, nodeId)
+    return (await maps.deleteNode(mapId, nodeId))
       ? reply.code(204).send()
       : reply.code(404).send({ message: 'Node not found' });
   });
 
   app.delete('/api/maps/:mapId/devices/:deviceId', async (request, reply) => {
     const { mapId, deviceId } = deviceParams.parse(request.params);
-    return await maps.deleteDevice(mapId, deviceId)
+    return (await maps.deleteDevice(mapId, deviceId))
       ? reply.code(204).send()
       : reply.code(404).send({ message: 'Device not found' });
   });
 
   app.get('/api/interfaces/:interfaceId/history', async (request, reply) => {
     const { interfaceId } = z.object({ interfaceId: z.string() }).parse(request.params);
-    const { period } = z.object({ period: z.enum(['15m', '1h', '6h', '24h', '7d']).default('1h') }).parse(request.query);
+    const { period } = z
+      .object({ period: z.enum(['15m', '1h', '6h', '24h', '7d']).default('1h') })
+      .parse(request.query);
     if (zabbix && interfaceId.startsWith('zabbix-interface-')) {
-      try { return await zabbix.getHistory(interfaceId, period as HistoryPeriod); }
-      catch { return reply.code(502).send({ message: 'Falha segura ao consultar histórico no Zabbix' }); }
+      try {
+        return await zabbix.getHistory(interfaceId, period as HistoryPeriod);
+      } catch {
+        return reply.code(502).send({ message: 'Falha segura ao consultar histórico no Zabbix' });
+      }
     }
     if (!config.DEMO_MODE) return hosts.getInterfaceHistory(interfaceId, period as HistoryPeriod);
     return metrics.getHistory(interfaceId, period as HistoryPeriod);
   });
 
+  app.get('/api/public/view/:token/hosts/:hostId/mpls', async (request, reply) => {
+    const { token, hostId } = z
+      .object({ token: z.string().min(1), hostId: z.string().min(1) })
+      .parse(request.params);
+    if (!(await publicViewContainsHost(token, hostId))) {
+      return reply.code(404).send({ message: 'Host não disponível neste link público' });
+    }
+    return mplsRepository.getHostOverview(hostId);
+  });
+
+  app.get('/api/public/view/:token/hosts/:hostId/mpls/events', async (request, reply) => {
+    const { token, hostId } = z
+      .object({ token: z.string().min(1), hostId: z.string().min(1) })
+      .parse(request.params);
+    const { limit } = z
+      .object({ limit: z.coerce.number().int().min(1).max(200).default(50) })
+      .parse(request.query);
+    if (!(await publicViewContainsHost(token, hostId))) {
+      return reply.code(404).send({ message: 'Host não disponível neste link público' });
+    }
+    return mplsRepository.listEvents(hostId, limit);
+  });
+
   app.get('/api/interfaces/:interfaceId/optical-history', async (request) => {
     const { interfaceId } = z.object({ interfaceId: z.string() }).parse(request.params);
-    const { period } = z.object({
-      period: z.enum(['15m', '1h', '6h', '24h', '7d']).default('1h'),
-    }).parse(request.query);
+    const { period } = z
+      .object({
+        period: z.enum(['15m', '1h', '6h', '24h', '7d']).default('1h'),
+      })
+      .parse(request.query);
     return hosts.getInterfaceOpticalHistory(interfaceId, period as HistoryPeriod);
   });
 
   app.get('/api/interfaces/:interfaceId/metrics', async (request, reply) => {
     const { interfaceId } = z.object({ interfaceId: z.string() }).parse(request.params);
     if (zabbix && interfaceId.startsWith('zabbix-interface-')) {
-      try { return await zabbix.getMetrics(interfaceId); }
-      catch { return reply.code(502).send({ message: 'Falha segura ao consultar métricas no Zabbix' }); }
+      try {
+        return await zabbix.getMetrics(interfaceId);
+      } catch {
+        return reply.code(502).send({ message: 'Falha segura ao consultar métricas no Zabbix' });
+      }
     }
     if (!config.DEMO_MODE) {
       const current = await hosts.getInterfaceMetrics(interfaceId);
-      return current ?? reply.code(404).send({ message: 'Ainda não há amostras SNMP para esta interface' });
+      return (
+        current ??
+        reply.code(404).send({ message: 'Ainda não há amostras SNMP para esta interface' })
+      );
     }
     return reply.code(409).send({ message: 'Interface sem fonte de métricas em tempo real' });
   });
@@ -710,10 +838,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
 
   app.post('/api/topology/lldp/discover', async (request, reply) => {
-    const { mapId, deepValidation } = z.object({
-      mapId: z.string().min(1),
-      deepValidation: z.boolean().optional().default(false),
-    }).parse(request.body);
+    const { mapId, deepValidation } = z
+      .object({
+        mapId: z.string().min(1),
+        deepValidation: z.boolean().optional().default(false),
+      })
+      .parse(request.body);
     try {
       return await topologyPreview.discover(mapId, { deepValidation });
     } catch (error) {
@@ -725,10 +855,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   app.post('/api/hosts/:hostId/lldp/discover', async (request, reply) => {
     const { hostId } = z.object({ hostId: z.string().min(1) }).parse(request.params);
-    const { mapId, deepValidation } = z.object({
-      mapId: z.string().min(1),
-      deepValidation: z.boolean().optional().default(false),
-    }).parse(request.body);
+    const { mapId, deepValidation } = z
+      .object({
+        mapId: z.string().min(1),
+        deepValidation: z.boolean().optional().default(false),
+      })
+      .parse(request.body);
     try {
       return await topologyPreview.discoverHost(hostId, mapId, { deepValidation });
     } catch (error) {
@@ -745,14 +877,20 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
 
   app.post('/api/topology/lldp/apply', async (request, reply) => {
-    const body = z.object({
-      previewId: z.string().min(1),
-      mapId: z.string().min(1),
-      selections: z.array(z.object({
-        adjacencyId: z.string().min(1),
-        action: z.enum(['CREATE_LINK', 'IGNORE']),
-      })).min(1),
-    }).parse(request.body);
+    const body = z
+      .object({
+        previewId: z.string().min(1),
+        mapId: z.string().min(1),
+        selections: z
+          .array(
+            z.object({
+              adjacencyId: z.string().min(1),
+              action: z.enum(['CREATE_LINK', 'IGNORE']),
+            }),
+          )
+          .min(1),
+      })
+      .parse(request.body);
     const preview = await topologyPreviewStore.load(body.previewId);
     if (!preview) return reply.code(404).send({ message: 'Preview expirado ou inexistente' });
     const selections = body.selections as LldpApplySelection[];
@@ -766,7 +904,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
 
   app.get('/api/integrations/zabbix/status', async (_request, reply) => {
-    if (!config.ZABBIX_URL || !config.ZABBIX_TOKEN) return { configured: false, status: 'not_configured' };
+    if (!config.ZABBIX_URL || !config.ZABBIX_TOKEN)
+      return { configured: false, status: 'not_configured' };
     try {
       const result = await zabbix!.healthcheck();
       return { configured: true, status: 'connected', ...result };
@@ -780,7 +919,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
 
   app.get('/api/integrations/zabbix/hosts', async (_request, reply) => {
-    if (!config.ZABBIX_URL || !config.ZABBIX_TOKEN) return reply.code(409).send({ message: 'Zabbix is not configured' });
+    if (!config.ZABBIX_URL || !config.ZABBIX_TOKEN)
+      return reply.code(409).send({ message: 'Zabbix is not configured' });
     return zabbix!.getDevices();
   });
 }

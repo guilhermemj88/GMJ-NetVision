@@ -24,6 +24,10 @@ import {
   type MapNode,
   type MapPlaylist,
   type MapSummary,
+  type MplsHostOverview,
+  type MplsPw,
+  type MplsStateEvent,
+  type MplsVsi,
   type MetricPoint,
   type NetworkLink,
   type NetworkMap,
@@ -234,11 +238,7 @@ export function createLink(mapId: string, input: CreateLinkInput) {
   });
 }
 
-export function updateLink(
-  mapId: string,
-  id: string,
-  input: UpdateLinkInput,
-) {
+export function updateLink(mapId: string, id: string, input: UpdateLinkInput) {
   return request<NetworkLink>(`/api/maps/${mapId}/links/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(input),
@@ -296,6 +296,39 @@ export function pollHost(hostId: string): Promise<HostPollResult> {
   return request<HostPollResult>(`/api/hosts/${encodeURIComponent(normalizedHostId)}/poll`, {
     method: 'POST',
   });
+}
+
+export function getHostMpls(
+  hostId: string,
+  publicToken?: string | null,
+): Promise<MplsHostOverview> {
+  const encodedHost = encodeURIComponent(hostId);
+  const path = publicToken
+    ? `/api/public/view/${encodeURIComponent(publicToken)}/hosts/${encodedHost}/mpls`
+    : `/api/hosts/${encodedHost}/mpls`;
+  return request<MplsHostOverview>(path);
+}
+
+export function getHostMplsVsis(hostId: string): Promise<MplsVsi[]> {
+  return request<MplsVsi[]>(`/api/hosts/${encodeURIComponent(hostId)}/mpls/vsis`);
+}
+
+export function getMplsVsiPws(hostId: string, vsiId: string): Promise<MplsPw[]> {
+  return request<MplsPw[]>(
+    `/api/hosts/${encodeURIComponent(hostId)}/mpls/vsis/${encodeURIComponent(vsiId)}/pws`,
+  );
+}
+
+export function getHostMplsEvents(
+  hostId: string,
+  limit = 50,
+  publicToken?: string | null,
+): Promise<MplsStateEvent[]> {
+  const encodedHost = encodeURIComponent(hostId);
+  const path = publicToken
+    ? `/api/public/view/${encodeURIComponent(publicToken)}/hosts/${encodedHost}/mpls/events?limit=${limit}`
+    : `/api/hosts/${encodedHost}/mpls/events?limit=${limit}`;
+  return request<MplsStateEvent[]>(path);
 }
 
 export function createHost(input: CreateHostInput) {

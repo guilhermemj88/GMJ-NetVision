@@ -16,6 +16,7 @@ import {
   HardDrive,
   List,
   Network,
+  Route,
   Pencil,
   Radar,
   ServerCog,
@@ -42,12 +43,14 @@ import { OpticalHistoryCharts } from './optical-history-charts';
 import { AssistedDiscoveryReview } from './assisted-discovery-review';
 import { InterfacePicker } from './interface-picker';
 import { VerifyHostButton } from './verify-host-button';
+import { MplsPanel } from './mpls-panel';
 
 function trafficValidation(metric: DirectionalLinkMetric): string {
   const tx = metric.txBps == null ? 'TX indisponível' : `TX ${formatBitsPerSecond(metric.txBps)}`;
-  const rx = metric.observedRxBps == null
-    ? 'RX observado indisponível'
-    : `RX observado ${formatBitsPerSecond(metric.observedRxBps)}`;
+  const rx =
+    metric.observedRxBps == null
+      ? 'RX observado indisponível'
+      : `RX observado ${formatBitsPerSecond(metric.observedRxBps)}`;
   if (metric.consistency === 'UNKNOWN' || metric.deltaPercent == null) {
     return `${tx} / ${rx} · sem validação entre pontas`;
   }
@@ -144,9 +147,9 @@ function DeviceDrawer({
   readOnly: boolean;
   onClose: () => void;
 }) {
-  const [tab, setTab] = useState<'overview' | 'interfaces' | 'monitoring' | 'access' | 'discovery'>(
-    'overview',
-  );
+  const [tab, setTab] = useState<
+    'overview' | 'interfaces' | 'mpls' | 'monitoring' | 'access' | 'discovery'
+  >('overview');
   const map = useMapStore((state) => state.map);
   const setSelection = useMapStore((state) => state.setSelection);
   const device = map?.devices.find((item) => item.id === deviceId);
@@ -162,9 +165,7 @@ function DeviceDrawer({
       eyebrow="EQUIPAMENTO"
       title={device.name}
       status={device.status}
-      {...(!readOnly
-        ? { verifyHost: { hostId: device.id, enabled: device.snmpEnabled } }
-        : {})}
+      {...(!readOnly ? { verifyHost: { hostId: device.id, enabled: device.snmpEnabled } } : {})}
       onClose={onClose}
     >
       <div className="drawer-tabs">
@@ -181,6 +182,13 @@ function DeviceDrawer({
           onClick={() => setTab('interfaces')}
         >
           <List size={14} /> Interfaces <em>{device.interfaces.length}</em>
+        </button>
+        <button
+          type="button"
+          className={activeTab === 'mpls' ? 'is-active' : ''}
+          onClick={() => setTab('mpls')}
+        >
+          <Route size={14} /> MPLS
         </button>
         <button
           type="button"
@@ -291,6 +299,8 @@ function DeviceDrawer({
           interfaces={device.interfaces}
           onSelect={(item) => setSelection({ kind: 'interface', id: item.id, deviceId: device.id })}
         />
+      ) : activeTab === 'mpls' ? (
+        <MplsPanel hostId={device.id} readOnly={readOnly} />
       ) : activeTab === 'monitoring' ? (
         <>
           <section className="drawer-section">
@@ -487,8 +497,8 @@ export function InterfaceOpticalDetails({
   networkInterface: NetworkInterface;
 }) {
   const lanes = (item.opticalLanes ?? [])
-    .filter((lane) =>
-      lane.rxPowerDbm != null || lane.txPowerDbm != null || lane.biasCurrentMa != null
+    .filter(
+      (lane) => lane.rxPowerDbm != null || lane.txPowerDbm != null || lane.biasCurrentMa != null,
     )
     .sort((left, right) => left.lane - right.lane);
   const multiLane = lanes.length > 1;
@@ -811,7 +821,10 @@ function GenericNodeDrawer({ node, onClose }: { node: MapNode; onClose: () => vo
         <SectionTitle icon={<Network size={14} />} label="TOPOLOGIA" />
         <div className="info-grid">
           <Info label="Tipo / ícone" value={node.genericType ?? 'GENERIC'} />
-          <Info label="Posição" value={`${Math.round(node.position.x)} × ${Math.round(node.position.y)}`} />
+          <Info
+            label="Posição"
+            value={`${Math.round(node.position.x)} × ${Math.round(node.position.y)}`}
+          />
           <Info label="Trava" value={node.locked ? 'Bloqueado' : 'Livre'} />
         </div>
       </section>
@@ -867,7 +880,15 @@ function formatOpticalTimestamp(value: string | null | undefined): string {
   return Number.isNaN(date.getTime()) ? 'N/D' : date.toLocaleString('pt-BR');
 }
 
-function Counter({ label, value, total }: { label: string; value: number; total: number | undefined }) {
+function Counter({
+  label,
+  value,
+  total,
+}: {
+  label: string;
+  value: number;
+  total: number | undefined;
+}) {
   return (
     <div>
       <span>{label}</span>
@@ -895,7 +916,9 @@ function Endpoint({
       <strong>{device}</strong>
       <small>{networkInterface}</small>
       {(rxDbm != null || txDbm != null) && (
-        <em>RX {formatOpticalPower(rxDbm)} · TX {formatOpticalPower(txDbm)}</em>
+        <em>
+          RX {formatOpticalPower(rxDbm)} · TX {formatOpticalPower(txDbm)}
+        </em>
       )}
     </div>
   );

@@ -1,4 +1,9 @@
-import type { HostRecord, InterfaceStatus, NetworkInterface, SourceConnectionState } from '@gmj/shared';
+import type {
+  HostRecord,
+  InterfaceStatus,
+  NetworkInterface,
+  SourceConnectionState,
+} from '@gmj/shared';
 import type {
   DeviceMetricSampleInput,
   HostRepository,
@@ -12,6 +17,7 @@ import { SnmpProfileMetricService } from './profile-metric-service';
 import type { SnmpProfileDiagnostic } from './profiles/types';
 import { calculateCounterDelta } from './counter-delta';
 import { decodeSnmpText } from './snmp-text';
+import type { MplsPollingService } from '../mpls/mpls-polling-service';
 
 const SYSTEM_OIDS = {
   sysDescr: '1.3.6.1.2.1.1.1.0',
@@ -71,6 +77,7 @@ export class SnmpService {
     private readonly repository: HostRepository,
     private readonly sshInterfaces?: SshInterfaceService,
     private readonly opticalIntervalMs: number = 300_000,
+    private readonly mpls?: MplsPollingService,
   ) {
     this.client = new SnmpClientImpl(3000, 1);
     this.discoveryAdapter = new SnmpV2cDiscoveryAdapter(repository);
@@ -89,7 +96,10 @@ export class SnmpService {
       return { state: 'DISABLED', message: 'SNMP não está habilitado para este host' };
     }
     if (device.snmp.version !== 'SNMP_V2C') {
-      return { state: 'FAILED', message: 'SNMPv3 ainda não está implementado no coletor NetVision' };
+      return {
+        state: 'FAILED',
+        message: 'SNMPv3 ainda não está implementado no coletor NetVision',
+      };
     }
 
     try {
@@ -108,16 +118,28 @@ export class SnmpService {
         return { state: 'AUTH_INVALID', message: 'Credencial SNMP não configurada para este host' };
       }
       if (message.toLowerCase().includes('timeout')) {
-        return { state: 'TIMEOUT', message: `Timeout ao conectar a ${device.snmp.host}:${device.snmp.port}` };
+        return {
+          state: 'TIMEOUT',
+          message: `Timeout ao conectar a ${device.snmp.host}:${device.snmp.port}`,
+        };
       }
-      if (message.toLowerCase().includes('unreachable') || message.toLowerCase().includes('refused')) {
+      if (
+        message.toLowerCase().includes('unreachable') ||
+        message.toLowerCase().includes('refused')
+      ) {
         return {
           state: 'UNREACHABLE',
           message: `Equipamento ${device.snmp.host}:${device.snmp.port} não está acessível`,
         };
       }
-      if (message.toLowerCase().includes('authentication') || message.toLowerCase().includes('community')) {
-        return { state: 'AUTH_INVALID', message: 'Falha de autenticação SNMP - verifique community/versão' };
+      if (
+        message.toLowerCase().includes('authentication') ||
+        message.toLowerCase().includes('community')
+      ) {
+        return {
+          state: 'AUTH_INVALID',
+          message: 'Falha de autenticação SNMP - verifique community/versão',
+        };
       }
       return { state: 'FAILED', message: `Erro ao conectar: ${message}` };
     }
@@ -137,13 +159,15 @@ export class SnmpService {
       try {
         merged = await this.sshInterfaces.enrichInterfaces(device, discovered);
         await this.repository.updateSourceHealth(device.id, {
-          source: 'SSH', state: 'CONNECTED',
+          source: 'SSH',
+          state: 'CONNECTED',
           message: 'Descrições de interfaces complementadas via SSH Huawei',
           checkedAt: new Date().toISOString(),
         });
       } catch (error) {
         await this.repository.updateSourceHealth(device.id, {
-          source: 'SSH', state: 'FAILED',
+          source: 'SSH',
+          state: 'FAILED',
           message: error instanceof Error ? error.message : 'SSH interface enrichment failed',
           checkedAt: new Date().toISOString(),
         });
@@ -164,7 +188,8 @@ export class SnmpService {
   }
 
   private async pollHostUnlocked(device: HostRecord): Promise<SnmpPollResult> {
-    if (!device.snmpEnabled || !device.snmp?.host) throw new Error('SNMP não está habilitado para este host');
+    if (!device.snmpEnabled || !device.snmp?.host)
+      throw new Error('SNMP não está habilitado para este host');
     if (device.snmp.version !== 'SNMP_V2C') throw new Error('SNMPv3 ainda não está implementado');
     const community = await this.requireCommunity(device.id);
 
@@ -172,8 +197,9 @@ export class SnmpService {
     const lastDiscovery = currentDevice.lastDiscoveryAt
       ? new Date(currentDevice.lastDiscoveryAt).getTime()
       : 0;
-    const shouldRefreshInterfaces = !currentDevice.interfaces.length
-      || Date.now() - lastDiscovery >= INTERFACE_REFRESH_MILLISECONDS;
+    const shouldRefreshInterfaces =
+      !currentDevice.interfaces.length ||
+      Date.now() - lastDiscovery >= INTERFACE_REFRESH_MILLISECONDS;
     if (shouldRefreshInterfaces) {
       try {
         await this.discoverAndPersistInterfaces(currentDevice);
@@ -250,6 +276,7 @@ export class SnmpService {
 
     await this.repository.saveSnmpPoll(currentDevice.id, system, samples);
     await this.refreshOpticalPower(currentDevice, community);
+    await this.refreshMpls(currentDevice, community);
     await this.repository.updateSourceHealth(currentDevice.id, {
       source: 'SNMP',
       state: 'CONNECTED',
@@ -265,8 +292,19 @@ export class SnmpService {
       ...(system.sysName ? { sysName: system.sysName } : {}),
       ...(system.sysDescr ? { sysDescr: system.sysDescr } : {}),
       ...(system.sysObjectId ? { sysObjectId: system.sysObjectId } : {}),
-      ...(system.uptimeSeconds !== undefined ? { uptimeSeconds: Number(system.uptimeSeconds) } : {}),
+      ...(system.uptimeSeconds !== undefined
+        ? { uptimeSeconds: Number(system.uptimeSeconds) }
+        : {}),
     };
+  }
+
+  private async refreshMpls(device: HostRecord, community: string): Promise<void> {
+    if (!this.mpls) return;
+    try {
+      await this.mpls.poll(device, community);
+    } catch {
+      // MPLS is an independent optional module and never invalidates IF-MIB polling.
+    }
   }
 
   private async refreshOpticalPower(device: HostRecord, community: string): Promise<void> {
@@ -385,7 +423,10 @@ export class SnmpService {
     }
   }
 
-  private async collectSystem(device: HostRecord, community: string): Promise<DeviceMetricSampleInput> {
+  private async collectSystem(
+    device: HostRecord,
+    community: string,
+  ): Promise<DeviceMetricSampleInput> {
     const values = await this.client.get(device.snmp!.host, Object.values(SYSTEM_OIDS), {
       community,
       version: 'v2c',

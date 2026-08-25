@@ -17,6 +17,8 @@ export async function refreshHostQueries(client: QueryClient, hostId: string): P
     client.invalidateQueries({ queryKey: ['maps'] }),
     client.invalidateQueries({ queryKey: ['history'] }),
     client.invalidateQueries({ queryKey: ['optical-history'] }),
+    client.invalidateQueries({ queryKey: ['host-mpls', hostId] }),
+    client.invalidateQueries({ queryKey: ['host-mpls-events', hostId] }),
   ]);
 }
 
