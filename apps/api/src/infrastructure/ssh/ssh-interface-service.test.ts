@@ -150,6 +150,81 @@ describe('Huawei SSH interface enrichment', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it('prefers fresh multi-lane SNMP and does not let SSH replace it', async () => {
+    const execute = vi.spyOn(SshClientImpl.prototype, 'execute');
+    const interfaces = [networkInterface('100GE0/0/2', {
+      rxPowerDbm: -11.14,
+      txPowerDbm: -11.14,
+      opticalSource: 'SNMP',
+      opticalUpdatedAt: '2026-08-23T12:00:01.000Z',
+      opticalLaneSource: 'SNMP',
+      opticalLanesUpdatedAt: '2026-08-23T12:00:01.000Z',
+      opticalLanes: [
+        { lane: 0, rxPowerDbm: -3.71, txPowerDbm: 0.77, biasCurrentMa: 61 },
+        { lane: 1, rxPowerDbm: -3.31, txPowerDbm: 1.27, biasCurrentMa: 59.36 },
+      ],
+    })];
+
+    await expect(service().enrichOpticalPower(device(), interfaces, freshAfter))
+      .resolves.toEqual(interfaces);
+    expect(execute).not.toHaveBeenCalled();
+  });
+
+  it('falls back from diagnosis to per-interface verbose only for unresolved lanes', async () => {
+    const execute = vi.spyOn(SshClientImpl.prototype, 'execute').mockImplementation(
+      async (_host, commands) => [{
+        stdout: commands.some((command) => command.startsWith('display interface '))
+          ? `
+100GE0/0/2 transceiver information:
+  Bias Current (mA)      : 61.0|62.0 (Lane0|Lane1)
+  Current RX Power (dBm) : -3.1|-3.2 (Lane0|Lane1)
+  Current TX Power (dBm) : 0.7|0.8 (Lane0|Lane1)
+`
+          : 'Error: Unrecognized command found at position',
+        stderr: '',
+        exitCode: 0,
+      }],
+    );
+
+    const [result] = await service().enrichOpticalPower(
+      device(),
+      [networkInterface('100GE0/0/2', freshSnmp)],
+      freshAfter,
+    );
+
+    expect(execute).toHaveBeenNthCalledWith(1, '10.0.0.1', [
+      'screen-length 0 temporary',
+      'display transceiver diagnosis interface 100GE0/0/2',
+    ]);
+    expect(execute).toHaveBeenNthCalledWith(2, '10.0.0.1', [
+      'screen-length 0 temporary',
+      'display interface 100GE 0/0/2 transceiver verbose',
+    ]);
+    expect(execute).toHaveBeenCalledTimes(2);
+    expect(result).toMatchObject({
+      opticalLaneSource: 'SSH',
+      opticalLanes: [
+        { lane: 0, rxPowerDbm: -3.1, txPowerDbm: 0.7, biasCurrentMa: 61 },
+        { lane: 1, rxPowerDbm: -3.2, txPowerDbm: 0.8, biasCurrentMa: 62 },
+      ],
+    });
+  });
+
+  it('does not run the verbose fallback when diagnosis already returns useful lanes', async () => {
+    const execute = vi.spyOn(SshClientImpl.prototype, 'execute').mockResolvedValue([{
+      stdout: multiLaneOutput('100GE0/0/2'), stderr: '', exitCode: 0,
+    }]);
+
+    const [result] = await service().enrichOpticalPower(
+      device(),
+      [networkInterface('100GE0/0/2', freshSnmp)],
+      freshAfter,
+    );
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(result?.opticalLaneSource).toBe('SSH');
+  });
+
   it('preserves SNMP optics and returns normally when the 100GE SSH command fails', async () => {
     vi.spyOn(SshClientImpl.prototype, 'execute').mockRejectedValue(new Error('SSH command timeout'));
     const interfaces = [networkInterface('100GE0/0/2', freshSnmp)];

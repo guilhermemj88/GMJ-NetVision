@@ -80,6 +80,33 @@ describe('PrismaHostRepository optical persistence', () => {
 
     expect(transactionClient.interfaceOpticalSample.createMany).not.toHaveBeenCalled();
   });
+
+  it('returns every stored SNMP lane through the optical-history repository contract', async () => {
+    const prisma = {
+      interfaceOpticalSample: {
+        findMany: vi.fn().mockResolvedValue([{
+          timestamp: new Date('2026-08-23T12:00:05.000Z'),
+          rxPowerDbm: -3.71,
+          txPowerDbm: 0.77,
+          opticalLanes: [
+            { lane: 0, rxPowerDbm: -3.71, txPowerDbm: 0.77 },
+            { lane: 2, rxPowerDbm: -3.09, txPowerDbm: 0.62 },
+            { lane: 5, rxPowerDbm: -2.98, txPowerDbm: 1.19 },
+          ],
+        }]),
+      },
+    };
+    const repository = new PrismaHostRepository(prisma as never, null);
+
+    const [point] = await repository.getInterfaceOpticalHistory('if-100ge', '15m');
+
+    expect(point?.lanes.map((lane) => lane.lane)).toEqual([0, 2, 5]);
+    expect(point?.lanes[2]).toMatchObject({
+      lane: 5,
+      rxAvg: -2.98,
+      txAvg: 1.19,
+    });
+  });
 });
 
 describe('PrismaHostRepository interface status persistence', () => {

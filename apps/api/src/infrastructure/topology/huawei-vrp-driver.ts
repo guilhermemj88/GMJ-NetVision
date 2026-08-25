@@ -1,5 +1,6 @@
 import type { DiscoveredNeighbor, NetworkInterface, OpticalLaneReading } from '@gmj/shared';
 import type { DeviceIdentity, SshDeviceDriver } from '../../domain/ports';
+import { normalizeHuaweiBiasCurrentMa } from './huawei-optical';
 import { normalizeOpticalDbm } from './optical-power';
 
 export interface HuaweiOpticalReading {
@@ -29,43 +30,93 @@ function looksLikeInterface(value: string, allowNumeric = false): boolean {
 
 export function huaweiMultiLaneInterfaceName(value: string): string | null {
   const compact = value.trim().replace(/\s+/g, '');
-  return /^(?:40|100)GE\d+(?:\/\d+){2,}$/i.test(compact) ? compact : null;
+  return /^(?:40|100|200|400|800)GE\d+(?:\/\d+){2,}$/i.test(compact) ? compact : null;
 }
 
-function parseLaneSection(block: string, label: RegExp): Map<number, number> {
-  const lines = block.split(/\r?\n/);
-  const result = new Map<number, number>();
-  let collecting = false;
+export function huaweiVerboseInterfaceName(value: string): string | null {
+  const compact = huaweiMultiLaneInterfaceName(value);
+  if (!compact) return null;
+  return compact.replace(/^((?:40|100|200|400|800)GE)(?=\d)/i, '$1 ');
+}
 
-  for (const line of lines) {
-    if (!collecting) {
-      if (!label.test(line)) continue;
-      collecting = true;
-    } else {
-      const metricHeading = line.match(/^\s*(TxPower|RxPower|Current|Temp|Voltage)\b/i)?.[1];
-      if (metricHeading && !label.test(line)) break;
-    }
+export function huaweiDiagnosisCommand(value: string): string | null {
+  const name = huaweiMultiLaneInterfaceName(value);
+  return name ? `display transceiver diagnosis interface ${name}` : null;
+}
 
-    for (const match of line.matchAll(/(-?\d+(?:\.\d+)?)\s*\(lane(\d+)\)/gi)) {
-      const value = Number(match[1]);
-      const lane = Number(match[2]);
-      if (Number.isFinite(value) && Number.isInteger(lane)) result.set(lane, value);
-    }
-  }
-  return result;
+export function huaweiInterfaceTransceiverVerboseCommand(value: string): string | null {
+  const name = huaweiVerboseInterfaceName(value);
+  return name ? `display interface ${name} transceiver verbose` : null;
+}
+
+type LaneMetric = 'rx' | 'tx' | 'bias';
+
+function laneMetricHeading(line: string): LaneMetric | null {
+  if (/^\s*(?:Current\s+)?RX\s+Power\s*\(\s*dBm\s*\)/i.test(line)
+    || /^\s*RxPower\s*\(\s*dBm\s*\)/i.test(line)) return 'rx';
+  if (/^\s*(?:Current\s+)?TX\s+Power\s*\(\s*dBm\s*\)/i.test(line)
+    || /^\s*TxPower\s*\(\s*dBm\s*\)/i.test(line)) return 'tx';
+  if (/^\s*Bias\s+Current\s*\(\s*mA\s*\)/i.test(line)
+    || /^\s*Current\s*\(\s*mA\s*\)/i.test(line)) return 'bias';
+  return null;
+}
+
+function laneMetricValue(metric: LaneMetric, value: string): number | null {
+  if (!value.trim()) return null;
+  if (metric === 'rx' || metric === 'tx') return normalizeOpticalDbm(value);
+  return normalizeHuaweiBiasCurrentMa(value);
 }
 
 function parseOpticalLanes(block: string): OpticalLaneReading[] {
-  const tx = parseLaneSection(block, /^\s*TxPower\s*\(\s*dBm\s*\)/i);
-  const rx = parseLaneSection(block, /^\s*RxPower\s*\(\s*dBm\s*\)/i);
-  const bias = parseLaneSection(block, /^\s*Current\s*\(\s*mA\s*\)/i);
-  const lanes = [...new Set([...tx.keys(), ...rx.keys(), ...bias.keys()])].sort((a, b) => a - b);
+  const values: Record<LaneMetric, Map<number, number>> = {
+    rx: new Map(),
+    tx: new Map(),
+    bias: new Map(),
+  };
+  let metric: LaneMetric | null = null;
+
+  for (const line of block.split(/\r?\n/)) {
+    const heading = laneMetricHeading(line);
+    if (heading) {
+      metric = heading;
+    } else if (/^\s*(?:Temperature|Temp|Voltage)\s*\(/i.test(line)) {
+      metric = null;
+    }
+    if (!metric) continue;
+
+    // Older VRP format: one value followed by one `(laneN)` annotation.
+    for (const match of line.matchAll(/(-?\d+(?:\.\d+)?)\s*\(\s*lane\s*(\d+)\s*\)/gi)) {
+      const value = laneMetricValue(metric, match[1] ?? '');
+      const lane = Number(match[2]);
+      if (value !== null && Number.isInteger(lane)) values[metric].set(lane, value);
+    }
+
+    // Newer VRP format: pipe-delimited values and an explicit pipe-delimited lane list.
+    const annotation = [...line.matchAll(/\(([^)]*\blane\s*\d+(?:\s*\|\s*lane\s*\d+)+[^)]*)\)/gi)].at(-1);
+    if (!annotation || annotation.index === undefined) continue;
+    const lanes = [...(annotation[1] ?? '').matchAll(/lane\s*(\d+)/gi)]
+      .map((match) => Number(match[1]));
+    const prefix = line.slice(0, annotation.index);
+    const valueText = prefix.includes(':') ? prefix.slice(prefix.lastIndexOf(':') + 1) : prefix;
+    const laneValues = valueText.split('|').map((value) => value.trim());
+    lanes.forEach((lane, index) => {
+      if (!metric) return;
+      const value = laneMetricValue(metric, laneValues[index] ?? '');
+      if (Number.isInteger(lane) && value !== null) values[metric].set(lane, value);
+    });
+  }
+
+  const lanes = [...new Set([
+    ...values.rx.keys(),
+    ...values.tx.keys(),
+    ...values.bias.keys(),
+  ])].sort((a, b) => a - b);
 
   return lanes.map((lane) => ({
     lane,
-    rxPowerDbm: normalizeOpticalDbm(rx.get(lane)),
-    txPowerDbm: normalizeOpticalDbm(tx.get(lane)),
-    ...(bias.has(lane) ? { biasCurrentMa: bias.get(lane) ?? null } : {}),
+    rxPowerDbm: values.rx.get(lane) ?? null,
+    txPowerDbm: values.tx.get(lane) ?? null,
+    ...(values.bias.has(lane) ? { biasCurrentMa: values.bias.get(lane) ?? null } : {}),
   }));
 }
 
@@ -86,13 +137,13 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
 
   opticalEnrichmentCommands(interfaceNames: string[], includeVerbose: boolean): string[] {
     const candidates = [...new Set(interfaceNames.flatMap((name) => {
-      const commandName = huaweiMultiLaneInterfaceName(name);
-      return commandName ? [commandName] : [];
+      const command = huaweiDiagnosisCommand(name);
+      return command ? [command] : [];
     }))];
     return [
       'screen-length 0 temporary',
       ...(includeVerbose ? ['display transceiver verbose'] : []),
-      ...candidates.map((name) => `display transceiver diagnosis interface ${name}`),
+      ...candidates,
     ];
   }
 

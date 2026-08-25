@@ -65,4 +65,25 @@ describe('optical history rendering', () => {
     expect(html).toContain('· máx');
     expect(html).toContain('2 amostras no bucket');
   });
+
+  it('uses the shared two-missing-bucket tolerance for every lane series', () => {
+    const at = (timestamp: string): OpticalHistoryPoint => ({ ...point, timestamp });
+    const continuous = opticalChartData([
+      at('2026-08-23T12:00:00.000Z'),
+      at('2026-08-23T12:01:00.000Z'),
+      at('2026-08-23T12:04:00.000Z'),
+    ], [0, 1, 2, 3], '1h');
+    const broken = opticalChartData([
+      at('2026-08-23T12:00:00.000Z'),
+      at('2026-08-23T12:01:00.000Z'),
+      at('2026-08-23T12:05:00.000Z'),
+    ], [0, 1, 2, 3], '1h');
+
+    expect(continuous.every((item) => item.source !== null)).toBe(true);
+    expect(broken.filter((item) => item.source === null)).toHaveLength(1);
+    expect(broken.find((item) => item.source === null)).toMatchObject({
+      lane_0_rxAvg: null,
+      lane_3_txAvg: null,
+    });
+  });
 });

@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { HuaweiVrpDriver } from './huawei-vrp-driver';
+import {
+  HuaweiVrpDriver,
+  huaweiInterfaceTransceiverVerboseCommand,
+  huaweiVerboseInterfaceName,
+} from './huawei-vrp-driver';
 
 describe('HuaweiVrpDriver display interface description', () => {
   it('parses technical names, physical/protocol state and configured descriptions', () => {
@@ -103,6 +107,58 @@ Voltage(V)         3.24            2.80        3.70       normal
         expect.objectContaining({ lane: 3, rxPowerDbm: -12.4, txPowerDbm: 0.5 }),
       ]),
     });
+  });
+
+  it('parses pipe-delimited verbose lanes and continuation lines by explicit lane id', () => {
+    const output = `
+100GE1/0/24 transceiver information:
+Diagnostic information:
+   Temperature (Celsius)                 :51.30
+   Voltage (V)                           :3.27
+   Bias Current (mA)                     :61.05|59.48  (Lane0|Lane1)
+                                          63.05|52.59  (Lane2|Lane3)
+
+   Current RX Power (dBm)                :-3.71|-3.31  (Lane0|Lane1)
+                                          -3.07|-2.98  (Lane2|Lane3)
+
+   Current TX Power (dBm)                :0.78|1.26    (Lane0|Lane1)
+                                          0.63|1.20    (Lane2|Lane3)
+`;
+    expect(new HuaweiVrpDriver().parseOpticalPower(output)).toEqual([{
+      name: '100GE1/0/24',
+      rxPowerDbm: -3.71,
+      txPowerDbm: 0.78,
+      opticalLanes: [
+        { lane: 0, rxPowerDbm: -3.71, txPowerDbm: 0.78, biasCurrentMa: 61.05 },
+        { lane: 1, rxPowerDbm: -3.31, txPowerDbm: 1.26, biasCurrentMa: 59.48 },
+        { lane: 2, rxPowerDbm: -3.07, txPowerDbm: 0.63, biasCurrentMa: 63.05 },
+        { lane: 3, rxPowerDbm: -2.98, txPowerDbm: 1.2, biasCurrentMa: 52.59 },
+      ],
+    }]);
+  });
+
+  it('accepts sparse lanes, spaces in lane labels and individual invalid fields', () => {
+    const output = `
+40GE0/0/7 transceiver information:
+   Bias Current (mA)       :55.1|56.2|57.3 (Lane 3|Lane 1|Lane 5)
+   Current RX Power (dBm)  :invalid|-5.2|invalid (Lane 3|Lane 1|Lane 5)
+   Current TX Power (dBm)  :0.3|invalid|invalid (Lane 3|Lane 1|Lane 5)
+`;
+    expect(new HuaweiVrpDriver().parseOpticalPower(output)[0]?.opticalLanes).toEqual([
+      { lane: 1, rxPowerDbm: -5.2, txPowerDbm: null, biasCurrentMa: 56.2 },
+      { lane: 3, rxPowerDbm: null, txPowerDbm: 0.3, biasCurrentMa: 55.1 },
+      { lane: 5, rxPowerDbm: null, txPowerDbm: null, biasCurrentMa: 57.3 },
+    ]);
+  });
+
+  it('formats only the CLI command name without changing the persisted interface name', () => {
+    expect(huaweiVerboseInterfaceName('100GE1/0/24')).toBe('100GE 1/0/24');
+    expect(huaweiInterfaceTransceiverVerboseCommand('100GE1/0/24')).toBe(
+      'display interface 100GE 1/0/24 transceiver verbose',
+    );
+    expect(huaweiInterfaceTransceiverVerboseCommand('40GE 0/0/1')).toBe(
+      'display interface 40GE 0/0/1 transceiver verbose',
+    );
   });
 });
 

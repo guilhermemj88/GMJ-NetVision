@@ -453,33 +453,7 @@ function InterfaceDrawer({
           <Info label="Fontes" value={item.dataSources?.join(' + ') || '—'} />
         </div>
       </section>
-      <section className="drawer-section">
-        <SectionTitle icon={<CircleGauge size={14} />} label="ÓPTICO" />
-        <div className="info-grid">
-          <Info label="RX óptico" value={formatOpticalPower(item.rxPowerDbm)} mono />
-          <Info label="TX óptico" value={formatOpticalPower(item.txPowerDbm)} mono />
-          <Info label="Fonte" value={item.opticalSource ?? 'N/D'} />
-          <Info label="Atualizado" value={formatOpticalTimestamp(item.opticalUpdatedAt)} />
-          {(item.opticalLanes?.length ?? 0) > 0 && (
-            <Info
-              label="Fonte das lanes"
-              value={item.opticalLaneSource ?? (item.dataSources?.includes('SSH') ? 'SSH' : 'N/D')}
-            />
-          )}
-        </div>
-        {(item.opticalLanes?.length ?? 0) > 0 && (
-          <div className="info-grid">
-            {item.opticalLanes!.map((lane) => (
-              <Info
-                key={lane.lane}
-                label={`Lane ${lane.lane}`}
-                value={`RX ${formatOpticalPower(lane.rxPowerDbm)} · TX ${formatOpticalPower(lane.txPowerDbm)}${lane.biasCurrentMa == null ? '' : ` · Bias ${lane.biasCurrentMa.toFixed(2)} mA`}`}
-                mono
-              />
-            ))}
-          </div>
-        )}
-      </section>
+      <InterfaceOpticalDetails networkInterface={item} />
       {!readOnly && <OpticalHistoryCharts networkInterface={item} />}
       <section className="drawer-section live-metrics">
         <SectionTitle icon={<Activity size={14} />} label="MÉTRICAS ATUAIS" />
@@ -504,6 +478,57 @@ function InterfaceDrawer({
       </section>
       {!readOnly && <MetricCharts networkInterface={item} />}
     </DrawerShell>
+  );
+}
+
+export function InterfaceOpticalDetails({
+  networkInterface: item,
+}: {
+  networkInterface: NetworkInterface;
+}) {
+  const lanes = (item.opticalLanes ?? [])
+    .filter((lane) =>
+      lane.rxPowerDbm != null || lane.txPowerDbm != null || lane.biasCurrentMa != null
+    )
+    .sort((left, right) => left.lane - right.lane);
+  const multiLane = lanes.length > 1;
+
+  return (
+    <section className="drawer-section">
+      <SectionTitle icon={<CircleGauge size={14} />} label="ÓPTICO" />
+      <div className="info-grid">
+        {multiLane ? (
+          <Info label="RX/TX óptico" value="multi-lane" mono />
+        ) : (
+          <>
+            <Info label="RX óptico" value={formatOpticalPower(item.rxPowerDbm)} mono />
+            <Info label="TX óptico" value={formatOpticalPower(item.txPowerDbm)} mono />
+          </>
+        )}
+        <Info
+          label="Fonte"
+          value={(lanes.length ? item.opticalLaneSource : item.opticalSource) ?? 'N/D'}
+        />
+        <Info
+          label="Atualizado"
+          value={formatOpticalTimestamp(
+            lanes.length ? item.opticalLanesUpdatedAt : item.opticalUpdatedAt,
+          )}
+        />
+      </div>
+      {lanes.length > 0 && (
+        <div className="info-grid">
+          {lanes.map((lane) => (
+            <Info
+              key={lane.lane}
+              label={`Lane ${lane.lane}`}
+              value={`RX ${formatOpticalPower(lane.rxPowerDbm)} · TX ${formatOpticalPower(lane.txPowerDbm)}${lane.biasCurrentMa == null ? '' : ` · Bias ${lane.biasCurrentMa.toFixed(2)} mA`}`}
+              mono
+            />
+          ))}
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -1,6 +1,9 @@
 import type { NetworkInterface } from '@gmj/shared';
 
 const interfacePrefixes: Array<[RegExp, string]> = [
+  [/^eight(?:hundred)?gigabitethernet/i, '800ge'],
+  [/^fourhundredgigabitethernet/i, '400ge'],
+  [/^twohundredgigabitethernet/i, '200ge'],
   [/^hundredgigabitethernet/i, '100ge'],
   [/^100gigabitethernet/i, '100ge'],
   [/^fortygigabitethernet/i, '40ge'],
@@ -27,7 +30,7 @@ export function interfaceNameKeys(value: string): string[] {
   const full = normalizeInterfaceName(value);
   if (full) keys.add(full);
   const embedded = value.match(
-    /(?:100GE|HundredGigabitEthernet|40GE|FortyGigabitEthernet|10GE|TenGigabitEthernet|XGE|XGigabitEthernet|GE|GigabitEthernet|Eth-?Trunk)\s*[0-9][0-9/.-]*/i,
+    /(?:800GE|EightHundredGigabitEthernet|400GE|FourHundredGigabitEthernet|200GE|TwoHundredGigabitEthernet|100GE|HundredGigabitEthernet|40GE|FortyGigabitEthernet|10GE|TenGigabitEthernet|XGE|XGigabitEthernet|GE|GigabitEthernet|Eth-?Trunk)\s*[0-9][0-9/.-]*/i,
   )?.[0];
   if (embedded) keys.add(normalizeInterfaceName(embedded));
   return [...keys];

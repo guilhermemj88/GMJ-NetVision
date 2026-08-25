@@ -1,7 +1,17 @@
-import type { Device, DiscoveredNeighbor, NetworkInterface, HostRecord } from '@gmj/shared';
+import type {
+  Device,
+  DiscoveredNeighbor,
+  HostRecord,
+  NetworkInterface,
+  OpticalLaneReading,
+} from '@gmj/shared';
 import { createLocalId } from '@gmj/shared';
 import type { DeviceIdentity, TopologyDiscoveryAdapter } from '../../domain/ports';
 import type { HostRepository } from '../persistence/host-repository';
+import {
+  HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS,
+  parseHuaweiOpticalLaneCsv,
+} from '../topology/huawei-optical';
 import { interfaceNameKeys } from '../topology/interface-correlation';
 import { microWattsToDbm } from '../topology/optical-power';
 import { SnmpClientImpl } from './snmp-client-impl';
@@ -33,16 +43,12 @@ const ENTITY_MIB_OIDS = {
   physicalName: '1.3.6.1.2.1.47.1.1.1.1.7',
 } as const;
 
-const HUAWEI_OPTICAL_OIDS = {
-  rxPowerUw: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.8',
-  txPowerUw: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.9',
-} as const;
-
 type VarBind = { oid: string; value: string | number | Uint8Array };
 
 type OpticalReading = {
   rxPowerDbm: number | null;
   txPowerDbm: number | null;
+  opticalLanes: OpticalLaneReading[];
 };
 
 function getOidSuffix(oid: string, base: string): string {
@@ -139,10 +145,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
       // Huawei exposes optical DDM through HUAWEI-ENTITY-EXTENT-MIB. The index
       // is entPhysicalIndex, so correlate it to the IF-MIB interface by
       // entPhysicalName. Unsupported devices simply return no optical data.
-      const physicalNames = await this.safeWalk(hostRecord, ENTITY_MIB_OIDS.physicalName, snmpCommunity);
-      const opticalRx = await this.safeWalk(hostRecord, HUAWEI_OPTICAL_OIDS.rxPowerUw, snmpCommunity);
-      const opticalTx = await this.safeWalk(hostRecord, HUAWEI_OPTICAL_OIDS.txPowerUw, snmpCommunity);
-      const opticalByName = this.opticalByInterfaceName(physicalNames, opticalRx, opticalTx);
+      const opticalByName = await this.collectOpticalByInterfaceName(hostRecord, snmpCommunity);
 
       const descByIndex = this.indexMap(descrs, IF_MIB_OIDS.ifDescr);
       const speedByIndex = this.indexMap(speeds, IF_MIB_OIDS.ifSpeed);
@@ -193,12 +196,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
           txErrors: 0,
           rxDiscards: 0,
           txDiscards: 0,
-          ...(optical ? {
-            rxPowerDbm: optical.rxPowerDbm,
-            txPowerDbm: optical.txPowerDbm,
-            opticalSource: 'SNMP' as const,
-            opticalUpdatedAt: now,
-          } : {}),
+          ...this.snmpOpticalFields(optical, now),
           dataSources: ['SNMP'],
         } satisfies NetworkInterface];
       });
@@ -221,10 +219,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     if (!device.snmp?.host || !device.snmp.port) return interfaces;
     const snmpCommunity = community ?? (await this.getSnmpCommunity(device.id));
     if (!snmpCommunity) return interfaces;
-    const physicalNames = await this.safeWalk(device, ENTITY_MIB_OIDS.physicalName, snmpCommunity);
-    const opticalRx = await this.safeWalk(device, HUAWEI_OPTICAL_OIDS.rxPowerUw, snmpCommunity);
-    const opticalTx = await this.safeWalk(device, HUAWEI_OPTICAL_OIDS.txPowerUw, snmpCommunity);
-    const readings = this.opticalByInterfaceName(physicalNames, opticalRx, opticalTx);
+    const readings = await this.collectOpticalByInterfaceName(device, snmpCommunity);
     const now = new Date().toISOString();
 
     return interfaces.map((networkInterface) => {
@@ -234,12 +229,46 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
       if (!reading) return networkInterface;
       return {
         ...networkInterface,
-        rxPowerDbm: reading.rxPowerDbm,
-        txPowerDbm: reading.txPowerDbm,
-        opticalSource: 'SNMP',
-        opticalUpdatedAt: now,
+        ...this.snmpOpticalFields(reading, now),
       };
     });
+  }
+
+  private async collectOpticalByInterfaceName(
+    host: HostRecord,
+    community: string,
+  ): Promise<Map<string, OpticalReading>> {
+    const [names, scalarRx, scalarTx, laneBias, laneRx, laneTx] = await Promise.all([
+      this.safeWalk(host, ENTITY_MIB_OIDS.physicalName, community),
+      this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxPowerUw, community),
+      this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txPowerUw, community),
+      this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.biasCurrentByLane, community),
+      this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxPowerByLane, community),
+      this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txPowerByLane, community),
+    ]);
+    return this.opticalByInterfaceName(names, scalarRx, scalarTx, laneBias, laneRx, laneTx);
+  }
+
+  private snmpOpticalFields(
+    reading: OpticalReading | undefined,
+    timestamp: string,
+  ): Partial<NetworkInterface> {
+    if (!reading) return {};
+    const hasScalar = reading.rxPowerDbm !== null || reading.txPowerDbm !== null;
+    const hasLanes = reading.opticalLanes.length > 0;
+    return {
+      ...(hasScalar ? {
+        rxPowerDbm: reading.rxPowerDbm,
+        txPowerDbm: reading.txPowerDbm,
+        opticalSource: 'SNMP' as const,
+        opticalUpdatedAt: timestamp,
+      } : {}),
+      ...(hasLanes ? {
+        opticalLanes: reading.opticalLanes,
+        opticalLaneSource: 'SNMP' as const,
+        opticalLanesUpdatedAt: timestamp,
+      } : {}),
+    };
   }
 
   private walk(host: HostRecord, oid: string, community: string): Promise<VarBind[]> {
@@ -269,19 +298,45 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
 
   private opticalByInterfaceName(
     names: VarBind[],
-    rxValues: VarBind[],
-    txValues: VarBind[],
+    scalarRxValues: VarBind[],
+    scalarTxValues: VarBind[],
+    laneBiasValues: VarBind[],
+    laneRxValues: VarBind[],
+    laneTxValues: VarBind[],
   ): Map<string, OpticalReading> {
     const namesByIndex = this.indexMap(names, ENTITY_MIB_OIDS.physicalName);
-    const rxByIndex = this.indexMap(rxValues, HUAWEI_OPTICAL_OIDS.rxPowerUw);
-    const txByIndex = this.indexMap(txValues, HUAWEI_OPTICAL_OIDS.txPowerUw);
+    const scalarRxByIndex = this.indexMap(
+      scalarRxValues,
+      HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxPowerUw,
+    );
+    const scalarTxByIndex = this.indexMap(
+      scalarTxValues,
+      HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txPowerUw,
+    );
+    const laneBiasByIndex = this.indexMap(
+      laneBiasValues,
+      HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.biasCurrentByLane,
+    );
+    const laneRxByIndex = this.indexMap(
+      laneRxValues,
+      HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxPowerByLane,
+    );
+    const laneTxByIndex = this.indexMap(
+      laneTxValues,
+      HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txPowerByLane,
+    );
     const result = new Map<string, OpticalReading>();
     for (const [index, rawName] of namesByIndex) {
-      const rxPowerDbm = microWattsToDbm(rxByIndex.get(index));
-      const txPowerDbm = microWattsToDbm(txByIndex.get(index));
-      if (rxPowerDbm === null && txPowerDbm === null) continue;
+      const rxPowerDbm = microWattsToDbm(scalarRxByIndex.get(index));
+      const txPowerDbm = microWattsToDbm(scalarTxByIndex.get(index));
+      const opticalLanes = parseHuaweiOpticalLaneCsv(
+        laneRxByIndex.get(index),
+        laneTxByIndex.get(index),
+        laneBiasByIndex.get(index),
+      );
+      if (rxPowerDbm === null && txPowerDbm === null && opticalLanes.length === 0) continue;
       for (const key of interfaceNameKeys(decodeSnmpText(rawName))) {
-        result.set(key, { rxPowerDbm, txPowerDbm });
+        result.set(key, { rxPowerDbm, txPowerDbm, opticalLanes });
       }
     }
     return result;

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from './app';
+import { DemoHostRepositoryAdapter } from './infrastructure/persistence/demo-host-repository-adapter';
 
 describe('GMJ NetVision API', () => {
   let app: FastifyInstance;
@@ -32,6 +33,35 @@ describe('GMJ NetVision API', () => {
       url: '/api/interfaces/core-01-if-1/optical-history?period=30d',
     });
     expect(invalid.statusCode).toBe(400);
+  });
+
+  it('returns Lane 0..N from the optical-history endpoint', async () => {
+    const history = vi.spyOn(DemoHostRepositoryAdapter.prototype, 'getInterfaceOpticalHistory')
+      .mockResolvedValue([{
+        timestamp: '2026-08-23T12:00:00.000Z',
+        sampleCount: 1,
+        rxAvg: -3.71, rxMin: -3.71, rxMax: -3.71,
+        txAvg: 0.77, txMin: 0.77, txMax: 0.77,
+        lanes: [0, 2, 5].map((lane) => ({
+          lane,
+          sampleCount: 1,
+          rxAvg: -3.71 + lane,
+          rxMin: -3.71 + lane,
+          rxMax: -3.71 + lane,
+          txAvg: 0.77 + lane,
+          txMin: 0.77 + lane,
+          txMax: 0.77 + lane,
+        })),
+      }]);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/interfaces/if-100ge/optical-history?period=15m',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()[0].lanes.map((lane: { lane: number }) => lane.lane)).toEqual([0, 2, 5]);
+    history.mockRestore();
   });
 
   it('lists maps and maintains exactly one default view', async () => {

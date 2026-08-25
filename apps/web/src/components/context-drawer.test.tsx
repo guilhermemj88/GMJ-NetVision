@@ -4,12 +4,13 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cloneDemoMaps } from '@gmj/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pollHost } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
-import { ContextDrawer } from './context-drawer';
+import { ContextDrawer, InterfaceOpticalDetails } from './context-drawer';
 
 vi.mock('@/lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api')>()),
@@ -153,5 +154,34 @@ describe('ContextDrawer verification action', () => {
       `.drawer-header > .verify-host-action {
     display: none;`,
     );
+  });
+
+  it('prioritizes useful lanes and their exact source over a misleading scalar', () => {
+    const networkInterface = {
+      ...device.interfaces[0]!,
+      rxPowerDbm: -11.14,
+      txPowerDbm: -11.14,
+      opticalSource: 'SNMP' as const,
+      opticalUpdatedAt: '2026-08-23T12:00:00.000Z',
+      opticalLaneSource: 'SNMP' as const,
+      opticalLanesUpdatedAt: '2026-08-23T12:00:01.000Z',
+      opticalLanes: [
+        { lane: 0, rxPowerDbm: -3.71, txPowerDbm: 0.77, biasCurrentMa: 61 },
+        { lane: 1, rxPowerDbm: -3.31, txPowerDbm: 1.27, biasCurrentMa: 59.36 },
+      ],
+      dataSources: ['SNMP' as const, 'SSH' as const],
+    };
+
+    const html = renderToStaticMarkup(
+      <InterfaceOpticalDetails networkInterface={networkInterface} />,
+    );
+
+    expect(html).toContain('RX/TX óptico');
+    expect(html).toContain('multi-lane');
+    expect(html).toContain('Lane 0');
+    expect(html).toContain('Bias 61.00 mA');
+    expect(html).toContain('SNMP');
+    expect(html).not.toContain('-11.14 dBm');
+    expect(html).not.toContain('SNMP + SSH');
   });
 });

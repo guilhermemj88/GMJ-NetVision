@@ -70,6 +70,25 @@ describe('optical history', () => {
     });
   });
 
+  it('keeps fresh Lane 0..N from SNMP in the persisted optical sample', () => {
+    const networkInterface = {
+      id: 'if-snmp-lanes', deviceId: 'device-1', name: '100GE1/0/24',
+      opticalLaneSource: 'SNMP',
+      opticalLanesUpdatedAt: '2026-08-23T12:00:01.000Z',
+      opticalLanes: [
+        { lane: 0, rxPowerDbm: -3.71, txPowerDbm: 0.77, biasCurrentMa: 61 },
+        { lane: 2, rxPowerDbm: -3.09, txPowerDbm: 0.62, biasCurrentMa: 63.05 },
+        { lane: 5, rxPowerDbm: null, txPowerDbm: 1.19, biasCurrentMa: 52.57 },
+      ],
+    } as NetworkInterface;
+
+    expect(opticalSampleFromInterface(
+      networkInterface,
+      new Date('2026-08-23T12:00:02.000Z'),
+      new Date('2026-08-23T12:00:00.000Z'),
+    )?.opticalLanes).toEqual(networkInterface.opticalLanes);
+  });
+
   it('calculates scalar and per-lane avg/min/max inside a bucket', () => {
     const [result] = aggregateOpticalHistory([
       sample('2026-08-23T12:00:05.000Z', -12, 0.2, fourLanes()),

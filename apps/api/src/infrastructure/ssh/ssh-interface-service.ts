@@ -1,17 +1,18 @@
 import type { HostRecord, NetworkInterface, SourceConnectionState } from '@gmj/shared';
 import type { HostRepository } from '../persistence/host-repository';
 import {
+  type HuaweiOpticalReading,
   HuaweiVrpDriver,
+  huaweiDiagnosisCommand,
+  huaweiInterfaceTransceiverVerboseCommand,
   huaweiMultiLaneInterfaceName,
 } from '../topology/huawei-vrp-driver';
+import { hasHuaweiMultiLaneCapability } from '../topology/huawei-optical';
 import { interfaceNameKeys, mergeSnmpAndSshInterfaces } from '../topology/interface-correlation';
 import { SshClientImpl } from './ssh-client-impl';
 
 function hasValidLaneData(networkInterface: NetworkInterface): boolean {
-  const lanes = networkInterface.opticalLanes ?? [];
-  return lanes.length > 1 && lanes.some((lane) =>
-    lane.rxPowerDbm != null || lane.txPowerDbm != null || lane.biasCurrentMa != null
-  );
+  return hasHuaweiMultiLaneCapability(networkInterface.opticalLanes);
 }
 
 function hasFreshLaneData(
@@ -36,6 +37,18 @@ function hasFreshSnmpPower(
   if (!networkInterface.opticalUpdatedAt) return false;
   const updatedAt = new Date(networkInterface.opticalUpdatedAt);
   return Number.isFinite(updatedAt.getTime()) && updatedAt >= snmpFreshAfter;
+}
+
+function hasFreshOpticalPower(
+  networkInterface: NetworkInterface,
+  collectedAfter?: Date,
+): boolean {
+  const hasPower = networkInterface.rxPowerDbm != null || networkInterface.txPowerDbm != null;
+  if (!hasPower) return false;
+  if (!collectedAfter) return true;
+  if (!networkInterface.opticalUpdatedAt) return false;
+  const updatedAt = new Date(networkInterface.opticalUpdatedAt);
+  return Number.isFinite(updatedAt.getTime()) && updatedAt >= collectedAfter;
 }
 
 export class SshInterfaceService {
@@ -80,8 +93,8 @@ export class SshInterfaceService {
     interfaces: NetworkInterface[],
     snmpFreshAfter?: Date,
   ): Promise<NetworkInterface[]> {
-    // SNMP freshness controls only scalar RX/TX replacement. Missing lanes on a
-    // Huawei 40GE/100GE port independently require the per-interface SSH query.
+    // Capability is evaluated per interface. Two fresh SNMP lanes suppress SSH,
+    // while unresolved high-capacity ports proceed through the two CLI formats.
     const multiLaneCandidates = interfaces.filter((networkInterface) =>
       huaweiMultiLaneInterfaceName(networkInterface.name) !== null
       && !hasFreshLaneData(networkInterface, snmpFreshAfter)
@@ -100,54 +113,115 @@ export class SshInterfaceService {
       username: device.ssh.username,
       password: credentials.password,
     });
-    const commands = driver.opticalEnrichmentCommands(
-      multiLaneCandidates.map((networkInterface) => networkInterface.name),
-      needsScalarFallback,
-    );
-    let results;
-    try {
-      results = await client.execute(device.ssh.host, commands);
-    } catch {
-      return interfaces;
-    }
-    const commandResult = results.at(-1);
-    if (!commandResult || commandResult.exitCode !== 0) return interfaces;
-    const readings = driver.parseOpticalPower(commandResult.stdout);
-    if (!readings.length) return interfaces;
+    let enriched = interfaces;
 
+    if (multiLaneCandidates.length) {
+      const diagnosisCommands = multiLaneCandidates.flatMap((networkInterface) => {
+        const command = huaweiDiagnosisCommand(networkInterface.name);
+        return command ? [command] : [];
+      });
+      const diagnosisReadings = await this.executeOpticalCommands(
+        client,
+        device.ssh.host,
+        driver,
+        diagnosisCommands,
+      );
+      enriched = this.applySshReadings(enriched, diagnosisReadings, snmpFreshAfter);
+
+      const unresolvedIds = new Set(multiLaneCandidates.flatMap((candidate) => {
+        const current = enriched.find((networkInterface) => networkInterface.id === candidate.id);
+        return current && hasFreshLaneData(current, snmpFreshAfter) ? [] : [candidate.id];
+      }));
+      const verboseCommands = multiLaneCandidates.flatMap((networkInterface) => {
+        if (!unresolvedIds.has(networkInterface.id)) return [];
+        const command = huaweiInterfaceTransceiverVerboseCommand(networkInterface.name);
+        return command ? [command] : [];
+      });
+      const verboseReadings = await this.executeOpticalCommands(
+        client,
+        device.ssh.host,
+        driver,
+        verboseCommands,
+      );
+      enriched = this.applySshReadings(enriched, verboseReadings, snmpFreshAfter);
+    }
+
+    // Preserve the existing chassis-wide SSH scalar fallback for interfaces on
+    // which the specific commands and scalar SNMP both provided no fresh power.
+    if (enriched.some((networkInterface) => !hasFreshOpticalPower(networkInterface, snmpFreshAfter))) {
+      const scalarReadings = await this.executeOpticalCommands(
+        client,
+        device.ssh.host,
+        driver,
+        ['display transceiver verbose'],
+      );
+      enriched = this.applySshReadings(enriched, scalarReadings, snmpFreshAfter);
+    }
+
+    return enriched;
+  }
+
+  private async executeOpticalCommands(
+    client: SshClientImpl,
+    host: string,
+    driver: HuaweiVrpDriver,
+    commands: string[],
+  ): Promise<HuaweiOpticalReading[]> {
+    if (!commands.length) return [];
+    try {
+      const results = await client.execute(host, [
+        'screen-length 0 temporary',
+        ...new Set(commands),
+      ]);
+      const result = results.at(-1);
+      return result?.exitCode === 0 ? driver.parseOpticalPower(result.stdout) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  private applySshReadings(
+    interfaces: NetworkInterface[],
+    readings: HuaweiOpticalReading[],
+    snmpFreshAfter?: Date,
+  ): NetworkInterface[] {
+    if (!readings.length) return interfaces;
     const byName = new Map(readings.flatMap((reading) =>
       interfaceNameKeys(reading.name).map((key) => [key, reading] as const),
     ));
     const now = new Date().toISOString();
+
     return interfaces.map((networkInterface) => {
-      const keepFreshSnmpPower = hasFreshSnmpPower(networkInterface, snmpFreshAfter);
-      const reading = [...interfaceNameKeys(networkInterface.name), ...interfaceNameKeys(networkInterface.description)]
-        .map((key) => byName.get(key))
-        .find(Boolean);
+      const reading = [
+        ...interfaceNameKeys(networkInterface.name),
+        ...interfaceNameKeys(networkInterface.description),
+      ].map((key) => byName.get(key)).find(Boolean);
       if (!reading) return networkInterface;
 
+      const keepFreshSnmpPower = hasFreshSnmpPower(networkInterface, snmpFreshAfter);
+      const keepFreshSnmpLanes = networkInterface.opticalLaneSource === 'SNMP'
+        && hasFreshLaneData(networkInterface, snmpFreshAfter);
       const keepSnmpRx = keepFreshSnmpPower && networkInterface.rxPowerDbm != null;
       const keepSnmpTx = keepFreshSnmpPower && networkInterface.txPowerDbm != null;
-      const usedSshScalar = (!keepSnmpRx && reading.rxPowerDbm != null)
-        || (!keepSnmpTx && reading.txPowerDbm != null);
-      const usedSshLanes = reading.opticalLanes.length > 0;
+      const usedSshRx = !keepSnmpRx && reading.rxPowerDbm != null;
+      const usedSshTx = !keepSnmpTx && reading.txPowerDbm != null;
+      const usedSshScalar = usedSshRx || usedSshTx;
+      const usedSshLanes = !keepFreshSnmpLanes && reading.opticalLanes.length > 0;
       if (!usedSshScalar && !usedSshLanes) return networkInterface;
-      const opticalSource = keepFreshSnmpPower
-        ? 'SNMP' as const
-        : usedSshScalar
-          ? 'SSH' as const
-          : networkInterface.opticalSource;
+
       return {
         ...networkInterface,
-        rxPowerDbm: keepSnmpRx ? networkInterface.rxPowerDbm : reading.rxPowerDbm,
-        txPowerDbm: keepSnmpTx ? networkInterface.txPowerDbm : reading.txPowerDbm,
-        opticalLanes: usedSshLanes ? reading.opticalLanes : networkInterface.opticalLanes,
+        rxPowerDbm: usedSshRx ? reading.rxPowerDbm : networkInterface.rxPowerDbm,
+        txPowerDbm: usedSshTx ? reading.txPowerDbm : networkInterface.txPowerDbm,
+        ...(usedSshScalar ? {
+          opticalSource: 'SSH' as const,
+          opticalUpdatedAt: now,
+        } : {}),
         ...(usedSshLanes ? {
+          opticalLanes: reading.opticalLanes,
           opticalLaneSource: 'SSH' as const,
           opticalLanesUpdatedAt: now,
         } : {}),
-        ...(opticalSource === undefined ? {} : { opticalSource }),
-        opticalUpdatedAt: now,
         dataSources: [...new Set([...(networkInterface.dataSources ?? ['SNMP']), 'SSH' as const])],
       };
     });

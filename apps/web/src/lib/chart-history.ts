@@ -15,10 +15,14 @@ function median(values: number[]): number | null {
 function expectedInterval<T extends TimestampedChartPoint>(points: T[], period: HistoryPeriod): number {
   const bucket = historyBucketMilliseconds(period);
   if (bucket !== null) return bucket;
-  const intervals = points.slice(1).flatMap((point, index) => {
-    const previous = points[index];
-    if (!previous) return [];
-    const interval = Date.parse(point.timestamp) - Date.parse(previous.timestamp);
+  const timestamps = [...new Set(points
+    .map((point) => Date.parse(point.timestamp))
+    .filter(Number.isFinite))]
+    .sort((left, right) => left - right);
+  const intervals = timestamps.slice(1).flatMap((timestamp, index) => {
+    const previous = timestamps[index];
+    if (previous === undefined) return [];
+    const interval = timestamp - previous;
     return interval > 0 ? [interval] : [];
   });
   return Math.min(median(intervals) ?? 60_000, 60_000);
@@ -41,7 +45,10 @@ export function withTemporalGapMarkers<T extends TimestampedChartPoint>(
     if (!next) continue;
     const currentTimestamp = Date.parse(point.timestamp);
     const nextTimestamp = Date.parse(next.timestamp);
-    if (nextTimestamp - currentTimestamp > interval * 1.5) {
+    const delta = nextTimestamp - currentTimestamp;
+    if (!Number.isFinite(delta) || delta <= 0 || interval <= 0) continue;
+    const missingBuckets = Math.max(0, Math.floor(delta / interval) - 1);
+    if (missingBuckets >= 3) {
       result.push(createGap(new Date(currentTimestamp + interval).toISOString()));
     }
   }
