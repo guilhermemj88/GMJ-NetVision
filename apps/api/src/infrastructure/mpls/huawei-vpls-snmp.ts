@@ -11,8 +11,10 @@ import { decodeSnmpText } from '../snmp/snmp-text';
 import {
   HUAWEI_VPLS_PW_COLUMNS,
   HUAWEI_VPLS_PW_ENTRY_OID,
+  HUAWEI_VPLS_PW_WALK_COLUMNS,
   HUAWEI_VPLS_VSI_COLUMNS,
   HUAWEI_VPLS_VSI_ENTRY_OID,
+  HUAWEI_VPLS_VSI_WALK_COLUMNS,
 } from './huawei-vpls-oids';
 import {
   oidSuffix,
@@ -67,8 +69,26 @@ export interface CollectedMplsVsi {
 export interface HuaweiVplsCollection {
   supported: boolean;
   collectedAt: Date;
+  errors: string[];
+  collectedColumns: {
+    vsi: number[];
+    pw: number[];
+  };
   vsis: CollectedMplsVsi[];
 }
+
+interface ColumnWalkFailure {
+  column: number;
+  message: string;
+}
+
+interface ColumnWalkResult {
+  rows: SnmpVarBind[];
+  successfulColumns: number[];
+  failures: ColumnWalkFailure[];
+}
+
+const COLUMN_WALK_CONCURRENCY = 4;
 
 interface VsiAccumulator extends Omit<CollectedMplsVsi, 'status' | 'pws'> {
   pws: CollectedMplsPw[];
@@ -82,6 +102,15 @@ function integer(value: SnmpValue): number | null {
 function text(value: SnmpValue): string | null {
   const parsed = decodeSnmpText(value).trim();
   return parsed && !/^\d+(?:,\d+)+$/.test(parsed) ? parsed : null;
+}
+
+function safeWalkError(error: unknown): string {
+  const message = error instanceof Error ? error.message : 'Falha SNMP sem detalhe';
+  return message.slice(0, 240);
+}
+
+function formatColumnFailure(table: 'VSI' | 'PW', failure: ColumnWalkFailure): string {
+  return `${table} .${failure.column}: ${failure.message}`;
 }
 
 function aggregateStatus(vsi: VsiAccumulator): MplsStatus {
@@ -131,14 +160,37 @@ export class HuaweiVplsSnmpCollector {
 
   async collect(host: string, options: SnmpRequestOptions): Promise<HuaweiVplsCollection> {
     const collectedAt = new Date();
-    const [vsiRows, pwRows] = await Promise.all([
-      this.client.walk(host, HUAWEI_VPLS_VSI_ENTRY_OID, options),
-      this.client.walk(host, HUAWEI_VPLS_PW_ENTRY_OID, options),
-    ]);
-    const vsis = this.collectVsis(vsiRows);
-    if (!vsis.size) return { supported: false, collectedAt, vsis: [] };
+    const vsiWalk = await this.walkColumns(
+      host,
+      HUAWEI_VPLS_VSI_ENTRY_OID,
+      HUAWEI_VPLS_VSI_WALK_COLUMNS,
+      options,
+    );
+    const vsis = this.collectVsis(vsiWalk.rows);
+    if (!vsis.size) {
+      if (vsiWalk.failures.length) {
+        throw new Error(
+          `Não foi possível confirmar a capability MPLS: ${vsiWalk.failures
+            .map((failure) => formatColumnFailure('VSI', failure))
+            .join('; ')}`,
+        );
+      }
+      return {
+        supported: false,
+        collectedAt,
+        errors: [],
+        collectedColumns: { vsi: vsiWalk.successfulColumns, pw: [] },
+        vsis: [],
+      };
+    }
 
-    const pws = this.collectPws(pwRows);
+    const pwWalk = await this.walkColumns(
+      host,
+      HUAWEI_VPLS_PW_ENTRY_OID,
+      HUAWEI_VPLS_PW_WALK_COLUMNS,
+      options,
+    );
+    const pws = this.collectPws(pwWalk.rows);
     for (const pw of pws.values()) {
       const vsi = vsis.get(pw.vsiName);
       if (vsi) vsi.pws.push(pw);
@@ -146,10 +198,44 @@ export class HuaweiVplsSnmpCollector {
     return {
       supported: true,
       collectedAt,
+      errors: [
+        ...vsiWalk.failures.map((failure) => formatColumnFailure('VSI', failure)),
+        ...pwWalk.failures.map((failure) => formatColumnFailure('PW', failure)),
+      ],
+      collectedColumns: {
+        vsi: vsiWalk.successfulColumns,
+        pw: pwWalk.successfulColumns,
+      },
       vsis: [...vsis.values()]
         .map((vsi) => ({ ...vsi, status: aggregateStatus(vsi) }))
         .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR')),
     };
+  }
+
+  private async walkColumns(
+    host: string,
+    tableOid: string,
+    columns: readonly number[],
+    options: SnmpRequestOptions,
+  ): Promise<ColumnWalkResult> {
+    const result: ColumnWalkResult = { rows: [], successfulColumns: [], failures: [] };
+    for (let offset = 0; offset < columns.length; offset += COLUMN_WALK_CONCURRENCY) {
+      const batch = columns.slice(offset, offset + COLUMN_WALK_CONCURRENCY);
+      const settled = await Promise.allSettled(
+        batch.map((column) => this.client.walk(host, `${tableOid}.${column}`, options)),
+      );
+      settled.forEach((walk, position) => {
+        const column = batch[position];
+        if (column === undefined) return;
+        if (walk.status === 'fulfilled') {
+          result.successfulColumns.push(column);
+          result.rows.push(...walk.value);
+        } else {
+          result.failures.push({ column, message: safeWalkError(walk.reason) });
+        }
+      });
+    }
+    return result;
   }
 
   private collectVsis(rows: SnmpVarBind[]): Map<string, VsiAccumulator> {

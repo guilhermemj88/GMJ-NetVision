@@ -86,19 +86,49 @@ export function MplsPanel({ hostId, readOnly }: { hostId: string; readOnly: bool
     );
   }
   if (!overview.data.supported) {
-    return (
-      <section className="drawer-section mpls-empty">
-        <Network size={20} />
-        <strong>MPLS não disponível</strong>
-        <span>
-          {overview.data.lastErrorSafe ??
-            'Nenhuma entrada VSI válida foi encontrada na HUAWEI-VPLS-EXT-MIB.'}
-        </span>
-        <small>Última tentativa: {dateLabel(overview.data.lastPollingAt)}</small>
-      </section>
-    );
+    return <MplsUnavailableState overview={overview.data} />;
   }
-  return <MplsContent overview={overview.data} events={events.data ?? []} />;
+  return (
+    <>
+      {overview.data.lastErrorSafe && <MplsCollectionWarning overview={overview.data} />}
+      <MplsContent overview={overview.data} events={events.data ?? []} />
+    </>
+  );
+}
+
+export function MplsUnavailableState({ overview }: { overview: MplsHostOverview }) {
+  const collectionFailed = Boolean(overview.lastErrorSafe);
+  const capabilityChecked = Boolean(overview.lastSuccessAt);
+  const title = collectionFailed
+    ? 'Falha na coleta MPLS'
+    : capabilityChecked
+      ? 'MPLS não disponível'
+      : 'MPLS ainda não coletado';
+  return (
+    <section className="drawer-section mpls-empty" role={collectionFailed ? 'alert' : undefined}>
+      {collectionFailed ? <AlertTriangle size={20} /> : <Network size={20} />}
+      <strong>{title}</strong>
+      <span>
+        {overview.lastErrorSafe ??
+          (capabilityChecked
+            ? 'Nenhuma entrada VSI válida foi encontrada na HUAWEI-VPLS-EXT-MIB.'
+            : 'Aguardando a primeira verificação da capability MPLS.')}
+      </span>
+      <small>Última tentativa: {dateLabel(overview.lastPollingAt)}</small>
+    </section>
+  );
+}
+
+export function MplsCollectionWarning({ overview }: { overview: MplsHostOverview }) {
+  return (
+    <section className="drawer-section mpls-collection-warning" role="alert">
+      <AlertTriangle size={17} />
+      <div>
+        <strong>Falha na coleta MPLS</strong>
+        <span>{overview.lastErrorSafe}</span>
+      </div>
+    </section>
+  );
 }
 
 export function MplsContent({

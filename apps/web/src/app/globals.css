@@ -2385,6 +2385,30 @@ button {
 .mpls-panel {
   min-width: 0;
 }
+.mpls-collection-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  border-left: 3px solid var(--amber);
+  background: rgba(204, 145, 54, 0.08);
+  color: var(--amber);
+}
+.mpls-collection-warning > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+.mpls-collection-warning strong {
+  color: #d8b06b;
+  font: 600 10px var(--font-mono);
+}
+.mpls-collection-warning span {
+  color: #8d7b5d;
+  font-size: 8px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
 .mpls-title,
 .mpls-title > span,
 .mpls-title > small,

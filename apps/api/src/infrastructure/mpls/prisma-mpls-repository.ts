@@ -8,6 +8,7 @@ import {
 } from '@gmj/shared';
 import { PrismaClient } from '../../generated/prisma/index.js';
 import type { HuaweiVplsCollection } from './huawei-vpls-snmp';
+import { HUAWEI_VPLS_PW_COLUMNS, HUAWEI_VPLS_VSI_COLUMNS } from './huawei-vpls-oids';
 import type { MplsRepository } from './mpls-repository';
 import { isRealMplsStateChange } from './mpls-state-events';
 
@@ -112,6 +113,8 @@ export class PrismaMplsRepository implements MplsRepository {
       where: { hostId },
       include: { pws: true },
     });
+    const collectedVsiColumns = new Set(collection.collectedColumns.vsi);
+    const collectedPwColumns = new Set(collection.collectedColumns.pw);
     const remoteIps = [
       ...new Set(collection.vsis.flatMap((vsi) => vsi.pws.map((pw) => pw.remoteIp))),
     ];
@@ -191,17 +194,24 @@ export class PrismaMplsRepository implements MplsRepository {
             lastSeenAt: now,
           },
           update: {
-            signalingType: vsi.signalingType,
-            rd: vsi.rd,
-            vsiId: vsi.vsiId,
+            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.signalingType)
+              ? { signalingType: vsi.signalingType }
+              : {}),
+            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.rd) ? { rd: vsi.rd } : {}),
+            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.vsiId) ? { vsiId: vsi.vsiId } : {}),
             ...(mayUpdateStatus
               ? { status: vsi.status, operationalStatus: vsi.operationalStatus }
               : {}),
-            adminStatus: vsi.adminStatus,
-            mtu: vsi.mtu,
-            vcType: vsi.vcType,
-            tunnelPolicy: vsi.tunnelPolicy,
-            description: vsi.description,
+            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.adminStatus)
+              ? { adminStatus: vsi.adminStatus }
+              : {}),
+            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.mtu) ? { mtu: vsi.mtu } : {}),
+            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.vcType)
+              ? { vcType: vsi.vcType }
+              : {}),
+            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.tunnelPolicy)
+              ? { tunnelPolicy: vsi.tunnelPolicy }
+              : {}),
             source: 'SNMP',
             lastSeenAt: now,
           },
@@ -263,15 +273,29 @@ export class PrismaMplsRepository implements MplsRepository {
             },
             update: {
               remoteHostId: remoteHostIds.get(pw.remoteIp) ?? null,
-              tunnelPolicy: pw.tunnelPolicy,
-              pwType: pw.pwType,
-              inboundLabel: pw.inboundLabel,
-              outboundLabel: pw.outboundLabel,
+              ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.tunnelPolicy)
+                ? { tunnelPolicy: pw.tunnelPolicy }
+                : {}),
+              ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.pwType)
+                ? { pwType: pw.pwType }
+                : {}),
+              ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.inboundLabel)
+                ? { inboundLabel: pw.inboundLabel }
+                : {}),
+              ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.outboundLabel)
+                ? { outboundLabel: pw.outboundLabel }
+                : {}),
               ...(mayUpdatePwStatus ? { status: pw.status } : {}),
-              state: pw.state,
-              workingState: pw.workingState,
-              upStartTime: pw.upStartTime,
-              upSumTime: pw.upSumTime,
+              ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.state) ? { state: pw.state } : {}),
+              ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.workingState)
+                ? { workingState: pw.workingState }
+                : {}),
+              ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.upStartTime)
+                ? { upStartTime: pw.upStartTime }
+                : {}),
+              ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.upSumTime)
+                ? { upSumTime: pw.upSumTime }
+                : {}),
               source: 'SNMP',
               lastSeenAt: now,
             },

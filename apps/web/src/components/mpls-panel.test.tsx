@@ -3,7 +3,7 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { MplsHostOverview, MplsPw } from '@gmj/shared';
 import { describe, expect, it } from 'vitest';
-import { MplsContent } from './mpls-panel';
+import { MplsCollectionWarning, MplsContent, MplsUnavailableState } from './mpls-panel';
 
 function pw(remoteIp: string, pwId: number, status: MplsPw['status']): MplsPw {
   return {
@@ -92,5 +92,41 @@ describe('MplsContent', () => {
     expect(html).toContain('36323');
     expect(html).toContain('35937');
     expect(html).not.toMatch(/HUAWEI|1\.3\.6\.1/);
+  });
+
+  it('distinguishes a collection error from an unsupported capability', () => {
+    const failedOverview: MplsHostOverview = {
+      ...overview,
+      supported: false,
+      lastErrorSafe: 'SNMP timeout',
+      vsis: [],
+    };
+    const failedHtml = renderToStaticMarkup(<MplsUnavailableState overview={failedOverview} />);
+    expect(failedHtml).toContain('Falha na coleta MPLS');
+    expect(failedHtml).not.toContain('MPLS não disponível');
+
+    const unsupportedHtml = renderToStaticMarkup(
+      <MplsUnavailableState
+        overview={{ ...failedOverview, lastErrorSafe: null, lastSuccessAt: overview.lastSuccessAt }}
+      />,
+    );
+    expect(unsupportedHtml).toContain('MPLS não disponível');
+    expect(unsupportedHtml).not.toContain('Falha na coleta MPLS');
+
+    const pendingHtml = renderToStaticMarkup(
+      <MplsUnavailableState
+        overview={{ ...failedOverview, lastErrorSafe: null, lastSuccessAt: null }}
+      />,
+    );
+    expect(pendingHtml).toContain('MPLS ainda não coletado');
+    expect(pendingHtml).not.toContain('MPLS não disponível');
+  });
+
+  it('warns about a partial failure while keeping supported MPLS data visible', () => {
+    const html = renderToStaticMarkup(
+      <MplsCollectionWarning overview={{ ...overview, lastErrorSafe: 'PW .8: SNMP timeout' }} />,
+    );
+    expect(html).toContain('Falha na coleta MPLS');
+    expect(html).toContain('PW .8: SNMP timeout');
   });
 });

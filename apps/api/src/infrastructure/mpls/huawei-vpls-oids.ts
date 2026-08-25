@@ -24,3 +24,29 @@ export const HUAWEI_VPLS_PW_COLUMNS = {
   state: 13,
   workingState: 14,
 } as const;
+
+// Keep these lists explicit: every entry becomes an independent SNMP walk.
+// Besides the required operational fields, only values currently consumed by
+// the API/UI are collected.
+export const HUAWEI_VPLS_VSI_WALK_COLUMNS = [
+  HUAWEI_VPLS_VSI_COLUMNS.signalingType,
+  HUAWEI_VPLS_VSI_COLUMNS.rd,
+  HUAWEI_VPLS_VSI_COLUMNS.vsiId,
+  HUAWEI_VPLS_VSI_COLUMNS.vcType,
+  HUAWEI_VPLS_VSI_COLUMNS.operationalStatus,
+  HUAWEI_VPLS_VSI_COLUMNS.mtu,
+  HUAWEI_VPLS_VSI_COLUMNS.tunnelPolicy,
+  HUAWEI_VPLS_VSI_COLUMNS.adminStatus,
+] as const;
+
+export const HUAWEI_VPLS_PW_WALK_COLUMNS = [
+  HUAWEI_VPLS_PW_COLUMNS.tunnelPolicy,
+  HUAWEI_VPLS_PW_COLUMNS.pwType,
+  HUAWEI_VPLS_PW_COLUMNS.inboundLabel,
+  HUAWEI_VPLS_PW_COLUMNS.outboundLabel,
+  HUAWEI_VPLS_PW_COLUMNS.status,
+  HUAWEI_VPLS_PW_COLUMNS.upStartTime,
+  HUAWEI_VPLS_PW_COLUMNS.upSumTime,
+  HUAWEI_VPLS_PW_COLUMNS.state,
+  HUAWEI_VPLS_PW_COLUMNS.workingState,
+] as const;

@@ -26,10 +26,16 @@ export class MplsPollingService {
         port: device.snmp.port,
       });
       await this.repository.saveCollection(device.id, collection);
+      const partialError = collection.errors.length
+        ? `Falha parcial na coleta MPLS: ${collection.errors.join('; ')}`
+        : null;
+      if (partialError) {
+        await this.repository.saveFailure(device.id, collection.collectedAt, partialError);
+      }
       return {
         supported: collection.supported,
         collectedAt: collection.collectedAt.toISOString(),
-        error: null,
+        error: partialError,
       };
     } catch (error) {
       const safeMessage = error instanceof Error ? error.message : 'Falha na coleta MPLS via SNMP';
