@@ -1,19 +1,27 @@
 import {
   EMPTY_MPLS_SUMMARY,
+  summarizeMpls,
+  type MplsAc,
   type MplsHostOverview,
   type MplsPw,
   type MplsStateEvent,
-  type MplsSummary,
   type MplsVsi,
 } from '@gmj/shared';
 import { PrismaClient } from '../../generated/prisma/index.js';
 import type { HuaweiVplsCollection } from './huawei-vpls-snmp';
-import { HUAWEI_VPLS_PW_COLUMNS, HUAWEI_VPLS_VSI_COLUMNS } from './huawei-vpls-oids';
+import {
+  HUAWEI_VPLS_AC_COLUMNS,
+  HUAWEI_VPLS_PW_COLUMNS,
+  HUAWEI_VPLS_VSI_COLUMNS,
+} from './huawei-vpls-oids';
 import type { MplsRepository } from './mpls-repository';
 import { isRealMplsStateChange } from './mpls-state-events';
 
 const remoteHostSelect = { id: true, name: true, hostname: true } as const;
 const pwInclude = { remoteHost: { select: remoteHostSelect } } as const;
+const acInclude = {
+  interface: { select: { id: true, name: true, alias: true, ifIndex: true } },
+} as const;
 
 type PwRow = Awaited<ReturnType<PrismaClient['mplsPw']['findMany']>>[number] & {
   remoteHost?: { id: string; name: string; hostname: string } | null;
@@ -45,7 +53,33 @@ function toPw(row: PwRow): MplsPw {
   };
 }
 
-type VsiRow = Awaited<ReturnType<PrismaClient['mplsVsi']['findMany']>>[number] & { pws?: PwRow[] };
+type AcRow = Awaited<ReturnType<PrismaClient['mplsAc']['findMany']>>[number] & {
+  interface?: { id: string; name: string; alias: string; ifIndex: number } | null;
+};
+
+function toAc(row: AcRow): MplsAc {
+  return {
+    id: row.id,
+    hostId: row.hostId,
+    mplsVsiId: row.mplsVsiId,
+    vsiName: row.vsiName,
+    ifIndex: row.ifIndex,
+    interfaceId: row.interfaceId,
+    interface: row.interface ?? null,
+    status: row.status,
+    upStartTimeRaw: row.upStartTimeRaw,
+    upSumTimeRaw: row.upSumTimeRaw == null ? null : Number(row.upSumTimeRaw),
+    source: row.source,
+    lastSeenAt: row.lastSeenAt.toISOString(),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+type VsiRow = Awaited<ReturnType<PrismaClient['mplsVsi']['findMany']>>[number] & {
+  acs?: AcRow[];
+  pws?: PwRow[];
+};
 
 function toVsi(row: VsiRow): MplsVsi {
   return {
@@ -68,23 +102,26 @@ function toVsi(row: VsiRow): MplsVsi {
     lastSeenAt: row.lastSeenAt.toISOString(),
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    acs: (row.acs ?? []).map(toAc),
     pws: (row.pws ?? []).map(toPw),
   };
 }
 
-function summary(vsis: MplsVsi[]): MplsSummary {
-  const pws = vsis.flatMap((vsi) => vsi.pws);
-  return {
-    vsiTotal: vsis.length,
-    vsiUp: vsis.filter((vsi) => vsi.status === 'UP').length,
-    vsiDown: vsis.filter((vsi) => vsi.status === 'DOWN').length,
-    vsiDegraded: vsis.filter((vsi) => vsi.status === 'DEGRADED').length,
-    vsiAdminDown: vsis.filter((vsi) => vsi.status === 'ADMIN_DOWN').length,
-    vsiUnknown: vsis.filter((vsi) => vsi.status === 'UNKNOWN').length,
-    pwTotal: pws.length,
-    pwUp: pws.filter((pw) => pw.status === 'UP').length,
-    pwDown: pws.filter((pw) => pw.status === 'DOWN' || pw.status === 'PLUG_OUT').length,
-  };
+export function vlanIdFromMplsInterfaceName(name: string): number | null {
+  const match = name.match(/^Vlanif(\d+)$/i);
+  if (!match) return null;
+  const vlanId = Number(match[1]);
+  return Number.isInteger(vlanId) && vlanId >= 1 && vlanId <= 4094 ? vlanId : null;
+}
+
+export function correlateMplsAcInterface<T extends { id: string; ifIndex: number; name: string }>(
+  ifIndex: number,
+  interfacesByIfIndex: ReadonlyMap<number, T>,
+): { interface: T; vlanId: number | null } | null {
+  const networkInterface = interfacesByIfIndex.get(ifIndex);
+  return networkInterface
+    ? { interface: networkInterface, vlanId: vlanIdFromMplsInterfaceName(networkInterface.name) }
+    : null;
 }
 
 function pwKey(vsiName: string, pwId: number, remoteIp: string): string {
@@ -103,18 +140,48 @@ export class PrismaMplsRepository implements MplsRepository {
     if (!collection.supported) {
       await this.prisma.mplsDeviceState.upsert({
         where: { hostId },
-        create: { hostId, supported: false, lastPollingAt: now, lastSuccessAt: now },
-        update: { supported: false, lastPollingAt: now, lastSuccessAt: now, lastErrorSafe: null },
+        create: {
+          hostId,
+          supported: false,
+          vsiSupported: false,
+          acSupported: false,
+          pwSupported: false,
+          lastPollingAt: now,
+          lastSuccessAt: now,
+        },
+        update: {
+          supported: false,
+          vsiSupported: false,
+          acSupported: false,
+          pwSupported: false,
+          lastPollingAt: now,
+          lastSuccessAt: now,
+          lastErrorSafe: null,
+        },
       });
       return;
     }
 
-    const existingVsis = await this.prisma.mplsVsi.findMany({
-      where: { hostId },
-      include: { pws: true },
-    });
+    const [existingState, existingVsis] = await Promise.all([
+      this.prisma.mplsDeviceState.findUnique({ where: { hostId } }),
+      this.prisma.mplsVsi.findMany({
+        where: { hostId },
+        include: { pws: true },
+      }),
+    ]);
     const collectedVsiColumns = new Set(collection.collectedColumns.vsi);
+    const collectedAcColumns = new Set(collection.collectedColumns.ac);
     const collectedPwColumns = new Set(collection.collectedColumns.pw);
+    const acIfIndexes = [
+      ...new Set(collection.vsis.flatMap((vsi) => vsi.acs.map((ac) => ac.ifIndex))),
+    ];
+    const interfaces = acIfIndexes.length
+      ? await this.prisma.interface.findMany({
+          where: { deviceId: hostId, ifIndex: { in: acIfIndexes } },
+          select: { id: true, ifIndex: true, name: true, alias: true },
+        })
+      : [];
+    const interfaceByIfIndex = new Map(interfaces.map((item) => [item.ifIndex, item]));
     const remoteIps = [
       ...new Set(collection.vsis.flatMap((vsi) => vsi.pws.map((pw) => pw.remoteIp))),
     ];
@@ -152,14 +219,31 @@ export class PrismaMplsRepository implements MplsRepository {
       const existing = existingVsiByName.get(vsi.name);
       const collectedPwKeys = new Set(vsi.pws.map((pw) => pw.key));
       const allKnownPwsPresent =
+        collection.capabilities.pw === false ||
         !existing ||
         existing.pws.every((pw) => collectedPwKeys.has(pwKey(pw.vsiName, pw.pwId, pw.remoteIp)));
-      const mayUpdateStatus = vsi.statusObserved && allKnownPwsPresent && vsi.status !== 'UNKNOWN';
+      const mayUpdateStatus =
+        vsi.statusObserved && vsi.statusComplete && allKnownPwsPresent && vsi.status !== 'UNKNOWN';
+      const correlatedAcs = vsi.acs
+        .map((ac) => interfaceByIfIndex.get(ac.ifIndex))
+        .filter((item) => item !== undefined)
+        .sort((left, right) => left.ifIndex - right.ifIndex);
+      const primaryInterface = correlatedAcs[0];
+      const correlatedVlanId = primaryInterface
+        ? vlanIdFromMplsInterfaceName(primaryInterface.name)
+        : null;
       if (
         existing &&
         isRealMplsStateChange(existing.status, vsi.status, {
           observed: vsi.statusObserved,
-          complete: allKnownPwsPresent,
+          complete:
+            vsi.statusComplete &&
+            allKnownPwsPresent &&
+            !(
+              collection.capabilities.pw === false &&
+              existingState?.pwSupported === true &&
+              existing.pws.length > 0
+            ),
         })
       ) {
         events.push({
@@ -190,6 +274,8 @@ export class PrismaMplsRepository implements MplsRepository {
             vcType: vsi.vcType,
             tunnelPolicy: vsi.tunnelPolicy,
             description: vsi.description,
+            localInterfaceId: primaryInterface?.id ?? null,
+            vlanId: correlatedVlanId,
             source: 'SNMP',
             lastSeenAt: now,
           },
@@ -199,8 +285,9 @@ export class PrismaMplsRepository implements MplsRepository {
               : {}),
             ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.rd) ? { rd: vsi.rd } : {}),
             ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.vsiId) ? { vsiId: vsi.vsiId } : {}),
-            ...(mayUpdateStatus
-              ? { status: vsi.status, operationalStatus: vsi.operationalStatus }
+            ...(mayUpdateStatus ? { status: vsi.status } : {}),
+            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.operationalStatus)
+              ? { operationalStatus: vsi.operationalStatus }
               : {}),
             ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.adminStatus)
               ? { adminStatus: vsi.adminStatus }
@@ -212,11 +299,56 @@ export class PrismaMplsRepository implements MplsRepository {
             ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.tunnelPolicy)
               ? { tunnelPolicy: vsi.tunnelPolicy }
               : {}),
+            ...(collection.capabilities.ac === true && primaryInterface
+              ? { localInterfaceId: primaryInterface.id, vlanId: correlatedVlanId }
+              : {}),
             source: 'SNMP',
             lastSeenAt: now,
           },
         }),
       );
+
+      for (const ac of vsi.acs) {
+        const correlatedInterface = correlateMplsAcInterface(
+          ac.ifIndex,
+          interfaceByIfIndex,
+        )?.interface;
+        operations.push(
+          this.prisma.mplsAc.upsert({
+            where: {
+              hostId_vsiName_ifIndex: { hostId, vsiName: vsi.name, ifIndex: ac.ifIndex },
+            },
+            create: {
+              vsiName: vsi.name,
+              ifIndex: ac.ifIndex,
+              ...(correlatedInterface
+                ? { interface: { connect: { id: correlatedInterface.id } } }
+                : {}),
+              status: ac.status,
+              upStartTimeRaw: ac.upStartTimeRaw,
+              upSumTimeRaw: ac.upSumTimeRaw,
+              source: 'SNMP',
+              lastSeenAt: now,
+              host: { connect: { id: hostId } },
+              vsi: { connect: { hostId_name: { hostId, name: vsi.name } } },
+            },
+            update: {
+              interfaceId: correlatedInterface?.id ?? null,
+              ...(collectedAcColumns.has(HUAWEI_VPLS_AC_COLUMNS.status)
+                ? { status: ac.status }
+                : {}),
+              ...(collectedAcColumns.has(HUAWEI_VPLS_AC_COLUMNS.upStartTime)
+                ? { upStartTimeRaw: ac.upStartTimeRaw }
+                : {}),
+              ...(collectedAcColumns.has(HUAWEI_VPLS_AC_COLUMNS.upSumTime)
+                ? { upSumTimeRaw: ac.upSumTimeRaw }
+                : {}),
+              source: 'SNMP',
+              lastSeenAt: now,
+            },
+          }),
+        );
+      }
 
       for (const pw of vsi.pws) {
         const existingPw = existingPwByKey.get(pw.key);
@@ -307,8 +439,28 @@ export class PrismaMplsRepository implements MplsRepository {
     operations.push(
       this.prisma.mplsDeviceState.upsert({
         where: { hostId },
-        create: { hostId, supported: true, lastPollingAt: now, lastSuccessAt: now },
-        update: { supported: true, lastPollingAt: now, lastSuccessAt: now, lastErrorSafe: null },
+        create: {
+          hostId,
+          supported: true,
+          vsiSupported: true,
+          acSupported: collection.capabilities.ac ?? false,
+          pwSupported: collection.capabilities.pw ?? false,
+          lastPollingAt: now,
+          lastSuccessAt: now,
+        },
+        update: {
+          supported: true,
+          vsiSupported: true,
+          ...(collection.capabilities.ac === null
+            ? {}
+            : { acSupported: collection.capabilities.ac }),
+          ...(collection.capabilities.pw === null
+            ? {}
+            : { pwSupported: collection.capabilities.pw }),
+          lastPollingAt: now,
+          lastSuccessAt: now,
+          lastErrorSafe: null,
+        },
       }),
     );
     await this.prisma.$transaction(operations);
@@ -334,9 +486,14 @@ export class PrismaMplsRepository implements MplsRepository {
 
   async getHostOverview(hostId: string): Promise<MplsHostOverview> {
     const state = await this.prisma.mplsDeviceState.findUnique({ where: { hostId } });
-    if (!state || !state.supported) {
+    if (!state || !state.vsiSupported) {
       return {
         supported: false,
+        capabilities: {
+          vsi: state?.vsiSupported ?? false,
+          ac: state?.acSupported ?? false,
+          pw: state?.pwSupported ?? false,
+        },
         source: 'SNMP',
         lastPollingAt: state?.lastPollingAt?.toISOString() ?? null,
         lastSuccessAt: state?.lastSuccessAt?.toISOString() ?? null,
@@ -348,11 +505,16 @@ export class PrismaMplsRepository implements MplsRepository {
     const vsis = await this.listVsis(hostId);
     return {
       supported: true,
+      capabilities: {
+        vsi: state.vsiSupported,
+        ac: state.acSupported,
+        pw: state.pwSupported,
+      },
       source: state.source,
       lastPollingAt: state.lastPollingAt?.toISOString() ?? null,
       lastSuccessAt: state.lastSuccessAt?.toISOString() ?? null,
       lastErrorSafe: state.lastErrorSafe,
-      summary: summary(vsis),
+      summary: summarizeMpls(vsis),
       vsis,
     };
   }
@@ -360,7 +522,10 @@ export class PrismaMplsRepository implements MplsRepository {
   async listVsis(hostId: string): Promise<MplsVsi[]> {
     const rows = await this.prisma.mplsVsi.findMany({
       where: { hostId },
-      include: { pws: { include: pwInclude, orderBy: [{ remoteIp: 'asc' }, { pwId: 'asc' }] } },
+      include: {
+        acs: { include: acInclude, orderBy: { ifIndex: 'asc' } },
+        pws: { include: pwInclude, orderBy: [{ remoteIp: 'asc' }, { pwId: 'asc' }] },
+      },
       orderBy: { name: 'asc' },
     });
     return rows.map((row) => toVsi(row as unknown as VsiRow));

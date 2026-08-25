@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { directionalLinkMetrics, linkStatusFromInterfaces, trafficConsistency } from './link-telemetry';
+import {
+  automaticLinkCapacity,
+  directionalLinkMetrics,
+  linkStatusFromInterfaces,
+  trafficConsistency,
+} from './link-telemetry';
 import type { NetworkInterface } from './types';
 
-function networkInterface(
-  id: string,
-  partial: Partial<NetworkInterface> = {},
-): NetworkInterface {
+function networkInterface(id: string, partial: Partial<NetworkInterface> = {}): NetworkInterface {
   return {
     id,
     deviceId: `${id}-device`,
@@ -52,8 +54,9 @@ describe('bidirectional link telemetry', () => {
     const source = networkInterface('a', { txBps: 9_100_000_000 });
     const target = networkInterface('b', { rxBps: 4_000_000_000 });
 
-    expect(directionalLinkMetrics(source, target, 100_000_000_000).A_TO_B.consistency)
-      .toBe('DIVERGENT');
+    expect(directionalLinkMetrics(source, target, 100_000_000_000).A_TO_B.consistency).toBe(
+      'DIVERGENT',
+    );
     expect(linkStatusFromInterfaces(source, target)).toBe('UP');
   });
 
@@ -93,5 +96,51 @@ describe('bidirectional link telemetry', () => {
       deltaPercent: 0,
       consistency: 'CONSISTENT',
     });
+  });
+
+  it('uses only the monitored source interface for single-ended traffic and status', () => {
+    const source = networkInterface('a', {
+      speedBps: 40_000_000_000,
+      rxBps: 2_000,
+      txBps: 3_000,
+    });
+    const directions = directionalLinkMetrics(source, undefined, 40_000_000_000, 'SINGLE_ENDED');
+
+    expect(directions.A_TO_B).toMatchObject({
+      bps: 3_000,
+      txBps: 3_000,
+      observedRxBps: null,
+      consistency: 'UNKNOWN',
+    });
+    expect(directions.B_TO_A).toMatchObject({
+      bps: 2_000,
+      txBps: null,
+      observedRxBps: 2_000,
+      consistency: 'UNKNOWN',
+    });
+    expect(linkStatusFromInterfaces(source, undefined, 'SINGLE_ENDED')).toBe('UP');
+    expect(automaticLinkCapacity(source, undefined, 'SINGLE_ENDED', 1)).toBe(40_000_000_000);
+  });
+
+  it('uses only the monitored target interface for single-ended traffic and status', () => {
+    const target = networkInterface('b', {
+      speedBps: 10_000_000_000,
+      rxBps: 5_000,
+      txBps: 7_000,
+      operStatus: 'DOWN',
+    });
+    const directions = directionalLinkMetrics(undefined, target, 10_000_000_000, 'SINGLE_ENDED');
+
+    expect(directions.A_TO_B).toMatchObject({ bps: 5_000, txBps: null, observedRxBps: 5_000 });
+    expect(directions.B_TO_A).toMatchObject({ bps: 7_000, txBps: 7_000, observedRxBps: null });
+    expect(linkStatusFromInterfaces(undefined, target, 'SINGLE_ENDED')).toBe('DOWN');
+    expect(automaticLinkCapacity(undefined, target, 'SINGLE_ENDED', 1)).toBe(10_000_000_000);
+  });
+
+  it('keeps the minimum endpoint speed for bidirectional AUTO capacity', () => {
+    const source = networkInterface('a', { speedBps: 100_000_000_000 });
+    const target = networkInterface('b', { speedBps: 40_000_000_000 });
+
+    expect(automaticLinkCapacity(source, target, 'BIDIRECTIONAL', 1)).toBe(40_000_000_000);
   });
 });

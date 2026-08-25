@@ -49,6 +49,11 @@ enum CapacitySource {
   MANUAL
 }
 
+enum TrafficMode {
+  BIDIRECTIONAL
+  SINGLE_ENDED
+}
+
 enum DeviceStatus {
   UP
   DOWN
@@ -158,6 +163,12 @@ enum MplsVsiOperationalStatus {
 }
 
 enum MplsAdminStatus {
+  UP
+  DOWN
+  UNKNOWN
+}
+
+enum MplsAcStatus {
   UP
   DOWN
   UNKNOWN
@@ -289,6 +300,7 @@ model Device {
   mplsStateEvents     MplsStateEvent[]
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
+  mplsAcs             MplsAc[]
 
   @@index([hostname])
   @@index([ip])
@@ -330,6 +342,7 @@ model Interface {
   targetLinks           Link[]                   @relation("LinkTargetInterface")
   sourceMappings        InterfaceSourceMapping[]
   mplsVsis              MplsVsi[]
+  mplsAcs               MplsAc[]
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
 
@@ -340,6 +353,9 @@ model MplsDeviceState {
   id            String     @id @default(cuid())
   hostId        String     @unique
   supported     Boolean    @default(false)
+  vsiSupported  Boolean    @default(false)
+  acSupported   Boolean    @default(false)
+  pwSupported   Boolean    @default(false)
   source        MplsSource @default(SNMP)
   lastPollingAt DateTime?
   lastSuccessAt DateTime?
@@ -371,6 +387,7 @@ model MplsVsi {
   host              Device                   @relation(fields: [hostId], references: [id], onDelete: Cascade)
   localInterface    Interface?               @relation(fields: [localInterfaceId], references: [id], onDelete: SetNull)
   pws               MplsPw[]
+  acs               MplsAc[]
   createdAt         DateTime                 @default(now())
   updatedAt         DateTime                 @updatedAt
 
@@ -380,6 +397,31 @@ model MplsVsi {
   @@index([status])
   @@index([lastSeenAt])
   @@index([localInterfaceId])
+}
+
+model MplsAc {
+  id             String       @id @default(cuid())
+  hostId         String
+  mplsVsiId      String
+  vsiName        String
+  ifIndex        Int
+  interfaceId    String?
+  status         MplsAcStatus @default(UNKNOWN)
+  upStartTimeRaw String?
+  upSumTimeRaw   BigInt?
+  source         MplsSource   @default(SNMP)
+  lastSeenAt     DateTime
+  host           Device       @relation(fields: [hostId], references: [id], onDelete: Cascade)
+  vsi            MplsVsi      @relation(fields: [mplsVsiId], references: [id], onDelete: Cascade)
+  interface      Interface?   @relation(fields: [interfaceId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([hostId, vsiName, ifIndex])
+  @@index([hostId])
+  @@index([mplsVsiId])
+  @@index([interfaceId])
+  @@index([lastSeenAt])
 }
 
 model MplsPw {
@@ -492,6 +534,9 @@ model Link {
   capacityBps       BigInt
   autoCapacityBps   BigInt?
   capacitySource    CapacitySource     @default(AUTO)
+  trafficMode       TrafficMode        @default(BIDIRECTIONAL)
+  customColor       String?
+  animationEnabled  Boolean?
   label             String?
   status            DeviceStatus       @default(UNKNOWN)
   discoverySource   DiscoverySource    @default(MANUAL)

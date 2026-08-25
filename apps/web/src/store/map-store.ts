@@ -224,14 +224,18 @@ export const useMapStore = create<MapState>((set) => ({
   setMap: (map) => {
     clearLegacyLocalState(map.id);
     set((state) => {
-      const pending = state.pendingInterfaceNavigation?.mapId === map.id
-        ? state.pendingInterfaceNavigation
-        : null;
+      const pending =
+        state.pendingInterfaceNavigation?.mapId === map.id
+          ? state.pendingInterfaceNavigation
+          : null;
       const canOpen = Boolean(
-        pending
-        && map.devices.some((device) =>
-          device.id === pending.deviceId
-          && device.interfaces.some((networkInterface) => networkInterface.id === pending.interfaceId),
+        pending &&
+        map.devices.some(
+          (device) =>
+            device.id === pending.deviceId &&
+            device.interfaces.some(
+              (networkInterface) => networkInterface.id === pending.interfaceId,
+            ),
         ),
       );
       const focusSequence = canOpen ? state.focusSequence + 1 : state.focusSequence;
@@ -240,12 +244,14 @@ export const useMapStore = create<MapState>((set) => ({
         activeMapId: map.id,
         preferences: map.settings.filters,
         readOnly: false,
-        selection: canOpen && pending
-          ? { kind: 'interface' as const, id: pending.interfaceId, deviceId: pending.deviceId }
-          : state.selection,
-        focusRequest: canOpen && pending
-          ? { deviceId: pending.deviceId, requestId: focusSequence }
-          : state.focusRequest,
+        selection:
+          canOpen && pending
+            ? { kind: 'interface' as const, id: pending.interfaceId, deviceId: pending.deviceId }
+            : state.selection,
+        focusRequest:
+          canOpen && pending
+            ? { deviceId: pending.deviceId, requestId: focusSequence }
+            : state.focusRequest,
         pendingInterfaceNavigation: pending ? null : state.pendingInterfaceNavigation,
         focusSequence,
         dirty: false,
@@ -303,7 +309,7 @@ export const useMapStore = create<MapState>((set) => ({
       };
     }),
   clearFocusRequest: (requestId) =>
-    set((state) => state.focusRequest?.requestId === requestId ? { focusRequest: null } : state),
+    set((state) => (state.focusRequest?.requestId === requestId ? { focusRequest: null } : state)),
   openHostDetails: (hostDetailRequest) =>
     set({ view: 'HOSTS', editMode: false, selection: null, panel: null, hostDetailRequest }),
   clearHostDetailRequest: () => set({ hostDetailRequest: null }),
@@ -422,6 +428,9 @@ export const useMapStore = create<MapState>((set) => ({
         capacityBps: input.capacityBps,
         autoCapacityBps: input.autoCapacityBps,
         capacitySource: input.capacitySource,
+        trafficMode: input.trafficMode,
+        customColor: input.customColor,
+        animationEnabled: input.animationEnabled,
         label: input.label,
         metricSource: input.metricSource,
         visualStyle: input.visualStyle,
@@ -430,12 +439,20 @@ export const useMapStore = create<MapState>((set) => ({
         discoverySource: 'MANUAL',
         directions: {
           A_TO_B: {
-            bps: 0, utilization: 0, txBps: null, observedRxBps: null,
-            deltaPercent: null, consistency: 'UNKNOWN',
+            bps: 0,
+            utilization: 0,
+            txBps: null,
+            observedRxBps: null,
+            deltaPercent: null,
+            consistency: 'UNKNOWN',
           },
           B_TO_A: {
-            bps: 0, utilization: 0, txBps: null, observedRxBps: null,
-            deltaPercent: null, consistency: 'UNKNOWN',
+            bps: 0,
+            utilization: 0,
+            txBps: null,
+            observedRxBps: null,
+            deltaPercent: null,
+            consistency: 'UNKNOWN',
           },
         },
         rxBps: 0,

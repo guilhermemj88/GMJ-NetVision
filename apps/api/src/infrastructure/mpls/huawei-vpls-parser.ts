@@ -1,5 +1,6 @@
 import type {
   MplsAdminStatus,
+  MplsAcStatus,
   MplsPwState,
   MplsPwStatus,
   MplsPwWorkingState,
@@ -15,6 +16,12 @@ export interface HuaweiPwIndex {
   vsiName: string;
   pwId: number;
   remoteIp: string;
+  key: string;
+}
+
+export interface HuaweiAcIndex {
+  vsiName: string;
+  ifIndex: number;
   key: string;
 }
 
@@ -64,6 +71,22 @@ export function parseHuaweiPwIndex(values: readonly number[]): HuaweiPwIndex | n
     remoteIp,
     key: `${decoded.value}|${pwId}|${remoteIp}`,
   };
+}
+
+export function parseHuaweiAcIndex(values: readonly number[]): HuaweiAcIndex | null {
+  const decoded = decodeLengthPrefixedAsciiIndex(values);
+  if (!decoded || values.length !== decoded.consumed + 1) return null;
+  const ifIndex = values[decoded.consumed];
+  if (!Number.isInteger(ifIndex) || ifIndex! <= 0 || ifIndex! > 0x7fffffff) return null;
+  return {
+    vsiName: decoded.value,
+    ifIndex: ifIndex!,
+    key: `${decoded.value}|${ifIndex}`,
+  };
+}
+
+export function parseHuaweiAcStatus(value: unknown): MplsAcStatus {
+  return value === 1 ? 'UP' : value === 2 ? 'DOWN' : 'UNKNOWN';
 }
 
 export function parseHuaweiVsiOperationalStatus(value: unknown): MplsVsiOperationalStatus {

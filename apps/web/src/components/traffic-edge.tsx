@@ -45,12 +45,18 @@ function utilizationText(utilization: number): string {
 
 function toneClass(tone: string): string {
   switch (tone) {
-    case 'attention': return 'traffic-edge--attention';
-    case 'high': return 'traffic-edge--high';
-    case 'critical': return 'traffic-edge--critical';
-    case 'down': return 'traffic-edge--down';
-    case 'unknown': return 'traffic-edge--unknown';
-    default: return 'traffic-edge--normal';
+    case 'attention':
+      return 'traffic-edge--attention';
+    case 'high':
+      return 'traffic-edge--high';
+    case 'critical':
+      return 'traffic-edge--critical';
+    case 'down':
+      return 'traffic-edge--down';
+    case 'unknown':
+      return 'traffic-edge--unknown';
+    default:
+      return 'traffic-edge--normal';
   }
 }
 
@@ -64,50 +70,66 @@ function flowLevel(utilization: number): FlowLevel {
 
 function flowColor(hue: number, level: FlowLevel): string {
   switch (level) {
-    case 'critical': return hsl(hue, 100, 56);
-    case 'high': return hsl(hue, 91, 60);
-    case 'attention': return hsl(hue, 78, 66);
-    case 'down': return '#6e5558';
-    case 'unknown': return '#718894';
-    default: return hsl(hue, 58, 72);
+    case 'critical':
+      return hsl(hue, 100, 56);
+    case 'high':
+      return hsl(hue, 91, 60);
+    case 'attention':
+      return hsl(hue, 78, 66);
+    case 'down':
+      return '#6e5558';
+    case 'unknown':
+      return '#718894';
+    default:
+      return hsl(hue, 58, 72);
   }
 }
 
 function staticOpacity(level: FlowLevel): number {
   switch (level) {
-    case 'critical': return 0.94;
-    case 'high': return 0.82;
-    case 'attention': return 0.7;
+    case 'critical':
+      return 0.94;
+    case 'high':
+      return 0.82;
+    case 'attention':
+      return 0.7;
     case 'down':
-    case 'unknown': return 0.48;
-    default: return 0.56;
+    case 'unknown':
+      return 0.48;
+    default:
+      return 0.56;
   }
 }
 
 function flowDuration(level: FlowLevel): number {
   switch (level) {
-    case 'critical': return 3.8;
-    case 'high': return 4.6;
-    case 'attention': return 5.8;
-    default: return 7;
+    case 'critical':
+      return 3.8;
+    case 'high':
+      return 4.6;
+    case 'attention':
+      return 5.8;
+    default:
+      return 7;
   }
 }
 
 function flowDash(level: FlowLevel): string {
   switch (level) {
-    case 'critical': return '4 7';
-    case 'high': return '3.5 8';
-    case 'attention': return '3 9';
-    case 'unknown': return '2 8';
-    default: return '2.5 10';
+    case 'critical':
+      return '4 7';
+    case 'high':
+      return '3.5 8';
+    case 'attention':
+      return '3 9';
+    case 'unknown':
+      return '2 8';
+    default:
+      return '2.5 10';
   }
 }
 
-function flowFilter(
-  color: string,
-  level: FlowLevel,
-  emphasized: boolean,
-): string | undefined {
+function flowFilter(color: string, level: FlowLevel, emphasized: boolean): string | undefined {
   if (emphasized) return `drop-shadow(0 0 3px ${color})`;
   if (level === 'critical') return `drop-shadow(0 0 4px ${color})`;
   if (level === 'high') return `drop-shadow(0 0 2px ${color})`;
@@ -166,13 +188,9 @@ export function TrafficEdge({
   const levelB: FlowLevel = statusTone ?? flowLevel(bToA.utilization);
   const worstTone = statusTone ?? flowLevel(maxUtilization);
 
-  const width = Math.max(
-    1,
-    Math.min(
-      1.8,
-      1.05 + Math.log10(Math.max(link.capacityBps, 1_000_000_000)) - 9.2,
-    ),
-  ) * (linkScale / 100);
+  const width =
+    Math.max(1, Math.min(1.8, 1.05 + Math.log10(Math.max(link.capacityBps, 1_000_000_000)) - 9.2)) *
+    (linkScale / 100);
   const classes = `${selected ? 'is-selected' : ''} ${related ? '' : 'is-dimmed'} ${emphasized ? 'is-emphasized' : ''}`;
   const directional = displayStyle !== 'MINIMAL';
   const showMetric = showLabels && directional && metricDisplay !== 'NONE';
@@ -187,12 +205,17 @@ export function TrafficEdge({
   const gap = Math.max(2, LANE_HALF_GAP * (linkScale / 100));
   const laneATransform = `translate(${normalX * gap} ${normalY * gap})`;
   const laneBTransform = `translate(${-normalX * gap} ${-normalY * gap})`;
-  const colorA = flowColor(HUE_A, levelA);
-  const colorB = flowColor(HUE_B, levelB);
+  const colorA = link.customColor ?? flowColor(HUE_A, levelA);
+  const colorB = link.customColor ?? flowColor(HUE_B, levelB);
   const isEmphasized = Boolean(emphasized || selected);
   const renderLanes = directional && showTraffic && link.status !== 'DOWN' && related;
-  const animateLanes = showTrafficAnimation && link.status !== 'UNKNOWN';
+  const animateLanes = (link.animationEnabled ?? showTrafficAnimation) && link.status !== 'UNKNOWN';
   const laneWidth = Math.max(1, width * (isEmphasized ? 1.15 : 0.88));
+  const sourceMonitored = link.trafficMode === 'SINGLE_ENDED' && Boolean(link.sourceInterfaceId);
+  const laneAObservation =
+    link.trafficMode === 'SINGLE_ENDED' ? (sourceMonitored ? 'LOCAL_TX' : 'LOCAL_RX') : 'A_TO_B';
+  const laneBObservation =
+    link.trafficMode === 'SINGLE_ENDED' ? (sourceMonitored ? 'LOCAL_RX' : 'LOCAL_TX') : 'B_TO_A';
 
   return (
     <>
@@ -200,7 +223,10 @@ export function TrafficEdge({
         id={id}
         d={path}
         className={`traffic-edge traffic-edge--base ${statusTone ? toneClass(statusTone) : ''} ${classes}`}
-        style={{ strokeWidth: Math.max(0.8, width * 0.6) }}
+        style={{
+          strokeWidth: Math.max(0.8, width * 0.6),
+          ...(link.customColor ? { stroke: link.customColor, opacity: 0.34 } : {}),
+        }}
       />
 
       {renderLanes && (
@@ -209,6 +235,7 @@ export function TrafficEdge({
             d={path}
             transform={laneATransform}
             data-flow-direction="A_TO_B"
+            data-observation={laneAObservation}
             data-throughput-bps={aToB.bps}
             data-utilization={aToB.utilization}
             className={`traffic-edge traffic-edge--flow traffic-edge--a-to-b ${animateLanes ? 'traffic-edge--animated' : ''} ${classes}`}
@@ -226,6 +253,7 @@ export function TrafficEdge({
             d={path}
             transform={laneBTransform}
             data-flow-direction="B_TO_A"
+            data-observation={laneBObservation}
             data-throughput-bps={bToA.bps}
             data-utilization={bToA.utilization}
             className={`traffic-edge traffic-edge--flow traffic-edge--b-to-a ${animateLanes ? 'traffic-edge--animated' : ''} ${classes}`}
@@ -248,7 +276,9 @@ export function TrafficEdge({
         <EdgeLabelRenderer>
           <div
             className={`edge-metric edge-metric--${displayStyle.toLowerCase()} edge-metric--${worstTone} ${related ? '' : 'is-dimmed'}`}
-            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px) scale(${labelScale / 100})` }}
+            style={{
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px) scale(${labelScale / 100})`,
+            }}
           >
             <div className="edge-metric__row">
               <span className="edge-metric__swatch" style={{ backgroundColor: colorA }} />

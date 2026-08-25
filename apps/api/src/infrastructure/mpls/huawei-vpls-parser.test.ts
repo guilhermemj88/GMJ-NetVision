@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   decodeLengthPrefixedAsciiIndex,
+  parseHuaweiAcIndex,
+  parseHuaweiAcStatus,
   parseHuaweiAdminStatus,
   parseHuaweiPwIndex,
   parseHuaweiPwState,
@@ -37,6 +39,16 @@ describe('Huawei VPLS indexes', () => {
     });
   });
 
+  it('parses the validated GERENCIA AC index and ifIndex', () => {
+    expect(parseHuaweiAcIndex([8, 71, 69, 82, 69, 78, 67, 73, 65, 43])).toEqual({
+      vsiName: 'GERENCIA',
+      ifIndex: 43,
+      key: 'GERENCIA|43',
+    });
+    expect(parseHuaweiAcIndex([...encoded('GERENCIA'), 0])).toBeNull();
+    expect(parseHuaweiAcIndex([...encoded('GERENCIA'), 43, 1])).toBeNull();
+  });
+
   it.each([
     { index: [] },
     { index: [0] },
@@ -60,6 +72,7 @@ describe('Huawei VPLS status enums', () => {
       'UNKNOWN',
     ]);
     expect([1, 2, 99].map(parseHuaweiAdminStatus)).toEqual(['UP', 'DOWN', 'UNKNOWN']);
+    expect([1, 2, 99].map(parseHuaweiAcStatus)).toEqual(['UP', 'DOWN', 'UNKNOWN']);
   });
 
   it('normalizes official PW status, state and working-state values', () => {

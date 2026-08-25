@@ -345,7 +345,11 @@ export class DemoMapRepository {
     return { device: structuredClone(host), node: structuredClone(node) };
   }
 
-  addHostsToMap(mapId: string, deviceIds: string[], seedPosition: Position = { x: 520, y: 340 }): AddDeviceResult[] {
+  addHostsToMap(
+    mapId: string,
+    deviceIds: string[],
+    seedPosition: Position = { x: 520, y: 340 },
+  ): AddDeviceResult[] {
     const map = this.findMap(mapId);
     if (!map) return [];
     const created: AddDeviceResult[] = [];
@@ -645,6 +649,9 @@ export class DemoMapRepository {
         capacityBps: capacity,
         autoCapacityBps: capacity,
         capacitySource: 'AUTO',
+        trafficMode: 'BIDIRECTIONAL',
+        customColor: null,
+        animationEnabled: null,
         label: 'LLDP DISCOVERED',
         metricSource: target.useZabbix || sourceHost.useZabbix ? 'ZABBIX' : 'DEMO',
         visualStyle: null,
@@ -904,6 +911,9 @@ export class DemoMapRepository {
       capacityBps: input.capacityBps,
       autoCapacityBps: input.autoCapacityBps,
       capacitySource: input.capacitySource,
+      trafficMode: input.trafficMode,
+      customColor: input.customColor,
+      animationEnabled: input.animationEnabled,
       label: input.label,
       metricSource: input.metricSource,
       visualStyle: input.visualStyle,
@@ -912,12 +922,20 @@ export class DemoMapRepository {
       discoverySource,
       directions: {
         A_TO_B: {
-          bps: 0, utilization: 0, txBps: null, observedRxBps: null,
-          deltaPercent: null, consistency: 'UNKNOWN',
+          bps: 0,
+          utilization: 0,
+          txBps: null,
+          observedRxBps: null,
+          deltaPercent: null,
+          consistency: 'UNKNOWN',
         },
         B_TO_A: {
-          bps: 0, utilization: 0, txBps: null, observedRxBps: null,
-          deltaPercent: null, consistency: 'UNKNOWN',
+          bps: 0,
+          utilization: 0,
+          txBps: null,
+          observedRxBps: null,
+          deltaPercent: null,
+          consistency: 'UNKNOWN',
         },
       },
       rxBps: 0,
@@ -936,11 +954,7 @@ export class DemoMapRepository {
     return structuredClone(link);
   }
 
-  updateLink(
-    mapId: string,
-    linkId: string,
-    input: UpdateLinkInput,
-  ): NetworkLink | null {
+  updateLink(mapId: string, linkId: string, input: UpdateLinkInput): NetworkLink | null {
     const map = this.findMap(mapId);
     if (!map) return null;
     const link = map.links.find((item) => item.id === linkId);
@@ -1102,8 +1116,12 @@ export class DemoMapRepository {
       const decrypted = this.vault.decrypt(stored.snmp) as Record<string, unknown>;
       return {
         ...(typeof decrypted.community === 'string' ? { community: decrypted.community } : {}),
-        ...(typeof decrypted.authPassword === 'string' ? { authPassword: decrypted.authPassword } : {}),
-        ...(typeof decrypted.privacyPassword === 'string' ? { privacyPassword: decrypted.privacyPassword } : {}),
+        ...(typeof decrypted.authPassword === 'string'
+          ? { authPassword: decrypted.authPassword }
+          : {}),
+        ...(typeof decrypted.privacyPassword === 'string'
+          ? { privacyPassword: decrypted.privacyPassword }
+          : {}),
       };
     } catch {
       return null;

@@ -13,7 +13,10 @@ interface HostSource {
   listHosts(): Promise<HostRecord[]>;
 }
 
-function linkKey(interfaceA: string | null | undefined, interfaceB: string | null | undefined): string {
+function linkKey(
+  interfaceA: string | null | undefined,
+  interfaceB: string | null | undefined,
+): string {
   return [interfaceA, interfaceB].sort().join('|');
 }
 
@@ -64,6 +67,9 @@ export class TopologyApplyService {
         capacityBps,
         autoCapacityBps: capacityBps,
         capacitySource: 'AUTO',
+        trafficMode: 'BIDIRECTIONAL',
+        customColor: null,
+        animationEnabled: null,
         label: '',
         metricSource: this.metricSource(source, target),
         visualStyle: null,
@@ -84,14 +90,17 @@ export class TopologyApplyService {
 
   private canApply(adjacency: LldpAdjacencyProposal, existing: Set<string>): boolean {
     if (adjacency.duplicate) return false;
-    if (adjacency.confidence === 'AMBIGUOUS' || adjacency.confidence === 'UNKNOWN_NEIGHBOR') return false;
-    if (!adjacency.targetHostId || !adjacency.sourceInterfaceId || !adjacency.targetInterfaceId) return false;
+    if (adjacency.confidence === 'AMBIGUOUS' || adjacency.confidence === 'UNKNOWN_NEIGHBOR')
+      return false;
+    if (!adjacency.targetHostId || !adjacency.sourceInterfaceId || !adjacency.targetInterfaceId)
+      return false;
     return !existing.has(linkKey(adjacency.sourceInterfaceId, adjacency.targetInterfaceId));
   }
 
   private capacityBps(adjacency: LldpAdjacencyProposal): number {
-    const speeds = [adjacency.sourceSpeedBps, adjacency.targetSpeedBps]
-      .filter((value): value is number => typeof value === 'number' && value > 0);
+    const speeds = [adjacency.sourceSpeedBps, adjacency.targetSpeedBps].filter(
+      (value): value is number => typeof value === 'number' && value > 0,
+    );
     return speeds.length ? Math.min(...speeds) : DEFAULT_CAPACITY_BPS;
   }
 

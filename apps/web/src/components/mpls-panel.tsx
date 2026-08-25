@@ -13,7 +13,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { getHostMpls, getHostMplsEvents } from '@/lib/api';
 
-type Filter = 'ALL' | 'UP' | 'DOWN' | 'DEGRADED';
+type Filter = 'ALL' | 'UP' | 'DOWN' | 'DEGRADED' | 'UNKNOWN';
 
 function tokenFromPublicPath(): string | null {
   if (typeof window === 'undefined') return null;
@@ -149,6 +149,11 @@ export function MplsContent({
         if (!normalizedSearch) return true;
         const searchable = [
           vsi.name,
+          ...vsi.acs.flatMap((ac) => [
+            ac.interface?.name ?? '',
+            ac.interface?.alias ?? '',
+            String(ac.ifIndex),
+          ]),
           ...vsi.pws.flatMap((pw) => [
             pw.remoteIp,
             pw.remoteHost?.name ?? '',
@@ -199,18 +204,26 @@ export function MplsContent({
             <strong>{overview.summary.vsiDegraded}</strong>
             <span>Degradado</span>
           </div>
+          {overview.summary.vsiUnknown > 0 && (
+            <div className="unknown">
+              <strong>{overview.summary.vsiUnknown}</strong>
+              <span>Unknown</span>
+            </div>
+          )}
         </div>
         <div className="mpls-pw-summary">
           <span>Pseudowires</span>
           <strong>
-            {overview.summary.pwUp} / {overview.summary.pwTotal} UP
+            {overview.capabilities.pw
+              ? `${overview.summary.pwUp} / ${overview.summary.pwTotal} UP`
+              : 'N/D — não disponível via SNMP'}
           </strong>
         </div>
       </section>
 
       <section className="drawer-section mpls-controls">
         <div className="mpls-filters" aria-label="Filtros MPLS">
-          {(['ALL', 'UP', 'DOWN', 'DEGRADED'] as const).map((value) => (
+          {(['ALL', 'UP', 'DOWN', 'DEGRADED', 'UNKNOWN'] as const).map((value) => (
             <button
               key={value}
               type="button"
@@ -249,30 +262,55 @@ export function MplsContent({
               </header>
               <div className="mpls-vsi-card__count">
                 <span>PWs</span>
-                <strong>
-                  {up}/{vsi.pws.length} UP
-                </strong>
+                <strong>{overview.capabilities.pw ? `${up}/${vsi.pws.length} UP` : 'N/D'}</strong>
               </div>
-              <h4>Pontos remotos</h4>
-              <div className="mpls-peer-list">
-                {visiblePws.map((pw) => (
-                  <div key={pw.id} className={`mpls-peer status-${pw.status.toLowerCase()}`}>
-                    <span className="port-dot" />
-                    <div>
-                      <strong>{pw.remoteHost?.name ?? pw.remoteIp}</strong>
-                      <small>{pw.remoteHost ? pw.remoteIp : 'Equipamento não identificado'}</small>
-                    </div>
-                    <div>
-                      <strong>PW {pw.pwId}</strong>
-                      <small>{pwDuration(pw, events)}</small>
-                    </div>
-                    <Badge tone={pw.status}>
-                      {pw.status === 'PLUG_OUT' ? 'PLUG OUT' : pw.status}
-                    </Badge>
+              {vsi.acs.length > 0 && (
+                <>
+                  <h4>Attachment circuits</h4>
+                  <div className="mpls-ac-list">
+                    {vsi.acs.map((ac) => (
+                      <div key={ac.id} className={`mpls-ac status-${ac.status.toLowerCase()}`}>
+                        <span className="port-dot" />
+                        <div>
+                          <strong>{ac.interface?.name ?? `ifIndex ${ac.ifIndex}`}</strong>
+                          <small>{ac.interface?.alias || `ifIndex ${ac.ifIndex}`}</small>
+                        </div>
+                        <Badge tone={ac.status}>{ac.status}</Badge>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
-              {vsi.pws.length > 3 && (
+                </>
+              )}
+              {overview.capabilities.pw ? (
+                <>
+                  <h4>Pontos remotos</h4>
+                  <div className="mpls-peer-list">
+                    {visiblePws.map((pw) => (
+                      <div key={pw.id} className={`mpls-peer status-${pw.status.toLowerCase()}`}>
+                        <span className="port-dot" />
+                        <div>
+                          <strong>{pw.remoteHost?.name ?? pw.remoteIp}</strong>
+                          <small>
+                            {pw.remoteHost ? pw.remoteIp : 'Equipamento não identificado'}
+                          </small>
+                        </div>
+                        <div>
+                          <strong>PW {pw.pwId}</strong>
+                          <small>{pwDuration(pw, events)}</small>
+                        </div>
+                        <Badge tone={pw.status}>
+                          {pw.status === 'PLUG_OUT' ? 'PLUG OUT' : pw.status}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="mpls-capability-note">
+                  Pseudowires não disponíveis via SNMP neste equipamento.
+                </div>
+              )}
+              {overview.capabilities.pw && vsi.pws.length > 3 && (
                 <button
                   type="button"
                   className="mpls-expand"
@@ -298,6 +336,23 @@ export function MplsContent({
                   <Technical label="Fonte" value={vsi.source} />
                   <Technical label="Atualizado" value={dateLabel(vsi.lastSeenAt)} />
                 </div>
+                {vsi.acs.map((ac) => (
+                  <div key={ac.id} className="mpls-pw-technical">
+                    <strong>AC · ifIndex {ac.ifIndex}</strong>
+                    <div className="info-grid">
+                      <Technical label="Interface" value={ac.interface?.name ?? null} />
+                      <Technical label="Alias" value={ac.interface?.alias ?? null} />
+                      <Technical label="Status" value={ac.status} />
+                      <Technical label="Up Start Time" value={ac.upStartTimeRaw} />
+                      <Technical label="Up Sum Time (bruto)" value={ac.upSumTimeRaw} />
+                    </div>
+                  </div>
+                ))}
+                {!overview.capabilities.pw && (
+                  <div className="mpls-capability-note">
+                    PW não disponível via SNMP neste equipamento.
+                  </div>
+                )}
                 {vsi.pws.map((pw) => (
                   <div key={pw.id} className="mpls-pw-technical">
                     <strong>

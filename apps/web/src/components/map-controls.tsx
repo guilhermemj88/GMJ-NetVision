@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import type {
   LinkDisplayStyle,
   LinkMetricDisplay,
@@ -7,10 +8,32 @@ import type {
   NodeDisplayMode,
 } from '@gmj/shared';
 import { Button } from '@gmj/ui';
-import { Boxes, Focus, Maximize, Minus, Plus, Share2 } from 'lucide-react';
+import {
+  Boxes,
+  ChevronLeft,
+  ChevronRight,
+  Focus,
+  Maximize,
+  Minus,
+  Plus,
+  Share2,
+  X,
+} from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
 import { updateNetworkMap } from '@/lib/api';
+import { useMediaQuery } from '@/lib/use-media-query';
 import { useMapStore } from '@/store/map-store';
+
+const VISUAL_PANEL_COLLAPSED_KEY = 'netvision.mapVisualPanelCollapsed';
+
+function readCollapsedPreference(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return window.localStorage.getItem(VISUAL_PANEL_COLLAPSED_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
 
 const nodeModes: Array<[NodeDisplayMode, string]> = [
   ['ICON_2D', 'Ícones 2D'],
@@ -30,20 +53,12 @@ const metricModes: Array<[LinkMetricDisplay, string]> = [
   ['NONE', 'Nenhum'],
 ];
 
-export function MapControls() {
-  const flow = useReactFlow();
+function VisualPanelContent() {
   const map = useMapStore((state) => state.map);
-  const preferences = useMapStore((state) => state.preferences);
-  const setPreference = useMapStore((state) => state.setPreference);
   const setNodeDisplayMode = useMapStore((state) => state.setNodeDisplayMode);
   const setLinkDisplayStyle = useMapStore((state) => state.setLinkDisplayStyle);
   const setLinkMetricDisplay = useMapStore((state) => state.setLinkMetricDisplay);
   const setMapScales = useMapStore((state) => state.setMapScales);
-
-  const fullscreen = async () => {
-    if (document.fullscreenElement) await document.exitFullscreen();
-    else await document.documentElement.requestFullscreen();
-  };
 
   const persist = (settings: MapSettingsUpdate) => {
     if (map) void updateNetworkMap(map.id, { settings }).catch(() => undefined);
@@ -58,73 +73,168 @@ export function MapControls() {
 
   return (
     <>
-      <div className="visual-controls">
-        <div className="visual-controls__title">
-          <Boxes size={13} /> Visual do mapa
-        </div>
-        <SegmentedControl
-          label="Equipamentos"
-          value={map?.settings.nodeDisplayMode ?? 'ICON_2D'}
-          options={nodeModes}
-          onChange={(value) => {
-            setNodeDisplayMode(value);
-            persist({ nodeDisplayMode: value });
-          }}
-        />
-        <SegmentedControl
-          label="Enlaces"
-          value={map?.settings.linkDisplayStyle ?? 'HYBRID'}
-          options={linkStyles}
-          onChange={(value) => {
-            setLinkDisplayStyle(value);
-            persist({ linkDisplayStyle: value });
-          }}
-        />
-        <SegmentedControl
-          label="Métrica"
-          value={map?.settings.linkMetricDisplay ?? 'BOTH'}
-          options={metricModes}
-          onChange={(value) => {
-            setLinkMetricDisplay(value);
-            persist({ linkMetricDisplay: value });
-          }}
-        />
-        <div className="scale-presets" aria-label="Presets de escala">
-          <span>Escala</span>
-          {(
-            [
-              ['Compacto', 80],
-              ['Normal', 100],
-              ['Grande', 130],
-            ] as const
-          ).map(([label, value]) => (
+      <SegmentedControl
+        label="Equipamentos"
+        value={map?.settings.nodeDisplayMode ?? 'ICON_2D'}
+        options={nodeModes}
+        onChange={(value) => {
+          setNodeDisplayMode(value);
+          persist({ nodeDisplayMode: value });
+        }}
+      />
+      <SegmentedControl
+        label="Enlaces"
+        value={map?.settings.linkDisplayStyle ?? 'HYBRID'}
+        options={linkStyles}
+        onChange={(value) => {
+          setLinkDisplayStyle(value);
+          persist({ linkDisplayStyle: value });
+        }}
+      />
+      <SegmentedControl
+        label="Métrica"
+        value={map?.settings.linkMetricDisplay ?? 'BOTH'}
+        options={metricModes}
+        onChange={(value) => {
+          setLinkMetricDisplay(value);
+          persist({ linkMetricDisplay: value });
+        }}
+      />
+      <div className="scale-presets" aria-label="Presets de escala">
+        <span>Escala</span>
+        {(
+          [
+            ['Compacto', 80],
+            ['Normal', 100],
+            ['Grande', 130],
+          ] as const
+        ).map(([label, value]) => (
+          <button
+            type="button"
+            key={value}
+            onClick={() => changeScales({ nodeScale: value, linkScale: value, labelScale: value })}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <ScaleControl
+        label="Nós"
+        value={map?.settings.nodeScale ?? 100}
+        onChange={(nodeScale) => changeScales({ nodeScale })}
+      />
+      <ScaleControl
+        label="Links"
+        value={map?.settings.linkScale ?? 100}
+        onChange={(linkScale) => changeScales({ linkScale })}
+      />
+      <ScaleControl
+        label="Labels"
+        value={map?.settings.labelScale ?? 100}
+        onChange={(labelScale) => changeScales({ labelScale })}
+      />
+    </>
+  );
+}
+
+export function MapControls() {
+  const flow = useReactFlow();
+  const map = useMapStore((state) => state.map);
+  const preferences = useMapStore((state) => state.preferences);
+  const setPreference = useMapStore((state) => state.setPreference);
+  const [collapsed, setCollapsed] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const isMobile = useMediaQuery('(max-width: 720px)');
+
+  useEffect(() => {
+    setCollapsed(readCollapsedPreference());
+  }, []);
+
+  const fullscreen = async () => {
+    if (document.fullscreenElement) await document.exitFullscreen();
+    else await document.documentElement.requestFullscreen();
+  };
+
+  const persist = (settings: MapSettingsUpdate) => {
+    if (map) void updateNetworkMap(map.id, { settings }).catch(() => undefined);
+  };
+
+  const setCollapsedPersist = (value: boolean) => {
+    setCollapsed(value);
+    try {
+      window.localStorage.setItem(VISUAL_PANEL_COLLAPSED_KEY, value ? '1' : '0');
+    } catch {
+      // Ignore storage failures (private mode, quotas, etc).
+    }
+  };
+
+  return (
+    <>
+      {isMobile ? (
+        <>
+          <button
+            type="button"
+            className="visual-sheet-fab"
+            aria-label="Abrir Visual do mapa"
+            onClick={() => setSheetOpen(true)}
+          >
+            <Boxes size={16} />
+            <span>Visual</span>
+          </button>
+          {sheetOpen && (
+            <div className="visual-sheet-backdrop" onClick={() => setSheetOpen(false)}>
+              <section
+                className="visual-sheet"
+                role="dialog"
+                aria-modal="true"
+                aria-label="Visual do mapa"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <header className="visual-sheet__header">
+                  <span>
+                    <Boxes size={13} /> Visual do mapa
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Fechar Visual do mapa"
+                    onClick={() => setSheetOpen(false)}
+                  >
+                    <X size={16} />
+                  </button>
+                </header>
+                <div className="visual-sheet__scroll">
+                  <VisualPanelContent />
+                </div>
+              </section>
+            </div>
+          )}
+        </>
+      ) : collapsed ? (
+        <button
+          type="button"
+          className="visual-controls-rail"
+          aria-label="Expandir Visual do mapa"
+          onClick={() => setCollapsedPersist(false)}
+        >
+          <Boxes size={15} />
+          <ChevronLeft size={13} />
+        </button>
+      ) : (
+        <div className="visual-controls">
+          <div className="visual-controls__title">
+            <Boxes size={13} /> Visual do mapa
             <button
               type="button"
-              key={value}
-              onClick={() =>
-                changeScales({ nodeScale: value, linkScale: value, labelScale: value })
-              }
+              className="visual-controls__collapse"
+              aria-label="Recolher Visual do mapa"
+              onClick={() => setCollapsedPersist(true)}
             >
-              {label}
+              <ChevronRight size={13} />
             </button>
-          ))}
+          </div>
+          <VisualPanelContent />
         </div>
-        <ScaleControl
-          label="Nós"
-          value={map?.settings.nodeScale ?? 100}
-          onChange={(nodeScale) => changeScales({ nodeScale })}
-        />
-        <ScaleControl
-          label="Links"
-          value={map?.settings.linkScale ?? 100}
-          onChange={(linkScale) => changeScales({ linkScale })}
-        />
-        <ScaleControl
-          label="Labels"
-          value={map?.settings.labelScale ?? 100}
-          onChange={(labelScale) => changeScales({ labelScale })}
-        />
-      </div>
+      )}
 
       <div className="map-controls">
         <div className="map-controls__zoom">

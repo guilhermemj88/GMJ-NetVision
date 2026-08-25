@@ -3,6 +3,7 @@ export type MplsSource = 'SNMP';
 export type MplsStatus = 'UP' | 'DOWN' | 'DEGRADED' | 'ADMIN_DOWN' | 'UNKNOWN';
 export type MplsVsiOperationalStatus = 'UP' | 'DOWN' | 'ADMIN_DOWN' | 'UNKNOWN';
 export type MplsAdminStatus = 'UP' | 'DOWN' | 'UNKNOWN';
+export type MplsAcStatus = 'UP' | 'DOWN' | 'UNKNOWN';
 export type MplsPwStatus = 'DOWN' | 'UP' | 'PLUG_OUT' | 'BACKUP' | 'UNKNOWN';
 export type MplsPwState = 'DOWN' | 'UP' | 'UNKNOWN';
 export type MplsPwWorkingState = 'MASTER' | 'BACKUP' | 'UNKNOWN';
@@ -38,6 +39,36 @@ export interface MplsPw {
   updatedAt: string;
 }
 
+export interface MplsCapabilities {
+  vsi: boolean;
+  ac: boolean;
+  pw: boolean;
+}
+
+export interface MplsAcInterface {
+  id: string;
+  name: string;
+  alias: string;
+  ifIndex: number;
+}
+
+export interface MplsAc {
+  id: string;
+  hostId: string;
+  mplsVsiId: string;
+  vsiName: string;
+  ifIndex: number;
+  interfaceId: string | null;
+  interface: MplsAcInterface | null;
+  status: MplsAcStatus;
+  upStartTimeRaw: string | null;
+  upSumTimeRaw: number | null;
+  source: MplsSource;
+  lastSeenAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface MplsVsi {
   id: string;
   hostId: string;
@@ -58,6 +89,7 @@ export interface MplsVsi {
   lastSeenAt: string;
   createdAt: string;
   updatedAt: string;
+  acs: MplsAc[];
   pws: MplsPw[];
 }
 
@@ -88,12 +120,28 @@ export interface MplsStateEvent {
 
 export interface MplsHostOverview {
   supported: boolean;
+  capabilities: MplsCapabilities;
   source: MplsSource;
   lastPollingAt: string | null;
   lastSuccessAt: string | null;
   lastErrorSafe: string | null;
   summary: MplsSummary;
   vsis: MplsVsi[];
+}
+
+export function summarizeMpls(vsis: MplsVsi[]): MplsSummary {
+  const pws = vsis.flatMap((vsi) => vsi.pws);
+  return {
+    vsiTotal: vsis.length,
+    vsiUp: vsis.filter((vsi) => vsi.status === 'UP').length,
+    vsiDown: vsis.filter((vsi) => vsi.status === 'DOWN').length,
+    vsiDegraded: vsis.filter((vsi) => vsi.status === 'DEGRADED').length,
+    vsiAdminDown: vsis.filter((vsi) => vsi.status === 'ADMIN_DOWN').length,
+    vsiUnknown: vsis.filter((vsi) => vsi.status === 'UNKNOWN').length,
+    pwTotal: pws.length,
+    pwUp: pws.filter((pw) => pw.status === 'UP').length,
+    pwDown: pws.filter((pw) => pw.status === 'DOWN' || pw.status === 'PLUG_OUT').length,
+  };
 }
 
 export const EMPTY_MPLS_SUMMARY: MplsSummary = {

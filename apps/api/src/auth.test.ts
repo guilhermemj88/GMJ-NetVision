@@ -102,6 +102,28 @@ describe('Auth and public views', () => {
   });
 
   it('serves a MAP public view with only its own sanitized map', async () => {
+    const privateMap = (await authed({ method: 'GET', url: '/api/maps/backbone-main' })).json();
+    const unilateral = privateMap.links[0];
+    const configured = await authed({
+      method: 'PATCH',
+      url: `/api/maps/backbone-main/links/${unilateral.id}`,
+      payload: {
+        sourceInterfaceId: unilateral.sourceInterfaceId,
+        targetInterfaceId: null,
+        capacityBps: unilateral.capacityBps,
+        autoCapacityBps: unilateral.autoCapacityBps,
+        capacitySource: unilateral.capacitySource,
+        trafficMode: 'SINGLE_ENDED',
+        customColor: '#34a853',
+        animationEnabled: true,
+        label: unilateral.label,
+        metricSource: unilateral.metricSource,
+        visualStyle: unilateral.visualStyle,
+        metricDisplay: unilateral.metricDisplay,
+      },
+    });
+    expect(configured.statusCode).toBe(200);
+
     const created = await authed({
       method: 'POST',
       url: '/api/public-views',
@@ -114,6 +136,13 @@ describe('Auth and public views', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json().type).toBe('MAP');
     expect(response.json().map.id).toBe('backbone-main');
+    expect(
+      response.json().map.links.find((link: { id: string }) => link.id === unilateral.id),
+    ).toMatchObject({
+      trafficMode: 'SINGLE_ENDED',
+      customColor: '#34a853',
+      animationEnabled: true,
+    });
     const device = response.json().map.devices[0];
     expect(device).not.toHaveProperty('snmp');
     expect(device).not.toHaveProperty('ssh');

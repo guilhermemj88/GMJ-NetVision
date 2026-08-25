@@ -27,12 +27,14 @@ import {
 } from 'lucide-react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
+  automaticLinkCapacity,
   createLocalId,
   type CapacitySource,
   type CreateLinkInput,
   type DeviceType,
   type LinkDisplayStyle,
   type LinkMetricDisplay,
+  type LinkTrafficMode,
   type MapMode,
   type NetworkInterface,
 } from '@gmj/shared';
@@ -138,30 +140,41 @@ function CreateLinkPanel() {
   const [metricSource, setMetricSource] = useState<'DEMO' | 'ZABBIX'>('DEMO');
   const [visualStyle, setVisualStyle] = useState<LinkDisplayStyle | null>(null);
   const [metricDisplay, setMetricDisplay] = useState<LinkMetricDisplay | null>(null);
-  const defaultSourceInterfaceId = source?.kind === 'device'
-    ? firstInterfaceId(source.interfaces)
-    : '';
-  const defaultTargetInterfaceId = target?.kind === 'device'
-    ? firstInterfaceId(target.interfaces)
-    : '';
+  const [trafficMode, setTrafficMode] = useState<LinkTrafficMode>('BIDIRECTIONAL');
+  const [singleEndedSide, setSingleEndedSide] = useState<'SOURCE' | 'TARGET'>('SOURCE');
+  const [customColor, setCustomColor] = useState<string | null>(null);
+  const [animationEnabled, setAnimationEnabled] = useState<boolean | null>(null);
+  const defaultSourceInterfaceId =
+    source?.kind === 'device' ? firstInterfaceId(source.interfaces) : '';
+  const defaultTargetInterfaceId =
+    target?.kind === 'device' ? firstInterfaceId(target.interfaces) : '';
+  const monitoredSide =
+    source?.kind === 'device' && target?.kind !== 'device'
+      ? 'SOURCE'
+      : target?.kind === 'device' && source?.kind !== 'device'
+        ? 'TARGET'
+        : singleEndedSide;
+  const effectiveSourceInterfaceId =
+    source?.kind === 'device' && (trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'SOURCE')
+      ? sourceInterfaceId || defaultSourceInterfaceId
+      : '';
+  const effectiveTargetInterfaceId =
+    target?.kind === 'device' && (trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'TARGET')
+      ? targetInterfaceId || defaultTargetInterfaceId
+      : '';
   const selectedSourceInterface =
     source?.kind === 'device'
-      ? source.interfaces.find(
-          (item) => item.id === (sourceInterfaceId || defaultSourceInterfaceId),
-        )
+      ? source.interfaces.find((item) => item.id === effectiveSourceInterfaceId)
       : undefined;
   const selectedTargetInterface =
     target?.kind === 'device'
-      ? target.interfaces.find(
-          (item) => item.id === (targetInterfaceId || defaultTargetInterfaceId),
-        )
+      ? target.interfaces.find((item) => item.id === effectiveTargetInterfaceId)
       : undefined;
-  const autoCapacityBps = Math.max(
-    1,
-    Math.min(
-      selectedSourceInterface?.speedBps ?? 1_000_000_000,
-      selectedTargetInterface?.speedBps ?? 1_000_000_000,
-    ),
+  const autoCapacityBps = automaticLinkCapacity(
+    selectedSourceInterface,
+    selectedTargetInterface,
+    trafficMode,
+    1_000_000_000,
   );
   const manualCapacityBps = capacity * (capacityUnit === 'Gbps' ? 1_000_000_000 : 1_000_000);
 
@@ -171,18 +184,21 @@ function CreateLinkPanel() {
           ...(source.kind === 'device'
             ? {
                 sourceDeviceId: source.id,
-                sourceInterfaceId: sourceInterfaceId || defaultSourceInterfaceId,
+                sourceInterfaceId: effectiveSourceInterfaceId || null,
               }
             : { sourceNodeId: source.id }),
           ...(target.kind === 'device'
             ? {
                 targetDeviceId: target.id,
-                targetInterfaceId: targetInterfaceId || defaultTargetInterfaceId,
+                targetInterfaceId: effectiveTargetInterfaceId || null,
               }
             : { targetNodeId: target.id }),
           capacityBps: capacitySource === 'AUTO' ? autoCapacityBps : manualCapacityBps,
           autoCapacityBps,
           capacitySource,
+          trafficMode,
+          customColor,
+          animationEnabled,
           label,
           metricSource,
           visualStyle,
@@ -193,8 +209,10 @@ function CreateLinkPanel() {
   const canSubmit =
     Boolean(input) &&
     sourceId !== targetId &&
-    (source?.kind !== 'device' || Boolean(input?.sourceInterfaceId)) &&
-    (target?.kind !== 'device' || Boolean(input?.targetInterfaceId));
+    (trafficMode === 'SINGLE_ENDED'
+      ? Boolean(input?.sourceInterfaceId) !== Boolean(input?.targetInterfaceId)
+      : (source?.kind !== 'device' || Boolean(input?.sourceInterfaceId)) &&
+        (target?.kind !== 'device' || Boolean(input?.targetInterfaceId)));
 
   const mutation = useMutation({
     mutationFn: async () => {
@@ -238,16 +256,17 @@ function CreateLinkPanel() {
                 ))}
               </select>
             </label>
-            {source?.kind === 'device' && (
-              <div className="form-field">
-                <span>Interface</span>
-                <InterfacePicker
-                  interfaces={source.interfaces}
-                  value={sourceInterfaceId || defaultSourceInterfaceId}
-                  onChange={setSourceInterfaceId}
-                />
-              </div>
-            )}
+            {source?.kind === 'device' &&
+              (trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'SOURCE') && (
+                <div className="form-field">
+                  <span>Interface</span>
+                  <InterfacePicker
+                    interfaces={source.interfaces}
+                    value={sourceInterfaceId || defaultSourceInterfaceId}
+                    onChange={setSourceInterfaceId}
+                  />
+                </div>
+              )}
           </div>
           <div className="link-form-route__connector">
             <span />
@@ -271,17 +290,81 @@ function CreateLinkPanel() {
                 ))}
               </select>
             </label>
-            {target?.kind === 'device' && (
-              <div className="form-field">
-                <span>Interface</span>
-                <InterfacePicker
-                  interfaces={target.interfaces}
-                  value={targetInterfaceId || defaultTargetInterfaceId}
-                  onChange={setTargetInterfaceId}
-                />
-              </div>
-            )}
+            {target?.kind === 'device' &&
+              (trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'TARGET') && (
+                <div className="form-field">
+                  <span>Interface</span>
+                  <InterfacePicker
+                    interfaces={target.interfaces}
+                    value={targetInterfaceId || defaultTargetInterfaceId}
+                    onChange={setTargetInterfaceId}
+                  />
+                </div>
+              )}
           </div>
+        </div>
+        <div className="form-grid form-grid--link-options">
+          <label>
+            Modo de telemetria
+            <select
+              value={trafficMode}
+              onChange={(event) => setTrafficMode(event.target.value as LinkTrafficMode)}
+            >
+              <option value="BIDIRECTIONAL">Bidirecional</option>
+              <option value="SINGLE_ENDED">Uma ponta monitorada</option>
+            </select>
+          </label>
+          {trafficMode === 'SINGLE_ENDED' &&
+            source?.kind === 'device' &&
+            target?.kind === 'device' && (
+              <label>
+                Ponta monitorada
+                <select
+                  value={singleEndedSide}
+                  onChange={(event) =>
+                    setSingleEndedSide(event.target.value as 'SOURCE' | 'TARGET')
+                  }
+                >
+                  <option value="SOURCE">Ponta A</option>
+                  <option value="TARGET">Ponta B</option>
+                </select>
+              </label>
+            )}
+          <label>
+            Cor do enlace
+            <select
+              value={customColor === null ? 'AUTO' : 'CUSTOM'}
+              onChange={(event) => setCustomColor(event.target.value === 'AUTO' ? null : '#40c8e8')}
+            >
+              <option value="AUTO">Automática</option>
+              <option value="CUSTOM">Personalizada</option>
+            </select>
+          </label>
+          {customColor !== null && (
+            <label>
+              Seletor de cor
+              <input
+                type="color"
+                value={customColor}
+                onChange={(event) => setCustomColor(event.target.value)}
+              />
+            </label>
+          )}
+          <label>
+            Animação
+            <select
+              value={animationEnabled === null ? 'INHERIT' : animationEnabled ? 'ON' : 'OFF'}
+              onChange={(event) =>
+                setAnimationEnabled(
+                  event.target.value === 'INHERIT' ? null : event.target.value === 'ON',
+                )
+              }
+            >
+              <option value="INHERIT">Herdar do mapa</option>
+              <option value="ON">Ligada</option>
+              <option value="OFF">Desligada</option>
+            </select>
+          </label>
         </div>
         <div className="capacity-source-picker">
           <span>Origem da capacidade</span>
@@ -663,13 +746,17 @@ function AddDevicePanel() {
                 className="tiny-button"
                 onClick={() =>
                   setSelected(
-                    selected.length === filteredHosts.length ? [] : filteredHosts.map((host) => host.id),
+                    selected.length === filteredHosts.length
+                      ? []
+                      : filteredHosts.map((host) => host.id),
                   )
                 }
               >
                 {selected.length === filteredHosts.length ? 'Desmarcar todos' : 'Selecionar todos'}
               </button>
-              <span>{selected.length} selecionado{selected.length === 1 ? '' : 's'}</span>
+              <span>
+                {selected.length} selecionado{selected.length === 1 ? '' : 's'}
+              </span>
             </div>
 
             <div className="host-selection-list">
@@ -699,7 +786,15 @@ function AddDevicePanel() {
                         {host.managementIp} · {host.vendor || '—'} · {host.model || '—'}
                       </span>
                     </div>
-                    <small>{host.useZabbix ? 'Zabbix' : host.sshEnabled ? 'SSH' : host.snmpEnabled ? 'SNMP' : 'Manual'}</small>
+                    <small>
+                      {host.useZabbix
+                        ? 'Zabbix'
+                        : host.sshEnabled
+                          ? 'SSH'
+                          : host.snmpEnabled
+                            ? 'SNMP'
+                            : 'Manual'}
+                    </small>
                   </label>
                 );
               })}
@@ -713,7 +808,10 @@ function AddDevicePanel() {
             </label>
             <label>
               Hostname
-              <input value={form.hostname} onChange={(event) => update('hostname', event.target.value)} />
+              <input
+                value={form.hostname}
+                onChange={(event) => update('hostname', event.target.value)}
+              />
             </label>
             <label>
               IP de gestão
@@ -721,7 +819,10 @@ function AddDevicePanel() {
             </label>
             <label>
               Tipo
-              <select value={form.deviceType} onChange={(event) => update('deviceType', event.target.value)}>
+              <select
+                value={form.deviceType}
+                onChange={(event) => update('deviceType', event.target.value)}
+              >
                 {types.map((type) => (
                   <option key={type}>{type}</option>
                 ))}

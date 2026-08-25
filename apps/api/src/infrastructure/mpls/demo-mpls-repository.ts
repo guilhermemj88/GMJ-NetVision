@@ -10,6 +10,7 @@ import type { MplsRepository } from './mpls-repository';
 
 const unavailable = (): MplsHostOverview => ({
   supported: false,
+  capabilities: { vsi: false, ac: false, pw: false },
   source: 'SNMP',
   lastPollingAt: null,
   lastSuccessAt: null,

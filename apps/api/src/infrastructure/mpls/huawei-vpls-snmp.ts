@@ -1,4 +1,5 @@
 import type {
+  MplsAcStatus,
   MplsAdminStatus,
   MplsPwState,
   MplsPwStatus,
@@ -9,6 +10,9 @@ import type {
 import type { SnmpClient, SnmpRequestOptions, SnmpVarBind } from '../../domain/ports';
 import { decodeSnmpText } from '../snmp/snmp-text';
 import {
+  HUAWEI_VPLS_AC_COLUMNS,
+  HUAWEI_VPLS_AC_ENTRY_OID,
+  HUAWEI_VPLS_AC_WALK_COLUMNS,
   HUAWEI_VPLS_PW_COLUMNS,
   HUAWEI_VPLS_PW_ENTRY_OID,
   HUAWEI_VPLS_PW_WALK_COLUMNS,
@@ -18,6 +22,8 @@ import {
 } from './huawei-vpls-oids';
 import {
   oidSuffix,
+  parseHuaweiAcIndex,
+  parseHuaweiAcStatus,
   parseHuaweiAdminStatus,
   parseHuaweiDateAndTime,
   parseHuaweiPwIndex,
@@ -50,6 +56,16 @@ export interface CollectedMplsPw {
   statusObserved: boolean;
 }
 
+export interface CollectedMplsAc {
+  key: string;
+  vsiName: string;
+  ifIndex: number;
+  status: MplsAcStatus;
+  upStartTimeRaw: string | null;
+  upSumTimeRaw: bigint | null;
+  statusObserved: boolean;
+}
+
 export interface CollectedMplsVsi {
   name: string;
   signalingType: string;
@@ -63,6 +79,8 @@ export interface CollectedMplsVsi {
   tunnelPolicy: string | null;
   description: string | null;
   statusObserved: boolean;
+  statusComplete: boolean;
+  acs: CollectedMplsAc[];
   pws: CollectedMplsPw[];
 }
 
@@ -70,8 +88,14 @@ export interface HuaweiVplsCollection {
   supported: boolean;
   collectedAt: Date;
   errors: string[];
+  capabilities: {
+    vsi: boolean;
+    ac: boolean | null;
+    pw: boolean | null;
+  };
   collectedColumns: {
     vsi: number[];
+    ac: number[];
     pw: number[];
   };
   vsis: CollectedMplsVsi[];
@@ -88,9 +112,10 @@ interface ColumnWalkResult {
   failures: ColumnWalkFailure[];
 }
 
-const COLUMN_WALK_CONCURRENCY = 4;
+const COLUMN_WALK_CONCURRENCY = 2;
 
-interface VsiAccumulator extends Omit<CollectedMplsVsi, 'status' | 'pws'> {
+interface VsiAccumulator extends Omit<CollectedMplsVsi, 'status' | 'acs' | 'pws'> {
+  acs: CollectedMplsAc[];
   pws: CollectedMplsPw[];
 }
 
@@ -109,15 +134,16 @@ function safeWalkError(error: unknown): string {
   return message.slice(0, 240);
 }
 
-function formatColumnFailure(table: 'VSI' | 'PW', failure: ColumnWalkFailure): string {
+function formatColumnFailure(table: 'VSI' | 'AC' | 'PW', failure: ColumnWalkFailure): string {
   return `${table} .${failure.column}: ${failure.message}`;
 }
 
-function aggregateStatus(vsi: VsiAccumulator): MplsStatus {
+function aggregateStatus(vsi: VsiAccumulator, pwSupported: boolean | null): MplsStatus {
   if (vsi.adminStatus === 'DOWN' || vsi.operationalStatus === 'ADMIN_DOWN') return 'ADMIN_DOWN';
   if (!vsi.statusObserved || vsi.operationalStatus === 'UNKNOWN') return 'UNKNOWN';
   if (vsi.operationalStatus === 'DOWN') return 'DOWN';
-  if (!vsi.pws.length || vsi.pws.some((pw) => !pw.statusObserved)) return 'UNKNOWN';
+  if (pwSupported !== true) return 'UP';
+  if (vsi.pws.some((pw) => !pw.statusObserved)) return 'UNKNOWN';
   if (vsi.pws.some((pw) => pw.status === 'DOWN' || pw.status === 'PLUG_OUT')) return 'DEGRADED';
   return vsi.pws.every((pw) => pw.status === 'UP') ? 'UP' : 'UNKNOWN';
 }
@@ -135,7 +161,19 @@ function defaultVsi(name: string): VsiAccumulator {
     tunnelPolicy: null,
     description: null,
     statusObserved: false,
+    statusComplete: false,
+    acs: [],
     pws: [],
+  };
+}
+
+function defaultAc(index: NonNullable<ReturnType<typeof parseHuaweiAcIndex>>): CollectedMplsAc {
+  return {
+    ...index,
+    status: 'UNKNOWN',
+    upStartTimeRaw: null,
+    upSumTimeRaw: null,
+    statusObserved: false,
   };
 }
 
@@ -179,9 +217,23 @@ export class HuaweiVplsSnmpCollector {
         supported: false,
         collectedAt,
         errors: [],
-        collectedColumns: { vsi: vsiWalk.successfulColumns, pw: [] },
+        capabilities: { vsi: false, ac: false, pw: false },
+        collectedColumns: { vsi: vsiWalk.successfulColumns, ac: [], pw: [] },
         vsis: [],
       };
+    }
+
+    const acWalk = await this.walkColumns(
+      host,
+      HUAWEI_VPLS_AC_ENTRY_OID,
+      HUAWEI_VPLS_AC_WALK_COLUMNS,
+      options,
+    );
+    const acs = this.collectAcs(acWalk.rows);
+    const acSupported = this.tableCapability(acs.size, acWalk);
+    for (const ac of acs.values()) {
+      const vsi = vsis.get(ac.vsiName);
+      if (vsi) vsi.acs.push(ac);
     }
 
     const pwWalk = await this.walkColumns(
@@ -191,25 +243,40 @@ export class HuaweiVplsSnmpCollector {
       options,
     );
     const pws = this.collectPws(pwWalk.rows);
+    const pwSupported = this.tableCapability(pws.size, pwWalk);
     for (const pw of pws.values()) {
       const vsi = vsis.get(pw.vsiName);
       if (vsi) vsi.pws.push(pw);
+    }
+    for (const vsi of vsis.values()) {
+      vsi.statusComplete =
+        vsi.statusObserved &&
+        pwSupported !== null &&
+        (pwSupported === false || vsi.pws.every((pw) => pw.statusObserved));
     }
     return {
       supported: true,
       collectedAt,
       errors: [
         ...vsiWalk.failures.map((failure) => formatColumnFailure('VSI', failure)),
+        ...acWalk.failures.map((failure) => formatColumnFailure('AC', failure)),
         ...pwWalk.failures.map((failure) => formatColumnFailure('PW', failure)),
       ],
+      capabilities: { vsi: true, ac: acSupported, pw: pwSupported },
       collectedColumns: {
         vsi: vsiWalk.successfulColumns,
+        ac: acWalk.successfulColumns,
         pw: pwWalk.successfulColumns,
       },
       vsis: [...vsis.values()]
-        .map((vsi) => ({ ...vsi, status: aggregateStatus(vsi) }))
+        .map((vsi) => ({ ...vsi, status: aggregateStatus(vsi, pwSupported) }))
         .sort((left, right) => left.name.localeCompare(right.name, 'pt-BR')),
     };
+  }
+
+  private tableCapability(entryCount: number, walk: ColumnWalkResult): boolean | null {
+    if (entryCount > 0) return true;
+    return walk.failures.length ? null : false;
   }
 
   private async walkColumns(
@@ -297,6 +364,33 @@ export class HuaweiVplsSnmpCollector {
       if (column === HUAWEI_VPLS_PW_COLUMNS.workingState)
         pw.workingState = parseHuaweiPwWorkingState(integer(row.value));
       result.set(parsedIndex.key, pw);
+    }
+    return result;
+  }
+
+  private collectAcs(rows: SnmpVarBind[]): Map<string, CollectedMplsAc> {
+    const result = new Map<string, CollectedMplsAc>();
+    for (const row of rows) {
+      const suffix = oidSuffix(row.oid, HUAWEI_VPLS_AC_ENTRY_OID);
+      if (!suffix || suffix.length < 3) continue;
+      const [column, ...index] = suffix;
+      const parsedIndex = parseHuaweiAcIndex(index);
+      if (!parsedIndex || !Object.values(HUAWEI_VPLS_AC_COLUMNS).includes(column as never)) {
+        continue;
+      }
+      const ac = result.get(parsedIndex.key) ?? defaultAc(parsedIndex);
+      if (column === HUAWEI_VPLS_AC_COLUMNS.status) {
+        ac.status = parseHuaweiAcStatus(integer(row.value));
+        ac.statusObserved = true;
+      }
+      if (column === HUAWEI_VPLS_AC_COLUMNS.upStartTime) {
+        ac.upStartTimeRaw = text(row.value);
+      }
+      if (column === HUAWEI_VPLS_AC_COLUMNS.upSumTime) {
+        const raw = integer(row.value);
+        ac.upSumTimeRaw = raw === null ? null : BigInt(raw);
+      }
+      result.set(parsedIndex.key, ac);
     }
     return result;
   }

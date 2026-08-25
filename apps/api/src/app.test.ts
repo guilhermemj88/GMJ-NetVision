@@ -20,6 +20,81 @@ describe('GMJ NetVision API', () => {
     expect(response.json().devices).toHaveLength(13);
   });
 
+  it('creates, updates and returns persistent single-ended link options', async () => {
+    const map = (await app.inject({ method: 'GET', url: '/api/maps/backbone-main' })).json();
+    const source = map.devices.find(
+      (device: { interfaces: unknown[] }) => device.interfaces.length,
+    );
+    const genericNode = await app.inject({
+      method: 'POST',
+      url: '/api/maps/backbone-main/generic-nodes',
+      payload: { type: 'internet', label: 'TRANSIT', position: { x: 100, y: 100 } },
+    });
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/maps/backbone-main/links',
+      payload: {
+        sourceDeviceId: source.id,
+        sourceInterfaceId: source.interfaces[0].id,
+        targetNodeId: genericNode.json().id,
+        targetInterfaceId: null,
+        capacityBps: source.interfaces[0].speedBps,
+        autoCapacityBps: source.interfaces[0].speedBps,
+        capacitySource: 'AUTO',
+        trafficMode: 'SINGLE_ENDED',
+        customColor: '#34a853',
+        animationEnabled: true,
+        label: 'Internet Transit',
+        metricSource: 'DEMO',
+        visualStyle: null,
+        metricDisplay: null,
+      },
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      trafficMode: 'SINGLE_ENDED',
+      customColor: '#34a853',
+      animationEnabled: true,
+      status: 'UP',
+      autoCapacityBps: source.interfaces[0].speedBps,
+    });
+
+    const updated = await app.inject({
+      method: 'PATCH',
+      url: `/api/maps/backbone-main/links/${created.json().id}`,
+      payload: {
+        sourceInterfaceId: source.interfaces[0].id,
+        targetInterfaceId: null,
+        capacityBps: source.interfaces[0].speedBps,
+        autoCapacityBps: source.interfaces[0].speedBps,
+        capacitySource: 'AUTO',
+        trafficMode: 'SINGLE_ENDED',
+        customColor: '#4285f4',
+        animationEnabled: false,
+        label: 'PNI',
+        metricSource: 'DEMO',
+        visualStyle: null,
+        metricDisplay: null,
+      },
+    });
+    expect(updated.json()).toMatchObject({
+      trafficMode: 'SINGLE_ENDED',
+      customColor: '#4285f4',
+      animationEnabled: false,
+      label: 'PNI',
+    });
+
+    const persisted = (await app.inject({ method: 'GET', url: '/api/maps/backbone-main' }))
+      .json()
+      .links.find((link: { id: string }) => link.id === created.json().id);
+    expect(persisted).toMatchObject({
+      trafficMode: 'SINGLE_ENDED',
+      customColor: '#4285f4',
+      animationEnabled: false,
+    });
+  });
+
   it('returns MPLS unavailable without generating demo data', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/hosts/core-01/mpls' });
     expect(response.statusCode).toBe(200);
@@ -344,6 +419,9 @@ describe('GMJ NetVision API', () => {
         capacityBps: 1_000_000_000,
         autoCapacityBps: 1_000_000_000,
         capacitySource: 'AUTO',
+        trafficMode: 'BIDIRECTIONAL',
+        customColor: null,
+        animationEnabled: null,
         label: 'host deletion test',
         metricSource: 'DEMO',
         visualStyle: null,

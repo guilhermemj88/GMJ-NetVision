@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { SnmpClient, SnmpVarBind } from '../../domain/ports';
 import {
+  HUAWEI_VPLS_AC_COLUMNS,
+  HUAWEI_VPLS_AC_ENTRY_OID,
+  HUAWEI_VPLS_AC_WALK_COLUMNS,
   HUAWEI_VPLS_PW_COLUMNS,
   HUAWEI_VPLS_PW_ENTRY_OID,
   HUAWEI_VPLS_PW_WALK_COLUMNS,
@@ -66,6 +69,7 @@ describe('HuaweiVplsSnmpCollector', () => {
     ).collect('10.100.101.8', {});
 
     expect(result.supported).toBe(true);
+    expect(result.capabilities).toEqual({ vsi: true, ac: false, pw: true });
     expect(result.errors).toEqual([]);
     expect(result.vsis).toHaveLength(1);
     expect(result.vsis[0]?.name).toBe('GERENCIA');
@@ -77,6 +81,7 @@ describe('HuaweiVplsSnmpCollector', () => {
     expect(result.vsis[0]?.status).toBe('UP');
     expect(walkedOids).not.toContain(HUAWEI_VPLS_VSI_ENTRY_OID);
     expect(walkedOids).not.toContain(HUAWEI_VPLS_PW_ENTRY_OID);
+    expect(walkedOids).not.toContain(HUAWEI_VPLS_AC_ENTRY_OID);
   });
 
   it('marks a VSI degraded only when a valid PW row is down', async () => {
@@ -121,6 +126,79 @@ describe('HuaweiVplsSnmpCollector', () => {
       statusObserved: false,
     });
     expect(result.vsis[0]?.status).toBe('UNKNOWN');
+  });
+
+  it('keeps an operationally UP VSI as UP when the PW capability is absent', async () => {
+    const vsiIndex = index('GERENCIA');
+    const rows = [
+      row(HUAWEI_VPLS_VSI_ENTRY_OID, HUAWEI_VPLS_VSI_COLUMNS.operationalStatus, vsiIndex, 1),
+      row(HUAWEI_VPLS_VSI_ENTRY_OID, HUAWEI_VPLS_VSI_COLUMNS.adminStatus, vsiIndex, 1),
+    ];
+
+    const result = await new HuaweiVplsSnmpCollector(fixtureClient(rows)).collect('host', {});
+
+    expect(result.capabilities).toEqual({ vsi: true, ac: false, pw: false });
+    expect(result.vsis[0]).toMatchObject({
+      name: 'GERENCIA',
+      operationalStatus: 'UP',
+      status: 'UP',
+      statusComplete: true,
+      pws: [],
+    });
+  });
+
+  it('collects AC independently and preserves raw time values from its indexed columns', async () => {
+    const vsiIndex = index('GERENCIA');
+    const acSuffix = `${vsiIndex}.43`;
+    const rows = [
+      row(HUAWEI_VPLS_VSI_ENTRY_OID, HUAWEI_VPLS_VSI_COLUMNS.operationalStatus, vsiIndex, 1),
+      row(HUAWEI_VPLS_AC_ENTRY_OID, HUAWEI_VPLS_AC_COLUMNS.status, acSuffix, 1),
+      row(
+        HUAWEI_VPLS_AC_ENTRY_OID,
+        HUAWEI_VPLS_AC_COLUMNS.upStartTime,
+        acSuffix,
+        '2025/09/17 20:49:53',
+      ),
+      row(HUAWEI_VPLS_AC_ENTRY_OID, HUAWEI_VPLS_AC_COLUMNS.upSumTime, acSuffix, 29537970),
+    ];
+
+    const result = await new HuaweiVplsSnmpCollector(fixtureClient(rows)).collect('host', {});
+
+    expect(result.capabilities).toEqual({ vsi: true, ac: true, pw: false });
+    expect(result.vsis[0]?.status).toBe('UP');
+    expect(result.vsis[0]?.acs[0]).toMatchObject({
+      vsiName: 'GERENCIA',
+      ifIndex: 43,
+      status: 'UP',
+      upStartTimeRaw: '2025/09/17 20:49:53',
+      upSumTimeRaw: 29537970n,
+    });
+  });
+
+  it('does not invalidate a VSI when AC or PW walks fail', async () => {
+    const vsiIndex = index('GERENCIA');
+    const rows = [
+      row(HUAWEI_VPLS_VSI_ENTRY_OID, HUAWEI_VPLS_VSI_COLUMNS.operationalStatus, vsiIndex, 1),
+    ];
+    const baseClient = fixtureClient(rows);
+    const originalWalk = baseClient.walk.bind(baseClient);
+    baseClient.walk = async (host, oid, options) => {
+      if (
+        oid.startsWith(`${HUAWEI_VPLS_AC_ENTRY_OID}.`) ||
+        oid.startsWith(`${HUAWEI_VPLS_PW_ENTRY_OID}.`)
+      ) {
+        throw new Error('SNMP timeout');
+      }
+      return originalWalk(host, oid, options);
+    };
+
+    const result = await new HuaweiVplsSnmpCollector(baseClient).collect('host', {});
+
+    expect(result.supported).toBe(true);
+    expect(result.capabilities).toEqual({ vsi: true, ac: null, pw: null });
+    expect(result.vsis[0]).toMatchObject({ status: 'UP', statusComplete: false });
+    expect(result.errors.some((error) => error.startsWith('AC .'))).toBe(true);
+    expect(result.errors.some((error) => error.startsWith('PW .'))).toBe(true);
   });
 
   it('collects a tree with more than 4096 objects without exceeding the limit in any walk', async () => {
@@ -181,10 +259,13 @@ describe('HuaweiVplsSnmpCollector', () => {
     expect(result.vsis[0]?.pws).toHaveLength(600);
     expect(Math.max(...walkSizes)).toBe(600);
     expect(walkedOids).toHaveLength(
-      HUAWEI_VPLS_VSI_WALK_COLUMNS.length + HUAWEI_VPLS_PW_WALK_COLUMNS.length,
+      HUAWEI_VPLS_VSI_WALK_COLUMNS.length +
+        HUAWEI_VPLS_AC_WALK_COLUMNS.length +
+        HUAWEI_VPLS_PW_WALK_COLUMNS.length,
     );
     expect(walkedOids).not.toContain(HUAWEI_VPLS_VSI_ENTRY_OID);
     expect(walkedOids).not.toContain(HUAWEI_VPLS_PW_ENTRY_OID);
+    expect(walkedOids).not.toContain(HUAWEI_VPLS_AC_ENTRY_OID);
   });
 
   it('detects capability from valid VSI entries, not model metadata', async () => {

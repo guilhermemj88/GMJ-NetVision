@@ -24,13 +24,16 @@ import {
   X,
 } from 'lucide-react';
 import {
+  automaticLinkCapacity,
   calculateUtilization,
+  directionalLinkMetrics,
   formatBitsPerSecond,
   formatDuration,
   type CapacitySource,
   type DirectionalLinkMetric,
   type LinkDisplayStyle,
   type LinkMetricDisplay,
+  type LinkTrafficMode,
   type MapNode,
   type NetworkInterface,
   type NetworkLink,
@@ -565,6 +568,12 @@ function LinkDrawer({
   const [metricDisplay, setMetricDisplay] = useState<LinkMetricDisplay | ''>(
     link.metricDisplay ?? '',
   );
+  const [trafficMode, setTrafficMode] = useState<LinkTrafficMode>(link.trafficMode);
+  const [singleEndedSide, setSingleEndedSide] = useState<'SOURCE' | 'TARGET'>(
+    link.sourceInterfaceId ? 'SOURCE' : 'TARGET',
+  );
+  const [customColor, setCustomColor] = useState<string | null>(link.customColor);
+  const [animationEnabled, setAnimationEnabled] = useState<boolean | null>(link.animationEnabled);
   const map = useMapStore((state) => state.map);
   const editMode = useMapStore((state) => state.editMode);
   const removeLink = useMapStore((state) => state.removeLink);
@@ -576,52 +585,74 @@ function LinkDrawer({
   const targetNode = map?.nodes.find((item) => item.id === link.targetNodeId);
   const sourceInterface = source?.interfaces.find((item) => item.id === link.sourceInterfaceId);
   const targetInterface = target?.interfaces.find((item) => item.id === link.targetInterfaceId);
-  const editedSourceInterface = source?.interfaces.find((item) => item.id === sourceInterfaceId);
-  const editedTargetInterface = target?.interfaces.find((item) => item.id === targetInterfaceId);
-  const autoCapacityBps = Math.max(
-    1,
-    Math.min(
-      editedSourceInterface?.speedBps ?? link.autoCapacityBps,
-      editedTargetInterface?.speedBps ?? link.autoCapacityBps,
-    ),
+  const monitoredSide =
+    source && !target ? 'SOURCE' : target && !source ? 'TARGET' : singleEndedSide;
+  const effectiveSourceInterfaceId =
+    trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'SOURCE' ? sourceInterfaceId : '';
+  const effectiveTargetInterfaceId =
+    trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'TARGET' ? targetInterfaceId : '';
+  const editedSourceInterface = source?.interfaces.find(
+    (item) => item.id === effectiveSourceInterfaceId,
+  );
+  const editedTargetInterface = target?.interfaces.find(
+    (item) => item.id === effectiveTargetInterfaceId,
+  );
+  const autoCapacityBps = automaticLinkCapacity(
+    editedSourceInterface,
+    editedTargetInterface,
+    trafficMode,
+    link.autoCapacityBps,
   );
   const capacityBps =
     capacitySource === 'AUTO'
       ? autoCapacityBps
       : capacity * (capacityUnit === 'GBPS' ? 1_000_000_000 : 1_000_000);
+  const editedDirections = directionalLinkMetrics(
+    editedSourceInterface,
+    editedTargetInterface,
+    capacityBps,
+    trafficMode,
+  );
+  const editedMonitored =
+    trafficMode === 'SINGLE_ENDED' ? (editedSourceInterface ?? editedTargetInterface) : undefined;
   const editedLink: NetworkLink = {
     ...link,
     label,
-    sourceInterfaceId: sourceInterfaceId || null,
-    targetInterfaceId: targetInterfaceId || null,
+    sourceInterfaceId: effectiveSourceInterfaceId || null,
+    targetInterfaceId: effectiveTargetInterfaceId || null,
     capacityBps,
     autoCapacityBps,
     capacitySource,
+    trafficMode,
+    customColor,
+    animationEnabled,
     visualStyle: visualStyle || null,
     metricDisplay: metricDisplay || null,
-    directions: {
-      A_TO_B: {
-        ...link.directions.A_TO_B,
-        utilization: calculateUtilization(link.directions.A_TO_B.bps, capacityBps),
-      },
-      B_TO_A: {
-        ...link.directions.B_TO_A,
-        utilization: calculateUtilization(link.directions.B_TO_A.bps, capacityBps),
-      },
-    },
-    txUtilization: calculateUtilization(link.directions.A_TO_B.bps, capacityBps),
-    rxUtilization: calculateUtilization(link.directions.B_TO_A.bps, capacityBps),
+    directions: editedDirections,
+    txBps: editedMonitored?.txBps ?? editedDirections.A_TO_B.bps,
+    rxBps: editedMonitored?.rxBps ?? editedDirections.B_TO_A.bps,
+    txUtilization: calculateUtilization(
+      editedMonitored?.txBps ?? editedDirections.A_TO_B.bps,
+      capacityBps,
+    ),
+    rxUtilization: calculateUtilization(
+      editedMonitored?.rxBps ?? editedDirections.B_TO_A.bps,
+      capacityBps,
+    ),
     updatedAt: new Date().toISOString(),
   };
   const updateMutation = useMutation({
     mutationFn: () =>
       updateLinkRequest(link.mapId, link.id, {
-        sourceInterfaceId: sourceInterfaceId || null,
-        targetInterfaceId: targetInterfaceId || null,
+        sourceInterfaceId: effectiveSourceInterfaceId || null,
+        targetInterfaceId: effectiveTargetInterfaceId || null,
         label,
         capacityBps,
         autoCapacityBps,
         capacitySource,
+        trafficMode,
+        customColor,
+        animationEnabled,
         metricSource: link.metricSource,
         visualStyle: visualStyle || null,
         metricDisplay: metricDisplay || null,
@@ -669,17 +700,40 @@ function LinkDrawer({
         />
       </div>
       <section className="drawer-section">
-        <SectionTitle icon={<Activity size={14} />} label="TRÁFEGO BIDIRECIONAL" />
+        <SectionTitle
+          icon={<Activity size={14} />}
+          label={
+            link.trafficMode === 'SINGLE_ENDED'
+              ? 'TRÁFEGO DA INTERFACE MONITORADA'
+              : 'TRÁFEGO BIDIRECIONAL'
+          }
+        />
         <div className="metric-hero">
           <div className="rx">
-            <span>A ← B</span>
-            <strong>{formatBitsPerSecond(bToA.bps)}</strong>
-            <small>{bToA.utilization.toFixed(1)}% utilização</small>
+            <span>{link.trafficMode === 'SINGLE_ENDED' ? 'RX observado' : 'A ← B'}</span>
+            <strong>
+              {formatBitsPerSecond(link.trafficMode === 'SINGLE_ENDED' ? link.rxBps : bToA.bps)}
+            </strong>
+            <small>
+              {(link.trafficMode === 'SINGLE_ENDED'
+                ? link.rxUtilization
+                : bToA.utilization
+              ).toFixed(1)}
+              % utilização
+            </small>
           </div>
           <div className="tx">
-            <span>A → B</span>
-            <strong>{formatBitsPerSecond(aToB.bps)}</strong>
-            <small>{aToB.utilization.toFixed(1)}% utilização</small>
+            <span>{link.trafficMode === 'SINGLE_ENDED' ? 'TX observado' : 'A → B'}</span>
+            <strong>
+              {formatBitsPerSecond(link.trafficMode === 'SINGLE_ENDED' ? link.txBps : aToB.bps)}
+            </strong>
+            <small>
+              {(link.trafficMode === 'SINGLE_ENDED'
+                ? link.txUtilization
+                : aToB.utilization
+              ).toFixed(1)}
+              % utilização
+            </small>
           </div>
         </div>
         <div className="capacity-bar">
@@ -696,15 +750,21 @@ function LinkDrawer({
         <div className="info-grid">
           <Info label="Descoberta" value={link.discoverySource.replace('_', ' / ')} />
           <Info label="Métricas" value={link.metricSource} />
-          <Info label="A → B (validação)" value={trafficValidation(aToB)} />
-          <Info label="B → A (validação)" value={trafficValidation(bToA)} />
+          {link.trafficMode === 'SINGLE_ENDED' ? (
+            <Info label="Validação entre pontas" value="N/D — enlace unilateral" />
+          ) : (
+            <>
+              <Info label="A → B (validação)" value={trafficValidation(aToB)} />
+              <Info label="B → A (validação)" value={trafficValidation(bToA)} />
+            </>
+          )}
           <Info label="Erros RX / TX" value={`${link.rxErrors} / ${link.txErrors}`} />
           <Info label="Discards RX / TX" value={`${link.rxDiscards} / ${link.txDiscards}`} />
         </div>
       </section>
       {editing && !readOnly && (
         <section className="drawer-section edit-link-form">
-          {source && (
+          {source && (trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'SOURCE') && (
             <div className="form-field">
               <span>Interface da ponta A</span>
               <InterfacePicker
@@ -714,7 +774,7 @@ function LinkDrawer({
               />
             </div>
           )}
-          {target && (
+          {target && (trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'TARGET') && (
             <div className="form-field">
               <span>Interface da ponta B</span>
               <InterfacePicker
@@ -727,6 +787,63 @@ function LinkDrawer({
           <label>
             Label
             <input value={label} onChange={(event) => setLabel(event.target.value)} />
+          </label>
+          <label>
+            Modo de telemetria
+            <select
+              value={trafficMode}
+              onChange={(event) => setTrafficMode(event.target.value as LinkTrafficMode)}
+            >
+              <option value="BIDIRECTIONAL">Bidirecional</option>
+              <option value="SINGLE_ENDED">Uma ponta monitorada</option>
+            </select>
+          </label>
+          {trafficMode === 'SINGLE_ENDED' && source && target && (
+            <label>
+              Ponta monitorada
+              <select
+                value={singleEndedSide}
+                onChange={(event) => setSingleEndedSide(event.target.value as 'SOURCE' | 'TARGET')}
+              >
+                <option value="SOURCE">Ponta A</option>
+                <option value="TARGET">Ponta B</option>
+              </select>
+            </label>
+          )}
+          <label>
+            Cor do enlace
+            <select
+              value={customColor === null ? 'AUTO' : 'CUSTOM'}
+              onChange={(event) => setCustomColor(event.target.value === 'AUTO' ? null : '#40c8e8')}
+            >
+              <option value="AUTO">Automática</option>
+              <option value="CUSTOM">Personalizada</option>
+            </select>
+          </label>
+          {customColor !== null && (
+            <label>
+              Seletor de cor
+              <input
+                type="color"
+                value={customColor}
+                onChange={(event) => setCustomColor(event.target.value)}
+              />
+            </label>
+          )}
+          <label>
+            Animação
+            <select
+              value={animationEnabled === null ? 'INHERIT' : animationEnabled ? 'ON' : 'OFF'}
+              onChange={(event) =>
+                setAnimationEnabled(
+                  event.target.value === 'INHERIT' ? null : event.target.value === 'ON',
+                )
+              }
+            >
+              <option value="INHERIT">Herdar do mapa</option>
+              <option value="ON">Ligada</option>
+              <option value="OFF">Desligada</option>
+            </select>
           </label>
           <label>
             Origem da capacidade

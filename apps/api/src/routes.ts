@@ -81,6 +81,13 @@ const linkSchema = z.object({
   capacityBps: z.number().positive(),
   autoCapacityBps: z.number().positive(),
   capacitySource: z.enum(['AUTO', 'MANUAL']),
+  trafficMode: z.enum(['BIDIRECTIONAL', 'SINGLE_ENDED']).optional(),
+  customColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .nullable()
+    .optional(),
+  animationEnabled: z.boolean().nullable().optional(),
   label: z.string().max(80),
   metricSource: z.enum(['DEMO', 'ZABBIX']),
   visualStyle: z.enum(['FLOW', 'WEATHERMAP', 'HYBRID', 'MINIMAL']).nullable(),
@@ -650,7 +657,36 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   app.post('/api/maps/:mapId/links', async (request, reply) => {
     const { mapId } = mapIdParams.parse(request.params);
-    const link = await maps.createLink(mapId, linkSchema.parse(request.body) as CreateLinkInput);
+    const parsed = linkSchema.parse(request.body);
+    const input: CreateLinkInput = {
+      ...(parsed.sourceDeviceId === undefined ? {} : { sourceDeviceId: parsed.sourceDeviceId }),
+      ...(parsed.sourceInterfaceId === undefined
+        ? {}
+        : { sourceInterfaceId: parsed.sourceInterfaceId }),
+      ...(parsed.targetDeviceId === undefined ? {} : { targetDeviceId: parsed.targetDeviceId }),
+      ...(parsed.targetInterfaceId === undefined
+        ? {}
+        : { targetInterfaceId: parsed.targetInterfaceId }),
+      ...(parsed.sourceNodeId === undefined ? {} : { sourceNodeId: parsed.sourceNodeId }),
+      ...(parsed.targetNodeId === undefined ? {} : { targetNodeId: parsed.targetNodeId }),
+      capacityBps: parsed.capacityBps,
+      autoCapacityBps: parsed.autoCapacityBps,
+      capacitySource: parsed.capacitySource,
+      trafficMode: parsed.trafficMode ?? 'BIDIRECTIONAL',
+      customColor: parsed.customColor ?? null,
+      animationEnabled: parsed.animationEnabled ?? null,
+      label: parsed.label,
+      metricSource: parsed.metricSource,
+      visualStyle: parsed.visualStyle,
+      metricDisplay: parsed.metricDisplay,
+    };
+    if (
+      input.trafficMode === 'SINGLE_ENDED' &&
+      Boolean(input.sourceInterfaceId) === Boolean(input.targetInterfaceId)
+    ) {
+      return reply.code(400).send({ message: 'Single-ended link requires exactly one interface' });
+    }
+    const link = await maps.createLink(mapId, input);
     return link ? reply.code(201).send(link) : reply.code(404).send({ message: 'Map not found' });
   });
 
@@ -663,15 +699,34 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         capacityBps: true,
         autoCapacityBps: true,
         capacitySource: true,
+        trafficMode: true,
+        customColor: true,
+        animationEnabled: true,
         label: true,
         metricSource: true,
         visualStyle: true,
         metricDisplay: true,
       })
       .parse(request.body);
-    const { sourceInterfaceId, targetInterfaceId, ...fields } = body;
+    const {
+      sourceInterfaceId,
+      targetInterfaceId,
+      trafficMode,
+      customColor,
+      animationEnabled,
+      ...fields
+    } = body;
+    if (
+      trafficMode === 'SINGLE_ENDED' &&
+      Boolean(sourceInterfaceId) === Boolean(targetInterfaceId)
+    ) {
+      return reply.code(400).send({ message: 'Single-ended link requires exactly one interface' });
+    }
     const link = await maps.updateLink(mapId, linkId, {
       ...fields,
+      ...(trafficMode === undefined ? {} : { trafficMode }),
+      ...(customColor === undefined ? {} : { customColor }),
+      ...(animationEnabled === undefined ? {} : { animationEnabled }),
       ...(sourceInterfaceId === undefined ? {} : { sourceInterfaceId }),
       ...(targetInterfaceId === undefined ? {} : { targetInterfaceId }),
     });

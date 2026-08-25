@@ -55,7 +55,10 @@ function preview(adjacencies: LldpAdjacencyProposal[]): LldpTopologyPreview {
   };
 }
 
-function selection(adjacencyId: string, action: LldpApplySelection['action'] = 'CREATE_LINK'): LldpApplySelection {
+function selection(
+  adjacencyId: string,
+  action: LldpApplySelection['action'] = 'CREATE_LINK',
+): LldpApplySelection {
   return { adjacencyId, action };
 }
 
@@ -63,7 +66,9 @@ const hostA = makeHost({
   id: 'host-a',
   hostname: 'bhe-a',
   managementIp: '10.0.0.1',
-  interfaces: [makeInterface({ id: 'a-if', deviceId: 'host-a', name: '100GE1/0/1', ifIndex: 1001 })],
+  interfaces: [
+    makeInterface({ id: 'a-if', deviceId: 'host-a', name: '100GE1/0/1', ifIndex: 1001 }),
+  ],
 });
 const hostB = makeHost({
   id: 'host-b',
@@ -87,7 +92,11 @@ class FakeLinkRepository {
     return makeMap({ id: 'map-1', links: structuredClone(this.links), devices: hosts });
   }
 
-  async createDiscoveredLink(_mapId: string, input: CreateLinkInput, source: NetworkLink['discoverySource']) {
+  async createDiscoveredLink(
+    _mapId: string,
+    input: CreateLinkInput,
+    source: NetworkLink['discoverySource'],
+  ) {
     const link = makeLink({
       id: `new-${this.links.length + 1}`,
       mapId: 'map-1',
@@ -98,6 +107,9 @@ class FakeLinkRepository {
       capacityBps: input.capacityBps,
       autoCapacityBps: input.autoCapacityBps,
       capacitySource: input.capacitySource,
+      trafficMode: input.trafficMode,
+      customColor: input.customColor,
+      animationEnabled: input.animationEnabled,
       label: input.label,
       metricSource: input.metricSource,
       visualStyle: input.visualStyle,
@@ -117,7 +129,12 @@ describe('TopologyApplyService', () => {
   it('creates only approved links and skips ambiguous neighbors', async () => {
     const proposals = preview([
       adjacency({ id: 'adj-confirmed' }),
-      adjacency({ id: 'adj-probable', confidence: 'PROBABLE', targetPort: '100GE1/0/3', targetInterfaceId: 'b-if-2' }),
+      adjacency({
+        id: 'adj-probable',
+        confidence: 'PROBABLE',
+        targetPort: '100GE1/0/3',
+        targetInterfaceId: 'b-if-2',
+      }),
       adjacency({ id: 'adj-ambiguous', confidence: 'AMBIGUOUS' }),
     ]);
     const result = await applyService().apply('map-1', proposals, [
@@ -132,7 +149,12 @@ describe('TopologyApplyService', () => {
   it('never creates links for ambiguous or unknown neighbors even when selected', async () => {
     const proposals = preview([
       adjacency({ id: 'adj-ambiguous', confidence: 'AMBIGUOUS' }),
-      adjacency({ id: 'adj-unknown', confidence: 'UNKNOWN_NEIGHBOR', targetHostId: null, targetInterfaceId: null }),
+      adjacency({
+        id: 'adj-unknown',
+        confidence: 'UNKNOWN_NEIGHBOR',
+        targetHostId: null,
+        targetInterfaceId: null,
+      }),
     ]);
     const result = await applyService().apply('map-1', proposals, [
       selection('adj-ambiguous'),
@@ -151,7 +173,9 @@ describe('TopologyApplyService', () => {
       targetDeviceId: 'host-b',
       targetInterfaceId: 'b-if',
     });
-    const proposals = preview([adjacency({ id: 'adj-confirmed', duplicate: true, existingLinkId: 'existing' })]);
+    const proposals = preview([
+      adjacency({ id: 'adj-confirmed', duplicate: true, existingLinkId: 'existing' }),
+    ]);
     const repo = new FakeLinkRepository([existing]);
     const service = new TopologyApplyService(repo, { listHosts: async () => hosts });
     const result = await service.apply('map-1', proposals, [selection('adj-confirmed')]);
@@ -168,14 +192,16 @@ describe('TopologyApplyService', () => {
       targetDeviceId: 'host-a',
       targetInterfaceId: 'a-if',
     });
-    const proposals = preview([adjacency({
-      id: 'adj-reversed',
-      sourceHostId: 'host-a',
-      sourceInterfaceId: 'a-if',
-      targetHostId: 'host-b',
-      targetInterfaceId: 'b-if',
-      duplicate: false,
-    })]);
+    const proposals = preview([
+      adjacency({
+        id: 'adj-reversed',
+        sourceHostId: 'host-a',
+        sourceInterfaceId: 'a-if',
+        targetHostId: 'host-b',
+        targetInterfaceId: 'b-if',
+        duplicate: false,
+      }),
+    ]);
     const repo = new FakeLinkRepository([existing]);
     const service = new TopologyApplyService(repo, { listHosts: async () => hosts });
     const result = await service.apply('map-1', proposals, [selection('adj-reversed')]);
@@ -209,11 +235,13 @@ describe('TopologyApplyService', () => {
       targetDeviceId: 'host-b',
       targetInterfaceId: 'b-if',
     });
-    const proposals = preview([adjacency({
-      id: 'adj-lag',
-      targetPort: '100GE1/0/3',
-      targetInterfaceId: 'b-if-2',
-    })]);
+    const proposals = preview([
+      adjacency({
+        id: 'adj-lag',
+        targetPort: '100GE1/0/3',
+        targetInterfaceId: 'b-if-2',
+      }),
+    ]);
     const repo = new FakeLinkRepository([existing]);
     const service = new TopologyApplyService(repo, { listHosts: async () => hosts });
     const result = await service.apply('map-1', proposals, [selection('adj-lag')]);

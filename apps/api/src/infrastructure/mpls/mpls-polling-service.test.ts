@@ -50,7 +50,8 @@ describe('MplsPollingService', () => {
         supported: true,
         collectedAt,
         errors: ['PW .8: SNMP timeout'],
-        collectedColumns: { vsi: [3, 6, 7, 33], pw: [6, 7, 13, 14] },
+        capabilities: { vsi: true, ac: false, pw: null },
+        collectedColumns: { vsi: [3, 6, 7, 33], ac: [2, 3, 4], pw: [6, 7, 13, 14] },
         vsis: [],
       }),
     } as unknown as HuaweiVplsSnmpCollector;

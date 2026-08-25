@@ -1,4 +1,5 @@
 import {
+  automaticLinkCapacity,
   calculateUtilization,
   createLocalId,
   directionalLinkMetrics,
@@ -56,12 +57,14 @@ function settingsFromRow(row: {
   viewport: unknown;
   filters: unknown;
 }): MapSettings {
-  const viewport = row.viewport && typeof row.viewport === 'object'
-    ? row.viewport as Partial<MapSettings['viewport']>
-    : {};
-  const filters = row.filters && typeof row.filters === 'object'
-    ? row.filters as Partial<MapSettings['filters']>
-    : {};
+  const viewport =
+    row.viewport && typeof row.viewport === 'object'
+      ? (row.viewport as Partial<MapSettings['viewport']>)
+      : {};
+  const filters =
+    row.filters && typeof row.filters === 'object'
+      ? (row.filters as Partial<MapSettings['filters']>)
+      : {};
   return {
     nodeDisplayMode: row.nodeDisplayMode as MapSettings['nodeDisplayMode'],
     linkDisplayStyle: row.linkDisplayStyle as MapSettings['linkDisplayStyle'],
@@ -106,9 +109,13 @@ function findLinkInterface(
 ): NetworkInterface | undefined {
   if (!interfaceId) return undefined;
   const scoped = deviceId
-    ? devices.find((device) => device.id === deviceId)?.interfaces.find((item) => item.id === interfaceId)
+    ? devices
+        .find((device) => device.id === deviceId)
+        ?.interfaces.find((item) => item.id === interfaceId)
     : undefined;
-  return scoped ?? devices.flatMap((device) => device.interfaces).find((item) => item.id === interfaceId);
+  return (
+    scoped ?? devices.flatMap((device) => device.interfaces).find((item) => item.id === interfaceId)
+  );
 }
 
 export class PrismaMapRepository {
@@ -139,7 +146,10 @@ export class PrismaMapRepository {
   }
 
   async getMap(mapId: string): Promise<NetworkMap | null> {
-    const row = await this.prisma.map.findUnique({ where: { id: mapId }, include: { nodes: true, links: true } });
+    const row = await this.prisma.map.findUnique({
+      where: { id: mapId },
+      include: { nodes: true, links: true },
+    });
     return row ? this.materialize(row) : null;
   }
 
@@ -153,7 +163,10 @@ export class PrismaMapRepository {
 
   async createMap(input: CreateMapInput): Promise<NetworkMap> {
     const source = input.sourceMapId
-      ? await this.prisma.map.findUnique({ where: { id: input.sourceMapId }, include: { nodes: true, links: true } })
+      ? await this.prisma.map.findUnique({
+          where: { id: input.sourceMapId },
+          include: { nodes: true, links: true },
+        })
       : null;
     const count = await this.prisma.map.count();
     const created = await this.prisma.$transaction(async (tx) => {
@@ -164,14 +177,16 @@ export class PrismaMapRepository {
           description: input.description,
           mode: input.mode,
           isDefault: count === 0,
-          ...(source ? {
-            nodeDisplayMode: source.nodeDisplayMode,
-            linkDisplayStyle: source.linkDisplayStyle,
-            linkMetricDisplay: source.linkMetricDisplay,
-            nodeScale: source.nodeScale,
-            linkScale: source.linkScale,
-            labelScale: source.labelScale,
-          } : {}),
+          ...(source
+            ? {
+                nodeDisplayMode: source.nodeDisplayMode,
+                linkDisplayStyle: source.linkDisplayStyle,
+                linkMetricDisplay: source.linkMetricDisplay,
+                nodeScale: source.nodeScale,
+                linkScale: source.linkScale,
+                labelScale: source.labelScale,
+              }
+            : {}),
         },
       });
       if (source) {
@@ -203,6 +218,9 @@ export class PrismaMapRepository {
               capacityBps: link.capacityBps,
               autoCapacityBps: link.autoCapacityBps,
               capacitySource: link.capacitySource,
+              trafficMode: link.trafficMode,
+              customColor: link.customColor,
+              animationEnabled: link.animationEnabled,
               label: link.label,
               status: link.status,
               discoverySource: link.discoverySource,
@@ -213,7 +231,10 @@ export class PrismaMapRepository {
           });
         }
       }
-      return tx.map.findUniqueOrThrow({ where: { id: map.id }, include: { nodes: true, links: true } });
+      return tx.map.findUniqueOrThrow({
+        where: { id: map.id },
+        include: { nodes: true, links: true },
+      });
     });
     return this.materialize(created);
   }
@@ -231,14 +252,24 @@ export class PrismaMapRepository {
           ...(input.description !== undefined ? { description: input.description } : {}),
           ...(input.mode !== undefined ? { mode: input.mode } : {}),
           ...(input.isDefault !== undefined ? { isDefault: input.isDefault } : {}),
-          ...(settings?.nodeDisplayMode !== undefined ? { nodeDisplayMode: settings.nodeDisplayMode } : {}),
-          ...(settings?.linkDisplayStyle !== undefined ? { linkDisplayStyle: settings.linkDisplayStyle } : {}),
-          ...(settings?.linkMetricDisplay !== undefined ? { linkMetricDisplay: settings.linkMetricDisplay } : {}),
+          ...(settings?.nodeDisplayMode !== undefined
+            ? { nodeDisplayMode: settings.nodeDisplayMode }
+            : {}),
+          ...(settings?.linkDisplayStyle !== undefined
+            ? { linkDisplayStyle: settings.linkDisplayStyle }
+            : {}),
+          ...(settings?.linkMetricDisplay !== undefined
+            ? { linkMetricDisplay: settings.linkMetricDisplay }
+            : {}),
           ...(settings?.nodeScale !== undefined ? { nodeScale: settings.nodeScale } : {}),
           ...(settings?.linkScale !== undefined ? { linkScale: settings.linkScale } : {}),
           ...(settings?.labelScale !== undefined ? { labelScale: settings.labelScale } : {}),
-          ...(settings?.viewport !== undefined ? { viewport: { ...(existing.viewport as object ?? {}), ...settings.viewport } } : {}),
-          ...(settings?.filters !== undefined ? { filters: { ...(existing.filters as object ?? {}), ...settings.filters } } : {}),
+          ...(settings?.viewport !== undefined
+            ? { viewport: { ...((existing.viewport as object) ?? {}), ...settings.viewport } }
+            : {}),
+          ...(settings?.filters !== undefined
+            ? { filters: { ...((existing.filters as object) ?? {}), ...settings.filters } }
+            : {}),
         },
       });
     });
@@ -246,7 +277,7 @@ export class PrismaMapRepository {
   }
 
   async deleteMap(mapId: string): Promise<boolean> {
-    if (await this.prisma.map.count() <= 1) return false;
+    if ((await this.prisma.map.count()) <= 1) return false;
     const existing = await this.prisma.map.findUnique({ where: { id: mapId } });
     if (!existing) return false;
     await this.prisma.map.delete({ where: { id: mapId } });
@@ -258,7 +289,10 @@ export class PrismaMapRepository {
   }
 
   async listPlaylists(): Promise<MapPlaylist[]> {
-    const rows = await this.prisma.mapPlaylist.findMany({ include: { items: { orderBy: { order: 'asc' } } }, orderBy: { name: 'asc' } });
+    const rows = await this.prisma.mapPlaylist.findMany({
+      include: { items: { orderBy: { order: 'asc' } } },
+      orderBy: { name: 'asc' },
+    });
     return rows.map((row) => ({
       id: row.id,
       name: row.name,
@@ -270,18 +304,39 @@ export class PrismaMapRepository {
     }));
   }
 
-  async savePlaylist(input: { id?: string; name: string; rotationIntervalSeconds: number; mapIds: string[]; isDefault: boolean }): Promise<MapPlaylist> {
+  async savePlaylist(input: {
+    id?: string;
+    name: string;
+    rotationIntervalSeconds: number;
+    mapIds: string[];
+    isDefault: boolean;
+  }): Promise<MapPlaylist> {
     const id = input.id ?? createLocalId('playlist');
     const row = await this.prisma.$transaction(async (tx) => {
       if (input.isDefault) await tx.mapPlaylist.updateMany({ data: { isDefault: false } });
       await tx.mapPlaylist.upsert({
         where: { id },
-        create: { id, name: input.name, rotationIntervalSeconds: input.rotationIntervalSeconds, isDefault: input.isDefault },
-        update: { name: input.name, rotationIntervalSeconds: input.rotationIntervalSeconds, isDefault: input.isDefault },
+        create: {
+          id,
+          name: input.name,
+          rotationIntervalSeconds: input.rotationIntervalSeconds,
+          isDefault: input.isDefault,
+        },
+        update: {
+          name: input.name,
+          rotationIntervalSeconds: input.rotationIntervalSeconds,
+          isDefault: input.isDefault,
+        },
       });
       await tx.mapPlaylistItem.deleteMany({ where: { playlistId: id } });
-      if (input.mapIds.length) await tx.mapPlaylistItem.createMany({ data: input.mapIds.map((mapId, order) => ({ playlistId: id, mapId, order })) });
-      return tx.mapPlaylist.findUniqueOrThrow({ where: { id }, include: { items: { orderBy: { order: 'asc' } } } });
+      if (input.mapIds.length)
+        await tx.mapPlaylistItem.createMany({
+          data: input.mapIds.map((mapId, order) => ({ playlistId: id, mapId, order })),
+        });
+      return tx.mapPlaylist.findUniqueOrThrow({
+        where: { id },
+        include: { items: { orderBy: { order: 'asc' } } },
+      });
     });
     return {
       id: row.id,
@@ -295,40 +350,68 @@ export class PrismaMapRepository {
   }
 
   async updatePositions(mapId: string, updates: NodePositionUpdate[]): Promise<NetworkMap | null> {
-    if (!await this.prisma.map.findUnique({ where: { id: mapId }, select: { id: true } })) return null;
-    await this.prisma.$transaction(updates.map((update) => this.prisma.mapNode.updateMany({
-      where: { id: update.nodeId, mapId },
-      data: {
-        x: update.position.x,
-        y: update.position.y,
-        positionSource: update.positionSource ?? 'MANUAL',
-        ...(update.locked === undefined ? {} : { locked: update.locked }),
-      },
-    })));
+    if (!(await this.prisma.map.findUnique({ where: { id: mapId }, select: { id: true } })))
+      return null;
+    await this.prisma.$transaction(
+      updates.map((update) =>
+        this.prisma.mapNode.updateMany({
+          where: { id: update.nodeId, mapId },
+          data: {
+            x: update.position.x,
+            y: update.position.y,
+            positionSource: update.positionSource ?? 'MANUAL',
+            ...(update.locked === undefined ? {} : { locked: update.locked }),
+          },
+        }),
+      ),
+    );
     return this.getMap(mapId);
   }
 
   async setNodeLocked(mapId: string, nodeId: string, locked: boolean): Promise<NetworkMap | null> {
-    const result = await this.prisma.mapNode.updateMany({ where: { id: nodeId, mapId }, data: { locked } });
+    const result = await this.prisma.mapNode.updateMany({
+      where: { id: nodeId, mapId },
+      data: { locked },
+    });
     return result.count ? this.getMap(mapId) : null;
   }
 
-  async addHostToMap(hostId: string, mapId: string, position: Position): Promise<AddDeviceResult | null> {
-    const [host, map] = await Promise.all([this.hosts.getHost(hostId), this.prisma.map.findUnique({ where: { id: mapId }, select: { id: true } })]);
+  async addHostToMap(
+    hostId: string,
+    mapId: string,
+    position: Position,
+  ): Promise<AddDeviceResult | null> {
+    const [host, map] = await Promise.all([
+      this.hosts.getHost(hostId),
+      this.prisma.map.findUnique({ where: { id: mapId }, select: { id: true } }),
+    ]);
     if (!host || !map) return null;
     const node = await this.prisma.mapNode.upsert({
       where: { mapId_deviceId: { mapId, deviceId: hostId } },
-      create: { mapId, deviceId: hostId, x: position.x, y: position.y, locked: false, positionSource: 'MANUAL' },
+      create: {
+        mapId,
+        deviceId: hostId,
+        x: position.x,
+        y: position.y,
+        locked: false,
+        positionSource: 'MANUAL',
+      },
       update: {},
     });
-    const refreshedHost = await this.hosts.getHost(hostId) ?? host;
+    const refreshedHost = (await this.hosts.getHost(hostId)) ?? host;
     return { device: refreshedHost, node: nodeFromRow(node) };
   }
 
-  async addHostsToMap(mapId: string, deviceIds: string[], seedPosition: Position = { x: 520, y: 340 }): Promise<AddDeviceResult[]> {
+  async addHostsToMap(
+    mapId: string,
+    deviceIds: string[],
+    seedPosition: Position = { x: 520, y: 340 },
+  ): Promise<AddDeviceResult[]> {
     const created: AddDeviceResult[] = [];
     for (const [index, deviceId] of deviceIds.entries()) {
-      const exists = await this.prisma.mapNode.findUnique({ where: { mapId_deviceId: { mapId, deviceId } } });
+      const exists = await this.prisma.mapNode.findUnique({
+        where: { mapId_deviceId: { mapId, deviceId } },
+      });
       if (exists) continue;
       const result = await this.addHostToMap(deviceId, mapId, {
         x: seedPosition.x + (index % 4) * 120 - 180,
@@ -386,6 +469,11 @@ export class PrismaMapRepository {
         capacityBps: BigInt(Math.max(1, Math.trunc(input.capacityBps))),
         autoCapacityBps: BigInt(Math.max(1, Math.trunc(input.autoCapacityBps))),
         capacitySource: input.capacitySource,
+        ...(input.trafficMode === undefined ? {} : { trafficMode: input.trafficMode }),
+        ...(input.customColor === undefined ? {} : { customColor: input.customColor }),
+        ...(input.animationEnabled === undefined
+          ? {}
+          : { animationEnabled: input.animationEnabled }),
         label: input.label,
         status: 'UNKNOWN',
         discoverySource,
@@ -397,15 +485,28 @@ export class PrismaMapRepository {
     return this.materializeLink(row, await this.hosts.listHosts());
   }
 
-  async updateLink(mapId: string, linkId: string, input: UpdateLinkInput): Promise<NetworkLink | null> {
+  async updateLink(
+    mapId: string,
+    linkId: string,
+    input: UpdateLinkInput,
+  ): Promise<NetworkLink | null> {
     const result = await this.prisma.link.updateMany({
       where: { id: linkId, mapId },
       data: {
-        ...(input.sourceInterfaceId === undefined ? {} : { sourceInterfaceId: input.sourceInterfaceId }),
-        ...(input.targetInterfaceId === undefined ? {} : { targetInterfaceId: input.targetInterfaceId }),
+        ...(input.sourceInterfaceId === undefined
+          ? {}
+          : { sourceInterfaceId: input.sourceInterfaceId }),
+        ...(input.targetInterfaceId === undefined
+          ? {}
+          : { targetInterfaceId: input.targetInterfaceId }),
         capacityBps: BigInt(Math.max(1, Math.trunc(input.capacityBps))),
         autoCapacityBps: BigInt(Math.max(1, Math.trunc(input.autoCapacityBps))),
         capacitySource: input.capacitySource,
+        ...(input.trafficMode === undefined ? {} : { trafficMode: input.trafficMode }),
+        ...(input.customColor === undefined ? {} : { customColor: input.customColor }),
+        ...(input.animationEnabled === undefined
+          ? {}
+          : { animationEnabled: input.animationEnabled }),
         label: input.label,
         metricSource: input.metricSource,
         visualStyle: input.visualStyle,
@@ -441,11 +542,41 @@ export class PrismaMapRepository {
     labelScale: number;
     viewport: unknown;
     filters: unknown;
-    nodes: Array<{ id: string; mapId: string; deviceId: string | null; nodeKind: string; genericType: string | null; label: string | null; x: number; y: number; locked: boolean; positionSource: string }>;
+    nodes: Array<{
+      id: string;
+      mapId: string;
+      deviceId: string | null;
+      nodeKind: string;
+      genericType: string | null;
+      label: string | null;
+      x: number;
+      y: number;
+      locked: boolean;
+      positionSource: string;
+    }>;
     links: Array<{
-      id: string; mapId: string; sourceDeviceId: string | null; sourceInterfaceId: string | null; targetDeviceId: string | null; targetInterfaceId: string | null; sourceNodeId: string | null; targetNodeId: string | null;
-      capacityBps: bigint; autoCapacityBps: bigint | null; capacitySource: string; label: string | null; status: string;
-      discoverySource: string; metricSource: string; visualStyle: string | null; metricDisplay: string | null; createdAt: Date; updatedAt: Date;
+      id: string;
+      mapId: string;
+      sourceDeviceId: string | null;
+      sourceInterfaceId: string | null;
+      targetDeviceId: string | null;
+      targetInterfaceId: string | null;
+      sourceNodeId: string | null;
+      targetNodeId: string | null;
+      capacityBps: bigint;
+      autoCapacityBps: bigint | null;
+      capacitySource: string;
+      trafficMode: string;
+      customColor: string | null;
+      animationEnabled: boolean | null;
+      label: string | null;
+      status: string;
+      discoverySource: string;
+      metricSource: string;
+      visualStyle: string | null;
+      metricDisplay: string | null;
+      createdAt: Date;
+      updatedAt: Date;
     }>;
     createdAt: Date;
     updatedAt: Date;
@@ -466,17 +597,55 @@ export class PrismaMapRepository {
     };
   }
 
-  private materializeLink(row: {
-    id: string; mapId: string; sourceDeviceId: string | null; sourceInterfaceId: string | null; targetDeviceId: string | null; targetInterfaceId: string | null; sourceNodeId: string | null; targetNodeId: string | null;
-    capacityBps: bigint; autoCapacityBps: bigint | null; capacitySource: string; label: string | null; status: string;
-    discoverySource: string; metricSource: string; visualStyle: string | null; metricDisplay: string | null; createdAt: Date; updatedAt: Date;
-  }, devices: HostRecord[]): NetworkLink {
+  private materializeLink(
+    row: {
+      id: string;
+      mapId: string;
+      sourceDeviceId: string | null;
+      sourceInterfaceId: string | null;
+      targetDeviceId: string | null;
+      targetInterfaceId: string | null;
+      sourceNodeId: string | null;
+      targetNodeId: string | null;
+      capacityBps: bigint;
+      autoCapacityBps: bigint | null;
+      capacitySource: string;
+      trafficMode: string;
+      customColor: string | null;
+      animationEnabled: boolean | null;
+      label: string | null;
+      status: string;
+      discoverySource: string;
+      metricSource: string;
+      visualStyle: string | null;
+      metricDisplay: string | null;
+      createdAt: Date;
+      updatedAt: Date;
+    },
+    devices: HostRecord[],
+  ): NetworkLink {
     const source = findLinkInterface(devices, row.sourceDeviceId, row.sourceInterfaceId);
     const target = findLinkInterface(devices, row.targetDeviceId, row.targetInterfaceId);
-    const capacityBps = safeNumber(row.capacityBps);
-    const directions = directionalLinkMetrics(source, target, capacityBps);
+    const trafficMode = row.trafficMode as NetworkLink['trafficMode'];
+    const storedCapacityBps = safeNumber(row.capacityBps);
+    const autoCapacityBps = automaticLinkCapacity(
+      source,
+      target,
+      trafficMode,
+      safeNumber(row.autoCapacityBps) || storedCapacityBps,
+    );
+    const capacityBps = row.capacitySource === 'AUTO' ? autoCapacityBps : storedCapacityBps;
+    const directions = directionalLinkMetrics(source, target, capacityBps, trafficMode);
     const aToB = directions.A_TO_B.bps;
     const bToA = directions.B_TO_A.bps;
+    const monitored =
+      trafficMode === 'SINGLE_ENDED'
+        ? source && !target
+          ? source
+          : target && !source
+            ? target
+            : undefined
+        : undefined;
     return {
       id: row.id,
       mapId: row.mapId,
@@ -487,23 +656,26 @@ export class PrismaMapRepository {
       sourceNodeId: row.sourceNodeId,
       targetNodeId: row.targetNodeId,
       capacityBps,
-      autoCapacityBps: safeNumber(row.autoCapacityBps) || capacityBps,
+      autoCapacityBps,
       capacitySource: row.capacitySource as NetworkLink['capacitySource'],
+      trafficMode,
+      customColor: row.customColor,
+      animationEnabled: row.animationEnabled,
       label: row.label ?? '',
-      status: linkStatusFromInterfaces(source, target),
+      status: linkStatusFromInterfaces(source, target, trafficMode),
       discoverySource: row.discoverySource as NetworkLink['discoverySource'],
       metricSource: row.metricSource as NetworkLink['metricSource'],
       visualStyle: row.visualStyle as NetworkLink['visualStyle'],
       metricDisplay: row.metricDisplay as NetworkLink['metricDisplay'],
       directions,
-      rxBps: bToA,
-      txBps: aToB,
-      rxUtilization: calculateUtilization(bToA, capacityBps),
-      txUtilization: calculateUtilization(aToB, capacityBps),
-      rxErrors: source?.rxErrors ?? target?.txErrors ?? 0,
-      txErrors: source?.txErrors ?? target?.rxErrors ?? 0,
-      rxDiscards: source?.rxDiscards ?? target?.txDiscards ?? 0,
-      txDiscards: source?.txDiscards ?? target?.rxDiscards ?? 0,
+      rxBps: monitored?.rxBps ?? bToA,
+      txBps: monitored?.txBps ?? aToB,
+      rxUtilization: calculateUtilization(monitored?.rxBps ?? bToA, capacityBps),
+      txUtilization: calculateUtilization(monitored?.txBps ?? aToB, capacityBps),
+      rxErrors: monitored?.rxErrors ?? source?.rxErrors ?? target?.txErrors ?? 0,
+      txErrors: monitored?.txErrors ?? source?.txErrors ?? target?.rxErrors ?? 0,
+      rxDiscards: monitored?.rxDiscards ?? source?.rxDiscards ?? target?.txDiscards ?? 0,
+      txDiscards: monitored?.txDiscards ?? source?.txDiscards ?? target?.rxDiscards ?? 0,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };

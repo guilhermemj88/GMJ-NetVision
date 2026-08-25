@@ -35,6 +35,7 @@ function pw(remoteIp: string, pwId: number, status: MplsPw['status']): MplsPw {
 const peers = ['10.100.101.0', '10.100.101.3', '10.100.101.5', '10.100.101.11', '10.100.101.255'];
 const overview: MplsHostOverview = {
   supported: true,
+  capabilities: { vsi: true, ac: false, pw: true },
   source: 'SNMP',
   lastPollingAt: '2026-08-25T12:00:00.000Z',
   lastSuccessAt: '2026-08-25T12:00:00.000Z',
@@ -71,6 +72,7 @@ const overview: MplsHostOverview = {
       lastSeenAt: '2026-08-25T12:00:00.000Z',
       createdAt: '2026-08-25T12:00:00.000Z',
       updatedAt: '2026-08-25T12:00:00.000Z',
+      acs: [],
       pws: peers.map((remoteIp, position) =>
         pw(remoteIp, position + 1, position === 4 ? 'DOWN' : 'UP'),
       ),
@@ -128,5 +130,77 @@ describe('MplsContent', () => {
     );
     expect(html).toContain('Falha na coleta MPLS');
     expect(html).toContain('PW .8: SNMP timeout');
+  });
+
+  it('shows correlated AC details and PW as N/D when that capability is absent', () => {
+    const vsi = overview.vsis[0]!;
+    const acOnlyOverview: MplsHostOverview = {
+      ...overview,
+      capabilities: { vsi: true, ac: true, pw: false },
+      summary: {
+        ...overview.summary,
+        vsiUp: 1,
+        vsiDegraded: 0,
+        pwTotal: 0,
+        pwUp: 0,
+        pwDown: 0,
+      },
+      vsis: [
+        {
+          ...vsi,
+          status: 'UP',
+          vlanId: 99,
+          localInterfaceId: 'interface-43',
+          acs: [
+            {
+              id: 'ac-43',
+              hostId: 'host-1',
+              mplsVsiId: vsi.id,
+              vsiName: vsi.name,
+              ifIndex: 43,
+              interfaceId: 'interface-43',
+              interface: {
+                id: 'interface-43',
+                name: 'Vlanif99',
+                alias: '99-GERENCIA',
+                ifIndex: 43,
+              },
+              status: 'UP',
+              upStartTimeRaw: '2025/09/17 20:49:53',
+              upSumTimeRaw: 29537970,
+              source: 'SNMP',
+              lastSeenAt: vsi.lastSeenAt,
+              createdAt: vsi.createdAt,
+              updatedAt: vsi.updatedAt,
+            },
+          ],
+          pws: [],
+        },
+      ],
+    };
+
+    const html = renderToStaticMarkup(<MplsContent overview={acOnlyOverview} events={[]} />);
+
+    expect(html).toContain('VLAN 99');
+    expect(html).toContain('Vlanif99');
+    expect(html).toContain('99-GERENCIA');
+    expect(html).toContain('ifIndex 43');
+    expect(html).toContain('N/D — não disponível via SNMP');
+    expect(html).toContain('PW não disponível via SNMP neste equipamento');
+    expect(html).not.toContain('0 / 0 UP');
+  });
+
+  it('makes UNKNOWN visible in the summary', () => {
+    const html = renderToStaticMarkup(
+      <MplsContent
+        overview={{
+          ...overview,
+          summary: { ...overview.summary, vsiDegraded: 0, vsiUnknown: 1 },
+          vsis: [{ ...overview.vsis[0]!, status: 'UNKNOWN' }],
+        }}
+        events={[]}
+      />,
+    );
+    expect(html).toContain('Unknown');
   });
 });

@@ -8,7 +8,12 @@ import type {
 } from '@gmj/shared';
 
 export function makeInterface(
-  partial: Partial<NetworkInterface> & { id: string; deviceId: string; name: string; ifIndex: number },
+  partial: Partial<NetworkInterface> & {
+    id: string;
+    deviceId: string;
+    name: string;
+    ifIndex: number;
+  },
 ): NetworkInterface {
   return {
     alias: '',
@@ -100,6 +105,9 @@ export function makeLink(
     capacityBps: 1_000_000_000,
     autoCapacityBps: 1_000_000_000,
     capacitySource: 'AUTO',
+    trafficMode: 'BIDIRECTIONAL',
+    customColor: null,
+    animationEnabled: null,
     label: '',
     status: 'UP',
     discoverySource: 'MANUAL',
@@ -110,12 +118,20 @@ export function makeLink(
     targetNodeId: null,
     directions: {
       A_TO_B: {
-        bps: 0, utilization: 0, txBps: null, observedRxBps: null,
-        deltaPercent: null, consistency: 'UNKNOWN',
+        bps: 0,
+        utilization: 0,
+        txBps: null,
+        observedRxBps: null,
+        deltaPercent: null,
+        consistency: 'UNKNOWN',
       },
       B_TO_A: {
-        bps: 0, utilization: 0, txBps: null, observedRxBps: null,
-        deltaPercent: null, consistency: 'UNKNOWN',
+        bps: 0,
+        utilization: 0,
+        txBps: null,
+        observedRxBps: null,
+        deltaPercent: null,
+        consistency: 'UNKNOWN',
       },
     },
     rxBps: 0,

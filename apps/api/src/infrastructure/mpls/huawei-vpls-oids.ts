@@ -1,5 +1,6 @@
 export const HUAWEI_VPLS_VSI_ENTRY_OID = '1.3.6.1.4.1.2011.5.25.119.1.1.1.1';
 export const HUAWEI_VPLS_PW_ENTRY_OID = '1.3.6.1.4.1.2011.5.25.119.1.1.5.1';
+export const HUAWEI_VPLS_AC_ENTRY_OID = '1.3.6.1.4.1.2011.5.25.119.1.1.3.1';
 
 export const HUAWEI_VPLS_VSI_COLUMNS = {
   signalingType: 2,
@@ -23,6 +24,12 @@ export const HUAWEI_VPLS_PW_COLUMNS = {
   upSumTime: 12,
   state: 13,
   workingState: 14,
+} as const;
+
+export const HUAWEI_VPLS_AC_COLUMNS = {
+  status: 2,
+  upStartTime: 3,
+  upSumTime: 4,
 } as const;
 
 // Keep these lists explicit: every entry becomes an independent SNMP walk.
@@ -49,4 +56,10 @@ export const HUAWEI_VPLS_PW_WALK_COLUMNS = [
   HUAWEI_VPLS_PW_COLUMNS.upSumTime,
   HUAWEI_VPLS_PW_COLUMNS.state,
   HUAWEI_VPLS_PW_COLUMNS.workingState,
+] as const;
+
+export const HUAWEI_VPLS_AC_WALK_COLUMNS = [
+  HUAWEI_VPLS_AC_COLUMNS.status,
+  HUAWEI_VPLS_AC_COLUMNS.upStartTime,
+  HUAWEI_VPLS_AC_COLUMNS.upSumTime,
 ] as const;

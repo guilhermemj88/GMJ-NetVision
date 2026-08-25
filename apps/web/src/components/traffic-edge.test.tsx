@@ -35,20 +35,22 @@ function renderEdge(
       ...dataPartial,
     },
   };
-  return renderToStaticMarkup(createElement(TrafficEdge, {
-    id: edge.id,
-    type: 'traffic',
-    source: edge.source,
-    target: edge.target,
-    data: edge.data!,
-    selected: false,
-    sourceX: 10,
-    sourceY: 20,
-    targetX: 310,
-    targetY: 160,
-    sourcePosition: Position.Right,
-    targetPosition: Position.Left,
-  }));
+  return renderToStaticMarkup(
+    createElement(TrafficEdge, {
+      id: edge.id,
+      type: 'traffic',
+      source: edge.source,
+      target: edge.target,
+      data: edge.data!,
+      selected: false,
+      sourceX: 10,
+      sourceY: 20,
+      targetX: 310,
+      targetY: 160,
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
+    }),
+  );
 }
 
 function occurrences(markup: string, pattern: string): number {
@@ -74,6 +76,63 @@ describe('TrafficEdge lightweight flow renderer', () => {
     expect(markup).not.toContain('animation-duration');
   });
 
+  it('respects an explicit per-link animation override', () => {
+    const disabled = renderEdge({ animationEnabled: false });
+    const enabled = renderEdge({ animationEnabled: true }, { showTrafficAnimation: false });
+
+    expect(disabled).not.toContain('traffic-edge--animated');
+    expect(occurrences(enabled, 'traffic-edge--animated')).toBe(2);
+  });
+
+  it('maps source-side TX and RX to opposite full-link directions', () => {
+    const markup = renderEdge({
+      trafficMode: 'SINGLE_ENDED',
+      sourceInterfaceId: 'source-if',
+      targetInterfaceId: null,
+    });
+
+    expect(markup).toContain('data-flow-direction="A_TO_B" data-observation="LOCAL_TX"');
+    expect(markup).toContain('data-flow-direction="B_TO_A" data-observation="LOCAL_RX"');
+  });
+
+  it('maps target-side RX and TX without inventing remote telemetry', () => {
+    const markup = renderEdge({
+      trafficMode: 'SINGLE_ENDED',
+      sourceInterfaceId: null,
+      targetInterfaceId: 'target-if',
+      directions: {
+        A_TO_B: {
+          bps: 900,
+          utilization: 9,
+          txBps: null,
+          observedRxBps: 900,
+          deltaPercent: null,
+          consistency: 'UNKNOWN',
+        },
+        B_TO_A: {
+          bps: 700,
+          utilization: 7,
+          txBps: 700,
+          observedRxBps: null,
+          deltaPercent: null,
+          consistency: 'UNKNOWN',
+        },
+      },
+    });
+
+    expect(markup).toContain('data-flow-direction="A_TO_B" data-observation="LOCAL_RX"');
+    expect(markup).toContain('data-flow-direction="B_TO_A" data-observation="LOCAL_TX"');
+    expect(markup).toContain('data-throughput-bps="900"');
+    expect(markup).toContain('data-throughput-bps="700"');
+  });
+
+  it('applies a custom color to the base and both lanes', () => {
+    const markup = renderEdge({ customColor: '#34a853' });
+
+    expect(occurrences(markup, 'stroke:#34a853')).toBe(3);
+    expect(markup).toContain('traffic-edge--base');
+  });
+
   it('does not animate DOWN or UNKNOWN links', () => {
     const down = renderEdge({ status: 'DOWN' });
     const unknown = renderEdge({ status: 'UNKNOWN' });
@@ -88,12 +147,20 @@ describe('TrafficEdge lightweight flow renderer', () => {
     const markup = renderEdge({
       directions: {
         A_TO_B: {
-          bps: 1_250_000_000, utilization: 62.5, txBps: 1_250_000_000,
-          observedRxBps: 1_240_000_000, deltaPercent: 0.8, consistency: 'CONSISTENT',
+          bps: 1_250_000_000,
+          utilization: 62.5,
+          txBps: 1_250_000_000,
+          observedRxBps: 1_240_000_000,
+          deltaPercent: 0.8,
+          consistency: 'CONSISTENT',
         },
         B_TO_A: {
-          bps: 480_000_000, utilization: 24, txBps: 480_000_000,
-          observedRxBps: 470_000_000, deltaPercent: 2.08, consistency: 'CONSISTENT',
+          bps: 480_000_000,
+          utilization: 24,
+          txBps: 480_000_000,
+          observedRxBps: 470_000_000,
+          deltaPercent: 2.08,
+          consistency: 'CONSISTENT',
         },
       },
     });
