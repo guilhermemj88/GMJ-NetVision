@@ -92,6 +92,29 @@ const linkSchema = z.object({
   metricSource: z.enum(['DEMO', 'ZABBIX']),
   visualStyle: z.enum(['FLOW', 'WEATHERMAP', 'HYBRID', 'MINIMAL']).nullable(),
   metricDisplay: z.enum(['THROUGHPUT', 'UTILIZATION', 'BOTH', 'NONE']).nullable(),
+  aggregationMode: z.enum(['NONE', 'SUM']).optional(),
+  metricSources: z
+    .array(
+      z.object({
+        interfaceId: z.string().min(1),
+        side: z.enum(['SOURCE', 'TARGET']),
+      }),
+    )
+    .optional(),
+  visualPaths: z
+    .array(
+      z.object({
+        order: z.number().int().nonnegative(),
+        label: z.string().max(80).nullable(),
+        customColor: z
+          .string()
+          .regex(/^#[0-9a-fA-F]{6}$/)
+          .nullable(),
+        curvature: z.number().finite(),
+        enabled: z.boolean(),
+      }),
+    )
+    .optional(),
 });
 const genericNodeSchema = z.object({
   type: z.string().min(1).max(40),
@@ -679,6 +702,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       metricSource: parsed.metricSource,
       visualStyle: parsed.visualStyle,
       metricDisplay: parsed.metricDisplay,
+      ...(parsed.aggregationMode === undefined ? {} : { aggregationMode: parsed.aggregationMode }),
+      ...(parsed.metricSources === undefined ? {} : { metricSources: parsed.metricSources }),
+      ...(parsed.visualPaths === undefined ? {} : { visualPaths: parsed.visualPaths }),
     };
     if (
       input.trafficMode === 'SINGLE_ENDED' &&
@@ -706,6 +732,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         metricSource: true,
         visualStyle: true,
         metricDisplay: true,
+        aggregationMode: true,
+        metricSources: true,
+        visualPaths: true,
       })
       .parse(request.body);
     const {
@@ -714,6 +743,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       trafficMode,
       customColor,
       animationEnabled,
+      aggregationMode,
+      metricSources,
+      visualPaths,
       ...fields
     } = body;
     if (
@@ -729,6 +761,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       ...(animationEnabled === undefined ? {} : { animationEnabled }),
       ...(sourceInterfaceId === undefined ? {} : { sourceInterfaceId }),
       ...(targetInterfaceId === undefined ? {} : { targetInterfaceId }),
+      ...(aggregationMode === undefined ? {} : { aggregationMode }),
+      ...(metricSources === undefined ? {} : { metricSources }),
+      ...(visualPaths === undefined ? {} : { visualPaths }),
     });
     return link ?? reply.code(404).send({ message: 'Link not found' });
   });

@@ -5,15 +5,24 @@ import {
   utilizationLevel,
   type LinkDisplayStyle,
   type LinkMetricDisplay,
+  type LinkVisualPath,
   type NetworkInterface,
   type NetworkLink,
 } from '@gmj/shared';
-import { EdgeLabelRenderer, getBezierPath, type Edge, type EdgeProps } from '@xyflow/react';
+import {
+  EdgeLabelRenderer,
+  type Edge,
+  type EdgeProps,
+  type Position,
+} from '@xyflow/react';
 
 export interface TrafficEdgeData extends Record<string, unknown> {
   link: NetworkLink;
   sourceInterface?: NetworkInterface;
   targetInterface?: NetworkInterface;
+  visualPath?: LinkVisualPath;
+  pathIndex?: number;
+  isPrimaryPath?: boolean;
   showTraffic: boolean;
   showUtilization: boolean;
   showLabels: boolean;
@@ -32,8 +41,96 @@ const EDGE_CURVATURE = 0.24;
 const LANE_HALF_GAP = 2.6;
 const HUE_A = 190;
 const HUE_B = 285;
+// Converts a visual-path curvature (signed pixel offset) into a bezier bow.
+const PATH_OFFSET_SCALE = 0.9;
 
 type FlowLevel = 'normal' | 'attention' | 'high' | 'critical' | 'down' | 'unknown';
+
+function calculateControlOffset(distance: number, curvature: number): number {
+  if (distance >= 0) return 0.5 * distance;
+  return curvature * 25 * Math.sqrt(-distance);
+}
+
+function getControlWithCurvature({
+  pos,
+  x1,
+  y1,
+  x2,
+  y2,
+  c,
+}: {
+  pos: Position;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  c: number;
+}): [number, number] {
+  switch (pos) {
+    case 'left':
+      return [x1 - calculateControlOffset(x1 - x2, c), y1];
+    case 'right':
+      return [x1 + calculateControlOffset(x2 - x1, c), y1];
+    case 'top':
+      return [x1, y1 - calculateControlOffset(y1 - y2, c)];
+    case 'bottom':
+      return [x1, y1 + calculateControlOffset(y2 - y1, c)];
+    default:
+      return [x1, y1];
+  }
+}
+
+function getOffsetBezierPath({
+  sourceX,
+  sourceY,
+  sourcePosition,
+  targetX,
+  targetY,
+  targetPosition,
+  curvature,
+  offset,
+}: {
+  sourceX: number;
+  sourceY: number;
+  sourcePosition: Position;
+  targetX: number;
+  targetY: number;
+  targetPosition: Position;
+  curvature: number;
+  offset: number;
+}): { path: string; labelX: number; labelY: number } {
+  const [sourceControlX, sourceControlY] = getControlWithCurvature({
+    pos: sourcePosition,
+    x1: sourceX,
+    y1: sourceY,
+    x2: targetX,
+    y2: targetY,
+    c: curvature,
+  });
+  const [targetControlX, targetControlY] = getControlWithCurvature({
+    pos: targetPosition,
+    x1: targetX,
+    y1: targetY,
+    x2: sourceX,
+    y2: sourceY,
+    c: curvature,
+  });
+  const deltaX = targetX - sourceX;
+  const deltaY = targetY - sourceY;
+  const length = Math.hypot(deltaX, deltaY) || 1;
+  const normalX = -deltaY / length;
+  const normalY = deltaX / length;
+  const offsetX = normalX * offset;
+  const offsetY = normalY * offset;
+  const c1x = sourceControlX + offsetX;
+  const c1y = sourceControlY + offsetY;
+  const c2x = targetControlX + offsetX;
+  const c2y = targetControlY + offsetY;
+  const path = `M${sourceX},${sourceY} C${c1x},${c1y} ${c2x},${c2y} ${targetX},${targetY}`;
+  const labelX = (sourceX + 3 * c1x + 3 * c2x + targetX) / 8;
+  const labelY = (sourceY + 3 * c1y + 3 * c2y + targetY) / 8;
+  return { path, labelX, labelY };
+}
 
 function throughputText(bps: number): string {
   return formatBitsPerSecond(bps);
@@ -147,19 +244,11 @@ export function TrafficEdge({
   data,
   selected,
 }: EdgeProps<TrafficFlowEdge>) {
-  const [path, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-    curvature: EDGE_CURVATURE,
-  });
   if (!data) return null;
 
   const {
     link,
+    visualPath,
     showTraffic,
     showUtilization,
     showLabels,
@@ -169,6 +258,18 @@ export function TrafficEdge({
     linkScale,
     labelScale,
   } = data;
+
+  const pathOffset = (visualPath?.curvature ?? 0) * PATH_OFFSET_SCALE;
+  const { path, labelX, labelY } = getOffsetBezierPath({
+    sourceX,
+    sourceY,
+    sourcePosition,
+    targetX,
+    targetY,
+    targetPosition,
+    curvature: EDGE_CURVATURE,
+    offset: pathOffset,
+  });
 
   const displayStyle = link.visualStyle ?? data.displayStyle;
   const requestedMetricDisplay = link.metricDisplay ?? data.metricDisplay;
@@ -193,7 +294,9 @@ export function TrafficEdge({
     (linkScale / 100);
   const classes = `${selected ? 'is-selected' : ''} ${related ? '' : 'is-dimmed'} ${emphasized ? 'is-emphasized' : ''}`;
   const directional = displayStyle !== 'MINIMAL';
-  const showMetric = showLabels && directional && metricDisplay !== 'NONE';
+  const isPrimary = data.isPrimaryPath !== false;
+  const showMetric = showLabels && directional && metricDisplay !== 'NONE' && isPrimary;
+  const showPathLabel = showLabels && Boolean(visualPath?.label);
   const displayThroughput = metricDisplay === 'THROUGHPUT' || metricDisplay === 'BOTH';
   const displayUtilization = metricDisplay === 'UTILIZATION' || metricDisplay === 'BOTH';
 
@@ -205,8 +308,9 @@ export function TrafficEdge({
   const gap = Math.max(2, LANE_HALF_GAP * (linkScale / 100));
   const laneATransform = `translate(${normalX * gap} ${normalY * gap})`;
   const laneBTransform = `translate(${-normalX * gap} ${-normalY * gap})`;
-  const colorA = link.customColor ?? flowColor(HUE_A, levelA);
-  const colorB = link.customColor ?? flowColor(HUE_B, levelB);
+  const pathColor = visualPath?.customColor ?? link.customColor ?? null;
+  const colorA = pathColor ?? flowColor(HUE_A, levelA);
+  const colorB = pathColor ?? flowColor(HUE_B, levelB);
   const isEmphasized = Boolean(emphasized || selected);
   const renderLanes = directional && showTraffic && link.status !== 'DOWN' && related;
   const animateLanes = (link.animationEnabled ?? showTrafficAnimation) && link.status !== 'UNKNOWN';
@@ -225,7 +329,7 @@ export function TrafficEdge({
         className={`traffic-edge traffic-edge--base ${statusTone ? toneClass(statusTone) : ''} ${classes}`}
         style={{
           strokeWidth: Math.max(0.8, width * 0.6),
-          ...(link.customColor ? { stroke: link.customColor, opacity: 0.34 } : {}),
+          ...(pathColor ? { stroke: pathColor, opacity: 0.34 } : {}),
         }}
       />
 
@@ -272,7 +376,7 @@ export function TrafficEdge({
 
       <path d={path} className="traffic-edge__hitarea" />
 
-      {showMetric && (
+      {(showMetric || showPathLabel) && (
         <EdgeLabelRenderer>
           <div
             className={`edge-metric edge-metric--${displayStyle.toLowerCase()} edge-metric--${worstTone} ${related ? '' : 'is-dimmed'}`}
@@ -280,16 +384,23 @@ export function TrafficEdge({
               transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px) scale(${labelScale / 100})`,
             }}
           >
-            <div className="edge-metric__row">
-              <span className="edge-metric__swatch" style={{ backgroundColor: colorA }} />
-              {displayThroughput && <strong>{throughputText(aToB.bps)}</strong>}
-              {displayUtilization && <em>{utilizationText(aToB.utilization)}</em>}
-            </div>
-            <div className="edge-metric__row">
-              <span className="edge-metric__swatch" style={{ backgroundColor: colorB }} />
-              {displayThroughput && <strong>{throughputText(bToA.bps)}</strong>}
-              {displayUtilization && <em>{utilizationText(bToA.utilization)}</em>}
-            </div>
+            {showPathLabel && (
+              <div className="edge-metric__path">{visualPath?.label}</div>
+            )}
+            {showMetric && (
+              <>
+                <div className="edge-metric__row">
+                  <span className="edge-metric__swatch" style={{ backgroundColor: colorA }} />
+                  {displayThroughput && <strong>{throughputText(aToB.bps)}</strong>}
+                  {displayUtilization && <em>{utilizationText(aToB.utilization)}</em>}
+                </div>
+                <div className="edge-metric__row">
+                  <span className="edge-metric__swatch" style={{ backgroundColor: colorB }} />
+                  {displayThroughput && <strong>{throughputText(bToA.bps)}</strong>}
+                  {displayUtilization && <em>{utilizationText(bToA.utilization)}</em>}
+                </div>
+              </>
+            )}
           </div>
         </EdgeLabelRenderer>
       )}

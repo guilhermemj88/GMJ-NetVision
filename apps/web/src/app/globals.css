@@ -1936,6 +1936,15 @@ button {
   border-radius: 2px;
   align-self: center;
 }
+.edge-metric__path {
+  color: #9fb3bd;
+  font-size: 7px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 2px;
+  margin-bottom: 1px;
+}
 .edge-metric strong {
   color: #c8dae2;
   text-align: right;
@@ -3422,6 +3431,56 @@ button {
 }
 .edit-link-form .form-field {
   margin-bottom: 10px;
+}
+
+.edit-link-form__section {
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #22323b;
+}
+.edit-link-form__section .section-title {
+  margin-bottom: 12px;
+}
+.visual-path-editor {
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid #263741;
+  border-radius: 5px;
+  background: rgba(10, 17, 22, 0.4);
+}
+.visual-path-editor__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 9px;
+  color: #9fb3bd;
+  font: 600 9px var(--font-mono);
+  letter-spacing: 0.08em;
+}
+.visual-path-editor__header .inline-check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: #718791;
+  font-size: 9px;
+  cursor: pointer;
+}
+.visual-path-editor__header .inline-check input {
+  margin: 0;
+}
+.visual-path-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.visual-path-grid label {
+  margin-bottom: 6px;
+}
+.visual-path-grid input[type='color'] {
+  height: 28px;
+  padding: 2px;
 }
 
 .panel-overlay {

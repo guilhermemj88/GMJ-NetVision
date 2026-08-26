@@ -180,8 +180,14 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
         : undefined;
       const selectedId =
         selection?.kind === 'device' || selection?.kind === 'node' ? selection.id : null;
-      return [{
-        id: link.id,
+      const visualPaths = link.visualPaths?.length
+        ? link.visualPaths.filter((path) => path.enabled)
+        : [];
+      const paths = visualPaths.length
+        ? visualPaths
+        : [{ order: 0, label: null, customColor: null, curvature: 0, enabled: true }];
+      return paths.map((visualPath, pathIndex) => ({
+        id: pathIndex === 0 ? link.id : `${link.id}:path:${pathIndex}`,
         source: sourceKey,
         target: targetKey,
         sourceHandle: handles.sourceHandle,
@@ -192,6 +198,9 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
           link,
           ...(sourceInterface ? { sourceInterface } : {}),
           ...(targetInterface ? { targetInterface } : {}),
+          visualPath,
+          pathIndex,
+          isPrimaryPath: pathIndex === 0,
           showTraffic: preferences.showTraffic,
           showUtilization: preferences.showUtilization,
           showLabels: preferences.showLabels,
@@ -203,7 +212,7 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
           related: !selectedId || sourceKey === selectedId || targetKey === selectedId,
           emphasized: Boolean(selectedId) && (sourceKey === selectedId || targetKey === selectedId),
         },
-      }];
+      }));
     });
   }, [domainNodes, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, preferences.showTrafficAnimation, selection]);
 
@@ -229,7 +238,7 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
 
   const onEdgeClick: EdgeMouseHandler<TrafficFlowEdge> = useCallback(
     (_event, edge) => {
-      setSelection({ kind: 'link', id: edge.id });
+      setSelection({ kind: 'link', id: edge.data?.link?.id ?? edge.id });
       if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
     }, [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
   );

@@ -435,6 +435,11 @@ export const useMapStore = create<MapState>((set) => ({
         metricSource: input.metricSource,
         visualStyle: input.visualStyle,
         metricDisplay: input.metricDisplay,
+        aggregationMode: input.aggregationMode ?? 'NONE',
+        metricSources: input.metricSources ?? [],
+        visualPaths: input.visualPaths ?? [
+          { order: 0, label: null, customColor: null, curvature: 0, enabled: true },
+        ],
         status: 'UP',
         discoverySource: 'MANUAL',
         directions: {

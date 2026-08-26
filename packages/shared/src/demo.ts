@@ -331,6 +331,9 @@ export const demoLinks: NetworkLink[] = linkPairs.map(
     metricSource: 'DEMO',
     visualStyle: null,
     metricDisplay: null,
+    aggregationMode: 'NONE',
+    metricSources: [],
+    visualPaths: [{ order: 0, label: null, customColor: null, curvature: 0, enabled: true }],
     directions: {
       A_TO_B: {
         bps: tx * 1_000_000_000,

@@ -24,16 +24,20 @@ import {
   X,
 } from 'lucide-react';
 import {
+  aggregateLinkMetrics,
   automaticLinkCapacity,
-  calculateUtilization,
-  directionalLinkMetrics,
+  autoCurvatures,
+  defaultVisualPaths,
   formatBitsPerSecond,
   formatDuration,
   type CapacitySource,
   type DirectionalLinkMetric,
+  type LinkAggregationMode,
   type LinkDisplayStyle,
   type LinkMetricDisplay,
+  type LinkMetricSource,
   type LinkTrafficMode,
+  type LinkVisualPath,
   type MapNode,
   type NetworkInterface,
   type NetworkLink,
@@ -44,7 +48,7 @@ import { useMapStore } from '@/store/map-store';
 import { MetricCharts } from './metric-charts';
 import { OpticalHistoryCharts } from './optical-history-charts';
 import { AssistedDiscoveryReview } from './assisted-discovery-review';
-import { InterfacePicker } from './interface-picker';
+import { InterfaceMultiPicker, InterfacePicker } from './interface-picker';
 import { VerifyHostButton } from './verify-host-button';
 import { MplsPanel } from './mpls-panel';
 
@@ -558,6 +562,22 @@ function LinkDrawer({
   const [label, setLabel] = useState(link.label);
   const [sourceInterfaceId, setSourceInterfaceId] = useState(link.sourceInterfaceId ?? '');
   const [targetInterfaceId, setTargetInterfaceId] = useState(link.targetInterfaceId ?? '');
+  const [aggregationMode, setAggregationMode] = useState<LinkAggregationMode>(
+    link.aggregationMode ?? 'NONE',
+  );
+  const [sourceMetricIds, setSourceMetricIds] = useState<string[]>(
+    (link.metricSources ?? [])
+      .filter((entry) => entry.side === 'SOURCE')
+      .map((entry) => entry.interfaceId),
+  );
+  const [targetMetricIds, setTargetMetricIds] = useState<string[]>(
+    (link.metricSources ?? [])
+      .filter((entry) => entry.side === 'TARGET')
+      .map((entry) => entry.interfaceId),
+  );
+  const [visualPaths, setVisualPaths] = useState<LinkVisualPath[]>(
+    link.visualPaths?.length ? link.visualPaths : defaultVisualPaths(1),
+  );
   const initialUnit = link.capacityBps >= 1_000_000_000 ? 'GBPS' : 'MBPS';
   const [capacitySource, setCapacitySource] = useState<CapacitySource>(link.capacitySource);
   const [capacityUnit, setCapacityUnit] = useState<'MBPS' | 'GBPS'>(initialUnit);
@@ -587,19 +607,45 @@ function LinkDrawer({
   const targetInterface = target?.interfaces.find((item) => item.id === link.targetInterfaceId);
   const monitoredSide =
     source && !target ? 'SOURCE' : target && !source ? 'TARGET' : singleEndedSide;
+  const findInterface = (
+    deviceId: string | null | undefined,
+    interfaceId: string | null | undefined,
+  ): NetworkInterface | undefined => {
+    if (!interfaceId) return undefined;
+    const scoped = deviceId
+      ? map?.devices
+          .find((device) => device.id === deviceId)
+          ?.interfaces.find((item) => item.id === interfaceId)
+      : undefined;
+    return (
+      scoped ??
+      map?.devices.flatMap((device) => device.interfaces).find((item) => item.id === interfaceId)
+    );
+  };
+  const sumMode = trafficMode === 'BIDIRECTIONAL' && aggregationMode === 'SUM';
+  const referenceSourceInterfaceId =
+    sumMode && sourceMetricIds.length ? sourceMetricIds[0] : sourceInterfaceId;
+  const referenceTargetInterfaceId =
+    sumMode && targetMetricIds.length ? targetMetricIds[0] : targetInterfaceId;
   const effectiveSourceInterfaceId =
-    trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'SOURCE' ? sourceInterfaceId : '';
+    trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'SOURCE'
+      ? referenceSourceInterfaceId
+      : '';
   const effectiveTargetInterfaceId =
-    trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'TARGET' ? targetInterfaceId : '';
-  const editedSourceInterface = source?.interfaces.find(
-    (item) => item.id === effectiveSourceInterfaceId,
-  );
-  const editedTargetInterface = target?.interfaces.find(
-    (item) => item.id === effectiveTargetInterfaceId,
-  );
+    trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'TARGET'
+      ? referenceTargetInterfaceId
+      : '';
+  const metricSources: LinkMetricSource[] = sumMode
+    ? [
+        ...sourceMetricIds.map((interfaceId) => ({ interfaceId, side: 'SOURCE' as const })),
+        ...targetMetricIds.map((interfaceId) => ({ interfaceId, side: 'TARGET' as const })),
+      ]
+    : [];
+  const editedReferenceSource = findInterface(link.sourceDeviceId, effectiveSourceInterfaceId);
+  const editedReferenceTarget = findInterface(link.targetDeviceId, effectiveTargetInterfaceId);
   const autoCapacityBps = automaticLinkCapacity(
-    editedSourceInterface,
-    editedTargetInterface,
+    editedReferenceSource,
+    editedReferenceTarget,
     trafficMode,
     link.autoCapacityBps,
   );
@@ -607,14 +653,19 @@ function LinkDrawer({
     capacitySource === 'AUTO'
       ? autoCapacityBps
       : capacity * (capacityUnit === 'GBPS' ? 1_000_000_000 : 1_000_000);
-  const editedDirections = directionalLinkMetrics(
-    editedSourceInterface,
-    editedTargetInterface,
-    capacityBps,
-    trafficMode,
+  const metrics = aggregateLinkMetrics(
+    {
+      sourceDeviceId: link.sourceDeviceId,
+      targetDeviceId: link.targetDeviceId,
+      sourceInterfaceId: effectiveSourceInterfaceId || null,
+      targetInterfaceId: effectiveTargetInterfaceId || null,
+      aggregationMode: sumMode ? 'SUM' : 'NONE',
+      metricSources,
+      trafficMode,
+      capacityBps,
+    },
+    findInterface,
   );
-  const editedMonitored =
-    trafficMode === 'SINGLE_ENDED' ? (editedSourceInterface ?? editedTargetInterface) : undefined;
   const editedLink: NetworkLink = {
     ...link,
     label,
@@ -628,17 +679,19 @@ function LinkDrawer({
     animationEnabled,
     visualStyle: visualStyle || null,
     metricDisplay: metricDisplay || null,
-    directions: editedDirections,
-    txBps: editedMonitored?.txBps ?? editedDirections.A_TO_B.bps,
-    rxBps: editedMonitored?.rxBps ?? editedDirections.B_TO_A.bps,
-    txUtilization: calculateUtilization(
-      editedMonitored?.txBps ?? editedDirections.A_TO_B.bps,
-      capacityBps,
-    ),
-    rxUtilization: calculateUtilization(
-      editedMonitored?.rxBps ?? editedDirections.B_TO_A.bps,
-      capacityBps,
-    ),
+    aggregationMode: sumMode ? 'SUM' : 'NONE',
+    metricSources,
+    visualPaths,
+    directions: metrics.directions,
+    txBps: metrics.txBps,
+    rxBps: metrics.rxBps,
+    txUtilization: metrics.txUtilization,
+    rxUtilization: metrics.rxUtilization,
+    rxErrors: metrics.rxErrors,
+    txErrors: metrics.txErrors,
+    rxDiscards: metrics.rxDiscards,
+    txDiscards: metrics.txDiscards,
+    status: metrics.status,
     updatedAt: new Date().toISOString(),
   };
   const updateMutation = useMutation({
@@ -656,6 +709,9 @@ function LinkDrawer({
         metricSource: link.metricSource,
         visualStyle: visualStyle || null,
         metricDisplay: metricDisplay || null,
+        aggregationMode: sumMode ? 'SUM' : 'NONE',
+        metricSources,
+        visualPaths,
       }),
     onSuccess: (updated) => {
       replaceLink(updated);
@@ -672,6 +728,21 @@ function LinkDrawer({
     removeLink(link.id);
     void deleteLinkRequest(link.mapId, link.id).catch(() => undefined);
     showToast('Enlace removido');
+  };
+  const updateVisualPath = (index: number, patch: Partial<LinkVisualPath>) => {
+    setVisualPaths((current) =>
+      current.map((path, pathIndex) => (pathIndex === index ? { ...path, ...patch } : path)),
+    );
+  };
+  const resizeVisualPaths = (count: number) => {
+    const curvatures = autoCurvatures(count);
+    setVisualPaths((current) =>
+      Array.from({ length: count }, (_, index) => ({
+        ...(current[index] ?? { order: index, label: null, customColor: null, enabled: true }),
+        order: index,
+        curvature: curvatures[index] ?? 0,
+      })),
+    );
   };
   const aToB = link.directions.A_TO_B;
   const bToA = link.directions.B_TO_A;
@@ -764,26 +835,70 @@ function LinkDrawer({
       </section>
       {editing && !readOnly && (
         <section className="drawer-section edit-link-form">
-          {source && (trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'SOURCE') && (
-            <div className="form-field">
-              <span>Interface da ponta A</span>
-              <InterfacePicker
-                interfaces={source.interfaces}
-                value={sourceInterfaceId}
-                onChange={setSourceInterfaceId}
-              />
-            </div>
-          )}
-          {target && (trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'TARGET') && (
-            <div className="form-field">
-              <span>Interface da ponta B</span>
-              <InterfacePicker
-                interfaces={target.interfaces}
-                value={targetInterfaceId}
-                onChange={setTargetInterfaceId}
-              />
-            </div>
-          )}
+          <div className="edit-link-form__section">
+            <SectionTitle icon={<Activity size={14} />} label="FONTES DE TRÁFEGO" />
+            {trafficMode === 'BIDIRECTIONAL' && (
+              <label>
+                Agregação
+                <select
+                  value={aggregationMode}
+                  onChange={(event) =>
+                    setAggregationMode(event.target.value as LinkAggregationMode)
+                  }
+                >
+                  <option value="NONE">Interface única (padrão)</option>
+                  <option value="SUM">Somar interfaces</option>
+                </select>
+              </label>
+            )}
+            {sumMode ? (
+              <>
+                {source && (
+                  <div className="form-field">
+                    <span>Interfaces da ponta A (soma)</span>
+                    <InterfaceMultiPicker
+                      interfaces={source.interfaces}
+                      value={sourceMetricIds}
+                      onChange={setSourceMetricIds}
+                    />
+                  </div>
+                )}
+                {target && (
+                  <div className="form-field">
+                    <span>Interfaces da ponta B (soma)</span>
+                    <InterfaceMultiPicker
+                      interfaces={target.interfaces}
+                      value={targetMetricIds}
+                      onChange={setTargetMetricIds}
+                    />
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {source && (trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'SOURCE') && (
+                  <div className="form-field">
+                    <span>Interface da ponta A</span>
+                    <InterfacePicker
+                      interfaces={source.interfaces}
+                      value={sourceInterfaceId}
+                      onChange={setSourceInterfaceId}
+                    />
+                  </div>
+                )}
+                {target && (trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'TARGET') && (
+                  <div className="form-field">
+                    <span>Interface da ponta B</span>
+                    <InterfacePicker
+                      interfaces={target.interfaces}
+                      value={targetInterfaceId}
+                      onChange={setTargetInterfaceId}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+          </div>
           <label>
             Label
             <input value={label} onChange={(event) => setLabel(event.target.value)} />
@@ -902,6 +1017,84 @@ function LinkDrawer({
               <option value="NONE">Nenhuma</option>
             </select>
           </label>
+          <div className="edit-link-form__section">
+            <SectionTitle icon={<Route size={14} />} label="FORMA DO ENLACE" />
+            <label>
+              Quantidade de caminhos
+              <select
+                value={visualPaths.length}
+                onChange={(event) => resizeVisualPaths(Number(event.target.value))}
+              >
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+                <option value={3}>3</option>
+              </select>
+            </label>
+            {visualPaths.map((path, index) => (
+              <div key={path.order} className="visual-path-editor">
+                <div className="visual-path-editor__header">
+                  <strong>Caminho {index + 1}</strong>
+                  <label className="inline-check">
+                    <input
+                      type="checkbox"
+                      checked={path.enabled}
+                      onChange={(event) => updateVisualPath(index, { enabled: event.target.checked })}
+                    />
+                    Ativo
+                  </label>
+                </div>
+                <div className="visual-path-grid">
+                  <label>
+                    Nome
+                    <input
+                      value={path.label ?? ''}
+                      placeholder="Principal / Backup…"
+                      onChange={(event) =>
+                        updateVisualPath(index, { label: event.target.value || null })
+                      }
+                    />
+                  </label>
+                  <label>
+                    Cor
+                    <select
+                      value={path.customColor === null ? 'AUTO' : 'CUSTOM'}
+                      onChange={(event) =>
+                        updateVisualPath(index, {
+                          customColor: event.target.value === 'AUTO' ? null : '#40c8e8',
+                        })
+                      }
+                    >
+                      <option value="AUTO">Automática</option>
+                      <option value="CUSTOM">Personalizada</option>
+                    </select>
+                  </label>
+                  {path.customColor !== null && (
+                    <label>
+                      Seletor de cor
+                      <input
+                        type="color"
+                        value={path.customColor}
+                        onChange={(event) =>
+                          updateVisualPath(index, { customColor: event.target.value })
+                        }
+                      />
+                    </label>
+                  )}
+                  <label>
+                    Curvatura / offset
+                    <input
+                      type="number"
+                      step="1"
+                      value={path.curvature}
+                      onChange={(event) =>
+                        updateVisualPath(index, { curvature: Number(event.target.value) })
+                      }
+                    />
+                  </label>
+                </div>
+              </div>
+            ))}
+          </div>
           <div className="edit-link-form__actions">
             <Button variant="ghost" onClick={() => setEditing(false)}>
               Cancelar

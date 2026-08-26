@@ -28,6 +28,19 @@ export type LinkDirection = 'A_TO_B' | 'B_TO_A';
 export type LinkTrafficConsistency = 'CONSISTENT' | 'DIVERGENT' | 'UNKNOWN';
 export type CapacitySource = 'AUTO' | 'MANUAL';
 export type LinkTrafficMode = 'BIDIRECTIONAL' | 'SINGLE_ENDED';
+export type LinkAggregationMode = 'NONE' | 'SUM';
+export type LinkMetricSourceSide = 'SOURCE' | 'TARGET';
+export interface LinkMetricSource {
+  interfaceId: string;
+  side: LinkMetricSourceSide;
+}
+export interface LinkVisualPath {
+  order: number;
+  label: string | null;
+  customColor: string | null;
+  curvature: number;
+  enabled: boolean;
+}
 export type UtilizationLevel = 'NORMAL' | 'ATTENTION' | 'HIGH' | 'CRITICAL' | 'INCONSISTENT';
 export type HostOrigin = 'MANUAL' | 'ZABBIX' | 'DISCOVERY' | 'IMPORTED';
 export type SourceKind = 'ZABBIX' | 'SSH' | 'SNMP';
@@ -234,6 +247,9 @@ export interface NetworkLink {
   metricSource: MetricSource;
   visualStyle: LinkDisplayStyle | null;
   metricDisplay: LinkMetricDisplay | null;
+  aggregationMode: LinkAggregationMode;
+  metricSources: LinkMetricSource[];
+  visualPaths: LinkVisualPath[];
   directions: Record<LinkDirection, DirectionalLinkMetric>;
   rxBps: number;
   txBps: number;
@@ -523,6 +539,9 @@ export interface CreateLinkInput {
   metricSource: MetricSource;
   visualStyle: LinkDisplayStyle | null;
   metricDisplay: LinkMetricDisplay | null;
+  aggregationMode?: LinkAggregationMode;
+  metricSources?: LinkMetricSource[];
+  visualPaths?: LinkVisualPath[];
 }
 export type UpdateLinkInput = Pick<
   CreateLinkInput,
@@ -535,7 +554,17 @@ export type UpdateLinkInput = Pick<
   | 'metricDisplay'
 > &
   Pick<CreateLinkInput, 'sourceInterfaceId' | 'targetInterfaceId'> &
-  Partial<Pick<CreateLinkInput, 'trafficMode' | 'customColor' | 'animationEnabled'>>;
+  Partial<
+    Pick<
+      CreateLinkInput,
+      'trafficMode'
+      | 'customColor'
+      | 'animationEnabled'
+      | 'aggregationMode'
+      | 'metricSources'
+      | 'visualPaths'
+    >
+  >;
 export interface CreateGenericNodeInput {
   type: string;
   label: string;

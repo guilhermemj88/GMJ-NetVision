@@ -1,14 +1,16 @@
 import {
+  aggregateLinkMetrics,
   automaticLinkCapacity,
-  calculateUtilization,
   createLocalId,
-  directionalLinkMetrics,
-  linkStatusFromInterfaces,
+  defaultVisualPaths,
   type AddDeviceResult,
   type CreateGenericNodeInput,
   type CreateLinkInput,
   type CreateMapInput,
   type HostRecord,
+  type LinkInterfaceResolver,
+  type LinkMetricSource,
+  type LinkVisualPath,
   type MapNode,
   type MapPlaylist,
   type MapSettings,
@@ -20,7 +22,7 @@ import {
   type UpdateMapInput,
   type UpdateLinkInput,
 } from '@gmj/shared';
-import { PrismaClient } from '../../generated/prisma/index.js';
+import { PrismaClient, Prisma } from '../../generated/prisma/index.js';
 import type { HostRepository } from './host-repository';
 import type { NodePositionUpdate } from './demo-map-repository';
 
@@ -116,6 +118,49 @@ function findLinkInterface(
   return (
     scoped ?? devices.flatMap((device) => device.interfaces).find((item) => item.id === interfaceId)
   );
+}
+
+function normalizeMetricSources(value: unknown): LinkMetricSource[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (typeof entry !== 'object' || entry === null) return [];
+    const candidate = entry as { interfaceId?: unknown; side?: unknown };
+    const interfaceId = typeof candidate.interfaceId === 'string' ? candidate.interfaceId : '';
+    const side =
+      candidate.side === 'TARGET' ? 'TARGET' : candidate.side === 'SOURCE' ? 'SOURCE' : null;
+    return interfaceId && side ? [{ interfaceId, side }] : [];
+  });
+}
+
+function normalizeVisualPaths(value: unknown): LinkVisualPath[] {
+  if (!Array.isArray(value)) return defaultVisualPaths(1);
+  const paths = value.map((entry) => {
+    const candidate = (typeof entry === 'object' && entry !== null ? entry : {}) as {
+      order?: unknown;
+      label?: unknown;
+      customColor?: unknown;
+      curvature?: unknown;
+      enabled?: unknown;
+    };
+    return {
+      order: typeof candidate.order === 'number' ? candidate.order : 0,
+      label: typeof candidate.label === 'string' ? candidate.label : null,
+      customColor:
+        typeof candidate.customColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(candidate.customColor)
+          ? candidate.customColor
+          : null,
+      curvature:
+        typeof candidate.curvature === 'number' && Number.isFinite(candidate.curvature)
+          ? candidate.curvature
+          : 0,
+      enabled: candidate.enabled !== false,
+    } satisfies LinkVisualPath;
+  });
+  return paths.length ? paths : defaultVisualPaths(1);
+}
+
+function asJson<T>(value: T): Prisma.InputJsonValue {
+  return value as unknown as Prisma.InputJsonValue;
 }
 
 export class PrismaMapRepository {
@@ -227,6 +272,9 @@ export class PrismaMapRepository {
               metricSource: link.metricSource,
               visualStyle: link.visualStyle,
               metricDisplay: link.metricDisplay,
+              aggregationMode: link.aggregationMode,
+              metricSources: asJson(normalizeMetricSources(link.metricSources)),
+              visualPaths: asJson(normalizeVisualPaths(link.visualPaths)),
             },
           });
         }
@@ -480,6 +528,9 @@ export class PrismaMapRepository {
         metricSource: input.metricSource,
         visualStyle: input.visualStyle,
         metricDisplay: input.metricDisplay,
+        aggregationMode: input.aggregationMode ?? 'NONE',
+        metricSources: asJson(input.metricSources ?? []),
+        visualPaths: asJson(input.visualPaths ?? defaultVisualPaths(1)),
       },
     });
     return this.materializeLink(row, await this.hosts.listHosts());
@@ -511,6 +562,15 @@ export class PrismaMapRepository {
         metricSource: input.metricSource,
         visualStyle: input.visualStyle,
         metricDisplay: input.metricDisplay,
+        ...(input.aggregationMode === undefined
+          ? {}
+          : { aggregationMode: input.aggregationMode }),
+        ...(input.metricSources === undefined
+          ? {}
+          : { metricSources: asJson(input.metricSources) }),
+        ...(input.visualPaths === undefined
+          ? {}
+          : { visualPaths: asJson(input.visualPaths) }),
       },
     });
     if (!result.count) return null;
@@ -575,6 +635,9 @@ export class PrismaMapRepository {
       metricSource: string;
       visualStyle: string | null;
       metricDisplay: string | null;
+      aggregationMode: string;
+      metricSources: unknown;
+      visualPaths: unknown;
       createdAt: Date;
       updatedAt: Date;
     }>;
@@ -619,33 +682,43 @@ export class PrismaMapRepository {
       metricSource: string;
       visualStyle: string | null;
       metricDisplay: string | null;
+      aggregationMode: string;
+      metricSources: unknown;
+      visualPaths: unknown;
       createdAt: Date;
       updatedAt: Date;
     },
     devices: HostRecord[],
   ): NetworkLink {
-    const source = findLinkInterface(devices, row.sourceDeviceId, row.sourceInterfaceId);
-    const target = findLinkInterface(devices, row.targetDeviceId, row.targetInterfaceId);
+    const referenceSource = findLinkInterface(devices, row.sourceDeviceId, row.sourceInterfaceId);
+    const referenceTarget = findLinkInterface(devices, row.targetDeviceId, row.targetInterfaceId);
     const trafficMode = row.trafficMode as NetworkLink['trafficMode'];
     const storedCapacityBps = safeNumber(row.capacityBps);
     const autoCapacityBps = automaticLinkCapacity(
-      source,
-      target,
+      referenceSource,
+      referenceTarget,
       trafficMode,
       safeNumber(row.autoCapacityBps) || storedCapacityBps,
     );
     const capacityBps = row.capacitySource === 'AUTO' ? autoCapacityBps : storedCapacityBps;
-    const directions = directionalLinkMetrics(source, target, capacityBps, trafficMode);
-    const aToB = directions.A_TO_B.bps;
-    const bToA = directions.B_TO_A.bps;
-    const monitored =
-      trafficMode === 'SINGLE_ENDED'
-        ? source && !target
-          ? source
-          : target && !source
-            ? target
-            : undefined
-        : undefined;
+    const aggregationMode = (row.aggregationMode ?? 'NONE') as NetworkLink['aggregationMode'];
+    const metricSources = normalizeMetricSources(row.metricSources);
+    const visualPaths = normalizeVisualPaths(row.visualPaths);
+    const resolver: LinkInterfaceResolver = (deviceId, interfaceId) =>
+      findLinkInterface(devices, deviceId ?? null, interfaceId ?? null);
+    const metrics = aggregateLinkMetrics(
+      {
+        sourceDeviceId: row.sourceDeviceId,
+        targetDeviceId: row.targetDeviceId,
+        sourceInterfaceId: row.sourceInterfaceId,
+        targetInterfaceId: row.targetInterfaceId,
+        aggregationMode,
+        metricSources,
+        trafficMode,
+        capacityBps,
+      },
+      resolver,
+    );
     return {
       id: row.id,
       mapId: row.mapId,
@@ -662,20 +735,23 @@ export class PrismaMapRepository {
       customColor: row.customColor,
       animationEnabled: row.animationEnabled,
       label: row.label ?? '',
-      status: linkStatusFromInterfaces(source, target, trafficMode),
+      status: metrics.status,
       discoverySource: row.discoverySource as NetworkLink['discoverySource'],
       metricSource: row.metricSource as NetworkLink['metricSource'],
       visualStyle: row.visualStyle as NetworkLink['visualStyle'],
       metricDisplay: row.metricDisplay as NetworkLink['metricDisplay'],
-      directions,
-      rxBps: monitored?.rxBps ?? bToA,
-      txBps: monitored?.txBps ?? aToB,
-      rxUtilization: calculateUtilization(monitored?.rxBps ?? bToA, capacityBps),
-      txUtilization: calculateUtilization(monitored?.txBps ?? aToB, capacityBps),
-      rxErrors: monitored?.rxErrors ?? source?.rxErrors ?? target?.txErrors ?? 0,
-      txErrors: monitored?.txErrors ?? source?.txErrors ?? target?.rxErrors ?? 0,
-      rxDiscards: monitored?.rxDiscards ?? source?.rxDiscards ?? target?.txDiscards ?? 0,
-      txDiscards: monitored?.txDiscards ?? source?.txDiscards ?? target?.rxDiscards ?? 0,
+      aggregationMode,
+      metricSources,
+      visualPaths,
+      directions: metrics.directions,
+      rxBps: metrics.rxBps,
+      txBps: metrics.txBps,
+      rxUtilization: metrics.rxUtilization,
+      txUtilization: metrics.txUtilization,
+      rxErrors: metrics.rxErrors,
+      txErrors: metrics.txErrors,
+      rxDiscards: metrics.rxDiscards,
+      txDiscards: metrics.txDiscards,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };
