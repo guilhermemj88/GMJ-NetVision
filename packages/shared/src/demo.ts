@@ -137,6 +137,10 @@ function device(
     discoveryMethod: 'AUTO',
     uptimeSeconds: 11_286_400 + load * 10_000,
     ...(status === 'DOWN' ? {} : { cpuPercent: 31 + load, memoryPercent: 48 + load * 0.7 }),
+    pppSupported: false,
+    pppOnline: 0,
+    pppUpdatedAt: null,
+    pppSource: null,
     updatedAt: now,
     interfaces: makeInterfaces(id, type === 'core' || type === 'aggregation' ? 6 : 4, status, load),
   };
@@ -399,8 +403,13 @@ export const demoMap: NetworkMap = {
     position: positions[item.id] ?? { x: 100 + index * 100, y: 300 },
     locked: item.id === 'internet' || item.id === 'customers',
     positionSource: item.id === 'internet' || item.id === 'customers' ? 'MANUAL' : 'AUTO',
+    pppDisplayMode: 'AUTO',
+    pppPosition: 'BOTTOM',
+    pppColor: null,
+    pppFontSize: 14,
   })),
   links: demoLinks,
+  widgets: [],
   createdAt: now,
   updatedAt: now,
 };
@@ -433,6 +442,7 @@ function demoMapVariant(
           included.has(link.targetDeviceId),
       )
       .map((link) => ({ ...link, id: `${id}-${link.id}`, mapId: id })),
+    widgets: [],
     createdAt: now,
     updatedAt: now,
   };

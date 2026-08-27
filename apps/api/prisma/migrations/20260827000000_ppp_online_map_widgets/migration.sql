@@ -1,0 +1,32 @@
+ALTER TABLE "Device"
+  ADD COLUMN "pppSupported" BOOLEAN NOT NULL DEFAULT false,
+  ADD COLUMN "pppOnline" INTEGER NOT NULL DEFAULT 0,
+  ADD COLUMN "pppUpdatedAt" TIMESTAMP(3),
+  ADD COLUMN "pppSource" TEXT;
+
+ALTER TABLE "MapNode"
+  ADD COLUMN "pppDisplayMode" TEXT NOT NULL DEFAULT 'AUTO',
+  ADD COLUMN "pppPosition" TEXT NOT NULL DEFAULT 'BOTTOM',
+  ADD COLUMN "pppColor" TEXT,
+  ADD COLUMN "pppFontSize" INTEGER NOT NULL DEFAULT 14;
+
+CREATE TABLE "MapWidget" (
+  "id" TEXT NOT NULL,
+  "mapId" TEXT NOT NULL,
+  "type" TEXT NOT NULL,
+  "positionX" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "positionY" DOUBLE PRECISION NOT NULL DEFAULT 0,
+  "enabled" BOOLEAN NOT NULL DEFAULT true,
+  "settings" JSONB,
+  "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  "updatedAt" TIMESTAMP(3) NOT NULL,
+
+  CONSTRAINT "MapWidget_pkey" PRIMARY KEY ("id")
+);
+
+CREATE INDEX "MapWidget_mapId_idx" ON "MapWidget"("mapId");
+
+CREATE UNIQUE INDEX "MapWidget_mapId_type_key" ON "MapWidget"("mapId", "type");
+
+ALTER TABLE "MapWidget"
+  ADD CONSTRAINT "MapWidget_mapId_fkey" FOREIGN KEY ("mapId") REFERENCES "Map"("id") ON DELETE CASCADE ON UPDATE CASCADE;

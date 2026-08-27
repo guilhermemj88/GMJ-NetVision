@@ -33,6 +33,10 @@ function device(vendor = ''): Device {
     source: 'ZABBIX',
     discoveryMethod: 'SSH',
     uptimeSeconds: 0,
+    pppSupported: false,
+    pppOnline: 0,
+    pppUpdatedAt: null,
+    pppSource: null,
     updatedAt: '',
     interfaces: [],
   };

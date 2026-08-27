@@ -508,6 +508,10 @@ function AddGenericNodePanel() {
         position: { x: 700, y: 700 },
         locked: false,
         positionSource: 'MANUAL',
+        pppDisplayMode: 'AUTO',
+        pppPosition: 'BOTTOM',
+        pppColor: null,
+        pppFontSize: 14,
       });
       setPanel(null);
       showToast('Node adicionado localmente (API offline)');
@@ -636,6 +640,10 @@ function AddDevicePanel() {
           lastPollingAt: null,
           lastDiscoveryAt: null,
           uptimeSeconds: 0,
+          pppSupported: false,
+          pppOnline: 0,
+          pppUpdatedAt: null,
+          pppSource: null,
           createdAt: timestamp,
           updatedAt: timestamp,
           mapIds: map ? [map.id] : [],

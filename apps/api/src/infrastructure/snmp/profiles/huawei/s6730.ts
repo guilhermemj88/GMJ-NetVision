@@ -1,4 +1,5 @@
 import type { SnmpProfile } from '../types';
+import { HUAWEI_PPP_ONLINE_OID } from '../ppp-oids';
 import { huaweiGenericProfile } from './generic';
 
 export const huaweiS6730Profile: SnmpProfile = {
@@ -9,5 +10,6 @@ export const huaweiS6730Profile: SnmpProfile = {
   vendorPatterns: [/huawei/i],
   modelPatterns: [/S6730/i],
   sysDescrPatterns: [/S6730/i],
+  pppOnlineOid: HUAWEI_PPP_ONLINE_OID,
   metrics: huaweiGenericProfile.metrics,
 };

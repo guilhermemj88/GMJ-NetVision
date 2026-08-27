@@ -5,4 +5,5 @@ export * from './id';
 export * from './link-telemetry';
 export * from './mpls';
 export * from './optical-history';
+export * from './ppp';
 export * from './types';

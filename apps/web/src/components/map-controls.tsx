@@ -23,6 +23,7 @@ import { useReactFlow } from '@xyflow/react';
 import { updateNetworkMap } from '@/lib/api';
 import { useMediaQuery } from '@/lib/use-media-query';
 import { useMapStore } from '@/store/map-store';
+import { PppTotalControls } from './ppp-total-controls';
 
 const VISUAL_PANEL_COLLAPSED_KEY = 'netvision.mapVisualPanelCollapsed';
 
@@ -133,6 +134,7 @@ function VisualPanelContent() {
         value={map?.settings.labelScale ?? 100}
         onChange={(labelScale) => changeScales({ labelScale })}
       />
+      <PppTotalControls />
     </>
   );
 }

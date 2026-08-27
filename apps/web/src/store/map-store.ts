@@ -12,10 +12,12 @@ import {
   type MapPreferences,
   type MapSettings,
   type MapSummary,
+  type MapWidget,
   type NetworkLink,
   type NetworkMap,
   type NodeDisplayMode,
   type Position,
+  type UpdateMapNodePppInput,
 } from '@gmj/shared';
 import { create } from 'zustand';
 
@@ -101,6 +103,9 @@ interface MapState {
   ) => void;
   moveNode: (nodeId: string, position: Position) => void;
   setNodeLocked: (nodeId: string, locked: boolean) => void;
+  updateNodePpp: (nodeId: string, input: UpdateMapNodePppInput) => void;
+  setWidget: (widget: MapWidget) => void;
+  removeWidget: (widgetId: string) => void;
   applyLayout: (positions: Map<string, Position>) => void;
   addLink: (input: CreateLinkInput, serverLink?: NetworkLink) => void;
   replaceLink: (link: NetworkLink) => void;
@@ -395,6 +400,42 @@ export const useMapStore = create<MapState>((set) => ({
         dirty: true,
       };
     }),
+  updateNodePpp: (nodeId, input) =>
+    set((state) => {
+      if (!state.map) return state;
+      return {
+        map: {
+          ...state.map,
+          nodes: state.map.nodes.map((node) => (node.id === nodeId ? { ...node, ...input } : node)),
+        },
+        dirty: true,
+      };
+    }),
+  setWidget: (widget) =>
+    set((state) => {
+      if (!state.map) return state;
+      return {
+        map: {
+          ...state.map,
+          widgets: [
+            ...state.map.widgets.filter((item) => item.id !== widget.id),
+            widget,
+          ],
+        },
+        dirty: true,
+      };
+    }),
+  removeWidget: (widgetId) =>
+    set((state) => {
+      if (!state.map) return state;
+      return {
+        map: {
+          ...state.map,
+          widgets: state.map.widgets.filter((item) => item.id !== widgetId),
+        },
+        dirty: true,
+      };
+    }),
   applyLayout: (positions) =>
     set((state) => {
       if (!state.map) return state;
@@ -515,6 +556,10 @@ export const useMapStore = create<MapState>((set) => ({
                   position,
                   locked: false,
                   positionSource: 'MANUAL',
+                  pppDisplayMode: 'AUTO',
+                  pppPosition: 'BOTTOM',
+                  pppColor: null,
+                  pppFontSize: 14,
                 },
               ],
             },

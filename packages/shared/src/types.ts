@@ -30,6 +30,11 @@ export type CapacitySource = 'AUTO' | 'MANUAL';
 export type LinkTrafficMode = 'BIDIRECTIONAL' | 'SINGLE_ENDED';
 export type LinkAggregationMode = 'NONE' | 'SUM';
 export type LinkMetricSourceSide = 'SOURCE' | 'TARGET';
+export type PppSource = 'SNMP_HUAWEI' | 'SNMP_MIKROTIK';
+export type PppDisplayMode = 'AUTO' | 'SHOW' | 'HIDE';
+export type PppLabelPosition = 'TOP' | 'BOTTOM' | 'LEFT' | 'RIGHT' | 'CENTER';
+export type MapWidgetType = 'PPP_TOTAL';
+export type MapWidgetMode = 'AUTO' | 'MANUAL';
 export interface LinkMetricSource {
   interfaceId: string;
   side: LinkMetricSourceSide;
@@ -151,6 +156,10 @@ export interface Device {
   uptimeSeconds: number;
   cpuPercent?: number;
   memoryPercent?: number;
+  pppSupported: boolean;
+  pppOnline: number;
+  pppUpdatedAt: string | null;
+  pppSource: PppSource | null;
   updatedAt: string;
   interfaces: NetworkInterface[];
 }
@@ -206,6 +215,56 @@ export interface MapNode {
   position: Position;
   locked: boolean;
   positionSource: PositionSource;
+  pppDisplayMode: PppDisplayMode;
+  pppPosition: PppLabelPosition;
+  pppColor: string | null;
+  pppFontSize: number;
+}
+
+export interface PppTotalWidgetSettings {
+  mode: MapWidgetMode;
+  selectedHostIds: string[];
+  title: string;
+  fontColor: string | null;
+  fontSize: number;
+  backgroundColor: string | null;
+  backgroundOpacity: number;
+  showHostCount: boolean;
+  showFreshness: boolean;
+}
+
+export interface MapWidget {
+  id: string;
+  mapId: string;
+  type: MapWidgetType;
+  positionX: number;
+  positionY: number;
+  enabled: boolean;
+  settings: PppTotalWidgetSettings;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface UpdateMapNodePppInput {
+  pppDisplayMode?: PppDisplayMode;
+  pppPosition?: PppLabelPosition;
+  pppColor?: string | null;
+  pppFontSize?: number;
+}
+
+export interface UpsertMapWidgetInput {
+  type: MapWidgetType;
+  positionX?: number;
+  positionY?: number;
+  enabled?: boolean;
+  settings?: Partial<PppTotalWidgetSettings>;
+}
+
+export interface UpdateMapWidgetInput {
+  positionX?: number;
+  positionY?: number;
+  enabled?: boolean;
+  settings?: Partial<PppTotalWidgetSettings>;
 }
 export interface AddDeviceResult {
   device: HostRecord;
@@ -273,6 +332,7 @@ export interface NetworkMap {
   nodes: MapNode[];
   devices: HostRecord[];
   links: NetworkLink[];
+  widgets: MapWidget[];
   createdAt: string;
   updatedAt: string;
 }
@@ -721,6 +781,7 @@ export interface PublicMapView {
   nodes: MapNode[];
   devices: Device[];
   links: NetworkLink[];
+  widgets: MapWidget[];
   updatedAt: string;
 }
 

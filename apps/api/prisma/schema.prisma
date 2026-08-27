@@ -220,6 +220,7 @@ model Map {
   filters           Json?
   nodes             MapNode[]
   links             Link[]
+  widgets           MapWidget[]
   playlistItems     MapPlaylistItem[]
   publicViews       PublicView[]
   createdAt         DateTime          @default(now())
@@ -237,6 +238,10 @@ model MapNode {
   y              Float
   locked         Boolean        @default(false)
   positionSource PositionSource @default(AUTO)
+  pppDisplayMode String         @default("AUTO")
+  pppPosition    String         @default("BOTTOM")
+  pppColor       String?
+  pppFontSize    Int            @default(14)
   map            Map            @relation(fields: [mapId], references: [id], onDelete: Cascade)
   device         Device?        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   sourceLinks    Link[]         @relation("LinkSourceNode")
@@ -286,6 +291,10 @@ model Device {
   uptimeSeconds       BigInt?
   cpuPercent          Float?
   memoryPercent       Float?
+  pppSupported        Boolean             @default(false)
+  pppOnline           Int                 @default(0)
+  pppUpdatedAt        DateTime?
+  pppSource           String?
   interfaces          Interface[]
   metricSamples       DeviceMetricSample[]
   mapNodes            MapNode[]
@@ -525,6 +534,22 @@ model InterfaceOpticalSample {
   interface    Interface @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
 
   @@index([interfaceId, timestamp])
+}
+
+model MapWidget {
+  id        String   @id @default(cuid())
+  mapId     String
+  type      String
+  positionX Float    @default(0)
+  positionY Float    @default(0)
+  enabled   Boolean  @default(true)
+  settings  Json?
+  map       Map      @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([mapId])
+  @@unique([mapId, type])
 }
 
 model Link {

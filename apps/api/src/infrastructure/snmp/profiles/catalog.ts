@@ -2,11 +2,13 @@ import { genericProfile } from './generic';
 import { huaweiGenericProfile } from './huawei/generic';
 import { huaweiNe8000Profile } from './huawei/ne8000';
 import { huaweiS6730Profile } from './huawei/s6730';
+import { mikrotikProfile } from './mikrotik';
 import type { SnmpProfile, SnmpProfileIdentity } from './types';
 
 export const SNMP_PROFILES: SnmpProfile[] = [
   huaweiNe8000Profile,
   huaweiS6730Profile,
+  mikrotikProfile,
   huaweiGenericProfile,
   genericProfile,
 ];
@@ -39,4 +41,13 @@ export function selectSnmpProfile(identity: SnmpProfileIdentity): SnmpProfile {
   return SNMP_PROFILES
     .map((profile) => ({ profile, score: score(profile, identity) }))
     .sort((left, right) => right.score - left.score)[0]?.profile ?? genericProfile;
+}
+
+/**
+ * Resolves the PPP online OID for a device based on its selected profile.
+ * Returns `null` when the profile does not declare a PPP OID (e.g. Juniper or
+ * Datacom, which are prepared in the architecture but not populated yet).
+ */
+export function selectPppOnlineOid(identity: SnmpProfileIdentity): string | null {
+  return selectSnmpProfile(identity).pppOnlineOid ?? null;
 }

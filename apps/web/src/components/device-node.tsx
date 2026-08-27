@@ -1,7 +1,14 @@
 'use client';
 
 import { useCallback, useSyncExternalStore, type CSSProperties } from 'react';
-import type { Device, MapNode as DomainMapNode, NodeDisplayMode } from '@gmj/shared';
+import {
+  formatPppLabel,
+  formatPppOnline,
+  isPppVisible,
+  type Device,
+  type MapNode as DomainMapNode,
+  type NodeDisplayMode,
+} from '@gmj/shared';
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react';
 import { LockKeyhole } from 'lucide-react';
 import {
@@ -43,6 +50,11 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
   const preference = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const iconType = resolveDeviceIconType(device, preference);
   const iconVariant = displayMode === 'ICON_3D' ? '3d' : '2d';
+  const showPpp = isPppVisible(mapNode.pppDisplayMode, device.pppSupported, device.pppOnline);
+  const pppLabelStyle = {
+    ...(mapNode.pppColor ? { color: mapNode.pppColor } : {}),
+    fontSize: mapNode.pppFontSize,
+  } as CSSProperties;
 
   return (
     <div
@@ -82,12 +94,21 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
       {showInterfaces && (
         <span className="device-node__ports">{device.interfaces.length} ports</span>
       )}
+      {showPpp && (
+        <span
+          className={`device-node__ppp device-node__ppp--${mapNode.pppPosition.toLowerCase()}`}
+          style={pppLabelStyle}
+        >
+          {formatPppLabel(device.pppOnline)}
+        </span>
+      )}
       <div className="device-tooltip">
         <strong>{device.name}</strong>
         <span>{device.ip}</span>
         <span>
           {device.vendor} {device.model}
         </span>
+        {device.pppSupported && <span>PPP online: {formatPppOnline(device.pppOnline)}</span>}
         <small>
           {device.site} · {device.status}
         </small>

@@ -21,6 +21,7 @@ import {
   Radar,
   ServerCog,
   Trash2,
+  Users,
   X,
 } from 'lucide-react';
 import {
@@ -30,8 +31,10 @@ import {
   defaultVisualPaths,
   formatBitsPerSecond,
   formatDuration,
+  formatPppOnline,
   type CapacitySource,
   type DirectionalLinkMetric,
+  type HostRecord,
   type LinkAggregationMode,
   type LinkDisplayStyle,
   type LinkMetricDisplay,
@@ -41,9 +44,16 @@ import {
   type MapNode,
   type NetworkInterface,
   type NetworkLink,
+  type PppDisplayMode,
+  type PppLabelPosition,
+  type UpdateMapNodePppInput,
 } from '@gmj/shared';
 import { useMutation } from '@tanstack/react-query';
-import { deleteLink as deleteLinkRequest, updateLink as updateLinkRequest } from '@/lib/api';
+import {
+  deleteLink as deleteLinkRequest,
+  updateLink as updateLinkRequest,
+  updateNodePpp as updateNodePppRequest,
+} from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
 import { MetricCharts } from './metric-charts';
 import { OpticalHistoryCharts } from './optical-history-charts';
@@ -161,6 +171,7 @@ function DeviceDrawer({
   const setSelection = useMapStore((state) => state.setSelection);
   const device = map?.devices.find((item) => item.id === deviceId);
   if (!device) return null;
+  const mapNode = map?.nodes.find((node) => node.deviceId === deviceId);
   const count = (status: NetworkInterface['operStatus']) =>
     device.interfaces.filter((item) => item.operStatus === status).length;
   const totalRx = device.interfaces.reduce((sum, item) => sum + item.rxBps, 0);
@@ -290,6 +301,12 @@ function DeviceDrawer({
               available={device.memoryPercent !== undefined}
             />
           </section>
+          {mapNode && (
+            <section className="drawer-section">
+              <SectionTitle icon={<Users size={14} />} label="PPP / ASSINANTES" />
+              <PppHostConfig device={device} mapNode={mapNode} readOnly={readOnly} />
+            </section>
+          )}
           <div className="drawer-actions">
             {!readOnly && (
               <Button variant="secondary" onClick={() => setTab('discovery')}>
@@ -395,6 +412,108 @@ function DeviceDrawer({
         </section>
       )}
     </DrawerShell>
+  );
+}
+
+function PppHostConfig({
+  device,
+  mapNode,
+  readOnly,
+}: {
+  device: HostRecord;
+  mapNode: MapNode;
+  readOnly: boolean;
+}) {
+  const map = useMapStore((state) => state.map);
+  const updateNodePppLocal = useMapStore((state) => state.updateNodePpp);
+  if (!map) return null;
+
+  const persist = (input: UpdateMapNodePppInput) => {
+    updateNodePppLocal(mapNode.id, input);
+    void updateNodePppRequest(map.id, mapNode.id, input).catch(() => undefined);
+  };
+
+  const displayOptions: Array<[PppDisplayMode, string]> = [
+    ['AUTO', 'Automático'],
+    ['SHOW', 'Sempre'],
+    ['HIDE', 'Ocultar'],
+  ];
+  const positionOptions: Array<[PppLabelPosition, string]> = [
+    ['TOP', 'Acima'],
+    ['BOTTOM', 'Abaixo'],
+    ['LEFT', 'Esquerda'],
+    ['RIGHT', 'Direita'],
+    ['CENTER', 'Centro'],
+  ];
+
+  return (
+    <div className="ppp-host-config">
+      <div className="info-grid">
+        <Info
+          label="Valor atual"
+          value={device.pppSupported ? formatPppOnline(device.pppOnline) : 'Não suportado'}
+        />
+        <Info
+          label="Última atualização"
+          value={
+            device.pppUpdatedAt
+              ? new Date(device.pppUpdatedAt).toLocaleString('pt-BR')
+              : 'Nunca'
+          }
+        />
+      </div>
+      <fieldset disabled={readOnly}>
+        <div className="segmented-row">
+          <span>Exibir no mapa</span>
+          <div>
+            {displayOptions.map(([mode, label]) => (
+              <button
+                type="button"
+                key={mode}
+                className={mapNode.pppDisplayMode === mode ? 'is-active' : ''}
+                onClick={() => persist({ pppDisplayMode: mode })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="segmented-row">
+          <span>Posição</span>
+          <div>
+            {positionOptions.map(([position, label]) => (
+              <button
+                type="button"
+                key={position}
+                className={mapNode.pppPosition === position ? 'is-active' : ''}
+                onClick={() => persist({ pppPosition: position })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="ppp-host-config__row">
+          <span>Cor</span>
+          <input
+            type="color"
+            value={mapNode.pppColor ?? '#ffffff'}
+            onChange={(event) => persist({ pppColor: event.target.value })}
+          />
+        </div>
+        <div className="ppp-host-config__row">
+          <span>Tamanho da fonte</span>
+          <input
+            type="range"
+            min="8"
+            max="32"
+            value={mapNode.pppFontSize}
+            onChange={(event) => persist({ pppFontSize: Number(event.target.value) })}
+          />
+          <output>{mapNode.pppFontSize}px</output>
+        </div>
+      </fieldset>
+    </div>
   );
 }
 

@@ -17,26 +17,29 @@ import { SnmpProfileMetricService } from './profile-metric-service';
 import type { SnmpProfileDiagnostic } from './profiles/types';
 import { calculateCounterDelta } from './counter-delta';
 import { decodeSnmpText } from './snmp-text';
+import {
+  GENERIC_INTERFACE_OIDS,
+  GENERIC_LEGACY_COUNTER_OIDS,
+  GENERIC_SYSTEM_OIDS,
+} from './profiles/generic-oids';
 import type { MplsPollingService } from '../mpls/mpls-polling-service';
+import type { PppPollingService } from '../ppp/ppp-polling-service';
 
-const SYSTEM_OIDS = {
-  sysDescr: '1.3.6.1.2.1.1.1.0',
-  sysObjectId: '1.3.6.1.2.1.1.2.0',
-  sysUpTime: '1.3.6.1.2.1.1.3.0',
-  sysName: '1.3.6.1.2.1.1.5.0',
-} as const;
+// Consolidated GENERIC SNMP base (SNMPv2-MIB / IF-MIB). Vendor profiles
+// complement this set; they never duplicate it.
+const SYSTEM_OIDS = GENERIC_SYSTEM_OIDS;
 
 const INTERFACE_OIDS = {
-  adminStatus: '1.3.6.1.2.1.2.2.1.7',
-  operStatus: '1.3.6.1.2.1.2.2.1.8',
-  hcInOctets: '1.3.6.1.2.1.31.1.1.1.6',
-  hcOutOctets: '1.3.6.1.2.1.31.1.1.1.10',
-  inOctets: '1.3.6.1.2.1.2.2.1.10',
-  outOctets: '1.3.6.1.2.1.2.2.1.16',
-  inErrors: '1.3.6.1.2.1.2.2.1.14',
-  outErrors: '1.3.6.1.2.1.2.2.1.20',
-  inDiscards: '1.3.6.1.2.1.2.2.1.13',
-  outDiscards: '1.3.6.1.2.1.2.2.1.19',
+  adminStatus: GENERIC_INTERFACE_OIDS.ifAdminStatus,
+  operStatus: GENERIC_INTERFACE_OIDS.ifOperStatus,
+  hcInOctets: GENERIC_INTERFACE_OIDS.ifHCInOctets,
+  hcOutOctets: GENERIC_INTERFACE_OIDS.ifHCOutOctets,
+  inOctets: GENERIC_LEGACY_COUNTER_OIDS.ifInOctets,
+  outOctets: GENERIC_LEGACY_COUNTER_OIDS.ifOutOctets,
+  inErrors: GENERIC_INTERFACE_OIDS.ifInErrors,
+  outErrors: GENERIC_INTERFACE_OIDS.ifOutErrors,
+  inDiscards: GENERIC_INTERFACE_OIDS.ifInDiscards,
+  outDiscards: GENERIC_INTERFACE_OIDS.ifOutDiscards,
 } as const;
 
 const MIN_COUNTER_SAMPLE_SECONDS = 45;
@@ -78,6 +81,7 @@ export class SnmpService {
     private readonly sshInterfaces?: SshInterfaceService,
     private readonly opticalIntervalMs: number = 300_000,
     private readonly mpls?: MplsPollingService,
+    private readonly ppp?: PppPollingService,
   ) {
     this.client = new SnmpClientImpl(3000, 1);
     this.discoveryAdapter = new SnmpV2cDiscoveryAdapter(repository);
@@ -277,6 +281,7 @@ export class SnmpService {
     await this.repository.saveSnmpPoll(currentDevice.id, system, samples);
     await this.refreshOpticalPower(currentDevice, community);
     await this.refreshMpls(currentDevice, community);
+    await this.refreshPpp(currentDevice, community, system);
     await this.repository.updateSourceHealth(currentDevice.id, {
       source: 'SNMP',
       state: 'CONNECTED',
@@ -304,6 +309,25 @@ export class SnmpService {
       await this.mpls.poll(device, community);
     } catch {
       // MPLS is an independent optional module and never invalidates IF-MIB polling.
+    }
+  }
+
+  private async refreshPpp(
+    device: HostRecord,
+    community: string,
+    system: { sysObjectId?: string; sysDescr?: string; sysName?: string },
+  ): Promise<void> {
+    if (!this.ppp) return;
+    try {
+      await this.ppp.poll(device, community, {
+        vendor: device.vendor,
+        model: device.model,
+        ...(system.sysObjectId ? { sysObjectId: system.sysObjectId } : {}),
+        ...(system.sysDescr ? { sysDescr: system.sysDescr } : {}),
+        ...(system.sysName ? { sysName: system.sysName } : {}),
+      });
+    } catch {
+      // PPP is an independent optional capability and never invalidates IF-MIB polling.
     }
   }
 

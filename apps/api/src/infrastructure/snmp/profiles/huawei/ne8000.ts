@@ -1,4 +1,5 @@
 import type { SnmpProfile } from '../types';
+import { HUAWEI_PPP_ONLINE_OID } from '../ppp-oids';
 import { HUAWEI_ENTITY_CPU_USAGE_OID, HUAWEI_ENTITY_NAME_OID } from './generic';
 
 export const HUAWEI_AVG_CPU_1MIN_OID = '1.3.6.1.4.1.2011.6.3.4.1.3';
@@ -11,6 +12,7 @@ export const huaweiNe8000Profile: SnmpProfile = {
   vendorPatterns: [/huawei/i],
   modelPatterns: [/NE\s*8000/i, /F1A(?:-C)?/i],
   sysDescrPatterns: [/NetEngine\s*8000/i, /NE\s*8000/i],
+  pppOnlineOid: HUAWEI_PPP_ONLINE_OID,
   metrics: {
     cpu: {
       unit: '%',

@@ -2,6 +2,7 @@ import {
   calculateUtilization,
   cloneDemoMaps,
   createLocalId,
+  defaultPppTotalSettings,
   type AddDeviceResult,
   type AssistedDiscoveryPreview,
   type AssistedDiscoveredNeighbor,
@@ -19,6 +20,7 @@ import {
   type MapPlaylist,
   type MapSettings,
   type MapSummary,
+  type MapWidget,
   type NetworkInterface,
   type NetworkLink,
   type NetworkMap,
@@ -29,6 +31,9 @@ import {
   type UpdateHostInput,
   type UpdateLinkInput,
   type UpdateMapInput,
+  type UpdateMapNodePppInput,
+  type UpdateMapWidgetInput,
+  type UpsertMapWidgetInput,
   type ZabbixHostCandidate,
   type ZabbixImportPreview,
   type ZabbixImportResult,
@@ -218,6 +223,10 @@ export class DemoMapRepository {
       lastPollingAt: null,
       lastDiscoveryAt: null,
       uptimeSeconds: 0,
+      pppSupported: false,
+      pppOnline: 0,
+      pppUpdatedAt: null,
+      pppSource: null,
       updatedAt: timestamp,
       createdAt: timestamp,
       interfaces: (interfaces?.length ? interfaces : defaultInterfaces(id)).map((item) => ({
@@ -338,6 +347,10 @@ export class DemoMapRepository {
       position,
       locked: false,
       positionSource: 'MANUAL',
+      pppDisplayMode: 'AUTO',
+      pppPosition: 'BOTTOM',
+      pppColor: null,
+      pppFontSize: 14,
     };
     if (!existing) map.nodes.push(node);
     this.touch(map);
@@ -621,6 +634,10 @@ export class DemoMapRepository {
           },
           locked: false,
           positionSource: 'AUTO',
+          pppDisplayMode: 'AUTO',
+          pppPosition: 'BOTTOM',
+          pppColor: null,
+          pppFontSize: 14,
         };
         map.nodes.push(targetNode);
         addedNodes.push(targetNode.id);
@@ -751,6 +768,7 @@ export class DemoMapRepository {
           settings: structuredClone(blankSettings),
           nodes: [],
           links: [],
+          widgets: [],
           createdAt: timestamp,
           updatedAt: timestamp,
         };
@@ -873,10 +891,83 @@ export class DemoMapRepository {
       position: input.position,
       locked: false,
       positionSource: 'MANUAL',
+      pppDisplayMode: 'AUTO',
+      pppPosition: 'BOTTOM',
+      pppColor: null,
+      pppFontSize: 14,
     };
     map.nodes.push(node);
     this.touch(map);
     return structuredClone(node);
+  }
+
+  updateNodePpp(mapId: string, nodeId: string, input: UpdateMapNodePppInput): NetworkMap | null {
+    const map = this.findMap(mapId);
+    if (!map) return null;
+    const node = map.nodes.find((item) => item.id === nodeId);
+    if (!node) return null;
+    if (input.pppDisplayMode !== undefined) node.pppDisplayMode = input.pppDisplayMode;
+    if (input.pppPosition !== undefined) node.pppPosition = input.pppPosition;
+    if (input.pppColor !== undefined) node.pppColor = input.pppColor;
+    if (input.pppFontSize !== undefined) node.pppFontSize = input.pppFontSize;
+    this.touch(map);
+    return this.materialize(map);
+  }
+
+  upsertWidget(mapId: string, input: UpsertMapWidgetInput): MapWidget | null {
+    const map = this.findMap(mapId);
+    if (!map) return null;
+    const timestamp = new Date().toISOString();
+    const existing = map.widgets.find((item) => item.type === input.type);
+    if (existing) {
+      if (input.positionX !== undefined) existing.positionX = input.positionX;
+      if (input.positionY !== undefined) existing.positionY = input.positionY;
+      if (input.enabled !== undefined) existing.enabled = input.enabled;
+      if (input.settings !== undefined) {
+        existing.settings = { ...existing.settings, ...input.settings };
+      }
+      existing.updatedAt = timestamp;
+      this.touch(map);
+      return structuredClone(existing);
+    }
+    const widget: MapWidget = {
+      id: createLocalId('widget'),
+      mapId,
+      type: input.type,
+      positionX: input.positionX ?? 0,
+      positionY: input.positionY ?? 0,
+      enabled: input.enabled ?? true,
+      settings: { ...defaultPppTotalSettings(), ...(input.settings ?? {}) },
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    map.widgets.push(widget);
+    this.touch(map);
+    return structuredClone(widget);
+  }
+
+  updateWidget(mapId: string, widgetId: string, input: UpdateMapWidgetInput): MapWidget | null {
+    const map = this.findMap(mapId);
+    if (!map) return null;
+    const widget = map.widgets.find((item) => item.id === widgetId);
+    if (!widget) return null;
+    if (input.positionX !== undefined) widget.positionX = input.positionX;
+    if (input.positionY !== undefined) widget.positionY = input.positionY;
+    if (input.enabled !== undefined) widget.enabled = input.enabled;
+    if (input.settings !== undefined) widget.settings = { ...widget.settings, ...input.settings };
+    widget.updatedAt = new Date().toISOString();
+    this.touch(map);
+    return structuredClone(widget);
+  }
+
+  deleteWidget(mapId: string, widgetId: string): boolean {
+    const map = this.findMap(mapId);
+    if (!map) return false;
+    const before = map.widgets.length;
+    map.widgets = map.widgets.filter((item) => item.id !== widgetId);
+    if (map.widgets.length === before) return false;
+    this.touch(map);
+    return true;
   }
 
   deleteNode(mapId: string, nodeId: string): boolean {

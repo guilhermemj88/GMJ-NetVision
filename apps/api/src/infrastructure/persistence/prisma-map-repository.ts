@@ -2,6 +2,7 @@ import {
   aggregateLinkMetrics,
   automaticLinkCapacity,
   createLocalId,
+  defaultPppTotalSettings,
   defaultVisualPaths,
   type AddDeviceResult,
   type CreateGenericNodeInput,
@@ -15,12 +16,19 @@ import {
   type MapPlaylist,
   type MapSettings,
   type MapSummary,
+  type MapWidget,
   type NetworkInterface,
   type NetworkLink,
   type NetworkMap,
+  type PppDisplayMode,
+  type PppLabelPosition,
+  type PppTotalWidgetSettings,
   type Position,
   type UpdateMapInput,
   type UpdateLinkInput,
+  type UpdateMapNodePppInput,
+  type UpdateMapWidgetInput,
+  type UpsertMapWidgetInput,
 } from '@gmj/shared';
 import { PrismaClient, Prisma } from '../../generated/prisma/index.js';
 import type { HostRepository } from './host-repository';
@@ -79,6 +87,26 @@ function settingsFromRow(row: {
   };
 }
 
+function normalizePppDisplayMode(value: unknown): PppDisplayMode {
+  return value === 'SHOW' || value === 'HIDE' ? value : 'AUTO';
+}
+
+function normalizePppPosition(value: unknown): PppLabelPosition {
+  return value === 'TOP' || value === 'LEFT' || value === 'RIGHT' || value === 'CENTER'
+    ? value
+    : 'BOTTOM';
+}
+
+function normalizePppColor(value: unknown): string | null {
+  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? value : null;
+}
+
+function normalizePppFontSize(value: unknown): number {
+  const size = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(size)) return 14;
+  return Math.min(32, Math.max(8, Math.trunc(size)));
+}
+
 function nodeFromRow(row: {
   id: string;
   mapId: string;
@@ -90,6 +118,10 @@ function nodeFromRow(row: {
   y: number;
   locked: boolean;
   positionSource: string;
+  pppDisplayMode: string | null;
+  pppPosition: string | null;
+  pppColor: string | null;
+  pppFontSize: number | null;
 }): MapNode {
   return {
     id: row.id,
@@ -101,6 +133,62 @@ function nodeFromRow(row: {
     position: { x: row.x, y: row.y },
     locked: row.locked,
     positionSource: row.positionSource as MapNode['positionSource'],
+    pppDisplayMode: normalizePppDisplayMode(row.pppDisplayMode),
+    pppPosition: normalizePppPosition(row.pppPosition),
+    pppColor: normalizePppColor(row.pppColor),
+    pppFontSize: normalizePppFontSize(row.pppFontSize),
+  };
+}
+
+function normalizeWidgetSettings(value: unknown): PppTotalWidgetSettings {
+  const defaults = defaultPppTotalSettings();
+  if (typeof value !== 'object' || value === null) return defaults;
+  const candidate = value as Record<string, unknown>;
+  const selectedHostIds = Array.isArray(candidate.selectedHostIds)
+    ? candidate.selectedHostIds.filter((item): item is string => typeof item === 'string')
+    : defaults.selectedHostIds;
+  const fontSize = Number(candidate.fontSize);
+  const backgroundOpacity = Number(candidate.backgroundOpacity);
+  return {
+    mode: candidate.mode === 'MANUAL' ? 'MANUAL' : 'AUTO',
+    selectedHostIds,
+    title: typeof candidate.title === 'string' && candidate.title.trim()
+      ? candidate.title
+      : defaults.title,
+    fontColor: normalizePppColor(candidate.fontColor),
+    fontSize: Number.isFinite(fontSize)
+      ? Math.min(64, Math.max(10, Math.trunc(fontSize)))
+      : defaults.fontSize,
+    backgroundColor: normalizePppColor(candidate.backgroundColor),
+    backgroundOpacity: Number.isFinite(backgroundOpacity)
+      ? Math.min(100, Math.max(0, Math.trunc(backgroundOpacity)))
+      : defaults.backgroundOpacity,
+    showHostCount: candidate.showHostCount !== false,
+    showFreshness: candidate.showFreshness !== false,
+  };
+}
+
+function widgetFromRow(row: {
+  id: string;
+  mapId: string;
+  type: string;
+  positionX: number;
+  positionY: number;
+  enabled: boolean;
+  settings: unknown;
+  createdAt: Date;
+  updatedAt: Date;
+}): MapWidget {
+  return {
+    id: row.id,
+    mapId: row.mapId,
+    type: 'PPP_TOTAL',
+    positionX: row.positionX,
+    positionY: row.positionY,
+    enabled: row.enabled,
+    settings: normalizeWidgetSettings(row.settings),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
@@ -193,7 +281,7 @@ export class PrismaMapRepository {
   async getMap(mapId: string): Promise<NetworkMap | null> {
     const row = await this.prisma.map.findUnique({
       where: { id: mapId },
-      include: { nodes: true, links: true },
+      include: { nodes: true, links: true, widgets: true },
     });
     return row ? this.materialize(row) : null;
   }
@@ -201,7 +289,7 @@ export class PrismaMapRepository {
   async getDefaultMap(): Promise<NetworkMap | null> {
     const row = await this.prisma.map.findFirst({
       orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
-      include: { nodes: true, links: true },
+      include: { nodes: true, links: true, widgets: true },
     });
     return row ? this.materialize(row) : null;
   }
@@ -281,7 +369,7 @@ export class PrismaMapRepository {
       }
       return tx.map.findUniqueOrThrow({
         where: { id: map.id },
-        include: { nodes: true, links: true },
+        include: { nodes: true, links: true, widgets: true },
       });
     });
     return this.materialize(created);
@@ -588,6 +676,85 @@ export class PrismaMapRepository {
     return result.count > 0;
   }
 
+  async updateNodePpp(
+    mapId: string,
+    nodeId: string,
+    input: UpdateMapNodePppInput,
+  ): Promise<NetworkMap | null> {
+    const result = await this.prisma.mapNode.updateMany({
+      where: { id: nodeId, mapId },
+      data: {
+        ...(input.pppDisplayMode === undefined ? {} : { pppDisplayMode: input.pppDisplayMode }),
+        ...(input.pppPosition === undefined ? {} : { pppPosition: input.pppPosition }),
+        ...(input.pppColor === undefined ? {} : { pppColor: input.pppColor }),
+        ...(input.pppFontSize === undefined ? {} : { pppFontSize: input.pppFontSize }),
+      },
+    });
+    return result.count ? this.getMap(mapId) : null;
+  }
+
+  async upsertWidget(mapId: string, input: UpsertMapWidgetInput): Promise<MapWidget | null> {
+    const map = await this.prisma.map.findUnique({ where: { id: mapId }, select: { id: true } });
+    if (!map) return null;
+    const existing = await this.prisma.mapWidget.findUnique({
+      where: { mapId_type: { mapId, type: input.type } },
+    });
+    const merged = {
+      ...defaultPppTotalSettings(),
+      ...(existing?.settings && typeof existing.settings === 'object' ? existing.settings : {}),
+      ...(input.settings ?? {}),
+    };
+    const row = await this.prisma.mapWidget.upsert({
+      where: { mapId_type: { mapId, type: input.type } },
+      create: {
+        mapId,
+        type: input.type,
+        positionX: input.positionX ?? 0,
+        positionY: input.positionY ?? 0,
+        enabled: input.enabled ?? true,
+        settings: asJson(merged),
+      },
+      update: {
+        ...(input.positionX === undefined ? {} : { positionX: input.positionX }),
+        ...(input.positionY === undefined ? {} : { positionY: input.positionY }),
+        ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+        ...(input.settings === undefined ? {} : { settings: asJson(merged) }),
+      },
+    });
+    return widgetFromRow(row);
+  }
+
+  async updateWidget(
+    mapId: string,
+    widgetId: string,
+    input: UpdateMapWidgetInput,
+  ): Promise<MapWidget | null> {
+    const existing = await this.prisma.mapWidget.findFirst({
+      where: { id: widgetId, mapId },
+    });
+    if (!existing) return null;
+    const merged = {
+      ...defaultPppTotalSettings(),
+      ...(existing.settings && typeof existing.settings === 'object' ? existing.settings : {}),
+      ...(input.settings ?? {}),
+    };
+    const row = await this.prisma.mapWidget.update({
+      where: { id: widgetId },
+      data: {
+        ...(input.positionX === undefined ? {} : { positionX: input.positionX }),
+        ...(input.positionY === undefined ? {} : { positionY: input.positionY }),
+        ...(input.enabled === undefined ? {} : { enabled: input.enabled }),
+        ...(input.settings === undefined ? {} : { settings: asJson(merged) }),
+      },
+    });
+    return widgetFromRow(row);
+  }
+
+  async deleteWidget(mapId: string, widgetId: string): Promise<boolean> {
+    const result = await this.prisma.mapWidget.deleteMany({ where: { id: widgetId, mapId } });
+    return result.count > 0;
+  }
+
   private async materialize(row: {
     id: string;
     name: string;
@@ -613,6 +780,21 @@ export class PrismaMapRepository {
       y: number;
       locked: boolean;
       positionSource: string;
+      pppDisplayMode: string | null;
+      pppPosition: string | null;
+      pppColor: string | null;
+      pppFontSize: number | null;
+    }>;
+    widgets: Array<{
+      id: string;
+      mapId: string;
+      type: string;
+      positionX: number;
+      positionY: number;
+      enabled: boolean;
+      settings: unknown;
+      createdAt: Date;
+      updatedAt: Date;
     }>;
     links: Array<{
       id: string;
@@ -655,6 +837,7 @@ export class PrismaMapRepository {
       nodes: row.nodes.map(nodeFromRow),
       devices,
       links: row.links.map((link) => this.materializeLink(link, devices)),
+      widgets: row.widgets.map(widgetFromRow),
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
     };

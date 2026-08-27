@@ -9,6 +9,7 @@ import type {
   HostRecord,
   LldpApplySelection,
   NetworkMap,
+  PppTotalWidgetSettings,
   PublicMapView,
   PublicView,
   PublicViewResponse,
@@ -54,6 +55,8 @@ import { DemoMplsRepository } from './infrastructure/mpls/demo-mpls-repository';
 import { HuaweiVplsSnmpCollector } from './infrastructure/mpls/huawei-vpls-snmp';
 import { MplsPollingService } from './infrastructure/mpls/mpls-polling-service';
 import { PrismaMplsRepository } from './infrastructure/mpls/prisma-mpls-repository';
+import { PppPollingService } from './infrastructure/ppp/ppp-polling-service';
+import { PrismaPppRepository } from './infrastructure/ppp/prisma-ppp-repository';
 import { SshClientImpl } from './infrastructure/ssh/ssh-client-impl';
 import { SshInterfaceService } from './infrastructure/ssh/ssh-interface-service';
 import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-adapter';
@@ -63,6 +66,7 @@ import { LldpSshDiscoveryAdapter } from './infrastructure/topology/lldp-ssh-adap
 
 const mapIdParams = z.object({ mapId: z.string().min(1) });
 const nodeParams = z.object({ mapId: z.string().min(1), nodeId: z.string().min(1) });
+const widgetParams = z.object({ mapId: z.string().min(1), widgetId: z.string().min(1) });
 const deviceParams = z.object({ mapId: z.string().min(1), deviceId: z.string().min(1) });
 const linkParams = z.object({ mapId: z.string().min(1), linkId: z.string().min(1) });
 const positionSchema = z.object({
@@ -194,6 +198,70 @@ const updateMapSchema = z.object({
   isDefault: z.boolean().optional(),
   settings: mapSettingsSchema.optional(),
 });
+const nodePppSchema = z.object({
+  pppDisplayMode: z.enum(['AUTO', 'SHOW', 'HIDE']).optional(),
+  pppPosition: z.enum(['TOP', 'BOTTOM', 'LEFT', 'RIGHT', 'CENTER']).optional(),
+  pppColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .nullable()
+    .optional(),
+  pppFontSize: z.number().int().min(8).max(32).optional(),
+});
+const pppTotalSettingsSchema = z.object({
+  mode: z.enum(['AUTO', 'MANUAL']).optional(),
+  selectedHostIds: z.array(z.string().min(1)).optional(),
+  title: z.string().min(1).max(80).optional(),
+  fontColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .nullable()
+    .optional(),
+  fontSize: z.number().int().min(10).max(64).optional(),
+  backgroundColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .nullable()
+    .optional(),
+  backgroundOpacity: z.number().int().min(0).max(100).optional(),
+  showHostCount: z.boolean().optional(),
+  showFreshness: z.boolean().optional(),
+});
+const upsertWidgetSchema = z.object({
+  type: z.enum(['PPP_TOTAL']),
+  positionX: z.number().finite().optional(),
+  positionY: z.number().finite().optional(),
+  enabled: z.boolean().optional(),
+  settings: pppTotalSettingsSchema.optional(),
+});
+const updateWidgetSchema = z.object({
+  positionX: z.number().finite().optional(),
+  positionY: z.number().finite().optional(),
+  enabled: z.boolean().optional(),
+  settings: pppTotalSettingsSchema.optional(),
+});
+
+type PppSettingsBody = z.infer<typeof pppTotalSettingsSchema>;
+
+function pppSettingsInput(settings: PppSettingsBody): Partial<PppTotalWidgetSettings> {
+  return {
+    ...(settings.mode === undefined ? {} : { mode: settings.mode }),
+    ...(settings.selectedHostIds === undefined
+      ? {}
+      : { selectedHostIds: settings.selectedHostIds }),
+    ...(settings.title === undefined ? {} : { title: settings.title }),
+    ...(settings.fontColor === undefined ? {} : { fontColor: settings.fontColor }),
+    ...(settings.fontSize === undefined ? {} : { fontSize: settings.fontSize }),
+    ...(settings.backgroundColor === undefined
+      ? {}
+      : { backgroundColor: settings.backgroundColor }),
+    ...(settings.backgroundOpacity === undefined
+      ? {}
+      : { backgroundOpacity: settings.backgroundOpacity }),
+    ...(settings.showHostCount === undefined ? {} : { showHostCount: settings.showHostCount }),
+    ...(settings.showFreshness === undefined ? {} : { showFreshness: settings.showFreshness }),
+  };
+}
 const deviceSchema = z.object({
   name: z.string().min(1).max(80),
   hostname: z.string().min(1).max(255),
@@ -289,11 +357,16 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     new HuaweiVplsSnmpCollector(new SnmpClientImpl(3000, 1)),
     mplsRepository,
   );
+  const pppRepository = config.DEMO_MODE ? null : new PrismaPppRepository();
+  const pppPolling = pppRepository
+    ? new PppPollingService(new SnmpClientImpl(3000, 1), pppRepository)
+    : undefined;
   const snmp = new SnmpService(
     hosts,
     ssh,
     config.OPTICAL_POLL_INTERVAL_SECONDS * 1000,
     mplsPolling,
+    pppPolling,
   );
   const poller = new SnmpPoller(hosts, snmp, config.SNMP_POLL_INTERVAL_SECONDS * 1000);
   const zabbix =
@@ -352,6 +425,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     if (publicViewRepository instanceof PrismaPublicViewRepository)
       await publicViewRepository.disconnect();
     if (mplsRepository instanceof PrismaMplsRepository) await mplsRepository.disconnect();
+    if (pppRepository instanceof PrismaPppRepository) await pppRepository.disconnect();
   });
 
   app.get('/health', async () => ({
@@ -471,6 +545,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     uptimeSeconds: host.uptimeSeconds,
     ...(host.cpuPercent !== undefined ? { cpuPercent: host.cpuPercent } : {}),
     ...(host.memoryPercent !== undefined ? { memoryPercent: host.memoryPercent } : {}),
+    pppSupported: host.pppSupported,
+    pppOnline: host.pppOnline,
+    pppUpdatedAt: host.pppUpdatedAt,
+    pppSource: host.pppSource,
     updatedAt: host.updatedAt,
     interfaces: host.interfaces,
   });
@@ -484,6 +562,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     nodes: map.nodes,
     devices: map.devices.map(toPublicDevice),
     links: map.links,
+    widgets: map.widgets,
     updatedAt: map.updatedAt,
   });
 
@@ -676,6 +755,50 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     const { locked } = z.object({ locked: z.boolean() }).parse(request.body);
     const map = await maps.setNodeLocked(mapId, nodeId, locked);
     return map ?? reply.code(404).send({ message: 'Map or node not found' });
+  });
+
+  app.patch('/api/maps/:mapId/nodes/:nodeId/ppp', async (request, reply) => {
+    const { mapId, nodeId } = nodeParams.parse(request.params);
+    const body = nodePppSchema.parse(request.body);
+    const map = await maps.updateNodePpp(mapId, nodeId, {
+      ...(body.pppDisplayMode === undefined ? {} : { pppDisplayMode: body.pppDisplayMode }),
+      ...(body.pppPosition === undefined ? {} : { pppPosition: body.pppPosition }),
+      ...(body.pppColor === undefined ? {} : { pppColor: body.pppColor }),
+      ...(body.pppFontSize === undefined ? {} : { pppFontSize: body.pppFontSize }),
+    });
+    return map ?? reply.code(404).send({ message: 'Map or node not found' });
+  });
+
+  app.put('/api/maps/:mapId/widgets', async (request, reply) => {
+    const { mapId } = mapIdParams.parse(request.params);
+    const body = upsertWidgetSchema.parse(request.body);
+    const widget = await maps.upsertWidget(mapId, {
+      type: body.type,
+      ...(body.positionX === undefined ? {} : { positionX: body.positionX }),
+      ...(body.positionY === undefined ? {} : { positionY: body.positionY }),
+      ...(body.enabled === undefined ? {} : { enabled: body.enabled }),
+      ...(body.settings === undefined ? {} : { settings: pppSettingsInput(body.settings) }),
+    });
+    return widget ?? reply.code(404).send({ message: 'Map not found' });
+  });
+
+  app.patch('/api/maps/:mapId/widgets/:widgetId', async (request, reply) => {
+    const { mapId, widgetId } = widgetParams.parse(request.params);
+    const body = updateWidgetSchema.parse(request.body);
+    const widget = await maps.updateWidget(mapId, widgetId, {
+      ...(body.positionX === undefined ? {} : { positionX: body.positionX }),
+      ...(body.positionY === undefined ? {} : { positionY: body.positionY }),
+      ...(body.enabled === undefined ? {} : { enabled: body.enabled }),
+      ...(body.settings === undefined ? {} : { settings: pppSettingsInput(body.settings) }),
+    });
+    return widget ?? reply.code(404).send({ message: 'Widget not found' });
+  });
+
+  app.delete('/api/maps/:mapId/widgets/:widgetId', async (request, reply) => {
+    const { mapId, widgetId } = widgetParams.parse(request.params);
+    return (await maps.deleteWidget(mapId, widgetId))
+      ? reply.code(204).send()
+      : reply.code(404).send({ message: 'Widget not found' });
   });
 
   app.post('/api/maps/:mapId/links', async (request, reply) => {

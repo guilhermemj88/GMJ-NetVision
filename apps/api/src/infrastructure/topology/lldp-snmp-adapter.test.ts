@@ -37,6 +37,10 @@ const device: Device = {
   source: 'LLDP_SNMP',
   discoveryMethod: 'AUTO',
   uptimeSeconds: 0,
+  pppSupported: false,
+  pppOnline: 0,
+  pppUpdatedAt: null,
+  pppSource: null,
   updatedAt: '',
   interfaces: [],
 };

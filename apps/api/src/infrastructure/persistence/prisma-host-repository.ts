@@ -781,7 +781,8 @@ export class PrismaHostRepository implements HostRepository {
     snmpEnabled: boolean; snmpVersion: string | null; snmpHost: string | null; snmpPort: number; snmpUsername: string | null;
     snmpSecurityLevel: string | null; snmpAuthProtocol: string | null; snmpPrivacyProtocol: string | null;
     lastPollingAt: Date | null; lastDiscoveryAt: Date | null; uptimeSeconds: bigint | null; cpuPercent: number | null;
-    memoryPercent: number | null; snmpCredentialId: string | null; sshCredentialId: string | null; createdAt: Date; updatedAt: Date;
+    memoryPercent: number | null; pppSupported: boolean; pppOnline: number; pppUpdatedAt: Date | null; pppSource: string | null;
+    snmpCredentialId: string | null; sshCredentialId: string | null; createdAt: Date; updatedAt: Date;
     mapNodes: Array<{ mapId: string }>;
     sourceHealth: Array<{ source: string; state: string; lastSuccess: Date | null; lastFailure: Date | null; lastErrorSafe: string | null }>;
     metricSamples: Array<{ sysName: string | null }>;
@@ -890,6 +891,12 @@ export class PrismaHostRepository implements HostRepository {
       uptimeSeconds: safeNumber(device.uptimeSeconds),
       ...(device.cpuPercent === null ? {} : { cpuPercent: device.cpuPercent }),
       ...(device.memoryPercent === null ? {} : { memoryPercent: device.memoryPercent }),
+      pppSupported: device.pppSupported,
+      pppOnline: device.pppOnline,
+      pppUpdatedAt: device.pppUpdatedAt?.toISOString() ?? null,
+      pppSource: device.pppSource === 'SNMP_HUAWEI' || device.pppSource === 'SNMP_MIKROTIK'
+        ? device.pppSource
+        : null,
       updatedAt: device.updatedAt.toISOString(),
       interfaces,
       description: device.description,

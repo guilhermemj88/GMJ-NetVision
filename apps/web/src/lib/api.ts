@@ -24,6 +24,7 @@ import {
   type MapNode,
   type MapPlaylist,
   type MapSummary,
+  type MapWidget,
   type MplsHostOverview,
   type MplsPw,
   type MplsStateEvent,
@@ -38,8 +39,11 @@ import {
   type UpdateMapInput,
   type UpdateLinkInput,
   type UpdateHostInput,
+  type UpdateMapNodePppInput,
+  type UpdateMapWidgetInput,
   type UpdatePublicViewInput,
   type UpdateUserInput,
+  type UpsertMapWidgetInput,
   type UserAccount,
   type ZabbixImportPreview,
   type ZabbixImportResult,
@@ -229,6 +233,31 @@ export function savePositions(
     method: 'PUT',
     body: JSON.stringify({ nodes }),
   });
+}
+
+export function updateNodePpp(mapId: string, nodeId: string, input: UpdateMapNodePppInput) {
+  return request<NetworkMap>(`/api/maps/${mapId}/nodes/${nodeId}/ppp`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function upsertWidget(mapId: string, input: UpsertMapWidgetInput) {
+  return request<MapWidget>(`/api/maps/${mapId}/widgets`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateWidget(mapId: string, widgetId: string, input: UpdateMapWidgetInput) {
+  return request<MapWidget>(`/api/maps/${mapId}/widgets/${widgetId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteWidget(mapId: string, widgetId: string) {
+  return request<void>(`/api/maps/${mapId}/widgets/${widgetId}`, { method: 'DELETE' });
 }
 
 export function createLink(mapId: string, input: CreateLinkInput) {

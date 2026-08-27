@@ -22,6 +22,7 @@ import { getMap, getMaps, updateNetworkMap } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
 import { DeviceNode, type DeviceFlowNode } from './device-node';
 import { GenericNode, type GenericFlowNode } from './generic-node';
+import { PppTotalWidget } from './ppp-total-widget';
 import { TrafficEdge, type TrafficFlowEdge } from './traffic-edge';
 import { MapControls } from './map-controls';
 import { EditToolbar } from './edit-toolbar';
@@ -326,6 +327,13 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
         }}
       >
         <Background variant={BackgroundVariant.Dots} gap={editMode ? 28 : 34} size={editMode ? 1.2 : 1} color={editMode ? '#26343f' : '#1b2832'} />
+        {map?.widgets
+          .filter((widget) => widget.type === 'PPP_TOTAL' && widget.enabled)
+          .map((widget) => (
+            <ViewportPortal key={widget.id}>
+              <PppTotalWidget widget={widget} devices={map.devices} readOnly={readOnly} />
+            </ViewportPortal>
+          ))}
         {editMode && alignmentGuides.length > 0 && (
           <ViewportPortal>
             {alignmentGuides.map((guide) => (

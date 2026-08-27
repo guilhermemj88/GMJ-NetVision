@@ -35,6 +35,16 @@ export interface SnmpProfile {
   sysDescrPatterns?: RegExp[];
   sysObjectIdPatterns?: RegExp[];
   metrics: Partial<Record<SnmpProfileMetricName, SnmpMetricDefinition>>;
+  /**
+   * Scalar OID for the PPP/PPPoE online counter (capability based). When the
+   * selected profile does not declare it, the device is treated as not
+   * supporting PPP polling — no value is ever invented.
+   */
+  pppOnlineOid?: string;
+  /** Universal SNMPv2-MIB base OIDs (complemented by specific profiles). */
+  systemOids?: Readonly<Record<string, string>>;
+  /** Universal IF-MIB base OIDs (complemented by specific profiles). */
+  interfaceOids?: Readonly<Record<string, string>>;
 }
 
 export interface SnmpCandidateAttempt {
