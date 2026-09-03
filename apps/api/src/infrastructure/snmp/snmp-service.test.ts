@@ -98,6 +98,23 @@ function snmpHost(
   });
 }
 
+function counterRow(ifIndex: number, timestamp = new Date()) {
+  return {
+    ifIndex,
+    timestamp,
+    inOctets: 100n,
+    outOctets: 200n,
+    inErrors: 0n,
+    outErrors: 0n,
+    inDiscards: 0n,
+    outDiscards: 0n,
+  };
+}
+
+function statusRow(ifIndex: number) {
+  return { ifIndex, adminStatus: 'UP' as const, operStatus: 'UP' as const };
+}
+
 describe('SnmpClientImpl', () => {
   let client: SnmpClientImpl;
 
@@ -452,6 +469,225 @@ describe('SnmpService', () => {
 
     expect(enrichment).toHaveBeenCalledTimes(1);
     expect(repo.updateInterfaceOptics).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SnmpService unknown interface auto-discovery', () => {
+  function pollService(repo: HostRepository): SnmpService {
+    return new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
+  }
+
+  function mockCollectSystem(service: SnmpService, timestamp: Date): void {
+    const internals = service as unknown as {
+      collectSystem: () => Promise<DeviceMetricSampleInput>;
+    };
+    vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp });
+  }
+
+  it('detects a new ifIndex in statuses and counters and requests discovery once', async () => {
+    const now = new Date('2026-08-23T12:00:30.000Z');
+    const repo = repository();
+    const service = pollService(repo);
+    const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
+      [1, statusRow(1)], [2193, statusRow(2193)],
+    ]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
+      [1, counterRow(1, now)], [2193, counterRow(2193, now)],
+    ]));
+    mockCollectSystem(service, now);
+
+    await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')]));
+
+    expect(discover).toHaveBeenCalledTimes(1);
+    expect(repo.saveSnmpPoll).toHaveBeenCalledTimes(1);
+    expect(repo.saveSnmpPoll).toHaveBeenCalledWith('test-1', expect.any(Object), [
+      expect.objectContaining({ ifIndex: 1 }),
+    ]);
+  });
+
+  it('detects a new ifIndex present only in statuses', async () => {
+    const now = new Date('2026-08-23T12:00:30.000Z');
+    const repo = repository();
+    const service = pollService(repo);
+    const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
+      [1, statusRow(1)], [2193, statusRow(2193)],
+    ]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
+      [1, counterRow(1, now)],
+    ]));
+    mockCollectSystem(service, now);
+
+    await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')]));
+
+    expect(discover).toHaveBeenCalledTimes(1);
+    expect(repo.saveSnmpPoll).toHaveBeenCalledTimes(1);
+  });
+
+  it('detects a new ifIndex present only in counters', async () => {
+    const now = new Date('2026-08-23T12:00:30.000Z');
+    const repo = repository();
+    const service = pollService(repo);
+    const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
+      [1, statusRow(1)],
+    ]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
+      [1, counterRow(1, now)], [2193, counterRow(2193, now)],
+    ]));
+    mockCollectSystem(service, now);
+
+    await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')]));
+
+    expect(discover).toHaveBeenCalledTimes(1);
+    expect(repo.saveSnmpPoll).toHaveBeenCalledTimes(1);
+  });
+
+  it('requests a single discovery when five unknown ifIndexes appear in one poll', async () => {
+    const now = new Date('2026-08-23T12:00:30.000Z');
+    const repo = repository();
+    const service = pollService(repo);
+    const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
+    const unknownIndexes = [1001, 1002, 1003, 1004, 1005];
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
+      [1, statusRow(1)],
+      ...unknownIndexes.map((ifIndex) => [ifIndex, statusRow(ifIndex)] as const),
+    ]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
+      [1, counterRow(1, now)],
+      ...unknownIndexes.map((ifIndex) => [ifIndex, counterRow(ifIndex, now)] as const),
+    ]));
+    mockCollectSystem(service, now);
+
+    await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')]));
+
+    expect(discover).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not request discovery when no unknown ifIndex is observed', async () => {
+    const now = new Date('2026-08-23T12:00:30.000Z');
+    const repo = repository();
+    const service = pollService(repo);
+    const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
+      [1, statusRow(1)],
+    ]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
+      [1, counterRow(1, now)],
+    ]));
+    mockCollectSystem(service, now);
+
+    await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')]));
+
+    expect(discover).not.toHaveBeenCalled();
+  });
+
+  it('keeps known interfaces polled when unknown-interface discovery fails', async () => {
+    const now = new Date('2026-08-23T12:00:30.000Z');
+    const repo = repository();
+    const service = pollService(repo);
+    vi.spyOn(service, 'discoverAndPersistInterfaces').mockRejectedValue(new Error('discovery boom'));
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
+      [1, statusRow(1)], [2193, statusRow(2193)],
+    ]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
+      [1, counterRow(1, now)], [2193, counterRow(2193, now)],
+    ]));
+    mockCollectSystem(service, now);
+
+    await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')]));
+
+    expect(repo.saveSnmpPoll).toHaveBeenCalledTimes(1);
+    expect(repo.saveSnmpPoll).toHaveBeenCalledWith('test-1', expect.any(Object), [
+      expect.objectContaining({ ifIndex: 1 }),
+    ]);
+  });
+
+  it('suppresses repeated discovery within the cooldown window', async () => {
+    const now = new Date('2026-08-23T12:00:30.000Z');
+    const repo = repository();
+    const service = pollService(repo);
+    const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
+      [1, statusRow(1)], [2193, statusRow(2193)],
+    ]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
+      [1, counterRow(1, now)], [2193, counterRow(2193, now)],
+    ]));
+    mockCollectSystem(service, now);
+    const device = snmpHost([networkInterface('GE0/0/1', 1, 'UP')]);
+
+    await service.pollHost(device);
+    await service.pollHost(device);
+
+    expect(discover).toHaveBeenCalledTimes(1);
+  });
+
+  it('allows a new discovery attempt after the cooldown expires', async () => {
+    const now = new Date('2026-08-23T12:00:30.000Z');
+    const repo = repository();
+    const service = pollService(repo);
+    const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
+      [1, statusRow(1)], [2193, statusRow(2193)],
+    ]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
+      [1, counterRow(1, now)], [2193, counterRow(2193, now)],
+    ]));
+    mockCollectSystem(service, now);
+    const device = snmpHost([networkInterface('GE0/0/1', 1, 'UP')]);
+    const internals = service as unknown as {
+      lastInterfaceDiscoveryAttempts: Map<string, number>;
+    };
+
+    await service.pollHost(device);
+    internals.lastInterfaceDiscoveryAttempts.set('test-1', Date.now() - 6 * 60 * 1000);
+    await service.pollHost(device);
+
+    expect(discover).toHaveBeenCalledTimes(2);
+  });
+
+  it('runs the periodic interface refresh after one hour', async () => {
+    const now = new Date();
+    const repo = repository();
+    const service = pollService(repo);
+    const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
+      [1, statusRow(1)],
+    ]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
+      [1, counterRow(1, now)],
+    ]));
+    mockCollectSystem(service, now);
+    const oldDiscovery = new Date(Date.now() - 61 * 60 * 1000).toISOString();
+
+    await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')], {
+      lastDiscoveryAt: oldDiscovery,
+    }));
+
+    expect(discover).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not run the periodic refresh before one hour when no unknown ifIndex exists', async () => {
+    const now = new Date();
+    const repo = repository();
+    const service = pollService(repo);
+    const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
+      [1, statusRow(1)],
+    ]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
+      [1, counterRow(1, now)],
+    ]));
+    mockCollectSystem(service, now);
+    const recentDiscovery = new Date(Date.now() - 30 * 60 * 1000).toISOString();
+
+    await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')], {
+      lastDiscoveryAt: recentDiscovery,
+    }));
+
+    expect(discover).not.toHaveBeenCalled();
   });
 });
 

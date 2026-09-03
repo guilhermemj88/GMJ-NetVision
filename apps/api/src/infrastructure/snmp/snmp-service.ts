@@ -43,7 +43,8 @@ const INTERFACE_OIDS = {
 } as const;
 
 const MIN_COUNTER_SAMPLE_SECONDS = 45;
-const INTERFACE_REFRESH_MILLISECONDS = 6 * 60 * 60 * 1000;
+const INTERFACE_REFRESH_MILLISECONDS = 60 * 60 * 1000;
+const INTERFACE_DISCOVERY_COOLDOWN_MILLISECONDS = 5 * 60 * 1000;
 
 interface CounterRow {
   ifIndex: number;
@@ -75,6 +76,7 @@ export class SnmpService {
   private readonly activePolls = new Map<string, Promise<SnmpPollResult>>();
   private readonly profileMetrics: SnmpProfileMetricService;
   private readonly lastOpticalAttempts = new Map<string, number>();
+  private readonly lastInterfaceDiscoveryAttempts = new Map<string, number>();
 
   constructor(
     private readonly repository: HostRepository,
@@ -241,6 +243,12 @@ export class SnmpService {
     const counters = await this.collectCounters(currentDevice, community);
     const previous = await previousPromise;
 
+    const knownIfIndexes = new Set(currentDevice.interfaces.map((item) => item.ifIndex));
+    const unknownIfIndexes = new Set<number>();
+    for (const ifIndex of [...statuses.keys(), ...counters.keys()]) {
+      if (!knownIfIndexes.has(ifIndex)) unknownIfIndexes.add(ifIndex);
+    }
+
     const byIndex = new Map(currentDevice.interfaces.map((item) => [item.ifIndex, item]));
     const samples: InterfaceMetricSampleInput[] = [];
     for (const counter of counters.values()) {
@@ -279,6 +287,7 @@ export class SnmpService {
     }
 
     await this.repository.saveSnmpPoll(currentDevice.id, system, samples);
+    await this.discoverUnknownInterfaces(currentDevice, unknownIfIndexes);
     await this.refreshOpticalPower(currentDevice, community);
     await this.refreshMpls(currentDevice, community);
     await this.refreshPpp(currentDevice, community, system);
@@ -301,6 +310,28 @@ export class SnmpService {
         ? { uptimeSeconds: Number(system.uptimeSeconds) }
         : {}),
     };
+  }
+
+  private async discoverUnknownInterfaces(
+    device: HostRecord,
+    unknownIfIndexes: Set<number>,
+  ): Promise<void> {
+    if (!unknownIfIndexes.size) return;
+    const now = Date.now();
+    const lastAttempt = this.lastInterfaceDiscoveryAttempts.get(device.id) ?? 0;
+    if (now - lastAttempt < INTERFACE_DISCOVERY_COOLDOWN_MILLISECONDS) return;
+    this.lastInterfaceDiscoveryAttempts.set(device.id, now);
+
+    const indexes = [...unknownIfIndexes].sort((a, b) => a - b).join(', ');
+    console.log(
+      `SNMP detectou ${unknownIfIndexes.size} novo(s) ifIndex; discovery de interfaces solicitada — Novos ifIndex detectados: ${indexes}`,
+    );
+
+    try {
+      await this.discoverAndPersistInterfaces(device);
+    } catch {
+      // Best-effort refresh triggered by unknown ifIndex; never invalidates IF-MIB polling.
+    }
   }
 
   private async refreshMpls(device: HostRecord, community: string): Promise<void> {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { NetworkInterface } from '@gmj/shared';
+import type { HostRecord, NetworkInterface } from '@gmj/shared';
 import { PrismaHostRepository } from './prisma-host-repository';
 
 function opticalInterface(): NetworkInterface {
@@ -132,5 +132,81 @@ describe('PrismaHostRepository interface status persistence', () => {
       where: { deviceId: 'device-1', ifIndex: 24 },
       data: { adminStatus: 'UP' },
     });
+  });
+});
+
+describe('PrismaHostRepository interface replacement persistence', () => {
+  it('preserves the persistent id of an existing interface matched by hostId + ifIndex', async () => {
+    const upsert = vi.fn().mockResolvedValue({ id: 'abc', ifIndex: 23 });
+    const findMany = vi.fn().mockResolvedValue([{
+      id: 'abc', ifIndex: 23, name: 'Eth-Trunk23', alias: null, description: null,
+      mac: null, mtu: 1500, speedBps: 1000000000n,
+      rxPowerDbm: null, txPowerDbm: null,
+      opticalLanes: null, opticalLaneSource: null, opticalLanesUpdatedAt: null,
+      opticalSource: null, opticalUpdatedAt: null, dataSources: ['SNMP'],
+    }]);
+    const transactionClient = {
+      interface: { findMany, upsert },
+      device: { update: vi.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (operation: (tx: typeof transactionClient) => Promise<void>) =>
+        operation(transactionClient)),
+    };
+    const repository = new PrismaHostRepository(prisma as never, null);
+    vi.spyOn(repository, 'getHost').mockResolvedValue({
+      interfaces: [{ id: 'abc', ifIndex: 23 }],
+    } as HostRecord);
+
+    const input: NetworkInterface = {
+      id: 'abc', deviceId: 'device-1', name: 'Eth-Trunk23', alias: '', description: '',
+      ifIndex: 23, mac: '', mtu: 1500, speedBps: 1_000_000_000,
+      adminStatus: 'UP', operStatus: 'UP', rxBps: 0, txBps: 0,
+      rxUtilization: 0, txUtilization: 0, rxErrors: 0, txErrors: 0,
+      rxDiscards: 0, txDiscards: 0, dataSources: ['SNMP'],
+    };
+
+    const result = await repository.replaceInterfaces('device-1', [input]);
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { deviceId_ifIndex: { deviceId: 'device-1', ifIndex: 23 } },
+    }));
+    const upsertArgs = upsert.mock.calls[0]?.[0];
+    expect(upsertArgs.create).not.toHaveProperty('id');
+    expect(upsertArgs.update).not.toHaveProperty('id');
+    expect(result[0]?.id).toBe('abc');
+  });
+
+  it('adds a new interface and does not delete interfaces that are no longer seen', async () => {
+    const upsert = vi.fn().mockResolvedValue({ id: 'new-id', ifIndex: 2193 });
+    const findMany = vi.fn().mockResolvedValue([]);
+    const deleteMany = vi.fn();
+    const transactionClient = {
+      interface: { findMany, upsert, deleteMany },
+      device: { update: vi.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (operation: (tx: typeof transactionClient) => Promise<void>) =>
+        operation(transactionClient)),
+    };
+    const repository = new PrismaHostRepository(prisma as never, null);
+    vi.spyOn(repository, 'getHost').mockResolvedValue({
+      interfaces: [{ id: 'new-id', ifIndex: 2193 }],
+    } as HostRecord);
+
+    await repository.replaceInterfaces('device-1', [{
+      id: 'temp-id', deviceId: 'device-1', name: 'Eth-Trunk1.2193', alias: '', description: '',
+      ifIndex: 2193, mac: '', mtu: 1500, speedBps: 0,
+      adminStatus: 'DOWN', operStatus: 'DOWN', rxBps: 0, txBps: 0,
+      rxUtilization: 0, txUtilization: 0, rxErrors: 0, txErrors: 0,
+      rxDiscards: 0, txDiscards: 0, dataSources: ['SNMP'],
+    }]);
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { deviceId_ifIndex: { deviceId: 'device-1', ifIndex: 2193 } },
+    }));
+    expect(deleteMany).not.toHaveBeenCalled();
   });
 });
