@@ -1895,8 +1895,8 @@ button {
   font: 550 10px var(--font-mono);
   letter-spacing: 0.01em;
   paint-order: stroke;
-  stroke: rgba(3, 8, 12, 0.82);
-  stroke-width: 2.5px;
+  stroke: rgba(3, 8, 12, 0.9);
+  stroke-width: 3px;
   stroke-linejoin: round;
 }
 .traffic-edge__inline-label.is-dimmed {

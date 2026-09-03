@@ -15,9 +15,19 @@ vi.mock('@xyflow/react', async () => {
 
 const baseLink = cloneDemoMaps()[0]!.links[0]!;
 
+interface EdgeLayout {
+  sourceX?: number;
+  sourceY?: number;
+  targetX?: number;
+  targetY?: number;
+  sourcePosition?: Position;
+  targetPosition?: Position;
+}
+
 function renderEdge(
   linkPartial: Partial<NetworkLink> = {},
   dataPartial: Partial<TrafficEdgeData> = {},
+  layout: EdgeLayout = {},
 ): string {
   const link: NetworkLink = {
     ...structuredClone(baseLink),
@@ -54,12 +64,12 @@ function renderEdge(
         target: edge.target,
         data: edge.data!,
         selected: false,
-        sourceX: 10,
-        sourceY: 20,
-        targetX: 310,
-        targetY: 160,
-        sourcePosition: Position.Right,
-        targetPosition: Position.Left,
+        sourceX: layout.sourceX ?? 10,
+        sourceY: layout.sourceY ?? 20,
+        targetX: layout.targetX ?? 310,
+        targetY: layout.targetY ?? 160,
+        sourcePosition: layout.sourcePosition ?? Position.Right,
+        targetPosition: layout.targetPosition ?? Position.Left,
       }),
     ),
   );
@@ -191,6 +201,16 @@ describe('TrafficEdge inline traffic labels', () => {
       .filter((value): value is string => Boolean(value));
   }
 
+  function inlineLabelPositions(markup: string): Array<{ x: string; y: string }> {
+    return [...markup.matchAll(/<text\b[^>]*>/g)]
+      .map((tag) => {
+        const x = /x="([^"]+)"/.exec(tag[0])?.[1];
+        const y = /y="([^"]+)"/.exec(tag[0])?.[1];
+        return x && y ? { x, y } : null;
+      })
+      .filter((value): value is { x: string; y: string } => Boolean(value));
+  }
+
   it('keeps CARD as the default traffic label mode', () => {
     const markup = renderEdge({}, { showLabels: true });
 
@@ -231,6 +251,46 @@ describe('TrafficEdge inline traffic labels', () => {
     const positions = inlineLabelX(markup);
     expect(positions).toHaveLength(2);
     expect(new Set(positions).size).toBe(2);
+  });
+
+  it('separates the two inline labels on a vertical link', () => {
+    const markup = renderEdge(
+      {},
+      { showLabels: true, trafficLabelMode: 'INLINE' },
+      {
+        sourceX: 0,
+        sourceY: 0,
+        targetX: 0,
+        targetY: 300,
+        sourcePosition: Position.Bottom,
+        targetPosition: Position.Top,
+      },
+    );
+
+    const positions = inlineLabelPositions(markup);
+    expect(positions).toHaveLength(2);
+    expect(new Set(positions.map((position) => position.x)).size).toBe(2);
+    expect(new Set(positions.map((position) => position.y)).size).toBe(2);
+  });
+
+  it('separates the two inline labels on a horizontal link', () => {
+    const markup = renderEdge(
+      {},
+      { showLabels: true, trafficLabelMode: 'INLINE' },
+      {
+        sourceX: 0,
+        sourceY: 0,
+        targetX: 300,
+        targetY: 0,
+        sourcePosition: Position.Right,
+        targetPosition: Position.Left,
+      },
+    );
+
+    const positions = inlineLabelPositions(markup);
+    expect(positions).toHaveLength(2);
+    expect(new Set(positions.map((position) => position.x)).size).toBe(2);
+    expect(new Set(positions.map((position) => position.y)).size).toBe(2);
   });
 
   it('shows only the valid direction for a single-ended link', () => {

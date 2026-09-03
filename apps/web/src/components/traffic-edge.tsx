@@ -40,16 +40,16 @@ export interface TrafficEdgeData extends Record<string, unknown> {
 export type TrafficFlowEdge = Edge<TrafficEdgeData, 'traffic'>;
 
 const EDGE_CURVATURE = 0.24;
-const LANE_HALF_GAP = 2.6;
+const LANE_HALF_GAP = 4.0;
 const HUE_A = 190;
 const HUE_B = 285;
 // Converts a visual-path curvature (signed pixel offset) into a bezier bow.
 const PATH_OFFSET_SCALE = 0.9;
 // Inline label placement along the bezier, plus the perpendicular lift so text
 // never sits exactly on the lane stroke.
-const INLINE_LABEL_T_A = 0.45;
-const INLINE_LABEL_T_B = 0.55;
-const INLINE_LABEL_LIFT = 8;
+const INLINE_LABEL_T_A = 0.4;
+const INLINE_LABEL_T_B = 0.6;
+const INLINE_LABEL_LIFT = 10;
 
 type FlowLevel = 'normal' | 'attention' | 'high' | 'critical' | 'down' | 'unknown';
 
