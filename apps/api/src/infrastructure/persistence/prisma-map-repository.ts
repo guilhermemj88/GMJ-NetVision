@@ -38,6 +38,7 @@ const blankSettings: MapSettings = {
   nodeDisplayMode: 'ICON_2D',
   linkDisplayStyle: 'HYBRID',
   linkMetricDisplay: 'BOTH',
+  trafficLabelMode: 'CARD',
   filters: {
     showTraffic: true,
     showUtilization: true,
@@ -61,6 +62,7 @@ function settingsFromRow(row: {
   nodeDisplayMode: string;
   linkDisplayStyle: string;
   linkMetricDisplay: string;
+  trafficLabelMode: string;
   nodeScale: number;
   linkScale: number;
   labelScale: number;
@@ -79,6 +81,7 @@ function settingsFromRow(row: {
     nodeDisplayMode: row.nodeDisplayMode as MapSettings['nodeDisplayMode'],
     linkDisplayStyle: row.linkDisplayStyle as MapSettings['linkDisplayStyle'],
     linkMetricDisplay: row.linkMetricDisplay as MapSettings['linkMetricDisplay'],
+    trafficLabelMode: row.trafficLabelMode as MapSettings['trafficLabelMode'],
     nodeScale: row.nodeScale,
     linkScale: row.linkScale,
     labelScale: row.labelScale,
@@ -315,6 +318,7 @@ export class PrismaMapRepository {
                 nodeDisplayMode: source.nodeDisplayMode,
                 linkDisplayStyle: source.linkDisplayStyle,
                 linkMetricDisplay: source.linkMetricDisplay,
+                trafficLabelMode: source.trafficLabelMode,
                 nodeScale: source.nodeScale,
                 linkScale: source.linkScale,
                 labelScale: source.labelScale,
@@ -396,6 +400,9 @@ export class PrismaMapRepository {
             : {}),
           ...(settings?.linkMetricDisplay !== undefined
             ? { linkMetricDisplay: settings.linkMetricDisplay }
+            : {}),
+          ...(settings?.trafficLabelMode !== undefined
+            ? { trafficLabelMode: settings.trafficLabelMode }
             : {}),
           ...(settings?.nodeScale !== undefined ? { nodeScale: settings.nodeScale } : {}),
           ...(settings?.linkScale !== undefined ? { linkScale: settings.linkScale } : {}),
@@ -764,6 +771,7 @@ export class PrismaMapRepository {
     nodeDisplayMode: string;
     linkDisplayStyle: string;
     linkMetricDisplay: string;
+    trafficLabelMode: string;
     nodeScale: number;
     linkScale: number;
     labelScale: number;

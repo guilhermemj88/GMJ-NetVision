@@ -379,6 +379,7 @@ export const demoMap: NetworkMap = {
     nodeDisplayMode: 'ICON_2D',
     linkDisplayStyle: 'HYBRID',
     linkMetricDisplay: 'BOTH',
+    trafficLabelMode: 'CARD',
     filters: {
       showTraffic: true,
       showUtilization: true,

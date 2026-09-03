@@ -44,6 +44,12 @@ enum LinkMetricDisplay {
   NONE
 }
 
+enum TrafficLabelMode {
+  CARD
+  INLINE
+  HIDDEN
+}
+
 enum CapacitySource {
   AUTO
   MANUAL
@@ -213,6 +219,7 @@ model Map {
   nodeDisplayMode   NodeDisplayMode   @default(ICON_2D)
   linkDisplayStyle  LinkDisplayStyle  @default(HYBRID)
   linkMetricDisplay LinkMetricDisplay @default(BOTH)
+  trafficLabelMode  TrafficLabelMode  @default(CARD)
   nodeScale         Float             @default(100)
   linkScale         Float             @default(100)
   labelScale        Float             @default(100)

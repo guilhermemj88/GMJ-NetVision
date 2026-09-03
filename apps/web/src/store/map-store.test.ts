@@ -219,3 +219,60 @@ describe('global interface search navigation', () => {
     });
   });
 });
+
+describe('traffic label mode persistence', () => {
+  afterEach(() => {
+    useMapStore.setState({ map: null, dirty: false, readOnly: false, publicMaps: [] });
+    useMapStore.getState().stopRotation();
+  });
+
+  it('defaults to CARD in demo and freshly loaded maps', () => {
+    const map = cloneDemoMaps()[0]!;
+
+    expect(map.settings.trafficLabelMode).toBe('CARD');
+    useMapStore.getState().setMap(map);
+    expect(useMapStore.getState().map?.settings.trafficLabelMode).toBe('CARD');
+  });
+
+  it('updates trafficLabelMode in the map settings', () => {
+    const map = cloneDemoMaps()[0]!;
+    useMapStore.getState().setMap(map);
+
+    useMapStore.getState().setTrafficLabelMode('INLINE');
+
+    expect(useMapStore.getState().map?.settings.trafficLabelMode).toBe('INLINE');
+    expect(useMapStore.getState().dirty).toBe(true);
+  });
+
+  it('preserves INLINE in a public map view', () => {
+    const map = cloneDemoMaps()[0]!;
+    map.settings.trafficLabelMode = 'INLINE';
+
+    useMapStore.getState().setPublicMap(map);
+
+    expect(useMapStore.getState().readOnly).toBe(true);
+    expect(useMapStore.getState().map?.settings.trafficLabelMode).toBe('INLINE');
+  });
+
+  it('preserves INLINE during public NOC rotation', () => {
+    const publicMaps: NetworkMap[] = ['backbone', 'access'].map((id) => ({
+      ...cloneDemoMaps()[0]!,
+      id,
+      name: id,
+      settings: { ...cloneDemoMaps()[0]!.settings, trafficLabelMode: 'INLINE' as const },
+    }));
+    useMapStore.getState().loadPublicMaps(publicMaps);
+    useMapStore.getState().setReadOnly(true);
+    useMapStore.getState().startRotation({
+      mapIds: publicMaps.map((map) => map.id),
+      intervalSeconds: 30,
+      hideTopBar: true,
+      hideControls: true,
+      pauseOnInteraction: false,
+    });
+
+    expect(useMapStore.getState().map?.settings.trafficLabelMode).toBe('INLINE');
+    useMapStore.getState().rotateBy(1);
+    expect(useMapStore.getState().map?.settings.trafficLabelMode).toBe('INLINE');
+  });
+});

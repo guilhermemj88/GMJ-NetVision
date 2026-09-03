@@ -170,6 +170,7 @@ const mapSettingsSchema = z.object({
   nodeDisplayMode: z.enum(['ICON_2D', 'ICON_3D', 'CARD']).optional(),
   linkDisplayStyle: z.enum(['FLOW', 'WEATHERMAP', 'HYBRID', 'MINIMAL']).optional(),
   linkMetricDisplay: z.enum(['THROUGHPUT', 'UTILIZATION', 'BOTH', 'NONE']).optional(),
+  trafficLabelMode: z.enum(['CARD', 'INLINE', 'HIDDEN']).optional(),
   filters: z
     .object({
       showTraffic: z.boolean().optional(),

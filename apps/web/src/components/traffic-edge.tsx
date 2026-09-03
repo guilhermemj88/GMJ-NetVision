@@ -8,6 +8,7 @@ import {
   type LinkVisualPath,
   type NetworkInterface,
   type NetworkLink,
+  type TrafficLabelMode,
 } from '@gmj/shared';
 import {
   EdgeLabelRenderer,
@@ -29,6 +30,7 @@ export interface TrafficEdgeData extends Record<string, unknown> {
   showTrafficAnimation: boolean;
   displayStyle: LinkDisplayStyle;
   metricDisplay: LinkMetricDisplay;
+  trafficLabelMode?: TrafficLabelMode;
   related: boolean;
   emphasized: boolean;
   linkScale: number;
@@ -43,6 +45,11 @@ const HUE_A = 190;
 const HUE_B = 285;
 // Converts a visual-path curvature (signed pixel offset) into a bezier bow.
 const PATH_OFFSET_SCALE = 0.9;
+// Inline label placement along the bezier, plus the perpendicular lift so text
+// never sits exactly on the lane stroke.
+const INLINE_LABEL_T_A = 0.45;
+const INLINE_LABEL_T_B = 0.55;
+const INLINE_LABEL_LIFT = 8;
 
 type FlowLevel = 'normal' | 'attention' | 'high' | 'critical' | 'down' | 'unknown';
 
@@ -80,6 +87,16 @@ function getControlWithCurvature({
   }
 }
 
+interface BezierGeometry {
+  path: string;
+  labelX: number;
+  labelY: number;
+  source: { x: number; y: number };
+  c1: { x: number; y: number };
+  c2: { x: number; y: number };
+  target: { x: number; y: number };
+}
+
 function getOffsetBezierPath({
   sourceX,
   sourceY,
@@ -98,7 +115,7 @@ function getOffsetBezierPath({
   targetPosition: Position;
   curvature: number;
   offset: number;
-}): { path: string; labelX: number; labelY: number } {
+}): BezierGeometry {
   const [sourceControlX, sourceControlY] = getControlWithCurvature({
     pos: sourcePosition,
     x1: sourceX,
@@ -129,7 +146,26 @@ function getOffsetBezierPath({
   const path = `M${sourceX},${sourceY} C${c1x},${c1y} ${c2x},${c2y} ${targetX},${targetY}`;
   const labelX = (sourceX + 3 * c1x + 3 * c2x + targetX) / 8;
   const labelY = (sourceY + 3 * c1y + 3 * c2y + targetY) / 8;
-  return { path, labelX, labelY };
+  return {
+    path,
+    labelX,
+    labelY,
+    source: { x: sourceX, y: sourceY },
+    c1: { x: c1x, y: c1y },
+    c2: { x: c2x, y: c2y },
+    target: { x: targetX, y: targetY },
+  };
+}
+
+function bezierPoint(geometry: BezierGeometry, t: number): { x: number; y: number } {
+  const { source, c1, c2, target } = geometry;
+  const u = 1 - t;
+  const u2 = u * u;
+  const t2 = t * t;
+  return {
+    x: u2 * u * source.x + 3 * u2 * t * c1.x + 3 * u * t2 * c2.x + t2 * t * target.x,
+    y: u2 * u * source.y + 3 * u2 * t * c1.y + 3 * u * t2 * c2.y + t2 * t * target.y,
+  };
 }
 
 function throughputText(bps: number): string {
@@ -257,10 +293,11 @@ export function TrafficEdge({
     emphasized,
     linkScale,
     labelScale,
+    trafficLabelMode = 'CARD',
   } = data;
 
   const pathOffset = (visualPath?.curvature ?? 0) * PATH_OFFSET_SCALE;
-  const { path, labelX, labelY } = getOffsetBezierPath({
+  const geometry = getOffsetBezierPath({
     sourceX,
     sourceY,
     sourcePosition,
@@ -270,6 +307,7 @@ export function TrafficEdge({
     curvature: EDGE_CURVATURE,
     offset: pathOffset,
   });
+  const { path, labelX, labelY } = geometry;
 
   const displayStyle = link.visualStyle ?? data.displayStyle;
   const requestedMetricDisplay = link.metricDisplay ?? data.metricDisplay;
@@ -320,6 +358,25 @@ export function TrafficEdge({
     link.trafficMode === 'SINGLE_ENDED' ? (sourceMonitored ? 'LOCAL_TX' : 'LOCAL_RX') : 'A_TO_B';
   const laneBObservation =
     link.trafficMode === 'SINGLE_ENDED' ? (sourceMonitored ? 'LOCAL_RX' : 'LOCAL_TX') : 'B_TO_A';
+
+  const renderInlineMetric = showMetric && trafficLabelMode === 'INLINE' && renderLanes;
+  const laneAAvailable = aToB.txBps !== null || aToB.observedRxBps !== null;
+  const laneBAvailable = bToA.txBps !== null || bToA.observedRxBps !== null;
+  const inlineLift = INLINE_LABEL_LIFT * (linkScale / 100);
+  const inlineAOffset = gap + inlineLift;
+  const inlineBOffset = -(gap + inlineLift);
+  const inlineAPoint = bezierPoint(geometry, INLINE_LABEL_T_A);
+  const inlineBPoint = bezierPoint(geometry, INLINE_LABEL_T_B);
+  const inlineAX = inlineAPoint.x + normalX * inlineAOffset;
+  const inlineAY = inlineAPoint.y + normalY * inlineAOffset;
+  const inlineBX = inlineBPoint.x + normalX * inlineBOffset;
+  const inlineBY = inlineBPoint.y + normalY * inlineBOffset;
+  const inlineTextA = displayThroughput
+    ? throughputText(aToB.bps)
+    : utilizationText(aToB.utilization);
+  const inlineTextB = displayThroughput
+    ? throughputText(bToA.bps)
+    : utilizationText(bToA.utilization);
 
   return (
     <>
@@ -376,7 +433,38 @@ export function TrafficEdge({
 
       <path d={path} className="traffic-edge__hitarea" />
 
-      {(showMetric || showPathLabel) && (
+      {renderInlineMetric && (
+        <>
+          {laneAAvailable && (
+            <text
+              x={inlineAX}
+              y={inlineAY}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              data-flow-direction="A_TO_B"
+              className={`traffic-edge__inline-label ${classes}`}
+              style={{ fill: colorA, fontSize: 10 * (labelScale / 100) }}
+            >
+              {inlineTextA}
+            </text>
+          )}
+          {laneBAvailable && (
+            <text
+              x={inlineBX}
+              y={inlineBY}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              data-flow-direction="B_TO_A"
+              className={`traffic-edge__inline-label ${classes}`}
+              style={{ fill: colorB, fontSize: 10 * (labelScale / 100) }}
+            >
+              {inlineTextB}
+            </text>
+          )}
+        </>
+      )}
+
+      {trafficLabelMode === 'CARD' && (showMetric || showPathLabel) && (
         <EdgeLabelRenderer>
           <div
             className={`edge-metric edge-metric--${displayStyle.toLowerCase()} edge-metric--${worstTone} ${related ? '' : 'is-dimmed'}`}
@@ -401,6 +489,19 @@ export function TrafficEdge({
                 </div>
               </>
             )}
+          </div>
+        </EdgeLabelRenderer>
+      )}
+
+      {trafficLabelMode !== 'CARD' && showPathLabel && (
+        <EdgeLabelRenderer>
+          <div
+            className={`edge-path-label ${related ? '' : 'is-dimmed'}`}
+            style={{
+              transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px) scale(${labelScale / 100})`,
+            }}
+          >
+            {visualPath?.label}
           </div>
         </EdgeLabelRenderer>
       )}

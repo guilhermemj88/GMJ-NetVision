@@ -1,9 +1,17 @@
-import { createElement } from 'react';
+import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { Position } from '@xyflow/react';
+import { Position, ReactFlowProvider } from '@xyflow/react';
 import { cloneDemoMaps, type NetworkLink } from '@gmj/shared';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { TrafficEdge, type TrafficEdgeData, type TrafficFlowEdge } from './traffic-edge';
+
+vi.mock('@xyflow/react', async () => {
+  const actual = await vi.importActual<typeof import('@xyflow/react')>('@xyflow/react');
+  return {
+    ...actual,
+    EdgeLabelRenderer: ({ children }: { children: ReactNode }) => children,
+  };
+});
 
 const baseLink = cloneDemoMaps()[0]!.links[0]!;
 
@@ -36,20 +44,24 @@ function renderEdge(
     },
   };
   return renderToStaticMarkup(
-    createElement(TrafficEdge, {
-      id: edge.id,
-      type: 'traffic',
-      source: edge.source,
-      target: edge.target,
-      data: edge.data!,
-      selected: false,
-      sourceX: 10,
-      sourceY: 20,
-      targetX: 310,
-      targetY: 160,
-      sourcePosition: Position.Right,
-      targetPosition: Position.Left,
-    }),
+    createElement(
+      ReactFlowProvider,
+      null,
+      createElement(TrafficEdge, {
+        id: edge.id,
+        type: 'traffic',
+        source: edge.source,
+        target: edge.target,
+        data: edge.data!,
+        selected: false,
+        sourceX: 10,
+        sourceY: 20,
+        targetX: 310,
+        targetY: 160,
+        sourcePosition: Position.Right,
+        targetPosition: Position.Left,
+      }),
+    ),
   );
 }
 
@@ -169,5 +181,263 @@ describe('TrafficEdge lightweight flow renderer', () => {
     expect(markup).toContain('data-utilization="62.5"');
     expect(markup).toContain('data-throughput-bps="480000000"');
     expect(markup).toContain('data-utilization="24"');
+  });
+});
+
+describe('TrafficEdge inline traffic labels', () => {
+  function inlineLabelX(markup: string): string[] {
+    return [...markup.matchAll(/<text\b[^>]*>/g)]
+      .map((tag) => /x="([^"]+)"/.exec(tag[0])?.[1])
+      .filter((value): value is string => Boolean(value));
+  }
+
+  it('keeps CARD as the default traffic label mode', () => {
+    const markup = renderEdge({}, { showLabels: true });
+
+    expect(markup).toContain('edge-metric');
+    expect(occurrences(markup, 'edge-metric__row')).toBe(2);
+    expect(markup).not.toContain('traffic-edge__inline-label');
+  });
+
+  it('keeps the current card renderer when mode is CARD', () => {
+    const markup = renderEdge({}, { showLabels: true, trafficLabelMode: 'CARD' });
+
+    expect(occurrences(markup, 'edge-metric__row')).toBe(2);
+    expect(markup).not.toContain('traffic-edge__inline-label');
+  });
+
+  it('does not render the large card in INLINE mode', () => {
+    const markup = renderEdge({}, { showLabels: true, trafficLabelMode: 'INLINE' });
+
+    expect(markup).not.toContain('edge-metric');
+    expect(occurrences(markup, 'traffic-edge__inline-label')).toBe(2);
+  });
+
+  it('shows the A_TO_B direction value inline', () => {
+    const markup = renderEdge({}, { showLabels: true, trafficLabelMode: 'INLINE' });
+
+    expect(markup).toContain('31.7 Gbps');
+  });
+
+  it('shows the B_TO_A direction value inline', () => {
+    const markup = renderEdge({}, { showLabels: true, trafficLabelMode: 'INLINE' });
+
+    expect(markup).toContain('21.6 Gbps');
+  });
+
+  it('places the two inline labels at distinct positions along the path', () => {
+    const markup = renderEdge({}, { showLabels: true, trafficLabelMode: 'INLINE' });
+
+    const positions = inlineLabelX(markup);
+    expect(positions).toHaveLength(2);
+    expect(new Set(positions).size).toBe(2);
+  });
+
+  it('shows only the valid direction for a single-ended link', () => {
+    const markup = renderEdge(
+      {
+        trafficMode: 'SINGLE_ENDED',
+        sourceInterfaceId: 'source-if',
+        targetInterfaceId: null,
+        directions: {
+          A_TO_B: {
+            bps: 900,
+            utilization: 9,
+            txBps: 900,
+            observedRxBps: null,
+            deltaPercent: null,
+            consistency: 'UNKNOWN',
+          },
+          B_TO_A: {
+            bps: 0,
+            utilization: 0,
+            txBps: null,
+            observedRxBps: null,
+            deltaPercent: null,
+            consistency: 'UNKNOWN',
+          },
+        },
+      },
+      { showLabels: true, trafficLabelMode: 'INLINE' },
+    );
+
+    expect(occurrences(markup, 'traffic-edge__inline-label')).toBe(1);
+  });
+
+  it('keeps showing a valid zero value', () => {
+    const markup = renderEdge(
+      {
+        directions: {
+          A_TO_B: {
+            bps: 0,
+            utilization: 0,
+            txBps: 0,
+            observedRxBps: null,
+            deltaPercent: null,
+            consistency: 'UNKNOWN',
+          },
+          B_TO_A: {
+            bps: 0,
+            utilization: 0,
+            txBps: null,
+            observedRxBps: null,
+            deltaPercent: null,
+            consistency: 'UNKNOWN',
+          },
+        },
+      },
+      { showLabels: true, trafficLabelMode: 'INLINE' },
+    );
+
+    expect(occurrences(markup, 'traffic-edge__inline-label')).toBe(1);
+    expect(markup).toContain('0 bps');
+  });
+
+  it('does not invent a label for an unavailable direction', () => {
+    const markup = renderEdge(
+      {
+        directions: {
+          A_TO_B: {
+            bps: 0,
+            utilization: 0,
+            txBps: null,
+            observedRxBps: null,
+            deltaPercent: null,
+            consistency: 'UNKNOWN',
+          },
+          B_TO_A: {
+            bps: 0,
+            utilization: 0,
+            txBps: null,
+            observedRxBps: null,
+            deltaPercent: null,
+            consistency: 'UNKNOWN',
+          },
+        },
+      },
+      { showLabels: true, trafficLabelMode: 'INLINE' },
+    );
+
+    expect(occurrences(markup, 'traffic-edge__inline-label')).toBe(0);
+    expect(markup).not.toContain('0 bps');
+  });
+
+  it('respects a custom color for the inline labels', () => {
+    const markup = renderEdge(
+      { customColor: '#34a853' },
+      { showLabels: true, trafficLabelMode: 'INLINE' },
+    );
+
+    expect(markup).toContain('fill:#34a853');
+  });
+
+  it('renders inline labels for a single visual path', () => {
+    const markup = renderEdge(
+      {},
+      {
+        showLabels: true,
+        trafficLabelMode: 'INLINE',
+        visualPath: { order: 0, label: null, customColor: null, curvature: 0, enabled: true },
+        pathIndex: 0,
+        isPrimaryPath: true,
+      },
+    );
+
+    expect(occurrences(markup, 'traffic-edge__inline-label')).toBe(2);
+  });
+
+  it('keeps traffic labels only on the primary visual path when two paths exist', () => {
+    const primary = renderEdge(
+      {},
+      {
+        showLabels: true,
+        trafficLabelMode: 'INLINE',
+        visualPath: { order: 0, label: null, customColor: null, curvature: -20, enabled: true },
+        pathIndex: 0,
+        isPrimaryPath: true,
+      },
+    );
+    const secondary = renderEdge(
+      {},
+      {
+        showLabels: true,
+        trafficLabelMode: 'INLINE',
+        visualPath: { order: 1, label: null, customColor: null, curvature: 20, enabled: true },
+        pathIndex: 1,
+        isPrimaryPath: false,
+      },
+    );
+
+    expect(occurrences(primary, 'traffic-edge__inline-label')).toBe(2);
+    expect(occurrences(secondary, 'traffic-edge__inline-label')).toBe(0);
+  });
+
+  it('keeps traffic labels only on the primary visual path when three paths exist', () => {
+    const primary = renderEdge(
+      {},
+      {
+        showLabels: true,
+        trafficLabelMode: 'INLINE',
+        visualPath: { order: 0, label: null, customColor: null, curvature: -30, enabled: true },
+        pathIndex: 0,
+        isPrimaryPath: true,
+      },
+    );
+    const second = renderEdge(
+      {},
+      {
+        showLabels: true,
+        trafficLabelMode: 'INLINE',
+        visualPath: { order: 1, label: null, customColor: null, curvature: 0, enabled: true },
+        pathIndex: 1,
+        isPrimaryPath: false,
+      },
+    );
+    const third = renderEdge(
+      {},
+      {
+        showLabels: true,
+        trafficLabelMode: 'INLINE',
+        visualPath: { order: 2, label: null, customColor: null, curvature: 30, enabled: true },
+        pathIndex: 2,
+        isPrimaryPath: false,
+      },
+    );
+
+    expect(occurrences(primary, 'traffic-edge__inline-label')).toBe(2);
+    expect(occurrences(second, 'traffic-edge__inline-label')).toBe(0);
+    expect(occurrences(third, 'traffic-edge__inline-label')).toBe(0);
+  });
+
+  it('follows the bezier when curvature changes instead of using a fixed midpoint', () => {
+    const flat = renderEdge(
+      {},
+      {
+        showLabels: true,
+        trafficLabelMode: 'INLINE',
+        visualPath: { order: 0, label: null, customColor: null, curvature: 0, enabled: true },
+        pathIndex: 0,
+        isPrimaryPath: true,
+      },
+    );
+    const curved = renderEdge(
+      {},
+      {
+        showLabels: true,
+        trafficLabelMode: 'INLINE',
+        visualPath: { order: 0, label: null, customColor: null, curvature: 40, enabled: true },
+        pathIndex: 0,
+        isPrimaryPath: true,
+      },
+    );
+
+    expect(inlineLabelX(flat)).not.toEqual(inlineLabelX(curved));
+  });
+
+  it('hides every traffic metric in HIDDEN mode', () => {
+    const markup = renderEdge({}, { showLabels: true, trafficLabelMode: 'HIDDEN' });
+
+    expect(markup).not.toContain('edge-metric');
+    expect(markup).not.toContain('traffic-edge__inline-label');
   });
 });

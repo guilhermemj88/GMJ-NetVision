@@ -208,6 +208,7 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
           showTrafficAnimation: preferences.showTrafficAnimation,
           displayStyle: map.settings.linkDisplayStyle,
           metricDisplay: map.settings.linkMetricDisplay,
+          trafficLabelMode: map.settings.trafficLabelMode,
           linkScale: map.settings.linkScale,
           labelScale: map.settings.labelScale,
           related: !selectedId || sourceKey === selectedId || targetKey === selectedId,

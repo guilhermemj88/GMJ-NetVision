@@ -1890,6 +1890,30 @@ button {
   stroke-width: 18;
   cursor: pointer;
 }
+.traffic-edge__inline-label {
+  pointer-events: none;
+  font: 550 10px var(--font-mono);
+  letter-spacing: 0.01em;
+  paint-order: stroke;
+  stroke: rgba(3, 8, 12, 0.82);
+  stroke-width: 2.5px;
+  stroke-linejoin: round;
+}
+.traffic-edge__inline-label.is-dimmed {
+  opacity: 0.25;
+}
+.edge-path-label {
+  pointer-events: none;
+  position: absolute;
+  color: #9fb3bd;
+  font: 500 7px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.edge-path-label.is-dimmed {
+  opacity: 0.18;
+}
 @keyframes traffic-flow-forward {
   to {
     stroke-dashoffset: -25;

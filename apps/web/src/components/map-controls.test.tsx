@@ -6,10 +6,11 @@ import { ReactFlowProvider } from '@xyflow/react';
 import { cloneDemoMaps } from '@gmj/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useMapStore } from '@/store/map-store';
+import { updateNetworkMap } from '@/lib/api';
 import { MapControls } from './map-controls';
 
 vi.mock('@/lib/api', () => ({
-  updateNetworkMap: vi.fn(),
+  updateNetworkMap: vi.fn().mockResolvedValue(undefined),
 }));
 
 const COLLAPSED_KEY = 'netvision.mapVisualPanelCollapsed';
@@ -168,5 +169,68 @@ describe('MapControls visual panel', () => {
 
     expect(container.querySelector('.map-controls')).not.toBeNull();
     expect(container.textContent).toContain('Tráfego');
+  });
+});
+
+describe('MapControls traffic label mode', () => {
+  const map = cloneDemoMaps()[0]!;
+  const roots: Array<{ root: Root; container: HTMLDivElement }> = [];
+
+  async function renderControls() {
+    installMatchMedia(false);
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    roots.push({ root, container });
+    useMapStore.setState({ map, activeMapId: map.id, readOnly: false });
+    await act(async () => {
+      root.render(
+        <ReactFlowProvider>
+          <MapControls />
+        </ReactFlowProvider>,
+      );
+    });
+    return { container };
+  }
+
+  beforeEach(() => {
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    window.localStorage.clear();
+    installMatchMedia(false);
+  });
+
+  afterEach(async () => {
+    for (const { root, container } of roots.splice(0)) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+    window.localStorage.clear();
+    useMapStore.setState({ map: null });
+  });
+
+  it('offers Cards, Na linha and Ocultar options', async () => {
+    const { container } = await renderControls();
+
+    expect(container.textContent).toContain('Exibição de tráfego');
+    expect(container.textContent).toContain('Cards');
+    expect(container.textContent).toContain('Na linha');
+    expect(container.textContent).toContain('Ocultar');
+  });
+
+  it('persists the INLINE mode into the map settings', async () => {
+    const { container } = await renderControls();
+
+    await act(async () => {
+      findButton(container, 'Na linha').click();
+    });
+
+    expect(useMapStore.getState().map?.settings.trafficLabelMode).toBe('INLINE');
+    expect(updateNetworkMap).toHaveBeenCalledWith(map.id, {
+      settings: { trafficLabelMode: 'INLINE' },
+    });
   });
 });

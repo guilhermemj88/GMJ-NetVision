@@ -17,6 +17,7 @@ import {
   type NetworkMap,
   type NodeDisplayMode,
   type Position,
+  type TrafficLabelMode,
   type UpdateMapNodePppInput,
 } from '@gmj/shared';
 import { create } from 'zustand';
@@ -97,6 +98,7 @@ interface MapState {
   setNodeDisplayMode: (mode: NodeDisplayMode) => void;
   setLinkDisplayStyle: (style: LinkDisplayStyle) => void;
   setLinkMetricDisplay: (display: LinkMetricDisplay) => void;
+  setTrafficLabelMode: (mode: TrafficLabelMode) => void;
   setViewport: (viewport: MapSettings['viewport']) => void;
   setMapScales: (
     scales: Partial<Pick<MapSettings, 'nodeScale' | 'linkScale' | 'labelScale'>>,
@@ -354,6 +356,15 @@ export const useMapStore = create<MapState>((set) => ({
       const map = {
         ...state.map,
         settings: { ...state.map.settings, linkMetricDisplay },
+      };
+      return { map, dirty: true };
+    }),
+  setTrafficLabelMode: (trafficLabelMode) =>
+    set((state) => {
+      if (!state.map) return state;
+      const map = {
+        ...state.map,
+        settings: { ...state.map.settings, trafficLabelMode },
       };
       return { map, dirty: true };
     }),

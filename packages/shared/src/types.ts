@@ -24,6 +24,7 @@ export type HistoryPeriod = '15m' | '1h' | '6h' | '24h' | '7d';
 export type NodeDisplayMode = 'ICON_2D' | 'ICON_3D' | 'CARD';
 export type LinkDisplayStyle = 'FLOW' | 'WEATHERMAP' | 'HYBRID' | 'MINIMAL';
 export type LinkMetricDisplay = 'THROUGHPUT' | 'UTILIZATION' | 'BOTH' | 'NONE';
+export type TrafficLabelMode = 'CARD' | 'INLINE' | 'HIDDEN';
 export type LinkDirection = 'A_TO_B' | 'B_TO_A';
 export type LinkTrafficConsistency = 'CONSISTENT' | 'DIVERGENT' | 'UNKNOWN';
 export type CapacitySource = 'AUTO' | 'MANUAL';
@@ -345,6 +346,7 @@ export interface MapSettings {
   nodeDisplayMode: NodeDisplayMode;
   linkDisplayStyle: LinkDisplayStyle;
   linkMetricDisplay: LinkMetricDisplay;
+  trafficLabelMode: TrafficLabelMode;
   filters: MapPreferences;
   viewport: MapViewport;
   nodeScale: number;
@@ -379,6 +381,7 @@ export interface MapSettingsUpdate {
   nodeDisplayMode?: NodeDisplayMode;
   linkDisplayStyle?: LinkDisplayStyle;
   linkMetricDisplay?: LinkMetricDisplay;
+  trafficLabelMode?: TrafficLabelMode;
   filters?: Partial<MapPreferences>;
   viewport?: Partial<MapViewport>;
   nodeScale?: number;

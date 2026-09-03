@@ -6,6 +6,7 @@ import type {
   LinkMetricDisplay,
   MapSettingsUpdate,
   NodeDisplayMode,
+  TrafficLabelMode,
 } from '@gmj/shared';
 import { Button } from '@gmj/ui';
 import {
@@ -53,12 +54,18 @@ const metricModes: Array<[LinkMetricDisplay, string]> = [
   ['BOTH', 'Ambos'],
   ['NONE', 'Nenhum'],
 ];
+const trafficLabelModes: Array<[TrafficLabelMode, string]> = [
+  ['CARD', 'Cards'],
+  ['INLINE', 'Na linha'],
+  ['HIDDEN', 'Ocultar'],
+];
 
 function VisualPanelContent() {
   const map = useMapStore((state) => state.map);
   const setNodeDisplayMode = useMapStore((state) => state.setNodeDisplayMode);
   const setLinkDisplayStyle = useMapStore((state) => state.setLinkDisplayStyle);
   const setLinkMetricDisplay = useMapStore((state) => state.setLinkMetricDisplay);
+  const setTrafficLabelMode = useMapStore((state) => state.setTrafficLabelMode);
   const setMapScales = useMapStore((state) => state.setMapScales);
 
   const persist = (settings: MapSettingsUpdate) => {
@@ -99,6 +106,15 @@ function VisualPanelContent() {
         onChange={(value) => {
           setLinkMetricDisplay(value);
           persist({ linkMetricDisplay: value });
+        }}
+      />
+      <SegmentedControl
+        label="Exibição de tráfego"
+        value={map?.settings.trafficLabelMode ?? 'CARD'}
+        options={trafficLabelModes}
+        onChange={(value) => {
+          setTrafficLabelMode(value);
+          persist({ trafficLabelMode: value });
         }}
       />
       <div className="scale-presets" aria-label="Presets de escala">

@@ -162,6 +162,7 @@ export function makeMap(
     nodeDisplayMode: 'ICON_2D',
     linkDisplayStyle: 'HYBRID',
     linkMetricDisplay: 'BOTH',
+    trafficLabelMode: 'CARD',
     filters: {
       showTraffic: true,
       showUtilization: true,
