@@ -91,6 +91,18 @@ const linkSchema = z.object({
     .regex(/^#[0-9a-fA-F]{6}$/)
     .nullable()
     .optional(),
+  trafficColorAToB: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .nullable()
+    .optional(),
+  trafficColorBToA: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/)
+    .nullable()
+    .optional(),
+  inlineLabelPositionAToB: z.number().min(0.1).max(0.9).nullable().optional(),
+  inlineLabelPositionBToA: z.number().min(0.1).max(0.9).nullable().optional(),
   animationEnabled: z.boolean().nullable().optional(),
   label: z.string().max(80),
   metricSource: z.enum(['DEMO', 'ZABBIX']),
@@ -821,6 +833,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       capacitySource: parsed.capacitySource,
       trafficMode: parsed.trafficMode ?? 'BIDIRECTIONAL',
       customColor: parsed.customColor ?? null,
+      trafficColorAToB: parsed.trafficColorAToB ?? null,
+      trafficColorBToA: parsed.trafficColorBToA ?? null,
+      inlineLabelPositionAToB: parsed.inlineLabelPositionAToB ?? null,
+      inlineLabelPositionBToA: parsed.inlineLabelPositionBToA ?? null,
       animationEnabled: parsed.animationEnabled ?? null,
       label: parsed.label,
       metricSource: parsed.metricSource,
@@ -851,6 +867,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         capacitySource: true,
         trafficMode: true,
         customColor: true,
+        trafficColorAToB: true,
+        trafficColorBToA: true,
+        inlineLabelPositionAToB: true,
+        inlineLabelPositionBToA: true,
         animationEnabled: true,
         label: true,
         metricSource: true,
@@ -866,6 +886,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       targetInterfaceId,
       trafficMode,
       customColor,
+      trafficColorAToB,
+      trafficColorBToA,
+      inlineLabelPositionAToB,
+      inlineLabelPositionBToA,
       animationEnabled,
       aggregationMode,
       metricSources,
@@ -882,6 +906,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       ...fields,
       ...(trafficMode === undefined ? {} : { trafficMode }),
       ...(customColor === undefined ? {} : { customColor }),
+      ...(trafficColorAToB === undefined ? {} : { trafficColorAToB }),
+      ...(trafficColorBToA === undefined ? {} : { trafficColorBToA }),
+      ...(inlineLabelPositionAToB === undefined ? {} : { inlineLabelPositionAToB }),
+      ...(inlineLabelPositionBToA === undefined ? {} : { inlineLabelPositionBToA }),
       ...(animationEnabled === undefined ? {} : { animationEnabled }),
       ...(sourceInterfaceId === undefined ? {} : { sourceInterfaceId }),
       ...(targetInterfaceId === undefined ? {} : { targetInterfaceId }),

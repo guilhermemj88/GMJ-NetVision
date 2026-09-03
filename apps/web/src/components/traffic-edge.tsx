@@ -50,6 +50,13 @@ const PATH_OFFSET_SCALE = 0.9;
 const INLINE_LABEL_T_A = 0.4;
 const INLINE_LABEL_T_B = 0.6;
 const INLINE_LABEL_LIFT = 10;
+const INLINE_LABEL_POSITION_MIN = 0.1;
+const INLINE_LABEL_POSITION_MAX = 0.9;
+
+function resolveInlinePosition(value: number | null | undefined): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.min(INLINE_LABEL_POSITION_MAX, Math.max(INLINE_LABEL_POSITION_MIN, value));
+}
 
 type FlowLevel = 'normal' | 'attention' | 'high' | 'critical' | 'down' | 'unknown';
 
@@ -346,9 +353,9 @@ export function TrafficEdge({
   const gap = Math.max(2, LANE_HALF_GAP * (linkScale / 100));
   const laneATransform = `translate(${normalX * gap} ${normalY * gap})`;
   const laneBTransform = `translate(${-normalX * gap} ${-normalY * gap})`;
-  const pathColor = visualPath?.customColor ?? link.customColor ?? null;
-  const colorA = pathColor ?? flowColor(HUE_A, levelA);
-  const colorB = pathColor ?? flowColor(HUE_B, levelB);
+  const fallbackColor = visualPath?.customColor ?? link.customColor ?? null;
+  const colorA = link.trafficColorAToB ?? fallbackColor ?? flowColor(HUE_A, levelA);
+  const colorB = link.trafficColorBToA ?? fallbackColor ?? flowColor(HUE_B, levelB);
   const isEmphasized = Boolean(emphasized || selected);
   const renderLanes = directional && showTraffic && link.status !== 'DOWN' && related;
   const animateLanes = (link.animationEnabled ?? showTrafficAnimation) && link.status !== 'UNKNOWN';
@@ -365,8 +372,10 @@ export function TrafficEdge({
   const inlineLift = INLINE_LABEL_LIFT * (linkScale / 100);
   const inlineAOffset = gap + inlineLift;
   const inlineBOffset = -(gap + inlineLift);
-  const inlineAPoint = bezierPoint(geometry, INLINE_LABEL_T_A);
-  const inlineBPoint = bezierPoint(geometry, INLINE_LABEL_T_B);
+  const inlineTA = resolveInlinePosition(link.inlineLabelPositionAToB) ?? INLINE_LABEL_T_A;
+  const inlineTB = resolveInlinePosition(link.inlineLabelPositionBToA) ?? INLINE_LABEL_T_B;
+  const inlineAPoint = bezierPoint(geometry, inlineTA);
+  const inlineBPoint = bezierPoint(geometry, inlineTB);
   const inlineAX = inlineAPoint.x + normalX * inlineAOffset;
   const inlineAY = inlineAPoint.y + normalY * inlineAOffset;
   const inlineBX = inlineBPoint.x + normalX * inlineBOffset;
@@ -386,7 +395,7 @@ export function TrafficEdge({
         className={`traffic-edge traffic-edge--base ${statusTone ? toneClass(statusTone) : ''} ${classes}`}
         style={{
           strokeWidth: Math.max(0.8, width * 0.6),
-          ...(pathColor ? { stroke: pathColor, opacity: 0.34 } : {}),
+          ...(fallbackColor ? { stroke: fallbackColor, opacity: 0.34 } : {}),
         }}
       />
 

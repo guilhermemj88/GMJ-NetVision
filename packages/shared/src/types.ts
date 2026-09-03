@@ -300,6 +300,10 @@ export interface NetworkLink {
   capacitySource: CapacitySource;
   trafficMode: LinkTrafficMode;
   customColor: string | null;
+  trafficColorAToB: string | null;
+  trafficColorBToA: string | null;
+  inlineLabelPositionAToB: number | null;
+  inlineLabelPositionBToA: number | null;
   animationEnabled: boolean | null;
   label: string;
   status: DeviceStatus;
@@ -597,6 +601,10 @@ export interface CreateLinkInput {
   capacitySource: CapacitySource;
   trafficMode: LinkTrafficMode;
   customColor: string | null;
+  trafficColorAToB?: string | null;
+  trafficColorBToA?: string | null;
+  inlineLabelPositionAToB?: number | null;
+  inlineLabelPositionBToA?: number | null;
   animationEnabled: boolean | null;
   label: string;
   metricSource: MetricSource;
@@ -622,6 +630,10 @@ export type UpdateLinkInput = Pick<
       CreateLinkInput,
       'trafficMode'
       | 'customColor'
+      | 'trafficColorAToB'
+      | 'trafficColorBToA'
+      | 'inlineLabelPositionAToB'
+      | 'inlineLabelPositionBToA'
       | 'animationEnabled'
       | 'aggregationMode'
       | 'metricSources'

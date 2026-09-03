@@ -3506,6 +3506,47 @@ button {
   height: 28px;
   padding: 2px;
 }
+.traffic-color-pair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid #263741;
+  border-radius: 5px;
+  background: rgba(10, 17, 22, 0.4);
+  color: #9fb3bd;
+  font: 600 9px var(--font-mono);
+  letter-spacing: 0.06em;
+}
+.traffic-color-pair__swatch {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.edit-link-form .range-field {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.edit-link-form .range-field span {
+  color: #9fb3bd;
+  font: 600 9px var(--font-mono);
+  white-space: nowrap;
+}
+.edit-link-form .range-field output {
+  min-width: 34px;
+  text-align: right;
+  color: #c8dae2;
+  font: 600 9px var(--font-mono);
+}
+.edit-link-form input[type='range'] {
+  accent-color: #40c8e8;
+}
 
 .panel-overlay {
   position: fixed;

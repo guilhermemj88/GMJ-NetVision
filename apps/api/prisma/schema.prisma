@@ -573,6 +573,10 @@ model Link {
   capacitySource    CapacitySource     @default(AUTO)
   trafficMode       TrafficMode        @default(BIDIRECTIONAL)
   customColor       String?
+  trafficColorAToB  String?
+  trafficColorBToA  String?
+  inlineLabelPositionAToB Float?
+  inlineLabelPositionBToA Float?
   animationEnabled  Boolean?
   label             String?
   status            DeviceStatus       @default(UNKNOWN)

@@ -501,3 +501,108 @@ describe('TrafficEdge inline traffic labels', () => {
     expect(markup).not.toContain('traffic-edge__inline-label');
   });
 });
+
+describe('TrafficEdge per-link inline positions and directional colors', () => {
+  function inlineLabelPositions(markup: string): Array<{ x: string; y: string }> {
+    return [...markup.matchAll(/<text\b[^>]*>/g)]
+      .map((tag) => {
+        const x = /x="([^"]+)"/.exec(tag[0])?.[1];
+        const y = /y="([^"]+)"/.exec(tag[0])?.[1];
+        return x && y ? { x, y } : null;
+      })
+      .filter((value): value is { x: string; y: string } => Boolean(value));
+  }
+
+  it('uses the AUTO 0.40 / 0.60 defaults when positions are null', () => {
+    const autoMarkup = renderEdge({}, { showLabels: true, trafficLabelMode: 'INLINE' });
+    const explicitMarkup = renderEdge(
+      { inlineLabelPositionAToB: 0.4, inlineLabelPositionBToA: 0.6 },
+      { showLabels: true, trafficLabelMode: 'INLINE' },
+    );
+
+    expect(inlineLabelPositions(autoMarkup)).toEqual(inlineLabelPositions(explicitMarkup));
+  });
+
+  it('respects a custom A_TO_B inline position', () => {
+    const autoMarkup = renderEdge({}, { showLabels: true, trafficLabelMode: 'INLINE' });
+    const customMarkup = renderEdge(
+      { inlineLabelPositionAToB: 0.25, inlineLabelPositionBToA: null },
+      { showLabels: true, trafficLabelMode: 'INLINE' },
+    );
+
+    expect(inlineLabelPositions(customMarkup)[0]).not.toEqual(
+      inlineLabelPositions(autoMarkup)[0],
+    );
+  });
+
+  it('respects a custom B_TO_A inline position', () => {
+    const autoMarkup = renderEdge({}, { showLabels: true, trafficLabelMode: 'INLINE' });
+    const customMarkup = renderEdge(
+      { inlineLabelPositionAToB: null, inlineLabelPositionBToA: 0.75 },
+      { showLabels: true, trafficLabelMode: 'INLINE' },
+    );
+
+    expect(inlineLabelPositions(customMarkup)[1]).not.toEqual(
+      inlineLabelPositions(autoMarkup)[1],
+    );
+  });
+
+  it('clamps an out-of-range inline position into the safe range', () => {
+    const belowMin = renderEdge(
+      { inlineLabelPositionAToB: 0.05, inlineLabelPositionBToA: null },
+      { showLabels: true, trafficLabelMode: 'INLINE' },
+    );
+    const atMin = renderEdge(
+      { inlineLabelPositionAToB: 0.1, inlineLabelPositionBToA: null },
+      { showLabels: true, trafficLabelMode: 'INLINE' },
+    );
+
+    expect(inlineLabelPositions(belowMin)[0]).toEqual(inlineLabelPositions(atMin)[0]);
+  });
+
+  it('uses the respective directional colors for inline labels', () => {
+    const markup = renderEdge(
+      { trafficColorAToB: '#4da3ff', trafficColorBToA: '#f0923c' },
+      { showLabels: true, trafficLabelMode: 'INLINE' },
+    );
+
+    expect(markup).toContain('fill:#4da3ff');
+    expect(markup).toContain('fill:#f0923c');
+  });
+
+  it('uses the respective directional colors for CARD swatches', () => {
+    const markup = renderEdge(
+      { trafficColorAToB: '#4da3ff', trafficColorBToA: '#f0923c' },
+      { showLabels: true, trafficLabelMode: 'CARD' },
+    );
+
+    expect(markup).toContain('background-color:#4da3ff');
+    expect(markup).toContain('background-color:#f0923c');
+  });
+
+  it('lets directional colors take precedence over a legacy customColor', () => {
+    const markup = renderEdge(
+      { customColor: '#34a853', trafficColorAToB: '#4da3ff', trafficColorBToA: '#f0923c' },
+      { showLabels: true, trafficLabelMode: 'INLINE' },
+    );
+
+    expect(markup).toContain('fill:#4da3ff');
+    expect(markup).toContain('fill:#f0923c');
+    expect(markup).not.toContain('fill:#34a853');
+  });
+
+  it('keeps a visual path customColor compatible when no directional colors exist', () => {
+    const markup = renderEdge(
+      {},
+      {
+        showLabels: true,
+        trafficLabelMode: 'INLINE',
+        visualPath: { order: 0, label: null, customColor: '#34a853', curvature: 0, enabled: true },
+        pathIndex: 0,
+        isPrimaryPath: true,
+      },
+    );
+
+    expect(markup).toContain('fill:#34a853');
+  });
+});

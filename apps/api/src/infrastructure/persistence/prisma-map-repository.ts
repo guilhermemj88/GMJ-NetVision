@@ -250,6 +250,18 @@ function normalizeVisualPaths(value: unknown): LinkVisualPath[] {
   return paths.length ? paths : defaultVisualPaths(1);
 }
 
+const INLINE_LABEL_POSITION_MIN = 0.1;
+const INLINE_LABEL_POSITION_MAX = 0.9;
+
+function normalizeInlineLabelPosition(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null;
+  return Math.min(INLINE_LABEL_POSITION_MAX, Math.max(INLINE_LABEL_POSITION_MIN, value));
+}
+
+function normalizeTrafficColor(value: unknown): string | null {
+  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? value : null;
+}
+
 function asJson<T>(value: T): Prisma.InputJsonValue {
   return value as unknown as Prisma.InputJsonValue;
 }
@@ -357,6 +369,10 @@ export class PrismaMapRepository {
               capacitySource: link.capacitySource,
               trafficMode: link.trafficMode,
               customColor: link.customColor,
+              trafficColorAToB: link.trafficColorAToB,
+              trafficColorBToA: link.trafficColorBToA,
+              inlineLabelPositionAToB: link.inlineLabelPositionAToB,
+              inlineLabelPositionBToA: link.inlineLabelPositionBToA,
               animationEnabled: link.animationEnabled,
               label: link.label,
               status: link.status,
@@ -614,6 +630,18 @@ export class PrismaMapRepository {
         capacitySource: input.capacitySource,
         ...(input.trafficMode === undefined ? {} : { trafficMode: input.trafficMode }),
         ...(input.customColor === undefined ? {} : { customColor: input.customColor }),
+        ...(input.trafficColorAToB === undefined
+          ? {}
+          : { trafficColorAToB: normalizeTrafficColor(input.trafficColorAToB) }),
+        ...(input.trafficColorBToA === undefined
+          ? {}
+          : { trafficColorBToA: normalizeTrafficColor(input.trafficColorBToA) }),
+        ...(input.inlineLabelPositionAToB === undefined
+          ? {}
+          : { inlineLabelPositionAToB: normalizeInlineLabelPosition(input.inlineLabelPositionAToB) }),
+        ...(input.inlineLabelPositionBToA === undefined
+          ? {}
+          : { inlineLabelPositionBToA: normalizeInlineLabelPosition(input.inlineLabelPositionBToA) }),
         ...(input.animationEnabled === undefined
           ? {}
           : { animationEnabled: input.animationEnabled }),
@@ -650,6 +678,18 @@ export class PrismaMapRepository {
         capacitySource: input.capacitySource,
         ...(input.trafficMode === undefined ? {} : { trafficMode: input.trafficMode }),
         ...(input.customColor === undefined ? {} : { customColor: input.customColor }),
+        ...(input.trafficColorAToB === undefined
+          ? {}
+          : { trafficColorAToB: normalizeTrafficColor(input.trafficColorAToB) }),
+        ...(input.trafficColorBToA === undefined
+          ? {}
+          : { trafficColorBToA: normalizeTrafficColor(input.trafficColorBToA) }),
+        ...(input.inlineLabelPositionAToB === undefined
+          ? {}
+          : { inlineLabelPositionAToB: normalizeInlineLabelPosition(input.inlineLabelPositionAToB) }),
+        ...(input.inlineLabelPositionBToA === undefined
+          ? {}
+          : { inlineLabelPositionBToA: normalizeInlineLabelPosition(input.inlineLabelPositionBToA) }),
         ...(input.animationEnabled === undefined
           ? {}
           : { animationEnabled: input.animationEnabled }),
@@ -818,6 +858,10 @@ export class PrismaMapRepository {
       capacitySource: string;
       trafficMode: string;
       customColor: string | null;
+      trafficColorAToB: string | null;
+      trafficColorBToA: string | null;
+      inlineLabelPositionAToB: number | null;
+      inlineLabelPositionBToA: number | null;
       animationEnabled: boolean | null;
       label: string | null;
       status: string;
@@ -866,6 +910,10 @@ export class PrismaMapRepository {
       capacitySource: string;
       trafficMode: string;
       customColor: string | null;
+      trafficColorAToB: string | null;
+      trafficColorBToA: string | null;
+      inlineLabelPositionAToB: number | null;
+      inlineLabelPositionBToA: number | null;
       animationEnabled: boolean | null;
       label: string | null;
       status: string;
@@ -924,6 +972,10 @@ export class PrismaMapRepository {
       capacitySource: row.capacitySource as NetworkLink['capacitySource'],
       trafficMode,
       customColor: row.customColor,
+      trafficColorAToB: normalizeTrafficColor(row.trafficColorAToB),
+      trafficColorBToA: normalizeTrafficColor(row.trafficColorBToA),
+      inlineLabelPositionAToB: normalizeInlineLabelPosition(row.inlineLabelPositionAToB),
+      inlineLabelPositionBToA: normalizeInlineLabelPosition(row.inlineLabelPositionBToA),
       animationEnabled: row.animationEnabled,
       label: row.label ?? '',
       status: metrics.status,

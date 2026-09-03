@@ -95,6 +95,86 @@ describe('GMJ NetVision API', () => {
     });
   });
 
+  it('persists per-link directional traffic colors and inline label positions', async () => {
+    const map = (await app.inject({ method: 'GET', url: '/api/maps/backbone-main' })).json();
+    const source = map.devices.find(
+      (device: { id: string; interfaces: unknown[] }) =>
+        device.interfaces.length >= 2 && device.id !== 'customers',
+    );
+    const target = map.devices.find(
+      (device: { id: string; interfaces: unknown[] }) =>
+        device.id !== source.id && device.interfaces.length >= 2,
+    );
+    const payload = {
+      sourceDeviceId: source.id,
+      sourceInterfaceId: source.interfaces[0].id,
+      targetDeviceId: target.id,
+      targetInterfaceId: target.interfaces[0].id,
+      capacityBps: 1_000_000_000,
+      autoCapacityBps: 1_000_000_000,
+      capacitySource: 'AUTO',
+      trafficMode: 'BIDIRECTIONAL',
+      customColor: null,
+      animationEnabled: null,
+      label: 'bidirectional colors',
+      metricSource: 'DEMO',
+      visualStyle: null,
+      metricDisplay: null,
+    };
+
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/maps/backbone-main/links',
+      payload: {
+        ...payload,
+        trafficColorAToB: '#4da3ff',
+        trafficColorBToA: '#f0923c',
+        inlineLabelPositionAToB: 0.25,
+        inlineLabelPositionBToA: 0.75,
+      },
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      trafficColorAToB: '#4da3ff',
+      trafficColorBToA: '#f0923c',
+      inlineLabelPositionAToB: 0.25,
+      inlineLabelPositionBToA: 0.75,
+    });
+
+    const reset = await app.inject({
+      method: 'PATCH',
+      url: `/api/maps/backbone-main/links/${created.json().id}`,
+      payload: {
+        ...payload,
+        sourceInterfaceId: source.interfaces[0].id,
+        targetInterfaceId: target.interfaces[0].id,
+        trafficColorAToB: null,
+        trafficColorBToA: null,
+        inlineLabelPositionAToB: null,
+        inlineLabelPositionBToA: null,
+        label: 'reset colors',
+      },
+    });
+    expect(reset.json()).toMatchObject({
+      trafficColorAToB: null,
+      trafficColorBToA: null,
+      inlineLabelPositionAToB: null,
+      inlineLabelPositionBToA: null,
+    });
+
+    const invalid = await app.inject({
+      method: 'PATCH',
+      url: `/api/maps/backbone-main/links/${created.json().id}`,
+      payload: {
+        ...payload,
+        sourceInterfaceId: source.interfaces[0].id,
+        targetInterfaceId: target.interfaces[0].id,
+        inlineLabelPositionAToB: 0.05,
+      },
+    });
+    expect(invalid.statusCode).toBe(400);
+  });
+
   it('returns MPLS unavailable without generating demo data', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/hosts/core-01/mpls' });
     expect(response.statusCode).toBe(200);

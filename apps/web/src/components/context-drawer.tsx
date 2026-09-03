@@ -16,10 +16,12 @@ import {
   HardDrive,
   List,
   Network,
+  Palette,
   Route,
   Pencil,
   Radar,
   ServerCog,
+  SlidersHorizontal,
   Trash2,
   Users,
   X,
@@ -28,10 +30,14 @@ import {
   aggregateLinkMetrics,
   automaticLinkCapacity,
   autoCurvatures,
+  DEFAULT_TRAFFIC_COLOR_A_TO_B,
+  DEFAULT_TRAFFIC_COLOR_B_TO_A,
   defaultVisualPaths,
   formatBitsPerSecond,
   formatDuration,
   formatPppOnline,
+  matchTrafficColorPreset,
+  TRAFFIC_COLOR_PRESETS,
   type CapacitySource,
   type DirectionalLinkMetric,
   type HostRecord,
@@ -46,6 +52,7 @@ import {
   type NetworkLink,
   type PppDisplayMode,
   type PppLabelPosition,
+  type TrafficColorPaletteSelection,
   type UpdateMapNodePppInput,
 } from '@gmj/shared';
 import { useMutation } from '@tanstack/react-query';
@@ -712,6 +719,18 @@ function LinkDrawer({
     link.sourceInterfaceId ? 'SOURCE' : 'TARGET',
   );
   const [customColor, setCustomColor] = useState<string | null>(link.customColor);
+  const [trafficColorAToB, setTrafficColorAToB] = useState<string | null>(
+    link.trafficColorAToB ?? null,
+  );
+  const [trafficColorBToA, setTrafficColorBToA] = useState<string | null>(
+    link.trafficColorBToA ?? null,
+  );
+  const [inlineLabelPositionAToB, setInlineLabelPositionAToB] = useState<number | null>(
+    link.inlineLabelPositionAToB ?? null,
+  );
+  const [inlineLabelPositionBToA, setInlineLabelPositionBToA] = useState<number | null>(
+    link.inlineLabelPositionBToA ?? null,
+  );
   const [animationEnabled, setAnimationEnabled] = useState<boolean | null>(link.animationEnabled);
   const map = useMapStore((state) => state.map);
   const editMode = useMapStore((state) => state.editMode);
@@ -785,6 +804,7 @@ function LinkDrawer({
     },
     findInterface,
   );
+  const bidirectional = trafficMode === 'BIDIRECTIONAL';
   const editedLink: NetworkLink = {
     ...link,
     label,
@@ -794,7 +814,11 @@ function LinkDrawer({
     autoCapacityBps,
     capacitySource,
     trafficMode,
-    customColor,
+    customColor: bidirectional ? null : customColor,
+    trafficColorAToB: bidirectional ? trafficColorAToB : null,
+    trafficColorBToA: bidirectional ? trafficColorBToA : null,
+    inlineLabelPositionAToB,
+    inlineLabelPositionBToA,
     animationEnabled,
     visualStyle: visualStyle || null,
     metricDisplay: metricDisplay || null,
@@ -823,7 +847,11 @@ function LinkDrawer({
         autoCapacityBps,
         capacitySource,
         trafficMode,
-        customColor,
+        customColor: bidirectional ? null : customColor,
+        trafficColorAToB: bidirectional ? trafficColorAToB : null,
+        trafficColorBToA: bidirectional ? trafficColorBToA : null,
+        inlineLabelPositionAToB,
+        inlineLabelPositionBToA,
         animationEnabled,
         metricSource: link.metricSource,
         visualStyle: visualStyle || null,
@@ -865,6 +893,19 @@ function LinkDrawer({
   };
   const aToB = link.directions.A_TO_B;
   const bToA = link.directions.B_TO_A;
+  const paletteSelection: TrafficColorPaletteSelection = matchTrafficColorPreset(
+    trafficColorAToB,
+    trafficColorBToA,
+  );
+  const effectiveColorAToB = trafficColorAToB ?? DEFAULT_TRAFFIC_COLOR_A_TO_B;
+  const effectiveColorBToA = trafficColorBToA ?? DEFAULT_TRAFFIC_COLOR_B_TO_A;
+  const inlinePositionMode = inlineLabelPositionAToB === null && inlineLabelPositionBToA === null
+    ? 'AUTO'
+    : 'MANUAL';
+  const inlinePercentAToB = Math.round((inlineLabelPositionAToB ?? 0.4) * 100);
+  const inlinePercentBToA = Math.round((inlineLabelPositionBToA ?? 0.6) * 100);
+  const directionALabel = bidirectional ? 'A → B' : 'TX observado';
+  const directionBLabel = bidirectional ? 'B → A' : 'RX observado';
 
   return (
     <DrawerShell eyebrow="ENLACE" title={link.label} status={link.status} onClose={onClose}>
@@ -1044,26 +1085,152 @@ function LinkDrawer({
               </select>
             </label>
           )}
-          <label>
-            Cor do enlace
-            <select
-              value={customColor === null ? 'AUTO' : 'CUSTOM'}
-              onChange={(event) => setCustomColor(event.target.value === 'AUTO' ? null : '#40c8e8')}
-            >
-              <option value="AUTO">Automática</option>
-              <option value="CUSTOM">Personalizada</option>
-            </select>
-          </label>
-          {customColor !== null && (
-            <label>
-              Seletor de cor
-              <input
-                type="color"
-                value={customColor}
-                onChange={(event) => setCustomColor(event.target.value)}
-              />
-            </label>
+          {bidirectional ? (
+            <div className="edit-link-form__section">
+              <SectionTitle icon={<Palette size={14} />} label="CORES DO TRÁFEGO" />
+              <label>
+                Paleta
+                <select
+                  value={paletteSelection}
+                  onChange={(event) => {
+                    const value = event.target.value as TrafficColorPaletteSelection;
+                    if (value === 'CUSTOM') {
+                      setCustomColor(null);
+                      setTrafficColorAToB(trafficColorAToB ?? DEFAULT_TRAFFIC_COLOR_A_TO_B);
+                      setTrafficColorBToA(trafficColorBToA ?? DEFAULT_TRAFFIC_COLOR_B_TO_A);
+                      return;
+                    }
+                    if (value === 'DEFAULT') {
+                      setCustomColor(null);
+                      setTrafficColorAToB(null);
+                      setTrafficColorBToA(null);
+                      return;
+                    }
+                    const preset = TRAFFIC_COLOR_PRESETS.find((item) => item.id === value);
+                    if (preset) {
+                      setCustomColor(null);
+                      setTrafficColorAToB(preset.aToB);
+                      setTrafficColorBToA(preset.bToA);
+                    }
+                  }}
+                >
+                  {TRAFFIC_COLOR_PRESETS.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.label}
+                    </option>
+                  ))}
+                  <option value="CUSTOM">Personalizada</option>
+                </select>
+              </label>
+              <div className="traffic-color-pair">
+                <span className="traffic-color-pair__swatch" style={{ backgroundColor: effectiveColorAToB }} />
+                <span>A → B</span>
+                <span className="traffic-color-pair__swatch" style={{ backgroundColor: effectiveColorBToA }} />
+                <span>B → A</span>
+              </div>
+              {paletteSelection === 'CUSTOM' && (
+                <>
+                  <label>
+                    A → B
+                    <input
+                      type="color"
+                      value={trafficColorAToB ?? DEFAULT_TRAFFIC_COLOR_A_TO_B}
+                      onChange={(event) => setTrafficColorAToB(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    B → A
+                    <input
+                      type="color"
+                      value={trafficColorBToA ?? DEFAULT_TRAFFIC_COLOR_B_TO_A}
+                      onChange={(event) => setTrafficColorBToA(event.target.value)}
+                    />
+                  </label>
+                </>
+              )}
+            </div>
+          ) : (
+            <>
+              <label>
+                Cor do enlace
+                <select
+                  value={customColor === null ? 'AUTO' : 'CUSTOM'}
+                  onChange={(event) =>
+                    setCustomColor(event.target.value === 'AUTO' ? null : '#40c8e8')
+                  }
+                >
+                  <option value="AUTO">Automática</option>
+                  <option value="CUSTOM">Personalizada</option>
+                </select>
+              </label>
+              {customColor !== null && (
+                <label>
+                  Seletor de cor
+                  <input
+                    type="color"
+                    value={customColor}
+                    onChange={(event) => setCustomColor(event.target.value)}
+                  />
+                </label>
+              )}
+            </>
           )}
+          <div className="edit-link-form__section">
+            <SectionTitle
+              icon={<SlidersHorizontal size={14} />}
+              label="POSIÇÃO DOS VALORES DE TRÁFEGO"
+            />
+            <label>
+              Modo
+              <select
+                value={inlinePositionMode}
+                onChange={(event) => {
+                  if (event.target.value === 'AUTO') {
+                    setInlineLabelPositionAToB(null);
+                    setInlineLabelPositionBToA(null);
+                  } else {
+                    setInlineLabelPositionAToB(inlineLabelPositionAToB ?? 0.4);
+                    setInlineLabelPositionBToA(inlineLabelPositionBToA ?? 0.6);
+                  }
+                }}
+              >
+                <option value="AUTO">Automático</option>
+                <option value="MANUAL">Manual</option>
+              </select>
+            </label>
+            {inlinePositionMode === 'MANUAL' && (
+              <>
+                <label className="range-field">
+                  <span>{directionALabel}</span>
+                  <input
+                    type="range"
+                    min="10"
+                    max="90"
+                    step="1"
+                    value={inlinePercentAToB}
+                    onChange={(event) =>
+                      setInlineLabelPositionAToB(Number(event.target.value) / 100)
+                    }
+                  />
+                  <output>{inlinePercentAToB}%</output>
+                </label>
+                <label className="range-field">
+                  <span>{directionBLabel}</span>
+                  <input
+                    type="range"
+                    min="10"
+                    max="90"
+                    step="1"
+                    value={inlinePercentBToA}
+                    onChange={(event) =>
+                      setInlineLabelPositionBToA(Number(event.target.value) / 100)
+                    }
+                  />
+                  <output>{inlinePercentBToA}%</output>
+                </label>
+              </>
+            )}
+          </div>
           <label>
             Animação
             <select

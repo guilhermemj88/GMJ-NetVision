@@ -115,6 +115,10 @@ describe('Auth and public views', () => {
         capacitySource: unilateral.capacitySource,
         trafficMode: 'SINGLE_ENDED',
         customColor: '#34a853',
+        trafficColorAToB: '#4da3ff',
+        trafficColorBToA: '#f0923c',
+        inlineLabelPositionAToB: 0.3,
+        inlineLabelPositionBToA: 0.7,
         animationEnabled: true,
         label: unilateral.label,
         metricSource: unilateral.metricSource,
@@ -141,6 +145,10 @@ describe('Auth and public views', () => {
     ).toMatchObject({
       trafficMode: 'SINGLE_ENDED',
       customColor: '#34a853',
+      trafficColorAToB: '#4da3ff',
+      trafficColorBToA: '#f0923c',
+      inlineLabelPositionAToB: 0.3,
+      inlineLabelPositionBToA: 0.7,
       animationEnabled: true,
     });
     const device = response.json().map.devices[0];
