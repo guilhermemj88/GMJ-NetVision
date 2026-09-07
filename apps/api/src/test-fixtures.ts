@@ -127,6 +127,7 @@ export function makeLink(
     aggregationMode: 'NONE',
     metricSources: [],
     visualPaths: [{ order: 0, label: null, customColor: null, curvature: 0, enabled: true }],
+    linkLayoutMode: 'AUTO',
     directions: {
       A_TO_B: {
         bps: 0,

@@ -60,6 +60,11 @@ enum LinkAggregationMode {
   SUM
 }
 
+enum LinkLayoutMode {
+  AUTO
+  MANUAL
+}
+
 enum TrafficMode {
   BIDIRECTIONAL
   SINGLE_ENDED
@@ -587,6 +592,7 @@ model Link {
   aggregationMode   LinkAggregationMode @default(NONE)
   metricSources     Json?
   visualPaths       Json?
+  linkLayoutMode    LinkLayoutMode      @default(AUTO)
   map               Map                @relation(fields: [mapId], references: [id], onDelete: Cascade)
   sourceDevice      Device?            @relation("LinkSourceDevice", fields: [sourceDeviceId], references: [id], onDelete: Restrict)
   sourceInterface   Interface?         @relation("LinkSourceInterface", fields: [sourceInterfaceId], references: [id], onDelete: Restrict)

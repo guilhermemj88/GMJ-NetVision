@@ -109,6 +109,7 @@ const linkSchema = z.object({
   visualStyle: z.enum(['FLOW', 'WEATHERMAP', 'HYBRID', 'MINIMAL']).nullable(),
   metricDisplay: z.enum(['THROUGHPUT', 'UTILIZATION', 'BOTH', 'NONE']).nullable(),
   aggregationMode: z.enum(['NONE', 'SUM']).optional(),
+  linkLayoutMode: z.enum(['AUTO', 'MANUAL']).optional(),
   metricSources: z
     .array(
       z.object({
@@ -845,6 +846,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       ...(parsed.aggregationMode === undefined ? {} : { aggregationMode: parsed.aggregationMode }),
       ...(parsed.metricSources === undefined ? {} : { metricSources: parsed.metricSources }),
       ...(parsed.visualPaths === undefined ? {} : { visualPaths: parsed.visualPaths }),
+      ...(parsed.linkLayoutMode === undefined ? {} : { linkLayoutMode: parsed.linkLayoutMode }),
     };
     if (
       input.trafficMode === 'SINGLE_ENDED' &&
@@ -879,6 +881,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         aggregationMode: true,
         metricSources: true,
         visualPaths: true,
+        linkLayoutMode: true,
       })
       .parse(request.body);
     const {
@@ -894,6 +897,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       aggregationMode,
       metricSources,
       visualPaths,
+      linkLayoutMode,
       ...fields
     } = body;
     if (
@@ -914,6 +918,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       ...(sourceInterfaceId === undefined ? {} : { sourceInterfaceId }),
       ...(targetInterfaceId === undefined ? {} : { targetInterfaceId }),
       ...(aggregationMode === undefined ? {} : { aggregationMode }),
+      ...(linkLayoutMode === undefined ? {} : { linkLayoutMode }),
       ...(metricSources === undefined ? {} : { metricSources }),
       ...(visualPaths === undefined ? {} : { visualPaths }),
     });

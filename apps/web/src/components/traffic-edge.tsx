@@ -24,6 +24,8 @@ export interface TrafficEdgeData extends Record<string, unknown> {
   visualPath?: LinkVisualPath;
   pathIndex?: number;
   isPrimaryPath?: boolean;
+  /** Automatic perpendicular offset computed for sibling links (pixels). */
+  autoOffset?: number;
   showTraffic: boolean;
   showUtilization: boolean;
   showLabels: boolean;
@@ -303,7 +305,7 @@ export function TrafficEdge({
     trafficLabelMode = 'CARD',
   } = data;
 
-  const pathOffset = (visualPath?.curvature ?? 0) * PATH_OFFSET_SCALE;
+  const pathOffset = (data.autoOffset ?? 0) + (visualPath?.curvature ?? 0) * PATH_OFFSET_SCALE;
   const geometry = getOffsetBezierPath({
     sourceX,
     sourceY,

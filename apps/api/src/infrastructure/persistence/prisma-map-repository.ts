@@ -10,6 +10,7 @@ import {
   type CreateMapInput,
   type HostRecord,
   type LinkInterfaceResolver,
+  type LinkLayoutMode,
   type LinkMetricSource,
   type LinkVisualPath,
   type MapNode,
@@ -253,6 +254,10 @@ function normalizeVisualPaths(value: unknown): LinkVisualPath[] {
 const INLINE_LABEL_POSITION_MIN = 0.1;
 const INLINE_LABEL_POSITION_MAX = 0.9;
 
+function normalizeLinkLayoutMode(value: unknown): LinkLayoutMode {
+  return value === 'MANUAL' ? 'MANUAL' : 'AUTO';
+}
+
 function normalizeInlineLabelPosition(value: unknown): number | null {
   if (typeof value !== 'number' || !Number.isFinite(value)) return null;
   return Math.min(INLINE_LABEL_POSITION_MAX, Math.max(INLINE_LABEL_POSITION_MIN, value));
@@ -383,6 +388,7 @@ export class PrismaMapRepository {
               aggregationMode: link.aggregationMode,
               metricSources: asJson(normalizeMetricSources(link.metricSources)),
               visualPaths: asJson(normalizeVisualPaths(link.visualPaths)),
+              linkLayoutMode: link.linkLayoutMode,
             },
           });
         }
@@ -654,6 +660,7 @@ export class PrismaMapRepository {
         aggregationMode: input.aggregationMode ?? 'NONE',
         metricSources: asJson(input.metricSources ?? []),
         visualPaths: asJson(input.visualPaths ?? defaultVisualPaths(1)),
+        linkLayoutMode: input.linkLayoutMode ?? 'AUTO',
       },
     });
     return this.materializeLink(row, await this.hosts.listHosts());
@@ -706,6 +713,9 @@ export class PrismaMapRepository {
         ...(input.visualPaths === undefined
           ? {}
           : { visualPaths: asJson(input.visualPaths) }),
+        ...(input.linkLayoutMode === undefined
+          ? {}
+          : { linkLayoutMode: input.linkLayoutMode }),
       },
     });
     if (!result.count) return null;
@@ -872,6 +882,7 @@ export class PrismaMapRepository {
       aggregationMode: string;
       metricSources: unknown;
       visualPaths: unknown;
+      linkLayoutMode: string | null;
       createdAt: Date;
       updatedAt: Date;
     }>;
@@ -924,6 +935,7 @@ export class PrismaMapRepository {
       aggregationMode: string;
       metricSources: unknown;
       visualPaths: unknown;
+      linkLayoutMode: string | null;
       createdAt: Date;
       updatedAt: Date;
     },
@@ -985,6 +997,7 @@ export class PrismaMapRepository {
       metricDisplay: row.metricDisplay as NetworkLink['metricDisplay'],
       aggregationMode,
       metricSources,
+      linkLayoutMode: normalizeLinkLayoutMode(row.linkLayoutMode),
       visualPaths,
       directions: metrics.directions,
       rxBps: metrics.rxBps,

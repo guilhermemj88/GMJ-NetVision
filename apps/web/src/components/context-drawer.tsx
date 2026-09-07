@@ -43,6 +43,7 @@ import {
   type HostRecord,
   type LinkAggregationMode,
   type LinkDisplayStyle,
+  type LinkLayoutMode,
   type LinkMetricDisplay,
   type LinkMetricSource,
   type LinkTrafficMode,
@@ -691,6 +692,9 @@ function LinkDrawer({
   const [aggregationMode, setAggregationMode] = useState<LinkAggregationMode>(
     link.aggregationMode ?? 'NONE',
   );
+  const [linkLayoutMode, setLinkLayoutMode] = useState<LinkLayoutMode>(
+    link.linkLayoutMode ?? 'AUTO',
+  );
   const [sourceMetricIds, setSourceMetricIds] = useState<string[]>(
     (link.metricSources ?? [])
       .filter((entry) => entry.side === 'SOURCE')
@@ -825,6 +829,7 @@ function LinkDrawer({
     aggregationMode: sumMode ? 'SUM' : 'NONE',
     metricSources,
     visualPaths,
+    linkLayoutMode,
     directions: metrics.directions,
     txBps: metrics.txBps,
     rxBps: metrics.rxBps,
@@ -858,6 +863,7 @@ function LinkDrawer({
         metricDisplay: metricDisplay || null,
         aggregationMode: sumMode ? 'SUM' : 'NONE',
         metricSources,
+        linkLayoutMode,
         visualPaths,
       }),
     onSuccess: (updated) => {
@@ -1305,6 +1311,34 @@ function LinkDrawer({
           </label>
           <div className="edit-link-form__section">
             <SectionTitle icon={<Route size={14} />} label="FORMA DO ENLACE" />
+            <div className="link-layout-mode">
+              <span className="link-layout-mode__title">
+                Geometria automática de links paralelos
+              </span>
+              <div className="segmented-row">
+                <span>Modo</span>
+                <div>
+                  <button
+                    type="button"
+                    className={linkLayoutMode === 'AUTO' ? 'is-active' : ''}
+                    onClick={() => setLinkLayoutMode('AUTO')}
+                  >
+                    Automático
+                  </button>
+                  <button
+                    type="button"
+                    className={linkLayoutMode === 'MANUAL' ? 'is-active' : ''}
+                    onClick={() => setLinkLayoutMode('MANUAL')}
+                  >
+                    Manual
+                  </button>
+                </div>
+              </div>
+              <p className="link-layout-mode__hint">
+                Quando existir mais de um link entre os mesmos equipamentos, o NetVision pode
+                separá-los automaticamente com curvatura leve.
+              </p>
+            </div>
             <label>
               Quantidade de caminhos
               <select

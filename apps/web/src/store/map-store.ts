@@ -496,6 +496,7 @@ export const useMapStore = create<MapState>((set) => ({
         visualPaths: input.visualPaths ?? [
           { order: 0, label: null, customColor: null, curvature: 0, enabled: true },
         ],
+        linkLayoutMode: input.linkLayoutMode ?? 'AUTO',
         status: 'UP',
         discoverySource: 'MANUAL',
         directions: {

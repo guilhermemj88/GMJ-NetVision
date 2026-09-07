@@ -606,3 +606,82 @@ describe('TrafficEdge per-link inline positions and directional colors', () => {
     expect(markup).toContain('fill:#34a853');
   });
 });
+
+describe('TrafficEdge automatic parallel separation', () => {
+  function basePathD(markup: string): string | undefined {
+    return /<path[^>]*\bd="([^"]+)"/.exec(markup)?.[1];
+  }
+
+  function inlineLabelPositions(markup: string): Array<{ x: string; y: string }> {
+    return [...markup.matchAll(/<text\b[^>]*>/g)]
+      .map((tag) => {
+        const x = /x="([^"]+)"/.exec(tag[0])?.[1];
+        const y = /y="([^"]+)"/.exec(tag[0])?.[1];
+        return x && y ? { x, y } : null;
+      })
+      .filter((value): value is { x: string; y: string } => Boolean(value));
+  }
+
+  it('keeps a single link straight when no autoOffset is provided', () => {
+    const flat = renderEdge({}, { autoOffset: 0 });
+    const noAuto = renderEdge({});
+    expect(basePathD(flat)).toEqual(basePathD(noAuto));
+  });
+
+  it('shifts the edge geometry when an autoOffset is applied', () => {
+    const flat = renderEdge({}, { autoOffset: 0 });
+    const separated = renderEdge({}, { autoOffset: 18 });
+    expect(basePathD(flat)).not.toEqual(basePathD(separated));
+  });
+
+  it('separates two sibling links onto distinct geometries', () => {
+    const first = renderEdge({}, { autoOffset: -18 });
+    const second = renderEdge({}, { autoOffset: 18 });
+    expect(basePathD(first)).not.toEqual(basePathD(second));
+  });
+
+  it('combines the automatic offset with a manual path curvature', () => {
+    const autoOnly = renderEdge(
+      {},
+      {
+        autoOffset: 18,
+        visualPath: { order: 0, label: null, customColor: null, curvature: 0, enabled: true },
+      },
+    );
+    const autoPlusCurve = renderEdge(
+      {},
+      {
+        autoOffset: 18,
+        visualPath: { order: 0, label: null, customColor: null, curvature: 20, enabled: true },
+      },
+    );
+    expect(basePathD(autoOnly)).not.toEqual(basePathD(autoPlusCurve));
+  });
+
+  it('keeps inline labels riding the separated curve', () => {
+    const layout = {
+      sourceX: 0,
+      sourceY: 0,
+      targetX: 300,
+      targetY: 0,
+      sourcePosition: Position.Right,
+      targetPosition: Position.Left,
+    };
+    const flat = renderEdge(
+      {},
+      { showLabels: true, trafficLabelMode: 'INLINE', autoOffset: 0 },
+      layout,
+    );
+    const separated = renderEdge(
+      {},
+      { showLabels: true, trafficLabelMode: 'INLINE', autoOffset: 18 },
+      layout,
+    );
+
+    const flatPositions = inlineLabelPositions(flat);
+    const separatedPositions = inlineLabelPositions(separated);
+    expect(flatPositions).toHaveLength(2);
+    expect(separatedPositions).toHaveLength(2);
+    expect(flatPositions[0]?.y).not.toEqual(separatedPositions[0]?.y);
+  });
+});

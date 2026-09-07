@@ -20,6 +20,7 @@ import {
 } from '@xyflow/react';
 import { getMap, getMaps, updateNetworkMap } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
+import { computeParallelLinkLayouts } from '@gmj/shared';
 import { DeviceNode, type DeviceFlowNode } from './device-node';
 import { GenericNode, type GenericFlowNode } from './generic-node';
 import { PppTotalWidget } from './ppp-total-widget';
@@ -164,6 +165,14 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
     const visible = new Set(domainNodes.map((node) => node.id));
     const positions = new Map(map.nodes.map((node) => [node.deviceId ?? node.id, node.position]));
     const devices = new Map(map.devices.map((device) => [device.id, device]));
+    const parallelLayouts = computeParallelLinkLayouts(
+      map.links.map((link) => ({
+        id: link.id,
+        sourceKey: link.sourceDeviceId ?? link.sourceNodeId ?? '',
+        targetKey: link.targetDeviceId ?? link.targetNodeId ?? '',
+        layoutMode: link.linkLayoutMode ?? 'AUTO',
+      })),
+    );
     return map.links.flatMap((link) => {
       const sourceKey = link.sourceDeviceId ?? link.sourceNodeId ?? '';
       const targetKey = link.targetDeviceId ?? link.targetNodeId ?? '';
@@ -202,6 +211,7 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
           visualPath,
           pathIndex,
           isPrimaryPath: pathIndex === 0,
+          autoOffset: parallelLayouts.get(link.id)?.offset ?? 0,
           showTraffic: preferences.showTraffic,
           showUtilization: preferences.showUtilization,
           showLabels: preferences.showLabels,

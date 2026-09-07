@@ -1019,6 +1019,7 @@ export class DemoMapRepository {
       visualPaths: input.visualPaths ?? [
         { order: 0, label: null, customColor: null, curvature: 0, enabled: true },
       ],
+      linkLayoutMode: input.linkLayoutMode ?? 'AUTO',
       status: 'UP',
       discoverySource,
       directions: {

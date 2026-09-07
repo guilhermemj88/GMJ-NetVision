@@ -30,6 +30,7 @@ export type LinkTrafficConsistency = 'CONSISTENT' | 'DIVERGENT' | 'UNKNOWN';
 export type CapacitySource = 'AUTO' | 'MANUAL';
 export type LinkTrafficMode = 'BIDIRECTIONAL' | 'SINGLE_ENDED';
 export type LinkAggregationMode = 'NONE' | 'SUM';
+export type LinkLayoutMode = 'AUTO' | 'MANUAL';
 export type LinkMetricSourceSide = 'SOURCE' | 'TARGET';
 export type PppSource = 'SNMP_HUAWEI' | 'SNMP_MIKROTIK';
 export type PppDisplayMode = 'AUTO' | 'SHOW' | 'HIDE';
@@ -314,6 +315,7 @@ export interface NetworkLink {
   aggregationMode: LinkAggregationMode;
   metricSources: LinkMetricSource[];
   visualPaths: LinkVisualPath[];
+  linkLayoutMode: LinkLayoutMode;
   directions: Record<LinkDirection, DirectionalLinkMetric>;
   rxBps: number;
   txBps: number;
@@ -613,6 +615,7 @@ export interface CreateLinkInput {
   aggregationMode?: LinkAggregationMode;
   metricSources?: LinkMetricSource[];
   visualPaths?: LinkVisualPath[];
+  linkLayoutMode?: LinkLayoutMode;
 }
 export type UpdateLinkInput = Pick<
   CreateLinkInput,
@@ -637,6 +640,7 @@ export type UpdateLinkInput = Pick<
       | 'animationEnabled'
       | 'aggregationMode'
       | 'metricSources'
+      | 'linkLayoutMode'
       | 'visualPaths'
     >
   >;
