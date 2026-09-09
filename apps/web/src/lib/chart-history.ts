@@ -1,5 +1,3 @@
-import { historyBucketMilliseconds, type HistoryPeriod } from '@gmj/shared';
-
 export interface TimestampedChartPoint {
   timestamp: string;
 }
@@ -12,9 +10,8 @@ function median(values: number[]): number | null {
   return ((ordered[middle - 1] ?? 0) + (ordered[middle] ?? 0)) / 2;
 }
 
-function expectedInterval<T extends TimestampedChartPoint>(points: T[], period: HistoryPeriod): number {
-  const bucket = historyBucketMilliseconds(period);
-  if (bucket !== null) return bucket;
+/** Median interval between consecutive samples — the collection's own cadence. */
+function typicalInterval<T extends TimestampedChartPoint>(points: T[]): number | null {
   const timestamps = [...new Set(points
     .map((point) => Date.parse(point.timestamp))
     .filter(Number.isFinite))]
@@ -25,17 +22,22 @@ function expectedInterval<T extends TimestampedChartPoint>(points: T[], period: 
     const interval = timestamp - previous;
     return interval > 0 ? [interval] : [];
   });
-  return Math.min(median(intervals) ?? 60_000, 60_000);
+  return median(intervals);
 }
 
-/** Adds null-valued UI sentinels only to break lines across missing time buckets. */
+/**
+ * Adds null-valued UI sentinels only to break lines across unexpectedly long
+ * collection gaps. The expected cadence is measured from the samples themselves
+ * (not the aggregation bucket), so sparse but regular collections (e.g. optical
+ * DDM every five minutes) stay connected even when the period bucket is finer.
+ */
 export function withTemporalGapMarkers<T extends TimestampedChartPoint>(
   points: T[],
-  period: HistoryPeriod,
   createGap: (timestamp: string) => T,
 ): T[] {
   if (points.length < 2) return points;
-  const interval = expectedInterval(points, period);
+  const interval = typicalInterval(points);
+  if (interval === null || interval <= 0) return points;
   const result: T[] = [];
   for (let index = 0; index < points.length; index += 1) {
     const point = points[index];
@@ -46,9 +48,9 @@ export function withTemporalGapMarkers<T extends TimestampedChartPoint>(
     const currentTimestamp = Date.parse(point.timestamp);
     const nextTimestamp = Date.parse(next.timestamp);
     const delta = nextTimestamp - currentTimestamp;
-    if (!Number.isFinite(delta) || delta <= 0 || interval <= 0) continue;
-    const missingBuckets = Math.max(0, Math.floor(delta / interval) - 1);
-    if (missingBuckets >= 3) {
+    if (!Number.isFinite(delta) || delta <= 0) continue;
+    const missingSamples = Math.max(0, Math.floor(delta / interval) - 1);
+    if (missingSamples >= 3) {
       result.push(createGap(new Date(currentTimestamp + interval).toISOString()));
     }
   }

@@ -237,6 +237,45 @@ describe('GMJ NetVision API', () => {
     history.mockRestore();
   });
 
+  it.each(['15m', '1h', '6h'] as const)(
+    'returns Lane 0..3 from the optical-history endpoint for period=%s',
+    async (period) => {
+      const history = vi
+        .spyOn(DemoHostRepositoryAdapter.prototype, 'getInterfaceOpticalHistory')
+        .mockResolvedValue([
+          {
+            timestamp: new Date(Date.now() - 5 * 60_000).toISOString(),
+            sampleCount: 1,
+            rxAvg: -3.71,
+            rxMin: -3.71,
+            rxMax: -3.71,
+            txAvg: 0.77,
+            txMin: 0.77,
+            txMax: 0.77,
+            lanes: [0, 1, 2, 3].map((lane) => ({
+              lane,
+              sampleCount: 1,
+              rxAvg: -3.71 + lane,
+              rxMin: -3.71 + lane,
+              rxMax: -3.71 + lane,
+              txAvg: 0.77 + lane,
+              txMin: 0.77 + lane,
+              txMax: 0.77 + lane,
+            })),
+          },
+        ]);
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/interfaces/if-100ge/optical-history?period=${period}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()[0].lanes.map((lane: { lane: number }) => lane.lane)).toEqual([0, 1, 2, 3]);
+      history.mockRestore();
+    },
+  );
+
   it('lists maps and maintains exactly one default view', async () => {
     const response = await app.inject({ method: 'GET', url: '/api/maps' });
     expect(response.statusCode).toBe(200);

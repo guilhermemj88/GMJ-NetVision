@@ -148,3 +148,50 @@ describe('optical history', () => {
     expect(result?.timestamp).toBe(expectedTimestamp);
   });
 });
+
+describe('optical history with now-relative timestamps', () => {
+  const minutesAgo = (minutes: number): string =>
+    new Date(Date.now() - minutes * 60_000).toISOString();
+
+  it('keeps a recent sample raw under 15m', () => {
+    const recent = sample(minutesAgo(5), -12, 0.2, fourLanes());
+    const result = aggregateOpticalHistory([recent], '15m');
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      timestamp: recent.timestamp,
+      sampleCount: 1,
+    });
+    expect(result[0]?.lanes).toHaveLength(4);
+  });
+
+  it('groups one-hour samples into one-minute buckets without losing lanes', () => {
+    const result = aggregateOpticalHistory([
+      sample(minutesAgo(5), -12, 0.2, fourLanes()),
+      sample(minutesAgo(20), -12, 0.2, fourLanes()),
+      sample(minutesAgo(45), -12, 0.2, fourLanes()),
+    ], '1h');
+
+    expect(result).toHaveLength(3);
+    expect(result.every((point) => point.lanes.length === 4)).toBe(true);
+  });
+
+  it('keeps six-hour samples in five-minute buckets', () => {
+    const result = aggregateOpticalHistory([
+      sample(minutesAgo(5), -12, 0.2, fourLanes()),
+      sample(minutesAgo(20), -12, 0.2, fourLanes()),
+      sample(minutesAgo(120), -12, 0.2, fourLanes()),
+    ], '6h');
+
+    expect(result).toHaveLength(3);
+    expect(result.every((point) => point.lanes.length === 4)).toBe(true);
+  });
+
+  it('does not shift the window due to timezone', () => {
+    const recent = sample(minutesAgo(5), -12, 0.2, fourLanes());
+    const [result] = aggregateOpticalHistory([recent], '15m');
+    expect(result?.timestamp).toBe(recent.timestamp);
+    expect(Date.parse(recent.timestamp)).toBeGreaterThan(Date.now() - 6 * 60_000);
+    expect(Date.parse(recent.timestamp)).toBeLessThanOrEqual(Date.now() - 4 * 60_000);
+  });
+});

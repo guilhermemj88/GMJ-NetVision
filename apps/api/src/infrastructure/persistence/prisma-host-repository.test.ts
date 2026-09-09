@@ -107,6 +107,49 @@ describe('PrismaHostRepository optical persistence', () => {
       txAvg: 1.19,
     });
   });
+
+  it('returns all four lanes of a recent multi-lane sample', async () => {
+    const prisma = {
+      interfaceOpticalSample: {
+        findMany: vi.fn().mockResolvedValue([{
+          timestamp: new Date(Date.now() - 5 * 60_000),
+          rxPowerDbm: -3.71,
+          txPowerDbm: 0.77,
+          opticalLanes: [0, 1, 2, 3].map((lane) => ({
+            lane,
+            rxPowerDbm: -3.71 + lane,
+            txPowerDbm: 0.77 + lane,
+          })),
+        }]),
+      },
+    };
+    const repository = new PrismaHostRepository(prisma as never, null);
+
+    const [point] = await repository.getInterfaceOpticalHistory('if-100ge', '1h');
+
+    expect(point?.lanes.map((lane) => lane.lane)).toEqual([0, 1, 2, 3]);
+  });
+
+  it('queries each optical history period with a rolling window relative to now', async () => {
+    const findMany = vi.fn().mockResolvedValue([]);
+    const prisma = { interfaceOpticalSample: { findMany } };
+    const repository = new PrismaHostRepository(prisma as never, null);
+
+    const cases = [
+      { period: '15m' as const, ms: 15 * 60_000 },
+      { period: '1h' as const, ms: 60 * 60_000 },
+      { period: '6h' as const, ms: 6 * 60 * 60_000 },
+    ];
+    for (const { period, ms } of cases) {
+      const started = Date.now();
+      await repository.getInterfaceOpticalHistory('if-100ge', period);
+      const finished = Date.now();
+      const gte = findMany.mock.calls.at(-1)?.[0]?.where?.timestamp?.gte?.getTime();
+      expect(typeof gte).toBe('number');
+      expect(gte).toBeGreaterThanOrEqual(started - ms - 1_000);
+      expect(gte).toBeLessThanOrEqual(finished - ms + 1_000);
+    }
+  });
 });
 
 describe('PrismaHostRepository interface status persistence', () => {

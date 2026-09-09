@@ -38,6 +38,28 @@ function formatDbm(value: number | null): string {
   return value == null ? 'N/D' : `${value.toFixed(2)} dBm`;
 }
 
+/** Two-decimal axis tick label without the dBm suffix (kept in the chart title). */
+export function formatAxisDbm(value: number): string {
+  return Number(value).toFixed(2);
+}
+
+/**
+ * Lane ids that actually carry optical power in one direction, so bias-only
+ * lanes never become phantom RX/TX series on the power chart.
+ */
+export function laneIdsWithPower(
+  points: OpticalHistoryPoint[],
+  laneIds: number[],
+  direction: 'rx' | 'tx',
+): number[] {
+  return laneIds.filter((laneId) => points.some((point) => {
+    const lane = point.lanes.find((item) => item.lane === laneId);
+    if (!lane) return false;
+    const value = direction === 'rx' ? lane.rxAvg : lane.txAvg;
+    return typeof value === 'number' && Number.isFinite(value);
+  }));
+}
+
 export function opticalChartData(
   points: OpticalHistoryPoint[],
   laneIds: number[],
@@ -59,7 +81,7 @@ export function opticalChartData(
     }
     return datum;
   });
-  return withTemporalGapMarkers(raw, period, (timestamp) => {
+  return withTemporalGapMarkers(raw, (timestamp) => {
     const gap: OpticalChartDatum = {
       timestamp,
       label: timeLabel(timestamp, period),
@@ -101,11 +123,14 @@ export function OpticalHistoryCharts({
     queryKey: ['optical-history', networkInterface.id, period],
     queryFn: () => getOpticalHistory(networkInterface.id, period),
   });
+  const points = history.data ?? [];
   const laneIds = [...new Set([
     ...(networkInterface.opticalLanes ?? []).map((lane) => lane.lane),
-    ...(history.data ?? []).flatMap((point) => point.lanes.map((lane) => lane.lane)),
+    ...points.flatMap((point) => point.lanes.map((lane) => lane.lane)),
   ])].sort((left, right) => left - right);
-  const data = opticalChartData(history.data ?? [], laneIds, period);
+  const rxLaneIds = laneIdsWithPower(points, laneIds, 'rx');
+  const txLaneIds = laneIdsWithPower(points, laneIds, 'tx');
+  const data = opticalChartData(points, laneIds, period);
 
   return (
     <section className="charts-section optical-history-section">
@@ -132,8 +157,8 @@ export function OpticalHistoryCharts({
         <div className="chart-empty">Sem amostras ópticas no período</div>
       ) : (
         <div className="chart-pair chart-pair--optical">
-          <OpticalPowerChart data={data} laneIds={laneIds} direction="rx" />
-          <OpticalPowerChart data={data} laneIds={laneIds} direction="tx" />
+          <OpticalPowerChart data={data} laneIds={rxLaneIds} direction="rx" />
+          <OpticalPowerChart data={data} laneIds={txLaneIds} direction="tx" />
         </div>
       )}
     </section>
@@ -169,7 +194,7 @@ function OpticalPowerChart({
             tick={{ fill: '#6f8392', fontSize: 8 }}
             tickLine={false}
             axisLine={false}
-            unit=" dBm"
+            tickFormatter={formatAxisDbm}
           />
           <Tooltip content={(props) => (
             <OpticalHistoryTooltip

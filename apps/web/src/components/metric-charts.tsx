@@ -66,7 +66,7 @@ export function MetricCharts({ networkInterface }: { networkInterface: NetworkIn
       : (point.txBpsMax ?? 0) / 1_000_000_000,
     sampleCount: point.sampleCount ?? 1,
   }));
-  const data = withTemporalGapMarkers<TrafficChartDatum>(rawData, period, (timestamp) => ({
+  const data = withTemporalGapMarkers<TrafficChartDatum>(rawData, (timestamp) => ({
     timestamp,
     label: timeLabel(timestamp, period),
     rxBps: 0,
