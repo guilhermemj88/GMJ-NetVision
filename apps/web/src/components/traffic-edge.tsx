@@ -2,6 +2,7 @@
 
 import {
   formatBitsPerSecond,
+  singleEndedMonitoredSide,
   utilizationLevel,
   type LinkDisplayStyle,
   type LinkMetricDisplay,
@@ -364,7 +365,7 @@ export function TrafficEdge({
   const renderLanes = directional && showTraffic && link.status !== 'DOWN' && related;
   const animateLanes = (link.animationEnabled ?? showTrafficAnimation) && link.status !== 'UNKNOWN';
   const laneWidth = Math.max(1, width * (isEmphasized ? 1.15 : 0.88));
-  const sourceMonitored = link.trafficMode === 'SINGLE_ENDED' && Boolean(link.sourceInterfaceId);
+  const sourceMonitored = link.trafficMode === 'SINGLE_ENDED' && singleEndedMonitoredSide(link) === 'SOURCE';
   const laneAObservation =
     link.trafficMode === 'SINGLE_ENDED' ? (sourceMonitored ? 'LOCAL_TX' : 'LOCAL_RX') : 'A_TO_B';
   const laneBObservation =
@@ -490,15 +491,15 @@ export function TrafficEdge({
             )}
             {showMetric && (
               <>
-                <div className="edge-metric__row">
+                <div className="edge-metric__row" data-flow-direction="A_TO_B" data-observation={laneAObservation}>
                   <span className="edge-metric__swatch" style={{ backgroundColor: colorA }} />
-                  {displayThroughput && <strong>{throughputText(aToB.bps)}</strong>}
-                  {displayUtilization && <em>{utilizationText(aToB.utilization)}</em>}
+                  {displayThroughput && <strong style={link.trafficMode === 'SINGLE_ENDED' ? { color: colorA } : undefined}>{throughputText(aToB.bps)}</strong>}
+                  {displayUtilization && <em style={link.trafficMode === 'SINGLE_ENDED' ? { color: colorA } : undefined}>{utilizationText(aToB.utilization)}</em>}
                 </div>
-                <div className="edge-metric__row">
+                <div className="edge-metric__row" data-flow-direction="B_TO_A" data-observation={laneBObservation}>
                   <span className="edge-metric__swatch" style={{ backgroundColor: colorB }} />
-                  {displayThroughput && <strong>{throughputText(bToA.bps)}</strong>}
-                  {displayUtilization && <em>{utilizationText(bToA.utilization)}</em>}
+                  {displayThroughput && <strong style={link.trafficMode === 'SINGLE_ENDED' ? { color: colorB } : undefined}>{throughputText(bToA.bps)}</strong>}
+                  {displayUtilization && <em style={link.trafficMode === 'SINGLE_ENDED' ? { color: colorB } : undefined}>{utilizationText(bToA.utilization)}</em>}
                 </div>
               </>
             )}

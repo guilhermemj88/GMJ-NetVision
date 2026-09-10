@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  aggregateLinkMetrics,
   createLocalId,
   type AddDeviceResult,
   type CreateLinkInput,
@@ -550,6 +551,11 @@ export const useMapStore = create<MapState>((set) => ({
         createdAt: timestamp,
         updatedAt: timestamp,
       };
+      if (!serverLink && link.trafficMode === 'SINGLE_ENDED') {
+        Object.assign(link, aggregateLinkMetrics(link, (deviceId, interfaceId) =>
+          state.map?.devices.find((device) => device.id === deviceId)?.interfaces.find((item) => item.id === interfaceId),
+        ));
+      }
       return { map: { ...state.map, links: [...state.map.links, link] }, dirty: true };
     }),
   replaceLink: (link) =>

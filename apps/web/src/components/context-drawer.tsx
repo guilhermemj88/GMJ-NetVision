@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import {
   aggregateLinkMetrics,
+  singleEndedMonitoredSide,
   automaticLinkCapacity,
   autoCurvatures,
   DEFAULT_TRAFFIC_COLOR_A_TO_B,
@@ -729,7 +730,7 @@ function LinkDrawer({
   );
   const [trafficMode, setTrafficMode] = useState<LinkTrafficMode>(link.trafficMode);
   const [singleEndedSide, setSingleEndedSide] = useState<'SOURCE' | 'TARGET'>(
-    link.sourceInterfaceId ? 'SOURCE' : 'TARGET',
+    singleEndedMonitoredSide(link) ?? 'SOURCE',
   );
   const [customColor, setCustomColor] = useState<string | null>(link.customColor);
   const [trafficColorAToB, setTrafficColorAToB] = useState<string | null>(
@@ -773,7 +774,7 @@ function LinkDrawer({
       map?.devices.flatMap((device) => device.interfaces).find((item) => item.id === interfaceId)
     );
   };
-  const sumMode = trafficMode === 'BIDIRECTIONAL' && aggregationMode === 'SUM';
+  const sumMode = aggregationMode === 'SUM';
   const referenceSourceInterfaceId =
     sumMode && sourceMetricIds.length ? sourceMetricIds[0] : sourceInterfaceId;
   const referenceTargetInterfaceId =
@@ -788,8 +789,8 @@ function LinkDrawer({
       : '';
   const metricSources: LinkMetricSource[] = sumMode
     ? [
-        ...sourceMetricIds.map((interfaceId) => ({ interfaceId, side: 'SOURCE' as const })),
-        ...targetMetricIds.map((interfaceId) => ({ interfaceId, side: 'TARGET' as const })),
+        ...(trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'SOURCE' ? sourceMetricIds : []).map((interfaceId) => ({ interfaceId, side: 'SOURCE' as const })),
+        ...(trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'TARGET' ? targetMetricIds : []).map((interfaceId) => ({ interfaceId, side: 'TARGET' as const })),
       ]
     : [];
   const editedReferenceSource = findInterface(link.sourceDeviceId, effectiveSourceInterfaceId);
@@ -808,6 +809,8 @@ function LinkDrawer({
     {
       sourceDeviceId: link.sourceDeviceId,
       targetDeviceId: link.targetDeviceId,
+      sourceNodeId: link.sourceNodeId,
+      targetNodeId: link.targetNodeId,
       sourceInterfaceId: effectiveSourceInterfaceId || null,
       targetInterfaceId: effectiveTargetInterfaceId || null,
       aggregationMode: sumMode ? 'SUM' : 'NONE',
@@ -827,9 +830,9 @@ function LinkDrawer({
     autoCapacityBps,
     capacitySource,
     trafficMode,
-    customColor: bidirectional ? null : customColor,
-    trafficColorAToB: bidirectional ? trafficColorAToB : null,
-    trafficColorBToA: bidirectional ? trafficColorBToA : null,
+    customColor,
+    trafficColorAToB,
+    trafficColorBToA,
     inlineLabelPositionAToB,
     inlineLabelPositionBToA,
     animationEnabled,
@@ -861,9 +864,9 @@ function LinkDrawer({
         autoCapacityBps,
         capacitySource,
         trafficMode,
-        customColor: bidirectional ? null : customColor,
-        trafficColorAToB: bidirectional ? trafficColorAToB : null,
-        trafficColorBToA: bidirectional ? trafficColorBToA : null,
+        customColor,
+        trafficColorAToB,
+        trafficColorBToA,
         inlineLabelPositionAToB,
         inlineLabelPositionBToA,
         animationEnabled,
@@ -919,8 +922,8 @@ function LinkDrawer({
     : 'MANUAL';
   const inlinePercentAToB = Math.round((inlineLabelPositionAToB ?? 0.4) * 100);
   const inlinePercentBToA = Math.round((inlineLabelPositionBToA ?? 0.6) * 100);
-  const directionALabel = bidirectional ? 'A → B' : 'TX observado';
-  const directionBLabel = bidirectional ? 'B → A' : 'RX observado';
+  const directionALabel = bidirectional ? 'A → B' : `A → B (${monitoredSide === 'SOURCE' ? 'TX' : 'RX'} local)`;
+  const directionBLabel = bidirectional ? 'B → A' : `B → A (${monitoredSide === 'SOURCE' ? 'RX' : 'TX'} local)`;
 
   return (
     <DrawerShell eyebrow="ENLACE" title={link.label} status={link.status} onClose={onClose}>
@@ -1012,7 +1015,7 @@ function LinkDrawer({
         <section className="drawer-section edit-link-form">
           <div className="edit-link-form__section">
             <SectionTitle icon={<Activity size={14} />} label="FONTES DE TRÁFEGO" />
-            {trafficMode === 'BIDIRECTIONAL' && (
+            {(
               <label>
                 Agregação
                 <select
@@ -1028,7 +1031,7 @@ function LinkDrawer({
             )}
             {sumMode ? (
               <>
-                {source && (
+                {source && (trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'SOURCE') && (
                   <div className="form-field">
                     <span>Interfaces da ponta A (soma)</span>
                     <InterfaceMultiPicker
@@ -1038,7 +1041,7 @@ function LinkDrawer({
                     />
                   </div>
                 )}
-                {target && (
+                {target && (trafficMode === 'BIDIRECTIONAL' || monitoredSide === 'TARGET') && (
                   <div className="form-field">
                     <span>Interfaces da ponta B (soma)</span>
                     <InterfaceMultiPicker
@@ -1100,7 +1103,7 @@ function LinkDrawer({
               </select>
             </label>
           )}
-          {bidirectional ? (
+          {(
             <div className="edit-link-form__section">
               <SectionTitle icon={<Palette size={14} />} label="CORES DO TRÁFEGO" />
               <label>
@@ -1139,14 +1142,14 @@ function LinkDrawer({
               </label>
               <div className="traffic-color-pair">
                 <span className="traffic-color-pair__swatch" style={{ backgroundColor: effectiveColorAToB }} />
-                <span>A → B</span>
+                <span>{directionALabel}</span>
                 <span className="traffic-color-pair__swatch" style={{ backgroundColor: effectiveColorBToA }} />
-                <span>B → A</span>
+                <span>{directionBLabel}</span>
               </div>
               {paletteSelection === 'CUSTOM' && (
                 <>
                   <label>
-                    A → B
+                    {directionALabel}
                     <input
                       type="color"
                       value={trafficColorAToB ?? DEFAULT_TRAFFIC_COLOR_A_TO_B}
@@ -1154,7 +1157,7 @@ function LinkDrawer({
                     />
                   </label>
                   <label>
-                    B → A
+                    {directionBLabel}
                     <input
                       type="color"
                       value={trafficColorBToA ?? DEFAULT_TRAFFIC_COLOR_B_TO_A}
@@ -1164,7 +1167,8 @@ function LinkDrawer({
                 </>
               )}
             </div>
-          ) : (
+          )}
+          {!bidirectional && (
             <>
               <label>
                 Cor do enlace
