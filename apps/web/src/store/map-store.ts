@@ -21,6 +21,7 @@ import {
   type UpdateMapNodePppInput,
 } from '@gmj/shared';
 import { create } from 'zustand';
+import type { LinkGeometry } from '@/lib/link-curvature';
 
 export type Selection =
   | { kind: 'device'; id: string }
@@ -59,6 +60,8 @@ export interface NocRotationState {
 }
 
 interface MapState {
+  linkGeometryDrafts: Record<string, LinkGeometry>;
+  setLinkGeometryDraft: (linkId: string, geometry: LinkGeometry | null) => void;
   maps: MapSummary[];
   activeMapId: string | null;
   map: NetworkMap | null;
@@ -172,6 +175,19 @@ function summaryFromMap(map: NetworkMap): MapSummary {
 }
 
 export const useMapStore = create<MapState>((set) => ({
+  linkGeometryDrafts: {},
+  setLinkGeometryDraft: (linkId, geometry) => set((state) => {
+    const linkGeometryDrafts = { ...state.linkGeometryDrafts };
+    if (geometry) linkGeometryDrafts[linkId] = geometry;
+    else delete linkGeometryDrafts[linkId];
+    return {
+      linkGeometryDrafts,
+      map: state.map && geometry ? {
+        ...state.map,
+        links: state.map.links.map((link) => link.id === linkId ? { ...link, ...geometry } : link),
+      } : state.map,
+    };
+  }),
   maps: [],
   activeMapId: null,
   map: null,
@@ -220,6 +236,7 @@ export const useMapStore = create<MapState>((set) => ({
     })),
   setActiveMap: (activeMapId) =>
     set({
+      linkGeometryDrafts: {},
       activeMapId,
       map: null,
       selection: null,
@@ -247,7 +264,11 @@ export const useMapStore = create<MapState>((set) => ({
       );
       const focusSequence = canOpen ? state.focusSequence + 1 : state.focusSequence;
       return {
-        map,
+        map: state.map?.id === map.id ? {
+          ...map,
+          links: map.links.map((link) => ({ ...link, ...state.linkGeometryDrafts[link.id] })),
+        } : map,
+        linkGeometryDrafts: state.map?.id === map.id ? state.linkGeometryDrafts : {},
         activeMapId: map.id,
         preferences: map.settings.filters,
         readOnly: false,
@@ -267,6 +288,7 @@ export const useMapStore = create<MapState>((set) => ({
   },
   setPublicMap: (map) =>
     set({
+      linkGeometryDrafts: {},
       map,
       activeMapId: map.id,
       preferences: map.settings.filters,

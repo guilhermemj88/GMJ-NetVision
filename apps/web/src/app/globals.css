@@ -1888,7 +1888,46 @@ button {
   fill: none;
   stroke: transparent;
   stroke-width: 18;
+  pointer-events: stroke;
+  vector-effect: non-scaling-stroke;
   cursor: pointer;
+}
+.link-curvature-handle {
+  position: absolute;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: all;
+  touch-action: none;
+  user-select: none;
+  cursor: grab;
+}
+.link-curvature-handle:active { cursor: grabbing; }
+.link-curvature-handle__dot {
+  width: 10px;
+  height: 10px;
+  border: 2px solid #d9f4ff;
+  border-radius: 50%;
+  background: #13212b;
+  box-shadow: 0 0 3px #071018;
+}
+.link-curvature-handle:hover .link-curvature-handle__dot,
+.link-curvature-handle:focus-visible .link-curvature-handle__dot { transform: scale(1.2); }
+.link-curvature-handle__value {
+  position: absolute;
+  bottom: 27px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  background: #13212b;
+  color: #d9f4ff;
+  font: 11px var(--font-mono);
+  white-space: nowrap;
+  pointer-events: none;
 }
 .traffic-edge__inline-label {
   pointer-events: none;

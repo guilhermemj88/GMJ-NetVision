@@ -16,6 +16,8 @@ import {
   type EdgeProps,
   type Position,
 } from '@xyflow/react';
+import { PATH_OFFSET_SCALE } from '@/lib/link-curvature';
+import { LinkCurvatureHandle } from './link-curvature-handle';
 
 export interface TrafficEdgeData extends Record<string, unknown> {
   link: NetworkLink;
@@ -23,6 +25,8 @@ export interface TrafficEdgeData extends Record<string, unknown> {
   targetInterface?: NetworkInterface;
   visualPath?: LinkVisualPath;
   pathIndex?: number;
+  editMode?: boolean;
+  readOnly?: boolean;
   isPrimaryPath?: boolean;
   /** Automatic perpendicular offset computed for sibling links (pixels). */
   autoOffset?: number;
@@ -45,8 +49,6 @@ const EDGE_CURVATURE = 0.24;
 const LANE_HALF_GAP = 4.0;
 const HUE_A = 190;
 const HUE_B = 285;
-// Converts a visual-path curvature (signed pixel offset) into a bezier bow.
-const PATH_OFFSET_SCALE = 0.9;
 // Inline label placement along the bezier, plus the perpendicular lift so text
 // never sits exactly on the lane stroke.
 const INLINE_LABEL_T_A = 0.4;
@@ -515,6 +517,16 @@ export function TrafficEdge({
             {visualPath?.label}
           </div>
         </EdgeLabelRenderer>
+      )}
+      {data.editMode && selected && !data.readOnly && (
+        <LinkCurvatureHandle
+          link={link}
+          pathIndex={data.pathIndex ?? 0}
+          autoOffset={data.autoOffset ?? 0}
+          point={bezierPoint(geometry, 0.5)}
+          source={geometry.source}
+          target={geometry.target}
+        />
       )}
     </>
   );

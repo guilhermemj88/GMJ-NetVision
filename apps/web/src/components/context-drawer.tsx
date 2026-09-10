@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { resetLinkGeometry, type LinkGeometry } from '@/lib/link-curvature';
 import { Badge, Button } from '@gmj/ui';
 import {
   Activity,
@@ -93,7 +94,7 @@ export function ContextDrawer() {
   if (selection.kind === 'link') {
     const link = map.links.find((item) => item.id === selection.id);
     return link ? (
-      <LinkDrawer link={link} readOnly={readOnly} onClose={() => setSelection(null)} />
+      <LinkDrawer key={link.id} link={link} readOnly={readOnly} onClose={() => setSelection(null)} />
     ) : null;
   }
   if (selection.kind === 'interface') {
@@ -708,6 +709,14 @@ function LinkDrawer({
   const [visualPaths, setVisualPaths] = useState<LinkVisualPath[]>(
     link.visualPaths?.length ? link.visualPaths : defaultVisualPaths(1),
   );
+  // Canvas edits must also update an already-open form, without clearing its other fields.
+  const savedGeometry = JSON.stringify({ visualPaths: link.visualPaths, linkLayoutMode: link.linkLayoutMode });
+  useEffect(() => {
+    const geometry = JSON.parse(savedGeometry) as LinkGeometry;
+    setVisualPaths(geometry.visualPaths.length ? geometry.visualPaths : defaultVisualPaths(1));
+    setLinkLayoutMode(geometry.linkLayoutMode);
+  }, [savedGeometry]);
+  const geometryBusy = useMapStore((state) => Boolean(state.linkGeometryDrafts[link.id]));
   const initialUnit = link.capacityBps >= 1_000_000_000 ? 'GBPS' : 'MBPS';
   const [capacitySource, setCapacitySource] = useState<CapacitySource>(link.capacitySource);
   const [capacityUnit, setCapacityUnit] = useState<'MBPS' | 'GBPS'>(initialUnit);
@@ -1338,6 +1347,17 @@ function LinkDrawer({
                 Quando existir mais de um link entre os mesmos equipamentos, o NetVision pode
                 separá-los automaticamente com curvatura leve.
               </p>
+              <p className="link-layout-mode__hint">Arraste a alça de cada caminho no mapa para ajustar sua curva.</p>
+              <div className="segmented-row">
+                <button type="button" disabled={geometryBusy} onClick={() => {
+                  setVisualPaths(resetLinkGeometry({ visualPaths, linkLayoutMode }).visualPaths);
+                }}>Resetar curva</button>
+                <button type="button" disabled={geometryBusy} onClick={() => {
+                  const reset = resetLinkGeometry({ visualPaths, linkLayoutMode }, true);
+                  setVisualPaths(reset.visualPaths);
+                  setLinkLayoutMode(reset.linkLayoutMode);
+                }}>Voltar ao automático</button>
+              </div>
             </div>
             <label>
               Quantidade de caminhos
@@ -1419,7 +1439,7 @@ function LinkDrawer({
             <Button variant="ghost" onClick={() => setEditing(false)}>
               Cancelar
             </Button>
-            <Button variant="primary" onClick={() => updateMutation.mutate()}>
+            <Button variant="primary" disabled={geometryBusy || updateMutation.isPending} onClick={() => updateMutation.mutate()}>
               Salvar alterações
             </Button>
           </div>

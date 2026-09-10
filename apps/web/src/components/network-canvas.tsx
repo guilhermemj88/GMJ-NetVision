@@ -50,7 +50,9 @@ function alignmentNode(node: MapFlowNode): AlignmentNode {
   };
 }
 
-export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
+export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?: boolean }) {
+  const storeReadOnly = useMapStore((state) => state.readOnly);
+  const readOnly = forcedReadOnly || storeReadOnly;
   const flow = useReactFlow();
   const viewportMapId = useRef<string | null>(null);
   const snappedPosition = useRef<{ nodeId: string; position: { x: number; y: number } } | null>(null);
@@ -60,7 +62,7 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
   const map = useMapStore((state) => state.map);
   const setCatalog = useMapStore((state) => state.setCatalog);
   const setMap = useMapStore((state) => state.setMap);
-  const editMode = useMapStore((state) => state.editMode);
+  const editMode = useMapStore((state) => state.editMode) && !readOnly;
   const preferences = useMapStore((state) => state.preferences);
   const moveNode = useMapStore((state) => state.moveNode);
   const selection = useMapStore((state) => state.selection);
@@ -190,13 +192,12 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
         : undefined;
       const selectedId =
         selection?.kind === 'device' || selection?.kind === 'node' ? selection.id : null;
-      const visualPaths = link.visualPaths?.length
-        ? link.visualPaths.filter((path) => path.enabled)
-        : [];
-      const paths = visualPaths.length
-        ? visualPaths
-        : [{ order: 0, label: null, customColor: null, curvature: 0, enabled: true }];
-      return paths.map((visualPath, pathIndex) => ({
+      const paths = (link.visualPaths?.length
+        ? link.visualPaths
+        : [{ order: 0, label: null, customColor: null, curvature: 0, enabled: true }])
+        .map((visualPath, pathIndex) => ({ visualPath, pathIndex }))
+        .filter(({ visualPath }) => visualPath.enabled);
+      return paths.map(({ visualPath, pathIndex }, visibleIndex) => ({
         id: pathIndex === 0 ? link.id : `${link.id}:path:${pathIndex}`,
         source: sourceKey,
         target: targetKey,
@@ -204,13 +205,16 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
         targetHandle: handles.targetHandle,
         type: 'traffic',
         selectable: true,
+        selected: selection?.kind === 'link' && selection.id === link.id,
         data: {
           link,
+          editMode,
+          readOnly,
           ...(sourceInterface ? { sourceInterface } : {}),
           ...(targetInterface ? { targetInterface } : {}),
           visualPath,
           pathIndex,
-          isPrimaryPath: pathIndex === 0,
+          isPrimaryPath: visibleIndex === 0,
           autoOffset: parallelLayouts.get(link.id)?.offset ?? 0,
           showTraffic: preferences.showTraffic,
           showUtilization: preferences.showUtilization,
@@ -226,7 +230,7 @@ export function NetworkCanvas({ readOnly = false }: { readOnly?: boolean }) {
         },
       }));
     });
-  }, [domainNodes, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, preferences.showTrafficAnimation, selection]);
+  }, [domainNodes, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, preferences.showTrafficAnimation, selection, editMode, readOnly]);
 
   const [nodes, setNodes] = useNodesState<MapFlowNode>([]);
   const [edges, setEdges] = useEdgesState<TrafficFlowEdge>([]);
