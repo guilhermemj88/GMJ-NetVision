@@ -53,8 +53,11 @@ function apiUrl(): string {
   const configured = process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/+$/, '');
 
   if (typeof window === 'undefined') {
-    // Server-side requests need an absolute URL.
-    return configured || 'http://127.0.0.1:3333';
+    // Server-side requests need an absolute URL. Prefer the internal API URL
+    // configured for the Next.js rewrite (API_INTERNAL_URL), which points
+    // straight at the API process, then fall back to the default port.
+    const internal = process.env.API_INTERNAL_URL?.trim().replace(/\/+$/, '');
+    return configured || internal || 'http://127.0.0.1:3333';
   }
 
   // Client-side: use the same origin and let Next.js rewrite /api/* to the
