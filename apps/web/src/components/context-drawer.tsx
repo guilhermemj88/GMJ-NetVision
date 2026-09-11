@@ -53,17 +53,20 @@ import {
   type MapNode,
   type NetworkInterface,
   type NetworkLink,
+  type NetworkMap,
   type PppDisplayMode,
   type PppLabelPosition,
   type TrafficColorPaletteSelection,
   type UpdateMapNodePppInput,
 } from '@gmj/shared';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   deleteLink as deleteLinkRequest,
+  updateConceptualNode as updateConceptualNodeRequest,
   updateLink as updateLinkRequest,
   updateNodePpp as updateNodePppRequest,
 } from '@/lib/api';
+import { GENERIC_NODE_TYPES, normalizeGenericIconType, type NetworkDeviceIconType } from '@/lib/device-appearance';
 import { useMapStore } from '@/store/map-store';
 import { MetricCharts } from './metric-charts';
 import { OpticalHistoryCharts } from './optical-history-charts';
@@ -90,6 +93,7 @@ export function ContextDrawer() {
   const selection = useMapStore((state) => state.selection);
   const setSelection = useMapStore((state) => state.setSelection);
   const readOnly = useMapStore((state) => state.readOnly);
+  const editMode = useMapStore((state) => state.editMode) && !readOnly;
   if (!map || !selection) return null;
 
   if (selection.kind === 'link') {
@@ -115,7 +119,14 @@ export function ContextDrawer() {
   }
   if (selection.kind === 'node') {
     const node = map.nodes.find((item) => item.id === selection.id);
-    return node ? <GenericNodeDrawer node={node} onClose={() => setSelection(null)} /> : null;
+    return node ? (
+      <GenericNodeDrawer
+        node={node}
+        readOnly={readOnly}
+        editMode={editMode}
+        onClose={() => setSelection(null)}
+      />
+    ) : null;
   }
   const device = map.devices.find((item) => item.id === selection.id);
   return device ? (
@@ -1463,7 +1474,92 @@ function LinkDrawer({
   );
 }
 
-function GenericNodeDrawer({ node, onClose }: { node: MapNode; onClose: () => void }) {
+function GenericNodeDrawer({
+  node,
+  readOnly,
+  editMode,
+  onClose,
+}: {
+  node: MapNode;
+  readOnly: boolean;
+  editMode: boolean;
+  onClose: () => void;
+}) {
+  const replaceNode = useMapStore((state) => state.replaceNode);
+  const showToast = useMapStore((state) => state.showToast);
+  const client = useQueryClient();
+  const [editing, setEditing] = useState(false);
+  const [label, setLabel] = useState(node.label ?? '');
+  const [genericType, setGenericType] = useState<NetworkDeviceIconType>(
+    normalizeGenericIconType(node.genericType),
+  );
+  const [locked, setLocked] = useState(node.locked);
+  // External updates (refetch, another drawer) must refresh the closed form,
+  // without clearing what the user is typing while the form is open.
+  const savedFields = JSON.stringify({
+    label: node.label,
+    genericType: node.genericType,
+    locked: node.locked,
+  });
+  useEffect(() => {
+    if (editing) return;
+    const saved = JSON.parse(savedFields) as {
+      label: string | null;
+      genericType: string | null;
+      locked: boolean;
+    };
+    setLabel(saved.label ?? '');
+    setGenericType(normalizeGenericIconType(saved.genericType));
+    setLocked(saved.locked);
+  }, [editing, savedFields]);
+  // DEVICE nodes share this map but are owned by the host flow.
+  const editable = editMode && !readOnly && node.nodeKind === 'GENERIC';
+  // Reuse the same icon source as the "Node conceitual" creation panel, and keep
+  // an unknown persisted type selectable instead of silently replacing it.
+  const typeOptions = GENERIC_NODE_TYPES.some((option) => option.value === genericType)
+    ? GENERIC_NODE_TYPES
+    : [
+        { value: genericType, label: `${genericType} (atual)` },
+        ...GENERIC_NODE_TYPES,
+      ];
+  const trimmedLabel = label.trim();
+  const canSubmit = trimmedLabel.length > 0;
+
+  const updateMutation = useMutation({
+    mutationFn: () =>
+      updateConceptualNodeRequest(node.mapId, node.id, {
+        label: trimmedLabel,
+        genericType,
+        locked,
+      }),
+    onSuccess: async (updated) => {
+      // Persist the server object, then protect it from an in-flight refetch.
+      replaceNode(updated);
+      await client.cancelQueries({ queryKey: ['map', node.mapId] });
+      client.setQueryData<NetworkMap>(['map', node.mapId], (map) =>
+        map
+          ? {
+              ...map,
+              nodes: map.nodes.map((item) => (item.id === updated.id ? updated : item)),
+            }
+          : map,
+      );
+      setEditing(false);
+      showToast('Node atualizado');
+    },
+    onError: () => {
+      // Nothing is written locally, so a failed PATCH leaves the map untouched.
+      showToast('Não foi possível salvar o node. Tente novamente.');
+    },
+  });
+
+  const cancelEditing = () => {
+    setEditing(false);
+    setLabel(node.label ?? '');
+    setGenericType(normalizeGenericIconType(node.genericType));
+    setLocked(node.locked);
+  };
+
   return (
     <DrawerShell
       eyebrow="NODE CONCEITUAL"
@@ -1482,6 +1578,65 @@ function GenericNodeDrawer({ node, onClose }: { node: MapNode; onClose: () => vo
           <Info label="Trava" value={node.locked ? 'Bloqueado' : 'Livre'} />
         </div>
       </section>
+      {editing && editable && (
+        <section className="drawer-section edit-link-form">
+          <div className="edit-link-form__section">
+            <SectionTitle icon={<Pencil size={14} />} label="DADOS DO NODE" />
+            <label>
+              Nome
+              <input
+                type="text"
+                value={label}
+                maxLength={120}
+                placeholder="Nome exibido no mapa"
+                onChange={(event) => setLabel(event.target.value)}
+              />
+            </label>
+            <label>
+              Tipo / ícone
+              <select
+                value={genericType}
+                onChange={(event) =>
+                  setGenericType(event.target.value as NetworkDeviceIconType)
+                }
+              >
+                {typeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="conceptual-node-form__lock">
+              <input
+                type="checkbox"
+                checked={locked}
+                onChange={(event) => setLocked(event.target.checked)}
+              />
+              Bloqueado (impede arrastar no mapa)
+            </label>
+          </div>
+          <div className="edit-link-form__actions">
+            <Button variant="ghost" onClick={cancelEditing}>
+              Cancelar
+            </Button>
+            <Button
+              variant="primary"
+              disabled={!canSubmit || updateMutation.isPending}
+              onClick={() => updateMutation.mutate()}
+            >
+              Salvar alterações
+            </Button>
+          </div>
+        </section>
+      )}
+      {editable && !editing && (
+        <div className="drawer-actions">
+          <Button variant="secondary" onClick={() => setEditing(true)}>
+            <Pencil size={15} /> Editar node
+          </Button>
+        </div>
+      )}
     </DrawerShell>
   );
 }

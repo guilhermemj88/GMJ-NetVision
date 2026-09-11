@@ -6,9 +6,9 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cloneDemoMaps, type NetworkLink } from '@gmj/shared';
+import { cloneDemoMaps, type MapNode, type NetworkLink } from '@gmj/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { pollHost, updateLink } from '@/lib/api';
+import { pollHost, updateConceptualNode, updateLink } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
 import { ContextDrawer, InterfaceOpticalDetails } from './context-drawer';
 
@@ -16,6 +16,7 @@ vi.mock('@/lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api')>()),
   pollHost: vi.fn(),
   updateLink: vi.fn(),
+  updateConceptualNode: vi.fn(),
 }));
 vi.mock('./metric-charts', () => ({ MetricCharts: () => null }));
 vi.mock('./optical-history-charts', () => ({ OpticalHistoryCharts: () => null }));
@@ -305,5 +306,196 @@ describe('ContextDrawer verification action', () => {
     expect(html).toContain('SNMP');
     expect(html).not.toContain('-11.14 dBm');
     expect(html).not.toContain('SNMP + SSH');
+  });
+});
+
+function setInputValue(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')!.set!;
+  setter.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function setSelectValue(select: HTMLSelectElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, 'value')!.set!;
+  setter.call(select, value);
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+describe('conceptual node drawer editing', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let client: QueryClient;
+  const showToast = vi.fn();
+  const map = cloneDemoMaps()[0]!;
+  const conceptual: MapNode = {
+    id: 'conceptual-carrier',
+    mapId: map.id,
+    deviceId: null,
+    nodeKind: 'GENERIC',
+    genericType: 'CARRIER',
+    label: 'Operadora A',
+    position: { x: 512.5, y: 348.25 },
+    locked: false,
+    positionSource: 'MANUAL',
+    pppDisplayMode: 'AUTO',
+    pppPosition: 'BOTTOM',
+    pppColor: null,
+    pppFontSize: 14,
+  };
+  const deviceNode = map.nodes[0]!;
+  const liveMap = () => useMapStore.getState().map!;
+  const nodeInStore = (id: string) => liveMap().nodes.find((item) => item.id === id)!;
+  const findButtonIn = (label: string) =>
+    [...container.querySelectorAll<HTMLButtonElement>('button')].find((button) =>
+      button.textContent?.includes(label),
+    )!;
+  const saveButton = () => findButtonIn('Salvar alterações');
+
+  async function render(selection: string, state: { editMode: boolean; readOnly: boolean }) {
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const withConceptual = {
+      ...structuredClone(map),
+      nodes: [...structuredClone(map.nodes), structuredClone(conceptual)],
+    };
+    useMapStore.setState({
+      map: withConceptual,
+      activeMapId: withConceptual.id,
+      selection: { kind: 'node', id: selection },
+      editMode: state.editMode,
+      readOnly: state.readOnly,
+      linkGeometryDrafts: {},
+      showToast,
+    });
+    vi.mocked(updateConceptualNode).mockImplementation(async (_mapId, nodeId, input) => ({
+      ...nodeInStore(nodeId),
+      ...input,
+    }));
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <ContextDrawer />
+        </QueryClientProvider>,
+      );
+    });
+  }
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    client.clear();
+    container.remove();
+    vi.clearAllMocks();
+    useMapStore.setState({ map: null, selection: null, editMode: false, readOnly: false });
+  });
+
+  it('opens the drawer of an existing conceptual node', async () => {
+    await render(conceptual.id, { editMode: false, readOnly: false });
+    expect(container.textContent).toContain('NODE CONCEITUAL');
+    expect(container.textContent).toContain('CARRIER');
+    expect(container.textContent).toContain('513 × 348');
+    expect(container.textContent).toContain('Livre');
+  });
+
+  it('does not offer editing in a read-only/public view', async () => {
+    await render(conceptual.id, { editMode: true, readOnly: true });
+    expect(container.textContent).not.toContain('Editar node');
+    expect(container.querySelector('.edit-link-form')).toBeNull();
+  });
+
+  it('does not offer editing for DEVICE nodes', async () => {
+    await render(deviceNode.id, { editMode: true, readOnly: false });
+    expect(container.textContent).not.toContain('Editar node');
+  });
+
+  it('offers editing in edit mode and saves label, icon type and lock together', async () => {
+    await render(conceptual.id, { editMode: true, readOnly: false });
+    await act(async () => findButtonIn('Editar node').click());
+
+    expect(container.textContent).toContain('DADOS DO NODE');
+    const labelInput = container.querySelector<HTMLInputElement>(
+      '.edit-link-form input[type="text"]',
+    )!;
+    const typeSelect = container.querySelector<HTMLSelectElement>('.edit-link-form select')!;
+    const lockInput = container.querySelector<HTMLInputElement>(
+      '.conceptual-node-form__lock input',
+    )!;
+    expect(labelInput.value).toBe('Operadora A');
+    expect(typeSelect.value).toBe('CARRIER');
+    expect(lockInput.checked).toBe(false);
+    // every supported conceptual icon type stays selectable
+    const optionValues = [...typeSelect.options].map((option) => option.value);
+    expect(optionValues).toContain('CLOUD');
+    expect(optionValues).toContain('DATACENTER');
+
+    await act(async () => setInputValue(labelInput, 'Operadora B'));
+    await act(async () => setSelectValue(typeSelect, 'DATACENTER'));
+    await act(async () => lockInput.click());
+    await act(async () => {
+      saveButton().click();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    expect(updateConceptualNode).toHaveBeenCalledWith(map.id, conceptual.id, {
+      label: 'Operadora B',
+      genericType: 'DATACENTER',
+      locked: true,
+    });
+    // the store now carries the server object, so the canvas re-renders the icon
+    expect(nodeInStore(conceptual.id)).toEqual({
+      ...conceptual,
+      label: 'Operadora B',
+      genericType: 'DATACENTER',
+      locked: true,
+    });
+    expect(showToast).toHaveBeenCalledWith('Node atualizado');
+    expect(container.querySelector('.edit-link-form')).toBeNull();
+    expect(container.textContent).toContain('Operadora B');
+  });
+
+  it('cancels without touching the store and blocks an empty label', async () => {
+    await render(conceptual.id, { editMode: true, readOnly: false });
+    await act(async () => findButtonIn('Editar node').click());
+    const labelInput = container.querySelector<HTMLInputElement>(
+      '.edit-link-form input[type="text"]',
+    )!;
+    await act(async () => setInputValue(labelInput, '   '));
+    expect(saveButton().disabled).toBe(true);
+
+    await act(async () => setInputValue(labelInput, 'Rascunho'));
+    expect(saveButton().disabled).toBe(false);
+    await act(async () => findButtonIn('Cancelar').click());
+
+    expect(container.querySelector('.edit-link-form')).toBeNull();
+    expect(nodeInStore(conceptual.id)).toEqual(conceptual);
+    expect(updateConceptualNode).not.toHaveBeenCalled();
+  });
+
+  it('keeps the node and its links untouched when the PATCH fails', async () => {
+    await render(conceptual.id, { editMode: true, readOnly: false });
+    const before = structuredClone(nodeInStore(conceptual.id));
+    const linksBefore = structuredClone(liveMap().links);
+    vi.mocked(updateConceptualNode).mockRejectedValueOnce(new Error('API 500'));
+
+    await act(async () => findButtonIn('Editar node').click());
+    const labelInput = container.querySelector<HTMLInputElement>(
+      '.edit-link-form input[type="text"]',
+    )!;
+    await act(async () => setInputValue(labelInput, 'Quebrado'));
+    await act(async () => {
+      saveButton().click();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    expect(showToast).toHaveBeenCalledWith('Não foi possível salvar o node. Tente novamente.');
+    expect(nodeInStore(conceptual.id)).toEqual(before);
+    expect(liveMap().links).toEqual(linksBefore);
+    expect(linksBefore).toHaveLength(map.links.length);
   });
 });

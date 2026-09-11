@@ -551,4 +551,39 @@ describe('NetworkCanvas link rendering and editing', () => {
     expect(singleEndedMonitoredSide(saved)).toBe('SOURCE');
     expect(harness.container.querySelector('.traffic-edge--base')).not.toBeNull();
   });
+
+  it('re-renders the conceptual node icon on type change without remounting it', async () => {
+    const harness = await mount(deviceToGenericMap('SOURCE'));
+    const nodeElement = () =>
+      harness.container.querySelector<HTMLElement>('.react-flow__node[data-id="carrier-node"]');
+    const nodeCard = () => nodeElement()!.firstElementChild as HTMLElement;
+    const nodeBefore = nodeElement()!;
+    expect(nodeCard().className).toContain('device-node--type-carrier');
+    const conceptual = () =>
+      useMapStore.getState().map!.nodes.find((item) => item.id === 'carrier-node')!;
+
+    // exactly what the drawer does after the PATCH resolves
+    await act(async () => {
+      useMapStore.getState().replaceNode({
+        ...conceptual(),
+        label: 'Datacenter SP',
+        genericType: 'DATACENTER',
+        locked: true,
+      });
+    });
+
+    // the node keeps its React Flow identity, so its measured geometry and the
+    // edges attached to it are preserved (no regression on the link fix)
+    expect(nodeElement()).toBe(nodeBefore);
+    expect(nodeCard().className).toContain('device-node--type-datacenter');
+    expect(nodeCard().textContent).toContain('Datacenter SP');
+    expect(conceptual()).toMatchObject({
+      id: 'carrier-node',
+      deviceId: null,
+      position: { x: 520, y: 260 },
+      genericType: 'DATACENTER',
+      locked: true,
+    });
+    expect(harness.container.querySelectorAll('.react-flow__edge')).toHaveLength(1);
+  });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveDeviceIconType } from './device-appearance';
+import { normalizeGenericIconType, resolveDeviceIconType } from './device-appearance';
 
 describe('device icon appearance', () => {
   it('always gives manual selection priority over AUTO heuristics', () => {
@@ -67,5 +67,17 @@ describe('device icon appearance', () => {
       'CLUSTER',
     );
     expect(resolveDeviceIconType({ hostname: 'Internet', deviceType: 'internet' })).toBe('CLOUD');
+  });
+
+  it('normalizes persisted conceptual node types regardless of their stored casing', () => {
+    expect(normalizeGenericIconType('CARRIER')).toBe('CARRIER');
+    expect(normalizeGenericIconType('carrier')).toBe('CARRIER');
+    expect(normalizeGenericIconType(' Datacenter ')).toBe('DATACENTER');
+    // AUTO only makes sense for hosts, and unknown values keep the neutral icon
+    expect(normalizeGenericIconType('AUTO')).toBe('GENERIC');
+    expect(normalizeGenericIconType('auto')).toBe('GENERIC');
+    expect(normalizeGenericIconType('NOT_A_TYPE')).toBe('GENERIC');
+    expect(normalizeGenericIconType(null)).toBe('GENERIC');
+    expect(normalizeGenericIconType(undefined)).toBe('GENERIC');
   });
 });

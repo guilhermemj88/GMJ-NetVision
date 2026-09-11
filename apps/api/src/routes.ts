@@ -139,6 +139,13 @@ const genericNodeSchema = z.object({
   label: z.string().min(1).max(120),
   position: z.object({ x: z.number().finite(), y: z.number().finite() }),
 });
+// Only the editable surface of a conceptual node: identity, deviceId, nodeKind
+// and position stay owned by their own flows.
+const conceptualNodeSchema = z.object({
+  label: z.string().min(1).max(120).optional(),
+  genericType: z.string().min(1).max(40).optional(),
+  locked: z.boolean().optional(),
+});
 const loginSchema = z.object({
   usernameOrEmail: z.string().min(1).max(255),
   password: z.string().min(1).max(1024),
@@ -999,6 +1006,17 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     const { mapId } = mapIdParams.parse(request.params);
     const node = await maps.addGenericNode(mapId, genericNodeSchema.parse(request.body));
     return node ? reply.code(201).send(node) : reply.code(404).send({ message: 'Map not found' });
+  });
+
+  app.patch('/api/maps/:mapId/nodes/:nodeId', async (request, reply) => {
+    const { mapId, nodeId } = nodeParams.parse(request.params);
+    const body = conceptualNodeSchema.parse(request.body);
+    const node = await maps.updateConceptualNode(mapId, nodeId, {
+      ...(body.label === undefined ? {} : { label: body.label }),
+      ...(body.genericType === undefined ? {} : { genericType: body.genericType }),
+      ...(body.locked === undefined ? {} : { locked: body.locked }),
+    });
+    return node ?? reply.code(404).send({ message: 'Conceptual node not found' });
   });
 
   app.delete('/api/maps/:mapId/nodes/:nodeId', async (request, reply) => {

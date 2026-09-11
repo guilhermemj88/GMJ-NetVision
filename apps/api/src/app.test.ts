@@ -839,4 +839,148 @@ describe('GMJ NetVision API', () => {
     expect(response.statusCode).toBe(409);
     expect(response.body).not.toContain('never-return-me');
   });
+
+  it('edits an existing conceptual node without touching links, position or identity', async () => {
+    const map = (await app.inject({ method: 'GET', url: '/api/maps/backbone-main' })).json();
+    const host = map.devices.find(
+      (device: { id: string; interfaces: unknown[] }) =>
+        device.interfaces.length > 0 && device.id !== 'customers',
+    );
+    const created = (
+      await app.inject({
+        method: 'POST',
+        url: `/api/maps/${map.id}/generic-nodes`,
+        payload: { type: 'CARRIER', label: 'Operadora A', position: { x: 512.5, y: 348.25 } },
+      })
+    ).json();
+    const link = (
+      await app.inject({
+        method: 'POST',
+        url: `/api/maps/${map.id}/links`,
+        payload: {
+          sourceDeviceId: host.id,
+          sourceInterfaceId: host.interfaces[0].id,
+          targetNodeId: created.id,
+          targetInterfaceId: null,
+          capacityBps: host.interfaces[0].speedBps,
+          autoCapacityBps: host.interfaces[0].speedBps,
+          capacitySource: 'AUTO',
+          label: 'PNI Operadora A',
+          metricSource: 'DEMO',
+          visualStyle: null,
+          metricDisplay: null,
+        },
+      })
+    ).json();
+
+    // Position and internals are not part of the editable contract and are dropped.
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `/api/maps/${map.id}/nodes/${created.id}`,
+      payload: {
+        label: 'Operadora B',
+        genericType: 'DATACENTER',
+        locked: true,
+        position: { x: 0, y: 0 },
+        deviceId: 'hacked',
+        nodeKind: 'DEVICE',
+        mapId: 'other-map',
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      id: created.id,
+      mapId: map.id,
+      deviceId: null,
+      nodeKind: 'GENERIC',
+      genericType: 'DATACENTER',
+      label: 'Operadora B',
+      locked: true,
+      position: { x: 512.5, y: 348.25 },
+      positionSource: 'MANUAL',
+    });
+
+    // survives a reload, and the associated link is still there and still points at it
+    const reload = (await app.inject({ method: 'GET', url: `/api/maps/${map.id}` })).json();
+    const persisted = reload.nodes.find((node: { id: string }) => node.id === created.id);
+    expect(persisted).toMatchObject({
+      id: created.id,
+      mapId: map.id,
+      deviceId: null,
+      genericType: 'DATACENTER',
+      label: 'Operadora B',
+      locked: true,
+      position: { x: 512.5, y: 348.25 },
+    });
+    expect(reload.links.find((item: { id: string }) => item.id === link.id)).toMatchObject({
+      id: link.id,
+      // the link had no DEVICE on the target side, so it always is SINGLE_ENDED
+      targetNodeId: created.id,
+      label: 'PNI Operadora A',
+    });
+
+    // a partial edit only changes what was sent
+    const partial = await app.inject({
+      method: 'PATCH',
+      url: `/api/maps/${map.id}/nodes/${created.id}`,
+      payload: { locked: false },
+    });
+    expect(partial.statusCode).toBe(200);
+    expect(partial.json()).toMatchObject({
+      label: 'Operadora B',
+      genericType: 'DATACENTER',
+      locked: false,
+    });
+  });
+
+  it('refuses to edit DEVICE nodes or unknown conceptual nodes through the node endpoint', async () => {
+    const map = (await app.inject({ method: 'GET', url: '/api/maps/backbone-main' })).json();
+    const deviceNode = map.nodes.find((node: { deviceId: string | null }) => node.deviceId);
+    const before = structuredClone(deviceNode);
+
+    const deviceEdit = await app.inject({
+      method: 'PATCH',
+      url: `/api/maps/${map.id}/nodes/${deviceNode.id}`,
+      payload: { label: 'Nope', genericType: 'CLOUD', locked: true },
+    });
+    expect(deviceEdit.statusCode).toBe(404);
+
+    const missing = await app.inject({
+      method: 'PATCH',
+      url: `/api/maps/${map.id}/nodes/does-not-exist`,
+      payload: { label: 'Nope' },
+    });
+    expect(missing.statusCode).toBe(404);
+
+    const reload = (await app.inject({ method: 'GET', url: `/api/maps/${map.id}` })).json();
+    expect(reload.nodes.find((node: { id: string }) => node.id === deviceNode.id)).toEqual(before);
+  });
+
+  it('rejects invalid conceptual node payloads', async () => {
+    const map = (await app.inject({ method: 'GET', url: '/api/maps/backbone-main' })).json();
+    const node = (
+      await app.inject({
+        method: 'POST',
+        url: `/api/maps/${map.id}/generic-nodes`,
+        payload: { type: 'CLOUD', label: 'Transit', position: { x: 10, y: 10 } },
+      })
+    ).json();
+
+    for (const payload of [{ label: '' }, { genericType: '' }, { locked: 'yes' }, { label: 'x'.repeat(121) }]) {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/api/maps/${map.id}/nodes/${node.id}`,
+        payload,
+      });
+      expect(response.statusCode).toBe(400);
+    }
+
+    const reload = (await app.inject({ method: 'GET', url: `/api/maps/${map.id}` })).json();
+    expect(reload.nodes.find((item: { id: string }) => item.id === node.id)).toMatchObject({
+      label: 'Transit',
+      genericType: 'CLOUD',
+      locked: false,
+    });
+  });
 });

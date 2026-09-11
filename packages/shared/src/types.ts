@@ -254,6 +254,17 @@ export interface UpdateMapNodePppInput {
   pppFontSize?: number;
 }
 
+/**
+ * Editable surface of an existing conceptual (GENERIC) map node. Deliberately
+ * narrow: identity (`id`/`mapId`), `deviceId`, `nodeKind`, `position` and the
+ * PPP label options are owned by other flows and can never be changed here.
+ */
+export interface UpdateConceptualNodeInput {
+  label?: string;
+  genericType?: string;
+  locked?: boolean;
+}
+
 export interface UpsertMapWidgetInput {
   type: MapWidgetType;
   positionX?: number;

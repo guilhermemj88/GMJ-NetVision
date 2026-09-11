@@ -40,6 +40,7 @@ import {
   type UpdateLinkInput,
   type UpdateHostInput,
   type UpdateMapNodePppInput,
+  type UpdateConceptualNodeInput,
   type UpdateMapWidgetInput,
   type UpdatePublicViewInput,
   type UpdateUserInput,
@@ -240,6 +241,17 @@ export function savePositions(
 
 export function updateNodePpp(mapId: string, nodeId: string, input: UpdateMapNodePppInput) {
   return request<NetworkMap>(`/api/maps/${mapId}/nodes/${nodeId}/ppp`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateConceptualNode(
+  mapId: string,
+  nodeId: string,
+  input: UpdateConceptualNodeInput,
+) {
+  return request<MapNode>(`/api/maps/${mapId}/nodes/${nodeId}`, {
     method: 'PATCH',
     body: JSON.stringify(input),
   });

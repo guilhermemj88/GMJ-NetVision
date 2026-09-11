@@ -28,6 +28,7 @@ import {
   type UpdateMapInput,
   type UpdateLinkInput,
   type UpdateMapNodePppInput,
+  type UpdateConceptualNodeInput,
   type UpdateMapWidgetInput,
   type UpsertMapWidgetInput,
 } from '@gmj/shared';
@@ -613,6 +614,28 @@ export class PrismaMapRepository {
   async deleteNode(mapId: string, nodeId: string): Promise<boolean> {
     const result = await this.prisma.mapNode.deleteMany({ where: { id: nodeId, mapId } });
     return result.count > 0;
+  }
+
+  /**
+   * Updates only the editable fields of a conceptual node. `nodeKind: 'GENERIC'`
+   * is part of the filter, so DEVICE nodes can never be reached through it.
+   */
+  async updateConceptualNode(
+    mapId: string,
+    nodeId: string,
+    input: UpdateConceptualNodeInput,
+  ): Promise<MapNode | null> {
+    const result = await this.prisma.mapNode.updateMany({
+      where: { id: nodeId, mapId, nodeKind: 'GENERIC' },
+      data: {
+        ...(input.label === undefined ? {} : { label: input.label }),
+        ...(input.genericType === undefined ? {} : { genericType: input.genericType }),
+        ...(input.locked === undefined ? {} : { locked: input.locked }),
+      },
+    });
+    if (!result.count) return null;
+    const row = await this.prisma.mapNode.findUnique({ where: { id: nodeId } });
+    return row ? nodeFromRow(row) : null;
   }
 
   async createDiscoveredLink(

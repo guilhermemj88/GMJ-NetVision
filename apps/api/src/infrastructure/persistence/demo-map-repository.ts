@@ -35,6 +35,7 @@ import {
   type UpdateLinkInput,
   type UpdateMapInput,
   type UpdateMapNodePppInput,
+  type UpdateConceptualNodeInput,
   type UpdateMapWidgetInput,
   type UpsertMapWidgetInput,
   type ZabbixHostCandidate,
@@ -916,6 +917,26 @@ export class DemoMapRepository {
     if (input.pppFontSize !== undefined) node.pppFontSize = input.pppFontSize;
     this.touch(map);
     return this.materialize(map);
+  }
+
+  /**
+   * Updates only the editable fields of a conceptual node. DEVICE nodes are
+   * rejected here (and never reachable from the API route).
+   */
+  updateConceptualNode(
+    mapId: string,
+    nodeId: string,
+    input: UpdateConceptualNodeInput,
+  ): MapNode | null {
+    const map = this.findMap(mapId);
+    if (!map) return null;
+    const node = map.nodes.find((item) => item.id === nodeId && item.nodeKind === 'GENERIC');
+    if (!node) return null;
+    if (input.label !== undefined) node.label = input.label;
+    if (input.genericType !== undefined) node.genericType = input.genericType;
+    if (input.locked !== undefined) node.locked = input.locked;
+    this.touch(map);
+    return structuredClone(node);
   }
 
   upsertWidget(mapId: string, input: UpsertMapWidgetInput): MapWidget | null {

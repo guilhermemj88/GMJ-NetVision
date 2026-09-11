@@ -176,8 +176,9 @@ export const GENERIC_NODE_TYPES: ReadonlyArray<{ value: NetworkDeviceIconType; l
 ];
 
 export function normalizeGenericIconType(value: string | null | undefined): NetworkDeviceIconType {
-  if (value && (DEVICE_ICON_TYPES as readonly string[]).includes(value) && value !== 'AUTO') {
-    return value as NetworkDeviceIconType;
+  const candidate = value?.trim().toUpperCase();
+  if (candidate && candidate !== 'AUTO' && (DEVICE_ICON_TYPES as readonly string[]).includes(candidate)) {
+    return candidate as NetworkDeviceIconType;
   }
   return 'GENERIC';
 }

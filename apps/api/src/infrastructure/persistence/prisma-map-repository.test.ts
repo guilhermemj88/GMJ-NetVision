@@ -1,5 +1,5 @@
 import { cloneDemoMaps, type NetworkInterface } from '@gmj/shared';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { PrismaMapRepository } from './prisma-map-repository';
 import type { HostRepository } from './host-repository';
 
@@ -8,11 +8,14 @@ const db = vi.hoisted(() => ({
   createLink: vi.fn(),
   updateLink: vi.fn(),
   findLink: vi.fn(),
+  updateNode: vi.fn(),
+  findNode: vi.fn(),
 }));
 vi.mock('../../generated/prisma/index.js', () => ({
   PrismaClient: class {
     map = { findUnique: db.findMap };
     link = { create: db.createLink, updateMany: db.updateLink, findUnique: db.findLink };
+    mapNode = { updateMany: db.updateNode, findUnique: db.findNode };
   },
   Prisma: {},
 }));
@@ -98,4 +101,88 @@ describe.each(['SOURCE', 'TARGET'] as const)('Prisma SINGLE_ENDED %s materializa
       });
     },
   );
+});
+
+describe('Prisma conceptual node updates', () => {
+  const hosts = { listHosts: vi.fn().mockResolvedValue([]) };
+  const repository = () => new PrismaMapRepository(hosts as unknown as HostRepository);
+  const row = {
+    id: 'carrier-1',
+    mapId: 'backbone-main',
+    deviceId: null,
+    nodeKind: 'GENERIC',
+    genericType: 'DATACENTER',
+    label: 'Operadora B',
+    x: 512.5,
+    y: 348.25,
+    locked: true,
+    positionSource: 'MANUAL',
+    pppDisplayMode: 'AUTO',
+    pppPosition: 'BOTTOM',
+    pppColor: null,
+    pppFontSize: 14,
+  };
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('filters by GENERIC and writes only the editable fields', async () => {
+    db.updateNode.mockResolvedValue({ count: 1 });
+    db.findNode.mockResolvedValue(row);
+
+    const node = await repository().updateConceptualNode('backbone-main', 'carrier-1', {
+      label: 'Operadora B',
+      genericType: 'DATACENTER',
+      locked: true,
+    });
+
+    expect(db.updateNode).toHaveBeenCalledWith({
+      where: { id: 'carrier-1', mapId: 'backbone-main', nodeKind: 'GENERIC' },
+      data: { label: 'Operadora B', genericType: 'DATACENTER', locked: true },
+    });
+    // position, deviceId and the PPP options are never part of the payload
+    expect(Object.keys(db.updateNode.mock.calls[0]![0].data).sort()).toEqual([
+      'genericType',
+      'label',
+      'locked',
+    ]);
+    expect(node).toMatchObject({
+      id: 'carrier-1',
+      mapId: 'backbone-main',
+      deviceId: null,
+      nodeKind: 'GENERIC',
+      genericType: 'DATACENTER',
+      label: 'Operadora B',
+      locked: true,
+      position: { x: 512.5, y: 348.25 },
+      positionSource: 'MANUAL',
+    });
+  });
+
+  it('omits absent fields so a partial edit keeps the stored values', async () => {
+    db.updateNode.mockResolvedValue({ count: 1 });
+    db.findNode.mockResolvedValue({ ...row, locked: false });
+
+    await repository().updateConceptualNode('backbone-main', 'carrier-1', { locked: false });
+
+    expect(db.updateNode).toHaveBeenCalledWith({
+      where: { id: 'carrier-1', mapId: 'backbone-main', nodeKind: 'GENERIC' },
+      data: { locked: false },
+    });
+  });
+
+  it('never reports a DEVICE node as updated', async () => {
+    db.updateNode.mockResolvedValue({ count: 0 });
+
+    const node = await repository().updateConceptualNode('backbone-main', 'device-node-1', {
+      label: 'Nope',
+      locked: true,
+    });
+
+    expect(node).toBeNull();
+    expect(db.updateNode).toHaveBeenCalledWith({
+      where: { id: 'device-node-1', mapId: 'backbone-main', nodeKind: 'GENERIC' },
+      data: { label: 'Nope', locked: true },
+    });
+    expect(db.findNode).not.toHaveBeenCalled();
+  });
 });

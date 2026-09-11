@@ -110,6 +110,7 @@ interface MapState {
   moveNode: (nodeId: string, position: Position) => void;
   setNodeLocked: (nodeId: string, locked: boolean) => void;
   updateNodePpp: (nodeId: string, input: UpdateMapNodePppInput) => void;
+  replaceNode: (node: MapNode) => void;
   setWidget: (widget: MapWidget) => void;
   removeWidget: (widgetId: string) => void;
   applyLayout: (positions: Map<string, Position>) => void;
@@ -460,6 +461,17 @@ export const useMapStore = create<MapState>((set) => ({
         dirty: true,
       };
     }),
+  replaceNode: (node) =>
+    set((state) =>
+      state.map
+        ? {
+            map: {
+              ...state.map,
+              nodes: state.map.nodes.map((item) => (item.id === node.id ? node : item)),
+            },
+          }
+        : state,
+    ),
   setWidget: (widget) =>
     set((state) => {
       if (!state.map) return state;

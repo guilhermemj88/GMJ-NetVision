@@ -3504,6 +3504,15 @@ button {
 .edit-link-form__section .section-title {
   margin-bottom: 12px;
 }
+.conceptual-node-form__lock {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+.conceptual-node-form__lock input {
+  margin: 0;
+}
 .visual-path-editor {
   margin-bottom: 10px;
   padding: 10px;
