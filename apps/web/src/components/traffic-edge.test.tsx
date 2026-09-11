@@ -1,7 +1,7 @@
 import { createElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { Position, ReactFlowProvider } from '@xyflow/react';
-import { cloneDemoMaps, type NetworkLink } from '@gmj/shared';
+import { aggregateLinkMetrics, cloneDemoMaps, type NetworkLink } from '@gmj/shared';
 import { describe, expect, it, vi } from 'vitest';
 import { TrafficEdge, type TrafficEdgeData, type TrafficFlowEdge } from './traffic-edge';
 
@@ -14,6 +14,63 @@ vi.mock('@xyflow/react', async () => {
 });
 
 const baseLink = cloneDemoMaps()[0]!.links[0]!;
+
+describe.each(['SOURCE', 'TARGET'] as const)('SINGLE_ENDED colors with %s monitored', (side) => {
+  const real = { ...cloneDemoMaps()[0]!.devices[0]!.interfaces[0]!, operStatus: 'UP' as const, telemetryAvailable: true, rxBps: 2000, txBps: 3000 };
+  const config = { ...baseLink, trafficMode: 'SINGLE_ENDED' as const, capacityBps: 100000,
+    sourceDeviceId: side === 'SOURCE' ? real.deviceId : null, targetDeviceId: side === 'TARGET' ? real.deviceId : null,
+    sourceNodeId: side === 'TARGET' ? 'carrier' : null, targetNodeId: side === 'SOURCE' ? 'carrier' : null,
+    sourceInterfaceId: side === 'SOURCE' ? real.id : null, targetInterfaceId: side === 'TARGET' ? real.id : null,
+    aggregationMode: 'NONE' as const, metricSources: [], customColor: null, trafficColorAToB: null, trafficColorBToA: null };
+  const link = { ...config, ...aggregateLinkMetrics(config, () => real) };
+  const tags = (html: string, name: string) => [...html.matchAll(new RegExp(`<${name}\\b[^>]*>`, 'g'))].map((match) => match[0]);
+
+  it.each(['INLINE', 'CARD'] as const)('matches custom directional lane colors to %s labels and local observations', (trafficLabelMode) => {
+    const html = renderEdge({ ...link, trafficColorAToB: '#112233', trafficColorBToA: '#abcdef' }, { showLabels: true, trafficLabelMode });
+    const laneA = tags(html, 'path').find((tag) => tag.includes('data-flow-direction="A_TO_B"'))!;
+    const laneB = tags(html, 'path').find((tag) => tag.includes('data-flow-direction="B_TO_A"'))!;
+    expect(laneA).toContain('stroke:#112233');
+    expect(laneB).toContain('stroke:#abcdef');
+    expect(laneA).toContain(`data-observation="${side === 'SOURCE' ? 'LOCAL_TX' : 'LOCAL_RX'}"`);
+    expect(laneB).toContain(`data-observation="${side === 'SOURCE' ? 'LOCAL_RX' : 'LOCAL_TX'}"`);
+    expect(laneA).toContain(`data-throughput-bps="${side === 'SOURCE' ? 3000 : 2000}"`);
+    expect(laneB).toContain(`data-throughput-bps="${side === 'SOURCE' ? 2000 : 3000}"`);
+    expect(laneA).toContain('traffic-edge--a-to-b traffic-edge--animated');
+    expect(laneB).toContain('traffic-edge--b-to-a traffic-edge--animated');
+    if (trafficLabelMode === 'INLINE') {
+      expect(tags(html, 'text').find((tag) => tag.includes('data-flow-direction="A_TO_B"'))).toContain('fill:#112233');
+      expect(tags(html, 'text').find((tag) => tag.includes('data-flow-direction="B_TO_A"'))).toContain('fill:#abcdef');
+    } else {
+      expect(tags(html, 'strong')).toEqual(expect.arrayContaining([expect.stringContaining('color:#112233'), expect.stringContaining('color:#abcdef')]));
+      expect(html).toContain('background-color:#112233');
+      expect(html).toContain('background-color:#abcdef');
+    }
+  });
+
+  it('retains distinct default hues and customColor fallback precedence', () => {
+    const html = renderEdge(link);
+    expect(tags(html, 'path').find((tag) => tag.includes('data-flow-direction="A_TO_B"'))).toContain('stroke:hsl(190');
+    expect(tags(html, 'path').find((tag) => tag.includes('data-flow-direction="B_TO_A"'))).toContain('stroke:hsl(285');
+    const custom = renderEdge({ ...link, customColor: '#123456', trafficColorAToB: '#112233' }, { visualPath: { order: 0, label: null, curvature: 50, customColor: '#654321', enabled: true } });
+    expect(tags(custom, 'path').find((tag) => tag.includes('data-flow-direction="A_TO_B"'))).toContain('stroke:#112233');
+    expect(tags(custom, 'path').find((tag) => tag.includes('data-flow-direction="B_TO_A"'))).toContain('stroke:#654321');
+    const fallback = renderEdge({ ...link, customColor: '#123456' });
+    expect(tags(fallback, 'path').filter((tag) => tag.includes('data-flow-direction')).every((tag) => tag.includes('stroke:#123456'))).toBe(true);
+  });
+
+  it('keeps UP lanes visible, suppresses DOWN lanes and stops UNKNOWN animation', () => {
+    expect(occurrences(renderEdge(link), 'data-observation=')).toBe(2);
+    expect(renderEdge({ ...link, status: 'DOWN' })).not.toContain('data-observation=');
+    const unknown = renderEdge({ ...link, status: 'UNKNOWN' });
+    expect(unknown).not.toContain('traffic-edge--animated');
+    expect(unknown).toContain('opacity:0.48');
+  });
+
+  it('identifies SUM observations even without a primary interface ID', () => {
+    const html = renderEdge({ ...link, sourceInterfaceId: null, targetInterfaceId: null, aggregationMode: 'SUM', metricSources: [{ side, interfaceId: real.id }] });
+    expect(tags(html, 'path').find((tag) => tag.includes('data-flow-direction="A_TO_B"'))).toContain(`data-observation="${side === 'SOURCE' ? 'LOCAL_TX' : 'LOCAL_RX'}"`);
+  });
+});
 
 interface EdgeLayout {
   sourceX?: number;

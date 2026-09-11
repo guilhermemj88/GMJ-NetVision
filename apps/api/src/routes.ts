@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { singleEndedMonitoredSide } from '@gmj/shared';
 import type {
   AuthUser,
   CreateHostInput,
@@ -832,7 +833,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       capacityBps: parsed.capacityBps,
       autoCapacityBps: parsed.autoCapacityBps,
       capacitySource: parsed.capacitySource,
-      trafficMode: parsed.trafficMode ?? 'BIDIRECTIONAL',
+      trafficMode: parsed.trafficMode ?? (
+        (parsed.sourceDeviceId && parsed.targetNodeId && !parsed.targetDeviceId) ||
+        (parsed.targetDeviceId && parsed.sourceNodeId && !parsed.sourceDeviceId)
+          ? 'SINGLE_ENDED' : 'BIDIRECTIONAL'
+      ),
       customColor: parsed.customColor ?? null,
       trafficColorAToB: parsed.trafficColorAToB ?? null,
       trafficColorBToA: parsed.trafficColorBToA ?? null,
@@ -850,9 +855,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     };
     if (
       input.trafficMode === 'SINGLE_ENDED' &&
-      Boolean(input.sourceInterfaceId) === Boolean(input.targetInterfaceId)
+      !singleEndedMonitoredSide(input)
     ) {
-      return reply.code(400).send({ message: 'Single-ended link requires exactly one interface' });
+      return reply.code(400).send({ message: 'Single-ended link requires interfaces on exactly one monitored side' });
     }
     const link = await maps.createLink(mapId, input);
     return link ? reply.code(201).send(link) : reply.code(404).send({ message: 'Map not found' });
@@ -900,11 +905,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       linkLayoutMode,
       ...fields
     } = body;
-    if (
-      trafficMode === 'SINGLE_ENDED' &&
-      Boolean(sourceInterfaceId) === Boolean(targetInterfaceId)
-    ) {
-      return reply.code(400).send({ message: 'Single-ended link requires exactly one interface' });
+    if (trafficMode !== undefined || sourceInterfaceId !== undefined || targetInterfaceId !== undefined || metricSources !== undefined || aggregationMode !== undefined) {
+      const existing = (await maps.getMap(mapId))?.links.find((link) => link.id === linkId);
+      if (!existing) return reply.code(404).send({ message: 'Link not found' });
+      const edited = { ...existing, ...body };
+      if (edited.trafficMode === 'SINGLE_ENDED' && !singleEndedMonitoredSide(edited)) {
+        return reply.code(400).send({ message: 'Single-ended link requires interfaces on exactly one monitored side' });
+      }
     }
     const link = await maps.updateLink(mapId, linkId, {
       ...fields,

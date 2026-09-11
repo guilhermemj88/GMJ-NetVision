@@ -1,4 +1,7 @@
 import {
+  aggregateLinkMetrics,
+  automaticLinkCapacity,
+  resolveMetricInterfaceGroups,
   calculateUtilization,
   cloneDemoMaps,
   createLocalId,
@@ -1053,7 +1056,7 @@ export class DemoMapRepository {
     };
     map.links.push(link);
     this.touch(map);
-    return structuredClone(link);
+    return structuredClone(this.materializeSingleEnded(link));
   }
 
   updateLink(mapId: string, linkId: string, input: UpdateLinkInput): NetworkLink | null {
@@ -1075,7 +1078,7 @@ export class DemoMapRepository {
     link.txUtilization = link.directions.A_TO_B.utilization;
     link.rxUtilization = link.directions.B_TO_A.utilization;
     this.touch(map);
-    return structuredClone(link);
+    return structuredClone(this.materializeSingleEnded(link));
   }
 
   deleteLink(mapId: string, linkId: string): boolean {
@@ -1289,7 +1292,20 @@ export class DemoMapRepository {
 
   private materialize(map: StoredMap): NetworkMap {
     this.refreshMembership();
-    return structuredClone({ ...map, devices: this.devices });
+    return structuredClone({ ...map, links: map.links.map((link) => this.materializeSingleEnded(link)), devices: this.devices });
+  }
+
+  private materializeSingleEnded(link: NetworkLink): NetworkLink {
+    if (link.trafficMode !== 'SINGLE_ENDED') return link;
+    const resolve = (deviceId: string | null | undefined, interfaceId: string | null | undefined) => {
+      if (!interfaceId) return undefined;
+      return this.devices.find((device) => device.id === deviceId)?.interfaces.find((item) => item.id === interfaceId);
+    };
+    const { source, target } = resolveMetricInterfaceGroups(link, resolve);
+    const autoCapacityBps = automaticLinkCapacity(source[0], target[0], link.trafficMode, link.autoCapacityBps);
+    const capacityBps = link.capacitySource === 'AUTO' ? autoCapacityBps : link.capacityBps;
+    Object.assign(link, { autoCapacityBps, capacityBps }, aggregateLinkMetrics({ ...link, capacityBps }, resolve));
+    return link;
   }
 
   private summary(map: StoredMap): MapSummary {

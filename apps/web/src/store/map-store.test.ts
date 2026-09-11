@@ -9,6 +9,27 @@ import {
 } from '@gmj/shared';
 import { useMapStore } from './map-store';
 
+describe('local SINGLE_ENDED creation', () => {
+  afterEach(() => useMapStore.setState({ map: null }));
+  it.each(['SOURCE', 'TARGET'] as const)('uses the %s interface status and counters for the local fallback', (side) => {
+    const map = cloneDemoMaps()[0]!;
+    const real = map.devices[0]!.interfaces[0]!;
+    real.operStatus = 'DOWN';
+    real.telemetryAvailable = true;
+    real.rxBps = 2000;
+    real.txBps = 5000;
+    useMapStore.setState({ map });
+    useMapStore.getState().addLink({ ...map.links[0]!, sourceDeviceId: side === 'SOURCE' ? real.deviceId : null,
+      targetDeviceId: side === 'TARGET' ? real.deviceId : null, sourceNodeId: side === 'TARGET' ? 'carrier' : null,
+      targetNodeId: side === 'SOURCE' ? 'carrier' : null, sourceInterfaceId: side === 'SOURCE' ? real.id : null,
+      targetInterfaceId: side === 'TARGET' ? real.id : null, trafficMode: 'SINGLE_ENDED' });
+    const link = useMapStore.getState().map!.links.at(-1)!;
+    expect(link).toMatchObject({ status: 'DOWN', rxBps: 2000, txBps: 5000 });
+    expect(link.directions.A_TO_B.bps).toBe(side === 'SOURCE' ? 5000 : 2000);
+    expect(link.directions.B_TO_A.bps).toBe(side === 'SOURCE' ? 2000 : 5000);
+  });
+});
+
 const maps: MapSummary[] = ['backbone', 'access'].map((id, index) => ({
   id,
   name: id,

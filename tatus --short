@@ -1,0 +1,57 @@
+warning: in the working copy of 'apps/api/prisma/schema.prisma', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/infrastructure/metrics/zabbix-adapter.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/infrastructure/persistence/demo-map-repository.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/infrastructure/persistence/prisma-map-repository.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/infrastructure/snmp/profiles/catalog.test.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/infrastructure/snmp/profiles/catalog.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/infrastructure/snmp/profiles/generic.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/infrastructure/snmp/profiles/huawei/generic.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/infrastructure/snmp/profiles/huawei/ne8000.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/infrastructure/snmp/profiles/huawei/s6730.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/infrastructure/snmp/profiles/types.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/infrastructure/snmp/snmp-service.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/infrastructure/topology/lldp-ssh-adapter.test.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/infrastructure/topology/lldp-ssh-adapter.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/routes.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/api/src/test-fixtures.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/web/src/app/globals.css', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/web/src/components/action-panels.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/web/src/components/context-drawer.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/web/src/components/device-node.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/web/src/components/map-controls.tsx', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/web/src/lib/api.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'apps/web/src/store/map-store.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'packages/shared/src/demo.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'packages/shared/src/index.ts', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'packages/shared/src/types.ts', LF will be replaced by CRLF the next time Git touches it
+ README.md                                          |  37 [32m+++[m
+ apps/api/prisma/schema.prisma                      |  25 [32m++[m
+ .../src/infrastructure/metrics/zabbix-adapter.ts   |   4 [32m+[m
+ .../persistence/demo-map-repository.ts             |  91 [32m+++++++[m
+ .../persistence/prisma-host-repository.ts          |   9 [32m+[m[31m-[m
+ .../persistence/prisma-map-repository.ts           | 189 [32m+++++++++++++[m[31m-[m
+ .../infrastructure/snmp/profiles/catalog.test.ts   |  12 [32m+[m[31m-[m
+ .../src/infrastructure/snmp/profiles/catalog.ts    |  11 [32m+[m
+ .../src/infrastructure/snmp/profiles/generic.ts    |   3 [32m+[m
+ .../infrastructure/snmp/profiles/huawei/generic.ts |   2 [32m+[m
+ .../infrastructure/snmp/profiles/huawei/ne8000.ts  |   2 [32m+[m
+ .../infrastructure/snmp/profiles/huawei/s6730.ts   |   2 [32m+[m
+ apps/api/src/infrastructure/snmp/profiles/types.ts |  10 [32m+[m
+ apps/api/src/infrastructure/snmp/snmp-service.ts   |  56 [32m++[m[31m--[m
+ .../topology/lldp-snmp-adapter.test.ts             |   4 [32m+[m
+ .../topology/lldp-ssh-adapter.test.ts              |   4 [32m+[m
+ .../infrastructure/topology/lldp-ssh-adapter.ts    |   4 [32m+[m
+ apps/api/src/routes.ts                             | 123 [32m+++++++++[m
+ apps/api/src/test-fixtures.ts                      |   5 [32m+[m
+ apps/web/src/app/globals.css                       | 283 [32m+++++++++++++++++++++[m
+ apps/web/src/components/action-panels.tsx          |   8 [32m+[m
+ apps/web/src/components/context-drawer.tsx         | 121 [32m++++++++[m[31m-[m
+ apps/web/src/components/device-node.tsx            |  23 [32m+[m[31m-[m
+ apps/web/src/components/map-controls.tsx           |   2 [32m+[m
+ apps/web/src/components/network-canvas.tsx         |   8 [32m+[m
+ apps/web/src/lib/api.ts                            |  29 [32m+++[m
+ apps/web/src/store/map-store.ts                    |  45 [32m++++[m
+ packages/shared/src/demo.ts                        |  10 [32m+[m
+ packages/shared/src/index.ts                       |   1 [32m+[m
+ packages/shared/src/types.ts                       |  61 [32m+++++[m
+ 30 files changed, 1161 insertions(+), 23 deletions(-)

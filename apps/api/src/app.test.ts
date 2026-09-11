@@ -20,6 +20,67 @@ describe('GMJ NetVision API', () => {
     expect(response.json().devices).toHaveLength(13);
   });
 
+  it.each(['SOURCE', 'TARGET'] as const)('creates and edits a %s monitored SUM link without a conceptual interface', async (side) => {
+    const map = (await app.inject({ method: 'GET', url: '/api/maps/backbone-main' })).json();
+    const host = map.devices.find((device: { interfaces: unknown[] }) => device.interfaces.length >= 2);
+    const generic = (await app.inject({ method: 'POST', url: `/api/maps/${map.id}/generic-nodes`, payload: { type: 'carrier', label: 'FTI', position: { x: 20, y: 30 } } })).json();
+    const settings = { capacityBps: 100000000000, autoCapacityBps: 100000000000, capacitySource: 'MANUAL', label: 'FTI', metricSource: 'DEMO', visualStyle: null, metricDisplay: null };
+    const payload = { ...settings,
+      ...(side === 'SOURCE' ? { sourceDeviceId: host.id, targetNodeId: generic.id } : { targetDeviceId: host.id, sourceNodeId: generic.id }),
+      sourceInterfaceId: null, targetInterfaceId: null, aggregationMode: 'SUM',
+      metricSources: host.interfaces.slice(0, 2).map((item: { id: string }) => ({ side, interfaceId: item.id })),
+      trafficColorAToB: '#112233', trafficColorBToA: '#abcdef' };
+    // Omitted mode is inferred only for DEVICE ↔ GENERIC creation.
+    const response = await app.inject({ method: 'POST', url: `/api/maps/${map.id}/links`, payload });
+    expect(response.statusCode).toBe(201);
+    const link = response.json();
+    expect(link).toMatchObject({ trafficMode: 'SINGLE_ENDED', aggregationMode: 'SUM', metricSources: payload.metricSources, trafficColorAToB: '#112233', trafficColorBToA: '#abcdef' });
+    const expectedRx = host.interfaces.slice(0, 2).reduce((sum: number, item: { rxBps: number }) => sum + item.rxBps, 0);
+    const expectedTx = host.interfaces.slice(0, 2).reduce((sum: number, item: { txBps: number }) => sum + item.txBps, 0);
+    expect(link).toMatchObject({ rxBps: expectedRx, txBps: expectedTx });
+    expect(link.directions.A_TO_B.bps).toBe(side === 'SOURCE' ? expectedTx : expectedRx);
+    // A partial telemetry edit must validate against the already-persisted side.
+    const edited = await app.inject({ method: 'PATCH', url: `/api/maps/${map.id}/links/${link.id}`, payload: { ...settings, trafficMode: 'SINGLE_ENDED' } });
+    expect(edited.statusCode).toBe(200);
+    expect(edited.json()).toMatchObject({ rxBps: expectedRx, txBps: expectedTx, metricSources: payload.metricSources, trafficColorAToB: '#112233', trafficColorBToA: '#abcdef' });
+    const reload = (await app.inject({ method: 'GET', url: `/api/maps/${map.id}` })).json();
+    expect(reload.links.find((item: { id: string }) => item.id === link.id)).toMatchObject({ rxBps: expectedRx, txBps: expectedTx });
+    expect(reload.devices).toHaveLength(map.devices.length);
+  });
+
+  it('persists manual visual path curves, resets and automatic layout without changing link options', async () => {
+    const map = (await app.inject({ method: 'GET', url: '/api/maps/backbone-main' })).json();
+    const link = map.links[0];
+    const visualPaths = [
+      { order: 0, label: 'Principal', customColor: '#123456', curvature: 400, enabled: true },
+      { order: 1, label: 'Reserva', customColor: null, curvature: -400, enabled: false },
+      { order: 2, label: 'Terceiro', customColor: '#abcdef', curvature: 150, enabled: true },
+    ];
+    for (const geometry of [
+      { visualPaths, linkLayoutMode: 'MANUAL' },
+      { visualPaths: visualPaths.map((path) => ({ ...path, curvature: 0 })), linkLayoutMode: 'MANUAL' },
+      { visualPaths: visualPaths.map((path) => ({ ...path, curvature: 0 })), linkLayoutMode: 'AUTO' },
+    ]) {
+      const response = await app.inject({
+        method: 'PATCH', url: `/api/maps/${map.id}/links/${link.id}`,
+        payload: {
+          capacityBps: link.capacityBps, autoCapacityBps: link.autoCapacityBps,
+          capacitySource: link.capacitySource, label: link.label, metricSource: link.metricSource,
+          visualStyle: link.visualStyle, metricDisplay: link.metricDisplay, ...geometry,
+        },
+      });
+      expect(response.statusCode).toBe(200);
+      const persisted = (await app.inject({ method: 'GET', url: `/api/maps/${map.id}` })).json()
+        .links.find((item: { id: string }) => item.id === link.id);
+      expect(persisted).toMatchObject({
+        ...geometry, trafficMode: link.trafficMode, capacityBps: link.capacityBps,
+        sourceInterfaceId: link.sourceInterfaceId, targetInterfaceId: link.targetInterfaceId,
+        aggregationMode: link.aggregationMode, customColor: link.customColor,
+        animationEnabled: link.animationEnabled,
+      });
+    }
+  });
+
   it('creates, updates and returns persistent single-ended link options', async () => {
     const map = (await app.inject({ method: 'GET', url: '/api/maps/backbone-main' })).json();
     const source = map.devices.find(

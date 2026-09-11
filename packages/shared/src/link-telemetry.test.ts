@@ -1,11 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   automaticLinkCapacity,
+  aggregateLinkMetrics,
+  linkStatusFromInterfaceGroups,
+  singleEndedMonitoredSide,
   directionalLinkMetrics,
   linkStatusFromInterfaces,
   trafficConsistency,
 } from './link-telemetry';
-import type { NetworkInterface } from './types';
+import type { NetworkInterface, NetworkLink } from './types';
 
 function networkInterface(id: string, partial: Partial<NetworkInterface> = {}): NetworkInterface {
   return {
@@ -32,6 +35,84 @@ function networkInterface(id: string, partial: Partial<NetworkInterface> = {}): 
     ...partial,
   };
 }
+
+describe.each(['SOURCE', 'TARGET'] as const)('SINGLE_ENDED with %s monitored and a conceptual endpoint', (side) => {
+  const monitored = networkInterface('real', { deviceId: 'device', rxBps: 2000, txBps: 5000, rxErrors: 2, txErrors: 3 });
+  const link = {
+    sourceDeviceId: side === 'SOURCE' ? 'device' : null,
+    targetDeviceId: side === 'TARGET' ? 'device' : null,
+    sourceNodeId: side === 'TARGET' ? 'carrier' : null,
+    targetNodeId: side === 'SOURCE' ? 'carrier' : null,
+    sourceInterfaceId: side === 'SOURCE' ? 'real' : null,
+    targetInterfaceId: side === 'TARGET' ? 'real' : null,
+    trafficMode: 'SINGLE_ENDED' as const,
+    aggregationMode: 'NONE' as const,
+    metricSources: [], capacityBps: 10000,
+  };
+
+  it.each(['UP', 'DOWN', 'DISABLED', 'UNKNOWN'] as const)('derives %s only from the monitored interface', (operStatus) => {
+    const real = { ...monitored, operStatus };
+    const resolve = vi.fn((_deviceId, interfaceId) => interfaceId === 'real' ? real : undefined);
+    const metrics = aggregateLinkMetrics(link, resolve);
+    const status = operStatus === 'DISABLED' ? 'DOWN' : operStatus;
+    expect(metrics.status).toBe(status);
+    expect(linkStatusFromInterfaces(side === 'SOURCE' ? real : undefined, side === 'TARGET' ? real : undefined, 'SINGLE_ENDED')).toBe(status);
+    expect(linkStatusFromInterfaceGroups(side === 'SOURCE' ? [real] : [], side === 'TARGET' ? [real] : [], 'SINGLE_ENDED')).toBe(status);
+    expect(resolve).toHaveBeenCalledTimes(1);
+    expect(resolve).toHaveBeenCalledWith('device', 'real');
+    expect(metrics).toMatchObject({ rxBps: 2000, txBps: 5000, rxErrors: 2, txErrors: 3 });
+    expect(metrics.directions.A_TO_B).toMatchObject(side === 'SOURCE'
+      ? { bps: 5000, txBps: 5000, observedRxBps: null }
+      : { bps: 2000, txBps: null, observedRxBps: 2000 });
+    expect(metrics.directions.B_TO_A).toMatchObject(side === 'SOURCE'
+      ? { bps: 2000, txBps: null, observedRxBps: 2000 }
+      : { bps: 5000, txBps: 5000, observedRxBps: null });
+  });
+
+  it('keeps SUM on one side, including links without a reference interface', () => {
+    const sum = { ...link, sourceInterfaceId: null, targetInterfaceId: null, aggregationMode: 'SUM' as const,
+      metricSources: [{ interfaceId: 'real', side }, { interfaceId: 'second', side }] };
+    const metrics = aggregateLinkMetrics(sum, (_deviceId, id) => id ? monitored : undefined);
+    expect(singleEndedMonitoredSide(sum)).toBe(side);
+    expect(metrics).toMatchObject({ status: 'UP', rxBps: 4000, txBps: 10000, rxErrors: 4, txErrors: 6 });
+    expect(metrics.directions.A_TO_B.bps).toBe(side === 'SOURCE' ? 10000 : 4000);
+    expect(metrics.directions.B_TO_A.bps).toBe(side === 'SOURCE' ? 4000 : 10000);
+  });
+
+  it.each(['NONE', 'SUM'] as const)('ignores stale interface references on the generic side in %s', (aggregationMode) => {
+    const conceptual = side === 'SOURCE' ? 'TARGET' : 'SOURCE';
+    const edited = { ...link, aggregationMode,
+      ...(side === 'SOURCE' ? { targetInterfaceId: 'stale' } : { sourceInterfaceId: 'stale' }),
+      metricSources: [{ side, interfaceId: 'real' }, { side: conceptual as 'SOURCE' | 'TARGET', interfaceId: 'stale' }] };
+    const resolve = vi.fn((_deviceId, id) => id === 'stale' ? { ...monitored, operStatus: 'DOWN' as const } : monitored);
+    expect(singleEndedMonitoredSide(edited)).toBe(side);
+    expect(aggregateLinkMetrics(edited, resolve)).toMatchObject({ status: 'UP', rxBps: 2000, txBps: 5000 });
+    expect(resolve.mock.calls.every(([, id]) => id !== 'stale')).toBe(true);
+  });
+
+  it('returns UNKNOWN with unavailable interface and does not invent telemetry', () => {
+    expect(aggregateLinkMetrics(link, () => undefined)).toMatchObject({ status: 'UNKNOWN', rxBps: 0, txBps: 0 });
+    const metrics = aggregateLinkMetrics(link, () => ({ ...monitored, telemetryAvailable: false }));
+    expect(metrics).toMatchObject({ status: 'UP', rxBps: 0, txBps: 0 });
+    expect(metrics.directions.A_TO_B).toMatchObject({ txBps: null, observedRxBps: null });
+  });
+});
+
+describe('aggregate bidirectional compatibility', () => {
+  it.each(['NONE', 'SUM'] as const)('continues considering both sides in %s', (aggregationMode) => {
+    const link = { sourceDeviceId: 'a', targetDeviceId: 'b', sourceInterfaceId: 'a', targetInterfaceId: 'b',
+      aggregationMode, metricSources: [], trafficMode: 'BIDIRECTIONAL' as const, capacityBps: 10000 };
+    const a = networkInterface('a', { rxBps: 2000, txBps: 5000 });
+    const b = networkInterface('b', { rxBps: 4800, txBps: 1900 });
+    const metrics = aggregateLinkMetrics(link, (_deviceId, id) => id === 'a' ? a : b);
+    expect(metrics.status).toBe('UP');
+    expect(metrics.directions).toEqual(directionalLinkMetrics(a, b, link.capacityBps));
+    for (const status of ['DOWN', 'DISABLED', 'UNKNOWN'] as NetworkInterface['operStatus'][]) {
+      expect(aggregateLinkMetrics(link, (_deviceId, id) => id === 'a' ? a : { ...b, operStatus: status }).status)
+        .toBe(status === 'DISABLED' ? 'DOWN' : status as NetworkLink['status']);
+    }
+  });
+});
 
 describe('bidirectional link telemetry', () => {
   it('uses A TX for A -> B and validates it against B RX', () => {

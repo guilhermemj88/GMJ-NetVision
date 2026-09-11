@@ -211,6 +211,43 @@ A correlação de identidade usa hostname, IP e nomes normalizados, retornando `
 
 As séries são determinísticas e combinam ondas suaves; não usam valores totalmente aleatórios a cada render. A API em memória persiste durante o processo e o navegador preserva posições entre reloads.
 
+## Deploy Linux
+
+O deploy padronizado considera um servidor Ubuntu/Linux com PostgreSQL já configurado e o repositório disponível em `/opt/GMJ-NetVision`. Antes de iniciar, instale `git`, Node.js 20+, npm 10+, o cliente `psql`, nginx e systemd. O instalador valida esses requisitos; ele não instala pacotes do sistema nem cria o banco.
+
+### Instalação nova
+
+Clone o repositório e crie o `.env` **antes** de executar o instalador:
+
+```bash
+sudo git clone <URL_DO_REPOSITORIO> /opt/GMJ-NetVision
+cd /opt/GMJ-NetVision
+sudo install -m 600 .env.example .env
+sudoedit .env
+sudo bash deploy/install.sh
+```
+
+Configure no `.env` os valores reais do ambiente, incluindo a conexão PostgreSQL e as chaves/credenciais necessárias. O `.env` é ignorado pelo Git, não deve ser commitado e é carregado diretamente pelos dois serviços via `EnvironmentFile=/opt/GMJ-NetVision/.env`.
+
+O `install.sh` instala as dependências npm, gera o Prisma Client, aplica somente as migrations já existentes com `prisma migrate deploy`, compila os workspaces, instala os units systemd e ativa o proxy nginx. Os processos ficam disponíveis em:
+
+- API: `127.0.0.1:3333` (`/health` para healthcheck);
+- frontend Next.js: `127.0.0.1:3000`;
+- nginx HTTP: porta `80`, encaminhando `/api` à API e as demais rotas ao frontend.
+
+HTTPS não faz parte desta configuração inicial. Restrinja o acesso direto às portas 3000 e 3333 no firewall do servidor conforme a política do ambiente.
+
+### Atualização
+
+Em um servidor já instalado:
+
+```bash
+cd /opt/GMJ-NetVision
+sudo bash deploy/update.sh
+```
+
+O atualizador mostra o estado do Git e aborta se houver alterações locais não commitadas. Em seguida usa apenas `git pull --ff-only`, reinstala dependências, gera o Prisma Client, aplica migrations existentes, recompila e reinicia a API e o frontend. Ele nunca executa `git reset --hard`, não remove arquivos locais e não altera o `.env`.
+
 ## Qualidade
 
 ```bash

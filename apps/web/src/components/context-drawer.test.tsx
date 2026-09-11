@@ -6,15 +6,16 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cloneDemoMaps } from '@gmj/shared';
+import { cloneDemoMaps, type NetworkLink } from '@gmj/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { pollHost } from '@/lib/api';
+import { pollHost, updateLink } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
 import { ContextDrawer, InterfaceOpticalDetails } from './context-drawer';
 
 vi.mock('@/lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api')>()),
   pollHost: vi.fn(),
+  updateLink: vi.fn(),
 }));
 vi.mock('./metric-charts', () => ({ MetricCharts: () => null }));
 vi.mock('./optical-history-charts', () => ({ OpticalHistoryCharts: () => null }));
@@ -34,6 +35,116 @@ function verificationButtons(container: HTMLElement): HTMLButtonElement[] {
     button.textContent?.includes('VERIFICAR AGORA'),
   );
 }
+
+describe.each(['SOURCE', 'TARGET'] as const)('SINGLE_ENDED drawer with %s monitored', (side) => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let client: QueryClient;
+  let link: NetworkLink;
+  beforeEach(async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    const map = cloneDemoMaps()[0]!;
+    const host = map.devices.find((device) => device.interfaces.length >= 2)!;
+    const carrier = { ...map.nodes[0]!, id: 'carrier', deviceId: null, nodeKind: 'GENERIC' as const, genericType: 'carrier', label: 'FTI' };
+    map.nodes.push(carrier);
+    link = { ...map.links[0]!, sourceDeviceId: side === 'SOURCE' ? host.id : null,
+      targetDeviceId: side === 'TARGET' ? host.id : null, sourceNodeId: side === 'TARGET' ? carrier.id : null,
+      targetNodeId: side === 'SOURCE' ? carrier.id : null, sourceInterfaceId: side === 'SOURCE' ? host.interfaces[0]!.id : null,
+      targetInterfaceId: side === 'TARGET' ? host.interfaces[0]!.id : null, trafficMode: 'SINGLE_ENDED',
+      aggregationMode: 'SUM', metricSources: host.interfaces.slice(0, 2).map((item) => ({ side, interfaceId: item.id })),
+      trafficColorAToB: '#112233', trafficColorBToA: '#abcdef', customColor: '#123456',
+      visualPaths: [{ order: 0, label: 'FTI', curvature: 175, enabled: true, customColor: '#654321' }], animationEnabled: true };
+    map.links = [link];
+    useMapStore.setState({ map, selection: { kind: 'link', id: link.id }, editMode: true, readOnly: false, linkGeometryDrafts: {}, showToast: vi.fn() });
+    vi.mocked(updateLink).mockImplementation(async (_mapId, _linkId, input) => ({ ...link, ...input }));
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    client = new QueryClient({ defaultOptions: { mutations: { retry: false }, queries: { retry: false } } });
+    await act(async () => root.render(<QueryClientProvider client={client}><ContextDrawer /></QueryClientProvider>));
+    await act(async () => findButton(container, 'Editar enlace').click());
+  });
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    client.clear(); container.remove();
+    useMapStore.setState({ map: null, selection: null, editMode: false });
+  });
+
+  it('preserves directional colors, fallback, SUM sources and geometry when saving', async () => {
+    expect(container.textContent).toContain(`A → B (${side === 'SOURCE' ? 'TX' : 'RX'} local)`);
+    expect(container.textContent).toContain(`B → A (${side === 'SOURCE' ? 'RX' : 'TX'} local)`);
+    expect(container.textContent).toContain(`Interfaces da ponta ${side === 'SOURCE' ? 'A' : 'B'} (soma)`);
+    expect(container.textContent).not.toContain(`Interfaces da ponta ${side === 'SOURCE' ? 'B' : 'A'} (soma)`);
+    await act(async () => { findButton(container, 'Salvar alterações').click(); await new Promise((resolve) => setTimeout(resolve, 10)); });
+    expect(updateLink).toHaveBeenCalledWith(link.mapId, link.id, expect.objectContaining({ trafficMode: 'SINGLE_ENDED',
+      sourceInterfaceId: link.sourceInterfaceId, targetInterfaceId: link.targetInterfaceId,
+      trafficColorAToB: '#112233', trafficColorBToA: '#abcdef', customColor: '#123456', aggregationMode: 'SUM',
+      metricSources: link.metricSources, visualPaths: link.visualPaths, animationEnabled: true }));
+  });
+});
+
+describe('link drawer curve controls', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let client: QueryClient;
+  const link = { ...cloneDemoMaps()[0]!.links[0]!, linkLayoutMode: 'MANUAL' as const,
+    visualPaths: [{ order: 0, label: 'Principal', customColor: '#123456', curvature: 175, enabled: true }] };
+
+  beforeEach(async () => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.clearAllMocks();
+    const map = cloneDemoMaps()[0]!;
+    map.links = [structuredClone(link)];
+    useMapStore.setState({ map, activeMapId: map.id, selection: { kind: 'link', id: link.id }, editMode: true, readOnly: false, linkGeometryDrafts: {}, showToast: vi.fn() });
+    vi.mocked(updateLink).mockImplementation(async (_mapId, _linkId, input) => ({ ...link, ...input }));
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    await act(async () => root.render(<QueryClientProvider client={client}><ContextDrawer /></QueryClientProvider>));
+    await act(async () => findButton(container, 'Editar enlace').click());
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    client.clear();
+    container.remove();
+    useMapStore.setState({ map: null, selection: null, editMode: false, linkGeometryDrafts: {} });
+  });
+
+  it.each([['Resetar curva', 'MANUAL'], ['Voltar ao automático', 'AUTO']])('saves %s with zero curvature', async (label, mode) => {
+    await act(async () => findButton(container, label!).click());
+    expect(container.querySelector<HTMLInputElement>('.visual-path-grid input[type="number"]')!.value).toBe('0');
+    await act(async () => {
+      findButton(container, 'Salvar alterações').click();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(updateLink).toHaveBeenCalledTimes(1);
+    expect(updateLink).toHaveBeenCalledWith(link.mapId, link.id, expect.objectContaining({
+      linkLayoutMode: mode, visualPaths: [{ ...link.visualPaths[0], curvature: 0 }],
+    }));
+  });
+
+  it('synchronizes canvas edits into an open form and prevents simultaneous saves', async () => {
+    await act(async () => useMapStore.getState().setLinkGeometryDraft(link.id, {
+      linkLayoutMode: 'MANUAL', visualPaths: [{ ...link.visualPaths[0]!, curvature: -200 }],
+    }));
+    expect(container.querySelector<HTMLInputElement>('.visual-path-grid input[type="number"]')!.value).toBe('-200');
+    expect(findButton(container, 'Salvar alterações').disabled).toBe(true);
+    await act(async () => useMapStore.getState().setLinkGeometryDraft(link.id, null));
+    await act(async () => {
+      findButton(container, 'Salvar alterações').click();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+    expect(updateLink).toHaveBeenCalledWith(link.mapId, link.id, expect.objectContaining({ visualPaths: [{ ...link.visualPaths[0], curvature: -200 }] }));
+  });
+
+  it('hides geometry controls in a public drawer', async () => {
+    await act(async () => useMapStore.setState({ readOnly: true }));
+    expect(container.querySelector('.edit-link-form')).toBeNull();
+  });
+});
 
 describe('ContextDrawer verification action', () => {
   let container: HTMLDivElement;

@@ -222,8 +222,41 @@ export type LinkInterfaceResolver = (
   interfaceId: string | null | undefined,
 ) => NetworkInterface | undefined;
 
+type TelemetryEndpoints = {
+  sourceDeviceId?: string | null | undefined;
+  targetDeviceId?: string | null | undefined;
+  sourceNodeId?: string | null | undefined;
+  targetNodeId?: string | null | undefined;
+  sourceInterfaceId?: string | null | undefined;
+  targetInterfaceId?: string | null | undefined;
+  aggregationMode?: LinkAggregationMode | undefined;
+  metricSources?: LinkMetricSource[] | undefined;
+};
+
+/** A conceptual MapNode is a visual endpoint, never a telemetry endpoint. */
+function conceptualSide(link: TelemetryEndpoints, side: 'SOURCE' | 'TARGET'): boolean {
+  return side === 'SOURCE'
+    ? Boolean(link.sourceNodeId && !link.sourceDeviceId)
+    : Boolean(link.targetNodeId && !link.targetDeviceId);
+}
+
+export function singleEndedMonitoredSide(link: TelemetryEndpoints): 'SOURCE' | 'TARGET' | null {
+  const configured = (side: 'SOURCE' | 'TARGET') =>
+    !conceptualSide(link, side) &&
+    Boolean(
+      (side === 'SOURCE' ? link.sourceInterfaceId : link.targetInterfaceId) ||
+      (link.aggregationMode === 'SUM' && link.metricSources?.some((entry) => entry.side === side)),
+    );
+  const source = configured('SOURCE');
+  const target = configured('TARGET');
+  return source !== target ? (source ? 'SOURCE' : 'TARGET') : null;
+}
+
 export function resolveMetricInterfaceGroups(
   link: {
+    sourceNodeId?: string | null;
+    targetNodeId?: string | null;
+    trafficMode?: LinkTrafficMode;
     sourceDeviceId: string | null;
     targetDeviceId: string | null;
     sourceInterfaceId: string | null;
@@ -233,17 +266,25 @@ export function resolveMetricInterfaceGroups(
   },
   findInterface: LinkInterfaceResolver,
 ): { source: NetworkInterface[]; target: NetworkInterface[] } {
-  const referenceSource = findInterface(link.sourceDeviceId, link.sourceInterfaceId);
-  const referenceTarget = findInterface(link.targetDeviceId, link.targetInterfaceId);
+  const resolve: LinkInterfaceResolver = (deviceId, interfaceId) =>
+    interfaceId ? findInterface(deviceId, interfaceId) : undefined;
+  const sourceConceptual = link.trafficMode === 'SINGLE_ENDED' && conceptualSide(link, 'SOURCE');
+  const targetConceptual = link.trafficMode === 'SINGLE_ENDED' && conceptualSide(link, 'TARGET');
+  const referenceSource = sourceConceptual
+    ? undefined
+    : resolve(link.sourceDeviceId, link.sourceInterfaceId);
+  const referenceTarget = targetConceptual
+    ? undefined
+    : resolve(link.targetDeviceId, link.targetInterfaceId);
 
   if (link.aggregationMode === 'SUM' && link.metricSources.length > 0) {
     const source = link.metricSources
-      .filter((entry) => entry.side === 'SOURCE')
-      .map((entry) => findInterface(link.sourceDeviceId, entry.interfaceId))
+      .filter((entry) => entry.side === 'SOURCE' && !sourceConceptual)
+      .map((entry) => resolve(link.sourceDeviceId, entry.interfaceId))
       .filter((item): item is NetworkInterface => Boolean(item));
     const target = link.metricSources
-      .filter((entry) => entry.side === 'TARGET')
-      .map((entry) => findInterface(link.targetDeviceId, entry.interfaceId))
+      .filter((entry) => entry.side === 'TARGET' && !targetConceptual)
+      .map((entry) => resolve(link.targetDeviceId, entry.interfaceId))
       .filter((item): item is NetworkInterface => Boolean(item));
     return {
       source: source.length ? source : referenceSource ? [referenceSource] : [],
@@ -258,6 +299,8 @@ export function resolveMetricInterfaceGroups(
 
 export function aggregateLinkMetrics(
   link: {
+    sourceNodeId?: string | null;
+    targetNodeId?: string | null;
     sourceDeviceId: string | null;
     targetDeviceId: string | null;
     sourceInterfaceId: string | null;
@@ -289,14 +332,13 @@ export function aggregateLinkMetrics(
   if (link.aggregationMode === 'SUM') {
     const all = [...source, ...target];
     const singleEnded = link.trafficMode === 'SINGLE_ENDED';
-    const monitored =
-      singleEnded
-        ? source.length && !target.length
-          ? source
-          : target.length && !source.length
-            ? target
-            : []
-        : [];
+    const monitored = singleEnded
+      ? source.length && !target.length
+        ? source
+        : target.length && !source.length
+          ? target
+          : []
+      : [];
     const rxBps = monitored.length ? (sumRate(monitored, 'rxBps') ?? 0) : bToA;
     const txBps = monitored.length ? (sumRate(monitored, 'txBps') ?? 0) : aToB;
     return {
@@ -321,8 +363,8 @@ export function aggregateLinkMetrics(
           ? target[0]
           : undefined
       : undefined;
-  const rxBps = monitoredIf?.rxBps ?? bToA;
-  const txBps = monitoredIf?.txBps ?? aToB;
+  const rxBps = monitoredIf ? (availableRate(monitoredIf, 'rxBps') ?? 0) : bToA;
+  const txBps = monitoredIf ? (availableRate(monitoredIf, 'txBps') ?? 0) : aToB;
   return {
     directions,
     status,

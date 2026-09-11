@@ -140,7 +140,10 @@ function CreateLinkPanel() {
   const [metricSource, setMetricSource] = useState<'DEMO' | 'ZABBIX'>('DEMO');
   const [visualStyle, setVisualStyle] = useState<LinkDisplayStyle | null>(null);
   const [metricDisplay, setMetricDisplay] = useState<LinkMetricDisplay | null>(null);
-  const [trafficMode, setTrafficMode] = useState<LinkTrafficMode>('BIDIRECTIONAL');
+  const [preferredTrafficMode, setTrafficMode] = useState<LinkTrafficMode>('BIDIRECTIONAL');
+  const conceptualEndpoint = (source?.kind === 'device' && target?.kind === 'node') ||
+    (source?.kind === 'node' && target?.kind === 'device');
+  const trafficMode = conceptualEndpoint ? 'SINGLE_ENDED' : preferredTrafficMode;
   const [singleEndedSide, setSingleEndedSide] = useState<'SOURCE' | 'TARGET'>('SOURCE');
   const [customColor, setCustomColor] = useState<string | null>(null);
   const [animationEnabled, setAnimationEnabled] = useState<boolean | null>(null);
@@ -308,6 +311,7 @@ function CreateLinkPanel() {
             Modo de telemetria
             <select
               value={trafficMode}
+              disabled={conceptualEndpoint}
               onChange={(event) => setTrafficMode(event.target.value as LinkTrafficMode)}
             >
               <option value="BIDIRECTIONAL">Bidirecional</option>

@@ -941,9 +941,11 @@ export class PrismaMapRepository {
     },
     devices: HostRecord[],
   ): NetworkLink {
-    const referenceSource = findLinkInterface(devices, row.sourceDeviceId, row.sourceInterfaceId);
-    const referenceTarget = findLinkInterface(devices, row.targetDeviceId, row.targetInterfaceId);
     const trafficMode = row.trafficMode as NetworkLink['trafficMode'];
+    const referenceSource = trafficMode === 'SINGLE_ENDED' && row.sourceNodeId && !row.sourceDeviceId
+      ? undefined : findLinkInterface(devices, row.sourceDeviceId, row.sourceInterfaceId);
+    const referenceTarget = trafficMode === 'SINGLE_ENDED' && row.targetNodeId && !row.targetDeviceId
+      ? undefined : findLinkInterface(devices, row.targetDeviceId, row.targetInterfaceId);
     const storedCapacityBps = safeNumber(row.capacityBps);
     const autoCapacityBps = automaticLinkCapacity(
       referenceSource,
@@ -961,6 +963,8 @@ export class PrismaMapRepository {
       {
         sourceDeviceId: row.sourceDeviceId,
         targetDeviceId: row.targetDeviceId,
+        sourceNodeId: row.sourceNodeId,
+        targetNodeId: row.targetNodeId,
         sourceInterfaceId: row.sourceInterfaceId,
         targetInterfaceId: row.targetInterfaceId,
         aggregationMode,
