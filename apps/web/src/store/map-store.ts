@@ -175,6 +175,19 @@ function summaryFromMap(map: NetworkMap): MapSummary {
   };
 }
 
+/**
+ * A geometry draft only ever carries `visualPaths`/`linkLayoutMode`. Merging it
+ * with an explicit `undefined` (for example from a partial PATCH response) would
+ * silently erase those link fields, so undefined values are ignored here.
+ */
+export function applyLinkGeometry(link: NetworkLink, geometry: LinkGeometry): NetworkLink {
+  return {
+    ...link,
+    ...(geometry.visualPaths === undefined ? {} : { visualPaths: geometry.visualPaths }),
+    ...(geometry.linkLayoutMode === undefined ? {} : { linkLayoutMode: geometry.linkLayoutMode }),
+  };
+}
+
 export const useMapStore = create<MapState>((set) => ({
   linkGeometryDrafts: {},
   setLinkGeometryDraft: (linkId, geometry) => set((state) => {
@@ -183,10 +196,9 @@ export const useMapStore = create<MapState>((set) => ({
     else delete linkGeometryDrafts[linkId];
     return {
       linkGeometryDrafts,
-      map: state.map && geometry ? {
-        ...state.map,
-        links: state.map.links.map((link) => link.id === linkId ? { ...link, ...geometry } : link),
-      } : state.map,
+      map: state.map && geometry
+        ? { ...state.map, links: state.map.links.map((link) => link.id === linkId ? applyLinkGeometry(link, geometry) : link) }
+        : state.map,
     };
   }),
   maps: [],
@@ -267,7 +279,10 @@ export const useMapStore = create<MapState>((set) => ({
       return {
         map: state.map?.id === map.id ? {
           ...map,
-          links: map.links.map((link) => ({ ...link, ...state.linkGeometryDrafts[link.id] })),
+          links: map.links.map((link) => {
+            const draft = state.linkGeometryDrafts[link.id];
+            return draft ? applyLinkGeometry(link, draft) : link;
+          }),
         } : map,
         linkGeometryDrafts: state.map?.id === map.id ? state.linkGeometryDrafts : {},
         activeMapId: map.id,

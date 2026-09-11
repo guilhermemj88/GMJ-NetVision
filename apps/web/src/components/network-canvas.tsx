@@ -111,25 +111,50 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     }
   }, [flow, map, hasSavedViewport]);
 
+  // Node identity is React Flow's cache key: `setNodes` keeps a node's measured
+  // dimensions and handle bounds only while the very same object is passed back
+  // (`adoptUserNodes(..., { checkEquality: true })`). Rebuilding the array for an
+  // unrelated change (a link geometry draft, a link PATCH, …) would therefore
+  // discard every measurement for one commit, and edges are not rendered while
+  // their endpoints are unmeasured. Depending on the actual inputs keeps the
+  // node objects stable, and carrying `measured` over keeps the endpoints usable
+  // even when the nodes really do change (map refetch, scale change, …).
+  const mapNodes = map?.nodes;
+  const mapDevices = map?.devices;
+  const nodeDisplayMode = map?.settings.nodeDisplayMode;
+  const nodeScale = map?.settings.nodeScale;
+  const labelScale = map?.settings.labelScale;
+  const measuredSizes = useRef(new Map<string, { width: number; height: number }>());
+  const showInterfaces = preferences.showInterfaces;
+
   const domainNodes = useMemo<MapFlowNode[]>(() => {
-    if (!map) return [];
-    return map.nodes.flatMap((mapNode): MapFlowNode[] => {
+    if (
+      !mapNodes ||
+      !mapDevices ||
+      nodeDisplayMode === undefined ||
+      nodeScale === undefined ||
+      labelScale === undefined
+    )
+      return [];
+    return mapNodes.flatMap((mapNode): MapFlowNode[] => {
+      const measured = measuredSizes.current.get(mapNode.deviceId ?? mapNode.id);
       if (mapNode.deviceId) {
-        const device = map.devices.find((item) => item.id === mapNode.deviceId);
+        const device = mapDevices.find((item) => item.id === mapNode.deviceId);
         if (!device || (!preferences.showOffline && device.status === 'DOWN')) return [];
         return [{
           id: device.id,
           type: 'device',
           position: mapNode.position,
           draggable: editMode && !mapNode.locked,
+          ...(measured ? { measured } : {}),
           data: {
             device,
             mapNode,
             editMode,
-            showInterfaces: preferences.showInterfaces,
-            displayMode: map.settings.nodeDisplayMode,
-            nodeScale: map.settings.nodeScale,
-            labelScale: map.settings.labelScale,
+            showInterfaces,
+            displayMode: nodeDisplayMode,
+            nodeScale,
+            labelScale,
           },
         }];
       }
@@ -138,16 +163,26 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         type: 'generic',
         position: mapNode.position,
         draggable: editMode && !mapNode.locked,
+        ...(measured ? { measured } : {}),
         data: {
           mapNode,
           editMode,
-          displayMode: map.settings.nodeDisplayMode,
-          nodeScale: map.settings.nodeScale,
-          labelScale: map.settings.labelScale,
+          displayMode: nodeDisplayMode,
+          nodeScale,
+          labelScale,
         },
       }];
     });
-  }, [editMode, map, preferences.showInterfaces, preferences.showOffline]);
+  }, [
+    editMode,
+    labelScale,
+    mapDevices,
+    mapNodes,
+    nodeDisplayMode,
+    nodeScale,
+    preferences.showOffline,
+    showInterfaces,
+  ]);
 
   useEffect(() => {
     if (!focusRequest) return;
@@ -239,7 +274,17 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
   useEffect(() => setEdges(domainEdges), [domainEdges, setEdges]);
 
   const onNodesChange: OnNodesChange<MapFlowNode> = useCallback(
-    (changes) => setNodes((current) => applyNodeChanges(changes, current)),
+    (changes) => {
+      // React Flow reports every measurement as a `dimensions` change. Keeping
+      // the last known size lets the node objects below stay initialized across
+      // rebuilds, so edges are never dropped while a node is re-measured.
+      for (const change of changes) {
+        if (change.type === 'dimensions' && change.dimensions) {
+          measuredSizes.current.set(change.id, change.dimensions);
+        }
+      }
+      setNodes((current) => applyNodeChanges(changes, current));
+    },
     [setNodes],
   );
 

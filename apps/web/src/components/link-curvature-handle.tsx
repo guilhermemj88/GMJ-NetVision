@@ -115,7 +115,12 @@ export function LinkCurvatureHandle({
         metricDisplay: latest.metricDisplay,
         ...geometry,
       });
-      const saved = { visualPaths: updated.visualPaths, linkLayoutMode: updated.linkLayoutMode };
+      // A partial response must never blank the geometry: fall back to the
+      // draft that was just persisted.
+      const saved: LinkGeometry = {
+        visualPaths: updated.visualPaths ?? geometry.visualPaths,
+        linkLayoutMode: updated.linkLayoutMode ?? geometry.linkLayoutMode,
+      };
       await client.cancelQueries({ queryKey: ['map', link.mapId] });
       client.setQueryData<NetworkMap>(['map', link.mapId], (map) =>
         map

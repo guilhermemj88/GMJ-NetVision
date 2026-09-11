@@ -714,7 +714,7 @@ function LinkDrawer({
   const savedGeometry = JSON.stringify({ visualPaths: link.visualPaths, linkLayoutMode: link.linkLayoutMode });
   useEffect(() => {
     const geometry = JSON.parse(savedGeometry) as LinkGeometry;
-    setVisualPaths(geometry.visualPaths.length ? geometry.visualPaths : defaultVisualPaths(1));
+    setVisualPaths(geometry.visualPaths?.length ? geometry.visualPaths : defaultVisualPaths(1));
     setLinkLayoutMode(geometry.linkLayoutMode);
   }, [savedGeometry]);
   const geometryBusy = useMapStore((state) => Boolean(state.linkGeometryDrafts[link.id]));
