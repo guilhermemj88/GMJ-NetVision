@@ -33,6 +33,8 @@ const SAFE_ENV_KEYS = [
   "SNMP_POLL_INTERVAL_SECONDS",
   "ZABBIX_URL",
   "ZABBIX_TOKEN",
+  "NETVISION_MCP_USERNAME",
+  "NETVISION_MCP_PASSWORD",
 ] as const;
 const ENV_FILES = [
   path.join(repoRoot, ".env"),
@@ -128,21 +130,147 @@ function sanitize(value: unknown): unknown {
   return value;
 }
 
-async function apiRequest(method: "GET" | "POST", route: string, requestBody?: unknown): Promise<string> {
+let cachedSessionCookie: string | null = null;
+
+async function mcpCredentials(): Promise<{ usernameOrEmail: string; password: string } | null> {
+  const { env } = await runtimeEnv();
+  const usernameOrEmail = env.NETVISION_MCP_USERNAME?.trim();
+  if (!usernameOrEmail || !env.NETVISION_MCP_PASSWORD) return null;
+  return { usernameOrEmail, password: env.NETVISION_MCP_PASSWORD };
+}
+
+function sessionCookieFromHeaders(headers: Headers): string | null {
+  const raw = headers.get("set-cookie");
+  if (!raw) return null;
+  const match = /(?:^|[;,]\s*)netvision_session=([^;,\s]+)/i.exec(raw);
+  return match ? `netvision_session=${match[1]}` : null;
+}
+
+async function loginAndCacheSession(): Promise<string | null> {
+  const credentials = await mcpCredentials();
+  if (!credentials) return null;
   try {
-    const response = await fetch(`${API_BASE_URL}${route}`, {
-      method,
-      headers: { accept: "application/json", ...(requestBody !== undefined ? { "content-type": "application/json" } : {}) },
-      body: requestBody !== undefined ? JSON.stringify(requestBody) : undefined,
+    const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/json" },
+      body: JSON.stringify(credentials),
       signal: AbortSignal.timeout(30_000),
     });
-    const text = await response.text();
-    let body: unknown = text;
-    try { body = text ? JSON.parse(text) : null; } catch { /* keep text */ }
-    return JSON.stringify({ status: response.status, ok: response.ok, body: sanitize(body) }, null, 2);
+    if (!response.ok) return null;
+    const cookie = sessionCookieFromHeaders(response.headers);
+    cachedSessionCookie = cookie;
+    return cookie;
+  } catch {
+    return null;
+  }
+}
+
+interface ApiRequestResult {
+  status: number;
+  ok: boolean;
+  body: unknown;
+}
+
+async function apiFetchRaw(method: "GET" | "POST", route: string, requestBody?: unknown): Promise<ApiRequestResult> {
+  const headers: Record<string, string> = { accept: "application/json" };
+  if (requestBody !== undefined) headers["content-type"] = "application/json";
+  if (cachedSessionCookie) headers["cookie"] = cachedSessionCookie;
+  const response = await fetch(`${API_BASE_URL}${route}`, {
+    method,
+    headers,
+    body: requestBody !== undefined ? JSON.stringify(requestBody) : undefined,
+    signal: AbortSignal.timeout(30_000),
+  });
+  const text = await response.text();
+  let body: unknown = text;
+  try { body = text ? JSON.parse(text) : null; } catch { /* keep text */ }
+  return { status: response.status, ok: response.ok, body };
+}
+
+async function apiRequestJson(method: "GET" | "POST", route: string, requestBody?: unknown): Promise<ApiRequestResult> {
+  const credentials = await mcpCredentials();
+  if (!credentials) return apiFetchRaw(method, route, requestBody);
+
+  if (!cachedSessionCookie) await loginAndCacheSession();
+
+  let result = await apiFetchRaw(method, route, requestBody);
+  if (result.status === 401) {
+    // Session may have expired: drop it, authenticate again and retry once.
+    cachedSessionCookie = null;
+    const cookie = await loginAndCacheSession();
+    if (cookie) result = await apiFetchRaw(method, route, requestBody);
+  }
+  return result;
+}
+
+function apiErrorText(result: ApiRequestResult): string {
+  return JSON.stringify({ status: result.status, ok: false, body: sanitize(result.body) }, null, 2);
+}
+
+async function apiRequest(method: "GET" | "POST", route: string, requestBody?: unknown): Promise<string> {
+  try {
+    const result = await apiRequestJson(method, route, requestBody);
+    return JSON.stringify({ status: result.status, ok: result.ok, body: sanitize(result.body) }, null, 2);
   } catch (error) {
     return JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }, null, 2);
   }
+}
+
+const HOST_COMPACT_FIELDS = [
+  "id", "hostname", "displayName", "managementIp", "vendor", "model", "deviceType",
+  "status", "uptimeSeconds", "discoveryMethod", "sshEnabled", "snmpEnabled",
+] as const;
+
+const INTERFACE_COMPACT_FIELDS = [
+  "id", "name", "alias", "description", "ifIndex", "adminStatus", "operStatus", "speedBps",
+] as const;
+
+const INTERFACE_DETAIL_FIELDS = [
+  "id", "name", "alias", "description", "ifIndex", "mac", "mtu", "speedBps",
+  "adminStatus", "operStatus", "rxBps", "txBps", "rxUtilization", "txUtilization",
+  "rxErrors", "txErrors", "rxDiscards", "txDiscards",
+  "telemetryAvailable", "telemetryUpdatedAt", "dataSources",
+] as const;
+
+function pickFields(source: Record<string, unknown>, fields: readonly string[]): Record<string, unknown> {
+  const output: Record<string, unknown> = {};
+  for (const field of fields) if (field in source) output[field] = source[field];
+  return output;
+}
+
+function pickHostCompact(host: Record<string, unknown>): Record<string, unknown> {
+  return pickFields(host, HOST_COMPACT_FIELDS);
+}
+
+function pickInterfaceCompact(item: Record<string, unknown>): Record<string, unknown> {
+  return pickFields(item, INTERFACE_COMPACT_FIELDS);
+}
+
+function opticalSummary(item: Record<string, unknown>): Record<string, unknown> | null {
+  const rx = item.rxPowerDbm;
+  const tx = item.txPowerDbm;
+  const source = item.opticalSource;
+  const updatedAt = item.opticalUpdatedAt;
+  const lanes = Array.isArray(item.opticalLanes) ? item.opticalLanes.length : null;
+  if (rx === undefined && tx === undefined && source === undefined && lanes === null) return null;
+  return {
+    ...(rx !== undefined ? { rxPowerDbm: rx } : {}),
+    ...(tx !== undefined ? { txPowerDbm: tx } : {}),
+    ...(source !== undefined ? { source } : {}),
+    ...(updatedAt !== undefined ? { updatedAt } : {}),
+    ...(lanes !== null ? { laneCount: lanes } : {}),
+  };
+}
+
+function pickInterfaceDetail(item: Record<string, unknown>): Record<string, unknown> {
+  const detail = pickFields(item, INTERFACE_DETAIL_FIELDS);
+  if (typeof item.deviceId === "string") {
+    detail.hostId = item.deviceId;
+    detail.deviceId = item.deviceId;
+  }
+  const optical = opticalSummary(item);
+  if (optical) detail.optical = optical;
+  return detail;
 }
 
 async function httpGet(url: string): Promise<string> {
@@ -175,7 +303,7 @@ async function serviceLogs(service: typeof SERVICE_CANDIDATES[number], lines: nu
 function textResult(text: string) { return { content: [{ type: "text" as const, text }] }; }
 
 function createNetVisionMcpServer() {
-  const server = new McpServer({ name: "gmj-netvision-implantar", version: "0.5.0" });
+  const server = new McpServer({ name: "gmj-netvision-implantar", version: "0.6.0" });
 
   server.registerTool("repo_status", { title: "Repository Status", description: "Show the Git status of the GMJ NetVision repository.", inputSchema: z.object({}) }, async () => textResult((await runGit(["status", "--short", "--branch"])) || "Working tree clean"));
   server.registerTool("repo_diff", { title: "Repository Diff", description: "Show the current uncommitted Git diff.", inputSchema: z.object({}) }, async () => textResult((await runGit(["diff"])) || "No tracked changes"));
@@ -198,17 +326,43 @@ function createNetVisionMcpServer() {
   server.registerTool("service_status", { title: "NetVision Service Status", description: "Inspect known NetVision systemd service states on the IMPLANTAR host.", inputSchema: z.object({}) }, async () => textResult(await serviceStatus()));
   server.registerTool("service_logs", { title: "NetVision Service Logs", description: "Read recent journal logs for an allow-listed NetVision service. This is read-only.", inputSchema: z.object({ service: z.enum(SERVICE_CANDIDATES), lines: z.number().int().min(10).max(500).default(100) }) }, async ({ service, lines }) => textResult(await serviceLogs(service, lines)));
 
-  server.registerTool("api_list_hosts", { title: "List NetVision Hosts", description: "List persisted NetVision hosts through the local API. Secret-like fields are redacted defensively.", inputSchema: z.object({ q: z.string().optional(), source: z.enum(["ZABBIX", "SSH", "SNMP"]).optional() }) }, async ({ q, source }) => {
+  server.registerTool("list_hosts", { title: "List NetVision Hosts", description: "List NetVision hosts in compact form for host discovery and selection. Use get_host when detailed information about one known host is required.", inputSchema: z.object({ q: z.string().optional(), source: z.enum(["ZABBIX", "SSH", "SNMP"]).optional() }) }, async ({ q, source }) => {
     const params = new URLSearchParams();
     if (q) params.set("q", q);
     if (source) params.set("source", source);
-    return textResult(await apiRequest("GET", `/api/hosts${params.size ? `?${params.toString()}` : ""}`));
+    const result = await apiRequestJson("GET", `/api/hosts${params.size ? `?${params.toString()}` : ""}`);
+    if (!result.ok) return textResult(apiErrorText(result));
+    const hosts = Array.isArray(result.body) ? result.body : [];
+    return textResult(JSON.stringify(hosts.map((host) => pickHostCompact(host as Record<string, unknown>)), null, 2));
   });
-  server.registerTool("api_get_host", { title: "Get NetVision Host", description: "Read one persisted NetVision host by ID with defensive secret redaction.", inputSchema: z.object({ hostId: z.string().min(1) }) }, async ({ hostId }) => textResult(await apiRequest("GET", `/api/hosts/${encodeURIComponent(hostId)}`)));
-  server.registerTool("api_test_snmp", { title: "Test Host SNMP", description: "Test the stored SNMP configuration for a persisted host without exposing credentials.", inputSchema: z.object({ hostId: z.string().min(1) }) }, async ({ hostId }) => textResult(await apiRequest("POST", `/api/hosts/${encodeURIComponent(hostId)}/test/snmp`)));
-  server.registerTool("api_discover_interfaces", { title: "Discover SNMP Interfaces", description: "Run SNMP interface discovery for a persisted host and persist the discovered interfaces.", inputSchema: z.object({ hostId: z.string().min(1) }) }, async ({ hostId }) => textResult(await apiRequest("POST", `/api/hosts/${encodeURIComponent(hostId)}/interfaces/discover`)));
-  server.registerTool("api_poll_host", { title: "Poll Host SNMP", description: "Run one manual SNMP poll for a persisted host. Automatic polling remains unchanged.", inputSchema: z.object({ hostId: z.string().min(1) }) }, async ({ hostId }) => textResult(await apiRequest("POST", `/api/hosts/${encodeURIComponent(hostId)}/poll`)));
-  server.registerTool("api_interface_history", { title: "Interface Metric History", description: "Read persisted interface metric history for a supported period.", inputSchema: z.object({ interfaceId: z.string().min(1), period: z.enum(["15m", "1h", "6h", "24h", "7d"]).default("1h") }) }, async ({ interfaceId, period }) => textResult(await apiRequest("GET", `/api/interfaces/${encodeURIComponent(interfaceId)}/history?period=${period}`)));
+  server.registerTool("get_host", { title: "Get NetVision Host", description: "Return compact details for one known NetVision host. Does not return the host's full interface list. Use list_interfaces to inspect interfaces.", inputSchema: z.object({ hostId: z.string().min(1) }) }, async ({ hostId }) => {
+    const result = await apiRequestJson("GET", `/api/hosts/${encodeURIComponent(hostId)}`);
+    if (!result.ok) return textResult(apiErrorText(result));
+    return textResult(JSON.stringify(pickHostCompact(result.body as Record<string, unknown>), null, 2));
+  });
+  server.registerTool("test_host_snmp", { title: "Test Host SNMP", description: "Test the stored SNMP configuration for a persisted host without exposing credentials.", inputSchema: z.object({ hostId: z.string().min(1) }) }, async ({ hostId }) => textResult(await apiRequest("POST", `/api/hosts/${encodeURIComponent(hostId)}/test/snmp`)));
+  server.registerTool("discover_interfaces", { title: "Discover SNMP Interfaces", description: "Run SNMP interface discovery for a persisted host and persist the discovered interfaces.", inputSchema: z.object({ hostId: z.string().min(1) }) }, async ({ hostId }) => textResult(await apiRequest("POST", `/api/hosts/${encodeURIComponent(hostId)}/interfaces/discover`)));
+  server.registerTool("poll_host", { title: "Poll Host SNMP", description: "Run one manual SNMP poll for a persisted host. Automatic polling remains unchanged.", inputSchema: z.object({ hostId: z.string().min(1) }) }, async ({ hostId }) => textResult(await apiRequest("POST", `/api/hosts/${encodeURIComponent(hostId)}/poll`)));
+  server.registerTool("list_interfaces", { title: "List Host Interfaces", description: "List interfaces for one known NetVision host in compact form. Use get_interface for detailed current information about one interface and get_interface_metrics for historical metrics.", inputSchema: z.object({ hostId: z.string().min(1) }) }, async ({ hostId }) => {
+    const result = await apiRequestJson("GET", `/api/hosts/${encodeURIComponent(hostId)}/interfaces`);
+    if (!result.ok) return textResult(apiErrorText(result));
+    const interfaces = Array.isArray(result.body) ? result.body : [];
+    return textResult(JSON.stringify(interfaces.map((item) => pickInterfaceCompact(item as Record<string, unknown>)), null, 2));
+  });
+  server.registerTool("get_interface", { title: "Get Interface", description: "Return detailed current state for one known NetVision interface. Use get_interface_metrics when historical time-series data is required.", inputSchema: z.object({ interfaceId: z.string().min(1) }) }, async ({ interfaceId }) => {
+    const result = await apiRequestJson("GET", "/api/hosts");
+    if (!result.ok) return textResult(apiErrorText(result));
+    const hosts = Array.isArray(result.body) ? result.body : [];
+    for (const host of hosts) {
+      const record = host as Record<string, unknown>;
+      const interfaces = record.interfaces;
+      if (!Array.isArray(interfaces)) continue;
+      const found = interfaces.find((item) => (item as Record<string, unknown>).id === interfaceId);
+      if (found) return textResult(JSON.stringify(pickInterfaceDetail(found as Record<string, unknown>), null, 2));
+    }
+    return textResult(JSON.stringify({ ok: false, error: `Interface ${interfaceId} not found` }, null, 2));
+  });
+  server.registerTool("get_interface_metrics", { title: "Interface Metric History", description: "Return persisted historical metrics for one interface over a supported period.", inputSchema: z.object({ interfaceId: z.string().min(1), period: z.enum(["15m", "1h", "6h", "24h", "7d"]).default("1h") }) }, async ({ interfaceId, period }) => textResult(await apiRequest("GET", `/api/interfaces/${encodeURIComponent(interfaceId)}/history?period=${period}`)));
 
   server.registerTool("discover_lldp_topology", { title: "Discover LLDP Topology", description: "Discover the LLDP adjacency topology for all SNMP/SSH-enabled hosts of a map and return a review preview. SSH is used as a fallback only. This operation does not change the database.", inputSchema: z.object({ mapId: z.string().min(1), deepValidation: z.boolean().optional() }) }, async ({ mapId, deepValidation }) => textResult(await apiRequest("POST", "/api/topology/lldp/discover", { mapId, ...(deepValidation !== undefined ? { deepValidation } : {}) })));
   server.registerTool("preview_lldp_topology", { title: "Preview LLDP Topology", description: "Return a previously discovered LLDP topology preview by ID without changing anything.", inputSchema: z.object({ previewId: z.string().min(1) }) }, async ({ previewId }) => textResult(await apiRequest("POST", "/api/topology/lldp/preview", { previewId })));
