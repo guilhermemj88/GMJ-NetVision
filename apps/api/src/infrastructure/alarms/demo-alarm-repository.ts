@@ -1,5 +1,5 @@
 import { createLocalId, type Alarm } from '@gmj/shared';
-import type { AlarmOpenInput, AlarmRepository } from './alarm-repository';
+import type { AlarmHistoryOptions, AlarmOpenInput, AlarmRepository } from './alarm-repository';
 
 /**
  * In-memory fallback used in DEMO_MODE. Alarm detection does not run there
@@ -12,7 +12,16 @@ export class DemoAlarmRepository implements AlarmRepository {
     return this.alarms.filter((alarm) => !alarm.endedAt);
   }
 
-  async listHistory(limit: number): Promise<Alarm[]> {
+  async listHistory(limit: number, options?: AlarmHistoryOptions): Promise<Alarm[]> {
+    if (options?.resolvedOnly) {
+      return this.alarms
+        .filter((alarm) => alarm.endedAt)
+        .sort(
+          (a, b) =>
+            new Date(b.endedAt as string).getTime() - new Date(a.endedAt as string).getTime(),
+        )
+        .slice(0, limit);
+    }
     return this.alarms.slice(0, limit);
   }
 

@@ -1,9 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   alarmTypeLabel,
   formatAlarmDownSince,
+  formatAlarmDuration,
   type Alarm,
   type AlarmPanelPosition,
 } from '@gmj/shared';
@@ -45,12 +46,28 @@ const severityLabels: Record<Alarm['severity'], string> = {
 
 export function AlarmPanel({
   alarms,
+  resolvedAlarms = [],
   onFocus,
 }: {
   alarms: Alarm[];
+  resolvedAlarms?: Alarm[];
   onFocus: (alarm: Alarm) => void;
 }) {
   const [position, setPosition] = useState<AlarmPanelPosition>(loadPosition);
+
+  // The panel stays compact: at most the 3 most recently resolved alarms,
+  // ordered by resolution time descending regardless of the source order.
+  const recentResolved = useMemo(
+    () =>
+      [...resolvedAlarms]
+        .filter((alarm) => alarm.endedAt)
+        .sort(
+          (a, b) =>
+            new Date(b.endedAt as string).getTime() - new Date(a.endedAt as string).getTime(),
+        )
+        .slice(0, 3),
+    [resolvedAlarms],
+  );
 
   const updatePosition = (next: AlarmPanelPosition) => {
     setPosition(next);
@@ -78,7 +95,7 @@ export function AlarmPanel({
   return (
     <aside
       className={`alarm-panel alarm-panel--${position.toLowerCase()}`}
-      aria-label="Alarmes ativos"
+      aria-label="Painel de alarmes"
     >
       <header className="alarm-panel__header">
         <strong>Alarmes</strong>
@@ -107,35 +124,71 @@ export function AlarmPanel({
       {alarms.length === 0 ? (
         <p className="alarm-panel__empty">Sem alarmes ativos</p>
       ) : (
-        <ul className="alarm-panel__list">
-          {alarms.map((alarm) => (
-            <li key={alarm.id}>
-              <button
-                type="button"
-                className="alarm-panel__item"
-                onClick={() => onFocus(alarm)}
-                title="Focar no mapa"
-              >
-                <span
-                  className={`alarm-panel__severity alarm-panel__severity--${alarm.severity.toLowerCase()}`}
+        <>
+          <p className="alarm-panel__section alarm-panel__section--active">🔴 Ativos</p>
+          <ul className="alarm-panel__list">
+            {alarms.map((alarm) => (
+              <li key={alarm.id}>
+                <button
+                  type="button"
+                  className="alarm-panel__item"
+                  onClick={() => onFocus(alarm)}
+                  title="Focar no mapa"
                 >
-                  {severityLabels[alarm.severity]}
-                </span>
-                <span className="alarm-panel__item-body">
-                  <strong>{alarmTypeLabel(alarm.type)}</strong>
-                  <span className="alarm-panel__device">{alarm.deviceName}</span>
-                  <span className="alarm-panel__interface">
-                    {alarm.interfaceLabel} — {alarm.interfaceName}
+                  <span
+                    className={`alarm-panel__severity alarm-panel__severity--${alarm.severity.toLowerCase()}`}
+                  >
+                    {severityLabels[alarm.severity]}
                   </span>
-                  <small>
-                    Interface: {alarm.interfaceName} · Down desde{' '}
-                    {formatAlarmDownSince(alarm.startedAt)}
-                  </small>
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
+                  <span className="alarm-panel__item-body">
+                    <strong>{alarmTypeLabel(alarm.type)}</strong>
+                    <span className="alarm-panel__device">{alarm.deviceName}</span>
+                    <span className="alarm-panel__interface">
+                      {alarm.interfaceLabel} — {alarm.interfaceName}
+                    </span>
+                    <small>
+                      Interface: {alarm.interfaceName} · Down desde{' '}
+                      {formatAlarmDownSince(alarm.startedAt)}
+                    </small>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+      {recentResolved.length > 0 && (
+        <>
+          <p className="alarm-panel__section alarm-panel__section--resolved">
+            ✓ Resolvidos recentemente
+          </p>
+          <ul className="alarm-panel__list alarm-panel__list--resolved">
+            {recentResolved.map((alarm) => (
+              <li key={alarm.id}>
+                <button
+                  type="button"
+                  className="alarm-panel__resolved"
+                  onClick={() => onFocus(alarm)}
+                  title="Focar no mapa"
+                >
+                  <span className="alarm-panel__resolved-check" aria-hidden="true">
+                    ✓
+                  </span>
+                  <span className="alarm-panel__resolved-body">
+                    <strong>{alarm.deviceName}</strong>
+                    <span className="alarm-panel__interface">
+                      {alarm.interfaceLabel} — {alarm.interfaceName}
+                    </span>
+                    <small>
+                      Resolvido às {formatAlarmDownSince(alarm.endedAt ?? '')} · Duração{' '}
+                      {formatAlarmDuration(alarm.startedAt, alarm.endedAt ?? '')}
+                    </small>
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
     </aside>
   );

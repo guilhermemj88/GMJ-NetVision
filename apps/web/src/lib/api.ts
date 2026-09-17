@@ -195,6 +195,11 @@ export function getAlarmHistory(limit = 100): Promise<Alarm[]> {
   return request<Alarm[]>(`/api/alarms/history?${params}`);
 }
 
+export function getRecentResolvedAlarms(limit = 3): Promise<Alarm[]> {
+  const params = new URLSearchParams({ limit: String(limit), resolved: 'true' });
+  return request<Alarm[]>(`/api/alarms/history?${params}`);
+}
+
 export function createNetworkMap(input: CreateMapInput) {
   return request<NetworkMap>('/api/maps', { method: 'POST', body: JSON.stringify(input) });
 }

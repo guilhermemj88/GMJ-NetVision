@@ -11,9 +11,12 @@ export function registerAlarmRoutes(
   app.get('/api/alarms', async () => alarms.listActive());
 
   app.get('/api/alarms/history', async (request) => {
-    const { limit } = z
-      .object({ limit: z.coerce.number().int().min(1).max(500).default(100) })
+    const { limit, resolved } = z
+      .object({
+        limit: z.coerce.number().int().min(1).max(500).default(100),
+        resolved: z.enum(['true', 'false']).default('false'),
+      })
       .parse(request.query);
-    return alarms.listHistory(limit);
+    return alarms.listHistory(limit, { resolvedOnly: resolved === 'true' });
   });
 }

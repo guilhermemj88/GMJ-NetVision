@@ -28,6 +28,19 @@ function makeAlarm(overrides: Partial<Alarm> = {}): Alarm {
   };
 }
 
+function makeResolvedAlarm(overrides: Partial<Alarm> = {}): Alarm {
+  const startedAt = new Date(2026, 8, 16, 20, 0, 0);
+  return makeAlarm({
+    id: 'resolved-1',
+    deviceName: 'SW-JDM-01',
+    interfaceLabel: 'PE-SP',
+    interfaceName: '100GE0/0/1',
+    startedAt: startedAt.toISOString(),
+    endedAt: new Date(startedAt.getTime() + 218_000).toISOString(),
+    ...overrides,
+  });
+}
+
 describe('alarmFocusTarget', () => {
   it('focuses the link that owns the interface when there is one', () => {
     expect(alarmFocusTarget(makeAlarm({ linkId: 'link-7' }))).toEqual({
@@ -48,13 +61,19 @@ describe('alarmFocusTarget', () => {
 describe('AlarmPanel', () => {
   const roots: Array<{ root: Root; container: HTMLDivElement }> = [];
 
-  async function mount(alarms: Alarm[], onFocus: (alarm: Alarm) => void) {
+  async function mount(
+    alarms: Alarm[],
+    onFocus: (alarm: Alarm) => void,
+    resolvedAlarms: Alarm[] = [],
+  ) {
     const container = document.createElement('div');
     document.body.appendChild(container);
     const root = createRoot(container);
     roots.push({ root, container });
     await act(async () => {
-      root.render(<AlarmPanel alarms={alarms} onFocus={onFocus} />);
+      root.render(
+        <AlarmPanel alarms={alarms} resolvedAlarms={resolvedAlarms} onFocus={onFocus} />,
+      );
     });
     return container;
   }
@@ -155,5 +174,113 @@ describe('AlarmPanel', () => {
     });
     expect(container.querySelector('.alarm-panel--left')).not.toBeNull();
     expect(container.querySelector('.alarm-panel--right')).toBeNull();
+  });
+
+  it('shows at most the 3 most recent resolved alarms', async () => {
+    const resolved = [
+      makeResolvedAlarm({ id: 'r1' }),
+      makeResolvedAlarm({ id: 'r2' }),
+      makeResolvedAlarm({ id: 'r3' }),
+      makeResolvedAlarm({ id: 'r4' }),
+      makeResolvedAlarm({ id: 'r5' }),
+    ];
+    const container = await mount([], vi.fn(), resolved);
+
+    const items = [
+      ...container.querySelectorAll<HTMLButtonElement>('.alarm-panel__resolved'),
+    ];
+    expect(items).toHaveLength(3);
+    expect(container.querySelectorAll('.alarm-panel__resolved-body')).toHaveLength(3);
+  });
+
+  it('orders resolved alarms by endedAt descending', async () => {
+    const resolved = [
+      makeResolvedAlarm({
+        id: 'oldest',
+        deviceName: 'OLDEST',
+        endedAt: new Date(2026, 8, 16, 8, 0, 0).toISOString(),
+      }),
+      makeResolvedAlarm({
+        id: 'newest',
+        deviceName: 'NEWEST',
+        endedAt: new Date(2026, 8, 16, 12, 0, 0).toISOString(),
+      }),
+      makeResolvedAlarm({
+        id: 'middle',
+        deviceName: 'MIDDLE',
+        endedAt: new Date(2026, 8, 16, 10, 0, 0).toISOString(),
+      }),
+    ];
+    const container = await mount([], vi.fn(), resolved);
+
+    const names = [
+      ...container.querySelectorAll<HTMLElement>('.alarm-panel__resolved-body strong'),
+    ].map((node) => node.textContent);
+    expect(names).toEqual(['NEWEST', 'MIDDLE', 'OLDEST']);
+  });
+
+  it('does not count resolved alarms in the ALARMES badge', async () => {
+    const resolved = [
+      makeResolvedAlarm({ id: 'r1' }),
+      makeResolvedAlarm({ id: 'r2' }),
+      makeResolvedAlarm({ id: 'r3' }),
+    ];
+    const container = await mount(
+      [makeAlarm(), makeAlarm({ id: 'alarm-2' })],
+      vi.fn(),
+      resolved,
+    );
+
+    const count = container.querySelector('.alarm-panel__count');
+    expect(count).not.toBeNull();
+    expect(count!.textContent).toBe('2');
+    expect(container.textContent).toContain('Resolvidos recentemente');
+  });
+
+  it('does not show the resolved section when there are no resolved alarms', async () => {
+    const container = await mount([makeAlarm()], vi.fn(), []);
+    expect(container.querySelector('.alarm-panel__section--resolved')).toBeNull();
+    expect(container.querySelector('.alarm-panel__resolved')).toBeNull();
+  });
+
+  it('shows resolved alarms even when there are no active alarms', async () => {
+    const resolved = [makeResolvedAlarm({ id: 'r1' })];
+    const container = await mount([], vi.fn(), resolved);
+
+    expect(container.textContent).toContain('Sem alarmes ativos');
+    expect(container.textContent).toContain('Resolvidos recentemente');
+    expect(container.textContent).toContain('SW-JDM-01');
+  });
+
+  it('renders resolved duration and resolution time', async () => {
+    const startedAt = new Date(2026, 8, 16, 8, 37, 43);
+    const resolved = [
+      makeResolvedAlarm({
+        id: 'r1',
+        startedAt: startedAt.toISOString(),
+        endedAt: new Date(startedAt.getTime() + 3 * 60_000 + 27_000).toISOString(),
+      }),
+    ];
+    const container = await mount([], vi.fn(), resolved);
+
+    expect(container.textContent).toContain('Duração 3m27s');
+    expect(container.textContent).toContain('Resolvido às');
+  });
+
+  it('clicking a resolved alarm asks the map to focus it', async () => {
+    const onFocus = vi.fn();
+    const resolved = makeResolvedAlarm({ id: 'resolved-click' });
+    const container = await mount([makeAlarm()], onFocus, [resolved]);
+
+    const resolvedItems = [
+      ...container.querySelectorAll<HTMLButtonElement>('.alarm-panel__resolved'),
+    ];
+    expect(resolvedItems).toHaveLength(1);
+
+    await act(async () => {
+      resolvedItems[0]!.click();
+    });
+    expect(onFocus).toHaveBeenCalledTimes(1);
+    expect(onFocus).toHaveBeenCalledWith(resolved);
   });
 });

@@ -6,7 +6,7 @@ import {
   type AlarmType,
 } from '@gmj/shared';
 import { PrismaClient } from '../../generated/prisma/index.js';
-import type { AlarmOpenInput, AlarmRepository } from './alarm-repository';
+import type { AlarmHistoryOptions, AlarmOpenInput, AlarmRepository } from './alarm-repository';
 
 const alarmInclude = {
   device: { select: { id: true, name: true, displayName: true } },
@@ -78,7 +78,17 @@ export class PrismaAlarmRepository implements AlarmRepository {
     return rows.map(toAlarm);
   }
 
-  async listHistory(limit: number): Promise<Alarm[]> {
+  async listHistory(limit: number, options?: AlarmHistoryOptions): Promise<Alarm[]> {
+    if (options?.resolvedOnly) {
+      const rows = await this.prisma.alarm.findMany({
+        where: { endedAt: { not: null } },
+        include: alarmInclude,
+        orderBy: { endedAt: 'desc' },
+        take: limit,
+      });
+      return rows.map(toAlarm);
+    }
+
     const rows = await this.prisma.alarm.findMany({
       include: alarmInclude,
       orderBy: { startedAt: 'desc' },

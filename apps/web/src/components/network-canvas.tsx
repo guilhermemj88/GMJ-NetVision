@@ -18,7 +18,13 @@ import {
   type OnNodeDrag,
   type OnNodesChange,
 } from '@xyflow/react';
-import { getMap, getMaps, getAlarms, updateNetworkMap } from '@/lib/api';
+import {
+  getMap,
+  getMaps,
+  getAlarms,
+  getRecentResolvedAlarms,
+  updateNetworkMap,
+} from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
 import { computeParallelLinkLayouts, type Alarm } from '@gmj/shared';
 import { DeviceNode, type DeviceFlowNode } from './device-node';
@@ -95,6 +101,18 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     refetchIntervalInBackground: true,
   });
   const alarms = alarmsQuery.data ?? [];
+
+  // Recently resolved alarms follow the same refresh cycle as the active ones.
+  // The backend returns at most the 3 most recent resolutions.
+  const resolvedAlarmsQuery = useQuery({
+    queryKey: ['alarms', 'resolved'],
+    queryFn: () => getRecentResolvedAlarms(3),
+    enabled: !readOnly,
+    refetchInterval: MAP_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: true,
+  });
+  const recentResolvedAlarms = resolvedAlarmsQuery.data ?? [];
+
   const alarmCountByDevice = useMemo(() => {
     const counts = new Map<string, number>();
     for (const alarm of alarmsQuery.data ?? []) {
@@ -455,7 +473,13 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
               <PppTotalWidget widget={widget} devices={map.devices} readOnly={readOnly} />
             </ViewportPortal>
           ))}
-        {!readOnly && <AlarmPanel alarms={alarms} onFocus={focusAlarm} />}
+        {!readOnly && (
+          <AlarmPanel
+            alarms={alarms}
+            resolvedAlarms={recentResolvedAlarms}
+            onFocus={focusAlarm}
+          />
+        )}
         {editMode && alignmentGuides.length > 0 && (
           <ViewportPortal>
             {alignmentGuides.map((guide) => (

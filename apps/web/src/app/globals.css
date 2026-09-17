@@ -5137,6 +5137,65 @@ label > small {
   color: #546872;
   font: 450 9px var(--font-mono);
 }
+.alarm-panel__section {
+  margin: 0;
+  padding: 8px 10px 3px;
+  color: #5f747f;
+  font: 650 8px var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.alarm-panel__section--active {
+  color: #e2797d;
+}
+.alarm-panel__section--resolved {
+  color: #5e9d7b;
+  border-top: 1px solid #22343e;
+}
+.alarm-panel__list--resolved {
+  padding-top: 2px;
+}
+.alarm-panel__resolved {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+.alarm-panel__resolved:hover {
+  border-color: #24403a;
+  background: rgba(16, 30, 25, 0.55);
+}
+.alarm-panel__resolved-check {
+  color: #5e9d7b;
+  font: 700 11px var(--font-mono);
+  line-height: 1.45;
+}
+.alarm-panel__resolved-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.alarm-panel__resolved-body strong {
+  color: #9fb7c1;
+  font: 650 10px var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.alarm-panel__resolved-body small {
+  color: #4f625b;
+  font: 450 9px var(--font-mono);
+}
 .alarm-panel__reveal {
   position: absolute;
   z-index: 6;

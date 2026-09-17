@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { alarmInterfaceLabel, alarmTypeLabel, formatAlarmDownSince } from './alarm-label';
+import {
+  alarmInterfaceLabel,
+  alarmTypeLabel,
+  formatAlarmDownSince,
+  formatAlarmDuration,
+} from './alarm-label';
 
 describe('alarmInterfaceLabel', () => {
   it('prioritizes alias over description, name and ifIndex', () => {
@@ -42,6 +47,32 @@ describe('formatAlarmDownSince', () => {
 
   it('returns a placeholder for an invalid timestamp', () => {
     expect(formatAlarmDownSince('not-a-date')).toBe('--:--:--');
+  });
+});
+
+describe('formatAlarmDuration', () => {
+  const startedAt = new Date(2026, 8, 16, 21, 17, 32);
+
+  it('formats sub-minute durations in seconds only', () => {
+    const endedAt = new Date(startedAt.getTime() + 38_000);
+    expect(formatAlarmDuration(startedAt.toISOString(), endedAt.toISOString())).toBe('38s');
+  });
+
+  it('formats durations between one minute and one hour as minutes and seconds', () => {
+    const endedAt = new Date(startedAt.getTime() + 134_000);
+    expect(formatAlarmDuration(startedAt.toISOString(), endedAt.toISOString())).toBe('2m14s');
+  });
+
+  it('formats durations over one hour as hours and minutes', () => {
+    const endedAt = new Date(startedAt.getTime() + 63 * 60_000);
+    expect(formatAlarmDuration(startedAt.toISOString(), endedAt.toISOString())).toBe('1h03m');
+  });
+
+  it('returns 0s for invalid or non-positive spans', () => {
+    expect(formatAlarmDuration('not-a-date', startedAt.toISOString())).toBe('0s');
+    expect(
+      formatAlarmDuration(startedAt.toISOString(), new Date(startedAt.getTime() - 1).toISOString()),
+    ).toBe('0s');
   });
 });
 
