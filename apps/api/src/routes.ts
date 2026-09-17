@@ -53,6 +53,10 @@ import { SnmpClientImpl } from './infrastructure/snmp/snmp-client-impl';
 import { SnmpPoller } from './infrastructure/snmp/snmp-poller';
 import { SnmpService } from './infrastructure/snmp/snmp-service';
 import { DemoMplsRepository } from './infrastructure/mpls/demo-mpls-repository';
+import { DemoAlarmRepository } from './infrastructure/alarms/demo-alarm-repository';
+import { PrismaAlarmRepository } from './infrastructure/alarms/prisma-alarm-repository';
+import { AlarmService } from './application/alarm-service';
+import { registerAlarmRoutes } from './alarm-routes';
 import { HuaweiVplsSnmpCollector } from './infrastructure/mpls/huawei-vpls-snmp';
 import { MplsPollingService } from './infrastructure/mpls/mpls-polling-service';
 import { PrismaMplsRepository } from './infrastructure/mpls/prisma-mpls-repository';
@@ -111,6 +115,8 @@ const linkSchema = z.object({
   metricDisplay: z.enum(['THROUGHPUT', 'UTILIZATION', 'BOTH', 'NONE']).nullable(),
   aggregationMode: z.enum(['NONE', 'SUM']).optional(),
   linkLayoutMode: z.enum(['AUTO', 'MANUAL']).optional(),
+  sourceHandleSide: z.enum(['AUTO', 'TOP', 'RIGHT', 'BOTTOM', 'LEFT']).optional(),
+  targetHandleSide: z.enum(['AUTO', 'TOP', 'RIGHT', 'BOTTOM', 'LEFT']).optional(),
   metricSources: z
     .array(
       z.object({
@@ -383,12 +389,15 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const pppPolling = pppRepository
     ? new PppPollingService(new SnmpClientImpl(3000, 1), pppRepository)
     : undefined;
+  const alarmRepository = config.DEMO_MODE ? new DemoAlarmRepository() : new PrismaAlarmRepository();
+  const alarms = new AlarmService(alarmRepository);
   const snmp = new SnmpService(
     hosts,
     ssh,
     config.OPTICAL_POLL_INTERVAL_SECONDS * 1000,
     mplsPolling,
     pppPolling,
+    alarms,
   );
   const poller = new SnmpPoller(hosts, snmp, config.SNMP_POLL_INTERVAL_SECONDS * 1000);
   const zabbix =
@@ -410,6 +419,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   registerHostRoutes(app, { legacyMaps, mapMembership: maps, hosts, discovery, snmp, ssh, zabbix });
   registerMplsRoutes(app, { hosts, mpls: mplsRepository });
+  registerAlarmRoutes(app, { alarms: alarmRepository });
 
   app.addHook('onReady', async () => {
     if (config.DEMO_MODE) {
@@ -448,6 +458,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       await publicViewRepository.disconnect();
     if (mplsRepository instanceof PrismaMplsRepository) await mplsRepository.disconnect();
     if (pppRepository instanceof PrismaPppRepository) await pppRepository.disconnect();
+    if (alarmRepository instanceof PrismaAlarmRepository) await alarmRepository.disconnect();
   });
 
   app.get('/health', async () => ({
@@ -859,6 +870,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       ...(parsed.metricSources === undefined ? {} : { metricSources: parsed.metricSources }),
       ...(parsed.visualPaths === undefined ? {} : { visualPaths: parsed.visualPaths }),
       ...(parsed.linkLayoutMode === undefined ? {} : { linkLayoutMode: parsed.linkLayoutMode }),
+      ...(parsed.sourceHandleSide === undefined
+        ? {}
+        : { sourceHandleSide: parsed.sourceHandleSide }),
+      ...(parsed.targetHandleSide === undefined
+        ? {}
+        : { targetHandleSide: parsed.targetHandleSide }),
     };
     if (
       input.trafficMode === 'SINGLE_ENDED' &&
@@ -894,6 +911,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         metricSources: true,
         visualPaths: true,
         linkLayoutMode: true,
+        sourceHandleSide: true,
+        targetHandleSide: true,
       })
       .parse(request.body);
     const {
@@ -910,6 +929,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       metricSources,
       visualPaths,
       linkLayoutMode,
+      sourceHandleSide,
+      targetHandleSide,
       ...fields
     } = body;
     if (trafficMode !== undefined || sourceInterfaceId !== undefined || targetInterfaceId !== undefined || metricSources !== undefined || aggregationMode !== undefined) {
@@ -933,6 +954,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       ...(targetInterfaceId === undefined ? {} : { targetInterfaceId }),
       ...(aggregationMode === undefined ? {} : { aggregationMode }),
       ...(linkLayoutMode === undefined ? {} : { linkLayoutMode }),
+      ...(sourceHandleSide === undefined ? {} : { sourceHandleSide }),
+      ...(targetHandleSide === undefined ? {} : { targetHandleSide }),
       ...(metricSources === undefined ? {} : { metricSources }),
       ...(visualPaths === undefined ? {} : { visualPaths }),
     });

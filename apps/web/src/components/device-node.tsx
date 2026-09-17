@@ -28,6 +28,7 @@ export interface DeviceNodeData extends Record<string, unknown> {
   displayMode: NodeDisplayMode;
   nodeScale: number;
   labelScale: number;
+  alarmCount: number;
 }
 
 export type DeviceFlowNode = Node<DeviceNodeData, 'device'>;
@@ -40,7 +41,16 @@ const handlePositions = {
 } as const;
 
 export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
-  const { device, mapNode, editMode, showInterfaces, displayMode, nodeScale, labelScale } = data;
+  const {
+    device,
+    mapNode,
+    editMode,
+    showInterfaces,
+    displayMode,
+    nodeScale,
+    labelScale,
+    alarmCount,
+  } = data;
   const subscribe = useCallback(
     (onStoreChange: () => void) => subscribeDeviceIconPreference(device.id, onStoreChange),
     [device.id],
@@ -91,6 +101,15 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
         {displayMode === 'CARD' && <em>{device.site}</em>}
       </div>
       {mapNode.locked && <LockKeyhole className="device-node__lock" size={13} />}
+      {alarmCount > 0 && (
+        <span
+          className="device-node__alarm-badge"
+          title={`${alarmCount} alarme(s) ativo(s)`}
+          aria-label={`${alarmCount} alarmes ativos`}
+        >
+          ⚠ {alarmCount}
+        </span>
+      )}
       {showInterfaces && (
         <span className="device-node__ports">{device.interfaces.length} ports</span>
       )}

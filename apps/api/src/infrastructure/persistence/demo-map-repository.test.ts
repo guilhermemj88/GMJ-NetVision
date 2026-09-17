@@ -1,6 +1,59 @@
 import { describe, expect, it } from 'vitest';
 import { DemoMapRepository } from './demo-map-repository';
 
+describe('demo link connection sides', () => {
+  it('defaults new and legacy links to AUTO', () => {
+    const repository = new DemoMapRepository();
+    const map = repository.getMap('backbone-main')!;
+    expect(map.links[0]).toMatchObject({ sourceHandleSide: 'AUTO', targetHandleSide: 'AUTO' });
+
+    const created = repository.createDiscoveredLink(map.id, { ...map.links[0]! }, 'MANUAL')!;
+    expect(created).toMatchObject({ sourceHandleSide: 'AUTO', targetHandleSide: 'AUTO' });
+
+    const manual = repository.createDiscoveredLink(
+      map.id,
+      { ...map.links[0]!, sourceHandleSide: 'BOTTOM', targetHandleSide: 'LEFT' },
+      'MANUAL',
+    )!;
+    expect(manual).toMatchObject({ sourceHandleSide: 'BOTTOM', targetHandleSide: 'LEFT' });
+  });
+
+  it('persists a side change while preserving endpoints, telemetry and geometry', () => {
+    const repository = new DemoMapRepository();
+    const map = repository.getMap('backbone-main')!;
+    const original = map.links[0]!;
+
+    const updated = repository.updateLink(map.id, original.id, {
+      capacityBps: original.capacityBps,
+      autoCapacityBps: original.autoCapacityBps,
+      capacitySource: original.capacitySource,
+      label: original.label,
+      metricSource: original.metricSource,
+      visualStyle: original.visualStyle,
+      metricDisplay: original.metricDisplay,
+      sourceHandleSide: 'RIGHT',
+    })!;
+
+    expect(updated).toMatchObject({
+      id: original.id,
+      sourceDeviceId: original.sourceDeviceId,
+      targetDeviceId: original.targetDeviceId,
+      sourceInterfaceId: original.sourceInterfaceId,
+      targetInterfaceId: original.targetInterfaceId,
+      sourceHandleSide: 'RIGHT',
+      targetHandleSide: 'AUTO',
+      visualPaths: original.visualPaths,
+      directions: original.directions,
+      rxBps: original.rxBps,
+      txBps: original.txBps,
+    });
+
+    const reloaded = repository.getMap(map.id)!.links.find((item) => item.id === original.id)!;
+    expect(reloaded).toMatchObject({ sourceHandleSide: 'RIGHT', targetHandleSide: 'AUTO' });
+    expect(repository.getMap(map.id)!.links).toHaveLength(map.links.length);
+  });
+});
+
 describe('demo conceptual node editing', () => {
   it('edits label/type/lock while preserving identity, position, PPP options and links', () => {
     const repository = new DemoMapRepository();

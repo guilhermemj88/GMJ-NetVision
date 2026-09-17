@@ -547,6 +547,8 @@ export const useMapStore = create<MapState>((set) => ({
           { order: 0, label: null, customColor: null, curvature: 0, enabled: true },
         ],
         linkLayoutMode: input.linkLayoutMode ?? 'AUTO',
+        sourceHandleSide: input.sourceHandleSide ?? 'AUTO',
+        targetHandleSide: input.targetHandleSide ?? 'AUTO',
         status: 'UP',
         discoverySource: 'MANUAL',
         directions: {

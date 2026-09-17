@@ -1892,6 +1892,49 @@ button {
   vector-effect: non-scaling-stroke;
   cursor: pointer;
 }
+.traffic-edge__curve-grab {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 22;
+  pointer-events: stroke;
+  vector-effect: non-scaling-stroke;
+  cursor: grab;
+}
+.traffic-edge__curve-grab:active {
+  cursor: grabbing;
+}
+.link-handle-anchor {
+  position: absolute;
+  z-index: 21;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid #3d5b6b;
+  border-radius: 50%;
+  background: #13212b;
+  color: #9fd8ef;
+  font: 700 9px var(--font-mono);
+  line-height: 1;
+  pointer-events: all;
+  touch-action: none;
+  user-select: none;
+  cursor: pointer;
+}
+.link-handle-anchor:hover:not(:disabled),
+.link-handle-anchor:focus-visible {
+  border-color: #65cce7;
+  color: #d9f4ff;
+}
+.link-handle-anchor[data-side='AUTO'] {
+  border-style: dashed;
+  opacity: 0.72;
+}
+.link-handle-anchor:disabled {
+  cursor: progress;
+  opacity: 0.5;
+}
 .link-curvature-handle {
   position: absolute;
   z-index: 20;
@@ -3557,6 +3600,15 @@ button {
 .link-layout-mode {
   margin-bottom: 14px;
 }
+.link-handle-sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.link-handle-sides label {
+  margin-bottom: 0;
+}
 .link-layout-mode__title {
   display: block;
   margin-bottom: 7px;
@@ -4921,6 +4973,230 @@ label > small {
   font: 600 11px var(--font-mono);
   letter-spacing: 0.12em;
 }
+
+/* ---- Interface-down alarm panel (NOC) ---- */
+.alarm-panel {
+  position: absolute;
+  z-index: 6;
+  top: 74px;
+  width: 264px;
+  max-height: calc(100% - 110px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #263b46;
+  border-radius: 6px;
+  background: rgba(11, 19, 24, 0.92);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(10px);
+  overflow: hidden;
+}
+.alarm-panel--right {
+  right: 18px;
+}
+.alarm-panel--left {
+  left: 18px;
+}
+.alarm-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #22343e;
+  background: rgba(7, 12, 16, 0.6);
+}
+.alarm-panel__header strong {
+  color: #9cb1bb;
+  font: 650 9px var(--font-mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.alarm-panel__count {
+  min-width: 18px;
+  padding: 1px 5px;
+  border: 1px solid #2a3d47;
+  border-radius: 8px;
+  color: #5f747f;
+  font: 650 9px var(--font-mono);
+  text-align: center;
+}
+.alarm-panel__count--active {
+  color: #ff9d9f;
+  border-color: #6b3235;
+  background: #30191c;
+  box-shadow: 0 0 8px rgba(226, 75, 75, 0.28);
+}
+.alarm-panel__actions {
+  display: flex;
+  gap: 2px;
+  margin-left: auto;
+}
+.alarm-panel__actions button {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #5f747f;
+  cursor: pointer;
+}
+.alarm-panel__actions button:hover {
+  background: #17252d;
+  color: #a9c2cd;
+}
+.alarm-panel__list {
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.alarm-panel__empty {
+  margin: 0;
+  padding: 14px 10px;
+  color: #526570;
+  font: 500 10px var(--font-mono);
+  text-align: center;
+}
+.alarm-panel__item {
+  width: 100%;
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 7px 8px;
+  border: 1px solid #22343e;
+  border-radius: 5px;
+  background: rgba(16, 26, 33, 0.75);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    background 0.12s;
+}
+.alarm-panel__item:hover {
+  border-color: #3a5563;
+  background: rgba(24, 39, 48, 0.9);
+}
+.alarm-panel__severity {
+  align-self: flex-start;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font: 750 8px var(--font-mono);
+  letter-spacing: 0.06em;
+}
+.alarm-panel__severity--critical {
+  color: #ff9d9f;
+  border: 1px solid #6b3235;
+  background: #30191c;
+}
+.alarm-panel__severity--major {
+  color: #f0a46a;
+  border: 1px solid #6e4a2c;
+  background: #2e2015;
+}
+.alarm-panel__severity--warning {
+  color: #e0c45f;
+  border: 1px solid #675b25;
+  background: #2d2713;
+}
+.alarm-panel__severity--info {
+  color: #7bb7dc;
+  border: 1px solid #2c5066;
+  background: #132632;
+}
+.alarm-panel__item-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.alarm-panel__item-body strong {
+  color: #ffb0b2;
+  font: 700 9px var(--font-mono);
+  letter-spacing: 0.08em;
+}
+.alarm-panel__device {
+  color: #cfe2ea;
+  font: 650 11px var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.alarm-panel__interface {
+  color: #8ba0aa;
+  font: 500 10px var(--font-mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.alarm-panel__item-body small {
+  color: #546872;
+  font: 450 9px var(--font-mono);
+}
+.alarm-panel__reveal {
+  position: absolute;
+  z-index: 6;
+  top: 74px;
+  right: 18px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 9px;
+  border: 1px solid #2a3d47;
+  border-radius: 5px;
+  background: rgba(11, 19, 24, 0.92);
+  color: #5f747f;
+  font: 650 10px var(--font-mono);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+.alarm-panel__reveal--active {
+  color: #ff9d9f;
+  border-color: #6b3235;
+  background: rgba(48, 25, 28, 0.92);
+  box-shadow: 0 0 10px rgba(226, 75, 75, 0.25);
+}
+
+/* Small alarm badge pinned to a device node. */
+.device-node__alarm-badge {
+  position: absolute;
+  z-index: 7;
+  top: -9px;
+  right: -12px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 6px;
+  border: 1px solid #6b3235;
+  border-radius: 8px;
+  background: #2c1519;
+  color: #ff9d9f;
+  font: 750 9px var(--font-mono);
+  letter-spacing: 0.04em;
+  box-shadow: 0 0 9px rgba(226, 75, 75, 0.35);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/* Interface-down links read clearly as red and dashed on the dark canvas. */
+.traffic-edge--base.traffic-edge--down {
+  stroke: #c94646;
+  stroke-dasharray: 7 5;
+  opacity: 0.82;
+}
+.traffic-edge--down {
+  stroke: #d85656;
+  color: #d85656;
+}
+.traffic-edge--ba.traffic-edge--down {
+  stroke: #d85656;
+  color: #d85656;
+}
+
 
 .login-page {
   width: 100vw;

@@ -20,10 +20,6 @@ const ROLES: Array<{ value: Role; label: string }> = [
   { value: 'VIEWER', label: 'Visualizador' },
 ];
 
-function roleLabel(role: Role): string {
-  return ROLES.find((item) => item.value === role)?.label ?? role;
-}
-
 export function UsersPanel() {
   const setPanel = useMapStore((state) => state.setPanel);
   const queryClient = useQueryClient();

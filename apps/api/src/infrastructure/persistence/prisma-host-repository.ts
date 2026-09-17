@@ -24,6 +24,7 @@ import type {
   HostRepository,
   InterfaceCounterSnapshot,
   InterfaceMetricSampleInput,
+  InterfaceStatusTransition,
   InterfaceStatusUpdate,
   SnmpCredentialSecret,
   SshCredentialSecret,
@@ -505,16 +506,36 @@ export class PrismaHostRepository implements HostRepository {
     return (await this.getHost(hostId))?.interfaces ?? [];
   }
 
-  async updateInterfaceStatuses(hostId: string, statuses: InterfaceStatusUpdate[]): Promise<void> {
+  async updateInterfaceStatuses(
+    hostId: string,
+    statuses: InterfaceStatusUpdate[],
+  ): Promise<InterfaceStatusTransition[]> {
     const byIfIndex = new Map<number, InterfaceStatusUpdate>();
     for (const status of statuses) {
       if (Number.isInteger(status.ifIndex) && status.ifIndex > 0) {
         byIfIndex.set(status.ifIndex, status);
       }
     }
-    if (!byIfIndex.size) return;
+    if (!byIfIndex.size) return [];
 
+    const transitions: InterfaceStatusTransition[] = [];
     await this.prisma.$transaction(async (tx) => {
+      const previous = await tx.interface.findMany({
+        where: { deviceId: hostId, ifIndex: { in: [...byIfIndex.keys()] } },
+        select: { id: true, ifIndex: true, operStatus: true },
+      });
+      for (const row of previous) {
+        const update = byIfIndex.get(row.ifIndex);
+        if (update?.operStatus !== undefined && update.operStatus !== row.operStatus) {
+          transitions.push({
+            deviceId: hostId,
+            interfaceId: row.id,
+            ifIndex: row.ifIndex,
+            previousStatus: row.operStatus,
+            newStatus: update.operStatus,
+          });
+        }
+      }
       await Promise.all([...byIfIndex.values()].map((status) => tx.interface.updateMany({
         where: { deviceId: hostId, ifIndex: status.ifIndex },
         data: {
@@ -523,6 +544,7 @@ export class PrismaHostRepository implements HostRepository {
         },
       })));
     });
+    return transitions;
   }
 
   async updateInterfaceOptics(
@@ -973,6 +995,7 @@ export class PrismaHostRepository implements HostRepository {
       mtu: number | null; speedBps: bigint | null; rxPowerDbm: number | null; txPowerDbm: number | null;
       opticalLanes: unknown; opticalLaneSource: string | null; opticalLanesUpdatedAt: Date | null;
       opticalSource: string | null; opticalUpdatedAt: Date | null; dataSources: unknown;
+      operStatus: InterfaceStatus;
     },
   ) {
     const validText = (value: string): boolean => {
@@ -985,6 +1008,10 @@ export class PrismaHostRepository implements HostRepository {
     const existingOpticalLanes = opticalLanesFromDb(existing?.opticalLanes);
     return {
       ...this.interfaceCreateData(item),
+      // Discovery refreshes metadata but must never overwrite the operStatus
+      // baseline: transitions are detected by comparing the previous persisted
+      // status against the fresh poll in `updateInterfaceStatuses`.
+      operStatus: existing?.operStatus ?? item.operStatus,
       name: validText(item.name) ? item.name : existing?.name ?? item.name,
       alias: validText(item.alias) ? item.alias : existing?.alias ?? null,
       description: validText(item.description) ? item.description : existing?.description ?? null,

@@ -5,6 +5,7 @@ import {
   calculateUtilization,
   cloneDemoMaps,
   createLocalId,
+  normalizeLinkHandleSide,
   defaultPppTotalSettings,
   type AddDeviceResult,
   type AssistedDiscoveryPreview,
@@ -43,7 +44,7 @@ import {
   type ZabbixImportResult,
 } from '@gmj/shared';
 import type { CredentialVault } from '../../application/credential-vault';
-import type { InterfaceStatusUpdate } from './host-repository';
+import type { InterfaceStatusTransition, InterfaceStatusUpdate } from './host-repository';
 
 export interface NodePositionUpdate {
   nodeId: string;
@@ -714,9 +715,9 @@ export class DemoMapRepository {
     return this.getHost(hostId);
   }
 
-  updateInterfaceStatuses(hostId: string, statuses: InterfaceStatusUpdate[]): void {
+  updateInterfaceStatuses(hostId: string, statuses: InterfaceStatusUpdate[]): InterfaceStatusTransition[] {
     const host = this.findHost(hostId);
-    if (!host) return;
+    if (!host) return [];
     const byIfIndex = new Map(statuses.map((status) => [status.ifIndex, status]));
     for (const networkInterface of host.interfaces) {
       const status = byIfIndex.get(networkInterface.ifIndex);
@@ -725,6 +726,7 @@ export class DemoMapRepository {
       if (status.operStatus !== undefined) networkInterface.operStatus = status.operStatus;
     }
     host.updatedAt = new Date().toISOString();
+    return [];
   }
 
   listMaps(): MapSummary[] {
@@ -1044,6 +1046,8 @@ export class DemoMapRepository {
         { order: 0, label: null, customColor: null, curvature: 0, enabled: true },
       ],
       linkLayoutMode: input.linkLayoutMode ?? 'AUTO',
+      sourceHandleSide: normalizeLinkHandleSide(input.sourceHandleSide),
+      targetHandleSide: normalizeLinkHandleSide(input.targetHandleSide),
       status: 'UP',
       discoverySource,
       directions: {
@@ -1086,6 +1090,8 @@ export class DemoMapRepository {
     const link = map.links.find((item) => item.id === linkId);
     if (!link) return null;
     Object.assign(link, input, { updatedAt: new Date().toISOString() });
+    link.sourceHandleSide = normalizeLinkHandleSide(link.sourceHandleSide);
+    link.targetHandleSide = normalizeLinkHandleSide(link.targetHandleSide);
     link.directions = {
       A_TO_B: {
         ...link.directions.A_TO_B,

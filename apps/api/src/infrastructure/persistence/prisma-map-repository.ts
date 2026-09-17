@@ -4,6 +4,7 @@ import {
   createLocalId,
   defaultPppTotalSettings,
   defaultVisualPaths,
+  normalizeLinkHandleSide,
   type AddDeviceResult,
   type CreateGenericNodeInput,
   type CreateLinkInput,
@@ -684,6 +685,8 @@ export class PrismaMapRepository {
         metricSources: asJson(input.metricSources ?? []),
         visualPaths: asJson(input.visualPaths ?? defaultVisualPaths(1)),
         linkLayoutMode: input.linkLayoutMode ?? 'AUTO',
+        sourceHandleSide: normalizeLinkHandleSide(input.sourceHandleSide),
+        targetHandleSide: normalizeLinkHandleSide(input.targetHandleSide),
       },
     });
     return this.materializeLink(row, await this.hosts.listHosts());
@@ -739,6 +742,12 @@ export class PrismaMapRepository {
         ...(input.linkLayoutMode === undefined
           ? {}
           : { linkLayoutMode: input.linkLayoutMode }),
+        ...(input.sourceHandleSide === undefined
+          ? {}
+          : { sourceHandleSide: normalizeLinkHandleSide(input.sourceHandleSide) }),
+        ...(input.targetHandleSide === undefined
+          ? {}
+          : { targetHandleSide: normalizeLinkHandleSide(input.targetHandleSide) }),
       },
     });
     if (!result.count) return null;
@@ -959,6 +968,8 @@ export class PrismaMapRepository {
       metricSources: unknown;
       visualPaths: unknown;
       linkLayoutMode: string | null;
+      sourceHandleSide?: string | null;
+      targetHandleSide?: string | null;
       createdAt: Date;
       updatedAt: Date;
     },
@@ -1025,6 +1036,8 @@ export class PrismaMapRepository {
       aggregationMode,
       metricSources,
       linkLayoutMode: normalizeLinkLayoutMode(row.linkLayoutMode),
+      sourceHandleSide: normalizeLinkHandleSide(row.sourceHandleSide),
+      targetHandleSide: normalizeLinkHandleSide(row.targetHandleSide),
       visualPaths,
       directions: metrics.directions,
       rxBps: metrics.rxBps,

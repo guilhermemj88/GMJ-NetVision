@@ -34,6 +34,7 @@ import {
   autoCurvatures,
   DEFAULT_TRAFFIC_COLOR_A_TO_B,
   DEFAULT_TRAFFIC_COLOR_B_TO_A,
+  LINK_HANDLE_SIDE_LABELS,
   defaultVisualPaths,
   formatBitsPerSecond,
   formatDuration,
@@ -45,6 +46,7 @@ import {
   type HostRecord,
   type LinkAggregationMode,
   type LinkDisplayStyle,
+  type LinkHandleSide,
   type LinkLayoutMode,
   type LinkMetricDisplay,
   type LinkMetricSource,
@@ -67,6 +69,7 @@ import {
   updateNodePpp as updateNodePppRequest,
 } from '@/lib/api';
 import { GENERIC_NODE_TYPES, normalizeGenericIconType, type NetworkDeviceIconType } from '@/lib/device-appearance';
+import { cacheLinkReplace } from '@/lib/link-persistence';
 import { useMapStore } from '@/store/map-store';
 import { MetricCharts } from './metric-charts';
 import { OpticalHistoryCharts } from './optical-history-charts';
@@ -721,12 +724,28 @@ function LinkDrawer({
   const [visualPaths, setVisualPaths] = useState<LinkVisualPath[]>(
     link.visualPaths?.length ? link.visualPaths : defaultVisualPaths(1),
   );
+  const [sourceHandleSide, setSourceHandleSide] = useState<LinkHandleSide>(
+    link.sourceHandleSide ?? 'AUTO',
+  );
+  const [targetHandleSide, setTargetHandleSide] = useState<LinkHandleSide>(
+    link.targetHandleSide ?? 'AUTO',
+  );
   // Canvas edits must also update an already-open form, without clearing its other fields.
-  const savedGeometry = JSON.stringify({ visualPaths: link.visualPaths, linkLayoutMode: link.linkLayoutMode });
+  const savedGeometry = JSON.stringify({
+    visualPaths: link.visualPaths,
+    linkLayoutMode: link.linkLayoutMode,
+    sourceHandleSide: link.sourceHandleSide,
+    targetHandleSide: link.targetHandleSide,
+  });
   useEffect(() => {
-    const geometry = JSON.parse(savedGeometry) as LinkGeometry;
+    const geometry = JSON.parse(savedGeometry) as LinkGeometry & {
+      sourceHandleSide?: LinkHandleSide;
+      targetHandleSide?: LinkHandleSide;
+    };
     setVisualPaths(geometry.visualPaths?.length ? geometry.visualPaths : defaultVisualPaths(1));
     setLinkLayoutMode(geometry.linkLayoutMode);
+    setSourceHandleSide(geometry.sourceHandleSide ?? 'AUTO');
+    setTargetHandleSide(geometry.targetHandleSide ?? 'AUTO');
   }, [savedGeometry]);
   const geometryBusy = useMapStore((state) => Boolean(state.linkGeometryDrafts[link.id]));
   const initialUnit = link.capacityBps >= 1_000_000_000 ? 'GBPS' : 'MBPS';
@@ -762,6 +781,7 @@ function LinkDrawer({
   const removeLink = useMapStore((state) => state.removeLink);
   const replaceLink = useMapStore((state) => state.replaceLink);
   const showToast = useMapStore((state) => state.showToast);
+  const client = useQueryClient();
   const source = map?.devices.find((item) => item.id === link.sourceDeviceId);
   const target = map?.devices.find((item) => item.id === link.targetDeviceId);
   const sourceNode = map?.nodes.find((item) => item.id === link.sourceNodeId);
@@ -853,6 +873,8 @@ function LinkDrawer({
     metricSources,
     visualPaths,
     linkLayoutMode,
+    sourceHandleSide,
+    targetHandleSide,
     directions: metrics.directions,
     txBps: metrics.txBps,
     rxBps: metrics.rxBps,
@@ -888,9 +910,14 @@ function LinkDrawer({
         metricSources,
         linkLayoutMode,
         visualPaths,
+        sourceHandleSide,
+        targetHandleSide,
       }),
-    onSuccess: (updated) => {
+    onSuccess: async (updated) => {
       replaceLink(updated);
+      // Keep the cached map authoritative, otherwise a later canvas edit would
+      // merge into a stale link and undo this save.
+      await cacheLinkReplace(client, updated);
       setEditing(false);
       showToast('Enlace atualizado');
     },
@@ -1335,6 +1362,34 @@ function LinkDrawer({
           </label>
           <div className="edit-link-form__section">
             <SectionTitle icon={<Route size={14} />} label="FORMA DO ENLACE" />
+            <div className="link-handle-sides">
+              <label>
+                Conexão da ponta A
+                <select
+                  value={sourceHandleSide}
+                  onChange={(event) => setSourceHandleSide(event.target.value as LinkHandleSide)}
+                >
+                  {LINK_HANDLE_SIDE_LABELS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                Conexão da ponta B
+                <select
+                  value={targetHandleSide}
+                  onChange={(event) => setTargetHandleSide(event.target.value as LinkHandleSide)}
+                >
+                  {LINK_HANDLE_SIDE_LABELS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <div className="link-layout-mode">
               <span className="link-layout-mode__title">
                 Geometria automática de links paralelos

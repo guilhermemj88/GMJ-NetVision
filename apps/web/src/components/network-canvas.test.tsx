@@ -14,6 +14,7 @@ import {
 } from '@gmj/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getMap, getMaps, updateLink, updateNetworkMap } from '@/lib/api';
+import { selectEdgeHandles } from '@/lib/edge-handles';
 import { useMapStore } from '@/store/map-store';
 import { NetworkCanvas } from './network-canvas';
 
@@ -21,6 +22,7 @@ vi.mock('@/lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api')>()),
   getMap: vi.fn(),
   getMaps: vi.fn(),
+  getAlarms: vi.fn().mockResolvedValue([]),
   updateLink: vi.fn(),
   updateNetworkMap: vi.fn(),
 }));
@@ -100,12 +102,14 @@ function installLayoutShims() {
   Object.defineProperty(window.HTMLElement.prototype, 'offsetWidth', {
     configurable: true,
     get(this: HTMLElement) {
+      if (this.classList.contains('react-flow__handle')) return 1;
       return this.classList.contains('react-flow__node') ? NODE_WIDTH : 0;
     },
   });
   Object.defineProperty(window.HTMLElement.prototype, 'offsetHeight', {
     configurable: true,
     get(this: HTMLElement) {
+      if (this.classList.contains('react-flow__handle')) return 1;
       return this.classList.contains('react-flow__node') ? NODE_HEIGHT : 0;
     },
   });
@@ -216,8 +220,65 @@ function deviceToGenericMap(side: 'SOURCE' | 'TARGET'): {
   return { map: { ...demo, links: [link], nodes: [...demo.nodes, conceptualNode] }, link };
 }
 
+/** GENERIC <-> GENERIC, both ends conceptual. */
+function genericToGenericMap(): { map: NetworkMap; link: NetworkLink } {
+  const demo = firstMap();
+  const origin = genericNode('carrier-a', 'Operadora A', { x: 160, y: 120 }, demo.id);
+  const peer = genericNode('carrier-b', 'Operadora B', { x: 640, y: 300 }, demo.id);
+  const link = linkFixture(demo.links[0]!, {
+    trafficMode: 'SINGLE_ENDED',
+    sourceDeviceId: null,
+    sourceInterfaceId: null,
+    targetDeviceId: null,
+    targetInterfaceId: null,
+    sourceNodeId: origin.id,
+    targetNodeId: peer.id,
+  });
+  return {
+    map: { ...demo, links: [link], nodes: [...demo.nodes, origin, peer] },
+    link,
+  };
+}
+
+/**
+ * Flow-space anchor of a node side, mirroring the measurement shim above:
+ * handles are 1x1 and already positioned at their side (left/right centred
+ * vertically, top/bottom centred horizontally), so Right/Bottom add one handle
+ * pixel to the node box.
+ */
+function handleAnchor(nodeId: string, side: 'LEFT' | 'RIGHT' | 'TOP' | 'BOTTOM') {
+  const node = useMapStore
+    .getState()
+    .map!.nodes.find((item) => (item.deviceId ?? item.id) === nodeId)!;
+  switch (side) {
+    case 'LEFT':
+      return { x: node.position.x, y: node.position.y + NODE_HEIGHT / 2 + 0.5 };
+    case 'RIGHT':
+      return { x: node.position.x + NODE_WIDTH + 1, y: node.position.y + NODE_HEIGHT / 2 + 0.5 };
+    case 'TOP':
+      return { x: node.position.x + NODE_WIDTH / 2 + 0.5, y: node.position.y };
+    case 'BOTTOM':
+      return {
+        x: node.position.x + NODE_WIDTH / 2 + 0.5,
+        y: node.position.y + NODE_HEIGHT + 1,
+      };
+  }
+}
+
+/** First and last coordinate of the rendered bezier, i.e. the actual connection points. */
+function parseAnchors(data: string) {
+  const start = /^M(-?[\d.]+),(-?[\d.]+)/.exec(data);
+  const end = /(-?[\d.]+),(-?[\d.]+)$/.exec(data);
+  if (!start || !end) throw new Error(`unexpected edge path: ${data}`);
+  return {
+    start: { x: Number(start[1]), y: Number(start[2]) },
+    end: { x: Number(end[1]), y: Number(end[2]) },
+  };
+}
+
 interface Harness {
   container: HTMLDivElement;
+  client: QueryClient;
   link: NetworkLink;
   edgeElement(): SVGGElement;
   pathData(): string;
@@ -232,6 +293,8 @@ interface Harness {
 }
 
 const roots: Array<{ root: Root; container: HTMLDivElement }> = [];
+/** Harnesses created by the most recent `mount`, for describe-level helpers. */
+const harnesses: Harness[] = [];
 
 async function mount(fixture: { map: NetworkMap; link: NetworkLink }): Promise<Harness> {
   const { map, link } = fixture;
@@ -294,8 +357,9 @@ async function mount(fixture: { map: NetworkMap; link: NetworkLink }): Promise<H
   const findPath = () =>
     container.querySelector('.traffic-edge--base')?.getAttribute('d') ?? '';
 
-  return {
+  const harness: Harness = {
     container,
+    client,
     link,
     edgeElement() {
       const edge = findEdge();
@@ -333,6 +397,9 @@ async function mount(fixture: { map: NetworkMap; link: NetworkLink }): Promise<H
       return useMapStore.getState().map!.links[0]!;
     },
   };
+  // only the most recent mount matters for describe-level helpers
+  harnesses.splice(0, harnesses.length, harness);
+  return harness;
 }
 
 describe('NetworkCanvas link rendering and editing', () => {
@@ -585,5 +652,316 @@ describe('NetworkCanvas link rendering and editing', () => {
       locked: true,
     });
     expect(harness.container.querySelectorAll('.react-flow__edge')).toHaveLength(1);
+  });
+});
+
+describe('manual link connection sides', () => {
+  const SIDES = ['TOP', 'RIGHT', 'BOTTOM', 'LEFT'] as const;
+  const anchors = (harness: Harness) => parseAnchors(harness.pathData());
+  const setSides = async (patch: Partial<NetworkLink>) => {
+    // Same path the drawer takes: the store and the cached map stay in sync.
+    await act(async () => {
+      const updated = { ...useMapStore.getState().map!.links[0]!, ...patch };
+      useMapStore.getState().replaceLink(updated);
+      harnesses.at(-1)?.client.setQueryData<NetworkMap>(['map', updated.mapId], (map) =>
+        map
+          ? { ...map, links: map.links.map((item) => (item.id === updated.id ? updated : item)) }
+          : map,
+      );
+    });
+  };
+  const linkOf = () => useMapStore.getState().map!.links[0]!;
+
+  beforeEach(() => {
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    installLayoutShims();
+    installMatchMedia();
+  });
+
+  afterEach(async () => {
+    for (const { root, container } of roots.splice(0)) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+    useMapStore.setState({
+      map: null,
+      selection: null,
+      editMode: false,
+      readOnly: false,
+      linkGeometryDrafts: {},
+      toast: null,
+    });
+  });
+
+  it.each([
+    ['DEVICE <-> DEVICE', deviceToDeviceMap],
+    ['DEVICE <-> GENERIC', () => deviceToGenericMap('SOURCE')],
+    ['GENERIC <-> GENERIC', genericToGenericMap],
+  ])('keeps the automatic anchors for %s when both ends are AUTO', async (_name, fixture) => {
+    const harness = await mount(fixture());
+    const sourceKey = harness.link.sourceDeviceId ?? harness.link.sourceNodeId!;
+    const targetKey = harness.link.targetDeviceId ?? harness.link.targetNodeId!;
+
+    const expectedSource = selectEdgeHandles(
+      useMapStore.getState().map!.nodes.find((n) => (n.deviceId ?? n.id) === sourceKey)!.position,
+      useMapStore.getState().map!.nodes.find((n) => (n.deviceId ?? n.id) === targetKey)!.position,
+    );
+    expect(harness.link.sourceHandleSide).toBe('AUTO');
+    expect(harness.link.targetHandleSide).toBe('AUTO');
+
+    const rendered = anchors(harness);
+    expect(rendered.start).toEqual(
+      handleAnchor(sourceKey, expectedSource.sourceHandle.toUpperCase() as 'LEFT'),
+    );
+    expect(rendered.end).toEqual(
+      handleAnchor(targetKey, expectedSource.targetHandle.toUpperCase() as 'LEFT'),
+    );
+  });
+
+  it.each(SIDES)(
+    'pins the source end of a DEVICE <-> DEVICE link to %s',
+    async (side) => {
+      const harness = await mount(deviceToDeviceMap());
+      const automatic = anchors(harness);
+      await setSides({ sourceHandleSide: side });
+
+      expect(anchors(harness).start).toEqual(handleAnchor(harness.link.sourceDeviceId!, side));
+      // the opposite end keeps following the heuristic
+      expect(anchors(harness).end).toEqual(automatic.end);
+      expect(linkOf().sourceHandleSide).toBe(side);
+    },
+  );
+
+  it.each(SIDES)(
+    'pins the target end of a DEVICE <-> DEVICE link to %s',
+    async (side) => {
+      const harness = await mount(deviceToDeviceMap());
+      const automatic = anchors(harness);
+      await setSides({ targetHandleSide: side });
+
+      expect(anchors(harness).end).toEqual(handleAnchor(harness.link.targetDeviceId!, side));
+      expect(anchors(harness).start).toEqual(automatic.start);
+      expect(linkOf().targetHandleSide).toBe(side);
+    },
+  );
+
+  it.each(SIDES)('pins the conceptual end of a DEVICE <-> GENERIC link to %s', async (side) => {
+    const harness = await mount(deviceToGenericMap('SOURCE'));
+    await setSides({ targetHandleSide: side });
+    expect(anchors(harness).end).toEqual(handleAnchor('carrier-node', side));
+  });
+
+  it.each(SIDES)('pins both ends of a GENERIC <-> GENERIC link (%s)', async (side) => {
+    const harness = await mount(genericToGenericMap());
+    await setSides({ sourceHandleSide: side, targetHandleSide: side });
+    expect(anchors(harness).start).toEqual(handleAnchor('carrier-a', side));
+    expect(anchors(harness).end).toEqual(handleAnchor('carrier-b', side));
+    expect(harness.container.querySelectorAll('.react-flow__edge')).toHaveLength(1);
+  });
+
+  it('never touches the logical endpoints, geometry or telemetry when a side changes', async () => {
+    const fixture = deviceToDeviceMap();
+    const harness = await mount(fixture);
+    await harness.selectLink();
+    await harness.drag({ from: { x: 0, y: 0 }, to: [{ x: 0, y: 40 }] });
+    const before = linkOf();
+    const curvature = before.visualPaths[0]!.curvature;
+
+    await setSides({ sourceHandleSide: 'BOTTOM', targetHandleSide: 'TOP' });
+
+    const after = linkOf();
+    expect(after).toMatchObject({
+      id: fixture.link.id,
+      mapId: fixture.link.mapId,
+      sourceDeviceId: fixture.link.sourceDeviceId,
+      targetDeviceId: fixture.link.targetDeviceId,
+      sourceInterfaceId: fixture.link.sourceInterfaceId,
+      targetInterfaceId: fixture.link.targetInterfaceId,
+      sourceNodeId: fixture.link.sourceNodeId,
+      targetNodeId: fixture.link.targetNodeId,
+      trafficMode: fixture.link.trafficMode,
+      metricSources: fixture.link.metricSources,
+      aggregationMode: fixture.link.aggregationMode,
+      label: fixture.link.label,
+      capacityBps: fixture.link.capacityBps,
+      status: fixture.link.status,
+      updatedAt: before.updatedAt,
+    });
+    // curve and manual sides coexist
+    expect(after.visualPaths[0]!.curvature).toBe(curvature);
+    expect(after.linkLayoutMode).toBe('MANUAL');
+    expect(harness.container.querySelectorAll('.react-flow__edge')).toHaveLength(1);
+  });
+
+  it('keeps the same edge mounted while the connection side changes and after a refetch', async () => {
+    const harness = await mount(deviceToDeviceMap());
+    const edgeBefore = harness.edgeElement();
+    await setSides({ sourceHandleSide: 'TOP', targetHandleSide: 'RIGHT' });
+    expect(harness.edgeElement()).toBe(edgeBefore);
+    expect(harness.container.querySelector('.traffic-edge--base')).not.toBeNull();
+
+    // refetch: brand new objects, the chosen sides must survive
+    await act(async () => {
+      useMapStore.getState().setMap(structuredClone(useMapStore.getState().map!));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(anchors(harness).start).toEqual(handleAnchor(harness.link.sourceDeviceId!, 'TOP'));
+    expect(anchors(harness).end).toEqual(handleAnchor(harness.link.targetDeviceId!, 'RIGHT'));
+  });
+
+  it('treats links saved before this feature (and unknown values) as AUTO', async () => {
+    const harness = await mount(deviceToDeviceMap());
+    const automatic = anchors(harness);
+
+    await act(async () => {
+      const legacy = { ...useMapStore.getState().map!.links[0]! };
+      delete (legacy as Partial<NetworkLink>).sourceHandleSide;
+      delete (legacy as Partial<NetworkLink>).targetHandleSide;
+      useMapStore.getState().replaceLink(legacy);
+    });
+
+    expect(anchors(harness)).toEqual(automatic);
+    expect(harness.container.querySelectorAll('.react-flow__edge')).toHaveLength(1);
+  });
+
+  it('cycles the side from the endpoint anchor and persists only that end', async () => {
+    const fixture = deviceToDeviceMap();
+    const harness = await mount(fixture);
+    await harness.selectLink();
+    const automatic = anchors(harness);
+    const edgeBefore = harness.edgeElement();
+
+    const sourceAnchor = harness.container.querySelector<HTMLButtonElement>(
+      '.link-handle-anchor[data-end="SOURCE"]',
+    )!;
+    expect(sourceAnchor.dataset.side).toBe('AUTO');
+    expect(sourceAnchor.getAttribute('aria-label')).toContain('Automática');
+
+    await act(async () => {
+      sourceAnchor.click();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    // AUTO -> TOP, sent alone together with the untouched option fields
+    expect(updateLink).toHaveBeenCalledTimes(1);
+    const [mapId, linkId, payload] = vi.mocked(updateLink).mock.calls[0]!;
+    expect(mapId).toBe(fixture.map.id);
+    expect(linkId).toBe(fixture.link.id);
+    expect(payload).toEqual({
+      capacityBps: fixture.link.capacityBps,
+      autoCapacityBps: fixture.link.autoCapacityBps,
+      capacitySource: fixture.link.capacitySource,
+      label: fixture.link.label,
+      metricSource: fixture.link.metricSource,
+      visualStyle: fixture.link.visualStyle,
+      metricDisplay: fixture.link.metricDisplay,
+      sourceHandleSide: 'TOP',
+    });
+    expect(Object.keys(payload)).not.toEqual(
+      expect.arrayContaining(['sourceDeviceId', 'targetDeviceId', 'sourceNodeId', 'targetNodeId']),
+    );
+
+    expect(anchors(harness).start).toEqual(handleAnchor(fixture.link.sourceDeviceId!, 'TOP'));
+    expect(anchors(harness).end).toEqual(automatic.end);
+    expect(harness.edgeElement()).toBe(edgeBefore);
+    expect(
+      harness.container.querySelector<HTMLButtonElement>(
+        '.link-handle-anchor[data-end="SOURCE"]',
+      )!.dataset.side,
+    ).toBe('TOP');
+  });
+
+  it('keeps the map usable when changing the side fails', async () => {
+    const fixture = deviceToDeviceMap();
+    const harness = await mount(fixture);
+    await harness.selectLink();
+    const before = anchors(harness);
+    vi.mocked(updateLink).mockRejectedValueOnce(new Error('API 500'));
+
+    await act(async () => {
+      harness.container
+        .querySelector<HTMLButtonElement>('.link-handle-anchor[data-end="SOURCE"]')!
+        .click();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    expect(linkOf().sourceHandleSide).toBe('AUTO');
+    expect(anchors(harness)).toEqual(before);
+    expect(harness.container.querySelector('.traffic-edge--base')).not.toBeNull();
+    expect(useMapStore.getState().toast).toContain('Não foi possível alterar a conexão');
+  });
+
+  it('exposes the whole curve as a drag surface for the selected link only', async () => {
+    const harness = await mount(deviceToDeviceMap());
+    const grab = () =>
+      harness.container.querySelector<SVGPathElement>('[data-testid="traffic-edge-curve-grab"]');
+    // not selected yet: no editor controls at all
+    expect(grab()).toBeNull();
+    expect(harness.container.querySelector('.link-curvature-handle')).toBeNull();
+
+    await harness.selectLink();
+    expect(grab()).not.toBeNull();
+    expect(grab()!.getAttribute('class')).toContain('nodrag nopan');
+
+    // the endpoint anchors must not hijack pan/zoom either
+    const anchorNodes = harness.container.querySelectorAll('.link-handle-anchor');
+    expect(anchorNodes).toHaveLength(2);
+    for (const anchor of anchorNodes) {
+      expect(anchor.getAttribute('class')).toContain('nodrag nopan');
+    }
+
+    const before = harness.pathData();
+    await act(async () => {
+      grab()!.dispatchEvent(pointerEvent('pointerdown', 0, 0, 1));
+    });
+    await act(async () => {
+      grab()!.dispatchEvent(pointerEvent('pointermove', 0, 60, 1));
+    });
+    expect(harness.pathData()).not.toBe(before);
+    expect(useMapStore.getState().linkGeometryDrafts[harness.link.id]).toBeDefined();
+    await act(async () => {
+      grab()!.dispatchEvent(pointerEvent('pointercancel', 0, 60, 1));
+    });
+    expect(harness.pathData()).toBe(before);
+  });
+
+  it('edits the curve from the whole-curve surface together with a manual side', async () => {
+    const fixture = deviceToDeviceMap();
+    const harness = await mount(fixture);
+    await setSides({ sourceHandleSide: 'BOTTOM', targetHandleSide: 'LEFT' });
+    await harness.selectLink();
+
+    const grab = harness.container.querySelector<SVGPathElement>(
+      '[data-testid="traffic-edge-curve-grab"]',
+    )!;
+    await act(async () => {
+      grab.dispatchEvent(pointerEvent('pointerdown', 0, 0, 1));
+    });
+    await act(async () => {
+      grab.dispatchEvent(pointerEvent('pointermove', 0, 70, 1));
+    });
+    await act(async () => {
+      grab.dispatchEvent(pointerEvent('pointerup', 0, 70, 1));
+    });
+
+    expect(updateLink).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(updateLink).mock.calls[0]![2]).toMatchObject({
+      linkLayoutMode: 'MANUAL',
+    });
+    // a geometry-only PATCH never rewrites the connection sides
+    expect(vi.mocked(updateLink).mock.calls[0]![2]).not.toHaveProperty('sourceHandleSide');
+    expect(vi.mocked(updateLink).mock.calls[0]![2]).not.toHaveProperty('targetHandleSide');
+    // the manual anchors survive the curve save
+    expect(anchors(harness).start).toEqual(handleAnchor(fixture.link.sourceDeviceId!, 'BOTTOM'));
+    expect(anchors(harness).end).toEqual(handleAnchor(fixture.link.targetDeviceId!, 'LEFT'));
+    expect(linkOf().sourceHandleSide).toBe('BOTTOM');
+    expect(linkOf().targetHandleSide).toBe('LEFT');
+    expect(Math.abs(linkOf().visualPaths[0]!.curvature)).toBeGreaterThan(1);
   });
 });

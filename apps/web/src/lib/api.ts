@@ -1,5 +1,6 @@
 import {
   type AddDeviceResult,
+  type Alarm,
   type AuthUser,
   type ChangePasswordInput,
   type CreateLinkInput,
@@ -183,6 +184,15 @@ export function deletePublicView(id: string) {
 
 export function getMap(mapId: string): Promise<NetworkMap> {
   return request<NetworkMap>(`/api/maps/${mapId}`);
+}
+
+export function getAlarms(): Promise<Alarm[]> {
+  return request<Alarm[]>('/api/alarms');
+}
+
+export function getAlarmHistory(limit = 100): Promise<Alarm[]> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  return request<Alarm[]>(`/api/alarms/history?${params}`);
 }
 
 export function createNetworkMap(input: CreateMapInput) {

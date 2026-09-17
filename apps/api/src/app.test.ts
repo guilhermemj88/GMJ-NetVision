@@ -20,6 +20,16 @@ describe('GMJ NetVision API', () => {
     expect(response.json().devices).toHaveLength(13);
   });
 
+  it('serves active alarms and history in demo mode', async () => {
+    const active = await app.inject({ method: 'GET', url: '/api/alarms' });
+    expect(active.statusCode).toBe(200);
+    expect(active.json()).toEqual([]);
+
+    const history = await app.inject({ method: 'GET', url: '/api/alarms/history?limit=10' });
+    expect(history.statusCode).toBe(200);
+    expect(history.json()).toEqual([]);
+  });
+
   it.each(['SOURCE', 'TARGET'] as const)('creates and edits a %s monitored SUM link without a conceptual interface', async (side) => {
     const map = (await app.inject({ method: 'GET', url: '/api/maps/backbone-main' })).json();
     const host = map.devices.find((device: { interfaces: unknown[] }) => device.interfaces.length >= 2);
@@ -981,6 +991,115 @@ describe('GMJ NetVision API', () => {
       label: 'Transit',
       genericType: 'CLOUD',
       locked: false,
+    });
+  });
+
+  it('persists the manual link connection sides without touching the logical endpoints', async () => {
+    const map = (await app.inject({ method: 'GET', url: '/api/maps/backbone-main' })).json();
+    const source = map.devices.find(
+      (device: { id: string; interfaces: unknown[] }) =>
+        device.interfaces.length > 0 && device.id !== 'customers',
+    );
+    const target = map.devices.find(
+      (device: { id: string; interfaces: unknown[] }) =>
+        device.interfaces.length > 0 && device.id !== source.id && device.id !== 'customers',
+    );
+    const payload = {
+      sourceDeviceId: source.id,
+      sourceInterfaceId: source.interfaces[0].id,
+      targetDeviceId: target.id,
+      targetInterfaceId: target.interfaces[0].id,
+      capacityBps: 1_000_000_000,
+      autoCapacityBps: 1_000_000_000,
+      capacitySource: 'MANUAL',
+      label: 'Rota manual',
+      metricSource: 'DEMO',
+      visualStyle: null,
+      metricDisplay: null,
+      sourceHandleSide: 'BOTTOM',
+      targetHandleSide: 'LEFT',
+    };
+
+    const created = await app.inject({
+      method: 'POST',
+      url: `/api/maps/${map.id}/links`,
+      payload,
+    });
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      sourceHandleSide: 'BOTTOM',
+      targetHandleSide: 'LEFT',
+    });
+    const linkId = created.json().id;
+
+    // a partial patch only changes the side that was sent
+    const patched = await app.inject({
+      method: 'PATCH',
+      url: `/api/maps/${map.id}/links/${linkId}`,
+      payload: {
+        capacityBps: payload.capacityBps,
+        autoCapacityBps: payload.autoCapacityBps,
+        capacitySource: payload.capacitySource,
+        label: payload.label,
+        metricSource: payload.metricSource,
+        visualStyle: null,
+        metricDisplay: null,
+        sourceHandleSide: 'TOP',
+      },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json()).toMatchObject({
+      sourceHandleSide: 'TOP',
+      targetHandleSide: 'LEFT',
+      sourceDeviceId: source.id,
+      targetDeviceId: target.id,
+      sourceInterfaceId: source.interfaces[0].id,
+      targetInterfaceId: target.interfaces[0].id,
+      label: 'Rota manual',
+    });
+
+    // survives a reload, and the link was never removed
+    const reload = (await app.inject({ method: 'GET', url: `/api/maps/${map.id}` })).json();
+    expect(reload.links.find((item: { id: string }) => item.id === linkId)).toMatchObject({
+      id: linkId,
+      sourceDeviceId: source.id,
+      targetDeviceId: target.id,
+      sourceHandleSide: 'TOP',
+      targetHandleSide: 'LEFT',
+    });
+  });
+
+  it('defaults the connection sides to AUTO and rejects unknown sides', async () => {
+    const map = (await app.inject({ method: 'GET', url: '/api/maps/backbone-main' })).json();
+    // links seeded before this feature carry no side information
+    expect(map.links[0]).toMatchObject({ sourceHandleSide: 'AUTO', targetHandleSide: 'AUTO' });
+
+    const link = map.links[0];
+    const base = {
+      capacityBps: link.capacityBps,
+      autoCapacityBps: link.autoCapacityBps,
+      capacitySource: link.capacitySource,
+      label: link.label,
+      metricSource: link.metricSource,
+      visualStyle: link.visualStyle,
+      metricDisplay: link.metricDisplay,
+    };
+    for (const side of ['SIDEWAYS', 'top', '', 'TOP ']) {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `/api/maps/${map.id}/links/${link.id}`,
+        payload: { ...base, sourceHandleSide: side },
+      });
+      expect(response.statusCode).toBe(400);
+    }
+
+    // the link is untouched by the rejected attempts
+    const reload = (await app.inject({ method: 'GET', url: `/api/maps/backbone-main` })).json();
+    expect(reload.links.find((item: { id: string }) => item.id === link.id)).toMatchObject({
+      sourceHandleSide: 'AUTO',
+      targetHandleSide: 'AUTO',
+      sourceDeviceId: link.sourceDeviceId,
+      targetDeviceId: link.targetDeviceId,
     });
   });
 });

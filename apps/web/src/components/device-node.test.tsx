@@ -51,7 +51,7 @@ function makeNode(overrides: Partial<MapNode> = {}): MapNode {
   };
 }
 
-function renderNode(device: Device, mapNode: MapNode) {
+function renderNode(device: Device, mapNode: MapNode, alarmCount = 0) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -63,6 +63,7 @@ function renderNode(device: Device, mapNode: MapNode) {
     displayMode: 'ICON_2D',
     nodeScale: 100,
     labelScale: 100,
+    alarmCount,
   };
   const props = {
     id: device.id,
@@ -160,5 +161,40 @@ describe('DeviceNode PPP label', () => {
     );
     const unsupported = mount(makeDevice({ pppSupported: false }), makeNode());
     expect(unsupported.querySelector('.device-tooltip')!.textContent).not.toContain('PPP online');
+  });
+});
+
+describe('DeviceNode alarm badge', () => {
+  const roots: Array<{ root: Root; container: HTMLDivElement }> = [];
+
+  beforeEach(() => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
+      true;
+  });
+
+  afterEach(() => {
+    for (const { root, container } of roots.splice(0)) {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  function mount(device: Device, mapNode: MapNode, alarmCount: number) {
+    const rendered = renderNode(device, mapNode, alarmCount);
+    roots.push({ root: rendered.root, container: rendered.container });
+    return rendered.container;
+  }
+
+  it('hides the badge when there are no active alarms', () => {
+    const container = mount(makeDevice(), makeNode(), 0);
+    expect(container.querySelector('.device-node__alarm-badge')).toBeNull();
+  });
+
+  it('shows a small ⚠ N badge with the active alarm count', () => {
+    const container = mount(makeDevice(), makeNode(), 3);
+    const badge = container.querySelector('.device-node__alarm-badge');
+    expect(badge).not.toBeNull();
+    expect(badge!.textContent).toBe('⚠ 3');
+    expect(badge!.getAttribute('aria-label')).toBe('3 alarmes ativos');
   });
 });

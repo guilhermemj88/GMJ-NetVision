@@ -18,16 +18,17 @@ import {
   type OnNodeDrag,
   type OnNodesChange,
 } from '@xyflow/react';
-import { getMap, getMaps, updateNetworkMap } from '@/lib/api';
+import { getMap, getMaps, getAlarms, updateNetworkMap } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
-import { computeParallelLinkLayouts } from '@gmj/shared';
+import { computeParallelLinkLayouts, type Alarm } from '@gmj/shared';
 import { DeviceNode, type DeviceFlowNode } from './device-node';
 import { GenericNode, type GenericFlowNode } from './generic-node';
 import { PppTotalWidget } from './ppp-total-widget';
 import { TrafficEdge, type TrafficFlowEdge } from './traffic-edge';
 import { MapControls } from './map-controls';
 import { EditToolbar } from './edit-toolbar';
-import { selectEdgeHandles } from '@/lib/edge-handles';
+import { AlarmPanel, alarmFocusTarget } from './alarm-panel';
+import { resolveEdgeHandles } from '@/lib/edge-handles';
 import {
   calculateSmartAlignment,
   type AlignmentGuide,
@@ -82,6 +83,25 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     refetchInterval: MAP_REFRESH_INTERVAL_MS,
     refetchIntervalInBackground: true,
   });
+
+  // Alarms follow the same refresh cycle as the map for now. The panel and the
+  // node badges subscribe to this query, so a future WebSocket/SSE transport
+  // can replace it without touching the consumers.
+  const alarmsQuery = useQuery({
+    queryKey: ['alarms'],
+    queryFn: getAlarms,
+    enabled: !readOnly,
+    refetchInterval: MAP_REFRESH_INTERVAL_MS,
+    refetchIntervalInBackground: true,
+  });
+  const alarms = alarmsQuery.data ?? [];
+  const alarmCountByDevice = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const alarm of alarmsQuery.data ?? []) {
+      counts.set(alarm.deviceId, (counts.get(alarm.deviceId) ?? 0) + 1);
+    }
+    return counts;
+  }, [alarmsQuery.data]);
 
   useEffect(() => {
     if (!readOnly && catalogQuery.data) setCatalog(catalogQuery.data);
@@ -155,6 +175,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
             displayMode: nodeDisplayMode,
             nodeScale,
             labelScale,
+            alarmCount: alarmCountByDevice.get(device.id) ?? 0,
           },
         }];
       }
@@ -174,6 +195,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
       }];
     });
   }, [
+    alarmCountByDevice,
     editMode,
     labelScale,
     mapDevices,
@@ -197,6 +219,40 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     clearFocusRequest(focusRequest.requestId);
   }, [clearFocusRequest, domainNodes, flow, focusRequest]);
 
+  const focusAlarm = useCallback(
+    (alarm: Alarm) => {
+      const target = alarmFocusTarget(alarm);
+      if (target.kind === 'link') {
+        const link = map?.links.find((item) => item.id === target.linkId);
+        const nodePosition = (key: string | null | undefined) =>
+          map?.nodes.find((node) => (node.deviceId ?? node.id) === key)?.position;
+        const sourcePosition = link && nodePosition(link.sourceDeviceId ?? link.sourceNodeId);
+        const targetPosition = link && nodePosition(link.targetDeviceId ?? link.targetNodeId);
+        if (sourcePosition && targetPosition) {
+          void flow.setCenter(
+            (sourcePosition.x + targetPosition.x) / 2,
+            (sourcePosition.y + targetPosition.y) / 2,
+            { duration: 650, zoom: Math.max(1.05, flow.getZoom()) },
+          );
+        }
+        setSelection({ kind: 'link', id: target.linkId });
+      } else {
+        const node = domainNodes.find((item) => item.id === target.deviceId);
+        if (node) {
+          const width = node.measured?.width ?? node.width ?? DEFAULT_NODE_WIDTH;
+          const height = node.measured?.height ?? node.height ?? DEFAULT_NODE_HEIGHT;
+          void flow.setCenter(node.position.x + width / 2, node.position.y + height / 2, {
+            duration: 650,
+            zoom: Math.max(1.05, flow.getZoom()),
+          });
+        }
+        setSelection({ kind: 'device', id: target.deviceId });
+      }
+      if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
+    },
+    [domainNodes, flow, map, rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
+  );
+
   const domainEdges = useMemo<TrafficFlowEdge[]>(() => {
     if (!map) return [];
     const visible = new Set(domainNodes.map((node) => node.id));
@@ -217,7 +273,12 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
       const targetPosition = positions.get(targetKey);
       if (!visible.has(sourceKey) || !visible.has(targetKey)) return [];
       const handles = sourcePosition && targetPosition
-        ? selectEdgeHandles(sourcePosition, targetPosition)
+        ? resolveEdgeHandles(
+            sourcePosition,
+            targetPosition,
+            link.sourceHandleSide,
+            link.targetHandleSide,
+          )
         : { sourceHandle: 'right' as const, targetHandle: 'left' as const };
       const sourceInterface = link.sourceDeviceId
         ? devices.get(link.sourceDeviceId)?.interfaces.find((item) => item.id === link.sourceInterfaceId)
@@ -394,6 +455,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
               <PppTotalWidget widget={widget} devices={map.devices} readOnly={readOnly} />
             </ViewportPortal>
           ))}
+        {!readOnly && <AlarmPanel alarms={alarms} onFocus={focusAlarm} />}
         {editMode && alignmentGuides.length > 0 && (
           <ViewportPortal>
             {alignmentGuides.map((guide) => (

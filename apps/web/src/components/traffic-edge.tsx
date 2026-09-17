@@ -19,6 +19,8 @@ import {
 } from '@xyflow/react';
 import { PATH_OFFSET_SCALE } from '@/lib/link-curvature';
 import { LinkCurvatureHandle } from './link-curvature-handle';
+import { LinkHandleSideAnchor } from './link-handle-side-anchor';
+import { useLinkCurvatureDrag } from './use-link-curvature-drag';
 
 export interface TrafficEdgeData extends Record<string, unknown> {
   link: NetworkLink;
@@ -281,7 +283,11 @@ function flowFilter(color: string, level: FlowLevel, emphasized: boolean): strin
   return undefined;
 }
 
-export function TrafficEdge({
+export function TrafficEdge(props: EdgeProps<TrafficFlowEdge>) {
+  return props.data ? <TrafficEdgeContent {...props} data={props.data} /> : null;
+}
+
+function TrafficEdgeContent({
   id,
   sourceX,
   sourceY,
@@ -291,9 +297,7 @@ export function TrafficEdge({
   targetPosition,
   data,
   selected,
-}: EdgeProps<TrafficFlowEdge>) {
-  if (!data) return null;
-
+}: EdgeProps<TrafficFlowEdge> & { data: TrafficEdgeData }) {
   const {
     link,
     visualPath,
@@ -520,15 +524,60 @@ export function TrafficEdge({
         </EdgeLabelRenderer>
       )}
       {data.editMode && selected && !data.readOnly && (
-        <LinkCurvatureHandle
+        <LinkCurveEditor
           link={link}
           pathIndex={data.pathIndex ?? 0}
           autoOffset={data.autoOffset ?? 0}
-          point={bezierPoint(geometry, 0.5)}
+          path={path}
+          midpoint={bezierPoint(geometry, 0.5)}
           source={geometry.source}
           target={geometry.target}
         />
       )}
+    </>
+  );
+}
+
+/**
+ * Interactive geometry controls of the selected link. Mounted only while the
+ * link is selected in edit mode, so plain edges neither subscribe to the query
+ * client nor pay for the drag bookkeeping.
+ */
+function LinkCurveEditor({
+  link,
+  pathIndex,
+  autoOffset,
+  path,
+  midpoint,
+  source,
+  target,
+}: {
+  link: NetworkLink;
+  pathIndex: number;
+  autoOffset: number;
+  path: string;
+  midpoint: { x: number; y: number };
+  source: { x: number; y: number };
+  target: { x: number; y: number };
+}) {
+  const curvatureDrag = useLinkCurvatureDrag({ link, pathIndex, autoOffset, source, target });
+  return (
+    <>
+      {/* Lets the user grab the arc anywhere along its length, not only on the dot. */}
+      <path
+        d={path}
+        className="traffic-edge__curve-grab nodrag nopan"
+        data-testid="traffic-edge-curve-grab"
+        {...curvatureDrag.dragHandlers}
+      />
+      <LinkCurvatureHandle
+        link={link}
+        pathIndex={pathIndex}
+        point={midpoint}
+        drag={curvatureDrag}
+      />
+      <LinkHandleSideAnchor link={link} end="SOURCE" point={source} />
+      <LinkHandleSideAnchor link={link} end="TARGET" point={target} />
     </>
   );
 }

@@ -65,6 +65,14 @@ enum LinkLayoutMode {
   MANUAL
 }
 
+enum LinkHandleSide {
+  AUTO
+  TOP
+  RIGHT
+  BOTTOM
+  LEFT
+}
+
 enum TrafficMode {
   BIDIRECTIONAL
   SINGLE_ENDED
@@ -83,6 +91,17 @@ enum InterfaceStatus {
   DISABLED
   WARNING
   UNKNOWN
+}
+
+enum AlarmType {
+  INTERFACE_DOWN
+}
+
+enum AlarmSeverity {
+  CRITICAL
+  MAJOR
+  WARNING
+  INFO
 }
 
 enum DiscoverySource {
@@ -324,6 +343,7 @@ model Device {
   mplsPws             MplsPw[]              @relation("MplsPwHost")
   remoteMplsPws       MplsPw[]              @relation("MplsPwRemoteHost")
   mplsStateEvents     MplsStateEvent[]
+  alarms              Alarm[]
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
   mplsAcs             MplsAc[]
@@ -369,6 +389,7 @@ model Interface {
   sourceMappings        InterfaceSourceMapping[]
   mplsVsis              MplsVsi[]
   mplsAcs               MplsAc[]
+  alarms                Alarm[]
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
 
@@ -564,6 +585,29 @@ model MapWidget {
   @@unique([mapId, type])
 }
 
+model Alarm {
+  id             String        @id @default(cuid())
+  deviceId       String
+  interfaceId    String
+  linkId         String?
+  type           AlarmType     @default(INTERFACE_DOWN)
+  severity       AlarmSeverity @default(CRITICAL)
+  startedAt      DateTime      @default(now())
+  endedAt        DateTime?
+  acknowledgedAt DateTime?
+  acknowledgedBy String?
+  message        String
+  device         Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  interface      Interface     @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
+  link           Link?         @relation(fields: [linkId], references: [id], onDelete: SetNull)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([deviceId])
+  @@index([interfaceId, endedAt])
+  @@index([startedAt])
+}
+
 model Link {
   id                String             @id @default(cuid())
   mapId             String
@@ -593,6 +637,8 @@ model Link {
   metricSources     Json?
   visualPaths       Json?
   linkLayoutMode    LinkLayoutMode      @default(AUTO)
+  sourceHandleSide  LinkHandleSide      @default(AUTO)
+  targetHandleSide  LinkHandleSide      @default(AUTO)
   map               Map                @relation(fields: [mapId], references: [id], onDelete: Cascade)
   sourceDevice      Device?            @relation("LinkSourceDevice", fields: [sourceDeviceId], references: [id], onDelete: Restrict)
   sourceInterface   Interface?         @relation("LinkSourceInterface", fields: [sourceInterfaceId], references: [id], onDelete: Restrict)
@@ -600,6 +646,7 @@ model Link {
   targetInterface   Interface?         @relation("LinkTargetInterface", fields: [targetInterfaceId], references: [id], onDelete: Restrict)
   sourceNode        MapNode?           @relation("LinkSourceNode", fields: [sourceNodeId], references: [id], onDelete: Cascade)
   targetNode        MapNode?           @relation("LinkTargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
+  alarms            Alarm[]
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 

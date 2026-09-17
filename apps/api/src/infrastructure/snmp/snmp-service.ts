@@ -24,6 +24,7 @@ import {
 } from './profiles/generic-oids';
 import type { MplsPollingService } from '../mpls/mpls-polling-service';
 import type { PppPollingService } from '../ppp/ppp-polling-service';
+import type { AlarmService } from '../../application/alarm-service';
 
 // Consolidated GENERIC SNMP base (SNMPv2-MIB / IF-MIB). Vendor profiles
 // complement this set; they never duplicate it.
@@ -84,6 +85,7 @@ export class SnmpService {
     private readonly opticalIntervalMs: number = 300_000,
     private readonly mpls?: MplsPollingService,
     private readonly ppp?: PppPollingService,
+    private readonly alarms?: AlarmService,
   ) {
     this.client = new SnmpClientImpl(3000, 1);
     this.discoveryAdapter = new SnmpV2cDiscoveryAdapter(repository);
@@ -219,7 +221,20 @@ export class SnmpService {
     if (!snmp) throw new Error('SNMP não está habilitado para este host');
 
     const statuses = await this.collectInterfaceStatuses(currentDevice, community);
-    await this.repository.updateInterfaceStatuses(currentDevice.id, [...statuses.values()]);
+    const transitions = await this.repository.updateInterfaceStatuses(
+      currentDevice.id,
+      [...statuses.values()],
+    );
+    if (this.alarms) {
+      try {
+        await this.alarms.processTransitions(transitions);
+      } catch (error) {
+        console.error(
+          `Falha ao processar alarmes de status para ${currentDevice.id}:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
 
     const previousPromise = this.repository.getLatestCounterSnapshots(currentDevice.id);
     const system = await this.collectSystem(currentDevice, community);

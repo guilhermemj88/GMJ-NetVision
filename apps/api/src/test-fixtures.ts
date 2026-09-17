@@ -128,6 +128,8 @@ export function makeLink(
     metricSources: [],
     visualPaths: [{ order: 0, label: null, customColor: null, curvature: 0, enabled: true }],
     linkLayoutMode: 'AUTO',
+    sourceHandleSide: 'AUTO',
+    targetHandleSide: 'AUTO',
     directions: {
       A_TO_B: {
         bps: 0,

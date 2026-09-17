@@ -31,12 +31,39 @@ export type CapacitySource = 'AUTO' | 'MANUAL';
 export type LinkTrafficMode = 'BIDIRECTIONAL' | 'SINGLE_ENDED';
 export type LinkAggregationMode = 'NONE' | 'SUM';
 export type LinkLayoutMode = 'AUTO' | 'MANUAL';
+/**
+ * Side of a node where a link attaches. `AUTO` keeps the relative-position
+ * heuristic; every other value pins that end of the link to a concrete side of
+ * the node. See `link-handles.ts` for the runtime helpers.
+ */
+export type LinkHandleSide = 'AUTO' | 'TOP' | 'RIGHT' | 'BOTTOM' | 'LEFT';
 export type LinkMetricSourceSide = 'SOURCE' | 'TARGET';
 export type PppSource = 'SNMP_HUAWEI' | 'SNMP_MIKROTIK';
 export type PppDisplayMode = 'AUTO' | 'SHOW' | 'HIDE';
 export type PppLabelPosition = 'TOP' | 'BOTTOM' | 'LEFT' | 'RIGHT' | 'CENTER';
 export type MapWidgetType = 'PPP_TOTAL';
 export type MapWidgetMode = 'AUTO' | 'MANUAL';
+export type AlarmType = 'INTERFACE_DOWN';
+export type AlarmSeverity = 'CRITICAL' | 'MAJOR' | 'WARNING' | 'INFO';
+export type AlarmPanelPosition = 'LEFT' | 'RIGHT' | 'HIDDEN';
+export interface Alarm {
+  id: string;
+  deviceId: string;
+  deviceName: string;
+  interfaceId: string;
+  interfaceName: string;
+  interfaceLabel: string;
+  ifIndex: number;
+  linkId: string | null;
+  linkLabel: string | null;
+  type: AlarmType;
+  severity: AlarmSeverity;
+  startedAt: string;
+  endedAt: string | null;
+  acknowledgedAt: string | null;
+  acknowledgedBy: string | null;
+  message: string;
+}
 export interface LinkMetricSource {
   interfaceId: string;
   side: LinkMetricSourceSide;
@@ -327,6 +354,8 @@ export interface NetworkLink {
   metricSources: LinkMetricSource[];
   visualPaths: LinkVisualPath[];
   linkLayoutMode: LinkLayoutMode;
+  sourceHandleSide: LinkHandleSide;
+  targetHandleSide: LinkHandleSide;
   directions: Record<LinkDirection, DirectionalLinkMetric>;
   rxBps: number;
   txBps: number;
@@ -627,6 +656,8 @@ export interface CreateLinkInput {
   metricSources?: LinkMetricSource[];
   visualPaths?: LinkVisualPath[];
   linkLayoutMode?: LinkLayoutMode;
+  sourceHandleSide?: LinkHandleSide;
+  targetHandleSide?: LinkHandleSide;
 }
 export type UpdateLinkInput = Pick<
   CreateLinkInput,
@@ -653,6 +684,8 @@ export type UpdateLinkInput = Pick<
       | 'metricSources'
       | 'linkLayoutMode'
       | 'visualPaths'
+      | 'sourceHandleSide'
+      | 'targetHandleSide'
     >
   >;
 export interface CreateGenericNodeInput {

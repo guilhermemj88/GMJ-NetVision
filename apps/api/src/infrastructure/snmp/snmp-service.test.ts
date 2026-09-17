@@ -691,6 +691,65 @@ describe('SnmpService unknown interface auto-discovery', () => {
   });
 });
 
+describe('SnmpService alarm transition wiring', () => {
+  it('forwards operStatus transitions reported by the repository to the alarm service', async () => {
+    const now = new Date('2026-09-16T21:17:32.000Z');
+    const repo = repository();
+    const transitions = [
+      { deviceId: 'test-1', interfaceId: 'if-1', ifIndex: 1, previousStatus: 'UP' as const, newStatus: 'DOWN' as const },
+    ];
+    repo.updateInterfaceStatuses = vi.fn().mockResolvedValue(transitions);
+    const processTransitions = vi.fn().mockResolvedValue(undefined);
+    const alarms = { processTransitions } as unknown as import('../../application/alarm-service').AlarmService;
+    const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY, undefined, undefined, alarms);
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
+      [1, { ifIndex: 1, adminStatus: 'UP' as const, operStatus: 'DOWN' as const }],
+    ]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
+      [1, counterRow(1, now)],
+    ]));
+    const internals = service as unknown as {
+      collectSystem: () => Promise<DeviceMetricSampleInput>;
+    };
+    vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
+
+    await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')]));
+
+    expect(repo.updateInterfaceStatuses).toHaveBeenCalledWith('test-1', [
+      { ifIndex: 1, adminStatus: 'UP', operStatus: 'DOWN' },
+    ]);
+    expect(processTransitions).toHaveBeenCalledTimes(1);
+    expect(processTransitions).toHaveBeenCalledWith(transitions);
+  });
+
+  it('keeps polling healthy when alarm processing fails', async () => {
+    const now = new Date('2026-09-16T21:17:32.000Z');
+    const repo = repository();
+    repo.updateInterfaceStatuses = vi.fn().mockResolvedValue([
+      { deviceId: 'test-1', interfaceId: 'if-1', ifIndex: 1, previousStatus: 'UP' as const, newStatus: 'DOWN' as const },
+    ]);
+    const processTransitions = vi.fn().mockRejectedValue(new Error('alarm boom'));
+    const alarms = { processTransitions } as unknown as import('../../application/alarm-service').AlarmService;
+    const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY, undefined, undefined, alarms);
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
+      [1, { ifIndex: 1, adminStatus: 'UP' as const, operStatus: 'DOWN' as const }],
+    ]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
+      [1, counterRow(1, now)],
+    ]));
+    const internals = service as unknown as {
+      collectSystem: () => Promise<DeviceMetricSampleInput>;
+    };
+    vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')]));
+
+    expect(consoleSpy).toHaveBeenCalledTimes(1);
+    expect(repo.saveSnmpPoll).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('SNMP credential safety', () => {
   it('generic authentication errors never contain a community value', () => {
     const errorMessage = 'SNMP authentication failed - check community/credentials and version compatibility';

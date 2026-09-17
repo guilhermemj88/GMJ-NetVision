@@ -186,3 +186,123 @@ describe('Prisma conceptual node updates', () => {
     expect(db.findNode).not.toHaveBeenCalled();
   });
 });
+
+describe('Prisma link connection sides', () => {
+  const base = () => {
+    const map = cloneDemoMaps()[0]!;
+    return { map, link: map.links[0]! };
+  };
+
+  function linkRow(overrides: Record<string, unknown>) {
+    const { link } = base();
+    return {
+      ...link,
+      capacityBps: BigInt(link.capacityBps),
+      autoCapacityBps: BigInt(link.autoCapacityBps),
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...overrides,
+    };
+  }
+
+  function repository() {
+    return new PrismaMapRepository({
+      listHosts: vi.fn().mockResolvedValue(base().map.devices),
+    } as unknown as HostRepository);
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    const { map } = base();
+    db.findMap.mockResolvedValue({
+      ...map,
+      ...map.settings,
+      nodes: [],
+      widgets: [],
+      links: [],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+    db.updateLink.mockResolvedValue({ count: 1 });
+    db.createLink.mockImplementation(async (args: { data: Record<string, unknown> }) =>
+      linkRow(args.data),
+    );
+  });
+
+  it('writes the sides on create and defaults them to AUTO when omitted', async () => {
+    const { map, link } = base();
+    await repository().createDiscoveredLink(
+      map.id,
+      { ...link, sourceHandleSide: 'BOTTOM', targetHandleSide: 'TOP' },
+      'MANUAL',
+    );
+    expect(db.createLink.mock.lastCall?.[0].data).toMatchObject({
+      sourceHandleSide: 'BOTTOM',
+      targetHandleSide: 'TOP',
+    });
+
+    await repository().createDiscoveredLink(map.id, { ...link }, 'MANUAL');
+    expect(db.createLink.mock.lastCall?.[0].data).toMatchObject({
+      sourceHandleSide: 'AUTO',
+      targetHandleSide: 'AUTO',
+    });
+  });
+
+  it('persists a side change without rewriting the endpoints or the geometry', async () => {
+    const { map, link } = base();
+    db.findLink.mockResolvedValue(linkRow({ sourceHandleSide: 'RIGHT' }));
+
+    const updated = await repository().updateLink(map.id, link.id, {
+      capacityBps: link.capacityBps,
+      autoCapacityBps: link.autoCapacityBps,
+      capacitySource: link.capacitySource,
+      label: link.label,
+      metricSource: link.metricSource,
+      visualStyle: link.visualStyle,
+      metricDisplay: link.metricDisplay,
+      sourceHandleSide: 'RIGHT',
+    });
+
+    expect(db.updateLink.mock.lastCall?.[0].data).toMatchObject({ sourceHandleSide: 'RIGHT' });
+    expect(db.updateLink.mock.lastCall?.[0].data).not.toHaveProperty('targetHandleSide');
+    expect(updated).toMatchObject({
+      id: link.id,
+      sourceDeviceId: link.sourceDeviceId,
+      targetDeviceId: link.targetDeviceId,
+      sourceHandleSide: 'RIGHT',
+      targetHandleSide: 'AUTO',
+      visualPaths: link.visualPaths,
+    });
+  });
+
+  it('normalizes legacy or unknown stored values to AUTO on read', async () => {
+    const { map } = base();
+    db.findMap.mockResolvedValue({
+      ...map,
+      ...map.settings,
+      nodes: [],
+      widgets: [],
+      links: [
+        linkRow({ id: 'legacy', sourceHandleSide: null, targetHandleSide: undefined }),
+        linkRow({ id: 'unknown', sourceHandleSide: 'SIDEWAYS', targetHandleSide: 'top' }),
+        linkRow({ id: 'manual', sourceHandleSide: 'LEFT', targetHandleSide: 'BOTTOM' }),
+      ],
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const links = (await repository().getMap(map.id))!.links;
+    expect(links.find((item) => item.id === 'legacy')).toMatchObject({
+      sourceHandleSide: 'AUTO',
+      targetHandleSide: 'AUTO',
+    });
+    expect(links.find((item) => item.id === 'unknown')).toMatchObject({
+      sourceHandleSide: 'AUTO',
+      targetHandleSide: 'AUTO',
+    });
+    expect(links.find((item) => item.id === 'manual')).toMatchObject({
+      sourceHandleSide: 'LEFT',
+      targetHandleSide: 'BOTTOM',
+    });
+  });
+});

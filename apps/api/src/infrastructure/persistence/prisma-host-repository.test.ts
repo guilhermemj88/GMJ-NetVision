@@ -155,18 +155,23 @@ describe('PrismaHostRepository optical persistence', () => {
 describe('PrismaHostRepository interface status persistence', () => {
   it('updates statuses by host and ifIndex without overwriting a missing operStatus', async () => {
     const updateMany = vi.fn().mockResolvedValue({ count: 1 });
-    const transactionClient = { interface: { updateMany } };
+    const findMany = vi.fn().mockResolvedValue([
+      { id: 'iface-23', ifIndex: 23, operStatus: 'UP' },
+      { id: 'iface-24', ifIndex: 24, operStatus: 'DOWN' },
+    ]);
+    const transactionClient = { interface: { updateMany, findMany } };
     const prisma = {
-      $transaction: vi.fn(async (operation: (tx: typeof transactionClient) => Promise<void>) =>
+      $transaction: vi.fn(async (operation: (tx: typeof transactionClient) => Promise<unknown>) =>
         operation(transactionClient)),
     };
     const repository = new PrismaHostRepository(prisma as never, null);
 
-    await repository.updateInterfaceStatuses('device-1', [
+    const transitions = await repository.updateInterfaceStatuses('device-1', [
       { ifIndex: 23, adminStatus: 'UP', operStatus: 'UP' },
       { ifIndex: 24, adminStatus: 'UP' },
     ]);
 
+    expect(transitions).toEqual([]);
     expect(updateMany).toHaveBeenNthCalledWith(1, {
       where: { deviceId: 'device-1', ifIndex: 23 },
       data: { adminStatus: 'UP', operStatus: 'UP' },
@@ -175,6 +180,30 @@ describe('PrismaHostRepository interface status persistence', () => {
       where: { deviceId: 'device-1', ifIndex: 24 },
       data: { adminStatus: 'UP' },
     });
+  });
+
+  it('reports operStatus transitions comparing the persisted value before the update', async () => {
+    const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+    const findMany = vi.fn().mockResolvedValue([
+      { id: 'iface-23', ifIndex: 23, operStatus: 'UP' },
+      { id: 'iface-24', ifIndex: 24, operStatus: 'DOWN' },
+    ]);
+    const transactionClient = { interface: { updateMany, findMany } };
+    const prisma = {
+      $transaction: vi.fn(async (operation: (tx: typeof transactionClient) => Promise<unknown>) =>
+        operation(transactionClient)),
+    };
+    const repository = new PrismaHostRepository(prisma as never, null);
+
+    const transitions = await repository.updateInterfaceStatuses('device-1', [
+      { ifIndex: 23, operStatus: 'DOWN' },
+      { ifIndex: 24, operStatus: 'UP' },
+    ]);
+
+    expect(transitions).toEqual([
+      { deviceId: 'device-1', interfaceId: 'iface-23', ifIndex: 23, previousStatus: 'UP', newStatus: 'DOWN' },
+      { deviceId: 'device-1', interfaceId: 'iface-24', ifIndex: 24, previousStatus: 'DOWN', newStatus: 'UP' },
+    ]);
   });
 });
 

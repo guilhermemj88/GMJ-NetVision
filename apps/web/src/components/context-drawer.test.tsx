@@ -145,6 +145,56 @@ describe('link drawer curve controls', () => {
     await act(async () => useMapStore.setState({ readOnly: true }));
     expect(container.querySelector('.edit-link-form')).toBeNull();
   });
+
+  it('shows and saves the manual connection sides with the remaining link properties', async () => {
+    const selects = () =>
+      [...container.querySelectorAll<HTMLSelectElement>('.link-handle-sides select')];
+    expect(selects()).toHaveLength(2);
+    expect(selects().map((select) => select.value)).toEqual(['AUTO', 'AUTO']);
+    expect([...selects()[0]!.options].map((option) => option.textContent)).toEqual([
+      'Automática',
+      'Superior',
+      'Direita',
+      'Inferior',
+      'Esquerda',
+    ]);
+    expect(container.textContent).toContain('Conexão da ponta A');
+    expect(container.textContent).toContain('Conexão da ponta B');
+
+    // a side changed on the canvas must be reflected by the already-open form
+    await act(async () =>
+      useMapStore.getState().replaceLink({
+        ...useMapStore.getState().map!.links[0]!,
+        sourceHandleSide: 'TOP',
+        targetHandleSide: 'RIGHT',
+      }),
+    );
+    expect(selects().map((select) => select.value)).toEqual(['TOP', 'RIGHT']);
+
+    await act(async () => setSelectValue(selects()[0]!, 'BOTTOM'));
+    await act(async () => setSelectValue(selects()[1]!, 'LEFT'));
+    await act(async () => {
+      findButton(container, 'Salvar alterações').click();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    });
+
+    expect(updateLink).toHaveBeenCalledWith(
+      link.mapId,
+      link.id,
+      expect.objectContaining({
+        sourceHandleSide: 'BOTTOM',
+        targetHandleSide: 'LEFT',
+        // the rest of the link form is still saved together
+        visualPaths: link.visualPaths,
+        linkLayoutMode: 'MANUAL',
+        label: link.label,
+        capacityBps: link.capacityBps,
+      }),
+    );
+    // endpoints are never part of the payload
+    expect(vi.mocked(updateLink).mock.calls[0]![2]).not.toHaveProperty('sourceDeviceId');
+    expect(vi.mocked(updateLink).mock.calls[0]![2]).not.toHaveProperty('targetNodeId');
+  });
 });
 
 describe('ContextDrawer verification action', () => {
