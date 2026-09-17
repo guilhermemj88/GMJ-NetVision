@@ -170,6 +170,18 @@ describe('MapControls visual panel', () => {
     expect(container.querySelector('.map-controls')).not.toBeNull();
     expect(container.textContent).toContain('Tráfego');
   });
+
+  it('applies the Legibilidade preset to map labels and alarm panel size', async () => {
+    const { container } = await renderControls();
+    expect(container.textContent).toContain('Legibilidade');
+
+    await act(async () => {
+      findButton(container, 'Extra').click();
+    });
+
+    expect(useMapStore.getState().map?.settings.labelScale).toBe(150);
+    expect(window.localStorage.getItem('gmj:alarms:panel-scale')).toBe('150');
+  });
 });
 
 describe('MapControls traffic label mode', () => {

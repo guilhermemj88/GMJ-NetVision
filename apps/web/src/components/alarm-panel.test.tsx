@@ -82,6 +82,14 @@ describe('AlarmPanel', () => {
     return [...container.querySelectorAll<HTMLButtonElement>('button')];
   }
 
+  function findScaleButton(container: HTMLElement, label: string): HTMLButtonElement {
+    const button = [
+      ...container.querySelectorAll<HTMLButtonElement>('.alarm-panel__scale button'),
+    ].find((item) => item.textContent === label);
+    if (!button) throw new Error(`Scale button ${label} not found`);
+    return button;
+  }
+
   beforeEach(() => {
     (
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
@@ -160,9 +168,9 @@ describe('AlarmPanel', () => {
     expect(container.querySelector('.alarm-panel')).not.toBeNull();
   });
 
-  it('moves the panel between the right and left sides', async () => {
+  it('moves the panel between the left and right sides', async () => {
     const container = await mount([makeAlarm()], vi.fn());
-    expect(container.querySelector('.alarm-panel--right')).not.toBeNull();
+    expect(container.querySelector('.alarm-panel--left')).not.toBeNull();
 
     const move = findButtons(container).find((button) =>
       (button.getAttribute('aria-label') ?? '').includes('Mover'),
@@ -172,8 +180,79 @@ describe('AlarmPanel', () => {
     await act(async () => {
       move!.click();
     });
+    expect(container.querySelector('.alarm-panel--right')).not.toBeNull();
+    expect(container.querySelector('.alarm-panel--left')).toBeNull();
+  });
+
+  it('shows the panel on the left by default', async () => {
+    const container = await mount([makeAlarm()], vi.fn());
     expect(container.querySelector('.alarm-panel--left')).not.toBeNull();
     expect(container.querySelector('.alarm-panel--right')).toBeNull();
+  });
+
+  it('respects a previously saved RIGHT position', async () => {
+    window.localStorage.setItem('gmj:alarms:panel-position', 'RIGHT');
+    const container = await mount([makeAlarm()], vi.fn());
+    expect(container.querySelector('.alarm-panel--right')).not.toBeNull();
+    expect(container.querySelector('.alarm-panel--left')).toBeNull();
+  });
+
+  it('respects a previously saved HIDDEN position', async () => {
+    window.localStorage.setItem('gmj:alarms:panel-position', 'HIDDEN');
+    const container = await mount([makeAlarm()], vi.fn());
+    expect(container.querySelector('.alarm-panel')).toBeNull();
+    expect(container.querySelector('.alarm-panel__reveal')).not.toBeNull();
+  });
+
+  it('defaults alarmScale to 125%', async () => {
+    const container = await mount([makeAlarm()], vi.fn());
+    const aside = container.querySelector<HTMLElement>('.alarm-panel');
+    expect(aside!.style.getPropertyValue('--alarm-scale')).toBe('1.25');
+  });
+
+  it('offers Normal, Grande and Extra sizes and persists the choice', async () => {
+    const container = await mount([makeAlarm()], vi.fn());
+    const aside = container.querySelector<HTMLElement>('.alarm-panel');
+
+    await act(async () => {
+      findScaleButton(container, 'Normal').click();
+    });
+    expect(aside!.style.getPropertyValue('--alarm-scale')).toBe('1');
+    expect(window.localStorage.getItem('gmj:alarms:panel-scale')).toBe('100');
+
+    await act(async () => {
+      findScaleButton(container, 'Grande').click();
+    });
+    expect(aside!.style.getPropertyValue('--alarm-scale')).toBe('1.25');
+    expect(window.localStorage.getItem('gmj:alarms:panel-scale')).toBe('125');
+
+    await act(async () => {
+      findScaleButton(container, 'Extra').click();
+    });
+    expect(aside!.style.getPropertyValue('--alarm-scale')).toBe('1.5');
+    expect(window.localStorage.getItem('gmj:alarms:panel-scale')).toBe('150');
+  });
+
+  it('restores a persisted alarmScale from localStorage', async () => {
+    window.localStorage.setItem('gmj:alarms:panel-scale', '150');
+    const container = await mount([makeAlarm()], vi.fn());
+    const aside = container.querySelector<HTMLElement>('.alarm-panel');
+    expect(aside!.style.getPropertyValue('--alarm-scale')).toBe('1.5');
+    expect(findScaleButton(container, 'Extra').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('scales both active and resolved alarm sections', async () => {
+    const resolved = [makeResolvedAlarm({ id: 'r1' })];
+    const container = await mount([makeAlarm()], vi.fn(), resolved);
+
+    await act(async () => {
+      findScaleButton(container, 'Extra').click();
+    });
+
+    const aside = container.querySelector<HTMLElement>('.alarm-panel');
+    expect(aside!.style.getPropertyValue('--alarm-scale')).toBe('1.5');
+    expect(aside!.querySelector('.alarm-panel__item')).not.toBeNull();
+    expect(aside!.querySelector('.alarm-panel__resolved')).not.toBeNull();
   });
 
   it('shows at most the 3 most recent resolved alarms', async () => {

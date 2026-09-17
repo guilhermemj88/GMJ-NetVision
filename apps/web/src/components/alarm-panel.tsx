@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import {
   alarmTypeLabel,
   formatAlarmDownSince,
@@ -9,6 +9,12 @@ import {
   type AlarmPanelPosition,
 } from '@gmj/shared';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import {
+  ALARM_SCALE_OPTIONS,
+  getAlarmScale,
+  setAlarmScale,
+  subscribeAlarmScale,
+} from '@/lib/alarm-panel-preferences';
 
 const POSITION_STORAGE_KEY = 'gmj:alarms:panel-position';
 
@@ -27,14 +33,14 @@ export function alarmFocusTarget(alarm: Alarm): AlarmFocusTarget {
 }
 
 function loadPosition(): AlarmPanelPosition {
-  if (typeof window === 'undefined') return 'RIGHT';
+  if (typeof window === 'undefined') return 'LEFT';
   try {
     const stored = window.localStorage.getItem(POSITION_STORAGE_KEY);
     if (stored === 'LEFT' || stored === 'RIGHT' || stored === 'HIDDEN') return stored;
   } catch {
     // Storage can be unavailable in privacy-restricted browser contexts.
   }
-  return 'RIGHT';
+  return 'LEFT';
 }
 
 const severityLabels: Record<Alarm['severity'], string> = {
@@ -54,6 +60,7 @@ export function AlarmPanel({
   onFocus: (alarm: Alarm) => void;
 }) {
   const [position, setPosition] = useState<AlarmPanelPosition>(loadPosition);
+  const alarmScale = useSyncExternalStore(subscribeAlarmScale, getAlarmScale, getAlarmScale);
 
   // The panel stays compact: at most the 3 most recently resolved alarms,
   // ordered by resolution time descending regardless of the source order.
@@ -83,7 +90,7 @@ export function AlarmPanel({
       <button
         type="button"
         className={`alarm-panel__reveal ${alarms.length ? 'alarm-panel__reveal--active' : ''}`}
-        onClick={() => updatePosition('RIGHT')}
+        onClick={() => updatePosition('LEFT')}
         title="Mostrar painel de alarmes"
         aria-label="Mostrar painel de alarmes"
       >
@@ -96,6 +103,7 @@ export function AlarmPanel({
     <aside
       className={`alarm-panel alarm-panel--${position.toLowerCase()}`}
       aria-label="Painel de alarmes"
+      style={{ '--alarm-scale': alarmScale / 100 } as CSSProperties}
     >
       <header className="alarm-panel__header">
         <strong>Alarmes</strong>
@@ -121,6 +129,20 @@ export function AlarmPanel({
           </button>
         </span>
       </header>
+      <div className="alarm-panel__scale" role="group" aria-label="Tamanho do painel de alarmes">
+        {ALARM_SCALE_OPTIONS.map(({ value, label }) => (
+          <button
+            type="button"
+            key={value}
+            className={alarmScale === value ? 'is-active' : ''}
+            aria-pressed={alarmScale === value}
+            title={`Tamanho ${label.toLowerCase()}`}
+            onClick={() => setAlarmScale(value)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       {alarms.length === 0 ? (
         <p className="alarm-panel__empty">Sem alarmes ativos</p>
       ) : (

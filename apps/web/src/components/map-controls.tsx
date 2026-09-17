@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import type {
   LinkDisplayStyle,
   LinkMetricDisplay,
@@ -8,6 +8,12 @@ import type {
   NodeDisplayMode,
   TrafficLabelMode,
 } from '@gmj/shared';
+import {
+  ALARM_SCALE_OPTIONS,
+  getAlarmScale,
+  setAlarmScale,
+  subscribeAlarmScale,
+} from '@/lib/alarm-panel-preferences';
 import { Button } from '@gmj/ui';
 import {
   Boxes,
@@ -67,6 +73,7 @@ function VisualPanelContent() {
   const setLinkMetricDisplay = useMapStore((state) => state.setLinkMetricDisplay);
   const setTrafficLabelMode = useMapStore((state) => state.setTrafficLabelMode);
   const setMapScales = useMapStore((state) => state.setMapScales);
+  const alarmScale = useSyncExternalStore(subscribeAlarmScale, getAlarmScale, getAlarmScale);
 
   const persist = (settings: MapSettingsUpdate) => {
     if (map) void updateNetworkMap(map.id, { settings }).catch(() => undefined);
@@ -78,6 +85,13 @@ function VisualPanelContent() {
     setMapScales(scales);
     persist(scales);
   };
+
+  const labelScale = map?.settings.labelScale ?? 100;
+  const legibilityActive = ALARM_SCALE_OPTIONS.some(
+    ({ value }) => value === labelScale && value === alarmScale,
+  )
+    ? labelScale
+    : null;
 
   return (
     <>
@@ -135,6 +149,22 @@ function VisualPanelContent() {
           </button>
         ))}
       </div>
+      <div className="scale-presets" aria-label="Preset de legibilidade">
+        <span>Legibilidade</span>
+        {ALARM_SCALE_OPTIONS.map(({ value, label }) => (
+          <button
+            type="button"
+            key={value}
+            className={legibilityActive === value ? 'is-active' : ''}
+            onClick={() => {
+              changeScales({ labelScale: value });
+              setAlarmScale(value);
+            }}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
       <ScaleControl
         label="Nós"
         value={map?.settings.nodeScale ?? 100}
@@ -146,8 +176,8 @@ function VisualPanelContent() {
         onChange={(linkScale) => changeScales({ linkScale })}
       />
       <ScaleControl
-        label="Labels"
-        value={map?.settings.labelScale ?? 100}
+        label="Textos / Labels"
+        value={labelScale}
         onChange={(labelScale) => changeScales({ labelScale })}
       />
       <PppTotalControls />

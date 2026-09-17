@@ -2354,6 +2354,11 @@ button {
   font: 8px var(--font-mono);
   cursor: pointer;
 }
+.scale-presets button.is-active {
+  border-color: #39788a;
+  background: #17404c;
+  color: #c2e8f0;
+}
 .scale-control {
   grid-template-columns: 82px 23px 1fr 39px 23px;
   gap: 5px;
@@ -4980,7 +4985,10 @@ label > small {
   z-index: 6;
   top: 74px;
   width: 264px;
-  max-height: calc(100% - 110px);
+  /* The whole panel scales proportionally (width, padding, fonts, badges)
+     without touching the map itself. */
+  zoom: var(--alarm-scale, 1);
+  max-height: calc((100% - 110px) / var(--alarm-scale, 1));
   display: flex;
   flex-direction: column;
   border: 1px solid #263b46;
@@ -5061,6 +5069,37 @@ label > small {
   color: #526570;
   font: 500 10px var(--font-mono);
   text-align: center;
+}
+.alarm-panel__scale {
+  display: flex;
+  gap: 3px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #22343e;
+  background: rgba(7, 12, 16, 0.4);
+}
+.alarm-panel__scale button {
+  flex: 1;
+  height: 20px;
+  padding: 0 4px;
+  border: 1px solid #2a3d47;
+  border-radius: 3px;
+  background: #101a20;
+  color: #7f98a3;
+  font: 650 8px var(--font-mono);
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    background 0.12s,
+    color 0.12s;
+}
+.alarm-panel__scale button:hover {
+  border-color: #39788a;
+  color: #c2e8f0;
+}
+.alarm-panel__scale button.is-active {
+  border-color: #39788a;
+  background: #17404c;
+  color: #c2e8f0;
 }
 .alarm-panel__item {
   width: 100%;
