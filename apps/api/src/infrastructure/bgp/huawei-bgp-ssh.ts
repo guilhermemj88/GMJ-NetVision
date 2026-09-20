@@ -14,6 +14,7 @@ interface BgpSshClientOptions {
   port: number;
   username: string;
   password: string;
+  contextCommand?: string | null;
 }
 
 export type BgpSshClientFactory = (options: BgpSshClientOptions) => SshClient;
@@ -65,6 +66,7 @@ export class HuaweiBgpSshService {
       port: device.ssh.port,
       username: device.ssh.username,
       password: credentials.password,
+      contextCommand: device.ssh.contextCommand ?? null,
     });
 
     const summaryOutput = await this.executeRequired(client, device.ssh.host, 'display bgp peer');

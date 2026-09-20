@@ -650,6 +650,96 @@ describe('GMJ NetVision API', () => {
     ).toBe(false);
   });
 
+  it('stores, validates and clears the optional SSH context command', async () => {
+    const payload = {
+      hostname: 'ne8-ixbr-01',
+      displayName: 'NE8 IXBR',
+      managementIp: '10.250.9.8',
+      vendor: 'Huawei',
+      model: 'NE8',
+      deviceType: 'router',
+      site: 'IX',
+      description: '',
+      notes: '',
+      origin: 'MANUAL',
+      zabbix: { enabled: false, hostId: '', hostName: '', primaryInterfaceId: '', ip: '' },
+      ssh: {
+        enabled: true,
+        host: '10.250.9.1',
+        port: 22,
+        username: 'operator',
+        contextCommand: 'switch virtual-system IMPLANTAR-IXBR',
+      },
+      snmp: {
+        enabled: true,
+        version: 'SNMP_V2C',
+        host: '10.250.9.8',
+        port: 161,
+        username: '',
+        securityLevel: 'NO_AUTH_NO_PRIV',
+        authProtocol: null,
+        privacyProtocol: null,
+      },
+    };
+    const created = await app.inject({ method: 'POST', url: '/api/hosts', payload });
+    expect(created.statusCode).toBe(201);
+    expect(created.json().ssh.contextCommand).toBe('switch virtual-system IMPLANTAR-IXBR');
+    expect(created.json().ssh.password).toBeUndefined();
+    expect(JSON.stringify(created.json())).not.toMatch(/"password"\s*:/i);
+
+    const hostId = created.json().id;
+    const invalid = await app.inject({
+      method: 'PATCH',
+      url: `/api/hosts/${hostId}`,
+      payload: {
+        ssh: {
+          enabled: true,
+          host: '10.250.9.1',
+          port: 22,
+          username: 'operator',
+          contextCommand: 'switch virtual-system A; display bgp peer',
+        },
+      },
+    });
+    expect(invalid.statusCode).toBe(400);
+
+    // Updating only SSH must not touch the SNMP configuration.
+    const edited = await app.inject({
+      method: 'PATCH',
+      url: `/api/hosts/${hostId}`,
+      payload: {
+        ssh: {
+          enabled: true,
+          host: '10.250.9.1',
+          port: 22,
+          username: 'operator',
+          contextCommand: 'switch virtual-system OTHER',
+        },
+      },
+    });
+    expect(edited.statusCode).toBe(200);
+    expect(edited.json().ssh.contextCommand).toBe('switch virtual-system OTHER');
+    expect(edited.json().snmp).toMatchObject({ host: '10.250.9.8', port: 161, version: 'SNMP_V2C' });
+
+    const cleared = await app.inject({
+      method: 'PATCH',
+      url: `/api/hosts/${hostId}`,
+      payload: {
+        ssh: {
+          enabled: true,
+          host: '10.250.9.1',
+          port: 22,
+          username: 'operator',
+          contextCommand: '',
+        },
+      },
+    });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json().ssh.contextCommand).toBeNull();
+
+    await app.inject({ method: 'DELETE', url: `/api/hosts/${hostId}` });
+  });
+
   it('removes a host from multiple maps without leaving orphan nodes or links', async () => {
     const mapIds = ['backbone-main', 'bgp-operators', 'access-olts'];
     const existing = await app.inject({ method: 'GET', url: '/api/hosts/core-01' });

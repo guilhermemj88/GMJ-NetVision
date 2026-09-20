@@ -10,5 +10,6 @@ export * from './link-telemetry';
 export * from './mpls';
 export * from './optical-history';
 export * from './ppp';
+export * from './ssh-context';
 export * from './traffic-colors';
 export * from './types';

@@ -158,6 +158,11 @@ export interface SshAccessSummary {
   username: string;
   credentialConfigured: boolean;
   authenticationType: 'PASSWORD' | 'PRIVATE_KEY';
+  /**
+   * Optional Huawei VRP context command executed in the same shell session
+   * before the real commands, e.g. "switch virtual-system IMPLANTAR-IXBR".
+   */
+  contextCommand?: string | null;
 }
 export interface SnmpAccessSummary {
   version: SnmpVersion;
@@ -462,6 +467,7 @@ export interface SshHostInput {
   username: string;
   password?: string;
   clearCredential?: boolean;
+  contextCommand?: string | null;
 }
 export interface SnmpHostInput {
   enabled: boolean;

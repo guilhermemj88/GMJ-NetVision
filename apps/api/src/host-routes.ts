@@ -15,6 +15,7 @@ import type {
 } from '@gmj/shared';
 import type { DiscoveryService } from './application/discovery-service';
 import { config } from './config';
+import { isValidSshContextCommand, normalizeSshContextCommand } from '@gmj/shared';
 import { demoZabbixCandidates, type ZabbixAdapter } from './infrastructure/metrics/zabbix-adapter';
 import { CredentialEncryptionUnavailableError, type DemoMapRepository } from './infrastructure/persistence/demo-map-repository';
 import type { HostRepository } from './infrastructure/persistence/host-repository';
@@ -29,8 +30,15 @@ const deviceType = z.enum([
 const zabbixInput = z.object({
   enabled: z.boolean(), hostId: z.string().max(80), hostName: z.string().max(255), primaryInterfaceId: z.string().max(80), ip: z.string().max(45),
 });
+const sshContextCommand = z
+  .union([z.string().max(160), z.null()])
+  .optional()
+  .transform((value) => normalizeSshContextCommand(value))
+  .refine((value) => value === null || isValidSshContextCommand(value), {
+    message: 'Comando de contexto SSH inválido',
+  });
 const sshInput = z.object({
-  enabled: z.boolean(), host: z.string().max(255), port: z.number().int().min(1).max(65_535).default(22), username: z.string().max(128), password: z.string().min(1).max(1_024).optional(), clearCredential: z.boolean().optional(),
+  enabled: z.boolean(), host: z.string().max(255), port: z.number().int().min(1).max(65_535).default(22), username: z.string().max(128), password: z.string().min(1).max(1_024).optional(), clearCredential: z.boolean().optional(), contextCommand: sshContextCommand,
 });
 const snmpInput = z.object({
   enabled: z.boolean(), version: z.enum(['SNMP_V2C', 'SNMP_V3']), host: z.string().max(255), port: z.number().int().min(1).max(65_535).default(161), community: z.string().min(1).max(1_024).optional(), username: z.string().max(128), securityLevel: z.enum(['NO_AUTH_NO_PRIV', 'AUTH_NO_PRIV', 'AUTH_PRIV']), authProtocol: z.enum(['MD5', 'SHA', 'SHA256']).nullable(), authPassword: z.string().min(1).max(1_024).optional(), privacyProtocol: z.enum(['DES', 'AES', 'AES256']).nullable(), privacyPassword: z.string().min(1).max(1_024).optional(), clearCredential: z.boolean().optional(),

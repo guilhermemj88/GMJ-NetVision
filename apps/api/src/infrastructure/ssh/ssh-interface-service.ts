@@ -112,6 +112,7 @@ export class SshInterfaceService {
       port: device.ssh.port,
       username: device.ssh.username,
       password: credentials.password,
+      contextCommand: device.ssh.contextCommand ?? null,
     });
     let enriched = interfaces;
 
@@ -239,6 +240,7 @@ export class SshInterfaceService {
       port: device.ssh.port,
       username: device.ssh.username,
       password: credentials.password,
+      contextCommand: device.ssh.contextCommand ?? null,
     });
     const results = await client.execute(device.ssh.host, driver.interfaceCommands());
     const commandResult = results.at(-1);

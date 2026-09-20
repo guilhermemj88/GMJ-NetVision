@@ -2,6 +2,7 @@ import {
   aggregateMetricHistory,
   aggregateOpticalHistory,
   createLocalId,
+  normalizeSshContextCommand,
   opticalSampleFromInterface,
   type ConnectionTestResult,
   type CreateHostInput,
@@ -273,6 +274,9 @@ export class PrismaHostRepository implements HostRepository {
           sshPort: input.ssh.port,
           sshUsername: input.ssh.enabled ? input.ssh.username : null,
           sshAuthentication: input.ssh.enabled ? 'PASSWORD' : null,
+          sshContextCommand: input.ssh.enabled
+            ? normalizeSshContextCommand(input.ssh.contextCommand)
+            : null,
           snmpEnabled: input.snmp.enabled,
           snmpVersion: input.snmp.enabled ? input.snmp.version : null,
           snmpHost: input.snmp.enabled ? input.snmp.host || input.managementIp : null,
@@ -393,6 +397,13 @@ export class PrismaHostRepository implements HostRepository {
                 sshPort: input.ssh.port,
                 sshUsername: input.ssh.enabled ? input.ssh.username : null,
                 sshAuthentication: input.ssh.enabled ? 'PASSWORD' : null,
+                ...(input.ssh.contextCommand === undefined
+                  ? {}
+                  : {
+                      sshContextCommand: input.ssh.enabled
+                        ? normalizeSshContextCommand(input.ssh.contextCommand)
+                        : null,
+                    }),
                 sshCredentialId,
               }
             : {}),
@@ -803,6 +814,7 @@ export class PrismaHostRepository implements HostRepository {
     deviceType: string; site: string | null; source: string; discoveryMethod: string; useZabbix: boolean;
     zabbixHostId: string | null; zabbixHostName: string | null; zabbixInterfaceId: string | null; zabbixIp: string | null;
     sshEnabled: boolean; sshHost: string | null; sshPort: number; sshUsername: string | null; sshAuthentication: string | null;
+    sshContextCommand: string | null;
     snmpEnabled: boolean; snmpVersion: string | null; snmpHost: string | null; snmpPort: number; snmpUsername: string | null;
     snmpSecurityLevel: string | null; snmpAuthProtocol: string | null; snmpPrivacyProtocol: string | null;
     lastPollingAt: Date | null; lastDiscoveryAt: Date | null; uptimeSeconds: bigint | null; cpuPercent: number | null;
@@ -940,6 +952,7 @@ export class PrismaHostRepository implements HostRepository {
         username: device.sshUsername ?? '',
         credentialConfigured: Boolean(device.sshCredentialId),
         authenticationType: device.sshAuthentication === 'PRIVATE_KEY' ? 'PRIVATE_KEY' : 'PASSWORD',
+        contextCommand: device.sshContextCommand,
       } : null,
       snmpEnabled: device.snmpEnabled,
       snmp: device.snmpEnabled ? {

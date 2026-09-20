@@ -1,17 +1,21 @@
 import { Client, type ConnectConfig, type ClientChannel } from 'ssh2';
 import type { CommandResult, SshClient } from '../../domain/ports';
+import { withSshContext } from './ssh-context';
 
 interface SshClientOptions {
   port: number;
   username: string;
   password: string;
   readyTimeout?: number;
+  /** Optional host context command executed before the real commands. */
+  contextCommand?: string | null;
 }
 
 export class SshClientImpl implements SshClient {
   constructor(private readonly options: SshClientOptions) {}
 
   async execute(host: string, commands: string[]): Promise<CommandResult[]> {
+    const preparedCommands = withSshContext(commands, this.options.contextCommand);
     const connection = new Client();
     const config: ConnectConfig = {
       host,
@@ -40,7 +44,7 @@ export class SshClientImpl implements SshClient {
     try {
       await Promise.race([ready, connectionFailure]);
       const result = await Promise.race([
-        this.executeShell(connection, commands),
+        this.executeShell(connection, preparedCommands),
         connectionFailure,
       ]);
       return [result];

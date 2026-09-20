@@ -355,6 +355,7 @@ function buildTopologyAdapters(hosts: HostRepository): TopologyDiscoveryAdapter[
         port: host.ssh.port,
         username: host.ssh.username,
         password: credentials.password,
+        contextCommand: host.ssh.contextCommand ?? null,
       });
       return { client, host: host.ssh.host };
     },

@@ -226,4 +226,31 @@ Prefixes current: 1099912`,
       displayName: 'TRANSITO LEVEL3',
     });
   });
+
+  it('passes the host SSH context command to the BGP SSH client', async () => {
+    const execute = vi.fn(async () => [{ stdout: 'Summary Count : 0', stderr: '', exitCode: 0 }]);
+    const factory = vi.fn(() => ({ execute }));
+    const ssh = new HuaweiBgpSshService(repository(), factory);
+    const device = host();
+    device.ssh = {
+      ...device.ssh!,
+      contextCommand: 'switch virtual-system IMPLANTAR-IXBR',
+    };
+
+    await new BgpDiscoveryService(ssh, bgpRepository()).discover(device);
+
+    expect(factory).toHaveBeenCalledWith(
+      expect.objectContaining({ contextCommand: 'switch virtual-system IMPLANTAR-IXBR' }),
+    );
+  });
+
+  it('omits the context command for a normal host', async () => {
+    const execute = vi.fn(async () => [{ stdout: 'Summary Count : 0', stderr: '', exitCode: 0 }]);
+    const factory = vi.fn(() => ({ execute }));
+    const ssh = new HuaweiBgpSshService(repository(), factory);
+
+    await new BgpDiscoveryService(ssh, bgpRepository()).discover(host());
+
+    expect(factory).toHaveBeenCalledWith(expect.objectContaining({ contextCommand: null }));
+  });
 });

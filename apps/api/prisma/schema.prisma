@@ -325,6 +325,7 @@ model Device {
   sshPort             Int                   @default(22)
   sshUsername         String?
   sshAuthentication   String?
+  sshContextCommand   String?
   snmpEnabled         Boolean               @default(false)
   snmpVersion         SnmpVersion?
   snmpHost            String?

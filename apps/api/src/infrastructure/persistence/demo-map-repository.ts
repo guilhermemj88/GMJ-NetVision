@@ -6,6 +6,7 @@ import {
   cloneDemoMaps,
   createLocalId,
   normalizeLinkHandleSide,
+  normalizeSshContextCommand,
   defaultPppTotalSettings,
   type AddDeviceResult,
   type AssistedDiscoveryPreview,
@@ -1182,6 +1183,9 @@ export class DemoMapRepository {
       username: input.username,
       credentialConfigured: Boolean(stored.ssh),
       authenticationType: 'PASSWORD',
+      ...(input.contextCommand === undefined
+        ? {}
+        : { contextCommand: normalizeSshContextCommand(input.contextCommand) }),
     };
     host.sourceHealth.SSH = configuredHealth(true);
   }
