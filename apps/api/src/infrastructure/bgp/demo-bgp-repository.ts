@@ -10,10 +10,13 @@ import {
 } from './bgp-persistence';
 import type { BgpDashboardQuery, BgpDiscoveryPeerInput, BgpRepository } from './bgp-repository';
 import type { HuaweiBgpCollection } from './huawei-bgp-snmp';
+import { computeBgpAlerts } from './bgp-alerts';
 import type {
+  BgpAlertsResponse,
   BgpDashboardPeer,
   BgpHistoryPeriod,
   BgpPeerHistoryResponse,
+  BgpScope,
 } from '@gmj/shared';
 
 export interface DemoBgpPeerRecord extends ExistingBgpPeerState {
@@ -256,6 +259,38 @@ export class DemoBgpRepository implements BgpRepository {
           occurredAt: event.occurredAt.toISOString(),
         })),
     };
+  }
+
+  async listAlerts(scope: BgpScope, hours: number): Promise<BgpAlertsResponse> {
+    const rows = [...this.peers.values()].filter((peer) => {
+      if (scope !== 'monitored') return true;
+      return this.devices.get(peer.deviceId)?.bgpMonitoringEnabled ?? false;
+    });
+    return computeBgpAlerts(
+      rows.map((peer) => {
+        const device = this.devices.get(peer.deviceId);
+        const iface = peer.interfaceId ? this.interfaces.get(peer.interfaceId) ?? null : null;
+        return {
+          id: peer.id,
+          deviceId: peer.deviceId,
+          deviceName: device?.displayName ?? peer.deviceId,
+          peerAddress: peer.peerAddress,
+          displayName: deriveBgpPeerDisplayName(peer.peerAddress, iface),
+          state: peer.state,
+          established: peer.established,
+          lastStateChangedAt: peer.lastStateChangedAt,
+        };
+      }),
+      this.stateEvents.map((event) => ({
+        bgpPeerId: event.bgpPeerId,
+        previousState: event.previousState,
+        previousStateCode: event.previousStateCode,
+        currentState: event.currentState,
+        currentStateCode: event.currentStateCode,
+        occurredAt: event.occurredAt,
+      })),
+      new Date(Date.now() - hours * 60 * 60_000),
+    );
   }
 
   private toDashboardPeer(peer: DemoBgpPeerRecord): BgpDashboardPeer {

@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { formatBgpTraffic, formatBgpUptime, formatRouteCount } from './bgp-format';
+import {
+  formatBgpTraffic,
+  formatBgpUptime,
+  formatDurationShort,
+  formatRelative,
+  formatRouteCount,
+} from './bgp-format';
 
 describe('formatRouteCount', () => {
   it('renders null as a dash, never as zero', () => {
@@ -47,5 +53,25 @@ describe('formatBgpTraffic', () => {
     expect(formatBgpTraffic(4_800_000_000)).toBe('4.8G');
     expect(formatBgpTraffic(800_000_000)).toBe('800M');
     expect(formatBgpTraffic(650_000)).toBe('650K');
+  });
+});
+
+describe('formatDurationShort', () => {
+  it('renders null as a dash', () => {
+    expect(formatDurationShort(null)).toBe('-');
+  });
+
+  it('formats seconds, minutes and hours compactly', () => {
+    expect(formatDurationShort(252)).toBe('4m12s');
+    expect(formatDurationShort(3900)).toBe('1h05m');
+    expect(formatDurationShort(42)).toBe('42s');
+  });
+});
+
+describe('formatRelative', () => {
+  it('formats seconds, minutes and hours', () => {
+    expect(formatRelative(42_000)).toBe('há 42s');
+    expect(formatRelative(3 * 60_000)).toBe('há 3m');
+    expect(formatRelative(2 * 60 * 60_000)).toBe('há 2h');
   });
 });

@@ -10,9 +10,13 @@ import { useMapStore } from '@/store/map-store';
 const api = vi.hoisted(() => ({
   getBgpDashboard: vi.fn(),
   getBgpPeerHistory: vi.fn(),
+  getBgpPeer: vi.fn(),
+  getBgpAlerts: vi.fn(),
   getHosts: vi.fn(),
   updateHost: vi.fn(),
   getHistory: vi.fn(),
+  discoverBgp: vi.fn(),
+  pollHost: vi.fn(),
 }));
 
 vi.mock('@/lib/api', () => api);
@@ -153,9 +157,19 @@ describe('BgpWorkspace', () => {
     vi.clearAllMocks();
     api.getBgpDashboard.mockResolvedValue(dashboard);
     api.getBgpPeerHistory.mockResolvedValue({ peerId: 'p1', samples: [], events: [] });
+    api.getBgpPeer.mockResolvedValue(null);
+    api.getBgpAlerts.mockResolvedValue({ active: [], resolved: [] });
     api.getHistory.mockResolvedValue([]);
     api.getHosts.mockResolvedValue([]);
     api.updateHost.mockResolvedValue({});
+    api.discoverBgp.mockResolvedValue({
+      hostId: 'ne8000-1',
+      peersDiscovered: 0,
+      matchedInterfaces: 0,
+      unmatchedInterfaces: 0,
+      peers: [],
+    });
+    api.pollHost.mockResolvedValue({ hostId: 'ne8000-1', polledAt: 'x', interfacesChecked: 0, interfaceSamples: 0 });
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -224,7 +238,9 @@ describe('BgpWorkspace', () => {
 
   it('loads peer history only when a peer is opened', async () => {
     expect(api.getBgpPeerHistory).not.toHaveBeenCalled();
-    const row = container.querySelector('tr.is-up');
+    const row = Array.from(container.querySelectorAll('tr')).find((candidate) =>
+      candidate.textContent?.includes('200.150.1.193'),
+    );
     await act(async () => {
       (row as HTMLElement).click();
       await new Promise((resolve) => window.setTimeout(resolve, 0));
@@ -232,7 +248,38 @@ describe('BgpWorkspace', () => {
     expect(api.getBgpPeerHistory).toHaveBeenCalledWith('p1', '1h');
   });
 
-  it('toggles bgpMonitoringEnabled through the manager', async () => {
+  it('toggles bgpMonitoringEnabled locally and saves only changed hosts', async () => {
+    api.getHosts.mockResolvedValue([
+      { id: 'ne8000-1', hostname: 'NE8000-1', displayName: 'NE-8K POP CENTRO', bgpMonitoringEnabled: true },
+      { id: 's6730-1', hostname: 'S6730-MPLS-01', displayName: 'S6730 MPLS', bgpMonitoringEnabled: false },
+    ]);
+    const manage = findButton(container, 'Gerenciar equipamentos');
+    await act(async () => {
+      manage.click();
+    });
+    await settle();
+    const row = Array.from(container.querySelectorAll('.bgp-manage__list li')).find((candidate) =>
+      candidate.textContent?.includes('S6730-MPLS-01'),
+    );
+    const checkbox = row?.querySelector('input');
+    expect(checkbox).toBeTruthy();
+    await act(async () => {
+      (checkbox as HTMLInputElement).click();
+    });
+    // Immediate local visual change, no PATCH yet.
+    expect((checkbox as HTMLInputElement).checked).toBe(true);
+    expect(api.updateHost).not.toHaveBeenCalled();
+
+    const save = findButton(container, 'Salvar alterações');
+    await act(async () => {
+      save.click();
+    });
+    await settle();
+    expect(api.updateHost).toHaveBeenCalledTimes(1);
+    expect(api.updateHost).toHaveBeenCalledWith('s6730-1', { bgpMonitoringEnabled: true });
+  });
+
+  it('does not PATCH when the manager is cancelled', async () => {
     api.getHosts.mockResolvedValue([
       { id: 's6730-1', hostname: 'S6730-MPLS-01', displayName: 'S6730 MPLS', bgpMonitoringEnabled: false },
     ]);
@@ -242,12 +289,90 @@ describe('BgpWorkspace', () => {
     });
     await settle();
     const checkbox = container.querySelector('.bgp-manage__list input');
-    expect(checkbox).toBeTruthy();
     await act(async () => {
       (checkbox as HTMLInputElement).click();
     });
+    const cancel = findButton(container, 'Cancelar');
+    await act(async () => {
+      cancel.click();
+    });
     await settle();
-    expect(api.updateHost).toHaveBeenCalledWith('s6730-1', { bgpMonitoringEnabled: true });
+    expect(api.updateHost).not.toHaveBeenCalled();
+  });
+
+  it('shows an error when a PATCH fails during save', async () => {
+    api.getHosts.mockResolvedValue([
+      { id: 's6730-1', hostname: 'S6730-MPLS-01', displayName: 'S6730 MPLS', bgpMonitoringEnabled: false },
+    ]);
+    api.updateHost.mockRejectedValue(new Error('Falha de rede'));
+    const manage = findButton(container, 'Gerenciar equipamentos');
+    await act(async () => {
+      manage.click();
+    });
+    await settle();
+    const checkbox = container.querySelector('.bgp-manage__list input');
+    await act(async () => {
+      (checkbox as HTMLInputElement).click();
+    });
+    const save = findButton(container, 'Salvar alterações');
+    await act(async () => {
+      save.click();
+    });
+    await settle();
+    expect(container.textContent).toContain('Falha de rede');
+  });
+
+  it('renders the alerts panel with active and resolved entries', async () => {
+    api.getBgpAlerts.mockResolvedValue({
+      active: [
+        {
+          peerId: 'p3',
+          deviceId: 's6730-1',
+          deviceName: 'S6730 MPLS',
+          peerAddress: '10.0.0.1',
+          displayName: '10.0.0.1',
+          previousState: 'ESTABLISHED',
+          currentState: 'ACTIVE',
+          startedAt: '2026-09-20T09:42:00.000Z',
+        },
+      ],
+      resolved: [
+        {
+          peerId: 'p2',
+          deviceId: 'ne8000-1',
+          deviceName: 'NE-8K POP CENTRO',
+          peerAddress: '187.16.216.253',
+          displayName: '187.16.216.253',
+          previousState: 'ACTIVE',
+          currentState: 'ESTABLISHED',
+          startedAt: '2026-09-20T10:13:00.000Z',
+          resolvedAt: '2026-09-20T10:17:12.000Z',
+          durationSeconds: 252,
+        },
+      ],
+    });
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['bgp-alerts'] });
+    });
+    await settle();
+    expect(container.textContent).toContain('Ativos');
+    expect(container.textContent).toContain('Resolvidos · 48h');
+    expect(container.textContent).toContain('Down desde');
+    expect(container.querySelectorAll('.bgp-alerts__item--active').length).toBe(1);
+    expect(container.querySelectorAll('.bgp-alerts__item--resolved').length).toBe(1);
+  });
+
+  it('refreshes a single device with discovery before SNMP', async () => {
+    const refresh = container.querySelector('.bgp-device__refresh');
+    await act(async () => {
+      (refresh as HTMLButtonElement).click();
+    });
+    await settle();
+    expect(api.discoverBgp).toHaveBeenCalledWith('ne8000-1');
+    expect(api.pollHost).toHaveBeenCalledWith('ne8000-1');
+    expect(api.discoverBgp.mock.invocationCallOrder[0]!).toBeLessThan(
+      api.pollHost.mock.invocationCallOrder[0]!,
+    );
   });
 });
 

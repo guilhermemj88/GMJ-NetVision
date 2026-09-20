@@ -179,7 +179,7 @@ export function BgpPeerDetail({
                     <ReferenceLine
                       key={`${event.occurredAt}-${event.currentStateCode}`}
                       x={timeLabel(event.occurredAt)}
-                      stroke="#d25e61"
+                      stroke={event.currentState === 'ESTABLISHED' ? '#43c59e' : '#d25e61'}
                       strokeDasharray="3 3"
                     />
                   ))}

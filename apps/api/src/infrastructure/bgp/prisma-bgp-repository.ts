@@ -10,11 +10,14 @@ import {
 } from './bgp-persistence';
 import type { BgpDashboardQuery, BgpDiscoveryPeerInput, BgpRepository } from './bgp-repository';
 import type { HuaweiBgpCollection } from './huawei-bgp-snmp';
+import { computeBgpAlerts } from './bgp-alerts';
 import type {
+  BgpAlertsResponse,
   BgpDashboardPeer,
   BgpHistoryPeriod,
   BgpPeerHistoryResponse,
   BgpPeerState,
+  BgpScope,
 } from '@gmj/shared';
 
 const existingPeerSelect = {
@@ -274,6 +277,51 @@ export class PrismaBgpRepository implements BgpRepository {
         occurredAt: event.occurredAt.toISOString(),
       })),
     };
+  }
+
+  async listAlerts(scope: BgpScope, hours: number): Promise<BgpAlertsResponse> {
+    const where: Prisma.BgpPeerWhereInput =
+      scope === 'monitored' ? { device: { bgpMonitoringEnabled: true } } : {};
+    const rows = await this.prisma.bgpPeer.findMany({
+      where,
+      include: {
+        device: { select: { id: true, displayName: true } },
+        interface: { select: { id: true, name: true, alias: true, description: true } },
+      },
+    });
+    const events = await this.prisma.bgpPeerStateEvent.findMany({
+      where: { bgpPeerId: { in: rows.map((row) => row.id) } },
+      orderBy: { occurredAt: 'asc' },
+      select: {
+        bgpPeerId: true,
+        previousState: true,
+        previousStateCode: true,
+        currentState: true,
+        currentStateCode: true,
+        occurredAt: true,
+      },
+    });
+    return computeBgpAlerts(
+      rows.map((row) => ({
+        id: row.id,
+        deviceId: row.deviceId,
+        deviceName: row.device.displayName,
+        peerAddress: row.peerAddress,
+        displayName: deriveBgpPeerDisplayName(row.peerAddress, row.interface ?? null),
+        state: row.state as BgpPeerState,
+        established: row.established,
+        lastStateChangedAt: row.lastStateChangedAt,
+      })),
+      events.map((event) => ({
+        bgpPeerId: event.bgpPeerId,
+        previousState: event.previousState as BgpPeerState,
+        previousStateCode: event.previousStateCode,
+        currentState: event.currentState as BgpPeerState,
+        currentStateCode: event.currentStateCode,
+        occurredAt: event.occurredAt,
+      })),
+      new Date(Date.now() - hours * 60 * 60_000),
+    );
   }
 
   private toDashboardPeer(

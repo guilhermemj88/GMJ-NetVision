@@ -94,6 +94,16 @@ export function registerBgpRoutes(
     return history ?? reply.code(404).send({ message: 'BGP peer not found' });
   });
 
+  app.get('/api/bgp/alerts', async (request) => {
+    const { hours, scope } = z
+      .object({
+        hours: z.coerce.number().int().min(1).max(168).default(48),
+        scope: z.enum(['monitored', 'all']).default('monitored'),
+      })
+      .parse(request.query);
+    return bgp.listAlerts(scope, hours);
+  });
+
   if (hosts && discovery) {
     app.post('/api/hosts/:hostId/bgp/discover', async (request, reply) => {
       const { hostId } = hostParams.parse(request.params);

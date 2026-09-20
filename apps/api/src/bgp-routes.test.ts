@@ -299,6 +299,83 @@ describe('BGP manual discovery API', () => {
   });
 });
 
+describe('BGP alerts API', () => {
+  it('returns active and resolved alerts respecting the monitored scope', async () => {
+    const repo = new DemoBgpRepository();
+    repo.setDevice({
+      id: 'ne8000-1',
+      hostname: 'NE8000-1',
+      displayName: 'NE-8K POP CENTRO',
+      bgpMonitoringEnabled: true,
+    });
+    repo.setDevice({
+      id: 's6730-1',
+      hostname: 'S6730-MPLS-01',
+      displayName: 'S6730 MPLS',
+      bgpMonitoringEnabled: false,
+    });
+
+    const now = Date.now();
+    const t0 = new Date(now - 30 * 60_000);
+    const t1 = new Date(now - 20 * 60_000);
+    const t2 = new Date(now - 10 * 60_000);
+
+    // Peer p1: ESTABLISHED -> ACTIVE (active alert on a monitored device).
+    await repo.saveCollection('ne8000-1', collection(t0.toISOString(), [
+      { peerAddress: '200.150.1.193', stateCode: 6, receivedPrefixes: 100 },
+    ]));
+    await repo.saveCollection('ne8000-1', collection(t1.toISOString(), [
+      { peerAddress: '200.150.1.193', stateCode: 3, receivedPrefixes: null },
+    ]));
+
+    // Peer p2: down on a NON-monitored device (must be excluded).
+    await repo.saveCollection('s6730-1', collection(t1.toISOString(), [
+      { peerAddress: '10.0.0.1', stateCode: 3, receivedPrefixes: null },
+    ]));
+
+    // Peer p3: ESTABLISHED -> ACTIVE -> ESTABLISHED (resolved alert).
+    await repo.saveCollection('ne8000-1', collection(t0.toISOString(), [
+      { peerAddress: '187.16.216.253', stateCode: 6, receivedPrefixes: 200 },
+    ]));
+    await repo.saveCollection('ne8000-1', collection(t1.toISOString(), [
+      { peerAddress: '187.16.216.253', stateCode: 3, receivedPrefixes: null },
+    ]));
+    await repo.saveCollection('ne8000-1', collection(t2.toISOString(), [
+      { peerAddress: '187.16.216.253', stateCode: 6, receivedPrefixes: 201 },
+    ]));
+
+    const app = Fastify();
+    registerBgpRoutes(app, { bgp: repo });
+    await app.ready();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/bgp/alerts?hours=48&scope=monitored',
+    });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+
+    expect(body.active.map((item: { peerAddress: string }) => item.peerAddress)).toEqual([
+      '200.150.1.193',
+    ]);
+    expect(body.active[0]).toMatchObject({
+      currentState: 'ACTIVE',
+      previousState: 'ESTABLISHED',
+      deviceName: 'NE-8K POP CENTRO',
+    });
+    expect(body.resolved.map((item: { peerAddress: string }) => item.peerAddress)).toEqual([
+      '187.16.216.253',
+    ]);
+    expect(body.resolved[0]).toMatchObject({
+      previousState: 'ACTIVE',
+      currentState: 'ESTABLISHED',
+      durationSeconds: 600,
+    });
+
+    await app.close();
+  });
+});
+
 describe('BGP peer history API', () => {
   it('returns samples ordered by timestamp and state change events', async () => {
     const repo = new DemoBgpRepository();

@@ -2,6 +2,8 @@ import {
   type AddDeviceResult,
   type Alarm,
   type AuthUser,
+  type BgpAlertsResponse,
+  type BgpDashboardPeer,
   type BgpDashboardResponse,
   type BgpHistoryPeriod,
   type BgpPeerHistoryResponse,
@@ -371,6 +373,30 @@ export function getBgpPeerHistory(
   return request<BgpPeerHistoryResponse>(
     `/api/bgp/peers/${encodeURIComponent(peerId)}/history?period=${period}`,
   );
+}
+
+export function getBgpPeer(peerId: string): Promise<BgpDashboardPeer | null> {
+  return request<BgpDashboardPeer | null>(`/api/bgp/peers/${encodeURIComponent(peerId)}`);
+}
+
+export function getBgpAlerts(input: {
+  scope?: BgpScope;
+  hours?: number;
+} = {}): Promise<BgpAlertsResponse> {
+  const params = new URLSearchParams();
+  params.set('scope', input.scope ?? 'monitored');
+  params.set('hours', String(input.hours ?? 48));
+  return request<BgpAlertsResponse>(`/api/bgp/alerts?${params}`);
+}
+
+export function discoverBgp(hostId: string) {
+  return request<{
+    hostId: string;
+    peersDiscovered: number;
+    matchedInterfaces: number;
+    unmatchedInterfaces: number;
+    peers: Array<Record<string, unknown>>;
+  }>(`/api/hosts/${encodeURIComponent(hostId)}/bgp/discover`, { method: 'POST' });
 }
 
 export function getHost(hostId: string) {

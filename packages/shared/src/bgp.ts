@@ -84,3 +84,21 @@ export interface BgpPeerHistoryResponse {
   samples: BgpPeerHistoryPoint[];
   events: BgpPeerStateEventDto[];
 }
+
+export interface BgpAlertDto {
+  peerId: string;
+  deviceId: string;
+  deviceName: string;
+  peerAddress: string;
+  displayName: string;
+  previousState: BgpPeerState | null;
+  currentState: BgpPeerState;
+  startedAt: string | null;
+  resolvedAt?: string | null;
+  durationSeconds?: number | null;
+}
+
+export interface BgpAlertsResponse {
+  active: BgpAlertDto[];
+  resolved: BgpAlertDto[];
+}

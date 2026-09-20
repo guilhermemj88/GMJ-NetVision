@@ -1,7 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import type { BgpDashboardDevice, BgpDashboardPeer } from '@gmj/shared';
+import { RefreshCw } from 'lucide-react';
 import { formatBgpTraffic, formatBgpUptime, formatRouteCount } from '@/lib/bgp-format';
+import { nextSort, sortBgpPeers, type BgpSort, type BgpSortKey } from '@/lib/bgp-sort';
 
 function stateLabel(peer: BgpDashboardPeer): string {
   return peer.established ? 'UP' : peer.state === 'UNKNOWN' ? 'DOWN' : peer.state;
@@ -11,18 +14,35 @@ function roleLabel(role: BgpDashboardPeer['role']): string | null {
   return role === 'OTHER' ? null : role;
 }
 
+const SORTABLE_COLUMNS: Array<{ key: BgpSortKey; label: string }> = [
+  { key: 'state', label: 'Estado' },
+  { key: 'peer', label: 'Peer' },
+  { key: 'asn', label: 'ASN' },
+  { key: 'routes', label: 'Rotas' },
+  { key: 'traffic', label: 'Tráfego da interface' },
+  { key: 'uptime', label: 'Uptime' },
+];
+
 export function BgpPeerTable({
   devices,
   onSelectPeer,
+  onRefreshDevice,
+  refreshingDeviceIds,
+  emptyMessage,
 }: {
   devices: BgpDashboardDevice[];
   onSelectPeer: (peer: BgpDashboardPeer) => void;
+  onRefreshDevice?: (deviceId: string) => void;
+  refreshingDeviceIds?: ReadonlySet<string>;
+  emptyMessage?: string;
 }) {
+  const [sort, setSort] = useState<BgpSort>({ key: 'state', direction: 'asc' });
+
   if (!devices.length) {
     return (
       <div className="hosts-table-wrap">
         <div className="hosts-empty">
-          <span>Nenhum peer BGP encontrado para os filtros selecionados.</span>
+          <span>{emptyMessage ?? 'Nenhum peer BGP encontrado para os filtros selecionados.'}</span>
         </div>
       </div>
     );
@@ -33,12 +53,20 @@ export function BgpPeerTable({
       <table className="bgp-table">
         <thead>
           <tr>
-            <th>Estado</th>
-            <th>Peer</th>
-            <th>ASN</th>
-            <th>Rotas</th>
-            <th>Tráfego da interface</th>
-            <th>Uptime</th>
+            {SORTABLE_COLUMNS.map((column) => (
+              <th key={column.key}>
+                <button
+                  type="button"
+                  className="bgp-sort"
+                  onClick={() => setSort((current) => nextSort(current, column.key))}
+                >
+                  {column.label}
+                  <span className={sort.key === column.key ? 'is-active' : ''}>
+                    {sort.key === column.key ? (sort.direction === 'asc' ? '↑' : '↓') : ''}
+                  </span>
+                </button>
+              </th>
+            ))}
             <th>Histórico</th>
           </tr>
         </thead>
@@ -50,10 +78,27 @@ export function BgpPeerTable({
             <strong>{device.displayName || device.hostname}</strong>
             <small>{device.hostname}</small>
             <em>{device.peers.length} peer(s)</em>
+            {onRefreshDevice && (
+              <button
+                type="button"
+                className="bgp-device__refresh"
+                disabled={refreshingDeviceIds?.has(device.id)}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onRefreshDevice(device.id);
+                }}
+              >
+                <RefreshCw
+                  size={12}
+                  className={refreshingDeviceIds?.has(device.id) ? 'spin' : ''}
+                />
+                {refreshingDeviceIds?.has(device.id) ? 'Atualizando...' : 'Atualizar agora'}
+              </button>
+            )}
           </header>
           <table className="bgp-table bgp-table--rows">
             <tbody>
-              {device.peers.map((peer) => (
+              {sortBgpPeers(device.peers, sort).map((peer) => (
                 <tr
                   key={peer.id}
                   className={peer.established ? 'is-up' : 'is-down'}
@@ -104,3 +149,4 @@ export function BgpPeerTable({
     </div>
   );
 }
+

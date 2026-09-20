@@ -48,6 +48,7 @@ function bgpRepository(): BgpRepository {
     listDashboardPeers: vi.fn(),
     getPeerDetail: vi.fn(),
     getPeerHistory: vi.fn(),
+    listAlerts: vi.fn().mockResolvedValue({ active: [], resolved: [] }),
   };
 }
 
