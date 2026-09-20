@@ -419,6 +419,7 @@ model BgpPeer {
   id                 String      @id @default(cuid())
   deviceId           String
   peerAddress        String
+  peerDescription    String?
   remoteAs           BigInt?
   interfaceId        String?
   monitoringEnabled  Boolean     @default(true)

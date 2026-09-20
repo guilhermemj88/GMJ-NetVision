@@ -128,11 +128,14 @@ export function discoveryInterfaceUpdate(peer: BgpDiscoveryPeerInput): {
 export function deriveBgpPeerDisplayName(
   peerAddress: string,
   interfaceInfo: { alias: string | null; description: string | null; name: string | null } | null,
+  peerDescription: string | null = null,
 ): string {
+  const description = peerDescription?.trim();
+  if (description) return description;
   const alias = interfaceInfo?.alias?.trim();
   if (alias) return alias;
-  const description = interfaceInfo?.description?.trim();
-  if (description) return description;
+  const interfaceDescription = interfaceInfo?.description?.trim();
+  if (interfaceDescription) return interfaceDescription;
   const name = interfaceInfo?.name?.trim();
   if (name) return name;
   return peerAddress;

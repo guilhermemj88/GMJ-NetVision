@@ -191,4 +191,39 @@ Prefixes current: 1099912`,
 
     expect(device.bgpMonitoringEnabled).toBe(false);
   });
+
+  it('prioritizes the BGP peer description from verbose over the interface alias', async () => {
+    const execute = vi.fn(async (_host: string, commands: string[]) => {
+      if (commands.includes('display bgp peer')) {
+        return [
+          {
+            stdout: '200.150.1.193 4 12345 10 10 0 - Established',
+            stderr: '',
+            exitCode: 0,
+          },
+        ];
+      }
+      if (commands.includes('display bgp peer verbose')) {
+        return [
+          {
+            stdout: `BGP Peer is 200.150.1.193, remote AS 12345
+Peer Description: TRANSITO LEVEL3
+BGP current state: Established, Up for 18d04h
+Prefixes current: 1099912`,
+            stderr: '',
+            exitCode: 0,
+          },
+        ];
+      }
+      return [{ stdout: 'Summary Count : 0', stderr: '', exitCode: 0 }];
+    });
+    const ssh = new HuaweiBgpSshService(repository(), () => ({ execute }));
+
+    const result = await new BgpDiscoveryService(ssh, bgpRepository()).discover(host([networkInterface()]));
+
+    expect(result[0]).toMatchObject({
+      bgpPeerDescription: 'TRANSITO LEVEL3',
+      displayName: 'TRANSITO LEVEL3',
+    });
+  });
 });

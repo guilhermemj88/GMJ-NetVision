@@ -147,6 +147,7 @@ export class PrismaBgpRepository implements BgpRepository {
             where: { deviceId_peerAddress: key },
             create: {
               ...key,
+              peerDescription: discovered.bgpPeerDescription,
               remoteAs: discovered.remoteAs,
               interfaceId: interfaceUpdate.interfaceId ?? null,
               role: 'OTHER',
@@ -159,6 +160,9 @@ export class PrismaBgpRepository implements BgpRepository {
             },
             update: {
               ...(discovered.remoteAs === null ? {} : { remoteAs: discovered.remoteAs }),
+              ...(discovered.bgpPeerDescription === null
+                ? {}
+                : { peerDescription: discovered.bgpPeerDescription }),
               ...interfaceUpdate,
               lastDiscoveryAt: discoveredAt,
             },
@@ -169,6 +173,9 @@ export class PrismaBgpRepository implements BgpRepository {
           where: { id: existing.id },
           data: {
             ...(discovered.remoteAs === null ? {} : { remoteAs: discovered.remoteAs }),
+            ...(discovered.bgpPeerDescription === null
+              ? {}
+              : { peerDescription: discovered.bgpPeerDescription }),
             ...interfaceUpdate,
             ...state,
             lastDiscoveryAt: discoveredAt,
@@ -307,7 +314,7 @@ export class PrismaBgpRepository implements BgpRepository {
         deviceId: row.deviceId,
         deviceName: row.device.displayName,
         peerAddress: row.peerAddress,
-        displayName: deriveBgpPeerDisplayName(row.peerAddress, row.interface ?? null),
+        displayName: deriveBgpPeerDisplayName(row.peerAddress, row.interface ?? null, row.peerDescription),
         state: row.state as BgpPeerState,
         established: row.established,
         lastStateChangedAt: row.lastStateChangedAt,
@@ -329,6 +336,7 @@ export class PrismaBgpRepository implements BgpRepository {
       id: string;
       deviceId: string;
       peerAddress: string;
+      peerDescription: string | null;
       remoteAs: bigint | null;
       interfaceId: string | null;
       monitoringEnabled: boolean;
@@ -354,7 +362,7 @@ export class PrismaBgpRepository implements BgpRepository {
       deviceDisplayName: row.device.displayName,
       bgpMonitoringEnabled: row.device.bgpMonitoringEnabled,
       peerAddress: row.peerAddress,
-      displayName: deriveBgpPeerDisplayName(row.peerAddress, iface),
+      displayName: deriveBgpPeerDisplayName(row.peerAddress, iface, row.peerDescription),
       remoteAs: bigintToJsonString(row.remoteAs),
       role: row.role as BgpPeerRole,
       monitoringEnabled: row.monitoringEnabled,

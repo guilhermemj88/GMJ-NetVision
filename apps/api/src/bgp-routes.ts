@@ -126,6 +126,7 @@ export function registerBgpRoutes(
             stateCode: peer.stateCode,
             state: peer.state,
             sessionUptimeSeconds: peer.sessionUptimeSeconds,
+            bgpPeerDescription: peer.bgpPeerDescription,
             interfaceId: peer.interfaceId,
             interfaceName: peer.interfaceName,
             displayName: peer.displayName,

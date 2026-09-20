@@ -39,6 +39,26 @@ describe('deriveBgpPeerDisplayName', () => {
   it('falls back to the peer address when there is no interface', () => {
     expect(deriveBgpPeerDisplayName('200.150.1.193', null)).toBe('200.150.1.193');
   });
+
+  it('prioritizes the BGP peer description over the interface alias', () => {
+    expect(
+      deriveBgpPeerDisplayName(
+        '200.150.1.193',
+        { alias: 'TRANSITO XYZ', description: null, name: '100GE1/0/3' },
+        'TRANSITO LEVEL3',
+      ),
+    ).toBe('TRANSITO LEVEL3');
+  });
+
+  it('ignores an empty peer description', () => {
+    expect(
+      deriveBgpPeerDisplayName(
+        '200.150.1.193',
+        { alias: 'TRANSITO XYZ', description: null, name: '100GE1/0/3' },
+        '   ',
+      ),
+    ).toBe('TRANSITO XYZ');
+  });
 });
 
 describe('BGP BigInt JSON conversion', () => {

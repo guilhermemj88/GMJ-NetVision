@@ -16,6 +16,7 @@ export interface BgpDiscoveryPeerInput {
   stateCode: number | null;
   state: BgpPeerState | null;
   sessionUptimeSeconds: number | null;
+  bgpPeerDescription: string | null;
   interfaceId: string | null;
   correlationStatus: BgpInterfaceCorrelationStatus;
 }

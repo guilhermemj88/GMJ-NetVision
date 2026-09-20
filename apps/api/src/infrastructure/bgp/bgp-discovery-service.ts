@@ -14,6 +14,7 @@ export interface DiscoveredBgpPeer {
   state: BgpPeerState | null;
   sessionUptimeSeconds: number | null;
   cliReceivedPrefixes: bigint | null;
+  bgpPeerDescription: string | null;
   interfaceId: string | null;
   interfaceName: string | null;
   interfaceAlias: string | null;
@@ -43,7 +44,13 @@ export class BgpDiscoveryService {
         routeCommand,
         device.interfaces,
       );
-      return { ...peer, ...correlation };
+      const bgpPeerDescription = peer.bgpPeerDescription?.trim() || null;
+      return {
+        ...peer,
+        ...correlation,
+        bgpPeerDescription,
+        displayName: bgpPeerDescription || correlation.displayName,
+      };
     });
     await this.repository.saveDiscovery(device.id, peers, this.now());
     return peers;

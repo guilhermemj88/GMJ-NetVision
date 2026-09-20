@@ -22,6 +22,7 @@ import type {
 export interface DemoBgpPeerRecord extends ExistingBgpPeerState {
   deviceId: string;
   peerAddress: string;
+  peerDescription: string | null;
   remoteAs: bigint | null;
   interfaceId: string | null;
   role: 'UPSTREAM' | 'PEER' | 'OTHER';
@@ -111,6 +112,7 @@ export class DemoBgpRepository implements BgpRepository {
             id: `demo-bgp-${++this.sequence}`,
             deviceId,
             peerAddress: current.peerAddress,
+            peerDescription: null,
             remoteAs: null,
             interfaceId: null,
             role: 'OTHER',
@@ -159,6 +161,9 @@ export class DemoBgpRepository implements BgpRepository {
         ? {
             ...existing,
             ...(discovered.remoteAs === null ? {} : { remoteAs: discovered.remoteAs }),
+            ...(discovered.bgpPeerDescription === null
+              ? {}
+              : { peerDescription: discovered.bgpPeerDescription }),
             ...interfaceUpdate,
             ...state,
             lastDiscoveryAt: discoveredAt,
@@ -167,6 +172,7 @@ export class DemoBgpRepository implements BgpRepository {
             id: `demo-bgp-${++this.sequence}`,
             deviceId,
             peerAddress: discovered.peerAddress,
+            peerDescription: discovered.bgpPeerDescription,
             remoteAs: discovered.remoteAs,
             interfaceId: interfaceUpdate.interfaceId ?? null,
             role: 'OTHER',
@@ -187,7 +193,7 @@ export class DemoBgpRepository implements BgpRepository {
   setPeerOptions(
     deviceId: string,
     peerAddress: string,
-    options: Partial<
+      options: Partial<
       Pick<DemoBgpPeerRecord, 'role' | 'monitoringEnabled' | 'interfaceId' | 'remoteAs'>
     >,
   ): void {
@@ -275,7 +281,7 @@ export class DemoBgpRepository implements BgpRepository {
           deviceId: peer.deviceId,
           deviceName: device?.displayName ?? peer.deviceId,
           peerAddress: peer.peerAddress,
-          displayName: deriveBgpPeerDisplayName(peer.peerAddress, iface),
+          displayName: deriveBgpPeerDisplayName(peer.peerAddress, iface, peer.peerDescription),
           state: peer.state,
           established: peer.established,
           lastStateChangedAt: peer.lastStateChangedAt,
@@ -308,7 +314,7 @@ export class DemoBgpRepository implements BgpRepository {
       deviceDisplayName: device.displayName,
       bgpMonitoringEnabled: device.bgpMonitoringEnabled,
       peerAddress: peer.peerAddress,
-      displayName: deriveBgpPeerDisplayName(peer.peerAddress, iface),
+      displayName: deriveBgpPeerDisplayName(peer.peerAddress, iface, peer.peerDescription),
       remoteAs: bigintToJsonString(peer.remoteAs),
       role: peer.role,
       monitoringEnabled: peer.monitoringEnabled,

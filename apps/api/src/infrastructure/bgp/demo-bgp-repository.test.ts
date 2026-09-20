@@ -42,6 +42,7 @@ function discovery(overrides: Partial<BgpDiscoveryPeerInput> = {}): BgpDiscovery
     stateCode: 6,
     state: 'ESTABLISHED',
     sessionUptimeSeconds: 3600,
+    bgpPeerDescription: null,
     interfaceId: 'interface-1',
     correlationStatus: 'MATCHED',
     ...overrides,
@@ -197,5 +198,48 @@ describe('DemoBgpRepository', () => {
     );
 
     expect(repository.getPeer(deviceId, peerAddress)?.interfaceId).toBe('interface-1');
+  });
+
+  it('persists the peer description and prioritizes it in displayName', async () => {
+    const repository = new DemoBgpRepository();
+    repository.setDevice({
+      id: deviceId,
+      hostname: 'NE8000-1',
+      displayName: 'NE-8K POP CENTRO',
+      bgpMonitoringEnabled: true,
+    });
+    repository.setInterface({
+      id: 'interface-1',
+      name: '100GE1/0/3',
+      alias: 'TRANSITO XYZ',
+      description: null,
+      rxBps: null,
+      txBps: null,
+    });
+    await repository.saveDiscovery(
+      deviceId,
+      [discovery({ bgpPeerDescription: 'TRANSITO LEVEL3' })],
+      new Date('2026-09-20T12:00:00.000Z'),
+    );
+
+    expect(repository.getPeer(deviceId, peerAddress)?.peerDescription).toBe('TRANSITO LEVEL3');
+    const dashboard = await repository.listDashboardPeers({ scope: 'monitored', state: 'all' });
+    expect(dashboard[0]?.displayName).toBe('TRANSITO LEVEL3');
+  });
+
+  it('does not overwrite an existing description when a later discovery lacks one', async () => {
+    const repository = new DemoBgpRepository();
+    await repository.saveDiscovery(
+      deviceId,
+      [discovery({ bgpPeerDescription: 'TRANSITO LEVEL3' })],
+      new Date('2026-09-20T12:00:00.000Z'),
+    );
+    await repository.saveDiscovery(
+      deviceId,
+      [discovery({ bgpPeerDescription: null })],
+      new Date('2026-09-20T12:05:00.000Z'),
+    );
+
+    expect(repository.getPeer(deviceId, peerAddress)?.peerDescription).toBe('TRANSITO LEVEL3');
   });
 });

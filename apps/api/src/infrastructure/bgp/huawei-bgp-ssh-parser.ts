@@ -7,6 +7,7 @@ export interface ParsedHuaweiBgpPeer {
   state: BgpPeerState | null;
   sessionUptimeSeconds: number | null;
   cliReceivedPrefixes: bigint | null;
+  bgpPeerDescription: string | null;
 }
 
 export interface ParsedHuaweiRouteLookup {
@@ -107,6 +108,7 @@ function summaryPeerFromLine(line: string): ParsedHuaweiBgpPeer | null {
     state: parsedState?.state ?? null,
     sessionUptimeSeconds: parsedState?.state === 'ESTABLISHED' ? uptime : null,
     cliReceivedPrefixes,
+    bgpPeerDescription: null,
   };
 }
 
@@ -117,6 +119,12 @@ export function parseHuaweiBgpPeerSummary(output: string): ParsedHuaweiBgpPeer[]
     if (peer) peers.set(peer.peerAddress, peer);
   }
   return [...peers.values()];
+}
+
+function cleanPeerDescription(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === '-') return null;
+  return trimmed;
 }
 
 export function parseHuaweiBgpPeerVerbose(output: string): ParsedHuaweiBgpPeer[] {
@@ -135,6 +143,10 @@ export function parseHuaweiBgpPeerVerbose(output: string): ParsedHuaweiBgpPeer[]
     const prefixValue = block.match(
       /(?:Prefixes\s+current|Received\s+prefixes|PrefRcv)\s*[:=]\s*(\d+)/i,
     )?.[1];
+    const description = cleanPeerDescription(
+      block.match(/Peer\s+Description\s*[:=]\s*(.+?)\s*$/im)?.[1]
+        ?? block.match(/Description\s*[:=]\s*(.+?)\s*$/im)?.[1],
+    );
     return [
       {
         peerAddress,
@@ -143,6 +155,7 @@ export function parseHuaweiBgpPeerVerbose(output: string): ParsedHuaweiBgpPeer[]
         state: parsedState?.state ?? null,
         sessionUptimeSeconds: parsedState?.state === 'ESTABLISHED' ? uptime : null,
         cliReceivedPrefixes: unsignedBigInt(prefixValue),
+        bgpPeerDescription: description,
       },
     ];
   });
@@ -163,6 +176,7 @@ export function mergeHuaweiBgpPeerDetails(
       state: peer.state ?? detail.state,
       sessionUptimeSeconds: peer.sessionUptimeSeconds ?? detail.sessionUptimeSeconds,
       cliReceivedPrefixes: peer.cliReceivedPrefixes ?? detail.cliReceivedPrefixes,
+      bgpPeerDescription: detail.bgpPeerDescription ?? peer.bgpPeerDescription,
     };
   });
 }

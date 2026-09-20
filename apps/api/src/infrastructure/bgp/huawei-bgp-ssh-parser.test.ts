@@ -29,6 +29,7 @@ describe('Huawei BGP SSH parser', () => {
       state: 'ESTABLISHED',
       sessionUptimeSeconds: 18 * 86400 + 4 * 3600,
       cliReceivedPrefixes: 1099912n,
+      bgpPeerDescription: null,
     });
   });
 
@@ -40,6 +41,7 @@ describe('Huawei BGP SSH parser', () => {
       state: 'ACTIVE',
       sessionUptimeSeconds: null,
       cliReceivedPrefixes: 0n,
+      bgpPeerDescription: null,
     });
   });
 
@@ -51,6 +53,7 @@ describe('Huawei BGP SSH parser', () => {
       state: 'IDLE',
       sessionUptimeSeconds: null,
       cliReceivedPrefixes: null,
+      bgpPeerDescription: null,
     });
   });
 
@@ -99,8 +102,38 @@ Prefixes current: 1099912, best: 1099912
         state: 'ESTABLISHED',
       sessionUptimeSeconds: 1569600,
         cliReceivedPrefixes: 1099912n,
+        bgpPeerDescription: null,
       },
     ]);
+  });
+
+  it('extracts the peer description from a verbose block (NE8000 VRP format)', () => {
+    const verbose = parseHuaweiBgpPeerVerbose(`
+BGP Peer is 200.150.1.193, remote AS 12345
+Peer Description: TRANSITO LEVEL3
+BGP current state: Established, Up for 18d04h
+Prefixes current: 1099912, best: 1099912
+`);
+    expect(verbose[0]).toMatchObject({
+      peerAddress: '200.150.1.193',
+      remoteAs: 12345n,
+      stateCode: 6,
+      state: 'ESTABLISHED',
+      bgpPeerDescription: 'TRANSITO LEVEL3',
+    });
+  });
+
+  it('merges the verbose peer description over the summary', () => {
+    const summary = parseHuaweiBgpPeerSummary('200.150.1.193 4 12345 10 10 0 - Established');
+    const verbose = parseHuaweiBgpPeerVerbose(`
+BGP Peer is 200.150.1.193, remote AS 12345
+Peer Description: IX SP
+BGP current state: Established, Up for 18d04h
+Prefixes current: 1099912
+`);
+    expect(mergeHuaweiBgpPeerDetails(summary, verbose)[0]).toMatchObject({
+      bgpPeerDescription: 'IX SP',
+    });
   });
 });
 
