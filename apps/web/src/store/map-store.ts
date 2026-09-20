@@ -41,7 +41,7 @@ export type OpenPanel =
   | 'public-links'
   | 'users'
   | null;
-export type WorkspaceView = 'MAP' | 'HOSTS';
+export type WorkspaceView = 'MAP' | 'HOSTS' | 'BGP';
 
 export interface MapFocusRequest {
   deviceId: string;

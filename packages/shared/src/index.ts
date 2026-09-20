@@ -1,4 +1,5 @@
 export * from './alarm-label';
+export * from './bgp';
 export * from './demo';
 export * from './format';
 export * from './history';

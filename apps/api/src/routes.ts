@@ -32,6 +32,7 @@ import { TopologyPreviewService } from './application/topology-preview-service';
 import { config } from './config';
 import { registerHostRoutes } from './host-routes';
 import { registerMplsRoutes } from './mpls-routes';
+import { registerBgpRoutes } from './bgp-routes';
 import { DemoMetricAdapter } from './infrastructure/metrics/demo-adapter';
 import { ZabbixAdapter } from './infrastructure/metrics/zabbix-adapter';
 import { DemoAuthRepository } from './infrastructure/persistence/demo-auth-repository';
@@ -63,6 +64,8 @@ import { PrismaMplsRepository } from './infrastructure/mpls/prisma-mpls-reposito
 import { PppPollingService } from './infrastructure/ppp/ppp-polling-service';
 import { PrismaPppRepository } from './infrastructure/ppp/prisma-ppp-repository';
 import { BgpPollingService } from './infrastructure/bgp/bgp-polling-service';
+import { BgpDiscoveryService } from './infrastructure/bgp/bgp-discovery-service';
+import { HuaweiBgpSshService } from './infrastructure/bgp/huawei-bgp-ssh';
 import { DemoBgpRepository } from './infrastructure/bgp/demo-bgp-repository';
 import { HuaweiBgpSnmpCollector } from './infrastructure/bgp/huawei-bgp-snmp';
 import { PrismaBgpRepository } from './infrastructure/bgp/prisma-bgp-repository';
@@ -398,6 +401,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     new HuaweiBgpSnmpCollector(new SnmpClientImpl(3000, 1)),
     bgpRepository,
   );
+  const bgpDiscovery = new BgpDiscoveryService(new HuaweiBgpSshService(hosts), bgpRepository);
   const alarmRepository = config.DEMO_MODE
     ? new DemoAlarmRepository()
     : new PrismaAlarmRepository();
@@ -432,6 +436,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   registerHostRoutes(app, { legacyMaps, mapMembership: maps, hosts, discovery, snmp, ssh, zabbix });
   registerMplsRoutes(app, { hosts, mpls: mplsRepository });
   registerAlarmRoutes(app, { alarms: alarmRepository });
+  registerBgpRoutes(app, { bgp: bgpRepository, hosts, discovery: bgpDiscovery });
 
   app.addHook('onReady', async () => {
     if (config.DEMO_MODE) {

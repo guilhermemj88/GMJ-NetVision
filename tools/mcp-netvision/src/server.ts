@@ -171,7 +171,7 @@ interface ApiRequestResult {
   body: unknown;
 }
 
-async function apiFetchRaw(method: "GET" | "POST", route: string, requestBody?: unknown): Promise<ApiRequestResult> {
+async function apiFetchRaw(method: "GET" | "POST" | "PATCH", route: string, requestBody?: unknown): Promise<ApiRequestResult> {
   const headers: Record<string, string> = { accept: "application/json" };
   if (requestBody !== undefined) headers["content-type"] = "application/json";
   if (cachedSessionCookie) headers["cookie"] = cachedSessionCookie;
@@ -187,7 +187,7 @@ async function apiFetchRaw(method: "GET" | "POST", route: string, requestBody?: 
   return { status: response.status, ok: response.ok, body };
 }
 
-async function apiRequestJson(method: "GET" | "POST", route: string, requestBody?: unknown): Promise<ApiRequestResult> {
+async function apiRequestJson(method: "GET" | "POST" | "PATCH", route: string, requestBody?: unknown): Promise<ApiRequestResult> {
   const credentials = await mcpCredentials();
   if (!credentials) return apiFetchRaw(method, route, requestBody);
 
@@ -207,7 +207,7 @@ function apiErrorText(result: ApiRequestResult): string {
   return JSON.stringify({ status: result.status, ok: false, body: sanitize(result.body) }, null, 2);
 }
 
-async function apiRequest(method: "GET" | "POST", route: string, requestBody?: unknown): Promise<string> {
+async function apiRequest(method: "GET" | "POST" | "PATCH", route: string, requestBody?: unknown): Promise<string> {
   try {
     const result = await apiRequestJson(method, route, requestBody);
     return JSON.stringify({ status: result.status, ok: result.ok, body: sanitize(result.body) }, null, 2);
@@ -273,6 +273,95 @@ function pickInterfaceDetail(item: Record<string, unknown>): Record<string, unkn
   return detail;
 }
 
+export type BgpScopeArg = "MONITORED" | "ALL";
+export type BgpStateArg = "UP" | "DOWN";
+
+export function bgpListQuery(scope: BgpScopeArg, state?: BgpStateArg, q?: string, deviceId?: string): string {
+  const params = new URLSearchParams();
+  params.set("scope", scope === "ALL" ? "all" : "monitored");
+  if (state) params.set("state", state === "UP" ? "up" : "down");
+  if (q?.trim()) params.set("q", q.trim());
+  if (deviceId?.trim()) params.set("deviceId", deviceId.trim());
+  return params.toString();
+}
+
+export function flattenBgpDashboardPeers(body: unknown): Record<string, unknown>[] {
+  if (!body || typeof body !== "object") return [];
+  const devices = (body as { devices?: unknown }).devices;
+  if (!Array.isArray(devices)) return [];
+  return devices.flatMap((device) => {
+    const peers = (device as { peers?: unknown }).peers;
+    return Array.isArray(peers) ? (peers as Record<string, unknown>[]) : [];
+  });
+}
+
+export function compactBgpPeer(peer: Record<string, unknown>): Record<string, unknown> {
+  const iface = (peer.interface ?? null) as Record<string, unknown> | null;
+  return {
+    id: peer.id,
+    deviceId: peer.deviceId,
+    hostname: peer.deviceHostname,
+    deviceName: peer.deviceDisplayName,
+    peerAddress: peer.peerAddress,
+    displayName: peer.displayName,
+    remoteAs: peer.remoteAs,
+    state: peer.state,
+    stateCode: peer.stateCode,
+    established: peer.established,
+    receivedPrefixes: peer.receivedPrefixes,
+    establishedSince: peer.establishedSince,
+    interfaceId: iface?.id ?? null,
+    interfaceName: iface?.name ?? null,
+    rxBps: iface?.rxBps ?? null,
+    txBps: iface?.txBps ?? null,
+    lastPollingAt: peer.lastPollingAt,
+  };
+}
+
+export function compactBgpPeerDetail(peer: Record<string, unknown>): Record<string, unknown> {
+  const iface = (peer.interface ?? null) as Record<string, unknown> | null;
+  return {
+    ...compactBgpPeer(peer),
+    role: peer.role,
+    monitoringEnabled: peer.monitoringEnabled,
+    bgpMonitoringEnabled: peer.bgpMonitoringEnabled,
+    interfaceAlias: iface?.alias ?? null,
+    interfaceDescription: iface?.description ?? null,
+    lastDiscoveryAt: peer.lastDiscoveryAt,
+  };
+}
+
+export function compactBgpHistory(body: unknown): Record<string, unknown> {
+  if (!body || typeof body !== "object") return { samples: [], events: [] };
+  const record = body as {
+    peerId?: unknown;
+    samples?: unknown;
+    events?: unknown;
+  };
+  const samples = Array.isArray(record.samples)
+    ? record.samples.map((sample) => {
+        const item = sample as Record<string, unknown>;
+        return {
+          timestamp: item.timestamp,
+          state: item.state,
+          established: item.established,
+          receivedPrefixes: item.receivedPrefixes,
+        };
+      })
+    : [];
+  const events = Array.isArray(record.events)
+    ? record.events.map((event) => {
+        const item = event as Record<string, unknown>;
+        return {
+          previousState: item.previousState,
+          currentState: item.currentState,
+          occurredAt: item.occurredAt,
+        };
+      })
+    : [];
+  return { peerId: record.peerId, samples, events };
+}
+
 async function httpGet(url: string): Promise<string> {
   try {
     const response = await fetch(url, { signal: AbortSignal.timeout(5000) });
@@ -302,8 +391,8 @@ async function serviceLogs(service: typeof SERVICE_CANDIDATES[number], lines: nu
 
 function textResult(text: string) { return { content: [{ type: "text" as const, text }] }; }
 
-function createNetVisionMcpServer() {
-  const server = new McpServer({ name: "gmj-netvision-implantar", version: "0.6.0" });
+export function createNetVisionMcpServer() {
+  const server = new McpServer({ name: "gmj-netvision-implantar", version: "0.7.0" });
 
   server.registerTool("repo_status", { title: "Repository Status", description: "Show the Git status of the GMJ NetVision repository.", inputSchema: z.object({}) }, async () => textResult((await runGit(["status", "--short", "--branch"])) || "Working tree clean"));
   server.registerTool("repo_diff", { title: "Repository Diff", description: "Show the current uncommitted Git diff.", inputSchema: z.object({}) }, async () => textResult((await runGit(["diff"])) || "No tracked changes"));
@@ -368,6 +457,31 @@ function createNetVisionMcpServer() {
   server.registerTool("preview_lldp_topology", { title: "Preview LLDP Topology", description: "Return a previously discovered LLDP topology preview by ID without changing anything.", inputSchema: z.object({ previewId: z.string().min(1) }) }, async ({ previewId }) => textResult(await apiRequest("POST", "/api/topology/lldp/preview", { previewId })));
   server.registerTool("apply_lldp_topology", { title: "Apply LLDP Topology", description: "Create only the selected (CREATE_LINK) LLDP adjacency links on a map. Ambiguous or unknown neighbors are never applied.", inputSchema: z.object({ previewId: z.string().min(1), mapId: z.string().min(1), selections: z.array(z.object({ adjacencyId: z.string().min(1), action: z.enum(["CREATE_LINK", "IGNORE"]) })).min(1) }) }, async ({ previewId, mapId, selections }) => textResult(await apiRequest("POST", "/api/topology/lldp/apply", { previewId, mapId, selections })));
 
+  server.registerTool("list_bgp_peers", { title: "List BGP Peers", description: "List current BGP peers in compact form. Defaults to the MONITORED scope, which only includes devices with bgpMonitoringEnabled=true. Use scope=ALL to include every device that has at least one persisted BGP peer.", inputSchema: z.object({ deviceId: z.string().optional(), q: z.string().optional(), state: z.enum(["UP", "DOWN"]).optional(), scope: z.enum(["MONITORED", "ALL"]).default("MONITORED") }) }, async ({ deviceId, q, state, scope }) => {
+    const query = bgpListQuery(scope, state, q, deviceId);
+    const result = await apiRequestJson("GET", `/api/bgp${query ? `?${query}` : ""}`);
+    if (!result.ok) return textResult(apiErrorText(result));
+    const peers = flattenBgpDashboardPeers(result.body).map((peer) => compactBgpPeer(peer));
+    return textResult(JSON.stringify(peers, null, 2));
+  });
+  server.registerTool("get_bgp_peer", { title: "Get BGP Peer", description: "Return current compact details for one known BGP peer, including remote AS, state, received routes, associated interface and its RX/TX. Use list_bgp_peers to discover peer ids.", inputSchema: z.object({ peerId: z.string().min(1) }) }, async ({ peerId }) => {
+    const result = await apiRequestJson("GET", `/api/bgp/peers/${encodeURIComponent(peerId)}`);
+    if (!result.ok) return textResult(apiErrorText(result));
+    return textResult(JSON.stringify(compactBgpPeerDetail(result.body as Record<string, unknown>), null, 2));
+  });
+  server.registerTool("get_bgp_peer_history", { title: "BGP Peer History", description: "Return persisted BGP history for one peer (state samples and state-change events) over a supported period. Traffic history is intentionally excluded; use get_interface_metrics for interface RX/TX history.", inputSchema: z.object({ peerId: z.string().min(1), period: z.enum(["1h", "6h", "24h", "7d"]).default("1h") }) }, async ({ peerId, period }) => {
+    const result = await apiRequestJson("GET", `/api/bgp/peers/${encodeURIComponent(peerId)}/history?period=${period}`);
+    if (!result.ok) return textResult(apiErrorText(result));
+    return textResult(JSON.stringify(compactBgpHistory(result.body), null, 2));
+  });
+  server.registerTool("discover_bgp", { title: "Discover BGP via SSH", description: "Run a manual SSH BGP discovery for a persisted host. Works even when bgpMonitoringEnabled is false and never enables monitoring automatically. Does not expose SSH credentials.", inputSchema: z.object({ hostId: z.string().min(1) }) }, async ({ hostId }) => textResult(await apiRequest("POST", `/api/hosts/${encodeURIComponent(hostId)}/bgp/discover`)));
+  server.registerTool("set_bgp_monitoring", { title: "Set BGP Monitoring", description: "Enable or disable BGP polling for a persisted host by setting Device.bgpMonitoringEnabled. The decision is manual and is never inferred from vendor or model.", inputSchema: z.object({ hostId: z.string().min(1), enabled: z.boolean() }) }, async ({ hostId, enabled }) => {
+    const result = await apiRequestJson("PATCH", `/api/hosts/${encodeURIComponent(hostId)}`, { bgpMonitoringEnabled: enabled });
+    if (!result.ok) return textResult(apiErrorText(result));
+    const host = result.body as Record<string, unknown>;
+    return textResult(JSON.stringify({ hostId, hostname: host.hostname ?? null, bgpMonitoringEnabled: host.bgpMonitoringEnabled ?? enabled }, null, 2));
+  });
+
   return server;
 }
 
@@ -395,6 +509,8 @@ const httpServer = createServer(async (req, res) => {
   }
 });
 
-httpServer.listen(PORT, HOST, () => {
-  console.log(`GMJ NetVision MCP listening on http://${HOST}:${PORT}/mcp`);
-});
+if (process.env.MCP_SKIP_LISTEN !== "1") {
+  httpServer.listen(PORT, HOST, () => {
+    console.log(`GMJ NetVision MCP listening on http://${HOST}:${PORT}/mcp`);
+  });
+}

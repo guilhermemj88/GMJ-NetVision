@@ -1,12 +1,20 @@
 import type { BgpPeerState } from './bgp4-peer-parser';
 import {
+  bigintToJsonNumber,
+  bigintToJsonString,
   decideBgpDiscoveryState,
   decideBgpPollingUpdate,
+  deriveBgpPeerDisplayName,
   discoveryInterfaceUpdate,
   type ExistingBgpPeerState,
 } from './bgp-persistence';
-import type { BgpDiscoveryPeerInput, BgpRepository } from './bgp-repository';
+import type { BgpDashboardQuery, BgpDiscoveryPeerInput, BgpRepository } from './bgp-repository';
 import type { HuaweiBgpCollection } from './huawei-bgp-snmp';
+import type {
+  BgpDashboardPeer,
+  BgpHistoryPeriod,
+  BgpPeerHistoryResponse,
+} from '@gmj/shared';
 
 export interface DemoBgpPeerRecord extends ExistingBgpPeerState {
   deviceId: string;
@@ -16,6 +24,22 @@ export interface DemoBgpPeerRecord extends ExistingBgpPeerState {
   role: 'UPSTREAM' | 'PEER' | 'OTHER';
   receivedPrefixes: bigint | null;
   lastDiscoveryAt: Date | null;
+}
+
+export interface DemoBgpDeviceMeta {
+  id: string;
+  hostname: string;
+  displayName: string;
+  bgpMonitoringEnabled: boolean;
+}
+
+export interface DemoBgpInterfaceMeta {
+  id: string;
+  name: string;
+  alias: string | null;
+  description: string | null;
+  rxBps: number | null;
+  txBps: number | null;
 }
 
 export interface DemoBgpSampleRecord {
@@ -38,9 +62,19 @@ export interface DemoBgpStateEventRecord {
 
 export class DemoBgpRepository implements BgpRepository {
   private readonly peers = new Map<string, DemoBgpPeerRecord>();
+  private readonly devices = new Map<string, DemoBgpDeviceMeta>();
+  private readonly interfaces = new Map<string, DemoBgpInterfaceMeta>();
   readonly samples: DemoBgpSampleRecord[] = [];
   readonly stateEvents: DemoBgpStateEventRecord[] = [];
   private sequence = 0;
+
+  setDevice(device: DemoBgpDeviceMeta): void {
+    this.devices.set(device.id, device);
+  }
+
+  setInterface(iface: DemoBgpInterfaceMeta): void {
+    this.interfaces.set(iface.id, iface);
+  }
 
   getPeer(deviceId: string, peerAddress: string): DemoBgpPeerRecord | null {
     return this.peers.get(`${deviceId}|${peerAddress}`) ?? null;
@@ -150,10 +184,126 @@ export class DemoBgpRepository implements BgpRepository {
   setPeerOptions(
     deviceId: string,
     peerAddress: string,
-    options: Partial<Pick<DemoBgpPeerRecord, 'role' | 'monitoringEnabled' | 'interfaceId'>>,
+    options: Partial<
+      Pick<DemoBgpPeerRecord, 'role' | 'monitoringEnabled' | 'interfaceId' | 'remoteAs'>
+    >,
   ): void {
     const key = `${deviceId}|${peerAddress}`;
     const peer = this.peers.get(key);
     if (peer) this.peers.set(key, { ...peer, ...options });
   }
+
+  async listDashboardPeers(query: BgpDashboardQuery): Promise<BgpDashboardPeer[]> {
+    const text = query.q?.trim().toLowerCase();
+    const peers = [...this.peers.values()]
+      .filter((peer) => {
+        if (query.deviceId && peer.deviceId !== query.deviceId) return false;
+        if (query.state === 'up' && !peer.established) return false;
+        if (query.state === 'down' && peer.established) return false;
+        const device = this.devices.get(peer.deviceId);
+        if (query.scope === 'monitored' && !(device?.bgpMonitoringEnabled ?? false)) return false;
+        return true;
+      })
+      .map((peer) => this.toDashboardPeer(peer))
+      .sort(
+        (left, right) =>
+          left.deviceHostname.localeCompare(right.deviceHostname) ||
+          left.peerAddress.localeCompare(right.peerAddress),
+      );
+    if (!text) return peers;
+    return peers.filter((peer) =>
+      [
+        peer.peerAddress,
+        peer.displayName,
+        peer.remoteAs ?? '',
+        peer.deviceHostname,
+        peer.deviceDisplayName,
+      ].some((value) => value.toLowerCase().includes(text)),
+    );
+  }
+
+  async getPeerDetail(peerId: string): Promise<BgpDashboardPeer | null> {
+    const peer = [...this.peers.values()].find((item) => item.id === peerId);
+    return peer ? this.toDashboardPeer(peer) : null;
+  }
+
+  async getPeerHistory(
+    peerId: string,
+    period: BgpHistoryPeriod,
+  ): Promise<BgpPeerHistoryResponse | null> {
+    const peer = [...this.peers.values()].find((item) => item.id === peerId);
+    if (!peer) return null;
+    const since = bgpHistoryStart(period);
+    return {
+      peerId,
+      samples: this.samples
+        .filter((sample) => sample.bgpPeerId === peerId && sample.timestamp >= since)
+        .sort((left, right) => left.timestamp.getTime() - right.timestamp.getTime())
+        .map((sample) => ({
+          timestamp: sample.timestamp.toISOString(),
+          state: sample.state,
+          established: sample.established,
+          receivedPrefixes: bigintToJsonNumber(sample.receivedPrefixes),
+        })),
+      events: this.stateEvents
+        .filter((event) => event.bgpPeerId === peerId && event.occurredAt >= since)
+        .sort((left, right) => left.occurredAt.getTime() - right.occurredAt.getTime())
+        .map((event) => ({
+          previousStateCode: event.previousStateCode,
+          previousState: event.previousState,
+          currentStateCode: event.currentStateCode,
+          currentState: event.currentState,
+          occurredAt: event.occurredAt.toISOString(),
+        })),
+    };
+  }
+
+  private toDashboardPeer(peer: DemoBgpPeerRecord): BgpDashboardPeer {
+    const device = this.devices.get(peer.deviceId) ?? {
+      id: peer.deviceId,
+      hostname: peer.deviceId,
+      displayName: peer.deviceId,
+      bgpMonitoringEnabled: false,
+    };
+    const iface = peer.interfaceId ? this.interfaces.get(peer.interfaceId) ?? null : null;
+    return {
+      id: peer.id,
+      deviceId: peer.deviceId,
+      deviceHostname: device.hostname,
+      deviceDisplayName: device.displayName,
+      bgpMonitoringEnabled: device.bgpMonitoringEnabled,
+      peerAddress: peer.peerAddress,
+      displayName: deriveBgpPeerDisplayName(peer.peerAddress, iface),
+      remoteAs: bigintToJsonString(peer.remoteAs),
+      role: peer.role,
+      monitoringEnabled: peer.monitoringEnabled,
+      stateCode: peer.stateCode,
+      state: peer.state,
+      established: peer.established,
+      receivedPrefixes: bigintToJsonNumber(peer.receivedPrefixes),
+      establishedSince: peer.establishedSince?.toISOString() ?? null,
+      lastPollingAt: peer.lastPollingAt?.toISOString() ?? null,
+      lastDiscoveryAt: peer.lastDiscoveryAt?.toISOString() ?? null,
+      interface: iface
+        ? {
+            id: iface.id,
+            name: iface.name,
+            alias: iface.alias,
+            description: iface.description,
+            rxBps: iface.rxBps,
+            txBps: iface.txBps,
+          }
+        : null,
+    };
+  }
+}
+
+function bgpHistoryStart(period: BgpHistoryPeriod): Date {
+  const milliseconds: Record<BgpHistoryPeriod, number> = {
+    '1h': 60 * 60_000,
+    '6h': 6 * 60 * 60_000,
+    '24h': 24 * 60 * 60_000,
+    '7d': 7 * 24 * 60 * 60_000,
+  };
+  return new Date(Date.now() - milliseconds[period]);
 }

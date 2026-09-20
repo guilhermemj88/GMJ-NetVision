@@ -2,6 +2,11 @@ import {
   type AddDeviceResult,
   type Alarm,
   type AuthUser,
+  type BgpDashboardResponse,
+  type BgpHistoryPeriod,
+  type BgpPeerHistoryResponse,
+  type BgpScope,
+  type BgpStateFilter,
   type ChangePasswordInput,
   type CreateLinkInput,
   type CreateMapInput,
@@ -343,6 +348,29 @@ export function deleteMapNode(mapId: string, nodeId: string) {
 
 export function getHosts(query = ''): Promise<HostRecord[]> {
   return request<HostRecord[]>(`/api/hosts${query ? `?${query}` : ''}`);
+}
+
+export function getBgpDashboard(input: {
+  scope?: BgpScope;
+  state?: BgpStateFilter;
+  q?: string;
+  deviceId?: string;
+} = {}): Promise<BgpDashboardResponse> {
+  const params = new URLSearchParams();
+  if (input.scope) params.set('scope', input.scope);
+  if (input.state) params.set('state', input.state);
+  if (input.q?.trim()) params.set('q', input.q.trim());
+  if (input.deviceId) params.set('deviceId', input.deviceId);
+  return request<BgpDashboardResponse>(`/api/bgp${params.size ? `?${params}` : ''}`);
+}
+
+export function getBgpPeerHistory(
+  peerId: string,
+  period: BgpHistoryPeriod,
+): Promise<BgpPeerHistoryResponse> {
+  return request<BgpPeerHistoryResponse>(
+    `/api/bgp/peers/${encodeURIComponent(peerId)}/history?period=${period}`,
+  );
 }
 
 export function getHost(hostId: string) {

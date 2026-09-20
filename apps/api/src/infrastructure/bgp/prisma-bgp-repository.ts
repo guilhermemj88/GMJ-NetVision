@@ -1,12 +1,21 @@
-import { PrismaClient, type BgpState } from '../../generated/prisma/index.js';
+import { Prisma, PrismaClient, type BgpPeerRole, type BgpState } from '../../generated/prisma/index.js';
 import {
+  bigintToJsonNumber,
+  bigintToJsonString,
   decideBgpDiscoveryState,
   decideBgpPollingUpdate,
+  deriveBgpPeerDisplayName,
   discoveryInterfaceUpdate,
   type ExistingBgpPeerState,
 } from './bgp-persistence';
-import type { BgpDiscoveryPeerInput, BgpRepository } from './bgp-repository';
+import type { BgpDashboardQuery, BgpDiscoveryPeerInput, BgpRepository } from './bgp-repository';
 import type { HuaweiBgpCollection } from './huawei-bgp-snmp';
+import type {
+  BgpDashboardPeer,
+  BgpHistoryPeriod,
+  BgpPeerHistoryResponse,
+  BgpPeerState,
+} from '@gmj/shared';
 
 const existingPeerSelect = {
   id: true,
@@ -165,4 +174,190 @@ export class PrismaBgpRepository implements BgpRepository {
       }
     });
   }
+
+  async listDashboardPeers(query: BgpDashboardQuery): Promise<BgpDashboardPeer[]> {
+    const where: Prisma.BgpPeerWhereInput = {
+      ...(query.scope === 'monitored' ? { device: { bgpMonitoringEnabled: true } } : {}),
+      ...(query.deviceId ? { deviceId: query.deviceId } : {}),
+      ...(query.state === 'up'
+        ? { established: true }
+        : query.state === 'down'
+          ? { established: false }
+          : {}),
+    };
+    const rows = await this.prisma.bgpPeer.findMany({
+      where,
+      include: {
+        device: {
+          select: { id: true, hostname: true, displayName: true, bgpMonitoringEnabled: true },
+        },
+        interface: { select: { id: true, name: true, alias: true, description: true } },
+      },
+      orderBy: [{ device: { hostname: 'asc' } }, { peerAddress: 'asc' }],
+    });
+    const interfaceIds = [
+      ...new Set(
+        rows.map((row) => row.interfaceId).filter((id): id is string => typeof id === 'string'),
+      ),
+    ];
+    const traffic = await this.loadInterfaceTraffic(interfaceIds);
+    const peers = rows.map((row) => this.toDashboardPeer(row, traffic));
+    const text = query.q?.trim().toLowerCase();
+    if (!text) return peers;
+    return peers.filter((peer) =>
+      [
+        peer.peerAddress,
+        peer.displayName,
+        peer.remoteAs ?? '',
+        peer.deviceHostname,
+        peer.deviceDisplayName,
+      ].some((value) => value.toLowerCase().includes(text)),
+    );
+  }
+
+  async getPeerDetail(peerId: string): Promise<BgpDashboardPeer | null> {
+    const row = await this.prisma.bgpPeer.findUnique({
+      where: { id: peerId },
+      include: {
+        device: {
+          select: { id: true, hostname: true, displayName: true, bgpMonitoringEnabled: true },
+        },
+        interface: { select: { id: true, name: true, alias: true, description: true } },
+      },
+    });
+    if (!row) return null;
+    const traffic = row.interfaceId ? await this.loadInterfaceTraffic([row.interfaceId]) : new Map();
+    return this.toDashboardPeer(row, traffic);
+  }
+
+  async getPeerHistory(
+    peerId: string,
+    period: BgpHistoryPeriod,
+  ): Promise<BgpPeerHistoryResponse | null> {
+    const peer = await this.prisma.bgpPeer.findUnique({
+      where: { id: peerId },
+      select: { id: true },
+    });
+    if (!peer) return null;
+    const since = bgpHistoryStart(period);
+    const [samples, events] = await Promise.all([
+      this.prisma.bgpPeerSample.findMany({
+        where: { bgpPeerId: peerId, timestamp: { gte: since } },
+        orderBy: { timestamp: 'asc' },
+        select: { timestamp: true, state: true, established: true, receivedPrefixes: true },
+      }),
+      this.prisma.bgpPeerStateEvent.findMany({
+        where: { bgpPeerId: peerId, occurredAt: { gte: since } },
+        orderBy: { occurredAt: 'asc' },
+        select: {
+          previousStateCode: true,
+          previousState: true,
+          currentStateCode: true,
+          currentState: true,
+          occurredAt: true,
+        },
+      }),
+    ]);
+    return {
+      peerId,
+      samples: samples.map((sample) => ({
+        timestamp: sample.timestamp.toISOString(),
+        state: sample.state as BgpPeerState,
+        established: sample.established,
+        receivedPrefixes: bigintToJsonNumber(sample.receivedPrefixes),
+      })),
+      events: events.map((event) => ({
+        previousStateCode: event.previousStateCode,
+        previousState: event.previousState as BgpPeerState,
+        currentStateCode: event.currentStateCode,
+        currentState: event.currentState as BgpPeerState,
+        occurredAt: event.occurredAt.toISOString(),
+      })),
+    };
+  }
+
+  private toDashboardPeer(
+    row: {
+      id: string;
+      deviceId: string;
+      peerAddress: string;
+      remoteAs: bigint | null;
+      interfaceId: string | null;
+      monitoringEnabled: boolean;
+      role: BgpPeerRole;
+      stateCode: number;
+      state: BgpState;
+      established: boolean;
+      receivedPrefixes: bigint | null;
+      establishedSince: Date | null;
+      lastPollingAt: Date | null;
+      lastDiscoveryAt: Date | null;
+      device: { id: string; hostname: string; displayName: string; bgpMonitoringEnabled: boolean };
+      interface: { id: string; name: string; alias: string | null; description: string | null } | null;
+    },
+    traffic: Map<string, { rxBps: number; txBps: number }>,
+  ): BgpDashboardPeer {
+    const iface = row.interface ?? null;
+    const ifaceTraffic = row.interfaceId ? traffic.get(row.interfaceId) ?? null : null;
+    return {
+      id: row.id,
+      deviceId: row.deviceId,
+      deviceHostname: row.device.hostname,
+      deviceDisplayName: row.device.displayName,
+      bgpMonitoringEnabled: row.device.bgpMonitoringEnabled,
+      peerAddress: row.peerAddress,
+      displayName: deriveBgpPeerDisplayName(row.peerAddress, iface),
+      remoteAs: bigintToJsonString(row.remoteAs),
+      role: row.role as BgpPeerRole,
+      monitoringEnabled: row.monitoringEnabled,
+      stateCode: row.stateCode,
+      state: row.state as BgpPeerState,
+      established: row.established,
+      receivedPrefixes: bigintToJsonNumber(row.receivedPrefixes),
+      establishedSince: row.establishedSince?.toISOString() ?? null,
+      lastPollingAt: row.lastPollingAt?.toISOString() ?? null,
+      lastDiscoveryAt: row.lastDiscoveryAt?.toISOString() ?? null,
+      interface: iface
+        ? {
+            id: iface.id,
+            name: iface.name,
+            alias: iface.alias,
+            description: iface.description,
+            rxBps: ifaceTraffic?.rxBps ?? null,
+            txBps: ifaceTraffic?.txBps ?? null,
+          }
+        : null,
+    };
+  }
+
+  private async loadInterfaceTraffic(
+    interfaceIds: string[],
+  ): Promise<Map<string, { rxBps: number; txBps: number }>> {
+    if (!interfaceIds.length) return new Map();
+    const rows = await this.prisma.$queryRaw<Array<{ interfaceId: string; rxBps: number; txBps: number }>>(
+      Prisma.sql`
+        SELECT i."id" AS "interfaceId", s."rxBps" AS "rxBps", s."txBps" AS "txBps"
+        FROM "Interface" i
+        JOIN LATERAL (
+          SELECT m."rxBps", m."txBps"
+          FROM "InterfaceMetricSample" m
+          WHERE m."interfaceId" = i."id"
+          ORDER BY m."timestamp" DESC
+          LIMIT 1
+        ) s ON TRUE
+        WHERE i."id" IN (${Prisma.join(interfaceIds)})
+      `,
+    );
+    return new Map(rows.map((row) => [row.interfaceId, { rxBps: row.rxBps, txBps: row.txBps }]));
+  }
+}
+
+function bgpHistoryStart(period: BgpHistoryPeriod): Date {
+  const milliseconds: Record<BgpHistoryPeriod, number> = {
+    '1h': 60 * 60_000,
+    '6h': 6 * 60 * 60_000,
+    '24h': 24 * 60 * 60_000,
+    '7d': 7 * 24 * 60 * 60_000,
+  };
+  return new Date(Date.now() - milliseconds[period]);
 }

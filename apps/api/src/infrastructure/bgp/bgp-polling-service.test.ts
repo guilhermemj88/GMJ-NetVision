@@ -42,6 +42,9 @@ function repository(): BgpRepository {
   return {
     saveCollection: vi.fn().mockResolvedValue(undefined),
     saveDiscovery: vi.fn().mockResolvedValue(undefined),
+    listDashboardPeers: vi.fn().mockResolvedValue([]),
+    getPeerDetail: vi.fn().mockResolvedValue(null),
+    getPeerHistory: vi.fn().mockResolvedValue(null),
   };
 }
 

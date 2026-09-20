@@ -9,6 +9,7 @@ import { TopBar } from './top-bar';
 import { NocControls } from './noc-controls';
 import { useMapStore } from '@/store/map-store';
 import { HostsWorkspace } from './hosts-workspace';
+import { BgpWorkspace } from './bgp/bgp-workspace';
 
 export function NetworkWorkspace({ publicMode = false }: { publicMode?: boolean }) {
   const toast = useMapStore((state) => state.toast);
@@ -20,7 +21,9 @@ export function NetworkWorkspace({ publicMode = false }: { publicMode?: boolean 
 
   useEffect(() => {
     if (publicMode) return;
-    if (new URLSearchParams(window.location.search).get('view') === 'hosts') setView('HOSTS');
+    const requested = new URLSearchParams(window.location.search).get('view');
+    if (requested === 'hosts') setView('HOSTS');
+    else if (requested === 'bgp') setView('BGP');
   }, [publicMode, setView]);
 
   return (
@@ -34,6 +37,8 @@ export function NetworkWorkspace({ publicMode = false }: { publicMode?: boolean 
       ))}
       {view === 'HOSTS' && !publicMode ? (
         <HostsWorkspace />
+      ) : view === 'BGP' && !publicMode ? (
+        <BgpWorkspace />
       ) : (
         <>
           <ReactFlowProvider>

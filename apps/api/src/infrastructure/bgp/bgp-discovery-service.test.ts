@@ -45,6 +45,9 @@ function bgpRepository(): BgpRepository {
   return {
     saveCollection: vi.fn(),
     saveDiscovery: vi.fn(),
+    listDashboardPeers: vi.fn(),
+    getPeerDetail: vi.fn(),
+    getPeerHistory: vi.fn(),
   };
 }
 

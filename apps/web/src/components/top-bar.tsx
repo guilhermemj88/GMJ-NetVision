@@ -8,6 +8,7 @@ import {
   LogOut,
   MapPinned,
   MonitorPlay,
+  Network,
   Server,
   Settings,
   Sparkles,
@@ -58,6 +59,13 @@ export function TopBar() {
           onClick={() => setView('HOSTS')}
         >
           <Server size={14} /> Hosts
+        </button>
+        <button
+          type="button"
+          className={view === 'BGP' ? 'is-active' : ''}
+          onClick={() => setView('BGP')}
+        >
+          <Network size={14} /> BGP
         </button>
       </nav>
       {view === 'MAP' && map && (

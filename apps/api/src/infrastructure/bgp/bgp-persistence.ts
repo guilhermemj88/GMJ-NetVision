@@ -124,3 +124,25 @@ export function discoveryInterfaceUpdate(peer: BgpDiscoveryPeerInput): {
   if (peer.correlationStatus === 'COMMAND_FAILED') return {};
   return { interfaceId: peer.correlationStatus === 'MATCHED' ? peer.interfaceId : null };
 }
+
+export function deriveBgpPeerDisplayName(
+  peerAddress: string,
+  interfaceInfo: { alias: string | null; description: string | null; name: string | null } | null,
+): string {
+  const alias = interfaceInfo?.alias?.trim();
+  if (alias) return alias;
+  const description = interfaceInfo?.description?.trim();
+  if (description) return description;
+  const name = interfaceInfo?.name?.trim();
+  if (name) return name;
+  return peerAddress;
+}
+
+export function bigintToJsonNumber(value: bigint | null): number | null {
+  if (value === null) return null;
+  return value <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(value) : null;
+}
+
+export function bigintToJsonString(value: bigint | null): string | null {
+  return value === null ? null : value.toString();
+}
