@@ -8,7 +8,8 @@ const interfacePrefixes: Array<[RegExp, string]> = [
   [/^100gigabitethernet/i, '100ge'],
   [/^fortygigabitethernet/i, '40ge'],
   [/^tengigabitethernet/i, '10ge'],
-  [/^xgigabitethernet/i, 'xge'],
+  [/^xgigabitethernet/i, '10ge'],
+  [/^xge/i, '10ge'],
   [/^gigabitethernet/i, 'ge'],
   [/^ethernet/i, 'eth'],
 ];

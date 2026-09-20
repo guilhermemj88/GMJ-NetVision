@@ -189,6 +189,7 @@ export interface Device {
   pppOnline: number;
   pppUpdatedAt: string | null;
   pppSource: PppSource | null;
+  bgpMonitoringEnabled?: boolean;
   updatedAt: string;
   interfaces: NetworkInterface[];
 }
@@ -485,6 +486,7 @@ export type UpdateHostInput = Partial<HostBasicInput> & {
   zabbix?: ZabbixHostInput;
   ssh?: SshHostInput;
   snmp?: SnmpHostInput;
+  bgpMonitoringEnabled?: boolean;
 };
 export interface ConnectionTestResult {
   source: SourceKind;

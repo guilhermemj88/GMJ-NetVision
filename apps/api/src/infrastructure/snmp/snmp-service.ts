@@ -24,6 +24,7 @@ import {
 } from './profiles/generic-oids';
 import type { MplsPollingService } from '../mpls/mpls-polling-service';
 import type { PppPollingService } from '../ppp/ppp-polling-service';
+import type { BgpPollingService } from '../bgp/bgp-polling-service';
 import type { AlarmService } from '../../application/alarm-service';
 
 // Consolidated GENERIC SNMP base (SNMPv2-MIB / IF-MIB). Vendor profiles
@@ -86,6 +87,7 @@ export class SnmpService {
     private readonly mpls?: MplsPollingService,
     private readonly ppp?: PppPollingService,
     private readonly alarms?: AlarmService,
+    private readonly bgp?: BgpPollingService,
   ) {
     this.client = new SnmpClientImpl(3000, 1);
     this.discoveryAdapter = new SnmpV2cDiscoveryAdapter(repository);
@@ -221,10 +223,9 @@ export class SnmpService {
     if (!snmp) throw new Error('SNMP não está habilitado para este host');
 
     const statuses = await this.collectInterfaceStatuses(currentDevice, community);
-    const transitions = await this.repository.updateInterfaceStatuses(
-      currentDevice.id,
-      [...statuses.values()],
-    );
+    const transitions = await this.repository.updateInterfaceStatuses(currentDevice.id, [
+      ...statuses.values(),
+    ]);
     if (this.alarms) {
       try {
         await this.alarms.processTransitions(transitions);
@@ -306,6 +307,7 @@ export class SnmpService {
     await this.refreshOpticalPower(currentDevice, community);
     await this.refreshMpls(currentDevice, community);
     await this.refreshPpp(currentDevice, community, system);
+    await this.refreshBgp(currentDevice, community);
     await this.repository.updateSourceHealth(currentDevice.id, {
       source: 'SNMP',
       state: 'CONNECTED',
@@ -374,6 +376,16 @@ export class SnmpService {
       });
     } catch {
       // PPP is an independent optional capability and never invalidates IF-MIB polling.
+    }
+  }
+
+  private async refreshBgp(device: HostRecord, community: string): Promise<void> {
+    if (!this.bgp) return;
+    if (device.bgpMonitoringEnabled !== true) return;
+    try {
+      await this.bgp.poll(device, community);
+    } catch {
+      // BGP is an independent optional module and never invalidates IF-MIB polling.
     }
   }
 

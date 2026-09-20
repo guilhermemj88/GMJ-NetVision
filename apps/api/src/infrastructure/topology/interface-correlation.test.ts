@@ -18,6 +18,7 @@ describe('interface source correlation', () => {
     expect(normalizeInterfaceName('XGigabitEthernet 0/0/1')).toBe(
       normalizeInterfaceName('XGE0/0/1'),
     );
+    expect(normalizeInterfaceName('XGE0/0/1')).toBe(normalizeInterfaceName('10GE 0/0/1'));
   });
 
   it('extracts an interface name embedded in an entity/transceiver label', () => {

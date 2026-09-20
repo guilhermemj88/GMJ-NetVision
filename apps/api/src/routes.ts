@@ -62,6 +62,10 @@ import { MplsPollingService } from './infrastructure/mpls/mpls-polling-service';
 import { PrismaMplsRepository } from './infrastructure/mpls/prisma-mpls-repository';
 import { PppPollingService } from './infrastructure/ppp/ppp-polling-service';
 import { PrismaPppRepository } from './infrastructure/ppp/prisma-ppp-repository';
+import { BgpPollingService } from './infrastructure/bgp/bgp-polling-service';
+import { DemoBgpRepository } from './infrastructure/bgp/demo-bgp-repository';
+import { HuaweiBgpSnmpCollector } from './infrastructure/bgp/huawei-bgp-snmp';
+import { PrismaBgpRepository } from './infrastructure/bgp/prisma-bgp-repository';
 import { SshClientImpl } from './infrastructure/ssh/ssh-client-impl';
 import { SshInterfaceService } from './infrastructure/ssh/ssh-interface-service';
 import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-adapter';
@@ -389,7 +393,14 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const pppPolling = pppRepository
     ? new PppPollingService(new SnmpClientImpl(3000, 1), pppRepository)
     : undefined;
-  const alarmRepository = config.DEMO_MODE ? new DemoAlarmRepository() : new PrismaAlarmRepository();
+  const bgpRepository = config.DEMO_MODE ? new DemoBgpRepository() : new PrismaBgpRepository();
+  const bgpPolling = new BgpPollingService(
+    new HuaweiBgpSnmpCollector(new SnmpClientImpl(3000, 1)),
+    bgpRepository,
+  );
+  const alarmRepository = config.DEMO_MODE
+    ? new DemoAlarmRepository()
+    : new PrismaAlarmRepository();
   const alarms = new AlarmService(alarmRepository);
   const snmp = new SnmpService(
     hosts,
@@ -398,6 +409,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     mplsPolling,
     pppPolling,
     alarms,
+    bgpPolling,
   );
   const poller = new SnmpPoller(hosts, snmp, config.SNMP_POLL_INTERVAL_SECONDS * 1000);
   const zabbix =
@@ -458,6 +470,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       await publicViewRepository.disconnect();
     if (mplsRepository instanceof PrismaMplsRepository) await mplsRepository.disconnect();
     if (pppRepository instanceof PrismaPppRepository) await pppRepository.disconnect();
+    if (bgpRepository instanceof PrismaBgpRepository) await bgpRepository.disconnect();
     if (alarmRepository instanceof PrismaAlarmRepository) await alarmRepository.disconnect();
   });
 
@@ -851,11 +864,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       capacityBps: parsed.capacityBps,
       autoCapacityBps: parsed.autoCapacityBps,
       capacitySource: parsed.capacitySource,
-      trafficMode: parsed.trafficMode ?? (
-        (parsed.sourceDeviceId && parsed.targetNodeId && !parsed.targetDeviceId) ||
+      trafficMode:
+        parsed.trafficMode ??
+        ((parsed.sourceDeviceId && parsed.targetNodeId && !parsed.targetDeviceId) ||
         (parsed.targetDeviceId && parsed.sourceNodeId && !parsed.sourceDeviceId)
-          ? 'SINGLE_ENDED' : 'BIDIRECTIONAL'
-      ),
+          ? 'SINGLE_ENDED'
+          : 'BIDIRECTIONAL'),
       customColor: parsed.customColor ?? null,
       trafficColorAToB: parsed.trafficColorAToB ?? null,
       trafficColorBToA: parsed.trafficColorBToA ?? null,
@@ -877,11 +891,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         ? {}
         : { targetHandleSide: parsed.targetHandleSide }),
     };
-    if (
-      input.trafficMode === 'SINGLE_ENDED' &&
-      !singleEndedMonitoredSide(input)
-    ) {
-      return reply.code(400).send({ message: 'Single-ended link requires interfaces on exactly one monitored side' });
+    if (input.trafficMode === 'SINGLE_ENDED' && !singleEndedMonitoredSide(input)) {
+      return reply
+        .code(400)
+        .send({ message: 'Single-ended link requires interfaces on exactly one monitored side' });
     }
     const link = await maps.createLink(mapId, input);
     return link ? reply.code(201).send(link) : reply.code(404).send({ message: 'Map not found' });
@@ -933,12 +946,20 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       targetHandleSide,
       ...fields
     } = body;
-    if (trafficMode !== undefined || sourceInterfaceId !== undefined || targetInterfaceId !== undefined || metricSources !== undefined || aggregationMode !== undefined) {
+    if (
+      trafficMode !== undefined ||
+      sourceInterfaceId !== undefined ||
+      targetInterfaceId !== undefined ||
+      metricSources !== undefined ||
+      aggregationMode !== undefined
+    ) {
       const existing = (await maps.getMap(mapId))?.links.find((link) => link.id === linkId);
       if (!existing) return reply.code(404).send({ message: 'Link not found' });
       const edited = { ...existing, ...body };
       if (edited.trafficMode === 'SINGLE_ENDED' && !singleEndedMonitoredSide(edited)) {
-        return reply.code(400).send({ message: 'Single-ended link requires interfaces on exactly one monitored side' });
+        return reply
+          .code(400)
+          .send({ message: 'Single-ended link requires interfaces on exactly one monitored side' });
       }
     }
     const link = await maps.updateLink(mapId, linkId, {

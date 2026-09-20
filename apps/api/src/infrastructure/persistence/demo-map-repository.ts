@@ -233,6 +233,7 @@ export class DemoMapRepository {
       pppOnline: 0,
       pppUpdatedAt: null,
       pppSource: null,
+      bgpMonitoringEnabled: false,
       updatedAt: timestamp,
       createdAt: timestamp,
       interfaces: (interfaces?.length ? interfaces : defaultInterfaces(id)).map((item) => ({
@@ -282,6 +283,7 @@ export class DemoMapRepository {
     }
     if (input.ssh) this.applySsh(host, input.ssh);
     if (input.snmp) this.applySnmp(host, input.snmp);
+    if (input.bgpMonitoringEnabled !== undefined) host.bgpMonitoringEnabled = input.bgpMonitoringEnabled;
     host.discoveryMethod = host.snmpEnabled ? 'SNMP' : host.sshEnabled ? 'SSH' : 'MANUAL';
     host.updatedAt = new Date().toISOString();
     return this.getHost(hostId);

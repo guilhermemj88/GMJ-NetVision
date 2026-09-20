@@ -409,6 +409,9 @@ export class PrismaHostRepository implements HostRepository {
                 snmpCredentialId,
               }
             : {}),
+          ...(input.bgpMonitoringEnabled !== undefined
+            ? { bgpMonitoringEnabled: input.bgpMonitoringEnabled }
+            : {}),
           discoveryMethod: snmpEnabled ? 'SNMP' : sshEnabled ? 'SSH' : 'MANUAL',
         },
       });
@@ -804,6 +807,7 @@ export class PrismaHostRepository implements HostRepository {
     snmpSecurityLevel: string | null; snmpAuthProtocol: string | null; snmpPrivacyProtocol: string | null;
     lastPollingAt: Date | null; lastDiscoveryAt: Date | null; uptimeSeconds: bigint | null; cpuPercent: number | null;
     memoryPercent: number | null; pppSupported: boolean; pppOnline: number; pppUpdatedAt: Date | null; pppSource: string | null;
+    bgpMonitoringEnabled: boolean;
     snmpCredentialId: string | null; sshCredentialId: string | null; createdAt: Date; updatedAt: Date;
     mapNodes: Array<{ mapId: string }>;
     sourceHealth: Array<{ source: string; state: string; lastSuccess: Date | null; lastFailure: Date | null; lastErrorSafe: string | null }>;
@@ -919,6 +923,7 @@ export class PrismaHostRepository implements HostRepository {
       pppSource: device.pppSource === 'SNMP_HUAWEI' || device.pppSource === 'SNMP_MIKROTIK'
         ? device.pppSource
         : null,
+      bgpMonitoringEnabled: device.bgpMonitoringEnabled,
       updatedAt: device.updatedAt.toISOString(),
       interfaces,
       description: device.description,

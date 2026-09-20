@@ -40,7 +40,7 @@ const basicHostFields = {
 };
 const createHostSchema = z.object({ ...basicHostFields, zabbix: zabbixInput, ssh: sshInput, snmp: snmpInput });
 const updateHostSchema = z.object({
-  hostname: basicHostFields.hostname.optional(), displayName: basicHostFields.displayName.optional(), managementIp: basicHostFields.managementIp.optional(), vendor: basicHostFields.vendor.optional(), model: basicHostFields.model.optional(), deviceType: basicHostFields.deviceType.optional(), site: basicHostFields.site.optional(), description: basicHostFields.description.optional(), notes: basicHostFields.notes.optional(), origin: basicHostFields.origin.optional(), zabbix: zabbixInput.optional(), ssh: sshInput.optional(), snmp: snmpInput.optional(),
+  hostname: basicHostFields.hostname.optional(), displayName: basicHostFields.displayName.optional(), managementIp: basicHostFields.managementIp.optional(), vendor: basicHostFields.vendor.optional(), model: basicHostFields.model.optional(), deviceType: basicHostFields.deviceType.optional(), site: basicHostFields.site.optional(), description: basicHostFields.description.optional(), notes: basicHostFields.notes.optional(), origin: basicHostFields.origin.optional(), zabbix: zabbixInput.optional(), ssh: sshInput.optional(), snmp: snmpInput.optional(), bgpMonitoringEnabled: z.boolean().optional(),
 });
 
 interface MapMembershipRepository {

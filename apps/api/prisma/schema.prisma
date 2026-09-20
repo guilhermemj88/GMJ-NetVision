@@ -234,6 +234,22 @@ enum MplsEntityType {
   PW
 }
 
+enum BgpPeerRole {
+  UPSTREAM
+  PEER
+  OTHER
+}
+
+enum BgpState {
+  IDLE
+  CONNECT
+  ACTIVE
+  OPENSENT
+  OPENCONFIRM
+  ESTABLISHED
+  UNKNOWN
+}
+
 model Map {
   id                String            @id @default(cuid())
   name              String
@@ -326,6 +342,7 @@ model Device {
   pppOnline           Int                 @default(0)
   pppUpdatedAt        DateTime?
   pppSource           String?
+  bgpMonitoringEnabled Boolean            @default(false)
   interfaces          Interface[]
   metricSamples       DeviceMetricSample[]
   mapNodes            MapNode[]
@@ -343,6 +360,7 @@ model Device {
   mplsPws             MplsPw[]              @relation("MplsPwHost")
   remoteMplsPws       MplsPw[]              @relation("MplsPwRemoteHost")
   mplsStateEvents     MplsStateEvent[]
+  bgpPeers            BgpPeer[]
   alarms              Alarm[]
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt
@@ -389,11 +407,67 @@ model Interface {
   sourceMappings        InterfaceSourceMapping[]
   mplsVsis              MplsVsi[]
   mplsAcs               MplsAc[]
+  bgpPeers              BgpPeer[]
   alarms                Alarm[]
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
 
   @@unique([deviceId, ifIndex])
+}
+
+model BgpPeer {
+  id                 String      @id @default(cuid())
+  deviceId           String
+  peerAddress        String
+  remoteAs           BigInt?
+  interfaceId        String?
+  monitoringEnabled  Boolean     @default(true)
+  role               BgpPeerRole @default(OTHER)
+  stateCode          Int         @default(0)
+  state              BgpState    @default(UNKNOWN)
+  established        Boolean     @default(false)
+  receivedPrefixes   BigInt?
+  establishedSince   DateTime?
+  lastStateChangedAt DateTime?
+  lastPollingAt      DateTime?
+  lastDiscoveryAt    DateTime?
+  device             Device      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  interface          Interface?  @relation(fields: [interfaceId], references: [id], onDelete: SetNull)
+  samples            BgpPeerSample[]
+  stateEvents        BgpPeerStateEvent[]
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  @@unique([deviceId, peerAddress])
+  @@index([deviceId, established])
+  @@index([interfaceId])
+  @@index([role])
+}
+
+model BgpPeerSample {
+  id               BigInt   @id @default(autoincrement())
+  bgpPeerId        String
+  timestamp        DateTime @default(now())
+  stateCode        Int
+  state            BgpState
+  established      Boolean
+  receivedPrefixes BigInt?
+  bgpPeer          BgpPeer  @relation(fields: [bgpPeerId], references: [id], onDelete: Cascade)
+
+  @@index([bgpPeerId, timestamp])
+}
+
+model BgpPeerStateEvent {
+  id                BigInt   @id @default(autoincrement())
+  bgpPeerId         String
+  previousStateCode Int
+  previousState     BgpState
+  currentStateCode  Int
+  currentState      BgpState
+  occurredAt        DateTime @default(now())
+  bgpPeer           BgpPeer  @relation(fields: [bgpPeerId], references: [id], onDelete: Cascade)
+
+  @@index([bgpPeerId, occurredAt])
 }
 
 model MplsDeviceState {

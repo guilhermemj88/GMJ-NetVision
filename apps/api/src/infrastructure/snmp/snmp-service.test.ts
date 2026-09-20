@@ -47,7 +47,9 @@ function host(overrides: Partial<HostRecord> = {}): HostRecord {
   } as HostRecord;
 }
 
-function repository(credentials: { community?: string } | null = { community: 'public' }): HostRepository {
+function repository(
+  credentials: { community?: string } | null = { community: 'public' },
+): HostRepository {
   return {
     listHosts: vi.fn().mockResolvedValue([]),
     getHost: vi.fn().mockResolvedValue(null),
@@ -73,11 +75,26 @@ function networkInterface(
   status: HostRecord['interfaces'][number]['operStatus'] = 'DOWN',
 ): HostRecord['interfaces'][number] {
   return {
-    id: `if-${ifIndex}`, deviceId: 'test-1', name, alias: '', description: name,
-    ifIndex, mac: '', mtu: 1500, speedBps: name.startsWith('100GE') ? 100_000_000_000 : 1_000_000_000,
-    adminStatus: status === 'UP' ? 'UP' : 'DOWN', operStatus: status,
-    rxBps: 0, txBps: 0, rxUtilization: 0, txUtilization: 0,
-    rxErrors: 0, txErrors: 0, rxDiscards: 0, txDiscards: 0, dataSources: ['SNMP'],
+    id: `if-${ifIndex}`,
+    deviceId: 'test-1',
+    name,
+    alias: '',
+    description: name,
+    ifIndex,
+    mac: '',
+    mtu: 1500,
+    speedBps: name.startsWith('100GE') ? 100_000_000_000 : 1_000_000_000,
+    adminStatus: status === 'UP' ? 'UP' : 'DOWN',
+    operStatus: status,
+    rxBps: 0,
+    txBps: 0,
+    rxUtilization: 0,
+    txUtilization: 0,
+    rxErrors: 0,
+    txErrors: 0,
+    rxDiscards: 0,
+    txDiscards: 0,
+    dataSources: ['SNMP'],
   };
 }
 
@@ -90,8 +107,13 @@ function snmpHost(
     lastDiscoveryAt: new Date().toISOString(),
     snmpEnabled: true,
     snmp: {
-      version: 'SNMP_V2C', host: '192.168.1.1', port: 161, username: '',
-      securityLevel: 'NO_AUTH_NO_PRIV', authProtocol: null, privacyProtocol: null,
+      version: 'SNMP_V2C',
+      host: '192.168.1.1',
+      port: 161,
+      username: '',
+      securityLevel: 'NO_AUTH_NO_PRIV',
+      authProtocol: null,
+      privacyProtocol: null,
       credentialConfigured: true,
     },
     ...overrides,
@@ -152,7 +174,110 @@ describe('SnmpService', () => {
 
   it('fails safely when an enabled host has no stored community', async () => {
     const service = new SnmpService(repository(null));
-    const result = await service.testConnectivity(host({
+    const result = await service.testConnectivity(
+      host({
+        snmpEnabled: true,
+        snmp: {
+          version: 'SNMP_V2C',
+          host: '192.168.1.1',
+          port: 161,
+          username: '',
+          securityLevel: 'NO_AUTH_NO_PRIV',
+          authProtocol: null,
+          privacyProtocol: null,
+          credentialConfigured: false,
+        },
+      }),
+    );
+    expect(result.state).toBe('AUTH_INVALID');
+    expect(result.message).not.toContain('public');
+  });
+
+  it('preserves the close-poll guard and stores detected sysName without renaming the host', async () => {
+    const now = new Date();
+    const networkInterface = {
+      id: 'if-1',
+      deviceId: 'test-1',
+      name: '100GE0/0/1',
+      alias: '',
+      description: '100GE0/0/1',
+      ifIndex: 1,
+      mac: '',
+      mtu: 1500,
+      speedBps: 100_000_000_000,
+      adminStatus: 'DOWN' as const,
+      operStatus: 'DOWN' as const,
+      rxBps: 0,
+      txBps: 0,
+      rxUtilization: 0,
+      txUtilization: 0,
+      rxErrors: 0,
+      txErrors: 0,
+      rxDiscards: 0,
+      txDiscards: 0,
+      dataSources: ['SNMP' as const],
+    };
+    const repo = repository();
+    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(
+      new Map([
+        [
+          1,
+          {
+            interfaceId: 'if-1',
+            ifIndex: 1,
+            timestamp: new Date(now.getTime() - 30_000),
+            inOctets: 100n,
+            outOctets: 200n,
+            inErrors: 0n,
+            outErrors: 0n,
+            inDiscards: 0n,
+            outDiscards: 0n,
+          },
+        ],
+      ]),
+    );
+    const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([
+        [
+          1,
+          {
+            ifIndex: 1,
+            adminStatus: 'UP',
+            operStatus: 'UP',
+          },
+        ],
+      ]),
+    );
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(
+      new Map([
+        [
+          1,
+          {
+            ifIndex: 1,
+            timestamp: now,
+            inOctets: 120n,
+            outOctets: 230n,
+            inErrors: 0n,
+            outErrors: 0n,
+            inDiscards: 0n,
+            outDiscards: 0n,
+          },
+        ],
+      ]),
+    );
+    const internals = service as unknown as {
+      collectSystem: () => Promise<DeviceMetricSampleInput>;
+    };
+    vi.spyOn(internals, 'collectSystem').mockResolvedValue({
+      timestamp: now,
+      uptimeSeconds: 123n,
+      sysName: 'different-device-sysname',
+    });
+    const device = host({
+      hostname: 'registered-hostname',
+      interfaces: [networkInterface],
+      lastDiscoveryAt: now.toISOString(),
       snmpEnabled: true,
       snmp: {
         version: 'SNMP_V2C',
@@ -162,48 +287,6 @@ describe('SnmpService', () => {
         securityLevel: 'NO_AUTH_NO_PRIV',
         authProtocol: null,
         privacyProtocol: null,
-        credentialConfigured: false,
-      },
-    }));
-    expect(result.state).toBe('AUTH_INVALID');
-    expect(result.message).not.toContain('public');
-  });
-
-  it('preserves the close-poll guard and stores detected sysName without renaming the host', async () => {
-    const now = new Date();
-    const networkInterface = {
-      id: 'if-1', deviceId: 'test-1', name: '100GE0/0/1', alias: '', description: '100GE0/0/1',
-      ifIndex: 1, mac: '', mtu: 1500, speedBps: 100_000_000_000,
-      adminStatus: 'DOWN' as const, operStatus: 'DOWN' as const,
-      rxBps: 0, txBps: 0, rxUtilization: 0, txUtilization: 0,
-      rxErrors: 0, txErrors: 0, rxDiscards: 0, txDiscards: 0, dataSources: ['SNMP' as const],
-    };
-    const repo = repository();
-    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(new Map([[1, {
-      interfaceId: 'if-1', ifIndex: 1, timestamp: new Date(now.getTime() - 30_000),
-      inOctets: 100n, outOctets: 200n, inErrors: 0n, outErrors: 0n,
-      inDiscards: 0n, outDiscards: 0n,
-    }]]));
-    const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([[1, {
-      ifIndex: 1, adminStatus: 'UP', operStatus: 'UP',
-    }]]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[1, {
-      ifIndex: 1, timestamp: now, inOctets: 120n, outOctets: 230n,
-      inErrors: 0n, outErrors: 0n, inDiscards: 0n, outDiscards: 0n,
-    }]]));
-    const internals = service as unknown as {
-      collectSystem: () => Promise<DeviceMetricSampleInput>;
-    };
-    vi.spyOn(internals, 'collectSystem').mockResolvedValue({
-      timestamp: now, uptimeSeconds: 123n, sysName: 'different-device-sysname',
-    });
-    const device = host({
-      hostname: 'registered-hostname', interfaces: [networkInterface],
-      lastDiscoveryAt: now.toISOString(), snmpEnabled: true,
-      snmp: {
-        version: 'SNMP_V2C', host: '192.168.1.1', port: 161, username: '',
-        securityLevel: 'NO_AUTH_NO_PRIV', authProtocol: null, privacyProtocol: null,
         credentialConfigured: true,
       },
     });
@@ -215,9 +298,13 @@ describe('SnmpService', () => {
       expect.objectContaining({ sysName: 'different-device-sysname' }),
       [],
     );
-    expect(repo.updateInterfaceStatuses).toHaveBeenCalledWith(device.id, [{
-      ifIndex: 1, adminStatus: 'UP', operStatus: 'UP',
-    }]);
+    expect(repo.updateInterfaceStatuses).toHaveBeenCalledWith(device.id, [
+      {
+        ifIndex: 1,
+        adminStatus: 'UP',
+        operStatus: 'UP',
+      },
+    ]);
     expect(repo.updateHost).not.toHaveBeenCalled();
     expect(device.hostname).toBe('registered-hostname');
   });
@@ -225,33 +312,92 @@ describe('SnmpService', () => {
   it('persists cumulative error/discard counters plus non-negative interval deltas', async () => {
     const now = new Date();
     const networkInterface = {
-      id: 'if-1', deviceId: 'test-1', name: 'GE0/0/1', alias: '', description: 'GE0/0/1',
-      ifIndex: 1, mac: '', mtu: 1500, speedBps: 1_000_000_000,
-      adminStatus: 'UP' as const, operStatus: 'UP' as const, rxBps: 0, txBps: 0,
-      rxUtilization: 0, txUtilization: 0, rxErrors: 0, txErrors: 0, rxDiscards: 0,
-      txDiscards: 0, dataSources: ['SNMP' as const],
+      id: 'if-1',
+      deviceId: 'test-1',
+      name: 'GE0/0/1',
+      alias: '',
+      description: 'GE0/0/1',
+      ifIndex: 1,
+      mac: '',
+      mtu: 1500,
+      speedBps: 1_000_000_000,
+      adminStatus: 'UP' as const,
+      operStatus: 'UP' as const,
+      rxBps: 0,
+      txBps: 0,
+      rxUtilization: 0,
+      txUtilization: 0,
+      rxErrors: 0,
+      txErrors: 0,
+      rxDiscards: 0,
+      txDiscards: 0,
+      dataSources: ['SNMP' as const],
     };
     const repo = repository();
-    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(new Map([[1, {
-      interfaceId: 'if-1', ifIndex: 1, timestamp: new Date(now.getTime() - 60_000),
-      inOctets: 100n, outOctets: 200n, inErrors: 7054n, outErrors: 2n,
-      inDiscards: 9n, outDiscards: 8n,
-    }]]));
+    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(
+      new Map([
+        [
+          1,
+          {
+            interfaceId: 'if-1',
+            ifIndex: 1,
+            timestamp: new Date(now.getTime() - 60_000),
+            inOctets: 100n,
+            outOctets: 200n,
+            inErrors: 7054n,
+            outErrors: 2n,
+            inDiscards: 9n,
+            outDiscards: 8n,
+          },
+        ],
+      ]),
+    );
     const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([[1, {
-      ifIndex: 1, adminStatus: 'UP', operStatus: 'UP',
-    }]]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[1, {
-      ifIndex: 1, timestamp: now, inOctets: 200n, outOctets: 300n,
-      inErrors: 7057n, outErrors: 2n, inDiscards: 2n, outDiscards: 10n,
-    }]]));
-    const internals = service as unknown as { collectSystem: () => Promise<DeviceMetricSampleInput> };
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([
+        [
+          1,
+          {
+            ifIndex: 1,
+            adminStatus: 'UP',
+            operStatus: 'UP',
+          },
+        ],
+      ]),
+    );
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(
+      new Map([
+        [
+          1,
+          {
+            ifIndex: 1,
+            timestamp: now,
+            inOctets: 200n,
+            outOctets: 300n,
+            inErrors: 7057n,
+            outErrors: 2n,
+            inDiscards: 2n,
+            outDiscards: 10n,
+          },
+        ],
+      ]),
+    );
+    const internals = service as unknown as {
+      collectSystem: () => Promise<DeviceMetricSampleInput>;
+    };
     vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
     const polledHost = host({
-      interfaces: [networkInterface], lastDiscoveryAt: now.toISOString(), snmpEnabled: true,
+      interfaces: [networkInterface],
+      lastDiscoveryAt: now.toISOString(),
+      snmpEnabled: true,
       snmp: {
-        version: 'SNMP_V2C', host: '192.168.1.1', port: 161, username: '',
-        securityLevel: 'NO_AUTH_NO_PRIV', authProtocol: null, privacyProtocol: null,
+        version: 'SNMP_V2C',
+        host: '192.168.1.1',
+        port: 161,
+        username: '',
+        securityLevel: 'NO_AUTH_NO_PRIV',
+        authProtocol: null,
+        privacyProtocol: null,
         credentialConfigured: true,
       },
     });
@@ -260,10 +406,14 @@ describe('SnmpService', () => {
 
     expect(repo.saveSnmpPoll).toHaveBeenCalledWith(polledHost.id, expect.any(Object), [
       expect.objectContaining({
-        inErrors: 7057n, inErrorsDelta: 3n,
-        outErrors: 2n, outErrorsDelta: 0n,
-        inDiscards: 2n, inDiscardsDelta: 2n,
-        outDiscards: 10n, outDiscardsDelta: 2n,
+        inErrors: 7057n,
+        inErrorsDelta: 3n,
+        outErrors: 2n,
+        outErrorsDelta: 0n,
+        inDiscards: 2n,
+        inDiscardsDelta: 2n,
+        outDiscards: 10n,
+        outDiscardsDelta: 2n,
       }),
     ]);
   });
@@ -271,34 +421,92 @@ describe('SnmpService', () => {
   it('calculates bps from the actual elapsed time when polling is irregular', async () => {
     const now = new Date('2026-08-23T12:01:15.000Z');
     const networkInterface = {
-      id: 'if-1', deviceId: 'test-1', name: '100GE0/0/1', alias: '', description: '',
-      ifIndex: 1, mac: '', mtu: 1500, speedBps: 100_000_000_000,
-      adminStatus: 'UP' as const, operStatus: 'UP' as const,
-      rxBps: 0, txBps: 0, rxUtilization: 0, txUtilization: 0,
-      rxErrors: 0, txErrors: 0, rxDiscards: 0, txDiscards: 0, dataSources: ['SNMP' as const],
+      id: 'if-1',
+      deviceId: 'test-1',
+      name: '100GE0/0/1',
+      alias: '',
+      description: '',
+      ifIndex: 1,
+      mac: '',
+      mtu: 1500,
+      speedBps: 100_000_000_000,
+      adminStatus: 'UP' as const,
+      operStatus: 'UP' as const,
+      rxBps: 0,
+      txBps: 0,
+      rxUtilization: 0,
+      txUtilization: 0,
+      rxErrors: 0,
+      txErrors: 0,
+      rxDiscards: 0,
+      txDiscards: 0,
+      dataSources: ['SNMP' as const],
     };
     const repo = repository();
-    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(new Map([[1, {
-      interfaceId: 'if-1', ifIndex: 1, timestamp: new Date('2026-08-23T12:00:00.000Z'),
-      inOctets: 1_000n, outOctets: 2_000n, inErrors: 0n, outErrors: 0n,
-      inDiscards: 0n, outDiscards: 0n,
-    }]]));
+    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(
+      new Map([
+        [
+          1,
+          {
+            interfaceId: 'if-1',
+            ifIndex: 1,
+            timestamp: new Date('2026-08-23T12:00:00.000Z'),
+            inOctets: 1_000n,
+            outOctets: 2_000n,
+            inErrors: 0n,
+            outErrors: 0n,
+            inDiscards: 0n,
+            outDiscards: 0n,
+          },
+        ],
+      ]),
+    );
     const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([[1, {
-      ifIndex: 1, adminStatus: 'UP', operStatus: 'UP',
-    }]]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[1, {
-      ifIndex: 1, timestamp: now,
-      inOctets: 8_500n, outOctets: 17_000n,
-      inErrors: 0n, outErrors: 0n, inDiscards: 0n, outDiscards: 0n,
-    }]]));
-    const internals = service as unknown as { collectSystem: () => Promise<DeviceMetricSampleInput> };
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([
+        [
+          1,
+          {
+            ifIndex: 1,
+            adminStatus: 'UP',
+            operStatus: 'UP',
+          },
+        ],
+      ]),
+    );
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(
+      new Map([
+        [
+          1,
+          {
+            ifIndex: 1,
+            timestamp: now,
+            inOctets: 8_500n,
+            outOctets: 17_000n,
+            inErrors: 0n,
+            outErrors: 0n,
+            inDiscards: 0n,
+            outDiscards: 0n,
+          },
+        ],
+      ]),
+    );
+    const internals = service as unknown as {
+      collectSystem: () => Promise<DeviceMetricSampleInput>;
+    };
     vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
     const polledHost = host({
-      interfaces: [networkInterface], lastDiscoveryAt: new Date().toISOString(), snmpEnabled: true,
+      interfaces: [networkInterface],
+      lastDiscoveryAt: new Date().toISOString(),
+      snmpEnabled: true,
       snmp: {
-        version: 'SNMP_V2C', host: '192.168.1.1', port: 161, username: '',
-        securityLevel: 'NO_AUTH_NO_PRIV', authProtocol: null, privacyProtocol: null,
+        version: 'SNMP_V2C',
+        host: '192.168.1.1',
+        port: 161,
+        username: '',
+        securityLevel: 'NO_AUTH_NO_PRIV',
+        authProtocol: null,
+        privacyProtocol: null,
         credentialConfigured: true,
       },
     });
@@ -317,27 +525,68 @@ describe('SnmpService', () => {
     const now = new Date('2026-08-23T12:00:30.000Z');
     const trunk = networkInterface('Eth-Trunk23', 23);
     const repo = repository();
-    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(new Map([[23, {
-      interfaceId: trunk.id, ifIndex: 23, timestamp: new Date('2026-08-23T12:00:00.000Z'),
-      inOctets: 100n, outOctets: 200n, inErrors: 0n, outErrors: 0n,
-      inDiscards: 0n, outDiscards: 0n,
-    }]]));
+    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(
+      new Map([
+        [
+          23,
+          {
+            interfaceId: trunk.id,
+            ifIndex: 23,
+            timestamp: new Date('2026-08-23T12:00:00.000Z'),
+            inOctets: 100n,
+            outOctets: 200n,
+            inErrors: 0n,
+            outErrors: 0n,
+            inDiscards: 0n,
+            outDiscards: 0n,
+          },
+        ],
+      ]),
+    );
     const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([[23, {
-      ifIndex: 23, adminStatus: 'UP', operStatus: 'UP',
-    }]]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[23, {
-      ifIndex: 23, timestamp: now, inOctets: 150n, outOctets: 250n,
-      inErrors: 0n, outErrors: 0n, inDiscards: 0n, outDiscards: 0n,
-    }]]));
-    const internals = service as unknown as { collectSystem: () => Promise<DeviceMetricSampleInput> };
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([
+        [
+          23,
+          {
+            ifIndex: 23,
+            adminStatus: 'UP',
+            operStatus: 'UP',
+          },
+        ],
+      ]),
+    );
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(
+      new Map([
+        [
+          23,
+          {
+            ifIndex: 23,
+            timestamp: now,
+            inOctets: 150n,
+            outOctets: 250n,
+            inErrors: 0n,
+            outErrors: 0n,
+            inDiscards: 0n,
+            outDiscards: 0n,
+          },
+        ],
+      ]),
+    );
+    const internals = service as unknown as {
+      collectSystem: () => Promise<DeviceMetricSampleInput>;
+    };
     vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
 
     const result = await service.pollHost(snmpHost([trunk]));
 
-    expect(repo.updateInterfaceStatuses).toHaveBeenCalledWith('test-1', [{
-      ifIndex: 23, adminStatus: 'UP', operStatus: 'UP',
-    }]);
+    expect(repo.updateInterfaceStatuses).toHaveBeenCalledWith('test-1', [
+      {
+        ifIndex: 23,
+        adminStatus: 'UP',
+        operStatus: 'UP',
+      },
+    ]);
     expect(repo.saveSnmpPoll).toHaveBeenCalledWith('test-1', expect.any(Object), []);
     expect(result).toMatchObject({ interfacesChecked: 1, interfaceSamples: 0 });
   });
@@ -358,11 +607,14 @@ describe('SnmpService', () => {
       ];
     });
 
-    const statuses = await service.collectInterfaceStatuses(snmpHost([
-      networkInterface('Eth-Trunk23', 23),
-      networkInterface('100GE1/0/23', 1023),
-      networkInterface('100GE1/0/24', 1024),
-    ]), 'secret');
+    const statuses = await service.collectInterfaceStatuses(
+      snmpHost([
+        networkInterface('Eth-Trunk23', 23),
+        networkInterface('100GE1/0/23', 1023),
+        networkInterface('100GE1/0/24', 1024),
+      ]),
+      'secret',
+    );
 
     expect([...statuses.values()]).toEqual([
       { ifIndex: 23, adminStatus: 'UP', operStatus: 'UP' },
@@ -377,7 +629,8 @@ describe('SnmpService', () => {
       client: { walk: (host: string, oid: string, options: unknown) => Promise<unknown[]> };
     };
     vi.spyOn(internals.client, 'walk').mockImplementation(async (_host, oid) =>
-      oid.endsWith('.7') ? [{ oid: `${oid}.24`, value: 1 }] : []);
+      oid.endsWith('.7') ? [{ oid: `${oid}.24`, value: 1 }] : [],
+    );
 
     const statuses = await service.collectInterfaceStatuses(
       snmpHost([networkInterface('100GE1/0/24', 24, 'UP')]),
@@ -392,11 +645,24 @@ describe('SnmpService', () => {
     const now = new Date('2026-08-23T12:01:00.000Z');
     const port = networkInterface('100GE1/0/24', 24);
     const repo = repository();
-    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(new Map([[24, {
-      interfaceId: port.id, ifIndex: 24, timestamp: new Date('2026-08-23T12:00:00.000Z'),
-      inOctets: 100n, outOctets: 200n, inErrors: 0n, outErrors: 0n,
-      inDiscards: 0n, outDiscards: 0n,
-    }]]));
+    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(
+      new Map([
+        [
+          24,
+          {
+            interfaceId: port.id,
+            ifIndex: 24,
+            timestamp: new Date('2026-08-23T12:00:00.000Z'),
+            inOctets: 100n,
+            outOctets: 200n,
+            inErrors: 0n,
+            outErrors: 0n,
+            inDiscards: 0n,
+            outDiscards: 0n,
+          },
+        ],
+      ]),
+    );
     const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
     const internals = service as unknown as {
       client: { walk: (host: string, oid: string, options: unknown) => Promise<unknown[]> };
@@ -406,10 +672,23 @@ describe('SnmpService', () => {
     vi.spyOn(internals.client, 'walk').mockRejectedValue(new Error('status walk failed'));
     vi.spyOn(internals.profileMetrics, 'collect').mockResolvedValue({});
     vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[24, {
-      ifIndex: 24, timestamp: now, inOctets: 200n, outOctets: 300n,
-      inErrors: 0n, outErrors: 0n, inDiscards: 0n, outDiscards: 0n,
-    }]]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(
+      new Map([
+        [
+          24,
+          {
+            ifIndex: 24,
+            timestamp: now,
+            inOctets: 200n,
+            outOctets: 300n,
+            inErrors: 0n,
+            outErrors: 0n,
+            inDiscards: 0n,
+            outDiscards: 0n,
+          },
+        ],
+      ]),
+    );
 
     await service.pollHost(snmpHost([port]));
 
@@ -427,8 +706,12 @@ describe('SnmpService', () => {
       collectSystem: () => Promise<DeviceMetricSampleInput>;
       profileMetrics: { collect: () => Promise<Record<string, never>> };
     };
-    const collectSystem = vi.spyOn(internals, 'collectSystem').mockImplementation(() =>
-      new Promise((resolve) => { finishSystem = resolve; }));
+    const collectSystem = vi.spyOn(internals, 'collectSystem').mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishSystem = resolve;
+        }),
+    );
     vi.spyOn(internals.profileMetrics, 'collect').mockResolvedValue({});
     vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map());
     vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map());
@@ -451,24 +734,162 @@ describe('SnmpService', () => {
     const polledHost = host({
       snmpEnabled: true,
       snmp: {
-        version: 'SNMP_V2C', host: '192.168.1.1', port: 161, username: '',
-        securityLevel: 'NO_AUTH_NO_PRIV', authProtocol: null, privacyProtocol: null,
+        version: 'SNMP_V2C',
+        host: '192.168.1.1',
+        port: 161,
+        username: '',
+        securityLevel: 'NO_AUTH_NO_PRIV',
+        authProtocol: null,
+        privacyProtocol: null,
         credentialConfigured: true,
       },
     });
     const internals = service as unknown as {
       refreshOpticalPower: (device: HostRecord, community: string) => Promise<void>;
       discoveryAdapter: {
-        enrichOpticalPower: (device: HostRecord, interfaces: HostRecord['interfaces'], community: string) => Promise<HostRecord['interfaces']>;
+        enrichOpticalPower: (
+          device: HostRecord,
+          interfaces: HostRecord['interfaces'],
+          community: string,
+        ) => Promise<HostRecord['interfaces']>;
       };
     };
-    const enrichment = vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([]);
+    const enrichment = vi
+      .spyOn(internals.discoveryAdapter, 'enrichOpticalPower')
+      .mockResolvedValue([]);
 
     await internals.refreshOpticalPower(polledHost, 'secret');
     await internals.refreshOpticalPower(polledHost, 'secret');
 
     expect(enrichment).toHaveBeenCalledTimes(1);
     expect(repo.updateInterfaceOptics).toHaveBeenCalledTimes(1);
+  });
+
+  it('isolates a BGP failure without blocking IF-MIB, MPLS or PPP polling', async () => {
+    const now = new Date('2026-09-19T12:00:00.000Z');
+    const repo = repository();
+    const mpls = { poll: vi.fn().mockResolvedValue(undefined) };
+    const ppp = { poll: vi.fn().mockResolvedValue(undefined) };
+    const bgp = { poll: vi.fn().mockRejectedValue(new Error('BGP failed')) };
+    const service = new SnmpService(
+      repo,
+      undefined,
+      Number.POSITIVE_INFINITY,
+      mpls as never,
+      ppp as never,
+      undefined,
+      bgp as never,
+    );
+    const internals = service as unknown as {
+      collectSystem: () => Promise<DeviceMetricSampleInput>;
+      profileMetrics: { collect: () => Promise<Record<string, never>> };
+    };
+    vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
+    vi.spyOn(internals.profileMetrics, 'collect').mockResolvedValue({});
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([[1, statusRow(1)]]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[1, counterRow(1, now)]]));
+    const polledHost = snmpHost([networkInterface('GE0/0/1', 1, 'UP')], {
+      bgpMonitoringEnabled: true,
+    });
+
+    await expect(service.pollHost(polledHost)).resolves.toMatchObject({ hostId: 'test-1' });
+
+    expect(repo.saveSnmpPoll).toHaveBeenCalledTimes(1);
+    expect(mpls.poll).toHaveBeenCalledWith(polledHost, 'public');
+    expect(ppp.poll).toHaveBeenCalledWith(polledHost, 'public', expect.any(Object));
+    expect(bgp.poll).toHaveBeenCalledWith(polledHost, 'public');
+    expect(repo.updateSourceHealth).toHaveBeenCalledWith(
+      'test-1',
+      expect.objectContaining({ source: 'SNMP', state: 'CONNECTED' }),
+    );
+  });
+
+  it('skips BGP polling when bgpMonitoringEnabled is false', async () => {
+    const bgp = { poll: vi.fn().mockResolvedValue(undefined) };
+    const service = new SnmpService(
+      repository(),
+      undefined,
+      Number.POSITIVE_INFINITY,
+      undefined,
+      undefined,
+      undefined,
+      bgp as never,
+    );
+    const internals = service as unknown as {
+      refreshBgp: (device: HostRecord, community: string) => Promise<void>;
+    };
+    const device = snmpHost([], { bgpMonitoringEnabled: false });
+
+    await internals.refreshBgp(device, 'public');
+
+    expect(bgp.poll).not.toHaveBeenCalled();
+  });
+
+  it('runs BGP polling when bgpMonitoringEnabled is true', async () => {
+    const bgp = { poll: vi.fn().mockResolvedValue(undefined) };
+    const service = new SnmpService(
+      repository(),
+      undefined,
+      Number.POSITIVE_INFINITY,
+      undefined,
+      undefined,
+      undefined,
+      bgp as never,
+    );
+    const internals = service as unknown as {
+      refreshBgp: (device: HostRecord, community: string) => Promise<void>;
+    };
+    const device = snmpHost([], { bgpMonitoringEnabled: true });
+
+    await internals.refreshBgp(device, 'public');
+
+    expect(bgp.poll).toHaveBeenCalledWith(device, 'public');
+  });
+
+  it('treats an unset bgpMonitoringEnabled as disabled', async () => {
+    const bgp = { poll: vi.fn().mockResolvedValue(undefined) };
+    const service = new SnmpService(
+      repository(),
+      undefined,
+      Number.POSITIVE_INFINITY,
+      undefined,
+      undefined,
+      undefined,
+      bgp as never,
+    );
+    const internals = service as unknown as {
+      refreshBgp: (device: HostRecord, community: string) => Promise<void>;
+    };
+    const device = snmpHost([], {});
+
+    await internals.refreshBgp(device, 'public');
+
+    expect(bgp.poll).not.toHaveBeenCalled();
+  });
+
+  it('does not derive the flag from vendor/model: S6730 can be monitored, NE8000 can be skipped', async () => {
+    const bgp = { poll: vi.fn().mockResolvedValue(undefined) };
+    const service = new SnmpService(
+      repository(),
+      undefined,
+      Number.POSITIVE_INFINITY,
+      undefined,
+      undefined,
+      undefined,
+      bgp as never,
+    );
+    const internals = service as unknown as {
+      refreshBgp: (device: HostRecord, community: string) => Promise<void>;
+    };
+    const s6730 = snmpHost([], { vendor: 'Huawei', model: 'S6730', bgpMonitoringEnabled: true });
+    const ne8000 = snmpHost([], { vendor: 'Huawei', model: 'NE8000', bgpMonitoringEnabled: false });
+
+    await internals.refreshBgp(s6730, 'public');
+    await internals.refreshBgp(ne8000, 'public');
+
+    expect(bgp.poll).toHaveBeenCalledTimes(1);
+    expect(bgp.poll).toHaveBeenCalledWith(s6730, 'public');
+    expect(bgp.poll).not.toHaveBeenCalledWith(ne8000, 'public');
   });
 });
 
@@ -489,12 +910,18 @@ describe('SnmpService unknown interface auto-discovery', () => {
     const repo = repository();
     const service = pollService(repo);
     const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
-      [1, statusRow(1)], [2193, statusRow(2193)],
-    ]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
-      [1, counterRow(1, now)], [2193, counterRow(2193, now)],
-    ]));
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([
+        [1, statusRow(1)],
+        [2193, statusRow(2193)],
+      ]),
+    );
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(
+      new Map([
+        [1, counterRow(1, now)],
+        [2193, counterRow(2193, now)],
+      ]),
+    );
     mockCollectSystem(service, now);
 
     await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')]));
@@ -511,12 +938,13 @@ describe('SnmpService unknown interface auto-discovery', () => {
     const repo = repository();
     const service = pollService(repo);
     const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
-      [1, statusRow(1)], [2193, statusRow(2193)],
-    ]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
-      [1, counterRow(1, now)],
-    ]));
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([
+        [1, statusRow(1)],
+        [2193, statusRow(2193)],
+      ]),
+    );
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[1, counterRow(1, now)]]));
     mockCollectSystem(service, now);
 
     await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')]));
@@ -530,12 +958,13 @@ describe('SnmpService unknown interface auto-discovery', () => {
     const repo = repository();
     const service = pollService(repo);
     const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
-      [1, statusRow(1)],
-    ]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
-      [1, counterRow(1, now)], [2193, counterRow(2193, now)],
-    ]));
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([[1, statusRow(1)]]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(
+      new Map([
+        [1, counterRow(1, now)],
+        [2193, counterRow(2193, now)],
+      ]),
+    );
     mockCollectSystem(service, now);
 
     await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')]));
@@ -550,14 +979,18 @@ describe('SnmpService unknown interface auto-discovery', () => {
     const service = pollService(repo);
     const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
     const unknownIndexes = [1001, 1002, 1003, 1004, 1005];
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
-      [1, statusRow(1)],
-      ...unknownIndexes.map((ifIndex) => [ifIndex, statusRow(ifIndex)] as const),
-    ]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
-      [1, counterRow(1, now)],
-      ...unknownIndexes.map((ifIndex) => [ifIndex, counterRow(ifIndex, now)] as const),
-    ]));
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([
+        [1, statusRow(1)],
+        ...unknownIndexes.map((ifIndex) => [ifIndex, statusRow(ifIndex)] as const),
+      ]),
+    );
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(
+      new Map([
+        [1, counterRow(1, now)],
+        ...unknownIndexes.map((ifIndex) => [ifIndex, counterRow(ifIndex, now)] as const),
+      ]),
+    );
     mockCollectSystem(service, now);
 
     await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')]));
@@ -570,12 +1003,8 @@ describe('SnmpService unknown interface auto-discovery', () => {
     const repo = repository();
     const service = pollService(repo);
     const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
-      [1, statusRow(1)],
-    ]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
-      [1, counterRow(1, now)],
-    ]));
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([[1, statusRow(1)]]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[1, counterRow(1, now)]]));
     mockCollectSystem(service, now);
 
     await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')]));
@@ -587,13 +1016,21 @@ describe('SnmpService unknown interface auto-discovery', () => {
     const now = new Date('2026-08-23T12:00:30.000Z');
     const repo = repository();
     const service = pollService(repo);
-    vi.spyOn(service, 'discoverAndPersistInterfaces').mockRejectedValue(new Error('discovery boom'));
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
-      [1, statusRow(1)], [2193, statusRow(2193)],
-    ]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
-      [1, counterRow(1, now)], [2193, counterRow(2193, now)],
-    ]));
+    vi.spyOn(service, 'discoverAndPersistInterfaces').mockRejectedValue(
+      new Error('discovery boom'),
+    );
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([
+        [1, statusRow(1)],
+        [2193, statusRow(2193)],
+      ]),
+    );
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(
+      new Map([
+        [1, counterRow(1, now)],
+        [2193, counterRow(2193, now)],
+      ]),
+    );
     mockCollectSystem(service, now);
 
     await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')]));
@@ -609,12 +1046,18 @@ describe('SnmpService unknown interface auto-discovery', () => {
     const repo = repository();
     const service = pollService(repo);
     const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
-      [1, statusRow(1)], [2193, statusRow(2193)],
-    ]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
-      [1, counterRow(1, now)], [2193, counterRow(2193, now)],
-    ]));
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([
+        [1, statusRow(1)],
+        [2193, statusRow(2193)],
+      ]),
+    );
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(
+      new Map([
+        [1, counterRow(1, now)],
+        [2193, counterRow(2193, now)],
+      ]),
+    );
     mockCollectSystem(service, now);
     const device = snmpHost([networkInterface('GE0/0/1', 1, 'UP')]);
 
@@ -629,12 +1072,18 @@ describe('SnmpService unknown interface auto-discovery', () => {
     const repo = repository();
     const service = pollService(repo);
     const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
-      [1, statusRow(1)], [2193, statusRow(2193)],
-    ]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
-      [1, counterRow(1, now)], [2193, counterRow(2193, now)],
-    ]));
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([
+        [1, statusRow(1)],
+        [2193, statusRow(2193)],
+      ]),
+    );
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(
+      new Map([
+        [1, counterRow(1, now)],
+        [2193, counterRow(2193, now)],
+      ]),
+    );
     mockCollectSystem(service, now);
     const device = snmpHost([networkInterface('GE0/0/1', 1, 'UP')]);
     const internals = service as unknown as {
@@ -653,18 +1102,16 @@ describe('SnmpService unknown interface auto-discovery', () => {
     const repo = repository();
     const service = pollService(repo);
     const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
-      [1, statusRow(1)],
-    ]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
-      [1, counterRow(1, now)],
-    ]));
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([[1, statusRow(1)]]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[1, counterRow(1, now)]]));
     mockCollectSystem(service, now);
     const oldDiscovery = new Date(Date.now() - 61 * 60 * 1000).toISOString();
 
-    await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')], {
-      lastDiscoveryAt: oldDiscovery,
-    }));
+    await service.pollHost(
+      snmpHost([networkInterface('GE0/0/1', 1, 'UP')], {
+        lastDiscoveryAt: oldDiscovery,
+      }),
+    );
 
     expect(discover).toHaveBeenCalledTimes(1);
   });
@@ -674,18 +1121,16 @@ describe('SnmpService unknown interface auto-discovery', () => {
     const repo = repository();
     const service = pollService(repo);
     const discover = vi.spyOn(service, 'discoverAndPersistInterfaces').mockResolvedValue([]);
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
-      [1, statusRow(1)],
-    ]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
-      [1, counterRow(1, now)],
-    ]));
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([[1, statusRow(1)]]));
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[1, counterRow(1, now)]]));
     mockCollectSystem(service, now);
     const recentDiscovery = new Date(Date.now() - 30 * 60 * 1000).toISOString();
 
-    await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')], {
-      lastDiscoveryAt: recentDiscovery,
-    }));
+    await service.pollHost(
+      snmpHost([networkInterface('GE0/0/1', 1, 'UP')], {
+        lastDiscoveryAt: recentDiscovery,
+      }),
+    );
 
     expect(discover).not.toHaveBeenCalled();
   });
@@ -696,18 +1141,31 @@ describe('SnmpService alarm transition wiring', () => {
     const now = new Date('2026-09-16T21:17:32.000Z');
     const repo = repository();
     const transitions = [
-      { deviceId: 'test-1', interfaceId: 'if-1', ifIndex: 1, previousStatus: 'UP' as const, newStatus: 'DOWN' as const },
+      {
+        deviceId: 'test-1',
+        interfaceId: 'if-1',
+        ifIndex: 1,
+        previousStatus: 'UP' as const,
+        newStatus: 'DOWN' as const,
+      },
     ];
     repo.updateInterfaceStatuses = vi.fn().mockResolvedValue(transitions);
     const processTransitions = vi.fn().mockResolvedValue(undefined);
-    const alarms = { processTransitions } as unknown as import('../../application/alarm-service').AlarmService;
-    const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY, undefined, undefined, alarms);
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
-      [1, { ifIndex: 1, adminStatus: 'UP' as const, operStatus: 'DOWN' as const }],
-    ]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
-      [1, counterRow(1, now)],
-    ]));
+    const alarms = {
+      processTransitions,
+    } as unknown as import('../../application/alarm-service').AlarmService;
+    const service = new SnmpService(
+      repo,
+      undefined,
+      Number.POSITIVE_INFINITY,
+      undefined,
+      undefined,
+      alarms,
+    );
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([[1, { ifIndex: 1, adminStatus: 'UP' as const, operStatus: 'DOWN' as const }]]),
+    );
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[1, counterRow(1, now)]]));
     const internals = service as unknown as {
       collectSystem: () => Promise<DeviceMetricSampleInput>;
     };
@@ -725,18 +1183,33 @@ describe('SnmpService alarm transition wiring', () => {
   it('keeps polling healthy when alarm processing fails', async () => {
     const now = new Date('2026-09-16T21:17:32.000Z');
     const repo = repository();
-    repo.updateInterfaceStatuses = vi.fn().mockResolvedValue([
-      { deviceId: 'test-1', interfaceId: 'if-1', ifIndex: 1, previousStatus: 'UP' as const, newStatus: 'DOWN' as const },
-    ]);
+    repo.updateInterfaceStatuses = vi
+      .fn()
+      .mockResolvedValue([
+        {
+          deviceId: 'test-1',
+          interfaceId: 'if-1',
+          ifIndex: 1,
+          previousStatus: 'UP' as const,
+          newStatus: 'DOWN' as const,
+        },
+      ]);
     const processTransitions = vi.fn().mockRejectedValue(new Error('alarm boom'));
-    const alarms = { processTransitions } as unknown as import('../../application/alarm-service').AlarmService;
-    const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY, undefined, undefined, alarms);
-    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(new Map([
-      [1, { ifIndex: 1, adminStatus: 'UP' as const, operStatus: 'DOWN' as const }],
-    ]));
-    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([
-      [1, counterRow(1, now)],
-    ]));
+    const alarms = {
+      processTransitions,
+    } as unknown as import('../../application/alarm-service').AlarmService;
+    const service = new SnmpService(
+      repo,
+      undefined,
+      Number.POSITIVE_INFINITY,
+      undefined,
+      undefined,
+      alarms,
+    );
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([[1, { ifIndex: 1, adminStatus: 'UP' as const, operStatus: 'DOWN' as const }]]),
+    );
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[1, counterRow(1, now)]]));
     const internals = service as unknown as {
       collectSystem: () => Promise<DeviceMetricSampleInput>;
     };
@@ -752,7 +1225,8 @@ describe('SnmpService alarm transition wiring', () => {
 
 describe('SNMP credential safety', () => {
   it('generic authentication errors never contain a community value', () => {
-    const errorMessage = 'SNMP authentication failed - check community/credentials and version compatibility';
+    const errorMessage =
+      'SNMP authentication failed - check community/credentials and version compatibility';
     expect(errorMessage).not.toContain('private');
     expect(errorMessage).not.toContain('public');
   });
