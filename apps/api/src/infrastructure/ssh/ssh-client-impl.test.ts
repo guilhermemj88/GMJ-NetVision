@@ -74,7 +74,7 @@ describe('SshClientImpl SSH context command', () => {
     });
     await client.execute('10.0.0.1', ['screen-length 0 temporary', 'display bgp peer']);
     expect(lastCommands()).toBe(
-      'screen-length 0 temporary\r\nswitch virtual-system IMPLANTAR-IXBR\r\ndisplay bgp peer\r\nquit\r\n',
+      'screen-length 0 temporary\r\nswitch virtual-system IMPLANTAR-IXBR\r\ndisplay bgp peer\r\nquit\r\nquit\r\n',
     );
   });
 
@@ -90,7 +90,7 @@ describe('SshClientImpl SSH context command', () => {
       'display ip routing-table 200.150.1.193',
     ]);
     expect(lastCommands()).toBe(
-      'screen-length 0 temporary\r\nswitch virtual-system IMPLANTAR-IXBR\r\ndisplay ip routing-table 200.150.1.193\r\nquit\r\n',
+      'screen-length 0 temporary\r\nswitch virtual-system IMPLANTAR-IXBR\r\ndisplay ip routing-table 200.150.1.193\r\nquit\r\nquit\r\n',
     );
   });
 });

@@ -88,7 +88,10 @@ export class SshClientImpl implements SshClient {
 
           if (!commandsSent && cliPrompt.test(stdout)) {
             commandsSent = true;
-            stream.end(`${commands.join('\r\n')}\r\nquit\r\n`);
+            const quitSequence = this.options.contextCommand
+              ? 'quit\r\nquit\r\n'
+              : 'quit\r\n';
+            stream.end(`${commands.join('\r\n')}\r\n${quitSequence}`);
           }
         };
 
