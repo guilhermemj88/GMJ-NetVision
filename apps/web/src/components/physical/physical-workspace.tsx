@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { PhysicalAssetKind } from '@gmj/shared';
 import { Button } from '@gmj/ui';
 import {
   Cable,
@@ -11,6 +10,7 @@ import {
   EyeOff,
   PanelRight,
   Plus,
+  Radio,
   Search,
   Server,
   Warehouse,
@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '@/app/providers';
 import {
+  confirmPhysicalLldp,
   createPhysicalAsset,
   createPhysicalConnection,
   createPhysicalPort,
@@ -25,12 +26,18 @@ import {
   createPhysicalSite,
   deletePhysicalConnection,
   getHosts,
+  getPhysicalCatalog,
   getPhysicalInventory,
   getPhysicalPath,
+  installPhysicalModule,
   pairPhysicalPorts,
+  removePhysicalModule,
   syncPhysicalPorts,
   updatePhysicalAsset,
+  updatePhysicalPort,
 } from '@/lib/api';
+import { PhysicalAssetDialog, type PhysicalAssetDialogResult } from './physical-asset-dialog';
+import { PORT_STATE_LABELS } from './physical-catalog';
 import { PhysicalInspector } from './physical-inspector';
 import { PhysicalRackCanvas } from './physical-rack-canvas';
 import type { PhysicalConnectionMode, PhysicalSelection } from './physical-types';
@@ -55,6 +62,7 @@ export function PhysicalWorkspace() {
   const canEdit = user?.role === 'ADMIN' || user?.role === 'OPERATOR';
   const inventoryQuery = useQuery({ queryKey: ['physical'], queryFn: getPhysicalInventory });
   const hostsQuery = useQuery({ queryKey: ['hosts'], queryFn: () => getHosts(), enabled: canEdit });
+  const catalogQuery = useQuery({ queryKey: ['physical-catalog'], queryFn: getPhysicalCatalog });
   const inventory = inventoryQuery.data;
   const [siteId, setSiteId] = useState('');
   const [rackId, setRackId] = useState('');
@@ -140,34 +148,20 @@ export function PhysicalWorkspace() {
     );
   }
 
-  async function submitAsset(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function submitAsset(result: PhysicalAssetDialogResult) {
     if (!rack) return;
-    const data = new FormData(event.currentTarget);
-    const kind = String(data.get('kind')) as PhysicalAssetKind;
-    const ports = Number(data.get('ports')) || 0;
-    const deviceId = String(data.get('deviceId') ?? '') || null;
+    const { input, passiveChannels, syncInterfaces } = result;
     await run(async () => {
-      const passive = kind === 'DIO' || kind === 'PATCH_PANEL';
-      const created = await createPhysicalAsset(rack.id, {
-        name: String(data.get('name')),
-        kind,
-        startU: Number(data.get('startU')),
-        heightU: Number(data.get('heightU')),
-        deviceId,
-        ...(!passive && ports > 0
-          ? { genericPorts: { count: ports, prefix: String(data.get('prefix') ?? '') } }
-          : {}),
-      });
-      if (passive) {
-        for (let index = 1; index <= ports; index += 1) {
+      const created = await createPhysicalAsset(rack.id, input);
+      if (passiveChannels > 0) {
+        const type = input.kind === 'DIO' ? ('FIBER' as const) : ('RJ45' as const);
+        for (let index = 1; index <= passiveChannels; index += 1) {
           const name = String(index).padStart(2, '0');
-          const type = kind === 'DIO' ? 'FIBER' as const : 'RJ45' as const;
           const front = await createPhysicalPort(created.id, { name, order: index, side: 'FRONT', type });
           const rear = await createPhysicalPort(created.id, { name, order: index, side: 'REAR', type });
           await pairPhysicalPorts(front.id, rear.id);
         }
-      } else if (deviceId && data.get('syncInterfaces') === 'on') {
+      } else if (syncInterfaces) {
         await syncPhysicalPorts(created.id);
       }
       return created;
@@ -194,6 +188,16 @@ export function PhysicalWorkspace() {
         <div className="physical-toolbar__summary">
           <span><Server size={13} /> {rack?.assets.length ?? 0} equipamentos</span>
           <span><Cable size={13} /> {inventory.connections.filter((item) => item.a.rackId === rack?.id || item.b.rackId === rack?.id).length} cabos</span>
+          <span title={inventory.lldpObservedAt ? `Último LLDP: ${new Date(inventory.lldpObservedAt).toLocaleString('pt-BR')}` : 'Nenhum LLDP coletado'}>
+            <Radio size={13} /> {inventory.lldpSuggestions.length} LLDP
+          </span>
+        </div>
+        <div className="physical-legend" aria-label="Legenda de estado das portas">
+          {(['FREE', 'MAPPED', 'LLDP_DETECTED', 'CONNECTED'] as const).map((state) => (
+            <span key={state} className={`physical-state physical-state--${state.toLowerCase()}`}>
+              {PORT_STATE_LABELS[state]}
+            </span>
+          ))}
         </div>
         <div className="physical-mode" aria-label="Exibição de conexões">
           <button type="button" className={mode === 'hidden' ? 'is-active' : ''} onClick={() => setMode('hidden')}><EyeOff size={13} /> Ocultas</button>
@@ -260,12 +264,39 @@ export function PhysicalWorkspace() {
           onSyncPorts={(id) => void run(() => syncPhysicalPorts(id))}
           onConnect={(input) => void run(() => createPhysicalConnection(input), (created) => setSelection({ kind: 'connection', id: created.id }))}
           onDeleteConnection={(id) => void run(() => deletePhysicalConnection(id), () => setSelection(null))}
+          onUpdatePort={(id, input) => void run(() => updatePhysicalPort(id, input))}
+          onInstallModule={(assetId, input) => void run(() => installPhysicalModule(assetId, input))}
+          onRemoveModule={(moduleId) => void run(() => removePhysicalModule(moduleId))}
+          onConfirmLldp={(adjacencyId) =>
+            void run(
+              () => confirmPhysicalLldp(adjacencyId),
+              (created) => setSelection({ kind: 'connection', id: created.id }),
+            )
+          }
         />
       </div>
 
       {dialog === 'site' ? <Modal title="Novo POP" onClose={() => setDialog(null)}><form className="physical-form" onSubmit={(event) => void submitSite(event)}><label className="physical-field">Nome<input name="name" required maxLength={120} autoFocus /></label><label className="physical-field">Código<input name="code" maxLength={40} placeholder="Ex.: CTO" /></label><footer><Button compact variant="ghost" type="button" onClick={() => setDialog(null)}>Cancelar</Button><Button compact variant="primary" type="submit" disabled={busy}>Criar POP</Button></footer></form></Modal> : null}
       {dialog === 'rack' && site ? <Modal title={`Novo rack · ${site.name}`} onClose={() => setDialog(null)}><form className="physical-form" onSubmit={(event) => void submitRack(event)}><label className="physical-field">Nome<input name="name" required maxLength={120} autoFocus /></label><label className="physical-field">Unidades U<input name="units" type="number" min={1} max={100} defaultValue={42} required /></label><footer><Button compact variant="ghost" type="button" onClick={() => setDialog(null)}>Cancelar</Button><Button compact variant="primary" type="submit" disabled={busy}>Criar rack</Button></footer></form></Modal> : null}
-      {dialog === 'asset' && rack ? <Modal title={`Adicionar equipamento · ${rack.name}`} onClose={() => setDialog(null)}><form className="physical-form" onSubmit={(event) => void submitAsset(event)}><label className="physical-field">Nome<input name="name" required maxLength={160} autoFocus /></label><div className="physical-form-row"><label className="physical-field">Tipo<select name="kind" defaultValue="GENERIC"><option value="GENERIC">Genérico</option><option value="NETWORK">Rede</option><option value="SERVER">Servidor</option><option value="OLT">OLT</option><option value="DIO">DIO</option><option value="PATCH_PANEL">Patch panel</option><option value="POWER">Energia</option></select></label><label className="physical-field">Device real<select name="deviceId" defaultValue=""><option value="">Não vinculado</option>{hostsQuery.data?.map((host) => <option key={host.id} value={host.id}>{host.displayName || host.hostname}</option>)}</select></label></div><div className="physical-form-row"><label className="physical-field">Start U<input name="startU" type="number" min={1} max={rack.units} defaultValue={1} required /></label><label className="physical-field">Altura U<input name="heightU" type="number" min={1} max={rack.units} defaultValue={1} required /></label></div><div className="physical-form-row"><label className="physical-field">Portas / canais<input name="ports" type="number" min={0} max={512} defaultValue={0} /></label><label className="physical-field">Prefixo<input name="prefix" maxLength={40} placeholder="GE, LAN, porta..." /></label></div><label className="physical-check"><input name="syncInterfaces" type="checkbox" /> Sincronizar interfaces do Device após criar</label><p className="physical-form__hint">Para DIO e patch panel, cada canal cria terminações FRONT e REAR pareadas. Nenhum layout de fabricante é presumido.</p><footer><Button compact variant="ghost" type="button" onClick={() => setDialog(null)}>Cancelar</Button><Button compact variant="primary" type="submit" disabled={busy}>Adicionar ao rack</Button></footer></form></Modal> : null}
+      {dialog === 'asset' && rack ? (
+        <Modal title={`Adicionar equipamento · ${rack.name}`} onClose={() => setDialog(null)}>
+          {catalogQuery.isError ? (
+            <p className="physical-form__hint">
+              Não foi possível carregar o catálogo de equipamentos. Recarregue a página para tentar novamente.
+            </p>
+          ) : (
+            <PhysicalAssetDialog
+              rack={rack}
+              hosts={hostsQuery.data ?? []}
+              catalog={catalogQuery.data ?? []}
+              busy={busy}
+              canSync={canEdit}
+              onCancel={() => setDialog(null)}
+              onSubmit={(result) => void submitAsset(result)}
+            />
+          )}
+        </Modal>
+      ) : null}
     </main>
   );
 }

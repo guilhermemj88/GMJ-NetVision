@@ -1,34 +1,139 @@
 import type {
   CreatePhysicalAssetInput,
   CreatePhysicalConnectionInput,
+  CreatePhysicalModuleInput,
   CreatePhysicalPortInput,
   CreatePhysicalRackInput,
   CreatePhysicalSiteInput,
+  LldpTopologyPreview,
   PhysicalAsset,
+  PhysicalCatalogEntry,
   PhysicalInventory,
+  PhysicalLldpSuggestion,
   PhysicalPath,
 } from '@gmj/shared';
 import {
   assertConnectionAvailable,
   assertRackPlacement,
+  buildLldpSuggestions,
   findAsset,
   findConnection,
   findRack,
+  moduleIsRemovable,
   tracePhysicalPath,
 } from './physical-domain';
+import { PHYSICAL_CATALOG } from './physical-catalog';
 import type {
   CreatePhysicalTemplateInput,
+  PhysicalCatalogSyncResult,
+  PhysicalLldpAdjacencyInput,
   PhysicalRepository,
   UpdatePhysicalAssetInput,
+  UpdatePhysicalPortInput,
   UpdatePhysicalRackInput,
   UpdatePhysicalSiteInput,
 } from './physical-repository';
 import { PhysicalInventoryError } from './physical-repository';
 
 export class PhysicalService {
-  constructor(private readonly repository: PhysicalRepository) {}
+  constructor(
+    private readonly repository: PhysicalRepository,
+    /**
+     * Future switch for auto-confirming LLDP adjacencies. It is intentionally
+     * disabled: the first version only registers a cable after a human confirms
+     * the suggestion. `confirmLldpSuggestion` refuses the AUTO origin below.
+     */
+    private readonly autoConfirmLldp: boolean = false,
+  ) {}
 
-  getInventory(): Promise<PhysicalInventory> {
+  /**
+   * Inventory enriched with the LLDP snapshot: ports receive their derived
+   * state (CONNECTED / LLDP_DETECTED / MAPPED / FREE) plus the raw observation.
+   */
+  async getInventory(): Promise<PhysicalInventory> {
+    const [inventory, adjacencies] = await Promise.all([
+      this.repository.getInventory(),
+      this.repository.listLldpAdjacencies(),
+    ]);
+    const byInterface = new Map<string, (typeof adjacencies)[number]>();
+    for (const adjacency of adjacencies) {
+      if (!adjacency.localInterfaceId) continue;
+      const current = byInterface.get(adjacency.localInterfaceId);
+      if (!current || current.observedAt < adjacency.observedAt) {
+        byInterface.set(adjacency.localInterfaceId, adjacency);
+      }
+    }
+    const sites = inventory.sites.map((site) => ({
+      ...site,
+      racks: site.racks.map((rack) => ({
+        ...rack,
+        assets: rack.assets.map((asset) => this.withPortState(asset, byInterface)),
+      })),
+    }));
+    const enriched: PhysicalInventory = {
+      ...inventory,
+      sites,
+      lldpSuggestions: [],
+      lldpObservedAt: adjacencies.map((row) => row.observedAt).sort().at(-1) ?? null,
+    };
+    return { ...enriched, lldpSuggestions: buildLldpSuggestions(enriched, adjacencies) };
+  }
+
+  /** Derives port state and attaches the LLDP observation per mapped interface. */
+  private withPortState(
+    asset: PhysicalAsset,
+    byInterface: Map<string, { id: string; remoteHostname: string; remotePortName: string; confidence: string; resolved: boolean; ambiguous: boolean; source: string; observedAt: string }>,
+  ): PhysicalAsset {
+    const ports = asset.ports.map((port) => {
+      const adjacency = port.mappedInterfaceId ? byInterface.get(port.mappedInterfaceId) : undefined;
+      const lldp = adjacency
+        ? {
+            adjacencyId: adjacency.id,
+            remoteHostname: adjacency.remoteHostname,
+            remotePortName: adjacency.remotePortName,
+            confidence: adjacency.confidence,
+            resolved: adjacency.resolved,
+            ambiguous: adjacency.ambiguous,
+            source: adjacency.source,
+            observedAt: adjacency.observedAt,
+          }
+        : null;
+      const state = port.connectionId
+        ? ('CONNECTED' as const)
+        : lldp
+          ? ('LLDP_DETECTED' as const)
+          : port.mappedInterfaceId
+            ? ('MAPPED' as const)
+            : ('FREE' as const);
+      return { ...port, lldp, state };
+    });
+    const byId = new Map(ports.map((port) => [port.id, port]));
+    return {
+      ...asset,
+      ports,
+      slots: asset.slots.map((slot) => ({
+        ...slot,
+        module: slot.module ? { ...slot.module, ports: slot.module.ports.map((port) => byId.get(port.id) ?? port) } : null,
+        ports: slot.ports.map((port) => byId.get(port.id) ?? port),
+      })),
+      modules: asset.modules.map((module) => ({
+        ...module,
+        ports: module.ports.map((port) => byId.get(port.id) ?? port),
+      })),
+    };
+  }
+
+  /** Static, versioned catalog (identity + confirmed structure when available). */
+  getCatalog(): readonly PhysicalCatalogEntry[] {
+    return PHYSICAL_CATALOG;
+  }
+
+  /** Idempotent SYSTEM template bootstrap. Never duplicates or overwrites CUSTOM. */
+  async bootstrapCatalog(): Promise<PhysicalCatalogSyncResult> {
+    return this.repository.syncCatalog(PHYSICAL_CATALOG);
+  }
+
+  getInventoryRaw(): Promise<PhysicalInventory> {
     return this.repository.getInventory();
   }
 
@@ -92,12 +197,26 @@ export class PhysicalService {
     return this.repository.createTemplate({ ...input, vendorVerified: false });
   }
 
+  /**
+   * Creates the asset. When the resolved template has a confirmed structure it
+   * is the source of truth for the chassis height; an unconfirmed structure
+   * keeps whatever the operator informed, because nothing was verified.
+   */
   async createAsset(rackId: string, input: CreatePhysicalAssetInput) {
     const inventory = await this.repository.getInventory();
     const rack = findRack(inventory, rackId);
     if (!rack) throw new PhysicalInventoryError('Rack não encontrado', 404);
-    assertRackPlacement(rack, input as PhysicalAsset);
-    const created = await this.repository.createAsset(rackId, input);
+    const template = input.templateId
+      ? inventory.templates.find((candidate) => candidate.id === input.templateId)
+      : input.catalogKey
+        ? inventory.templates.find((candidate) => candidate.catalogKey === input.catalogKey)
+        : undefined;
+    const normalized: CreatePhysicalAssetInput =
+      template && template.structureConfirmed
+        ? { ...input, heightU: template.heightU, kind: input.kind ?? template.kind }
+        : input;
+    assertRackPlacement(rack, normalized as PhysicalAsset);
+    const created = await this.repository.createAsset(rackId, normalized);
     if (!created) throw new PhysicalInventoryError('Rack, Device ou template não encontrado', 404);
     return created;
   }
@@ -187,6 +306,133 @@ export class PhysicalService {
     const created = await this.repository.createConnection(input);
     if (!created) throw new PhysicalInventoryError('Uma das portas foi ocupada por outra operação', 409);
     return created;
+  }
+
+  async updatePort(portId: string, input: UpdatePhysicalPortInput) {
+    const updated = await this.repository.updatePort(portId, input);
+    if (!updated) throw new PhysicalInventoryError('Porta física não encontrada', 404);
+    return updated;
+  }
+
+  /**
+   * Installs a board in an asset slot. When the template declares the modules
+   * accepted by the slot, an unknown module is rejected instead of guessed.
+   */
+  async installModule(assetId: string, input: CreatePhysicalModuleInput) {
+    const inventory = await this.repository.getInventory();
+    const asset = findAsset(inventory, assetId);
+    if (!asset) throw new PhysicalInventoryError('Equipamento físico não encontrado', 404);
+    const slot = asset.slots.find((candidate) => candidate.id === input.slotId);
+    if (!slot) throw new PhysicalInventoryError('Slot não encontrado neste equipamento', 404);
+    if (slot.module) throw new PhysicalInventoryError('O slot já possui um módulo instalado', 409);
+    const allowedKeys = asset.template?.slots.find((templateSlot) => templateSlot.index === slot.index)?.moduleKeys ?? [];
+    if (allowedKeys.length) {
+      const moduleKey = asset.template?.modules.find(
+        (module) => module.id === input.moduleTemplateId,
+      )?.catalogKey;
+      const isGenericBoard = !input.moduleTemplateId && Boolean(input.name?.trim());
+      if (!isGenericBoard && (!moduleKey || !allowedKeys.includes(moduleKey))) {
+        throw new PhysicalInventoryError('Este slot não aceita o módulo selecionado', 409);
+      }
+    }
+    const created = await this.repository.installModule(assetId, input);
+    if (!created) throw new PhysicalInventoryError('Não foi possível instalar o módulo', 409);
+    return created;
+  }
+
+  /**
+   * Removes a board only when it breaks neither a cable nor an interface
+   * mapping; module ports own both references.
+   */
+  async removeModule(moduleId: string): Promise<void> {
+    const inventory = await this.repository.getInventory();
+    const module = inventory.sites
+      .flatMap((site) => site.racks)
+      .flatMap((rack) => rack.assets)
+      .flatMap((asset) => asset.modules)
+      .find((candidate) => candidate.id === moduleId);
+    if (!module) throw new PhysicalInventoryError('Módulo não encontrado', 404);
+    if (!moduleIsRemovable(module)) {
+      throw new PhysicalInventoryError(
+        'Desconecte os cabos e remova o vínculo com Interface antes de retirar o módulo',
+        409,
+      );
+    }
+    const removed = await this.repository.removeModule(moduleId);
+    if (!removed) throw new PhysicalInventoryError('Módulo não encontrado', 404);
+  }
+
+  /**
+   * Persists the LLDP snapshot produced by the existing discovery pipeline.
+   * The physical module never queries SNMP/SSH by itself.
+   */
+  async recordLldpPreview(preview: LldpTopologyPreview): Promise<number> {
+    const observedAt = new Date(preview.createdAt);
+    const rows: PhysicalLldpAdjacencyInput[] = preview.adjacencies.map((adjacency) => ({
+      localDeviceId: adjacency.sourceHostId,
+      localInterfaceId: adjacency.sourceInterfaceId,
+      localPortName: adjacency.sourcePort,
+      remoteDeviceId: adjacency.targetHostId,
+      remoteHostname: adjacency.targetHostname,
+      remotePortName: adjacency.targetPort,
+      remoteInterfaceId: adjacency.targetInterfaceId,
+      remoteChassisId: adjacency.targetChassisId,
+      confidence: adjacency.confidence,
+      resolved: Boolean(
+        adjacency.sourceInterfaceId && adjacency.targetInterfaceId && adjacency.targetHostId,
+      ),
+      ambiguous: adjacency.confidence === 'AMBIGUOUS',
+      source: adjacency.source,
+      observedAt,
+    }));
+    if (!rows.length) return 0;
+    return this.repository.recordLldpAdjacencies(rows);
+  }
+
+  listLldpSuggestions(): Promise<PhysicalLldpSuggestion[]> {
+    return this.getInventory().then((inventory) => inventory.lldpSuggestions);
+  }
+
+  /**
+   * Registers the cable suggested by LLDP. Only a READY suggestion (both sides
+   * mapped to physical ports, correlation CONFIRMED) can be confirmed, and only
+   * from an explicit human action.
+   */
+  async confirmLldpSuggestion(
+    adjacencyId: string,
+    options: { origin?: 'MANUAL' | 'AUTO'; medium?: CreatePhysicalConnectionInput['medium'] } = {},
+  ) {
+    if ((options.origin ?? 'MANUAL') === 'AUTO') {
+      throw new PhysicalInventoryError(
+        'Auto-confirmação LLDP ainda não habilitada: confirme a conexão manualmente',
+        409,
+      );
+    }
+    const inventory = await this.getInventory();
+    const suggestion = inventory.lldpSuggestions.find((item) => item.adjacencyId === adjacencyId);
+    if (!suggestion) throw new PhysicalInventoryError('Sugestão LLDP não encontrada', 404);
+    if (suggestion.state !== 'READY' || !suggestion.local || !suggestion.remote) {
+      throw new PhysicalInventoryError(
+        suggestion.reason || 'Sugestão LLDP não pode ser confirmada automaticamente',
+        409,
+      );
+    }
+    if (suggestion.local.portId === suggestion.remote.portId) {
+      throw new PhysicalInventoryError('Sugestão LLDP aponta para a mesma porta', 409);
+    }
+    const created = await this.createConnection({
+      portAId: suggestion.local.portId,
+      portBId: suggestion.remote.portId,
+      medium: options.medium ?? 'FIBER',
+      label: `LLDP ${suggestion.localPortName} ↔ ${suggestion.remoteHostname}`,
+      notes: `Confirmado a partir de adjacência LLDP ${adjacencyId}`,
+    });
+    return { connection: created, suggestion };
+  }
+
+  /** Exposed so callers can assert the auto-confirm policy is still off. */
+  isAutoConfirmEnabled(): boolean {
+    return this.autoConfirmLldp;
   }
 
   async deleteConnection(id: string): Promise<void> {

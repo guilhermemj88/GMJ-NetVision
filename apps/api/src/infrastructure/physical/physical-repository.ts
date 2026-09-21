@@ -1,17 +1,23 @@
 import type {
   CreatePhysicalAssetInput,
   CreatePhysicalConnectionInput,
+  CreatePhysicalModuleInput,
   CreatePhysicalPortInput,
   CreatePhysicalRackInput,
   CreatePhysicalSiteInput,
   PhysicalAsset,
+  PhysicalCatalogEntry,
   PhysicalConnection,
   PhysicalEquipmentTemplate,
   PhysicalInventory,
+  PhysicalModule,
   PhysicalPort,
   PhysicalRack,
   PhysicalSite,
+  UpdatePhysicalPortInput,
 } from '@gmj/shared';
+
+export type { UpdatePhysicalPortInput };
 
 export interface CreatePhysicalTemplateInput {
   name: string;
@@ -28,6 +34,33 @@ export interface CreatePhysicalTemplateInput {
     side?: PhysicalPort['side'] | undefined;
     type?: PhysicalPort['type'] | undefined;
   }> | undefined;
+}
+
+export interface PhysicalLldpAdjacencyInput {
+  localDeviceId: string;
+  localInterfaceId: string | null;
+  localPortName: string;
+  remoteDeviceId: string | null;
+  remoteHostname: string;
+  remotePortName: string;
+  remoteInterfaceId: string | null;
+  remoteChassisId: string | null;
+  confidence: string;
+  resolved: boolean;
+  ambiguous: boolean;
+  source: string;
+  observedAt: Date;
+}
+
+export interface PhysicalLldpAdjacencyRecord extends Omit<PhysicalLldpAdjacencyInput, 'observedAt'> {
+  id: string;
+  observedAt: string;
+}
+
+export interface PhysicalCatalogSyncResult {
+  created: number;
+  updated: number;
+  total: number;
 }
 
 export interface UpdatePhysicalSiteInput {
@@ -61,14 +94,25 @@ export interface PhysicalRepository {
   updateRack(id: string, input: UpdatePhysicalRackInput): Promise<PhysicalRack | null>;
   deleteRack(id: string): Promise<boolean>;
   createTemplate(input: CreatePhysicalTemplateInput): Promise<PhysicalEquipmentTemplate>;
+  /**
+   * Idempotent bootstrap of the versioned catalog. SYSTEM templates are matched
+   * by `catalogKey`; existing CUSTOM templates are never overwritten.
+   */
+  syncCatalog(entries: readonly PhysicalCatalogEntry[]): Promise<PhysicalCatalogSyncResult>;
   createAsset(rackId: string, input: CreatePhysicalAssetInput): Promise<PhysicalAsset | null>;
   updateAsset(id: string, input: UpdatePhysicalAssetInput): Promise<PhysicalAsset | null>;
   deleteAsset(id: string): Promise<boolean>;
   createPort(assetId: string, input: CreatePhysicalPortInput): Promise<PhysicalPort | null>;
+  updatePort(id: string, input: UpdatePhysicalPortInput): Promise<PhysicalPort | null>;
   pairPorts(portId: string, pairedPortId: string): Promise<[PhysicalPort, PhysicalPort] | null>;
+  /** Maps existing interfaces first, keeps template/manual ports and never deletes cables. */
   syncInterfacePorts(assetId: string): Promise<PhysicalPort[] | null>;
+  installModule(assetId: string, input: CreatePhysicalModuleInput): Promise<PhysicalModule | null>;
+  removeModule(moduleId: string): Promise<boolean>;
   createConnection(input: CreatePhysicalConnectionInput): Promise<PhysicalConnection | null>;
   deleteConnection(id: string): Promise<boolean>;
+  recordLldpAdjacencies(rows: readonly PhysicalLldpAdjacencyInput[]): Promise<number>;
+  listLldpAdjacencies(): Promise<PhysicalLldpAdjacencyRecord[]>;
   disconnect(): Promise<void>;
 }
 

@@ -49,16 +49,21 @@ import {
   type PublicViewResponse,
   type CreatePhysicalAssetInput,
   type CreatePhysicalConnectionInput,
+  type CreatePhysicalModuleInput,
   type CreatePhysicalPortInput,
   type CreatePhysicalRackInput,
   type CreatePhysicalSiteInput,
   type PhysicalAsset,
+  type PhysicalCatalogEntry,
   type PhysicalConnection,
   type PhysicalInventory,
+  type PhysicalLldpSuggestion,
+  type PhysicalModule,
   type PhysicalPath,
   type PhysicalPort,
   type PhysicalRack,
   type PhysicalSite,
+  type UpdatePhysicalPortInput,
   type UpdateMapInput,
   type UpdateLinkInput,
   type UpdateHostInput,
@@ -662,4 +667,67 @@ export function deletePhysicalConnection(connectionId: string): Promise<void> {
 
 export function getPhysicalPath(portId: string): Promise<PhysicalPath> {
   return request<PhysicalPath>(`/api/physical/ports/${encodeURIComponent(portId)}/path`);
+}
+
+/** Catalog is returned by the API as `{ entries }`; the UI uses the plain list. */
+export async function getPhysicalCatalog(): Promise<PhysicalCatalogEntry[]> {
+  const response = await request<{ entries: PhysicalCatalogEntry[] }>('/api/physical/catalog');
+  return response.entries;
+}
+
+export function bootstrapPhysicalCatalog(): Promise<{
+  created: number;
+  updated: number;
+  total: number;
+}> {
+  return request<{ created: number; updated: number; total: number }>(
+    '/api/physical/catalog/bootstrap',
+    { method: 'POST' },
+  );
+}
+
+export function getPhysicalLldpSuggestions(): Promise<PhysicalLldpSuggestion[]> {
+  return request<{ suggestions: PhysicalLldpSuggestion[] }>('/api/physical/lldp').then(
+    (response) => response.suggestions,
+  );
+}
+
+/**
+ * Registers the cable suggested by LLDP. The API only accepts READY suggestions
+ * and never connects anything on its own.
+ */
+export function confirmPhysicalLldp(
+  adjacencyId: string,
+  medium?: PhysicalConnection['medium'],
+): Promise<PhysicalConnection> {
+  return request<PhysicalConnection>(
+    `/api/physical/lldp/${encodeURIComponent(adjacencyId)}/confirm`,
+    { method: 'POST', body: JSON.stringify(medium ? { medium } : {}) },
+  );
+}
+
+export function updatePhysicalPort(
+  portId: string,
+  input: UpdatePhysicalPortInput,
+): Promise<PhysicalPort> {
+  return request<PhysicalPort>(`/api/physical/ports/${encodeURIComponent(portId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function installPhysicalModule(
+  assetId: string,
+  input: CreatePhysicalModuleInput,
+): Promise<PhysicalModule> {
+  return request<PhysicalModule>(`/api/physical/assets/${encodeURIComponent(assetId)}/modules`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function removePhysicalModule(moduleId: string): Promise<void> {
+  return request<void>(`/api/physical/modules/${encodeURIComponent(moduleId)}`, {
+    method: 'DELETE',
+  });
 }

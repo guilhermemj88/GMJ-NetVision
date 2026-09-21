@@ -7142,6 +7142,167 @@ label > small {
 .physical-faceplate__ports .physical-port--front { border-radius: 50%; }
 .physical-faceplate__ports .physical-port--rear { border-style: dashed; }
 .physical-faceplate__ports em { color: #657985; font: 7px var(--font-mono); font-style: normal; }
+.physical-faceplate__ports { position: relative; }
+.physical-faceplate.is-modular .physical-faceplate__ports {
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 6px;
+}
+.physical-faceplate__slots {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  gap: 3px;
+  overflow: hidden;
+}
+.physical-slot {
+  min-width: 26px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 3px;
+  border: 1px dashed #3c4d57;
+  border-radius: 2px;
+  background: #0c1419;
+}
+.physical-slot > em {
+  color: #5d7078;
+  font: 7px var(--font-mono);
+  font-style: normal;
+}
+.physical-slot.is-occupied {
+  border-style: solid;
+  border-color: #4f846f;
+  background: rgba(67, 197, 158, 0.07);
+}
+.physical-slot > small {
+  overflow: hidden;
+  max-width: 74px;
+  color: #8fb9ae;
+  font: 7px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.physical-slot__ports { display: flex; gap: 2px; }
+.physical-slot__ports button { width: 8px; height: 8px; }
+.physical-faceplate__flat {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+}
+.physical-faceplate__flat b { color: #657985; font: 7px var(--font-mono); font-weight: 500; }
+.physical-port { position: relative; }
+.physical-port.state-free span { background: #202e35; }
+.physical-port.state-mapped { border-color: #5d7f96; background: rgba(93, 127, 150, 0.14); }
+.physical-port.state-mapped span { background: #33566d; }
+.physical-port.state-lldp_detected { border-color: var(--amber); background: rgba(240, 178, 76, 0.14); }
+.physical-port.state-lldp_detected span { background: #7a5d24; }
+.physical-port.state-connected { border-color: #4f846f; background: rgba(67, 197, 158, 0.16); }
+.physical-port.state-connected span { background: #3f7a63; }
+.physical-port__lldp {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--amber);
+  box-shadow: 0 0 4px rgba(240, 178, 76, 0.75);
+}
+.physical-state {
+  padding: 1px 5px;
+  border: 1px solid #3b4c56;
+  border-radius: 999px;
+  color: #7e939c;
+  font: 650 7px var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.physical-state--free { border-color: #3b4c56; color: #7e939c; }
+.physical-state--mapped { border-color: #5d7f96; color: #9cc0d6; }
+.physical-state--lldp_detected { border-color: rgba(240, 178, 76, 0.55); color: var(--amber); }
+.physical-state--connected { border-color: rgba(67, 197, 158, 0.55); color: var(--green); }
+.physical-legend { display: flex; flex-wrap: wrap; gap: 5px; }
+.physical-catalog-card {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 10px;
+  border: 1px solid #2b3b45;
+  border-radius: 4px;
+  background: #0c151b;
+}
+.physical-catalog-card--verified { border-color: rgba(67, 197, 158, 0.45); }
+.physical-catalog-card--open { border-color: rgba(240, 178, 76, 0.5); }
+.physical-catalog-card__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  align-self: flex-start;
+  padding: 2px 6px;
+  border: 1px solid #3b4c56;
+  border-radius: 999px;
+  color: #8ba2ac;
+  font: 650 7px var(--font-mono);
+  letter-spacing: 0.05em;
+}
+.physical-catalog-card--verified .physical-catalog-card__badge { border-color: rgba(67, 197, 158, 0.5); color: var(--green); }
+.physical-catalog-card--open .physical-catalog-card__badge { border-color: rgba(240, 178, 76, 0.5); color: var(--amber); }
+.physical-catalog-card p { margin: 0; color: #6d828c; font: 9px/1.5 var(--font-mono); }
+.physical-catalog-card dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 5px 10px;
+  margin: 0;
+}
+.physical-catalog-card dt { color: #5b6f79; font: 7px var(--font-mono); letter-spacing: 0.05em; }
+.physical-catalog-card dd { margin: 0; color: #b3c6ce; font: 9px var(--font-mono); }
+.physical-catalog-card a { color: var(--physical-accent); font: 8px var(--font-mono); }
+.physical-slot-rows { display: flex; flex-direction: column; gap: 5px; }
+.physical-slot-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 8px;
+  border: 1px solid #293943;
+  border-radius: 4px;
+  background: #0c151b;
+}
+.physical-slot-row.is-occupied { border-color: rgba(67, 197, 158, 0.4); }
+.physical-slot-row header { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.physical-slot-row header strong { color: #a8c5d2; font: 550 9px var(--font-mono); }
+.physical-slot-row header small { color: #647985; font: 8px var(--font-mono); }
+.physical-slot-row__actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.physical-slot-row__actions span { color: #5f7681; font: 8px var(--font-mono); }
+.physical-module-form { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.physical-module-form select,
+.physical-module-form input {
+  min-width: 0;
+  flex: 1;
+  padding: 5px 7px;
+  border: 1px solid #2d3d47;
+  border-radius: 3px;
+  background: #0a1217;
+  color: #b9ccd4;
+  font: 9px var(--font-mono);
+}
+.physical-lldp-list { display: flex; flex-direction: column; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.physical-lldp {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 8px;
+  border: 1px solid #293943;
+  border-radius: 4px;
+  background: #0c151b;
+}
+.physical-lldp--ready { border-color: rgba(67, 197, 158, 0.45); }
+.physical-lldp--partial { border-color: rgba(240, 178, 76, 0.4); }
+.physical-lldp--unresolved { border-color: rgba(224, 106, 106, 0.4); }
+.physical-lldp strong { color: #c3d5dc; font: 550 9px var(--font-mono); }
+.physical-lldp small { color: #647985; font: 8px/1.45 var(--font-mono); }
 .physical-inspector {
   min-width: 0;
   min-height: 0;
@@ -7201,6 +7362,7 @@ label > small {
   gap: 8px;
   align-items: end;
 }
+.physical-form-row--triple { grid-template-columns: 1fr 1fr 1fr; }
 .physical-placement-form { grid-template-columns: 1fr 1fr auto; margin-bottom: 8px; }
 .physical-placement-form label,
 .physical-field {

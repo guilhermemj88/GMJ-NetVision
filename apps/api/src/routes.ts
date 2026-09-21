@@ -36,6 +36,7 @@ import { registerBgpRoutes } from './bgp-routes';
 import { registerPhysicalRoutes } from './physical-routes';
 import { DemoPhysicalRepository } from './infrastructure/physical/demo-physical-repository';
 import { PrismaPhysicalRepository } from './infrastructure/physical/prisma-physical-repository';
+import { PhysicalService } from './infrastructure/physical/physical-service';
 import { DemoMetricAdapter } from './infrastructure/metrics/demo-adapter';
 import { ZabbixAdapter } from './infrastructure/metrics/zabbix-adapter';
 import { DemoAuthRepository } from './infrastructure/persistence/demo-auth-repository';
@@ -421,6 +422,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const physicalRepository = config.DEMO_MODE
     ? new DemoPhysicalRepository(hosts)
     : new PrismaPhysicalRepository();
+  const physicalService = new PhysicalService(physicalRepository);
   const alarmRepository = config.DEMO_MODE
     ? new DemoAlarmRepository()
     : new PrismaAlarmRepository();
@@ -464,11 +466,22 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
   registerPhysicalRoutes(app, {
     repository: physicalRepository,
+    service: physicalService,
     enforcePermissions: options.requireAuth ?? !config.DEMO_MODE,
     currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
   });
 
   app.addHook('onReady', async () => {
+    // Idempotent SYSTEM catalog bootstrap (matched by catalogKey). A pending
+    // migration must not prevent the API from starting: warn and keep serving.
+    try {
+      await physicalService.bootstrapCatalog();
+    } catch (error) {
+      app.log.warn(
+        { error: error instanceof Error ? error.message : error },
+        'catálogo físico não sincronizado: aplique a migration do módulo físico',
+      );
+    }
     if (config.DEMO_MODE) {
       await auth.ensureDefaultAdmin({
         username: 'admin',
@@ -1198,14 +1211,15 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       })
       .parse(request.body);
     try {
-      return await topologyPreview.discover(mapId, { deepValidation });
+      const preview = await topologyPreview.discover(mapId, { deepValidation });
+      await physicalService.recordLldpPreview(preview);
+      return preview;
     } catch (error) {
       return reply.code(404).send({
         message: error instanceof Error ? error.message : 'Falha segura na descoberta LLDP',
       });
     }
   });
-
   app.post('/api/hosts/:hostId/lldp/discover', async (request, reply) => {
     const { hostId } = z.object({ hostId: z.string().min(1) }).parse(request.params);
     const { mapId, deepValidation } = z
@@ -1215,7 +1229,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       })
       .parse(request.body);
     try {
-      return await topologyPreview.discoverHost(hostId, mapId, { deepValidation });
+      const preview = await topologyPreview.discoverHost(hostId, mapId, { deepValidation });
+      await physicalService.recordLldpPreview(preview);
+      return preview;
     } catch (error) {
       return reply.code(404).send({
         message: error instanceof Error ? error.message : 'Falha segura na descoberta LLDP',

@@ -308,6 +308,19 @@ enum PhysicalConnectionEnd {
   B
 }
 
+/** SYSTEM templates come from the versioned catalog; CUSTOM are user-defined. */
+enum PhysicalTemplateOrigin {
+  SYSTEM
+  CUSTOM
+}
+
+/** How a physical port came to exist inside an asset. */
+enum PhysicalPortRole {
+  TEMPLATE
+  DISCOVERED
+  MANUAL
+}
+
 model Map {
   id                String            @id @default(cuid())
   name              String
@@ -1031,18 +1044,98 @@ model PhysicalRack {
 }
 
 model PhysicalEquipmentTemplate {
-  id             String                 @id @default(cuid())
-  name           String                 @unique
-  manufacturer   String                 @default("")
-  model          String                 @default("")
-  kind           PhysicalAssetKind      @default(GENERIC)
-  heightU        Int                    @default(1)
-  description    String                 @default("")
-  vendorVerified Boolean                @default(false)
-  ports          PhysicalTemplatePort[]
-  assets         PhysicalAsset[]
-  createdAt      DateTime               @default(now())
-  updatedAt      DateTime               @updatedAt
+  id                  String                 @id @default(cuid())
+  name                String                 @unique
+  /** Stable catalog identity (slug); never duplicated on bootstrap. */
+  catalogKey          String?                @unique
+  category            String                 @default("")
+  manufacturer        String                 @default("")
+  family              String                 @default("")
+  model               String                 @default("")
+  kind                PhysicalAssetKind      @default(GENERIC)
+  heightU             Int                    @default(1)
+  description         String                 @default("")
+  /** True only when the structure was confirmed against vendor documentation. */
+  vendorVerified      Boolean                @default(false)
+  /** False keeps slots/ports open for manual completion instead of inventing them. */
+  structureConfirmed  Boolean                @default(false)
+  referenceUrl        String?
+  origin              PhysicalTemplateOrigin @default(CUSTOM)
+  ports               PhysicalTemplatePort[]
+  slots               PhysicalTemplateSlot[]
+  modules             PhysicalModuleTemplate[]
+  assets              PhysicalAsset[]
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  @@index([category])
+  @@index([manufacturer])
+  @@index([origin])
+}
+
+/** Bays of a modular chassis template (NE8000, MA5800, ...). */
+model PhysicalTemplateSlot {
+  id            String                      @id @default(cuid())
+  templateId    String
+  index         Int
+  label         String                      @default("")
+  description   String                      @default("")
+  template      PhysicalEquipmentTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  moduleOptions PhysicalTemplateSlotModule[]
+  createdAt     DateTime                    @default(now())
+  updatedAt     DateTime                    @updatedAt
+
+  @@unique([templateId, index])
+  @@index([templateId])
+}
+
+/** Which module templates may be installed in a slot. */
+model PhysicalTemplateSlotModule {
+  id               String                  @id @default(cuid())
+  slotId           String
+  moduleTemplateId String
+  isDefault        Boolean                 @default(false)
+  slot             PhysicalTemplateSlot    @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  moduleTemplate   PhysicalModuleTemplate  @relation(fields: [moduleTemplateId], references: [id], onDelete: Cascade)
+
+  @@unique([slotId, moduleTemplateId])
+  @@index([moduleTemplateId])
+}
+
+/** Installable board (LPU/GPON/uplink) with its own ports. */
+model PhysicalModuleTemplate {
+  id               String                       @id @default(cuid())
+  templateId       String
+  catalogKey       String?
+  name             String
+  model            String                       @default("")
+  description      String                       @default("")
+  slotsRequired    Int                          @default(1)
+  template         PhysicalEquipmentTemplate    @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  ports            PhysicalModuleTemplatePort[]
+  slotOptions      PhysicalTemplateSlotModule[]
+  modules          PhysicalModule[]
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+
+  @@unique([templateId, name])
+  @@index([templateId])
+}
+
+model PhysicalModuleTemplatePort {
+  id               String                 @id @default(cuid())
+  moduleTemplateId String
+  name             String
+  label            String                 @default("")
+  sortOrder        Int
+  type             PhysicalPortType       @default(OTHER)
+  moduleTemplate   PhysicalModuleTemplate @relation(fields: [moduleTemplateId], references: [id], onDelete: Cascade)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  @@unique([moduleTemplateId, name])
+  @@unique([moduleTemplateId, sortOrder])
+  @@index([moduleTemplateId])
 }
 
 model PhysicalTemplatePort {
@@ -1078,6 +1171,8 @@ model PhysicalAsset {
   device      Device?                    @relation(fields: [deviceId], references: [id], onDelete: SetNull)
   template    PhysicalEquipmentTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   ports       PhysicalPort[]
+  slots       PhysicalSlot[]
+  modules     PhysicalModule[]
   createdAt   DateTime                   @default(now())
   updatedAt   DateTime                   @updatedAt
 
@@ -1086,10 +1181,77 @@ model PhysicalAsset {
   @@index([templateId])
 }
 
+/** Materialized bay of a chassis asset. */
+model PhysicalSlot {
+  id        String         @id @default(cuid())
+  assetId   String
+  index     Int
+  label     String         @default("")
+  asset     PhysicalAsset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  module    PhysicalModule?
+  ports     PhysicalPort[]
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([assetId, index])
+  @@index([assetId])
+}
+
+/** Board installed in a slot; its ports belong to the asset and the slot. */
+model PhysicalModule {
+  id               String                  @id @default(cuid())
+  assetId          String
+  slotId           String                  @unique
+  moduleTemplateId String?
+  name             String
+  model            String                  @default("")
+  serial           String                  @default("")
+  asset            PhysicalAsset           @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  slot             PhysicalSlot            @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  moduleTemplate   PhysicalModuleTemplate? @relation(fields: [moduleTemplateId], references: [id], onDelete: SetNull)
+  ports            PhysicalPort[]
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  @@index([assetId])
+  @@index([moduleTemplateId])
+}
+
+/**
+ * Snapshot of the latest LLDP adjacency seen by the existing discovery engine.
+ * Read-only for the physical view: it never creates a PhysicalConnection alone.
+ */
+model PhysicalLldpAdjacency {
+  id                String   @id @default(cuid())
+  localDeviceId     String
+  localInterfaceId  String?
+  localPortName     String
+  remoteDeviceId    String?
+  remoteHostname    String
+  remotePortName    String
+  remoteInterfaceId String?
+  remoteChassisId   String?
+  confidence        String
+  /** True only when both endpoints resolved to a known inventory object. */
+  resolved          Boolean  @default(false)
+  ambiguous         Boolean  @default(false)
+  source            String
+  observedAt        DateTime
+  createdAt         DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([localDeviceId, localPortName, remoteHostname, remotePortName])
+  @@index([localInterfaceId])
+  @@index([remoteDeviceId])
+  @@index([observedAt])
+}
+
 model PhysicalPort {
   id                String                 @id @default(cuid())
   assetId           String
   templatePortId    String?
+  slotId            String?
+  moduleId          String?
   mappedInterfaceId String?                @unique
   connectionId      String?
   connectionEnd     PhysicalConnectionEnd?
@@ -1099,9 +1261,12 @@ model PhysicalPort {
   sortOrder         Int
   side              PhysicalPortSide       @default(DEVICE)
   type              PhysicalPortType       @default(OTHER)
+  role              PhysicalPortRole       @default(TEMPLATE)
   notes             String                 @default("")
   asset             PhysicalAsset          @relation(fields: [assetId], references: [id], onDelete: Cascade)
   templatePort      PhysicalTemplatePort?  @relation(fields: [templatePortId], references: [id], onDelete: SetNull)
+  slot              PhysicalSlot?          @relation(fields: [slotId], references: [id], onDelete: SetNull)
+  module            PhysicalModule?        @relation(fields: [moduleId], references: [id], onDelete: SetNull)
   mappedInterface   Interface?             @relation(fields: [mappedInterfaceId], references: [id], onDelete: SetNull)
   connection        PhysicalConnection?    @relation(fields: [connectionId], references: [id], onDelete: SetNull)
   pairedPort        PhysicalPort?          @relation("PhysicalPortPair", fields: [pairedPortId], references: [id], onDelete: SetNull)
@@ -1115,6 +1280,8 @@ model PhysicalPort {
   @@index([assetId])
   @@index([connectionId])
   @@index([templatePortId])
+  @@index([slotId])
+  @@index([moduleId])
 }
 
 model PhysicalConnection {

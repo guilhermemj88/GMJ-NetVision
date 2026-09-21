@@ -1,6 +1,12 @@
 'use client';
 
-import type { PhysicalConnection, PhysicalPath, PhysicalRack } from '@gmj/shared';
+import type {
+  PhysicalConnection,
+  PhysicalPath,
+  PhysicalPort,
+  PhysicalRack,
+} from '@gmj/shared';
+import { PORT_STATE_LABELS } from './physical-catalog';
 import type { PhysicalConnectionMode, PhysicalSelection } from './physical-types';
 
 const U_HEIGHT = 30;
@@ -192,12 +198,39 @@ export function PhysicalRackCanvas({
           const active = activeAssetIds.has(asset.id);
           const dimmed = Boolean(selection && activeAssetIds.size && !active);
           const uEnd = asset.startU + asset.heightU - 1;
+          const portButton = (port: PhysicalPort, context: string) => {
+            const selected = selection?.kind === 'port' && selection.id === port.id;
+            const pathPort = path?.steps.some(
+              (step) => step.kind === 'PORT' && step.portId === port.id,
+            );
+            return (
+              <button
+                key={port.id}
+                type="button"
+                className={`physical-port state-${port.state.toLowerCase()} ${
+                  selected || pathPort ? 'is-selected' : ''
+                } physical-port--${port.side.toLowerCase()}`}
+                title={`${port.name}${port.label ? ` · ${port.label}` : ''} · ${PORT_STATE_LABELS[port.state]}${
+                  port.lldp ? ` · LLDP ${port.lldp.remoteHostname}/${port.lldp.remotePortName}` : ''
+                }`}
+                aria-label={`${context}, porta ${port.name}`}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelectPort(port.id);
+                }}
+              >
+                <span />
+                {port.lldp ? <i className="physical-port__lldp" aria-hidden="true" /> : null}
+              </button>
+            );
+          };
+          const flatPorts = asset.ports.filter((port) => !port.moduleId);
           return (
             <article
               key={asset.id}
               className={`physical-faceplate physical-faceplate--${asset.kind.toLowerCase()} ${
                 active ? 'is-selected' : ''
-              } ${dimmed ? 'is-dimmed' : ''}`}
+              } ${dimmed ? 'is-dimmed' : ''} ${asset.slots.length ? 'is-modular' : ''}`}
               style={{
                 left: RACK_LEFT + 22,
                 top: top + 1,
@@ -218,30 +251,37 @@ export function PhysicalRackCanvas({
                 </small>
               </div>
               <div className="physical-faceplate__ports" aria-label={`Portas de ${asset.name}`}>
-                {asset.ports.slice(0, 24).map((port) => {
-                  const selected = selection?.kind === 'port' && selection.id === port.id;
-                  const pathPort = path?.steps.some(
-                    (step) => step.kind === 'PORT' && step.portId === port.id,
-                  );
-                  return (
-                    <button
-                      key={port.id}
-                      type="button"
-                      className={`${port.connectionId ? 'is-connected' : ''} ${
-                        selected || pathPort ? 'is-selected' : ''
-                      } physical-port--${port.side.toLowerCase()}`}
-                      title={`${port.name}${port.label ? ` · ${port.label}` : ''}`}
-                      aria-label={`${asset.name}, porta ${port.name}`}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onSelectPort(port.id);
-                      }}
-                    >
-                      <span />
-                    </button>
-                  );
-                })}
-                {asset.ports.length > 24 ? <em>+{asset.ports.length - 24}</em> : null}
+                {asset.slots.length ? (
+                  <div className="physical-faceplate__slots">
+                    {asset.slots.map((slot) => (
+                      <div
+                        key={slot.id}
+                        className={`physical-slot ${slot.module ? 'is-occupied' : ''}`}
+                        title={
+                          slot.module
+                            ? `${slot.label || `Slot ${slot.index}`} · ${slot.module.name}`
+                            : `${slot.label || `Slot ${slot.index}`} · vazio`
+                        }
+                      >
+                        <em>{slot.index}</em>
+                        {slot.module ? (
+                          <>
+                            <small>{slot.module.model || slot.module.name}</small>
+                            <div className="physical-slot__ports">
+                              {slot.module.ports
+                                .slice(0, 6)
+                                .map((port) => portButton(port, `${asset.name} ${slot.module?.name ?? ''}`))}
+                            </div>
+                          </>
+                        ) : null}
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="physical-faceplate__flat">
+                  {flatPorts.slice(0, 24).map((port) => portButton(port, asset.name))}
+                  {flatPorts.length > 24 ? <b>+{flatPorts.length - 24}</b> : null}
+                </div>
               </div>
             </article>
           );

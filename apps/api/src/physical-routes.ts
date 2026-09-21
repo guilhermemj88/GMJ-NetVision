@@ -36,9 +36,11 @@ const assetCreate = z.object({
   description: z.string().trim().max(2000).optional(),
   deviceId: z.string().min(1).nullable().optional(),
   templateId: z.string().min(1).nullable().optional(),
+  catalogKey: z.string().min(1).max(120).nullable().optional(),
+  applyTemplate: z.boolean().optional(),
   genericPorts: genericPorts.optional(),
 });
-const assetUpdate = assetCreate.omit({ genericPorts: true }).partial();
+const assetUpdate = assetCreate.omit({ genericPorts: true, catalogKey: true, applyTemplate: true }).partial();
 const portCreate = z.object({
   name: z.string().trim().min(1).max(160),
   label: z.string().trim().max(240).optional(),
@@ -49,6 +51,24 @@ const portCreate = z.object({
   mappedInterfaceId: z.string().min(1).nullable().optional(),
   pairedPortId: z.string().min(1).nullable().optional(),
 });
+const portUpdate = z
+  .object({
+    name: z.string().trim().min(1).max(160).optional(),
+    label: z.string().trim().max(240).optional(),
+    type: portType.optional(),
+    notes: z.string().trim().max(2000).optional(),
+    mappedInterfaceId: z.string().min(1).nullable().optional(),
+  })
+  .strict();
+const moduleInstall = z
+  .object({
+    slotId: z.string().min(1),
+    moduleTemplateId: z.string().min(1).nullable().optional(),
+    name: z.string().trim().min(1).max(160),
+    model: z.string().trim().max(120).optional(),
+    serial: z.string().trim().max(120).optional(),
+  })
+  .strict();
 const templateCreate = z.object({
   name: z.string().trim().min(1).max(160),
   manufacturer: z.string().trim().max(120).optional(),
@@ -69,12 +89,14 @@ const connectionCreate = z.object({
 
 export interface PhysicalRouteOptions {
   repository: PhysicalRepository;
+  /** Shared service instance so other routes can feed the LLDP snapshot. */
+  service?: PhysicalService;
   enforcePermissions?: boolean;
   currentUser?: (request: FastifyRequest) => Promise<AuthUser | null>;
 }
 
 export function registerPhysicalRoutes(app: FastifyInstance, options: PhysicalRouteOptions): void {
-  const service = new PhysicalService(options.repository);
+  const service = options.service ?? new PhysicalService(options.repository);
   const requireEditor = async (request: FastifyRequest, reply: { code: (status: number) => { send: (body: unknown) => unknown } }) => {
     if (!options.enforcePermissions) return true;
     const user = await options.currentUser?.(request);
@@ -84,6 +106,32 @@ export function registerPhysicalRoutes(app: FastifyInstance, options: PhysicalRo
   };
 
   app.get('/api/physical', async () => service.getInventory());
+
+  app.get('/api/physical/catalog', async () => ({ entries: service.getCatalog() }));
+
+  /** Idempotent SYSTEM catalog bootstrap (safe to call repeatedly). */
+  app.post('/api/physical/catalog/bootstrap', async (request, reply) => {
+    if (!(await requireEditor(request, reply))) return;
+    return service.bootstrapCatalog();
+  });
+
+  app.get('/api/physical/lldp', async () => ({
+    suggestions: await service.listLldpSuggestions(),
+  }));
+
+  app.post('/api/physical/lldp/:id/confirm', async (request, reply) => {
+    if (!(await requireEditor(request, reply))) return;
+    const { id } = idParams.parse(request.params);
+    const body = z
+      .object({ medium: medium.optional() })
+      .strict()
+      .parse(request.body ?? {});
+    const result = await service.confirmLldpSuggestion(id, {
+      origin: 'MANUAL',
+      ...(body.medium ? { medium: body.medium } : {}),
+    });
+    return reply.code(201).send(result.connection);
+  });
 
   app.get('/api/physical/ports/:id/path', async (request) => {
     const { id } = idParams.parse(request.params);
@@ -168,6 +216,25 @@ export function registerPhysicalRoutes(app: FastifyInstance, options: PhysicalRo
     const { id } = idParams.parse(request.params);
     const { pairedPortId } = z.object({ pairedPortId: z.string().min(1) }).parse(request.body);
     return service.pairPorts(id, pairedPortId);
+  });
+
+  app.patch('/api/physical/ports/:id', async (request, reply) => {
+    if (!(await requireEditor(request, reply))) return;
+    const { id } = idParams.parse(request.params);
+    return service.updatePort(id, portUpdate.parse(request.body));
+  });
+
+  app.post('/api/physical/assets/:id/modules', async (request, reply) => {
+    if (!(await requireEditor(request, reply))) return;
+    const { id } = idParams.parse(request.params);
+    return reply.code(201).send(await service.installModule(id, moduleInstall.parse(request.body)));
+  });
+
+  app.delete('/api/physical/modules/:id', async (request, reply) => {
+    if (!(await requireEditor(request, reply))) return;
+    const { id } = idParams.parse(request.params);
+    await service.removeModule(id);
+    return reply.code(204).send();
   });
 
   app.post('/api/physical/connections', async (request, reply) => {

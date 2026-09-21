@@ -2,27 +2,38 @@ import { randomUUID } from 'node:crypto';
 import type {
   CreatePhysicalAssetInput,
   CreatePhysicalConnectionInput,
+  CreatePhysicalModuleInput,
   CreatePhysicalPortInput,
   CreatePhysicalRackInput,
   CreatePhysicalSiteInput,
   HostRecord,
   NetworkInterface,
   PhysicalAsset,
+  PhysicalCatalogEntry,
   PhysicalConnection,
   PhysicalConnectionEndpoint,
   PhysicalDeviceReference,
   PhysicalEquipmentTemplate,
   PhysicalInterfaceReference,
   PhysicalInventory,
+  PhysicalLldpSuggestion,
+  PhysicalModule,
   PhysicalPort,
   PhysicalRack,
   PhysicalSite,
+  PhysicalSlot,
 } from '@gmj/shared';
 import type { HostRepository } from '../persistence/host-repository';
+import { interfaceNameKeys } from '../topology/interface-correlation';
+import { materializeTemplate, portState } from './physical-domain';
 import type {
   CreatePhysicalTemplateInput,
+  PhysicalCatalogSyncResult,
+  PhysicalLldpAdjacencyInput,
+  PhysicalLldpAdjacencyRecord,
   PhysicalRepository,
   UpdatePhysicalAssetInput,
+  UpdatePhysicalPortInput,
   UpdatePhysicalRackInput,
   UpdatePhysicalSiteInput,
 } from './physical-repository';
@@ -59,7 +70,10 @@ export class DemoPhysicalRepository implements PhysicalRepository {
   private readonly assets = new Map<string, PhysicalAsset>();
   private readonly ports = new Map<string, PhysicalPort>();
   private readonly templates = new Map<string, PhysicalEquipmentTemplate>();
+  private readonly slots = new Map<string, PhysicalSlot>();
+  private readonly modules = new Map<string, PhysicalModule>();
   private readonly connections = new Map<string, PhysicalConnection>();
+  private readonly lldp = new Map<string, PhysicalLldpAdjacencyRecord>();
 
   constructor(private readonly hosts: HostRepository) {}
 
@@ -72,20 +86,69 @@ export class DemoPhysicalRepository implements PhysicalRepository {
           ...rack,
           assets: [...this.assets.values()]
             .filter((asset) => asset.rackId === rack.id)
-            .map((asset) => ({
-              ...asset,
-              ports: [...this.ports.values()]
-                .filter((port) => port.assetId === asset.id)
-                .sort((a, b) => a.order - b.order),
-            }))
+            .map((asset) => this.assetView(asset))
             .sort((a, b) => b.startU - a.startU),
         })),
     }));
+    const observedAt = [...this.lldp.values()]
+      .map((row) => row.observedAt)
+      .sort()
+      .at(-1) ?? null;
     return clone({
       sites,
       templates: [...this.templates.values()],
       connections: [...this.connections.values()],
+      lldpSuggestions: [] as PhysicalLldpSuggestion[],
+      lldpObservedAt: observedAt,
     });
+  }
+
+  /** Rebuilds the asset view with its live ports, slots and modules. */
+  private assetView(asset: PhysicalAsset): PhysicalAsset {
+    const ports = [...this.ports.values()]
+      .filter((port) => port.assetId === asset.id)
+      .sort((a, b) => a.order - b.order)
+      .map((port) => this.portView(port));
+    const modules = [...this.modules.values()]
+      .filter((module) => module.assetId === asset.id)
+      .map((module) => ({
+        ...module,
+        ports: ports.filter((port) => port.moduleId === module.id),
+      }));
+    const slots = [...this.slots.values()]
+      .filter((slot) => slot.assetId === asset.id)
+      .sort((a, b) => a.index - b.index)
+      .map((slot) => ({
+        ...slot,
+        module: modules.find((module) => module.slotId === slot.id) ?? null,
+        ports: ports.filter((port) => port.slotId === slot.id),
+      }));
+    return { ...asset, ports, slots, modules };
+  }
+
+  /** Attaches derived state and the LLDP snapshot to a port. */
+  private portView(port: PhysicalPort): PhysicalPort {
+    const lldpRow = port.mappedInterfaceId
+      ? [...this.lldp.values()].find((row) => row.localInterfaceId === port.mappedInterfaceId)
+      : undefined;
+    const lldp = lldpRow
+      ? {
+          adjacencyId: lldpRow.id,
+          remoteHostname: lldpRow.remoteHostname,
+          remotePortName: lldpRow.remotePortName,
+          confidence: lldpRow.confidence,
+          resolved: lldpRow.resolved,
+          ambiguous: lldpRow.ambiguous,
+          source: lldpRow.source,
+          observedAt: lldpRow.observedAt,
+        }
+      : null;
+    return {
+      ...port,
+      lldp,
+      operStatus: port.mappedInterface?.operStatus ?? null,
+      state: portState({ connectionId: port.connectionId, mappedInterfaceId: port.mappedInterfaceId, lldp }),
+    };
   }
 
   async createSite(input: CreatePhysicalSiteInput): Promise<PhysicalSite> {
@@ -166,19 +229,123 @@ export class DemoPhysicalRepository implements PhysicalRepository {
     }));
     const template: PhysicalEquipmentTemplate = {
       id: templateId,
+      catalogKey: null,
       name: input.name.trim(),
+      category: null,
       manufacturer: input.manufacturer?.trim() ?? '',
+      family: '',
       model: input.model?.trim() ?? '',
       kind: input.kind ?? 'GENERIC',
       heightU: input.heightU ?? 1,
       description: input.description?.trim() ?? '',
       vendorVerified: false,
+      structureConfirmed: false,
+      referenceUrl: null,
+      origin: 'CUSTOM',
       ports,
+      slots: [],
+      modules: [],
       createdAt: timestamp,
       updatedAt: timestamp,
     };
     this.templates.set(template.id, template);
     return clone(template);
+  }
+
+  /** Idempotent bootstrap: CUSTOM templates are never touched. */
+  async syncCatalog(entries: readonly PhysicalCatalogEntry[]): Promise<PhysicalCatalogSyncResult> {
+    let created = 0;
+    let updated = 0;
+    for (const entry of entries) {
+      const existing = [...this.templates.values()].find(
+        (template) => template.catalogKey === entry.catalogKey,
+      );
+      const moduleDtos = entry.modules.map((module) => ({
+        id: id('template-module'),
+        catalogKey: `${entry.catalogKey}:${module.key}`,
+        name: module.name,
+        model: module.model,
+        description: module.description,
+        slotsRequired: module.slotsRequired,
+        ports: module.ports.map((port) => ({ ...port })),
+      }));
+      const slotDtos = entry.slots.map((slot) => ({
+        id: id('template-slot'),
+        index: slot.index,
+        label: slot.label,
+        description: slot.description,
+        // Module catalog keys are namespaced by the parent template, exactly as
+        // the Prisma repository persists them.
+        moduleKeys: slot.moduleKeys.map((key) => `${entry.catalogKey}:${key}`),
+      }));
+      if (!existing) {
+        const timestamp = now();
+        const template: PhysicalEquipmentTemplate = {
+          id: id('template'),
+          catalogKey: entry.catalogKey,
+          name: entry.name,
+          category: entry.category,
+          manufacturer: entry.manufacturer,
+          family: entry.family,
+          model: entry.model,
+          kind: entry.kind,
+          heightU: entry.heightU,
+          description: entry.description,
+          vendorVerified: entry.vendorVerified,
+          structureConfirmed: entry.structureConfirmed,
+          referenceUrl: entry.referenceUrl,
+          origin: 'SYSTEM',
+          ports: entry.ports.map((port) => ({
+            id: id('template-port'),
+            name: port.name,
+            label: port.label,
+            order: port.order,
+            side: port.side,
+            type: port.type,
+            pairedTemplatePortId: null,
+          })),
+          slots: slotDtos,
+          modules: moduleDtos,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        };
+        this.templates.set(template.id, template);
+        created += 1;
+        continue;
+      }
+      if (existing.origin === 'CUSTOM') continue;
+      const knownPorts = new Set(existing.ports.map((port) => `${port.side}:${port.name}`));
+      existing.name = entry.name;
+      existing.category = entry.category;
+      existing.manufacturer = entry.manufacturer;
+      existing.family = entry.family;
+      existing.model = entry.model;
+      existing.kind = entry.kind;
+      existing.heightU = entry.heightU;
+      existing.description = entry.description;
+      existing.vendorVerified = entry.vendorVerified;
+      existing.structureConfirmed = entry.structureConfirmed;
+      existing.referenceUrl = entry.referenceUrl;
+      existing.slots = slotDtos.map((slot, index) => existing.slots[index] ?? slot);
+      existing.modules = moduleDtos.map((module) =>
+        existing.modules.find((item) => item.catalogKey === module.catalogKey) ?? module,
+      );
+      for (const port of entry.ports) {
+        if (knownPorts.has(`${port.side}:${port.name}`)) continue;
+        existing.ports.push({
+          id: id('template-port'),
+          name: port.name,
+          label: port.label,
+          order: port.order,
+          side: port.side,
+          type: port.type,
+          pairedTemplatePortId: null,
+        });
+      }
+      existing.updatedAt = now();
+      updated += 1;
+    }
+    return { created, updated, total: entries.length };
   }
 
   async createAsset(
@@ -188,8 +355,12 @@ export class DemoPhysicalRepository implements PhysicalRepository {
     if (!this.racks.has(rackId)) return null;
     const host = input.deviceId ? await this.hosts.getHost(input.deviceId) : null;
     if (input.deviceId && !host) return null;
-    const template = input.templateId ? this.templates.get(input.templateId) : null;
-    if (input.templateId && !template) return null;
+    const template =
+      (input.templateId ? this.templates.get(input.templateId) : null) ??
+      (input.catalogKey
+        ? [...this.templates.values()].find((item) => item.catalogKey === input.catalogKey) ?? null
+        : null);
+    if ((input.templateId || input.catalogKey) && !template) return null;
     const timestamp = now();
     const asset: PhysicalAsset = {
       id: id('asset'),
@@ -204,33 +375,51 @@ export class DemoPhysicalRepository implements PhysicalRepository {
       device: host ? deviceReference(host) : null,
       template: template ? clone(template) : null,
       ports: [],
+      slots: [],
+      modules: [],
       createdAt: timestamp,
       updatedAt: timestamp,
     };
     this.assets.set(asset.id, asset);
 
-    if (template) {
-      for (const templatePort of template.ports) {
-        await this.createPort(asset.id, {
-          name: templatePort.name,
-          label: templatePort.label,
-          order: templatePort.order,
-          side: templatePort.side,
-          type: templatePort.type,
-        });
-      }
-    } else if (input.genericPorts) {
-      for (let index = 1; index <= input.genericPorts.count; index += 1) {
-        const prefix = input.genericPorts.prefix?.trim() ?? '';
-        await this.createPort(asset.id, {
-          name: `${prefix}${index}`,
-          order: index,
-          side: input.genericPorts.side ?? 'DEVICE',
-          type: input.genericPorts.type ?? 'OTHER',
-        });
+    const applyTemplate = input.applyTemplate ?? true;
+    const materialized = materializeTemplate(
+      applyTemplate && template
+        ? { structureConfirmed: template.structureConfirmed, slots: template.slots, ports: template.ports.map((port) => ({ ...port })) }
+        : { structureConfirmed: false, slots: [], ports: [] },
+      { genericPorts: input.genericPorts },
+    );
+    for (const slot of materialized.slots) {
+      const slotDto: PhysicalSlot = {
+        id: id('slot'),
+        assetId: asset.id,
+        index: slot.index,
+        label: slot.label,
+        module: null,
+        ports: [],
+      };
+      this.slots.set(slotDto.id, slotDto);
+    }
+    const slotByIndex = new Map(
+      [...this.slots.values()].filter((slot) => slot.assetId === asset.id).map((slot) => [slot.index, slot]),
+    );
+    for (const port of materialized.ports) {
+      const created = await this.createPort(asset.id, {
+        name: port.name,
+        label: port.label,
+        order: port.sortOrder,
+        side: port.side,
+        type: port.type,
+      });
+      if (!created) continue;
+      const stored = this.ports.get(created.id)!;
+      stored.role = port.role;
+      if (port.slotIndex !== null) {
+        const slot = slotByIndex.get(port.slotIndex);
+        if (slot) stored.slotId = slot.id;
       }
     }
-    return clone({ ...asset, ports: [...this.ports.values()].filter((port) => port.assetId === asset.id) });
+    return clone(this.assetView(asset));
   }
 
   async updateAsset(idValue: string, input: UpdatePhysicalAssetInput): Promise<PhysicalAsset | null> {
@@ -284,22 +473,49 @@ export class DemoPhysicalRepository implements PhysicalRepository {
     const port: PhysicalPort = {
       id: id('port'),
       assetId,
+      slotId: null,
+      moduleId: null,
       name: input.name.trim(),
       label: input.label?.trim() ?? '',
       order: input.order,
       side: input.side ?? 'DEVICE',
       type: input.type ?? 'OTHER',
+      role: 'MANUAL',
       notes: input.notes?.trim() ?? '',
       pairedPortId: input.pairedPortId ?? null,
       templatePortId: null,
       mappedInterfaceId: mapped?.id ?? null,
       mappedInterface: mapped ?? null,
       connectionId: null,
+      state: mapped ? 'MAPPED' : 'FREE',
+      operStatus: mapped?.operStatus ?? null,
+      lldp: null,
       createdAt: timestamp,
       updatedAt: timestamp,
     };
     this.ports.set(port.id, port);
     return clone(port);
+  }
+
+  async updatePort(idValue: string, input: UpdatePhysicalPortInput): Promise<PhysicalPort | null> {
+    const port = this.ports.get(idValue);
+    if (!port) return null;
+    if (input.mappedInterfaceId !== undefined && input.mappedInterfaceId) {
+      const asset = this.assets.get(port.assetId);
+      const mapped = asset ? await this.mappedInterface(asset, input.mappedInterfaceId) : undefined;
+      if (!mapped) return null;
+      port.mappedInterfaceId = mapped.id;
+      port.mappedInterface = mapped;
+    } else if (input.mappedInterfaceId === null) {
+      port.mappedInterfaceId = null;
+      port.mappedInterface = null;
+    }
+    if (input.name !== undefined) port.name = input.name.trim();
+    if (input.label !== undefined) port.label = input.label.trim();
+    if (input.type !== undefined) port.type = input.type;
+    if (input.notes !== undefined) port.notes = input.notes.trim();
+    port.updatedAt = now();
+    return clone(this.portView(port));
   }
 
   async pairPorts(portId: string, pairedPortId: string): Promise<[PhysicalPort, PhysicalPort] | null> {
@@ -313,21 +529,41 @@ export class DemoPhysicalRepository implements PhysicalRepository {
     return [clone(a), clone(b)];
   }
 
+  /** Maps existing interfaces first, keeps template/manual ports, never deletes cables. */
   async syncInterfacePorts(assetId: string): Promise<PhysicalPort[] | null> {
     const asset = this.assets.get(assetId);
     if (!asset?.deviceId) return null;
     const host = await this.hosts.getHost(asset.deviceId);
     if (!host) return null;
-    const existing = new Map(
+    const mappedIds = new Set(
       [...this.ports.values()]
         .filter((port) => port.assetId === assetId && port.mappedInterfaceId)
-        .map((port) => [port.mappedInterfaceId, port]),
+        .map((port) => port.mappedInterfaceId as string),
     );
-    let order = Math.max(0, ...[...this.ports.values()].filter((port) => port.assetId === assetId).map((port) => port.order));
+    const devicePorts = [...this.ports.values()].filter(
+      (port) => port.assetId === assetId && port.side === 'DEVICE',
+    );
+    let order = Math.max(
+      0,
+      ...[...this.ports.values()].filter((port) => port.assetId === assetId).map((port) => port.order),
+    );
     for (const item of [...host.interfaces].sort((a, b) => a.ifIndex - b.ifIndex)) {
-      if (existing.has(item.id)) continue;
+      if (mappedIds.has(item.id)) continue;
+      const keys = new Set(interfaceNameKeys(item.name));
+      const byName = devicePorts.find((port) => !port.mappedInterfaceId && port.name === item.name);
+      const normalized = devicePorts.filter(
+        (port) => !port.mappedInterfaceId && interfaceNameKeys(port.name).some((key) => keys.has(key)),
+      );
+      const candidate = byName ?? (normalized.length === 1 ? normalized[0] : undefined);
+      if (candidate) {
+        candidate.mappedInterfaceId = item.id;
+        candidate.mappedInterface = interfaceReference(item);
+        candidate.updatedAt = now();
+        mappedIds.add(item.id);
+        continue;
+      }
       order += 1;
-      await this.createPort(assetId, {
+      const created = await this.createPort(assetId, {
         name: item.name,
         label: item.alias ?? '',
         order,
@@ -335,8 +571,95 @@ export class DemoPhysicalRepository implements PhysicalRepository {
         type: 'OTHER',
         mappedInterfaceId: item.id,
       });
+      if (created) {
+        const stored = this.ports.get(created.id)!;
+        stored.role = 'DISCOVERED';
+      }
+      mappedIds.add(item.id);
     }
     return clone([...this.ports.values()].filter((port) => port.assetId === assetId));
+  }
+
+  async installModule(
+    assetId: string,
+    input: CreatePhysicalModuleInput,
+  ): Promise<PhysicalModule | null> {
+    const asset = this.assets.get(assetId);
+    const slot = [...this.slots.values()].find(
+      (candidate) => candidate.id === input.slotId && candidate.assetId === assetId,
+    );
+    if (!asset || !slot || slot.module) return null;
+    const moduleTemplate = input.moduleTemplateId
+      ? asset.template?.modules.find((item) => item.id === input.moduleTemplateId) ?? null
+      : null;
+    if (input.moduleTemplateId && !moduleTemplate) return null;
+
+    let order = Math.max(0, ...[...this.ports.values()].filter((port) => port.assetId === assetId).map((port) => port.order));
+    const module: PhysicalModule = {
+      id: id('module'),
+      assetId,
+      slotId: slot.id,
+      slotIndex: slot.index,
+      moduleTemplateId: moduleTemplate?.id ?? null,
+      name: input.name.trim(),
+      model: input.model?.trim() || moduleTemplate?.model || '',
+      serial: input.serial?.trim() ?? '',
+      ports: [],
+    };
+    this.modules.set(module.id, module);
+    slot.module = module;
+    for (const templatePort of moduleTemplate?.ports ?? []) {
+      order += 1;
+      const created = await this.createPort(assetId, {
+        name: templatePort.name,
+        label: templatePort.label,
+        order,
+        side: 'DEVICE',
+        type: templatePort.type,
+      });
+      if (!created) continue;
+      const stored = this.ports.get(created.id)!;
+      stored.moduleId = module.id;
+      stored.slotId = slot.id;
+      stored.role = 'TEMPLATE';
+      module.ports.push(stored);
+    }
+    return clone(module);
+  }
+
+  async removeModule(moduleId: string): Promise<boolean> {
+    const module = this.modules.get(moduleId);
+    if (!module) return false;
+    for (const port of [...this.ports.values()]) {
+      if (port.moduleId === moduleId) this.ports.delete(port.id);
+    }
+    const slot = this.slots.get(module.slotId);
+    if (slot) slot.module = null;
+    return this.modules.delete(moduleId);
+  }
+
+  async recordLldpAdjacencies(rows: readonly PhysicalLldpAdjacencyInput[]): Promise<number> {
+    for (const row of rows) {
+      const key = `${row.localDeviceId}|${row.localPortName}|${row.remoteHostname}|${row.remotePortName}`;
+      const existing = [...this.lldp.values()].find(
+        (item) =>
+          item.localDeviceId === row.localDeviceId &&
+          item.localPortName === row.localPortName &&
+          item.remoteHostname === row.remoteHostname &&
+          item.remotePortName === row.remotePortName,
+      );
+      const record: PhysicalLldpAdjacencyRecord = {
+        ...row,
+        id: existing?.id ?? id('lldp'),
+        observedAt: row.observedAt.toISOString(),
+      };
+      this.lldp.set(key, record);
+    }
+    return rows.length;
+  }
+
+  async listLldpAdjacencies(): Promise<PhysicalLldpAdjacencyRecord[]> {
+    return clone([...this.lldp.values()]);
   }
 
   private endpoint(port: PhysicalPort): PhysicalConnectionEndpoint {
