@@ -2,6 +2,7 @@ import type { BgpPeerState } from './bgp4-peer-parser';
 import {
   bigintToJsonNumber,
   bigintToJsonString,
+  decideBgpDiscoverySample,
   decideBgpDiscoveryState,
   decideBgpPollingUpdate,
   deriveBgpPeerDisplayName,
@@ -12,6 +13,8 @@ import type { BgpDashboardQuery, BgpDiscoveryPeerInput, BgpRepository } from './
 import type { HuaweiBgpCollection } from './huawei-bgp-snmp';
 import { computeBgpAlerts } from './bgp-alerts';
 import type {
+  BgpAddressFamily,
+  BgpAdminState,
   BgpAlertsResponse,
   BgpDashboardPeer,
   BgpHistoryPeriod,
@@ -22,10 +25,13 @@ import type {
 export interface DemoBgpPeerRecord extends ExistingBgpPeerState {
   deviceId: string;
   peerAddress: string;
+  addressFamily: BgpAddressFamily;
   peerDescription: string | null;
   remoteAs: bigint | null;
   interfaceId: string | null;
   role: 'UPSTREAM' | 'PEER' | 'OTHER';
+  adminState: BgpAdminState;
+  adminStateCheckedAt: Date | null;
   receivedPrefixes: bigint | null;
   lastDiscoveryAt: Date | null;
 }
@@ -35,6 +41,8 @@ export interface DemoBgpDeviceMeta {
   hostname: string;
   displayName: string;
   bgpMonitoringEnabled: boolean;
+  /** Optional local ASN of the device BGP process. */
+  bgpLocalAs?: string | null;
 }
 
 export interface DemoBgpInterfaceMeta {
@@ -67,6 +75,7 @@ export interface DemoBgpStateEventRecord {
 export class DemoBgpRepository implements BgpRepository {
   private readonly peers = new Map<string, DemoBgpPeerRecord>();
   private readonly devices = new Map<string, DemoBgpDeviceMeta>();
+  private readonly localAsByDevice = new Map<string, bigint>();
   private readonly interfaces = new Map<string, DemoBgpInterfaceMeta>();
   readonly samples: DemoBgpSampleRecord[] = [];
   readonly stateEvents: DemoBgpStateEventRecord[] = [];
@@ -74,6 +83,9 @@ export class DemoBgpRepository implements BgpRepository {
 
   setDevice(device: DemoBgpDeviceMeta): void {
     this.devices.set(device.id, device);
+    if (device.bgpLocalAs === undefined) return;
+    if (device.bgpLocalAs === null) this.localAsByDevice.delete(device.id);
+    else this.localAsByDevice.set(device.id, BigInt(device.bgpLocalAs));
   }
 
   setInterface(iface: DemoBgpInterfaceMeta): void {
@@ -112,11 +124,14 @@ export class DemoBgpRepository implements BgpRepository {
             id: `demo-bgp-${++this.sequence}`,
             deviceId,
             peerAddress: current.peerAddress,
+            addressFamily: 'IPV4',
             peerDescription: null,
             remoteAs: null,
             interfaceId: null,
             role: 'OTHER',
             monitoringEnabled: true,
+            adminState: 'UNKNOWN',
+            adminStateCheckedAt: null,
             stateCode: decision.stateCode,
             state: decision.state,
             established: decision.established,
@@ -157,6 +172,10 @@ export class DemoBgpRepository implements BgpRepository {
       const existing = this.peers.get(key) ?? null;
       const state = decideBgpDiscoveryState(existing, discovered, discoveredAt);
       const interfaceUpdate = discoveryInterfaceUpdate(discovered);
+      const sampling =
+        discovered.addressFamily === 'IPV6'
+          ? decideBgpDiscoverySample(existing, discovered, discoveredAt)
+          : null;
       const peer: DemoBgpPeerRecord = existing
         ? {
             ...existing,
@@ -166,27 +185,84 @@ export class DemoBgpRepository implements BgpRepository {
               : { peerDescription: discovered.bgpPeerDescription }),
             ...interfaceUpdate,
             ...state,
+            ...(sampling?.record === true
+              ? {
+                  stateCode: sampling.stateCode,
+                  state: sampling.state,
+                  established: sampling.established,
+                  receivedPrefixes: sampling.receivedPrefixes,
+                  ...(sampling.establishedSince === undefined
+                    ? {}
+                    : { establishedSince: sampling.establishedSince }),
+                  ...(sampling.lastStateChangedAt
+                    ? { lastStateChangedAt: sampling.lastStateChangedAt }
+                    : {}),
+                }
+              : {}),
             lastDiscoveryAt: discoveredAt,
           }
         : {
             id: `demo-bgp-${++this.sequence}`,
             deviceId,
             peerAddress: discovered.peerAddress,
+            addressFamily: discovered.addressFamily,
             peerDescription: discovered.bgpPeerDescription,
             remoteAs: discovered.remoteAs,
             interfaceId: interfaceUpdate.interfaceId ?? null,
             role: 'OTHER',
             monitoringEnabled: true,
-            stateCode: state.stateCode ?? 0,
-            state: state.state ?? 'UNKNOWN',
-            established: state.established ?? false,
-            receivedPrefixes: null,
-            establishedSince: state.establishedSince ?? null,
-            lastStateChangedAt: null,
+            adminState: 'UNKNOWN',
+            adminStateCheckedAt: null,
+            stateCode: sampling?.record === true ? sampling.stateCode : (state.stateCode ?? 0),
+            state: sampling?.record === true ? sampling.state : (state.state ?? 'UNKNOWN'),
+            established: sampling?.record === true ? sampling.established : (state.established ?? false),
+            receivedPrefixes: sampling?.record === true ? sampling.receivedPrefixes : null,
+            establishedSince:
+              sampling?.record === true
+                ? (sampling.establishedSince ?? null)
+                : (state.establishedSince ?? null),
+            lastStateChangedAt: sampling?.lastStateChangedAt ?? null,
             lastPollingAt: null,
             lastDiscoveryAt: discoveredAt,
           };
       this.peers.set(key, peer);
+      if (sampling?.record === true) {
+        if (sampling.event) {
+          this.stateEvents.push({
+            bgpPeerId: peer.id,
+            ...sampling.event,
+            occurredAt: discoveredAt,
+          });
+        }
+        this.samples.push({
+          bgpPeerId: peer.id,
+          timestamp: discoveredAt,
+          stateCode: sampling.stateCode,
+          state: sampling.state,
+          established: sampling.established,
+          receivedPrefixes: sampling.receivedPrefixes,
+        });
+      }
+    }
+  }
+
+  async saveDeviceLocalAs(deviceId: string, localAs: bigint, _discoveredAt: Date): Promise<void> {
+    this.localAsByDevice.set(deviceId, localAs);
+  }
+
+  async getDeviceLocalAs(deviceId: string): Promise<bigint | null> {
+    return this.localAsByDevice.get(deviceId) ?? null;
+  }
+
+  async setPeerAdminState(
+    peerId: string,
+    adminState: BgpAdminState,
+    checkedAt: Date,
+  ): Promise<void> {
+    for (const [key, peer] of this.peers) {
+      if (peer.id !== peerId) continue;
+      this.peers.set(key, { ...peer, adminState, adminStateCheckedAt: checkedAt });
+      return;
     }
   }
 
@@ -207,6 +283,9 @@ export class DemoBgpRepository implements BgpRepository {
     const peers = [...this.peers.values()]
       .filter((peer) => {
         if (query.deviceId && peer.deviceId !== query.deviceId) return false;
+        if (query.family && query.family !== 'all' && peer.addressFamily !== query.family) {
+          return false;
+        }
         if (query.state === 'up' && !peer.established) return false;
         if (query.state === 'down' && peer.established) return false;
         const device = this.devices.get(peer.deviceId);
@@ -281,6 +360,7 @@ export class DemoBgpRepository implements BgpRepository {
           deviceId: peer.deviceId,
           deviceName: device?.displayName ?? peer.deviceId,
           peerAddress: peer.peerAddress,
+          addressFamily: peer.addressFamily,
           displayName: deriveBgpPeerDisplayName(peer.peerAddress, iface, peer.peerDescription),
           state: peer.state,
           established: peer.established,
@@ -315,12 +395,16 @@ export class DemoBgpRepository implements BgpRepository {
       bgpMonitoringEnabled: device.bgpMonitoringEnabled,
       peerAddress: peer.peerAddress,
       displayName: deriveBgpPeerDisplayName(peer.peerAddress, iface, peer.peerDescription),
+      addressFamily: peer.addressFamily,
+      localAs: bigintToJsonString(this.localAsByDevice.get(peer.deviceId) ?? null),
       remoteAs: bigintToJsonString(peer.remoteAs),
       role: peer.role,
       monitoringEnabled: peer.monitoringEnabled,
       stateCode: peer.stateCode,
       state: peer.state,
       established: peer.established,
+      adminState: peer.adminState,
+      adminStateCheckedAt: peer.adminStateCheckedAt?.toISOString() ?? null,
       receivedPrefixes: bigintToJsonNumber(peer.receivedPrefixes),
       establishedSince: peer.establishedSince?.toISOString() ?? null,
       lastPollingAt: peer.lastPollingAt?.toISOString() ?? null,

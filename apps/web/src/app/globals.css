@@ -5900,13 +5900,14 @@ label > small {
   text-align: left;
   text-transform: uppercase;
 }
-.bgp-table th:nth-child(1) { width: 110px; }
-.bgp-table th:nth-child(2) { width: 24%; }
-.bgp-table th:nth-child(3) { width: 90px; }
-.bgp-table th:nth-child(4) { width: 110px; }
-.bgp-table th:nth-child(5) { width: 150px; }
-.bgp-table th:nth-child(6) { width: 90px; }
+.bgp-table th:nth-child(1) { width: 104px; }
+.bgp-table th:nth-child(2) { width: 62px; }
+.bgp-table th:nth-child(3) { width: 24%; }
+.bgp-table th:nth-child(4) { width: 82px; }
+.bgp-table th:nth-child(5) { width: 100px; }
+.bgp-table th:nth-child(6) { width: 150px; }
 .bgp-table th:nth-child(7) { width: 90px; }
+.bgp-table th:nth-child(8) { width: 90px; }
 
 .bgp-device__header {
   height: 36px;
@@ -5998,6 +5999,171 @@ label > small {
 .bgp-role {
   margin-top: 3px;
   color: #a98de8 !important;
+}
+.bgp-family {
+  display: inline-block !important;
+  padding: 2px 6px;
+  border: 1px solid #2c3f49;
+  border-radius: 3px;
+  color: #8ba3ad !important;
+  font: 650 7px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.bgp-family--ipv6 {
+  border-color: #2f5a68;
+  color: #6fbcd4 !important;
+}
+.bgp-admin {
+  margin-top: 3px;
+  font: 650 7px var(--font-mono);
+  letter-spacing: 0.08em;
+}
+.bgp-admin--ignored {
+  color: #d9a24b !important;
+}
+.bgp-summary__families {
+  display: block;
+  margin-top: 3px;
+  color: #5f7782;
+  font: 600 7px var(--font-mono);
+  letter-spacing: 0.06em;
+}
+.bgp-actions {
+  padding: 12px 14px;
+  border-top: 1px solid #1d2c34;
+  border-bottom: 1px solid #1d2c34;
+  background: rgba(16, 27, 34, 0.55);
+}
+.bgp-actions__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 9px;
+  color: #536a75;
+  font: 650 8px var(--font-mono);
+  letter-spacing: 0.1em;
+}
+.bgp-actions__header em {
+  font-style: normal;
+}
+.bgp-actions__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 6px 14px;
+  margin: 0 0 9px;
+}
+.bgp-actions__facts dt {
+  color: #536a75;
+  font: 600 7px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.bgp-actions__facts dd {
+  margin: 2px 0 0;
+  color: #b7c9d0;
+  font: 600 9px var(--font-mono);
+}
+.bgp-actions__warning,
+.bgp-actions__error,
+.bgp-actions__result,
+.bgp-actions__note {
+  margin: 0 0 8px;
+  font: 500 8px var(--font-mono);
+}
+.bgp-actions__note {
+  color: #6b7d87;
+}
+.bgp-actions__warning {
+  color: #d9a24b;
+}
+.bgp-actions__error {
+  color: #d87578;
+}
+.bgp-actions__result {
+  color: #65c9a7;
+}
+.bgp-actions__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.bgp-actions__buttons button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #2c3f49;
+  border-radius: 3px;
+  background: #131f26;
+  color: #9fb3bc;
+  font: 650 8px var(--font-mono);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.bgp-actions__buttons button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.bgp-actions__disable {
+  border-color: #6b3a3d !important;
+  color: #e0919a !important;
+}
+.bgp-actions__enable {
+  border-color: #2f5a48 !important;
+  color: #7fd0b2 !important;
+}
+.bgp-confirm__panel {
+  max-width: 460px;
+}
+.bgp-confirm__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 6px 14px;
+  margin: 0 0 12px;
+}
+.bgp-confirm__facts dt {
+  color: #536a75;
+  font: 600 7px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.bgp-confirm__facts dd {
+  margin: 2px 0 0;
+  color: #c0d2da;
+  font: 600 9px var(--font-mono);
+}
+.bgp-confirm__message {
+  margin: 0 0 14px;
+  color: #d9a24b;
+  font: 500 9px var(--font-mono);
+  line-height: 1.5;
+}
+.bgp-confirm__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.bgp-confirm__buttons button {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid #2c3f49;
+  border-radius: 3px;
+  background: #131f26;
+  color: #9fb3bc;
+  font: 650 8px var(--font-mono);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.bgp-confirm__submit {
+  border-color: #7a4448 !important;
+  background: #2a1618 !important;
+  color: #efa9b0 !important;
+}
+.bgp-confirm__buttons button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .bgp-traffic {
   display: flex;

@@ -3,9 +3,12 @@ import {
   type Alarm,
   type AuthUser,
   type BgpAlertsResponse,
+  type BgpAddressFamilyFilter,
+  type BgpAdminAction,
   type BgpDashboardPeer,
   type BgpDashboardResponse,
   type BgpHistoryPeriod,
+  type BgpPeerAdminStateResponse,
   type BgpPeerHistoryResponse,
   type BgpScope,
   type BgpStateFilter,
@@ -355,12 +358,14 @@ export function getHosts(query = ''): Promise<HostRecord[]> {
 export function getBgpDashboard(input: {
   scope?: BgpScope;
   state?: BgpStateFilter;
+  family?: BgpAddressFamilyFilter;
   q?: string;
   deviceId?: string;
 } = {}): Promise<BgpDashboardResponse> {
   const params = new URLSearchParams();
   if (input.scope) params.set('scope', input.scope);
   if (input.state) params.set('state', input.state);
+  if (input.family) params.set('family', input.family);
   if (input.q?.trim()) params.set('q', input.q.trim());
   if (input.deviceId) params.set('deviceId', input.deviceId);
   return request<BgpDashboardResponse>(`/api/bgp${params.size ? `?${params}` : ''}`);
@@ -393,10 +398,30 @@ export function discoverBgp(hostId: string) {
   return request<{
     hostId: string;
     peersDiscovered: number;
+    ipv4Peers: number;
+    ipv6Peers: number;
     matchedInterfaces: number;
     unmatchedInterfaces: number;
+    localAs: string | null;
+    localAsAmbiguous: boolean;
+    ipv6Supported: boolean;
+    warnings: string[];
     peers: Array<Record<string, unknown>>;
   }>(`/api/hosts/${encodeURIComponent(hostId)}/bgp/discover`, { method: 'POST' });
+}
+
+/**
+ * Administrative BGP action. Only the action is sent: the backend resolves the
+ * device, local ASN, peer address and SSH context from the persisted peer.
+ */
+export function setBgpPeerAdminState(
+  peerId: string,
+  action: BgpAdminAction,
+): Promise<BgpPeerAdminStateResponse> {
+  return request<BgpPeerAdminStateResponse>(
+    `/api/bgp/peers/${encodeURIComponent(peerId)}/admin-state`,
+    { method: 'POST', body: JSON.stringify({ action }) },
+  );
 }
 
 export function getHost(hostId: string) {

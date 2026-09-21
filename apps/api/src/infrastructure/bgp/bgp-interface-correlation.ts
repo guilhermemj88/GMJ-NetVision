@@ -1,4 +1,4 @@
-import type { NetworkInterface } from '@gmj/shared';
+import type { BgpAddressFamily, NetworkInterface } from '@gmj/shared';
 import { interfaceNameKeys, normalizeInterfaceName } from '../topology/interface-correlation';
 import { parseHuaweiRouteLookup } from './huawei-bgp-ssh-parser';
 
@@ -54,13 +54,14 @@ export function bgpPeerDisplayName(
 export function correlateBgpPeerInterface(
   deviceId: string,
   peerAddress: string,
+  addressFamily: BgpAddressFamily,
   routeCommand: BgpRouteCommandResult,
   interfaces: NetworkInterface[],
 ): BgpInterfaceCorrelation {
   if (routeCommand.status === 'COMMAND_FAILED') {
     return unavailable(peerAddress, 'COMMAND_FAILED', routeCommand.error);
   }
-  const route = parseHuaweiRouteLookup(routeCommand.output);
+  const route = parseHuaweiRouteLookup(routeCommand.output, addressFamily);
   if (!route.routeFound) return unavailable(peerAddress, 'NO_ROUTE');
   if (route.unresolvedRoute) return unavailable(peerAddress, 'NO_SAFE_INTERFACE');
 

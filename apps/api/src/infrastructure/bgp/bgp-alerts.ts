@@ -1,4 +1,4 @@
-import type { BgpAlertsResponse, BgpAlertDto, BgpPeerState } from '@gmj/shared';
+import type { BgpAddressFamily, BgpAlertsResponse, BgpAlertDto, BgpPeerState } from '@gmj/shared';
 
 export interface BgpAlertPeerInput {
   id: string;
@@ -6,6 +6,7 @@ export interface BgpAlertPeerInput {
   deviceName: string;
   peerAddress: string;
   displayName: string;
+  addressFamily: BgpAddressFamily;
   state: BgpPeerState;
   established: boolean;
   lastStateChangedAt: Date | null;
@@ -58,6 +59,7 @@ export function computeBgpAlerts(
         deviceName: peer.deviceName,
         peerAddress: peer.peerAddress,
         displayName: peer.displayName,
+        addressFamily: peer.addressFamily,
         previousState: latest?.previousState ?? null,
         currentState: peer.state,
         startedAt:
@@ -80,6 +82,7 @@ export function computeBgpAlerts(
       deviceName: peer?.deviceName ?? '',
       peerAddress: peer?.peerAddress ?? '',
       displayName: peer?.displayName ?? event.bgpPeerId,
+      addressFamily: peer?.addressFamily ?? 'IPV4',
       previousState: event.previousState,
       currentState: event.currentState,
       startedAt: durationSeconds === null ? null : new Date(event.occurredAt.getTime() - durationSeconds * 1000).toISOString(),

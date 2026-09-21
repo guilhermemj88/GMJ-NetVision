@@ -250,6 +250,64 @@ enum BgpState {
   UNKNOWN
 }
 
+enum BgpAddressFamily {
+  IPV4
+  IPV6
+}
+
+/**
+ * UNKNOWN means no successful read-back has confirmed the admin state yet.
+ */
+enum BgpAdminState {
+  UNKNOWN
+  ENABLED
+  IGNORED
+}
+
+enum BgpAdminAction {
+  DISABLE
+  ENABLE
+}
+
+enum PhysicalAssetKind {
+  NETWORK
+  SERVER
+  OLT
+  DIO
+  PATCH_PANEL
+  POWER
+  GENERIC
+}
+
+enum PhysicalPortSide {
+  DEVICE
+  FRONT
+  REAR
+}
+
+enum PhysicalPortType {
+  RJ45
+  SFP
+  SFP_PLUS
+  QSFP
+  FIBER
+  POWER
+  OTHER
+}
+
+enum PhysicalConnectionMedium {
+  FIBER
+  COPPER
+  DAC
+  AOC
+  UNKNOWN
+}
+
+enum PhysicalConnectionEnd {
+  A
+  B
+}
+
 model Map {
   id                String            @id @default(cuid())
   name              String
@@ -299,73 +357,78 @@ model MapNode {
 }
 
 model Device {
-  id                  String                @id @default(cuid())
-  name                String
-  displayName         String
-  hostname            String
-  ip                  String
-  managementIp        String
-  vendor              String?
-  model               String?
-  description         String                @default("")
-  notes               String                @default("")
-  origin              HostOrigin            @default(MANUAL)
-  status              DeviceStatus          @default(UNKNOWN)
-  deviceType          String
-  site                String?
-  source              String
-  discoveryMethod     String                @default("AUTO")
-  useZabbix           Boolean               @default(false)
-  zabbixHostId        String?
-  zabbixHostName      String?
-  zabbixInterfaceId   String?
-  zabbixIp            String?
-  sshEnabled          Boolean               @default(false)
-  sshHost             String?
-  sshPort             Int                   @default(22)
-  sshUsername         String?
-  sshAuthentication   String?
-  sshContextCommand   String?
-  snmpEnabled         Boolean               @default(false)
-  snmpVersion         SnmpVersion?
-  snmpHost            String?
-  snmpPort            Int                   @default(161)
-  snmpUsername        String?
-  snmpSecurityLevel   SnmpSecurityLevel?
-  snmpAuthProtocol    SnmpAuthProtocol?
-  snmpPrivacyProtocol SnmpPrivacyProtocol?
-  lastPollingAt       DateTime?
-  lastDiscoveryAt     DateTime?
-  uptimeSeconds       BigInt?
-  cpuPercent          Float?
-  memoryPercent       Float?
-  pppSupported        Boolean             @default(false)
-  pppOnline           Int                 @default(0)
-  pppUpdatedAt        DateTime?
-  pppSource           String?
-  bgpMonitoringEnabled Boolean            @default(false)
-  interfaces          Interface[]
-  metricSamples       DeviceMetricSample[]
-  mapNodes            MapNode[]
-  sourceLinks         Link[]                @relation("LinkSourceDevice")
-  targetLinks         Link[]                @relation("LinkTargetDevice")
-  sourceMappings      DeviceSourceMapping[]
-  discoveryJobs       DiscoveryJob[]
-  sourceHealth        DeviceSourceHealth[]
-  snmpCredentialId    String?
-  sshCredentialId     String?
-  snmpCredential      SnmpCredential?       @relation(fields: [snmpCredentialId], references: [id])
-  sshCredential       SshCredential?        @relation(fields: [sshCredentialId], references: [id])
-  mplsState           MplsDeviceState?
-  mplsVsis            MplsVsi[]
-  mplsPws             MplsPw[]              @relation("MplsPwHost")
-  remoteMplsPws       MplsPw[]              @relation("MplsPwRemoteHost")
-  mplsStateEvents     MplsStateEvent[]
-  bgpPeers            BgpPeer[]
-  alarms              Alarm[]
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
-  mplsAcs             MplsAc[]
+  id                   String                @id @default(cuid())
+  name                 String
+  displayName          String
+  hostname             String
+  ip                   String
+  managementIp         String
+  vendor               String?
+  model                String?
+  description          String                @default("")
+  notes                String                @default("")
+  origin               HostOrigin            @default(MANUAL)
+  status               DeviceStatus          @default(UNKNOWN)
+  deviceType           String
+  site                 String?
+  source               String
+  discoveryMethod      String                @default("AUTO")
+  useZabbix            Boolean               @default(false)
+  zabbixHostId         String?
+  zabbixHostName       String?
+  zabbixInterfaceId    String?
+  zabbixIp             String?
+  sshEnabled           Boolean               @default(false)
+  sshHost              String?
+  sshPort              Int                   @default(22)
+  sshUsername          String?
+  sshAuthentication    String?
+  sshContextCommand    String?
+  snmpEnabled          Boolean               @default(false)
+  snmpVersion          SnmpVersion?
+  snmpHost             String?
+  snmpPort             Int                   @default(161)
+  snmpUsername         String?
+  snmpSecurityLevel    SnmpSecurityLevel?
+  snmpAuthProtocol     SnmpAuthProtocol?
+  snmpPrivacyProtocol  SnmpPrivacyProtocol?
+  lastPollingAt        DateTime?
+  lastDiscoveryAt      DateTime?
+  uptimeSeconds        BigInt?
+  cpuPercent           Float?
+  memoryPercent        Float?
+  pppSupported         Boolean               @default(false)
+  pppOnline            Int                   @default(0)
+  pppUpdatedAt         DateTime?
+  pppSource            String?
+  bgpMonitoringEnabled Boolean               @default(false)
+  /**
+   * Local ASN of the BGP process on this device/context, learned via SSH.
+   */
+  bgpLocalAs           BigInt?
+  interfaces           Interface[]
+  metricSamples        DeviceMetricSample[]
+  mapNodes             MapNode[]
+  sourceLinks          Link[]                @relation("LinkSourceDevice")
+  targetLinks          Link[]                @relation("LinkTargetDevice")
+  sourceMappings       DeviceSourceMapping[]
+  discoveryJobs        DiscoveryJob[]
+  sourceHealth         DeviceSourceHealth[]
+  snmpCredentialId     String?
+  sshCredentialId      String?
+  snmpCredential       SnmpCredential?       @relation(fields: [snmpCredentialId], references: [id])
+  sshCredential        SshCredential?        @relation(fields: [sshCredentialId], references: [id])
+  mplsState            MplsDeviceState?
+  mplsVsis             MplsVsi[]
+  mplsPws              MplsPw[]              @relation("MplsPwHost")
+  remoteMplsPws        MplsPw[]              @relation("MplsPwRemoteHost")
+  mplsStateEvents      MplsStateEvent[]
+  bgpPeers             BgpPeer[]
+  alarms               Alarm[]
+  physicalAsset        PhysicalAsset?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  mplsAcs              MplsAc[]
 
   @@index([hostname])
   @@index([ip])
@@ -410,6 +473,7 @@ model Interface {
   mplsAcs               MplsAc[]
   bgpPeers              BgpPeer[]
   alarms                Alarm[]
+  physicalPort          PhysicalPort?
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
 
@@ -417,33 +481,64 @@ model Interface {
 }
 
 model BgpPeer {
-  id                 String      @id @default(cuid())
-  deviceId           String
-  peerAddress        String
-  peerDescription    String?
-  remoteAs           BigInt?
-  interfaceId        String?
-  monitoringEnabled  Boolean     @default(true)
-  role               BgpPeerRole @default(OTHER)
-  stateCode          Int         @default(0)
-  state              BgpState    @default(UNKNOWN)
-  established        Boolean     @default(false)
-  receivedPrefixes   BigInt?
-  establishedSince   DateTime?
-  lastStateChangedAt DateTime?
-  lastPollingAt      DateTime?
-  lastDiscoveryAt    DateTime?
-  device             Device      @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  interface          Interface?  @relation(fields: [interfaceId], references: [id], onDelete: SetNull)
-  samples            BgpPeerSample[]
-  stateEvents        BgpPeerStateEvent[]
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  id                  String              @id @default(cuid())
+  deviceId            String
+  peerAddress         String
+  addressFamily       BgpAddressFamily    @default(IPV4)
+  peerDescription     String?
+  remoteAs            BigInt?
+  interfaceId         String?
+  monitoringEnabled   Boolean             @default(true)
+  role                BgpPeerRole         @default(OTHER)
+  adminState          BgpAdminState       @default(UNKNOWN)
+  adminStateCheckedAt DateTime?
+  stateCode           Int                 @default(0)
+  state               BgpState            @default(UNKNOWN)
+  established         Boolean             @default(false)
+  receivedPrefixes    BigInt?
+  establishedSince    DateTime?
+  lastStateChangedAt  DateTime?
+  lastPollingAt       DateTime?
+  lastDiscoveryAt     DateTime?
+  device              Device              @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  interface           Interface?          @relation(fields: [interfaceId], references: [id], onDelete: SetNull)
+  samples             BgpPeerSample[]
+  stateEvents         BgpPeerStateEvent[]
+  adminActions        BgpAdminActionLog[]
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
 
   @@unique([deviceId, peerAddress])
   @@index([deviceId, established])
+  @@index([addressFamily])
   @@index([interfaceId])
   @@index([role])
+}
+
+/**
+ * Audit trail for administrative BGP peer actions. Credentials, raw CLI output
+ * and context commands are never stored here.
+ */
+model BgpAdminActionLog {
+  id            String           @id @default(cuid())
+  bgpPeerId     String
+  deviceId      String
+  userId        String?
+  username      String?
+  peerAddress   String
+  addressFamily BgpAddressFamily
+  localAs       BigInt?
+  remoteAs      BigInt?
+  action        BgpAdminAction
+  success       Boolean          @default(false)
+  verified      Boolean          @default(false)
+  errorSafe     String?
+  startedAt     DateTime
+  completedAt   DateTime?
+  bgpPeer       BgpPeer          @relation(fields: [bgpPeerId], references: [id], onDelete: Cascade)
+
+  @@index([bgpPeerId, startedAt])
+  @@index([deviceId, startedAt])
 }
 
 model BgpPeerSample {
@@ -657,8 +752,8 @@ model MapWidget {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  @@index([mapId])
   @@unique([mapId, type])
+  @@index([mapId])
 }
 
 model Alarm {
@@ -685,46 +780,46 @@ model Alarm {
 }
 
 model Link {
-  id                String             @id @default(cuid())
-  mapId             String
-  sourceDeviceId    String?
-  sourceInterfaceId String?
-  targetDeviceId    String?
-  targetInterfaceId String?
-  sourceNodeId      String?
-  targetNodeId      String?
-  capacityBps       BigInt
-  autoCapacityBps   BigInt?
-  capacitySource    CapacitySource     @default(AUTO)
-  trafficMode       TrafficMode        @default(BIDIRECTIONAL)
-  customColor       String?
-  trafficColorAToB  String?
-  trafficColorBToA  String?
+  id                      String              @id @default(cuid())
+  mapId                   String
+  sourceDeviceId          String?
+  sourceInterfaceId       String?
+  targetDeviceId          String?
+  targetInterfaceId       String?
+  sourceNodeId            String?
+  targetNodeId            String?
+  capacityBps             BigInt
+  autoCapacityBps         BigInt?
+  capacitySource          CapacitySource      @default(AUTO)
+  trafficMode             TrafficMode         @default(BIDIRECTIONAL)
+  customColor             String?
+  trafficColorAToB        String?
+  trafficColorBToA        String?
   inlineLabelPositionAToB Float?
   inlineLabelPositionBToA Float?
-  animationEnabled  Boolean?
-  label             String?
-  status            DeviceStatus       @default(UNKNOWN)
-  discoverySource   DiscoverySource    @default(MANUAL)
-  metricSource      String
-  visualStyle       LinkDisplayStyle?
-  metricDisplay     LinkMetricDisplay?
-  aggregationMode   LinkAggregationMode @default(NONE)
-  metricSources     Json?
-  visualPaths       Json?
-  linkLayoutMode    LinkLayoutMode      @default(AUTO)
-  sourceHandleSide  LinkHandleSide      @default(AUTO)
-  targetHandleSide  LinkHandleSide      @default(AUTO)
-  map               Map                @relation(fields: [mapId], references: [id], onDelete: Cascade)
-  sourceDevice      Device?            @relation("LinkSourceDevice", fields: [sourceDeviceId], references: [id], onDelete: Restrict)
-  sourceInterface   Interface?         @relation("LinkSourceInterface", fields: [sourceInterfaceId], references: [id], onDelete: Restrict)
-  targetDevice      Device?            @relation("LinkTargetDevice", fields: [targetDeviceId], references: [id], onDelete: Restrict)
-  targetInterface   Interface?         @relation("LinkTargetInterface", fields: [targetInterfaceId], references: [id], onDelete: Restrict)
-  sourceNode        MapNode?           @relation("LinkSourceNode", fields: [sourceNodeId], references: [id], onDelete: Cascade)
-  targetNode        MapNode?           @relation("LinkTargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
-  alarms            Alarm[]
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
+  animationEnabled        Boolean?
+  label                   String?
+  status                  DeviceStatus        @default(UNKNOWN)
+  discoverySource         DiscoverySource     @default(MANUAL)
+  metricSource            String
+  visualStyle             LinkDisplayStyle?
+  metricDisplay           LinkMetricDisplay?
+  aggregationMode         LinkAggregationMode @default(NONE)
+  metricSources           Json?
+  visualPaths             Json?
+  linkLayoutMode          LinkLayoutMode      @default(AUTO)
+  sourceHandleSide        LinkHandleSide      @default(AUTO)
+  targetHandleSide        LinkHandleSide      @default(AUTO)
+  map                     Map                 @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  sourceDevice            Device?             @relation("LinkSourceDevice", fields: [sourceDeviceId], references: [id], onDelete: Restrict)
+  sourceInterface         Interface?          @relation("LinkSourceInterface", fields: [sourceInterfaceId], references: [id], onDelete: Restrict)
+  targetDevice            Device?             @relation("LinkTargetDevice", fields: [targetDeviceId], references: [id], onDelete: Restrict)
+  targetInterface         Interface?          @relation("LinkTargetInterface", fields: [targetInterfaceId], references: [id], onDelete: Restrict)
+  sourceNode              MapNode?            @relation("LinkSourceNode", fields: [sourceNodeId], references: [id], onDelete: Cascade)
+  targetNode              MapNode?            @relation("LinkTargetNode", fields: [targetNodeId], references: [id], onDelete: Cascade)
+  alarms                  Alarm[]
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
 
   @@index([mapId])
   @@index([sourceDeviceId])
@@ -906,4 +1001,129 @@ model PublicView {
 
   @@index([mapId])
   @@index([playlistId])
+}
+
+model PhysicalSite {
+  id          String         @id @default(cuid())
+  name        String
+  code        String?        @unique
+  description String         @default("")
+  racks       PhysicalRack[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([name])
+}
+
+model PhysicalRack {
+  id          String          @id @default(cuid())
+  siteId      String
+  name        String
+  units       Int             @default(42)
+  description String          @default("")
+  site        PhysicalSite    @relation(fields: [siteId], references: [id], onDelete: Restrict)
+  assets      PhysicalAsset[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@unique([siteId, name])
+  @@index([siteId])
+}
+
+model PhysicalEquipmentTemplate {
+  id             String                 @id @default(cuid())
+  name           String                 @unique
+  manufacturer   String                 @default("")
+  model          String                 @default("")
+  kind           PhysicalAssetKind      @default(GENERIC)
+  heightU        Int                    @default(1)
+  description    String                 @default("")
+  vendorVerified Boolean                @default(false)
+  ports          PhysicalTemplatePort[]
+  assets         PhysicalAsset[]
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+}
+
+model PhysicalTemplatePort {
+  id                   String                    @id @default(cuid())
+  templateId           String
+  name                 String
+  label                String                    @default("")
+  sortOrder            Int
+  side                 PhysicalPortSide          @default(DEVICE)
+  type                 PhysicalPortType          @default(OTHER)
+  pairedTemplatePortId String?                   @unique
+  template             PhysicalEquipmentTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  pairedTemplatePort   PhysicalTemplatePort?     @relation("PhysicalTemplatePortPair", fields: [pairedTemplatePortId], references: [id], onDelete: SetNull)
+  pairedBy             PhysicalTemplatePort?     @relation("PhysicalTemplatePortPair")
+  physicalPorts        PhysicalPort[]
+
+  @@unique([templateId, side, name])
+  @@unique([templateId, side, sortOrder])
+  @@index([templateId])
+}
+
+model PhysicalAsset {
+  id          String                     @id @default(cuid())
+  rackId      String
+  deviceId    String?                    @unique
+  templateId  String?
+  name        String
+  kind        PhysicalAssetKind          @default(GENERIC)
+  startU      Int
+  heightU     Int                        @default(1)
+  description String                     @default("")
+  rack        PhysicalRack               @relation(fields: [rackId], references: [id], onDelete: Restrict)
+  device      Device?                    @relation(fields: [deviceId], references: [id], onDelete: SetNull)
+  template    PhysicalEquipmentTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  ports       PhysicalPort[]
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+
+  @@unique([rackId, name])
+  @@index([rackId, startU])
+  @@index([templateId])
+}
+
+model PhysicalPort {
+  id                String                 @id @default(cuid())
+  assetId           String
+  templatePortId    String?
+  mappedInterfaceId String?                @unique
+  connectionId      String?
+  connectionEnd     PhysicalConnectionEnd?
+  pairedPortId      String?                @unique
+  name              String
+  label             String                 @default("")
+  sortOrder         Int
+  side              PhysicalPortSide       @default(DEVICE)
+  type              PhysicalPortType       @default(OTHER)
+  notes             String                 @default("")
+  asset             PhysicalAsset          @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  templatePort      PhysicalTemplatePort?  @relation(fields: [templatePortId], references: [id], onDelete: SetNull)
+  mappedInterface   Interface?             @relation(fields: [mappedInterfaceId], references: [id], onDelete: SetNull)
+  connection        PhysicalConnection?    @relation(fields: [connectionId], references: [id], onDelete: SetNull)
+  pairedPort        PhysicalPort?          @relation("PhysicalPortPair", fields: [pairedPortId], references: [id], onDelete: SetNull)
+  pairedBy          PhysicalPort?          @relation("PhysicalPortPair")
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  @@unique([assetId, side, name])
+  @@unique([assetId, side, sortOrder])
+  @@unique([connectionId, connectionEnd])
+  @@index([assetId])
+  @@index([connectionId])
+  @@index([templatePortId])
+}
+
+model PhysicalConnection {
+  id           String                   @id @default(cuid())
+  medium       PhysicalConnectionMedium @default(UNKNOWN)
+  label        String                   @default("")
+  notes        String                   @default("")
+  lengthMeters Float?
+  ports        PhysicalPort[]
+  createdAt    DateTime                 @default(now())
+  updatedAt    DateTime                 @updatedAt
 }

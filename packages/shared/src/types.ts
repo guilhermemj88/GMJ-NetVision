@@ -195,6 +195,12 @@ export interface Device {
   pppUpdatedAt: string | null;
   pppSource: PppSource | null;
   bgpMonitoringEnabled?: boolean;
+  /**
+   * Local ASN of the BGP process on this device, learned by SSH discovery.
+   * Each device/context owns its own value; it is never sent by the frontend
+   * and never derived from a peer remote AS.
+   */
+  bgpLocalAs?: string | null;
   updatedAt: string;
   interfaces: NetworkInterface[];
 }

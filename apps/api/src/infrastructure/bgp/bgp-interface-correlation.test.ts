@@ -3,12 +3,28 @@ import type { NetworkInterface } from '@gmj/shared';
 import { makeInterface } from '../../test-fixtures';
 import {
   bgpPeerDisplayName,
-  correlateBgpPeerInterface,
+  correlateBgpPeerInterface as correlateBgpPeerInterfaceFamily,
   type BgpRouteCommandResult,
 } from './bgp-interface-correlation';
 
 const deviceId = 'ne8000-1';
 const peerAddress = '200.150.1.193';
+
+/** IPv4 shorthand for the family-aware correlator (the legacy fixtures are IPv4). */
+function correlateBgpPeerInterface(
+  targetDeviceId: string,
+  address: string,
+  routeCommand: BgpRouteCommandResult,
+  interfaces: NetworkInterface[],
+) {
+  return correlateBgpPeerInterfaceFamily(
+    targetDeviceId,
+    address,
+    'IPV4',
+    routeCommand,
+    interfaces,
+  );
+}
 
 function networkInterface(
   name: string,
@@ -135,6 +151,73 @@ describe('BGP peer to interface correlation', () => {
         [],
       ),
     ).toMatchObject({ correlationStatus: 'NO_ROUTE', interfaceId: null });
+  });
+
+  it('correlates an IPv6 peer using the IPv6 route lookup output', () => {
+    const ipv6Peer = '2001:db8::10';
+    const result = correlateBgpPeerInterfaceFamily(
+      deviceId,
+      ipv6Peer,
+      'IPV6',
+      {
+        status: 'SUCCESS',
+        output: `Summary Count : 1
+Destination  : 2001:DB8::10                       PrefixLength : 128
+NextHop      : 2001:DB8::1                        Preference   : 60
+Interface    : 100GE1/0/3                         Flags        : RD`,
+      },
+      [networkInterface('100GE1/0/3', { id: 'abc123', alias: 'TRANSITO IPV6' })],
+    );
+    expect(result).toMatchObject({
+      correlationStatus: 'MATCHED',
+      interfaceId: 'abc123',
+      interfaceName: '100GE1/0/3',
+      displayName: 'TRANSITO IPV6',
+    });
+  });
+
+  it('keeps IPv6 ECMP and unresolved lookups without interface association', () => {
+    const ipv6Peer = '2001:db8::10';
+    const ecmp = correlateBgpPeerInterfaceFamily(
+      deviceId,
+      ipv6Peer,
+      'IPV6',
+      {
+        status: 'SUCCESS',
+        output: `Summary Count : 2
+Destination  : 2001:DB8::10                       PrefixLength : 128
+NextHop      : 2001:DB8::1                        Preference   : 60
+Interface    : 100GE1/0/3                         Flags        : RD
+Destination  : 2001:DB8::10                       PrefixLength : 128
+NextHop      : 2001:DB8::2                        Preference   : 60
+Interface    : 100GE1/0/4                         Flags        : RD`,
+      },
+      [networkInterface('100GE1/0/3'), networkInterface('100GE1/0/4', { ifIndex: 11 })],
+    );
+    expect(ecmp).toMatchObject({ correlationStatus: 'AMBIGUOUS', interfaceId: null });
+
+    const unresolved = correlateBgpPeerInterfaceFamily(
+      deviceId,
+      ipv6Peer,
+      'IPV6',
+      { status: 'SUCCESS', output: 'Summary Count : 1\n2001:DB8::10/128 IBGP 255 0 R 2001:DB8::1' },
+      [networkInterface('100GE1/0/3')],
+    );
+    expect(unresolved).toMatchObject({ correlationStatus: 'NO_SAFE_INTERFACE', interfaceId: null });
+  });
+
+  it('does not parse IPv6 output with the IPv4 route rules', () => {
+    const result = correlateBgpPeerInterfaceFamily(
+      deviceId,
+      '2001:db8::10',
+      'IPV6',
+      {
+        status: 'SUCCESS',
+        output: 'Summary Count : 1\n200.150.1.192/30 Direct 0 0 D 200.150.1.194 100GE1/0/3',
+      },
+      [networkInterface('100GE1/0/3')],
+    );
+    expect(result).toMatchObject({ correlationStatus: 'NO_SAFE_INTERFACE', interfaceId: null });
   });
 });
 

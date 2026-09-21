@@ -8,6 +8,7 @@ function peer(overrides: Partial<BgpAlertPeerInput> = {}): BgpAlertPeerInput {
     deviceName: 'NE-8K POP CENTRO',
     peerAddress: '200.150.1.193',
     displayName: 'TRANSITO XYZ',
+    addressFamily: 'IPV4',
     state: 'ESTABLISHED',
     established: true,
     lastStateChangedAt: null,

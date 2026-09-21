@@ -14,6 +14,10 @@ function roleLabel(role: BgpDashboardPeer['role']): string | null {
   return role === 'OTHER' ? null : role;
 }
 
+function familyLabel(family: BgpDashboardPeer['addressFamily']): string {
+  return family === 'IPV6' ? 'IPv6' : 'IPv4';
+}
+
 const SORTABLE_COLUMNS: Array<{ key: BgpSortKey; label: string }> = [
   { key: 'state', label: 'Estado' },
   { key: 'peer', label: 'Peer' },
@@ -53,7 +57,22 @@ export function BgpPeerTable({
       <table className="bgp-table">
         <thead>
           <tr>
-            {SORTABLE_COLUMNS.map((column) => (
+            {SORTABLE_COLUMNS.slice(0, 1).map((column) => (
+              <th key={column.key}>
+                <button
+                  type="button"
+                  className="bgp-sort"
+                  onClick={() => setSort((current) => nextSort(current, column.key))}
+                >
+                  {column.label}
+                  <span className={sort.key === column.key ? 'is-active' : ''}>
+                    {sort.key === column.key ? (sort.direction === 'asc' ? '↑' : '↓') : ''}
+                  </span>
+                </button>
+              </th>
+            ))}
+            <th>Família</th>
+            {SORTABLE_COLUMNS.slice(1).map((column) => (
               <th key={column.key}>
                 <button
                   type="button"
@@ -112,6 +131,14 @@ export function BgpPeerTable({
                     {!peer.established && peer.state !== 'UNKNOWN' && (
                       <small className="bgp-state__technical">{peer.state}</small>
                     )}
+                    {peer.adminState === 'IGNORED' && (
+                      <small className="bgp-admin bgp-admin--ignored">ADMIN: IGNORADO</small>
+                    )}
+                  </td>
+                  <td data-label="Família">
+                    <span className={`bgp-family bgp-family--${peer.addressFamily.toLowerCase()}`}>
+                      {familyLabel(peer.addressFamily)}
+                    </span>
                   </td>
                   <td data-label="Peer">
                     <strong>{peer.displayName}</strong>

@@ -17,6 +17,7 @@ const api = vi.hoisted(() => ({
   getHistory: vi.fn(),
   discoverBgp: vi.fn(),
   pollHost: vi.fn(),
+  setBgpPeerAdminState: vi.fn(),
 }));
 
 vi.mock('@/lib/api', () => api);
@@ -39,7 +40,13 @@ import { BgpWorkspace } from './bgp-workspace';
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
 const dashboard: BgpDashboardResponse = {
-  summary: { peers: 3, established: 2, down: 1, receivedPrefixes: 1_311_664 },
+  summary: {
+    peers: 3,
+    established: 2,
+    down: 1,
+    receivedPrefixes: 1_311_664,
+    byFamily: { IPV4: 2, IPV6: 1 },
+  },
   devices: [
     {
       id: 'ne8000-1',
@@ -55,12 +62,16 @@ const dashboard: BgpDashboardResponse = {
           bgpMonitoringEnabled: true,
           peerAddress: '200.150.1.193',
           displayName: 'TRANSITO XYZ',
+          addressFamily: 'IPV4',
+          localAs: '268568',
           remoteAs: '12345',
           role: 'OTHER',
           monitoringEnabled: true,
           stateCode: 6,
           state: 'ESTABLISHED',
           established: true,
+          adminState: 'ENABLED',
+          adminStateCheckedAt: '2026-09-19T10:00:00.000Z',
           receivedPrefixes: 1_099_912,
           establishedSince: '2026-09-01T00:00:00.000Z',
           lastPollingAt: '2026-09-19T11:00:00.000Z',
@@ -80,18 +91,22 @@ const dashboard: BgpDashboardResponse = {
           deviceHostname: 'NE8000-1',
           deviceDisplayName: 'NE-8K POP CENTRO',
           bgpMonitoringEnabled: true,
-          peerAddress: '187.16.216.253',
-          displayName: '187.16.216.253',
-          remoteAs: null,
+          peerAddress: '2001:db8::10',
+          displayName: 'CLIENTE IPV6',
+          addressFamily: 'IPV6',
+          localAs: '268568',
+          remoteAs: '265424',
           role: 'OTHER',
           monitoringEnabled: true,
           stateCode: 6,
           state: 'ESTABLISHED',
           established: true,
+          adminState: 'IGNORED',
+          adminStateCheckedAt: '2026-09-20T10:00:00.000Z',
           receivedPrefixes: 211_752,
           establishedSince: '2026-09-12T00:00:00.000Z',
           lastPollingAt: '2026-09-19T11:00:00.000Z',
-          lastDiscoveryAt: null,
+          lastDiscoveryAt: '2026-09-19T10:00:00.000Z',
           interface: null,
         },
       ],
@@ -110,12 +125,16 @@ const dashboard: BgpDashboardResponse = {
           bgpMonitoringEnabled: false,
           peerAddress: '10.0.0.1',
           displayName: '10.0.0.1',
+          addressFamily: 'IPV4',
+          localAs: null,
           remoteAs: null,
           role: 'OTHER',
           monitoringEnabled: true,
           stateCode: 3,
           state: 'ACTIVE',
           established: false,
+          adminState: 'UNKNOWN',
+          adminStateCheckedAt: null,
           receivedPrefixes: null,
           establishedSince: null,
           lastPollingAt: '2026-09-19T11:00:00.000Z',
@@ -165,9 +184,27 @@ describe('BgpWorkspace', () => {
     api.discoverBgp.mockResolvedValue({
       hostId: 'ne8000-1',
       peersDiscovered: 0,
+      ipv4Peers: 0,
+      ipv6Peers: 0,
       matchedInterfaces: 0,
       unmatchedInterfaces: 0,
+      localAs: '268568',
+      localAsAmbiguous: false,
+      ipv6Supported: true,
+      warnings: [],
       peers: [],
+    });
+    api.setBgpPeerAdminState.mockResolvedValue({
+      peerId: 'p1',
+      deviceId: 'ne8000-1',
+      peerAddress: '200.150.1.193',
+      addressFamily: 'IPV4',
+      action: 'DISABLE',
+      success: true,
+      adminState: 'IGNORED',
+      verified: true,
+      message: 'Sessão BGP desabilitada e confirmada por read-back (ADMIN: IGNORADO).',
+      executedAt: '2026-09-21T10:00:00.000Z',
     });
     api.pollHost.mockResolvedValue({ hostId: 'ne8000-1', polledAt: 'x', interfacesChecked: 0, interfaceSamples: 0 });
     container = document.createElement('div');
@@ -331,6 +368,7 @@ describe('BgpWorkspace', () => {
           deviceName: 'S6730 MPLS',
           peerAddress: '10.0.0.1',
           displayName: '10.0.0.1',
+          addressFamily: 'IPV4',
           previousState: 'ESTABLISHED',
           currentState: 'ACTIVE',
           startedAt: '2026-09-20T09:42:00.000Z',
@@ -341,8 +379,9 @@ describe('BgpWorkspace', () => {
           peerId: 'p2',
           deviceId: 'ne8000-1',
           deviceName: 'NE-8K POP CENTRO',
-          peerAddress: '187.16.216.253',
-          displayName: '187.16.216.253',
+          peerAddress: '2001:db8::20',
+          displayName: 'CLIENTE IPV6',
+          addressFamily: 'IPV6',
           previousState: 'ACTIVE',
           currentState: 'ESTABLISHED',
           startedAt: '2026-09-20T10:13:00.000Z',
@@ -373,6 +412,155 @@ describe('BgpWorkspace', () => {
     expect(api.discoverBgp.mock.invocationCallOrder[0]!).toBeLessThan(
       api.pollHost.mock.invocationCallOrder[0]!,
     );
+  });
+
+  it('renders IPv4 and IPv6 peers together with a family column', () => {
+    expect(container.textContent).toContain('Família');
+    const rows = Array.from(container.querySelectorAll('tr.is-up, tr.is-down'));
+    const ipv4Row = rows.find((row) => row.textContent?.includes('200.150.1.193'));
+    const ipv6Row = rows.find((row) => row.textContent?.includes('2001:db8::10'));
+    expect(ipv4Row?.querySelector('.bgp-family')?.textContent).toBe('IPv4');
+    expect(ipv6Row?.querySelector('.bgp-family')?.textContent).toBe('IPv6');
+  });
+
+  it('shows ADMIN: IGNORADO only for peers confirmed by read-back', () => {
+    const rows = Array.from(container.querySelectorAll('tr.is-up, tr.is-down'));
+    const ignored = rows.find((row) => row.textContent?.includes('2001:db8::10'));
+    const unknown = rows.find((row) => row.textContent?.includes('200.150.1.193'));
+    expect(ignored?.querySelector('.bgp-admin--ignored')?.textContent).toContain('IGNORADO');
+    expect(unknown?.querySelector('.bgp-admin--ignored')).toBeNull();
+  });
+
+  it('shows the family breakdown in the summary without hiding the totals', () => {
+    expect(container.textContent).toContain('IPv4: 2 · IPv6: 1');
+    expect(container.textContent).toContain('ROTAS RECEBIDAS');
+  });
+
+  it('requests the selected address family from the API', async () => {
+    const familySelect = Array.from(container.querySelectorAll('select')).find((select) =>
+      select.closest('label')?.textContent?.includes('FAMÍLIA'),
+    ) as HTMLSelectElement;
+    expect(familySelect).toBeTruthy();
+    await act(async () => {
+      familySelect.value = 'IPV6';
+      familySelect.dispatchEvent(new Event('change', { bubbles: true }));
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    expect(api.getBgpDashboard).toHaveBeenCalledWith(
+      expect.objectContaining({ family: 'IPV6' }),
+    );
+  });
+
+  it('requires human confirmation before disabling a peer session', async () => {
+    const row = Array.from(container.querySelectorAll('tr')).find((candidate) =>
+      candidate.textContent?.includes('200.150.1.193'),
+    );
+    await act(async () => {
+      (row as HTMLElement).click();
+    });
+    await settle();
+    expect(container.textContent).toContain('AÇÕES OPERACIONAIS');
+
+    const disable = findButton(container, 'Desabilitar sessão BGP');
+    await act(async () => {
+      disable.click();
+    });
+    await settle();
+    expect(container.textContent).toContain('CONFIRMAÇÃO OBRIGATÓRIA');
+    expect(container.textContent).toContain(
+      'A sessão BGP será administrativamente ignorada e deixará de trocar rotas até ser reabilitada.',
+    );
+    expect(container.textContent).toContain('ASN local');
+    expect(api.setBgpPeerAdminState).not.toHaveBeenCalled();
+
+    const cancel = findButton(container, 'Cancelar');
+    await act(async () => {
+      cancel.click();
+    });
+    await settle();
+    expect(api.setBgpPeerAdminState).not.toHaveBeenCalled();
+  });
+
+  it('executes the action once and refreshes from the device afterwards', async () => {
+    const row = Array.from(container.querySelectorAll('tr')).find((candidate) =>
+      candidate.textContent?.includes('200.150.1.193'),
+    );
+    await act(async () => {
+      (row as HTMLElement).click();
+    });
+    await settle();
+    await act(async () => {
+      findButton(container, 'Desabilitar sessão BGP').click();
+    });
+    await settle();
+
+    const confirm = findButton(container, 'Confirmar desativação');
+    await act(async () => {
+      confirm.click();
+      confirm.click(); // double click must not duplicate the operation
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+    await settle();
+
+    expect(api.setBgpPeerAdminState).toHaveBeenCalledTimes(1);
+    expect(api.setBgpPeerAdminState).toHaveBeenCalledWith('p1', 'DISABLE');
+    expect(api.discoverBgp).toHaveBeenCalledWith('ne8000-1');
+    expect(api.pollHost).toHaveBeenCalledWith('ne8000-1');
+    expect(api.getBgpPeer).toHaveBeenCalledWith('p1');
+    expect(container.textContent).toContain('read-back');
+  });
+
+  it('blocks the action and explains when the local ASN is unknown', async () => {
+    const peerWithoutLocalAs = {
+      ...dashboard.devices[0]!.peers[0]!,
+      localAs: null,
+    };
+    api.getBgpDashboard.mockResolvedValue({
+      ...dashboard,
+      devices: [
+        { ...dashboard.devices[0]!, peers: [peerWithoutLocalAs, ...dashboard.devices[0]!.peers.slice(1)] },
+        dashboard.devices[1]!,
+      ],
+    } as BgpDashboardResponse);
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['bgp'] });
+    });
+    await settle();
+
+    const row = Array.from(container.querySelectorAll('tr')).find((candidate) =>
+      candidate.textContent?.includes('200.150.1.193'),
+    );
+    await act(async () => {
+      (row as HTMLElement).click();
+    });
+    await settle();
+
+    expect(container.textContent).toContain(
+      'ASN local do processo BGP ainda não foi identificado',
+    );
+    const disable = findButton(container, 'Desabilitar sessão BGP');
+    expect(disable.disabled).toBe(true);
+    await act(async () => {
+      disable.click();
+    });
+    await settle();
+    expect(api.setBgpPeerAdminState).not.toHaveBeenCalled();
+  });
+
+  it('offers the enable action only for a peer confirmed as IGNORADO', async () => {
+    const row = Array.from(container.querySelectorAll('tr')).find((candidate) =>
+      candidate.textContent?.includes('2001:db8::10'),
+    );
+    await act(async () => {
+      (row as HTMLElement).click();
+    });
+    await settle();
+    expect(container.textContent).toContain('Reabilitar sessão BGP');
+    expect(
+      Array.from(container.querySelectorAll('button')).some(
+        (button) => button.textContent?.trim() === 'Desabilitar sessão BGP',
+      ),
+    ).toBe(false);
   });
 });
 

@@ -1,6 +1,9 @@
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type {
+  AuthUser,
+  BgpAdminAction,
+  BgpAddressFamily,
   BgpDashboardDevice,
   BgpDashboardPeer,
   BgpDashboardResponse,
@@ -9,6 +12,8 @@ import type {
 } from '@gmj/shared';
 import type { BgpRepository } from './infrastructure/bgp/bgp-repository';
 import type { BgpDiscoveryService } from './infrastructure/bgp/bgp-discovery-service';
+import type { BgpAdminService } from './infrastructure/bgp/bgp-admin-service';
+import { BgpAdminActionError } from './infrastructure/bgp/bgp-admin-service';
 import type { HostRepository } from './infrastructure/persistence/host-repository';
 
 export function summarizeBgpPeers(peers: BgpDashboardPeer[]): BgpDashboardSummary {
@@ -17,7 +22,9 @@ export function summarizeBgpPeers(peers: BgpDashboardPeer[]): BgpDashboardSummar
   const receivedPrefixes = peers
     .filter((peer) => peer.established && peer.receivedPrefixes !== null)
     .reduce((sum, peer) => sum + (peer.receivedPrefixes ?? 0), 0);
-  return { peers: peers.length, established, down, receivedPrefixes };
+  const byFamily: Record<BgpAddressFamily, number> = { IPV4: 0, IPV6: 0 };
+  for (const peer of peers) byFamily[peer.addressFamily] += 1;
+  return { peers: peers.length, established, down, receivedPrefixes, byFamily };
 }
 
 export function groupBgpPeers(peers: BgpDashboardPeer[]): BgpDashboardDevice[] {
@@ -49,30 +56,40 @@ export function buildBgpDashboard(peers: BgpDashboardPeer[]): BgpDashboardRespon
 const bgpQuerySchema = z.object({
   scope: z.enum(['monitored', 'all']).default('monitored'),
   state: z.enum(['all', 'up', 'down']).default('all'),
+  family: z.enum(['all', 'IPV4', 'IPV6']).default('all'),
   q: z.string().trim().max(160).optional(),
   deviceId: z.string().min(1).optional(),
 });
 
 const peerParams = z.object({ peerId: z.string().min(1) });
 const hostParams = z.object({ hostId: z.string().min(1) });
+/** The frontend sends only the action: no CLI, address, ASN or SSH context. */
+const adminStateSchema = z.object({ action: z.enum(['DISABLE', 'ENABLE']) }).strict();
 
 export interface BgpRouteDependencies {
   bgp: BgpRepository;
   hosts?: HostRepository;
   discovery?: BgpDiscoveryService;
+  admin?: BgpAdminService;
+  /**
+   * Resolves the authenticated operator. The administrative endpoint demands an
+   * ADMIN session even when the global auth hook does not cover this plugin.
+   */
+  currentUser?: (request: FastifyRequest) => Promise<AuthUser | null>;
 }
 
 export function registerBgpRoutes(
   app: FastifyInstance,
   dependencies: BgpRouteDependencies,
 ): void {
-  const { bgp, hosts, discovery } = dependencies;
+  const { bgp, hosts, discovery, admin, currentUser } = dependencies;
 
   app.get('/api/bgp', async (request) => {
     const query = bgpQuerySchema.parse(request.query);
     const peers = await bgp.listDashboardPeers({
       scope: query.scope,
       state: query.state,
+      family: query.family,
       ...(query.q ? { q: query.q } : {}),
       ...(query.deviceId ? { deviceId: query.deviceId } : {}),
     });
@@ -104,6 +121,30 @@ export function registerBgpRoutes(
     return bgp.listAlerts(scope, hours);
   });
 
+  if (admin) {
+    app.post('/api/bgp/peers/:peerId/admin-state', async (request, reply) => {
+      const { peerId } = peerParams.parse(request.params);
+      const { action } = adminStateSchema.parse(request.body);
+      const user = (await currentUser?.(request)) ?? null;
+      if (!user) return reply.code(401).send({ message: 'Não autenticado' });
+      if (user.role !== 'ADMIN') {
+        return reply
+          .code(403)
+          .send({ message: 'Apenas administradores podem executar esta ação' });
+      }
+      try {
+        return await admin.execute({ peerId, action: action as BgpAdminAction, user });
+      } catch (error) {
+        if (error instanceof BgpAdminActionError) {
+          return reply.code(error.statusCode).send({ message: error.message });
+        }
+        return reply.code(502).send({
+          message: error instanceof Error ? error.message : 'Falha na ação administrativa',
+        });
+      }
+    });
+  }
+
   if (hosts && discovery) {
     app.post('/api/hosts/:hostId/bgp/discover', async (request, reply) => {
       const { hostId } = hostParams.parse(request.params);
@@ -113,15 +154,22 @@ export function registerBgpRoutes(
         return reply.code(409).send({ message: 'SSH não está habilitado para este host' });
       }
       try {
-        const peers = await discovery.discover(host);
-        const matched = peers.filter((peer) => peer.correlationStatus === 'MATCHED').length;
+        const outcome = await discovery.discover(host);
+        const matched = outcome.peers.filter((peer) => peer.correlationStatus === 'MATCHED').length;
         return {
           hostId,
-          peersDiscovered: peers.length,
+          peersDiscovered: outcome.peers.length,
+          ipv4Peers: outcome.peers.filter((peer) => peer.addressFamily === 'IPV4').length,
+          ipv6Peers: outcome.peers.filter((peer) => peer.addressFamily === 'IPV6').length,
           matchedInterfaces: matched,
-          unmatchedInterfaces: peers.length - matched,
-          peers: peers.map((peer) => ({
+          unmatchedInterfaces: outcome.peers.length - matched,
+          localAs: outcome.localAs === null ? null : outcome.localAs.toString(),
+          localAsAmbiguous: outcome.localAsAmbiguous,
+          ipv6Supported: outcome.ipv6Supported,
+          warnings: outcome.warnings,
+          peers: outcome.peers.map((peer) => ({
             peerAddress: peer.peerAddress,
+            addressFamily: peer.addressFamily,
             remoteAs: peer.remoteAs === null ? null : peer.remoteAs.toString(),
             stateCode: peer.stateCode,
             state: peer.state,

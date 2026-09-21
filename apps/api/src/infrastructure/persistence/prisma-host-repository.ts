@@ -819,7 +819,7 @@ export class PrismaHostRepository implements HostRepository {
     snmpSecurityLevel: string | null; snmpAuthProtocol: string | null; snmpPrivacyProtocol: string | null;
     lastPollingAt: Date | null; lastDiscoveryAt: Date | null; uptimeSeconds: bigint | null; cpuPercent: number | null;
     memoryPercent: number | null; pppSupported: boolean; pppOnline: number; pppUpdatedAt: Date | null; pppSource: string | null;
-    bgpMonitoringEnabled: boolean;
+    bgpMonitoringEnabled: boolean; bgpLocalAs: bigint | null;
     snmpCredentialId: string | null; sshCredentialId: string | null; createdAt: Date; updatedAt: Date;
     mapNodes: Array<{ mapId: string }>;
     sourceHealth: Array<{ source: string; state: string; lastSuccess: Date | null; lastFailure: Date | null; lastErrorSafe: string | null }>;
@@ -936,6 +936,7 @@ export class PrismaHostRepository implements HostRepository {
         ? device.pppSource
         : null,
       bgpMonitoringEnabled: device.bgpMonitoringEnabled,
+      bgpLocalAs: device.bgpLocalAs === null ? null : device.bgpLocalAs.toString(),
       updatedAt: device.updatedAt.toISOString(),
       interfaces,
       description: device.description,

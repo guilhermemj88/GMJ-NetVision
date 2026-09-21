@@ -1,15 +1,22 @@
 'use client';
 
 import { ChevronDown, Search } from 'lucide-react';
-import type { BgpHistoryPeriod, BgpScope, BgpStateFilter } from '@gmj/shared';
+import type {
+  BgpAddressFamilyFilter,
+  BgpHistoryPeriod,
+  BgpScope,
+  BgpStateFilter,
+} from '@gmj/shared';
 
 interface BgpFiltersProps {
   scope: BgpScope;
   state: BgpStateFilter;
+  family: BgpAddressFamilyFilter;
   period: BgpHistoryPeriod;
   search: string;
   onScopeChange: (scope: BgpScope) => void;
   onStateChange: (state: BgpStateFilter) => void;
+  onFamilyChange: (family: BgpAddressFamilyFilter) => void;
   onPeriodChange: (period: BgpHistoryPeriod) => void;
   onSearchChange: (search: string) => void;
 }
@@ -47,6 +54,19 @@ export function BgpFilters(props: BgpFiltersProps) {
           <option value="all">Todos</option>
           <option value="up">UP</option>
           <option value="down">DOWN</option>
+        </select>
+        <ChevronDown size={13} />
+      </label>
+
+      <label className="bgp-select">
+        <span>FAMÍLIA</span>
+        <select
+          value={props.family}
+          onChange={(event) => props.onFamilyChange(event.target.value as BgpAddressFamilyFilter)}
+        >
+          <option value="all">Todos</option>
+          <option value="IPV4">IPv4</option>
+          <option value="IPV6">IPv6</option>
         </select>
         <ChevronDown size={13} />
       </label>

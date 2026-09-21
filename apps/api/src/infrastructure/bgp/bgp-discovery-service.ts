@@ -9,6 +9,7 @@ import type { BgpRepository } from './bgp-repository';
 
 export interface DiscoveredBgpPeer {
   peerAddress: string;
+  addressFamily: 'IPV4' | 'IPV6';
   remoteAs: bigint | null;
   stateCode: number | null;
   state: BgpPeerState | null;
@@ -24,6 +25,15 @@ export interface DiscoveredBgpPeer {
   correlationError: string | null;
 }
 
+export interface BgpDiscoveryOutcome {
+  peers: DiscoveredBgpPeer[];
+  /** Local ASN learned in this discovery, or null when it stayed unknown. */
+  localAs: bigint | null;
+  localAsAmbiguous: boolean;
+  ipv6Supported: boolean;
+  warnings: string[];
+}
+
 export class BgpDiscoveryService {
   constructor(
     private readonly ssh: HuaweiBgpSshService,
@@ -31,8 +41,16 @@ export class BgpDiscoveryService {
     private readonly now: () => Date = () => new Date(),
   ) {}
 
-  async discover(device: HostRecord): Promise<DiscoveredBgpPeer[]> {
+  async discover(device: HostRecord): Promise<BgpDiscoveryOutcome> {
     const discovery = await this.ssh.discover(device);
+    const discoveredAt = this.now();
+
+    // A local ASN is only persisted when the context exposed exactly one BGP
+    // process; an inconclusive or ambiguous read never erases the stored value.
+    if (discovery.localAs !== null) {
+      await this.repository.saveDeviceLocalAs(device.id, discovery.localAs, discoveredAt);
+    }
+
     const peers = discovery.peers.map((peer) => {
       const routeCommand = discovery.routeCommands.get(peer.peerAddress) ?? {
         status: 'COMMAND_FAILED' as const,
@@ -41,6 +59,7 @@ export class BgpDiscoveryService {
       const correlation = correlateBgpPeerInterface(
         device.id,
         peer.peerAddress,
+        peer.addressFamily,
         routeCommand,
         device.interfaces,
       );
@@ -52,7 +71,13 @@ export class BgpDiscoveryService {
         displayName: bgpPeerDescription || correlation.displayName,
       };
     });
-    await this.repository.saveDiscovery(device.id, peers, this.now());
-    return peers;
+    await this.repository.saveDiscovery(device.id, peers, discoveredAt);
+    return {
+      peers,
+      localAs: discovery.localAs,
+      localAsAmbiguous: discovery.localAsAmbiguous,
+      ipv6Supported: discovery.ipv6Supported,
+      warnings: discovery.warnings,
+    };
   }
 }

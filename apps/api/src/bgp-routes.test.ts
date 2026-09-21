@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import Fastify, { type FastifyInstance } from 'fastify';
+import { ZodError } from 'zod';
 import { registerBgpRoutes } from './bgp-routes';
+import type { AuthUser } from '@gmj/shared';
+import { BgpAdminActionError } from './infrastructure/bgp/bgp-admin-service';
 import { DemoBgpRepository } from './infrastructure/bgp/demo-bgp-repository';
 import type { HuaweiBgpCollection } from './infrastructure/bgp/huawei-bgp-snmp';
 
@@ -104,6 +107,7 @@ describe('BGP REST API', () => {
       established: 2,
       down: 0,
       receivedPrefixes: 1_311_664,
+      byFamily: { IPV4: 2, IPV6: 0 },
     });
   });
 
@@ -215,36 +219,48 @@ describe('BGP manual discovery API', () => {
       }),
     };
     const discovery = {
-      discover: vi.fn().mockResolvedValue([
-        {
-          peerAddress: '200.150.1.193',
-          remoteAs: 12345n,
-          stateCode: 6,
-          state: 'ESTABLISHED',
-          sessionUptimeSeconds: 3600,
-          interfaceId: 'if-1',
-          interfaceName: '100GE1/0/3',
-          interfaceAlias: null,
-          interfaceDescription: null,
-          displayName: 'TRANSITO XYZ',
-          correlationStatus: 'MATCHED',
-          correlationError: null,
-        },
-        {
-          peerAddress: '10.0.0.2',
-          remoteAs: null,
-          stateCode: 3,
-          state: 'ACTIVE',
-          sessionUptimeSeconds: null,
-          interfaceId: null,
-          interfaceName: null,
-          interfaceAlias: null,
-          interfaceDescription: null,
-          displayName: '10.0.0.2',
-          correlationStatus: 'UNMATCHED',
-          correlationError: null,
-        },
-      ]),
+      discover: vi.fn().mockResolvedValue({
+        localAs: 268568n,
+        localAsAmbiguous: false,
+        ipv6Supported: true,
+        warnings: [],
+        peers: [
+          {
+            peerAddress: '200.150.1.193',
+            addressFamily: 'IPV4',
+            remoteAs: 12345n,
+            stateCode: 6,
+            state: 'ESTABLISHED',
+            sessionUptimeSeconds: 3600,
+            cliReceivedPrefixes: 100n,
+            bgpPeerDescription: null,
+            interfaceId: 'if-1',
+            interfaceName: '100GE1/0/3',
+            interfaceAlias: null,
+            interfaceDescription: null,
+            displayName: 'TRANSITO XYZ',
+            correlationStatus: 'MATCHED',
+            correlationError: null,
+          },
+          {
+            peerAddress: '2001:db8::10',
+            addressFamily: 'IPV6',
+            remoteAs: 65001n,
+            stateCode: 3,
+            state: 'ACTIVE',
+            sessionUptimeSeconds: null,
+            cliReceivedPrefixes: null,
+            bgpPeerDescription: 'CLIENTE IPV6',
+            interfaceId: null,
+            interfaceName: null,
+            interfaceAlias: null,
+            interfaceDescription: null,
+            displayName: 'CLIENTE IPV6',
+            correlationStatus: 'NO_ROUTE',
+            correlationError: null,
+          },
+        ],
+      }),
     };
     const app = Fastify();
     registerBgpRoutes(app, {
@@ -263,11 +279,20 @@ describe('BGP manual discovery API', () => {
     expect(body).toMatchObject({
       hostId: 's6730-1',
       peersDiscovered: 2,
+      ipv4Peers: 1,
+      ipv6Peers: 1,
       matchedInterfaces: 1,
       unmatchedInterfaces: 1,
+      localAs: '268568',
+      localAsAmbiguous: false,
+      ipv6Supported: true,
     });
     expect(body.peers[0].remoteAs).toBe('12345');
+    expect(body.peers[0].addressFamily).toBe('IPV4');
     expect(body.peers[0].correlationStatus).toBe('MATCHED');
+    expect(body.peers[1].peerAddress).toBe('2001:db8::10');
+    expect(body.peers[1].addressFamily).toBe('IPV6');
+    expect(body.peers[1].bgpPeerDescription).toBe('CLIENTE IPV6');
     expect(body.peers[1].interfaceId).toBeNull();
     expect(discovery.discover).toHaveBeenCalledWith(
       expect.objectContaining({ id: 's6730-1', bgpMonitoringEnabled: false }),
@@ -421,6 +446,281 @@ describe('BGP peer history API', () => {
       occurredAt: down.toISOString(),
     });
 
+    await app.close();
+  });
+});
+
+describe('BGP dual-stack dashboard and alerts API', () => {
+  async function dualStackApp(): Promise<{ app: FastifyInstance; repo: DemoBgpRepository }> {
+    const repo = new DemoBgpRepository();
+    repo.setDevice({
+      id: 'ne8000-1',
+      hostname: 'NE8000-1',
+      displayName: 'NE-8K POP CENTRO',
+      bgpMonitoringEnabled: true,
+      bgpLocalAs: '268568',
+    });
+    await repo.saveCollection('ne8000-1', collection('2026-09-19T12:00:00.000Z', [
+      { peerAddress: '200.150.1.193', stateCode: 6, receivedPrefixes: 1_099_912 },
+    ]));
+    await repo.saveDiscovery(
+      'ne8000-1',
+      [
+        {
+          peerAddress: '2001:db8::10',
+          addressFamily: 'IPV6',
+          remoteAs: 265424n,
+          stateCode: 6,
+          state: 'ESTABLISHED',
+          sessionUptimeSeconds: 3600,
+          cliReceivedPrefixes: 42n,
+          bgpPeerDescription: 'CLIENTE IPV6',
+          interfaceId: null,
+          correlationStatus: 'NO_ROUTE',
+        },
+        {
+          peerAddress: '2001:db8::20',
+          addressFamily: 'IPV6',
+          remoteAs: 65001n,
+          stateCode: 3,
+          state: 'ACTIVE',
+          sessionUptimeSeconds: null,
+          cliReceivedPrefixes: null,
+          bgpPeerDescription: null,
+          interfaceId: null,
+          correlationStatus: 'NO_ROUTE',
+        },
+      ],
+      new Date('2026-09-19T12:05:00.000Z'),
+    );
+    const app = Fastify();
+    registerBgpRoutes(app, { bgp: repo });
+    await app.ready();
+    return { app, repo };
+  }
+
+  it('shows IPv4 and IPv6 peers together with their family', async () => {
+    const { app } = await dualStackApp();
+    const response = await app.inject({ method: 'GET', url: '/api/bgp?scope=all' });
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    const peers = body.devices[0].peers;
+    expect(
+      Object.fromEntries(
+        peers.map((peer: { peerAddress: string; addressFamily: string }) => [
+          peer.peerAddress,
+          peer.addressFamily,
+        ]),
+      ),
+    ).toEqual({
+      '200.150.1.193': 'IPV4',
+      '2001:db8::10': 'IPV6',
+      '2001:db8::20': 'IPV6',
+    });
+    const ipv6Established = peers.find(
+      (peer: { peerAddress: string }) => peer.peerAddress === '2001:db8::10',
+    );
+    expect(ipv6Established).toMatchObject({
+      displayName: 'CLIENTE IPV6',
+      remoteAs: '265424',
+      receivedPrefixes: 42,
+      localAs: '268568',
+      adminState: 'UNKNOWN',
+    });
+    expect(body.summary).toMatchObject({
+      peers: 3,
+      established: 2,
+      down: 1,
+      byFamily: { IPV4: 1, IPV6: 2 },
+    });
+    await app.close();
+  });
+
+  it('filters by family=IPV4 and family=IPV6', async () => {
+    const { app } = await dualStackApp();
+    const ipv6 = await app.inject({ method: 'GET', url: '/api/bgp?scope=all&family=IPV6' });
+    expect(
+      ipv6.json().devices[0].peers.map((peer: { peerAddress: string }) => peer.peerAddress),
+    ).toEqual(['2001:db8::10', '2001:db8::20']);
+
+    const ipv4 = await app.inject({ method: 'GET', url: '/api/bgp?scope=all&family=IPV4' });
+    expect(
+      ipv4.json().devices[0].peers.map((peer: { peerAddress: string }) => peer.peerAddress),
+    ).toEqual(['200.150.1.193']);
+    expect(ipv4.json().summary.byFamily).toEqual({ IPV4: 1, IPV6: 0 });
+    await app.close();
+  });
+
+  it('reports the family on active and resolved alerts', async () => {
+    const { app } = await dualStackApp();
+    const response = await app.inject({ method: 'GET', url: '/api/bgp/alerts?hours=48' });
+    const body = response.json();
+    expect(body.active.map((alert: { peerAddress: string }) => alert.peerAddress)).toEqual([
+      '2001:db8::20',
+    ]);
+    expect(body.active[0]).toMatchObject({ addressFamily: 'IPV6', currentState: 'ACTIVE' });
+    expect(body.resolved).toEqual([]);
+    await app.close();
+  });
+});
+
+describe('BGP administrative action API', () => {
+  function adminApp(options: {
+    user?: AuthUser | null;
+    execute?: ReturnType<typeof vi.fn>;
+  }): { app: FastifyInstance; execute: ReturnType<typeof vi.fn> } {
+    const execute =
+      options.execute ??
+      vi.fn().mockResolvedValue({
+        peerId: 'peer-1',
+        deviceId: 'ne8000-1',
+        peerAddress: '10.200.200.10',
+        addressFamily: 'IPV4',
+        action: 'DISABLE',
+        success: true,
+        adminState: 'IGNORED',
+        verified: true,
+        message: 'Sessão BGP desabilitada e confirmada por read-back (ADMIN: IGNORADO).',
+        executedAt: '2026-09-21T10:00:00.000Z',
+      });
+    const app = Fastify();
+    app.setErrorHandler((error, _request, reply) => {
+      if (error instanceof ZodError) return reply.code(400).send({ message: 'Invalid request' });
+      return reply.code(500).send({ message: 'Internal server error' });
+    });
+    registerBgpRoutes(app, {
+      bgp: new DemoBgpRepository(),
+      admin: { execute } as never,
+      currentUser: async () => options.user ?? null,
+    });
+    return { app, execute };
+  }
+
+  const adminUser: AuthUser = {
+    id: 'user-1',
+    username: 'admin',
+    email: 'admin@netvision.local',
+    name: 'Administrador',
+    role: 'ADMIN',
+  };
+  const operatorUser: AuthUser = { ...adminUser, id: 'user-2', username: 'operador', role: 'OPERATOR' };
+  const viewerUser: AuthUser = { ...adminUser, id: 'user-3', username: 'viewer', role: 'VIEWER' };
+
+  it('executes a confirmed disable for an authenticated ADMIN', async () => {
+    const { app, execute } = adminApp({ user: adminUser });
+    await app.ready();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/bgp/peers/peer-1/admin-state',
+      payload: { action: 'DISABLE' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ success: true, adminState: 'IGNORED' });
+    expect(execute).toHaveBeenCalledWith({
+      peerId: 'peer-1',
+      action: 'DISABLE',
+      user: adminUser,
+    });
+    await app.close();
+  });
+
+  it('executes an enable action', async () => {
+    const { app, execute } = adminApp({
+      user: adminUser,
+      execute: vi.fn().mockResolvedValue({
+        peerId: 'peer-1',
+        deviceId: 'ne8000-1',
+        peerAddress: '10.200.200.10',
+        addressFamily: 'IPV4',
+        action: 'ENABLE',
+        success: true,
+        adminState: 'ENABLED',
+        verified: true,
+        message: 'ok',
+        executedAt: '2026-09-21T10:00:00.000Z',
+      }),
+    });
+    await app.ready();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/bgp/peers/peer-1/admin-state',
+      payload: { action: 'ENABLE' },
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ action: 'ENABLE', adminState: 'ENABLED' });
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({ action: 'ENABLE' }));
+    await app.close();
+  });
+
+  it('rejects a VIEWER or OPERATOR without calling the service', async () => {
+    for (const user of [viewerUser, operatorUser]) {
+      const { app, execute } = adminApp({ user });
+      await app.ready();
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/bgp/peers/peer-1/admin-state',
+        payload: { action: 'DISABLE' },
+      });
+      expect(response.statusCode).toBe(403);
+      expect(execute).not.toHaveBeenCalled();
+      await app.close();
+    }
+  });
+
+  it('rejects an unauthenticated request', async () => {
+    const { app, execute } = adminApp({ user: null });
+    await app.ready();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/bgp/peers/peer-1/admin-state',
+      payload: { action: 'DISABLE' },
+    });
+    expect(response.statusCode).toBe(401);
+    expect(execute).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('rejects extra fields such as a raw CLI command or a forged local ASN', async () => {
+    const { app, execute } = adminApp({ user: adminUser });
+    await app.ready();
+    for (const payload of [
+      { action: 'DISABLE', command: 'shutdown' },
+      { action: 'DISABLE', localAs: 999 },
+      { action: 'DISABLE', peerAddress: '10.0.0.1' },
+      { action: 'RELOAD' },
+    ]) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/bgp/peers/peer-1/admin-state',
+        payload,
+      });
+      expect(response.statusCode).toBe(400);
+    }
+    expect(execute).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('maps domain failures to their HTTP status without leaking internals', async () => {
+    const { app } = adminApp({
+      user: adminUser,
+      execute: vi
+        .fn()
+        .mockRejectedValue(
+          new BgpAdminActionError(
+            'ASN local do processo BGP ainda não foi identificado. Execute "Atualizar agora" para fazer o discovery SSH.',
+            409,
+          ),
+        ),
+    });
+    await app.ready();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/bgp/peers/peer-1/admin-state',
+      payload: { action: 'DISABLE' },
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().message).toContain('discovery SSH');
+    expect(response.json().message).not.toMatch(/password|community/i);
     await app.close();
   });
 });

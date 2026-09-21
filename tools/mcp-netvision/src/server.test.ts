@@ -31,6 +31,11 @@ test("state UP/DOWN filters are forwarded", () => {
   assert.equal(bgpListQuery("ALL", "DOWN"), "scope=all&state=down");
 });
 
+test("family filter is forwarded and ALL is omitted", () => {
+  assert.equal(bgpListQuery("ALL", undefined, undefined, undefined, "IPV6"), "scope=all&family=IPV6");
+  assert.equal(bgpListQuery("ALL", undefined, undefined, undefined, "ALL"), "scope=all");
+});
+
 test("flattenBgpDashboardPeers extracts peers from grouped devices", () => {
   const body = {
     summary: { peers: 2 },
@@ -77,6 +82,24 @@ test("compactBgpPeer serializes to JSON without BigInt", () => {
   assert.doesNotThrow(() => JSON.stringify(compact));
 });
 
+test("compactBgpPeer carries the IPv6 family, local AS and admin state without aliases", () => {
+  const compact = compactBgpPeer({
+    id: "p2",
+    peerAddress: "2001:db8::10",
+    displayName: "CLIENTE IPV6",
+    addressFamily: "IPV6",
+    localAs: "268568",
+    remoteAs: "265424",
+    adminState: "IGNORED",
+    state: "IDLE",
+  });
+  assert.equal(compact.addressFamily, "IPV6");
+  assert.equal(compact.localAs, "268568");
+  assert.equal(compact.remoteAs, "265424");
+  assert.equal(compact.peerAddress, "2001:db8::10");
+  assert.deepEqual(Object.keys(compact).filter((key) => key.startsWith("api_")), []);
+});
+
 test("compactBgpHistory maps samples and events compactly", () => {
   const history = compactBgpHistory({
     peerId: "p1",
@@ -109,5 +132,14 @@ test("BGP MCP tools are registered without api_ aliases", () => {
   }
   for (const existing of ["list_hosts", "get_host", "list_interfaces", "get_interface", "get_interface_metrics", "test_host_snmp", "discover_interfaces", "poll_host"]) {
     assert.ok(names.includes(existing), `existing tool removed: ${existing}`);
+  }
+});
+
+test("no destructive BGP administrative tool is exposed through MCP", () => {
+  const server = createNetVisionMcpServer();
+  const registered = server as unknown as { _registeredTools: Record<string, unknown> };
+  const names = Object.keys(registered._registeredTools);
+  for (const name of names) {
+    assert.doesNotMatch(name, /disable|enable|admin_state|ignore|shutdown/i, `unexpected tool ${name}`);
   }
 });

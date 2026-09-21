@@ -1,7 +1,8 @@
-import { Prisma, PrismaClient, type BgpPeerRole, type BgpState } from '../../generated/prisma/index.js';
+import { Prisma, PrismaClient, type BgpPeerRole, type BgpState, type BgpAdminState as PrismaBgpAdminState, type BgpAddressFamily as PrismaBgpAddressFamily } from '../../generated/prisma/index.js';
 import {
   bigintToJsonNumber,
   bigintToJsonString,
+  decideBgpDiscoverySample,
   decideBgpDiscoveryState,
   decideBgpPollingUpdate,
   deriveBgpPeerDisplayName,
@@ -12,6 +13,8 @@ import type { BgpDashboardQuery, BgpDiscoveryPeerInput, BgpRepository } from './
 import type { HuaweiBgpCollection } from './huawei-bgp-snmp';
 import { computeBgpAlerts } from './bgp-alerts';
 import type {
+  BgpAdminState,
+  BgpAddressFamily,
   BgpAlertsResponse,
   BgpDashboardPeer,
   BgpHistoryPeriod,
@@ -142,46 +145,101 @@ export class PrismaBgpRepository implements BgpRepository {
         const existing = existingRow ? existingState(existingRow) : null;
         const state = decideBgpDiscoveryState(existing, discovered, discoveredAt);
         const interfaceUpdate = discoveryInterfaceUpdate(discovered);
-        if (!existing) {
-          await tx.bgpPeer.upsert({
-            where: { deviceId_peerAddress: key },
-            create: {
-              ...key,
-              peerDescription: discovered.bgpPeerDescription,
-              remoteAs: discovered.remoteAs,
-              interfaceId: interfaceUpdate.interfaceId ?? null,
-              role: 'OTHER',
-              monitoringEnabled: true,
-              stateCode: state.stateCode ?? 0,
-              state: state.state ?? 'UNKNOWN',
-              established: state.established ?? false,
-              establishedSince: state.establishedSince ?? null,
-              lastDiscoveryAt: discoveredAt,
-            },
-            update: {
-              ...(discovered.remoteAs === null ? {} : { remoteAs: discovered.remoteAs }),
-              ...(discovered.bgpPeerDescription === null
-                ? {}
-                : { peerDescription: discovered.bgpPeerDescription }),
-              ...interfaceUpdate,
-              lastDiscoveryAt: discoveredAt,
-            },
-          });
-          continue;
-        }
-        await tx.bgpPeer.update({
-          where: { id: existing.id },
-          data: {
+        // IPv6 has no SNMP state source yet, so its history (samples and state
+        // events for the 48h alert panel) is recorded from SSH discovery.
+        const sampling =
+          discovered.addressFamily === 'IPV6'
+            ? decideBgpDiscoverySample(existing, discovered, discoveredAt)
+            : null;
+        const sampleData =
+          sampling?.record === true
+            ? {
+                stateCode: sampling.stateCode,
+                state: sampling.state,
+                established: sampling.established,
+                receivedPrefixes: sampling.receivedPrefixes,
+                ...(sampling.establishedSince === undefined
+                  ? {}
+                  : { establishedSince: sampling.establishedSince }),
+                ...(sampling.lastStateChangedAt
+                  ? { lastStateChangedAt: sampling.lastStateChangedAt }
+                  : {}),
+              }
+            : {};
+
+        const peer = await tx.bgpPeer.upsert({
+          where: { deviceId_peerAddress: key },
+          create: {
+            ...key,
+            addressFamily: discovered.addressFamily as PrismaBgpAddressFamily,
+            peerDescription: discovered.bgpPeerDescription,
+            remoteAs: discovered.remoteAs,
+            interfaceId: interfaceUpdate.interfaceId ?? null,
+            role: 'OTHER',
+            monitoringEnabled: true,
+            stateCode: sampling?.record === true ? sampling.stateCode : (state.stateCode ?? 0),
+            state: sampling?.record === true ? sampling.state : (state.state ?? 'UNKNOWN'),
+            established: sampling?.record === true ? sampling.established : (state.established ?? false),
+            establishedSince:
+              sampling?.record === true
+                ? (sampling.establishedSince ?? null)
+                : (state.establishedSince ?? null),
+            lastDiscoveryAt: discoveredAt,
+          },
+          update: {
             ...(discovered.remoteAs === null ? {} : { remoteAs: discovered.remoteAs }),
             ...(discovered.bgpPeerDescription === null
               ? {}
               : { peerDescription: discovered.bgpPeerDescription }),
             ...interfaceUpdate,
             ...state,
+            ...sampleData,
             lastDiscoveryAt: discoveredAt,
           },
+          select: { id: true },
         });
+
+        if (sampling?.record === true) {
+          if (sampling.event) {
+            await tx.bgpPeerStateEvent.create({
+              data: { bgpPeerId: peer.id, ...sampling.event, occurredAt: discoveredAt },
+            });
+          }
+          await tx.bgpPeerSample.create({
+            data: {
+              bgpPeerId: peer.id,
+              timestamp: discoveredAt,
+              stateCode: sampling.stateCode,
+              state: sampling.state,
+              established: sampling.established,
+              receivedPrefixes: sampling.receivedPrefixes,
+            },
+          });
+        }
       }
+    });
+  }
+
+  async saveDeviceLocalAs(deviceId: string, localAs: bigint, _discoveredAt: Date): Promise<void> {
+    await this.prisma.device.update({ where: { id: deviceId }, data: { bgpLocalAs: localAs } });
+  }
+
+  async getDeviceLocalAs(deviceId: string): Promise<bigint | null> {
+    const device = await this.prisma.device.findUnique({
+      where: { id: deviceId },
+      select: { bgpLocalAs: true },
+    });
+    return device?.bgpLocalAs ?? null;
+  }
+
+  async setPeerAdminState(
+    peerId: string,
+    adminState: BgpAdminState,
+    checkedAt: Date,
+  ): Promise<void> {
+    await this.prisma.bgpPeer.update({
+      where: { id: peerId },
+      data: { adminState: adminState as PrismaBgpAdminState, adminStateCheckedAt: checkedAt },
     });
   }
 
@@ -189,6 +247,9 @@ export class PrismaBgpRepository implements BgpRepository {
     const where: Prisma.BgpPeerWhereInput = {
       ...(query.scope === 'monitored' ? { device: { bgpMonitoringEnabled: true } } : {}),
       ...(query.deviceId ? { deviceId: query.deviceId } : {}),
+      ...(query.family && query.family !== 'all'
+        ? { addressFamily: query.family as PrismaBgpAddressFamily }
+        : {}),
       ...(query.state === 'up'
         ? { established: true }
         : query.state === 'down'
@@ -199,7 +260,13 @@ export class PrismaBgpRepository implements BgpRepository {
       where,
       include: {
         device: {
-          select: { id: true, hostname: true, displayName: true, bgpMonitoringEnabled: true },
+          select: {
+            id: true,
+            hostname: true,
+            displayName: true,
+            bgpMonitoringEnabled: true,
+            bgpLocalAs: true,
+          },
         },
         interface: { select: { id: true, name: true, alias: true, description: true } },
       },
@@ -230,7 +297,13 @@ export class PrismaBgpRepository implements BgpRepository {
       where: { id: peerId },
       include: {
         device: {
-          select: { id: true, hostname: true, displayName: true, bgpMonitoringEnabled: true },
+          select: {
+            id: true,
+            hostname: true,
+            displayName: true,
+            bgpMonitoringEnabled: true,
+            bgpLocalAs: true,
+          },
         },
         interface: { select: { id: true, name: true, alias: true, description: true } },
       },
@@ -314,6 +387,7 @@ export class PrismaBgpRepository implements BgpRepository {
         deviceId: row.deviceId,
         deviceName: row.device.displayName,
         peerAddress: row.peerAddress,
+        addressFamily: row.addressFamily as BgpAddressFamily,
         displayName: deriveBgpPeerDisplayName(row.peerAddress, row.interface ?? null, row.peerDescription),
         state: row.state as BgpPeerState,
         established: row.established,
@@ -336,11 +410,14 @@ export class PrismaBgpRepository implements BgpRepository {
       id: string;
       deviceId: string;
       peerAddress: string;
+      addressFamily: PrismaBgpAddressFamily;
       peerDescription: string | null;
       remoteAs: bigint | null;
       interfaceId: string | null;
       monitoringEnabled: boolean;
       role: BgpPeerRole;
+      adminState: PrismaBgpAdminState;
+      adminStateCheckedAt: Date | null;
       stateCode: number;
       state: BgpState;
       established: boolean;
@@ -348,7 +425,13 @@ export class PrismaBgpRepository implements BgpRepository {
       establishedSince: Date | null;
       lastPollingAt: Date | null;
       lastDiscoveryAt: Date | null;
-      device: { id: string; hostname: string; displayName: string; bgpMonitoringEnabled: boolean };
+      device: {
+        id: string;
+        hostname: string;
+        displayName: string;
+        bgpMonitoringEnabled: boolean;
+        bgpLocalAs: bigint | null;
+      };
       interface: { id: string; name: string; alias: string | null; description: string | null } | null;
     },
     traffic: Map<string, { rxBps: number; txBps: number }>,
@@ -363,12 +446,16 @@ export class PrismaBgpRepository implements BgpRepository {
       bgpMonitoringEnabled: row.device.bgpMonitoringEnabled,
       peerAddress: row.peerAddress,
       displayName: deriveBgpPeerDisplayName(row.peerAddress, iface, row.peerDescription),
+      addressFamily: row.addressFamily as BgpAddressFamily,
+      localAs: bigintToJsonString(row.device.bgpLocalAs),
       remoteAs: bigintToJsonString(row.remoteAs),
       role: row.role as BgpPeerRole,
       monitoringEnabled: row.monitoringEnabled,
       stateCode: row.stateCode,
       state: row.state as BgpPeerState,
       established: row.established,
+      adminState: row.adminState as BgpAdminState,
+      adminStateCheckedAt: row.adminStateCheckedAt?.toISOString() ?? null,
       receivedPrefixes: bigintToJsonNumber(row.receivedPrefixes),
       establishedSince: row.establishedSince?.toISOString() ?? null,
       lastPollingAt: row.lastPollingAt?.toISOString() ?? null,

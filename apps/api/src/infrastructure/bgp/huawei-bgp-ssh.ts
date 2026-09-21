@@ -1,12 +1,15 @@
-import type { HostRecord } from '@gmj/shared';
+import type { BgpAddressFamily, BgpAdminAction, HostRecord } from '@gmj/shared';
 import type { SshClient } from '../../domain/ports';
 import type { HostRepository } from '../persistence/host-repository';
 import { SshClientImpl } from '../ssh/ssh-client-impl';
 import type { BgpRouteCommandResult } from './bgp-interface-correlation';
 import {
+  isAdminIgnoredCliState,
   mergeHuaweiBgpPeerDetails,
+  parseHuaweiBgpLocalAs,
   parseHuaweiBgpPeerSummary,
   parseHuaweiBgpPeerVerbose,
+  parseHuaweiPeerAdminConfig,
   type ParsedHuaweiBgpPeer,
 } from './huawei-bgp-ssh-parser';
 
@@ -23,6 +26,42 @@ export interface HuaweiBgpSshDiscovery {
   peers: ParsedHuaweiBgpPeer[];
   routeCommands: ReadonlyMap<string, BgpRouteCommandResult>;
   verboseUsed: boolean;
+  /** Local ASN of the BGP process in the configured SSH context, when known. */
+  localAs: bigint | null;
+  /** True when the context exposes more than one BGP process. */
+  localAsAmbiguous: boolean;
+  /** False when `display bgp ipv6 peer` is unsupported on this device. */
+  ipv6Supported: boolean;
+  warnings: string[];
+}
+
+export interface BgpAdminStateReading {
+  state: 'IGNORED' | 'ENABLED' | 'UNKNOWN';
+  source: 'CONFIGURATION' | 'PEER_STATE' | null;
+}
+
+export interface BgpAdminApplyResult {
+  success: boolean;
+  errorSafe: string | null;
+}
+
+/** Read-only commands per address family (IPv4 and IPv6 output never mix). */
+function peerSummaryCommand(addressFamily: BgpAddressFamily): string {
+  return addressFamily === 'IPV6' ? 'display bgp ipv6 peer' : 'display bgp peer';
+}
+
+function peerVerboseCommand(addressFamily: BgpAddressFamily): string {
+  return addressFamily === 'IPV6' ? 'display bgp ipv6 peer verbose' : 'display bgp peer verbose';
+}
+
+function routeLookupCommand(addressFamily: BgpAddressFamily, peerAddress: string): string {
+  return addressFamily === 'IPV6'
+    ? `display ipv6 routing-table ${peerAddress}`
+    : `display ip routing-table ${peerAddress}`;
+}
+
+function adminConfigCommand(peerAddress: string): string {
+  return `display current-configuration configuration bgp | include peer ${peerAddress}`;
 }
 
 function safeSshError(error: unknown): string {
@@ -57,33 +96,51 @@ export class HuaweiBgpSshService {
   ) {}
 
   async discover(device: HostRecord): Promise<HuaweiBgpSshDiscovery> {
-    if (!device.sshEnabled || !device.ssh?.host || !device.ssh.username) {
-      throw new Error('SSH não está habilitado para este host');
-    }
-    const credentials = await this.repository.getDecryptedSshCredentials(device.id);
-    if (!credentials?.password) throw new Error('SSH credential not configured');
-    const client = this.clientFactory({
-      port: device.ssh.port,
-      username: device.ssh.username,
-      password: credentials.password,
-      contextCommand: device.ssh.contextCommand ?? null,
-    });
+    const client = await this.createClient(device);
+    const host = device.ssh!.host;
+    const warnings: string[] = [];
 
-    const summaryOutput = await this.executeRequired(client, device.ssh.host, 'display bgp peer');
-    let peers = parseHuaweiBgpPeerSummary(summaryOutput);
+    // The local ASN is learned inside the configured SSH context (virtual
+    // system), because one physical device can host several BGP processes.
+    const localAsReading = await this.learnLocalAs(client, host);
+
+    const summaryOutput = await this.executeRequired(client, host, peerSummaryCommand('IPV4'));
+    let peers = parseHuaweiBgpPeerSummary(summaryOutput, 'IPV4');
     let verboseUsed = false;
     if (peers.length && needsVerbose(peers)) {
       try {
-        const verboseOutput = await this.executeRequired(
-          client,
-          device.ssh.host,
-          'display bgp peer verbose',
-        );
-        peers = mergeHuaweiBgpPeerDetails(peers, parseHuaweiBgpPeerVerbose(verboseOutput));
+        const verboseOutput = await this.executeRequired(client, host, peerVerboseCommand('IPV4'));
+        peers = mergeHuaweiBgpPeerDetails(peers, parseHuaweiBgpPeerVerbose(verboseOutput, 'IPV4'));
         verboseUsed = true;
       } catch {
         // Verbose is optional enrichment. Valid summary peers remain discoverable.
       }
+    }
+
+    // IPv6 degrades in isolation: an unsupported command must never break the
+    // IPv4 discovery of the same device.
+    let ipv6Supported = true;
+    try {
+      const ipv6Summary = await this.executeRequired(client, host, peerSummaryCommand('IPV6'));
+      let ipv6Peers = parseHuaweiBgpPeerSummary(ipv6Summary, 'IPV6');
+      if (ipv6Peers.length && needsVerbose(ipv6Peers)) {
+        try {
+          const ipv6Verbose = await this.executeRequired(client, host, peerVerboseCommand('IPV6'));
+          ipv6Peers = mergeHuaweiBgpPeerDetails(
+            ipv6Peers,
+            parseHuaweiBgpPeerVerbose(ipv6Verbose, 'IPV6'),
+          );
+          verboseUsed = true;
+        } catch {
+          // Optional IPv6 enrichment.
+        }
+      }
+      peers = [...peers, ...ipv6Peers];
+    } catch (error) {
+      ipv6Supported = false;
+      warnings.push(
+        `IPv6: ${safeSshError(error)}. Sessões IPv6 não foram atualizadas neste discovery.`,
+      );
     }
 
     const routeCommands = new Map<string, BgpRouteCommandResult>();
@@ -91,8 +148,8 @@ export class HuaweiBgpSshService {
       try {
         const output = await this.executeRequired(
           client,
-          device.ssh.host,
-          `display ip routing-table ${peer.peerAddress}`,
+          host,
+          routeLookupCommand(peer.addressFamily, peer.peerAddress),
         );
         routeCommands.set(peer.peerAddress, { status: 'SUCCESS', output });
       } catch (error) {
@@ -102,7 +159,124 @@ export class HuaweiBgpSshService {
         });
       }
     }
-    return { peers, routeCommands, verboseUsed };
+
+    return {
+      peers,
+      routeCommands,
+      verboseUsed,
+      localAs: localAsReading.localAs,
+      localAsAmbiguous: localAsReading.ambiguous,
+      ipv6Supported,
+      warnings,
+    };
+  }
+
+  /**
+   * Applies `peer <addr> ignore` / `undo peer <addr> ignore` inside the BGP
+   * process of the device context. The caller owns the human confirmation and
+   * the mandatory read-back.
+   *
+   * `system-view` is included because every VRP command that changes the BGP
+   * process is a system-view command: the SSH session starts in user view and
+   * re-entering system view is harmless when the account already starts there.
+   * The optional SSH context command is injected by the transport right after
+   * `screen-length 0 temporary`, i.e. still in user view, before `system-view`.
+   */
+  async applyAdminState(
+    device: HostRecord,
+    input: { peerAddress: string; localAs: bigint; action: BgpAdminAction },
+  ): Promise<BgpAdminApplyResult> {
+    const client = await this.createClient(device);
+    const peerCommand = `${
+      input.action === 'DISABLE' ? '' : 'undo '
+    }peer ${input.peerAddress} ignore`;
+    const output = await this.executeStrict(client, device.ssh!.host, [
+      'screen-length 0 temporary',
+      'system-view',
+      `bgp ${input.localAs.toString()}`,
+      peerCommand,
+      'commit',
+    ]);
+    return output === null
+      ? { success: false, errorSafe: 'SSH command failed' }
+      : { success: true, errorSafe: null };
+  }
+
+  /**
+   * Deterministic read-back of the administrative state. The peer-filtered
+   * configuration is the primary source; when the device does not support the
+   * filter, the peer state column (`Idle(Admin)`) is used as a secondary,
+   * still read-only, confirmation.
+   */
+  async readAdminState(
+    device: HostRecord,
+    input: { peerAddress: string; addressFamily: BgpAddressFamily },
+  ): Promise<BgpAdminStateReading> {
+    const client = await this.createClient(device);
+    const configOutput = await this.executeStrict(client, device.ssh!.host, [
+      'screen-length 0 temporary',
+      adminConfigCommand(input.peerAddress),
+    ]);
+    if (configOutput !== null) {
+      const state = parseHuaweiPeerAdminConfig(configOutput, input.peerAddress);
+      if (state) return { state, source: 'CONFIGURATION' };
+    }
+
+    const stateOutput = await this.executeStrict(client, device.ssh!.host, [
+      'screen-length 0 temporary',
+      peerSummaryCommand(input.addressFamily),
+    ]);
+    if (stateOutput === null) return { state: 'UNKNOWN', source: null };
+    const peer = parseHuaweiBgpPeerSummary(stateOutput, input.addressFamily).find(
+      (candidate) => candidate.peerAddress === input.peerAddress,
+    );
+    if (!peer) return { state: 'UNKNOWN', source: null };
+    return {
+      state: isAdminIgnoredCliState(peer.cliStateToken) ? 'IGNORED' : 'ENABLED',
+      source: 'PEER_STATE',
+    };
+  }
+
+  private async learnLocalAs(
+    client: SshClient,
+    host: string,
+  ): Promise<{ localAs: bigint | null; ambiguous: boolean }> {
+    const output = await this.executeStrict(client, host, [
+      'screen-length 0 temporary',
+      'display current-configuration configuration bgp',
+    ]);
+    if (output === null) return { localAs: null, ambiguous: false };
+    return parseHuaweiBgpLocalAs(output);
+  }
+
+  private async createClient(device: HostRecord): Promise<SshClient> {
+    if (!device.sshEnabled || !device.ssh?.host || !device.ssh.username) {
+      throw new Error('SSH não está habilitado para este host');
+    }
+    const credentials = await this.repository.getDecryptedSshCredentials(device.id);
+    if (!credentials?.password) throw new Error('SSH credential not configured');
+    return this.clientFactory({
+      port: device.ssh.port,
+      username: device.ssh.username,
+      password: credentials.password,
+      contextCommand: device.ssh.contextCommand ?? null,
+    });
+  }
+
+  /** Returns the raw output, or null when the command reported an error. */
+  private async executeStrict(
+    client: SshClient,
+    host: string,
+    commands: string[],
+  ): Promise<string | null> {
+    try {
+      const results = await client.execute(host, commands);
+      const result = results.at(-1);
+      if (!result || result.exitCode !== 0 || commandOutputError(result.stdout)) return null;
+      return result.stdout;
+    } catch {
+      return null;
+    }
   }
 
   private async executeRequired(client: SshClient, host: string, command: string): Promise<string> {

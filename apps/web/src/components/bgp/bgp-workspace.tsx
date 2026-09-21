@@ -3,6 +3,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
+  BgpAddressFamilyFilter,
   BgpAlertDto,
   BgpDashboardPeer,
   BgpHistoryPeriod,
@@ -33,6 +34,7 @@ export function BgpWorkspace() {
   const queryClient = useQueryClient();
   const [scope, setScope] = useState<BgpScope>('monitored');
   const [state, setState] = useState<BgpStateFilter>('all');
+  const [family, setFamily] = useState<BgpAddressFamilyFilter>('all');
   const [period, setPeriod] = useState<BgpHistoryPeriod>('1h');
   const [search, setSearch] = useState('');
   const [selectedPeer, setSelectedPeer] = useState<BgpDashboardPeer | null>(null);
@@ -45,11 +47,12 @@ export function BgpWorkspace() {
   const now = useNow(1_000);
 
   const dashboard = useQuery({
-    queryKey: ['bgp', scope, state, deferredSearch],
+    queryKey: ['bgp', scope, state, family, deferredSearch],
     queryFn: () =>
       getBgpDashboard({
         scope,
         state,
+        family,
         ...(deferredSearch.trim() ? { q: deferredSearch.trim() } : {}),
       }),
     refetchInterval: 60_000,
@@ -102,8 +105,20 @@ export function BgpWorkspace() {
     if (sshFailed) setNotice('Discovery SSH falhou; estado e rotas atualizados por SNMP.');
     await queryClient.invalidateQueries({ queryKey: ['bgp'] });
     await queryClient.invalidateQueries({ queryKey: ['bgp-alerts'] });
+    await queryClient.invalidateQueries({ queryKey: ['bgp-peer-history'] });
     await queryClient.invalidateQueries({ queryKey: ['hosts'] });
     return { sshFailed };
+  }
+
+  /**
+   * Requirement: after an administrative action the view is rebuilt from the
+   * device (SNMP polling + SSH discovery) and every BGP cache is invalidated.
+   */
+  async function refreshPeerAfterAction(peerId: string, deviceId: string): Promise<void> {
+    await refreshDeviceCore(deviceId);
+    await queryClient.invalidateQueries({ queryKey: ['bgp-peer-history', peerId] });
+    const updated = await getBgpPeer(peerId);
+    if (updated) setSelectedPeer(updated);
   }
 
   async function refreshDevice(deviceId: string): Promise<void> {
@@ -145,7 +160,7 @@ export function BgpWorkspace() {
     });
   }
 
-  const hasFilters = Boolean(search.trim()) || state !== 'all';
+  const hasFilters = Boolean(search.trim()) || state !== 'all' || family !== 'all';
   const devices = dashboard.data?.devices ?? [];
   const emptyMessage = hasFilters
     ? 'Nenhum peer corresponde aos filtros selecionados.'
@@ -189,10 +204,12 @@ export function BgpWorkspace() {
       <BgpFilters
         scope={scope}
         state={state}
+        family={family}
         period={period}
         search={search}
         onScopeChange={setScope}
         onStateChange={setState}
+        onFamilyChange={setFamily}
         onPeriodChange={setPeriod}
         onSearchChange={setSearch}
       />
@@ -215,6 +232,7 @@ export function BgpWorkspace() {
                 established: 0,
                 down: 0,
                 receivedPrefixes: 0,
+                byFamily: { IPV4: 0, IPV6: 0 },
               }
             }
           />
@@ -283,6 +301,7 @@ export function BgpWorkspace() {
           peer={selectedPeer}
           period={period}
           onClose={() => setSelectedPeer(null)}
+          onRefreshed={refreshPeerAfterAction}
         />
       )}
       {manageOpen && <BgpManageDevices onClose={() => setManageOpen(false)} />}

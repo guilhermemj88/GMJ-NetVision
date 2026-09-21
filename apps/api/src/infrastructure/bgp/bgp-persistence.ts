@@ -125,6 +125,88 @@ export function discoveryInterfaceUpdate(peer: BgpDiscoveryPeerInput): {
   return { interfaceId: peer.correlationStatus === 'MATCHED' ? peer.interfaceId : null };
 }
 
+export interface BgpDiscoverySampleUpdate {
+  record: boolean;
+  stateCode: number;
+  state: BgpPeerState;
+  established: boolean;
+  receivedPrefixes: bigint | null;
+  establishedSince?: Date | null;
+  lastStateChangedAt?: Date;
+  event: {
+    previousStateCode: number;
+    previousState: BgpPeerState;
+    currentStateCode: number;
+    currentState: BgpPeerState;
+  } | null;
+}
+
+/**
+ * Sampling decision for address families that have no SNMP state source yet
+ * (IPv6). IPv4 keeps SNMP as the single owner of samples and state events, so
+ * this helper is only used for peers whose state comes from SSH discovery.
+ *
+ * History belongs to the persisted peer: no per-family model is introduced.
+ */
+export function decideBgpDiscoverySample(
+  existing: ExistingBgpPeerState | null,
+  peer: BgpDiscoveryPeerInput,
+  discoveredAt: Date,
+): BgpDiscoverySampleUpdate {
+  if (peer.stateCode === null || peer.state === null) {
+    return {
+      record: false,
+      stateCode: 0,
+      state: 'UNKNOWN',
+      established: false,
+      receivedPrefixes: null,
+      event: null,
+    };
+  }
+  const established = peer.stateCode === 6 && peer.state === 'ESTABLISHED';
+  const receivedPrefixes = established ? peer.cliReceivedPrefixes : null;
+  const candidate = establishedSinceFromDiscovery(peer, discoveredAt);
+  if (!existing) {
+    return {
+      record: true,
+      stateCode: peer.stateCode,
+      state: peer.state,
+      established,
+      receivedPrefixes,
+      establishedSince: established ? candidate : null,
+      event: null,
+    };
+  }
+  if (existing.stateCode === peer.stateCode) {
+    return {
+      record: true,
+      stateCode: peer.stateCode,
+      state: peer.state,
+      established,
+      receivedPrefixes,
+      ...(established && existing.establishedSince === null && candidate
+        ? { establishedSince: candidate }
+        : {}),
+      event: null,
+    };
+  }
+  return {
+    record: true,
+    stateCode: peer.stateCode,
+    state: peer.state,
+    established,
+    receivedPrefixes,
+    establishedSince: established ? (existing.establishedSince ?? candidate) : null,
+    lastStateChangedAt: discoveredAt,
+    event: {
+      previousStateCode: existing.stateCode,
+      previousState: existing.state,
+      currentStateCode: peer.stateCode,
+      currentState: peer.state,
+    },
+  };
+}
+
 export function deriveBgpPeerDisplayName(
   peerAddress: string,
   interfaceInfo: { alias: string | null; description: string | null; name: string | null } | null,

@@ -5,6 +5,14 @@ import type { BgpAlertDto, BgpScope } from '@gmj/shared';
 import { getBgpAlerts } from '@/lib/api';
 import { formatClock, formatDurationShort } from '@/lib/bgp-format';
 
+function familyText(alert: BgpAlertDto): string {
+  return alert.addressFamily === 'IPV6' ? 'IPv6' : 'IPv4';
+}
+
+function familyClass(alert: BgpAlertDto): string {
+  return alert.addressFamily === 'IPV6' ? 'ipv6' : 'ipv4';
+}
+
 export function BgpAlertsPanel({
   scope,
   onSelectAlert,
@@ -48,6 +56,9 @@ export function BgpAlertsPanel({
                     <strong>{alert.deviceName}</strong>
                     <em>{alert.displayName}</em>
                     <small>{alert.peerAddress}</small>
+                    <small className={`bgp-family bgp-family--${familyClass(alert)}`}>
+                      {familyText(alert)}
+                    </small>
                     <small className="bgp-alerts__transition">
                       {alert.previousState ? `${alert.previousState} → ` : ''}
                       {alert.currentState}
@@ -81,6 +92,9 @@ export function BgpAlertsPanel({
                     <strong>{alert.deviceName}</strong>
                     <em>{alert.displayName}</em>
                     <small>{alert.peerAddress}</small>
+                    <small className={`bgp-family bgp-family--${familyClass(alert)}`}>
+                      {familyText(alert)}
+                    </small>
                     <small className="bgp-alerts__transition">
                       {alert.previousState} → {alert.currentState}
                     </small>

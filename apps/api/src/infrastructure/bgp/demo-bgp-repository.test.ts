@@ -38,10 +38,12 @@ function collection(
 function discovery(overrides: Partial<BgpDiscoveryPeerInput> = {}): BgpDiscoveryPeerInput {
   return {
     peerAddress,
+    addressFamily: 'IPV4',
     remoteAs: 64500n,
     stateCode: 6,
     state: 'ESTABLISHED',
     sessionUptimeSeconds: 3600,
+    cliReceivedPrefixes: null,
     bgpPeerDescription: null,
     interfaceId: 'interface-1',
     correlationStatus: 'MATCHED',

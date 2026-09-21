@@ -33,6 +33,9 @@ import { config } from './config';
 import { registerHostRoutes } from './host-routes';
 import { registerMplsRoutes } from './mpls-routes';
 import { registerBgpRoutes } from './bgp-routes';
+import { registerPhysicalRoutes } from './physical-routes';
+import { DemoPhysicalRepository } from './infrastructure/physical/demo-physical-repository';
+import { PrismaPhysicalRepository } from './infrastructure/physical/prisma-physical-repository';
 import { DemoMetricAdapter } from './infrastructure/metrics/demo-adapter';
 import { ZabbixAdapter } from './infrastructure/metrics/zabbix-adapter';
 import { DemoAuthRepository } from './infrastructure/persistence/demo-auth-repository';
@@ -65,6 +68,9 @@ import { PppPollingService } from './infrastructure/ppp/ppp-polling-service';
 import { PrismaPppRepository } from './infrastructure/ppp/prisma-ppp-repository';
 import { BgpPollingService } from './infrastructure/bgp/bgp-polling-service';
 import { BgpDiscoveryService } from './infrastructure/bgp/bgp-discovery-service';
+import { BgpAdminService } from './infrastructure/bgp/bgp-admin-service';
+import { InMemoryBgpAdminAuditRepository } from './infrastructure/bgp/bgp-admin-audit';
+import { PrismaBgpAdminAuditRepository } from './infrastructure/bgp/prisma-bgp-admin-audit-repository';
 import { HuaweiBgpSshService } from './infrastructure/bgp/huawei-bgp-ssh';
 import { DemoBgpRepository } from './infrastructure/bgp/demo-bgp-repository';
 import { HuaweiBgpSnmpCollector } from './infrastructure/bgp/huawei-bgp-snmp';
@@ -403,6 +409,18 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     bgpRepository,
   );
   const bgpDiscovery = new BgpDiscoveryService(new HuaweiBgpSshService(hosts), bgpRepository);
+  const bgpAudit = config.DEMO_MODE
+    ? new InMemoryBgpAdminAuditRepository()
+    : new PrismaBgpAdminAuditRepository();
+  const bgpAdmin = new BgpAdminService({
+    bgp: bgpRepository,
+    hosts,
+    ssh: new HuaweiBgpSshService(hosts),
+    audit: bgpAudit,
+  });
+  const physicalRepository = config.DEMO_MODE
+    ? new DemoPhysicalRepository(hosts)
+    : new PrismaPhysicalRepository();
   const alarmRepository = config.DEMO_MODE
     ? new DemoAlarmRepository()
     : new PrismaAlarmRepository();
@@ -437,7 +455,18 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   registerHostRoutes(app, { legacyMaps, mapMembership: maps, hosts, discovery, snmp, ssh, zabbix });
   registerMplsRoutes(app, { hosts, mpls: mplsRepository });
   registerAlarmRoutes(app, { alarms: alarmRepository });
-  registerBgpRoutes(app, { bgp: bgpRepository, hosts, discovery: bgpDiscovery });
+  registerBgpRoutes(app, {
+    bgp: bgpRepository,
+    hosts,
+    discovery: bgpDiscovery,
+    admin: bgpAdmin,
+    currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
+  });
+  registerPhysicalRoutes(app, {
+    repository: physicalRepository,
+    enforcePermissions: options.requireAuth ?? !config.DEMO_MODE,
+    currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
+  });
 
   app.addHook('onReady', async () => {
     if (config.DEMO_MODE) {
@@ -477,7 +506,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     if (mplsRepository instanceof PrismaMplsRepository) await mplsRepository.disconnect();
     if (pppRepository instanceof PrismaPppRepository) await pppRepository.disconnect();
     if (bgpRepository instanceof PrismaBgpRepository) await bgpRepository.disconnect();
+    if (bgpAudit instanceof PrismaBgpAdminAuditRepository) await bgpAudit.disconnect();
     if (alarmRepository instanceof PrismaAlarmRepository) await alarmRepository.disconnect();
+    await physicalRepository.disconnect();
   });
 
   app.get('/health', async () => ({

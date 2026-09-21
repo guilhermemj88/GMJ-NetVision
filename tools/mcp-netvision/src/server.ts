@@ -275,11 +275,19 @@ function pickInterfaceDetail(item: Record<string, unknown>): Record<string, unkn
 
 export type BgpScopeArg = "MONITORED" | "ALL";
 export type BgpStateArg = "UP" | "DOWN";
+export type BgpFamilyArg = "ALL" | "IPV4" | "IPV6";
 
-export function bgpListQuery(scope: BgpScopeArg, state?: BgpStateArg, q?: string, deviceId?: string): string {
+export function bgpListQuery(
+  scope: BgpScopeArg,
+  state?: BgpStateArg,
+  q?: string,
+  deviceId?: string,
+  family?: BgpFamilyArg,
+): string {
   const params = new URLSearchParams();
   params.set("scope", scope === "ALL" ? "all" : "monitored");
   if (state) params.set("state", state === "UP" ? "up" : "down");
+  if (family && family !== "ALL") params.set("family", family);
   if (q?.trim()) params.set("q", q.trim());
   if (deviceId?.trim()) params.set("deviceId", deviceId.trim());
   return params.toString();
@@ -304,6 +312,8 @@ export function compactBgpPeer(peer: Record<string, unknown>): Record<string, un
     deviceName: peer.deviceDisplayName,
     peerAddress: peer.peerAddress,
     displayName: peer.displayName,
+    addressFamily: peer.addressFamily,
+    localAs: peer.localAs,
     remoteAs: peer.remoteAs,
     state: peer.state,
     stateCode: peer.stateCode,
@@ -325,6 +335,9 @@ export function compactBgpPeerDetail(peer: Record<string, unknown>): Record<stri
     role: peer.role,
     monitoringEnabled: peer.monitoringEnabled,
     bgpMonitoringEnabled: peer.bgpMonitoringEnabled,
+    /** UNKNOWN means no SSH read-back ever confirmed the administrative state. */
+    adminState: peer.adminState,
+    adminStateCheckedAt: peer.adminStateCheckedAt,
     interfaceAlias: iface?.alias ?? null,
     interfaceDescription: iface?.description ?? null,
     lastDiscoveryAt: peer.lastDiscoveryAt,
@@ -457,14 +470,14 @@ export function createNetVisionMcpServer() {
   server.registerTool("preview_lldp_topology", { title: "Preview LLDP Topology", description: "Return a previously discovered LLDP topology preview by ID without changing anything.", inputSchema: z.object({ previewId: z.string().min(1) }) }, async ({ previewId }) => textResult(await apiRequest("POST", "/api/topology/lldp/preview", { previewId })));
   server.registerTool("apply_lldp_topology", { title: "Apply LLDP Topology", description: "Create only the selected (CREATE_LINK) LLDP adjacency links on a map. Ambiguous or unknown neighbors are never applied.", inputSchema: z.object({ previewId: z.string().min(1), mapId: z.string().min(1), selections: z.array(z.object({ adjacencyId: z.string().min(1), action: z.enum(["CREATE_LINK", "IGNORE"]) })).min(1) }) }, async ({ previewId, mapId, selections }) => textResult(await apiRequest("POST", "/api/topology/lldp/apply", { previewId, mapId, selections })));
 
-  server.registerTool("list_bgp_peers", { title: "List BGP Peers", description: "List current BGP peers in compact form. Defaults to the MONITORED scope, which only includes devices with bgpMonitoringEnabled=true. Use scope=ALL to include every device that has at least one persisted BGP peer.", inputSchema: z.object({ deviceId: z.string().optional(), q: z.string().optional(), state: z.enum(["UP", "DOWN"]).optional(), scope: z.enum(["MONITORED", "ALL"]).default("MONITORED") }) }, async ({ deviceId, q, state, scope }) => {
-    const query = bgpListQuery(scope, state, q, deviceId);
+  server.registerTool("list_bgp_peers", { title: "List BGP Peers", description: "List current BGP peers (IPv4 and IPv6 together) in compact form. Defaults to the MONITORED scope, which only includes devices with bgpMonitoringEnabled=true. Use scope=ALL to include every device that has at least one persisted BGP peer, and family to restrict the address family.", inputSchema: z.object({ deviceId: z.string().optional(), q: z.string().optional(), state: z.enum(["UP", "DOWN"]).optional(), family: z.enum(["ALL", "IPV4", "IPV6"]).default("ALL"), scope: z.enum(["MONITORED", "ALL"]).default("MONITORED") }) }, async ({ deviceId, q, state, family, scope }) => {
+    const query = bgpListQuery(scope, state, q, deviceId, family);
     const result = await apiRequestJson("GET", `/api/bgp${query ? `?${query}` : ""}`);
     if (!result.ok) return textResult(apiErrorText(result));
     const peers = flattenBgpDashboardPeers(result.body).map((peer) => compactBgpPeer(peer));
     return textResult(JSON.stringify(peers, null, 2));
   });
-  server.registerTool("get_bgp_peer", { title: "Get BGP Peer", description: "Return current compact details for one known BGP peer, including remote AS, state, received routes, associated interface and its RX/TX. Use list_bgp_peers to discover peer ids.", inputSchema: z.object({ peerId: z.string().min(1) }) }, async ({ peerId }) => {
+  server.registerTool("get_bgp_peer", { title: "Get BGP Peer", description: "Return current compact details for one known BGP peer: address family, local and remote AS, state, address-family-specific received routes, associated interface with RX/TX and the administratively confirmed adminState (UNKNOWN until an SSH read-back confirms it). Use list_bgp_peers to discover peer ids.", inputSchema: z.object({ peerId: z.string().min(1) }) }, async ({ peerId }) => {
     const result = await apiRequestJson("GET", `/api/bgp/peers/${encodeURIComponent(peerId)}`);
     if (!result.ok) return textResult(apiErrorText(result));
     return textResult(JSON.stringify(compactBgpPeerDetail(result.body as Record<string, unknown>), null, 2));

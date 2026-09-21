@@ -11,12 +11,16 @@ function peer(overrides: Partial<BgpDashboardPeer>): BgpDashboardPeer {
     bgpMonitoringEnabled: true,
     peerAddress: '10.0.0.1',
     displayName: '10.0.0.1',
+    addressFamily: 'IPV4',
+    localAs: '268568',
     remoteAs: null,
     role: 'OTHER',
     monitoringEnabled: true,
     stateCode: 6,
     state: 'ESTABLISHED',
     established: true,
+    adminState: 'UNKNOWN',
+    adminStateCheckedAt: null,
     receivedPrefixes: null,
     establishedSince: null,
     lastPollingAt: null,
@@ -72,6 +76,29 @@ describe('sortBgpPeers', () => {
     const copy = [...fixtures];
     sortBgpPeers(fixtures, { key: 'routes', direction: 'asc' });
     expect(fixtures.map((p) => p.id)).toEqual(copy.map((p) => p.id));
+  });
+
+  it('sorts a mixed IPv4/IPv6 list by every column without losing peers', () => {
+    const mixed = [
+      ...fixtures,
+      peer({
+        id: 'v6',
+        displayName: 'CLIENTE IPV6',
+        peerAddress: '2001:db8::10',
+        addressFamily: 'IPV6',
+        remoteAs: '265424',
+        receivedPrefixes: 750,
+        establishedSince: '2026-09-05T00:00:00.000Z',
+        interface: { id: 'i3', name: 'Z', alias: null, description: null, rxBps: 10, txBps: 10 },
+      }),
+    ];
+    for (const key of ['state', 'peer', 'asn', 'routes', 'traffic', 'uptime'] as const) {
+      const sorted = sortBgpPeers(mixed, { key, direction: 'asc' });
+      expect(sorted).toHaveLength(mixed.length);
+      expect(new Set(sorted.map((item) => item.id)).size).toBe(mixed.length);
+    }
+    const byRoutes = sortBgpPeers(mixed, { key: 'routes', direction: 'asc' });
+    expect(byRoutes.map((item) => item.receivedPrefixes)).toEqual([500, 750, 1000, null]);
   });
 });
 
