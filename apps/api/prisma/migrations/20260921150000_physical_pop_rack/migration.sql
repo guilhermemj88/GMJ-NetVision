@@ -141,3 +141,81 @@ ALTER TABLE "PhysicalPort" ADD CONSTRAINT "PhysicalPort_templatePortId_fkey" FOR
 ALTER TABLE "PhysicalPort" ADD CONSTRAINT "PhysicalPort_mappedInterfaceId_fkey" FOREIGN KEY ("mappedInterfaceId") REFERENCES "Interface"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "PhysicalPort" ADD CONSTRAINT "PhysicalPort_connectionId_fkey" FOREIGN KEY ("connectionId") REFERENCES "PhysicalConnection"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 ALTER TABLE "PhysicalPort" ADD CONSTRAINT "PhysicalPort_pairedPortId_fkey" FOREIGN KEY ("pairedPortId") REFERENCES "PhysicalPort"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- Rack placement is a cross-row invariant. The per-rack advisory lock makes
+-- concurrent inserts serialize before the bounds/overlap checks run.
+CREATE FUNCTION "validate_physical_asset_placement"() RETURNS trigger AS $$
+DECLARE
+  rack_units INTEGER;
+BEGIN
+  PERFORM pg_advisory_xact_lock(hashtext(NEW."rackId"));
+  SELECT "units" INTO rack_units FROM "PhysicalRack" WHERE "id" = NEW."rackId";
+  IF NEW."startU" + NEW."heightU" - 1 > rack_units THEN
+    RAISE EXCEPTION 'physical asset exceeds rack units' USING ERRCODE = '23514';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM "PhysicalAsset" existing
+    WHERE existing."rackId" = NEW."rackId"
+      AND existing."id" <> NEW."id"
+      AND int4range(existing."startU", existing."startU" + existing."heightU", '[)')
+          && int4range(NEW."startU", NEW."startU" + NEW."heightU", '[)')
+  ) THEN
+    RAISE EXCEPTION 'physical asset rack units overlap' USING ERRCODE = '23P01';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "PhysicalAsset_validate_placement"
+BEFORE INSERT OR UPDATE OF "rackId", "startU", "heightU" ON "PhysicalAsset"
+FOR EACH ROW EXECUTE FUNCTION "validate_physical_asset_placement"();
+
+CREATE FUNCTION "validate_physical_rack_resize"() RETURNS trigger AS $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM "PhysicalAsset" asset
+    WHERE asset."rackId" = NEW."id"
+      AND asset."startU" + asset."heightU" - 1 > NEW."units"
+  ) THEN
+    RAISE EXCEPTION 'physical rack resize would truncate an asset' USING ERRCODE = '23514';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "PhysicalRack_validate_resize"
+BEFORE UPDATE OF "units" ON "PhysicalRack"
+FOR EACH ROW EXECUTE FUNCTION "validate_physical_rack_resize"();
+
+-- `PhysicalPort.connectionId` is ON DELETE SET NULL, but the pair check
+-- requires connectionId and connectionEnd to be NULL together, so the FK action
+-- alone cannot detach an endpoint. Releasing both columns before the cable row
+-- disappears keeps every deletion path consistent (API, raw SQL and cascades).
+CREATE FUNCTION "detach_physical_connection_endpoints"() RETURNS trigger AS $$
+BEGIN
+  UPDATE "PhysicalPort"
+     SET "connectionId" = NULL, "connectionEnd" = NULL
+   WHERE "connectionId" = OLD."id";
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "PhysicalConnection_detach_endpoints"
+BEFORE DELETE ON "PhysicalConnection"
+FOR EACH ROW EXECUTE FUNCTION "detach_physical_connection_endpoints"();
+
+-- Defensive cleanup for deletes outside the API: removing a connected port
+-- removes its cable, which detaches the opposite endpoint through the trigger
+-- above. Ports without a cable remain untouched.
+CREATE FUNCTION "disconnect_physical_port_after_delete"() RETURNS trigger AS $$
+BEGIN
+  IF OLD."connectionId" IS NOT NULL THEN
+    DELETE FROM "PhysicalConnection" WHERE "id" = OLD."connectionId";
+  END IF;
+  RETURN OLD;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "PhysicalPort_disconnect_after_delete"
+AFTER DELETE ON "PhysicalPort"
+FOR EACH ROW EXECUTE FUNCTION "disconnect_physical_port_after_delete"();

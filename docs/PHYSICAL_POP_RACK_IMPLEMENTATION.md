@@ -6,13 +6,22 @@ Implementação iniciada em 2026-09-21. O ZIP `0c924f57-d8af-49b8-ac19-9c78c1541
 
 | Milestone | Estado | Escopo |
 | --- | --- | --- |
-| 1 | EM ANDAMENTO | Schema, migration, inventário POP/rack/asset, API e testes |
-| 2 | PENDENTE | Rack view e equipamento genérico |
-| 3 | PENDENTE | Portas, templates e vínculo com Interface |
-| 4 | PENDENTE | Conexão porta-a-porta e drawer |
-| 5 | PENDENTE | DIO/patch panel e path tracing |
-| 6 | PENDENTE | Cable lanes, selected-only e highlights |
-| 7 | PENDENTE | Responsividade, acessibilidade e validação final |
+| 1 | COMPLETO | Schema, migration, inventário POP/rack/asset, API e testes |
+| 2 | COMPLETO | Rack view e equipamento genérico |
+| 3 | COMPLETO | Portas, templates e vínculo com Interface |
+| 4 | COMPLETO | Conexão porta-a-porta e drawer |
+| 5 | COMPLETO | DIO/patch panel e path tracing |
+| 6 | COMPLETO | Cable lanes, selected-only e highlights |
+| 7 | EM ANDAMENTO | Responsividade, acessibilidade e validação final |
+
+## Estado verificado (revisão de 2026-09-21)
+
+- Backend, shared e web já implementam os milestones 1 a 6; o que resta é acabamento e validação contínua (milestone 7).
+- Migration `20260921150000_physical_pop_rack` **não foi aplicada** em nenhum ambiente. Foi validada em PostgreSQL descartável: `migrate deploy` aplica as 23 migrations e `migrate diff` não acusa drift em relação ao schema.
+- Invariantes no banco (triggers da migration): limites/overlap de U por rack com advisory lock, proteção contra encolher rack abaixo do ocupado e liberação dos dois endpoints ao excluir um cabo.
+- Correção aplicada: `PhysicalPort.connectionId` é `ON DELETE SET NULL`, mas o check `PhysicalPort_connection_pair_check` exige `connectionId` e `connectionEnd` nulos em conjunto. O FK sozinho não conseguia desocupar a porta e a exclusão (de cabo ou de porta) falhava com violação do check. Foi adicionado o trigger `PhysicalConnection_detach_endpoints` (BEFORE DELETE) que libera as duas colunas antes da remoção da linha do cabo.
+- Cobertura de testes do módulo: `physical-routes.test.ts` (POP/rack/asset/portas, U inválido, limites, overlap, ocupação, self-link, FRONT/REAR, path tracing, loop, guards de exclusão, sync de interfaces, RBAC VIEWER), `physical-schema.test.ts` (schema/migration/triggers) e `physical-rack-canvas.test.tsx` (posição proporcional e modo selecionado).
+- As asserções de schema são insensíveis a espaçamento (regex), porque `prisma format` realinha colunas.
 
 ## Arquitetura escolhida
 
@@ -78,4 +87,7 @@ Implementação iniciada em 2026-09-21. O ZIP `0c924f57-d8af-49b8-ac19-9c78c1541
 
 ## Handoff
 
-Nenhuma migration foi aplicada ainda. Atualizar esta seção e a tabela após cada milestone.
+- Migration criada e **não aplicada**; nenhum banco de produção foi tocado.
+- Commit `93baa7c` (autor: Guilherme, 2026-09-21 10:43 -0300) incluiu, além do trabalho BGP, a fatia inicial deste módulo físico, o ZIP de referência `0c924f57-d8af-49b8-ac19-9c78c1541c01.zip` e os arquivos `flash-*.diff/txt` que estavam no diretório de trabalho. Nada foi removido nem reescrito.
+- Continuação do módulo (UI física, testes e ajustes de migration/`app.ts`) permanece **somente no working tree**, sem commit.
+- Próximo passo recomendado: aplicar a migration em ambiente de desenvolvimento, validar a view Físico com um POP real e concluir o milestone 7 (responsividade/acessibilidade).

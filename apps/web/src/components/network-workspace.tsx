@@ -10,6 +10,7 @@ import { NocControls } from './noc-controls';
 import { useMapStore } from '@/store/map-store';
 import { HostsWorkspace } from './hosts-workspace';
 import { BgpWorkspace } from './bgp/bgp-workspace';
+import { PhysicalWorkspace } from './physical/physical-workspace';
 
 export function NetworkWorkspace({ publicMode = false }: { publicMode?: boolean }) {
   const toast = useMapStore((state) => state.toast);
@@ -23,6 +24,7 @@ export function NetworkWorkspace({ publicMode = false }: { publicMode?: boolean 
     if (publicMode) return;
     const requested = new URLSearchParams(window.location.search).get('view');
     if (requested === 'hosts') setView('HOSTS');
+    else if (requested === 'physical' || requested === 'fisico') setView('PHYSICAL');
     else if (requested === 'bgp') setView('BGP');
   }, [publicMode, setView]);
 
@@ -37,6 +39,8 @@ export function NetworkWorkspace({ publicMode = false }: { publicMode?: boolean 
       ))}
       {view === 'HOSTS' && !publicMode ? (
         <HostsWorkspace />
+      ) : view === 'PHYSICAL' && !publicMode ? (
+        <PhysicalWorkspace />
       ) : view === 'BGP' && !publicMode ? (
         <BgpWorkspace />
       ) : (

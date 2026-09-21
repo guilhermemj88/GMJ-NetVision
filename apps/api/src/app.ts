@@ -27,7 +27,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
       if (error.code === 'P2002') {
         return reply.code(409).send({ message: 'Já existe um registro físico com esses dados' });
       }
-      if (error.code === 'P2003' || error.code === 'P2014') {
+      if (error.code === 'P2003' || error.code === 'P2004' || error.code === 'P2014') {
         return reply.code(409).send({ message: 'O registro físico ainda possui dependências' });
       }
     }

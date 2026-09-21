@@ -13,6 +13,7 @@ import {
   Settings,
   Sparkles,
   Users,
+  Warehouse,
 } from 'lucide-react';
 import { useMapStore } from '@/store/map-store';
 import { useAuth } from '@/app/providers';
@@ -46,6 +47,13 @@ export function TopBar() {
       </div>
       <div className="topbar__divider" />
       <nav className="primary-nav">
+        <button
+          type="button"
+          className={view === 'PHYSICAL' ? 'is-active' : ''}
+          onClick={() => setView('PHYSICAL')}
+        >
+          <Warehouse size={14} /> Físico
+        </button>
         <button
           type="button"
           className={view === 'MAP' ? 'is-active' : ''}

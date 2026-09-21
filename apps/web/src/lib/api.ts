@@ -47,6 +47,18 @@ import {
   type Position,
   type PublicView,
   type PublicViewResponse,
+  type CreatePhysicalAssetInput,
+  type CreatePhysicalConnectionInput,
+  type CreatePhysicalPortInput,
+  type CreatePhysicalRackInput,
+  type CreatePhysicalSiteInput,
+  type PhysicalAsset,
+  type PhysicalConnection,
+  type PhysicalInventory,
+  type PhysicalPath,
+  type PhysicalPort,
+  type PhysicalRack,
+  type PhysicalSite,
   type UpdateMapInput,
   type UpdateLinkInput,
   type UpdateHostInput,
@@ -566,4 +578,88 @@ export function discoverNeighbors(mapId: string, deviceId: string): Promise<Disc
   return request<DiscoveryReview>(`/api/maps/${mapId}/devices/${deviceId}/discover`, {
     method: 'POST',
   });
+}
+
+export function getPhysicalInventory(): Promise<PhysicalInventory> {
+  return request<PhysicalInventory>('/api/physical');
+}
+
+export function createPhysicalSite(input: CreatePhysicalSiteInput): Promise<PhysicalSite> {
+  return request<PhysicalSite>('/api/physical/sites', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function createPhysicalRack(
+  siteId: string,
+  input: CreatePhysicalRackInput,
+): Promise<PhysicalRack> {
+  return request<PhysicalRack>(`/api/physical/sites/${encodeURIComponent(siteId)}/racks`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function createPhysicalAsset(
+  rackId: string,
+  input: CreatePhysicalAssetInput,
+): Promise<PhysicalAsset> {
+  return request<PhysicalAsset>(`/api/physical/racks/${encodeURIComponent(rackId)}/assets`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updatePhysicalAsset(
+  assetId: string,
+  input: Partial<Omit<CreatePhysicalAssetInput, 'genericPorts'>>,
+): Promise<PhysicalAsset> {
+  return request<PhysicalAsset>(`/api/physical/assets/${encodeURIComponent(assetId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function createPhysicalPort(
+  assetId: string,
+  input: CreatePhysicalPortInput,
+): Promise<PhysicalPort> {
+  return request<PhysicalPort>(`/api/physical/assets/${encodeURIComponent(assetId)}/ports`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function syncPhysicalPorts(assetId: string): Promise<PhysicalPort[]> {
+  return request<PhysicalPort[]>(
+    `/api/physical/assets/${encodeURIComponent(assetId)}/sync-interfaces`,
+    { method: 'POST' },
+  );
+}
+
+export function pairPhysicalPorts(portId: string, pairedPortId: string): Promise<PhysicalPort[]> {
+  return request<PhysicalPort[]>(`/api/physical/ports/${encodeURIComponent(portId)}/pair`, {
+    method: 'POST',
+    body: JSON.stringify({ pairedPortId }),
+  });
+}
+
+export function createPhysicalConnection(
+  input: CreatePhysicalConnectionInput,
+): Promise<PhysicalConnection> {
+  return request<PhysicalConnection>('/api/physical/connections', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function deletePhysicalConnection(connectionId: string): Promise<void> {
+  return request<void>(`/api/physical/connections/${encodeURIComponent(connectionId)}`, {
+    method: 'DELETE',
+  });
+}
+
+export function getPhysicalPath(portId: string): Promise<PhysicalPath> {
+  return request<PhysicalPath>(`/api/physical/ports/${encodeURIComponent(portId)}/path`);
 }

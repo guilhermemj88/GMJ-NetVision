@@ -10,7 +10,9 @@ describe('BGP persistence schema', () => {
       schema.indexOf('model BgpPeerSample {'),
     );
 
-    expect(bgpPeer).toContain('interfaceId        String?');
+    // Whitespace-insensitive on purpose: `prisma format` realigns the columns
+    // of the block, so the intent is a nullable scalar field, not its padding.
+    expect(bgpPeer).toMatch(/^\s*interfaceId\s+String\?$/m);
     expect(bgpPeer).toMatch(
       /interface\s+Interface\?\s+@relation\(fields: \[interfaceId\], references: \[id\], onDelete: SetNull\)/,
     );
