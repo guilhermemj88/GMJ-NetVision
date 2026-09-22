@@ -5,7 +5,17 @@ import type { PhysicalCatalogEntry } from '@gmj/shared';
 import { useQuery } from '@tanstack/react-query';
 import { getPhysicalCatalog } from '@/lib/api';
 import { PhysicalImagePanel } from './physical-image-panel';
+import { PhysicalModularPanel } from './physical-modular-panel';
 import { PhysicalPortShape } from './physical-port-shape';
+import {
+  type ModularChassisMap,
+  chassisAspectRatio,
+  chassisRenderMode,
+  mappedCatalogSlots,
+  modularChassisMap,
+  overlappingChassisSlotPairs,
+  validateModularChassisMap,
+} from './modular-chassis-map';
 import {
   frontPanelImageMap,
   frontPanelMapStatus,
@@ -39,7 +49,6 @@ const FIDELITY_LABELS: Record<PanelFidelity, string> = {
   APPROX: 'APPROX',
   LOGICAL: 'LOGICAL',
 };
-
 interface PanelRender {
   layout: PanelLayout;
   overlaps: Set<string>;
@@ -98,6 +107,7 @@ export function PhysicalPanelPreviewCard({
   const render = useMemo(() => renderPanel(entry, moduleKey, scale), [entry, moduleKey, scale]);
   /** Seleção local da preview: nenhuma entidade é criada, nada é persistido. */
   const [selectedPortId, setSelectedPortId] = useState<string | null>(null);
+  const [selectedSlotId, setSelectedSlotId] = useState<string | null>(null);
   const ports = useMemo(
     () => (moduleKey ? previewModulePorts(entry, moduleKey) : previewPorts(entry)),
     [entry, moduleKey],
@@ -114,14 +124,30 @@ export function PhysicalPanelPreviewCard({
   const imageIssues = useMemo(() => (map ? validateFrontPanelMap(map) : []), [map]);
   const imageOverlaps = useMemo(() => (map ? overlappingMapPairs(map) : []), [map]);
   const resolved = useMemo(() => (map ? resolvedMapPorts(entry, map) : []), [entry, map]);
+  const chassisMap = useMemo(() => modularChassisMap(entry.catalogKey), [entry.catalogKey]);
+  const chassisIssues = useMemo(
+    () => (chassisMap ? validateModularChassisMap(chassisMap) : []),
+    [chassisMap],
+  );
+  const chassisSlotOverlaps = useMemo(
+    () => (chassisMap ? overlappingChassisSlotPairs(chassisMap) : []),
+    [chassisMap],
+  );
+  const chassisSlots = useMemo(
+    () => (chassisMap ? mappedCatalogSlots(entry, chassisMap) : []),
+    [chassisMap, entry],
+  );
   const imageWidth = zoom ? PREVIEW_IMAGE_WIDTH * 2.2 : PREVIEW_IMAGE_WIDTH;
 
   return (
     <article
-      className={`physical-preview-card ${zoom ? 'is-zoom' : ''} ${map ? 'is-image-panel' : ''}`}
+      className={`physical-preview-card ${zoom ? 'is-zoom' : ''} ${
+        map || chassisMap ? 'is-image-panel' : ''
+      }`}
       data-catalog-key={entry.catalogKey}
       data-layout-mode={mode}
       data-image-panel={map ? map.catalogKey : ''}
+      data-chassis-panel={chassisMap ? chassisMap.catalogKey : ''}
     >
       <header className="physical-preview-card__head">
         <div>
@@ -156,10 +182,27 @@ export function PhysicalPanelPreviewCard({
             {mismatch || (map && imageIssues.length) ? ' ⚠' : ''}
           </dd>
         </div>
+        {chassisMap ? (
+          <div>
+            <dt>Service slots</dt>
+            <dd className={chassisIssues.length ? 'is-warn' : ''}>
+              {chassisMap.serviceSlotCount}
+            </dd>
+          </div>
+        ) : null}
+        {chassisMap ? (
+          <div>
+            <dt>Slots</dt>
+            <dd className={chassisSlots.length !== chassisMap.serviceSlotCount ? 'is-warn' : ''}>
+              {chassisSlots.length}/{chassisMap.serviceSlotCount}
+              {chassisSlots.length !== chassisMap.serviceSlotCount ? ' ⚠' : ''}
+            </dd>
+          </div>
+        ) : null}
         <div>
           <dt>Overlap</dt>
-          <dd className={map ? (imageOverlaps.length ? 'is-error' : '') : render.overlapPairs ? 'is-error' : ''}>
-            {map ? imageOverlaps.length : render.overlapPairs}
+          <dd className={chassisMap ? (chassisSlotOverlaps.length ? 'is-error' : '') : map ? (imageOverlaps.length ? 'is-error' : '') : render.overlapPairs ? 'is-error' : ''}>
+            {chassisMap ? chassisSlotOverlaps.length : map ? imageOverlaps.length : render.overlapPairs}
           </dd>
         </div>
       </dl>
@@ -178,7 +221,33 @@ export function PhysicalPanelPreviewCard({
         </p>
       ) : null}
 
-      {map ? (
+      {chassisMap && chassisMap.image ? (
+        <div className="physical-preview-card__panel is-image is-chassis">
+          {chassisIssues.length ? (
+            <p className="physical-preview-card__warning is-error">{chassisIssues.join(' · ')}</p>
+          ) : null}
+          <div
+            className="physical-preview-card__image"
+            style={{
+              width: imageWidth,
+              height: imageWidth / chassisAspectRatio(chassisMap),
+            }}
+          >
+            <PhysicalModularPanel
+              map={chassisMap}
+              slots={chassisSlotViews(entry, chassisMap)}
+              panelSize={{ width: imageWidth, height: imageWidth / chassisAspectRatio(chassisMap) }}
+              showSlots={debugHitboxes}
+              selectedSlotId={selectedSlotId}
+              onSelectSlot={setSelectedSlotId}
+            />
+          </div>
+          <p className="physical-preview-card__hint">
+            {chassisRenderMode(chassisMap)} · mappingMode {chassisMap.mappingMode} · imagem{' '}
+            {chassisMap.imageStatus === 'APPROVED' ? 'aprovada' : 'gerada (não é a oficial)'}
+          </p>
+        </div>
+      ) : map ? (
         <div className="physical-preview-card__panel is-image">
           {imageIssues.length ? (
             <p className="physical-preview-card__warning is-error">{imageIssues.join(' · ')}</p>
@@ -249,6 +318,7 @@ export function PhysicalPanelPreviewCard({
         <small>
           {entry.category}
           {map ? ` · ${map.ports.length} hotspots` : ''}
+          {chassisMap ? ` · ${chassisMap.serviceSlotCount} slots` : ''}
         </small>
         {onOpen ? (
           <button type="button" onClick={() => onOpen(entry.catalogKey)}>
@@ -264,6 +334,26 @@ function previewModulePorts(entry: PhysicalCatalogEntry, moduleKey: string | nul
   if (!moduleKey) return [];
   const module = entry.modules.find((candidate) => candidate.key === moduleKey);
   return module ? previewModule(entry, module).module.ports : [];
+}
+
+/**
+ * Slots do chassi para o painel modular.
+ *
+ * Slots **vazios** por padrão: o catálogo não tem line card Huawei declarada,
+ * e a preview não inventa placa nenhuma.
+ */
+function chassisSlotViews(entry: PhysicalCatalogEntry, map: ModularChassisMap) {
+  return entry.slots
+    .map((slot) => ({ slot, mapped: map.slots.find((item) => item.ordinal === slot.index) }))
+    .filter((item) => item.mapped !== undefined)
+    .map(({ slot, mapped }) => ({
+      slotId: `preview-${entry.catalogKey}-slot-${slot.index}`,
+      ordinal: slot.index,
+      label: slot.label || `Slot ${mapped!.ordinal}`,
+      occupied: false,
+      moduleName: null,
+      moduleImage: null,
+    }));
 }
 
 interface FilterState {
@@ -285,6 +375,8 @@ export function PhysicalCatalogPreview() {
   const [zoomed, setZoomed] = useState<PhysicalCatalogEntry | null>(null);
   /** Porta selecionada no modal (apenas visualização). */
   const [zoomPortId, setZoomPortId] = useState<string | null>(null);
+  /** Slot selecionado no modal (apenas visualização). */
+  const [zoomSlotId, setZoomSlotId] = useState<string | null>(null);
   const [moduleByKey, setModuleByKey] = useState<Record<string, string>>({});
   const [debugHitboxes, setDebugHitboxes] = useState(false);
 
@@ -318,6 +410,13 @@ export function PhysicalCatalogPreview() {
     let imagePanels = 0;
     let hotspots = 0;
     for (const entry of filtered) {
+      const chassis = modularChassisMap(entry.catalogKey);
+      if (chassis) {
+        if (chassis.image) imagePanels += 1;
+        hotspots += chassis.serviceSlotCount;
+        if (overlappingChassisSlotPairs(chassis).length) overlaps += 1;
+        continue;
+      }
       const map = frontPanelImageMap(entry.catalogKey);
       if (map) {
         imagePanels += 1;
@@ -336,6 +435,8 @@ export function PhysicalCatalogPreview() {
     ? renderPanel(zoomed, moduleByKey[zoomed.catalogKey] ?? null, PREVIEW_SCALE * 1.8)
     : null;
   const zoomMap = zoomed ? frontPanelImageMap(zoomed.catalogKey) : null;
+  const zoomChassis = zoomed ? modularChassisMap(zoomed.catalogKey) : null;
+  const zoomChassisWidth = zoomMap ? 0 : PREVIEW_IMAGE_WIDTH * 3;
 
   return (
     <main className="physical-preview">
@@ -439,7 +540,7 @@ export function PhysicalCatalogPreview() {
               checked={debugHitboxes}
               onChange={(event) => setDebugHitboxes(event.target.checked)}
             />
-            Mostrar hitboxes (debug)
+            Mostrar slots/hitboxes
           </label>
         </div>
       </section>
@@ -509,7 +610,24 @@ export function PhysicalCatalogPreview() {
                 </select>
               </label>
             ) : null}
-            {zoomMap ? (
+            {zoomChassis && zoomChassis.image ? (
+              <div
+                className="physical-preview__modal-panel is-image is-chassis"
+                style={{ aspectRatio: `${zoomChassis.naturalWidth} / ${zoomChassis.naturalHeight}` }}
+              >
+                <PhysicalModularPanel
+                  map={zoomChassis}
+                  slots={chassisSlotViews(zoomed, zoomChassis)}
+                  panelSize={{
+                    width: zoomChassisWidth,
+                    height: zoomChassisWidth / chassisAspectRatio(zoomChassis),
+                  }}
+                  showSlots={debugHitboxes}
+                  selectedSlotId={zoomSlotId}
+                  onSelectSlot={setZoomSlotId}
+                />
+              </div>
+            ) : zoomMap ? (
               <div
                 className="physical-preview__modal-panel is-image"
                 style={{ aspectRatio: `${zoomMap.naturalWidth} / ${zoomMap.naturalHeight}` }}

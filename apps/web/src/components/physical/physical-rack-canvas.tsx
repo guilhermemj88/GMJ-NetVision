@@ -28,6 +28,18 @@ import {
   frontPanelPortMapFor,
 } from './front-panel-image-map';
 import { PhysicalImagePanel } from './physical-image-panel';
+import { PhysicalModularPanel, type ModularSlotView } from './physical-modular-panel';
+import {
+  type ModularChassisMap,
+  MODULE_SLOT_INSET,
+  chassisAspectRatio,
+  chassisRenderMode,
+  chassisSlotBoxPx,
+  chassisSlotMapFor,
+  modulePanelBoxInSlot,
+  modulePortAnchorPx,
+  modularChassisMapForAsset,
+} from './modular-chassis-map';
 import { RACK_GEOMETRY, buildRackGeometry, panelScale } from './physical-rack-geometry';
 
 /** Altura do cabeçalho de identidade dentro da faceplate (px). */
@@ -35,10 +47,11 @@ const IDENTITY_HEIGHT = 30;
 /** Respiro vertical do painel dentro do equipamento. */
 const PANEL_PADDING = 8;
 
-/** Painel de um equipamento: imagem aprovada ou grade geométrica (fallback). */
+/** Painel de um equipamento: imagem aprovada, chassi modular ou grade geométrica. */
 type AssetPanel =
   | { kind: 'layout'; layout: PanelLayout; displayHeight: number }
-  | { kind: 'image'; map: FrontPanelImageMap; displayHeight: number };
+  | { kind: 'image'; map: FrontPanelImageMap; displayHeight: number }
+  | { kind: 'modular'; map: ModularChassisMap; displayHeight: number };
 
 /** Largura útil do painel dentro do rack (px) — constante do desenho. */
 function panelWidth(): number {
@@ -150,6 +163,26 @@ export function PhysicalRackCanvas({
         modules: asset.modules,
         entry,
       });
+      // Chassi modular com mapa declarado: os slots vêm do mapa (imagem quando
+      // existir; senão só a moldura lógica). Sem mapa, o renderer de hoje decide.
+      const chassisMap = modularChassisMapForAsset(asset);
+      if (chassisMap && chassisRenderMode(chassisMap) !== 'PANEL_LAYOUT') {
+        const geometric = calculateAssetDisplayHeight(layout, asset.heightU, base);
+        const imageHeight = chassisMap.image
+          ? panelWidthPx / chassisAspectRatio(chassisMap)
+          : 0;
+        result.set(asset.id, {
+          kind: 'modular',
+          map: chassisMap,
+          displayHeight: chassisMap.image
+            ? Math.min(
+                PANEL_MAX_HEIGHT,
+                Math.max(Math.max(1, asset.heightU) * base, IDENTITY_HEIGHT + PANEL_PADDING * 2 + Math.round(imageHeight)),
+              )
+            : geometric,
+        });
+        continue;
+      }
       result.set(asset.id, {
         kind: 'layout',
         layout,
@@ -215,6 +248,53 @@ export function PhysicalRackCanvas({
     return imageBoxIn(box, frontPanelAspectRatio(panel.map));
   }
 
+  /**
+   * Caixa do painel do chassi modular: proporção da imagem quando existir,
+   * senão a própria área do painel (moldura lógica dos slots).
+   */
+  function modularBoxOf(asset: PhysicalAsset): FrontPanelBoxPx | null {
+    const box = panelBoxOf(asset);
+    const panel = panels.get(asset.id);
+    if (!box || !panel || panel.kind !== 'modular') return null;
+    return panel.map.image ? imageBoxIn(box, chassisAspectRatio(panel.map)) : box;
+  }
+
+  /** Caixa da placa instalada dentro do slot (desenho + âncora usam a mesma). */
+  function moduleBoxOf(
+    asset: PhysicalAsset,
+    slotId: string,
+  ): { module: (typeof asset.modules)[number]; box: ReturnType<typeof modulePanelBoxInSlot> } | null {
+    const panel = panels.get(asset.id);
+    if (panel?.kind !== 'modular') return null;
+    const chassisBox = modularBoxOf(asset);
+    const module = asset.modules.find((item) => item.slotId === slotId) ?? null;
+    const slot = asset.slots.find((item) => item.id === slotId) ?? null;
+    if (!chassisBox || !module || !slot) return null;
+    const slotBox = chassisSlotBoxPx(panel.map, slot, chassisBox);
+    if (!slotBox) return null;
+    const layout = buildModulePanelLayout({
+      module,
+      catalogModule: catalogModuleOf(asset, module.moduleTemplateId),
+    });
+    return { module, box: modulePanelBoxInSlot(slotBox, layout) };
+  }
+
+  /** Slots do chassi prontos para o painel modular (nada é inventado). */
+  function modularSlotsOf(asset: PhysicalAsset, map: ModularChassisMap): ModularSlotView[] {
+    return asset.slots.map((slot) => {
+      const module = slot.module ?? null;
+      const catalogMap = chassisSlotMapFor(map, slot);
+      return {
+        slotId: slot.id,
+        ordinal: slot.index,
+        label: catalogMap ? `${slot.label || `Slot ${slot.index}`}` : `Slot ${slot.index}`,
+        occupied: module !== null,
+        moduleName: module ? module.model || module.name : null,
+        moduleImage: null,
+      };
+    });
+  }
+
   /** Anchor do cabo: sempre o centro do conector realmente desenhado. */
   function portAnchor(assetId: string, portId: string): { x: number; y: number } | null {
     const asset = rack.assets.find((candidate) => candidate.id === assetId);
@@ -230,6 +310,22 @@ export function PhysicalRackCanvas({
         if (anchor) return anchor;
       }
       // Porta fora do mapa (ex.: console/MGMT não recortado): cai no geométrico.
+    }
+    if (panel?.kind === 'modular') {
+      // Porta de placa: o anchor vive dentro do slot, na mesma caixa do desenho.
+      const module = asset.modules.find((item) => item.ports.some((port) => port.id === portId));
+      const port = module?.ports.find((item) => item.id === portId);
+      const geometry = module ? moduleBoxOf(asset, module.slotId) : null;
+      if (port && geometry) {
+        const layout = buildModulePanelLayout({
+          module: geometry.module,
+          catalogModule: catalogModuleOf(asset, geometry.module.moduleTemplateId),
+        });
+        const placed = layout.connectors.find((item) => item.portId === port.id);
+        if (placed) return modulePortAnchorPx(geometry.box, placed);
+      }
+      // Chassi modular não tem porta própria: nada de inventar conector.
+      return null;
     }
     const viewport = panelViewport(asset);
     if (!viewport) return null;
@@ -426,6 +522,14 @@ export function PhysicalRackCanvas({
           };
           /** Imagem + hitboxes: caixa com a proporção original, centralizada. */
           const imageBox = panel.kind === 'image' ? imageBoxOf(asset) : null;
+          /** Chassi modular: caixa da imagem (ou do painel lógico) + slots. */
+          const modularBox = panel.kind === 'modular' ? modularBoxOf(asset) : null;
+          const selectedModuleSlotId =
+            selection?.kind === 'port'
+              ? (asset.modules.find((item) =>
+                  item.ports.some((port) => port.id === selection.id),
+                )?.slotId ?? null)
+              : null;
 
           return (
             <article
@@ -483,6 +587,66 @@ export function PhysicalRackCanvas({
                       selectedPortId={selection?.kind === 'port' ? selection.id : null}
                       pathPortIds={pathPortIds}
                       onSelectPort={onSelectPort}
+                    />
+                  </div>
+                ) : null}
+                {panel.kind === 'modular' && modularBox ? (
+                  <div
+                    className="physical-modular-panel-area"
+                    style={{
+                      left: modularBox.left - box.left,
+                      top: modularBox.top - box.top,
+                      width: modularBox.width,
+                      height: modularBox.height,
+                    }}
+                  >
+                    <PhysicalModularPanel
+                      map={panel.map}
+                      slots={modularSlotsOf(asset, panel.map)}
+                      panelSize={{ width: modularBox.width, height: modularBox.height }}
+                      selectedSlotId={selectedModuleSlotId}
+                      onSelectSlot={() => onSelectAsset(asset.id)}
+                      renderModule={(slot, _slotBox) => {
+                        const module = asset.modules.find((item) => item.slotId === slot.slotId);
+                        const geometry = moduleBoxOf(asset, slot.slotId);
+                        if (!module || !geometry) return null;
+                        const moduleLayout = buildModulePanelLayout({
+                          module,
+                          catalogModule: catalogModuleOf(asset, module.moduleTemplateId),
+                        });
+                        return (
+                          <div
+                            className="physical-modular-panel__module-panel"
+                            style={{
+                              position: 'absolute',
+                              // o slot é posicionado em % do painel: o painel da
+                              // placa fica sempre no mesmo respiro interno
+                              left: MODULE_SLOT_INSET.left,
+                              top: MODULE_SLOT_INSET.top,
+                              width: geometry.box.width,
+                              height: geometry.box.height,
+                            }}
+                          >
+                            {moduleLayout.connectors.map((placed) => {
+                              const port = module.ports.find(
+                                (candidate) => candidate.id === placed.portId,
+                              );
+                              if (!port) return null;
+                              return (
+                                <PhysicalPortShape
+                                  key={port.id}
+                                  port={port}
+                                  placed={placed}
+                                  scale={geometry.box.scale}
+                                  selected={selection?.kind === 'port' && selection.id === port.id}
+                                  inPath={pathPortIds.has(port.id)}
+                                  onSelect={onSelectPort}
+                                />
+                              );
+                            })}
+                          </div>
+                        );
+                      }}
                     />
                   </div>
                 ) : null}

@@ -4,11 +4,12 @@ After=network.target netvision-api.service
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/GMJ-NetVision
+WorkingDirectory=/opt/GMJ-NetVision/apps/web/.next/standalone
 EnvironmentFile=/opt/GMJ-NetVision/.env
 Environment=NODE_ENV=production
 Environment=PORT=3000
-ExecStart=/usr/bin/env npm run start -w @gmj/web
+Environment=HOSTNAME=0.0.0.0
+ExecStart=/usr/bin/node apps/web/server.js
 Restart=always
 RestartSec=5
 

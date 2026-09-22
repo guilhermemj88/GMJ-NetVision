@@ -6,12 +6,14 @@ import type {
   PhysicalSlot,
 } from '@gmj/shared';
 import { hasFrontPanelImage } from './front-panel-image-map';
+import { hasModularChassisImage } from './modular-chassis-map';
 import { buildModulePanelLayout } from './physical-panel-layout';
 
 /**
  * Modo de layout de um painel, derivado **exclusivamente** do catálogo.
  *
  * - `IMAGE`: painel frontal por imagem aprovada + mapa de hotspots validado;
+ * - `MODULAR_IMAGE`: chassi modular com imagem aprovada + mapa de slots;
  * - `FRONT_EXACT`: posição oficial do painel codificada (`panelLayout.type: FRONT`);
  * - `FRONT_APPROX`: painel fixo com geometria declarada/organizada (não oficial);
  * - `SLOT_VENDOR`: chassi modular com posição de slots declarada no catálogo;
@@ -21,6 +23,7 @@ import { buildModulePanelLayout } from './physical-panel-layout';
  */
 export type PanelLayoutMode =
   | 'IMAGE'
+  | 'MODULAR_IMAGE'
   | 'FRONT_EXACT'
   | 'FRONT_APPROX'
   | 'SLOT_VENDOR'
@@ -29,6 +32,7 @@ export type PanelLayoutMode =
 
 export const PANEL_LAYOUT_MODE_LABELS: Record<PanelLayoutMode, string> = {
   IMAGE: 'IMAGE · painel frontal + hotspots',
+  MODULAR_IMAGE: 'IMAGE · chassi modular + slots',
   FRONT_EXACT: 'FRONT · posição oficial',
   FRONT_APPROX: 'FRONT · organizado (não oficial)',
   SLOT_VENDOR: 'SLOTS · posição declarada',
@@ -40,7 +44,7 @@ export const PANEL_LAYOUT_MODE_LABELS: Record<PanelLayoutMode, string> = {
 export type PanelFidelity = 'IMAGE' | 'EXACT' | 'APPROX' | 'LOGICAL';
 
 export function panelFidelity(mode: PanelLayoutMode): PanelFidelity {
-  if (mode === 'IMAGE') return 'IMAGE';
+  if (mode === 'IMAGE' || mode === 'MODULAR_IMAGE') return 'IMAGE';
   if (mode === 'FRONT_EXACT' || mode === 'SLOT_VENDOR') return 'EXACT';
   if (mode === 'FRONT_APPROX' || mode === 'SLOT_APPROX') return 'APPROX';
   return 'LOGICAL';
@@ -54,6 +58,8 @@ export function isModularTemplate(entry: PhysicalCatalogEntry): boolean {
 export function panelLayoutMode(entry: PhysicalCatalogEntry): PanelLayoutMode {
   // A imagem aprovada ganha de qualquer geometria: ela é o painel real.
   if (hasFrontPanelImage(entry.catalogKey)) return 'IMAGE';
+  // Chassi modular com mapa de slots: imagem do chassi quando existir.
+  if (isModularTemplate(entry) && hasModularChassisImage(entry.catalogKey)) return 'MODULAR_IMAGE';
   const declaredPanel = entry.panelLayout ?? null;
   const hasPortVisual = entry.ports.some((port) => port.visual !== null && port.visual !== undefined);
   if (isModularTemplate(entry)) {
@@ -73,7 +79,9 @@ export type PanelLayoutWarning = 'none' | 'approx' | 'unconfirmed';
 
 export function layoutWarning(entry: PhysicalCatalogEntry): PanelLayoutWarning {
   const mode = panelLayoutMode(entry);
-  if (mode === 'IMAGE' || mode === 'FRONT_EXACT' || mode === 'SLOT_VENDOR') return 'none';
+  if (mode === 'IMAGE' || mode === 'MODULAR_IMAGE' || mode === 'FRONT_EXACT' || mode === 'SLOT_VENDOR') {
+    return 'none';
+  }
   if (mode === 'LOGICAL') return 'unconfirmed';
   return 'approx';
 }

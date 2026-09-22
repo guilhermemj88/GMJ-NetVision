@@ -103,9 +103,9 @@ describe('PhysicalPanelPreviewCard (fallback geométrico)', () => {
     expect(html).toContain('6/6');
   });
 
-  it('desenha os slots de um chassi modular', () => {
+  it('desenha os slots de um chassi modular sem mapa de chassi', () => {
     const modular = catalogEntry({
-      catalogKey: 'huawei-ne8000-m4',
+      catalogKey: 'modular-sem-mapa-de-chassi',
       manufacturer: 'Huawei',
       model: 'M4',
       heightU: 2,
@@ -118,7 +118,88 @@ describe('PhysicalPanelPreviewCard (fallback geométrico)', () => {
     const html = renderToStaticMarkup(<PhysicalPanelPreviewCard entry={modular} />);
     expect(html).toContain('data-layout-mode="SLOT_VENDOR"');
     expect(html.match(/class="physical-slot/g)).toHaveLength(2);
+    // chassi sem portas declaradas: nada inventado
     expect(html).not.toContain('data-port-id=');
+    // sem mapa de chassi, nenhum painel modular é desenhado
+    expect(html).not.toContain('class="physical-modular-panel');
+  });
+});
+
+describe('PhysicalPanelPreviewCard (chassi modular com imagem)', () => {
+  /** M4 como está no catálogo: 4 slots de serviço, nenhuma placa cadastrada. */
+  function m4(debugHitboxes = false) {
+    const entry = catalogEntry({
+      catalogKey: 'huawei-ne8000-m4',
+      name: 'Huawei NetEngine 8000 M4',
+      manufacturer: 'Huawei',
+      family: 'NetEngine 8000',
+      model: 'M4',
+      heightU: 2,
+      layoutType: 'MODULAR',
+      ports: [],
+      slots: [1, 2, 3, 4].map((index) => ({
+        index,
+        label: `Slot ${index}`,
+        description: '',
+        moduleKeys: [],
+      })),
+    });
+    return renderToStaticMarkup(
+      <PhysicalPanelPreviewCard entry={entry} debugHitboxes={debugHitboxes} />,
+    );
+  }
+
+  it('M4: MODULAR IMAGE PANEL com 2U, 4 service slots e 4/4 slots', () => {
+    const html = m4();
+
+    expect(html).toContain('data-layout-mode="MODULAR_IMAGE"');
+    expect(html).toContain('data-chassis-panel="huawei-ne8000-m4"');
+    expect(html).toContain('>IMAGE PANEL<');
+    expect(html).toContain('2U');
+    expect(html).toContain('Service slots');
+    expect(html).toContain('4/4');
+    expect(html).toContain('/physical-panels/huawei/ne8000-m4-front.png');
+    expect(html.match(/physical-modular-panel__slot/g)).toHaveLength(4);
+    expect(html).toContain('4 slots');
+    // chassi não inventa porta de serviço
+    expect(html).not.toContain('data-port-id=');
+    // sem inspeção, a imagem fica limpa (sem bbox/ordinal)
+    expect(html).not.toContain('physical-modular-panel__ordinal');
+    expect(html).not.toContain('is-slots-visible');
+  });
+
+  it('M4 com "mostrar slots" desenha bbox e ordinal dos 4 slots', () => {
+    const html = m4(true);
+
+    expect(html).toContain('is-slots-visible');
+    expect(html.match(/physical-modular-panel__ordinal/g)).toHaveLength(4);
+    expect(html).toContain('data-slot-ordinal="1"');
+    expect(html).toContain('data-slot-ordinal="4"');
+    expect(html).toContain('data-slot-state="EMPTY"');
+  });
+
+  it('chassi do pacote sem imagem continua no renderer geométrico', () => {
+    const m8 = catalogEntry({
+      catalogKey: 'huawei-ne8000-m8-ac',
+      manufacturer: 'Huawei',
+      family: 'NetEngine 8000',
+      model: 'M8 AC',
+      heightU: 3,
+      layoutType: 'MODULAR',
+      ports: [],
+      slots: [1, 2, 3, 4, 5, 6].map((index) => ({
+        index,
+        label: `Slot ${index}`,
+        description: '',
+        moduleKeys: [],
+      })),
+    });
+    const html = renderToStaticMarkup(<PhysicalPanelPreviewCard entry={m8} />);
+
+    // mapa existe, mas sem imagem frontal: continua no renderer geométrico
+    expect(html).not.toContain('class="physical-modular-panel');
+    expect(html).toContain('data-layout-mode="SLOT_APPROX"');
+    expect(html.match(/class="physical-slot/g)).toHaveLength(6);
   });
 });
 

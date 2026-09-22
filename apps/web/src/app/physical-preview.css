@@ -254,6 +254,16 @@
 .physical-preview-card__panel.is-image {
   padding: 4px;
 }
+.physical-preview-card__panel.is-chassis {
+  flex-direction: column;
+  gap: 4px;
+}
+.physical-preview-card__hint {
+  margin: 0;
+  color: #647985;
+  font: 8px var(--font-mono);
+  text-align: center;
+}
 .physical-preview-card__surface {
   position: relative;
 }
