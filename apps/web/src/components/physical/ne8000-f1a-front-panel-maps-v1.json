@@ -1,0 +1,580 @@
+{
+  "schemaVersion": "1.0",
+  "coordinateSystem": "NORMALIZED_0_1",
+  "mappingRule": "The image map resolves to stable catalog PhysicalPort names. The existing NetVision interface sync remains responsible for mapping those physical ports to real CLI interfaces such as 10GE0/0/1 or 100GE0/0/4.",
+  "maps": [
+    {
+      "catalogKey": "huawei-ne8000-f1a-8h20q",
+      "model": "F1A-8H20Q",
+      "status": "ACTIVE_TEST",
+      "imageStatus": "GENERATED",
+      "image": "/physical-panels/huawei/ne8000-f1a-8h20q-front.png",
+      "naturalWidth": 2400,
+      "naturalHeight": 330,
+      "expectedPortCount": 56,
+      "note": "Imagem esquemática gerada (não é a foto oficial): os bboxes foram derivados do mesmo desenho, portanto alinhados por construção. Substituir a imagem por uma foto oficial exige recalibrar os bboxes.",
+      "ports": [
+        {
+          "portName": "100GE-1",
+          "connector": "QSFP28",
+          "bbox": {
+            "x": 0.78833,
+            "y": 0.27879,
+            "width": 0.03333,
+            "height": 0.1697
+          }
+        },
+        {
+          "portName": "100GE-2",
+          "connector": "QSFP28",
+          "bbox": {
+            "x": 0.82917,
+            "y": 0.27879,
+            "width": 0.03333,
+            "height": 0.1697
+          }
+        },
+        {
+          "portName": "100GE-3",
+          "connector": "QSFP28",
+          "bbox": {
+            "x": 0.87,
+            "y": 0.27879,
+            "width": 0.03333,
+            "height": 0.1697
+          }
+        },
+        {
+          "portName": "100GE-4",
+          "connector": "QSFP28",
+          "bbox": {
+            "x": 0.91083,
+            "y": 0.27879,
+            "width": 0.03333,
+            "height": 0.1697
+          }
+        },
+        {
+          "portName": "100GE-5",
+          "connector": "QSFP28",
+          "bbox": {
+            "x": 0.78833,
+            "y": 0.50909,
+            "width": 0.03333,
+            "height": 0.1697
+          }
+        },
+        {
+          "portName": "100GE-6",
+          "connector": "QSFP28",
+          "bbox": {
+            "x": 0.82917,
+            "y": 0.50909,
+            "width": 0.03333,
+            "height": 0.1697
+          }
+        },
+        {
+          "portName": "100GE-7",
+          "connector": "QSFP28",
+          "bbox": {
+            "x": 0.87,
+            "y": 0.50909,
+            "width": 0.03333,
+            "height": 0.1697
+          }
+        },
+        {
+          "portName": "100GE-8",
+          "connector": "QSFP28",
+          "bbox": {
+            "x": 0.91083,
+            "y": 0.50909,
+            "width": 0.03333,
+            "height": 0.1697
+          }
+        },
+        {
+          "portName": "25GE-1",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.54083,
+            "y": 0.29697,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-2",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.56417,
+            "y": 0.29697,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-3",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.5875,
+            "y": 0.29697,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-4",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.61083,
+            "y": 0.29697,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-5",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.63417,
+            "y": 0.29697,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-6",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.6575,
+            "y": 0.29697,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-7",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.68083,
+            "y": 0.29697,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-8",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.70417,
+            "y": 0.29697,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-9",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.7275,
+            "y": 0.29697,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-10",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.75083,
+            "y": 0.29697,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-11",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.54083,
+            "y": 0.48485,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-12",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.56417,
+            "y": 0.48485,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-13",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.5875,
+            "y": 0.48485,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-14",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.61083,
+            "y": 0.48485,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-15",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.63417,
+            "y": 0.48485,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-16",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.6575,
+            "y": 0.48485,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-17",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.68083,
+            "y": 0.48485,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-18",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.70417,
+            "y": 0.48485,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-19",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.7275,
+            "y": 0.48485,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "25GE-20",
+          "connector": "SFP28",
+          "bbox": {
+            "x": 0.75083,
+            "y": 0.48485,
+            "width": 0.01667,
+            "height": 0.12121
+          }
+        },
+        {
+          "portName": "10GE-1",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.125,
+            "y": 0.29091,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-2",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.15083,
+            "y": 0.29091,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-3",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.17667,
+            "y": 0.29091,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-4",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.2025,
+            "y": 0.29091,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-5",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.22833,
+            "y": 0.29091,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-6",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.25417,
+            "y": 0.29091,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-7",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.28,
+            "y": 0.29091,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-8",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.30583,
+            "y": 0.29091,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-9",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.33167,
+            "y": 0.29091,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-10",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.3575,
+            "y": 0.29091,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-11",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.38333,
+            "y": 0.29091,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-12",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.40917,
+            "y": 0.29091,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-13",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.435,
+            "y": 0.29091,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-14",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.46083,
+            "y": 0.29091,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-15",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.125,
+            "y": 0.47879,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-16",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.15083,
+            "y": 0.47879,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-17",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.17667,
+            "y": 0.47879,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-18",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.2025,
+            "y": 0.47879,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-19",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.22833,
+            "y": 0.47879,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-20",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.25417,
+            "y": 0.47879,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-21",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.28,
+            "y": 0.47879,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-22",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.30583,
+            "y": 0.47879,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-23",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.33167,
+            "y": 0.47879,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-24",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.3575,
+            "y": 0.47879,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-25",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.38333,
+            "y": 0.47879,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-26",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.40917,
+            "y": 0.47879,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-27",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.435,
+            "y": 0.47879,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        },
+        {
+          "portName": "10GE-28",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.46083,
+            "y": 0.47879,
+            "width": 0.01917,
+            "height": 0.12727
+          }
+        }
+      ]
+    }
+  ]
+}

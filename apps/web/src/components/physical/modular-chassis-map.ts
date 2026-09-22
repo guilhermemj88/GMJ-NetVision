@@ -42,8 +42,19 @@ export interface ModularChassisMap {
   image?: string;
   naturalWidth?: number;
   naturalHeight?: number;
+  /** Slots de serviço/universal declarados no mapa (rótulo "Service slots"). */
   serviceSlotCount: number;
+  /** Total de slots mapeados (serviço + controle). Ausente = só serviço. */
+  slotCount?: number;
   slots: ChassisSlotMap[];
+}
+
+/** Papéis que contam como posição de placa de serviço no painel. */
+const SERVICE_SLOT_ROLES = new Set(['SERVICE', 'SERVICE_OR_UPLINK', 'UNIVERSAL']);
+
+/** Total de posições de placa declaradas no mapa (serviço + controle). */
+export function chassisSlotCount(map: ModularChassisMap): number {
+  return map.slotCount ?? map.serviceSlotCount;
 }
 
 /** Renderer escolhido para um chassi modular. */
@@ -172,6 +183,16 @@ export function overlappingChassisSlotPairs(map: ModularChassisMap): [string, st
 /** Respiro entre a moldura do slot e o painel da placa instalada (px). */
 export const MODULE_SLOT_INSET = { left: 3, top: 10, right: 3, bottom: 4 } as const;
 
+/** Área interna do slot (descontado o respiro da moldura). */
+export function slotInnerBox(
+  slotBox: FrontPanelBoxPx,
+  inset: { left: number; top: number; right: number; bottom: number } = MODULE_SLOT_INSET,
+): ModulePanelBox {
+  const width = Math.max(1, slotBox.width - inset.left - inset.right);
+  const height = Math.max(1, slotBox.height - inset.top - inset.bottom);
+  return { left: slotBox.left + inset.left, top: slotBox.top + inset.top, scale: 1, width, height };
+}
+
 /**
  * Caixa do painel da placa dentro do slot.
  *
@@ -220,16 +241,48 @@ export function modulePortAnchorPx(
 }
 
 /**
+ * Caixa da **imagem** da placa dentro do slot: proporção preservada, centrada no
+ * respiro interno. `box` é absoluta (âncora do cabo) e `offset` é relativa ao
+ * slot (posicionamento no DOM) — as duas saem do mesmo cálculo.
+ */
+export function moduleImageBoxInSlot(
+  slotBox: FrontPanelBoxPx,
+  aspect: number,
+  inset: { left: number; top: number; right: number; bottom: number } = MODULE_SLOT_INSET,
+): { box: FrontPanelBoxPx; offset: { left: number; top: number } } {
+  const inner = slotInnerBox(slotBox, inset);
+  const safeAspect = Number.isFinite(aspect) && aspect > 0 ? aspect : 6;
+  const width = Math.min(inner.width, inner.height * safeAspect);
+  const height = width / safeAspect;
+  const offset = {
+    left: inset.left + Math.max(0, (inner.width - width) / 2),
+    top: inset.top + Math.max(0, (inner.height - height) / 2),
+  };
+  return {
+    box: { left: slotBox.left + offset.left, top: slotBox.top + offset.top, width, height },
+    offset,
+  };
+}
+
+/**
  * Validação do mapa do chassi. Um mapa sem imagem continua válido (serve de
  * estrutura lógica), mas nomes duplicados e bbox fora de `0..1` são erro.
  */
 export function validateModularChassisMap(map: ModularChassisMap): string[] {
   const errors: string[] = [];
 
-  if (map.slots.length !== map.serviceSlotCount) {
-    errors.push(
-      `${map.catalogKey}: esperado ${map.serviceSlotCount} slots, obtido ${map.slots.length}`,
-    );
+  const declared = chassisSlotCount(map);
+  if (map.slots.length !== declared) {
+    errors.push(`${map.catalogKey}: esperado ${declared} slots, obtido ${map.slots.length}`);
+  }
+
+  if (map.slotCount !== undefined) {
+    const serviceCount = map.slots.filter((slot) => SERVICE_SLOT_ROLES.has(slot.role)).length;
+    if (serviceCount !== map.serviceSlotCount) {
+      errors.push(
+        `${map.catalogKey}: serviceSlotCount ${map.serviceSlotCount} não casa com ${serviceCount} slots de serviço`,
+      );
+    }
   }
 
   const keys = new Set<string>();

@@ -1,0 +1,566 @@
+{
+  "schemaVersion": "1.0",
+  "coordinateSystem": "NORMALIZED_0_1",
+  "note": "Painel frontal por imagem das placas/módulos Huawei das OLTs. As posições vêm das imagens fornecidas (medição por perfil de cor na faixa de portas) e por isso são FRONT_APPROX, nunca FRONT_EXACT. Nenhum template de módulo é cadastrado no catálogo: quando existir, o hotspot resolve para o PhysicalPort do módulo pelo nome estável do portName.",
+  "modules": [
+    {
+      "moduleKey": "huawei-gpfd-16",
+      "label": "GPFD (16 portas GPON)",
+      "family": "SmartAX MA5683T",
+      "partNumber": "H802GPFD",
+      "image": "/physical-panels/huawei/huawei-gpfd-16-gpon-front.png",
+      "naturalWidth": 1438,
+      "naturalHeight": 255,
+      "mappingMode": "FRONT_APPROX",
+      "imageStatus": "GENERATED",
+      "expectedPortCount": 16,
+      "note": "Silk impresso PORT0..PORT15; nomes normalizados como GPON-N (1..16).",
+      "ports": [
+        {
+          "portName": "GPON-1",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.16064,
+            "y": 0.51765,
+            "width": 0.0306,
+            "height": 0.23529
+          }
+        },
+        {
+          "portName": "GPON-2",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.20515,
+            "y": 0.51765,
+            "width": 0.0299,
+            "height": 0.23529
+          }
+        },
+        {
+          "portName": "GPON-3",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.24965,
+            "y": 0.51765,
+            "width": 0.0299,
+            "height": 0.23529
+          }
+        },
+        {
+          "portName": "GPON-4",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.29416,
+            "y": 0.51765,
+            "width": 0.0306,
+            "height": 0.23529
+          }
+        },
+        {
+          "portName": "GPON-5",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.33866,
+            "y": 0.51765,
+            "width": 0.0306,
+            "height": 0.23529
+          }
+        },
+        {
+          "portName": "GPON-6",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.38387,
+            "y": 0.51765,
+            "width": 0.0299,
+            "height": 0.23529
+          }
+        },
+        {
+          "portName": "GPON-7",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.42768,
+            "y": 0.51765,
+            "width": 0.0306,
+            "height": 0.23529
+          }
+        },
+        {
+          "portName": "GPON-8",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.47218,
+            "y": 0.51765,
+            "width": 0.0306,
+            "height": 0.23529
+          }
+        },
+        {
+          "portName": "GPON-9",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.51669,
+            "y": 0.51765,
+            "width": 0.0306,
+            "height": 0.23529
+          }
+        },
+        {
+          "portName": "GPON-10",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.5612,
+            "y": 0.51765,
+            "width": 0.0299,
+            "height": 0.23529
+          }
+        },
+        {
+          "portName": "GPON-11",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.60501,
+            "y": 0.51765,
+            "width": 0.0306,
+            "height": 0.23529
+          }
+        },
+        {
+          "portName": "GPON-12",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.64951,
+            "y": 0.51765,
+            "width": 0.0299,
+            "height": 0.23529
+          }
+        },
+        {
+          "portName": "GPON-13",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.69332,
+            "y": 0.51765,
+            "width": 0.0306,
+            "height": 0.23529
+          }
+        },
+        {
+          "portName": "GPON-14",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.73783,
+            "y": 0.51765,
+            "width": 0.0306,
+            "height": 0.23529
+          }
+        },
+        {
+          "portName": "GPON-15",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.78234,
+            "y": 0.51765,
+            "width": 0.0299,
+            "height": 0.23529
+          }
+        },
+        {
+          "portName": "GPON-16",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.82615,
+            "y": 0.51765,
+            "width": 0.0306,
+            "height": 0.23529
+          }
+        }
+      ]
+    },
+    {
+      "moduleKey": "huawei-xgspon-16",
+      "label": "XGS-PON (16 portas)",
+      "family": "MA5800",
+      "partNumber": "H901XGPB",
+      "image": "/physical-panels/huawei/huawei-xgspon-16-front.png",
+      "naturalWidth": 1448,
+      "naturalHeight": 476,
+      "mappingMode": "FRONT_APPROX",
+      "imageStatus": "GENERATED",
+      "expectedPortCount": 16,
+      "note": "Silk impresso 1..16 sob as cages; nomes XGSPON-N.",
+      "ports": [
+        {
+          "portName": "XGSPON-1",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.17334,
+            "y": 0.39496,
+            "width": 0.03936,
+            "height": 0.2395
+          }
+        },
+        {
+          "portName": "XGSPON-2",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.21892,
+            "y": 0.39496,
+            "width": 0.04006,
+            "height": 0.2395
+          }
+        },
+        {
+          "portName": "XGSPON-3",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.2645,
+            "y": 0.39496,
+            "width": 0.04006,
+            "height": 0.2395
+          }
+        },
+        {
+          "portName": "XGSPON-4",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.31008,
+            "y": 0.39496,
+            "width": 0.04006,
+            "height": 0.2395
+          }
+        },
+        {
+          "portName": "XGSPON-5",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.35635,
+            "y": 0.39496,
+            "width": 0.04006,
+            "height": 0.2395
+          }
+        },
+        {
+          "portName": "XGSPON-6",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.40193,
+            "y": 0.39496,
+            "width": 0.04006,
+            "height": 0.2395
+          }
+        },
+        {
+          "portName": "XGSPON-7",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.44751,
+            "y": 0.39496,
+            "width": 0.04006,
+            "height": 0.2395
+          }
+        },
+        {
+          "portName": "XGSPON-8",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.49378,
+            "y": 0.39496,
+            "width": 0.03936,
+            "height": 0.2395
+          }
+        },
+        {
+          "portName": "XGSPON-9",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.53936,
+            "y": 0.39496,
+            "width": 0.04006,
+            "height": 0.2395
+          }
+        },
+        {
+          "portName": "XGSPON-10",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.58494,
+            "y": 0.39496,
+            "width": 0.04006,
+            "height": 0.2395
+          }
+        },
+        {
+          "portName": "XGSPON-11",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.63122,
+            "y": 0.39496,
+            "width": 0.03936,
+            "height": 0.2395
+          }
+        },
+        {
+          "portName": "XGSPON-12",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.6768,
+            "y": 0.39496,
+            "width": 0.04006,
+            "height": 0.2395
+          }
+        },
+        {
+          "portName": "XGSPON-13",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.72307,
+            "y": 0.39496,
+            "width": 0.04006,
+            "height": 0.2395
+          }
+        },
+        {
+          "portName": "XGSPON-14",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.76934,
+            "y": 0.39496,
+            "width": 0.03936,
+            "height": 0.2395
+          }
+        },
+        {
+          "portName": "XGSPON-15",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.81492,
+            "y": 0.39496,
+            "width": 0.04006,
+            "height": 0.2395
+          }
+        },
+        {
+          "portName": "XGSPON-16",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.86119,
+            "y": 0.39496,
+            "width": 0.04006,
+            "height": 0.2395
+          }
+        }
+      ]
+    },
+    {
+      "moduleKey": "huawei-h901mpsc",
+      "label": "H901MPSC (controle)",
+      "family": "MA5800",
+      "partNumber": "H901MPSC",
+      "image": "/physical-panels/huawei/huawei-h901mpsc-front.png",
+      "naturalWidth": 1406,
+      "naturalHeight": 293,
+      "mappingMode": "FRONT_APPROX",
+      "imageStatus": "GENERATED",
+      "expectedPortCount": 7,
+      "note": "Silk: CONSOLE, MGMT, USB, 10GE (1-2), GE (3-4).",
+      "ports": [
+        {
+          "portName": "CONSOLE",
+          "connector": "RJ45",
+          "bbox": {
+            "x": 0.2845,
+            "y": 0.49488,
+            "width": 0.04623,
+            "height": 0.24915
+          }
+        },
+        {
+          "portName": "MGMT",
+          "connector": "RJ45",
+          "bbox": {
+            "x": 0.37909,
+            "y": 0.49488,
+            "width": 0.04552,
+            "height": 0.24915
+          }
+        },
+        {
+          "portName": "USB",
+          "connector": "USB",
+          "bbox": {
+            "x": 0.4623,
+            "y": 0.49488,
+            "width": 0.03556,
+            "height": 0.24915
+          }
+        },
+        {
+          "portName": "10GE-1",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.52987,
+            "y": 0.51877,
+            "width": 0.04623,
+            "height": 0.22526
+          }
+        },
+        {
+          "portName": "10GE-2",
+          "connector": "SFP_PLUS",
+          "bbox": {
+            "x": 0.60811,
+            "y": 0.51877,
+            "width": 0.04623,
+            "height": 0.22526
+          }
+        },
+        {
+          "portName": "GE-1",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.67923,
+            "y": 0.51877,
+            "width": 0.04623,
+            "height": 0.22526
+          }
+        },
+        {
+          "portName": "GE-2",
+          "connector": "SFP",
+          "bbox": {
+            "x": 0.75036,
+            "y": 0.51877,
+            "width": 0.04623,
+            "height": 0.22526
+          }
+        }
+      ]
+    },
+    {
+      "moduleKey": "huawei-h902mpla",
+      "label": "H902MPLA (controle/uplink)",
+      "family": "MA5800",
+      "partNumber": "H902MPLA",
+      "image": "/physical-panels/huawei/huawei-h902mpla-front.png",
+      "naturalWidth": 1435,
+      "naturalHeight": 394,
+      "mappingMode": "FRONT_APPROX",
+      "imageStatus": "GENERATED",
+      "expectedPortCount": 4,
+      "note": "Silk impresso 1..4; família do conector não confirmada apenas pelo desenho -> connector UNKNOWN.",
+      "ports": [
+        {
+          "portName": "UPLINK-1",
+          "connector": "UNKNOWN",
+          "bbox": {
+            "x": 0.25087,
+            "y": 0.42893,
+            "width": 0.12125,
+            "height": 0.34772
+          }
+        },
+        {
+          "portName": "UPLINK-2",
+          "connector": "UNKNOWN",
+          "bbox": {
+            "x": 0.39303,
+            "y": 0.42893,
+            "width": 0.12056,
+            "height": 0.34772
+          }
+        },
+        {
+          "portName": "UPLINK-3",
+          "connector": "UNKNOWN",
+          "bbox": {
+            "x": 0.53519,
+            "y": 0.42893,
+            "width": 0.12056,
+            "height": 0.34772
+          }
+        },
+        {
+          "portName": "UPLINK-4",
+          "connector": "UNKNOWN",
+          "bbox": {
+            "x": 0.67666,
+            "y": 0.42893,
+            "width": 0.12056,
+            "height": 0.34772
+          }
+        }
+      ]
+    },
+    {
+      "moduleKey": "huawei-scun",
+      "label": "SCUN (controle MA5683T)",
+      "family": "SmartAX MA5683T",
+      "partNumber": "H801SCUN",
+      "image": "/physical-panels/huawei/huawei-ma5683t-scun-front.png",
+      "naturalWidth": 1441,
+      "naturalHeight": 188,
+      "mappingMode": "FRONT_APPROX",
+      "imageStatus": "GENERATED",
+      "expectedPortCount": 4,
+      "note": "Silk: ETH0, ETH1, CONSOLE, USB.",
+      "ports": [
+        {
+          "portName": "ETH0",
+          "connector": "RJ45",
+          "bbox": {
+            "x": 0.31367,
+            "y": 0.32447,
+            "width": 0.05135,
+            "height": 0.46809
+          }
+        },
+        {
+          "portName": "ETH1",
+          "connector": "RJ45",
+          "bbox": {
+            "x": 0.39001,
+            "y": 0.32447,
+            "width": 0.04788,
+            "height": 0.46809
+          }
+        },
+        {
+          "portName": "CONSOLE",
+          "connector": "RJ45",
+          "bbox": {
+            "x": 0.47606,
+            "y": 0.32447,
+            "width": 0.04719,
+            "height": 0.46809
+          }
+        },
+        {
+          "portName": "USB",
+          "connector": "USB",
+          "bbox": {
+            "x": 0.55656,
+            "y": 0.32447,
+            "width": 0.05274,
+            "height": 0.46809
+          }
+        }
+      ]
+    },
+    {
+      "moduleKey": "huawei-pac600s12-cb",
+      "label": "PAC600S12-CB (fonte)",
+      "family": "MA5800",
+      "partNumber": "PAC600S12-CB",
+      "image": "/physical-panels/huawei/huawei-pac600s12-cb-front.png",
+      "naturalWidth": 1375,
+      "naturalHeight": 550,
+      "mappingMode": "FRONT_APPROX",
+      "imageStatus": "GENERATED",
+      "expectedPortCount": 0,
+      "note": "Módulo de energia: sem porta de dados declarada (somente imagem).",
+      "ports": []
+    }
+  ]
+}

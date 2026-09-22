@@ -1,13 +1,14 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
-import type { PhysicalCatalogPort } from '@gmj/shared';
+import type { PhysicalCatalogPort, PhysicalConnectorKind } from '@gmj/shared';
 import { describe, expect, it } from 'vitest';
 import {
   FRONT_PANEL_MAPS,
   connectorTally,
   frontPanelAnchorPx,
   frontPanelImageMap,
+  frontPanelImageStatus,
   frontPanelMapStatus,
   frontPanelPortMapFor,
   normalizedPortAnchor,
@@ -25,6 +26,7 @@ import {
 
 const H48 = 'huawei-s6730-h48x6c';
 const H24 = 'huawei-s6730-h24x6c';
+const F1A = 'huawei-ne8000-f1a-8h20q';
 
 /** Portas do template como o loader do catálogo as materializa. */
 function catalogPorts(count10ge: number, countQsfp = 6): PhysicalCatalogPort[] {
@@ -136,9 +138,10 @@ describe('mapa do painel frontal (S6730)', () => {
 
   it('todo mapa ativo é válido e tem portas esperadas = portas declaradas', () => {
     const active = FRONT_PANEL_MAPS.filter((map) => map.status === 'ACTIVE_TEST');
-    expect(active.map((map) => map.catalogKey).sort()).toEqual([H24, H48].sort());
+    expect(active.map((map) => map.catalogKey).sort()).toEqual([F1A, H24, H48].sort());
     for (const map of active) {
       expect(validateFrontPanelMap(map)).toEqual([]);
+      expect(overlappingMapPairs(map)).toEqual([]);
       expect(map.ports).toHaveLength(map.expectedPortCount);
     }
   });
@@ -237,5 +240,91 @@ describe('mappedInterface e âncora do cabo', () => {
       // a porta continua sendo a mesma (mesmo índice no mapa)
       expect(h48.ports.findIndex((port) => port.portName === '10GE-48')).toBe(47);
     }
+  });
+});
+
+/** Portas do F1A como o loader do catálogo as materializa. */
+function f1aCatalogPorts(): PhysicalCatalogPort[] {
+  const groups: [string, number, PhysicalConnectorKind][] = [
+    ['100GE-', 8, 'QSFP28'],
+    ['25GE-', 20, 'SFP28'],
+    ['10GE-', 28, 'SFP_PLUS'],
+  ];
+  const ports: PhysicalCatalogPort[] = [];
+  let order = 0;
+  for (const [prefix, count, connector] of groups) {
+    for (let index = 1; index <= count; index += 1) {
+      order += 1;
+      ports.push({
+        name: `${prefix}${index}`,
+        label: `${prefix}${index}`,
+        order,
+        side: 'DEVICE',
+        type: connector === 'QSFP28' ? 'QSFP' : 'SFP',
+        connector,
+      });
+    }
+  }
+  return ports;
+}
+
+describe('F1A-8H20Q (painel por imagem)', () => {
+  const map = frontPanelImageMap(F1A)!;
+
+  it('56 hotspots: 8 x 100GE, 20 x 25GE, 28 x 10GE, sem overlap', () => {
+    expect(map).not.toBeNull();
+    expect(map.ports).toHaveLength(56);
+    expect(map.expectedPortCount).toBe(56);
+    expect(connectorTally(map)).toEqual(
+      new Map([
+        ['QSFP28', 8],
+        ['SFP28', 20],
+        ['SFP_PLUS', 28],
+      ]),
+    );
+    expect(overlappingMapPairs(map)).toEqual([]);
+    expect(validateFrontPanelMap(map)).toEqual([]);
+  });
+
+  it('a imagem é um esquema gerado pelo NetVision e existe em public/ com as dimensões do mapa', () => {
+    expect(frontPanelImageStatus(F1A)).toBe('GENERATED');
+    expect(map.image).toBe('/physical-panels/huawei/ne8000-f1a-8h20q-front.png');
+
+    const publicDir = fileURLToPath(new URL('../../../public', import.meta.url));
+    const file = join(publicDir, map.image!.replace(/^\//, ''));
+    expect(existsSync(file)).toBe(true);
+    const header = readFileSync(file).subarray(0, 24);
+    expect(header.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
+    expect(header.readUInt32BE(16)).toBe(map.naturalWidth);
+    expect(header.readUInt32BE(20)).toBe(map.naturalHeight);
+  });
+
+  it('todas as 56 portas resolvem pelos nomes estáveis do catálogo', () => {
+    const ports = f1aCatalogPorts();
+    expect(ports).toHaveLength(56);
+
+    const resolved = resolvedMapPorts({ ports }, map);
+    expect(resolved).toHaveLength(56);
+    expect(resolved.every((item) => item.port.name === item.mapped.portName)).toBe(true);
+  });
+
+  it('a âncora do cabo sai do mesmo bbox do hotspot e o caminho inverso funciona', () => {
+    const box = { left: 40, top: 12, width: 800, height: 110 };
+    const hotspot = map.ports.find((port) => port.portName === '100GE-1')!;
+    const center = normalizedPortAnchor(hotspot.bbox);
+    const anchor = frontPanelAnchorPx(map, '100GE-1', box)!;
+
+    expect(anchor.x).toBeCloseTo(box.left + center.x * box.width, 10);
+    expect(anchor.y).toBeCloseTo(box.top + center.y * box.height, 10);
+    expect(frontPanelPortMapFor(map, { name: '25GE-20', label: '25GE-20' })?.portName).toBe(
+      '25GE-20',
+    );
+    expect(frontPanelAnchorPx(map, 'nao-existe', box)).toBeNull();
+  });
+
+  it('os nomes CLI continuam fora do mapa (mapeamento segue no sync)', () => {
+    const serialized = JSON.stringify(map);
+    expect(serialized).not.toContain('10GE0/0/');
+    expect(serialized).not.toContain('100GE0/0/');
   });
 });

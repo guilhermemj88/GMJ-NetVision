@@ -2,6 +2,8 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { PhysicalCatalogEntry, PhysicalCatalogPort } from '@gmj/shared';
 import { describe, expect, it } from 'vitest';
 import { PhysicalPanelPreviewCard } from './physical-catalog-preview';
+import { PhysicalModuleMapCard } from './physical-module-map-card';
+import { MODULE_FRONT_PANEL_MAPS } from './module-front-panel-map';
 import { catalogEntry } from './physical-fixtures';
 
 function catalogPorts(
@@ -76,19 +78,6 @@ const f1a: PhysicalCatalogEntry = catalogEntry({
 });
 
 describe('PhysicalPanelPreviewCard (fallback geométrico)', () => {
-  it('renderiza todas as portas do F1A com contagem e selo APPROX', () => {
-    const html = renderToStaticMarkup(<PhysicalPanelPreviewCard entry={f1a} />);
-    expect(html.match(/data-port-id="/g)).toHaveLength(56);
-    expect(html).toContain('data-catalog-key="huawei-ne8000-f1a-8h20q"');
-    expect(html).toContain('data-layout-mode="FRONT_APPROX"');
-    expect(html).toContain('>APPROX<');
-    expect(html).toContain('56/56');
-    expect(html).toContain('>1U<');
-    expect(html).not.toContain('LAYOUT NÃO CONFIRMADO');
-    expect(html).toContain('LAYOUT APROXIMADO');
-    expect(html).not.toContain('physical-image-panel');
-  });
-
   it('marca LAYOUT NÃO CONFIRMADO quando o template não declara geometria', () => {
     const plain = catalogEntry({
       catalogKey: 'generico-sem-layout',
@@ -112,7 +101,13 @@ describe('PhysicalPanelPreviewCard (fallback geométrico)', () => {
       layoutType: 'MODULAR',
       slots: [
         { index: 1, label: 'line-card 1', description: '', moduleKeys: [], visual: { x: 8, y: 1 } },
-        { index: 2, label: 'line-card 2', description: '', moduleKeys: [], visual: { x: 30, y: 1 } },
+        {
+          index: 2,
+          label: 'line-card 2',
+          description: '',
+          moduleKeys: [],
+          visual: { x: 30, y: 1 },
+        },
       ],
     });
     const html = renderToStaticMarkup(<PhysicalPanelPreviewCard entry={modular} />);
@@ -122,6 +117,112 @@ describe('PhysicalPanelPreviewCard (fallback geométrico)', () => {
     expect(html).not.toContain('data-port-id=');
     // sem mapa de chassi, nenhum painel modular é desenhado
     expect(html).not.toContain('class="physical-modular-panel');
+  });
+});
+
+describe('PhysicalPanelPreviewCard (F1A migrado para painel por imagem)', () => {
+  it('renderiza os 56 hotspots pela imagem, sem cair no renderer geométrico', () => {
+    const html = renderToStaticMarkup(<PhysicalPanelPreviewCard entry={f1a} />);
+
+    expect(html).toContain('data-catalog-key="huawei-ne8000-f1a-8h20q"');
+    expect(html).toContain('data-layout-mode="IMAGE"');
+    expect(html).toContain('IMAGE PANEL');
+    expect(html).toContain('56/56');
+    expect(html).toContain('>1U<');
+    expect(html.match(/class="physical-image-panel__hitbox/g)).toHaveLength(56);
+    expect(html.match(/data-port-id="/g)).toHaveLength(56);
+    expect(html).toContain('ne8000-f1a-8h20q-front.png');
+    // a imagem é um esquema gerado: a tela precisa dizer isso
+    expect(html).toContain('imagem gerada pelo NetVision');
+    expect(html).not.toContain('LAYOUT APROXIMADO');
+  });
+});
+
+describe('PhysicalPanelPreviewCard (OLT MA5800 com imagem)', () => {
+  /** MA5800-X2 como está no catálogo: 1 energia, 2 serviço e 2 controle. */
+  function x2(debugHitboxes = false) {
+    const entry = catalogEntry({
+      catalogKey: 'huawei-ma5800-x2',
+      name: 'Huawei MA5800-X2',
+      manufacturer: 'Huawei',
+      family: 'MA5800',
+      model: 'MA5800-X2',
+      heightU: 2,
+      layoutType: 'MODULAR',
+      slots: [0, 1, 2, 3, 4].map((index) => ({
+        index,
+        label: `slot ${index}`,
+        description: '',
+        moduleKeys: [],
+      })),
+    });
+    return renderToStaticMarkup(
+      <PhysicalPanelPreviewCard entry={entry} debugHitboxes={debugHitboxes} />,
+    );
+  }
+
+  it('mostra a imagem do chassi, 3 baías mapeadas e a diferença para o catálogo', () => {
+    const html = x2();
+
+    expect(html).toContain('data-layout-mode="MODULAR_IMAGE"');
+    expect(html).toContain('huawei-ma5800-x2-front.png');
+    expect(html).toContain('Service slots');
+    expect(html).toContain('3/3');
+    expect(html).toContain('5 slots · 3 com região visual');
+    expect(html).toContain('imagem gerada (não é a oficial)');
+    expect(html.match(/data-slot-key=/g)).toHaveLength(3);
+    // chassi não declara conector: nenhuma porta é inventada
+    expect(html).not.toContain('physical-image-panel__hitbox');
+  });
+
+  it('o toggle de inspeção desenha os ordinais das baías mapeadas', () => {
+    const html = x2(true);
+    expect(html.match(/class="physical-modular-panel__ordinal"/g)).toHaveLength(3);
+  });
+
+  it('MA5683T aparece por imagem sem inventar slot nenhum', () => {
+    const entry = catalogEntry({
+      catalogKey: 'huawei-ma5683t',
+      name: 'Huawei MA5683T',
+      manufacturer: 'Huawei',
+      family: 'SmartAX',
+      model: 'MA5683T',
+      heightU: 1,
+      layoutType: 'MODULAR',
+      slots: [],
+    });
+    const html = renderToStaticMarkup(<PhysicalPanelPreviewCard entry={entry} />);
+
+    expect(html).toContain('data-layout-mode="MODULAR_IMAGE"');
+    expect(html).toContain('huawei-ma5683t-front.png');
+    expect(html).toContain('0/0');
+    expect(html).not.toContain('data-slot-key=');
+  });
+});
+
+describe('PhysicalModuleMapCard (placas com painel por imagem)', () => {
+  it('desenha os hotspots declarados da placa e não promete compatibilidade', () => {
+    const map = MODULE_FRONT_PANEL_MAPS.find((item) => item.moduleKey === 'huawei-gpfd-16')!;
+    const html = renderToStaticMarkup(<PhysicalModuleMapCard map={map} debugHitboxes={false} />);
+
+    expect(html).toContain('data-module-card="huawei-gpfd-16"');
+    expect(html.match(/data-port-name=/g)).toHaveLength(16);
+    expect(html).toContain('data-port-name="GPON-1"');
+    // sem template de módulo no catálogo, todo hotspot fica não resolvido
+    expect(html.match(/is-unresolved/g)).toHaveLength(16);
+    expect(html).toContain('sem template de módulo no catálogo');
+    expect(html).toContain('16/16');
+    expect(html).toContain('Encaixe no slot (demonstração)');
+    expect(html).not.toContain('data-demo-slot="1"');
+  });
+
+  it('a fonte aparece sem porta de dados e com a imagem declarada', () => {
+    const map = MODULE_FRONT_PANEL_MAPS.find((item) => item.moduleKey === 'huawei-pac600s12-cb')!;
+    const html = renderToStaticMarkup(<PhysicalModuleMapCard map={map} debugHitboxes={false} />);
+
+    expect(html).toContain('huawei-pac600s12-cb-front.png');
+    expect(html).toContain('0/0');
+    expect(html).not.toContain('data-port-name=');
   });
 });
 

@@ -182,7 +182,7 @@ describe('PhysicalRackCanvas', () => {
     expect(html).toContain('aria-label="Porta GE1 (SFP)"');
   });
 
-  it('desenha as 56 portas do painel F1A (nunca "+32")', () => {
+  it('desenha os 56 hotspots do painel F1A por imagem (nunca "+32")', () => {
     const entry: PhysicalCatalogEntry = catalogEntry({
       catalogKey: 'huawei-ne8000-f1a-8h20q',
       panelLayout: { type: 'LOGICAL', width: 100, height: 14 },
@@ -222,13 +222,16 @@ describe('PhysicalRackCanvas', () => {
     );
     expect(html.match(/data-port-id="/g)).toHaveLength(56);
     expect(html).not.toContain('+32');
-    // QSFP28 desenhado maior que SFP28 (proporção do conector real)
-    const qsfpStyle = /data-port-id="f1a-1"[^>]*style="([^"]+)"/.exec(html)?.[1] ?? '';
-    const sfpStyle = /data-port-id="f1a-9"[^>]*style="([^"]+)"/.exec(html)?.[1] ?? '';
-    const width = (style: string) => Number(/width:\s*(\d+)px/.exec(style)?.[1] ?? 0);
-    expect(width(qsfpStyle)).toBeGreaterThan(width(sfpStyle));
-    expect(qsfpStyle.length).toBeGreaterThan(0);
-    expect(html).toContain('physical-port--qsfp28');
+    // migrado para painel por imagem: a imagem manda no desenho e nos hotspots
+    expect(html).toContain('ne8000-f1a-8h20q-front.png');
+    expect(html).toContain('data-image-panel="huawei-ne8000-f1a-8h20q"');
+    expect(html.match(/class="physical-image-panel__hitbox/g)).toHaveLength(56);
+    // proporção vem do bbox do mapa (QSFP28 ocupa mais área que SFP+)
+    const buttonOf = (id: string) =>
+      new RegExp(`<button[^>]*data-port-id="${id}"[^>]*>`).exec(html)?.[0] ?? '';
+    const widthPct = (id: string) => Number(/width:\s*([\d.]+)%/.exec(buttonOf(id))?.[1] ?? 0);
+    expect(widthPct('f1a-1')).toBeGreaterThan(widthPct('f1a-9'));
+    expect(html).toContain('data-connector="QSFP28"');
   });
 
   it('ancora o cabo no centro do conector desenhado', () => {
@@ -400,5 +403,90 @@ describe('PhysicalRackCanvas', () => {
     expect(html).toContain('state-mapped');
     expect(html).toContain('state-lldp_detected');
     expect(html).toContain('physical-port__lldp');
+  });
+
+  it('OLT MA5800-X2: chassi por imagem e placa com painel próprio dentro do slot', () => {
+    const entry: PhysicalCatalogEntry = catalogEntry({
+      catalogKey: 'huawei-ma5800-x2',
+      name: 'Huawei MA5800-X2',
+      manufacturer: 'Huawei',
+      family: 'MA5800',
+      model: 'MA5800-X2',
+      heightU: 2,
+      layoutType: 'MODULAR',
+      slots: [0, 1, 2, 3, 4].map((index) => ({
+        index,
+        label: `slot ${index}`,
+        description: '',
+        moduleKeys: [],
+      })),
+    });
+    const modulePorts = Array.from({ length: 3 }, (_value, index) =>
+      physicalPort({
+        id: `port-gpon-${index + 1}`,
+        assetId: 'asset-x2',
+        slotId: 'slot-1',
+        moduleId: 'module-1',
+        name: `GPON-${index + 1}`,
+      }),
+    );
+    const gpdf = physicalModule({
+      id: 'module-1',
+      assetId: 'asset-x2',
+      slotId: 'slot-1',
+      slotIndex: 1,
+      name: 'GPFD 16 portas GPON',
+      model: 'H802GPFD',
+      ports: modulePorts,
+    });
+    const asset = physicalAsset({
+      id: 'asset-x2',
+      name: 'OLT-VTA-01',
+      kind: 'OLT',
+      startU: 8,
+      heightU: 2,
+      templateId: 'template-huawei-ma5800-x2',
+      template: templateRef('huawei-ma5800-x2', 'MA5800-X2'),
+      ports: modulePorts,
+      modules: [gpdf],
+      slots: [
+        physicalSlot({
+          id: 'slot-1',
+          assetId: 'asset-x2',
+          index: 1,
+          module: gpdf,
+        }),
+      ],
+    });
+
+    const html = renderToStaticMarkup(
+      <PhysicalRackCanvas
+        rack={physicalRack({ units: 42, assets: [asset] })}
+        connections={[]}
+        mode="hidden"
+        selection={null}
+        path={null}
+        catalog={[entry]}
+        onSelectAsset={noop}
+        onSelectPort={noop}
+        onSelectConnection={noop}
+        onClear={noop}
+      />,
+    );
+
+    // chassi por imagem com o slot do mapa
+    expect(html).toContain('huawei-ma5800-x2-front.png');
+    expect(html).toContain('data-chassis-panel="huawei-ma5800-x2"');
+    expect(html.match(/data-slot-key=/g)).toHaveLength(3);
+    // a placa usa o painel por imagem dela, desenhado dentro do slot
+    expect(html).toContain('physical-modular-panel__module-panel');
+    expect(html).toContain('data-image-panel="module:huawei-gpfd-16"');
+    expect(html).toContain('huawei-gpfd-16-gpon-front.png');
+    expect(html.match(/data-port-name=/g)).toHaveLength(16);
+    // as portas materializadas do módulo resolvem nos hotspots
+    expect(html).toContain('data-port-id="port-gpon-1"');
+    expect(html).toContain('data-port-id="port-gpon-2"');
+    // nenhuma porta do chassi é inventada: conector só existe em placa instalada
+    expect(html).not.toContain('data-image-panel="huawei-ma5800-x2"');
   });
 });

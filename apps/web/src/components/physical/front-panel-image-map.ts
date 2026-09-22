@@ -1,5 +1,6 @@
 import type { PhysicalAsset, PhysicalCatalogEntry } from '@gmj/shared';
-import manifest from './s6730-front-panel-maps-v1.json';
+import s6730Manifest from './s6730-front-panel-maps-v1.json';
+import f1aManifest from './ne8000-f1a-front-panel-maps-v1.json';
 /**
  * Painel frontal por imagem + mapa técnico invisível de portas.
  *
@@ -30,10 +31,20 @@ export interface FrontPanelPortMap {
 
 export type FrontPanelMapStatus = 'ACTIVE_TEST' | 'AWAITING_APPROVED_IMAGE';
 
+/**
+ * Situação da imagem do painel.
+ *
+ * `GENERATED` = o desenho foi produzido pelo próprio NetVision (esquema) e
+ * **não** é a foto oficial — o mapa continua válido contra esse desenho, mas a
+ * tela precisa dizer que a imagem ainda não foi aprovada.
+ */
+export type FrontPanelImageStatus = 'APPROVED' | 'GENERATED';
+
 export interface FrontPanelImageMap {
   catalogKey: string;
   model: string;
   status: FrontPanelMapStatus;
+  imageStatus?: FrontPanelImageStatus;
   image?: string;
   naturalWidth?: number;
   naturalHeight?: number;
@@ -47,10 +58,15 @@ interface Manifest {
   maps: FrontPanelImageMap[];
 }
 
-const FRONT_PANEL_MANIFEST = manifest as unknown as Manifest;
+const FRONT_PANEL_MANIFESTS: Manifest[] = [
+  s6730Manifest as unknown as Manifest,
+  f1aManifest as unknown as Manifest,
+];
 
 /** Todos os mapas declarados (ativos ou aguardando imagem aprovada). */
-export const FRONT_PANEL_MAPS: readonly FrontPanelImageMap[] = FRONT_PANEL_MANIFEST.maps;
+export const FRONT_PANEL_MAPS: readonly FrontPanelImageMap[] = FRONT_PANEL_MANIFESTS.flatMap(
+  (catalog) => catalog.maps,
+);
 
 const mapsByCatalogKey = new Map<string, FrontPanelImageMap>(
   FRONT_PANEL_MAPS.map((map) => [map.catalogKey, map]),
@@ -63,7 +79,9 @@ const mapsByCatalogKey = new Map<string, FrontPanelImageMap>(
  * `AWAITING_APPROVED_IMAGE` continua no renderer geométrico (nada de reutilizar
  * a imagem da versão não-V2 automaticamente).
  */
-export function frontPanelImageMap(catalogKey: string | null | undefined): FrontPanelImageMap | null {
+export function frontPanelImageMap(
+  catalogKey: string | null | undefined,
+): FrontPanelImageMap | null {
   if (!catalogKey) return null;
   const map = mapsByCatalogKey.get(catalogKey) ?? null;
   if (!map || map.status !== 'ACTIVE_TEST' || !map.image) return null;
@@ -83,9 +101,22 @@ export function hasFrontPanelImage(catalogKey: string | null | undefined): boole
 }
 
 /** Motivo pelo qual um `catalogKey` conhecido não está ativo (para a preview). */
-export function frontPanelMapStatus(catalogKey: string | null | undefined): FrontPanelMapStatus | null {
+export function frontPanelMapStatus(
+  catalogKey: string | null | undefined,
+): FrontPanelMapStatus | null {
   if (!catalogKey) return null;
   return mapsByCatalogKey.get(catalogKey)?.status ?? null;
+}
+
+/**
+ * Situação da imagem declarada (`GENERATED` quando o desenho saiu do próprio
+ * NetVision). Ausente = imagem tratada como aprovada.
+ */
+export function frontPanelImageStatus(
+  catalogKey: string | null | undefined,
+): FrontPanelImageStatus | null {
+  if (!catalogKey) return null;
+  return mapsByCatalogKey.get(catalogKey)?.imageStatus ?? null;
 }
 
 /** Centro do **mesmo** bbox usado pelo hitbox: visual = clique = âncora do cabo. */
@@ -97,7 +128,10 @@ export function normalizedPortAnchor(bbox: FrontPanelNormalizedBox): { x: number
 }
 
 function loose(value: string): string {
-  return value.trim().toLowerCase().replace(/[\s_.\-/]+/g, '');
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_.\-/]+/g, '');
 }
 
 /** Identidade mínima necessária para casar o hotspot com uma porta. */
@@ -184,7 +218,9 @@ export function validateFrontPanelMap(map: FrontPanelImageMap): string[] {
   if (!map.image) errors.push(`${map.catalogKey}: sem imagem declarada`);
 
   if (map.ports.length !== map.expectedPortCount) {
-    errors.push(`${map.catalogKey}: esperado ${map.expectedPortCount} portas, obtido ${map.ports.length}`);
+    errors.push(
+      `${map.catalogKey}: esperado ${map.expectedPortCount} portas, obtido ${map.ports.length}`,
+    );
   }
 
   const seen = new Set<string>();
@@ -212,7 +248,9 @@ export function validateFrontPanelMap(map: FrontPanelImageMap): string[] {
 }
 
 /** Contagem por família de conector — usada no card da preview. */
-export function connectorTally(map: FrontPanelImageMap): Map<string, number> {
+export function connectorTally(map: {
+  ports: readonly { connector: string }[];
+}): Map<string, number> {
   const tally = new Map<string, number>();
   for (const port of map.ports) {
     tally.set(port.connector, (tally.get(port.connector) ?? 0) + 1);

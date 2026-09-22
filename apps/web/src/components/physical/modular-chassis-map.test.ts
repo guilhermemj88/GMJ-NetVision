@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   MODULAR_CHASSIS_MAPS,
+  MODULE_SLOT_INSET,
   chassisAnchorPx,
   chassisAspectRatio,
   chassisRenderMode,
   chassisSlotBoxPx,
+  chassisSlotCount,
   chassisSlotMapFor,
   mappedCatalogSlots,
+  moduleImageBoxInSlot,
   modulePanelBoxInSlot,
   modulePortAnchorPx,
   modularChassisMap,
@@ -64,12 +67,12 @@ describe('chassi modular NE8000 M4', () => {
     expect(chassisAspectRatio(map)).toBeCloseTo(2172 / 724, 5);
   });
 
-  it('todos os chassis do pacote estão declarados e são válidos', () => {
-    expect(MODULAR_CHASSIS_MAPS).toHaveLength(10);
+  it('todos os chassis declarados (NE8000 + OLTs) são válidos', () => {
+    expect(MODULAR_CHASSIS_MAPS).toHaveLength(15);
     for (const map of MODULAR_CHASSIS_MAPS) {
       expect(validateModularChassisMap(map)).toEqual([]);
       expect(overlappingChassisSlotPairs(map)).toEqual([]);
-      expect(map.slots).toHaveLength(map.serviceSlotCount);
+      expect(map.slots).toHaveLength(chassisSlotCount(map));
     }
   });
 
@@ -145,7 +148,10 @@ describe('geometria dos slots (resize e âncora)', () => {
       expect(slotBox.height / box.height).toBeCloseTo(mapped.bbox.height, 10);
 
       const anchor = chassisAnchorPx(mapped.bbox, box);
-      expect((anchor.x - box.left) / box.width).toBeCloseTo(mapped.bbox.x + mapped.bbox.width / 2, 10);
+      expect((anchor.x - box.left) / box.width).toBeCloseTo(
+        mapped.bbox.x + mapped.bbox.width / 2,
+        10,
+      );
       expect((anchor.y - box.top) / box.height).toBeCloseTo(
         mapped.bbox.y + mapped.bbox.height / 2,
         10,
@@ -176,12 +182,16 @@ describe('geometria dos slots (resize e âncora)', () => {
   });
 
   it('a placa cabe no slot e a âncora da porta é o centro do conector', () => {
-    const slotBox = chassisSlotBoxPx(map, { index: 1 }, {
-      left: 78,
-      top: 40,
-      width: 828,
-      height: 276,
-    })!;
+    const slotBox = chassisSlotBoxPx(
+      map,
+      { index: 1 },
+      {
+        left: 78,
+        top: 40,
+        width: 828,
+        height: 276,
+      },
+    )!;
     const layout = { width: 8, gridHeight: 3 };
     const moduleBox = modulePanelBoxInSlot(slotBox, layout);
 
@@ -196,5 +206,114 @@ describe('geometria dos slots (resize e âncora)', () => {
     expect(anchor.y).toBeCloseTo(moduleBox.top + (1 + 1.1) * moduleBox.scale, 10);
     // o mesmo cálculo em pixels diferentes continua no centro do conector
     expect((anchor.x - moduleBox.left) / moduleBox.scale).toBeCloseTo(3.6, 10);
+  });
+});
+
+describe('chassis OLT Huawei (imagem + slots)', () => {
+  const OLT_KEYS = [
+    'huawei-ma5683t',
+    'huawei-ma5800-x2',
+    'huawei-ma5800-x7',
+    'huawei-ma5800-x15',
+    'huawei-ma5800-x17',
+  ];
+  const COM_SLOTS = [
+    'huawei-ma5800-x2',
+    'huawei-ma5800-x7',
+    'huawei-ma5800-x15',
+    'huawei-ma5800-x17',
+  ];
+
+  it('as cinco OLTs têm imagem declarada e nunca viram FRONT_EXACT', () => {
+    for (const key of OLT_KEYS) {
+      const map = modularChassisMap(key)!;
+      expect(map.image).toBe(`/physical-panels/huawei/${key}-front.png`);
+      expect(map.imageStatus).toBe('GENERATED');
+      expect(map.mappingMode).toBe('LOGICAL');
+      expect(chassisRenderMode(map)).toBe('FRONT_APPROX');
+      expect(validateModularChassisMap(map)).toEqual([]);
+      expect(overlappingChassisSlotPairs(map)).toEqual([]);
+    }
+  });
+
+  it('a quantidade de baías vem da imagem fornecida: X2=3, X7=6, X15=15, X17=14', () => {
+    expect(chassisSlotCount(modularChassisMap('huawei-ma5800-x2')!)).toBe(3);
+    expect(chassisSlotCount(modularChassisMap('huawei-ma5800-x7')!)).toBe(6);
+    expect(chassisSlotCount(modularChassisMap('huawei-ma5800-x15')!)).toBe(15);
+    expect(chassisSlotCount(modularChassisMap('huawei-ma5800-x17')!)).toBe(14);
+  });
+
+  it('os ordinais são contíguos e sem repetição', () => {
+    for (const key of COM_SLOTS) {
+      const map = modularChassisMap(key)!;
+      const ordinals = map.slots.map((slot) => slot.ordinal);
+      expect(new Set(ordinals).size).toBe(map.slots.length);
+      expect(Math.max(...ordinals)).toBeLessThan(map.slots.length + 1);
+      for (const slot of map.slots) {
+        expect(slot.bbox.x + slot.bbox.width).toBeLessThanOrEqual(1);
+        expect(slot.bbox.y + slot.bbox.height).toBeLessThanOrEqual(1);
+      }
+    }
+    // o MA5800-X2 tem energia no slot 0: as baías visuais começam no slot 1
+    expect(modularChassisMap('huawei-ma5800-x2')!.slots.map((slot) => slot.ordinal)).toEqual([
+      1, 2, 3,
+    ]);
+    // X7/X15/X17 têm slot universal 0 declarado no catálogo
+    expect(modularChassisMap('huawei-ma5800-x7')!.slots.map((slot) => slot.ordinal)).toEqual([
+      0, 1, 2, 3, 4, 5,
+    ]);
+  });
+
+  it('MA5683T não inventa slot: imagem visual com zero posições declaradas', () => {
+    const map = modularChassisMap('huawei-ma5683t')!;
+
+    expect(map.slots).toEqual([]);
+    expect(map.serviceSlotCount).toBe(0);
+    expect(chassisSlotCount(map)).toBe(0);
+    expect(chassisRenderMode(map)).toBe('FRONT_APPROX');
+  });
+
+  it('só casa com slots que existem no catálogo (POWER fica de fora)', () => {
+    const map = modularChassisMap('huawei-ma5800-x2')!;
+    const entry = catalogEntry({
+      catalogKey: 'huawei-ma5800-x2',
+      layoutType: 'MODULAR',
+      heightU: 2,
+      slots: [
+        { index: 0, label: 'power 0', description: '', moduleKeys: [] },
+        { index: 1, label: 'service 1', description: '', moduleKeys: [] },
+        { index: 2, label: 'service 2', description: '', moduleKeys: [] },
+        { index: 3, label: 'control 3', description: '', moduleKeys: [] },
+        { index: 4, label: 'control 4', description: '', moduleKeys: [] },
+      ],
+    });
+
+    // as 3 baías visuais cobrem serviço e controle, nunca a energia
+    expect(mappedCatalogSlots(entry, map).map((slot) => slot.ordinal)).toEqual([1, 2, 3]);
+    expect(mappedCatalogSlots(entry, map).map((slot) => slot.role)).toEqual([
+      'SERVICE_OR_UPLINK',
+      'SERVICE_OR_UPLINK',
+      'CONTROL',
+    ]);
+  });
+
+  it('a imagem da placa cabe no slot preservando a proporção natural', () => {
+    const slotBox = { left: 40, top: 20, width: 120, height: 640 };
+    const aspect = 1438 / 255;
+    const { box, offset } = moduleImageBoxInSlot(slotBox, aspect);
+
+    expect(box.width / box.height).toBeCloseTo(aspect, 6);
+    // nunca sai do slot (respeitando o respiro interno)
+    expect(offset.left + box.width).toBeLessThanOrEqual(
+      slotBox.width - MODULE_SLOT_INSET.right + 0.001,
+    );
+    expect(offset.top + box.height).toBeLessThanOrEqual(
+      slotBox.height - MODULE_SLOT_INSET.bottom + 0.001,
+    );
+    expect(offset.left).toBeGreaterThanOrEqual(MODULE_SLOT_INSET.left);
+    expect(offset.top).toBeGreaterThanOrEqual(MODULE_SLOT_INSET.top);
+    // a caixa absoluta é a mesma do offset, deslocada pelo slot
+    expect(box.left).toBeCloseTo(slotBox.left + offset.left, 6);
+    expect(box.top).toBeCloseTo(slotBox.top + offset.top, 6);
   });
 });

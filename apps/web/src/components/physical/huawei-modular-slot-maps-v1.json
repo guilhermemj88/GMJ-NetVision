@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0",
   "coordinateSystem": "NORMALIZED_0_1",
-  "note": "Slots de chassis modulares Huawei em coordenadas normalizadas 0..1. mappingMode LOGICAL = estrutura lógica (não é a geometria frontal oficial); usar imageStatus para saber se existe imagem aprovada.",
+  "note": "Slots de chassis modulares Huawei em coordenadas normalizadas 0..1. mappingMode LOGICAL = estrutura lógica (não é a geometria frontal oficial); usar imageStatus para saber se existe imagem aprovada. Nas OLTs MA5800/MA5683T a imagem é ilustrativa: a quantidade de baías visível pode diferir do catálogo, e a associação painel × slot do catálogo é feita em ordem crescente de índice (POWER e FAN não são mapeados).",
   "chassis": [
     {
       "catalogKey": "huawei-ne8000-m4",
@@ -920,6 +920,488 @@
           }
         }
       ]
+    },
+    {
+      "catalogKey": "huawei-ma5683t",
+      "model": "MA5683T",
+      "mappingMode": "LOGICAL",
+      "imageStatus": "GENERATED",
+      "serviceSlotCount": 0,
+      "slotCount": 0,
+      "slots": [],
+      "image": "/physical-panels/huawei/huawei-ma5683t-front.png",
+      "naturalWidth": 2158,
+      "naturalHeight": 590
+    },
+    {
+      "catalogKey": "huawei-ma5800-x2",
+      "model": "MA5800-X2",
+      "mappingMode": "LOGICAL",
+      "imageStatus": "GENERATED",
+      "serviceSlotCount": 2,
+      "slotCount": 3,
+      "slots": [
+        {
+          "slotKey": "slot-1",
+          "ordinal": 1,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.0634,
+            "y": 0.14859,
+            "width": 0.7043,
+            "height": 0.28112
+          }
+        },
+        {
+          "slotKey": "slot-2",
+          "ordinal": 2,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.0634,
+            "y": 0.44378,
+            "width": 0.7043,
+            "height": 0.26104
+          }
+        },
+        {
+          "slotKey": "slot-3",
+          "ordinal": 3,
+          "role": "CONTROL",
+          "bbox": {
+            "x": 0.0634,
+            "y": 0.71687,
+            "width": 0.7043,
+            "height": 0.19478
+          }
+        }
+      ],
+      "image": "/physical-panels/huawei/huawei-ma5800-x2-front.png",
+      "naturalWidth": 2161,
+      "naturalHeight": 498
+    },
+    {
+      "catalogKey": "huawei-ma5800-x7",
+      "model": "MA5800-X7",
+      "mappingMode": "LOGICAL",
+      "imageStatus": "GENERATED",
+      "serviceSlotCount": 6,
+      "slotCount": 6,
+      "slots": [
+        {
+          "slotKey": "slot-0",
+          "ordinal": 0,
+          "role": "UNIVERSAL",
+          "bbox": {
+            "x": 0.11809,
+            "y": 0.15119,
+            "width": 0.72716,
+            "height": 0.09827
+          }
+        },
+        {
+          "slotKey": "slot-1",
+          "ordinal": 1,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.11809,
+            "y": 0.24946,
+            "width": 0.72716,
+            "height": 0.09827
+          }
+        },
+        {
+          "slotKey": "slot-2",
+          "ordinal": 2,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.11809,
+            "y": 0.34773,
+            "width": 0.72716,
+            "height": 0.09827
+          }
+        },
+        {
+          "slotKey": "slot-3",
+          "ordinal": 3,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.11809,
+            "y": 0.446,
+            "width": 0.72716,
+            "height": 0.09827
+          }
+        },
+        {
+          "slotKey": "slot-4",
+          "ordinal": 4,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.11809,
+            "y": 0.54428,
+            "width": 0.72716,
+            "height": 0.09827
+          }
+        },
+        {
+          "slotKey": "slot-5",
+          "ordinal": 5,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.11809,
+            "y": 0.64255,
+            "width": 0.72716,
+            "height": 0.09827
+          }
+        }
+      ],
+      "image": "/physical-panels/huawei/huawei-ma5800-x7-front.png",
+      "naturalWidth": 1609,
+      "naturalHeight": 926
+    },
+    {
+      "catalogKey": "huawei-ma5800-x15",
+      "model": "MA5800-X15",
+      "mappingMode": "LOGICAL",
+      "imageStatus": "GENERATED",
+      "serviceSlotCount": 13,
+      "slotCount": 15,
+      "slots": [
+        {
+          "slotKey": "slot-0",
+          "ordinal": 0,
+          "role": "UNIVERSAL",
+          "bbox": {
+            "x": 0.04105,
+            "y": 0.22556,
+            "width": 0.05419,
+            "height": 0.55451
+          }
+        },
+        {
+          "slotKey": "slot-1",
+          "ordinal": 1,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.10099,
+            "y": 0.22556,
+            "width": 0.05419,
+            "height": 0.55451
+          }
+        },
+        {
+          "slotKey": "slot-2",
+          "ordinal": 2,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.16092,
+            "y": 0.22556,
+            "width": 0.05419,
+            "height": 0.55451
+          }
+        },
+        {
+          "slotKey": "slot-3",
+          "ordinal": 3,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.22085,
+            "y": 0.22556,
+            "width": 0.05419,
+            "height": 0.55451
+          }
+        },
+        {
+          "slotKey": "slot-4",
+          "ordinal": 4,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.28079,
+            "y": 0.22556,
+            "width": 0.05419,
+            "height": 0.55451
+          }
+        },
+        {
+          "slotKey": "slot-5",
+          "ordinal": 5,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.34072,
+            "y": 0.22556,
+            "width": 0.05419,
+            "height": 0.55451
+          }
+        },
+        {
+          "slotKey": "slot-6",
+          "ordinal": 6,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.40066,
+            "y": 0.22556,
+            "width": 0.05419,
+            "height": 0.55451
+          }
+        },
+        {
+          "slotKey": "slot-7",
+          "ordinal": 7,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.46059,
+            "y": 0.22556,
+            "width": 0.05419,
+            "height": 0.55451
+          }
+        },
+        {
+          "slotKey": "slot-8",
+          "ordinal": 8,
+          "role": "CONTROL",
+          "bbox": {
+            "x": 0.52053,
+            "y": 0.22556,
+            "width": 0.05419,
+            "height": 0.55451
+          }
+        },
+        {
+          "slotKey": "slot-9",
+          "ordinal": 9,
+          "role": "CONTROL",
+          "bbox": {
+            "x": 0.58046,
+            "y": 0.22556,
+            "width": 0.05419,
+            "height": 0.55451
+          }
+        },
+        {
+          "slotKey": "slot-10",
+          "ordinal": 10,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.64039,
+            "y": 0.22556,
+            "width": 0.05419,
+            "height": 0.55451
+          }
+        },
+        {
+          "slotKey": "slot-11",
+          "ordinal": 11,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.70033,
+            "y": 0.22556,
+            "width": 0.05419,
+            "height": 0.55451
+          }
+        },
+        {
+          "slotKey": "slot-12",
+          "ordinal": 12,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.76026,
+            "y": 0.22556,
+            "width": 0.05419,
+            "height": 0.55451
+          }
+        },
+        {
+          "slotKey": "slot-13",
+          "ordinal": 13,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.8202,
+            "y": 0.22556,
+            "width": 0.05419,
+            "height": 0.55451
+          }
+        },
+        {
+          "slotKey": "slot-14",
+          "ordinal": 14,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.88013,
+            "y": 0.22556,
+            "width": 0.05419,
+            "height": 0.55451
+          }
+        }
+      ],
+      "image": "/physical-panels/huawei/huawei-ma5800-x15-front.png",
+      "naturalWidth": 1218,
+      "naturalHeight": 1064
+    },
+    {
+      "catalogKey": "huawei-ma5800-x17",
+      "model": "MA5800-X17",
+      "mappingMode": "LOGICAL",
+      "imageStatus": "GENERATED",
+      "serviceSlotCount": 12,
+      "slotCount": 14,
+      "slots": [
+        {
+          "slotKey": "slot-0",
+          "ordinal": 0,
+          "role": "UNIVERSAL",
+          "bbox": {
+            "x": 0.09729,
+            "y": 0.13412,
+            "width": 0.04147,
+            "height": 0.58029
+          }
+        },
+        {
+          "slotKey": "slot-1",
+          "ordinal": 1,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.14753,
+            "y": 0.13412,
+            "width": 0.04067,
+            "height": 0.58029
+          }
+        },
+        {
+          "slotKey": "slot-2",
+          "ordinal": 2,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.19856,
+            "y": 0.13412,
+            "width": 0.04147,
+            "height": 0.58029
+          }
+        },
+        {
+          "slotKey": "slot-3",
+          "ordinal": 3,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.2488,
+            "y": 0.13412,
+            "width": 0.04067,
+            "height": 0.58029
+          }
+        },
+        {
+          "slotKey": "slot-4",
+          "ordinal": 4,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.29984,
+            "y": 0.13412,
+            "width": 0.04226,
+            "height": 0.58029
+          }
+        },
+        {
+          "slotKey": "slot-5",
+          "ordinal": 5,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.35088,
+            "y": 0.13412,
+            "width": 0.04306,
+            "height": 0.58029
+          }
+        },
+        {
+          "slotKey": "slot-6",
+          "ordinal": 6,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.40829,
+            "y": 0.13412,
+            "width": 0.04545,
+            "height": 0.58029
+          }
+        },
+        {
+          "slotKey": "slot-7",
+          "ordinal": 7,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.46332,
+            "y": 0.13412,
+            "width": 0.04306,
+            "height": 0.58029
+          }
+        },
+        {
+          "slotKey": "slot-8",
+          "ordinal": 8,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.51515,
+            "y": 0.13412,
+            "width": 0.04226,
+            "height": 0.58029
+          }
+        },
+        {
+          "slotKey": "slot-9",
+          "ordinal": 9,
+          "role": "CONTROL",
+          "bbox": {
+            "x": 0.56619,
+            "y": 0.13412,
+            "width": 0.04226,
+            "height": 0.58029
+          }
+        },
+        {
+          "slotKey": "slot-10",
+          "ordinal": 10,
+          "role": "CONTROL",
+          "bbox": {
+            "x": 0.61722,
+            "y": 0.13412,
+            "width": 0.04226,
+            "height": 0.58029
+          }
+        },
+        {
+          "slotKey": "slot-11",
+          "ordinal": 11,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.66906,
+            "y": 0.13412,
+            "width": 0.04147,
+            "height": 0.58029
+          }
+        },
+        {
+          "slotKey": "slot-12",
+          "ordinal": 12,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.7201,
+            "y": 0.13412,
+            "width": 0.04226,
+            "height": 0.58029
+          }
+        },
+        {
+          "slotKey": "slot-13",
+          "ordinal": 13,
+          "role": "SERVICE_OR_UPLINK",
+          "bbox": {
+            "x": 0.77193,
+            "y": 0.13412,
+            "width": 0.04226,
+            "height": 0.58029
+          }
+        }
+      ],
+      "image": "/physical-panels/huawei/huawei-ma5800-x17-front.png",
+      "naturalWidth": 1254,
+      "naturalHeight": 1096
     }
   ]
 }

@@ -292,6 +292,54 @@
 .physical-preview-card__foot button:hover {
   border-color: rgba(139, 92, 246, 0.55);
 }
+.physical-preview-card__note {
+  margin: 0;
+  color: #647985;
+  font: 8px var(--font-mono);
+}
+.physical-preview-card__fit-toggle {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  color: #8ea6b2;
+  font: 8px var(--font-mono);
+  cursor: pointer;
+}
+.physical-preview-card__fit-toggle input[type='checkbox'] {
+  width: 11px;
+  height: 11px;
+  margin: 0;
+  accent-color: #8b5cf6;
+  cursor: pointer;
+}
+.physical-preview-card__demo-slot {
+  position: relative;
+  border: 1px dashed rgba(139, 92, 246, 0.5);
+  border-radius: 4px;
+  background: rgba(139, 92, 246, 0.06);
+}
+.physical-preview-card__demo-module {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.physical-preview-card__demo-module img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.physical-preview__modules {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.physical-preview__modules h2 {
+  margin: 0;
+  color: #d9e6ee;
+  font: 600 12px var(--font-sans);
+}
 .physical-preview__modal {
   position: fixed;
   inset: 0;
