@@ -6,7 +6,7 @@ import { DemoPhysicalRepository } from './infrastructure/physical/demo-physical-
 import { PhysicalInventoryError } from './infrastructure/physical/physical-repository';
 import { DemoHostRepositoryAdapter } from './infrastructure/persistence/demo-host-repository-adapter';
 import { DemoMapRepository } from './infrastructure/persistence/demo-map-repository';
-import type { Role } from '@gmj/shared';
+import { classifyPhysicalInterface, type Role } from '@gmj/shared';
 
 async function buildPhysicalApp(role?: Role): Promise<FastifyInstance> {
   const app = Fastify();
@@ -338,7 +338,11 @@ describe('physical inventory REST API', () => {
   it('maps real interfaces by stable IDs when synchronizing a linked Device', async () => {
     const hosts = new DemoHostRepositoryAdapter(new DemoMapRepository());
     const host = (await hosts.listHosts()).find((candidate) => candidate.interfaces.length > 0)!;
-    const firstInterface = host.interfaces[0]!;
+    const physicalInterfaces = host.interfaces.filter(
+      (item) => classifyPhysicalInterface(item.name).classification === 'PHYSICAL',
+    );
+    expect(physicalInterfaces.length).toBeGreaterThan(0);
+    const firstInterface = physicalInterfaces[0]!;
     const rack = await createRack();
     const assetResponse = await app.inject({
       method: 'POST',
@@ -350,11 +354,22 @@ describe('physical inventory REST API', () => {
       url: `/api/physical/assets/${assetResponse.json().id}/sync-interfaces`,
     });
     expect(sync.statusCode).toBe(200);
-    expect(sync.json()).toHaveLength(host.interfaces.length);
-    expect(sync.json()[0]).toMatchObject({
-      mappedInterfaceId: firstInterface.id,
-      mappedInterface: { ifIndex: firstInterface.ifIndex },
-    });
+    const report = sync.json() as {
+      ports: Array<{ name: string; mappedInterfaceId: string | null; mappedInterface: { ifIndex: number } | null }>;
+      created: number;
+      mapped: number;
+      skippedLogical: number;
+    };
+    // only real chassis connectors become ports
+    expect(report.created + report.mapped).toBe(physicalInterfaces.length);
+    expect(report.ports).toHaveLength(physicalInterfaces.length);
+    expect(
+      report.ports.every(
+        (port) => classifyPhysicalInterface(port.name).classification === 'PHYSICAL',
+      ),
+    ).toBe(true);
+    const mapped = report.ports.find((port) => port.mappedInterfaceId === firstInterface.id);
+    expect(mapped).toMatchObject({ mappedInterface: { ifIndex: firstInterface.ifIndex } });
   });
 
   it('allows authenticated reading but rejects physical edits from VIEWER', async () => {

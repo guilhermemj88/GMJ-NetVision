@@ -24,10 +24,10 @@ import type {
   PhysicalSlot,
 } from '@gmj/shared';
 import type { HostRepository } from '../persistence/host-repository';
-import { interfaceNameKeys } from '../topology/interface-correlation';
-import { materializeTemplate, portState } from './physical-domain';
+import { materializeTemplate, isVendorTemplate, planInterfaceSync, portState } from './physical-domain';
 import type {
   CreatePhysicalTemplateInput,
+  InterfaceSyncExecution,
   PhysicalCatalogSyncResult,
   PhysicalLldpAdjacencyInput,
   PhysicalLldpAdjacencyRecord,
@@ -262,7 +262,8 @@ export class DemoPhysicalRepository implements PhysicalRepository {
       );
       const moduleDtos = entry.modules.map((module) => ({
         id: id('template-module'),
-        catalogKey: `${entry.catalogKey}:${module.key}`,
+        // the module key declared by the catalog is authoritative
+        catalogKey: module.key,
         name: module.name,
         model: module.model,
         description: module.description,
@@ -274,9 +275,7 @@ export class DemoPhysicalRepository implements PhysicalRepository {
         index: slot.index,
         label: slot.label,
         description: slot.description,
-        // Module catalog keys are namespaced by the parent template, exactly as
-        // the Prisma repository persists them.
-        moduleKeys: slot.moduleKeys.map((key) => `${entry.catalogKey}:${key}`),
+        moduleKeys: [...slot.moduleKeys],
       }));
       if (!existing) {
         const timestamp = now();
@@ -530,54 +529,86 @@ export class DemoPhysicalRepository implements PhysicalRepository {
   }
 
   /** Maps existing interfaces first, keeps template/manual ports, never deletes cables. */
-  async syncInterfacePorts(assetId: string): Promise<PhysicalPort[] | null> {
+  /**
+   * Maps the real chassis connectors of the Device and ignores every logical
+   * interface. Only PHYSICAL interfaces may create a connector; UNKNOWN names
+   * may fill an existing port but never fabricate one.
+   */
+  async syncInterfacePorts(assetId: string): Promise<InterfaceSyncExecution | null> {
     const asset = this.assets.get(assetId);
     if (!asset?.deviceId) return null;
     const host = await this.hosts.getHost(asset.deviceId);
     if (!host) return null;
-    const mappedIds = new Set(
-      [...this.ports.values()]
-        .filter((port) => port.assetId === assetId && port.mappedInterfaceId)
-        .map((port) => port.mappedInterfaceId as string),
+    const assetPorts = [...this.ports.values()].filter((port) => port.assetId === assetId);
+    const plan = planInterfaceSync(
+      assetPorts.map((port) => ({
+        id: port.id,
+        name: port.name,
+        side: port.side,
+        mappedInterfaceId: port.mappedInterfaceId,
+      })),
+      host.interfaces.map((item) => ({ id: item.id, name: item.name })),
+      { vendorTemplate: isVendorTemplate(asset.template) },
     );
-    const devicePorts = [...this.ports.values()].filter(
-      (port) => port.assetId === assetId && port.side === 'DEVICE',
-    );
-    let order = Math.max(
-      0,
-      ...[...this.ports.values()].filter((port) => port.assetId === assetId).map((port) => port.order),
-    );
-    for (const item of [...host.interfaces].sort((a, b) => a.ifIndex - b.ifIndex)) {
-      if (mappedIds.has(item.id)) continue;
-      const keys = new Set(interfaceNameKeys(item.name));
-      const byName = devicePorts.find((port) => !port.mappedInterfaceId && port.name === item.name);
-      const normalized = devicePorts.filter(
-        (port) => !port.mappedInterfaceId && interfaceNameKeys(port.name).some((key) => keys.has(key)),
-      );
-      const candidate = byName ?? (normalized.length === 1 ? normalized[0] : undefined);
-      if (candidate) {
-        candidate.mappedInterfaceId = item.id;
-        candidate.mappedInterface = interfaceReference(item);
-        candidate.updatedAt = now();
-        mappedIds.add(item.id);
+    let order = Math.max(0, ...assetPorts.map((port) => port.order));
+    const interfaceById = new Map(host.interfaces.map((item) => [item.id, item]));
+    let created = 0;
+    let mapped = 0;
+    let skippedLogical = 0;
+    let skippedUnknown = 0;
+    let skippedByPolicy = 0;
+
+    for (const entry of plan) {
+      if (entry.action === 'SKIP') {
+        if (entry.classification === 'LOGICAL') skippedLogical += 1;
+        else if (entry.classification === 'UNKNOWN') skippedUnknown += 1;
+        else skippedByPolicy += 1;
+        continue;
+      }
+      const item = interfaceById.get(entry.interfaceId);
+      if (!item) continue;
+      if (entry.action === 'MAP' && entry.portId) {
+        const port = this.ports.get(entry.portId);
+        if (port) {
+          port.mappedInterfaceId = item.id;
+          port.mappedInterface = interfaceReference(item);
+          port.updatedAt = now();
+          mapped += 1;
+        }
         continue;
       }
       order += 1;
-      const created = await this.createPort(assetId, {
-        name: item.name,
+      const createdPort = await this.createPort(assetId, {
+        name: entry.portName ?? item.name,
         label: item.alias ?? '',
         order,
         side: 'DEVICE',
         type: 'OTHER',
         mappedInterfaceId: item.id,
       });
-      if (created) {
-        const stored = this.ports.get(created.id)!;
+      if (createdPort) {
+        const stored = this.ports.get(createdPort.id)!;
         stored.role = 'DISCOVERED';
+        created += 1;
       }
-      mappedIds.add(item.id);
     }
-    return clone([...this.ports.values()].filter((port) => port.assetId === assetId));
+    return {
+      ports: clone([...this.ports.values()].filter((port) => port.assetId === assetId)),
+      created,
+      mapped,
+      skippedLogical,
+      skippedUnknown,
+      skippedByPolicy,
+    };
+  }
+
+  /** Deletes the given ports; cables and template/manual ports are out of scope. */
+  async deletePorts(portIds: readonly string[]): Promise<number> {
+    let removed = 0;
+    for (const portId of portIds) {
+      if (this.ports.delete(portId)) removed += 1;
+    }
+    return removed;
   }
 
   async installModule(

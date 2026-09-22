@@ -107,7 +107,10 @@ export function registerPhysicalRoutes(app: FastifyInstance, options: PhysicalRo
 
   app.get('/api/physical', async () => service.getInventory());
 
-  app.get('/api/physical/catalog', async () => ({ entries: service.getCatalog() }));
+  app.get('/api/physical/catalog', async () => ({
+    entries: service.getCatalog(),
+    ...service.getCatalogSource(),
+  }));
 
   /** Idempotent SYSTEM catalog bootstrap (safe to call repeatedly). */
   app.post('/api/physical/catalog/bootstrap', async (request, reply) => {
@@ -209,6 +212,13 @@ export function registerPhysicalRoutes(app: FastifyInstance, options: PhysicalRo
     if (!(await requireEditor(request, reply))) return;
     const { id } = idParams.parse(request.params);
     return service.syncInterfacePorts(id);
+  });
+
+  /** Removes connectors the old sync created for logical interfaces. */
+  app.post('/api/physical/assets/:id/reconcile-ports', async (request, reply) => {
+    if (!(await requireEditor(request, reply))) return;
+    const { id } = idParams.parse(request.params);
+    return service.reconcilePorts(id);
   });
 
   app.post('/api/physical/ports/:id/pair', async (request, reply) => {

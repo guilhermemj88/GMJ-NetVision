@@ -63,6 +63,22 @@ export interface PhysicalCatalogSyncResult {
   total: number;
 }
 
+/** Result of one interface synchronization run. */
+export interface InterfaceSyncExecution {
+  ports: PhysicalPort[];
+  created: number;
+  mapped: number;
+  /** Logical interfaces ignored on purpose (VLAN/bridge/sub-interface/lane). */
+  skippedLogical: number;
+  /** Unrecognized names ignored on purpose (they never fabricate connectors). */
+  skippedUnknown: number;
+  /**
+   * Physical interfaces deliberately not created: the asset uses an
+   * authoritative vendor template, or the connector key already exists in this
+   * run (breakout collapsed).
+   */
+  skippedByPolicy: number;
+}
 export interface UpdatePhysicalSiteInput {
   name?: string | undefined;
   code?: string | null | undefined;
@@ -105,8 +121,14 @@ export interface PhysicalRepository {
   createPort(assetId: string, input: CreatePhysicalPortInput): Promise<PhysicalPort | null>;
   updatePort(id: string, input: UpdatePhysicalPortInput): Promise<PhysicalPort | null>;
   pairPorts(portId: string, pairedPortId: string): Promise<[PhysicalPort, PhysicalPort] | null>;
-  /** Maps existing interfaces first, keeps template/manual ports and never deletes cables. */
-  syncInterfacePorts(assetId: string): Promise<PhysicalPort[] | null>;
+  /**
+   * Maps the Device interfaces that are real chassis connectors, creates the
+   * missing PHYSICAL ones and ignores every logical interface. Template and
+   * manual ports are preserved; cables are never touched.
+   */
+  syncInterfacePorts(assetId: string): Promise<InterfaceSyncExecution | null>;
+  /** Removes the given ports (used by the logical-port reconciliation). */
+  deletePorts(portIds: readonly string[]): Promise<number>;
   installModule(assetId: string, input: CreatePhysicalModuleInput): Promise<PhysicalModule | null>;
   removeModule(moduleId: string): Promise<boolean>;
   createConnection(input: CreatePhysicalConnectionInput): Promise<PhysicalConnection | null>;

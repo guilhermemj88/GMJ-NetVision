@@ -6785,6 +6785,21 @@ label > small {
   color: #efb09d;
   font: 10px var(--font-mono);
 }
+.physical-notice--error {
+  border-bottom-color: #6b3a32;
+  background: #2b1b18;
+  color: #efb09d;
+}
+.physical-notice--warning {
+  border-bottom-color: rgba(240, 178, 76, 0.5);
+  background: #2a2318;
+  color: var(--amber);
+}
+.physical-notice--info {
+  border-bottom-color: #2d4a5a;
+  background: #14212a;
+  color: #9cc0d6;
+}
 .physical-notice button,
 .physical-sidebar__heading button,
 .physical-inspector__header button,

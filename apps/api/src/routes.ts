@@ -34,9 +34,23 @@ import { registerHostRoutes } from './host-routes';
 import { registerMplsRoutes } from './mpls-routes';
 import { registerBgpRoutes } from './bgp-routes';
 import { registerPhysicalRoutes } from './physical-routes';
+
+/**
+ * True only for "the table/column does not exist yet" errors, i.e. a pending
+ * Prisma migration. Everything else must surface as a real error.
+ */
+function isPendingMigrationError(error: unknown): boolean {
+  const code = (error as { code?: string }).code;
+  if (code === 'P2021' || code === 'P2022') return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /does not exist in the current database|relation .* does not exist|column .* does not exist/i.test(
+    message,
+  );
+}
 import { DemoPhysicalRepository } from './infrastructure/physical/demo-physical-repository';
 import { PrismaPhysicalRepository } from './infrastructure/physical/prisma-physical-repository';
 import { PhysicalService } from './infrastructure/physical/physical-service';
+import { PhysicalCatalogError } from './infrastructure/physical/physical-catalog-yaml';
 import { DemoMetricAdapter } from './infrastructure/metrics/demo-adapter';
 import { ZabbixAdapter } from './infrastructure/metrics/zabbix-adapter';
 import { DemoAuthRepository } from './infrastructure/persistence/demo-auth-repository';
@@ -472,15 +486,35 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
 
   app.addHook('onReady', async () => {
-    // Idempotent SYSTEM catalog bootstrap (matched by catalogKey). A pending
-    // migration must not prevent the API from starting: warn and keep serving.
+    // Idempotent SYSTEM catalog bootstrap (matched by catalogKey).
+    //
+    // Only a genuinely missing schema (migration not applied yet) is downgraded
+    // to a warning. A broken `physical-catalog-v1.yaml`, a duplicate catalogKey
+    // or any other programming error is logged as an error instead of being
+    // hidden behind the "migration pending" message.
     try {
-      await physicalService.bootstrapCatalog();
+      const bootstrap = await physicalService.bootstrapCatalog();
+      if (bootstrap.source !== 'yaml') {
+        app.log.warn(
+          { source: bootstrap.source, path: bootstrap.path, warnings: bootstrap.warnings },
+          'catálogo físico carregado do fallback embutido',
+        );
+      }
     } catch (error) {
-      app.log.warn(
-        { error: error instanceof Error ? error.message : error },
-        'catálogo físico não sincronizado: aplique a migration do módulo físico',
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      if (isPendingMigrationError(error)) {
+        app.log.warn(
+          { error: message },
+          'catálogo físico não sincronizado: aplique a migration do módulo físico',
+        );
+      } else if (error instanceof PhysicalCatalogError) {
+        app.log.error(
+          { error: message, details: error.details },
+          'physical-catalog-v1.yaml inválido: o catálogo SYSTEM não foi sincronizado',
+        );
+      } else {
+        app.log.error({ error: message }, 'falha inesperada ao sincronizar o catálogo físico');
+      }
     }
     if (config.DEMO_MODE) {
       await auth.ensureDefaultAdmin({

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import type { PhysicalAsset, PhysicalInterfaceSyncReport } from '@gmj/shared';
 import { Button } from '@gmj/ui';
 import {
   Cable,
@@ -24,6 +25,7 @@ import {
   createPhysicalPort,
   createPhysicalRack,
   createPhysicalSite,
+  deletePhysicalAsset,
   deletePhysicalConnection,
   getHosts,
   getPhysicalCatalog,
@@ -31,6 +33,7 @@ import {
   getPhysicalPath,
   installPhysicalModule,
   pairPhysicalPorts,
+  reconcilePhysicalPorts,
   removePhysicalModule,
   syncPhysicalPorts,
   updatePhysicalAsset,
@@ -71,7 +74,7 @@ export function PhysicalWorkspace() {
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<CreateDialog>(null);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
+  const [notice, setNotice] = useState<{ level: 'error' | 'warning' | 'info'; message: string } | null>(null);
 
   const site = inventory?.sites.find((candidate) => candidate.id === siteId) ?? inventory?.sites[0];
   const rack = site?.racks.find((candidate) => candidate.id === rackId) ?? site?.racks[0];
@@ -84,6 +87,16 @@ export function PhysicalWorkspace() {
   }, [rackId, site, siteId]);
 
   const selectedPortId = selection?.kind === 'port' ? selection.id : '';
+  /** A Device belongs to a single physical asset: the others are shown disabled. */
+  const linkedDeviceIds = useMemo(
+    () =>
+      (inventory?.sites ?? [])
+        .flatMap((candidateSite) => candidateSite.racks)
+        .flatMap((candidateRack) => candidateRack.assets)
+        .map((asset) => asset.deviceId)
+        .filter((id): id is string => Boolean(id)),
+    [inventory],
+  );
   const pathQuery = useQuery({
     queryKey: ['physical-path', selectedPortId],
     queryFn: () => getPhysicalPath(selectedPortId),
@@ -123,10 +136,24 @@ export function PhysicalWorkspace() {
       await queryClient.invalidateQueries({ queryKey: ['physical'] });
       complete?.(result);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Falha ao atualizar o inventário físico');
+      setNotice({ level: 'error', message: error instanceof Error ? error.message : 'Falha ao atualizar o inventário físico' });
     } finally {
       setBusy(false);
     }
+  }
+
+  /** Warning notice: the action worked, but something needs the operator's attention. */
+  function warn(message: string) {
+    setNotice({ level: 'warning', message });
+  }
+
+  function describeSync(report: PhysicalInterfaceSyncReport): string {
+    const parts = [`${report.mapped} portas mapeadas`];
+    if (report.created) parts.push(`${report.created} criadas`);
+    if (report.skippedLogical) parts.push(`${report.skippedLogical} interfaces lógicas ignoradas`);
+    if (report.skippedByPolicy) parts.push(`${report.skippedByPolicy} mantidas pelo template`);
+    if (report.skippedUnknown) parts.push(`${report.skippedUnknown} nomes não reconhecidos ignorados`);
+    return parts.join(' · ');
   }
 
   async function submitSite(event: FormEvent<HTMLFormElement>) {
@@ -148,11 +175,21 @@ export function PhysicalWorkspace() {
     );
   }
 
+  /**
+   * Creates the equipment and then, optionally, syncs its interfaces.
+   *
+   * The create request is never repeated: when the sync fails the asset is kept
+   * (already persisted), the selection moves to it and the operator sees a
+   * warning instead of a create failure.
+   */
   async function submitAsset(result: PhysicalAssetDialogResult) {
     if (!rack) return;
     const { input, passiveChannels, syncInterfaces } = result;
-    await run(async () => {
-      const created = await createPhysicalAsset(rack.id, input);
+    setBusy(true);
+    setNotice(null);
+    let created: PhysicalAsset;
+    try {
+      created = await createPhysicalAsset(rack.id, input);
       if (passiveChannels > 0) {
         const type = input.kind === 'DIO' ? ('FIBER' as const) : ('RJ45' as const);
         for (let index = 1; index <= passiveChannels; index += 1) {
@@ -161,11 +198,74 @@ export function PhysicalWorkspace() {
           const rear = await createPhysicalPort(created.id, { name, order: index, side: 'REAR', type });
           await pairPhysicalPorts(front.id, rear.id);
         }
-      } else if (syncInterfaces) {
-        await syncPhysicalPorts(created.id);
       }
-      return created;
-    }, (created) => { setSelection({ kind: 'asset', id: created.id }); setDialog(null); });
+    } catch (error) {
+      setNotice({
+        level: 'error',
+        message: error instanceof Error ? error.message : 'Falha ao criar o equipamento',
+      });
+      setBusy(false);
+      return;
+    }
+
+    await queryClient.invalidateQueries({ queryKey: ['physical'] });
+    setSelection({ kind: 'asset', id: created.id });
+    setDialog(null);
+
+    if (syncInterfaces) {
+      try {
+        const report = await syncPhysicalPorts(created.id);
+        await queryClient.invalidateQueries({ queryKey: ['physical'] });
+        warn(`Equipamento criado. ${describeSync(report)}`);
+      } catch (error) {
+        warn(
+          `Equipamento criado, mas a sincronização de interfaces falhou: ${
+            error instanceof Error ? error.message : 'erro desconhecido'
+          }. Use “Sincronizar portas das interfaces” para tentar novamente.`,
+        );
+      }
+    }
+    setBusy(false);
+  }
+
+  async function syncPorts(assetId: string) {
+    await run(async () => {
+      const report = await syncPhysicalPorts(assetId);
+      setNotice(
+        report.badPorts.length
+          ? {
+              level: 'warning',
+              message: `Sincronizado (${describeSync(report)}). ${report.badPorts.length} conectores foram criados para interfaces lógicas por uma sincronização antiga e podem ser reconciliados no inspetor.`,
+            }
+          : { level: 'warning', message: `Interfaces sincronizadas: ${describeSync(report)}` },
+      );
+      return report;
+    });
+  }
+
+  async function reconcilePorts(assetId: string) {
+    await run(async () => {
+      const result = await reconcilePhysicalPorts(assetId);
+      setNotice({
+        level: result.kept ? 'warning' : 'info',
+        message: result.removed
+          ? `${result.removed} conector(es) de interfaces lógicas removido(s)${
+              result.kept ? `; ${result.kept} mantido(s) por ter cabo` : ''
+            }.`
+          : 'Nenhum conector lógico removível encontrado.',
+      });
+      return result;
+    });
+  }
+
+  function deleteAsset(assetId: string) {
+    void run(
+      () => deletePhysicalAsset(assetId),
+      () => {
+        setSelection(null);
+        setNotice({ level: 'info', message: 'Equipamento removido. O Device vinculado foi mantido.' });
+      },
+    );
   }
 
   function openResult(result: (typeof searchResults)[number], portId?: string) {
@@ -207,7 +307,7 @@ export function PhysicalWorkspace() {
         {canEdit && rack ? <Button compact variant="primary" onClick={() => setDialog('asset')}><CirclePlus size={14} /> Equipamento</Button> : null}
       </header>
 
-      {notice ? <div className="physical-notice" role="alert">{notice}<button type="button" onClick={() => setNotice(null)}><X size={13} /></button></div> : null}
+      {notice ? <div className={`physical-notice physical-notice--${notice.level}`} role={notice.level === 'error' ? 'alert' : 'status'}>{notice.message}<button type="button" onClick={() => setNotice(null)}><X size={13} /></button></div> : null}
 
       <div className="physical-layout">
         <aside className="physical-sidebar">
@@ -261,7 +361,9 @@ export function PhysicalWorkspace() {
           onClose={() => setSelection(null)}
           onSelectPort={(id) => setSelection({ kind: 'port', id })}
           onUpdateAsset={(id, placement) => void run(() => updatePhysicalAsset(id, placement))}
-          onSyncPorts={(id) => void run(() => syncPhysicalPorts(id))}
+          onSyncPorts={(id) => void syncPorts(id)}
+          onReconcilePorts={(id) => void reconcilePorts(id)}
+          onDeleteAsset={(id) => void deleteAsset(id)}
           onConnect={(input) => void run(() => createPhysicalConnection(input), (created) => setSelection({ kind: 'connection', id: created.id }))}
           onDeleteConnection={(id) => void run(() => deletePhysicalConnection(id), () => setSelection(null))}
           onUpdatePort={(id, input) => void run(() => updatePhysicalPort(id, input))}
@@ -288,6 +390,7 @@ export function PhysicalWorkspace() {
             <PhysicalAssetDialog
               rack={rack}
               hosts={hostsQuery.data ?? []}
+              linkedDeviceIds={linkedDeviceIds}
               catalog={catalogQuery.data ?? []}
               busy={busy}
               canSync={canEdit}

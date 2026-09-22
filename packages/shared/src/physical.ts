@@ -37,6 +37,31 @@ export type PhysicalCatalogCategory =
   | 'POWER'
   | 'GENERIC';
 
+/** Physical connector families declared by the catalog (`connector:` no YAML). */
+export type PhysicalConnectorKind =
+  | 'RJ45'
+  | 'SFP'
+  | 'SFP_PLUS'
+  | 'SFP28'
+  | 'XFP'
+  | 'QSFP_PLUS'
+  | 'QSFP28'
+  | 'QSFP56'
+  | 'QSFP_DD'
+  | 'COMBO'
+  | 'USB_MINI_B'
+  | 'OTHER';
+
+/** Functional role of the connector on the panel (`role:` no YAML). */
+export type PhysicalPortFunction =
+  | 'SERVICE'
+  | 'UPLINK'
+  | 'MGMT'
+  | 'MGMT_OR_SERVICE'
+  | 'PON'
+  | 'CONSOLE'
+  | 'POWER';
+
 export interface PhysicalCatalogPort {
   /** Real interface name whenever it is known; never invented. */
   name: string;
@@ -44,6 +69,20 @@ export interface PhysicalCatalogPort {
   order: number;
   side: PhysicalPortSide;
   type: PhysicalPortType;
+  /** Exact connector declared by the catalog (kept even when `type` is coarser). */
+  connector?: PhysicalConnectorKind | null;
+  /** SERVICE / UPLINK / MGMT / PON / CONSOLE / POWER. */
+  portFunction?: PhysicalPortFunction | null;
+  /** Declared link speeds (`1G`, `10G`, `100G`, `GPON`, ...). */
+  speeds?: string[];
+  /** True when the cage can be split into lanes (breakout). */
+  breakoutCapable?: boolean;
+  /** `groupKey` of the catalog port group that declared this port. */
+  groupKey?: string | null;
+  /** Vendor CLI pattern declared in the catalog, when it exists. */
+  interfaceName?: string | null;
+  /** Free-form note from the catalog (never dropped). */
+  notes?: string | null;
 }
 
 export interface PhysicalCatalogSlot {
@@ -52,6 +91,12 @@ export interface PhysicalCatalogSlot {
   description: string;
   /** catalog keys of the module templates accepted by this slot */
   moduleKeys: string[];
+  /** Functional slot role declared by the catalog (`SERVICE`, `MIC`, `PON_*`...). */
+  slotRole?: string | null;
+  /** `groupKey` of the catalog slot group. */
+  groupKey?: string | null;
+  /** Capacity note of the slot group (e.g. how many boards fit). */
+  capacityNote?: string | null;
 }
 
 export interface PhysicalCatalogModule {
@@ -61,6 +106,13 @@ export interface PhysicalCatalogModule {
   description: string;
   slotsRequired: number;
   ports: PhysicalCatalogPort[];
+  manufacturer?: string;
+  /** `partNumber` do catálogo (distinto de `model` quando existe). */
+  partNumber?: string | null;
+  vendorVerified?: boolean;
+  /** Templates compatíveis declarados pelo próprio módulo. */
+  compatibleCatalogKeys?: string[];
+  referenceUrls?: string[];
 }
 
 /** One entry of the versioned equipment catalog. */
@@ -72,7 +124,13 @@ export interface PhysicalCatalogEntry {
   family: string;
   model: string;
   kind: PhysicalAssetKind;
+  /** Rack units occupied (whole U). See `heightUExact` for the catalog value. */
   heightU: number;
+  /**
+   * Height exactly as declared by the catalog. A 3.5U chassis such as the
+   * Juniper MX104 keeps `heightUExact: 3.5` while occupying `heightU: 4`.
+   */
+  heightUExact?: number | null;
   /** True only when height/ports/slots were confirmed against vendor docs. */
   vendorVerified: boolean;
   /** False means the structure is intentionally left open for manual completion. */
@@ -83,6 +141,19 @@ export interface PhysicalCatalogEntry {
   ports: PhysicalCatalogPort[];
   slots: PhysicalCatalogSlot[];
   modules: PhysicalCatalogModule[];
+  /** FIXED chassis or MODULAR chassis (slots). */
+  layoutType?: 'FIXED' | 'MODULAR' | null;
+  /** False for desktop/desk-mounted equipment (kept from the catalog). */
+  rackMount?: boolean;
+  aliases?: string[];
+  /** Keys of the module templates accepted by this chassis. */
+  compatibleModuleKeys?: string[];
+  /** Ids of the catalog `sources` used by this entry. */
+  sourceRefs?: string[];
+  /** URLs resolved from `sourceRefs`. */
+  referenceUrls?: string[];
+  /** `verificationNote` do catálogo. */
+  verificationNote?: string | null;
 }
 
 export interface PhysicalInterfaceReference {
@@ -396,4 +467,36 @@ export interface CreatePhysicalModuleInput {
   name: string;
   model?: string | undefined;
   serial?: string | undefined;
+}
+
+/** A connector that should not exist (fabricated for a logical interface). */
+export interface PhysicalBadPort {
+  id: string;
+  name: string;
+  interfaceName: string;
+  reason: string;
+}
+
+/**
+ * Result of one interface synchronization: how many connectors were mapped or
+ * created and how many logical/unrecognized interfaces were deliberately
+ * ignored, plus the leftovers of the previous (unfiltered) behavior.
+ */
+export interface PhysicalInterfaceSyncReport {
+  ports: PhysicalPort[];
+  created: number;
+  mapped: number;
+  skippedLogical: number;
+  skippedUnknown: number;
+  /** Physical connectors não criados por política (template de fabricante/cage já criado). */
+  skippedByPolicy: number;
+  badPorts: PhysicalBadPort[];
+}
+
+/** Result of removing the connectors fabricated for logical interfaces. */
+export interface PhysicalReconcileResult {
+  removed: number;
+  kept: number;
+  removedPorts: PhysicalBadPort[];
+  keptPorts: PhysicalBadPort[];
 }

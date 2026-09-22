@@ -42,6 +42,11 @@ interface Props {
   rack: PhysicalRack;
   hosts: readonly HostOption[];
   catalog: readonly PhysicalCatalogEntry[];
+  /**
+   * Devices that already belong to another physical asset: the link is 1:1, so
+   * they stay visible but cannot be selected again.
+   */
+  linkedDeviceIds?: readonly string[];
   busy: boolean;
   canSync: boolean;
   onCancel: () => void;
@@ -64,11 +69,13 @@ export function PhysicalAssetDialog({
   rack,
   hosts,
   catalog,
+  linkedDeviceIds = [],
   busy,
   canSync,
   onCancel,
   onSubmit,
 }: Props) {
+  const linkedDevices = useMemo(() => new Set(linkedDeviceIds), [linkedDeviceIds]);
   const categories = useMemo(() => catalogCategories(catalog), [catalog]);
   const [category, setCategory] = useState<PhysicalCatalogCategory | ''>(categories[0] ?? '');
   const manufacturers = useMemo(
@@ -254,8 +261,9 @@ export function PhysicalAssetDialog({
           <select value={deviceId} onChange={(event) => setDeviceId(event.target.value)}>
             <option value="">Não vinculado</option>
             {hosts.map((host) => (
-              <option key={host.id} value={host.id}>
+              <option key={host.id} value={host.id} disabled={linkedDevices.has(host.id)}>
                 {host.displayName || host.hostname}
+                {linkedDevices.has(host.id) ? ' · já vinculado a outro equipamento' : ''}
               </option>
             ))}
           </select>

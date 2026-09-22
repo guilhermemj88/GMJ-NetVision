@@ -53,7 +53,7 @@ interface Rendered {
   submitted: PhysicalAssetDialogResult[];
 }
 
-function render(): Rendered {
+function render(options: { linkedDeviceIds?: readonly string[] } = {}): Rendered {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -63,6 +63,7 @@ function render(): Rendered {
       createElement(PhysicalAssetDialog, {
         rack,
         hosts: [{ id: 'host-1', hostname: 'sw-pop01', displayName: 'SW POP 01' }],
+        ...(options.linkedDeviceIds ? { linkedDeviceIds: options.linkedDeviceIds } : {}),
         catalog,
         busy: false,
         canSync: true,
@@ -92,6 +93,16 @@ function input(container: HTMLElement, label: string): HTMLInputElement {
   );
   const element = field?.querySelector('input');
   if (!element) throw new Error(`input não encontrado: ${label}`);
+  return element;
+}
+
+/** The Device selector lives inside its own labelled field. */
+function deviceSelect(container: HTMLElement): HTMLSelectElement {
+  const field = [...container.querySelectorAll('label')].find((item) =>
+    item.textContent?.startsWith('Device real'),
+  );
+  const element = field?.querySelector('select');
+  if (!element) throw new Error('select de Device não encontrado');
   return element;
 }
 
@@ -181,5 +192,23 @@ describe('PhysicalAssetDialog', () => {
     const inputElement = input(rendered.container, 'Altura U');
     expect(inputElement.disabled).toBe(true);
     expect(rendered.container.textContent).not.toContain('Estrutura não confirmada');
+  });
+
+  it('bloqueia um Device que já pertence a outro equipamento físico', () => {
+    rendered = render({ linkedDeviceIds: ['host-1'] });
+    const select = deviceSelect(rendered.container);
+    const option = [...select.options].find((item) => item.value === 'host-1');
+    expect(option?.disabled).toBe(true);
+    expect(option?.textContent).toContain('já vinculado a outro equipamento');
+    expect([...select.options].find((item) => item.value === '')?.disabled).toBe(false);
+  });
+
+  it('mantém o Device livre selecionável quando não há vínculo', () => {
+    rendered = render();
+    const option = [...deviceSelect(rendered.container).options].find(
+      (item) => item.value === 'host-1',
+    );
+    expect(option?.disabled).toBe(false);
+    expect(option?.textContent).not.toContain('já vinculado');
   });
 });

@@ -17,12 +17,15 @@ import {
   Cable,
   CircleAlert,
   CircleDot,
+  Eraser,
   Link2,
   Plug,
   RefreshCw,
+  Trash2,
   Unplug,
   X,
 } from 'lucide-react';
+import { classifyPhysicalInterface } from '@gmj/shared';
 import { getHost } from '@/lib/api';
 import { PORT_STATE_LABELS } from './physical-catalog';
 import type { PhysicalSelection } from './physical-types';
@@ -76,6 +79,9 @@ interface Props {
   onInstallModule: (assetId: string, input: CreatePhysicalModuleInput) => void;
   onRemoveModule: (moduleId: string) => void;
   onConfirmLldp: (adjacencyId: string) => void;
+  /** Removes connectors fabricated for logical interfaces (old sync). */
+  onReconcilePorts: (assetId: string) => void;
+  onDeleteAsset: (assetId: string) => void;
 }
 
 export function PhysicalInspector({
@@ -94,6 +100,8 @@ export function PhysicalInspector({
   onInstallModule,
   onRemoveModule,
   onConfirmLldp,
+  onReconcilePorts,
+  onDeleteAsset,
 }: Props) {
   const asset = selection?.kind === 'asset' ? locateAsset(inventory, selection.id) : null;
   const locatedPort = selection?.kind === 'port' ? locatePort(inventory, selection.id) : null;
@@ -127,6 +135,25 @@ export function PhysicalInspector({
   >({});
   const [interfaceId, setInterfaceId] = useState('');
   const [portNotes, setPortNotes] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+
+  useEffect(() => {
+    setConfirmDelete(false);
+  }, [asset?.id]);
+
+  /**
+   * Connectors the old sync created for logical interfaces (VLAN, bridge,
+   * sub-interface). They are shown as a warning and removed only on demand.
+   */
+  const logicalPorts = useMemo(
+    () =>
+      (asset?.ports ?? []).filter(
+        (port) =>
+          port.mappedInterface &&
+          classifyPhysicalInterface(port.mappedInterface.name).classification === 'LOGICAL',
+      ),
+    [asset],
+  );
 
   useEffect(() => {
     setInterfaceId(locatedPort?.port.mappedInterfaceId ?? '');
@@ -229,6 +256,34 @@ export function PhysicalInspector({
               <Button compact variant="ghost" disabled={busy} onClick={() => onSyncPorts(asset.id)}>
                 <RefreshCw size={13} /> Sincronizar portas das interfaces
               </Button>
+            ) : null}
+            {logicalPorts.length ? (
+              <>
+                <p className="physical-warning">
+                  <CircleAlert size={12} /> {logicalPorts.length} porta(s) vinculadas a interfaces lógicas
+                  (VLAN, bridge, sub-interface) — normalmente criadas por uma sincronização antiga.
+                </p>
+                <Button compact variant="secondary" type="button" disabled={busy} onClick={() => onReconcilePorts(asset.id)}>
+                  <Eraser size={13} /> Reconciliar portas lógicas
+                </Button>
+              </>
+            ) : null}
+            <Button
+              compact
+              variant="ghost"
+              type="button"
+              disabled={busy}
+              onClick={() => {
+                if (confirmDelete) onDeleteAsset(asset.id);
+                else setConfirmDelete(true);
+              }}
+            >
+              <Trash2 size={13} /> {confirmDelete ? 'Confirmar exclusão do equipamento' : 'Excluir equipamento'}
+            </Button>
+            {confirmDelete ? (
+              <p className="physical-form__hint">
+                Os cabos precisam ser desconectados antes da exclusão; o Device vinculado é mantido.
+              </p>
             ) : null}
           </section>
         ) : null}

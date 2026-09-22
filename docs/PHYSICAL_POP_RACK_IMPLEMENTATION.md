@@ -88,8 +88,8 @@ entidades acima continuam sendo as mesmas, com campos e tabelas novas ligadas a 
 ### Catálogo predefinido
 
 - `PhysicalEquipmentTemplate` ganhou `catalogKey` (único), `category`, `family`, `structureConfirmed`, `referenceUrl` e `origin` (`SYSTEM` | `CUSTOM`).
-- `apps/api/src/infrastructure/physical/physical-catalog.ts` é a fonte versionada (`PHYSICAL_CATALOG`). Regras aplicadas:
-  - `vendorVerified: true` **apenas** quando altura, quantidade e tipo de portas vieram da página oficial do fabricante (`referenceUrl`);
+- **A fonte de verdade é o arquivo `apps/api/catalog/physical-catalog-v1.yaml`** (schemaVersion 1.0): 119 templates de equipamento, 5 templates de placa, 1.311 portas e 82 slots. O catálogo embutido em `physical-catalog.ts` é apenas o fallback para quando o arquivo **não existe**. Regras aplicadas:
+  - `vendorVerified: true` **apenas** quando estrutura e modelo vieram da fonte oficial listada em `sources[]` (54 templates + as 5 placas verificadas);
   - `structureConfirmed: false` mantém portas e slots vazios: o formulário pede os dados reais em vez de inventar;
   - templates genéricos (`generic-*`) são definicionais (patch panel tem canais, servidor 1U tem 1U) e nunca alegam ser um modelo de fabricante.
 - `POST /api/physical/catalog/bootstrap` sincroniza os templates `SYSTEM` por `catalogKey`: idempotente, nunca duplica e nunca sobrescreve `CUSTOM`. Em produção o bootstrap roda no `onReady` da API.
@@ -118,12 +118,37 @@ entidades acima continuam sendo as mesmas, com campos e tabelas novas ligadas a 
 - `GET/POST /api/physical/catalog`, `GET /api/physical/lldp`, `POST /api/physical/lldp/:id/confirm`
 - `PATCH /api/physical/ports/:id`, `POST /api/physical/assets/:id/modules`, `DELETE /api/physical/modules/:id`
 - `POST /api/physical/racks/:id/assets` aceita `catalogKey` e `applyTemplate`; template confirmado é a fonte de verdade da altura.
+- `POST /api/physical/assets/:id/reconcile-ports` remove conectores criados para interfaces lógicas (nunca toca porta com cabo, porta de template nem porta manual com nome físico).
+
+### Catálogo versionado em arquivo (`physical-catalog-v1.yaml`)
+
+- Caminhos procurados: `PHYSICAL_CATALOG_YAML_PATH` → `apps/api/catalog/physical-catalog-v1.yaml` → `catalog/physical-catalog-v1.yaml` (relativos ao diretório de trabalho; em produção o `WorkingDirectory` é a raiz do projeto).
+- **Sem merge**: arquivo presente e válido ⇒ `source: "yaml"` e o catálogo do YAML é o único carregado (nada da lista embutida é mantido).
+- Arquivo presente e **inválido** ⇒ `source: "invalid"` com a lista de `errors`; o bootstrap responde com `PhysicalCatalogError` e o `onReady` registra o motivo em nível de erro. Não existe fallback silencioso: o operador precisa corrigir o arquivo.
+- Arquivo **ausente** ⇒ `source: "builtin"` com warning; apenas nesse caso o catálogo embutido entra.
+- Erros de schema/migration pendente continuam tratados como aviso (a API sobe e tenta de novo), mas erro de YAML, `catalogKey` duplicado, falha de Zod ou erro de programação aparecem claramente no log.
+- O esquema (portas explícitas e em grupo, slots, placas), a política de falha, as regras de tradução (expansão de `{n}`/`{n+K}`, `heightU` fracionário, `unsupportedFields`) e as regras de conteúdo estão documentados em `apps/api/catalog/README.md`.
+
+### Breakout (QSFP/QSFP28/QSFP56/QSFP-DD)
+
+- O cage é **um** conector físico: as lanes `qsfp28-1-1..4` e `et-0/0/0:0..3` colapsam em `qsfp28-1` / `et-0/0/0` — nunca quatro portas.
+- A primeira lane vincula o cage; as demais encontram o cage ocupado e são ignoradas (SKIP), em qualquer ordem de `ifIndex`, e o segundo sync não cria nem rouba vínculo.
+- Em modo 1x100G uma lane isolada ainda mapeia para o cage existente do template.
+- `.` continua sendo sub-interface lógica (`.100`), nunca lane: apenas `:` e o sufixo `-N` de canal são tratados como breakout.
+
+### Classificação PHYSICAL x LOGICAL
+
+- `packages/shared/src/physical-interface.ts` classifica o nome da interface: sub-interface (`.100`) e canal de breakout (`et-0/0/0:0`) são **logical**; `ether1`, `sfp-sfpplus1`, `sfp28-1`, `qsfp28-*`, `ge-/xe-/et-0/0/0`, `Gi/GE/TenGigabitEthernet/XGigabitEthernet` são candidatos **physical**; VLAN, bridge, bonding, eoip, pppoe, wireguard, vrrp, irb, lo, ae, trunk, tunnel e afins são **logical**; o resto é **unknown**.
+- O sync nunca cria conector para `logical` (fora do cage de breakout) nem para `unknown`; `physical` mapeia a porta existente ou cria uma (`DISCOVERED`) **somente quando o template não é de fabricante**. Template de fabricante é autoritativo: o sync apenas mapeia o painel declarado, nunca cria conexões extras nem `UNKNOWN`.
+- A reconciliação (`POST /api/physical/assets/:id/reconcile-ports`) remove somente portas `DISCOVERED`, sem cabo, sem pareamento FRONT/REAR e sem `templatePortId`, cujo nome/interface é lógico **e** que não representam o cage de um breakout. `MANUAL`, `TEMPLATE` e `UNKNOWN` nunca são removidos automaticamente.
+- Interfaces que já possuem porta continuam vinculadas (o sync é idempotente) e portas de template/manual são preservadas.
 
 ### UI
 
 - Modal de equipamento reescrito: `Categoria → Fabricante → Modelo/template → Device → Nome → Start U`, com resumo do template, selo `VERIFICADO NO FABRICANTE` / `TEMPLATE GENÉRICO` / `ESTRUTURA NÃO CONFIRMADA` e campos manuais quando o dado não foi confirmado.
 - Canvas desenha slots, placa instalada e portas da placa; portas ganham estado visual (`LIVRE`, `MAPEADA`, `LLDP`, `CONECTADA`) e marcador de vizinho LLDP.
-- Inspetor: lista de slots com instalar/remover placa, vínculo com `Interface`, observações da porta, vizinho LLDP e painel de sugestões com o botão “Confirmar conexão física” (apenas `READY`).
+- Inspetor: lista de slots com instalar/remover placa, vínculo com `Interface`, observações da porta, vizinho LLDP, painel de sugestões com o botão “Confirmar conexão física” (apenas `READY`), aviso de conectores lógicos com ação **Reconciliar portas lógicas** e exclusão de equipamento em dois passos.
+- Avisos da barra superior têm três níveis (`error`, `warning`, `info`): uma falha de sync depois de criar o equipamento aparece como aviso, com o equipamento já selecionado — a criação nunca é repetida.
 - Legenda de estados na barra superior e contador de adjacências LLDP do snapshot.
 
 ## Arquivos principais

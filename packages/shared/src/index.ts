@@ -11,6 +11,7 @@ export * from './link-telemetry';
 export * from './mpls';
 export * from './optical-history';
 export * from './physical';
+export * from './physical-interface';
 export * from './ppp';
 export * from './ssh-context';
 export * from './traffic-colors';

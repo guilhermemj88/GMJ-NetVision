@@ -101,6 +101,8 @@ interface Rendered {
   installs: CreatePhysicalModuleInput[];
   removals: string[];
   confirmations: string[];
+  reconciliations: string[];
+  deletions: string[];
 }
 
 let rendered: Rendered | null = null;
@@ -109,6 +111,7 @@ let queryClient: QueryClient | null = null;
 function render(
   suggestions: PhysicalLldpSuggestion[],
   selection: PhysicalSelection = { kind: 'asset', id: 'asset-olt' },
+  asset: typeof assetWithSlots = assetWithSlots,
 ): Rendered {
   const inventory = physicalInventory({
     sites: [
@@ -124,7 +127,7 @@ function render(
             name: 'Rack 01',
             units: 42,
             description: '',
-            assets: [assetWithSlots],
+            assets: [asset],
             createdAt: '2026-09-21T12:00:00.000Z',
             updatedAt: '2026-09-21T12:00:00.000Z',
           },
@@ -144,6 +147,8 @@ function render(
   const installs: CreatePhysicalModuleInput[] = [];
   const removals: string[] = [];
   const confirmations: string[] = [];
+  const reconciliations: string[] = [];
+  const deletions: string[] = [];
   act(() => {
     root.render(
       createElement(
@@ -165,11 +170,13 @@ function render(
           onInstallModule: (_assetId: string, input: CreatePhysicalModuleInput) => installs.push(input),
           onRemoveModule: (moduleId: string) => removals.push(moduleId),
           onConfirmLldp: (adjacencyId: string) => confirmations.push(adjacencyId),
+          onReconcilePorts: (assetId: string) => reconciliations.push(assetId),
+          onDeleteAsset: (assetId: string) => deletions.push(assetId),
         }),
       ),
     );
   });
-  return { container, root, installs, removals, confirmations };
+  return { container, root, installs, removals, confirmations, reconciliations, deletions };
 }
 
 function click(element: Element | null | undefined): void {
@@ -279,5 +286,52 @@ describe('PhysicalInspector', () => {
     rendered = render([]);
     expect(rendered.container.textContent).toContain('Nenhuma adjacência LLDP');
     expect(rendered.container.textContent).not.toContain('Confirmar conexão física');
+  });
+
+  it('warns about connectors created for logical interfaces and reconciles them on demand', () => {
+    const withLogicalPort = physicalAsset({
+      ...assetWithSlots,
+      ports: [
+        ...assetWithSlots.ports,
+        physicalPort({
+          id: 'port-vlanif',
+          assetId: 'asset-olt',
+          name: 'Vlanif100',
+          role: 'DISCOVERED',
+          mappedInterfaceId: 'if-vlanif',
+          mappedInterface: {
+            id: 'if-vlanif',
+            deviceId: 'host-1',
+            name: 'Vlanif100',
+            ifIndex: 100,
+            alias: null,
+            operStatus: 'UP',
+          },
+        }),
+      ],
+    });
+    rendered = render([], { kind: 'asset', id: 'asset-olt' }, withLogicalPort);
+    const { container } = rendered;
+    expect(container.textContent).toContain('vinculadas a interfaces lógicas');
+    const reconcile = [...container.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Reconciliar portas lógicas'),
+    );
+    click(reconcile);
+    expect(rendered.reconciliations).toEqual(['asset-olt']);
+  });
+
+  it('deletes the equipment only after an explicit confirmation', () => {
+    rendered = render([], { kind: 'asset', id: 'asset-olt' });
+    const { container } = rendered;
+    const remove = () =>
+      [...container.querySelectorAll('button')].find((button) =>
+        button.textContent?.includes('Excluir equipamento') ||
+        button.textContent?.includes('Confirmar exclusão do equipamento'),
+      );
+    click(remove());
+    expect(rendered.deletions).toEqual([]);
+    expect(container.textContent).toContain('Confirmar exclusão do equipamento');
+    click(remove());
+    expect(rendered.deletions).toEqual(['asset-olt']);
   });
 });

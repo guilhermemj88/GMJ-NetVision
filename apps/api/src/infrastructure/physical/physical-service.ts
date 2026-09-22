@@ -19,10 +19,16 @@ import {
   findAsset,
   findConnection,
   findRack,
+  findReconcilablePorts,
   moduleIsRemovable,
   tracePhysicalPath,
 } from './physical-domain';
 import { PHYSICAL_CATALOG } from './physical-catalog';
+import {
+  loadPhysicalCatalog,
+  PhysicalCatalogError,
+  type CatalogLoadResult,
+} from './physical-catalog-yaml';
 import type {
   CreatePhysicalTemplateInput,
   PhysicalCatalogSyncResult,
@@ -36,6 +42,8 @@ import type {
 import { PhysicalInventoryError } from './physical-repository';
 
 export class PhysicalService {
+  private catalogResolution: CatalogLoadResult | null = null;
+
   constructor(
     private readonly repository: PhysicalRepository,
     /**
@@ -123,14 +131,71 @@ export class PhysicalService {
     };
   }
 
-  /** Static, versioned catalog (identity + confirmed structure when available). */
-  getCatalog(): readonly PhysicalCatalogEntry[] {
-    return PHYSICAL_CATALOG;
+  /**
+   * Catalog actually in use: `physical-catalog-v1.yaml` when present (merged by
+   * `catalogKey`), otherwise the built-in TypeScript catalog.
+   */
+  getCatalogResolution(): CatalogLoadResult {
+    this.catalogResolution ??= loadPhysicalCatalog(PHYSICAL_CATALOG);
+    return this.catalogResolution;
   }
 
-  /** Idempotent SYSTEM template bootstrap. Never duplicates or overwrites CUSTOM. */
-  async bootstrapCatalog(): Promise<PhysicalCatalogSyncResult> {
-    return this.repository.syncCatalog(PHYSICAL_CATALOG);
+  /** Static, versioned catalog (identity + confirmed structure when available). */
+  getCatalog(): readonly PhysicalCatalogEntry[] {
+    return this.getCatalogResolution().entries;
+  }
+
+  /** Where the catalog came from, with warnings/errors — used by the API report/UI. */
+  getCatalogSource(): {
+    source: 'yaml' | 'builtin' | 'invalid';
+    path: string | null;
+    warnings: string[];
+    errors: string[];
+    schemaVersion: string | null;
+    /** YAML fields the importer does not represent yet. */
+    unsupportedFields: string[];
+    counts: CatalogLoadResult['counts'];
+    total: number;
+  } {
+    const resolution = this.getCatalogResolution();
+    return {
+      source: resolution.source,
+      path: resolution.path,
+      warnings: resolution.warnings,
+      errors: resolution.errors,
+      schemaVersion: resolution.schemaVersion,
+      unsupportedFields: resolution.unsupportedFields,
+      counts: resolution.counts,
+      total: resolution.entries.length,
+    };
+  }
+
+  /**
+   * Idempotent SYSTEM template bootstrap. Never duplicates or overwrites CUSTOM.
+   *
+   * When the YAML exists but is invalid the bootstrap fails with
+   * `PhysicalCatalogError` instead of silently loading the built-in catalog.
+   */
+  async bootstrapCatalog(): Promise<
+    PhysicalCatalogSyncResult &
+      Pick<CatalogLoadResult, 'source' | 'path' | 'warnings' | 'unsupportedFields' | 'counts'>
+  > {
+    const resolution = this.getCatalogResolution();
+    if (resolution.source === 'invalid') {
+      throw new PhysicalCatalogError(
+        `physical-catalog-v1.yaml inválido em ${resolution.path ?? 'caminho desconhecido'}: o catálogo SYSTEM não foi carregado`,
+        resolution.errors,
+      );
+    }
+    const result = await this.repository.syncCatalog(resolution.entries);
+    return {
+      ...result,
+      source: resolution.source,
+      path: resolution.path,
+      warnings: resolution.warnings,
+      unsupportedFields: resolution.unsupportedFields,
+      counts: resolution.counts,
+    };
   }
 
   getInventoryRaw(): Promise<PhysicalInventory> {
@@ -198,6 +263,28 @@ export class PhysicalService {
   }
 
   /**
+   * A real Device belongs to at most one physical asset (the link is 1:1), so a
+   * second equipment cannot claim a Device that is already on the rack.
+   */
+  private assertDeviceAvailable(
+    inventory: PhysicalInventory,
+    deviceId: string | null | undefined,
+    ignoredAssetId?: string,
+  ): void {
+    if (!deviceId) return;
+    const owner = inventory.sites
+      .flatMap((site) => site.racks)
+      .flatMap((rack) => rack.assets)
+      .find((asset) => asset.deviceId === deviceId && asset.id !== ignoredAssetId);
+    if (owner) {
+      throw new PhysicalInventoryError(
+        `Este Device já está vinculado ao equipamento físico ${owner.name}`,
+        409,
+      );
+    }
+  }
+
+  /**
    * Creates the asset. When the resolved template has a confirmed structure it
    * is the source of truth for the chassis height; an unconfirmed structure
    * keeps whatever the operator informed, because nothing was verified.
@@ -206,6 +293,7 @@ export class PhysicalService {
     const inventory = await this.repository.getInventory();
     const rack = findRack(inventory, rackId);
     if (!rack) throw new PhysicalInventoryError('Rack não encontrado', 404);
+    this.assertDeviceAvailable(inventory, input.deviceId);
     const template = input.templateId
       ? inventory.templates.find((candidate) => candidate.id === input.templateId)
       : input.catalogKey
@@ -225,6 +313,9 @@ export class PhysicalService {
     const inventory = await this.repository.getInventory();
     const current = findAsset(inventory, id);
     if (!current) throw new PhysicalInventoryError('Equipamento físico não encontrado', 404);
+    if (input.deviceId !== undefined && input.deviceId !== current.deviceId) {
+      this.assertDeviceAvailable(inventory, input.deviceId, current.id);
+    }
     const rack = findRack(inventory, current.rackId);
     if (!rack) throw new PhysicalInventoryError('Rack não encontrado', 404);
     assertRackPlacement(
@@ -283,6 +374,10 @@ export class PhysicalService {
     return result;
   }
 
+  /**
+   * Maps the Device interfaces onto physical connectors. Logical interfaces
+   * (VLAN, bridge, sub-interface, lane) are reported, never turned into ports.
+   */
   async syncInterfacePorts(assetId: string) {
     const inventory = await this.repository.getInventory();
     const asset = findAsset(inventory, assetId);
@@ -290,9 +385,32 @@ export class PhysicalService {
     if (!asset.deviceId) {
       throw new PhysicalInventoryError('Vincule um Device real antes de sincronizar interfaces');
     }
-    const ports = await this.repository.syncInterfacePorts(assetId);
-    if (!ports) throw new PhysicalInventoryError('Device real não encontrado', 404);
-    return ports;
+    const result = await this.repository.syncInterfacePorts(assetId);
+    if (!result) throw new PhysicalInventoryError('Device real não encontrado', 404);
+    return { ...result, badPorts: findReconcilablePorts(result.ports) };
+  }
+
+  /**
+   * Removes connectors that the old sync fabricated for logical interfaces.
+   * Ports with a cable, template ports and manual ports are never touched.
+   */
+  async reconcilePorts(assetId: string) {
+    const inventory = await this.repository.getInventory();
+    const asset = findAsset(inventory, assetId);
+    if (!asset) throw new PhysicalInventoryError('Equipamento físico não encontrado', 404);
+    const bad = findReconcilablePorts(asset.ports);
+    const removable = bad.filter((item) => {
+      const port = asset.ports.find((candidate) => candidate.id === item.id);
+      return port ? !port.connectionId : false;
+    });
+    const removableIds = new Set(removable.map((item) => item.id));
+    const removed = removable.length ? await this.repository.deletePorts([...removableIds]) : 0;
+    return {
+      removed,
+      kept: bad.length - removable.length,
+      removedPorts: removable,
+      keptPorts: bad.filter((item) => !removableIds.has(item.id)),
+    };
   }
 
   async createConnection(input: CreatePhysicalConnectionInput) {

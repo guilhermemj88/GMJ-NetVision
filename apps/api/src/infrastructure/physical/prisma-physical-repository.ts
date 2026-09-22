@@ -18,10 +18,10 @@ import type {
   PhysicalSlot,
 } from '@gmj/shared';
 import { Prisma, PrismaClient } from '../../generated/prisma';
-import { interfaceNameKeys } from '../topology/interface-correlation';
-import { materializeTemplate, portState } from './physical-domain';
+import { materializeTemplate, planInterfaceSync, portState, isVendorTemplate } from './physical-domain';
 import type {
   CreatePhysicalTemplateInput,
+  InterfaceSyncExecution,
   PhysicalCatalogSyncResult,
   PhysicalLldpAdjacencyInput,
   PhysicalLldpAdjacencyRecord,
@@ -511,7 +511,7 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
             },
             modules: {
               create: entry.modules.map((module) => ({
-                catalogKey: `${entry.catalogKey}:${module.key}`,
+                catalogKey: module.key,
                 name: module.name,
                 model: module.model,
                 description: module.description,
@@ -609,9 +609,7 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
       const slotRow = slots.find((row) => row.index === slot.index);
       if (!slotRow) continue;
       for (const moduleKey of slot.moduleKeys) {
-        const moduleRow = modules.find(
-          (row) => row.catalogKey === `${entry.catalogKey}:${moduleKey}`,
-        );
+        const moduleRow = modules.find((row) => row.catalogKey === moduleKey);
         if (!moduleRow) continue;
         await this.prisma.physicalTemplateSlotModule.upsert({
           where: {
@@ -777,6 +775,8 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
         sortOrder: input.order,
         side: input.side ?? 'DEVICE',
         type: input.type ?? 'OTHER',
+        // A port created through the API is operator input, never a template port.
+        role: 'MANUAL',
         notes: input.notes?.trim() ?? '',
         mappedInterfaceId: input.mappedInterfaceId || null,
         pairedPortId: input.pairedPortId || null,
@@ -841,44 +841,64 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
    * Interface does not exist yet, adds unclassified ports for unknown interfaces
    * and never deletes a port or a cable. Safe to run repeatedly.
    */
-  async syncInterfacePorts(assetId: string): Promise<PhysicalPort[] | null> {
+  /**
+   * Maps the real chassis connectors of the Device and ignores every logical
+   * interface (VLAN, bridge, sub-interface, tunnel, aggregation group, breakout
+   * lane). Only PHYSICAL interfaces may create a connector; UNKNOWN names may
+   * fill an existing port but never fabricate one.
+   */
+  async syncInterfacePorts(assetId: string): Promise<InterfaceSyncExecution | null> {
     const asset = await this.prisma.physicalAsset.findUnique({
       where: { id: assetId },
-      include: { ports: true, device: { include: { interfaces: { orderBy: { ifIndex: 'asc' } } } } },
+      include: {
+        ports: true,
+        template: { select: { catalogKey: true, manufacturer: true } },
+        device: { include: { interfaces: { orderBy: { ifIndex: 'asc' } } } },
+      },
     });
     if (!asset?.device) return null;
-    const mappedIds = new Set(
-      asset.ports.map((port) => port.mappedInterfaceId).filter((value): value is string => Boolean(value)),
-    );
-    const devicePorts = asset.ports.filter((port) => port.side === 'DEVICE');
-    let order = Math.max(0, ...asset.ports.map((port) => port.sortOrder));
 
-    for (const item of asset.device.interfaces) {
-      if (mappedIds.has(item.id)) continue;
-      const candidate =
-        devicePorts.find((port) => !port.mappedInterfaceId && port.name === item.name) ??
-        (() => {
-          const keys = new Set(interfaceNameKeys(item.name));
-          const matches = devicePorts.filter(
-            (port) =>
-              !port.mappedInterfaceId &&
-              interfaceNameKeys(port.name).some((key) => keys.has(key)),
-          );
-          return matches.length === 1 ? matches[0] : undefined;
-        })();
-      if (candidate) {
+    const plan = planInterfaceSync(
+      asset.ports.map((port) => ({
+        id: port.id,
+        name: port.name,
+        side: port.side,
+        mappedInterfaceId: port.mappedInterfaceId,
+      })),
+      asset.device.interfaces.map((item) => ({ id: item.id, name: item.name })),
+      { vendorTemplate: isVendorTemplate(asset.template) },
+    );
+
+    let order = Math.max(0, ...asset.ports.map((port) => port.sortOrder));
+    const interfaceById = new Map(asset.device.interfaces.map((item) => [item.id, item]));
+    let created = 0;
+    let mapped = 0;
+    let skippedLogical = 0;
+    let skippedUnknown = 0;
+    let skippedByPolicy = 0;
+
+    for (const entry of plan) {
+      if (entry.action === 'SKIP') {
+        if (entry.classification === 'LOGICAL') skippedLogical += 1;
+        else if (entry.classification === 'UNKNOWN') skippedUnknown += 1;
+        else skippedByPolicy += 1;
+        continue;
+      }
+      const item = interfaceById.get(entry.interfaceId);
+      if (!item) continue;
+      if (entry.action === 'MAP' && entry.portId) {
         await this.prisma.physicalPort.update({
-          where: { id: candidate.id },
+          where: { id: entry.portId },
           data: { mappedInterfaceId: item.id },
         });
-        mappedIds.add(item.id);
+        mapped += 1;
         continue;
       }
       order += 1;
       await this.prisma.physicalPort.create({
         data: {
           assetId,
-          name: item.name,
+          name: entry.portName ?? item.name,
           label: item.alias ?? '',
           sortOrder: order,
           side: 'DEVICE',
@@ -887,9 +907,20 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
           mappedInterfaceId: item.id,
         },
       });
-      mappedIds.add(item.id);
+      created += 1;
     }
-    return (await this.asset(assetId))?.ports ?? null;
+
+    const ports = (await this.asset(assetId))?.ports ?? [];
+    return { ports, created, mapped, skippedLogical, skippedUnknown, skippedByPolicy };
+  }
+
+  /** Deletes the given ports; cables and template/manual ports are out of scope. */
+  async deletePorts(portIds: readonly string[]): Promise<number> {
+    if (!portIds.length) return 0;
+    const result = await this.prisma.physicalPort.deleteMany({
+      where: { id: { in: [...portIds] } },
+    });
+    return result.count;
   }
 
   async installModule(

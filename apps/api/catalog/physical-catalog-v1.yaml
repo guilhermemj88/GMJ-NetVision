@@ -1,0 +1,4213 @@
+schemaVersion: '1.0'
+catalogKey: gmj-netvision-physical-catalog-v1
+generatedFor: GMJ NetVision
+purpose: Source of truth for SYSTEM physical/DCIM templates. PhysicalPort means a real connector, not a logical interface.
+policies:
+  systemCatalogIdempotent: true
+  customTemplatesNeverOverwritten: true
+  vendorVerifiedMeaning: Exact model/SKU plus encoded physical connector/slot facts have an official manufacturer source in
+    sources[]. Entries may still have intentionally deferred module/card details.
+  unverifiedPolicy: Keep the template as a model/family placeholder, but do not invent ports, slots, heights, cards, or connector
+    types. Unknown physical interfaces are not auto-created on vendor templates.
+  physicalPortDefinition: A real chassis/board connector. VLANIF, loopback, LAG, tunnel, bridge, subinterface, pseudowire,
+    PPPoE, virtual/template interfaces are logical and must not become PhysicalPort.
+  breakoutPolicy: A QSFP/QSFP28/QSFP56/QSFP-DD cage remains one physical connector. Breakout lanes are logical children and
+    never extra chassis connectors.
+  templateSyncPolicy: On vendor templates, interface sync maps Device.Interface to existing template ports; it does not add
+    unmatched logical/unknown ports. On generic/discovered templates, only PHYSICAL-classified interfaces may create ports.
+  modulePolicy: Modular chassis expose slots. Service connectors appear only when a verified/manual module is installed. Failed
+    discovery must never remove manual modules.
+interfaceClassification:
+  resultValues:
+  - PHYSICAL
+  - LOGICAL
+  - UNKNOWN
+  globalLogicalPatterns:
+  - '*.* (subinterface/unit)'
+  - LoopBack*
+  - Loopback*
+  - Vlanif*
+  - Eth-Trunk*
+  - Tunnel*
+  - NULL*
+  - Virtual-Ethernet*
+  - Virtual-Template*
+  - Bridge*
+  - VBDIF*
+  - Dialer*
+  - Nve*
+  vendorRules:
+    Huawei:
+      physicalCandidates:
+      - GigabitEthernet*
+      - XGigabitEthernet*
+      - 10GE*
+      - 25GE*
+      - 40GE*
+      - 50GE*
+      - 100GE*
+      - 200GE*
+      - 400GE*
+      - MEth*
+      logical:
+      - Vlanif*
+      - LoopBack*
+      - Eth-Trunk*
+      - Tunnel*
+      - Virtual-Ethernet*
+      - Virtual-Template*
+      - VBDIF*
+      - '*.*'
+    MikroTik:
+      physicalCandidates:
+      - ether*
+      - sfp*
+      - sfp-sfpplus*
+      - sfp28-*
+      - qsfp*
+      logical:
+      - vlan*
+      - bridge*
+      - bonding*
+      - eoip*
+      - gre*
+      - wireguard*
+      - pppoe*
+      - vrrp*
+    Juniper:
+      physicalCandidates:
+      - ge-*
+      - xe-*
+      - et-*
+      - fxp0
+      logical:
+      - ge-*.*
+      - xe-*.*
+      - et-*.*
+      - irb.*
+      - lo0.*
+      - ae*
+      - reth*
+      - st*
+      - gr-*
+      - ip-*
+  rule: Names are only one signal. Use vendor, model, ifType, connector metadata, and template knowledge. UNKNOWN must not
+    be auto-created on a vendor template.
+sources:
+  huawei-s6730-h:
+    vendor: Huawei
+    title: CloudEngine S6730-H Series 10GE Switches
+    url: https://e.huawei.com/br/products/switches/campus-switches/s6730-h
+    kind: official
+  huawei-s6730-h-v2:
+    vendor: Huawei
+    title: CloudEngine S6730-H-V2 Series 10GE Switches
+    url: https://e.huawei.com/en/products/switches/campus-switches/s6730-h-v2-10g
+    kind: official
+  huawei-s6750-h-10g:
+    vendor: Huawei
+    title: CloudEngine S6750-H Series 10GE Switches
+    url: https://e.huawei.com/mx/products/switches/campus-switches/s6750-h-10ge
+    kind: official
+  huawei-s6750-h-25g:
+    vendor: Huawei
+    title: CloudEngine S6750-H Series 25GE Switches
+    url: https://e.huawei.com/br/products/switches/campus-switches/s6750-h-25ge
+    kind: official
+  huawei-ma5800:
+    vendor: Huawei
+    title: MA5800 OLT
+    url: https://e.huawei.com/br/products/optical-access/ma5800
+    kind: official
+  huawei-ne8000:
+    vendor: Huawei
+    title: NetEngine 8000 Series
+    url: https://e.huawei.com/en/products/routers/netengine8000
+    kind: official-family
+  huawei-ne40e:
+    vendor: Huawei
+    title: NetEngine NE40E Series
+    url: https://e.huawei.com/en/products/routers/ne40e
+    kind: official-family
+  huawei-legacy-access:
+    vendor: Huawei
+    title: Huawei optical access product documentation
+    url: https://e.huawei.com/en/products/optical-access
+    kind: official-family
+  mikrotik-ethernet-routers:
+    vendor: MikroTik
+    title: Ethernet routers - User manuals
+    url: https://help.mikrotik.com/docs/spaces/UM/pages/8978699/Ethernet+routers
+    kind: official
+  mikrotik-rb2011:
+    vendor: MikroTik
+    title: RB2011 Series brochure
+    url: https://cdn.mikrotik.com/web-assets/product_files/RB2011_series_190654.pdf
+    kind: official
+  mikrotik-switchchip:
+    vendor: MikroTik
+    title: Switch Chip Features
+    url: https://help.mikrotik.com/docs/spaces/ROS/pages/15302988/Switch+Chip+Features
+    kind: official
+  mikrotik-rb760:
+    vendor: MikroTik
+    title: hEX S RB760iGS
+    url: https://mikrotik.com/product/hex_s
+    kind: official
+  mikrotik-rb3011:
+    vendor: MikroTik
+    title: RB3011UiAS-RM User Manual
+    url: https://help.mikrotik.com/docs/spaces/UM/pages/19136516/RB3011UiAS-RM
+    kind: official
+  mikrotik-rb4011:
+    vendor: MikroTik
+    title: RB4011iGS+RM
+    url: https://mikrotik.com/product/rb4011igs_rm
+    kind: official
+  mikrotik-rb5009:
+    vendor: MikroTik
+    title: RB5009UG+S+IN
+    url: https://mikrotik.com/product/rb5009ug_s_in
+    kind: official
+  mikrotik-ccr2116:
+    vendor: MikroTik
+    title: CCR2116-12G-4S+
+    url: https://mikrotik.com/product/ccr2116_12g_4splus
+    kind: official
+  mikrotik-ccr2216:
+    vendor: MikroTik
+    title: CCR2216-1G-12XS-2XQ manual
+    url: https://manual.mikrotik.com/hardware/ccr2216-1g-12xs-2xq/
+    kind: official
+  mikrotik-products:
+    vendor: MikroTik
+    title: MikroTik products
+    url: https://mikrotik.com/products
+    kind: official-family
+  juniper-mx80:
+    vendor: Juniper
+    title: MX80 Specifications
+    url: https://www.juniper.net/br/pt/products/routers/mx-series/mx80-universal-routing-platform/specs.html
+    kind: official
+  juniper-mx104:
+    vendor: Juniper
+    title: MX104 Hardware Guide
+    url: https://www.juniper.net/documentation/us/en/hardware/mx104/mx104.pdf
+    kind: official
+  juniper-mx204:
+    vendor: Juniper
+    title: MX204 Router Overview
+    url: https://www.juniper.net/documentation/us/en/hardware/mx204/topics/concept/mx204-description.html
+    kind: official
+  juniper-mics:
+    vendor: Juniper
+    title: MICs Supported by MX80 and MX104 Routers
+    url: https://www.juniper.net/documentation/us/en/hardware/mx960/mx240/topics/concept/mic-mx-series-supported.html
+    kind: official
+  datacom-dm4370:
+    vendor: Datacom
+    title: DM4370
+    url: https://www.datacom.com.br/pt/produtos/switches/dm4370
+    kind: official
+  datacom-dm4376:
+    vendor: Datacom
+    title: DM4376
+    url: https://www.datacom.com.br/m/produtos/switches/dm4376
+    kind: official
+  datacom-dm4380:
+    vendor: Datacom
+    title: DM4380
+    url: https://www.datacom.com.br/pt/produtos/switches/dm4380
+    kind: official
+  datacom-dm4270:
+    vendor: Datacom
+    title: DM4270
+    url: https://www.datacom.com.br/pt/produtos/switches/dm4270
+    kind: official
+  datacom-dm4770:
+    vendor: Datacom
+    title: DM4770
+    url: https://datacom.com.br/pt/produtos/switches/dm4770
+    kind: official
+  datacom-dm4780:
+    vendor: Datacom
+    title: DM4780 technical specification
+    url: https://datacom.com.br/uploads/product/file/b5ca0c0565f1d84b5e40c9f53d84d2c4.pdf
+    kind: official
+  datacom-olt:
+    vendor: Datacom
+    title: Datacom General Catalog - OLT
+    url: https://datacom.com.br/catalogos/catalogo-geral-portugues.pdf
+    kind: official
+  zte-c600:
+    vendor: ZTE
+    title: ZXA10 C600
+    url: https://www.zte.com.cn/z/N2iQyo.html
+    kind: official
+  zte-c650:
+    vendor: ZTE
+    title: ZXA10 C650
+    url: https://www.zte.com.cn/z/B2OuTp.html
+    kind: official
+  zte-c620:
+    vendor: ZTE
+    title: ZXA10 C620
+    url: https://www.zte.com.cn/global/home_and_enterprise/campus_network/zxa10_c620.html
+    kind: official
+  zte-c610:
+    vendor: ZTE
+    title: ZXA10 C610
+    url: https://www.zte.com.cn/z/M2Ckvv.html
+    kind: official
+  zte-legacy:
+    vendor: ZTE
+    title: Access Network Product Documentation Map
+    url: https://support.zte.com.cn/support/docmap/00000455/en/index.html
+    kind: official
+  fiberhome-an6000:
+    vendor: FiberHome
+    title: AN6000 Series OLT
+    url: https://www.fiberhome.com/kdjr2222222/20221230/44194.html
+    kind: official
+  fiberhome-an5516:
+    vendor: FiberHome
+    title: FiberHome access products
+    url: https://www.fiberhome.com/
+    kind: official-family
+  vsol-v1600g1r:
+    vendor: VSOL
+    title: V1600G1-R
+    url: https://www.vsolcn.com/product/8port-gpon-olt-v1600g1-r
+    kind: official
+  vsol-v1600g2r:
+    vendor: VSOL
+    title: V1600G2-R
+    url: https://www.vsolcn.com/product/16-port-gpon-olt-v1600g2-r
+    kind: official
+  vsol-v3600g1c:
+    vendor: VSOL
+    title: V3600G1-C
+    url: https://www.vsolcn.com/product/8-port-xgs-combo-pon-olt-v3600g1-c
+    kind: official
+  vsol-olt:
+    vendor: VSOL
+    title: VSOL OLT Products
+    url: https://www.vsolcn.com/products/olt
+    kind: official
+  vsol-v5600x2:
+    vendor: VSOL
+    title: V5600X2
+    url: https://www.vsolcn.com/product/2-slot-gpon-xgs-pon-combo-chassis-olt-v5600x2
+    kind: official
+  vsol-v5600x7:
+    vendor: VSOL
+    title: V5600X7
+    url: https://www.vsolcn.com/product/7-slot-gpon-xgs-pon-combo-chassis-olt-v5600x7
+    kind: official
+templates:
+- catalogKey: huawei-ne8000-f1a-8h20q
+  manufacturer: Huawei
+  family: NetEngine 8000
+  model: F1A-8H20Q
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ne8000
+  verificationNote: Model is in the approved catalog scope. Port layout must be imported only after exact official F1A-8H20Q
+    hardware documentation is checked; do not infer from family marketing.
+- catalogKey: huawei-ne8000-m4
+  manufacturer: Huawei
+  family: NetEngine 8000
+  model: M4
+  aliases: []
+  kind: ROUTER
+  layoutType: MODULAR
+  heightU: 2
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups:
+  - groupKey: service
+    slotIds:
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    role: SERVICE
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ne8000
+  verificationNote: Chassis template. Keep service ports empty until a verified line-card/module is installed.
+- catalogKey: huawei-ne8000-m8-dc
+  manufacturer: Huawei
+  family: NetEngine 8000
+  model: M8 DC
+  aliases: []
+  kind: ROUTER
+  layoutType: MODULAR
+  heightU: 3
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ne8000
+  verificationNote: Separate DC chassis template. Exact slot map and board compatibility must be verified before vendorVerified=true.
+- catalogKey: huawei-ne8000-m8-ac
+  manufacturer: Huawei
+  family: NetEngine 8000
+  model: M8 AC
+  aliases: []
+  kind: ROUTER
+  layoutType: MODULAR
+  heightU: 3
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ne8000
+  verificationNote: Separate AC chassis template. Do not reuse the DC slot map without official verification.
+- catalogKey: huawei-ne40e-x3
+  manufacturer: Huawei
+  family: NE40E
+  model: NE40E-X3
+  aliases: []
+  kind: ROUTER
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ne40e
+  verificationNote: Chassis placeholder intentionally has no invented service ports or board slots. Verify exact chassis revision
+    and LPU slot map before enabling vendorVerified.
+- catalogKey: huawei-ne40e-x3a
+  manufacturer: Huawei
+  family: NE40E
+  model: NE40E-X3A
+  aliases: []
+  kind: ROUTER
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ne40e
+  verificationNote: Chassis placeholder intentionally has no invented service ports or board slots. Verify exact chassis revision
+    and LPU slot map before enabling vendorVerified.
+- catalogKey: huawei-ne40e-x8
+  manufacturer: Huawei
+  family: NE40E
+  model: NE40E-X8
+  aliases: []
+  kind: ROUTER
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ne40e
+  verificationNote: Chassis placeholder intentionally has no invented service ports or board slots. Verify exact chassis revision
+    and LPU slot map before enabling vendorVerified.
+- catalogKey: huawei-ne40e-x8a
+  manufacturer: Huawei
+  family: NE40E
+  model: NE40E-X8A
+  aliases: []
+  kind: ROUTER
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ne40e
+  verificationNote: Chassis placeholder intentionally has no invented service ports or board slots. Verify exact chassis revision
+    and LPU slot map before enabling vendorVerified.
+- catalogKey: huawei-ne40e-x16
+  manufacturer: Huawei
+  family: NE40E
+  model: NE40E-X16
+  aliases: []
+  kind: ROUTER
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ne40e
+  verificationNote: Chassis placeholder intentionally has no invented service ports or board slots. Verify exact chassis revision
+    and LPU slot map before enabling vendorVerified.
+- catalogKey: huawei-ne40e-x16a
+  manufacturer: Huawei
+  family: NE40E
+  model: NE40E-X16A
+  aliases: []
+  kind: ROUTER
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ne40e
+  verificationNote: Chassis placeholder intentionally has no invented service ports or board slots. Verify exact chassis revision
+    and LPU slot map before enabling vendorVerified.
+- catalogKey: huawei-s5700-family
+  manufacturer: Huawei
+  family: S5700
+  model: S5700 family placeholder
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs: []
+  verificationNote: Family search/grouping placeholder only. Never instantiate vendor-specific ports from this entry; require
+    an exact SKU or use a generic/discovered template.
+- catalogKey: huawei-s5720-family
+  manufacturer: Huawei
+  family: S5720
+  model: S5720 family placeholder
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs: []
+  verificationNote: Family search/grouping placeholder only. Never instantiate vendor-specific ports from this entry; require
+    an exact SKU or use a generic/discovered template.
+- catalogKey: huawei-s6720-family
+  manufacturer: Huawei
+  family: S6720
+  model: S6720 family placeholder
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs: []
+  verificationNote: Family search/grouping placeholder only. Never instantiate vendor-specific ports from this entry; require
+    an exact SKU or use a generic/discovered template.
+- catalogKey: huawei-s6730-h24x6c
+  manufacturer: Huawei
+  family: S6730
+  model: S6730-H24X6C
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: sfpplus-10g
+    count: 24
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: 10GE-{n}
+    notes: CLI member/slot numbering varies; map through Huawei driver, not a hardcoded member number.
+  - groupKey: qsfp28-uplink
+    count: 6
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 40G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+    notes: Physical connector remains one port when breakout is configured.
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-s6730-h
+- catalogKey: huawei-s6730-h48x6c
+  manufacturer: Huawei
+  family: S6730
+  model: S6730-H48X6C
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: sfpplus-10g
+    count: 48
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: 10GE-{n}
+    notes: CLI member/slot numbering varies; map through Huawei driver, not a hardcoded member number.
+  - groupKey: qsfp28-uplink
+    count: 6
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 40G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+    notes: Physical connector remains one port when breakout is configured.
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-s6730-h
+- catalogKey: huawei-s6730-h24x6c-v2
+  manufacturer: Huawei
+  family: S6730
+  model: S6730-H24X6C-V2
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: sfpplus-10g
+    count: 24
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: 10GE-{n}
+    notes: CLI member/slot numbering varies; map through Huawei driver, not a hardcoded member number.
+  - groupKey: qsfp28-uplink
+    count: 6
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 40G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+    notes: Physical connector remains one port when breakout is configured.
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-s6730-h-v2
+- catalogKey: huawei-s6730-h48x6c-v2
+  manufacturer: Huawei
+  family: S6730
+  model: S6730-H48X6C-V2
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: sfpplus-10g
+    count: 48
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: 10GE-{n}
+    notes: CLI member/slot numbering varies; map through Huawei driver, not a hardcoded member number.
+  - groupKey: qsfp28-uplink
+    count: 6
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 40G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+    notes: Physical connector remains one port when breakout is configured.
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-s6730-h-v2
+- catalogKey: huawei-s6750-h48x8c
+  manufacturer: Huawei
+  family: S6750
+  model: S6750-H48X8C
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: sfp28-service
+    count: 48
+    connector: SFP28
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: SFP28-{n}
+  - groupKey: qsfp28-uplink
+    count: 8
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 40G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-s6750-h-10g
+- catalogKey: huawei-s6750-h48y8c
+  manufacturer: Huawei
+  family: S6750
+  model: S6750-H48Y8C
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: sfp28-service
+    count: 48
+    connector: SFP28
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    - 25G
+    breakoutCapable: false
+    physicalLabelPattern: SFP28-{n}
+  - groupKey: qsfp28-uplink
+    count: 8
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 40G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-s6750-h-25g
+- catalogKey: huawei-s6750-h48y8c-b
+  manufacturer: Huawei
+  family: S6750
+  model: S6750-H48Y8C-B
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-s6750-h-25g
+  verificationNote: Keep as distinct SKU. Do not copy H48Y8C-B-specific layout until its official page/datasheet is checked.
+- catalogKey: huawei-s6750-h36c
+  manufacturer: Huawei
+  family: S6750
+  model: S6750-H36C
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-s6750-h-25g
+  verificationNote: Model retained because it is in project scope, but exact H36C fixed-port layout was not confirmed in this
+    catalog pass. Do not invent ports.
+- catalogKey: huawei-ma5683t
+  manufacturer: Huawei
+  family: SmartAX
+  model: MA5683T
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-legacy-access
+  verificationNote: Legacy modular OLT. Chassis/board catalog must be verified from exact MA5683T hardware documentation or
+    live hardware; no invented PON cards.
+- catalogKey: huawei-ma5800-x2
+  manufacturer: Huawei
+  family: MA5800
+  model: MA5800-X2
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 2
+  rackMount: true
+  vendorVerified: true
+  portGroups: []
+  slotGroups:
+  - groupKey: service-upstream
+    slotIds:
+    - '1'
+    - '2'
+    role: SERVICE_OR_UPLINK
+  - groupKey: control
+    slotIds:
+    - '3'
+    - '4'
+    role: CONTROL
+  - groupKey: power
+    slotIds:
+    - '0'
+    role: POWER
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ma5800
+- catalogKey: huawei-ma5800-x7
+  manufacturer: Huawei
+  family: MA5800
+  model: MA5800-X7
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 6
+  rackMount: true
+  vendorVerified: true
+  portGroups: []
+  slotGroups:
+  - groupKey: service-upstream
+    slotIds:
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    role: SERVICE_OR_UPLINK
+  - groupKey: control
+    slotIds:
+    - '8'
+    - '9'
+    role: CONTROL
+  - groupKey: universal
+    slotIds:
+    - '0'
+    role: UNIVERSAL
+  - groupKey: power
+    slotIds:
+    - '10'
+    - '11'
+    role: POWER
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ma5800
+- catalogKey: huawei-ma5800-x15
+  manufacturer: Huawei
+  family: MA5800
+  model: MA5800-X15
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 11
+  rackMount: true
+  vendorVerified: true
+  portGroups: []
+  slotGroups:
+  - groupKey: service-upstream
+    slotIds:
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '10'
+    - '11'
+    - '12'
+    - '13'
+    - '14'
+    - '15'
+    - '16'
+    - '17'
+    role: SERVICE_OR_UPLINK
+  - groupKey: control
+    slotIds:
+    - '8'
+    - '9'
+    role: CONTROL
+  - groupKey: universal
+    slotIds:
+    - '0'
+    role: UNIVERSAL
+  - groupKey: power
+    slotIds:
+    - '18'
+    - '19'
+    role: POWER
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ma5800
+- catalogKey: huawei-ma5800-x17
+  manufacturer: Huawei
+  family: MA5800
+  model: MA5800-X17
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 11
+  rackMount: true
+  vendorVerified: true
+  portGroups: []
+  slotGroups:
+  - groupKey: service-upstream
+    slotIds:
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '11'
+    - '12'
+    - '13'
+    - '14'
+    - '15'
+    - '16'
+    - '17'
+    - '18'
+    - '19'
+    role: SERVICE_OR_UPLINK
+  - groupKey: control
+    slotIds:
+    - '9'
+    - '10'
+    role: CONTROL
+  - groupKey: universal
+    slotIds:
+    - '0'
+    role: UNIVERSAL
+  - groupKey: power
+    slotIds:
+    - '20'
+    - '21'
+    role: POWER
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ma5800
+  verificationNote: 21-inch-wide chassis; preserve this distinction in UI metadata.
+- catalogKey: mikrotik-rb750
+  manufacturer: MikroTik
+  family: RB750
+  model: RB750
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: false
+  portGroups:
+  - groupKey: ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 100M
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-switchchip
+  - mikrotik-ethernet-routers
+  verificationNote: Historical RB750 variant retained. Port count is known from family documentation, but exact product page
+    was not re-verified in this pass.
+- catalogKey: mikrotik-rb750g
+  manufacturer: MikroTik
+  family: RB750
+  model: RB750G
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: false
+  portGroups:
+  - groupKey: ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-switchchip
+  - mikrotik-ethernet-routers
+  verificationNote: Historical RB750 variant retained. Port count is known from family documentation, but exact product page
+    was not re-verified in this pass.
+- catalogKey: mikrotik-rb750gl
+  manufacturer: MikroTik
+  family: RB750
+  model: RB750GL
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: true
+  portGroups:
+  - groupKey: ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-switchchip
+  - mikrotik-ethernet-routers
+- catalogKey: mikrotik-rb750up
+  manufacturer: MikroTik
+  family: RB750
+  model: RB750UP
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: true
+  portGroups:
+  - groupKey: ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 100M
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-switchchip
+  - mikrotik-ethernet-routers
+- catalogKey: mikrotik-rb750r2
+  manufacturer: MikroTik
+  family: RB750
+  model: RB750r2 / hEX lite
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: true
+  portGroups:
+  - groupKey: ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 100M
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-switchchip
+  - mikrotik-ethernet-routers
+- catalogKey: mikrotik-rb750upr2
+  manufacturer: MikroTik
+  family: RB750
+  model: RB750UPr2 / hEX PoE lite
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: true
+  portGroups:
+  - groupKey: ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 100M
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-switchchip
+  - mikrotik-ethernet-routers
+- catalogKey: mikrotik-rb750gr2
+  manufacturer: MikroTik
+  family: RB750
+  model: RB750Gr2 / hEX
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: true
+  portGroups:
+  - groupKey: ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-switchchip
+  - mikrotik-ethernet-routers
+- catalogKey: mikrotik-rb750gr3
+  manufacturer: MikroTik
+  family: RB750
+  model: RB750Gr3 / hEX
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: true
+  portGroups:
+  - groupKey: ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-switchchip
+  - mikrotik-ethernet-routers
+- catalogKey: mikrotik-rb750p-pbr2
+  manufacturer: MikroTik
+  family: RB750 platform
+  model: RB750P-PBr2 / PowerBox
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: false
+  portGroups:
+  - groupKey: ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 100M
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-switchchip
+  verificationNote: Related RB750-platform outdoor/PoE variant; keep separate from indoor hEX templates.
+- catalogKey: mikrotik-rb750p-r2
+  manufacturer: MikroTik
+  family: RB750 platform
+  model: RB750P r2
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: false
+  portGroups:
+  - groupKey: ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 100M
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-switchchip
+  verificationNote: Related RB750-platform variant; exact commercial suffix should be confirmed before vendorVerified.
+- catalogKey: mikrotik-rb760igs
+  manufacturer: MikroTik
+  family: RB760
+  model: RB760iGS / hEX S
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: true
+  portGroups:
+  - groupKey: ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: sfp
+    count: 1
+    connector: SFP
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: sfp1
+    interfaceNamePattern: sfp1
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-rb760
+- catalogKey: mikrotik-rb2011il-in
+  manufacturer: MikroTik
+  family: RB2011
+  model: RB2011iL-IN
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: true
+  portGroups:
+  - groupKey: gigabit
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: fast-ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 100M
+    breakoutCapable: false
+    physicalLabelPattern: ether{n+5}
+    notes: Represents ether6-ether10; importer should expand ordinal offset safely.
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-rb2011
+  - mikrotik-ethernet-routers
+- catalogKey: mikrotik-rb2011il-rm
+  manufacturer: MikroTik
+  family: RB2011
+  model: RB2011iL-RM
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: gigabit
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: fast-ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 100M
+    breakoutCapable: false
+    physicalLabelPattern: ether{n+5}
+    notes: Represents ether6-ether10; importer should expand ordinal offset safely.
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-rb2011
+  - mikrotik-ethernet-routers
+- catalogKey: mikrotik-rb2011ils-in
+  manufacturer: MikroTik
+  family: RB2011
+  model: RB2011iLS-IN
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: true
+  portGroups:
+  - groupKey: gigabit
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: fast-ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 100M
+    breakoutCapable: false
+    physicalLabelPattern: ether{n+5}
+    notes: Represents ether6-ether10; importer should expand ordinal offset safely.
+  - groupKey: sfp
+    count: 1
+    connector: SFP
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: sfp1
+    interfaceNamePattern: sfp1
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-rb2011
+  - mikrotik-ethernet-routers
+- catalogKey: mikrotik-rb2011uias-in
+  manufacturer: MikroTik
+  family: RB2011
+  model: RB2011UiAS-IN
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: true
+  portGroups:
+  - groupKey: gigabit
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: fast-ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 100M
+    breakoutCapable: false
+    physicalLabelPattern: ether{n+5}
+    notes: Represents ether6-ether10; importer should expand ordinal offset safely.
+  - groupKey: sfp
+    count: 1
+    connector: SFP
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: sfp1
+    interfaceNamePattern: sfp1
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-rb2011
+  - mikrotik-ethernet-routers
+- catalogKey: mikrotik-rb2011uias-rm
+  manufacturer: MikroTik
+  family: RB2011
+  model: RB2011UiAS-RM
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: gigabit
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: fast-ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 100M
+    breakoutCapable: false
+    physicalLabelPattern: ether{n+5}
+    notes: Represents ether6-ether10; importer should expand ordinal offset safely.
+  - groupKey: sfp
+    count: 1
+    connector: SFP
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: sfp1
+    interfaceNamePattern: sfp1
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-rb2011
+  - mikrotik-ethernet-routers
+- catalogKey: mikrotik-rb2011uias-2hnd-in
+  manufacturer: MikroTik
+  family: RB2011
+  model: RB2011UiAS-2HnD-IN
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: false
+  portGroups:
+  - groupKey: gigabit
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: fast-ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 100M
+    breakoutCapable: false
+    physicalLabelPattern: ether{n+5}
+    notes: Represents ether6-ether10; importer should expand ordinal offset safely.
+  - groupKey: sfp
+    count: 1
+    connector: SFP
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: sfp1
+    interfaceNamePattern: sfp1
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-rb2011
+  - mikrotik-ethernet-routers
+  verificationNote: Historical/variant entry retained from project scope; exact housing/product page not re-verified. Do not
+    infer wireless as a rack physical data port.
+- catalogKey: mikrotik-rb2011l
+  manufacturer: MikroTik
+  family: RB2011
+  model: RB2011L
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: false
+  portGroups:
+  - groupKey: gigabit
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: fast-ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 100M
+    breakoutCapable: false
+    physicalLabelPattern: ether{n+5}
+    notes: Represents ether6-ether10; importer should expand ordinal offset safely.
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-rb2011
+  - mikrotik-ethernet-routers
+  verificationNote: Historical/variant entry retained from project scope; exact housing/product page not re-verified. Do not
+    infer wireless as a rack physical data port.
+- catalogKey: mikrotik-rb2011ls
+  manufacturer: MikroTik
+  family: RB2011
+  model: RB2011LS
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: false
+  portGroups:
+  - groupKey: gigabit
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: fast-ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 100M
+    breakoutCapable: false
+    physicalLabelPattern: ether{n+5}
+    notes: Represents ether6-ether10; importer should expand ordinal offset safely.
+  - groupKey: sfp
+    count: 1
+    connector: SFP
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: sfp1
+    interfaceNamePattern: sfp1
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-rb2011
+  - mikrotik-ethernet-routers
+  verificationNote: Historical/variant entry retained from project scope; exact housing/product page not re-verified. Do not
+    infer wireless as a rack physical data port.
+- catalogKey: mikrotik-rb2011uas-2hnd-in
+  manufacturer: MikroTik
+  family: RB2011
+  model: RB2011UAS-2HnD-IN
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: false
+  portGroups:
+  - groupKey: gigabit
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: fast-ethernet
+    count: 5
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 100M
+    breakoutCapable: false
+    physicalLabelPattern: ether{n+5}
+    notes: Represents ether6-ether10; importer should expand ordinal offset safely.
+  - groupKey: sfp
+    count: 1
+    connector: SFP
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: sfp1
+    interfaceNamePattern: sfp1
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-rb2011
+  - mikrotik-ethernet-routers
+  verificationNote: Historical/variant entry retained from project scope; exact housing/product page not re-verified. Do not
+    infer wireless as a rack physical data port.
+- catalogKey: mikrotik-rb3011uias-rm
+  manufacturer: MikroTik
+  family: RB3011
+  model: RB3011UiAS-RM
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: ethernet
+    count: 10
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: sfp
+    count: 1
+    connector: SFP
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: sfp1
+    interfaceNamePattern: sfp1
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
+  sourceRefs:
+  - mikrotik-rb3011
+- catalogKey: mikrotik-rb4011igs-rm
+  manufacturer: MikroTik
+  family: RB4011
+  model: RB4011iGS+RM
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: ethernet
+    count: 10
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: sfpplus
+    count: 1
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus1
+    interfaceNamePattern: sfp-sfpplus1
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
+  sourceRefs:
+  - mikrotik-rb4011
+- catalogKey: mikrotik-rb5009ug-s-in
+  manufacturer: MikroTik
+  family: RB5009
+  model: RB5009UG+S+IN
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: true
+  portGroups:
+  - groupKey: ether-1g
+    count: 7
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: ether-2.5g
+    count: 1
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 2.5G
+    breakoutCapable: false
+    physicalLabelPattern: ether8
+    interfaceNamePattern: ether8
+  - groupKey: sfpplus
+    count: 1
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus1
+    interfaceNamePattern: sfp-sfpplus1
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-rb5009
+- catalogKey: mikrotik-rb5009upr-s-in
+  manufacturer: MikroTik
+  family: RB5009
+  model: RB5009UPr+S+IN
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: false
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether-1g
+    count: 7
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: ether-2.5g
+    count: 1
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 2.5G
+    breakoutCapable: false
+    physicalLabelPattern: ether8
+    interfaceNamePattern: ether8
+  - groupKey: sfpplus
+    count: 1
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus1
+    interfaceNamePattern: sfp-sfpplus1
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-ethernet-routers
+  verificationNote: Model existence is official; port layout mirrors RB5009 series but should be checked against the exact
+    UPr product page before vendorVerified=true.
+- catalogKey: mikrotik-ccr1009-7g-1c-1splus
+  manufacturer: MikroTik
+  family: CCR
+  model: CCR1009-7G-1C-1S+
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether
+    count: 7
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: combo
+    count: 1
+    connector: COMBO
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: combo1
+    notes: Shared copper/SFP PHY; do not treat as two independent interfaces.
+  - groupKey: sfpplus
+    count: 1
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus1
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-ethernet-routers
+  - mikrotik-products
+  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually
+    re-verified in this catalog pass.
+- catalogKey: mikrotik-ccr1009-8g-1s-1splus
+  manufacturer: MikroTik
+  family: CCR
+  model: CCR1009-8G-1S-1S+
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether
+    count: 8
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: sfp
+    count: 1
+    connector: SFP
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: sfp1
+  - groupKey: sfpplus
+    count: 1
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus1
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-ethernet-routers
+  - mikrotik-products
+  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually
+    re-verified in this catalog pass.
+- catalogKey: mikrotik-ccr1036-12g-4s
+  manufacturer: MikroTik
+  family: CCR
+  model: CCR1036-12G-4S
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether
+    count: 12
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: sfp
+    count: 4
+    connector: SFP
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: sfp{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-ethernet-routers
+  - mikrotik-products
+  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually
+    re-verified in this catalog pass.
+- catalogKey: mikrotik-ccr1036-8g-2splus
+  manufacturer: MikroTik
+  family: CCR
+  model: CCR1036-8G-2S+
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether
+    count: 8
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: sfpplus
+    count: 2
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-ethernet-routers
+  - mikrotik-products
+  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually
+    re-verified in this catalog pass.
+- catalogKey: mikrotik-ccr1072-1g-8splus
+  manufacturer: MikroTik
+  family: CCR
+  model: CCR1072-1G-8S+
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether
+    count: 1
+    connector: RJ45
+    role: MGMT
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether1
+    interfaceNamePattern: ether1
+  - groupKey: sfpplus
+    count: 8
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-ethernet-routers
+  - mikrotik-products
+  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually
+    re-verified in this catalog pass.
+- catalogKey: mikrotik-ccr2004-16g-2splus
+  manufacturer: MikroTik
+  family: CCR
+  model: CCR2004-16G-2S+
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether
+    count: 16
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: sfpplus
+    count: 2
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-ethernet-routers
+  - mikrotik-products
+  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually
+    re-verified in this catalog pass.
+- catalogKey: mikrotik-ccr2004-1g-12splus2xs
+  manufacturer: MikroTik
+  family: CCR
+  model: CCR2004-1G-12S+2XS
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether
+    count: 1
+    connector: RJ45
+    role: MGMT
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether1
+    interfaceNamePattern: ether1
+  - groupKey: sfpplus
+    count: 12
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus{n}
+  - groupKey: sfp28
+    count: 2
+    connector: SFP28
+    role: UPLINK
+    speeds:
+    - 10G
+    - 25G
+    breakoutCapable: false
+    physicalLabelPattern: sfp28-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-ethernet-routers
+  - mikrotik-products
+  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually
+    re-verified in this catalog pass.
+- catalogKey: mikrotik-ccr2116-12g-4splus
+  manufacturer: MikroTik
+  family: CCR
+  model: CCR2116-12G-4S+
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: ether
+    count: 13
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+    notes: 12 ports through switch chip plus one CPU-connected management-purpose Gigabit port.
+  - groupKey: sfpplus
+    count: 4
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-ccr2116
+- catalogKey: mikrotik-ccr2216-1g-12xs-2xq
+  manufacturer: MikroTik
+  family: CCR
+  model: CCR2216-1G-12XS-2XQ
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: ether
+    count: 1
+    connector: RJ45
+    role: MGMT
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether1
+    interfaceNamePattern: ether1
+  - groupKey: sfp28
+    count: 12
+    connector: SFP28
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    - 25G
+    breakoutCapable: false
+    physicalLabelPattern: sfp28-{n}
+  - groupKey: qsfp28
+    count: 2
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    - 25G
+    - 40G
+    - 50G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: qsfp28-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-ccr2216
+- catalogKey: mikrotik-crs305-1g-4splus-in
+  manufacturer: MikroTik
+  family: CRS
+  model: CRS305-1G-4S+IN
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether
+    count: 1
+    connector: RJ45
+    role: MGMT
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether1
+    interfaceNamePattern: ether1
+  - groupKey: sfpplus
+    count: 4
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-products
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
+    do not change physical counts without official evidence.
+- catalogKey: mikrotik-crs309-1g-8splus-in
+  manufacturer: MikroTik
+  family: CRS
+  model: CRS309-1G-8S+IN
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether
+    count: 1
+    connector: RJ45
+    role: MGMT
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether1
+    interfaceNamePattern: ether1
+  - groupKey: sfpplus
+    count: 8
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-products
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
+    do not change physical counts without official evidence.
+- catalogKey: mikrotik-crs317-1g-16splus-rm
+  manufacturer: MikroTik
+  family: CRS
+  model: CRS317-1G-16S+RM
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether
+    count: 1
+    connector: RJ45
+    role: MGMT
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether1
+    interfaceNamePattern: ether1
+  - groupKey: sfpplus
+    count: 16
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-products
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
+    do not change physical counts without official evidence.
+- catalogKey: mikrotik-crs326-24g-2splus-rm
+  manufacturer: MikroTik
+  family: CRS
+  model: CRS326-24G-2S+RM
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether
+    count: 24
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: sfpplus
+    count: 2
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-products
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
+    do not change physical counts without official evidence.
+- catalogKey: mikrotik-crs326-24g-2splus-in
+  manufacturer: MikroTik
+  family: CRS
+  model: CRS326-24G-2S+IN
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether
+    count: 24
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: sfpplus
+    count: 2
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-products
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
+    do not change physical counts without official evidence.
+- catalogKey: mikrotik-crs326-24splus-2qplus-rm
+  manufacturer: MikroTik
+  family: CRS
+  model: CRS326-24S+2Q+RM
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: sfpplus
+    count: 24
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus{n}
+  - groupKey: qsfpplus
+    count: 2
+    connector: QSFP_PLUS
+    role: UPLINK
+    speeds:
+    - 40G
+    breakoutCapable: true
+    physicalLabelPattern: qsfpplus{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-products
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
+    do not change physical counts without official evidence.
+- catalogKey: mikrotik-crs328-24p-4splus-rm
+  manufacturer: MikroTik
+  family: CRS
+  model: CRS328-24P-4S+RM
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether
+    count: 24
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: sfpplus
+    count: 4
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-products
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
+    do not change physical counts without official evidence.
+- catalogKey: mikrotik-crs328-4c-20s-4splus-rm
+  manufacturer: MikroTik
+  family: CRS
+  model: CRS328-4C-20S-4S+RM
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: combo
+    count: 4
+    connector: COMBO
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: combo{n}
+    notes: Each combo port is one shared logical PHY with copper/SFP terminations.
+  - groupKey: sfp
+    count: 20
+    connector: SFP
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: sfp{n}
+  - groupKey: sfpplus
+    count: 4
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-products
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
+    do not change physical counts without official evidence.
+- catalogKey: mikrotik-crs354-48g-4splus-2qplus-rm
+  manufacturer: MikroTik
+  family: CRS
+  model: CRS354-48G-4S+2Q+RM
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether
+    count: 48
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: sfpplus
+    count: 4
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus{n}
+  - groupKey: qsfpplus
+    count: 2
+    connector: QSFP_PLUS
+    role: UPLINK
+    speeds:
+    - 40G
+    breakoutCapable: true
+    physicalLabelPattern: qsfpplus{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-products
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
+    do not change physical counts without official evidence.
+- catalogKey: mikrotik-crs354-48p-4splus-2qplus-rm
+  manufacturer: MikroTik
+  family: CRS
+  model: CRS354-48P-4S+2Q+RM
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups:
+  - groupKey: ether
+    count: 48
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether{n}
+    interfaceNamePattern: ether{n}
+  - groupKey: sfpplus
+    count: 4
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: sfp-sfpplus{n}
+  - groupKey: qsfpplus
+    count: 2
+    connector: QSFP_PLUS
+    role: UPLINK
+    speeds:
+    - 40G
+    breakoutCapable: true
+    physicalLabelPattern: qsfpplus{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - mikrotik-products
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
+    do not change physical counts without official evidence.
+- catalogKey: juniper-mx80
+  manufacturer: Juniper
+  family: MX
+  model: MX80
+  aliases: []
+  kind: ROUTER
+  layoutType: MODULAR
+  heightU: 2
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: fixed-10gbe
+    count: 4
+    connector: XFP
+    role: SERVICE
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: 10GbE-{n}
+    notes: Four built-in 10GbE interfaces; use Juniper driver for actual xe-* naming.
+  slotGroups:
+  - groupKey: mic
+    slotIds:
+    - 0/0
+    - 0/1
+    role: MIC
+  - groupKey: ms-mic
+    slotIds:
+    - rear-ms-mic
+    role: MS_MIC
+  compatibleModuleKeys:
+  - juniper-mic-3d-20ge-sfp
+  - juniper-mic-3d-20ge-sfp-e
+  - juniper-mic-macsec-20ge
+  - juniper-mic-3d-2xge-xfp
+  - juniper-mic-3d-40ge-tx
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - juniper-mx80
+  - juniper-mics
+- catalogKey: juniper-mx80-48t
+  manufacturer: Juniper
+  family: MX
+  model: MX80-48T
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 2
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - juniper-mics
+  verificationNote: Fixed MX80-48T variant retained because it is referenced by official MIC support docs. Exact front-panel
+    service-port layout must be checked before vendorVerified.
+- catalogKey: juniper-mx104
+  manufacturer: Juniper
+  family: MX
+  model: MX104
+  aliases: []
+  kind: ROUTER
+  layoutType: MODULAR
+  heightU: 3.5
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: built-in-10gbe
+    count: 4
+    connector: XFP
+    role: SERVICE
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: XE-2/0/{n}
+    notes: Official hardware guide identifies four built-in 10-Gigabit Ethernet ports 2/0/0 through 2/0/3.
+  slotGroups:
+  - groupKey: mic
+    slotIds:
+    - 0/0
+    - 0/1
+    - 1/0
+    - 1/1
+    role: MIC
+  compatibleModuleKeys:
+  - juniper-mic-3d-20ge-sfp
+  - juniper-mic-3d-20ge-sfp-e
+  - juniper-mic-macsec-20ge
+  - juniper-mic-3d-2xge-xfp
+  - juniper-mic-3d-40ge-tx
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - juniper-mx104
+  - juniper-mics
+- catalogKey: juniper-mx204
+  manufacturer: Juniper
+  family: MX
+  model: MX204
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: sfpplus-10g
+    count: 8
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: SFP+-{n}
+  - groupKey: rate-selectable
+    count: 4
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 10G
+    - 40G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+    notes: Each of four physical ports may run 100G, 40G, or 4x10G breakout. Breakout channels are logical children, not extra
+      chassis connectors.
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - juniper-mx204
+- catalogKey: datacom-dm4370-4gt-4gx-4xs
+  manufacturer: Datacom
+  family: DM4370
+  model: DM4370 4GT+4GX+4XS
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: rj45
+    count: 4
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: RJ45-{n}
+  - groupKey: sfp
+    count: 4
+    connector: SFP
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: SFP-{n}
+  - groupKey: sfpplus
+    count: 4
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: SFP+-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts:
+  - count: 1
+    connector: RJ45
+    role: MGMT
+  consolePorts:
+  - count: 1
+    connector: RJ45
+    role: CONSOLE
+  - count: 1
+    connector: USB_MINI_B
+    role: CONSOLE
+  sourceRefs:
+  - datacom-dm4370
+- catalogKey: datacom-dm4376-2gt-4gx-4xs
+  manufacturer: Datacom
+  family: DM4376
+  model: DM4376 2GT+4GX+4XS
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: rj45
+    count: 2
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: RJ45-{n}
+  - groupKey: sfp
+    count: 4
+    connector: SFP
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: SFP-{n}
+  - groupKey: sfpplus
+    count: 4
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: SFP+-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts:
+  - count: 1
+    connector: RJ45
+    role: MGMT
+  consolePorts:
+  - count: 1
+    connector: RJ45
+    role: CONSOLE
+  sourceRefs:
+  - datacom-dm4376
+- catalogKey: datacom-dm4380
+  manufacturer: Datacom
+  family: DM4380
+  model: DM4380
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: sfpplus
+    count: 12
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: SFP+-{n}
+  - groupKey: qsfp28
+    count: 3
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 40G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - datacom-dm4380
+- catalogKey: datacom-dm4270-24xs-2cx
+  manufacturer: Datacom
+  family: DM4270
+  model: DM4270 24XS+2CX
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: sfpplus
+    count: 24
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: SFP+-{n}
+  - groupKey: configurable-uplink
+    count: 3
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 40G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+    notes: 'Official spec: selectable uplink mode is 3x100/40GE QSFP28 or 4x40GE QSFP+. Model this as a configurable physical
+      layout, not simultaneous 3+4 connectors.'
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - datacom-dm4270
+- catalogKey: datacom-dm4270-48xs-6cx
+  manufacturer: Datacom
+  family: DM4270
+  model: DM4270 48XS+6CX
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: sfpplus
+    count: 48
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: SFP+-{n}
+  - groupKey: qsfp28
+    count: 6
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 40G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - datacom-dm4270
+- catalogKey: datacom-dm4270-8xs-16vs-6cx
+  manufacturer: Datacom
+  family: DM4270
+  model: DM4270 8XS+16VS+6CX
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: sfpplus
+    count: 8
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: SFP+-{n}
+  - groupKey: sfp28
+    count: 16
+    connector: SFP28
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    - 25G
+    breakoutCapable: false
+    physicalLabelPattern: SFP28-{n}
+  - groupKey: qsfp28
+    count: 6
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 40G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - datacom-dm4270
+- catalogKey: datacom-dm4770-32cx
+  manufacturer: Datacom
+  family: DM4770
+  model: DM4770 32CX
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: qsfp28
+    count: 32
+    connector: QSFP28
+    role: SERVICE
+    speeds:
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+  - groupKey: sfpplus
+    count: 2
+    connector: SFP_PLUS
+    role: MGMT_OR_SERVICE
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: SFP+-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - datacom-dm4770
+- catalogKey: datacom-dm4770-16cx
+  manufacturer: Datacom
+  family: DM4770
+  model: DM4770 16CX
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: qsfp28
+    count: 12
+    connector: QSFP28
+    role: SERVICE
+    speeds:
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+  - groupKey: qsfpdd
+    count: 4
+    connector: QSFP_DD
+    role: SERVICE
+    speeds:
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP-DD-{n}
+  - groupKey: sfp28
+    count: 4
+    connector: SFP28
+    role: SERVICE
+    speeds:
+    - 10G
+    - 25G
+    breakoutCapable: false
+    physicalLabelPattern: SFP28-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - datacom-dm4770
+- catalogKey: datacom-dm4780-16cx-8dx
+  manufacturer: Datacom
+  family: DM4780
+  model: DM4780 16CX+8DX
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: sfpplus
+    count: 1
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: SFP+-1
+  - groupKey: qsfp28
+    count: 8
+    connector: QSFP28
+    role: SERVICE
+    speeds:
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+  - groupKey: qsfp56
+    count: 4
+    connector: QSFP56
+    role: SERVICE
+    speeds:
+    - 100G
+    - 200G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP56-{n}
+  - groupKey: qsfpdd-200
+    count: 4
+    connector: QSFP_DD
+    role: SERVICE
+    speeds:
+    - 100G
+    - 200G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP-DD-200-{n}
+  - groupKey: qsfpdd-400
+    count: 8
+    connector: QSFP_DD
+    role: SERVICE
+    speeds:
+    - 100G
+    - 200G
+    - 400G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP-DD-400-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts:
+  - count: 1
+    connector: RJ45
+    role: MGMT
+  consolePorts:
+  - count: 1
+    connector: RJ45
+    role: CONSOLE
+  sourceRefs:
+  - datacom-dm4780
+- catalogKey: datacom-dm4611
+  manufacturer: Datacom
+  family: DM46xx
+  model: DM4611
+  aliases: []
+  kind: OLT
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: gpon
+    count: 4
+    connector: SFP
+    role: PON
+    speeds:
+    - GPON
+    breakoutCapable: false
+    physicalLabelPattern: PON-{n}
+  - groupKey: ge-rj45
+    count: 2
+    connector: RJ45
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: GE-RJ45-{n}
+  - groupKey: 10ge
+    count: 2
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: 10GE-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - datacom-olt
+- catalogKey: datacom-dm4612
+  manufacturer: Datacom
+  family: DM46xx
+  model: DM4612
+  aliases: []
+  kind: OLT
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: gpon
+    count: 8
+    connector: SFP
+    role: PON
+    speeds:
+    - GPON
+    breakoutCapable: false
+    physicalLabelPattern: PON-{n}
+  - groupKey: ge-rj45
+    count: 2
+    connector: RJ45
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: GE-RJ45-{n}
+  - groupKey: 10ge
+    count: 2
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: 10GE-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - datacom-olt
+- catalogKey: datacom-dm4610-8gpon
+  manufacturer: Datacom
+  family: DM46xx
+  model: DM4610 8GPON
+  aliases: []
+  kind: OLT
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: gpon
+    count: 8
+    connector: SFP
+    role: PON
+    speeds:
+    - GPON
+    breakoutCapable: false
+    physicalLabelPattern: PON-{n}
+  - groupKey: ge-sfp
+    count: 8
+    connector: SFP
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: GE-SFP-{n}
+  - groupKey: ge-rj45
+    count: 4
+    connector: RJ45
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: GE-RJ45-{n}
+  - groupKey: 10ge
+    count: 2
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: 10GE-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - datacom-olt
+- catalogKey: datacom-dm4615-16gpon
+  manufacturer: Datacom
+  family: DM46xx
+  model: DM4615 16GPON
+  aliases: []
+  kind: OLT
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: gpon
+    count: 16
+    connector: SFP
+    role: PON
+    speeds:
+    - GPON
+    breakoutCapable: false
+    physicalLabelPattern: PON-{n}
+  - groupKey: ge-rj45
+    count: 2
+    connector: RJ45
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: GE-RJ45-{n}
+  - groupKey: 10ge
+    count: 4
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: 10GE-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - datacom-olt
+- catalogKey: datacom-dm4616
+  manufacturer: Datacom
+  family: DM46xx
+  model: DM4616
+  aliases: []
+  kind: OLT
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: xgsp-on
+    count: 4
+    connector: SFP_PLUS
+    role: PON
+    speeds:
+    - XGS-PON
+    breakoutCapable: false
+    physicalLabelPattern: PON-{n}
+  - groupKey: 10ge
+    count: 4
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: 10GE-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - datacom-olt
+- catalogKey: datacom-dm4618
+  manufacturer: Datacom
+  family: DM46xx
+  model: DM4618
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: embedded-gpon
+    count: 32
+    connector: SFP
+    role: PON
+    speeds:
+    - GPON
+    breakoutCapable: false
+    physicalLabelPattern: PON-{n}
+  - groupKey: sfp28-uplink
+    count: 4
+    connector: SFP28
+    role: UPLINK
+    speeds:
+    - 10G
+    - 25G
+    breakoutCapable: false
+    physicalLabelPattern: 25GE-{n}
+  - groupKey: qsfp28-uplink
+    count: 2
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: 100GE-{n}
+  slotGroups:
+  - groupKey: pon-expansion
+    slotIds:
+    - EXP1
+    role: PON_EXPANSION
+    capacityNote: 'Official catalog: one expansion slot for +32 GPON ports.'
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - datacom-olt
+- catalogKey: zte-zxa10-c300
+  manufacturer: ZTE
+  family: ZXA10
+  model: ZXA10 C300
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - zte-legacy
+  verificationNote: Legacy modular OLT. Keep chassis entry, but do not invent slot count or cards; use exact ZTE hardware-at-a-glance
+    documentation before vendorVerified.
+- catalogKey: zte-zxa10-c320
+  manufacturer: ZTE
+  family: ZXA10
+  model: ZXA10 C320
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - zte-legacy
+  verificationNote: Legacy compact modular OLT. Slot/card layout intentionally omitted until exact product documentation is
+    parsed.
+- catalogKey: zte-zxa10-c600
+  manufacturer: ZTE
+  family: ZXA10 TITAN
+  model: ZXA10 C600
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 11
+  rackMount: true
+  vendorVerified: true
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - zte-c600
+  verificationNote: Official source confirms 19-inch and 21-inch chassis variants and PON/uplink families. Slot map is not
+    embedded here because exact chassis-width variant must be selected first.
+- catalogKey: zte-zxa10-c650
+  manufacturer: ZTE
+  family: ZXA10 TITAN
+  model: ZXA10 C650
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 6
+  rackMount: true
+  vendorVerified: true
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - zte-c650
+  verificationNote: Official source confirms chassis dimensions and PON/uplink capabilities. Exact service-slot map should
+    be imported from the hardware guide before module installation.
+- catalogKey: zte-zxa10-c620
+  manufacturer: ZTE
+  family: ZXA10 TITAN
+  model: ZXA10 C620
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 2
+  rackMount: true
+  vendorVerified: true
+  portGroups: []
+  slotGroups:
+  - groupKey: service
+    slotIds:
+    - '1'
+    - '2'
+    role: SERVICE
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - zte-c620
+  verificationNote: Official ZTE China spec confirms 2 service-board slots and up to 32 PON ports.
+- catalogKey: zte-zxa10-c610
+  manufacturer: ZTE
+  family: ZXA10 TITAN
+  model: ZXA10 C610
+  aliases: []
+  kind: OLT
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: pon
+    count: 16
+    connector: OTHER
+    role: PON
+    speeds:
+    - GPON
+    - XG-PON
+    - XGS-PON
+    - COMBO_PON
+    breakoutCapable: false
+    physicalLabelPattern: PON-{n}
+    notes: Product supports 16/8 PON configurations; exact ordered variant must define whether 16 or 8 physical PON ports
+      are populated.
+  - groupKey: uplink
+    count: 6
+    connector: SFP28
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    - 25G
+    breakoutCapable: false
+    physicalLabelPattern: UPLINK-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - zte-c610
+  verificationNote: Importer must support 16-port and 8-port ordered variants without inventing populated connectors.
+- catalogKey: fiberhome-an5516-01
+  manufacturer: FiberHome
+  family: AN5516
+  model: AN5516-01
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - fiberhome-an5516
+  verificationNote: Legacy chassis required by project. Exact slot and board layout must come from official manual or live
+    discovery; no third-party-only port assumptions.
+- catalogKey: fiberhome-an6000-2
+  manufacturer: FiberHome
+  family: AN6000
+  model: AN6000-2
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 2
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - fiberhome-an6000
+  verificationNote: Official family source confirms model and platform but this file intentionally does not invent slot map.
+- catalogKey: fiberhome-an6000-7
+  manufacturer: FiberHome
+  family: AN6000
+  model: AN6000-7
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - fiberhome-an6000
+  verificationNote: Official family source confirms model; exact slot geometry pending official hardware guide.
+- catalogKey: fiberhome-an6000-15
+  manufacturer: FiberHome
+  family: AN6000
+  model: AN6000-15
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - fiberhome-an6000
+  verificationNote: Official family source confirms model; exact slot geometry pending official hardware guide.
+- catalogKey: fiberhome-an6000-17
+  manufacturer: FiberHome
+  family: AN6000
+  model: AN6000-17
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - fiberhome-an6000
+  verificationNote: Official family source confirms model; exact slot geometry pending official hardware guide.
+- catalogKey: fiberhome-an6001-g16
+  manufacturer: FiberHome
+  family: AN6001
+  model: AN6001-G16
+  aliases: []
+  kind: OLT
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - fiberhome-an6000
+  verificationNote: Official family source confirms model; exact fixed PON/uplink panel not encoded until datasheet is verified.
+- catalogKey: fiberhome-an6001-gf16
+  manufacturer: FiberHome
+  family: AN6001
+  model: AN6001-GF16
+  aliases: []
+  kind: OLT
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - fiberhome-an6000
+  verificationNote: Official family source confirms model; exact fixed PON/uplink panel not encoded until datasheet is verified.
+- catalogKey: vsol-v1600g1-r
+  manufacturer: VSOL
+  family: V1600
+  model: V1600G1-R
+  aliases: []
+  kind: OLT
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: gpon
+    count: 8
+    connector: SFP
+    role: PON
+    speeds:
+    - GPON
+    breakoutCapable: false
+    physicalLabelPattern: PON-{n}
+  - groupKey: ge-rj45
+    count: 4
+    connector: RJ45
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: GE-RJ45-{n}
+  - groupKey: ge-sfp
+    count: 4
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: SFP-SFPPLUS-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts:
+  - count: 1
+    connector: RJ45
+    role: MGMT
+  consolePorts:
+  - count: 1
+    connector: OTHER
+    role: CONSOLE
+    notes: Console plus Type-C console are documented.
+  sourceRefs:
+  - vsol-v1600g1r
+- catalogKey: vsol-v1600g2-r
+  manufacturer: VSOL
+  family: V1600
+  model: V1600G2-R
+  aliases: []
+  kind: OLT
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: gpon
+    count: 16
+    connector: SFP
+    role: PON
+    speeds:
+    - GPON
+    breakoutCapable: false
+    physicalLabelPattern: PON-{n}
+  - groupKey: ge-rj45
+    count: 4
+    connector: RJ45
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: GE-RJ45-{n}
+  - groupKey: ge-sfp
+    count: 4
+    connector: SFP_PLUS
+    role: UPLINK
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: SFP-SFPPLUS-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts:
+  - count: 1
+    connector: RJ45
+    role: MGMT
+  consolePorts: []
+  sourceRefs:
+  - vsol-v1600g2r
+- catalogKey: vsol-v3600g1-c
+  manufacturer: VSOL
+  family: V3600
+  model: V3600G1-C
+  aliases: []
+  kind: OLT
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups:
+  - groupKey: combo-pon
+    count: 8
+    connector: SFP_PLUS
+    role: PON
+    speeds:
+    - GPON
+    - XG-PON
+    - XGS-PON
+    breakoutCapable: false
+    physicalLabelPattern: PON-{n}
+  - groupKey: ge-rj45
+    count: 1
+    connector: RJ45
+    role: UPLINK
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: GE-1
+  - groupKey: sfp28
+    count: 4
+    connector: SFP28
+    role: UPLINK
+    speeds:
+    - 10G
+    - 25G
+    breakoutCapable: false
+    physicalLabelPattern: SFP28-{n}
+  - groupKey: qsfp28
+    count: 2
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 40G
+    - 50G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts:
+  - count: 1
+    connector: RJ45
+    role: MGMT
+  consolePorts: []
+  sourceRefs:
+  - vsol-v3600g1c
+- catalogKey: vsol-v3600g2-r
+  manufacturer: VSOL
+  family: V3600
+  model: V3600G2-R
+  aliases: []
+  kind: OLT
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - vsol-olt
+  verificationNote: Official current catalog confirms 16-port Combo PON model and 100G-class uplink. Exact connector breakdown
+    must be imported from its specific datasheet before vendorVerified.
+- catalogKey: vsol-v5600x2
+  manufacturer: VSOL
+  family: V5600
+  model: V5600X2
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups: []
+  slotGroups:
+  - groupKey: service
+    slotIds:
+    - '1'
+    - '2'
+    role: PON_SERVICE
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - vsol-v5600x2
+  verificationNote: 'Official product page: 2-slot GPON/XGS-PON Combo chassis, up to 32 PON ports. Board templates remain
+    separate.'
+- catalogKey: vsol-v5600x7
+  manufacturer: VSOL
+  family: V5600
+  model: V5600X7
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: true
+  portGroups: []
+  slotGroups:
+  - groupKey: service
+    slotIds:
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    role: PON_SERVICE
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - vsol-v5600x7
+  verificationNote: 'Official product page: 7-slot GPON/XGS-PON Combo chassis, up to 112 PON ports. Board templates remain
+    separate.'
+- catalogKey: generic-router-1u
+  manufacturer: Generic
+  family: Generic
+  model: Generic Router 1U
+  aliases: []
+  kind: ROUTER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs: []
+  verificationNote: SYSTEM generic template. User may manually define physical ports/slots. Never overwrite CUSTOM user changes.
+- catalogKey: generic-router-modular
+  manufacturer: Generic
+  family: Generic
+  model: Generic Modular Router
+  aliases: []
+  kind: ROUTER
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs: []
+  verificationNote: SYSTEM generic template. User may manually define physical ports/slots. Never overwrite CUSTOM user changes.
+- catalogKey: generic-switch-1u
+  manufacturer: Generic
+  family: Generic
+  model: Generic Switch 1U
+  aliases: []
+  kind: SWITCH
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs: []
+  verificationNote: SYSTEM generic template. User may manually define physical ports/slots. Never overwrite CUSTOM user changes.
+- catalogKey: generic-switch-modular
+  manufacturer: Generic
+  family: Generic
+  model: Generic Modular Switch
+  aliases: []
+  kind: SWITCH
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs: []
+  verificationNote: SYSTEM generic template. User may manually define physical ports/slots. Never overwrite CUSTOM user changes.
+- catalogKey: generic-olt-fixed
+  manufacturer: Generic
+  family: Generic
+  model: Generic Fixed OLT
+  aliases: []
+  kind: OLT
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs: []
+  verificationNote: SYSTEM generic template. User may manually define physical ports/slots. Never overwrite CUSTOM user changes.
+- catalogKey: generic-olt-chassis
+  manufacturer: Generic
+  family: Generic
+  model: Generic Modular OLT
+  aliases: []
+  kind: OLT
+  layoutType: MODULAR
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs: []
+  verificationNote: SYSTEM generic template. User may manually define physical ports/slots. Never overwrite CUSTOM user changes.
+- catalogKey: generic-server-1u
+  manufacturer: Generic
+  family: Generic
+  model: Generic Server 1U
+  aliases: []
+  kind: SERVER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs: []
+  verificationNote: SYSTEM generic template. User may manually define physical ports/slots. Never overwrite CUSTOM user changes.
+- catalogKey: generic-server-2u
+  manufacturer: Generic
+  family: Generic
+  model: Generic Server 2U
+  aliases: []
+  kind: SERVER
+  layoutType: FIXED
+  heightU: 2
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs: []
+  verificationNote: SYSTEM generic template. User may manually define physical ports/slots. Never overwrite CUSTOM user changes.
+- catalogKey: generic-dio
+  manufacturer: Generic
+  family: Generic
+  model: Generic DIO
+  aliases: []
+  kind: DIO
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs: []
+  verificationNote: SYSTEM generic template. User may manually define physical ports/slots. Never overwrite CUSTOM user changes.
+- catalogKey: generic-patch-panel-24
+  manufacturer: Generic
+  family: Generic
+  model: Generic Patch Panel 24
+  aliases: []
+  kind: PATCH_PANEL
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs: []
+  verificationNote: SYSTEM generic template. User may manually define physical ports/slots. Never overwrite CUSTOM user changes.
+- catalogKey: generic-patch-panel-48
+  manufacturer: Generic
+  family: Generic
+  model: Generic Patch Panel 48
+  aliases: []
+  kind: PATCH_PANEL
+  layoutType: FIXED
+  heightU: 2
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs: []
+  verificationNote: SYSTEM generic template. User may manually define physical ports/slots. Never overwrite CUSTOM user changes.
+- catalogKey: generic-pdu
+  manufacturer: Generic
+  family: Generic
+  model: Generic PDU
+  aliases: []
+  kind: POWER
+  layoutType: FIXED
+  heightU: 1
+  rackMount: true
+  vendorVerified: false
+  portGroups: []
+  slotGroups: []
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs: []
+  verificationNote: SYSTEM generic template. User may manually define physical ports/slots. Never overwrite CUSTOM user changes.
+moduleTemplates:
+- moduleKey: juniper-mic-3d-20ge-sfp
+  manufacturer: Juniper
+  partNumber: MIC-3D-20GE-SFP
+  name: 20-port Gigabit Ethernet MIC with SFP
+  compatibleCatalogKeys:
+  - juniper-mx80
+  - juniper-mx104
+  vendorVerified: true
+  portGroups:
+  - groupKey: ge-sfp
+    count: 20
+    connector: SFP
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: SFP-{n}
+  sourceRefs:
+  - juniper-mics
+- moduleKey: juniper-mic-3d-20ge-sfp-e
+  manufacturer: Juniper
+  partNumber: MIC-3D-20GE-SFP-E
+  name: 20-port Gigabit Ethernet MIC with SFP (E)
+  compatibleCatalogKeys:
+  - juniper-mx80
+  - juniper-mx104
+  vendorVerified: true
+  portGroups:
+  - groupKey: ge-sfp
+    count: 20
+    connector: SFP
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: SFP-{n}
+  sourceRefs:
+  - juniper-mics
+- moduleKey: juniper-mic-macsec-20ge
+  manufacturer: Juniper
+  partNumber: MIC-MACSEC-20GE
+  name: 20-port Gigabit Ethernet MACsec MIC
+  compatibleCatalogKeys:
+  - juniper-mx80
+  - juniper-mx104
+  vendorVerified: true
+  portGroups:
+  - groupKey: ge-sfp
+    count: 20
+    connector: SFP
+    role: SERVICE
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: SFP-{n}
+  sourceRefs:
+  - juniper-mics
+- moduleKey: juniper-mic-3d-2xge-xfp
+  manufacturer: Juniper
+  partNumber: MIC-3D-2XGE-XFP
+  name: 2-port 10-Gigabit Ethernet MIC with XFP
+  compatibleCatalogKeys:
+  - juniper-mx80
+  - juniper-mx104
+  vendorVerified: true
+  portGroups:
+  - groupKey: 10ge-xfp
+    count: 2
+    connector: XFP
+    role: SERVICE
+    speeds:
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: XFP-{n}
+  sourceRefs:
+  - juniper-mics
+- moduleKey: juniper-mic-3d-40ge-tx
+  manufacturer: Juniper
+  partNumber: MIC-3D-40GE-TX
+  name: 40-port Tri-Rate MIC
+  compatibleCatalogKeys:
+  - juniper-mx80
+  - juniper-mx104
+  vendorVerified: true
+  portGroups:
+  - groupKey: tri-rate-rj45
+    count: 40
+    connector: RJ45
+    role: SERVICE
+    speeds:
+    - 10M
+    - 100M
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: RJ45-{n}
+  sourceRefs:
+  - juniper-mics
+implementationNotes:
+- Port group physicalLabelPattern is a compact declaration. Importer/bootstrap may expand it into individual PhysicalTemplatePort
+  rows.
+- Patterns containing {n+5} are semantic offset patterns; importer should expand to the actual ordinals instead of treating
+  them literally.
+- Do not hardcode Huawei stack/member numbering into template connector identity. Keep a stable physical connector identity
+  and let the Huawei driver map CLI names.
+- Desktop/non-rack devices may use a 1U logical footprint in the current rack UI, but rackMount=false must be preserved.
+- Do not silently change vendorVerified=false to true without an official source and a reviewed change to this catalog.

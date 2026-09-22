@@ -57,11 +57,13 @@ import {
   type PhysicalCatalogEntry,
   type PhysicalConnection,
   type PhysicalInventory,
+  type PhysicalInterfaceSyncReport,
   type PhysicalLldpSuggestion,
   type PhysicalModule,
   type PhysicalPath,
   type PhysicalPort,
   type PhysicalRack,
+  type PhysicalReconcileResult,
   type PhysicalSite,
   type UpdatePhysicalPortInput,
   type UpdateMapInput,
@@ -636,11 +638,25 @@ export function createPhysicalPort(
   });
 }
 
-export function syncPhysicalPorts(assetId: string): Promise<PhysicalPort[]> {
-  return request<PhysicalPort[]>(
+export function syncPhysicalPorts(assetId: string): Promise<PhysicalInterfaceSyncReport> {
+  return request<PhysicalInterfaceSyncReport>(
     `/api/physical/assets/${encodeURIComponent(assetId)}/sync-interfaces`,
     { method: 'POST' },
   );
+}
+
+/** Removes connectors the previous sync fabricated for logical interfaces. */
+export function reconcilePhysicalPorts(assetId: string): Promise<PhysicalReconcileResult> {
+  return request<PhysicalReconcileResult>(
+    `/api/physical/assets/${encodeURIComponent(assetId)}/reconcile-ports`,
+    { method: 'POST' },
+  );
+}
+
+export function deletePhysicalAsset(assetId: string): Promise<void> {
+  return request<void>(`/api/physical/assets/${encodeURIComponent(assetId)}`, {
+    method: 'DELETE',
+  });
 }
 
 export function pairPhysicalPorts(portId: string, pairedPortId: string): Promise<PhysicalPort[]> {
