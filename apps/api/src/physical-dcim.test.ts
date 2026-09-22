@@ -22,7 +22,8 @@ const hosts = new DemoHostRepositoryAdapter(new DemoMapRepository());
 const catalog = loadPhysicalCatalog(PHYSICAL_CATALOG);
 
 const MIKROTIK_KEY = 'mikrotik-crs328-24p-4splus-rm';
-const MIKROTIK_PORTS = 28;
+// V1.1: 24 ether + 4 SFP+ + console serial declarado pelo fabricante
+const MIKROTIK_PORTS = 29;
 const JUNIPER_KEY = 'juniper-mx80';
 const JUNIPER_MODULE = 'juniper-mic-3d-20ge-sfp';
 const HUAWEI_KEY = 'huawei-s6750-h48x8c';

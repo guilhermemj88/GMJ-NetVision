@@ -1,22 +1,23 @@
 schemaVersion: '1.0'
-catalogKey: gmj-netvision-physical-catalog-v1
+catalogKey: gmj-netvision-physical-catalog-v1.1
 generatedFor: GMJ NetVision
-purpose: Source of truth for SYSTEM physical/DCIM templates. PhysicalPort means a real connector, not a logical interface.
+purpose: Source of truth for SYSTEM physical/DCIM templates. V1.1 verification sweep adds official Huawei and MikroTik chassis/connector facts
+  while keeping unverified placeholders conservative.
 policies:
   systemCatalogIdempotent: true
   customTemplatesNeverOverwritten: true
-  vendorVerifiedMeaning: Exact model/SKU plus encoded physical connector/slot facts have an official manufacturer source in
-    sources[]. Entries may still have intentionally deferred module/card details.
-  unverifiedPolicy: Keep the template as a model/family placeholder, but do not invent ports, slots, heights, cards, or connector
-    types. Unknown physical interfaces are not auto-created on vendor templates.
-  physicalPortDefinition: A real chassis/board connector. VLANIF, loopback, LAG, tunnel, bridge, subinterface, pseudowire,
-    PPPoE, virtual/template interfaces are logical and must not become PhysicalPort.
-  breakoutPolicy: A QSFP/QSFP28/QSFP56/QSFP-DD cage remains one physical connector. Breakout lanes are logical children and
-    never extra chassis connectors.
-  templateSyncPolicy: On vendor templates, interface sync maps Device.Interface to existing template ports; it does not add
-    unmatched logical/unknown ports. On generic/discovered templates, only PHYSICAL-classified interfaces may create ports.
-  modulePolicy: Modular chassis expose slots. Service connectors appear only when a verified/manual module is installed. Failed
-    discovery must never remove manual modules.
+  vendorVerifiedMeaning: Exact model/SKU plus encoded physical connector/slot facts have an official manufacturer source in sources[]. Entries
+    may still have intentionally deferred module/card details.
+  unverifiedPolicy: Keep the template as a model/family placeholder, but do not invent ports, slots, heights, cards, or connector types. Unknown
+    physical interfaces are not auto-created on vendor templates.
+  physicalPortDefinition: A real chassis/board connector. VLANIF, loopback, LAG, tunnel, bridge, subinterface, pseudowire, PPPoE, virtual/template
+    interfaces are logical and must not become PhysicalPort.
+  breakoutPolicy: A QSFP/QSFP28/QSFP56/QSFP-DD cage remains one physical connector. Breakout lanes are logical children and never extra chassis
+    connectors.
+  templateSyncPolicy: On vendor templates, interface sync maps Device.Interface to existing template ports; it does not add unmatched logical/unknown
+    ports. On generic/discovered templates, only PHYSICAL-classified interfaces may create ports.
+  modulePolicy: Modular chassis expose slots. Service connectors appear only when a verified/manual module is installed. Failed discovery must
+    never remove manual modules.
 interfaceClassification:
   resultValues:
   - PHYSICAL
@@ -91,8 +92,8 @@ interfaceClassification:
       - st*
       - gr-*
       - ip-*
-  rule: Names are only one signal. Use vendor, model, ifType, connector metadata, and template knowledge. UNKNOWN must not
-    be auto-created on a vendor template.
+  rule: Names are only one signal. Use vendor, model, ifType, connector metadata, and template knowledge. UNKNOWN must not be auto-created on
+    a vendor template.
 sources:
   huawei-s6730-h:
     vendor: Huawei
@@ -304,6 +305,181 @@ sources:
     title: V5600X7
     url: https://www.vsolcn.com/product/7-slot-gpon-xgs-pon-combo-chassis-olt-v5600x7
     kind: official
+  huawei-ne8000-f1a-8h20q:
+    vendor: Huawei
+    title: NetEngine 8000 F1A-8H20Q Datasheet V800R024C10
+    url: https://e.huawei.com/en/documents/products/enterprise-network/9d1e5a135656419fb90354e8c68136eb
+    kind: official
+  huawei-ne8000-platform:
+    vendor: Huawei
+    title: NetEngine 8000 Series Routers
+    url: https://e.huawei.com/br/products/routers/ne8000
+    kind: official
+  huawei-ne40e-x-series:
+    vendor: Huawei
+    title: NetEngine40E-X Series Specifications
+    url: https://e.huawei.com/br/products/routers/ne40e
+    kind: official
+  huawei-s6750-h-100g:
+    vendor: Huawei
+    title: CloudEngine S6750-H Series 100GE Switches
+    url: https://e.huawei.com/tr/products/switches/campus-switches/s6750-h-100ge
+    kind: official
+  mikrotik-rb750g-exact:
+    vendor: MikroTik
+    title: RB750G
+    url: https://mikrotik.com/product/RB750G
+    kind: official
+  mikrotik-rb750gl-exact:
+    vendor: MikroTik
+    title: RB750GL
+    url: https://mikrotik.com/product/RB750GL
+    kind: official
+  mikrotik-rb750up-exact:
+    vendor: MikroTik
+    title: RB750UP
+    url: https://mikrotik.com/product/RB750UP
+    kind: official
+  mikrotik-rb750r2-exact:
+    vendor: MikroTik
+    title: hEX lite (RB750r2)
+    url: https://mikrotik.com/product/RB750r2
+    kind: official
+  mikrotik-rb750upr2-exact:
+    vendor: MikroTik
+    title: hEX PoE lite (RB750UPr2)
+    url: https://mikrotik.com/product/RB750UPr2
+    kind: official
+  mikrotik-rb750gr3-exact:
+    vendor: MikroTik
+    title: hEX (RB750Gr3)
+    url: https://mikrotik.com/product/RB750Gr3
+    kind: official
+  mikrotik-rb760igs-exact:
+    vendor: MikroTik
+    title: hEX S (RB760iGS)
+    url: https://mikrotik.com/product/hex_s
+    kind: official
+  mikrotik-powerbox-exact:
+    vendor: MikroTik
+    title: PowerBox (RB750P-PBr2)
+    url: https://mikrotik.com/product/RB750P-PBr2
+    kind: official
+  mikrotik-rb2011l-exact:
+    vendor: MikroTik
+    title: RB2011L
+    url: https://mikrotik.com/product/RB2011L
+    kind: official
+  mikrotik-rb2011ls-exact:
+    vendor: MikroTik
+    title: RB2011LS
+    url: https://mikrotik.com/product/RB2011LS
+    kind: official
+  mikrotik-rb2011uias2hnd-exact:
+    vendor: MikroTik
+    title: RB2011UiAS-2HnD-IN
+    url: https://mikrotik.com/product/RB2011UiAS-2HnD-IN
+    kind: official
+  mikrotik-rb5009upr-exact:
+    vendor: MikroTik
+    title: RB5009UPr+S+IN
+    url: https://mikrotik.com/product/rb5009upr_s_in
+    kind: official
+  mikrotik-ccr1009-7g-exact:
+    vendor: MikroTik
+    title: CCR1009-7G-1C-1S+
+    url: https://mikrotik.com/product/CCR1009-7G-1C-1Splus
+    kind: official
+  mikrotik-ccr1009-8g-exact:
+    vendor: MikroTik
+    title: CCR1009-8G-1S-1S+
+    url: https://mikrotik.com/product/CCR1009-8G-1S-1Splus
+    kind: official
+  mikrotik-ccr1036-12g-exact:
+    vendor: MikroTik
+    title: CCR1036-12G-4S
+    url: https://mikrotik.com/product/CCR1036-12G-4S-149
+    kind: official
+  mikrotik-ccr1036-8g-exact:
+    vendor: MikroTik
+    title: CCR1036-8G-2S+
+    url: https://mikrotik.com/product/CCR1036-8G-2Splus
+    kind: official
+  mikrotik-ccr1072-exact:
+    vendor: MikroTik
+    title: CCR1072-1G-8S+
+    url: https://mikrotik.com/product/CCR1072-1G-8Splus
+    kind: official
+  mikrotik-ccr2004-16g-exact:
+    vendor: MikroTik
+    title: CCR2004-16G-2S+
+    url: https://mikrotik.com/product/ccr2004_16g_2splus
+    kind: official
+  mikrotik-ccr2004-1g-exact:
+    vendor: MikroTik
+    title: CCR2004-1G-12S+2XS
+    url: https://mikrotik.com/product/ccr2004_1g_12s_2xs
+    kind: official
+  mikrotik-ccr2116-exact:
+    vendor: MikroTik
+    title: CCR2116-12G-4S+
+    url: https://mikrotik.com/product/ccr2116_12g_4splus
+    kind: official
+  mikrotik-ccr2216-exact:
+    vendor: MikroTik
+    title: CCR2216-1G-12XS-2XQ
+    url: https://mikrotik.com/product/ccr2216_1g_12xs_2xq
+    kind: official
+  mikrotik-crs305-exact:
+    vendor: MikroTik
+    title: CRS305-1G-4S+IN
+    url: https://mikrotik.com/product/crs305_1g_4s_in
+    kind: official
+  mikrotik-crs309-exact:
+    vendor: MikroTik
+    title: CRS309-1G-8S+IN
+    url: https://mikrotik.com/product/crs309_1g_8s_in
+    kind: official
+  mikrotik-crs317-exact:
+    vendor: MikroTik
+    title: CRS317-1G-16S+RM
+    url: https://mikrotik.com/product/crs317_1g_16s_rm
+    kind: official
+  mikrotik-crs326-rm-exact:
+    vendor: MikroTik
+    title: CRS326-24G-2S+RM
+    url: https://mikrotik.com/product/CRS326-24G-2SplusRM
+    kind: official
+  mikrotik-crs326-in-exact:
+    vendor: MikroTik
+    title: CRS326-24G-2S+IN
+    url: https://mikrotik.com/product/crs326_24g_2s_in
+    kind: official
+  mikrotik-crs326-24s-exact:
+    vendor: MikroTik
+    title: CRS326-24S+2Q+RM
+    url: https://mikrotik.com/product/crs326_24s_2q_rm
+    kind: official
+  mikrotik-crs328-24p-exact:
+    vendor: MikroTik
+    title: CRS328-24P-4S+RM
+    url: https://mikrotik.com/product/crs328_24p_4s_rm
+    kind: official
+  mikrotik-crs328-4c-exact:
+    vendor: MikroTik
+    title: CRS328-4C-20S-4S+RM
+    url: https://mikrotik.com/product/crs328_4c_20s_4s_rm
+    kind: official
+  mikrotik-crs354-48g-exact:
+    vendor: MikroTik
+    title: CRS354-48G-4S+2Q+RM
+    url: https://mikrotik.com/product/crs354_48g_4splus2qplusrm
+    kind: official
+  mikrotik-crs354-48p-exact:
+    vendor: MikroTik
+    title: CRS354-48P-4S+2Q+RM
+    url: https://mikrotik.com/product/crs354_48p_4s_2q_rm
+    kind: official
 templates:
 - catalogKey: huawei-ne8000-f1a-8h20q
   manufacturer: Huawei
@@ -314,16 +490,47 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
-  portGroups: []
+  vendorVerified: true
+  portGroups:
+  - groupKey: 100ge-cages
+    count: 8
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 40G
+    - 50G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: 100GE-{n}
+    notes: 'Official F1A-8H20Q ordering configuration: 8 x 100GE. One physical cage remains one connector under breakout/rate changes.'
+  - groupKey: 25ge-cages
+    count: 20
+    connector: SFP28
+    role: SERVICE
+    speeds:
+    - 10G
+    - 25G
+    breakoutCapable: false
+    physicalLabelPattern: 25GE-{n}
+    notes: 'Official F1A-8H20Q ordering configuration: 20 x 25GE.'
+  - groupKey: 10ge-cages
+    count: 28
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    physicalLabelPattern: 10GE-{n}
+    notes: 'Official F1A-8H20Q ordering configuration: 28 x 10GE.'
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - huawei-ne8000
-  verificationNote: Model is in the approved catalog scope. Port layout must be imported only after exact official F1A-8H20Q
-    hardware documentation is checked; do not infer from family marketing.
+  - huawei-ne8000-f1a-8h20q
+  verificationNote: Huawei F1A-8H20Q datasheet confirms 1U and flexible 100GE/50GE/25GE/10GE/GE service capability; official ordering material
+    specifies 8x100GE + 20x25GE + 28x10GE. CLI names must be mapped by discovery instead of hardcoding member/slot numbering.
 - catalogKey: huawei-ne8000-m4
   manufacturer: Huawei
   family: NetEngine 8000
@@ -333,22 +540,25 @@ templates:
   layoutType: MODULAR
   heightU: 2
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups: []
   slotGroups:
-  - groupKey: service
+  - groupKey: line-card
     slotIds:
     - '1'
     - '2'
     - '3'
     - '4'
     role: SERVICE
+    capacityNote: Official product page confirms 4 line-card positions. Slot IDs here are neutral catalog ordinals; exact CLI/chassis numbering
+      is resolved by hardware discovery.
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - huawei-ne8000
-  verificationNote: Chassis template. Keep service ports empty until a verified line-card/module is installed.
+  - huawei-ne8000-platform
+  verificationNote: Official Huawei NetEngine 8000 product page confirms 2U chassis and 4 line-card positions. Service connectors appear only
+    after a verified/manual line card is installed.
 - catalogKey: huawei-ne8000-m8-dc
   manufacturer: Huawei
   family: NetEngine 8000
@@ -358,15 +568,29 @@ templates:
   layoutType: MODULAR
   heightU: 3
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups: []
-  slotGroups: []
+  slotGroups:
+  - groupKey: line-card
+    slotIds:
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    role: SERVICE
+    capacityNote: Official product page confirms 8 line-card positions. Slot IDs here are neutral catalog ordinals; exact CLI/chassis numbering
+      is resolved by hardware discovery.
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - huawei-ne8000
-  verificationNote: Separate DC chassis template. Exact slot map and board compatibility must be verified before vendorVerified=true.
+  - huawei-ne8000-platform
+  verificationNote: Official Huawei NetEngine 8000 product page confirms 3U chassis and 8 line-card positions. Service connectors appear only
+    after a verified/manual line card is installed.
 - catalogKey: huawei-ne8000-m8-ac
   manufacturer: Huawei
   family: NetEngine 8000
@@ -376,15 +600,27 @@ templates:
   layoutType: MODULAR
   heightU: 3
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups: []
-  slotGroups: []
+  slotGroups:
+  - groupKey: line-card
+    slotIds:
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    role: SERVICE
+    capacityNote: Official product page confirms 6 line-card positions. Slot IDs here are neutral catalog ordinals; exact CLI/chassis numbering
+      is resolved by hardware discovery.
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - huawei-ne8000
-  verificationNote: Separate AC chassis template. Do not reuse the DC slot map without official verification.
+  - huawei-ne8000-platform
+  verificationNote: Official Huawei NetEngine 8000 product page confirms 3U chassis and 6 line-card positions. Service connectors appear only
+    after a verified/manual line card is installed.
 - catalogKey: huawei-ne40e-x3
   manufacturer: Huawei
   family: NE40E
@@ -392,7 +628,7 @@ templates:
   aliases: []
   kind: ROUTER
   layoutType: MODULAR
-  heightU: 1
+  heightU: 4
   rackMount: true
   vendorVerified: false
   portGroups: []
@@ -401,9 +637,59 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - huawei-ne40e
-  verificationNote: Chassis placeholder intentionally has no invented service ports or board slots. Verify exact chassis revision
-    and LPU slot map before enabling vendorVerified.
+  - huawei-ne40e-x-series
+  verificationNote: Official Huawei specifications show NE40E-X3 as 4U with DC power and 5U with AC power, both with 3 LPU and 2 MPU slots. Use
+    the exact DC/AC template below instead of this selector placeholder.
+- catalogKey: huawei-ne40e-x3-dc
+  manufacturer: Huawei
+  family: NE40E
+  model: NE40E-X3 (DC)
+  aliases: []
+  kind: ROUTER
+  layoutType: MODULAR
+  heightU: 4
+  rackMount: true
+  vendorVerified: true
+  portGroups: []
+  slotGroups:
+  - groupKey: lpu
+    slotIds:
+    - '1'
+    - '2'
+    - '3'
+    role: SERVICE
+    capacityNote: 'Official spec: 3 LPU slots. Neutral catalog ordinals; exact printed/CLI slot IDs are discovered from hardware.'
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ne40e-x-series
+  verificationNote: 'Official Huawei NE40E-X specifications: 4U DC chassis, 2 MPU slots, no separate SFU, 3 LPU slots.'
+- catalogKey: huawei-ne40e-x3-ac
+  manufacturer: Huawei
+  family: NE40E
+  model: NE40E-X3 (AC)
+  aliases: []
+  kind: ROUTER
+  layoutType: MODULAR
+  heightU: 5
+  rackMount: true
+  vendorVerified: true
+  portGroups: []
+  slotGroups:
+  - groupKey: lpu
+    slotIds:
+    - '1'
+    - '2'
+    - '3'
+    role: SERVICE
+    capacityNote: 'Official spec: 3 LPU slots. Neutral catalog ordinals; exact printed/CLI slot IDs are discovered from hardware.'
+  compatibleModuleKeys: []
+  managementPorts: []
+  consolePorts: []
+  sourceRefs:
+  - huawei-ne40e-x-series
+  verificationNote: 'Official Huawei NE40E-X specifications: 5U AC chassis, 2 MPU slots, no separate SFU, 3 LPU slots.'
 - catalogKey: huawei-ne40e-x3a
   manufacturer: Huawei
   family: NE40E
@@ -411,18 +697,25 @@ templates:
   aliases: []
   kind: ROUTER
   layoutType: MODULAR
-  heightU: 1
+  heightU: 6
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups: []
-  slotGroups: []
+  slotGroups:
+  - groupKey: lpu
+    slotIds:
+    - '1'
+    - '2'
+    - '3'
+    role: SERVICE
+    capacityNote: 'Official spec: 3 LPU slots. Neutral catalog ordinals; exact printed/CLI slot IDs are discovered from hardware.'
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - huawei-ne40e
-  verificationNote: Chassis placeholder intentionally has no invented service ports or board slots. Verify exact chassis revision
-    and LPU slot map before enabling vendorVerified.
+  - huawei-ne40e-x-series
+  verificationNote: 'Official Huawei NE40E-X specifications: 6U, 2 MPU slots, 0 SFU slots, 3 LPU slots. Only LPU service positions are materialized
+    here; MPU/SFU counts remain chassis metadata until dedicated module templates are defined.'
 - catalogKey: huawei-ne40e-x8
   manufacturer: Huawei
   family: NE40E
@@ -430,18 +723,30 @@ templates:
   aliases: []
   kind: ROUTER
   layoutType: MODULAR
-  heightU: 1
+  heightU: 14
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups: []
-  slotGroups: []
+  slotGroups:
+  - groupKey: lpu
+    slotIds:
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    role: SERVICE
+    capacityNote: 'Official spec: 8 LPU slots. Neutral catalog ordinals; exact printed/CLI slot IDs are discovered from hardware.'
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - huawei-ne40e
-  verificationNote: Chassis placeholder intentionally has no invented service ports or board slots. Verify exact chassis revision
-    and LPU slot map before enabling vendorVerified.
+  - huawei-ne40e-x-series
+  verificationNote: 'Official Huawei NE40E-X specifications: 14U, 2 MPU slots, 3 SFU slots, 8 LPU slots. Only LPU service positions are materialized
+    here; MPU/SFU counts remain chassis metadata until dedicated module templates are defined.'
 - catalogKey: huawei-ne40e-x8a
   manufacturer: Huawei
   family: NE40E
@@ -449,18 +754,30 @@ templates:
   aliases: []
   kind: ROUTER
   layoutType: MODULAR
-  heightU: 1
+  heightU: 21
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups: []
-  slotGroups: []
+  slotGroups:
+  - groupKey: lpu
+    slotIds:
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    role: SERVICE
+    capacityNote: 'Official spec: 8 LPU slots. Neutral catalog ordinals; exact printed/CLI slot IDs are discovered from hardware.'
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - huawei-ne40e
-  verificationNote: Chassis placeholder intentionally has no invented service ports or board slots. Verify exact chassis revision
-    and LPU slot map before enabling vendorVerified.
+  - huawei-ne40e-x-series
+  verificationNote: 'Official Huawei NE40E-X specifications: 21U, 2 MPU slots, 4 SFU slots, 8 LPU slots. Only LPU service positions are materialized
+    here; MPU/SFU counts remain chassis metadata until dedicated module templates are defined.'
 - catalogKey: huawei-ne40e-x16
   manufacturer: Huawei
   family: NE40E
@@ -468,18 +785,38 @@ templates:
   aliases: []
   kind: ROUTER
   layoutType: MODULAR
-  heightU: 1
+  heightU: 32
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups: []
-  slotGroups: []
+  slotGroups:
+  - groupKey: lpu
+    slotIds:
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '9'
+    - '10'
+    - '11'
+    - '12'
+    - '13'
+    - '14'
+    - '15'
+    - '16'
+    role: SERVICE
+    capacityNote: 'Official spec: 16 LPU slots. Neutral catalog ordinals; exact printed/CLI slot IDs are discovered from hardware.'
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - huawei-ne40e
-  verificationNote: Chassis placeholder intentionally has no invented service ports or board slots. Verify exact chassis revision
-    and LPU slot map before enabling vendorVerified.
+  - huawei-ne40e-x-series
+  verificationNote: 'Official Huawei NE40E-X specifications: 32U, 2 MPU slots, 4 SFU slots, 16 LPU slots. Only LPU service positions are materialized
+    here; MPU/SFU counts remain chassis metadata until dedicated module templates are defined.'
 - catalogKey: huawei-ne40e-x16a
   manufacturer: Huawei
   family: NE40E
@@ -487,18 +824,38 @@ templates:
   aliases: []
   kind: ROUTER
   layoutType: MODULAR
-  heightU: 1
+  heightU: 40
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups: []
-  slotGroups: []
+  slotGroups:
+  - groupKey: lpu
+    slotIds:
+    - '1'
+    - '2'
+    - '3'
+    - '4'
+    - '5'
+    - '6'
+    - '7'
+    - '8'
+    - '9'
+    - '10'
+    - '11'
+    - '12'
+    - '13'
+    - '14'
+    - '15'
+    - '16'
+    role: SERVICE
+    capacityNote: 'Official spec: 16 LPU slots. Neutral catalog ordinals; exact printed/CLI slot IDs are discovered from hardware.'
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - huawei-ne40e
-  verificationNote: Chassis placeholder intentionally has no invented service ports or board slots. Verify exact chassis revision
-    and LPU slot map before enabling vendorVerified.
+  - huawei-ne40e-x-series
+  verificationNote: 'Official Huawei NE40E-X specifications: 40U, 2 MPU slots, 4 SFU slots, 16 LPU slots. Only LPU service positions are materialized
+    here; MPU/SFU counts remain chassis metadata until dedicated module templates are defined.'
 - catalogKey: huawei-s5700-family
   manufacturer: Huawei
   family: S5700
@@ -515,8 +872,8 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs: []
-  verificationNote: Family search/grouping placeholder only. Never instantiate vendor-specific ports from this entry; require
-    an exact SKU or use a generic/discovered template.
+  verificationNote: Family search/grouping placeholder only. Never instantiate vendor-specific ports from this entry; require an exact SKU or
+    use a generic/discovered template.
 - catalogKey: huawei-s5720-family
   manufacturer: Huawei
   family: S5720
@@ -533,8 +890,8 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs: []
-  verificationNote: Family search/grouping placeholder only. Never instantiate vendor-specific ports from this entry; require
-    an exact SKU or use a generic/discovered template.
+  verificationNote: Family search/grouping placeholder only. Never instantiate vendor-specific ports from this entry; require an exact SKU or
+    use a generic/discovered template.
 - catalogKey: huawei-s6720-family
   manufacturer: Huawei
   family: S6720
@@ -551,8 +908,8 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs: []
-  verificationNote: Family search/grouping placeholder only. Never instantiate vendor-specific ports from this entry; require
-    an exact SKU or use a generic/discovered template.
+  verificationNote: Family search/grouping placeholder only. Never instantiate vendor-specific ports from this entry; require an exact SKU or
+    use a generic/discovered template.
 - catalogKey: huawei-s6730-h24x6c
   manufacturer: Huawei
   family: S6730
@@ -777,15 +1134,36 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
-  portGroups: []
+  vendorVerified: true
+  portGroups:
+  - groupKey: sfp28-service
+    count: 48
+    connector: SFP28
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    - 25G
+    breakoutCapable: false
+    physicalLabelPattern: SFP28-{n}
+  - groupKey: qsfp28-uplink
+    count: 8
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 40G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+    notes: One QSFP28 cage remains one physical connector under breakout.
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
   sourceRefs:
   - huawei-s6750-h-25g
-  verificationNote: Keep as distinct SKU. Do not copy H48Y8C-B-specific layout until its official page/datasheet is checked.
+  verificationNote: 'Huawei official S6750-H 25GE specification lists the H48Y8C-B with the same fixed connector count as H48Y8C: 48 x 1/10/25GE
+    SFP28 + 8 x 40/100GE QSFP28.'
 - catalogKey: huawei-s6750-h36c
   manufacturer: Huawei
   family: S6750
@@ -795,16 +1173,35 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
-  portGroups: []
+  vendorVerified: true
+  portGroups:
+  - groupKey: qsfp28-service
+    count: 32
+    connector: QSFP28
+    role: SERVICE
+    speeds:
+    - 40G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n}
+  - groupKey: qsfp28-uplink
+    count: 4
+    connector: QSFP28
+    role: UPLINK
+    speeds:
+    - 40G
+    - 100G
+    breakoutCapable: true
+    physicalLabelPattern: QSFP28-{n+32}
+    notes: Huawei notes future 200G support on these four uplinks; this catalog encodes the currently documented 40/100GE connector mode only.
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - huawei-s6750-h-25g
-  verificationNote: Model retained because it is in project scope, but exact H36C fixed-port layout was not confirmed in this
-    catalog pass. Do not invent ports.
+  - huawei-s6750-h-100g
+  verificationNote: 'Huawei official S6750-H 100GE specification: 32 x 40/100GE QSFP28 plus 4 x 40/100GE QSFP28 uplink ports; future 200G on the
+    four uplinks is noted but not modeled as a second connector.'
 - catalogKey: huawei-ma5683t
   manufacturer: Huawei
   family: SmartAX
@@ -822,8 +1219,8 @@ templates:
   consolePorts: []
   sourceRefs:
   - huawei-legacy-access
-  verificationNote: Legacy modular OLT. Chassis/board catalog must be verified from exact MA5683T hardware documentation or
-    live hardware; no invented PON cards.
+  verificationNote: Legacy modular OLT. Chassis/board catalog must be verified from exact MA5683T hardware documentation or live hardware; no
+    invented PON cards.
 - catalogKey: huawei-ma5800-x2
   manufacturer: Huawei
   family: MA5800
@@ -1024,8 +1421,8 @@ templates:
   sourceRefs:
   - mikrotik-switchchip
   - mikrotik-ethernet-routers
-  verificationNote: Historical RB750 variant retained. Port count is known from family documentation, but exact product page
-    was not re-verified in this pass.
+  verificationNote: Legacy RB750 exact current manufacturer product page is not available; keep 5x100M panel as legacy-known but vendorVerified=false
+    until an official archived datasheet is attached.
 - catalogKey: mikrotik-rb750g
   manufacturer: MikroTik
   family: RB750
@@ -1035,7 +1432,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ethernet
     count: 5
@@ -1051,10 +1448,9 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - mikrotik-switchchip
-  - mikrotik-ethernet-routers
-  verificationNote: Historical RB750 variant retained. Port count is known from family documentation, but exact product page
-    was not re-verified in this pass.
+  - mikrotik-rb750g-exact
+  verificationNote: Historical RB750 variant retained. Port count is known from family documentation, but exact product page was not re-verified
+    in this pass.
 - catalogKey: mikrotik-rb750gl
   manufacturer: MikroTik
   family: RB750
@@ -1080,8 +1476,7 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - mikrotik-switchchip
-  - mikrotik-ethernet-routers
+  - mikrotik-rb750gl-exact
 - catalogKey: mikrotik-rb750up
   manufacturer: MikroTik
   family: RB750
@@ -1107,8 +1502,7 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - mikrotik-switchchip
-  - mikrotik-ethernet-routers
+  - mikrotik-rb750up-exact
 - catalogKey: mikrotik-rb750r2
   manufacturer: MikroTik
   family: RB750
@@ -1134,8 +1528,7 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - mikrotik-switchchip
-  - mikrotik-ethernet-routers
+  - mikrotik-rb750r2-exact
 - catalogKey: mikrotik-rb750upr2
   manufacturer: MikroTik
   family: RB750
@@ -1161,8 +1554,7 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - mikrotik-switchchip
-  - mikrotik-ethernet-routers
+  - mikrotik-rb750upr2-exact
 - catalogKey: mikrotik-rb750gr2
   manufacturer: MikroTik
   family: RB750
@@ -1215,8 +1607,7 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - mikrotik-switchchip
-  - mikrotik-ethernet-routers
+  - mikrotik-rb750gr3-exact
 - catalogKey: mikrotik-rb750p-pbr2
   manufacturer: MikroTik
   family: RB750 platform
@@ -1226,7 +1617,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ethernet
     count: 5
@@ -1242,7 +1633,7 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - mikrotik-switchchip
+  - mikrotik-powerbox-exact
   verificationNote: Related RB750-platform outdoor/PoE variant; keep separate from indoor hEX templates.
 - catalogKey: mikrotik-rb750p-r2
   manufacturer: MikroTik
@@ -1270,7 +1661,8 @@ templates:
   consolePorts: []
   sourceRefs:
   - mikrotik-switchchip
-  verificationNote: Related RB750-platform variant; exact commercial suffix should be confirmed before vendorVerified.
+  verificationNote: Legacy RB750P-r2 identity is retained, but exact official product documentation was not located in this verification pass.
+    Use RB750P-PBr2/PowerBox when that is the actual SKU.
 - catalogKey: mikrotik-rb760igs
   manufacturer: MikroTik
   family: RB760
@@ -1305,7 +1697,7 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - mikrotik-rb760
+  - mikrotik-rb760igs-exact
 - catalogKey: mikrotik-rb2011il-in
   manufacturer: MikroTik
   family: RB2011
@@ -1522,7 +1914,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: gigabit
     count: 5
@@ -1556,10 +1948,9 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - mikrotik-rb2011
-  - mikrotik-ethernet-routers
-  verificationNote: Historical/variant entry retained from project scope; exact housing/product page not re-verified. Do not
-    infer wireless as a rack physical data port.
+  - mikrotik-rb2011uias2hnd-exact
+  verificationNote: Historical/variant entry retained from project scope; exact housing/product page not re-verified. Do not infer wireless as
+    a rack physical data port.
 - catalogKey: mikrotik-rb2011l
   manufacturer: MikroTik
   family: RB2011
@@ -1569,7 +1960,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: gigabit
     count: 5
@@ -1594,10 +1985,9 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - mikrotik-rb2011
-  - mikrotik-ethernet-routers
-  verificationNote: Historical/variant entry retained from project scope; exact housing/product page not re-verified. Do not
-    infer wireless as a rack physical data port.
+  - mikrotik-rb2011l-exact
+  verificationNote: Historical/variant entry retained from project scope; exact housing/product page not re-verified. Do not infer wireless as
+    a rack physical data port.
 - catalogKey: mikrotik-rb2011ls
   manufacturer: MikroTik
   family: RB2011
@@ -1607,7 +1997,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: gigabit
     count: 5
@@ -1641,10 +2031,9 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - mikrotik-rb2011
-  - mikrotik-ethernet-routers
-  verificationNote: Historical/variant entry retained from project scope; exact housing/product page not re-verified. Do not
-    infer wireless as a rack physical data port.
+  - mikrotik-rb2011ls-exact
+  verificationNote: Historical/variant entry retained from project scope; exact housing/product page not re-verified. Do not infer wireless as
+    a rack physical data port.
 - catalogKey: mikrotik-rb2011uas-2hnd-in
   manufacturer: MikroTik
   family: RB2011
@@ -1690,8 +2079,8 @@ templates:
   sourceRefs:
   - mikrotik-rb2011
   - mikrotik-ethernet-routers
-  verificationNote: Historical/variant entry retained from project scope; exact housing/product page not re-verified. Do not
-    infer wireless as a rack physical data port.
+  verificationNote: Legacy non-i RB2011UAS-2HnD-IN is retained separately from the officially accessible UiAS revision; keep false until exact
+    manufacturer datasheet is attached.
 - catalogKey: mikrotik-rb3011uias-rm
   manufacturer: MikroTik
   family: RB3011
@@ -1823,7 +2212,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether-1g
     count: 7
@@ -1858,9 +2247,9 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - mikrotik-ethernet-routers
-  verificationNote: Model existence is official; port layout mirrors RB5009 series but should be checked against the exact
-    UPr product page before vendorVerified=true.
+  - mikrotik-rb5009upr-exact
+  verificationNote: Model existence is official; port layout mirrors RB5009 series but should be checked against the exact UPr product page before
+    vendorVerified=true.
 - catalogKey: mikrotik-ccr1009-7g-1c-1splus
   manufacturer: MikroTik
   family: CCR
@@ -1870,7 +2259,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 7
@@ -1902,12 +2291,15 @@ templates:
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
-  consolePorts: []
+  consolePorts:
+  - label: serial
+    connector: OTHER
+    role: CONSOLE
+    notes: Official page lists serial console as RS232; physical connector style is intentionally kept generic.
   sourceRefs:
-  - mikrotik-ethernet-routers
-  - mikrotik-products
-  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually
-    re-verified in this catalog pass.
+  - mikrotik-ccr1009-7g-exact
+  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually re-verified in this
+    catalog pass.
 - catalogKey: mikrotik-ccr1009-8g-1s-1splus
   manufacturer: MikroTik
   family: CCR
@@ -1917,7 +2309,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 8
@@ -1948,12 +2340,15 @@ templates:
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
-  consolePorts: []
+  consolePorts:
+  - label: serial
+    connector: OTHER
+    role: CONSOLE
+    notes: Official page lists RS232 + header; physical connector style is intentionally kept generic.
   sourceRefs:
-  - mikrotik-ethernet-routers
-  - mikrotik-products
-  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually
-    re-verified in this catalog pass.
+  - mikrotik-ccr1009-8g-exact
+  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually re-verified in this
+    catalog pass.
 - catalogKey: mikrotik-ccr1036-12g-4s
   manufacturer: MikroTik
   family: CCR
@@ -1963,7 +2358,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 12
@@ -1985,12 +2380,14 @@ templates:
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
-  consolePorts: []
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
   sourceRefs:
-  - mikrotik-ethernet-routers
-  - mikrotik-products
-  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually
-    re-verified in this catalog pass.
+  - mikrotik-ccr1036-12g-exact
+  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually re-verified in this
+    catalog pass.
 - catalogKey: mikrotik-ccr1036-8g-2splus
   manufacturer: MikroTik
   family: CCR
@@ -2000,7 +2397,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 8
@@ -2023,12 +2420,14 @@ templates:
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
-  consolePorts: []
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
   sourceRefs:
-  - mikrotik-ethernet-routers
-  - mikrotik-products
-  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually
-    re-verified in this catalog pass.
+  - mikrotik-ccr1036-8g-exact
+  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually re-verified in this
+    catalog pass.
 - catalogKey: mikrotik-ccr1072-1g-8splus
   manufacturer: MikroTik
   family: CCR
@@ -2038,7 +2437,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 1
@@ -2061,12 +2460,14 @@ templates:
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
-  consolePorts: []
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
   sourceRefs:
-  - mikrotik-ethernet-routers
-  - mikrotik-products
-  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually
-    re-verified in this catalog pass.
+  - mikrotik-ccr1072-exact
+  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually re-verified in this
+    catalog pass.
 - catalogKey: mikrotik-ccr2004-16g-2splus
   manufacturer: MikroTik
   family: CCR
@@ -2076,7 +2477,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 16
@@ -2099,12 +2500,14 @@ templates:
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
-  consolePorts: []
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
   sourceRefs:
-  - mikrotik-ethernet-routers
-  - mikrotik-products
-  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually
-    re-verified in this catalog pass.
+  - mikrotik-ccr2004-16g-exact
+  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually re-verified in this
+    catalog pass.
 - catalogKey: mikrotik-ccr2004-1g-12splus2xs
   manufacturer: MikroTik
   family: CCR
@@ -2114,7 +2517,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 1
@@ -2146,12 +2549,14 @@ templates:
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
-  consolePorts: []
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
   sourceRefs:
-  - mikrotik-ethernet-routers
-  - mikrotik-products
-  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually
-    re-verified in this catalog pass.
+  - mikrotik-ccr2004-1g-exact
+  verificationNote: Port layout retained from known product family/model naming, but exact product page was not individually re-verified in this
+    catalog pass.
 - catalogKey: mikrotik-ccr2116-12g-4splus
   manufacturer: MikroTik
   family: CCR
@@ -2163,8 +2568,8 @@ templates:
   rackMount: true
   vendorVerified: true
   portGroups:
-  - groupKey: ether
-    count: 13
+  - groupKey: ether-service
+    count: 12
     connector: RJ45
     role: SERVICE
     speeds:
@@ -2172,7 +2577,16 @@ templates:
     breakoutCapable: false
     physicalLabelPattern: ether{n}
     interfaceNamePattern: ether{n}
-    notes: 12 ports through switch chip plus one CPU-connected management-purpose Gigabit port.
+  - groupKey: ether-management
+    count: 1
+    connector: RJ45
+    role: MGMT
+    speeds:
+    - 1G
+    breakoutCapable: false
+    physicalLabelPattern: ether13
+    interfaceNamePattern: ether13
+    notes: 'Official product page: one additional Gigabit port is directly CPU-connected for management.'
   - groupKey: sfpplus
     count: 4
     connector: SFP_PLUS
@@ -2185,9 +2599,12 @@ templates:
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
-  consolePorts: []
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
   sourceRefs:
-  - mikrotik-ccr2116
+  - mikrotik-ccr2116-exact
 - catalogKey: mikrotik-ccr2216-1g-12xs-2xq
   manufacturer: MikroTik
   family: CCR
@@ -2231,12 +2648,16 @@ templates:
     - 100G
     breakoutCapable: true
     physicalLabelPattern: qsfp28-{n}
+    notes: One physical QSFP cage remains one PhysicalPort; RouterOS breakout lane interfaces map to this cage and do not create extra connectors.
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
-  consolePorts: []
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
   sourceRefs:
-  - mikrotik-ccr2216
+  - mikrotik-ccr2216-exact
 - catalogKey: mikrotik-crs305-1g-4splus-in
   manufacturer: MikroTik
   family: CRS
@@ -2245,13 +2666,13 @@ templates:
   kind: SWITCH
   layoutType: FIXED
   heightU: 1
-  rackMount: true
-  vendorVerified: false
+  rackMount: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 1
     connector: RJ45
-    role: MGMT
+    role: MGMT_OR_SERVICE
     speeds:
     - 1G
     breakoutCapable: false
@@ -2271,9 +2692,9 @@ templates:
   managementPorts: []
   consolePorts: []
   sourceRefs:
-  - mikrotik-products
-  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
-    do not change physical counts without official evidence.
+  - mikrotik-crs305-exact
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true; do not change physical
+    counts without official evidence.
 - catalogKey: mikrotik-crs309-1g-8splus-in
   manufacturer: MikroTik
   family: CRS
@@ -2283,7 +2704,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 1
@@ -2306,11 +2727,15 @@ templates:
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
-  consolePorts: []
+  consolePorts:
+  - label: serial
+    connector: OTHER
+    role: CONSOLE
+    notes: Official page lists RS232 serial console.
   sourceRefs:
-  - mikrotik-products
-  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
-    do not change physical counts without official evidence.
+  - mikrotik-crs309-exact
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true; do not change physical
+    counts without official evidence.
 - catalogKey: mikrotik-crs317-1g-16splus-rm
   manufacturer: MikroTik
   family: CRS
@@ -2320,7 +2745,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 1
@@ -2343,11 +2768,14 @@ templates:
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
-  consolePorts: []
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
   sourceRefs:
-  - mikrotik-products
-  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
-    do not change physical counts without official evidence.
+  - mikrotik-crs317-exact
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true; do not change physical
+    counts without official evidence.
 - catalogKey: mikrotik-crs326-24g-2splus-rm
   manufacturer: MikroTik
   family: CRS
@@ -2357,7 +2785,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 24
@@ -2380,11 +2808,14 @@ templates:
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
-  consolePorts: []
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
   sourceRefs:
-  - mikrotik-products
-  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
-    do not change physical counts without official evidence.
+  - mikrotik-crs326-rm-exact
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true; do not change physical
+    counts without official evidence.
 - catalogKey: mikrotik-crs326-24g-2splus-in
   manufacturer: MikroTik
   family: CRS
@@ -2393,8 +2824,8 @@ templates:
   kind: SWITCH
   layoutType: FIXED
   heightU: 1
-  rackMount: true
-  vendorVerified: false
+  rackMount: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 24
@@ -2417,11 +2848,14 @@ templates:
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
-  consolePorts: []
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
   sourceRefs:
-  - mikrotik-products
-  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
-    do not change physical counts without official evidence.
+  - mikrotik-crs326-in-exact
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true; do not change physical
+    counts without official evidence.
 - catalogKey: mikrotik-crs326-24splus-2qplus-rm
   manufacturer: MikroTik
   family: CRS
@@ -2431,7 +2865,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: sfpplus
     count: 24
@@ -2450,14 +2884,23 @@ templates:
     - 40G
     breakoutCapable: true
     physicalLabelPattern: qsfpplus{n}
+    notes: One physical QSFP cage remains one PhysicalPort; RouterOS breakout lane interfaces map to this cage and do not create extra connectors.
   slotGroups: []
   compatibleModuleKeys: []
-  managementPorts: []
-  consolePorts: []
+  managementPorts:
+  - count: 1
+    connector: RJ45
+    role: MGMT
+    label: mgmt
+    notes: Official page lists one 10/100 Ethernet management port.
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
   sourceRefs:
-  - mikrotik-products
-  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
-    do not change physical counts without official evidence.
+  - mikrotik-crs326-24s-exact
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true; do not change physical
+    counts without official evidence.
 - catalogKey: mikrotik-crs328-24p-4splus-rm
   manufacturer: MikroTik
   family: CRS
@@ -2467,7 +2910,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 24
@@ -2490,11 +2933,14 @@ templates:
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
-  consolePorts: []
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
   sourceRefs:
-  - mikrotik-products
-  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
-    do not change physical counts without official evidence.
+  - mikrotik-crs328-24p-exact
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true; do not change physical
+    counts without official evidence.
 - catalogKey: mikrotik-crs328-4c-20s-4splus-rm
   manufacturer: MikroTik
   family: CRS
@@ -2504,7 +2950,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: combo
     count: 4
@@ -2535,11 +2981,14 @@ templates:
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
-  consolePorts: []
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
   sourceRefs:
-  - mikrotik-products
-  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
-    do not change physical counts without official evidence.
+  - mikrotik-crs328-4c-exact
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true; do not change physical
+    counts without official evidence.
 - catalogKey: mikrotik-crs354-48g-4splus-2qplus-rm
   manufacturer: MikroTik
   family: CRS
@@ -2549,7 +2998,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 48
@@ -2577,14 +3026,23 @@ templates:
     - 40G
     breakoutCapable: true
     physicalLabelPattern: qsfpplus{n}
+    notes: One physical QSFP cage remains one PhysicalPort; RouterOS breakout lane interfaces map to this cage and do not create extra connectors.
   slotGroups: []
   compatibleModuleKeys: []
-  managementPorts: []
-  consolePorts: []
+  managementPorts:
+  - count: 1
+    connector: RJ45
+    role: MGMT
+    label: mgmt
+    notes: Official page lists one separate 10/100 Ethernet port.
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
   sourceRefs:
-  - mikrotik-products
-  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
-    do not change physical counts without official evidence.
+  - mikrotik-crs354-48g-exact
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true; do not change physical
+    counts without official evidence.
 - catalogKey: mikrotik-crs354-48p-4splus-2qplus-rm
   manufacturer: MikroTik
   family: CRS
@@ -2594,7 +3052,7 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  vendorVerified: false
+  vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 48
@@ -2622,14 +3080,23 @@ templates:
     - 40G
     breakoutCapable: true
     physicalLabelPattern: qsfpplus{n}
+    notes: One physical QSFP cage remains one PhysicalPort; RouterOS breakout lane interfaces map to this cage and do not create extra connectors.
   slotGroups: []
   compatibleModuleKeys: []
-  managementPorts: []
-  consolePorts: []
+  managementPorts:
+  - count: 1
+    connector: RJ45
+    role: MGMT
+    label: mgmt
+    notes: Official page lists one separate 10/100 Ethernet port.
+  consolePorts:
+  - label: serial
+    connector: RJ45
+    role: CONSOLE
   sourceRefs:
-  - mikrotik-products
-  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true;
-    do not change physical counts without official evidence.
+  - mikrotik-crs354-48p-exact
+  verificationNote: Included in requested scope. Verify exact product page and interface naming before vendorVerified=true; do not change physical
+    counts without official evidence.
 - catalogKey: juniper-mx80
   manufacturer: Juniper
   family: MX
@@ -2688,8 +3155,8 @@ templates:
   consolePorts: []
   sourceRefs:
   - juniper-mics
-  verificationNote: Fixed MX80-48T variant retained because it is referenced by official MIC support docs. Exact front-panel
-    service-port layout must be checked before vendorVerified.
+  verificationNote: Fixed MX80-48T variant retained because it is referenced by official MIC support docs. Exact front-panel service-port layout
+    must be checked before vendorVerified.
 - catalogKey: juniper-mx104
   manufacturer: Juniper
   family: MX
@@ -2759,8 +3226,7 @@ templates:
     - 100G
     breakoutCapable: true
     physicalLabelPattern: QSFP28-{n}
-    notes: Each of four physical ports may run 100G, 40G, or 4x10G breakout. Breakout channels are logical children, not extra
-      chassis connectors.
+    notes: Each of four physical ports may run 100G, 40G, or 4x10G breakout. Breakout channels are logical children, not extra chassis connectors.
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
@@ -2928,8 +3394,8 @@ templates:
     - 100G
     breakoutCapable: true
     physicalLabelPattern: QSFP28-{n}
-    notes: 'Official spec: selectable uplink mode is 3x100/40GE QSFP28 or 4x40GE QSFP+. Model this as a configurable physical
-      layout, not simultaneous 3+4 connectors.'
+    notes: 'Official spec: selectable uplink mode is 3x100/40GE QSFP28 or 4x40GE QSFP+. Model this as a configurable physical layout, not simultaneous
+      3+4 connectors.'
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
@@ -3427,8 +3893,8 @@ templates:
   consolePorts: []
   sourceRefs:
   - zte-legacy
-  verificationNote: Legacy modular OLT. Keep chassis entry, but do not invent slot count or cards; use exact ZTE hardware-at-a-glance
-    documentation before vendorVerified.
+  verificationNote: Legacy modular OLT. Keep chassis entry, but do not invent slot count or cards; use exact ZTE hardware-at-a-glance documentation
+    before vendorVerified.
 - catalogKey: zte-zxa10-c320
   manufacturer: ZTE
   family: ZXA10
@@ -3446,8 +3912,7 @@ templates:
   consolePorts: []
   sourceRefs:
   - zte-legacy
-  verificationNote: Legacy compact modular OLT. Slot/card layout intentionally omitted until exact product documentation is
-    parsed.
+  verificationNote: Legacy compact modular OLT. Slot/card layout intentionally omitted until exact product documentation is parsed.
 - catalogKey: zte-zxa10-c600
   manufacturer: ZTE
   family: ZXA10 TITAN
@@ -3465,8 +3930,8 @@ templates:
   consolePorts: []
   sourceRefs:
   - zte-c600
-  verificationNote: Official source confirms 19-inch and 21-inch chassis variants and PON/uplink families. Slot map is not
-    embedded here because exact chassis-width variant must be selected first.
+  verificationNote: Official source confirms 19-inch and 21-inch chassis variants and PON/uplink families. Slot map is not embedded here because
+    exact chassis-width variant must be selected first.
 - catalogKey: zte-zxa10-c650
   manufacturer: ZTE
   family: ZXA10 TITAN
@@ -3484,8 +3949,8 @@ templates:
   consolePorts: []
   sourceRefs:
   - zte-c650
-  verificationNote: Official source confirms chassis dimensions and PON/uplink capabilities. Exact service-slot map should
-    be imported from the hardware guide before module installation.
+  verificationNote: Official source confirms chassis dimensions and PON/uplink capabilities. Exact service-slot map should be imported from the
+    hardware guide before module installation.
 - catalogKey: zte-zxa10-c620
   manufacturer: ZTE
   family: ZXA10 TITAN
@@ -3531,8 +3996,7 @@ templates:
     - COMBO_PON
     breakoutCapable: false
     physicalLabelPattern: PON-{n}
-    notes: Product supports 16/8 PON configurations; exact ordered variant must define whether 16 or 8 physical PON ports
-      are populated.
+    notes: Product supports 16/8 PON configurations; exact ordered variant must define whether 16 or 8 physical PON ports are populated.
   - groupKey: uplink
     count: 6
     connector: SFP28
@@ -3567,8 +4031,8 @@ templates:
   consolePorts: []
   sourceRefs:
   - fiberhome-an5516
-  verificationNote: Legacy chassis required by project. Exact slot and board layout must come from official manual or live
-    discovery; no third-party-only port assumptions.
+  verificationNote: Legacy chassis required by project. Exact slot and board layout must come from official manual or live discovery; no third-party-only
+    port assumptions.
 - catalogKey: fiberhome-an6000-2
   manufacturer: FiberHome
   family: AN6000
@@ -3845,8 +4309,8 @@ templates:
   consolePorts: []
   sourceRefs:
   - vsol-olt
-  verificationNote: Official current catalog confirms 16-port Combo PON model and 100G-class uplink. Exact connector breakdown
-    must be imported from its specific datasheet before vendorVerified.
+  verificationNote: Official current catalog confirms 16-port Combo PON model and 100G-class uplink. Exact connector breakdown must be imported
+    from its specific datasheet before vendorVerified.
 - catalogKey: vsol-v5600x2
   manufacturer: VSOL
   family: V5600
@@ -3869,8 +4333,7 @@ templates:
   consolePorts: []
   sourceRefs:
   - vsol-v5600x2
-  verificationNote: 'Official product page: 2-slot GPON/XGS-PON Combo chassis, up to 32 PON ports. Board templates remain
-    separate.'
+  verificationNote: 'Official product page: 2-slot GPON/XGS-PON Combo chassis, up to 32 PON ports. Board templates remain separate.'
 - catalogKey: vsol-v5600x7
   manufacturer: VSOL
   family: V5600
@@ -3898,8 +4361,7 @@ templates:
   consolePorts: []
   sourceRefs:
   - vsol-v5600x7
-  verificationNote: 'Official product page: 7-slot GPON/XGS-PON Combo chassis, up to 112 PON ports. Board templates remain
-    separate.'
+  verificationNote: 'Official product page: 7-slot GPON/XGS-PON Combo chassis, up to 112 PON ports. Board templates remain separate.'
 - catalogKey: generic-router-1u
   manufacturer: Generic
   family: Generic
@@ -4203,11 +4665,15 @@ moduleTemplates:
   sourceRefs:
   - juniper-mics
 implementationNotes:
-- Port group physicalLabelPattern is a compact declaration. Importer/bootstrap may expand it into individual PhysicalTemplatePort
-  rows.
-- Patterns containing {n+5} are semantic offset patterns; importer should expand to the actual ordinals instead of treating
-  them literally.
-- Do not hardcode Huawei stack/member numbering into template connector identity. Keep a stable physical connector identity
-  and let the Huawei driver map CLI names.
+- Port group physicalLabelPattern is a compact declaration. Importer/bootstrap may expand it into individual PhysicalTemplatePort rows.
+- Patterns containing {n+5} are semantic offset patterns; importer should expand to the actual ordinals instead of treating them literally.
+- Do not hardcode Huawei stack/member numbering into template connector identity. Keep a stable physical connector identity and let the Huawei
+  driver map CLI names.
 - Desktop/non-rack devices may use a 1U logical footprint in the current rack UI, but rackMount=false must be preserved.
 - Do not silently change vendorVerified=false to true without an official source and a reviewed change to this catalog.
+- 'V1.1 verification sweep: Huawei F1A, NetEngine 8000 chassis, NE40E chassis, S6750 missing variants, and most MikroTik fixed-hardware templates
+  were reconciled against official manufacturer pages.'
+- NE40E-X3 has separate DC (4U) and AC (5U) templates because the official Huawei specification gives different chassis heights for the same base
+  model.
+- MikroTik dedicated console and management connectors are represented separately when the official product page identifies them. Desktop devices
+  keep a logical 1U height for the current rack UI but rackMount=false.

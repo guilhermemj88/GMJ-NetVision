@@ -7,6 +7,25 @@ O catálogo embutido em `apps/api/src/infrastructure/physical/physical-catalog.t
 existe apenas como **fallback de emergência** para o caso do arquivo não existir.
 Quando o YAML está presente e válido, ele é usado sozinho — sem merge.
 
+## Conteúdo atual (V1.1)
+
+| Item | Valor |
+| --- | --- |
+| `catalogKey` | `gmj-netvision-physical-catalog-v1.1` |
+| Templates de equipamento | **121** |
+| Templates de placa | **5** |
+| `vendorVerified: true` | **90** (equipamentos) + 5 placas |
+| `vendorVerified: false` | **31** |
+| Conectores declarados | 1.480 |
+| Slots declarados | 153 |
+| Fabricantes | Huawei 28 (23 verificados), MikroTik 43 (40), Datacom 15 (15), Generic 12 (0), FiberHome 7 (0), ZTE 6 (4), VSOL 6 (5), Juniper 4 (3) |
+
+Destaques do V1.1: `huawei-ne8000-f1a-8h20q` (56 conectores: 8×100GE + 20×25GE + 28×10GE),
+chassis `NetEngine 8000 M4/M8 DC/M8 AC` (somente slots de placa), família NE40E com as variantes
+`NE40E-X3 (DC)` 4U e `NE40E-X3 (AC)` 5U, novas variantes `S6750-H48Y8C-B` e `S6750-H36C`, e a
+varredura de verificação das páginas oficiais MikroTik (console/gerência declarados separadamente
+e `rackMount: false` preservado nos equipamentos de mesa). O V1.0 permanece no histórico do Git.
+
 ## Caminhos procurados (nesta ordem)
 
 1. `PHYSICAL_CATALOG_YAML_PATH` (variável de ambiente, caminho absoluto);
@@ -31,7 +50,7 @@ Quando o YAML está presente e válido, ele é usado sozinho — sem merge.
 
 ```yaml
 schemaVersion: '1.0'
-catalogKey: gmj-netvision-physical-catalog-v1
+catalogKey: gmj-netvision-physical-catalog-v1.1
 policies: { ... }                 # documentação de políticas (idempotência, breakout, …)
 interfaceClassification: { ... }  # regras PHYSICAL/LOGICAL por fabricante (documentação)
 sources:                          # catálogo de referências oficiais
@@ -40,7 +59,7 @@ sources:                          # catálogo de referências oficiais
     title: RB5009UG+S+IN
     url: https://mikrotik.com/product/rb5009ug_s_in
     kind: official
-templates:                        # 119 chassis/modelos
+templates:                        # 121 chassis/modelos (V1.1: 90 verified / 31 unverified)
   - catalogKey: mikrotik-crs328-24p-4splus-rm
     manufacturer: MikroTik
     family: CRS
@@ -50,7 +69,7 @@ templates:                        # 119 chassis/modelos
     layoutType: FIXED             # FIXED|MODULAR
     heightU: 1                    # aceita fração (ex.: 3.5 do MX104)
     rackMount: true
-    vendorVerified: false
+    vendorVerified: true
     portGroups:
       - groupKey: ether
         count: 24

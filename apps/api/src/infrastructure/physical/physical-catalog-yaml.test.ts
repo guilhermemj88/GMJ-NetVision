@@ -62,11 +62,12 @@ describe('physical catalog YAML (arquivo real)', () => {
     const result = loadPhysicalCatalog(PHYSICAL_CATALOG);
     expect(result.counts.templates).toBe(raw.templates.length);
     expect(result.counts.moduleTemplates).toBe(raw.moduleTemplates.length);
-    expect(result.counts.templates).toBe(119);
+    // V1.1: 121 templates de equipamento e 5 de placa (90 verificados / 31 pendentes)
+    expect(result.counts.templates).toBe(121);
     expect(result.counts.moduleTemplates).toBe(5);
     expect(result.counts.vendorVerified + result.counts.unverified).toBe(result.counts.templates);
-    expect(result.counts.vendorVerified).toBe(54);
-    expect(result.counts.unverified).toBe(65);
+    expect(result.counts.vendorVerified).toBe(90);
+    expect(result.counts.unverified).toBe(31);
   });
 
   it('não descarta nenhum campo do YAML silenciosamente', () => {
@@ -116,7 +117,8 @@ describe('physical catalog YAML (arquivo real)', () => {
   it('expande grupos de porta, gerencia/console e slots com módulos compatíveis', () => {
     const result = loadPhysicalCatalog(PHYSICAL_CATALOG);
     const mikrotik = result.entries.find((entry) => entry.catalogKey === 'mikrotik-crs328-24p-4splus-rm')!;
-    expect(mikrotik.ports).toHaveLength(28);
+    // V1.1: 24 ether + 4 SFP+ + 1 console serial declarado pelo fabricante
+    expect(mikrotik.ports).toHaveLength(29);
     expect(mikrotik.ports[0]).toMatchObject({
       name: 'ether1',
       label: 'ether1',
@@ -126,9 +128,10 @@ describe('physical catalog YAML (arquivo real)', () => {
       groupKey: 'ether',
       interfaceName: 'ether1',
     });
-    expect(mikrotik.ports.at(-1)).toMatchObject({ name: 'sfp-sfpplus4', connector: 'SFP_PLUS' });
-    expect(mikrotik.vendorVerified).toBe(false);
-    // estrutura declarada é materializável mesmo sem vendorVerified
+    expect(mikrotik.ports.some((port) => port.name === 'sfp-sfpplus4')).toBe(true);
+    expect(mikrotik.ports.some((port) => port.portFunction === 'CONSOLE')).toBe(true);
+    expect(mikrotik.vendorVerified).toBe(true);
+    // estrutura declarada é materializável mesmo quando o fabricante não foi verificado
     expect(mikrotik.structureConfirmed).toBe(true);
     expect(mikrotik.layoutType).toBe('FIXED');
 
@@ -154,6 +157,46 @@ describe('physical catalog YAML (arquivo real)', () => {
     expect(generic.ports).toHaveLength(0);
     expect(generic.structureConfirmed).toBe(true);
     expect(generic.modules).toHaveLength(0);
+  });
+
+  it('cobre os chassis e variantes novos do V1.1 (NE8000, NE40E e S6750)', () => {
+    const result = loadPhysicalCatalog(PHYSICAL_CATALOG);
+    const entry = (key: string) => result.entries.find((item) => item.catalogKey === key)!;
+
+    // F1A-8H20Q: 8 x 100GE + 20 x 25GE + 28 x 10GE = 56 conectores físicos
+    const f1a = entry('huawei-ne8000-f1a-8h20q');
+    expect(f1a.vendorVerified).toBe(true);
+    expect(f1a.ports).toHaveLength(56);
+    expect(f1a.slots).toHaveLength(0);
+    expect(f1a.ports.filter((port) => port.connector === 'QSFP28')).toHaveLength(8);
+
+    // NE8000: apenas slots de placa, nenhuma porta inventada
+    for (const [key, slots] of [
+      ['huawei-ne8000-m4', 4],
+      ['huawei-ne8000-m8-dc', 8],
+      ['huawei-ne8000-m8-ac', 6],
+    ] as const) {
+      const chassis = entry(key);
+      expect(chassis.vendorVerified).toBe(true);
+      expect(chassis.slots).toHaveLength(slots);
+      expect(chassis.ports).toHaveLength(0);
+      expect(chassis.modules).toHaveLength(0);
+    }
+
+    // NE40E-X3: 4U (DC) e 5U (AC), 3 LPU cada; o placeholder genérico continua não verificado
+    const x3Dc = entry('huawei-ne40e-x3-dc');
+    expect(x3Dc.heightU).toBe(4);
+    expect(x3Dc.slots).toHaveLength(3);
+    expect(x3Dc.ports).toHaveLength(0);
+    const x3Ac = entry('huawei-ne40e-x3-ac');
+    expect(x3Ac.heightU).toBe(5);
+    expect(x3Ac.slots).toHaveLength(3);
+    expect(entry('huawei-ne40e-x3').vendorVerified).toBe(false);
+
+    // S6750-H48Y8C-B (48 x SFP28 + 8 x QSFP28) e S6750-H36C (32 + 4)
+    expect(entry('huawei-s6750-h48y8c-b').ports).toHaveLength(56);
+    expect(entry('huawei-s6750-h36c').ports).toHaveLength(36);
+    expect(entry('huawei-s6750-h36c').ports.some((port) => port.connector === 'QSFP28')).toBe(true);
   });
 
   it('mantém referenceUrls resolvidas a partir de sources', () => {
