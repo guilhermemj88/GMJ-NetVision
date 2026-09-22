@@ -6985,7 +6985,6 @@ label > small {
 }
 .physical-canvas {
   position: relative;
-  min-width: 820px;
   margin: 28px auto;
 }
 .physical-rack-frame {
@@ -7007,6 +7006,14 @@ label > small {
 }
 .physical-u-row.is-major {
   border-color: rgba(86, 105, 116, 0.75);
+}
+/** U desenhada mais alta para caber o painel: a régua continua marcando a U. */
+.physical-u-row.is-expanded {
+  background: linear-gradient(to right, rgba(139, 92, 246, 0.07), transparent 42%);
+  border-bottom: 1px solid rgba(139, 92, 246, 0.35);
+}
+.physical-u-row.is-expanded span:first-child {
+  color: #b9a7f5;
 }
 .physical-u-row span {
   position: absolute;
@@ -7083,8 +7090,7 @@ label > small {
 .physical-faceplate {
   position: absolute;
   z-index: 6;
-  display: flex;
-  align-items: stretch;
+  display: block;
   overflow: hidden;
   border: 1px solid #43535c;
   border-radius: 3px;
@@ -7101,8 +7107,11 @@ label > small {
 }
 .physical-faceplate.is-dimmed { opacity: 0.38; }
 .physical-faceplate__kind {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
   width: 4px;
-  flex: none;
   background: var(--physical-steel);
 }
 .physical-faceplate--dio .physical-faceplate__kind,
@@ -7110,76 +7119,42 @@ label > small {
 .physical-faceplate--power .physical-faceplate__kind { background: var(--amber); }
 .physical-faceplate--server .physical-faceplate__kind { background: #4f9b84; }
 .physical-faceplate__identity {
-  width: 165px;
-  min-width: 0;
+  position: absolute;
+  top: 0;
+  left: 12px;
+  right: 12px;
+  height: 30px;
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 3px 8px;
-  border-right: 1px solid #34434c;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 2px;
 }
 .physical-faceplate__identity strong {
   overflow: hidden;
+  max-width: 60%;
   color: #d4e1e7;
-  font: 600 9px var(--font-mono);
+  font: 600 10px var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .physical-faceplate__identity small {
   overflow: hidden;
-  color: #607782;
-  font: 7px var(--font-mono);
+  color: #6b8492;
+  font: 8px var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.physical-faceplate__ports {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
-  padding: 2px 10px;
-}
-.physical-faceplate__ports button {
-  width: 10px;
-  height: 10px;
-  padding: 1px;
-  flex: none;
-  border: 1px solid #50616a;
-  border-radius: 2px;
-  background: #0b1216;
-  cursor: pointer;
-}
-.physical-faceplate__ports button span { display: block; width: 100%; height: 100%; background: #202e35; }
-.physical-faceplate__ports button.is-connected { border-color: #4f846f; background: rgba(67, 197, 158, 0.12); }
-.physical-faceplate__ports button.is-selected { border-color: #c4b5fd; background: var(--physical-accent); box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3); }
-.physical-faceplate__ports .physical-port--front { border-radius: 50%; }
-.physical-faceplate__ports .physical-port--rear { border-style: dashed; }
-.physical-faceplate__ports em { color: #657985; font: 7px var(--font-mono); font-style: normal; }
-.physical-faceplate__ports { position: relative; }
-.physical-faceplate.is-modular .physical-faceplate__ports {
-  align-items: stretch;
-  justify-content: space-between;
-  gap: 6px;
-}
-.physical-faceplate__slots {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  align-items: stretch;
-  gap: 3px;
-  overflow: hidden;
+/** Painel frontal: o painel define a escala e os conectores são absolutos. */
+.physical-faceplate__panel {
+  position: absolute;
 }
 .physical-slot {
-  min-width: 26px;
-  display: flex;
-  align-items: center;
-  gap: 3px;
+  position: absolute;
   padding: 1px 3px;
   border: 1px dashed #3c4d57;
   border-radius: 2px;
   background: #0c1419;
+  overflow: hidden;
 }
 .physical-slot > em {
   color: #5d7078;
@@ -7192,24 +7167,61 @@ label > small {
   background: rgba(67, 197, 158, 0.07);
 }
 .physical-slot > small {
+  display: block;
   overflow: hidden;
-  max-width: 74px;
   color: #8fb9ae;
   font: 7px var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.physical-slot__ports { display: flex; gap: 2px; }
-.physical-slot__ports button { width: 8px; height: 8px; }
-.physical-faceplate__flat {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
+.physical-slot__panel {
+  position: absolute;
+  inset: 12px 4px 4px;
 }
-.physical-faceplate__flat b { color: #657985; font: 7px var(--font-mono); font-weight: 500; }
-.physical-port { position: relative; }
+.physical-port {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #50616a;
+  border-radius: 2px;
+  background: #0b1216;
+  cursor: pointer;
+}
+.physical-port span { display: block; width: 100%; height: 100%; background: #202e35; }
+/* Formas por família de conector: SFP < QSFP < QSFP-DD, com RJ45/PON/console próprios. */
+.physical-port--qsfp_plus span,
+.physical-port--qsfp28 span,
+.physical-port--qsfp56 span,
+.physical-port--qsfp_dd span {
+  background: linear-gradient(to right, #223138 0 46%, #16232b 46% 54%, #223138 54%);
+}
+.physical-port--qsfp_dd span { background: linear-gradient(to right, #223138 0 30%, #16232b 30% 35%, #223138 35% 65%, #16232b 65% 70%, #223138 70%); }
+.physical-port--rj45 {
+  border-radius: 3px;
+  background: #0d151a;
+}
+.physical-port--rj45 span { background: #2a3a44; border-radius: 1px; }
+.physical-port--pon {
+  border-radius: 50%;
+  background: #101b21;
+}
+.physical-port--pon span { border-radius: 50%; background: #2f4a55; }
+.physical-port--console,
+.physical-port--mgmt,
+.physical-port--usb_mini_b {
+  border-style: dashed;
+  background: #0e171c;
+}
+.physical-port--console span,
+.physical-port--mgmt span,
+.physical-port--usb_mini_b span { background: #33424c; }
+.physical-port.is-selected {
+  z-index: 3;
+  border-color: #c4b5fd;
+  box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.35);
+}
 .physical-port.state-free span { background: #202e35; }
 .physical-port.state-mapped { border-color: #5d7f96; background: rgba(93, 127, 150, 0.14); }
 .physical-port.state-mapped span { background: #33566d; }

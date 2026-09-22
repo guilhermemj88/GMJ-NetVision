@@ -6,7 +6,11 @@ import { registerPhysicalRoutes } from './physical-routes';
 import { DemoPhysicalRepository } from './infrastructure/physical/demo-physical-repository';
 import { PhysicalService } from './infrastructure/physical/physical-service';
 import { PhysicalInventoryError } from './infrastructure/physical/physical-repository';
-import { findReconcilablePorts } from './infrastructure/physical/physical-domain';
+import {
+  correlatePanelLabels,
+  findReconcilablePorts,
+  panelFamilyIdentity,
+} from './infrastructure/physical/physical-domain';
 import type { HostRepository } from './infrastructure/persistence/host-repository';
 
 /**
@@ -245,7 +249,8 @@ describe('physical sync classification', () => {
     expect(report.mapped).toBe(3);
     expect(report.created).toBe(0);
     expect(report.skippedLogical).toBe(3);
-    expect(report.ports).toHaveLength(28);
+    // V1.1: 24 ether + 4 SFP+ + 1 console declarado pelo fabricante
+    expect(report.ports).toHaveLength(29);
     const mapped = report.ports.filter((port) => port.mappedInterfaceId).map((port) => port.name);
     expect(mapped).toEqual(['ether1', 'ether2', 'sfp-sfpplus1']);
   });
@@ -619,6 +624,107 @@ describe('physical asset lifecycle', () => {
     expect(response.json().message).toContain('Desconecte os cabos');
     const inventory = await app.inject({ method: 'GET', url: '/api/physical' });
     expect(inventory.json().sites[0].racks[0].assets).toHaveLength(2);
+  });
+});
+
+/**
+ * O painel do catálogo usa rótulos curtos (`100GE-1`) enquanto o CLI reporta o
+ * nome hierárquico (`100GE1/0/1`). A correlação é ordinal por família e nunca
+ * adivinha quando as contagens divergem.
+ */
+describe('correlação entre rótulo de painel e nome CLI', () => {
+  it('identifica a família sem confundir 100GE com 10GE', () => {
+    expect(panelFamilyIdentity('100GE-1')).toMatchObject({
+      family: '100ge',
+      kind: 'label',
+      numbers: [100, 1],
+    });
+    expect(panelFamilyIdentity('100GE1/0/1')).toMatchObject({
+      family: '100ge',
+      kind: 'hierarchical',
+      numbers: [100, 1, 0, 1],
+    });
+    expect(panelFamilyIdentity('10GE-1')?.family).toBe('10ge');
+    expect(panelFamilyIdentity('10GE1/0/28')?.family).toBe('10ge');
+    expect(panelFamilyIdentity('SFP+-1')?.family).toBe('sfpplus');
+    expect(panelFamilyIdentity('sfp-sfpplus1')?.family).toBe('sfpsfpplus');
+    // a forma do nome é neutra: quem separa lógicas de físicas é classifyPhysicalInterface
+    expect(panelFamilyIdentity('Vlanif100')?.kind).toBe('label');
+    expect(panelFamilyIdentity('ge-0/0/0')?.kind).toBe('hierarchical');
+    expect(panelFamilyIdentity('sfp1')?.kind).toBe('label');
+  });
+
+  it('correlaciona por posição quando a família tem as mesmas portas dos dois lados', () => {
+    const ports = Array.from({ length: 20 }, (_value, index) => ({
+      id: `port-25ge-${index + 1}`,
+      name: `25GE-${index + 1}`,
+      side: 'DEVICE' as const,
+      mappedInterfaceId: null,
+    }));
+    const interfaces = Array.from({ length: 20 }, (_value, index) => ({
+      id: `if-25ge-${index + 1}`,
+      name: `25GE1/0/${index + 1}`,
+    }));
+    const correlation = correlatePanelLabels(ports, interfaces);
+    expect(correlation.size).toBe(20);
+    expect(correlation.get('if-25ge-5')).toBe('port-25ge-5');
+    expect(correlation.get('if-25ge-20')).toBe('port-25ge-20');
+  });
+
+  it('não correlaciona quando o device reporta um subconjunto da família', () => {
+    const ports = Array.from({ length: 20 }, (_value, index) => ({
+      id: `port-25ge-${index + 1}`,
+      name: `25GE-${index + 1}`,
+      side: 'DEVICE' as const,
+      mappedInterfaceId: null,
+    }));
+    const interfaces = Array.from({ length: 4 }, (_value, index) => ({
+      id: `if-25ge-${index + 1}`,
+      name: `25GE1/0/${index + 1}`,
+    }));
+    expect(correlatePanelLabels(ports, interfaces).size).toBe(0);
+  });
+
+  it('não correlaciona dois nomes hierárquicos entre si', () => {
+    const ports = [
+      { id: 'port-1', name: '100GE1/0/1', side: 'DEVICE' as const, mappedInterfaceId: null },
+      { id: 'port-2', name: '100GE1/0/2', side: 'DEVICE' as const, mappedInterfaceId: null },
+    ];
+    const interfaces = [
+      { id: 'if-1', name: '100GE1/0/1' },
+      { id: 'if-2', name: '100GE1/0/2' },
+    ];
+    expect(correlatePanelLabels(ports, interfaces).size).toBe(0);
+  });
+
+  it('mapeia as 56 portas do F1A-8H20Q pelo painel declarado no catálogo', async () => {
+    const names = [
+      ...Array.from({ length: 8 }, (_value, index) => `100GE1/0/${index + 1}`),
+      ...Array.from({ length: 20 }, (_value, index) => `25GE1/0/${index + 1}`),
+      ...Array.from({ length: 28 }, (_value, index) => `10GE1/0/${index + 1}`),
+    ];
+    const context = await harness([hostRecord('host-f1a', names)]);
+    const app = context.app;
+    const rack = await context.createRack();
+    const asset = await context.createAsset(rack.id, {
+      name: 'BHE-VTA-F1A-BGP',
+      catalogKey: 'huawei-ne8000-f1a-8h20q',
+      kind: 'NETWORK',
+      deviceId: 'host-f1a',
+    });
+    expect(asset.ports).toHaveLength(56);
+
+    const report = await context.sync(asset.id);
+    expect(report.created).toBe(0);
+    expect(report.mapped).toBe(56);
+    expect(report.skippedLogical).toBe(0);
+    expect(report.skippedByPolicy).toBe(0);
+    const mapped = report.ports.filter((port) => port.mappedInterfaceId).map((port) => port.name);
+    expect(mapped).toHaveLength(56);
+    expect(mapped).toContain('100GE-8');
+    expect(mapped).toContain('25GE-20');
+    expect(mapped).toContain('10GE-28');
+    await app.close();
   });
 });
 

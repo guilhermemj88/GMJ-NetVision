@@ -83,6 +83,49 @@ export interface PhysicalCatalogPort {
   interfaceName?: string | null;
   /** Free-form note from the catalog (never dropped). */
   notes?: string | null;
+  /** Normalized visual geometry inherited from the port group (never pixels). */
+  visual?: PhysicalVisualPlacement | null;
+}
+
+/**
+ * Normalized geometry of a group of connectors inside the panel grid.
+ *
+ * Values are relative grid units (never pixels): the renderer scales them to
+ * whatever rack width is available, so widening the canvas never requires
+ * touching the catalog.
+ */
+export interface PhysicalVisualPlacement {
+  /** First grid row (1-based) the group occupies. */
+  row?: number;
+  /** How many rows the group spans (defaults to `1`, or is derived from the count). */
+  rows?: number;
+  /** Connectors per row; positions inside the group are derived from it. */
+  columns?: number;
+  /** Horizontal start of the group in grid units. */
+  x?: number;
+  /** Vertical start of the group in grid units. */
+  y?: number;
+  /** Width of a single connector in grid units. */
+  width?: number;
+  /** Height of a single connector in grid units. */
+  height?: number;
+  /** Horizontal gap between connectors in grid units. */
+  gapX?: number;
+  /** Vertical gap between rows in grid units. */
+  gapY?: number;
+}
+
+/**
+ * Panel of a chassis or module. `FRONT` means the official front-panel position
+ * was codified; `LOGICAL` is an organized semantic layout, never claimed as the
+ * vendor-exact drawing.
+ */
+export interface PhysicalPanelLayout {
+  type: 'FRONT' | 'LOGICAL';
+  /** Panel width in grid units. */
+  width: number;
+  /** Panel height in grid units. */
+  height: number;
 }
 
 export interface PhysicalCatalogSlot {
@@ -97,6 +140,8 @@ export interface PhysicalCatalogSlot {
   groupKey?: string | null;
   /** Capacity note of the slot group (e.g. how many boards fit). */
   capacityNote?: string | null;
+  /** Normalized geometry of the slot inside the chassis panel. */
+  visual?: PhysicalVisualPlacement | null;
 }
 
 export interface PhysicalCatalogModule {
@@ -113,6 +158,8 @@ export interface PhysicalCatalogModule {
   /** Templates compatíveis declarados pelo próprio módulo. */
   compatibleCatalogKeys?: string[];
   referenceUrls?: string[];
+  /** Panel of the board itself (its connectors live inside the slot geometry). */
+  panelLayout?: PhysicalPanelLayout | null;
 }
 
 /** One entry of the versioned equipment catalog. */
@@ -154,6 +201,11 @@ export interface PhysicalCatalogEntry {
   referenceUrls?: string[];
   /** `verificationNote` do catálogo. */
   verificationNote?: string | null;
+  /**
+   * Panel of the chassis. Optional and retrocompatible: templates without it
+   * use the deterministic fallback layout in the UI.
+   */
+  panelLayout?: PhysicalPanelLayout | null;
 }
 
 export interface PhysicalInterfaceReference {

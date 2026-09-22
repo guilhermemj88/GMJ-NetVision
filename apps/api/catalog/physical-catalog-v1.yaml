@@ -490,10 +490,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 14}
   vendorVerified: true
   portGroups:
   - groupKey: 100ge-cages
     count: 8
+    visual: {row: 1, columns: 8, x: 25, y: 0.6, gapX: 0.8}
     connector: QSFP28
     role: UPLINK
     speeds:
@@ -505,6 +507,7 @@ templates:
     notes: 'Official F1A-8H20Q ordering configuration: 8 x 100GE. One physical cage remains one connector under breakout/rate changes.'
   - groupKey: 25ge-cages
     count: 20
+    visual: {row: 2, columns: 10, x: 14, y: 4.4, gapX: 0.6}
     connector: SFP28
     role: SERVICE
     speeds:
@@ -515,6 +518,7 @@ templates:
     notes: 'Official F1A-8H20Q ordering configuration: 20 x 25GE.'
   - groupKey: 10ge-cages
     count: 28
+    visual: {row: 4, columns: 14, x: 7, y: 8.2, gapX: 0.6}
     connector: SFP_PLUS
     role: SERVICE
     speeds:
@@ -919,10 +923,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: sfpplus-10g
     count: 24
+    visual: {row: 1, columns: 12, x: 5, y: 0.6, gapX: 0.6}
     connector: SFP_PLUS
     role: SERVICE
     speeds:
@@ -932,6 +938,7 @@ templates:
     notes: CLI member/slot numbering varies; map through Huawei driver, not a hardcoded member number.
   - groupKey: qsfp28-uplink
     count: 6
+    visual: {row: 3, columns: 6, x: 38, y: 6.4, gapX: 0.6}
     connector: QSFP28
     role: UPLINK
     speeds:
@@ -955,10 +962,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: sfpplus-10g
     count: 48
+    visual: {row: 1, columns: 24, x: 3, y: 0.6, gapX: 0.6}
     connector: SFP_PLUS
     role: SERVICE
     speeds:
@@ -968,6 +977,7 @@ templates:
     notes: CLI member/slot numbering varies; map through Huawei driver, not a hardcoded member number.
   - groupKey: qsfp28-uplink
     count: 6
+    visual: {row: 3, columns: 6, x: 38, y: 6.4, gapX: 0.6}
     connector: QSFP28
     role: UPLINK
     speeds:
@@ -991,10 +1001,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: sfpplus-10g
     count: 24
+    visual: {row: 1, columns: 12, x: 5, y: 0.6, gapX: 0.6}
     connector: SFP_PLUS
     role: SERVICE
     speeds:
@@ -1004,6 +1016,7 @@ templates:
     notes: CLI member/slot numbering varies; map through Huawei driver, not a hardcoded member number.
   - groupKey: qsfp28-uplink
     count: 6
+    visual: {row: 3, columns: 6, x: 38, y: 6.4, gapX: 0.6}
     connector: QSFP28
     role: UPLINK
     speeds:
@@ -1027,10 +1040,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: sfpplus-10g
     count: 48
+    visual: {row: 1, columns: 24, x: 3, y: 0.6, gapX: 0.6}
     connector: SFP_PLUS
     role: SERVICE
     speeds:
@@ -1040,6 +1055,7 @@ templates:
     notes: CLI member/slot numbering varies; map through Huawei driver, not a hardcoded member number.
   - groupKey: qsfp28-uplink
     count: 6
+    visual: {row: 3, columns: 6, x: 38, y: 6.4, gapX: 0.6}
     connector: QSFP28
     role: UPLINK
     speeds:
@@ -1063,10 +1079,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: sfp28-service
     count: 48
+    visual: {row: 1, columns: 24, x: 3, y: 0.6, gapX: 0.6}
     connector: SFP28
     role: SERVICE
     speeds:
@@ -1076,6 +1094,7 @@ templates:
     physicalLabelPattern: SFP28-{n}
   - groupKey: qsfp28-uplink
     count: 8
+    visual: {row: 3, columns: 8, x: 32, y: 6.4, gapX: 0.6}
     connector: QSFP28
     role: UPLINK
     speeds:
@@ -1098,10 +1117,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: sfp28-service
     count: 48
+    visual: {row: 1, columns: 24, x: 3, y: 0.6, gapX: 0.6}
     connector: SFP28
     role: SERVICE
     speeds:
@@ -1112,6 +1133,7 @@ templates:
     physicalLabelPattern: SFP28-{n}
   - groupKey: qsfp28-uplink
     count: 8
+    visual: {row: 3, columns: 8, x: 32, y: 6.4, gapX: 0.6}
     connector: QSFP28
     role: UPLINK
     speeds:
@@ -1134,10 +1156,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: sfp28-service
     count: 48
+    visual: {row: 1, columns: 24, x: 3, y: 0.6, gapX: 0.6}
     connector: SFP28
     role: SERVICE
     speeds:
@@ -1148,6 +1172,7 @@ templates:
     physicalLabelPattern: SFP28-{n}
   - groupKey: qsfp28-uplink
     count: 8
+    visual: {row: 3, columns: 8, x: 32, y: 6.4, gapX: 0.6}
     connector: QSFP28
     role: UPLINK
     speeds:
@@ -1173,10 +1198,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: qsfp28-service
     count: 32
+    visual: {row: 1, columns: 16, x: 4, y: 0.6, gapX: 0.9}
     connector: QSFP28
     role: SERVICE
     speeds:
@@ -1186,6 +1213,7 @@ templates:
     physicalLabelPattern: QSFP28-{n}
   - groupKey: qsfp28-uplink
     count: 4
+    visual: {row: 3, columns: 4, x: 40, y: 6.4, gapX: 0.9}
     connector: QSFP28
     role: UPLINK
     speeds:
@@ -1403,10 +1431,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 6}
   vendorVerified: false
   portGroups:
   - groupKey: ethernet
     count: 5
+    visual: {row: 1, columns: 5, x: 14, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1432,10 +1462,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 6}
   vendorVerified: true
   portGroups:
   - groupKey: ethernet
     count: 5
+    visual: {row: 1, columns: 5, x: 14, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1460,10 +1492,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 6}
   vendorVerified: true
   portGroups:
   - groupKey: ethernet
     count: 5
+    visual: {row: 1, columns: 5, x: 14, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1486,10 +1520,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 6}
   vendorVerified: true
   portGroups:
   - groupKey: ethernet
     count: 5
+    visual: {row: 1, columns: 5, x: 14, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1512,10 +1548,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 6}
   vendorVerified: true
   portGroups:
   - groupKey: ethernet
     count: 5
+    visual: {row: 1, columns: 5, x: 14, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1538,10 +1576,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 6}
   vendorVerified: true
   portGroups:
   - groupKey: ethernet
     count: 5
+    visual: {row: 1, columns: 5, x: 14, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1564,10 +1604,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 6}
   vendorVerified: true
   portGroups:
   - groupKey: ethernet
     count: 5
+    visual: {row: 1, columns: 5, x: 14, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1591,10 +1633,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 6}
   vendorVerified: true
   portGroups:
   - groupKey: ethernet
     count: 5
+    visual: {row: 1, columns: 5, x: 14, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1617,10 +1661,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 6}
   vendorVerified: true
   portGroups:
   - groupKey: ethernet
     count: 5
+    visual: {row: 1, columns: 5, x: 14, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1644,10 +1690,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 6}
   vendorVerified: false
   portGroups:
   - groupKey: ethernet
     count: 5
+    visual: {row: 1, columns: 5, x: 14, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1672,10 +1720,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 7}
   vendorVerified: true
   portGroups:
   - groupKey: ethernet
     count: 5
+    visual: {row: 1, columns: 5, x: 14, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1685,6 +1735,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: sfp
     count: 1
+    visual: {row: 2, columns: 1, x: 42, y: 4.4, gapX: 0.6}
     connector: SFP
     role: UPLINK
     speeds:
@@ -1707,10 +1758,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 8}
   vendorVerified: true
   portGroups:
   - groupKey: gigabit
     count: 5
+    visual: {row: 1, columns: 5, x: 8, y: 0.6, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1720,6 +1773,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: fast-ethernet
     count: 5
+    visual: {row: 2, columns: 5, x: 8, y: 4.4, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1743,10 +1797,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 8}
   vendorVerified: true
   portGroups:
   - groupKey: gigabit
     count: 5
+    visual: {row: 1, columns: 5, x: 8, y: 0.6, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1756,6 +1812,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: fast-ethernet
     count: 5
+    visual: {row: 2, columns: 5, x: 8, y: 4.4, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1779,10 +1836,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: gigabit
     count: 5
+    visual: {row: 1, columns: 5, x: 8, y: 0.6, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1792,6 +1851,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: fast-ethernet
     count: 5
+    visual: {row: 2, columns: 5, x: 8, y: 4.4, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1801,6 +1861,7 @@ templates:
     notes: Represents ether6-ether10; importer should expand ordinal offset safely.
   - groupKey: sfp
     count: 1
+    visual: {row: 3, columns: 1, x: 44, y: 8.2, gapX: 0.6}
     connector: SFP
     role: UPLINK
     speeds:
@@ -1824,10 +1885,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: gigabit
     count: 5
+    visual: {row: 1, columns: 5, x: 8, y: 0.6, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1837,6 +1900,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: fast-ethernet
     count: 5
+    visual: {row: 2, columns: 5, x: 8, y: 4.4, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1846,6 +1910,7 @@ templates:
     notes: Represents ether6-ether10; importer should expand ordinal offset safely.
   - groupKey: sfp
     count: 1
+    visual: {row: 3, columns: 1, x: 44, y: 8.2, gapX: 0.6}
     connector: SFP
     role: UPLINK
     speeds:
@@ -1869,10 +1934,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: gigabit
     count: 5
+    visual: {row: 1, columns: 5, x: 8, y: 0.6, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1882,6 +1949,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: fast-ethernet
     count: 5
+    visual: {row: 2, columns: 5, x: 8, y: 4.4, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -1891,6 +1959,7 @@ templates:
     notes: Represents ether6-ether10; importer should expand ordinal offset safely.
   - groupKey: sfp
     count: 1
+    visual: {row: 3, columns: 1, x: 44, y: 8.2, gapX: 0.6}
     connector: SFP
     role: UPLINK
     speeds:
@@ -2090,10 +2159,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 7}
   vendorVerified: true
   portGroups:
   - groupKey: ethernet
     count: 10
+    visual: {row: 1, columns: 10, x: 6, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -2103,6 +2174,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: sfp
     count: 1
+    visual: {row: 2, columns: 1, x: 78, y: 4.4, gapX: 0.6}
     connector: SFP
     role: UPLINK
     speeds:
@@ -2128,10 +2200,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 7}
   vendorVerified: true
   portGroups:
   - groupKey: ethernet
     count: 10
+    visual: {row: 1, columns: 10, x: 6, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -2141,6 +2215,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: sfpplus
     count: 1
+    visual: {row: 2, columns: 1, x: 78, y: 4.4, gapX: 0.6}
     connector: SFP_PLUS
     role: UPLINK
     speeds:
@@ -2167,10 +2242,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 7}
   vendorVerified: true
   portGroups:
   - groupKey: ether-1g
     count: 7
+    visual: {row: 1, columns: 7, x: 10, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -2180,6 +2257,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: ether-2.5g
     count: 1
+    visual: {row: 2, columns: 1, x: 30, y: 4.4, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -2189,6 +2267,7 @@ templates:
     interfaceNamePattern: ether8
   - groupKey: sfpplus
     count: 1
+    visual: {row: 2, columns: 1, x: 44, y: 4.4, gapX: 0.6}
     connector: SFP_PLUS
     role: UPLINK
     speeds:
@@ -2212,10 +2291,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 7}
   vendorVerified: true
   portGroups:
   - groupKey: ether-1g
     count: 7
+    visual: {row: 1, columns: 7, x: 10, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -2225,6 +2306,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: ether-2.5g
     count: 1
+    visual: {row: 2, columns: 1, x: 30, y: 4.4, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -2234,6 +2316,7 @@ templates:
     interfaceNamePattern: ether8
   - groupKey: sfpplus
     count: 1
+    visual: {row: 2, columns: 1, x: 44, y: 4.4, gapX: 0.6}
     connector: SFP_PLUS
     role: UPLINK
     speeds:
@@ -2477,10 +2560,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 16
+    visual: {row: 1, columns: 16, x: 4, y: 0.6, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -2490,6 +2575,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: sfpplus
     count: 2
+    visual: {row: 3, columns: 2, x: 44, y: 6.4, gapX: 0.6}
     connector: SFP_PLUS
     role: UPLINK
     speeds:
@@ -2517,10 +2603,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 1
+    visual: {row: 1, columns: 1, x: 8, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: MGMT
     speeds:
@@ -2530,6 +2618,7 @@ templates:
     interfaceNamePattern: ether1
   - groupKey: sfpplus
     count: 12
+    visual: {row: 1, columns: 12, x: 16, y: 0.8, gapX: 0.6}
     connector: SFP_PLUS
     role: SERVICE
     speeds:
@@ -2539,6 +2628,7 @@ templates:
     physicalLabelPattern: sfp-sfpplus{n}
   - groupKey: sfp28
     count: 2
+    visual: {row: 3, columns: 2, x: 44, y: 6.4, gapX: 0.6}
     connector: SFP28
     role: UPLINK
     speeds:
@@ -2566,10 +2656,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: ether-service
     count: 12
+    visual: {row: 1, columns: 12, x: 4, y: 0.6, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -2579,6 +2671,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: ether-management
     count: 1
+    visual: {row: 3, columns: 1, x: 8, y: 6.4, gapX: 0.6}
     connector: RJ45
     role: MGMT
     speeds:
@@ -2589,6 +2682,7 @@ templates:
     notes: 'Official product page: one additional Gigabit port is directly CPU-connected for management.'
   - groupKey: sfpplus
     count: 4
+    visual: {row: 3, columns: 4, x: 34, y: 6.4, gapX: 0.6}
     connector: SFP_PLUS
     role: UPLINK
     speeds:
@@ -2614,10 +2708,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 1
+    visual: {row: 1, columns: 1, x: 8, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: MGMT
     speeds:
@@ -2627,6 +2723,7 @@ templates:
     interfaceNamePattern: ether1
   - groupKey: sfp28
     count: 12
+    visual: {row: 1, columns: 12, x: 16, y: 0.8, gapX: 0.6}
     connector: SFP28
     role: SERVICE
     speeds:
@@ -2637,6 +2734,7 @@ templates:
     physicalLabelPattern: sfp28-{n}
   - groupKey: qsfp28
     count: 2
+    visual: {row: 3, columns: 2, x: 40, y: 6.4, gapX: 0.6}
     connector: QSFP28
     role: UPLINK
     speeds:
@@ -2667,10 +2765,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 6}
   vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 1
+    visual: {row: 1, columns: 1, x: 8, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: MGMT_OR_SERVICE
     speeds:
@@ -2680,6 +2780,7 @@ templates:
     interfaceNamePattern: ether1
   - groupKey: sfpplus
     count: 4
+    visual: {row: 1, columns: 4, x: 18, y: 0.8, gapX: 0.6}
     connector: SFP_PLUS
     role: SERVICE
     speeds:
@@ -2704,10 +2805,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 6}
   vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 1
+    visual: {row: 1, columns: 1, x: 8, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: MGMT
     speeds:
@@ -2717,6 +2820,7 @@ templates:
     interfaceNamePattern: ether1
   - groupKey: sfpplus
     count: 8
+    visual: {row: 1, columns: 8, x: 18, y: 0.8, gapX: 0.6}
     connector: SFP_PLUS
     role: SERVICE
     speeds:
@@ -2745,10 +2849,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 9}
   vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 1
+    visual: {row: 1, columns: 1, x: 8, y: 0.8, gapX: 0.6}
     connector: RJ45
     role: MGMT
     speeds:
@@ -2758,6 +2864,7 @@ templates:
     interfaceNamePattern: ether1
   - groupKey: sfpplus
     count: 16
+    visual: {row: 1, columns: 8, x: 18, y: 0.8, gapX: 0.6}
     connector: SFP_PLUS
     role: SERVICE
     speeds:
@@ -2785,10 +2892,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 24
+    visual: {row: 1, columns: 12, x: 4, y: 0.6, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -2798,6 +2907,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: sfpplus
     count: 2
+    visual: {row: 3, columns: 2, x: 44, y: 6.4, gapX: 0.6}
     connector: SFP_PLUS
     role: UPLINK
     speeds:
@@ -2825,10 +2935,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: false
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 24
+    visual: {row: 1, columns: 12, x: 4, y: 0.6, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -2838,6 +2950,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: sfpplus
     count: 2
+    visual: {row: 3, columns: 2, x: 44, y: 6.4, gapX: 0.6}
     connector: SFP_PLUS
     role: UPLINK
     speeds:
@@ -2865,10 +2978,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: sfpplus
     count: 24
+    visual: {row: 1, columns: 12, x: 4, y: 0.6, gapX: 0.6}
     connector: SFP_PLUS
     role: SERVICE
     speeds:
@@ -2878,6 +2993,7 @@ templates:
     physicalLabelPattern: sfp-sfpplus{n}
   - groupKey: qsfpplus
     count: 2
+    visual: {row: 3, columns: 2, x: 40, y: 6.4, gapX: 0.6}
     connector: QSFP_PLUS
     role: UPLINK
     speeds:
@@ -2910,10 +3026,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 10}
   vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 24
+    visual: {row: 1, columns: 12, x: 4, y: 0.6, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -2923,6 +3041,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: sfpplus
     count: 4
+    visual: {row: 3, columns: 4, x: 40, y: 6.4, gapX: 0.6}
     connector: SFP_PLUS
     role: UPLINK
     speeds:
@@ -2950,10 +3069,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 13}
   vendorVerified: true
   portGroups:
   - groupKey: combo
     count: 4
+    visual: {row: 1, columns: 4, x: 6, y: 0.6, gapX: 0.6}
     connector: COMBO
     role: SERVICE
     speeds:
@@ -2963,6 +3084,7 @@ templates:
     notes: Each combo port is one shared logical PHY with copper/SFP terminations.
   - groupKey: sfp
     count: 20
+    visual: {row: 1, columns: 10, x: 24, y: 0.6, gapX: 0.6}
     connector: SFP
     role: SERVICE
     speeds:
@@ -2971,6 +3093,7 @@ templates:
     physicalLabelPattern: sfp{n}
   - groupKey: sfpplus
     count: 4
+    visual: {row: 3, columns: 4, x: 40, y: 6.4, gapX: 0.6}
     connector: SFP_PLUS
     role: UPLINK
     speeds:
@@ -2998,10 +3121,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 13}
   vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 48
+    visual: {row: 1, columns: 24, x: 3, y: 0.6, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -3011,6 +3136,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: sfpplus
     count: 4
+    visual: {row: 3, columns: 4, x: 30, y: 6.4, gapX: 0.6}
     connector: SFP_PLUS
     role: UPLINK
     speeds:
@@ -3020,6 +3146,7 @@ templates:
     physicalLabelPattern: sfp-sfpplus{n}
   - groupKey: qsfpplus
     count: 2
+    visual: {row: 4, columns: 2, x: 50, y: 9.4, gapX: 0.6}
     connector: QSFP_PLUS
     role: UPLINK
     speeds:
@@ -3052,10 +3179,12 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
+  panelLayout: {type: LOGICAL, width: 100, height: 13}
   vendorVerified: true
   portGroups:
   - groupKey: ether
     count: 48
+    visual: {row: 1, columns: 24, x: 3, y: 0.6, gapX: 0.6}
     connector: RJ45
     role: SERVICE
     speeds:
@@ -3065,6 +3194,7 @@ templates:
     interfaceNamePattern: ether{n}
   - groupKey: sfpplus
     count: 4
+    visual: {row: 3, columns: 4, x: 30, y: 6.4, gapX: 0.6}
     connector: SFP_PLUS
     role: UPLINK
     speeds:
@@ -3074,6 +3204,7 @@ templates:
     physicalLabelPattern: sfp-sfpplus{n}
   - groupKey: qsfpplus
     count: 2
+    visual: {row: 4, columns: 2, x: 50, y: 9.4, gapX: 0.6}
     connector: QSFP_PLUS
     role: UPLINK
     speeds:

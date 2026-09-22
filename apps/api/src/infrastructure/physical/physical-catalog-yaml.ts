@@ -10,9 +10,11 @@ import type {
   PhysicalCatalogPort,
   PhysicalCatalogSlot,
   PhysicalConnectorKind,
+  PhysicalPanelLayout,
   PhysicalPortFunction,
   PhysicalPortSide,
   PhysicalPortType,
+  PhysicalVisualPlacement,
 } from '@gmj/shared';
 
 /**
@@ -101,6 +103,24 @@ const YAML_KIND_TO_ASSET_KIND: Record<string, PhysicalAssetKind> = {
   GENERIC: 'GENERIC',
 };
 
+const visualSchema = z.looseObject({
+  row: z.number().optional(),
+  rows: z.number().optional(),
+  columns: z.number().optional(),
+  x: z.number().optional(),
+  y: z.number().optional(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+  gapX: z.number().optional(),
+  gapY: z.number().optional(),
+});
+
+const panelLayoutSchema = z.looseObject({
+  type: z.string().optional(),
+  width: z.number().positive().max(1000),
+  height: z.number().positive().max(1000),
+});
+
 const portGroupSchema = z.looseObject({
   groupKey: z.string().min(1),
   count: z.number().int().min(0).max(4096),
@@ -111,6 +131,7 @@ const portGroupSchema = z.looseObject({
   physicalLabelPattern: z.string().optional(),
   interfaceNamePattern: z.string().optional(),
   notes: z.string().optional(),
+  visual: visualSchema.optional(),
 });
 
 const slotGroupSchema = z.looseObject({
@@ -118,6 +139,7 @@ const slotGroupSchema = z.looseObject({
   slotIds: z.array(z.union([z.string(), z.number()])).min(1),
   role: z.string().optional(),
   capacityNote: z.string().optional(),
+  visual: visualSchema.optional(),
 });
 
 const inlinePortSchema = z.looseObject({
@@ -148,6 +170,7 @@ const templateSchema = z.looseObject({
   consolePorts: z.array(inlinePortSchema).optional(),
   sourceRefs: z.array(z.string()).optional(),
   verificationNote: z.string().optional(),
+  panelLayout: panelLayoutSchema.optional(),
 });
 
 const moduleTemplateSchema = z.looseObject({
@@ -159,6 +182,7 @@ const moduleTemplateSchema = z.looseObject({
   vendorVerified: z.boolean(),
   portGroups: z.array(portGroupSchema).optional(),
   sourceRefs: z.array(z.string()).optional(),
+  panelLayout: panelLayoutSchema.optional(),
 });
 
 const sourceSchema = z.looseObject({
@@ -279,6 +303,36 @@ function connectorKind(connector: string | undefined): PhysicalConnectorKind | n
     : null;
 }
 
+/** Only the declared coordinates are copied (exactOptionalPropertyTypes). */
+function visualPlacement(
+  visual: z.infer<typeof visualSchema> | undefined,
+): PhysicalVisualPlacement | null {
+  if (!visual) return null;
+  const placement: PhysicalVisualPlacement = {};
+  if (visual.row !== undefined) placement.row = visual.row;
+  if (visual.rows !== undefined) placement.rows = visual.rows;
+  if (visual.columns !== undefined) placement.columns = visual.columns;
+  if (visual.x !== undefined) placement.x = visual.x;
+  if (visual.y !== undefined) placement.y = visual.y;
+  if (visual.width !== undefined) placement.width = visual.width;
+  if (visual.height !== undefined) placement.height = visual.height;
+  if (visual.gapX !== undefined) placement.gapX = visual.gapX;
+  if (visual.gapY !== undefined) placement.gapY = visual.gapY;
+  return Object.keys(placement).length ? placement : null;
+}
+
+/** The catalog only ever claims `FRONT` when it explicitly declares it. */
+function panelLayout(
+  layout: z.infer<typeof panelLayoutSchema> | undefined,
+): PhysicalPanelLayout | null {
+  if (!layout) return null;
+  return {
+    type: layout.type?.toUpperCase() === 'FRONT' ? 'FRONT' : 'LOGICAL',
+    width: layout.width,
+    height: layout.height,
+  };
+}
+
 interface PortExpansion {
   ports: PhysicalCatalogPort[];
   warnings: string[];
@@ -321,6 +375,7 @@ function portsFromGroups(
         groupKey: group.groupKey,
         interfaceName: group.interfaceNamePattern ? name : null,
         notes: group.notes ?? null,
+        visual: visualPlacement(group.visual),
       });
     }
   }
@@ -455,6 +510,7 @@ function toEntry(
         slotRole: group.role ?? null,
         groupKey: group.groupKey,
         capacityNote: group.capacityNote ?? null,
+        visual: visualPlacement(group.visual),
       });
     }
   }
@@ -479,6 +535,7 @@ function toEntry(
       referenceUrls: (module.sourceRefs ?? [])
         .map((ref) => sourceUrls.get(ref))
         .filter((url): url is string => Boolean(url)),
+      panelLayout: panelLayout(module.panelLayout),
     });
   }
 
@@ -521,6 +578,7 @@ function toEntry(
     sourceRefs: template.sourceRefs ?? [],
     referenceUrls,
     verificationNote: template.verificationNote ?? null,
+    panelLayout: panelLayout(template.panelLayout),
   };
   return { entry, warnings };
 }

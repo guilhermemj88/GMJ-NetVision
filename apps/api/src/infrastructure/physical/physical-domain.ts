@@ -303,6 +303,102 @@ export function interfaceMatchesPort(portName: string, interfaceName: string): b
 }
 
 /**
+ * Identity of a connector name as declared by a panel family.
+ *
+ * - `label`: short vendor panel label with a single ordinal (`100GE-1`, `SFP28-3`);
+ * - `hierarchical`: CLI name with slot/subslot/port (`100GE1/0/1`, `ge-0/0/2`).
+ *
+ * Used to correlate a template label with the real CLI name when both describe
+ * the same family but cannot be compared textually. The family keeps internal
+ * digits (`100GE` ≠ `10GE`) and drops only the trailing ordinal.
+ */
+export interface PanelFamilyIdentity {
+  family: string;
+  kind: 'label' | 'hierarchical';
+  /** every number of the name, in order (used for natural sorting) */
+  numbers: number[];
+}
+
+export function panelFamilyIdentity(name: string): PanelFamilyIdentity | null {
+  const raw = name.trim();
+  if (!raw) return null;
+  const hierarchical = /[/:]/.test(raw);
+  const head = (hierarchical ? raw.split(/[/:]/)[0] : raw) ?? '';
+  const trailing = /(\d+)(?!.*\d)/.exec(head);
+  if (!trailing) return null;
+  const family = head
+    .slice(0, head.length - trailing[1]!.length)
+    .replace(/\+/g, 'plus')
+    .replace(/[\s_.-]+/g, '')
+    .toLowerCase();
+  if (!family || !/[a-z]/.test(family)) return null;
+  return {
+    family,
+    kind: hierarchical ? 'hierarchical' : 'label',
+    numbers: [...raw.matchAll(/\d+/g)].map((match) => Number(match[0])),
+  };
+}
+
+function compareNumbers(a: readonly number[], b: readonly number[]): number {
+  for (let index = 0; index < Math.max(a.length, b.length); index += 1) {
+    const left = a[index] ?? -1;
+    const right = b[index] ?? -1;
+    if (left !== right) return left - right;
+  }
+  return 0;
+}
+
+/**
+ * Correlates panel labels with hierarchical CLI names of the same family.
+ *
+ * A catalog may declare `100GE-1` while the device reports `100GE1/0/1`. The
+ * correlation is positional and only happens when both sides describe the same
+ * family with the **same amount of connectors**, so a device reporting a subset
+ * never receives a guessed mapping. Multiple families are handled independently
+ * and hierarchical↔hierarchical pairs are never correlated (ambiguous).
+ */
+export function correlatePanelLabels(
+  ports: ReadonlyArray<Pick<PhysicalPort, 'id' | 'name' | 'side' | 'mappedInterfaceId'>>,
+  interfaces: readonly InterfaceSyncTarget[],
+): Map<string, string> {
+  const correlation = new Map<string, string>();
+  const free = ports.filter((port) => port.side === 'DEVICE' && !port.mappedInterfaceId);
+  const byFamily = new Map<string, { portIds: string[]; portNumbers: number[][] }>();
+  for (const port of free) {
+    const identity = panelFamilyIdentity(port.name);
+    if (!identity || identity.kind !== 'label') continue;
+    const bucket = byFamily.get(identity.family) ?? { portIds: [], portNumbers: [] };
+    bucket.portIds.push(port.id);
+    bucket.portNumbers.push(identity.numbers);
+    byFamily.set(identity.family, bucket);
+  }
+  const interfacesByFamily = new Map<string, { ids: string[]; numbers: number[][] }>();
+  for (const item of interfaces) {
+    if (classifyPhysicalInterface(item.name).classification !== 'PHYSICAL') continue;
+    const identity = panelFamilyIdentity(item.name);
+    if (!identity || identity.kind !== 'hierarchical') continue;
+    const bucket = interfacesByFamily.get(identity.family) ?? { ids: [], numbers: [] };
+    bucket.ids.push(item.id);
+    bucket.numbers.push(identity.numbers);
+    interfacesByFamily.set(identity.family, bucket);
+  }
+  for (const [family, candidates] of byFamily) {
+    const devices = interfacesByFamily.get(family);
+    if (!devices || devices.ids.length !== candidates.portIds.length) continue;
+    const orderedPorts = candidates.portIds
+      .map((id, index) => ({ id, numbers: candidates.portNumbers[index]! }))
+      .sort((a, b) => compareNumbers(a.numbers, b.numbers));
+    const orderedInterfaces = devices.ids
+      .map((id, index) => ({ id, numbers: devices.numbers[index]! }))
+      .sort((a, b) => compareNumbers(a.numbers, b.numbers));
+    orderedInterfaces.forEach((item, index) => {
+      correlation.set(item.id, orderedPorts[index]!.id);
+    });
+  }
+  return correlation;
+}
+
+/**
  * True when the asset is bound to a specific vendor model (not a generic
  * template). Vendor templates are authoritative: the sync only maps interfaces
  * to the declared panel and never adds connectors.
@@ -343,6 +439,8 @@ export function planInterfaceSync(
   /** Connector keys created in this run: breakout stays collapsed. */
   const createdKeys = new Set<string>();
   const plan: InterfaceSyncPlanEntry[] = [];
+  /** Panel label (`100GE-1`) ↔ CLI name (`100GE1/0/1`) correlation. */
+  const panelCorrelation = correlatePanelLabels(ports, interfaces);
 
   const findFreePort = (interfaceName: string) =>
     freePorts.find(
@@ -380,6 +478,29 @@ export function planInterfaceSync(
           : `Vinculada à porta ${candidate.name} do equipamento`,
       });
       continue;
+    }
+
+    // Painel curto declarado no catálogo (`100GE-1`) x nome CLI hierárquico do
+    // equipamento (`100GE1/0/1`): correlação ordinal por família, nunca
+    // adivinhada quando as contagens divergem.
+    if (classification === 'PHYSICAL') {
+      const correlatedPortId = panelCorrelation.get(item.id);
+      const correlated = correlatedPortId
+        ? freePorts.find((port) => port.id === correlatedPortId)
+        : undefined;
+      if (correlated && !claimed.has(correlated.id)) {
+        claimed.add(correlated.id);
+        plan.push({
+          interfaceId: item.id,
+          interfaceName: item.name,
+          classification,
+          action: 'MAP',
+          portId: correlated.id,
+          portName: null,
+          reason: `Correlação de painel: ${correlated.name} ↔ ${item.name}`,
+        });
+        continue;
+      }
     }
 
     // Breakout lane without a cage port yet: a generic asset creates ONE

@@ -199,6 +199,31 @@ describe('physical catalog YAML (arquivo real)', () => {
     expect(entry('huawei-s6750-h36c').ports.some((port) => port.connector === 'QSFP28')).toBe(true);
   });
 
+  it('declara geometria de painel nos templates prioritários (type LOGICAL)', () => {
+    const result = loadPhysicalCatalog(PHYSICAL_CATALOG);
+    const withPanel = result.entries.filter((entry) => entry.panelLayout);
+    expect(withPanel.length).toBeGreaterThanOrEqual(40);
+    expect(new Set(withPanel.map((entry) => entry.panelLayout!.type))).toEqual(new Set(['LOGICAL']));
+    for (const key of [
+      'huawei-ne8000-f1a-8h20q',
+      'huawei-s6750-h48y8c-b',
+      'huawei-s6730-h48x6c-v2',
+      'mikrotik-crs328-24p-4splus-rm',
+      'mikrotik-ccr2216-1g-12xs-2xq',
+      'mikrotik-rb5009ug-s-in',
+    ]) {
+      const entry = result.entries.find((item) => item.catalogKey === key)!;
+      expect(entry.panelLayout, key).toBeTruthy();
+      expect(
+        entry.ports.some((port) => port.visual && port.visual.row !== undefined),
+        key,
+      ).toBe(true);
+    }
+    // o layout não muda a estrutura física declarada no YAML
+    expect(result.counts.ports).toBe(1480);
+    expect(result.counts.slots).toBe(153);
+  });
+
   it('mantém referenceUrls resolvidas a partir de sources', () => {
     const result = loadPhysicalCatalog(PHYSICAL_CATALOG);
     const rb5009 = result.entries.find((entry) => entry.catalogKey === 'mikrotik-rb5009ug-s-in')!;
@@ -267,6 +292,81 @@ describe('physical catalog YAML (política de falha)', () => {
       resolve('/workspace', 'apps/api/catalog/physical-catalog-v1.yaml'),
       resolve('/workspace', 'catalog/physical-catalog-v1.yaml'),
     ]);
+  });
+});
+
+describe('geometria visual declarada no catálogo', () => {
+  it('aceita panelLayout/visual sem marcar campos como não representados', () => {
+    writeFileSync(
+      file,
+      `schemaVersion: '1.0'
+templates:
+  - catalogKey: teste-visual
+    manufacturer: Teste
+    family: T
+    model: M
+    kind: SWITCH
+    layoutType: FIXED
+    heightU: 1
+    rackMount: true
+    vendorVerified: false
+    panelLayout:
+      type: LOGICAL
+      width: 100
+      height: 10
+    portGroups:
+      - groupKey: sfp
+        count: 4
+        connector: SFP
+        role: SERVICE
+        physicalLabelPattern: SFP-{n}
+        visual:
+          row: 1
+          columns: 4
+          x: 4
+          y: 2
+    slotGroups:
+      - groupKey: lpu
+        slotIds: [1, 2]
+        role: SERVICE
+        visual:
+          x: 10
+          y: 1
+          width: 20
+          height: 8
+`,
+      'utf8',
+    );
+    const result = loadPhysicalCatalogFile(file);
+    expect(result.source).toBe('yaml');
+    expect(result.errors).toEqual([]);
+    expect(result.unsupportedFields).toEqual([]);
+    const entry = result.entries[0]!;
+    expect(entry.panelLayout).toEqual({ type: 'LOGICAL', width: 100, height: 10 });
+    expect(entry.ports[0]!.visual).toMatchObject({ row: 1, columns: 4, x: 4, y: 2 });
+    expect(entry.slots[0]!.visual).toMatchObject({ x: 10, width: 20, height: 8 });
+  });
+
+  it('preserva type: FRONT quando o catálogo declara posição oficial', () => {
+    writeFileSync(
+      file,
+      `schemaVersion: '1.0'
+templates:
+  - catalogKey: teste-front
+    manufacturer: Teste
+    family: T
+    model: M
+    kind: SWITCH
+    heightU: 1
+    vendorVerified: true
+    panelLayout: { type: FRONT, width: 120, height: 8 }
+    portGroups: []
+    slotGroups: []
+`,
+      'utf8',
+    );
+    const result = loadPhysicalCatalogFile(file);
+    expect(result.entries[0]!.panelLayout).toEqual({ type: 'FRONT', width: 120, height: 8 });
   });
 });
 

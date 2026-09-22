@@ -342,6 +342,7 @@ export function PhysicalWorkspace() {
               mode={mode}
               selection={selection}
               path={pathQuery.data ?? null}
+              catalog={catalogQuery.data ?? []}
               onSelectAsset={(id) => setSelection({ kind: 'asset', id })}
               onSelectPort={(id) => setSelection({ kind: 'port', id })}
               onSelectConnection={(id) => setSelection({ kind: 'connection', id })}

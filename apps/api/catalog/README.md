@@ -123,6 +123,37 @@ implementationNotes: [ ... ]      # notas de implementação (patterns, offsets,
 - **`policies`**, **`interfaceClassification`** e **`implementationNotes`** são
   documentação: validadas quanto à presença, mas não viram linhas de banco.
 
+## Geometria visual do painel (opcional, retrocompatível)
+
+O catálogo pode declarar como o painel frontal é desenhado. As coordenadas são
+**relativas** (unidades de grade, nunca pixels): o renderer converte para pixels
+conforme a largura disponível, então aumentar o rack não exige alterar template.
+
+```yaml
+- catalogKey: huawei-ne8000-f1a-8h20q
+  panelLayout: {type: LOGICAL, width: 100, height: 14}
+  portGroups:
+  - groupKey: 100ge-cages
+    count: 8
+    connector: QSFP28
+    visual: {row: 1, columns: 8, x: 25, y: 0.6, gapX: 0.8}
+```
+
+- `panelLayout.type`: `FRONT` **somente** quando a posição oficial do painel foi
+  codificada; `LOGICAL` para o layout organizado por grupo de portas (o padrão).
+- `visual` aceita `row`, `rows`, `columns`, `x`, `y`, `width`, `height`, `gapX`,
+  `gapY`; campos ausentes são derivados pelo renderer.
+- Vale para `portGroups`, `slotGroups` e para o painel de um `moduleTemplate`.
+- Sem `panelLayout`/`visual` o template continua funcionando: o renderer usa o
+  fallback determinístico (agrupa por família de conector, calcula colunas e
+  fileiras, mantém **todas** as portas visíveis).
+- Tamanhos relativos por conector são do renderer (SFP < QSFP < QSFP-DD; RJ45,
+  PON e console com formas próprias) e não precisam ser declarados.
+
+Estado atual: **43 templates** com `panelLayout` (todos `type: LOGICAL`) e
+`visual` nos grupos prioritários (Huawei F1A/S6730/S6750, MikroTik CRS/CCR/RB).
+`unsupportedFields` permanece vazio — o loader reconhece o novo schema.
+
 ## Regras de conteúdo (não alterar sem fonte oficial)
 
 - `vendorVerified: true` só quando modelo/SKU e a estrutura de conectores têm

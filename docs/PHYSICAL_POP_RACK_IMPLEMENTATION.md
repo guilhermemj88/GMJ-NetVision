@@ -88,8 +88,8 @@ entidades acima continuam sendo as mesmas, com campos e tabelas novas ligadas a 
 ### Catálogo predefinido
 
 - `PhysicalEquipmentTemplate` ganhou `catalogKey` (único), `category`, `family`, `structureConfirmed`, `referenceUrl` e `origin` (`SYSTEM` | `CUSTOM`).
-- **A fonte de verdade é o arquivo `apps/api/catalog/physical-catalog-v1.yaml`** (schemaVersion 1.0): 119 templates de equipamento, 5 templates de placa, 1.311 portas e 82 slots. O catálogo embutido em `physical-catalog.ts` é apenas o fallback para quando o arquivo **não existe**. Regras aplicadas:
-  - `vendorVerified: true` **apenas** quando estrutura e modelo vieram da fonte oficial listada em `sources[]` (54 templates + as 5 placas verificadas);
+- **A fonte de verdade é o arquivo `apps/api/catalog/physical-catalog-v1.yaml`** (schemaVersion 1.0, conteúdo V1.1): 121 templates de equipamento, 5 templates de placa, 1.480 conectores e 153 slots. O catálogo embutido em `physical-catalog.ts` é apenas o fallback para quando o arquivo **não existe**. Regras aplicadas:
+  - `vendorVerified: true` **apenas** quando estrutura e modelo vieram da fonte oficial listada em `sources[]` (90 templates + as 5 placas verificadas; 31 seguem pendentes);
   - `structureConfirmed: false` mantém portas e slots vazios: o formulário pede os dados reais em vez de inventar;
   - templates genéricos (`generic-*`) são definicionais (patch panel tem canais, servidor 1U tem 1U) e nunca alegam ser um modelo de fabricante.
 - `POST /api/physical/catalog/bootstrap` sincroniza os templates `SYSTEM` por `catalogKey`: idempotente, nunca duplica e nunca sobrescreve `CUSTOM`. Em produção o bootstrap roda no `onReady` da API.
@@ -147,6 +147,7 @@ entidades acima continuam sendo as mesmas, com campos e tabelas novas ligadas a 
 
 - Modal de equipamento reescrito: `Categoria → Fabricante → Modelo/template → Device → Nome → Start U`, com resumo do template, selo `VERIFICADO NO FABRICANTE` / `TEMPLATE GENÉRICO` / `ESTRUTURA NÃO CONFIRMADA` e campos manuais quando o dado não foi confirmado.
 - Canvas desenha slots, placa instalada e portas da placa; portas ganham estado visual (`LIVRE`, `MAPEADA`, `LLDP`, `CONECTADA`) e marcador de vizinho LLDP.
+- **Faceplate realista (geometria visual separada da ocupação física)**: a régua continua marcando cada U e `startU`/`heightU` persistidos não mudam — uma U pode ser desenhada mais alta para caber o painel. A geometria vem do catálogo (`panelLayout`/`visual`, unidades de grade normalizadas, nunca pixels) e, sem ela, de um fallback determinístico. Todas as portas são desenhadas (nenhum `+N`), com tamanho por família de conector (SFP < QSFP < QSFP-DD; RJ45, PON e console próprios), e o cabo é ancorado no centro do conector realmente desenhado.
 - Inspetor: lista de slots com instalar/remover placa, vínculo com `Interface`, observações da porta, vizinho LLDP, painel de sugestões com o botão “Confirmar conexão física” (apenas `READY`), aviso de conectores lógicos com ação **Reconciliar portas lógicas** e exclusão de equipamento em dois passos.
 - Avisos da barra superior têm três níveis (`error`, `warning`, `info`): uma falha de sync depois de criar o equipamento aparece como aviso, com o equipamento já selecionado — a criação nunca é repetida.
 - Legenda de estados na barra superior e contador de adjacências LLDP do snapshot.

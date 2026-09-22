@@ -67,9 +67,9 @@ describe('bootstrap do catálogo físico', () => {
 
     const result = await service.bootstrapCatalog();
     expect(result.source).toBe('yaml');
-    expect(result.counts.templates).toBe(119);
+    expect(result.counts.templates).toBe(121);
     expect(syncCatalog).toHaveBeenCalledTimes(1);
-    expect(syncCatalog.mock.calls[0]?.[0]).toHaveLength(119);
+    expect(syncCatalog.mock.calls[0]?.[0]).toHaveLength(121);
   });
 
   it('trata catalogKey duplicado como erro explícito (nenhum registro é sobrescrito)', async () => {
