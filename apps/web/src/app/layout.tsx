@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { IBM_Plex_Mono, Inter } from 'next/font/google';
 import '@xyflow/react/dist/style.css';
 import './globals.css';
+import './physical-preview.css';
 import { Providers } from './providers';
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-sans' });

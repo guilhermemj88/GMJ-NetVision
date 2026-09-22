@@ -11,6 +11,8 @@ interface Props {
   scale: number;
   selected: boolean;
   inPath: boolean;
+  /** Diagnóstico da preview: destaca conectores com bbox sobreposto. */
+  overlap?: boolean;
   onSelect: (id: string) => void;
 }
 
@@ -21,7 +23,15 @@ interface Props {
  * pixels com a mesma escala usada para ancorar os cabos — o cabo sempre sai da
  * porta desenhada, nunca de uma posição aproximada por índice.
  */
-export function PhysicalPortShape({ port, placed, scale, selected, inPath, onSelect }: Props) {
+export function PhysicalPortShape({
+  port,
+  placed,
+  scale,
+  selected,
+  inPath,
+  overlap = false,
+  onSelect,
+}: Props) {
   const width = Math.max(7, Math.round(placed.shape.width * scale));
   const height = Math.max(7, Math.round(placed.shape.height * scale));
   const title = [
@@ -40,9 +50,15 @@ export function PhysicalPortShape({ port, placed, scale, selected, inPath, onSel
       type="button"
       data-port-id={port.id}
       data-connector={placed.kind}
-      className={`physical-port physical-port--${placed.kind.toLowerCase()} state-${port.state.toLowerCase()} ${
-        selected || inPath ? 'is-selected' : ''
-      }`}
+      className={[
+        'physical-port',
+        `physical-port--${placed.kind.toLowerCase()}`,
+        `state-${port.state.toLowerCase()}`,
+        selected || inPath ? 'is-selected' : '',
+        overlap ? 'is-overlap' : '',
+      ]
+        .filter(Boolean)
+        .join(' ')}
       style={{
         left: placed.x * scale,
         top: placed.y * scale,

@@ -443,3 +443,74 @@ export function calculateAssetDisplayHeight(
   const visual = Math.round(PANEL_VERTICAL_PADDING + layout.gridHeight * scale);
   return Math.max(physical, Math.min(Math.max(visual, physical), PANEL_MAX_HEIGHT));
 }
+
+/** Caixa geométrica de um conector/slot, usada para checar sobreposição. */
+export interface PanelGeometryBox {
+  id: string;
+  kind: 'connector' | 'slot';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export function panelGeometryBoxes(layout: PanelLayout): PanelGeometryBox[] {
+  return [
+    ...layout.connectors.map((connector) => ({
+      id: connector.portId,
+      kind: 'connector' as const,
+      x: connector.x,
+      y: connector.y,
+      width: connector.shape.width,
+      height: connector.shape.height,
+    })),
+    ...layout.slots.map((slot) => ({
+      id: slot.slotId,
+      kind: 'slot' as const,
+      x: slot.x,
+      y: slot.y,
+      width: slot.width,
+      height: slot.height,
+    })),
+  ];
+}
+
+export interface PanelOverlapReport {
+  /** ids de conectores que participam de alguma sobreposição */
+  ids: Set<string>;
+  /** pares sobrepostos */
+  pairs: number;
+}
+
+/** Tolerância mínima de interseção (unidades de grade) para não marcar bordas. */
+const OVERLAP_TOLERANCE = 0.15;
+
+function boxesOverlap(a: PanelGeometryBox, b: PanelGeometryBox): boolean {
+  const width = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+  const height = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+  return width > OVERLAP_TOLERANCE && height > OVERLAP_TOLERANCE;
+}
+
+/**
+ * Detecta sobreposição entre conectores de um painel.
+ *
+ * Slots são moldura (e as portas de uma placa vivem dentro deles), então só
+ * conectores são comparados — a ferramenta serve para achar coordenadas
+ * `visual:` erradas no catálogo e hotspots mal recortados na preview.
+ */
+export function findPanelOverlaps(layout: PanelLayout): PanelOverlapReport {
+  const boxes = panelGeometryBoxes(layout).filter((box) => box.kind === 'connector');
+  const ids = new Set<string>();
+  let pairs = 0;
+  for (let left = 0; left < boxes.length; left += 1) {
+    for (let right = left + 1; right < boxes.length; right += 1) {
+      const a = boxes[left]!;
+      const b = boxes[right]!;
+      if (!boxesOverlap(a, b)) continue;
+      pairs += 1;
+      ids.add(a.id);
+      ids.add(b.id);
+    }
+  }
+  return { ids, pairs };
+}

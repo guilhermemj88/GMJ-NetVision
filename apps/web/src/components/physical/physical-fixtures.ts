@@ -207,5 +207,7 @@ export function catalogEntry(partial: Partial<PhysicalCatalogEntry> = {}): Physi
     ports: partial.ports ?? [],
     slots: partial.slots ?? [],
     modules: partial.modules ?? [],
+    // o restante (layoutType, panelLayout, visual…) vem do override do teste
+    ...partial,
   };
 }

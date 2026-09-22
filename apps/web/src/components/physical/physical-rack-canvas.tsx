@@ -11,6 +11,7 @@ import type {
 } from '@gmj/shared';
 import type { PhysicalConnectionMode, PhysicalSelection } from './physical-types';
 import {
+  PANEL_MAX_HEIGHT,
   buildModulePanelLayout,
   buildPanelLayout,
   calculateAssetDisplayHeight,
@@ -18,12 +19,48 @@ import {
   type PanelLayout,
 } from './physical-panel-layout';
 import { PhysicalPortShape } from './physical-port-shape';
+import {
+  type FrontPanelBoxPx,
+  type FrontPanelImageMap,
+  frontPanelAnchorPx,
+  frontPanelAspectRatio,
+  frontPanelImageMapForAsset,
+  frontPanelPortMapFor,
+} from './front-panel-image-map';
+import { PhysicalImagePanel } from './physical-image-panel';
 import { RACK_GEOMETRY, buildRackGeometry, panelScale } from './physical-rack-geometry';
 
 /** Altura do cabeçalho de identidade dentro da faceplate (px). */
 const IDENTITY_HEIGHT = 30;
 /** Respiro vertical do painel dentro do equipamento. */
 const PANEL_PADDING = 8;
+
+/** Painel de um equipamento: imagem aprovada ou grade geométrica (fallback). */
+type AssetPanel =
+  | { kind: 'layout'; layout: PanelLayout; displayHeight: number }
+  | { kind: 'image'; map: FrontPanelImageMap; displayHeight: number };
+
+/** Largura útil do painel dentro do rack (px) — constante do desenho. */
+function panelWidth(): number {
+  return RACK_GEOMETRY.rackWidth - RACK_GEOMETRY.frameInset * 2;
+}
+
+/**
+ * Caixa da imagem dentro da área do painel, preservando a proporção original.
+ *
+ * É a **única** geometria do painel por imagem: imagem, hitboxes, tooltip e
+ * âncora do cabo derivam desta caixa (visual = hitbox = clique = cabo).
+ */
+function imageBoxIn(box: FrontPanelBoxPx, aspect: number): FrontPanelBoxPx {
+  const width = Math.min(box.width, box.height * aspect);
+  const height = width / aspect;
+  return {
+    left: box.left + (box.width - width) / 2,
+    top: box.top + (box.height - height) / 2,
+    width,
+    height,
+  };
+}
 
 interface CablePath {
   connection: PhysicalConnection;
@@ -77,13 +114,36 @@ export function PhysicalRackCanvas({
     return map;
   }, [catalog]);
 
-  /** Painel de cada equipamento (grade normalizada) + altura visual calculada. */
+  /** Largura útil do painel dentro do rack (px): define imagem e escala. */
+  const panelWidthPx = panelWidth();
+
+  /**
+   * Painel de cada equipamento: grade normalizada (`panelLayout`) **ou** mapa
+   * de imagem aprovado, sempre com a altura visual calculada. A ocupação
+   * física (`startU`/`heightU`) não muda em nenhum dos casos.
+   */
   const panels = useMemo(() => {
-    const result = new Map<string, { layout: PanelLayout; displayHeight: number }>();
+    const result = new Map<string, AssetPanel>();
     for (const asset of rack.assets) {
       const entry = asset.template?.catalogKey
         ? (catalogByKey.get(asset.template.catalogKey) ?? null)
         : null;
+      const imageMap = frontPanelImageMapForAsset(asset);
+      if (imageMap) {
+        const imageHeight = panelWidthPx / frontPanelAspectRatio(imageMap);
+        result.set(asset.id, {
+          kind: 'image',
+          map: imageMap,
+          displayHeight: Math.min(
+            PANEL_MAX_HEIGHT,
+            Math.max(
+              Math.max(1, asset.heightU) * base,
+              IDENTITY_HEIGHT + PANEL_PADDING * 2 + Math.round(imageHeight),
+            ),
+          ),
+        });
+        continue;
+      }
       const layout = buildPanelLayout({
         ports: asset.ports,
         slots: asset.slots,
@@ -91,12 +151,13 @@ export function PhysicalRackCanvas({
         entry,
       });
       result.set(asset.id, {
+        kind: 'layout',
         layout,
         displayHeight: calculateAssetDisplayHeight(layout, asset.heightU, base),
       });
     }
     return result;
-  }, [base, catalogByKey, rack.assets]);
+  }, [base, catalogByKey, panelWidthPx, rack.assets]);
 
   const displayHeights = useMemo(
     () => new Map([...panels].map(([assetId, panel]) => [assetId, panel.displayHeight])),
@@ -116,30 +177,60 @@ export function PhysicalRackCanvas({
     return entry.modules.find((item) => item.key === templateModule.catalogKey) ?? null;
   }
 
-  /** Escala e offsets (px) do painel de um equipamento. */
-  function panelViewport(asset: PhysicalAsset) {
+  /**
+   * Caixa do painel do equipamento (px no canvas).
+   *
+   * É a MESMA caixa usada para desenhar (imagem ou grade), para posicionar os
+   * hitboxes e para ancorar os cabos — nenhuma geometria paralela.
+   */
+  function panelBoxOf(asset: PhysicalAsset): FrontPanelBoxPx | null {
     const placement = geometry.assets.get(asset.id);
     const panel = panels.get(asset.id);
     if (!placement || !panel) return null;
-    const widthPx = geometry.rackWidth - RACK_GEOMETRY.frameInset * 2;
-    const availableHeight = Math.max(24, placement.height - IDENTITY_HEIGHT - PANEL_PADDING * 2);
-    const scale = Math.min(
-      panelScale(panel.layout.width, widthPx),
-      availableHeight / Math.max(panel.layout.gridHeight, 1),
-    );
     return {
-      placement,
-      panel,
-      scale,
-      offsetX: geometry.rackLeft + RACK_GEOMETRY.frameInset,
-      offsetY: placement.top + IDENTITY_HEIGHT + PANEL_PADDING,
+      left: geometry.rackLeft + RACK_GEOMETRY.frameInset,
+      top: placement.top + IDENTITY_HEIGHT + PANEL_PADDING,
+      width: geometry.rackWidth - RACK_GEOMETRY.frameInset * 2,
+      height: Math.max(24, placement.height - IDENTITY_HEIGHT - PANEL_PADDING),
     };
+  }
+
+  /** Escala e offsets (px) do painel geométrico de um equipamento. */
+  function panelViewport(asset: PhysicalAsset) {
+    const box = panelBoxOf(asset);
+    const panel = panels.get(asset.id);
+    if (!box || !panel || panel.kind !== 'layout') return null;
+    const scale = Math.min(
+      panelScale(panel.layout.width, box.width),
+      box.height / Math.max(panel.layout.gridHeight, 1),
+    );
+    return { panel, scale, offsetX: box.left, offsetY: box.top };
+  }
+
+  /** Caixa da imagem do equipamento (proporção preservada) — âncora inclusa. */
+  function imageBoxOf(asset: PhysicalAsset): FrontPanelBoxPx | null {
+    const box = panelBoxOf(asset);
+    const panel = panels.get(asset.id);
+    if (!box || !panel || panel.kind !== 'image') return null;
+    return imageBoxIn(box, frontPanelAspectRatio(panel.map));
   }
 
   /** Anchor do cabo: sempre o centro do conector realmente desenhado. */
   function portAnchor(assetId: string, portId: string): { x: number; y: number } | null {
     const asset = rack.assets.find((candidate) => candidate.id === assetId);
     if (!asset) return null;
+    const panel = panels.get(assetId);
+    if (panel?.kind === 'image') {
+      // Centro do mesmo bbox do hotspot: visual = hitbox = clique = cabo.
+      const imageBox = imageBoxOf(asset);
+      const port = asset.ports.find((candidate) => candidate.id === portId);
+      const mapped = port ? frontPanelPortMapFor(panel.map, port) : null;
+      if (imageBox && mapped) {
+        const anchor = frontPanelAnchorPx(panel.map, mapped.portName, imageBox);
+        if (anchor) return anchor;
+      }
+      // Porta fora do mapa (ex.: console/MGMT não recortado): cai no geométrico.
+    }
     const viewport = panelViewport(asset);
     if (!viewport) return null;
     const placed = viewport.panel.layout.connectors.find((item) => item.portId === portId);
@@ -304,15 +395,22 @@ export function PhysicalRackCanvas({
         </svg>
 
         {rack.assets.map((asset) => {
-          const viewport = panelViewport(asset);
-          if (!viewport) return null;
-          const { placement, panel, scale } = viewport;
+          const placement = geometry.assets.get(asset.id);
+          const panel = panels.get(asset.id);
+          const box = panelBoxOf(asset);
+          if (!placement || !panel || !box) return null;
+          const layoutPanel = panel.kind === 'layout' ? panel : null;
+          const viewport = layoutPanel ? panelViewport(asset) : null;
+          const scale = viewport?.scale ?? 1;
           const active = activeAssetIds.has(asset.id);
           const dimmed = Boolean(selection && activeAssetIds.size && !active);
           const uEnd = placement.startU + placement.heightU - 1;
+          const pathPortIds = new Set(
+            path?.steps.flatMap((step) => (step.kind === 'PORT' ? [step.portId] : [])) ?? [],
+          );
           const portNode = (portId: string) => {
             const port = asset.ports.find((candidate) => candidate.id === portId);
-            const placed = panel.layout.connectors.find((item) => item.portId === portId);
+            const placed = layoutPanel?.layout.connectors.find((item) => item.portId === portId);
             if (!port || !placed) return null;
             return (
               <PhysicalPortShape
@@ -321,13 +419,13 @@ export function PhysicalRackCanvas({
                 placed={placed}
                 scale={scale}
                 selected={selection?.kind === 'port' && selection.id === port.id}
-                inPath={Boolean(
-                  path?.steps.some((step) => step.kind === 'PORT' && step.portId === port.id),
-                )}
+                inPath={pathPortIds.has(port.id)}
                 onSelect={onSelectPort}
               />
             );
           };
+          /** Imagem + hitboxes: caixa com a proporção original, centralizada. */
+          const imageBox = panel.kind === 'image' ? imageBoxOf(asset) : null;
 
           return (
             <article
@@ -361,79 +459,100 @@ export function PhysicalRackCanvas({
                 className="physical-faceplate__panel"
                 style={{
                   left: RACK_GEOMETRY.frameInset,
-                  right: RACK_GEOMETRY.frameInset,
+                  top: IDENTITY_HEIGHT + PANEL_PADDING - 1,
+                  width: box.width,
                   // -1 compensa o `top: placement.top + 1` do artigo: o painel
                   // começa exatamente onde o anchor do cabo assume
-                  top: IDENTITY_HEIGHT + PANEL_PADDING - 1,
-                  height: Math.max(24, placement.height - IDENTITY_HEIGHT - PANEL_PADDING),
+                  height: box.height,
                 }}
                 aria-label={`Painel de ${asset.name}`}
               >
-                {panel.layout.slots.map((slot) => {
-                  const slotModel = asset.slots.find((item) => item.id === slot.slotId);
-                  const module = slotModel?.module ?? null;
-                  const moduleLayout = module
-                    ? buildModulePanelLayout({
-                        module,
-                        catalogModule: catalogModuleOf(asset, module.moduleTemplateId),
-                      })
-                    : null;
-                  const slotWidthPx = slot.width * scale;
-                  const slotHeightPx = slot.height * scale;
-                  const moduleScale = moduleLayout
-                    ? Math.min(scale, slotWidthPx / Math.max(moduleLayout.width, 1))
-                    : scale;
-                  return (
-                    <div
-                      key={slot.slotId}
-                      className={`physical-slot ${slot.occupied ? 'is-occupied' : ''}`}
-                      style={{
-                        left: Math.round(slot.x * scale),
-                        top: Math.round(slot.y * scale),
-                        width: Math.round(slotWidthPx),
-                        height: Math.round(slotHeightPx),
-                      }}
-                      title={
-                        module
-                          ? `${slot.label || `Slot ${slot.index}`} · ${module.name}`
-                          : `${slot.label || `Slot ${slot.index}`} · vazio`
-                      }
-                    >
-                      <em>{slot.index}</em>
-                      {module ? (
-                        <>
-                          <small>{module.model || module.name}</small>
-                          {moduleLayout ? (
-                            <div className="physical-slot__panel">
-                              {moduleLayout.connectors.map((placed) => {
-                                const port = module.ports.find(
-                                  (candidate) => candidate.id === placed.portId,
-                                );
-                                if (!port) return null;
-                                return (
-                                  <PhysicalPortShape
-                                    key={port.id}
-                                    port={port}
-                                    placed={placed}
-                                    scale={moduleScale}
-                                    selected={selection?.kind === 'port' && selection.id === port.id}
-                                    inPath={Boolean(
-                                      path?.steps.some(
-                                        (step) => step.kind === 'PORT' && step.portId === port.id,
-                                      ),
-                                    )}
-                                    onSelect={onSelectPort}
-                                  />
-                                );
-                              })}
-                            </div>
+                {panel.kind === 'image' && imageBox ? (
+                  <div
+                    className="physical-image-panel-slot"
+                    style={{
+                      left: imageBox.left - box.left,
+                      top: imageBox.top - box.top,
+                      width: imageBox.width,
+                      height: imageBox.height,
+                    }}
+                  >
+                    <PhysicalImagePanel
+                      map={panel.map}
+                      ports={asset.ports}
+                      selectedPortId={selection?.kind === 'port' ? selection.id : null}
+                      pathPortIds={pathPortIds}
+                      onSelectPort={onSelectPort}
+                    />
+                  </div>
+                ) : null}
+                {layoutPanel
+                  ? layoutPanel.layout.slots.map((slot) => {
+                      const slotModel = asset.slots.find((item) => item.id === slot.slotId);
+                      const module = slotModel?.module ?? null;
+                      const moduleLayout = module
+                        ? buildModulePanelLayout({
+                            module,
+                            catalogModule: catalogModuleOf(asset, module.moduleTemplateId),
+                          })
+                        : null;
+                      const slotWidthPx = slot.width * scale;
+                      const slotHeightPx = slot.height * scale;
+                      const moduleScale = moduleLayout
+                        ? Math.min(scale, slotWidthPx / Math.max(moduleLayout.width, 1))
+                        : scale;
+                      return (
+                        <div
+                          key={slot.slotId}
+                          className={`physical-slot ${slot.occupied ? 'is-occupied' : ''}`}
+                          style={{
+                            left: Math.round(slot.x * scale),
+                            top: Math.round(slot.y * scale),
+                            width: Math.round(slotWidthPx),
+                            height: Math.round(slotHeightPx),
+                          }}
+                          title={
+                            module
+                              ? `${slot.label || `Slot ${slot.index}`} · ${module.name}`
+                              : `${slot.label || `Slot ${slot.index}`} · vazio`
+                          }
+                        >
+                          <em>{slot.index}</em>
+                          {module ? (
+                            <>
+                              <small>{module.model || module.name}</small>
+                              {moduleLayout ? (
+                                <div className="physical-slot__panel">
+                                  {moduleLayout.connectors.map((placed) => {
+                                    const port = module.ports.find(
+                                      (candidate) => candidate.id === placed.portId,
+                                    );
+                                    if (!port) return null;
+                                    return (
+                                      <PhysicalPortShape
+                                        key={port.id}
+                                        port={port}
+                                        placed={placed}
+                                        scale={moduleScale}
+                                        selected={
+                                          selection?.kind === 'port' && selection.id === port.id
+                                        }
+                                        inPath={pathPortIds.has(port.id)}
+                                        onSelect={onSelectPort}
+                                      />
+                                    );
+                                  })}
+                                </div>
+                              ) : null}
+                            </>
                           ) : null}
-                        </>
-                      ) : null}
-                    </div>
-                  );
-                })}
-                {panel.layout.connectors.map((placed) => portNode(placed.portId))}
+                        </div>
+                      );
+                    })
+                  : null}
+                {layoutPanel
+                  ? layoutPanel.layout.connectors.map((placed) => portNode(placed.portId))
+                  : null}
               </div>
             </article>
           );
