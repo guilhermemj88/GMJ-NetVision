@@ -5,11 +5,12 @@ After=network.target netvision-api.service
 [Service]
 Type=simple
 WorkingDirectory=/opt/GMJ-NetVision/apps/web/.next/standalone
+# O .env é compartilhado com a API e define PORT=3333. O `EnvironmentFile`
+# sozinho deixava o Web standalone herdar essa porta (conflito com a API).
 EnvironmentFile=/opt/GMJ-NetVision/.env
 Environment=NODE_ENV=production
-Environment=PORT=3000
-Environment=HOSTNAME=0.0.0.0
-ExecStart=/usr/bin/node apps/web/server.js
+# PORT/HOSTNAME do Web são forçados no próprio processo, sobrepondo o .env.
+ExecStart=/usr/bin/env PORT=3000 HOSTNAME=0.0.0.0 /usr/bin/node apps/web/server.js
 Restart=always
 RestartSec=5
 

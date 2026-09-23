@@ -9,7 +9,10 @@ readonly NODE_BIN="/usr/bin/node"
 readonly WEB_HEALTH_URLS=(
   "http://127.0.0.1:3000/"
   "http://127.0.0.1:3000/physical/catalog-preview"
+  "http://127.0.0.1:3000/physical/rack-lab"
   "http://127.0.0.1:3000/physical-panels/huawei/s6730-h48x6c-front.png"
+  "http://127.0.0.1:3000/physical-panels/huawei/huawei-ma5800-x2-front.png"
+  "http://127.0.0.1:3000/physical-panels/huawei/ne8000-f1a-8h20q-front.png"
 )
 
 log() {
@@ -26,7 +29,7 @@ http_probe() {
   local url="$1"
   local include_body="${2:-false}"
 
-  node --input-type=module - "$url" "$include_body" <<'NODE'
+  "$NODE_BIN" --input-type=module - "$url" "$include_body" <<'NODE'
 const [url, includeBody] = process.argv.slice(2);
 
 try {
@@ -147,12 +150,21 @@ log "Instalando a unit do serviço Web"
 install -m 0644 "$PROJECT_DIR/deploy/netvision-web.service" "$WEB_SERVICE_UNIT"
 systemctl daemon-reload
 
-log "Reiniciando serviços"
+# Ordem obrigatória: o Web sai da frente antes de a API subir. Se o Web sobe
+# primeiro (ou se um Web antigo segue na 3333), a API morre com EADDRINUSE e o
+# /health passa a responder pelo Next.js.
+log "Parando o Web antes de subir a API"
+systemctl stop netvision-web
+
+log "Reiniciando a API"
 systemctl restart netvision-api
-systemctl restart netvision-web
 
 log "Validando a API"
-api_health_result="$(wait_for_api)"
+api_health_result="$(wait_for_api)" ||
+  fail "a API não respondeu em http://127.0.0.1:3333/health; o Web permanece parado para não ocupar a porta 3333"
+
+log "Iniciando o Web standalone"
+systemctl restart netvision-web
 
 log "Validando o Web (standalone)"
 web_health_result="$(wait_for_web)"
