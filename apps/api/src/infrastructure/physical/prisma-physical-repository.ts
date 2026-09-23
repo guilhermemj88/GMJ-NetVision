@@ -866,7 +866,10 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
         mappedInterfaceId: port.mappedInterfaceId,
       })),
       asset.device.interfaces.map((item) => ({ id: item.id, name: item.name })),
-      { vendorTemplate: isVendorTemplate(asset.template) },
+      {
+        vendorTemplate: isVendorTemplate(asset.template),
+        catalogKey: asset.template?.catalogKey ?? null,
+      },
     );
 
     let order = Math.max(0, ...asset.ports.map((port) => port.sortOrder));

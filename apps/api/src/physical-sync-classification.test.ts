@@ -7,6 +7,7 @@ import { DemoPhysicalRepository } from './infrastructure/physical/demo-physical-
 import { PhysicalService } from './infrastructure/physical/physical-service';
 import { PhysicalInventoryError } from './infrastructure/physical/physical-repository';
 import {
+  correlateCatalogPanelAliases,
   correlatePanelLabels,
   findReconcilablePorts,
   panelFamilyIdentity,
@@ -725,6 +726,180 @@ describe('correlação entre rótulo de painel e nome CLI', () => {
     expect(mapped).toContain('25GE-20');
     expect(mapped).toContain('10GE-28');
     await app.close();
+  });
+});
+
+/**
+ * `XGigabitEthernet`/`100GE` do VRP só viram `10GE-N`/`QSFP28-N` nos modelos do
+ * S6730: a exceção é amarrada ao `catalogKey` e nunca vale como regra global.
+ */
+describe('alias de painel do catálogo (S6730)', () => {
+  const S6730_H48 = 'huawei-s6730-h48x6c';
+  const S6730_H24 = 'huawei-s6730-h24x6c';
+
+  const cliNames = (servicePorts: number, uplinkPorts: number, slot = '0/0'): string[] => [
+    ...Array.from(
+      { length: servicePorts },
+      (_value, index) => `XGigabitEthernet${slot}/${index + 1}`,
+    ),
+    ...Array.from({ length: uplinkPorts }, (_value, index) => `100GE${slot}/${index + 1}`),
+  ];
+
+  const ifTargets = (names: readonly string[]) =>
+    names.map((name) => ({ id: `if-${name}`, name }));
+
+  const panel = (servicePorts: number, uplinkPorts = 6) => [
+    ...Array.from({ length: servicePorts }, (_value, index) => ({
+      id: `port-10ge-${index + 1}`,
+      name: `10GE-${index + 1}`,
+      side: 'DEVICE' as const,
+      mappedInterfaceId: null,
+    })),
+    ...Array.from({ length: uplinkPorts }, (_value, index) => ({
+      id: `port-qsfp28-${index + 1}`,
+      name: `QSFP28-${index + 1}`,
+      side: 'DEVICE' as const,
+      mappedInterfaceId: null,
+    })),
+  ];
+
+  it('correlaciona as duas famílias pelo ordinal final do CLI, sem exigir slot 0/0', () => {
+    const correlation = correlateCatalogPanelAliases(
+      panel(48),
+      ifTargets([...cliNames(48, 0, '1/0'), ...cliNames(0, 6)]),
+      S6730_H48,
+    );
+    expect(correlation.size).toBe(54);
+    expect(correlation.get('if-XGigabitEthernet1/0/1')).toBe('port-10ge-1');
+    expect(correlation.get('if-XGigabitEthernet1/0/48')).toBe('port-10ge-48');
+    expect(correlation.get('if-100GE0/0/1')).toBe('port-qsfp28-1');
+    expect(correlation.get('if-100GE0/0/6')).toBe('port-qsfp28-6');
+  });
+
+  it('não adivinha subconjunto nem aceita ordinal duplicado', () => {
+    const subset = correlateCatalogPanelAliases(
+      panel(48),
+      ifTargets(cliNames(48, 3)),
+      S6730_H48,
+    );
+    expect(subset.size).toBe(48);
+    expect(subset.get('if-100GE0/0/1')).toBeUndefined();
+
+    const duplicated = correlateCatalogPanelAliases(
+      panel(0),
+      ifTargets([
+        '100GE0/0/1',
+        '100GE1/0/1',
+        '100GE0/0/3',
+        '100GE0/0/4',
+        '100GE0/0/5',
+        '100GE0/0/6',
+      ]),
+      S6730_H48,
+    );
+    expect(duplicated.size).toBe(0);
+  });
+
+  it('não correlaciona fora dos catalogKey do S6730', () => {
+    const names = ifTargets(cliNames(48, 6));
+    expect(correlateCatalogPanelAliases(panel(48), names, 'huawei-s6750-h48x8c').size).toBe(0);
+    expect(
+      correlateCatalogPanelAliases(panel(48), names, 'huawei-ne8000-f1a-8h20q').size,
+    ).toBe(0);
+    expect(correlateCatalogPanelAliases(panel(48), names, null).size).toBe(0);
+    expect(correlateCatalogPanelAliases(panel(48), names, S6730_H48 + '-x').size).toBe(0);
+  });
+
+  it('mapeia as 54 portas do S6730-H48X6C e continua idempotente', async () => {
+    const context = await harness([hostRecord('host-s6730-h48', cliNames(48, 6))]);
+    const rack = await context.createRack();
+    const asset = await context.createAsset(rack.id, {
+      name: 'SW-CORE-S6730-48',
+      catalogKey: S6730_H48,
+      kind: 'NETWORK',
+      deviceId: 'host-s6730-h48',
+    });
+    expect(asset.ports).toHaveLength(54);
+
+    const report = await context.sync(asset.id);
+    expect(report.created).toBe(0);
+    expect(report.mapped).toBe(54);
+    expect(report.skippedByPolicy).toBe(0);
+    const mappedInterface = (portName: string) =>
+      report.ports.find((port) => port.name === portName)?.mappedInterfaceId;
+    expect(mappedInterface('10GE-1')).toBe('if-XGigabitEthernet0/0/1');
+    expect(mappedInterface('10GE-48')).toBe('if-XGigabitEthernet0/0/48');
+    expect(mappedInterface('QSFP28-1')).toBe('if-100GE0/0/1');
+    expect(mappedInterface('QSFP28-6')).toBe('if-100GE0/0/6');
+
+    const again = await context.sync(asset.id);
+    expect(again.created).toBe(0);
+    expect(again.mapped).toBe(54);
+    expect(again.skippedByPolicy).toBe(0);
+    await context.app.close();
+  });
+
+  it('mapeia as 30 portas do S6730-H24X6C', async () => {
+    const context = await harness([hostRecord('host-s6730-h24', cliNames(24, 6))]);
+    const rack = await context.createRack();
+    const asset = await context.createAsset(rack.id, {
+      name: 'SW-ACCESS-S6730-24',
+      catalogKey: S6730_H24,
+      kind: 'NETWORK',
+      deviceId: 'host-s6730-h24',
+    });
+    expect(asset.ports).toHaveLength(30);
+
+    const report = await context.sync(asset.id);
+    expect(report.created).toBe(0);
+    expect(report.mapped).toBe(30);
+    expect(report.skippedByPolicy).toBe(0);
+    const mappedInterface = (portName: string) =>
+      report.ports.find((port) => port.name === portName)?.mappedInterfaceId;
+    expect(mappedInterface('10GE-1')).toBe('if-XGigabitEthernet0/0/1');
+    expect(mappedInterface('10GE-24')).toBe('if-XGigabitEthernet0/0/24');
+    expect(mappedInterface('QSFP28-6')).toBe('if-100GE0/0/6');
+    await context.app.close();
+  });
+
+  it('não associa as 3 interfaces 100GE quando o painel declara 6 QSFP28', async () => {
+    const context = await harness([hostRecord('host-s6730-subset', cliNames(48, 3))]);
+    const rack = await context.createRack();
+    const asset = await context.createAsset(rack.id, {
+      name: 'SW-PARCIAL-S6730-48',
+      catalogKey: S6730_H48,
+      kind: 'NETWORK',
+      deviceId: 'host-s6730-subset',
+    });
+
+    const report = await context.sync(asset.id);
+    expect(report.created).toBe(0);
+    expect(report.mapped).toBe(48);
+    expect(report.skippedByPolicy).toBe(3);
+    const mapped = report.ports.filter((port) => port.mappedInterfaceId).map((port) => port.name);
+    expect(mapped).toContain('10GE-1');
+    expect(mapped).toContain('10GE-48');
+    expect(mapped.some((name) => name.startsWith('QSFP28'))).toBe(false);
+    await context.app.close();
+  });
+
+  it('mantém o alias restrito: os mesmos nomes não mapeiam em S6750 nem no F1A', async () => {
+    const names = cliNames(48, 6);
+    for (const catalogKey of ['huawei-s6750-h48x8c', 'huawei-ne8000-f1a-8h20q']) {
+      const context = await harness([hostRecord(`host-outro-${catalogKey}`, names)]);
+      const rack = await context.createRack();
+      const asset = await context.createAsset(rack.id, {
+        name: `OUTRO-${catalogKey}`,
+        catalogKey,
+        kind: 'NETWORK',
+        deviceId: `host-outro-${catalogKey}`,
+      });
+      const report = await context.sync(asset.id);
+      expect(report.created).toBe(0);
+      expect(report.mapped).toBe(0);
+      expect(report.skippedByPolicy).toBe(54);
+      await context.app.close();
+    }
   });
 });
 

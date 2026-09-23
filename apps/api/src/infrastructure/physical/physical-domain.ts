@@ -399,6 +399,87 @@ export function correlatePanelLabels(
 }
 
 /**
+ * Alias de família restrito a modelos do catálogo: alguns chassis declaram o
+ * rótulo do painel com uma família diferente da que o CLI reporta.
+ *
+ * No S6730 o painel declara `10GE-N`/`QSFP28-N` enquanto o VRP responde
+ * `XGigabitEthernet<slot>/<subslot>/N` e `100GE<slot>/<subslot>/N`. A exceção é
+ * amarrada ao `catalogKey` de propósito: `100GE` não é `QSFP28` e
+ * `XGigabitEthernet` não é `10GE` em outros modelos (F1A-8H20Q, S6750 etc.).
+ */
+const CATALOG_PANEL_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  'huawei-s6730-h24x6c': { xgigabitethernet: '10ge', '100ge': 'qsfp28' },
+  'huawei-s6730-h48x6c': { xgigabitethernet: '10ge', '100ge': 'qsfp28' },
+  'huawei-s6730-h24x6c-v2': { xgigabitethernet: '10ge', '100ge': 'qsfp28' },
+  'huawei-s6730-h48x6c-v2': { xgigabitethernet: '10ge', '100ge': 'qsfp28' },
+};
+
+/**
+ * Correlação ordinal por alias declarado no catálogo (exceção do modelo).
+ *
+ * Vale **somente** para os `catalogKey` de `CATALOG_PANEL_ALIASES` e somente
+ * quando o device reporta exatamente a quantidade de conectores daquela família
+ * no painel — subconjunto nunca é adivinhado. O ordinal é o último número do
+ * nome, então `XGigabitEthernet1/0/1` também casa com `10GE-1` (o slot não é
+ * fixo). Ordinal duplicado (`100GE0/0/1` + `100GE1/0/1`) invalida a família.
+ */
+export function correlateCatalogPanelAliases(
+  ports: ReadonlyArray<Pick<PhysicalPort, 'id' | 'name' | 'side' | 'mappedInterfaceId'>>,
+  interfaces: readonly InterfaceSyncTarget[],
+  catalogKey: string | null | undefined,
+): Map<string, string> {
+  const correlation = new Map<string, string>();
+  const aliases = catalogKey ? CATALOG_PANEL_ALIASES[catalogKey.trim().toLowerCase()] : undefined;
+  if (!aliases) return correlation;
+
+  for (const [cliFamily, panelFamily] of Object.entries(aliases)) {
+    const panelPorts = new Map<number, string>();
+    let usable = true;
+    for (const port of ports) {
+      if (port.side !== 'DEVICE' || port.mappedInterfaceId) continue;
+      const identity = panelFamilyIdentity(port.name);
+      if (identity?.kind !== 'label' || identity.family !== panelFamily) continue;
+      const ordinal = identity.numbers.at(-1);
+      if (ordinal === undefined || panelPorts.has(ordinal)) {
+        usable = false;
+        break;
+      }
+      panelPorts.set(ordinal, port.id);
+    }
+    if (!usable || panelPorts.size === 0) continue;
+
+    const devices = new Map<number, string>();
+    for (const item of interfaces) {
+      if (classifyPhysicalInterface(item.name).classification !== 'PHYSICAL') continue;
+      const identity = panelFamilyIdentity(item.name);
+      if (identity?.kind !== 'hierarchical' || identity.family !== cliFamily) continue;
+      const ordinal = identity.numbers.at(-1);
+      if (ordinal === undefined || devices.has(ordinal)) {
+        usable = false;
+        break;
+      }
+      devices.set(ordinal, item.id);
+    }
+    // Conservador: a quantidade reportada tem de bater com a do painel.
+    if (!usable || devices.size !== panelPorts.size) continue;
+
+    const pending = new Map<string, string>();
+    for (const [ordinal, interfaceId] of devices) {
+      const portId = panelPorts.get(ordinal);
+      if (!portId) {
+        usable = false;
+        break;
+      }
+      pending.set(interfaceId, portId);
+    }
+    if (!usable) continue;
+    for (const [interfaceId, portId] of pending) correlation.set(interfaceId, portId);
+  }
+
+  return correlation;
+}
+
+/**
  * True when the asset is bound to a specific vendor model (not a generic
  * template). Vendor templates are authoritative: the sync only maps interfaces
  * to the declared panel and never adds connectors.
@@ -422,11 +503,15 @@ export function isVendorTemplate(
  * | LOGICAL pura (`Vlanif`, `irb.100`, `.100`) | SKIP |
  * | UNKNOWN | MAP em porta existente, nunca cria |
  * | PHYSICAL | MAP ou CREATE (só quando o template não é de fabricante) |
+ *
+ * `catalogKey` habilita a exceção de alias do modelo
+ * (`correlateCatalogPanelAliases`): o S6730 declara `10GE-N`/`QSFP28-N` e o VRP
+ * responde `XGigabitEthernet<slot>/<subslot>/N`/`100GE<slot>/<subslot>/N`.
  */
 export function planInterfaceSync(
   ports: ReadonlyArray<Pick<PhysicalPort, 'id' | 'name' | 'side' | 'mappedInterfaceId'>>,
   interfaces: readonly InterfaceSyncTarget[],
-  options: { vendorTemplate?: boolean } = {},
+  options: { vendorTemplate?: boolean; catalogKey?: string | null } = {},
 ): InterfaceSyncPlanEntry[] {
   const freePorts = ports.filter((port) => port.side === 'DEVICE' && !port.mappedInterfaceId);
   /** Interfaces that already own a port keep it: the sync is idempotent. */
@@ -441,6 +526,19 @@ export function planInterfaceSync(
   const plan: InterfaceSyncPlanEntry[] = [];
   /** Panel label (`100GE-1`) ↔ CLI name (`100GE1/0/1`) correlation. */
   const panelCorrelation = correlatePanelLabels(ports, interfaces);
+  // Exceção orientada pelo catálogo (S6730): `10GE-N` ↔ `XGigabitEthernet0/0/N`
+  // e `QSFP28-N` ↔ `100GE0/0/N`. Só preenche o que a correlação genérica não
+  // reivindicou, para nunca roubar um par já resolvido.
+  const correlatedPorts = new Set(panelCorrelation.values());
+  for (const [interfaceId, portId] of correlateCatalogPanelAliases(
+    ports,
+    interfaces,
+    options.catalogKey,
+  )) {
+    if (panelCorrelation.has(interfaceId) || correlatedPorts.has(portId)) continue;
+    panelCorrelation.set(interfaceId, portId);
+    correlatedPorts.add(portId);
+  }
 
   const findFreePort = (interfaceName: string) =>
     freePorts.find(

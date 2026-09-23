@@ -548,7 +548,10 @@ export class DemoPhysicalRepository implements PhysicalRepository {
         mappedInterfaceId: port.mappedInterfaceId,
       })),
       host.interfaces.map((item) => ({ id: item.id, name: item.name })),
-      { vendorTemplate: isVendorTemplate(asset.template) },
+      {
+        vendorTemplate: isVendorTemplate(asset.template),
+        catalogKey: asset.template?.catalogKey ?? null,
+      },
     );
     let order = Math.max(0, ...assetPorts.map((port) => port.order));
     const interfaceById = new Map(host.interfaces.map((item) => [item.id, item]));
