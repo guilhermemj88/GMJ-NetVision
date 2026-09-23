@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import type { FrontPanelBoxPx } from './front-panel-image-map';
 import { type ModularChassisMap, chassisSlotMapFor } from './modular-chassis-map';
+import { slotRoleAccent } from './physical-technical';
 
 /** Visão de um slot do chassi para renderização (nada é inventado aqui). */
 export interface ModularSlotView {
@@ -13,6 +14,8 @@ export interface ModularSlotView {
   moduleName?: string | null;
   /** Imagem própria da placa, quando existir (senão usa o fallback geométrico). */
   moduleImage?: string | null;
+  /** Módulos compatíveis declarados pelo catálogo (slot vazio na visão técnica). */
+  compatibleModules?: string[];
 }
 
 interface Props {
@@ -82,6 +85,12 @@ export function PhysicalModularPanel({
         />
       ) : null}
 
+      {map.slots.length === 0 && isTechnical ? (
+        <p className="physical-modular-panel__fallback">
+          Estrutura de slots não confirmada no catálogo (sem geometria inventada).
+        </p>
+      ) : null}
+
       {map.slots.map((mapped) => {
         const view = slots.find((slot) => slot.ordinal === mapped.ordinal) ?? null;
         const occupied = Boolean(view?.occupied);
@@ -97,6 +106,7 @@ export function PhysicalModularPanel({
               'physical-modular-panel__slot',
               occupied ? 'is-occupied' : 'is-empty',
               selectedSlotId && view && selectedSlotId === view.slotId ? 'is-selected' : '',
+              isTechnical ? `role-${slotRoleAccent(mapped.role)}` : '',
             ]
               .filter(Boolean)
               .join(' ')}
@@ -130,6 +140,16 @@ export function PhysicalModularPanel({
               <em className="physical-modular-panel__ordinal" aria-hidden="true">
                 {mapped.ordinal}
               </em>
+            ) : null}
+            {!occupied && isTechnical ? (
+              <span className="physical-modular-panel__slot-empty" aria-hidden="true">
+                Vazio
+              </span>
+            ) : null}
+            {!occupied && isTechnical && view?.compatibleModules?.length ? (
+              <small className="physical-modular-panel__slot-compat" aria-hidden="true">
+                compatível: {view.compatibleModules.join(' · ')}
+              </small>
             ) : null}
             {occupied && view?.moduleImage ? (
               <img

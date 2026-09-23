@@ -7295,11 +7295,26 @@ label > small {
   background: #0d151a;
 }
 .physical-port--rj45 span { background: #2a3a44; border-radius: 1px; }
+/* PON: receptáculo óptico (jaula + abertura circular do conector óptico), nunca RJ45. */
 .physical-port--pon {
-  border-radius: 50%;
+  border-radius: 3px;
   background: #101b21;
 }
-.physical-port--pon span { border-radius: 50%; background: #2f4a55; }
+.physical-port--pon span {
+  position: relative;
+  border-radius: 2px;
+  background: linear-gradient(135deg, #24343d, #1b2a33);
+}
+.physical-port--pon span::after {
+  content: '';
+  position: absolute;
+  inset: 22% 20%;
+  border-radius: 50%;
+  background: #04080b;
+  box-shadow:
+    inset 0 0 2px rgba(122, 190, 218, 0.28),
+    0 0 2px rgba(122, 190, 218, 0.25);
+}
 .physical-port--console,
 .physical-port--mgmt,
 .physical-port--usb_mini_b {
@@ -7561,6 +7576,117 @@ label > small {
   letter-spacing: 0.04em;
   text-shadow: 0 0 3px rgba(0, 0, 0, 0.95);
   pointer-events: none;
+}
+/* Acentos de papel do slot (visão técnica): cores contidas e funcionais. */
+.physical-modular-panel.is-technical .physical-modular-panel__slot.role-service {
+  border-color: rgba(94, 170, 220, 0.75);
+  background: rgba(94, 170, 220, 0.1);
+}
+.physical-modular-panel.is-technical .physical-modular-panel__slot.role-uplink {
+  border-color: rgba(111, 183, 228, 0.9);
+  background: rgba(111, 183, 228, 0.12);
+}
+.physical-modular-panel.is-technical .physical-modular-panel__slot.role-control {
+  border-color: rgba(167, 139, 250, 0.7);
+  background: rgba(167, 139, 250, 0.1);
+}
+.physical-modular-panel.is-technical .physical-modular-panel__slot.role-fabric {
+  border-color: rgba(240, 178, 76, 0.65);
+  background: rgba(240, 178, 76, 0.09);
+}
+.physical-modular-panel.is-technical .physical-modular-panel__slot.role-power {
+  border-color: rgba(67, 197, 158, 0.6);
+  background: rgba(67, 197, 158, 0.08);
+}
+.physical-modular-panel.is-technical .physical-modular-panel__slot.role-fan {
+  border-color: rgba(148, 163, 184, 0.45);
+  background: rgba(148, 163, 184, 0.06);
+}
+/* Slot vazio operacional + módulos compatíveis declarados pelo catálogo. */
+.physical-modular-panel__slot-empty {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  color: #8aa2b1;
+  font: 650 7px var(--font-mono);
+  font-style: normal;
+  letter-spacing: 0.05em;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.95);
+  pointer-events: none;
+}
+.physical-modular-panel__slot-compat {
+  position: absolute;
+  right: 4px;
+  bottom: 2px;
+  color: #6f8896;
+  font: 6.5px var(--font-mono);
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.95);
+  pointer-events: none;
+}
+/* Placa geométrica sem mapa frontal próprio (caso B: nada é inventado). */
+.physical-modular-panel__module-note {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  z-index: 5;
+  padding: 1px 3px;
+  border: 1px solid rgba(240, 178, 76, 0.4);
+  border-radius: 2px;
+  background: rgba(12, 20, 25, 0.85);
+  color: #e0b46a;
+  font: 650 6.5px var(--font-mono);
+  font-style: normal;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* Chassi sem estrutura de slots confirmada (ex.: MA5683T): nota honesta. */
+.physical-modular-panel__fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0 8px;
+  color: #7e939c;
+  font: 650 7px var(--font-mono);
+  letter-spacing: 0.04em;
+  text-align: center;
+  pointer-events: none;
+}
+/* Cabeçalho técnico: indicadores PWR/ALM/ACT decorativos no faceplate. */
+.physical-faceplate.is-technical .physical-faceplate__identity {
+  position: relative;
+}
+.physical-technical-indicators {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  display: inline-flex;
+  gap: 3px;
+  transform: translateY(-50%);
+}
+.physical-technical-indicators i {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  border-radius: 50%;
+  background: #0b1216;
+}
+.physical-technical-indicators i:first-child {
+  border-color: rgba(67, 197, 158, 0.7);
+  background: rgba(67, 197, 158, 0.85);
+}
+.physical-technical-indicators i:nth-child(2) {
+  border-color: rgba(240, 178, 76, 0.65);
+  background: #0b1216;
+}
+.physical-technical-indicators i:nth-child(3) {
+  border-color: rgba(94, 170, 220, 0.7);
+  background: rgba(94, 170, 220, 0.8);
 }
 /* Área do chassi dentro da faceplate e painel da placa dentro do slot. */
 .physical-modular-panel-area {

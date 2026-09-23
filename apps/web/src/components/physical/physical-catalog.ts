@@ -45,6 +45,8 @@ export function slotRoleLabel(role: string | null | undefined): string {
     case 'SERVICE':
     case 'SERVICE_OR_UPLINK':
       return 'Serviço/Uplink';
+    case 'LPU':
+      return 'Line Card';
     case 'CONTROL':
       return 'Controle';
     case 'UNIVERSAL':

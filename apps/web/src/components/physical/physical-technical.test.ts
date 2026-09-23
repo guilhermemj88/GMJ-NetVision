@@ -6,6 +6,7 @@ import {
   hasTechnicalRenderer,
   portFamilyPrefix,
   portOrdinalLabel,
+  slotRoleAccent,
   technicalChassisDisplayHeight,
   technicalChassisMap,
   technicalPanelCaptions,
@@ -17,18 +18,46 @@ import {
  * (catálogo + mapa do chassi), sem estrutura paralela.
  */
 describe('physical technical rendering', () => {
-  it('declara exatamente os modelos desta fase', () => {
+  it('declara exatamente os modelos desta fase (SKUs exatos, sem placeholders)', () => {
     expect([...TECHNICAL_RENDER_CATALOG_KEYS].sort()).toEqual(
       [
-        'huawei-ma5800-x7',
-        'huawei-ne8000-f1a-8h20q',
+        // switches fixos
+        'huawei-s6730-h24x6c',
+        'huawei-s6730-h24x6c-v2',
         'huawei-s6730-h48x6c',
         'huawei-s6730-h48x6c-v2',
+        'huawei-s6750-h36c',
         'huawei-s6750-h48x8c',
         'huawei-s6750-h48y8c',
         'huawei-s6750-h48y8c-b',
+        // roteador fixo
+        'huawei-ne8000-f1a-8h20q',
+        // roteadores modulares
+        'huawei-ne8000-m4',
+        'huawei-ne8000-m8-ac',
+        'huawei-ne8000-m8-dc',
+        'huawei-ne40e-x3-ac',
+        'huawei-ne40e-x3-dc',
+        'huawei-ne40e-x3a',
+        'huawei-ne40e-x8',
+        'huawei-ne40e-x8a',
+        'huawei-ne40e-x16',
+        'huawei-ne40e-x16a',
+        // OLTs
+        'huawei-ma5683t',
+        'huawei-ma5800-x15',
+        'huawei-ma5800-x17',
+        'huawei-ma5800-x2',
+        'huawei-ma5800-x7',
       ].sort(),
     );
+  });
+
+  it('mantém placeholders de família fora do desenho técnico', () => {
+    expect(hasTechnicalRenderer('huawei-s5700-family')).toBe(false);
+    expect(hasTechnicalRenderer('huawei-s5720-family')).toBe(false);
+    expect(hasTechnicalRenderer('huawei-s6720-family')).toBe(false);
+    expect(hasTechnicalRenderer('huawei-ne40e-x3')).toBe(false);
   });
 
   it('resolve o renderer por catálogo e modo', () => {
@@ -36,15 +65,39 @@ describe('physical technical rendering', () => {
     expect(hasTechnicalRenderer('huawei-s6730-h48x6c')).toBe(true);
     expect(hasTechnicalRenderer('huawei-s6750-h48x8c')).toBe(true);
     expect(hasTechnicalRenderer('huawei-ma5800-x7')).toBe(true);
-    // fora do escopo da primeira fase
-    expect(hasTechnicalRenderer('huawei-s6730-h24x6c')).toBe(false);
+    // SKUs novos desta fase
+    expect(hasTechnicalRenderer('huawei-s6730-h24x6c')).toBe(true);
+    expect(hasTechnicalRenderer('huawei-s6750-h36c')).toBe(true);
+    expect(hasTechnicalRenderer('huawei-ne8000-m4')).toBe(true);
+    expect(hasTechnicalRenderer('huawei-ne8000-m8-dc')).toBe(true);
+    expect(hasTechnicalRenderer('huawei-ne40e-x3-dc')).toBe(true);
+    expect(hasTechnicalRenderer('huawei-ne40e-x16a')).toBe(true);
+    expect(hasTechnicalRenderer('huawei-ma5683t')).toBe(true);
+    expect(hasTechnicalRenderer('huawei-ma5800-x2')).toBe(true);
+    // fora do escopo (não-Huawei e placeholders)
     expect(hasTechnicalRenderer('mikrotik-crs328-24p-4splus-rm')).toBe(false);
     expect(hasTechnicalRenderer(null)).toBe(false);
 
     // o modo real nunca troca o desenho
     expect(assetUsesTechnicalRenderer('huawei-s6730-h48x6c', 'REAL')).toBe(false);
     expect(assetUsesTechnicalRenderer('huawei-s6730-h48x6c', 'TECHNICAL')).toBe(true);
-    expect(assetUsesTechnicalRenderer('huawei-s6730-h24x6c', 'TECHNICAL')).toBe(false);
+    expect(assetUsesTechnicalRenderer('huawei-s6730-h24x6c', 'TECHNICAL')).toBe(true);
+    expect(assetUsesTechnicalRenderer('huawei-s6720-family', 'TECHNICAL')).toBe(false);
+  });
+
+  it('mapeia o papel do slot para o acento visual', () => {
+    expect(slotRoleAccent('SERVICE')).toBe('service');
+    expect(slotRoleAccent('SERVICE_OR_UPLINK')).toBe('service');
+    expect(slotRoleAccent('LPU')).toBe('service');
+    expect(slotRoleAccent('UPLINK')).toBe('uplink');
+    expect(slotRoleAccent('CONTROL')).toBe('control');
+    expect(slotRoleAccent('MPU')).toBe('control');
+    expect(slotRoleAccent('FABRIC')).toBe('fabric');
+    expect(slotRoleAccent('SFU')).toBe('fabric');
+    expect(slotRoleAccent('POWER')).toBe('power');
+    expect(slotRoleAccent('FAN')).toBe('fan');
+    expect(slotRoleAccent('UNIVERSAL')).toBe('neutral');
+    expect(slotRoleAccent(null)).toBe('neutral');
   });
 
   it('deriva o chassi técnico do mesmo mapa, sem a fotografia', () => {

@@ -379,6 +379,12 @@ export function PhysicalRackCanvas({
       const catalogMap = chassisSlotMapFor(map, slot);
       const catalogSlot = entry?.slots.find((item) => item.index === slot.index) ?? null;
       const role = catalogSlot?.slotRole ?? catalogMap?.role ?? null;
+      const compatibleModules =
+        entry && catalogSlot && catalogSlot.moduleKeys.length > 0
+          ? entry.modules
+              .filter((candidate) => catalogSlot.moduleKeys.includes(candidate.key))
+              .map((candidate) => candidate.partNumber ?? candidate.model ?? candidate.name)
+          : [];
       return {
         slotId: slot.id,
         ordinal: slot.index,
@@ -386,6 +392,7 @@ export function PhysicalRackCanvas({
         occupied: module !== null,
         moduleName: module ? module.model || module.name : null,
         moduleImage: null,
+        compatibleModules,
       };
     });
   }
@@ -720,6 +727,9 @@ export function PhysicalRackCanvas({
             path?.steps.flatMap((step) => (step.kind === 'PORT' ? [step.portId] : [])) ?? [],
           );
           const technical = technicalOf(asset);
+          const templateEntry = asset.template?.catalogKey
+            ? (catalogByKey.get(asset.template.catalogKey) ?? null)
+            : null;
           const portNode = (portId: string) => {
             const port = asset.ports.find((candidate) => candidate.id === portId);
             const placed = layoutPanel?.layout.connectors.find((item) => item.portId === portId);
@@ -789,6 +799,8 @@ export function PhysicalRackCanvas({
               <div className="physical-faceplate__identity">
                 <strong>{asset.name}</strong>
                 <small>
+                  {technical ? 'HUAWEI · ' : ''}
+                  {technical && templateEntry?.family ? `${templateEntry.family} · ` : ''}
                   {asset.template?.model ||
                     asset.template?.name ||
                     asset.device?.model ||
@@ -796,6 +808,13 @@ export function PhysicalRackCanvas({
                   {' · '}U{placement.startU}
                   {uEnd > placement.startU ? `–U${uEnd}` : ''} · {placement.heightU}U
                 </small>
+                {technical ? (
+                  <span className="physical-technical-indicators" aria-hidden="true">
+                    <i title="PWR" />
+                    <i title="ALM" />
+                    <i title="ACT" />
+                  </span>
+                ) : null}
               </div>
 
               <div
@@ -887,8 +906,22 @@ export function PhysicalRackCanvas({
                             module,
                             catalogModule: catalogModuleOf(asset, module.moduleTemplateId),
                           });
+                        const moduleCatalog = catalogModuleOf(asset, module.moduleTemplateId);
+                        // caso B: placa sem mapa frontal próprio (nem por módulo
+                        // do catálogo nem por modelo) — nota honesta, sem inventar
+                        const moduleFrontMap = moduleFrontPanelMapFor({
+                          moduleKey: moduleCatalog?.key ?? null,
+                          partNumber: moduleCatalog?.partNumber ?? null,
+                          model: module.model,
+                          name: module.name,
+                        });
                         return (
                           <div className="physical-modular-panel__module-panel" style={panelStyle}>
+                            {technical && !moduleFrontMap ? (
+                              <em className="physical-modular-panel__module-note" aria-hidden="true">
+                                Mapa frontal não disponível
+                              </em>
+                            ) : null}
                             {captions(moduleLayout, offset)}
                             {moduleLayout.connectors.map((placed) => {
                               const port = module.ports.find(

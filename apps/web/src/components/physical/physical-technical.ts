@@ -3,24 +3,55 @@ import type { PanelLayout, PlacedConnector } from './physical-panel-layout';
 import type { PhysicalVisualMode } from './physical-types';
 
 /**
- * Visão **TÉCNICA** (protótipo controlado).
+ * Visão **TÉCNICA** (protótipo controlado, agora generalizado).
  *
  * A visão técnica é apenas **outra camada de renderização**: não duplica modelo
  * de dados nem cria estrutura paralela. A verdade continua sendo
  * catálogo → panel layout / chassis map → slots → módulos → portas → conexões.
  *
- * Nesta primeira fase só os modelos abaixo trocam de desenho. Qualquer outro
- * equipamento permanece com o desenho REAL mesmo com o modo técnico ligado, de
- * propósito: o protótipo é controlado e não redesenha o projeto inteiro.
+ * Só os **SKUs exatos** de Huawei listados abaixo trocam de desenho. Os
+ * placeholders de família (`huawei-s5700-family`, `huawei-s5720-family`,
+ * `huawei-s6720-family`, `huawei-ne40e-x3` genérico) ficam de fora **de
+ * propósito**: sem painel exato no catálogo, sem desenho técnico inventado —
+ * eles seguem no desenho real/fallback em qualquer modo.
  */
-export const TECHNICAL_RENDER_CATALOG_KEYS: readonly string[] = [
+
+/** Equipamentos FIXOS com desenho técnico (SKUs exatos do catálogo). */
+const TECHNICAL_FIXED_KEYS = new Set([
   'huawei-ne8000-f1a-8h20q',
+  'huawei-s6730-h24x6c',
   'huawei-s6730-h48x6c',
+  'huawei-s6730-h24x6c-v2',
   'huawei-s6730-h48x6c-v2',
   'huawei-s6750-h48x8c',
   'huawei-s6750-h48y8c',
   'huawei-s6750-h48y8c-b',
+  'huawei-s6750-h36c',
+]);
+
+/** Chassis MODULARES com desenho técnico (SKUs exatos do catálogo). */
+const TECHNICAL_MODULAR_KEYS = new Set([
+  'huawei-ne8000-m4',
+  'huawei-ne8000-m8-dc',
+  'huawei-ne8000-m8-ac',
+  'huawei-ne40e-x3-dc',
+  'huawei-ne40e-x3-ac',
+  'huawei-ne40e-x3a',
+  'huawei-ne40e-x8',
+  'huawei-ne40e-x8a',
+  'huawei-ne40e-x16',
+  'huawei-ne40e-x16a',
+  'huawei-ma5683t',
+  'huawei-ma5800-x2',
   'huawei-ma5800-x7',
+  'huawei-ma5800-x15',
+  'huawei-ma5800-x17',
+]);
+
+/** Todos os modelos com desenho técnico nesta fase (união de fixos + modulares). */
+export const TECHNICAL_RENDER_CATALOG_KEYS: readonly string[] = [
+  ...TECHNICAL_FIXED_KEYS,
+  ...TECHNICAL_MODULAR_KEYS,
 ];
 
 const TECHNICAL_KEYS = new Set(TECHNICAL_RENDER_CATALOG_KEYS);
@@ -34,6 +65,35 @@ export const TECHNICAL_ROW_HEIGHT = 19;
 /** `true` somente para os modelos com desenho técnico nesta fase. */
 export function hasTechnicalRenderer(catalogKey: string | null | undefined): boolean {
   return Boolean(catalogKey && TECHNICAL_KEYS.has(catalogKey));
+}
+
+/**
+ * Acento visual do papel do slot na visão técnica (token de classe CSS).
+ *
+ * Cores funcionais e contidas: serviço/linha = azul, uplink = azul forte,
+ * controle = roxo, fabric = âmbar, energia = verde, ventilação = neutro.
+ */
+export function slotRoleAccent(role: string | null | undefined): string {
+  switch (role) {
+    case 'SERVICE':
+    case 'SERVICE_OR_UPLINK':
+    case 'LPU':
+      return 'service';
+    case 'UPLINK':
+      return 'uplink';
+    case 'CONTROL':
+    case 'MPU':
+      return 'control';
+    case 'FABRIC':
+    case 'SFU':
+      return 'fabric';
+    case 'POWER':
+      return 'power';
+    case 'FAN':
+      return 'fan';
+    default:
+      return 'neutral';
+  }
 }
 
 /** Resolve se o equipamento deve usar o desenho técnico no modo atual. */
