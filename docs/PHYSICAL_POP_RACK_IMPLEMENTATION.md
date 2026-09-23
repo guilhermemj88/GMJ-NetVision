@@ -168,3 +168,89 @@ entidades acima continuam sendo as mesmas, com campos e tabelas novas ligadas a 
 - Commit `93baa7c` (autor: Guilherme, 2026-09-21 10:43 -0300) incluiu, além do trabalho BGP, a fatia inicial deste módulo físico, o ZIP de referência `0c924f57-d8af-49b8-ac19-9c78c1541c01.zip` e os arquivos `flash-*.diff/txt` que estavam no diretório de trabalho. Nada foi removido nem reescrito.
 - Continuação do módulo (UI física, catálogo, slots/placas, LLDP, testes e ajustes) permanece **somente no working tree**, sem commit.
 - Próximo passo recomendado: aplicar a migration nova em ambiente de desenvolvimento, rodar `POST /api/physical/catalog/bootstrap` e validar a view Físico com um POP real.
+
+## Visão técnica — linguagem visual e Slot Lab (2026-09-23)
+
+Porte **apenas visual** do protótipo de referência para a visão `Técnica` que já existia. Nenhum
+dado do protótipo entra no NetVision: sem catálogo paralelo, sem migration, sem tabela nova. A
+cadeia continua `CATALOG → PhysicalAsset → PhysicalSlot → PhysicalModule → PhysicalPort → Cable
+Anchor`.
+
+**Referência visual correta (2ª passada):** `af7c2169-d46a-4acd-9994-df36b5570c01.zip`
+(protótipo Vite com `EquipmentChassis`, `Slot`, `ModuleShell`, `BlankPanel`, `LineCard`,
+`OLTServiceBoard`, `ControlModule`, `PowerModule`, `FanModule`, `Port`, `StatusLeds`, `FanGlyph`,
+`useSlotConfigurator`, `ModulePalette`, `SlotInspector`, `SlotPrototype`; paleta `nv-*` +
+`CATEGORY_COLORS`/`PORT_COLORS`). O ZIP anterior (`0c924f57-…`, protótipo de rack) foi **descartado
+como referência desta etapa** — continua valendo apenas como referência histórica das fases
+milestone 5/6.
+
+Aparência aproveitada/adaptada na 2ª passada (tudo em `TECHNICAL`; `REAL` intacto):
+
+- **Paleta `nv`/categorias**: tokens CSS `--tech-nv-*`, `--tech-cat-*` e `--tech-port-*`; chassi com
+  interior rebaixado + moldura de bezel, cabeçalho com marca HUAWEI, LEDs rotulados PWR/ALM/ACT,
+  chip de `heightU` e resumo de papéis do chassi (`4 serviço/uplink · 1 controle`).
+- **`ModuleShell`**: cada placa ganha moldura na cor da categoria, bloco de código (part number) +
+  nome da placa, LEDs por tipo (RUN/ACT/ALM, PWR, FAN) e ejetores desenhados **só onde a placa tem
+  folga** no slot (`slack` calculado da própria colocação). É camada `inset: 0` sem interação —
+  as portas continuam filhas diretas do contêiner e a geometria/âncora seguem iguais.
+- **`BlankPanel`**: fundo `#141d29`, parafusos nas pontas e fendas de ventilação (padrão repetido,
+  girado no slot vertical); código do papel no centro.
+- **`Port`/`PortGroup`**: cor por família (`--tech-port-sfp|sfp28|qsfp|qsfpdd|pon|rj45`) com caixa
+  interna, trava do RJ45, divisória do QSFP e núcleo óptico no PON/XGS-PON. `PhysicalPortShape`
+  continua dono de posição, clique, seleção, LLDP, estado e âncora.
+- **`Slot`/`useSlotConfigurator`/`ModulePalette`/`SlotInspector` (só no LAB)**: paleta de módulos
+  agrupada por categoria (com selo de slots compatíveis), fluxo **armar → clicar no slot**, realce
+  `is-fit-ok` ("✓ Encaixa") e `is-fit-bad` ("Incompatível" + motivo), botão **×** para remover a
+  placa, inspector do slot (papel, moduleKeys declarados, ocupante) e bloco "não suportados neste
+  chassi". Tudo em `useState` local, sem API/persistência.
+
+Mantidos sem alteração: `slotInnerBox()`, `modulePanelPlacementInSlot()`, `modulePortAnchorPx()`,
+`PhysicalSlot`/`PhysicalModule`/`PhysicalPort`, orientação pelo mapa (X2/X7/M4 horizontal;
+X15/X17/M8 vertical) e a pendência **NE40E-M2K-B**.
+
+- **Portas**: o desenho continua vindo de `CONNECTOR_SHAPES`/`PhysicalPortShape` (mesma geometria
+  para clique, seleção, LLDP, estado e âncora do cabo). O que mudou é só a aparência na visão
+  técnica (jaula RJ45 com trava, bore central em SFP/SFP+/SFP28, jaula dupla em QSFP, console/MGMT
+  discretos, PON como receptáculo óptico — nunca RJ45).
+- **Orientação do slot**: derivada do **bbox do mapa** (`slotOrientation` em
+  `modular-chassis-map.ts`), nunca da imagem. MA5800-X2/X7 e NE8000 M4 = placas horizontais;
+  MA5800-X15/X17 e NE8000 M8/NE40E = placas verticais, desenhadas com rotação de 90°
+  (`modulePanelPlacementInSlot`), com alongamento limitado do eixo curto
+  (`VERTICAL_BOARD_MAX_STRETCH = 2.5`) para a porta continuar legível/clicável.
+- **Uma única matemática**: desenho e âncora usam a mesma colocação — `slotInnerBox` →
+  `modulePanelPlacementInSlot` → `modulePortAnchorPx`. Com a placa girada, a âncora é
+  `(origemX − v, origemY + u)`, exatamente a mesma transformação do CSS `rotate(90deg)` com
+  `transform-origin: 0 0`; o teste de bancada confere a igualdade (≤ 2px) entre o centro do
+  conector desenhado e o início do cabo.
+- **Módulos**: `TechnicalBlankPanel` é só representação visual (slot vazio com papel e
+  `compatível: …` quando o catálogo declara `moduleKeys`). Placa instalada usa as portas do
+  `moduleTemplate`; placa sem mapa frontal mostra a nota "Mapa frontal não disponível" e **nunca**
+  inventa conector. `slotRoleAccent()` continua sendo a taxonomia de cor (serviço/uplink azul,
+  controle roxo, fabric âmbar, energia verde, ventilação neutro).
+- **Slot Lab** (`/physical/rack-lab`, seção `MODULAR SLOT LAB`): bancada **dev** com estado local
+  (`useState`, nada persiste) para escolher chassi (NE8000 M4/M8-DC/M8-AC e MA5800 X2/X7/X15/X17),
+  inserir/remover placa compatível, ver a recusa de incompatível com motivo, e os toggles
+  `Mostrar slots`, `Mostrar bbox`, `Mostrar port anchors` e `Mostrar moduleKeys`. Os módulos da
+  bancada usam os `partNumber` reais (`H802GPFD`, `H803XGS`, `H901MPSC`, `H902MPLA`,
+  `PAC600S12-CB`) e as portas vêm dos mapas de painel já existentes.
+- **Modo real intacto**: fotografia, hitboxes por imagem e alturas continuam iguais; a rotação e o
+  desenho seco valem só em `TECHNICAL`.
+
+### Pendência — NE40E-M2K-B
+
+- O catálogo atual **não possui** `catalogKey` exato para `NE40E-M2K-B` (existem as variantes
+  X3-DC/X3-AC/X3A/X8/X8A/X16/X16A). Nada foi criado a partir do protótipo: **sem catalog entry
+  inventado, sem slots inventados, sem `heightU` estimado**.
+- O renderer já está preparado para recebê-lo (basta um template `MODULAR` no YAML com
+  `slotGroups` + mapa correspondente em `huawei-modular-slot-maps-v1.json`): a orientação, o
+  encaixe, as portas e as âncoras saem dos dados, não de código específico de modelo.
+- **Etapa separada** (catálogo/verificação com documentação de fabricante) deve decidir: `heightU`
+  exato, quantidade/ordinal dos slots (MPU/LPU), `moduleKeys` compatíveis e mapa de bbox aprovado.
+
+### Limitações conhecidas (declaradas pelo próprio catálogo)
+
+- M4/M8/NE40E não declaram módulos compatíveis (`compatibleModuleKeys: []`): o Slot Lab mostra
+  "sem moduleKeys declarados" e recusa qualquer placa — comportamento correto, não é bug.
+- `huawei-pac600s12-cb` (fonte) não tem slot `POWER` mapeado nos chassis atuais: instalação é
+  recusada com motivo.
+- MA5683T continua sem geometria de slots (nota honesta em vez de desenho inventado).
