@@ -11,10 +11,13 @@ import {
   mappedCatalogSlots,
   moduleImageBoxInSlot,
   modulePanelBoxInSlot,
+  modulePanelPlacementInSlot,
   modulePortAnchorPx,
   modularChassisMap,
   overlappingChassisSlotPairs,
+  slotOrientation,
   validateModularChassisMap,
+  VERTICAL_BOARD_MAX_STRETCH,
 } from './modular-chassis-map';
 import { catalogEntry } from './physical-fixtures';
 
@@ -315,5 +318,129 @@ describe('chassis OLT Huawei (imagem + slots)', () => {
     // a caixa absoluta é a mesma do offset, deslocada pelo slot
     expect(box.left).toBeCloseTo(slotBox.left + offset.left, 6);
     expect(box.top).toBeCloseTo(slotBox.top + offset.top, 6);
+  });
+});
+
+/**
+ * Orientação do slot e rotação da placa: a orientação vem do bbox do mapa e a
+ * mesma matemática vale para o desenho e para a âncora do cabo.
+ */
+describe('orientação do slot e colocação da placa', () => {
+  it('deriva horizontal/vertical do bbox declarado no mapa', () => {
+    expect(slotOrientation({ x: 0, y: 0, width: 0.3, height: 0.1 })).toBe('HORIZONTAL');
+    expect(slotOrientation({ x: 0, y: 0, width: 0.1, height: 0.3 })).toBe('VERTICAL');
+    expect(slotOrientation({ x: 0, y: 0, width: 0.2, height: 0.2 })).toBe('HORIZONTAL');
+  });
+
+  it('X2/X7 e M4 declaram slots horizontais; X15/X17 e M8 verticais', () => {
+    const orientationOf = (key: string) =>
+      [...new Set(modularChassisMap(key)!.slots.map((slot) => slotOrientation(slot.bbox)))];
+
+    expect(orientationOf('huawei-ma5800-x2')).toEqual(['HORIZONTAL']);
+    expect(orientationOf('huawei-ma5800-x7')).toEqual(['HORIZONTAL']);
+    expect(orientationOf('huawei-ne8000-m4')).toEqual(['HORIZONTAL']);
+    expect(orientationOf('huawei-ma5800-x15')).toEqual(['VERTICAL']);
+    expect(orientationOf('huawei-ma5800-x17')).toEqual(['VERTICAL']);
+    expect(orientationOf('huawei-ne8000-m8-dc')).toEqual(['VERTICAL']);
+    expect(orientationOf('huawei-ne8000-m8-ac')).toEqual(['VERTICAL']);
+  });
+
+  it('nenhum slot de chassi da bancada se sobrepõe', () => {
+    for (const key of [
+      'huawei-ma5800-x2',
+      'huawei-ma5800-x7',
+      'huawei-ma5800-x15',
+      'huawei-ma5800-x17',
+      'huawei-ne8000-m4',
+      'huawei-ne8000-m8-dc',
+      'huawei-ne8000-m8-ac',
+    ]) {
+      expect(overlappingChassisSlotPairs(modularChassisMap(key)!)).toEqual([]);
+    }
+  });
+
+  it('placa horizontal fica no respiro do slot, sem rotação', () => {
+    const slotBox = { left: 0, top: 0, width: 400, height: 100 };
+    const layout = { width: 100, gridHeight: 20 };
+    const placement = modulePanelPlacementInSlot(slotBox, layout, 'HORIZONTAL');
+
+    expect(placement.rotation).toBe(0);
+    expect(placement.left).toBe(MODULE_SLOT_INSET.left);
+    expect(placement.top).toBe(MODULE_SLOT_INSET.top);
+    expect(placement.width).toBeCloseTo(layout.width * placement.scale, 6);
+    expect(placement.offset).toEqual({
+      left: MODULE_SLOT_INSET.left,
+      top: MODULE_SLOT_INSET.top,
+    });
+  });
+
+  it('placa vertical gira 90° e fica centrada na área interna do slot', () => {
+    const slotBox = { left: 0, top: 0, width: 100, height: 400 };
+    const layout = { width: 100, gridHeight: 20 };
+    const placement = modulePanelPlacementInSlot(slotBox, layout, 'VERTICAL');
+
+    expect(placement.rotation).toBe(90);
+    // eixo longo cabe na altura do slot; eixo curto preenche a largura (limitado)
+    expect(placement.scale).toBeCloseTo(386 / 100, 10);
+    expect(placement.width).toBeCloseTo(layout.gridHeight * (placement.scaleY ?? placement.scale), 6);
+    expect(placement.height).toBeCloseTo(layout.width * placement.scale, 6);
+    // centrada na área interna (respiro do slot)
+    const innerCenterX = MODULE_SLOT_INSET.left + (slotBox.width - MODULE_SLOT_INSET.left - MODULE_SLOT_INSET.right) / 2;
+    const innerCenterY = MODULE_SLOT_INSET.top + (slotBox.height - MODULE_SLOT_INSET.top - MODULE_SLOT_INSET.bottom) / 2;
+    expect(placement.left + placement.width / 2).toBeCloseTo(innerCenterX, 6);
+    expect(placement.top + placement.height / 2).toBeCloseTo(innerCenterY, 6);
+    // nunca sai do slot
+    expect(placement.left).toBeGreaterThanOrEqual(0);
+    expect(placement.top).toBeGreaterThanOrEqual(0);
+    expect(placement.left + placement.width).toBeLessThanOrEqual(slotBox.width + 0.001);
+    expect(placement.top + placement.height).toBeLessThanOrEqual(slotBox.height + 0.001);
+  });
+
+  it('com a placa girada, a âncora continua sendo o centro do conector desenhado', () => {
+    const slotBox = { left: 0, top: 0, width: 100, height: 400 };
+    const layout = { width: 100, gridHeight: 20 };
+    const placement = modulePanelPlacementInSlot(slotBox, layout, 'VERTICAL');
+    const originLeft = placement.left + placement.width;
+    const originTop = placement.top;
+    const placed = { x: 10, y: 4, shape: { width: 4, height: 3 } };
+
+    const anchor = modulePortAnchorPx(placement, placed);
+    // mesma transformação do CSS: (u, v) → (origemX - v, origemY + u)
+    const u = (placed.x + placed.shape.width / 2) * placement.scale;
+    const v = (placed.y + placed.shape.height / 2) * (placement.scaleY ?? placement.scale);
+    expect(anchor.x).toBeCloseTo(originLeft - v, 6);
+    expect(anchor.y).toBeCloseTo(originTop + u, 6);
+    // e o ponto está dentro da caixa visual da placa
+    expect(anchor.x).toBeGreaterThanOrEqual(placement.left);
+    expect(anchor.x).toBeLessThanOrEqual(placement.left + placement.width);
+    expect(anchor.y).toBeGreaterThanOrEqual(placement.top);
+    expect(anchor.y).toBeLessThanOrEqual(placement.top + placement.height);
+  });
+
+  it('o eixo curto da placa vertical estica só até o limite (portas legíveis)', () => {
+    const slotBox = { left: 0, top: 0, width: 100, height: 400 };
+    // placa muito alongada (proporção ~30:1): sem limite, a porta ficaria com ~3px
+    const layout = { width: 300, gridHeight: 10 };
+    const placement = modulePanelPlacementInSlot(slotBox, layout, 'VERTICAL');
+
+    expect(placement.rotation).toBe(90);
+    expect(placement.scale).toBeCloseTo(386 / 300, 10);
+    // eixo curto limitado a 2.5× a proporção natural — nunca maior que o slot
+    const naturalShort = layout.gridHeight * placement.scale;
+    expect(placement.width).toBeLessThanOrEqual(naturalShort * VERTICAL_BOARD_MAX_STRETCH + 0.001);
+    expect(placement.width).toBeLessThanOrEqual(94 + 0.001);
+    expect(placement.scaleY!).toBeGreaterThan(placement.scale);
+  });
+
+  it('sem rotação o anchor é o mesmo cálculo de antes (compatibilidade)', () => {
+    const moduleBox = modulePanelBoxInSlot(
+      { left: 0, top: 0, width: 400, height: 100 },
+      { width: 100, gridHeight: 20 },
+    );
+    const placed = { x: 10, y: 4, shape: { width: 4, height: 3 } };
+    const anchor = modulePortAnchorPx(moduleBox, placed);
+
+    expect(anchor.x).toBeCloseTo(moduleBox.left + 12 * moduleBox.scale, 10);
+    expect(anchor.y).toBeCloseTo(moduleBox.top + 5.5 * moduleBox.scale, 10);
   });
 });

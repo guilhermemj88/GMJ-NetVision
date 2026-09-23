@@ -30,18 +30,19 @@ import {
   frontPanelPortMapFor,
 } from './front-panel-image-map';
 import { PhysicalImagePanel } from './physical-image-panel';
-import { PhysicalModularPanel, type ModularSlotView } from './physical-modular-panel';
+import { PhysicalModularPanel, type ModularSlotView, type SlotFitView } from './physical-modular-panel';
 import {
   type ModularChassisMap,
-  MODULE_SLOT_INSET,
+  type ModulePanelPlacement,
   chassisAspectRatio,
   chassisRenderMode,
   chassisSlotBoxPx,
   chassisSlotMapFor,
   moduleImageBoxInSlot,
-  modulePanelBoxInSlot,
+  modulePanelPlacementInSlot,
   modulePortAnchorPx,
   modularChassisMapForAsset,
+  slotOrientation,
 } from './modular-chassis-map';
 import {
   type ModuleFrontPanelMap,
@@ -53,10 +54,13 @@ import { RACK_GEOMETRY, buildRackGeometry, panelScale } from './physical-rack-ge
 import {
   assetUsesTechnicalRenderer,
   portOrdinalLabel,
+  slotRoleAccent,
   technicalChassisDisplayHeight,
   technicalChassisMap,
+  technicalModuleLeds,
   technicalPanelCaptions,
   technicalPanelDisplayHeight,
+  technicalSlotSummary,
 } from './physical-technical';
 
 /** Altura do cabeçalho de identidade dentro da faceplate (px). */
@@ -82,8 +86,16 @@ interface ModuleGeometry {
   map: ModuleFrontPanelMap | null;
   layout: ReturnType<typeof buildModulePanelLayout> | null;
   scale: number;
+  /** Escala do eixo vertical (placa vertical esticada até o limite). */
+  scaleY: number;
   box: FrontPanelBoxPx;
   offset: { left: number; top: number };
+  /** 90 quando a placa é girada para caber num slot vertical (visão técnica). */
+  rotation: 0 | 90;
+  /** Tamanho natural do contêiner DOM antes da rotação. */
+  board: { width: number; height: number };
+  /** Folga da placa dentro do slot (px por eixo) — ejetores só onde cabe. */
+  slack: { x: number; y: number };
 }
 
 /** Largura útil do painel dentro do rack (px) — constante do desenho. */
@@ -134,6 +146,23 @@ interface Props {
   visualMode?: PhysicalVisualMode;
   /** Catálogo atual: fonte da verdade da geometria do painel. */
   catalog?: readonly PhysicalCatalogEntry[];
+  /** LAB/DEV: desenha as âncoras reais das portas (encaixe do cabo). */
+  showAnchors?: boolean;
+  /** LAB/DEV: desenha a bbox + ordinal de cada slot. */
+  showSlots?: boolean;
+  /** LAB/DEV: destaca a bbox de cada slot. */
+  showBbox?: boolean;
+  /** LAB/DEV: mostra os moduleKeys compatíveis de cada slot. */
+  showModuleKeys?: boolean;
+  /**
+   * LAB/DEV: realce de encaixe por slot para o módulo armado na bancada.
+   * O LAB decide (dados do catálogo); o canvas só desenha o resultado.
+   */
+  slotFit?: ((slotId: string) => SlotFitView | null) | undefined;
+  /** LAB/DEV: clique no slot (bancada usa para encaixar o módulo armado). */
+  onSelectSlot?: ((slotId: string) => void) | undefined;
+  /** LAB/DEV: mostra o botão de remover placa no slot ocupado. */
+  onRemoveModule?: ((slotId: string) => void) | undefined;
   onSelectAsset: (id: string) => void;
   onSelectPort: (id: string) => void;
   onSelectConnection: (id: string) => void;
@@ -159,6 +188,13 @@ export function PhysicalRackCanvas({
   path,
   visualMode = 'REAL',
   catalog = [],
+  showAnchors = false,
+  showSlots = false,
+  showBbox = false,
+  showModuleKeys = false,
+  slotFit,
+  onSelectSlot,
+  onRemoveModule,
   onSelectAsset,
   onSelectPort,
   onSelectConnection,
@@ -355,17 +391,44 @@ export function PhysicalRackCanvas({
     if (map) {
       // A imagem da placa manda no desenho e nos hotspots.
       const placed = moduleImageBoxInSlot(slotBox, moduleFrontPanelAspectRatio(map));
-      return { module, map, layout: null, scale: 1, box: placed.box, offset: placed.offset };
+      return {
+        module,
+        map,
+        layout: null,
+        scale: 1,
+        scaleY: 1,
+        box: placed.box,
+        offset: placed.offset,
+        rotation: 0,
+        board: { width: placed.box.width, height: placed.box.height },
+        slack: { x: Math.max(0, slotBox.width - placed.box.width), y: Math.max(0, slotBox.height - placed.box.height) },
+      };
     }
     const layout = buildModulePanelLayout({ module, catalogModule });
-    const placed = modulePanelBoxInSlot(slotBox, layout);
+    // Orientação vem do bbox do slot no mapa (nunca da imagem). A rotação da
+    // placa só existe na visão técnica: o modo real mantém o desenho atual.
+    const mapped = chassisSlotMapFor(panel.map, slot);
+    const vertical =
+      technicalOf(asset) && mapped ? slotOrientation(mapped.bbox) === 'VERTICAL' : false;
+    const placement: ModulePanelPlacement = modulePanelPlacementInSlot(
+      slotBox,
+      layout,
+      vertical ? 'VERTICAL' : 'HORIZONTAL',
+    );
     return {
       module,
       map: null,
       layout,
-      scale: placed.scale,
-      box: placed,
-      offset: { left: MODULE_SLOT_INSET.left, top: MODULE_SLOT_INSET.top },
+      scale: placement.scale,
+      scaleY: placement.scaleY ?? placement.scale,
+      box: placement,
+      offset: placement.offset,
+      rotation: placement.rotation ?? 0,
+      board: placement.board,
+      slack: {
+        x: Math.max(0, slotBox.width - placement.width),
+        y: Math.max(0, slotBox.height - placement.height),
+      },
     };
   }
 
@@ -379,6 +442,7 @@ export function PhysicalRackCanvas({
       const catalogMap = chassisSlotMapFor(map, slot);
       const catalogSlot = entry?.slots.find((item) => item.index === slot.index) ?? null;
       const role = catalogSlot?.slotRole ?? catalogMap?.role ?? null;
+      const compatibleModuleKeys = entry && catalogSlot ? catalogSlot.moduleKeys : [];
       const compatibleModules =
         entry && catalogSlot && catalogSlot.moduleKeys.length > 0
           ? entry.modules
@@ -393,6 +457,8 @@ export function PhysicalRackCanvas({
         moduleName: module ? module.model || module.name : null,
         moduleImage: null,
         compatibleModules,
+        compatibleModuleKeys,
+        role,
       };
     });
   }
@@ -667,6 +733,33 @@ export function PhysicalRackCanvas({
           ))}
         </svg>
 
+        {/* LAB/DEV: âncoras reais das portas (mesma função que ancora o cabo). */}
+        {showAnchors ? (
+          <svg
+            className="physical-anchor-layer"
+            width={geometry.width}
+            height={geometry.height}
+            aria-hidden="true"
+          >
+            {rack.assets.flatMap((asset) =>
+              asset.ports.map((port) => {
+                const anchor = portAnchor(asset.id, port.id);
+                if (!anchor) return null;
+                return (
+                  <circle
+                    key={port.id}
+                    className="physical-anchor-dot"
+                    data-anchor-port={port.id}
+                    cx={anchor.x}
+                    cy={anchor.y}
+                    r={2.6}
+                  />
+                );
+              }),
+            )}
+          </svg>
+        ) : null}
+
         {remoteEndpoints.map((row) => (
           <div
             key={row.connection.id}
@@ -730,6 +823,16 @@ export function PhysicalRackCanvas({
           const templateEntry = asset.template?.catalogKey
             ? (catalogByKey.get(asset.template.catalogKey) ?? null)
             : null;
+          /** Resumo do chassi (aparência técnica): papéis declarados, catálogo → mapa. */
+          const slotSummary = technical
+            ? technicalSlotSummary(
+                templateEntry && templateEntry.slots.length > 0
+                  ? templateEntry.slots.map((item) => item.slotRole)
+                  : panel.kind === 'modular'
+                    ? panel.map.slots.map((slot) => slot.role)
+                    : [],
+              )
+            : null;
           const portNode = (portId: string) => {
             const port = asset.ports.find((candidate) => candidate.id === portId);
             const placed = layoutPanel?.layout.connectors.find((item) => item.portId === portId);
@@ -749,15 +852,20 @@ export function PhysicalRackCanvas({
             );
           };
           /** Legendas dos grupos (`10GE × 28`) desenhadas só na visão técnica. */
-          const captions = (layout: PanelLayout, offset: { left: number; top: number }) =>
+          const captions = (
+            layout: PanelLayout,
+            offset: { left: number; top: number },
+            layoutScale: number,
+            layoutScaleY = layoutScale,
+          ) =>
             technical
               ? technicalPanelCaptions(layout).map((caption) => (
                   <span
                     key={caption.key}
                     className="physical-panel-caption"
                     style={{
-                      left: Math.round(offset.left + caption.x * scale),
-                      top: Math.round(offset.top + caption.y * scale),
+                      left: Math.round(offset.left + caption.x * layoutScale),
+                      top: Math.round(offset.top + caption.y * layoutScaleY),
                     }}
                   >
                     {caption.label}
@@ -799,23 +907,43 @@ export function PhysicalRackCanvas({
               <div className="physical-faceplate__identity">
                 <strong>{asset.name}</strong>
                 <small>
-                  {technical ? 'HUAWEI · ' : ''}
-                  {technical && templateEntry?.family ? `${templateEntry.family} · ` : ''}
+                  {technical ? (
+                    <span className="physical-technical-brand">
+                      <i />
+                      HUAWEI
+                    </span>
+                  ) : null}
+                  {technical && templateEntry?.family ? ` ${templateEntry.family} · ` : ' '}
                   {asset.template?.model ||
                     asset.template?.name ||
                     asset.device?.model ||
                     asset.kind}
-                  {' · '}U{placement.startU}
-                  {uEnd > placement.startU ? `–U${uEnd}` : ''} · {placement.heightU}U
+                  {technical ? ' ' : ' · '}U{placement.startU}
+                  {uEnd > placement.startU ? `–U${uEnd}` : ''}
+                  {technical ? '' : ` · ${placement.heightU}U`}
                 </small>
                 {technical ? (
-                  <span className="physical-technical-indicators" aria-hidden="true">
-                    <i title="PWR" />
-                    <i title="ALM" />
-                    <i title="ACT" />
-                  </span>
+                  <>
+                    <span className="physical-technical-leds" aria-hidden="true">
+                      <span>
+                        <i className="led-on" />PWR
+                      </span>
+                      <span>
+                        <i className="led-off" />ALM
+                      </span>
+                      <span>
+                        <i className="led-act" />ACT
+                      </span>
+                    </span>
+                    <span className="physical-technical-u">{placement.heightU}U</span>
+                  </>
                 ) : null}
               </div>
+              {slotSummary ? (
+                <span className="physical-technical-summary" aria-hidden="true">
+                  {slotSummary}
+                </span>
+              ) : null}
 
               <div
                 className="physical-faceplate__panel"
@@ -849,7 +977,7 @@ export function PhysicalRackCanvas({
                     />
                   </div>
                 ) : null}
-                {layoutPanel ? captions(layoutPanel.layout, { left: 0, top: 0 }) : null}
+                {layoutPanel ? captions(layoutPanel.layout, { left: 0, top: 0 }, scale) : null}
                 {panel.kind === 'modular' && modularBox ? (
                   <div
                     className="physical-modular-panel-area"
@@ -866,27 +994,55 @@ export function PhysicalRackCanvas({
                       panelSize={{ width: modularBox.width, height: modularBox.height }}
                       isTechnical={technical}
                       showSlotLabels={technical}
+                      showSlots={showSlots}
+                      showBbox={showBbox}
+                      showModuleKeys={showModuleKeys}
+                      slotFit={slotFit}
+                      onRemoveModule={onRemoveModule}
                       selectedSlotId={selectedModuleSlotId}
-                      onSelectSlot={() => onSelectAsset(asset.id)}
+                      onSelectSlot={(slotId) => {
+                        if (onSelectSlot) onSelectSlot(slotId);
+                        else onSelectAsset(asset.id);
+                      }}
                       renderModule={(slot) => {
                         const geometry = moduleBoxOf(asset, slot.slotId);
                         if (!geometry) return null;
-                        const { module, map, offset, box: moduleBox } = geometry;
+                        const { module, map, offset, rotation, board } = geometry;
+                        const isVertical = rotation === 90;
                         const panelStyle = {
                           position: 'absolute' as const,
                           // o slot é posicionado em % do painel: o painel da
                           // placa fica sempre no mesmo respiro interno
                           left: offset.left,
                           top: offset.top,
-                          width: moduleBox.width,
-                          height: moduleBox.height,
+                          width: board.width,
+                          height: board.height,
+                          // placa vertical: gira no eixo do slot; a âncora do
+                          // cabo usa a MESMA transformação (modulePortAnchorPx)
+                          ...(isVertical
+                            ? { transform: 'rotate(90deg)', transformOrigin: '0 0' }
+                            : {}),
                         };
+                        const moduleClass = `physical-modular-panel__module-panel${
+                          isVertical ? ' is-vertical-module' : ''
+                        }`;
+                        // Categoria visual do módulo = papel do slot (taxonomia já existente).
+                        const moduleCategory = slotRoleAccent(slot.role);
+                        const moduleSlack = geometry.slack;
+                        const ejectorPx = isVertical
+                          ? Math.min(9, Math.floor(moduleSlack.y / 2))
+                          : Math.min(9, Math.floor(moduleSlack.x / 2));
+                        const moduleCode =
+                          catalogModuleOf(asset, module.moduleTemplateId)?.partNumber ??
+                          module.model ??
+                          module.name;
                         if (map) {
                           // Placa com painel por imagem: a imagem e os hotspots
                           // saem da MESMA caixa (visual = hitbox = âncora).
                           return (
                             <div
-                              className="physical-modular-panel__module-panel"
+                              className={moduleClass}
+                              data-module-rotation={rotation}
                               style={panelStyle}
                             >
                               <PhysicalImagePanel
@@ -916,13 +1072,53 @@ export function PhysicalRackCanvas({
                           name: module.name,
                         });
                         return (
-                          <div className="physical-modular-panel__module-panel" style={panelStyle}>
+                          <div
+                            className={moduleClass}
+                            data-module-rotation={rotation}
+                            style={panelStyle}
+                          >
+                            {technical ? (
+                              <div
+                                className={`physical-module-shell ${
+                                  isVertical ? 'is-vertical' : 'is-horizontal'
+                                }`}
+                                data-module-category={moduleCategory}
+                                data-module-code={moduleCode}
+                                data-module-chrome={moduleSlack.x >= 64 ? 'columns' : 'chips'}
+                                aria-hidden="true"
+                              >
+                                {ejectorPx > 2 ? (
+                                  <>
+                                    <span
+                                      className="physical-module-shell__ejector is-start"
+                                      style={isVertical ? { height: ejectorPx } : { width: ejectorPx }}
+                                    />
+                                    <span
+                                      className="physical-module-shell__ejector is-end"
+                                      style={isVertical ? { height: ejectorPx } : { width: ejectorPx }}
+                                    />
+                                  </>
+                                ) : null}
+                                <span className="physical-module-shell__label">
+                                  <span className="physical-module-shell__code">{moduleCode}</span>
+                                  <span className="physical-module-shell__caption">{module.name}</span>
+                                </span>
+                                <span className="physical-module-shell__leds">
+                                  {technicalModuleLeds(moduleCategory).map((led) => (
+                                    <span key={led.label}>
+                                      <i className={`led-${led.tone}`} />
+                                      {led.label}
+                                    </span>
+                                  ))}
+                                </span>
+                              </div>
+                            ) : null}
                             {technical && !moduleFrontMap ? (
                               <em className="physical-modular-panel__module-note" aria-hidden="true">
                                 Mapa frontal não disponível
                               </em>
                             ) : null}
-                            {captions(moduleLayout, offset)}
+                            {captions(moduleLayout, offset, geometry.scale, geometry.scaleY)}
                             {moduleLayout.connectors.map((placed) => {
                               const port = module.ports.find(
                                 (candidate) => candidate.id === placed.portId,
@@ -934,6 +1130,7 @@ export function PhysicalRackCanvas({
                                   port={port}
                                   placed={placed}
                                   scale={geometry.scale}
+                                  scaleY={geometry.scaleY}
                                   selected={selection?.kind === 'port' && selection.id === port.id}
                                   inPath={pathPortIds.has(port.id)}
                                   related={relatedPortIds.has(port.id)}

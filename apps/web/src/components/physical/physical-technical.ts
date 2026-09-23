@@ -104,6 +104,74 @@ export function assetUsesTechnicalRenderer(
   return mode === 'TECHNICAL' && hasTechnicalRenderer(catalogKey);
 }
 
+/** Tom visual de um LED de status na visão técnica. */
+export type TechnicalLedTone = 'on' | 'act' | 'off' | 'pwr' | 'fan';
+
+export interface TechnicalLed {
+  label: string;
+  tone: TechnicalLedTone;
+}
+
+/**
+ * LEDs de status da placa, por papel (taxonomia já existente).
+ * Aparência de NOC: RUN/ACT acesos, ALM apagado — estado real vem do backend
+ * quando existir; aqui o desenho não inventa alarme.
+ */
+export function technicalModuleLeds(category: string | null | undefined): TechnicalLed[] {
+  switch (category) {
+    case 'power':
+      return [{ label: 'PWR', tone: 'pwr' }];
+    case 'fan':
+      return [{ label: 'FAN', tone: 'fan' }];
+    case 'control':
+      return [
+        { label: 'RUN', tone: 'on' },
+        { label: 'ACT', tone: 'act' },
+        { label: 'ALM', tone: 'off' },
+      ];
+    case 'fabric':
+      return [
+        { label: 'RUN', tone: 'on' },
+        { label: 'ACT', tone: 'act' },
+      ];
+    default:
+      return [
+        { label: 'RUN', tone: 'on' },
+        { label: 'ALM', tone: 'off' },
+      ];
+  }
+}
+
+/**
+ * Resumo do chassi para o cabeçalho técnico (`4 serviço/uplink · 1 controle`).
+ * Conta os papéis **declarados** (catálogo/mapa); sem papel, devolve `null`.
+ */
+export function technicalSlotSummary(
+  roles: readonly (string | null | undefined)[],
+): string | null {
+  const labels: Record<string, string> = {
+    SERVICE: 'serviço',
+    SERVICE_OR_UPLINK: 'serviço/uplink',
+    LPU: 'lpu',
+    UPLINK: 'uplink',
+    UNIVERSAL: 'universal',
+    CONTROL: 'controle',
+    MPU: 'mpu',
+    FABRIC: 'fabric',
+    SFU: 'fabric',
+    POWER: 'energia',
+    FAN: 'ventilação',
+  };
+  const counts = new Map<string, number>();
+  for (const role of roles) {
+    if (!role) continue;
+    const label = labels[role] ?? role.toLowerCase();
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  if (counts.size === 0) return null;
+  return [...counts.entries()].map(([label, count]) => `${count} ${label}`).join(' · ');
+}
+
 /**
  * Chassi técnico: o mesmo mapa (a verdade de posição dos slots), sem a
  * fotografia. Sem `image` o painel modular desenha a moldura lógica e os slots

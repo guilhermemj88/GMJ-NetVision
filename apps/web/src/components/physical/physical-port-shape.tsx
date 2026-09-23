@@ -7,8 +7,10 @@ import type { PlacedConnector } from './physical-panel-layout';
 interface Props {
   port: PhysicalPort;
   placed: PlacedConnector;
-  /** px por unidade de grade do painel */
+  /** px por unidade de grade do painel (eixo horizontal) */
   scale: number;
+  /** px por unidade de grade no eixo vertical (padrão: o mesmo de `scale`). */
+  scaleY?: number;
   selected: boolean;
   inPath: boolean;
   /** A outra ponta do cabo desta porta está selecionada: destaque do par. */
@@ -34,6 +36,7 @@ export function PhysicalPortShape({
   port,
   placed,
   scale,
+  scaleY,
   selected,
   inPath,
   related = false,
@@ -41,8 +44,9 @@ export function PhysicalPortShape({
   overlap = false,
   onSelect,
 }: Props) {
+  const yScale = scaleY ?? scale;
   const width = Math.max(7, Math.round(placed.shape.width * scale));
-  const height = Math.max(7, Math.round(placed.shape.height * scale));
+  const height = Math.max(7, Math.round(placed.shape.height * yScale));
   // Rótulo só cabe a partir de ~11px: abaixo disso o texto colidiria com o vizinho.
   const visibleLabel = label && width >= 11 ? label : null;
   const title = [
@@ -73,7 +77,7 @@ export function PhysicalPortShape({
         .join(' ')}
       style={{
         left: placed.x * scale,
-        top: placed.y * scale,
+        top: placed.y * yScale,
         width,
         height,
       }}

@@ -7688,6 +7688,809 @@ label > small {
   border-color: rgba(94, 170, 220, 0.7);
   background: rgba(94, 170, 220, 0.8);
 }
+/* =====================================================================
+   Linguagem técnica — referência visual: protótipo "NV / NetVision"
+   (EquipmentChassis + Slot + ModuleShell + Port).
+   Só aparência: dados continuam vindo do catálogo/mapas do NetVision.
+   ===================================================================== */
+.physical-canvas.is-technical {
+  /* paleta nv-* do protótipo (navy profundo) */
+  --tech-nv-bg: #050d19;
+  --tech-nv-surface: #0a1626;
+  --tech-nv-panel: #0c1b2e;
+  --tech-nv-raised: #11233a;
+  --tech-nv-line: #1c3450;
+  --tech-nv-line2: #2a4a70;
+  --tech-nv-text: #e3edf9;
+  --tech-nv-muted: #8ea6c2;
+  --tech-nv-dim: #5d7896;
+  --tech-chassis: #0b1929;
+  --tech-bezel: #223a58;
+  --tech-bezelhi: #3a5b82;
+  --tech-recess: #040b15;
+  --tech-ear: #15243a;
+  /* cores funcionais por papel/grupo (CATEGORY_COLORS do protótipo) */
+  --tech-cat-service: #22b8e6;
+  --tech-cat-uplink: #3b82f6;
+  --tech-cat-control: #a855f7;
+  --tech-cat-fabric: #818cf8;
+  --tech-cat-universal: #f59e0b;
+  --tech-cat-power: #22c55e;
+  --tech-cat-fan: #94a3b8;
+  --tech-cat-blank: #64748b;
+  /* cores por família de conector (PORT_COLORS do protótipo) */
+  --tech-port-sfp: #5aa9d6;
+  --tech-port-sfp28: #22b8e6;
+  --tech-port-qsfp: #4f8ff7;
+  --tech-port-qsfpdd: #818cf8;
+  --tech-port-pon: #22b8e6;
+  --tech-port-xgspon: #2dd4bf;
+  --tech-port-rj45: #8ea6c2;
+  /* compatibilidade com os tokens da primeira passada */
+  --tech-graphite-900: #050d19;
+  --tech-graphite-850: #071120;
+  --tech-graphite-800: #0a1626;
+  --tech-graphite-750: #0c1b2e;
+  --tech-graphite-700: #11233a;
+  --tech-graphite-600: #1c3450;
+  --tech-graphite-500: #2a4a70;
+  --tech-steel-300: #a9c6dd;
+  --tech-steel-400: #7ea6c9;
+  --tech-steel-500: #5b87ad;
+  --tech-steel-600: #3f6685;
+  --tech-ink-100: #e3edf9;
+  --tech-ink-300: #8ea6c2;
+  --tech-ink-500: #5d7896;
+  --tech-ink-700: #4a6280;
+  --tech-frame: #223a58;
+  /* cor do papel do slot; cada slot sobrescreve pelo próprio papel */
+  --tech-role: var(--tech-cat-blank);
+}
+/* Faceplate técnica: moldura de equipamento com moldura (bezel) e brilho superior. */
+.physical-faceplate.is-technical {
+  border-color: var(--tech-bezel);
+  background: linear-gradient(180deg, var(--tech-nv-panel), var(--tech-chassis));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 10px 28px rgba(0, 0, 0, 0.35);
+}
+.physical-faceplate.is-technical .physical-faceplate__kind {
+  width: 3px;
+  background: linear-gradient(180deg, var(--tech-bezelhi), var(--tech-bezel));
+}
+.physical-faceplate.is-technical .physical-faceplate__identity strong {
+  color: #ffffff;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.physical-faceplate.is-technical .physical-faceplate__identity small {
+  color: var(--tech-nv-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+/* Cabeçalho do chassi: marca + LEDs rotulados + chip de U (ChassisHeader). */
+.physical-technical-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.physical-technical-brand i {
+  display: block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #d7263d;
+}
+.physical-technical-leds {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.physical-technical-leds span {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--tech-nv-muted);
+  font: 6.5px var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.physical-technical-leds i {
+  display: block;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+}
+.physical-technical-leds i.led-on { background: #34d399; }
+.physical-technical-leds i.led-warn { background: #fbbf24; }
+.physical-technical-leds i.led-off { background: #1c3450; }
+.physical-technical-u {
+  margin-left: auto;
+  padding: 1px 5px;
+  border: 1px solid var(--tech-nv-line2);
+  border-radius: 3px;
+  color: var(--tech-nv-text);
+  font: 650 7px var(--font-mono);
+  letter-spacing: 0.06em;
+}
+.physical-technical-summary {
+  position: absolute;
+  right: 6px;
+  bottom: 3px;
+  color: var(--tech-nv-dim);
+  font: 6.5px var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: lowercase;
+  pointer-events: none;
+}
+/* Chassi técnico: interior rebaixado, moldura de bezel e brilho no topo. */
+.physical-modular-panel.is-technical {
+  border: 1px solid var(--tech-bezel);
+  border-radius: 3px;
+  background: var(--tech-chassis);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset 0 0 0 1px rgba(4, 11, 21, 0.7);
+  padding: 2px 3px 2px 3px;
+}
+.physical-modular-panel.is-technical .physical-modular-panel__slot {
+  border-radius: 4px;
+  background: var(--tech-recess);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.65);
+}
+/* Cor do papel em cada slot (usada pela face vazia e pelas bordas). */
+.physical-canvas.is-technical .physical-modular-panel__slot.role-service { --tech-role: var(--tech-cat-service); }
+.physical-canvas.is-technical .physical-modular-panel__slot.role-uplink { --tech-role: var(--tech-cat-uplink); }
+.physical-canvas.is-technical .physical-modular-panel__slot.role-control { --tech-role: var(--tech-cat-control); }
+.physical-canvas.is-technical .physical-modular-panel__slot.role-fabric { --tech-role: var(--tech-cat-fabric); }
+.physical-canvas.is-technical .physical-modular-panel__slot.role-universal { --tech-role: var(--tech-cat-universal); }
+.physical-canvas.is-technical .physical-modular-panel__slot.role-power { --tech-role: var(--tech-cat-power); }
+.physical-canvas.is-technical .physical-modular-panel__slot.role-fan { --tech-role: var(--tech-cat-fan); }
+/* Face do slot vazio: tracejado na cor do papel + rótulo + papel (EmptyFace). */
+.physical-modular-panel.is-technical .physical-modular-panel__slot.is-empty {
+  border-color: color-mix(in srgb, var(--tech-role) 45%, transparent);
+  background: var(--tech-recess);
+}
+.physical-modular-panel.is-technical .physical-modular-panel__slot.is-empty .physical-modular-panel__slot-label {
+  color: #a9bfd8;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.physical-modular-panel__blank b {
+  color: var(--tech-role);
+  opacity: 0.85;
+}
+/* Placa instalada: moldura na cor do papel + LED de presença. */
+.physical-modular-panel.is-technical .physical-modular-panel__slot.is-occupied {
+  border-color: color-mix(in srgb, var(--tech-role) 60%, transparent);
+  background: #0d1c30;
+}
+/* Placa vazia (blank panel): representação visual, nunca um conector. */
+.physical-modular-panel__blank {
+  position: absolute;
+  inset: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed rgba(88, 99, 115, 0.5);
+  border-radius: 2px;
+  background:
+    repeating-linear-gradient(
+      180deg,
+      rgba(61, 72, 84, 0.28) 0 1px,
+      transparent 1px 7px
+    ),
+    linear-gradient(180deg, rgba(20, 24, 29, 0.92), rgba(15, 18, 22, 0.92));
+  pointer-events: none;
+}
+.physical-modular-panel__blank b {
+  color: var(--tech-ink-700);
+  font: 600 7px var(--font-mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.physical-modular-panel__blank[data-blank-role='POWER'] {
+  border-color: rgba(67, 197, 158, 0.35);
+  background:
+    repeating-linear-gradient(90deg, rgba(67, 197, 158, 0.16) 0 2px, transparent 2px 8px),
+    linear-gradient(180deg, rgba(16, 24, 22, 0.92), rgba(15, 18, 22, 0.92));
+}
+.physical-modular-panel__blank[data-blank-role='FAN'] {
+  border-color: rgba(148, 163, 184, 0.4);
+  background:
+    repeating-linear-gradient(90deg, rgba(148, 163, 184, 0.22) 0 2px, transparent 2px 7px),
+    linear-gradient(180deg, rgba(19, 23, 28, 0.92), rgba(15, 18, 22, 0.92));
+}
+.physical-modular-panel__blank[data-blank-role='CONTROL'] {
+  border-color: rgba(167, 139, 250, 0.35);
+}
+/* Slot vertical: rótulo no eixo do slot e chips no rodapé. */
+.physical-modular-panel__slot.is-vertical .physical-modular-panel__slot-label {
+  top: 4px;
+  left: 50%;
+  transform: translateX(-50%);
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  letter-spacing: 0.08em;
+}
+.physical-modular-panel__slot.is-vertical .physical-modular-panel__slot-empty {
+  top: auto;
+  right: 50%;
+  bottom: 4px;
+  transform: translateX(50%);
+}
+.physical-modular-panel__slot.is-vertical .physical-modular-panel__slot-compat {
+  right: 3px;
+  bottom: 18px;
+  writing-mode: vertical-rl;
+}
+.physical-modular-panel__slot.is-vertical .physical-modular-panel__blank b {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  letter-spacing: 0.2em;
+}
+/* Placa vertical: os textos internos ficam horizontais (contra-rotação). */
+.physical-modular-panel__module-panel.is-vertical-module .physical-port__label,
+.physical-modular-panel__module-panel.is-vertical-module .physical-panel-caption,
+.physical-modular-panel__module-panel.is-vertical-module .physical-modular-panel__module-note {
+  transform: rotate(-90deg);
+}
+/* Legendas de grupo: chip mono legível (estilo NOC). */
+.physical-canvas.is-technical .physical-panel-caption {
+  border-color: rgba(126, 166, 201, 0.45);
+  background: rgba(10, 12, 15, 0.88);
+  color: var(--tech-steel-300);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+/* Portas na visão técnica: cor e detalhe por família (Port do protótipo).
+   A geometria/hitbox continua sendo a do PhysicalPortShape — só muda o desenho. */
+.physical-canvas.is-technical .physical-port {
+  border-radius: 2px;
+  border-color: var(--tech-port-rj45);
+  background: #050c16;
+}
+.physical-canvas.is-technical .physical-port span {
+  position: relative;
+  background: #040b15;
+  box-shadow: none;
+}
+/* RJ45: caixa interna + trava inferior. */
+.physical-canvas.is-technical .physical-port--rj45 {
+  border-color: var(--tech-port-rj45);
+}
+.physical-canvas.is-technical .physical-port--rj45 span {
+  margin: 12% 12% 20% 12%;
+  border: 1px solid #3c5270;
+  border-radius: 1px;
+  background: #0a1422;
+}
+.physical-canvas.is-technical .physical-port--rj45 span::after {
+  content: '';
+  position: absolute;
+  bottom: -22%;
+  left: 50%;
+  width: 42%;
+  height: 16%;
+  transform: translateX(-50%);
+  background: #3c5270;
+}
+/* SFP/SFP+/SFP28: jaula óptica com bore interno escuro. */
+.physical-canvas.is-technical .physical-port--sfp,
+.physical-canvas.is-technical .physical-port--sfp_plus {
+  border-color: var(--tech-port-sfp);
+}
+.physical-canvas.is-technical .physical-port--sfp28 {
+  border-color: var(--tech-port-sfp28);
+}
+.physical-canvas.is-technical .physical-port--sfp span,
+.physical-canvas.is-technical .physical-port--sfp_plus span,
+.physical-canvas.is-technical .physical-port--sfp28 span {
+  margin: 14%;
+  border: 1px solid #1f3552;
+  border-radius: 1px;
+  background: #040b15;
+}
+/* QSFP/QSFP+/QSFP28: jaula larga com divisória central. */
+.physical-canvas.is-technical .physical-port--qsfp_plus,
+.physical-canvas.is-technical .physical-port--qsfp28 {
+  border-color: var(--tech-port-qsfp);
+}
+.physical-canvas.is-technical .physical-port--qsfp56,
+.physical-canvas.is-technical .physical-port--qsfp_dd {
+  border-color: var(--tech-port-qsfpdd);
+}
+.physical-canvas.is-technical .physical-port--qsfp_plus span,
+.physical-canvas.is-technical .physical-port--qsfp28 span,
+.physical-canvas.is-technical .physical-port--qsfp56 span,
+.physical-canvas.is-technical .physical-port--qsfp_dd span {
+  margin: 14%;
+  border: 1px solid #1f3552;
+  border-radius: 1px;
+  background: #040b15;
+}
+.physical-canvas.is-technical .physical-port--qsfp_plus span::after,
+.physical-canvas.is-technical .physical-port--qsfp28 span::after,
+.physical-canvas.is-technical .physical-port--qsfp56 span::after,
+.physical-canvas.is-technical .physical-port--qsfp_dd span::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  transform: translateY(-50%);
+  background: #1f3552;
+}
+.physical-canvas.is-technical .physical-port--qsfp_dd span::before {
+  content: '';
+  position: absolute;
+  top: 12%;
+  bottom: 12%;
+  left: 50%;
+  width: 1px;
+  background: #1f3552;
+}
+/* PON/XGS-PON: receptáculo óptico com núcleo na cor da tecnologia. */
+.physical-canvas.is-technical .physical-port--pon {
+  border-color: var(--tech-port-pon);
+}
+.physical-canvas.is-technical .physical-port--pon span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 15%;
+  border: 1px solid #2a4560;
+  border-radius: 1px;
+  background: #050c16;
+}
+.physical-canvas.is-technical .physical-port--pon span::after {
+  content: '';
+  position: static;
+  width: 42%;
+  height: 42%;
+  min-width: 2px;
+  min-height: 2px;
+  border-radius: 50%;
+  background: var(--tech-port-pon);
+  box-shadow: none;
+}
+/* Console/MGMT/USB: manutenção, sempre discreta. */
+.physical-canvas.is-technical .physical-port--console,
+.physical-canvas.is-technical .physical-port--mgmt,
+.physical-canvas.is-technical .physical-port--usb_mini_b {
+  border-color: #3c5270;
+  border-style: solid;
+}
+.physical-canvas.is-technical .physical-port--console span,
+.physical-canvas.is-technical .physical-port--mgmt span,
+.physical-canvas.is-technical .physical-port--usb_mini_b span {
+  margin: 18%;
+  border: 1px solid #2a4560;
+  border-radius: 1px;
+  background: #0a1422;
+}
+/* Porta com label legível no desenho técnico. */
+.physical-canvas.is-technical .physical-port__label {
+  color: var(--tech-nv-muted);
+  font-weight: 650;
+}
+/* LAB/DEV: âncoras reais das portas (mesma conta que ancora o cabo). */
+.physical-anchor-layer {
+  position: absolute;
+  inset: 0 auto auto 0;
+  z-index: 9;
+  pointer-events: none;
+}
+.physical-anchor-dot {
+  fill: rgba(167, 139, 250, 0.9);
+  stroke: #ede9fe;
+  stroke-width: 0.6;
+}
+.physical-modular-panel.is-bbox-visible .physical-modular-panel__slot {
+  outline: 1px dashed rgba(167, 139, 250, 0.9);
+}
+/* LAB/DEV: moduleKeys declarados por slot. */
+.physical-modular-panel__slot-keys {
+  position: absolute;
+  top: 12px;
+  left: 4px;
+  max-width: calc(100% - 8px);
+  color: #b48ee0;
+  font: 6.5px var(--font-mono);
+  letter-spacing: 0.02em;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.95);
+  pointer-events: none;
+}
+.physical-modular-panel__slot.is-vertical .physical-modular-panel__slot-keys {
+  top: 18px;
+  left: auto;
+  right: 3px;
+  writing-mode: vertical-rl;
+}
+/* =====================================================================
+   ModuleShell: moldura de qualquer placa inserida (ejetores + bloco de
+   código + LEDs). Camada só de aparência, `inset: 0` sobre a placa — as
+   portas continuam filhas diretas do contêiner (geometria intacta).
+   ===================================================================== */
+.physical-module-shell {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--tech-cat-blank) 60%, transparent);
+  border-radius: 3px;
+  background: transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  pointer-events: none;
+}
+.physical-module-shell[data-module-category='service'] { border-color: color-mix(in srgb, var(--tech-cat-service) 60%, transparent); }
+.physical-module-shell[data-module-category='uplink'] { border-color: color-mix(in srgb, var(--tech-cat-uplink) 60%, transparent); }
+.physical-module-shell[data-module-category='control'] { border-color: color-mix(in srgb, var(--tech-cat-control) 60%, transparent); }
+.physical-module-shell[data-module-category='fabric'] { border-color: color-mix(in srgb, var(--tech-cat-fabric) 60%, transparent); }
+.physical-module-shell[data-module-category='power'] { border-color: color-mix(in srgb, var(--tech-cat-power) 60%, transparent); }
+.physical-module-shell[data-module-category='fan'] { border-color: color-mix(in srgb, var(--tech-cat-fan) 60%, transparent); }
+/* Ejetor: barra com pino, só desenhado onde a placa deixa folga no slot. */
+.physical-module-shell__ejector {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #15263c;
+}
+.physical-module-shell__ejector.is-start { top: 0; bottom: 0; left: 0; }
+.physical-module-shell__ejector.is-end { top: 0; bottom: 0; right: 0; }
+.physical-module-shell.is-vertical .physical-module-shell__ejector.is-start { top: 0; left: 0; right: 0; bottom: auto; }
+.physical-module-shell.is-vertical .physical-module-shell__ejector.is-end { top: auto; left: 0; right: 0; bottom: 0; }
+.physical-module-shell__ejector::after {
+  content: '';
+  width: 4px;
+  height: 4px;
+  border: 1px solid #4a6687;
+  border-radius: 50%;
+  background: #0a1422;
+}
+/* Bloco de código: parte number + nome da placa, tingido pela categoria. */
+.physical-module-shell__label {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: rgba(4, 11, 21, 0.82);
+}
+.physical-module-shell__code {
+  overflow: hidden;
+  color: var(--tech-nv-text);
+  font: 650 7px var(--font-mono);
+  letter-spacing: 0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.physical-module-shell[data-module-category='service'] .physical-module-shell__code { color: var(--tech-cat-service); }
+.physical-module-shell[data-module-category='uplink'] .physical-module-shell__code { color: var(--tech-cat-uplink); }
+.physical-module-shell[data-module-category='control'] .physical-module-shell__code { color: var(--tech-cat-control); }
+.physical-module-shell[data-module-category='fabric'] .physical-module-shell__code { color: var(--tech-cat-fabric); }
+.physical-module-shell[data-module-category='power'] .physical-module-shell__code { color: var(--tech-cat-power); }
+.physical-module-shell[data-module-category='fan'] .physical-module-shell__code { color: var(--tech-cat-fan); }
+.physical-module-shell__caption {
+  overflow: hidden;
+  color: var(--tech-nv-muted);
+  font: 6px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Chips: placa sem folga (full-width) mantém só o código + LEDs pequenos. */
+.physical-module-shell[data-module-chrome='chips'] .physical-module-shell__label {
+  left: 2px;
+  top: 1px;
+  max-width: calc(100% - 40px);
+}
+.physical-module-shell[data-module-chrome='chips'] .physical-module-shell__caption {
+  display: none;
+}
+/* Colunas: placa com folga usa bloco + LEDs nas laterais (como o protótipo). */
+.physical-module-shell[data-module-chrome='columns'] .physical-module-shell__label {
+  left: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: 62px;
+}
+.physical-module-shell[data-module-chrome='columns'] .physical-module-shell__leds span i {
+  width: 5px;
+  height: 5px;
+}
+/* Placa vertical: código no eixo do slot (writing-mode). */
+.physical-module-shell.is-vertical .physical-module-shell__label {
+  left: 50%;
+  top: 12px;
+  transform: translateX(-50%);
+  padding: 4px 1px;
+}
+.physical-module-shell.is-vertical .physical-module-shell__code {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+}
+.physical-module-shell.is-vertical .physical-module-shell__caption {
+  display: none;
+}
+/* LEDs de status da placa (RUN/ACT/ALM/PWR/FAN). */
+.physical-module-shell__leds {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.physical-module-shell[data-module-chrome='chips'] .physical-module-shell__leds {
+  right: 2px;
+  top: 1px;
+}
+.physical-module-shell[data-module-chrome='columns'] .physical-module-shell__leds {
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.physical-module-shell.is-vertical .physical-module-shell__leds {
+  left: 50%;
+  right: auto;
+  top: auto;
+  bottom: 12px;
+  flex-direction: row;
+  transform: translateX(-50%);
+}
+.physical-module-shell__leds span {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--tech-nv-muted);
+  font: 5.5px var(--font-mono);
+  letter-spacing: 0.02em;
+}
+.physical-module-shell__leds i {
+  display: block;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+}
+.physical-module-shell__leds i.led-on { background: #34d399; }
+.physical-module-shell__leds i.led-act { background: #5aa9ff; }
+.physical-module-shell__leds i.led-off { background: #1c3450; }
+.physical-module-shell__leds i.led-pwr { background: #22c55e; }
+.physical-module-shell__leds i.led-fan { background: #94a3b8; }
+/* Blank panel / filler: fundo neutro, parafusos e fendas de ventilação. */
+.physical-modular-panel__blank {
+  border: 1px solid #3a4a5f;
+  border-style: solid;
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(90deg, #26364a 0 1.5px, transparent 1.5px 10px),
+    #141d29;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+.physical-modular-panel__blank::before,
+.physical-modular-panel__blank::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  margin-top: -2.5px;
+  border: 1px solid #51637a;
+  border-radius: 50%;
+  background: #0b121c;
+}
+.physical-modular-panel__blank::before { left: 3px; }
+.physical-modular-panel__blank::after { right: 3px; }
+.physical-modular-panel__blank b {
+  padding: 1px 3px;
+  background: #141d29;
+  color: #7a8aa0;
+  letter-spacing: 0.16em;
+}
+.physical-modular-panel__slot.is-vertical .physical-modular-panel__blank {
+  background:
+    repeating-linear-gradient(180deg, #26364a 0 1.5px, transparent 1.5px 10px),
+    #141d29;
+}
+/* =====================================================================
+   Slot Lab (DEV): realce de encaixe + remoção + paleta de módulos.
+   ===================================================================== */
+/* Compatível: contorno sólido verde + selo "Encaixa". */
+.physical-modular-panel__slot.is-fit-ok {
+  border-color: #34d399;
+  background: color-mix(in srgb, #34d399 10%, transparent);
+}
+.physical-modular-panel__slot.is-fit-ok::before {
+  content: '✓ Encaixa';
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #34d399;
+  color: #050d19;
+  font: 650 6.5px var(--font-mono);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+/* Incompatível: tracejado vermelho + véu escuro + selo + motivo. */
+.physical-modular-panel__slot.is-fit-bad {
+  border-style: dashed;
+  border-color: color-mix(in srgb, #f87171 45%, transparent);
+  background: rgba(3, 8, 16, 0.62);
+}
+.physical-modular-panel__slot.is-fit-bad::before {
+  content: 'Incompatível';
+  position: absolute;
+  z-index: 6;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #f87171;
+  color: #050d19;
+  font: 650 6.5px var(--font-mono);
+  white-space: nowrap;
+  pointer-events: none;
+}
+.physical-modular-panel__slot .physical-slot-reason {
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 12px);
+  z-index: 6;
+  max-width: 92%;
+  padding: 1px 3px;
+  border-radius: 2px;
+  background: rgba(5, 13, 25, 0.85);
+  color: #f87171;
+  font: 6px var(--font-mono);
+  text-align: center;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+/* Remover placa (só quando o LAB fornece a ação). */
+.physical-modular-panel__slot-remove {
+  position: absolute;
+  z-index: 7;
+  top: 2px;
+  right: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  border: 1px solid var(--tech-nv-line2);
+  border-radius: 3px;
+  background: var(--tech-nv-bg);
+  color: var(--tech-nv-muted);
+  font: 650 8px var(--font-mono);
+  opacity: 0;
+  cursor: pointer;
+  transition: opacity 120ms ease, color 120ms ease;
+}
+.physical-modular-panel__slot:hover .physical-modular-panel__slot-remove,
+.physical-modular-panel__slot-remove:focus-visible {
+  opacity: 1;
+}
+.physical-modular-panel__slot-remove:hover {
+  color: #f87171;
+}
+/* Paleta de módulos do LAB. */
+.slot-lab-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: flex-start;
+}
+.slot-lab-palette__group {
+  min-width: 168px;
+  flex: 1 1 168px;
+  padding: 5px 6px;
+  border: 1px solid var(--tech-nv-line, #1c3450);
+  border-radius: 5px;
+  background: #0a1626;
+}
+.slot-lab-palette__group h4 {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 0 0 4px;
+  color: #8ea6c2;
+  font: 650 7px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.slot-lab-palette__group h4 i {
+  width: 7px;
+  height: 7px;
+  border-radius: 2px;
+}
+.slot-lab-palette__group h4 small {
+  margin-left: auto;
+  color: #5d7896;
+  font-size: 6.5px;
+}
+.slot-lab-palette__list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.slot-lab-palette__item {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  width: 100%;
+  padding: 3px 5px;
+  border: 1px solid #1c3450;
+  border-radius: 4px;
+  background: #0c1b2e;
+  color: #e3edf9;
+  font: 7px var(--font-mono);
+  cursor: pointer;
+  text-align: left;
+}
+.slot-lab-palette__item:hover {
+  border-color: #2a4a70;
+}
+.slot-lab-palette__item.is-armed {
+  border-color: #5aa9ff;
+  background: #11233a;
+  box-shadow: 0 0 0 1px rgba(90, 169, 255, 0.35);
+}
+.slot-lab-palette__item.is-blocked {
+  border-style: dashed;
+  color: #8ea6c2;
+}
+.slot-lab-palette__item code {
+  color: inherit;
+  font: 650 7px var(--font-mono);
+}
+.slot-lab-palette__item small {
+  margin-left: auto;
+  color: #5d7896;
+  font-size: 6px;
+  white-space: nowrap;
+}
+.slot-lab-inspector {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.slot-lab-inspector__card {
+  flex: 1 1 220px;
+  padding: 6px 8px;
+  border: 1px solid #1c3450;
+  border-radius: 5px;
+  background: #0a1626;
+}
+.slot-lab-inspector__card h4 {
+  margin: 0 0 3px;
+  color: #e3edf9;
+  font: 650 8px var(--font-mono);
+}
+.slot-lab-inspector__card p {
+  margin: 0 0 3px;
+  color: #8ea6c2;
+  font: 7px var(--font-mono);
+}
+.slot-lab-inspector__card code {
+  color: #b48ee0;
+  font: 6.5px var(--font-mono);
+}
+.slot-lab-inspector__card.is-fit-bad {
+  border-color: rgba(248, 113, 113, 0.5);
+}
 /* Área do chassi dentro da faceplate e painel da placa dentro do slot. */
 .physical-modular-panel-area {
   position: absolute;

@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import type {
+  PhysicalAsset,
   PhysicalCatalogPort,
   PhysicalConnectorKind,
   PhysicalPort,
@@ -9,7 +10,7 @@ import type {
 import { describe, expect, it } from 'vitest';
 import { PhysicalRackCanvas } from './physical-rack-canvas';
 import { modularChassisMap } from './modular-chassis-map';
-import type { PhysicalVisualMode } from './physical-types';
+import type { PhysicalSelection, PhysicalVisualMode } from './physical-types';
 import {
   catalogEntry,
   physicalAsset,
@@ -19,6 +20,13 @@ import {
   physicalRack,
   physicalSlot,
 } from './physical-fixtures';
+import {
+  SLOT_LAB_ASSET_ID,
+  type SlotLabState,
+  buildSlotLabAsset,
+  buildSlotLabCatalog,
+  tryInstallModule,
+} from './slot-lab';
 
 /**
  * Visão **TÉCNICA**: mesma verdade (catálogo → layout → portas → cabos), outro
@@ -287,6 +295,13 @@ function renderRack(
     visualMode?: PhysicalVisualMode;
     catalog?: ReturnType<typeof catalogEntry>[];
     connections?: ReturnType<typeof physicalConnection>[];
+    selection?: PhysicalSelection;
+    showAnchors?: boolean;
+    showSlots?: boolean;
+    showBbox?: boolean;
+    showModuleKeys?: boolean;
+    slotFit?: (slotId: string) => { tone: 'ok' | 'bad'; reason?: string | null } | null;
+    onRemoveModule?: (slotId: string) => void;
   } = {},
 ) {
   return renderToStaticMarkup(
@@ -294,10 +309,16 @@ function renderRack(
       rack={physicalRack({ units: 42, assets })}
       connections={options.connections ?? []}
       mode="all"
-      selection={null}
+      selection={options.selection ?? null}
       path={null}
       visualMode={options.visualMode ?? 'REAL'}
       catalog={options.catalog ?? []}
+      showAnchors={options.showAnchors ?? false}
+      showSlots={options.showSlots ?? false}
+      showBbox={options.showBbox ?? false}
+      showModuleKeys={options.showModuleKeys ?? false}
+      slotFit={options.slotFit}
+      onRemoveModule={options.onRemoveModule}
       onSelectAsset={noop}
       onSelectPort={noop}
       onSelectConnection={noop}
@@ -687,5 +708,416 @@ describe('visão técnica no rack canvas', () => {
     const technical = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
     expect(real.match(/data-port-name=/g)).toHaveLength(56);
     expect(technical.match(/data-port-id=/g)).toHaveLength(56);
+  });
+});
+
+/**
+ * Slot Lab: encaixe real (bbox do mapa → placa → portas → âncora), orientação
+ * declarada pelo mapa e módulos declarados pelo catálogo. Nada é inventado.
+ */
+describe('slot lab (encaixe real e orientação)', () => {
+  /** Instala módulos pelo mesmo caminho da bancada (recusa incompatível). */
+  function installAll(catalogKey: string, installs: Array<[number, string]>) {
+    let state: SlotLabState = {};
+    for (const [ordinal, moduleKey] of installs) {
+      const result = tryInstallModule(state, catalogKey, ordinal, moduleKey);
+      expect(result.ok).toBe(true);
+      state = result.state;
+    }
+    return { asset: buildSlotLabAsset(catalogKey, state), entry: buildSlotLabCatalog(catalogKey, state) };
+  }
+
+  const num = (source: string, name: string) =>
+    Number(new RegExp(`${name}:\\s*(-?[\\d.]+)(?:px)?`).exec(source)?.[1] ?? Number.NaN);
+  const pct = (source: string, name: string) =>
+    Number(new RegExp(`${name}:\\s*(-?[\\d.]+)%`).exec(source)?.[1] ?? Number.NaN);
+
+  it('X2/X7/M4 declaram slots horizontais; X15/X17/M8 verticais', () => {
+    const cases: Array<[string, 'HORIZONTAL' | 'VERTICAL']> = [
+      ['huawei-ma5800-x2', 'HORIZONTAL'],
+      ['huawei-ma5800-x7', 'HORIZONTAL'],
+      ['huawei-ne8000-m4', 'HORIZONTAL'],
+      ['huawei-ma5800-x15', 'VERTICAL'],
+      ['huawei-ma5800-x17', 'VERTICAL'],
+      ['huawei-ne8000-m8-dc', 'VERTICAL'],
+    ];
+    for (const [catalogKey, orientation] of cases) {
+      // sem módulo instalado: o slot vazio continua desenhado na orientação do mapa
+      const html = renderRack([buildSlotLabAsset(catalogKey, {})], {
+        catalog: [buildSlotLabCatalog(catalogKey, {})],
+        visualMode: 'TECHNICAL',
+      });
+      const orientations = new Set(html.match(/data-slot-orientation="(\w+)"/g) ?? []);
+      expect(orientations).toEqual(new Set([`data-slot-orientation="${orientation}"`]));
+      expect(html).not.toContain('data-port-id=');
+    }
+  });
+
+  it('placa instalada em slot vertical gira 90° e mantém as 16 portas legíveis', () => {
+    for (const catalogKey of [
+      'huawei-ma5800-x2',
+      'huawei-ma5800-x7',
+      'huawei-ma5800-x15',
+      'huawei-ma5800-x17',
+    ]) {
+      const { asset, entry } = installAll(catalogKey, [[1, 'huawei-gpfd-16']]);
+      const html = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+      const vertical = catalogKey === 'huawei-ma5800-x15' || catalogKey === 'huawei-ma5800-x17';
+
+      expect(html).toContain(`data-module-rotation="${vertical ? 90 : 0}"`);
+      expect(html.match(/data-port-id=/g)).toHaveLength(16);
+      expect(html.includes('is-vertical-module')).toBe(vertical);
+      expect(html.includes('rotate(90deg)')).toBe(vertical);
+      // porta desenhada nunca abaixo do mínimo clicável (7px)
+      const widths = [...html.matchAll(/data-port-id="[^"]+"[^>]*style="[^"]*width:(\d+)px/g)].map(
+        (match) => Number(match[1]),
+      );
+      expect(widths.length).toBeGreaterThan(0);
+      expect(Math.min(...widths)).toBeGreaterThanOrEqual(7);
+    }
+  });
+
+  it('placa vertical: a âncora do cabo coincide com o centro do conector girado', () => {
+    const { asset, entry } = installAll('huawei-ma5800-x15', [[1, 'huawei-gpfd-16']]);
+    const port = asset.ports.find((candidate) => candidate.name === 'GPON-1')!;
+    const other = physicalAsset({
+      id: 'asset-remote',
+      name: 'BHE-VTA-01',
+      startU: 30,
+      heightU: 1,
+      ports: [
+        physicalPort({
+          id: 'asset-remote-port',
+          assetId: 'asset-remote',
+          name: 'GE1',
+        }),
+      ],
+    });
+    const connection = physicalConnection({
+      id: 'conn-vertical',
+      portAId: port.id,
+      portBId: 'asset-remote-port',
+      a: {
+        portId: port.id,
+        portName: port.name,
+        side: 'DEVICE',
+        assetId: asset.id,
+        assetName: asset.name,
+        rackId: 'rack-1',
+        rackName: 'Rack 01',
+        siteId: 'site-1',
+        siteName: 'POP Centro',
+      },
+      b: {
+        portId: 'asset-remote-port',
+        portName: 'GE1',
+        side: 'DEVICE',
+        assetId: 'asset-remote',
+        assetName: 'BHE-VTA-01',
+        rackId: 'rack-1',
+        rackName: 'Rack 01',
+        siteId: 'site-1',
+        siteName: 'POP Centro',
+      },
+    });
+    const html = renderRack([asset, other], {
+      catalog: [entry],
+      visualMode: 'TECHNICAL',
+      connections: [connection],
+      showAnchors: true,
+    });
+
+    // âncora: círculo do mesmo portId na camada de debug
+    const dot = new RegExp(`<circle[^>]*data-anchor-port="${port.id}"[^>]*>`).exec(html)?.[0] ?? '';
+    expect(dot).not.toBe('');
+    const anchorX = Number(/cx="([\d.]+)"/.exec(dot)?.[1] ?? Number.NaN);
+    const anchorY = Number(/cy="([\d.]+)"/.exec(dot)?.[1] ?? Number.NaN);
+
+    // desenho: mesma cadeia de caixas usada pelo canvas (artigo → painel → área →
+    // slot → contêiner girado → porta) — a conta do CSS rotate(90deg) é a mesma
+    // função usada pela âncora.
+    const articleStyle =
+      new RegExp(`<article[^>]*data-asset-id="${SLOT_LAB_ASSET_ID}"[^>]*style="([^"]+)"`).exec(html)?.[1] ??
+      '';
+    const panelStyle =
+      /<div class="physical-faceplate__panel"[^>]*style="([^"]+)"/.exec(html)?.[1] ?? '';
+    const areaStyle =
+      /<div class="physical-modular-panel-area"[^>]*style="([^"]+)"/.exec(html)?.[1] ?? '';
+    const slotTag =
+      /<div class="physical-modular-panel__slot[^>]*data-slot-ordinal="1"[^>]*>/.exec(html)?.[0] ?? '';
+    const slotStyle = /style="([^"]+)"/.exec(slotTag)?.[1] ?? '';
+    const modulePanelTag =
+      /<div class="physical-modular-panel__module-panel is-vertical-module"[^>]*>/.exec(html)?.[0] ??
+      '';
+    const moduleStyle = /style="([^"]+)"/.exec(modulePanelTag)?.[1] ?? '';
+    const buttonTag = new RegExp(`<button[^>]*data-port-id="${port.id}"[^>]*>`).exec(html)?.[0] ?? '';
+    const buttonStyle = /style="([^"]+)"/.exec(buttonTag)?.[1] ?? '';
+
+    const areaWidth = num(areaStyle, 'width');
+    const areaHeight = num(areaStyle, 'height');
+    const originX = num(articleStyle, 'left') + num(panelStyle, 'left') + num(areaStyle, 'left');
+    const originY = num(articleStyle, 'top') + num(panelStyle, 'top') + num(areaStyle, 'top');
+    const slotX = (pct(slotStyle, 'left') / 100) * areaWidth;
+    const slotY = (pct(slotStyle, 'top') / 100) * areaHeight;
+    const containerLeft = num(moduleStyle, 'left');
+    const containerTop = num(moduleStyle, 'top');
+    // rotate(90deg) com origem 0 0: (u, v) → (origemX - v, origemY + u)
+    const visualX = originX + slotX + containerLeft - (num(buttonStyle, 'top') + num(buttonStyle, 'height') / 2);
+    const visualY =
+      originY + slotY + containerTop + (num(buttonStyle, 'left') + num(buttonStyle, 'width') / 2);
+
+    // 2px de tolerância: o desenho arredonda width/height e nunca desce de 7px
+    expect(Math.abs(anchorX - visualX)).toBeLessThanOrEqual(2);
+    expect(Math.abs(anchorY - visualY)).toBeLessThanOrEqual(2);
+    // e o cabo começa exatamente nessa âncora
+    const cable = /<path[^>]*d="M ([\d.]+) ([\d.]+)[^>]*class="physical-cable /.exec(html);
+    expect(cable).not.toBeNull();
+    expect(Math.abs(Number(cable![1]) - anchorX)).toBeLessThanOrEqual(1.5);
+    expect(Math.abs(Number(cable![2]) - anchorY)).toBeLessThanOrEqual(1.5);
+    // a âncora é de uma porta específica (perto da ponta da placa), não do centro do slot
+    const slotHeight = (pct(slotStyle, 'height') / 100) * areaHeight;
+    const slotCenterY = originY + slotY + slotHeight / 2;
+    expect(Math.abs(anchorY - slotCenterY)).toBeGreaterThan(20);
+  });
+
+  it('slot vazio não inventa porta: placa cega e nenhum conector', () => {
+    const { asset, entry } = installAll('huawei-ma5800-x7', []);
+    const html = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+
+    expect(html).toContain('physical-modular-panel__blank');
+    expect(html).toContain('>Vazio<');
+    expect(html).not.toContain('data-port-id=');
+    expect(html.match(/data-slot-state="EMPTY"/g)).toHaveLength(6);
+  });
+
+  it('módulo instalado desenha somente as portas declaradas no catálogo', () => {
+    const mpla = installAll('huawei-ma5800-x2', [[1, 'huawei-h902mpla']]);
+    const mplaHtml = renderRack([mpla.asset], { catalog: [mpla.entry], visualMode: 'TECHNICAL' });
+    expect(mplaHtml.match(/data-port-id=/g)).toHaveLength(4);
+    expect(mplaHtml).toContain('UPLINK-1');
+
+    // MPSC é slot de controle no mapa do X2 (slot 3)
+    const mpsc = installAll('huawei-ma5800-x2', [[3, 'huawei-h901mpsc']]);
+    const mpscHtml = renderRack([mpsc.asset], { catalog: [mpsc.entry], visualMode: 'TECHNICAL' });
+    expect(mpscHtml.match(/data-port-id=/g)).toHaveLength(7);
+    expect(mpscHtml).toContain('data-slot-role="CONTROL"');
+    expect(mpscHtml).toContain('physical-port--console');
+    expect(mpscHtml).toContain('physical-port--mgmt');
+  });
+
+  it('GPON e XGS-PON usam visual óptico e nunca RJ45', () => {
+    const xgspon = installAll('huawei-ma5800-x2', [[1, 'huawei-xgspon-16']]);
+    const html = renderRack([xgspon.asset], { catalog: [xgspon.entry], visualMode: 'TECHNICAL' });
+    expect(html.match(/physical-port--pon/g)).toHaveLength(16);
+    expect(html).not.toContain('physical-port--rj45');
+  });
+
+  it('módulo incompatível é recusado com motivo (não é desenhado)', () => {
+    // PAC600S12-CB é fonte: nenhum slot mapeado aceita fonte no mapa atual.
+    const result = tryInstallModule({}, 'huawei-ma5800-x2', 1, 'huawei-pac600s12-cb');
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('Incompatível');
+    expect(result.state).toEqual({});
+    const html = renderRack([buildSlotLabAsset('huawei-ma5800-x2', {})], {
+      catalog: [buildSlotLabCatalog('huawei-ma5800-x2', {})],
+      visualMode: 'TECHNICAL',
+    });
+    expect(html).not.toContain('PAC600S12-CB');
+  });
+
+  it('modo real continua com as fotografias e sem rotação', () => {
+    const { asset, entry } = installAll('huawei-ma5800-x15', [[1, 'huawei-gpfd-16']]);
+    const real = renderRack([asset], { catalog: [entry], visualMode: 'REAL' });
+    expect(real).toContain('huawei-ma5800-x15-front.png');
+    expect(real).toContain('huawei-gpfd-16-gpon-front.png');
+    expect(real).toContain('data-module-rotation="0"');
+    expect(real).not.toContain('rotate(90deg)');
+
+    const technical = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+    expect(technical).not.toContain('huawei-ma5800-x15-front.png');
+    expect(technical).not.toContain('huawei-gpfd-16-gpon-front.png');
+  });
+
+  it('porta continua clicável e mantém estado/LLDP/seleção', () => {
+    const { asset, entry } = installAll('huawei-ma5800-x7', [[1, 'huawei-gpfd-16']]);
+    const first = asset.modules[0]!.ports[0]!;
+    const patch = (ports: PhysicalPort[]) =>
+      ports.map((port) =>
+        port.id === first.id
+          ? {
+              ...port,
+              state: 'CONNECTED' as const,
+              lldp: {
+                adjacencyId: 'adj-1',
+                remoteHostname: 'BHE-VTA-01',
+                remotePortName: 'GE1/0/1',
+                confidence: 'HIGH',
+                resolved: true,
+                ambiguous: false,
+                source: 'lldp',
+                observedAt: '2026-09-23T12:00:00.000Z',
+              },
+            }
+          : port,
+      );
+    const patched: PhysicalAsset = {
+      ...asset,
+      ports: patch(asset.ports),
+      modules: asset.modules.map((module) => ({ ...module, ports: patch(module.ports) })),
+      slots: asset.slots.map((slot) =>
+        slot.module ? { ...slot, module: { ...slot.module, ports: patch(slot.module.ports) } } : slot,
+      ),
+    };
+    const html = renderRack([patched], {
+      catalog: [entry],
+      visualMode: 'TECHNICAL',
+      selection: { kind: 'port', id: first.id },
+    });
+
+    const button = new RegExp(`<button[^>]*data-port-id="${first.id}"[^>]*>`).exec(html)?.[0] ?? '';
+    expect(button).toContain('type="button"');
+    expect(button).toContain('state-connected');
+    expect(button).toContain('is-selected');
+    expect(button).toContain('LLDP BHE-VTA-01/GE1/0/1');
+  });
+
+  it('toggles de debug expõem slots, bbox e moduleKeys do catálogo', () => {
+    const { asset, entry } = installAll('huawei-ma5800-x7', [[1, 'huawei-gpfd-16']]);
+    const html = renderRack([asset], {
+      catalog: [entry],
+      visualMode: 'TECHNICAL',
+      showSlots: true,
+      showBbox: true,
+      showModuleKeys: true,
+    });
+
+    expect(html).toContain('is-slots-visible');
+    expect(html).toContain('is-bbox-visible');
+    expect(html).toContain('physical-modular-panel__slot-keys');
+    expect(html).toContain('huawei-xgspon-16');
+    expect(html).toContain('data-slot-key=');
+  });
+});
+
+/**
+ * Segunda passada (referência visual correta): cabeçalho de chassi, moldura de
+ * placa (ModuleShell), blank panel e realce de encaixe do LAB. Tudo aparência:
+ * geometria, âncoras e interação continuam os mesmos.
+ */
+describe('chrome técnico do chassi e da placa', () => {
+  function installAll(catalogKey: string, installs: Array<[number, string]>) {
+    let state: SlotLabState = {};
+    for (const [ordinal, moduleKey] of installs) {
+      const result = tryInstallModule(state, catalogKey, ordinal, moduleKey);
+      expect(result.ok).toBe(true);
+      state = result.state;
+    }
+    return { asset: buildSlotLabAsset(catalogKey, state), entry: buildSlotLabCatalog(catalogKey, state) };
+  }
+
+  it('cabeçalho técnico: marca, LEDs rotulados, chip de U e resumo do chassi', () => {
+    const { asset, entry } = installAll('huawei-ma5800-x7', [[1, 'huawei-gpfd-16']]);
+    const technical = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+
+    expect(technical).toContain('physical-technical-brand');
+    expect(technical).toContain('physical-technical-leds');
+    expect(technical).toContain('>PWR<');
+    expect(technical).toContain('>ALM<');
+    expect(technical).toContain('>ACT<');
+    expect(technical).toContain('physical-technical-u');
+    expect(technical).toContain('physical-technical-summary');
+    expect(technical).toContain('serviço/uplink');
+
+    // modo real não ganha cabeçalho técnico
+    const real = renderRack([asset], { catalog: [entry], visualMode: 'REAL' });
+    expect(real).not.toContain('physical-technical-leds');
+    expect(real).not.toContain('physical-technical-summary');
+  });
+
+  it('ModuleShell: moldura com código, LEDs e ejetor só onde há folga', () => {
+    const horizontal = installAll('huawei-ma5800-x7', [[1, 'huawei-gpfd-16']]);
+    const html = renderRack([horizontal.asset], {
+      catalog: [horizontal.entry],
+      visualMode: 'TECHNICAL',
+    });
+
+    expect(html).toContain('data-module-category="service"');
+    expect(html).toContain('data-module-code="H802GPFD"');
+    expect(html).toContain('physical-module-shell__label');
+    expect(html).toContain('physical-module-shell__leds');
+    expect(html).toContain('>RUN<');
+    // a moldura é camada de aparência: as portas continuam no contêiner
+    expect(html.match(/data-port-id=/g)).toHaveLength(16);
+    expect(html).toContain('data-module-chrome=');
+
+    // modo real continua sem moldura desenhada
+    const real = renderRack([horizontal.asset], {
+      catalog: [horizontal.entry],
+      visualMode: 'REAL',
+    });
+    expect(real).not.toContain('physical-module-shell');
+  });
+
+  it('placa vertical usa a moldura vertical e o código no eixo do slot', () => {
+    const vertical = installAll('huawei-ma5800-x15', [[1, 'huawei-gpfd-16']]);
+    const html = renderRack([vertical.asset], {
+      catalog: [vertical.entry],
+      visualMode: 'TECHNICAL',
+    });
+
+    expect(html).toContain('physical-module-shell is-vertical');
+    expect(html).toContain('data-module-code="H802GPFD"');
+    expect(html.match(/data-port-id=/g)).toHaveLength(16);
+  });
+
+  it('realce de encaixe do LAB marca compatível e incompatível com motivo', () => {
+    const { asset, entry } = installAll('huawei-ma5800-x7', []);
+    const html = renderRack([asset], {
+      catalog: [entry],
+      visualMode: 'TECHNICAL',
+      slotFit: (slotId) => {
+        const ordinal = Number(/slot-(\d+)$/.exec(slotId)?.[1] ?? Number.NaN);
+        if (!Number.isFinite(ordinal)) return null;
+        return ordinal === 0 ? { tone: 'ok' } : { tone: 'bad', reason: 'aceita huawei-gpfd-16' };
+      },
+    });
+
+    expect(html).toContain('data-slot-fit="ok"');
+    expect(html).toContain('data-slot-fit="bad"');
+    expect(html).toContain('is-fit-ok');
+    expect(html).toContain('is-fit-bad');
+    expect(html).toContain('physical-slot-reason');
+    expect(html).toContain('aceita huawei-gpfd-16');
+    // armado não pode virar porta nem módulo: nada além do realce
+    expect(html).not.toContain('data-port-id=');
+
+    // sem a função do LAB, nenhum realce é desenhado
+    const plain = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+    expect(plain).not.toContain('data-slot-fit');
+    expect(plain).not.toContain('is-fit-ok');
+  });
+
+  it('o botão de remover placa só existe quando o LAB fornece a ação', () => {
+    const { asset, entry } = installAll('huawei-ma5800-x7', [[1, 'huawei-gpfd-16']]);
+    const withAction = renderRack([asset], {
+      catalog: [entry],
+      visualMode: 'TECHNICAL',
+      onRemoveModule: () => undefined,
+    });
+    expect(withAction).toContain('physical-modular-panel__slot-remove');
+    expect(withAction).toContain('aria-label="Remover H802GPFD');
+
+    const withoutAction = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+    expect(withoutAction).not.toContain('physical-modular-panel__slot-remove');
+  });
+
+  it('slot vazio continua sendo placa cega com código do papel (sem porta)', () => {
+    const { asset, entry } = installAll('huawei-ma5800-x7', []);
+    const html = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+
+    expect(html).toContain('physical-modular-panel__blank');
+    expect(html.match(/data-slot-state="EMPTY"/g)).toHaveLength(6);
+    expect(html).not.toContain('data-port-id=');
+    expect(html).not.toContain('physical-module-shell');
   });
 });

@@ -28,6 +28,35 @@ import {
 } from '@/components/physical/physical-fixtures';
 import { modularChassisMap } from '@/components/physical/modular-chassis-map';
 import { slotRoleLabel } from '@/components/physical/physical-catalog';
+import {
+  SLOT_LAB_CHASSIS,
+  SLOT_LAB_MODULES,
+  type SlotLabState,
+  buildSlotLabAsset,
+  buildSlotLabCatalog,
+  clearModules,
+  removeModule,
+  slotLabFit,
+  slotLabModuleKeys,
+  slotLabPalette,
+  slotLabPaletteItems,
+  slotLabSlotInfo,
+  slotLabSlots,
+  slotLabUnsupported,
+  tryInstallModule,
+} from '@/components/physical/slot-lab';
+
+/** Cores funcionais por categoria (paleta do protótipo de referência). */
+const SLOT_LAB_CATEGORY_COLORS: Record<string, string> = {
+  service: '#22b8e6',
+  uplink: '#3b82f6',
+  control: '#a855f7',
+  fabric: '#818cf8',
+  universal: '#f59e0b',
+  power: '#22c55e',
+  fan: '#94a3b8',
+  blank: '#64748b',
+};
 
 /**
  * Bancada local de teste do módulo físico (chassi → slot → placa → porta → cabo).
@@ -689,6 +718,17 @@ export default function PhysicalRackLabPage() {
   const [showHitboxes, setShowHitboxes] = useState(false);
   const [zoom, setZoom] = useState(0.75);
   const [selection, setSelection] = useState<PhysicalSelection>(null);
+  // --- MODULAR SLOT LAB (estado local; nada é gravado) ---
+  const [slotChassisKey, setSlotChassisKey] = useState<string>('huawei-ma5800-x7');
+  const [slotOrdinal, setSlotOrdinal] = useState<number>(1);
+  const [slotModuleKey, setSlotModuleKey] = useState<string>(SLOT_LAB_MODULES[0]!.key);
+  const [slotState, setSlotState] = useState<SlotLabState>({});
+  const [slotArmed, setSlotArmed] = useState<string | null>(null);
+  const [slotMessage, setSlotMessage] = useState<string>('Bancada limpa: escolha o slot e insira um módulo.');
+  const [debugSlots, setDebugSlots] = useState(false);
+  const [debugBbox, setDebugBbox] = useState(false);
+  const [debugAnchors, setDebugAnchors] = useState(false);
+  const [debugModuleKeys, setDebugModuleKeys] = useState(false);
 
   const rack = useMemo(() => buildLabRack(chassisKey), [chassisKey]);
   const catalog = useMemo(() => FIXED_DEVICES.map(fixedCatalogEntry), []);
@@ -696,6 +736,67 @@ export default function PhysicalRackLabPage() {
   const option = CHASSIS_OPTIONS.find((item) => item.key === chassisKey)!;
   const isOltBoard = option.kind === 'OLT' && hasBoard;
   const showFixed = labIncludesFixedGallery(option.heightU);
+
+  const slotSlots = useMemo(() => slotLabSlots(slotChassisKey), [slotChassisKey]);
+  const slotAsset = useMemo(() => buildSlotLabAsset(slotChassisKey, slotState), [slotChassisKey, slotState]);
+  const slotCatalog = useMemo(
+    () => buildSlotLabCatalog(slotChassisKey, slotState),
+    [slotChassisKey, slotState],
+  );
+  const slotRack = useMemo(
+    () => physicalRack({ id: 'lab-slot-rack', name: 'Slot Lab', units: 42, assets: [slotAsset] }),
+    [slotAsset],
+  );
+  const slotAllowed = slotLabModuleKeys(slotChassisKey, slotOrdinal);
+  const slotPalette = useMemo(() => slotLabPalette(slotChassisKey), [slotChassisKey]);
+  const slotUnsupported = useMemo(() => slotLabUnsupported(slotChassisKey), [slotChassisKey]);
+  const slotInfo = useMemo(
+    () => slotLabSlotInfo(slotChassisKey, slotOrdinal, slotState),
+    [slotChassisKey, slotOrdinal, slotState],
+  );
+  const slotArmedItem = useMemo(
+    () => slotLabPaletteItems(slotChassisKey).find((item) => item.moduleKey === slotArmed) ?? null,
+    [slotChassisKey, slotArmed],
+  );
+
+  /** `lab-slot-chassis-slot-3` → 3 (o slot id do catálogo é estável). */
+  const ordinalOfSlotId = (slotId: string): number => {
+    const match = /slot-(\d+)$/.exec(slotId);
+    return match ? Number(match[1]) : Number.NaN;
+  };
+
+  /** Encaixa um módulo num slot pelo mesmo caminho da bancada (recusa com motivo). */
+  const installIntoSlot = (ordinal: number, moduleKey: string) => {
+    const result = tryInstallModule(slotState, slotChassisKey, ordinal, moduleKey);
+    setSlotState(result.state);
+    setSlotMessage(result.reason);
+  };
+
+  /** Clique no slot: encaixa o módulo armado ou só seleciona para o inspector. */
+  const handleSlotClick = (slotId: string) => {
+    const ordinal = ordinalOfSlotId(slotId);
+    if (!Number.isFinite(ordinal)) return;
+    setSlotOrdinal(ordinal);
+    if (slotArmed) installIntoSlot(ordinal, slotArmed);
+  };
+
+  const removeFromSlot = (slotId: string) => {
+    const ordinal = ordinalOfSlotId(slotId);
+    if (!Number.isFinite(ordinal)) return;
+    setSlotState((current) => removeModule(current, ordinal));
+    setSlotMessage(`Slot ${ordinal} esvaziado.`);
+  };
+
+  const installSlotModule = () => {
+    const result = tryInstallModule(slotState, slotChassisKey, slotOrdinal, slotModuleKey);
+    setSlotState(result.state);
+    setSlotMessage(result.reason);
+  };
+
+  const uninstallSlotModule = () => {
+    setSlotState((current) => removeModule(current, slotOrdinal));
+    setSlotMessage(`Slot ${slotOrdinal} esvaziado.`);
+  };
 
   return (
     <main className={`physical-preview ${showHitboxes ? 'is-lab-hitboxes' : ''}`}>
@@ -807,6 +908,260 @@ export default function PhysicalRackLabPage() {
           onClear={() => setSelection(null)}
         />
       </div>
+
+      {/* ================= MODULAR SLOT LAB =================
+          Bancada de encaixe: insere/remove módulos do catálogo nos slots do
+          mapa, mostra incompatibilidade e os anchors reais. Só estado local. */}
+      <section className="physical-preview__filters" data-lab="modular-slot-lab">
+        <h2 className="physical-preview__section-title">MODULAR SLOT LAB</h2>
+        <label>
+          Chassi
+          <select
+            value={slotChassisKey}
+            onChange={(event) => {
+              setSlotChassisKey(event.target.value);
+              setSlotState({});
+              setSlotOrdinal(slotLabSlots(event.target.value)[0]?.ordinal ?? 1);
+              setSlotMessage('Chassi trocado: bancada limpa.');
+            }}
+          >
+            {SLOT_LAB_CHASSIS.map((chassis) => (
+              <option key={chassis.catalogKey} value={chassis.catalogKey}>
+                {chassis.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Slot
+          <select
+            value={slotOrdinal}
+            onChange={(event) => setSlotOrdinal(Number(event.target.value))}
+          >
+            {slotSlots.map((slot) => (
+              <option key={slot.ordinal} value={slot.ordinal}>
+                {slot.label} · {slot.orientation === 'VERTICAL' ? 'vertical' : 'horizontal'}
+                {slotState[slot.ordinal] ? ' · ocupado' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Módulo
+          <select
+            value={slotModuleKey}
+            onChange={(event) => setSlotModuleKey(event.target.value)}
+          >
+            {SLOT_LAB_MODULES.map((module) => (
+              <option key={module.key} value={module.key}>
+                {module.name}
+                {slotAllowed.includes(module.key) ? '' : ' — incompatível'}
+              </option>
+            ))}
+          </select>
+        </label>
+        <div className="physical-preview__filters-row">
+          <button type="button" onClick={installSlotModule}>
+            Inserir módulo no slot {slotOrdinal}
+          </button>
+          <button type="button" onClick={uninstallSlotModule}>
+            Remover módulo do slot {slotOrdinal}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSlotState(clearModules());
+              setSlotMessage('Chassi esvaziado.');
+            }}
+          >
+            Esvaziar chassi
+          </button>
+        </div>
+        {/* Módulos do chassi agrupados por categoria (só os aceitos). */}
+        <div className="slot-lab-palette" data-lab="module-palette">
+          {slotPalette.map((group) => (
+            <div key={group.category} className="slot-lab-palette__group">
+              <h4>
+                <i style={{ background: SLOT_LAB_CATEGORY_COLORS[group.category] ?? '#64748b' }} />
+                {group.label}
+                <small>{group.items.length}</small>
+              </h4>
+              <ul className="slot-lab-palette__list">
+                {group.items.map((item) => (
+                  <li key={item.moduleKey}>
+                    <button
+                      type="button"
+                      className={`slot-lab-palette__item ${
+                        slotArmed === item.moduleKey ? 'is-armed' : ''
+                      }`}
+                      aria-pressed={slotArmed === item.moduleKey}
+                      title={`${item.name} — encaixa nos slots ${item.slotOrdinals.join(', ')} (moduleKeys do catálogo)`}
+                      onClick={() => {
+                        setSlotModuleKey(item.moduleKey);
+                        setSlotArmed((current) =>
+                          current === item.moduleKey ? null : item.moduleKey,
+                        );
+                      }}
+                    >
+                      <code>{item.partNumber}</code>
+                      <small>slots {item.slotOrdinals.join(', ')}</small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+          {slotUnsupported.length > 0 ? (
+            <details className="slot-lab-palette__group" data-lab="unsupported-modules">
+              <summary>
+                Não suportados neste chassi ({slotUnsupported.length}) — use para testar o bloqueio
+              </summary>
+              <ul className="slot-lab-palette__list">
+                {slotUnsupported.map((item) => (
+                  <li key={item.moduleKey}>
+                    <button
+                      type="button"
+                      className={`slot-lab-palette__item is-blocked ${
+                        slotArmed === item.moduleKey ? 'is-armed' : ''
+                      }`}
+                      aria-pressed={slotArmed === item.moduleKey}
+                      title="Nenhum slot deste chassi declara este módulo no catálogo"
+                      onClick={() => {
+                        setSlotModuleKey(item.moduleKey);
+                        setSlotArmed((current) =>
+                          current === item.moduleKey ? null : item.moduleKey,
+                        );
+                      }}
+                    >
+                      <code>{item.partNumber}</code>
+                      <small>sem slot compatível</small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </div>
+        <div className="physical-preview__filters-row" data-lab="debug-toggles">
+          <label className="physical-preview__debug">
+            <input
+              type="checkbox"
+              checked={debugSlots}
+              onChange={(event) => setDebugSlots(event.target.checked)}
+            />
+            Mostrar slots
+          </label>
+          <label className="physical-preview__debug">
+            <input
+              type="checkbox"
+              checked={debugBbox}
+              onChange={(event) => setDebugBbox(event.target.checked)}
+            />
+            Mostrar bbox
+          </label>
+          <label className="physical-preview__debug">
+            <input
+              type="checkbox"
+              checked={debugAnchors}
+              onChange={(event) => setDebugAnchors(event.target.checked)}
+            />
+            Mostrar port anchors
+          </label>
+          <label className="physical-preview__debug">
+            <input
+              type="checkbox"
+              checked={debugModuleKeys}
+              onChange={(event) => setDebugModuleKeys(event.target.checked)}
+            />
+            Mostrar moduleKeys
+          </label>
+          {slotArmed ? (
+            <button type="button" onClick={() => setSlotArmed(null)}>
+              Cancelar {slotArmedItem?.partNumber ?? slotArmed} (Esc)
+            </button>
+          ) : null}
+        </div>
+        <p className="physical-preview__status" data-lab="slot-lab-status">
+          <b>{slotChassisKey}</b> · {slotSlots.length} slots (
+          {slotSlots.filter((slot) => slot.orientation === 'VERTICAL').length} verticais) ·{' '}
+          {Object.keys(slotState).length} módulo(s) instalado(s) · slot {slotOrdinal} aceita:{' '}
+          {slotAllowed.length ? slotAllowed.join(', ') : 'nenhum moduleKey declarado'} ·{' '}
+          {slotMessage}
+        </p>
+        <div className="slot-lab-inspector" data-lab="slot-inspector">
+          <div className="slot-lab-inspector__card">
+            <h4>{slotInfo?.label ?? `Slot ${slotOrdinal}`}</h4>
+            <p>
+              {slotInfo ? slotRoleLabel(slotInfo.role) : '—'} ·{' '}
+              {slotInfo?.orientation === 'VERTICAL' ? 'vertical' : 'horizontal'}
+            </p>
+            <p>
+              Ocupante:{' '}
+              {slotInfo?.installedName ?? (slotInfo?.installedModuleKey || 'vazio')}
+            </p>
+            <code>
+              {slotInfo?.moduleKeys.length
+                ? slotInfo.moduleKeys.join(' · ')
+                : 'sem moduleKeys declarados no catálogo'}
+            </code>
+          </div>
+          <div
+            className={`slot-lab-inspector__card ${
+              slotArmedItem && !slotArmedItem.supported ? 'is-fit-bad' : ''
+            }`}
+          >
+            <h4>
+              {slotArmedItem
+                ? `${slotArmedItem.partNumber} · ${slotArmedItem.name}`
+                : 'Nenhum módulo armado'}
+            </h4>
+            {slotArmedItem ? (
+              slotArmedItem.supported ? (
+                <p>
+                  Encaixa nos slots {slotArmedItem.slotOrdinals.join(', ')} — clique num slot para
+                  instalar (substitui o que estiver lá).
+                </p>
+              ) : (
+                <p>
+                  Nenhum slot deste chassi declara este módulo: clique num slot para ver a recusa
+                  com o motivo.
+                </p>
+              )
+            ) : (
+              <p>
+                Clique num módulo da paleta e depois num slot — ou use os seletores e o botão
+                Inserir.
+              </p>
+            )}
+          </div>
+        </div>
+        <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
+          <PhysicalRackCanvas
+            rack={slotRack}
+            connections={[]}
+            mode={mode}
+            selection={selection}
+            path={null}
+            visualMode={visualMode}
+            catalog={[slotCatalog]}
+            showSlots={debugSlots}
+            showBbox={debugBbox}
+            showAnchors={debugAnchors}
+            showModuleKeys={debugModuleKeys}
+            slotFit={(slotId) => {
+              const ordinal = ordinalOfSlotId(slotId);
+              if (!Number.isFinite(ordinal) || !slotArmed) return null;
+              return slotLabFit(slotChassisKey, ordinal, slotArmed);
+            }}
+            onSelectSlot={handleSlotClick}
+            onRemoveModule={removeFromSlot}
+            onSelectAsset={() => setSelection(null)}
+            onSelectPort={(id) => setSelection({ kind: 'port', id })}
+            onSelectConnection={(id) => setSelection({ kind: 'connection', id })}
+            onClear={() => setSelection(null)}
+          />
+        </div>
+      </section>
     </main>
   );
 }

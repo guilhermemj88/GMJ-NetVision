@@ -183,6 +183,18 @@ export function overlappingChassisSlotPairs(map: ModularChassisMap): [string, st
 /** Respiro entre a moldura do slot e o painel da placa instalada (px). */
 export const MODULE_SLOT_INSET = { left: 3, top: 10, right: 3, bottom: 4 } as const;
 
+/**
+ * Orientação visual do slot — **derivada do bbox do mapa**, nunca da imagem.
+ *
+ * MA5800-X2/X7 (e NE8000 M4) têm baías largas → placas horizontais; MA5800-X15/
+ * X17 (e NE8000 M8/NE40E) têm baías altas e estreitas → placas verticais.
+ */
+export type SlotOrientation = 'HORIZONTAL' | 'VERTICAL';
+
+export function slotOrientation(bbox: FrontPanelNormalizedBox): SlotOrientation {
+  return bbox.width >= bbox.height ? 'HORIZONTAL' : 'VERTICAL';
+}
+
 /** Área interna do slot (descontado o respiro da moldura). */
 export function slotInnerBox(
   slotBox: FrontPanelBoxPx,
@@ -198,6 +210,11 @@ export function slotInnerBox(
  *
  * É a **única** geometria do módulo: desenho das portas e âncora do cabo saem
  * daqui, então o cabo nunca nasce "perto" da porta — nasce na porta.
+ *
+ * `rotation` é 0 (placa horizontal) ou 90 (placa vertical, girada dentro do
+ * slot alto). A caixa devolvida é sempre a **caixa visual** (eixo-alinhada):
+ * com rotação 90 o `left/top` já é o canto da placa girada, e
+ * `offset` é a origem do contêiner DOM (mesmos números do desenho).
  */
 export interface ModulePanelBox {
   left: number;
@@ -205,6 +222,22 @@ export interface ModulePanelBox {
   scale: number;
   width: number;
   height: number;
+  /** Rotação aplicada ao painel da placa (0 = horizontal, 90 = vertical). */
+  rotation?: 0 | 90;
+  /**
+   * Escala do eixo vertical (pré-rotação) quando difere da horizontal.
+   * Presente só em placa vertical: o eixo curto pode esticar de forma limitada
+   * para as portas continuarem legíveis/clicáveis. `scale` continua sendo o
+   * eixo horizontal e, quando `scaleY` não existe, vale para os dois.
+   */
+  scaleY?: number;
+}
+
+export interface ModulePanelPlacement extends ModulePanelBox {
+  /** Canto superior esquerdo do contêiner DOM, relativo ao slot. */
+  offset: { left: number; top: number };
+  /** Tamanho natural do contêiner **antes** da rotação (grade × escala). */
+  board: { width: number; height: number };
 }
 
 export function modulePanelBoxInSlot(
@@ -224,8 +257,73 @@ export function modulePanelBoxInSlot(
     left: innerLeft,
     top: innerTop,
     scale,
+    rotation: 0,
     width: layout.width * scale,
     height: layout.gridHeight * scale,
+  };
+}
+
+/**
+ * Alongamento máximo do eixo curto da placa vertical (×  a proporção natural).
+ *
+ * Uma placa de 16 portas em linha tem proporção muito alongada; girada para um
+ * slot alto e estreito, a escala proporcional deixaria as portas com ~3px. O
+ * limite de 2.5× mantém o desenho honesto (não é escala livre) e traz as portas
+ * para a faixa legível/clicável, que é a mesma usada pelo desenho e pela âncora.
+ */
+export const VERTICAL_BOARD_MAX_STRETCH = 2.5;
+
+/**
+ * Colocação da placa no slot, com orientação: horizontal (rótulo em cima) ou
+ * vertical (placa girada 90°).
+ *
+ * A volta usa `transform-origin: 0 0` + `rotate(90deg)`: um ponto local `(u, v)`
+ * do contêiner aparece em `(originLeft - v, originTop + u)`. A âncora da porta
+ * (`modulePortAnchorPx`) usa **exatamente** a mesma conta, então o cabo continua
+ * saindo da porta desenhada mesmo com a placa girada.
+ */
+export function modulePanelPlacementInSlot(
+  slotBox: FrontPanelBoxPx,
+  layout: { width: number; gridHeight: number },
+  orientation: SlotOrientation = 'HORIZONTAL',
+  inset: { left: number; top: number; right: number; bottom: number } = MODULE_SLOT_INSET,
+): ModulePanelPlacement {
+  const innerLeft = slotBox.left + inset.left;
+  const innerTop = slotBox.top + inset.top;
+  const innerWidth = Math.max(1, slotBox.width - inset.left - inset.right);
+  const innerHeight = Math.max(1, slotBox.height - inset.top - inset.bottom);
+
+  if (orientation === 'HORIZONTAL') {
+    const horizontal = modulePanelBoxInSlot(slotBox, layout, inset);
+    return {
+      ...horizontal,
+      rotation: 0,
+      scaleY: horizontal.scale,
+      offset: { left: inset.left, top: inset.top },
+      board: { width: horizontal.width, height: horizontal.height },
+    };
+  }
+
+  // Vertical: a placa (larga e baixa) gira para acompanhar o slot alto.
+  // O eixo longo cabe na altura do slot; o curto pode esticar até o limite.
+  const scaleX = innerHeight / Math.max(layout.width, 1);
+  const naturalShort = layout.gridHeight * scaleX;
+  const maxShort = Math.min(innerWidth, naturalShort * VERTICAL_BOARD_MAX_STRETCH);
+  const scaleY = maxShort / Math.max(layout.gridHeight, 1);
+  const visualWidth = layout.gridHeight * scaleY;
+  const visualHeight = layout.width * scaleX;
+  const originLeft = innerLeft + innerWidth / 2 + visualWidth / 2;
+  const originTop = innerTop + innerHeight / 2 - visualHeight / 2;
+  return {
+    left: originLeft - visualWidth,
+    top: originTop,
+    scale: scaleX,
+    scaleY,
+    rotation: 90,
+    width: visualWidth,
+    height: visualHeight,
+    offset: { left: originLeft - slotBox.left, top: originTop - slotBox.top },
+    board: { width: layout.width * scaleX, height: layout.gridHeight * scaleY },
   };
 }
 
@@ -234,10 +332,14 @@ export function modulePortAnchorPx(
   moduleBox: ModulePanelBox,
   placed: { x: number; y: number; shape: { width: number; height: number } },
 ): { x: number; y: number } {
-  return {
-    x: moduleBox.left + (placed.x + placed.shape.width / 2) * moduleBox.scale,
-    y: moduleBox.top + (placed.y + placed.shape.height / 2) * moduleBox.scale,
-  };
+  const scaleY = moduleBox.scaleY ?? moduleBox.scale;
+  const localX = (placed.x + placed.shape.width / 2) * moduleBox.scale;
+  const localY = (placed.y + placed.shape.height / 2) * scaleY;
+  if (moduleBox.rotation === 90) {
+    // rotate(90deg) com origem no canto: (u, v) → (origemX - v, origemY + u).
+    return { x: moduleBox.left + moduleBox.width - localY, y: moduleBox.top + localX };
+  }
+  return { x: moduleBox.left + localX, y: moduleBox.top + localY };
 }
 
 /**
