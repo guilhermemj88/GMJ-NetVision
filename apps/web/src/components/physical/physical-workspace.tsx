@@ -44,7 +44,8 @@ import { PhysicalAssetDialog, type PhysicalAssetDialogResult } from './physical-
 import { PORT_STATE_LABELS } from './physical-catalog';
 import { PhysicalInspector } from './physical-inspector';
 import { PhysicalRackCanvas } from './physical-rack-canvas';
-import type { PhysicalConnectionMode, PhysicalSelection } from './physical-types';
+import { PhysicalVisualToggle } from './physical-visual-toggle';
+import type { PhysicalConnectionMode, PhysicalSelection, PhysicalVisualMode } from './physical-types';
 
 type CreateDialog = 'site' | 'rack' | 'asset' | null;
 
@@ -72,6 +73,7 @@ export function PhysicalWorkspace() {
   const [rackId, setRackId] = useState('');
   const [selection, setSelection] = useState<PhysicalSelection>(null);
   const [mode, setMode] = useState<PhysicalConnectionMode>('selected');
+  const [visualMode, setVisualMode] = useState<PhysicalVisualMode>('REAL');
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<CreateDialog>(null);
   const [busy, setBusy] = useState(false);
@@ -305,6 +307,7 @@ export function PhysicalWorkspace() {
           <button type="button" className={mode === 'selected' ? 'is-active' : ''} onClick={() => setMode('selected')}><PanelRight size={13} /> Selecionado</button>
           <button type="button" className={mode === 'all' ? 'is-active' : ''} onClick={() => setMode('all')}><Eye size={13} /> Todas</button>
         </div>
+        <PhysicalVisualToggle mode={visualMode} onChange={setVisualMode} />
         {canEdit && rack ? <Button compact variant="primary" onClick={() => setDialog('asset')}><CirclePlus size={14} /> Equipamento</Button> : null}
       </header>
 
@@ -343,6 +346,7 @@ export function PhysicalWorkspace() {
               mode={mode}
               selection={selection}
               path={pathQuery.data ?? null}
+              visualMode={visualMode}
               catalog={catalogQuery.data ?? []}
               onSelectAsset={(id) => setSelection({ kind: 'asset', id })}
               onSelectPort={(id) => setSelection({ kind: 'port', id })}

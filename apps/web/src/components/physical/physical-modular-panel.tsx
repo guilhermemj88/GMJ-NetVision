@@ -22,6 +22,10 @@ interface Props {
   panelSize: { width: number; height: number };
   /** Desenha bbox/ordinal dos slots (toggle "Mostrar slots" na preview). */
   showSlots?: boolean;
+  /** Visão técnica: moldura reforçada e rótulo do slot sempre visível. */
+  isTechnical?: boolean;
+  /** Mostra o rótulo amigável do slot (`Slot 1 · Serviço/Uplink`). */
+  showSlotLabels?: boolean;
   selectedSlotId?: string | null;
   onSelectSlot?: (slotId: string) => void;
   /** Conteúdo da placa quando ela não tem imagem própria. */
@@ -44,6 +48,8 @@ export function PhysicalModularPanel({
   slots,
   panelSize,
   showSlots = false,
+  isTechnical = false,
+  showSlotLabels = false,
   selectedSlotId = null,
   onSelectSlot,
   renderModule,
@@ -59,7 +65,7 @@ export function PhysicalModularPanel({
     <div
       className={`physical-modular-panel ${map.image ? 'has-image' : 'is-logical'} ${
         showSlots ? 'is-slots-visible' : ''
-      }`}
+      } ${isTechnical ? 'is-technical' : ''}`}
       data-chassis-panel={map.catalogKey}
       data-mapping-mode={map.mappingMode}
       data-chassis-image-status={map.imageStatus}
@@ -115,6 +121,11 @@ export function PhysicalModularPanel({
             }
           >
             {/* Slot limpo por padrão; bbox/ordinal só no modo de inspeção. */}
+            {showSlotLabels && !showSlots ? (
+              <em className="physical-modular-panel__slot-label" aria-hidden="true">
+                {view?.label ?? `Slot ${mapped.ordinal}`}
+              </em>
+            ) : null}
             {showSlots ? (
               <em className="physical-modular-panel__ordinal" aria-hidden="true">
                 {mapped.ordinal}

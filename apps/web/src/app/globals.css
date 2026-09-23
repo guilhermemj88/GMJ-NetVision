@@ -6773,6 +6773,39 @@ label > small {
   background: rgba(139, 92, 246, 0.18);
   color: #c4b5fd;
 }
+/* Alternância Real ↔ Técnica (protótipo controlado). */
+.physical-visual {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 4px;
+}
+.physical-visual > span {
+  color: #607783;
+  font: 650 8px var(--font-mono);
+  letter-spacing: 0.16em;
+}
+.physical-visual__options {
+  display: flex;
+  padding: 3px;
+  border: 1px solid #283944;
+  border-radius: 5px;
+  background: #091117;
+}
+.physical-visual__options button {
+  height: 27px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #657b86;
+  font: 550 9px var(--font-mono);
+  cursor: pointer;
+}
+.physical-visual__options button.is-active {
+  background: rgba(67, 197, 158, 0.18);
+  color: #8fe0c4;
+}
 .physical-notice {
   min-height: 32px;
   display: flex;
@@ -7303,6 +7336,38 @@ label > small {
   background: var(--amber);
   box-shadow: 0 0 4px rgba(240, 178, 76, 0.75);
 }
+/* --- Visão técnica: rótulos e legendas do desenho esquemático --- */
+.physical-port__label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #dce8ee;
+  font: 600 7px var(--font-mono);
+  font-style: normal;
+  letter-spacing: -0.02em;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.95);
+  pointer-events: none;
+}
+.physical-panel-caption {
+  position: absolute;
+  z-index: 5;
+  padding: 1px 4px;
+  border: 1px solid rgba(143, 224, 196, 0.35);
+  border-radius: 2px;
+  background: rgba(9, 17, 23, 0.85);
+  color: #8fe0c4;
+  font: 650 7px var(--font-mono);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.physical-faceplate.is-technical .physical-faceplate__panel {
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(15, 26, 32, 0.9), rgba(10, 17, 22, 0.9));
+  box-shadow: inset 0 0 0 1px rgba(56, 78, 90, 0.55);
+}
 /* --- Painel frontal por imagem: a imagem é aparência, o mapa é a verdade --- */
 .physical-image-panel {
   position: absolute;
@@ -7476,6 +7541,26 @@ label > small {
 .physical-modular-panel.is-slots-visible .physical-modular-panel__slot.is-occupied {
   border-color: rgba(67, 197, 158, 0.9);
   background: rgba(67, 197, 158, 0.12);
+}
+/* Chassi técnico: slots como moldura sólida e legível, com o rótulo do papel. */
+.physical-modular-panel.is-technical .physical-modular-panel__slot {
+  border-color: rgba(120, 152, 168, 0.65);
+  background: rgba(18, 30, 38, 0.55);
+}
+.physical-modular-panel.is-technical .physical-modular-panel__slot.is-occupied {
+  border-color: rgba(67, 197, 158, 0.85);
+  background: rgba(67, 197, 158, 0.1);
+}
+.physical-modular-panel__slot-label {
+  position: absolute;
+  top: 1px;
+  left: 4px;
+  color: #9fc3d2;
+  font: 650 7px var(--font-mono);
+  font-style: normal;
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 3px rgba(0, 0, 0, 0.95);
+  pointer-events: none;
 }
 /* Área do chassi dentro da faceplate e painel da placa dentro do slot. */
 .physical-modular-panel-area {

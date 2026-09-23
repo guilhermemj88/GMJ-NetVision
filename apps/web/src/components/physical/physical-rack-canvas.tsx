@@ -10,7 +10,7 @@ import type {
   PhysicalPath,
   PhysicalRack,
 } from '@gmj/shared';
-import type { PhysicalConnectionMode, PhysicalSelection } from './physical-types';
+import type { PhysicalConnectionMode, PhysicalSelection, PhysicalVisualMode } from './physical-types';
 import {
   IMAGE_PANEL_MAX_HEIGHT,
   buildModulePanelLayout,
@@ -50,6 +50,14 @@ import {
   moduleFrontPanelMapFor,
 } from './module-front-panel-map';
 import { RACK_GEOMETRY, buildRackGeometry, panelScale } from './physical-rack-geometry';
+import {
+  assetUsesTechnicalRenderer,
+  portOrdinalLabel,
+  technicalChassisDisplayHeight,
+  technicalChassisMap,
+  technicalPanelCaptions,
+  technicalPanelDisplayHeight,
+} from './physical-technical';
 
 /** Altura do cabeçalho de identidade dentro da faceplate (px). */
 const IDENTITY_HEIGHT = 30;
@@ -122,6 +130,8 @@ interface Props {
   mode: PhysicalConnectionMode;
   selection: PhysicalSelection;
   path: PhysicalPath | null;
+  /** Modo de visualização: `REAL` (padrão) ou `TECHNICAL` (protótipo). */
+  visualMode?: PhysicalVisualMode;
   /** Catálogo atual: fonte da verdade da geometria do painel. */
   catalog?: readonly PhysicalCatalogEntry[];
   onSelectAsset: (id: string) => void;
@@ -147,6 +157,7 @@ export function PhysicalRackCanvas({
   mode,
   selection,
   path,
+  visualMode = 'REAL',
   catalog = [],
   onSelectAsset,
   onSelectPort,
@@ -168,6 +179,10 @@ export function PhysicalRackCanvas({
    * Painel de cada equipamento: grade normalizada (`panelLayout`) **ou** mapa
    * de imagem aprovado, sempre com a altura visual calculada. A ocupação
    * física (`startU`/`heightU`) não muda em nenhum dos casos.
+   *
+   * No modo `TECHNICAL`, os modelos com desenho técnico declarado ignoram a
+   * imagem (front panel e chassi modular) e usam o renderer esquemático; os
+   * demais equipamentos seguem exatamente o desenho real.
    */
   const panels = useMemo(() => {
     const result = new Map<string, AssetPanel>();
@@ -175,7 +190,8 @@ export function PhysicalRackCanvas({
       const entry = asset.template?.catalogKey
         ? (catalogByKey.get(asset.template.catalogKey) ?? null)
         : null;
-      const imageMap = frontPanelImageMapForAsset(asset);
+      const technical = assetUsesTechnicalRenderer(asset.template?.catalogKey ?? null, visualMode);
+      const imageMap = technical ? null : frontPanelImageMapForAsset(asset);
       if (imageMap) {
         const imageHeight = panelWidthPx / frontPanelAspectRatio(imageMap);
         result.set(asset.id, {
@@ -201,31 +217,48 @@ export function PhysicalRackCanvas({
       // existir; senão só a moldura lógica). Sem mapa, o renderer de hoje decide.
       const chassisMap = modularChassisMapForAsset(asset);
       if (chassisMap && chassisRenderMode(chassisMap) !== 'PANEL_LAYOUT') {
+        const effectiveMap = technical ? technicalChassisMap(chassisMap) : chassisMap;
         const geometric = calculateAssetDisplayHeight(layout, asset.heightU, base);
-        const imageHeight = chassisMap.image ? panelWidthPx / chassisAspectRatio(chassisMap) : 0;
+        const imageHeight = effectiveMap.image ? panelWidthPx / chassisAspectRatio(effectiveMap) : 0;
         result.set(asset.id, {
           kind: 'modular',
-          map: chassisMap,
-          displayHeight: chassisMap.image
-            ? Math.min(
-                IMAGE_PANEL_MAX_HEIGHT,
-                Math.max(
-                  Math.max(1, asset.heightU) * base,
-                  IDENTITY_HEIGHT + PANEL_PADDING * 2 + Math.round(imageHeight),
-                ),
-              )
-            : geometric,
+          map: effectiveMap,
+          displayHeight: technical
+            ? technicalChassisDisplayHeight({
+                slotCount: effectiveMap.slots.length,
+                heightU: asset.heightU,
+                baseUnitHeight: base,
+                chromePx: IDENTITY_HEIGHT + PANEL_PADDING * 2,
+                maxHeightPx: IMAGE_PANEL_MAX_HEIGHT,
+              })
+            : effectiveMap.image
+              ? Math.min(
+                  IMAGE_PANEL_MAX_HEIGHT,
+                  Math.max(
+                    Math.max(1, asset.heightU) * base,
+                    IDENTITY_HEIGHT + PANEL_PADDING * 2 + Math.round(imageHeight),
+                  ),
+                )
+              : geometric,
         });
         continue;
       }
       result.set(asset.id, {
         kind: 'layout',
         layout,
-        displayHeight: calculateAssetDisplayHeight(layout, asset.heightU, base),
+        displayHeight: technical
+          ? technicalPanelDisplayHeight({
+              gridHeight: layout.gridHeight,
+              heightU: asset.heightU,
+              baseUnitHeight: base,
+              chromePx: IDENTITY_HEIGHT + PANEL_PADDING * 2,
+              maxHeightPx: IMAGE_PANEL_MAX_HEIGHT,
+            })
+          : calculateAssetDisplayHeight(layout, asset.heightU, base),
       });
     }
     return result;
-  }, [base, catalogByKey, panelWidthPx, rack.assets]);
+  }, [base, catalogByKey, panelWidthPx, rack.assets, visualMode]);
 
   const displayHeights = useMemo(
     () => new Map([...panels].map(([assetId, panel]) => [assetId, panel.displayHeight])),
@@ -275,6 +308,11 @@ export function PhysicalRackCanvas({
     return { panel, scale, offsetX: box.left, offsetY: box.top };
   }
 
+  /** `true` quando o equipamento usa o desenho técnico no modo atual. */
+  function technicalOf(asset: PhysicalAsset): boolean {
+    return assetUsesTechnicalRenderer(asset.template?.catalogKey ?? null, visualMode);
+  }
+
   /** Caixa da imagem do equipamento (proporção preservada) — âncora inclusa. */
   function imageBoxOf(asset: PhysicalAsset): FrontPanelBoxPx | null {
     const box = panelBoxOf(asset);
@@ -305,12 +343,15 @@ export function PhysicalRackCanvas({
     const slotBox = chassisSlotBoxPx(panel.map, slot, chassisBox);
     if (!slotBox) return null;
     const catalogModule = catalogModuleOf(asset, module.moduleTemplateId);
-    const map = moduleFrontPanelMapFor({
-      moduleKey: catalogModule?.key ?? null,
-      partNumber: catalogModule?.partNumber ?? null,
-      model: module.model,
-      name: module.name,
-    });
+    // Visão técnica: a placa é desenhada pelo renderer geométrico (sem imagem).
+    const map = technicalOf(asset)
+      ? null
+      : moduleFrontPanelMapFor({
+          moduleKey: catalogModule?.key ?? null,
+          partNumber: catalogModule?.partNumber ?? null,
+          model: module.model,
+          name: module.name,
+        });
     if (map) {
       // A imagem da placa manda no desenho e nos hotspots.
       const placed = moduleImageBoxInSlot(slotBox, moduleFrontPanelAspectRatio(map));
@@ -557,7 +598,10 @@ export function PhysicalRackCanvas({
 
   return (
     <div className="physical-canvas-scroll" onClick={onClear}>
-      <div className="physical-canvas" style={{ width: geometry.width, height: geometry.height }}>
+      <div
+        className={`physical-canvas ${visualMode === 'TECHNICAL' ? 'is-technical' : ''}`}
+        style={{ width: geometry.width, height: geometry.height }}
+      >
         <div
           className="physical-rack-frame"
           style={{
@@ -675,6 +719,7 @@ export function PhysicalRackCanvas({
           const pathPortIds = new Set(
             path?.steps.flatMap((step) => (step.kind === 'PORT' ? [step.portId] : [])) ?? [],
           );
+          const technical = technicalOf(asset);
           const portNode = (portId: string) => {
             const port = asset.ports.find((candidate) => candidate.id === portId);
             const placed = layoutPanel?.layout.connectors.find((item) => item.portId === portId);
@@ -688,10 +733,27 @@ export function PhysicalRackCanvas({
                 selected={selection?.kind === 'port' && selection.id === port.id}
                 inPath={pathPortIds.has(port.id)}
                 related={relatedPortIds.has(port.id)}
+                label={technical ? portOrdinalLabel(port.name) : null}
                 onSelect={onSelectPort}
               />
             );
           };
+          /** Legendas dos grupos (`10GE × 28`) desenhadas só na visão técnica. */
+          const captions = (layout: PanelLayout, offset: { left: number; top: number }) =>
+            technical
+              ? technicalPanelCaptions(layout).map((caption) => (
+                  <span
+                    key={caption.key}
+                    className="physical-panel-caption"
+                    style={{
+                      left: Math.round(offset.left + caption.x * scale),
+                      top: Math.round(offset.top + caption.y * scale),
+                    }}
+                  >
+                    {caption.label}
+                  </span>
+                ))
+              : null;
           /** Imagem + hitboxes: caixa com a proporção original, centralizada. */
           const imageBox = panel.kind === 'image' ? imageBoxOf(asset) : null;
           /** Chassi modular: caixa da imagem (ou do painel lógico) + slots. */
@@ -706,9 +768,12 @@ export function PhysicalRackCanvas({
             <article
               key={asset.id}
               data-asset-id={asset.id}
+              data-visual={technical ? 'TECHNICAL' : 'REAL'}
               className={`physical-faceplate physical-faceplate--${asset.kind.toLowerCase()} ${
                 active ? 'is-selected' : ''
-              } ${dimmed ? 'is-dimmed' : ''} ${asset.slots.length ? 'is-modular' : ''}`}
+              } ${dimmed ? 'is-dimmed' : ''} ${asset.slots.length ? 'is-modular' : ''} ${
+                technical ? 'is-technical' : ''
+              }`}
               style={{
                 left: geometry.rackLeft,
                 top: placement.top + 1,
@@ -765,6 +830,7 @@ export function PhysicalRackCanvas({
                     />
                   </div>
                 ) : null}
+                {layoutPanel ? captions(layoutPanel.layout, { left: 0, top: 0 }) : null}
                 {panel.kind === 'modular' && modularBox ? (
                   <div
                     className="physical-modular-panel-area"
@@ -779,6 +845,8 @@ export function PhysicalRackCanvas({
                       map={panel.map}
                       slots={modularSlotsOf(asset, panel.map)}
                       panelSize={{ width: modularBox.width, height: modularBox.height }}
+                      isTechnical={technical}
+                      showSlotLabels={technical}
                       selectedSlotId={selectedModuleSlotId}
                       onSelectSlot={() => onSelectAsset(asset.id)}
                       renderModule={(slot) => {
@@ -821,6 +889,7 @@ export function PhysicalRackCanvas({
                           });
                         return (
                           <div className="physical-modular-panel__module-panel" style={panelStyle}>
+                            {captions(moduleLayout, offset)}
                             {moduleLayout.connectors.map((placed) => {
                               const port = module.ports.find(
                                 (candidate) => candidate.id === placed.portId,
@@ -835,6 +904,7 @@ export function PhysicalRackCanvas({
                                   selected={selection?.kind === 'port' && selection.id === port.id}
                                   inPath={pathPortIds.has(port.id)}
                                   related={relatedPortIds.has(port.id)}
+                                  label={technical ? portOrdinalLabel(port.name) : null}
                                   onSelect={onSelectPort}
                                 />
                               );
@@ -898,6 +968,7 @@ export function PhysicalRackCanvas({
                                         }
                                         inPath={pathPortIds.has(port.id)}
                                         related={relatedPortIds.has(port.id)}
+                                        label={technical ? portOrdinalLabel(port.name) : null}
                                         onSelect={onSelectPort}
                                       />
                                     );

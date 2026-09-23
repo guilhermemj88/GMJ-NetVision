@@ -13,6 +13,11 @@ interface Props {
   inPath: boolean;
   /** A outra ponta do cabo desta porta está selecionada: destaque do par. */
   related?: boolean;
+  /**
+   * Rótulo curto desenhado dentro do conector (visão técnica). Só aparece
+   * quando o conector tem largura suficiente para o texto não colidir.
+   */
+  label?: string | null;
   /** Diagnóstico da preview: destaca conectores com bbox sobreposto. */
   overlap?: boolean;
   onSelect: (id: string) => void;
@@ -32,11 +37,14 @@ export function PhysicalPortShape({
   selected,
   inPath,
   related = false,
+  label = null,
   overlap = false,
   onSelect,
 }: Props) {
   const width = Math.max(7, Math.round(placed.shape.width * scale));
   const height = Math.max(7, Math.round(placed.shape.height * scale));
+  // Rótulo só cabe a partir de ~11px: abaixo disso o texto colidiria com o vizinho.
+  const visibleLabel = label && width >= 11 ? label : null;
   const title = [
     port.name,
     placed.shape.label,
@@ -77,6 +85,11 @@ export function PhysicalPortShape({
       }}
     >
       <span />
+      {visibleLabel ? (
+        <em className="physical-port__label" aria-hidden="true">
+          {visibleLabel}
+        </em>
+      ) : null}
       {port.lldp ? <i className="physical-port__lldp" aria-hidden="true" /> : null}
     </button>
   );

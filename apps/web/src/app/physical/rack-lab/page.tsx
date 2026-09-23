@@ -1,11 +1,24 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { PhysicalEquipmentTemplate } from '@gmj/shared';
+import type {
+  PhysicalCatalogPort,
+  PhysicalConnectorKind,
+  PhysicalEquipmentTemplate,
+  PhysicalPortFunction,
+  PhysicalPortType,
+  PhysicalVisualPlacement,
+} from '@gmj/shared';
 import { PhysicalRackCanvas } from '@/components/physical/physical-rack-canvas';
-import type { PhysicalConnectionMode, PhysicalSelection } from '@/components/physical/physical-types';
+import type {
+  PhysicalConnectionMode,
+  PhysicalSelection,
+  PhysicalVisualMode,
+} from '@/components/physical/physical-types';
+import { PhysicalVisualToggle } from '@/components/physical/physical-visual-toggle';
 import {
   PHYSICAL_TIMESTAMP,
+  catalogEntry,
   physicalAsset,
   physicalConnection,
   physicalModule,
@@ -27,7 +40,9 @@ import { slotRoleLabel } from '@/components/physical/physical-catalog';
 const TIMESTAMP = PHYSICAL_TIMESTAMP;
 const CABLE_ID = 'lab-cable-01';
 const OLT_ID = 'lab-olt';
-const SWITCH_ID = 'lab-switch';
+const SWITCH_ID = 'lab-s6730-h48';
+const F1A_ID = 'lab-f1a';
+const S6750_ID = 'lab-s6750';
 const MODULE_ID = 'lab-module-1';
 
 /** Chassis disponíveis na bancada (fixture, nada é gravado). */
@@ -68,13 +83,13 @@ function chassisTemplate(
   };
 }
 
-/** Switch com painel por imagem (S6730-H24X6C) para a outra ponta do cabo. */
-function switchTemplate(): PhysicalEquipmentTemplate {
+/** Switch/família fixa da bancada: mesmo layout declarado no catálogo. */
+function fixedTemplate(spec: FixedDeviceSpec): PhysicalEquipmentTemplate {
   return {
-    ...chassisTemplate('huawei-s6730-h24x6c', 'S6730-H24X6C', 1),
-    id: 'template-huawei-s6730-h24x6c',
+    ...chassisTemplate(spec.catalogKey, spec.model, 1),
+    id: `template-${spec.catalogKey}`,
     category: 'SWITCH',
-    family: 'S6730',
+    family: spec.family,
     kind: 'NETWORK',
   };
 }
@@ -123,31 +138,186 @@ function boardModule(slotId: string): ReturnType<typeof physicalModule> {
   });
 }
 
-function switchPorts() {
-  const sfpPlus = Array.from({ length: 4 }, (_value, index) =>
+interface FixedGroupSpec {
+  groupKey: string;
+  count: number;
+  connector: PhysicalConnectorKind;
+  type: PhysicalPortType;
+  portFunction: PhysicalPortFunction;
+  /** Padrão do rótulo físico (`10GE-{n}`), como declarado no catálogo. */
+  pattern: string;
+  visual: PhysicalVisualPlacement;
+}
+
+interface FixedDeviceSpec {
+  catalogKey: string;
+  name: string;
+  model: string;
+  family: string;
+  assetId: string;
+  startU: number;
+  panelHeight: number;
+  groups: FixedGroupSpec[];
+}
+
+/**
+ * Equipamentos FIXOS com visão técnica nesta fase (fixture).
+ *
+ * As coordenadas `visual` são as mesmas declaradas no catálogo (`physical-catalog-v1.yaml`)
+ * para cada modelo — a bancada não inventa layout nem portas.
+ */
+const FIXED_DEVICES: FixedDeviceSpec[] = [
+  {
+    catalogKey: 'huawei-s6730-h48x6c',
+    name: 'SW-CORE-S6730-48',
+    model: 'S6730-H48X6C',
+    family: 'S6730',
+    assetId: SWITCH_ID,
+    startU: 38,
+    panelHeight: 10,
+    groups: [
+      {
+        groupKey: 'sfpplus-10g',
+        count: 48,
+        connector: 'SFP_PLUS',
+        type: 'SFP_PLUS',
+        portFunction: 'SERVICE',
+        pattern: '10GE-{n}',
+        visual: { row: 1, columns: 24, x: 3, y: 0.6, gapX: 0.6 },
+      },
+      {
+        groupKey: 'qsfp28-uplink',
+        count: 6,
+        connector: 'QSFP28',
+        type: 'QSFP',
+        portFunction: 'UPLINK',
+        pattern: 'QSFP28-{n}',
+        visual: { row: 3, columns: 6, x: 38, y: 6.4, gapX: 0.6 },
+      },
+    ],
+  },
+  {
+    catalogKey: 'huawei-ne8000-f1a-8h20q',
+    name: 'BHE-VTA-F1A-BGP',
+    model: 'F1A-8H20Q',
+    family: 'NetEngine 8000',
+    assetId: F1A_ID,
+    startU: 39,
+    panelHeight: 14,
+    groups: [
+      {
+        groupKey: '100ge-cages',
+        count: 8,
+        connector: 'QSFP28',
+        type: 'QSFP',
+        portFunction: 'UPLINK',
+        pattern: '100GE-{n}',
+        visual: { row: 1, columns: 8, x: 25, y: 0.6, gapX: 0.8 },
+      },
+      {
+        groupKey: '25ge-cages',
+        count: 20,
+        connector: 'SFP28',
+        type: 'SFP_PLUS',
+        portFunction: 'SERVICE',
+        pattern: '25GE-{n}',
+        visual: { row: 2, columns: 10, x: 14, y: 4.4, gapX: 0.6 },
+      },
+      {
+        groupKey: '10ge-cages',
+        count: 28,
+        connector: 'SFP_PLUS',
+        type: 'SFP_PLUS',
+        portFunction: 'SERVICE',
+        pattern: '10GE-{n}',
+        visual: { row: 4, columns: 14, x: 7, y: 8.2, gapX: 0.6 },
+      },
+    ],
+  },
+  {
+    catalogKey: 'huawei-s6750-h48x8c',
+    name: 'SW-AGG-S6750-48',
+    model: 'S6750-H48X8C',
+    family: 'S6750',
+    assetId: S6750_ID,
+    startU: 40,
+    panelHeight: 10,
+    groups: [
+      {
+        groupKey: 'sfp28-service',
+        count: 48,
+        connector: 'SFP28',
+        type: 'SFP_PLUS',
+        portFunction: 'SERVICE',
+        pattern: 'SFP28-{n}',
+        visual: { row: 1, columns: 24, x: 3, y: 0.6, gapX: 0.6 },
+      },
+      {
+        groupKey: 'qsfp28-uplink',
+        count: 8,
+        connector: 'QSFP28',
+        type: 'QSFP',
+        portFunction: 'UPLINK',
+        pattern: 'QSFP28-{n}',
+        visual: { row: 3, columns: 8, x: 32, y: 6.4, gapX: 0.6 },
+      },
+    ],
+  },
+];
+
+function fixedPortNames(spec: FixedDeviceSpec): Array<{ group: FixedGroupSpec; name: string }> {
+  const list: Array<{ group: FixedGroupSpec; name: string }> = [];
+  for (const group of spec.groups) {
+    for (let index = 1; index <= group.count; index += 1) {
+      list.push({ group, name: group.pattern.replace('{n}', String(index)) });
+    }
+  }
+  return list;
+}
+
+function fixedPorts(spec: FixedDeviceSpec) {
+  return fixedPortNames(spec).map(({ group, name }, index) =>
     physicalPort({
-      id: `lab-sw-${index + 1}`,
-      assetId: SWITCH_ID,
-      name: `10GE-${index + 1}`,
-      label: `10GE-${index + 1}`,
+      id: `${spec.assetId}-${name}`,
+      assetId: spec.assetId,
+      name,
+      label: name,
       order: index + 1,
       side: 'DEVICE',
-      type: 'SFP_PLUS',
-      ...(index === 0 ? { state: 'CONNECTED' as const, connectionId: CABLE_ID } : {}),
+      type: group.type,
+      ...(spec.assetId === SWITCH_ID && name === '10GE-1'
+        ? { state: 'CONNECTED' as const, connectionId: CABLE_ID }
+        : {}),
     }),
   );
-  const qsfp = [
-    physicalPort({
-      id: 'lab-sw-qsfp-1',
-      assetId: SWITCH_ID,
-      name: 'QSFP28-1',
-      label: 'QSFP28-1',
-      order: 5,
-      side: 'DEVICE',
-      type: 'QSFP',
-    }),
-  ];
-  return [...sfpPlus, ...qsfp];
+}
+
+function fixedCatalogEntry(spec: FixedDeviceSpec) {
+  const ports: PhysicalCatalogPort[] = fixedPortNames(spec).map(({ group, name }, index) => ({
+    name,
+    label: name,
+    order: index + 1,
+    side: 'DEVICE',
+    type: group.type,
+    connector: group.connector,
+    portFunction: group.portFunction,
+    speeds: [],
+    breakoutCapable: false,
+    groupKey: group.groupKey,
+    interfaceName: null,
+    notes: null,
+    visual: group.visual,
+  }));
+  return catalogEntry({
+    catalogKey: spec.catalogKey,
+    name: `Huawei ${spec.model}`,
+    manufacturer: 'Huawei',
+    family: spec.family,
+    model: spec.model,
+    kind: 'NETWORK',
+    panelLayout: { type: 'LOGICAL', width: 100, height: spec.panelHeight },
+    ports,
+  });
 }
 
 /** Placa instalada no primeiro slot de serviço do chassi (exceto MA5683T). */
@@ -186,17 +356,22 @@ function buildLabRack(chassisKey: string) {
             : slot,
         ),
       }),
-      physicalAsset({
-        id: SWITCH_ID,
-        name: 'SW-CORE LAB-01',
-        kind: 'NETWORK',
-        startU: 34,
-        heightU: 1,
-        description: 'Switch com painel por imagem (outra ponta do cabo)',
-        templateId: 'template-huawei-s6730-h24x6c',
-        template: switchTemplate(),
-        ports: switchPorts(),
-      }),
+      ...FIXED_DEVICES.map((spec) =>
+        physicalAsset({
+          id: spec.assetId,
+          name: spec.name,
+          kind: 'NETWORK',
+          startU: spec.startU,
+          heightU: 1,
+          description: `Fixture ${spec.model} — visão técnica (${spec.groups.reduce(
+            (total, group) => total + group.count,
+            0,
+          )} portas)`,
+          templateId: `template-${spec.catalogKey}`,
+          template: fixedTemplate(spec),
+          ports: fixedPorts(spec),
+        }),
+      ),
     ],
   });
 }
@@ -210,7 +385,7 @@ const labConnection = physicalConnection({
   label: 'CIR-LAB-01',
   medium: 'FIBER',
   portAId: 'lab-gpon-1',
-  portBId: 'lab-sw-1',
+  portBId: `${SWITCH_ID}-10GE-1`,
   notes: 'Cabo de teste: porta GPON-1 da placa no primeiro slot de serviço da OLT',
   a: {
     portId: 'lab-gpon-1',
@@ -224,11 +399,11 @@ const labConnection = physicalConnection({
     siteName: 'POP LAB',
   },
   b: {
-    portId: 'lab-sw-1',
+    portId: `${SWITCH_ID}-10GE-1`,
     portName: '10GE-1',
     side: 'DEVICE',
     assetId: SWITCH_ID,
-    assetName: 'SW-CORE LAB-01',
+    assetName: 'SW-CORE-S6730-48',
     rackId: 'lab-rack-1',
     rackName: 'Rack LAB-01',
     siteId: 'lab-site-1',
@@ -254,12 +429,14 @@ const labStyles = `
 
 export default function PhysicalRackLabPage() {
   const [chassisKey, setChassisKey] = useState<string>(CHASSIS_OPTIONS[0].key);
+  const [visualMode, setVisualMode] = useState<PhysicalVisualMode>('REAL');
   const [mode, setMode] = useState<PhysicalConnectionMode>('all');
   const [showHitboxes, setShowHitboxes] = useState(false);
   const [zoom, setZoom] = useState(0.75);
   const [selection, setSelection] = useState<PhysicalSelection>(null);
 
   const rack = useMemo(() => buildLabRack(chassisKey), [chassisKey]);
+  const catalog = useMemo(() => FIXED_DEVICES.map(fixedCatalogEntry), []);
   const hasBoard = Boolean(boardSlotOf(chassisKey));
   const option = CHASSIS_OPTIONS.find((item) => item.key === chassisKey)!;
 
@@ -309,14 +486,30 @@ export default function PhysicalRackLabPage() {
             <option value={1}>100%</option>
           </select>
         </label>
+        <PhysicalVisualToggle mode={visualMode} onChange={setVisualMode} />
         <div className="physical-preview__filters-row">
           {hasBoard ? (
             <button type="button" onClick={() => setSelection({ kind: 'port', id: 'lab-gpon-1' })}>
               Selecionar GPON-1 (placa)
             </button>
           ) : null}
-          <button type="button" onClick={() => setSelection({ kind: 'port', id: 'lab-sw-1' })}>
-            Selecionar 10GE-1 (switch)
+          <button
+            type="button"
+            onClick={() => setSelection({ kind: 'port', id: `${SWITCH_ID}-10GE-1` })}
+          >
+            Selecionar 10GE-1 (S6730)
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelection({ kind: 'port', id: `${F1A_ID}-100GE-1` })}
+          >
+            Selecionar 100GE-1 (F1A)
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelection({ kind: 'port', id: `${S6750_ID}-SFP28-1` })}
+          >
+            Selecionar SFP28-1 (S6750)
           </button>
           <button type="button" onClick={() => setSelection({ kind: 'connection', id: CABLE_ID })}>
             Selecionar cabo CIR-LAB-01
@@ -328,12 +521,12 @@ export default function PhysicalRackLabPage() {
       </section>
 
       <p className="physical-preview__status">
-        Bancada local (fixture, nada é gravado): <b>{option.name}</b> (altura {option.heightU}U, imagem
-        com {modularChassisMap(chassisKey)?.slots.length ?? 0} baías mapeadas)
+        Bancada local (fixture, nada é gravado): <b>{option.name}</b> (altura {option.heightU}U,{' '}
+        {modularChassisMap(chassisKey)?.slots.length ?? 0} baías mapeadas)
         {hasBoard
-          ? ' · <b>GPFD 16 portas GPON</b> (H802GPFD) no primeiro slot de serviço · porta <b>GPON-1</b> ligada por <b>CIR-LAB-01</b> à <b>10GE-1</b> do S6730-H24X6C'
+          ? ' · GPFD 16 portas GPON (H802GPFD) no primeiro slot de serviço · GPON-1 ligada por CIR-LAB-01 à 10GE-1 do S6730-H48X6C'
           : ' · sem placa (MA5683T segue sem estrutura de slots no catálogo)'}
-        .
+        {' · '}fixos com visão técnica: <b>S6730-H48X6C</b>, <b>F1A-8H20Q</b> e <b>S6750-H48X8C</b>.
       </p>
 
       <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
@@ -343,7 +536,8 @@ export default function PhysicalRackLabPage() {
           mode={mode}
           selection={selection}
           path={null}
-          catalog={[]}
+          visualMode={visualMode}
+          catalog={catalog}
           onSelectAsset={() => setSelection(null)}
           onSelectPort={(id) => setSelection({ kind: 'port', id })}
           onSelectConnection={(id) => setSelection({ kind: 'connection', id })}
