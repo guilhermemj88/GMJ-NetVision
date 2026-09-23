@@ -6,10 +6,13 @@ import type {
   CreatePhysicalConnectionInput,
   CreatePhysicalModuleInput,
   PhysicalAsset,
+  PhysicalCatalogEntry,
+  PhysicalConnectionMedium,
   PhysicalInventory,
   PhysicalLldpSuggestion,
   PhysicalPath,
   PhysicalPort,
+  UpdatePhysicalConnectionInput,
   UpdatePhysicalPortInput,
 } from '@gmj/shared';
 import { Button } from '@gmj/ui';
@@ -19,6 +22,8 @@ import {
   CircleDot,
   Eraser,
   Link2,
+  LocateFixed,
+  Pencil,
   Plug,
   RefreshCw,
   Trash2,
@@ -27,7 +32,8 @@ import {
 } from 'lucide-react';
 import { classifyPhysicalInterface } from '@gmj/shared';
 import { getHost } from '@/lib/api';
-import { PORT_STATE_LABELS } from './physical-catalog';
+import { PORT_STATE_LABELS, friendlySlotLabel } from './physical-catalog';
+import { PhysicalConnectionForm } from './physical-connection-form';
 import type { PhysicalSelection } from './physical-types';
 
 function locateAsset(inventory: PhysicalInventory, id: string): PhysicalAsset | null {
@@ -67,6 +73,8 @@ interface Props {
   inventory: PhysicalInventory;
   selection: PhysicalSelection;
   path: PhysicalPath | null;
+  /** Catálogo atual (papéis dos slots para rótulos amigáveis). */
+  catalog?: readonly PhysicalCatalogEntry[];
   canEdit: boolean;
   busy: boolean;
   onClose: () => void;
@@ -74,11 +82,14 @@ interface Props {
   onUpdateAsset: (id: string, placement: { startU: number; heightU: number }) => void;
   onSyncPorts: (assetId: string) => void;
   onConnect: (input: CreatePhysicalConnectionInput) => void;
+  onUpdateConnection: (id: string, input: UpdatePhysicalConnectionInput) => void;
   onDeleteConnection: (id: string) => void;
   onUpdatePort: (portId: string, input: UpdatePhysicalPortInput) => void;
   onInstallModule: (assetId: string, input: CreatePhysicalModuleInput) => void;
   onRemoveModule: (moduleId: string) => void;
   onConfirmLldp: (adjacencyId: string) => void;
+  /** Navega para o POP/rack da ponta remota e seleciona a porta. */
+  onNavigateToPort?: (siteId: string, rackId: string, portId: string) => void;
   /** Removes connectors fabricated for logical interfaces (old sync). */
   onReconcilePorts: (assetId: string) => void;
   onDeleteAsset: (assetId: string) => void;
@@ -88,6 +99,7 @@ export function PhysicalInspector({
   inventory,
   selection,
   path,
+  catalog = [],
   canEdit,
   busy,
   onClose,
@@ -95,11 +107,13 @@ export function PhysicalInspector({
   onUpdateAsset,
   onSyncPorts,
   onConnect,
+  onUpdateConnection,
   onDeleteConnection,
   onUpdatePort,
   onInstallModule,
   onRemoveModule,
   onConfirmLldp,
+  onNavigateToPort,
   onReconcilePorts,
   onDeleteAsset,
 }: Props) {
@@ -115,9 +129,6 @@ export function PhysicalInspector({
         : null;
   const [startU, setStartU] = useState(1);
   const [heightU, setHeightU] = useState(1);
-  const [destinationId, setDestinationId] = useState('');
-  const [medium, setMedium] = useState<CreatePhysicalConnectionInput['medium']>('UNKNOWN');
-  const [label, setLabel] = useState('');
 
   useEffect(() => {
     if (!asset) return;
@@ -125,10 +136,33 @@ export function PhysicalInspector({
     setHeightU(asset.heightU);
   }, [asset]);
 
+  /** Rascunho de edição da conexão (meio/label/comprimento/observações). */
+  const [connectionDraft, setConnectionDraft] = useState<{
+    medium: PhysicalConnectionMedium;
+    label: string;
+    notes: string;
+    lengthMeters: string;
+  }>({ medium: 'UNKNOWN', label: '', notes: '', lengthMeters: '' });
+  const [editingConnection, setEditingConnection] = useState(false);
+
+  const connectionDraftSource = useMemo(
+    () =>
+      connection
+        ? {
+            medium: connection.medium,
+            label: connection.label,
+            notes: connection.notes,
+            lengthMeters: connection.lengthMeters === null ? '' : String(connection.lengthMeters),
+          }
+        : null,
+    [connection],
+  );
+
   useEffect(() => {
-    setDestinationId('');
-    setLabel('');
-  }, [locatedPort?.port.id]);
+    setEditingConnection(false);
+    if (!connectionDraftSource) return;
+    setConnectionDraft(connectionDraftSource);
+  }, [connectionDraftSource]);
 
   const [moduleDrafts, setModuleDrafts] = useState<
     Record<string, { moduleTemplateId: string; name: string }>
@@ -172,22 +206,6 @@ export function PhysicalInspector({
       (item) => item.local?.assetId === asset.id || item.remote?.assetId === asset.id,
     );
   }, [asset, inventory.lldpSuggestions]);
-
-  const freeTargets = useMemo(() => {
-    if (!locatedPort) return [];
-    return inventory.sites.flatMap((site) =>
-      site.racks.flatMap((rack) =>
-        rack.assets.flatMap((candidateAsset) =>
-          candidateAsset.ports
-            .filter((port) => !port.connectionId && port.id !== locatedPort.port.id)
-            .map((port) => ({
-              port,
-              label: `${site.name} / ${rack.name} / ${candidateAsset.name} / ${port.name}`,
-            })),
-        ),
-      ),
-    );
-  }, [inventory, locatedPort]);
 
   if (!selection) {
     return (
@@ -313,10 +331,19 @@ export function PhysicalInspector({
                 );
                 const draft = moduleDrafts[slot.id] ?? { moduleTemplateId: '', name: '' };
                 const chosen = options.find((module) => module.id === draft.moduleTemplateId) ?? null;
+                const catalogEntry = asset.template?.catalogKey
+                  ? (catalog.find((entry) => entry.catalogKey === asset.template?.catalogKey) ?? null)
+                  : null;
+                const catalogSlot = catalogEntry?.slots.find((item) => item.index === slot.index) ?? null;
+                const slotTitle = friendlySlotLabel(
+                  slot.index,
+                  catalogSlot?.slotRole ?? null,
+                  slot.label,
+                );
                 return (
                   <div key={slot.id} className={`physical-slot-row ${slot.module ? 'is-occupied' : ''}`}>
                     <header>
-                      <strong>{slot.label || `Slot ${slot.index}`}</strong>
+                      <strong>{slotTitle}</strong>
                       <small>
                         {slot.module
                           ? `${slot.module.name}${slot.module.model ? ` · ${slot.module.model}` : ''}`
@@ -550,32 +577,17 @@ export function PhysicalInspector({
         {!connection && canEdit ? (
           <section className="physical-inspector__section">
             <h3>CONECTAR PORTA</h3>
-            <label className="physical-field">
-              Destino
-              <select value={destinationId} onChange={(event) => setDestinationId(event.target.value)}>
-                <option value="">Selecione uma porta livre</option>
-                {freeTargets.map((target) => <option key={target.port.id} value={target.port.id}>{target.label}</option>)}
-              </select>
-            </label>
-            <div className="physical-form-row">
-              <label className="physical-field">
-                Meio
-                <select value={medium} onChange={(event) => setMedium(event.target.value as CreatePhysicalConnectionInput['medium'])}>
-                  <option value="UNKNOWN">Não informado</option>
-                  <option value="FIBER">Fibra</option>
-                  <option value="COPPER">Cobre</option>
-                  <option value="DAC">DAC</option>
-                  <option value="AOC">AOC</option>
-                </select>
-              </label>
-              <label className="physical-field">
-                Label
-                <input value={label} onChange={(event) => setLabel(event.target.value)} placeholder="Opcional" />
-              </label>
-            </div>
-            <Button compact variant="primary" disabled={!destinationId || busy} onClick={() => onConnect({ portAId: port.id, portBId: destinationId, medium, label })}>
-              <Link2 size={13} /> Confirmar conexão
-            </Button>
+            <p className="physical-form__hint">
+              Escolha POP → Rack → Equipamento → Porta. O LLDP continua sendo apenas sugestão.
+            </p>
+            <PhysicalConnectionForm
+              inventory={inventory}
+              sourcePortId={port.id}
+              busy={busy}
+              onSubmit={(portBId, targetMedium, targetLabel) =>
+                onConnect({ portAId: port.id, portBId, medium: targetMedium, label: targetLabel })
+              }
+            />
           </section>
         ) : null}
       </aside>
@@ -583,22 +595,189 @@ export function PhysicalInspector({
   }
 
   if (connection) {
+    const end = (side: 'a' | 'b') => connection[side];
+    const navigate = (siteId: string, rackId: string, portId: string) => {
+      if (onNavigateToPort) onNavigateToPort(siteId, rackId, portId);
+    };
     return (
       <aside className="physical-inspector">
-        {header('CONEXÃO FÍSICA', connection.label || connection.id, connection.medium)}
+        {header(
+          'CONEXÃO FÍSICA',
+          `${connection.a.portName} → ${connection.b.portName}`,
+          connection.medium,
+        )}
         <section className="physical-connection-ends">
-          <div><span>A</span><strong>{connection.a.assetName}</strong><small>{connection.a.portName} · {connection.a.rackName}</small></div>
+          <div>
+            <span>A</span>
+            <strong>{connection.a.assetName}</strong>
+            <small>{connection.a.portName} · {connection.a.siteName}</small>
+          </div>
           <Link2 size={16} />
-          <div><span>B</span><strong>{connection.b.assetName}</strong><small>{connection.b.portName} · {connection.b.rackName}</small></div>
+          <div>
+            <span>B</span>
+            <strong>{connection.b.assetName}</strong>
+            <small>{connection.b.portName} · {connection.b.siteName}</small>
+          </div>
         </section>
-        <dl className="physical-facts">
-          <Field label="Meio" value={connection.medium} />
-          <Field label="Comprimento" value={connection.lengthMeters === null ? '—' : `${connection.lengthMeters} m`} />
-          <Field label="Observações" value={connection.notes} />
-        </dl>
+        <section className="physical-inspector__section">
+          <h3>ORIGEM</h3>
+          <dl className="physical-facts">
+            <Field label="POP/Site" value={end('a').siteName} />
+            <Field label="Rack" value={end('a').rackName} />
+            <Field label="Equipamento" value={end('a').assetName} />
+            <Field label="Porta" value={end('a').portName} />
+          </dl>
+          {onNavigateToPort ? (
+            <Button
+              compact
+              variant="ghost"
+              disabled={busy}
+              onClick={() => navigate(end('a').siteId, end('a').rackId, end('a').portId)}
+            >
+              <LocateFixed size={13} /> Ir para a origem
+            </Button>
+          ) : null}
+        </section>
+        <section className="physical-inspector__section">
+          <h3>DESTINO</h3>
+          <dl className="physical-facts">
+            <Field label="POP/Site" value={end('b').siteName} />
+            <Field label="Rack" value={end('b').rackName} />
+            <Field label="Equipamento" value={end('b').assetName} />
+            <Field label="Porta" value={end('b').portName} />
+          </dl>
+          {onNavigateToPort ? (
+            <Button
+              compact
+              variant="ghost"
+              disabled={busy}
+              onClick={() => navigate(end('b').siteId, end('b').rackId, end('b').portId)}
+            >
+              <LocateFixed size={13} /> Ir para o destino
+            </Button>
+          ) : null}
+        </section>
+        <section className="physical-inspector__section">
+          <h3>DETALHES</h3>
+          <dl className="physical-facts">
+            <Field label="Meio" value={connection.medium} />
+            <Field
+              label="Comprimento"
+              value={connection.lengthMeters === null ? '—' : `${connection.lengthMeters} m`}
+            />
+            <Field label="Label" value={connection.label} />
+            <Field label="Observações" value={connection.notes} />
+          </dl>
+        </section>
         {canEdit ? (
           <section className="physical-inspector__section">
-            <Button compact variant="secondary" disabled={busy} onClick={() => onDeleteConnection(connection.id)}>
+            {editingConnection ? (
+              <div className="physical-form">
+                <div className="physical-form-row">
+                  <label className="physical-field">
+                    Meio
+                    <select
+                      value={connectionDraft.medium}
+                      onChange={(event) =>
+                        setConnectionDraft((current) => ({
+                          ...current,
+                          medium: event.target.value as PhysicalConnectionMedium,
+                        }))
+                      }
+                    >
+                      <option value="UNKNOWN">Não informado</option>
+                      <option value="FIBER">Fibra</option>
+                      <option value="COPPER">Cobre</option>
+                      <option value="DAC">DAC</option>
+                      <option value="AOC">AOC</option>
+                    </select>
+                  </label>
+                  <label className="physical-field">
+                    Comprimento (m)
+                    <input
+                      type="number"
+                      min={0}
+                      value={connectionDraft.lengthMeters}
+                      onChange={(event) =>
+                        setConnectionDraft((current) => ({
+                          ...current,
+                          lengthMeters: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                </div>
+                <label className="physical-field">
+                  Label
+                  <input
+                    value={connectionDraft.label}
+                    maxLength={240}
+                    onChange={(event) =>
+                      setConnectionDraft((current) => ({
+                        ...current,
+                        label: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="physical-field">
+                  Observações
+                  <input
+                    value={connectionDraft.notes}
+                    maxLength={2000}
+                    onChange={(event) =>
+                      setConnectionDraft((current) => ({
+                        ...current,
+                        notes: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <div className="physical-form-row">
+                  <Button
+                    compact
+                    variant="primary"
+                    disabled={busy}
+                    onClick={() =>
+                      onUpdateConnection(connection.id, {
+                        medium: connectionDraft.medium,
+                        label: connectionDraft.label,
+                        notes: connectionDraft.notes,
+                        lengthMeters:
+                          connectionDraft.lengthMeters.trim() === ''
+                            ? null
+                            : Number(connectionDraft.lengthMeters),
+                      })
+                    }
+                  >
+                    Salvar conexão
+                  </Button>
+                  <Button
+                    compact
+                    variant="ghost"
+                    type="button"
+                    onClick={() => setEditingConnection(false)}
+                  >
+                    Cancelar
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <Button
+                compact
+                variant="secondary"
+                disabled={busy}
+                onClick={() => setEditingConnection(true)}
+              >
+                <Pencil size={13} /> Editar conexão
+              </Button>
+            )}
+            <Button
+              compact
+              variant="ghost"
+              disabled={busy}
+              onClick={() => onDeleteConnection(connection.id)}
+            >
               <Unplug size={13} /> Desconectar
             </Button>
           </section>

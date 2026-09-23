@@ -138,6 +138,8 @@ const slotGroupSchema = z.looseObject({
   groupKey: z.string().min(1),
   slotIds: z.array(z.union([z.string(), z.number()])).min(1),
   role: z.string().optional(),
+  /** Módulos aceitos pelos slots deste grupo (específicos por papel). */
+  moduleKeys: z.array(z.string()).optional(),
   capacityNote: z.string().optional(),
   visual: visualSchema.optional(),
 });
@@ -182,6 +184,8 @@ const moduleTemplateSchema = z.looseObject({
   vendorVerified: z.boolean(),
   portGroups: z.array(portGroupSchema).optional(),
   sourceRefs: z.array(z.string()).optional(),
+  /** Incerteza/observação do modelo (documentada, nunca descartada). */
+  notes: z.string().optional(),
   panelLayout: panelLayoutSchema.optional(),
 });
 
@@ -288,6 +292,9 @@ export function expandPattern(pattern: string, count: number): string[] {
     return Array.from({ length: count }, (_value, index) => `${head}${start + index}${tail}`);
   }
   if (literal) return [pattern];
+  // Sem dígito nenhum e uma única porta: o rótulo é um literal (`CONSOLE`,
+  // `MGMT`, `USB`), não uma sequência numerada.
+  if (count === 1) return [pattern];
   return Array.from({ length: count }, (_value, index) => `${pattern}${index + 1}`);
 }
 
@@ -499,6 +506,7 @@ function toEntry(
   const slots: PhysicalCatalogSlot[] = [];
   let slotIndex = 0;
   for (const group of template.slotGroups ?? []) {
+    const groupModuleKeys = group.moduleKeys ?? template.compatibleModuleKeys ?? [];
     for (const slotId of group.slotIds) {
       slotIndex += 1;
       const numeric = String(slotId).replace(/[^0-9]/g, '');
@@ -506,7 +514,7 @@ function toEntry(
         index: numeric ? Number(numeric) : slotIndex,
         label: `${group.groupKey} ${slotId}`.trim(),
         description: group.capacityNote ?? '',
-        moduleKeys: [...(template.compatibleModuleKeys ?? [])],
+        moduleKeys: [...groupModuleKeys],
         slotRole: group.role ?? null,
         groupKey: group.groupKey,
         capacityNote: group.capacityNote ?? null,
@@ -515,7 +523,10 @@ function toEntry(
     }
   }
 
-  const declaredModuleKeys = new Set(template.compatibleModuleKeys ?? []);
+  const declaredModuleKeys = new Set([
+    ...(template.compatibleModuleKeys ?? []),
+    ...(template.slotGroups ?? []).flatMap((group) => group.moduleKeys ?? []),
+  ]);
   const modules: PhysicalCatalogModule[] = [];
   for (const module of modulesByKey.values()) {
     if (!declaredModuleKeys.has(module.moduleKey)) continue;
@@ -525,7 +536,12 @@ function toEntry(
       key: module.moduleKey,
       name: module.name,
       model: module.partNumber ?? module.name,
-      description: `${module.manufacturer} ${module.partNumber ?? module.name}`.trim(),
+      description: [
+        `${module.manufacturer} ${module.partNumber ?? module.name}`.trim(),
+        module.notes?.trim(),
+      ]
+        .filter(Boolean)
+        .join(' — '),
       slotsRequired: 1,
       ports: expansion.ports,
       manufacturer: module.manufacturer,
@@ -574,7 +590,7 @@ function toEntry(
       template.layoutType === 'MODULAR' ? 'MODULAR' : template.layoutType === 'FIXED' ? 'FIXED' : null,
     rackMount: template.rackMount ?? true,
     aliases: template.aliases ?? [],
-    compatibleModuleKeys: template.compatibleModuleKeys ?? [],
+    compatibleModuleKeys: [...declaredModuleKeys],
     sourceRefs: template.sourceRefs ?? [],
     referenceUrls,
     verificationNote: template.verificationNote ?? null,
@@ -673,7 +689,10 @@ export function loadPhysicalCatalogFile(path: string): CatalogLoadResult {
     sources,
   );
   for (const moduleKey of new Set(
-    parsed.data.templates.flatMap((template) => template.compatibleModuleKeys ?? []),
+    parsed.data.templates.flatMap((template) => [
+      ...(template.compatibleModuleKeys ?? []),
+      ...(template.slotGroups ?? []).flatMap((group) => group.moduleKeys ?? []),
+    ]),
   )) {
     if (!modulesByKey.has(moduleKey)) {
       warnings.push(`compatibleModuleKeys aponta para módulo inexistente: ${moduleKey}`);

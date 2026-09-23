@@ -23,6 +23,8 @@ interface Props {
   selectedPortId?: string | null;
   /** Portas que participam do caminho selecionado (destaque). */
   pathPortIds?: ReadonlySet<string> | null;
+  /** Portas da outra ponta do cabo selecionado (destaque do par). */
+  relatedPortIds?: ReadonlySet<string> | null;
   /** Debug visual: desenha bounding boxes e âncoras para conferência. */
   debug?: boolean;
   /** Ausente = somente leitura (preview do catálogo). */
@@ -56,6 +58,7 @@ export function PhysicalImagePanel({
   ports,
   selectedPortId = null,
   pathPortIds = null,
+  relatedPortIds = null,
   debug = false,
   onSelectPort,
 }: Props) {
@@ -85,6 +88,7 @@ export function PhysicalImagePanel({
         const oper = port?.operStatus ?? null;
         const selected = Boolean(port && selectedPortId === port.id);
         const inPath = Boolean(port && pathPortIds?.has(port.id));
+        const related = Boolean(port && relatedPortIds?.has(port.id));
         return (
           <button
             key={mapped.portName}
@@ -95,6 +99,7 @@ export function PhysicalImagePanel({
               oper ? `is-oper-${oper.toLowerCase()}` : '',
               selected ? 'is-selected' : '',
               inPath ? 'is-path' : '',
+              related ? 'is-related' : '',
               port ? '' : 'is-unresolved',
             ]
               .filter(Boolean)

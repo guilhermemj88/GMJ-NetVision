@@ -16,13 +16,13 @@ export const RACK_GEOMETRY = {
   rackLeft: 62,
   /** Respiro interno entre a moldura e o equipamento. */
   frameInset: 16,
-  /** Faixa de cabos à direita do rack. */
-  laneWidth: 150,
+  /** Faixa de cabos à direita do rack (inclui os endpoints remotos). */
+  laneWidth: 250,
   /** Respiro no topo/rodapé do canvas. */
   topPadding: 22,
   bottomPadding: 40,
   /** Limite de expansão de uma única U (soma das unidades do equipamento). */
-  maxAssetHeight: 200,
+  maxAssetHeight: 560,
 } as const;
 
 export interface UnitGeometry {

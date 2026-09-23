@@ -7087,6 +7087,65 @@ label > small {
   fill: #a8b9c1;
   font: 8px var(--font-mono);
 }
+.physical-cable-endpoint {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 150px;
+  padding: 6px 8px;
+  border: 1px solid rgba(111, 135, 147, 0.55);
+  border-left: 3px solid #6f8793;
+  background: rgba(16, 26, 32, 0.94);
+  cursor: pointer;
+}
+.physical-cable-endpoint strong {
+  overflow: hidden;
+  color: #8ea8b4;
+  font: 700 8px var(--font-mono);
+  letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.physical-cable-endpoint span {
+  overflow: hidden;
+  color: #c5d6dd;
+  font: 600 9px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.physical-cable-endpoint small {
+  color: #a78bfa;
+  font: 700 10px var(--font-mono);
+}
+.physical-cable-endpoint.is-external {
+  border-color: rgba(224, 157, 74, 0.55);
+  border-left-color: #e09d4a;
+}
+.physical-cable-endpoint.is-external strong { color: #e09d4a; }
+.physical-cable-endpoint.is-selected {
+  border-color: #a78bfa;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.5);
+}
+.physical-cable-endpoint__go {
+  margin-top: 3px;
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #67c5a2;
+  font: 600 8px var(--font-mono);
+  cursor: pointer;
+}
+.physical-cable-endpoint__go:hover { text-decoration: underline; }
+.physical-port.is-related,
+.physical-image-panel__hitbox.is-related {
+  box-shadow:
+    0 0 0 2px rgba(167, 139, 250, 0.9),
+    0 0 10px rgba(139, 92, 246, 0.55);
+}
+.physical-image-panel__hitbox.is-related { background: rgba(167, 139, 250, 0.18); }
 .physical-faceplate {
   position: absolute;
   z-index: 6;

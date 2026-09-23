@@ -158,6 +158,50 @@ describe('physical inventory REST API', () => {
     expect(blockedRack.json().message).toContain('Remova os equipamentos');
   });
 
+  it('edita meio, label e comprimento sem mover as portas da conexão', async () => {
+    const rack = await createRack();
+    const createAsset = async (name: string, startU: number) =>
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/api/physical/racks/${rack.id}/assets`,
+          payload: { name, startU, heightU: 1, genericPorts: { count: 1, prefix: 'GE' } },
+        })
+      ).json();
+    const left = await createAsset('SW-A', 40);
+    const right = await createAsset('SW-B', 38);
+    const cable = await app.inject({
+      method: 'POST',
+      url: '/api/physical/connections',
+      payload: { portAId: left.ports[0].id, portBId: right.ports[0].id, label: 'CIR-01' },
+    });
+    expect(cable.statusCode).toBe(201);
+    const connectionId = cable.json().id as string;
+
+    const patched = await app.inject({
+      method: 'PATCH',
+      url: `/api/physical/connections/${connectionId}`,
+      payload: { medium: 'COPPER', label: 'CIR-02', lengthMeters: 12.5, notes: 'Rota B' },
+    });
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json()).toMatchObject({
+      id: connectionId,
+      portAId: left.ports[0].id,
+      portBId: right.ports[0].id,
+      medium: 'COPPER',
+      label: 'CIR-02',
+      lengthMeters: 12.5,
+      notes: 'Rota B',
+    });
+
+    const missing = await app.inject({
+      method: 'PATCH',
+      url: '/api/physical/connections/conexao-inexistente',
+      payload: { medium: 'FIBER' },
+    });
+    expect(missing.statusCode).toBe(404);
+  });
+
   it('detects a physical loop instead of walking forever', async () => {
     const rack = await createRack();
     const createDio = async (name: string, startU: number) =>

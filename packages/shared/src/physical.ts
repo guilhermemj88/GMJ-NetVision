@@ -504,6 +504,14 @@ export interface CreatePhysicalConnectionInput {
   lengthMeters?: number | null | undefined;
 }
 
+/** Editable fields of a persisted connection (the ports are never moved here). */
+export interface UpdatePhysicalConnectionInput {
+  medium?: PhysicalConnectionMedium | undefined;
+  label?: string | undefined;
+  notes?: string | undefined;
+  lengthMeters?: number | null | undefined;
+}
+
 /** Editable fields of a physical port; the structure (slot/module) is not edited here. */
 export interface UpdatePhysicalPortInput {
   name?: string | undefined;

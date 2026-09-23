@@ -87,6 +87,13 @@ const connectionCreate = z.object({
   lengthMeters: z.number().min(0).max(1_000_000).nullable().optional(),
 });
 
+const connectionUpdate = z.object({
+  medium: medium.optional(),
+  label: z.string().trim().max(240).optional(),
+  notes: z.string().trim().max(2000).optional(),
+  lengthMeters: z.number().min(0).max(1_000_000).nullable().optional(),
+});
+
 export interface PhysicalRouteOptions {
   repository: PhysicalRepository;
   /** Shared service instance so other routes can feed the LLDP snapshot. */
@@ -250,6 +257,12 @@ export function registerPhysicalRoutes(app: FastifyInstance, options: PhysicalRo
   app.post('/api/physical/connections', async (request, reply) => {
     if (!(await requireEditor(request, reply))) return;
     return reply.code(201).send(await service.createConnection(connectionCreate.parse(request.body)));
+  });
+
+  app.patch('/api/physical/connections/:id', async (request, reply) => {
+    if (!(await requireEditor(request, reply))) return;
+    const { id } = idParams.parse(request.params);
+    return service.updateConnection(id, connectionUpdate.parse(request.body));
   });
 
   app.delete('/api/physical/connections/:id', async (request, reply) => {

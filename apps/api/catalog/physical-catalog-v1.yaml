@@ -1266,15 +1266,23 @@ templates:
     - '1'
     - '2'
     role: SERVICE_OR_UPLINK
+    moduleKeys:
+    - huawei-gpfd-16
+    - huawei-xgspon-16
+    - huawei-h902mpla
   - groupKey: control
     slotIds:
     - '3'
     - '4'
     role: CONTROL
+    moduleKeys:
+    - huawei-h901mpsc
   - groupKey: power
     slotIds:
     - '0'
     role: POWER
+    moduleKeys:
+    - huawei-pac600s12-cb
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
@@ -1302,20 +1310,30 @@ templates:
     - '6'
     - '7'
     role: SERVICE_OR_UPLINK
+    moduleKeys:
+    - huawei-gpfd-16
+    - huawei-xgspon-16
+    - huawei-h902mpla
   - groupKey: control
     slotIds:
     - '8'
     - '9'
     role: CONTROL
+    moduleKeys:
+    - huawei-h901mpsc
   - groupKey: universal
     slotIds:
     - '0'
     role: UNIVERSAL
+    moduleKeys:
+    - huawei-h902mpla
   - groupKey: power
     slotIds:
     - '10'
     - '11'
     role: POWER
+    moduleKeys:
+    - huawei-pac600s12-cb
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
@@ -1351,20 +1369,30 @@ templates:
     - '16'
     - '17'
     role: SERVICE_OR_UPLINK
+    moduleKeys:
+    - huawei-gpfd-16
+    - huawei-xgspon-16
+    - huawei-h902mpla
   - groupKey: control
     slotIds:
     - '8'
     - '9'
     role: CONTROL
+    moduleKeys:
+    - huawei-h901mpsc
   - groupKey: universal
     slotIds:
     - '0'
     role: UNIVERSAL
+    moduleKeys:
+    - huawei-h902mpla
   - groupKey: power
     slotIds:
     - '18'
     - '19'
     role: POWER
+    moduleKeys:
+    - huawei-pac600s12-cb
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
@@ -1402,20 +1430,30 @@ templates:
     - '18'
     - '19'
     role: SERVICE_OR_UPLINK
+    moduleKeys:
+    - huawei-gpfd-16
+    - huawei-xgspon-16
+    - huawei-h902mpla
   - groupKey: control
     slotIds:
     - '9'
     - '10'
     role: CONTROL
+    moduleKeys:
+    - huawei-h901mpsc
   - groupKey: universal
     slotIds:
     - '0'
     role: UNIVERSAL
+    moduleKeys:
+    - huawei-h902mpla
   - groupKey: power
     slotIds:
     - '20'
     - '21'
     role: POWER
+    moduleKeys:
+    - huawei-pac600s12-cb
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
@@ -4795,6 +4833,140 @@ moduleTemplates:
     physicalLabelPattern: RJ45-{n}
   sourceRefs:
   - juniper-mics
+- moduleKey: huawei-gpfd-16
+  manufacturer: Huawei
+  partNumber: H802GPFD
+  name: GPFD 16 portas GPON
+  compatibleCatalogKeys:
+  - huawei-ma5800-x2
+  - huawei-ma5800-x7
+  - huawei-ma5800-x15
+  - huawei-ma5800-x17
+  vendorVerified: false
+  portGroups:
+  - groupKey: gpon
+    count: 16
+    connector: SFP
+    role: PON
+    breakoutCapable: false
+    physicalLabelPattern: GPON-{n}
+  notes: Painel gerado a partir do desenho da placa (FRONT_APPROX/GENERATED no manifesto Web). Posições nunca validadas contra hardware real.
+- moduleKey: huawei-xgspon-16
+  manufacturer: Huawei
+  partNumber: H901XGPB
+  name: XGS-PON 16 portas
+  compatibleCatalogKeys:
+  - huawei-ma5800-x2
+  - huawei-ma5800-x7
+  - huawei-ma5800-x15
+  - huawei-ma5800-x17
+  vendorVerified: false
+  portGroups:
+  - groupKey: xgspon
+    count: 16
+    connector: SFP_PLUS
+    role: SERVICE
+    breakoutCapable: false
+    physicalLabelPattern: XGSPON-{n}
+  notes: Painel gerado a partir do desenho (FRONT_APPROX/GENERATED). Compatibilidade declarada apenas pela família MA5800 do manifesto do projeto.
+- moduleKey: huawei-h901mpsc
+  manufacturer: Huawei
+  partNumber: H901MPSC
+  name: H901MPSC (controle)
+  compatibleCatalogKeys:
+  - huawei-ma5800-x2
+  - huawei-ma5800-x7
+  - huawei-ma5800-x15
+  - huawei-ma5800-x17
+  vendorVerified: false
+  portGroups:
+  - groupKey: console
+    count: 1
+    connector: RJ45
+    role: CONSOLE
+    physicalLabelPattern: CONSOLE
+  - groupKey: mgmt
+    count: 1
+    connector: RJ45
+    role: MGMT
+    physicalLabelPattern: MGMT
+  - groupKey: usb
+    count: 1
+    connector: OTHER
+    role: MGMT
+    physicalLabelPattern: USB
+  - groupKey: uplink-10ge
+    count: 2
+    connector: SFP_PLUS
+    role: UPLINK
+    breakoutCapable: false
+    physicalLabelPattern: 10GE-{n}
+  - groupKey: uplink-ge
+    count: 2
+    connector: SFP
+    role: UPLINK
+    breakoutCapable: false
+    physicalLabelPattern: GE-{n}
+  notes: Placa de controle. Painel gerado a partir do desenho (FRONT_APPROX/GENERATED).
+- moduleKey: huawei-h902mpla
+  manufacturer: Huawei
+  partNumber: H902MPLA
+  name: H902MPLA (uplink)
+  compatibleCatalogKeys:
+  - huawei-ma5800-x2
+  - huawei-ma5800-x7
+  - huawei-ma5800-x15
+  - huawei-ma5800-x17
+  vendorVerified: false
+  portGroups:
+  - groupKey: uplink
+    count: 4
+    connector: OTHER
+    role: UPLINK
+    breakoutCapable: false
+    physicalLabelPattern: UPLINK-{n}
+  notes: Família do conector não confirmada pelo desenho (connector OTHER/UPLINK-{n} no manifesto). Compatível declarada apenas pela família MA5800.
+- moduleKey: huawei-scun
+  manufacturer: Huawei
+  partNumber: H801SCUN
+  name: SCUN (controle MA5683T)
+  compatibleCatalogKeys:
+  - huawei-ma5683t
+  vendorVerified: false
+  portGroups:
+  - groupKey: eth0
+    count: 1
+    connector: RJ45
+    role: MGMT
+    physicalLabelPattern: ETH0
+  - groupKey: eth1
+    count: 1
+    connector: RJ45
+    role: MGMT
+    physicalLabelPattern: ETH1
+  - groupKey: console
+    count: 1
+    connector: RJ45
+    role: CONSOLE
+    physicalLabelPattern: CONSOLE
+  - groupKey: usb
+    count: 1
+    connector: OTHER
+    role: MGMT
+    physicalLabelPattern: USB
+  notes: 'Placa de controle do MA5683T. O chassis MA5683T segue sem slotGroups confirmados: o módulo é declarado, mas não instalável até a estrutura real ser verificada.'
+- moduleKey: huawei-pac600s12-cb
+  manufacturer: Huawei
+  partNumber: PAC600S12-CB
+  name: PAC600S12-CB (fonte)
+  compatibleCatalogKeys:
+  - huawei-ma5800-x2
+  - huawei-ma5800-x7
+  - huawei-ma5800-x15
+  - huawei-ma5800-x17
+  vendorVerified: false
+  portGroups: []
+  notes: 'Módulo de energia: sem porta de dados declarada (somente imagem no manifesto).'
 implementationNotes:
 - Port group physicalLabelPattern is a compact declaration. Importer/bootstrap may expand it into individual PhysicalTemplatePort rows.
 - Patterns containing {n+5} are semantic offset patterns; importer should expand to the actual ordinals instead of treating them literally.

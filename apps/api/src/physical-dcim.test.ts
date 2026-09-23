@@ -512,6 +512,92 @@ describe('physical DCIM catalog, modules and LLDP (catálogo YAML real)', () => 
     });
   });
 
+  describe('placas das OLTs Huawei (compatibilidade declarada por papel)', () => {
+    interface OltAsset {
+      id: string;
+      slots: Array<{ id: string; index: number; module: unknown }>;
+      template: {
+        slots: Array<{ id: string; index: number; moduleKeys: string[] }>;
+        modules: Array<{ id: string; catalogKey: string | null; name: string; model: string }>;
+      };
+    }
+
+    async function oltAsset(catalogKey: string): Promise<OltAsset> {
+      await bootstrap();
+      const rack = await createRack();
+      const response = await app.inject({
+        method: 'POST',
+        url: `/api/physical/racks/${rack.id}/assets`,
+        payload: { name: catalogKey, catalogKey, startU: 1, heightU: 6 },
+      });
+      expect(response.statusCode).toBe(201);
+      return response.json() as OltAsset;
+    }
+
+    it('MA5800-X7 expõe somente os módulos declarados e com moduleKeys por papel', () => {
+      return (async () => {
+        const asset = await oltAsset('huawei-ma5800-x7');
+        const keys = asset.template.modules.map((module) => module.catalogKey).sort();
+        expect(keys).toEqual(
+          [
+            'huawei-gpfd-16',
+            'huawei-h901mpsc',
+            'huawei-h902mpla',
+            'huawei-pac600s12-cb',
+            'huawei-xgspon-16',
+          ].sort(),
+        );
+        const byIndex = new Map(asset.template.slots.map((slot) => [slot.index, slot]));
+        expect(byIndex.get(1)!.moduleKeys).toEqual([
+          'huawei-gpfd-16',
+          'huawei-xgspon-16',
+          'huawei-h902mpla',
+        ]);
+        expect(byIndex.get(8)!.moduleKeys).toEqual(['huawei-h901mpsc']);
+        expect(byIndex.get(0)!.moduleKeys).toEqual(['huawei-h902mpla']);
+        expect(byIndex.get(10)!.moduleKeys).toEqual(['huawei-pac600s12-cb']);
+      })();
+    });
+
+    it('instala GPFD com 16 portas GPON no serviço e rejeita a mesma placa no controle', () => {
+      return (async () => {
+        const asset = await oltAsset('huawei-ma5800-x7');
+        const gpfd = asset.template.modules.find(
+          (module) => module.catalogKey === 'huawei-gpfd-16',
+        )!;
+        const service = asset.slots.find((slot) => slot.index === 1)!;
+        const control = asset.slots.find((slot) => slot.index === 8)!;
+        const installed = await app.inject({
+          method: 'POST',
+          url: `/api/physical/assets/${asset.id}/modules`,
+          payload: { slotId: service.id, moduleTemplateId: gpfd.id, name: gpfd.name },
+        });
+        expect(installed.statusCode).toBe(201);
+        const ports = installed.json().ports as Array<{ name: string }>;
+        expect(ports).toHaveLength(16);
+        expect(ports[0]!.name).toBe('GPON-1');
+        expect(ports[15]!.name).toBe('GPON-16');
+
+        const refused = await app.inject({
+          method: 'POST',
+          url: `/api/physical/assets/${asset.id}/modules`,
+          payload: { slotId: control.id, moduleTemplateId: gpfd.id, name: gpfd.name },
+        });
+        expect(refused.statusCode).toBe(409);
+        expect(refused.json().message).toContain('não aceita o módulo');
+      })();
+    });
+
+    it('MA5683T continua sem estrutura de slots e sem placas instaláveis', () => {
+      return (async () => {
+        const asset = await oltAsset('huawei-ma5683t');
+        expect(asset.slots).toHaveLength(0);
+        expect(asset.template.slots).toHaveLength(0);
+        expect(asset.template.modules).toHaveLength(0);
+      })();
+    });
+  });
+
   describe('integração com Device/Interface em equipamento sem template', () => {
     it('cria apenas conectores físicos e preserva portas manuais', async () => {
       await bootstrap();

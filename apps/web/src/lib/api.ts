@@ -49,6 +49,7 @@ import {
   type PublicViewResponse,
   type CreatePhysicalAssetInput,
   type CreatePhysicalConnectionInput,
+  type UpdatePhysicalConnectionInput,
   type CreatePhysicalModuleInput,
   type CreatePhysicalPortInput,
   type CreatePhysicalRackInput,
@@ -679,6 +680,16 @@ export function deletePhysicalConnection(connectionId: string): Promise<void> {
   return request<void>(`/api/physical/connections/${encodeURIComponent(connectionId)}`, {
     method: 'DELETE',
   });
+}
+
+export function updatePhysicalConnection(
+  connectionId: string,
+  input: UpdatePhysicalConnectionInput,
+): Promise<PhysicalConnection> {
+  return request<PhysicalConnection>(
+    `/api/physical/connections/${encodeURIComponent(connectionId)}`,
+    { method: 'PATCH', body: JSON.stringify(input) },
+  );
 }
 
 export function getPhysicalPath(portId: string): Promise<PhysicalPath> {

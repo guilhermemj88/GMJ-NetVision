@@ -1,6 +1,7 @@
 import type {
   CreatePhysicalAssetInput,
   CreatePhysicalConnectionInput,
+  UpdatePhysicalConnectionInput,
   CreatePhysicalModuleInput,
   CreatePhysicalPortInput,
   CreatePhysicalRackInput,
@@ -429,6 +430,13 @@ export class PhysicalService {
   async updatePort(portId: string, input: UpdatePhysicalPortInput) {
     const updated = await this.repository.updatePort(portId, input);
     if (!updated) throw new PhysicalInventoryError('Porta física não encontrada', 404);
+    return updated;
+  }
+
+  /** Edits medium/label/notes/length; the port pair never moves. */
+  async updateConnection(id: string, input: UpdatePhysicalConnectionInput) {
+    const updated = await this.repository.updateConnection(id, input);
+    if (!updated) throw new PhysicalInventoryError('Conexão física não encontrada', 404);
     return updated;
   }
 

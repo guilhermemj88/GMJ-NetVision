@@ -4,7 +4,7 @@ import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PhysicalRackCanvas } from './physical-rack-canvas';
-import { physicalAsset, physicalPort, physicalRack } from './physical-fixtures';
+import { physicalAsset, physicalConnection, physicalPort, physicalRack } from './physical-fixtures';
 
 /**
  * Interação: a porta desenhada continua clicável e o canvas continua limpando a
@@ -109,5 +109,91 @@ describe('PhysicalRackCanvas (interação)', () => {
     // a largura não é comprimida: o canvas mantém a largura da geometria
     const width = Number.parseInt(canvas?.style.width ?? '0', 10);
     expect(width).toBeGreaterThan(900);
+  });
+
+  it('seleciona a conexão pelo endpoint remoto e navega para a ponta', () => {
+    const onSelectConnection = vi.fn();
+    const onNavigateToPort = vi.fn();
+    const rack = physicalRack({
+      id: 'rack-1',
+      siteId: 'site-1',
+      units: 6,
+      assets: [
+        physicalAsset({
+          id: 'asset-local',
+          name: 'SW-LOCAL',
+          startU: 3,
+          heightU: 1,
+          ports: [
+            physicalPort({
+              id: 'port-local',
+              assetId: 'asset-local',
+              name: '10GE-1',
+              connectionId: 'conn-remote',
+              state: 'CONNECTED',
+            }),
+          ],
+        }),
+      ],
+    });
+    const cross = physicalConnection({
+      id: 'conn-remote',
+      portAId: 'port-local',
+      portBId: 'port-remote',
+      a: {
+        portId: 'port-local',
+        portName: '10GE-1',
+        side: 'DEVICE',
+        assetId: 'asset-local',
+        assetName: 'SW-LOCAL',
+        rackId: 'rack-1',
+        rackName: 'Rack 01',
+        siteId: 'site-1',
+        siteName: 'POP A',
+      },
+      b: {
+        portId: 'port-remote',
+        portName: '100GE-2',
+        side: 'DEVICE',
+        assetId: 'asset-remote',
+        assetName: 'SW-CBF-MPLS-01',
+        rackId: 'rack-9',
+        rackName: 'Rack 02',
+        siteId: 'site-2',
+        siteName: 'POP Cabo Frio',
+      },
+    });
+
+    act(() => {
+      root.render(
+        createElement(PhysicalRackCanvas, {
+          rack,
+          connections: [cross],
+          mode: 'all',
+          selection: null,
+          path: null,
+          onSelectAsset: vi.fn(),
+          onSelectPort: vi.fn(),
+          onSelectConnection,
+          onNavigateToPort,
+          onClear: vi.fn(),
+        }),
+      );
+    });
+
+    const endpoint = container.querySelector<HTMLElement>('.physical-cable-endpoint');
+    expect(endpoint).not.toBeNull();
+    expect(endpoint!.textContent).toContain('FIBRA EXTERNA');
+    act(() => {
+      endpoint!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onSelectConnection).toHaveBeenCalledWith('conn-remote');
+
+    const go = endpoint!.querySelector<HTMLButtonElement>('.physical-cable-endpoint__go');
+    expect(go).not.toBeNull();
+    act(() => {
+      go!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    expect(onNavigateToPort).toHaveBeenCalledWith('site-2', 'rack-9', 'port-remote');
   });
 });

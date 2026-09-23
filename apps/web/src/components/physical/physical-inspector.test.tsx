@@ -3,12 +3,20 @@
 import { act, createElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRoot, type Root } from 'react-dom/client';
-import type { CreatePhysicalModuleInput, PhysicalLldpSuggestion } from '@gmj/shared';
+import type {
+  CreatePhysicalModuleInput,
+  PhysicalCatalogEntry,
+  PhysicalConnection,
+  PhysicalLldpSuggestion,
+  UpdatePhysicalConnectionInput,
+} from '@gmj/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PhysicalInspector } from './physical-inspector';
 import type { PhysicalSelection } from './physical-types';
 import {
+  catalogEntry,
   physicalAsset,
+  physicalConnection,
   physicalInventory,
   physicalModule,
   physicalPort,
@@ -103,6 +111,7 @@ interface Rendered {
   confirmations: string[];
   reconciliations: string[];
   deletions: string[];
+  connectionUpdates: UpdatePhysicalConnectionInput[];
 }
 
 let rendered: Rendered | null = null;
@@ -112,6 +121,7 @@ function render(
   suggestions: PhysicalLldpSuggestion[],
   selection: PhysicalSelection = { kind: 'asset', id: 'asset-olt' },
   asset: typeof assetWithSlots = assetWithSlots,
+  extra: { connections?: PhysicalConnection[]; catalog?: PhysicalCatalogEntry[] } = {},
 ): Rendered {
   const inventory = physicalInventory({
     sites: [
@@ -137,6 +147,7 @@ function render(
       },
     ],
     templates: [template],
+    connections: extra.connections ?? [],
     lldpSuggestions: suggestions,
     lldpObservedAt: '2026-09-21T11:00:00.000Z',
   });
@@ -149,6 +160,7 @@ function render(
   const confirmations: string[] = [];
   const reconciliations: string[] = [];
   const deletions: string[] = [];
+  const connectionUpdates: UpdatePhysicalConnectionInput[] = [];
   act(() => {
     root.render(
       createElement(
@@ -158,6 +170,7 @@ function render(
           inventory,
           selection,
           path: null,
+          catalog: extra.catalog ?? [],
           canEdit: true,
           busy: false,
           onClose: vi.fn(),
@@ -165,6 +178,8 @@ function render(
           onUpdateAsset: vi.fn(),
           onSyncPorts: vi.fn(),
           onConnect: vi.fn(),
+          onUpdateConnection: (_id: string, input: UpdatePhysicalConnectionInput) =>
+            connectionUpdates.push(input),
           onDeleteConnection: vi.fn(),
           onUpdatePort: vi.fn(),
           onInstallModule: (_assetId: string, input: CreatePhysicalModuleInput) => installs.push(input),
@@ -176,7 +191,7 @@ function render(
       ),
     );
   });
-  return { container, root, installs, removals, confirmations, reconciliations, deletions };
+  return { container, root, installs, removals, confirmations, reconciliations, deletions, connectionUpdates };
 }
 
 function click(element: Element | null | undefined): void {
@@ -333,5 +348,99 @@ describe('PhysicalInspector', () => {
     expect(container.textContent).toContain('Confirmar exclusão do equipamento');
     click(remove());
     expect(rendered.deletions).toEqual(['asset-olt']);
+  });
+
+  it('mostra as duas pontas completas da conexão e permite editar', () => {
+    const connection = physicalConnection({
+      id: 'conn-1',
+      portAId: 'port-a',
+      portBId: 'port-b',
+      label: 'CIR-01',
+      medium: 'FIBER',
+      a: {
+        portId: 'port-a',
+        portName: '100GE-1',
+        side: 'DEVICE',
+        assetId: 'asset-a',
+        assetName: 'BHE-VTA-F1A-BGP',
+        rackId: 'rack-1',
+        rackName: 'RACK 01',
+        siteId: 'site-1',
+        siteName: 'POP Vista Alegre',
+      },
+      b: {
+        portId: 'port-b',
+        portName: 'QSFP28-5',
+        side: 'DEVICE',
+        assetId: 'asset-b',
+        assetName: 'Huawei VTA 01',
+        rackId: 'rack-1',
+        rackName: 'RACK 01',
+        siteId: 'site-1',
+        siteName: 'POP Vista Alegre',
+      },
+    });
+    rendered = render([], { kind: 'connection', id: 'conn-1' }, assetWithSlots, {
+      connections: [connection],
+    });
+    const { container } = rendered;
+    // resumo porta → porta no topo
+    expect(container.textContent).toContain('100GE-1 → QSFP28-5');
+    // as duas pontas completas (site/rack/equipamento/porta de cada lado)
+    for (const text of [
+      'BHE-VTA-F1A-BGP',
+      'Huawei VTA 01',
+      '100GE-1',
+      'QSFP28-5',
+      'RACK 01',
+    ]) {
+      expect(container.textContent).toContain(text);
+    }
+    expect(container.textContent).toContain('ORIGEM');
+    expect(container.textContent).toContain('DESTINO');
+
+    // edição de meio
+    click(
+      [...container.querySelectorAll('button')].find((button) =>
+        button.textContent?.includes('Editar conexão'),
+      ),
+    );
+    const medium = container.querySelector<HTMLSelectElement>(
+      '.physical-form select',
+    );
+    expect(medium).not.toBeNull();
+    act(() => {
+      medium!.value = 'COPPER';
+      medium!.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    click(
+      [...container.querySelectorAll('button')].find((button) =>
+        button.textContent?.includes('Salvar conexão'),
+      ),
+    );
+    expect(rendered.connectionUpdates).toEqual([
+      { medium: 'COPPER', label: 'CIR-01', notes: '', lengthMeters: null },
+    ]);
+  });
+
+  it('rotula os slots com o papel do catálogo em vez do groupKey interno', () => {
+    const entry = catalogEntry({
+      catalogKey: 'generic-chassis-8-slot',
+      slots: [
+        {
+          index: 1,
+          label: 'service-upstream 1',
+          description: '',
+          moduleKeys: ['generic-lpu-4x-sfp'],
+          slotRole: 'SERVICE_OR_UPLINK',
+          groupKey: 'service-upstream',
+        },
+      ],
+    });
+    rendered = render([], { kind: 'asset', id: 'asset-olt' }, assetWithSlots, {
+      catalog: [entry],
+    });
+    expect(rendered.container.textContent).toContain('Slot 1 · Serviço/Uplink');
+    expect(rendered.container.textContent).not.toContain('service-upstream 1');
   });
 });

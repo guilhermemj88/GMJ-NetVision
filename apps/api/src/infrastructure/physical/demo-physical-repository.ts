@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type {
   CreatePhysicalAssetInput,
   CreatePhysicalConnectionInput,
+  UpdatePhysicalConnectionInput,
   CreatePhysicalModuleInput,
   CreatePhysicalPortInput,
   CreatePhysicalRackInput,
@@ -736,6 +737,21 @@ export class DemoPhysicalRepository implements PhysicalRepository {
     a.updatedAt = timestamp;
     b.updatedAt = timestamp;
     this.connections.set(connection.id, connection);
+    return clone(connection);
+  }
+
+  async updateConnection(
+    idValue: string,
+    input: UpdatePhysicalConnectionInput,
+  ): Promise<PhysicalConnection | null> {
+    const connection = this.connections.get(idValue);
+    if (!connection) return null;
+    const timestamp = now();
+    if (input.medium !== undefined) connection.medium = input.medium;
+    if (input.label !== undefined) connection.label = input.label.trim();
+    if (input.notes !== undefined) connection.notes = input.notes.trim();
+    if (input.lengthMeters !== undefined) connection.lengthMeters = input.lengthMeters;
+    connection.updatedAt = timestamp;
     return clone(connection);
   }
 

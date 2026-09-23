@@ -25,6 +25,14 @@ export const PANEL_PIXEL_SCALE = 7;
 export const PANEL_VERTICAL_PADDING = 14;
 /** Limite de altura visual de um único equipamento (em px). */
 export const PANEL_MAX_HEIGHT = 168;
+/**
+ * Teto de altura para painéis **por imagem** (front panel e chassi modular).
+ *
+ * Grades geométricas continuam limitadas por `PANEL_MAX_HEIGHT`; a imagem de um
+ * chassis alto (OLT X7/X15, M4) precisa de mais espaço para preencher a largura
+ * do painel sem virar uma miniatura — a altura física (`heightU`) não muda.
+ */
+export const IMAGE_PANEL_MAX_HEIGHT = 560;
 /** Abaixo disso o conector deixa de ser reconhecível. */
 export const PANEL_MIN_SCALE = 3.4;
 /** Largura de grade usada quando o catálogo não declara `panelLayout`. */

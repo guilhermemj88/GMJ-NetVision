@@ -489,4 +489,167 @@ describe('PhysicalRackCanvas', () => {
     // nenhuma porta do chassi é inventada: conector só existe em placa instalada
     expect(html).not.toContain('data-image-panel="huawei-ma5800-x2"');
   });
+
+  it('desenha endpoint remoto clicável na cable-lane (outro rack, mesmo POP)', () => {
+    const localRack = physicalRack({
+      id: 'rack-1',
+      siteId: 'site-1',
+      units: 6,
+      assets: [
+        physicalAsset({
+          id: 'asset-local',
+          name: 'SW-LOCAL',
+          startU: 3,
+          heightU: 1,
+          ports: [
+            physicalPort({
+              id: 'port-local',
+              assetId: 'asset-local',
+              name: '10GE-1',
+              connectionId: 'conn-remote',
+              state: 'CONNECTED',
+            }),
+          ],
+        }),
+      ],
+    });
+    const cross = physicalConnection({
+      id: 'conn-remote',
+      portAId: 'port-local',
+      portBId: 'port-remote',
+      a: {
+        portId: 'port-local',
+        portName: '10GE-1',
+        side: 'DEVICE',
+        assetId: 'asset-local',
+        assetName: 'SW-LOCAL',
+        rackId: 'rack-1',
+        rackName: 'Rack 01',
+        siteId: 'site-1',
+        siteName: 'POP A',
+      },
+      b: {
+        portId: 'port-remote',
+        portName: '100GE-2',
+        side: 'DEVICE',
+        assetId: 'asset-remote',
+        assetName: 'SW-CBF-MPLS-01',
+        rackId: 'rack-9',
+        rackName: 'Rack 02',
+        siteId: 'site-1',
+        siteName: 'POP A',
+      },
+    });
+    const html = renderToStaticMarkup(
+      <PhysicalRackCanvas
+        rack={localRack}
+        connections={[cross]}
+        mode="all"
+        selection={null}
+        path={null}
+        onSelectAsset={noop}
+        onSelectPort={noop}
+        onSelectConnection={noop}
+        onClear={noop}
+      />,
+    );
+    expect(html).toContain('physical-cable-endpoint');
+    expect(html).not.toContain('is-external');
+    expect(html).toContain('Rack 02');
+    expect(html).toContain('SW-CBF-MPLS-01');
+    expect(html).toContain('100GE-2');
+    // a linha termina na lateral (mesmo Y da porta local), nunca dentro do rack
+    expect(html).not.toContain('M 0 0');
+  });
+
+  it('identifica a ponta de outro POP como fibra externa', () => {
+    const localRack = physicalRack({
+      id: 'rack-1',
+      siteId: 'site-1',
+      units: 6,
+      assets: [
+        physicalAsset({
+          id: 'asset-local',
+          name: 'SW-LOCAL',
+          startU: 3,
+          heightU: 1,
+          ports: [
+            physicalPort({
+              id: 'port-local',
+              assetId: 'asset-local',
+              name: '100GE-1',
+              connectionId: 'conn-external',
+              state: 'CONNECTED',
+            }),
+          ],
+        }),
+      ],
+    });
+    const external = physicalConnection({
+      id: 'conn-external',
+      portAId: 'port-local',
+      portBId: 'port-remote',
+      a: {
+        portId: 'port-local',
+        portName: '100GE-1',
+        side: 'DEVICE',
+        assetId: 'asset-local',
+        assetName: 'SW-LOCAL',
+        rackId: 'rack-1',
+        rackName: 'Rack 01',
+        siteId: 'site-1',
+        siteName: 'POP Vista Alegre',
+      },
+      b: {
+        portId: 'port-remote',
+        portName: '100GE-2',
+        side: 'DEVICE',
+        assetId: 'asset-remote',
+        assetName: 'SW-CBF-MPLS-01',
+        rackId: 'rack-9',
+        rackName: 'Rack 01',
+        siteId: 'site-2',
+        siteName: 'POP Cabo Frio',
+      },
+    });
+    const html = renderToStaticMarkup(
+      <PhysicalRackCanvas
+        rack={localRack}
+        connections={[external]}
+        mode="all"
+        selection={null}
+        path={null}
+        onSelectAsset={noop}
+        onSelectPort={noop}
+        onSelectConnection={noop}
+        onClear={noop}
+      />,
+    );
+    expect(html).toContain('physical-cable-endpoint is-external');
+    expect(html).toContain('FIBRA EXTERNA');
+    expect(html).toContain('SW-CBF-MPLS-01');
+  });
+
+  it('destaca a porta par quando uma porta conectada está selecionada', () => {
+    const html = renderToStaticMarkup(
+      <PhysicalRackCanvas
+        rack={rack}
+        connections={[connection]}
+        mode="selected"
+        selection={{ kind: 'port', id: 'port-a' }}
+        path={null}
+        onSelectAsset={noop}
+        onSelectPort={noop}
+        onSelectConnection={noop}
+        onClear={noop}
+      />,
+    );
+    // o cabo do par fica visível e com destaque máximo no modo "Selecionado"
+    expect(html).toContain('physical-cable physical-cable--fiber is-selected');
+    // a porta local segue selecionada (sem o anel de "par")
+    expect(html).toContain('class="physical-port physical-port--sfp state-connected is-selected"');
+    // a ponta remota ganha o destaque de par (is-related)
+    expect(html).toContain('is-related');
+    expect(html).toContain('data-port-id="port-b"');
+  });
 });

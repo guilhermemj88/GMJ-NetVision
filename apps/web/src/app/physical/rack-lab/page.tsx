@@ -13,6 +13,8 @@ import {
   physicalRack,
   physicalSlot,
 } from '@/components/physical/physical-fixtures';
+import { modularChassisMap } from '@/components/physical/modular-chassis-map';
+import { slotRoleLabel } from '@/components/physical/physical-catalog';
 
 /**
  * Bancada local de teste do módulo físico (chassi → slot → placa → porta → cabo).
@@ -26,24 +28,36 @@ const TIMESTAMP = PHYSICAL_TIMESTAMP;
 const CABLE_ID = 'lab-cable-01';
 const OLT_ID = 'lab-olt';
 const SWITCH_ID = 'lab-switch';
-const SLOT_ID = 'lab-slot-1';
 const MODULE_ID = 'lab-module-1';
 
+/** Chassis disponíveis na bancada (fixture, nada é gravado). */
+const CHASSIS_OPTIONS = [
+  { key: 'huawei-ma5800-x2', name: 'MA5800-X2', heightU: 2 },
+  { key: 'huawei-ma5800-x7', name: 'MA5800-X7', heightU: 6 },
+  { key: 'huawei-ma5800-x15', name: 'MA5800-X15', heightU: 11 },
+  { key: 'huawei-ma5800-x17', name: 'MA5800-X17', heightU: 11 },
+  { key: 'huawei-ma5683t', name: 'MA5683T', heightU: 1 },
+] as const;
+
 /** Chassi MA5800-X2 (2U) com 3 baías mapeadas — o mesmo mapa do catálogo. */
-function chassisTemplate(): PhysicalEquipmentTemplate {
+function chassisTemplate(
+  key: string,
+  name: string,
+  heightU: number,
+): PhysicalEquipmentTemplate {
   return {
-    id: 'template-huawei-ma5800-x2',
-    catalogKey: 'huawei-ma5800-x2',
-    name: 'MA5800-X2',
+    id: `template-${key}`,
+    catalogKey: key,
+    name,
     category: 'OLT',
     manufacturer: 'Huawei',
-    family: 'MA5800',
-    model: 'MA5800-X2',
+    family: key.includes('ma5683t') ? 'SmartAX' : 'MA5800',
+    model: name,
     kind: 'OLT',
-    heightU: 2,
+    heightU,
     description: '',
-    vendorVerified: true,
-    structureConfirmed: true,
+    vendorVerified: key !== 'huawei-ma5683t',
+    structureConfirmed: key !== 'huawei-ma5683t',
     referenceUrl: null,
     origin: 'SYSTEM',
     ports: [],
@@ -57,25 +71,35 @@ function chassisTemplate(): PhysicalEquipmentTemplate {
 /** Switch com painel por imagem (S6730-H24X6C) para a outra ponta do cabo. */
 function switchTemplate(): PhysicalEquipmentTemplate {
   return {
-    ...chassisTemplate(),
+    ...chassisTemplate('huawei-s6730-h24x6c', 'S6730-H24X6C', 1),
     id: 'template-huawei-s6730-h24x6c',
-    catalogKey: 'huawei-s6730-h24x6c',
-    name: 'S6730-H24X6C',
     category: 'SWITCH',
     family: 'S6730',
-    model: 'S6730-H24X6C',
     kind: 'NETWORK',
-    heightU: 1,
   };
 }
 
+/** Slots da bancada: vêm do próprio manifesto do chassi (ordinal + papel). */
+function labSlots(chassisKey: string): Array<ReturnType<typeof physicalSlot>> {
+  const map = modularChassisMap(chassisKey);
+  if (!map) return [];
+  return map.slots.map((mapped) =>
+    physicalSlot({
+      id: `${chassisKey}-slot-${mapped.ordinal}`,
+      assetId: OLT_ID,
+      index: mapped.ordinal,
+      label: `Slot ${mapped.ordinal} · ${slotRoleLabel(mapped.role)}`,
+    }),
+  );
+}
+
 /** 16 portas GPON da placa (nomes estáveis do mapa: GPON-1..GPON-16). */
-function boardPorts() {
+function boardPorts(slotId: string) {
   return Array.from({ length: 16 }, (_value, index) =>
     physicalPort({
       id: `lab-gpon-${index + 1}`,
       assetId: OLT_ID,
-      slotId: SLOT_ID,
+      slotId,
       moduleId: MODULE_ID,
       name: `GPON-${index + 1}`,
       label: `GPON-${index + 1}`,
@@ -85,6 +109,18 @@ function boardPorts() {
       ...(index === 0 ? { state: 'CONNECTED' as const, connectionId: CABLE_ID } : {}),
     }),
   );
+}
+
+function boardModule(slotId: string): ReturnType<typeof physicalModule> {
+  return physicalModule({
+    id: MODULE_ID,
+    assetId: OLT_ID,
+    slotId,
+    slotIndex: 1,
+    name: 'GPFD 16 portas GPON',
+    model: 'H802GPFD',
+    ports: boardPorts(slotId),
+  });
 }
 
 function switchPorts() {
@@ -114,65 +150,56 @@ function switchPorts() {
   return [...sfpPlus, ...qsfp];
 }
 
-const labRack = physicalRack({
-  id: 'lab-rack-1',
-  name: 'Rack LAB-01',
-  units: 42,
-  assets: [
-    physicalAsset({
-      id: OLT_ID,
-      name: 'OLT LAB-01',
-      kind: 'OLT',
-      startU: 30,
-      heightU: 2,
-      description: 'Chassi MA5800-X2 com a placa GPFD no slot 1',
-      templateId: 'template-huawei-ma5800-x2',
-      template: chassisTemplate(),
-      ports: [],
-      modules: [
-        physicalModule({
-          id: MODULE_ID,
-          assetId: OLT_ID,
-          slotId: SLOT_ID,
-          slotIndex: 1,
-          name: 'GPFD 16 portas GPON',
-          model: 'H802GPFD',
-          ports: boardPorts(),
-        }),
-      ],
-      slots: [
-        physicalSlot({
-          id: SLOT_ID,
-          assetId: OLT_ID,
-          index: 1,
-          label: 'service-upstream 1',
-          module: physicalModule({
-            id: MODULE_ID,
-            assetId: OLT_ID,
-            slotId: SLOT_ID,
-            slotIndex: 1,
-            name: 'GPFD 16 portas GPON',
-            model: 'H802GPFD',
-            ports: boardPorts(),
-          }),
-        }),
-        physicalSlot({ id: 'lab-slot-2', assetId: OLT_ID, index: 2, label: 'service-upstream 2' }),
-        physicalSlot({ id: 'lab-slot-3', assetId: OLT_ID, index: 3, label: 'control 3' }),
-      ],
-    }),
-    physicalAsset({
-      id: SWITCH_ID,
-      name: 'SW-CORE LAB-01',
-      kind: 'NETWORK',
-      startU: 32,
-      heightU: 1,
-      description: 'Switch com painel por imagem (outra ponta do cabo)',
-      templateId: 'template-huawei-s6730-h24x6c',
-      template: switchTemplate(),
-      ports: switchPorts(),
-    }),
-  ],
-});
+/** Placa instalada no primeiro slot de serviço do chassi (exceto MA5683T). */
+function boardSlotOf(chassisKey: string): string | null {
+  const map = modularChassisMap(chassisKey);
+  const service = map?.slots.find((mapped) => mapped.role === 'SERVICE_OR_UPLINK');
+  return service ? `${chassisKey}-slot-${service.ordinal}` : null;
+}
+
+function buildLabRack(chassisKey: string) {
+  const option = CHASSIS_OPTIONS.find((item) => item.key === chassisKey)!;
+  const slots = labSlots(chassisKey);
+  const boardSlot = boardSlotOf(chassisKey);
+  const board = boardSlot ? boardModule(boardSlot) : null;
+  return physicalRack({
+    id: 'lab-rack-1',
+    name: 'Rack LAB-01',
+    units: 42,
+    assets: [
+      physicalAsset({
+        id: OLT_ID,
+        name: `OLT ${option.name}`,
+        kind: 'OLT',
+        startU: 20,
+        heightU: option.heightU,
+        description: board
+          ? `Chassi ${option.name} com a placa GPFD no primeiro slot de serviço`
+          : `Chassi ${option.name} sem placas (fixture)`,
+        templateId: `template-${chassisKey}`,
+        template: chassisTemplate(chassisKey, option.name, option.heightU),
+        ports: [],
+        modules: board ? [board] : [],
+        slots: slots.map((slot) =>
+          board && slot.id === boardSlot
+            ? { ...slot, module: board }
+            : slot,
+        ),
+      }),
+      physicalAsset({
+        id: SWITCH_ID,
+        name: 'SW-CORE LAB-01',
+        kind: 'NETWORK',
+        startU: 34,
+        heightU: 1,
+        description: 'Switch com painel por imagem (outra ponta do cabo)',
+        templateId: 'template-huawei-s6730-h24x6c',
+        template: switchTemplate(),
+        ports: switchPorts(),
+      }),
+    ],
+  });
+}
 
 /**
  * Pontas já resolvidas (o canvas ancora o cabo por `connection.a/b`): asset,
@@ -184,7 +211,7 @@ const labConnection = physicalConnection({
   medium: 'FIBER',
   portAId: 'lab-gpon-1',
   portBId: 'lab-sw-1',
-  notes: 'Cabo de teste: porta GPON-1 da placa no slot 1 da OLT',
+  notes: 'Cabo de teste: porta GPON-1 da placa no primeiro slot de serviço da OLT',
   a: {
     portId: 'lab-gpon-1',
     portName: 'GPON-1',
@@ -226,18 +253,34 @@ const labStyles = `
 `;
 
 export default function PhysicalRackLabPage() {
+  const [chassisKey, setChassisKey] = useState<string>(CHASSIS_OPTIONS[0].key);
   const [mode, setMode] = useState<PhysicalConnectionMode>('all');
   const [showHitboxes, setShowHitboxes] = useState(false);
   const [zoom, setZoom] = useState(0.75);
   const [selection, setSelection] = useState<PhysicalSelection>(null);
 
-  const rack = useMemo(() => labRack, []);
+  const rack = useMemo(() => buildLabRack(chassisKey), [chassisKey]);
+  const hasBoard = Boolean(boardSlotOf(chassisKey));
+  const option = CHASSIS_OPTIONS.find((item) => item.key === chassisKey)!;
 
   return (
     <main className={`physical-preview ${showHitboxes ? 'is-lab-hitboxes' : ''}`}>
       <style>{labStyles}</style>
 
       <section className="physical-preview__filters">
+        <label>
+          Chassi
+          <select value={chassisKey} onChange={(event) => {
+            setChassisKey(event.target.value);
+            setSelection(null);
+          }}>
+            {CHASSIS_OPTIONS.map((item) => (
+              <option key={item.key} value={item.key}>
+                {item.name}
+              </option>
+            ))}
+          </select>
+        </label>
         <label>
           Cabos
           <select
@@ -267,9 +310,11 @@ export default function PhysicalRackLabPage() {
           </select>
         </label>
         <div className="physical-preview__filters-row">
-          <button type="button" onClick={() => setSelection({ kind: 'port', id: 'lab-gpon-1' })}>
-            Selecionar GPON-1 (placa)
-          </button>
+          {hasBoard ? (
+            <button type="button" onClick={() => setSelection({ kind: 'port', id: 'lab-gpon-1' })}>
+              Selecionar GPON-1 (placa)
+            </button>
+          ) : null}
           <button type="button" onClick={() => setSelection({ kind: 'port', id: 'lab-sw-1' })}>
             Selecionar 10GE-1 (switch)
           </button>
@@ -283,9 +328,12 @@ export default function PhysicalRackLabPage() {
       </section>
 
       <p className="physical-preview__status">
-        Bancada local (fixture, nada é gravado): <b>MA5800-X2</b> em U30 (2U) · <b>GPFD 16 portas
-        GPON</b> (H802GPFD) no <b>slot 1</b> · porta <b>GPON-1</b> ligada por <b>CIR-LAB-01</b> à{' '}
-        <b>10GE-1</b> do S6730-H24X6C em U32.
+        Bancada local (fixture, nada é gravado): <b>{option.name}</b> (altura {option.heightU}U, imagem
+        com {modularChassisMap(chassisKey)?.slots.length ?? 0} baías mapeadas)
+        {hasBoard
+          ? ' · <b>GPFD 16 portas GPON</b> (H802GPFD) no primeiro slot de serviço · porta <b>GPON-1</b> ligada por <b>CIR-LAB-01</b> à <b>10GE-1</b> do S6730-H24X6C'
+          : ' · sem placa (MA5683T segue sem estrutura de slots no catálogo)'}
+        .
       </p>
 
       <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>

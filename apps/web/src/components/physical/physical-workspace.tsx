@@ -37,6 +37,7 @@ import {
   removePhysicalModule,
   syncPhysicalPorts,
   updatePhysicalAsset,
+  updatePhysicalConnection,
   updatePhysicalPort,
 } from '@/lib/api';
 import { PhysicalAssetDialog, type PhysicalAssetDialogResult } from './physical-asset-dialog';
@@ -346,6 +347,11 @@ export function PhysicalWorkspace() {
               onSelectAsset={(id) => setSelection({ kind: 'asset', id })}
               onSelectPort={(id) => setSelection({ kind: 'port', id })}
               onSelectConnection={(id) => setSelection({ kind: 'connection', id })}
+              onNavigateToPort={(targetSiteId, targetRackId, portId) => {
+                setSiteId(targetSiteId);
+                setRackId(targetRackId);
+                setSelection({ kind: 'port', id: portId });
+              }}
               onClear={() => setSelection(null)}
             />
           ) : (
@@ -357,6 +363,7 @@ export function PhysicalWorkspace() {
           inventory={inventory}
           selection={selection}
           path={pathQuery.data ?? null}
+          catalog={catalogQuery.data ?? []}
           canEdit={canEdit}
           busy={busy}
           onClose={() => setSelection(null)}
@@ -366,6 +373,9 @@ export function PhysicalWorkspace() {
           onReconcilePorts={(id) => void reconcilePorts(id)}
           onDeleteAsset={(id) => void deleteAsset(id)}
           onConnect={(input) => void run(() => createPhysicalConnection(input), (created) => setSelection({ kind: 'connection', id: created.id }))}
+          onUpdateConnection={(id, input) =>
+            void run(() => updatePhysicalConnection(id, input))
+          }
           onDeleteConnection={(id) => void run(() => deletePhysicalConnection(id), () => setSelection(null))}
           onUpdatePort={(id, input) => void run(() => updatePhysicalPort(id, input))}
           onInstallModule={(assetId, input) => void run(() => installPhysicalModule(assetId, input))}
@@ -376,6 +386,11 @@ export function PhysicalWorkspace() {
               (created) => setSelection({ kind: 'connection', id: created.id }),
             )
           }
+          onNavigateToPort={(targetSiteId, targetRackId, portId) => {
+            setSiteId(targetSiteId);
+            setRackId(targetRackId);
+            setSelection({ kind: 'port', id: portId });
+          }}
         />
       </div>
 

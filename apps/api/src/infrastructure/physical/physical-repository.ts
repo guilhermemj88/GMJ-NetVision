@@ -1,6 +1,7 @@
 import type {
   CreatePhysicalAssetInput,
   CreatePhysicalConnectionInput,
+  UpdatePhysicalConnectionInput,
   CreatePhysicalModuleInput,
   CreatePhysicalPortInput,
   CreatePhysicalRackInput,
@@ -132,6 +133,10 @@ export interface PhysicalRepository {
   installModule(assetId: string, input: CreatePhysicalModuleInput): Promise<PhysicalModule | null>;
   removeModule(moduleId: string): Promise<boolean>;
   createConnection(input: CreatePhysicalConnectionInput): Promise<PhysicalConnection | null>;
+  updateConnection(
+    id: string,
+    input: UpdatePhysicalConnectionInput,
+  ): Promise<PhysicalConnection | null>;
   deleteConnection(id: string): Promise<boolean>;
   recordLldpAdjacencies(rows: readonly PhysicalLldpAdjacencyInput[]): Promise<number>;
   listLldpAdjacencies(): Promise<PhysicalLldpAdjacencyRecord[]>;

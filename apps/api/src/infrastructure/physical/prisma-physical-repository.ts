@@ -1,6 +1,7 @@
 import type {
   CreatePhysicalAssetInput,
   CreatePhysicalConnectionInput,
+  UpdatePhysicalConnectionInput,
   CreatePhysicalModuleInput,
   CreatePhysicalPortInput,
   CreatePhysicalRackInput,
@@ -1091,6 +1092,25 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
       ...connectionArgs,
     });
     return created ? mapConnection(created) : null;
+  }
+
+  async updateConnection(
+    id: string,
+    input: UpdatePhysicalConnectionInput,
+  ): Promise<PhysicalConnection | null> {
+    const updated = await this.prisma.physicalConnection
+      .update({
+        where: { id },
+        data: {
+          ...(input.medium !== undefined ? { medium: input.medium } : {}),
+          ...(input.label !== undefined ? { label: input.label.trim() } : {}),
+          ...(input.notes !== undefined ? { notes: input.notes.trim() } : {}),
+          ...(input.lengthMeters !== undefined ? { lengthMeters: input.lengthMeters } : {}),
+        },
+        ...connectionArgs,
+      })
+      .catch(() => null);
+    return updated ? mapConnection(updated) : null;
   }
 
   async deleteConnection(id: string): Promise<boolean> {

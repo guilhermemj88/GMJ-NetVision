@@ -62,9 +62,10 @@ describe('physical catalog YAML (arquivo real)', () => {
     const result = loadPhysicalCatalog(PHYSICAL_CATALOG);
     expect(result.counts.templates).toBe(raw.templates.length);
     expect(result.counts.moduleTemplates).toBe(raw.moduleTemplates.length);
-    // V1.1: 121 templates de equipamento e 5 de placa (90 verificados / 31 pendentes)
+    // V1.1: 121 templates de equipamento (90 verificados / 31 pendentes) e 11
+    // de placa (5 MICs Juniper + 6 placas Huawei das OLTs, não verificadas).
     expect(result.counts.templates).toBe(121);
-    expect(result.counts.moduleTemplates).toBe(5);
+    expect(result.counts.moduleTemplates).toBe(11);
     expect(result.counts.vendorVerified + result.counts.unverified).toBe(result.counts.templates);
     expect(result.counts.vendorVerified).toBe(90);
     expect(result.counts.unverified).toBe(31);
@@ -245,7 +246,16 @@ describe('physical catalog YAML (arquivo real)', () => {
     expect(rb5009.rackMount).toBe(false);
     const chassis = result.entries.find((entry) => entry.catalogKey === 'huawei-ma5800-x7')!;
     expect(chassis.layoutType).toBe('MODULAR');
-    expect(chassis.modules.length).toBe(0);
+    // As placas declaradas por papel chegam ao módulo do chassis (não ficam órfãs).
+    expect(chassis.modules.map((module) => module.key).sort()).toEqual(
+      [
+        'huawei-gpfd-16',
+        'huawei-h901mpsc',
+        'huawei-h902mpla',
+        'huawei-pac600s12-cb',
+        'huawei-xgspon-16',
+      ].sort(),
+    );
   });
 });
 

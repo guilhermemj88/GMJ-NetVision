@@ -6,12 +6,13 @@ import type {
   PhysicalCatalogEntry,
   PhysicalCatalogModule,
   PhysicalConnection,
+  PhysicalConnectionEndpoint,
   PhysicalPath,
   PhysicalRack,
 } from '@gmj/shared';
 import type { PhysicalConnectionMode, PhysicalSelection } from './physical-types';
 import {
-  PANEL_MAX_HEIGHT,
+  IMAGE_PANEL_MAX_HEIGHT,
   buildModulePanelLayout,
   buildPanelLayout,
   calculateAssetDisplayHeight,
@@ -19,6 +20,7 @@ import {
   type PanelLayout,
 } from './physical-panel-layout';
 import { PhysicalPortShape } from './physical-port-shape';
+import { friendlySlotLabel } from './physical-catalog';
 import {
   type FrontPanelBoxPx,
   type FrontPanelImageMap,
@@ -106,6 +108,12 @@ interface CablePath {
   exitLabel?: string;
   labelX?: number;
   labelY?: number;
+  /** Ponta fora deste rack: vira um endpoint clicável na cable-lane. */
+  remote?: {
+    endpoint: PhysicalConnectionEndpoint;
+    external: boolean;
+    portY: number;
+  };
 }
 
 interface Props {
@@ -119,6 +127,8 @@ interface Props {
   onSelectAsset: (id: string) => void;
   onSelectPort: (id: string) => void;
   onSelectConnection: (id: string) => void;
+  /** Leva o operador até o site/rack da ponta remota e seleciona a porta. */
+  onNavigateToPort?: (siteId: string, rackId: string, portId: string) => void;
   onClear: () => void;
 }
 
@@ -141,6 +151,7 @@ export function PhysicalRackCanvas({
   onSelectAsset,
   onSelectPort,
   onSelectConnection,
+  onNavigateToPort,
   onClear,
 }: Props) {
   const base = RACK_GEOMETRY.baseUnitHeight;
@@ -171,7 +182,7 @@ export function PhysicalRackCanvas({
           kind: 'image',
           map: imageMap,
           displayHeight: Math.min(
-            PANEL_MAX_HEIGHT,
+            IMAGE_PANEL_MAX_HEIGHT,
             Math.max(
               Math.max(1, asset.heightU) * base,
               IDENTITY_HEIGHT + PANEL_PADDING * 2 + Math.round(imageHeight),
@@ -197,7 +208,7 @@ export function PhysicalRackCanvas({
           map: chassisMap,
           displayHeight: chassisMap.image
             ? Math.min(
-                PANEL_MAX_HEIGHT,
+                IMAGE_PANEL_MAX_HEIGHT,
                 Math.max(
                   Math.max(1, asset.heightU) * base,
                   IDENTITY_HEIGHT + PANEL_PADDING * 2 + Math.round(imageHeight),
@@ -319,13 +330,18 @@ export function PhysicalRackCanvas({
 
   /** Slots do chassi prontos para o painel modular (nada é inventado). */
   function modularSlotsOf(asset: PhysicalAsset, map: ModularChassisMap): ModularSlotView[] {
+    const entry = asset.template?.catalogKey
+      ? (catalogByKey.get(asset.template.catalogKey) ?? null)
+      : null;
     return asset.slots.map((slot) => {
       const module = slot.module ?? null;
       const catalogMap = chassisSlotMapFor(map, slot);
+      const catalogSlot = entry?.slots.find((item) => item.index === slot.index) ?? null;
+      const role = catalogSlot?.slotRole ?? catalogMap?.role ?? null;
       return {
         slotId: slot.id,
         ordinal: slot.index,
-        label: catalogMap ? `${slot.label || `Slot ${slot.index}`}` : `Slot ${slot.index}`,
+        label: friendlySlotLabel(slot.index, role, slot.label),
         occupied: module !== null,
         moduleName: module ? module.model || module.name : null,
         moduleImage: null,
@@ -408,18 +424,60 @@ export function PhysicalRackCanvas({
     };
   }
 
-  const pathConnectionIds = new Set(
-    path?.steps.flatMap((step) => (step.kind === 'CABLE' ? [step.connectionId] : [])) ?? [],
+  const pathConnectionIds = useMemo(
+    () =>
+      new Set(
+        path?.steps.flatMap((step) => (step.kind === 'CABLE' ? [step.connectionId] : [])) ?? [],
+      ),
+    [path],
   );
   const selectedConnectionId = selection?.kind === 'connection' ? selection.id : null;
+  const connectedIds = useMemo(() => {
+    const ids = new Set<string>(pathConnectionIds);
+    if (selection?.kind === 'connection') ids.add(selection.id);
+    if (selection?.kind === 'port') {
+      const selectedPort = rack.assets
+        .flatMap((asset) => asset.ports)
+        .find((port) => port.id === selection.id);
+      if (selectedPort?.connectionId) ids.add(selectedPort.connectionId);
+    }
+    return ids;
+  }, [pathConnectionIds, rack.assets, selection]);
   const related = (connection: PhysicalConnection) => {
     if (selection?.kind === 'asset') {
       return connection.a.assetId === selection.id || connection.b.assetId === selection.id;
     }
-    if (selection?.kind === 'port') return pathConnectionIds.has(connection.id);
-    if (selection?.kind === 'connection') return connection.id === selection.id;
+    if (selection?.kind === 'port' || selection?.kind === 'connection') {
+      return connectedIds.has(connection.id);
+    }
     return false;
   };
+
+  /** Cabo do qual a porta selecionada é ponta: ganha o destaque máximo. */
+  const selectedPortConnectionId =
+    selection?.kind === 'port'
+      ? (rack.assets
+          .flatMap((asset) => asset.ports)
+          .find((port) => port.id === selection.id)?.connectionId ?? null)
+      : null;
+
+  /** Portas das duas pontas do cabo selecionado (destaque porta ↔ porta). */
+  const relatedPortIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (!selection) return ids;
+    if (selection.kind === 'asset') return ids;
+    const wanted = new Set<string>(
+      selection.kind === 'connection' ? [selection.id] : connectedIds,
+    );
+    for (const connection of connections) {
+      if (!wanted.has(connection.id)) continue;
+      ids.add(connection.a.portId);
+      ids.add(connection.b.portId);
+    }
+    // A porta selecionada já tem `is-selected`; `is-related` marca só a ponta par.
+    if (selection.kind === 'port') ids.delete(selection.id);
+    return ids;
+  }, [connectedIds, connections, selection]);
 
   const laneX = geometry.rackLeft + geometry.rackWidth + 26;
   let exitSlot = 0;
@@ -429,7 +487,10 @@ export function PhysicalRackCanvas({
     if (!aInRack && !bInRack) return [];
     const isRelated = related(connection);
     if (mode === 'hidden' || (mode === 'selected' && !isRelated)) return [];
-    const selected = connection.id === selectedConnectionId || pathConnectionIds.has(connection.id);
+    const selected =
+      connection.id === selectedConnectionId ||
+      connection.id === selectedPortConnectionId ||
+      pathConnectionIds.has(connection.id);
     if (aInRack && bInRack) {
       const a = portAnchor(connection.a.assetId, connection.a.portId);
       const b = portAnchor(connection.b.assetId, connection.b.portId);
@@ -448,22 +509,39 @@ export function PhysicalRackCanvas({
     const local = aInRack ? connection.a : connection.b;
     const point = portAnchor(local.assetId, local.portId);
     if (!point) return [];
-    const y = 22 + exitSlot * 24;
-    const lane = laneX + (exitSlot % 4) * 16;
-    exitSlot += 1;
     const remote = aInRack ? connection.b : connection.a;
+    const external = remote.siteId !== local.siteId;
+    const lane = laneX + (exitSlot % 3) * 18;
+    exitSlot += 1;
     return [
       {
         connection,
-        d: `M ${point.x} ${point.y} H ${lane} V ${y} H ${geometry.width - 12}`,
+        d: `M ${point.x} ${point.y} H ${lane} V ${point.y} H ${geometry.width - 12}`,
         selected,
         related: isRelated,
-        exitLabel: `→ ${remote.siteName} / ${remote.rackName} / ${remote.assetName}`,
-        labelX: laneX + 6,
-        labelY: y - 6,
+        remote: { endpoint: remote, external, portY: point.y },
       },
     ];
   });
+
+  /** Endpoints remotos na cable-lane, empilhados sem sobreposição. */
+  const remoteEndpoints = useMemo(() => {
+    const rows = cables
+      .filter((cable) => cable.remote)
+      .map((cable) => ({
+        connection: cable.connection,
+        endpoint: cable.remote!.endpoint,
+        external: cable.remote!.external,
+        portY: cable.remote!.portY,
+      }))
+      .sort((left, right) => left.portY - right.portY);
+    let lastBottom = -Infinity;
+    return rows.map((row) => {
+      const top = Math.max(0, Math.min(row.portY - 24, lastBottom + 26));
+      lastBottom = top + 62;
+      return { ...row, y: Math.min(top, geometry.height - 78) };
+    });
+  }, [cables, geometry.height]);
 
   const activeAssetIds = new Set<string>();
   if (selection?.kind === 'asset') activeAssetIds.add(selection.id);
@@ -534,14 +612,54 @@ export function PhysicalRackCanvas({
                   cable.selected ? 'is-selected' : cable.related ? 'is-related' : 'is-dim'
                 }`}
               />
-              {cable.exitLabel ? (
-                <text x={cable.labelX} y={cable.labelY} className="physical-cable-label">
-                  {cable.exitLabel}
-                </text>
-              ) : null}
             </g>
           ))}
         </svg>
+
+        {remoteEndpoints.map((row) => (
+          <div
+            key={row.connection.id}
+            className={[
+              'physical-cable-endpoint',
+              row.external ? 'is-external' : '',
+              row.connection.id === selectedConnectionId ? 'is-selected' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            style={{ left: laneX + 92, top: row.y }}
+            role="button"
+            tabIndex={0}
+            title={`${row.external ? 'Fibra externa' : 'Outro rack'} · ${row.endpoint.siteName} / ${
+              row.endpoint.rackName
+            } / ${row.endpoint.assetName} / ${row.endpoint.portName}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              onSelectConnection(row.connection.id);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                onSelectConnection(row.connection.id);
+              }
+            }}
+          >
+            <strong>{row.external ? 'FIBRA EXTERNA' : row.endpoint.rackName}</strong>
+            <span>{row.endpoint.assetName}</span>
+            <small>{row.endpoint.portName}</small>
+            {onNavigateToPort ? (
+              <button
+                type="button"
+                className="physical-cable-endpoint__go"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onNavigateToPort(row.endpoint.siteId, row.endpoint.rackId, row.endpoint.portId);
+                }}
+              >
+                Ir para a ponta →
+              </button>
+            ) : null}
+          </div>
+        ))}
 
         {rack.assets.map((asset) => {
           const placement = geometry.assets.get(asset.id);
@@ -569,6 +687,7 @@ export function PhysicalRackCanvas({
                 scale={scale}
                 selected={selection?.kind === 'port' && selection.id === port.id}
                 inPath={pathPortIds.has(port.id)}
+                related={relatedPortIds.has(port.id)}
                 onSelect={onSelectPort}
               />
             );
@@ -641,6 +760,7 @@ export function PhysicalRackCanvas({
                       ports={asset.ports}
                       selectedPortId={selection?.kind === 'port' ? selection.id : null}
                       pathPortIds={pathPortIds}
+                      relatedPortIds={relatedPortIds}
                       onSelectPort={onSelectPort}
                     />
                   </div>
@@ -687,6 +807,7 @@ export function PhysicalRackCanvas({
                                 ports={module.ports}
                                 selectedPortId={selection?.kind === 'port' ? selection.id : null}
                                 pathPortIds={pathPortIds}
+                                relatedPortIds={relatedPortIds}
                                 onSelectPort={onSelectPort}
                               />
                             </div>
@@ -713,6 +834,7 @@ export function PhysicalRackCanvas({
                                   scale={geometry.scale}
                                   selected={selection?.kind === 'port' && selection.id === port.id}
                                   inPath={pathPortIds.has(port.id)}
+                                  related={relatedPortIds.has(port.id)}
                                   onSelect={onSelectPort}
                                 />
                               );
@@ -775,6 +897,7 @@ export function PhysicalRackCanvas({
                                           selection?.kind === 'port' && selection.id === port.id
                                         }
                                         inPath={pathPortIds.has(port.id)}
+                                        related={relatedPortIds.has(port.id)}
                                         onSelect={onSelectPort}
                                       />
                                     );

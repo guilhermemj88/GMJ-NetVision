@@ -11,6 +11,8 @@ interface Props {
   scale: number;
   selected: boolean;
   inPath: boolean;
+  /** A outra ponta do cabo desta porta está selecionada: destaque do par. */
+  related?: boolean;
   /** Diagnóstico da preview: destaca conectores com bbox sobreposto. */
   overlap?: boolean;
   onSelect: (id: string) => void;
@@ -29,6 +31,7 @@ export function PhysicalPortShape({
   scale,
   selected,
   inPath,
+  related = false,
   overlap = false,
   onSelect,
 }: Props) {
@@ -55,6 +58,7 @@ export function PhysicalPortShape({
         `physical-port--${placed.kind.toLowerCase()}`,
         `state-${port.state.toLowerCase()}`,
         selected || inPath ? 'is-selected' : '',
+        related ? 'is-related' : '',
         overlap ? 'is-overlap' : '',
       ]
         .filter(Boolean)

@@ -39,6 +39,36 @@ export const PORT_STATE_LABELS: Record<PhysicalPortState, string> = {
   CONNECTED: 'CONECTADA',
 };
 
+/** Papel do slot em português (rótulos do catálogo usam groupKeys técnicos). */
+export function slotRoleLabel(role: string | null | undefined): string {
+  switch (role) {
+    case 'SERVICE':
+    case 'SERVICE_OR_UPLINK':
+      return 'Serviço/Uplink';
+    case 'CONTROL':
+      return 'Controle';
+    case 'UNIVERSAL':
+      return 'Universal';
+    case 'POWER':
+      return 'Energia';
+    case 'FAN':
+      return 'Ventilação';
+    default:
+      return 'Slot';
+  }
+}
+
+/** `Slot 1 · Serviço/Uplink` — legível, sem expor o groupKey interno. */
+export function friendlySlotLabel(
+  index: number,
+  role: string | null | undefined,
+  fallbackLabel?: string | null,
+): string {
+  const roleName = slotRoleLabel(role);
+  if (role) return `Slot ${index} · ${roleName}`;
+  return fallbackLabel?.trim() || `Slot ${index}`;
+}
+
 export function findCatalogEntry(
   entries: readonly PhysicalCatalogEntry[],
   catalogKey: string | null | undefined,
