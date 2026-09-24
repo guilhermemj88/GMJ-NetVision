@@ -73,7 +73,9 @@ export function PhysicalWorkspace() {
   const [rackId, setRackId] = useState('');
   const [selection, setSelection] = useState<PhysicalSelection>(null);
   const [mode, setMode] = useState<PhysicalConnectionMode>('selected');
-  const [visualMode, setVisualMode] = useState<PhysicalVisualMode>('REAL');
+  // A visão técnica é a principal do módulo físico (o modo real continua
+  // disponível no seletor como alternativa/fallback).
+  const [visualMode, setVisualMode] = useState<PhysicalVisualMode>('TECHNICAL');
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<CreateDialog>(null);
   const [busy, setBusy] = useState(false);

@@ -713,7 +713,7 @@ const labStyles = `
 
 export default function PhysicalRackLabPage() {
   const [chassisKey, setChassisKey] = useState<string>(CHASSIS_OPTIONS[0].key);
-  const [visualMode, setVisualMode] = useState<PhysicalVisualMode>('REAL');
+  const [visualMode, setVisualMode] = useState<PhysicalVisualMode>('TECHNICAL');
   const [mode, setMode] = useState<PhysicalConnectionMode>('all');
   const [showHitboxes, setShowHitboxes] = useState(false);
   const [zoom, setZoom] = useState(0.75);
