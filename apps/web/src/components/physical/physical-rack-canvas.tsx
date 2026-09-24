@@ -51,11 +51,11 @@ import {
   moduleFrontPanelMapFor,
 } from './module-front-panel-map';
 import { RACK_GEOMETRY, buildRackGeometry, panelScale } from './physical-rack-geometry';
+import { physicalPortNameView } from './physical-port-name';
 import {
   TECHNICAL_BAND_GAP,
   TECHNICAL_BAND_TOP,
   assetUsesTechnicalRenderer,
-  portOrdinalLabel,
   slotRoleAccent,
   technicalChassisDisplayHeight,
   technicalChassisMap,
@@ -845,7 +845,15 @@ export function PhysicalRackCanvas({
               )
             : null;
           /** Painel FIXO na visão técnica: baías dos grupos reais + folgas. */
-          const fixedBays = technical && layoutPanel ? technicalGroupBays(layoutPanel.layout) : [];
+          const fixedBays = technical && layoutPanel
+            ? technicalGroupBays(layoutPanel.layout, {
+                // nome real reportado pelo equipamento tem prioridade sobre o
+                // nome declarado no catálogo (nunca é inventado por posição)
+                interfaceNameOf: (portId) =>
+                  asset.ports.find((candidate) => candidate.id === portId)?.mappedInterface
+                    ?.name ?? null,
+              })
+            : [];
           const boardWidth = layoutPanel ? layoutPanel.layout.width * scale : 0;
           const boardHeight = layoutPanel ? layoutPanel.layout.gridHeight * scale : 0;
           const freeHeight = layoutPanel ? Math.max(0, box.height - boardHeight) : 0;
@@ -854,6 +862,8 @@ export function PhysicalRackCanvas({
             const port = asset.ports.find((candidate) => candidate.id === portId);
             const placed = layoutPanel?.layout.connectors.find((item) => item.portId === portId);
             if (!port || !placed) return null;
+            /** Identidade apresentada: interface CLI > catálogo > nome persistido. */
+            const naming = physicalPortNameView(port, placed.catalogPort);
             return (
               <PhysicalPortShape
                 key={port.id}
@@ -863,7 +873,9 @@ export function PhysicalRackCanvas({
                 selected={selection?.kind === 'port' && selection.id === port.id}
                 inPath={pathPortIds.has(port.id)}
                 related={relatedPortIds.has(port.id)}
-                label={technical ? portOrdinalLabel(port.name) : null}
+                label={technical ? naming.compactLabel : null}
+                displayName={naming.displayName}
+                panelLabel={naming.panelLabel}
                 onSelect={onSelectPort}
               />
             );
@@ -1141,6 +1153,7 @@ export function PhysicalRackCanvas({
                                 (candidate) => candidate.id === placed.portId,
                               );
                               if (!port) return null;
+                              const naming = physicalPortNameView(port, placed.catalogPort);
                               return (
                                 <PhysicalPortShape
                                   key={port.id}
@@ -1151,7 +1164,9 @@ export function PhysicalRackCanvas({
                                   selected={selection?.kind === 'port' && selection.id === port.id}
                                   inPath={pathPortIds.has(port.id)}
                                   related={relatedPortIds.has(port.id)}
-                                  label={technical ? portOrdinalLabel(port.name) : null}
+                                  label={technical ? naming.compactLabel : null}
+                                  displayName={naming.displayName}
+                                  panelLabel={naming.panelLabel}
                                   onSelect={onSelectPort}
                                 />
                               );
@@ -1204,6 +1219,7 @@ export function PhysicalRackCanvas({
                                       (candidate) => candidate.id === placed.portId,
                                     );
                                     if (!port) return null;
+                                    const moduleNaming = physicalPortNameView(port, placed.catalogPort);
                                     return (
                                       <PhysicalPortShape
                                         key={port.id}
@@ -1215,7 +1231,9 @@ export function PhysicalRackCanvas({
                                         }
                                         inPath={pathPortIds.has(port.id)}
                                         related={relatedPortIds.has(port.id)}
-                                        label={technical ? portOrdinalLabel(port.name) : null}
+                                        label={technical ? moduleNaming.compactLabel : null}
+                                        displayName={moduleNaming.displayName}
+                                        panelLabel={moduleNaming.panelLabel}
                                         onSelect={onSelectPort}
                                       />
                                     );
@@ -1253,6 +1271,9 @@ export function PhysicalRackCanvas({
                           {bay.label}
                           {bay.range ? <b>{bay.range}</b> : null}
                         </span>
+                        {bay.interfaceRange ? (
+                          <em className="physical-fixed-bay__interface">{bay.interfaceRange}</em>
+                        ) : null}
                       </div>
                     ))}
                     {freeHeight >= 34 ? (

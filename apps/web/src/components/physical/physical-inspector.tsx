@@ -34,6 +34,8 @@ import { classifyPhysicalInterface } from '@gmj/shared';
 import { getHost } from '@/lib/api';
 import { PORT_STATE_LABELS, friendlySlotLabel } from './physical-catalog';
 import { PhysicalConnectionForm } from './physical-connection-form';
+import { indexCatalogPorts } from './physical-panel-layout';
+import { physicalPortNameView } from './physical-port-name';
 import type { PhysicalSelection } from './physical-types';
 
 function locateAsset(inventory: PhysicalInventory, id: string): PhysicalAsset | null {
@@ -127,6 +129,26 @@ export function PhysicalInspector({
             (candidate) => candidate.id === locatedPort.port.connectionId,
           ) ?? null
         : null;
+  const catalogIndex = useMemo(() => {
+    const result = new Map<string, ReturnType<typeof indexCatalogPorts>>();
+    for (const entry of catalog) result.set(entry.catalogKey, indexCatalogPorts(entry.ports));
+    return result;
+  }, [catalog]);
+
+  /** Nome de uma porta pelo `PhysicalPort.id`, com interface CLI quando existir. */
+  const pathStepPortName = (portId: string, fallback: string) => {
+    const found = locatePort(inventory, portId);
+    if (!found) return fallback;
+    const ports = found.asset.template?.catalogKey
+      ? catalogIndex.get(found.asset.template.catalogKey)
+      : undefined;
+    const catalogPort =
+      ports?.exact.get(found.port.name.trim().toLowerCase()) ??
+      ports?.loose.get(found.port.name.trim().toLowerCase().replace(/[\s_.\-/]+/g, '')) ??
+      null;
+    return physicalPortNameView(found.port, catalogPort).displayName;
+  };
+
   const [startU, setStartU] = useState(1);
   const [heightU, setHeightU] = useState(1);
 
@@ -459,9 +481,21 @@ export function PhysicalInspector({
         ? connection.b
         : connection.a
       : null;
+    /**
+     * Identidade operacional da porta: interface CLI (mapeada ou declarada no
+     * catálogo) como nome principal; conector e porta física são detalhe.
+     */
+    const catalogPorts = portAsset.template?.catalogKey
+      ? catalogIndex.get(portAsset.template.catalogKey)
+      : undefined;
+    const catalogPort =
+      catalogPorts?.exact.get(port.name.trim().toLowerCase()) ??
+      catalogPorts?.loose.get(port.name.trim().toLowerCase().replace(/[\s_.\-/]+/g, '')) ??
+      null;
+    const naming = physicalPortNameView(port, catalogPort);
     return (
       <aside className="physical-inspector">
-        {header('PORTA FÍSICA', `${portAsset.name} / ${port.name}`, `${siteName} · ${rackName}`)}
+        {header('PORTA FÍSICA', `${portAsset.name} / ${naming.displayName}`, `${siteName} · ${rackName}`)}
         <dl className="physical-facts">
           <Field
             label="Estado"
@@ -471,10 +505,7 @@ export function PhysicalInspector({
               </span>
             }
           />
-          <Field label="Lado" value={port.side} />
-          <Field label="Tipo" value={port.type} />
-          <Field label="Origem" value={port.role} />
-          <Field label="Interface" value={port.mappedInterface?.name ?? 'Não mapeada'} />
+          <Field label="Interface" value={naming.interfaceName ?? 'Não mapeada'} />
           <Field
             label="Operacional"
             value={port.mappedInterface ? (
@@ -483,6 +514,14 @@ export function PhysicalInspector({
               </span>
             ) : '—'}
           />
+          <Field label="Conector" value={catalogPort?.connector ?? port.type} />
+          <Field label="Porta física" value={naming.panelLabel ?? port.name} />
+          <Field
+            label="Velocidade"
+            value={catalogPort?.speeds?.length ? catalogPort.speeds.join(' / ') : '—'}
+          />
+          <Field label="Lado" value={port.side} />
+          <Field label="Origem" value={port.role} />
           <Field label="Destino direto" value={remote ? `${remote.assetName} / ${remote.portName}` : 'Porta livre'} />
         </dl>
 
@@ -559,7 +598,8 @@ export function PhysicalInspector({
                   {step.kind === 'PORT' ? (
                     <>
                       <strong>{step.assetName}</strong>
-                      <span>{step.portName} · {step.side}</span>
+                      {/* identificação apresentada: interface CLI quando existir */}
+                      <span>{pathStepPortName(step.portId, step.portName)} · {step.side}</span>
                       <small>{step.siteName} / {step.rackName}</small>
                     </>
                   ) : step.kind === 'CABLE' ? (

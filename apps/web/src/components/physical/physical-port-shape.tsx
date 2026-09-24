@@ -20,6 +20,13 @@ interface Props {
    * quando o conector tem largura suficiente para o texto não colidir.
    */
   label?: string | null;
+  /**
+   * Nome apresentado ao usuário (interface CLI quando existir). Nunca cai para
+   * o rótulo do cage: quando não há interface, continua o nome persistido.
+   */
+  displayName?: string;
+  /** Rótulo físico do painel/cage quando difere do nome apresentado (`QSFP28-1`). */
+  panelLabel?: string | null;
   /** Diagnóstico da preview: destaca conectores com bbox sobreposto. */
   overlap?: boolean;
   onSelect: (id: string) => void;
@@ -41,6 +48,8 @@ export function PhysicalPortShape({
   inPath,
   related = false,
   label = null,
+  displayName,
+  panelLabel = null,
   overlap = false,
   onSelect,
 }: Props) {
@@ -49,10 +58,13 @@ export function PhysicalPortShape({
   const height = Math.max(7, Math.round(placed.shape.height * yScale));
   // Rótulo só cabe a partir de ~11px: abaixo disso o texto colidiria com o vizinho.
   const visibleLabel = label && width >= 11 ? label : null;
+  /** Identidade apresentada: interface CLI > catálogo > nome persistido. */
+  const primary = displayName?.trim() || port.name;
+  const connector = placed.shape.label;
   const title = [
-    port.name,
-    placed.shape.label,
-    port.label && port.label !== port.name ? port.label : null,
+    primary,
+    `Conector ${connector}`,
+    panelLabel ? `Painel físico ${panelLabel}` : null,
     PORT_STATE_LABELS[port.state],
     port.mappedInterface ? `Interface ${port.mappedInterface.name}` : null,
     port.lldp ? `LLDP ${port.lldp.remoteHostname}/${port.lldp.remotePortName}` : null,
@@ -82,7 +94,9 @@ export function PhysicalPortShape({
         height,
       }}
       title={title}
-      aria-label={`Porta ${port.name} (${placed.shape.label})`}
+      aria-label={`Porta ${primary} (conector ${connector})`}
+      data-port-name={port.name}
+      data-port-display-name={primary}
       onClick={(event) => {
         event.stopPropagation();
         onSelect(port.id);

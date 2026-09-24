@@ -179,7 +179,8 @@ describe('PhysicalRackCanvas', () => {
     expect(html).toContain('physical-cable physical-cable--fiber is-selected');
     expect(html).toContain('data-port-id="port-a"');
     expect(html).toContain('class="physical-port physical-port--sfp state-connected is-selected"');
-    expect(html).toContain('aria-label="Porta GE1 (SFP)"');
+    // identidade apresentada é a porta/interface; o conector é característica
+    expect(html).toContain('aria-label="Porta GE1 (conector SFP)"');
   });
 
   it('desenha os 56 hotspots do painel F1A por imagem (nunca "+32")', () => {

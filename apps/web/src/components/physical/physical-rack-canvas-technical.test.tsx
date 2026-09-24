@@ -40,6 +40,11 @@ interface GroupSpec {
   type: PhysicalPort['type'];
   portFunction: PhysicalPortFunction;
   pattern: string;
+  /**
+   * `interfaceNamePattern` confirmado no catálogo (`100GE1/0/{n}`). Quando
+   * declarado, o nome apresentado da porta passa a ser o nome da interface.
+   */
+  interfacePattern?: string | undefined;
   visual: PhysicalVisualPlacement;
 }
 
@@ -90,6 +95,9 @@ function buildFixedDevice(spec: DeviceSpec) {
       const name = offset
         ? `${offset[1]}${index + Number(offset[2])}`
         : group.pattern.replace('{n}', String(index));
+      const interfaceName = group.interfacePattern
+        ? group.interfacePattern.replace('{n}', String(index))
+        : null;
       catalogPorts.push({
         name,
         label: name,
@@ -101,7 +109,7 @@ function buildFixedDevice(spec: DeviceSpec) {
         speeds: [],
         breakoutCapable: false,
         groupKey: group.groupKey,
-        interfaceName: null,
+        interfaceName,
         notes: null,
         visual: group.visual,
       });
@@ -1328,5 +1336,151 @@ describe('faceplate fixo e política de fotografia (modo técnico)', () => {
     // centro do retângulo REALMENTE desenhado (tolerância de 1px)
     expect(Math.abs(Number(cable![1]) - expectedX)).toBeLessThanOrEqual(1);
     expect(Math.abs(Number(cable![2]) - expectedY)).toBeLessThanOrEqual(1);
+  });
+});
+
+/**
+ * Identidade apresentada da porta: **interface CLI** quando o catálogo declara
+ * `interfaceNamePattern` (ou quando existe `mappedInterface`), com o conector e
+ * o rótulo físico preservados como detalhe. Nada aqui altera `PhysicalPort.id`,
+ * âncora, seleção, LLDP ou breakout.
+ */
+describe('nome de interface CLI no painel (catálogo → renderer)', () => {
+  /** S6730-like: 4×10GE com CLI confirmado + 2×QSFP28 uplink. */
+  const CLI_DEVICE: DeviceSpec = {
+    catalogKey: 'huawei-s6730-h48x6c',
+    model: 'S6730-H48X6C',
+    assetId: 'asset-cli',
+    startU: 30,
+    panelHeight: 10,
+    groups: [
+      {
+        groupKey: 'sfpplus-10g',
+        count: 4,
+        connector: 'SFP_PLUS',
+        type: 'SFP_PLUS',
+        portFunction: 'SERVICE',
+        pattern: '10GE-{n}',
+        interfacePattern: 'XGigabitEthernet0/0/{n}',
+        visual: { row: 1, columns: 4, x: 3, y: 0.6, gapX: 0.6 },
+      },
+      {
+        groupKey: 'qsfp28-uplink',
+        count: 2,
+        connector: 'QSFP28',
+        type: 'QSFP',
+        portFunction: 'UPLINK',
+        pattern: 'QSFP28-{n}',
+        interfacePattern: '100GE0/0/{n}',
+        visual: { row: 3, columns: 2, x: 38, y: 6.4, gapX: 0.6 },
+      },
+    ],
+  };
+
+  it('o texto principal é a interface, e o conector/rótulo físico ficam como detalhe', () => {
+    const { entry, asset } = buildFixedDevice(CLI_DEVICE);
+    const html = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+
+    // identidade = interface CLI declarada no catálogo
+    expect(html).toContain('data-port-display-name="XGigabitEthernet0/0/1"');
+    expect(html).toContain('data-port-display-name="100GE0/0/2"');
+    // o cage continua rastreável (nunca é o nome principal)
+    expect(html).toContain('data-port-name="10GE-1"');
+    // tooltip separa identidade de característica física
+    expect(html).toContain('XGigabitEthernet0/0/1 · Conector SFP+ · Painel físico 10GE-1');
+    // o conector não some da estrutura técnica
+    expect(html.match(/data-connector=/g)).toHaveLength(6);
+    expect(html).toContain('data-connector="QSFP28"');
+    // e nada regrediu para o rótulo do cage como nome principal
+    expect(html).not.toContain('data-port-display-name="10GE-1"');
+  });
+
+  it('a baía anuncia a faixa de interfaces do grupo', () => {
+    const { entry, asset } = buildFixedDevice(CLI_DEVICE);
+    const html = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+
+    expect(html).toContain('physical-fixed-bay__interface');
+    expect(html).toContain('XGigabitEthernet0/0/1–4');
+    expect(html).toContain('100GE0/0/1–2');
+    // o rótulo de papel + faixa do painel continua
+    expect(html).toContain('SERVICE<b>1–4</b>');
+    expect(html).toContain('UPLINK<b>1–2</b>');
+  });
+
+  it('a faixa da baía usa o nome real da interface quando a porta está sincronizada', () => {
+    const { entry, asset } = buildFixedDevice({
+      ...CLI_DEVICE,
+      // catálogo sem nome declarado: só o sync traz o nome real
+      groups: CLI_DEVICE.groups.map((group) => ({ ...group, interfacePattern: undefined })),
+    });
+    const withInterface = (port: (typeof asset.ports)[number], ordinal: number) => ({
+      ...port,
+      mappedInterfaceId: `if-${ordinal}`,
+      mappedInterface: {
+        id: `if-${ordinal}`,
+        deviceId: 'device-1',
+        name: `10GE1/0/${ordinal + 4}`,
+        ifIndex: ordinal,
+        alias: null,
+        operStatus: 'UP' as const,
+      },
+    });
+    // grupo de serviço (4 portas) totalmente sincronizado; uplink continua sem nome
+    const syncAll = renderRack(
+      [{ ...asset, ports: asset.ports.map((port, index) => (index < 4 ? withInterface(port, index + 1) : port)) }],
+      { catalog: [entry], visualMode: 'TECHNICAL' },
+    );
+    expect(syncAll).toContain('physical-fixed-bay__interface');
+    expect(syncAll).toContain('10GE1/0/5–8');
+    expect(syncAll.match(/physical-fixed-bay__interface/g)).toHaveLength(1);
+
+    // grupo incompleto (2 de 4) não anuncia faixa: dado parcial não vira rótulo
+    const partial = renderRack(
+      [{ ...asset, ports: asset.ports.map((port, index) => (index < 2 ? withInterface(port, index + 1) : port)) }],
+      { catalog: [entry], visualMode: 'TECHNICAL' },
+    );
+    expect(partial).not.toContain('10GE1/0/5–6');
+    expect(partial.match(/physical-fixed-bay__interface/g)).toBeNull();
+  });
+
+  it('renomear a apresentação não muda id, âncora nem seleção', () => {
+    const { entry, asset } = buildFixedDevice(CLI_DEVICE);
+    const plain = buildFixedDevice({
+      ...CLI_DEVICE,
+      groups: CLI_DEVICE.groups.map((group) => ({ ...group, interfacePattern: undefined })),
+    });
+
+    const withCli = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+    const withoutCli = renderRack([asset], { catalog: [plain.entry], visualMode: 'TECHNICAL' });
+
+    // mesmos ids persistidos e mesma geometria desenhada
+    const ids = (html: string) => [...html.matchAll(/data-port-id="([^"]+)"/g)].map((match) => match[1]);
+    const styles = (html: string) =>
+      [...html.matchAll(/data-port-id="[^"]+"[^>]*style="([^"]+)"/g)].map((match) => match[1]);
+    expect(ids(withCli)).toEqual(ids(withoutCli));
+    expect(styles(withCli)).toEqual(styles(withoutCli));
+
+    // a seleção continua sendo por PhysicalPort.id
+    const selected = renderRack([asset], {
+      catalog: [entry],
+      visualMode: 'TECHNICAL',
+      selection: { kind: 'port', id: `asset-cli-10GE-2` },
+    });
+    const button =
+      /<button[^>]*data-port-id="asset-cli-10GE-2"[^>]*class="([^"]+)"/.exec(selected)?.[1] ?? '';
+    expect(button).toContain('is-selected');
+    expect(selected).toContain('data-port-display-name="XGigabitEthernet0/0/2"');
+  });
+
+  it('o modo real mantém a foto aprovada e não desenha baías', () => {
+    const { entry, asset } = buildFixedDevice(CLI_DEVICE);
+    const real = renderRack([asset], { catalog: [entry], visualMode: 'REAL' });
+
+    // o painel por imagem continua sendo o desenho do modo real
+    expect(real).toContain('physical-image-panel__hitbox');
+    expect(real).toContain('data-port-name="10GE-1"');
+    // a camada de baías/faixas de interface é exclusiva da visão técnica
+    expect(real).not.toContain('physical-fixed-bay__interface');
+    expect(real).not.toContain('physical-fixed-bay');
   });
 });

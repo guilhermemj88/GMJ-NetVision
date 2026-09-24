@@ -8328,6 +8328,18 @@ label > small {
   font-weight: 650;
   letter-spacing: 0.02em;
 }
+/* Faixa de interfaces CLI do grupo (`XGigabitEthernet0/0/1–48`), quando o
+   catálogo declara o nome da interface. Nunca substitui o rótulo físico. */
+.physical-fixed-bay__interface {
+  position: absolute;
+  left: 0;
+  bottom: -24px;
+  color: color-mix(in srgb, var(--tech-nv-text) 72%, transparent);
+  font: 600 6.5px var(--font-mono);
+  font-style: normal;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
 .physical-fixed-bay.role-service .physical-fixed-bay__label {
   border-color: color-mix(in srgb, var(--tech-cat-service) 45%, transparent);
   color: var(--tech-cat-service);

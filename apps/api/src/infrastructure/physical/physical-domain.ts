@@ -10,6 +10,7 @@ import type {
   PhysicalPath,
   PhysicalPathStep,
   PhysicalPort,
+  PhysicalPortSide,
   PhysicalPortState,
   PhysicalRack,
 } from '@gmj/shared';
@@ -275,6 +276,20 @@ export interface InterfaceSyncTarget {
   name: string;
 }
 
+/** Porta considerada pelo plano de sincronização. */
+export interface InterfaceSyncPort {
+  id: string;
+  name: string;
+  side: PhysicalPortSide;
+  mappedInterfaceId: string | null;
+  /**
+   * Nome de interface declarado no catálogo (`interfaceNamePattern`) para esta
+   * porta. É a **primeira** correlação tentada, antes do nome persistido: o
+   * catálogo é a verdade do SKU e não depende de a porta ter sido renomeada.
+   */
+  catalogInterfaceName?: string | null;
+}
+
 export interface InterfaceSyncPlanEntry {
   interfaceId: string;
   interfaceName: string;
@@ -504,12 +519,23 @@ export function isVendorTemplate(
  * | UNKNOWN | MAP em porta existente, nunca cria |
  * | PHYSICAL | MAP ou CREATE (só quando o template não é de fabricante) |
  *
+ * Ordem de correlação (a mais específica primeiro, nunca por posição quando há
+ * ambiguidade):
+ *
+ * 1. `mappedInterface` existente (idempotência);
+ * 2. `catalogInterfaceName` **exato** (nome CLI declarado no catálogo);
+ * 3. `catalogInterfaceName` normalizado;
+ * 4. `port.name` exato/normalizado (identidade persistida);
+ * 5. aliases do modelo (`correlateCatalogPanelAliases`, ex.: S6730);
+ * 6. correlação segura por família/ordinal (`correlatePanelLabels`);
+ * 7. ambíguo → não mapeia.
+ *
  * `catalogKey` habilita a exceção de alias do modelo
  * (`correlateCatalogPanelAliases`): o S6730 declara `10GE-N`/`QSFP28-N` e o VRP
  * responde `XGigabitEthernet<slot>/<subslot>/N`/`100GE<slot>/<subslot>/N`.
  */
 export function planInterfaceSync(
-  ports: ReadonlyArray<Pick<PhysicalPort, 'id' | 'name' | 'side' | 'mappedInterfaceId'>>,
+  ports: readonly InterfaceSyncPort[],
   interfaces: readonly InterfaceSyncTarget[],
   options: { vendorTemplate?: boolean; catalogKey?: string | null } = {},
 ): InterfaceSyncPlanEntry[] {
@@ -540,10 +566,35 @@ export function planInterfaceSync(
     correlatedPorts.add(portId);
   }
 
-  const findFreePort = (interfaceName: string) =>
-    freePorts.find(
+  const findFreePort = (interfaceName: string) => {
+    const matches = freePorts.filter(
       (port) => !claimed.has(port.id) && interfaceMatchesPort(port.name, interfaceName),
     );
+    // Ambiguidade nunca é resolvida por posição: o plano segue sem mapear.
+    return matches.length === 1 ? matches[0] : undefined;
+  };
+
+  /**
+   * Correlação pelo nome CLI declarado no catálogo (`interfaceNamePattern`).
+   * Exato primeiro; depois a comparação normalizada, mas só quando ela aponta
+   * para **uma** porta — duas portas equivalentes significam catálogo ambíguo.
+   */
+  const findFreePortByCatalogInterface = (interfaceName: string) => {
+    const target = interfaceName.trim().toLowerCase();
+    if (!target) return undefined;
+    const candidates = freePorts.filter(
+      (port) => !claimed.has(port.id) && Boolean(port.catalogInterfaceName?.trim()),
+    );
+    const exact = candidates.filter(
+      (port) => port.catalogInterfaceName!.trim().toLowerCase() === target,
+    );
+    if (exact.length === 1) return exact[0];
+    if (exact.length > 1) return undefined;
+    const normalized = candidates.filter((port) =>
+      interfaceMatchesPort(port.catalogInterfaceName!, interfaceName),
+    );
+    return normalized.length === 1 ? normalized[0] : undefined;
+  };
 
   for (const item of interfaces) {
     const existing = alreadyMapped.get(item.id);
@@ -560,10 +611,19 @@ export function planInterfaceSync(
       continue;
     }
     const { classification, connectorKey, breakout, reason } = classifyPhysicalInterface(item.name);
-    const candidate = findFreePort(item.name);
+    // 1) nome CLI declarado no catálogo (`interfaceNamePattern`) — mais forte que
+    //    a identidade persistida, que pode ter sido editada pelo operador;
+    // 2) identidade persistida da porta (exata/normalizada, nunca posicional).
+    const catalogCandidate = findFreePortByCatalogInterface(item.name);
+    const candidate = catalogCandidate ?? findFreePort(item.name);
 
     if (candidate) {
       claimed.add(candidate.id);
+      const mapReason = catalogCandidate
+        ? `Interface declarada no catálogo: ${candidate.catalogInterfaceName}`
+        : breakout
+          ? `Canal de breakout (lane ${breakout.lane}) vinculado ao cage ${candidate.name}`
+          : `Vinculada à porta ${candidate.name} do equipamento`;
       plan.push({
         interfaceId: item.id,
         interfaceName: item.name,
@@ -571,9 +631,7 @@ export function planInterfaceSync(
         action: 'MAP',
         portId: candidate.id,
         portName: null,
-        reason: breakout
-          ? `Canal de breakout (lane ${breakout.lane}) vinculado ao cage ${candidate.name}`
-          : `Vinculada à porta ${candidate.name} do equipamento`,
+        reason: mapReason,
       });
       continue;
     }

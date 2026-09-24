@@ -853,18 +853,32 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
       where: { id: assetId },
       include: {
         ports: true,
-        template: { select: { catalogKey: true, manufacturer: true } },
+        template: {
+          select: {
+            catalogKey: true,
+            manufacturer: true,
+            // Nome de interface declarado no catálogo (`interfaceNamePattern`):
+            // chega aqui pelo template port da porta (nome = CLI quando existe).
+            ports: { select: { id: true, name: true } },
+          },
+        },
         device: { include: { interfaces: { orderBy: { ifIndex: 'asc' } } } },
       },
     });
     if (!asset?.device) return null;
 
+    const catalogPortName = new Map(
+      (asset.template?.ports ?? []).map((port) => [port.id, port.name]),
+    );
     const plan = planInterfaceSync(
       asset.ports.map((port) => ({
         id: port.id,
         name: port.name,
         side: port.side,
         mappedInterfaceId: port.mappedInterfaceId,
+        catalogInterfaceName: port.templatePortId
+          ? (catalogPortName.get(port.templatePortId) ?? null)
+          : null,
       })),
       asset.device.interfaces.map((item) => ({ id: item.id, name: item.name })),
       {

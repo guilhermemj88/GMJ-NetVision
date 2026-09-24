@@ -403,6 +403,9 @@ export class DemoPhysicalRepository implements PhysicalRepository {
     const slotByIndex = new Map(
       [...this.slots.values()].filter((slot) => slot.assetId === asset.id).map((slot) => [slot.index, slot]),
     );
+    const templatePortByName = new Map(
+      (template?.ports ?? []).map((item) => [item.name, item.id]),
+    );
     for (const port of materialized.ports) {
       const created = await this.createPort(asset.id, {
         name: port.name,
@@ -414,6 +417,10 @@ export class DemoPhysicalRepository implements PhysicalRepository {
       if (!created) continue;
       const stored = this.ports.get(created.id)!;
       stored.role = port.role;
+      /** Vínculo estável com a declaração do catálogo (mesma semântica do Prisma). */
+      if (port.templatePortName) {
+        stored.templatePortId = templatePortByName.get(port.templatePortName) ?? null;
+      }
       if (port.slotIndex !== null) {
         const slot = slotByIndex.get(port.slotIndex);
         if (slot) stored.slotId = slot.id;
@@ -541,12 +548,19 @@ export class DemoPhysicalRepository implements PhysicalRepository {
     const host = await this.hosts.getHost(asset.deviceId);
     if (!host) return null;
     const assetPorts = [...this.ports.values()].filter((port) => port.assetId === assetId);
+    /** Nome de interface declarado no catálogo para a porta (via template port). */
+    const templatePortNameById = new Map(
+      (asset.template?.ports ?? []).map((item) => [item.id, item.name]),
+    );
+    const catalogInterfaceNameOf = (port: { templatePortId: string | null }) =>
+      port.templatePortId ? (templatePortNameById.get(port.templatePortId) ?? null) : null;
     const plan = planInterfaceSync(
       assetPorts.map((port) => ({
         id: port.id,
         name: port.name,
         side: port.side,
         mappedInterfaceId: port.mappedInterfaceId,
+        catalogInterfaceName: catalogInterfaceNameOf(port),
       })),
       host.interfaces.map((item) => ({ id: item.id, name: item.name })),
       {

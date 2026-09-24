@@ -11,6 +11,7 @@ import {
   correlatePanelLabels,
   findReconcilablePorts,
   panelFamilyIdentity,
+  planInterfaceSync,
 } from './infrastructure/physical/physical-domain';
 import type { HostRepository } from './infrastructure/persistence/host-repository';
 
@@ -115,7 +116,7 @@ interface SyncReport {
 interface AssetResponse {
   id: string;
   name: string;
-  ports: Array<{ name: string }>;
+  ports: Array<{ id: string; name: string }>;
   slots: Array<{ id: string; index: number; module: unknown }>;
   template: {
     modules: Array<{ id: string; key?: string; catalogKey: string | null; name: string }>;
@@ -900,6 +901,134 @@ describe('alias de painel do catálogo (S6730)', () => {
       expect(report.skippedByPolicy).toBe(54);
       await context.app.close();
     }
+  });
+});
+
+/**
+ * A identidade apresentada da porta é o **nome de interface do catálogo**
+ * (`interfaceNamePattern`) e, quando existe, a interface real do Device. A
+ * correlação usa essa declaração antes do nome persistido, sem nunca escolher
+ * por posição quando há ambiguidade.
+ */
+describe('sincronização pelo nome de interface do catálogo', () => {
+  let app: FastifyInstance;
+
+  afterEach(async () => {
+    if (app) await app.close();
+  });
+
+  const CRS326 = 'mikrotik-crs326-24splus-2qplus-rm';
+
+  it('mapeia pelo interfaceName declarado mesmo com a porta renomeada', async () => {
+    const context = await harness([
+      hostRecord('host-crs326', ['sfp-sfpplus1', 'sfp-sfpplus2', 'qsfpplus1']),
+    ]);
+    app = context.app;
+    const rack = await context.createRack();
+    const asset = await context.createAsset(rack.id, {
+      name: 'CRS326',
+      catalogKey: CRS326,
+      kind: 'NETWORK',
+      deviceId: 'host-crs326',
+    });
+    const port = asset.ports.find((item) => item.name === 'sfp-sfpplus1')!;
+    expect(port).toBeDefined();
+
+    // O operador renomeia a porta física: a identidade persistida continua
+    // estável e o catálogo segue sendo a fonte da correlação.
+    const renamed = await app.inject({
+      method: 'PATCH',
+      url: `/api/physical/ports/${port.id}`,
+      payload: { name: 'UPLINK-FIBRA-01' },
+    });
+    expect(renamed.statusCode).toBe(200);
+
+    const report = await context.sync(asset.id);
+    const mapped = report.ports.find((item) => item.id === port.id)!;
+    expect(mapped.mappedInterfaceId).toBe('if-sfp-sfpplus1');
+    expect(mapped.name).toBe('UPLINK-FIBRA-01');
+    expect(report.ports.find((item) => item.name === 'qsfpplus1')?.mappedInterfaceId).toBe(
+      'if-qsfpplus1',
+    );
+  });
+
+  it('aceita o nome normalizado (espaçamento/caixa) quando o exato não bate', async () => {
+    const context = await harness([hostRecord('host-crs326-space', ['SFP-SFPP LUS1'])]);
+    app = context.app;
+    const rack = await context.createRack();
+    const asset = await context.createAsset(rack.id, {
+      name: 'CRS326',
+      catalogKey: CRS326,
+      kind: 'NETWORK',
+      deviceId: 'host-crs326-space',
+    });
+    const report = await context.sync(asset.id);
+    const mapped = report.ports.find((item) => item.mappedInterfaceId);
+    expect(mapped?.name).toBe('sfp-sfpplus1');
+    expect(mapped?.mappedInterfaceId).toBe('if-SFP-SFPP LUS1');
+  });
+
+  it('catálogo ambíguo não é resolvido por posição (não mapeia)', () => {
+    const plan = planInterfaceSync(
+      [
+        {
+          id: 'port-1',
+          name: 'PORTA-A',
+          side: 'DEVICE',
+          mappedInterfaceId: null,
+          catalogInterfaceName: '100GE1/0/1',
+        },
+        {
+          id: 'port-2',
+          name: 'PORTA-B',
+          side: 'DEVICE',
+          mappedInterfaceId: null,
+          catalogInterfaceName: '100GE1/0/1',
+        },
+      ],
+      [{ id: 'if-1', name: '100GE1/0/1' }],
+      { vendorTemplate: true, catalogKey: 'huawei-s6750-h36c' },
+    );
+    expect(plan).toHaveLength(1);
+    expect(plan[0]!.action).not.toBe('MAP');
+    expect(plan[0]!.portId).toBeNull();
+  });
+
+  it('o nome do catálogo vence a identidade persistida quando as duas casam', () => {
+    const plan = planInterfaceSync(
+      [
+        {
+          id: 'port-1',
+          name: 'sfp-sfpplus1',
+          side: 'DEVICE',
+          mappedInterfaceId: null,
+          catalogInterfaceName: 'sfp-sfpplus1',
+        },
+      ],
+      [{ id: 'if-1', name: 'sfp-sfpplus1' }],
+      { vendorTemplate: true, catalogKey: CRS326 },
+    );
+    expect(plan[0]).toMatchObject({ action: 'MAP', portId: 'port-1' });
+    expect(plan[0]!.reason).toContain('catálogo');
+  });
+
+  it('equipamento genérico passa a expor a interface real depois do sync', async () => {
+    const context = await harness([hostRecord('host-generic-eth', ['ether1', 'ether2'])]);
+    app = context.app;
+    const rack = await context.createRack();
+    const asset = await context.createAsset(rack.id, {
+      name: 'SW-GEN-01',
+      kind: 'GENERIC',
+      deviceId: 'host-generic-eth',
+      genericPorts: { count: 2, prefix: 'port', side: 'DEVICE', type: 'RJ45' },
+    });
+    expect(asset.ports.map((item) => item.name)).toEqual(['port1', 'port2']);
+
+    const report = await context.sync(asset.id);
+    const created = report.ports.filter((item) => item.mappedInterfaceId);
+    expect(created.map((item) => item.name).sort()).toEqual(['ether1', 'ether2']);
+    // porta genérica sem interface continua existindo (nada é removido)
+    expect(report.ports.some((item) => item.name === 'port1')).toBe(true);
   });
 });
 

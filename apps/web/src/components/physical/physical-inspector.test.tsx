@@ -297,6 +297,25 @@ describe('PhysicalInspector', () => {
     expect(container.textContent).toContain('confirme a conexão física');
   });
 
+  it('separa Interface, Conector e Porta física na inspeção da porta', () => {
+    // Porta persistida com o próprio nome do painel: sem interface mapeada o
+    // nome apresentado continua sendo a identidade persistida, e o inspector
+    // deixa explícito que não há interface associada.
+    rendered = render([], { kind: 'port', id: 'port-gpon-1' });
+    const { container } = rendered;
+    const facts = [...container.querySelectorAll('.physical-fact')];
+    const valueOf = (name: string) =>
+      facts
+        .find((fact) => fact.querySelector('dt')?.textContent?.trim() === name)
+        ?.querySelector('dd')
+        ?.textContent?.trim() ?? '';
+    expect(valueOf('Interface')).toBe('Não mapeada');
+    expect(valueOf('Porta física')).toBe('GPON0/1/0');
+    expect(valueOf('Conector')).toBe('SFP');
+    expect(valueOf('Estado')).not.toBe('');
+    expect(valueOf('Velocidade')).toBe('—');
+  });
+
   it('never offers auto-connection when there is no suggestion', () => {
     rendered = render([]);
     expect(rendered.container.textContent).toContain('Nenhuma adjacência LLDP');

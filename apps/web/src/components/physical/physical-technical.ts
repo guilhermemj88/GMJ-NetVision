@@ -1,5 +1,6 @@
 import type { ModularChassisMap } from './modular-chassis-map';
 import type { PanelLayout, PlacedConnector } from './physical-panel-layout';
+import { lastOrdinal, physicalPortInterfacePrefix } from './physical-port-name';
 import type { PhysicalVisualMode } from './physical-types';
 
 /**
@@ -329,6 +330,12 @@ export interface TechnicalGroupBay {
   label: string;
   /** Faixa REAL de numeração do grupo (`1–32`, `33–36`), quando declarada. */
   range: string | null;
+  /**
+   * Faixa de interfaces CLI declaradas no catálogo (`XGigabitEthernet0/0/1–48`),
+   * quando o grupo tem `interfaceNamePattern` confirmado. Só aparência: o nome
+   * vem do catálogo e do sync, nunca é inventado por posição.
+   */
+  interfaceRange: string | null;
   count: number;
   x: number;
   y: number;
@@ -341,8 +348,15 @@ export interface TechnicalGroupBay {
  * layout (`groupKey`), com o papel declarado (SERVICE/UPLINK/...) e a faixa de
  * numeração derivada dos nomes já existentes. Só aparência — nenhuma porta é
  * criada, movida ou renumerada aqui.
+ *
+ * `options.interfaceNameOf` permite usar o **nome real da interface** (sync) da
+ * porta, com prioridade sobre o nome declarado no catálogo: a faixa da baía
+ * passa a ser `100GE1/0/1–6` em vez de `1–6`.
  */
-export function technicalGroupBays(layout: Pick<PanelLayout, 'connectors'>): TechnicalGroupBay[] {
+export function technicalGroupBays(
+  layout: Pick<PanelLayout, 'connectors'>,
+  options: { interfaceNameOf?: (portId: string) => string | null } = {},
+): TechnicalGroupBay[] {
   const groups = new Map<string, PlacedConnector[]>();
   for (const connector of layout.connectors) {
     const key = connector.groupKey ?? connector.kind;
@@ -370,11 +384,39 @@ export function technicalGroupBays(layout: Pick<PanelLayout, 'connectors'>): Tec
     const maxX = Math.max(...connectors.map((connector) => connector.x + connector.shape.width));
     const minY = Math.min(...connectors.map((connector) => connector.y));
     const maxY = Math.max(...connectors.map((connector) => connector.y + connector.shape.height));
+    // Faixa de interfaces CLI do grupo: nome real mapeado (sync) → nome
+    // declarado no catálogo. Nada é inferido por posição.
+    const interfaceNames = connectors
+      .map(
+        (connector) =>
+          options.interfaceNameOf?.(connector.portId)?.trim() ??
+          connector.catalogPort?.interfaceName?.trim() ??
+          null,
+      )
+      .filter((name): name is string => Boolean(name));
+    const firstInterface = interfaceNames[0] ?? null;
+    const interfacePrefix = firstInterface
+      ? physicalPortInterfacePrefix({ portName: firstInterface, catalogInterfaceName: firstInterface })
+      : null;
+    /** Ordinais do PRÓPRIO nome de interface (nunca do rótulo do painel). */
+    const interfaceOrdinals = interfaceNames
+      .map((name) => Number(lastOrdinal(name)))
+      .filter((value) => Number.isFinite(value))
+      .sort((left, right) => left - right);
+    // Só anuncia a faixa quando TODAS as portas do grupo têm nome de interface:
+    // dado parcial de sync não vira rótulo.
+    const interfaceRange =
+      interfaceNames.length === connectors.length && interfaceOrdinals.length === interfaceNames.length
+        ? interfaceOrdinals[0] === interfaceOrdinals[interfaceOrdinals.length - 1]
+          ? firstInterface
+          : `${interfacePrefix ?? ''}${interfaceOrdinals[0]}–${interfaceOrdinals[interfaceOrdinals.length - 1]}`
+        : null;
     bays.push({
       key,
       role,
       label: TECHNICAL_GROUP_LABELS[role],
       range,
+      interfaceRange,
       count: connectors.length,
       x: Math.max(0, minX - TECHNICAL_BAY_PADDING),
       y: Math.max(0, minY - TECHNICAL_BAY_PADDING),
