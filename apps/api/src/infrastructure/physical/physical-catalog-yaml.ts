@@ -113,6 +113,8 @@ const visualSchema = z.looseObject({
   height: z.number().optional(),
   gapX: z.number().optional(),
   gapY: z.number().optional(),
+  /** `EVEN_ODD`: duas fileiras por coluna (par em cima, ímpar embaixo). */
+  pairing: z.string().optional(),
 });
 
 const panelLayoutSchema = z.looseObject({
@@ -130,6 +132,11 @@ const portGroupSchema = z.looseObject({
   breakoutCapable: z.boolean().optional(),
   physicalLabelPattern: z.string().optional(),
   interfaceNamePattern: z.string().optional(),
+  /**
+   * Primeiro número físico do grupo no painel (default `1`). O painel Huawei do
+   * F1A-8H20Q começa em `0`; a numeração física é independente do nome lógico.
+   */
+  panelNumberStart: z.number().int().min(0).optional(),
   notes: z.string().optional(),
   visual: visualSchema.optional(),
 });
@@ -270,18 +277,18 @@ export function resolveCatalogPath(cwd = process.cwd()): string | null {
  * - `ether8` with count 1 → `ether8` (literal ordinal is preserved);
  * - `sfp1` with count 4 → `sfp1`...`sfp4`.
  */
-export function expandPattern(pattern: string, count: number): string[] {
+export function expandPattern(pattern: string, count: number, startNumber = 1): string[] {
   if (count <= 0) return [];
   const offset = /\{n\+(\d+)\}/.exec(pattern);
   if (offset) {
-    const start = Number(offset[1]) + 1;
+    const start = Number(offset[1]) + startNumber;
     return Array.from({ length: count }, (_value, index) =>
       pattern.replace(/\{n\+\d+\}/, String(start + index)),
     );
   }
   if (pattern.includes('{n}')) {
     return Array.from({ length: count }, (_value, index) =>
-      pattern.replace(/\{n\}/g, String(index + 1)),
+      pattern.replace(/\{n\}/g, String(startNumber + index)),
     );
   }
   const literal = /(\d+)/.exec(pattern);
@@ -325,6 +332,8 @@ function visualPlacement(
   if (visual.height !== undefined) placement.height = visual.height;
   if (visual.gapX !== undefined) placement.gapX = visual.gapX;
   if (visual.gapY !== undefined) placement.gapY = visual.gapY;
+  // Só a modalidade declarada é aceita: qualquer outro texto é ignorado.
+  if (visual.pairing?.toUpperCase() === 'EVEN_ODD') placement.pairing = 'EVEN_ODD';
   return Object.keys(placement).length ? placement : null;
 }
 
@@ -358,9 +367,10 @@ function portsFromGroups(
       warnings.push(`${context}: grupo ${group.groupKey} sem interfaceNamePattern/physicalLabelPattern`);
       continue;
     }
-    const names = expandPattern(pattern, group.count);
+    const startNumber = group.panelNumberStart ?? 1;
+    const names = expandPattern(pattern, group.count, startNumber);
     const labels = group.physicalLabelPattern
-      ? expandPattern(group.physicalLabelPattern, group.count)
+      ? expandPattern(group.physicalLabelPattern, group.count, startNumber)
       : names;
     for (let index = 0; index < names.length; index += 1) {
       const name = names[index]!;
@@ -381,6 +391,8 @@ function portsFromGroups(
         breakoutCapable: group.breakoutCapable ?? false,
         groupKey: group.groupKey,
         interfaceName: group.interfaceNamePattern ? name : null,
+        // Número físico do painel: independente do nome lógico da interface.
+        panelNumber: startNumber + index,
         notes: group.notes ?? null,
         visual: visualPlacement(group.visual),
       });

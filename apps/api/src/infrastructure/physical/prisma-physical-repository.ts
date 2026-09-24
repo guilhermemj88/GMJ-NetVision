@@ -19,7 +19,7 @@ import type {
   PhysicalSlot,
 } from '@gmj/shared';
 import { Prisma, PrismaClient } from '../../generated/prisma';
-import { materializeTemplate, planInterfaceSync, portState, isVendorTemplate } from './physical-domain';
+import { materializeTemplate, planInterfaceSync, portState, isVendorTemplate, syncDiagnostics } from './physical-domain';
 import type {
   CreatePhysicalTemplateInput,
   InterfaceSyncExecution,
@@ -929,7 +929,15 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
     }
 
     const ports = (await this.asset(assetId))?.ports ?? [];
-    return { ports, created, mapped, skippedLogical, skippedUnknown, skippedByPolicy };
+    return {
+      ports,
+      created,
+      mapped,
+      skippedLogical,
+      skippedUnknown,
+      skippedByPolicy,
+      ...syncDiagnostics(plan),
+    };
   }
 
   /** Deletes the given ports; cables and template/manual ports are out of scope. */

@@ -25,7 +25,7 @@ import type {
   PhysicalSlot,
 } from '@gmj/shared';
 import type { HostRepository } from '../persistence/host-repository';
-import { materializeTemplate, isVendorTemplate, planInterfaceSync, portState } from './physical-domain';
+import { materializeTemplate, isVendorTemplate, planInterfaceSync, portState, syncDiagnostics } from './physical-domain';
 import type {
   CreatePhysicalTemplateInput,
   InterfaceSyncExecution,
@@ -617,6 +617,7 @@ export class DemoPhysicalRepository implements PhysicalRepository {
       skippedLogical,
       skippedUnknown,
       skippedByPolicy,
+      ...syncDiagnostics(plan),
     };
   }
 

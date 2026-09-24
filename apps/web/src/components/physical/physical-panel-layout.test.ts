@@ -12,32 +12,48 @@ import {
 import { buildRackGeometry, distributeAssetHeight } from './physical-rack-geometry';
 import { physicalModule } from './physical-fixtures';
 
-/** Portas declaradas pelo catálogo do F1A-8H20Q (8x100GE + 20x25GE + 28x10GE). */
+/**
+ * Portas declaradas pelo catálogo do F1A-8H20Q: painel frontal real em UMA
+ * faixa de 28 colunas × 2 fileiras, numerado de 0 a 55 (28 SFP+ 0-27, 8 SFP28
+ * 28-35, 12 SFP28 36-47 e 8 QSFP28 48-55).
+ */
+function f1aGroups() {
+  return [
+    // groupKey, count, panelNumberStart, connector, type, prefixo do rótulo, x
+    ['sfpplus-10g', 28, 0, 'SFP_PLUS', 'SFP_PLUS', '10GE-', 2],
+    ['sfp28-25g-a', 8, 28, 'SFP28', 'SFP_PLUS', '25GE-', 55.4],
+    ['sfp28-25g-b', 12, 36, 'SFP28', 'SFP_PLUS', '25GE-', 70.8],
+    ['qsfp28-100g', 8, 48, 'QSFP28', 'QSFP', '100GE-', 93.8],
+  ] as const satisfies ReadonlyArray<
+    readonly [string, number, number, PhysicalConnectorKind, 'SFP_PLUS' | 'QSFP', string, number]
+  >;
+}
+
 function f1aCatalogPorts(): PhysicalCatalogPort[] {
-  const groups: Array<[string, number, PhysicalConnectorKind, string]> = [
-    ['100ge-cages', 8, 'QSFP28', '100GE-'],
-    ['25ge-cages', 20, 'SFP28', '25GE-'],
-    ['10ge-cages', 28, 'SFP_PLUS', '10GE-'],
-  ];
   const ports: PhysicalCatalogPort[] = [];
   let order = 0;
-  for (const [groupKey, count, connector, prefix] of groups) {
-    for (let index = 1; index <= count; index += 1) {
+  for (const [groupKey, count, start, connector, type, prefix, x] of f1aGroups()) {
+    for (let index = 0; index < count; index += 1) {
       order += 1;
       ports.push({
-        name: `${prefix}${index}`,
-        label: `${prefix}${index}`,
+        name: `${prefix}${start + index}`,
+        label: `${prefix}${start + index}`,
         order,
         side: 'DEVICE',
-        type: connector === 'QSFP28' ? 'QSFP' : 'SFP',
+        type,
         connector,
-        portFunction: 'SERVICE',
+        portFunction: groupKey === 'qsfp28-100g' ? 'UPLINK' : 'SERVICE',
         groupKey,
+        panelNumber: start + index,
+        visual: { row: 1, x, y: 0.6, gapX: 0.6, pairing: 'EVEN_ODD' },
       });
     }
   }
   return ports;
 }
+
+/** Painel frontal oficial do F1A (mesma declaração do catálogo). */
+const F1A_PANEL = { type: 'FRONT' as const, width: 118, height: 7 };
 
 function f1aAssetPorts() {
   return f1aCatalogPorts().map((port, index) =>
@@ -132,7 +148,7 @@ describe('layout do painel', () => {
   it('renderiza as 56 portas do F1A (sem "+32" e sem truncamento)', () => {
     const entry = {
       ports: f1aCatalogPorts(),
-      panelLayout: { type: 'LOGICAL' as const, width: 100, height: 14 },
+      panelLayout: F1A_PANEL,
     };
     const layout = buildPanelLayout({
       ports: f1aAssetPorts(),
@@ -224,16 +240,22 @@ describe('layout do painel', () => {
 
   it('ancora o cabo no centro do conector desenhado', () => {
     const layout = buildPanelLayout({
-      ports: f1aAssetPorts().slice(0, 8),
+      ports: f1aAssetPorts(),
       slots: [],
       modules: [],
-      entry: { ports: f1aCatalogPorts().slice(0, 8) },
+      entry: { ports: f1aCatalogPorts(), panelLayout: F1A_PANEL },
     });
-    const connector = layout.connectors.find((item) => item.kind === 'QSFP28')!;
     const viewport = { scale: 8, offsetX: 100, offsetY: 50 };
-    const anchor = connectorAnchor(connector, viewport);
-    expect(anchor.x).toBe(100 + (connector.x + connector.shape.width / 2) * 8);
-    expect(anchor.y).toBe(50 + (connector.y + connector.shape.height / 2) * 8);
+    // porta física 0 (par, fileira de cima) e um QSFP28 (48-55)
+    const samples = [
+      layout.connectors[0]!,
+      layout.connectors.find((item) => item.kind === 'QSFP28')!,
+    ];
+    for (const connector of samples) {
+      const anchor = connectorAnchor(connector, viewport);
+      expect(anchor.x).toBe(100 + (connector.x + connector.shape.width / 2) * 8);
+      expect(anchor.y).toBe(50 + (connector.y + connector.shape.height / 2) * 8);
+    }
   });
 
   it('encolhe a escala de painéis densos mantendo todas as portas e altura limitada', () => {
@@ -268,6 +290,111 @@ describe('layout do painel', () => {
     expect(layout.slots[0]).toMatchObject({ x: 10, width: 20, height: 6 });
     expect(layout.slots[1]).toMatchObject({ x: 32, width: 20, height: 6 });
     expect(layout.gridHeight).toBeGreaterThanOrEqual(7);
+  });
+});
+
+/**
+ * Painel frontal oficial do NetEngine 8000 F1A-8H20Q: 56 conectores em UMA
+ * faixa contínua de 28 colunas × 2 fileiras, numerados de 0 a 55 com o par em
+ * cima e o ímpar embaixo. Regressão do layout errado em três bandas (100GE /
+ * 25GE / 10GE um embaixo do outro).
+ */
+describe('painel físico do F1A-8H20Q (0–55 em 28 colunas × 2 fileiras)', () => {
+  function f1aLayout() {
+    return buildPanelLayout({
+      ports: f1aAssetPorts(),
+      slots: [],
+      modules: [],
+      entry: { ports: f1aCatalogPorts(), panelLayout: F1A_PANEL },
+    });
+  }
+
+  function panelNumber(connector: { catalogPort: { panelNumber?: number | null } | null }) {
+    return connector.catalogPort?.panelNumber ?? null;
+  }
+
+  it('numera as 56 portas de 0 a 55, sem buraco e sem repetição', () => {
+    const layout = f1aLayout();
+    expect(layout.connectors).toHaveLength(56);
+    const numbers = layout.connectors.map(panelNumber).sort((left, right) => left! - right!);
+    expect(numbers).toEqual(Array.from({ length: 56 }, (_value, index) => index));
+    // a identidade persistida continua sendo a do catálogo (nada é renomeado aqui)
+    expect(layout.connectors.map((connector) => connector.portName)).toContain('10GE-0');
+    expect(layout.connectors.map((connector) => connector.portName)).toContain('100GE-55');
+  });
+
+  it('emparelha par em cima e ímpar embaixo (column = N/2, row = N%2)', () => {
+    const layout = f1aLayout();
+    /** Início da numeração física de cada bloco (declarado no catálogo). */
+    const starts = new Map([
+      ['sfpplus-10g', 0],
+      ['sfp28-25g-a', 28],
+      ['sfp28-25g-b', 36],
+      ['qsfp28-100g', 48],
+    ]);
+    for (const connector of layout.connectors) {
+      const number = panelNumber(connector)!;
+      const start = starts.get(connector.groupKey!)!;
+      expect(connector.column).toBe(Math.floor((number - start) / 2));
+      expect(connector.row).toBe(number % 2);
+    }
+    const byNumber = new Map(layout.connectors.map((connector) => [panelNumber(connector), connector]));
+    const zero = byNumber.get(0)!;
+    const one = byNumber.get(1)!;
+    const two = byNumber.get(2)!;
+    // mesma coluna para 0 e 1; ímpar abaixo do par; 2 na coluna seguinte
+    expect(zero.x).toBe(one.x);
+    expect(one.y).toBeGreaterThan(zero.y);
+    expect(two.x).toBeGreaterThan(zero.x);
+    expect(two.y).toBe(zero.y);
+    expect(layout.connectors.filter((connector) => panelNumber(connector)! % 2 === 0)).toHaveLength(28);
+    expect(layout.connectors.filter((connector) => panelNumber(connector)! % 2 === 1)).toHaveLength(28);
+  });
+
+  it('mantém uma faixa contínua: quatro blocos lado a lado, sem bandas empilhadas', () => {
+    const layout = f1aLayout();
+    const span = (groupKey: string) => {
+      const items = layout.connectors.filter((connector) => connector.groupKey === groupKey);
+      return {
+        count: items.length,
+        start: Math.min(...items.map((item) => item.x)),
+        end: Math.max(...items.map((item) => item.x + item.shape.width)),
+      };
+    };
+    const a = span('sfpplus-10g');
+    const b = span('sfp28-25g-a');
+    const c = span('sfp28-25g-b');
+    const d = span('qsfp28-100g');
+    expect([a.count, b.count, c.count, d.count]).toEqual([28, 8, 12, 8]);
+    // contíguos na ordem física 0-27, 28-35, 36-47, 48-55
+    expect(a.end).toBeLessThanOrEqual(b.start);
+    expect(b.end).toBeLessThanOrEqual(c.start);
+    expect(c.end).toBeLessThanOrEqual(d.start);
+    // e sem bandas empilhadas: tudo dentro de uma única faixa (topo alinhado)
+    expect(new Set(layout.connectors.map((connector) => connector.row))).toEqual(new Set([0, 1]));
+    const topRow = layout.connectors.filter((connector) => connector.row === 0);
+    expect(new Set(topRow.map((connector) => connector.y)).size).toBe(1);
+    const bottomRow = layout.connectors.filter((connector) => connector.row === 1);
+    expect(Math.min(...bottomRow.map((connector) => connector.y))).toBeGreaterThan(
+      Math.max(...topRow.map((connector) => connector.y)),
+    );
+    // tudo dentro do painel declarado (7 unidades de grade do catálogo)
+    expect(layout.gridHeight).toBeLessThanOrEqual(7);
+  });
+
+  it('não cria, remove nem move portas: ids e âncoras seguem o desenho', () => {
+    const layout = f1aLayout();
+    const ports = f1aAssetPorts();
+    expect(new Set(layout.connectors.map((connector) => connector.portId))).toEqual(
+      new Set(ports.map((port) => port.id)),
+    );
+    // a âncora é sempre o centro do conector desenhado (mesma geometria)
+    const viewport = { scale: 6, offsetX: 10, offsetY: 20 };
+    for (const connector of [layout.connectors[0]!, layout.connectors.at(-1)!]) {
+      const anchor = connectorAnchor(connector, viewport);
+      expect(anchor.x).toBe(10 + (connector.x + connector.shape.width / 2) * 6);
+      expect(anchor.y).toBe(20 + (connector.y + connector.shape.height / 2) * 6);
+    }
   });
 });
 

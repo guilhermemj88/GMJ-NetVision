@@ -490,12 +490,51 @@ templates:
   layoutType: FIXED
   heightU: 1
   rackMount: true
-  panelLayout: {type: LOGICAL, width: 100, height: 14}
+  # Painel frontal real: 56 conectores em UMA faixa contínua de 28 colunas x 2
+  # fileiras, numerados de 0 a 55 (par em cima, ímpar embaixo).
+  panelLayout: {type: FRONT, width: 118, height: 7}
   vendorVerified: true
   portGroups:
-  - groupKey: 100ge-cages
+  - groupKey: sfpplus-10g
+    count: 28
+    # 14 colunas x 2 fileiras: mesmo espaçamento do painel, sem bandas separadas.
+    visual: {row: 1, x: 2, y: 0.6, gapX: 0.6, pairing: EVEN_ODD}
+    connector: SFP_PLUS
+    role: SERVICE
+    speeds:
+    - 1G
+    - 10G
+    breakoutCapable: false
+    panelNumberStart: 0
+    physicalLabelPattern: 10GE-{n}
+    notes: 'Posições físicas 0-27: 28 x SFP+ (10GE/GE). Numeração do painel começa em zero.'
+  - groupKey: sfp28-25g-a
     count: 8
-    visual: {row: 1, columns: 8, x: 25, y: 0.6, gapX: 0.8}
+    visual: {row: 1, x: 55.4, y: 0.6, gapX: 0.6, pairing: EVEN_ODD}
+    connector: SFP28
+    role: SERVICE
+    speeds:
+    - 10G
+    - 25G
+    breakoutCapable: false
+    panelNumberStart: 28
+    physicalLabelPattern: 25GE-{n}
+    notes: 'Posições físicas 28-35: 8 x SFP28 (25GE/10GE/GE). Grupo próprio porque a documentação Huawei diferencia a capacidade deste bloco do bloco 36-47.'
+  - groupKey: sfp28-25g-b
+    count: 12
+    visual: {row: 1, x: 70.8, y: 0.6, gapX: 0.6, pairing: EVEN_ODD}
+    connector: SFP28
+    role: SERVICE
+    speeds:
+    - 10G
+    - 25G
+    breakoutCapable: false
+    panelNumberStart: 36
+    physicalLabelPattern: 25GE-{n}
+    notes: 'Posições físicas 36-47: 12 x SFP28 (25GE/10GE).'
+  - groupKey: qsfp28-100g
+    count: 8
+    visual: {row: 1, x: 93.8, y: 0.6, gapX: 0.6, pairing: EVEN_ODD}
     connector: QSFP28
     role: UPLINK
     speeds:
@@ -503,38 +542,17 @@ templates:
     - 50G
     - 100G
     breakoutCapable: true
+    panelNumberStart: 48
     physicalLabelPattern: 100GE-{n}
-    notes: 'Official F1A-8H20Q ordering configuration: 8 x 100GE. One physical cage remains one connector under breakout/rate changes.'
-  - groupKey: 25ge-cages
-    count: 20
-    visual: {row: 2, columns: 10, x: 14, y: 4.4, gapX: 0.6}
-    connector: SFP28
-    role: SERVICE
-    speeds:
-    - 10G
-    - 25G
-    breakoutCapable: false
-    physicalLabelPattern: 25GE-{n}
-    notes: 'Official F1A-8H20Q ordering configuration: 20 x 25GE.'
-  - groupKey: 10ge-cages
-    count: 28
-    visual: {row: 4, columns: 14, x: 7, y: 8.2, gapX: 0.6}
-    connector: SFP_PLUS
-    role: SERVICE
-    speeds:
-    - 1G
-    - 10G
-    breakoutCapable: false
-    physicalLabelPattern: 10GE-{n}
-    notes: 'Official F1A-8H20Q ordering configuration: 28 x 10GE.'
+    notes: 'Posições físicas 48-55: 8 x QSFP28 (100GE). Um cage continua sendo um conector sob breakout ou mudança de rate.'
   slotGroups: []
   compatibleModuleKeys: []
   managementPorts: []
   consolePorts: []
   sourceRefs:
   - huawei-ne8000-f1a-8h20q
-  verificationNote: Huawei F1A-8H20Q datasheet confirms 1U and flexible 100GE/50GE/25GE/10GE/GE service capability; official ordering material
-    specifies 8x100GE + 20x25GE + 28x10GE. CLI names must be mapped by discovery instead of hardcoding member/slot numbering.
+  verificationNote: 'Huawei F1A-8H20Q: painel frontal com 56 conectores em UMA faixa contínua de 28 colunas x 2 fileiras (par em cima, ímpar embaixo), numerados 0-55 na sequência 0-27 SFP+ (10GE/GE), 28-35 SFP28 (25GE/10GE/GE),
+    36-47 SFP28 (25GE/10GE) e 48-55 QSFP28 (100GE). O nome CLI é mapeado por discovery (evidência de campo no BHE-VTA-F1A-BGP-01: 100GE0/1/48, 49 e 51); member/slot não é fixado no catálogo.'
 - catalogKey: huawei-ne8000-m4
   manufacturer: Huawei
   family: NetEngine 8000

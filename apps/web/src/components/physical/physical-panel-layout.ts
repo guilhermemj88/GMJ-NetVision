@@ -283,11 +283,18 @@ export function buildPanelLayout(input: {
     const gapX = group.visual?.gapX ?? DEFAULT_GAP_X;
     const gapY = group.visual?.gapY ?? DEFAULT_GAP_Y;
     const total = group.ports.length;
+    /**
+     * Painel com numeração física par/ímpar: duas fileiras por coluna, o índice
+     * par em cima e o ímpar embaixo (F1A-8H20Q: `0 2 4 … / 1 3 5 …`).
+     */
+    const paired = group.visual?.pairing === 'EVEN_ODD';
     const columns =
-      group.visual?.columns && group.visual.columns > 0
-        ? Math.min(group.visual.columns, total)
-        : Math.max(1, Math.floor((width - 8) / (shapeWidth + gapX)));
-    const groupRows = Math.max(1, Math.ceil(total / columns));
+      paired
+        ? Math.max(1, Math.ceil(total / 2))
+        : group.visual?.columns && group.visual.columns > 0
+          ? Math.min(group.visual.columns, total)
+          : Math.max(1, Math.floor((width - 8) / (shapeWidth + gapX)));
+    const groupRows = paired ? Math.min(2, total) : Math.max(1, Math.ceil(total / columns));
     const requestedRows = group.visual?.rows && group.visual.rows > 0 ? group.visual.rows : groupRows;
     const groupWidth = columns * shapeWidth + (columns - 1) * gapX;
     const startX = group.visual?.x ?? Math.max(2, (width - Math.max(groupWidth, shapeWidth)) / 2);
@@ -306,8 +313,9 @@ export function buildPanelLayout(input: {
     }
 
     group.ports.forEach((port, index) => {
-      const column = index % columns;
-      const row = Math.floor(index / columns);
+      // Emparelhado: coluna = floor(index/2), fileira = index % 2 (par em cima).
+      const column = paired ? Math.floor(index / 2) : index % columns;
+      const row = paired ? index % 2 : Math.floor(index / columns);
       const kind = kinds[index]!;
       const shape = shapes[index]!;
       connectors.push({

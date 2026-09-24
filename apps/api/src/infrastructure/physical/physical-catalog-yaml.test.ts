@@ -164,12 +164,24 @@ describe('physical catalog YAML (arquivo real)', () => {
     const result = loadPhysicalCatalog(PHYSICAL_CATALOG);
     const entry = (key: string) => result.entries.find((item) => item.catalogKey === key)!;
 
-    // F1A-8H20Q: 8 x 100GE + 20 x 25GE + 28 x 10GE = 56 conectores físicos
+    // F1A-8H20Q: 28 x SFP+ (0-27) + 8 + 12 SFP28 (28-47) + 8 QSFP28 (48-55)
     const f1a = entry('huawei-ne8000-f1a-8h20q');
     expect(f1a.vendorVerified).toBe(true);
     expect(f1a.ports).toHaveLength(56);
     expect(f1a.slots).toHaveLength(0);
     expect(f1a.ports.filter((port) => port.connector === 'QSFP28')).toHaveLength(8);
+    expect(f1a.ports.filter((port) => port.connector === 'SFP28')).toHaveLength(20);
+    expect(f1a.ports.filter((port) => port.connector === 'SFP_PLUS')).toHaveLength(28);
+    // numeração física 0-55, contínua e independente do nome lógico
+    expect(f1a.ports.map((port) => port.panelNumber)).toEqual(
+      Array.from({ length: 56 }, (_value, index) => index),
+    );
+    expect(f1a.ports.map((port) => port.name).slice(0, 3)).toEqual(['10GE-0', '10GE-1', '10GE-2']);
+    expect(f1a.ports.map((port) => port.name).slice(48, 51)).toEqual([
+      '100GE-48',
+      '100GE-49',
+      '100GE-50',
+    ]);
 
     // NE8000: apenas slots de placa, nenhuma porta inventada
     for (const [key, slots] of [
@@ -200,11 +212,20 @@ describe('physical catalog YAML (arquivo real)', () => {
     expect(entry('huawei-s6750-h36c').ports.some((port) => port.connector === 'QSFP28')).toBe(true);
   });
 
-  it('declara geometria de painel nos templates prioritários (type LOGICAL)', () => {
+  it('declara geometria de painel nos templates prioritários (LOGICAL, F1A com FRONT)', () => {
     const result = loadPhysicalCatalog(PHYSICAL_CATALOG);
     const withPanel = result.entries.filter((entry) => entry.panelLayout);
     expect(withPanel.length).toBeGreaterThanOrEqual(40);
-    expect(new Set(withPanel.map((entry) => entry.panelLayout!.type))).toEqual(new Set(['LOGICAL']));
+    // O F1A-8H20Q é o único com o painel frontal oficial codificado (28x2, 0-55).
+    expect(
+      withPanel
+        .filter((entry) => entry.panelLayout!.type === 'FRONT')
+        .map((entry) => entry.catalogKey),
+    ).toEqual(['huawei-ne8000-f1a-8h20q']);
+    for (const entry of withPanel) {
+      if (entry.catalogKey === 'huawei-ne8000-f1a-8h20q') continue;
+      expect(entry.panelLayout!.type, entry.catalogKey).toBe('LOGICAL');
+    }
     for (const key of [
       'huawei-ne8000-f1a-8h20q',
       'huawei-s6750-h48y8c-b',

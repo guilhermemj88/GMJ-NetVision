@@ -374,12 +374,25 @@ export function technicalGroupBays(
       .map((label) => Number(label))
       .filter((value) => Number.isFinite(value))
       .sort((left, right) => left - right);
+    /**
+     * Faixa mostrada na baía: **número físico do painel** quando o catálogo
+     * declara (`0`–`55` no F1A-8H20Q), senão o ordinal do rótulo do grupo.
+     */
+    const panelNumbers = connectors
+      .map((connector) => connector.catalogPort?.panelNumber ?? null)
+      .filter((value): value is number => value !== null)
+      .sort((left, right) => left - right);
+    const physicalRange =
+      panelNumbers.length === connectors.length && panelNumbers.length > 0
+        ? `${panelNumbers[0]}–${panelNumbers[panelNumbers.length - 1]}`
+        : null;
     const range =
-      ordinals.length > 1
+      physicalRange ??
+      (ordinals.length > 1
         ? `${ordinals[0]}–${ordinals[ordinals.length - 1]}`
         : ordinals.length === 1
           ? String(ordinals[0])
-          : null;
+          : null);
     const minX = Math.min(...connectors.map((connector) => connector.x));
     const maxX = Math.max(...connectors.map((connector) => connector.x + connector.shape.width));
     const minY = Math.min(...connectors.map((connector) => connector.y));

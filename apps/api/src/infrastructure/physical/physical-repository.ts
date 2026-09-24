@@ -15,6 +15,7 @@ import type {
   PhysicalPort,
   PhysicalRack,
   PhysicalSite,
+  PhysicalSyncDiagnostic,
   UpdatePhysicalPortInput,
 } from '@gmj/shared';
 
@@ -79,6 +80,13 @@ export interface InterfaceSyncExecution {
    * run (breakout collapsed).
    */
   skippedByPolicy: number;
+  /**
+   * Nomes físicos/desconhecidos que **não** encontraram conector, com motivo.
+   * É o diagnóstico para ver o que o equipamento respondeu de verdade.
+   */
+  unrecognized: PhysicalSyncDiagnostic[];
+  /** Interfaces lógicas ignoradas de propósito (VLAN/bridge/sub-interface/lane). */
+  ignoredLogical: PhysicalSyncDiagnostic[];
 }
 export interface UpdatePhysicalSiteInput {
   name?: string | undefined;

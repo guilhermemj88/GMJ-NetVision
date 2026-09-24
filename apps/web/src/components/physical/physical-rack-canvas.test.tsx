@@ -58,27 +58,33 @@ const connection = physicalConnection({});
 
 const noop = () => undefined;
 
-/** Painel F1A-8H20Q declarado no catálogo: 8 QSFP28 + 20 SFP28 + 28 SFP+. */
+/**
+ * Painel F1A-8H20Q declarado no catálogo: 28 SFP+ (0-27), 8+12 SFP28 (28-47) e
+ * 8 QSFP28 (48-55) em uma faixa contínua de 28 colunas × 2 fileiras.
+ */
 function f1aCatalogPorts(): PhysicalCatalogPort[] {
-  const groups: Array<[string, number, PhysicalConnectorKind, string, string]> = [
-    ['100ge-cages', 8, 'QSFP28', '100GE-', 'QSFP'],
-    ['25ge-cages', 20, 'SFP28', '25GE-', 'SFP'],
-    ['10ge-cages', 28, 'SFP_PLUS', '10GE-', 'SFP'],
+  const groups: Array<[string, number, number, PhysicalConnectorKind, string, string]> = [
+    // groupKey, primeiro número físico, quantidade, conector, prefixo, tipo
+    ['sfpplus-10g', 0, 28, 'SFP_PLUS', '10GE-', 'SFP_PLUS'],
+    ['sfp28-25g-a', 28, 8, 'SFP28', '25GE-', 'SFP'],
+    ['sfp28-25g-b', 36, 12, 'SFP28', '25GE-', 'SFP'],
+    ['qsfp28-100g', 48, 8, 'QSFP28', '100GE-', 'QSFP'],
   ];
   const ports: PhysicalCatalogPort[] = [];
   let order = 0;
-  for (const [groupKey, count, connector, prefix, type] of groups) {
-    for (let index = 1; index <= count; index += 1) {
+  for (const [groupKey, start, count, connector, prefix, type] of groups) {
+    for (let index = 0; index < count; index += 1) {
       order += 1;
       ports.push({
-        name: `${prefix}${index}`,
-        label: `${prefix}${index}`,
+        name: `${prefix}${start + index}`,
+        label: `${prefix}${start + index}`,
         order,
         side: 'DEVICE',
         type: type as PhysicalCatalogPort['type'],
         connector,
-        portFunction: 'SERVICE',
+        portFunction: groupKey === 'qsfp28-100g' ? 'UPLINK' : 'SERVICE',
         groupKey,
+        panelNumber: start + index,
       });
     }
   }
@@ -231,7 +237,8 @@ describe('PhysicalRackCanvas', () => {
     const buttonOf = (id: string) =>
       new RegExp(`<button[^>]*data-port-id="${id}"[^>]*>`).exec(html)?.[0] ?? '';
     const widthPct = (id: string) => Number(/width:\s*([\d.]+)%/.exec(buttonOf(id))?.[1] ?? 0);
-    expect(widthPct('f1a-1')).toBeGreaterThan(widthPct('f1a-9'));
+    // `f1a-49` é o 100GE-48 (QSFP28); `f1a-2` é o 10GE-1 (SFP+)
+    expect(widthPct('f1a-49')).toBeGreaterThan(widthPct('f1a-2'));
     expect(html).toContain('data-connector="QSFP28"');
   });
 

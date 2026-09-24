@@ -110,6 +110,8 @@ interface SyncReport {
   skippedLogical: number;
   skippedUnknown: number;
   skippedByPolicy: number;
+  unrecognized: Array<{ interfaceName: string; classification: string; reason: string }>;
+  ignoredLogical: Array<{ interfaceName: string; classification: string; reason: string }>;
   badPorts: Array<{ id: string; name: string; interfaceName: string }>;
 }
 
@@ -700,10 +702,12 @@ describe('correlação entre rótulo de painel e nome CLI', () => {
   });
 
   it('mapeia as 56 portas do F1A-8H20Q pelo painel declarado no catálogo', async () => {
+    // numeração FÍSICA do painel (0-55), igual à declaração do catálogo
     const names = [
-      ...Array.from({ length: 8 }, (_value, index) => `100GE1/0/${index + 1}`),
-      ...Array.from({ length: 20 }, (_value, index) => `25GE1/0/${index + 1}`),
-      ...Array.from({ length: 28 }, (_value, index) => `10GE1/0/${index + 1}`),
+      ...Array.from({ length: 28 }, (_value, index) => `10GE1/0/${index}`),
+      ...Array.from({ length: 8 }, (_value, index) => `25GE1/0/${28 + index}`),
+      ...Array.from({ length: 12 }, (_value, index) => `25GE1/0/${36 + index}`),
+      ...Array.from({ length: 8 }, (_value, index) => `100GE1/0/${48 + index}`),
     ];
     const context = await harness([hostRecord('host-f1a', names)]);
     const app = context.app;
@@ -721,11 +725,13 @@ describe('correlação entre rótulo de painel e nome CLI', () => {
     expect(report.mapped).toBe(56);
     expect(report.skippedLogical).toBe(0);
     expect(report.skippedByPolicy).toBe(0);
+    expect(report.unrecognized).toEqual([]);
     const mapped = report.ports.filter((port) => port.mappedInterfaceId).map((port) => port.name);
     expect(mapped).toHaveLength(56);
-    expect(mapped).toContain('100GE-8');
-    expect(mapped).toContain('25GE-20');
-    expect(mapped).toContain('10GE-28');
+    expect(mapped).toContain('10GE-0');
+    expect(mapped).toContain('25GE-28');
+    expect(mapped).toContain('25GE-47');
+    expect(mapped).toContain('100GE-55');
     await app.close();
   });
 });
@@ -1029,6 +1035,121 @@ describe('sincronização pelo nome de interface do catálogo', () => {
     expect(created.map((item) => item.name).sort()).toEqual(['ether1', 'ether2']);
     // porta genérica sem interface continua existindo (nada é removido)
     expect(report.ports.some((item) => item.name === 'port1')).toBe(true);
+  });
+});
+
+/**
+ * Diagnóstico do sync: o operador precisa **ver os nomes reais** que o
+ * equipamento respondeu e que não viraram conector (caso F1A-8H20Q em produção:
+ * `100GE0/1/48`… com `100GE-48`… no painel). Nada é mapeado por posição para
+ * "limpar" o aviso.
+ */
+describe('diagnóstico do sync de interfaces', () => {
+  let app: FastifyInstance;
+
+  afterEach(async () => {
+    if (app) await app.close();
+  });
+
+  it('lista os nomes físicos não reconhecidos com motivo (F1A-8H20Q)', async () => {
+    const context = await harness([
+      hostRecord('host-f1a-live', [
+        // evidência de campo do BHE-VTA-F1A-BGP-01
+        '100GE0/1/48',
+        '100GE0/1/49',
+        '100GE0/1/51',
+        // famílias ainda sem captura confirmada
+        '25GE0/1/28',
+        '10GE0/1/0',
+        // lógicas: continuam ignoradas, mas agora aparecem no diagnóstico
+        'Vlanif100',
+        'LoopBack0',
+        'Eth-Trunk1',
+      ]),
+    ]);
+    app = context.app;
+    const rack = await context.createRack();
+    const asset = await context.createAsset(rack.id, {
+      name: 'BHE-VTA-F1A-BGP-01',
+      catalogKey: 'huawei-ne8000-f1a-8h20q',
+      kind: 'NETWORK',
+      deviceId: 'host-f1a-live',
+    });
+
+    const report = await context.sync(asset.id);
+    const names = report.unrecognized.map((item) => item.interfaceName);
+    expect(names).toEqual([
+      '100GE0/1/48',
+      '100GE0/1/49',
+      '100GE0/1/51',
+      '25GE0/1/28',
+      '10GE0/1/0',
+    ]);
+    for (const item of report.unrecognized) {
+      expect(item.classification).toBe('PHYSICAL');
+      expect(item.reason).toContain('Template de fabricante');
+    }
+    // nunca mapeadas silenciosamente, nem quando a contagem não fecha
+    expect(report.mapped).toBe(0);
+    expect(
+      report.ports.filter((port) => port.mappedInterfaceId !== null),
+    ).toHaveLength(0);
+    // as lógicas aparecem no diagnóstico, separadas
+    expect(report.ignoredLogical.map((item) => item.interfaceName)).toEqual([
+      'Vlanif100',
+      'LoopBack0',
+      'Eth-Trunk1',
+    ]);
+    expect(report.skippedLogical).toBe(3);
+  });
+
+  it('mantém a prioridade da interface já mapeada e não a reavalia', async () => {
+    const context = await harness([hostRecord('host-keep', ['100GE0/1/48', 'Vlanif10'])]);
+    app = context.app;
+    const rack = await context.createRack();
+    const asset = await context.createAsset(rack.id, {
+      name: 'F1A-KEEP',
+      catalogKey: 'huawei-ne8000-f1a-8h20q',
+      kind: 'NETWORK',
+      deviceId: 'host-keep',
+    });
+    const port = asset.ports.find((item) => item.name === '100GE-48')!;
+    // vínculo manual do operador: o sync não pode roubá-lo
+    const linked = await app.inject({
+      method: 'PATCH',
+      url: `/api/physical/ports/${port.id}`,
+      payload: { mappedInterfaceId: 'if-100GE0/1/48' },
+    });
+    expect(linked.statusCode).toBe(200);
+
+    const report = await context.sync(asset.id);
+    const mapped = report.ports.find((item) => item.id === port.id)!;
+    expect(mapped.mappedInterfaceId).toBe('if-100GE0/1/48');
+    // a interface já mapeada não entra no diagnóstico de desconhecidas
+    expect(report.unrecognized.map((item) => item.interfaceName)).not.toContain('100GE0/1/48');
+    expect(report.ignoredLogical.map((item) => item.interfaceName)).toContain('Vlanif10');
+  });
+
+  it('nomes desconhecidos não criam conector nem em template de fabricante', async () => {
+    const context = await harness([hostRecord('host-unknown', ['FE0/0/1', 'XYZ-9'])]);
+    app = context.app;
+    const rack = await context.createRack();
+    const asset = await context.createAsset(rack.id, {
+      name: 'SW-UNKNOWN',
+      catalogKey: 'huawei-s6730-h48x6c',
+      kind: 'NETWORK',
+      deviceId: 'host-unknown',
+    });
+
+    const before = asset.ports.length;
+    const report = await context.sync(asset.id);
+    expect(report.created).toBe(0);
+    expect(report.ports).toHaveLength(before);
+    expect(report.unrecognized.map((item) => item.interfaceName)).toEqual(['FE0/0/1', 'XYZ-9']);
+    for (const item of report.unrecognized) {
+      expect(item.classification).toBe('UNKNOWN');
+      expect(item.reason).toContain('não reconhecido');
+    }
   });
 });
 

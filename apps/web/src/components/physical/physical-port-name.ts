@@ -23,6 +23,8 @@ export interface PhysicalPortNameSource {
   portLabel?: string | null;
   /** `PhysicalCatalogPort.label` (rótulo físico/cage declarado no catálogo). */
   catalogLabel?: string | null;
+  /** `PhysicalCatalogPort.panelNumber` (número físico do painel, ex.: `0`–`55`). */
+  panelNumber?: number | null;
   /** `PhysicalCatalogPort.interfaceName` (nome CLI esperado, quando confirmado). */
   catalogInterfaceName?: string | null;
   /** `PhysicalPort.mappedInterface?.name` (nome real da interface do Device). */
@@ -66,10 +68,16 @@ export function lastOrdinal(value: string): string | null {
 }
 
 /**
- * Rótulo curto desenhado dentro do conector: o ordinal do **nome CLI** quando
- * existir (`100GE1/0/7` → `7`), senão o ordinal da identidade persistida.
+ * Rótulo curto desenhado dentro do conector: o ordinal da **interface CLI**
+ * quando existir (`100GE1/0/7` → `7`), senão o **número físico do painel**
+ * declarado no catálogo (`0`–`55` no F1A-8H20Q) e, por último, o ordinal do
+ * próprio nome persistido.
  */
 export function physicalPortCompactLabel(source: PhysicalPortNameSource): string | null {
+  if (physicalPortInterfaceName(source)) return lastOrdinal(physicalPortDisplayName(source));
+  if (source.panelNumber !== null && source.panelNumber !== undefined) {
+    return String(source.panelNumber);
+  }
   return lastOrdinal(physicalPortDisplayName(source));
 }
 
@@ -105,13 +113,14 @@ export interface PhysicalPortNameView {
 
 export function physicalPortNameView(
   port: Pick<PhysicalPort, 'name' | 'label'> & { mappedInterface?: PhysicalInterfaceReference | null },
-  catalogPort?: Pick<PhysicalCatalogPort, 'label' | 'interfaceName'> | null,
+  catalogPort?: Pick<PhysicalCatalogPort, 'label' | 'interfaceName' | 'panelNumber'> | null,
 ): PhysicalPortNameView {
   const source: PhysicalPortNameSource = {
     portName: port.name,
     portLabel: port.label,
     catalogLabel: catalogPort?.label ?? null,
     catalogInterfaceName: catalogPort?.interfaceName ?? null,
+    panelNumber: catalogPort?.panelNumber ?? null,
     mappedInterfaceName: port.mappedInterface?.name ?? null,
   };
   return {

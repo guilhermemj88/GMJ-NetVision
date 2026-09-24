@@ -6833,6 +6833,31 @@ label > small {
   background: #14212a;
   color: #9cc0d6;
 }
+/* Diagnóstico do sync: lista dos nomes ignorados atrás de “Ver detalhes”. */
+.physical-notice__details {
+  max-width: 60%;
+  font-size: 10px;
+}
+.physical-notice__details summary {
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.85;
+  text-decoration: underline dotted;
+}
+.physical-notice__details ul {
+  max-height: 140px;
+  margin: 6px 0 0;
+  padding: 6px 8px 6px 18px;
+  overflow: auto;
+  border: 1px solid rgba(142, 166, 194, 0.25);
+  border-radius: 3px;
+  background: rgba(4, 11, 21, 0.55);
+  color: var(--tech-nv-text, #dfe8f3);
+  list-style: disc;
+}
+.physical-notice__details li {
+  white-space: nowrap;
+}
 .physical-notice button,
 .physical-sidebar__heading button,
 .physical-inspector__header button,

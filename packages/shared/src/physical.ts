@@ -1,3 +1,5 @@
+import type { PhysicalInterfaceClass } from './physical-interface';
+
 export type PhysicalAssetKind =
   | 'NETWORK'
   | 'SERVER'
@@ -79,6 +81,15 @@ export interface PhysicalCatalogPort {
   breakoutCapable?: boolean;
   /** `groupKey` of the catalog port group that declared this port. */
   groupKey?: string | null;
+  /**
+   * Número físico da porta no painel (`0`–`55` no NetEngine 8000 F1A-8H20Q).
+   *
+   * É a identidade do **desenho** e independe do nome lógico da interface: o
+   * painel Huawei começa em `0` e numera par/ímpar por coluna. Quando o catálogo
+   * não declara a numeração física, o campo fica nulo e o desenho continua
+   * usando o ordinal do rótulo.
+   */
+  panelNumber?: number | null;
   /** Vendor CLI pattern declared in the catalog, when it exists. */
   interfaceName?: string | null;
   /** Free-form note from the catalog (never dropped). */
@@ -113,6 +124,12 @@ export interface PhysicalVisualPlacement {
   gapX?: number;
   /** Vertical gap between rows in grid units. */
   gapY?: number;
+  /**
+   * Emparelha as portas em duas fileiras por coluna: o índice **par** fica em
+   * cima e o **ímpar** embaixo. É a numeração física real de painéis como o
+   * NetEngine 8000 F1A-8H20Q (`0 2 4 … / 1 3 5 …`).
+   */
+  pairing?: 'EVEN_ODD';
 }
 
 /**
@@ -538,6 +555,17 @@ export interface PhysicalBadPort {
 }
 
 /**
+ * Uma interface que o sync decidiu **não** transformar em conector, com o motivo.
+ * Existe para o operador ver os nomes reais retornados pelo equipamento.
+ */
+export interface PhysicalSyncDiagnostic {
+  interfaceName: string;
+  classification: PhysicalInterfaceClass;
+  /** Motivo do descarte (nunca é mapeado silenciosamente). */
+  reason: string;
+}
+
+/**
  * Result of one interface synchronization: how many connectors were mapped or
  * created and how many logical/unrecognized interfaces were deliberately
  * ignored, plus the leftovers of the previous (unfiltered) behavior.
@@ -550,6 +578,13 @@ export interface PhysicalInterfaceSyncReport {
   skippedUnknown: number;
   /** Physical connectors não criados por política (template de fabricante/cage já criado). */
   skippedByPolicy: number;
+  /**
+   * Nomes de interface físicos/desconhecidos que **não** encontraram conector.
+   * É o diagnóstico que permite ver os nomes reais do equipamento.
+   */
+  unrecognized: PhysicalSyncDiagnostic[];
+  /** Interfaces lógicas ignoradas de propósito (VLAN/bridge/sub-interface/lane). */
+  ignoredLogical: PhysicalSyncDiagnostic[];
   badPorts: PhysicalBadPort[];
 }
 

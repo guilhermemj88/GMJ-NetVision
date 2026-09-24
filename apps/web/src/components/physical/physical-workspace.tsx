@@ -79,7 +79,12 @@ export function PhysicalWorkspace() {
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<CreateDialog>(null);
   const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState<{ level: 'error' | 'warning' | 'info'; message: string } | null>(null);
+  const [notice, setNotice] = useState<{
+    level: 'error' | 'warning' | 'info';
+    message: string;
+    /** Lista de nomes ignorados pelo sync (atrás de “Ver detalhes”). */
+    details?: string[] | null;
+  } | null>(null);
 
   const site = inventory?.sites.find((candidate) => candidate.id === siteId) ?? inventory?.sites[0];
   const rack = site?.racks.find((candidate) => candidate.id === rackId) ?? site?.racks[0];
@@ -161,6 +166,23 @@ export function PhysicalWorkspace() {
     return parts.join(' · ');
   }
 
+  /**
+   * Diagnóstico do sync: os nomes que o equipamento respondeu e que **não**
+   * viraram conector. Fica atrás de “Ver detalhes” para o operador poder
+   * correlacionar sem poluir o aviso.
+   */
+  function syncDiagnosticDetails(report: PhysicalInterfaceSyncReport): string[] | null {
+    const lines = [
+      ...report.unrecognized.map(
+        (item) => `Não reconhecida (${item.classification}): ${item.interfaceName} — ${item.reason}`,
+      ),
+      ...report.ignoredLogical.map(
+        (item) => `Lógica ignorada: ${item.interfaceName} — ${item.reason}`,
+      ),
+    ];
+    return lines.length ? lines : null;
+  }
+
   async function submitSite(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
@@ -221,7 +243,11 @@ export function PhysicalWorkspace() {
       try {
         const report = await syncPhysicalPorts(created.id);
         await queryClient.invalidateQueries({ queryKey: ['physical'] });
-        warn(`Equipamento criado. ${describeSync(report)}`);
+        setNotice({
+          level: 'warning',
+          message: `Equipamento criado. ${describeSync(report)}`,
+          details: syncDiagnosticDetails(report),
+        });
       } catch (error) {
         warn(
           `Equipamento criado, mas a sincronização de interfaces falhou: ${
@@ -236,13 +262,19 @@ export function PhysicalWorkspace() {
   async function syncPorts(assetId: string) {
     await run(async () => {
       const report = await syncPhysicalPorts(assetId);
+      const details = syncDiagnosticDetails(report);
       setNotice(
         report.badPorts.length
           ? {
               level: 'warning',
               message: `Sincronizado (${describeSync(report)}). ${report.badPorts.length} conectores foram criados para interfaces lógicas por uma sincronização antiga e podem ser reconciliados no inspetor.`,
+              details,
             }
-          : { level: 'warning', message: `Interfaces sincronizadas: ${describeSync(report)}` },
+          : {
+              level: 'warning',
+              message: `Interfaces sincronizadas: ${describeSync(report)}`,
+              details,
+            },
       );
       return report;
     });
@@ -313,7 +345,25 @@ export function PhysicalWorkspace() {
         {canEdit && rack ? <Button compact variant="primary" onClick={() => setDialog('asset')}><CirclePlus size={14} /> Equipamento</Button> : null}
       </header>
 
-      {notice ? <div className={`physical-notice physical-notice--${notice.level}`} role={notice.level === 'error' ? 'alert' : 'status'}>{notice.message}<button type="button" onClick={() => setNotice(null)}><X size={13} /></button></div> : null}
+      {notice ? (
+        <div
+          className={`physical-notice physical-notice--${notice.level}`}
+          role={notice.level === 'error' ? 'alert' : 'status'}
+        >
+          {notice.message}
+          {notice.details?.length ? (
+            <details className="physical-notice__details">
+              <summary>{notice.details.length} nome(s) ignorado(s) — Ver detalhes</summary>
+              <ul>
+                {notice.details.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+          <button type="button" onClick={() => setNotice(null)}><X size={13} /></button>
+        </div>
+      ) : null}
 
       <div className="physical-layout">
         <aside className="physical-sidebar">

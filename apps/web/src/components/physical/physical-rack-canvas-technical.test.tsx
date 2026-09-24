@@ -45,6 +45,8 @@ interface GroupSpec {
    * declarado, o nome apresentado da porta passa a ser o nome da interface.
    */
   interfacePattern?: string | undefined;
+  /** Primeiro número físico do grupo no painel (0 no F1A-8H20Q). */
+  panelStart?: number;
   visual: PhysicalVisualPlacement;
 }
 
@@ -90,13 +92,17 @@ function buildFixedDevice(spec: DeviceSpec) {
   for (const group of spec.groups) {
     for (let index = 1; index <= group.count; index += 1) {
       order += 1;
+      const start = group.panelStart ?? 1;
       // padrão do catálogo: `10GE-{n}` ou ordinal contínuo `{n+32}`
       const offset = /^(.+)\{n\+(\d+)\}$/.exec(group.pattern);
       const name = offset
-        ? `${offset[1]}${index + Number(offset[2])}`
-        : group.pattern.replace('{n}', String(index));
+        ? `${offset[1]}${start + index - 1 + Number(offset[2])}`
+        : group.pattern.replace('{n}', String(start + index - 1));
       const interfaceName = group.interfacePattern
-        ? group.interfacePattern.replace('{n}', String(index))
+        ? group.interfacePattern.replace(
+            '{n}',
+            String(group.panelStart === undefined ? index : start + index - 1),
+          )
         : null;
       catalogPorts.push({
         name,
@@ -110,6 +116,7 @@ function buildFixedDevice(spec: DeviceSpec) {
         breakoutCapable: false,
         groupKey: group.groupKey,
         interfaceName,
+        panelNumber: group.panelStart === undefined ? null : start + index - 1,
         notes: null,
         visual: group.visual,
       });
@@ -149,39 +156,57 @@ function buildFixedDevice(spec: DeviceSpec) {
 }
 
 /** F1A-8H20Q: 8×100GE + 20×25GE + 28×10GE (mesmas coordenadas do catálogo). */
+/**
+ * F1A-8H20Q: painel frontal oficial em UMA faixa de 28 colunas × 2 fileiras,
+ * numerado de 0 a 55 (28 SFP+ 0-27, 8 SFP28 28-35, 12 SFP28 36-47 e 8 QSFP28
+ * 48-55) — mesmas coordenadas e numeração do catálogo.
+ */
 const F1A: DeviceSpec = {
   catalogKey: 'huawei-ne8000-f1a-8h20q',
   model: 'F1A-8H20Q',
   assetId: 'asset-f1a',
   startU: 40,
-  panelHeight: 14,
+  panelHeight: 7,
   groups: [
     {
-      groupKey: '100ge-cages',
-      count: 8,
-      connector: 'QSFP28',
-      type: 'QSFP',
-      portFunction: 'UPLINK',
-      pattern: '100GE-{n}',
-      visual: { row: 1, columns: 8, x: 25, y: 0.6, gapX: 0.8 },
-    },
-    {
-      groupKey: '25ge-cages',
-      count: 20,
-      connector: 'SFP28',
-      type: 'SFP_PLUS',
-      portFunction: 'SERVICE',
-      pattern: '25GE-{n}',
-      visual: { row: 2, columns: 10, x: 14, y: 4.4, gapX: 0.6 },
-    },
-    {
-      groupKey: '10ge-cages',
+      groupKey: 'sfpplus-10g',
       count: 28,
       connector: 'SFP_PLUS',
       type: 'SFP_PLUS',
       portFunction: 'SERVICE',
       pattern: '10GE-{n}',
-      visual: { row: 4, columns: 14, x: 7, y: 8.2, gapX: 0.6 },
+      panelStart: 0,
+      visual: { row: 1, x: 2, y: 0.6, gapX: 0.6, pairing: 'EVEN_ODD' },
+    },
+    {
+      groupKey: 'sfp28-25g-a',
+      count: 8,
+      connector: 'SFP28',
+      type: 'SFP_PLUS',
+      portFunction: 'SERVICE',
+      pattern: '25GE-{n}',
+      panelStart: 28,
+      visual: { row: 1, x: 55.4, y: 0.6, gapX: 0.6, pairing: 'EVEN_ODD' },
+    },
+    {
+      groupKey: 'sfp28-25g-b',
+      count: 12,
+      connector: 'SFP28',
+      type: 'SFP_PLUS',
+      portFunction: 'SERVICE',
+      pattern: '25GE-{n}',
+      panelStart: 36,
+      visual: { row: 1, x: 70.8, y: 0.6, gapX: 0.6, pairing: 'EVEN_ODD' },
+    },
+    {
+      groupKey: 'qsfp28-100g',
+      count: 8,
+      connector: 'QSFP28',
+      type: 'QSFP',
+      portFunction: 'UPLINK',
+      pattern: '100GE-{n}',
+      panelStart: 48,
+      visual: { row: 1, x: 93.8, y: 0.6, gapX: 0.6, pairing: 'EVEN_ODD' },
     },
   ],
 };
@@ -336,7 +361,7 @@ function renderRack(
 }
 
 describe('visão técnica no rack canvas', () => {
-  it('F1A: resolve o desenho técnico com os grupos 10GE/25GE/100GE legíveis', () => {
+  it('F1A: painel contínuo 0–55 em 28 colunas × 2 fileiras, com os 4 blocos', () => {
     const { entry, asset } = buildFixedDevice(F1A);
 
     const real = renderRack([asset], { catalog: [entry], visualMode: 'REAL' });
@@ -348,11 +373,31 @@ describe('visão técnica no rack canvas', () => {
     // sem fotografia: o desenho é o painel geométrico
     expect(technical).not.toContain('ne8000-f1a-8h20q-front.png');
     expect(technical.match(/data-port-id=/g)).toHaveLength(56);
-    expect(technical).toContain('100GE × 8');
-    expect(technical).toContain('25GE × 20');
     expect(technical).toContain('10GE × 28');
-    // rótulos curtos das portas no desenho
+    expect(technical).toContain('25GE × 8');
+    expect(technical).toContain('25GE × 12');
+    expect(technical).toContain('100GE × 8');
+    // rótulo curto = número físico do painel (0–55, não 1–56)
+    expect(technical).toContain('aria-label="Porta 10GE-0 (conector SFP+)"');
+    expect(technical).toContain('aria-label="Porta 100GE-55 (conector QSFP28)"');
     expect(technical).toContain('class="physical-port__label"');
+  });
+
+  it('F1A: as baías anunciam a numeração física 0–27 / 28–35 / 36–47 / 48–55', () => {
+    const { entry, asset } = buildFixedDevice(F1A);
+    const html = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+
+    for (const range of ['0–27', '28–35', '36–47', '48–55']) {
+      expect(html, range).toContain(`<b>${range}</b>`);
+    }
+    // uma única faixa: os quatro blocos no mesmo tom de topo das baías
+    const tops = [...html.matchAll(/class="physical-fixed-bay [^"]*"[^>]*top:(\d+)px/g)].map(
+      (match) => Number(match[1]),
+    );
+    expect(tops).toHaveLength(4);
+    expect(new Set(tops).size).toBe(1);
+    // nenhuma faixa de interface declarada (CLI do F1A vem por discovery)
+    expect(html).not.toContain('physical-fixed-bay__interface');
   });
 
   it('S6730-H48X6C: 48×10GE + 6×QSFP28 no desenho técnico', () => {
@@ -1198,21 +1243,25 @@ describe('faceplate fixo e política de fotografia (modo técnico)', () => {
     expect(bayTop('qsfp28-uplink')).toBeGreaterThan(bayTop('qsfp28-service'));
   });
 
-  it('F1A: três baías na ordem do catálogo, sem mexer nas 56 portas', () => {
+  it('F1A: quatro baías na ordem física do catálogo, sem mexer nas 56 portas', () => {
     const { entry, asset } = buildFixedDevice(F1A);
     const html = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
 
     expect(html.match(/data-port-id=/g)).toHaveLength(56);
-    expect(html.match(/data-bay-key=/g)).toHaveLength(3);
-    expect(html.indexOf('data-bay-key="100ge-cages"')).toBeLessThan(
-      html.indexOf('data-bay-key="25ge-cages"'),
-    );
-    expect(html.indexOf('data-bay-key="25ge-cages"')).toBeLessThan(
-      html.indexOf('data-bay-key="10ge-cages"'),
-    );
-    expect(html).toContain('UPLINK<b>1–8</b>');
-    expect(html).toContain('SERVICE<b>1–20</b>');
-    expect(html).toContain('SERVICE<b>1–28</b>');
+    expect(html.match(/data-bay-key=/g)).toHaveLength(4);
+    const order = [
+      'data-bay-key="sfpplus-10g"',
+      'data-bay-key="sfp28-25g-a"',
+      'data-bay-key="sfp28-25g-b"',
+      'data-bay-key="qsfp28-100g"',
+    ];
+    for (let index = 1; index < order.length; index += 1) {
+      expect(html.indexOf(order[index - 1]!)).toBeLessThan(html.indexOf(order[index]!));
+    }
+    expect(html).toContain('SERVICE<b>0–27</b>');
+    expect(html).toContain('SERVICE<b>28–35</b>');
+    expect(html).toContain('SERVICE<b>36–47</b>');
+    expect(html).toContain('UPLINK<b>48–55</b>');
   });
 
   it('S6730-H48X6C: baía de serviço (1–48) e de uplink (1–6)', () => {

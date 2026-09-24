@@ -13,6 +13,7 @@ import type {
   PhysicalPortSide,
   PhysicalPortState,
   PhysicalRack,
+  PhysicalSyncDiagnostic,
 } from '@gmj/shared';
 import { breakoutCageName, classifyPhysicalInterface, physicalConnectorKey } from '@gmj/shared';
 import { interfaceNameKeys } from '../topology/interface-correlation';
@@ -785,6 +786,33 @@ export function planInterfaceSync(
     });
   }
   return plan;
+}
+
+/**
+ * Diagnóstico legível do plano de sincronização.
+ *
+ * Separa o que o equipamento respondeu e **não** virou conector: nomes
+ * físicos/desconhecidos (`unrecognized`, o caso que precisa de correlação nova)
+ * e interfaces lógicas ignoradas de propósito (VLAN/bridge/lane). Nada é
+ * mapeado por conta própria para "limpar" o aviso.
+ */
+export function syncDiagnostics(plan: readonly InterfaceSyncPlanEntry[]): {
+  unrecognized: PhysicalSyncDiagnostic[];
+  ignoredLogical: PhysicalSyncDiagnostic[];
+} {
+  const unrecognized: PhysicalSyncDiagnostic[] = [];
+  const ignoredLogical: PhysicalSyncDiagnostic[] = [];
+  for (const entry of plan) {
+    if (entry.action !== 'SKIP') continue;
+    const diagnostic: PhysicalSyncDiagnostic = {
+      interfaceName: entry.interfaceName,
+      classification: entry.classification,
+      reason: entry.reason,
+    };
+    if (entry.classification === 'LOGICAL') ignoredLogical.push(diagnostic);
+    else unrecognized.push(diagnostic);
+  }
+  return { unrecognized, ignoredLogical };
 }
 
 /** An existing DISCOVERED port that should not exist (logical interface). */

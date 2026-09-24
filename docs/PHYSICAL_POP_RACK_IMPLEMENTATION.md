@@ -254,3 +254,40 @@ X15/X17/M8 vertical) e a pendência **NE40E-M2K-B**.
 - `huawei-pac600s12-cb` (fonte) não tem slot `POWER` mapeado nos chassis atuais: instalação é
   recusada com motivo.
 - MA5683T continua sem geometria de slots (nota honesta em vez de desenho inventado).
+
+### Painel físico do F1A-8H20Q (2026-09-24)
+
+O desenho em três bandas (100GE / 25GE / 10GE empilhados) **não corresponde ao painel real**. O
+NetEngine 8000 F1A-8H20Q tem os 56 conectores em **uma faixa contínua de 28 colunas × 2 fileiras**,
+numerados de **0 a 55** com o par em cima e o ímpar embaixo:
+
+```text
+0  2  4 … 26 | 28 30 32 34 | 36 38 … 46 | 48 50 52 54
+1  3  5 … 27 | 29 31 33 35 | 37 39 … 47 | 49 51 53 55
+   SFP+ 0-27  |  SFP28 28-35 | SFP28 36-47 | QSFP28 48-55
+```
+
+- **Catálogo**: quatro grupos (`sfpplus-10g`, `sfp28-25g-a`, `sfp28-25g-b`, `qsfp28-100g`) na
+  mesma `row`, com `pairing: EVEN_ODD`, `panelNumberStart` (0/28/36/48) e rótulos
+  `10GE-0…27`, `25GE-28…47`, `100GE-48…55`. O bloco 28-35 é separado do 36-47 porque a própria
+  documentação Huawei diferencia a capacidade dos dois.
+- **Numeração física ≠ nome lógico**: `PhysicalCatalogPort.panelNumber` (0-55) é o número do
+  desenho; o nome da interface continua vindo do sync/mappedInterface. Nada de `PhysicalPort.id`,
+  âncora, seleção, LLDP ou breakout foi alterado.
+- **`pairing: EVEN_ODD`** no `buildPanelLayout`: `column = floor(índice/2)`, `row = índice % 2` —
+  opcional e restrito a quem declara, sem efeito nos outros SKUs.
+- **Mapa por imagem** do F1A (`ne8000-f1a-front-panel-maps-v1.json`) foi renomeado para os mesmos
+  nomes; os bboxes (foto) continuam idênticos. O mapa real continua sendo o mesmo diagrama gerado.
+- Interface CLI do F1A segue **por discovery** — não foi declarado `interfaceNamePattern`
+  (evidência de campo: `100GE0/1/48`, `49`, `51` no BHE-VTA-F1A-BGP-01).
+
+### Diagnóstico do sync de interfaces (2026-09-24)
+
+`POST /api/physical/assets/:id/sync-interfaces` agora devolve, além dos contadores:
+
+- `unrecognized: [{ interfaceName, classification, reason }]` — nomes físicos/desconhecidos que
+  **não** viraram conector (o caso real: `100GE0/1/48` com `100GE-48` no painel);
+- `ignoredLogical: [{ interfaceName, classification, reason }]` — VLAN/bridge/sub-interface/lane.
+
+A UI mostra `N nome(s) ignorado(s) — Ver detalhes` no aviso, com a lista dos nomes reais
+retornados pelo equipamento. Nenhuma interface é mapeada por posição para "limpar" o aviso.

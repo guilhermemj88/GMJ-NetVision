@@ -213,6 +213,8 @@ interface FixedGroupSpec {
   portFunction: PhysicalPortFunction;
   /** Padrão do rótulo físico (`10GE-{n}`), como declarado no catálogo. */
   pattern: string;
+  /** Primeiro número físico do grupo no painel (0 no F1A-8H20Q). */
+  panelStart?: number;
   visual: PhysicalVisualPlacement;
 }
 
@@ -224,6 +226,10 @@ interface FixedDeviceSpec {
   assetId: string;
   startU: number;
   panelHeight: number;
+  /** Largura declarada do painel (default 100). */
+  panelWidth?: number;
+  /** `FRONT` só quando a bancada codifica o painel frontal oficial. */
+  panelType?: 'FRONT' | 'LOGICAL';
   /** `false` para placeholders de família (desenho técnico não se aplica). */
   vendorVerified?: boolean;
   groups: FixedGroupSpec[];
@@ -361,34 +367,50 @@ const FIXED_DEVICES: FixedDeviceSpec[] = [
     family: 'NetEngine 8000',
     assetId: F1A_ID,
     startU: 36,
-    panelHeight: 14,
+    // Painel frontal real: uma faixa de 28 colunas × 2 fileiras, 0-55.
+    panelHeight: 7,
+    panelWidth: 118,
+    panelType: 'FRONT',
     groups: [
       {
-        groupKey: '100ge-cages',
-        count: 8,
-        connector: 'QSFP28',
-        type: 'QSFP',
-        portFunction: 'UPLINK',
-        pattern: '100GE-{n}',
-        visual: { row: 1, columns: 8, x: 25, y: 0.6, gapX: 0.8 },
-      },
-      {
-        groupKey: '25ge-cages',
-        count: 20,
-        connector: 'SFP28',
-        type: 'SFP_PLUS',
-        portFunction: 'SERVICE',
-        pattern: '25GE-{n}',
-        visual: { row: 2, columns: 10, x: 14, y: 4.4, gapX: 0.6 },
-      },
-      {
-        groupKey: '10ge-cages',
+        groupKey: 'sfpplus-10g',
         count: 28,
         connector: 'SFP_PLUS',
         type: 'SFP_PLUS',
         portFunction: 'SERVICE',
         pattern: '10GE-{n}',
-        visual: { row: 4, columns: 14, x: 7, y: 8.2, gapX: 0.6 },
+        panelStart: 0,
+        visual: { row: 1, x: 2, y: 0.6, gapX: 0.6, pairing: 'EVEN_ODD' },
+      },
+      {
+        groupKey: 'sfp28-25g-a',
+        count: 8,
+        connector: 'SFP28',
+        type: 'SFP_PLUS',
+        portFunction: 'SERVICE',
+        pattern: '25GE-{n}',
+        panelStart: 28,
+        visual: { row: 1, x: 55.4, y: 0.6, gapX: 0.6, pairing: 'EVEN_ODD' },
+      },
+      {
+        groupKey: 'sfp28-25g-b',
+        count: 12,
+        connector: 'SFP28',
+        type: 'SFP_PLUS',
+        portFunction: 'SERVICE',
+        pattern: '25GE-{n}',
+        panelStart: 36,
+        visual: { row: 1, x: 70.8, y: 0.6, gapX: 0.6, pairing: 'EVEN_ODD' },
+      },
+      {
+        groupKey: 'qsfp28-100g',
+        count: 8,
+        connector: 'QSFP28',
+        type: 'QSFP',
+        portFunction: 'UPLINK',
+        pattern: '100GE-{n}',
+        panelStart: 48,
+        visual: { row: 1, x: 93.8, y: 0.6, gapX: 0.6, pairing: 'EVEN_ODD' },
       },
     ],
   },
@@ -524,9 +546,10 @@ const FIXED_DEVICES: FixedDeviceSpec[] = [
 
 /** Nome da porta pelo padrão do catálogo (`10GE-{n}` ou ordinal contínuo `{n+32}`). */
 function groupPortName(group: FixedGroupSpec, index: number): string {
+  const start = group.panelStart ?? 1;
   const offset = /^(.+)\{n\+(\d+)\}$/.exec(group.pattern);
-  if (offset) return `${offset[1]}${index + Number(offset[2])}`;
-  return group.pattern.replace('{n}', String(index));
+  if (offset) return `${offset[1]}${start + index - 1 + Number(offset[2])}`;
+  return group.pattern.replace('{n}', String(start + index - 1));
 }
 
 function fixedPortNames(spec: FixedDeviceSpec): Array<{ group: FixedGroupSpec; name: string }> {
@@ -569,6 +592,8 @@ function fixedCatalogEntry(spec: FixedDeviceSpec) {
     breakoutCapable: false,
     groupKey: group.groupKey,
     interfaceName: null,
+    panelNumber:
+      group.panelStart === undefined ? null : group.panelStart + (index % group.count),
     notes: null,
     visual: group.visual,
   }));
@@ -579,7 +604,11 @@ function fixedCatalogEntry(spec: FixedDeviceSpec) {
     family: spec.family,
     model: spec.model,
     kind: 'NETWORK',
-    panelLayout: { type: 'LOGICAL', width: 100, height: spec.panelHeight },
+    panelLayout: {
+      type: spec.panelType ?? 'LOGICAL',
+      width: spec.panelWidth ?? 100,
+      height: spec.panelHeight,
+    },
     ports,
   });
 }

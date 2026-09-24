@@ -10,14 +10,17 @@ function catalogPorts(
   count: number,
   prefix = 'SFP-',
   connector: PhysicalCatalogPort['connector'] = 'SFP',
+  /** Primeiro número físico do grupo (o painel do F1A começa em `0`). */
+  start = 1,
 ): PhysicalCatalogPort[] {
   return Array.from({ length: count }, (_value, index) => ({
-    name: `${prefix}${index + 1}`,
-    label: `${prefix}${index + 1}`,
+    name: `${prefix}${start + index}`,
+    label: `${prefix}${start + index}`,
     order: index + 1,
     side: 'DEVICE' as const,
     type: 'SFP' as const,
     connector,
+    panelNumber: start + index,
   }));
 }
 
@@ -57,22 +60,28 @@ const f1a: PhysicalCatalogEntry = catalogEntry({
   model: 'F1A-8H20Q',
   heightU: 1,
   layoutType: 'FIXED',
-  panelLayout: { type: 'LOGICAL', width: 100, height: 14 },
+  panelLayout: { type: 'FRONT', width: 118, height: 7 },
   ports: [
-    ...catalogPorts(8, '100GE-', 'QSFP28').map((port, index) => ({
+    // painel físico 0-55: 28 SFP+ (0-27), 8+12 SFP28 (28-47), 8 QSFP28 (48-55)
+    ...catalogPorts(28, '10GE-', 'SFP_PLUS', 0).map((port, index) => ({
       ...port,
       order: index + 1,
-      visual: { row: 1, columns: 8, x: 25, y: 0.6 },
+      visual: { row: 1, x: 2, y: 0.6, gapX: 0.6, pairing: 'EVEN_ODD' as const },
     })),
-    ...catalogPorts(20, '25GE-', 'SFP28').map((port, index) => ({
-      ...port,
-      order: 9 + index,
-      visual: { row: 2, columns: 10, x: 14, y: 4.4 },
-    })),
-    ...catalogPorts(28, '10GE-', 'SFP_PLUS').map((port, index) => ({
+    ...catalogPorts(8, '25GE-', 'SFP28', 28).map((port, index) => ({
       ...port,
       order: 29 + index,
-      visual: { row: 4, columns: 14, x: 7, y: 8.2 },
+      visual: { row: 1, x: 55.4, y: 0.6, gapX: 0.6, pairing: 'EVEN_ODD' as const },
+    })),
+    ...catalogPorts(12, '25GE-', 'SFP28', 36).map((port, index) => ({
+      ...port,
+      order: 37 + index,
+      visual: { row: 1, x: 70.8, y: 0.6, gapX: 0.6, pairing: 'EVEN_ODD' as const },
+    })),
+    ...catalogPorts(8, '100GE-', 'QSFP28', 48).map((port, index) => ({
+      ...port,
+      order: 49 + index,
+      visual: { row: 1, x: 93.8, y: 0.6, gapX: 0.6, pairing: 'EVEN_ODD' as const },
     })),
   ],
 });

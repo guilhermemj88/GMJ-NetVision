@@ -243,25 +243,27 @@ describe('mappedInterface e âncora do cabo', () => {
   });
 });
 
-/** Portas do F1A como o loader do catálogo as materializa. */
+/** Portas do F1A como o loader do catálogo as materializa (painel 0-55). */
 function f1aCatalogPorts(): PhysicalCatalogPort[] {
-  const groups: [string, number, PhysicalConnectorKind][] = [
-    ['100GE-', 8, 'QSFP28'],
-    ['25GE-', 20, 'SFP28'],
-    ['10GE-', 28, 'SFP_PLUS'],
+  const groups: Array<[string, number, number, PhysicalConnectorKind]> = [
+    // prefixo, primeiro número físico, quantidade, conector
+    ['10GE-', 0, 28, 'SFP_PLUS'],
+    ['25GE-', 28, 20, 'SFP28'],
+    ['100GE-', 48, 8, 'QSFP28'],
   ];
   const ports: PhysicalCatalogPort[] = [];
   let order = 0;
-  for (const [prefix, count, connector] of groups) {
-    for (let index = 1; index <= count; index += 1) {
+  for (const [prefix, start, count, connector] of groups) {
+    for (let index = 0; index < count; index += 1) {
       order += 1;
       ports.push({
-        name: `${prefix}${index}`,
-        label: `${prefix}${index}`,
+        name: `${prefix}${start + index}`,
+        label: `${prefix}${start + index}`,
         order,
         side: 'DEVICE',
         type: connector === 'QSFP28' ? 'QSFP' : 'SFP',
         connector,
+        panelNumber: start + index,
       });
     }
   }
@@ -310,14 +312,14 @@ describe('F1A-8H20Q (painel por imagem)', () => {
 
   it('a âncora do cabo sai do mesmo bbox do hotspot e o caminho inverso funciona', () => {
     const box = { left: 40, top: 12, width: 800, height: 110 };
-    const hotspot = map.ports.find((port) => port.portName === '100GE-1')!;
+    const hotspot = map.ports.find((port) => port.portName === '100GE-48')!;
     const center = normalizedPortAnchor(hotspot.bbox);
-    const anchor = frontPanelAnchorPx(map, '100GE-1', box)!;
+    const anchor = frontPanelAnchorPx(map, '100GE-48', box)!;
 
     expect(anchor.x).toBeCloseTo(box.left + center.x * box.width, 10);
     expect(anchor.y).toBeCloseTo(box.top + center.y * box.height, 10);
-    expect(frontPanelPortMapFor(map, { name: '25GE-20', label: '25GE-20' })?.portName).toBe(
-      '25GE-20',
+    expect(frontPanelPortMapFor(map, { name: '25GE-47', label: '25GE-47' })?.portName).toBe(
+      '25GE-47',
     );
     expect(frontPanelAnchorPx(map, 'nao-existe', box)).toBeNull();
   });
