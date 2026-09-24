@@ -52,11 +52,14 @@ import {
 } from './module-front-panel-map';
 import { RACK_GEOMETRY, buildRackGeometry, panelScale } from './physical-rack-geometry';
 import {
+  TECHNICAL_BAND_GAP,
+  TECHNICAL_BAND_TOP,
   assetUsesTechnicalRenderer,
   portOrdinalLabel,
   slotRoleAccent,
   technicalChassisDisplayHeight,
   technicalChassisMap,
+  technicalGroupBays,
   technicalModuleLeds,
   technicalPanelCaptions,
   technicalPanelDisplayHeight,
@@ -227,7 +230,10 @@ export function PhysicalRackCanvas({
         ? (catalogByKey.get(asset.template.catalogKey) ?? null)
         : null;
       const technical = assetUsesTechnicalRenderer(asset.template?.catalogKey ?? null, visualMode);
-      const imageMap = technical ? null : frontPanelImageMapForAsset(asset);
+      const isTechnicalMode = visualMode === 'TECHNICAL';
+      // Visão técnica **não usa fotografia**: nem painel frontal nem chassi —
+      // o corpo do equipamento é sempre o desenho escuro (sem fundo claro).
+      const imageMap = isTechnicalMode ? null : frontPanelImageMapForAsset(asset);
       if (imageMap) {
         const imageHeight = panelWidthPx / frontPanelAspectRatio(imageMap);
         result.set(asset.id, {
@@ -248,12 +254,17 @@ export function PhysicalRackCanvas({
         slots: asset.slots,
         modules: asset.modules,
         entry,
+        // Visão técnica: grupos empilhados em bandas com respiro (rótulo do grupo
+        // embaixo). Só aparência — portas, conectores e contagem não mudam.
+        ...(technical
+          ? { bandGapY: TECHNICAL_BAND_GAP, bandTopY: TECHNICAL_BAND_TOP }
+          : {}),
       });
       // Chassi modular com mapa declarado: os slots vêm do mapa (imagem quando
       // existir; senão só a moldura lógica). Sem mapa, o renderer de hoje decide.
       const chassisMap = modularChassisMapForAsset(asset);
       if (chassisMap && chassisRenderMode(chassisMap) !== 'PANEL_LAYOUT') {
-        const effectiveMap = technical ? technicalChassisMap(chassisMap) : chassisMap;
+        const effectiveMap = isTechnicalMode ? technicalChassisMap(chassisMap) : chassisMap;
         const geometric = calculateAssetDisplayHeight(layout, asset.heightU, base);
         const imageHeight = effectiveMap.image ? panelWidthPx / chassisAspectRatio(effectiveMap) : 0;
         result.set(asset.id, {
@@ -833,6 +844,12 @@ export function PhysicalRackCanvas({
                     : [],
               )
             : null;
+          /** Painel FIXO na visão técnica: baías dos grupos reais + folgas. */
+          const fixedBays = technical && layoutPanel ? technicalGroupBays(layoutPanel.layout) : [];
+          const boardWidth = layoutPanel ? layoutPanel.layout.width * scale : 0;
+          const boardHeight = layoutPanel ? layoutPanel.layout.gridHeight * scale : 0;
+          const freeHeight = layoutPanel ? Math.max(0, box.height - boardHeight) : 0;
+          const freeWidth = layoutPanel ? Math.max(0, box.width - boardWidth) : 0;
           const portNode = (portId: string) => {
             const port = asset.ports.find((candidate) => candidate.id === portId);
             const placed = layoutPanel?.layout.connectors.find((item) => item.portId === portId);
@@ -1211,6 +1228,92 @@ export function PhysicalRackCanvas({
                       );
                     })
                   : null}
+                {/* Visão técnica do painel fixo: moldura, baías por grupo (com
+                    papel + faixa de numeração declarados) e rodapé de marca.
+                    Só aparência — as portas continuam as mesmas, desenhadas
+                    pelo PhysicalPortShape na MESMA escala. */}
+                {technical && layoutPanel ? (
+                  <>
+                    <div className="physical-fixed-frame" aria-hidden="true" />
+                    {fixedBays.map((bay) => (
+                      <div
+                        key={bay.key}
+                        className={`physical-fixed-bay role-${bay.role}`}
+                        data-bay-key={bay.key}
+                        data-bay-role={bay.role}
+                        style={{
+                          left: Math.round(bay.x * scale),
+                          top: Math.round(bay.y * scale),
+                          width: Math.round(bay.width * scale),
+                          height: Math.round(bay.height * scale),
+                        }}
+                        aria-hidden="true"
+                      >
+                        <span className="physical-fixed-bay__label">
+                          {bay.label}
+                          {bay.range ? <b>{bay.range}</b> : null}
+                        </span>
+                      </div>
+                    ))}
+                    {freeHeight >= 34 ? (
+                      <div
+                        className="physical-fixed-vent"
+                        style={{
+                          left: 5,
+                          top: Math.round(boardHeight + 8),
+                          width: Math.max(1, box.width - 10),
+                          height: Math.max(6, Math.round(freeHeight - 34)),
+                        }}
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    {freeHeight >= 30 ? (
+                      <div
+                        className="physical-fixed-footer"
+                        style={{
+                          left: 5,
+                          top: Math.round(box.height - 18),
+                          width: Math.max(1, box.width - 10),
+                        }}
+                        aria-hidden="true"
+                      >
+                        <span className="physical-technical-brand">
+                          <i />
+                          HUAWEI
+                        </span>
+                        <b>{asset.template?.model || asset.template?.name || asset.kind}</b>
+                        <span className="physical-technical-leds">
+                          <span>
+                            <i className="led-on" />PWR
+                          </span>
+                          <span>
+                            <i className="led-off" />ALM
+                          </span>
+                          <span>
+                            <i className="led-act" />ACT
+                          </span>
+                        </span>
+                        <span className="physical-fixed-footer__summary">
+                          {fixedBays.map((bay) => `${bay.label} ${bay.count}×`).join(' · ')}
+                        </span>
+                      </div>
+                    ) : null}
+                    {freeWidth >= 24 ? (
+                      <>
+                        <span
+                          className="physical-fixed-screw is-left"
+                          style={{ left: 2 }}
+                          aria-hidden="true"
+                        />
+                        <span
+                          className="physical-fixed-screw is-right"
+                          style={{ right: 2 }}
+                          aria-hidden="true"
+                        />
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
                 {layoutPanel
                   ? layoutPanel.layout.connectors.map((placed) => portNode(placed.portId))
                   : null}

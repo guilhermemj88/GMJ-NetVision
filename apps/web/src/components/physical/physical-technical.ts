@@ -278,3 +278,109 @@ export function technicalPanelCaptions(
   }
   return captions.sort((left, right) => left.y - right.y);
 }
+
+/** Respiro extra entre bandas de grupos na visão técnica (unidades de grade). */
+export const TECHNICAL_BAND_GAP = 1.6;
+
+/** Respiro acima da primeira banda — espaço do chip de legenda (grid). */
+export const TECHNICAL_BAND_TOP = 1.2;
+
+/** Respiro da baía em volta do grupo de portas (unidades de grade). */
+export const TECHNICAL_BAY_PADDING = 0.35;
+
+/** Papel visual do grupo de portas (mesma taxonomia de cor do catálogo). */
+export type TechnicalGroupRole = 'service' | 'uplink' | 'control' | 'power' | 'fan' | 'neutral';
+
+/**
+ * Papel do grupo a partir do `portFunction` declarado no catálogo.
+ * Nada é inferido do desenho: sem função declarada o grupo é neutro.
+ */
+export function technicalGroupRole(portFunction: string | null | undefined): TechnicalGroupRole {
+  switch (portFunction) {
+    case 'SERVICE':
+    case 'PON':
+      return 'service';
+    case 'UPLINK':
+      return 'uplink';
+    case 'MGMT':
+    case 'MGMT_OR_SERVICE':
+    case 'CONSOLE':
+      return 'control';
+    case 'POWER':
+      return 'power';
+    default:
+      return 'neutral';
+  }
+}
+
+export const TECHNICAL_GROUP_LABELS: Record<TechnicalGroupRole, string> = {
+  service: 'SERVICE',
+  uplink: 'UPLINK',
+  control: 'CTRL',
+  power: 'PWR',
+  fan: 'FAN',
+  neutral: 'PORTS',
+};
+
+/** Baía de um grupo de portas do painel fixo (unidades de grade do layout). */
+export interface TechnicalGroupBay {
+  key: string;
+  role: TechnicalGroupRole;
+  label: string;
+  /** Faixa REAL de numeração do grupo (`1–32`, `33–36`), quando declarada. */
+  range: string | null;
+  count: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Bays dos grupos de portas do painel: caixa em volta de cada grupo real do
+ * layout (`groupKey`), com o papel declarado (SERVICE/UPLINK/...) e a faixa de
+ * numeração derivada dos nomes já existentes. Só aparência — nenhuma porta é
+ * criada, movida ou renumerada aqui.
+ */
+export function technicalGroupBays(layout: Pick<PanelLayout, 'connectors'>): TechnicalGroupBay[] {
+  const groups = new Map<string, PlacedConnector[]>();
+  for (const connector of layout.connectors) {
+    const key = connector.groupKey ?? connector.kind;
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(connector);
+    else groups.set(key, [connector]);
+  }
+
+  const bays: TechnicalGroupBay[] = [];
+  for (const [key, connectors] of groups) {
+    const role = technicalGroupRole(connectors[0]?.catalogPort?.portFunction ?? null);
+    const ordinals = connectors
+      .map((connector) => portOrdinalLabel(connector.portName))
+      .filter((label): label is string => label !== null && label.length > 0)
+      .map((label) => Number(label))
+      .filter((value) => Number.isFinite(value))
+      .sort((left, right) => left - right);
+    const range =
+      ordinals.length > 1
+        ? `${ordinals[0]}–${ordinals[ordinals.length - 1]}`
+        : ordinals.length === 1
+          ? String(ordinals[0])
+          : null;
+    const minX = Math.min(...connectors.map((connector) => connector.x));
+    const maxX = Math.max(...connectors.map((connector) => connector.x + connector.shape.width));
+    const minY = Math.min(...connectors.map((connector) => connector.y));
+    const maxY = Math.max(...connectors.map((connector) => connector.y + connector.shape.height));
+    bays.push({
+      key,
+      role,
+      label: TECHNICAL_GROUP_LABELS[role],
+      range,
+      count: connectors.length,
+      x: Math.max(0, minX - TECHNICAL_BAY_PADDING),
+      y: Math.max(0, minY - TECHNICAL_BAY_PADDING),
+      width: maxX - minX + TECHNICAL_BAY_PADDING * 2,
+      height: maxY - minY + TECHNICAL_BAY_PADDING * 2,
+    });
+  }
+  return bays.sort((left, right) => left.y - right.y);
+}

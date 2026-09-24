@@ -1121,3 +1121,212 @@ describe('chrome técnico do chassi e da placa', () => {
     expect(html).not.toContain('physical-module-shell');
   });
 });
+
+/**
+ * Terceira passada: faceplate dos equipamentos FIXOS (baías por grupo, rodapé
+ * de marca/LEDs, ventilação) e a regra dura de **nenhuma fotografia** no modo
+ * técnico. Tudo aparência: portas, conectores, âncoras e contagem intactos.
+ */
+describe('faceplate fixo e política de fotografia (modo técnico)', () => {
+  const H36C: DeviceSpec = {
+    catalogKey: 'huawei-s6750-h36c',
+    model: 'S6750-H36C',
+    assetId: 'asset-face-h36c',
+    startU: 38,
+    panelHeight: 8,
+    groups: [
+      {
+        groupKey: 'qsfp28-service',
+        count: 32,
+        connector: 'QSFP28',
+        type: 'QSFP',
+        portFunction: 'SERVICE',
+        pattern: 'QSFP28-{n}',
+        visual: { row: 1, columns: 16, x: 4, y: 0.6, gapX: 0.8 },
+      },
+      {
+        groupKey: 'qsfp28-uplink',
+        count: 4,
+        connector: 'QSFP28',
+        type: 'QSFP',
+        portFunction: 'UPLINK',
+        pattern: 'QSFP28-{n+32}',
+        visual: { row: 3, columns: 4, x: 58, y: 6.4, gapX: 0.8 },
+      },
+    ],
+  };
+
+  it('H36C: baías SERVICE 1–32 / UPLINK 33–36, rodapé e ventilação (36 portas)', () => {
+    const { entry, asset } = buildFixedDevice(H36C);
+    const technical = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+
+    // nada de porta mudou
+    expect(technical.match(/data-port-id=/g)).toHaveLength(36);
+    expect(technical).toContain('physical-fixed-frame');
+    expect(technical.match(/class="physical-fixed-bay /g)).toHaveLength(2);
+    expect(technical).toContain('data-bay-role="service"');
+    expect(technical).toContain('data-bay-role="uplink"');
+    expect(technical).toContain('data-bay-key="qsfp28-service"');
+    expect(technical).toContain('data-bay-key="qsfp28-uplink"');
+    // rótulo do grupo com a faixa REAL de numeração do catálogo
+    expect(technical).toContain('SERVICE<b>1–32</b>');
+    expect(technical).toContain('UPLINK<b>33–36</b>');
+    // rodapé com marca/modelo/LEDs/resumo e área de ventilação
+    expect(technical).toContain('physical-fixed-footer');
+    expect(technical).toContain('S6750-H36C');
+    expect(technical).toContain('physical-fixed-vent');
+    expect(technical).toContain('physical-technical-leds');
+    expect(technical).not.toContain('physical-image-panel__image');
+  });
+
+  it('H36C: a baía de uplink fica depois da baía de serviço (sem sobreposição)', () => {
+    const { entry, asset } = buildFixedDevice(H36C);
+    const html = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+    const bayTop = (key: string) => {
+      const match = new RegExp(`data-bay-key="${key}"[^>]*style="([^"]*)"`).exec(html);
+      const top = /top:\s*(-?\d+)px/.exec(match?.[1] ?? '');
+      return Number(top?.[1] ?? Number.NaN);
+    };
+    expect(bayTop('qsfp28-uplink')).toBeGreaterThan(bayTop('qsfp28-service'));
+  });
+
+  it('F1A: três baías na ordem do catálogo, sem mexer nas 56 portas', () => {
+    const { entry, asset } = buildFixedDevice(F1A);
+    const html = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+
+    expect(html.match(/data-port-id=/g)).toHaveLength(56);
+    expect(html.match(/data-bay-key=/g)).toHaveLength(3);
+    expect(html.indexOf('data-bay-key="100ge-cages"')).toBeLessThan(
+      html.indexOf('data-bay-key="25ge-cages"'),
+    );
+    expect(html.indexOf('data-bay-key="25ge-cages"')).toBeLessThan(
+      html.indexOf('data-bay-key="10ge-cages"'),
+    );
+    expect(html).toContain('UPLINK<b>1–8</b>');
+    expect(html).toContain('SERVICE<b>1–20</b>');
+    expect(html).toContain('SERVICE<b>1–28</b>');
+  });
+
+  it('S6730-H48X6C: baía de serviço (1–48) e de uplink (1–6)', () => {
+    const { entry, asset } = buildFixedDevice(S6730);
+    const html = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+
+    expect(html.match(/data-port-id=/g)).toHaveLength(54);
+    expect(html).toContain('SERVICE<b>1–48</b>');
+    expect(html).toContain('UPLINK<b>1–6</b>');
+  });
+
+  it('o modo real do equipamento fixo fica sem baías, rodapé e ventilação', () => {
+    const { entry, asset } = buildFixedDevice(H36C);
+    const real = renderRack([asset], { catalog: [entry], visualMode: 'REAL' });
+
+    expect(real).toContain('data-visual="REAL"');
+    expect(real).not.toContain('physical-fixed-bay');
+    expect(real).not.toContain('physical-fixed-footer');
+    expect(real).not.toContain('physical-fixed-vent');
+    expect(real).not.toContain('SERVICE<b>1–32</b>');
+    expect(real.match(/data-port-id=/g)).toHaveLength(36);
+  });
+
+  it('no modo técnico nenhuma fotografia de chassi é usada (fixo e modular)', () => {
+    // S6730-H48X6C tem foto no pacote real → no técnico ela é descartada
+    const fixed = buildFixedDevice(S6730);
+    const realPhoto = renderRack([fixed.asset], {
+      catalog: [fixed.entry],
+      visualMode: 'REAL',
+    });
+    expect(realPhoto).toContain('s6730-h48x6c');
+    const technicalFixed = renderRack([fixed.asset], {
+      catalog: [fixed.entry],
+      visualMode: 'TECHNICAL',
+    });
+    expect(technicalFixed).not.toContain('physical-image-panel');
+    expect(technicalFixed).not.toContain('-front.png');
+
+    // modular: mesmo com foto disponível, o técnico desenha o chassi geométrico
+    const modular = buildSlotLabAsset('huawei-ma5800-x2', {});
+    const modularEntry = buildSlotLabCatalog('huawei-ma5800-x2', {});
+    const technicalModular = renderRack([modular], {
+      catalog: [modularEntry],
+      visualMode: 'TECHNICAL',
+    });
+    expect(technicalModular).not.toContain('physical-modular-panel__image');
+    expect(technicalModular).toContain('data-chassis-panel="huawei-ma5800-x2"');
+  });
+
+  it('a âncora do cabo continua no centro do conector desenhado com as baías', () => {
+    const { entry, asset } = buildFixedDevice(H36C);
+    const last = asset.ports.find((port) => port.name === 'QSFP28-36')!;
+    const other = physicalAsset({
+      id: 'asset-face-other',
+      name: 'SW-02',
+      startU: 30,
+      heightU: 1,
+      ports: [
+        physicalPort({
+          id: 'asset-face-other-port',
+          assetId: 'asset-face-other',
+          name: 'GE1',
+          connectionId: 'conn-face',
+          state: 'CONNECTED',
+        }),
+      ],
+    });
+    const html = renderRack([asset, other], {
+      catalog: [entry],
+      visualMode: 'TECHNICAL',
+      connections: [
+        physicalConnection({
+          id: 'conn-face',
+          portAId: last.id,
+          portBId: 'asset-face-other-port',
+          a: {
+            portId: last.id,
+            portName: 'QSFP28-36',
+            side: 'DEVICE',
+            assetId: 'asset-face-h36c',
+            assetName: 'S6750-H36C',
+            rackId: 'rack-1',
+            rackName: 'Rack 01',
+            siteId: 'site-1',
+            siteName: 'POP Centro',
+          },
+          b: {
+            portId: 'asset-face-other-port',
+            portName: 'GE1',
+            side: 'DEVICE',
+            assetId: 'asset-face-other',
+            assetName: 'SW-02',
+            rackId: 'rack-1',
+            rackName: 'Rack 01',
+            siteId: 'site-1',
+            siteName: 'POP Centro',
+          },
+        }),
+      ],
+    });
+
+    const value = (source: string, name: string) =>
+      Number(new RegExp(`${name}:\\s*(-?[\\d.]+)(?:px)?`).exec(source)?.[1] ?? Number.NaN);
+    const portButton =
+      new RegExp(`<button[^>]*data-port-id="${last.id}"[^>]*style="([^"]+)"`).exec(html)?.[1] ?? '';
+    expect(portButton).not.toBe('');
+    const articleStyle =
+      /<article[^>]*data-asset-id="asset-face-h36c"[^>]*style="([^"]+)"/.exec(html)?.[1] ?? '';
+    const panelStyle =
+      /<div class="physical-faceplate__panel"[^>]*style="([^"]+)"/.exec(html)?.[1] ?? '';
+    const cable = /<path[^>]*d="M ([\d.]+) ([\d.]+)[^>]*class="physical-cable /.exec(html);
+    expect(cable).not.toBeNull();
+
+    const expectedX =
+      value(articleStyle, 'left') + value(panelStyle, 'left') + value(portButton, 'left') +
+      value(portButton, 'width') / 2;
+    const expectedY =
+      value(articleStyle, 'top') + value(panelStyle, 'top') + value(portButton, 'top') +
+      value(portButton, 'height') / 2;
+    // a baía de uplink empurra a porta para baixo: a âncora continua sendo o
+    // centro do retângulo REALMENTE desenhado (tolerância de 1px)
+    expect(Math.abs(Number(cable![1]) - expectedX)).toBeLessThanOrEqual(1);
+    expect(Math.abs(Number(cable![2]) - expectedY)).toBeLessThanOrEqual(1);
+  });
+});

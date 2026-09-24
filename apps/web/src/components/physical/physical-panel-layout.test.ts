@@ -270,3 +270,107 @@ describe('layout do painel', () => {
     expect(layout.gridHeight).toBeGreaterThanOrEqual(7);
   });
 });
+
+describe('empilhamento de baías (somente modo técnico)', () => {
+  /** H36C: 32x QSFP28 service (16 colunas, 2 linhas) + 4x QSFP28 uplink (linha 3). */
+  function h36cEntry() {
+    const ports: PhysicalCatalogPort[] = [];
+    const groups: Array<[string, number, number, number, number, number]> = [
+      // groupKey, count, ordinalBase, columns, x, y
+      ['qsfp28-service', 32, 1, 16, 0.6, 0.6],
+      ['qsfp28-uplink', 4, 33, 4, 40, 6.4],
+    ];
+    let order = 0;
+    for (const [groupKey, count, ordinalBase, columns, x, y] of groups) {
+      for (let index = 0; index < count; index += 1) {
+        order += 1;
+        ports.push({
+          name: `QSFP28-${ordinalBase + index}`,
+          label: `QSFP28-${ordinalBase + index}`,
+          order,
+          side: 'DEVICE',
+          type: 'QSFP',
+          connector: 'QSFP28',
+          portFunction: groupKey === 'qsfp28-uplink' ? 'UPLINK' : 'SERVICE',
+          groupKey,
+          visual: {
+            width: 4.4,
+            height: 2.6,
+            x: x + (index % columns) * (4.4 + 0.9),
+            y: y + Math.floor(index / columns) * (2.6 + 0.4),
+            columns,
+            row: 0,
+          },
+        });
+      }
+    }
+    return { ports, panelLayout: { type: 'LOGICAL' as const, width: 100, height: 10 } };
+  }
+
+  function h36cPorts() {
+    return h36cEntry().ports.map((port, index) =>
+      physicalPort({
+        id: `h36c-${index + 1}`,
+        name: port.name,
+        label: port.label,
+        order: port.order,
+        type: port.type,
+      }),
+    );
+  }
+
+  it('sem opções de baía o layout continua exatamente o declarado', () => {
+    const layout = buildPanelLayout({
+      ports: h36cPorts(),
+      slots: [],
+      modules: [],
+      entry: h36cEntry(),
+    });
+    const service = layout.connectors.filter((connector) => connector.groupKey === 'qsfp28-service');
+    const uplink = layout.connectors.filter((connector) => connector.groupKey === 'qsfp28-uplink');
+    expect(service).toHaveLength(32);
+    expect(uplink).toHaveLength(4);
+    expect(service[0]!.y).toBeCloseTo(0.6, 5);
+    expect(uplink[0]!.y).toBeCloseTo(6.4, 5);
+    expect(layout.connectors).toHaveLength(36);
+  });
+
+  it('com bandGapY/bandTopY empurra o segundo grupo e preserva o x das portas', () => {
+    const entry = h36cEntry();
+    const plain = buildPanelLayout({ ports: h36cPorts(), slots: [], modules: [], entry });
+    const banded = buildPanelLayout({
+      ports: h36cPorts(),
+      slots: [],
+      modules: [],
+      entry,
+      bandGapY: 1.6,
+      bandTopY: 1.2,
+    });
+
+    // nada de porta criada/removida, e o eixo x é o mesmo (numeração/colunas intactas)
+    expect(banded.connectors).toHaveLength(plain.connectors.length);
+    expect(banded.connectors.map((connector) => connector.x)).toEqual(
+      plain.connectors.map((connector) => connector.x),
+    );
+    // a primeira baía começa em bandTopY (espaço da legenda abaixo das portas)
+    const firstService = banded.connectors.find(
+      (connector) => connector.groupKey === 'qsfp28-service',
+    )!;
+    expect(firstService.y).toBeCloseTo(1.2, 5);
+    // o grupo seguinte fica depois de TODA a baía anterior + respiro
+    const lastServiceY = Math.max(
+      ...banded.connectors
+        .filter((connector) => connector.groupKey === 'qsfp28-service')
+        .map((connector) => connector.y),
+    );
+    const firstUplink = banded.connectors.find(
+      (connector) => connector.groupKey === 'qsfp28-uplink',
+    )!;
+    expect(firstUplink.y).toBeGreaterThan(lastServiceY + 1.6);
+    // as bandas só usam o espaço vertical que já existia no painel (nada é cortado)
+    expect(banded.gridHeight).toBeGreaterThan(plain.gridHeight);
+    for (const connector of banded.connectors) {
+      expect(connector.y + connector.shape.height).toBeLessThanOrEqual(banded.gridHeight);
+    }
+  });
+});

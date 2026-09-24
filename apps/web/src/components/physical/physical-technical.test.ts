@@ -9,6 +9,8 @@ import {
   slotRoleAccent,
   technicalChassisDisplayHeight,
   technicalChassisMap,
+  technicalGroupBays,
+  technicalGroupRole,
   technicalPanelCaptions,
 } from './physical-technical';
 
@@ -154,7 +156,85 @@ describe('physical technical rendering', () => {
     expect(portOrdinalLabel('QSFP28-6')).toBe('6');
     expect(portOrdinalLabel('CONSOLE')).toBeNull();
   });
+
+  it('papel do grupo vem do portFunction declarado (nunca inferido)', () => {
+    expect(technicalGroupRole('SERVICE')).toBe('service');
+    expect(technicalGroupRole('PON')).toBe('service');
+    expect(technicalGroupRole('UPLINK')).toBe('uplink');
+    expect(technicalGroupRole('MGMT')).toBe('control');
+    expect(technicalGroupRole('MGMT_OR_SERVICE')).toBe('control');
+    expect(technicalGroupRole('CONSOLE')).toBe('control');
+    expect(technicalGroupRole('POWER')).toBe('power');
+    expect(technicalGroupRole(null)).toBe('neutral');
+    expect(technicalGroupRole(undefined)).toBe('neutral');
+  });
+
+  it('baías do painel fixo agrupam por groupKey com papel e faixa reais', () => {
+    const bays = technicalGroupBays({
+      connectors: [
+        bayConnector('port-1', 'QSFP28-1', 'qsfp28-service', 'SERVICE', 4, 0.6),
+        bayConnector('port-2', 'QSFP28-2', 'qsfp28-service', 'SERVICE', 8.4, 0.6),
+        bayConnector('port-33', 'QSFP28-33', 'qsfp28-uplink', 'UPLINK', 40, 6.4),
+        bayConnector('port-36', 'QSFP28-36', 'qsfp28-uplink', 'UPLINK', 44.4, 6.4),
+      ],
+    });
+
+    expect(bays).toHaveLength(2);
+    expect(bays[0]).toMatchObject({ key: 'qsfp28-service', role: 'service', label: 'SERVICE', range: '1–2', count: 2 });
+    expect(bays[1]).toMatchObject({ key: 'qsfp28-uplink', role: 'uplink', label: 'UPLINK', range: '33–36', count: 2 });
+    // a baía envolve o grupo (com respiro) e não muda nenhuma porta
+    expect(bays[0]!.y).toBeLessThan(0.6);
+    expect(bays[0]!.height).toBeGreaterThan(0);
+    expect(bays[0]!.y).toBeLessThan(bays[1]!.y);
+  });
+
+  it('baías sem ordinal e sem papel declarado continuam válidas', () => {
+    const bays = technicalGroupBays({
+      connectors: [bayConnector('port-a', 'CONSOLE', 'console', null, 2, 1)],
+    });
+
+    expect(bays).toHaveLength(1);
+    expect(bays[0]).toMatchObject({ role: 'neutral', label: 'PORTS', range: null, count: 1 });
+  });
 });
+
+function bayConnector(
+  portId: string,
+  portName: string,
+  groupKey: string,
+  portFunction: string | null,
+  x: number,
+  y: number,
+) {
+  return {
+    portId,
+    portName,
+    kind: 'SFP' as const,
+    shape: { width: 4.4, height: 2.6, label: 'QSFP28' },
+    x,
+    y,
+    row: 0,
+    column: 0,
+    groupKey,
+    catalogPort: portFunction
+      ? {
+          name: portName,
+          label: portName,
+          order: 1,
+          side: 'DEVICE' as const,
+          type: 'QSFP' as const,
+          connector: 'QSFP28' as const,
+          portFunction: portFunction as never,
+          speeds: [],
+          breakoutCapable: false,
+          groupKey,
+          interfaceName: null,
+          notes: null,
+          visual: null,
+        }
+      : null,
+  };
+}
 
 function connector(portName: string, groupKey: string, x: number, y: number) {
   return {

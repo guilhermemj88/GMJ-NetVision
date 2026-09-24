@@ -8260,6 +8260,135 @@ label > small {
 .physical-module-shell__leds i.led-off { background: #1c3450; }
 .physical-module-shell__leds i.led-pwr { background: #22c55e; }
 .physical-module-shell__leds i.led-fan { background: #94a3b8; }
+/* =====================================================================
+   Painel FIXO na visão técnica (EquipmentChassis + FixedPortPanel):
+   corpo escuro, moldura, baía por grupo de portas e rodapé de marca.
+   Nada aqui move porta: as baías usam a MESMA escala/offset do desenho.
+   ===================================================================== */
+.physical-faceplate.is-technical .physical-faceplate__panel {
+  border-radius: 3px;
+  background: linear-gradient(180deg, var(--tech-nv-panel), var(--tech-recess));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset 0 0 0 1px rgba(4, 11, 21, 0.7);
+}
+.physical-fixed-frame {
+  position: absolute;
+  inset: 0;
+  border: 1px solid var(--tech-bezel);
+  border-radius: 3px;
+  pointer-events: none;
+}
+/* Baía do grupo: separa visualmente SERVICE / UPLINK (cor do papel declarado). */
+.physical-fixed-bay {
+  position: absolute;
+  border: 1px solid rgba(142, 166, 194, 0.28);
+  border-radius: 3px;
+  background: rgba(4, 11, 21, 0.45);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  pointer-events: none;
+}
+.physical-fixed-bay.role-service {
+  border-color: color-mix(in srgb, var(--tech-cat-service) 55%, transparent);
+  background: color-mix(in srgb, var(--tech-cat-service) 8%, rgba(4, 11, 21, 0.5));
+}
+.physical-fixed-bay.role-uplink {
+  border-color: color-mix(in srgb, var(--tech-cat-uplink) 60%, transparent);
+  background: color-mix(in srgb, var(--tech-cat-uplink) 10%, rgba(4, 11, 21, 0.5));
+}
+.physical-fixed-bay.role-control {
+  border-color: color-mix(in srgb, var(--tech-cat-control) 55%, transparent);
+  background: color-mix(in srgb, var(--tech-cat-control) 8%, rgba(4, 11, 21, 0.5));
+}
+.physical-fixed-bay.role-power {
+  border-color: color-mix(in srgb, var(--tech-cat-power) 50%, transparent);
+}
+.physical-fixed-bay.role-neutral {
+  border-style: dashed;
+}
+/* Rótulo do grupo: `SERVICE 1–32` (papel + faixa real de numeração). */
+.physical-fixed-bay__label {
+  position: absolute;
+  left: 0;
+  bottom: -13px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 5px;
+  border: 1px solid rgba(142, 166, 194, 0.28);
+  border-radius: 2px;
+  background: rgba(10, 22, 38, 0.92);
+  color: var(--tech-nv-muted);
+  font: 650 6.5px var(--font-mono);
+  letter-spacing: 0.14em;
+  white-space: nowrap;
+}
+.physical-fixed-bay__label b {
+  color: var(--tech-nv-text);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+.physical-fixed-bay.role-service .physical-fixed-bay__label {
+  border-color: color-mix(in srgb, var(--tech-cat-service) 45%, transparent);
+  color: var(--tech-cat-service);
+}
+.physical-fixed-bay.role-uplink .physical-fixed-bay__label {
+  border-color: color-mix(in srgb, var(--tech-cat-uplink) 50%, transparent);
+  color: var(--tech-cat-uplink);
+}
+.physical-fixed-bay.role-control .physical-fixed-bay__label {
+  border-color: color-mix(in srgb, var(--tech-cat-control) 45%, transparent);
+  color: var(--tech-cat-control);
+}
+/* Grade de ventilação: preenche o espaço livre abaixo do bloco de portas. */
+.physical-fixed-vent {
+  position: absolute;
+  border: 1px solid rgba(34, 58, 88, 0.7);
+  border-radius: 2px;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(142, 166, 194, 0.14) 0 2px,
+    transparent 2px 7px
+  );
+  pointer-events: none;
+}
+/* Rodapé: marca + modelo + LEDs + resumo dos grupos (usa o espaço livre). */
+.physical-fixed-footer {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 16px;
+  padding: 0 6px;
+  border: 1px solid rgba(34, 58, 88, 0.9);
+  border-radius: 3px;
+  background: linear-gradient(180deg, #0d1c30, #0a1626);
+  color: var(--tech-nv-muted);
+  font: 650 7px var(--font-mono);
+  pointer-events: none;
+}
+.physical-fixed-footer b {
+  color: var(--tech-nv-text);
+  letter-spacing: 0.04em;
+}
+.physical-fixed-footer__summary {
+  margin-left: auto;
+  color: var(--tech-nv-dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+/* Parafusos de orelha, só desenhados quando sobra largura no painel. */
+.physical-fixed-screw {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border: 1px solid #51637a;
+  border-radius: 50%;
+  background: #0b121c;
+  pointer-events: none;
+}
 /* Blank panel / filler: fundo neutro, parafusos e fendas de ventilação. */
 .physical-modular-panel__blank {
   border: 1px solid #3a4a5f;

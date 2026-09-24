@@ -231,6 +231,16 @@ export function buildPanelLayout(input: {
   moduleTemplates?: ReadonlyMap<string, PhysicalCatalogModule>;
   /** portas de placa instalada ficam fora do painel do chassi (default). */
   skipModulePorts?: boolean;
+  /**
+   * Respiro extra **entre bandas** (linhas) de grupos, em unidades de grade.
+   *
+   * Apenas aparência: usado na visão técnica para os grupos ficarem visivelmente
+   * separados (rótulo/legenda abaixo de cada grupo). Não muda contagem, conector
+   * nem ordem das portas — a âncora continua saindo da porta desenhada.
+   */
+  bandGapY?: number;
+  /** Respiro acima da primeira banda (espaço da legenda do grupo). */
+  bandTopY?: number;
 }): PanelLayout {
   void input.modules;
   void input.moduleTemplates;
@@ -243,11 +253,17 @@ export function buildPanelLayout(input: {
   );
   const width = input.entry?.panelLayout?.width ?? DEFAULT_PANEL_WIDTH;
   const declared = groups.some((group) => group.visual !== null) || Boolean(input.entry?.panelLayout);
+  const bandGapY = input.bandGapY ?? null;
 
   const connectors: PlacedConnector[] = [];
   let cursorY = 0;
   let maxX = 0;
   let rows = 0;
+  /** Empilhamento em bandas (visão técnica): cada linha declarada vira uma faixa. */
+  let bandTop = bandGapY === null ? 0 : (input.bandTopY ?? 0);
+  let bandMinY = 0;
+  let bandBottom = bandTop;
+  let currentBand: number | null = null;
 
   const orderedGroups = [...groups].sort((a, b) => {
     const aRow = a.visual?.row ?? Number.MAX_SAFE_INTEGER;
@@ -275,7 +291,19 @@ export function buildPanelLayout(input: {
     const requestedRows = group.visual?.rows && group.visual.rows > 0 ? group.visual.rows : groupRows;
     const groupWidth = columns * shapeWidth + (columns - 1) * gapX;
     const startX = group.visual?.x ?? Math.max(2, (width - Math.max(groupWidth, shapeWidth)) / 2);
-    const startY = group.visual?.y ?? cursorY;
+    let startY: number;
+    if (bandGapY === null) {
+      startY = group.visual?.y ?? cursorY;
+    } else {
+      const band = group.visual?.row ?? null;
+      if (band === null || band !== currentBand) {
+        if (currentBand !== null) bandTop = bandBottom + bandGapY;
+        currentBand = band;
+        bandMinY = group.visual?.y ?? 0;
+        bandBottom = bandTop;
+      }
+      startY = bandTop + ((group.visual?.y ?? bandMinY) - bandMinY);
+    }
 
     group.ports.forEach((port, index) => {
       const column = index % columns;
@@ -297,7 +325,12 @@ export function buildPanelLayout(input: {
     });
 
     const groupHeight = requestedRows * shapeHeight + (requestedRows - 1) * gapY;
-    cursorY = Math.max(cursorY, startY + groupHeight + DEFAULT_GAP_Y);
+    if (bandGapY === null) {
+      cursorY = Math.max(cursorY, startY + groupHeight + DEFAULT_GAP_Y);
+    } else {
+      bandBottom = Math.max(bandBottom, startY + groupHeight);
+      cursorY = Math.max(cursorY, bandBottom);
+    }
     rows += requestedRows;
     maxX = Math.max(maxX, startX + groupWidth);
   }
