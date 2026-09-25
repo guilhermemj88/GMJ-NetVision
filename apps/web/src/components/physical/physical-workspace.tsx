@@ -46,6 +46,7 @@ import { PORT_STATE_LABELS } from './physical-catalog';
 import { PhysicalInspector } from './physical-inspector';
 import { PhysicalRackCanvas } from './physical-rack-canvas';
 import { PhysicalVisualToggle } from './physical-visual-toggle';
+import { buildPhysicalLldpGhosts } from './physical-lldp';
 import type { PhysicalConnectionMode, PhysicalSelection, PhysicalVisualMode } from './physical-types';
 
 type CreateDialog = 'site' | 'rack' | 'asset' | null;
@@ -76,6 +77,11 @@ export function PhysicalWorkspace() {
   const [rackId, setRackId] = useState('');
   const [selection, setSelection] = useState<PhysicalSelection>(null);
   const [mode, setMode] = useState<PhysicalConnectionMode>('selected');
+  /**
+   * Sugestões LLDP: camada separada dos cabos. `related` acompanha a seleção,
+   * `all` mostra todas e `hidden` desliga a evidência sem afetar os cabos.
+   */
+  const [lldpMode, setLldpMode] = useState<'hidden' | 'related' | 'all'>('all');
   // A visão técnica é a principal do módulo físico (o modo real continua
   // disponível no seletor como alternativa/fallback).
   const [visualMode, setVisualMode] = useState<PhysicalVisualMode>('TECHNICAL');
@@ -91,6 +97,12 @@ export function PhysicalWorkspace() {
 
   const site = inventory?.sites.find((candidate) => candidate.id === siteId) ?? inventory?.sites[0];
   const rack = site?.racks.find((candidate) => candidate.id === rackId) ?? site?.racks[0];
+
+  /** Sugestões LLDP agrupadas por par físico (dedup visual das espelhadas). */
+  const lldpGhosts = useMemo(
+    () => (inventory ? buildPhysicalLldpGhosts(inventory) : []),
+    [inventory],
+  );
 
   useEffect(() => {
     if (!site) return;
@@ -369,6 +381,11 @@ export function PhysicalWorkspace() {
               <button type="button" title="Mostrar só o caminho selecionado" className={mode === 'selected' ? 'is-active' : ''} onClick={() => setMode('selected')}><PanelRight size={13} /> Selecionado</button>
               <button type="button" title="Mostrar todos os cabos" className={mode === 'all' ? 'is-active' : ''} onClick={() => setMode('all')}><Eye size={13} /> Todas</button>
             </div>
+            <div className="physical-mode" aria-label="Exibição das sugestões LLDP">
+              <button type="button" title="Ocultar sugestões LLDP" className={lldpMode === 'hidden' ? 'is-active' : ''} onClick={() => setLldpMode('hidden')}><EyeOff size={13} /> LLDP off</button>
+              <button type="button" title="Mostrar só as sugestões relacionadas à seleção" className={lldpMode === 'related' ? 'is-active' : ''} onClick={() => setLldpMode('related')}><PanelRight size={13} /> LLDP rel.</button>
+              <button type="button" title="Mostrar todas as sugestões LLDP" className={lldpMode === 'all' ? 'is-active' : ''} onClick={() => setLldpMode('all')}><Radio size={13} /> LLDP todas</button>
+            </div>
             <PhysicalVisualToggle mode={visualMode} onChange={setVisualMode} />
             {canEdit && rack ? <Button compact variant="primary" onClick={() => setDialog('asset')}><CirclePlus size={14} /> Equipamento</Button> : null}
           </>
@@ -380,6 +397,7 @@ export function PhysicalWorkspace() {
                 {PORT_STATE_LABELS[state]}
               </span>
             ))}
+            <span className="physical-lldp-legend">SUGESTÃO LLDP</span>
           </div>
         }
       />
@@ -434,6 +452,8 @@ export function PhysicalWorkspace() {
             <PhysicalRackCanvas
               rack={rack}
               connections={inventory.connections}
+              lldpGhosts={lldpGhosts}
+              lldpMode={lldpMode}
               mode={mode}
               selection={selection}
               path={pathQuery.data ?? null}
@@ -442,6 +462,7 @@ export function PhysicalWorkspace() {
               onSelectAsset={(id) => setSelection({ kind: 'asset', id })}
               onSelectPort={(id) => setSelection({ kind: 'port', id })}
               onSelectConnection={(id) => setSelection({ kind: 'connection', id })}
+              onSelectLldp={(id) => setSelection({ kind: 'lldp', id })}
               onNavigateToPort={(targetSiteId, targetRackId, portId) => {
                 setSiteId(targetSiteId);
                 setRackId(targetRackId);
@@ -475,12 +496,13 @@ export function PhysicalWorkspace() {
           onUpdatePort={(id, input) => void run(() => updatePhysicalPort(id, input))}
           onInstallModule={(assetId, input) => void run(() => installPhysicalModule(assetId, input))}
           onRemoveModule={(moduleId) => void run(() => removePhysicalModule(moduleId))}
-          onConfirmLldp={(adjacencyId) =>
+          onConfirmLldp={(adjacencyId, medium) =>
             void run(
-              () => confirmPhysicalLldp(adjacencyId),
+              () => confirmPhysicalLldp(adjacencyId, medium),
               (created) => setSelection({ kind: 'connection', id: created.id }),
             )
           }
+          onSelectLldp={(adjacencyId) => setSelection({ kind: 'lldp', id: adjacencyId })}
           onNavigateToPort={(targetSiteId, targetRackId, portId) => {
             setSiteId(targetSiteId);
             setRackId(targetRackId);

@@ -51,6 +51,7 @@ import {
   moduleFrontPanelMapFor,
 } from './module-front-panel-map';
 import { RACK_GEOMETRY, buildRackGeometry, panelScale } from './physical-rack-geometry';
+import { ghostsForRack, type PhysicalLldpGhost } from './physical-lldp';
 import { physicalPortNameView } from './physical-port-name';
 import {
   TECHNICAL_BAND_GAP,
@@ -97,6 +98,25 @@ const IDENTITY_HEIGHT = 30;
 const IDENTITY_HEIGHT_COMPACT = 20;
 /** Respiro vertical do painel dentro do equipamento. */
 const PANEL_PADDING = 8;
+
+/** Tooltip do ghost: só o que o operador precisa para decidir. */
+function lldpGhostTooltip(ghost: PhysicalLldpGhost): string {
+  const describe = (side: PhysicalLldpGhost['from']) =>
+    side
+      ? `${side.siteName} / ${side.rackName} / ${side.assetName} / ${side.portName}`
+      : 'Não resolvido';
+  return [
+    `LLDP detectado · ${ghost.state}`,
+    `Local: ${describe(ghost.from)}`,
+    `Remoto: ${describe(ghost.to)}`,
+    `Confiança: ${ghost.confidence}`,
+    `Observado: ${new Date(ghost.observedAt).toLocaleString('pt-BR')}`,
+    ghost.reason,
+    ghost.conflictDetail,
+  ]
+    .filter((line) => Boolean(line && String(line).trim()))
+    .join('\n');
+}
 
 /** Painel de um equipamento: imagem aprovada, chassi modular ou grade geométrica. */
 type AssetPanel =
@@ -182,6 +202,10 @@ interface CablePath {
 interface Props {
   rack: PhysicalRack;
   connections: PhysicalConnection[];
+  /** Sugestões LLDP já agrupadas por par físico (ver `physical-lldp.ts`). */
+  lldpGhosts?: readonly PhysicalLldpGhost[];
+  /** Exibição das sugestões LLDP: `related` acompanha a seleção atual. */
+  lldpMode?: 'hidden' | 'related' | 'all';
   mode: PhysicalConnectionMode;
   selection: PhysicalSelection;
   path: PhysicalPath | null;
@@ -209,6 +233,8 @@ interface Props {
   onSelectAsset: (id: string) => void;
   onSelectPort: (id: string) => void;
   onSelectConnection: (id: string) => void;
+  /** Seleciona a sugestão LLDP (adjacencyId escolhido do par). */
+  onSelectLldp?: (adjacencyId: string) => void;
   /** Leva o operador até o site/rack da ponta remota e seleciona a porta. */
   onNavigateToPort?: (siteId: string, rackId: string, portId: string) => void;
   onClear: () => void;
@@ -226,6 +252,8 @@ interface Props {
 export function PhysicalRackCanvas({
   rack,
   connections,
+  lldpGhosts = [],
+  lldpMode = 'related',
   mode,
   selection,
   path,
@@ -241,6 +269,7 @@ export function PhysicalRackCanvas({
   onSelectAsset,
   onSelectPort,
   onSelectConnection,
+  onSelectLldp,
   onNavigateToPort,
   onClear,
 }: Props) {
@@ -720,6 +749,15 @@ export function PhysicalRackCanvas({
     const ids = new Set<string>();
     if (!selection) return ids;
     if (selection.kind === 'asset') return ids;
+    if (selection.kind === 'lldp') {
+      // Sugestão selecionada destaca as DUAS portas do par — continua ghost.
+      const ghost = lldpGhosts.find(
+        (item) => item.adjacencyId === selection.id || item.adjacencyIds.includes(selection.id),
+      );
+      if (ghost?.from) ids.add(ghost.from.portId);
+      if (ghost?.to) ids.add(ghost.to.portId);
+      return ids;
+    }
     const wanted = new Set<string>(
       selection.kind === 'connection' ? [selection.id] : connectedIds,
     );
@@ -731,7 +769,7 @@ export function PhysicalRackCanvas({
     // A porta selecionada já tem `is-selected`; `is-related` marca só a ponta par.
     if (selection.kind === 'port') ids.delete(selection.id);
     return ids;
-  }, [connectedIds, connections, selection]);
+  }, [connectedIds, connections, lldpGhosts, selection]);
 
   const laneX = geometry.rackLeft + geometry.rackWidth + 26;
   let exitSlot = 0;
@@ -797,6 +835,118 @@ export function PhysicalRackCanvas({
     });
   }, [cables, geometry.height]);
 
+  /* ---------------------------------------------------------------------
+   * Sugestões LLDP (ghost). Nunca viram cabo: traço tracejado, fino e
+   * translúcido, desenhado ABAIXO dos cabos confirmados. Nunca desenhamos
+   * READY com porta ocupada (o conflito aparece só no inspector) nem
+   * inventamos endpoint remoto em PARTIAL.
+   * ------------------------------------------------------------------- */
+  const selectedLldpId = selection?.kind === 'lldp' ? selection.id : null;
+  const selectionPortIds = useMemo(() => {
+    const ids = new Set(relatedPortIds);
+    if (selection?.kind === 'port') ids.add(selection.id);
+    return ids;
+  }, [relatedPortIds, selection]);
+  const selectionAssetId = selection?.kind === 'asset' ? selection.id : null;
+
+  const ghostIsSelected = (ghost: PhysicalLldpGhost) =>
+    Boolean(selectedLldpId && ghost.adjacencyIds.includes(selectedLldpId));
+  const ghostIsRelated = (ghost: PhysicalLldpGhost) =>
+    Boolean(
+      (ghost.from &&
+        (ghost.from.assetId === selectionAssetId || selectionPortIds.has(ghost.from.portId))) ||
+        (ghost.to &&
+          (ghost.to.assetId === selectionAssetId || selectionPortIds.has(ghost.to.portId))),
+    );
+
+  const visibleGhosts = useMemo(() => {
+    if (lldpMode === 'hidden') return [];
+    const inRack = ghostsForRack(lldpGhosts, rack.id);
+    if (lldpMode === 'all') return inRack;
+    const touchesSelection = (ghost: PhysicalLldpGhost) =>
+      Boolean(
+        (ghost.from &&
+          (ghost.from.assetId === selectionAssetId ||
+            selectionPortIds.has(ghost.from.portId))) ||
+          (ghost.to &&
+            (ghost.to.assetId === selectionAssetId ||
+              selectionPortIds.has(ghost.to.portId))),
+      );
+    return inRack.filter(
+      (ghost) =>
+        (selectedLldpId ? ghost.adjacencyIds.includes(selectedLldpId) : false) ||
+        touchesSelection(ghost),
+    );
+  }, [lldpGhosts, lldpMode, rack.id, selectedLldpId, selectionAssetId, selectionPortIds]);
+
+  const ghostLaneX = laneX + 56;
+  const ghostPaths = visibleGhosts
+    .map((ghost) => {
+      const sideInRack = ghost.from?.rackId === rack.id ? ghost.from : ghost.to;
+      const other = ghost.from?.rackId === rack.id ? ghost.to : ghost.from;
+      if (!sideInRack) return null;
+      const anchor = portAnchor(sideInRack.assetId, sideInRack.portId);
+      if (!anchor) return null;
+      return { ghost, anchor, other, lane: 0 };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .map((item, index) => ({ ...item, lane: ghostLaneX + (index % 3) * 12 }))
+    .map((item) => {
+      const { ghost, anchor, other, lane } = item;
+      const selected = ghostIsSelected(ghost);
+      if (ghost.state === 'UNRESOLVED') {
+        return { ...item, d: null as string | null, remote: null, selected, related: false };
+      }
+      const related = ghostIsRelated(ghost);
+      if (!other) {
+        return {
+          ...item,
+          d: `M ${anchor.x} ${anchor.y} H ${lane} V ${anchor.y - 20} H ${lane + 22}`,
+          remote: null,
+          selected,
+          related,
+        };
+      }
+      const otherInRack = other.rackId === rack.id;
+      const otherAnchor = otherInRack ? portAnchor(other.assetId, other.portId) : null;
+      if (otherAnchor) {
+        return {
+          ...item,
+          d: `M ${anchor.x} ${anchor.y} H ${lane} V ${otherAnchor.y} H ${otherAnchor.x}`,
+          remote: null,
+          selected,
+          related,
+        };
+      }
+      return {
+        ...item,
+        d: `M ${anchor.x} ${anchor.y} H ${lane} V ${anchor.y} H ${geometry.width - 12}`,
+        remote: other,
+        selected,
+        related,
+      };
+    });
+
+  /** Marcadores LLDP empilhados ABAIXO dos marcadores de cabo (sem sobrepor). */
+  const lldpMarkers = ghostPaths
+    // Marcador: ponta fora deste rack (cross-rack/cross-site) ou PARTIAL sem
+    // endpoint remoto resolvido. UNRESOLVED nunca ganha marcador de destino.
+    .filter(
+      (item) =>
+        item.d !== null &&
+        item.ghost.state !== 'UNRESOLVED' &&
+        (item.remote !== null || item.other === null),
+    )
+    .sort((left, right) => left.anchor.y - right.anchor.y)
+    .reduce<Array<{ row: (typeof ghostPaths)[number]; y: number }>>((rows, row) => {
+      const lastBottom = rows.length
+        ? rows[rows.length - 1]!.y + 62
+        : remoteEndpoints.reduce((max, item) => Math.max(max, item.y + 62), 0);
+      const top = Math.max(0, Math.min(row.anchor.y - 24, lastBottom + 26));
+      rows.push({ row, y: Math.min(top, geometry.height - 78) });
+      return rows;
+    }, []);
+
   const activeAssetIds = new Set<string>();
   if (selection?.kind === 'asset') activeAssetIds.add(selection.id);
   if (selection?.kind === 'port') {
@@ -846,6 +996,58 @@ export function PhysicalRackCanvas({
         >
           <span>CABLE LANE</span>
         </div>
+
+        <svg
+          className="physical-lldp-layer"
+          width={geometry.width}
+          height={geometry.height}
+          aria-label="Sugestões LLDP"
+        >
+          {ghostPaths.map((item) => (
+            <g key={item.ghost.adjacencyId}>
+              {item.d ? (
+                <>
+                  <title>{lldpGhostTooltip(item.ghost)}</title>
+                  {onSelectLldp ? (
+                    <path
+                      className="physical-lldp-hit"
+                      d={item.d}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onSelectLldp(item.ghost.adjacencyId);
+                      }}
+                    />
+                  ) : null}
+                  <path
+                    className={`physical-lldp-ghost ${
+                      item.selected
+                        ? 'is-selected'
+                        : item.related
+                          ? 'is-related'
+                          : selection
+                            ? 'is-dim'
+                            : ''
+                    }`}
+                    d={item.d}
+                  />
+                  <text className="physical-lldp-badge" x={item.lane + 4} y={item.anchor.y - 5}>
+                    LLDP
+                  </text>
+                </>
+              ) : null}
+              {item.ghost.state === 'UNRESOLVED' ? (
+                <circle
+                  className="physical-lldp-dot"
+                  cx={item.anchor.x}
+                  cy={item.anchor.y}
+                  r={4}
+                >
+                  <title>{lldpGhostTooltip(item.ghost)}</title>
+                </circle>
+              ) : null}
+            </g>
+          ))}
+        </svg>
 
         <svg
           className="physical-cables"
@@ -937,6 +1139,62 @@ export function PhysicalRackCanvas({
                 onClick={(event) => {
                   event.stopPropagation();
                   onNavigateToPort(row.endpoint.siteId, row.endpoint.rackId, row.endpoint.portId);
+                }}
+              >
+                Ir para a ponta →
+              </button>
+            ) : null}
+          </div>
+        ))}
+
+        {lldpMarkers.map(({ row, y }) => (
+          <div
+            key={`lldp-${row.ghost.adjacencyId}`}
+            className={[
+              'physical-lldp-endpoint',
+              row.ghost.confirmable ? 'is-confirmable' : '',
+              row.ghost.external ? 'is-external' : '',
+              row.selected ? 'is-selected' : '',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            style={{ left: laneX + 92, top: y }}
+            role="button"
+            tabIndex={0}
+            title={lldpGhostTooltip(row.ghost)}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (onSelectLldp) onSelectLldp(row.ghost.adjacencyId);
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter' && event.key !== ' ') return;
+              event.preventDefault();
+              if (onSelectLldp) onSelectLldp(row.ghost.adjacencyId);
+            }}
+          >
+            <strong>
+              LLDP ·{' '}
+              {row.remote
+                ? row.ghost.external
+                  ? row.remote.siteName
+                  : row.remote.rackName
+                : 'Destino físico não mapeado'}
+            </strong>
+            {row.remote ? (
+              <>
+                <span>{row.remote.assetName}</span>
+                <small>{row.remote.portName}</small>
+              </>
+            ) : (
+              <span>A interface remota ainda não está vinculada a uma PhysicalPort.</span>
+            )}
+            {row.remote && onNavigateToPort && row.remote.siteId && row.remote.rackId ? (
+              <button
+                type="button"
+                className="physical-lldp-endpoint__go"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onNavigateToPort(row.remote!.siteId, row.remote!.rackId, row.remote!.portId);
                 }}
               >
                 Ir para a ponta →

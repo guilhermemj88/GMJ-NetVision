@@ -7463,6 +7463,119 @@ label > small {
   cursor: pointer;
 }
 .physical-cable-endpoint__go:hover { text-decoration: underline; }
+
+/* ---------------------------------------------------------------------------
+ * Sugestões LLDP: evidência, nunca cabo confirmado.
+ * Traço tracejado/fino/translúcido, camada PRÓPRIA abaixo dos cabos, sem
+ * `medium` (o LLDP não informa meio físico com confiabilidade).
+ * ------------------------------------------------------------------------- */
+.physical-lldp-layer {
+  position: absolute;
+  inset: 0 auto auto 0;
+  z-index: 3;
+  overflow: visible;
+  pointer-events: none;
+}
+.physical-lldp-ghost {
+  fill: none;
+  stroke: #8b7bd8;
+  stroke-width: 1.1;
+  stroke-dasharray: 3 4;
+  stroke-linejoin: round;
+  opacity: 0.5;
+  transition: opacity 150ms, stroke 150ms, stroke-width 150ms;
+}
+.physical-lldp-ghost.is-related { opacity: 0.8; stroke-width: 1.4; }
+.physical-lldp-ghost.is-dim { opacity: 0.22; }
+.physical-lldp-ghost.is-selected {
+  opacity: 1;
+  stroke: #b9a7ff;
+  stroke-width: 1.8;
+  filter: drop-shadow(0 0 3px rgba(139, 92, 246, 0.5));
+}
+.physical-lldp-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 14;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.physical-lldp-badge {
+  fill: #b9a7ff;
+  font: 7px var(--font-mono);
+  letter-spacing: 0.14em;
+  opacity: 0.85;
+}
+.physical-lldp-dot {
+  fill: rgba(139, 92, 246, 0.3);
+  stroke: #b9a7ff;
+  stroke-width: 1;
+}
+.physical-lldp-endpoint {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 150px;
+  padding: 6px 8px;
+  border: 1px dashed rgba(139, 123, 216, 0.6);
+  border-left: 3px dashed #8b7bd8;
+  background: rgba(16, 26, 32, 0.9);
+  cursor: pointer;
+}
+.physical-lldp-endpoint strong {
+  overflow: hidden;
+  color: #b9a7ff;
+  font: 700 8px var(--font-mono);
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.physical-lldp-endpoint span {
+  overflow: hidden;
+  color: #c5d6dd;
+  font: 600 9px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.physical-lldp-endpoint small {
+  color: #a78bfa;
+  font: 700 10px var(--font-mono);
+}
+.physical-lldp-endpoint.is-external {
+  border-color: rgba(224, 157, 74, 0.55);
+  border-left-color: #e09d4a;
+}
+.physical-lldp-endpoint.is-external strong { color: #e09d4a; }
+.physical-lldp-endpoint.is-selected {
+  border-color: #b9a7ff;
+  box-shadow: 0 0 8px rgba(139, 92, 246, 0.45);
+}
+.physical-lldp-endpoint__go {
+  margin-top: 3px;
+  align-self: flex-start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #67c5a2;
+  font: 600 8px var(--font-mono);
+  cursor: pointer;
+}
+.physical-lldp-endpoint__go:hover { text-decoration: underline; }
+.physical-lldp-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #b9a7ff;
+  font: 700 8px var(--font-mono);
+  letter-spacing: 0.08em;
+}
+.physical-lldp-legend::before {
+  content: "";
+  width: 16px;
+  border-top: 1px dashed #8b7bd8;
+}
 .physical-port.is-related,
 .physical-image-panel__hitbox.is-related {
   box-shadow:
@@ -9531,6 +9644,41 @@ label > small {
 .physical-lldp--ready { border-color: rgba(67, 197, 158, 0.45); }
 .physical-lldp--partial { border-color: rgba(240, 178, 76, 0.4); }
 .physical-lldp--unresolved { border-color: rgba(224, 106, 106, 0.4); }
+.physical-lldp.is-conflict { border-color: rgba(224, 106, 106, 0.6); background: rgba(40, 20, 20, 0.5); }
+.physical-lldp__open {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.physical-lldp__open:hover strong { text-decoration: underline; }
+.physical-lldp-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.physical-lldp-confirm label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #7e939c;
+  font: 700 8px var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.physical-lldp-confirm select {
+  padding: 4px 6px;
+  border: 1px solid #2b3b45;
+  border-radius: 3px;
+  background: #0c151b;
+  color: #c3d5dc;
+  font: 9px var(--font-mono);
+}
 .physical-lldp strong { color: #c3d5dc; font: 550 9px var(--font-mono); }
 .physical-lldp small { color: #647985; font: 8px/1.45 var(--font-mono); }
 .physical-inspector {
