@@ -2,6 +2,7 @@
 
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlowProvider } from '@xyflow/react';
 import { cloneDemoMaps } from '@gmj/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,6 +23,18 @@ function findButton(container: HTMLElement, label: string): HTMLButtonElement {
 }
 
 /**
+ * Botões repetidos entre grupos ("Cards" existe em Tráfego e em Equipamentos):
+ * busca sempre dentro do grupo pelo título.
+ */
+function findButtonInGroup(container: HTMLElement, groupTitle: string, label: string): HTMLButtonElement {
+  const group = [...container.querySelectorAll<HTMLElement>('.map-visual__group')].find((item) =>
+    item.querySelector('.map-visual__group-title')?.textContent?.includes(groupTitle),
+  );
+  if (!group) throw new Error(`Grupo ${groupTitle} não encontrado`);
+  return findButton(group, label);
+}
+
+/**
  * Os controles visuais deixaram de ser um painel permanente sobre o canvas e
  * passaram a viver na rail lateral (`MapVisualControls`). O `MapControls`
  * flutuante agora é só zoom/enquadrar/tela cheia.
@@ -29,6 +42,7 @@ function findButton(container: HTMLElement, label: string): HTMLButtonElement {
 describe('MapVisualControls (rail)', () => {
   const map = cloneDemoMaps()[0]!;
   const roots: Array<{ root: Root; container: HTMLDivElement }> = [];
+  let client: QueryClient;
 
   async function renderControls() {
     const container = document.createElement('div');
@@ -36,11 +50,14 @@ describe('MapVisualControls (rail)', () => {
     const root = createRoot(container);
     roots.push({ root, container });
     useMapStore.setState({ map, activeMapId: map.id, readOnly: false });
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     await act(async () => {
       root.render(
-        <ReactFlowProvider>
-          <MapVisualControls />
-        </ReactFlowProvider>,
+        <QueryClientProvider client={client}>
+          <ReactFlowProvider>
+            <MapVisualControls />
+          </ReactFlowProvider>
+        </QueryClientProvider>,
       );
     });
     return { container };
@@ -60,6 +77,7 @@ describe('MapVisualControls (rail)', () => {
     }
     vi.clearAllMocks();
     window.localStorage.clear();
+    client?.clear();
     useMapStore.setState({ map: null });
   });
 
@@ -69,16 +87,17 @@ describe('MapVisualControls (rail)', () => {
     expect(container.textContent).toContain('Equipamentos');
     expect(container.textContent).toContain('Enlaces');
     expect(container.textContent).toContain('Métrica');
-    expect(container.textContent).toContain('Exibição de tráfego');
-    expect(container.textContent).toContain('Escala');
+    expect(container.textContent).toContain('Modo de tráfego');
+    expect(container.textContent).toContain('ESCALA');
     expect(container.textContent).toContain('Legibilidade');
+    expect(container.textContent).toContain('GEOMETRIA DO ENLACE');
   });
 
   it('persiste o modo de exibição dos equipamentos', async () => {
     const { container } = await renderControls();
 
     await act(async () => {
-      findButton(container, 'Cards').click();
+      findButtonInGroup(container, 'EQUIPAMENTOS', 'Cards').click();
     });
 
     expect(useMapStore.getState().map?.settings.nodeDisplayMode).toBe('CARD');
@@ -87,15 +106,15 @@ describe('MapVisualControls (rail)', () => {
     });
   });
 
-  it('oferece Cards, Na linha e Ocultar e persiste o modo INLINE', async () => {
+  it('oferece Cards, Inline e Oculto e persiste o modo INLINE', async () => {
     const { container } = await renderControls();
 
     expect(container.textContent).toContain('Cards');
-    expect(container.textContent).toContain('Na linha');
-    expect(container.textContent).toContain('Ocultar');
+    expect(container.textContent).toContain('Inline');
+    expect(container.textContent).toContain('Oculto');
 
     await act(async () => {
-      findButton(container, 'Na linha').click();
+      findButtonInGroup(container, 'TRÁFEGO', 'Inline').click();
     });
 
     expect(useMapStore.getState().map?.settings.trafficLabelMode).toBe('INLINE');
@@ -113,6 +132,37 @@ describe('MapVisualControls (rail)', () => {
 
     expect(useMapStore.getState().map?.settings.labelScale).toBe(150);
     expect(window.localStorage.getItem('gmj:alarms:panel-scale')).toBe('150');
+  });
+
+  it('aplica o preset de escala WeatherMap e persiste as tres escalas', async () => {
+    const { container } = await renderControls();
+
+    await act(async () => {
+      findButton(container, 'WeatherMap').click();
+    });
+
+    expect(useMapStore.getState().map?.settings).toMatchObject({
+      nodeScale: 75,
+      linkScale: 140,
+      labelScale: 85,
+    });
+    expect(updateNetworkMap).toHaveBeenCalledWith(map.id, {
+      settings: { nodeScale: 75, linkScale: 140, labelScale: 85 },
+    });
+  });
+
+  it('avisa quando a escala foi ajustada a mao e oferece voltar ao preset', async () => {
+    const { container } = await renderControls();
+
+    await act(async () => {
+      useMapStore.getState().setMapScales({ nodeScale: 120 });
+    });
+    expect(container.textContent).toContain('Escala ajustada');
+
+    await act(async () => {
+      findButton(container, 'Aplicar escala do preset').click();
+    });
+    expect(useMapStore.getState().map?.settings.nodeScale).toBe(100);
   });
 });
 

@@ -6,7 +6,7 @@ import { SegmentedControl, StatusPill } from '@gmj/ui';
 import { updateNetworkMap } from '@/lib/api';
 import type { FocusHops, MapLayerFilter, VisualPreset } from '@/lib/map-focus';
 import { useMapFocus } from '@/lib/use-map-focus';
-import { useMapStore, VISUAL_PRESETS } from '@/store/map-store';
+import { presetScalePatch, useMapStore, VISUAL_PRESETS } from '@/store/map-store';
 import { MapVisualControls } from './map-controls';
 
 const PRESETS: Array<{ value: VisualPreset; label: string; hint: string }> = [
@@ -24,6 +24,11 @@ const PRESETS: Array<{ value: VisualPreset; label: string; hint: string }> = [
     value: 'ENGENHARIA',
     label: 'Engenharia',
     hint: 'Máximo detalhe: cards, interfaces, RX/TX, capacidade e labels na linha.',
+  },
+  {
+    value: 'WEATHERMAP',
+    label: 'WeatherMap',
+    hint: 'Backbone/NOC: enlaces protagonistas, equipamentos enxutos e menos ruído textual.',
   },
 ];
 
@@ -86,11 +91,19 @@ export function MapRail() {
   const hasCuts = layerFilter !== 'ALL' || siteFilter !== null || deviceTypeFilter !== null;
 
   const applyPreset = (value: VisualPreset) => {
-    setVisualPreset(value);
+    /**
+     * A escala só acompanha o preset quando ela ainda é a do preset em uso.
+     * Se o operador ajustou na mão, os valores dele ficam intactos.
+     */
+    const scalePatch = presetScalePatch(map?.settings, visualPreset, value);
+    const scalesApplied = Object.keys(scalePatch).length > 0;
+    const label = PRESETS.find((item) => item.value === value)?.label ?? value;
     const application = VISUAL_PRESETS[value];
+    setVisualPreset(value);
     if (map) {
       void updateNetworkMap(map.id, {
         settings: {
+          ...scalePatch,
           nodeDisplayMode: application.nodeDisplayMode,
           linkDisplayStyle: application.linkDisplayStyle,
           linkMetricDisplay: application.linkMetricDisplay,
@@ -99,7 +112,11 @@ export function MapRail() {
         },
       }).catch(() => undefined);
     }
-    showToast(`Preset ${value} aplicado`);
+    showToast(
+      scalesApplied
+        ? `Preset ${label} aplicado · escala ${application.scales.nodeScale}/${application.scales.linkScale}/${application.scales.labelScale}`
+        : `Preset ${label} aplicado · escala mantida (ajustada à mão)`,
+    );
   };
 
   const clearCuts = () => {
@@ -124,6 +141,7 @@ export function MapRail() {
         <section className="map-rail__section">
           <h2>PRESET VISUAL</h2>
           <SegmentedControl
+            className="map-rail__preset-control"
             layout="stacked"
             size="sm"
             ariaLabel="Preset visual do mapa"
@@ -133,10 +151,32 @@ export function MapRail() {
           />
           <p className="map-rail__hint">{preset.hint}</p>
           <p className="map-rail__note">
-            Os três presets mostram os mesmos dados e o mesmo grafo. Nada é criado, duplicado
+            Os quatro presets mostram os mesmos dados e o mesmo grafo. Nada é criado, duplicado
             ou removido.
           </p>
         </section>
+
+        {/*
+          Escala, modo de tráfego e geometria ficavam escondidos no fim da rail e
+          exigiam expandir um <details> para aparecerem. Agora a seção fica logo
+          abaixo do preset, aberta por padrão, e continua recolhível.
+        */}
+        <details className="map-rail__details" open>
+          <summary>
+            <SlidersHorizontal size={12} /> VISUALIZAÇÃO &amp; ESCALA
+            <em className="map-rail__details-state">
+              {map.settings.nodeScale}/{map.settings.linkScale}/{map.settings.labelScale} ·{' '}
+              {map.settings.trafficLabelMode === 'HIDDEN'
+                ? 'Oculto'
+                : map.settings.trafficLabelMode === 'INLINE'
+                  ? 'Inline'
+                  : 'Cards'}
+            </em>
+          </summary>
+          <div className="map-rail__visual">
+            <MapVisualControls />
+          </div>
+        </details>
 
         <section className="map-rail__section">
           <h2>CAMADA</h2>
@@ -238,14 +278,6 @@ export function MapRail() {
           </p>
         </section>
 
-        <details className="map-rail__details">
-          <summary>
-            <SlidersHorizontal size={12} /> Visualização e escala
-          </summary>
-          <div className="map-rail__visual">
-            <MapVisualControls />
-          </div>
-        </details>
       </div>
 
       <footer className="map-rail__legend" aria-label="Legenda de estado">

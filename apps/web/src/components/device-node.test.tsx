@@ -51,7 +51,12 @@ function makeNode(overrides: Partial<MapNode> = {}): MapNode {
   };
 }
 
-function renderNode(device: Device, mapNode: MapNode, alarmCount = 0) {
+function renderNode(
+  device: Device,
+  mapNode: MapNode,
+  alarmCount = 0,
+  dataOverrides: Partial<DeviceNodeData> = {},
+) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -64,6 +69,7 @@ function renderNode(device: Device, mapNode: MapNode, alarmCount = 0) {
     nodeScale: 100,
     labelScale: 100,
     alarmCount,
+    ...dataOverrides,
   };
   const props = {
     id: device.id,
@@ -161,6 +167,62 @@ describe('DeviceNode PPP label', () => {
     );
     const unsupported = mount(makeDevice({ pppSupported: false }), makeNode());
     expect(unsupported.querySelector('.device-tooltip')!.textContent).not.toContain('PPP online');
+  });
+});
+
+describe('DeviceNode contagem de portas (anti-duplicacao)', () => {
+  const roots: Array<{ root: Root; container: HTMLDivElement }> = [];
+
+  beforeEach(() => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
+      true;
+  });
+
+  afterEach(() => {
+    for (const { root, container } of roots.splice(0)) {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  function mount(dataOverrides: Partial<DeviceNodeData>) {
+    const device = makeDevice({
+      interfaces: [
+        { id: 'if-1' },
+        { id: 'if-2' },
+        { id: 'if-3' },
+      ] as unknown as Device['interfaces'],
+    });
+    const rendered = renderNode(device, makeNode(), 0, dataOverrides);
+    roots.push({ root: rendered.root, container: rendered.container });
+    return rendered.container;
+  }
+
+  it('nao mostra contagem de portas nos modos de icone, mesmo com showInterfaces ligado', () => {
+    for (const displayMode of ['ICON_2D', 'ICON_3D'] as const) {
+      const container = mount({ showInterfaces: true, displayMode });
+      expect(container.textContent).not.toContain('portas');
+      expect(container.querySelector('.device-node__port-count')).toBeNull();
+      expect(container.querySelector('.device-node__ports')).toBeNull();
+      act(() => roots.pop()!.root.unmount());
+      container.remove();
+    }
+  });
+
+  it('mostra a contagem uma unica vez, dentro do card, no modo CARD', () => {
+    const container = mount({ showInterfaces: true, displayMode: 'CARD' });
+    const occurrences = container.textContent!.match(/3 portas/g) ?? [];
+    expect(occurrences).toHaveLength(1);
+    const counter = container.querySelector('.device-node__port-count');
+    expect(counter).not.toBeNull();
+    expect(counter!.closest('.device-node__copy')).not.toBeNull();
+    expect(counter!.getAttribute('title')).toContain('inspetor');
+  });
+
+  it('nao mostra contagem no card quando a preferencia esta desligada', () => {
+    const container = mount({ showInterfaces: false, displayMode: 'CARD' });
+    expect(container.querySelector('.device-node__port-count')).toBeNull();
+    expect(container.textContent).not.toContain('portas');
   });
 });
 

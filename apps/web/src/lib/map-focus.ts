@@ -7,7 +7,7 @@ import type { Device, MapNode, NetworkLink } from '@gmj/shared';
  * escolhas de apresentação que já existem em `MapSettings`/`MapPreferences`,
  * mais a camada sugerida de foco. Os três presets mostram os MESMOS dados.
  */
-export type VisualPreset = 'OPERACIONAL' | 'TOPOLOGIA' | 'ENGENHARIA';
+export type VisualPreset = 'OPERACIONAL' | 'TOPOLOGIA' | 'ENGENHARIA' | 'WEATHERMAP';
 
 /**
  * Camada de foco. Elementos fora da camada são **atenuados**, nunca apagados

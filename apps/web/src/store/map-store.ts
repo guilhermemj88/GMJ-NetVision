@@ -51,6 +51,18 @@ export interface PresetApplication {
   trafficLabelMode: TrafficLabelMode;
   preferences: MapPreferences;
   layer: MapLayerFilter;
+  /**
+   * Escala sugerida do preset. So e aplicada quando a escala atual ainda e a
+   * do preset em uso (ou seja, o operador nao ajustou nada a mao).
+   */
+  scales: MapScalePreset;
+}
+
+/** Escala persistida por mapa (`MapSettings`) que um preset sugere. */
+export interface MapScalePreset {
+  nodeScale: number;
+  linkScale: number;
+  labelScale: number;
 }
 
 /**
@@ -64,6 +76,7 @@ export const VISUAL_PRESETS: Record<VisualPreset, PresetApplication> = {
     linkDisplayStyle: 'HYBRID',
     linkMetricDisplay: 'UTILIZATION',
     trafficLabelMode: 'CARD',
+    scales: { nodeScale: 100, linkScale: 100, labelScale: 100 },
     preferences: {
       showTraffic: true,
       showUtilization: true,
@@ -79,6 +92,7 @@ export const VISUAL_PRESETS: Record<VisualPreset, PresetApplication> = {
     linkDisplayStyle: 'MINIMAL',
     linkMetricDisplay: 'NONE',
     trafficLabelMode: 'HIDDEN',
+    scales: { nodeScale: 100, linkScale: 100, labelScale: 100 },
     preferences: {
       showTraffic: false,
       showUtilization: false,
@@ -94,6 +108,7 @@ export const VISUAL_PRESETS: Record<VisualPreset, PresetApplication> = {
     linkDisplayStyle: 'HYBRID',
     linkMetricDisplay: 'BOTH',
     trafficLabelMode: 'INLINE',
+    scales: { nodeScale: 100, linkScale: 100, labelScale: 100 },
     preferences: {
       showTraffic: true,
       showUtilization: true,
@@ -104,7 +119,87 @@ export const VISUAL_PRESETS: Record<VisualPreset, PresetApplication> = {
     },
     layer: 'ALL',
   },
+  /**
+   * WeatherMap: mesmo grafo, leitura de backbone/NOC.
+   *
+   * Os enlaces passam a ser os protagonistas (mais grossos, estilo WEATHERMAP,
+   * com os dois sentidos) e os equipamentos ficam menores e sem ruido textual.
+   * A contagem de portas so aparece no preset ENGENHARIA, em CARD.
+   */
+  WEATHERMAP: {
+    nodeDisplayMode: 'ICON_2D',
+    linkDisplayStyle: 'WEATHERMAP',
+    linkMetricDisplay: 'BOTH',
+    trafficLabelMode: 'CARD',
+    scales: { nodeScale: 75, linkScale: 140, labelScale: 85 },
+    preferences: {
+      showTraffic: true,
+      showUtilization: true,
+      showLabels: false,
+      showOffline: true,
+      showInterfaces: false,
+      showTrafficAnimation: true,
+    },
+    layer: 'ALL',
+  },
 };
+
+/**
+ * A escala atual ainda e a sugerida pelo preset informado?
+ *
+ * Serve para nao sobrescrever um ajuste manual sem confirmacao: se o operador
+ * mexeu nos sliders, trocar de preset mantem os valores dele.
+ */
+export function scalesMatchPreset(
+  settings: Pick<MapSettings, 'nodeScale' | 'linkScale' | 'labelScale'> | null | undefined,
+  preset: VisualPreset,
+): boolean {
+  if (!settings) return true;
+  const suggested = VISUAL_PRESETS[preset].scales;
+  return (
+    settings.nodeScale === suggested.nodeScale &&
+    settings.linkScale === suggested.linkScale &&
+    settings.labelScale === suggested.labelScale
+  );
+}
+
+/**
+ * Escala a aplicar ao trocar de preset: as do novo preset quando o operador
+ * nunca ajustou nada a mao, ou vazio quando a escala atual e dele.
+ */
+export function presetScalePatch(
+  settings: Pick<MapSettings, 'nodeScale' | 'linkScale' | 'labelScale'> | null | undefined,
+  currentPreset: VisualPreset,
+  nextPreset: VisualPreset,
+): Partial<MapScalePreset> {
+  return scalesMatchPreset(settings, currentPreset) ? VISUAL_PRESETS[nextPreset].scales : {};
+}
+
+/**
+ * Descobre qual preset corresponde ao que esta persistido no mapa.
+ *
+ * Usado ao abrir/reabrir um mapa para a rail nao mentir sobre o preset ativo
+ * depois de um reload (as configuracoes persistem, o estado da UI nao).
+ */
+export function inferVisualPreset(
+  settings: Pick<
+    MapSettings,
+    'nodeDisplayMode' | 'linkDisplayStyle' | 'linkMetricDisplay' | 'trafficLabelMode'
+  >,
+): VisualPreset {
+  const order: VisualPreset[] = ['WEATHERMAP', 'ENGENHARIA', 'TOPOLOGIA', 'OPERACIONAL'];
+  return (
+    order.find((preset) => {
+      const application = VISUAL_PRESETS[preset];
+      return (
+        application.nodeDisplayMode === settings.nodeDisplayMode &&
+        application.linkDisplayStyle === settings.linkDisplayStyle &&
+        application.linkMetricDisplay === settings.linkMetricDisplay &&
+        application.trafficLabelMode === settings.trafficLabelMode
+      );
+    }) ?? 'OPERACIONAL'
+  );
+}
 
 export interface MapFocusRequest {
   deviceId: string;
@@ -340,11 +435,14 @@ export const useMapStore = create<MapState>((set) => ({
   setVisualPreset: (visualPreset) =>
     set((state) => {
       const application = VISUAL_PRESETS[visualPreset];
+      // Escala ajustada à mão nunca é sobrescrita por troca de preset.
+      const scalePatch = presetScalePatch(state.map?.settings, state.visualPreset, visualPreset);
       const map = state.map
         ? {
             ...state.map,
             settings: {
               ...state.map.settings,
+              ...scalePatch,
               nodeDisplayMode: application.nodeDisplayMode,
               linkDisplayStyle: application.linkDisplayStyle,
               linkMetricDisplay: application.linkMetricDisplay,
@@ -434,6 +532,17 @@ export const useMapStore = create<MapState>((set) => ({
       );
       const focusSequence =
         canOpen || canFocusDevice ? state.focusSequence + 1 : state.focusSequence;
+      /**
+       * Mapa aberto agora e diferente do que estava na tela: a rail volta a
+       * refletir o preset que esta de fato persistido, sem mexer no recorte que
+       * o operador escolheu durante a sessao.
+       */
+      const mapChanged = state.map?.id !== map.id;
+      const inferredPreset = mapChanged ? inferVisualPreset(map.settings) : state.visualPreset;
+      const inferredLayer =
+        mapChanged && state.layerFilter === VISUAL_PRESETS[state.visualPreset].layer
+          ? VISUAL_PRESETS[inferredPreset].layer
+          : state.layerFilter;
       return {
         map: state.map?.id === map.id ? {
           ...map,
@@ -444,6 +553,8 @@ export const useMapStore = create<MapState>((set) => ({
         } : map,
         linkGeometryDrafts: state.map?.id === map.id ? state.linkGeometryDrafts : {},
         activeMapId: map.id,
+        visualPreset: inferredPreset,
+        layerFilter: inferredLayer,
         preferences: map.settings.filters,
         readOnly: false,
         selection:

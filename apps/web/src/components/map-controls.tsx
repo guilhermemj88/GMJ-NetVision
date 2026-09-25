@@ -18,7 +18,13 @@ import { SegmentedControl } from '@gmj/ui';
 import { Focus, Maximize, Minus, Plus } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
 import { updateNetworkMap } from '@/lib/api';
-import { useMapStore } from '@/store/map-store';
+import {
+  scalesMatchPreset,
+  useMapStore,
+  VISUAL_PRESETS,
+  type MapScalePreset,
+} from '@/store/map-store';
+import { LinkGeometryControls } from './link-geometry-controls';
 import { PppTotalControls } from './ppp-total-controls';
 
 const nodeModes: Array<[NodeDisplayMode, string]> = [
@@ -40,8 +46,16 @@ const metricModes: Array<[LinkMetricDisplay, string]> = [
 ];
 const trafficLabelModes: Array<[TrafficLabelMode, string]> = [
   ['CARD', 'Cards'],
-  ['INLINE', 'Na linha'],
-  ['HIDDEN', 'Ocultar'],
+  ['INLINE', 'Inline'],
+  ['HIDDEN', 'Oculto'],
+];
+
+/** Presets rápidos de escala: não mudam dado nenhum, só `nodeScale/linkScale/labelScale`. */
+const SCALE_PRESETS: Array<{ label: string; scales: MapScalePreset }> = [
+  { label: 'Compacto', scales: { nodeScale: 80, linkScale: 80, labelScale: 80 } },
+  { label: 'Normal', scales: { nodeScale: 100, linkScale: 100, labelScale: 100 } },
+  { label: 'Grande', scales: { nodeScale: 130, linkScale: 130, labelScale: 130 } },
+  { label: 'WeatherMap', scales: { nodeScale: 75, linkScale: 140, labelScale: 85 } },
 ];
 
 function toOptions<T extends string>(pairs: Array<[T, string]>) {
@@ -75,6 +89,19 @@ export function MapVisualControls() {
   };
 
   const labelScale = map?.settings.labelScale ?? 100;
+  const visualPreset = useMapStore((state) => state.visualPreset);
+  const presetScales = VISUAL_PRESETS[visualPreset].scales;
+  const nodeScale = map?.settings.nodeScale ?? 100;
+  const linkScale = map?.settings.linkScale ?? 100;
+  /**
+   * A escala atual deixou de ser a sugerida pelo preset? Então ela é do
+   * operador: trocar de preset não sobrescreve (ver `presetScalePatch`).
+   */
+  const scalesCustomized = map ? !scalesMatchPreset(map.settings, visualPreset) : false;
+  const isScalePresetActive = (scales: MapScalePreset) =>
+    nodeScale === scales.nodeScale &&
+    linkScale === scales.linkScale &&
+    labelScale === scales.labelScale;
   const legibilityActive = ALARM_SCALE_OPTIONS.some(
     ({ value }) => value === labelScale && value === alarmScale,
   )
@@ -83,103 +110,128 @@ export function MapVisualControls() {
 
   return (
     <>
-      <SegmentedControl
-        layout="stacked"
-        size="sm"
-        label="Equipamentos"
-        ariaLabel="Modo de exibição dos equipamentos"
-        value={map?.settings.nodeDisplayMode ?? 'ICON_2D'}
-        options={toOptions(nodeModes)}
-        onChange={(value) => {
-          setNodeDisplayMode(value);
-          persist({ nodeDisplayMode: value });
-        }}
-      />
-      <SegmentedControl
-        layout="stacked"
-        size="sm"
-        label="Enlaces"
-        ariaLabel="Estilo dos enlaces"
-        value={map?.settings.linkDisplayStyle ?? 'HYBRID'}
-        options={toOptions(linkStyles)}
-        onChange={(value) => {
-          setLinkDisplayStyle(value);
-          persist({ linkDisplayStyle: value });
-        }}
-      />
-      <SegmentedControl
-        layout="stacked"
-        size="sm"
-        label="Métrica"
-        ariaLabel="Métrica exibida nos enlaces"
-        value={map?.settings.linkMetricDisplay ?? 'BOTH'}
-        options={toOptions(metricModes)}
-        onChange={(value) => {
-          setLinkMetricDisplay(value);
-          persist({ linkMetricDisplay: value });
-        }}
-      />
-      <SegmentedControl
-        layout="stacked"
-        size="sm"
-        label="Exibição de tráfego"
-        ariaLabel="Exibição de tráfego"
-        value={map?.settings.trafficLabelMode ?? 'CARD'}
-        options={toOptions(trafficLabelModes)}
-        onChange={(value) => {
-          setTrafficLabelMode(value);
-          persist({ trafficLabelMode: value });
-        }}
-      />
-      <div className="scale-presets" aria-label="Presets de escala">
-        <span>Escala</span>
-        {(
-          [
-            ['Compacto', 80],
-            ['Normal', 100],
-            ['Grande', 130],
-          ] as const
-        ).map(([label, value]) => (
-          <button
-            type="button"
-            key={value}
-            onClick={() => changeScales({ nodeScale: value, linkScale: value, labelScale: value })}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="map-visual__group">
+        <span className="map-visual__group-title">ESCALA</span>
+        <ScaleControl
+          label="Equipamentos"
+          value={map?.settings.nodeScale ?? 100}
+          onChange={(nodeScale) => changeScales({ nodeScale })}
+        />
+        <ScaleControl
+          label="Enlaces"
+          value={map?.settings.linkScale ?? 100}
+          onChange={(linkScale) => changeScales({ linkScale })}
+        />
+        <ScaleControl
+          label="Labels"
+          value={labelScale}
+          onChange={(labelScale) => changeScales({ labelScale })}
+        />
+        <div className="scale-presets" aria-label="Presets de escala">
+          <span>Presets</span>
+          {SCALE_PRESETS.map((preset) => (
+            <button
+              type="button"
+              key={preset.label}
+              className={isScalePresetActive(preset.scales) ? 'is-active' : ''}
+              onClick={() => changeScales(preset.scales)}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        {scalesCustomized ? (
+          <p className="map-visual__note">
+            Escala ajustada à mão: trocar de preset não sobrescreve estes valores.
+            <button type="button" onClick={() => changeScales(presetScales)}>
+              Aplicar escala do preset ({presetScales.nodeScale}/{presetScales.linkScale}/
+              {presetScales.labelScale})
+            </button>
+          </p>
+        ) : null}
+        <div className="scale-presets" aria-label="Preset de legibilidade">
+          <span>Legibilidade</span>
+          {ALARM_SCALE_OPTIONS.map(({ value, label }) => (
+            <button
+              type="button"
+              key={value}
+              className={legibilityActive === value ? 'is-active' : ''}
+              onClick={() => {
+                changeScales({ labelScale: value });
+                setAlarmScale(value);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="scale-presets" aria-label="Preset de legibilidade">
-        <span>Legibilidade</span>
-        {ALARM_SCALE_OPTIONS.map(({ value, label }) => (
-          <button
-            type="button"
-            key={value}
-            className={legibilityActive === value ? 'is-active' : ''}
-            onClick={() => {
-              changeScales({ labelScale: value });
-              setAlarmScale(value);
-            }}
-          >
-            {label}
-          </button>
-        ))}
+
+      <div className="map-visual__group">
+        <span className="map-visual__group-title">TRÁFEGO</span>
+        <SegmentedControl
+          layout="stacked"
+          size="sm"
+          label="Modo de tráfego"
+          ariaLabel="Exibição de tráfego"
+          value={map?.settings.trafficLabelMode ?? 'CARD'}
+          options={toOptions(trafficLabelModes)}
+          onChange={(value) => {
+            setTrafficLabelMode(value);
+            persist({ trafficLabelMode: value });
+          }}
+        />
       </div>
-      <ScaleControl
-        label="Nós"
-        value={map?.settings.nodeScale ?? 100}
-        onChange={(nodeScale) => changeScales({ nodeScale })}
-      />
-      <ScaleControl
-        label="Links"
-        value={map?.settings.linkScale ?? 100}
-        onChange={(linkScale) => changeScales({ linkScale })}
-      />
-      <ScaleControl
-        label="Textos / Labels"
-        value={labelScale}
-        onChange={(labelScale) => changeScales({ labelScale })}
-      />
+
+      <div className="map-visual__group">
+        <span className="map-visual__group-title">EQUIPAMENTOS</span>
+        <SegmentedControl
+          layout="stacked"
+          size="sm"
+          label="Modo de exibição"
+          ariaLabel="Modo de exibição dos equipamentos"
+          value={map?.settings.nodeDisplayMode ?? 'ICON_2D'}
+          options={toOptions(nodeModes)}
+          onChange={(value) => {
+            setNodeDisplayMode(value);
+            persist({ nodeDisplayMode: value });
+          }}
+        />
+      </div>
+
+      <div className="map-visual__group">
+        <span className="map-visual__group-title">ENLACES</span>
+        <SegmentedControl
+          layout="stacked"
+          size="sm"
+          label="Estilo"
+          ariaLabel="Estilo dos enlaces"
+          value={map?.settings.linkDisplayStyle ?? 'HYBRID'}
+          options={toOptions(linkStyles)}
+          onChange={(value) => {
+            setLinkDisplayStyle(value);
+            persist({ linkDisplayStyle: value });
+          }}
+        />
+        <SegmentedControl
+          layout="stacked"
+          size="sm"
+          label="Métrica"
+          ariaLabel="Métrica exibida nos enlaces"
+          value={map?.settings.linkMetricDisplay ?? 'BOTH'}
+          options={toOptions(metricModes)}
+          onChange={(value) => {
+            setLinkMetricDisplay(value);
+            persist({ linkMetricDisplay: value });
+          }}
+        />
+      </div>
+
+      <div className="map-visual__group">
+        <span className="map-visual__group-title">GEOMETRIA DO ENLACE</span>
+        <LinkGeometryControls />
+      </div>
+
       <PppTotalControls />
     </>
   );

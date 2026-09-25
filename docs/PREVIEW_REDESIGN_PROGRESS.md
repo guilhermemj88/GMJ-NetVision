@@ -104,6 +104,40 @@ auto-layout Dagre, smart guides, curvatura manual, geometria persistida, métric
 direcionais A→B/B→A, capacidade, RX/TX, alarmes, drawers, criação/edição de
 enlaces, PPP TOTAL, NOC Rotation e links públicos.
 
+## Fase 6 — Mapa: escala, modo de tráfego, WeatherMap e ruído de ports
+
+Branch de trabalho: `feature/map-ux-weathermap` (a partir de `preview/deepseek-ui`).
+
+- **Painel "Visualização & escala"**: o `<details>` que ficava no fim da rail
+  virou a primeira seção depois do preset, **aberta por padrão** e com o estado
+  atual no próprio rótulo (`75/140/85 · Cards`). Ele agrupa: escala de
+  Equipamentos/Enlaces/Labels (50–200%), presets Compacto/Normal/Grande/WeatherMap,
+  modo de tráfego (Cards/Inline/Oculto), exibição de equipamentos, estilo e
+  métrica dos enlaces, geometria do enlace e PPP TOTAL.
+- **Escala ajustada à mão é preservada**: trocar de preset só aplica a escala
+  sugerida quando a escala atual ainda é a do preset em uso; caso contrário os
+  valores do operador ficam intactos, o painel avisa e oferece "Aplicar escala do
+  preset". Regra implementada em `presetScalePatch`/`scalesMatchPreset`.
+- **Quarto preset `WEATHERMAP`** (mesmo grafo, só apresentação): ícones 2D,
+  `linkDisplayStyle WEATHERMAP`, métrica BOTH, tráfego em CARD e escala sugerida
+  75/140/85 — enlaces protagonistas, nodes enxutos.
+- **Geometria do enlace na rail** (`LinkGeometryControls`): com o enlace
+  selecionado mostra pontas A/B, curvatura do caminho 1, "Editar curvatura no
+  mapa" (liga o modo edição), "Resetar geometria" e "Voltar ao automático", tudo
+  pelo mesmo PATCH (`persistLinkPatch`) e o mesmo arrasto de alça do canvas.
+- **Duplicação de "ports" corrigida**: a contagem era um selo solto sob o node em
+  qualquer modo. Agora ela aparece **uma única vez, dentro do card** (CARD/
+  Engenharia) e **nunca** nos modos de ícone (Operacional/Topologia/WeatherMap);
+  as interfaces individuais continuam só no inspetor.
+- Novo teste `link-geometry-controls.test.tsx` e cobertura extra em
+  `device-node.test.tsx`, `map-controls.test.tsx`, `map-rail.test.tsx` e
+  `map-store.test.ts`.
+
+Proposta visual desta fase no Magic Patterns: design system
+`GMJ NetVision · Mapa (WeatherMap + escala)` (componentes `MapVisualPanel`,
+`LinkTrafficLabel`, `DeviceNodeVariants`) e a tela do WeatherMap com o painel
+aberto.
+
 ## Próximos passos planejados
 
 1. **Implantar a API em produção** para habilitar a correlação reversa: o

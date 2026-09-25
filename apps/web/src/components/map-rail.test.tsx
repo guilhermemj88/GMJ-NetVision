@@ -26,6 +26,7 @@ function findButton(container: HTMLElement, label: string): HTMLButtonElement {
 describe('MapRail', () => {
   const map = cloneDemoMaps()[0]!;
   const roots: Array<{ root: Root; container: HTMLDivElement }> = [];
+  const showToast = vi.fn();
   let client: QueryClient;
 
   async function renderRail() {
@@ -44,6 +45,7 @@ describe('MapRail', () => {
       deviceTypeFilter: null,
       focusHops: 0,
       selection: null,
+      showToast,
     });
     await act(async () => {
       root.render(
@@ -71,12 +73,13 @@ describe('MapRail', () => {
     useMapStore.setState({ map: null });
   });
 
-  it('apresenta os três presets e as camadas com contagem', async () => {
+  it('apresenta os quatro presets e as camadas com contagem', async () => {
     const { container } = await renderRail();
 
     expect(container.textContent).toContain('Operacional');
     expect(container.textContent).toContain('Topologia');
     expect(container.textContent).toContain('Engenharia');
+    expect(container.textContent).toContain('WeatherMap');
 
     for (const layer of ['Todos', 'Com problema', 'DOWN', 'Alarmes', 'Utilização alta']) {
       expect(container.textContent).toContain(layer);
@@ -162,6 +165,67 @@ describe('MapRail', () => {
     expect(useMapStore.getState().siteFilter).toBeNull();
     expect(useMapStore.getState().deviceTypeFilter).toBeNull();
     expect(useMapStore.getState().focusHops).toBe(0);
+  });
+
+  it('o preset WeatherMap traz a escala sugerida junto com a apresentacao', async () => {
+    const { container } = await renderRail();
+
+    await act(async () => {
+      findButton(container, 'WeatherMap').click();
+    });
+
+    const state = useMapStore.getState();
+    expect(state.visualPreset).toBe('WEATHERMAP');
+    expect(state.map?.settings).toMatchObject({
+      nodeDisplayMode: 'ICON_2D',
+      linkDisplayStyle: 'WEATHERMAP',
+      linkMetricDisplay: 'BOTH',
+      trafficLabelMode: 'CARD',
+      nodeScale: 75,
+      linkScale: 140,
+      labelScale: 85,
+    });
+    expect(updateNetworkMap).toHaveBeenCalledWith(
+      map.id,
+      expect.objectContaining({
+        settings: expect.objectContaining({ linkScale: 140, nodeScale: 75, labelScale: 85 }),
+      }),
+    );
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('escala 75/140/85'));
+  });
+
+  it('nao sobrescreve a escala ajustada a mao ao trocar de preset', async () => {
+    const { container } = await renderRail();
+
+    await act(async () => {
+      useMapStore.getState().setMapScales({ nodeScale: 120, linkScale: 120, labelScale: 120 });
+    });
+    await act(async () => {
+      findButton(container, 'Topologia').click();
+    });
+
+    expect(useMapStore.getState().map?.settings).toMatchObject({
+      nodeScale: 120,
+      linkScale: 120,
+      labelScale: 120,
+      linkDisplayStyle: 'MINIMAL',
+    });
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('escala mantida'));
+  });
+
+  it('mantem Visualizacao & escala visivel e mostra o estado atual', async () => {
+    const { container } = await renderRail();
+
+    const details = container.querySelector<HTMLDetailsElement>('details.map-rail__details');
+    expect(details).not.toBeNull();
+    expect(details!.open).toBe(true);
+    expect(details!.querySelector('.map-rail__details-state')?.textContent).toContain('100/100/100');
+    expect(details!.textContent).toContain('ESCALA');
+    expect(details!.textContent).toContain('Equipamentos');
+    expect(details!.textContent).toContain('Enlaces');
+    expect(details!.textContent).toContain('Labels');
+    expect(details!.textContent).toContain('WeatherMap');
+    expect(details!.textContent).toContain('GEOMETRIA');
   });
 
   it('a legenda usa as pills de estado do design system', async () => {

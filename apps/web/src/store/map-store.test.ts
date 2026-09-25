@@ -7,7 +7,7 @@ import {
   type MapSummary,
   type NetworkMap,
 } from '@gmj/shared';
-import { useMapStore } from './map-store';
+import { inferVisualPreset, presetScalePatch, useMapStore } from './map-store';
 
 describe('local SINGLE_ENDED creation', () => {
   afterEach(() => useMapStore.setState({ map: null }));
@@ -163,6 +163,115 @@ describe('map visual scales', () => {
     expect(useMapStore.getState().map?.settings.nodeScale).toBe(80);
     useMapStore.getState().setMap(second!);
     expect(useMapStore.getState().map?.settings.nodeScale).toBe(130);
+  });
+});
+
+describe('presets visuais: escala preservada e WeatherMap', () => {
+  afterEach(() =>
+    useMapStore.setState({ map: null, visualPreset: 'OPERACIONAL', layerFilter: 'PROBLEM' }),
+  );
+
+  it('aplica a escala sugerida somente quando o operador nao ajustou a escala', () => {
+    const map = cloneDemoMaps()[0]!;
+
+    // Escala intacta (100/100/100 = OPERACIONAL): o preset novo traz a dele.
+    expect(presetScalePatch(map.settings, 'OPERACIONAL', 'WEATHERMAP')).toEqual({
+      nodeScale: 75,
+      linkScale: 140,
+      labelScale: 85,
+    });
+
+    // Escala mexida na mao: trocar de preset nao devolve nada para sobrescrever.
+    const customized = { ...map.settings, nodeScale: 110 };
+    expect(presetScalePatch(customized, 'OPERACIONAL', 'WEATHERMAP')).toEqual({});
+  });
+
+  it('o preset WeatherMap recombina a apresentacao sem tocar no grafo', () => {
+    const map = cloneDemoMaps()[0]!;
+    const linksBefore = map.links.length;
+    const positionsBefore = map.nodes.map((node) => ({ ...node.position }));
+    useMapStore.getState().setMap(map);
+
+    useMapStore.getState().setVisualPreset('WEATHERMAP');
+
+    const state = useMapStore.getState();
+    expect(state.map?.settings).toMatchObject({
+      nodeDisplayMode: 'ICON_2D',
+      linkDisplayStyle: 'WEATHERMAP',
+      linkMetricDisplay: 'BOTH',
+      trafficLabelMode: 'CARD',
+      nodeScale: 75,
+      linkScale: 140,
+      labelScale: 85,
+    });
+    expect(state.preferences).toMatchObject({
+      showTraffic: true,
+      showUtilization: true,
+      showLabels: false,
+      showInterfaces: false,
+    });
+    expect(state.layerFilter).toBe('ALL');
+    expect(state.map?.links).toHaveLength(linksBefore);
+    expect(state.map?.nodes.map((node) => ({ ...node.position }))).toEqual(positionsBefore);
+  });
+
+  it('trocar de preset nao sobrescreve a escala ajustada a mao', () => {
+    const map = cloneDemoMaps()[0]!;
+    useMapStore.getState().setMap(map);
+    useMapStore.getState().setMapScales({ nodeScale: 130, linkScale: 130, labelScale: 130 });
+
+    useMapStore.getState().setVisualPreset('WEATHERMAP');
+
+    expect(useMapStore.getState().map?.settings).toMatchObject({
+      nodeScale: 130,
+      linkScale: 130,
+      labelScale: 130,
+      linkDisplayStyle: 'WEATHERMAP',
+    });
+  });
+
+  it('infere o preset persistido e o reaplica ao abrir outro mapa', () => {
+    const [first, second] = cloneDemoMaps();
+    second!.settings.nodeDisplayMode = 'ICON_2D';
+    second!.settings.linkDisplayStyle = 'WEATHERMAP';
+    second!.settings.linkMetricDisplay = 'BOTH';
+    second!.settings.trafficLabelMode = 'CARD';
+
+    expect(inferVisualPreset(second!.settings)).toBe('WEATHERMAP');
+
+    useMapStore.setState({ map: first!, visualPreset: 'ENGENHARIA', layerFilter: 'ALL' });
+    useMapStore.getState().setMap(second!);
+
+    expect(useMapStore.getState().visualPreset).toBe('WEATHERMAP');
+  });
+
+  it('a rotacao NOC nao perde o preset/escala persistidos do mapa', () => {
+    const [first, second] = cloneDemoMaps();
+    useMapStore.getState().setMap(first!);
+    useMapStore.getState().setVisualPreset('WEATHERMAP');
+    const weatherMap = useMapStore.getState().map!;
+
+    useMapStore.getState().startRotation({
+      mapIds: [first!.id, second!.id],
+      intervalSeconds: 30,
+      hideTopBar: true,
+      hideControls: true,
+      pauseOnInteraction: true,
+    });
+    useMapStore.getState().rotateBy(1);
+    expect(useMapStore.getState().map).toBeNull();
+
+    // O canvas recarrega o mapa do servidor: as configuracoes voltam como estavam.
+    useMapStore.getState().setMap(weatherMap);
+    expect(useMapStore.getState().map?.settings).toMatchObject({
+      linkDisplayStyle: 'WEATHERMAP',
+      nodeScale: 75,
+      linkScale: 140,
+      labelScale: 85,
+    });
+    expect(useMapStore.getState().visualPreset).toBe('WEATHERMAP');
+
+    useMapStore.getState().stopRotation();
   });
 });
 

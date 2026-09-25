@@ -85,6 +85,15 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
   const iconVariant = displayMode === 'ICON_3D' ? '3d' : '2d';
   const showPpp = isPppVisible(mapNode.pppDisplayMode, device.pppSupported, device.pppOnline);
   const typeCode = DEVICE_TYPE_CODES[device.deviceType] ?? device.deviceType.toUpperCase();
+  /**
+   * Contagem de portas: uma vez só, dentro do card.
+   *
+   * Nos modos de ícone (Operacional, Topologia, WeatherMap) o node fica sem
+   * ruído textual; a contagem só aparece em CARD/ENGENHARIA e nunca como selo
+   * solto abaixo do equipamento — as interfaces individuais continuam no
+   * inspetor, quando o equipamento é aberto.
+   */
+  const showPortCount = showInterfaces && displayMode === 'CARD';
   const pppLabelStyle = {
     ...(mapNode.pppColor ? { color: mapNode.pppColor } : {}),
     fontSize: mapNode.pppFontSize,
@@ -126,6 +135,14 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
         <strong>{device.name}</strong>
         <span>{device.ip}</span>
         {displayMode === 'CARD' && <em>{device.site}</em>}
+        {showPortCount && (
+          <em
+            className="device-node__port-count"
+            title={`${device.interfaces.length} portas · interfaces individuais no inspetor`}
+          >
+            {device.interfaces.length} portas
+          </em>
+        )}
       </div>
       {mapNode.locked && <LockKeyhole className="device-node__lock" size={13} />}
       {alarmCount > 0 && (
@@ -136,9 +153,6 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
         >
           ⚠ {alarmCount}
         </span>
-      )}
-      {showInterfaces && (
-        <span className="device-node__ports">{device.interfaces.length} ports</span>
       )}
       {showPpp && (
         <span

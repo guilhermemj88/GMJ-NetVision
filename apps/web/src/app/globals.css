@@ -1864,20 +1864,16 @@ button {
   top: calc(var(--orb-top) + 7px);
   color: #758b96;
 }
-.device-node__ports {
-  position: absolute;
-  z-index: 4;
-  left: 50%;
-  top: calc(var(--orb-top) + var(--orb-size) + 26px);
-  transform: translateX(-50%);
-  padding: 2px 5px;
-  background: #101a21;
-  border: 1px solid #2a3a44;
-  border-radius: 2px;
-  color: #718792;
-  font: 8px var(--font-mono);
+/*
+ * Contagem de portas: uma linha discreta DENTRO do card, nunca um selo solto
+ * abaixo do node (duplicava a informação do card e gerava ruído no canvas).
+ * Nos modos de ícone o node não mostra contagem alguma.
+ */
+.device-node__port-count {
+  color: #4f6874;
+  font: 7px var(--font-mono);
+  letter-spacing: 0.02em;
 }
-.device-node__ports,
 .device-tooltip {
   font-size: calc(1em * var(--node-label-scale, 1) / var(--node-scale, 1));
 }
@@ -2539,10 +2535,32 @@ button {
   font-size: 8px;
 }
 .scale-presets {
-  grid-template-columns: 82px repeat(3, 1fr);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 3px;
   padding-top: 4px;
   border-top: 1px solid #20313a;
+}
+.scale-presets > span {
+  flex: 1 1 100%;
+}
+.scale-presets button {
+  flex: 1 1 auto;
+  min-width: 52px;
+}
+/*
+ * Quatro opções não cabem lado a lado numa rail de 248px: o controle quebra em
+ * duas linhas em vez de espremer os rótulos.
+ */
+.map-rail__preset-control .nv-segmented__options,
+.map-rail__visual .nv-segmented__options {
+  flex-wrap: wrap;
+}
+.map-rail__preset-control .nv-segmented__options button,
+.map-rail__visual .nv-segmented__options button {
+  flex: 1 1 auto;
+  min-width: 84px;
 }
 .scale-presets button,
 .scale-control button {
@@ -10479,13 +10497,22 @@ label > small {
   cursor: not-allowed;
 }
 .map-rail__details {
-  border-bottom: 1px solid var(--line-soft);
+  margin: 0 10px 10px;
+  border: 1px solid #24343d;
+  border-radius: 6px;
+  background: #0c141a;
+}
+.map-rail__details-state {
+  margin-left: auto;
+  color: #54707d;
+  font: 8px var(--font-mono);
+  letter-spacing: 0.04em;
 }
 .map-rail__details > summary {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 11px 13px;
+  padding: 9px 10px;
   color: #6f8b98;
   cursor: pointer;
   font: 700 8px var(--font-mono);
@@ -10502,8 +10529,145 @@ label > small {
 .map-rail__visual {
   display: flex;
   flex-direction: column;
-  gap: 11px;
-  padding: 12px 13px;
+  gap: 12px;
+  padding: 10px;
+}
+/* --- grupos do painel Visualização & escala --- */
+.map-visual__group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid #1a2730;
+}
+.map-visual__group:last-of-type {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+.map-visual__group-title {
+  color: #4e6a77;
+  font: 700 8px var(--font-mono);
+  letter-spacing: 0.16em;
+}
+.map-visual__note {
+  margin: 2px 0 0;
+  padding: 6px 7px;
+  border: 1px solid #4a3c1c;
+  border-radius: 4px;
+  background: rgba(217, 162, 75, 0.08);
+  color: #cdb27f;
+  font-size: 9px;
+  line-height: 1.45;
+}
+.map-visual__note button {
+  display: block;
+  margin-top: 5px;
+  padding: 3px 6px;
+  border: 1px solid #5a4a24;
+  border-radius: 3px;
+  background: rgba(217, 162, 75, 0.12);
+  color: #e6c68a;
+  font: 8px var(--font-mono);
+  cursor: pointer;
+}
+/* --- geometria do enlace (rail) --- */
+.link-geometry {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.link-geometry__title {
+  margin: 0;
+  overflow: hidden;
+  color: #cfe3ec;
+  font: 650 9px var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.link-geometry__meta,
+.link-geometry__hint {
+  margin: 0;
+  color: #5b7684;
+  font-size: 8px;
+  line-height: 1.5;
+}
+.link-geometry--empty p {
+  margin: 0 0 6px;
+  color: #5b7684;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.link-geometry__sides {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+}
+.link-geometry__sides label,
+.link-geometry__curvature {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: #5b7684;
+  font-size: 8px;
+}
+.link-geometry__sides select,
+.link-geometry__curvature input {
+  width: 100%;
+  height: 22px;
+  padding: 0 5px;
+  border: 1px solid #293c46;
+  border-radius: 3px;
+  background: #101a20;
+  color: #a9c2cd;
+  font: 8px var(--font-mono);
+}
+.link-geometry__curvature {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: end;
+}
+.link-geometry__curvature span {
+  grid-column: 1 / -1;
+}
+.link-geometry__curvature button {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid #2c4a55;
+  border-radius: 3px;
+  background: #12222a;
+  color: #9fc4d0;
+  font: 8px var(--font-mono);
+  cursor: pointer;
+}
+.link-geometry__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.link-geometry__actions button,
+.link-geometry--empty button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid #293c46;
+  border-radius: 3px;
+  background: #101a20;
+  color: #8fb0bc;
+  font: 8px var(--font-mono);
+  cursor: pointer;
+}
+.link-geometry__actions button.is-primary {
+  border-color: #39788a;
+  background: #17404c;
+  color: #c2e8f0;
+}
+.link-geometry button:disabled,
+.link-geometry select:disabled,
+.link-geometry input:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 .map-rail__legend {
   display: flex;
