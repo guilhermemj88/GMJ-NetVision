@@ -40,6 +40,14 @@ readonly PRODUCTION_WEB_URL="http://127.0.0.1:${PRODUCTION_WEB_PORT}/"
 readonly API_HEALTH_URL="http://127.0.0.1:${API_PORT}/health"
 # Asset estatico de referencia que prova que `public/` foi copiado de verdade.
 readonly KNOWN_ASSET="physical-panels/huawei/s6730-h48x6c-front.png"
+#
+# `origin` deste repositorio e SSH (git@github.com:...) e a chave de deploy do
+# servidor e protegida por passphrase: um deploy nao interativo nao consegue
+# autenticar. Como o repositorio e publico, o fetch cai para leitura HTTPS
+# anonima quando `origin` falha, escrevendo no MESMO ref de rastreamento
+# (`refs/remotes/origin/<branch>`), portanto o upstream nao muda.
+# Nada de configuracao de remote é alterado, nem na producao nem no preview.
+readonly PREVIEW_FETCH_FALLBACK_URL="${PREVIEW_FETCH_FALLBACK_URL:-https://github.com/guilhermemj88/GMJ-NetVision.git}"
 
 log() {
   printf '\n==> %s\n' "$*"
@@ -241,11 +249,20 @@ fi
 
 # ------------------------------------------------------------ atualizar codigo
 log "Buscando somente a branch $PREVIEW_BRANCH"
-git -C "$PROJECT_DIR" fetch origin "$PREVIEW_BRANCH"
+if git -C "$PROJECT_DIR" fetch origin "$PREVIEW_BRANCH"; then
+  fetch_note="origin (SSH)"
+else
+  warn "fetch de 'origin' falhou (credencial SSH do servidor exige passphrase); usando leitura HTTPS publica read-only"
+  warn "nenhuma configuracao de remote foi alterada; o ref de rastreamento continua sendo origin/$PREVIEW_BRANCH"
+  git -C "$PROJECT_DIR" fetch "$PREVIEW_FETCH_FALLBACK_URL" \
+    "refs/heads/$PREVIEW_BRANCH:refs/remotes/origin/$PREVIEW_BRANCH"
+  fetch_note="HTTPS publico (fallback)"
+fi
 git -C "$PROJECT_DIR" merge --ff-only "origin/$PREVIEW_BRANCH"
 
 log "Commit de preview a ser implantado"
 git -C "$PROJECT_DIR" log -1 --format='%H %s'
+printf 'origem do fetch: %s\n' "$fetch_note"
 
 # ------------------------------------------------------------------ dependencias
 log "Instalando dependências pelo lockfile (npm ci)"
