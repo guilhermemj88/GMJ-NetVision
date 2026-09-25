@@ -1,6 +1,8 @@
 'use client';
 
 import { Button } from '@gmj/ui';
+import { useState } from 'react';
+import { ConfirmDialog } from '@gmj/ui';
 import {
   AlignHorizontalDistributeCenter,
   Cable,
@@ -24,6 +26,9 @@ import {
 import { useMapStore } from '@/store/map-store';
 
 export function EditToolbar() {
+  const [pendingRemoval, setPendingRemoval] = useState<
+    { kind: 'link' | 'node' | 'device'; id: string; label: string } | null
+  >(null);
   const flow = useReactFlow();
   const map = useMapStore((state) => state.map);
   const selection = useMapStore((state) => state.selection);
@@ -67,20 +72,52 @@ export function EditToolbar() {
       ? map.nodes.find((node) => (node.deviceId ?? node.id) === selection.id)
       : undefined;
 
-  const removeSelected = () => {
-    if (selection?.kind === 'link') {
-      removeLink(selection.id);
-      void deleteLink(map.id, selection.id).catch(() => undefined);
+  const requestRemoval = () => {
+    if (!selection) return;
+    if (selection.kind === 'link') {
+      const link = map.links.find((item) => item.id === selection.id);
+      setPendingRemoval({
+        kind: 'link',
+        id: selection.id,
+        label: link?.label?.trim() || 'enlace selecionado',
+      });
+      return;
+    }
+    if (selection.kind === 'node') {
+      const node = map.nodes.find((item) => item.id === selection.id);
+      setPendingRemoval({
+        kind: 'node',
+        id: selection.id,
+        label: node?.label || node?.genericType || 'node conceitual',
+      });
+      return;
+    }
+    if (selection.kind === 'device') {
+      const device = map.devices.find((item) => item.id === selection.id);
+      setPendingRemoval({
+        kind: 'device',
+        id: selection.id,
+        label: device?.name || 'equipamento',
+      });
+    }
+  };
+
+  const confirmRemoval = () => {
+    if (!pendingRemoval) return;
+    if (pendingRemoval.kind === 'link') {
+      removeLink(pendingRemoval.id);
+      void deleteLink(map.id, pendingRemoval.id).catch(() => undefined);
       showToast('Enlace removido');
-    } else if (selection?.kind === 'node') {
-      removeNode(selection.id);
-      void deleteMapNode(map.id, selection.id).catch(() => undefined);
+    } else if (pendingRemoval.kind === 'node') {
+      removeNode(pendingRemoval.id);
+      void deleteMapNode(map.id, pendingRemoval.id).catch(() => undefined);
       showToast('Node removido');
-    } else if (selection?.kind === 'device') {
-      removeDevice(selection.id);
-      void deleteDevice(map.id, selection.id).catch(() => undefined);
+    } else {
+      removeDevice(pendingRemoval.id);
+      void deleteDevice(map.id, pendingRemoval.id).catch(() => undefined);
       showToast('Equipamento removido');
     }
+    setPendingRemoval(null);
   };
 
   const autoLayout = () => {
@@ -104,7 +141,7 @@ export function EditToolbar() {
       <Button compact variant="ghost" onClick={() => setPanel('create-link')}>
         <Cable size={15} /> Criar enlace
       </Button>
-      <Button compact variant="ghost" disabled={!selection} onClick={removeSelected}>
+      <Button compact variant="ghost" disabled={!selection} onClick={requestRemoval}>
         <Trash2 size={15} /> Excluir
       </Button>
       <div className="edit-toolbar__separator" />
@@ -139,6 +176,28 @@ export function EditToolbar() {
       >
         <Save size={15} /> {saveMutation.isPending ? 'Salvando…' : 'Salvar'}
       </Button>
+
+      <ConfirmDialog
+        open={pendingRemoval !== null}
+        title={
+          pendingRemoval?.kind === 'device'
+            ? 'Remover equipamento do mapa?'
+            : pendingRemoval?.kind === 'link'
+              ? 'Excluir enlace?'
+              : 'Remover node conceitual?'
+        }
+        description={
+          pendingRemoval?.kind === 'device'
+            ? 'O equipamento sai deste mapa. Ele continua no inventário global e em outros mapas.'
+            : pendingRemoval?.kind === 'link'
+              ? 'O enlace é removido do mapa. Interfaces e equipamentos não são alterados.'
+              : 'O node conceitual é removido do mapa, junto com os enlaces ligados a ele.'
+        }
+        details={<span>{pendingRemoval?.label}</span>}
+        confirmLabel={pendingRemoval?.kind === 'device' ? 'Remover do mapa' : 'Excluir'}
+        onConfirm={confirmRemoval}
+        onCancel={() => setPendingRemoval(null)}
+      />
     </div>
   );
 }

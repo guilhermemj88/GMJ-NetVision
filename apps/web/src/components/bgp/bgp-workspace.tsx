@@ -20,6 +20,7 @@ import { BgpManageDevices } from './bgp-manage-devices';
 import { BgpPeerDetail } from './bgp-peer-detail';
 import { BgpPeerTable } from './bgp-peer-table';
 import { BgpSummary } from './bgp-summary';
+import { useMapStore } from '@/store/map-store';
 
 function useNow(intervalMs: number): number {
   const [now, setNow] = useState(() => Date.now());
@@ -32,6 +33,8 @@ function useNow(intervalMs: number): number {
 
 export function BgpWorkspace() {
   const queryClient = useQueryClient();
+  const bgpDeviceFilter = useMapStore((state) => state.bgpDeviceFilter);
+  const setBgpDeviceFilter = useMapStore((state) => state.setBgpDeviceFilter);
   const [scope, setScope] = useState<BgpScope>('monitored');
   const [state, setState] = useState<BgpStateFilter>('all');
   const [family, setFamily] = useState<BgpAddressFamilyFilter>('all');
@@ -47,13 +50,14 @@ export function BgpWorkspace() {
   const now = useNow(1_000);
 
   const dashboard = useQuery({
-    queryKey: ['bgp', scope, state, family, deferredSearch],
+    queryKey: ['bgp', scope, state, family, deferredSearch, bgpDeviceFilter],
     queryFn: () =>
       getBgpDashboard({
         scope,
         state,
         family,
         ...(deferredSearch.trim() ? { q: deferredSearch.trim() } : {}),
+        ...(bgpDeviceFilter ? { deviceId: bgpDeviceFilter } : {}),
       }),
     refetchInterval: 60_000,
     refetchIntervalInBackground: true,
@@ -240,6 +244,15 @@ export function BgpWorkspace() {
           {notice}
           <button type="button" onClick={() => setNotice(null)} aria-label="Fechar">
             ×
+          </button>
+        </div>
+      )}
+
+      {bgpDeviceFilter && (
+        <div className="bgp-notice" role="status">
+          Mostrando apenas o equipamento selecionado no inventário.
+          <button type="button" onClick={() => setBgpDeviceFilter(null)}>
+            Limpar filtro
           </button>
         </div>
       )}

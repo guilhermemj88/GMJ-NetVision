@@ -468,10 +468,118 @@ button {
   width: 155px;
 }
 .hosts-table th:nth-child(6) {
-  width: 185px;
+  width: 74px;
 }
 .hosts-table th:nth-child(7) {
-  width: 55px;
+  width: 185px;
+}
+.hosts-table th:nth-child(8) {
+  width: 86px;
+}
+.hosts-table th:nth-child(9) {
+  width: 40px;
+}
+
+/* Filtro de estado do inventário */
+.hosts-status-filter {
+  display: flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: #0c141a;
+}
+.hosts-status-filter button {
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: 500 10px var(--font-mono);
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.hosts-status-filter button:hover {
+  color: var(--text);
+}
+.hosts-status-filter button.is-active {
+  background: #1b3a46;
+  color: #d6f2fb;
+  box-shadow: inset 0 0 0 1px rgba(101, 204, 231, 0.28);
+}
+
+/* Mapas do host: contagem clicável + menu de navegação */
+.hosts-maps-cell {
+  position: relative;
+}
+.hosts-maps-cell > button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 7px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #0d151b;
+  color: #9db1bb;
+  cursor: pointer;
+  font: 600 10px var(--font-mono);
+}
+.hosts-maps-cell > button:hover:not(:disabled) {
+  border-color: #33505d;
+  color: var(--text);
+}
+.hosts-maps-cell > button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.hosts-maps-menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  right: 0;
+  min-width: 190px;
+  padding: 4px;
+  border: 1px solid #2b3d48;
+  border-radius: 5px;
+  background: #101920;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+.hosts-maps-menu button {
+  width: 100%;
+  display: block;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #9db1bb;
+  cursor: pointer;
+  font: 500 10px var(--font-mono);
+  text-align: left;
+}
+.hosts-maps-menu button:hover {
+  background: #17262f;
+  color: var(--text);
+}
+.hosts-cell-muted {
+  color: #4f6672;
+}
+
+/* Frescor honesto: tempo relativo real, com aviso quando o dado envelhece. */
+.freshness {
+  color: #7d919b;
+  font: 500 9px var(--font-mono);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.freshness.is-stale {
+  color: #c79a5c;
+}
+.freshness.is-stale em {
+  font-style: normal;
+  color: #9a7a4c;
+}
+.freshness--unknown {
+  color: #64777f;
 }
 .hosts-table th:last-child {
   width: 30px;
@@ -1268,8 +1376,8 @@ button {
 @media (max-width: 1050px) {
   .hosts-table th:nth-child(3),
   .hosts-table td:nth-child(3),
-  .hosts-table th:nth-child(6),
-  .hosts-table td:nth-child(6) {
+  .hosts-table th:nth-child(7),
+  .hosts-table td:nth-child(7) {
     display: none;
   }
   .host-detail {

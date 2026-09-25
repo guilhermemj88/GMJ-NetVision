@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { resetLinkGeometry, type LinkGeometry } from '@/lib/link-curvature';
 import { Badge, Button } from '@gmj/ui';
+import { ConfirmDialog } from '@gmj/ui';
 import {
   Activity,
   ArrowDownToLine,
@@ -77,6 +78,7 @@ import { AssistedDiscoveryReview } from './assisted-discovery-review';
 import { InterfaceMultiPicker, InterfacePicker } from './interface-picker';
 import { VerifyHostButton } from './verify-host-button';
 import { MplsPanel } from './mpls-panel';
+import { FreshnessTag } from './freshness-tag';
 
 function trafficValidation(metric: DirectionalLinkMetric): string {
   const tx = metric.txBps == null ? 'TX indisponível' : `TX ${formatBitsPerSecond(metric.txBps)}`;
@@ -272,7 +274,7 @@ function DeviceDrawer({
             </div>
             <div className="uptime-row">
               <Clock3 size={14} /> Uptime <strong>{formatDuration(device.uptimeSeconds)}</strong>
-              <span>Atualizado agora</span>
+              <FreshnessTag at={device.updatedAt} label="Inventário" />
             </div>
           </section>
           <section className="drawer-section">
@@ -702,6 +704,7 @@ function LinkDrawer({
   onClose: () => void;
 }) {
   const [editing, setEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [label, setLabel] = useState(link.label);
   const [sourceInterfaceId, setSourceInterfaceId] = useState(link.sourceInterfaceId ?? '');
   const [targetInterfaceId, setTargetInterfaceId] = useState(link.targetInterfaceId ?? '');
@@ -1520,11 +1523,27 @@ function LinkDrawer({
           <Button variant="secondary" onClick={() => setEditing(true)}>
             <Pencil size={15} /> Editar enlace
           </Button>
-          <Button variant="danger" onClick={remove}>
+          <Button variant="danger" onClick={() => setConfirmingDelete(true)}>
             <Trash2 size={15} /> Excluir
           </Button>
         </div>
       )}
+      <ConfirmDialog
+        open={confirmingDelete}
+        title="Excluir enlace?"
+        description="O enlace é removido do mapa. Equipamentos, interfaces e telemetria não são alterados."
+        details={
+          <span>
+            {link.label?.trim() || 'Enlace sem rótulo'} · {formatBitsPerSecond(link.capacityBps)}
+          </span>
+        }
+        confirmLabel="Excluir enlace"
+        onConfirm={() => {
+          setConfirmingDelete(false);
+          remove();
+        }}
+        onCancel={() => setConfirmingDelete(false)}
+      />
     </DrawerShell>
   );
 }

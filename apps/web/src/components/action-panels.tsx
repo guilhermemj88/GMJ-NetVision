@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Badge, Button } from '@gmj/ui';
+import { Badge, Button, ConfirmDialog } from '@gmj/ui';
 import {
   Check,
   ArrowDown,
@@ -1030,6 +1030,7 @@ function MapManagerPanel() {
   const showToast = useMapStore((state) => state.showToast);
   const setPanel = useMapStore((state) => state.setPanel);
   const [selectedId, setSelectedId] = useState(activeMapId ?? maps[0]?.id ?? '');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const selected = maps.find((map) => map.id === selectedId);
   const [name, setName] = useState(selected?.name ?? '');
   const [description, setDescription] = useState(selected?.description ?? '');
@@ -1113,7 +1114,8 @@ function MapManagerPanel() {
   };
 
   const remove = async () => {
-    if (!selected || !window.confirm(`Excluir o mapa “${selected.name}”?`)) return;
+    if (!selected) return;
+    setConfirmingDelete(false);
     try {
       await deleteNetworkMap(selected.id);
       removeMapSummary(selected.id);
@@ -1237,7 +1239,7 @@ function MapManagerPanel() {
               >
                 <Star size={14} /> Tornar padrão
               </Button>
-              <Button compact variant="danger" onClick={() => void remove()}>
+              <Button compact variant="danger" onClick={() => setConfirmingDelete(true)}>
                 <Trash2 size={14} /> Excluir
               </Button>
             </div>
@@ -1257,6 +1259,22 @@ function MapManagerPanel() {
           {creating ? 'Criar mapa' : 'Salvar alterações'}
         </Button>
       </footer>
+      <ConfirmDialog
+        open={confirmingDelete && selected !== undefined}
+        title={`Excluir o mapa "${selected?.name ?? ''}"?`}
+        description="O mapa é removido com seus nodes e enlaces. Equipamentos e interfaces continuam no inventário global."
+        details={
+          selected ? (
+            <span>
+              {selected.nodeCount} node(s) · {selected.linkCount} enlace(s)
+              {selected.isDefault ? ' · é o mapa padrão' : ''}
+            </span>
+          ) : null
+        }
+        confirmLabel="Excluir mapa"
+        onConfirm={() => void remove()}
+        onCancel={() => setConfirmingDelete(false)}
+      />
     </PanelShell>
   );
 }

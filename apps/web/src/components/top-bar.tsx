@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import { useMapStore } from '@/store/map-store';
 import { useAuth } from '@/app/providers';
+import { FreshnessTag } from './freshness-tag';
+import { newestCollectionStamp } from '@/lib/map-freshness';
 import { GlobalInterfaceSearch } from './global-interface-search';
 
 export function TopBar() {
@@ -106,14 +108,21 @@ export function TopBar() {
           <Badge tone="hybrid">{map.mode}</Badge>
         </>
       )}
-      {view === 'MAP' && map && <GlobalInterfaceSearch />}
+      {/* Busca global de interface disponível em TODAS as áreas, não só no Mapa. */}
+      <GlobalInterfaceSearch />
       <div className="topbar__spacer" />
-      <div className="source-status" title="Dados carregados pela API NetVision">
+      <div className="source-status" title="Os dados desta tela vêm da API NetVision">
         <span className="source-status__dot" />
         <span>FONTE</span>
         <strong>API</strong>
       </div>
-      {map && <time title={new Date(map.updatedAt).toLocaleString('pt-BR')}>Atualizado agora</time>}
+      {map ? (
+        <FreshnessTag
+          at={newestCollectionStamp(map.devices)}
+          label="Coleta"
+          unavailable="sem carimbo de coleta"
+        />
+      ) : null}
       {view === 'MAP' && (
         <>
           <Button compact variant="ghost" onClick={() => setPanel('rotation')}>

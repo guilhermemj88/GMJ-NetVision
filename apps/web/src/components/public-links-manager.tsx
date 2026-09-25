@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PublicView, PublicViewType } from '@gmj/shared';
-import { Badge, Button } from '@gmj/ui';
+import { Badge, Button, ConfirmDialog } from '@gmj/ui';
 import { Check, Copy, ExternalLink, Globe, Link2, LoaderCircle, Plus, Trash2 } from 'lucide-react';
 import {
   createPublicView,
@@ -60,6 +60,7 @@ export function PublicLinksPanel() {
   const [mapId, setMapId] = useState('');
   const [playlistId, setPlaylistId] = useState('');
   const [copied, setCopied] = useState<string | null>(null);
+  const [confirmingDelete, setConfirmingDelete] = useState<PublicView | null>(null);
 
   const invalidate = () => void queryClient.invalidateQueries({ queryKey: ['public-views'] });
 
@@ -207,7 +208,7 @@ export function PublicLinksPanel() {
                     <Button
                       compact
                       variant="danger"
-                      onClick={() => deleteMutation.mutate(view.id)}
+                      onClick={() => setConfirmingDelete(view)}
                       title="Excluir"
                     >
                       <Trash2 size={14} />
@@ -231,6 +232,25 @@ export function PublicLinksPanel() {
             Fechar
           </Button>
         </footer>
+        <ConfirmDialog
+          open={confirmingDelete !== null}
+          title={`Excluir o link público "${confirmingDelete?.name ?? ''}"?`}
+          description="A URL deixa de funcionar imediatamente para quem a utiliza. Esta ação não pode ser desfeita."
+          details={
+            confirmingDelete ? (
+              <span>
+                {confirmingDelete.type} ·{' '}
+                {confirmingDelete.enabled ? 'ativo' : 'desativado'} · token {confirmingDelete.token}
+              </span>
+            ) : null
+          }
+          confirmLabel="Excluir link"
+          onConfirm={() => {
+            if (confirmingDelete) deleteMutation.mutate(confirmingDelete.id);
+            setConfirmingDelete(null);
+          }}
+          onCancel={() => setConfirmingDelete(null)}
+        />
       </section>
     </div>
   );

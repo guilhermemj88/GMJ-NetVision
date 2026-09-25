@@ -142,8 +142,13 @@ interface MapState {
   toast: string | null;
   focusRequest: MapFocusRequest | null;
   pendingInterfaceNavigation: { mapId: string; deviceId: string; interfaceId: string } | null;
+  pendingDeviceNavigation: { mapId: string; deviceId: string } | null;
   hostDetailRequest: string | null;
   focusSequence: number;
+  /** Host para o qual a visão BGP deve abrir filtrada. */
+  bgpDeviceFilter: string | null;
+  setBgpDeviceFilter: (deviceId: string | null) => void;
+  openBgpForDevice: (deviceId: string) => void;
   visualPreset: VisualPreset;
   layerFilter: MapLayerFilter;
   siteFilter: string | null;
@@ -169,6 +174,7 @@ interface MapState {
   clearFocusRequest: (requestId: number) => void;
   openHostDetails: (hostId: string) => void;
   clearHostDetailRequest: () => void;
+  openHostOnMap: (deviceId: string, mapId: string) => void;
   setPanel: (panel: OpenPanel) => void;
   setPendingLink: (value: MapState['pendingLink']) => void;
   setPreference: (key: keyof MapPreferences) => void;
@@ -291,8 +297,13 @@ export const useMapStore = create<MapState>((set) => ({
   toast: null,
   focusRequest: null,
   pendingInterfaceNavigation: null,
+  pendingDeviceNavigation: null,
   hostDetailRequest: null,
   focusSequence: 0,
+  bgpDeviceFilter: null,
+  setBgpDeviceFilter: (bgpDeviceFilter) => set({ bgpDeviceFilter }),
+  openBgpForDevice: (deviceId) =>
+    set({ view: 'BGP', bgpDeviceFilter: deviceId, editMode: false, selection: null, panel: null }),
   visualPreset: 'OPERACIONAL',
   layerFilter: 'PROBLEM',
   siteFilter: null,
@@ -362,6 +373,7 @@ export const useMapStore = create<MapState>((set) => ({
       selection: null,
       panel: null,
       pendingInterfaceNavigation: null,
+      pendingDeviceNavigation: null,
       focusRequest: null,
       // Recortes de foco são específicos do mapa aberto.
       layerFilter: VISUAL_PRESETS[state.visualPreset].layer,
@@ -377,6 +389,11 @@ export const useMapStore = create<MapState>((set) => ({
         state.pendingInterfaceNavigation?.mapId === map.id
           ? state.pendingInterfaceNavigation
           : null;
+      const pendingDevice =
+        state.pendingDeviceNavigation?.mapId === map.id ? state.pendingDeviceNavigation : null;
+      const canFocusDevice = Boolean(
+        pendingDevice && map.devices.some((device) => device.id === pendingDevice.deviceId),
+      );
       const canOpen = Boolean(
         pending &&
         map.devices.some(
@@ -387,7 +404,8 @@ export const useMapStore = create<MapState>((set) => ({
             ),
         ),
       );
-      const focusSequence = canOpen ? state.focusSequence + 1 : state.focusSequence;
+      const focusSequence =
+        canOpen || canFocusDevice ? state.focusSequence + 1 : state.focusSequence;
       return {
         map: state.map?.id === map.id ? {
           ...map,
@@ -403,12 +421,17 @@ export const useMapStore = create<MapState>((set) => ({
         selection:
           canOpen && pending
             ? { kind: 'interface' as const, id: pending.interfaceId, deviceId: pending.deviceId }
+            : canFocusDevice && pendingDevice
+              ? { kind: 'device' as const, id: pendingDevice.deviceId }
             : state.selection,
         focusRequest:
           canOpen && pending
             ? { deviceId: pending.deviceId, requestId: focusSequence }
+            : canFocusDevice && pendingDevice
+              ? { deviceId: pendingDevice.deviceId, requestId: focusSequence }
             : state.focusRequest,
         pendingInterfaceNavigation: pending ? null : state.pendingInterfaceNavigation,
+        pendingDeviceNavigation: pendingDevice ? null : state.pendingDeviceNavigation,
         focusSequence,
         dirty: false,
       };
@@ -470,6 +493,31 @@ export const useMapStore = create<MapState>((set) => ({
   openHostDetails: (hostDetailRequest) =>
     set({ view: 'HOSTS', editMode: false, selection: null, panel: null, hostDetailRequest }),
   clearHostDetailRequest: () => set({ hostDetailRequest: null }),
+  openHostOnMap: (deviceId, mapId) =>
+    set((state) => {
+      if (state.map?.id === mapId) {
+        const focusSequence = state.focusSequence + 1;
+        return {
+          view: 'MAP' as const,
+          selection: { kind: 'device' as const, id: deviceId },
+          focusRequest: { deviceId, requestId: focusSequence },
+          focusSequence,
+          panel: null,
+          pendingDeviceNavigation: null,
+        };
+      }
+      return {
+        view: 'MAP' as const,
+        editMode: false,
+        activeMapId: mapId,
+        map: null,
+        selection: null,
+        panel: null,
+        focusRequest: null,
+        pendingDeviceNavigation: { mapId, deviceId },
+        dirty: false,
+      };
+    }),
   setPanel: (panel) => set({ panel }),
   setPendingLink: (pendingLink) => set({ pendingLink }),
   setPreference: (key) =>
