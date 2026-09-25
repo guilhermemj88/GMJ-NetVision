@@ -7829,6 +7829,9 @@ label > small {
 .physical-technical-leds i.led-on { background: #34d399; }
 .physical-technical-leds i.led-warn { background: #fbbf24; }
 .physical-technical-leds i.led-off { background: #1c3450; }
+.physical-technical-leds i.led-act { background: #5aa9ff; }
+.physical-technical-leds i.led-pwr { background: #34d399; }
+.physical-technical-leds i.led-fan { background: #94a3b8; }
 .physical-technical-u {
   margin-left: auto;
   padding: 1px 5px;
@@ -8388,6 +8391,512 @@ label > small {
     transparent 2px 7px
   );
   pointer-events: none;
+}
+/* =====================================================================
+   FACEPLATE FIXO (camada visual por modelo aprovado)
+
+   EquipmentChassis + Port + StatusLeds + FanGlyph em CSS puro: carcaça
+   graphite/navy, bezel fino, orelhas de rack com parafuso, serigrafia,
+   LEDs, divisores sutis das regiões e ventilação localizada.
+
+   O faceplate desenha SÓ o equipamento. As portas continuam sendo
+   desenhadas pelo PhysicalPortShape na mesma escala e coordenadas, e a
+   camada inteira é decorativa (`pointer-events: none`) — clique, seleção
+   e âncora do cabo seguem na porta real.
+   ===================================================================== */
+.physical-faceplate.is-fixed-faceplate {
+  border-color: var(--tech-bezel);
+}
+.physical-faceplate.is-fixed-faceplate .physical-faceplate__panel {
+  background: linear-gradient(180deg, #060f1c, #040a13);
+  box-shadow: inset 0 0 0 1px rgba(34, 58, 88, 0.8);
+}
+.physical-fixed-chassis {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #17293f 0%, #0e1e33 44%, #0a1626 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+/* Orelhas de rack: placas finas nas laterais, cada uma com o seu parafuso. */
+.physical-fixed-chassis__ear {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  background: linear-gradient(180deg, #1b2f4a, #101d2f 55%, #0b1524);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.physical-fixed-chassis__ear.is-left {
+  left: 0;
+  border-radius: 3px 0 0 3px;
+  border-right: 1px solid rgba(4, 11, 21, 0.7);
+}
+.physical-fixed-chassis__ear.is-right {
+  right: 0;
+  border-radius: 0 3px 3px 0;
+  border-left: 1px solid rgba(4, 11, 21, 0.7);
+}
+.physical-faceplate.is-fixed-faceplate .physical-fixed-screw.is-left { left: 2px; }
+.physical-faceplate.is-fixed-faceplate .physical-fixed-screw.is-right { right: 2px; }
+/* Serigrafia: marca + modelo, no canto esquerdo do frontal. */
+.physical-fixed-chassis__brand {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  color: var(--tech-nv-dim);
+  font: 650 6px var(--font-mono);
+  letter-spacing: 0.1em;
+  white-space: nowrap;
+}
+.physical-fixed-chassis__brand .physical-technical-brand {
+  gap: 3px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.physical-fixed-chassis__brand .physical-technical-brand i {
+  width: 5px;
+  height: 5px;
+}
+.physical-fixed-chassis__brand b {
+  color: #cfe0f2;
+  font-size: 5.5px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+/* LEDs do chassi: coluna compacta (PWR/ALM/ACT) ao lado da serigrafia. */
+.physical-fixed-chassis .physical-technical-leds {
+  position: absolute;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+.physical-fixed-chassis .physical-technical-leds span {
+  gap: 3px;
+  font-size: 5.5px;
+  letter-spacing: 0.12em;
+}
+.physical-fixed-chassis .physical-technical-leds i {
+  width: 4px;
+  height: 4px;
+}
+/* Região de portas: o grupo é percebido pelo divisor + tom do papel, não por
+   uma caixa em volta. (Segue com os mesmos `data-bay-*` do desenho antigo.) */
+.physical-faceplate.is-fixed-faceplate .physical-fixed-bay {
+  border: 0;
+  border-left: 1px solid rgba(142, 166, 194, 0.16);
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.physical-faceplate.is-fixed-faceplate .physical-fixed-bay[data-first='true'] {
+  border-left-color: transparent;
+}
+.physical-faceplate.is-fixed-faceplate .physical-fixed-bay.role-service {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--tech-cat-service) 5%, transparent),
+    transparent 70%
+  );
+}
+.physical-faceplate.is-fixed-faceplate .physical-fixed-bay.role-uplink {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--tech-cat-uplink) 8%, transparent),
+    transparent 72%
+  );
+}
+/* Legenda do bloco (`10GE · 0–27`), discreta e centrada sob a região. */
+.physical-faceplate.is-fixed-faceplate .physical-fixed-bay__label {
+  left: 50%;
+  bottom: -11px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--tech-nv-dim);
+  font: 600 6.5px var(--font-mono);
+  letter-spacing: 0.1em;
+  transform: translateX(-50%);
+}
+.physical-faceplate.is-fixed-faceplate .physical-fixed-bay__label b::before {
+  content: '·';
+  margin: 0 3px;
+  opacity: 0.6;
+}
+.physical-faceplate.is-fixed-faceplate .physical-fixed-bay.role-service .physical-fixed-bay__label,
+.physical-faceplate.is-fixed-faceplate .physical-fixed-bay.role-uplink .physical-fixed-bay__label {
+  border: 0;
+}
+.physical-faceplate.is-fixed-faceplate .physical-fixed-bay__interface {
+  left: 50%;
+  bottom: -20px;
+  transform: translateX(-50%);
+  font-size: 6px;
+}
+/* Ventilação localizada: grade de fendas horizontais num bloco pequeno. */
+.physical-fixed-chassis .physical-fixed-vent {
+  border-color: rgba(34, 58, 88, 0.9);
+  border-radius: 2px;
+  background:
+    repeating-linear-gradient(0deg, rgba(142, 166, 194, 0.16) 0 2px, transparent 2px 6px),
+    linear-gradient(180deg, rgba(4, 11, 21, 0.5), rgba(4, 11, 21, 0.25));
+}
+/* Carcaça dos conectores: jaula levemente rebaixada dentro do chassi. */
+.physical-faceplate.is-fixed-faceplate .physical-port {
+  border-color: #3f566b;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.physical-faceplate.is-fixed-faceplate .physical-port span {
+  box-shadow: inset 0 0 2px rgba(0, 0, 0, 0.55);
+}
+/* =====================================================================
+   FACEPLATE FIXO — biblioteca visual (MagicPatterns)
+
+   EquipmentChassis + RackEar + ChassisHeader + StatusLeds + FixedPortPanel
+   portados para a linguagem do NetVision: carcaça navy/graphite, frontal fino
+   em vista ortográfica, orelhas com furos, marca/modelo, LEDs, LCD (CCR),
+   legendas de bloco com linha fina e rodapé de resumo.
+
+   Camada decorativa (`aria-hidden` + `pointer-events: none`): as portas
+   continuam sendo o PhysicalPortShape — desenho = hitbox = PhysicalPort.id =
+   âncora do cabo.
+   ===================================================================== */
+.physical-faceplate.is-fixed-profile .physical-faceplate__panel {
+  background: none;
+  box-shadow: none;
+}
+.fixed-equipment-faceplate {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+.fixed-equipment-faceplate__body {
+  position: absolute;
+  top: 0;
+  border: 1px solid var(--tech-bezel);
+  border-top-color: var(--tech-bezelhi);
+  border-radius: 3px;
+  background: var(--tech-chassis);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    0 10px 28px rgba(0, 0, 0, 0.35);
+}
+/* Painel rebaixado onde vive a gerência, o LCD e as portas. */
+.fixed-equipment-faceplate__panel {
+  position: absolute;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--tech-recess) 60%, transparent);
+}
+/* Orelhas de rack: coluna com dois furos, uma de cada lado do corpo. */
+.fixed-faceplate__ear {
+  position: absolute;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  border: 1px solid var(--tech-bezel);
+  border-radius: 3px;
+  background: var(--tech-ear);
+}
+.fixed-faceplate__ear.is-left { left: 0; }
+.fixed-faceplate__ear.is-right { right: 0; }
+.fixed-faceplate__ear-hole {
+  display: block;
+  width: 11px;
+  height: 11px;
+  border: 1px solid #2d4563;
+  border-radius: 50%;
+  background: var(--tech-recess);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+/* Cabeçalho interno: marca + modelo + LEDs + série/U. */
+.fixed-faceplate__header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.fixed-faceplate__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #ffffff;
+  font: 700 11px var(--font-sans, inherit);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.fixed-faceplate__brand i {
+  display: block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.fixed-faceplate__model {
+  color: var(--tech-nv-text);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.fixed-faceplate__leds span { font-size: 9px; }
+.fixed-faceplate__leds i { width: 7px; height: 7px; }
+.fixed-faceplate__meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  color: var(--tech-nv-muted);
+  font: 9px var(--font-mono);
+  white-space: nowrap;
+}
+.fixed-faceplate__chip {
+  padding: 1px 5px;
+  border: 1px solid var(--tech-nv-line2);
+  border-radius: 3px;
+  color: var(--tech-nv-text);
+}
+/* Bloco de portas: região sem caixa (como no FixedPortPanel). */
+.fixed-faceplate__group {
+  position: absolute;
+}
+.fixed-faceplate__caption {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  padding-top: 3px;
+  border-top: 1px solid var(--tech-nv-line2);
+  color: var(--tech-nv-muted);
+  font: 8px var(--font-mono);
+  text-align: center;
+  white-space: nowrap;
+}
+.fixed-faceplate__caption b {
+  color: var(--tech-nv-dim);
+  font-weight: 500;
+}
+.fixed-faceplate__caption b::before {
+  content: '·';
+  margin: 0 3px;
+  opacity: 0.6;
+}
+/* Bloco de gerência (console/serial): rótulo ACIMA da porta, como no protótipo. */
+.fixed-faceplate__group[data-group-management='true'] .fixed-faceplate__caption {
+  top: auto;
+  bottom: 100%;
+  padding: 0 0 3px;
+  border-top: 0;
+  color: var(--tech-nv-dim);
+  font-size: 7px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+/* Faixa de interfaces CLI do grupo, quando o equipamento já foi sincronizado. */
+.fixed-faceplate__interface {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  padding-top: 13px;
+  color: color-mix(in srgb, var(--tech-nv-text) 72%, transparent);
+  font: 6.5px var(--font-mono);
+  font-style: normal;
+  text-align: center;
+  white-space: nowrap;
+}
+/* LCD decorativo dos CCR (RouterOS + barras de atividade). */
+.fixed-faceplate__lcd {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+.fixed-faceplate__lcd-screen {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  width: 100%;
+  padding: 0 5px;
+  border: 1px solid var(--tech-nv-line2);
+  border-radius: 3px;
+  background: #06101c;
+}
+.fixed-faceplate__lcd-screen b {
+  color: #7dd3fc;
+  font: 7px var(--font-mono);
+  font-weight: 500;
+}
+.fixed-faceplate__lcd-screen i {
+  display: block;
+  height: 2px;
+  width: 75%;
+  border-radius: 1px;
+  background: var(--tech-nv-line2);
+}
+.fixed-faceplate__lcd-screen i + i { width: 50%; }
+.fixed-faceplate__lcd-label {
+  color: var(--tech-nv-muted);
+  font: 7px var(--font-mono);
+}
+/* Ventilação localizada (opcional por perfil). */
+.fixed-faceplate__vent {
+  position: absolute;
+  border: 1px solid rgba(34, 58, 88, 0.9);
+  border-radius: 2px;
+  background:
+    repeating-linear-gradient(0deg, rgba(142, 166, 194, 0.16) 0 2px, transparent 2px 6px),
+    linear-gradient(180deg, rgba(4, 11, 21, 0.5), rgba(4, 11, 21, 0.25));
+}
+/* Rodapé de resumo (direita, discreto). */
+.fixed-faceplate__summary {
+  position: absolute;
+  right: 7px;
+  bottom: 5px;
+  color: var(--tech-nv-dim);
+  font: 8px var(--font-mono);
+  line-height: 12px;
+  white-space: nowrap;
+}
+/* --- Conectores na linguagem da biblioteca visual (jaula + miolo rebaixado)
+   Cores por família: `PORT_COLORS` do protótipo → tokens `--tech-port-*`. --- */
+.physical-port--sfp_plus { --port-family: var(--tech-port-sfp); }
+.physical-port--sfp28 { --port-family: var(--tech-port-sfp28); }
+.physical-port--qsfp_plus,
+.physical-port--qsfp28 { --port-family: var(--tech-port-qsfp); }
+.physical-port--qsfp56,
+.physical-port--qsfp_dd { --port-family: var(--tech-port-qsfpdd); }
+.physical-port--rj45 { --port-family: var(--tech-port-rj45); }
+.physical-port--pon,
+.physical-port--xgspon { --port-family: var(--tech-port-pon); }
+.physical-port--combo { --port-family: var(--tech-port-rj45); }
+.physical-faceplate.is-fixed-profile .physical-port {
+  background: #050c16;
+  border-color: color-mix(in srgb, var(--port-family, #50616a) 45%, #2b3d4d);
+}
+.physical-faceplate.is-fixed-profile .physical-port span {
+  position: absolute;
+  inset: 2px;
+  width: auto;
+  height: auto;
+  border: 1px solid #1f3552;
+  border-radius: 1px;
+  background: none;
+}
+/* SFP/SFP+/SFP28: trilho discreto do conector. */
+.physical-faceplate.is-fixed-profile .physical-port--sfp_plus span::after,
+.physical-faceplate.is-fixed-profile .physical-port--sfp28 span::after,
+.physical-faceplate.is-fixed-profile .physical-port--sfp span::after {
+  content: '';
+  position: absolute;
+  right: 2px;
+  bottom: 1px;
+  left: 2px;
+  height: 1px;
+  background: var(--port-family);
+  opacity: 0.55;
+}
+/* QSFP: divisor central na cor da família (jaula quádrupla). */
+.physical-faceplate.is-fixed-profile .physical-port--qsfp_plus span::after,
+.physical-faceplate.is-fixed-profile .physical-port--qsfp28 span::after,
+.physical-faceplate.is-fixed-profile .physical-port--qsfp56 span::after,
+.physical-faceplate.is-fixed-profile .physical-port--qsfp_dd span::after {
+  content: '';
+  position: absolute;
+  top: 1px;
+  left: 50%;
+  width: 45%;
+  height: 1.5px;
+  transform: translateX(-50%);
+  background: var(--port-family);
+  opacity: 0.7;
+}
+/* RJ45: recorte interno + trava. */
+.physical-faceplate.is-fixed-profile .physical-port--rj45 span {
+  border-color: #3c5270;
+}
+.physical-faceplate.is-fixed-profile .physical-port--rj45 span::before {
+  content: '';
+  position: absolute;
+  inset: 1px 3px 3px;
+  border: 1px solid #3c5270;
+  border-radius: 1px;
+}
+.physical-faceplate.is-fixed-profile .physical-port--rj45 span::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 50%;
+  width: 6px;
+  height: 3px;
+  transform: translateX(-50%);
+  background: #3c5270;
+}
+.physical-faceplate.is-fixed-profile .physical-port--rj45 {
+  background: #0a1422;
+}
+/* PON/XGS-PON: receptáculo óptico (anel + núcleo). */
+.physical-faceplate.is-fixed-profile .physical-port--pon span,
+.physical-faceplate.is-fixed-profile .physical-port--xgspon span {
+  border-color: #2a4560;
+}
+.physical-faceplate.is-fixed-profile .physical-port--pon span::after,
+.physical-faceplate.is-fixed-profile .physical-port--xgspon span::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--port-family);
+}
+/* COMBO: gaveta compartilhada RJ45 + SFP (só uma ativa por vez). */
+.physical-faceplate.is-fixed-profile .physical-port--combo {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--tech-port-rj45) 80%, transparent);
+  background: #07101c;
+}
+.physical-faceplate.is-fixed-profile .physical-port--combo span {
+  inset: 1px;
+  border: 0;
+}
+.physical-faceplate.is-fixed-profile .physical-port--combo span::before {
+  content: '';
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 1px;
+  width: 15px;
+  border: 1px solid #cbd5e1;
+  border-radius: 2px;
+  background: #0a1422;
+}
+.physical-faceplate.is-fixed-profile .physical-port--combo span::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 1px;
+  bottom: 2px;
+  left: 18px;
+  border: 1px solid var(--tech-port-sfp);
+  border-radius: 2px;
+  background: #050c16;
+}
+/* Legenda interna do cage (ordinal) segue discreta como no restante do desenho. */
+.physical-faceplate.is-fixed-profile .physical-port__label {
+  font-size: 6.5px;
+  text-shadow: 0 0 2px rgba(0, 0, 0, 0.9);
 }
 /* Rodapé: marca + modelo + LEDs + resumo dos grupos (usa o espaço livre). */
 .physical-fixed-footer {

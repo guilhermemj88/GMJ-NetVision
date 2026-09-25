@@ -1234,6 +1234,9 @@ templates:
     visual: {row: 3, columns: 4, x: 40, y: 6.4, gapX: 0.9}
     connector: QSFP28
     role: UPLINK
+    # O padrão do rótulo físico começa em 33 (`QSFP28-33`..`QSFP28-36`): o
+    # `panelNumber` do grupo acompanha o número impresso no painel.
+    panelNumberStart: 33
     speeds:
     - 40G
     - 100G

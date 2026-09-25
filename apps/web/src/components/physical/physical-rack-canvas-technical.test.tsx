@@ -1,8 +1,13 @@
+// @vitest-environment jsdom
+
+import { act } from 'react';
+import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type {
   PhysicalAsset,
   PhysicalCatalogPort,
   PhysicalConnectorKind,
+  PhysicalPath,
   PhysicalPort,
   PhysicalPortFunction,
   PhysicalVisualPlacement,
@@ -322,6 +327,35 @@ function x7Rack() {
   return physicalRack({ units: 42, assets: [asset] });
 }
 
+/** S6750-H36C: 32 QSFP28 de serviço + 4 QSFP28 de uplink (rótulo físico 33–36). */
+const H36C: DeviceSpec = {
+  catalogKey: 'huawei-s6750-h36c',
+  model: 'S6750-H36C',
+  assetId: 'asset-face-h36c',
+  startU: 38,
+  panelHeight: 8,
+  groups: [
+    {
+      groupKey: 'qsfp28-service',
+      count: 32,
+      connector: 'QSFP28',
+      type: 'QSFP',
+      portFunction: 'SERVICE',
+      pattern: 'QSFP28-{n}',
+      visual: { row: 1, columns: 16, x: 4, y: 0.6, gapX: 0.8 },
+    },
+    {
+      groupKey: 'qsfp28-uplink',
+      count: 4,
+      connector: 'QSFP28',
+      type: 'QSFP',
+      portFunction: 'UPLINK',
+      pattern: 'QSFP28-{n+32}',
+      visual: { row: 3, columns: 4, x: 58, y: 6.4, gapX: 0.8 },
+    },
+  ],
+};
+
 function renderRack(
   assets: ReturnType<typeof physicalAsset>[],
   options: {
@@ -329,6 +363,7 @@ function renderRack(
     catalog?: ReturnType<typeof catalogEntry>[];
     connections?: ReturnType<typeof physicalConnection>[];
     selection?: PhysicalSelection;
+    path?: PhysicalPath | null;
     showAnchors?: boolean;
     showSlots?: boolean;
     showBbox?: boolean;
@@ -343,7 +378,7 @@ function renderRack(
       connections={options.connections ?? []}
       mode="all"
       selection={options.selection ?? null}
-      path={null}
+      path={options.path ?? null}
       visualMode={options.visualMode ?? 'REAL'}
       catalog={options.catalog ?? []}
       showAnchors={options.showAnchors ?? false}
@@ -373,10 +408,12 @@ describe('visão técnica no rack canvas', () => {
     // sem fotografia: o desenho é o painel geométrico
     expect(technical).not.toContain('ne8000-f1a-8h20q-front.png');
     expect(technical.match(/data-port-id=/g)).toHaveLength(56);
-    expect(technical).toContain('10GE × 28');
-    expect(technical).toContain('25GE × 8');
-    expect(technical).toContain('25GE × 12');
-    expect(technical).toContain('100GE × 8');
+    // faceplate do modelo: legenda discreta por bloco (`10GE · 0–27`), sem chip
+    expect(technical).toContain('10GE<b>0–27</b>');
+    expect(technical).toContain('25GE<b>28–35</b>');
+    expect(technical).toContain('25GE<b>36–47</b>');
+    expect(technical).toContain('100GE<b>48–55</b>');
+    expect(technical).not.toContain('physical-panel-caption');
     // rótulo curto = número físico do painel (0–55, não 1–56)
     expect(technical).toContain('aria-label="Porta 10GE-0 (conector SFP+)"');
     expect(technical).toContain('aria-label="Porta 100GE-55 (conector QSFP28)"');
@@ -390,33 +427,44 @@ describe('visão técnica no rack canvas', () => {
     for (const range of ['0–27', '28–35', '36–47', '48–55']) {
       expect(html, range).toContain(`<b>${range}</b>`);
     }
-    // uma única faixa: os quatro blocos no mesmo tom de topo das baías
+    // uma única faixa: os quatro blocos no mesmo topo (mesma banda do frontal)
     const tops = [...html.matchAll(/class="physical-fixed-bay [^"]*"[^>]*top:(\d+)px/g)].map(
       (match) => Number(match[1]),
     );
     expect(tops).toHaveLength(4);
-    expect(new Set(tops).size).toBe(1);
+    expect(Math.max(...tops) - Math.min(...tops)).toBeLessThanOrEqual(2);
+    // e lado a lado na ordem física do painel (0–27 → 48–55)
+    const lefts = [...html.matchAll(/class="physical-fixed-bay [^"]*"[^>]*left:(\d+)px/g)].map(
+      (match) => Number(match[1]),
+    );
+    expect(lefts).toEqual([...lefts].sort((left, right) => left - right));
     // nenhuma faixa de interface declarada (CLI do F1A vem por discovery)
     expect(html).not.toContain('physical-fixed-bay__interface');
   });
 
-  it('S6730-H48X6C: 48×10GE + 6×QSFP28 no desenho técnico', () => {
+  it('S6730-H48X6C: 48×10GE + 6×QSFP28 no faceplate da biblioteca', () => {
     const { entry, asset } = buildFixedDevice(S6730);
     const technical = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
     expect(technical).toContain('data-visual="TECHNICAL"');
     expect(technical).not.toContain('s6730-h48x6c-front.png');
     expect(technical.match(/data-port-id=/g)).toHaveLength(54);
-    expect(technical).toContain('10GE × 48');
-    expect(technical).toContain('QSFP28 × 6');
+    // chassi da biblioteca visual + legendas de bloco por família/faixa
+    expect(technical).toContain('data-faceplate="huawei-s6730-h48x6c"');
+    expect(technical).toContain('fixed-equipment-faceplate');
+    expect(technical).toContain('10GE<b>1–48</b>');
+    expect(technical).toContain('QSFP28<b>1–6</b>');
+    // chips gigantes do desenho anterior não voltam
+    expect(technical).not.toContain('physical-panel-caption');
   });
 
-  it('S6750-H48X8C: 48×SFP28 + 8×QSFP28 no desenho técnico', () => {
+  it('S6750-H48X8C: 48×SFP28 + 8×QSFP28 no faceplate da biblioteca', () => {
     const { entry, asset } = buildFixedDevice(S6750);
     const technical = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
     expect(technical).toContain('data-visual="TECHNICAL"');
     expect(technical.match(/data-port-id=/g)).toHaveLength(56);
-    expect(technical).toContain('SFP28 × 48');
-    expect(technical).toContain('QSFP28 × 8');
+    expect(technical).toContain('data-faceplate="huawei-s6750-h48x8c"');
+    expect(technical).toContain('SFP28<b>1–48</b>');
+    expect(technical).toContain('QSFP28<b>1–8</b>');
   });
 
   it('MA5800-X7: chassi, slots e placa desenhados sem fotografia', () => {
@@ -446,7 +494,7 @@ describe('visão técnica no rack canvas', () => {
     expect(technical).toContain('>Vazio<');
   });
 
-  it('S6730-H24X6C: 24×10GE + 6×QSFP28 no desenho técnico', () => {
+  it('S6730-H24X6C: 24×10GE + 6×QSFP28 no faceplate da biblioteca', () => {
     const { entry, asset } = buildFixedDevice({
       catalogKey: 'huawei-s6730-h24x6c',
       model: 'S6730-H24X6C',
@@ -477,8 +525,9 @@ describe('visão técnica no rack canvas', () => {
     const technical = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
     expect(technical).toContain('data-visual="TECHNICAL"');
     expect(technical.match(/data-port-id=/g)).toHaveLength(30);
-    expect(technical).toContain('10GE × 24');
-    expect(technical).toContain('QSFP28 × 6');
+    expect(technical).toContain('data-faceplate="huawei-s6730-h24x6c"');
+    expect(technical).toContain('10GE<b>1–24</b>');
+    expect(technical).toContain('QSFP28<b>1–6</b>');
   });
 
   it('S6750-H36C: 32×QSFP28 + 4×QSFP28 com ordinais contínuos (33–36)', () => {
@@ -519,8 +568,11 @@ describe('visão técnica no rack canvas', () => {
     const technical = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
     expect(technical).toContain('data-visual="TECHNICAL"');
     expect(technical.match(/data-port-id=/g)).toHaveLength(36);
-    expect(technical).toContain('QSFP28 × 32');
-    expect(technical).toContain('QSFP28 × 4');
+    // faceplate do modelo: os dois blocos têm a MESMA família (QSFP28), então a
+    // legenda usa o papel declarado no catálogo
+    expect(technical).toContain('SERVICE<b>1–32</b>');
+    expect(technical).toContain('UPLINK<b>33–36</b>');
+    expect(technical).not.toContain('physical-panel-caption');
   });
 
   it('NE8000-M8: slots de linha com acento de papel, caso B e vazios', () => {
@@ -1181,66 +1233,48 @@ describe('chrome técnico do chassi e da placa', () => {
  * técnico. Tudo aparência: portas, conectores, âncoras e contagem intactos.
  */
 describe('faceplate fixo e política de fotografia (modo técnico)', () => {
-  const H36C: DeviceSpec = {
-    catalogKey: 'huawei-s6750-h36c',
-    model: 'S6750-H36C',
-    assetId: 'asset-face-h36c',
-    startU: 38,
-    panelHeight: 8,
-    groups: [
-      {
-        groupKey: 'qsfp28-service',
-        count: 32,
-        connector: 'QSFP28',
-        type: 'QSFP',
-        portFunction: 'SERVICE',
-        pattern: 'QSFP28-{n}',
-        visual: { row: 1, columns: 16, x: 4, y: 0.6, gapX: 0.8 },
-      },
-      {
-        groupKey: 'qsfp28-uplink',
-        count: 4,
-        connector: 'QSFP28',
-        type: 'QSFP',
-        portFunction: 'UPLINK',
-        pattern: 'QSFP28-{n+32}',
-        visual: { row: 3, columns: 4, x: 58, y: 6.4, gapX: 0.8 },
-      },
-    ],
-  };
-
-  it('H36C: baías SERVICE 1–32 / UPLINK 33–36, rodapé e ventilação (36 portas)', () => {
+  it('H36C: faceplate do modelo com blocos SERVICE 1–32 / UPLINK 33–36 (36 portas)', () => {
     const { entry, asset } = buildFixedDevice(H36C);
     const technical = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
 
     // nada de porta mudou
     expect(technical.match(/data-port-id=/g)).toHaveLength(36);
-    expect(technical).toContain('physical-fixed-frame');
-    expect(technical.match(/class="physical-fixed-bay /g)).toHaveLength(2);
-    expect(technical).toContain('data-bay-role="service"');
-    expect(technical).toContain('data-bay-role="uplink"');
-    expect(technical).toContain('data-bay-key="qsfp28-service"');
-    expect(technical).toContain('data-bay-key="qsfp28-uplink"');
+    // chassi da biblioteca visual (sem fotografia, sem imagem raster)
+    expect(technical).toContain('fixed-equipment-faceplate');
+    expect(technical).toContain('data-faceplate="huawei-s6750-h36c"');
+    expect(technical).toContain('fixed-faceplate__ear');
+    expect(technical.match(/class="fixed-faceplate__group /g)).toHaveLength(2);
+    expect(technical).toContain('data-group-role="service"');
+    expect(technical).toContain('data-group-role="uplink"');
+    expect(technical).toContain('data-group-key="qsfp28-service"');
+    expect(technical).toContain('data-group-key="qsfp28-uplink"');
     // rótulo do grupo com a faixa REAL de numeração do catálogo
     expect(technical).toContain('SERVICE<b>1–32</b>');
     expect(technical).toContain('UPLINK<b>33–36</b>');
-    // rodapé com marca/modelo/LEDs/resumo e área de ventilação
-    expect(technical).toContain('physical-fixed-footer');
+    // cabeçalho do chassi com marca/modelo/LEDs e rodapé de resumo
+    expect(technical).toContain('fixed-faceplate__brand');
     expect(technical).toContain('S6750-H36C');
-    expect(technical).toContain('physical-fixed-vent');
+    expect(technical).toContain('fixed-faceplate__summary');
     expect(technical).toContain('physical-technical-leds');
     expect(technical).not.toContain('physical-image-panel__image');
   });
 
-  it('H36C: a baía de uplink fica depois da baía de serviço (sem sobreposição)', () => {
+  it('H36C: os 4 uplinks ficam na MESMA faixa, à direita dos 32 de serviço', () => {
     const { entry, asset } = buildFixedDevice(H36C);
     const html = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
-    const bayTop = (key: string) => {
-      const match = new RegExp(`data-bay-key="${key}"[^>]*style="([^"]*)"`).exec(html);
-      const top = /top:\s*(-?\d+)px/.exec(match?.[1] ?? '');
-      return Number(top?.[1] ?? Number.NaN);
+    const groupBox = (key: string) => {
+      const style =
+        new RegExp(`data-group-key="${key}"[^>]*style="([^"]*)"`).exec(html)?.[1] ?? '';
+      return {
+        left: Number(/left:\s*(-?\d+)px/.exec(style)?.[1] ?? Number.NaN),
+        top: Number(/top:\s*(-?\d+)px/.exec(style)?.[1] ?? Number.NaN),
+      };
     };
-    expect(bayTop('qsfp28-uplink')).toBeGreaterThan(bayTop('qsfp28-service'));
+    const service = groupBox('qsfp28-service');
+    const uplink = groupBox('qsfp28-uplink');
+    // mesmo frontal: mesma fileira, bloco de uplink à direita (nunca isolado abaixo)
+    expect(Math.abs(uplink.top - service.top)).toBeLessThanOrEqual(3);
+    expect(uplink.left).toBeGreaterThan(service.left);
   });
 
   it('F1A: quatro baías na ordem física do catálogo, sem mexer nas 56 portas', () => {
@@ -1258,26 +1292,28 @@ describe('faceplate fixo e política de fotografia (modo técnico)', () => {
     for (let index = 1; index < order.length; index += 1) {
       expect(html.indexOf(order[index - 1]!)).toBeLessThan(html.indexOf(order[index]!));
     }
-    expect(html).toContain('SERVICE<b>0–27</b>');
-    expect(html).toContain('SERVICE<b>28–35</b>');
-    expect(html).toContain('SERVICE<b>36–47</b>');
-    expect(html).toContain('UPLINK<b>48–55</b>');
+    // legenda = família do bloco + faixa física (0–27, 28–35, 36–47, 48–55)
+    expect(html).toContain('10GE<b>0–27</b>');
+    expect(html).toContain('25GE<b>28–35</b>');
+    expect(html).toContain('25GE<b>36–47</b>');
+    expect(html).toContain('100GE<b>48–55</b>');
   });
 
-  it('S6730-H48X6C: baía de serviço (1–48) e de uplink (1–6)', () => {
+  it('S6730-H48X6C: bloco de serviço (1–48) e de uplink (1–6)', () => {
     const { entry, asset } = buildFixedDevice(S6730);
     const html = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
 
     expect(html.match(/data-port-id=/g)).toHaveLength(54);
-    expect(html).toContain('SERVICE<b>1–48</b>');
-    expect(html).toContain('UPLINK<b>1–6</b>');
+    expect(html).toContain('10GE<b>1–48</b>');
+    expect(html).toContain('QSFP28<b>1–6</b>');
   });
 
-  it('o modo real do equipamento fixo fica sem baías, rodapé e ventilação', () => {
+  it('o modo real do equipamento fixo fica sem faceplate desenhado', () => {
     const { entry, asset } = buildFixedDevice(H36C);
     const real = renderRack([asset], { catalog: [entry], visualMode: 'REAL' });
 
     expect(real).toContain('data-visual="REAL"');
+    expect(real).not.toContain('fixed-equipment-faceplate');
     expect(real).not.toContain('physical-fixed-bay');
     expect(real).not.toContain('physical-fixed-footer');
     expect(real).not.toContain('physical-fixed-vent');
@@ -1389,6 +1425,173 @@ describe('faceplate fixo e política de fotografia (modo técnico)', () => {
 });
 
 /**
+ * Faceplate fixo do **F1A-8H20Q**: a passada visual (chassi, serigrafia, LEDs,
+ * ventilação, legendas) não muda o que importa — mesmas 56 portas, mesma
+ * numeração 0–55, âncora no conector desenhado, clique por `PhysicalPort.id`,
+ * identidade do sync preservada e ocupação de 1U no rack.
+ */
+describe('faceplate fixo do F1A-8H20Q (visão técnica)', () => {
+  it('desenha o chassi vetorial com as 56 portas e sem os chips antigos', () => {
+    const { entry, asset } = buildFixedDevice(F1A);
+    const html = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+
+    expect(html).toContain('data-faceplate="huawei-ne8000-f1a-8h20q"');
+    expect(html).toContain('physical-fixed-chassis');
+    expect(html).toContain('physical-fixed-chassis__ear is-left');
+    expect(html).toContain('physical-fixed-chassis__ear is-right');
+    expect(html).toContain('physical-fixed-screw is-left');
+    expect(html).toContain('physical-fixed-chassis__brand');
+    expect(html).toContain('F1A-8H20Q');
+    expect(html).toContain('physical-technical-leds');
+    expect(html).toContain('physical-fixed-vent');
+    // mesma contagem de portas do catálogo (nada criado, nada escondido)
+    expect(html.match(/data-port-id=/g)).toHaveLength(56);
+    // legenda de região substitui o chip `10GE × 28` do desenho anterior
+    expect(html).not.toContain('physical-panel-caption');
+    expect(html).toContain('10GE<b>0–27</b>');
+    // nada de fotografia nem de imagem raster no modo técnico
+    expect(html).not.toContain('-front.png');
+    expect(html).not.toContain('physical-image-panel');
+  });
+
+  it('o clique continua selecionando o PhysicalPort.id', () => {
+    const { entry, asset } = buildFixedDevice(F1A);
+    const last = asset.ports.find((port) => port.name === '100GE-55')!;
+    const selected = renderRack([asset], {
+      catalog: [entry],
+      visualMode: 'TECHNICAL',
+      selection: { kind: 'port', id: last.id },
+    });
+    const button =
+      new RegExp(`<button[^>]*data-port-id="${last.id}"[^>]*class="([^"]+)"`).exec(selected)?.[1] ?? '';
+    expect(button).toContain('is-selected');
+    // rótulo curto dentro da porta e nome completo na aria/tooltip
+    expect(selected).toContain('aria-label="Porta 100GE-55 (conector QSFP28)"');
+    expect(selected).toContain(`data-port-id="${last.id}"`);
+  });
+
+  it('a interface do sync continua sendo a identidade apresentada', () => {
+    const { entry, asset } = buildFixedDevice(F1A);
+    const withInterface = (port: (typeof asset.ports)[number], ordinal: number) => ({
+      ...port,
+      mappedInterfaceId: `if-${ordinal}`,
+      mappedInterface: {
+        id: `if-${ordinal}`,
+        deviceId: 'device-1',
+        name: `100GE1/0/${ordinal}`,
+        ifIndex: ordinal,
+        alias: null,
+        operStatus: 'UP' as const,
+      },
+    });
+    const synced = {
+      ...asset,
+      ports: asset.ports.map((port) =>
+        port.name.startsWith('100GE-')
+          ? withInterface(port, Number(port.name.split('-')[1]))
+          : port,
+      ),
+    };
+    const html = renderRack([synced], { catalog: [entry], visualMode: 'TECHNICAL' });
+
+    expect(html).toContain('data-port-display-name="100GE1/0/48"');
+    // o cage continua rastreável (nunca é renomeado pelo desenho)
+    expect(html).toContain('data-port-name="100GE-48"');
+    expect(html).toContain('100GE1/0/48 · Conector QSFP28 · Painel físico 100GE-48');
+    // bloco completo sincronizado: a faixa da região anuncia a interface
+    expect(html).toContain('physical-fixed-bay__interface');
+    expect(html).toContain('100GE1/0/48–55');
+    expect(html.match(/data-port-id=/g)).toHaveLength(56);
+  });
+
+  it('mantém 1U no rack com desenho compacto (teto do faceplate fixo)', () => {
+    const { entry, asset } = buildFixedDevice(F1A);
+    const html = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+    const articleStyle =
+      /<article[^>]*data-asset-id="asset-f1a"[^>]*style="([^"]+)"/.exec(html)?.[1] ?? '';
+    const height = Number(/height:\s*(\d+)px/.exec(articleStyle)?.[1] ?? Number.NaN);
+    expect(height).toBeLessThanOrEqual(140);
+    // a U do rack continua a mesma do inventário
+    expect(html).toContain('U40');
+  });
+
+  it('a âncora do cabo sai do centro da porta desenhada no faceplate', () => {
+    const { entry, asset } = buildFixedDevice(F1A);
+    const last = asset.ports.find((port) => port.name === '100GE-55')!;
+    const other = physicalAsset({
+      id: 'asset-f1a-other',
+      name: 'SW-02',
+      startU: 30,
+      heightU: 1,
+      ports: [
+        physicalPort({
+          id: 'asset-f1a-other-port',
+          assetId: 'asset-f1a-other',
+          name: 'GE1',
+          connectionId: 'conn-f1a',
+          state: 'CONNECTED',
+        }),
+      ],
+    });
+    const html = renderRack([asset, other], {
+      catalog: [entry],
+      visualMode: 'TECHNICAL',
+      connections: [
+        physicalConnection({
+          id: 'conn-f1a',
+          portAId: last.id,
+          portBId: 'asset-f1a-other-port',
+          a: {
+            portId: last.id,
+            portName: '100GE-55',
+            side: 'DEVICE',
+            assetId: 'asset-f1a',
+            assetName: 'F1A-8H20Q',
+            rackId: 'rack-1',
+            rackName: 'Rack 01',
+            siteId: 'site-1',
+            siteName: 'POP Centro',
+          },
+          b: {
+            portId: 'asset-f1a-other-port',
+            portName: 'GE1',
+            side: 'DEVICE',
+            assetId: 'asset-f1a-other',
+            assetName: 'SW-02',
+            rackId: 'rack-1',
+            rackName: 'Rack 01',
+            siteId: 'site-1',
+            siteName: 'POP Centro',
+          },
+        }),
+      ],
+    });
+
+    const value = (source: string, name: string) =>
+      Number(new RegExp(`${name}:\\s*(-?[\\d.]+)(?:px)?`).exec(source)?.[1] ?? Number.NaN);
+    const portButton =
+      new RegExp(`<button[^>]*data-port-id="${last.id}"[^>]*style="([^"]+)"`).exec(html)?.[1] ?? '';
+    expect(portButton).not.toBe('');
+    const articleStyle =
+      /<article[^>]*data-asset-id="asset-f1a"[^>]*style="([^"]+)"/.exec(html)?.[1] ?? '';
+    const panelStyle =
+      /<div class="physical-faceplate__panel"[^>]*style="([^"]+)"/.exec(html)?.[1] ?? '';
+    const cable = /<path[^>]*d="M ([\d.]+) ([\d.]+)[^>]*class="physical-cable /.exec(html);
+    expect(cable).not.toBeNull();
+
+    const expectedX =
+      value(articleStyle, 'left') + value(panelStyle, 'left') + value(portButton, 'left') +
+      value(portButton, 'width') / 2;
+    const expectedY =
+      value(articleStyle, 'top') + value(panelStyle, 'top') + value(portButton, 'top') +
+      value(portButton, 'height') / 2;
+    // a porta foi reposicionada pelo faceplate: a âncora acompanha o desenho
+    expect(Math.abs(Number(cable![1]) - expectedX)).toBeLessThanOrEqual(1);
+    expect(Math.abs(Number(cable![2]) - expectedY)).toBeLessThanOrEqual(1);
+  });
+});
+
+/**
  * Identidade apresentada da porta: **interface CLI** quando o catálogo declara
  * `interfaceNamePattern` (ou quando existe `mappedInterface`), com o conector e
  * o rótulo físico preservados como detalhe. Nada aqui altera `PhysicalPort.id`,
@@ -1444,19 +1647,19 @@ describe('nome de interface CLI no painel (catálogo → renderer)', () => {
     expect(html).not.toContain('data-port-display-name="10GE-1"');
   });
 
-  it('a baía anuncia a faixa de interfaces do grupo', () => {
+  it('o bloco anuncia a faixa de interfaces do grupo', () => {
     const { entry, asset } = buildFixedDevice(CLI_DEVICE);
     const html = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
 
-    expect(html).toContain('physical-fixed-bay__interface');
+    expect(html).toContain('fixed-faceplate__interface');
     expect(html).toContain('XGigabitEthernet0/0/1–4');
     expect(html).toContain('100GE0/0/1–2');
-    // o rótulo de papel + faixa do painel continua
-    expect(html).toContain('SERVICE<b>1–4</b>');
-    expect(html).toContain('UPLINK<b>1–2</b>');
+    // o rótulo do bloco + faixa do painel continua
+    expect(html).toContain('10GE<b>1–4</b>');
+    expect(html).toContain('QSFP28<b>1–2</b>');
   });
 
-  it('a faixa da baía usa o nome real da interface quando a porta está sincronizada', () => {
+  it('a faixa do bloco usa o nome real da interface quando a porta está sincronizada', () => {
     const { entry, asset } = buildFixedDevice({
       ...CLI_DEVICE,
       // catálogo sem nome declarado: só o sync traz o nome real
@@ -1479,9 +1682,9 @@ describe('nome de interface CLI no painel (catálogo → renderer)', () => {
       [{ ...asset, ports: asset.ports.map((port, index) => (index < 4 ? withInterface(port, index + 1) : port)) }],
       { catalog: [entry], visualMode: 'TECHNICAL' },
     );
-    expect(syncAll).toContain('physical-fixed-bay__interface');
+    expect(syncAll).toContain('fixed-faceplate__interface');
     expect(syncAll).toContain('10GE1/0/5–8');
-    expect(syncAll.match(/physical-fixed-bay__interface/g)).toHaveLength(1);
+    expect(syncAll.match(/fixed-faceplate__interface/g)).toHaveLength(1);
 
     // grupo incompleto (2 de 4) não anuncia faixa: dado parcial não vira rótulo
     const partial = renderRack(
@@ -1489,7 +1692,7 @@ describe('nome de interface CLI no painel (catálogo → renderer)', () => {
       { catalog: [entry], visualMode: 'TECHNICAL' },
     );
     expect(partial).not.toContain('10GE1/0/5–6');
-    expect(partial.match(/physical-fixed-bay__interface/g)).toBeNull();
+    expect(partial.match(/fixed-faceplate__interface/g)).toBeNull();
   });
 
   it('renomear a apresentação não muda id, âncora nem seleção', () => {
@@ -1528,8 +1731,424 @@ describe('nome de interface CLI no painel (catálogo → renderer)', () => {
     // o painel por imagem continua sendo o desenho do modo real
     expect(real).toContain('physical-image-panel__hitbox');
     expect(real).toContain('data-port-name="10GE-1"');
-    // a camada de baías/faixas de interface é exclusiva da visão técnica
-    expect(real).not.toContain('physical-fixed-bay__interface');
+    // a camada de faceplate/faixas de interface é exclusiva da visão técnica
+    expect(real).not.toContain('fixed-faceplate__interface');
+    expect(real).not.toContain('fixed-faceplate__group');
     expect(real).not.toContain('physical-fixed-bay');
+  });
+});
+
+/**
+ * Biblioteca visual (MagicPatterns) ligada no rack REAL: a camada é **só
+ * desenho**. A verdade técnica continua intocada — quantidade de portas, ids
+ * persistidos, conector, `groupKey`, `panelNumber`, interface mapeada, LLDP,
+ * seleção, destaque de par, rota, âncora de cabo e o fallback dos SKUs que
+ * ainda não têm perfil.
+ */
+describe('biblioteca visual: verdade técnica preservada no rack', () => {
+  /** `data-*` de uma porta pelo nome persistido (nunca pelo desenho). */
+  function portTag(html: string, portName: string): string {
+    return (
+      new RegExp(`<button[^>]*data-port-name="${portName}"[^>]*>`).exec(html)?.[0] ?? ''
+    );
+  }
+  function idsOf(html: string): string[] {
+    return [...html.matchAll(/data-port-id="([^"]+)"/g)].map((match) => match[1]!).sort();
+  }
+  function connectorsOf(html: string): string[] {
+    // a ORDEM de desenho muda (gerência primeiro, como na biblioteca): o que
+    // não pode mudar é o conector de cada porta
+    return [...html.matchAll(/data-connector="([^"]+)"/g)].map((match) => match[1]!).sort();
+  }
+  function widthOf(tag: string): number {
+    return Number(/width:\s*(\d+)px/.exec(tag)?.[1] ?? Number.NaN);
+  }
+
+  /** CCR2116-12G-4S+: GE 1–12, MGMT ether13, SFP+ 1–4 e console (LCD no frontal). */
+  const CCR2116: DeviceSpec = {
+    catalogKey: 'mikrotik-ccr2116-12g-4splus',
+    model: 'CCR2116-12G-4S+',
+    assetId: 'asset-lib-ccr2116',
+    startU: 40,
+    panelHeight: 8,
+    groups: [
+      {
+        groupKey: 'ether-service',
+        count: 12,
+        connector: 'RJ45',
+        type: 'RJ45',
+        portFunction: 'SERVICE',
+        pattern: 'ether{n}',
+        visual: { row: 1, columns: 6, x: 20, y: 0.6, gapX: 0.8 },
+      },
+      {
+        groupKey: 'ether-management',
+        count: 1,
+        connector: 'RJ45',
+        type: 'RJ45',
+        portFunction: 'MGMT',
+        pattern: 'ether13',
+        visual: { row: 1, columns: 1, x: 46, y: 0.6, gapX: 0.8 },
+      },
+      {
+        groupKey: 'sfpplus',
+        count: 4,
+        connector: 'SFP_PLUS',
+        type: 'SFP_PLUS',
+        portFunction: 'UPLINK',
+        pattern: 'sfp-sfpplus{n}',
+        visual: { row: 1, columns: 4, x: 56, y: 0.6, gapX: 0.8 },
+      },
+      {
+        groupKey: 'console',
+        count: 1,
+        connector: 'OTHER',
+        type: 'RJ45',
+        portFunction: 'CONSOLE',
+        pattern: 'serial',
+        visual: { row: 1, columns: 1, x: 2, y: 0.6, gapX: 0.8 },
+      },
+    ],
+  };
+
+  /** CCR1009-7G-1C-1S+: 7×GE, COMBO (RJ45/SFP), SFP+ e serial. */
+  const CCR1009: DeviceSpec = {
+    catalogKey: 'mikrotik-ccr1009-7g-1c-1splus',
+    model: 'CCR1009-7G-1C-1S+',
+    assetId: 'asset-lib-ccr1009',
+    startU: 41,
+    panelHeight: 6,
+    groups: [
+      {
+        groupKey: 'ether',
+        count: 7,
+        connector: 'RJ45',
+        type: 'RJ45',
+        portFunction: 'SERVICE',
+        pattern: 'ether{n}',
+        visual: { row: 1, columns: 7, x: 20, y: 0.6, gapX: 0.8 },
+      },
+      {
+        groupKey: 'combo',
+        count: 1,
+        connector: 'COMBO',
+        type: 'RJ45',
+        portFunction: 'SERVICE',
+        pattern: 'combo1',
+        visual: { row: 1, columns: 1, x: 50, y: 0.6, gapX: 0.8 },
+      },
+      {
+        groupKey: 'sfpplus',
+        count: 1,
+        connector: 'SFP_PLUS',
+        type: 'SFP_PLUS',
+        portFunction: 'UPLINK',
+        pattern: 'sfp-sfpplus1',
+        visual: { row: 1, columns: 1, x: 60, y: 0.6, gapX: 0.8 },
+      },
+      {
+        groupKey: 'console',
+        count: 1,
+        connector: 'OTHER',
+        type: 'RJ45',
+        portFunction: 'CONSOLE',
+        pattern: 'serial',
+        visual: { row: 1, columns: 1, x: 2, y: 0.6, gapX: 0.8 },
+      },
+    ],
+  };
+
+  it('CCR2116: contagem, ids, conectores e grupos intactos (com MGMT ether13 e LCD)', () => {
+    const { entry, asset } = buildFixedDevice(CCR2116);
+    const technical = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+    const real = renderRack([asset], { catalog: [entry], visualMode: 'REAL' });
+
+    // quantidade e ids persistidos não mudam por causa do desenho
+    expect(idsOf(technical)).toHaveLength(18);
+    expect(idsOf(technical)).toEqual(idsOf(real));
+    // conector continua sendo o declarado no catálogo
+    expect(connectorsOf(technical)).toEqual(connectorsOf(real));
+
+    // chassi da biblioteca visual, MikroTik, com LCD e sem fotografia
+    expect(technical).toContain('fixed-equipment-faceplate');
+    expect(technical).toContain('data-faceplate="mikrotik-ccr2116-12g-4splus"');
+    expect(technical).toContain('data-vendor="MIKROTIK"');
+    expect(technical).toContain('fixed-faceplate__lcd');
+    expect(technical).not.toContain('physical-image-panel__image');
+
+    // grupos por `groupKey` do catálogo, com a faixa real de numeração
+    for (const key of ['ether-service', 'ether-management', 'sfpplus', 'console']) {
+      expect(technical).toContain(`data-group-key="${key}"`);
+    }
+    expect(technical).toContain('GE<b>1–12</b>');
+    expect(technical).toContain('SFP+<b>1–4</b>');
+    expect(technical).toContain('SERIAL');
+    // `ether13` também é o número físico do grupo MGMT (não inventa 1–1)
+    expect(technical).toContain('MGMT<b>13</b>');
+    // console desenhado na área de gerência, como no `FixedPortPanel`
+    expect(technical).toContain('data-group-management="true"');
+
+    // a porta de gerência continua sendo o RJ45 `ether13` do catálogo
+    expect(portTag(technical, 'ether13')).toContain('data-connector="RJ45"');
+    expect(technical).toContain('data-port-name="ether13"');
+  });
+
+  it('H36C: 32 SERVICE + 4 UPLINK com número de painel contínuo (33–36)', () => {
+    const { entry, asset } = buildFixedDevice(H36C);
+    const technical = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+    const real = renderRack([asset], { catalog: [entry], visualMode: 'REAL' });
+
+    expect(idsOf(technical)).toHaveLength(36);
+    expect(idsOf(technical)).toEqual(idsOf(real));
+    expect(technical).toContain('SERVICE<b>1–32</b>');
+    expect(technical).toContain('UPLINK<b>33–36</b>');
+    // os 4 uplinks continuam sendo QSFP28 (nunca outro conector por causa da cor)
+    expect(portTag(technical, 'QSFP28-36')).toContain('data-connector="QSFP28"');
+    expect(portTag(technical, 'QSFP28-1')).toContain('data-connector="QSFP28"');
+  });
+
+  it('CCR1009: a gaveta COMBO continua COMBO, com a jaula larga da biblioteca', () => {
+    const { entry, asset } = buildFixedDevice(CCR1009);
+    const technical = renderRack([asset], { catalog: [entry], visualMode: 'TECHNICAL' });
+    const real = renderRack([asset], { catalog: [entry], visualMode: 'REAL' });
+
+    expect(idsOf(technical)).toHaveLength(10);
+    expect(idsOf(technical)).toEqual(idsOf(real));
+    expect(connectorsOf(technical)).toEqual(connectorsOf(real));
+    expect(portTag(technical, 'combo1')).toContain('data-connector="COMBO"');
+    // jaula COMBO (RJ45 + SFP) é visivelmente mais larga que um RJ45 simples
+    expect(widthOf(portTag(technical, 'combo1'))).toBeGreaterThanOrEqual(
+      widthOf(portTag(technical, 'ether1')) + 12,
+    );
+    expect(technical).toContain('GE<b>1–7</b>');
+  });
+
+  it('interface mapeada e LLDP continuam na porta desenhada pelo faceplate', () => {
+    const { entry, asset } = buildFixedDevice(CCR2116);
+    const synced = {
+      ...asset,
+      ports: asset.ports.map((port) =>
+        port.name === 'ether13'
+          ? {
+              ...port,
+              mappedInterfaceId: 'if-13',
+              mappedInterface: {
+                id: 'if-13',
+                deviceId: 'device-1',
+                name: 'ether13',
+                ifIndex: 13,
+                alias: null,
+                operStatus: 'UP' as const,
+              },
+              lldp: {
+                adjacencyId: 'adj-1',
+                remoteHostname: 'SW-CORE',
+                remotePortName: 'GE1/0/1',
+                confidence: 'CONFIRMED',
+                resolved: true,
+                ambiguous: false,
+                source: 'SNMP',
+                observedAt: '2026-09-25T10:00:00.000Z',
+              },
+            }
+          : port,
+      ),
+    };
+    const html = renderRack([synced], { catalog: [entry], visualMode: 'TECHNICAL' });
+
+    // identidade apresentada = interface do sync
+    expect(html).toContain('data-port-display-name="ether13"');
+    expect(html).toContain('Interface ether13');
+    // LLDP continua visível (marcador + detalhe no tooltip)
+    expect(html).toContain('LLDP SW-CORE/GE1/0/1');
+    expect(html).toContain('physical-port__lldp');
+    // o rótulo físico do cage nunca é renomeado pelo desenho
+    expect(html).toContain('data-port-name="ether13"');
+  });
+
+  it('seleção, destaque de par e rota continuam funcionando no desenho novo', () => {
+    const { entry, asset } = buildFixedDevice(CCR2116);
+    const target = asset.ports.find((port) => port.name === 'ether13')!;
+    // a porta já tem cabo persistido: o destaque de par sai do `connectionId`
+    const withCable = {
+      ...asset,
+      ports: asset.ports.map((port) =>
+        port.id === target.id ? { ...port, connectionId: 'conn-lib', state: 'CONNECTED' as const } : port,
+      ),
+    };
+    const other = physicalAsset({
+      id: 'asset-lib-peer',
+      name: 'SW-02',
+      startU: 30,
+      heightU: 1,
+      ports: [
+        physicalPort({
+          id: 'asset-lib-peer-port',
+          assetId: 'asset-lib-peer',
+          name: 'GE1',
+          connectionId: 'conn-lib',
+          state: 'CONNECTED',
+        }),
+      ],
+    });
+    const connection = physicalConnection({
+      id: 'conn-lib',
+      portAId: target.id,
+      portBId: 'asset-lib-peer-port',
+      a: {
+        portId: target.id,
+        portName: 'ether13',
+        side: 'DEVICE',
+        assetId: 'asset-lib-ccr2116',
+        assetName: 'CCR2116-12G-4S+',
+        rackId: 'rack-1',
+        rackName: 'Rack 01',
+        siteId: 'site-1',
+        siteName: 'POP Centro',
+      },
+      b: {
+        portId: 'asset-lib-peer-port',
+        portName: 'GE1',
+        side: 'DEVICE',
+        assetId: 'asset-lib-peer',
+        assetName: 'SW-02',
+        rackId: 'rack-1',
+        rackName: 'Rack 01',
+        siteId: 'site-1',
+        siteName: 'POP Centro',
+      },
+    });
+
+    // seleção por `PhysicalPort.id`
+    const selected = renderRack([withCable, other], {
+      catalog: [entry],
+      visualMode: 'TECHNICAL',
+      connections: [connection],
+      selection: { kind: 'port', id: target.id },
+    });
+    expect(
+      new RegExp(`<button[^>]*data-port-id="${target.id}"[^>]*class="([^"]+)"`).exec(selected)?.[1],
+    ).toContain('is-selected');
+    // a outra ponta do cabo continua marcada como par (`is-related`)
+    expect(
+      /<button[^>]*data-port-id="asset-lib-peer-port"[^>]*class="([^"]+)"/.exec(selected)?.[1],
+    ).toContain('is-related');
+
+    // rota: as portas do caminho continuam destacadas
+    const path: PhysicalPath = {
+      originPortId: target.id,
+      endpointPortId: 'asset-lib-peer-port',
+      loopDetected: false,
+      steps: [
+        {
+          kind: 'PORT',
+          portId: target.id,
+          portName: 'ether13',
+          side: 'DEVICE',
+          assetId: 'asset-lib-ccr2116',
+          assetName: 'CCR2116-12G-4S+',
+          rackName: 'Rack 01',
+          siteName: 'POP Centro',
+        },
+        { kind: 'CABLE', connectionId: 'conn-lib', medium: 'COPPER', label: 'CIR-01' },
+        {
+          kind: 'PORT',
+          portId: 'asset-lib-peer-port',
+          portName: 'GE1',
+          side: 'DEVICE',
+          assetId: 'asset-lib-peer',
+          assetName: 'SW-02',
+          rackName: 'Rack 01',
+          siteName: 'POP Centro',
+        },
+      ],
+    };
+    const routed = renderRack([withCable, other], {
+      catalog: [entry],
+      visualMode: 'TECHNICAL',
+      connections: [connection],
+      path,
+    });
+    expect(
+      new RegExp(`<button[^>]*data-port-id="${target.id}"[^>]*class="([^"]+)"`).exec(routed)?.[1],
+    ).toContain('is-selected');
+  });
+
+  it('o clique na porta do faceplate devolve o MESMO PhysicalPort.id', async () => {
+    const { entry, asset } = buildFixedDevice(CCR2116);
+    const target = asset.ports.find((port) => port.name === 'ether13')!;
+    const clicked: string[] = [];
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        <PhysicalRackCanvas
+          rack={physicalRack({ units: 42, assets: [asset] })}
+          connections={[]}
+          mode="all"
+          selection={null}
+          path={null}
+          visualMode="TECHNICAL"
+          catalog={[entry]}
+          showAnchors={false}
+          showSlots={false}
+          showBbox={false}
+          showModuleKeys={false}
+          onSelectAsset={noop}
+          onSelectPort={(id) => clicked.push(id)}
+          onSelectConnection={noop}
+          onClear={noop}
+        />,
+      );
+    });
+    const button = container.querySelector<HTMLButtonElement>(`[data-port-id="${target.id}"]`);
+    expect(button).not.toBeNull();
+    await act(async () => button!.click());
+    expect(clicked).toEqual([target.id]);
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  it('SKU fixo sem perfil visual continua exatamente como estava (fallback)', () => {
+    // MikroTik fora da lista de perfis e fora do desenho técnico desta fase:
+    // a camada da biblioteca visual não encosta nele
+    const legacy = buildFixedDevice({
+      ...CCR2116,
+      catalogKey: 'mikrotik-ccr1016-12g',
+      model: 'CCR1016-12G',
+      assetId: 'asset-lib-fallback',
+    });
+    const html = renderRack([legacy.asset], {
+      catalog: [legacy.entry],
+      visualMode: 'TECHNICAL',
+    });
+
+    expect(html).not.toContain('fixed-equipment-faceplate');
+    expect(html).not.toContain('is-fixed-profile');
+    expect(html).not.toContain('fixed-faceplate__group');
+    // nenhuma porta inventada nem escondida pelo fallback
+    expect(html.match(/data-port-id=/g)).toHaveLength(18);
+
+    // F1A segue na faceplate da passada anterior (outro renderer)
+    const f1a = buildFixedDevice(F1A);
+    const f1aHtml = renderRack([f1a.asset], {
+      catalog: [f1a.entry],
+      visualMode: 'TECHNICAL',
+    });
+    expect(f1aHtml).toContain('is-fixed-faceplate');
+    expect(f1aHtml).not.toContain('fixed-equipment-faceplate');
+    expect(f1aHtml.match(/data-port-id=/g)).toHaveLength(56);
+  });
+
+  it('nenhum chassi modular foi afetado pela biblioteca fixa', () => {
+    const modular = buildSlotLabAsset('huawei-ma5800-x2', {});
+    const modularEntry = buildSlotLabCatalog('huawei-ma5800-x2', {});
+    const html = renderRack([modular], { catalog: [modularEntry], visualMode: 'TECHNICAL' });
+
+    expect(html).toContain('data-chassis-panel="huawei-ma5800-x2"');
+    expect(html).toContain('is-modular');
+    expect(html).not.toContain('fixed-equipment-faceplate');
+    expect(html).not.toContain('fixed-faceplate__group');
   });
 });

@@ -291,3 +291,108 @@ numerados de **0 a 55** com o par em cima e o ímpar embaixo:
 
 A UI mostra `N nome(s) ignorado(s) — Ver detalhes` no aviso, com a lista dos nomes reais
 retornados pelo equipamento. Nenhuma interface é mapeada por posição para "limpar" o aviso.
+
+### Faceplate fixo vetorial (2026-09-24)
+
+Passada **exclusivamente visual** nos equipamentos fixos: o frontal passa a ser desenhado com
+proporção de equipamento real (carcaça, orelhas, serigrafia, LEDs, divisores e ventilação
+localizada) em CSS/SVG — sem fotografia e sem imagem raster. A cadeia vira:
+
+```text
+CATALOG → PhysicalAsset → fixedTechnicalFaceplateFor(catalogKey) → buildFixedFaceplateLayout
+        → FixedTechnicalFaceplate (carcaça vetorial) + PhysicalPortShape → mesma âncora
+```
+
+- **Nada de dados mudou**: `PhysicalPort.id`, contagem, `connector`, `mappedInterface`,
+  `interfaceName`, `panelNumber`, `breakout`, LLDP, seleção e o catálogo funcional
+  (`physical-catalog-v1.yaml`) continuam sendo a fonte da verdade. A âncora do cabo continua sendo
+  o centro do conector desenhado (`connectorAnchor`), agora na posição do novo desenho.
+- **Camada por SKU** (`apps/web/src/components/physical/physical-fixed-faceplate.ts`): cada modelo
+  declara apenas metadata visual — caixa do chassi (define a escala/proporção), região útil das
+  portas, bandas com os `groupKey` já existentes, serigrafia, LEDs, ventilação e respiros. Grupos
+  não citados entram na última banda, de modo que o desenho **nunca cria nem esconde** porta.
+- **Aprovados nesta fase**: `huawei-ne8000-f1a-8h20q` (56 portas 0-55 num único frontal, blocos
+  lado a lado ocupando a largura, LEDs/serigrafia à esquerda e vent à direita) e
+  `huawei-s6750-h36c` (32 de serviço em 16 colunas × 2 fileiras + os 4 uplinks `2×2` na **mesma
+  faixa**, à direita, com divisor sutil — nada de bloco isolado). Os demais fixos (S6730, S6750-48)
+  seguem no desenho técnico anterior até a mesma revisão.
+- **Altura**: `technicalFixedFaceplateHeight` usa a proporção do frontal real com teto próprio
+  (`TECHNICAL_FIXED_MAX_HEIGHT = 140px`); um switch 1U deixa de virar um painel de 4-5U. A ocupação
+  no rack (`heightU`) não muda em nenhum caso, e chassis modulares continuam com
+  `technicalChassisDisplayHeight`.
+- **Legenda de região**: família do bloco quando ela distingue os grupos (`10GE · 0–27`,
+  `25GE · 28–35`, `100GE · 48–55`) e papel declarado quando dois grupos compartilham a família
+  (`SERVICE · 1–32` / `UPLINK · 33–36`). A mesma geometria das antigas baías é usada, sem caixa em
+  volta do bloco; a faixa de interfaces CLI do sync continua aparecendo quando o grupo está
+  completo (linha extra somada à altura).
+- **Testes**: `physical-fixed-faceplate.test.ts` (geometria, ids, numeração 0-55/1-36, legendas,
+  âncoras e altura) e os casos de faceplate em `physical-rack-canvas-technical.test.tsx`
+  (chassi/serigrafia/LEDs/vent no HTML, clique por `PhysicalPort.id`, identidade do sync, 1U
+  preservado e âncora no conector desenhado).
+- **Bancada**: `/physical/rack-lab` (galeria fixa) passou a marcar a numeração física pelo início do
+  grupo (`panelNumberStart + índice no grupo`), espelhando o loader do catálogo; os botões
+  "Selecionar …" apontam para portas existentes das fixtures.
+
+### Biblioteca visual de equipamentos fixos — MagicPatterns (2026-09-25)
+
+Substituição da **linguagem visual** dos equipamentos fixos pela biblioteca entregue em
+MagicPatterns (`EquipmentChassis` + `RackEar` + `ChassisHeader`/`StatusLeds` + `FixedPortPanel` +
+`Port` + `categoryTheme`). A biblioteca é a **fonte visual**; a verdade técnica continua no
+catálogo YAML. Cadeia única para todos os 17 SKUs migrados:
+
+```text
+PhysicalAsset → catalogKey → PhysicalCatalogEntry → buildPanelLayout/PlacedConnector
+              → fixedVisualProfileFor(catalogKey) → fixedFaceplateSpecFor
+              → buildFixedFaceplateLayout → FixedEquipmentFaceplate + PhysicalPortShape
+              → connectorAnchor (mesma geometria desenhada)
+```
+
+- **Perfil visual por SKU** (`apps/web/src/components/physical/fixed-faceplate/fixed-faceplate-profile.ts`):
+  guarda **só aparência** — estilo do fornecedor (`HUAWEI`/`MIKROTIK`), modelo/série, orelhas, LEDs,
+  LCD, escala das jaulas (`portScalePx`), respiro entre blocos, distribuição (`justify`), ordem dos
+  blocos e composição por bloco (`rows`, `columns`, legenda). Os blocos são referenciados pelo
+  **`groupKey` que o catálogo já declara**; o perfil não tem `count`, `connector`, `panelNumber` nem
+  `PhysicalPort.id`, então não existe um segundo catálogo escondido na UI.
+- **Motor de desenho compartilhado**
+  (`fixed-faceplate/fixed-faceplate-layout.ts`): reagrupa os `PlacedConnector` por `groupKey`, aplica
+  o arranjo declarado, converte `portSizes` (px da biblioteca) em unidades de grade — desenho =
+  hitbox = `PhysicalPort.id` = âncora do cabo —, quebra blocos grandes em **colunas de 8** com
+  respiro maior (como o `FixedPortPanel`) e distribui a sobra com `space-around` (biblioteca) ou
+  `between` (F1A). Grupos não citados no perfil entram no fim e nenhum grupo é criado ou escondido.
+- **Renderer** (`fixed-faceplate/fixed-equipment-faceplate.tsx` + `fixed-faceplate-header.tsx` +
+  `fixed-faceplate-rack-ear.tsx` + `fixed-faceplate-decoration.tsx`): carcaça + orelhas de rack,
+  cabeçalho com marca/modelo/LEDs/chip de U, recesso do painel, LCD dos CCR, legendas de bloco
+  (`10GE · 1–48`, `SERVICE · 1–32`, `UPLINK · 33–36`, `GE · 1–7`, `MGMT · 13`, `SERIAL`), faixa de
+  interfaces CLI do sync e rodapé com contagem por papel. É 100% decorativo (`aria-hidden` +
+  `pointer-events: none`): quem é clicável continua sendo `PhysicalPortShape`.
+- **SKUs migrados (17)**: `huawei-s6730-h24x6c`, `huawei-s6730-h48x6c`, suas variantes `-v2`,
+  `huawei-s6750-h48x8c`, `huawei-s6750-h48y8c`, `huawei-s6750-h48y8c-b`, `huawei-s6750-h36c`,
+  `mikrotik-ccr1009-7g-1c-1splus`, `mikrotik-ccr1009-8g-1s-1splus`, `mikrotik-ccr1036-12g-4s`,
+  `mikrotik-ccr1036-8g-2splus`, `mikrotik-ccr1072-1g-8splus`, `mikrotik-ccr2004-16g-2splus`,
+  `mikrotik-ccr2004-1g-12splus2xs`, `mikrotik-ccr2116-12g-4splus`,
+  `mikrotik-ccr2216-1g-12xs-2xq`. A composição (contagem/`rows`/legenda/LCD) foi lida do próprio
+  protótipo (`src/data/chassis.ts` + `src/data/fixedDevices.ts`); nenhum dispositivo passou a usar
+  outro conector por causa do desenho.
+- **Números de painel**: `huawei-s6750-h36c` ganhou `panelNumberStart: 33` no grupo
+  `qsfp28-uplink` — o padrão `QSFP28-{n+32}` já declarado no catálogo numera os quatro uplinks de
+  33 a 36, e agora o `panelNumber` do loader acompanha o número impresso (legenda `UPLINK · 33–36` e
+  tooltip/`compactLabel` coerentes). Os demais 16 SKUs não tinham divergência entre rótulo físico e
+  `panelNumber`.
+- **Fallback preservado**: o F1A-8H20Q continua no renderer da passada anterior
+  (`physical-fixed-faceplate.ts`, `is-fixed-faceplate`) e qualquer SKU sem perfil continua
+  exatamente como estava (modos real/técnico anteriores); chassis modulares não foram tocados.
+- **Testes**: `fixed-faceplate/fixed-faceplate.test.ts` (perfil sem dados técnicos, 17 SKUs,
+  composição por SKU, blocos de 8 colunas, COMBO 36×16, teto de altura, `catalogPort`/`panelNumber`
+  preservados) e o bloco "biblioteca visual: verdade técnica preservada no rack" em
+  `physical-rack-canvas-technical.test.tsx` (contagem/ids/conectores/grupos, MGMT `ether13`, 32+4 do
+  H36C, COMBO, interface mapeada + LLDP, seleção/destaque de par/rota, clique devolvendo o
+  `PhysicalPort.id`, fallback e modular intacto).
+- **Bancada**: `/physical/rack-lab` ganhou a galeria "biblioteca fixa — catálogo real"
+  (`fixed-library-gallery.tsx`), que monta um rack com **um ativo por SKU migrado** a partir do
+  catálogo real da API e desenha tudo pelo **mesmo `PhysicalRackCanvas`** do rack de produção
+  (toggles de estado/cabo, LLDP, interface mapeada, zoom e botões "Selecionar porta"). É a
+  comparação lado a lado pedida para a revisão visual.
+- **Limitações declaradas**: o público do protótipo não tem ventilação frontal nesses SKUs
+  (capacidade existe no perfil, sem uso); portas USB/mgmt que o protótipo desenha e o catálogo
+  NetVision não declara **não** foram inventadas; e `rows: 2` dos blocos RJ45 dos CCR vem do
+  protótipo, que pode divergir do hardware real.

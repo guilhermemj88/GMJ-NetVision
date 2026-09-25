@@ -65,15 +65,55 @@ import {
   technicalPanelDisplayHeight,
   technicalSlotSummary,
 } from './physical-technical';
+import {
+  type FixedFaceplateRegion,
+  type FixedFaceplateSpec,
+  FIXED_INTERFACE_LINE_PX,
+  buildFixedFaceplateLayout,
+  fixedFaceplateLeds,
+  fixedFaceplateRegions,
+  fixedTechnicalFaceplateFor,
+  technicalFixedFaceplateHeight,
+} from './physical-fixed-faceplate';
+import { FixedTechnicalFaceplate } from './physical-fixed-chassis';
+import {
+  type FixedFaceplateChrome,
+  fixedFaceplateChrome,
+  fixedFaceplateDisplayHeight,
+} from './fixed-faceplate/fixed-faceplate-layout';
+import {
+  type FixedFaceplateVisualProfile,
+  fixedFaceplateGroupCaption,
+  fixedFaceplateProfileFor,
+  fixedFaceplateProfileLeds,
+  fixedFaceplateSpecFor,
+  hasFixedFaceplateProfile,
+} from './fixed-faceplate/fixed-faceplate-profile';
+import { FixedEquipmentFaceplate } from './fixed-faceplate/fixed-equipment-faceplate';
 
 /** Altura do cabeçalho de identidade dentro da faceplate (px). */
 const IDENTITY_HEIGHT = 30;
+/** Cabeçalho enxuto dos SKUs com faceplate da biblioteca visual. */
+const IDENTITY_HEIGHT_COMPACT = 20;
 /** Respiro vertical do painel dentro do equipamento. */
 const PANEL_PADDING = 8;
 
 /** Painel de um equipamento: imagem aprovada, chassi modular ou grade geométrica. */
 type AssetPanel =
-  | { kind: 'layout'; layout: PanelLayout; displayHeight: number }
+  | {
+      kind: 'layout';
+      layout: PanelLayout;
+      displayHeight: number;
+      /** Faceplate vetorial do modelo fixo (visão técnica), quando aprovado. */
+      faceplate?: FixedFaceplateSpec | null | undefined;
+      /** Faceplate da biblioteca visual (MagicPatterns) + chrome em unidades. */
+      libraryFaceplate?: {
+        profile: FixedFaceplateVisualProfile;
+        chrome: FixedFaceplateChrome;
+      } | null;
+      /** Regiões dos grupos no faceplate (mesma geometria das portas). */
+      fixedRegions?: FixedFaceplateRegion[] | undefined;
+    }
   | { kind: 'image'; map: FrontPanelImageMap; displayHeight: number }
   | { kind: 'modular'; map: ModularChassisMap; displayHeight: number };
 
@@ -229,7 +269,9 @@ export function PhysicalRackCanvas({
       const entry = asset.template?.catalogKey
         ? (catalogByKey.get(asset.template.catalogKey) ?? null)
         : null;
-      const technical = assetUsesTechnicalRenderer(asset.template?.catalogKey ?? null, visualMode);
+      const technical = assetUsesTechnicalRenderer(asset.template?.catalogKey ?? null, visualMode)
+        // SKUs com perfil da biblioteca visual também são desenhados no técnico
+        || (visualMode === 'TECHNICAL' && hasFixedFaceplateProfile(asset.template?.catalogKey));
       const isTechnicalMode = visualMode === 'TECHNICAL';
       // Visão técnica **não usa fotografia**: nem painel frontal nem chassi —
       // o corpo do equipamento é sempre o desenho escuro (sem fundo claro).
@@ -249,6 +291,24 @@ export function PhysicalRackCanvas({
         });
         continue;
       }
+      /**
+       * Faceplate fixo (só aparência): o SKU com perfil da biblioteca visual
+       * decide carcaça, cabeçalho, legendas e composição dos blocos; o F1A usa
+       * a spec da primeira passada e os demais seguem o desenho técnico.
+       */
+      const libraryProfile = technical ? fixedFaceplateProfileFor(asset.template?.catalogKey) : null;
+      const faceplate =
+        technical && !libraryProfile
+          ? fixedTechnicalFaceplateFor(asset.template?.catalogKey)
+          : null;
+      const chrome = libraryProfile
+        ? fixedFaceplateChrome({
+            panelWidthPx,
+            portScalePx: libraryProfile.portScalePx,
+            showRackEars: libraryProfile.showRackEars,
+            showLcd: libraryProfile.showLcd,
+          })
+        : null;
       const layout = buildPanelLayout({
         ports: asset.ports,
         slots: asset.slots,
@@ -256,10 +316,34 @@ export function PhysicalRackCanvas({
         entry,
         // Visão técnica: grupos empilhados em bandas com respiro (rótulo do grupo
         // embaixo). Só aparência — portas, conectores e contagem não mudam.
-        ...(technical
+        // Com faceplate do modelo, a distribuição é decidida pela spec visual.
+        ...(technical && !faceplate && !libraryProfile
           ? { bandGapY: TECHNICAL_BAND_GAP, bandTopY: TECHNICAL_BAND_TOP }
           : {}),
       });
+      const drawn =
+        libraryProfile && chrome
+          ? buildFixedFaceplateLayout(layout, fixedFaceplateSpecFor(libraryProfile, chrome), {
+              scalePx: chrome.scale,
+              portSizes: libraryProfile.portSizes,
+            })
+          : faceplate
+            ? buildFixedFaceplateLayout(layout, faceplate)
+            : layout;
+      /**
+       * Regiões do faceplate (frames de legendas): derivadas das portas JÁ
+       * posicionadas, com o nome real da interface quando o equipamento já foi
+       * sincronizado. Nenhuma porta é criada ou movida aqui.
+       */
+      const fixedRegions =
+        faceplate || libraryProfile
+          ? fixedFaceplateRegions(drawn, {
+              interfaceNameOf: (portId) =>
+                asset.ports.find((candidate) => candidate.id === portId)?.mappedInterface?.name ??
+                null,
+            })
+          : undefined;
+      const hasInterfaceRange = Boolean(fixedRegions?.some((region) => region.interfaceRange));
       // Chassi modular com mapa declarado: os slots vêm do mapa (imagem quando
       // existir; senão só a moldura lógica). Sem mapa, o renderer de hoje decide.
       const chassisMap = modularChassisMapForAsset(asset);
@@ -290,18 +374,45 @@ export function PhysicalRackCanvas({
         });
         continue;
       }
+      /** Cabeçalho enxuto quando o chassi já carrega marca/modelo/LEDs. */
+      const identityPx = libraryProfile ? IDENTITY_HEIGHT_COMPACT : IDENTITY_HEIGHT;
       result.set(asset.id, {
         kind: 'layout',
-        layout,
+        layout: drawn,
+        faceplate,
+        libraryFaceplate: libraryProfile && chrome ? { profile: libraryProfile, chrome } : null,
+        fixedRegions,
+        // Faceplate fixo: a altura sai da proporção do frontal real com teto
+        // próprio (`TECHNICAL_FIXED_MAX_HEIGHT`) — um switch 1U nunca vira um
+        // painel de 4–5U. Sem faceplate vale o desenho técnico anterior.
         displayHeight: technical
-          ? technicalPanelDisplayHeight({
-              gridHeight: layout.gridHeight,
-              heightU: asset.heightU,
-              baseUnitHeight: base,
-              chromePx: IDENTITY_HEIGHT + PANEL_PADDING * 2,
-              maxHeightPx: IMAGE_PANEL_MAX_HEIGHT,
-            })
-          : calculateAssetDisplayHeight(layout, asset.heightU, base),
+          ? libraryProfile && chrome
+            ? fixedFaceplateDisplayHeight({
+                gridHeight: drawn.gridHeight,
+                gridWidth: drawn.width,
+                panelWidthPx,
+                heightU: asset.heightU,
+                baseUnitHeight: base,
+                chromePx: identityPx + PANEL_PADDING,
+                extraHeightPx: hasInterfaceRange ? FIXED_INTERFACE_LINE_PX : 0,
+              })
+            : faceplate
+              ? technicalFixedFaceplateHeight({
+                  spec: faceplate,
+                  panelWidthPx,
+                  heightU: asset.heightU,
+                  baseUnitHeight: base,
+                  chromePx: identityPx + PANEL_PADDING,
+                  extraHeightPx: hasInterfaceRange ? FIXED_INTERFACE_LINE_PX : 0,
+                })
+              : technicalPanelDisplayHeight({
+                  gridHeight: drawn.gridHeight,
+                  heightU: asset.heightU,
+                  baseUnitHeight: base,
+                  chromePx: identityPx + PANEL_PADDING * 2,
+                  maxHeightPx: IMAGE_PANEL_MAX_HEIGHT,
+                })
+          : calculateAssetDisplayHeight(drawn, asset.heightU, base),
       });
     }
     return result;
@@ -335,12 +446,25 @@ export function PhysicalRackCanvas({
     const placement = geometry.assets.get(asset.id);
     const panel = panels.get(asset.id);
     if (!placement || !panel) return null;
+    const identityPx = identityHeightOf(asset.id);
     return {
       left: geometry.rackLeft + RACK_GEOMETRY.frameInset,
-      top: placement.top + IDENTITY_HEIGHT + PANEL_PADDING,
+      top: placement.top + identityPx + PANEL_PADDING,
       width: geometry.rackWidth - RACK_GEOMETRY.frameInset * 2,
-      height: Math.max(24, placement.height - IDENTITY_HEIGHT - PANEL_PADDING),
+      height: Math.max(24, placement.height - identityPx - PANEL_PADDING),
     };
+  }
+
+  /**
+   * Altura do cabeçalho de identidade do ativo: enxuta para os SKUs com
+   * faceplate da biblioteca visual, que já desenham marca/modelo/LEDs/chip de U
+   * dentro do próprio chassi.
+   */
+  function identityHeightOf(assetId: string): number {
+    const panel = panels.get(assetId);
+    return panel?.kind === 'layout' && panel.libraryFaceplate
+      ? IDENTITY_HEIGHT_COMPACT
+      : IDENTITY_HEIGHT;
   }
 
   /** Escala e offsets (px) do painel geométrico de um equipamento. */
@@ -357,7 +481,12 @@ export function PhysicalRackCanvas({
 
   /** `true` quando o equipamento usa o desenho técnico no modo atual. */
   function technicalOf(asset: PhysicalAsset): boolean {
-    return assetUsesTechnicalRenderer(asset.template?.catalogKey ?? null, visualMode);
+    const key = asset.template?.catalogKey ?? null;
+    return (
+      assetUsesTechnicalRenderer(key, visualMode) ||
+      // SKUs migrados para a biblioteca visual entram no desenho técnico
+      (visualMode === 'TECHNICAL' && hasFixedFaceplateProfile(key))
+    );
   }
 
   /** Caixa da imagem do equipamento (proporção preservada) — âncora inclusa. */
@@ -844,16 +973,39 @@ export function PhysicalRackCanvas({
                     : [],
               )
             : null;
+          /**
+           * Nome real reportado pelo equipamento (sync) tem prioridade sobre o
+           * nome declarado no catálogo: nunca é inventado por posição.
+           */
+          const interfaceNameOf = (portId: string) =>
+            asset.ports.find((candidate) => candidate.id === portId)?.mappedInterface?.name ??
+            null;
           /** Painel FIXO na visão técnica: baías dos grupos reais + folgas. */
           const fixedBays = technical && layoutPanel
-            ? technicalGroupBays(layoutPanel.layout, {
-                // nome real reportado pelo equipamento tem prioridade sobre o
-                // nome declarado no catálogo (nunca é inventado por posição)
-                interfaceNameOf: (portId) =>
-                  asset.ports.find((candidate) => candidate.id === portId)?.mappedInterface
-                    ?.name ?? null,
-              })
+            ? technicalGroupBays(layoutPanel.layout, { interfaceNameOf })
             : [];
+          /** Faceplate vetorial do modelo fixo (quando o SKU tem desenho próprio). */
+          const faceplate = layoutPanel?.faceplate ?? null;
+          /** Faceplate da biblioteca visual (MagicPatterns) + chrome em unidades. */
+          const libraryFaceplate = layoutPanel?.libraryFaceplate ?? null;
+          /** Regiões do faceplate: MESMA geometria dos conectores desenhados. */
+          const fixedRegions = layoutPanel?.fixedRegions ?? [];
+          /** Cabeçalho enxuto: o chassi já carrega marca/modelo/LEDs/1U. */
+          const identityPx = libraryFaceplate ? IDENTITY_HEIGHT_COMPACT : IDENTITY_HEIGHT;
+          /** Rodapé de resumo do chassi (`56 portas · SERVICE 48 · UPLINK 8`). */
+          const faceplateSummary = fixedRegions.length
+            ? [
+                `${fixedRegions.reduce((total, region) => total + region.count, 0)} portas`,
+                ...fixedRegions
+                  .filter((region) => region.count > 0)
+                  .map((region) => {
+                    const caption = libraryFaceplate
+                      ? fixedFaceplateGroupCaption(libraryFaceplate.profile, region)
+                      : region.label;
+                    return `${caption ?? region.label} ${region.count}`;
+                  }),
+              ].join(' · ')
+            : '';
           const boardWidth = layoutPanel ? layoutPanel.layout.width * scale : 0;
           const boardHeight = layoutPanel ? layoutPanel.layout.gridHeight * scale : 0;
           const freeHeight = layoutPanel ? Math.max(0, box.height - boardHeight) : 0;
@@ -920,6 +1072,8 @@ export function PhysicalRackCanvas({
                 active ? 'is-selected' : ''
               } ${dimmed ? 'is-dimmed' : ''} ${asset.slots.length ? 'is-modular' : ''} ${
                 technical ? 'is-technical' : ''
+              } ${faceplate ? 'is-fixed-faceplate' : ''} ${
+                libraryFaceplate ? 'is-fixed-profile' : ''
               }`}
               style={{
                 left: geometry.rackLeft,
@@ -933,25 +1087,32 @@ export function PhysicalRackCanvas({
               }}
             >
               <span className="physical-faceplate__kind" />
-              <div className="physical-faceplate__identity">
+              <div className="physical-faceplate__identity" style={{ height: identityPx }}>
                 <strong>{asset.name}</strong>
                 <small>
-                  {technical ? (
-                    <span className="physical-technical-brand">
-                      <i />
-                      HUAWEI
-                    </span>
-                  ) : null}
-                  {technical && templateEntry?.family ? ` ${templateEntry.family} · ` : ' '}
-                  {asset.template?.model ||
-                    asset.template?.name ||
-                    asset.device?.model ||
-                    asset.kind}
-                  {technical ? ' ' : ' · '}U{placement.startU}
-                  {uEnd > placement.startU ? `–U${uEnd}` : ''}
-                  {technical ? '' : ` · ${placement.heightU}U`}
+                  {libraryFaceplate ? (
+                    // chassi da biblioteca visual já mostra marca/modelo/LEDs/1U
+                    `U${placement.startU}${uEnd > placement.startU ? `–U${uEnd}` : ''}`
+                  ) : (
+                    <>
+                      {technical ? (
+                        <span className="physical-technical-brand">
+                          <i />
+                          HUAWEI
+                        </span>
+                      ) : null}
+                      {technical && templateEntry?.family ? ` ${templateEntry.family} · ` : ' '}
+                      {asset.template?.model ||
+                        asset.template?.name ||
+                        asset.device?.model ||
+                        asset.kind}
+                      {technical ? ' ' : ' · '}U{placement.startU}
+                      {uEnd > placement.startU ? `–U${uEnd}` : ''}
+                      {technical ? '' : ` · ${placement.heightU}U`}
+                    </>
+                  )}
                 </small>
-                {technical ? (
+                {libraryFaceplate ? null : technical ? (
                   <>
                     <span className="physical-technical-leds" aria-hidden="true">
                       <span>
@@ -978,7 +1139,7 @@ export function PhysicalRackCanvas({
                 className="physical-faceplate__panel"
                 style={{
                   left: RACK_GEOMETRY.frameInset,
-                  top: IDENTITY_HEIGHT + PANEL_PADDING - 1,
+                  top: identityPx + PANEL_PADDING - 1,
                   width: box.width,
                   // -1 compensa o `top: placement.top + 1` do artigo: o painel
                   // começa exatamente onde o anchor do cabo assume
@@ -1006,7 +1167,11 @@ export function PhysicalRackCanvas({
                     />
                   </div>
                 ) : null}
-                {layoutPanel ? captions(layoutPanel.layout, { left: 0, top: 0 }, scale) : null}
+                {/* Chips `10GE × 28` do desenho técnico anterior: com faceplate do
+                    modelo a legenda de região já identifica o bloco. */}
+                {layoutPanel && !faceplate && !libraryFaceplate
+                  ? captions(layoutPanel.layout, { left: 0, top: 0 }, scale)
+                  : null}
                 {panel.kind === 'modular' && modularBox ? (
                   <div
                     className="physical-modular-panel-area"
@@ -1246,11 +1411,45 @@ export function PhysicalRackCanvas({
                       );
                     })
                   : null}
-                {/* Visão técnica do painel fixo: moldura, baías por grupo (com
-                    papel + faixa de numeração declarados) e rodapé de marca.
-                    Só aparência — as portas continuam as mesmas, desenhadas
-                    pelo PhysicalPortShape na MESMA escala. */}
-                {technical && layoutPanel ? (
+                {/* Faceplate da BIBLIOTECA VISUAL (MagicPatterns) para os SKUs com
+                    perfil: carcaça, orelhas de rack, cabeçalho com marca/modelo/
+                    LEDs, LCD quando existe, legendas de bloco e rodapé de resumo.
+                    As portas continuam sendo desenhadas pelo PhysicalPortShape,
+                    na MESMA escala/coordenadas — o faceplate só desenha o
+                    equipamento (camada decorativa, sem interação). */}
+                {technical && layoutPanel && libraryFaceplate ? (
+                  <FixedEquipmentFaceplate
+                    profile={libraryFaceplate.profile}
+                    chrome={libraryFaceplate.chrome}
+                    layout={layoutPanel.layout}
+                    regions={fixedRegions}
+                    leds={fixedFaceplateProfileLeds(libraryFaceplate.profile)}
+                    model={asset.template?.model || asset.template?.name || asset.kind}
+                    heightU={asset.heightU}
+                    summary={faceplateSummary}
+                  />
+                ) : null}
+                {/* Faceplate FIXO (camada visual aprovada por modelo): carcaça
+                    vetorial, serigrafia, LEDs, divisores e ventilação. As portas
+                    continuam sendo desenhadas pelo PhysicalPortShape, na MESMA
+                    escala/coordenadas — o faceplate só desenha o equipamento. */}
+                {technical && layoutPanel && faceplate ? (
+                  <FixedTechnicalFaceplate
+                    spec={faceplate}
+                    model={asset.template?.model || asset.template?.name || asset.kind}
+                    manufacturer={asset.template?.manufacturer ?? templateEntry?.manufacturer ?? null}
+                    scale={scale}
+                    width={Math.round(boardWidth)}
+                    height={Math.round(boardHeight)}
+                    regions={fixedRegions}
+                    leds={fixedFaceplateLeds(faceplate)}
+                  />
+                ) : null}
+                {/* Visão técnica dos demais equipamentos fixos (desenho anterior):
+                    moldura, baías por grupo e rodapé de marca. Só aparência — as
+                    portas continuam as mesmas, desenhadas pelo PhysicalPortShape
+                    na MESMA escala. */}
+                {technical && layoutPanel && !faceplate && !libraryFaceplate ? (
                   <>
                     <div className="physical-fixed-frame" aria-hidden="true" />
                     {fixedBays.map((bay) => (

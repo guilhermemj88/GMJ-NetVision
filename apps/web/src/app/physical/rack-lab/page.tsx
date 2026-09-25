@@ -10,6 +10,7 @@ import type {
   PhysicalVisualPlacement,
 } from '@gmj/shared';
 import { PhysicalRackCanvas } from '@/components/physical/physical-rack-canvas';
+import { FixedLibraryGallery } from '@/components/physical/fixed-library-gallery';
 import type {
   PhysicalConnectionMode,
   PhysicalSelection,
@@ -580,23 +581,36 @@ function fixedPorts(spec: FixedDeviceSpec) {
 }
 
 function fixedCatalogEntry(spec: FixedDeviceSpec) {
-  const ports: PhysicalCatalogPort[] = fixedPortNames(spec).map(({ group, name }, index) => ({
-    name,
-    label: name,
-    order: index + 1,
-    side: 'DEVICE',
-    type: group.type,
-    connector: group.connector,
-    portFunction: group.portFunction,
-    speeds: [],
-    breakoutCapable: false,
-    groupKey: group.groupKey,
-    interfaceName: null,
-    panelNumber:
-      group.panelStart === undefined ? null : group.panelStart + (index % group.count),
-    notes: null,
-    visual: group.visual,
-  }));
+  /**
+   * Mesma regra do loader do catálogo (`physical-catalog-yaml.ts`): a numeração
+   * física começa no início do GRUPO (`panelNumberStart + índice no grupo`) —
+   * nunca no índice global do painel. Sem isso o F1A exibiria 32/34 no lugar de
+   * 28/30 nas portas do bloco 28–35.
+   */
+  const ports: PhysicalCatalogPort[] = [];
+  let order = 0;
+  for (const group of spec.groups) {
+    for (let index = 0; index < group.count; index += 1) {
+      order += 1;
+      const name = groupPortName(group, index + 1);
+      ports.push({
+        name,
+        label: name,
+        order,
+        side: 'DEVICE',
+        type: group.type,
+        connector: group.connector,
+        portFunction: group.portFunction,
+        speeds: [],
+        breakoutCapable: false,
+        groupKey: group.groupKey,
+        interfaceName: null,
+        panelNumber: group.panelStart === undefined ? null : group.panelStart + index,
+        notes: null,
+        visual: group.visual,
+      });
+    }
+  }
   return catalogEntry({
     catalogKey: spec.catalogKey,
     name: `Huawei ${spec.model}`,
@@ -888,15 +902,15 @@ export default function PhysicalRackLabPage() {
           </button>
           <button
             type="button"
-            onClick={() => setSelection({ kind: 'port', id: `${F1A_ID}-100GE-1` })}
+            onClick={() => setSelection({ kind: 'port', id: `${F1A_ID}-100GE-48` })}
           >
-            Selecionar 100GE-1 (F1A)
+            Selecionar 100GE-48 (F1A)
           </button>
           <button
             type="button"
-            onClick={() => setSelection({ kind: 'port', id: `${S6750_ID}-SFP28-1` })}
+            onClick={() => setSelection({ kind: 'port', id: 'lab-s6750-h36c-QSFP28-1' })}
           >
-            Selecionar SFP28-1 (S6750)
+            Selecionar QSFP28-1 (S6750-H36C)
           </button>
           {isOltBoard ? (
             <button type="button" onClick={() => setSelection({ kind: 'connection', id: CABLE_ID })}>
@@ -937,6 +951,13 @@ export default function PhysicalRackLabPage() {
           onClear={() => setSelection(null)}
         />
       </div>
+
+      {/* ============ BIBLIOTECA FIXA (catálogo real + perfil visual) ============
+          Galeria dos SKUs migrados para a biblioteca visual (MagicPatterns),
+          montada a partir do catálogo da API e renderizada pelo MESMO canvas do
+          rack de produção. Toggles só de bancada (estado/cabo, LLDP, interface
+          mapeada) para revisão visual. */}
+      <FixedLibraryGallery />
 
       {/* ================= MODULAR SLOT LAB =================
           Bancada de encaixe: insere/remove módulos do catálogo nos slots do

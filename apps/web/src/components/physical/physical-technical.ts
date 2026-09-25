@@ -384,7 +384,9 @@ export function technicalGroupBays(
       .sort((left, right) => left - right);
     const physicalRange =
       panelNumbers.length === connectors.length && panelNumbers.length > 0
-        ? `${panelNumbers[0]}–${panelNumbers[panelNumbers.length - 1]}`
+        ? panelNumbers.length === 1
+          ? String(panelNumbers[0])
+          : `${panelNumbers[0]}–${panelNumbers[panelNumbers.length - 1]}`
         : null;
     const range =
       physicalRange ??
