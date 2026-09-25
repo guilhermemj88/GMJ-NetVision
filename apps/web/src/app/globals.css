@@ -2624,6 +2624,15 @@ button {
   background: var(--cyan);
   box-shadow: 0 0 7px var(--cyan);
 }
+.edit-toolbar__dirty {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  color: #e0b96a;
+  font: 600 9px var(--font-mono);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
 .edit-toolbar__separator {
   width: 1px;
   height: 22px;

@@ -168,6 +168,14 @@ export function EditToolbar() {
         <Radar size={15} /> Vizinhos
       </Button>
       <div className="edit-toolbar__spacer" />
+      {dirty ? (
+        <span
+          className="edit-toolbar__dirty"
+          title="As alterações ficam locais até você salvar; o refresh do mapa não as sobrescreve"
+        >
+          Alterações não salvas
+        </span>
+      ) : null}
       <Button
         compact
         variant={dirty ? 'primary' : 'secondary'}

@@ -263,6 +263,17 @@ interface MapState {
   removeMapSummary: (mapId: string) => void;
   setActiveMap: (mapId: string) => void;
   setMap: (map: NetworkMap) => void;
+  /**
+   * Hidrata o mapa a partir do refresh automático (polling), em vez de uma
+   * troca de mapa de verdade.
+   *
+   * Com edição pendente (`editMode && dirty`) a estrutura local manda: nós,
+   * links (geometria, pontas, cores, estilo, label, agregação), settings,
+   * widgets e drafts ficam como estão, e só a telemetria é mesclada — os
+   * `devices` (status, interfaces, tráfego, alarmes) e as métricas dos enlaces.
+   * Em qualquer outro caso equivale ao `setMap`.
+   */
+  applyMapRefresh: (map: NetworkMap) => void;
   setPublicMap: (map: NetworkMap) => void;
   setReadOnly: (value: boolean) => void;
   loadPublicMaps: (maps: NetworkMap[]) => void;
@@ -373,7 +384,39 @@ export function applyLinkGeometry(link: NetworkLink, geometry: LinkGeometry): Ne
   };
 }
 
-export const useMapStore = create<MapState>((set) => ({
+/**
+ * Telemetria de um enlace: tudo que o backend recalcula a cada coleta.
+ *
+ * O restante do `NetworkLink` (geometria, pontas, cores, estilo, label,
+ * agregação, capacidade manual) é autoridade do operador enquanto houver
+ * edição pendente. A capacidade acompanha o servidor apenas quando é AUTO —
+ * capacidade MANUAL foi escolhida à mão e não pode ser sobrescrita.
+ */
+export function mergeLinkTelemetry(local: NetworkLink, server: NetworkLink): NetworkLink {
+  return {
+    ...local,
+    status: server.status,
+    directions: server.directions,
+    rxBps: server.rxBps,
+    txBps: server.txBps,
+    rxUtilization: server.rxUtilization,
+    txUtilization: server.txUtilization,
+    rxErrors: server.rxErrors,
+    txErrors: server.txErrors,
+    rxDiscards: server.rxDiscards,
+    txDiscards: server.txDiscards,
+    updatedAt: server.updatedAt,
+    ...(local.capacitySource === 'MANUAL'
+      ? {}
+      : {
+          capacityBps: server.capacityBps,
+          autoCapacityBps: server.autoCapacityBps,
+          capacitySource: server.capacitySource,
+        }),
+  };
+}
+
+export const useMapStore = create<MapState>((set, get) => ({
   linkGeometryDrafts: {},
   setLinkGeometryDraft: (linkId, geometry) => set((state) => {
     const linkGeometryDrafts = { ...state.linkGeometryDrafts };
@@ -573,6 +616,44 @@ export const useMapStore = create<MapState>((set) => ({
         pendingDeviceNavigation: pendingDevice ? null : state.pendingDeviceNavigation,
         focusSequence,
         dirty: false,
+      };
+    });
+  },
+  /**
+   * Refresh automático do mapa. Não é troca de mapa: com edição pendente ele
+   * preserva a estrutura local e mescla apenas telemetria, mantendo `dirty`.
+   */
+  applyMapRefresh: (serverMap) => {
+    const state = get();
+    // Primeiro carregamento ou troca real de mapa: hidratação completa.
+    if (!state.map || state.map.id !== serverMap.id) {
+      state.setMap(serverMap);
+      return;
+    }
+    // Mapa público não hidrata por este caminho (o polling já fica desligado).
+    if (state.readOnly) return;
+    // Sem edição pendente não há nada a proteger: comportamento atual.
+    if (!(state.editMode && state.dirty)) {
+      state.setMap(serverMap);
+      return;
+    }
+    set((current) => {
+      const localMap = current.map;
+      if (!localMap || localMap.id !== serverMap.id) return {};
+      const serverLinks = new Map(serverMap.links.map((link) => [link.id, link]));
+      return {
+        map: {
+          ...localMap,
+          // Dados vivos continuam vindo do backend.
+          devices: serverMap.devices,
+          links: localMap.links.map((link) => {
+            const draft = current.linkGeometryDrafts[link.id];
+            const withDraft = draft ? applyLinkGeometry(link, draft) : link;
+            const serverLink = serverLinks.get(link.id);
+            return serverLink ? mergeLinkTelemetry(withDraft, serverLink) : withDraft;
+          }),
+        },
+        // `dirty`, seleção, foco, settings, widgets, nós e drafts permanecem.
       };
     });
   },

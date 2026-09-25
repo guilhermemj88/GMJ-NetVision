@@ -69,7 +69,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
   const activeMapId = useMapStore((state) => state.activeMapId);
   const map = useMapStore((state) => state.map);
   const setCatalog = useMapStore((state) => state.setCatalog);
-  const setMap = useMapStore((state) => state.setMap);
+  const applyMapRefresh = useMapStore((state) => state.applyMapRefresh);
   const editMode = useMapStore((state) => state.editMode) && !readOnly;
   const preferences = useMapStore((state) => state.preferences);
   const moveNode = useMapStore((state) => state.moveNode);
@@ -107,8 +107,10 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
 
   useEffect(() => {
     if (readOnly) return;
-    if (mapQuery.data) setMap(mapQuery.data);
-  }, [mapQuery.data, readOnly, setMap]);
+    // Refresh automático: com edição pendente ele mescla só telemetria e
+    // preserva a estrutura local (posições, geometria, escalas, widgets).
+    if (mapQuery.data) applyMapRefresh(mapQuery.data);
+  }, [mapQuery.data, readOnly, applyMapRefresh]);
 
   const hasSavedViewport = Boolean(
     map?.settings.viewport &&
