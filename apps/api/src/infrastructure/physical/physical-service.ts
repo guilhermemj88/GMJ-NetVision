@@ -12,6 +12,7 @@ import type {
   PhysicalInventory,
   PhysicalLldpSuggestion,
   PhysicalPath,
+  PhysicalPortLocation,
 } from '@gmj/shared';
 import {
   assertConnectionAvailable,
@@ -524,6 +525,48 @@ export class PhysicalService {
    * mapped to physical ports, correlation CONFIRMED) can be confirmed, and only
    * from an explicit human action.
    */
+  /**
+   * Localiza o conector físico vinculado a uma interface.
+   *
+   * Leitura pura: percorre o inventário e compara `mappedInterfaceId` por
+   * igualdade de id. Não cria, não infere e não "adivinha" por nome — quando
+   * não existe vínculo, devolve `null` (a rota responde 404).
+   */
+  async findPortByInterface(interfaceId: string): Promise<PhysicalPortLocation | null> {
+    const inventory = await this.getInventory();
+    for (const site of inventory.sites) {
+      for (const rack of site.racks) {
+        for (const asset of rack.assets) {
+          for (const port of asset.ports) {
+            if (port.mappedInterfaceId !== interfaceId) continue;
+            const slot = asset.slots.find((item) => item.id === port.slotId) ?? null;
+            const module = asset.modules.find((item) => item.id === port.moduleId) ?? null;
+            return {
+              interfaceId,
+              siteId: site.id,
+              siteName: site.name,
+              rackId: rack.id,
+              rackName: rack.name,
+              assetId: asset.id,
+              assetName: asset.name,
+              portId: port.id,
+              portName: port.name,
+              portLabel: port.label,
+              portSide: port.side,
+              role: port.role,
+              state: port.state,
+              slotLabel: slot?.label ?? null,
+              moduleName: module?.name ?? null,
+              lldp: port.lldp,
+              confidence: 'CONFIRMED',
+            };
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   async confirmLldpSuggestion(
     adjacencyId: string,
     options: { origin?: 'MANUAL' | 'AUTO'; medium?: CreatePhysicalConnectionInput['medium'] } = {},

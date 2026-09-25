@@ -65,6 +65,7 @@ import {
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   deleteLink as deleteLinkRequest,
+  getPhysicalPortByInterface,
   updateConceptualNode as updateConceptualNodeRequest,
   updateLink as updateLinkRequest,
   updateNodePpp as updateNodePppRequest,
@@ -616,6 +617,7 @@ function InterfaceDrawer({
         </div>
       </section>
       <InterfaceOpticalDetails networkInterface={item} />
+      {!readOnly && <PhysicalPortLink interfaceId={item.id} />}
       {!readOnly && <OpticalHistoryCharts networkInterface={item} />}
       <section className="drawer-section live-metrics">
         <SectionTitle icon={<Activity size={14} />} label="MÉTRICAS ATUAIS" />
@@ -640,6 +642,56 @@ function InterfaceDrawer({
       </section>
       {!readOnly && <MetricCharts networkInterface={item} />}
     </DrawerShell>
+  );
+}
+
+/**
+ * Correlação reversa interface → conector físico.
+ *
+ * Consulta o vínculo PERSISTIDO (`PhysicalPort.mappedInterfaceId`). Quando não
+ * existe, diz isso claramente em vez de abrir uma porta "mais parecida".
+ */
+function PhysicalPortLink({ interfaceId }: { interfaceId: string }) {
+  const openPhysicalPort = useMapStore((state) => state.openPhysicalPort);
+  const [message, setMessage] = useState<string | null>(null);
+  const lookup = useMutation({
+    mutationFn: () => getPhysicalPortByInterface(interfaceId),
+    onSuccess: (location) => {
+      if (!location) {
+        setMessage('Nenhum conector físico está vinculado a esta interface.');
+        return;
+      }
+      setMessage(null);
+      openPhysicalPort(location.siteId, location.rackId, location.portId);
+    },
+    onError: (error: unknown) =>
+      setMessage(
+        error instanceof Error && error.message
+          ? error.message
+          : 'Não foi possível consultar o vínculo físico.',
+      ),
+  });
+
+  return (
+    <section className="drawer-section drawer-physical-link">
+      <SectionTitle icon={<Cable size={14} />} label="INFRAESTRUTURA FÍSICA" />
+      <p>
+        Abre o rack com o conector exato mapeado para esta interface. O vínculo vem do
+        inventário físico persistido — quando não existe, nada é sugerido.
+      </p>
+      <Button
+        variant="secondary"
+        disabled={lookup.isPending}
+        onClick={() => lookup.mutate()}
+      >
+        <Cable size={15} /> {lookup.isPending ? 'Localizando…' : 'Localizar no Físico'}
+      </Button>
+      {message ? (
+        <small className="drawer-physical-link__message" role="status">
+          {message}
+        </small>
+      ) : null}
+    </section>
   );
 }
 

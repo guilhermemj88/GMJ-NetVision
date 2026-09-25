@@ -18,6 +18,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '@/app/providers';
+import { useMapStore } from '@/store/map-store';
 import {
   confirmPhysicalLldp,
   createPhysicalAsset,
@@ -64,6 +65,8 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 export function PhysicalWorkspace() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const physicalFocusRequest = useMapStore((state) => state.physicalFocusRequest);
+  const clearPhysicalFocusRequest = useMapStore((state) => state.clearPhysicalFocusRequest);
   const canEdit = user?.role === 'ADMIN' || user?.role === 'OPERATOR';
   const inventoryQuery = useQuery({ queryKey: ['physical'], queryFn: getPhysicalInventory });
   const hostsQuery = useQuery({ queryKey: ['hosts'], queryFn: () => getHosts(), enabled: canEdit });
@@ -95,6 +98,16 @@ export function PhysicalWorkspace() {
     const firstRack = site.racks[0];
     if (firstRack && !site.racks.some((candidate) => candidate.id === rackId)) setRackId(firstRack.id);
   }, [rackId, site, siteId]);
+
+  // Pedido externo de foco (ex.: "Localizar no Físico" vindo do mapa/BGP):
+  // abre exatamente site/rack/porta informados, sem inferir nada.
+  useEffect(() => {
+    if (!physicalFocusRequest || !inventory) return;
+    setSiteId(physicalFocusRequest.siteId);
+    setRackId(physicalFocusRequest.rackId);
+    setSelection({ kind: 'port', id: physicalFocusRequest.portId });
+    clearPhysicalFocusRequest(physicalFocusRequest.requestId);
+  }, [clearPhysicalFocusRequest, inventory, physicalFocusRequest]);
 
   const selectedPortId = selection?.kind === 'port' ? selection.id : '';
   /** A Device belongs to a single physical asset: the others are shown disabled. */

@@ -149,6 +149,10 @@ interface MapState {
   bgpDeviceFilter: string | null;
   setBgpDeviceFilter: (deviceId: string | null) => void;
   openBgpForDevice: (deviceId: string) => void;
+  /** Pedido de foco no módulo Físico (site/rack/porta exatos). */
+  physicalFocusRequest: { siteId: string; rackId: string; portId: string; requestId: number } | null;
+  openPhysicalPort: (siteId: string, rackId: string, portId: string) => void;
+  clearPhysicalFocusRequest: (requestId: number) => void;
   visualPreset: VisualPreset;
   layerFilter: MapLayerFilter;
   siteFilter: string | null;
@@ -310,6 +314,24 @@ export const useMapStore = create<MapState>((set) => ({
   setBgpDeviceFilter: (bgpDeviceFilter) => set({ bgpDeviceFilter }),
   openBgpForDevice: (deviceId) =>
     set({ view: 'BGP', bgpDeviceFilter: deviceId, editMode: false, selection: null, panel: null }),
+  physicalFocusRequest: null,
+  openPhysicalPort: (siteId, rackId, portId) =>
+    set((state) => ({
+      view: 'PHYSICAL',
+      editMode: false,
+      selection: null,
+      panel: null,
+      physicalFocusRequest: {
+        siteId,
+        rackId,
+        portId,
+        requestId: (state.physicalFocusRequest?.requestId ?? 0) + 1,
+      },
+    })),
+  clearPhysicalFocusRequest: (requestId) =>
+    set((state) =>
+      state.physicalFocusRequest?.requestId === requestId ? { physicalFocusRequest: null } : state,
+    ),
   visualPreset: 'OPERACIONAL',
   layerFilter: 'PROBLEM',
   siteFilter: null,

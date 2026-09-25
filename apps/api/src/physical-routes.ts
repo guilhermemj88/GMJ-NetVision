@@ -148,6 +148,24 @@ export function registerPhysicalRoutes(app: FastifyInstance, options: PhysicalRo
     return service.trace(id);
   });
 
+  /**
+   * Correlação reversa: interface → conector físico.
+   *
+   * Somente leitura e sem migration: usa o `mappedInterfaceId` persistido.
+   * Responde 404 quando não existe vínculo — o cliente não deve inventar uma
+   * porta "mais provável".
+   */
+  app.get('/api/physical/ports/by-interface/:id', async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const location = await service.findPortByInterface(id);
+    if (!location) {
+      return reply
+        .code(404)
+        .send({ message: 'Nenhum conector físico vinculado a esta interface' });
+    }
+    return location;
+  });
+
   app.post('/api/physical/sites', async (request, reply) => {
     if (!(await requireEditor(request, reply))) return;
     return reply.code(201).send(await service.createSite(siteCreate.parse(request.body)));

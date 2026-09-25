@@ -564,6 +564,20 @@ button {
   color: #4f6672;
 }
 
+/* Drawer de interface: correlação reversa com o mundo físico. */
+.drawer-physical-link p {
+  margin: 0 0 9px;
+  color: #6d838d;
+  font-size: 10px;
+  line-height: 1.55;
+}
+.drawer-physical-link__message {
+  display: block;
+  margin-top: 7px;
+  color: #c79a5c;
+  font: 500 10px var(--font-mono);
+}
+
 /* ------------------------------------------------ BGP: quedas e navegação */
 .bgp-flaps {
   display: inline-flex;

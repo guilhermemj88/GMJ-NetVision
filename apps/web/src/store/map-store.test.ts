@@ -297,3 +297,61 @@ describe('traffic label mode persistence', () => {
     expect(useMapStore.getState().map?.settings.trafficLabelMode).toBe('INLINE');
   });
 });
+
+describe('navegação entre módulos', () => {
+  afterEach(() =>
+    useMapStore.setState({
+      map: null,
+      view: 'MAP',
+      physicalFocusRequest: null,
+      bgpDeviceFilter: null,
+    }),
+  );
+
+  it('abre o BGP filtrado pelo equipamento escolhido no inventário', () => {
+    useMapStore.getState().openBgpForDevice('ne8000-1');
+
+    expect(useMapStore.getState().view).toBe('BGP');
+    expect(useMapStore.getState().bgpDeviceFilter).toBe('ne8000-1');
+  });
+
+  it('pede foco no Físico com site/rack/porta exatos, sem inferir', () => {
+    useMapStore.getState().openPhysicalPort('site-1', 'rack-1', 'port-9');
+    const first = useMapStore.getState().physicalFocusRequest;
+
+    expect(useMapStore.getState().view).toBe('PHYSICAL');
+    expect(first).toMatchObject({ siteId: 'site-1', rackId: 'rack-1', portId: 'port-9' });
+
+    useMapStore.getState().openPhysicalPort('site-2', 'rack-2', 'port-3');
+    const second = useMapStore.getState().physicalFocusRequest;
+    expect(second!.requestId).toBeGreaterThan(first!.requestId);
+
+    // Limpar um pedido antigo não apaga o atual.
+    useMapStore.getState().clearPhysicalFocusRequest(first!.requestId);
+    expect(useMapStore.getState().physicalFocusRequest).toEqual(second);
+
+    useMapStore.getState().clearPhysicalFocusRequest(second!.requestId);
+    expect(useMapStore.getState().physicalFocusRequest).toBeNull();
+  });
+
+  it('não abre a interface no mapa quando o equipamento não está no mapa ativo', () => {
+    const map = cloneDemoMaps()[0]!;
+    useMapStore.setState({ map, activeMapId: map.id, view: 'MAP' });
+
+    expect(useMapStore.getState().openInterfaceInActiveMap('equipamento-fora-do-mapa', 'i1')).toBe(
+      false,
+    );
+    expect(useMapStore.getState().view).toBe('MAP');
+
+    const device = map.devices[0]!;
+    const networkInterface = device.interfaces[0]!;
+    expect(
+      useMapStore.getState().openInterfaceInActiveMap(device.id, networkInterface.id),
+    ).toBe(true);
+    expect(useMapStore.getState().selection).toEqual({
+      kind: 'interface',
+      id: networkInterface.id,
+      deviceId: device.id,
+    });
+  });
+});
