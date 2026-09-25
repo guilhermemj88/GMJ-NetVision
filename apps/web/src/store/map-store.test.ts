@@ -464,3 +464,203 @@ describe('navegação entre módulos', () => {
     });
   });
 });
+
+describe('refresh do mapa: edicao local preservada (dirty)', () => {
+  afterEach(() => {
+    useMapStore.setState({
+      map: null,
+      activeMapId: null,
+      readOnly: false,
+      editMode: false,
+      dirty: false,
+      selection: null,
+      linkGeometryDrafts: {},
+    });
+  });
+
+  /** Mapa em modo edicao com uma alteracao local pendente (no arrastado). */
+  function setupEditedMap() {
+    const base = cloneDemoMaps()[0]!;
+    useMapStore.setState({
+      map: base,
+      activeMapId: base.id,
+      readOnly: false,
+      editMode: true,
+      dirty: false,
+      selection: null,
+      linkGeometryDrafts: {},
+    });
+    const nodeId = base.nodes[0]!.id;
+    useMapStore.getState().moveNode(nodeId, { x: 999, y: 999 });
+    return { map: base, nodeId, linkId: base.links[0]!.id };
+  }
+
+  /** Versao "do servidor": clone limpo do mesmo mapa, com ajustes. */
+  function serverCopy(mutate: (server: NetworkMap) => void) {
+    const server = cloneDemoMaps()[0]!;
+    mutate(server);
+    return server;
+  }
+
+  it('dirty=false: o refresh aplica o mapa do servidor normalmente', () => {
+    const base = cloneDemoMaps()[0]!;
+    useMapStore.setState({
+      map: base,
+      activeMapId: base.id,
+      readOnly: false,
+      editMode: false,
+      dirty: false,
+    });
+    const server = serverCopy((copy) => {
+      copy.nodes[0]!.position = { x: 10, y: 20 };
+    });
+
+    useMapStore.getState().applyMapRefresh(server);
+
+    expect(useMapStore.getState().map!.nodes[0]!.position).toEqual({ x: 10, y: 20 });
+    expect(useMapStore.getState().dirty).toBe(false);
+  });
+
+  it('editMode + dirty: a posicao local do no nao volta para a do servidor', () => {
+    const { nodeId } = setupEditedMap();
+    const server = serverCopy((copy) => {
+      copy.nodes.find((node) => node.id === nodeId)!.position = { x: 11, y: 22 };
+    });
+
+    useMapStore.getState().applyMapRefresh(server);
+
+    const node = useMapStore.getState().map!.nodes.find((item) => item.id === nodeId)!;
+    expect(node.position).toEqual({ x: 999, y: 999 });
+    expect(node.positionSource).toBe('MANUAL');
+  });
+
+  it('editMode + dirty: a telemetria nova dos devices e atualizada', () => {
+    setupEditedMap();
+    const server = serverCopy((copy) => {
+      copy.devices[0]!.status = 'DOWN';
+    });
+
+    useMapStore.getState().applyMapRefresh(server);
+
+    expect(useMapStore.getState().map!.devices[0]!.status).toBe('DOWN');
+  });
+
+  it('editMode + dirty: a configuracao visual local do enlace e preservada', () => {
+    const { linkId } = setupEditedMap();
+    const local = useMapStore.getState().map!.links.find((link) => link.id === linkId)!;
+    useMapStore.getState().replaceLink({
+      ...local,
+      label: 'MEU LABEL',
+      customColor: '#ff00ff',
+      linkLayoutMode: 'MANUAL',
+      visualPaths: [{ order: 0, label: null, customColor: null, curvature: 120, enabled: true }],
+    });
+    const server = serverCopy((copy) => {
+      const serverLink = copy.links.find((link) => link.id === linkId)!;
+      serverLink.label = 'ROTULO DO SERVIDOR';
+      serverLink.customColor = '#000000';
+      serverLink.linkLayoutMode = 'AUTO';
+      serverLink.visualPaths = [
+        { order: 0, label: null, customColor: null, curvature: 0, enabled: true },
+      ];
+    });
+
+    useMapStore.getState().applyMapRefresh(server);
+
+    const link = useMapStore.getState().map!.links.find((item) => item.id === linkId)!;
+    expect(link.label).toBe('MEU LABEL');
+    expect(link.customColor).toBe('#ff00ff');
+    expect(link.linkLayoutMode).toBe('MANUAL');
+    expect(link.visualPaths[0]!.curvature).toBe(120);
+  });
+
+  it('editMode + dirty: as metricas novas do enlace continuam atualizando', () => {
+    const { linkId } = setupEditedMap();
+    const server = serverCopy((copy) => {
+      const serverLink = copy.links.find((link) => link.id === linkId)!;
+      serverLink.rxBps = 12_345;
+      serverLink.txBps = 6_789;
+      serverLink.rxUtilization = 42;
+      serverLink.status = 'WARNING';
+    });
+
+    useMapStore.getState().applyMapRefresh(server);
+
+    const link = useMapStore.getState().map!.links.find((item) => item.id === linkId)!;
+    expect(link.rxBps).toBe(12_345);
+    expect(link.txBps).toBe(6_789);
+    expect(link.rxUtilization).toBe(42);
+    expect(link.status).toBe('WARNING');
+  });
+
+  it('a chegada de um refresh nao marca dirty=false', () => {
+    setupEditedMap();
+    expect(useMapStore.getState().dirty).toBe(true);
+
+    useMapStore.getState().applyMapRefresh(serverCopy(() => undefined));
+
+    expect(useMapStore.getState().dirty).toBe(true);
+  });
+
+  it('depois de markSaved() um novo refresh volta a ser aplicado', () => {
+    const { nodeId } = setupEditedMap();
+    useMapStore.getState().markSaved();
+    const server = serverCopy((copy) => {
+      copy.nodes.find((node) => node.id === nodeId)!.position = { x: 5, y: 6 };
+    });
+
+    useMapStore.getState().applyMapRefresh(server);
+
+    expect(useMapStore.getState().map!.nodes.find((node) => node.id === nodeId)!.position).toEqual({
+      x: 5,
+      y: 6,
+    });
+  });
+
+  it('troca real de mapa continua limpando o estado local', () => {
+    const { map } = setupEditedMap();
+    const other = cloneDemoMaps()[1]!;
+    expect(other.id).not.toBe(map.id);
+
+    useMapStore.getState().applyMapRefresh(other);
+
+    const state = useMapStore.getState();
+    expect(state.map!.id).toBe(other.id);
+    expect(state.activeMapId).toBe(other.id);
+    expect(state.dirty).toBe(false);
+  });
+
+  it('readOnly nao sofre regressao: o refresh nao hidrata o mapa publico', () => {
+    const base = cloneDemoMaps()[0]!;
+    useMapStore.getState().setPublicMap(base);
+    const before = useMapStore.getState().map;
+
+    useMapStore.getState().applyMapRefresh(serverCopy(() => undefined));
+
+    const state = useMapStore.getState();
+    expect(state.readOnly).toBe(true);
+    expect(state.map).toBe(before);
+  });
+
+  it('drafts de geometria continuam preservados durante o refresh', () => {
+    const { linkId } = setupEditedMap();
+    useMapStore.getState().setLinkGeometryDraft(linkId, {
+      linkLayoutMode: 'MANUAL',
+      visualPaths: [{ order: 0, label: null, customColor: null, curvature: 90, enabled: true }],
+    });
+    const server = serverCopy((copy) => {
+      const serverLink = copy.links.find((link) => link.id === linkId)!;
+      serverLink.visualPaths = [
+        { order: 0, label: null, customColor: null, curvature: 0, enabled: true },
+      ];
+    });
+
+    useMapStore.getState().applyMapRefresh(server);
+
+    const state = useMapStore.getState();
+    const link = state.map!.links.find((item) => item.id === linkId)!;
+    expect(link.visualPaths[0]!.curvature).toBe(90);
+    expect(link.linkLayoutMode).toBe('MANUAL');
+    expect(state.linkGeometryDrafts[linkId]).toBeTruthy();
+  });
+});
