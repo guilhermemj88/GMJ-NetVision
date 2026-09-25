@@ -21,17 +21,18 @@ import {
 import {
   getMap,
   getMaps,
-  getAlarms,
-  getRecentResolvedAlarms,
   updateNetworkMap,
 } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
 import { computeParallelLinkLayouts, type Alarm } from '@gmj/shared';
+import { countAlarmsByDevice, useActiveAlarms, useRecentResolvedAlarms } from '@/lib/use-alarms';
+import { useMapFocus } from '@/lib/use-map-focus';
 import { DeviceNode, type DeviceFlowNode } from './device-node';
 import { GenericNode, type GenericFlowNode } from './generic-node';
 import { PppTotalWidget } from './ppp-total-widget';
 import { TrafficEdge, type TrafficFlowEdge } from './traffic-edge';
 import { MapControls } from './map-controls';
+import { MapStatusBar } from './map-status-bar';
 import { EditToolbar } from './edit-toolbar';
 import { AlarmPanel, alarmFocusTarget } from './alarm-panel';
 import { resolveEdgeHandles } from '@/lib/edge-handles';
@@ -90,36 +91,15 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     refetchIntervalInBackground: true,
   });
 
-  // Alarms follow the same refresh cycle as the map for now. The panel and the
-  // node badges subscribe to this query, so a future WebSocket/SSE transport
-  // can replace it without touching the consumers.
-  const alarmsQuery = useQuery({
-    queryKey: ['alarms'],
-    queryFn: getAlarms,
-    enabled: !readOnly,
-    refetchInterval: MAP_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: true,
-  });
-  const alarms = alarmsQuery.data ?? [];
+  // Alarmes ativos/resolvidos vêm de hooks compartilhados (mesmas chaves de
+  // query do painel, dos badges e da rail de camadas).
+  const alarms = useActiveAlarms(!readOnly);
+  const recentResolvedAlarms = useRecentResolvedAlarms(!readOnly, 3);
+  const alarmCountByDevice = useMemo(() => countAlarmsByDevice(alarms), [alarms]);
 
-  // Recently resolved alarms follow the same refresh cycle as the active ones.
-  // The backend returns at most the 3 most recent resolutions.
-  const resolvedAlarmsQuery = useQuery({
-    queryKey: ['alarms', 'resolved'],
-    queryFn: () => getRecentResolvedAlarms(3),
-    enabled: !readOnly,
-    refetchInterval: MAP_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: true,
-  });
-  const recentResolvedAlarms = resolvedAlarmsQuery.data ?? [];
-
-  const alarmCountByDevice = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const alarm of alarmsQuery.data ?? []) {
-      counts.set(alarm.deviceId, (counts.get(alarm.deviceId) ?? 0) + 1);
-    }
-    return counts;
-  }, [alarmsQuery.data]);
+  // Recorte visual (camada + site + tipo + vizinhança). Não altera o grafo:
+  // apenas marca o que fica atenuado.
+  const focus = useMapFocus();
 
   useEffect(() => {
     if (!readOnly && catalogQuery.data) setCatalog(catalogQuery.data);
@@ -194,6 +174,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
             nodeScale,
             labelScale,
             alarmCount: alarmCountByDevice.get(device.id) ?? 0,
+            dimmed: focus.dimmedNodeIds.has(device.id),
           },
         }];
       }
@@ -209,12 +190,14 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
           displayMode: nodeDisplayMode,
           nodeScale,
           labelScale,
+          dimmed: focus.dimmedNodeIds.has(mapNode.id),
         },
       }];
     });
   }, [
     alarmCountByDevice,
     editMode,
+    focus.dimmedNodeIds,
     labelScale,
     mapDevices,
     mapNodes,
@@ -320,10 +303,12 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         type: 'traffic',
         selectable: true,
         selected: selection?.kind === 'link' && selection.id === link.id,
+        ...(focus.dimmedLinkIds.has(link.id) ? { className: 'is-dimmed' } : {}),
         data: {
           link,
           editMode,
           readOnly,
+          dimmed: focus.dimmedLinkIds.has(link.id),
           ...(sourceInterface ? { sourceInterface } : {}),
           ...(targetInterface ? { targetInterface } : {}),
           visualPath,
@@ -344,7 +329,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         },
       }));
     });
-  }, [domainNodes, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, preferences.showTrafficAnimation, selection, editMode, readOnly]);
+  }, [domainNodes, focus.dimmedLinkIds, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, preferences.showTrafficAnimation, selection, editMode, readOnly]);
 
   const [nodes, setNodes] = useNodesState<MapFlowNode>([]);
   const [edges, setEdges] = useEdgesState<TrafficFlowEdge>([]);
@@ -506,20 +491,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         {!rotation.hideControls && !readOnly && <MapControls />}
         {editMode && !rotation.active && !readOnly && <EditToolbar />}
       </ReactFlow>
-      <div className="map-watermark">
-        <span>LIVE TOPOLOGY</span>
-        <strong>
-          {map?.nodes.filter((node) => map.devices.some((device) => device.id === node.deviceId && device.status === 'UP')).length ?? 0} UP
-        </strong>
-        <i />
-        <strong className="warning">
-          {map?.nodes.filter((node) => map.devices.some((device) => device.id === node.deviceId && device.status === 'WARNING')).length ?? 0} WARNING
-        </strong>
-        <i />
-        <strong className="down">
-          {map?.nodes.filter((node) => map.devices.some((device) => device.id === node.deviceId && device.status === 'DOWN')).length ?? 0} DOWN
-        </strong>
-      </div>
+      <MapStatusBar focus={focus} />
     </main>
   );
 }

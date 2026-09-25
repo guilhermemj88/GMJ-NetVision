@@ -14,6 +14,8 @@ export interface GenericNodeData extends Record<string, unknown> {
   displayMode: NodeDisplayMode;
   nodeScale: number;
   labelScale: number;
+  /** Fora da camada/recorte atual: atenuado, mas ainda clicável. */
+  dimmed?: boolean;
 }
 
 export type GenericFlowNode = Node<GenericNodeData, 'generic'>;
@@ -26,14 +28,14 @@ const handlePositions = {
 } as const;
 
 export function GenericNode({ data, selected }: NodeProps<GenericFlowNode>) {
-  const { mapNode, editMode, displayMode, nodeScale, labelScale } = data;
+  const { mapNode, editMode, displayMode, nodeScale, labelScale, dimmed } = data;
   const iconType = normalizeGenericIconType(mapNode.genericType);
   const iconVariant = displayMode === 'ICON_3D' ? '3d' : '2d';
   const label = mapNode.label || mapNode.genericType || 'Node';
 
   return (
     <div
-      className={`device-node device-node--${displayMode.toLowerCase()} device-node--type-${iconType.toLowerCase().replaceAll('_', '-')} ${selected ? 'is-selected' : ''} ${mapNode.locked ? 'is-locked' : ''}`}
+      className={`device-node device-node--${displayMode.toLowerCase()} device-node--type-${iconType.toLowerCase().replaceAll('_', '-')} ${selected ? 'is-selected' : ''} ${mapNode.locked ? 'is-locked' : ''} ${dimmed ? 'is-dimmed' : ''}`}
       style={
         {
           '--node-scale': nodeScale / 100,

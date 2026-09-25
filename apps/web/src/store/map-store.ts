@@ -23,6 +23,7 @@ import {
 } from '@gmj/shared';
 import { create } from 'zustand';
 import type { LinkGeometry } from '@/lib/link-curvature';
+import type { FocusHops, MapLayerFilter, VisualPreset } from '@/lib/map-focus';
 
 export type Selection =
   | { kind: 'device'; id: string }
@@ -42,6 +43,68 @@ export type OpenPanel =
   | 'users'
   | null;
 export type WorkspaceView = 'MAP' | 'HOSTS' | 'PHYSICAL' | 'BGP';
+
+export interface PresetApplication {
+  nodeDisplayMode: NodeDisplayMode;
+  linkDisplayStyle: LinkDisplayStyle;
+  linkMetricDisplay: LinkMetricDisplay;
+  trafficLabelMode: TrafficLabelMode;
+  preferences: MapPreferences;
+  layer: MapLayerFilter;
+}
+
+/**
+ * Os três presets VISUAIS do mapa. Eles não criam mapas, não mudam topologia
+ * nem métricas: apenas agrupam escolhas que já existem em `MapSettings` e
+ * `MapPreferences`, mais a camada sugerida de foco.
+ */
+export const VISUAL_PRESETS: Record<VisualPreset, PresetApplication> = {
+  OPERACIONAL: {
+    nodeDisplayMode: 'ICON_2D',
+    linkDisplayStyle: 'HYBRID',
+    linkMetricDisplay: 'UTILIZATION',
+    trafficLabelMode: 'CARD',
+    preferences: {
+      showTraffic: true,
+      showUtilization: true,
+      showLabels: false,
+      showOffline: true,
+      showInterfaces: false,
+      showTrafficAnimation: true,
+    },
+    layer: 'PROBLEM',
+  },
+  TOPOLOGIA: {
+    nodeDisplayMode: 'ICON_2D',
+    linkDisplayStyle: 'MINIMAL',
+    linkMetricDisplay: 'NONE',
+    trafficLabelMode: 'HIDDEN',
+    preferences: {
+      showTraffic: false,
+      showUtilization: false,
+      showLabels: true,
+      showOffline: true,
+      showInterfaces: false,
+      showTrafficAnimation: false,
+    },
+    layer: 'ALL',
+  },
+  ENGENHARIA: {
+    nodeDisplayMode: 'CARD',
+    linkDisplayStyle: 'HYBRID',
+    linkMetricDisplay: 'BOTH',
+    trafficLabelMode: 'INLINE',
+    preferences: {
+      showTraffic: true,
+      showUtilization: true,
+      showLabels: true,
+      showOffline: true,
+      showInterfaces: true,
+      showTrafficAnimation: true,
+    },
+    layer: 'ALL',
+  },
+};
 
 export interface MapFocusRequest {
   deviceId: string;
@@ -81,6 +144,16 @@ interface MapState {
   pendingInterfaceNavigation: { mapId: string; deviceId: string; interfaceId: string } | null;
   hostDetailRequest: string | null;
   focusSequence: number;
+  visualPreset: VisualPreset;
+  layerFilter: MapLayerFilter;
+  siteFilter: string | null;
+  deviceTypeFilter: string | null;
+  focusHops: FocusHops;
+  setVisualPreset: (preset: VisualPreset) => void;
+  setLayerFilter: (layer: MapLayerFilter) => void;
+  setSiteFilter: (site: string | null) => void;
+  setDeviceTypeFilter: (deviceType: string | null) => void;
+  setFocusHops: (hops: FocusHops) => void;
   setCatalog: (maps: MapSummary[]) => void;
   upsertMapSummary: (map: NetworkMap) => void;
   removeMapSummary: (mapId: string) => void;
@@ -220,6 +293,39 @@ export const useMapStore = create<MapState>((set) => ({
   pendingInterfaceNavigation: null,
   hostDetailRequest: null,
   focusSequence: 0,
+  visualPreset: 'OPERACIONAL',
+  layerFilter: 'PROBLEM',
+  siteFilter: null,
+  deviceTypeFilter: null,
+  focusHops: 0,
+  setVisualPreset: (visualPreset) =>
+    set((state) => {
+      const application = VISUAL_PRESETS[visualPreset];
+      const map = state.map
+        ? {
+            ...state.map,
+            settings: {
+              ...state.map.settings,
+              nodeDisplayMode: application.nodeDisplayMode,
+              linkDisplayStyle: application.linkDisplayStyle,
+              linkMetricDisplay: application.linkMetricDisplay,
+              trafficLabelMode: application.trafficLabelMode,
+              filters: application.preferences,
+            },
+          }
+        : state.map;
+      return {
+        visualPreset,
+        preferences: application.preferences,
+        layerFilter: application.layer,
+        map,
+        dirty: map ? true : state.dirty,
+      };
+    }),
+  setLayerFilter: (layerFilter) => set({ layerFilter }),
+  setSiteFilter: (siteFilter) => set({ siteFilter }),
+  setDeviceTypeFilter: (deviceTypeFilter) => set({ deviceTypeFilter }),
+  setFocusHops: (focusHops) => set({ focusHops }),
   setCatalog: (maps) =>
     set((state) => ({
       maps,
@@ -249,7 +355,7 @@ export const useMapStore = create<MapState>((set) => ({
       map: state.activeMapId === mapId ? null : state.map,
     })),
   setActiveMap: (activeMapId) =>
-    set({
+    set((state) => ({
       linkGeometryDrafts: {},
       activeMapId,
       map: null,
@@ -257,8 +363,13 @@ export const useMapStore = create<MapState>((set) => ({
       panel: null,
       pendingInterfaceNavigation: null,
       focusRequest: null,
+      // Recortes de foco são específicos do mapa aberto.
+      layerFilter: VISUAL_PRESETS[state.visualPreset].layer,
+      siteFilter: null,
+      deviceTypeFilter: null,
+      focusHops: 0,
       dirty: false,
-    }),
+    })),
   setMap: (map) => {
     clearLegacyLocalState(map.id);
     set((state) => {

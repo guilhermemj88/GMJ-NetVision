@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useSyncExternalStore } from 'react';
 import type {
   LinkDisplayStyle,
   LinkMetricDisplay,
@@ -14,34 +14,12 @@ import {
   setAlarmScale,
   subscribeAlarmScale,
 } from '@/lib/alarm-panel-preferences';
-import { Button } from '@gmj/ui';
-import {
-  Boxes,
-  ChevronLeft,
-  ChevronRight,
-  Focus,
-  Maximize,
-  Minus,
-  Plus,
-  Share2,
-  X,
-} from 'lucide-react';
+import { SegmentedControl } from '@gmj/ui';
+import { Focus, Maximize, Minus, Plus } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
 import { updateNetworkMap } from '@/lib/api';
-import { useMediaQuery } from '@/lib/use-media-query';
 import { useMapStore } from '@/store/map-store';
 import { PppTotalControls } from './ppp-total-controls';
-
-const VISUAL_PANEL_COLLAPSED_KEY = 'netvision.mapVisualPanelCollapsed';
-
-function readCollapsedPreference(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.localStorage.getItem(VISUAL_PANEL_COLLAPSED_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
 
 const nodeModes: Array<[NodeDisplayMode, string]> = [
   ['ICON_2D', 'Ícones 2D'],
@@ -66,7 +44,17 @@ const trafficLabelModes: Array<[TrafficLabelMode, string]> = [
   ['HIDDEN', 'Ocultar'],
 ];
 
-function VisualPanelContent() {
+function toOptions<T extends string>(pairs: Array<[T, string]>) {
+  return pairs.map(([value, label]) => ({ value, label }));
+}
+
+/**
+ * Controles VISUAIS do mapa (aparência de nós, enlaces, métricas e escala).
+ *
+ * Vivem na rail lateral do mapa — não são mais um painel permanente sobre o
+ * canvas. Continuam persistindo as mesmas chaves de `MapSettings`.
+ */
+export function MapVisualControls() {
   const map = useMapStore((state) => state.map);
   const setNodeDisplayMode = useMapStore((state) => state.setNodeDisplayMode);
   const setLinkDisplayStyle = useMapStore((state) => state.setLinkDisplayStyle);
@@ -96,36 +84,48 @@ function VisualPanelContent() {
   return (
     <>
       <SegmentedControl
+        layout="stacked"
+        size="sm"
         label="Equipamentos"
+        ariaLabel="Modo de exibição dos equipamentos"
         value={map?.settings.nodeDisplayMode ?? 'ICON_2D'}
-        options={nodeModes}
+        options={toOptions(nodeModes)}
         onChange={(value) => {
           setNodeDisplayMode(value);
           persist({ nodeDisplayMode: value });
         }}
       />
       <SegmentedControl
+        layout="stacked"
+        size="sm"
         label="Enlaces"
+        ariaLabel="Estilo dos enlaces"
         value={map?.settings.linkDisplayStyle ?? 'HYBRID'}
-        options={linkStyles}
+        options={toOptions(linkStyles)}
         onChange={(value) => {
           setLinkDisplayStyle(value);
           persist({ linkDisplayStyle: value });
         }}
       />
       <SegmentedControl
+        layout="stacked"
+        size="sm"
         label="Métrica"
+        ariaLabel="Métrica exibida nos enlaces"
         value={map?.settings.linkMetricDisplay ?? 'BOTH'}
-        options={metricModes}
+        options={toOptions(metricModes)}
         onChange={(value) => {
           setLinkMetricDisplay(value);
           persist({ linkMetricDisplay: value });
         }}
       />
       <SegmentedControl
+        layout="stacked"
+        size="sm"
         label="Exibição de tráfego"
+        ariaLabel="Exibição de tráfego"
         value={map?.settings.trafficLabelMode ?? 'CARD'}
-        options={trafficLabelModes}
+        options={toOptions(trafficLabelModes)}
         onChange={(value) => {
           setTrafficLabelMode(value);
           persist({ trafficLabelMode: value });
@@ -185,152 +185,39 @@ function VisualPanelContent() {
   );
 }
 
+/**
+ * Controles flutuantes mínimos sobre o canvas: zoom, enquadrar e tela cheia.
+ * Ficam no canto inferior direito para não competir com a rail nem com o
+ * inspector.
+ */
 export function MapControls() {
   const flow = useReactFlow();
-  const map = useMapStore((state) => state.map);
-  const preferences = useMapStore((state) => state.preferences);
-  const setPreference = useMapStore((state) => state.setPreference);
-  const [collapsed, setCollapsed] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const isMobile = useMediaQuery('(max-width: 720px)');
-
-  useEffect(() => {
-    setCollapsed(readCollapsedPreference());
-  }, []);
 
   const fullscreen = async () => {
     if (document.fullscreenElement) await document.exitFullscreen();
     else await document.documentElement.requestFullscreen();
   };
 
-  const persist = (settings: MapSettingsUpdate) => {
-    if (map) void updateNetworkMap(map.id, { settings }).catch(() => undefined);
-  };
-
-  const setCollapsedPersist = (value: boolean) => {
-    setCollapsed(value);
-    try {
-      window.localStorage.setItem(VISUAL_PANEL_COLLAPSED_KEY, value ? '1' : '0');
-    } catch {
-      // Ignore storage failures (private mode, quotas, etc).
-    }
-  };
-
   return (
-    <>
-      {isMobile ? (
-        <>
-          <button
-            type="button"
-            className="visual-sheet-fab"
-            aria-label="Abrir Visual do mapa"
-            onClick={() => setSheetOpen(true)}
-          >
-            <Boxes size={16} />
-            <span>Visual</span>
-          </button>
-          {sheetOpen && (
-            <div className="visual-sheet-backdrop" onClick={() => setSheetOpen(false)}>
-              <section
-                className="visual-sheet"
-                role="dialog"
-                aria-modal="true"
-                aria-label="Visual do mapa"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <header className="visual-sheet__header">
-                  <span>
-                    <Boxes size={13} /> Visual do mapa
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="Fechar Visual do mapa"
-                    onClick={() => setSheetOpen(false)}
-                  >
-                    <X size={16} />
-                  </button>
-                </header>
-                <div className="visual-sheet__scroll">
-                  <VisualPanelContent />
-                </div>
-              </section>
-            </div>
-          )}
-        </>
-      ) : collapsed ? (
-        <button
-          type="button"
-          className="visual-controls-rail"
-          aria-label="Expandir Visual do mapa"
-          onClick={() => setCollapsedPersist(false)}
-        >
-          <Boxes size={15} />
-          <ChevronLeft size={13} />
-        </button>
-      ) : (
-        <div className="visual-controls">
-          <div className="visual-controls__title">
-            <Boxes size={13} /> Visual do mapa
-            <button
-              type="button"
-              className="visual-controls__collapse"
-              aria-label="Recolher Visual do mapa"
-              onClick={() => setCollapsedPersist(true)}
-            >
-              <ChevronRight size={13} />
-            </button>
-          </div>
-          <VisualPanelContent />
-        </div>
-      )}
-
-      <div className="map-controls">
-        <div className="map-controls__zoom">
-          <Button compact variant="ghost" aria-label="Aumentar zoom" onClick={() => flow.zoomIn()}>
-            <Plus size={16} />
-          </Button>
-          <Button compact variant="ghost" aria-label="Diminuir zoom" onClick={() => flow.zoomOut()}>
-            <Minus size={16} />
-          </Button>
-          <Button
-            compact
-            variant="ghost"
-            aria-label="Enquadrar mapa"
-            onClick={() => flow.fitView({ padding: 0.14, duration: 500 })}
-          >
-            <Focus size={16} />
-          </Button>
-          <Button compact variant="ghost" aria-label="Tela cheia" onClick={() => void fullscreen()}>
-            <Maximize size={15} />
-          </Button>
-        </div>
-        <div className="map-controls__toggles">
-          {(
-            [
-              ['showTraffic', 'Tráfego'],
-              ['showTrafficAnimation', 'Animação'],
-              ['showUtilization', 'Utilização'],
-              ['showLabels', 'Labels'],
-              ['showOffline', 'Offline'],
-              ['showInterfaces', 'Interfaces'],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              type="button"
-              key={key}
-              className={preferences[key] ? 'is-active' : ''}
-              onClick={() => {
-                setPreference(key);
-                persist({ filters: { [key]: !preferences[key] } });
-              }}
-            >
-              <span /> {label}
-            </button>
-          ))}
-        </div>
-        <Share2 size={12} className="map-controls__mode" />
-      </div>
-    </>
+    <div className="map-zoombar" role="group" aria-label="Controles de visualização do mapa">
+      <button type="button" aria-label="Diminuir zoom" title="Diminuir zoom" onClick={() => flow.zoomOut()}>
+        <Minus size={15} />
+      </button>
+      <button type="button" aria-label="Aumentar zoom" title="Aumentar zoom" onClick={() => flow.zoomIn()}>
+        <Plus size={15} />
+      </button>
+      <button
+        type="button"
+        aria-label="Enquadrar mapa"
+        title="Enquadrar mapa"
+        onClick={() => flow.fitView({ padding: 0.14, duration: 500 })}
+      >
+        <Focus size={15} />
+      </button>
+      <button type="button" aria-label="Tela cheia" title="Tela cheia" onClick={() => void fullscreen()}>
+        <Maximize size={14} />
+      </button>
+    </div>
   );
 }
 
@@ -362,36 +249,6 @@ function ScaleControl({
       <button type="button" aria-label={`Aumentar ${label}`} onClick={() => onChange(value + 10)}>
         +
       </button>
-    </div>
-  );
-}
-
-function SegmentedControl<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: Array<[T, string]>;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className="segmented-row">
-      <span>{label}</span>
-      <div>
-        {options.map(([option, text]) => (
-          <button
-            type="button"
-            key={option}
-            className={value === option ? 'is-active' : ''}
-            onClick={() => onChange(option)}
-          >
-            {text}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }
