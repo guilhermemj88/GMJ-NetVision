@@ -175,6 +175,12 @@ interface MapState {
   openHostDetails: (hostId: string) => void;
   clearHostDetailRequest: () => void;
   openHostOnMap: (deviceId: string, mapId: string) => void;
+  /**
+   * Abre a interface no mapa que já está ativo, quando o equipamento faz parte
+   * dele. Devolve `false` sem mudar nada quando o equipamento não está no mapa
+   * — nunca inferimos um mapa para "abrir em algum lugar".
+   */
+  openInterfaceInActiveMap: (deviceId: string, interfaceId: string) => boolean;
   setPanel: (panel: OpenPanel) => void;
   setPendingLink: (value: MapState['pendingLink']) => void;
   setPreference: (key: keyof MapPreferences) => void;
@@ -518,6 +524,21 @@ export const useMapStore = create<MapState>((set) => ({
         dirty: false,
       };
     }),
+  openInterfaceInActiveMap: (deviceId, interfaceId) => {
+    const state = useMapStore.getState();
+    const device = state.map?.devices.find((item) => item.id === deviceId);
+    const networkInterface = device?.interfaces.find((item) => item.id === interfaceId);
+    if (!state.map || !device || !networkInterface) return false;
+    const focusSequence = state.focusSequence + 1;
+    useMapStore.setState({
+      view: 'MAP',
+      selection: { kind: 'interface', id: interfaceId, deviceId },
+      focusRequest: { deviceId, requestId: focusSequence },
+      focusSequence,
+      panel: null,
+    });
+    return true;
+  },
   setPanel: (panel) => set({ panel }),
   setPendingLink: (pendingLink) => set({ pendingLink }),
   setPreference: (key) =>

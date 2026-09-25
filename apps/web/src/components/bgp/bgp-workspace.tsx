@@ -12,7 +12,14 @@ import type {
 } from '@gmj/shared';
 import { RefreshCw, Settings2 } from 'lucide-react';
 import { Button, MetaFact, ModuleHeader } from '@gmj/ui';
-import { discoverBgp, getBgpDashboard, getBgpPeer, getHosts, pollHost } from '@/lib/api';
+import {
+  discoverBgp,
+  getBgpAlerts,
+  getBgpDashboard,
+  getBgpPeer,
+  getHosts,
+  pollHost,
+} from '@/lib/api';
 import { formatRelative } from '@/lib/bgp-format';
 import { BgpAlertsPanel } from './bgp-alerts-panel';
 import { BgpFilters } from './bgp-filters';
@@ -45,6 +52,8 @@ export function BgpWorkspace() {
   const [refreshingDeviceIds, setRefreshingDeviceIds] = useState<ReadonlySet<string>>(new Set());
   const [globalProgress, setGlobalProgress] = useState<{ current: number; total: number } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  /** Falha por equipamento (a última de cada um; nunca sobrescreve as outras). */
+  const [refreshFailures, setRefreshFailures] = useState<Record<string, string>>({});
   const inFlight = useRef(new Set<string>());
   const deferredSearch = useDeferredValue(search);
   const now = useNow(1_000);
@@ -70,6 +79,36 @@ export function BgpWorkspace() {
     enabled: scope === 'monitored',
   });
 
+  // Mesma query do painel de alertas: react-query deduplica, então os dois
+  // consomem exatamente o mesmo snapshot de 48h.
+  const alerts = useQuery({
+    queryKey: ['bgp-alerts', scope],
+    queryFn: () => getBgpAlerts({ scope, hours: 48 }),
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: true,
+    refetchOnWindowFocus: true,
+  });
+
+  /** Quedas por peer em 48h: ativas + resolvidas realmente observadas. */
+  const flapsByPeer = useMemo(() => {
+    const counts = new Map<string, number>();
+    const data = alerts.data;
+    if (!data) return counts;
+    for (const alert of [...data.active, ...data.resolved]) {
+      counts.set(alert.peerId, (counts.get(alert.peerId) ?? 0) + 1);
+    }
+    return counts;
+  }, [alerts.data]);
+
+  /** Início da indisponibilidade atual por peer (alerta ativo). */
+  const downSinceByPeer = useMemo(() => {
+    const since = new Map<string, string>();
+    for (const alert of alerts.data?.active ?? []) {
+      if (alert.startedAt) since.set(alert.peerId, alert.startedAt);
+    }
+    return since;
+  }, [alerts.data]);
+
   const allPeers = useMemo(
     () => dashboard.data?.devices.flatMap((device) => device.peers) ?? [],
     [dashboard.data],
@@ -84,6 +123,7 @@ export function BgpWorkspace() {
   async function refreshDeviceCore(deviceId: string): Promise<{ sshFailed: boolean }> {
     setRefreshingDeviceIds((current) => new Set(current).add(deviceId));
     let sshFailed = false;
+    let snmpError: string | null = null;
     try {
       try {
         await discoverBgp(deviceId);
@@ -93,11 +133,7 @@ export function BgpWorkspace() {
       try {
         await pollHost(deviceId);
       } catch (error) {
-        setNotice(
-          `Falha no polling SNMP de ${deviceId}: ${
-            error instanceof Error ? error.message : 'erro desconhecido'
-          }`,
-        );
+        snmpError = error instanceof Error ? error.message : 'erro desconhecido';
       }
     } finally {
       setRefreshingDeviceIds((current) => {
@@ -106,7 +142,22 @@ export function BgpWorkspace() {
         return next;
       });
     }
-    if (sshFailed) setNotice('Discovery SSH falhou; estado e rotas atualizados por SNMP.');
+    setRefreshFailures((current) => {
+      const entity = hosts.data?.find((host) => host.id === deviceId);
+      const label = entity?.displayName || entity?.hostname || deviceId;
+      const next = { ...current };
+      const reasons: string[] = [];
+      if (snmpError) reasons.push(`polling SNMP: ${snmpError}`);
+      if (sshFailed) {
+        reasons.push('discovery SSH falhou; estado e rotas vieram do SNMP');
+      }
+      if (reasons.length) {
+        next[label] = reasons.join(' · ');
+      } else {
+        delete next[label];
+      }
+      return next;
+    });
     await queryClient.invalidateQueries({ queryKey: ['bgp'] });
     await queryClient.invalidateQueries({ queryKey: ['bgp-alerts'] });
     await queryClient.invalidateQueries({ queryKey: ['bgp-peer-history'] });
@@ -248,6 +299,23 @@ export function BgpWorkspace() {
         </div>
       )}
 
+      {Object.keys(refreshFailures).length > 0 && (
+        <div className="bgp-notice bgp-notice--warning" role="status">
+          <span className="bgp-notice__title">Falhas na última atualização</span>
+          <ul className="bgp-notice__list">
+            {Object.entries(refreshFailures).map(([label, message]) => (
+              <li key={label}>
+                <strong>{label}</strong>
+                <span>{message}</span>
+              </li>
+            ))}
+          </ul>
+          <button type="button" onClick={() => setRefreshFailures({})}>
+            Limpar
+          </button>
+        </div>
+      )}
+
       {bgpDeviceFilter && (
         <div className="bgp-notice" role="status">
           Mostrando apenas o equipamento selecionado no inventário.
@@ -322,6 +390,9 @@ export function BgpWorkspace() {
                 onRefreshDevice={(deviceId) => void refreshDevice(deviceId)}
                 refreshingDeviceIds={refreshingDeviceIds}
                 emptyMessage={emptyMessage}
+                flapsByPeer={flapsByPeer}
+                downSinceByPeer={downSinceByPeer}
+                now={now}
               />
             </>
           )}

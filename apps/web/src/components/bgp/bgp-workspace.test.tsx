@@ -562,6 +562,95 @@ describe('BgpWorkspace', () => {
       ),
     ).toBe(false);
   });
+
+  it('substitui a coluna Histórico vazia por quedas reais de 48h', async () => {
+    api.getBgpAlerts.mockResolvedValue({
+      active: [
+        {
+          peerId: 'p1',
+          deviceId: 'ne8000-1',
+          deviceName: 'NE-8K POP CENTRO',
+          peerAddress: '200.150.1.193',
+          displayName: 'TRANSITO XYZ',
+          addressFamily: 'IPV4',
+          previousState: 'ESTABLISHED',
+          currentState: 'ACTIVE',
+          startedAt: new Date(Date.now() - 5 * 60_000).toISOString(),
+        },
+      ],
+      resolved: [
+        {
+          peerId: 'p1',
+          deviceId: 'ne8000-1',
+          deviceName: 'NE-8K POP CENTRO',
+          peerAddress: '200.150.1.193',
+          displayName: 'TRANSITO XYZ',
+          addressFamily: 'IPV4',
+          previousState: 'ESTABLISHED',
+          currentState: 'ACTIVE',
+          startedAt: '2026-09-24T10:00:00.000Z',
+          resolvedAt: '2026-09-24T10:03:00.000Z',
+          durationSeconds: 180,
+        },
+      ],
+    });
+    await act(async () => {
+      await client.refetchQueries({ queryKey: ['bgp-alerts'] });
+    });
+    await settle();
+
+    expect(container.textContent).toContain('Quedas · 48h');
+    expect(container.textContent).not.toContain('Histórico');
+    // Uma queda resolvida + a queda atual = 2 transições observadas.
+    expect(container.querySelector('.bgp-flaps em')?.textContent).toBe('2×');
+    expect(container.querySelector('.bgp-flaps small')?.textContent).toContain('down há');
+  });
+
+  it('acumula falhas de refresh por equipamento em vez de sobrescrever', async () => {
+    api.discoverBgp.mockRejectedValue(new Error('ssh indisponível'));
+    api.pollHost.mockRejectedValue(new Error('timeout SNMP'));
+
+    const refreshButtons = () =>
+      Array.from(container.querySelectorAll<HTMLButtonElement>('.bgp-device__refresh'));
+
+    await act(async () => {
+      refreshButtons()[0]!.click();
+    });
+    await settle();
+    await act(async () => {
+      refreshButtons()[1]!.click();
+    });
+    await settle();
+
+    const failures = container.querySelector('.bgp-notice--warning');
+    expect(failures).not.toBeNull();
+    // As duas falhas convivem: a segunda não apaga a primeira.
+    expect(failures?.querySelectorAll('li')).toHaveLength(2);
+    expect(failures?.textContent).toContain('discovery SSH falhou');
+    expect(failures?.textContent).toContain('timeout SNMP');
+  });
+
+  it('oferece navegação para host e mapa sem inferir interface', async () => {
+    const row = Array.from(container.querySelectorAll('tr.is-down'))[0];
+    await act(async () => {
+      (row as HTMLElement).click();
+    });
+    await settle();
+
+    const nav = container.querySelector('.bgp-actions__nav');
+    expect(nav).not.toBeNull();
+    const openHost = Array.from(nav!.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Abrir host no inventário',
+    );
+    const openInterface = Array.from(nav!.querySelectorAll('button')).find(
+      (button) => button.textContent?.trim() === 'Abrir interface no mapa',
+    );
+    expect(openHost).not.toBeUndefined();
+    expect(openInterface?.disabled).toBe(true);
+    // O botão nunca é habilitado sem os dois critérios: interface correlacionada
+    // (MATCHED) E equipamento presente no mapa ativo. O título diz qual falta.
+    expect(openInterface?.getAttribute('title')).toMatch(/MATCHED|mapa ativo/);
+  });
 });
 
 describe('WorkspaceView store', () => {

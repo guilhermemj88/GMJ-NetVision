@@ -564,6 +564,84 @@ button {
   color: #4f6672;
 }
 
+/* ------------------------------------------------ BGP: quedas e navegação */
+.bgp-flaps {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.bgp-flaps em {
+  padding: 1px 5px;
+  border: 1px solid rgba(217, 162, 75, 0.4);
+  border-radius: 3px;
+  background: rgba(217, 162, 75, 0.12);
+  color: var(--st-warning);
+  font: 600 9px var(--font-mono);
+  font-style: normal;
+}
+.bgp-flaps em.is-many {
+  border-color: rgba(210, 94, 97, 0.45);
+  background: rgba(210, 94, 97, 0.14);
+  color: var(--st-down);
+}
+.bgp-flaps small {
+  color: #8095a0;
+  font: 500 9px var(--font-mono);
+}
+.bgp-actions__nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #263b46;
+}
+.bgp-actions__nav button {
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #0d151b;
+  color: #9db1bb;
+  cursor: pointer;
+  font: 500 10px var(--font-mono);
+}
+.bgp-actions__nav button:hover:not(:disabled) {
+  border-color: #33505d;
+  color: var(--text);
+}
+.bgp-actions__nav button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+.bgp-notice--warning {
+  flex-wrap: wrap;
+  border-color: rgba(217, 162, 75, 0.42);
+  background: rgba(217, 162, 75, 0.08);
+  color: #d9b273;
+}
+.bgp-notice__title {
+  font: 700 9px var(--font-mono);
+  letter-spacing: 0.12em;
+}
+.bgp-notice__list {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.bgp-notice__list li {
+  display: flex;
+  gap: 8px;
+  font: 500 10px var(--font-mono);
+}
+.bgp-notice__list strong {
+  color: #e6cd9b;
+  font-weight: 620;
+}
+
 /* Frescor honesto: tempo relativo real, com aviso quando o dado envelhece. */
 .freshness {
   color: #7d919b;
