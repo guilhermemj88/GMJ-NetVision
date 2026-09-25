@@ -911,6 +911,157 @@ describe('alias de painel do catálogo (S6730)', () => {
 });
 
 /**
+ * S6750-H36C: o painel declara 36 QSFP28 (`QSFP28-1..36`) e o VRP apresenta as
+ * mesmas portas como `100GE<slot>/<subslot>/N`. O alias do modelo correlaciona
+ * **somente pelo ordinal final** — o slot/member varia e não pode ser fixado.
+ */
+describe('alias de painel do catálogo (S6750-H36C)', () => {
+  const S6750_H36C = 'huawei-s6750-h36c';
+
+  const qsfpPanel = () =>
+    Array.from({ length: 36 }, (_value, index) => ({
+      id: `port-qsfp28-${index + 1}`,
+      name: `QSFP28-${index + 1}`,
+      side: 'DEVICE' as const,
+      mappedInterfaceId: null,
+    }));
+
+  const hundredGe = (count = 36, slot = '1/0') =>
+    Array.from({ length: count }, (_value, index) => `100GE${slot}/${index + 1}`);
+
+  const ifTargets = (names: readonly string[]) =>
+    names.map((name) => ({ id: `if-${name}`, name }));
+
+  it('correlaciona as 36 portas QSFP28 com 100GE1/0/1..36', () => {
+    const correlation = correlateCatalogPanelAliases(
+      qsfpPanel(),
+      ifTargets(hundredGe(36, '1/0')),
+      S6750_H36C,
+    );
+
+    expect(correlation.size).toBe(36);
+    expect(correlation.get('if-100GE1/0/1')).toBe('port-qsfp28-1');
+    expect(correlation.get('if-100GE1/0/18')).toBe('port-qsfp28-18');
+    expect(correlation.get('if-100GE1/0/36')).toBe('port-qsfp28-36');
+  });
+
+  it('não fixa o slot: 100GE2/0/1..36 correlaciona igual', () => {
+    const correlation = correlateCatalogPanelAliases(
+      qsfpPanel(),
+      ifTargets(hundredGe(36, '2/0')),
+      S6750_H36C,
+    );
+
+    expect(correlation.size).toBe(36);
+    expect(correlation.get('if-100GE2/0/1')).toBe('port-qsfp28-1');
+    expect(correlation.get('if-100GE2/0/36')).toBe('port-qsfp28-36');
+  });
+
+  it('não aplica correlação parcial quando falta uma interface', () => {
+    const correlation = correlateCatalogPanelAliases(
+      qsfpPanel(),
+      ifTargets(hundredGe(35, '1/0')),
+      S6750_H36C,
+    );
+
+    expect(correlation.size).toBe(0);
+  });
+
+  it('ordinal duplicado invalida a correlação da família', () => {
+    const correlation = correlateCatalogPanelAliases(
+      qsfpPanel(),
+      ifTargets([...hundredGe(34, '1/0'), '100GE9/0/35', '100GE9/0/35', '100GE9/0/36']),
+      S6750_H36C,
+    );
+
+    expect(correlation.size).toBe(0);
+  });
+
+  it('não vaza para outros modelos', () => {
+    // O S6730 está fora de propósito: ele tem alias próprio (teste acima).
+    for (const catalogKey of [
+      'huawei-s6750-h48x8c',
+      'huawei-s6750-h24x6c',
+      'huawei-ne8000-f1a-8h20q',
+      'mikrotik-crs328-24p-4splus-rm',
+    ]) {
+      expect(
+        correlateCatalogPanelAliases(qsfpPanel(), ifTargets(hundredGe(36, '1/0')), catalogKey).size,
+      ).toBe(0);
+    }
+  });
+
+  it('mapeia as 36 portas no sync completo e ignora interfaces lógicas', async () => {
+    const names = [...hundredGe(36, '1/0'), 'Vlanif1161', 'Eth-Trunk10', 'LoopBack0'];
+    const context = await harness([hostRecord('host-s6750-h36c', names)]);
+    const rack = await context.createRack();
+    const asset = await context.createAsset(rack.id, {
+      name: 'SW-CORE-S6750-36',
+      catalogKey: S6750_H36C,
+      kind: 'NETWORK',
+      deviceId: 'host-s6750-h36c',
+    });
+    expect(asset.ports).toHaveLength(36);
+    // O painel cobre exatamente QSFP28-1..36: um offset duplicado
+    // (`{n+32}` + `panelNumberStart: 33`) renomeava as uplinks para
+    // QSFP28-65..68 e derrubava a correlação — guarda contra a regressão.
+    const ordinals = asset.ports
+      .map((port) => Number(/^QSFP28-(\d+)$/.exec(port.name)?.[1] ?? Number.NaN))
+      .sort((a, b) => a - b);
+    expect(ordinals).toEqual(Array.from({ length: 36 }, (_value, index) => index + 1));
+
+    const report = await context.sync(asset.id);
+    expect(report.created).toBe(0);
+    expect(report.mapped).toBe(36);
+    expect(report.skippedByPolicy).toBe(0);
+
+    const mappedInterface = (portName: string) =>
+      report.ports.find((port) => port.name === portName)?.mappedInterfaceId;
+    expect(mappedInterface('QSFP28-1')).toBe('if-100GE1/0/1');
+    expect(mappedInterface('QSFP28-36')).toBe('if-100GE1/0/36');
+
+    // Interface lógica nunca vira porta física (nem ganha conector).
+    expect(
+      report.ports.some((port) => /vlanif|eth-?trunk|loopback/i.test(port.name)),
+    ).toBe(false);
+    expect(report.created).toBe(0);
+
+    const again = await context.sync(asset.id);
+    expect(again.created).toBe(0);
+    expect(again.mapped).toBe(36);
+    expect(again.skippedByPolicy).toBe(0);
+    await context.app.close();
+  });
+
+  it('preserva o comportamento já existente do S6730', () => {
+    const panel = [
+      ...Array.from({ length: 48 }, (_value, index) => ({
+        id: `port-10ge-${index + 1}`,
+        name: `10GE-${index + 1}`,
+        side: 'DEVICE' as const,
+        mappedInterfaceId: null,
+      })),
+      ...Array.from({ length: 6 }, (_value, index) => ({
+        id: `port-qsfp28-${index + 1}`,
+        name: `QSFP28-${index + 1}`,
+        side: 'DEVICE' as const,
+        mappedInterfaceId: null,
+      })),
+    ];
+    const names = [
+      ...Array.from({ length: 48 }, (_value, index) => `XGigabitEthernet0/0/${index + 1}`),
+      ...Array.from({ length: 6 }, (_value, index) => `100GE0/0/${index + 1}`),
+    ];
+
+    const correlation = correlateCatalogPanelAliases(panel, ifTargets(names), 'huawei-s6730-h48x6c');
+
+    expect(correlation.size).toBe(54);
+    expect(correlation.get('if-XGigabitEthernet0/0/1')).toBe('port-10ge-1');
+    expect(correlation.get('if-100GE0/0/6')).toBe('port-qsfp28-6');
+  });
+});
+
+/**
  * A identidade apresentada da porta é o **nome de interface do catálogo**
  * (`interfaceNamePattern`) e, quando existe, a interface real do Device. A
  * correlação usa essa declaração antes do nome persistido, sem nunca escolher

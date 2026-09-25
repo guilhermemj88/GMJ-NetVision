@@ -1241,7 +1241,7 @@ templates:
     - 40G
     - 100G
     breakoutCapable: true
-    physicalLabelPattern: QSFP28-{n+32}
+    physicalLabelPattern: QSFP28-{n}
     notes: Huawei notes future 200G support on these four uplinks; this catalog encodes the currently documented 40/100GE connector mode only.
   slotGroups: []
   compatibleModuleKeys: []

@@ -422,12 +422,22 @@ export function correlatePanelLabels(
  * `XGigabitEthernet<slot>/<subslot>/N` e `100GE<slot>/<subslot>/N`. A exceção é
  * amarrada ao `catalogKey` de propósito: `100GE` não é `QSFP28` e
  * `XGigabitEthernet` não é `10GE` em outros modelos (F1A-8H20Q, S6750 etc.).
+ *
+ * O S6750-H36C entra na lista pelo mesmo motivo: o painel declara
+ * `QSFP28-1..36` e o VRP apresenta as mesmas portas como
+ * `100GE<slot>/<subslot>/N`.
  */
 const CATALOG_PANEL_ALIASES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   'huawei-s6730-h24x6c': { xgigabitethernet: '10ge', '100ge': 'qsfp28' },
   'huawei-s6730-h48x6c': { xgigabitethernet: '10ge', '100ge': 'qsfp28' },
   'huawei-s6730-h24x6c-v2': { xgigabitethernet: '10ge', '100ge': 'qsfp28' },
   'huawei-s6730-h48x6c-v2': { xgigabitethernet: '10ge', '100ge': 'qsfp28' },
+  /**
+   * 36 QSFP28 (`QSFP28-1..36`) apresentadas como `100GE<slot>/<subslot>/N`.
+   * Só o ordinal final correlaciona: o slot varia com stack/member e nunca é
+   * fixado aqui — a contagem (36 = 36) é o que autoriza o pareamento.
+   */
+  'huawei-s6750-h36c': { '100ge': 'qsfp28' },
 };
 
 /**
