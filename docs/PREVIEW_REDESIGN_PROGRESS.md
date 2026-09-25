@@ -19,8 +19,12 @@ O último deploy concluído com sucesso foi a **Fase 2**. As fases seguintes est
 | --- | --- | --- |
 | `9b5f019` | Design system + shell global (StatusPill, ModuleHeader, Panel, ConfirmDialog, SearchInput, EmptyState, SegmentedControl) | **implantado** |
 | `dca5898` | Workspace do mapa (rail de camadas, 3 presets, foco/atenuação, barra de status, chip de tipo, alarme compacto) | **implantado** |
-| `6714b6f` | Hosts (filtro de estado, problema primeiro, coluna BGP, mapas clicáveis, ações), busca global em todos os módulos, frescor real, ConfirmDialog nas ações destrutivas | commitado, **sem deploy** |
-| `458afb7` | Barra de status usa o carimbo de **coleta** (não a última edição do mapa) | commitado, **sem deploy** |
+| `6714b6f` | Hosts (filtro de estado, problema primeiro, coluna BGP, mapas clicáveis, ações), busca global em todos os módulos, frescor real, ConfirmDialog nas ações destrutivas | **implantado** |
+| `458afb7` | Barra de status usa o carimbo de **coleta** (não a última edição do mapa) | **implantado** |
+| `763dbd1` | Documento de retomada + ferramenta de screenshots | **implantado** |
+| `9631577` | Globais de Node no eslint para os scripts de `tools/` | **implantado** |
+| `9dfdf33` | BGP: coluna de quedas 48h + "down há X", falhas de refresh por equipamento, ações Abrir host / Abrir interface no mapa (só com MATCHED + equipamento no mapa ativo) | **implantado** |
+| `e1ca07d` | Correlação interface→porta física: endpoint de leitura + "Localizar no Físico" | commitado, **endpoint depende de deploy da API** |
 
 Produção (`main`) permanece intacta em `2bdc4f7` em todos os commits.
 
@@ -102,12 +106,19 @@ enlaces, PPP TOTAL, NOC Rotation e links públicos.
 
 ## Próximos passos planejados
 
-1. **Fase 4 — BGP**: usar ou remover a coluna "Histórico" vazia, destacar flaps e
-   severidade, não sobrescrever erros de refresh por dispositivo, e as ações
-   "Abrir Host" / "Abrir interface no mapa" **somente quando `MATCHED`**.
-2. **Fase 5 — Físico**: abas no inspector (identidade/portas/slots/correlação) e
-   leitura mais clara de LLDP/sync, sem tocar na verdade técnica do catálogo.
-3. **Fase 9 — Correlação**: `GET /api/physical/ports/by-interface/:interfaceId`
-   (leitura, sem migration) e "Localizar no Físico" a partir de Mapa/Hosts/BGP,
-   abrindo o rack com o `PhysicalPort.id` selecionado, com a hierarquia de
-   confiança CONFIRMADO/INFERIDO/AMBÍGUO/DESCONHECIDO.
+1. **Implantar a API em produção** para habilitar a correlação reversa: o
+   endpoint `GET /api/physical/ports/by-interface/:interfaceId` está na branch,
+   mas a API que roda em `:3333` é a de `main`. Enquanto isso, a UI diz
+   explicitamente "o endpoint de leitura ainda não foi implantado" em vez de
+   afirmar que a interface não tem conector.
+2. **Fase 5 — Físico (restante)**: reorganizar o inspector em abas
+   (identidade/portas/slots/correlação/caminho). O cabeçalho do módulo,
+   tooltips e a integração "Localizar no Físico" já foram entregues; a
+   reorganização do inspector não foi feita para não arriscar o contrato da
+   área sob o orçamento disponível.
+3. **Aprofundar a correlação**: levar "Localizar no Físico" também para o
+   detalhe do host (Hosts) e para o peer BGP quando `MATCHED`, e exibir a
+   hierarquia de confiança CONFIRMADO/INFERIDO/AMBÍGUO/DESCONHECIDO na UI.
+4. **Mapa, fase 2b**: revisar espaçamento/orientação do auto-layout Dagre
+   (sem remover Dagre e preservando posições manuais) e agrupamento visual por
+   POP/site quando os dados permitirem.
