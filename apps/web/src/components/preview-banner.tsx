@@ -15,9 +15,20 @@ import { isPreviewMode } from '@/lib/preview-mode';
  */
 export const PREVIEW_BANNER_TEXT = 'PREVIEW · INTERFACE EXPERIMENTAL · DADOS DE PRODUÇÃO';
 
-/** Barra fixa no topo do ambiente autenticado quando o preview esta ligado. */
-export function PreviewBanner() {
-  if (!isPreviewMode()) return null;
+export interface PreviewBannerProps {
+  enabled?: boolean;
+}
+
+/**
+ * Barra fixa no topo quando o preview esta ligado.
+ *
+ * `enabled` e resolvido pelo layout raiz (server component) e passado como
+ * prop: assim servidor e cliente concordam sempre, mesmo que o valor de build
+ * do bundle cliente divirja do `process.env` de runtime do servidor. Sem a
+ * prop o componente decide sozinho pela flag (usado nos testes).
+ */
+export function PreviewBanner({ enabled }: PreviewBannerProps) {
+  if (!(enabled ?? isPreviewMode())) return null;
 
   return (
     <div

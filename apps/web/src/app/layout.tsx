@@ -29,7 +29,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body>
         {previewMode ? (
           <div className="nv-preview-root">
-            <PreviewBanner />
+            <PreviewBanner enabled={previewMode} />
             <div className="nv-preview-root__body">
               <Providers>{children}</Providers>
             </div>

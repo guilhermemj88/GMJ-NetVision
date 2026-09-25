@@ -23,9 +23,9 @@ describe('PreviewBanner', () => {
     vi.unstubAllEnvs();
   });
 
-  function render(): HTMLElement | null {
+  function render(props: { enabled?: boolean } = {}): HTMLElement | null {
     act(() => {
-      root.render(createElement(PreviewBanner));
+      root.render(createElement(PreviewBanner, props));
     });
     return container.querySelector('[data-testid="preview-banner"]');
   }
@@ -58,5 +58,15 @@ describe('PreviewBanner', () => {
     vi.stubEnv('NEXT_PUBLIC_PREVIEW_MODE', '1');
 
     expect(render()).toBeNull();
+  });
+
+  // O layout raiz resolve a flag no servidor e passa `enabled`; a decisão do
+  // cliente precisa seguir exatamente o valor recebido.
+  it('segue a prop `enabled` do servidor, sobrepondo a flag local', () => {
+    vi.stubEnv('NEXT_PUBLIC_PREVIEW_MODE', 'false');
+    expect(render({ enabled: true })?.textContent).toContain('DADOS DE PRODUÇÃO');
+
+    vi.stubEnv('NEXT_PUBLIC_PREVIEW_MODE', 'true');
+    expect(render({ enabled: false })).toBeNull();
   });
 });
