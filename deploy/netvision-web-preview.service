@@ -1,0 +1,26 @@
+[Unit]
+Description=GMJ NetVision Web Preview (branch preview/deepseek-ui, porta 3001)
+# Independência deliberada: esta unit NAO declara After/Requires em
+# netvision-api.service nem em netvision-web.service. Parar, reiniciar ou
+# falhar o preview nunca afeta a producao — e vice-versa.
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/GMJ-NetVision-preview/apps/web/.next/standalone
+Environment=NODE_ENV=production
+# Nao existe EnvironmentFile aqui de proposito: o Web preview nao precisa de
+# segredo nenhum (o acesso a API acontece pelo rewrite same-origin para
+# 127.0.0.1:3333). Isso evita carregar segredos da API num segundo processo e
+# evita que um NEXT_PUBLIC_API_URL herdado desvie o preview da API interna.
+Environment=NEXT_PUBLIC_PREVIEW_MODE=true
+Environment=NEXT_PUBLIC_API_URL=
+Environment=API_INTERNAL_URL=http://127.0.0.1:3333
+# PORT/HOSTNAME sao forcados no proprio processo e sobrepoem qualquer valor
+# herdado do shell ou do .env da producao (que define PORT=3333 para a API).
+ExecStart=/usr/bin/env PORT=3001 HOSTNAME=0.0.0.0 /usr/bin/node apps/web/server.js
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

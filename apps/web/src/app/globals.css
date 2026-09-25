@@ -9403,3 +9403,71 @@ label > small {
   .physical-toolbar > div:first-child { min-width: 140px; }
   .physical-mode button { padding-inline: 7px; font-size: 0; }
 }
+
+/* =====================================================================
+   Ambiente de PREVIEW (NEXT_PUBLIC_PREVIEW_MODE)
+
+   Só existe no build de preview. A produção nunca recebe esta flag e por
+   isso nunca recebe o wrapper `.nv-preview-root` nem a barra
+   `.nv-preview-banner` — a árvore renderizada é a mesma de antes.
+
+   A barra consome 24px do viewport. Para não empurrar o conteúdo para fora
+   da tela (o `body` usa `overflow: hidden`), os shells de altura fixa são
+   recalculados dentro do wrapper. Nenhuma regra abaixo sai do escopo
+   `.nv-preview-root`.
+   ===================================================================== */
+.nv-preview-root {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+}
+.nv-preview-root__body {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.nv-preview-root__body > .netvision-app {
+  height: 100%;
+  /* O mínimo de 640px do shell não cabe ao lado da barra em janelas baixas. */
+  min-height: 0;
+}
+.nv-preview-root__body .physical-shell,
+.nv-preview-root__body .hosts-shell {
+  height: calc(100% - 62px);
+}
+.nv-preview-root__body > .login-page,
+.nv-preview-root__body > .public-error,
+.nv-preview-root__body > .auth-loading {
+  height: 100%;
+  min-height: 0;
+}
+
+.nv-preview-banner {
+  flex: 0 0 auto;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px;
+  border-bottom: 1px solid #6b4f16;
+  box-shadow: inset 3px 0 0 var(--amber);
+  background: linear-gradient(90deg, #221909, #17222a 78%);
+  color: #f0c877;
+  font: 600 10px/1 var(--font-mono);
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.nv-preview-banner__label {
+  flex: 0 0 auto;
+}
+.nv-preview-banner__meta {
+  margin-left: auto;
+  overflow: hidden;
+  color: #9c8348;
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
