@@ -7,6 +7,8 @@ import type {
 } from '@gmj/shared';
 import { describe, expect, it } from 'vitest';
 import { PhysicalRackCanvas } from './physical-rack-canvas';
+import type { PhysicalLldpGhost } from './physical-lldp';
+import type { PhysicalSelection } from './physical-types';
 import {
   catalogEntry,
   physicalAsset,
@@ -659,5 +661,139 @@ describe('PhysicalRackCanvas', () => {
     // a ponta remota ganha o destaque de par (is-related)
     expect(html).toContain('is-related');
     expect(html).toContain('data-port-id="port-b"');
+  });
+});
+
+function lldpGhost(partial: Partial<PhysicalLldpGhost> = {}): PhysicalLldpGhost {
+  return {
+    key: 'port-a|port-b',
+    adjacencyId: 'lldp-1',
+    adjacencyIds: ['lldp-1'],
+    state: 'READY',
+    confidence: 'CONFIRMED',
+    observedAt: '2026-09-21T11:00:00.000Z',
+    reason: 'Ambos os lados estão no inventário físico.',
+    localPortName: 'GE1',
+    remoteHostname: 'EDD-01',
+    remotePortName: 'LAN1',
+    from: {
+      siteId: 'site-1',
+      siteName: 'POP Centro',
+      rackId: 'rack-1',
+      rackName: 'Rack 01',
+      assetId: 'asset-a',
+      assetName: 'SW-01',
+      portId: 'port-a',
+      portName: 'GE1',
+    },
+    to: {
+      siteId: 'site-1',
+      siteName: 'POP Centro',
+      rackId: 'rack-1',
+      rackName: 'Rack 01',
+      assetId: 'asset-b',
+      assetName: 'EDD-01',
+      portId: 'port-b',
+      portName: 'LAN1',
+    },
+    external: false,
+    conflict: 'NONE',
+    conflictDetail: '',
+    confirmable: true,
+    ...partial,
+  };
+}
+
+describe('PhysicalRackCanvas · sugestões LLDP', () => {
+  function render(ghosts: PhysicalLldpGhost[], options: {
+    lldpMode?: 'hidden' | 'related' | 'all';
+    selection?: PhysicalSelection;
+    connections?: typeof connection[];
+  } = {}) {
+    return renderToStaticMarkup(
+      <PhysicalRackCanvas
+        rack={rack}
+        connections={options.connections ?? []}
+        lldpGhosts={ghosts}
+        lldpMode={options.lldpMode ?? 'all'}
+        mode="all"
+        selection={options.selection ?? null}
+        path={null}
+        onSelectAsset={noop}
+        onSelectPort={noop}
+        onSelectConnection={noop}
+        onSelectLldp={noop}
+        onNavigateToPort={noop}
+        onClear={noop}
+      />,
+    );
+  }
+
+  it('desenha o ghost READY como sugestão: tracejado, abaixo dos cabos e nunca como cabo', () => {
+    const html = render([lldpGhost()], { connections: [connection] });
+
+    expect(html).toContain('physical-lldp-layer');
+    expect(html).toContain('physical-lldp-ghost');
+    expect(html).toContain('physical-lldp-hit');
+    expect(html).toContain('>LLDP</text>');
+    // A sugestão não vira cabo confirmado: continua existindo só um cabo real.
+    expect(html.match(/physical-cable physical-cable--/g)).toHaveLength(1);
+  });
+
+  it('PARTIAL mostra apenas o lado conhecido e nunca inventa endpoint remoto', () => {
+    const html = render([lldpGhost({ state: 'PARTIAL', to: null, confirmable: false })]);
+
+    expect(html).toContain('physical-lldp-ghost');
+    expect(html).toContain('Destino físico não mapeado');
+    expect(html).not.toContain('Ir para a ponta');
+  });
+
+  it('UNRESOLVED não cria caminho entre assets (só marca a porta observada)', () => {
+    const html = render([lldpGhost({ state: 'UNRESOLVED', to: null, confirmable: false })]);
+
+    expect(html).not.toContain('physical-lldp-ghost');
+    expect(html).toContain('physical-lldp-dot');
+  });
+
+  it('READY com porta ocupada (conflito) não é desenhado', () => {
+    const html = render([
+      lldpGhost({ conflict: 'BUSY', conflictDetail: 'Esta porta já possui uma conexão física.', confirmable: false }),
+    ]);
+
+    expect(html).not.toContain('physical-lldp-ghost');
+  });
+
+  it('cross-site vira marcador externo com navegação para a ponta', () => {
+    const html = render([
+      lldpGhost({
+        external: true,
+        to: {
+          siteId: 'site-2',
+          siteName: 'BHE-VTA',
+          rackId: 'rack-9',
+          rackName: 'RACK-MPLS',
+          assetId: 'asset-z',
+          assetName: 'S6750-MPLS-01',
+          portId: 'port-z',
+          portName: '100GE1/0/2',
+        },
+      }),
+    ]);
+
+    expect(html).toContain('physical-lldp-endpoint is-confirmable is-external');
+    expect(html).toContain('BHE-VTA');
+    expect(html).toContain('100GE1/0/2');
+    expect(html).toContain('Ir para a ponta');
+  });
+
+  it('respeita o modo de exibição das sugestões', () => {
+    expect(render([lldpGhost()], { lldpMode: 'hidden' })).not.toContain('physical-lldp-ghost');
+    // `related` sem seleção não mostra nada; com a sugestão selecionada, mostra.
+    expect(render([lldpGhost()], { lldpMode: 'related' })).not.toContain('physical-lldp-ghost');
+    const selected = render([lldpGhost()], {
+      lldpMode: 'related',
+      selection: { kind: 'lldp', id: 'lldp-1' },
+    });
+    expect(selected).toContain('physical-lldp-ghost is-selected');
   });
 });

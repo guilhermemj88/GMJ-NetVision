@@ -20,11 +20,23 @@ const api = vi.hoisted(() => ({
   getPhysicalCatalog: vi.fn(),
   getHosts: vi.fn(),
   getPhysicalPath: vi.fn(),
+  confirmPhysicalLldp: vi.fn(),
 }));
 
 vi.mock('@/lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api')>()),
   ...api,
+}));
+
+/** O fluxo LLDP só aparece para quem pode editar (ADMIN/OPERATOR). */
+vi.mock('@/app/providers', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/app/providers')>()),
+  useAuth: () => ({
+    user: { id: 'user-1', username: 'admin', displayName: 'Admin', role: 'ADMIN' },
+    loading: false,
+    signIn: async () => undefined,
+    logout: async () => undefined,
+  }),
 }));
 
 /** Modelo com renderer técnico declarado no catálogo (o desenho muda de verdade). */
@@ -140,5 +152,171 @@ describe('PhysicalWorkspace — visão padrão', () => {
     });
     expect(container.querySelector('[data-visual="TECHNICAL"]')).not.toBeNull();
     expect(container.querySelector('.physical-canvas.is-technical')).not.toBeNull();
+  });
+});
+
+describe('PhysicalWorkspace · fluxo LLDP', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  const swA = physicalAsset({
+    id: 'asset-a',
+    name: 'SW-A',
+    startU: 10,
+    heightU: 1,
+    ports: [
+      physicalPort({ id: 'port-a', assetId: 'asset-a', name: 'GE1', state: 'LLDP_DETECTED' }),
+    ],
+  });
+  const swB = physicalAsset({
+    id: 'asset-b',
+    name: 'SW-B',
+    startU: 8,
+    heightU: 1,
+    ports: [physicalPort({ id: 'port-b', assetId: 'asset-b', name: 'GE2' })],
+  });
+  const suggestion = {
+    adjacencyId: 'lldp-ws-1',
+    confidence: 'CONFIRMED',
+    state: 'READY' as const,
+    local: {
+      assetId: 'asset-a',
+      assetName: 'SW-A',
+      portId: 'port-a',
+      portName: 'GE1',
+      rackName: 'Rack 01',
+      siteName: 'POP Centro',
+    },
+    remote: {
+      assetId: 'asset-b',
+      assetName: 'SW-B',
+      portId: 'port-b',
+      portName: 'GE2',
+      rackName: 'Rack 01',
+      siteName: 'POP Centro',
+    },
+    localPortName: 'GE1',
+    remoteHostname: 'SW-B',
+    remotePortName: 'GE2',
+    observedAt: '2026-09-21T11:00:00.000Z',
+    reason: 'Ambos os lados estão no inventário físico.',
+  };
+  const withSuggestion = physicalInventory({
+    sites: [
+      {
+        id: 'site-1',
+        name: 'POP Centro',
+        code: 'CTO',
+        description: '',
+        racks: [physicalRack({ id: 'rack-1', units: 12, assets: [swA, swB] })],
+        createdAt: '2026-09-21T12:00:00.000Z',
+        updatedAt: '2026-09-21T12:00:00.000Z',
+      },
+    ],
+    lldpSuggestions: [suggestion],
+    lldpObservedAt: '2026-09-21T11:00:00.000Z',
+  });
+  const withoutSuggestion = physicalInventory({
+    sites: withSuggestion.sites,
+    connections: withSuggestion.connections,
+    lldpSuggestions: [],
+    lldpObservedAt: '2026-09-21T11:00:00.000Z',
+  });
+
+  async function flush(times = 4) {
+    for (let index = 0; index < times; index += 1) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+    }
+  }
+
+  beforeEach(async () => {
+    api.getPhysicalInventory
+      .mockResolvedValueOnce(withSuggestion)
+      .mockResolvedValue(withoutSuggestion);
+    api.getPhysicalCatalog.mockResolvedValue([]);
+    api.getHosts.mockResolvedValue([]);
+    api.getPhysicalPath.mockResolvedValue(null);
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <PhysicalWorkspace />
+        </QueryClientProvider>,
+      );
+    });
+    await flush();
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    vi.clearAllMocks();
+  });
+
+  function click(selector: string) {
+    const element = container.querySelector(selector);
+    if (!element) throw new Error(`elemento ausente: ${selector}`);
+    act(() => {
+      element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+  }
+
+  it('seleciona o ghost, confirma com o medium escolhido e o cabo substitui a sugestão', async () => {
+    api.confirmPhysicalLldp.mockResolvedValue({ id: 'connection-new' });
+
+    expect(container.querySelector('.physical-lldp-ghost')).not.toBeNull();
+    click('.physical-lldp-hit');
+    await flush(2);
+
+    expect(container.textContent).toContain('SUGESTÃO LLDP');
+    const select = container.querySelector<HTMLSelectElement>('.physical-lldp-confirm select');
+    expect(select).not.toBeNull();
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLSelectElement.prototype,
+        'value',
+      )?.set;
+      setter?.call(select, 'AOC');
+      select!.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    const confirm = [...container.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Confirmar conexão física'),
+    );
+    expect(confirm).toBeDefined();
+    act(() => {
+      confirm!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await flush(4);
+
+    expect(api.confirmPhysicalLldp).toHaveBeenCalledWith('lldp-ws-1', 'AOC');
+    // Depois do refresh o ghost some: a sugestão virou cabo persistido.
+    expect(container.querySelector('.physical-lldp-ghost')).toBeNull();
+  });
+
+  it('409 mantém a sugestão visível e mostra o erro', async () => {
+    api.confirmPhysicalLldp.mockRejectedValue(new Error('Uma das portas já está ocupada'));
+    api.getPhysicalInventory.mockResolvedValue(withSuggestion);
+
+    click('.physical-lldp-hit');
+    await flush(2);
+    const confirm = [...container.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Confirmar conexão física'),
+    );
+    act(() => {
+      confirm!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await flush(4);
+
+    expect(container.textContent).toContain('Uma das portas já está ocupada');
+    expect(container.querySelector('.physical-lldp-ghost')).not.toBeNull();
   });
 });
