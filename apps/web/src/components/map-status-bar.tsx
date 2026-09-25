@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { formatRelative } from '@/lib/bgp-format';
+import { newestCollectionStamp } from '@/lib/map-freshness';
 import type { MapFocusView } from '@/lib/use-map-focus';
 import { useMapStore } from '@/store/map-store';
 
@@ -33,8 +34,10 @@ export function MapStatusBar({ focus }: { focus: MapFocusView }) {
   const now = useNow();
 
   const stats = focus.stats;
-  const updatedAt = map?.updatedAt ? Date.parse(map.updatedAt) : Number.NaN;
-  const age = Number.isFinite(updatedAt) ? formatRelative(now - updatedAt) : null;
+  // Frescor de COLETA (não da última edição do mapa).
+  const collectionStamp = map ? newestCollectionStamp(map.devices) : null;
+  const collectedAt = collectionStamp ? Date.parse(collectionStamp) : Number.NaN;
+  const age = Number.isFinite(collectedAt) ? formatRelative(now - collectedAt) : null;
 
   const selectionLabel =
     selection?.kind === 'device' || selection?.kind === 'node'
@@ -75,8 +78,8 @@ export function MapStatusBar({ focus }: { focus: MapFocusView }) {
         {focus.dimmedTotal > 0 ? ` · ${focus.dimmedTotal} ATENUADO(S)` : ''}
       </span>
       <span className="map-statusbar__sep" aria-hidden="true" />
-      <span className="map-statusbar__label" title={map?.updatedAt ?? undefined}>
-        {age ? `DADOS: ${age}` : 'SEM TIMESTAMP DE COLETA'}
+      <span className="map-statusbar__label" title={collectionStamp ?? undefined}>
+        {age ? `COLETA: ${age}` : 'SEM CARIMBO DE COLETA'}
       </span>
     </div>
   );
