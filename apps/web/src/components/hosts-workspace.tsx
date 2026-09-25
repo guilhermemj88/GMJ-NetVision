@@ -12,8 +12,17 @@ import type {
   ZabbixHostCandidate,
 } from '@gmj/shared';
 import { formatBitsPerSecond } from '@gmj/shared';
-import { Badge, Button } from '@gmj/ui';
 import {
+  Badge,
+  Button,
+  EmptyState,
+  MetaFact,
+  ModuleHeader,
+  SearchInput,
+  StatusPill,
+} from '@gmj/ui';
+import {
+  Activity,
   Check,
   ChevronRight,
   CirclePlus,
@@ -26,6 +35,7 @@ import {
   ServerCog,
   ShieldCheck,
   Trash2,
+  TriangleAlert,
   X,
 } from 'lucide-react';
 import {
@@ -231,31 +241,54 @@ export function HostsWorkspace() {
 
   return (
     <main className="hosts-shell">
-      <section className="hosts-header">
-        <div>
-          <span>INVENTÁRIO GLOBAL</span>
-          <h1>Hosts</h1>
-          <p>Equipamentos monitorados e não monitorados, independentemente dos mapas.</p>
-        </div>
-        <div className="hosts-header__actions">
+      <ModuleHeader
+        variant="inline"
+        eyebrow="INVENTÁRIO GLOBAL"
+        title="Hosts"
+        subtitle="Equipamentos monitorados e não monitorados, independentemente dos mapas."
+        meta={
+          <>
+            <MetaFact icon={<Network size={12} />} value={hostsQuery.data?.length ?? 0} label="hosts" />
+            <MetaFact
+              icon={<TriangleAlert size={12} />}
+              value={(hostsQuery.data ?? []).filter((host) => host.status === 'WARNING').length}
+              label="em atenção"
+              tone="warning"
+            />
+            <MetaFact
+              icon={<Activity size={12} />}
+              value={(hostsQuery.data ?? []).filter((host) => host.status === 'DOWN').length}
+              label="down"
+              tone="down"
+            />
+            <MetaFact
+              icon={<ServerCog size={12} />}
+              value={(hostsQuery.data ?? []).filter((host) => host.bgpMonitoringEnabled).length}
+              label="com BGP"
+              tone="info"
+            />
+          </>
+        }
+        actions={
+          <>
           <Button variant="secondary" onClick={() => setImportOpen(true)}>
             <CloudDownload size={15} /> Importar do Zabbix
           </Button>
           <Button variant="primary" onClick={() => setEditing('new')}>
             <CirclePlus size={15} /> Adicionar host
           </Button>
-        </div>
-      </section>
+          </>
+        }
+      />
 
       <section className="hosts-filters">
-        <label className="hosts-search">
-          <Search size={15} />
-          <input
-            placeholder="Hostname, IP, fabricante, site…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
+        <SearchInput
+          size="sm"
+          value={search}
+          onChange={setSearch}
+          placeholder="Hostname, IP, fabricante, site…"
+          aria-label="Buscar hosts no inventário"
+        />
         <select
           value={origin}
           onChange={(event) => setOrigin(event.target.value as HostOrigin | 'ALL')}
@@ -315,8 +348,7 @@ export function HostsWorkspace() {
                 className={selectedId === host.id ? 'is-selected' : ''}
               >
                 <td>
-                  <span className={`host-status host-status--${host.status.toLowerCase()}`} />
-                  {host.status}
+                  <StatusPill status={host.status} size="sm" />
                 </td>
                 <td>
                   <strong>{host.hostname}</strong>
@@ -377,14 +409,30 @@ export function HostsWorkspace() {
           </tbody>
         </table>
         {hostsQuery.isPending && (
-          <div className="hosts-empty">
-            <LoaderCircle className="spin" /> Carregando inventário…
-          </div>
+          <EmptyState
+            variant="compact"
+            icon={<LoaderCircle className="spin" />}
+            title="Carregando inventário…"
+          />
         )}
         {!hostsQuery.isPending && hosts.length === 0 && (
-          <div className="hosts-empty">
-            <Network /> Nenhum host corresponde aos filtros.
-          </div>
+          <EmptyState
+            icon={<Network size={26} />}
+            title="Nenhum host corresponde aos filtros."
+            description="Ajuste a busca, a origem ou a fonte de monitoramento para ver outros equipamentos."
+            action={
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSearch('');
+                  setOrigin('ALL');
+                  setSource('ALL');
+                }}
+              >
+                Limpar filtros
+              </Button>
+            }
+          />
         )}
       </section>
 

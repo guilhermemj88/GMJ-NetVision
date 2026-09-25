@@ -11,7 +11,7 @@ import type {
   BgpStateFilter,
 } from '@gmj/shared';
 import { RefreshCw, Settings2 } from 'lucide-react';
-import { Button } from '@gmj/ui';
+import { Button, MetaFact, ModuleHeader } from '@gmj/ui';
 import { discoverBgp, getBgpDashboard, getBgpPeer, getHosts, pollHost } from '@/lib/api';
 import { formatRelative } from '@/lib/bgp-format';
 import { BgpAlertsPanel } from './bgp-alerts-panel';
@@ -172,16 +172,36 @@ export function BgpWorkspace() {
 
   return (
     <main className="hosts-shell bgp-shell">
-      <div className="hosts-header">
-        <div>
-          <span>VISÃO OPERACIONAL DE BORDA</span>
-          <h1>BGP</h1>
-          <p>
-            Monitoramento de sessões BGP por equipamento ·{' '}
-            {lastUpdatedAt ? formatRelative(now - lastUpdatedAt) : '—'}
-          </p>
-        </div>
-        <div className="hosts-header__actions">
+      <ModuleHeader
+        variant="inline"
+        eyebrow="VISÃO OPERACIONAL DE BORDA"
+        title="BGP"
+        subtitle="Monitoramento de sessões BGP por equipamento."
+        meta={
+          <>
+            <MetaFact
+              label="peers"
+              value={dashboard.data?.summary.peers ?? 0}
+            />
+            <MetaFact
+              label="established"
+              value={dashboard.data?.summary.established ?? 0}
+              tone="up"
+            />
+            <MetaFact
+              label="down"
+              value={dashboard.data?.summary.down ?? 0}
+              tone="down"
+            />
+            <MetaFact
+              label="última coleta"
+              value={lastUpdatedAt ? formatRelative(now - lastUpdatedAt) : 'sem coleta'}
+              tone="info"
+            />
+          </>
+        }
+        actions={
+          <>
           {globalProgress ? (
             <span className="bgp-progress">
               Atualizando {globalProgress.current}/{globalProgress.total}...
@@ -198,8 +218,9 @@ export function BgpWorkspace() {
           <Button compact variant="secondary" onClick={() => setManageOpen(true)}>
             <Settings2 size={15} /> Gerenciar equipamentos
           </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <BgpFilters
         scope={scope}

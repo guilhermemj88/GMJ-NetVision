@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PhysicalAsset, PhysicalInterfaceSyncReport } from '@gmj/shared';
-import { Button } from '@gmj/ui';
+import { Button, MetaFact, ModuleHeader } from '@gmj/ui';
 import {
   Cable,
   CirclePlus,
@@ -318,32 +318,58 @@ export function PhysicalWorkspace() {
     return <main className="physical-shell physical-loading"><strong>Falha ao carregar a visão física</strong><Button compact variant="secondary" onClick={() => void inventoryQuery.refetch()}>Tentar novamente</Button></main>;
   }
 
+  const rackConnections = inventory.connections.filter(
+    (item) => item.a.rackId === rack?.id || item.b.rackId === rack?.id,
+  ).length;
+
   return (
     <main className="physical-shell">
-      <header className="physical-toolbar">
-        <div><span>INFRAESTRUTURA POR POP</span><h1>Físico</h1><p>{site?.name ?? 'Nenhum POP'}{rack ? ` · ${rack.name} · ${rack.units}U` : ''}</p></div>
-        <div className="physical-toolbar__summary">
-          <span><Server size={13} /> {rack?.assets.length ?? 0} equipamentos</span>
-          <span><Cable size={13} /> {inventory.connections.filter((item) => item.a.rackId === rack?.id || item.b.rackId === rack?.id).length} cabos</span>
-          <span title={inventory.lldpObservedAt ? `Último LLDP: ${new Date(inventory.lldpObservedAt).toLocaleString('pt-BR')}` : 'Nenhum LLDP coletado'}>
-            <Radio size={13} /> {inventory.lldpSuggestions.length} LLDP
-          </span>
-        </div>
-        <div className="physical-legend" aria-label="Legenda de estado das portas">
-          {(['FREE', 'MAPPED', 'LLDP_DETECTED', 'CONNECTED'] as const).map((state) => (
-            <span key={state} className={`physical-state physical-state--${state.toLowerCase()}`}>
-              {PORT_STATE_LABELS[state]}
-            </span>
-          ))}
-        </div>
-        <div className="physical-mode" aria-label="Exibição de conexões">
-          <button type="button" className={mode === 'hidden' ? 'is-active' : ''} onClick={() => setMode('hidden')}><EyeOff size={13} /> Ocultas</button>
-          <button type="button" className={mode === 'selected' ? 'is-active' : ''} onClick={() => setMode('selected')}><PanelRight size={13} /> Selecionado</button>
-          <button type="button" className={mode === 'all' ? 'is-active' : ''} onClick={() => setMode('all')}><Eye size={13} /> Todas</button>
-        </div>
-        <PhysicalVisualToggle mode={visualMode} onChange={setVisualMode} />
-        {canEdit && rack ? <Button compact variant="primary" onClick={() => setDialog('asset')}><CirclePlus size={14} /> Equipamento</Button> : null}
-      </header>
+      <ModuleHeader
+        eyebrow="INFRAESTRUTURA POR POP"
+        title="Físico"
+        subtitle={
+          site
+            ? `${site.name}${rack ? ` · ${rack.name} · ${rack.units}U` : ' · sem rack'}`
+            : 'Nenhum POP cadastrado'
+        }
+        meta={
+          <>
+            <MetaFact icon={<Server size={12} />} value={rack?.assets.length ?? 0} label="equipamentos" />
+            <MetaFact icon={<Cable size={12} />} value={rackConnections} label="cabos" />
+            <MetaFact
+              icon={<Radio size={12} />}
+              value={inventory.lldpSuggestions.length}
+              label="LLDP"
+              tone={inventory.lldpSuggestions.length ? 'info' : 'neutral'}
+              title={
+                inventory.lldpObservedAt
+                  ? `Último LLDP: ${new Date(inventory.lldpObservedAt).toLocaleString('pt-BR')}`
+                  : 'Nenhum LLDP coletado'
+              }
+            />
+          </>
+        }
+        actions={
+          <>
+            <div className="physical-mode" aria-label="Exibição de conexões">
+              <button type="button" title="Ocultar cabos" className={mode === 'hidden' ? 'is-active' : ''} onClick={() => setMode('hidden')}><EyeOff size={13} /> Ocultas</button>
+              <button type="button" title="Mostrar só o caminho selecionado" className={mode === 'selected' ? 'is-active' : ''} onClick={() => setMode('selected')}><PanelRight size={13} /> Selecionado</button>
+              <button type="button" title="Mostrar todos os cabos" className={mode === 'all' ? 'is-active' : ''} onClick={() => setMode('all')}><Eye size={13} /> Todas</button>
+            </div>
+            <PhysicalVisualToggle mode={visualMode} onChange={setVisualMode} />
+            {canEdit && rack ? <Button compact variant="primary" onClick={() => setDialog('asset')}><CirclePlus size={14} /> Equipamento</Button> : null}
+          </>
+        }
+        toolbar={
+          <div className="physical-legend" aria-label="Legenda de estado das portas">
+            {(['FREE', 'MAPPED', 'LLDP_DETECTED', 'CONNECTED'] as const).map((state) => (
+              <span key={state} className={`physical-state physical-state--${state.toLowerCase()}`}>
+                {PORT_STATE_LABELS[state]}
+              </span>
+            ))}
+          </div>
+        }
+      />
 
       {notice ? (
         <div
