@@ -7576,6 +7576,48 @@ label > small {
   width: 16px;
   border-top: 1px dashed #8b7bd8;
 }
+/* ---------------------------------------------------------------------------
+ * Fallback topológico: enlace do MAPA, nunca cabo físico.
+ * Ainda mais discreto que o LLDP (traço curto, sem destaque) e desenhado
+ * abaixo dele: cabo > LLDP > mapa, um único desenho por par físico.
+ * ------------------------------------------------------------------------- */
+.physical-maplink-layer {
+  position: absolute;
+  inset: 0 auto auto 0;
+  z-index: 2;
+  overflow: visible;
+  pointer-events: none;
+}
+.physical-maplink-ghost {
+  fill: none;
+  stroke: #5c8f9c;
+  stroke-width: 0.9;
+  stroke-dasharray: 1.5 5;
+  stroke-linejoin: round;
+  opacity: 0.42;
+  transition: opacity 150ms, stroke-width 150ms;
+}
+.physical-maplink-ghost.is-related { opacity: 0.72; stroke-width: 1.2; }
+.physical-maplink-ghost.is-dim { opacity: 0.18; }
+.physical-maplink-badge {
+  fill: #7fb2bf;
+  font: 6.5px var(--font-mono);
+  letter-spacing: 0.16em;
+  opacity: 0.8;
+}
+.physical-maplink-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #7fb2bf;
+  font: 700 8px var(--font-mono);
+  letter-spacing: 0.08em;
+}
+.physical-maplink-legend::before {
+  content: "";
+  width: 16px;
+  border-top: 1px dotted #5c8f9c;
+}
 .physical-port.is-related,
 .physical-image-panel__hitbox.is-related {
   box-shadow:

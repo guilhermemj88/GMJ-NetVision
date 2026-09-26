@@ -730,14 +730,14 @@ describe('PhysicalRackCanvas · sugestões LLDP', () => {
   }
 
   it('desenha o ghost READY como sugestão: tracejado, abaixo dos cabos e nunca como cabo', () => {
-    const html = render([lldpGhost()], { connections: [connection] });
+    const html = render([lldpGhost()]);
 
     expect(html).toContain('physical-lldp-layer');
     expect(html).toContain('physical-lldp-ghost');
     expect(html).toContain('physical-lldp-hit');
     expect(html).toContain('>LLDP</text>');
-    // A sugestão não vira cabo confirmado: continua existindo só um cabo real.
-    expect(html.match(/physical-cable physical-cable--/g)).toHaveLength(1);
+    // A sugestão não vira cabo confirmado: nenhuma linha de cabo é desenhada.
+    expect(html).not.toContain('physical-cable physical-cable--');
   });
 
   it('PARTIAL mostra apenas o lado conhecido e nunca inventa endpoint remoto', () => {

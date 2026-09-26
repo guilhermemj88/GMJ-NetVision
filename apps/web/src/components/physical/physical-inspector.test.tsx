@@ -443,6 +443,72 @@ describe('PhysicalInspector', () => {
     ]);
   });
 
+  it('apresenta o nome CLI do S6750 (QSFP28-5 → 100GE1/0/5) e mantém o conector como detalhe', () => {
+    const s6750 = physicalAsset({
+      id: 'asset-s6750',
+      name: 'BHE-VTA-S6750-MPLS-01',
+      templateId: 'template-s6750',
+      template: physicalTemplate({
+        id: 'template-s6750',
+        catalogKey: 'huawei-s6750-h36c',
+        name: 'Huawei S6750-H36C',
+        model: 'S6750-H36C',
+        manufacturer: 'Huawei',
+        category: 'SWITCH',
+        kind: 'NETWORK',
+      }),
+      ports: [
+        physicalPort({
+          id: 'port-qsfp-5',
+          assetId: 'asset-s6750',
+          name: 'QSFP28-5',
+          label: 'QSFP28-5',
+          type: 'QSFP',
+          mappedInterfaceId: 'iface-100ge-5',
+          mappedInterface: {
+            id: 'iface-100ge-5',
+            deviceId: 'host-s6750',
+            name: '100GE1/0/5',
+            ifIndex: 5,
+            alias: null,
+            operStatus: 'UP',
+          },
+        }),
+      ],
+    });
+    const catalog = [
+      catalogEntry({
+        catalogKey: 'huawei-s6750-h36c',
+        ports: [
+          {
+            name: 'QSFP28-5',
+            label: 'QSFP28-5',
+            order: 5,
+            side: 'DEVICE',
+            type: 'QSFP',
+            connector: 'QSFP28',
+            interfaceName: '100GE1/0/5',
+            panelNumber: 5,
+          },
+        ],
+      }),
+    ];
+
+    rendered = render([], { kind: 'asset', id: 'asset-s6750' }, s6750, { catalog });
+    // lista de portas: identidade = interface CLI
+    expect(rendered.container.textContent).toContain('100GE1/0/5');
+    expect(rendered.container.querySelector('.physical-port-list strong')?.textContent).toBe(
+      '100GE1/0/5',
+    );
+
+    act(() => rendered!.root.unmount());
+    rendered = render([], { kind: 'port', id: 'port-qsfp-5' }, s6750, { catalog });
+    // detalhe da porta: interface como nome principal, conector/porta física como detalhe
+    expect(rendered.container.textContent).toContain('BHE-VTA-S6750-MPLS-01 / 100GE1/0/5');
+    expect(rendered.container.textContent).toContain('QSFP28-5');
+    expect(rendered.container.textContent).toContain('QSFP28');
+  });
+
   it('rotula os slots com o papel do catálogo em vez do groupKey interno', () => {
     const entry = catalogEntry({
       catalogKey: 'generic-chassis-8-slot',

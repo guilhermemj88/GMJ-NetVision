@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import type { PhysicalConnectionMedium, PhysicalInventory } from '@gmj/shared';
 import { Button } from '@gmj/ui';
 import { Link2, Search } from 'lucide-react';
+import { physicalPortNameView } from './physical-port-name';
 
 interface Props {
   inventory: PhysicalInventory;
@@ -182,7 +183,7 @@ export function PhysicalConnectionForm({ inventory, sourcePortId, busy, onSubmit
           <option value="">Selecione a porta</option>
           {ports.map((candidate) => (
             <option key={candidate.id} value={candidate.id} disabled={Boolean(candidate.connectionId)}>
-              {candidate.name}
+              {physicalPortNameView(candidate).displayName}
               {candidate.connectionId ? ' (ocupada)' : ' · livre'}
             </option>
           ))}

@@ -21,6 +21,9 @@ const api = vi.hoisted(() => ({
   getHosts: vi.fn(),
   getPhysicalPath: vi.fn(),
   confirmPhysicalLldp: vi.fn(),
+  // O fallback do mapa reaproveita as MESMAS queries do canvas.
+  getMaps: vi.fn(),
+  getMap: vi.fn(),
 }));
 
 vi.mock('@/lib/api', async (importOriginal) => ({
@@ -98,6 +101,8 @@ describe('PhysicalWorkspace — visão padrão', () => {
     api.getPhysicalCatalog.mockResolvedValue([]);
     api.getHosts.mockResolvedValue([]);
     api.getPhysicalPath.mockResolvedValue(null);
+    api.getMaps.mockResolvedValue([]);
+    api.getMap.mockResolvedValue(null);
 
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -238,6 +243,8 @@ describe('PhysicalWorkspace · fluxo LLDP', () => {
     api.getPhysicalCatalog.mockResolvedValue([]);
     api.getHosts.mockResolvedValue([]);
     api.getPhysicalPath.mockResolvedValue(null);
+    api.getMaps.mockResolvedValue([]);
+    api.getMap.mockResolvedValue(null);
 
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -318,5 +325,150 @@ describe('PhysicalWorkspace · fluxo LLDP', () => {
 
     expect(container.textContent).toContain('Uma das portas já está ocupada');
     expect(container.querySelector('.physical-lldp-ghost')).not.toBeNull();
+  });
+});
+
+/**
+ * Fallback topológico: o módulo Físico reaproveita as queries do mapa
+ * (`['maps']`/`['map', id]`) e desenha o enlace lógico discreto quando as duas
+ * pontas têm conector físico — sem endpoint novo e sem virar cabo.
+ */
+describe('PhysicalWorkspace · fallback do mapa', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  const swA = physicalAsset({
+    id: 'asset-map-a',
+    name: 'S6750-MPLS-01',
+    deviceId: 'device-map-a',
+    startU: 10,
+    heightU: 1,
+    ports: [
+      physicalPort({
+        id: 'port-map-a',
+        assetId: 'asset-map-a',
+        name: 'QSFP28-5',
+        label: 'QSFP28-5',
+        mappedInterfaceId: 'iface-map-a',
+        mappedInterface: {
+          id: 'iface-map-a',
+          deviceId: 'device-map-a',
+          name: '100GE1/0/5',
+          ifIndex: 5,
+          alias: null,
+          operStatus: 'UP',
+        },
+      }),
+    ],
+  });
+  const swB = physicalAsset({
+    id: 'asset-map-b',
+    name: '6730-MPLS-01',
+    deviceId: 'device-map-b',
+    startU: 8,
+    heightU: 1,
+    ports: [
+      physicalPort({
+        id: 'port-map-b',
+        assetId: 'asset-map-b',
+        name: 'QSFP28-6',
+        label: 'QSFP28-6',
+        mappedInterfaceId: 'iface-map-b',
+        mappedInterface: {
+          id: 'iface-map-b',
+          deviceId: 'device-map-b',
+          name: '100GE0/0/6',
+          ifIndex: 6,
+          alias: null,
+          operStatus: 'UP',
+        },
+      }),
+    ],
+  });
+  const mapInventory = physicalInventory({
+    sites: [
+      {
+        id: 'site-1',
+        name: 'POP Centro',
+        code: 'CTO',
+        description: '',
+        racks: [physicalRack({ id: 'rack-1', units: 12, assets: [swA, swB] })],
+        createdAt: '2026-09-21T12:00:00.000Z',
+        updatedAt: '2026-09-21T12:00:00.000Z',
+      },
+    ],
+  });
+
+  async function flush(times = 4) {
+    for (let index = 0; index < times; index += 1) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+    }
+  }
+
+  beforeEach(async () => {
+    api.getPhysicalInventory.mockResolvedValue(mapInventory);
+    api.getPhysicalCatalog.mockResolvedValue([]);
+    api.getHosts.mockResolvedValue([]);
+    api.getPhysicalPath.mockResolvedValue(null);
+    api.getMaps.mockResolvedValue([
+      {
+        id: 'map-1',
+        name: 'Backbone',
+        description: '',
+        mode: 'HYBRID',
+        isDefault: true,
+        nodeCount: 2,
+        linkCount: 1,
+        createdAt: '2026-09-21T12:00:00.000Z',
+        updatedAt: '2026-09-21T12:00:00.000Z',
+      },
+    ]);
+    api.getMap.mockResolvedValue({
+      id: 'map-1',
+      name: 'Backbone',
+      links: [
+        {
+          id: 'map-link-1',
+          sourceDeviceId: 'device-map-a',
+          sourceInterfaceId: 'iface-map-a',
+          targetDeviceId: 'device-map-b',
+          targetInterfaceId: 'iface-map-b',
+          label: 'CIR-MPLS-01',
+          status: 'UP',
+          discoverySource: 'MANUAL',
+        },
+      ],
+    });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <PhysicalWorkspace />
+        </QueryClientProvider>,
+      );
+    });
+    await flush();
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    vi.clearAllMocks();
+  });
+
+  it('desenha o enlace do mapa como fallback discreto, sem virar cabo', () => {
+    expect(container.querySelectorAll('.physical-maplink-ghost')).toHaveLength(1);
+    expect(container.querySelectorAll('.physical-cable')).toHaveLength(0);
+    expect(container.querySelector('.physical-lldp-ghost')).toBeNull();
+    expect(container.textContent).toContain('LINK DO MAPA (fallback)');
+    expect(api.getMap).toHaveBeenCalledWith('map-1');
   });
 });

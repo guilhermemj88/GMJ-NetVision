@@ -1,4 +1,5 @@
 import type { PhysicalInventory, PhysicalLldpSuggestion, PhysicalPort } from '@gmj/shared';
+import { physicalPortNameView } from './physical-port-name';
 
 /**
  * Camada de apresentação das sugestões LLDP.
@@ -87,14 +88,48 @@ export function pickPrimaryLldpSuggestion(
   })[0]!;
 }
 
-interface LocatedPort {
+/** Localização de um equipamento físico por id (nunca por nome/hostname). */
+export interface LocatedPhysicalAsset {
   siteId: string;
   siteName: string;
   rackId: string;
   rackName: string;
   assetId: string;
   assetName: string;
+}
+
+interface LocatedPort extends LocatedPhysicalAsset {
   port: PhysicalPort;
+}
+
+/**
+ * Equipamento físico pelo `assetId`.
+ *
+ * É o fallback usado quando a porta citada pelo LLDP não está mais no
+ * inventário (renomeada/removida depois da coleta): sem ele o rack não é
+ * resolvido e o ghost desaparecia silenciosamente. O id do asset continua
+ * sendo a verdade — nada é inferido por nome.
+ */
+export function locatePhysicalAsset(
+  inventory: PhysicalInventory,
+  assetId: string,
+): LocatedPhysicalAsset | null {
+  for (const site of inventory.sites) {
+    for (const rack of site.racks) {
+      for (const asset of rack.assets) {
+        if (asset.id !== assetId) continue;
+        return {
+          siteId: site.id,
+          siteName: site.name,
+          rackId: rack.id,
+          rackName: rack.name,
+          assetId: asset.id,
+          assetName: asset.name,
+        };
+      }
+    }
+  }
+  return null;
 }
 
 export function locatePhysicalPort(
@@ -132,16 +167,21 @@ function side(
    * para enriquecer com o id do rack/POP (usado só para navegar) e com o nome
    * atual da porta, caso ela tenha sido renomeada depois da coleta.
    */
-  const located = locatePhysicalPort(inventory, endpoint.portId);
+  const locatedPort = locatePhysicalPort(inventory, endpoint.portId);
+  const located = locatedPort ?? locatePhysicalAsset(inventory, endpoint.assetId);
   return {
     siteId: located?.siteId ?? '',
     siteName: located?.siteName ?? endpoint.siteName,
     rackId: located?.rackId ?? '',
     rackName: located?.rackName ?? endpoint.rackName,
-    assetId: endpoint.assetId,
-    assetName: located?.assetName ?? endpoint.assetName,
+    assetId: located?.assetId ?? endpoint.assetId,
+    assetName: locatedPort?.assetName ?? located?.assetName ?? endpoint.assetName,
     portId: endpoint.portId,
-    portName: located?.port.name ?? endpoint.portName,
+    /**
+     * Nome apresentado: interface CLI quando existir (`100GE1/0/5`), nunca o
+     * rótulo do cage (`QSFP28-5`). O rótulo físico continua no inspector.
+     */
+    portName: locatedPort ? physicalPortNameView(locatedPort.port).displayName : endpoint.portName,
   };
 }
 

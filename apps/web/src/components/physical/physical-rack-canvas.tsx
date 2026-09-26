@@ -51,7 +51,13 @@ import {
   moduleFrontPanelMapFor,
 } from './module-front-panel-map';
 import { RACK_GEOMETRY, buildRackGeometry, panelScale } from './physical-rack-geometry';
-import { ghostsForRack, type PhysicalLldpGhost } from './physical-lldp';
+import {
+  ghostsForRack,
+  type PhysicalLldpGhost,
+  type PhysicalLldpGhostSide,
+} from './physical-lldp';
+import { mapLinkGhostsForRack, type PhysicalMapLinkGhost } from './physical-map-link';
+import { applyPhysicalLinkPrecedence } from './physical-link-layer';
 import { physicalPortNameView } from './physical-port-name';
 import {
   TECHNICAL_BAND_GAP,
@@ -113,6 +119,20 @@ function lldpGhostTooltip(ghost: PhysicalLldpGhost): string {
     `Observado: ${new Date(ghost.observedAt).toLocaleString('pt-BR')}`,
     ghost.reason,
     ghost.conflictDetail,
+  ]
+    .filter((line) => Boolean(line && String(line).trim()))
+    .join('\n');
+}
+
+/** Tooltip do fallback: deixa explícito que o link do mapa não é cabo. */
+function mapLinkTooltip(ghost: PhysicalMapLinkGhost): string {
+  const describe = (side: PhysicalLldpGhostSide) =>
+    `${side.siteName} / ${side.rackName} / ${side.assetName} / ${side.portName}`;
+  return [
+    'Link do mapa (fallback topológico) · não é cabo físico confirmado',
+    `Local: ${describe(ghost.from)}`,
+    `Remoto: ${describe(ghost.to)}`,
+    ghost.label ? `Enlace: ${ghost.label}` : null,
   ]
     .filter((line) => Boolean(line && String(line).trim()))
     .join('\n');
@@ -204,6 +224,11 @@ interface Props {
   connections: PhysicalConnection[];
   /** Sugestões LLDP já agrupadas por par físico (ver `physical-lldp.ts`). */
   lldpGhosts?: readonly PhysicalLldpGhost[];
+  /**
+   * Fallback topológico: enlaces do mapa cujas duas pontas são conectores
+   * físicos (ver `physical-map-link.ts`). Nunca vira cabo.
+   */
+  mapLinkGhosts?: readonly PhysicalMapLinkGhost[];
   /** Exibição das sugestões LLDP: `related` acompanha a seleção atual. */
   lldpMode?: 'hidden' | 'related' | 'all';
   mode: PhysicalConnectionMode;
@@ -253,7 +278,13 @@ export function PhysicalRackCanvas({
   rack,
   connections,
   lldpGhosts = [],
-  lldpMode = 'related',
+  mapLinkGhosts = [],
+  /**
+   * Padrão **`all`**: abrir o rack já mostra as ligações detectadas daquele
+   * rack. `related` continua existindo para reduzir poluição por seleção, e
+   * `hidden` desliga a evidência sem tocar nos cabos.
+   */
+  lldpMode = 'all',
   mode,
   selection,
   path,
@@ -879,8 +910,31 @@ export function PhysicalRackCanvas({
     );
   }, [lldpGhosts, lldpMode, rack.id, selectedLldpId, selectionAssetId, selectionPortIds]);
 
+  /** Fallback do mapa: segue o mesmo modo de exibição das sugestões. */
+  const visibleMapLinkGhosts = useMemo(() => {
+    if (lldpMode === 'hidden') return [];
+    const inRack = mapLinkGhostsForRack(mapLinkGhosts, rack.id);
+    if (lldpMode === 'all') return inRack;
+    return inRack.filter((ghost) =>
+      Boolean(
+        ghost.from.assetId === selectionAssetId ||
+          selectionPortIds.has(ghost.from.portId) ||
+          ghost.to.assetId === selectionAssetId ||
+          selectionPortIds.has(ghost.to.portId),
+      ),
+    );
+  }, [lldpMode, mapLinkGhosts, rack.id, selectionAssetId, selectionPortIds]);
+
+  /**
+   * Precedência cabo > LLDP > mapa, por par físico: um único desenho por par.
+   */
+  const linkLayer = useMemo(
+    () => applyPhysicalLinkPrecedence(connections, visibleGhosts, visibleMapLinkGhosts),
+    [connections, visibleGhosts, visibleMapLinkGhosts],
+  );
+
   const ghostLaneX = laneX + 56;
-  const ghostPaths = visibleGhosts
+  const ghostPaths = linkLayer.lldp
     .map((ghost) => {
       const sideInRack = ghost.from?.rackId === rack.id ? ghost.from : ghost.to;
       const other = ghost.from?.rackId === rack.id ? ghost.to : ghost.from;
@@ -947,6 +1001,37 @@ export function PhysicalRackCanvas({
       return rows;
     }, []);
 
+  /**
+   * Caminho do fallback do mapa: mesma lane dos ghosts, traço ainda mais
+   * discreto e badge `MAPA`. As duas pontas já existem no inventário físico
+   * (garantido em `physical-map-link.ts`), então nunca há meia linha.
+   */
+  const mapLaneX = laneX + 30;
+  const mapLinkPaths = linkLayer.map
+    .map((ghost) => {
+      const sideInRack = ghost.from.rackId === rack.id ? ghost.from : ghost.to;
+      const other = ghost.from.rackId === rack.id ? ghost.to : ghost.from;
+      const anchor = portAnchor(sideInRack.assetId, sideInRack.portId);
+      if (!anchor) return null;
+      const otherAnchor =
+        other.rackId === rack.id ? portAnchor(other.assetId, other.portId) : null;
+      return { ghost, anchor, otherAnchor, lane: 0 };
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null)
+    .map((item, index) => ({ ...item, lane: mapLaneX + (index % 3) * 10 }))
+    .map((item) => ({
+      ...item,
+      related: Boolean(
+        item.ghost.from.assetId === selectionAssetId ||
+          item.ghost.to.assetId === selectionAssetId ||
+          selectionPortIds.has(item.ghost.from.portId) ||
+          selectionPortIds.has(item.ghost.to.portId),
+      ),
+      d: item.otherAnchor
+        ? `M ${item.anchor.x} ${item.anchor.y} H ${item.lane} V ${item.otherAnchor.y} H ${item.otherAnchor.x}`
+        : `M ${item.anchor.x} ${item.anchor.y} H ${item.lane} V ${item.anchor.y} H ${geometry.width - 12}`,
+    }));
+
   const activeAssetIds = new Set<string>();
   if (selection?.kind === 'asset') activeAssetIds.add(selection.id);
   if (selection?.kind === 'port') {
@@ -996,6 +1081,32 @@ export function PhysicalRackCanvas({
         >
           <span>CABLE LANE</span>
         </div>
+
+        {/*
+          Fallback topológico desenhado ABAIXO do LLDP e dos cabos: é a
+          evidência mais fraca das três e nunca deve competir com um cabo.
+        */}
+        <svg
+          className="physical-maplink-layer"
+          width={geometry.width}
+          height={geometry.height}
+          aria-label="Links do mapa (fallback)"
+        >
+          {mapLinkPaths.map((item) => (
+            <g key={item.ghost.linkId}>
+              <title>{mapLinkTooltip(item.ghost)}</title>
+              <path
+                className={`physical-maplink-ghost ${
+                  item.related ? 'is-related' : selection ? 'is-dim' : ''
+                }`}
+                d={item.d}
+              />
+              <text className="physical-maplink-badge" x={item.lane + 4} y={item.anchor.y - 5}>
+                MAPA
+              </text>
+            </g>
+          ))}
+        </svg>
 
         <svg
           className="physical-lldp-layer"

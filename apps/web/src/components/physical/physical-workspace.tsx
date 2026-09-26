@@ -29,6 +29,8 @@ import {
   deletePhysicalAsset,
   deletePhysicalConnection,
   getHosts,
+  getMap,
+  getMaps,
   getPhysicalCatalog,
   getPhysicalInventory,
   getPhysicalPath,
@@ -47,9 +49,14 @@ import { PhysicalInspector } from './physical-inspector';
 import { PhysicalRackCanvas } from './physical-rack-canvas';
 import { PhysicalVisualToggle } from './physical-visual-toggle';
 import { buildPhysicalLldpGhosts } from './physical-lldp';
+import { buildPhysicalMapLinkGhosts, type PhysicalMapLinkSource } from './physical-map-link';
+import { physicalPortNameView } from './physical-port-name';
 import type { PhysicalConnectionMode, PhysicalSelection, PhysicalVisualMode } from './physical-types';
 
 type CreateDialog = 'site' | 'rack' | 'asset' | null;
+
+/** Referência estável usada enquanto o mapa ainda não chegou. */
+const NO_MAP_LINKS: readonly PhysicalMapLinkSource[] = [];
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
@@ -68,10 +75,29 @@ export function PhysicalWorkspace() {
   const { user } = useAuth();
   const physicalFocusRequest = useMapStore((state) => state.physicalFocusRequest);
   const clearPhysicalFocusRequest = useMapStore((state) => state.clearPhysicalFocusRequest);
+  const activeMapId = useMapStore((state) => state.activeMapId);
+  const storeMap = useMapStore((state) => state.map);
   const canEdit = user?.role === 'ADMIN' || user?.role === 'OPERATOR';
   const inventoryQuery = useQuery({ queryKey: ['physical'], queryFn: getPhysicalInventory });
   const hostsQuery = useQuery({ queryKey: ['hosts'], queryFn: () => getHosts(), enabled: canEdit });
   const catalogQuery = useQuery({ queryKey: ['physical-catalog'], queryFn: getPhysicalCatalog });
+  /**
+   * Fallback topológico: o módulo Físico pode ser aberto sem nunca ter passado
+   * pela visão de mapa, então as MESMAS queries do canvas (`['maps']` e
+   * `['map', id]`) são reaproveitadas aqui — cache compartilhado, nenhum
+   * endpoint novo e nenhuma fonte de verdade paralela.
+   */
+  const mapsQuery = useQuery({ queryKey: ['maps'], queryFn: getMaps });
+  const mapId =
+    activeMapId ??
+    mapsQuery.data?.find((item) => item.isDefault)?.id ??
+    mapsQuery.data?.[0]?.id ??
+    null;
+  const mapQuery = useQuery({
+    queryKey: ['map', mapId],
+    queryFn: () => getMap(mapId as string),
+    enabled: Boolean(mapId),
+  });
   const inventory = inventoryQuery.data;
   const [siteId, setSiteId] = useState('');
   const [rackId, setRackId] = useState('');
@@ -102,6 +128,19 @@ export function PhysicalWorkspace() {
   const lldpGhosts = useMemo(
     () => (inventory ? buildPhysicalLldpGhosts(inventory) : []),
     [inventory],
+  );
+
+  /**
+   * Enlaces do mapa com as duas pontas ancoradas em conectores físicos. O
+   * mapa local (edições ainda não salvas) tem prioridade quando é o mesmo mapa;
+   * senão vale o que veio da query.
+   */
+  const mapLinks =
+    (storeMap && mapId && storeMap.id === mapId ? storeMap.links : mapQuery.data?.links) ??
+    NO_MAP_LINKS;
+  const mapLinkGhosts = useMemo(
+    () => (inventory ? buildPhysicalMapLinkGhosts(inventory, mapLinks) : []),
+    [inventory, mapLinks],
   );
 
   useEffect(() => {
@@ -381,10 +420,10 @@ export function PhysicalWorkspace() {
               <button type="button" title="Mostrar só o caminho selecionado" className={mode === 'selected' ? 'is-active' : ''} onClick={() => setMode('selected')}><PanelRight size={13} /> Selecionado</button>
               <button type="button" title="Mostrar todos os cabos" className={mode === 'all' ? 'is-active' : ''} onClick={() => setMode('all')}><Eye size={13} /> Todas</button>
             </div>
-            <div className="physical-mode" aria-label="Exibição das sugestões LLDP">
-              <button type="button" title="Ocultar sugestões LLDP" className={lldpMode === 'hidden' ? 'is-active' : ''} onClick={() => setLldpMode('hidden')}><EyeOff size={13} /> LLDP off</button>
-              <button type="button" title="Mostrar só as sugestões relacionadas à seleção" className={lldpMode === 'related' ? 'is-active' : ''} onClick={() => setLldpMode('related')}><PanelRight size={13} /> LLDP rel.</button>
-              <button type="button" title="Mostrar todas as sugestões LLDP" className={lldpMode === 'all' ? 'is-active' : ''} onClick={() => setLldpMode('all')}><Radio size={13} /> LLDP todas</button>
+            <div className="physical-mode" aria-label="Exibição das ligações detectadas (LLDP e fallback do mapa)">
+              <button type="button" title="Ocultar sugestões LLDP e o fallback do mapa" className={lldpMode === 'hidden' ? 'is-active' : ''} onClick={() => setLldpMode('hidden')}><EyeOff size={13} /> LLDP off</button>
+              <button type="button" title="Mostrar só LLDP e fallback relacionados à seleção" className={lldpMode === 'related' ? 'is-active' : ''} onClick={() => setLldpMode('related')}><PanelRight size={13} /> LLDP rel.</button>
+              <button type="button" title="Mostrar todas as sugestões LLDP e o fallback do mapa neste rack" className={lldpMode === 'all' ? 'is-active' : ''} onClick={() => setLldpMode('all')}><Radio size={13} /> LLDP todas</button>
             </div>
             <PhysicalVisualToggle mode={visualMode} onChange={setVisualMode} />
             {canEdit && rack ? <Button compact variant="primary" onClick={() => setDialog('asset')}><CirclePlus size={14} /> Equipamento</Button> : null}
@@ -398,6 +437,7 @@ export function PhysicalWorkspace() {
               </span>
             ))}
             <span className="physical-lldp-legend">SUGESTÃO LLDP</span>
+            <span className="physical-maplink-legend">LINK DO MAPA (fallback)</span>
           </div>
         }
       />
@@ -442,7 +482,7 @@ export function PhysicalWorkspace() {
           <section className="physical-search">
             <label><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Equipamento ou porta" /></label>
             {query.trim() ? <div className="physical-search__results">{searchResults.map((result) => (
-              <div key={result.asset.id}><button type="button" onClick={() => openResult(result)}><strong>{result.asset.name}</strong><small>{result.site.name} / {result.rack.name}</small></button>{result.ports.slice(0, 5).map((port) => <button key={port.id} type="button" className="is-port" onClick={() => openResult(result, port.id)}>{port.name}<small>{port.label || port.side}</small></button>)}</div>
+              <div key={result.asset.id}><button type="button" onClick={() => openResult(result)}><strong>{result.asset.name}</strong><small>{result.site.name} / {result.rack.name}</small></button>{result.ports.slice(0, 5).map((port) => <button key={port.id} type="button" className="is-port" onClick={() => openResult(result, port.id)}>{physicalPortNameView(port).displayName}<small>{port.label || port.side}</small></button>)}</div>
             ))}{!searchResults.length ? <p>Nenhum resultado.</p> : null}</div> : null}
           </section>
         </aside>
@@ -453,6 +493,7 @@ export function PhysicalWorkspace() {
               rack={rack}
               connections={inventory.connections}
               lldpGhosts={lldpGhosts}
+              mapLinkGhosts={mapLinkGhosts}
               lldpMode={lldpMode}
               mode={mode}
               selection={selection}
