@@ -45,6 +45,18 @@ export interface BgpAdminApplyResult {
   errorSafe: string | null;
 }
 
+/**
+ * Outcome of the on-demand advertised-routes read.
+ *
+ * `UNSUPPORTED` is deliberately separate from `COMMAND_FAILED`: a VRP
+ * version/platform may not implement the requested variant (typically the
+ * IPv6 one), and the operator deserves that distinction instead of a generic
+ * SSH error — or, worse, an empty table that looks like "no routes".
+ */
+export type BgpAdvertisedRoutesReadResult =
+  | { status: 'SUCCESS'; output: string }
+  | { status: 'UNSUPPORTED' | 'COMMAND_FAILED'; errorSafe: string };
+
 /** Read-only commands per address family (IPv4 and IPv6 output never mix). */
 function peerSummaryCommand(addressFamily: BgpAddressFamily): string {
   return addressFamily === 'IPV6' ? 'display bgp ipv6 peer' : 'display bgp peer';
@@ -64,6 +76,17 @@ function adminConfigCommand(peerAddress: string): string {
   return `display current-configuration configuration bgp | include peer ${peerAddress}`;
 }
 
+/**
+ * Read-only, peer-scoped advertised routes. The peer address always comes from
+ * the persisted peer — never from a request body — and the command runs in the
+ * device's user view, so no `system-view`/`bgp <asn>` is entered.
+ */
+function advertisedRoutesCommand(addressFamily: BgpAddressFamily, peerAddress: string): string {
+  return addressFamily === 'IPV6'
+    ? `display bgp ipv6 routing-table peer ${peerAddress} advertised-routes`
+    : `display bgp routing-table peer ${peerAddress} advertised-routes`;
+}
+
 function safeSshError(error: unknown): string {
   const message = error instanceof Error ? error.message.toLowerCase() : '';
   if (message.includes('auth')) return 'SSH authentication failed';
@@ -76,6 +99,13 @@ function safeSshError(error: unknown): string {
 
 function commandOutputError(output: string): boolean {
   return /(?:unrecognized\s+command|wrong\s+parameter|incomplete\s+command|error\s*:)/i.test(
+    output,
+  );
+}
+
+/** True when the device rejected the command itself (not a transient failure). */
+function unsupportedCommandOutput(output: string): boolean {
+  return /(?:unrecognized\s+command|wrong\s+parameter|incomplete\s+command|too\s+many\s+parameters)/i.test(
     output,
   );
 }
@@ -200,6 +230,48 @@ export class HuaweiBgpSshService {
     return output === null
       ? { success: false, errorSafe: 'SSH command failed' }
       : { success: true, errorSafe: null };
+  }
+
+  /**
+   * On-demand read of the routes announced to one peer. Read-only: no
+   * configuration is changed and nothing is persisted by this layer.
+   *
+   * The optional `sshContextCommand` of the device is applied by the SSH
+   * transport exactly like every other read, so a virtual-system context keeps
+   * working without this method knowing about it.
+   */
+  async readAdvertisedRoutes(
+    device: HostRecord,
+    input: { peerAddress: string; addressFamily: BgpAddressFamily },
+  ): Promise<BgpAdvertisedRoutesReadResult> {
+    let client: SshClient;
+    try {
+      client = await this.createClient(device);
+    } catch (error) {
+      return { status: 'COMMAND_FAILED', errorSafe: safeSshError(error) };
+    }
+
+    const host = device.ssh!.host;
+    const command = advertisedRoutesCommand(input.addressFamily, input.peerAddress);
+    try {
+      const results = await client.execute(host, ['screen-length 0 temporary', command]);
+      const result = results.at(-1);
+      if (!result || result.exitCode !== 0) {
+        return { status: 'COMMAND_FAILED', errorSafe: 'SSH command failed' };
+      }
+      if (unsupportedCommandOutput(result.stdout)) {
+        return {
+          status: 'UNSUPPORTED',
+          errorSafe: 'O equipamento não reconheceu o comando de anúncios nesta família.',
+        };
+      }
+      if (commandOutputError(result.stdout)) {
+        return { status: 'COMMAND_FAILED', errorSafe: 'SSH command failed' };
+      }
+      return { status: 'SUCCESS', output: result.stdout };
+    } catch (error) {
+      return { status: 'COMMAND_FAILED', errorSafe: safeSshError(error) };
+    }
   }
 
   /**

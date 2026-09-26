@@ -5,6 +5,7 @@ import {
   type BgpAlertsResponse,
   type BgpAddressFamilyFilter,
   type BgpAdminAction,
+  type BgpAdvertisedRoutesResponse,
   type BgpDashboardPeer,
   type BgpDashboardResponse,
   type BgpHistoryPeriod,
@@ -442,6 +443,20 @@ export function setBgpPeerAdminState(
   return request<BgpPeerAdminStateResponse>(
     `/api/bgp/peers/${encodeURIComponent(peerId)}/admin-state`,
     { method: 'POST', body: JSON.stringify({ action }) },
+  );
+}
+
+/**
+ * On-demand read of the routes announced to this peer. The request carries no
+ * payload: the backend resolves the peer address, family, local ASN and SSH
+ * context from the persisted peer and runs a single `display` over SSH.
+ */
+export function getBgpPeerAdvertisedRoutes(
+  peerId: string,
+): Promise<BgpAdvertisedRoutesResponse> {
+  return request<BgpAdvertisedRoutesResponse>(
+    `/api/bgp/peers/${encodeURIComponent(peerId)}/advertised-routes`,
+    { method: 'POST' },
   );
 }
 

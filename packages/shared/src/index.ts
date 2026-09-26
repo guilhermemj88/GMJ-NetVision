@@ -1,5 +1,6 @@
 export * from './alarm-label';
 export * from './bgp';
+export * from './bgp-advertised-routes';
 export * from './demo';
 export * from './format';
 export * from './history';
