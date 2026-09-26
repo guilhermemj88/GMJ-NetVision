@@ -32,6 +32,41 @@ export interface HuaweiAdvertisedRoutesParseOptions {
 const BLOCK_HEADER =
   /(?:BGP\s+)?routing[-\s]?table\s+entry\s+information\s+of\s+([0-9a-fA-F:.]+)\s*\/\s*(\d{1,3})/i;
 
+/**
+ * Real tabular layout (`display bgp routing-table peer <PEER>
+ * advertised-routes` on current VRP):
+ *
+ * ```
+ * Network            NextHop                       MED        LocPrf    PrefVal Path/Ogn
+ *
+ * *>     45.5.248.0/23      200.194.223.86                                       0      268568 271034i
+ * *>i    45.163.144.0/22    200.194.223.86                                       0      268568 268568 268568i
+ * ```
+ *
+ * The leading status field (`*`, `*>`, `*>i`, `*>x`, ...) belongs to the row
+ * status and is never part of the prefix nor the origin.
+ */
+const TABULAR_ROUTE_LINE =
+  /^[ \t]*(?<status>[*>dxahiSs]*)[ \t]*(?<address>[0-9a-fA-F:.]+)\s*\/\s*(?<length>\d{1,3})(?<rest>.*)$/;
+
+/** Column labels of the tabular header; aliases cover compatible versions. */
+const TABULAR_LABELS = {
+  network: ['Network'],
+  nextHop: ['NextHop', 'Next Hop'],
+  med: ['MED'],
+  locPrf: ['LocPrf', 'LocPref', 'LocalPref', 'Local Pref'],
+  prefVal: ['PrefVal', 'Pref Val'],
+  path: ['Path/Ogn', 'Path'],
+} as const;
+
+interface TabularLayout {
+  networkStart: number;
+  medStart: number;
+  locPrfStart: number;
+  prefValStart: number;
+  pathStart: number;
+}
+
 const NEXT_HOP_KEYS = /(?:original\s+next-?hop|next-?hop)\s*[:=]\s*(\S+)/i;
 const AS_PATH_KEY = /AS-?path\b/i;
 const ORIGIN_KEY = /\borigin\s*[:=]?\s*([A-Za-z?]+)/i;
@@ -85,16 +120,13 @@ function cutAtTopLevelComma(text: string): string {
 }
 
 /**
- * Reads the AS-PATH tokens that come right after the `AS-path` keyword. The
- * scan stops at the first token that cannot be an ASN or an AS_SET, so a
- * differing attribute order in another VRP version never leaks into the path.
+ * Reads ASN/AS_SET tokens from the beginning of `text`. The scan stops at the
+ * first token that cannot be an ASN or an AS_SET, so an unexpected attribute or
+ * a different column order never leaks into the AS-PATH.
  */
-function extractAsPath(attributeText: string): string[] {
-  const head = cutAtTopLevelComma(attributeText)
-    .replace(/\s+origin\b[\s\S]*$/i, '')
-    .trim();
+function collectAsnTokens(text: string): string[] {
+  const head = text.trim();
   if (!head) return [];
-
   const path: string[] = [];
   let openSet: string | null = null;
   for (const token of head.split(/\s+/).filter(Boolean)) {
@@ -117,6 +149,88 @@ function extractAsPath(attributeText: string): string[] {
     break;
   }
   return path;
+}
+
+/**
+ * Reads the AS-PATH tokens that come right after the `AS-path` keyword of the
+ * block layout.
+ */
+function extractAsPath(attributeText: string): string[] {
+  return collectAsnTokens(
+    cutAtTopLevelComma(attributeText).replace(/\s+origin\b[\s\S]*$/i, ''),
+  );
+}
+
+/** First index of any of the labels, or -1 when none is present. */
+function labelIndex(line: string, labels: readonly string[]): number {
+  for (const label of labels) {
+    const index = line.indexOf(label);
+    if (index >= 0) return index;
+  }
+  return -1;
+}
+
+/**
+ * Locates the tabular header and derives the column offsets from the labels
+ * themselves, so the parser follows the device alignment instead of assuming
+ * hard-coded widths.
+ */
+function tabularLayout(lines: readonly string[]): TabularLayout | null {
+  for (const line of lines) {
+    if (!/\bNext-?Hop\b/i.test(line) || !/\bPath\b/i.test(line)) continue;
+    const networkStart = labelIndex(line, TABULAR_LABELS.network);
+    const nextHopStart = labelIndex(line, TABULAR_LABELS.nextHop);
+    const medStart = labelIndex(line, TABULAR_LABELS.med);
+    const locPrfStart = labelIndex(line, TABULAR_LABELS.locPrf);
+    const prefValStart = labelIndex(line, TABULAR_LABELS.prefVal);
+    const pathStart = labelIndex(line, TABULAR_LABELS.path);
+    if (networkStart < 0 || nextHopStart < 0 || pathStart < 0) continue;
+    if (
+      !(
+        networkStart < nextHopStart &&
+        (medStart < 0 || nextHopStart < medStart) &&
+        (locPrfStart < 0 || medStart < locPrfStart) &&
+        (prefValStart < 0 || locPrfStart < prefValStart) &&
+        (prefValStart < 0 || prefValStart < pathStart) &&
+        (locPrfStart < 0 || locPrfStart < pathStart)
+      )
+    ) {
+      continue;
+    }
+    return {
+      networkStart,
+      medStart: medStart < 0 ? nextHopStart : medStart,
+      locPrfStart: locPrfStart < 0 ? pathStart : locPrfStart,
+      prefValStart: prefValStart < 0 ? pathStart : prefValStart,
+      pathStart,
+    };
+  }
+  return null;
+}
+
+/** A numeric cell: blank is `null`, a non-numeric value is reported. */
+function numericCell(text: string): { value: number | null; invalid: string | null } {
+  const trimmed = text.trim();
+  if (!trimmed) return { value: null, invalid: null };
+  if (!/^\d+$/.test(trimmed)) return { value: null, invalid: trimmed };
+  return { value: Number(trimmed), invalid: null };
+}
+
+/**
+ * Splits the `Path/Ogn` cell into AS-PATH and origin. The origin is ONLY the
+ * final character (`i`, `e` or `?`), never the leading row status.
+ */
+function splitPathAndOrigin(cell: string): {
+  asPath: string[];
+  origin: BgpRouteOrigin | null;
+  empty: boolean;
+} {
+  const text = cell.trim();
+  if (!text) return { asPath: [], origin: null, empty: true };
+  const last = text.slice(-1);
+  const origin = parseHuaweiBgpOrigin(last);
+  const body = origin === null ? text : text.slice(0, -1);
+  return { asPath: collectAsnTokens(body), origin, empty: false };
 }
 
 export function parseHuaweiBgpOrigin(value: string | null | undefined): BgpRouteOrigin | null {
@@ -169,6 +283,144 @@ function extractReportedTotal(lines: string[]): { total: number | null; warning:
 }
 
 /**
+ * Reads the tabular rows. Each row is parsed in two stages:
+ *
+ * 1. column slicing derived from the header alignment (correct even when MED or
+ *    LocPrf is blank in the middle of the row);
+ * 2. fallback on runs of two or more spaces, used only when the header is
+ *    missing or the slices do not validate.
+ *
+ * A row that cannot be interpreted is warned about, never guessed.
+ */
+function collectTabularRoutes(
+  lines: readonly string[],
+  layout: TabularLayout | null,
+  options: HuaweiAdvertisedRoutesParseOptions,
+  localAs: string | null,
+): { routes: BgpAdvertisedRouteDto[]; warnings: string[] } {
+  const routes: BgpAdvertisedRouteDto[] = [];
+  const warnings: string[] = [];
+
+  for (const line of lines) {
+    const match = TABULAR_ROUTE_LINE.exec(line);
+    const groups = match?.groups;
+    if (!match || !groups) continue;
+
+    const parsedPrefix = parsePrefix(
+      groups.address ?? '',
+      groups.length ?? '',
+      options.addressFamily,
+    );
+    // Header/status lines never reach this point; a mismatched family is not a route here.
+    if (!parsedPrefix) continue;
+
+    const rest = groups.rest ?? '';
+    const hopMatch = /^[ \t]*(?<hop>[0-9a-fA-F:.]+)/.exec(rest);
+    const candidateHop = hopMatch?.groups?.hop ?? null;
+    const nextHop = candidateHop ? normalizeIpAddress(candidateHop) : null;
+    if (candidateHop && !nextHop) {
+      warnings.push(`Next-hop não reconhecido em ${parsedPrefix.prefix}: ${candidateHop}`);
+    }
+    const afterHop = hopMatch ? rest.slice(hopMatch[0].length) : rest;
+
+    let med: number | null = null;
+    let localPreference: number | null = null;
+    let preferredValue: number | null = null;
+    let asPath: string[] = [];
+    let origin: BgpRouteOrigin | null = null;
+
+    const addressIndex = line.indexOf(groups.address ?? '');
+    const headerSlices = layout && addressIndex >= 0 ? sliceByHeader(line, addressIndex, layout) : null;
+    if (headerSlices) {
+      med = headerSlices.med;
+      localPreference = headerSlices.localPreference;
+      preferredValue = headerSlices.preferredValue;
+      asPath = headerSlices.asPath;
+      origin = headerSlices.origin;
+    } else {
+      // Fallback: the device pads columns with runs of spaces, while the
+      // AS-PATH itself is single-spaced.
+      const segments = afterHop
+        .split(/\s{2,}/)
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+      const pathCell = segments.pop() ?? '';
+      const path = splitPathAndOrigin(pathCell);
+      if (path.empty) warnings.push(`AS-PATH não interpretável em ${parsedPrefix.prefix}.`);
+      asPath = path.asPath;
+      origin = path.origin;
+
+      const cells = segments.map(numericCell);
+      const invalid = cells.find((cell) => cell.invalid !== null);
+      if (invalid) {
+        warnings.push(`Coluna não numérica ignorada em ${parsedPrefix.prefix}: ${invalid.invalid}`);
+      }
+      const values = cells.map((cell) => cell.value);
+      preferredValue = values.at(-1) ?? null;
+      localPreference = values.at(-2) ?? null;
+      med = values.at(-3) ?? null;
+    }
+
+    if (asPath.length === 0) warnings.push(`AS-PATH não interpretável em ${parsedPrefix.prefix}.`);
+    if (asPath.length > 0 && origin === null) {
+      warnings.push(`Origem não reconhecida em ${parsedPrefix.prefix}.`);
+    }
+
+    routes.push({
+      prefix: parsedPrefix.prefix,
+      nextHop,
+      med,
+      localPreference,
+      preferredValue,
+      asPath,
+      origin,
+      prependLocal: computeLocalPrepend(asPath, localAs),
+    });
+  }
+
+  return { routes, warnings };
+}
+
+/**
+ * Column slicing using the header alignment. The row's first column also holds
+ * the status field, so the offset between the header's `Network` label and the
+ * prefix in the row is applied to every other column.
+ *
+ * Returns null when the slices do not look like a valid row, so the caller can
+ * fall back instead of trusting a misaligned column.
+ */
+function sliceByHeader(
+  line: string,
+  addressIndex: number,
+  layout: TabularLayout,
+): {
+  med: number | null;
+  localPreference: number | null;
+  preferredValue: number | null;
+  asPath: string[];
+  origin: BgpRouteOrigin | null;
+} | null {
+  const shift = addressIndex - layout.networkStart;
+  if (layout.pathStart + shift > line.length) return null;
+
+  const medCell = numericCell(line.slice(layout.medStart + shift, layout.locPrfStart + shift));
+  const locPrfCell = numericCell(line.slice(layout.locPrfStart + shift, layout.prefValStart + shift));
+  const prefValCell = numericCell(line.slice(layout.prefValStart + shift, layout.pathStart + shift));
+  if (medCell.invalid || locPrfCell.invalid || prefValCell.invalid) return null;
+
+  const path = splitPathAndOrigin(line.slice(layout.pathStart + shift));
+  if (path.empty || path.asPath.length === 0) return null;
+
+  return {
+    med: medCell.value,
+    localPreference: locPrfCell.value,
+    preferredValue: prefValCell.value,
+    asPath: path.asPath,
+    origin: path.origin,
+  };
+}
+
+/**
  * Parses `display bgp routing-table peer <PEER> advertised-routes` for IPv4 and
  * `display bgp ipv6 routing-table peer <PEER> advertised-routes` for IPv6.
  *
@@ -193,6 +445,22 @@ export function parseHuaweiAdvertisedRoutes(
     };
   }
 
+  const { total: reportedTotal, warning: totalWarning } = extractReportedTotal(lines);
+  if (totalWarning) warnings.push(totalWarning);
+
+  // Real VRP prints the advertised routes as a table. The block layout is kept
+  // for the other platforms/versions already covered by tests.
+  const tabular = collectTabularRoutes(lines, tabularLayout(lines), options, localAs);
+  if (tabular.routes.length > 0) {
+    warnings.push(...tabular.warnings);
+    if (reportedTotal !== null && tabular.routes.length !== reportedTotal) {
+      warnings.push(
+        `A CLI reportou ${reportedTotal} rota(s) e ${tabular.routes.length} foram interpretadas; linhas ambíguas foram ignoradas.`,
+      );
+    }
+    return { routes: tabular.routes, reportedTotal, warnings };
+  }
+
   const blocks: Array<{ prefix: string; addressFamily: BgpAddressFamily; body: string[] }> = [];
   let current: { prefix: string; addressFamily: BgpAddressFamily; body: string[] } | null = null;
   for (const line of lines) {
@@ -210,9 +478,6 @@ export function parseHuaweiAdvertisedRoutes(
     }
     if (current) current.body.push(line.trim());
   }
-
-  const { total: reportedTotal, warning: totalWarning } = extractReportedTotal(lines);
-  if (totalWarning) warnings.push(totalWarning);
 
   if (blocks.length === 0) {
     // A CLI that explicitly says "0 routes" is a legitimate empty answer, not a

@@ -290,3 +290,185 @@ describe('parseHuaweiAdvertisedRoutes (tolerance)', () => {
     expect(parsed.routes.every((route) => route.prependLocal === 0)).toBe(true);
   });
 });
+
+/**
+ * Captura REAL do equipamento em produção (anonimizada), no layout TABULAR do
+ * VRP atual, colada sem alterar espaços ou colunas.
+ *
+ * A CLI reporta 35 rotas; o trecho fornecido traz as 12 primeiras linhas, então
+ * a contagem de rotas é validada contra o trecho e o total, contra a CLI.
+ */
+const ADVERTISED_TABULAR_REAL = `
+BGP Local router ID is 45.163.144.1
+Status codes: * - valid, > - best, d - damped, x - best external, a - add path,
+h - history,  i - internal, s - suppressed, S - Stale
+Origin : i - IGP, e - EGP, ? - incomplete
+RPKI validation codes: V - valid, I - invalid, N - not-found
+
+Total Number of Routes: 35
+Network            NextHop                       MED        LocPrf    PrefVal Path/Ogn
+
+*>     45.5.248.0/23      200.194.223.86                                       0      268568 271034i
+*>     45.5.248.0/24      200.194.223.86                                       0      268568 271034 271034 271034 271034i
+*>     45.5.249.0/24      200.194.223.86                                       0      268568 271034 271034 271034 271034i
+*>     45.5.251.0/24      200.194.223.86                                       0      268568 271034i
+*>i    45.163.144.0/22    200.194.223.86                                       0      268568 268568 268568i
+*>     45.164.184.0/23    200.194.223.86                                       0      268568 268633 268633i
+*>     45.168.200.0/22    200.194.223.86                                       0      268568 268144i
+*>     45.171.176.0/22    200.194.223.86                                       0      268568 268633 268725 268725 268725 268725 268725 268725i
+*>     45.175.51.0/24     200.194.223.86                                       0      268568 268568 268568 268568 268568 268568 268884i
+*>     45.225.55.0/24     200.194.223.86                                       0      268568 262957 266942?
+*>     168.195.24.0/22    200.194.223.86                                       0      268568 265424 265424 265424 265424 265424 265424 265424 265424?
+*>     200.192.151.0/24   200.194.223.86                                       0      268568 28572 28572i
+`;
+
+describe('parseHuaweiAdvertisedRoutes (VRP tabular real)', () => {
+  const parsed = parseHuaweiAdvertisedRoutes(ADVERTISED_TABULAR_REAL, {
+    localAs: LOCAL_AS,
+    addressFamily: 'IPV4',
+  });
+  const byPrefix = new Map(parsed.routes.map((route) => [route.prefix, route]));
+
+  it('reads the total reported by the CLI and parses every row of the excerpt', () => {
+    expect(parsed.reportedTotal).toBe(35);
+    expect(parsed.routes).toHaveLength(12);
+    expect(parsed.routes.map((route) => route.prefix)).toEqual([
+      '45.5.248.0/23',
+      '45.5.248.0/24',
+      '45.5.249.0/24',
+      '45.5.251.0/24',
+      '45.163.144.0/22',
+      '45.164.184.0/23',
+      '45.168.200.0/22',
+      '45.171.176.0/22',
+      '45.175.51.0/24',
+      '45.225.55.0/24',
+      '168.195.24.0/22',
+      '200.192.151.0/24',
+    ]);
+  });
+
+  it('ignores status/header lines, so only the reported difference is warned about', () => {
+    expect(parsed.warnings).toEqual([
+      'A CLI reportou 35 rota(s) e 12 foram interpretadas; linhas ambíguas foram ignoradas.',
+    ]);
+  });
+
+  it('parses the local prepend of the real rows', () => {
+    expect(byPrefix.get('45.163.144.0/22')?.prependLocal).toBe(2);
+    expect(byPrefix.get('45.175.51.0/24')?.prependLocal).toBe(5);
+    expect(byPrefix.get('45.5.248.0/24')?.prependLocal).toBe(0);
+    expect(byPrefix.get('45.5.248.0/23')?.prependLocal).toBe(0);
+    // Repetição de terceiro (265424) não conta como prepend local.
+    expect(byPrefix.get('168.195.24.0/22')?.prependLocal).toBe(0);
+    expect(byPrefix.get('45.171.176.0/22')?.prependLocal).toBe(0);
+  });
+
+  it('keeps the AS-PATH in order and takes the origin from the final character', () => {
+    expect(byPrefix.get('45.163.144.0/22')).toMatchObject({
+      asPath: ['268568', '268568', '268568'],
+      origin: 'i',
+    });
+    expect(byPrefix.get('45.5.248.0/23')).toMatchObject({
+      asPath: ['268568', '271034'],
+      origin: 'i',
+    });
+    expect(byPrefix.get('45.225.55.0/24')).toMatchObject({
+      asPath: ['268568', '262957', '266942'],
+      origin: '?',
+    });
+    expect(byPrefix.get('168.195.24.0/22')?.origin).toBe('?');
+    expect(byPrefix.get('200.192.151.0/24')).toMatchObject({
+      asPath: ['268568', '28572', '28572'],
+      origin: 'i',
+    });
+  });
+
+  it('never takes the "i" of the "*>i" status as the origin', () => {
+    const withStatusI = byPrefix.get('45.163.144.0/22');
+    expect(withStatusI?.origin).toBe('i');
+    // O prefixo continua íntegro e o AS-PATH não ganhou nenhum símbolo de status.
+    expect(withStatusI?.prefix).toBe('45.163.144.0/22');
+    expect(withStatusI?.asPath).toEqual(['268568', '268568', '268568']);
+    expect(parsed.routes.some((route) => route.prefix.includes('*'))).toBe(false);
+  });
+
+  it('leaves blank MED/LocPrf as null and reads PrefVal 0 from every row', () => {
+    for (const route of parsed.routes) {
+      expect(route.med).toBeNull();
+      expect(route.localPreference).toBeNull();
+      expect(route.preferredValue).toBe(0);
+      expect(route.nextHop).toBe('200.194.223.86');
+    }
+  });
+
+  it('still parses the same rows when the header line is not captured', () => {
+    const rowsOnly = ADVERTISED_TABULAR_REAL.split('\n')
+      .filter((line) => line.startsWith('*>'))
+      .join('\n');
+    const withoutHeader = parseHuaweiAdvertisedRoutes(rowsOnly, {
+      localAs: LOCAL_AS,
+      addressFamily: 'IPV4',
+    });
+
+    expect(withoutHeader.reportedTotal).toBeNull();
+    expect(withoutHeader.routes).toHaveLength(12);
+    expect(withoutHeader.routes.find((route) => route.prefix === '45.163.144.0/22')).toMatchObject({
+      med: null,
+      localPreference: null,
+      preferredValue: 0,
+      asPath: ['268568', '268568', '268568'],
+      origin: 'i',
+      prependLocal: 2,
+    });
+    expect(withoutHeader.routes.find((route) => route.prefix === '45.175.51.0/24')?.prependLocal).toBe(5);
+  });
+
+  it('reads MED and LocPrf when the columns are filled', () => {
+    // Mesmas colunas do cabeçalho real: Network 0, NextHop 19, MED 49,
+    // LocPrf 60, PrefVal 70, Path/Ogn 78 — deslocadas em 7 pelo campo de status.
+    const put = (cells: string[], start: number, value: string): void => {
+      for (let index = 0; index < value.length; index += 1) cells[start + index] = value[index] ?? ' ';
+    };
+    const row = (prefix: string, med: string, locPrf: string, prefVal: string, path: string): string => {
+      const cells = new Array<string>(85).fill(' ');
+      put(cells, 0, '*>');
+      put(cells, 7, prefix);
+      put(cells, 26, '200.194.223.86');
+      // Valores alinhados à direita dentro de cada coluna.
+      if (med) put(cells, 67 - med.length, med);
+      if (locPrf) put(cells, 77 - locPrf.length, locPrf);
+      if (prefVal) put(cells, 85 - prefVal.length, prefVal);
+      put(cells, 85, path);
+      return cells.join('');
+    };
+    const output = [
+      'Total Number of Routes: 2',
+      'Network            NextHop                       MED        LocPrf    PrefVal Path/Ogn',
+      '',
+      row('45.163.144.0/22', '100', '250', '0', '268568 268568 271034i'),
+      row('45.5.248.0/23', '1', '', '0', '268568 271034i'),
+    ].join('\n');
+
+    const filled = parseHuaweiAdvertisedRoutes(output, {
+      localAs: LOCAL_AS,
+      addressFamily: 'IPV4',
+    });
+
+    expect(filled.warnings).toEqual([]);
+    expect(filled.routes[0]).toMatchObject({
+      med: 100,
+      localPreference: 250,
+      preferredValue: 0,
+      origin: 'i',
+      prependLocal: 1,
+    });
+    // MED preenchido com LocPrf em branco: cada coluna mantém o seu valor.
+    expect(filled.routes[1]).toMatchObject({
+      med: 1,
+      localPreference: null,
+      preferredValue: 0,
+      prependLocal: 0,
+    });
+  });
+});
