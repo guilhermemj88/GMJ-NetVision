@@ -4,6 +4,7 @@ import { ZodError } from 'zod';
 import { registerBgpRoutes } from './bgp-routes';
 import type { AuthUser } from '@gmj/shared';
 import { BgpAdminActionError } from './infrastructure/bgp/bgp-admin-service';
+import { BgpAdvertisedRoutesError } from './infrastructure/bgp/bgp-advertised-routes-service';
 import { DemoBgpRepository } from './infrastructure/bgp/demo-bgp-repository';
 import type { HuaweiBgpCollection } from './infrastructure/bgp/huawei-bgp-snmp';
 
@@ -721,6 +722,147 @@ describe('BGP administrative action API', () => {
     expect(response.statusCode).toBe(409);
     expect(response.json().message).toContain('discovery SSH');
     expect(response.json().message).not.toMatch(/password|community/i);
+    await app.close();
+  });
+});
+
+describe('BGP advertised-routes API', () => {
+  const sampleResponse = {
+    peerId: 'peer-1',
+    deviceId: 'ne8000-1',
+    peerAddress: '200.194.223.86',
+    addressFamily: 'IPV4',
+    localAs: '268568',
+    fetchedAt: '2026-09-25T12:00:00.000Z',
+    routes: [
+      {
+        prefix: '45.163.144.0/22',
+        nextHop: '200.194.223.86',
+        med: 1,
+        localPreference: null,
+        preferredValue: 0,
+        asPath: ['268568', '268568', '268568'],
+        origin: 'i',
+        prependLocal: 2,
+      },
+    ],
+    reportedTotal: 1,
+    warnings: [],
+  };
+
+  function advertisedApp(options: {
+    user?: AuthUser | null;
+    execute?: ReturnType<typeof vi.fn>;
+  }): { app: FastifyInstance; execute: ReturnType<typeof vi.fn> } {
+    const execute = options.execute ?? vi.fn().mockResolvedValue(sampleResponse);
+    const app = Fastify();
+    app.setErrorHandler((error, _request, reply) => {
+      if (error instanceof ZodError) return reply.code(400).send({ message: 'Invalid request' });
+      return reply.code(500).send({ message: 'Internal server error' });
+    });
+    registerBgpRoutes(app, {
+      bgp: new DemoBgpRepository(),
+      advertisedRoutes: { execute } as never,
+      currentUser: async () => options.user ?? null,
+    });
+    return { app, execute };
+  }
+
+  const operatorUser: AuthUser = {
+    id: 'user-2',
+    username: 'operador',
+    email: 'operador@netvision.local',
+    name: 'Operador',
+    role: 'OPERATOR',
+  };
+  const viewerUser: AuthUser = { ...operatorUser, id: 'user-3', username: 'viewer', role: 'VIEWER' };
+
+  it('lets any authenticated operator collect the announced routes', async () => {
+    for (const user of [operatorUser, viewerUser]) {
+      const { app, execute } = advertisedApp({ user });
+      await app.ready();
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/bgp/peers/peer-1/advertised-routes',
+      });
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ peerAddress: '200.194.223.86', localAs: '268568' });
+      expect(response.json().routes[0]).toMatchObject({ prefix: '45.163.144.0/22', prependLocal: 2 });
+      expect(execute).toHaveBeenCalledWith('peer-1');
+      await app.close();
+    }
+  });
+
+  it('rejects an unauthenticated request without touching the device', async () => {
+    const { app, execute } = advertisedApp({ user: null });
+    await app.ready();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/bgp/peers/peer-1/advertised-routes',
+    });
+    expect(response.statusCode).toBe(401);
+    expect(execute).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('rejects any body, so no peer address or CLI fragment can be injected', async () => {
+    const { app, execute } = advertisedApp({ user: operatorUser });
+    await app.ready();
+    for (const payload of [
+      { peerAddress: '10.0.0.1' },
+      { command: 'display bgp peer' },
+      { localAs: 999 },
+      { addressFamily: 'IPV6' },
+    ]) {
+      const response = await app.inject({
+        method: 'POST',
+        url: '/api/bgp/peers/peer-1/advertised-routes',
+        payload,
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json().message).toMatch(/peerId persistido|Corpo da requisição inválido/);
+    }
+    expect(execute).not.toHaveBeenCalled();
+    await app.close();
+  });
+
+  it('maps domain failures to their HTTP status without leaking internals', async () => {
+    const { app } = advertisedApp({
+      user: operatorUser,
+      execute: vi
+        .fn()
+        .mockRejectedValue(
+          new BgpAdvertisedRoutesError(
+            'Consulta de anúncios não suportada para sessões IPv6 neste equipamento (O equipamento não reconheceu o comando de anúncios nesta família.)',
+            409,
+          ),
+        ),
+    });
+    await app.ready();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/bgp/peers/peer-1/advertised-routes',
+    });
+    expect(response.statusCode).toBe(409);
+    expect(response.json().message).toMatch(/não suportada para sessões IPv6/);
+    expect(response.json().message).not.toMatch(/password|community|private/i);
+    await app.close();
+  });
+
+  it('returns 502 for an SSH failure, with the sanitized message only', async () => {
+    const { app } = advertisedApp({
+      user: operatorUser,
+      execute: vi
+        .fn()
+        .mockRejectedValue(new BgpAdvertisedRoutesError('SSH host is unreachable', 502)),
+    });
+    await app.ready();
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/bgp/peers/peer-1/advertised-routes',
+    });
+    expect(response.statusCode).toBe(502);
+    expect(response.json().message).toBe('SSH host is unreachable');
     await app.close();
   });
 });

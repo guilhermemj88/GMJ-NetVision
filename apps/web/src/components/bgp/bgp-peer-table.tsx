@@ -4,6 +4,7 @@ import { useState } from 'react';
 import type { BgpDashboardDevice, BgpDashboardPeer } from '@gmj/shared';
 import { RefreshCw } from 'lucide-react';
 import { formatBgpTraffic, formatBgpUptime, formatRouteCount } from '@/lib/bgp-format';
+import { formatRelative } from '@/lib/bgp-format';
 import { nextSort, sortBgpPeers, type BgpSort, type BgpSortKey } from '@/lib/bgp-sort';
 
 function stateLabel(peer: BgpDashboardPeer): string {
@@ -27,18 +28,68 @@ const SORTABLE_COLUMNS: Array<{ key: BgpSortKey; label: string }> = [
   { key: 'uptime', label: 'Uptime' },
 ];
 
+/**
+ * Quedas e indisponibilidade corrente do peer.
+ *
+ * `flaps` conta as transições observadas nas últimas 48h (alertas ativos +
+ * resolvidos) e `downSince` é o início da indisponibilidade atual. Nada é
+ * inferido: sem alerta, a célula mostra "—".
+ */
+function FlapCell({
+  flaps,
+  downSince,
+  now,
+}: {
+  flaps: number;
+  downSince: string | null;
+  now?: number | undefined;
+}) {
+  if (!flaps && !downSince) return <span className="hosts-cell-muted">—</span>;
+  const startedAt = downSince ? Date.parse(downSince) : Number.NaN;
+  const downFor =
+    downSince && now !== undefined && Number.isFinite(startedAt)
+      ? formatRelative(now - startedAt)
+      : null;
+
+  return (
+    <span className="bgp-flaps">
+      {flaps > 0 && (
+        <em
+          className={flaps > 1 ? 'is-many' : ''}
+          title={`${flaps} queda(s) nas últimas 48h`}
+        >
+          {flaps}×
+        </em>
+      )}
+      {downSince && downFor ? (
+        <small title={`Fora de ESTABLISHED desde ${new Date(downSince).toLocaleString('pt-BR')}`}>
+          down {downFor}
+        </small>
+      ) : null}
+    </span>
+  );
+}
+
 export function BgpPeerTable({
   devices,
   onSelectPeer,
   onRefreshDevice,
   refreshingDeviceIds,
   emptyMessage,
+  flapsByPeer,
+  downSinceByPeer,
+  now,
 }: {
   devices: BgpDashboardDevice[];
   onSelectPeer: (peer: BgpDashboardPeer) => void;
   onRefreshDevice?: (deviceId: string) => void;
   refreshingDeviceIds?: ReadonlySet<string>;
   emptyMessage?: string;
+  /** Quedas observadas por peer nas últimas 48h (alertas ativos + resolvidos). */
+  flapsByPeer?: Map<string, number>;
+  /** Início da indisponibilidade atual, quando há alerta ativo. */
+  downSinceByPeer?: Map<string, string>;
+  now?: number;
 }) {
   const [sort, setSort] = useState<BgpSort>({ key: 'state', direction: 'asc' });
 
@@ -86,7 +137,7 @@ export function BgpPeerTable({
                 </button>
               </th>
             ))}
-            <th>Histórico</th>
+            <th>Quedas · 48h</th>
           </tr>
         </thead>
       </table>
@@ -164,8 +215,12 @@ export function BgpPeerTable({
                   <td data-label="Uptime">
                     <span>{formatBgpUptime(peer.establishedSince)}</span>
                   </td>
-                  <td data-label="Histórico">
-                    <span className="bgp-sparkline bgp-sparkline--empty">—</span>
+                  <td data-label="Quedas · 48h">
+                    <FlapCell
+                      flaps={flapsByPeer?.get(peer.id) ?? 0}
+                      downSince={downSinceByPeer?.get(peer.id) ?? null}
+                      now={now}
+                    />
                   </td>
                 </tr>
               ))}

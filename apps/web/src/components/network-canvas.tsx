@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Background,
@@ -21,20 +21,26 @@ import {
 import {
   getMap,
   getMaps,
-  getAlarms,
-  getRecentResolvedAlarms,
   updateNetworkMap,
 } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
 import { computeParallelLinkLayouts, type Alarm } from '@gmj/shared';
+import { countAlarmsByDevice, useActiveAlarms, useRecentResolvedAlarms } from '@/lib/use-alarms';
+import { useMapFocus } from '@/lib/use-map-focus';
 import { DeviceNode, type DeviceFlowNode } from './device-node';
 import { GenericNode, type GenericFlowNode } from './generic-node';
 import { PppTotalWidget } from './ppp-total-widget';
 import { TrafficEdge, type TrafficFlowEdge } from './traffic-edge';
 import { MapControls } from './map-controls';
+import { MapStatusBar } from './map-status-bar';
 import { EditToolbar } from './edit-toolbar';
 import { AlarmPanel, alarmFocusTarget } from './alarm-panel';
 import { resolveEdgeHandles } from '@/lib/edge-handles';
+import {
+  getTrafficLabelOffsets,
+  subscribeTrafficLabelOffsets,
+  type TrafficLabelOffsets,
+} from '@/lib/traffic-label-offsets';
 import {
   calculateSmartAlignment,
   type AlignmentGuide,
@@ -68,8 +74,19 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
   const activeMapId = useMapStore((state) => state.activeMapId);
   const map = useMapStore((state) => state.map);
   const setCatalog = useMapStore((state) => state.setCatalog);
-  const setMap = useMapStore((state) => state.setMap);
+  const applyMapRefresh = useMapStore((state) => state.applyMapRefresh);
   const editMode = useMapStore((state) => state.editMode) && !readOnly;
+  /**
+   * Labels arrastáveis: o modo liga o arrasto e os offsets vêm do localStorage
+   * do mapa ativo (camada visual, não é dado do mapa).
+   */
+  const labelAdjustMode = useMapStore((state) => state.labelAdjustMode) && !readOnly;
+  const emptyLabelOffsets = useMemo<TrafficLabelOffsets>(() => ({}), []);
+  const labelOffsets = useSyncExternalStore(
+    subscribeTrafficLabelOffsets,
+    () => getTrafficLabelOffsets(activeMapId),
+    () => emptyLabelOffsets,
+  );
   const preferences = useMapStore((state) => state.preferences);
   const moveNode = useMapStore((state) => state.moveNode);
   const selection = useMapStore((state) => state.selection);
@@ -90,36 +107,15 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     refetchIntervalInBackground: true,
   });
 
-  // Alarms follow the same refresh cycle as the map for now. The panel and the
-  // node badges subscribe to this query, so a future WebSocket/SSE transport
-  // can replace it without touching the consumers.
-  const alarmsQuery = useQuery({
-    queryKey: ['alarms'],
-    queryFn: getAlarms,
-    enabled: !readOnly,
-    refetchInterval: MAP_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: true,
-  });
-  const alarms = alarmsQuery.data ?? [];
+  // Alarmes ativos/resolvidos vêm de hooks compartilhados (mesmas chaves de
+  // query do painel, dos badges e da rail de camadas).
+  const alarms = useActiveAlarms(!readOnly);
+  const recentResolvedAlarms = useRecentResolvedAlarms(!readOnly, 3);
+  const alarmCountByDevice = useMemo(() => countAlarmsByDevice(alarms), [alarms]);
 
-  // Recently resolved alarms follow the same refresh cycle as the active ones.
-  // The backend returns at most the 3 most recent resolutions.
-  const resolvedAlarmsQuery = useQuery({
-    queryKey: ['alarms', 'resolved'],
-    queryFn: () => getRecentResolvedAlarms(3),
-    enabled: !readOnly,
-    refetchInterval: MAP_REFRESH_INTERVAL_MS,
-    refetchIntervalInBackground: true,
-  });
-  const recentResolvedAlarms = resolvedAlarmsQuery.data ?? [];
-
-  const alarmCountByDevice = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const alarm of alarmsQuery.data ?? []) {
-      counts.set(alarm.deviceId, (counts.get(alarm.deviceId) ?? 0) + 1);
-    }
-    return counts;
-  }, [alarmsQuery.data]);
+  // Recorte visual (camada + site + tipo + vizinhança). Não altera o grafo:
+  // apenas marca o que fica atenuado.
+  const focus = useMapFocus();
 
   useEffect(() => {
     if (!readOnly && catalogQuery.data) setCatalog(catalogQuery.data);
@@ -127,8 +123,10 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
 
   useEffect(() => {
     if (readOnly) return;
-    if (mapQuery.data) setMap(mapQuery.data);
-  }, [mapQuery.data, readOnly, setMap]);
+    // Refresh automático: com edição pendente ele mescla só telemetria e
+    // preserva a estrutura local (posições, geometria, escalas, widgets).
+    if (mapQuery.data) applyMapRefresh(mapQuery.data);
+  }, [mapQuery.data, readOnly, applyMapRefresh]);
 
   const hasSavedViewport = Boolean(
     map?.settings.viewport &&
@@ -163,7 +161,6 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
   const nodeScale = map?.settings.nodeScale;
   const labelScale = map?.settings.labelScale;
   const measuredSizes = useRef(new Map<string, { width: number; height: number }>());
-  const showInterfaces = preferences.showInterfaces;
 
   const domainNodes = useMemo<MapFlowNode[]>(() => {
     if (
@@ -189,11 +186,11 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
             device,
             mapNode,
             editMode,
-            showInterfaces,
             displayMode: nodeDisplayMode,
             nodeScale,
             labelScale,
             alarmCount: alarmCountByDevice.get(device.id) ?? 0,
+            dimmed: focus.dimmedNodeIds.has(device.id),
           },
         }];
       }
@@ -209,19 +206,20 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
           displayMode: nodeDisplayMode,
           nodeScale,
           labelScale,
+          dimmed: focus.dimmedNodeIds.has(mapNode.id),
         },
       }];
     });
   }, [
     alarmCountByDevice,
     editMode,
+    focus.dimmedNodeIds,
     labelScale,
     mapDevices,
     mapNodes,
     nodeDisplayMode,
     nodeScale,
     preferences.showOffline,
-    showInterfaces,
   ]);
 
   useEffect(() => {
@@ -320,10 +318,15 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         type: 'traffic',
         selectable: true,
         selected: selection?.kind === 'link' && selection.id === link.id,
+        ...(focus.dimmedLinkIds.has(link.id) ? { className: 'is-dimmed' } : {}),
         data: {
           link,
           editMode,
           readOnly,
+          labelOffsets,
+          labelMapId: activeMapId,
+          labelAdjust: labelAdjustMode,
+          dimmed: focus.dimmedLinkIds.has(link.id),
           ...(sourceInterface ? { sourceInterface } : {}),
           ...(targetInterface ? { targetInterface } : {}),
           visualPath,
@@ -344,7 +347,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         },
       }));
     });
-  }, [domainNodes, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, preferences.showTrafficAnimation, selection, editMode, readOnly]);
+  }, [activeMapId, domainNodes, focus.dimmedLinkIds, labelAdjustMode, labelOffsets, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, preferences.showTrafficAnimation, selection, editMode, readOnly]);
 
   const [nodes, setNodes] = useNodesState<MapFlowNode>([]);
   const [edges, setEdges] = useEdgesState<TrafficFlowEdge>([]);
@@ -506,20 +509,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         {!rotation.hideControls && !readOnly && <MapControls />}
         {editMode && !rotation.active && !readOnly && <EditToolbar />}
       </ReactFlow>
-      <div className="map-watermark">
-        <span>LIVE TOPOLOGY</span>
-        <strong>
-          {map?.nodes.filter((node) => map.devices.some((device) => device.id === node.deviceId && device.status === 'UP')).length ?? 0} UP
-        </strong>
-        <i />
-        <strong className="warning">
-          {map?.nodes.filter((node) => map.devices.some((device) => device.id === node.deviceId && device.status === 'WARNING')).length ?? 0} WARNING
-        </strong>
-        <i />
-        <strong className="down">
-          {map?.nodes.filter((node) => map.devices.some((device) => device.id === node.deviceId && device.status === 'DOWN')).length ?? 0} DOWN
-        </strong>
-      </div>
+      <MapStatusBar focus={focus} />
     </main>
   );
 }

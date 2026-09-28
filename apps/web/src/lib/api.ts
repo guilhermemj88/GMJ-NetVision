@@ -5,6 +5,7 @@ import {
   type BgpAlertsResponse,
   type BgpAddressFamilyFilter,
   type BgpAdminAction,
+  type BgpAdvertisedRoutesResponse,
   type BgpDashboardPeer,
   type BgpDashboardResponse,
   type BgpHistoryPeriod,
@@ -63,6 +64,7 @@ import {
   type PhysicalModule,
   type PhysicalPath,
   type PhysicalPort,
+  type PhysicalPortLocation,
   type PhysicalRack,
   type PhysicalReconcileResult,
   type PhysicalSite,
@@ -444,6 +446,20 @@ export function setBgpPeerAdminState(
   );
 }
 
+/**
+ * On-demand read of the routes announced to this peer. The request carries no
+ * payload: the backend resolves the peer address, family, local ASN and SSH
+ * context from the persisted peer and runs a single `display` over SSH.
+ */
+export function getBgpPeerAdvertisedRoutes(
+  peerId: string,
+): Promise<BgpAdvertisedRoutesResponse> {
+  return request<BgpAdvertisedRoutesResponse>(
+    `/api/bgp/peers/${encodeURIComponent(peerId)}/advertised-routes`,
+    { method: 'POST' },
+  );
+}
+
 export function getHost(hostId: string) {
   return request<HostRecord>(`/api/hosts/${hostId}`);
 }
@@ -694,6 +710,33 @@ export function updatePhysicalConnection(
 
 export function getPhysicalPath(portId: string): Promise<PhysicalPath> {
   return request<PhysicalPath>(`/api/physical/ports/${encodeURIComponent(portId)}/path`);
+}
+
+/**
+ * Correlação reversa interface → conector físico.
+ *
+ * `null` significa "não existe vínculo persistido para esta interface" — a UI
+ * deve dizer isso, nunca sugerir uma porta aproximada.
+ */
+export async function getPhysicalPortByInterface(
+  interfaceId: string,
+): Promise<PhysicalPortLocation | null> {
+  const response = await fetch(
+    `${apiUrl()}/api/physical/ports/by-interface/${encodeURIComponent(interfaceId)}`,
+    { credentials: 'include' },
+  );
+  if (response.status === 404) {
+    const body = (await response.json().catch(() => null)) as { message?: string } | null;
+    // 404 com a NOSSA mensagem = a interface realmente não tem conector.
+    if (body?.message?.includes('Nenhum conector físico')) return null;
+    // Qualquer outro 404 é rota ausente: a API em execução (produção) ainda não
+    // tem o endpoint de correlação. Isso NÃO significa "sem vínculo".
+    throw new Error(
+      'Correlação física indisponível nesta API: o endpoint de leitura ainda não foi implantado no servidor.',
+    );
+  }
+  if (!response.ok) throw new Error(`API ${response.status}`);
+  return (await response.json()) as PhysicalPortLocation;
 }
 
 /** Catalog is returned by the API as `{ entries }`; the UI uses the plain list. */

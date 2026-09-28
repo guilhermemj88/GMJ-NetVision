@@ -30,4 +30,9 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    // Scripts e configs Node (ferramentas de apoio, configs do repo).
+    files: ['**/*.mjs', 'tools/**/*.js'],
+    languageOptions: { globals: { ...globals.node } },
+  },
 );

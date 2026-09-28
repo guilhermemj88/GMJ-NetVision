@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import type {
   LinkDisplayStyle,
   LinkMetricDisplay,
@@ -14,34 +14,25 @@ import {
   setAlarmScale,
   subscribeAlarmScale,
 } from '@/lib/alarm-panel-preferences';
-import { Button } from '@gmj/ui';
-import {
-  Boxes,
-  ChevronLeft,
-  ChevronRight,
-  Focus,
-  Maximize,
-  Minus,
-  Plus,
-  Share2,
-  X,
-} from 'lucide-react';
+import { SegmentedControl } from '@gmj/ui';
+import { Focus, Maximize, Minus, Move, Plus, RotateCcw } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
 import { updateNetworkMap } from '@/lib/api';
-import { useMediaQuery } from '@/lib/use-media-query';
-import { useMapStore } from '@/store/map-store';
+import {
+  countTrafficLabelOffsets,
+  getTrafficLabelOffsets,
+  resetTrafficLabelOffsets,
+  subscribeTrafficLabelOffsets,
+  type TrafficLabelOffsets,
+} from '@/lib/traffic-label-offsets';
+import {
+  scalesMatchPreset,
+  useMapStore,
+  VISUAL_PRESETS,
+  type MapScalePreset,
+} from '@/store/map-store';
+import { LinkGeometryControls } from './link-geometry-controls';
 import { PppTotalControls } from './ppp-total-controls';
-
-const VISUAL_PANEL_COLLAPSED_KEY = 'netvision.mapVisualPanelCollapsed';
-
-function readCollapsedPreference(): boolean {
-  if (typeof window === 'undefined') return false;
-  try {
-    return window.localStorage.getItem(VISUAL_PANEL_COLLAPSED_KEY) === '1';
-  } catch {
-    return false;
-  }
-}
 
 const nodeModes: Array<[NodeDisplayMode, string]> = [
   ['ICON_2D', 'Ícones 2D'],
@@ -62,11 +53,29 @@ const metricModes: Array<[LinkMetricDisplay, string]> = [
 ];
 const trafficLabelModes: Array<[TrafficLabelMode, string]> = [
   ['CARD', 'Cards'],
-  ['INLINE', 'Na linha'],
-  ['HIDDEN', 'Ocultar'],
+  ['INLINE', 'Inline'],
+  ['HIDDEN', 'Oculto'],
 ];
 
-function VisualPanelContent() {
+/** Presets rápidos de escala: não mudam dado nenhum, só `nodeScale/linkScale/labelScale`. */
+const SCALE_PRESETS: Array<{ label: string; scales: MapScalePreset }> = [
+  { label: 'Compacto', scales: { nodeScale: 80, linkScale: 80, labelScale: 80 } },
+  { label: 'Normal', scales: { nodeScale: 100, linkScale: 100, labelScale: 100 } },
+  { label: 'Grande', scales: { nodeScale: 130, linkScale: 130, labelScale: 130 } },
+  { label: 'WeatherMap', scales: { nodeScale: 75, linkScale: 140, labelScale: 85 } },
+];
+
+function toOptions<T extends string>(pairs: Array<[T, string]>) {
+  return pairs.map(([value, label]) => ({ value, label }));
+}
+
+/**
+ * Controles VISUAIS do mapa (aparência de nós, enlaces, métricas e escala).
+ *
+ * Vivem na rail lateral do mapa — não são mais um painel permanente sobre o
+ * canvas. Continuam persistindo as mesmas chaves de `MapSettings`.
+ */
+export function MapVisualControls() {
   const map = useMapStore((state) => state.map);
   const setNodeDisplayMode = useMapStore((state) => state.setNodeDisplayMode);
   const setLinkDisplayStyle = useMapStore((state) => state.setLinkDisplayStyle);
@@ -87,6 +96,19 @@ function VisualPanelContent() {
   };
 
   const labelScale = map?.settings.labelScale ?? 100;
+  const visualPreset = useMapStore((state) => state.visualPreset);
+  const presetScales = VISUAL_PRESETS[visualPreset].scales;
+  const nodeScale = map?.settings.nodeScale ?? 100;
+  const linkScale = map?.settings.linkScale ?? 100;
+  /**
+   * A escala atual deixou de ser a sugerida pelo preset? Então ela é do
+   * operador: trocar de preset não sobrescreve (ver `presetScalePatch`).
+   */
+  const scalesCustomized = map ? !scalesMatchPreset(map.settings, visualPreset) : false;
+  const isScalePresetActive = (scales: MapScalePreset) =>
+    nodeScale === scales.nodeScale &&
+    linkScale === scales.linkScale &&
+    labelScale === scales.labelScale;
   const legibilityActive = ALARM_SCALE_OPTIONS.some(
     ({ value }) => value === labelScale && value === alarmScale,
   )
@@ -95,240 +117,219 @@ function VisualPanelContent() {
 
   return (
     <>
-      <SegmentedControl
-        label="Equipamentos"
-        value={map?.settings.nodeDisplayMode ?? 'ICON_2D'}
-        options={nodeModes}
-        onChange={(value) => {
-          setNodeDisplayMode(value);
-          persist({ nodeDisplayMode: value });
-        }}
-      />
-      <SegmentedControl
-        label="Enlaces"
-        value={map?.settings.linkDisplayStyle ?? 'HYBRID'}
-        options={linkStyles}
-        onChange={(value) => {
-          setLinkDisplayStyle(value);
-          persist({ linkDisplayStyle: value });
-        }}
-      />
-      <SegmentedControl
-        label="Métrica"
-        value={map?.settings.linkMetricDisplay ?? 'BOTH'}
-        options={metricModes}
-        onChange={(value) => {
-          setLinkMetricDisplay(value);
-          persist({ linkMetricDisplay: value });
-        }}
-      />
-      <SegmentedControl
-        label="Exibição de tráfego"
-        value={map?.settings.trafficLabelMode ?? 'CARD'}
-        options={trafficLabelModes}
-        onChange={(value) => {
-          setTrafficLabelMode(value);
-          persist({ trafficLabelMode: value });
-        }}
-      />
-      <div className="scale-presets" aria-label="Presets de escala">
-        <span>Escala</span>
-        {(
-          [
-            ['Compacto', 80],
-            ['Normal', 100],
-            ['Grande', 130],
-          ] as const
-        ).map(([label, value]) => (
-          <button
-            type="button"
-            key={value}
-            onClick={() => changeScales({ nodeScale: value, linkScale: value, labelScale: value })}
-          >
-            {label}
-          </button>
-        ))}
+      <div className="map-visual__group">
+        <span className="map-visual__group-title">ESCALA</span>
+        <ScaleControl
+          label="Equipamentos"
+          value={map?.settings.nodeScale ?? 100}
+          onChange={(nodeScale) => changeScales({ nodeScale })}
+        />
+        <ScaleControl
+          label="Enlaces"
+          value={map?.settings.linkScale ?? 100}
+          onChange={(linkScale) => changeScales({ linkScale })}
+        />
+        <ScaleControl
+          label="Labels"
+          value={labelScale}
+          onChange={(labelScale) => changeScales({ labelScale })}
+        />
+        <div className="scale-presets" aria-label="Presets de escala">
+          <span>Presets</span>
+          {SCALE_PRESETS.map((preset) => (
+            <button
+              type="button"
+              key={preset.label}
+              className={isScalePresetActive(preset.scales) ? 'is-active' : ''}
+              onClick={() => changeScales(preset.scales)}
+            >
+              {preset.label}
+            </button>
+          ))}
+        </div>
+        {scalesCustomized ? (
+          <p className="map-visual__note">
+            Escala ajustada à mão: trocar de preset não sobrescreve estes valores.
+            <button type="button" onClick={() => changeScales(presetScales)}>
+              Aplicar escala do preset ({presetScales.nodeScale}/{presetScales.linkScale}/
+              {presetScales.labelScale})
+            </button>
+          </p>
+        ) : null}
+        <div className="scale-presets" aria-label="Preset de legibilidade">
+          <span>Legibilidade</span>
+          {ALARM_SCALE_OPTIONS.map(({ value, label }) => (
+            <button
+              type="button"
+              key={value}
+              className={legibilityActive === value ? 'is-active' : ''}
+              onClick={() => {
+                changeScales({ labelScale: value });
+                setAlarmScale(value);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
-      <div className="scale-presets" aria-label="Preset de legibilidade">
-        <span>Legibilidade</span>
-        {ALARM_SCALE_OPTIONS.map(({ value, label }) => (
-          <button
-            type="button"
-            key={value}
-            className={legibilityActive === value ? 'is-active' : ''}
-            onClick={() => {
-              changeScales({ labelScale: value });
-              setAlarmScale(value);
-            }}
-          >
-            {label}
-          </button>
-        ))}
+
+      <div className="map-visual__group">
+        <span className="map-visual__group-title">TRÁFEGO</span>
+        <SegmentedControl
+          layout="stacked"
+          size="sm"
+          label="Modo de tráfego"
+          ariaLabel="Exibição de tráfego"
+          value={map?.settings.trafficLabelMode ?? 'CARD'}
+          options={toOptions(trafficLabelModes)}
+          onChange={(value) => {
+            setTrafficLabelMode(value);
+            persist({ trafficLabelMode: value });
+          }}
+        />
       </div>
-      <ScaleControl
-        label="Nós"
-        value={map?.settings.nodeScale ?? 100}
-        onChange={(nodeScale) => changeScales({ nodeScale })}
-      />
-      <ScaleControl
-        label="Links"
-        value={map?.settings.linkScale ?? 100}
-        onChange={(linkScale) => changeScales({ linkScale })}
-      />
-      <ScaleControl
-        label="Textos / Labels"
-        value={labelScale}
-        onChange={(labelScale) => changeScales({ labelScale })}
-      />
+
+      <div className="map-visual__group">
+        <span className="map-visual__group-title">EQUIPAMENTOS</span>
+        <SegmentedControl
+          layout="stacked"
+          size="sm"
+          label="Modo de exibição"
+          ariaLabel="Modo de exibição dos equipamentos"
+          value={map?.settings.nodeDisplayMode ?? 'ICON_2D'}
+          options={toOptions(nodeModes)}
+          onChange={(value) => {
+            setNodeDisplayMode(value);
+            persist({ nodeDisplayMode: value });
+          }}
+        />
+      </div>
+
+      <div className="map-visual__group">
+        <span className="map-visual__group-title">ENLACES</span>
+        <SegmentedControl
+          layout="stacked"
+          size="sm"
+          label="Estilo"
+          ariaLabel="Estilo dos enlaces"
+          value={map?.settings.linkDisplayStyle ?? 'HYBRID'}
+          options={toOptions(linkStyles)}
+          onChange={(value) => {
+            setLinkDisplayStyle(value);
+            persist({ linkDisplayStyle: value });
+          }}
+        />
+        <SegmentedControl
+          layout="stacked"
+          size="sm"
+          label="Métrica"
+          ariaLabel="Métrica exibida nos enlaces"
+          value={map?.settings.linkMetricDisplay ?? 'BOTH'}
+          options={toOptions(metricModes)}
+          onChange={(value) => {
+            setLinkMetricDisplay(value);
+            persist({ linkMetricDisplay: value });
+          }}
+        />
+      </div>
+
+      <div className="map-visual__group">
+        <span className="map-visual__group-title">GEOMETRIA DO ENLACE</span>
+        <LinkGeometryControls />
+      </div>
+
       <PppTotalControls />
     </>
   );
 }
 
+/**
+ * Controles flutuantes mínimos sobre o canvas: zoom, enquadrar e tela cheia.
+ * Ficam no canto inferior direito para não competir com a rail nem com o
+ * inspector.
+ */
 export function MapControls() {
   const flow = useReactFlow();
-  const map = useMapStore((state) => state.map);
-  const preferences = useMapStore((state) => state.preferences);
-  const setPreference = useMapStore((state) => state.setPreference);
-  const [collapsed, setCollapsed] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const isMobile = useMediaQuery('(max-width: 720px)');
-
-  useEffect(() => {
-    setCollapsed(readCollapsedPreference());
-  }, []);
+  const readOnly = useMapStore((state) => state.readOnly);
+  const activeMapId = useMapStore((state) => state.activeMapId);
+  const labelAdjustMode = useMapStore((state) => state.labelAdjustMode);
+  const setLabelAdjustMode = useMapStore((state) => state.setLabelAdjustMode);
+  const trafficLabelMode = useMapStore(
+    (state) => state.map?.settings.trafficLabelMode ?? 'INLINE',
+  );
+  const emptyOffsets = useMemo<TrafficLabelOffsets>(() => ({}), []);
+  const labelOffsets = useSyncExternalStore(
+    subscribeTrafficLabelOffsets,
+    () => getTrafficLabelOffsets(activeMapId),
+    () => emptyOffsets,
+  );
+  const adjustedLabels = countTrafficLabelOffsets(labelOffsets);
+  /**
+   * O arrasto por lane só existe no modo de tráfego Inline, onde cada direção
+   * tem o próprio texto. Nos outros modos o botão fica desabilitado.
+   */
+  const canAdjustLabels = !readOnly && trafficLabelMode === 'INLINE';
 
   const fullscreen = async () => {
     if (document.fullscreenElement) await document.exitFullscreen();
     else await document.documentElement.requestFullscreen();
   };
 
-  const persist = (settings: MapSettingsUpdate) => {
-    if (map) void updateNetworkMap(map.id, { settings }).catch(() => undefined);
-  };
-
-  const setCollapsedPersist = (value: boolean) => {
-    setCollapsed(value);
-    try {
-      window.localStorage.setItem(VISUAL_PANEL_COLLAPSED_KEY, value ? '1' : '0');
-    } catch {
-      // Ignore storage failures (private mode, quotas, etc).
-    }
-  };
+  const toggleLabelAdjust = () => setLabelAdjustMode(!labelAdjustMode);
 
   return (
     <>
-      {isMobile ? (
-        <>
+      {!readOnly ? (
+        <div className="map-label-bar" role="group" aria-label="Ajuste visual das labels de tráfego">
           <button
             type="button"
-            className="visual-sheet-fab"
-            aria-label="Abrir Visual do mapa"
-            onClick={() => setSheetOpen(true)}
+            className={labelAdjustMode ? 'is-active' : ''}
+            aria-label="Ajustar labels de tráfego"
+            aria-pressed={labelAdjustMode}
+            disabled={!canAdjustLabels}
+            title={
+              canAdjustLabels
+                ? 'Arraste cada label de tráfego · duplo clique devolve a posição'
+                : 'Ajuste de labels disponível no modo de tráfego Inline'
+            }
+            onClick={toggleLabelAdjust}
           >
-            <Boxes size={16} />
-            <span>Visual</span>
+            <Move size={13} />
+            Ajustar labels
           </button>
-          {sheetOpen && (
-            <div className="visual-sheet-backdrop" onClick={() => setSheetOpen(false)}>
-              <section
-                className="visual-sheet"
-                role="dialog"
-                aria-modal="true"
-                aria-label="Visual do mapa"
-                onClick={(event) => event.stopPropagation()}
-              >
-                <header className="visual-sheet__header">
-                  <span>
-                    <Boxes size={13} /> Visual do mapa
-                  </span>
-                  <button
-                    type="button"
-                    aria-label="Fechar Visual do mapa"
-                    onClick={() => setSheetOpen(false)}
-                  >
-                    <X size={16} />
-                  </button>
-                </header>
-                <div className="visual-sheet__scroll">
-                  <VisualPanelContent />
-                </div>
-              </section>
-            </div>
-          )}
-        </>
-      ) : collapsed ? (
-        <button
-          type="button"
-          className="visual-controls-rail"
-          aria-label="Expandir Visual do mapa"
-          onClick={() => setCollapsedPersist(false)}
-        >
-          <Boxes size={15} />
-          <ChevronLeft size={13} />
-        </button>
-      ) : (
-        <div className="visual-controls">
-          <div className="visual-controls__title">
-            <Boxes size={13} /> Visual do mapa
+          {labelAdjustMode && adjustedLabels > 0 ? (
             <button
               type="button"
-              className="visual-controls__collapse"
-              aria-label="Recolher Visual do mapa"
-              onClick={() => setCollapsedPersist(true)}
+              aria-label="Resetar labels de tráfego"
+              title="Devolver todas as labels deste mapa para a posição original"
+              onClick={() => resetTrafficLabelOffsets(activeMapId)}
             >
-              <ChevronRight size={13} />
+              <RotateCcw size={12} />
+              Resetar {adjustedLabels}
             </button>
-          </div>
-          <VisualPanelContent />
+          ) : null}
+          {labelAdjustMode ? <small>arraste a label · duplo clique restaura uma</small> : null}
         </div>
-      )}
-
-      <div className="map-controls">
-        <div className="map-controls__zoom">
-          <Button compact variant="ghost" aria-label="Aumentar zoom" onClick={() => flow.zoomIn()}>
-            <Plus size={16} />
-          </Button>
-          <Button compact variant="ghost" aria-label="Diminuir zoom" onClick={() => flow.zoomOut()}>
-            <Minus size={16} />
-          </Button>
-          <Button
-            compact
-            variant="ghost"
-            aria-label="Enquadrar mapa"
-            onClick={() => flow.fitView({ padding: 0.14, duration: 500 })}
-          >
-            <Focus size={16} />
-          </Button>
-          <Button compact variant="ghost" aria-label="Tela cheia" onClick={() => void fullscreen()}>
-            <Maximize size={15} />
-          </Button>
-        </div>
-        <div className="map-controls__toggles">
-          {(
-            [
-              ['showTraffic', 'Tráfego'],
-              ['showTrafficAnimation', 'Animação'],
-              ['showUtilization', 'Utilização'],
-              ['showLabels', 'Labels'],
-              ['showOffline', 'Offline'],
-              ['showInterfaces', 'Interfaces'],
-            ] as const
-          ).map(([key, label]) => (
-            <button
-              type="button"
-              key={key}
-              className={preferences[key] ? 'is-active' : ''}
-              onClick={() => {
-                setPreference(key);
-                persist({ filters: { [key]: !preferences[key] } });
-              }}
-            >
-              <span /> {label}
-            </button>
-          ))}
-        </div>
-        <Share2 size={12} className="map-controls__mode" />
+      ) : null}
+      <div className="map-zoombar" role="group" aria-label="Controles de visualização do mapa">
+      <button type="button" aria-label="Diminuir zoom" title="Diminuir zoom" onClick={() => flow.zoomOut()}>
+        <Minus size={15} />
+      </button>
+      <button type="button" aria-label="Aumentar zoom" title="Aumentar zoom" onClick={() => flow.zoomIn()}>
+        <Plus size={15} />
+      </button>
+      <button
+        type="button"
+        aria-label="Enquadrar mapa"
+        title="Enquadrar mapa"
+        onClick={() => flow.fitView({ padding: 0.14, duration: 500 })}
+      >
+        <Focus size={15} />
+      </button>
+      <button type="button" aria-label="Tela cheia" title="Tela cheia" onClick={() => void fullscreen()}>
+        <Maximize size={14} />
+      </button>
       </div>
     </>
   );
@@ -362,36 +363,6 @@ function ScaleControl({
       <button type="button" aria-label={`Aumentar ${label}`} onClick={() => onChange(value + 10)}>
         +
       </button>
-    </div>
-  );
-}
-
-function SegmentedControl<T extends string>({
-  label,
-  value,
-  options,
-  onChange,
-}: {
-  label: string;
-  value: T;
-  options: Array<[T, string]>;
-  onChange: (value: T) => void;
-}) {
-  return (
-    <div className="segmented-row">
-      <span>{label}</span>
-      <div>
-        {options.map(([option, text]) => (
-          <button
-            type="button"
-            key={option}
-            className={value === option ? 'is-active' : ''}
-            onClick={() => onChange(option)}
-          >
-            {text}
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

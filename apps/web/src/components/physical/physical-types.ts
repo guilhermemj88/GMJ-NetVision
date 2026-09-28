@@ -2,6 +2,8 @@ export type PhysicalSelection =
   | { kind: 'asset'; id: string }
   | { kind: 'port'; id: string }
   | { kind: 'connection'; id: string }
+  /** Sugestão LLDP — `id` é o adjacencyId escolhido do par. */
+  | { kind: 'lldp'; id: string }
   | null;
 
 export type PhysicalConnectionMode = 'hidden' | 'selected' | 'all';

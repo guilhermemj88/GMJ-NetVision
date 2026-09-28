@@ -99,6 +99,32 @@ export function AlarmPanel({
     );
   }
 
+  // Sem alarmes ativos nem resoluções recentes o painel não precisa ocupar
+  // área nobre do canvas: vira uma faixa compacta, e a escala some junto.
+  const isEmpty = alarms.length === 0 && recentResolved.length === 0;
+
+  if (isEmpty) {
+    return (
+      <aside
+        className={`alarm-panel alarm-panel--compact alarm-panel--${position.toLowerCase()}`}
+        aria-label="Painel de alarmes"
+      >
+        <span className="alarm-panel__ok" aria-hidden="true">
+          ✓
+        </span>
+        <strong>Sem alarmes ativos</strong>
+        <button
+          type="button"
+          onClick={() => updatePosition('HIDDEN')}
+          title="Ocultar painel de alarmes"
+          aria-label="Ocultar painel de alarmes"
+        >
+          <X size={13} />
+        </button>
+      </aside>
+    );
+  }
+
   return (
     <aside
       className={`alarm-panel alarm-panel--${position.toLowerCase()}`}

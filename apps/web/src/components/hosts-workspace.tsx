@@ -12,8 +12,17 @@ import type {
   ZabbixHostCandidate,
 } from '@gmj/shared';
 import { formatBitsPerSecond } from '@gmj/shared';
-import { Badge, Button } from '@gmj/ui';
 import {
+  Badge,
+  Button,
+  EmptyState,
+  MetaFact,
+  ModuleHeader,
+  SearchInput,
+  StatusPill,
+} from '@gmj/ui';
+import {
+  Activity,
   Check,
   ChevronRight,
   CirclePlus,
@@ -26,6 +35,7 @@ import {
   ServerCog,
   ShieldCheck,
   Trash2,
+  TriangleAlert,
   X,
 } from 'lucide-react';
 import {
@@ -53,6 +63,28 @@ import { VerifyHostButton } from './verify-host-button';
 import { NetworkDeviceIcon } from './network-device-icon';
 
 type DetailTab = 'overview' | 'interfaces' | 'monitoring' | 'access' | 'discovery';
+
+type StatusFilter = 'ALL' | 'PROBLEM' | 'UP' | 'DOWN' | 'WARNING' | 'UNKNOWN';
+
+/**
+ * Ordem de severidade operacional: problema primeiro. Nunca é uma inferência
+ * técnica — vem do `status` real do inventário.
+ */
+const STATUS_RANK: Record<HostRecord['status'], number> = {
+  DOWN: 0,
+  WARNING: 1,
+  UNKNOWN: 2,
+  UP: 3,
+};
+
+const STATUS_FILTERS: Array<{ value: StatusFilter; label: string }> = [
+  { value: 'PROBLEM', label: 'Com problema' },
+  { value: 'ALL', label: 'Todos' },
+  { value: 'DOWN', label: 'DOWN' },
+  { value: 'WARNING', label: 'WARNING' },
+  { value: 'UNKNOWN', label: 'UNKNOWN' },
+  { value: 'UP', label: 'UP' },
+];
 
 const deviceTypes: DeviceType[] = [
   'router',
@@ -151,14 +183,16 @@ export function HostsWorkspace() {
   const [search, setSearch] = useState('');
   const [origin, setOrigin] = useState<HostOrigin | 'ALL'>('ALL');
   const [source, setSource] = useState<SourceKind | 'ALL'>('ALL');
-  const [sort, setSort] = useState<'hostname' | 'managementIp' | 'vendor' | 'updatedAt'>(
-    'hostname',
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
+  const [sort, setSort] = useState<'severity' | 'hostname' | 'managementIp' | 'vendor' | 'updatedAt'>(
+    'severity',
   );
   const [descending, setDescending] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(hostDetailRequest);
   const [editing, setEditing] = useState<HostRecord | 'new' | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [mapHost, setMapHost] = useState<HostRecord | null>(null);
+  const [mapsMenuHostId, setMapsMenuHostId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!hostDetailRequest) return;
@@ -186,14 +220,27 @@ export function HostsWorkspace() {
             : source === 'SSH'
               ? host.sshEnabled
               : host.snmpEnabled);
-        return matchesText && matchesOrigin && matchesSource;
+        const matchesStatus =
+          statusFilter === 'ALL'
+            ? true
+            : statusFilter === 'PROBLEM'
+              ? host.status === 'DOWN' || host.status === 'WARNING'
+              : host.status === statusFilter;
+        return matchesText && matchesOrigin && matchesSource && matchesStatus;
       })
-      .sort(
-        (left, right) =>
+      .sort((left, right) => {
+        if (sort === 'severity') {
+          const bySeverity =
+            STATUS_RANK[left.status] - STATUS_RANK[right.status] ||
+            left.hostname.localeCompare(right.hostname, 'pt-BR', { numeric: true });
+          return bySeverity * (descending ? -1 : 1);
+        }
+        return (
           String(left[sort]).localeCompare(String(right[sort]), 'pt-BR', { numeric: true }) *
-          (descending ? -1 : 1),
-      );
-  }, [descending, hostsQuery.data, origin, search, sort, source]);
+          (descending ? -1 : 1)
+        );
+      });
+  }, [descending, hostsQuery.data, origin, search, sort, source, statusFilter]);
 
   const selected = (hostsQuery.data ?? []).find((host) => host.id === selectedId) ?? null;
   const remove = useMutation({
@@ -231,31 +278,67 @@ export function HostsWorkspace() {
 
   return (
     <main className="hosts-shell">
-      <section className="hosts-header">
-        <div>
-          <span>INVENTÁRIO GLOBAL</span>
-          <h1>Hosts</h1>
-          <p>Equipamentos monitorados e não monitorados, independentemente dos mapas.</p>
-        </div>
-        <div className="hosts-header__actions">
+      <ModuleHeader
+        variant="inline"
+        eyebrow="INVENTÁRIO GLOBAL"
+        title="Hosts"
+        subtitle="Equipamentos monitorados e não monitorados, independentemente dos mapas."
+        meta={
+          <>
+            <MetaFact icon={<Network size={12} />} value={hostsQuery.data?.length ?? 0} label="hosts" />
+            <MetaFact
+              icon={<TriangleAlert size={12} />}
+              value={(hostsQuery.data ?? []).filter((host) => host.status === 'WARNING').length}
+              label="em atenção"
+              tone="warning"
+            />
+            <MetaFact
+              icon={<Activity size={12} />}
+              value={(hostsQuery.data ?? []).filter((host) => host.status === 'DOWN').length}
+              label="down"
+              tone="down"
+            />
+            <MetaFact
+              icon={<ServerCog size={12} />}
+              value={(hostsQuery.data ?? []).filter((host) => host.bgpMonitoringEnabled).length}
+              label="com BGP"
+              tone="info"
+            />
+          </>
+        }
+        actions={
+          <>
           <Button variant="secondary" onClick={() => setImportOpen(true)}>
             <CloudDownload size={15} /> Importar do Zabbix
           </Button>
           <Button variant="primary" onClick={() => setEditing('new')}>
             <CirclePlus size={15} /> Adicionar host
           </Button>
-        </div>
-      </section>
+          </>
+        }
+      />
 
       <section className="hosts-filters">
-        <label className="hosts-search">
-          <Search size={15} />
-          <input
-            placeholder="Hostname, IP, fabricante, site…"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-          />
-        </label>
+        <SearchInput
+          size="sm"
+          value={search}
+          onChange={setSearch}
+          placeholder="Hostname, IP, fabricante, site…"
+          aria-label="Buscar hosts no inventário"
+        />
+        <div className="hosts-status-filter" role="group" aria-label="Filtrar por estado">
+          {STATUS_FILTERS.map((option) => (
+            <button
+              type="button"
+              key={option.value}
+              className={option.value === statusFilter ? 'is-active' : ''}
+              aria-pressed={option.value === statusFilter}
+              onClick={() => setStatusFilter(option.value)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
         <select
           value={origin}
           onChange={(event) => setOrigin(event.target.value as HostOrigin | 'ALL')}
@@ -276,6 +359,7 @@ export function HostsWorkspace() {
           <option value="SNMP">SNMP</option>
         </select>
         <select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)}>
+          <option value="severity">Ordenar: problema primeiro</option>
           <option value="hostname">Ordenar: hostname</option>
           <option value="managementIp">Ordenar: IP</option>
           <option value="vendor">Ordenar: fabricante</option>
@@ -302,6 +386,7 @@ export function HostsWorkspace() {
               <th>Identificação</th>
               <th>Origem</th>
               <th>Fontes</th>
+              <th>BGP</th>
               <th>Polling / discovery</th>
               <th>Mapas</th>
               <th />
@@ -315,8 +400,7 @@ export function HostsWorkspace() {
                 className={selectedId === host.id ? 'is-selected' : ''}
               >
                 <td>
-                  <span className={`host-status host-status--${host.status.toLowerCase()}`} />
-                  {host.status}
+                  <StatusPill status={host.status} size="sm" />
                 </td>
                 <td>
                   <strong>{host.hostname}</strong>
@@ -347,17 +431,84 @@ export function HostsWorkspace() {
                 </td>
                 <td>
                   <div className="source-stack">
-                    <span className={healthClass(host, 'ZABBIX')}>ZBX</span>
-                    <span className={healthClass(host, 'SSH')}>SSH</span>
-                    <span className={healthClass(host, 'SNMP')}>SNMP</span>
+                    {(['ZABBIX', 'SSH', 'SNMP'] as const).map((kind) => (
+                      <span
+                        key={kind}
+                        className={healthClass(host, kind)}
+                        title={`${kind}: ${host.sourceHealth[kind].state}${
+                          host.sourceHealth[kind].lastErrorSafe
+                            ? ` · ${host.sourceHealth[kind].lastErrorSafe}`
+                            : ''
+                        }`}
+                      >
+                        {kind === 'ZABBIX' ? 'ZBX' : kind}
+                      </span>
+                    ))}
                   </div>
+                </td>
+                <td>
+                  {host.bgpMonitoringEnabled ? (
+                    <StatusPill
+                      status="INFO"
+                      size="sm"
+                      label="BGP"
+                      detail={host.bgpLocalAs ?? undefined}
+                      title={
+                        host.bgpLocalAs
+                          ? `Monitoramento BGP ativo · ASN local ${host.bgpLocalAs}`
+                          : 'Monitoramento BGP ativo'
+                      }
+                    />
+                  ) : (
+                    <span className="hosts-cell-muted" title="Monitoramento BGP desabilitado">
+                      —
+                    </span>
+                  )}
                 </td>
                 <td>
                   <span>{dateText(host.lastPollingAt)}</span>
                   <small>{dateText(host.lastDiscoveryAt)}</small>
                 </td>
                 <td>
-                  <strong>{host.mapCount}</strong>
+                  <div className="hosts-maps-cell">
+                    <button
+                      type="button"
+                      disabled={host.mapCount === 0}
+                      title={
+                        host.mapCount === 0
+                          ? 'Este equipamento não está em nenhum mapa'
+                          : `Abrir no mapa (${host.mapCount})`
+                      }
+                      aria-label={`Abrir ${host.hostname} em um mapa`}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setMapsMenuHostId((current) => (current === host.id ? null : host.id));
+                      }}
+                    >
+                      {host.mapCount}
+                      {host.mapCount > 0 ? ' mapa(s)' : ''}
+                    </button>
+                    {mapsMenuHostId === host.id ? (
+                      <div className="hosts-maps-menu" role="menu" aria-label="Mapas deste host">
+                        {(mapsQuery.data ?? [])
+                          .filter((map) => host.mapIds.includes(map.id))
+                          .map((map) => (
+                            <button
+                              type="button"
+                              role="menuitem"
+                              key={map.id}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setMapsMenuHostId(null);
+                                useMapStore.getState().openHostOnMap(host.id, map.id);
+                              }}
+                            >
+                              Abrir no mapa · {map.name}
+                            </button>
+                          ))}
+                      </div>
+                    ) : null}
+                  </div>
                 </td>
                 <td>
                   <button
@@ -377,14 +528,30 @@ export function HostsWorkspace() {
           </tbody>
         </table>
         {hostsQuery.isPending && (
-          <div className="hosts-empty">
-            <LoaderCircle className="spin" /> Carregando inventário…
-          </div>
+          <EmptyState
+            variant="compact"
+            icon={<LoaderCircle className="spin" />}
+            title="Carregando inventário…"
+          />
         )}
         {!hostsQuery.isPending && hosts.length === 0 && (
-          <div className="hosts-empty">
-            <Network /> Nenhum host corresponde aos filtros.
-          </div>
+          <EmptyState
+            icon={<Network size={26} />}
+            title="Nenhum host corresponde aos filtros."
+            description="Ajuste a busca, a origem ou a fonte de monitoramento para ver outros equipamentos."
+            action={
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSearch('');
+                  setOrigin('ALL');
+                  setSource('ALL');
+                }}
+              >
+                Limpar filtros
+              </Button>
+            }
+          />
         )}
       </section>
 
@@ -663,6 +830,27 @@ function HostDetail({
           <Trash2 size={14} /> Excluir
         </Button>
         <VerifyHostButton hostId={host.id} enabled={host.snmpEnabled} compact />
+        <Button
+          compact
+          variant="ghost"
+          disabled={host.mapIds.length === 0}
+          title={
+            host.mapIds.length === 0
+              ? 'Este equipamento não está em nenhum mapa'
+              : 'Abrir este equipamento no mapa'
+          }
+          onClick={() => useMapStore.getState().openHostOnMap(host.id, host.mapIds[0]!)}
+        >
+          <MapPinned size={14} /> Abrir no mapa
+        </Button>
+        <Button
+          compact
+          variant="ghost"
+          title="Abrir o monitoramento BGP filtrado por este equipamento"
+          onClick={() => useMapStore.getState().openBgpForDevice(host.id)}
+        >
+          <Network size={14} /> BGP
+        </Button>
         <Button compact variant="secondary" onClick={onMap}>
           <MapPinned size={14} /> Adicionar ao mapa
         </Button>

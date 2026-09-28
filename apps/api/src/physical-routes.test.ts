@@ -429,4 +429,57 @@ describe('physical inventory REST API', () => {
     expect(write.statusCode).toBe(403);
     expect(write.json().message).toContain('ADMIN ou OPERATOR');
   });
+
+  describe('correlação reversa interface → conector físico', () => {
+    it('devolve 404 quando a interface não tem conector vinculado', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/physical/ports/by-interface/interface-inexistente',
+      });
+
+      expect(response.statusCode).toBe(404);
+      expect(response.json().message).toContain('Nenhum conector físico');
+    });
+
+    it('localiza a porta exata pelo id da interface, sem inferência', async () => {
+      const hosts = new DemoHostRepositoryAdapter(new DemoMapRepository());
+      const host = (await hosts.listHosts()).find(
+        (candidate) => candidate.interfaces.length > 0,
+      )!;
+      const firstInterface = host.interfaces.find(
+        (item) => classifyPhysicalInterface(item.name).classification === 'PHYSICAL',
+      )!;
+      const rack = await createRack();
+      const assetResponse = await app.inject({
+        method: 'POST',
+        url: `/api/physical/racks/${rack.id}/assets`,
+        payload: { name: host.displayName, startU: 1, heightU: 1, deviceId: host.id },
+      });
+      const sync = await app.inject({
+        method: 'POST',
+        url: `/api/physical/assets/${assetResponse.json().id}/sync-interfaces`,
+      });
+      expect(sync.statusCode).toBe(200);
+      const mapped = (
+        sync.json() as { ports: Array<{ id: string; name: string; mappedInterfaceId: string | null }> }
+      ).ports.find((port) => port.mappedInterfaceId === firstInterface.id);
+      expect(mapped).toBeDefined();
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/physical/ports/by-interface/${firstInterface.id}`,
+      });
+
+      expect(response.statusCode).toBe(200);
+      const location = response.json();
+      expect(location).toMatchObject({
+        interfaceId: firstInterface.id,
+        portId: mapped!.id,
+        confidence: 'CONFIRMED',
+      });
+      expect(location.siteName).toBe('POP Centro');
+      expect(location.rackName).toBe('Rack 01');
+      expect(location.portName).toBe(mapped!.name);
+    });
+  });
 });

@@ -84,6 +84,7 @@ import { PrismaPppRepository } from './infrastructure/ppp/prisma-ppp-repository'
 import { BgpPollingService } from './infrastructure/bgp/bgp-polling-service';
 import { BgpDiscoveryService } from './infrastructure/bgp/bgp-discovery-service';
 import { BgpAdminService } from './infrastructure/bgp/bgp-admin-service';
+import { BgpAdvertisedRoutesService } from './infrastructure/bgp/bgp-advertised-routes-service';
 import { InMemoryBgpAdminAuditRepository } from './infrastructure/bgp/bgp-admin-audit';
 import { PrismaBgpAdminAuditRepository } from './infrastructure/bgp/prisma-bgp-admin-audit-repository';
 import { HuaweiBgpSshService } from './infrastructure/bgp/huawei-bgp-ssh';
@@ -433,6 +434,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     ssh: new HuaweiBgpSshService(hosts),
     audit: bgpAudit,
   });
+  const bgpAdvertisedRoutes = new BgpAdvertisedRoutesService({
+    bgp: bgpRepository,
+    hosts,
+    ssh: new HuaweiBgpSshService(hosts),
+  });
   const physicalRepository = config.DEMO_MODE
     ? new DemoPhysicalRepository(hosts)
     : new PrismaPhysicalRepository();
@@ -476,6 +482,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     hosts,
     discovery: bgpDiscovery,
     admin: bgpAdmin,
+    advertisedRoutes: bgpAdvertisedRoutes,
     currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
   });
   registerPhysicalRoutes(app, {

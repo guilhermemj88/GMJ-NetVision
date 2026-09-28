@@ -1,6 +1,7 @@
 'use client';
 
 import { ChevronDown, Search } from 'lucide-react';
+import { SearchInput } from '@gmj/ui';
 import type {
   BgpAddressFamilyFilter,
   BgpHistoryPeriod,
@@ -86,14 +87,14 @@ export function BgpFilters(props: BgpFiltersProps) {
         <ChevronDown size={13} />
       </label>
 
-      <div className="hosts-search">
-        <Search size={13} />
-        <input
-          value={props.search}
-          placeholder="Buscar por peer, nome, ASN ou hostname"
-          onChange={(event) => props.onSearchChange(event.target.value)}
-        />
-      </div>
+      <SearchInput
+        size="sm"
+        value={props.search}
+        onChange={props.onSearchChange}
+        placeholder="Buscar por peer, nome, ASN ou hostname"
+        aria-label="Buscar peers BGP"
+        icon={<Search size={13} />}
+      />
     </div>
   );
 }

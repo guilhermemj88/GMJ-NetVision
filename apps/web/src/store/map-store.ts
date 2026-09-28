@@ -23,6 +23,7 @@ import {
 } from '@gmj/shared';
 import { create } from 'zustand';
 import type { LinkGeometry } from '@/lib/link-curvature';
+import type { FocusHops, MapLayerFilter, VisualPreset } from '@/lib/map-focus';
 
 export type Selection =
   | { kind: 'device'; id: string }
@@ -42,6 +43,163 @@ export type OpenPanel =
   | 'users'
   | null;
 export type WorkspaceView = 'MAP' | 'HOSTS' | 'PHYSICAL' | 'BGP';
+
+export interface PresetApplication {
+  nodeDisplayMode: NodeDisplayMode;
+  linkDisplayStyle: LinkDisplayStyle;
+  linkMetricDisplay: LinkMetricDisplay;
+  trafficLabelMode: TrafficLabelMode;
+  preferences: MapPreferences;
+  layer: MapLayerFilter;
+  /**
+   * Escala sugerida do preset. So e aplicada quando a escala atual ainda e a
+   * do preset em uso (ou seja, o operador nao ajustou nada a mao).
+   */
+  scales: MapScalePreset;
+}
+
+/** Escala persistida por mapa (`MapSettings`) que um preset sugere. */
+export interface MapScalePreset {
+  nodeScale: number;
+  linkScale: number;
+  labelScale: number;
+}
+
+/**
+ * Os três presets VISUAIS do mapa. Eles não criam mapas, não mudam topologia
+ * nem métricas: apenas agrupam escolhas que já existem em `MapSettings` e
+ * `MapPreferences`, mais a camada sugerida de foco.
+ */
+export const VISUAL_PRESETS: Record<VisualPreset, PresetApplication> = {
+  OPERACIONAL: {
+    nodeDisplayMode: 'ICON_2D',
+    linkDisplayStyle: 'HYBRID',
+    linkMetricDisplay: 'UTILIZATION',
+    trafficLabelMode: 'CARD',
+    scales: { nodeScale: 100, linkScale: 100, labelScale: 100 },
+    preferences: {
+      showTraffic: true,
+      showUtilization: true,
+      showLabels: false,
+      showOffline: true,
+      showInterfaces: false,
+      showTrafficAnimation: true,
+    },
+    layer: 'PROBLEM',
+  },
+  TOPOLOGIA: {
+    nodeDisplayMode: 'ICON_2D',
+    linkDisplayStyle: 'MINIMAL',
+    linkMetricDisplay: 'NONE',
+    trafficLabelMode: 'HIDDEN',
+    scales: { nodeScale: 100, linkScale: 100, labelScale: 100 },
+    preferences: {
+      showTraffic: false,
+      showUtilization: false,
+      showLabels: true,
+      showOffline: true,
+      showInterfaces: false,
+      showTrafficAnimation: false,
+    },
+    layer: 'ALL',
+  },
+  ENGENHARIA: {
+    nodeDisplayMode: 'CARD',
+    linkDisplayStyle: 'HYBRID',
+    linkMetricDisplay: 'BOTH',
+    trafficLabelMode: 'INLINE',
+    scales: { nodeScale: 100, linkScale: 100, labelScale: 100 },
+    preferences: {
+      showTraffic: true,
+      showUtilization: true,
+      showLabels: true,
+      showOffline: true,
+      showInterfaces: true,
+      showTrafficAnimation: true,
+    },
+    layer: 'ALL',
+  },
+  /**
+   * WeatherMap: mesmo grafo, leitura de backbone/NOC.
+   *
+   * Os enlaces passam a ser os protagonistas (mais grossos, estilo WEATHERMAP,
+   * com os dois sentidos) e os equipamentos ficam menores e sem ruido textual.
+   * A contagem de portas so aparece no preset ENGENHARIA, em CARD.
+   */
+  WEATHERMAP: {
+    nodeDisplayMode: 'ICON_2D',
+    linkDisplayStyle: 'WEATHERMAP',
+    linkMetricDisplay: 'BOTH',
+    trafficLabelMode: 'CARD',
+    scales: { nodeScale: 75, linkScale: 140, labelScale: 85 },
+    preferences: {
+      showTraffic: true,
+      showUtilization: true,
+      showLabels: false,
+      showOffline: true,
+      showInterfaces: false,
+      showTrafficAnimation: true,
+    },
+    layer: 'ALL',
+  },
+};
+
+/**
+ * A escala atual ainda e a sugerida pelo preset informado?
+ *
+ * Serve para nao sobrescrever um ajuste manual sem confirmacao: se o operador
+ * mexeu nos sliders, trocar de preset mantem os valores dele.
+ */
+export function scalesMatchPreset(
+  settings: Pick<MapSettings, 'nodeScale' | 'linkScale' | 'labelScale'> | null | undefined,
+  preset: VisualPreset,
+): boolean {
+  if (!settings) return true;
+  const suggested = VISUAL_PRESETS[preset].scales;
+  return (
+    settings.nodeScale === suggested.nodeScale &&
+    settings.linkScale === suggested.linkScale &&
+    settings.labelScale === suggested.labelScale
+  );
+}
+
+/**
+ * Escala a aplicar ao trocar de preset: as do novo preset quando o operador
+ * nunca ajustou nada a mao, ou vazio quando a escala atual e dele.
+ */
+export function presetScalePatch(
+  settings: Pick<MapSettings, 'nodeScale' | 'linkScale' | 'labelScale'> | null | undefined,
+  currentPreset: VisualPreset,
+  nextPreset: VisualPreset,
+): Partial<MapScalePreset> {
+  return scalesMatchPreset(settings, currentPreset) ? VISUAL_PRESETS[nextPreset].scales : {};
+}
+
+/**
+ * Descobre qual preset corresponde ao que esta persistido no mapa.
+ *
+ * Usado ao abrir/reabrir um mapa para a rail nao mentir sobre o preset ativo
+ * depois de um reload (as configuracoes persistem, o estado da UI nao).
+ */
+export function inferVisualPreset(
+  settings: Pick<
+    MapSettings,
+    'nodeDisplayMode' | 'linkDisplayStyle' | 'linkMetricDisplay' | 'trafficLabelMode'
+  >,
+): VisualPreset {
+  const order: VisualPreset[] = ['WEATHERMAP', 'ENGENHARIA', 'TOPOLOGIA', 'OPERACIONAL'];
+  return (
+    order.find((preset) => {
+      const application = VISUAL_PRESETS[preset];
+      return (
+        application.nodeDisplayMode === settings.nodeDisplayMode &&
+        application.linkDisplayStyle === settings.linkDisplayStyle &&
+        application.linkMetricDisplay === settings.linkMetricDisplay &&
+        application.trafficLabelMode === settings.trafficLabelMode
+      );
+    }) ?? 'OPERACIONAL'
+  );
+}
 
 export interface MapFocusRequest {
   deviceId: string;
@@ -70,6 +228,12 @@ interface MapState {
   publicMaps: NetworkMap[];
   view: WorkspaceView;
   editMode: boolean;
+  /**
+   * Modo "Ajustar labels": liga o arrasto das labels de tráfego. É só uma
+   * preferência de UI (não entra no mapa, não muda enlace nem métrica).
+   */
+  labelAdjustMode: boolean;
+  setLabelAdjustMode: (enabled: boolean) => void;
   selection: Selection;
   panel: OpenPanel;
   pendingLink: { sourceId?: string; targetId?: string } | null;
@@ -79,13 +243,43 @@ interface MapState {
   toast: string | null;
   focusRequest: MapFocusRequest | null;
   pendingInterfaceNavigation: { mapId: string; deviceId: string; interfaceId: string } | null;
+  pendingDeviceNavigation: { mapId: string; deviceId: string } | null;
   hostDetailRequest: string | null;
   focusSequence: number;
+  /** Host para o qual a visão BGP deve abrir filtrada. */
+  bgpDeviceFilter: string | null;
+  setBgpDeviceFilter: (deviceId: string | null) => void;
+  openBgpForDevice: (deviceId: string) => void;
+  /** Pedido de foco no módulo Físico (site/rack/porta exatos). */
+  physicalFocusRequest: { siteId: string; rackId: string; portId: string; requestId: number } | null;
+  openPhysicalPort: (siteId: string, rackId: string, portId: string) => void;
+  clearPhysicalFocusRequest: (requestId: number) => void;
+  visualPreset: VisualPreset;
+  layerFilter: MapLayerFilter;
+  siteFilter: string | null;
+  deviceTypeFilter: string | null;
+  focusHops: FocusHops;
+  setVisualPreset: (preset: VisualPreset) => void;
+  setLayerFilter: (layer: MapLayerFilter) => void;
+  setSiteFilter: (site: string | null) => void;
+  setDeviceTypeFilter: (deviceType: string | null) => void;
+  setFocusHops: (hops: FocusHops) => void;
   setCatalog: (maps: MapSummary[]) => void;
   upsertMapSummary: (map: NetworkMap) => void;
   removeMapSummary: (mapId: string) => void;
   setActiveMap: (mapId: string) => void;
   setMap: (map: NetworkMap) => void;
+  /**
+   * Hidrata o mapa a partir do refresh automático (polling), em vez de uma
+   * troca de mapa de verdade.
+   *
+   * Com edição pendente (`editMode && dirty`) a estrutura local manda: nós,
+   * links (geometria, pontas, cores, estilo, label, agregação), settings,
+   * widgets e drafts ficam como estão, e só a telemetria é mesclada — os
+   * `devices` (status, interfaces, tráfego, alarmes) e as métricas dos enlaces.
+   * Em qualquer outro caso equivale ao `setMap`.
+   */
+  applyMapRefresh: (map: NetworkMap) => void;
   setPublicMap: (map: NetworkMap) => void;
   setReadOnly: (value: boolean) => void;
   loadPublicMaps: (maps: NetworkMap[]) => void;
@@ -96,6 +290,13 @@ interface MapState {
   clearFocusRequest: (requestId: number) => void;
   openHostDetails: (hostId: string) => void;
   clearHostDetailRequest: () => void;
+  openHostOnMap: (deviceId: string, mapId: string) => void;
+  /**
+   * Abre a interface no mapa que já está ativo, quando o equipamento faz parte
+   * dele. Devolve `false` sem mudar nada quando o equipamento não está no mapa
+   * — nunca inferimos um mapa para "abrir em algum lugar".
+   */
+  openInterfaceInActiveMap: (deviceId: string, interfaceId: string) => boolean;
   setPanel: (panel: OpenPanel) => void;
   setPendingLink: (value: MapState['pendingLink']) => void;
   setPreference: (key: keyof MapPreferences) => void;
@@ -189,7 +390,39 @@ export function applyLinkGeometry(link: NetworkLink, geometry: LinkGeometry): Ne
   };
 }
 
-export const useMapStore = create<MapState>((set) => ({
+/**
+ * Telemetria de um enlace: tudo que o backend recalcula a cada coleta.
+ *
+ * O restante do `NetworkLink` (geometria, pontas, cores, estilo, label,
+ * agregação, capacidade manual) é autoridade do operador enquanto houver
+ * edição pendente. A capacidade acompanha o servidor apenas quando é AUTO —
+ * capacidade MANUAL foi escolhida à mão e não pode ser sobrescrita.
+ */
+export function mergeLinkTelemetry(local: NetworkLink, server: NetworkLink): NetworkLink {
+  return {
+    ...local,
+    status: server.status,
+    directions: server.directions,
+    rxBps: server.rxBps,
+    txBps: server.txBps,
+    rxUtilization: server.rxUtilization,
+    txUtilization: server.txUtilization,
+    rxErrors: server.rxErrors,
+    txErrors: server.txErrors,
+    rxDiscards: server.rxDiscards,
+    txDiscards: server.txDiscards,
+    updatedAt: server.updatedAt,
+    ...(local.capacitySource === 'MANUAL'
+      ? {}
+      : {
+          capacityBps: server.capacityBps,
+          autoCapacityBps: server.autoCapacityBps,
+          capacitySource: server.capacitySource,
+        }),
+  };
+}
+
+export const useMapStore = create<MapState>((set, get) => ({
   linkGeometryDrafts: {},
   setLinkGeometryDraft: (linkId, geometry) => set((state) => {
     const linkGeometryDrafts = { ...state.linkGeometryDrafts };
@@ -209,6 +442,7 @@ export const useMapStore = create<MapState>((set) => ({
   publicMaps: [],
   view: 'MAP',
   editMode: false,
+  labelAdjustMode: false,
   selection: null,
   panel: null,
   pendingLink: null,
@@ -218,8 +452,67 @@ export const useMapStore = create<MapState>((set) => ({
   toast: null,
   focusRequest: null,
   pendingInterfaceNavigation: null,
+  pendingDeviceNavigation: null,
   hostDetailRequest: null,
   focusSequence: 0,
+  bgpDeviceFilter: null,
+  setBgpDeviceFilter: (bgpDeviceFilter) => set({ bgpDeviceFilter }),
+  openBgpForDevice: (deviceId) =>
+    set({ view: 'BGP', bgpDeviceFilter: deviceId, editMode: false, selection: null, panel: null }),
+  physicalFocusRequest: null,
+  openPhysicalPort: (siteId, rackId, portId) =>
+    set((state) => ({
+      view: 'PHYSICAL',
+      editMode: false,
+      selection: null,
+      panel: null,
+      physicalFocusRequest: {
+        siteId,
+        rackId,
+        portId,
+        requestId: (state.physicalFocusRequest?.requestId ?? 0) + 1,
+      },
+    })),
+  clearPhysicalFocusRequest: (requestId) =>
+    set((state) =>
+      state.physicalFocusRequest?.requestId === requestId ? { physicalFocusRequest: null } : state,
+    ),
+  visualPreset: 'OPERACIONAL',
+  layerFilter: 'PROBLEM',
+  siteFilter: null,
+  deviceTypeFilter: null,
+  focusHops: 0,
+  setVisualPreset: (visualPreset) =>
+    set((state) => {
+      const application = VISUAL_PRESETS[visualPreset];
+      // Escala ajustada à mão nunca é sobrescrita por troca de preset.
+      const scalePatch = presetScalePatch(state.map?.settings, state.visualPreset, visualPreset);
+      const map = state.map
+        ? {
+            ...state.map,
+            settings: {
+              ...state.map.settings,
+              ...scalePatch,
+              nodeDisplayMode: application.nodeDisplayMode,
+              linkDisplayStyle: application.linkDisplayStyle,
+              linkMetricDisplay: application.linkMetricDisplay,
+              trafficLabelMode: application.trafficLabelMode,
+              filters: application.preferences,
+            },
+          }
+        : state.map;
+      return {
+        visualPreset,
+        preferences: application.preferences,
+        layerFilter: application.layer,
+        map,
+        dirty: map ? true : state.dirty,
+      };
+    }),
+  setLayerFilter: (layerFilter) => set({ layerFilter }),
+  setSiteFilter: (siteFilter) => set({ siteFilter }),
+  setDeviceTypeFilter: (deviceTypeFilter) => set({ deviceTypeFilter }),
+  setFocusHops: (focusHops) => set({ focusHops }),
   setCatalog: (maps) =>
     set((state) => ({
       maps,
@@ -249,16 +542,22 @@ export const useMapStore = create<MapState>((set) => ({
       map: state.activeMapId === mapId ? null : state.map,
     })),
   setActiveMap: (activeMapId) =>
-    set({
+    set((state) => ({
       linkGeometryDrafts: {},
       activeMapId,
       map: null,
       selection: null,
       panel: null,
       pendingInterfaceNavigation: null,
+      pendingDeviceNavigation: null,
       focusRequest: null,
+      // Recortes de foco são específicos do mapa aberto.
+      layerFilter: VISUAL_PRESETS[state.visualPreset].layer,
+      siteFilter: null,
+      deviceTypeFilter: null,
+      focusHops: 0,
       dirty: false,
-    }),
+    })),
   setMap: (map) => {
     clearLegacyLocalState(map.id);
     set((state) => {
@@ -266,6 +565,11 @@ export const useMapStore = create<MapState>((set) => ({
         state.pendingInterfaceNavigation?.mapId === map.id
           ? state.pendingInterfaceNavigation
           : null;
+      const pendingDevice =
+        state.pendingDeviceNavigation?.mapId === map.id ? state.pendingDeviceNavigation : null;
+      const canFocusDevice = Boolean(
+        pendingDevice && map.devices.some((device) => device.id === pendingDevice.deviceId),
+      );
       const canOpen = Boolean(
         pending &&
         map.devices.some(
@@ -276,7 +580,19 @@ export const useMapStore = create<MapState>((set) => ({
             ),
         ),
       );
-      const focusSequence = canOpen ? state.focusSequence + 1 : state.focusSequence;
+      const focusSequence =
+        canOpen || canFocusDevice ? state.focusSequence + 1 : state.focusSequence;
+      /**
+       * Mapa aberto agora e diferente do que estava na tela: a rail volta a
+       * refletir o preset que esta de fato persistido, sem mexer no recorte que
+       * o operador escolheu durante a sessao.
+       */
+      const mapChanged = state.map?.id !== map.id;
+      const inferredPreset = mapChanged ? inferVisualPreset(map.settings) : state.visualPreset;
+      const inferredLayer =
+        mapChanged && state.layerFilter === VISUAL_PRESETS[state.visualPreset].layer
+          ? VISUAL_PRESETS[inferredPreset].layer
+          : state.layerFilter;
       return {
         map: state.map?.id === map.id ? {
           ...map,
@@ -287,19 +603,64 @@ export const useMapStore = create<MapState>((set) => ({
         } : map,
         linkGeometryDrafts: state.map?.id === map.id ? state.linkGeometryDrafts : {},
         activeMapId: map.id,
+        visualPreset: inferredPreset,
+        layerFilter: inferredLayer,
         preferences: map.settings.filters,
         readOnly: false,
         selection:
           canOpen && pending
             ? { kind: 'interface' as const, id: pending.interfaceId, deviceId: pending.deviceId }
+            : canFocusDevice && pendingDevice
+              ? { kind: 'device' as const, id: pendingDevice.deviceId }
             : state.selection,
         focusRequest:
           canOpen && pending
             ? { deviceId: pending.deviceId, requestId: focusSequence }
+            : canFocusDevice && pendingDevice
+              ? { deviceId: pendingDevice.deviceId, requestId: focusSequence }
             : state.focusRequest,
         pendingInterfaceNavigation: pending ? null : state.pendingInterfaceNavigation,
+        pendingDeviceNavigation: pendingDevice ? null : state.pendingDeviceNavigation,
         focusSequence,
         dirty: false,
+      };
+    });
+  },
+  /**
+   * Refresh automático do mapa. Não é troca de mapa: com edição pendente ele
+   * preserva a estrutura local e mescla apenas telemetria, mantendo `dirty`.
+   */
+  applyMapRefresh: (serverMap) => {
+    const state = get();
+    // Primeiro carregamento ou troca real de mapa: hidratação completa.
+    if (!state.map || state.map.id !== serverMap.id) {
+      state.setMap(serverMap);
+      return;
+    }
+    // Mapa público não hidrata por este caminho (o polling já fica desligado).
+    if (state.readOnly) return;
+    // Sem edição pendente não há nada a proteger: comportamento atual.
+    if (!(state.editMode && state.dirty)) {
+      state.setMap(serverMap);
+      return;
+    }
+    set((current) => {
+      const localMap = current.map;
+      if (!localMap || localMap.id !== serverMap.id) return {};
+      const serverLinks = new Map(serverMap.links.map((link) => [link.id, link]));
+      return {
+        map: {
+          ...localMap,
+          // Dados vivos continuam vindo do backend.
+          devices: serverMap.devices,
+          links: localMap.links.map((link) => {
+            const draft = current.linkGeometryDrafts[link.id];
+            const withDraft = draft ? applyLinkGeometry(link, draft) : link;
+            const serverLink = serverLinks.get(link.id);
+            return serverLink ? mergeLinkTelemetry(withDraft, serverLink) : withDraft;
+          }),
+        },
+        // `dirty`, seleção, foco, settings, widgets, nós e drafts permanecem.
       };
     });
   },
@@ -318,7 +679,8 @@ export const useMapStore = create<MapState>((set) => ({
     }),
   setReadOnly: (readOnly) => set({ readOnly }),
   loadPublicMaps: (publicMaps) => set({ publicMaps }),
-  setView: (view) => set({ view, editMode: false, selection: null, panel: null }),
+  setView: (view) => set({ view, editMode: false, labelAdjustMode: false, selection: null, panel: null }),
+  setLabelAdjustMode: (labelAdjustMode) => set({ labelAdjustMode }),
   setEditMode: (editMode) => set({ editMode, panel: null }),
   setSelection: (selection) => set({ selection }),
   openInterfaceOnMap: (result, mapId) =>
@@ -359,6 +721,46 @@ export const useMapStore = create<MapState>((set) => ({
   openHostDetails: (hostDetailRequest) =>
     set({ view: 'HOSTS', editMode: false, selection: null, panel: null, hostDetailRequest }),
   clearHostDetailRequest: () => set({ hostDetailRequest: null }),
+  openHostOnMap: (deviceId, mapId) =>
+    set((state) => {
+      if (state.map?.id === mapId) {
+        const focusSequence = state.focusSequence + 1;
+        return {
+          view: 'MAP' as const,
+          selection: { kind: 'device' as const, id: deviceId },
+          focusRequest: { deviceId, requestId: focusSequence },
+          focusSequence,
+          panel: null,
+          pendingDeviceNavigation: null,
+        };
+      }
+      return {
+        view: 'MAP' as const,
+        editMode: false,
+        activeMapId: mapId,
+        map: null,
+        selection: null,
+        panel: null,
+        focusRequest: null,
+        pendingDeviceNavigation: { mapId, deviceId },
+        dirty: false,
+      };
+    }),
+  openInterfaceInActiveMap: (deviceId, interfaceId) => {
+    const state = useMapStore.getState();
+    const device = state.map?.devices.find((item) => item.id === deviceId);
+    const networkInterface = device?.interfaces.find((item) => item.id === interfaceId);
+    if (!state.map || !device || !networkInterface) return false;
+    const focusSequence = state.focusSequence + 1;
+    useMapStore.setState({
+      view: 'MAP',
+      selection: { kind: 'interface', id: interfaceId, deviceId },
+      focusRequest: { deviceId, requestId: focusSequence },
+      focusSequence,
+      panel: null,
+    });
+    return true;
+  },
   setPanel: (panel) => set({ panel }),
   setPendingLink: (pendingLink) => set({ pendingLink }),
   setPreference: (key) =>

@@ -14,6 +14,8 @@ import type { BgpRepository } from './infrastructure/bgp/bgp-repository';
 import type { BgpDiscoveryService } from './infrastructure/bgp/bgp-discovery-service';
 import type { BgpAdminService } from './infrastructure/bgp/bgp-admin-service';
 import { BgpAdminActionError } from './infrastructure/bgp/bgp-admin-service';
+import type { BgpAdvertisedRoutesService } from './infrastructure/bgp/bgp-advertised-routes-service';
+import { BgpAdvertisedRoutesError } from './infrastructure/bgp/bgp-advertised-routes-service';
 import type { HostRepository } from './infrastructure/persistence/host-repository';
 
 export function summarizeBgpPeers(peers: BgpDashboardPeer[]): BgpDashboardSummary {
@@ -65,12 +67,19 @@ const peerParams = z.object({ peerId: z.string().min(1) });
 const hostParams = z.object({ hostId: z.string().min(1) });
 /** The frontend sends only the action: no CLI, address, ASN or SSH context. */
 const adminStateSchema = z.object({ action: z.enum(['DISABLE', 'ENABLE']) }).strict();
+/**
+ * The advertised-routes collection carries no payload at all: the peer address
+ * and the family are resolved from the persisted peer. A strict empty object
+ * rejects any attempt to smuggle a peer address or CLI fragment in the body.
+ */
+const emptyBodySchema = z.object({}).strict();
 
 export interface BgpRouteDependencies {
   bgp: BgpRepository;
   hosts?: HostRepository;
   discovery?: BgpDiscoveryService;
   admin?: BgpAdminService;
+  advertisedRoutes?: BgpAdvertisedRoutesService;
   /**
    * Resolves the authenticated operator. The administrative endpoint demands an
    * ADMIN session even when the global auth hook does not cover this plugin.
@@ -82,7 +91,7 @@ export function registerBgpRoutes(
   app: FastifyInstance,
   dependencies: BgpRouteDependencies,
 ): void {
-  const { bgp, hosts, discovery, admin, currentUser } = dependencies;
+  const { bgp, hosts, discovery, admin, advertisedRoutes, currentUser } = dependencies;
 
   app.get('/api/bgp', async (request) => {
     const query = bgpQuerySchema.parse(request.query);
@@ -140,6 +149,38 @@ export function registerBgpRoutes(
         }
         return reply.code(502).send({
           message: error instanceof Error ? error.message : 'Falha na ação administrativa',
+        });
+      }
+    });
+  }
+
+  /**
+   * On-demand advertised-routes collection. Read-only, so it is available to
+   * any authenticated operator who can already see BGP — unlike the
+   * administrative enable/disable action, which stays ADMIN-only.
+   */
+  if (advertisedRoutes) {
+    app.post('/api/bgp/peers/:peerId/advertised-routes', async (request, reply) => {
+      const { peerId } = peerParams.parse(request.params);
+      const user = (await currentUser?.(request)) ?? null;
+      if (!user) return reply.code(401).send({ message: 'Não autenticado' });
+      try {
+        emptyBodySchema.parse(request.body ?? {});
+      } catch (error) {
+        const detail =
+          error instanceof z.ZodError
+            ? 'A coleta de anúncios não aceita corpo: o peer é resolvido pelo peerId persistido.'
+            : 'Corpo da requisição inválido.';
+        return reply.code(400).send({ message: detail });
+      }
+      try {
+        return await advertisedRoutes.execute(peerId);
+      } catch (error) {
+        if (error instanceof BgpAdvertisedRoutesError) {
+          return reply.code(error.statusCode).send({ message: error.message });
+        }
+        return reply.code(502).send({
+          message: error instanceof Error ? error.message : 'Falha ao consultar os anúncios do peer',
         });
       }
     });

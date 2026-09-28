@@ -24,11 +24,12 @@ export interface DeviceNodeData extends Record<string, unknown> {
   device: Device;
   mapNode: DomainMapNode;
   editMode: boolean;
-  showInterfaces: boolean;
   displayMode: NodeDisplayMode;
   nodeScale: number;
   labelScale: number;
   alarmCount: number;
+  /** Fora da camada/recorte atual: atenuado, mas ainda clicável. */
+  dimmed?: boolean;
 }
 
 export type DeviceFlowNode = Node<DeviceNodeData, 'device'>;
@@ -40,16 +41,36 @@ const handlePositions = {
   bottom: Position.Bottom,
 } as const;
 
+/**
+ * Sigla curta por tipo de equipamento, derivada do `deviceType` real.
+ * Não é classificação inventada: é só uma etiqueta legível para o operador
+ * distinguir Router/Switch/OLT/Firewall/Server sem depender de cor.
+ */
+const DEVICE_TYPE_CODES: Record<string, string> = {
+  router: 'RT',
+  core: 'CORE',
+  aggregation: 'AGG',
+  edge: 'EDGE',
+  switch: 'SW',
+  olt: 'OLT',
+  firewall: 'FW',
+  server: 'SRV',
+  internet: 'NET',
+  ix: 'IX',
+  customers: 'CLI',
+  generic: 'GEN',
+};
+
 export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
   const {
     device,
     mapNode,
     editMode,
-    showInterfaces,
     displayMode,
     nodeScale,
     labelScale,
     alarmCount,
+    dimmed,
   } = data;
   const subscribe = useCallback(
     (onStoreChange: () => void) => subscribeDeviceIconPreference(device.id, onStoreChange),
@@ -61,6 +82,7 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
   const iconType = resolveDeviceIconType(device, preference);
   const iconVariant = displayMode === 'ICON_3D' ? '3d' : '2d';
   const showPpp = isPppVisible(mapNode.pppDisplayMode, device.pppSupported, device.pppOnline);
+  const typeCode = DEVICE_TYPE_CODES[device.deviceType] ?? device.deviceType.toUpperCase();
   const pppLabelStyle = {
     ...(mapNode.pppColor ? { color: mapNode.pppColor } : {}),
     fontSize: mapNode.pppFontSize,
@@ -68,7 +90,7 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
 
   return (
     <div
-      className={`device-node device-node--${displayMode.toLowerCase()} device-node--type-${iconType.toLowerCase().replaceAll('_', '-')} status-${device.status.toLowerCase()} ${selected ? 'is-selected' : ''} ${mapNode.locked ? 'is-locked' : ''}`}
+      className={`device-node device-node--${displayMode.toLowerCase()} device-node--type-${iconType.toLowerCase().replaceAll('_', '-')} status-${device.status.toLowerCase()} ${selected ? 'is-selected' : ''} ${mapNode.locked ? 'is-locked' : ''} ${dimmed ? 'is-dimmed' : ''}`}
       style={
         {
           '--node-scale': nodeScale / 100,
@@ -94,6 +116,9 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
           size={32}
         />
         <span className="status-pulse" />
+        <span className="device-node__type" title={`Tipo: ${device.deviceType}`}>
+          {typeCode}
+        </span>
       </div>
       <div className="device-node__copy">
         <strong>{device.name}</strong>
@@ -109,9 +134,6 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
         >
           ⚠ {alarmCount}
         </span>
-      )}
-      {showInterfaces && (
-        <span className="device-node__ports">{device.interfaces.length} ports</span>
       )}
       {showPpp && (
         <span

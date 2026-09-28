@@ -4,6 +4,7 @@ import type { PhysicalPort } from '@gmj/shared';
 import { PORT_STATE_LABELS } from './physical-catalog';
 import type { FrontPanelImageMap, FrontPanelPortMap } from './front-panel-image-map';
 import { normalizedPortAnchor, resolveMappedPhysicalPort } from './front-panel-image-map';
+import { physicalPortNameView } from './physical-port-name';
 
 const OPER_STATUS_LABELS: Record<string, string> = {
   UP: 'UP',
@@ -33,9 +34,12 @@ interface Props {
 
 function portTitle(port: PhysicalPort | null, mapped: FrontPanelPortMap): string {
   if (!port) return `${mapped.portName} · porta física não encontrada no template`;
+  // Nome principal = interface CLI; o rótulo do painel/cage vira detalhe.
+  const naming = physicalPortNameView(port);
   return [
-    port.name,
-    port.mappedInterface?.name ?? 'sem interface mapeada',
+    naming.displayName,
+    naming.panelLabel ? `Painel físico ${naming.panelLabel}` : null,
+    naming.interfaceName ? null : 'sem interface mapeada',
     PORT_STATE_LABELS[port.state],
     port.operStatus ? (OPER_STATUS_LABELS[port.operStatus] ?? port.operStatus) : 'sem operStatus',
     port.lldp ? `LLDP ${port.lldp.remoteHostname}/${port.lldp.remotePortName}` : null,

@@ -595,3 +595,33 @@ export interface PhysicalReconcileResult {
   removedPorts: PhysicalBadPort[];
   keptPorts: PhysicalBadPort[];
 }
+
+/**
+ * Localização EXATA de um conector físico a partir da interface vinculada.
+ *
+ * O vínculo vem de `PhysicalPort.mappedInterfaceId` — um id persistido, não uma
+ * heurística. Por isso `confidence` é sempre `CONFIRMED`: quando não existe
+ * conector para a interface, a resposta é ausência (404), nunca um palpite.
+ *
+ * O vizinho LLDP é informação separada e mantém a confiança do snapshot
+ * (`confidence`/`resolved`/`ambiguous`), que pode ser AMBIGUOUS ou UNRESOLVED.
+ */
+export interface PhysicalPortLocation {
+  interfaceId: string;
+  siteId: string;
+  siteName: string;
+  rackId: string;
+  rackName: string;
+  assetId: string;
+  assetName: string;
+  portId: string;
+  portName: string;
+  portLabel: string;
+  portSide: PhysicalPortSide;
+  role: PhysicalPortRole;
+  state: PhysicalPortState;
+  slotLabel: string | null;
+  moduleName: string | null;
+  lldp: PhysicalPortLldp | null;
+  confidence: 'CONFIRMED';
+}

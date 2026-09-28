@@ -20,11 +20,26 @@ const api = vi.hoisted(() => ({
   getPhysicalCatalog: vi.fn(),
   getHosts: vi.fn(),
   getPhysicalPath: vi.fn(),
+  confirmPhysicalLldp: vi.fn(),
+  // O fallback do mapa reaproveita as MESMAS queries do canvas.
+  getMaps: vi.fn(),
+  getMap: vi.fn(),
 }));
 
 vi.mock('@/lib/api', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/api')>()),
   ...api,
+}));
+
+/** O fluxo LLDP só aparece para quem pode editar (ADMIN/OPERATOR). */
+vi.mock('@/app/providers', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/app/providers')>()),
+  useAuth: () => ({
+    user: { id: 'user-1', username: 'admin', displayName: 'Admin', role: 'ADMIN' },
+    loading: false,
+    signIn: async () => undefined,
+    logout: async () => undefined,
+  }),
 }));
 
 /** Modelo com renderer técnico declarado no catálogo (o desenho muda de verdade). */
@@ -86,6 +101,8 @@ describe('PhysicalWorkspace — visão padrão', () => {
     api.getPhysicalCatalog.mockResolvedValue([]);
     api.getHosts.mockResolvedValue([]);
     api.getPhysicalPath.mockResolvedValue(null);
+    api.getMaps.mockResolvedValue([]);
+    api.getMap.mockResolvedValue(null);
 
     container = document.createElement('div');
     document.body.appendChild(container);
@@ -140,5 +157,344 @@ describe('PhysicalWorkspace — visão padrão', () => {
     });
     expect(container.querySelector('[data-visual="TECHNICAL"]')).not.toBeNull();
     expect(container.querySelector('.physical-canvas.is-technical')).not.toBeNull();
+  });
+});
+
+describe('PhysicalWorkspace · fluxo LLDP', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  const swA = physicalAsset({
+    id: 'asset-a',
+    name: 'SW-A',
+    startU: 10,
+    heightU: 1,
+    ports: [
+      physicalPort({ id: 'port-a', assetId: 'asset-a', name: 'GE1', state: 'LLDP_DETECTED' }),
+    ],
+  });
+  const swB = physicalAsset({
+    id: 'asset-b',
+    name: 'SW-B',
+    startU: 8,
+    heightU: 1,
+    ports: [physicalPort({ id: 'port-b', assetId: 'asset-b', name: 'GE2' })],
+  });
+  const suggestion = {
+    adjacencyId: 'lldp-ws-1',
+    confidence: 'CONFIRMED',
+    state: 'READY' as const,
+    local: {
+      assetId: 'asset-a',
+      assetName: 'SW-A',
+      portId: 'port-a',
+      portName: 'GE1',
+      rackName: 'Rack 01',
+      siteName: 'POP Centro',
+    },
+    remote: {
+      assetId: 'asset-b',
+      assetName: 'SW-B',
+      portId: 'port-b',
+      portName: 'GE2',
+      rackName: 'Rack 01',
+      siteName: 'POP Centro',
+    },
+    localPortName: 'GE1',
+    remoteHostname: 'SW-B',
+    remotePortName: 'GE2',
+    observedAt: '2026-09-21T11:00:00.000Z',
+    reason: 'Ambos os lados estão no inventário físico.',
+  };
+  const withSuggestion = physicalInventory({
+    sites: [
+      {
+        id: 'site-1',
+        name: 'POP Centro',
+        code: 'CTO',
+        description: '',
+        racks: [physicalRack({ id: 'rack-1', units: 12, assets: [swA, swB] })],
+        createdAt: '2026-09-21T12:00:00.000Z',
+        updatedAt: '2026-09-21T12:00:00.000Z',
+      },
+    ],
+    lldpSuggestions: [suggestion],
+    lldpObservedAt: '2026-09-21T11:00:00.000Z',
+  });
+  const withoutSuggestion = physicalInventory({
+    sites: withSuggestion.sites,
+    connections: withSuggestion.connections,
+    lldpSuggestions: [],
+    lldpObservedAt: '2026-09-21T11:00:00.000Z',
+  });
+
+  async function flush(times = 4) {
+    for (let index = 0; index < times; index += 1) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+    }
+  }
+
+  beforeEach(async () => {
+    api.getPhysicalInventory
+      .mockResolvedValueOnce(withSuggestion)
+      .mockResolvedValue(withoutSuggestion);
+    api.getPhysicalCatalog.mockResolvedValue([]);
+    api.getHosts.mockResolvedValue([]);
+    api.getPhysicalPath.mockResolvedValue(null);
+    api.getMaps.mockResolvedValue([]);
+    api.getMap.mockResolvedValue(null);
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <PhysicalWorkspace />
+        </QueryClientProvider>,
+      );
+    });
+    await flush();
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    vi.clearAllMocks();
+  });
+
+  function click(selector: string) {
+    const element = container.querySelector(selector);
+    if (!element) throw new Error(`elemento ausente: ${selector}`);
+    act(() => {
+      element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+  }
+
+  it('seleciona o ghost, confirma com o medium escolhido e o cabo substitui a sugestão', async () => {
+    api.confirmPhysicalLldp.mockResolvedValue({ id: 'connection-new' });
+
+    // Padrão limpo: a relação só aparece com a porta (ou o ghost) selecionado.
+    expect(container.querySelector('.physical-lldp-ghost')).toBeNull();
+    click('.physical-port[data-port-id="port-a"]');
+    await flush(2);
+    expect(container.querySelector('.physical-lldp-ghost')).not.toBeNull();
+    click('.physical-lldp-hit');
+    await flush(2);
+
+    expect(container.textContent).toContain('SUGESTÃO LLDP');
+    const select = container.querySelector<HTMLSelectElement>('.physical-lldp-confirm select');
+    expect(select).not.toBeNull();
+    act(() => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLSelectElement.prototype,
+        'value',
+      )?.set;
+      setter?.call(select, 'AOC');
+      select!.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+
+    const confirm = [...container.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Confirmar conexão física'),
+    );
+    expect(confirm).toBeDefined();
+    act(() => {
+      confirm!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await flush(4);
+
+    expect(api.confirmPhysicalLldp).toHaveBeenCalledWith('lldp-ws-1', 'AOC');
+    // Depois do refresh o ghost some: a sugestão virou cabo persistido.
+    expect(container.querySelector('.physical-lldp-ghost')).toBeNull();
+  });
+
+  it('409 mantém a sugestão visível e mostra o erro', async () => {
+    api.confirmPhysicalLldp.mockRejectedValue(new Error('Uma das portas já está ocupada'));
+    api.getPhysicalInventory.mockResolvedValue(withSuggestion);
+
+    click('.physical-port[data-port-id="port-a"]');
+    await flush(2);
+    click('.physical-lldp-hit');
+    await flush(2);
+    const confirm = [...container.querySelectorAll('button')].find((button) =>
+      button.textContent?.includes('Confirmar conexão física'),
+    );
+    act(() => {
+      confirm!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await flush(4);
+
+    expect(container.textContent).toContain('Uma das portas já está ocupada');
+    expect(container.querySelector('.physical-lldp-ghost')).not.toBeNull();
+  });
+
+  it('resume o rack no cabeçalho com READY, PARTIAL e unresolved (contagem do rack)', () => {
+    const fact = (label: string) =>
+      [...container.querySelectorAll('.nv-fact')]
+        .find((item) => item.textContent?.includes(label))
+        ?.textContent?.replace(/\s+/g, '') ?? '';
+
+    // O fixture tem uma sugestão READY no rack; nada de total global.
+    expect(fact('READY')).toBe('1READY');
+    expect(fact('PARTIAL')).toBe('0PARTIAL');
+    expect(fact('unresolved')).toBe('0unresolved');
+  });
+});
+
+/**
+ * Fallback topológico: o módulo Físico reaproveita as queries do mapa
+ * (`['maps']`/`['map', id]`) e desenha o enlace lógico discreto quando as duas
+ * pontas têm conector físico — sem endpoint novo e sem virar cabo.
+ */
+describe('PhysicalWorkspace · fallback do mapa', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+
+  const swA = physicalAsset({
+    id: 'asset-map-a',
+    name: 'S6750-MPLS-01',
+    deviceId: 'device-map-a',
+    startU: 10,
+    heightU: 1,
+    ports: [
+      physicalPort({
+        id: 'port-map-a',
+        assetId: 'asset-map-a',
+        name: 'QSFP28-5',
+        label: 'QSFP28-5',
+        mappedInterfaceId: 'iface-map-a',
+        mappedInterface: {
+          id: 'iface-map-a',
+          deviceId: 'device-map-a',
+          name: '100GE1/0/5',
+          ifIndex: 5,
+          alias: null,
+          operStatus: 'UP',
+        },
+      }),
+    ],
+  });
+  const swB = physicalAsset({
+    id: 'asset-map-b',
+    name: '6730-MPLS-01',
+    deviceId: 'device-map-b',
+    startU: 8,
+    heightU: 1,
+    ports: [
+      physicalPort({
+        id: 'port-map-b',
+        assetId: 'asset-map-b',
+        name: 'QSFP28-6',
+        label: 'QSFP28-6',
+        mappedInterfaceId: 'iface-map-b',
+        mappedInterface: {
+          id: 'iface-map-b',
+          deviceId: 'device-map-b',
+          name: '100GE0/0/6',
+          ifIndex: 6,
+          alias: null,
+          operStatus: 'UP',
+        },
+      }),
+    ],
+  });
+  const mapInventory = physicalInventory({
+    sites: [
+      {
+        id: 'site-1',
+        name: 'POP Centro',
+        code: 'CTO',
+        description: '',
+        racks: [physicalRack({ id: 'rack-1', units: 12, assets: [swA, swB] })],
+        createdAt: '2026-09-21T12:00:00.000Z',
+        updatedAt: '2026-09-21T12:00:00.000Z',
+      },
+    ],
+  });
+
+  async function flush(times = 4) {
+    for (let index = 0; index < times; index += 1) {
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      });
+    }
+  }
+
+  beforeEach(async () => {
+    api.getPhysicalInventory.mockResolvedValue(mapInventory);
+    api.getPhysicalCatalog.mockResolvedValue([]);
+    api.getHosts.mockResolvedValue([]);
+    api.getPhysicalPath.mockResolvedValue(null);
+    api.getMaps.mockResolvedValue([
+      {
+        id: 'map-1',
+        name: 'Backbone',
+        description: '',
+        mode: 'HYBRID',
+        isDefault: true,
+        nodeCount: 2,
+        linkCount: 1,
+        createdAt: '2026-09-21T12:00:00.000Z',
+        updatedAt: '2026-09-21T12:00:00.000Z',
+      },
+    ]);
+    api.getMap.mockResolvedValue({
+      id: 'map-1',
+      name: 'Backbone',
+      links: [
+        {
+          id: 'map-link-1',
+          sourceDeviceId: 'device-map-a',
+          sourceInterfaceId: 'iface-map-a',
+          targetDeviceId: 'device-map-b',
+          targetInterfaceId: 'iface-map-b',
+          label: 'CIR-MPLS-01',
+          status: 'UP',
+          discoverySource: 'MANUAL',
+        },
+      ],
+    });
+
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <PhysicalWorkspace />
+        </QueryClientProvider>,
+      );
+    });
+    await flush();
+  });
+
+  afterEach(() => {
+    act(() => root.unmount());
+    container.remove();
+    vi.clearAllMocks();
+  });
+
+  it('desenha o enlace do mapa como fallback discreto, sem virar cabo', async () => {
+    // Padrão limpo: o fallback aparece ao focar uma das pontas.
+    expect(container.querySelectorAll('.physical-maplink-ghost')).toHaveLength(0);
+    const endpoint = container.querySelector('.physical-port[data-port-id="port-map-a"]');
+    expect(endpoint).not.toBeNull();
+    act(() => {
+      endpoint!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await flush(2);
+    expect(container.querySelectorAll('.physical-maplink-ghost')).toHaveLength(1);
+    expect(container.querySelectorAll('.physical-cable')).toHaveLength(0);
+    expect(container.querySelector('.physical-lldp-ghost')).toBeNull();
+    expect(container.textContent).toContain('LINK DO MAPA (fallback)');
+    expect(api.getMap).toHaveBeenCalledWith('map-1');
   });
 });

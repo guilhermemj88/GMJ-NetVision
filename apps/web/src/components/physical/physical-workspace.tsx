@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { PhysicalAsset, PhysicalInterfaceSyncReport } from '@gmj/shared';
-import { Button } from '@gmj/ui';
+import { Button, MetaFact, ModuleHeader } from '@gmj/ui';
 import {
   Cable,
   CirclePlus,
+  CircleDashed,
+  CircleDot,
   Eye,
   EyeOff,
   PanelRight,
@@ -18,6 +20,7 @@ import {
   X,
 } from 'lucide-react';
 import { useAuth } from '@/app/providers';
+import { useMapStore } from '@/store/map-store';
 import {
   confirmPhysicalLldp,
   createPhysicalAsset,
@@ -28,6 +31,8 @@ import {
   deletePhysicalAsset,
   deletePhysicalConnection,
   getHosts,
+  getMap,
+  getMaps,
   getPhysicalCatalog,
   getPhysicalInventory,
   getPhysicalPath,
@@ -45,9 +50,16 @@ import { PORT_STATE_LABELS } from './physical-catalog';
 import { PhysicalInspector } from './physical-inspector';
 import { PhysicalRackCanvas } from './physical-rack-canvas';
 import { PhysicalVisualToggle } from './physical-visual-toggle';
+import { buildPhysicalLldpGhosts, ghostsForRack } from './physical-lldp';
+import { applyPhysicalLinkPrecedence } from './physical-link-layer';
+import { buildPhysicalMapLinkGhosts, type PhysicalMapLinkSource } from './physical-map-link';
+import { physicalPortNameView } from './physical-port-name';
 import type { PhysicalConnectionMode, PhysicalSelection, PhysicalVisualMode } from './physical-types';
 
 type CreateDialog = 'site' | 'rack' | 'asset' | null;
+
+/** Referência estável usada enquanto o mapa ainda não chegou. */
+const NO_MAP_LINKS: readonly PhysicalMapLinkSource[] = [];
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
   return (
@@ -64,15 +76,45 @@ function Modal({ title, onClose, children }: { title: string; onClose: () => voi
 export function PhysicalWorkspace() {
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const physicalFocusRequest = useMapStore((state) => state.physicalFocusRequest);
+  const clearPhysicalFocusRequest = useMapStore((state) => state.clearPhysicalFocusRequest);
+  const activeMapId = useMapStore((state) => state.activeMapId);
+  const storeMap = useMapStore((state) => state.map);
   const canEdit = user?.role === 'ADMIN' || user?.role === 'OPERATOR';
   const inventoryQuery = useQuery({ queryKey: ['physical'], queryFn: getPhysicalInventory });
   const hostsQuery = useQuery({ queryKey: ['hosts'], queryFn: () => getHosts(), enabled: canEdit });
   const catalogQuery = useQuery({ queryKey: ['physical-catalog'], queryFn: getPhysicalCatalog });
+  /**
+   * Fallback topológico: o módulo Físico pode ser aberto sem nunca ter passado
+   * pela visão de mapa, então as MESMAS queries do canvas (`['maps']` e
+   * `['map', id]`) são reaproveitadas aqui — cache compartilhado, nenhum
+   * endpoint novo e nenhuma fonte de verdade paralela.
+   */
+  const mapsQuery = useQuery({ queryKey: ['maps'], queryFn: getMaps });
+  const mapId =
+    activeMapId ??
+    mapsQuery.data?.find((item) => item.isDefault)?.id ??
+    mapsQuery.data?.[0]?.id ??
+    null;
+  const mapQuery = useQuery({
+    queryKey: ['map', mapId],
+    queryFn: () => getMap(mapId as string),
+    enabled: Boolean(mapId),
+  });
   const inventory = inventoryQuery.data;
   const [siteId, setSiteId] = useState('');
   const [rackId, setRackId] = useState('');
   const [selection, setSelection] = useState<PhysicalSelection>(null);
   const [mode, setMode] = useState<PhysicalConnectionMode>('selected');
+  /**
+   * Sugestões LLDP: camada separada dos cabos.
+   *
+   * `related` é o padrão (foco par a par): sem seleção o rack fica limpo, com
+   * apenas a evidência discreta; com uma porta/relação selecionada aparece só
+   * aquele par. `all` continua como modo opcional e `hidden` desliga a
+   * evidência sem afetar os cabos.
+   */
+  const [lldpMode, setLldpMode] = useState<'hidden' | 'related' | 'all'>('related');
   // A visão técnica é a principal do módulo físico (o modo real continua
   // disponível no seletor como alternativa/fallback).
   const [visualMode, setVisualMode] = useState<PhysicalVisualMode>('TECHNICAL');
@@ -89,12 +131,57 @@ export function PhysicalWorkspace() {
   const site = inventory?.sites.find((candidate) => candidate.id === siteId) ?? inventory?.sites[0];
   const rack = site?.racks.find((candidate) => candidate.id === rackId) ?? site?.racks[0];
 
+  /** Sugestões LLDP agrupadas por par físico (dedup visual das espelhadas). */
+  const lldpGhosts = useMemo(
+    () => (inventory ? buildPhysicalLldpGhosts(inventory) : []),
+    [inventory],
+  );
+
+  /**
+   * Enlaces do mapa com as duas pontas ancoradas em conectores físicos. O
+   * mapa local (edições ainda não salvas) tem prioridade quando é o mesmo mapa;
+   * senão vale o que veio da query.
+   */
+  const mapLinks =
+    (storeMap && mapId && storeMap.id === mapId ? storeMap.links : mapQuery.data?.links) ??
+    NO_MAP_LINKS;
+  const mapLinkGhosts = useMemo(
+    () => (inventory ? buildPhysicalMapLinkGhosts(inventory, mapLinks) : []),
+    [inventory, mapLinks],
+  );
+
+  /**
+   * Resumo do **rack atual** (nunca o total global): quantos pares READY,
+   * quantos anúncios PARTIAL e quantas observações sem par resolvido. Respeita
+   * a precedência — par com cabo confirmado não entra como sugestão LLDP.
+   */
+  const rackLldpCounts = useMemo(() => {
+    if (!inventory || !rack) return { ready: 0, partial: 0, unresolved: 0 };
+    const inRack = ghostsForRack(lldpGhosts, rack.id);
+    const layer = applyPhysicalLinkPrecedence(inventory.connections, inRack, []).lldp;
+    return {
+      ready: layer.filter((ghost) => ghost.state === 'READY').length,
+      partial: layer.filter((ghost) => ghost.state === 'PARTIAL').length,
+      unresolved: layer.filter((ghost) => ghost.state === 'UNRESOLVED').length,
+    };
+  }, [inventory, lldpGhosts, rack]);
+
   useEffect(() => {
     if (!site) return;
     if (site.id !== siteId) setSiteId(site.id);
     const firstRack = site.racks[0];
     if (firstRack && !site.racks.some((candidate) => candidate.id === rackId)) setRackId(firstRack.id);
   }, [rackId, site, siteId]);
+
+  // Pedido externo de foco (ex.: "Localizar no Físico" vindo do mapa/BGP):
+  // abre exatamente site/rack/porta informados, sem inferir nada.
+  useEffect(() => {
+    if (!physicalFocusRequest || !inventory) return;
+    setSiteId(physicalFocusRequest.siteId);
+    setRackId(physicalFocusRequest.rackId);
+    setSelection({ kind: 'port', id: physicalFocusRequest.portId });
+    clearPhysicalFocusRequest(physicalFocusRequest.requestId);
+  }, [clearPhysicalFocusRequest, inventory, physicalFocusRequest]);
 
   const selectedPortId = selection?.kind === 'port' ? selection.id : '';
   /** A Device belongs to a single physical asset: the others are shown disabled. */
@@ -318,32 +405,81 @@ export function PhysicalWorkspace() {
     return <main className="physical-shell physical-loading"><strong>Falha ao carregar a visão física</strong><Button compact variant="secondary" onClick={() => void inventoryQuery.refetch()}>Tentar novamente</Button></main>;
   }
 
+  const rackConnections = inventory.connections.filter(
+    (item) => item.a.rackId === rack?.id || item.b.rackId === rack?.id,
+  ).length;
+
   return (
     <main className="physical-shell">
-      <header className="physical-toolbar">
-        <div><span>INFRAESTRUTURA POR POP</span><h1>Físico</h1><p>{site?.name ?? 'Nenhum POP'}{rack ? ` · ${rack.name} · ${rack.units}U` : ''}</p></div>
-        <div className="physical-toolbar__summary">
-          <span><Server size={13} /> {rack?.assets.length ?? 0} equipamentos</span>
-          <span><Cable size={13} /> {inventory.connections.filter((item) => item.a.rackId === rack?.id || item.b.rackId === rack?.id).length} cabos</span>
-          <span title={inventory.lldpObservedAt ? `Último LLDP: ${new Date(inventory.lldpObservedAt).toLocaleString('pt-BR')}` : 'Nenhum LLDP coletado'}>
-            <Radio size={13} /> {inventory.lldpSuggestions.length} LLDP
-          </span>
-        </div>
-        <div className="physical-legend" aria-label="Legenda de estado das portas">
-          {(['FREE', 'MAPPED', 'LLDP_DETECTED', 'CONNECTED'] as const).map((state) => (
-            <span key={state} className={`physical-state physical-state--${state.toLowerCase()}`}>
-              {PORT_STATE_LABELS[state]}
-            </span>
-          ))}
-        </div>
-        <div className="physical-mode" aria-label="Exibição de conexões">
-          <button type="button" className={mode === 'hidden' ? 'is-active' : ''} onClick={() => setMode('hidden')}><EyeOff size={13} /> Ocultas</button>
-          <button type="button" className={mode === 'selected' ? 'is-active' : ''} onClick={() => setMode('selected')}><PanelRight size={13} /> Selecionado</button>
-          <button type="button" className={mode === 'all' ? 'is-active' : ''} onClick={() => setMode('all')}><Eye size={13} /> Todas</button>
-        </div>
-        <PhysicalVisualToggle mode={visualMode} onChange={setVisualMode} />
-        {canEdit && rack ? <Button compact variant="primary" onClick={() => setDialog('asset')}><CirclePlus size={14} /> Equipamento</Button> : null}
-      </header>
+      <ModuleHeader
+        eyebrow="INFRAESTRUTURA POR POP"
+        title="Físico"
+        subtitle={
+          site
+            ? `${site.name}${rack ? ` · ${rack.name} · ${rack.units}U` : ' · sem rack'}`
+            : 'Nenhum POP cadastrado'
+        }
+        meta={
+          <>
+            <MetaFact icon={<Server size={12} />} value={rack?.assets.length ?? 0} label="equipamentos" />
+            <MetaFact icon={<Cable size={12} />} value={rackConnections} label="cabos" />
+            <MetaFact
+              icon={<Radio size={12} />}
+              value={rackLldpCounts.ready}
+              label="READY"
+              tone={rackLldpCounts.ready ? 'up' : 'neutral'}
+              title="Sugestões LLDP com as duas pontas no inventário físico neste rack"
+            />
+            <MetaFact
+              icon={<CircleDot size={12} />}
+              value={rackLldpCounts.partial}
+              label="PARTIAL"
+              tone={rackLldpCounts.partial ? 'warning' : 'neutral'}
+              title="Anúncios LLDP com apenas uma ponta no inventário físico neste rack"
+            />
+            <MetaFact
+              icon={<CircleDashed size={12} />}
+              value={rackLldpCounts.unresolved}
+              label="unresolved"
+              tone="unknown"
+              title={
+                inventory.lldpObservedAt
+                  ? `Observações LLDP sem par resolvido neste rack · último LLDP: ${new Date(
+                      inventory.lldpObservedAt,
+                    ).toLocaleString('pt-BR')}`
+                  : 'Observações LLDP sem par resolvido neste rack'
+              }
+            />
+          </>
+        }
+        actions={
+          <>
+            <div className="physical-mode" aria-label="Exibição de conexões">
+              <button type="button" title="Ocultar cabos" className={mode === 'hidden' ? 'is-active' : ''} onClick={() => setMode('hidden')}><EyeOff size={13} /> Ocultas</button>
+              <button type="button" title="Mostrar só o caminho selecionado" className={mode === 'selected' ? 'is-active' : ''} onClick={() => setMode('selected')}><PanelRight size={13} /> Selecionado</button>
+              <button type="button" title="Mostrar todos os cabos" className={mode === 'all' ? 'is-active' : ''} onClick={() => setMode('all')}><Eye size={13} /> Todas</button>
+            </div>
+            <div className="physical-mode" aria-label="Exibição das ligações detectadas (LLDP e fallback do mapa)">
+              <button type="button" title="Ocultar sugestões LLDP e o fallback do mapa" className={lldpMode === 'hidden' ? 'is-active' : ''} onClick={() => setLldpMode('hidden')}><EyeOff size={13} /> LLDP off</button>
+              <button type="button" title="Padrão: rack limpo sem seleção; ao clicar, aparece só o par escolhido" className={lldpMode === 'related' ? 'is-active' : ''} onClick={() => setLldpMode('related')}><PanelRight size={13} /> LLDP rel.</button>
+              <button type="button" title="Modo opcional: mostrar todas as relações READY e o fallback do mapa neste rack" className={lldpMode === 'all' ? 'is-active' : ''} onClick={() => setLldpMode('all')}><Radio size={13} /> LLDP todas</button>
+            </div>
+            <PhysicalVisualToggle mode={visualMode} onChange={setVisualMode} />
+            {canEdit && rack ? <Button compact variant="primary" onClick={() => setDialog('asset')}><CirclePlus size={14} /> Equipamento</Button> : null}
+          </>
+        }
+        toolbar={
+          <div className="physical-legend" aria-label="Legenda de estado das portas">
+            {(['FREE', 'MAPPED', 'LLDP_DETECTED', 'CONNECTED'] as const).map((state) => (
+              <span key={state} className={`physical-state physical-state--${state.toLowerCase()}`}>
+                {PORT_STATE_LABELS[state]}
+              </span>
+            ))}
+            <span className="physical-lldp-legend">SUGESTÃO LLDP</span>
+            <span className="physical-maplink-legend">LINK DO MAPA (fallback)</span>
+          </div>
+        }
+      />
 
       {notice ? (
         <div
@@ -385,7 +521,7 @@ export function PhysicalWorkspace() {
           <section className="physical-search">
             <label><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Equipamento ou porta" /></label>
             {query.trim() ? <div className="physical-search__results">{searchResults.map((result) => (
-              <div key={result.asset.id}><button type="button" onClick={() => openResult(result)}><strong>{result.asset.name}</strong><small>{result.site.name} / {result.rack.name}</small></button>{result.ports.slice(0, 5).map((port) => <button key={port.id} type="button" className="is-port" onClick={() => openResult(result, port.id)}>{port.name}<small>{port.label || port.side}</small></button>)}</div>
+              <div key={result.asset.id}><button type="button" onClick={() => openResult(result)}><strong>{result.asset.name}</strong><small>{result.site.name} / {result.rack.name}</small></button>{result.ports.slice(0, 5).map((port) => <button key={port.id} type="button" className="is-port" onClick={() => openResult(result, port.id)}>{physicalPortNameView(port).displayName}<small>{port.label || port.side}</small></button>)}</div>
             ))}{!searchResults.length ? <p>Nenhum resultado.</p> : null}</div> : null}
           </section>
         </aside>
@@ -395,6 +531,9 @@ export function PhysicalWorkspace() {
             <PhysicalRackCanvas
               rack={rack}
               connections={inventory.connections}
+              lldpGhosts={lldpGhosts}
+              mapLinkGhosts={mapLinkGhosts}
+              lldpMode={lldpMode}
               mode={mode}
               selection={selection}
               path={pathQuery.data ?? null}
@@ -403,6 +542,7 @@ export function PhysicalWorkspace() {
               onSelectAsset={(id) => setSelection({ kind: 'asset', id })}
               onSelectPort={(id) => setSelection({ kind: 'port', id })}
               onSelectConnection={(id) => setSelection({ kind: 'connection', id })}
+              onSelectLldp={(id) => setSelection({ kind: 'lldp', id })}
               onNavigateToPort={(targetSiteId, targetRackId, portId) => {
                 setSiteId(targetSiteId);
                 setRackId(targetRackId);
@@ -436,12 +576,13 @@ export function PhysicalWorkspace() {
           onUpdatePort={(id, input) => void run(() => updatePhysicalPort(id, input))}
           onInstallModule={(assetId, input) => void run(() => installPhysicalModule(assetId, input))}
           onRemoveModule={(moduleId) => void run(() => removePhysicalModule(moduleId))}
-          onConfirmLldp={(adjacencyId) =>
+          onConfirmLldp={(adjacencyId, medium) =>
             void run(
-              () => confirmPhysicalLldp(adjacencyId),
+              () => confirmPhysicalLldp(adjacencyId, medium),
               (created) => setSelection({ kind: 'connection', id: created.id }),
             )
           }
+          onSelectLldp={(adjacencyId) => setSelection({ kind: 'lldp', id: adjacencyId })}
           onNavigateToPort={(targetSiteId, targetRackId, portId) => {
             setSiteId(targetSiteId);
             setRackId(targetRackId);

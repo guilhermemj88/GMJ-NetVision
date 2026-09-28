@@ -51,7 +51,12 @@ function makeNode(overrides: Partial<MapNode> = {}): MapNode {
   };
 }
 
-function renderNode(device: Device, mapNode: MapNode, alarmCount = 0) {
+function renderNode(
+  device: Device,
+  mapNode: MapNode,
+  alarmCount = 0,
+  dataOverrides: Partial<DeviceNodeData> = {},
+) {
   const container = document.createElement('div');
   document.body.appendChild(container);
   const root = createRoot(container);
@@ -59,11 +64,11 @@ function renderNode(device: Device, mapNode: MapNode, alarmCount = 0) {
     device,
     mapNode,
     editMode: false,
-    showInterfaces: false,
     displayMode: 'ICON_2D',
     nodeScale: 100,
     labelScale: 100,
     alarmCount,
+    ...dataOverrides,
   };
   const props = {
     id: device.id,
@@ -161,6 +166,60 @@ describe('DeviceNode PPP label', () => {
     );
     const unsupported = mount(makeDevice({ pppSupported: false }), makeNode());
     expect(unsupported.querySelector('.device-tooltip')!.textContent).not.toContain('PPP online');
+  });
+});
+
+describe('DeviceNode sem contagem de portas no canvas', () => {
+  const roots: Array<{ root: Root; container: HTMLDivElement }> = [];
+
+  beforeEach(() => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
+      true;
+  });
+
+  afterEach(() => {
+    for (const { root, container } of roots.splice(0)) {
+      act(() => root.unmount());
+      container.remove();
+    }
+  });
+
+  function mount(dataOverrides: Partial<DeviceNodeData>) {
+    const device = makeDevice({
+      interfaces: [
+        { id: 'if-1' },
+        { id: 'if-2' },
+        { id: 'if-3' },
+      ] as unknown as Device['interfaces'],
+    });
+    const rendered = renderNode(device, makeNode(), 0, dataOverrides);
+    roots.push({ root: rendered.root, container: rendered.container });
+    return rendered.container;
+  }
+
+  /**
+   * A contagem de portas saiu do node (canvas operacional mais limpo). O dado
+   * continua no inspetor; aqui garantimos que nenhum modo volte a exibi-la.
+   */
+  it('nao mostra a contagem de portas no node em nenhum modo', () => {
+    for (const displayMode of ['ICON_2D', 'ICON_3D', 'CARD'] as const) {
+      const container = mount({ displayMode });
+      expect(container.textContent).not.toContain('portas');
+      expect(container.querySelector('.device-node__port-count')).toBeNull();
+      expect(container.querySelector('.device-node__ports')).toBeNull();
+      act(() => roots.pop()!.root.unmount());
+      container.remove();
+    }
+  });
+
+  it('mantem nome, IP e site no card sem a contagem de portas', () => {
+    const container = mount({ displayMode: 'CARD' });
+    const copy = container.querySelector('.device-node__copy');
+    expect(copy).not.toBeNull();
+    expect(copy!.textContent).toContain('NE40-BRAS-01');
+    expect(copy!.textContent).toContain('10.0.0.1');
+    expect(copy!.textContent).toContain('Bras');
+    expect(copy!.querySelectorAll('em')).toHaveLength(1);
   });
 });
 

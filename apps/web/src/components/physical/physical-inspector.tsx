@@ -9,7 +9,6 @@ import type {
   PhysicalCatalogEntry,
   PhysicalConnectionMedium,
   PhysicalInventory,
-  PhysicalLldpSuggestion,
   PhysicalPath,
   PhysicalPort,
   UpdatePhysicalConnectionInput,
@@ -36,6 +35,7 @@ import { PORT_STATE_LABELS, friendlySlotLabel } from './physical-catalog';
 import { PhysicalConnectionForm } from './physical-connection-form';
 import { indexCatalogPorts } from './physical-panel-layout';
 import { physicalPortNameView } from './physical-port-name';
+import { buildPhysicalLldpGhosts, type PhysicalLldpGhost } from './physical-lldp';
 import type { PhysicalSelection } from './physical-types';
 
 function locateAsset(inventory: PhysicalInventory, id: string): PhysicalAsset | null {
@@ -89,12 +89,124 @@ interface Props {
   onUpdatePort: (portId: string, input: UpdatePhysicalPortInput) => void;
   onInstallModule: (assetId: string, input: CreatePhysicalModuleInput) => void;
   onRemoveModule: (moduleId: string) => void;
-  onConfirmLldp: (adjacencyId: string) => void;
+  /** Confirma a sugestão com o medium escolhido pelo operador (nunca inferido). */
+  onConfirmLldp: (adjacencyId: string, medium: PhysicalConnectionMedium) => void;
+  /** Seleciona a sugestão LLDP para o bloco de detalhe dedicado. */
+  onSelectLldp?: (adjacencyId: string) => void;
   /** Navega para o POP/rack da ponta remota e seleciona a porta. */
   onNavigateToPort?: (siteId: string, rackId: string, portId: string) => void;
   /** Removes connectors fabricated for logical interfaces (old sync). */
   onReconcilePorts: (assetId: string) => void;
   onDeleteAsset: (assetId: string) => void;
+}
+
+const LLDP_MEDIA: readonly PhysicalConnectionMedium[] = [
+  'FIBER',
+  'COPPER',
+  'DAC',
+  'AOC',
+  'UNKNOWN',
+];
+
+/**
+ * Bloco de detalhe de uma sugestão LLDP selecionada.
+ *
+ * Mostra sempre as duas pontas (com "Não resolvido" quando falta mapeamento) e
+ * só oferece confirmação quando o par está pronto e sem conflito — o medium é
+ * escolhido pelo operador porque o LLDP não informa meio físico.
+ */
+function LldpSuggestionDetail({
+  ghost,
+  canEdit,
+  busy,
+  medium,
+  onMediumChange,
+  onConfirm,
+  onNavigateToPort,
+}: {
+  ghost: PhysicalLldpGhost;
+  canEdit: boolean;
+  busy: boolean;
+  medium: PhysicalConnectionMedium;
+  onMediumChange: (medium: PhysicalConnectionMedium) => void;
+  onConfirm: (adjacencyId: string, medium: PhysicalConnectionMedium) => void;
+  onNavigateToPort?: ((siteId: string, rackId: string, portId: string) => void) | undefined;
+}) {
+  const describe = (side: PhysicalLldpGhost['from']) =>
+    side
+      ? `${side.siteName} / ${side.rackName} / ${side.assetName} / ${side.portName}`
+      : 'Não resolvido';
+  const canConfirm = ghost.confirmable && canEdit;
+
+  return (
+    <>
+      <dl className="physical-facts">
+        <Field label="Estado" value={ghost.state} />
+        <Field label="Confiança" value={ghost.confidence} />
+        <Field
+          label="Observado em"
+          value={new Date(ghost.observedAt).toLocaleString('pt-BR')}
+        />
+        <Field label="Local" value={describe(ghost.from)} />
+        <Field label="Remoto" value={describe(ghost.to)} />
+        <Field label="Adjacências" value={ghost.adjacencyIds.join(', ')} />
+      </dl>
+      <p className="physical-warning">
+        <CircleAlert size={12} /> {ghost.reason}
+      </p>
+      {ghost.conflict !== 'NONE' ? (
+        <p className="physical-warning">
+          <CircleAlert size={12} /> {ghost.conflictDetail}
+        </p>
+      ) : null}
+      {ghost.to && onNavigateToPort && ghost.to.siteId && ghost.to.rackId ? (
+        <Button
+          compact
+          variant="ghost"
+          onClick={() => onNavigateToPort(ghost.to!.siteId, ghost.to!.rackId, ghost.to!.portId)}
+        >
+          <LocateFixed size={13} /> Ir para a ponta remota
+        </Button>
+      ) : null}
+      <section className="physical-inspector__section">
+        <h3>REGISTRAR CABO FÍSICO</h3>
+        {canConfirm ? (
+          <div className="physical-lldp-confirm">
+            <label>
+              Medium
+              <select
+                value={medium}
+                onChange={(event) => onMediumChange(event.target.value as PhysicalConnectionMedium)}
+              >
+                {LLDP_MEDIA.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button
+              compact
+              variant="primary"
+              disabled={busy}
+              onClick={() => onConfirm(ghost.adjacencyId, medium)}
+            >
+              <Link2 size={13} /> Confirmar conexão física
+            </Button>
+            <p className="physical-empty-copy">
+              LLDP é evidência: o cabo só passa a existir depois desta confirmação e do 201 da API.
+            </p>
+          </div>
+        ) : (
+          <p className="physical-empty-copy">
+            {ghost.conflict !== 'NONE'
+              ? ghost.conflictDetail
+              : 'Confirmação indisponível: é preciso mapear as duas pontas físicas antes.'}
+          </p>
+        )}
+      </section>
+    </>
+  );
 }
 
 export function PhysicalInspector({
@@ -115,6 +227,7 @@ export function PhysicalInspector({
   onInstallModule,
   onRemoveModule,
   onConfirmLldp,
+  onSelectLldp,
   onNavigateToPort,
   onReconcilePorts,
   onDeleteAsset,
@@ -135,22 +248,33 @@ export function PhysicalInspector({
     return result;
   }, [catalog]);
 
-  /** Nome de uma porta pelo `PhysicalPort.id`, com interface CLI quando existir. */
-  const pathStepPortName = (portId: string, fallback: string) => {
+  /**
+   * Conector do catálogo correspondente à porta persistida. A correlação é por
+   * nome (`exact` e depois `loose`), nunca por posição — o mesmo critério já
+   * usado pelo desenho do painel.
+   */
+  const catalogPortFor = (portAsset: PhysicalAsset, port: PhysicalPort) => {
+    const ports = portAsset.template?.catalogKey
+      ? catalogIndex.get(portAsset.template.catalogKey)
+      : undefined;
+    return (
+      ports?.exact.get(port.name.trim().toLowerCase()) ??
+      ports?.loose.get(port.name.trim().toLowerCase().replace(/[\s_.\-/]+/g, '')) ??
+      null
+    );
+  };
+
+  /** Nome apresentado de uma porta pelo `PhysicalPort.id` (interface CLI quando existir). */
+  const displayPortName = (portId: string, fallback: string) => {
     const found = locatePort(inventory, portId);
     if (!found) return fallback;
-    const ports = found.asset.template?.catalogKey
-      ? catalogIndex.get(found.asset.template.catalogKey)
-      : undefined;
-    const catalogPort =
-      ports?.exact.get(found.port.name.trim().toLowerCase()) ??
-      ports?.loose.get(found.port.name.trim().toLowerCase().replace(/[\s_.\-/]+/g, '')) ??
-      null;
-    return physicalPortNameView(found.port, catalogPort).displayName;
+    return physicalPortNameView(found.port, catalogPortFor(found.asset, found.port)).displayName;
   };
 
   const [startU, setStartU] = useState(1);
   const [heightU, setHeightU] = useState(1);
+  /** Medium da confirmação LLDP: escolha do operador, nunca inferida. */
+  const [lldpMedium, setLldpMedium] = useState<PhysicalConnectionMedium>('FIBER');
 
   useEffect(() => {
     if (!asset) return;
@@ -222,12 +346,28 @@ export function PhysicalInspector({
     enabled: canEdit && Boolean(locatedPort?.asset.deviceId),
   });
 
-  const assetSuggestions = useMemo<PhysicalLldpSuggestion[]>(() => {
-    if (!asset) return [];
-    return inventory.lldpSuggestions.filter(
-      (item) => item.local?.assetId === asset.id || item.remote?.assetId === asset.id,
+  /**
+   * Sugestões LLDP agrupadas por par físico: as adjacências espelhadas (A→B e
+   * B→A) viram um único registro visual, preservando os adjacencyIds originais.
+   */
+  const lldpGhosts = useMemo(() => buildPhysicalLldpGhosts(inventory), [inventory]);
+
+  const selectedGhost = useMemo<PhysicalLldpGhost | null>(() => {
+    if (selection?.kind !== 'lldp') return null;
+    return (
+      lldpGhosts.find(
+        (ghost) =>
+          ghost.adjacencyId === selection.id || ghost.adjacencyIds.includes(selection.id),
+      ) ?? null
     );
-  }, [asset, inventory.lldpSuggestions]);
+  }, [lldpGhosts, selection]);
+
+  const assetGhosts = useMemo<PhysicalLldpGhost[]>(() => {
+    if (!asset) return [];
+    return lldpGhosts.filter(
+      (ghost) => ghost.from?.assetId === asset.id || ghost.to?.assetId === asset.id,
+    );
+  }, [asset, lldpGhosts]);
 
   if (!selection) {
     return (
@@ -251,6 +391,42 @@ export function PhysicalInspector({
       </button>
     </header>
   );
+
+  if (selection.kind === 'lldp') {
+    if (!selectedGhost) {
+      return (
+        <aside className="physical-inspector physical-inspector--empty">
+          <strong>Sugestão LLDP não encontrada</strong>
+          <p>Ela pode ter sido confirmada ou substituída por uma coleta mais recente.</p>
+        </aside>
+      );
+    }
+    return (
+      <aside className="physical-inspector">
+        {header(
+          'SUGESTÃO LLDP',
+          `${displayPortName(
+            selectedGhost.from?.portId ?? '',
+            selectedGhost.from?.portName ?? selectedGhost.localPortName,
+          )} → ${
+            selectedGhost.to
+              ? displayPortName(selectedGhost.to.portId, selectedGhost.to.portName)
+              : 'Não resolvido'
+          }`,
+          `Estado ${selectedGhost.state} · confiança ${selectedGhost.confidence}`,
+        )}
+        <LldpSuggestionDetail
+          ghost={selectedGhost}
+          canEdit={canEdit}
+          busy={busy}
+          medium={lldpMedium}
+          onMediumChange={setLldpMedium}
+          onConfirm={onConfirmLldp}
+          onNavigateToPort={onNavigateToPort}
+        />
+      </aside>
+    );
+  }
 
   if (asset) {
     return (
@@ -333,7 +509,7 @@ export function PhysicalInspector({
             {asset.ports.map((port) => (
               <button key={port.id} type="button" onClick={() => onSelectPort(port.id)}>
                 <span className={port.state === 'CONNECTED' ? 'is-connected' : port.state === 'LLDP_DETECTED' ? 'is-lldp' : port.state === 'MAPPED' ? 'is-mapped' : ''} />
-                <strong>{port.name}</strong>
+                <strong>{physicalPortNameView(port, catalogPortFor(asset, port)).displayName}</strong>
                 <small>{port.mappedInterface?.alias || port.label || port.side}</small>
                 <em className={`physical-state physical-state--${port.state.toLowerCase()}`}>{PORT_STATE_LABELS[port.state]}</em>
               </button>
@@ -441,28 +617,59 @@ export function PhysicalInspector({
         ) : null}
         <section className="physical-inspector__section">
           <h3>SUGESTÕES LLDP</h3>
-          {assetSuggestions.length ? (
+          {assetGhosts.length ? (
             <ul className="physical-lldp-list">
-              {assetSuggestions.map((suggestion) => (
-                <li key={suggestion.adjacencyId} className={`physical-lldp physical-lldp--${suggestion.state.toLowerCase()}`}>
-                  <div>
-                    <strong>
-                      {suggestion.local?.portName ?? suggestion.localPortName} →{' '}
-                      {suggestion.remote
-                        ? `${suggestion.remote.assetName} / ${suggestion.remote.portName}`
-                        : `${suggestion.remoteHostname} / ${suggestion.remotePortName}`}
-                    </strong>
-                    <small>
-                      {suggestion.state} · {suggestion.confidence} · {suggestion.reason}
-                    </small>
-                  </div>
-                  {canEdit && suggestion.state === 'READY' ? (
-                    <Button compact variant="secondary" type="button" disabled={busy} onClick={() => onConfirmLldp(suggestion.adjacencyId)}>
-                      <Link2 size={13} /> Confirmar conexão física
-                    </Button>
-                  ) : null}
-                </li>
-              ))}
+              {assetGhosts.map((ghost) => {
+                const relatedSide = ghost.from?.assetId === asset.id ? ghost.from : ghost.to;
+                const otherSide = ghost.from?.assetId === asset.id ? ghost.to : ghost.from;
+                return (
+                  <li
+                    key={ghost.key}
+                    className={[
+                      'physical-lldp',
+                      `physical-lldp--${ghost.state.toLowerCase()}`,
+                      ghost.conflict !== 'NONE' ? 'is-conflict' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                  >
+                    <button
+                      type="button"
+                      className="physical-lldp__open"
+                      onClick={() => onSelectLldp?.(ghost.adjacencyId)}
+                    >
+                      <strong>
+                        {relatedSide
+                          ? displayPortName(relatedSide.portId, relatedSide.portName)
+                          : ghost.localPortName}{' '}
+                        →{' '}
+                        {otherSide
+                          ? `${otherSide.assetName} / ${displayPortName(
+                              otherSide.portId,
+                              otherSide.portName,
+                            )}`
+                          : `${ghost.remoteHostname} / ${ghost.remotePortName}`}
+                      </strong>
+                      <small>
+                        {ghost.state} · {ghost.confidence} ·{' '}
+                        {new Date(ghost.observedAt).toLocaleString('pt-BR')}
+                      </small>
+                      <small>{ghost.conflict !== 'NONE' ? ghost.conflictDetail : ghost.reason}</small>
+                    </button>
+                    {canEdit && ghost.confirmable ? (
+                      <Button
+                        compact
+                        variant="secondary"
+                        type="button"
+                        disabled={busy}
+                        onClick={() => onConfirmLldp(ghost.adjacencyId, 'FIBER')}
+                      >
+                        <Link2 size={13} /> Confirmar conexão física
+                      </Button>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           ) : (
             <p className="physical-empty-copy">
@@ -522,7 +729,14 @@ export function PhysicalInspector({
           />
           <Field label="Lado" value={port.side} />
           <Field label="Origem" value={port.role} />
-          <Field label="Destino direto" value={remote ? `${remote.assetName} / ${remote.portName}` : 'Porta livre'} />
+          <Field
+            label="Destino direto"
+            value={
+              remote
+                ? `${remote.assetName} / ${displayPortName(remote.portId, remote.portName)}`
+                : 'Porta livre'
+            }
+          />
         </dl>
 
         {port.lldp ? (
@@ -599,7 +813,7 @@ export function PhysicalInspector({
                     <>
                       <strong>{step.assetName}</strong>
                       {/* identificação apresentada: interface CLI quando existir */}
-                      <span>{pathStepPortName(step.portId, step.portName)} · {step.side}</span>
+                      <span>{displayPortName(step.portId, step.portName)} · {step.side}</span>
                       <small>{step.siteName} / {step.rackName}</small>
                     </>
                   ) : step.kind === 'CABLE' ? (
@@ -643,20 +857,27 @@ export function PhysicalInspector({
       <aside className="physical-inspector">
         {header(
           'CONEXÃO FÍSICA',
-          `${connection.a.portName} → ${connection.b.portName}`,
+          `${displayPortName(connection.a.portId, connection.a.portName)} → ${displayPortName(
+            connection.b.portId,
+            connection.b.portName,
+          )}`,
           connection.medium,
         )}
         <section className="physical-connection-ends">
           <div>
             <span>A</span>
             <strong>{connection.a.assetName}</strong>
-            <small>{connection.a.portName} · {connection.a.siteName}</small>
+            <small>
+              {displayPortName(connection.a.portId, connection.a.portName)} · {connection.a.siteName}
+            </small>
           </div>
           <Link2 size={16} />
           <div>
             <span>B</span>
             <strong>{connection.b.assetName}</strong>
-            <small>{connection.b.portName} · {connection.b.siteName}</small>
+            <small>
+              {displayPortName(connection.b.portId, connection.b.portName)} · {connection.b.siteName}
+            </small>
           </div>
         </section>
         <section className="physical-inspector__section">
@@ -665,7 +886,7 @@ export function PhysicalInspector({
             <Field label="POP/Site" value={end('a').siteName} />
             <Field label="Rack" value={end('a').rackName} />
             <Field label="Equipamento" value={end('a').assetName} />
-            <Field label="Porta" value={end('a').portName} />
+            <Field label="Porta" value={displayPortName(end('a').portId, end('a').portName)} />
           </dl>
           {onNavigateToPort ? (
             <Button
@@ -684,7 +905,7 @@ export function PhysicalInspector({
             <Field label="POP/Site" value={end('b').siteName} />
             <Field label="Rack" value={end('b').rackName} />
             <Field label="Equipamento" value={end('b').assetName} />
-            <Field label="Porta" value={end('b').portName} />
+            <Field label="Porta" value={displayPortName(end('b').portId, end('b').portName)} />
           </dl>
           {onNavigateToPort ? (
             <Button

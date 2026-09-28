@@ -7,6 +7,7 @@ import { ContextDrawer } from './context-drawer';
 import { NetworkCanvas } from './network-canvas';
 import { TopBar } from './top-bar';
 import { NocControls } from './noc-controls';
+import { MapRail } from './map-rail';
 import { useMapStore } from '@/store/map-store';
 import { HostsWorkspace } from './hosts-workspace';
 import { BgpWorkspace } from './bgp/bgp-workspace';
@@ -46,7 +47,10 @@ export function NetworkWorkspace({ publicMode = false }: { publicMode?: boolean 
       ) : (
         <>
           <ReactFlowProvider>
-            <NetworkCanvas readOnly={readOnly} />
+            <div className="map-workspace">
+              {!publicMode && !rotation.active && <MapRail />}
+              <NetworkCanvas readOnly={readOnly} />
+            </div>
           </ReactFlowProvider>
           <ContextDrawer />
           {!publicMode && <ActionPanels />}

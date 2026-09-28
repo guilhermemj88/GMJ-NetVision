@@ -184,7 +184,8 @@ function render(
           onUpdatePort: vi.fn(),
           onInstallModule: (_assetId: string, input: CreatePhysicalModuleInput) => installs.push(input),
           onRemoveModule: (moduleId: string) => removals.push(moduleId),
-          onConfirmLldp: (adjacencyId: string) => confirmations.push(adjacencyId),
+          onConfirmLldp: (adjacencyId: string, medium: string) =>
+            confirmations.push(`${adjacencyId}:${medium}`),
           onReconcilePorts: (assetId: string) => reconciliations.push(assetId),
           onDeleteAsset: (assetId: string) => deletions.push(assetId),
         }),
@@ -283,7 +284,7 @@ describe('PhysicalInspector', () => {
     );
     expect(buttons).toHaveLength(1);
     click(buttons[0]);
-    expect(rendered.confirmations).toEqual(['lldp-1']);
+    expect(rendered.confirmations).toEqual(['lldp-1:FIBER']);
     expect(container.textContent).toContain('PARTIAL');
   });
 
@@ -442,6 +443,72 @@ describe('PhysicalInspector', () => {
     ]);
   });
 
+  it('apresenta o nome CLI do S6750 (QSFP28-5 → 100GE1/0/5) e mantém o conector como detalhe', () => {
+    const s6750 = physicalAsset({
+      id: 'asset-s6750',
+      name: 'BHE-VTA-S6750-MPLS-01',
+      templateId: 'template-s6750',
+      template: physicalTemplate({
+        id: 'template-s6750',
+        catalogKey: 'huawei-s6750-h36c',
+        name: 'Huawei S6750-H36C',
+        model: 'S6750-H36C',
+        manufacturer: 'Huawei',
+        category: 'SWITCH',
+        kind: 'NETWORK',
+      }),
+      ports: [
+        physicalPort({
+          id: 'port-qsfp-5',
+          assetId: 'asset-s6750',
+          name: 'QSFP28-5',
+          label: 'QSFP28-5',
+          type: 'QSFP',
+          mappedInterfaceId: 'iface-100ge-5',
+          mappedInterface: {
+            id: 'iface-100ge-5',
+            deviceId: 'host-s6750',
+            name: '100GE1/0/5',
+            ifIndex: 5,
+            alias: null,
+            operStatus: 'UP',
+          },
+        }),
+      ],
+    });
+    const catalog = [
+      catalogEntry({
+        catalogKey: 'huawei-s6750-h36c',
+        ports: [
+          {
+            name: 'QSFP28-5',
+            label: 'QSFP28-5',
+            order: 5,
+            side: 'DEVICE',
+            type: 'QSFP',
+            connector: 'QSFP28',
+            interfaceName: '100GE1/0/5',
+            panelNumber: 5,
+          },
+        ],
+      }),
+    ];
+
+    rendered = render([], { kind: 'asset', id: 'asset-s6750' }, s6750, { catalog });
+    // lista de portas: identidade = interface CLI
+    expect(rendered.container.textContent).toContain('100GE1/0/5');
+    expect(rendered.container.querySelector('.physical-port-list strong')?.textContent).toBe(
+      '100GE1/0/5',
+    );
+
+    act(() => rendered!.root.unmount());
+    rendered = render([], { kind: 'port', id: 'port-qsfp-5' }, s6750, { catalog });
+    // detalhe da porta: interface como nome principal, conector/porta física como detalhe
+    expect(rendered.container.textContent).toContain('BHE-VTA-S6750-MPLS-01 / 100GE1/0/5');
+    expect(rendered.container.textContent).toContain('QSFP28-5');
+    expect(rendered.container.textContent).toContain('QSFP28');
+  });
+
   it('rotula os slots com o papel do catálogo em vez do groupKey interno', () => {
     const entry = catalogEntry({
       catalogKey: 'generic-chassis-8-slot',
@@ -461,5 +528,80 @@ describe('PhysicalInspector', () => {
     });
     expect(rendered.container.textContent).toContain('Slot 1 · Serviço/Uplink');
     expect(rendered.container.textContent).not.toContain('service-upstream 1');
+  });
+});
+
+function selectValue(element: HTMLSelectElement, value: string): void {
+  act(() => {
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLSelectElement.prototype,
+      'value',
+    )?.set;
+    setter?.call(element, value);
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+}
+
+function confirmButton(container: HTMLElement): HTMLButtonElement | undefined {
+  return [...container.querySelectorAll('button')].find((button) =>
+    button.textContent?.includes('Confirmar conexão física'),
+  );
+}
+
+describe('PhysicalInspector · sugestão LLDP', () => {
+  it('mostra o detalhe da sugestão e confirma com o medium escolhido', () => {
+    rendered = render([suggestion()], { kind: 'lldp', id: 'lldp-1' });
+    const { container } = rendered;
+
+    expect(container.textContent).toContain('SUGESTÃO LLDP');
+    expect(container.textContent).toContain('READY');
+    expect(container.textContent).toContain('CONFIRMED');
+    expect(container.textContent).toContain('POP Centro / Rack 01 / OLT-01 / GPON0/1/0');
+    expect(container.textContent).toContain('SW-01');
+
+    const select = container.querySelector('select');
+    expect(select).not.toBeNull();
+    selectValue(select as HTMLSelectElement, 'DAC');
+    click(confirmButton(container));
+
+    expect(rendered.confirmations).toEqual(['lldp-1:DAC']);
+  });
+
+  it('PARTIAL mostra o remoto como não resolvido e nunca oferece confirmação', () => {
+    rendered = render(
+      [
+        suggestion({
+          state: 'PARTIAL',
+          remote: null,
+          remoteHostname: 'SW-DESCONHECIDO',
+          remotePortName: 'GE9',
+          reason: 'Apenas o lado local está mapeado',
+        }),
+      ],
+      { kind: 'lldp', id: 'lldp-1' },
+    );
+    const { container } = rendered;
+
+    expect(container.textContent).toContain('PARTIAL');
+    expect(container.textContent).toContain('Não resolvido');
+    expect(container.textContent).toContain('Apenas o lado local está mapeado');
+    expect(container.textContent).not.toContain('Medium');
+    expect(confirmButton(container)).toBeUndefined();
+  });
+
+  it('conflito de porta ocupada explica o motivo e bloqueia a confirmação', () => {
+    const busyAsset = {
+      ...assetWithSlots,
+      ports: assetWithSlots.ports.map((port) =>
+        port.id === 'port-gpon-1'
+          ? { ...port, connectionId: 'connection-9', state: 'CONNECTED' as const }
+          : port,
+      ),
+    };
+    rendered = render([suggestion()], { kind: 'lldp', id: 'lldp-1' }, busyAsset);
+    const { container } = rendered;
+
+    expect(container.textContent).toContain('já possui uma conexão física');
+    expect(confirmButton(container)).toBeUndefined();
   });
 });

@@ -24,6 +24,17 @@ import {
 import { getBgpPeerHistory, getHistory, setBgpPeerAdminState } from '@/lib/api';
 import { formatBgpTraffic, formatBgpUptime, formatRouteCount } from '@/lib/bgp-format';
 import { BgpRouteSparkline } from './bgp-route-sparkline';
+import { BgpAdvertisedRoutesPanel } from './bgp-advertised-routes';
+import { useMapStore } from '@/store/map-store';
+
+/** Abas do detalhe. O conteúdo anterior foi preservado e apenas redistribuído. */
+const TABS = [
+  ['SUMMARY', 'Resumo'],
+  ['TRAFFIC', 'Histórico e tráfego'],
+  ['ADVERTISED', 'Anúncios'],
+] as const;
+
+type PeerTab = (typeof TABS)[number][0];
 
 function timeLabel(value: string): string {
   const date = new Date(value);
@@ -57,7 +68,18 @@ export function BgpPeerDetail({
   onRefreshed?: (peerId: string, deviceId: string) => Promise<void> | void;
 }) {
   const queryClient = useQueryClient();
+  const openHostDetails = useMapStore((state) => state.openHostDetails);
+  const openInterfaceInActiveMap = useMapStore((state) => state.openInterfaceInActiveMap);
+  /**
+   * Só oferecemos "abrir no mapa" quando o equipamento realmente está no mapa
+   * ativo — nada de escolher um mapa por nós.
+   */
+  const activeMapHasDevice = useMapStore((state) =>
+    Boolean(state.map?.devices.some((device) => device.id === peer.deviceId)),
+  );
   const [pendingAction, setPendingAction] = useState<BgpAdminAction | null>(null);
+  const [tab, setTab] = useState<PeerTab>('SUMMARY');
+  const [mapNavError, setMapNavError] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionResult, setActionResult] = useState<BgpPeerAdminStateResponse | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -144,6 +166,22 @@ export function BgpPeerDetail({
           </button>
         </header>
         <div className="panel-body bgp-detail__body">
+          <nav className="bgp-detail__tabs" role="tablist" aria-label="Seções do peer BGP">
+            {TABS.map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                role="tab"
+                aria-selected={tab === value}
+                className={tab === value ? 'bgp-detail__tab is-active' : 'bgp-detail__tab'}
+                onClick={() => setTab(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+
+          <div className="bgp-detail__tabpanel" hidden={tab !== 'SUMMARY'}>
           <section className="bgp-detail__hero">
             <div>
               <span>PEER</span>
@@ -247,6 +285,43 @@ export function BgpPeerDetail({
                 </button>
               )}
             </div>
+
+            <div className="bgp-actions__nav">
+              <button type="button" onClick={() => openHostDetails(peer.deviceId)}>
+                Abrir host no inventário
+              </button>
+              <button
+                type="button"
+                disabled={!peer.interface?.id || !activeMapHasDevice}
+                title={
+                  !peer.interface?.id
+                    ? 'Sem interface correlacionada (MATCHED) para este peer'
+                    : !activeMapHasDevice
+                      ? 'O equipamento deste peer não está no mapa ativo'
+                      : 'Abrir a interface correlacionada no mapa ativo'
+                }
+                onClick={() => {
+                  if (!peer.interface?.id) return;
+                  const opened = openInterfaceInActiveMap(peer.deviceId, peer.interface.id);
+                  setMapNavError(
+                    opened ? null : 'O equipamento deste peer não está no mapa ativo.',
+                  );
+                }}
+              >
+                Abrir interface no mapa
+              </button>
+            </div>
+            {!peer.interface?.id && (
+              <p className="bgp-actions__note">
+                A interface local deste peer ainda não foi correlacionada com confiança
+                (<strong>MATCHED</strong>). Sem correlação confirmada não há como localizar o enlace.
+              </p>
+            )}
+            {mapNavError && (
+              <p className="bgp-actions__error" role="alert">
+                {mapNavError}
+              </p>
+            )}
           </section>
 
           <section className="bgp-detail__grid">
@@ -294,7 +369,9 @@ export function BgpPeerDetail({
               />
             </div>
           </section>
+          </div>
 
+          <div className="bgp-detail__tabpanel" hidden={tab !== 'TRAFFIC'}>
           <section className="bgp-detail__chart">
             <div className="chart-heading">
               <div>
@@ -404,6 +481,11 @@ export function BgpPeerDetail({
               </p>
             )}
           </section>
+          </div>
+
+          <div className="bgp-detail__tabpanel" hidden={tab !== 'ADVERTISED'}>
+            <BgpAdvertisedRoutesPanel peer={peer} />
+          </div>
         </div>
       </div>
 

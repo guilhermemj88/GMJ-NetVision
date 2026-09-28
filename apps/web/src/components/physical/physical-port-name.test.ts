@@ -101,4 +101,37 @@ describe('nome apresentado da porta física', () => {
     // a identidade persistida (`port1`) continua rastreável como porta física
     expect(view.panelLabel).toBe('port1');
   });
+
+  /**
+   * Regressão dos SKUs reais do POP: a MESMA regra (`mappedInterface.name`)
+   * vale para o S6750-H36C, para o F1A e para o S6730 — sem exceção por
+   * hostname de equipamento.
+   */
+  it('S6750-H36C, F1A e S6730 apresentam o nome CLI da interface', () => {
+    const mapped = (name: string, ifIndex: number) => ({
+      id: `if-${ifIndex}`,
+      deviceId: `device-${ifIndex}`,
+      name,
+      ifIndex,
+      alias: null,
+      operStatus: 'UP' as const,
+    });
+
+    const s6750 = physicalPortNameView(
+      { name: 'QSFP28-5', label: 'QSFP28-5', mappedInterface: mapped('100GE1/0/5', 5) },
+      { label: 'QSFP28-5', interfaceName: '100GE1/0/5', panelNumber: 4 },
+    );
+    expect(s6750.displayName).toBe('100GE1/0/5');
+    expect(s6750.panelLabel).toBe('QSFP28-5');
+    expect(s6750.interfacePrefix).toBe('100GE1/0/');
+
+    expect(
+      physicalPortNameView({ name: '100GE-49', label: '', mappedInterface: mapped('100GE0/1/49', 49) })
+        .displayName,
+    ).toBe('100GE0/1/49');
+    expect(
+      physicalPortNameView({ name: 'QSFP28-6', label: '', mappedInterface: mapped('100GE0/0/6', 6) })
+        .displayName,
+    ).toBe('100GE0/0/6');
+  });
 });
