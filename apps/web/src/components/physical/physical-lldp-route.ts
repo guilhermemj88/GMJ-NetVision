@@ -51,7 +51,7 @@ export interface LldpRoute {
   badgeX: number;
   badgeY: number;
   /** DEBUG temporário: valores usados na rota. */
-  debug?: Record<string, number>;
+  debug?: Record<string, unknown>;
 }
 
 /** Meia-largura de segurança de uma caixa de porta ao escolher o canal. */
@@ -178,6 +178,12 @@ export function routeSameRackLldp(input: LldpRouteInput): LldpRoute {
       direct: direct ? 1 : 0,
       localPorts: input.localPorts.length,
       remotePorts: input.remotePorts.length,
+      bandTop: Math.round(Math.min(remote.y, entryCorridorY)),
+      bandBottom: Math.round(Math.max(remote.y, entryCorridorY)),
+      nearRemote: input.remotePorts
+        .map((port) => ({ dx: Math.round(Math.abs(port.x - remote.x) * 10) / 10, x: Math.round(port.x), y: Math.round(port.y) }))
+        .sort((left, right) => left.dx - right.dx)
+        .slice(0, 5),
     },
   };
 }
