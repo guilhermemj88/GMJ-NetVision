@@ -8,6 +8,11 @@ import { cloneDemoMaps } from '@gmj/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useMapStore } from '@/store/map-store';
 import { updateNetworkMap } from '@/lib/api';
+import {
+  countTrafficLabelOffsets,
+  getTrafficLabelOffsets,
+  setTrafficLabelOffset,
+} from '@/lib/traffic-label-offsets';
 import { MapControls, MapVisualControls } from './map-controls';
 
 vi.mock('@/lib/api', () => ({
@@ -20,6 +25,14 @@ function findButton(container: HTMLElement, label: string): HTMLButtonElement {
   );
   if (!button) throw new Error(`Button ${label} not found`);
   return button;
+}
+
+function findButtonOptional(container: HTMLElement, label: string): HTMLButtonElement | null {
+  return (
+    [...container.querySelectorAll<HTMLButtonElement>('button')].find((item) =>
+      (item.getAttribute('aria-label') ?? item.textContent ?? '').includes(label),
+    ) ?? null
+  );
 }
 
 /**
@@ -206,9 +219,64 @@ describe('MapControls (canvas)', () => {
     const labels = [...container.querySelectorAll('button')].map((button) =>
       button.getAttribute('aria-label'),
     );
-    expect(labels).toEqual(['Diminuir zoom', 'Aumentar zoom', 'Enquadrar mapa', 'Tela cheia']);
+    expect(labels).toEqual([
+      'Ajustar labels de tráfego',
+      'Diminuir zoom',
+      'Aumentar zoom',
+      'Enquadrar mapa',
+      'Tela cheia',
+    ]);
     // O painel permanente antigo não existe mais dentro do canvas.
     expect(container.querySelector('.visual-controls')).toBeNull();
+  });
+
+  it('habilita o ajuste de labels só no modo Inline e desliga ao sair', async () => {
+    const { container } = await renderControls();
+    const toggle = findButton(container, 'Ajustar labels de tráfego');
+
+    // O mapa demo usa CARD: o arrasto por lane não existe nesse modo.
+    expect((toggle as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => {
+      useMapStore.setState({
+        map: { ...map, settings: { ...map.settings, trafficLabelMode: 'INLINE' } },
+      });
+    });
+    expect(findButton(container, 'Ajustar labels de tráfego').disabled).toBe(false);
+
+    await act(async () => {
+      findButton(container, 'Ajustar labels de tráfego').click();
+    });
+    expect(useMapStore.getState().labelAdjustMode).toBe(true);
+    expect(container.querySelector('.map-label-bar .is-active')).not.toBeNull();
+
+    await act(async () => {
+      findButton(container, 'Ajustar labels de tráfego').click();
+    });
+    expect(useMapStore.getState().labelAdjustMode).toBe(false);
+  });
+
+  it('oferece reset global quando existem labels deslocadas', async () => {
+    const { container } = await renderControls();
+    await act(async () => {
+      useMapStore.setState({
+        map: { ...map, settings: { ...map.settings, trafficLabelMode: 'INLINE' } },
+      });
+      useMapStore.getState().setLabelAdjustMode(true);
+    });
+    expect(container.querySelector('.map-label-bar')).not.toBeNull();
+    expect(findButtonOptional(container, 'Resetar labels de tráfego')).toBeNull();
+
+    await act(async () => {
+      setTrafficLabelOffset(map.id, 'link-1', 'a', { dx: 12, dy: -6 });
+    });
+    const reset = findButton(container, 'Resetar labels de tráfego');
+    expect(reset.textContent).toContain('1');
+
+    await act(async () => {
+      reset.click();
+    });
+    expect(countTrafficLabelOffsets(getTrafficLabelOffsets(map.id))).toBe(0);
   });
 
   it('não quebra ao acionar os controles', async () => {

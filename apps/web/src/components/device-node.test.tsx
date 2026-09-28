@@ -170,7 +170,7 @@ describe('DeviceNode PPP label', () => {
   });
 });
 
-describe('DeviceNode contagem de portas (anti-duplicacao)', () => {
+describe('DeviceNode sem contagem de portas no canvas', () => {
   const roots: Array<{ root: Root; container: HTMLDivElement }> = [];
 
   beforeEach(() => {
@@ -198,31 +198,31 @@ describe('DeviceNode contagem de portas (anti-duplicacao)', () => {
     return rendered.container;
   }
 
-  it('nao mostra contagem de portas nos modos de icone, mesmo com showInterfaces ligado', () => {
-    for (const displayMode of ['ICON_2D', 'ICON_3D'] as const) {
-      const container = mount({ showInterfaces: true, displayMode });
-      expect(container.textContent).not.toContain('portas');
-      expect(container.querySelector('.device-node__port-count')).toBeNull();
-      expect(container.querySelector('.device-node__ports')).toBeNull();
-      act(() => roots.pop()!.root.unmount());
-      container.remove();
+  /**
+   * A contagem de portas saiu do node (canvas operacional mais limpo). O dado
+   * continua no inspetor; aqui garantimos que nenhum modo volte a exibi-la.
+   */
+  it('nao mostra a contagem de portas no node em nenhum modo', () => {
+    for (const displayMode of ['ICON_2D', 'ICON_3D', 'CARD'] as const) {
+      for (const showInterfaces of [true, false]) {
+        const container = mount({ showInterfaces, displayMode });
+        expect(container.textContent).not.toContain('portas');
+        expect(container.querySelector('.device-node__port-count')).toBeNull();
+        expect(container.querySelector('.device-node__ports')).toBeNull();
+        act(() => roots.pop()!.root.unmount());
+        container.remove();
+      }
     }
   });
 
-  it('mostra a contagem uma unica vez, dentro do card, no modo CARD', () => {
+  it('mantem nome, IP e site no card sem a contagem de portas', () => {
     const container = mount({ showInterfaces: true, displayMode: 'CARD' });
-    const occurrences = container.textContent!.match(/3 portas/g) ?? [];
-    expect(occurrences).toHaveLength(1);
-    const counter = container.querySelector('.device-node__port-count');
-    expect(counter).not.toBeNull();
-    expect(counter!.closest('.device-node__copy')).not.toBeNull();
-    expect(counter!.getAttribute('title')).toContain('inspetor');
-  });
-
-  it('nao mostra contagem no card quando a preferencia esta desligada', () => {
-    const container = mount({ showInterfaces: false, displayMode: 'CARD' });
-    expect(container.querySelector('.device-node__port-count')).toBeNull();
-    expect(container.textContent).not.toContain('portas');
+    const copy = container.querySelector('.device-node__copy');
+    expect(copy).not.toBeNull();
+    expect(copy!.textContent).toContain('NE40-BRAS-01');
+    expect(copy!.textContent).toContain('10.0.0.1');
+    expect(copy!.textContent).toContain('Bras');
+    expect(copy!.querySelectorAll('em')).toHaveLength(1);
   });
 });
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   Background,
@@ -37,6 +37,11 @@ import { EditToolbar } from './edit-toolbar';
 import { AlarmPanel, alarmFocusTarget } from './alarm-panel';
 import { resolveEdgeHandles } from '@/lib/edge-handles';
 import {
+  getTrafficLabelOffsets,
+  subscribeTrafficLabelOffsets,
+  type TrafficLabelOffsets,
+} from '@/lib/traffic-label-offsets';
+import {
   calculateSmartAlignment,
   type AlignmentGuide,
   type AlignmentNode,
@@ -71,6 +76,17 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
   const setCatalog = useMapStore((state) => state.setCatalog);
   const applyMapRefresh = useMapStore((state) => state.applyMapRefresh);
   const editMode = useMapStore((state) => state.editMode) && !readOnly;
+  /**
+   * Labels arrastáveis: o modo liga o arrasto e os offsets vêm do localStorage
+   * do mapa ativo (camada visual, não é dado do mapa).
+   */
+  const labelAdjustMode = useMapStore((state) => state.labelAdjustMode) && !readOnly;
+  const emptyLabelOffsets = useMemo<TrafficLabelOffsets>(() => ({}), []);
+  const labelOffsets = useSyncExternalStore(
+    subscribeTrafficLabelOffsets,
+    () => getTrafficLabelOffsets(activeMapId),
+    () => emptyLabelOffsets,
+  );
   const preferences = useMapStore((state) => state.preferences);
   const moveNode = useMapStore((state) => state.moveNode);
   const selection = useMapStore((state) => state.selection);
@@ -310,6 +326,9 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
           link,
           editMode,
           readOnly,
+          labelOffsets,
+          labelMapId: activeMapId,
+          labelAdjust: labelAdjustMode,
           dimmed: focus.dimmedLinkIds.has(link.id),
           ...(sourceInterface ? { sourceInterface } : {}),
           ...(targetInterface ? { targetInterface } : {}),
@@ -331,7 +350,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         },
       }));
     });
-  }, [domainNodes, focus.dimmedLinkIds, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, preferences.showTrafficAnimation, selection, editMode, readOnly]);
+  }, [activeMapId, domainNodes, focus.dimmedLinkIds, labelAdjustMode, labelOffsets, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, preferences.showTrafficAnimation, selection, editMode, readOnly]);
 
   const [nodes, setNodes] = useNodesState<MapFlowNode>([]);
   const [edges, setEdges] = useEdgesState<TrafficFlowEdge>([]);

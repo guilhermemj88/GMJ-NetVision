@@ -17,13 +17,29 @@ import {
   type EdgeProps,
   type Position,
 } from '@xyflow/react';
+import { useCallback, useRef, useState } from 'react';
 import { PATH_OFFSET_SCALE } from '@/lib/link-curvature';
+import {
+  setTrafficLabelOffset,
+  trafficLabelOffset,
+  type TrafficLabelLane,
+  type TrafficLabelOffsets,
+} from '@/lib/traffic-label-offsets';
 import { LinkCurvatureHandle } from './link-curvature-handle';
 import { LinkHandleSideAnchor } from './link-handle-side-anchor';
 import { useLinkCurvatureDrag } from './use-link-curvature-drag';
 
 export interface TrafficEdgeData extends Record<string, unknown> {
   link: NetworkLink;
+  /**
+   * Deslocamentos **visuais** das labels (por direção/lane), já resolvidos para
+   * o mapa ativo. Não fazem parte do enlace: só reposicionam o texto.
+   */
+  labelOffsets?: TrafficLabelOffsets;
+  /** Mapa dono das preferências visuais (chave do localStorage). */
+  labelMapId?: string | null;
+  /** Modo "Ajustar labels": só nele a label aceita arrasto. */
+  labelAdjust?: boolean;
   sourceInterface?: NetworkInterface;
   targetInterface?: NetworkInterface;
   visualPath?: LinkVisualPath;
@@ -300,6 +316,9 @@ function TrafficEdgeContent({
 }: EdgeProps<TrafficFlowEdge> & { data: TrafficEdgeData }) {
   const {
     link,
+    labelOffsets,
+    labelMapId,
+    labelAdjust = false,
     visualPath,
     showTraffic,
     showUtilization,
@@ -311,6 +330,103 @@ function TrafficEdgeContent({
     labelScale,
     trafficLabelMode = 'CARD',
   } = data;
+
+  /**
+   * Arrasto da label em andamento (prévia local, ainda não persistida). Fica em
+   * unidades de fluxo para o texto não "descolar" quando o zoom muda.
+   */
+  const [labelDrag, setLabelDrag] = useState<{
+    lane: TrafficLabelLane;
+    dx: number;
+    dy: number;
+    moved: boolean;
+  } | null>(null);
+  const dragRef = useRef<{
+    lane: TrafficLabelLane;
+    pointerId: number;
+    startX: number;
+    startY: number;
+    baseX: number;
+    baseY: number;
+    zoom: number;
+    moved: boolean;
+  } | null>(null);
+
+  /** Zoom atual do React Flow, lido do viewport (sem acoplar a store). */
+  const flowZoomFrom = (target: Element | null): number => {
+    const style = target?.closest('.react-flow__viewport')?.getAttribute('style') ?? '';
+    const match = style.match(/scale\(([-0-9.]+)\)/);
+    const zoom = match ? Number(match[1]) : 1;
+    return Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  };
+
+  const beginLabelDrag = useCallback(
+    (event: React.PointerEvent<SVGTextElement>, lane: TrafficLabelLane) => {
+      if (!labelAdjust) return;
+      event.stopPropagation();
+      const offset = trafficLabelOffset(labelOffsets, link.id, lane);
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // Safari antigo: segue sem captura (o arrasto funciona enquanto o
+        // ponteiro estiver sobre o texto).
+      }
+      dragRef.current = {
+        lane,
+        pointerId: event.pointerId,
+        startX: event.clientX,
+        startY: event.clientY,
+        baseX: offset?.dx ?? 0,
+        baseY: offset?.dy ?? 0,
+        zoom: flowZoomFrom(event.currentTarget),
+        moved: false,
+      };
+      setLabelDrag({ lane, dx: offset?.dx ?? 0, dy: offset?.dy ?? 0, moved: false });
+    },
+    [labelAdjust, labelOffsets, link.id],
+  );
+
+  const moveLabelDrag = useCallback((event: React.PointerEvent<SVGTextElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    event.stopPropagation();
+    const dx = drag.baseX + (event.clientX - drag.startX) / drag.zoom;
+    const dy = drag.baseY + (event.clientY - drag.startY) / drag.zoom;
+    const moved = drag.moved || Math.abs(event.clientX - drag.startX) > 1 || Math.abs(event.clientY - drag.startY) > 1;
+    drag.moved = moved;
+    setLabelDrag({ lane: drag.lane, dx, dy, moved });
+  }, []);
+
+  const endLabelDrag = useCallback(
+    (event: React.PointerEvent<SVGTextElement>) => {
+      const drag = dragRef.current;
+      if (!drag || drag.pointerId !== event.pointerId) return;
+      event.stopPropagation();
+      dragRef.current = null;
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // sem captura ativa
+      }
+      if (drag.moved) {
+        const dx = drag.baseX + (event.clientX - drag.startX) / drag.zoom;
+        const dy = drag.baseY + (event.clientY - drag.startY) / drag.zoom;
+        setTrafficLabelOffset(labelMapId, link.id, drag.lane, { dx, dy });
+      }
+      setLabelDrag(null);
+    },
+    [labelMapId, link.id],
+  );
+
+  /** Duplo clique devolve SÓ esta lane para a posição original. */
+  const resetLabelOffset = useCallback(
+    (event: React.MouseEvent<SVGTextElement>, lane: TrafficLabelLane) => {
+      if (!labelAdjust) return;
+      event.stopPropagation();
+      setTrafficLabelOffset(labelMapId, link.id, lane, null);
+    },
+    [labelAdjust, labelMapId, link.id],
+  );
 
   const pathOffset = (data.autoOffset ?? 0) + (visualPath?.curvature ?? 0) * PATH_OFFSET_SCALE;
   const geometry = getOffsetBezierPath({
@@ -385,10 +501,24 @@ function TrafficEdgeContent({
   const inlineTB = resolveInlinePosition(link.inlineLabelPositionBToA) ?? INLINE_LABEL_T_B;
   const inlineAPoint = bezierPoint(geometry, inlineTA);
   const inlineBPoint = bezierPoint(geometry, inlineTB);
-  const inlineAX = inlineAPoint.x + normalX * inlineAOffset;
-  const inlineAY = inlineAPoint.y + normalY * inlineAOffset;
-  const inlineBX = inlineBPoint.x + normalX * inlineBOffset;
-  const inlineBY = inlineBPoint.y + normalY * inlineBOffset;
+  /** Deslocamento efetivo da lane: a prévia do arrasto vence o valor salvo. */
+  const offsetA = labelDrag?.lane === 'a' ? labelDrag : trafficLabelOffset(labelOffsets, link.id, 'a');
+  const offsetB = labelDrag?.lane === 'b' ? labelDrag : trafficLabelOffset(labelOffsets, link.id, 'b');
+  const inlineAX = inlineAPoint.x + normalX * inlineAOffset + (offsetA?.dx ?? 0);
+  const inlineAY = inlineAPoint.y + normalY * inlineAOffset + (offsetA?.dy ?? 0);
+  const inlineBX = inlineBPoint.x + normalX * inlineBOffset + (offsetB?.dx ?? 0);
+  const inlineBY = inlineBPoint.y + normalY * inlineBOffset + (offsetB?.dy ?? 0);
+  const inlineLabelClass = (lane: TrafficLabelLane) =>
+    `traffic-edge__inline-label ${classes} ${labelAdjust ? 'is-adjustable' : ''} ${
+      labelDrag?.lane === lane ? 'is-dragging' : ''
+    }`;
+  const inlineLabelState = (lane: TrafficLabelLane) => {
+    const offset = lane === 'a' ? offsetA : offsetB;
+    return {
+      'data-label-offset': offset ? `${Math.round(offset.dx)},${Math.round(offset.dy)}` : undefined,
+      'data-label-adjustable': labelAdjust ? 'true' : undefined,
+    } as const;
+  };
   const inlineTextA = displayThroughput
     ? throughputText(aToB.bps)
     : utilizationText(aToB.utilization);
@@ -460,8 +590,14 @@ function TrafficEdgeContent({
               textAnchor="middle"
               dominantBaseline="middle"
               data-flow-direction="A_TO_B"
-              className={`traffic-edge__inline-label ${classes}`}
+              {...inlineLabelState('a')}
+              className={inlineLabelClass('a')}
               style={{ fill: colorA, fontSize: 10 * (labelScale / 100) }}
+              onPointerDown={labelAdjust ? (event) => beginLabelDrag(event, 'a') : undefined}
+              onPointerMove={labelAdjust ? moveLabelDrag : undefined}
+              onPointerUp={labelAdjust ? endLabelDrag : undefined}
+              onPointerCancel={labelAdjust ? endLabelDrag : undefined}
+              onDoubleClick={labelAdjust ? (event) => resetLabelOffset(event, 'a') : undefined}
             >
               {inlineTextA}
             </text>
@@ -473,8 +609,14 @@ function TrafficEdgeContent({
               textAnchor="middle"
               dominantBaseline="middle"
               data-flow-direction="B_TO_A"
-              className={`traffic-edge__inline-label ${classes}`}
+              {...inlineLabelState('b')}
+              className={inlineLabelClass('b')}
               style={{ fill: colorB, fontSize: 10 * (labelScale / 100) }}
+              onPointerDown={labelAdjust ? (event) => beginLabelDrag(event, 'b') : undefined}
+              onPointerMove={labelAdjust ? moveLabelDrag : undefined}
+              onPointerUp={labelAdjust ? endLabelDrag : undefined}
+              onPointerCancel={labelAdjust ? endLabelDrag : undefined}
+              onDoubleClick={labelAdjust ? (event) => resetLabelOffset(event, 'b') : undefined}
             >
               {inlineTextB}
             </text>

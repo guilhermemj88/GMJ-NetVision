@@ -1,6 +1,6 @@
 'use client';
 
-import { useSyncExternalStore } from 'react';
+import { useMemo, useSyncExternalStore } from 'react';
 import type {
   LinkDisplayStyle,
   LinkMetricDisplay,
@@ -15,9 +15,16 @@ import {
   subscribeAlarmScale,
 } from '@/lib/alarm-panel-preferences';
 import { SegmentedControl } from '@gmj/ui';
-import { Focus, Maximize, Minus, Plus } from 'lucide-react';
+import { Focus, Maximize, Minus, Move, Plus, RotateCcw } from 'lucide-react';
 import { useReactFlow } from '@xyflow/react';
 import { updateNetworkMap } from '@/lib/api';
+import {
+  countTrafficLabelOffsets,
+  getTrafficLabelOffsets,
+  resetTrafficLabelOffsets,
+  subscribeTrafficLabelOffsets,
+  type TrafficLabelOffsets,
+} from '@/lib/traffic-label-offsets';
 import {
   scalesMatchPreset,
   useMapStore,
@@ -244,14 +251,68 @@ export function MapVisualControls() {
  */
 export function MapControls() {
   const flow = useReactFlow();
+  const readOnly = useMapStore((state) => state.readOnly);
+  const activeMapId = useMapStore((state) => state.activeMapId);
+  const labelAdjustMode = useMapStore((state) => state.labelAdjustMode);
+  const setLabelAdjustMode = useMapStore((state) => state.setLabelAdjustMode);
+  const trafficLabelMode = useMapStore(
+    (state) => state.map?.settings.trafficLabelMode ?? 'INLINE',
+  );
+  const emptyOffsets = useMemo<TrafficLabelOffsets>(() => ({}), []);
+  const labelOffsets = useSyncExternalStore(
+    subscribeTrafficLabelOffsets,
+    () => getTrafficLabelOffsets(activeMapId),
+    () => emptyOffsets,
+  );
+  const adjustedLabels = countTrafficLabelOffsets(labelOffsets);
+  /**
+   * O arrasto por lane só existe no modo de tráfego Inline, onde cada direção
+   * tem o próprio texto. Nos outros modos o botão fica desabilitado.
+   */
+  const canAdjustLabels = !readOnly && trafficLabelMode === 'INLINE';
 
   const fullscreen = async () => {
     if (document.fullscreenElement) await document.exitFullscreen();
     else await document.documentElement.requestFullscreen();
   };
 
+  const toggleLabelAdjust = () => setLabelAdjustMode(!labelAdjustMode);
+
   return (
-    <div className="map-zoombar" role="group" aria-label="Controles de visualização do mapa">
+    <>
+      {!readOnly ? (
+        <div className="map-label-bar" role="group" aria-label="Ajuste visual das labels de tráfego">
+          <button
+            type="button"
+            className={labelAdjustMode ? 'is-active' : ''}
+            aria-label="Ajustar labels de tráfego"
+            aria-pressed={labelAdjustMode}
+            disabled={!canAdjustLabels}
+            title={
+              canAdjustLabels
+                ? 'Arraste cada label de tráfego · duplo clique devolve a posição'
+                : 'Ajuste de labels disponível no modo de tráfego Inline'
+            }
+            onClick={toggleLabelAdjust}
+          >
+            <Move size={13} />
+            Ajustar labels
+          </button>
+          {labelAdjustMode && adjustedLabels > 0 ? (
+            <button
+              type="button"
+              aria-label="Resetar labels de tráfego"
+              title="Devolver todas as labels deste mapa para a posição original"
+              onClick={() => resetTrafficLabelOffsets(activeMapId)}
+            >
+              <RotateCcw size={12} />
+              Resetar {adjustedLabels}
+            </button>
+          ) : null}
+          {labelAdjustMode ? <small>arraste a label · duplo clique restaura uma</small> : null}
+        </div>
+      ) : null}
+      <div className="map-zoombar" role="group" aria-label="Controles de visualização do mapa">
       <button type="button" aria-label="Diminuir zoom" title="Diminuir zoom" onClick={() => flow.zoomOut()}>
         <Minus size={15} />
       </button>
@@ -269,7 +330,8 @@ export function MapControls() {
       <button type="button" aria-label="Tela cheia" title="Tela cheia" onClick={() => void fullscreen()}>
         <Maximize size={14} />
       </button>
-    </div>
+      </div>
+    </>
   );
 }
 

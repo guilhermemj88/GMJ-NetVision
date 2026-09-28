@@ -1864,16 +1864,6 @@ button {
   top: calc(var(--orb-top) + 7px);
   color: #758b96;
 }
-/*
- * Contagem de portas: uma linha discreta DENTRO do card, nunca um selo solto
- * abaixo do node (duplicava a informação do card e gerava ruído no canvas).
- * Nos modos de ícone o node não mostra contagem alguma.
- */
-.device-node__port-count {
-  color: #4f6874;
-  font: 7px var(--font-mono);
-  letter-spacing: 0.02em;
-}
 .device-tooltip {
   font-size: calc(1em * var(--node-label-scale, 1) / var(--node-scale, 1));
 }
@@ -2176,6 +2166,28 @@ button {
   stroke: rgba(3, 8, 12, 0.9);
   stroke-width: 3px;
   stroke-linejoin: round;
+}
+/*
+ * Modo "Ajustar labels": só aqui a label aceita ponteiro. O halo tracejado
+ * mostra o que pode ser arrastado; nada disso altera o enlace.
+ */
+.traffic-edge__inline-label.is-adjustable {
+  pointer-events: all;
+  cursor: grab;
+  stroke: rgba(79, 214, 238, 0.55);
+  stroke-width: 4px;
+  stroke-dasharray: 2 2;
+}
+.traffic-edge__inline-label.is-adjustable:hover {
+  stroke: rgba(125, 226, 245, 0.8);
+}
+.traffic-edge__inline-label.is-dragging,
+.traffic-edge__inline-label.is-dragging:hover {
+  cursor: grabbing;
+  stroke: rgba(3, 8, 12, 0.92);
+  stroke-dasharray: none;
+  stroke-width: 4.5px;
+  filter: drop-shadow(0 0 6px currentColor);
 }
 .traffic-edge__inline-label.is-dimmed {
   opacity: 0.25;
@@ -11022,6 +11034,58 @@ label > small {
 }
 
 /* ------------------------------------------------- controles flutuantes */
+/*
+ * Modo "Ajustar labels": mora acima do zoom, no mesmo canto, para ligar o
+ * arrasto das labels sem depender do modo de edição do mapa.
+ */
+.map-label-bar {
+  position: absolute;
+  z-index: 6;
+  right: 16px;
+  bottom: 58px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border: 1px solid #253640;
+  border-radius: 6px;
+  background: rgba(13, 21, 27, 0.92);
+  backdrop-filter: blur(8px);
+  color: #8fb0bc;
+  font: 8px var(--font-mono);
+}
+.map-label-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: #8fb0bc;
+  font: 600 9px var(--font-mono);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+.map-label-bar button:hover:not(:disabled) {
+  background: #16242c;
+  color: #cfe6ee;
+}
+.map-label-bar button.is-active {
+  border-color: #4fd6ee;
+  background: #10222b;
+  color: #dff2f8;
+}
+.map-label-bar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.map-label-bar small {
+  padding-right: 6px;
+  color: #6e8794;
+  letter-spacing: 0.02em;
+}
 .map-zoombar {
   position: absolute;
   z-index: 5;

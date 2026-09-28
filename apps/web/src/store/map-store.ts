@@ -228,6 +228,12 @@ interface MapState {
   publicMaps: NetworkMap[];
   view: WorkspaceView;
   editMode: boolean;
+  /**
+   * Modo "Ajustar labels": liga o arrasto das labels de tráfego. É só uma
+   * preferência de UI (não entra no mapa, não muda enlace nem métrica).
+   */
+  labelAdjustMode: boolean;
+  setLabelAdjustMode: (enabled: boolean) => void;
   selection: Selection;
   panel: OpenPanel;
   pendingLink: { sourceId?: string; targetId?: string } | null;
@@ -436,6 +442,7 @@ export const useMapStore = create<MapState>((set, get) => ({
   publicMaps: [],
   view: 'MAP',
   editMode: false,
+  labelAdjustMode: false,
   selection: null,
   panel: null,
   pendingLink: null,
@@ -672,7 +679,8 @@ export const useMapStore = create<MapState>((set, get) => ({
     }),
   setReadOnly: (readOnly) => set({ readOnly }),
   loadPublicMaps: (publicMaps) => set({ publicMaps }),
-  setView: (view) => set({ view, editMode: false, selection: null, panel: null }),
+  setView: (view) => set({ view, editMode: false, labelAdjustMode: false, selection: null, panel: null }),
+  setLabelAdjustMode: (labelAdjustMode) => set({ labelAdjustMode }),
   setEditMode: (editMode) => set({ editMode, panel: null }),
   setSelection: (selection) => set({ selection }),
   openInterfaceOnMap: (result, mapId) =>
