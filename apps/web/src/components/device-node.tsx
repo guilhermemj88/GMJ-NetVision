@@ -24,12 +24,6 @@ export interface DeviceNodeData extends Record<string, unknown> {
   device: Device;
   mapNode: DomainMapNode;
   editMode: boolean;
-  /**
-   * Preferência de interfaces do mapa. O node NÃO mostra mais a contagem de
-   * portas (ela saiu do canvas para reduzir ruído); o campo continua no
-   * contrato do node e as interfaces seguem no inspetor.
-   */
-  showInterfaces: boolean;
   displayMode: NodeDisplayMode;
   nodeScale: number;
   labelScale: number;

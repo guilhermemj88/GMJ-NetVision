@@ -64,7 +64,6 @@ function renderNode(
     device,
     mapNode,
     editMode: false,
-    showInterfaces: false,
     displayMode: 'ICON_2D',
     nodeScale: 100,
     labelScale: 100,
@@ -204,19 +203,17 @@ describe('DeviceNode sem contagem de portas no canvas', () => {
    */
   it('nao mostra a contagem de portas no node em nenhum modo', () => {
     for (const displayMode of ['ICON_2D', 'ICON_3D', 'CARD'] as const) {
-      for (const showInterfaces of [true, false]) {
-        const container = mount({ showInterfaces, displayMode });
-        expect(container.textContent).not.toContain('portas');
-        expect(container.querySelector('.device-node__port-count')).toBeNull();
-        expect(container.querySelector('.device-node__ports')).toBeNull();
-        act(() => roots.pop()!.root.unmount());
-        container.remove();
-      }
+      const container = mount({ displayMode });
+      expect(container.textContent).not.toContain('portas');
+      expect(container.querySelector('.device-node__port-count')).toBeNull();
+      expect(container.querySelector('.device-node__ports')).toBeNull();
+      act(() => roots.pop()!.root.unmount());
+      container.remove();
     }
   });
 
   it('mantem nome, IP e site no card sem a contagem de portas', () => {
-    const container = mount({ showInterfaces: true, displayMode: 'CARD' });
+    const container = mount({ displayMode: 'CARD' });
     const copy = container.querySelector('.device-node__copy');
     expect(copy).not.toBeNull();
     expect(copy!.textContent).toContain('NE40-BRAS-01');

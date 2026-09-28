@@ -161,7 +161,6 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
   const nodeScale = map?.settings.nodeScale;
   const labelScale = map?.settings.labelScale;
   const measuredSizes = useRef(new Map<string, { width: number; height: number }>());
-  const showInterfaces = preferences.showInterfaces;
 
   const domainNodes = useMemo<MapFlowNode[]>(() => {
     if (
@@ -187,7 +186,6 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
             device,
             mapNode,
             editMode,
-            showInterfaces,
             displayMode: nodeDisplayMode,
             nodeScale,
             labelScale,
@@ -222,7 +220,6 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     nodeDisplayMode,
     nodeScale,
     preferences.showOffline,
-    showInterfaces,
   ]);
 
   useEffect(() => {
