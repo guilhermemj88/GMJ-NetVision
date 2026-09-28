@@ -7643,6 +7643,26 @@ label > small {
     0 0 0 2px rgba(167, 139, 250, 0.9),
     0 0 10px rgba(139, 92, 246, 0.55);
 }
+/*
+ * Destaque do par e da porta selecionada nas faceplates do modo técnico.
+ *
+ * A faceplate fixa do SKU (`is-fixed-faceplate`) declara `box-shadow` com
+ * especificidade maior que `.physical-port.is-related`, o que apagava o halo
+ * nas portas da F1A. Para o destaque não depender de uma única propriedade,
+ * somamos `outline` e `filter` numa regra de especificidade superior: o
+ * resultado é o mesmo em `is-fixed-faceplate` (F1A) e `is-fixed-profile`
+ * (S6750/S6730), sem tocar no desenho do painel.
+ */
+.physical-canvas.is-technical .physical-faceplate .physical-port.is-related,
+.physical-canvas.is-technical .physical-faceplate .physical-port.is-selected {
+  z-index: 4;
+  outline: 2px solid rgba(167, 139, 250, 0.95);
+  outline-offset: 1px;
+  filter: drop-shadow(0 0 6px rgba(139, 92, 246, 0.6));
+  box-shadow:
+    0 0 0 2px rgba(167, 139, 250, 0.9),
+    0 0 10px rgba(139, 92, 246, 0.55);
+}
 .physical-image-panel__hitbox.is-related { background: rgba(167, 139, 250, 0.18); }
 .physical-faceplate {
   position: absolute;
