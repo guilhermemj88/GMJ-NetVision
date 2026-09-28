@@ -7537,16 +7537,22 @@ label > small {
 .physical-lldp-partial {
   position: absolute;
   z-index: 860;
-  padding: 1px 5px;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: 12px;
+  padding: 0;
   border: 1px dashed rgba(240, 178, 76, 0.7);
   border-radius: 3px;
-  background: rgba(24, 17, 4, 0.92);
-  color: #ffd48a;
-  font: 700 6.5px var(--font-mono);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+  background: rgba(24, 17, 4, 0.82);
   cursor: pointer;
   transition: border-color 130ms, color 130ms, box-shadow 130ms;
+}
+.physical-lldp-partial__dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #ffd48a;
 }
 .physical-lldp-partial:hover,
 .physical-lldp-partial.is-related {

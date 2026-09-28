@@ -58,6 +58,11 @@ import {
 } from './physical-lldp';
 import { mapLinkGhostsForRack, type PhysicalMapLinkGhost } from './physical-map-link';
 import { applyPhysicalLinkPrecedence } from './physical-link-layer';
+import {
+  LLDP_BADGE_HEIGHT,
+  LLDP_BADGE_WIDTH,
+  routeSameRackLldp,
+} from './physical-lldp-route';
 import { physicalPortNameView } from './physical-port-name';
 import {
   TECHNICAL_BAND_GAP,
@@ -738,6 +743,25 @@ export function PhysicalRackCanvas({
     };
   }
 
+  /**
+   * Âncoras das portas de um equipamento, para o traçado achar o canal vertical
+   * que não cruza outra porta. As portas do próprio par ficam de fora.
+   */
+  function portAnchorsOf(
+    assetId: string,
+    excludePortIds: readonly string[],
+  ): Array<{ x: number; y: number }> {
+    const asset = rack.assets.find((candidate) => candidate.id === assetId);
+    if (!asset) return [];
+    const anchors: Array<{ x: number; y: number }> = [];
+    for (const port of asset.ports) {
+      if (excludePortIds.includes(port.id)) continue;
+      const point = portAnchor(assetId, port.id);
+      if (point) anchors.push(point);
+    }
+    return anchors;
+  }
+
   const pathConnectionIds = useMemo(
     () =>
       new Set(
@@ -991,23 +1015,24 @@ export function PhysicalRackCanvas({
    * detalhe completo fica no inspetor (a um clique).
    */
   const partialMarkers = (() => {
-    const stackedPerRow = new Map<number, number>();
     return rackEvidence
       .filter((ghost) => ghost.state === 'PARTIAL')
       .map((ghost) => {
         const sideInRack = ghost.from?.rackId === rack.id ? ghost.from : ghost.to;
         const anchor = sideInRack ? portAnchor(sideInRack.assetId, sideInRack.portId) : null;
         if (!sideInRack || !anchor) return null;
-        const rowKey = Math.round(anchor.y);
-        const index = stackedPerRow.get(rowKey) ?? 0;
-        stackedPerRow.set(rowKey, index + 1);
         return {
           ghost,
           anchor,
           portId: sideInRack.portId,
           portName: sideInRack.portName,
-          left: Math.min(anchor.x + 8, laneX - 96),
-          top: anchor.y - 7 - index * 13,
+          /**
+           * Marcador mínimo no canto superior direito da própria porta: sem
+           * empilhamento diagonal, nunca descola da porta que originou o anúncio
+           * e nunca colide com o marcador da porta vizinha.
+           */
+          left: Math.round(anchor.x + 4),
+          top: Math.round(anchor.y - 11),
         };
       })
       .filter((item): item is NonNullable<typeof item> => item !== null);
@@ -1026,11 +1051,19 @@ export function PhysicalRackCanvas({
       if (!sideInRack) return null;
       const anchor = portAnchor(sideInRack.assetId, sideInRack.portId);
       if (!anchor) return null;
-      return { ghost, anchor, other, corridor: lldpCorridorX, portName: sideInRack.portName };
+      return {
+        ghost,
+        anchor,
+        other,
+        corridor: lldpCorridorX,
+        portName: sideInRack.portName,
+        localAssetId: sideInRack.assetId,
+        localPortId: sideInRack.portId,
+      };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
     .map((item) => {
-      const { ghost, anchor, other, corridor } = item;
+      const { ghost, anchor, other, corridor, localAssetId, localPortId } = item;
       const selected = ghostIsSelected(ghost);
       const related = ghostIsRelated(ghost);
       if (!other) {
@@ -1040,7 +1073,39 @@ export function PhysicalRackCanvas({
       const otherInRack = other.rackId === rack.id;
       const otherAnchor = otherInRack ? portAnchor(other.assetId, other.portId) : null;
       if (otherAnchor) {
-        // Same-rack: tronco (saída + corredor) e drop curto até a porta par.
+        /**
+         * Same-rack (variante B+): stub curto na porta local, corredor no **vão
+         * entre os chassis**, alinhamento com a porta remota e stub de entrada.
+         * Nenhum segmento horizontal corre sobre as fileiras de portas.
+         */
+        const localBox = geometry.assets.get(localAssetId);
+        const remoteBox = geometry.assets.get(other.assetId);
+        if (localBox && remoteBox) {
+          const route = routeSameRackLldp({
+            local: anchor,
+            remote: otherAnchor,
+            localBox: { top: localBox.top, height: localBox.height },
+            remoteBox: { top: remoteBox.top, height: remoteBox.height },
+            localPorts: portAnchorsOf(localAssetId, [localPortId]),
+            remotePorts: portAnchorsOf(other.assetId, [other.portId]),
+            otherChassisBoxes: [...geometry.assets.entries()]
+              .filter(([assetId]) => assetId !== localAssetId && assetId !== other.assetId)
+              .map(([, box]) => ({ top: box.top, height: box.height })),
+            riserX: corridor,
+            rackLeft: geometry.rackLeft,
+            rackRight: geometry.rackLeft + geometry.rackWidth,
+          });
+          return {
+            ...item,
+            d: route.trunk,
+            dropD: route.entry,
+            remote: null,
+            selected,
+            related,
+            badgeX: route.badgeX,
+            badgeY: route.badgeY,
+          };
+        }
         return {
           ...item,
           d: `M ${anchor.x} ${anchor.y} H ${corridor} V ${otherAnchor.y}`,
@@ -1048,6 +1113,7 @@ export function PhysicalRackCanvas({
           remote: null,
           selected,
           related,
+          badgeX: corridor - 46,
           badgeY: Math.round((anchor.y + otherAnchor.y) / 2),
         };
       }
@@ -1060,32 +1126,51 @@ export function PhysicalRackCanvas({
         remote: other,
         selected,
         related,
+        badgeX: corridor - 46,
         badgeY: anchor.y,
       };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);
 
   /**
-   * Um badge `LLDP` por relação, posicionado à **esquerda** do corredor e
-   * empilhado para não colidir nem entre badges nem com a CABLE LANE.
+   * Um badge `LLDP` por relação. Same-rack fica **no vão entre os chassis**,
+   * junto da própria relação (nunca no extremo direito do rack); cross-rack
+   * continua à esquerda do corredor lateral. Badges que caem no mesmo vão são
+   * levemente empilhados para não colidir entre si.
    */
-  const lldpBadges = ghostPaths
-    .filter((item) => item.d !== null)
-    .sort((left, right) => left.badgeY - right.badgeY)
-    .reduce<Array<{ key: string; x: number; y: number; selected: boolean; related: boolean }>>(
-      (rows, item, index) => {
-        const last = rows.length ? rows[rows.length - 1]!.y + 14 : 6;
-        rows.push({
-          key: item.ghost.adjacencyId ?? `lldp-${index}`,
-          x: item.corridor - 46,
-          y: Math.max(item.badgeY - 6, last),
-          selected: item.selected,
-          related: item.related,
-        });
-        return rows;
-      },
-      [],
-    );
+  const lldpBadges = (() => {
+    const placed: Array<{ key: string; x: number; y: number; selected: boolean; related: boolean }> = [];
+    for (const item of [...ghostPaths].sort((left, right) => left.badgeY - right.badgeY)) {
+      if (!item.d) continue;
+      const x = Math.round(item.badgeX);
+      const base = Math.max(6, Math.round(item.badgeY));
+      const collides = (y: number) =>
+        placed.some(
+          (badge) => Math.abs(badge.y - y) < LLDP_BADGE_HEIGHT && Math.abs(badge.x - x) < LLDP_BADGE_WIDTH,
+        );
+      let y = base;
+      for (let step = 1; step <= 8 && collides(y); step += 1) {
+        const above = base - step * LLDP_BADGE_HEIGHT;
+        const below = base + step * LLDP_BADGE_HEIGHT;
+        if (above >= 6 && !collides(above)) {
+          y = above;
+          break;
+        }
+        if (!collides(below)) {
+          y = below;
+          break;
+        }
+      }
+      placed.push({
+        key: item.ghost.adjacencyId ?? `lldp-${placed.length}`,
+        x,
+        y,
+        selected: item.selected,
+        related: item.related,
+      });
+    }
+    return placed.sort((left, right) => left.y - right.y);
+  })();
 
   /**
    * Marcador de destino fora deste rack (cross-rack/cross-site) para um par
@@ -1474,13 +1559,14 @@ export function PhysicalRackCanvas({
             }`}
             style={{ left, top }}
             title={`${portName} · PARTIAL — ${lldpGhostTooltip(ghost)}`}
+            aria-label={`${portName} · PARTIAL — ${lldpGhostTooltip(ghost)}`}
             onClick={(event) => {
               event.stopPropagation();
               if (onSelectLldp) onSelectLldp(ghost.adjacencyId);
               else onSelectPort(portId);
             }}
           >
-            PARTIAL
+            <span className="physical-lldp-partial__dot" aria-hidden="true" />
           </button>
         ))}
 
