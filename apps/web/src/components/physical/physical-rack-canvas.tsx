@@ -797,6 +797,17 @@ export function PhysicalRackCanvas({
       ids.add(connection.a.portId);
       ids.add(connection.b.portId);
     }
+    /**
+     * A porta selecionada também acende a ponta LLDP do par. O vínculo do ghost
+     * não passa por `PhysicalConnection` (senão já existiria cabo confirmado),
+     * então `connectionId` sozinho nunca resolveria a porta remota.
+     */
+    if (selection.kind === 'port') {
+      for (const ghost of lldpGhosts) {
+        if (ghost.from?.portId === selection.id && ghost.to) ids.add(ghost.to.portId);
+        else if (ghost.to?.portId === selection.id && ghost.from) ids.add(ghost.from.portId);
+      }
+    }
     // A porta selecionada já tem `is-selected`; `is-related` marca só a ponta par.
     if (selection.kind === 'port') ids.delete(selection.id);
     return ids;
@@ -933,7 +944,14 @@ export function PhysicalRackCanvas({
     [connections, visibleGhosts, visibleMapLinkGhosts],
   );
 
-  const ghostLaneX = laneX + 56;
+  /**
+   * Corredor do LLDP **fora da CABLE LANE** (a lane fica 24px à direita) e do
+   * fallback do mapa (mais discreto, 20px à esquerda do corredor do LLDP).
+   * Nenhuma evidência de conexão é desenhada dentro da lane.
+   */
+  const lldpCorridorX = laneX - 24;
+  const mapCorridorX = laneX - 44;
+
   const ghostPaths = linkLayer.lldp
     .map((ghost) => {
       const sideInRack = ghost.from?.rackId === rack.id ? ghost.from : ghost.to;
@@ -941,47 +959,91 @@ export function PhysicalRackCanvas({
       if (!sideInRack) return null;
       const anchor = portAnchor(sideInRack.assetId, sideInRack.portId);
       if (!anchor) return null;
-      return { ghost, anchor, other, lane: 0 };
+      return { ghost, anchor, other, corridor: lldpCorridorX, portName: sideInRack.portName };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
-    .map((item, index) => ({ ...item, lane: ghostLaneX + (index % 3) * 12 }))
     .map((item) => {
-      const { ghost, anchor, other, lane } = item;
+      const { ghost, anchor, other, corridor } = item;
       const selected = ghostIsSelected(ghost);
       if (ghost.state === 'UNRESOLVED') {
-        return { ...item, d: null as string | null, remote: null, selected, related: false };
+        // Sem par resolvido: só o ponto na porta observada, nunca um traçado.
+        return {
+          ...item,
+          d: null as string | null,
+          dropD: null as string | null,
+          remote: null,
+          selected,
+          related: false,
+          badgeY: anchor.y,
+        };
       }
       const related = ghostIsRelated(ghost);
       if (!other) {
+        // PARTIAL: stub curto ancorado na porta local, sem destino inventado.
         return {
           ...item,
-          d: `M ${anchor.x} ${anchor.y} H ${lane} V ${anchor.y - 20} H ${lane + 22}`,
+          d: `M ${anchor.x} ${anchor.y} H ${corridor}`,
+          dropD: `M ${corridor} ${anchor.y} V ${anchor.y - 16}`,
           remote: null,
           selected,
           related,
+          badgeY: anchor.y,
         };
       }
       const otherInRack = other.rackId === rack.id;
       const otherAnchor = otherInRack ? portAnchor(other.assetId, other.portId) : null;
       if (otherAnchor) {
+        // Same-rack: tronco (saída + corredor) e drop curto até a porta par.
         return {
           ...item,
-          d: `M ${anchor.x} ${anchor.y} H ${lane} V ${otherAnchor.y} H ${otherAnchor.x}`,
+          d: `M ${anchor.x} ${anchor.y} H ${corridor} V ${otherAnchor.y}`,
+          dropD: `M ${corridor} ${otherAnchor.y} H ${otherAnchor.x}`,
           remote: null,
           selected,
           related,
+          badgeY: Math.round((anchor.y + otherAnchor.y) / 2),
         };
       }
+      // Outro rack/POP: termina na borda do rack; a lane continua livre.
+      const rackRight = geometry.rackLeft + geometry.rackWidth;
       return {
         ...item,
-        d: `M ${anchor.x} ${anchor.y} H ${lane} V ${anchor.y} H ${geometry.width - 12}`,
+        d: `M ${anchor.x} ${anchor.y} H ${corridor}`,
+        dropD: `M ${corridor} ${anchor.y} H ${rackRight}`,
         remote: other,
         selected,
         related,
+        badgeY: anchor.y,
       };
     });
 
-  /** Marcadores LLDP empilhados ABAIXO dos marcadores de cabo (sem sobrepor). */
+  /**
+   * Um badge `LLDP` por relação, posicionado à **esquerda** do corredor e
+   * empilhado para não colidir nem entre badges nem com a CABLE LANE.
+   */
+  const lldpBadges = ghostPaths
+    .filter((item) => item.d !== null)
+    .sort((left, right) => left.badgeY - right.badgeY)
+    .reduce<Array<{ key: string; x: number; y: number; selected: boolean; related: boolean }>>(
+      (rows, item, index) => {
+        const last = rows.length ? rows[rows.length - 1]!.y + 14 : 6;
+        rows.push({
+          key: item.ghost.adjacencyId ?? `lldp-${index}`,
+          x: item.corridor - 46,
+          y: Math.max(item.badgeY - 6, last),
+          selected: item.selected,
+          related: item.related,
+        });
+        return rows;
+      },
+      [],
+    );
+
+  /**
+   * Marcadores LLDP empilhados ABAIXO dos marcadores de cabo (sem sobrepor).
+   * PARTIAL ancora na **porta local** que originou o anúncio; cross-rack fica
+   * junto ao corredor. Nenhum deles invade a CABLE LANE.
+   */
   const lldpMarkers = ghostPaths
     // Marcador: ponta fora deste rack (cross-rack/cross-site) ou PARTIAL sem
     // endpoint remoto resolvido. UNRESOLVED nunca ganha marcador de destino.
@@ -992,12 +1054,16 @@ export function PhysicalRackCanvas({
         (item.remote !== null || item.other === null),
     )
     .sort((left, right) => left.anchor.y - right.anchor.y)
-    .reduce<Array<{ row: (typeof ghostPaths)[number]; y: number }>>((rows, row) => {
+    .reduce<Array<{ row: (typeof ghostPaths)[number]; y: number; left: number }>>((rows, row) => {
       const lastBottom = rows.length
         ? rows[rows.length - 1]!.y + 62
         : remoteEndpoints.reduce((max, item) => Math.max(max, item.y + 62), 0);
       const top = Math.max(0, Math.min(row.anchor.y - 24, lastBottom + 26));
-      rows.push({ row, y: Math.min(top, geometry.height - 78) });
+      const left =
+        row.other === null
+          ? Math.min(row.anchor.x + 14, laneX - 160)
+          : Math.min(lldpCorridorX - 200, laneX - 160);
+      rows.push({ row, y: Math.min(top, geometry.height - 78), left });
       return rows;
     }, []);
 
@@ -1006,7 +1072,6 @@ export function PhysicalRackCanvas({
    * discreto e badge `MAPA`. As duas pontas já existem no inventário físico
    * (garantido em `physical-map-link.ts`), então nunca há meia linha.
    */
-  const mapLaneX = laneX + 30;
   const mapLinkPaths = linkLayer.map
     .map((ghost) => {
       const sideInRack = ghost.from.rackId === rack.id ? ghost.from : ghost.to;
@@ -1018,7 +1083,7 @@ export function PhysicalRackCanvas({
       return { ghost, anchor, otherAnchor, lane: 0 };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null)
-    .map((item, index) => ({ ...item, lane: mapLaneX + (index % 3) * 10 }))
+    .map((item, index) => ({ ...item, lane: mapCorridorX - (index % 3) * 10 }))
     .map((item) => ({
       ...item,
       related: Boolean(
@@ -1029,7 +1094,7 @@ export function PhysicalRackCanvas({
       ),
       d: item.otherAnchor
         ? `M ${item.anchor.x} ${item.anchor.y} H ${item.lane} V ${item.otherAnchor.y} H ${item.otherAnchor.x}`
-        : `M ${item.anchor.x} ${item.anchor.y} H ${item.lane} V ${item.anchor.y} H ${geometry.width - 12}`,
+        : `M ${item.anchor.x} ${item.anchor.y} H ${item.lane} V ${item.anchor.y} H ${geometry.rackLeft + geometry.rackWidth}`,
     }));
 
   const activeAssetIds = new Set<string>();
@@ -1101,7 +1166,7 @@ export function PhysicalRackCanvas({
                 }`}
                 d={item.d}
               />
-              <text className="physical-maplink-badge" x={item.lane + 4} y={item.anchor.y - 5}>
+              <text className="physical-maplink-badge" x={item.lane - 34} y={item.anchor.y - 5}>
                 MAPA
               </text>
             </g>
@@ -1141,9 +1206,21 @@ export function PhysicalRackCanvas({
                     }`}
                     d={item.d}
                   />
-                  <text className="physical-lldp-badge" x={item.lane + 4} y={item.anchor.y - 5}>
-                    LLDP
-                  </text>
+                  {/* Entrada curta na porta par: nunca passa por dentro da lane. */}
+                  {item.dropD ? (
+                    <path
+                      className={`physical-lldp-drop ${
+                        item.selected
+                          ? 'is-selected'
+                          : item.related
+                            ? 'is-related'
+                            : selection
+                              ? 'is-dim'
+                              : ''
+                      }`}
+                      d={item.dropD}
+                    />
+                  ) : null}
                 </>
               ) : null}
               {item.ghost.state === 'UNRESOLVED' ? (
@@ -1157,6 +1234,19 @@ export function PhysicalRackCanvas({
                 </circle>
               ) : null}
             </g>
+          ))}
+          {/* Um badge por relação, à esquerda do corredor e fora da lane. */}
+          {lldpBadges.map((badge) => (
+            <text
+              key={`lldp-badge-${badge.key}`}
+              className={`physical-lldp-badge ${
+                badge.selected ? 'is-selected' : badge.related ? 'is-related' : ''
+              }`}
+              x={badge.x}
+              y={badge.y}
+            >
+              LLDP
+            </text>
           ))}
         </svg>
 
@@ -1258,7 +1348,7 @@ export function PhysicalRackCanvas({
           </div>
         ))}
 
-        {lldpMarkers.map(({ row, y }) => (
+        {lldpMarkers.map(({ row, y, left }) => (
           <div
             key={`lldp-${row.ghost.adjacencyId}`}
             className={[
@@ -1269,7 +1359,7 @@ export function PhysicalRackCanvas({
             ]
               .filter(Boolean)
               .join(' ')}
-            style={{ left: laneX + 92, top: y }}
+            style={{ left, top: y }}
             role="button"
             tabIndex={0}
             title={lldpGhostTooltip(row.ghost)}
@@ -1289,7 +1379,7 @@ export function PhysicalRackCanvas({
                 ? row.ghost.external
                   ? row.remote.siteName
                   : row.remote.rackName
-                : 'Destino físico não mapeado'}
+                : `${row.portName} · destino não mapeado`}
             </strong>
             {row.remote ? (
               <>

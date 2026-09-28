@@ -744,8 +744,43 @@ describe('PhysicalRackCanvas · sugestões LLDP', () => {
     const html = render([lldpGhost({ state: 'PARTIAL', to: null, confirmable: false })]);
 
     expect(html).toContain('physical-lldp-ghost');
-    expect(html).toContain('Destino físico não mapeado');
+    // O chip fica ancorado na porta local e diz de qual porta veio o anúncio.
+    expect(html).toContain('GE1 · destino não mapeado');
+    expect(html).toContain('A interface remota ainda não está vinculada a uma PhysicalPort.');
     expect(html).not.toContain('Ir para a ponta');
+  });
+
+  it('traçado LLDP same-rack fica antes da CABLE LANE (tronco + drop curtos)', () => {
+    const html = render([lldpGhost()]);
+    const laneLeft = 938;
+
+    // Tronco (saída + corredor) e drop (entrada na porta par), nunca na lane.
+    expect(html).toContain('physical-lldp-drop');
+    const paths = [...html.matchAll(/class="physical-lldp-(?:ghost|drop)[^"]*" d="([^"]+)"/g)].map(
+      (match) => match[1]!,
+    );
+    expect(paths).toHaveLength(2);
+
+    const xs: number[] = [];
+    for (const d of paths) {
+      for (const token of d.match(/[MHVL][^MHVL]*/g) ?? []) {
+        const numbers = (token.slice(1).match(/-?[0-9.]+/g) ?? []).map(Number);
+        if (token[0] === 'M' || token[0] === 'L' || token[0] === 'H') xs.push(numbers[0]!);
+      }
+    }
+    expect(Math.max(...xs)).toBeLessThan(laneLeft);
+  });
+
+  it('badge LLDP fica à esquerda do corredor, fora da CABLE LANE', () => {
+    const html = render([lldpGhost()]);
+    const badges = [...html.matchAll(/class="physical-lldp-badge[^"]*" x="([0-9.]+)"/g)].map(
+      (match) => Number(match[1]),
+    );
+
+    // Um badge por relação e sempre antes da lane.
+    expect(badges).toHaveLength(1);
+    expect(badges[0]!).toBeLessThan(938);
+    expect(badges[0]!).toBeLessThan(924);
   });
 
   it('UNRESOLVED não cria caminho entre assets (só marca a porta observada)', () => {

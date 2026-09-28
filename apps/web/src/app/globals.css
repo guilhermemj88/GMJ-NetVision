@@ -7500,12 +7500,31 @@ label > small {
   pointer-events: stroke;
   cursor: pointer;
 }
+/* Entrada curta na porta par (tronco + drop): nunca entra na CABLE LANE. */
+.physical-lldp-drop {
+  fill: none;
+  stroke: #8b7bd8;
+  stroke-width: 1;
+  stroke-dasharray: 2 4;
+  stroke-linejoin: round;
+  opacity: 0.45;
+  transition: opacity 150ms, stroke 150ms, stroke-width 150ms;
+}
+.physical-lldp-drop.is-related { opacity: 0.7; }
+.physical-lldp-drop.is-dim { opacity: 0.18; }
+.physical-lldp-drop.is-selected {
+  opacity: 1;
+  stroke: #b9a7ff;
+  stroke-width: 1.4;
+}
 .physical-lldp-badge {
   fill: #b9a7ff;
   font: 7px var(--font-mono);
   letter-spacing: 0.14em;
   opacity: 0.85;
 }
+.physical-lldp-badge.is-related { opacity: 1; }
+.physical-lldp-badge.is-selected { fill: #d7caff; opacity: 1; }
 .physical-lldp-dot {
   fill: rgba(139, 92, 246, 0.3);
   stroke: #b9a7ff;

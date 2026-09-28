@@ -141,6 +141,50 @@ describe('PhysicalRackCanvas · clique no ghost LLDP', () => {
     expect(container.querySelectorAll('.physical-cable').length).toBe(1);
   });
 
+  it('selecionar a porta do par LLDP acende também a porta remota', () => {
+    mount({ kind: 'port', id: 'port-a2' });
+
+    const local = container.querySelector('[data-port-id="port-a2"]')!;
+    const remote = container.querySelector('[data-port-id="port-b2"]')!;
+    // A porta clicada fica selecionada e a par (sem cabo) fica relacionada.
+    expect(local.className).toContain('is-selected');
+    expect(remote.className).toContain('is-related');
+    expect(container.querySelector('.physical-lldp-ghost.is-related')).not.toBeNull();
+  });
+
+  it('o destaque do par LLDP não mexe no cabo confirmado do outro par', () => {
+    mount({ kind: 'port', id: 'port-a2' });
+
+    expect(container.querySelector('[data-port-id="port-a"]')!.className).not.toContain(
+      'is-related',
+    );
+    expect(container.querySelectorAll('.physical-cable').length).toBe(1);
+  });
+
+  it('traçado same-rack e badge ficam fora da CABLE LANE', () => {
+    mount({ kind: 'lldp', id: 'lldp-1' });
+
+    const lane = container.querySelector('.physical-cable-lane') as HTMLElement | null;
+    const laneLeft = lane ? parseFloat(lane.style.left) : 938;
+    const paths = [...container.querySelectorAll('.physical-lldp-ghost, .physical-lldp-drop')].map(
+      (path) => path.getAttribute('d') ?? '',
+    );
+    expect(paths).toHaveLength(2);
+
+    const xs: number[] = [];
+    for (const d of paths) {
+      for (const token of d.match(/[MHVL][^MHVL]*/g) ?? []) {
+        const numbers = (token.slice(1).match(/-?[0-9.]+/g) ?? []).map(Number);
+        if (token[0] === 'M' || token[0] === 'L' || token[0] === 'H') xs.push(numbers[0]!);
+      }
+    }
+    expect(Math.max(...xs)).toBeLessThan(laneLeft);
+
+    const badge = container.querySelector('.physical-lldp-badge') as SVGTextElement | null;
+    expect(badge).not.toBeNull();
+    expect(Number(badge!.getAttribute('x'))).toBeLessThan(laneLeft);
+  });
+
   it('READY real (S6750 ↔ 6730) no mesmo rack aparece no modo "todas" com o nome CLI', () => {
     const withPorts = (assetId: string, portId: string, cage: string, interfaceName: string) =>
       physicalAsset({
