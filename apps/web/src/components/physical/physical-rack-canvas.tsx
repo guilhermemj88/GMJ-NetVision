@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import type {
   PhysicalAsset,
   PhysicalCatalogEntry,
@@ -891,6 +891,16 @@ export function PhysicalRackCanvas({
   }, [relatedPortIds, selection]);
   const selectionAssetId = selection?.kind === 'asset' ? selection.id : null;
 
+  /** `Esc` limpa a seleção: o rack volta ao estado limpo (foco par a par). */
+  useEffect(() => {
+    if (!selection) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClear();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [onClear, selection]);
+
   const ghostIsSelected = (ghost: PhysicalLldpGhost) =>
     Boolean(selectedLldpId && ghost.adjacencyIds.includes(selectedLldpId));
   const ghostIsRelated = (ghost: PhysicalLldpGhost) =>
@@ -952,7 +962,64 @@ export function PhysicalRackCanvas({
   const lldpCorridorX = laneX - 24;
   const mapCorridorX = laneX - 44;
 
+  /**
+   * Evidência do rack que **não** é o traçado de um par READY: as observações
+   * sem par resolvido (UNRESOLVED) e os anúncios de um lado só (PARTIAL)
+   * continuam visíveis mesmo sem seleção, de forma discreta.
+   *
+   * Sai do inventário **do rack** (nunca do total global) e respeita a
+   * precedência: par com cabo confirmado não deixa evidência LLDP para trás.
+   */
+  const rackEvidence = useMemo(
+    () => applyPhysicalLinkPrecedence(connections, ghostsForRack(lldpGhosts, rack.id), []).lldp,
+    [connections, lldpGhosts, rack.id],
+  );
+
+  /** Ponto âmbar na porta observada: evidência bruta, nunca um cabo. */
+  const unresolvedDots = rackEvidence
+    .filter((ghost) => ghost.state === 'UNRESOLVED')
+    .map((ghost) => {
+      const sideInRack = ghost.from?.rackId === rack.id ? ghost.from : ghost.to;
+      const anchor = sideInRack ? portAnchor(sideInRack.assetId, sideInRack.portId) : null;
+      return anchor ? { ghost, anchor } : null;
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
+
+  /**
+   * Marcador compacto do PARTIAL, ancorado na porta local que originou o
+   * anúncio. Sem caixa de texto sobre o equipamento e sem segunda ponta: o
+   * detalhe completo fica no inspetor (a um clique).
+   */
+  const partialMarkers = (() => {
+    const stackedPerRow = new Map<number, number>();
+    return rackEvidence
+      .filter((ghost) => ghost.state === 'PARTIAL')
+      .map((ghost) => {
+        const sideInRack = ghost.from?.rackId === rack.id ? ghost.from : ghost.to;
+        const anchor = sideInRack ? portAnchor(sideInRack.assetId, sideInRack.portId) : null;
+        if (!sideInRack || !anchor) return null;
+        const rowKey = Math.round(anchor.y);
+        const index = stackedPerRow.get(rowKey) ?? 0;
+        stackedPerRow.set(rowKey, index + 1);
+        return {
+          ghost,
+          anchor,
+          portId: sideInRack.portId,
+          portName: sideInRack.portName,
+          left: Math.min(anchor.x + 8, laneX - 96),
+          top: anchor.y - 7 - index * 13,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+  })();
+
+  /**
+   * Somente pares READY ganham traçado. O modo (`related`) já entrega um único
+   * par quando há seleção e nenhum quando o rack está limpo; `all` continua
+   * disponível como modo opcional.
+   */
   const ghostPaths = linkLayer.lldp
+    .filter((ghost) => ghost.state === 'READY')
     .map((ghost) => {
       const sideInRack = ghost.from?.rackId === rack.id ? ghost.from : ghost.to;
       const other = ghost.from?.rackId === rack.id ? ghost.to : ghost.from;
@@ -965,30 +1032,10 @@ export function PhysicalRackCanvas({
     .map((item) => {
       const { ghost, anchor, other, corridor } = item;
       const selected = ghostIsSelected(ghost);
-      if (ghost.state === 'UNRESOLVED') {
-        // Sem par resolvido: só o ponto na porta observada, nunca um traçado.
-        return {
-          ...item,
-          d: null as string | null,
-          dropD: null as string | null,
-          remote: null,
-          selected,
-          related: false,
-          badgeY: anchor.y,
-        };
-      }
       const related = ghostIsRelated(ghost);
       if (!other) {
-        // PARTIAL: stub curto ancorado na porta local, sem destino inventado.
-        return {
-          ...item,
-          d: `M ${anchor.x} ${anchor.y} H ${corridor}`,
-          dropD: `M ${corridor} ${anchor.y} V ${anchor.y - 16}`,
-          remote: null,
-          selected,
-          related,
-          badgeY: anchor.y,
-        };
+        // READY sem par resolvido não existe por definição; nada é desenhado.
+        return null;
       }
       const otherInRack = other.rackId === rack.id;
       const otherAnchor = otherInRack ? portAnchor(other.assetId, other.portId) : null;
@@ -1015,7 +1062,8 @@ export function PhysicalRackCanvas({
         related,
         badgeY: anchor.y,
       };
-    });
+    })
+    .filter((item): item is NonNullable<typeof item> => item !== null);
 
   /**
    * Um badge `LLDP` por relação, posicionado à **esquerda** do corredor e
@@ -1040,29 +1088,20 @@ export function PhysicalRackCanvas({
     );
 
   /**
-   * Marcadores LLDP empilhados ABAIXO dos marcadores de cabo (sem sobrepor).
-   * PARTIAL ancora na **porta local** que originou o anúncio; cross-rack fica
-   * junto ao corredor. Nenhum deles invade a CABLE LANE.
+   * Marcador de destino fora deste rack (cross-rack/cross-site) para um par
+   * READY: empilhado junto ao corredor, com o "Ir para a ponta". O PARTIAL não
+   * usa mais este marcador — ele tem o chip compacto ancorado na porta local.
+   * Nenhum deles invade a CABLE LANE.
    */
   const lldpMarkers = ghostPaths
-    // Marcador: ponta fora deste rack (cross-rack/cross-site) ou PARTIAL sem
-    // endpoint remoto resolvido. UNRESOLVED nunca ganha marcador de destino.
-    .filter(
-      (item) =>
-        item.d !== null &&
-        item.ghost.state !== 'UNRESOLVED' &&
-        (item.remote !== null || item.other === null),
-    )
+    .filter((item) => item.remote !== null)
     .sort((left, right) => left.anchor.y - right.anchor.y)
     .reduce<Array<{ row: (typeof ghostPaths)[number]; y: number; left: number }>>((rows, row) => {
       const lastBottom = rows.length
         ? rows[rows.length - 1]!.y + 62
         : remoteEndpoints.reduce((max, item) => Math.max(max, item.y + 62), 0);
       const top = Math.max(0, Math.min(row.anchor.y - 24, lastBottom + 26));
-      const left =
-        row.other === null
-          ? Math.min(row.anchor.x + 14, laneX - 160)
-          : Math.min(lldpCorridorX - 200, laneX - 160);
+      const left = Math.min(lldpCorridorX - 200, laneX - 160);
       rows.push({ row, y: Math.min(top, geometry.height - 78), left });
       return rows;
     }, []);
@@ -1223,17 +1262,19 @@ export function PhysicalRackCanvas({
                   ) : null}
                 </>
               ) : null}
-              {item.ghost.state === 'UNRESOLVED' ? (
-                <circle
-                  className="physical-lldp-dot"
-                  cx={item.anchor.x}
-                  cy={item.anchor.y}
-                  r={4}
-                >
-                  <title>{lldpGhostTooltip(item.ghost)}</title>
-                </circle>
-              ) : null}
             </g>
+          ))}
+          {/* Evidência bruta: ponto na porta observada, nunca um traçado. */}
+          {unresolvedDots.map((dot) => (
+            <circle
+              key={`lldp-dot-${dot.ghost.key}`}
+              className="physical-lldp-dot"
+              cx={dot.anchor.x}
+              cy={dot.anchor.y}
+              r={4}
+            >
+              <title>{lldpGhostTooltip(dot.ghost)}</title>
+            </circle>
           ))}
           {/* Um badge por relação, à esquerda do corredor e fora da lane. */}
           {lldpBadges.map((badge) => (
@@ -1402,6 +1443,30 @@ export function PhysicalRackCanvas({
               </button>
             ) : null}
           </div>
+        ))}
+
+        {/*
+          PARTIAL: marcador compacto ancorado na porta local. Sem caixa de
+          texto sobre o equipamento e sem segunda ponta — o detalhe completo
+          fica no inspetor ao clicar.
+        */}
+        {partialMarkers.map(({ ghost, portId, portName, left, top }) => (
+          <button
+            key={`lldp-partial-${ghost.key}`}
+            type="button"
+            className={`physical-lldp-partial ${
+              ghostIsSelected(ghost) ? 'is-selected' : ghostIsRelated(ghost) ? 'is-related' : ''
+            }`}
+            style={{ left, top }}
+            title={`${portName} · PARTIAL — ${lldpGhostTooltip(ghost)}`}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (onSelectLldp) onSelectLldp(ghost.adjacencyId);
+              else onSelectPort(portId);
+            }}
+          >
+            PARTIAL
+          </button>
         ))}
 
         {rack.assets.map((asset) => {

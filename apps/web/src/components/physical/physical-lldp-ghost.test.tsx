@@ -72,6 +72,7 @@ describe('PhysicalRackCanvas · clique no ghost LLDP', () => {
   let root: Root;
   let onSelectLldp: ReturnType<typeof vi.fn>;
   let onSelectConnection: ReturnType<typeof vi.fn>;
+  let onClear: ReturnType<typeof vi.fn>;
 
   function mount(selection: PhysicalSelection = null) {
     act(() => {
@@ -88,7 +89,7 @@ describe('PhysicalRackCanvas · clique no ghost LLDP', () => {
           onSelectPort={vi.fn()}
           onSelectConnection={onSelectConnection}
           onSelectLldp={onSelectLldp}
-          onClear={vi.fn()}
+          onClear={onClear}
         />,
       );
     });
@@ -108,6 +109,7 @@ describe('PhysicalRackCanvas · clique no ghost LLDP', () => {
     root = createRoot(container);
     onSelectLldp = vi.fn();
     onSelectConnection = vi.fn();
+    onClear = vi.fn();
     mount();
   });
 
@@ -183,6 +185,17 @@ describe('PhysicalRackCanvas · clique no ghost LLDP', () => {
     const badge = container.querySelector('.physical-lldp-badge') as SVGTextElement | null;
     expect(badge).not.toBeNull();
     expect(Number(badge!.getAttribute('x'))).toBeLessThan(laneLeft);
+  });
+
+  it('Esc limpa a seleção e o rack volta ao estado limpo', () => {
+    mount({ kind: 'port', id: 'port-a2' });
+    expect(container.querySelector('.physical-lldp-ghost')).not.toBeNull();
+
+    act(() => {
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    });
+
+    expect(onClear).toHaveBeenCalled();
   });
 
   it('READY real (S6750 ↔ 6730) no mesmo rack aparece no modo "todas" com o nome CLI', () => {

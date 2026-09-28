@@ -279,6 +279,10 @@ describe('PhysicalWorkspace · fluxo LLDP', () => {
   it('seleciona o ghost, confirma com o medium escolhido e o cabo substitui a sugestão', async () => {
     api.confirmPhysicalLldp.mockResolvedValue({ id: 'connection-new' });
 
+    // Padrão limpo: a relação só aparece com a porta (ou o ghost) selecionado.
+    expect(container.querySelector('.physical-lldp-ghost')).toBeNull();
+    click('.physical-port[data-port-id="port-a"]');
+    await flush(2);
     expect(container.querySelector('.physical-lldp-ghost')).not.toBeNull();
     click('.physical-lldp-hit');
     await flush(2);
@@ -313,6 +317,8 @@ describe('PhysicalWorkspace · fluxo LLDP', () => {
     api.confirmPhysicalLldp.mockRejectedValue(new Error('Uma das portas já está ocupada'));
     api.getPhysicalInventory.mockResolvedValue(withSuggestion);
 
+    click('.physical-port[data-port-id="port-a"]');
+    await flush(2);
     click('.physical-lldp-hit');
     await flush(2);
     const confirm = [...container.querySelectorAll('button')].find((button) =>
@@ -325,6 +331,18 @@ describe('PhysicalWorkspace · fluxo LLDP', () => {
 
     expect(container.textContent).toContain('Uma das portas já está ocupada');
     expect(container.querySelector('.physical-lldp-ghost')).not.toBeNull();
+  });
+
+  it('resume o rack no cabeçalho com READY, PARTIAL e unresolved (contagem do rack)', () => {
+    const fact = (label: string) =>
+      [...container.querySelectorAll('.nv-fact')]
+        .find((item) => item.textContent?.includes(label))
+        ?.textContent?.replace(/\s+/g, '') ?? '';
+
+    // O fixture tem uma sugestão READY no rack; nada de total global.
+    expect(fact('READY')).toBe('1READY');
+    expect(fact('PARTIAL')).toBe('0PARTIAL');
+    expect(fact('unresolved')).toBe('0unresolved');
   });
 });
 
@@ -464,7 +482,15 @@ describe('PhysicalWorkspace · fallback do mapa', () => {
     vi.clearAllMocks();
   });
 
-  it('desenha o enlace do mapa como fallback discreto, sem virar cabo', () => {
+  it('desenha o enlace do mapa como fallback discreto, sem virar cabo', async () => {
+    // Padrão limpo: o fallback aparece ao focar uma das pontas.
+    expect(container.querySelectorAll('.physical-maplink-ghost')).toHaveLength(0);
+    const endpoint = container.querySelector('.physical-port[data-port-id="port-map-a"]');
+    expect(endpoint).not.toBeNull();
+    act(() => {
+      endpoint!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+    await flush(2);
     expect(container.querySelectorAll('.physical-maplink-ghost')).toHaveLength(1);
     expect(container.querySelectorAll('.physical-cable')).toHaveLength(0);
     expect(container.querySelector('.physical-lldp-ghost')).toBeNull();

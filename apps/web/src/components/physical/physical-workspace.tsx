@@ -7,6 +7,8 @@ import { Button, MetaFact, ModuleHeader } from '@gmj/ui';
 import {
   Cable,
   CirclePlus,
+  CircleDashed,
+  CircleDot,
   Eye,
   EyeOff,
   PanelRight,
@@ -48,7 +50,8 @@ import { PORT_STATE_LABELS } from './physical-catalog';
 import { PhysicalInspector } from './physical-inspector';
 import { PhysicalRackCanvas } from './physical-rack-canvas';
 import { PhysicalVisualToggle } from './physical-visual-toggle';
-import { buildPhysicalLldpGhosts } from './physical-lldp';
+import { buildPhysicalLldpGhosts, ghostsForRack } from './physical-lldp';
+import { applyPhysicalLinkPrecedence } from './physical-link-layer';
 import { buildPhysicalMapLinkGhosts, type PhysicalMapLinkSource } from './physical-map-link';
 import { physicalPortNameView } from './physical-port-name';
 import type { PhysicalConnectionMode, PhysicalSelection, PhysicalVisualMode } from './physical-types';
@@ -104,10 +107,14 @@ export function PhysicalWorkspace() {
   const [selection, setSelection] = useState<PhysicalSelection>(null);
   const [mode, setMode] = useState<PhysicalConnectionMode>('selected');
   /**
-   * Sugestões LLDP: camada separada dos cabos. `related` acompanha a seleção,
-   * `all` mostra todas e `hidden` desliga a evidência sem afetar os cabos.
+   * Sugestões LLDP: camada separada dos cabos.
+   *
+   * `related` é o padrão (foco par a par): sem seleção o rack fica limpo, com
+   * apenas a evidência discreta; com uma porta/relação selecionada aparece só
+   * aquele par. `all` continua como modo opcional e `hidden` desliga a
+   * evidência sem afetar os cabos.
    */
-  const [lldpMode, setLldpMode] = useState<'hidden' | 'related' | 'all'>('all');
+  const [lldpMode, setLldpMode] = useState<'hidden' | 'related' | 'all'>('related');
   // A visão técnica é a principal do módulo físico (o modo real continua
   // disponível no seletor como alternativa/fallback).
   const [visualMode, setVisualMode] = useState<PhysicalVisualMode>('TECHNICAL');
@@ -142,6 +149,22 @@ export function PhysicalWorkspace() {
     () => (inventory ? buildPhysicalMapLinkGhosts(inventory, mapLinks) : []),
     [inventory, mapLinks],
   );
+
+  /**
+   * Resumo do **rack atual** (nunca o total global): quantos pares READY,
+   * quantos anúncios PARTIAL e quantas observações sem par resolvido. Respeita
+   * a precedência — par com cabo confirmado não entra como sugestão LLDP.
+   */
+  const rackLldpCounts = useMemo(() => {
+    if (!inventory || !rack) return { ready: 0, partial: 0, unresolved: 0 };
+    const inRack = ghostsForRack(lldpGhosts, rack.id);
+    const layer = applyPhysicalLinkPrecedence(inventory.connections, inRack, []).lldp;
+    return {
+      ready: layer.filter((ghost) => ghost.state === 'READY').length,
+      partial: layer.filter((ghost) => ghost.state === 'PARTIAL').length,
+      unresolved: layer.filter((ghost) => ghost.state === 'UNRESOLVED').length,
+    };
+  }, [inventory, lldpGhosts, rack]);
 
   useEffect(() => {
     if (!site) return;
@@ -402,13 +425,29 @@ export function PhysicalWorkspace() {
             <MetaFact icon={<Cable size={12} />} value={rackConnections} label="cabos" />
             <MetaFact
               icon={<Radio size={12} />}
-              value={inventory.lldpSuggestions.length}
-              label="LLDP"
-              tone={inventory.lldpSuggestions.length ? 'info' : 'neutral'}
+              value={rackLldpCounts.ready}
+              label="READY"
+              tone={rackLldpCounts.ready ? 'up' : 'neutral'}
+              title="Sugestões LLDP com as duas pontas no inventário físico neste rack"
+            />
+            <MetaFact
+              icon={<CircleDot size={12} />}
+              value={rackLldpCounts.partial}
+              label="PARTIAL"
+              tone={rackLldpCounts.partial ? 'warning' : 'neutral'}
+              title="Anúncios LLDP com apenas uma ponta no inventário físico neste rack"
+            />
+            <MetaFact
+              icon={<CircleDashed size={12} />}
+              value={rackLldpCounts.unresolved}
+              label="unresolved"
+              tone="unknown"
               title={
                 inventory.lldpObservedAt
-                  ? `Último LLDP: ${new Date(inventory.lldpObservedAt).toLocaleString('pt-BR')}`
-                  : 'Nenhum LLDP coletado'
+                  ? `Observações LLDP sem par resolvido neste rack · último LLDP: ${new Date(
+                      inventory.lldpObservedAt,
+                    ).toLocaleString('pt-BR')}`
+                  : 'Observações LLDP sem par resolvido neste rack'
               }
             />
           </>
@@ -422,8 +461,8 @@ export function PhysicalWorkspace() {
             </div>
             <div className="physical-mode" aria-label="Exibição das ligações detectadas (LLDP e fallback do mapa)">
               <button type="button" title="Ocultar sugestões LLDP e o fallback do mapa" className={lldpMode === 'hidden' ? 'is-active' : ''} onClick={() => setLldpMode('hidden')}><EyeOff size={13} /> LLDP off</button>
-              <button type="button" title="Mostrar só LLDP e fallback relacionados à seleção" className={lldpMode === 'related' ? 'is-active' : ''} onClick={() => setLldpMode('related')}><PanelRight size={13} /> LLDP rel.</button>
-              <button type="button" title="Mostrar todas as sugestões LLDP e o fallback do mapa neste rack" className={lldpMode === 'all' ? 'is-active' : ''} onClick={() => setLldpMode('all')}><Radio size={13} /> LLDP todas</button>
+              <button type="button" title="Padrão: rack limpo sem seleção; ao clicar, aparece só o par escolhido" className={lldpMode === 'related' ? 'is-active' : ''} onClick={() => setLldpMode('related')}><PanelRight size={13} /> LLDP rel.</button>
+              <button type="button" title="Modo opcional: mostrar todas as relações READY e o fallback do mapa neste rack" className={lldpMode === 'all' ? 'is-active' : ''} onClick={() => setLldpMode('all')}><Radio size={13} /> LLDP todas</button>
             </div>
             <PhysicalVisualToggle mode={visualMode} onChange={setVisualMode} />
             {canEdit && rack ? <Button compact variant="primary" onClick={() => setDialog('asset')}><CirclePlus size={14} /> Equipamento</Button> : null}

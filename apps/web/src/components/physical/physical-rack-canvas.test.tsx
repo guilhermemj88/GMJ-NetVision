@@ -740,14 +740,37 @@ describe('PhysicalRackCanvas · sugestões LLDP', () => {
     expect(html).not.toContain('physical-cable physical-cable--');
   });
 
-  it('PARTIAL mostra apenas o lado conhecido e nunca inventa endpoint remoto', () => {
+  it('PARTIAL usa marcador compacto ancorado na porta local e não inventa endpoint', () => {
     const html = render([lldpGhost({ state: 'PARTIAL', to: null, confirmable: false })]);
 
-    expect(html).toContain('physical-lldp-ghost');
-    // O chip fica ancorado na porta local e diz de qual porta veio o anúncio.
-    expect(html).toContain('GE1 · destino não mapeado');
-    expect(html).toContain('A interface remota ainda não está vinculada a uma PhysicalPort.');
+    // Sem traçado e sem caixa de texto sobre o equipamento: só o marcador.
+    expect(html).not.toContain('physical-lldp-ghost');
+    expect(html).toContain('physical-lldp-partial');
+    expect(html).toContain('>PARTIAL</button>');
+    // O título do marcador diz qual porta local originou o anúncio.
+    expect(html).toContain('GE1 · PARTIAL');
+    expect(html).not.toContain('A interface remota ainda não está vinculada');
     expect(html).not.toContain('Ir para a ponta');
+  });
+
+  it('estado limpo (sem seleção) não desenha par READY, badge nem MAPA', () => {
+    const html = render([lldpGhost()], { lldpMode: 'related' });
+
+    expect(html).not.toContain('physical-lldp-ghost');
+    expect(html).not.toContain('physical-lldp-badge');
+    expect(html).not.toContain('physical-maplink-ghost');
+  });
+
+  it('com a porta do par selecionada aparece só aquele LLDP, com as duas pontas', () => {
+    const html = render([lldpGhost()], {
+      lldpMode: 'related',
+      selection: { kind: 'port', id: 'port-a' },
+    });
+
+    expect(html.match(/physical-lldp-ghost/g)).toHaveLength(1);
+    expect(html.match(/physical-lldp-badge/g)).toHaveLength(1);
+    expect(html).toContain('data-port-id="port-b"');
+    expect(html).toContain('is-related');
   });
 
   it('traçado LLDP same-rack fica antes da CABLE LANE (tronco + drop curtos)', () => {

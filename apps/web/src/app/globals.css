@@ -7530,6 +7530,35 @@ label > small {
   stroke: #b9a7ff;
   stroke-width: 1;
 }
+/*
+ * PARTIAL: marcador compacto ancorado na porta local. Substitui a caixa de
+ * texto que ficava sobre o equipamento; o detalhe completo vive no inspetor.
+ */
+.physical-lldp-partial {
+  position: absolute;
+  z-index: 860;
+  padding: 1px 5px;
+  border: 1px dashed rgba(240, 178, 76, 0.7);
+  border-radius: 3px;
+  background: rgba(24, 17, 4, 0.92);
+  color: #ffd48a;
+  font: 700 6.5px var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 130ms, color 130ms, box-shadow 130ms;
+}
+.physical-lldp-partial:hover,
+.physical-lldp-partial.is-related {
+  border-color: #ffd48a;
+  box-shadow: 0 0 6px rgba(240, 178, 76, 0.35);
+}
+.physical-lldp-partial.is-selected {
+  border-style: solid;
+  border-color: #ffe1a8;
+  color: #fff3d6;
+  box-shadow: 0 0 8px rgba(240, 178, 76, 0.5);
+}
 .physical-lldp-endpoint {
   position: absolute;
   z-index: 6;
