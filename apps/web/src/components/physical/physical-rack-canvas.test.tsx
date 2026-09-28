@@ -709,10 +709,11 @@ describe('PhysicalRackCanvas · sugestões LLDP', () => {
     lldpMode?: 'hidden' | 'related' | 'all';
     selection?: PhysicalSelection;
     connections?: typeof connection[];
+    rack?: typeof rack;
   } = {}) {
     return renderToStaticMarkup(
       <PhysicalRackCanvas
-        rack={rack}
+        rack={options.rack ?? rack}
         connections={options.connections ?? []}
         lldpGhosts={ghosts}
         lldpMode={options.lldpMode ?? 'all'}
@@ -728,6 +729,42 @@ describe('PhysicalRackCanvas · sugestões LLDP', () => {
       />,
     );
   }
+
+  /** Classe do `<article>` de um equipamento do rack desenhado. */
+  function faceplateClass(html: string, assetId: string): string {
+    return html.match(new RegExp(`data-asset-id="${assetId}"[^>]*class="([^"]+)"`))?.[1] ?? '';
+  }
+
+  /**
+   * Rack com um terceiro equipamento: só ele deve escurecer quando a relação
+   * em foco é o par entre `asset-a` e `asset-b`.
+   */
+  const rackWithThirdAsset = physicalRack({
+    assets: [
+      physicalAsset({
+        id: 'asset-a',
+        name: 'SW-01',
+        startU: 10,
+        heightU: 1,
+        ports: [physicalPort({ id: 'port-a', assetId: 'asset-a', name: 'GE1', state: 'LLDP_DETECTED' })],
+      }),
+      physicalAsset({
+        id: 'asset-b',
+        name: 'EDD-01',
+        kind: 'GENERIC',
+        startU: 20,
+        heightU: 1,
+        ports: [physicalPort({ id: 'port-b', assetId: 'asset-b', name: 'LAN1', type: 'RJ45', state: 'LLDP_DETECTED' })],
+      }),
+      physicalAsset({
+        id: 'asset-c',
+        name: 'SW-02',
+        startU: 30,
+        heightU: 1,
+        ports: [physicalPort({ id: 'port-c', assetId: 'asset-c', name: 'GE2' })],
+      }),
+    ],
+  });
 
   it('desenha o ghost READY como sugestão: tracejado, abaixo dos cabos e nunca como cabo', () => {
     const html = render([lldpGhost()]);
@@ -771,6 +808,41 @@ describe('PhysicalRackCanvas · sugestões LLDP', () => {
     expect(html.match(/physical-lldp-badge/g)).toHaveLength(1);
     expect(html).toContain('data-port-id="port-b"');
     expect(html).toContain('is-related');
+  });
+
+  it('relação LLDP em foco mantém as DUAS pontas visíveis e escurece só o resto', () => {
+    const html = render([lldpGhost()], {
+      lldpMode: 'related',
+      selection: { kind: 'port', id: 'port-a' },
+      rack: rackWithThirdAsset,
+    });
+
+    // Ponta local e ponta remota: nenhuma das duas escurece.
+    expect(faceplateClass(html, 'asset-a')).not.toContain('is-dimmed');
+    expect(faceplateClass(html, 'asset-b')).not.toContain('is-dimmed');
+    // Os dois equipamentos do par parecem ativos.
+    expect(faceplateClass(html, 'asset-a')).toContain('is-selected');
+    expect(faceplateClass(html, 'asset-b')).toContain('is-selected');
+    // O equipamento de fora da relação é o único escurecido.
+    expect(faceplateClass(html, 'asset-c')).toContain('is-dimmed');
+    expect(faceplateClass(html, 'asset-c')).not.toContain('is-selected');
+    // As duas portas continuam com o destaque forte do par.
+    expect(html).toContain('is-selected');
+    expect(html).toContain('is-related');
+  });
+
+  it('sugestão PARTIAL selecionada mantém só o equipamento da porta local', () => {
+    const html = render([lldpGhost({ state: 'PARTIAL', to: null, confirmable: false })], {
+      lldpMode: 'related',
+      selection: { kind: 'lldp', id: 'lldp-1' },
+      rack: rackWithThirdAsset,
+    });
+
+    expect(faceplateClass(html, 'asset-a')).not.toContain('is-dimmed');
+    expect(faceplateClass(html, 'asset-b')).toContain('is-dimmed');
+    expect(faceplateClass(html, 'asset-c')).toContain('is-dimmed');
+    // Continua sem segunda ponta inventada.
+    expect(html).not.toContain('physical-lldp-ghost');
   });
 
   it('traçado LLDP same-rack fica antes da CABLE LANE (tronco + drop curtos)', () => {

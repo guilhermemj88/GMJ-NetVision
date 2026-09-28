@@ -1147,6 +1147,21 @@ export function PhysicalRackCanvas({
     activeAssetIds.add(cable.connection.a.assetId);
     activeAssetIds.add(cable.connection.b.assetId);
   }
+  /**
+   * Relação em foco (LLDP ou fallback do mapa): as **duas** pontas continuam
+   * ativas. O chassis remoto é parte do par, então não pode ser escurecido —
+   * escurecer o lado remoto fazia o par parecer uma conexão de mão única.
+   * Só entram equipamentos que realmente participam da relação atual.
+   */
+  for (const portId of relatedPortIds) {
+    const owner = rack.assets.find((asset) => asset.ports.some((port) => port.id === portId));
+    if (owner) activeAssetIds.add(owner.id);
+  }
+  for (const item of mapLinkPaths) {
+    if (!item.related) continue;
+    activeAssetIds.add(item.ghost.from.assetId);
+    activeAssetIds.add(item.ghost.to.assetId);
+  }
 
   return (
     <div className="physical-canvas-scroll" onClick={onClear}>

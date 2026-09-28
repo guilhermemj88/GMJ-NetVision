@@ -7711,7 +7711,12 @@ label > small {
   border-color: var(--physical-accent);
   box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.35), 0 0 20px rgba(139, 92, 246, 0.17);
 }
-.physical-faceplate.is-dimmed { opacity: 0.38; }
+/**
+ * Foco de uma relação: escurece somente os equipamentos que **não** participam
+ * do par — as duas pontas continuam 100% (o chassis remoto nunca é escurecido).
+ * Opacidade em 0.5 mantém labels e contornos das portas ainda legíveis.
+ */
+.physical-faceplate.is-dimmed { opacity: 0.5; }
 .physical-faceplate__kind {
   position: absolute;
   top: 0;
