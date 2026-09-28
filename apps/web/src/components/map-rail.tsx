@@ -1,9 +1,14 @@
 'use client';
 
-import { useMemo } from 'react';
-import { Crosshair, Eye, Layers, SlidersHorizontal } from 'lucide-react';
+import { useMemo, useSyncExternalStore } from 'react';
+import { ChevronLeft, ChevronRight, Crosshair, Eye, Layers, SlidersHorizontal } from 'lucide-react';
 import { SegmentedControl, StatusPill } from '@gmj/ui';
 import { updateNetworkMap } from '@/lib/api';
+import {
+  getMapLayersPanelCollapsed,
+  setMapLayersPanelCollapsed,
+  subscribeMapLayersPanelCollapsed,
+} from '@/lib/map-layers-panel';
 import type { FocusHops, MapLayerFilter, VisualPreset } from '@/lib/map-focus';
 import { useMapFocus } from '@/lib/use-map-focus';
 import { presetScalePatch, useMapStore, VISUAL_PRESETS } from '@/store/map-store';
@@ -64,6 +69,15 @@ const HOPS: Array<{ value: FocusHops; label: string }> = [
  */
 export function MapRail() {
   const map = useMapStore((state) => state.map);
+  /**
+   * Coluna recolhível: só a rail de camadas some — o painel de alarmes e o
+   * canvas continuam independentes. A preferência fica em `localStorage`.
+   */
+  const collapsed = useSyncExternalStore(
+    subscribeMapLayersPanelCollapsed,
+    getMapLayersPanelCollapsed,
+    getMapLayersPanelCollapsed,
+  );
   const visualPreset = useMapStore((state) => state.visualPreset);
   const setVisualPreset = useMapStore((state) => state.setVisualPreset);
   const layerFilter = useMapStore((state) => state.layerFilter);
@@ -128,13 +142,53 @@ export function MapRail() {
 
   if (!map) return null;
 
+  const toggleCollapsed = () => setMapLayersPanelCollapsed(!collapsed);
+
+  /**
+   * Recolhida: nada de coluna vazia. Só uma rail fina com a seta invertida —
+   * a largura liberada vai direto para o canvas (a rail é irmã flex dele).
+   */
+  if (collapsed) {
+    return (
+      <aside
+        className="map-rail map-rail--collapsed"
+        aria-label="Camadas do mapa recolhidas"
+        data-collapsed="true"
+      >
+        <button
+          type="button"
+          className="map-rail__restore"
+          aria-label="Expandir camadas do mapa"
+          aria-expanded={false}
+          title="Expandir CAMADAS DO MAPA"
+          onClick={toggleCollapsed}
+        >
+          <ChevronRight size={14} />
+          <span className="map-rail__restore-label">Camadas do mapa</span>
+        </button>
+      </aside>
+    );
+  }
+
   return (
-    <aside className="map-rail" aria-label="Camadas e presets do mapa">
+    <aside className="map-rail" aria-label="Camadas e presets do mapa" data-collapsed="false">
       <header className="map-rail__header">
-        <span>
-          <Layers size={12} /> CAMADAS DO MAPA
-        </span>
-        <strong>{preset.label}</strong>
+        <div className="map-rail__header-text">
+          <span>
+            <Layers size={12} /> CAMADAS DO MAPA
+          </span>
+          <strong>{preset.label}</strong>
+        </div>
+        <button
+          type="button"
+          className="map-rail__collapse"
+          aria-label="Recolher camadas do mapa"
+          aria-expanded
+          title="Recolher CAMADAS DO MAPA"
+          onClick={toggleCollapsed}
+        >
+          <ChevronLeft size={14} />
+        </button>
       </header>
 
       <div className="map-rail__scroll">

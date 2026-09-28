@@ -10610,10 +10610,18 @@ label > small {
 }
 .map-rail__header {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
   padding: 12px 13px 10px;
   border-bottom: 1px solid var(--line-soft);
+}
+.map-rail__header-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
 .map-rail__header span {
   display: inline-flex;
@@ -10626,6 +10634,64 @@ label > small {
 .map-rail__header strong {
   font-size: 14px;
   font-weight: 620;
+}
+/*
+ * Recolher/expandir a coluna de camadas: o chevron do cabeçalho e a rail fina
+ * que resta quando recolhida. A rail é irmã flex do canvas, então a largura
+ * liberada vai inteira para o mapa — nenhuma coluna vazia fica reservada.
+ */
+.map-rail__collapse {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-top: -2px;
+  border: 1px solid var(--line-soft);
+  border-radius: 5px;
+  background: transparent;
+  color: #6f8b98;
+  cursor: pointer;
+  transition: color 130ms, border-color 130ms, background 130ms;
+}
+.map-rail__collapse:hover,
+.map-rail__collapse:focus-visible {
+  border-color: var(--line);
+  background: rgba(255, 255, 255, 0.05);
+  color: #a9c2cc;
+}
+.map-rail--collapsed {
+  flex: 0 0 30px;
+  width: 30px;
+}
+.map-rail__restore {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  height: 100%;
+  padding: 12px 0 0;
+  border: 0;
+  background: transparent;
+  color: #6f8b98;
+  cursor: pointer;
+  transition: color 130ms, background 130ms;
+}
+.map-rail__restore:hover,
+.map-rail__restore:focus-visible {
+  background: rgba(255, 255, 255, 0.05);
+  color: #a9c2cc;
+}
+.map-rail__restore-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  color: #579eb1;
+  font: 700 8px var(--font-mono);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  white-space: nowrap;
 }
 .map-rail__scroll {
   flex: 1 1 auto;

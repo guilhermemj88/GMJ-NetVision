@@ -5,8 +5,11 @@ import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cloneDemoMaps } from '@gmj/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Alarm } from '@gmj/shared';
 import { useMapStore } from '@/store/map-store';
 import { updateNetworkMap } from '@/lib/api';
+import { MAP_LAYERS_PANEL_COLLAPSED_KEY } from '@/lib/map-layers-panel';
+import { AlarmPanel } from './alarm-panel';
 import { MapRail } from './map-rail';
 
 vi.mock('@/lib/api', () => ({
@@ -61,6 +64,7 @@ describe('MapRail', () => {
     (
       globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
     ).IS_REACT_ACT_ENVIRONMENT = true;
+    window.localStorage.clear();
   });
 
   afterEach(async () => {
@@ -237,5 +241,126 @@ describe('MapRail', () => {
     expect(legend.textContent).toContain('WARNING');
     expect(legend.textContent).toContain('DOWN');
     expect(legend.textContent).toContain('UNKNOWN');
+  });
+
+  it('começa aberto, recolhe pelo chevron e volta pela rail discreta', async () => {
+    const { container } = await renderRail();
+
+    // Aberto por padrão: cabeçalho, seções e chevron de recolher.
+    expect(container.querySelector('.map-rail--collapsed')).toBeNull();
+    expect(container.querySelector('.map-rail__header')).not.toBeNull();
+    expect(container.querySelector('.map-rail__scroll')).not.toBeNull();
+    const collapseButton = container.querySelector<HTMLButtonElement>('.map-rail__collapse')!;
+    expect(collapseButton.getAttribute('aria-label')).toBe('Recolher camadas do mapa');
+
+    await act(async () => {
+      collapseButton.click();
+    });
+
+    // Recolhido: nenhuma coluna vazia — só a rail fina com a seta invertida.
+    const collapsedRail = container.querySelector('.map-rail--collapsed')!;
+    expect(collapsedRail).not.toBeNull();
+    expect(collapsedRail.getAttribute('data-collapsed')).toBe('true');
+    expect(container.querySelector('.map-rail__scroll')).toBeNull();
+    expect(container.querySelector('.map-rail__header')).toBeNull();
+    const restoreButton = container.querySelector<HTMLButtonElement>('.map-rail__restore')!;
+    expect(restoreButton.getAttribute('aria-label')).toBe('Expandir camadas do mapa');
+    expect(restoreButton.getAttribute('aria-expanded')).toBe('false');
+    expect(restoreButton.textContent).toContain('Camadas do mapa');
+
+    await act(async () => {
+      restoreButton.click();
+    });
+
+    // Volta exatamente como estava.
+    expect(container.querySelector('.map-rail--collapsed')).toBeNull();
+    expect(container.querySelector('.map-rail__header')).not.toBeNull();
+    expect(container.querySelectorAll('.map-rail__layers li')).toHaveLength(5);
+  });
+
+  it('persiste a preferência de recolhimento e restaura no próximo load', async () => {
+    const first = await renderRail();
+
+    await act(async () => {
+      first.container.querySelector<HTMLButtonElement>('.map-rail__collapse')!.click();
+    });
+    expect(window.localStorage.getItem(MAP_LAYERS_PANEL_COLLAPSED_KEY)).toBe('1');
+
+    // Novo "load" (nova raiz) sem limpar o storage: continua recolhido.
+    const second = await renderRail();
+    expect(second.container.querySelector('.map-rail--collapsed')).not.toBeNull();
+    expect(second.container.querySelector('.map-rail__scroll')).toBeNull();
+
+    // Expandir também persiste: o próximo load começa aberto.
+    await act(async () => {
+      second.container.querySelector<HTMLButtonElement>('.map-rail__restore')!.click();
+    });
+    expect(window.localStorage.getItem(MAP_LAYERS_PANEL_COLLAPSED_KEY)).toBeNull();
+
+    const third = await renderRail();
+    expect(third.container.querySelector('.map-rail--collapsed')).toBeNull();
+    expect(third.container.querySelector('.map-rail__header')).not.toBeNull();
+  });
+
+  it('não afeta o painel de alarmes', async () => {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    roots.push({ root, container });
+    client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    useMapStore.setState({
+      map,
+      activeMapId: map.id,
+      readOnly: false,
+      visualPreset: 'OPERACIONAL',
+      layerFilter: 'ALL',
+      siteFilter: null,
+      deviceTypeFilter: null,
+      focusHops: 0,
+      selection: null,
+      showToast,
+    });
+    const alarm: Alarm = {
+      id: 'alarm-1',
+      deviceId: 'device-1',
+      deviceName: 'SW-CBF-01',
+      interfaceId: 'iface-1',
+      interfaceName: '40GE0/0/1',
+      interfaceLabel: 'SW-SPA-SJO-5732-MPLS-01',
+      ifIndex: 118,
+      linkId: 'link-1',
+      linkLabel: 'Backbone',
+      type: 'INTERFACE_DOWN',
+      severity: 'CRITICAL',
+      startedAt: new Date(2026, 8, 16, 21, 17, 32).toISOString(),
+      endedAt: null,
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+      message: 'SW-CBF-01: SW-SPA-SJO-5732-MPLS-01 (40GE0/0/1) DOWN',
+    };
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <MapRail />
+          <AlarmPanel alarms={[alarm]} onFocus={() => undefined} />
+        </QueryClientProvider>,
+      );
+    });
+
+    const alarmPanel = container.querySelector('.alarm-panel');
+    expect(alarmPanel).not.toBeNull();
+    expect(alarmPanel!.textContent).toContain('Alarmes');
+    expect(alarmPanel!.textContent).toContain('SW-CBF-01');
+
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('.map-rail__collapse')!.click();
+    });
+
+    // A rail recolheu e o painel de alarmes continua no lugar, com o conteúdo.
+    expect(container.querySelector('.map-rail--collapsed')).not.toBeNull();
+    const alarmPanelAfter = container.querySelector('.alarm-panel');
+    expect(alarmPanelAfter).not.toBeNull();
+    expect(alarmPanelAfter!.textContent).toContain('Alarmes');
+    expect(alarmPanelAfter!.textContent).toContain('SW-CBF-01');
   });
 });
