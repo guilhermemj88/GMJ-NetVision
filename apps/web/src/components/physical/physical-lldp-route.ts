@@ -50,15 +50,14 @@ export interface LldpRoute {
   corridorY: number;
   badgeX: number;
   badgeY: number;
-  /** DEBUG temporário: valores usados na rota. */
-  debug?: Record<string, unknown>;
 }
 
-/** Meia-largura de segurança de uma caixa de porta ao escolher o canal. */
-const PORT_CLEARANCE = 16;
-/** Passo e limite do deslocamento do canal para fugir de outra porta. */
-const CHANNEL_STEP = 4;
-const CHANNEL_MAX_SHIFT = 48;
+/**
+ * Meia-largura de segurança de uma caixa de porta ao escolher o canal. As
+ * colunas do painel ficam ~24–30px uma da outra, então o canal livre é o
+ * **meio-vão** entre duas colunas: 12px (e não 16px, que nunca caberia).
+ */
+const PORT_CLEARANCE = 12;
 /** Largura aproximada do badge `LLDP` (texto 7px + letter-spacing). */
 export const LLDP_BADGE_WIDTH = 26;
 /** Altura usada para empilhar badges que caem no mesmo vão. */
@@ -92,19 +91,45 @@ export function freeChannelX(
   fromY: number,
   toY: number,
   ports: readonly LldpRoutePoint[],
+  bounds?: { left: number; right: number },
 ): number {
   const top = Math.min(fromY, toY);
   const bottom = Math.max(fromY, toY);
+  /** Portas que o traço realmente atravessaria (a própria fileira não conta). */
+  const band = ports.filter((port) => port.y > top + 1 && port.y < bottom - 1);
+  if (band.length === 0) return x;
   const blocked = (candidate: number) =>
-    ports.some(
-      (port) => Math.abs(port.x - candidate) < PORT_CLEARANCE && port.y > top + 1 && port.y < bottom - 1,
-    );
+    band.some((port) => Math.abs(port.x - candidate) < PORT_CLEARANCE);
   if (!blocked(x)) return x;
-  for (let shift = CHANNEL_STEP; shift <= CHANNEL_MAX_SHIFT; shift += CHANNEL_STEP) {
-    if (!blocked(x + shift)) return x + shift;
-    if (!blocked(x - shift)) return x - shift;
+  /**
+   * Candidatos: meio-vão entre colunas vizinhas e as duas laterais do bloco.
+   * O mais próximo vence — o desvio fica sempre curto (≤ meia coluna).
+   */
+  const columns = [...new Set(band.map((port) => Math.round(port.x * 100) / 100))].sort(
+    (left, right) => left - right,
+  );
+  const half = (left: number, right: number) => (left + right) / 2;
+  const candidates: number[] = [];
+  if (columns.length >= 2) {
+    for (let index = 0; index < columns.length - 1; index += 1) {
+      candidates.push(half(columns[index]!, columns[index + 1]!));
+    }
+    candidates.push(columns[0]! - (columns[1]! - columns[0]!) / 2);
+    candidates.push(
+      columns[columns.length - 1]! + (columns[columns.length - 1]! - columns[columns.length - 2]!) / 2,
+    );
+  } else {
+    candidates.push(columns[0]! - PORT_CLEARANCE * 2, columns[0]! + PORT_CLEARANCE * 2);
   }
-  return x;
+  const free = candidates.filter((candidate) => !blocked(candidate));
+  const inside = bounds
+    ? free.filter((candidate) => candidate >= bounds.left && candidate <= bounds.right)
+    : free;
+  if (inside.length === 0) return x;
+  return inside.reduce(
+    (best, candidate) => (Math.abs(candidate - x) < Math.abs(best - x) ? candidate : best),
+    inside[0]!,
+  );
 }
 
 /** Y do vão mais próximo da caixa, na direção pedida. */
@@ -135,13 +160,20 @@ export function routeSameRackLldp(input: LldpRouteInput): LldpRoute {
     ? gapYBetween(localBox, remoteBox)
     : nearestGapY(localBox, direction, others);
 
-  const localChannel = freeChannelX(local.x, local.y, corridorY, input.localPorts);
+  const channelBounds = { left: input.rackLeft + 4, right: input.rackRight - 4 };
+  const localChannel = freeChannelX(local.x, local.y, corridorY, input.localPorts, channelBounds);
 
   let entryCorridorY = corridorY;
   if (!direct) {
     entryCorridorY = nearestGapY(remoteBox, (direction * -1) as -1 | 1, others);
   }
-  const remoteChannel = freeChannelX(remote.x, remote.y, entryCorridorY, input.remotePorts);
+  const remoteChannel = freeChannelX(
+    remote.x,
+    remote.y,
+    entryCorridorY,
+    input.remotePorts,
+    channelBounds,
+  );
 
   // O stub sai da porta: o desenho começa nela e vai até o canal escolhido.
   const trunkParts = [`M ${local.x} ${local.y}`];
@@ -167,23 +199,5 @@ export function routeSameRackLldp(input: LldpRouteInput): LldpRoute {
     corridorY,
     badgeX,
     badgeY: Math.round(corridorY) - 6,
-    debug: {
-      localTop: Math.round(localBox.top),
-      localBottom: Math.round(localBox.top + localBox.height),
-      remoteTop: Math.round(remoteBox.top),
-      remoteBottom: Math.round(remoteBox.top + remoteBox.height),
-      corridorY: Math.round(corridorY),
-      localChannel: Math.round(localChannel),
-      remoteChannel: Math.round(remoteChannel),
-      direct: direct ? 1 : 0,
-      localPorts: input.localPorts.length,
-      remotePorts: input.remotePorts.length,
-      bandTop: Math.round(Math.min(remote.y, entryCorridorY)),
-      bandBottom: Math.round(Math.max(remote.y, entryCorridorY)),
-      nearRemote: input.remotePorts
-        .map((port) => ({ dx: Math.round(Math.abs(port.x - remote.x) * 10) / 10, x: Math.round(port.x), y: Math.round(port.y) }))
-        .sort((left, right) => left.dx - right.dx)
-        .slice(0, 5),
-    },
   };
 }

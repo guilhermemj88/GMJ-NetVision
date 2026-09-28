@@ -37,13 +37,33 @@ describe('freeChannelX', () => {
     expect(freeChannelX(528, 143.5, 209, [{ x: 165, y: 200 }])).toBe(528);
   });
 
-  it('desloca o canal quando outra porta está na mesma coluna', () => {
-    // Porta logo abaixo, na mesma coluna: o traço não passa por cima dela.
-    expect(freeChannelX(528, 143.5, 209, [{ x: 528, y: 160 }])).toBe(544);
+  it('desloca o canal para o meio-vão quando outra porta está na mesma coluna', () => {
+    // Coluna única: o canal vai para a lateral do bloco (2× a folga).
+    expect(freeChannelX(528, 143.5, 209, [{ x: 528, y: 160 }])).toBe(504);
   });
 
   it('ignora portas da própria fileira (mesmo y da saída)', () => {
     expect(freeChannelX(528, 143.5, 209, [{ x: 512, y: 143.5 }])).toBe(528);
+  });
+
+  it('usa o meio-vão entre colunas vizinhas (painel denso)', () => {
+    // Colunas da S6750 (29.7px): a porta remota está na coluna 461 e existe
+    // outra porta na mesma coluna, uma fileira acima.
+    const ports = [
+      { x: 431.36, y: 281.28 },
+      { x: 461.13, y: 281.28 },
+      { x: 490.89, y: 281.28 },
+    ];
+    const channel = freeChannelX(461.22, 297.8, 203, ports);
+    expect(channel).toBeCloseTo((461.13 + 490.89) / 2, 5);
+    // O desvio continua curto: menos de meia coluna.
+    expect(Math.abs(channel - 461.22)).toBeLessThan(15);
+  });
+
+  it('respeita os limites do rack ao escolher o canal', () => {
+    const ports = [{ x: 528, y: 160 }];
+    expect(freeChannelX(528, 143.5, 209, ports, { left: 62, right: 922 })).toBe(504);
+    expect(freeChannelX(100, 143.5, 209, [{ x: 100, y: 160 }], { left: 130, right: 922 })).toBe(100);
   });
 });
 
@@ -72,7 +92,7 @@ describe('routeSameRackLldp', () => {
   it('escolhe o canal livre quando outra porta fica abaixo da porta local', () => {
     const route = routeSameRackLldp({ ...base, localPorts: [{ x: 528, y: 160 }] });
 
-    expect(route.trunk).toBe('M 528 143.5 H 544 V 209 H 165');
+    expect(route.trunk).toBe('M 528 143.5 H 504 V 209 H 165');
   });
 
   it('com chassis no meio, sai pelo corredor lateral e entra pelo vão do remoto', () => {
