@@ -1104,6 +1104,7 @@ export function PhysicalRackCanvas({
             related,
             badgeX: route.badgeX,
             badgeY: route.badgeY,
+            debugRoute: route.debug,
           };
         }
         return {
@@ -1115,6 +1116,7 @@ export function PhysicalRackCanvas({
           related,
           badgeX: corridor - 46,
           badgeY: Math.round((anchor.y + otherAnchor.y) / 2),
+          debugRoute: undefined,
         };
       }
       // Outro rack/POP: termina na borda do rack; a lane continua livre.
@@ -1128,6 +1130,7 @@ export function PhysicalRackCanvas({
         related,
         badgeX: corridor - 46,
         badgeY: anchor.y,
+        debugRoute: undefined,
       };
     })
     .filter((item): item is NonNullable<typeof item> => item !== null);
@@ -1344,6 +1347,7 @@ export function PhysicalRackCanvas({
                             : ''
                     }`}
                     d={item.d}
+                    data-route-debug={item.debugRoute ? JSON.stringify(item.debugRoute) : undefined}
                   />
                   {/* Entrada curta na porta par: nunca passa por dentro da lane. */}
                   {item.dropD ? (
