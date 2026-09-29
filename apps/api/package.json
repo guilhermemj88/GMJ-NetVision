@@ -5,6 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/server.ts",
+    "mitigation-worker": "tsx src/mitigation-worker-main.ts",
+    "mitigation-worker:start": "node dist/mitigation-worker-main.cjs",
     "prebuild": "prisma generate",
     "build": "tsup",
     "start": "node dist/server.cjs",
