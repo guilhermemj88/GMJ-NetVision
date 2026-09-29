@@ -1,8 +1,20 @@
+import { gbpsToBps } from './bandwidth-parser';
 import type { MitigationMode } from './mitigation-types';
 
+/**
+ * Configuração do motor de mitigação.
+ *
+ * Banda operacional é sempre bps (`bigint`). O env `MITIGATION_TRUNK_CAPACITY_GB`
+ * é apenas a forma humana de informar a capacidade do trunk; ele é convertido
+ * para bps imediatamente, e o objeto de config carrega só a forma canônica.
+ *
+ * Nada de webhook/Telegram aqui: transporte de notificação é responsabilidade
+ * da camada de mídias, atrás da porta `NotificationPublisher`.
+ */
 export interface MitigationEngineConfig {
   mode: MitigationMode;
-  trunkCapacityGbps: number;
+  /** Capacidade do trunk em bits por segundo (fonte canônica). */
+  trunkCapacityBps: bigint;
   triggerPercent: number;
   recoveryPercent: number;
   checkIntervalSeconds: number;
@@ -10,7 +22,6 @@ export interface MitigationEngineConfig {
   recoverySamples: number;
   prefixLimit: number;
   mitigationRt: string;
-  webhookUrl: string | null;
 }
 
 type EnvLike = Record<string, string | undefined>;
@@ -29,7 +40,7 @@ function intEnv(env: EnvLike, key: string, fallback: number): number {
 export function mitigationConfigFromEnv(env: EnvLike = process.env): MitigationEngineConfig {
   return {
     mode: 'SIMULATION_ONLY',
-    trunkCapacityGbps: intEnv(env, 'MITIGATION_TRUNK_CAPACITY_GB', 300),
+    trunkCapacityBps: gbpsToBps(intEnv(env, 'MITIGATION_TRUNK_CAPACITY_GB', 300)),
     triggerPercent: intEnv(env, 'MITIGATION_TRIGGER_PERCENT', 90),
     recoveryPercent: intEnv(env, 'MITIGATION_RECOVERY_PERCENT', 70),
     checkIntervalSeconds: intEnv(env, 'MITIGATION_CHECK_INTERVAL_SECONDS', 5),
@@ -37,18 +48,23 @@ export function mitigationConfigFromEnv(env: EnvLike = process.env): MitigationE
     recoverySamples: intEnv(env, 'MITIGATION_RECOVERY_SAMPLES', 12),
     prefixLimit: intEnv(env, 'MITIGATION_PREFIX_LIMIT', 100),
     mitigationRt: env.MITIGATION_RT ?? '268568:660',
-    webhookUrl: env.MITIGATION_WEBHOOK_URL?.trim() || null,
   };
 }
 
-/** Limite de mitigação em bps: banda contratada × trigger%. */
-export function mitigationThresholdBps(config: MitigationEngineConfig, bandwidthGbps: number): number {
-  return bandwidthGbps * (config.triggerPercent / 100) * 1_000_000_000;
+/** Limite de mitigação em bps: banda (bps) × trigger% (percentual inteiro). */
+export function mitigationThresholdBps(
+  config: MitigationEngineConfig,
+  bandwidthBps: bigint,
+): bigint {
+  return (bandwidthBps * BigInt(config.triggerPercent)) / 100n;
 }
 
-/** Limite de recovery em bps: banda contratada × recovery%. */
-export function recoveryThresholdBps(config: MitigationEngineConfig, bandwidthGbps: number): number {
-  return bandwidthGbps * (config.recoveryPercent / 100) * 1_000_000_000;
+/** Limite de recovery em bps: banda (bps) × recovery% (percentual inteiro). */
+export function recoveryThresholdBps(
+  config: MitigationEngineConfig,
+  bandwidthBps: bigint,
+): bigint {
+  return (bandwidthBps * BigInt(config.recoveryPercent)) / 100n;
 }
 
 /**
@@ -58,9 +74,10 @@ export function recoveryThresholdBps(config: MitigationEngineConfig, bandwidthGb
  */
 export function displayBriefTriggerPercent(
   config: MitigationEngineConfig,
-  bandwidthGbps: number,
+  bandwidthBps: bigint,
 ): number {
-  if (config.trunkCapacityGbps <= 0) return 0;
-  const value = (bandwidthGbps * config.triggerPercent) / config.trunkCapacityGbps;
+  if (config.trunkCapacityBps <= 0n) return 0;
+  const threshold = mitigationThresholdBps(config, bandwidthBps);
+  const value = (Number(threshold) / Number(config.trunkCapacityBps)) * 100;
   return Math.round(value * 100) / 100;
 }

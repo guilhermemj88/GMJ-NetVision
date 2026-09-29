@@ -1,16 +1,22 @@
-export type MitigationWebhookEvent =
-  | 'MITIGATION_TRIGGERED'
-  | 'MITIGATION_STARTED'
-  | 'MITIGATION_VERIFIED'
-  | 'MITIGATION_RECOVERY_STARTED'
-  | 'MITIGATION_ENDED'
-  | 'MITIGATION_FAILED'
-  | 'SSH_DISCONNECTED'
-  | 'SSH_RECONNECTED'
-  | 'MITIGATION_SIMULATION_TRIGGERED';
+import type {
+  MitigationNotification,
+  NotificationPublisher,
+  NotificationPublishResult,
+} from './notification-publisher';
+
+/**
+ * ADAPTADOR DE TRANSPORTE (n8n). Não é o domínio.
+ *
+ * O motor de mitigação só conhece a porta `NotificationPublisher`; este arquivo
+ * é a implementação concreta que fala HTTP com o n8n. A futura camada de MÍDIAS
+ * pode adicionar outros transportes (Telegram, e-mail, ...) sem tocar no domínio.
+ *
+ * O payload de transporte usa Gbps apenas como representação de exibição; a
+ * fonte canônica dentro do domínio continua sendo bps.
+ */
 
 export interface MitigationWebhookPayload {
-  event: MitigationWebhookEvent;
+  event: MitigationNotification['event'];
   simulation: boolean;
   customer: string | null;
   device: string | null;
@@ -26,70 +32,55 @@ export interface MitigationWebhookPayload {
   verified: boolean | null;
 }
 
-export interface MitigationWebhookInput {
-  event: MitigationWebhookEvent;
-  customer: string | null;
-  device: string | null;
-  interfaceName: string | null;
-  peer: string | null;
-  affectedPeers: string[];
-  bandwidthGbps: number | null;
-  trafficBps: number | null;
-  thresholdBps: number | null;
-  policy: string | null;
-  node: number | null;
-  rt: string | null;
-  verified?: boolean | null;
+export type WebhookSender = (url: string, payload: MitigationWebhookPayload) => Promise<void>;
+
+function toGbps(bps: bigint | null): number | null {
+  if (bps === null) return null;
+  return Math.round((Number(bps) / 1_000_000_000) * 100) / 100;
 }
 
-/**
- * Monta o payload com `simulation: true` SEMPRE, nesta versão. É a marca que o
- * n8n usa para formatar "SIMULAÇÃO — nenhuma alteração foi realizada".
- */
-export function buildMitigationWebhookPayload(input: MitigationWebhookInput): MitigationWebhookPayload {
+/** Converte uma notificação canônica (bps) no payload de exibição do n8n. */
+export function buildMitigationWebhookPayload(
+  notification: MitigationNotification,
+): MitigationWebhookPayload {
   return {
-    event: input.event,
-    simulation: true,
-    customer: input.customer,
-    device: input.device,
-    interface: input.interfaceName,
-    peer: input.peer,
-    affectedPeers: input.affectedPeers,
-    bandwidthGbps: input.bandwidthGbps,
-    trafficGbps: input.trafficBps === null ? null : roundGbps(input.trafficBps),
-    thresholdGbps: input.thresholdBps === null ? null : roundGbps(input.thresholdBps),
-    policy: input.policy,
-    node: input.node,
-    rt: input.rt,
-    verified: input.verified ?? null,
+    event: notification.event,
+    simulation: notification.simulation,
+    customer: notification.customer,
+    device: notification.device,
+    interface: notification.interfaceName,
+    peer: notification.peer,
+    affectedPeers: notification.affectedPeers,
+    bandwidthGbps: toGbps(notification.effectiveBandwidthBps),
+    trafficGbps: toGbps(notification.trafficBps),
+    thresholdGbps: toGbps(notification.thresholdBps),
+    policy: notification.policy,
+    node: notification.node,
+    rt: notification.rt,
+    verified: notification.verified,
   };
 }
 
-function roundGbps(bps: number): number {
-  return Math.round((bps / 1_000_000_000) * 100) / 100;
-}
-
-export type WebhookSender = (url: string, payload: MitigationWebhookPayload) => Promise<void>;
-
-export interface WebhookDispatchResult {
-  sent: boolean;
-  skipped: boolean;
-}
-
 /**
- * Envio "best effort": falha de webhook NUNCA afeta o motor. O retorno informa
- * apenas se foi enviado/saltado; exceções são engolidas por quem chama.
+ * Publisher de webhook: implementa a porta genérica e delega o envio ao
+ * `sender` injetado. Sem URL configurada, apenas pula; falha de rede é engolida
+ * para nunca afetar o motor.
  */
-export async function dispatchMitigationWebhook(
-  url: string | null,
-  payload: MitigationWebhookPayload,
-  send: WebhookSender,
-): Promise<WebhookDispatchResult> {
-  if (!url) return { sent: false, skipped: true };
-  try {
-    await send(url, payload);
-    return { sent: true, skipped: false };
-  } catch {
-    return { sent: false, skipped: false };
-  }
+export function createWebhookNotificationPublisher(options: {
+  url: string | null;
+  send: WebhookSender;
+}): NotificationPublisher {
+  const { url, send } = options;
+  return {
+    async publish(notification: MitigationNotification): Promise<NotificationPublishResult> {
+      if (!url) return { published: false, skipped: true };
+      const payload = buildMitigationWebhookPayload(notification);
+      try {
+        await send(url, payload);
+        return { published: true, skipped: false };
+      } catch {
+        return { published: false, skipped: false };
+      }
+    },
+  };
 }

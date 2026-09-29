@@ -96,7 +96,7 @@ export interface MitigationBlockDecision {
  * pela simulação (com os valores injetados).
  */
 export function safetyBlocks(input: {
-  bandwidthGbps: number | null;
+  bandwidthBps: bigint | null;
   prefixCount: number | null;
   prefixLimit: number;
   interfaceCorrelation: 'MATCHED' | 'AMBIGUOUS' | 'NONE';
@@ -104,7 +104,7 @@ export function safetyBlocks(input: {
   peerExists: boolean;
 }): MitigationBlockDecision {
   if (!input.peerExists) return { blocked: true, reason: 'PEER_NOT_FOUND' };
-  if (input.bandwidthGbps === null) return { blocked: true, reason: 'BANDWIDTH_UNKNOWN' };
+  if (input.bandwidthBps === null) return { blocked: true, reason: 'BANDWIDTH_UNKNOWN' };
   if (input.interfaceCorrelation !== 'MATCHED') {
     return { blocked: true, reason: 'INTERFACE_AMBIGUOUS' };
   }

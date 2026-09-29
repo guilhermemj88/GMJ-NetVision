@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { parseBandwidthGbpsFromDescription, gbpsToBps, formatTrafficGbps } from './bandwidth-parser';
+import {
+  bpsToGbps,
+  effectiveBandwidthBps,
+  formatTrafficGbps,
+  gbpsToBps,
+  parseBandwidthBpsFromDescription,
+} from './bandwidth-parser';
 import {
   displayBriefTriggerPercent,
   mitigationConfigFromEnv,
@@ -15,59 +21,77 @@ import {
 import { evaluateTraffic } from './mitigation-state-machine';
 import { SimulationCommandExecutor } from './simulation-command-executor';
 import {
+  InMemoryNotificationPublisher,
+  NoopNotificationPublisher,
+  type MitigationNotification,
+} from './notification-publisher';
+import {
   buildMitigationWebhookPayload,
-  dispatchMitigationWebhook,
+  createWebhookNotificationPublisher,
   type MitigationWebhookPayload,
 } from './mitigation-webhook';
 
-describe('bandwidth parser', () => {
-  it('extrai 40GB de HORIZONTE_IP_40GB', () => {
-    expect(parseBandwidthGbpsFromDescription('HORIZONTE_IP_40GB')).toEqual({
-      gbps: 40,
+describe('bandwidth parser (fonte canônica em bps)', () => {
+  it('extrai 40GB de HORIZONTE_IP_40GB como bps', () => {
+    expect(parseBandwidthBpsFromDescription('HORIZONTE_IP_40GB')).toEqual({
+      bps: 40_000_000_000n,
       source: 'DESCRIPTION',
     });
   });
 
-  it('extrai 10GB de PLAY_CONNECT_10GB', () => {
-    expect(parseBandwidthGbpsFromDescription('PLAY_CONNECT_10GB').gbps).toBe(10);
+  it('extrai 10GB de PLAY_CONNECT_10GB como bps', () => {
+    expect(parseBandwidthBpsFromDescription('PLAY_CONNECT_10GB').bps).toBe(10_000_000_000n);
   });
 
   it('aceita variações: 40 Gbps, 40GB, 40G e 5g', () => {
     for (const description of ['CLIENTE 40 Gbps', 'CLIENTE 40GB', 'CLIENTE 40G', 'CLIENTE 5g']) {
-      expect(parseBandwidthGbpsFromDescription(description).gbps).not.toBeNull();
+      expect(parseBandwidthBpsFromDescription(description).bps).not.toBeNull();
     }
   });
 
   it('descrição sem banda vira UNKNOWN', () => {
-    const parsed = parseBandwidthGbpsFromDescription('ENLACE_SEM_BANDA');
-    expect(parsed.gbps).toBeNull();
+    const parsed = parseBandwidthBpsFromDescription('ENLACE_SEM_BANDA');
+    expect(parsed.bps).toBeNull();
     expect(parsed.source).toBe('UNKNOWN');
   });
 
   it('rejeita valores fora do intervalo operacional (0 e >100)', () => {
-    expect(parseBandwidthGbpsFromDescription('CLIENTE_0GB').gbps).toBeNull();
-    expect(parseBandwidthGbpsFromDescription('CLIENTE_999GB').gbps).toBeNull();
+    expect(parseBandwidthBpsFromDescription('CLIENTE_0GB').bps).toBeNull();
+    expect(parseBandwidthBpsFromDescription('CLIENTE_999GB').bps).toBeNull();
   });
 
-  it('converte Gbps para bps e formata tráfego', () => {
-    expect(gbpsToBps(40)).toBe(40_000_000_000);
-    expect(formatTrafficGbps(38_700_000_000)).toBe('38.7 Gbps');
+  it('converte Gbps para bps e bps para Gbps (UI)', () => {
+    expect(gbpsToBps(40)).toBe(40_000_000_000n);
+    expect(bpsToGbps(40_000_000_000n)).toBe(40);
+    expect(formatTrafficGbps(38_700_000_000n)).toBe('38.7 Gbps');
+  });
+
+  it('calcula a banda efetiva: override vence a detectada, e nunca é persistida', () => {
+    expect(
+      effectiveBandwidthBps({ detectedBandwidthBps: 40_000_000_000n, bandwidthOverrideBps: null }),
+    ).toBe(40_000_000_000n);
+    expect(
+      effectiveBandwidthBps({ detectedBandwidthBps: 40_000_000_000n, bandwidthOverrideBps: 10_000_000_000n }),
+    ).toBe(10_000_000_000n);
+    expect(
+      effectiveBandwidthBps({ detectedBandwidthBps: null, bandwidthOverrideBps: null }),
+    ).toBeNull();
   });
 });
 
-describe('threshold calculation', () => {
+describe('threshold calculation (bps)', () => {
   const config = mitigationConfigFromEnv({});
 
   it('40G / 300G trunk / 90% -> 12% no display interface brief', () => {
-    expect(displayBriefTriggerPercent(config, 40)).toBe(12);
+    expect(displayBriefTriggerPercent(config, 40_000_000_000n)).toBe(12);
   });
 
-  it('40G / 90% -> 36 Gbps de limite (36_000_000_000 bps)', () => {
-    expect(mitigationThresholdBps(config, 40)).toBe(36_000_000_000);
+  it('40G / 90% -> 36_000_000_000 bps de limite', () => {
+    expect(mitigationThresholdBps(config, 40_000_000_000n)).toBe(36_000_000_000n);
   });
 
-  it('40G / 70% -> 28 Gbps de recovery', () => {
-    expect(recoveryThresholdBps(config, 40)).toBe(28_000_000_000);
+  it('40G / 70% -> 28_000_000_000 bps de recovery', () => {
+    expect(recoveryThresholdBps(config, 40_000_000_000n)).toBe(28_000_000_000n);
   });
 
   it('config é lida do ambiente e não é hardcoded', () => {
@@ -81,7 +105,7 @@ describe('threshold calculation', () => {
       MITIGATION_PREFIX_LIMIT: '50',
       MITIGATION_RT: '123:456',
     });
-    expect(custom.trunkCapacityGbps).toBe(200);
+    expect(custom.trunkCapacityBps).toBe(200_000_000_000n);
     expect(custom.triggerPercent).toBe(80);
     expect(custom.recoveryPercent).toBe(60);
     expect(custom.checkIntervalSeconds).toBe(10);
@@ -90,6 +114,10 @@ describe('threshold calculation', () => {
     expect(custom.prefixLimit).toBe(50);
     expect(custom.mitigationRt).toBe('123:456');
     expect(custom.mode).toBe('SIMULATION_ONLY');
+  });
+
+  it('config do motor não carrega detalhe de transporte (sem webhookUrl)', () => {
+    expect(config).not.toHaveProperty('webhookUrl');
   });
 });
 
@@ -199,7 +227,7 @@ describe('prefix limit and shared policy', () => {
 
   it('bloqueia por banda, prefixos e ambiguidade de interface', () => {
     const base = {
-      bandwidthGbps: 40 as number | null,
+      bandwidthBps: 40_000_000_000n as bigint | null,
       prefixCount: 12 as number | null,
       prefixLimit: 100,
       interfaceCorrelation: 'MATCHED' as const,
@@ -207,7 +235,7 @@ describe('prefix limit and shared policy', () => {
       peerExists: true,
     };
     expect(safetyBlocks(base).blocked).toBe(false);
-    expect(safetyBlocks({ ...base, bandwidthGbps: null }).reason).toBe('BANDWIDTH_UNKNOWN');
+    expect(safetyBlocks({ ...base, bandwidthBps: null }).reason).toBe('BANDWIDTH_UNKNOWN');
     expect(safetyBlocks({ ...base, prefixCount: 120 }).reason).toBe('PREFIX_LIMIT_EXCEEDED');
     expect(safetyBlocks({ ...base, prefixCount: null }).reason).toBe('PREFIX_UNKNOWN');
     expect(safetyBlocks({ ...base, interfaceCorrelation: 'AMBIGUOUS' }).reason).toBe(
@@ -247,74 +275,66 @@ describe('simulation command executor (nunca escreve)', () => {
   });
 });
 
-describe('webhook', () => {
-  it('sempre inclui simulation=true e formata o payload', () => {
-    const payload = buildMitigationWebhookPayload({
-      event: 'MITIGATION_STARTED',
-      customer: 'HORIZONTES',
-      device: 'BHE-VTA-F1A-BGP-01',
-      interfaceName: 'Eth-Trunk1.3011',
-      peer: '10.200.200.106',
-      affectedPeers: ['10.200.200.10', '10.200.200.106'],
-      bandwidthGbps: 40,
-      trafficBps: 38_700_000_000,
-      thresholdBps: 36_000_000_000,
-      policy: 'PL-HORIZONTES_IPv4-IN',
-      node: 1,
-      rt: '268568:660',
-    });
+const baseNotification: MitigationNotification = {
+  event: 'MITIGATION_STARTED',
+  simulation: true,
+  customer: 'HORIZONTES',
+  device: 'BHE-VTA-F1A-BGP-01',
+  interfaceName: 'Eth-Trunk1.3011',
+  peer: '10.200.200.106',
+  affectedPeers: ['10.200.200.10', '10.200.200.106'],
+  detectedBandwidthBps: 40_000_000_000n,
+  bandwidthOverrideBps: null,
+  effectiveBandwidthBps: 40_000_000_000n,
+  trafficBps: 38_700_000_000n,
+  thresholdBps: 36_000_000_000n,
+  policy: 'PL-HORIZONTES_IPv4-IN',
+  node: 1,
+  rt: '268568:660',
+  verified: null,
+};
+
+describe('notification publisher (domínio genérico, sem acoplamento a webhook)', () => {
+  it('domínio publica no publisher e não conhece transporte', async () => {
+    const publisher = new InMemoryNotificationPublisher();
+    const result = await publisher.publish(baseNotification);
+
+    expect(result).toEqual({ published: true, skipped: false });
+    expect(publisher.published).toHaveLength(1);
+    expect(publisher.published[0]?.effectiveBandwidthBps).toBe(40_000_000_000n);
+  });
+
+  it('publisher no-op apenas marca como pulado', async () => {
+    const result = await new NoopNotificationPublisher().publish(baseNotification);
+    expect(result).toEqual({ published: false, skipped: true });
+  });
+});
+
+describe('webhook é só um adaptador de transporte (NotificationPublisher)', () => {
+  it('converte a notificação canônica (bps) no payload de exibição em Gbps', () => {
+    const payload = buildMitigationWebhookPayload(baseNotification);
     expect(payload.simulation).toBe(true);
+    expect(payload.bandwidthGbps).toBe(40);
     expect(payload.trafficGbps).toBe(38.7);
     expect(payload.thresholdGbps).toBe(36);
     expect(payload.affectedPeers).toEqual(['10.200.200.10', '10.200.200.106']);
   });
 
-  it('falha no webhook não afeta o motor (erro engolido)', async () => {
-    const sender = vi.fn(async (_url: string, _payload: MitigationWebhookPayload) => {
+  it('falha no transporte não afeta o motor (erro engolido)', async () => {
+    const send = vi.fn(async (_url: string, _payload: MitigationWebhookPayload) => {
       throw new Error('rede fora');
     });
-    const result = await dispatchMitigationWebhook(
-      'http://n8n/webhook',
-      buildMitigationWebhookPayload({
-        event: 'MITIGATION_FAILED',
-        customer: null,
-        device: null,
-        interfaceName: null,
-        peer: null,
-        affectedPeers: [],
-        bandwidthGbps: null,
-        trafficBps: null,
-        thresholdBps: null,
-        policy: null,
-        node: null,
-        rt: null,
-      }),
-      sender,
-    );
-    expect(result).toEqual({ sent: false, skipped: false });
+    const publisher = createWebhookNotificationPublisher({ url: 'http://n8n/webhook', send });
+
+    expect(await publisher.publish(baseNotification)).toEqual({ published: false, skipped: false });
+    expect(send).toHaveBeenCalledOnce();
   });
 
   it('sem URL configurada simplesmente pula o envio', async () => {
-    const sender = vi.fn(async () => undefined);
-    const result = await dispatchMitigationWebhook(
-      null,
-      buildMitigationWebhookPayload({
-        event: 'SSH_DISCONNECTED',
-        customer: null,
-        device: null,
-        interfaceName: null,
-        peer: null,
-        affectedPeers: [],
-        bandwidthGbps: null,
-        trafficBps: null,
-        thresholdBps: null,
-        policy: null,
-        node: null,
-        rt: null,
-      }),
-      sender,
-    );
-    expect(result.skipped).toBe(true);
-    expect(sender).not.toHaveBeenCalled();
+    const send = vi.fn(async () => undefined);
+    const publisher = createWebhookNotificationPublisher({ url: null, send });
+
+    expect(await publisher.publish(baseNotification)).toEqual({ published: false, skipped: true });
+    expect(send).not.toHaveBeenCalled();
   });
 });

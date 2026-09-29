@@ -269,6 +269,43 @@ enum BgpAdminAction {
   ENABLE
 }
 
+enum BgpMitigationMode {
+  SIMULATION_ONLY
+}
+
+enum BgpMitigationProfileMode {
+  DISABLED
+  ALERT_ONLY
+  AUTO
+}
+
+enum BgpMitigationState {
+  DISABLED
+  ALERT_ONLY
+  NORMAL
+  TRIGGER_PENDING
+  MITIGATING
+  MITIGATED
+  RECOVERY_PENDING
+  RECOVERING
+  FAILED
+  RECONCILIATION_REQUIRED
+}
+
+enum BgpMitigationBandwidthSource {
+  DESCRIPTION
+  MANUAL
+  UNKNOWN
+}
+
+enum BgpMitigationSimulationResult {
+  WOULD_MITIGATE
+  WOULD_RECOVER
+  NO_ACTION
+  BLOCKED
+  FAILED
+}
+
 enum PhysicalAssetKind {
   NETWORK
   SERVER
@@ -308,13 +345,17 @@ enum PhysicalConnectionEnd {
   B
 }
 
-/** SYSTEM templates come from the versioned catalog; CUSTOM are user-defined. */
+/**
+ * SYSTEM templates come from the versioned catalog; CUSTOM are user-defined.
+ */
 enum PhysicalTemplateOrigin {
   SYSTEM
   CUSTOM
 }
 
-/** How a physical port came to exist inside an asset. */
+/**
+ * How a physical port came to exist inside an asset.
+ */
 enum PhysicalPortRole {
   TEMPLATE
   DISCOVERED
@@ -370,7 +411,7 @@ model MapNode {
 }
 
 model Device {
-  id                   String                @id @default(cuid())
+  id                   String                 @id @default(cuid())
   name                 String
   displayName          String
   hostname             String
@@ -378,29 +419,29 @@ model Device {
   managementIp         String
   vendor               String?
   model                String?
-  description          String                @default("")
-  notes                String                @default("")
-  origin               HostOrigin            @default(MANUAL)
-  status               DeviceStatus          @default(UNKNOWN)
+  description          String                 @default("")
+  notes                String                 @default("")
+  origin               HostOrigin             @default(MANUAL)
+  status               DeviceStatus           @default(UNKNOWN)
   deviceType           String
   site                 String?
   source               String
-  discoveryMethod      String                @default("AUTO")
-  useZabbix            Boolean               @default(false)
+  discoveryMethod      String                 @default("AUTO")
+  useZabbix            Boolean                @default(false)
   zabbixHostId         String?
   zabbixHostName       String?
   zabbixInterfaceId    String?
   zabbixIp             String?
-  sshEnabled           Boolean               @default(false)
+  sshEnabled           Boolean                @default(false)
   sshHost              String?
-  sshPort              Int                   @default(22)
+  sshPort              Int                    @default(22)
   sshUsername          String?
   sshAuthentication    String?
   sshContextCommand    String?
-  snmpEnabled          Boolean               @default(false)
+  snmpEnabled          Boolean                @default(false)
   snmpVersion          SnmpVersion?
   snmpHost             String?
-  snmpPort             Int                   @default(161)
+  snmpPort             Int                    @default(161)
   snmpUsername         String?
   snmpSecurityLevel    SnmpSecurityLevel?
   snmpAuthProtocol     SnmpAuthProtocol?
@@ -410,11 +451,11 @@ model Device {
   uptimeSeconds        BigInt?
   cpuPercent           Float?
   memoryPercent        Float?
-  pppSupported         Boolean               @default(false)
-  pppOnline            Int                   @default(0)
+  pppSupported         Boolean                @default(false)
+  pppOnline            Int                    @default(0)
   pppUpdatedAt         DateTime?
   pppSource            String?
-  bgpMonitoringEnabled Boolean               @default(false)
+  bgpMonitoringEnabled Boolean                @default(false)
   /**
    * Local ASN of the BGP process on this device/context, learned via SSH.
    */
@@ -422,25 +463,26 @@ model Device {
   interfaces           Interface[]
   metricSamples        DeviceMetricSample[]
   mapNodes             MapNode[]
-  sourceLinks          Link[]                @relation("LinkSourceDevice")
-  targetLinks          Link[]                @relation("LinkTargetDevice")
+  sourceLinks          Link[]                 @relation("LinkSourceDevice")
+  targetLinks          Link[]                 @relation("LinkTargetDevice")
   sourceMappings       DeviceSourceMapping[]
   discoveryJobs        DiscoveryJob[]
   sourceHealth         DeviceSourceHealth[]
   snmpCredentialId     String?
   sshCredentialId      String?
-  snmpCredential       SnmpCredential?       @relation(fields: [snmpCredentialId], references: [id])
-  sshCredential        SshCredential?        @relation(fields: [sshCredentialId], references: [id])
+  snmpCredential       SnmpCredential?        @relation(fields: [snmpCredentialId], references: [id])
+  sshCredential        SshCredential?         @relation(fields: [sshCredentialId], references: [id])
   mplsState            MplsDeviceState?
   mplsVsis             MplsVsi[]
-  mplsPws              MplsPw[]              @relation("MplsPwHost")
-  remoteMplsPws        MplsPw[]              @relation("MplsPwRemoteHost")
+  mplsPws              MplsPw[]               @relation("MplsPwHost")
+  remoteMplsPws        MplsPw[]               @relation("MplsPwRemoteHost")
   mplsStateEvents      MplsStateEvent[]
   bgpPeers             BgpPeer[]
+  mitigationProfiles   BgpMitigationProfile[]
   alarms               Alarm[]
   physicalAsset        PhysicalAsset?
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
+  createdAt            DateTime               @default(now())
+  updatedAt            DateTime               @updatedAt
   mplsAcs              MplsAc[]
 
   @@index([hostname])
@@ -485,6 +527,7 @@ model Interface {
   mplsVsis              MplsVsi[]
   mplsAcs               MplsAc[]
   bgpPeers              BgpPeer[]
+  mitigationProfiles    BgpMitigationProfile[]
   alarms                Alarm[]
   physicalPort          PhysicalPort?
   createdAt             DateTime                 @default(now())
@@ -494,32 +537,33 @@ model Interface {
 }
 
 model BgpPeer {
-  id                  String              @id @default(cuid())
-  deviceId            String
-  peerAddress         String
-  addressFamily       BgpAddressFamily    @default(IPV4)
-  peerDescription     String?
-  remoteAs            BigInt?
-  interfaceId         String?
-  monitoringEnabled   Boolean             @default(true)
-  role                BgpPeerRole         @default(OTHER)
-  adminState          BgpAdminState       @default(UNKNOWN)
-  adminStateCheckedAt DateTime?
-  stateCode           Int                 @default(0)
-  state               BgpState            @default(UNKNOWN)
-  established         Boolean             @default(false)
-  receivedPrefixes    BigInt?
-  establishedSince    DateTime?
-  lastStateChangedAt  DateTime?
-  lastPollingAt       DateTime?
-  lastDiscoveryAt     DateTime?
-  device              Device              @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  interface           Interface?          @relation(fields: [interfaceId], references: [id], onDelete: SetNull)
-  samples             BgpPeerSample[]
-  stateEvents         BgpPeerStateEvent[]
-  adminActions        BgpAdminActionLog[]
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  id                     String                     @id @default(cuid())
+  deviceId               String
+  peerAddress            String
+  addressFamily          BgpAddressFamily           @default(IPV4)
+  peerDescription        String?
+  remoteAs               BigInt?
+  interfaceId            String?
+  monitoringEnabled      Boolean                    @default(true)
+  role                   BgpPeerRole                @default(OTHER)
+  adminState             BgpAdminState              @default(UNKNOWN)
+  adminStateCheckedAt    DateTime?
+  stateCode              Int                        @default(0)
+  state                  BgpState                   @default(UNKNOWN)
+  established            Boolean                    @default(false)
+  receivedPrefixes       BigInt?
+  establishedSince       DateTime?
+  lastStateChangedAt     DateTime?
+  lastPollingAt          DateTime?
+  lastDiscoveryAt        DateTime?
+  device                 Device                     @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  interface              Interface?                 @relation(fields: [interfaceId], references: [id], onDelete: SetNull)
+  samples                BgpPeerSample[]
+  stateEvents            BgpPeerStateEvent[]
+  adminActions           BgpAdminActionLog[]
+  mitigationProfilePeers BgpMitigationProfilePeer[]
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
 
   @@unique([deviceId, peerAddress])
   @@index([deviceId, established])
@@ -578,6 +622,144 @@ model BgpPeerStateEvent {
   bgpPeer           BgpPeer  @relation(fields: [bgpPeerId], references: [id], onDelete: Cascade)
 
   @@index([bgpPeerId, occurredAt])
+}
+
+/**
+ * Perfil de mitigação DDoS de um cliente/policy BGP. É a unidade de operação do
+ * motor: associa device → interface → policy → peers → banda. O modo padrão é
+ * `ALERT_ONLY` (nenhum cliente novo entra em AUTO sozinho).
+ * Nunca armazenamos credencial, token ou output SSH cru.
+ */
+model BgpMitigationProfile {
+  id                   String                       @id @default(cuid())
+  deviceId             String
+  policyName           String
+  interfaceId          String?
+  detectedBandwidthBps BigInt?
+  bandwidthSource      BgpMitigationBandwidthSource @default(UNKNOWN)
+  bandwidthOverrideBps BigInt?
+  prefixLimit          Int                          @default(100)
+  mode                 BgpMitigationProfileMode     @default(ALERT_ONLY)
+  enabled              Boolean                      @default(true)
+  triggerPercent       Float                        @default(90)
+  recoveryPercent      Float                        @default(70)
+  triggerSamples       Int                          @default(3)
+  recoverySamples      Int                          @default(12)
+  checkIntervalSeconds Int                          @default(5)
+  mitigationRt         String                       @default("268568:660")
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
+
+  device      Device                     @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  interface   Interface?                 @relation(fields: [interfaceId], references: [id], onDelete: SetNull)
+  peers       BgpMitigationProfilePeer[]
+  runtime     BgpMitigationRuntime?
+  simulations BgpMitigationSimulation[]
+  events      BgpMitigationEvent[]
+
+  @@unique([deviceId, policyName])
+  @@index([deviceId, mode])
+  @@index([policyName])
+  @@index([interfaceId])
+}
+
+model BgpMitigationProfilePeer {
+  id            String           @id @default(cuid())
+  profileId     String
+  peerId        String?
+  peerAddress   String
+  addressFamily BgpAddressFamily @default(IPV4)
+  primary       Boolean          @default(false)
+  createdAt     DateTime         @default(now())
+
+  profile BgpMitigationProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  peer    BgpPeer?             @relation(fields: [peerId], references: [id], onDelete: SetNull)
+
+  @@unique([profileId, peerAddress])
+  @@index([peerId])
+  @@index([addressFamily])
+}
+
+/**
+ * Estado de execução por perfil, separado do perfil para o worker reconstruir
+ * o estado após restart/reconnect a partir do PostgreSQL — nunca da memória.
+ */
+model BgpMitigationRuntime {
+  id                String             @id @default(cuid())
+  profileId         String             @unique
+  state             BgpMitigationState @default(NORMAL)
+  currentTrafficBps BigInt?
+  peakTrafficBps    BigInt?
+  triggerCounter    Int                @default(0)
+  recoveryCounter   Int                @default(0)
+  plannedNode       Int?
+  lastSampleAt      DateTime?
+  lastValidatedAt   DateTime?
+  lastReconciledAt  DateTime?
+  safeError         String?
+  updatedAt         DateTime           @updatedAt
+
+  profile BgpMitigationProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([state])
+  @@index([lastSampleAt])
+}
+
+/**
+ * Simulações executadas pelo operador. `commandPreview` guarda apenas o texto
+ * dos comandos que SERIAM enviados (nunca são enviados nesta versão).
+ */
+model BgpMitigationSimulation {
+  id                          String                        @id @default(cuid())
+  profileId                   String
+  userId                      String?
+  simulatedTrafficBps         BigInt?
+  simulatedUtilizationPercent Float?
+  simulatedSamples            Int?
+  simulatedPrefixCount        Int?
+  calculatedThresholdBps      BigInt?
+  result                      BgpMitigationSimulationResult
+  plannedNode                 Int?
+  plannedPolicy               String?
+  plannedRt                   String?
+  affectedPeers               Json?
+  commandPreview              Json?
+  notificationPublished       Boolean                       @default(false)
+  createdAt                   DateTime                      @default(now())
+
+  profile BgpMitigationProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  user    User?                @relation(fields: [userId], references: [id], onDelete: SetNull)
+  events  BgpMitigationEvent[]
+
+  @@index([profileId, createdAt])
+  @@index([userId])
+}
+
+/**
+ * Histórico auditável do motor: estado antes/depois, tráfego, threshold, node,
+ * policy e o desfecho (com read-back/verificação). Sem output SSH bruto.
+ */
+model BgpMitigationEvent {
+  id            BigInt              @id @default(autoincrement())
+  profileId     String
+  simulationId  String?
+  type          String
+  previousState BgpMitigationState?
+  newState      BgpMitigationState?
+  trafficBps    BigInt?
+  thresholdBps  BigInt?
+  plannedNode   Int?
+  policyName    String?
+  success       Boolean             @default(false)
+  verified      Boolean             @default(false)
+  safeError     String?
+  createdAt     DateTime            @default(now())
+
+  profile    BgpMitigationProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  simulation BgpMitigationSimulation? @relation(fields: [simulationId], references: [id], onDelete: SetNull)
+
+  @@index([profileId, createdAt])
+  @@index([simulationId])
 }
 
 model MplsDeviceState {
@@ -975,16 +1157,17 @@ model LldpTopologyPreview {
 }
 
 model User {
-  id           String    @id @default(cuid())
-  username     String    @unique
-  email        String    @unique
-  passwordHash String
-  name         String
-  role         Role      @default(VIEWER)
-  enabled      Boolean   @default(true)
-  sessions     Session[]
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                    String                    @id @default(cuid())
+  username              String                    @unique
+  email                 String                    @unique
+  passwordHash          String
+  name                  String
+  role                  Role                      @default(VIEWER)
+  enabled               Boolean                   @default(true)
+  sessions              Session[]
+  mitigationSimulations BgpMitigationSimulation[]
+  createdAt             DateTime                  @default(now())
+  updatedAt             DateTime                  @updatedAt
 }
 
 model Session {
@@ -1044,79 +1227,91 @@ model PhysicalRack {
 }
 
 model PhysicalEquipmentTemplate {
-  id                  String                 @id @default(cuid())
-  name                String                 @unique
-  /** Stable catalog identity (slug); never duplicated on bootstrap. */
-  catalogKey          String?                @unique
-  category            String                 @default("")
-  manufacturer        String                 @default("")
-  family              String                 @default("")
-  model               String                 @default("")
-  kind                PhysicalAssetKind      @default(GENERIC)
-  heightU             Int                    @default(1)
-  description         String                 @default("")
-  /** True only when the structure was confirmed against vendor documentation. */
-  vendorVerified      Boolean                @default(false)
-  /** False keeps slots/ports open for manual completion instead of inventing them. */
-  structureConfirmed  Boolean                @default(false)
-  referenceUrl        String?
-  origin              PhysicalTemplateOrigin @default(CUSTOM)
-  ports               PhysicalTemplatePort[]
-  slots               PhysicalTemplateSlot[]
-  modules             PhysicalModuleTemplate[]
-  assets              PhysicalAsset[]
-  createdAt           DateTime               @default(now())
-  updatedAt           DateTime               @updatedAt
+  id                 String                   @id @default(cuid())
+  name               String                   @unique
+  /**
+   * Stable catalog identity (slug); never duplicated on bootstrap.
+   */
+  catalogKey         String?                  @unique
+  category           String                   @default("")
+  manufacturer       String                   @default("")
+  family             String                   @default("")
+  model              String                   @default("")
+  kind               PhysicalAssetKind        @default(GENERIC)
+  heightU            Int                      @default(1)
+  description        String                   @default("")
+  /**
+   * True only when the structure was confirmed against vendor documentation.
+   */
+  vendorVerified     Boolean                  @default(false)
+  /**
+   * False keeps slots/ports open for manual completion instead of inventing them.
+   */
+  structureConfirmed Boolean                  @default(false)
+  referenceUrl       String?
+  origin             PhysicalTemplateOrigin   @default(CUSTOM)
+  ports              PhysicalTemplatePort[]
+  slots              PhysicalTemplateSlot[]
+  modules            PhysicalModuleTemplate[]
+  assets             PhysicalAsset[]
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
 
   @@index([category])
   @@index([manufacturer])
   @@index([origin])
 }
 
-/** Bays of a modular chassis template (NE8000, MA5800, ...). */
+/**
+ * Bays of a modular chassis template (NE8000, MA5800, ...).
+ */
 model PhysicalTemplateSlot {
-  id            String                      @id @default(cuid())
+  id            String                       @id @default(cuid())
   templateId    String
   index         Int
-  label         String                      @default("")
-  description   String                      @default("")
-  template      PhysicalEquipmentTemplate   @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  label         String                       @default("")
+  description   String                       @default("")
+  template      PhysicalEquipmentTemplate    @relation(fields: [templateId], references: [id], onDelete: Cascade)
   moduleOptions PhysicalTemplateSlotModule[]
-  createdAt     DateTime                    @default(now())
-  updatedAt     DateTime                    @updatedAt
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
 
   @@unique([templateId, index])
   @@index([templateId])
 }
 
-/** Which module templates may be installed in a slot. */
+/**
+ * Which module templates may be installed in a slot.
+ */
 model PhysicalTemplateSlotModule {
-  id               String                  @id @default(cuid())
+  id               String                 @id @default(cuid())
   slotId           String
   moduleTemplateId String
-  isDefault        Boolean                 @default(false)
-  slot             PhysicalTemplateSlot    @relation(fields: [slotId], references: [id], onDelete: Cascade)
-  moduleTemplate   PhysicalModuleTemplate  @relation(fields: [moduleTemplateId], references: [id], onDelete: Cascade)
+  isDefault        Boolean                @default(false)
+  slot             PhysicalTemplateSlot   @relation(fields: [slotId], references: [id], onDelete: Cascade)
+  moduleTemplate   PhysicalModuleTemplate @relation(fields: [moduleTemplateId], references: [id], onDelete: Cascade)
 
   @@unique([slotId, moduleTemplateId])
   @@index([moduleTemplateId])
 }
 
-/** Installable board (LPU/GPON/uplink) with its own ports. */
+/**
+ * Installable board (LPU/GPON/uplink) with its own ports.
+ */
 model PhysicalModuleTemplate {
-  id               String                       @id @default(cuid())
-  templateId       String
-  catalogKey       String?
-  name             String
-  model            String                       @default("")
-  description      String                       @default("")
-  slotsRequired    Int                          @default(1)
-  template         PhysicalEquipmentTemplate    @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  ports            PhysicalModuleTemplatePort[]
-  slotOptions      PhysicalTemplateSlotModule[]
-  modules          PhysicalModule[]
-  createdAt        DateTime                     @default(now())
-  updatedAt        DateTime                     @updatedAt
+  id            String                       @id @default(cuid())
+  templateId    String
+  catalogKey    String?
+  name          String
+  model         String                       @default("")
+  description   String                       @default("")
+  slotsRequired Int                          @default(1)
+  template      PhysicalEquipmentTemplate    @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  ports         PhysicalModuleTemplatePort[]
+  slotOptions   PhysicalTemplateSlotModule[]
+  modules       PhysicalModule[]
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
 
   @@unique([templateId, name])
   @@index([templateId])
@@ -1181,23 +1376,27 @@ model PhysicalAsset {
   @@index([templateId])
 }
 
-/** Materialized bay of a chassis asset. */
+/**
+ * Materialized bay of a chassis asset.
+ */
 model PhysicalSlot {
-  id        String         @id @default(cuid())
+  id        String          @id @default(cuid())
   assetId   String
   index     Int
-  label     String         @default("")
-  asset     PhysicalAsset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  label     String          @default("")
+  asset     PhysicalAsset   @relation(fields: [assetId], references: [id], onDelete: Cascade)
   module    PhysicalModule?
   ports     PhysicalPort[]
-  createdAt DateTime       @default(now())
-  updatedAt DateTime       @updatedAt
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 
   @@unique([assetId, index])
   @@index([assetId])
 }
 
-/** Board installed in a slot; its ports belong to the asset and the slot. */
+/**
+ * Board installed in a slot; its ports belong to the asset and the slot.
+ */
 model PhysicalModule {
   id               String                  @id @default(cuid())
   assetId          String
@@ -1232,13 +1431,15 @@ model PhysicalLldpAdjacency {
   remoteInterfaceId String?
   remoteChassisId   String?
   confidence        String
-  /** True only when both endpoints resolved to a known inventory object. */
+  /**
+   * True only when both endpoints resolved to a known inventory object.
+   */
   resolved          Boolean  @default(false)
   ambiguous         Boolean  @default(false)
   source            String
   observedAt        DateTime
   createdAt         DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  updatedAt         DateTime @updatedAt
 
   @@unique([localDeviceId, localPortName, remoteHostname, remotePortName])
   @@index([localInterfaceId])
