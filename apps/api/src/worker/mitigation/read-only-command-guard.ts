@@ -45,6 +45,8 @@ const ALLOWED_COMMAND_PREFIXES: readonly string[] = [
   'display bgp peer',
   'display bgp routing-table',
   'display current-configuration configuration bgp',
+  'display current-configuration configuration route-policy',
+  'display current-configuration |',
   'display route-policy',
   'display version',
   'display device',

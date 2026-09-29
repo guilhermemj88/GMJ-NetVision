@@ -38,6 +38,11 @@ function createStore(): InMemoryStore {
     nextEvent: 1n,
   };
 }
+// Campo ausente preserva o valor; `null` explicito limpa (paridade com o Prisma).
+function hasPatch(patch: MitigationRuntimePatch, key: keyof MitigationRuntimePatch): boolean {
+  return Object.prototype.hasOwnProperty.call(patch, key);
+}
+
 
 /**
  * Implementação em memória para testes e para o modo SIMULAÇÃO (sem banco).
@@ -171,15 +176,29 @@ export class InMemoryMitigationRepository implements MitigationRepository {
       const updated: MitigationRuntimeRecord = {
         ...existing,
         state: patch.state ?? existing.state,
-        currentTrafficBps: patch.currentTrafficBps ?? existing.currentTrafficBps,
-        peakTrafficBps: patch.peakTrafficBps ?? existing.peakTrafficBps,
+        currentTrafficBps: hasPatch(patch, 'currentTrafficBps')
+          ? (patch.currentTrafficBps ?? null)
+          : existing.currentTrafficBps,
+        peakTrafficBps: hasPatch(patch, 'peakTrafficBps')
+          ? (patch.peakTrafficBps ?? null)
+          : existing.peakTrafficBps,
         triggerCounter: patch.triggerCounter ?? existing.triggerCounter,
         recoveryCounter: patch.recoveryCounter ?? existing.recoveryCounter,
-        plannedNode: patch.plannedNode ?? existing.plannedNode,
-        lastSampleAt: patch.lastSampleAt ?? existing.lastSampleAt,
-        lastValidatedAt: patch.lastValidatedAt ?? existing.lastValidatedAt,
-        lastReconciledAt: patch.lastReconciledAt ?? existing.lastReconciledAt,
-        safeError: patch.safeError ?? existing.safeError,
+        plannedNode: hasPatch(patch, 'plannedNode')
+          ? (patch.plannedNode ?? null)
+          : existing.plannedNode,
+        lastSampleAt: hasPatch(patch, 'lastSampleAt')
+          ? (patch.lastSampleAt ?? null)
+          : existing.lastSampleAt,
+        lastValidatedAt: hasPatch(patch, 'lastValidatedAt')
+          ? (patch.lastValidatedAt ?? null)
+          : existing.lastValidatedAt,
+        lastReconciledAt: hasPatch(patch, 'lastReconciledAt')
+          ? (patch.lastReconciledAt ?? null)
+          : existing.lastReconciledAt,
+        safeError: hasPatch(patch, 'safeError')
+          ? (patch.safeError ?? null)
+          : existing.safeError,
         updatedAt: new Date(),
       };
       this.store.runtime.set(profileId, updated);

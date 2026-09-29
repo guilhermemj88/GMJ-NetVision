@@ -1,6 +1,7 @@
 import type { BgpAddressFamily, BgpAdminAction, HostRecord } from '@gmj/shared';
 import type { SshClient } from '../../domain/ports';
 import type { HostRepository } from '../persistence/host-repository';
+import { assertReadOnlyCommand } from '../../worker/mitigation/read-only-command-guard';
 import { SshClientImpl } from '../ssh/ssh-client-impl';
 import type { BgpRouteCommandResult } from './bgp-interface-correlation';
 import {
@@ -117,6 +118,15 @@ function needsVerbose(peers: ParsedHuaweiBgpPeer[]): boolean {
       peer.state === null ||
       (peer.state === 'ESTABLISHED' && peer.sessionUptimeSeconds === null),
   );
+}
+
+// Leitura agregada (read-only) da configuracao necessaria ao discovery de mitigacao:
+// o processo BGP e as definicoes de route-policy do device. `null` significa "nao foi
+// possivel ler" - nunca "vazio".
+export interface HuaweiBgpConfigReading {
+  bgpConfiguration: string | null;
+  routePolicyConfiguration: string | null;
+  warnings: string[];
 }
 
 export class HuaweiBgpSshService {
@@ -307,6 +317,44 @@ export class HuaweiBgpSshService {
       state: isAdminIgnoredCliState(peer.cliStateToken) ? 'IGNORED' : 'ENABLED',
       source: 'PEER_STATE',
     };
+  }
+
+  // READ-ONLY: dump agregado da configuracao BGP + route-policy do device.
+  //
+  // Uma leitura por device (nunca por peer) para o discovery de mitigacao montar
+  // o mapa peer -> policy IN e policy -> nodes localmente, sem carga extra no NE.
+  // Todo comando passa pelo read-only guard antes de chegar ao SSH.
+  async readBgpConfiguration(device: HostRecord): Promise<HuaweiBgpConfigReading> {
+    const warnings: string[] = [];
+
+    let client: SshClient;
+    try {
+      client = await this.createClient(device);
+    } catch (error) {
+      return {
+        bgpConfiguration: null,
+        routePolicyConfiguration: null,
+        warnings: [safeSshError(error)],
+      };
+    }
+
+    const host = device.ssh!.host;
+    const screenLength = assertReadOnlyCommand('screen-length 0 temporary');
+    const bgpCommand = assertReadOnlyCommand('display current-configuration configuration bgp');
+    const routePolicyCommand = assertReadOnlyCommand(
+      'display current-configuration configuration route-policy',
+    );
+
+    const bgpConfiguration = await this.executeStrict(client, host, [screenLength, bgpCommand]);
+    if (bgpConfiguration === null) warnings.push('BGP: SSH command failed');
+
+    const routePolicyConfiguration = await this.executeStrict(client, host, [
+      screenLength,
+      routePolicyCommand,
+    ]);
+    if (routePolicyConfiguration === null) warnings.push('route-policy: SSH command failed');
+
+    return { bgpConfiguration, routePolicyConfiguration, warnings };
   }
 
   private async learnLocalAs(

@@ -11,6 +11,8 @@ import type { MitigationMode } from './mitigation-types';
  * Nada de webhook/Telegram aqui: transporte de notificação é responsabilidade
  * da camada de mídias, atrás da porta `NotificationPublisher`.
  */
+export const DEFAULT_MITIGATION_RT = '268568:660';
+
 export interface MitigationEngineConfig {
   mode: MitigationMode;
   /** Capacidade do trunk em bits por segundo (fonte canônica). */
@@ -47,7 +49,7 @@ export function mitigationConfigFromEnv(env: EnvLike = process.env): MitigationE
     triggerSamples: intEnv(env, 'MITIGATION_TRIGGER_SAMPLES', 3),
     recoverySamples: intEnv(env, 'MITIGATION_RECOVERY_SAMPLES', 12),
     prefixLimit: intEnv(env, 'MITIGATION_PREFIX_LIMIT', 100),
-    mitigationRt: env.MITIGATION_RT ?? '268568:660',
+    mitigationRt: env.MITIGATION_RT ?? DEFAULT_MITIGATION_RT,
   };
 }
 
