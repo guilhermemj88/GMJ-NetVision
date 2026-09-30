@@ -12270,3 +12270,48 @@ label > small {
 .mitigation-result__notification strong {
   color: #7fd7b1;
 }
+
+/* Fase 13 - protecao contra mitigacao (exclusao administrativa do peer).
+   Tom neutro/informacional de proposito: e uma decisao intencional do operador,
+   nunca um erro. */
+.mitigation-excluded-badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border: 1px solid var(--cyan-bright);
+  border-radius: 999px;
+  color: var(--cyan-bright);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.mitigation-exclusion__badge {
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--cyan-bright);
+  border-radius: 8px;
+  color: var(--cyan-bright);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+}
+.mitigation-exclusion__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.mitigation-exclusion label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.mitigation-exclusion select,
+.mitigation-exclusion input[type='text'] {
+  padding: 6px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+}

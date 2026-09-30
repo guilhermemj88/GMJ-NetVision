@@ -5,6 +5,7 @@
 
 import type {
   MitigationBlockReason,
+  MitigationExclusionReason,
   MitigationPrefixStatus,
   MitigationProfileMode,
   MitigationReadiness,
@@ -51,7 +52,29 @@ export const BLOCK_REASON_LABEL: Record<MitigationBlockReason, string> = {
   POLICY_CHANGED: 'A política BGP mudou desde a última validação',
   SHARED_POLICY:
     'A política BGP de entrada é compartilhada com outros clientes: a mitigação atingiria todos',
+  MITIGATION_EXCLUDED: 'Mitigação desativada administrativamente para este peer',
 };
+
+/** Motivos da exclusão administrativa ("nunca mitigar este peer"). */
+export const EXCLUSION_REASON_LABEL: Record<MitigationExclusionReason, string> = {
+  UPLINK: 'UPLINK',
+  TRANSIT: 'TRANSIT',
+  IX: 'IX',
+  BACKBONE: 'BACKBONE',
+  MANUAL: 'MANUAL',
+};
+
+export const EXCLUSION_REASON_OPTIONS: readonly MitigationExclusionReason[] = [
+  'UPLINK',
+  'TRANSIT',
+  'IX',
+  'BACKBONE',
+  'MANUAL',
+];
+
+export function exclusionReasonLabel(value: MitigationExclusionReason | null | undefined): string {
+  return safeLabel(EXCLUSION_REASON_LABEL, value);
+}
 
 export const WORKER_STATE_LABEL: Record<MitigationWorkerState, string> = {
   STOPPED: 'PARADO',

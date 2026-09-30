@@ -2,6 +2,7 @@ import { Prisma, PrismaClient } from '../../../generated/prisma/index.js';
 import type {
   MitigationAddressFamily,
   MitigationEventInput,
+  MitigationExclusionInput,
   MitigationEventRecord,
   MitigationPeerInput,
   MitigationProfileInput,
@@ -45,6 +46,10 @@ function mapProfile(row: ProfileRow): MitigationProfileRecord {
     recoverySamples: row.recoverySamples,
     checkIntervalSeconds: row.checkIntervalSeconds,
     mitigationRt: row.mitigationRt,
+    mitigationExcluded: row.mitigationExcluded,
+    mitigationExclusionReason:
+      row.mitigationExclusionReason as MitigationProfileRecord['mitigationExclusionReason'],
+    mitigationExclusionNote: row.mitigationExclusionNote,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -206,6 +211,18 @@ export class PrismaMitigationRepository implements MitigationRepository {
 
   async setProfileEnabled(id: string, enabled: boolean): Promise<void> {
     await this.prisma.bgpMitigationProfile.update({ where: { id }, data: { enabled } });
+  }
+
+  async setProfileExclusion(id: string, input: MitigationExclusionInput): Promise<void> {
+    const excluded = input.excluded;
+    await this.prisma.bgpMitigationProfile.update({
+      where: { id },
+      data: {
+        mitigationExcluded: excluded,
+        mitigationExclusionReason: excluded ? (input.reason ?? 'MANUAL') : null,
+        mitigationExclusionNote: excluded ? (input.note ?? null) : null,
+      },
+    });
   }
 
   async setProfileBandwidthOverride(

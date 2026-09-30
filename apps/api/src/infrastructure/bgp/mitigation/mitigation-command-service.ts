@@ -19,7 +19,7 @@ import type {
   MitigationNotificationEvent,
   NotificationPublisher,
 } from './notification-publisher';
-import type { MitigationState } from './mitigation-types';
+import type { MitigationBlockReason, MitigationState } from './mitigation-types';
 import type {
   MitigationPreflightInput,
   MitigationPreflightMode,
@@ -102,6 +102,8 @@ export interface MitigationCommandResult {
   preflight?: MitigationPreflightResult;
   /** Presente apenas quando o REMOVE foi reconciliado com o PAR ATIVO do equipamento. */
   pairSource?: 'RUNTIME' | 'DEVICE';
+  /** Motivo de bloqueio administrativo (ex.: MITIGATION_EXCLUDED). */
+  blockedReason?: MitigationBlockReason | null;
   safeError?: string;
 }
 
@@ -284,6 +286,23 @@ export class MitigationCommandService {
 
     // Preflight READ-ONLY imediatamente antes de qualquer escrita. Sem ele a
     // escrita nao acontece (fail-closed).
+    // GATE OBRIGATORIO (backend, caminho canonico): target com exclusao
+    // administrativa nunca gera/toca comando de mitigacao. Vale para UI, n8n,
+    // AUTO futuro e qualquer chamador deste servico. REMOVE segue permitido
+    // (retirada de mitigacao existente nao pode ser impedida).
+    if (activate && profile.mitigationExcluded === true) {
+      return {
+        ...common,
+        ok: false,
+        status: 'MITIGATION_EXCLUDED',
+        verified: false,
+        commandPreview: [],
+        verification: null,
+        blockedReason: 'MITIGATION_EXCLUDED',
+        safeError: 'Mitigacao desativada administrativamente para este peer',
+      };
+    }
+
     const liveMode: MitigationPreflightMode =
       input.action === 'SIMULATE_ACTIVATE' || input.action === 'ACTIVATE'
         ? 'ACTIVATE'

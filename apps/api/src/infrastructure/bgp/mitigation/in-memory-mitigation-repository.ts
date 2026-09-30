@@ -1,5 +1,6 @@
 import type {
   MitigationEventInput,
+  MitigationExclusionInput,
   MitigationEventRecord,
   MitigationPeerInput,
   MitigationProfileInput,
@@ -90,6 +91,16 @@ export class InMemoryMitigationRepository implements MitigationRepository {
         recoverySamples: input.recoverySamples ?? existing.recoverySamples,
         checkIntervalSeconds: input.checkIntervalSeconds ?? existing.checkIntervalSeconds,
         mitigationRt: input.mitigationRt ?? existing.mitigationRt,
+        // A exclusao administrativa NUNCA e sobrescrita pelo discovery.
+        mitigationExcluded: input.mitigationExcluded ?? existing.mitigationExcluded,
+        mitigationExclusionReason:
+          input.mitigationExclusionReason === undefined
+            ? existing.mitigationExclusionReason
+            : input.mitigationExclusionReason,
+        mitigationExclusionNote:
+          input.mitigationExclusionNote === undefined
+            ? existing.mitigationExclusionNote
+            : input.mitigationExclusionNote,
         updatedAt: now,
       };
       this.store.profiles.set(existing.id, updated);
@@ -114,6 +125,9 @@ export class InMemoryMitigationRepository implements MitigationRepository {
       recoverySamples: input.recoverySamples ?? 12,
       checkIntervalSeconds: input.checkIntervalSeconds ?? 5,
       mitigationRt: input.mitigationRt ?? '268568:660',
+      mitigationExcluded: input.mitigationExcluded ?? false,
+      mitigationExclusionReason: input.mitigationExclusionReason ?? null,
+      mitigationExclusionNote: input.mitigationExclusionNote ?? null,
       createdAt: now,
       updatedAt: now,
     };
@@ -141,6 +155,15 @@ export class InMemoryMitigationRepository implements MitigationRepository {
   async setProfileEnabled(id: string, enabled: boolean): Promise<void> {
     const profile = this.store.profiles.get(id);
     if (profile) profile.enabled = enabled;
+  }
+
+  async setProfileExclusion(id: string, input: MitigationExclusionInput): Promise<void> {
+    const profile = this.store.profiles.get(id);
+    if (!profile) return;
+    profile.mitigationExcluded = input.excluded;
+    profile.mitigationExclusionReason = input.excluded ? (input.reason ?? 'MANUAL') : null;
+    profile.mitigationExclusionNote = input.excluded ? (input.note ?? null) : null;
+    profile.updatedAt = new Date();
   }
 
   async setProfileBandwidthOverride(

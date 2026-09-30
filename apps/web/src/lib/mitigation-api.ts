@@ -5,6 +5,7 @@
 
 import type {
   BgpMitigationDiscoveryResponseDto,
+  MitigationExclusionReason,
   BgpMitigationEventDto,
   BgpMitigationHealthDto,
   BgpMitigationPatchInput,
@@ -55,6 +56,20 @@ export function patchMitigationProfile(
 ): Promise<BgpMitigationProfileDto> {
   return request<BgpMitigationProfileDto>(
     `/api/bgp/mitigation/profiles/${encodeURIComponent(id)}`,
+    { method: 'PATCH', body: JSON.stringify(input) },
+  );
+}
+
+/**
+ * Exclusao administrativa do target ("nunca mitigar este peer").
+ * Configuracao pura: nao roda discovery nem envia nada ao equipamento.
+ */
+export function setMitigationExclusion(
+  id: string,
+  input: { excluded: boolean; reason?: MitigationExclusionReason; note?: string | null },
+): Promise<BgpMitigationProfileDto> {
+  return request<BgpMitigationProfileDto>(
+    `/api/bgp/mitigation/profiles/${encodeURIComponent(id)}/exclusion`,
     { method: 'PATCH', body: JSON.stringify(input) },
   );
 }

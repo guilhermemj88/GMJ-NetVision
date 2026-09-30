@@ -1,5 +1,6 @@
 import type {
   MitigationEventInput,
+  MitigationExclusionInput,
   MitigationEventRecord,
   MitigationPeerInput,
   MitigationProfileInput,
@@ -57,6 +58,10 @@ export class RoutingMitigationRepository implements MitigationRepository {
 
   async setProfileEnabled(id: string, enabled: boolean): Promise<void> {
     return (await this.target()).setProfileEnabled(id, enabled);
+  }
+
+  async setProfileExclusion(id: string, input: MitigationExclusionInput): Promise<void> {
+    return (await this.target()).setProfileExclusion(id, input);
   }
 
   async setProfileBandwidthOverride(

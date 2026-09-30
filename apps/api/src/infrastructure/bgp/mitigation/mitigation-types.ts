@@ -28,6 +28,16 @@ export type MitigationState =
 
 export type BandwidthSource = 'DESCRIPTION' | 'MANUAL' | 'UNKNOWN';
 
+/** Motivo da exclusao administrativa (por target/peer, nunca por policy). */
+export type MitigationExclusionReason = 'UPLINK' | 'TRANSIT' | 'IX' | 'BACKBONE' | 'MANUAL';
+
+/** Entrada do PATCH de exclusao (o servico normaliza reason/note). */
+export interface MitigationExclusionInput {
+  excluded: boolean;
+  reason?: MitigationExclusionReason | null;
+  note?: string | null;
+}
+
 export type PrefixStatus = 'SAFE' | 'WARNING' | 'EXCEEDED' | 'UNKNOWN';
 
 export type SimulationResult =
@@ -49,7 +59,12 @@ export type MitigationBlockReason =
   | 'READBACK_FAILED'
   | 'POLICY_CHANGED'
   /** A policy IN e usada por mais de um target: mitiga todos de uma vez. */
-  | 'SHARED_POLICY';
+  | 'SHARED_POLICY'
+  /**
+   * Exclusao administrativa do target ("nunca mitigar este peer"). Bloqueia
+   * NOVO ACTIVATE; NAO impede REMOVE de uma mitigacao ja ativa.
+   */
+  | 'MITIGATION_EXCLUDED';
 
 export type MitigationEngineState = 'DISABLED' | 'ONLINE' | 'RECONCILING' | 'FAILED';
 

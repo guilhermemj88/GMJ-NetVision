@@ -6,6 +6,7 @@ import type {
   BgpMitigationDiscoveryResponseDto,
   BgpMitigationProfileDto,
   BgpMitigationSimulationDto,
+  MitigationExclusionReason,
 } from '@gmj/shared';
 import { Search } from 'lucide-react';
 import { Button, MetaFact } from '@gmj/ui';
@@ -18,6 +19,7 @@ import {
   getMitigationProfile,
   getMitigationProfiles,
   patchMitigationProfile,
+  setMitigationExclusion,
   runMitigationCommand,
   simulateMitigationProfile,
   type MitigationCommandAction,
@@ -31,6 +33,8 @@ import {
   formatPercent,
   prefixStatusLabel,
   profileModeLabel,
+  exclusionReasonLabel,
+  EXCLUSION_REASON_OPTIONS,
   readinessLabel,
   runtimeStateLabel,
   simulationResultLabel,
@@ -224,6 +228,36 @@ export function BgpMitigationWorkspace() {
     },
   });
 
+  const exclusionMutation = useMutation({
+    mutationFn: (input: {
+      id: string;
+      excluded: boolean;
+      reason: MitigationExclusionReason;
+      note: string;
+    }) =>
+      setMitigationExclusion(input.id, {
+        excluded: input.excluded,
+        ...(input.excluded ? { reason: input.reason, note: input.note.trim() || null } : {}),
+      }),
+    onSuccess: (updated) => {
+      setNotice(
+        updated.mitigationExcluded
+          ? 'Exclusão salva: este peer não será mais mitigado.'
+          : 'Exclusão removida: o peer volta a ser elegível para mitigação.',
+      );
+      setDiscovery((current) =>
+        current
+          ? {
+              ...current,
+              profiles: current.profiles.map((row) => (row.id === updated.id ? updated : row)),
+            }
+          : current,
+      );
+      void queryClient.invalidateQueries({ queryKey: ['mitigation', 'profiles'] });
+    },
+    onError: (error) => setNotice(errorMessage(error, 'Falha ao salvar a exclusão')),
+  });
+
   function runCommand(action: MitigationCommandAction, profileId: string): void {
     commandMutation.mutate({ id: profileId, action, requestId: newRequestId() });
   }
@@ -375,7 +409,14 @@ export function BgpMitigationWorkspace() {
                       {readinessLabel(row.readiness)}
                     </span>
                   </td>
-                  <td>{row.customer ?? '—'}</td>
+                  <td>
+                    {row.customer ?? '—'}
+                    {row.mitigationExcluded ? (
+                      <span className="mitigation-excluded-badge" title="Excluído da mitigação">
+                        🛡 Excluído da mitigação
+                      </span>
+                    ) : null}
+                  </td>
                   <td>{row.deviceName}</td>
                   <td>{row.interfaceName ?? '—'}</td>
                   <td>{formatBandwidthBps(row.effectiveBandwidthBps)}</td>
@@ -510,6 +551,13 @@ export function BgpMitigationWorkspace() {
             <p>RT de mitigação: {selected.mitigationRt}</p>
           </div>
 
+          <ExclusionEditor
+            key={selected.id}
+            row={selected}
+            saving={exclusionMutation.isPending}
+            onSave={(input) => exclusionMutation.mutate({ id: selected.id, ...input })}
+          />
+
           <div className="mitigation-detail__block">
             <h4>SITUAÇÃO</h4>
             <p>Estado: {readinessLabel(selected.readiness)}</p>
@@ -533,7 +581,14 @@ export function BgpMitigationWorkspace() {
               </Button>
               <Button
                 compact
-                disabled={!selected.persisted || commandMutation.isPending}
+                disabled={
+                  !selected.persisted || commandMutation.isPending || selected.mitigationExcluded
+                }
+                title={
+                  selected.mitigationExcluded
+                    ? 'Mitigação desativada administrativamente para este peer'
+                    : undefined
+                }
                 onClick={() => setPendingAction('ACTIVATE')}
               >
                 ATIVAR MITIGAÇÃO
@@ -682,6 +737,97 @@ export function BgpMitigationWorkspace() {
         />
       )}
     </section>
+  );
+}
+
+/**
+ * PROTEÇÃO CONTRA MITIGAÇÃO: exclusao administrativa do target. O estado do
+ * formulario vive aqui (key={row.id} no pai), sem sincronizacao por efeito.
+ */
+function ExclusionEditor({
+  row,
+  saving,
+  onSave,
+}: {
+  row: BgpMitigationProfileDto;
+  saving: boolean;
+  onSave: (input: {
+    excluded: boolean;
+    reason: MitigationExclusionReason;
+    note: string;
+  }) => void;
+}) {
+  const [excluded, setExcluded] = useState(row.mitigationExcluded === true);
+  const [reason, setReason] = useState<MitigationExclusionReason>(
+    row.mitigationExclusionReason ?? 'MANUAL',
+  );
+  const [note, setNote] = useState(row.mitigationExclusionNote ?? '');
+
+  return (
+    <div className="mitigation-detail__block mitigation-exclusion">
+      <h4>PROTEÇÃO CONTRA MITIGAÇÃO</h4>
+      {row.mitigationExcluded ? (
+        <p className="mitigation-exclusion__badge" role="status">
+          🛡 EXCLUÍDO DA MITIGAÇÃO
+          {row.mitigationExclusionReason ? ` · ${exclusionReasonLabel(row.mitigationExclusionReason)}` : ''}
+        </p>
+      ) : null}
+      <label className="mitigation-exclusion__toggle">
+        <input
+          type="checkbox"
+          checked={excluded}
+          onChange={(event) => setExcluded(event.target.checked)}
+        />
+        Nunca mitigar este peer
+      </label>
+      {excluded ? (
+        <>
+          <label>
+            Motivo
+            <select
+              aria-label="Motivo da exclusão"
+              value={reason}
+              onChange={(event) => setReason(event.target.value as MitigationExclusionReason)}
+            >
+              {EXCLUSION_REASON_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {exclusionReasonLabel(option)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Observação (opcional)
+            <input
+              type="text"
+              aria-label="Observação da exclusão"
+              maxLength={500}
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </label>
+        </>
+      ) : null}
+      {row.mitigationExcluded && row.mitigationExclusionNote ? (
+        <p className="mitigation-modal__hint">Observação: {row.mitigationExclusionNote}</p>
+      ) : null}
+      {row.mitigationExcluded ? (
+        <p className="mitigation-modal__hint">
+          Mitigação desativada administrativamente para este peer. Bloqueia NOVO ACTIVATE (UI,
+          n8n e AUTO); a retirada de uma mitigação ativa continua permitida.
+        </p>
+      ) : null}
+      <div className="mitigation-actions">
+        <Button
+          compact
+          variant="secondary"
+          disabled={!row.persisted || saving}
+          onClick={() => onSave({ excluded, reason, note })}
+        >
+          SALVAR
+        </Button>
+      </div>
+    </div>
   );
 }
 

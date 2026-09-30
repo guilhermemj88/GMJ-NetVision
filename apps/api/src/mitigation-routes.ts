@@ -59,6 +59,18 @@ const limitSchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
+/**
+ * Exclusao administrativa do target ("nunca mitigar este peer").
+ * `excluded=false` limpa motivo/observacao (reabilitacao).
+ */
+const exclusionSchema = z
+  .object({
+    excluded: z.boolean(),
+    reason: z.enum(['UPLINK', 'TRANSIT', 'IX', 'BACKBONE', 'MANUAL']).optional(),
+    note: z.string().trim().max(500).nullish(),
+  })
+  .strict();
+
 export interface MitigationRouteDependencies {
   service: BgpMitigationService;
   /** Mesma instancia usada pelo inbound do n8n (uma unica camada de servico). */
@@ -143,6 +155,22 @@ export function registerMitigationRoutes(
       return commands.execute({ ...payload, profileId: id });
     });
   }
+
+  // Exclusao administrativa da mitigacao: configuracao pura (sem discovery,
+  // sem SSH). Vale para este TARGET, nunca para a policy compartilhada inteira.
+  app.patch('/api/bgp/mitigation/profiles/:id/exclusion', async (request, reply) => {
+    const user = await requireUser(request, reply);
+    if (!user) return undefined;
+    const { id } = profileParams.parse(request.params);
+    const payload = exclusionSchema.parse(request.body ?? {});
+    const updated = await service.setProfileExclusion(id, {
+      excluded: payload.excluded,
+      ...(payload.reason === undefined ? {} : { reason: payload.reason }),
+      ...(payload.note === undefined ? {} : { note: payload.note ?? null }),
+    });
+    if (!updated) return reply.code(404).send({ message: 'Perfil de mitigacao nao encontrado' });
+    return updated;
+  });
 
   app.patch('/api/bgp/mitigation/profiles/:id', async (request, reply) => {
     const user = await requireUser(request, reply);

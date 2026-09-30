@@ -34,7 +34,16 @@ export type MitigationBlockReason =
   | 'READBACK_FAILED'
   | 'POLICY_CHANGED'
   /** A policy IN e compartilhada por outros targets: a mitigacao atinge todos. */
-  | 'SHARED_POLICY';
+  | 'SHARED_POLICY'
+  /**
+   * Exclusao administrativa: o target esta tecnicamente apto (readiness READY),
+   * mas o operador marcou "nunca mitigar este peer". Bloqueia NOVO ACTIVATE;
+   * NAO bloqueia REMOVE de uma mitigacao ja ativa.
+   */
+  | 'MITIGATION_EXCLUDED';
+
+/** Motivo da exclusao administrativa da mitigacao (por target/peer). */
+export type MitigationExclusionReason = 'UPLINK' | 'TRANSIT' | 'IX' | 'BACKBONE' | 'MANUAL';
 
 /** Outro target (interface + familia) que usa a mesma policy IN. */
 export interface BgpMitigationSharedTargetDto {
@@ -108,6 +117,13 @@ export interface BgpMitigationProfileDto {
   plannedNode: number | null;
   readiness: MitigationReadiness;
   blockedReason: MitigationBlockReason | null;
+  /**
+   * Exclusao administrativa ("nunca mitigar este peer"). Independente de
+   * `readiness`: READY + excluded=true = apto tecnicamente, proibido de mitigar.
+   */
+  mitigationExcluded?: boolean;
+  mitigationExclusionReason?: MitigationExclusionReason | null;
+  mitigationExclusionNote?: string | null;
   runtimeState: MitigationRuntimeState | null;
   mode: MitigationProfileMode;
   enabled: boolean;

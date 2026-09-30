@@ -10,6 +10,7 @@ import type {
   BgpMitigationSimulationDto,
   BgpMitigationSimulationRowDto,
   MitigationBlockReason,
+  MitigationExclusionReason,
   MitigationPrefixStatus,
   MitigationProfileMode,
   MitigationRuntimeState,
@@ -280,6 +281,29 @@ export class BgpMitigationService {
     return this.getProfile(id);
   }
 
+  /**
+   * Exclusao administrativa ("nunca mitigar este peer"), POR TARGET.
+   *
+   * Nao roda discovery nem escrita Huawei: e apenas configuracao persistida.
+   * Desmarcar limpa motivo/observacao.
+   */
+  async setProfileExclusion(
+    id: string,
+    input: { excluded: boolean; reason?: MitigationExclusionReason | null; note?: string | null },
+  ): Promise<BgpMitigationProfileDto | null> {
+    const record = await this.deps.repository.getProfile(id);
+    if (!record) return null;
+    const normalized = {
+      excluded: input.excluded,
+      ...(input.excluded
+        ? { reason: input.reason ?? ('MANUAL' as MitigationExclusionReason) }
+        : {}),
+      ...(input.excluded && input.note ? { note: input.note } : {}),
+    };
+    await this.deps.repository.setProfileExclusion(id, normalized);
+    return this.getProfile(id);
+  }
+
   async simulate(
     profileId: string,
     input: BgpMitigationSimulateInput,
@@ -311,6 +335,9 @@ export class BgpMitigationService {
     const status = prefixStatus(prefixCount, record.prefixLimit);
     const plannedNode = runtime?.plannedNode ?? null;
     const plannedPair = plannedPairOf(runtime);
+    // Exclusao administrativa: a simulacao segue disponivel para VISUALIZACAO,
+    // mas nunca vira decisao operacional de mitigacao (nem gera comandos).
+    const excluded = record.mitigationExcluded === true;
 
     // O motivo estrutural do discovery (interface ambigua / read-back falhou)
     // continua bloqueando a simulacao: nunca mitigamos sobre dado incerto.
@@ -328,6 +355,7 @@ export class BgpMitigationService {
       peerExists: peers.length > 0,
     });
     let blockedReason: MitigationBlockReason | null = structural;
+    if (!blockedReason && excluded) blockedReason = 'MITIGATION_EXCLUDED';
     if (!blockedReason && safety.blocked) blockedReason = safety.reason;
     if (!blockedReason && plannedNode === null) blockedReason = 'NO_SAFE_TEMPORARY_NODE';
 
@@ -598,6 +626,11 @@ export class BgpMitigationService {
       plannedNode: runtime?.plannedNode ?? null,
       readiness: row?.readiness ?? 'NOT_READY',
       blockedReason: asBlockReason(row?.blockedReason ?? null),
+      // Exclusao administrativa: vive no PROFILE (por target), nunca no cache
+      // do discovery — por isso nao e sobrescrita pelo discovery.
+      mitigationExcluded: record.mitigationExcluded,
+      mitigationExclusionReason: record.mitigationExclusionReason,
+      mitigationExclusionNote: record.mitigationExclusionNote,
       runtimeState: asRuntimeState(runtime?.state ?? null),
       mode: record.mode as MitigationProfileMode,
       enabled: record.enabled,
@@ -646,6 +679,9 @@ export class BgpMitigationService {
       plannedNode: row.plannedNode,
       readiness: row.readiness,
       blockedReason: asBlockReason(row.blockedReason),
+      mitigationExcluded: record?.mitigationExcluded ?? false,
+      mitigationExclusionReason: record?.mitigationExclusionReason ?? null,
+      mitigationExclusionNote: record?.mitigationExclusionNote ?? null,
       runtimeState: null,
       mode: (record?.mode as MitigationProfileMode | undefined) ?? 'ALERT_ONLY',
       enabled: record?.enabled ?? true,

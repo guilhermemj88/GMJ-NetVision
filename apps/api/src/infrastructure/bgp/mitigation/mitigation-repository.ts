@@ -1,5 +1,6 @@
 import type {
   BandwidthSource,
+  MitigationExclusionReason,
   MitigationProfileMode,
   MitigationState,
   SimulationResult,
@@ -26,6 +27,10 @@ export interface MitigationProfileRecord {
   recoverySamples: number;
   checkIntervalSeconds: number;
   mitigationRt: string;
+  /** Exclusao administrativa: "nunca mitigar este peer" (por target). */
+  mitigationExcluded: boolean;
+  mitigationExclusionReason: MitigationExclusionReason | null;
+  mitigationExclusionNote: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -48,6 +53,9 @@ export interface MitigationProfileInput {
   recoverySamples?: number;
   checkIntervalSeconds?: number;
   mitigationRt?: string;
+  mitigationExcluded?: boolean;
+  mitigationExclusionReason?: MitigationExclusionReason | null;
+  mitigationExclusionNote?: string | null;
 }
 
 export interface MitigationProfilePeerRecord {
@@ -169,6 +177,12 @@ export interface MitigationEventInput {
   safeError?: string | null;
 }
 
+export interface MitigationExclusionInput {
+  excluded: boolean;
+  reason?: MitigationExclusionReason | null;
+  note?: string | null;
+}
+
 export interface MitigationProfileListFilter {
   deviceId?: string;
   enabled?: boolean;
@@ -185,6 +199,11 @@ export interface MitigationRepository {
   setProfileMode(id: string, mode: MitigationProfileMode): Promise<void>;
   setProfileEnabled(id: string, enabled: boolean): Promise<void>;
   setProfileBandwidthOverride(id: string, bandwidthOverrideBps: bigint | null): Promise<void>;
+  /**
+   * Exclusao administrativa da mitigacao. Bloqueia NOVO ACTIVATE no caminho
+   * canonico; REMOVE de mitigacao ativa continua permitido.
+   */
+  setProfileExclusion(id: string, input: MitigationExclusionInput): Promise<void>;
   replaceProfilePeers(
     profileId: string,
     peers: MitigationPeerInput[],

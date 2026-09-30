@@ -19,6 +19,7 @@ const api = vi.hoisted(() => ({
   discoverMitigationProfiles: vi.fn(),
   simulateMitigationProfile: vi.fn(),
   patchMitigationProfile: vi.fn(),
+  setMitigationExclusion: vi.fn(),
   getMitigationSimulations: vi.fn(),
   getMitigationEvents: vi.fn(),
   getHosts: vi.fn(),
@@ -318,6 +319,19 @@ async function setInput(ariaLabel: string, value: string): Promise<void> {
   await flush();
 }
 
+async function setSelect(ariaLabel: string, value: string): Promise<void> {
+  const select = find(`select[aria-label="${ariaLabel}"]`) as HTMLSelectElement;
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLSelectElement.prototype,
+      'value',
+    )?.set;
+    setter?.call(select, value);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await flush();
+}
+
 async function chooseDevice(value: string): Promise<void> {
   // A lista de equipamentos vem de uma query: sem esperar as options, atribuir
   // o valor nao pega e o botao de discovery continua desabilitado.
@@ -489,7 +503,11 @@ describe('workspace de mitigacao DDoS', () => {
 
     await clickIn(detailPanel(), 'EDITAR OVERRIDE');
     await setInput('Override manual em Gbps', '10');
-    await clickByText('SALVAR');
+    // O drawer agora tambem tem um botao SALVAR (protecao contra mitigacao):
+    // este teste precisa do SALVAR do MODAL de override.
+    const overrideModal = container.querySelector('.mitigation-modal');
+    if (!overrideModal) throw new Error('modal de override nao encontrado');
+    await clickIn(overrideModal, 'SALVAR');
 
     expect(api.patchMitigationProfile).toHaveBeenCalledWith('profile-1', {
       bandwidthOverrideBps: '10000000000',
@@ -793,5 +811,64 @@ describe('scroll vertical da aba e drawer de detalhes', () => {
 
     expect(container.querySelector('.mitigation-drawer')).not.toBeNull();
     expect(find('[role="dialog"][aria-label="Editar override de banda"]')).not.toBeNull();
+  });
+});
+
+describe('protecao contra mitigacao (exclusao administrativa do peer)', () => {
+  it('marca "nunca mitigar" pelo painel e mostra badge na lista e no detalhe', async () => {
+    api.setMitigationExclusion.mockResolvedValue({
+      ...readyProfile,
+      mitigationExcluded: true,
+      mitigationExclusionReason: 'UPLINK',
+      mitigationExclusionNote: 'Upstream principal',
+    });
+
+    await render(createElement(BgpMitigationWorkspace));
+    await chooseDevice('device-1');
+    await clickByText('DESCOBRIR CLIENTES');
+    await openDetails('HORIZONTE_IP');
+
+    expect(text()).toContain('PROTEÇÃO CONTRA MITIGAÇÃO');
+    expect(text()).toContain('Nunca mitigar este peer');
+
+    await click(find('.mitigation-exclusion__toggle input'));
+    await setSelect('Motivo da exclusão', 'UPLINK');
+    await setInput('Observação da exclusão', 'Upstream principal');
+    await clickIn(detailPanel(), 'SALVAR');
+
+    expect(api.setMitigationExclusion).toHaveBeenCalledWith('profile-1', {
+      excluded: true,
+      reason: 'UPLINK',
+      note: 'Upstream principal',
+    });
+    expect(text()).toContain('EXCLUÍDO DA MITIGAÇÃO');
+    expect(text()).toContain('Excluído da mitigação');
+    expect(text()).toContain('Mitigação desativada administrativamente para este peer');
+  });
+
+  it('peer excluido bloqueia ATIVAR na UI (tom administrativo) e mantem RETIRAR disponivel', async () => {
+    api.discoverMitigationProfiles.mockResolvedValue({
+      ...discovery,
+      profiles: [
+        { ...readyProfile, mitigationExcluded: true, mitigationExclusionReason: 'UPLINK' },
+        candidateProfile,
+      ],
+    });
+
+    await render(createElement(BgpMitigationWorkspace));
+    await chooseDevice('device-1');
+    await clickByText('DESCOBRIR CLIENTES');
+    await openDetails('HORIZONTE_IP');
+
+    const ativar = [...container.querySelectorAll('button')].find((button) =>
+      (button.textContent ?? '').includes('ATIVAR MITIGAÇÃO'),
+    ) as HTMLButtonElement;
+    const retirar = [...container.querySelectorAll('button')].find((button) =>
+      (button.textContent ?? '').includes('RETIRAR MITIGAÇÃO'),
+    ) as HTMLButtonElement;
+
+    expect(ativar.disabled).toBe(true);
+    expect(retirar.disabled).toBe(false);
+    expect(text()).toContain('EXCLUÍDO DA MITIGAÇÃO');
   });
 });

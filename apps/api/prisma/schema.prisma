@@ -298,6 +298,14 @@ enum BgpMitigationBandwidthSource {
   UNKNOWN
 }
 
+enum BgpMitigationExclusionReason {
+  UPLINK
+  TRANSIT
+  IX
+  BACKBONE
+  MANUAL
+}
+
 enum BgpMitigationSimulationResult {
   WOULD_MITIGATE
   WOULD_RECOVER
@@ -651,6 +659,14 @@ model BgpMitigationProfile {
   recoverySamples      Int                          @default(12)
   checkIntervalSeconds Int                          @default(5)
   mitigationRt         String                       @default("268568:660")
+  /**
+   * Exclusao administrativa por TARGET/PEER ("nunca mitigar este peer").
+   * Nao mexe em readiness: um target READY pode estar administrativamente
+   * proibido. Bloqueia NOVO ACTIVATE; REMOVE de mitigacao ativa continua valendo.
+   */
+  mitigationExcluded        Boolean                      @default(false)
+  mitigationExclusionReason BgpMitigationExclusionReason?
+  mitigationExclusionNote   String?
   createdAt            DateTime                     @default(now())
   updatedAt            DateTime                     @updatedAt
 
