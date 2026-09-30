@@ -169,15 +169,26 @@ describe('worker signal handling', () => {
 });
 
 describe('createMitigationWorkerFromEnv', () => {
-  it('recusa qualquer modo diferente de SIMULATION_ONLY', () => {
-    expect(() =>
-      createMitigationWorkerFromEnv({
-        MITIGATION_MODE: 'AUTO',
-        MITIGATION_SSH_HOST: '10.0.0.1',
-        MITIGATION_SSH_USERNAME: 'u',
-        MITIGATION_SSH_PASSWORD: 'p',
-      }),
-    ).toThrow(/SIMULATION_ONLY/);
+  it('aceita AUTO (o motor roda no processo da API) sem abrir escrita neste processo', () => {
+    const worker = createMitigationWorkerFromEnv({
+      MITIGATION_MODE: 'AUTO',
+      MITIGATION_SSH_HOST: '10.0.0.1',
+      MITIGATION_SSH_USERNAME: 'u',
+      MITIGATION_SSH_PASSWORD: 'p',
+    });
+    expect(worker.getHealth().state).toBe('DISCONNECTED');
+    // O worker standalone continua apenas LEITURA: nenhuma sessão é aberta aqui.
+    expect(worker.isRunning()).toBe(false);
+  });
+
+  it('modo desconhecido cai em SIMULATION_ONLY (fail-closed) e nao impede o start', () => {
+    const worker = createMitigationWorkerFromEnv({
+      MITIGATION_MODE: 'QUALQUER',
+      MITIGATION_SSH_HOST: '10.0.0.1',
+      MITIGATION_SSH_USERNAME: 'u',
+      MITIGATION_SSH_PASSWORD: 'p',
+    });
+    expect(worker.getHealth().state).toBe('DISCONNECTED');
   });
 
   it('exige host/usuário/senha', () => {

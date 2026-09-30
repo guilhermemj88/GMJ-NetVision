@@ -70,6 +70,37 @@ export interface BgpMitigationServiceDeps {
   repositoryKind: 'DATABASE' | 'MEMORY';
   /** Valor false enquanto a tabela da exclusao por peer nao estiver aplicada. */
   peerExclusionSchemaReady?: () => Promise<boolean>;
+  /** Configuracao efetiva de execucao (executor/live write/allowlist). */
+  execution?: {
+    executor: 'MOCK' | 'HUAWEI';
+    liveWriteEnabled: boolean;
+    allowedDeviceIds: readonly string[];
+  };
+  /** Estado do runtime do motor AUTO (quando o processo o hospeda). */
+  autoStatus?: () => {
+    state: 'OFF' | 'RUNNING' | 'STOPPED';
+    evaluationIntervalMs: number;
+    startedAt: string | null;
+    lastTickAt: string | null;
+    lastSuccessfulTickAt: string | null;
+    lastError: string | null;
+    lastDecision: {
+      at: string;
+      profileId: string;
+      deviceId: string;
+      customer: string | null;
+      outcome: string;
+      reason: string | null;
+      trafficBps: string | null;
+      thresholdBps: string | null;
+      runtimeState: string | null;
+      commandStatus: string | null;
+      verified: boolean;
+      detail: string | null;
+    } | null;
+    lastAutoActivateAt: string | null;
+    lastAutoActivateProfileId: string | null;
+  } | null;
   workerState?: () => MitigationWorkerState;
   maxDevicesPerDiscovery?: number;
   now?: () => Date;
@@ -133,8 +164,10 @@ export class BgpMitigationService {
       { migrationReady: false, databaseReady: false },
     );
     const lastDiscoveryAt = this.lastDiscoveryAt ?? (await this.derivedLastDiscoveryAt(probe));
+    const profiles = await this.read(() => this.deps.repository.listProfiles(), []);
+    const auto = this.deps.autoStatus?.() ?? null;
     return {
-      mode: 'SIMULATION_ONLY',
+      mode: this.baseConfig().mode,
       worker: { state: this.deps.workerState?.() ?? 'STOPPED' },
       migrationReady: probe.migrationReady,
       databaseReady: probe.databaseReady,
@@ -142,6 +175,16 @@ export class BgpMitigationService {
       lastDiscoveryAt: lastDiscoveryAt?.toISOString() ?? null,
       mitigationRt: this.baseConfig().mitigationRt,
       prefixLimit: this.baseConfig().prefixLimit,
+      executor: this.deps.execution?.executor ?? 'MOCK',
+      liveWriteEnabled: this.deps.execution?.liveWriteEnabled ?? false,
+      allowedDeviceCount: this.deps.execution?.allowedDeviceIds.length ?? 0,
+      autoEngine: auto,
+      profiles: {
+        total: profiles.length,
+        auto: profiles.filter((profile) => profile.mode === 'AUTO').length,
+        alertOnly: profiles.filter((profile) => profile.mode === 'ALERT_ONLY').length,
+        disabled: profiles.filter((profile) => profile.mode === 'DISABLED').length,
+      },
     };
   }
 

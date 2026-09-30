@@ -19,6 +19,9 @@ export type MitigationRuntimeState =
 
 export type MitigationPrefixStatus = 'SAFE' | 'WARNING' | 'EXCEEDED' | 'UNKNOWN';
 
+/** Modo GLOBAL do motor: default fail-closed em SIMULATION_ONLY. */
+export type MitigationMode = 'SIMULATION_ONLY' | 'AUTO';
+
 /** Familia do alvo: IPv4 e IPv6 sao targets independentes. */
 export type MitigationAddressFamily = 'IPV4' | 'IPV6';
 
@@ -136,8 +139,37 @@ export interface BgpMitigationProfileDto {
   lastDiscoveryAt: string | null;
 }
 
+/** Decisão do motor AUTO exposta no health (sem segredos). */
+export interface MitigationAutoDecisionDto {
+  at: string;
+  profileId: string;
+  deviceId: string;
+  customer: string | null;
+  outcome: string;
+  reason: string | null;
+  trafficBps: string | null;
+  thresholdBps: string | null;
+  runtimeState: string | null;
+  commandStatus: string | null;
+  verified: boolean;
+  detail: string | null;
+}
+
+/** Estado do runtime do motor AUTO no processo da API. */
+export interface MitigationAutoRuntimeDto {
+  state: 'OFF' | 'RUNNING' | 'STOPPED';
+  evaluationIntervalMs: number;
+  startedAt: string | null;
+  lastTickAt: string | null;
+  lastSuccessfulTickAt: string | null;
+  lastError: string | null;
+  lastDecision: MitigationAutoDecisionDto | null;
+  lastAutoActivateAt: string | null;
+  lastAutoActivateProfileId: string | null;
+}
+
 export interface BgpMitigationHealthDto {
-  mode: 'SIMULATION_ONLY';
+  mode: MitigationMode;
   worker: { state: MitigationWorkerState };
   migrationReady: boolean;
   databaseReady: boolean;
@@ -145,6 +177,13 @@ export interface BgpMitigationHealthDto {
   lastDiscoveryAt: string | null;
   mitigationRt: string;
   prefixLimit: number;
+  /** Camada de execução efetiva (fail-closed). */
+  executor?: 'MOCK' | 'HUAWEI';
+  liveWriteEnabled?: boolean;
+  allowedDeviceCount?: number;
+  /** Estado do motor AUTO (ausente quando nunca avaliado). */
+  autoEngine?: MitigationAutoRuntimeDto | null;
+  profiles?: { total: number; auto: number; alertOnly: number; disabled: number };
 }
 
 export interface BgpMitigationDiscoveryDeviceDto {

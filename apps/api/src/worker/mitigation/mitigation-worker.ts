@@ -150,10 +150,10 @@ function optionalNumber(env: MitigationWorkerEnvLike, key: keyof MitigationWorke
 export function createMitigationWorkerFromEnv(
   env: MitigationWorkerEnvLike = process.env,
 ): MitigationWorker {
-  const mode = env.MITIGATION_MODE?.trim() || 'SIMULATION_ONLY';
-  if (mode !== 'SIMULATION_ONLY') {
-    throw new Error('mitigation worker opera apenas em SIMULATION_ONLY nesta fase');
-  }
+  // `MITIGATION_MODE` é lido por `mitigationConfigFromEnv` (default fail-closed
+  // SIMULATION_ONLY). `AUTO` é aceito: o motor AUTO roda no processo da API, no
+  // mesmo caminho canônico do ACTIVATE (MitigationCommandService). Este processo
+  // segue apenas mantendo a sessão SSH de LEITURA (guard READ-ONLY intacto).
 
   const sessionOptions: Omit<PersistentHuaweiSessionOptions, 'onStateChange'> = {
     host: requiredEnv(env, 'MITIGATION_SSH_HOST'),

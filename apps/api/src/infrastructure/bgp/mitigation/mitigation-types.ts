@@ -8,7 +8,11 @@
  * estados e o mesmo planner, trocando apenas o executor).
  */
 
-export const MITIGATION_MODES = ['SIMULATION_ONLY'] as const;
+/**
+ * Modo GLOBAL do motor. `SIMULATION_ONLY` continua o default fail-closed; `AUTO`
+ * só é alcançado quando explicitamente configurado no ambiente.
+ */
+export const MITIGATION_MODES = ['SIMULATION_ONLY', 'AUTO'] as const;
 export type MitigationMode = (typeof MITIGATION_MODES)[number];
 
 /** Modo de um perfil/cliente — controla o que o operador permite por cliente. */

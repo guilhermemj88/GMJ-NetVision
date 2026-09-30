@@ -39,6 +39,7 @@ import {
   runtimeStateLabel,
   simulationResultLabel,
   workerStateLabel,
+  mitigationEngineStatus,
 } from '@/lib/mitigation-labels';
 
 const BPS_PER_GBPS = 1_000_000_000;
@@ -258,21 +259,82 @@ export function BgpMitigationWorkspace() {
     onError: (error) => setNotice(errorMessage(error, 'Falha ao salvar a exclusão')),
   });
 
+  const engine = health.data?.autoEngine ?? null;
+  const engineStatus = mitigationEngineStatus({
+    mode: health.data?.mode ?? 'SIMULATION_ONLY',
+    executor: health.data?.executor ?? 'MOCK',
+    liveWriteEnabled: health.data?.liveWriteEnabled === true,
+    autoState: engine?.state ?? null,
+  });
+  const profileCounts = health.data?.profiles ?? {
+    total: rows.length,
+    auto: 0,
+    alertOnly: 0,
+    disabled: 0,
+  };
+
   function runCommand(action: MitigationCommandAction, profileId: string): void {
     commandMutation.mutate({ id: profileId, action, requestId: newRequestId() });
   }
 
   return (
     <section className="mitigation-shell" aria-label="Mitigação DDoS">
-      <div className="mitigation-banner" role="status">
-        <span className="mitigation-banner__title">🧪 MOTOR EM MODO DE SIMULAÇÃO</span>
-        <span className="mitigation-banner__text">
-          Nenhuma alteração será realizada nos roteadores.
-        </span>
+      <div
+        className={`mitigation-banner mitigation-banner--${engineStatus.tone}`}
+        role="status"
+      >
+        <span className="mitigation-banner__title">{engineStatus.title}</span>
+        <span className="mitigation-banner__text">{engineStatus.text}</span>
       </div>
 
       <div className="mitigation-cards">
-        <MetaFact label="modo" value="SIMULAÇÃO" tone="info" />
+        <MetaFact
+          label="modo global"
+          value={engineStatus.modeLabel}
+          tone={engineStatus.autoActive ? 'up' : 'info'}
+        />
+        <MetaFact
+          label="motor"
+          value={engine?.state ?? 'OFF'}
+          tone={engine?.state === 'RUNNING' ? 'up' : 'info'}
+        />
+        <MetaFact
+          label="executor"
+          value={engineStatus.executorLabel}
+          tone={engineStatus.executorLabel === 'HUAWEI' ? 'up' : 'info'}
+        />
+        <MetaFact
+          label="live write"
+          value={engineStatus.liveWriteLabel}
+          tone={engineStatus.liveWriteLabel === 'SIM' ? 'up' : 'info'}
+        />
+        <MetaFact
+          label="profiles AUTO / ALERT / OFF"
+          value={`${profileCounts.auto} / ${profileCounts.alertOnly} / ${profileCounts.disabled}`}
+        />
+        <MetaFact
+          label="última avaliação"
+          value={formatDateTime(engine?.lastSuccessfulTickAt ?? engine?.lastTickAt ?? null)}
+        />
+        <MetaFact
+          label="última decisão"
+          value={
+            engine?.lastDecision
+              ? `${engine.lastDecision.outcome}${engine.lastDecision.reason ? ` · ${engine.lastDecision.reason}` : ''}`
+              : '—'
+          }
+          tone={engine?.lastDecision?.outcome === 'ACTIVATED' ? 'up' : 'info'}
+        />
+        <MetaFact
+          label="último ACTIVATE verificado"
+          value={
+            engine?.lastAutoActivateAt
+              ? `${formatDateTime(engine.lastAutoActivateAt)} · ${engine.lastAutoActivateProfileId ?? '—'}`
+              : '—'
+          }
+          tone={engine?.lastAutoActivateAt ? 'up' : 'info'}
+        />
+        {engine?.lastError ? <MetaFact label="último erro" value={engine.lastError} tone="down" /> : null}
         <MetaFact
           label="worker"
           value={workerStateLabel(health.data?.worker.state ?? 'STOPPED')}

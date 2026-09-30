@@ -47,13 +47,21 @@ function intEnv(env: EnvLike, key: string, fallback: number): number {
 }
 
 /**
+ * Modo global do motor: `AUTO` só com `MITIGATION_MODE=AUTO` explícito.
+ * Ausente ou desconhecido => `SIMULATION_ONLY` (fail-closed).
+ */
+export function mitigationModeFromEnv(env: EnvLike = process.env): MitigationMode {
+  return env.MITIGATION_MODE?.trim().toUpperCase() === 'AUTO' ? 'AUTO' : 'SIMULATION_ONLY';
+}
+
+/**
  * Configuração do motor, lida do ambiente. Nenhum valor operacional fica
  * hardcoded na lógica principal — os defaults são exatamente os do desenho
  * aprovado (trunk 300 Gbps, trigger 90%, recovery 70%, 5s, 3/12 amostras).
  */
 export function mitigationConfigFromEnv(env: EnvLike = process.env): MitigationEngineConfig {
   return {
-    mode: 'SIMULATION_ONLY',
+    mode: mitigationModeFromEnv(env),
     trunkCapacityBps: gbpsToBps(intEnv(env, 'MITIGATION_TRUNK_CAPACITY_GB', 300)),
     triggerPercent: intEnv(env, 'MITIGATION_TRIGGER_PERCENT', 90),
     recoveryPercent: intEnv(env, 'MITIGATION_RECOVERY_PERCENT', 70),

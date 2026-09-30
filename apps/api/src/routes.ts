@@ -113,6 +113,11 @@ import { MockMitigationExecutor } from './infrastructure/bgp/mitigation/mitigati
 import { mitigationConfigFromEnv } from './infrastructure/bgp/mitigation/mitigation-config';
 import { mitigationExecutionConfigFromEnv } from './infrastructure/bgp/mitigation/mitigation-execution-config';
 import { HuaweiMitigationExecutor } from './infrastructure/bgp/mitigation/huawei-mitigation-executor';
+import { PrismaInterfaceTrafficReader } from './infrastructure/bgp/mitigation/prisma-interface-traffic-reader';
+import { MitigationAutoEngine } from './worker/mitigation/mitigation-auto-engine';
+import { MitigationAutoRuntime } from './worker/mitigation/mitigation-auto-runtime';
+import { InterfaceTrafficSource } from './worker/mitigation/mitigation-traffic-source';
+import type { MitigationState } from './infrastructure/bgp/mitigation/mitigation-types';
 import { InMemoryMediaRepository } from './infrastructure/media/in-memory-media-repository';
 import { PrismaMediaRepository } from './infrastructure/media/prisma-media-repository';
 import {
@@ -509,6 +514,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         );
   // Uma unica sessao/credencial SSH para discovery E escrita manual.
   const mitigationSsh = new HuaweiBgpSshService(hosts);
+  // Runtime do motor AUTO (atribuído depois das dependências canônicas).
+  let autoRuntimeRef: MitigationAutoRuntime | null = null;
   const mitigationService = new BgpMitigationService({
     repository: mitigationRepository,
     discovery: new BgpMitigationDiscoveryService({
@@ -526,6 +533,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     schemaProbe: mitigationSchemaProbe,
     repositoryKind: config.DEMO_MODE ? 'MEMORY' : 'DATABASE',
     peerExclusionSchemaReady: mitigationPeerExclusionReady,
+    execution: mitigationExecutionConfigFromEnv(),
+    autoStatus: () => autoRuntimeRef?.getStatus() ?? null,
   });
   const physicalRepository = config.DEMO_MODE
     ? new DemoPhysicalRepository(hosts)
@@ -633,6 +642,99 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     // Snapshot do discovery: o preflight compara existingNodes e aborta sem ele.
     expectedNodes: async (profileId) =>
       mitigationService.discoverySnapshot(profileId)?.existingNodes ?? null,
+  });
+
+  // ---- Motor AUTO real: mesmo caminho canônico do ACTIVATE (UI/n8n) --------
+  // Default OFF: só liga com MITIGATION_MODE=AUTO. Sem LIVE_WRITE/allowlist ele
+  // apenas registra WOULD_ACTIVATE (zero escrita).
+  // Direção EXPLÍCITA por profile (fail-closed): "profileId:rx,profileId:tx".
+  // Sem entrada para o profile, a telemetria é tratada como indisponível.
+  const autoDirections: Record<string, 'rx' | 'tx'> = {};
+  for (const entry of (process.env.MITIGATION_AUTO_TRAFFIC_DIRECTIONS ?? '').split(',')) {
+    const [profileId, direction] = entry.split(':').map((part) => part.trim());
+    if (profileId && (direction === 'rx' || direction === 'tx')) {
+      autoDirections[profileId] = direction;
+    }
+  }
+  const autoMaxAgeRaw = Number(process.env.MITIGATION_AUTO_TRAFFIC_MAX_AGE_SECONDS ?? '');
+  const autoMaxAgeMs = (Number.isFinite(autoMaxAgeRaw) && autoMaxAgeRaw > 0 ? autoMaxAgeRaw : 120) * 1000;
+  const mitigationAutoEngine = new MitigationAutoEngine({
+    globalMode: mitigationEngineConfig.mode,
+    execution: {
+      executor: mitigationExecutionConfig.executor,
+      liveWrite: mitigationExecutionConfig.liveWriteEnabled,
+      allowedDeviceIds: mitigationExecutionConfig.allowedDeviceIds,
+    },
+    targets: {
+      list: async () => {
+        const [dtos, records] = await Promise.all([
+          mitigationService.listProfiles(),
+          mitigationRepository.listProfiles(),
+        ]);
+        const byId = new Map(records.map((record) => [record.id, record]));
+        return dtos
+          .filter((dto) => dto.persisted)
+          .map((dto) => {
+            const record = byId.get(dto.id);
+            return {
+              profileId: dto.id,
+              deviceId: dto.deviceId,
+              interfaceId: dto.interfaceId,
+              customer: dto.customer,
+              mode: dto.mode,
+              readiness: dto.readiness,
+              prefixStatus: dto.prefixStatus,
+              blockedReason: dto.blockedReason,
+              mitigationExcluded: dto.mitigationExcluded === true,
+              runtimeState: (dto.runtimeState as MitigationState | null) ?? null,
+              effectiveBandwidthBps:
+                record?.bandwidthOverrideBps ?? record?.detectedBandwidthBps ?? null,
+              bogonNode: dto.plannedBogonNode ?? null,
+              mitigationNode: dto.plannedMitigationNode ?? null,
+              sharedPolicy: dto.sharedPolicy,
+              peerAddresses: dto.peerAddresses,
+              triggerPercent: record?.triggerPercent ?? mitigationEngineConfig.triggerPercent,
+              recoveryPercent: record?.recoveryPercent ?? mitigationEngineConfig.recoveryPercent,
+              triggerSamples: record?.triggerSamples ?? mitigationEngineConfig.triggerSamples,
+              recoverySamples: record?.recoverySamples ?? mitigationEngineConfig.recoverySamples,
+            };
+          });
+      },
+    },
+    traffic: new InterfaceTrafficSource(new PrismaInterfaceTrafficReader(), {
+      directionByProfile: autoDirections,
+      maxAgeMs: autoMaxAgeMs,
+    }),
+    exclusions: {
+      listPeerExclusions: (filter) => mitigationRepository.listPeerExclusions(filter),
+    },
+    runtime: {
+      get: (profileId) => mitigationRepository.getRuntime(profileId),
+      save: async (profileId, patch) => {
+        await mitigationRepository.upsertRuntime(profileId, patch);
+      },
+    },
+    commands: { execute: (input) => mitigationCommands.execute(input) },
+    logger: (message, meta) => app.log.info(meta ?? {}, message),
+  });
+  autoRuntimeRef = new MitigationAutoRuntime({
+    engine: mitigationAutoEngine,
+    intervalMs: Math.max(1000, mitigationEngineConfig.checkIntervalSeconds * 1000),
+    logger: (message, meta) => app.log.info(meta ?? {}, message),
+  });
+  if (mitigationEngineConfig.mode === 'AUTO') {
+    autoRuntimeRef.start();
+    app.log.warn(
+      {
+        executor: mitigationExecutionConfig.executor,
+        liveWrite: mitigationExecutionConfig.liveWriteEnabled,
+        directions: Object.keys(autoDirections).length,
+      },
+      'motor AUTO habilitado (fail-closed por gates)',
+    );
+  }
+  app.addHook('onClose', async () => {
+    autoRuntimeRef?.stop();
   });
   registerN8nRoutes(app, {
     commands: mitigationCommands,

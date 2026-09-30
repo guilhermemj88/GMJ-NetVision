@@ -159,3 +159,58 @@ export function formatDateTime(value: string | null | undefined): string {
   if (Number.isNaN(date.getTime())) return '—';
   return date.toLocaleString('pt-BR');
 }
+
+// ---------------------------------------------------------------------------
+// Estado do MOTOR (SIMULATION_ONLY / AUTO) para a tela de mitigacao.
+//
+// Regra: nunca exibir AUTO ativo se a escrita real nao estiver habilitada.
+// ---------------------------------------------------------------------------
+export interface MitigationEngineStatusInput {
+  mode?: 'SIMULATION_ONLY' | 'AUTO' | null;
+  executor?: 'MOCK' | 'HUAWEI' | null;
+  liveWriteEnabled?: boolean | null;
+  autoState?: 'OFF' | 'RUNNING' | 'STOPPED' | null;
+}
+
+export interface MitigationEngineStatus {
+  title: string;
+  text: string;
+  tone: 'info' | 'warning' | 'success';
+  autoActive: boolean;
+  autoArmed: boolean;
+  simulationOnly: boolean;
+  modeLabel: string;
+  executorLabel: string;
+  liveWriteLabel: string;
+}
+
+export function mitigationEngineStatus(
+  input: MitigationEngineStatusInput | null | undefined,
+): MitigationEngineStatus {
+  const mode = input?.mode ?? 'SIMULATION_ONLY';
+  const executor = input?.executor ?? 'MOCK';
+  const liveWrite = input?.liveWriteEnabled === true;
+  const autoActive = mode === 'AUTO' && executor === 'HUAWEI' && liveWrite;
+  const autoArmed = mode === 'AUTO' && !autoActive;
+  const simulationOnly = !autoActive && !autoArmed;
+
+  return {
+    title: autoActive
+      ? '🤖 MOTOR AUTOMÁTICO ATIVO'
+      : autoArmed
+        ? '⏸ AUTO ARMADO — ESCRITA DESABILITADA'
+        : '🧪 MOTOR EM MODO DE SIMULAÇÃO',
+    text: autoActive
+      ? 'O motor ativa sozinho ao cruzar o threshold; a retirada continua manual (Telegram).'
+      : autoArmed
+        ? 'O motor avalia os targets, mas não escreve enquanto a escrita real estiver desabilitada.'
+        : 'Nenhuma alteração será realizada nos roteadores.',
+    tone: autoActive ? 'success' : autoArmed ? 'warning' : 'info',
+    autoActive,
+    autoArmed,
+    simulationOnly,
+    modeLabel: mode === 'AUTO' ? 'AUTO' : 'SIMULAÇÃO',
+    executorLabel: executor === 'HUAWEI' ? 'HUAWEI' : 'MOCK',
+    liveWriteLabel: liveWrite ? 'SIM' : 'NÃO',
+  };
+}
