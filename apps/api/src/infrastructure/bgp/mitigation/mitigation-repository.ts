@@ -12,6 +12,8 @@ export interface MitigationProfileRecord {
   deviceId: string;
   policyName: string;
   interfaceId: string | null;
+  /** Familia do alvo: IPv4 e IPv6 sao targets independentes. */
+  addressFamily: MitigationAddressFamily;
   detectedBandwidthBps: bigint | null;
   bandwidthSource: BandwidthSource;
   bandwidthOverrideBps: bigint | null;
@@ -31,7 +33,9 @@ export interface MitigationProfileRecord {
 export interface MitigationProfileInput {
   deviceId: string;
   policyName: string;
-  interfaceId?: string | null;
+  /** O alvo sempre tem interface: e a chave do target junto com a familia. */
+  interfaceId: string;
+  addressFamily?: MitigationAddressFamily;
   detectedBandwidthBps?: bigint | null;
   bandwidthSource?: BandwidthSource;
   bandwidthOverrideBps?: bigint | null;
@@ -69,7 +73,12 @@ export interface MitigationRuntimeRecord {
   peakTrafficBps: bigint | null;
   triggerCounter: number;
   recoveryCounter: number;
+  /** Node de PERMIT que aplica a RT (compatibilidade). */
   plannedNode: number | null;
+  /** Node de DENY (BOGONS) do par planejado. */
+  plannedBogonNode: number | null;
+  /** Node de PERMIT (PREFIX8to24 + RT) do par planejado. */
+  plannedMitigationNode: number | null;
   lastSampleAt: Date | null;
   lastValidatedAt: Date | null;
   lastReconciledAt: Date | null;
@@ -84,6 +93,8 @@ export interface MitigationRuntimePatch {
   triggerCounter?: number;
   recoveryCounter?: number;
   plannedNode?: number | null;
+  plannedBogonNode?: number | null;
+  plannedMitigationNode?: number | null;
   lastSampleAt?: Date | null;
   lastValidatedAt?: Date | null;
   lastReconciledAt?: Date | null;

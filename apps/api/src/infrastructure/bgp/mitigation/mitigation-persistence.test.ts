@@ -33,6 +33,8 @@ describe('InMemoryMitigationRepository', () => {
     const updated = await repository.upsertProfile({
       deviceId: 'device-1',
       policyName: 'HORIZONTE_IP_40GB',
+      interfaceId: 'interface-1',
+      addressFamily: 'IPV4',
       mode: 'ALERT_ONLY',
       bandwidthOverrideBps: 10_000_000_000n,
     });
@@ -192,7 +194,8 @@ describe('BGP mitigation persistence schema', () => {
     const migration = readFileSync(migrationPath, 'utf8');
 
     expect(migration).toMatch(/BgpMitigationProfile_deviceId_fkey[\s\S]+ON DELETE CASCADE/);
-    expect(migration).toMatch(/BgpMitigationProfile_interfaceId_fkey[\s\S]+ON DELETE SET NULL/);
+    // O alvo sempre tem interface: a FK e Cascade (nao mais SetNull).
+    expect(migration).toMatch(/BgpMitigationProfile_interfaceId_fkey[\s\S]+ON DELETE CASCADE/);
     expect(migration).toMatch(/BgpMitigationProfilePeer_profileId_fkey[\s\S]+ON DELETE CASCADE/);
     expect(migration).toMatch(/BgpMitigationProfilePeer_peerId_fkey[\s\S]+ON DELETE SET NULL/);
     expect(migration).toMatch(/BgpMitigationRuntime_profileId_fkey[\s\S]+ON DELETE CASCADE/);
@@ -204,7 +207,16 @@ describe('BGP mitigation persistence schema', () => {
     const migration = readFileSync(migrationPath, 'utf8');
 
     expect(migration).toContain('CREATE UNIQUE INDEX "BgpMitigationRuntime_profileId_key"');
-    expect(migration).toContain('CREATE UNIQUE INDEX "BgpMitigationProfile_deviceId_policyName_key"');
+    // Nome com o corte de 63 chars que o proprio Prisma usa (migrate diff sem drift).
+    expect(migration).toContain(
+      'CREATE UNIQUE INDEX "BgpMitigationProfile_deviceId_interfaceId_addressFamily_pol_key"',
+    );
+    // A coluna addressFamily TEM de existir no CREATE TABLE: o unique acima e o
+    // indice (policyName, addressFamily) a referenciam — sem ela a migration
+    // falharia ao aplicar.
+    expect(migration).toMatch(
+      /CREATE TABLE "BgpMitigationProfile" \([\s\S]*?"addressFamily" "BgpAddressFamily" NOT NULL DEFAULT 'IPV4'/,
+    );
     expect(migration).toContain('CREATE UNIQUE INDEX "BgpMitigationProfilePeer_profileId_peerAddress_key"');
   });
 

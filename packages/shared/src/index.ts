@@ -9,6 +9,7 @@ export * from './ip';
 export * from './link-handles';
 export * from './link-layout';
 export * from './link-telemetry';
+export * from './mitigation';
 export * from './mpls';
 export * from './optical-history';
 export * from './physical';

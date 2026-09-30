@@ -357,6 +357,83 @@ export class HuaweiBgpSshService {
     return { bgpConfiguration, routePolicyConfiguration, warnings };
   }
 
+  /** READ-ONLY: route-policy + ip-prefix do device, base do preflight de escrita. */
+  async readMitigationConfiguration(device: HostRecord): Promise<{
+    routePolicyConfiguration: string | null;
+    prefixListConfiguration: string | null;
+    warnings: string[];
+  }> {
+    const warnings: string[] = [];
+
+    let client: SshClient;
+    try {
+      client = await this.createClient(device);
+    } catch (error) {
+      return {
+        routePolicyConfiguration: null,
+        prefixListConfiguration: null,
+        warnings: [safeSshError(error)],
+      };
+    }
+
+    const host = device.ssh!.host;
+    const screenLength = assertReadOnlyCommand('screen-length 0 temporary');
+    const routePolicyCommand = assertReadOnlyCommand(
+      'display current-configuration configuration route-policy',
+    );
+    const prefixListCommand = assertReadOnlyCommand(
+      'display current-configuration | include ip-prefix',
+    );
+
+    const routePolicyConfiguration = await this.executeStrict(client, host, [
+      screenLength,
+      routePolicyCommand,
+    ]);
+    if (routePolicyConfiguration === null) warnings.push('route-policy: SSH command failed');
+
+    const prefixListConfiguration = await this.executeStrict(client, host, [
+      screenLength,
+      prefixListCommand,
+    ]);
+    if (prefixListConfiguration === null) warnings.push('ip-prefix: SSH command failed');
+
+    return { routePolicyConfiguration, prefixListConfiguration, warnings };
+  }
+
+  /** READ-ONLY: dump textual da route-policy para o read-back obrigatorio. */
+  async readMitigationRoutePolicy(device: HostRecord, policyName: string): Promise<string> {
+    // O nome ja foi validado pela guarda de escrita antes de chegar aqui.
+    const command = assertReadOnlyCommand(`display route-policy ${policyName}`);
+    const client = await this.createClient(device);
+    const output = await this.executeStrict(client, device.ssh!.host, [
+      'screen-length 0 temporary',
+      command,
+    ]);
+    if (output === null) throw new Error('SSH command failed');
+    return output;
+  }
+
+  /**
+   * ESCRITA da mitigacao manual. A lista chega JA canonica e validada pela guarda
+   * de escrita; este metodo apenas a transporta e faz o commit.
+   */
+  async applyMitigationCommands(
+    device: HostRecord,
+    commands: readonly string[],
+  ): Promise<{ ok: boolean; output: string | null }> {
+    // Sessao de ESCRITA: termina em system-view (apos o commit), entao precisa
+    // de DOIS `quit` (volta para user view e encerra) e de um timeout maior.
+    const client = await this.createClient(device, {
+      exitMode: 'return-quit',
+      shellTimeoutMs: 30_000,
+    });
+    const raw = await this.executeRaw(client, device.ssh!.host, [
+      'screen-length 0 temporary',
+      ...commands,
+    ]);
+    return { ok: !raw.failed, output: raw.output };
+  }
+
   private async learnLocalAs(
     client: SshClient,
     host: string,
@@ -369,7 +446,10 @@ export class HuaweiBgpSshService {
     return parseHuaweiBgpLocalAs(output);
   }
 
-  private async createClient(device: HostRecord): Promise<SshClient> {
+  private async createClient(
+    device: HostRecord,
+    options: { exitMode?: 'quit' | 'return-quit'; shellTimeoutMs?: number } = {},
+  ): Promise<SshClient> {
     if (!device.sshEnabled || !device.ssh?.host || !device.ssh.username) {
       throw new Error('SSH não está habilitado para este host');
     }
@@ -380,7 +460,30 @@ export class HuaweiBgpSshService {
       username: device.ssh.username,
       password: credentials.password,
       contextCommand: device.ssh.contextCommand ?? null,
+      ...(options.exitMode === undefined ? {} : { exitMode: options.exitMode }),
+      ...(options.shellTimeoutMs === undefined ? {} : { shellTimeoutMs: options.shellTimeoutMs }),
     });
+  }
+
+  /**
+   * Como `executeStrict`, mas DEVOLVE o texto do equipamento tambem quando ele
+   * reporta erro — necessario para diagnosticar escrita (nunca mascarar).
+   */
+  private async executeRaw(
+    client: SshClient,
+    host: string,
+    commands: string[],
+  ): Promise<{ output: string; failed: boolean }> {
+    try {
+      const results = await client.execute(host, commands);
+      const result = results.at(-1);
+      if (!result || result.exitCode !== 0) {
+        return { output: result?.stdout ?? '', failed: true };
+      }
+      return { output: result.stdout, failed: commandOutputError(result.stdout) };
+    } catch (error) {
+      return { output: safeSshError(error), failed: true };
+    }
   }
 
   /** Returns the raw output, or null when the command reported an error. */

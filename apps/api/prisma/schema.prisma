@@ -634,7 +634,11 @@ model BgpMitigationProfile {
   id                   String                       @id @default(cuid())
   deviceId             String
   policyName           String
-  interfaceId          String?
+  /**
+   * Alvo = device + interface + familia + policy (IPv4 e IPv6 nunca se misturam).
+   */
+  addressFamily        BgpAddressFamily             @default(IPV4)
+  interfaceId          String
   detectedBandwidthBps BigInt?
   bandwidthSource      BgpMitigationBandwidthSource @default(UNKNOWN)
   bandwidthOverrideBps BigInt?
@@ -651,14 +655,15 @@ model BgpMitigationProfile {
   updatedAt            DateTime                     @updatedAt
 
   device      Device                     @relation(fields: [deviceId], references: [id], onDelete: Cascade)
-  interface   Interface?                 @relation(fields: [interfaceId], references: [id], onDelete: SetNull)
+  interface   Interface                  @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
   peers       BgpMitigationProfilePeer[]
   runtime     BgpMitigationRuntime?
   simulations BgpMitigationSimulation[]
   events      BgpMitigationEvent[]
 
-  @@unique([deviceId, policyName])
+  @@unique([deviceId, interfaceId, addressFamily, policyName])
   @@index([deviceId, mode])
+  @@index([policyName, addressFamily])
   @@index([policyName])
   @@index([interfaceId])
 }
@@ -685,19 +690,21 @@ model BgpMitigationProfilePeer {
  * o estado após restart/reconnect a partir do PostgreSQL — nunca da memória.
  */
 model BgpMitigationRuntime {
-  id                String             @id @default(cuid())
-  profileId         String             @unique
-  state             BgpMitigationState @default(NORMAL)
-  currentTrafficBps BigInt?
-  peakTrafficBps    BigInt?
-  triggerCounter    Int                @default(0)
-  recoveryCounter   Int                @default(0)
-  plannedNode       Int?
-  lastSampleAt      DateTime?
-  lastValidatedAt   DateTime?
-  lastReconciledAt  DateTime?
-  safeError         String?
-  updatedAt         DateTime           @updatedAt
+  id                    String             @id @default(cuid())
+  profileId             String             @unique
+  state                 BgpMitigationState @default(NORMAL)
+  currentTrafficBps     BigInt?
+  peakTrafficBps        BigInt?
+  triggerCounter        Int                @default(0)
+  recoveryCounter       Int                @default(0)
+  plannedNode           Int?
+  plannedBogonNode      Int?
+  plannedMitigationNode Int?
+  lastSampleAt          DateTime?
+  lastValidatedAt       DateTime?
+  lastReconciledAt      DateTime?
+  safeError             String?
+  updatedAt             DateTime           @updatedAt
 
   profile BgpMitigationProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
 
@@ -1494,4 +1501,79 @@ model PhysicalConnection {
   ports        PhysicalPort[]
   createdAt    DateTime                 @default(now())
   updatedAt    DateTime                 @updatedAt
+}
+
+enum MediaIntegrationType {
+  WEBHOOK
+}
+
+enum MediaIntegrationPurpose {
+  BGP_MITIGATION
+}
+
+enum MediaDeliveryDirection {
+  OUTBOUND
+  INBOUND
+}
+
+enum MediaDeliveryStatus {
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+/// Integracao de midia (notificacao). Generica de proposito: o NetVision nao
+/// modela "Telegram" - o transporte externo continua responsabilidade do n8n.
+model MediaIntegration {
+  id                      String                  @id @default(cuid())
+  name                    String
+  type                    MediaIntegrationType    @default(WEBHOOK)
+  purpose                 MediaIntegrationPurpose
+  enabled                 Boolean                 @default(true)
+  outboundUrl             String?
+  outboundSecretEncrypted Bytes?
+  inboundEnabled          Boolean                 @default(false)
+  inboundSecretEncrypted  Bytes?
+  createdAt               DateTime                @default(now())
+  updatedAt               DateTime                @updatedAt
+  lastOutboundAttemptAt   DateTime?
+  lastOutboundSuccessAt   DateTime?
+  lastOutboundFailureAt   DateTime?
+  lastOutboundStatusCode  Int?
+  lastOutboundLatencyMs   Int?
+  lastOutboundEvent       String?
+  lastOutboundErrorSafe   String?
+  lastInboundAt           DateTime?
+  lastInboundAction       String?
+  lastInboundStatus       String?
+  lastInboundRequestId    String?
+  lastInboundErrorSafe    String?
+  logs                    MediaDeliveryLog[]
+
+  @@unique([type, purpose])
+  @@index([purpose, enabled])
+}
+
+/// Log operacional das entregas. NUNCA guarda payload completo nem segredo:
+/// apenas metadados seguros (status HTTP, duracao, erro seguro, origem).
+model MediaDeliveryLog {
+  id                 String                 @id @default(cuid())
+  mediaIntegrationId String?
+  direction          MediaDeliveryDirection
+  event              String?
+  action             String?
+  profileId          String?
+  requestId          String?
+  status             MediaDeliveryStatus
+  httpStatus         Int?
+  latencyMs          Int?
+  idempotent         Boolean?
+  safeError          String?
+  destination        String?
+  createdAt          DateTime               @default(now())
+  mediaIntegration   MediaIntegration?      @relation(fields: [mediaIntegrationId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+
+  @@index([mediaIntegrationId, createdAt])
+  @@index([direction, createdAt])
+  @@index([profileId, createdAt])
 }

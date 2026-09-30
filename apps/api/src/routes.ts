@@ -91,6 +91,40 @@ import { HuaweiBgpSshService } from './infrastructure/bgp/huawei-bgp-ssh';
 import { DemoBgpRepository } from './infrastructure/bgp/demo-bgp-repository';
 import { HuaweiBgpSnmpCollector } from './infrastructure/bgp/huawei-bgp-snmp';
 import { PrismaBgpRepository } from './infrastructure/bgp/prisma-bgp-repository';
+import { InMemoryMitigationRepository } from './infrastructure/bgp/mitigation/in-memory-mitigation-repository';
+import { PrismaMitigationRepository } from './infrastructure/bgp/mitigation/prisma-mitigation-repository';
+import { BgpMitigationDiscoveryService } from './infrastructure/bgp/mitigation/mitigation-discovery-service';
+import { HuaweiBgpMitigationConfigSource } from './infrastructure/bgp/mitigation/mitigation-config-source';
+import { BgpMitigationService } from './infrastructure/bgp/mitigation/mitigation-service';
+import {
+  RoutingMitigationRepository,
+  createCachedSchemaCheck,
+} from './infrastructure/bgp/mitigation/mitigation-repository-router';
+import {
+  AlwaysReadyMitigationSchemaProbe,
+  PrismaMitigationSchemaProbe,
+} from './infrastructure/bgp/mitigation/mitigation-schema-probe';
+import { registerMitigationRoutes } from './mitigation-routes';
+import { registerN8nRoutes } from './n8n-routes';
+import { MitigationCommandService } from './infrastructure/bgp/mitigation/mitigation-command-service';
+import { MockMitigationExecutor } from './infrastructure/bgp/mitigation/mitigation-executor';
+import { mitigationConfigFromEnv } from './infrastructure/bgp/mitigation/mitigation-config';
+import { mitigationExecutionConfigFromEnv } from './infrastructure/bgp/mitigation/mitigation-execution-config';
+import { HuaweiMitigationExecutor } from './infrastructure/bgp/mitigation/huawei-mitigation-executor';
+import { InMemoryMediaRepository } from './infrastructure/media/in-memory-media-repository';
+import { PrismaMediaRepository } from './infrastructure/media/prisma-media-repository';
+import {
+  AlwaysReadyMediaSchemaProbe,
+  PrismaMediaSchemaProbe,
+} from './infrastructure/media/media-schema-probe';
+import { RoutingMediaRepository } from './infrastructure/media/media-repository-router';
+import { createMediaSecretBox } from './infrastructure/media/media-secret-box';
+import { MediaIntegrationService } from './infrastructure/media/media-integration-service';
+import {
+  N8nMediaTransport,
+  createFetchWebhookSender,
+} from './infrastructure/media/n8n-media-transport';
+import { registerMediaRoutes } from './media-routes';
 import { SshClientImpl } from './infrastructure/ssh/ssh-client-impl';
 import { SshInterfaceService } from './infrastructure/ssh/ssh-interface-service';
 import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-adapter';
@@ -439,6 +473,48 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     hosts,
     ssh: new HuaweiBgpSshService(hosts),
   });
+  // Mitigacao DDoS: SIMULATION_ONLY. Em DEMO_MODE o repositorio e em memoria;
+  // em producao o Prisma fica pronto, mas a leitura tolera schema ausente
+  // (a migration ainda nao foi aplicada).
+  // Mitigacao DDoS: o Postgres entra quando a migration existir. Enquanto ela
+  // nao for aplicada, o espelho em memoria mantem o discovery utilizavel -
+  // sem isso, o upsert do profile morreria com "relation does not exist" e a
+  // descoberta inteira se perderia.
+  const mitigationMemoryRepository = new InMemoryMitigationRepository();
+  const mitigationSchemaProbe = config.DEMO_MODE
+    ? new AlwaysReadyMitigationSchemaProbe()
+    : new PrismaMitigationSchemaProbe();
+  const mitigationSchemaReady = createCachedSchemaCheck(() => mitigationSchemaProbe.probe());
+  const mitigationPrismaRepository = config.DEMO_MODE
+    ? null
+    : new PrismaMitigationRepository();
+  const mitigationRepository =
+    config.DEMO_MODE || mitigationPrismaRepository === null
+      ? mitigationMemoryRepository
+      : new RoutingMitigationRepository(
+          mitigationPrismaRepository,
+          mitigationMemoryRepository,
+          mitigationSchemaReady,
+        );
+  // Uma unica sessao/credencial SSH para discovery E escrita manual.
+  const mitigationSsh = new HuaweiBgpSshService(hosts);
+  const mitigationService = new BgpMitigationService({
+    repository: mitigationRepository,
+    discovery: new BgpMitigationDiscoveryService({
+      bgpDiscovery,
+      configSource: new HuaweiBgpMitigationConfigSource(mitigationSsh),
+      repository: mitigationRepository,
+    }),
+    hosts,
+    // Reusa a correlacao peer->interface ja gravada pelo discovery BGP,
+    // evitando um SSH por peer (F1A tem 107 peers).
+    persistedPeers: {
+      listForDevice: (deviceId) =>
+        bgpRepository.listDashboardPeers({ scope: 'all', state: 'all', deviceId }),
+    },
+    schemaProbe: mitigationSchemaProbe,
+    repositoryKind: config.DEMO_MODE ? 'MEMORY' : 'DATABASE',
+  });
   const physicalRepository = config.DEMO_MODE
     ? new DemoPhysicalRepository(hosts)
     : new PrismaPhysicalRepository();
@@ -483,6 +559,99 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     discovery: bgpDiscovery,
     admin: bgpAdmin,
     advertisedRoutes: bgpAdvertisedRoutes,
+    currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
+  });
+  // ---- Camada de MIDIAS (Fase 9): n8n configuravel pela UI --------------
+  // A migration desta fase pode nao estar aplicada: o roteador cai para o
+  // espelho em memoria e a UI avisa que a configuracao e temporaria.
+  const mediaMemoryRepository = new InMemoryMediaRepository();
+  const mediaSchemaProbe = config.DEMO_MODE
+    ? new AlwaysReadyMediaSchemaProbe()
+    : new PrismaMediaSchemaProbe();
+  const mediaSchemaReady = createCachedSchemaCheck(() => mediaSchemaProbe.probe());
+  const mediaPrismaRepository = config.DEMO_MODE ? null : new PrismaMediaRepository();
+  const mediaRepository =
+    config.DEMO_MODE || mediaPrismaRepository === null
+      ? mediaMemoryRepository
+      : new RoutingMediaRepository(mediaPrismaRepository, mediaMemoryRepository, mediaSchemaReady);
+  const mediaService = new MediaIntegrationService({
+    repository: mediaRepository,
+    secretBox: createMediaSecretBox(vault),
+    repositoryKind: config.DEMO_MODE ? 'MEMORY' : 'DATABASE',
+    migrationReady: mediaSchemaReady,
+    env: {
+      outboundUrl: process.env.MITIGATION_N8N_WEBHOOK_URL?.trim() || null,
+      outboundToken: process.env.MITIGATION_N8N_WEBHOOK_TOKEN?.trim() || null,
+      inboundToken: process.env.NETVISION_N8N_COMMAND_TOKEN?.trim() || null,
+    },
+    logger: (message, meta) => app.log.warn(meta ?? {}, message),
+  });
+  const mediaTransport = new N8nMediaTransport({
+    media: mediaService,
+    send: createFetchWebhookSender(),
+  });
+  // Ligacao tardia: o transporte resolve URL/token pela camada de midias.
+  mediaService.attachTransport(mediaTransport);
+
+  // Configuracao explicita de EXECUCAO (fail-closed): MOCK por padrao; o
+  // executor Huawei so entra quando `MITIGATION_EXECUTOR=HUAWEI`. A escrita real
+  // continua exigindo `MITIGATION_LIVE_WRITE_ENABLED=true` E device na allowlist.
+  const mitigationEngineConfig = mitigationConfigFromEnv();
+  const mitigationExecutionConfig = mitigationExecutionConfigFromEnv();
+  const mitigationLabels = {
+    bogonPrefixList: mitigationEngineConfig.bogonPrefixList,
+    targetPrefixList: mitigationEngineConfig.targetPrefixList,
+  };
+  const mitigationExecutor = new MockMitigationExecutor();
+  const mitigationLiveExecutor = new HuaweiMitigationExecutor({
+    ssh: mitigationSsh,
+    config: mitigationExecutionConfig,
+    rt: mitigationEngineConfig.mitigationRt,
+    labels: mitigationLabels,
+  });
+  const mitigationCommands = new MitigationCommandService({
+    repository: mitigationRepository,
+    hosts,
+    executor: mitigationExecutor,
+    labels: mitigationLabels,
+    // OUTBOUND: o dominio publica; a camada de midias decide o transporte.
+    notifications: mediaTransport,
+    ...(mitigationExecutionConfig.executor === 'HUAWEI' ? { live: mitigationLiveExecutor } : {}),
+    // Snapshot do discovery: o preflight compara existingNodes e aborta sem ele.
+    expectedNodes: async (profileId) =>
+      mitigationService.discoverySnapshot(profileId)?.existingNodes ?? null,
+  });
+  registerN8nRoutes(app, {
+    commands: mitigationCommands,
+    // ENV legado continua valendo como fallback.
+    commandToken: process.env.NETVISION_N8N_COMMAND_TOKEN?.trim() || null,
+    // Token persistido na tela de MIDIAS vence o ENV quando existir.
+    resolveCommandToken: async () => (await mediaService.resolveInboundToken()).token,
+    onCommandResult: async (log) => {
+      // Anexa o comando recebido a integracao persistida (quando existir), para
+      // a tela de MIDIAS mostrar "ultimo comando recebido".
+      const inbound = await mediaService.resolveInboundToken();
+      return mediaService.recordInboundDelivery({
+        integrationId: inbound.integrationId,
+        requestId: log.requestId,
+        action: log.action,
+        profileId: log.profileId,
+        status: log.status,
+        httpStatus: log.httpStatus,
+        ok: log.ok,
+        idempotent: log.idempotent,
+        safeError: log.safeError,
+      });
+    },
+  });
+  registerMitigationRoutes(app, {
+    service: mitigationService,
+    // mesma instancia do n8n: UI e n8n passam pelo MESMO servico
+    commands: mitigationCommands,
+    currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
+  });
+  registerMediaRoutes(app, {
+    media: mediaService,
     currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
   });
   registerPhysicalRoutes(app, {
@@ -560,6 +729,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     if (mplsRepository instanceof PrismaMplsRepository) await mplsRepository.disconnect();
     if (pppRepository instanceof PrismaPppRepository) await pppRepository.disconnect();
     if (bgpRepository instanceof PrismaBgpRepository) await bgpRepository.disconnect();
+    if (mitigationRepository instanceof PrismaMitigationRepository)
+      await mitigationRepository.disconnect();
+    if (mitigationSchemaProbe instanceof PrismaMitigationSchemaProbe)
+      await mitigationSchemaProbe.disconnect();
+    if (mitigationPrismaRepository) await mitigationPrismaRepository.disconnect();
+    if (mitigationSchemaProbe instanceof PrismaMitigationSchemaProbe)
+      await mitigationSchemaProbe.disconnect();
     if (bgpAudit instanceof PrismaBgpAdminAuditRepository) await bgpAudit.disconnect();
     if (alarmRepository instanceof PrismaAlarmRepository) await alarmRepository.disconnect();
     await physicalRepository.disconnect();
@@ -573,7 +749,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   // ---- Authentication ----
   const isPublicApiPath = (pathname: string) =>
-    pathname === '/api/auth/login' || pathname.startsWith('/api/public/');
+    pathname === '/api/auth/login' ||
+    pathname.startsWith('/api/public/') ||
+    // n8n inbound tem autenticacao propria por token (Bearer)
+    pathname === '/api/integrations/n8n/mitigation-command';
 
   app.addHook('preHandler', async (request, reply) => {
     const pathname = request.url.split('?')[0] ?? '';

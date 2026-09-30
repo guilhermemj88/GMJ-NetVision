@@ -32,6 +32,7 @@ function mapProfile(row: ProfileRow): MitigationProfileRecord {
     deviceId: row.deviceId,
     policyName: row.policyName,
     interfaceId: row.interfaceId,
+    addressFamily: row.addressFamily as MitigationAddressFamily,
     detectedBandwidthBps: row.detectedBandwidthBps,
     bandwidthSource: row.bandwidthSource,
     bandwidthOverrideBps: row.bandwidthOverrideBps,
@@ -69,6 +70,8 @@ function mapRuntime(row: RuntimeRow): MitigationRuntimeRecord {
     triggerCounter: row.triggerCounter,
     recoveryCounter: row.recoveryCounter,
     plannedNode: row.plannedNode,
+    plannedBogonNode: row.plannedBogonNode,
+    plannedMitigationNode: row.plannedMitigationNode,
     lastSampleAt: row.lastSampleAt,
     lastValidatedAt: row.lastValidatedAt,
     lastReconciledAt: row.lastReconciledAt,
@@ -130,7 +133,14 @@ export class PrismaMitigationRepository implements MitigationRepository {
 
   async upsertProfile(input: MitigationProfileInput): Promise<MitigationProfileRecord> {
     const row = await this.prisma.bgpMitigationProfile.upsert({
-      where: { deviceId_policyName: { deviceId: input.deviceId, policyName: input.policyName } },
+      where: {
+        deviceId_interfaceId_addressFamily_policyName: {
+          deviceId: input.deviceId,
+          interfaceId: input.interfaceId,
+          addressFamily: input.addressFamily ?? 'IPV4',
+          policyName: input.policyName,
+        },
+      },
       create: {
         deviceId: input.deviceId,
         policyName: input.policyName,
@@ -150,6 +160,7 @@ export class PrismaMitigationRepository implements MitigationRepository {
       },
       update: {
         ...(input.interfaceId === undefined ? {} : { interfaceId: input.interfaceId }),
+        ...(input.addressFamily === undefined ? {} : { addressFamily: input.addressFamily }),
         ...(input.detectedBandwidthBps === undefined
           ? {}
           : { detectedBandwidthBps: input.detectedBandwidthBps }),
@@ -248,6 +259,8 @@ export class PrismaMitigationRepository implements MitigationRepository {
         triggerCounter: patch.triggerCounter ?? 0,
         recoveryCounter: patch.recoveryCounter ?? 0,
         plannedNode: patch.plannedNode ?? null,
+        plannedBogonNode: patch.plannedBogonNode ?? null,
+        plannedMitigationNode: patch.plannedMitigationNode ?? null,
         lastSampleAt: patch.lastSampleAt ?? null,
         lastValidatedAt: patch.lastValidatedAt ?? null,
         lastReconciledAt: patch.lastReconciledAt ?? null,
@@ -262,6 +275,10 @@ export class PrismaMitigationRepository implements MitigationRepository {
         ...(patch.triggerCounter === undefined ? {} : { triggerCounter: patch.triggerCounter }),
         ...(patch.recoveryCounter === undefined ? {} : { recoveryCounter: patch.recoveryCounter }),
         ...(patch.plannedNode === undefined ? {} : { plannedNode: patch.plannedNode }),
+        ...(patch.plannedBogonNode === undefined ? {} : { plannedBogonNode: patch.plannedBogonNode }),
+        ...(patch.plannedMitigationNode === undefined
+          ? {}
+          : { plannedMitigationNode: patch.plannedMitigationNode }),
         ...(patch.lastSampleAt === undefined ? {} : { lastSampleAt: patch.lastSampleAt }),
         ...(patch.lastValidatedAt === undefined ? {} : { lastValidatedAt: patch.lastValidatedAt }),
         ...(patch.lastReconciledAt === undefined

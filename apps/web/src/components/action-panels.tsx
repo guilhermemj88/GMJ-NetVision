@@ -7,6 +7,7 @@ import {
   ArrowDown,
   ArrowUp,
   ChevronRight,
+  BellRing,
   Database,
   KeyRound,
   Link2,
@@ -57,6 +58,7 @@ import { AssistedDiscoveryReview } from './assisted-discovery-review';
 import { firstInterfaceId, InterfacePicker } from './interface-picker';
 import { PublicLinksPanel } from './public-links-manager';
 import { UsersPanel } from './users-manager';
+import { MediaIntegrationsPanel } from './media/media-integrations-panel';
 
 export function ActionPanels() {
   const panel = useMapStore((state) => state.panel);
@@ -69,6 +71,7 @@ export function ActionPanels() {
   if (panel === 'maps') return <MapManagerPanel />;
   if (panel === 'rotation') return <RotationPanel />;
   if (panel === 'users') return <UsersPanel />;
+  if (panel === 'media') return <MediaIntegrationsPanel />;
   return null;
 }
 
@@ -1001,6 +1004,19 @@ function SettingsPanel() {
             <small>Driver Huawei VRP disponível</small>
           </div>
           <Badge tone="info">PREPARADO</Badge>
+        </div>
+        <h3>MÍDIAS</h3>
+        <div className="integration-row">
+          <span className="integration-icon">
+            <BellRing size={20} />
+          </span>
+          <div>
+            <strong>n8n — Mitigação DDoS</strong>
+            <small>Webhook de saída e comandos de entrada · o Telegram fica no n8n</small>
+          </div>
+          <Button compact variant="secondary" onClick={() => setPanel('media')}>
+            Abrir mídias
+          </Button>
         </div>
         <div className="panel-note">
           <ShieldCheck size={17} />

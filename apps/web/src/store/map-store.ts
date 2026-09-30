@@ -41,6 +41,7 @@ export type OpenPanel =
   | 'rotation'
   | 'public-links'
   | 'users'
+  | 'media'
   | null;
 export type WorkspaceView = 'MAP' | 'HOSTS' | 'PHYSICAL' | 'BGP';
 

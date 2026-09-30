@@ -18,7 +18,8 @@ CREATE TABLE "BgpMitigationProfile" (
     "id" TEXT NOT NULL,
     "deviceId" TEXT NOT NULL,
     "policyName" TEXT NOT NULL,
-    "interfaceId" TEXT,
+    "addressFamily" "BgpAddressFamily" NOT NULL DEFAULT 'IPV4',
+    "interfaceId" TEXT NOT NULL,
     "detectedBandwidthBps" BIGINT,
     "bandwidthSource" "BgpMitigationBandwidthSource" NOT NULL DEFAULT 'UNKNOWN',
     "bandwidthOverrideBps" BIGINT,
@@ -121,7 +122,10 @@ CREATE INDEX "BgpMitigationProfile_policyName_idx" ON "BgpMitigationProfile"("po
 CREATE INDEX "BgpMitigationProfile_interfaceId_idx" ON "BgpMitigationProfile"("interfaceId");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "BgpMitigationProfile_deviceId_policyName_key" ON "BgpMitigationProfile"("deviceId", "policyName");
+-- Nome exatamente como o Prisma espera (limite de 63 chars do Postgres aplicado
+-- pela propria ferramenta); sem isso o migrate diff acusa rename de indice.
+CREATE UNIQUE INDEX "BgpMitigationProfile_deviceId_interfaceId_addressFamily_pol_key" ON "BgpMitigationProfile"("deviceId", "interfaceId", "addressFamily", "policyName");
+CREATE INDEX "BgpMitigationProfile_policyName_addressFamily_idx" ON "BgpMitigationProfile"("policyName", "addressFamily");
 
 -- CreateIndex
 CREATE INDEX "BgpMitigationProfilePeer_peerId_idx" ON "BgpMitigationProfilePeer"("peerId");
@@ -157,7 +161,7 @@ CREATE INDEX "BgpMitigationEvent_simulationId_idx" ON "BgpMitigationEvent"("simu
 ALTER TABLE "BgpMitigationProfile" ADD CONSTRAINT "BgpMitigationProfile_deviceId_fkey" FOREIGN KEY ("deviceId") REFERENCES "Device"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
-ALTER TABLE "BgpMitigationProfile" ADD CONSTRAINT "BgpMitigationProfile_interfaceId_fkey" FOREIGN KEY ("interfaceId") REFERENCES "Interface"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+ALTER TABLE "BgpMitigationProfile" ADD CONSTRAINT "BgpMitigationProfile_interfaceId_fkey" FOREIGN KEY ("interfaceId") REFERENCES "Interface"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "BgpMitigationProfilePeer" ADD CONSTRAINT "BgpMitigationProfilePeer_profileId_fkey" FOREIGN KEY ("profileId") REFERENCES "BgpMitigationProfile"("id") ON DELETE CASCADE ON UPDATE CASCADE;

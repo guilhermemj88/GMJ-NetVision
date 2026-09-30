@@ -13,6 +13,11 @@ import type { MitigationMode } from './mitigation-types';
  */
 export const DEFAULT_MITIGATION_RT = '268568:660';
 
+/** Prefix-list do node de DENY (descarta bogons antes do resto). */
+export const DEFAULT_BOGON_PREFIX_LIST = 'BOGONS';
+/** Prefix-list do node que recebe a RT de mitigacao. */
+export const DEFAULT_TARGET_PREFIX_LIST = 'PREFIX8to24';
+
 export interface MitigationEngineConfig {
   mode: MitigationMode;
   /** Capacidade do trunk em bits por segundo (fonte canônica). */
@@ -24,6 +29,13 @@ export interface MitigationEngineConfig {
   recoverySamples: number;
   prefixLimit: number;
   mitigationRt: string;
+  /** Prefix-list do node BOGONS (deny). */
+  bogonPrefixList: string;
+  /** Prefix-list do node de mitigacao (permit + RT). */
+  targetPrefixList: string;
+  /** Canal OUT para o n8n (Telegram e responsabilidade do n8n). */
+  n8nWebhookUrl: string | null;
+  n8nWebhookToken: string | null;
 }
 
 type EnvLike = Record<string, string | undefined>;
@@ -50,6 +62,12 @@ export function mitigationConfigFromEnv(env: EnvLike = process.env): MitigationE
     recoverySamples: intEnv(env, 'MITIGATION_RECOVERY_SAMPLES', 12),
     prefixLimit: intEnv(env, 'MITIGATION_PREFIX_LIMIT', 100),
     mitigationRt: env.MITIGATION_RT ?? DEFAULT_MITIGATION_RT,
+    bogonPrefixList:
+      env.MITIGATION_BOGON_PREFIX_LIST?.trim() || DEFAULT_BOGON_PREFIX_LIST,
+    targetPrefixList:
+      env.MITIGATION_TARGET_PREFIX_LIST?.trim() || DEFAULT_TARGET_PREFIX_LIST,
+    n8nWebhookUrl: env.MITIGATION_N8N_WEBHOOK_URL?.trim() || null,
+    n8nWebhookToken: env.MITIGATION_N8N_WEBHOOK_TOKEN?.trim() || null,
   };
 }
 

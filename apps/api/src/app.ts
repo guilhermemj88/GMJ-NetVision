@@ -5,6 +5,7 @@ import { ZodError } from 'zod';
 import { registerRoutes } from './routes';
 import { PhysicalInventoryError } from './infrastructure/physical/physical-repository';
 import { Prisma } from './generated/prisma';
+import { MediaSecretUnavailableError } from './infrastructure/media/media-integration-service';
 
 export interface BuildAppOptions {
   credentialEncryptionKey?: string | null;
@@ -22,6 +23,17 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     }
     if (error instanceof PhysicalInventoryError) {
       return reply.code(error.statusCode).send({ message: error.message });
+    }
+    // Falta de chave de criptografia nao e erro do operador: e configuracao.
+    if (error instanceof MediaSecretUnavailableError) {
+      return reply.code(409).send({ message: error.message });
+    }
+    // Erros do proprio Fastify (corpo vazio com content-type json, payload
+    // grande, json malformado...) sao 4xx do cliente, nao 500 do servidor.
+    const statusCode = (error as { statusCode?: unknown }).statusCode;
+    if (typeof statusCode === 'number' && statusCode >= 400 && statusCode < 500) {
+      const clientMessage = error instanceof Error ? error.message : 'Requisição inválida';
+      return reply.code(statusCode).send({ message: clientMessage });
     }
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       if (error.code === 'P2002') {

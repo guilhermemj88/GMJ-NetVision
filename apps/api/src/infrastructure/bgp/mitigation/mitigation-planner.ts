@@ -114,3 +114,82 @@ export function safetyBlocks(input: {
   if (status === 'UNKNOWN') return { blocked: true, reason: 'PREFIX_UNKNOWN' };
   return { blocked: false, reason: null };
 }
+
+// ---------------------------------------------------------------------------
+// Fase 12 - PAR DE NODES da mitigacao (BOGONS deny + PREFIX8to24 permit/RT)
+// ---------------------------------------------------------------------------
+
+/** Prefix-list do node de DENY: descarta bogons antes de avaliar o resto. */
+export const DEFAULT_BOGON_PREFIX_LIST = 'BOGONS';
+/** Prefix-list do node de mitigacao: so estes prefixos recebem a RT. */
+export const DEFAULT_TARGET_PREFIX_LIST = 'PREFIX8to24';
+
+/**
+ * Unidade logica da mitigacao: DOIS nodes temporarios consecutivos por ORDEM
+ * de avaliacao (nao necessariamente consecutivos em numero).
+ *
+ *   bogonNode      -> deny   + if-match ip-prefix BOGONS
+ *   mitigationNode -> permit + if-match ip-prefix PREFIX8to24 + RT
+ */
+export interface MitigationNodePair {
+  bogonNode: number;
+  mitigationNode: number;
+}
+
+export interface NodePairSelection {
+  pair: MitigationNodePair | null;
+  firstNormalNode: number | null;
+  /** Faixa completa candidata (nodes livres antes do primeiro node normal). */
+  nodesBeforeFirstNormal: number[];
+  blocked: boolean;
+  reason: MitigationBlockReason | null;
+}
+
+/**
+ * Escolhe DOIS nodes livres e seguros antes do primeiro node normal.
+ *
+ * Regras (nunca assume 1 e 2):
+ *  - o par precisa estar inteiramente antes do primeiro node normal;
+ *  - nenhum node existente (normal ou temporario) e reaproveitado;
+ *  - a ordem logica e preservada: BOGONS primeiro, mitigacao depois.
+ *
+ * Ex.: existentes [11, 50] -> 1 e 2. Existentes [1, 11, 50] -> 2 e 3.
+ */
+export function selectNodePair(input: TemporaryNodeInput): NodePairSelection {
+  const maxCandidate = input.maxCandidate ?? 9;
+  const normal = [...new Set(input.normalNodes)]
+    .filter((node) => Number.isInteger(node) && node > 0)
+    .sort((a, b) => a - b);
+  const occupied = new Set(
+    [...input.occupiedNodes].filter((node) => Number.isInteger(node) && node > 0),
+  );
+
+  const firstNormalNode = normal[0] ?? null;
+  const ceiling = firstNormalNode === null ? 0 : Math.min(firstNormalNode - 1, maxCandidate);
+  const nodesBeforeFirstNormal: number[] = [];
+  for (let node = 1; node <= ceiling; node += 1) nodesBeforeFirstNormal.push(node);
+
+  const livres = nodesBeforeFirstNormal.filter((node) => !occupied.has(node));
+
+  for (let index = 0; index < livres.length - 1; index += 1) {
+    const bogonNode = livres[index]!;
+    const mitigationNode = livres.find((node) => node > bogonNode);
+    if (mitigationNode !== undefined) {
+      return {
+        pair: { bogonNode, mitigationNode },
+        firstNormalNode,
+        nodesBeforeFirstNormal,
+        blocked: false,
+        reason: null,
+      };
+    }
+  }
+
+  return {
+    pair: null,
+    firstNormalNode,
+    nodesBeforeFirstNormal,
+    blocked: true,
+    reason: 'NO_SAFE_TEMPORARY_NODE',
+  };
+}

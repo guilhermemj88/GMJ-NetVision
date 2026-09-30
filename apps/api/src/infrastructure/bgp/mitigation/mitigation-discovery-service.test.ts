@@ -314,21 +314,22 @@ describe('discovery de candidatos a mitigacao', () => {
     expect(result.profiles[0]?.blockedReason).toBe('PREFIX_UNKNOWN');
   });
 
-  it('13) node 1 livre planeja o node 1', async () => {
+  it('13) nodes 1 e 2 livres planejam o par BOGONS 1 + mitigacao 2', async () => {
     const harness = createHarness();
 
     const result = await discover(harness, [makePeer({ peerAddress: '10.200.200.106' })]);
 
     expect(result.profiles[0]?.existingNodes).toEqual([11, 12]);
     expect(result.profiles[0]?.firstNormalNode).toBe(11);
-    expect(result.profiles[0]?.plannedNode).toBe(1);
+    expect(result.profiles[0]?.plannedNode).toBe(2);
   });
 
-  it('14) node 1 ja mitigado empurra o planejamento para o node 2', async () => {
+  it('14) node 1 ocupado empurra o par para BOGONS 2 + mitigacao 3', async () => {
     const harness = createHarness({
       bgp: 'peer 10.200.200.50 route-policy PL-PARCIAL-IN import',
       routePolicy: [
         'route-policy PL-PARCIAL-IN permit node 1',
+        ' if-match ip-prefix PREFIX8to24',
         ' apply extcommunity rt 268568:660 additive',
         'route-policy PL-PARCIAL-IN permit node 11',
       ].join('\n'),
@@ -338,7 +339,7 @@ describe('discovery de candidatos a mitigacao', () => {
 
     expect(result.profiles[0]?.existingNodes).toEqual([1, 11]);
     expect(result.profiles[0]?.firstNormalNode).toBe(11);
-    expect(result.profiles[0]?.plannedNode).toBe(2);
+    expect(result.profiles[0]?.plannedNode).toBe(3);
     expect(result.profiles[0]?.readiness).toBe('READY');
   });
 
@@ -533,7 +534,7 @@ describe('node de mitigacao e definido pela RT do motor (nao por qualquer RT)', 
     expect(profile.mitigationNodes).toEqual([]);
     expect(profile.existingNodes).toEqual([11]);
     expect(profile.firstNormalNode).toBe(11);
-    expect(profile.plannedNode).toBe(1);
+    expect(profile.plannedNode).toBe(2);
     expect(profile.readiness).toBe('READY');
   });
 
@@ -541,6 +542,7 @@ describe('node de mitigacao e definido pela RT do motor (nao por qualquer RT)', 
     const harness = createHarness(
       rtFixture('PL-MIT-IN', [
         'route-policy PL-MIT-IN permit node 1',
+        ' if-match ip-prefix PREFIX8to24',
         ` apply extcommunity rt ${RT_MITIGACAO} additive`,
         'route-policy PL-MIT-IN permit node 11',
       ]),
@@ -551,13 +553,14 @@ describe('node de mitigacao e definido pela RT do motor (nao por qualquer RT)', 
 
     expect(profile.mitigationNodes).toEqual([1]);
     expect(profile.firstNormalNode).toBe(11);
-    expect(profile.plannedNode).toBe(2);
+    expect(profile.plannedNode).toBe(3);
   });
 
   it('node com duas RTs incluindo a de mitigacao E node de mitigacao', async () => {
     const harness = createHarness(
       rtFixture('PL-DUPLA-IN', [
         'route-policy PL-DUPLA-IN permit node 1',
+        ' if-match ip-prefix PREFIX8to24',
         ` apply extcommunity rt ${RT_NORMAL} additive`,
         ` apply extcommunity rt ${RT_MITIGACAO} additive`,
         'route-policy PL-DUPLA-IN permit node 11',
@@ -568,7 +571,7 @@ describe('node de mitigacao e definido pela RT do motor (nao por qualquer RT)', 
     const profile = result.profiles[0]!;
 
     expect(profile.mitigationNodes).toEqual([1]);
-    expect(profile.plannedNode).toBe(2);
+    expect(profile.plannedNode).toBe(3);
   });
 
   it('node sem RT nenhuma NAO e node de mitigacao', async () => {
@@ -642,21 +645,31 @@ describe('profile NOT_READY nunca e persistido como runtime NORMAL', () => {
     expect(runtime?.state).not.toBe('NORMAL');
   });
 
-  it('INTERFACE_AMBIGUOUS', async () => {
+  it('policy compartilhada em interfaces diferentes NAO vira INTERFACE_AMBIGUOUS', async () => {
     const harness = createHarness();
-    await discover(harness, [makePeer({ peerAddress: '10.200.200.10', interfaceId: 'if-1' })]);
-    const [profile] = await harness.repository.listProfiles({ deviceId: DEVICE.id });
 
-    // dois peers da MESMA policy em interfaces diferentes -> ambiguidade de interface
+    // Mesma policy, duas interfaces: sao DOIS targets (nao ambiguidade).
     const result = await discover(harness, [
-      makePeer({ peerAddress: '10.200.200.10', interfaceId: 'if-1' }),
-      makePeer({ peerAddress: '10.200.200.106', interfaceId: 'if-2' }),
+      makePeer({ peerAddress: '10.200.200.10', interfaceId: 'if-1', interfaceName: 'Eth-Trunk1.3011' }),
+      makePeer({ peerAddress: '10.200.200.106', interfaceId: 'if-2', interfaceName: 'Eth-Trunk1.3013' }),
     ]);
 
-    expect(result.profiles[0]?.blockedReason).toBe('INTERFACE_AMBIGUOUS');
-    const runtime = await harness.repository.getRuntime(profile!.id);
-    expect(runtime?.state).toBe('RECONCILIATION_REQUIRED');
-    expect(runtime?.state).not.toBe('NORMAL');
+    expect(result.profiles).toHaveLength(2);
+    for (const row of result.profiles) {
+      expect(row.blockedReason).not.toBe('INTERFACE_AMBIGUOUS');
+      expect(row.readiness).toBe('READY');
+      expect(row.sharedPolicy).toBe(true);
+      // Decisao operacional: policy compartilhada e AVISO, nao bloqueio.
+      expect(row.autoBlockedReason).toBeNull();
+      expect(row.addressFamily).toBe('IPV4');
+    }
+    // cada target tem sua interface e nenhum fica RECONCILIATION_REQUIRED
+    const interfaces = result.profiles.map((row) => row.interfaceName).sort();
+    expect(new Set(interfaces).size).toBe(2);
+    for (const row of result.profiles) {
+      const runtime = await harness.repository.getRuntime(row.profileId!);
+      expect(runtime?.state).toBe('NORMAL');
+    }
   });
 
   it('NO_SAFE_TEMPORARY_NODE', async () => {
@@ -673,9 +686,9 @@ describe('plannedNode nao sobrevive a condicao que deixou de existir', () => {
   it('e limpo quando os nodes 1..9 ficam ocupados', async () => {
     const harness = createHarness({ bgp: BGP_BUSY, routePolicy: RP_BUSY_FREE });
     const first = await discover(harness, [makePeer({ peerAddress: '10.200.200.50' })]);
-    expect(first.profiles[0]?.plannedNode).toBe(1);
+    expect(first.profiles[0]?.plannedNode).toBe(2);
     const [profile] = await harness.repository.listProfiles({ deviceId: DEVICE.id });
-    expect((await harness.repository.getRuntime(profile!.id))?.plannedNode).toBe(1);
+    expect((await harness.repository.getRuntime(profile!.id))?.plannedNode).toBe(2);
 
     harness.config.routePolicy = RP_BUSY_IN;
     const second = await discover(harness, [makePeer({ peerAddress: '10.200.200.50' })]);
@@ -689,7 +702,7 @@ describe('plannedNode nao sobrevive a condicao que deixou de existir', () => {
     const harness = createHarness();
     await discover(harness, [makePeer({ peerAddress: '10.200.200.30' })]);
     const [antigo] = await harness.repository.listProfiles({ deviceId: DEVICE.id });
-    expect((await harness.repository.getRuntime(antigo!.id))?.plannedNode).toBe(1);
+    expect((await harness.repository.getRuntime(antigo!.id))?.plannedNode).toBe(2);
 
     harness.config.bgp = 'peer 10.200.200.30 route-policy PL-HORIZONTES_IPv4-IN import';
     const result = await discover(harness, [makePeer({ peerAddress: '10.200.200.30' })]);
@@ -704,7 +717,7 @@ describe('plannedNode nao sobrevive a condicao que deixou de existir', () => {
     const harness = createHarness();
     await discover(harness, [makePeer({ peerAddress: '10.200.200.106' })]);
     const [profile] = await harness.repository.listProfiles({ deviceId: DEVICE.id });
-    expect((await harness.repository.getRuntime(profile!.id))?.plannedNode).toBe(1);
+    expect((await harness.repository.getRuntime(profile!.id))?.plannedNode).toBe(2);
 
     harness.config.routePolicy = null;
     const result = await discover(harness, [makePeer({ peerAddress: '10.200.200.106' })]);
@@ -736,7 +749,7 @@ describe('retorno ao estado operacional apropriado', () => {
     expect(third.profiles[0]?.readiness).toBe('READY');
     const runtime = await harness.repository.getRuntime(profile!.id);
     expect(runtime?.state).toBe('NORMAL');
-    expect(runtime?.plannedNode).toBe(1);
+    expect(runtime?.plannedNode).toBe(2);
   });
 
   it('nao sobrescreve um estado operacional em andamento (MITIGATED)', async () => {
@@ -749,5 +762,135 @@ describe('retorno ao estado operacional apropriado', () => {
 
     expect(result.profiles[0]?.readiness).toBe('READY');
     expect((await harness.repository.getRuntime(profile!.id))?.state).toBe('MITIGATED');
+  });
+});
+
+
+describe('caso real HORIZONTES: policy compartilhada e familias separadas', () => {
+  const bgp = [
+    'peer 10.200.200.106 route-policy PL-HORIZONTES_IPv4-IN import',
+    'peer 10.200.200.10 route-policy PL-HORIZONTES_IPv4-IN import',
+  ].join('\n');
+  const routePolicy = 'route-policy PL-HORIZONTES_IPv4-IN permit node 11';
+
+  it('dois peers IPv4 em interfaces diferentes viram DOIS targets (nunca INTERFACE_AMBIGUOUS)', async () => {
+    const harness = createHarness({ bgp, routePolicy });
+    const peers = [
+      makePeer({
+        peerAddress: '10.200.200.106',
+        addressFamily: 'IPV4',
+        interfaceId: 'if-3011',
+        interfaceName: 'Eth-Trunk1.3011',
+        interfaceAlias: 'HORIZONTE_IP_40GB',
+        interfaceDescription: 'HORIZONTE_IP_40GB',
+        cliReceivedPrefixes: 12n,
+      }),
+      makePeer({
+        peerAddress: '2804:532c:0:1::66',
+        addressFamily: 'IPV6',
+        interfaceId: 'if-3011',
+        interfaceName: 'Eth-Trunk1.3011',
+        interfaceAlias: 'HORIZONTE_IP_40GB',
+        interfaceDescription: 'HORIZONTE_IP_40GB',
+        cliReceivedPrefixes: 1n,
+      }),
+      makePeer({
+        peerAddress: '10.200.200.10',
+        addressFamily: 'IPV4',
+        interfaceId: 'if-3013',
+        interfaceName: 'Eth-Trunk1.3013',
+        interfaceAlias: 'HORIZONTE_IP_02_40GB',
+        interfaceDescription: 'HORIZONTE_IP_02_40GB',
+        cliReceivedPrefixes: 8n,
+      }),
+      makePeer({
+        peerAddress: '2804:532c:0:1::76',
+        addressFamily: 'IPV6',
+        interfaceId: 'if-3013',
+        interfaceName: 'Eth-Trunk1.3013',
+        interfaceAlias: 'HORIZONTE_IP_02_40GB',
+        interfaceDescription: 'HORIZONTE_IP_02_40GB',
+        cliReceivedPrefixes: null,
+      }),
+    ];
+
+    const result = await discover(harness, peers);
+    const alvo1 = result.profiles.find((row) => row.peerAddresses.includes('10.200.200.106'));
+    const alvo2 = result.profiles.find((row) => row.peerAddresses.includes('10.200.200.10'));
+
+    // TARGET 1 - HORIZONTE_IP / Eth-Trunk1.3011 / IPv4
+    expect(alvo1).toBeDefined();
+    expect(alvo1?.addressFamily).toBe('IPV4');
+    expect(alvo1?.interfaceName).toBe('Eth-Trunk1.3011');
+    expect(alvo1?.customer).toBe('HORIZONTE_IP');
+    expect(alvo1?.policyName).toBe('PL-HORIZONTES_IPv4-IN');
+    expect(alvo1?.peerAddresses).toEqual(['10.200.200.106']);
+    expect(alvo1?.detectedBandwidthBps).toBe(40_000_000_000n);
+    expect(alvo1?.readiness).toBe("READY");
+    expect(alvo1?.blockedReason).toBeNull();
+    expect(alvo1?.prefixCount).toBe(12);
+    expect(alvo1?.prefixStatus).toBe('SAFE');
+    expect(alvo1?.sharedPolicy).toBe(true);
+    expect(alvo1?.autoBlockedReason).toBeNull();
+    expect(alvo1?.sharedPolicyTargets).toHaveLength(1);
+    expect(alvo1?.sharedPolicyTargets[0]).toMatchObject({
+      interfaceName: 'Eth-Trunk1.3013',
+      peerAddress: '10.200.200.10',
+      addressFamily: 'IPV4',
+      prefixCount: 8,
+    });
+
+    // TARGET 2 - HORIZONTE_IP_02 / Eth-Trunk1.3013 / IPv4
+    expect(alvo2).toBeDefined();
+    expect(alvo2?.addressFamily).toBe('IPV4');
+    expect(alvo2?.interfaceName).toBe('Eth-Trunk1.3013');
+    expect(alvo2?.prefixCount).toBe(8);
+    expect(alvo2?.readiness).toBe("READY");
+    expect(alvo2?.sharedPolicy).toBe(true);
+
+    // nenhum dos dois pode ficar ambiguo por causa da policy compartilhada
+    expect(alvo1?.blockedReason).not.toBe('INTERFACE_AMBIGUOUS');
+    expect(alvo2?.blockedReason).not.toBe('INTERFACE_AMBIGUOUS');
+
+    // o IPv6 sem policy nao pode contaminar o target IPv4
+    const ipv6 = result.profiles.filter((row) => row.addressFamily === 'IPV6');
+    expect(ipv6).toHaveLength(2);
+    for (const row of ipv6) expect(row.blockedReason).toBe('POLICY_NOT_FOUND');
+    expect(result.profiles).toHaveLength(4);
+  });
+});
+
+describe('persistencia best effort no discovery', () => {
+  it('mantem a analise quando a escrita no banco falha (sem migration)', async () => {
+    const harness = createHarness();
+    // Espelha o Prisma sem a tabela: leitura vazia, escrita estourando.
+    const failing = new Proxy(harness.repository, {
+      get(target, property, receiver) {
+        if (typeof property === 'symbol') return Reflect.get(target, property, receiver);
+        if (property === 'listProfiles') return async () => [];
+        return async () => {
+          throw new Error('relation "BgpMitigationProfile" does not exist');
+        };
+      },
+    }) as unknown as typeof harness.repository;
+    const service = new BgpMitigationDiscoveryService({
+      bgpDiscovery: {
+        discover: async () => outcomeOf([makePeer({ peerAddress: '10.200.200.106' })]),
+      },
+      configSource: harness.configSource,
+      repository: failing,
+    });
+
+    const result = await service.discoverMitigationProfiles(DEVICE);
+
+    expect(result.profiles).toHaveLength(1);
+    expect(result.profiles[0]).toMatchObject({
+      profileId: null,
+      policyName: 'PL-HORIZONTES_IPv4-IN',
+      detectedBandwidthBps: 40_000_000_000n,
+      readiness: 'READY',
+    });
+    expect(result.createdProfiles).toBe(0);
+    expect(result.warnings.join(' ')).toContain('nao foi possivel persistir');
   });
 });

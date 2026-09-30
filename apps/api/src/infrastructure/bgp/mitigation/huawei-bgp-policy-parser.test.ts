@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   allNodesOf,
+  parseHuaweiRoutePolicyNodesLenient,
   nodesApplyingRouteTarget,
   parseHuaweiBgpPolicyConfiguration,
   parseHuaweiRoutePolicyNodes,
@@ -78,12 +79,23 @@ describe('parser de nodes de route-policy (generico, com as RTs de cada node)', 
 
   it('devolve node, action e as route-targets aplicadas', () => {
     expect(horizons).toEqual([
-      { node: 1, action: 'permit', routeTargets: ['268568:660'] },
-      { node: 2, action: 'permit', routeTargets: ['268568:110', '268568:660'] },
-      { node: 5, action: 'deny', routeTargets: [] },
+      {
+        node: 1,
+        action: 'permit',
+        ifMatchIpPrefix: [],
+        routeTargets: ['268568:660'],
+      },
+      {
+        node: 2,
+        action: 'permit',
+        ifMatchIpPrefix: [],
+        routeTargets: ['268568:110', '268568:660'],
+      },
+      { node: 5, action: 'deny', ifMatchIpPrefix: [], routeTargets: [] },
       {
         node: 11,
         action: 'permit',
+        ifMatchIpPrefix: ['PREFIX-HORIZONTES-IPV4'],
         routeTargets: ['268568:110'],
       },
     ]);
@@ -103,7 +115,7 @@ describe('parser de nodes de route-policy (generico, com as RTs de cada node)', 
 
   it('node sem RT nenhuma NAO e node de mitigacao', () => {
     const semRt = nodes.get('PL-VAZIA-IN') ?? [];
-    expect(semRt).toEqual([{ node: 9, action: 'permit', routeTargets: [] }]);
+    expect(semRt).toEqual([{ node: 9, action: 'permit', ifMatchIpPrefix: [], routeTargets: [] }]);
     expect(nodesApplyingRouteTarget(semRt, '268568:660')).toEqual([]);
   });
 
@@ -119,5 +131,56 @@ describe('parser de nodes de route-policy (generico, com as RTs de cada node)', 
 
   it('nao inventa policy que nao existe na configuracao', () => {
     expect(nodes.has('PL-INEXISTENTE')).toBe(false);
+  });
+});
+
+// ---- Fase 12b: read-back real do `display route-policy` (formato DISPLAY) ----
+
+/** Saida REAL do F1A para `display route-policy PL-HORIZONTES_IPv4-IN`. */
+const DISPLAY_READBACK = [
+  'Info: The max number of VTY users is 21, the number of current VTY users online is 1.',
+  '<BHE-VTA-F1A-BGP-01>screen-length 0 temporary',
+  'Info: The configuration takes effect on the current user terminal interface only.',
+  '<BHE-VTA-F1A-BGP-01>',
+  '<BHE-VTA-F1A-BGP-01>display route-policy PL-HORIZONTES_IPv4-IN',
+  'Route-policy: PL-HORIZONTES_IPv4-IN',
+  '  permit : 11 (matched counts: 2)',
+  '    Match clauses: ',
+  '      if-match ip-prefix PREFIX-HORIZONTES-IPV4',
+  '    Apply clauses: ',
+  '      apply local-preference 4000',
+  '      apply extcommunity rt 268568:140',
+  '  deny : 50 (matched counts: 0)',
+  '<BHE-VTA-F1A-BGP-01>',
+  '<BHE-VTA-F1A-BGP-01>quit',
+].join('\n');
+
+describe('parser do display route-policy (read-back real)', () => {
+  const nodes = parseHuaweiRoutePolicyNodesLenient(DISPLAY_READBACK);
+
+  it('le a policy e os nodes 11 (permit) e 50 (deny)', () => {
+    const horizons = nodes.get('PL-HORIZONTES_IPv4-IN') ?? [];
+    expect(horizons.map((entry) => entry.node)).toEqual([11, 50]);
+    expect(horizons.find((entry) => entry.node === 11)?.action).toBe('permit');
+    expect(horizons.find((entry) => entry.node === 11)?.ifMatchIpPrefix).toEqual([
+      'PREFIX-HORIZONTES-IPV4',
+    ]);
+    expect(horizons.find((entry) => entry.node === 11)?.routeTargets).toEqual(['268568:140']);
+    expect(horizons.find((entry) => entry.node === 50)?.action).toBe('deny');
+  });
+
+  it('ignora o `(matched counts: N)` dinamico e o banner do SSH', () => {
+    const comContadorDiferente = DISPLAY_READBACK.replace('matched counts: 2', 'matched counts: 987');
+    expect(
+      (parseHuaweiRoutePolicyNodesLenient(comContadorDiferente).get('PL-HORIZONTES_IPv4-IN') ?? [])
+        .map((entry) => entry.node),
+    ).toEqual([11, 50]);
+  });
+
+  it('continua lendo o formato de CONFIGURACAO (lenient)', () => {
+    const configNodes = parseHuaweiRoutePolicyNodesLenient(RP_CONFIG);
+    expect((configNodes.get('PL-HORIZONTES_IPv4-IN') ?? []).map((entry) => entry.node)).toEqual([
+      1, 2, 5, 11,
+    ]);
   });
 });

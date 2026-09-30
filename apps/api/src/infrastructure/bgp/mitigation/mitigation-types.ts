@@ -47,7 +47,9 @@ export type MitigationBlockReason =
   | 'PEER_NOT_FOUND'
   | 'SSH_DISCONNECTED'
   | 'READBACK_FAILED'
-  | 'POLICY_CHANGED';
+  | 'POLICY_CHANGED'
+  /** A policy IN e usada por mais de um target: mitiga todos de uma vez. */
+  | 'SHARED_POLICY';
 
 export type MitigationEngineState = 'DISABLED' | 'ONLINE' | 'RECONCILING' | 'FAILED';
 

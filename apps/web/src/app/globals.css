@@ -11550,3 +11550,723 @@ label > small {
   letter-spacing: 0.06em;
   white-space: nowrap;
 }
+
+/* ---- Mitigacao DDoS (Fase 5, SIMULATION_ONLY) ---- */
+.bgp-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--panel);
+}
+.bgp-tab {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 10px 14px;
+  color: var(--muted);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.bgp-tab:hover {
+  color: var(--text);
+}
+.bgp-tab.is-active {
+  color: var(--cyan-bright);
+  border-bottom-color: var(--cyan-bright);
+}
+.mitigation-shell {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  overflow: auto;
+}
+.mitigation-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--amber);
+  background: linear-gradient(90deg, rgba(217, 162, 75, 0.18), rgba(217, 162, 75, 0.04));
+}
+.mitigation-banner__title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--amber);
+}
+.mitigation-banner__text {
+  color: var(--text);
+  font-size: 13px;
+}
+.mitigation-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+.mitigation-notice {
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--panel-2);
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+.mitigation-notice--info {
+  border-color: var(--cyan);
+}
+.mitigation-notice--warning {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.mitigation-toolbar {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.mitigation-toolbar__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+.mitigation-toolbar__field select {
+  min-width: 260px;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.mitigation-loading {
+  color: var(--muted);
+  font-size: 12px;
+}
+.mitigation-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  padding: 10px 14px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 12px;
+}
+.mitigation-summary strong {
+  color: var(--text);
+}
+.mitigation-warnings {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--amber);
+  font-size: 12px;
+}
+.mitigation-table-wrap {
+  overflow-x: auto;
+}
+.mitigation-table {
+  width: 100%;
+  min-width: 1000px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.mitigation-table th,
+.mitigation-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-soft);
+  text-align: left;
+  white-space: nowrap;
+}
+.mitigation-table th {
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.mitigation-table__caption {
+  text-align: left;
+  padding: 0 0 8px;
+  color: var(--muted);
+  font-size: 11px;
+}
+.mitigation-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+.mitigation-badge.is-ready {
+  color: var(--green);
+  border-color: var(--green);
+}
+.mitigation-badge.is-not_ready {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+.mitigation-detail {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.mitigation-detail__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.mitigation-detail__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+.mitigation-detail__label {
+  display: block;
+  margin-bottom: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.mitigation-detail__block {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mitigation-detail__block h4 {
+  margin: 0 0 4px;
+  color: var(--cyan-bright);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+.mitigation-detail__block p {
+  margin: 0;
+  font-size: 12px;
+}
+.mitigation-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+  background: rgba(4, 8, 12, 0.72);
+}
+.mitigation-modal__body {
+  width: min(620px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+.mitigation-modal__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.mitigation-modal__body label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.mitigation-modal__body input {
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+}
+.mitigation-modal__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+.mitigation-modal__actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.mitigation-simulation {
+  border-top: 1px solid var(--line-soft);
+  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mitigation-simulation h4 {
+  margin: 8px 0 4px;
+  color: var(--cyan-bright);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+.mitigation-simulation p {
+  margin: 0;
+  font-size: 12px;
+}
+.mitigation-simulation__result strong {
+  color: var(--cyan-bright);
+}
+.mitigation-simulation__blocked {
+  color: var(--amber);
+}
+.mitigation-command-preview {
+  margin: 6px 0 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #05090d;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: pre-wrap;
+}
+.mitigation-command-warning {
+  margin-top: 6px;
+  color: var(--amber);
+  font-size: 11px;
+}
+@media (max-width: 900px) {
+  .mitigation-shell {
+    padding: 12px;
+  }
+  .mitigation-toolbar__field select {
+    min-width: 180px;
+  }
+}
+
+/* ---- Fase 5 (ajuste): scroll vertical da aba + drawer de detalhes ---- */
+/*
+ * O shell do app e 100vh com `body { overflow: hidden }`, entao cada modulo
+ * precisa do SEU container de scroll. O painel de mitigacao nao tinha altura
+ * definida (so `overflow: auto`), entao a tabela era cortada sem barra.
+ * Aqui o wrapper das abas passa a distribuir a altura: tabs fixas + painel
+ * flexivel com min-height: 0 (o unico jeito de um filho flex encolher e rolar).
+ */
+.bgp-workspace {
+  height: calc(100vh - 62px);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.bgp-workspace > .bgp-tabs {
+  flex: 0 0 auto;
+}
+.bgp-tab-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+/* SESSOES continua com o proprio scroll (hosts-shell), agora limitado ao painel. */
+.bgp-tab-panel > .hosts-shell {
+  height: 100%;
+}
+/* MITIGACAO: o proprio painel e o container de scroll vertical. */
+.mitigation-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  overflow: auto;
+}
+
+/* Drawer lateral de detalhes (desktop); full-width em telas pequenas. */
+.mitigation-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 70;
+  width: min(540px, 100%);
+  display: flex;
+  flex-direction: column;
+  border-left: 1px solid var(--line);
+  background: var(--panel);
+  box-shadow: -18px 0 40px rgba(0, 0, 0, 0.45);
+}
+.mitigation-drawer__header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.mitigation-drawer__header h3 {
+  margin: 0;
+  font-size: 13px;
+}
+.mitigation-drawer__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+/* Override e simulacao sao modais: precisam ficar acima do drawer. */
+.mitigation-modal {
+  z-index: 80;
+}
+@media (max-width: 720px) {
+  .mitigation-drawer {
+    width: 100%;
+  }
+}
+
+/*
+ * Fase 5 (ajuste 2): sem isto o `.hosts-table-wrap` encolhe como item flex
+ * (flex-shrink: 1) e vira um container de scroll proprio de ~480px, deixando o
+ * painel sem transbordar. Fixando os filhos, a tabela cresce e quem rola na
+ * vertical passa a ser o painel da aba - o wrap mantem so o scroll horizontal.
+ */
+.mitigation-shell > * {
+  flex: 0 0 auto;
+}
+.mitigation-table-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* ---- Fase 8: acoes de mitigacao na UI (executor MOCK) ---- */
+.mitigation-mock-notice {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 8px 0 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--amber);
+  border-radius: 8px;
+  background: rgba(217, 162, 75, 0.12);
+  font-size: 11px;
+}
+.mitigation-mock-notice strong {
+  color: var(--amber);
+  letter-spacing: 0.06em;
+}
+.mitigation-mock-notice span {
+  color: var(--muted);
+}
+.mitigation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.mitigation-result {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel-2);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mitigation-result h4 {
+  margin: 0 0 4px;
+  color: var(--cyan-bright);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+.mitigation-result p {
+  margin: 0;
+  font-size: 12px;
+}
+.mitigation-result__error {
+  color: var(--amber);
+}
+.mitigation-shared-policy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 6px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--amber);
+  border-radius: 8px;
+  background: rgba(217, 162, 75, 0.1);
+  font-size: 11px;
+}
+.mitigation-shared-policy strong {
+  color: var(--amber);
+}
+.mitigation-shared-policy ul {
+  margin: 0;
+  padding-left: 16px;
+}
+.mitigation-shared-policy small {
+  color: var(--muted);
+}
+
+/* ---- Fase 9 — CONFIGURAÇÕES → MÍDIAS -------------------------------- */
+
+.action-panel--wide {
+  width: min(900px, calc(100vw - 40px));
+}
+
+.media-panel h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 10px;
+  color: #657b86;
+  font: 600 8px var(--font-mono);
+  letter-spacing: 0.12em;
+}
+
+.media-panel h3:not(:first-child) {
+  margin-top: 22px;
+}
+
+.media-panel__warn {
+  margin-top: 0;
+  margin-bottom: 18px;
+  border-color: #4b3d22;
+  background: #231c10;
+  color: #c8a76a;
+}
+
+.media-panel__warn svg {
+  color: #d9a24b;
+}
+
+.media-status {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.media-status > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 11px;
+  border: 1px solid #293a43;
+  border-radius: 4px;
+  background: #111a21;
+}
+
+.media-status span {
+  color: #5f747e;
+  font: 600 8px var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
+.media-status strong {
+  color: #adbec6;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.media-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid #273942;
+  border-radius: 4px;
+  background: #111a21;
+}
+
+.media-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.media-form label > span {
+  color: #657b86;
+  font: 600 8px var(--font-mono);
+  letter-spacing: 0.1em;
+}
+
+.media-form input {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid #2a3c46;
+  border-radius: 4px;
+  background: #0d151b;
+  color: #cfe0e7;
+  font: 10px var(--font-mono);
+}
+
+.media-form input:read-only {
+  color: #7d9099;
+}
+
+.media-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.media-panel__actions small {
+  max-width: 340px;
+  color: #627680;
+  font-size: 8px;
+  line-height: 1.5;
+}
+
+.media-panel__hint {
+  margin: 0;
+  color: #5f747e;
+  font-size: 8px;
+  line-height: 1.6;
+}
+
+.media-inbound {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  align-items: center;
+}
+
+.media-inbound .media-panel__actions {
+  grid-column: 1 / -1;
+}
+
+.media-inbound > div:not(.media-panel__actions) {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.media-inbound span {
+  color: #5f747e;
+  font: 600 8px var(--font-mono);
+  letter-spacing: 0.08em;
+}
+
+.media-inbound strong {
+  color: #adbec6;
+  font-size: 10px;
+}
+
+.media-token-once {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #34768a;
+  border-radius: 4px;
+  background: #11252d;
+}
+
+.media-token-once strong {
+  color: #72c8dc;
+  font-size: 10px;
+}
+
+.media-token-once span {
+  color: #7f97a1;
+  font-size: 8px;
+}
+
+.media-token-once code {
+  padding: 8px 10px;
+  border: 1px solid #2a4651;
+  border-radius: 4px;
+  background: #0b1218;
+  color: #9fe6f6;
+  font: 600 11px var(--font-mono);
+  word-break: break-all;
+}
+
+.media-test {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 11px;
+  border-radius: 4px;
+  font-size: 9px;
+}
+
+.media-test--ok {
+  border: 1px solid #26543f;
+  background: #10231c;
+  color: #7fd7b1;
+}
+
+.media-test--fail {
+  border: 1px solid #5a2f31;
+  background: #221214;
+  color: #e08d8f;
+}
+
+.media-test span {
+  color: #7f97a1;
+  font-size: 8px;
+}
+
+.media-log {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 9px;
+}
+
+.media-log th {
+  padding: 7px 9px;
+  border-bottom: 1px solid #273942;
+  color: #5f747e;
+  font: 600 8px var(--font-mono);
+  letter-spacing: 0.1em;
+  text-align: left;
+}
+
+.media-log td {
+  padding: 8px 9px;
+  border-bottom: 1px solid #1c2a33;
+  color: #93a8b1;
+  vertical-align: top;
+}
+
+.media-log td strong {
+  display: block;
+  color: #c3d4dc;
+  font-size: 9px;
+}
+
+.media-log td small {
+  display: block;
+  margin-top: 3px;
+  color: #5f747e;
+  font-size: 8px;
+}
+
+.media-log tr.is-failed td {
+  color: #d99a9b;
+}
+
+.mitigation-media-status p {
+  margin: 0 0 8px;
+  color: #93a8b1;
+  font-size: 9px;
+}
+
+.mitigation-result__notification strong {
+  color: #7fd7b1;
+}

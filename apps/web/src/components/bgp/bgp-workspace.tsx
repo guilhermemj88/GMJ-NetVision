@@ -26,6 +26,7 @@ import { BgpFilters } from './bgp-filters';
 import { BgpManageDevices } from './bgp-manage-devices';
 import { BgpPeerDetail } from './bgp-peer-detail';
 import { BgpPeerTable } from './bgp-peer-table';
+import { BgpMitigationWorkspace } from './bgp-mitigation-workspace';
 import { BgpSummary } from './bgp-summary';
 import { useMapStore } from '@/store/map-store';
 
@@ -38,7 +39,7 @@ function useNow(intervalMs: number): number {
   return now;
 }
 
-export function BgpWorkspace() {
+function BgpSessionsPanel() {
   const queryClient = useQueryClient();
   const bgpDeviceFilter = useMapStore((state) => state.bgpDeviceFilter);
   const setBgpDeviceFilter = useMapStore((state) => state.setBgpDeviceFilter);
@@ -411,6 +412,42 @@ export function BgpWorkspace() {
       )}
       {manageOpen && <BgpManageDevices onClose={() => setManageOpen(false)} />}
     </main>
+  );
+}
+
+type BgpTab = 'SESSOES' | 'MITIGACAO';
+
+/** Workspace BGP com as subabas SESSOES (atual) e MITIGACAO DDoS (nova). */
+export function BgpWorkspace() {
+  const [tab, setTab] = useState<BgpTab>('SESSOES');
+  return (
+    <div className="bgp-workspace">
+      <nav className="bgp-tabs" role="tablist" aria-label="Workspace BGP">
+        <button
+          type="button"
+          role="tab"
+          id="bgp-tab-sessions"
+          aria-selected={tab === 'SESSOES'}
+          className={`bgp-tab${tab === 'SESSOES' ? ' is-active' : ''}`}
+          onClick={() => setTab('SESSOES')}
+        >
+          SESSÕES
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="bgp-tab-mitigation"
+          aria-selected={tab === 'MITIGACAO'}
+          className={`bgp-tab${tab === 'MITIGACAO' ? ' is-active' : ''}`}
+          onClick={() => setTab('MITIGACAO')}
+        >
+          MITIGAÇÃO DDoS
+        </button>
+      </nav>
+      <div className="bgp-tab-panel">
+        {tab === 'SESSOES' ? <BgpSessionsPanel /> : <BgpMitigationWorkspace />}
+      </div>
+    </div>
   );
 }
 

@@ -4,7 +4,8 @@ import { effectiveBandwidthBps } from './bandwidth-parser';
 import { DEFAULT_MITIGATION_RT } from './mitigation-config';
 import {
   allNodesOf,
-  nodesApplyingRouteTarget,
+  bogonDenyNodes,
+  mitigationPermitNodes,
   parseHuaweiBgpPolicyConfiguration,
   parseHuaweiRoutePolicyNodes,
   permitNodesOf,
@@ -12,8 +13,16 @@ import {
 } from './huawei-bgp-policy-parser';
 import type { BgpMitigationConfigSource } from './mitigation-config-source';
 import { interfaceMitigationScope, type MitigationInterfaceScope } from './mitigation-scope';
-import { prefixStatus, selectTemporaryNode } from './mitigation-planner';
-import type { MitigationRepository } from './mitigation-repository';
+import {
+  DEFAULT_BOGON_PREFIX_LIST,
+  DEFAULT_TARGET_PREFIX_LIST,
+  prefixStatus,
+  selectNodePair,
+} from './mitigation-planner';
+import type {
+  MitigationAddressFamily,
+  MitigationRepository,
+} from './mitigation-repository';
 import type { BandwidthSource, MitigationBlockReason, PrefixStatus } from './mitigation-types';
 
 // Discovery DDoS (Fase 4) - READ-ONLY e SIMULATION_ONLY.
@@ -42,11 +51,32 @@ import type { BandwidthSource, MitigationBlockReason, PrefixStatus } from './mit
 //    estado proprio de "nao pronto", usamos RECONCILIATION_REQUIRED: o worker nao pode
 //    tratar esse profile como pronto e a condicao precisa ser revalidada/reconciliada.
 
+/** Outro target (interface+familia) que usa a MESMA policy IN. */
+export interface MitigationSharedTarget {
+  interfaceId: string | null;
+  interfaceName: string | null;
+  customer: string | null;
+  peerAddress: string;
+  addressFamily: MitigationAddressFamily;
+  prefixCount: number | null;
+  prefixStatus: PrefixStatus;
+}
+
 export type MitigationReadiness = 'READY' | 'NOT_READY';
 
 export interface MitigationDiscoveryProfile {
+  /** Id do profile persistido; `null` para candidato sem policy. */
+  profileId: string | null;
   /** `null` quando a policy IN nao pode ser resolvida (profile nao persistido). */
   policyName: string | null;
+  /** Familia do alvo: IPv4 e IPv6 sao targets independentes. */
+  addressFamily: MitigationAddressFamily;
+  /** A policy IN deste target e usada por outro target/interface. */
+  sharedPolicy: boolean;
+  /** Os OUTROS targets que usam a mesma policy IN. */
+  sharedPolicyTargets: MitigationSharedTarget[];
+  /** Bloqueio preventivo da automacao futura (hoje: SHARED_POLICY). */
+  autoBlockedReason: MitigationBlockReason | null;
   customer: string | null;
   interfaceId: string | null;
   interfaceName: string | null;
@@ -60,8 +90,18 @@ export interface MitigationDiscoveryProfile {
   prefixStatus: PrefixStatus;
   /** Todos os nodes existentes na policy (permit + deny). */
   existingNodes: number[];
-  /** Nodes de permit que ja aplicam a RT de mitigacao do motor. */
+  /** Nodes de PERMIT que ja sao o node de mitigacao (RT + PREFIX8to24). */
   mitigationNodes: number[];
+  /** Nodes de DENY que ja sao o node BOGONS. */
+  bogonNodes?: number[];
+  /** Prefix-list do node de DENY. */
+  bogonPrefixList?: string;
+  /** Prefix-list do node que aplica a RT. */
+  targetPrefixList?: string;
+  /** Node BOGONS planejado (par). */
+  plannedBogonNode?: number | null;
+  /** Node de mitigacao planejado (par). */
+  plannedMitigationNode?: number | null;
   firstNormalNode: number | null;
   plannedNode: number | null;
   readiness: MitigationReadiness;
@@ -96,6 +136,14 @@ export interface BgpMitigationDiscoveryDeps {
 interface Candidate {
   peer: DiscoveredBgpPeer;
   scope: MitigationInterfaceScope;
+}
+
+/** Alvo operacional: uma interface, uma familia e a policy IN resolvida. */
+interface MitigationTarget {
+  policyName: string;
+  interfaceId: string;
+  addressFamily: MitigationAddressFamily;
+  members: Candidate[];
 }
 
 // Ordem de precedencia do motivo de bloqueio (o mais especifico vence).
@@ -191,19 +239,33 @@ export class BgpMitigationDiscoveryService {
       candidates.push({ peer, scope });
     }
 
-    const byPolicy = new Map<string, Candidate[]>();
+    // Um TARGET e interface + familia + policy. Dois peers IPv4 em interfaces
+    // diferentes (mesmo compartilhando a policy) sao dois targets distintos, e
+    // IPv4 nunca se mistura com IPv6.
+    const targets = new Map<string, MitigationTarget>();
     const unresolved: Candidate[] = [];
     for (const candidate of candidates) {
       const policyName = policies
         ? resolvePeerInboundPolicy(candidate.peer.peerAddress, policies)
         : null;
-      if (!policyName) {
+      const interfaceId = candidate.peer.interfaceId;
+      if (!policyName || !interfaceId) {
         unresolved.push(candidate);
         continue;
       }
-      const group = byPolicy.get(policyName) ?? [];
-      group.push(candidate);
-      byPolicy.set(policyName, group);
+      const addressFamily = candidate.peer.addressFamily as MitigationAddressFamily;
+      const key = [policyName, interfaceId, addressFamily].join('\u0000');
+      const existing = targets.get(key);
+      if (existing) existing.members.push(candidate);
+      else targets.set(key, { policyName, interfaceId, addressFamily, members: [candidate] });
+    }
+
+    // Quantos targets usam a mesma policy IN (efeito real no equipamento).
+    const targetsByPolicy = new Map<string, MitigationTarget[]>();
+    for (const target of targets.values()) {
+      const list = targetsByPolicy.get(target.policyName) ?? [];
+      list.push(target);
+      targetsByPolicy.set(target.policyName, list);
     }
 
     const profiles: MitigationDiscoveryProfile[] = [];
@@ -211,32 +273,66 @@ export class BgpMitigationDiscoveryService {
     let createdProfiles = 0;
     let updatedProfiles = 0;
 
-    for (const [policyName, group] of [...byPolicy.entries()].sort(([left], [right]) =>
-      left.localeCompare(right),
-    )) {
+    const orderedTargets = [...targets.values()].sort((left, right) =>
+      left.policyName.localeCompare(right.policyName) ||
+      left.interfaceId.localeCompare(right.interfaceId) ||
+      left.addressFamily.localeCompare(right.addressFamily),
+    );
+
+    for (const target of orderedTargets) {
+      const { policyName, interfaceId, addressFamily } = target;
+      const group = target.members;
       const sorted = [...group].sort((left, right) =>
         left.peer.peerAddress.localeCompare(right.peer.peerAddress),
       );
       const primary = sorted[0]!;
-      const interfaceAmbiguous = new Set(group.map((item) => item.peer.interfaceId)).size > 1;
+      // A interface deste target ja e conhecida (vem da correlacao do peer).
+      // Nao existe ambiguidade por outra interface usar a mesma policy: isso e
+      // POLICY COMPARTILHADA, tratada como flag de seguranca abaixo.
+      const sharingTargets = (targetsByPolicy.get(policyName) ?? []).filter(
+        (candidate) => candidate !== target,
+      );
+      const sharedPolicy = sharingTargets.length > 0;
+      const sharedPolicyTargets: MitigationSharedTarget[] = sharingTargets.map((other) => {
+        const otherPeers = [...other.members].sort((left, right) =>
+          left.peer.peerAddress.localeCompare(right.peer.peerAddress),
+        );
+        const otherPrimary = otherPeers[0]!;
+        const otherPrefixCount = aggregatePrefixCount(
+          otherPeers.map((item) => item.peer.cliReceivedPrefixes),
+        );
+        return {
+          interfaceId: other.interfaceId,
+          interfaceName: otherPrimary.peer.interfaceName,
+          customer: otherPrimary.scope.customerDisplayName,
+          peerAddress: otherPrimary.peer.peerAddress,
+          addressFamily: other.addressFamily,
+          prefixCount: otherPrefixCount,
+          prefixStatus: prefixStatus(otherPrefixCount, this.prefixLimit),
+        };
+      });
 
       const policyNodes = nodeMap?.get(policyName) ?? null;
       const existingNodes = policyNodes ? allNodesOf(policyNodes) : [];
+      // Mitigacao = PERMIT + PREFIX8to24 + RT. RT sem a prefix-list nao vale.
       const mitigationNodes = policyNodes
-        ? nodesApplyingRouteTarget(policyNodes, this.mitigationRt)
+        ? mitigationPermitNodes(policyNodes, this.mitigationRt, DEFAULT_TARGET_PREFIX_LIST)
+        : [];
+      // BOGONS = DENY + if-match da prefix-list. Um deny qualquer NAO entra.
+      const bogonNodes = policyNodes
+        ? bogonDenyNodes(policyNodes, DEFAULT_BOGON_PREFIX_LIST)
         : [];
       const normalNodes = policyNodes
         ? permitNodesOf(policyNodes).filter((node) => !mitigationNodes.includes(node))
         : [];
       const nodeDecision = policyNodes
-        ? selectTemporaryNode({ normalNodes, occupiedNodes: existingNodes })
+        ? selectNodePair({ normalNodes, occupiedNodes: existingNodes })
         : null;
 
       const prefixCount = aggregatePrefixCount(sorted.map((item) => item.peer.cliReceivedPrefixes));
       const status = prefixStatus(prefixCount, this.prefixLimit);
 
       const blockedReason = pickBlockReason([
-        interfaceAmbiguous ? 'INTERFACE_AMBIGUOUS' : null,
         nodeMap === null ? 'READBACK_FAILED' : null,
         nodeMap !== null && policyNodes === null ? 'POLICY_NOT_FOUND' : null,
         status === 'UNKNOWN' ? 'PREFIX_UNKNOWN' : null,
@@ -244,61 +340,95 @@ export class BgpMitigationDiscoveryService {
         nodeDecision?.blocked ? 'NO_SAFE_TEMPORARY_NODE' : null,
       ]);
 
-      const profile = await this.deps.repository.upsertProfile({
-        deviceId: device.id,
-        policyName,
-        interfaceId: primary.peer.interfaceId,
-        detectedBandwidthBps: primary.scope.detectedBandwidthBps,
-        bandwidthSource: primary.scope.bandwidthSource,
-        prefixLimit: this.prefixLimit,
-      });
-      touchedProfileIds.add(profile.id);
-      if (existingPolicyNames.has(policyName)) updatedProfiles += 1;
-      else createdProfiles += 1;
-
-      await this.deps.repository.replaceProfilePeers(
-        profile.id,
-        sorted.map((item) => ({
-          peerAddress: item.peer.peerAddress,
-          addressFamily: item.peer.addressFamily,
-          primary: item.peer.peerAddress === primary.peer.peerAddress,
-        })),
-      );
-
       // plannedNode e SEMPRE reescrito (valor ou null) para nao sobreviver a uma
       // condicao que deixou de existir (nodes 1..9 ocupados, policy trocada, etc.).
-      const plannedNode = nodeDecision?.node ?? null;
-      const runtime = await this.deps.repository.getRuntime(profile.id);
-      await this.deps.repository.upsertRuntime(profile.id, {
-        lastValidatedAt: now,
-        lastReconciledAt: now,
-        plannedNode,
-        ...(blockedReason !== null
-          ? { state: 'RECONCILIATION_REQUIRED' as const }
-          : runtime === null ||
-              runtime.state === 'DISABLED' ||
-              runtime.state === 'RECONCILIATION_REQUIRED'
-            ? { state: 'NORMAL' as const }
-            : {}),
-      });
+      // Compatibilidade: plannedNode continua sendo o node de mitigacao.
+      const plannedNode = nodeDecision?.pair?.mitigationNode ?? null;
+      const plannedBogonNode = nodeDecision?.pair?.bogonNode ?? null;
+      // Persistencia "best effort": sem a migration aplicada (ou com o banco
+      // indisponivel) a ANALISE continua e a linha vai para o resultado com
+      // profileId null + aviso explicito - nunca perdemos a descoberta.
+      let persistedProfileId: string | null = null;
+      let persistedOverrideBps: bigint | null = null;
+      try {
+        const profile = await this.deps.repository.upsertProfile({
+          deviceId: device.id,
+          policyName,
+          interfaceId,
+          addressFamily,
+          detectedBandwidthBps: primary.scope.detectedBandwidthBps,
+          bandwidthSource: primary.scope.bandwidthSource,
+          prefixLimit: this.prefixLimit,
+        });
+        persistedProfileId = profile.id;
+        persistedOverrideBps = profile.bandwidthOverrideBps;
+        touchedProfileIds.add(profile.id);
+        if (existingPolicyNames.has(policyName)) updatedProfiles += 1;
+        else createdProfiles += 1;
+
+        await this.deps.repository.replaceProfilePeers(
+          profile.id,
+          sorted.map((item) => ({
+            peerAddress: item.peer.peerAddress,
+            addressFamily: item.peer.addressFamily,
+            primary: item.peer.peerAddress === primary.peer.peerAddress,
+          })),
+        );
+
+        const runtime = await this.deps.repository.getRuntime(profile.id);
+        await this.deps.repository.upsertRuntime(profile.id, {
+          lastValidatedAt: now,
+          lastReconciledAt: now,
+          plannedNode,
+          plannedBogonNode,
+          plannedMitigationNode: plannedNode,
+          ...(blockedReason !== null
+            ? { state: 'RECONCILIATION_REQUIRED' as const }
+            : runtime === null ||
+                runtime.state === 'DISABLED' ||
+                runtime.state === 'RECONCILIATION_REQUIRED'
+              ? { state: 'NORMAL' as const }
+              : {}),
+        });
+      } catch {
+        persistedProfileId = null;
+        warnings.push(
+          `policy ${policyName}: nao foi possivel persistir o profile ` +
+            `(banco indisponivel ou sem migration); a analise foi mantida`,
+        );
+      }
 
       profiles.push({
+        profileId: persistedProfileId,
         policyName,
+        addressFamily,
+        sharedPolicy,
+        sharedPolicyTargets,
+        // Decisao operacional: policy compartilhada e AVISO, nao bloqueio.
+        autoBlockedReason: null,
         customer: primary.scope.customerDisplayName,
-        interfaceId: profile.interfaceId,
+        interfaceId: primary.peer.interfaceId,
         interfaceName: primary.peer.interfaceName,
         interfaceDescriptionRaw: primary.scope.descriptionRaw,
-        detectedBandwidthBps: profile.detectedBandwidthBps,
-        effectiveBandwidthBps: effectiveBandwidthBps(profile),
-        bandwidthSource: profile.bandwidthSource,
+        detectedBandwidthBps: primary.scope.detectedBandwidthBps,
+        effectiveBandwidthBps: effectiveBandwidthBps({
+          detectedBandwidthBps: primary.scope.detectedBandwidthBps,
+          bandwidthOverrideBps: persistedOverrideBps,
+        }),
+        bandwidthSource: primary.scope.bandwidthSource,
         peerAddresses: sorted.map((item) => item.peer.peerAddress),
         prefixCount,
         prefixLimit: this.prefixLimit,
         prefixStatus: status,
         existingNodes,
         mitigationNodes,
+        bogonNodes,
+        bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST,
+        targetPrefixList: DEFAULT_TARGET_PREFIX_LIST,
         firstNormalNode: nodeDecision?.firstNormalNode ?? null,
         plannedNode,
+        plannedBogonNode,
+        plannedMitigationNode: plannedNode,
         readiness: blockedReason === null ? 'READY' : 'NOT_READY',
         blockedReason,
       });
@@ -313,7 +443,12 @@ export class BgpMitigationDiscoveryService {
       const prefixCount =
         peer.cliReceivedPrefixes === null ? null : Number(peer.cliReceivedPrefixes);
       profiles.push({
+        profileId: null,
         policyName: null,
+        addressFamily: peer.addressFamily as MitigationAddressFamily,
+        sharedPolicy: false,
+        sharedPolicyTargets: [],
+        autoBlockedReason: null,
         customer: scope.customerDisplayName,
         interfaceId: peer.interfaceId,
         interfaceName: peer.interfaceName,
@@ -327,8 +462,13 @@ export class BgpMitigationDiscoveryService {
         prefixStatus: prefixStatus(prefixCount, this.prefixLimit),
         existingNodes: [],
         mitigationNodes: [],
+        bogonNodes: [],
+        bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST,
+        targetPrefixList: DEFAULT_TARGET_PREFIX_LIST,
         firstNormalNode: null,
         plannedNode: null,
+        plannedBogonNode: null,
+        plannedMitigationNode: null,
         readiness: 'NOT_READY',
         blockedReason: policies === null ? 'READBACK_FAILED' : 'POLICY_NOT_FOUND',
       });

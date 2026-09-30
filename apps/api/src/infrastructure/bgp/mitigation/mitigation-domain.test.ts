@@ -250,10 +250,18 @@ describe('simulation command executor (nunca escreve)', () => {
   const executor = new SimulationCommandExecutor();
 
   it('gera os comandos de mitigação corretos', () => {
-    const preview = executor.buildMitigation('PL-HORIZONTES_IPv4-IN', 1, '268568:660');
+    const preview = executor.buildMitigation(
+      'PL-HORIZONTES_IPv4-IN',
+      { bogonNode: 1, mitigationNode: 2 },
+      '268568:660',
+      { bogonPrefixList: 'BOGONS', targetPrefixList: 'PREFIX8to24' },
+    );
     expect(preview.commands).toEqual([
       'system-view',
-      'route-policy PL-HORIZONTES_IPv4-IN permit node 1',
+      'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
+      ' if-match ip-prefix BOGONS',
+      'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
+      ' if-match ip-prefix PREFIX8to24',
       ' apply extcommunity rt 268568:660 additive',
       'commit',
     ]);
@@ -261,9 +269,12 @@ describe('simulation command executor (nunca escreve)', () => {
   });
 
   it('gera os comandos de recovery corretos', () => {
-    expect(executor.buildRecovery('PL-HORIZONTES_IPv4-IN', 1).commands).toEqual([
+    expect(
+      executor.buildRecovery('PL-HORIZONTES_IPv4-IN', { bogonNode: 1, mitigationNode: 2 }).commands,
+    ).toEqual([
       'system-view',
-      'undo route-policy PL-HORIZONTES_IPv4-IN permit node 1',
+      'undo route-policy PL-HORIZONTES_IPv4-IN node 1',
+      'undo route-policy PL-HORIZONTES_IPv4-IN node 2',
       'commit',
     ]);
   });

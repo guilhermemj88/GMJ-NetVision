@@ -64,8 +64,14 @@ export class InMemoryMitigationRepository implements MitigationRepository {
   }
 
   async upsertProfile(input: MitigationProfileInput): Promise<MitigationProfileRecord> {
+    // Identidade do alvo: dois peers IPv4 em interfaces diferentes (mesmo
+    // compartilhando a policy) sao DOIS targets; IPv4 e IPv6 nunca se misturam.
     const existing = [...this.store.profiles.values()].find(
-      (profile) => profile.deviceId === input.deviceId && profile.policyName === input.policyName,
+      (profile) =>
+        profile.deviceId === input.deviceId &&
+        profile.policyName === input.policyName &&
+        profile.interfaceId === (input.interfaceId ?? null) &&
+        profile.addressFamily === (input.addressFamily ?? 'IPV4'),
     );
     const now = new Date();
     if (existing) {
@@ -95,6 +101,7 @@ export class InMemoryMitigationRepository implements MitigationRepository {
       deviceId: input.deviceId,
       policyName: input.policyName,
       interfaceId: input.interfaceId ?? null,
+      addressFamily: input.addressFamily ?? 'IPV4',
       detectedBandwidthBps: input.detectedBandwidthBps ?? null,
       bandwidthSource: input.bandwidthSource ?? 'UNKNOWN',
       bandwidthOverrideBps: input.bandwidthOverrideBps ?? null,
@@ -187,6 +194,12 @@ export class InMemoryMitigationRepository implements MitigationRepository {
         plannedNode: hasPatch(patch, 'plannedNode')
           ? (patch.plannedNode ?? null)
           : existing.plannedNode,
+        plannedBogonNode: hasPatch(patch, 'plannedBogonNode')
+          ? (patch.plannedBogonNode ?? null)
+          : existing.plannedBogonNode,
+        plannedMitigationNode: hasPatch(patch, 'plannedMitigationNode')
+          ? (patch.plannedMitigationNode ?? null)
+          : existing.plannedMitigationNode,
         lastSampleAt: hasPatch(patch, 'lastSampleAt')
           ? (patch.lastSampleAt ?? null)
           : existing.lastSampleAt,
@@ -212,6 +225,8 @@ export class InMemoryMitigationRepository implements MitigationRepository {
       triggerCounter: patch.triggerCounter ?? 0,
       recoveryCounter: patch.recoveryCounter ?? 0,
       plannedNode: patch.plannedNode ?? null,
+      plannedBogonNode: patch.plannedBogonNode ?? null,
+      plannedMitigationNode: patch.plannedMitigationNode ?? null,
       lastSampleAt: patch.lastSampleAt ?? null,
       lastValidatedAt: patch.lastValidatedAt ?? null,
       lastReconciledAt: patch.lastReconciledAt ?? null,

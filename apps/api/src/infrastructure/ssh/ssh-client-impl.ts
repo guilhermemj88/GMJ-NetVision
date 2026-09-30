@@ -9,6 +9,21 @@ interface SshClientOptions {
   readyTimeout?: number;
   /** Optional host context command executed before the real commands. */
   contextCommand?: string | null;
+  /**
+   * Finalizacao da sessao depois dos comandos (nunca faz parte da lista
+   * canonica de configuracao):
+   *
+   *  - 'quit' (default): sessao que termina em USER VIEW (todo READ-ONLY) — o
+   *    proprio `quit` encerra a sessao.
+   *
+   *  - 'return-quit': sessao de ESCRITA, que termina em SYSTEM-VIEW depois do
+   *    `commit`: `return` volta para a user view e `quit` encerra. Sem isso o
+   *    canal fica aberto, o cliente espera o timeout e uma escrita JA aplicada
+   *    e reportada como falha.
+   */
+  exitMode?: 'quit' | 'return-quit';
+  /** Timeout do shell depois da conexao (escrita com commit pode demorar). */
+  shellTimeoutMs?: number;
 }
 
 export class SshClientImpl implements SshClient {
@@ -72,7 +87,7 @@ export class SshClientImpl implements SshClient {
           settled = true;
           stream.close();
           reject(new Error('SSH command timeout'));
-        }, (this.options.readyTimeout ?? 8_000) + 7_000);
+        }, this.options.shellTimeoutMs ?? (this.options.readyTimeout ?? 8_000) + 7_000);
 
         const initialPasswordPrompt = /(initial password poses security risks|password needs to be changed|change now\?\s*\[y\/n\]\s*:)/i;
         const cliPrompt = /(?:^|[\r\n])\s*(?:<[^>\r\n]+>|\[[^\]\r\n]+\])\s*$/;
@@ -88,9 +103,12 @@ export class SshClientImpl implements SshClient {
 
           if (!commandsSent && cliPrompt.test(stdout)) {
             commandsSent = true;
-            const quitSequence = this.options.contextCommand
-              ? 'quit\r\nquit\r\n'
-              : 'quit\r\n';
+            const quitSequence =
+              this.options.exitMode === 'return-quit'
+                ? 'return\r\nquit\r\n'
+                : this.options.contextCommand
+                  ? 'quit\r\nquit\r\n'
+                  : 'quit\r\n';
             stream.end(`${commands.join('\r\n')}\r\n${quitSequence}`);
           }
         };
