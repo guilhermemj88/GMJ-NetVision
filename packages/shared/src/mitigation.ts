@@ -164,6 +164,8 @@ export interface MitigationAutoRuntimeDto {
   lastSuccessfulTickAt: string | null;
   lastError: string | null;
   lastDecision: MitigationAutoDecisionDto | null;
+  /** Decisao mais recente de cada profile avaliado (dry run). */
+  decisions?: MitigationAutoDecisionDto[];
   lastAutoActivateAt: string | null;
   lastAutoActivateProfileId: string | null;
 }

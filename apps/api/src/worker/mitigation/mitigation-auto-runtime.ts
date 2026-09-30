@@ -26,6 +26,8 @@ export interface MitigationAutoRuntimeStatus {
   tickCount: number;
   skippedTicks: number;
   lastDecision: MitigationAutoDecision | null;
+  /** Decisao mais recente POR profile (dry run / auditoria). */
+  decisions: MitigationAutoDecision[];
   lastAutoActivateAt: string | null;
   lastAutoActivateProfileId: string | null;
 }
@@ -51,6 +53,7 @@ export class MitigationAutoRuntime {
   private tickCount = 0;
   private skippedTicks = 0;
   private lastDecision: MitigationAutoDecision | null = null;
+  private readonly decisionsByProfile = new Map<string, MitigationAutoDecision>();
   private lastAutoActivateAt: string | null = null;
   private lastAutoActivateProfileId: string | null = null;
   private readonly now: () => Date;
@@ -78,6 +81,7 @@ export class MitigationAutoRuntime {
       tickCount: this.tickCount,
       skippedTicks: this.skippedTicks,
       lastDecision: this.lastDecision,
+      decisions: [...this.decisionsByProfile.values()],
       lastAutoActivateAt: this.lastAutoActivateAt,
       lastAutoActivateProfileId: this.lastAutoActivateProfileId,
     };
@@ -123,6 +127,7 @@ export class MitigationAutoRuntime {
         this.lastDecision = decisions.reduce((latest, item) =>
           item.at > latest.at ? item : latest,
         );
+        for (const item of decisions) this.decisionsByProfile.set(item.profileId, item);
       }
       const activated = decisions.find((decision) => decision.outcome === 'ACTIVATED');
       if (activated) {
