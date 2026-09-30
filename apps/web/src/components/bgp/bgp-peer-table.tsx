@@ -194,6 +194,14 @@ export function BgpPeerTable({
                   <td data-label="Peer">
                     <strong>{peer.displayName}</strong>
                     <small>{peer.peerAddress}</small>
+                    {peer.mitigationExcluded ? (
+                      <span
+                        className="mitigation-excluded-badge"
+                        title="Excluído da mitigação (nunca mitigar este peer)"
+                      >
+                        🛡 Excluído da mitigação
+                      </span>
+                    ) : null}
                   </td>
                   <td data-label="ASN">
                     <span>{peer.remoteAs ?? '-'}</span>

@@ -183,6 +183,43 @@ export interface MitigationExclusionInput {
   note?: string | null;
 }
 
+/**
+ * Exclusao PREVENTIVA por PEER BGP ("nunca mitigar este peer").
+ *
+ * Guarda a identidade estavel do peer (independente de profile) para que a
+ * protecao valha mesmo antes de existir BgpMitigationProfile para o target.
+ */
+export interface MitigationPeerExclusionRecord {
+  id: string;
+  bgpPeerId: string;
+  deviceId: string;
+  peerAddress: string;
+  addressFamily: MitigationAddressFamily;
+  interfaceId: string | null;
+  reason: MitigationExclusionReason;
+  note: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Identidade resolvida do peer + decisao do operador. */
+export interface MitigationPeerExclusionInput {
+  peerId: string;
+  deviceId: string;
+  peerAddress: string;
+  addressFamily: MitigationAddressFamily;
+  interfaceId: string | null;
+  excluded: boolean;
+  reason?: MitigationExclusionReason | null;
+  note?: string | null;
+}
+
+/** Filtro read-only usado pelo gate e pela lista de peers do BGP. */
+export interface MitigationPeerExclusionFilter {
+  deviceId?: string;
+  peerAddresses?: string[];
+}
+
 export interface MitigationProfileListFilter {
   deviceId?: string;
   enabled?: boolean;
@@ -204,6 +241,17 @@ export interface MitigationRepository {
    * canonico; REMOVE de mitigacao ativa continua permitido.
    */
   setProfileExclusion(id: string, input: MitigationExclusionInput): Promise<void>;
+  /**
+   * Exclusao PREVENTIVA por peer BGP. `excluded=false` remove a linha e devolve
+   * null; nunca depende de existir profile para o peer.
+   */
+  setPeerExclusion(
+    input: MitigationPeerExclusionInput,
+  ): Promise<MitigationPeerExclusionRecord | null>;
+  getPeerExclusion(peerId: string): Promise<MitigationPeerExclusionRecord | null>;
+  listPeerExclusions(
+    filter?: MitigationPeerExclusionFilter,
+  ): Promise<MitigationPeerExclusionRecord[]>;
   replaceProfilePeers(
     profileId: string,
     peers: MitigationPeerInput[],

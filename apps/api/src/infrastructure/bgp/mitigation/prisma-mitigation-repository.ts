@@ -4,6 +4,9 @@ import type {
   MitigationEventInput,
   MitigationExclusionInput,
   MitigationEventRecord,
+  MitigationPeerExclusionFilter,
+  MitigationPeerExclusionInput,
+  MitigationPeerExclusionRecord,
   MitigationPeerInput,
   MitigationProfileInput,
   MitigationProfileListFilter,
@@ -16,6 +19,7 @@ import type {
   MitigationSimulationRecord,
 } from './mitigation-repository';
 import type {
+  MitigationExclusionReason,
   MitigationProfileMode,
   MitigationState,
   SimulationResult,
@@ -26,6 +30,8 @@ type PeerRow = Prisma.BgpMitigationProfilePeerGetPayload<Record<string, never>>;
 type RuntimeRow = Prisma.BgpMitigationRuntimeGetPayload<Record<string, never>>;
 type SimulationRow = Prisma.BgpMitigationSimulationGetPayload<Record<string, never>>;
 type EventRow = Prisma.BgpMitigationEventGetPayload<Record<string, never>>;
+
+type PeerExclusionRow = Prisma.BgpMitigationPeerExclusionGetPayload<Record<string, never>>;
 
 function mapProfile(row: ProfileRow): MitigationProfileRecord {
   return {
@@ -55,8 +61,22 @@ function mapProfile(row: ProfileRow): MitigationProfileRecord {
   };
 }
 
-function mapPeer(row: PeerRow): MitigationProfilePeerRecord {
+function mapPeerExclusion(row: PeerExclusionRow): MitigationPeerExclusionRecord {
   return {
+    id: row.id,
+    bgpPeerId: row.bgpPeerId,
+    deviceId: row.deviceId,
+    peerAddress: row.peerAddress,
+    addressFamily: row.addressFamily as MitigationAddressFamily,
+    interfaceId: row.interfaceId,
+    reason: row.reason as MitigationExclusionReason,
+    note: row.note,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+function mapPeer(row: PeerRow): MitigationProfilePeerRecord {  return {
     id: row.id,
     profileId: row.profileId,
     peerId: row.peerId,
@@ -233,6 +253,53 @@ export class PrismaMitigationRepository implements MitigationRepository {
       where: { id },
       data: { bandwidthOverrideBps },
     });
+  }
+
+  async setPeerExclusion(
+    input: MitigationPeerExclusionInput,
+  ): Promise<MitigationPeerExclusionRecord | null> {
+    if (!input.excluded) {
+      await this.prisma.bgpMitigationPeerExclusion.deleteMany({
+        where: { bgpPeerId: input.peerId },
+      });
+      return null;
+    }
+    const data = {
+      deviceId: input.deviceId,
+      peerAddress: input.peerAddress,
+      addressFamily: input.addressFamily,
+      interfaceId: input.interfaceId,
+      reason: (input.reason ?? 'MANUAL') as MitigationExclusionReason,
+      note: input.note ?? null,
+    };
+    const row = await this.prisma.bgpMitigationPeerExclusion.upsert({
+      where: { bgpPeerId: input.peerId },
+      create: { bgpPeerId: input.peerId, ...data },
+      update: data,
+    });
+    return mapPeerExclusion(row);
+  }
+
+  async getPeerExclusion(peerId: string): Promise<MitigationPeerExclusionRecord | null> {
+    const row = await this.prisma.bgpMitigationPeerExclusion.findUnique({
+      where: { bgpPeerId: peerId },
+    });
+    return row ? mapPeerExclusion(row) : null;
+  }
+
+  async listPeerExclusions(
+    filter: MitigationPeerExclusionFilter = {},
+  ): Promise<MitigationPeerExclusionRecord[]> {
+    const rows = await this.prisma.bgpMitigationPeerExclusion.findMany({
+      where: {
+        ...(filter.deviceId === undefined ? {} : { deviceId: filter.deviceId }),
+        ...(filter.peerAddresses === undefined
+          ? {}
+          : { peerAddress: { in: filter.peerAddresses } }),
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    return rows.map(mapPeerExclusion);
   }
 
   async replaceProfilePeers(

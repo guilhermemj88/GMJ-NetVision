@@ -1,4 +1,32 @@
 export type BgpPeerRole = 'UPSTREAM' | 'PEER' | 'OTHER';
+
+/** Motivo da exclusao preventiva (mesmo vocabulario do modulo DDoS). */
+export type BgpPeerMitigationExclusionReason =
+  | 'UPLINK'
+  | 'TRANSIT'
+  | 'IX'
+  | 'BACKBONE'
+  | 'MANUAL';
+
+/**
+ * Exclusao PREVENTIVA da mitigacao DDoS por peer ("nunca mitigar este peer").
+ *
+ * Independente de existir profile: o peer continua protegido mesmo sem entrar
+ * no escopo da mitigacao (uplink/transit/IX/backbone sem banda declarada).
+ */
+export interface BgpPeerMitigationExclusionDto {
+  peerId: string;
+  excluded: boolean;
+  reason: BgpPeerMitigationExclusionReason | null;
+  note: string | null;
+  deviceId: string;
+  peerAddress: string;
+  addressFamily: BgpAddressFamily;
+  updatedAt: string | null;
+  /** false = guardado apenas em memoria (migration da tabela ainda nao aplicada). */
+  persisted: boolean;
+}
+
 export type BgpPeerState =
   | 'IDLE'
   | 'CONNECT'
@@ -56,6 +84,10 @@ export interface BgpDashboardPeer {
   lastPollingAt: string | null;
   lastDiscoveryAt: string | null;
   interface: BgpPeerInterfaceDto | null;
+  /** Exclusao preventiva da mitigacao DDoS ("nunca mitigar este peer"). */
+  mitigationExcluded?: boolean;
+  mitigationExclusionReason?: BgpPeerMitigationExclusionReason | null;
+  mitigationExclusionNote?: string | null;
 }
 
 export type BgpPeerDetail = BgpDashboardPeer;

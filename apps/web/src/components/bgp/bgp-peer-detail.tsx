@@ -22,6 +22,9 @@ import {
   YAxis,
 } from 'recharts';
 import { getBgpPeerHistory, getHistory, setBgpPeerAdminState } from '@/lib/api';
+import { setBgpPeerMitigationExclusion } from '@/lib/mitigation-api';
+import { EXCLUSION_REASON_OPTIONS, exclusionReasonLabel } from '@/lib/mitigation-labels';
+import type { MitigationExclusionReason } from '@gmj/shared';
 import { formatBgpTraffic, formatBgpUptime, formatRouteCount } from '@/lib/bgp-format';
 import { BgpRouteSparkline } from './bgp-route-sparkline';
 import { BgpAdvertisedRoutesPanel } from './bgp-advertised-routes';
@@ -324,6 +327,9 @@ export function BgpPeerDetail({
             )}
           </section>
 
+          {/* Camada PREVENTIVA: vale mesmo sem profile DDoS para este peer. */}
+          <PeerMitigationExclusionEditor key={peer.id} peer={peer} />
+
           <section className="bgp-detail__grid">
             <div className="bgp-detail__facts">
               <dl>
@@ -576,5 +582,131 @@ export function BgpPeerDetail({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * PROTEÇÃO CONTRA MITIGAÇÃO (por PEER, nao por target).
+ *
+ * Marca "nunca mitigar este peer" mesmo quando o peer nao tem profile de
+ * mitigacao (uplink/transit/IX/backbone sem banda declarada). Persistencia pura:
+ * nenhuma chamada SSH e nenhum comando e enviado ao equipamento.
+ */
+function PeerMitigationExclusionEditor({ peer }: { peer: BgpDashboardPeer }) {
+  const queryClient = useQueryClient();
+  const [excluded, setExcluded] = useState(peer.mitigationExcluded === true);
+  const [reason, setReason] = useState<MitigationExclusionReason>(
+    (peer.mitigationExclusionReason as MitigationExclusionReason | null | undefined) ?? 'MANUAL',
+  );
+  const [note, setNote] = useState(peer.mitigationExclusionNote ?? '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [saved, setSaved] = useState({
+    excluded: peer.mitigationExcluded === true,
+    reason: (peer.mitigationExclusionReason ?? null) as MitigationExclusionReason | null,
+    note: peer.mitigationExclusionNote ?? null,
+  });
+
+  const dirty =
+    excluded !== saved.excluded ||
+    (excluded && reason !== (saved.reason ?? 'MANUAL')) ||
+    (excluded && note.trim() !== (saved.note ?? ''));
+
+  async function save(): Promise<void> {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await setBgpPeerMitigationExclusion(peer.id, {
+        excluded,
+        ...(excluded ? { reason, note: note.trim() || null } : {}),
+      });
+      setSaved({ excluded: result.excluded, reason: result.reason, note: result.note });
+      setNotice(
+        result.excluded
+          ? 'Salvo: este peer não será mais mitigado.'
+          : 'Exclusão removida: o peer volta a ser elegível para mitigação.',
+      );
+      await queryClient.invalidateQueries({ queryKey: ['bgp'] });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Falha ao salvar a exclusão');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section className="bgp-actions mitigation-exclusion" aria-label="Proteção contra mitigação">
+      <header className="bgp-actions__header">
+        <span>PROTEÇÃO CONTRA MITIGAÇÃO</span>
+        {saved.excluded && (
+          <em className="mitigation-excluded-badge" title="Excluído da mitigação">
+            🛡 Excluído da mitigação
+          </em>
+        )}
+      </header>
+      <label className="mitigation-exclusion__toggle">
+        <input
+          type="checkbox"
+          checked={excluded}
+          onChange={(event) => setExcluded(event.target.checked)}
+        />
+        Nunca mitigar este peer
+      </label>
+      {excluded ? (
+        <>
+          <label>
+            Motivo
+            <select
+              aria-label="Motivo da exclusão"
+              value={reason}
+              onChange={(event) => setReason(event.target.value as MitigationExclusionReason)}
+            >
+              {EXCLUSION_REASON_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {exclusionReasonLabel(option)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Observação (opcional)
+            <input
+              type="text"
+              aria-label="Observação da exclusão"
+              maxLength={500}
+              value={note}
+              onChange={(event) => setNote(event.target.value)}
+            />
+          </label>
+        </>
+      ) : null}
+      <p className="mitigation-modal__hint">
+        Bloqueia NOVO ACTIVATE (UI, n8n e AUTO) para o target deste peer. A retirada de uma
+        mitigação ativa continua permitida.
+      </p>
+      {error && (
+        <p className="bgp-actions__error" role="alert">
+          {error}
+        </p>
+      )}
+      {notice && !error && (
+        <p className="bgp-actions__result" role="status">
+          {notice}
+        </p>
+      )}
+      <div className="mitigation-actions">
+        <button
+          type="button"
+          className="bgp-actions__refresh"
+          disabled={saving || !dirty}
+          onClick={() => void save()}
+        >
+          {saving ? 'SALVANDO...' : 'SALVAR'}
+        </button>
+      </div>
+    </section>
   );
 }

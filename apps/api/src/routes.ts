@@ -101,7 +101,9 @@ import {
   createCachedSchemaCheck,
 } from './infrastructure/bgp/mitigation/mitigation-repository-router';
 import {
+  AlwaysReadyMitigationPeerExclusionSchemaProbe,
   AlwaysReadyMitigationSchemaProbe,
+  PrismaMitigationPeerExclusionSchemaProbe,
   PrismaMitigationSchemaProbe,
 } from './infrastructure/bgp/mitigation/mitigation-schema-probe';
 import { registerMitigationRoutes } from './mitigation-routes';
@@ -485,7 +487,15 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     ? new AlwaysReadyMitigationSchemaProbe()
     : new PrismaMitigationSchemaProbe();
   const mitigationSchemaReady = createCachedSchemaCheck(() => mitigationSchemaProbe.probe());
-  const mitigationPrismaRepository = config.DEMO_MODE
+  // A exclusao PREVENTIVA por peer nasce em migration propria: enquanto a tabela
+  // nao existir, apenas essas tres chamadas caem para o espelho em memoria.
+  const mitigationPeerExclusionProbe = config.DEMO_MODE
+    ? new AlwaysReadyMitigationPeerExclusionSchemaProbe()
+    : new PrismaMitigationPeerExclusionSchemaProbe();
+  const mitigationPeerExclusionReady = createCachedSchemaCheck(async () => ({
+    databaseReady: true,
+    migrationReady: await mitigationPeerExclusionProbe.probe(),
+  }));  const mitigationPrismaRepository = config.DEMO_MODE
     ? null
     : new PrismaMitigationRepository();
   const mitigationRepository =
@@ -495,6 +505,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
           mitigationPrismaRepository,
           mitigationMemoryRepository,
           mitigationSchemaReady,
+          mitigationPeerExclusionReady,
         );
   // Uma unica sessao/credencial SSH para discovery E escrita manual.
   const mitigationSsh = new HuaweiBgpSshService(hosts);
@@ -514,6 +525,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     },
     schemaProbe: mitigationSchemaProbe,
     repositoryKind: config.DEMO_MODE ? 'MEMORY' : 'DATABASE',
+    peerExclusionSchemaReady: mitigationPeerExclusionReady,
   });
   const physicalRepository = config.DEMO_MODE
     ? new DemoPhysicalRepository(hosts)
@@ -559,6 +571,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     discovery: bgpDiscovery,
     admin: bgpAdmin,
     advertisedRoutes: bgpAdvertisedRoutes,
+    peerExclusions: mitigationRepository,
     currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
   });
   // ---- Camada de MIDIAS (Fase 9): n8n configuravel pela UI --------------
@@ -648,6 +661,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     service: mitigationService,
     // mesma instancia do n8n: UI e n8n passam pelo MESMO servico
     commands: mitigationCommands,
+    // identidade do peer para a exclusao preventiva (sem profile)
+    peers: bgpRepository,
     currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
   });
   registerMediaRoutes(app, {

@@ -53,6 +53,7 @@ export const BLOCK_REASON_LABEL: Record<MitigationBlockReason, string> = {
   SHARED_POLICY:
     'A política BGP de entrada é compartilhada com outros clientes: a mitigação atingiria todos',
   MITIGATION_EXCLUDED: 'Mitigação desativada administrativamente para este peer',
+  PEER_MITIGATION_EXCLUDED: 'Peer marcado como "nunca mitigar este peer"',
 };
 
 /** Motivos da exclusão administrativa ("nunca mitigar este peer"). */

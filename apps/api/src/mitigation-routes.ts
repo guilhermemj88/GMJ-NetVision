@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import type { AuthUser } from '@gmj/shared';
+import type { AuthUser, BgpPeerDetail } from '@gmj/shared';
 import type { BgpMitigationService } from './infrastructure/bgp/mitigation/mitigation-service';
 import {
   MITIGATION_COMMAND_ACTIONS,
@@ -15,6 +15,8 @@ import {
 // qualquer outro campo por schema estrito.
 
 const profileParams = z.object({ id: z.string().min(1).max(160) });
+
+const peerParams = z.object({ peerId: z.string().min(1).max(160) });
 
 const patchSchema = z
   .object({
@@ -75,6 +77,11 @@ export interface MitigationRouteDependencies {
   service: BgpMitigationService;
   /** Mesma instancia usada pelo inbound do n8n (uma unica camada de servico). */
   commands?: MitigationCommandService;
+  /**
+   * Resolve a identidade do peer BGP. Necessario apenas para a exclusao
+   * preventiva por peer (endpoint independente de profile).
+   */
+  peers?: { getPeerDetail(peerId: string): Promise<BgpPeerDetail | null> };
   currentUser?: (request: FastifyRequest) => Promise<AuthUser | null>;
 }
 
@@ -82,7 +89,7 @@ export function registerMitigationRoutes(
   app: FastifyInstance,
   dependencies: MitigationRouteDependencies,
 ): void {
-  const { service, currentUser, commands } = dependencies;
+  const { service, currentUser, commands, peers } = dependencies;
 
   // Leitura: mesma exposicao do BGP (protegida pelo hook global de autenticacao).
   app.get('/api/bgp/mitigation/health', async () => service.health());
@@ -156,8 +163,31 @@ export function registerMitigationRoutes(
     });
   }
 
-  // Exclusao administrativa da mitigacao: configuracao pura (sem discovery,
-  // sem SSH). Vale para este TARGET, nunca para a policy compartilhada inteira.
+  // Exclusao PREVENTIVA por PEER BGP ("nunca mitigar este peer"): vale mesmo
+  // quando o peer NAO tem profile de mitigacao (uplink/transit/IX/backbone sem
+  // banda declarada). Persistencia pura: sem discovery e sem SSH.
+  if (peers) {
+    app.patch('/api/bgp/peers/:peerId/mitigation-exclusion', async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) return undefined;
+      const { peerId } = peerParams.parse(request.params);
+      const payload = exclusionSchema.parse(request.body ?? {});
+      const peer = await peers.getPeerDetail(peerId);
+      if (!peer) return reply.code(404).send({ message: 'Peer BGP nao encontrado' });
+      return service.setPeerMitigationExclusion({
+        peerId: peer.id,
+        deviceId: peer.deviceId,
+        peerAddress: peer.peerAddress,
+        addressFamily: peer.addressFamily,
+        interfaceId: peer.interface?.id ?? null,
+        excluded: payload.excluded,
+        ...(payload.reason === undefined ? {} : { reason: payload.reason }),
+        ...(payload.note === undefined ? {} : { note: payload.note ?? null }),
+      });
+    });
+  }
+
+  // Exclusao administrativa da mitigacao: configuracao pura (sem discovery,  // sem SSH). Vale para este TARGET, nunca para a policy compartilhada inteira.
   app.patch('/api/bgp/mitigation/profiles/:id/exclusion', async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return undefined;

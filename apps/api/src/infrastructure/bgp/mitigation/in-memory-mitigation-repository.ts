@@ -2,6 +2,9 @@ import type {
   MitigationEventInput,
   MitigationExclusionInput,
   MitigationEventRecord,
+  MitigationPeerExclusionFilter,
+  MitigationPeerExclusionInput,
+  MitigationPeerExclusionRecord,
   MitigationPeerInput,
   MitigationProfileInput,
   MitigationProfileListFilter,
@@ -17,6 +20,8 @@ import type {
 interface InMemoryStore {
   profiles: Map<string, MitigationProfileRecord>;
   peers: Map<string, MitigationProfilePeerRecord>;
+  /** Exclusao PREVENTIVA por peer BGP, chaveada pelo id do peer. */
+  peerExclusions: Map<string, MitigationPeerExclusionRecord>;
   runtime: Map<string, MitigationRuntimeRecord>;
   simulations: Map<string, MitigationSimulationRecord>;
   events: MitigationEventRecord[];
@@ -30,6 +35,7 @@ function createStore(): InMemoryStore {
   return {
     profiles: new Map(),
     peers: new Map(),
+    peerExclusions: new Map(),
     runtime: new Map(),
     simulations: new Map(),
     events: [],
@@ -164,6 +170,47 @@ export class InMemoryMitigationRepository implements MitigationRepository {
     profile.mitigationExclusionReason = input.excluded ? (input.reason ?? 'MANUAL') : null;
     profile.mitigationExclusionNote = input.excluded ? (input.note ?? null) : null;
     profile.updatedAt = new Date();
+  }
+
+  async setPeerExclusion(
+    input: MitigationPeerExclusionInput,
+  ): Promise<MitigationPeerExclusionRecord | null> {
+    if (!input.excluded) {
+      this.store.peerExclusions.delete(input.peerId);
+      return null;
+    }
+    const existing = this.store.peerExclusions.get(input.peerId);
+    const now = new Date();
+    const record: MitigationPeerExclusionRecord = {
+      id: existing?.id ?? `peer-exclusion-${this.store.peerExclusions.size + 1}`,
+      bgpPeerId: input.peerId,
+      deviceId: input.deviceId,
+      peerAddress: input.peerAddress,
+      addressFamily: input.addressFamily,
+      interfaceId: input.interfaceId,
+      reason: input.reason ?? 'MANUAL',
+      note: input.note ?? null,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    this.store.peerExclusions.set(input.peerId, record);
+    return record;
+  }
+
+  async getPeerExclusion(peerId: string): Promise<MitigationPeerExclusionRecord | null> {
+    return this.store.peerExclusions.get(peerId) ?? null;
+  }
+
+  async listPeerExclusions(
+    filter: MitigationPeerExclusionFilter = {},
+  ): Promise<MitigationPeerExclusionRecord[]> {
+    const addresses =
+      filter.peerAddresses === undefined ? null : new Set(filter.peerAddresses);
+    return [...this.store.peerExclusions.values()].filter((row) => {
+      if (filter.deviceId !== undefined && row.deviceId !== filter.deviceId) return false;
+      if (addresses !== null && !addresses.has(row.peerAddress)) return false;
+      return true;
+    });
   }
 
   async setProfileBandwidthOverride(

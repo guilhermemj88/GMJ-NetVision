@@ -13,6 +13,8 @@ import type {
   BgpMitigationSimulateInput,
   BgpMitigationSimulationDto,
   BgpMitigationSimulationRowDto,
+  BgpPeerMitigationExclusionDto,
+  BgpPeerMitigationExclusionReason,
 } from '@gmj/shared';
 import { request } from './api';
 
@@ -74,8 +76,23 @@ export function setMitigationExclusion(
   );
 }
 
-export function getMitigationSimulations(): Promise<BgpMitigationSimulationRowDto[]> {
-  return request<BgpMitigationSimulationRowDto[]>('/api/bgp/mitigation/simulations');
+/**
+ * Exclusao PREVENTIVA da mitigacao por peer ("nunca mitigar este peer").
+ *
+ * Independe de existir profile de mitigacao: e o caminho para proteger
+ * uplink/transit/IX/backbone que nem entram no escopo do discovery.
+ */
+export function setBgpPeerMitigationExclusion(
+  peerId: string,
+  input: { excluded: boolean; reason?: BgpPeerMitigationExclusionReason; note?: string | null },
+): Promise<BgpPeerMitigationExclusionDto> {
+  return request<BgpPeerMitigationExclusionDto>(
+    `/api/bgp/peers/${encodeURIComponent(peerId)}/mitigation-exclusion`,
+    { method: 'PATCH', body: JSON.stringify(input) },
+  );
+}
+
+export function getMitigationSimulations(): Promise<BgpMitigationSimulationRowDto[]> {  return request<BgpMitigationSimulationRowDto[]>('/api/bgp/mitigation/simulations');
 }
 
 export function getMitigationEvents(): Promise<BgpMitigationEventDto[]> {

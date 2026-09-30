@@ -303,6 +303,38 @@ export class MitigationCommandService {
       };
     }
 
+    // GATE PREVENTIVO POR PEER (camada 2): "nunca mitigar este peer" vale mesmo
+    // quando o target ainda nao tem profile (uplink/transit/IX/backbone sem banda
+    // declarada). Se QUALQUER peer do target estiver marcado, o ACTIVATE para
+    // aqui - antes de preflight, SSH e do executor Huawei.
+    if (activate) {
+      const peerExclusions = await this.read(
+        () =>
+          this.deps.repository.listPeerExclusions({
+            deviceId: profile.deviceId,
+            peerAddresses: peers.map((peer) => peer.peerAddress),
+          }),
+        [],
+      );
+      const blockedPeer = peers.find((peer) =>
+        peerExclusions.some((row) => row.peerAddress === peer.peerAddress),
+      );
+      if (blockedPeer) {
+        return {
+          ...common,
+          ok: false,
+          status: 'MITIGATION_EXCLUDED',
+          verified: false,
+          commandPreview: [],
+          verification: null,
+          blockedReason: 'PEER_MITIGATION_EXCLUDED',
+          safeError:
+            `Mitigacao bloqueada: o peer ${blockedPeer.peerAddress} esta marcado como ` +
+            '"nunca mitigar este peer"',
+        };
+      }
+    }
+
     const liveMode: MitigationPreflightMode =
       input.action === 'SIMULATE_ACTIVATE' || input.action === 'ACTIVATE'
         ? 'ACTIVATE'

@@ -306,6 +306,32 @@ enum BgpMitigationExclusionReason {
   MANUAL
 }
 
+/**
+ * Exclusao PREVENTIVA da mitigacao DDoS por PEER BGP ("nunca mitigar este peer").
+ *
+ * Vive colada ao BgpPeer e NAO depende de existir BgpMitigationProfile: o
+ * uplink/transit/IX/backbone sem banda declarada (portanto sem profile) fica
+ * protegido hoje e continua protegido se um dia ganhar profile.
+ */
+model BgpMitigationPeerExclusion {
+  id            String                       @id @default(cuid())
+  bgpPeerId     String                       @unique
+  deviceId      String
+  peerAddress   String
+  addressFamily BgpAddressFamily             @default(IPV4)
+  interfaceId   String?
+  reason        BgpMitigationExclusionReason @default(MANUAL)
+  note          String?
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @updatedAt
+
+  peer BgpPeer @relation(fields: [bgpPeerId], references: [id], onDelete: Cascade)
+
+  @@index([deviceId])
+  @@index([peerAddress])
+  @@index([interfaceId])
+}
+
 enum BgpMitigationSimulationResult {
   WOULD_MITIGATE
   WOULD_RECOVER
@@ -570,6 +596,7 @@ model BgpPeer {
   stateEvents            BgpPeerStateEvent[]
   adminActions           BgpAdminActionLog[]
   mitigationProfilePeers BgpMitigationProfilePeer[]
+  mitigationExclusion    BgpMitigationPeerExclusion?
   createdAt              DateTime                   @default(now())
   updatedAt              DateTime                   @updatedAt
 

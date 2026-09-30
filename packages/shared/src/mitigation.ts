@@ -40,7 +40,12 @@ export type MitigationBlockReason =
    * mas o operador marcou "nunca mitigar este peer". Bloqueia NOVO ACTIVATE;
    * NAO bloqueia REMOVE de uma mitigacao ja ativa.
    */
-  | 'MITIGATION_EXCLUDED';
+  | 'MITIGATION_EXCLUDED'
+  /**
+   * Exclusao PREVENTIVA do peer ("nunca mitigar este peer"): vale mesmo sem
+   * profile para o peer. Bloqueia NOVO ACTIVATE; REMOVE segue permitido.
+   */
+  | 'PEER_MITIGATION_EXCLUDED';
 
 /** Motivo da exclusao administrativa da mitigacao (por target/peer). */
 export type MitigationExclusionReason = 'UPLINK' | 'TRANSIT' | 'IX' | 'BACKBONE' | 'MANUAL';

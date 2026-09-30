@@ -64,7 +64,12 @@ export type MitigationBlockReason =
    * Exclusao administrativa do target ("nunca mitigar este peer"). Bloqueia
    * NOVO ACTIVATE; NAO impede REMOVE de uma mitigacao ja ativa.
    */
-  | 'MITIGATION_EXCLUDED';
+  | 'MITIGATION_EXCLUDED'
+  /**
+   * Exclusao PREVENTIVA do peer BGP ("nunca mitigar este peer"): vale mesmo
+   * quando o target ainda nao tem profile. Bloqueia NOVO ACTIVATE; REMOVE segue.
+   */
+  | 'PEER_MITIGATION_EXCLUDED';
 
 export type MitigationEngineState = 'DISABLED' | 'ONLINE' | 'RECONCILING' | 'FAILED';
 

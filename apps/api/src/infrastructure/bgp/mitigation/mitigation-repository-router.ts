@@ -2,6 +2,9 @@ import type {
   MitigationEventInput,
   MitigationExclusionInput,
   MitigationEventRecord,
+  MitigationPeerExclusionFilter,
+  MitigationPeerExclusionInput,
+  MitigationPeerExclusionRecord,
   MitigationPeerInput,
   MitigationProfileInput,
   MitigationProfileListFilter,
@@ -30,6 +33,13 @@ export class RoutingMitigationRepository implements MitigationRepository {
     private readonly primary: MitigationRepository,
     private readonly fallback: MitigationRepository,
     private readonly usePrimary: () => Promise<boolean>,
+    /**
+     * A tabela da exclusao PREVENTIVA por peer pode nao existir mesmo com o
+     * schema do perfil migrado (migration separada). Quando o probe dela diz
+     * "nao", so estas tres chamadas caem para o espelho em memoria - o resto do
+     * repositorio continua no banco.
+     */
+    private readonly usePrimaryPeerExclusion?: () => Promise<boolean>,
   ) {}
 
   private async target(): Promise<MitigationRepository> {
@@ -62,6 +72,32 @@ export class RoutingMitigationRepository implements MitigationRepository {
 
   async setProfileExclusion(id: string, input: MitigationExclusionInput): Promise<void> {
     return (await this.target()).setProfileExclusion(id, input);
+  }
+
+  private async peerExclusionTarget(): Promise<MitigationRepository> {
+    const base = await this.target();
+    if (base !== this.primary || !this.usePrimaryPeerExclusion) return base;
+    try {
+      return (await this.usePrimaryPeerExclusion()) ? this.primary : this.fallback;
+    } catch {
+      return this.fallback;
+    }
+  }
+
+  async setPeerExclusion(
+    input: MitigationPeerExclusionInput,
+  ): Promise<MitigationPeerExclusionRecord | null> {
+    return (await this.peerExclusionTarget()).setPeerExclusion(input);
+  }
+
+  async getPeerExclusion(peerId: string): Promise<MitigationPeerExclusionRecord | null> {
+    return (await this.peerExclusionTarget()).getPeerExclusion(peerId);
+  }
+
+  async listPeerExclusions(
+    filter?: MitigationPeerExclusionFilter,
+  ): Promise<MitigationPeerExclusionRecord[]> {
+    return (await this.peerExclusionTarget()).listPeerExclusions(filter);
   }
 
   async setProfileBandwidthOverride(

@@ -9,6 +9,7 @@ import type {
   BgpMitigationSimulateInput,
   BgpMitigationSimulationDto,
   BgpMitigationSimulationRowDto,
+  BgpPeerMitigationExclusionDto,
   MitigationBlockReason,
   MitigationExclusionReason,
   MitigationPrefixStatus,
@@ -33,6 +34,8 @@ import type {
 } from './mitigation-discovery-service';
 import { prefixStatus, safetyBlocks } from './mitigation-planner';
 import type {
+  MitigationAddressFamily,
+  MitigationPeerExclusionRecord,
   MitigationProfileRecord,
   MitigationRepository,
   MitigationRuntimeRecord,
@@ -65,6 +68,8 @@ export interface BgpMitigationServiceDeps {
   hosts: { getHost(id: string): Promise<HostRecord | null> };
   schemaProbe: BgpMitigationSchemaProbe;
   repositoryKind: 'DATABASE' | 'MEMORY';
+  /** Valor false enquanto a tabela da exclusao por peer nao estiver aplicada. */
+  peerExclusionSchemaReady?: () => Promise<boolean>;
   workerState?: () => MitigationWorkerState;
   maxDevicesPerDiscovery?: number;
   now?: () => Date;
@@ -304,6 +309,79 @@ export class BgpMitigationService {
     return this.getProfile(id);
   }
 
+  /**
+   * Exclusao PREVENTIVA por peer BGP ("nunca mitigar este peer").
+   *
+   * Nao roda discovery e nao toca equipamento: e configuracao persistida, valida
+   * para o peer mesmo sem profile e depois de ele ganhar um.
+   */
+  async setPeerMitigationExclusion(input: {
+    peerId: string;
+    deviceId: string;
+    peerAddress: string;
+    addressFamily: MitigationAddressFamily;
+    interfaceId: string | null;
+    excluded: boolean;
+    reason?: MitigationExclusionReason | null;
+    note?: string | null;
+  }): Promise<BgpPeerMitigationExclusionDto> {
+    const saved = await this.deps.repository.setPeerExclusion({
+      peerId: input.peerId,
+      deviceId: input.deviceId,
+      peerAddress: input.peerAddress,
+      addressFamily: input.addressFamily,
+      interfaceId: input.interfaceId,
+      excluded: input.excluded,
+      ...(input.excluded
+        ? { reason: input.reason ?? ('MANUAL' as MitigationExclusionReason) }
+        : {}),
+      ...(input.excluded && input.note ? { note: input.note } : {}),
+    });
+    return {
+      peerId: input.peerId,
+      excluded: saved !== null,
+      reason: saved?.reason ?? null,
+      note: saved?.note ?? null,
+      deviceId: input.deviceId,
+      peerAddress: input.peerAddress,
+      addressFamily: input.addressFamily,
+      updatedAt: saved?.updatedAt.toISOString() ?? null,
+      persisted: await this.peerExclusionPersisted(),
+    };
+  }
+
+  async getPeerMitigationExclusion(
+    peerId: string,
+  ): Promise<BgpPeerMitigationExclusionDto | null> {
+    const record = await this.read(() => this.deps.repository.getPeerExclusion(peerId), null);
+    if (!record) return null;
+    return this.toPeerExclusionDto(record);
+  }
+
+  private async toPeerExclusionDto(
+    record: MitigationPeerExclusionRecord,
+  ): Promise<BgpPeerMitigationExclusionDto> {
+    return {
+      peerId: record.bgpPeerId,
+      excluded: true,
+      reason: record.reason,
+      note: record.note,
+      deviceId: record.deviceId,
+      peerAddress: record.peerAddress,
+      addressFamily: record.addressFamily,
+      updatedAt: record.updatedAt.toISOString(),
+      persisted: await this.peerExclusionPersisted(),
+    };
+  }
+
+  /** `false` enquanto a tabela da exclusao por peer nao estiver migrada. */
+  private async peerExclusionPersisted(): Promise<boolean> {
+    if (this.deps.repositoryKind !== 'DATABASE' || !this.deps.peerExclusionSchemaReady) {
+      return false;
+    }
+    return this.read(() => this.deps.peerExclusionSchemaReady!(), false);
+  }
+
   async simulate(
     profileId: string,
     input: BgpMitigationSimulateInput,
@@ -338,7 +416,19 @@ export class BgpMitigationService {
     // Exclusao administrativa: a simulacao segue disponivel para VISUALIZACAO,
     // mas nunca vira decisao operacional de mitigacao (nem gera comandos).
     const excluded = record.mitigationExcluded === true;
-
+    // Exclusao PREVENTIVA por peer ("nunca mitigar este peer"): vale mesmo sem
+    // exclusao do target e mesmo sem profile proprio para o peer.
+    const peerExclusions = await this.read(
+      () =>
+        this.deps.repository.listPeerExclusions({
+          deviceId: record.deviceId,
+          peerAddresses: peers.map((peer) => peer.peerAddress),
+        }),
+      [],
+    );
+    const peerExcluded = peers.some((peer) =>
+      peerExclusions.some((row) => row.peerAddress === peer.peerAddress),
+    );
     // O motivo estrutural do discovery (interface ambigua / read-back falhou)
     // continua bloqueando a simulacao: nunca mitigamos sobre dado incerto.
     const structural: MitigationBlockReason | null =
@@ -356,6 +446,7 @@ export class BgpMitigationService {
     });
     let blockedReason: MitigationBlockReason | null = structural;
     if (!blockedReason && excluded) blockedReason = 'MITIGATION_EXCLUDED';
+    if (!blockedReason && peerExcluded) blockedReason = 'PEER_MITIGATION_EXCLUDED';
     if (!blockedReason && safety.blocked) blockedReason = safety.reason;
     if (!blockedReason && plannedNode === null) blockedReason = 'NO_SAFE_TEMPORARY_NODE';
 

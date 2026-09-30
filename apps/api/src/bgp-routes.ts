@@ -17,6 +17,7 @@ import { BgpAdminActionError } from './infrastructure/bgp/bgp-admin-service';
 import type { BgpAdvertisedRoutesService } from './infrastructure/bgp/bgp-advertised-routes-service';
 import { BgpAdvertisedRoutesError } from './infrastructure/bgp/bgp-advertised-routes-service';
 import type { HostRepository } from './infrastructure/persistence/host-repository';
+import type { MitigationRepository } from './infrastructure/bgp/mitigation/mitigation-repository';
 
 export function summarizeBgpPeers(peers: BgpDashboardPeer[]): BgpDashboardSummary {
   const established = peers.filter((peer) => peer.established).length;
@@ -81,6 +82,11 @@ export interface BgpRouteDependencies {
   admin?: BgpAdminService;
   advertisedRoutes?: BgpAdvertisedRoutesService;
   /**
+   * Exclusao PREVENTIVA de mitigacao por peer (camada DDoS). Ausente = a lista
+   * de peers continua exatamente como hoje (sem marcacao).
+   */
+  peerExclusions?: Pick<MitigationRepository, 'listPeerExclusions'>;
+  /**
    * Resolves the authenticated operator. The administrative endpoint demands an
    * ADMIN session even when the global auth hook does not cover this plugin.
    */
@@ -91,7 +97,35 @@ export function registerBgpRoutes(
   app: FastifyInstance,
   dependencies: BgpRouteDependencies,
 ): void {
-  const { bgp, hosts, discovery, admin, advertisedRoutes, currentUser } = dependencies;
+  const { bgp, hosts, discovery, admin, advertisedRoutes, currentUser, peerExclusions } =
+    dependencies;
+
+  /**
+   * Marca os peers excluidos da mitigacao. Best effort: qualquer falha (ex.:
+   * tabela ainda nao migrada) devolve a lista intacta, nunca derruba a tela.
+   */
+  const withPeerExclusions = async <T extends { deviceId: string; peerAddress: string }>(
+    peers: T[],
+  ): Promise<T[]> => {
+    if (!peerExclusions || peers.length === 0) return peers;
+    try {
+      const rows = await peerExclusions.listPeerExclusions();
+      if (rows.length === 0) return peers;
+      const byKey = new Map(rows.map((row) => [`${row.deviceId}|${row.peerAddress}`, row]));
+      return peers.map((peer) => {
+        const hit = byKey.get(`${peer.deviceId}|${peer.peerAddress}`);
+        if (!hit) return peer;
+        return {
+          ...peer,
+          mitigationExcluded: true,
+          mitigationExclusionReason: hit.reason,
+          mitigationExclusionNote: hit.note,
+        };
+      });
+    } catch {
+      return peers;
+    }
+  };
 
   app.get('/api/bgp', async (request) => {
     const query = bgpQuerySchema.parse(request.query);
@@ -102,13 +136,15 @@ export function registerBgpRoutes(
       ...(query.q ? { q: query.q } : {}),
       ...(query.deviceId ? { deviceId: query.deviceId } : {}),
     });
-    return buildBgpDashboard(peers);
+    return buildBgpDashboard(await withPeerExclusions(peers));
   });
 
   app.get('/api/bgp/peers/:peerId', async (request, reply) => {
     const { peerId } = peerParams.parse(request.params);
     const peer = await bgp.getPeerDetail(peerId);
-    return peer ?? reply.code(404).send({ message: 'BGP peer not found' });
+    if (!peer) return reply.code(404).send({ message: 'BGP peer not found' });
+    const [decorated] = await withPeerExclusions([peer]);
+    return decorated ?? peer;
   });
 
   app.get('/api/bgp/peers/:peerId/history', async (request, reply) => {
