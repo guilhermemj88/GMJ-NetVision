@@ -128,6 +128,7 @@ export interface MitigationAutoEngineDeps {
       state: MitigationState;
       triggerCounter: number;
       recoveryCounter: number;
+      lastSampleAt?: Date | null;
     } | null>;
     save(
       profileId: string,
@@ -156,6 +157,10 @@ interface AutoCounters {
   below: number;
   triggerStartedAtMs: number | null;
   loaded: boolean;
+  /** Identidade da ultima amostra contada (distinct samples por timestamp). */
+  lastSampleKey: string | null;
+  /** Timestamp (ms) da ultima amostra contada, para exigir monotonicidade. */
+  lastSampleAtMs: number | null;
 }
 
 const MITIGATED_STATES: readonly MitigationState[] = [
@@ -293,13 +298,14 @@ export class MitigationAutoEngine {
     if (target.effectiveBandwidthBps === null || target.effectiveBandwidthBps <= 0n) {
       return block('BANDWIDTH_UNKNOWN');
     }
-    const traffic = await this.deps.traffic.sample({
+    const sample = await this.deps.traffic.sampleWithId({
       profileId: target.profileId,
       deviceId: target.deviceId,
       interfaceId: target.interfaceId,
       bandwidthBps: target.effectiveBandwidthBps,
     });
-    if (traffic === null) return block('TELEMETRY_UNAVAILABLE');
+    if (sample === null) return block('TELEMETRY_UNAVAILABLE');
+    const traffic = sample.bps;
 
     const threshold = (target.effectiveBandwidthBps * BigInt(target.triggerPercent)) / 100n;
     const recoveryThreshold =
@@ -312,19 +318,36 @@ export class MitigationAutoEngine {
     };
 
     const counters = await this.loadCounters(target);
-    if (traffic > threshold) {
-      counters.over += 1;
-      counters.below = 0;
-      if (counters.triggerStartedAtMs === null) counters.triggerStartedAtMs = at.getTime();
-    } else if (traffic < recoveryThreshold) {
-      counters.below += 1;
-      counters.over = 0;
+    // CRITICO: so conta sample novo quando a IDENTIDADE da telemetria muda.
+    // 3 ticks lendo a MESMA InterfaceMetricSample valem 1 sample, nunca 3.
+    // Regra de amostra distinta:
+    //   - com occurredAt real: exige MONOTONICIDADE (T > lastSampleAt).
+    //     Igual => nao conta; menor (telemetria atrasada/reordenada) => nao conta.
+    //   - sem occurredAt (fontes de teste): identidade por sampleKey.
+    let isNewSample: boolean;
+    if (sample.occurredAt) {
+      const atMs = sample.occurredAt.getTime();
+      isNewSample = counters.lastSampleAtMs === null || atMs > counters.lastSampleAtMs;
+      if (isNewSample) counters.lastSampleAtMs = atMs;
     } else {
-      counters.over = 0;
-      counters.below = 0;
-      counters.triggerStartedAtMs = null;
+      isNewSample = counters.lastSampleKey !== sample.sampleKey;
     }
-    await this.persistCounters(target, counters, traffic, at);
+    counters.lastSampleKey = sample.sampleKey;
+    if (isNewSample) {
+      if (traffic > threshold) {
+        counters.over += 1;
+        counters.below = 0;
+        if (counters.triggerStartedAtMs === null) counters.triggerStartedAtMs = at.getTime();
+      } else if (traffic < recoveryThreshold) {
+        counters.below += 1;
+        counters.over = 0;
+      } else {
+        counters.over = 0;
+        counters.below = 0;
+        counters.triggerStartedAtMs = null;
+      }
+    }
+    await this.persistCounters(target, counters, traffic, sample.occurredAt ?? at);
 
     const currentlyMitigated =
       target.runtimeState !== null && MITIGATED_STATES.includes(target.runtimeState);
@@ -466,6 +489,9 @@ export class MitigationAutoEngine {
       below: runtime?.recoveryCounter ?? 0,
       triggerStartedAtMs: null,
       loaded: true,
+      // Reidrata a identidade do ultimo sample (sobrevive a restart).
+      lastSampleKey: runtime?.lastSampleAt?.toISOString() ?? null,
+      lastSampleAtMs: runtime?.lastSampleAt ? runtime.lastSampleAt.getTime() : null,
     };
     this.counters.set(target.profileId, counters);
     return counters;
@@ -475,13 +501,14 @@ export class MitigationAutoEngine {
     target: MitigationAutoTargetState,
     counters: AutoCounters,
     traffic: bigint,
-    at: Date,
+    sampleAt: Date,
   ): Promise<void> {
     await this.deps.runtime.save(target.profileId, {
       triggerCounter: counters.over,
       recoveryCounter: counters.below,
       currentTrafficBps: traffic,
-      lastSampleAt: at,
+      // lastSampleAt guarda o timestamp da AMOSTRA (freshness + identidade).
+      lastSampleAt: sampleAt,
       // O estado so e tocado quando o motor e dono dele: um target ja mitigado
       // nao pode ter o estado rebaixado para NORMAL pelo AUTO.
       ...(target.runtimeState !== null && MITIGATED_STATES.includes(target.runtimeState)

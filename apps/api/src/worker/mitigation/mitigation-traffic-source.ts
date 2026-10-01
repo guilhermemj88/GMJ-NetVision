@@ -15,8 +15,23 @@ export interface MitigationTrafficTarget {
   bandwidthBps: bigint | null;
 }
 
+/**
+ * Amostra de telemetria COM IDENTIDADE.
+ *
+ * `sampleKey` é a identidade da amostra no equipamento (timestamp da
+ * `InterfaceMetricSample`). O motor só conta um novo sample de threshold quando
+ * a identidade MUDA: 3 ticks lendo a MESMA amostra não valem 3 samples.
+ */
+export interface MitigationTrafficSample {
+  bps: bigint;
+  sampleKey: string;
+  occurredAt: Date | null;
+}
+
 export interface MitigationTrafficSource {
   sample(target: MitigationTrafficTarget): Promise<bigint | null>;
+  /** Obrigatório para o motor AUTO: identidade + valor da amostra. */
+  sampleWithId(target: MitigationTrafficTarget): Promise<MitigationTrafficSample | null>;
 }
 
 /**
@@ -31,6 +46,14 @@ export class RuntimeTrafficSource implements MitigationTrafficSource {
     private readonly maxAgeMs: number,
     private readonly now: () => Date = () => new Date(),
   ) {}
+
+  async sampleWithId(target: MitigationTrafficTarget): Promise<MitigationTrafficSample | null> {
+    const runtime = await this.repository.getRuntime(target.profileId);
+    const bps = await this.sample(target);
+    if (bps === null) return null;
+    const occurredAt = runtime?.lastSampleAt ?? null;
+    return { bps, sampleKey: occurredAt ? occurredAt.toISOString() : `runtime:${bps.toString()}`, occurredAt };
+  }
 
   async sample(target: MitigationTrafficTarget): Promise<bigint | null> {
     const runtime = await this.repository.getRuntime(target.profileId);
@@ -72,6 +95,18 @@ export class InterfaceTrafficSource implements MitigationTrafficSource {
     },
   ) {}
 
+  async sampleWithId(target: MitigationTrafficTarget): Promise<MitigationTrafficSample | null> {
+    const bps = await this.sample(target);
+    if (bps === null) return null;
+    const row = target.interfaceId ? await this.reader.latestTraffic(target.interfaceId) : null;
+    const occurredAt = row?.timestamp ?? null;
+    return {
+      bps,
+      sampleKey: occurredAt ? occurredAt.toISOString() : `interface:${bps.toString()}`,
+      occurredAt,
+    };
+  }
+
   async sample(target: MitigationTrafficTarget): Promise<bigint | null> {
     if (!target.interfaceId) return null;
     const direction = this.options.directionByProfile?.[target.profileId] ?? this.options.direction;
@@ -89,12 +124,16 @@ export class InterfaceTrafficSource implements MitigationTrafficSource {
 
 /** Fonte determinística para teste: fila por profile + valor padrão opcional. */
 export class SequenceTrafficSource implements MitigationTrafficSource {
-  private readonly queues = new Map<string, (bigint | null)[]>();
+  private readonly queues = new Map<string, { bps: bigint; sampleKey: string; occurredAt: Date | null }[]>();
   private readonly fallback = new Map<string, bigint | null>();
+  private readonly sticky = new Map<string, { bps: bigint | null; sampleKey: string; occurredAt: Date | null }>();
+  private sequence = 0;
 
-  push(profileId: string, value: bigint | null): void {
+  /** Cada `push` representa uma amostra NOVA do equipamento (identidade própria). */
+  push(profileId: string, value: bigint | null, sampleKey?: string, occurredAt: Date | null = null): void {
+    if (value === null) return;
     const queue = this.queues.get(profileId) ?? [];
-    queue.push(value);
+    queue.push({ bps: value, sampleKey: sampleKey ?? `${profileId}-s${(this.sequence += 1)}`, occurredAt });
     this.queues.set(profileId, queue);
   }
 
@@ -102,9 +141,30 @@ export class SequenceTrafficSource implements MitigationTrafficSource {
     this.fallback.set(profileId, value);
   }
 
-  async sample(target: MitigationTrafficTarget): Promise<bigint | null> {
+  /** Amostra "colada": repetida em todos os ticks com a MESMA identidade. */
+  setSticky(profileId: string, value: bigint | null, sampleKey = 'sticky', occurredAt: Date | null = null): void {
+    this.sticky.set(profileId, { bps: value, sampleKey, occurredAt });
+  }
+
+  async sampleWithId(target: MitigationTrafficTarget): Promise<MitigationTrafficSample | null> {
     const queue = this.queues.get(target.profileId);
-    if (queue && queue.length > 0) return queue.shift() ?? null;
-    return this.fallback.get(target.profileId) ?? null;
+    if (queue && queue.length > 0) {
+      const item = queue.shift() ?? null;
+      if (!item) return null;
+      return { bps: item.bps, sampleKey: item.sampleKey, occurredAt: item.occurredAt };
+    }
+    const sticky = this.sticky.get(target.profileId);
+    if (sticky) {
+      if (sticky.bps === null) return null;
+      return { bps: sticky.bps, sampleKey: sticky.sampleKey, occurredAt: sticky.occurredAt };
+    }
+    const fallback = this.fallback.get(target.profileId) ?? null;
+    if (fallback === null) return null;
+    return { bps: fallback, sampleKey: 'fallback', occurredAt: null };
+  }
+
+  async sample(target: MitigationTrafficTarget): Promise<bigint | null> {
+    const withId = await this.sampleWithId(target);
+    return withId?.bps ?? null;
   }
 }

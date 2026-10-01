@@ -149,6 +149,8 @@ function targetState(profileId: string, over: Partial<MitigationAutoTargetState>
 }
 
 interface HarnessOptions {
+  /** Reutiliza o MESMO store (simula restart com runtime persistido). */
+  repository?: InMemoryMitigationRepository;
   globalMode?: 'SIMULATION_ONLY' | 'AUTO';
   executor?: 'MOCK' | 'HUAWEI';
   liveWrite?: boolean;
@@ -157,7 +159,7 @@ interface HarnessOptions {
 }
 
 async function harness(options: HarnessOptions = {}) {
-  const repository = new InMemoryMitigationRepository();
+  const repository = options.repository ?? new InMemoryMitigationRepository();
   const profile = await repository.upsertProfile({
     deviceId: DEVICE,
     policyName: POLICY,
@@ -315,6 +317,96 @@ describe('motor AUTO real (GMJ NetVision)', () => {
     expect(decision[0]!.outcome).toBe('TRIGGER_PENDING');
     expect(decision[0]!.reason).toBe('SAMPLES_INSUFFICIENT');
     expect(h.live.activateCalls).toBe(0);
+  });
+
+  it('9b) CRITICO: a MESMA amostra lida em 3 ticks NAO conta como 3 samples', async () => {
+    const h = await harness();
+    // amostra colada (mesma identidade de InterfaceMetricSample) em 3 ticks
+    h.traffic.setSticky(h.profileId, h.over, 'amostra-123');
+    await h.engine.tick();
+    await h.engine.tick();
+    const decision = await h.engine.tick();
+    expect(decision[0]!.outcome).toBe('TRIGGER_PENDING');
+    expect(decision[0]!.reason).toBe('SAMPLES_INSUFFICIENT');
+    expect(decision[0]!.samplesOver).toBe(1);
+    expect(h.live.activateCalls).toBe(0);
+  });
+
+  it('9c) 3 samples DISTINTOS (timestamps diferentes) => ACTIVATED', async () => {
+    const h = await harness();
+    const decision = await h.run(3, h.over);
+    expect(decision[0]!.samplesOver).toBe(3);
+    expect(decision[0]!.outcome).toBe('ACTIVATED');
+  });
+
+  it('9d) target NOT_READY (sem snapshot de discovery) => BLOCKED, zero escrita', async () => {
+    const h = await harness({ target: { readiness: 'NOT_READY', prefixStatus: 'UNKNOWN' } });
+    const decision = await h.run(3, h.over);
+    expect(decision[0]!.outcome).toBe('BLOCKED');
+    expect(decision[0]!.reason).toBe('TARGET_NOT_READY');
+    expect(h.live.activateCalls).toBe(0);
+    expect(h.live.preflightCalls).toBe(0);
+  });
+
+  it('H1) UMA amostra >90% lida em 10 ticks => samplesOver=1, TRIGGER_PENDING, ACTIVATE=0', async () => {
+    const h = await harness();
+    h.traffic.setSticky(h.profileId, h.over, 'sample-1');
+    let last = await h.engine.tick();
+    for (let i = 0; i < 9; i += 1) last = await h.engine.tick();
+    expect(last[0]!.samplesOver).toBe(1);
+    expect(last[0]!.outcome).toBe('TRIGGER_PENDING');
+    expect(last[0]!.reason).toBe('SAMPLES_INSUFFICIENT');
+    expect(h.live.activateCalls).toBe(0);
+  });
+
+  it('H2) DUAS amostras distintas >90% => samplesOver=2 e nao ativa', async () => {
+    const h = await harness();
+    h.traffic.push(h.profileId, h.over, 's1');
+    await h.engine.tick();
+    h.traffic.push(h.profileId, h.over, 's2');
+    const decision = await h.engine.tick();
+    expect(decision[0]!.samplesOver).toBe(2);
+    expect(h.live.activateCalls).toBe(0);
+  });
+
+  it('H4) restart entre samples: a MESMA amostra nao conta de novo (identidade persistida)', async () => {
+    const h = await harness();
+    const key1 = '2026-09-30T23:00:00.000Z';
+    h.traffic.setSticky(h.profileId, h.over, key1, new Date(key1));
+    const first = await h.engine.tick();
+    expect(first[0]!.samplesOver).toBe(1);
+
+    // "restart": novo motor, MESMO repositorio (runtime persistido).
+    const h2 = await harness({ repository: h.repository });
+    h2.traffic.setSticky(h.profileId, h.over, key1, new Date(key1));
+    const afterRestart = await h2.engine.tick();
+    expect(afterRestart[0]!.samplesOver).toBe(1);
+
+    const key2 = '2026-09-30T23:05:00.000Z';
+    h2.traffic.push(h.profileId, h.over, key2, new Date(key2));
+    const second = await h2.engine.tick();
+    expect(second[0]!.samplesOver).toBe(2);
+  });
+
+  it('H5) timestamp mais ANTIGO (telemetria atrasada) NAO conta como nova amostra', async () => {
+    const h = await harness();
+    const t2 = '2026-09-30T23:10:00.000Z';
+    h.traffic.push(h.profileId, h.over, t2, new Date(t2));
+    const first = await h.engine.tick();
+    expect(first[0]!.samplesOver).toBe(1);
+
+    // chega T1 < T2 (reordenacao/atraso): nao incrementa
+    const t1 = '2026-09-30T23:00:00.000Z';
+    h.traffic.push(h.profileId, h.over, t1, new Date(t1));
+    const stale = await h.engine.tick();
+    expect(stale[0]!.samplesOver).toBe(1);
+    expect(h.live.activateCalls).toBe(0);
+
+    // T3 > T2: incrementa exatamente 1 vez
+    const t3 = '2026-09-30T23:15:00.000Z';
+    h.traffic.push(h.profileId, h.over, t3, new Date(t3));
+    const fresh = await h.engine.tick();
+    expect(fresh[0]!.samplesOver).toBe(2);
   });
 
   it('10) >90% com 3 samples e gates verdes => ACTIVATED', async () => {
