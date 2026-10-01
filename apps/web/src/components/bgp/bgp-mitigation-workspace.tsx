@@ -450,6 +450,7 @@ export function BgpMitigationWorkspace() {
             <thead>
               <tr>
                 <th scope="col">Estado</th>
+                <th scope="col">AF</th>
                 <th scope="col">Cliente</th>
                 <th scope="col">Equipamento</th>
                 <th scope="col">Interface</th>
@@ -459,7 +460,6 @@ export function BgpMitigationWorkspace() {
                 <th scope="col">Policy</th>
                 <th scope="col">Peers</th>
                 <th scope="col">Prefixos</th>
-                <th scope="col">AF</th>
                 <th scope="col">Node</th>
                 <th scope="col">Ação</th>
               </tr>
