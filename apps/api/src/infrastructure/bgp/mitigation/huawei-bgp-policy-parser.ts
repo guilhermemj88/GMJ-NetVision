@@ -17,6 +17,8 @@
 //    declarada diretamente no peer tem precedencia (semantica do VRP);
 //  - chave que parece endereco IP e um peer; qualquer outra chave e um grupo.
 
+import { normalizeIpAddress } from '@gmj/shared';
+
 export interface HuaweiBgpPolicyConfiguration {
   /** peerAddress -> policy IN declarada diretamente no peer */
   directPeerPolicies: Map<string, string>;
@@ -61,15 +63,24 @@ export function parseHuaweiBgpPolicyConfiguration(config: string): HuaweiBgpPoli
     const key = match[1];
     const policyName = match[2];
     if (!key || !policyName) continue;
-    if (isAddressLike(key)) directPeerPolicies.set(key, policyName);
-    else groupPolicies.set(key, policyName);
+    if (isAddressLike(key)) {
+      // Endereco IP: chave CANONICA (o VRP imprime IPv6 em MAIUSCULAS).
+      const normalized = normalizeIpAddress(key);
+      if (normalized) directPeerPolicies.set(normalized, policyName);
+    } else {
+      // Nome de peer-group: NUNCA e normalizado como IP.
+      groupPolicies.set(key, policyName);
+    }
   }
 
   for (const match of config.matchAll(PEER_GROUP)) {
     const peerAddress = match[1];
     const groupName = match[2];
     if (!peerAddress || !groupName) continue;
-    peerGroups.set(peerAddress, groupName);
+    const normalizedPeer = normalizeIpAddress(peerAddress);
+    // Fail-closed: associacao invalida nao e persistida.
+    if (!normalizedPeer) continue;
+    peerGroups.set(normalizedPeer, groupName);
   }
 
   return { directPeerPolicies, peerGroups, groupPolicies };
@@ -81,9 +92,11 @@ export function resolvePeerInboundPolicy(
   peerAddress: string,
   configuration: HuaweiBgpPolicyConfiguration,
 ): string | null {
-  const direct = configuration.directPeerPolicies.get(peerAddress);
+  // Defensivo: o chamador pode passar a forma crua do equipamento.
+  const normalized = normalizeIpAddress(peerAddress) ?? peerAddress;
+  const direct = configuration.directPeerPolicies.get(normalized);
   if (direct) return direct;
-  const group = configuration.peerGroups.get(peerAddress);
+  const group = configuration.peerGroups.get(normalized);
   if (!group) return null;
   return configuration.groupPolicies.get(group) ?? null;
 }

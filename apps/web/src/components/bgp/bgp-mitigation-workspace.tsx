@@ -459,6 +459,7 @@ export function BgpMitigationWorkspace() {
                 <th scope="col">Policy</th>
                 <th scope="col">Peers</th>
                 <th scope="col">Prefixos</th>
+                <th scope="col">AF</th>
                 <th scope="col">Node</th>
                 <th scope="col">Ação</th>
               </tr>
@@ -470,6 +471,9 @@ export function BgpMitigationWorkspace() {
                     <span className={`mitigation-badge is-${row.readiness.toLowerCase()}`}>
                       {readinessLabel(row.readiness)}
                     </span>
+                  </td>
+                  <td>
+                    {row.addressFamily === 'IPV6' ? 'IPv6' : 'IPv4'}
                   </td>
                   <td>
                     {row.customer ?? '—'}
