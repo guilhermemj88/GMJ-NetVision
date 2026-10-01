@@ -167,6 +167,9 @@ export class PrismaMitigationRepository implements MitigationRepository {
         },
       },
       create: {
+        // Sem isto, o CREATE caia no default IPV4 do schema e um target IPv6
+        // era gravado como IPv4 (P2002 no discovery seguinte).
+        addressFamily: input.addressFamily ?? 'IPV4',
         deviceId: input.deviceId,
         policyName: input.policyName,
         interfaceId: input.interfaceId ?? null,
