@@ -33,8 +33,7 @@ import { classifyPhysicalInterface } from '@gmj/shared';
 import { getHost } from '@/lib/api';
 import { PORT_STATE_LABELS, friendlySlotLabel } from './physical-catalog';
 import { PhysicalConnectionForm } from './physical-connection-form';
-import { indexCatalogPorts } from './physical-panel-layout';
-import { physicalPortNameView } from './physical-port-name';
+import { createPhysicalPortNamingResolver } from './physical-port-naming';
 import { buildPhysicalLldpGhosts, type PhysicalLldpGhost } from './physical-lldp';
 import type { PhysicalSelection } from './physical-types';
 
@@ -134,7 +133,12 @@ function LldpSuggestionDetail({
 }) {
   const describe = (side: PhysicalLldpGhost['from']) =>
     side
-      ? `${side.siteName} / ${side.rackName} / ${side.assetName} / ${side.portName}`
+      ? [
+          `${side.siteName} / ${side.rackName} / ${side.assetName} / ${side.portName}`,
+          side.panelLabel ? `Porta física: ${side.panelLabel}` : null,
+        ]
+          .filter(Boolean)
+          .join(' — ')
       : 'Não resolvido';
   const canConfirm = ghost.confirmable && canEdit;
 
@@ -242,34 +246,18 @@ export function PhysicalInspector({
             (candidate) => candidate.id === locatedPort.port.connectionId,
           ) ?? null
         : null;
-  const catalogIndex = useMemo(() => {
-    const result = new Map<string, ReturnType<typeof indexCatalogPorts>>();
-    for (const entry of catalog) result.set(entry.catalogKey, indexCatalogPorts(entry.ports));
-    return result;
-  }, [catalog]);
-
   /**
-   * Conector do catálogo correspondente à porta persistida. A correlação é por
-   * nome (`exact` e depois `loose`), nunca por posição — o mesmo critério já
-   * usado pelo desenho do painel.
+   * Identidade apresentada das portas: UM resolvedor para a aba Físico inteira
+   * (`mappedInterface.name` → catálogo → `PhysicalPort.name`). O nome físico é
+   * sempre detalhe secundário, nunca identidade.
    */
-  const catalogPortFor = (portAsset: PhysicalAsset, port: PhysicalPort) => {
-    const ports = portAsset.template?.catalogKey
-      ? catalogIndex.get(portAsset.template.catalogKey)
-      : undefined;
-    return (
-      ports?.exact.get(port.name.trim().toLowerCase()) ??
-      ports?.loose.get(port.name.trim().toLowerCase().replace(/[\s_.\-/]+/g, '')) ??
-      null
-    );
-  };
-
-  /** Nome apresentado de uma porta pelo `PhysicalPort.id` (interface CLI quando existir). */
-  const displayPortName = (portId: string, fallback: string) => {
-    const found = locatePort(inventory, portId);
-    if (!found) return fallback;
-    return physicalPortNameView(found.port, catalogPortFor(found.asset, found.port)).displayName;
-  };
+  const portNaming = useMemo(
+    () => createPhysicalPortNamingResolver(inventory, catalog),
+    [inventory, catalog],
+  );
+  /** Nome principal de uma porta pelo `PhysicalPort.id` (interface CLI quando existir). */
+  const displayPortName = (portId: string, fallback: string) =>
+    portNaming.displayName(portId, fallback);
 
   const [startU, setStartU] = useState(1);
   const [heightU, setHeightU] = useState(1);
@@ -509,7 +497,7 @@ export function PhysicalInspector({
             {asset.ports.map((port) => (
               <button key={port.id} type="button" onClick={() => onSelectPort(port.id)}>
                 <span className={port.state === 'CONNECTED' ? 'is-connected' : port.state === 'LLDP_DETECTED' ? 'is-lldp' : port.state === 'MAPPED' ? 'is-mapped' : ''} />
-                <strong>{physicalPortNameView(port, catalogPortFor(asset, port)).displayName}</strong>
+                <strong>{portNaming.forPort(asset, port).displayName}</strong>
                 <small>{port.mappedInterface?.alias || port.label || port.side}</small>
                 <em className={`physical-state physical-state--${port.state.toLowerCase()}`}>{PORT_STATE_LABELS[port.state]}</em>
               </button>
@@ -692,14 +680,8 @@ export function PhysicalInspector({
      * Identidade operacional da porta: interface CLI (mapeada ou declarada no
      * catálogo) como nome principal; conector e porta física são detalhe.
      */
-    const catalogPorts = portAsset.template?.catalogKey
-      ? catalogIndex.get(portAsset.template.catalogKey)
-      : undefined;
-    const catalogPort =
-      catalogPorts?.exact.get(port.name.trim().toLowerCase()) ??
-      catalogPorts?.loose.get(port.name.trim().toLowerCase().replace(/[\s_.\-/]+/g, '')) ??
-      null;
-    const naming = physicalPortNameView(port, catalogPort);
+    const naming = portNaming.forPort(portAsset, port);
+    const catalogPort = portNaming.catalogPortFor(portAsset, port);
     return (
       <aside className="physical-inspector">
         {header('PORTA FÍSICA', `${portAsset.name} / ${naming.displayName}`, `${siteName} · ${rackName}`)}
@@ -730,13 +712,21 @@ export function PhysicalInspector({
           <Field label="Lado" value={port.side} />
           <Field label="Origem" value={port.role} />
           <Field
-            label="Destino direto"
-            value={
-              remote
-                ? `${remote.assetName} / ${displayPortName(remote.portId, remote.portName)}`
-                : 'Porta livre'
-            }
+            label="Conexão física"
+            value={remote ? 'confirmada' : 'não confirmada'}
           />
+          {remote ? (
+            <Field
+              label="Destino direto"
+              value={`${remote.assetName} / ${displayPortName(remote.portId, remote.portName)}`}
+            />
+          ) : null}
+          {!remote && port.lldp ? (
+            <Field
+              label="Vizinho LLDP"
+              value={`${port.lldp.remoteHostname} / ${port.lldp.remotePortName}`}
+            />
+          ) : null}
         </dl>
 
         {port.lldp ? (
@@ -814,6 +804,11 @@ export function PhysicalInspector({
                       <strong>{step.assetName}</strong>
                       {/* identificação apresentada: interface CLI quando existir */}
                       <span>{displayPortName(step.portId, step.portName)} · {step.side}</span>
+                      {portNaming.byPortId(step.portId)?.panelLabel ? (
+                        <small className="physical-port-detail">
+                          Porta física: {portNaming.byPortId(step.portId)?.panelLabel}
+                        </small>
+                      ) : null}
                       <small>{step.siteName} / {step.rackName}</small>
                     </>
                   ) : step.kind === 'CABLE' ? (
@@ -836,6 +831,7 @@ export function PhysicalInspector({
             </p>
             <PhysicalConnectionForm
               inventory={inventory}
+              catalog={catalog}
               sourcePortId={port.id}
               busy={busy}
               onSubmit={(portBId, targetMedium, targetLabel) =>
@@ -870,6 +866,11 @@ export function PhysicalInspector({
             <small>
               {displayPortName(connection.a.portId, connection.a.portName)} · {connection.a.siteName}
             </small>
+            {portNaming.byPortId(connection.a.portId)?.panelLabel ? (
+              <small className="physical-port-detail">
+                Porta física: {portNaming.byPortId(connection.a.portId)?.panelLabel}
+              </small>
+            ) : null}
           </div>
           <Link2 size={16} />
           <div>
@@ -878,6 +879,11 @@ export function PhysicalInspector({
             <small>
               {displayPortName(connection.b.portId, connection.b.portName)} · {connection.b.siteName}
             </small>
+            {portNaming.byPortId(connection.b.portId)?.panelLabel ? (
+              <small className="physical-port-detail">
+                Porta física: {portNaming.byPortId(connection.b.portId)?.panelLabel}
+              </small>
+            ) : null}
           </div>
         </section>
         <section className="physical-inspector__section">
@@ -887,6 +893,10 @@ export function PhysicalInspector({
             <Field label="Rack" value={end('a').rackName} />
             <Field label="Equipamento" value={end('a').assetName} />
             <Field label="Porta" value={displayPortName(end('a').portId, end('a').portName)} />
+            <Field
+              label="Porta física"
+              value={portNaming.byPortId(end('a').portId)?.panelLabel ?? '—'}
+            />
           </dl>
           {onNavigateToPort ? (
             <Button
@@ -906,6 +916,10 @@ export function PhysicalInspector({
             <Field label="Rack" value={end('b').rackName} />
             <Field label="Equipamento" value={end('b').assetName} />
             <Field label="Porta" value={displayPortName(end('b').portId, end('b').portName)} />
+            <Field
+              label="Porta física"
+              value={portNaming.byPortId(end('b').portId)?.panelLabel ?? '—'}
+            />
           </dl>
           {onNavigateToPort ? (
             <Button

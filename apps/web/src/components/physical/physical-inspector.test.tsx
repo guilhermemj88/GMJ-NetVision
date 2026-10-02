@@ -5,9 +5,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRoot, type Root } from 'react-dom/client';
 import type {
   CreatePhysicalModuleInput,
+  PhysicalAsset,
   PhysicalCatalogEntry,
   PhysicalConnection,
   PhysicalLldpSuggestion,
+  PhysicalPath,
   UpdatePhysicalConnectionInput,
 } from '@gmj/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -121,7 +123,12 @@ function render(
   suggestions: PhysicalLldpSuggestion[],
   selection: PhysicalSelection = { kind: 'asset', id: 'asset-olt' },
   asset: typeof assetWithSlots = assetWithSlots,
-  extra: { connections?: PhysicalConnection[]; catalog?: PhysicalCatalogEntry[] } = {},
+  extra: {
+    connections?: PhysicalConnection[];
+    catalog?: PhysicalCatalogEntry[];
+    assets?: PhysicalAsset[];
+    path?: PhysicalPath | null;
+  } = {},
 ): Rendered {
   const inventory = physicalInventory({
     sites: [
@@ -137,7 +144,7 @@ function render(
             name: 'Rack 01',
             units: 42,
             description: '',
-            assets: [asset],
+            assets: extra.assets ?? [asset],
             createdAt: '2026-09-21T12:00:00.000Z',
             updatedAt: '2026-09-21T12:00:00.000Z',
           },
@@ -169,7 +176,7 @@ function render(
         createElement(PhysicalInspector, {
           inventory,
           selection,
-          path: null,
+          path: extra.path ?? null,
           catalog: extra.catalog ?? [],
           canEdit: true,
           busy: false,
@@ -528,6 +535,207 @@ describe('PhysicalInspector', () => {
     });
     expect(rendered.container.textContent).toContain('Slot 1 · Serviço/Uplink');
     expect(rendered.container.textContent).not.toContain('service-upstream 1');
+  });
+
+  /**
+   * Par real da primeira PhysicalConnection (F1A `100GE0/1/49` ↔ S6750
+   * `100GE1/0/1`): o nome lógico é a identidade; `100GE-2`/`QSFP28-1` só
+   * aparecem como detalhe.
+   */
+  function realPair() {
+    const f1a = physicalAsset({
+      id: 'asset-f1a',
+      name: 'BHE-VTA-F1A-BGP',
+      ports: [
+        physicalPort({
+          id: 'port-f1a-49',
+          assetId: 'asset-f1a',
+          name: '100GE-2',
+          label: '',
+          type: 'QSFP',
+          connectionId: 'conn-real',
+          mappedInterfaceId: 'if-f1a-49',
+          mappedInterface: {
+            id: 'if-f1a-49',
+            deviceId: 'host-f1a',
+            name: '100GE0/1/49',
+            ifIndex: 49,
+            alias: null,
+            operStatus: 'UP',
+          },
+        }),
+      ],
+    });
+    const s6750 = physicalAsset({
+      id: 'asset-s6750-real',
+      name: 'BHE-VTA-S6750-MPLS-01',
+      ports: [
+        physicalPort({
+          id: 'port-s6750-1',
+          assetId: 'asset-s6750-real',
+          name: 'QSFP28-1',
+          label: 'QSFP28-1',
+          type: 'QSFP',
+          connectionId: 'conn-real',
+          mappedInterfaceId: 'if-s6750-1',
+          mappedInterface: {
+            id: 'if-s6750-1',
+            deviceId: 'host-s6750',
+            name: '100GE1/0/1',
+            ifIndex: 1,
+            alias: null,
+            operStatus: 'UP',
+          },
+        }),
+      ],
+    });
+    const connection = physicalConnection({
+      id: 'conn-real',
+      portAId: 'port-f1a-49',
+      portBId: 'port-s6750-1',
+      medium: 'FIBER',
+      a: {
+        portId: 'port-f1a-49',
+        portName: '100GE-2',
+        side: 'DEVICE',
+        assetId: 'asset-f1a',
+        assetName: 'BHE-VTA-F1A-BGP',
+        rackId: 'rack-1',
+        rackName: 'RACK 01',
+        siteId: 'site-1',
+        siteName: 'Vista Alegre',
+      },
+      b: {
+        portId: 'port-s6750-1',
+        portName: 'QSFP28-1',
+        side: 'DEVICE',
+        assetId: 'asset-s6750-real',
+        assetName: 'BHE-VTA-S6750-MPLS-01',
+        rackId: 'rack-1',
+        rackName: 'RACK 01',
+        siteId: 'site-1',
+        siteName: 'Vista Alegre',
+      },
+    });
+    return { f1a, s6750, connection };
+  }
+
+  it('inspector de conexão usa o nome lógico e mantém a porta física como detalhe', () => {
+    const { f1a, s6750, connection } = realPair();
+    rendered = render([], { kind: 'connection', id: 'conn-real' }, f1a, {
+      assets: [f1a, s6750],
+      connections: [connection],
+    });
+    const { container } = rendered;
+    expect(container.textContent).toContain('100GE0/1/49 → 100GE1/0/1');
+    expect(container.textContent).toContain('Porta física: 100GE-2');
+    expect(container.textContent).toContain('Porta física: QSFP28-1');
+    expect(container.textContent).not.toContain('100GE-2 → QSFP28-1');
+  });
+
+  it('CAMINHO FÍSICO mostra o nome lógico e a porta física como detalhe', () => {
+    const { f1a, s6750, connection } = realPair();
+    const path: PhysicalPath = {
+      originPortId: 'port-f1a-49',
+      steps: [
+        {
+          kind: 'PORT',
+          portId: 'port-f1a-49',
+          portName: '100GE-2',
+          side: 'DEVICE',
+          assetId: 'asset-f1a',
+          assetName: 'BHE-VTA-F1A-BGP',
+          rackName: 'RACK 01',
+          siteName: 'Vista Alegre',
+        },
+        {
+          kind: 'CABLE',
+          connectionId: 'conn-real',
+          medium: 'FIBER',
+          label: 'LLDP 100GE0/1/49',
+        },
+        {
+          kind: 'PORT',
+          portId: 'port-s6750-1',
+          portName: 'QSFP28-1',
+          side: 'DEVICE',
+          assetId: 'asset-s6750-real',
+          assetName: 'BHE-VTA-S6750-MPLS-01',
+          rackName: 'RACK 01',
+          siteName: 'Vista Alegre',
+        },
+      ],
+      endpointPortId: 'port-s6750-1',
+      loopDetected: false,
+    };
+    rendered = render([], { kind: 'port', id: 'port-f1a-49' }, f1a, {
+      assets: [f1a, s6750],
+      connections: [connection],
+      path,
+    });
+    const { container } = rendered;
+    expect(container.textContent).toContain('CAMINHO FÍSICO');
+    expect(container.textContent).toContain('100GE0/1/49 · DEVICE');
+    expect(container.textContent).toContain('100GE1/0/1 · DEVICE');
+    expect(container.textContent).toContain('Porta física: 100GE-2');
+    expect(container.textContent).toContain('Porta física: QSFP28-1');
+  });
+
+  it('show conexão física confirmada na porta vinculada por PhysicalConnection', () => {
+    const { f1a, s6750, connection } = realPair();
+    rendered = render([], { kind: 'port', id: 'port-f1a-49' }, f1a, {
+      assets: [f1a, s6750],
+      connections: [connection],
+    });
+    const { container } = rendered;
+    expect(container.textContent).toContain('Conexão física');
+    expect(container.textContent).toContain('confirmada');
+    expect(container.textContent).toContain('Destino direto');
+    expect(container.textContent).not.toContain('não confirmada');
+    expect(container.textContent).not.toContain('Porta livre');
+  });
+
+  it('sem PhysicalConnection mas com LLDP: "não confirmada" + vizinho, nunca "Porta livre"', () => {
+    const s6750 = physicalAsset({
+      id: 'asset-s6750-lldp',
+      name: 'BHE-VTA-S6750-MPLS-01',
+      ports: [
+        physicalPort({
+          id: 'port-s6750-lldp',
+          assetId: 'asset-s6750-lldp',
+          name: 'QSFP28-1',
+          label: 'QSFP28-1',
+          type: 'QSFP',
+          state: 'LLDP_DETECTED',
+          mappedInterfaceId: 'if-s6750-1',
+          mappedInterface: {
+            id: 'if-s6750-1',
+            deviceId: 'host-s6750',
+            name: '100GE1/0/1',
+            ifIndex: 1,
+            alias: null,
+            operStatus: 'UP',
+          },
+          lldp: {
+            adjacencyId: 'adj-1',
+            remoteHostname: 'BHE-VTA-F1A-BGP-01',
+            remotePortName: '100GE0/1/49',
+            confidence: 'CONFIRMED',
+            resolved: true,
+            ambiguous: false,
+            source: 'LLDP',
+            observedAt: '2026-10-02T14:01:09.000Z',
+          },
+        }),
+      ],
+    });
+    rendered = render([], { kind: 'port', id: 'port-s6750-lldp' }, s6750);
+    const { container } = rendered;
+    expect(container.textContent).toContain('Conexão física');
+    expect(container.textContent).toContain('não confirmada');
+    expect(container.textContent).toContain('Vizinho LLDP');
+    expect(container.textContent).toContain('BHE-VTA-F1A-BGP-01 / 100GE0/1/49');
+    expect(container.textContent).not.toContain('Porta livre');
   });
 });
 

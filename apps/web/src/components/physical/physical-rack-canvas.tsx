@@ -64,6 +64,7 @@ import {
   routeSameRackLldp,
 } from './physical-lldp-route';
 import { physicalPortNameView } from './physical-port-name';
+import type { PhysicalPortNamingResolver } from './physical-port-naming';
 import {
   TECHNICAL_BAND_GAP,
   TECHNICAL_BAND_TOP,
@@ -114,7 +115,12 @@ const PANEL_PADDING = 8;
 function lldpGhostTooltip(ghost: PhysicalLldpGhost): string {
   const describe = (side: PhysicalLldpGhost['from']) =>
     side
-      ? `${side.siteName} / ${side.rackName} / ${side.assetName} / ${side.portName}`
+      ? [
+          `${side.siteName} / ${side.rackName} / ${side.assetName} / ${side.portName}`,
+          side.panelLabel ? `Porta física: ${side.panelLabel}` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')
       : 'Não resolvido';
   return [
     `LLDP detectado · ${ghost.state}`,
@@ -132,7 +138,12 @@ function lldpGhostTooltip(ghost: PhysicalLldpGhost): string {
 /** Tooltip do fallback: deixa explícito que o link do mapa não é cabo. */
 function mapLinkTooltip(ghost: PhysicalMapLinkGhost): string {
   const describe = (side: PhysicalLldpGhostSide) =>
-    `${side.siteName} / ${side.rackName} / ${side.assetName} / ${side.portName}`;
+    [
+      `${side.siteName} / ${side.rackName} / ${side.assetName} / ${side.portName}`,
+      side.panelLabel ? `Porta física: ${side.panelLabel}` : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
   return [
     'Link do mapa (fallback topológico) · não é cabo físico confirmado',
     `Local: ${describe(ghost.from)}`,
@@ -243,6 +254,11 @@ interface Props {
   visualMode?: PhysicalVisualMode;
   /** Catálogo atual: fonte da verdade da geometria do painel. */
   catalog?: readonly PhysicalCatalogEntry[];
+  /**
+   * Resolvedor único de identidade apresentada (nome lógico/CLI). Necessário
+   * para pontas de cabo **fora deste rack**, onde o canvas não tem a porta.
+   */
+  remotePortNaming?: PhysicalPortNamingResolver | null;
   /** LAB/DEV: desenha as âncoras reais das portas (encaixe do cabo). */
   showAnchors?: boolean;
   /** LAB/DEV: desenha a bbox + ordinal de cada slot. */
@@ -295,6 +311,7 @@ export function PhysicalRackCanvas({
   path,
   visualMode = 'REAL',
   catalog = [],
+  remotePortNaming = null,
   showAnchors = false,
   showSlots = false,
   showBbox = false,
@@ -1026,6 +1043,7 @@ export function PhysicalRackCanvas({
           anchor,
           portId: sideInRack.portId,
           portName: sideInRack.portName,
+          panelLabel: sideInRack.panelLabel ?? null,
           /**
            * Marcador mínimo no canto superior direito da própria porta: sem
            * empilhamento diagonal, nunca descola da porta que originou o anúncio
@@ -1444,7 +1462,11 @@ export function PhysicalRackCanvas({
           </svg>
         ) : null}
 
-        {remoteEndpoints.map((row) => (
+        {remoteEndpoints.map((row) => {
+          const endpointNaming = remotePortNaming?.byPortId(row.endpoint.portId) ?? null;
+          const endpointPortName = endpointNaming?.displayName ?? row.endpoint.portName;
+          const endpointPanelLabel = endpointNaming?.panelLabel ?? null;
+          return (
           <div
             key={row.connection.id}
             className={[
@@ -1459,7 +1481,9 @@ export function PhysicalRackCanvas({
             tabIndex={0}
             title={`${row.external ? 'Fibra externa' : 'Outro rack'} · ${row.endpoint.siteName} / ${
               row.endpoint.rackName
-            } / ${row.endpoint.assetName} / ${row.endpoint.portName}`}
+            } / ${row.endpoint.assetName} / ${endpointPortName}${
+              endpointPanelLabel ? ` · Porta física: ${endpointPanelLabel}` : ''
+            }`}
             onClick={(event) => {
               event.stopPropagation();
               onSelectConnection(row.connection.id);
@@ -1473,7 +1497,10 @@ export function PhysicalRackCanvas({
           >
             <strong>{row.external ? 'FIBRA EXTERNA' : row.endpoint.rackName}</strong>
             <span>{row.endpoint.assetName}</span>
-            <small>{row.endpoint.portName}</small>
+            <small>{endpointPortName}</small>
+            {endpointPanelLabel ? (
+              <small className="physical-port-detail">Porta física: {endpointPanelLabel}</small>
+            ) : null}
             {onNavigateToPort ? (
               <button
                 type="button"
@@ -1487,7 +1514,8 @@ export function PhysicalRackCanvas({
               </button>
             ) : null}
           </div>
-        ))}
+          );
+        })}
 
         {lldpMarkers.map(({ row, y, left }) => (
           <div
@@ -1526,6 +1554,11 @@ export function PhysicalRackCanvas({
               <>
                 <span>{row.remote.assetName}</span>
                 <small>{row.remote.portName}</small>
+                {row.remote.panelLabel ? (
+                  <small className="physical-port-detail">
+                    Porta física: {row.remote.panelLabel}
+                  </small>
+                ) : null}
               </>
             ) : (
               <span>A interface remota ainda não está vinculada a uma PhysicalPort.</span>
@@ -1550,7 +1583,7 @@ export function PhysicalRackCanvas({
           texto sobre o equipamento e sem segunda ponta — o detalhe completo
           fica no inspetor ao clicar.
         */}
-        {partialMarkers.map(({ ghost, portId, portName, left, top }) => (
+        {partialMarkers.map(({ ghost, portId, portName, panelLabel, left, top }) => (
           <button
             key={`lldp-partial-${ghost.key}`}
             type="button"
@@ -1558,8 +1591,8 @@ export function PhysicalRackCanvas({
               ghostIsSelected(ghost) ? 'is-selected' : ghostIsRelated(ghost) ? 'is-related' : ''
             }`}
             style={{ left, top }}
-            title={`${portName} · PARTIAL — ${lldpGhostTooltip(ghost)}`}
-            aria-label={`${portName} · PARTIAL — ${lldpGhostTooltip(ghost)}`}
+            title={`${portName}${panelLabel ? ` · Porta física: ${panelLabel}` : ''} · PARTIAL — ${lldpGhostTooltip(ghost)}`}
+            aria-label={`${portName}${panelLabel ? ` · Porta física: ${panelLabel}` : ''} · PARTIAL — ${lldpGhostTooltip(ghost)}`}
             onClick={(event) => {
               event.stopPropagation();
               if (onSelectLldp) onSelectLldp(ghost.adjacencyId);

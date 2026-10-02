@@ -86,6 +86,8 @@ export function PhysicalImagePanel({
 
       {map.ports.map((mapped) => {
         const port = resolveMappedPhysicalPort(ports, mapped);
+        /** Identidade apresentada: interface CLI quando existir; nunca o cage. */
+        const naming = port ? physicalPortNameView(port) : null;
         const bbox = mapped.bbox;
         const anchor = normalizedPortAnchor(bbox);
         const state = port?.state ?? 'FREE';
@@ -122,7 +124,7 @@ export function PhysicalImagePanel({
             data-state={state}
             data-oper-status={oper ?? 'UNKNOWN'}
             title={portTitle(port, mapped)}
-            aria-label={`Porta ${mapped.portName}`}
+            aria-label={`Porta ${naming?.displayName ?? mapped.portName}`}
             onClick={
               onSelectPort
                 ? (event) => {

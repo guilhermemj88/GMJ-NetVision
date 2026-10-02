@@ -9860,6 +9860,21 @@ label > small {
 .physical-fact:last-child { border: 0; }
 .physical-fact dt { color: #5f7580; font: 9px var(--font-mono); }
 .physical-fact dd { margin: 0; overflow-wrap: anywhere; color: #b8c9d0; font: 10px var(--font-mono); }
+/*
+ * Detalhe físico secundário: o nome lógico/CLI é a identidade apresentada
+ * (`100GE0/1/49`); o rótulo do painel/cage (`100GE-2`, `QSFP28-1`) entra
+ * embaixo, menor e discreto, nunca como nome principal.
+ */
+.physical-fact dd .physical-port-detail,
+.physical-cable-endpoint .physical-port-detail,
+.physical-lldp-endpoint .physical-port-detail,
+.physical-path .physical-port-detail {
+  display: block;
+  margin-top: 2px;
+  color: #5f7580;
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
 .physical-inspector__section {
   padding: 12px 14px;
   border-bottom: 1px solid #1e2d36;

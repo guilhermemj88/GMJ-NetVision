@@ -6,6 +6,8 @@ import {
   physicalPortInterfaceName,
   physicalPortInterfacePrefix,
   physicalPortNameView,
+  physicalPortInterfaceDetail,
+  physicalPortPanelDetail,
   physicalPortPanelLabel,
 } from './physical-port-name';
 
@@ -133,5 +135,52 @@ describe('nome apresentado da porta física', () => {
       physicalPortNameView({ name: 'QSFP28-6', label: '', mappedInterface: mapped('100GE0/0/6', 6) })
         .displayName,
     ).toBe('100GE0/0/6');
+  });
+
+  it('F1A: 100GE0/1/49 principal e 100GE-2 apenas como porta física', () => {
+    const f1a = physicalPortNameView({
+      name: '100GE-2',
+      label: '',
+      mappedInterface: {
+        id: 'if-49',
+        deviceId: 'device-f1a',
+        name: '100GE0/1/49',
+        ifIndex: 49,
+        alias: null,
+        operStatus: 'UP',
+      },
+    });
+    expect(f1a.displayName).toBe('100GE0/1/49');
+    expect(f1a.interfaceName).toBe('100GE0/1/49');
+    expect(f1a.panelLabel).toBe('100GE-2');
+    expect(physicalPortPanelDetail(f1a)).toBe('Porta física: 100GE-2');
+    expect(physicalPortInterfaceDetail(f1a)).toBe('Interface: 100GE0/1/49');
+  });
+
+  it('S6750: 100GE1/0/1 principal e QSFP28-1 apenas como porta física', () => {
+    const s6750 = physicalPortNameView({
+      name: 'QSFP28-1',
+      label: 'QSFP28-1',
+      mappedInterface: {
+        id: 'if-1',
+        deviceId: 'device-s6750',
+        name: '100GE1/0/1',
+        ifIndex: 1,
+        alias: null,
+        operStatus: 'UP',
+      },
+    });
+    expect(s6750.displayName).toBe('100GE1/0/1');
+    expect(s6750.panelLabel).toBe('QSFP28-1');
+    expect(physicalPortPanelDetail(s6750)).toBe('Porta física: QSFP28-1');
+  });
+
+  it('sem interface mapeada, PhysicalPort.name é a identidade (sem detalhe repetido)', () => {
+    const view = physicalPortNameView({ name: '100GE-2', label: '', mappedInterface: null });
+    expect(view.displayName).toBe('100GE-2');
+    expect(view.interfaceName).toBeNull();
+    expect(view.panelLabel).toBeNull();
+    expect(physicalPortPanelDetail(view)).toBeNull();
+    expect(physicalPortInterfaceDetail(view)).toBeNull();
   });
 });

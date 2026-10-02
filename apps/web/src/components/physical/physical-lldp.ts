@@ -18,7 +18,10 @@ export interface PhysicalLldpGhostSide {
   assetId: string;
   assetName: string;
   portId: string;
+  /** Nome lógico/CLI apresentado (`100GE0/1/49`). Nunca o rótulo do cage. */
   portName: string;
+  /** Rótulo físico do painel (`100GE-2`, `QSFP28-1`) — detalhe, nunca identidade. */
+  panelLabel?: string | null;
 }
 
 /** `NONE`: pode confirmar. Os demais bloqueiam a confirmação e o desenho. */
@@ -169,6 +172,7 @@ function side(
    */
   const locatedPort = locatePhysicalPort(inventory, endpoint.portId);
   const located = locatedPort ?? locatePhysicalAsset(inventory, endpoint.assetId);
+  const naming = locatedPort ? physicalPortNameView(locatedPort.port) : null;
   return {
     siteId: located?.siteId ?? '',
     siteName: located?.siteName ?? endpoint.siteName,
@@ -181,7 +185,8 @@ function side(
      * Nome apresentado: interface CLI quando existir (`100GE1/0/5`), nunca o
      * rótulo do cage (`QSFP28-5`). O rótulo físico continua no inspector.
      */
-    portName: locatedPort ? physicalPortNameView(locatedPort.port).displayName : endpoint.portName,
+    portName: naming ? naming.displayName : endpoint.portName,
+    panelLabel: naming?.panelLabel ?? null,
   };
 }
 

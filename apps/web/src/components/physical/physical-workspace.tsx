@@ -54,6 +54,7 @@ import { buildPhysicalLldpGhosts, ghostsForRack } from './physical-lldp';
 import { applyPhysicalLinkPrecedence } from './physical-link-layer';
 import { buildPhysicalMapLinkGhosts, type PhysicalMapLinkSource } from './physical-map-link';
 import { physicalPortNameView } from './physical-port-name';
+import { createPhysicalPortNamingResolver } from './physical-port-naming';
 import type { PhysicalConnectionMode, PhysicalSelection, PhysicalVisualMode } from './physical-types';
 
 type CreateDialog = 'site' | 'rack' | 'asset' | null;
@@ -102,6 +103,15 @@ export function PhysicalWorkspace() {
     enabled: Boolean(mapId),
   });
   const inventory = inventoryQuery.data;
+  /**
+   * Identidade apresentada das portas: UM resolvedor para toda a aba Físico
+   * (canvas, inspetor, path, sugestões LLDP, origem/destino de cabo e busca).
+   * A regra completa mora em `physical-port-naming.ts`.
+   */
+  const portNaming = useMemo(
+    () => (inventory ? createPhysicalPortNamingResolver(inventory, catalogQuery.data ?? []) : null),
+    [inventory, catalogQuery.data],
+  );
   const [siteId, setSiteId] = useState('');
   const [rackId, setRackId] = useState('');
   const [selection, setSelection] = useState<PhysicalSelection>(null);
@@ -521,7 +531,14 @@ export function PhysicalWorkspace() {
           <section className="physical-search">
             <label><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Equipamento ou porta" /></label>
             {query.trim() ? <div className="physical-search__results">{searchResults.map((result) => (
-              <div key={result.asset.id}><button type="button" onClick={() => openResult(result)}><strong>{result.asset.name}</strong><small>{result.site.name} / {result.rack.name}</small></button>{result.ports.slice(0, 5).map((port) => <button key={port.id} type="button" className="is-port" onClick={() => openResult(result, port.id)}>{physicalPortNameView(port).displayName}<small>{port.label || port.side}</small></button>)}</div>
+              <div key={result.asset.id}><button type="button" onClick={() => openResult(result)}><strong>{result.asset.name}</strong><small>{result.site.name} / {result.rack.name}</small></button>{result.ports.slice(0, 5).map((port) => {
+                const portNamingView = portNaming?.forPort(result.asset, port) ?? null;
+                const primary = portNamingView?.displayName ?? physicalPortNameView(port).displayName;
+                const detail = portNamingView?.panelLabel
+                  ? `Porta física: ${portNamingView.panelLabel}`
+                  : port.side;
+                return <button key={port.id} type="button" className="is-port" onClick={() => openResult(result, port.id)}>{primary}<small>{detail}</small></button>;
+              })}</div>
             ))}{!searchResults.length ? <p>Nenhum resultado.</p> : null}</div> : null}
           </section>
         </aside>
@@ -539,6 +556,7 @@ export function PhysicalWorkspace() {
               path={pathQuery.data ?? null}
               visualMode={visualMode}
               catalog={catalogQuery.data ?? []}
+              remotePortNaming={portNaming}
               onSelectAsset={(id) => setSelection({ kind: 'asset', id })}
               onSelectPort={(id) => setSelection({ kind: 'port', id })}
               onSelectConnection={(id) => setSelection({ kind: 'connection', id })}

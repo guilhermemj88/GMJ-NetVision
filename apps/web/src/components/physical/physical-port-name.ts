@@ -61,6 +61,21 @@ export function physicalPortPanelLabel(source: PhysicalPortNameSource): string |
   return null;
 }
 
+/**
+ * Detalhe secundário do rótulo físico: `Porta física: 100GE-2`.
+ *
+ * Nunca é identidade — só aparece embaixo do nome lógico/CLI para o operador
+ * conferir o painel. `null` quando o nome principal já é o próprio físico.
+ */
+export function physicalPortPanelDetail(view: PhysicalPortNameView): string | null {
+  return view.panelLabel ? `Porta física: ${view.panelLabel}` : null;
+}
+
+/** Detalhe da interface lógica: `Interface: 100GE0/1/49`. */
+export function physicalPortInterfaceDetail(view: PhysicalPortNameView): string | null {
+  return view.interfaceName ? `Interface: ${view.interfaceName}` : null;
+}
+
 /** Último número de um nome (`XGigabitEthernet0/0/12` → `12`). */
 export function lastOrdinal(value: string): string | null {
   const match = /(\d+)(?!.*\d)/.exec(value.trim());

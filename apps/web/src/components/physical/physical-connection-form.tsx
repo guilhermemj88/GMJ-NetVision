@@ -1,13 +1,19 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { PhysicalConnectionMedium, PhysicalInventory } from '@gmj/shared';
+import type {
+  PhysicalCatalogEntry,
+  PhysicalConnectionMedium,
+  PhysicalInventory,
+} from '@gmj/shared';
 import { Button } from '@gmj/ui';
 import { Link2, Search } from 'lucide-react';
-import { physicalPortNameView } from './physical-port-name';
+import { createPhysicalPortNamingResolver } from './physical-port-naming';
 
 interface Props {
   inventory: PhysicalInventory;
+  /** Catálogo atual: necessário para o nome lógico declarado no catálogo. */
+  catalog?: readonly PhysicalCatalogEntry[];
   /** Porta de origem: nunca aparece como destino. */
   sourcePortId: string;
   busy: boolean;
@@ -21,7 +27,13 @@ interface Props {
  * Independente do LLDP (sugestão continua sendo sugestão). Portas livres vêm
  * primeiro; ocupadas ficam ocultas por padrão e podem ser exibidas por toggle.
  */
-export function PhysicalConnectionForm({ inventory, sourcePortId, busy, onSubmit }: Props) {
+export function PhysicalConnectionForm({
+  inventory,
+  catalog = [],
+  sourcePortId,
+  busy,
+  onSubmit,
+}: Props) {
   const [siteId, setSiteId] = useState('');
   const [rackId, setRackId] = useState('');
   const [assetId, setAssetId] = useState('');
@@ -30,6 +42,12 @@ export function PhysicalConnectionForm({ inventory, sourcePortId, busy, onSubmit
   const [showOccupied, setShowOccupied] = useState(false);
   const [medium, setMedium] = useState<PhysicalConnectionMedium>('UNKNOWN');
   const [label, setLabel] = useState('');
+
+  /** Mesma regra de identidade da aba Físico (interface CLI > catálogo > físico). */
+  const portNaming = useMemo(
+    () => createPhysicalPortNamingResolver(inventory, catalog),
+    [inventory, catalog],
+  );
 
   const source = useMemo(() => {
     for (const candidateSite of inventory.sites) {
@@ -183,8 +201,8 @@ export function PhysicalConnectionForm({ inventory, sourcePortId, busy, onSubmit
           <option value="">Selecione a porta</option>
           {ports.map((candidate) => (
             <option key={candidate.id} value={candidate.id} disabled={Boolean(candidate.connectionId)}>
-              {physicalPortNameView(candidate).displayName}
-              {candidate.connectionId ? ' (ocupada)' : ' · livre'}
+              {asset ? portNaming.forPort(asset, candidate).displayName : candidate.name}
+              {candidate.connectionId ? ' (ocupada)' : ' · sem conexão física'}
             </option>
           ))}
         </select>

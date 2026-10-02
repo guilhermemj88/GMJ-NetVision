@@ -59,6 +59,7 @@ function sideForInterface(
         if (deviceId && asset.deviceId !== deviceId) continue;
         const port = asset.ports.find((candidate) => candidate.mappedInterfaceId === interfaceId);
         if (!port) continue;
+        const naming = physicalPortNameView(port);
         return {
           siteId: site.id,
           siteName: site.name,
@@ -67,7 +68,8 @@ function sideForInterface(
           assetId: asset.id,
           assetName: asset.name,
           portId: port.id,
-          portName: physicalPortNameView(port).displayName,
+          portName: naming.displayName,
+          panelLabel: naming.panelLabel,
         };
       }
     }
