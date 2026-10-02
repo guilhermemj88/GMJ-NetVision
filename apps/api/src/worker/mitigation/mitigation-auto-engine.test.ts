@@ -130,6 +130,7 @@ function targetState(profileId: string, over: Partial<MitigationAutoTargetState>
     interfaceId: 'if-1',
     customer: 'BHNET-CEASA',
     mode: 'AUTO',
+    snapshotAvailable: true,
     readiness: 'READY',
     prefixStatus: 'SAFE',
     blockedReason: null,
@@ -522,5 +523,176 @@ describe('motor AUTO real (GMJ NetVision)', () => {
     expect(removed.status).toBe('REMOVED_VERIFIED');
     expect(h.live.removeCalls).toBe(1);
     expect(h.live.activateCalls).toBe(0);
+  });
+});
+describe('motor AUTO x prefixos informativos (A-G)', () => {
+  it('A) READY + SAFE => AUTO avalia normalmente e ativa', async () => {
+    const h = await harness();
+    const decision = await h.run(3, h.over);
+    expect(decision[0]!.outcome).toBe('ACTIVATED');
+    expect(h.live.activateCalls).toBe(1);
+  });
+
+  it('B) READY + UNKNOWN abaixo do threshold => THRESHOLD_NOT_EXCEEDED (nao bloqueia por prefixo)', async () => {
+    const h = await harness({ target: { prefixStatus: 'UNKNOWN' } });
+    const decision = await h.run(3, h.under);
+    expect(decision[0]!.reason).not.toBe('PREFIX_NOT_SAFE');
+    expect(decision[0]!.outcome).toBe('NO_ACTION');
+    expect(decision[0]!.reason).toBe('THRESHOLD_NOT_EXCEEDED');
+    expect(h.live.activateCalls).toBe(0);
+  });
+
+  it('B2) READY + UNKNOWN acima do threshold => atravessa os gates e ativa', async () => {
+    const h = await harness({ target: { prefixStatus: 'UNKNOWN' } });
+    const decision = await h.run(3, h.over);
+    expect(decision[0]!.reason).not.toBe('PREFIX_NOT_SAFE');
+    expect(decision[0]!.outcome).toBe('ACTIVATED');
+    expect(h.live.activateCalls).toBe(1);
+  });
+
+  it('C) READY + WARNING => segue para threshold/telemetria e ativa', async () => {
+    const h = await harness({ target: { prefixStatus: 'WARNING' } });
+    const decision = await h.run(3, h.over);
+    expect(decision[0]!.outcome).toBe('ACTIVATED');
+    expect(h.live.activateCalls).toBe(1);
+  });
+
+  it('D) EXCEEDED => BLOCKED / PREFIX_LIMIT_EXCEEDED e zero escrita', async () => {
+    const h = await harness({ target: { prefixStatus: 'EXCEEDED' } });
+    const decision = await h.run(3, h.over);
+    expect(decision[0]!.outcome).toBe('BLOCKED');
+    expect(decision[0]!.reason).toBe('PREFIX_LIMIT_EXCEEDED');
+    expect(h.live.activateCalls).toBe(0);
+    expect(h.live.preflightCalls).toBe(0);
+  });
+
+  it('E) snapshot ausente (readiness NOT_READY) + UNKNOWN => BLOCKED/TARGET_NOT_READY, executor nunca chamado', async () => {
+    const h = await harness({ target: { readiness: 'NOT_READY', prefixStatus: 'UNKNOWN' } });
+    const decision = await h.run(3, h.over);
+    expect(decision[0]!.outcome).toBe('BLOCKED');
+    expect(decision[0]!.reason).toBe('TARGET_NOT_READY');
+    expect(h.live.activateCalls).toBe(0);
+    expect(h.live.preflightCalls).toBe(0);
+    expect(h.live.readRoutePolicyCalls).toBe(0);
+  });
+
+  it('E2) readiness NOT_READY bloqueia ANTES do gate de prefixos (mesmo com EXCEEDED)', async () => {
+    const h = await harness({ target: { readiness: 'NOT_READY', prefixStatus: 'EXCEEDED' } });
+    const decision = await h.run(3, h.over);
+    expect(decision[0]!.reason).toBe('TARGET_NOT_READY');
+    expect(decision[0]!.reason).not.toBe('PREFIX_LIMIT_EXCEEDED');
+    expect(h.live.activateCalls).toBe(0);
+  });
+
+  it('F) target READY (peer ACTIVE/CONNECT absorvido pelo discovery) => sessao nao bloqueia AUTO', async () => {
+    const h = await harness({ target: { readiness: 'READY', prefixStatus: 'UNKNOWN' } });
+    const decision = await h.run(3, h.over);
+    expect(decision[0]!.outcome).toBe('ACTIVATED');
+    expect(h.live.activateCalls).toBe(1);
+  });
+
+  it('G) policy/readback invalido => continua bloqueado sem escrita', async () => {
+    const policy = await harness({ target: { readiness: 'READY', blockedReason: 'POLICY_NOT_FOUND' } });
+    const p = await policy.run(3, policy.over);
+    expect(p[0]!.outcome).toBe('BLOCKED');
+    expect(p[0]!.reason).toBe('TARGET_BLOCKED');
+    expect(policy.live.activateCalls).toBe(0);
+
+    const readback = await harness({
+      target: { readiness: 'NOT_READY', blockedReason: 'READBACK_FAILED', prefixStatus: 'UNKNOWN' },
+    });
+    const r = await readback.run(3, readback.over);
+    expect(r[0]!.outcome).toBe('BLOCKED');
+    expect(r[0]!.reason).toBe('TARGET_NOT_READY');
+    expect(readback.live.activateCalls).toBe(0);
+    expect(readback.live.preflightCalls).toBe(0);
+  });
+});
+
+describe('snapshot explicito e ALERT_ONLY com os mesmos gates', () => {
+  it('C) AUTO + snapshotAvailable=false => SNAPSHOT_UNAVAILABLE e zero executor', async () => {
+    const h = await harness({ target: { snapshotAvailable: false } });
+    const decision = await h.run(3, h.over);
+    expect(decision[0]!.outcome).toBe('BLOCKED');
+    expect(decision[0]!.reason).toBe('SNAPSHOT_UNAVAILABLE');
+    expect(h.live.activateCalls).toBe(0);
+    expect(h.live.preflightCalls).toBe(0);
+    expect(h.live.readRoutePolicyCalls).toBe(0);
+  });
+
+  it('C2) snapshot gate vem ANTES de readiness (sem snapshot + NOT_READY => SNAPSHOT_UNAVAILABLE)', async () => {
+    const h = await harness({ target: { snapshotAvailable: false, readiness: 'NOT_READY' } });
+    const decision = await h.run(3, h.over);
+    expect(decision[0]!.reason).toBe('SNAPSHOT_UNAVAILABLE');
+    expect(decision[0]!.reason).not.toBe('TARGET_NOT_READY');
+  });
+
+  it('F) ALERT_ONLY + READY + threshold excedido => ALERT_TRIGGERED', async () => {
+    const h = await harness({ target: { mode: 'ALERT_ONLY' } });
+    const decision = await h.run(3, h.over);
+    expect(decision[0]!.outcome).toBe('ALERT_TRIGGERED');
+    expect(decision[0]!.reason).toBeNull();
+    expect(h.live.activateCalls).toBe(0);
+    expect(h.live.preflightCalls).toBe(0);
+  });
+
+  it('G) ALERT_ONLY + NOT_READY/POLICY_NOT_FOUND => BLOCKED/TARGET_NOT_READY', async () => {
+    const h = await harness({
+      target: { mode: 'ALERT_ONLY', readiness: 'NOT_READY', blockedReason: 'POLICY_NOT_FOUND' },
+    });
+    const decision = await h.run(3, h.over);
+    expect(decision[0]!.outcome).toBe('BLOCKED');
+    expect(decision[0]!.reason).toBe('TARGET_NOT_READY');
+    expect(h.live.activateCalls).toBe(0);
+    expect(h.live.preflightCalls).toBe(0);
+  });
+
+  it('H) ALERT_ONLY + EXCEEDED => BLOCKED/PREFIX_LIMIT_EXCEEDED', async () => {
+    const h = await harness({ target: { mode: 'ALERT_ONLY', prefixStatus: 'EXCEEDED' } });
+    const decision = await h.run(3, h.over);
+    expect(decision[0]!.outcome).toBe('BLOCKED');
+    expect(decision[0]!.reason).toBe('PREFIX_LIMIT_EXCEEDED');
+    expect(h.live.activateCalls).toBe(0);
+  });
+
+  it('I) ALERT_ONLY + UNKNOWN + READY => pode ALERT_TRIGGERED (prefixo e informativo)', async () => {
+    const h = await harness({ target: { mode: 'ALERT_ONLY', prefixStatus: 'UNKNOWN' } });
+    const decision = await h.run(3, h.over);
+    expect(decision[0]!.outcome).toBe('ALERT_TRIGGERED');
+    expect(decision[0]!.reason).not.toBe('PREFIX_NOT_SAFE');
+    expect(h.live.activateCalls).toBe(0);
+  });
+
+  it('J) AUTO e ALERT_ONLY usam os MESMOS gates; muda so a acao final', async () => {
+    const blockedCases: Partial<MitigationAutoTargetState>[] = [
+      { snapshotAvailable: false },
+      { readiness: 'NOT_READY' },
+      { prefixStatus: 'EXCEEDED' },
+      { readiness: 'READY', blockedReason: 'POLICY_NOT_FOUND' },
+      { mitigationExcluded: true },
+      { bogonNode: null, mitigationNode: null },
+    ];
+    for (const over of blockedCases) {
+      const auto = await harness({ target: { mode: 'AUTO', ...over } });
+      const alert = await harness({ target: { mode: 'ALERT_ONLY', ...over } });
+      const a = await auto.run(3, auto.over);
+      const al = await alert.run(3, alert.over);
+      expect(a[0]!.outcome).toBe('BLOCKED');
+      expect(al[0]!.outcome).toBe('BLOCKED');
+      expect(al[0]!.reason).toBe(a[0]!.reason);
+      expect(auto.live.activateCalls).toBe(0);
+      expect(alert.live.activateCalls).toBe(0);
+    }
+
+    // Elegivel + threshold: mesmos gates, acao final diferente (ALERT vs WRITE).
+    const auto = await harness({ target: { mode: 'AUTO' }, liveWrite: false });
+    const alert = await harness({ target: { mode: 'ALERT_ONLY' } });
+    const a = await auto.run(3, auto.over);
+    const al = await alert.run(3, alert.over);
+    expect(a[0]!.outcome).toBe('WOULD_ACTIVATE');
+    expect(a[0]!.reason).toBe('LIVE_WRITE_DISABLED');
+    expect(al[0]!.outcome).toBe('ALERT_TRIGGERED');
+    expect(auto.live.activateCalls).toBe(0);
+    expect(alert.live.activateCalls).toBe(0);
   });
 });

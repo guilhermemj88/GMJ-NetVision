@@ -19,12 +19,26 @@
 
 import { normalizeIpAddress } from '@gmj/shared';
 
+/** Address-family de UNICAST (a unica que traz route-policy de import por peer). */
+export type HuaweiBgpAddressFamily = 'IPV4' | 'IPV6';
+
+/**
+ * Chave canonica dos mapas: familia + endereco/nome.
+ *
+ * Sem a familia, um peer-group (ou um texto de peer) repetido em `ipv4-family` e
+ * `ipv6-family` colidiria e uma familia herdaria a policy da outra - a causa do
+ * bug de correlacao. A chave usa um separador que nunca aparece em nomes VRP.
+ */
+export function bgpPolicyKey(addressFamily: HuaweiBgpAddressFamily, key: string): string {
+  return `${addressFamily}\u0000${key}`;
+}
+
 export interface HuaweiBgpPolicyConfiguration {
-  /** peerAddress -> policy IN declarada diretamente no peer */
+  /** `${family}\0${peerAddressNormalizado}` -> policy IN declarada no peer */
   directPeerPolicies: Map<string, string>;
-  /** peerAddress -> peer-group */
+  /** `${family}\0${peerAddressNormalizado}` -> peer-group */
   peerGroups: Map<string, string>;
-  /** peer-group -> policy IN */
+  /** `${family}\0${peerGroup}` -> policy IN */
   groupPolicies: Map<string, string>;
 }
 
@@ -41,11 +55,13 @@ function isAddressLike(key: string): boolean {
   return key.includes(':') || /^\d{1,3}(?:\.\d{1,3}){3}$/.test(key);
 }
 
-/** `peer 10.0.0.1 route-policy PL-IN import` (import apenas). */
+/** `peer 10.0.0.1 route-policy PL-IN import` (import apenas). Avaliada por LINHA. */
 const PEER_POLICY_IMPORT =
-  /^[ \t]*peer[ \t]+(\S+)[ \t]+route-policy[ \t]+(\S+)[ \t]+import[ \t]*$/gim;
+  /^[ \t]*peer[ \t]+(\S+)[ \t]+route-policy[ \t]+(\S+)[ \t]+import[ \t]*$/i;
 /** `peer 10.0.0.1 group PL-HORIZONTES` */
-const PEER_GROUP = /^[ \t]*peer[ \t]+(\S+)[ \t]+group[ \t]+(\S+)[ \t]*$/gim;
+const PEER_GROUP = /^[ \t]*peer[ \t]+(\S+)[ \t]+group[ \t]+(\S+)[ \t]*$/i;
+/** ` ipv4-family unicast` / ` ipv6-family unicast` (cabeçalho de bloco do VRP). */
+const FAMILY_HEADER = /^[ \t]*(ipv4|ipv6)-family[ \t]+(\S+)/i;
 /** `route-policy PL-IN permit node 11` */
 const ROUTE_POLICY_NODE =
   /^[ \t]*route-policy[ \t]+(\S+)[ \t]+(permit|deny)[ \t]+node[ \t]+(\d+)[ \t]*$/i;
@@ -54,51 +70,98 @@ const APPLY_EXTCOMMUNITY_RT = /^[ \t]*apply[ \t]+extcommunity[ \t]+rt[ \t]+(\S+)
 /** ` if-match ip-prefix PREFIX8to24` (dentro de um node) */
 const IF_MATCH_IP_PREFIX = /^[ \t]*if-match[ \t]+ip-prefix[ \t]+(\S+)/i;
 
+/**
+ * Parser STATEFUL por address-family do dump
+ * `display current-configuration configuration bgp`.
+ *
+ * O VRP imprime o peer no bloco GLOBAL (`as-number`, `description`) e a policy
+ * EFETIVA dentro de `ipv4-family unicast` / `ipv6-family unicast`. Uma varredura
+ * global (regex sobre o texto inteiro) misturava familias: o mesmo texto de peer
+ * ou de peer-group podia resolver a policy de OUTRA familia, e blocos que nao
+ * sao unicast (ex.: `ipv4-family flow`) entravam como se fossem IPv4.
+ *
+ * Regras:
+ *  - apenas `route-policy <nome> import` conta (export NUNCA vira IN);
+ *  - a policy so vale DENTRO do bloco `<family> unicast` correspondente, sem
+ *    fallback cross-family;
+ *  - qualquer outro contexto (`ipv4-family flow`, multicast, vpn-instance...)
+ *    nao alimenta IPV4/IPV6;
+ *  - linha em coluna 0 encerra o bloco corrente (`#`, `bgp 64500`, `return`).
+ */
 export function parseHuaweiBgpPolicyConfiguration(config: string): HuaweiBgpPolicyConfiguration {
   const directPeerPolicies = new Map<string, string>();
   const peerGroups = new Map<string, string>();
   const groupPolicies = new Map<string, string>();
 
-  for (const match of config.matchAll(PEER_POLICY_IMPORT)) {
-    const key = match[1];
-    const policyName = match[2];
-    if (!key || !policyName) continue;
-    if (isAddressLike(key)) {
-      // Endereco IP: chave CANONICA (o VRP imprime IPv6 em MAIUSCULAS).
-      const normalized = normalizeIpAddress(key);
-      if (normalized) directPeerPolicies.set(normalized, policyName);
-    } else {
-      // Nome de peer-group: NUNCA e normalizado como IP.
-      groupPolicies.set(key, policyName);
-    }
-  }
+  let family: HuaweiBgpAddressFamily | null = null;
 
-  for (const match of config.matchAll(PEER_GROUP)) {
-    const peerAddress = match[1];
-    const groupName = match[2];
-    if (!peerAddress || !groupName) continue;
-    const normalizedPeer = normalizeIpAddress(peerAddress);
-    // Fail-closed: associacao invalida nao e persistida.
-    if (!normalizedPeer) continue;
-    peerGroups.set(normalizedPeer, groupName);
+  for (const raw of config.split(/\r?\n/)) {
+    const line = raw.replace(/\r$/, '');
+    if (line.trim().length === 0) continue;
+
+    const header = FAMILY_HEADER.exec(line);
+    if (header) {
+      const kind = header[1]?.toLowerCase();
+      const subtype = header[2]?.toLowerCase();
+      // Somente `<ipv4|ipv6>-family unicast` interessa a mitigacao.
+      family = subtype === 'unicast' ? (kind === 'ipv6' ? 'IPV6' : 'IPV4') : null;
+      continue;
+    }
+
+    // Linha em coluna 0 fecha o bloco corrente (topo do `bgp`, `#`, `return`).
+    if (!/^[ \t]/.test(line)) {
+      family = null;
+      continue;
+    }
+    if (!family) continue;
+
+    const peerPolicy = PEER_POLICY_IMPORT.exec(line);
+    if (peerPolicy) {
+      const key = peerPolicy[1];
+      const policyName = peerPolicy[2];
+      if (key && policyName) {
+        if (isAddressLike(key)) {
+          // Endereco IP: chave CANONICA (o VRP imprime IPv6 em MAIUSCULAS).
+          const normalized = normalizeIpAddress(key);
+          if (normalized) directPeerPolicies.set(bgpPolicyKey(family, normalized), policyName);
+        } else {
+          // Nome de peer-group: NUNCA e normalizado como IP.
+          groupPolicies.set(bgpPolicyKey(family, key), policyName);
+        }
+      }
+      continue;
+    }
+
+    const peerGroup = PEER_GROUP.exec(line);
+    if (peerGroup) {
+      const peerAddress = peerGroup[1];
+      const groupName = peerGroup[2];
+      if (!peerAddress || !groupName) continue;
+      const normalizedPeer = normalizeIpAddress(peerAddress);
+      // Fail-closed: associacao invalida nao e persistida.
+      if (!normalizedPeer) continue;
+      peerGroups.set(bgpPolicyKey(family, normalizedPeer), groupName);
+    }
   }
 
   return { directPeerPolicies, peerGroups, groupPolicies };
 }
 
-// Resolve a policy de import de um peer: declaracao direta vence; na ausencia dela,
-// herda a policy do peer-group. Sem nenhuma das duas -> null.
+// Resolve a policy de import de um peer DENTRO da family informada: declaracao
+// direta vence; na ausencia dela, herda a policy do peer-group DA MESMA FAMILY.
+// Nunca existe fallback cross-family (IPv4 nao herda IPv6 e vice-versa).
 export function resolvePeerInboundPolicy(
   peerAddress: string,
+  addressFamily: HuaweiBgpAddressFamily,
   configuration: HuaweiBgpPolicyConfiguration,
 ): string | null {
   // Defensivo: o chamador pode passar a forma crua do equipamento.
   const normalized = normalizeIpAddress(peerAddress) ?? peerAddress;
-  const direct = configuration.directPeerPolicies.get(normalized);
+  const direct = configuration.directPeerPolicies.get(bgpPolicyKey(addressFamily, normalized));
   if (direct) return direct;
-  const group = configuration.peerGroups.get(normalized);
+  const group = configuration.peerGroups.get(bgpPolicyKey(addressFamily, normalized));
   if (!group) return null;
-  return configuration.groupPolicies.get(group) ?? null;
+  return configuration.groupPolicies.get(bgpPolicyKey(addressFamily, group)) ?? null;
 }
 
 // Percorremos linha a linha porque prefix-lists e RTs vem do corpo do node, e nao

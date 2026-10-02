@@ -126,6 +126,12 @@ export interface BgpMitigationProfileDto {
   readiness: MitigationReadiness;
   blockedReason: MitigationBlockReason | null;
   /**
+   * Ha snapshot de discovery NESTA sessao para este target. `false` = cache em
+   * memoria vazio (pos-restart, antes da reidratacao): readiness/prefixos NAO
+   * sao avaliacao real e o motor AUTO fica fail-closed (SNAPSHOT_UNAVAILABLE).
+   */
+  snapshotAvailable: boolean;
+  /**
    * Exclusao administrativa ("nunca mitigar este peer"). Independente de
    * `readiness`: READY + excluded=true = apto tecnicamente, proibido de mitigar.
    */
@@ -183,6 +189,16 @@ export interface BgpMitigationHealthDto {
   executor?: 'MOCK' | 'HUAWEI';
   liveWriteEnabled?: boolean;
   allowedDeviceCount?: number;
+  /** Reidratação dos snapshots de discovery após restart (PENDING/RUNNING/READY/DEGRADED). */
+  snapshotHydration?: {
+    state: 'PENDING' | 'RUNNING' | 'READY' | 'DEGRADED';
+    startedAt: string | null;
+    completedAt: string | null;
+    devicesTotal: number;
+    devicesSucceeded: number;
+    devicesFailed: number;
+    lastError: string | null;
+  } | null;
   /** Estado do motor AUTO (ausente quando nunca avaliado). */
   autoEngine?: MitigationAutoRuntimeDto | null;
   profiles?: { total: number; auto: number; alertOnly: number; disabled: number };

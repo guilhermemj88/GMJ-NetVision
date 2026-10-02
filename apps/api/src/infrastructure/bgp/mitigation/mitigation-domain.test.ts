@@ -225,7 +225,7 @@ describe('prefix limit and shared policy', () => {
     expect(byPolicy.get('PL-HORIZONTES_IPv4-IN')).toEqual(['10.200.200.10', '10.200.200.106']);
   });
 
-  it('bloqueia por banda, prefixos e ambiguidade de interface', () => {
+  it('bloqueia por banda, excesso de prefixos e ambiguidade de interface', () => {
     const base = {
       bandwidthBps: 40_000_000_000n as bigint | null,
       prefixCount: 12 as number | null,
@@ -237,7 +237,9 @@ describe('prefix limit and shared policy', () => {
     expect(safetyBlocks(base).blocked).toBe(false);
     expect(safetyBlocks({ ...base, bandwidthBps: null }).reason).toBe('BANDWIDTH_UNKNOWN');
     expect(safetyBlocks({ ...base, prefixCount: 120 }).reason).toBe('PREFIX_LIMIT_EXCEEDED');
-    expect(safetyBlocks({ ...base, prefixCount: null }).reason).toBe('PREFIX_UNKNOWN');
+    // prefixCount nulo => UNKNOWN INFORMATIVO: nao bloqueia a mitigacao.
+    expect(safetyBlocks({ ...base, prefixCount: null }).blocked).toBe(false);
+    expect(safetyBlocks({ ...base, prefixCount: null }).reason).toBeNull();
     expect(safetyBlocks({ ...base, interfaceCorrelation: 'AMBIGUOUS' }).reason).toBe(
       'INTERFACE_AMBIGUOUS',
     );

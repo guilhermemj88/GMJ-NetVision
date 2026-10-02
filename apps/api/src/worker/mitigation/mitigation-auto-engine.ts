@@ -39,8 +39,9 @@ export type MitigationAutoBlockReason =
   | 'AUTO_REMOVE_DISABLED'
   | 'THRESHOLD_NOT_EXCEEDED'
   | 'SAMPLES_INSUFFICIENT'
+  | 'SNAPSHOT_UNAVAILABLE'
   | 'TARGET_NOT_READY'
-  | 'PREFIX_NOT_SAFE'
+  | 'PREFIX_LIMIT_EXCEEDED'
   | 'TARGET_BLOCKED'
   | 'MITIGATION_EXCLUDED'
   | 'PEER_MITIGATION_EXCLUDED'
@@ -60,6 +61,8 @@ export interface MitigationAutoTargetState {
   interfaceId: string | null;
   customer: string | null;
   mode: MitigationProfileMode;
+  /** Ha snapshot de discovery nesta sessao; false => SNAPSHOT_UNAVAILABLE. */
+  snapshotAvailable: boolean;
   readiness: 'READY' | 'NOT_READY';
   prefixStatus: 'SAFE' | 'WARNING' | 'EXCEEDED' | 'UNKNOWN';
   blockedReason: string | null;
@@ -291,13 +294,37 @@ export class MitigationAutoEngine {
       this.record({ ...base, outcome, reason, detail: reason });
 
     if (target.mode === 'DISABLED') return block('PROFILE_DISABLED');
-    // ALERT_ONLY NAO encerra cedo: ele avalia threshold/samples para registrar o
-    // alerta, mas nunca chama ACTIVATE (checado antes dos gates de escrita).
     if (this.inFlight.has(target.profileId)) return pending('CONCURRENT_TICK', 'SKIPPED');
 
+    // ---------------------------------------------------------------------
+    // Gates de ELEGIBILIDADE, comuns a AUTO e ALERT_ONLY (mesma semantica do
+    // discovery). Rodam ANTES de threshold/telemetria, na ordem:
+    //   snapshot -> readiness -> prefixo (EXCEEDED) -> seguranca/exclusao.
+    // ALERT_ONLY nunca "alerta" um target que o AUTO nao poderia mitigar.
+    // ---------------------------------------------------------------------
+    // Sem snapshot de discovery (cache vazio pos-restart antes da reidratacao)
+    // o motor fica fail-closed: nao depende do fallback NOT_READY do DTO.
+    if (!target.snapshotAvailable) return block('SNAPSHOT_UNAVAILABLE');
+    if (target.readiness !== 'READY') return block('TARGET_NOT_READY');
+    // Sessao BGP e quantidade de prefixos sao INFORMATIVAS. So o EXCESSO de
+    // prefixos bloqueia - mesma semantica do discovery (PREFIX_LIMIT_EXCEEDED).
+    if (target.prefixStatus === 'EXCEEDED') return block('PREFIX_LIMIT_EXCEEDED');
+    if (target.blockedReason !== null) return block('TARGET_BLOCKED');
+    if (target.mitigationExcluded) return block('MITIGATION_EXCLUDED');
+
+    const excludedPeers = await this.deps.exclusions.listPeerExclusions({
+      deviceId: target.deviceId,
+      peerAddresses: target.peerAddresses,
+    });
+    if (excludedPeers.length > 0) return block('PEER_MITIGATION_EXCLUDED');
+
+    if (target.bogonNode === null || target.mitigationNode === null) {
+      return block('NO_SAFE_TEMPORARY_NODE');
+    }
     if (target.effectiveBandwidthBps === null || target.effectiveBandwidthBps <= 0n) {
       return block('BANDWIDTH_UNKNOWN');
     }
+
     const sample = await this.deps.traffic.sampleWithId({
       profileId: target.profileId,
       deviceId: target.deviceId,
@@ -386,24 +413,10 @@ export class MitigationAutoEngine {
       return decided('SAMPLES_INSUFFICIENT', 'TRIGGER_PENDING');
     }
 
+    // Modo decide a ACAO, nunca a elegibilidade: AUTO e ALERT_ONLY passaram
+    // pelos MESMOS gates acima. ALERT_ONLY para aqui, com zero escrita.
     if (target.mode === 'ALERT_ONLY') {
-      // Alerta registrado (lastDecision), zero escrita: nao passa dos gates.
       return decided(null, 'ALERT_TRIGGERED');
-    }
-
-    if (target.readiness !== 'READY') return decided('TARGET_NOT_READY', 'BLOCKED');
-    if (target.prefixStatus !== 'SAFE') return decided('PREFIX_NOT_SAFE', 'BLOCKED');
-    if (target.blockedReason !== null) return decided('TARGET_BLOCKED', 'BLOCKED');
-    if (target.mitigationExcluded) return decided('MITIGATION_EXCLUDED', 'BLOCKED');
-
-    const excludedPeers = await this.deps.exclusions.listPeerExclusions({
-      deviceId: target.deviceId,
-      peerAddresses: target.peerAddresses,
-    });
-    if (excludedPeers.length > 0) return decided('PEER_MITIGATION_EXCLUDED', 'BLOCKED');
-
-    if (target.bogonNode === null || target.mitigationNode === null) {
-      return decided('NO_SAFE_TEMPORARY_NODE', 'BLOCKED');
     }
 
     // Daqui para baixo o target esta apto: o que falta e a autorizacao de escrita.

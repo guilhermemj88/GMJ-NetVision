@@ -39,6 +39,7 @@ import {
   runtimeStateLabel,
   simulationResultLabel,
   workerStateLabel,
+  mitigationSnapshotBadge,
   mitigationEngineStatus,
 } from '@/lib/mitigation-labels';
 
@@ -116,8 +117,16 @@ export function BgpMitigationWorkspace() {
     () => rows.find((row) => row.id === selectedId) ?? null,
     [rows, selectedId],
   );
-  const readyCount = rows.filter((row) => row.readiness === 'READY').length;
-  const notReadyCount = rows.filter((row) => row.readiness === 'NOT_READY').length;
+  const hydrationState = health.data?.snapshotHydration?.state ?? null;
+  const snapshotBadgeOf = (row: BgpMitigationProfileDto) =>
+    mitigationSnapshotBadge(row.snapshotAvailable, hydrationState);
+  const withoutSnapshotCount = rows.filter((row) => snapshotBadgeOf(row) !== null).length;
+  const readyCount = rows.filter(
+    (row) => snapshotBadgeOf(row) === null && row.readiness === 'READY',
+  ).length;
+  const notReadyCount = rows.filter(
+    (row) => snapshotBadgeOf(row) === null && row.readiness === 'NOT_READY',
+  ).length;
   const sshHosts = useMemo(() => (hosts.data ?? []).filter((host) => host.sshEnabled), [hosts.data]);
 
   const discoveryMutation = useMutation({
@@ -343,6 +352,9 @@ export function BgpMitigationWorkspace() {
         <MetaFact label="clientes descobertos" value={rows.length} />
         <MetaFact label="aptos" value={readyCount} tone="up" />
         <MetaFact label="não aptos" value={notReadyCount} tone="down" />
+        {withoutSnapshotCount > 0 ? (
+          <MetaFact label="revalidando" value={withoutSnapshotCount} tone="info" />
+        ) : null}
         <MetaFact label="ignorados" value={discovery?.ignoredNoBandwidth ?? 0} />
         <MetaFact
           label="última descoberta"
@@ -465,12 +477,30 @@ export function BgpMitigationWorkspace() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => (
-                <tr key={row.id} className={row.readiness === 'READY' ? 'is-ready' : 'is-blocked'}>
+              {rows.map((row) => {
+                const badge = snapshotBadgeOf(row);
+                return (
+                <tr
+                  key={row.id}
+                  className={
+                    badge ? 'is-pending' : row.readiness === 'READY' ? 'is-ready' : 'is-blocked'
+                  }
+                >
                   <td>
-                    <span className={`mitigation-badge is-${row.readiness.toLowerCase()}`}>
-                      {readinessLabel(row.readiness)}
-                    </span>
+                    {badge ? (
+                      <span
+                        className={`mitigation-badge ${
+                          badge.tone === 'info' ? 'is-revalidando' : 'is-sem-snapshot'
+                        }`}
+                        title="Sem snapshot de discovery nesta sessão: nenhuma avaliação real até a reidratação concluir"
+                      >
+                        {badge.label}
+                      </span>
+                    ) : (
+                      <span className={`mitigation-badge is-${row.readiness.toLowerCase()}`}>
+                        {readinessLabel(row.readiness)}
+                      </span>
+                    )}
                   </td>
                   <td>
                     {row.addressFamily === 'IPV6' ? 'IPv6' : 'IPv4'}
@@ -494,6 +524,9 @@ export function BgpMitigationWorkspace() {
                     {row.prefixCount === null
                       ? `— / ${row.prefixLimit}`
                       : `${row.prefixCount} / ${row.prefixLimit}`}
+                    {row.prefixStatus === 'UNKNOWN' ? (
+                      <small className="mitigation-prefix-unknown"> contagem indisponível</small>
+                    ) : null}
                   </td>
                   <td>{row.plannedNode ?? '—'}</td>
                   <td>
@@ -502,7 +535,8 @@ export function BgpMitigationWorkspace() {
                     </Button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -597,6 +631,11 @@ export function BgpMitigationWorkspace() {
                 : `${selected.prefixCount} / ${selected.prefixLimit}`}
             </p>
             <p>Status: {prefixStatusLabel(selected.prefixStatus)}</p>
+            {selected.prefixStatus === 'UNKNOWN' ? (
+              <p className="mitigation-prefix-unknown">
+                Contagem indisponível — informativo: não bloqueia a mitigação.
+              </p>
+            ) : null}
           </div>
 
           <div className="mitigation-detail__block">
@@ -626,7 +665,17 @@ export function BgpMitigationWorkspace() {
 
           <div className="mitigation-detail__block">
             <h4>SITUAÇÃO</h4>
-            <p>Estado: {readinessLabel(selected.readiness)}</p>
+            <p>
+              Estado:{' '}
+              {mitigationSnapshotBadge(selected.snapshotAvailable, hydrationState)?.label ??
+                readinessLabel(selected.readiness)}
+            </p>
+            {mitigationSnapshotBadge(selected.snapshotAvailable, hydrationState) ? (
+              <p className="mitigation-prefix-unknown">
+                Sem snapshot de discovery nesta sessão — nenhuma avaliação real até a
+                reidratação concluir.
+              </p>
+            ) : null}
             <p>Runtime: {runtimeStateLabel(selected.runtimeState)}</p>
             <p>Modo do perfil: {profileModeLabel(selected.mode)}</p>
             {selected.blockedReason && <p>Motivo: {blockReasonLabel(selected.blockedReason)}</p>}

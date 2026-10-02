@@ -468,7 +468,7 @@ describe('API de mitigacao DDoS (SIMULATION_ONLY)', () => {
     });
   });
 
-  it('prefix count desconhecido bloqueia a simulacao (falha fechada)', async () => {
+  it('prefix count desconhecido fica UNKNOWN e NAO bloqueia a simulacao', async () => {
     const harness = await buildHarness();
     app = harness.app;
     const profile = await seedProfile(harness.repository);
@@ -478,14 +478,15 @@ describe('API de mitigacao DDoS (SIMULATION_ONLY)', () => {
       url: `/api/bgp/mitigation/profiles/${profile.id}/simulate`,
       payload: { simulatedTrafficBps: '38700000000', samples: 3 },
     });
+    const body = response.json();
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({
-      result: 'BLOCKED',
-      blockedReason: 'PREFIX_UNKNOWN',
+    expect(body).toMatchObject({
+      result: 'WOULD_MITIGATE',
+      blockedReason: null,
       prefixStatus: 'UNKNOWN',
-      commandPreview: [],
     });
+    expect(body.commandPreview.length).toBeGreaterThan(0);
   });
 
   it('simulacao exige autenticacao e 404 para profile inexistente', async () => {

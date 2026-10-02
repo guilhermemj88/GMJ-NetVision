@@ -129,6 +129,19 @@ export class BgpMitigationService {
   private readonly maxDevicesPerDiscovery: number;
   private lastDiscoveryAt: Date | null = null;
   private readonly discoveryCache = new Map<string, DiscoveryCacheEntry>();
+  /**
+   * Reidratação dos snapshots de discovery após startup/restart.
+   * O cache é em memória; sem ele a UI perde cliente/interface/prefixos e o AUTO
+   * precisa ficar fail-closed. A reidratação usa o MESMO discovery READ-ONLY
+   * (peers persistidos + um dump de config por device) e nunca escreve no Huawei.
+   */
+  private hydrationState: 'PENDING' | 'RUNNING' | 'READY' | 'DEGRADED' = 'PENDING';
+  private hydrationStartedAt: Date | null = null;
+  private hydrationCompletedAt: Date | null = null;
+  private hydrationDevicesTotal = 0;
+  private hydrationDevicesSucceeded = 0;
+  private hydrationDevicesFailed = 0;
+  private hydrationLastError: string | null = null;
   private readonly executor = new SimulationCommandExecutor();
 
   constructor(private readonly deps: BgpMitigationServiceDeps) {
@@ -158,6 +171,83 @@ export class BgpMitigationService {
     }
   }
 
+  /** Estado observável da reidratação (health/UI). */
+  snapshotHydration(): {
+    state: 'PENDING' | 'RUNNING' | 'READY' | 'DEGRADED';
+    startedAt: string | null;
+    completedAt: string | null;
+    devicesTotal: number;
+    devicesSucceeded: number;
+    devicesFailed: number;
+    lastError: string | null;
+  } {
+    return {
+      state: this.hydrationState,
+      startedAt: this.hydrationStartedAt?.toISOString() ?? null,
+      completedAt: this.hydrationCompletedAt?.toISOString() ?? null,
+      devicesTotal: this.hydrationDevicesTotal,
+      devicesSucceeded: this.hydrationDevicesSucceeded,
+      devicesFailed: this.hydrationDevicesFailed,
+      lastError: this.hydrationLastError,
+    };
+  }
+
+  /**
+   * Reidrata os snapshots de discovery dos devices que já têm profiles.
+   *
+   * READ-ONLY no Huawei (reusa o discovery normal: peers persistidos + um dump de
+   * configuração por device), preserva mode/exclusões/override/thresholds e NUNCA
+   * executa ACTIVATE/REMOVE. Falha de um device não derruba a API: vira DEGRADED.
+   */
+  async rehydrateSnapshots(): Promise<{
+    devices: number;
+    succeeded: number;
+    failed: number;
+  }> {
+    if (this.hydrationState === 'RUNNING') {
+      return {
+        devices: this.hydrationDevicesTotal,
+        succeeded: this.hydrationDevicesSucceeded,
+        failed: this.hydrationDevicesFailed,
+      };
+    }
+    this.hydrationState = 'RUNNING';
+    this.hydrationStartedAt = this.now();
+    this.hydrationLastError = null;
+    let deviceIds: string[] = [];
+    try {
+      const profiles = await this.read(() => this.deps.repository.listProfiles(), []);
+      deviceIds = [...new Set(profiles.map((profile) => profile.deviceId))].slice(
+        0,
+        this.maxDevicesPerDiscovery,
+      );
+      this.hydrationDevicesTotal = deviceIds.length;
+      if (deviceIds.length === 0) {
+        this.hydrationState = 'READY';
+        this.hydrationCompletedAt = this.now();
+        return { devices: 0, succeeded: 0, failed: 0 };
+      }
+      const response = await this.discover(deviceIds);
+      const succeeded = response.results.filter((result) => result.scannedPeers > 0).length;
+      const failed = Math.max(0, deviceIds.length - succeeded);
+      this.hydrationDevicesSucceeded = succeeded;
+      this.hydrationDevicesFailed = failed;
+      this.hydrationState = failed === 0 ? 'READY' : 'DEGRADED';
+      if (failed > 0) {
+        this.hydrationLastError = `${failed} device(s) sem snapshot de discovery`;
+      }
+      this.hydrationCompletedAt = this.now();
+      return { devices: deviceIds.length, succeeded, failed };
+    } catch (error) {
+      this.hydrationDevicesFailed = deviceIds.length || 1;
+      this.hydrationState = 'DEGRADED';
+      this.hydrationLastError =
+        error instanceof Error ? error.message.slice(0, 200) : 'falha na reidratacao';
+      this.hydrationCompletedAt = this.now();
+      return { devices: deviceIds.length, succeeded: 0, failed: this.hydrationDevicesFailed };
+    }
+  }
+
   async health(): Promise<BgpMitigationHealthDto> {
     const probe = await this.read(
       () => this.deps.schemaProbe.probe(),
@@ -175,6 +265,7 @@ export class BgpMitigationService {
       lastDiscoveryAt: lastDiscoveryAt?.toISOString() ?? null,
       mitigationRt: this.baseConfig().mitigationRt,
       prefixLimit: this.baseConfig().prefixLimit,
+      snapshotHydration: this.snapshotHydration(),
       executor: this.deps.execution?.executor ?? 'MOCK',
       liveWriteEnabled: this.deps.execution?.liveWriteEnabled ?? false,
       allowedDeviceCount: this.deps.execution?.allowedDeviceIds.length ?? 0,
@@ -759,6 +850,7 @@ export class BgpMitigationService {
       mitigationNodes: row?.mitigationNodes ?? [],
       plannedNode: runtime?.plannedNode ?? null,
       readiness: row?.readiness ?? 'NOT_READY',
+      snapshotAvailable: row !== undefined,
       blockedReason: asBlockReason(row?.blockedReason ?? null),
       // Exclusao administrativa: vive no PROFILE (por target), nunca no cache
       // do discovery — por isso nao e sobrescrita pelo discovery.
@@ -812,6 +904,7 @@ export class BgpMitigationService {
       mitigationNodes: [...row.mitigationNodes],
       plannedNode: row.plannedNode,
       readiness: row.readiness,
+      snapshotAvailable: true,
       blockedReason: asBlockReason(row.blockedReason),
       mitigationExcluded: record?.mitigationExcluded ?? false,
       mitigationExclusionReason: record?.mitigationExclusionReason ?? null,

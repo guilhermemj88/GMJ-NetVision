@@ -24,6 +24,11 @@ interface SshClientOptions {
   exitMode?: 'quit' | 'return-quit';
   /** Timeout do shell depois da conexao (escrita com commit pode demorar). */
   shellTimeoutMs?: number;
+  /**
+   * Ocioso (ms) sem dados depois do comando para considerar a saida terminada
+   * quando o PROMPT nao volta a aparecer. O `quit` so e enviado depois disso.
+   */
+  commandIdleMs?: number;
 }
 
 export class SshClientImpl implements SshClient {
@@ -80,17 +85,90 @@ export class SshClientImpl implements SshClient {
         let stderr = '';
         let settled = false;
         let declinedInitialPasswordChange = false;
-        let commandsSent = false;
+        let exiting = false;
+        let idleTimer: ReturnType<typeof setTimeout> | null = null;
+        /** Indice do PROXIMO comando a enviar; 0 = nada enviado ainda. */
+        let commandIndex = 0;
+        /** Offset em stdout onde o comando atual comecou (echo + saida). */
+        let commandStartOffset = 0;
 
         const timeout = setTimeout(() => {
           if (settled) return;
           settled = true;
+          if (idleTimer) clearTimeout(idleTimer);
           stream.close();
           reject(new Error('SSH command timeout'));
         }, this.options.shellTimeoutMs ?? (this.options.readyTimeout ?? 8_000) + 7_000);
 
         const initialPasswordPrompt = /(initial password poses security risks|password needs to be changed|change now\?\s*\[y\/n\]\s*:)/i;
         const cliPrompt = /(?:^|[\r\n])\s*(?:<[^>\r\n]+>|\[[^\]\r\n]+\])\s*$/;
+        const quitSequence =
+          this.options.exitMode === 'return-quit'
+            ? 'return\r\nquit\r\n'
+            : this.options.contextCommand
+              ? 'quit\r\nquit\r\n'
+              : 'quit\r\n';
+        const idleMs = this.options.commandIdleMs ?? 2_500;
+
+        const clearIdle = (): void => {
+          if (idleTimer) {
+            clearTimeout(idleTimer);
+            idleTimer = null;
+          }
+        };
+
+        // O VRP ABORTA a saida que ainda esta sendo impressa quando recebe o
+        // PROXIMO comando. Por isso a lista e enviada UMA POR VEZ: cada comando
+        // so vai depois que o prompt do comando anterior volta.
+        const armIdle = (): void => {
+          clearIdle();
+          idleTimer = setTimeout(advance, idleMs);
+        };
+
+        // EXITING/DONE: so depois do ULTIMO comando terminar.
+        const sendQuit = (): void => {
+          if (exiting || settled) return;
+          exiting = true;
+          clearIdle();
+          stream.end(quitSequence);
+        };
+
+        /**
+         * Proximo passo: ainda ha comando -> envia SOMENTE ele e espera o
+         * prompt; acabaram -> envia o quitSequence.
+         */
+        const advance = (): void => {
+          if (settled || exiting) return;
+          clearIdle();
+          if (commandIndex >= commands.length) {
+            sendQuit();
+            return;
+          }
+          const command = commands[commandIndex] ?? '';
+          commandStartOffset = stdout.length;
+          stream.write(`${command}\r\n`);
+          commandIndex += 1;
+          armIdle();
+        };
+
+        /**
+         * O comando ATUAL terminou? Aceita apenas um prompt que apareca depois
+         * do echo do proprio comando (nunca um prompt antigo) e somente com o
+         * stdout recebido depois do envio dele.
+         */
+        const commandFinished = (): boolean => {
+          if (commandIndex === 0 || exiting) return false;
+          const current = commands[commandIndex - 1] ?? '';
+          const slice = stdout.slice(commandStartOffset);
+          if (current.length > 0 && !slice.includes(current)) return false;
+          return cliPrompt.test(slice);
+        };
+
+        const onCommandOutput = (): void => {
+          if (settled || exiting) return;
+          if (commandFinished()) advance();
+          else armIdle();
+        };
 
         const handleStdout = (chunk: string): void => {
           stdout += chunk;
@@ -101,16 +179,13 @@ export class SshClientImpl implements SshClient {
             return;
           }
 
-          if (!commandsSent && cliPrompt.test(stdout)) {
-            commandsSent = true;
-            const quitSequence =
-              this.options.exitMode === 'return-quit'
-                ? 'return\r\nquit\r\n'
-                : this.options.contextCommand
-                  ? 'quit\r\nquit\r\n'
-                  : 'quit\r\n';
-            stream.end(`${commands.join('\r\n')}\r\n${quitSequence}`);
+          // WAIT_INITIAL_PROMPT: nada foi enviado ainda.
+          if (commandIndex === 0) {
+            if (!exiting && cliPrompt.test(stdout)) advance();
+            return;
           }
+
+          onCommandOutput();
         };
 
         stream.setEncoding('utf8');
@@ -122,6 +197,7 @@ export class SshClientImpl implements SshClient {
           if (settled) return;
           settled = true;
           clearTimeout(timeout);
+          clearIdle();
           resolve({ stdout, stderr, exitCode: 0 });
         });
 

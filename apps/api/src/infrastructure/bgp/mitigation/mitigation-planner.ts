@@ -111,7 +111,8 @@ export function safetyBlocks(input: {
   if (!input.policyExists) return { blocked: true, reason: 'POLICY_NOT_FOUND' };
   const status = prefixStatus(input.prefixCount, input.prefixLimit);
   if (status === 'EXCEEDED') return { blocked: true, reason: 'PREFIX_LIMIT_EXCEEDED' };
-  if (status === 'UNKNOWN') return { blocked: true, reason: 'PREFIX_UNKNOWN' };
+  // UNKNOWN (contagem indisponível) é INFORMATIVO: NÃO bloqueia a mitigação.
+  // Somente o excesso de prefixos (EXCEEDED) bloqueia.
   return { blocked: false, reason: null };
 }
 

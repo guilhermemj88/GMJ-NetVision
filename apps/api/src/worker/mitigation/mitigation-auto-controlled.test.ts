@@ -135,6 +135,7 @@ async function scenario(mode: 'AUTO' | 'ALERT_ONLY') {
           interfaceId: mode === 'AUTO' ? 'if-bhnet' : ALERT_PROFILE_IFACE,
           customer: mode === 'AUTO' ? 'BHNET-CEASA' : 'OUTRO-CLIENTE',
           mode,
+          snapshotAvailable: true,
           readiness: 'READY',
           prefixStatus: 'SAFE',
           blockedReason: null,

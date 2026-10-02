@@ -103,6 +103,7 @@ const readyProfile: BgpMitigationProfileDto = {
   mitigationNodes: [],
   plannedNode: 1,
   readiness: 'READY',
+  snapshotAvailable: true,
   blockedReason: null,
   runtimeState: 'NORMAL',
   mode: 'ALERT_ONLY',
@@ -129,6 +130,7 @@ const candidateProfile: BgpMitigationProfileDto = {
   existingNodes: [],
   plannedNode: null,
   readiness: 'NOT_READY',
+  snapshotAvailable: true,
   blockedReason: 'POLICY_NOT_FOUND',
   runtimeState: null,
 };
@@ -870,5 +872,75 @@ describe('protecao contra mitigacao (exclusao administrativa do peer)', () => {
     expect(ativar.disabled).toBe(true);
     expect(retirar.disabled).toBe(false);
     expect(text()).toContain('EXCLUÍDO DA MITIGAÇÃO');
+  });
+});
+
+describe('prefixos UNKNOWN sao informativos na UI', () => {
+  it('mostra — / 100 + contagem indisponível sem rebaixar o badge', async () => {
+    api.discoverMitigationProfiles.mockResolvedValue({
+      ...discovery,
+      profiles: [{ ...readyProfile, prefixCount: null, prefixStatus: 'UNKNOWN' }],
+    });
+    await render(createElement(BgpMitigationWorkspace));
+    await chooseDevice('device-1');
+    await clickByText('DESCOBRIR CLIENTES');
+    await waitFor(() => text().includes('contagem indisponível'), 'dica de prefixo');
+
+    const row = [...container.querySelectorAll('tbody tr')].find((candidate) =>
+      (candidate.textContent ?? '').includes('HORIZONTE_IP'),
+    );
+    expect(row).toBeTruthy();
+    const rowText = row!.textContent ?? '';
+    expect(rowText).toContain('— / 100');
+    expect(rowText).toContain('contagem indisponível');
+    expect(rowText).toContain('APTO');
+    expect(rowText).not.toContain('NÃO APTO');
+  });
+});
+
+describe('snapshot de discovery ausente (pos-restart)', () => {
+  function hydration(state: 'PENDING' | 'RUNNING' | 'READY' | 'DEGRADED') {
+    return {
+      state,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      completedAt: state === 'PENDING' || state === 'RUNNING' ? null : '2026-01-01T00:00:05.000Z',
+      devicesTotal: 1,
+      devicesSucceeded: state === 'DEGRADED' ? 0 : 1,
+      devicesFailed: state === 'DEGRADED' ? 1 : 0,
+      lastError: state === 'DEGRADED' ? '1 device(s) sem snapshot de discovery' : null,
+    };
+  }
+
+  it('B) hydration RUNNING => badge REVALIDANDO (nunca NÃO APTO)', async () => {
+    api.getMitigationHealth.mockResolvedValue({ ...health, snapshotHydration: hydration('RUNNING') });
+    api.getMitigationProfiles.mockResolvedValue([
+      { ...readyProfile, snapshotAvailable: false, readiness: 'NOT_READY' },
+    ]);
+    await render(createElement(BgpMitigationWorkspace));
+    await waitFor(() => text().includes('REVALIDANDO'), 'badge REVALIDANDO');
+    expect(text()).toContain('REVALIDANDO');
+    expect(text()).not.toContain('NÃO APTO');
+  });
+
+  it('E) hydration DEGRADED => badge SEM SNAPSHOT (fail-closed)', async () => {
+    api.getMitigationHealth.mockResolvedValue({ ...health, snapshotHydration: hydration('DEGRADED') });
+    api.getMitigationProfiles.mockResolvedValue([
+      { ...readyProfile, snapshotAvailable: false, readiness: 'NOT_READY' },
+    ]);
+    await render(createElement(BgpMitigationWorkspace));
+    await waitFor(() => text().includes('SEM SNAPSHOT'), 'badge SEM SNAPSHOT');
+    expect(text()).toContain('SEM SNAPSHOT');
+    expect(text()).not.toContain('NÃO APTO');
+  });
+
+  it('D) hydration READY + snapshotAvailable=true => readiness normal (APTO)', async () => {
+    api.getMitigationHealth.mockResolvedValue({ ...health, snapshotHydration: hydration('READY') });
+    api.getMitigationProfiles.mockResolvedValue([
+      { ...readyProfile, snapshotAvailable: true, readiness: 'READY' },
+    ]);
+    await render(createElement(BgpMitigationWorkspace));
+    await waitFor(() => text().includes('APTO'), 'badge APTO');
+    expect(text()).not.toContain('REVALIDANDO');
+    expect(text()).not.toContain('SEM SNAPSHOT');
   });
 });

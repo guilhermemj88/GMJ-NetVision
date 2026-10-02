@@ -11714,6 +11714,14 @@ label > small {
   color: var(--amber);
   border-color: var(--amber);
 }
+.mitigation-badge.is-revalidando {
+  color: var(--muted);
+  border-color: var(--muted);
+}
+.mitigation-badge.is-sem-snapshot {
+  color: var(--red);
+  border-color: var(--red);
+}
 .mitigation-detail {
   border: 1px solid var(--line);
   border-radius: 10px;

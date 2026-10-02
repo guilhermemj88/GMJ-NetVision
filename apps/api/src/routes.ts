@@ -683,6 +683,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
               customer: dto.customer,
               mode: dto.mode,
               readiness: dto.readiness,
+              snapshotAvailable: dto.snapshotAvailable,
               prefixStatus: dto.prefixStatus,
               blockedReason: dto.blockedReason,
               mitigationExcluded: dto.mitigationExcluded === true,
@@ -808,6 +809,23 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       } else {
         app.log.error({ error: message }, 'falha inesperada ao sincronizar o catálogo físico');
       }
+    }
+    // Reidratação READ-ONLY dos snapshots de mitigação após restart: repovoa o
+    // cache de discovery (cliente/interface/prefixos/readiness) sem clique manual
+    // e sem qualquer escrita no Huawei. Não bloqueia o startup.
+    if (!config.DEMO_MODE) {
+      void mitigationService.rehydrateSnapshots().then(
+        (summary) =>
+          app.log.info(
+            { devices: summary.devices, succeeded: summary.succeeded, failed: summary.failed },
+            'reidratacao dos snapshots de mitigacao concluida',
+          ),
+        (error: unknown) =>
+          app.log.error(
+            { error: error instanceof Error ? error.message : String(error) },
+            'falha na reidratacao dos snapshots de mitigacao',
+          ),
+      );
     }
     if (config.DEMO_MODE) {
       await auth.ensureDefaultAdmin({

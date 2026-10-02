@@ -109,6 +109,21 @@ export function readinessLabel(value: MitigationReadiness | null | undefined): s
   return safeLabel(READINESS_LABEL, value);
 }
 
+/**
+ * Badge quando NAO existe avaliacao real (cache de discovery em memoria vazio,
+ * tipicamente pos-restart antes da reidratacao). `null` = usar readiness normal.
+ */
+export function mitigationSnapshotBadge(
+  snapshotAvailable: boolean | null | undefined,
+  hydrationState: 'PENDING' | 'RUNNING' | 'READY' | 'DEGRADED' | null | undefined,
+): { label: string; tone: 'info' | 'down' } | null {
+  if (snapshotAvailable !== false) return null;
+  if (hydrationState === 'PENDING' || hydrationState === 'RUNNING') {
+    return { label: 'REVALIDANDO', tone: 'info' };
+  }
+  return { label: 'SEM SNAPSHOT', tone: 'down' };
+}
+
 export function runtimeStateLabel(value: MitigationRuntimeState | null | undefined): string {
   return safeLabel(RUNTIME_STATE_LABEL, value);
 }

@@ -151,7 +151,6 @@ const BLOCK_PRIORITY: readonly MitigationBlockReason[] = [
   'INTERFACE_AMBIGUOUS',
   'READBACK_FAILED',
   'POLICY_NOT_FOUND',
-  'PREFIX_UNKNOWN',
   'PREFIX_LIMIT_EXCEEDED',
   'NO_SAFE_TEMPORARY_NODE',
 ];
@@ -170,7 +169,8 @@ function pickBlockReason(
 }
 
 // Maior contador de prefixos entre os peers da policy. Qualquer peer com contagem
-// desconhecida torna o resultado UNKNOWN - nunca mitigamos as cegas.
+// desconhecida torna o resultado UNKNOWN - INFORMATIVO (UI/observabilidade) que
+// NÃO bloqueia a mitigação; só o excesso (EXCEEDED) bloqueia.
 export function aggregatePrefixCount(values: readonly (bigint | null)[]): number | null {
   if (values.length === 0) return null;
   if (values.some((value) => value === null)) return null;
@@ -246,7 +246,11 @@ export class BgpMitigationDiscoveryService {
     const unresolved: Candidate[] = [];
     for (const candidate of candidates) {
       const policyName = policies
-        ? resolvePeerInboundPolicy(candidate.peer.peerAddress, policies)
+        ? resolvePeerInboundPolicy(
+            candidate.peer.peerAddress,
+            candidate.peer.addressFamily,
+            policies,
+          )
         : null;
       const interfaceId = candidate.peer.interfaceId;
       if (!policyName || !interfaceId) {
@@ -335,7 +339,6 @@ export class BgpMitigationDiscoveryService {
       const blockedReason = pickBlockReason([
         nodeMap === null ? 'READBACK_FAILED' : null,
         nodeMap !== null && policyNodes === null ? 'POLICY_NOT_FOUND' : null,
-        status === 'UNKNOWN' ? 'PREFIX_UNKNOWN' : null,
         status === 'EXCEEDED' ? 'PREFIX_LIMIT_EXCEEDED' : null,
         nodeDecision?.blocked ? 'NO_SAFE_TEMPORARY_NODE' : null,
       ]);

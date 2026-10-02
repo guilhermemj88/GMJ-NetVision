@@ -11,14 +11,21 @@ import type { BgpMitigationConfigSource } from './mitigation-config-source';
 
 const DEVICE = { id: 'device-1', interfaces: [] } as unknown as HostRecord;
 
-const BGP_CONFIG = [
-  'bgp 64500',
-  ' peer 10.200.200.106 route-policy PL-HORIZONTES_IPv4-IN import',
-  ' peer 10.200.200.10 route-policy PL-HORIZONTES_IPv4-IN import',
-  ' peer 10.200.200.30 route-policy PL-OUTRA_IPv4-IN import',
-  ' peer 10.200.200.40 route-policy PL-HORIZONTES_IPv4-IN export',
-  ' peer 10.200.200.50 route-policy PL-BUSY-IN import',
-].join('\n');
+/**
+ * Dump no formato REAL do VRP: a policy de import vive DENTRO de
+ * `ipv4-family unicast`, nunca no bloco global do `bgp`.
+ */
+function bgpV4(...peerLines: string[]): string {
+  return ['bgp 64500', ' ipv4-family unicast', ...peerLines.map((line) => ` ${line}`)].join('\n');
+}
+
+const BGP_CONFIG = bgpV4(
+  'peer 10.200.200.106 route-policy PL-HORIZONTES_IPv4-IN import',
+  'peer 10.200.200.10 route-policy PL-HORIZONTES_IPv4-IN import',
+  'peer 10.200.200.30 route-policy PL-OUTRA_IPv4-IN import',
+  'peer 10.200.200.40 route-policy PL-HORIZONTES_IPv4-IN export',
+  'peer 10.200.200.50 route-policy PL-BUSY-IN import',
+);
 
 const RP_CONFIG = [
   'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
@@ -302,7 +309,7 @@ describe('discovery de candidatos a mitigacao', () => {
     expect(result.profiles[0]?.blockedReason).toBe('PREFIX_LIMIT_EXCEEDED');
   });
 
-  it('12) prefix count desconhecido bloqueia como UNKNOWN', async () => {
+  it('12) prefix count desconhecido fica UNKNOWN informativo e NAO bloqueia', async () => {
     const harness = createHarness();
 
     const result = await discover(harness, [
@@ -310,8 +317,9 @@ describe('discovery de candidatos a mitigacao', () => {
     ]);
 
     expect(result.profiles[0]?.prefixStatus).toBe('UNKNOWN');
-    expect(result.profiles[0]?.readiness).toBe('NOT_READY');
-    expect(result.profiles[0]?.blockedReason).toBe('PREFIX_UNKNOWN');
+    expect(result.profiles[0]?.readiness).toBe('READY');
+    expect(result.profiles[0]?.blockedReason).toBeNull();
+    expect(result.blockedProfiles).toBe(0);
   });
 
   it('13) nodes 1 e 2 livres planejam o par BOGONS 1 + mitigacao 2', async () => {
@@ -326,7 +334,7 @@ describe('discovery de candidatos a mitigacao', () => {
 
   it('14) node 1 ocupado empurra o par para BOGONS 2 + mitigacao 3', async () => {
     const harness = createHarness({
-      bgp: 'peer 10.200.200.50 route-policy PL-PARCIAL-IN import',
+      bgp: bgpV4('peer 10.200.200.50 route-policy PL-PARCIAL-IN import'),
       routePolicy: [
         'route-policy PL-PARCIAL-IN permit node 1',
         ' if-match ip-prefix PREFIX8to24',
@@ -425,7 +433,7 @@ describe('discovery de candidatos a mitigacao', () => {
     expect(antigo?.policyName).toBe('PL-OUTRA_IPv4-IN');
 
     // O equipamento mudou a policy de import do mesmo peer.
-    harness.config.bgp = 'peer 10.200.200.30 route-policy PL-HORIZONTES_IPv4-IN import';
+    harness.config.bgp = bgpV4('peer 10.200.200.30 route-policy PL-HORIZONTES_IPv4-IN import');
 
     const result = await discover(harness, [makePeer({ peerAddress: '10.200.200.30' })]);
 
@@ -506,7 +514,7 @@ const RP_BUSY_IN = [
 /** PL-BUSY-IN ainda liberada: so o node normal 11 existe. */
 const RP_BUSY_FREE = 'route-policy PL-BUSY-IN permit node 11';
 
-const BGP_BUSY = 'peer 10.200.200.50 route-policy PL-BUSY-IN import';
+const BGP_BUSY = bgpV4('peer 10.200.200.50 route-policy PL-BUSY-IN import');
 
 interface RtFixture {
   bgp: string;
@@ -514,7 +522,10 @@ interface RtFixture {
 }
 
 function rtFixture(policyName: string, body: string[]): RtFixture {
-  return { bgp: `peer 10.200.200.10 route-policy ${policyName} import`, routePolicy: body.join('\n') };
+  return {
+    bgp: bgpV4(`peer 10.200.200.10 route-policy ${policyName} import`),
+    routePolicy: body.join('\n'),
+  };
 }
 
 describe('node de mitigacao e definido pela RT do motor (nao por qualquer RT)', () => {
@@ -629,12 +640,12 @@ describe('profile NOT_READY nunca e persistido como runtime NORMAL', () => {
     return { harness, profile, runtime };
   }
 
-  it('PREFIX_UNKNOWN', async () => {
+  it('PREFIX_UNKNOWN e informativo: runtime segue NORMAL', async () => {
     const { runtime } = await runtimeAfterSingleDiscovery(
       makePeer({ peerAddress: '10.200.200.106', cliReceivedPrefixes: null }),
     );
-    expect(runtime?.state).toBe('RECONCILIATION_REQUIRED');
-    expect(runtime?.state).not.toBe('NORMAL');
+    expect(runtime?.state).toBe('NORMAL');
+    expect(runtime?.state).not.toBe('RECONCILIATION_REQUIRED');
   });
 
   it('PREFIX_EXCEEDED', async () => {
@@ -704,7 +715,7 @@ describe('plannedNode nao sobrevive a condicao que deixou de existir', () => {
     const [antigo] = await harness.repository.listProfiles({ deviceId: DEVICE.id });
     expect((await harness.repository.getRuntime(antigo!.id))?.plannedNode).toBe(2);
 
-    harness.config.bgp = 'peer 10.200.200.30 route-policy PL-HORIZONTES_IPv4-IN import';
+    harness.config.bgp = bgpV4('peer 10.200.200.30 route-policy PL-HORIZONTES_IPv4-IN import');
     const result = await discover(harness, [makePeer({ peerAddress: '10.200.200.30' })]);
 
     expect(result.outOfScopeProfiles).toEqual(['PL-OUTRA_IPv4-IN']);
@@ -767,10 +778,10 @@ describe('retorno ao estado operacional apropriado', () => {
 
 
 describe('caso real HORIZONTES: policy compartilhada e familias separadas', () => {
-  const bgp = [
+  const bgp = bgpV4(
     'peer 10.200.200.106 route-policy PL-HORIZONTES_IPv4-IN import',
     'peer 10.200.200.10 route-policy PL-HORIZONTES_IPv4-IN import',
-  ].join('\n');
+  );
   const routePolicy = 'route-policy PL-HORIZONTES_IPv4-IN permit node 11';
 
   it('dois peers IPv4 em interfaces diferentes viram DOIS targets (nunca INTERFACE_AMBIGUOUS)', async () => {
@@ -892,5 +903,118 @@ describe('persistencia best effort no discovery', () => {
     });
     expect(result.createdProfiles).toBe(0);
     expect(result.warnings.join(' ')).toContain('nao foi possivel persistir');
+  });
+});
+
+describe('regra PREFIX_UNKNOWN informativo (casos A-H)', () => {
+  it('A) prefixCount=null + policy valida + nodes validos => READY', async () => {
+    const harness = createHarness();
+    const result = await discover(harness, [
+      makePeer({ peerAddress: '10.200.200.106', cliReceivedPrefixes: null }),
+    ]);
+    const profile = result.profiles[0]!;
+    expect(profile.policyName).toBe('PL-HORIZONTES_IPv4-IN');
+    expect(profile.prefixStatus).toBe('UNKNOWN');
+    expect(profile.readiness).toBe('READY');
+    expect(profile.blockedReason).toBeNull();
+    expect(profile.plannedNode).not.toBeNull();
+  });
+
+  it('B) peer DOWN + policy valida + interface correlacionada => READY', async () => {
+    const harness = createHarness();
+    const result = await discover(harness, [
+      makePeer({
+        peerAddress: '10.200.200.106',
+        stateCode: 1,
+        state: 'IDLE',
+        sessionUptimeSeconds: 0,
+      }),
+    ]);
+    const profile = result.profiles[0]!;
+    expect(profile.policyName).toBe('PL-HORIZONTES_IPv4-IN');
+    expect(profile.readiness).toBe('READY');
+    expect(profile.blockedReason).toBeNull();
+  });
+
+  it('C) prefixCount=0 => READY', async () => {
+    const harness = createHarness();
+    const result = await discover(harness, [
+      makePeer({ peerAddress: '10.200.200.106', cliReceivedPrefixes: 0n }),
+    ]);
+    const profile = result.profiles[0]!;
+    expect(profile.prefixStatus).toBe('SAFE');
+    expect(profile.readiness).toBe('READY');
+    expect(profile.blockedReason).toBeNull();
+  });
+
+  it('D) prefixCount=7 => READY', async () => {
+    const harness = createHarness();
+    const result = await discover(harness, [
+      makePeer({ peerAddress: '10.200.200.106', cliReceivedPrefixes: 7n }),
+    ]);
+    const profile = result.profiles[0]!;
+    expect(profile.prefixStatus).toBe('SAFE');
+    expect(profile.readiness).toBe('READY');
+    expect(profile.blockedReason).toBeNull();
+  });
+
+  it('E) prefixCount=101 com limit 100 => NOT_READY/PREFIX_LIMIT_EXCEEDED', async () => {
+    const harness = createHarness();
+    const result = await discover(harness, [
+      makePeer({ peerAddress: '10.200.200.106', cliReceivedPrefixes: 101n }),
+    ]);
+    const profile = result.profiles[0]!;
+    expect(profile.prefixStatus).toBe('EXCEEDED');
+    expect(profile.readiness).toBe('NOT_READY');
+    expect(profile.blockedReason).toBe('PREFIX_LIMIT_EXCEEDED');
+  });
+
+  it('F) policy inexistente => NOT_READY', async () => {
+    const harness = createHarness();
+    const result = await discover(harness, [
+      makePeer({ peerAddress: '10.200.200.99' }),
+    ]);
+    const profile = result.profiles[0]!;
+    expect(profile.policyName).toBeNull();
+    expect(profile.readiness).toBe('NOT_READY');
+    expect(profile.blockedReason).toBe('POLICY_NOT_FOUND');
+  });
+
+  it('G) interface ambigua => continua bloqueado (nunca READY)', async () => {
+    const harness = createHarness();
+    const result = await discover(harness, [
+      makePeer({
+        peerAddress: '10.200.200.106',
+        interfaceId: null,
+        interfaceName: null,
+        interfaceAlias: null,
+        interfaceDescription: null,
+        correlationStatus: 'AMBIGUOUS',
+      }),
+    ]);
+    expect(result.ambiguousPeers).toEqual(['10.200.200.106']);
+    expect(result.profiles.some((profile) => profile.readiness === 'READY')).toBe(false);
+    expect(result.createdProfiles).toBe(0);
+  });
+
+  it('H) sem nodes seguros => NOT_READY/NO_SAFE_TEMPORARY_NODE', async () => {
+    const harness = createHarness({ bgp: BGP_BUSY, routePolicy: RP_BUSY_IN });
+    const result = await discover(harness, [makePeer({ peerAddress: '10.200.200.50' })]);
+    const profile = result.profiles[0]!;
+    expect(profile.readiness).toBe('NOT_READY');
+    expect(profile.blockedReason).toBe('NO_SAFE_TEMPORARY_NODE');
+  });
+
+  it('peer nao correlacionado permanece bloqueado (nao confundir com DOWN)', async () => {
+    const harness = createHarness();
+    const result = await discover(harness, [
+      makePeer({
+        peerAddress: '10.200.200.106',
+        interfaceId: null,
+        correlationStatus: 'NO_ROUTE',
+      }),
+    ]);
+    expect(result.createdProfiles).toBe(0);
+    expect(result.profiles).toHaveLength(0);
   });
 });
