@@ -104,9 +104,12 @@ afterEach(async () => {
   root = null;
   if (container) container.remove();
   container = null;
+  vi.unstubAllEnvs();
 });
 
 beforeEach(() => {
+  // Esta suíte cobre o ambiente do projeto IMPLANTAR: mitigação DDoS exposta.
+  vi.stubEnv('NEXT_PUBLIC_DDOS_MITIGATION_UI', 'true');
   vi.clearAllMocks();
   api.getBgpPeerHistory.mockResolvedValue({ peerId: 'p1', samples: [], events: [] });
   api.getHistory.mockResolvedValue([]);
@@ -221,5 +224,52 @@ describe('exclusao preventiva por peer na tela de BGP', () => {
     );
 
     expect(el.textContent).toContain('🛡 Excluído da mitigação');
+  });
+});
+
+/**
+ * No NetVision geral (`NEXT_PUBLIC_DDOS_MITIGATION_UI` ausente/false) a
+ * mitigação não é exposta: nem o editor operacional no detalhe do peer, nem o
+ * badge da lista. O BGP normal (peer detail e tabela) continua funcionando.
+ */
+describe('mitigação oculta no NetVision geral', () => {
+  beforeEach(() => {
+    vi.unstubAllEnvs();
+    vi.clearAllMocks();
+    api.getBgpPeerHistory.mockResolvedValue({ peerId: 'p1', samples: [], events: [] });
+    api.getHistory.mockResolvedValue([]);
+    api.setBgpPeerAdminState.mockResolvedValue({ success: true, message: 'ok' });
+  });
+
+  it('detalhe do peer não mostra o bloco operacional de mitigação', async () => {
+    const el = await render(
+      createElement(BgpPeerDetail, { peer: peer(), period: '1h', onClose: () => {} }),
+    );
+    expect(el.textContent).not.toContain('PROTEÇÃO CONTRA MITIGAÇÃO');
+    expect(el.textContent).not.toContain('Nunca mitigar este peer');
+    // o restante do detalhe do peer continua presente
+    expect(el.textContent).toContain('IP-SEABORN');
+  });
+
+  it('lista de peers não mostra o badge de exclusão da mitigação', async () => {
+    const device: BgpDashboardDevice = {
+      id: 'ne8000-1',
+      hostname: 'NE8000-1',
+      displayName: 'NE-8K POP CENTRO',
+      bgpMonitoringEnabled: true,
+      peers: [
+        peer({
+          mitigationExcluded: true,
+          mitigationExclusionReason: 'TRANSIT',
+          mitigationExclusionNote: 'Upstream IP-SEABORN',
+        }),
+      ],
+    };
+    const el = await render(
+      createElement(BgpPeerTable, { devices: [device], onSelectPeer: () => {} }),
+    );
+    expect(el.textContent).not.toContain('Excluído da mitigação');
+    // a tabela de peers continua renderizando normalmente
+    expect(el.textContent).toContain('IP-SEABORN');
   });
 });

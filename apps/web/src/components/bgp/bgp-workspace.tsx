@@ -27,6 +27,7 @@ import { BgpManageDevices } from './bgp-manage-devices';
 import { BgpPeerDetail } from './bgp-peer-detail';
 import { BgpPeerTable } from './bgp-peer-table';
 import { BgpMitigationWorkspace } from './bgp-mitigation-workspace';
+import { isDdosMitigationUiEnabled } from '@/lib/feature-flags';
 import { BgpSummary } from './bgp-summary';
 import { useMapStore } from '@/store/map-store';
 
@@ -417,9 +418,20 @@ function BgpSessionsPanel() {
 
 type BgpTab = 'SESSOES' | 'MITIGACAO';
 
-/** Workspace BGP com as subabas SESSOES (atual) e MITIGACAO DDoS (nova). */
+/**
+ * Workspace BGP com as subabas SESSOES (atual) e MITIGACAO DDoS (opcional).
+ *
+ * A aba de mitigação é uma entrada operacional usada apenas no ambiente do
+ * projeto IMPLANTAR: ela só existe quando `NEXT_PUBLIC_DDOS_MITIGATION_UI`
+ * vale exatamente `true`. Desligada, o workspace renderiza **apenas** SESSÕES —
+ * sem aba vazia e sem caminho de navegação para o `BgpMitigationWorkspace`,
+ * que continua no repositório e pode ser religado por flag.
+ */
 export function BgpWorkspace() {
+  const mitigationEnabled = isDdosMitigationUiEnabled();
   const [tab, setTab] = useState<BgpTab>('SESSOES');
+  /** Sem a flag, o workspace nunca sai de SESSÕES, mesmo que o estado mude. */
+  const activeTab: BgpTab = mitigationEnabled ? tab : 'SESSOES';
   return (
     <div className="bgp-workspace">
       <nav className="bgp-tabs" role="tablist" aria-label="Workspace BGP">
@@ -427,25 +439,27 @@ export function BgpWorkspace() {
           type="button"
           role="tab"
           id="bgp-tab-sessions"
-          aria-selected={tab === 'SESSOES'}
-          className={`bgp-tab${tab === 'SESSOES' ? ' is-active' : ''}`}
+          aria-selected={activeTab === 'SESSOES'}
+          className={`bgp-tab${activeTab === 'SESSOES' ? ' is-active' : ''}`}
           onClick={() => setTab('SESSOES')}
         >
           SESSÕES
         </button>
-        <button
-          type="button"
-          role="tab"
-          id="bgp-tab-mitigation"
-          aria-selected={tab === 'MITIGACAO'}
-          className={`bgp-tab${tab === 'MITIGACAO' ? ' is-active' : ''}`}
-          onClick={() => setTab('MITIGACAO')}
-        >
-          MITIGAÇÃO DDoS
-        </button>
+        {mitigationEnabled ? (
+          <button
+            type="button"
+            role="tab"
+            id="bgp-tab-mitigation"
+            aria-selected={activeTab === 'MITIGACAO'}
+            className={`bgp-tab${activeTab === 'MITIGACAO' ? ' is-active' : ''}`}
+            onClick={() => setTab('MITIGACAO')}
+          >
+            MITIGAÇÃO DDoS
+          </button>
+        ) : null}
       </nav>
       <div className="bgp-tab-panel">
-        {tab === 'SESSOES' ? <BgpSessionsPanel /> : <BgpMitigationWorkspace />}
+        {activeTab === 'SESSOES' ? <BgpSessionsPanel /> : <BgpMitigationWorkspace />}
       </div>
     </div>
   );

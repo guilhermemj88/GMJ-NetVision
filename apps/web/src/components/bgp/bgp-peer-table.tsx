@@ -6,6 +6,7 @@ import { RefreshCw } from 'lucide-react';
 import { formatBgpTraffic, formatBgpUptime, formatRouteCount } from '@/lib/bgp-format';
 import { formatRelative } from '@/lib/bgp-format';
 import { nextSort, sortBgpPeers, type BgpSort, type BgpSortKey } from '@/lib/bgp-sort';
+import { isDdosMitigationUiEnabled } from '@/lib/feature-flags';
 
 function stateLabel(peer: BgpDashboardPeer): string {
   return peer.established ? 'UP' : peer.state === 'UNKNOWN' ? 'DOWN' : peer.state;
@@ -194,7 +195,7 @@ export function BgpPeerTable({
                   <td data-label="Peer">
                     <strong>{peer.displayName}</strong>
                     <small>{peer.peerAddress}</small>
-                    {peer.mitigationExcluded ? (
+                    {isDdosMitigationUiEnabled() && peer.mitigationExcluded ? (
                       <span
                         className="mitigation-excluded-badge"
                         title="Excluído da mitigação (nunca mitigar este peer)"

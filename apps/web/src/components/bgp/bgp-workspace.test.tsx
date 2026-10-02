@@ -659,3 +659,73 @@ describe('WorkspaceView store', () => {
     expect(useMapStore.getState().view).toBe('BGP');
   });
 });
+
+/**
+ * A aba MITIGAÇÃO DDoS é uma entrada OPERACIONAL do projeto IMPLANTAR.
+ * No NetVision geral (`NEXT_PUBLIC_DDOS_MITIGATION_UI` ausente/false) ela não
+ * pode existir: somente SESSÕES aparece, sem aba vazia e sem caminho de
+ * navegação para o `BgpMitigationWorkspace`.
+ */
+describe('BgpWorkspace · exposição da mitigação DDoS', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let client: QueryClient;
+
+  beforeEach(async () => {
+    vi.unstubAllEnvs();
+    vi.clearAllMocks();
+    api.getBgpDashboard.mockResolvedValue(dashboard);
+    api.getBgpPeerHistory.mockResolvedValue({ peerId: 'p1', samples: [], events: [] });
+    api.getBgpPeer.mockResolvedValue(null);
+    api.getBgpAlerts.mockResolvedValue({ active: [], resolved: [] });
+    api.getHistory.mockResolvedValue([]);
+    api.getHosts.mockResolvedValue([]);
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    await act(async () => {
+      root.render(
+        createElement(QueryClientProvider, { client }, createElement(BgpWorkspace)),
+      );
+    });
+    await settle();
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    client.clear();
+    container.remove();
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it('sem a flag: só SESSÕES aparece e a mitigação não tem aba nem workspace', () => {
+    const tabs = [...container.querySelectorAll('[role="tab"]')].map((tab) =>
+      tab.textContent?.trim(),
+    );
+    expect(tabs).toEqual(['SESSÕES']);
+    expect(container.querySelector('#bgp-tab-mitigation')).toBeNull();
+    expect(container.textContent).not.toContain('MITIGAÇÃO DDoS');
+    // BGP normal continua intacto
+    expect(container.textContent).toContain('Gerenciar equipamentos');
+    expect(container.textContent).not.toContain('MOTOR EM MODO DE SIMULAÇÃO');
+  });
+
+  it('com a flag ligada: a aba MITIGAÇÃO DDoS volta a aparecer', async () => {
+    vi.stubEnv('NEXT_PUBLIC_DDOS_MITIGATION_UI', 'true');
+    // re-render com a flag aplicada
+    await act(async () => {
+      root.render(
+        createElement(QueryClientProvider, { client }, createElement(BgpWorkspace)),
+      );
+    });
+    const tabs = [...container.querySelectorAll('[role="tab"]')].map((tab) =>
+      tab.textContent?.trim(),
+    );
+    expect(tabs).toEqual(['SESSÕES', 'MITIGAÇÃO DDoS']);
+    expect(container.querySelector('#bgp-tab-mitigation')).not.toBeNull();
+  });
+});

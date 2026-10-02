@@ -24,6 +24,7 @@ import {
 import { getBgpPeerHistory, getHistory, setBgpPeerAdminState } from '@/lib/api';
 import { setBgpPeerMitigationExclusion } from '@/lib/mitigation-api';
 import { EXCLUSION_REASON_OPTIONS, exclusionReasonLabel } from '@/lib/mitigation-labels';
+import { isDdosMitigationUiEnabled } from '@/lib/feature-flags';
 import type { MitigationExclusionReason } from '@gmj/shared';
 import { formatBgpTraffic, formatBgpUptime, formatRouteCount } from '@/lib/bgp-format';
 import { BgpRouteSparkline } from './bgp-route-sparkline';
@@ -327,8 +328,14 @@ export function BgpPeerDetail({
             )}
           </section>
 
-          {/* Camada PREVENTIVA: vale mesmo sem profile DDoS para este peer. */}
-          <PeerMitigationExclusionEditor key={peer.id} peer={peer} />
+          {/*
+           * Camada PREVENTIVA: entrada OPERACIONAL da mitigação (vale mesmo sem
+           * profile DDoS para este peer). Só aparece com a flag ligada — no
+           * NetVision geral a mitigação não é exposta na interface.
+           */}
+          {isDdosMitigationUiEnabled() ? (
+            <PeerMitigationExclusionEditor key={peer.id} peer={peer} />
+          ) : null}
 
           <section className="bgp-detail__grid">
             <div className="bgp-detail__facts">

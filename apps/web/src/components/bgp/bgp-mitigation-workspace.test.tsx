@@ -357,6 +357,8 @@ async function chooseDevice(value: string): Promise<void> {
 }
 
 beforeEach(() => {
+  // Esta suíte cobre o ambiente do projeto IMPLANTAR: mitigação DDoS exposta.
+  vi.stubEnv('NEXT_PUBLIC_DDOS_MITIGATION_UI', 'true');
   api.getMitigationHealth.mockResolvedValue(health);
   api.getMitigationProfiles.mockResolvedValue([]);
   api.getMitigationProfile.mockResolvedValue(readyProfile);
@@ -380,6 +382,7 @@ afterEach(async () => {
   });
   container.remove();
   vi.clearAllMocks();
+  vi.unstubAllEnvs();
 });
 
 describe('subabas do workspace BGP', () => {
