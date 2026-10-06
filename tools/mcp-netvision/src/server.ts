@@ -7,6 +7,18 @@ import { createServer } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
+import {
+  ZabbixError,
+  resolveZabbixConfig,
+  type ZabbixConfig,
+  zabbixGetHost,
+  zabbixGetItemHistory,
+  zabbixGetProblems,
+  zabbixGetTriggers,
+  zabbixListHosts,
+  zabbixListItems,
+  zabbixStatus,
+} from "./zabbix.js";
 
 const execFileAsync = promisify(execFile);
 const currentFile = fileURLToPath(import.meta.url);
@@ -33,6 +45,7 @@ const SAFE_ENV_KEYS = [
   "SNMP_POLL_INTERVAL_SECONDS",
   "ZABBIX_URL",
   "ZABBIX_TOKEN",
+  "ZABBIX_AUTH_MODE",
   "NETVISION_MCP_USERNAME",
   "NETVISION_MCP_PASSWORD",
 ] as const;
@@ -494,6 +507,127 @@ export function createNetVisionMcpServer() {
     const host = result.body as Record<string, unknown>;
     return textResult(JSON.stringify({ hostId, hostname: host.hostname ?? null, bgpMonitoringEnabled: host.bgpMonitoringEnabled ?? enabled }, null, 2));
   });
+
+  /**
+   * Tools Zabbix READ-ONLY: a configuração (URL/token/modo) vem SEMPRE do
+   * runtimeEnv() do MCP — nunca de argumento de tool — e o token nunca é
+   * devolvido: `sanitize` + normalizadores só expõem campos conhecidos.
+   */
+  async function zabbixTool(run: (config: ZabbixConfig | null) => Promise<unknown>): Promise<string> {
+    try {
+      const { env } = await runtimeEnv();
+      return JSON.stringify(sanitize(await run(resolveZabbixConfig(env))), null, 2);
+    } catch (error) {
+      const message =
+        error instanceof ZabbixError
+          ? error.message
+          : error instanceof Error
+            ? `Falha segura na tool Zabbix: ${error.name}`
+            : "Falha segura na tool Zabbix";
+      return JSON.stringify({ ok: false, error: message }, null, 2);
+    }
+  }
+
+  server.registerTool(
+    "zabbix_status",
+    {
+      title: "Zabbix Status",
+      description:
+        "Validate the Zabbix connection AND token: runs apiinfo.version (no auth) and one small authenticated read-only call (host.get countOutput). Returns version, authMode and the number of visible hosts — never the token or the full URL.",
+      inputSchema: z.object({}),
+    },
+    async () => textResult(await zabbixTool((config) => zabbixStatus(config))),
+  );
+
+  server.registerTool(
+    "zabbix_list_hosts",
+    {
+      title: "List Zabbix Hosts",
+      description:
+        "List hosts directly from the Zabbix API in compact form (hostId, hostname, displayName, status, management IP, main interface, vendor/model). Read-only; supports an optional name search and limit (max 200).",
+      inputSchema: z.object({
+        q: z.string().optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      }),
+    },
+    async ({ q, limit }) => textResult(await zabbixTool((config) => zabbixListHosts(config, { q, limit }))),
+  );
+
+  server.registerTool(
+    "zabbix_get_host",
+    {
+      title: "Get Zabbix Host",
+      description:
+        "Return read-only details of one Zabbix host: identification, interfaces, inventory, groups and linked templates. Never returns macros or credentials.",
+      inputSchema: z.object({ hostId: z.string().min(1) }),
+    },
+    async ({ hostId }) => textResult(await zabbixTool((config) => zabbixGetHost(config, { hostId }))),
+  );
+
+  server.registerTool(
+    "zabbix_list_items",
+    {
+      title: "List Zabbix Items",
+      description:
+        "List items of one Zabbix host (itemId, name, key, last value/clock, units, value type, status). Read-only; optional search on name/key and limit (max 200).",
+      inputSchema: z.object({
+        hostId: z.string().min(1),
+        q: z.string().optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      }),
+    },
+    async ({ hostId, q, limit }) =>
+      textResult(await zabbixTool((config) => zabbixListItems(config, { hostId, q, limit }))),
+  );
+
+  server.registerTool(
+    "zabbix_get_item_history",
+    {
+      title: "Get Zabbix Item History",
+      description:
+        "Return history samples (timestamp + value, ascending) of one Zabbix item. Discovers the item value_type first and uses the matching history parameter — never assumes numeric-unsigned. Read-only; limit is protected.",
+      inputSchema: z.object({
+        itemId: z.string().min(1),
+        period: z.enum(["15m", "1h", "6h", "24h", "7d"]).default("1h"),
+        limit: z.number().int().min(1).max(200).optional(),
+      }),
+    },
+    async ({ itemId, period, limit }) =>
+      textResult(await zabbixTool((config) => zabbixGetItemHistory(config, { itemId, period, limit }))),
+  );
+
+  server.registerTool(
+    "zabbix_get_problems",
+    {
+      title: "Get Zabbix Problems",
+      description:
+        "List current (or recent) Zabbix problems in compact form: eventId, clock, name, severity, acknowledged, suppressed and tags. Read-only.",
+      inputSchema: z.object({
+        hostId: z.string().optional(),
+        recent: z.boolean().optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      }),
+    },
+    async ({ hostId, recent, limit }) =>
+      textResult(await zabbixTool((config) => zabbixGetProblems(config, { hostId, recent, limit }))),
+  );
+
+  server.registerTool(
+    "zabbix_get_triggers",
+    {
+      title: "Get Zabbix Triggers",
+      description:
+        "List Zabbix triggers (triggerId, description, priority, status, value, lastChange, related hosts) with optional host/search filters and onlyProblem. Read-only.",
+      inputSchema: z.object({
+        hostId: z.string().optional(),
+        q: z.string().optional(),
+        onlyProblem: z.boolean().optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      }),
+    },
+    async ({ hostId, q, onlyProblem, limit }) =>
+      textResult(await zabbixTool((config) => zabbixGetTriggers(config, { hostId, q, onlyProblem, limit }))),
+  );
 
   return server;
 }
