@@ -143,3 +143,27 @@ test("no destructive BGP administrative tool is exposed through MCP", () => {
     assert.doesNotMatch(name, /disable|enable|admin_state|ignore|shutdown/i, `unexpected tool ${name}`);
   }
 });
+
+test("Zabbix MCP tools are registered read-only: all seven present, no write/raw tool", () => {
+  const server = createNetVisionMcpServer();
+  const registered = server as unknown as { _registeredTools: Record<string, unknown> };
+  const names = Object.keys(registered._registeredTools);
+  for (const name of [
+    "zabbix_status",
+    "zabbix_list_hosts",
+    "zabbix_get_host",
+    "zabbix_list_items",
+    "zabbix_get_item_history",
+    "zabbix_get_problems",
+    "zabbix_get_triggers",
+  ]) {
+    assert.ok(names.includes(name), `missing tool ${name}`);
+  }
+  for (const name of names.filter((entry) => entry.startsWith("zabbix_"))) {
+    assert.doesNotMatch(
+      name,
+      /create|update|delete|execute|ack|maintenance|action|user|token|raw|_call|_request|_invoke/i,
+      `unexpected write/raw Zabbix tool: ${name}`,
+    );
+  }
+});
