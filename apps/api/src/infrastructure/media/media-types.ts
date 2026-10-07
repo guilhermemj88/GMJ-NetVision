@@ -10,8 +10,12 @@
 export const MEDIA_INTEGRATION_TYPES = ['WEBHOOK'] as const;
 export type MediaIntegrationType = (typeof MEDIA_INTEGRATION_TYPES)[number];
 
-export const MEDIA_INTEGRATION_PURPOSES = ['BGP_MITIGATION'] as const;
+export const MEDIA_INTEGRATION_PURPOSES = ['BGP_MITIGATION', 'NETWORK_ALARMS'] as const;
 export type MediaIntegrationPurpose = (typeof MEDIA_INTEGRATION_PURPOSES)[number];
+
+export const MEDIA_SHARED_PURPOSE: Partial<Record<MediaIntegrationPurpose, MediaIntegrationPurpose>> = {
+  NETWORK_ALARMS: 'BGP_MITIGATION',
+};
 
 export const MEDIA_DIRECTIONS = ['OUTBOUND', 'INBOUND'] as const;
 export type MediaDeliveryDirection = (typeof MEDIA_DIRECTIONS)[number];
@@ -152,6 +156,10 @@ export interface ResolvedMediaChannel {
   enabled: boolean;
   url: string | null;
   token: string | null;
+  /** Purpose que REALMENTE forneceu a configuracao (pode ser o compartilhado). */
+  resolvedPurpose?: MediaIntegrationPurpose | undefined;
+  /** true quando a configuracao veio do canal compartilhado (ex.: BGP->ALARMES). */
+  shared?: boolean | undefined;
 }
 
 /**
@@ -210,6 +218,10 @@ export interface MediaIntegrationListDto {
   repositoryKind: 'DATABASE' | 'MEMORY';
   /** A migration da camada de midias esta aplicada? */
   migrationReady: boolean;
+  /** Canal que realmente entrega este purpose (pode ser o compartilhado). */
+  resolvedPurpose: MediaIntegrationPurpose | null;
+  /** true quando o canal efetivo e o compartilhado (ex.: BGP para alarmes). */
+  shared: boolean;
   legacyEnv: {
     outboundUrlConfigured: boolean;
     outboundTokenConfigured: boolean;

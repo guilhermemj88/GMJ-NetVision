@@ -36,6 +36,8 @@ function repository(overrides: Partial<AlarmRepository> = {}): RepositoryMocks {
     listOpenMetricAlarms: vi.fn().mockResolvedValue([]),
     resolveMetricAlarm: vi.fn().mockResolvedValue(false),
     resolveOpenMetricAlarmsForRule: vi.fn().mockResolvedValue(0),
+    markAlarmNotified: vi.fn().mockResolvedValue(undefined),
+    markAlarmResolutionNotified: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
   return {

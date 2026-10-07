@@ -16,11 +16,13 @@ export type MediaOperationalStatus =
 
 export type MediaConfigSource = 'DATABASE' | 'ENV' | 'MEMORY' | 'NONE';
 
+export type MediaIntegrationPurpose = 'BGP_MITIGATION' | 'NETWORK_ALARMS';
+
 export interface MediaIntegrationDto {
   id: string;
   name: string;
   type: 'WEBHOOK';
-  purpose: 'BGP_MITIGATION';
+  purpose: MediaIntegrationPurpose;
   enabled: boolean;
   configSource: MediaConfigSource;
   status: MediaOperationalStatus;
@@ -50,6 +52,10 @@ export interface MediaIntegrationDto {
 export interface MediaIntegrationsOverview {
   repositoryKind: 'DATABASE' | 'MEMORY';
   migrationReady: boolean;
+  /** Canal que realmente entrega este purpose (pode ser o compartilhado). */
+  resolvedPurpose: MediaIntegrationPurpose | null;
+  /** true quando o canal efetivo é o compartilhado (ex.: BGP para alarmes). */
+  shared: boolean;
   legacyEnv: {
     outboundUrlConfigured: boolean;
     outboundTokenConfigured: boolean;
@@ -101,6 +107,14 @@ export interface MediaSummary {
 
 export function getMediaIntegrations(): Promise<MediaIntegrationsOverview> {
   return request<MediaIntegrationsOverview>('/api/media/integrations');
+}
+
+/** Overview de outro purpose (ex.: NETWORK_ALARMS informa o canal compartilhado). */
+export function getMediaIntegrationsByPurpose(
+  purpose: MediaIntegrationPurpose,
+): Promise<MediaIntegrationsOverview> {
+  const params = new URLSearchParams({ purpose });
+  return request<MediaIntegrationsOverview>(`/api/media/integrations?${params.toString()}`);
 }
 
 export function getMediaSummary(): Promise<MediaSummary> {

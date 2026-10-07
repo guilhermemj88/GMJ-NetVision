@@ -51,6 +51,10 @@ const logsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+const overviewQuery = z.object({
+  purpose: z.enum(MEDIA_INTEGRATION_PURPOSES).default('BGP_MITIGATION'),
+});
+
 export interface MediaRouteDependencies {
   media: MediaIntegrationService;
   currentUser?: (request: FastifyRequest) => Promise<AuthUser | null>;
@@ -90,7 +94,8 @@ export function registerMediaRoutes(
 
   app.get('/api/media/integrations', async (request, reply) => {
     if (!(await requireUser(request, reply))) return undefined;
-    return media.overview();
+    const query = overviewQuery.parse(request.query ?? {});
+    return media.overview(query.purpose);
   });
 
   app.get('/api/media/integrations/:id', async (request, reply) => {

@@ -173,6 +173,92 @@ describe('resolução de configuração (banco vence ENV)', () => {
   });
 });
 
+describe('canal compartilhado dos alarmes (NETWORK_ALARMS)', () => {
+  it('prioriza a integração explícita de NETWORK_ALARMS', async () => {
+    const { service } = buildService({ env: { outboundUrl: 'https://env/webhook' } });
+    await service.create({
+      name: 'bgp',
+      purpose: 'BGP_MITIGATION',
+      outboundUrl: 'https://bgp/webhook',
+      outboundToken: 'bgp-token',
+    });
+    await service.create({
+      name: 'alarmes',
+      purpose: 'NETWORK_ALARMS',
+      outboundUrl: 'https://alarmes/webhook',
+      outboundToken: 'alarmes-token',
+    });
+    const channel = await service.resolveOutbound('NETWORK_ALARMS', 'BGP_MITIGATION');
+    expect(channel).toMatchObject({
+      url: 'https://alarmes/webhook',
+      token: 'alarmes-token',
+      shared: false,
+      resolvedPurpose: 'NETWORK_ALARMS',
+    });
+  });
+
+  it('reutiliza o canal do BGP_MITIGATION sem copiar o token para outro registro', async () => {
+    const { service, repository } = buildService();
+    await service.create({
+      name: 'bgp',
+      purpose: 'BGP_MITIGATION',
+      outboundUrl: 'https://bgp/webhook',
+      outboundToken: 'bgp-token',
+    });
+    const channel = await service.resolveOutbound('NETWORK_ALARMS', 'BGP_MITIGATION');
+    expect(channel).toMatchObject({
+      url: 'https://bgp/webhook',
+      token: 'bgp-token',
+      shared: true,
+      resolvedPurpose: 'BGP_MITIGATION',
+    });
+    expect(await repository.findByPurpose('NETWORK_ALARMS')).toBeNull();
+  });
+
+  it('cai para o ENV quando nenhum canal persistido existe', async () => {
+    const { service } = buildService({
+      env: { outboundUrl: 'https://env/webhook', outboundToken: 'env-token' },
+    });
+    const channel = await service.resolveOutbound('NETWORK_ALARMS', 'BGP_MITIGATION');
+    expect(channel).toMatchObject({ source: 'ENV', url: 'https://env/webhook', shared: false });
+  });
+
+  it('fica desligado (SKIPPED) sem banco, sem canal compartilhado e sem ENV', async () => {
+    const { service } = buildService();
+    const channel = await service.resolveOutbound('NETWORK_ALARMS', 'BGP_MITIGATION');
+    expect(channel.enabled).toBe(false);
+    expect(channel.url).toBeNull();
+  });
+
+  it('o overview do purpose informa quando o canal efetivo é o compartilhado', async () => {
+    const { service } = buildService();
+    await service.create({
+      name: 'bgp',
+      purpose: 'BGP_MITIGATION',
+      outboundUrl: 'https://bgp/webhook',
+      outboundToken: 'bgp-token',
+    });
+    const shared = await service.overview('NETWORK_ALARMS');
+    expect(shared).toMatchObject({
+      resolvedPurpose: 'BGP_MITIGATION',
+      shared: true,
+      integration: null,
+    });
+
+    await service.create({
+      name: 'alarmes',
+      purpose: 'NETWORK_ALARMS',
+      outboundUrl: 'https://alarmes/webhook',
+    });
+    const explicit = await service.overview('NETWORK_ALARMS');
+    expect(explicit).toMatchObject({
+      resolvedPurpose: 'NETWORK_ALARMS',
+      shared: false,
+    });
+    expect(explicit.integration).toMatchObject({ purpose: 'NETWORK_ALARMS' });
+  });
+});
+
 describe('rotação do token de entrada', () => {
   it('o token anterior deixa de valer depois da rotação', async () => {
     const { service } = buildService();

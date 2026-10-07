@@ -12,6 +12,7 @@ import type {
   MediaOperationalStatus,
   ResolvedMediaChannel,
 } from './media-types';
+import { MEDIA_SHARED_PURPOSE } from './media-types';
 import {
   generateIntegrationToken,
   safeDestination,
@@ -94,9 +95,12 @@ export class MediaIntegrationService implements MediaChannelPort {
   async overview(purpose: MediaIntegrationPurpose = 'BGP_MITIGATION'): Promise<MediaIntegrationListDto> {
     const migrationReady = await this.isMigrationReady();
     const integration = await this.read(() => this.deps.repository.findByPurpose(purpose), null);
+    const channel = await this.resolveOutbound(purpose, MEDIA_SHARED_PURPOSE[purpose]);
     return {
       repositoryKind: this.deps.repositoryKind,
       migrationReady,
+      resolvedPurpose: channel.enabled ? channel.resolvedPurpose ?? purpose : null,
+      shared: Boolean(channel.shared),
       legacyEnv: {
         outboundUrlConfigured: Boolean(this.deps.env.outboundUrl),
         outboundTokenConfigured: Boolean(this.deps.env.outboundToken),
@@ -198,7 +202,15 @@ export class MediaIntegrationService implements MediaChannelPort {
 
   // ---- resolucao de configuracao (banco > ENV) ----------------------------
 
-  async resolveOutbound(purpose: MediaIntegrationPurpose = 'BGP_MITIGATION'): Promise<ResolvedMediaChannel> {
+  /**
+   * Resolve o canal OUTBOUND: integracao explicita do purpose > canal
+   * COMPARTILHADO (quando informado) > ENV legado > desligado.
+   * O token continua sendo decriptado aqui: nunca e copiado para outro registro.
+   */
+  async resolveOutbound(
+    purpose: MediaIntegrationPurpose = 'BGP_MITIGATION',
+    fallbackPurpose?: MediaIntegrationPurpose,
+  ): Promise<ResolvedMediaChannel> {
     const integration = await this.read(() => this.deps.repository.findByPurpose(purpose), null);
     const source = await this.sourceLabel();
     if (integration && integration.enabled && integration.outboundUrl) {
@@ -208,7 +220,26 @@ export class MediaIntegrationService implements MediaChannelPort {
         enabled: true,
         url: integration.outboundUrl,
         token: this.deps.secretBox.decrypt(integration.outboundSecretEncrypted),
+        resolvedPurpose: purpose,
+        shared: false,
       };
+    }
+    if (fallbackPurpose) {
+      const shared = await this.read(
+        () => this.deps.repository.findByPurpose(fallbackPurpose),
+        null,
+      );
+      if (shared && shared.enabled && shared.outboundUrl) {
+        return {
+          integrationId: shared.id,
+          source,
+          enabled: true,
+          url: shared.outboundUrl,
+          token: this.deps.secretBox.decrypt(shared.outboundSecretEncrypted),
+          resolvedPurpose: fallbackPurpose,
+          shared: true,
+        };
+      }
     }
     if (this.deps.env.outboundUrl) {
       return {
@@ -217,6 +248,8 @@ export class MediaIntegrationService implements MediaChannelPort {
         enabled: true,
         url: this.deps.env.outboundUrl,
         token: this.deps.env.outboundToken,
+        resolvedPurpose: purpose,
+        shared: false,
       };
     }
     return {
@@ -225,6 +258,8 @@ export class MediaIntegrationService implements MediaChannelPort {
       enabled: false,
       url: null,
       token: null,
+      resolvedPurpose: purpose,
+      shared: false,
     };
   }
 

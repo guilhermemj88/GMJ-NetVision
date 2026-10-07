@@ -12,6 +12,7 @@ import type {
 } from '@gmj/shared';
 import type { AlarmRepository } from '../infrastructure/alarms/alarm-repository';
 import type { AlarmRuleRecord, AlarmRuleRepository } from '../infrastructure/alarms/alarm-rule-repository';
+import type { AlarmNotifier } from './alarm-notification-service';
 import type {
   HostRepository,
   InterfaceMetricWindowRow,
@@ -575,6 +576,8 @@ export interface AlarmEngineDependencies {
   hosts: HostRepository;
   alarms: AlarmRepository;
   rules: AlarmRuleRepository;
+  /** Notificacao de midia (NETWORK_ALARMS); ausente = motor sem midia. */
+  notifier?: AlarmNotifier | undefined;
   now?: () => Date;
 }
 
@@ -685,7 +688,12 @@ export class AlarmEngine {
                 }),
                 startedAt: this.now(),
               });
-              if (opened) openFingerprints.set(fingerprint, opened);
+              if (opened) {
+                openFingerprints.set(fingerprint, opened);
+                await this.notify(() =>
+                  this.deps.notifier?.notifyOpened(opened, { mediaEnabled: rule.mediaEnabled }),
+                );
+              }
             }
             continue;
           }
@@ -703,7 +711,15 @@ export class AlarmEngine {
               toggle.metricKey,
               this.now(),
             );
-            if (resolved) openFingerprints.delete(fingerprint);
+            if (resolved) {
+              openFingerprints.delete(fingerprint);
+              await this.notify(() =>
+                this.deps.notifier?.notifyResolved(
+                  { ...open, endedAt: this.now().toISOString() },
+                  { mediaEnabled: rule.mediaEnabled },
+                ),
+              );
+            }
           }
         }
       }
@@ -818,7 +834,15 @@ export class AlarmEngine {
           series.metricKey,
           this.now(),
         );
-        if (resolved) input.openByFingerprint.delete(fingerprint);
+        if (resolved) {
+          input.openByFingerprint.delete(fingerprint);
+          await this.notify(() =>
+            this.deps.notifier?.notifyResolved(
+              { ...open, endedAt: this.now().toISOString() },
+              { mediaEnabled: rule.mediaEnabled },
+            ),
+          );
+        }
         return;
       }
     }
@@ -865,7 +889,12 @@ export class AlarmEngine {
         message,
         startedAt: this.now(),
       });
-      if (opened) input.openByFingerprint.set(fingerprint, opened);
+      if (opened) {
+        input.openByFingerprint.set(fingerprint, opened);
+        await this.notify(() =>
+          this.deps.notifier?.notifyOpened(opened, { mediaEnabled: rule.mediaEnabled }),
+        );
+      }
       return;
     }
 
@@ -879,7 +908,22 @@ export class AlarmEngine {
       metadata,
       message,
     });
-    if (escalated) input.openByFingerprint.set(fingerprint, escalated);
+    if (escalated) {
+      input.openByFingerprint.set(fingerprint, escalated);
+      await this.notify(() =>
+        this.deps.notifier?.notifyEscalated(escalated, { mediaEnabled: rule.mediaEnabled }),
+      );
+    }
+  }
+
+  /** Midia e best-effort: falha de notificacao nunca derruba o motor. */
+  private async notify(action: () => Promise<void> | undefined): Promise<void> {
+    if (!this.deps.notifier) return;
+    try {
+      await action();
+    } catch {
+      // Sem notificacao neste ciclo; o dedupe persistido garante o retry.
+    }
   }
 }
 

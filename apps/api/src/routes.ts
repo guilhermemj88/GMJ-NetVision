@@ -78,6 +78,8 @@ import { PrismaAlarmRepository } from './infrastructure/alarms/prisma-alarm-repo
 import { PrismaAlarmRuleRepository } from './infrastructure/alarms/prisma-alarm-rule-repository';
 import { AlarmService } from './application/alarm-service';
 import { AlarmEngine } from './application/alarm-engine';
+import { AlarmNotificationService, type AlarmNotifier } from './application/alarm-notification-service';
+import { N8nAlarmTransport } from './infrastructure/alarms/n8n-alarm-transport';
 import { registerAlarmRoutes } from './alarm-routes';
 import { HuaweiVplsSnmpCollector } from './infrastructure/mpls/huawei-vpls-snmp';
 import { MplsPollingService } from './infrastructure/mpls/mpls-polling-service';
@@ -551,10 +553,23 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     ? new DemoAlarmRuleRepository()
     : new PrismaAlarmRuleRepository();
   const alarms = new AlarmService(alarmRepository);
+  // Holder da notificacao de midia: definido junto ao motor e ligado depois
+  // que a camada de midias (que depende do vault) estiver pronta.
+  const alarmMediaHolder: { notifier: AlarmNotifier | null } = { notifier: null };
   const alarmEngine = new AlarmEngine({
     hosts,
     alarms: alarmRepository,
     rules: alarmRuleRepository,
+    // A camada de midias e construida depois deste motor; o holder mantem a
+    // ligacao explicita sem inverter a ordem de criacao.
+    notifier: {
+      notifyOpened: (alarm, options) =>
+        alarmMediaHolder.notifier?.notifyOpened(alarm, options) ?? Promise.resolve(),
+      notifyEscalated: (alarm, options) =>
+        alarmMediaHolder.notifier?.notifyEscalated(alarm, options) ?? Promise.resolve(),
+      notifyResolved: (alarm, options) =>
+        alarmMediaHolder.notifier?.notifyResolved(alarm, options) ?? Promise.resolve(),
+    },
   });
   const opticalThresholds = new OpticalThresholdService(hosts, {
     refreshHours: config.OPTICAL_THRESHOLD_REFRESH_HOURS,
@@ -630,12 +645,23 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     },
     logger: (message, meta) => app.log.warn(meta ?? {}, message),
   });
+  const webhookSender = createFetchWebhookSender();
   const mediaTransport = new N8nMediaTransport({
     media: mediaService,
-    send: createFetchWebhookSender(),
+    send: webhookSender,
   });
   // Ligacao tardia: o transporte resolve URL/token pela camada de midias.
   mediaService.attachTransport(mediaTransport);
+
+  // Alarmes de rede usam o MESMO sender HTTP e o MESMO log operacional da
+  // camada de midias (purpose NETWORK_ALARMS, com fallback no canal BGP).
+  if (alarmMediaHolder.notifier) {
+    throw new Error('notifier de alarmes ja inicializado');
+  }
+  alarmMediaHolder.notifier = new AlarmNotificationService({
+    alarms: alarmRepository,
+    transport: new N8nAlarmTransport({ media: mediaService, send: webhookSender }),
+  });
 
   // Configuracao explicita de EXECUCAO (fail-closed): MOCK por padrao; o
   // executor Huawei so entra quando `MITIGATION_EXECUTOR=HUAWEI`. A escrita real

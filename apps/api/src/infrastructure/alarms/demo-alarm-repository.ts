@@ -1,6 +1,7 @@
 import { createLocalId, type Alarm, type AlarmResolutionReason, type MetricAlarmType } from '@gmj/shared';
 import type {
   AlarmHistoryOptions,
+  AlarmNotifiedPatch,
   AlarmOpenInput,
   AlarmRepository,
   MetricAlarmEscalationInput,
@@ -153,6 +154,19 @@ export class DemoAlarmRepository implements AlarmRepository {
       }
     }
     return resolved;
+  }
+
+  async markAlarmNotified(alarmId: string, patch: AlarmNotifiedPatch): Promise<void> {
+    const alarm = this.alarms.find((item) => item.id === alarmId);
+    if (!alarm) return;
+    alarm.notifiedSeverity = patch.notifiedSeverity;
+    alarm.notifiedAt = patch.notifiedAt.toISOString();
+  }
+
+  async markAlarmResolutionNotified(alarmId: string, notifiedAt: Date): Promise<void> {
+    const alarm = this.alarms.find((item) => item.id === alarmId);
+    if (!alarm) return;
+    alarm.resolutionNotifiedAt = notifiedAt.toISOString();
   }
 
   async resolveOpenMetricAlarmsForRule(

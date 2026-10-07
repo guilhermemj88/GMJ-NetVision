@@ -35,6 +35,12 @@ export interface MetricAlarmEscalationInput {
   message: string;
 }
 
+/** Marca de dedupe de midia (OPENED/ESCALATED entregue exatamente 1x). */
+export interface AlarmNotifiedPatch {
+  notifiedSeverity: AlarmSeverity;
+  notifiedAt: Date;
+}
+
 export interface AlarmHistoryOptions {
   /**
    * When true, return only resolved alarms (endedAt is not null), ordered by
@@ -83,4 +89,8 @@ export interface AlarmRepository {
     resolvedAt: Date,
     reason: AlarmResolutionReason,
   ): Promise<number>;
+  /** Dedupe de midia: marca OPENED/ESCALATED como entregue (1x por severidade). */
+  markAlarmNotified(alarmId: string, patch: AlarmNotifiedPatch): Promise<void>;
+  /** Dedupe de midia: marca RESOLVED como entregue (exatamente 1x). */
+  markAlarmResolutionNotified(alarmId: string, notifiedAt: Date): Promise<void>;
 }

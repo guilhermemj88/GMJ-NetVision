@@ -1596,6 +1596,7 @@ enum MediaIntegrationType {
 
 enum MediaIntegrationPurpose {
   BGP_MITIGATION
+  NETWORK_ALARMS
 }
 
 enum MediaDeliveryDirection {

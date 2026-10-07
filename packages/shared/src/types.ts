@@ -87,6 +87,11 @@ export interface Alarm {
   currentValue?: number | null | undefined;
   thresholdValue?: number | null | undefined;
   unit?: string | null | undefined;
+  /** Dedupe da notificacao de midia (OPENED/ESCALATED exatamente 1x por severidade). */
+  notifiedSeverity?: AlarmSeverity | null | undefined;
+  notifiedAt?: string | null | undefined;
+  /** Dedupe do evento RESOLVED (exatamente 1x). */
+  resolutionNotifiedAt?: string | null | undefined;
   /** Whitelist segura por tipo; nunca contem segredo. */
   metadata?: AlarmMetadata | null | undefined;
 }

@@ -38,13 +38,14 @@ export class WebhookDeliveryError extends Error {
 
 export type WebhookDeliverySender = (
   url: string,
-  payload: MitigationWebhookPayload,
+  payload: object,
   headers: Record<string, string>,
 ) => Promise<WebhookDeliveryResult>;
 
 /**
  * Sender real: HTTP POST com timeout. O token vai em HEADER
- * (`X-NetVision-Token`), nunca na URL/query.
+ * (`X-NetVision-Token`), nunca na URL/query. O tipo do payload e generico: o
+ * MESMO sender atende mitigacao e alarmes, sem um segundo cliente HTTP.
  */
 export function createFetchWebhookSender(
   options: { timeoutMs?: number; fetchImpl?: typeof fetch } = {},
@@ -100,7 +101,11 @@ export interface MediaDeliveryOutcome {
 
 /** Porta minima que o transporte precisa da camada de midias. */
 export interface MediaChannelPort {
-  resolveOutbound(purpose: MediaIntegrationPurpose): Promise<ResolvedMediaChannel>;
+  resolveOutbound(
+    purpose: MediaIntegrationPurpose,
+    /** Canal COMPARTILHADO usado quando o purpose nao tem integracao propria. */
+    fallbackPurpose?: MediaIntegrationPurpose,
+  ): Promise<ResolvedMediaChannel>;
   recordOutboundAttempt(input: {
     integrationId: string | null;
     event: string;

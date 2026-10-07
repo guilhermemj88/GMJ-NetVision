@@ -12,6 +12,7 @@ import {
 import { Prisma, PrismaClient } from '../../generated/prisma/index.js';
 import type {
   AlarmHistoryOptions,
+  AlarmNotifiedPatch,
   AlarmOpenInput,
   AlarmRepository,
   MetricAlarmEscalationInput,
@@ -66,6 +67,9 @@ function toAlarm(row: AlarmRow): Alarm {
     thresholdValue: row.thresholdValue ?? null,
     unit: row.unit ?? null,
     metadata: (row.metadata as unknown as AlarmMetadata | null) ?? null,
+    notifiedSeverity: (row.notifiedSeverity as AlarmSeverity | null) ?? null,
+    notifiedAt: row.notifiedAt?.toISOString() ?? null,
+    resolutionNotifiedAt: row.resolutionNotifiedAt?.toISOString() ?? null,
   };
 }
 
@@ -319,5 +323,19 @@ export class PrismaAlarmRepository implements AlarmRepository {
       ),
     );
     return open.length;
+  }
+
+  async markAlarmNotified(alarmId: string, patch: AlarmNotifiedPatch): Promise<void> {
+    await this.prisma.alarm.updateMany({
+      where: { id: alarmId },
+      data: { notifiedSeverity: patch.notifiedSeverity, notifiedAt: patch.notifiedAt },
+    });
+  }
+
+  async markAlarmResolutionNotified(alarmId: string, notifiedAt: Date): Promise<void> {
+    await this.prisma.alarm.updateMany({
+      where: { id: alarmId },
+      data: { resolutionNotifiedAt: notifiedAt },
+    });
   }
 }

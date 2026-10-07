@@ -10,7 +10,11 @@ import {
   opticalTrendDropDb,
   ruleMatchesInterface,
 } from './alarm-engine';
-import type { AlarmRepository, MetricAlarmOpenInput } from '../infrastructure/alarms/alarm-repository';
+import type {
+  AlarmRepository,
+  MetricAlarmEscalationInput,
+  MetricAlarmOpenInput,
+} from '../infrastructure/alarms/alarm-repository';
 import type { AlarmRuleRecord, AlarmRuleRepository } from '../infrastructure/alarms/alarm-rule-repository';
 import type {
   HostRepository,
@@ -139,11 +143,20 @@ function openedAlarm(input: MetricAlarmOpenInput, id = 'alarm-created'): Alarm {
   };
 }
 
+function notifierMock() {
+  return {
+    notifyOpened: vi.fn().mockResolvedValue(undefined),
+    notifyEscalated: vi.fn().mockResolvedValue(undefined),
+    notifyResolved: vi.fn().mockResolvedValue(undefined),
+  };
+}
+
 function buildEngine(options: {
   rules: AlarmRuleRecord[];
   rows?: InterfaceMetricWindowRow[];
   open?: Alarm[];
   linked?: Set<string>;
+  notifier?: ReturnType<typeof notifierMock>;
 }) {
   const listEnabled = vi.fn().mockResolvedValue(options.rules);
   const openMetricAlarm = vi
@@ -153,6 +166,7 @@ function buildEngine(options: {
   const listOpenMetricAlarms = vi.fn().mockResolvedValue(options.open ?? []);
   const findLinkedInterfaceIds = vi.fn().mockResolvedValue(options.linked ?? new Set<string>());
   const getRecentInterfaceMetricSamples = vi.fn().mockResolvedValue(options.rows ?? []);
+  const notifier = options.notifier ?? notifierMock();
 
   const engine = new AlarmEngine({
     hosts: { getRecentInterfaceMetricSamples } as unknown as HostRepository,
@@ -163,6 +177,7 @@ function buildEngine(options: {
       findLinkedInterfaceIds,
     } as unknown as AlarmRepository,
     rules: { listEnabled } as unknown as AlarmRuleRepository,
+    notifier,
     now: () => NOW,
   });
 
@@ -174,6 +189,7 @@ function buildEngine(options: {
     listOpenMetricAlarms,
     findLinkedInterfaceIds,
     getRecentInterfaceMetricSamples,
+    notifier,
   };
 }
 
@@ -671,17 +687,22 @@ function buildOpticalEngine(options: {
   rows?: InterfaceOpticalWindowRow[];
   thresholds?: InterfaceOpticalThresholdRecord[];
   open?: Alarm[];
+  notifier?: ReturnType<typeof notifierMock>;
 }) {
   const listEnabled = vi.fn().mockResolvedValue(options.rules ?? [opticalRuleOf()]);
   const openMetricAlarm = vi
     .fn()
     .mockImplementation(async (input: MetricAlarmOpenInput) => openedAlarm(input, 'alarm-opt'));
-  const escalateMetricAlarm = vi.fn().mockResolvedValue(null);
+  const escalateMetricAlarm = vi.fn().mockImplementation(
+    async (id: string, input: MetricAlarmEscalationInput) =>
+      existingOpticalAlarm({ id, severity: input.severity }),
+  );
   const resolveMetricAlarm = vi.fn().mockResolvedValue(true);
   const listOpenMetricAlarms = vi.fn().mockResolvedValue(options.open ?? []);
   const findLinkedInterfaceIds = vi.fn().mockResolvedValue(new Set<string>());
   const getRecentInterfaceOpticalSamples = vi.fn().mockResolvedValue(options.rows ?? []);
   const getInterfaceOpticalThresholds = vi.fn().mockResolvedValue(options.thresholds ?? []);
+  const notifier = options.notifier ?? notifierMock();
 
   const engine = new AlarmEngine({
     hosts: {
@@ -696,6 +717,7 @@ function buildOpticalEngine(options: {
       findLinkedInterfaceIds,
     } as unknown as AlarmRepository,
     rules: { listEnabled } as unknown as AlarmRuleRepository,
+    notifier,
     now: () => NOW,
   });
 
@@ -707,6 +729,7 @@ function buildOpticalEngine(options: {
     listOpenMetricAlarms,
     getRecentInterfaceOpticalSamples,
     getInterfaceOpticalThresholds,
+    notifier,
   };
 }
 
@@ -965,6 +988,114 @@ describe('motor optico (OPTICAL_RX_DEGRADATION)', () => {
       'dev-1',
       new Date(NOW.getTime() - 60 * 60_000),
     );
+  });
+});
+
+describe('motor + notificacao de midia (NETWORK_ALARMS)', () => {
+  it('notifica OPENED na abertura dos alarmes metricos e RESOLVED na recuperacao', async () => {
+    const built = buildEngine({
+      rules: [ruleOf({ mediaEnabled: true })],
+      rows: errorWindow('if-1', [300n, 300n, 300n]),
+    });
+    await built.engine.processDeviceMetrics({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [IFACE],
+    });
+    expect(built.notifier.notifyOpened).toHaveBeenCalledTimes(1);
+    expect(built.notifier.notifyOpened.mock.calls[0]?.[0]).toMatchObject({
+      id: 'alarm-created',
+      type: 'INTERFACE_ERRORS',
+      metricKey: 'RX',
+    });
+    expect(built.notifier.notifyOpened.mock.calls[0]?.[1]).toEqual({ mediaEnabled: true });
+
+    const openAlarm: Alarm = {
+      ...openedAlarm({
+        deviceId: 'dev-1',
+        interfaceId: 'if-1',
+        ifIndex: 1,
+        ruleId: 'rule-1',
+        type: 'INTERFACE_ERRORS',
+        severity: 'MAJOR',
+        metricKey: 'RX',
+        currentValue: 60,
+        thresholdValue: 50,
+        unit: 'per_min',
+        metadata: {},
+        message: 'erros',
+        startedAt: NOW,
+      }),
+    };
+    const recovering = buildEngine({
+      rules: [ruleOf({ mediaEnabled: true })],
+      rows: errorWindow('if-1', [0n, 0n, 0n]),
+      open: [openAlarm],
+    });
+    await recovering.engine.processDeviceMetrics({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [IFACE],
+    });
+    expect(recovering.notifier.notifyResolved).toHaveBeenCalledTimes(1);
+    expect(recovering.notifier.notifyResolved.mock.calls[0]?.[0]).toMatchObject({
+      id: 'alarm-created',
+      endedAt: NOW.toISOString(),
+    });
+    expect(recovering.notifier.notifyResolved.mock.calls[0]?.[1]).toEqual({ mediaEnabled: true });
+  });
+
+  it('notifica ESCALATED na mesma linha do alarme optico', async () => {
+    const built = buildOpticalEngine({
+      rules: [opticalRuleOf({ mediaEnabled: true })],
+      rows: [opticalRow(5, atProximity(96)), opticalRow(0, atProximity(96))],
+      thresholds: [OPTICAL_THRESHOLDS],
+      open: [existingOpticalAlarm({ severity: 'WARNING' })],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: atProximity(96) })],
+    });
+    expect(built.notifier.notifyEscalated).toHaveBeenCalledTimes(1);
+    expect(built.notifier.notifyEscalated.mock.calls[0]?.[0]).toMatchObject({
+      id: 'alarm-created',
+      severity: 'MAJOR',
+    });
+    expect(built.notifier.notifyOpened).not.toHaveBeenCalled();
+  });
+
+  it('midia desligada na regra nao gera evento (o dedupe fica com o servico)', async () => {
+    const built = buildOpticalEngine({
+      rules: [opticalRuleOf({ mediaEnabled: false })],
+      rows: [opticalRow(10, atProximity(90)), opticalRow(5, atProximity(90)), opticalRow(0, atProximity(90))],
+      thresholds: [OPTICAL_THRESHOLDS],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: atProximity(90) })],
+    });
+    expect(built.notifier.notifyOpened).toHaveBeenCalledTimes(1);
+    expect(built.notifier.notifyOpened.mock.calls[0]?.[1]).toEqual({ mediaEnabled: false });
+  });
+
+  it('falha da notificacao nunca derruba o motor nem perde o alarme aberto', async () => {
+    const notifier = notifierMock();
+    notifier.notifyOpened.mockRejectedValue(new Error('midia fora do ar'));
+    const built = buildOpticalEngine({
+      rules: [opticalRuleOf({ mediaEnabled: true })],
+      rows: [opticalRow(10, atProximity(90)), opticalRow(5, atProximity(90)), opticalRow(0, atProximity(90))],
+      thresholds: [OPTICAL_THRESHOLDS],
+      notifier,
+    });
+    await expect(built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: atProximity(90) })],
+    })).resolves.toBeUndefined();
+    expect(built.openMetricAlarm).toHaveBeenCalledTimes(1);
+    expect(notifier.notifyOpened).toHaveBeenCalledTimes(1);
   });
 });
 
