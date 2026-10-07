@@ -12,6 +12,7 @@ export * from './link-layout';
 export * from './link-telemetry';
 export * from './mitigation';
 export * from './mpls';
+export * from './operational-occurrence';
 export * from './optical-history';
 export * from './physical';
 export * from './physical-interface';

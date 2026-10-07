@@ -83,7 +83,10 @@ import { AlarmEngine } from './application/alarm-engine';
 import { AlarmSuppressionService } from './application/alarm-suppression-service';
 import { AlarmNotificationService, type AlarmNotifier } from './application/alarm-notification-service';
 import { N8nAlarmTransport } from './infrastructure/alarms/n8n-alarm-transport';
-import { collectInterfaceOccurrences } from './application/interface-occurrence-service';
+import { OperationalOccurrenceService } from './application/operational-occurrence-service';
+import { registerOperationalOccurrenceRoutes } from './operational-occurrence-routes';
+import { DemoOperationalOccurrenceRepository } from './infrastructure/alarms/demo-operational-occurrence-repository';
+import { PrismaOperationalOccurrenceRepository } from './infrastructure/alarms/prisma-operational-occurrence-repository';
 import { registerAlarmRoutes } from './alarm-routes';
 import { HuaweiVplsSnmpCollector } from './infrastructure/mpls/huawei-vpls-snmp';
 import { MplsPollingService } from './infrastructure/mpls/mpls-polling-service';
@@ -560,6 +563,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     ? new DemoAlarmSuppressionRepository()
     : new PrismaAlarmSuppressionRepository();
   const alarmSuppressions = new AlarmSuppressionService(alarmRepository, alarmSuppressionRepository);
+  const operationalOccurrenceRepository = config.DEMO_MODE
+    ? new DemoOperationalOccurrenceRepository()
+    : new PrismaOperationalOccurrenceRepository();
+  const operationalOccurrences = new OperationalOccurrenceService(operationalOccurrenceRepository);
   const alarms = new AlarmService(alarmRepository, alarmSuppressionRepository);
   // Holder da notificacao de midia: definido junto ao motor e ligado depois
   // que a camada de midias (que depende do vault) estiver pronta.
@@ -594,6 +601,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     bgpPolling,
     alarmEngine,
     opticalThresholds,
+    operationalOccurrences,
   );
   const poller = new SnmpPoller(hosts, snmp, config.SNMP_POLL_INTERVAL_SECONDS * 1000);
   const zabbix =
@@ -618,8 +626,15 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   registerAlarmRoutes(app, {
     alarms: alarmRepository,
     rules: alarmRuleRepository,
-    occurrences: (windowMinutes, limit) => collectInterfaceOccurrences(hosts, { windowMinutes, limit }),
+    // Contrato `InterfaceOccurrence[]` preservado (F8), agora servido pelo
+    // modelo persistente de ocorrencias (F9.2).
+    occurrences: (windowMinutes, limit) =>
+      operationalOccurrences.listInterfaceOccurrences(windowMinutes, limit),
     suppressions: alarmSuppressions,
+    currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
+  });
+  registerOperationalOccurrenceRoutes(app, {
+    occurrences: operationalOccurrences,
     currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
   });
   registerBgpRoutes(app, {
@@ -934,6 +949,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     if (alarmRepository instanceof PrismaAlarmRepository) await alarmRepository.disconnect();
     if (alarmSuppressionRepository instanceof PrismaAlarmSuppressionRepository)
       await alarmSuppressionRepository.disconnect();
+    if (operationalOccurrenceRepository instanceof PrismaOperationalOccurrenceRepository)
+      await operationalOccurrenceRepository.disconnect();
     await physicalRepository.disconnect();
   });
 

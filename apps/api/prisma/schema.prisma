@@ -519,6 +519,7 @@ model Device {
   mitigationProfiles   BgpMitigationProfile[]
   alarms               Alarm[]
   alarmSuppressions    AlarmSuppression[]
+  occurrences          OperationalOccurrence[]
   physicalAsset        PhysicalAsset?
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
@@ -574,6 +575,8 @@ model Interface {
   mitigationProfiles    BgpMitigationProfile[]
   alarms                Alarm[]
   alarmSuppressions     AlarmSuppression[]
+  occurrences           OperationalOccurrence[]
+  occurrenceSources     OperationalOccurrenceSource[]
   physicalPort          PhysicalPort?
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
@@ -1117,6 +1120,75 @@ model AlarmSuppression {
   @@index([clearedAt, expiresAt])
 }
 
+/// Tipo do episodio operacional persistente (F9.2).
+enum OperationalOccurrenceType {
+  CRC_FCS
+  DISCARDS
+}
+
+/// Por que o episodio saiu do painel compacto.
+enum OperationalOccurrenceCloseReason {
+  ACKNOWLEDGED
+  QUIET_24H
+  MANUAL
+}
+
+/// Episodio persistente de ocorrencia (CRC/FCS ou DISCARDS): "algo aconteceu".
+/// Telemetria factual: nao envia midia, nao tem regra e nunca vira alarme por
+/// conta propria (o Alarm Engine segue independente).
+model OperationalOccurrence {
+  id                  String                           @id @default(cuid())
+  /// interfaceId + tipo (RX/TX de discard NUNCA sao dois episodios).
+  fingerprint         String
+  type                OperationalOccurrenceType
+  deviceId            String
+  interfaceId         String
+  firstSeenAt         DateTime
+  lastSeenAt          DateTime
+  /// Ultima amostra com ocorrencia considerada (base do intervalo da taxa).
+  lastSampleAt        DateTime
+  occurrenceCount     Int                              @default(0)
+  crcDeltaTotal       BigInt                           @default(0)
+  rxDiscardDeltaTotal BigInt                           @default(0)
+  txDiscardDeltaTotal BigInt                           @default(0)
+  currentRatePerMin   Float                            @default(0)
+  peakRatePerMin      Float                            @default(0)
+  acknowledgedAt      DateTime?
+  acknowledgedBy      String?
+  closedAt            DateTime?
+  closeReason         OperationalOccurrenceCloseReason?
+  device              Device                           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  interface           Interface                        @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
+  sources             OperationalOccurrenceSource[]
+  createdAt           DateTime                         @default(now())
+  updatedAt           DateTime                         @updatedAt
+
+  @@index([fingerprint, closedAt])
+  @@index([fingerprint, lastSampleAt])
+  @@index([interfaceId, lastSeenAt])
+  @@index([deviceId, lastSeenAt])
+  @@index([type, lastSeenAt])
+  @@index([acknowledgedAt])
+  @@index([closedAt])
+}
+
+/// Associacao idempotente amostra -> episodio. A chave unica (interface,
+/// timestamp da amostra, tipo) garante que retry, restart ou replay da MESMA
+/// InterfaceMetricSample nunca some delta duas vezes nem cria episodio novo.
+model OperationalOccurrenceSource {
+  id              String                    @id @default(cuid())
+  occurrenceId    String
+  interfaceId     String
+  type            OperationalOccurrenceType
+  sourceTimestamp DateTime
+  createdAt       DateTime                  @default(now())
+  occurrence      OperationalOccurrence     @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  interface       Interface                 @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
+
+  @@unique([interfaceId, sourceTimestamp, type])
+  @@index([occurrenceId])
+  @@index([sourceTimestamp])
+}
 model Link {
   id                      String              @id @default(cuid())
   mapId                   String

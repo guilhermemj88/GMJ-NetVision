@@ -893,6 +893,142 @@ describe('SnmpService', () => {
     expect(bgp.poll).toHaveBeenCalledWith(s6730, 'public');
     expect(bgp.poll).not.toHaveBeenCalledWith(ne8000, 'public');
   });
+
+  it('entrega os deltas de CRC/discard para as ocorrencias com a base do intervalo', async () => {
+    const now = new Date('2026-10-12T12:00:00.000Z');
+    const target = networkInterface('GE0/0/1', 1, 'UP');
+    const repo = repository();
+    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(
+      new Map([
+        [
+          1,
+          {
+            interfaceId: 'if-1',
+            ifIndex: 1,
+            timestamp: new Date(now.getTime() - 60_000),
+            inOctets: 100n,
+            outOctets: 200n,
+            inErrors: 0n,
+            outErrors: 0n,
+            inDiscards: 0n,
+            outDiscards: 0n,
+            fcsErrors: 10n,
+          },
+        ],
+      ]),
+    );
+    const occurrences = { processSamples: vi.fn().mockResolvedValue(1) };
+    const service = new SnmpService(
+      repo,
+      undefined,
+      Number.POSITIVE_INFINITY,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      occurrences as never,
+    );
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([[1, { ifIndex: 1, adminStatus: 'UP', operStatus: 'UP' }]]),
+    );
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(
+      new Map([
+        [
+          1,
+          {
+            ...counterRow(1, now),
+            fcsErrors: 13n,
+            inDiscards: 2n,
+            outDiscards: 5n,
+          },
+        ],
+      ]),
+    );
+    const internals = service as unknown as {
+      collectSystem: () => Promise<DeviceMetricSampleInput>;
+    };
+    vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
+
+    await service.pollHost(snmpHost([target], { lastDiscoveryAt: now.toISOString() }));
+
+    expect(repo.saveSnmpPoll).toHaveBeenCalled();
+    expect(occurrences.processSamples).toHaveBeenCalledWith({
+      deviceId: 'test-1',
+      samples: [
+        expect.objectContaining({
+          interfaceId: 'if-1',
+          timestampMs: now.getTime(),
+          fcsErrorsDelta: 3n,
+          inDiscardsDelta: 2n,
+          outDiscardsDelta: 5n,
+          previousSampleTimestampMs: now.getTime() - 60_000,
+        }),
+      ],
+    });
+  });
+
+  it('falha das ocorrencias nao invalida o polling SNMP concluido', async () => {
+    const now = new Date('2026-10-12T12:00:00.000Z');
+    const target = networkInterface('GE0/0/1', 1, 'UP');
+    const repo = repository();
+    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(
+      new Map([
+        [
+          1,
+          {
+            interfaceId: 'if-1',
+            ifIndex: 1,
+            timestamp: new Date(now.getTime() - 60_000),
+            inOctets: 100n,
+            outOctets: 200n,
+            inErrors: 0n,
+            outErrors: 0n,
+            inDiscards: 0n,
+            outDiscards: 0n,
+            fcsErrors: 10n,
+          },
+        ],
+      ]),
+    );
+    const occurrences = {
+      processSamples: vi.fn().mockRejectedValue(new Error('banco fora')),
+    };
+    const service = new SnmpService(
+      repo,
+      undefined,
+      Number.POSITIVE_INFINITY,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      occurrences as never,
+    );
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([[1, { ifIndex: 1, adminStatus: 'UP', operStatus: 'UP' }]]),
+    );
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(
+      new Map([[1, { ...counterRow(1, now), fcsErrors: 11n }]]),
+    );
+    const internals = service as unknown as {
+      collectSystem: () => Promise<DeviceMetricSampleInput>;
+    };
+    vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const result = await service.pollHost(snmpHost([target], { lastDiscoveryAt: now.toISOString() }));
+
+    expect(result.interfaceSamples).toBe(1);
+    expect(repo.saveSnmpPoll).toHaveBeenCalled();
+    expect(error).toHaveBeenCalledWith(
+      expect.stringContaining('Falha ao registrar ocorrências operacionais'),
+      'banco fora',
+    );
+    error.mockRestore();
+  });
 });
 
 describe('SnmpService Ã¢â‚¬â€ thresholds opticos SNMP (F7.5)', () => {

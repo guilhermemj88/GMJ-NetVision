@@ -34,6 +34,10 @@ import type { PppPollingService } from '../ppp/ppp-polling-service';
 import type { BgpPollingService } from '../bgp/bgp-polling-service';
 import type { AlarmService } from '../../application/alarm-service';
 import type { AlarmEngine } from '../../application/alarm-engine';
+import type {
+  OperationalOccurrenceIngestSample,
+  OperationalOccurrenceService,
+} from '../../application/operational-occurrence-service';
 
 // Consolidated GENERIC SNMP base (SNMPv2-MIB / IF-MIB). Vendor profiles
 // complement this set; they never duplicate it.
@@ -100,6 +104,7 @@ export class SnmpService {
     private readonly bgp?: BgpPollingService,
     private readonly alarmEngine?: AlarmEngine,
     private readonly opticalThresholds?: OpticalThresholdService,
+    private readonly operationalOccurrences?: OperationalOccurrenceService,
   ) {
     this.client = new SnmpClientImpl(3000, 1);
     this.discoveryAdapter = new SnmpV2cDiscoveryAdapter(repository);
@@ -279,6 +284,7 @@ export class SnmpService {
 
     const byIndex = new Map(currentDevice.interfaces.map((item) => [item.ifIndex, item]));
     const samples: InterfaceMetricSampleInput[] = [];
+    const occurrenceSamples: OperationalOccurrenceIngestSample[] = [];
     for (const counter of counters.values()) {
       const networkInterface = byIndex.get(counter.ifIndex);
       if (!networkInterface) continue;
@@ -307,6 +313,9 @@ export class SnmpService {
         seconds,
         speedBps: networkInterface.speedBps,
       });
+      const fcsErrorsDelta = calculateFcsErrorsDelta(counter.fcsErrors ?? null, prior?.fcsErrors);
+      const inDiscardsDelta = calculateCounterDelta(counter.inDiscards, prior?.inDiscards);
+      const outDiscardsDelta = calculateCounterDelta(counter.outDiscards, prior?.outDiscards);
       samples.push({
         interfaceId: networkInterface.id,
         ifIndex: counter.ifIndex,
@@ -321,11 +330,20 @@ export class SnmpService {
         outDiscards: counter.outDiscards,
         inErrorsDelta: calculateCounterDelta(counter.inErrors, prior?.inErrors),
         outErrorsDelta: calculateCounterDelta(counter.outErrors, prior?.outErrors),
-        inDiscardsDelta: calculateCounterDelta(counter.inDiscards, prior?.inDiscards),
-        outDiscardsDelta: calculateCounterDelta(counter.outDiscards, prior?.outDiscards),
+        inDiscardsDelta,
+        outDiscardsDelta,
         fcsErrors: counter.fcsErrors ?? null,
-        fcsErrorsDelta: calculateFcsErrorsDelta(counter.fcsErrors ?? null, prior?.fcsErrors),
+        fcsErrorsDelta,
         operStatus: statuses.get(counter.ifIndex)?.operStatus ?? networkInterface.operStatus,
+      });
+      occurrenceSamples.push({
+        interfaceId: networkInterface.id,
+        timestampMs: counter.timestamp.getTime(),
+        fcsErrorsDelta,
+        inDiscardsDelta,
+        outDiscardsDelta,
+        // Base real do intervalo: o delta acima foi medido contra este snapshot.
+        previousSampleTimestampMs: prior ? prior.timestamp.getTime() : null,
       });
     }
 
@@ -343,6 +361,22 @@ export class SnmpService {
       } catch (error) {
         console.error(
           `Falha ao avaliar alarmes metricos de ${currentDevice.id}:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
+
+    // Ocorrencias operacionais (F9.2) tambem rodam DEPOIS da persistencia e sao
+    // fail-safe: a ingestao de CRC/discard nunca invalida o polling SNMP concluido.
+    if (this.operationalOccurrences && occurrenceSamples.length) {
+      try {
+        await this.operationalOccurrences.processSamples({
+          deviceId: currentDevice.id,
+          samples: occurrenceSamples,
+        });
+      } catch (error) {
+        console.error(
+          `Falha ao registrar ocorrências operacionais de ${currentDevice.id}:`,
           error instanceof Error ? error.message : error,
         );
       }
