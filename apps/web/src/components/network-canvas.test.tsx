@@ -23,6 +23,7 @@ vi.mock('@/lib/api', async (importOriginal) => ({
   getMap: vi.fn(),
   getMaps: vi.fn(),
   getAlarms: vi.fn().mockResolvedValue([]),
+  getAlarmOccurrences: vi.fn().mockResolvedValue([]),
   updateLink: vi.fn(),
   updateNetworkMap: vi.fn(),
 }));

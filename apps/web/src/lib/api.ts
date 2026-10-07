@@ -1,7 +1,9 @@
 import {
   type AddDeviceResult,
   type Alarm,
+  type AlarmRuleDto,
   type AuthUser,
+  type InterfaceOccurrence,
   type BgpAlertsResponse,
   type BgpAddressFamilyFilter,
   type BgpAdminAction,
@@ -230,6 +232,49 @@ export function getAlarmHistory(limit = 100): Promise<Alarm[]> {
 export function getRecentResolvedAlarms(limit = 3): Promise<Alarm[]> {
   const params = new URLSearchParams({ limit: String(limit), resolved: 'true' });
   return request<Alarm[]>(`/api/alarms/history?${params}`);
+}
+
+/**
+ * Ocorrencias recentes (CRC/FCS e discards) derivadas das amostras persistidas.
+ * Ocorrencia NAO e alarme: nenhuma regra precisa existir para aparecer aqui.
+ */
+export function getAlarmOccurrences(minutes = 15, limit = 12): Promise<InterfaceOccurrence[]> {
+  const params = new URLSearchParams({ minutes: String(minutes), limit: String(limit) });
+  return request<InterfaceOccurrence[]>(`/api/alarms/occurrences?${params}`);
+}
+
+/** Corpo aceito pela API de regras (validado por Zod no backend). */
+export type AlarmRuleInput = Omit<AlarmRuleDto, 'id' | 'createdAt' | 'updatedAt'>;
+
+export function getAlarmRules(): Promise<AlarmRuleDto[]> {
+  return request<AlarmRuleDto[]>('/api/alarm-rules');
+}
+
+export function createAlarmRule(input: AlarmRuleInput): Promise<AlarmRuleDto> {
+  return request<AlarmRuleDto>('/api/alarm-rules', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateAlarmRule(id: string, input: AlarmRuleInput): Promise<AlarmRuleDto> {
+  return request<AlarmRuleDto>(`/api/alarm-rules/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export function setAlarmRuleEnabled(id: string, enabled: boolean): Promise<AlarmRuleDto> {
+  return request<AlarmRuleDto>(`/api/alarm-rules/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export function deleteAlarmRule(id: string): Promise<{ removed: boolean }> {
+  return request<{ removed: boolean }>(`/api/alarm-rules/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
 }
 
 export function createNetworkMap(input: CreateMapInput) {

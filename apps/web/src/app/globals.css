@@ -5537,6 +5537,259 @@ label > small {
   box-shadow: 0 0 10px rgba(226, 75, 75, 0.25);
 }
 
+/* Contadores, ocorrencias e motivos do painel de alarmes (F8). */
+.alarm-panel__counters {
+  display: flex;
+  gap: 4px;
+  padding: 0 10px 6px;
+}
+.alarm-panel__counter {
+  flex: 1;
+  text-align: center;
+  padding: 3px 0;
+  border: 1px solid #2a3d47;
+  border-radius: 4px;
+  color: #5f747f;
+  font: 650 9px var(--font-mono);
+}
+.alarm-panel__counter--critical {
+  color: #ff9d9f;
+  border-color: #6b3235;
+}
+.alarm-panel__counter--major {
+  color: #ffc27a;
+  border-color: #6d4a22;
+}
+.alarm-panel__counter--warning {
+  color: #ffe082;
+  border-color: #6b6127;
+}
+.alarm-panel__section--occurrences {
+  color: #7fd3ff;
+}
+.alarm-panel__list--occurrences {
+  list-style: none;
+  margin: 0;
+  padding: 0 10px 6px;
+}
+.alarm-panel__occurrence {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin-bottom: 4px;
+  padding: 6px 8px;
+  border: 1px solid #2a3d47;
+  border-left: 2px solid #3d7ea6;
+  border-radius: 4px;
+  background: rgba(11, 19, 24, 0.72);
+  font-size: 10px;
+}
+.alarm-panel__occurrence strong {
+  color: #9fdcff;
+  font: 650 10px var(--font-mono);
+}
+.alarm-panel__rate {
+  color: #ffd9a0;
+  font: 600 10px var(--font-mono);
+}
+.alarm-panel__limit {
+  color: #93a6b0;
+  font: 500 9px var(--font-mono);
+}
+.alarm-panel__reason {
+  color: #ffb1b3;
+  font: 600 10px var(--font-mono);
+}
+.alarm-panel__optical,
+.alarm-panel__scope {
+  color: #b9cbd6;
+  font: 500 10px var(--font-mono);
+}
+
+/* Secao do drawer destacada pelo clique em um alarme (F8). */
+.drawer-anchor.is-focused,
+.drawer-section.is-focused {
+  animation: drawer-focus-pulse 1.8s ease-out 1;
+}
+@keyframes drawer-focus-pulse {
+  0% {
+    box-shadow: inset 0 0 0 2px rgba(96, 176, 226, 0.65);
+  }
+  100% {
+    box-shadow: inset 0 0 0 2px rgba(96, 176, 226, 0);
+  }
+}
+
+/* Abas por purpose da camada de midias (F8). */
+.media-purpose-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 0 18px 10px;
+}
+.media-purpose-tabs button {
+  padding: 5px 10px;
+  border: 1px solid #2a3d47;
+  border-radius: 4px;
+  background: rgba(11, 19, 24, 0.72);
+  color: #7d919c;
+  font: 650 10px var(--font-mono);
+  cursor: pointer;
+}
+.media-purpose-tabs button.is-active {
+  color: #cfe6f2;
+  border-color: #3d7ea6;
+  background: rgba(21, 42, 54, 0.92);
+}
+
+/* CONFIGURACOES -> ALARMES (F8). */
+.alarms-panel__toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 10px;
+  color: #7d919c;
+  font-size: 11px;
+}
+.alarms-panel__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.alarms-rule {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px 12px;
+  border: 1px solid #2a3d47;
+  border-radius: 6px;
+  background: rgba(11, 19, 24, 0.72);
+}
+.alarms-rule.is-disabled {
+  opacity: 0.62;
+}
+.alarms-rule__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.alarms-rule__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #7d919c;
+}
+.alarms-rule__dot--critical { background: #e24b4b; }
+.alarms-rule__dot--major { background: #e08a2e; }
+.alarms-rule__dot--warning { background: #d6c02e; }
+.alarms-rule__dot--info { background: #3d7ea6; }
+.alarms-rule__type {
+  color: #9fdcff;
+  font: 650 10px var(--font-mono);
+}
+.alarms-rule__config,
+.alarms-rule__scope {
+  color: #b9cbd6;
+  font: 500 10px var(--font-mono);
+}
+.alarms-rule__scope {
+  color: #7d919c;
+}
+.alarms-rule__actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+}
+.alarms-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+  padding: 12px;
+  border: 1px solid #3d7ea6;
+  border-radius: 6px;
+  background: rgba(16, 28, 36, 0.86);
+}
+.alarms-form__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 8px;
+}
+.alarms-form__grid label,
+.alarms-form__presets,
+.alarms-form__speeds {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font: 600 9px var(--font-mono);
+  color: #7d919c;
+}
+.alarms-form__grid input,
+.alarms-form__grid select {
+  padding: 6px 8px;
+  border: 1px solid #2a3d47;
+  border-radius: 4px;
+  background: rgba(8, 14, 18, 0.9);
+  color: #dbe7ee;
+  font: 500 11px var(--font-mono);
+}
+.alarms-form__presets,
+.alarms-form__speeds {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.alarms-form__toggle button {
+  min-width: 52px;
+  padding: 5px 8px;
+  border: 1px solid #2a3d47;
+  border-radius: 4px;
+  background: rgba(11, 19, 24, 0.72);
+  color: #7d919c;
+  font: 650 10px var(--font-mono);
+  cursor: pointer;
+}
+.alarms-form__toggle button.is-on {
+  color: #b7f0c2;
+  border-color: #2f6b3d;
+  background: rgba(20, 42, 26, 0.9);
+}
+.alarms-form__note {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: #9fdcff;
+  font: 600 10px var(--font-mono);
+}
+.alarms-form__note small {
+  color: #7d919c;
+  font-weight: 500;
+}
+.alarms-form__speeds button {
+  padding: 4px 8px;
+  border: 1px solid #2a3d47;
+  border-radius: 4px;
+  background: rgba(11, 19, 24, 0.72);
+  color: #7d919c;
+  font: 650 10px var(--font-mono);
+  cursor: pointer;
+}
+.alarms-form__speeds button.is-active {
+  color: #cfe6f2;
+  border-color: #3d7ea6;
+  background: rgba(21, 42, 54, 0.92);
+}
+.alarms-form__actions {
+  display: flex;
+  gap: 8px;
+}
+
 /* Small alarm badge pinned to a device node. */
 .device-node__alarm-badge {
   position: absolute;

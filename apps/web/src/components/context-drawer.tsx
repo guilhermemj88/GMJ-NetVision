@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { resetLinkGeometry, type LinkGeometry } from '@/lib/link-curvature';
 import { Badge, Button } from '@gmj/ui';
 import { ConfirmDialog } from '@gmj/ui';
@@ -594,6 +594,20 @@ function InterfaceDrawer({
   onBack: () => void;
   onClose: () => void;
 }) {
+  const sectionRequest = useMapStore((state) => state.interfaceSectionRequest);
+  const clearSectionRequest = useMapStore((state) => state.clearInterfaceSectionRequest);
+  const opticalRef = useRef<HTMLDivElement | null>(null);
+  const metricsRef = useRef<HTMLElement | null>(null);
+  // Clique em alarme pede a secao (optico/metricas); o drawer rola ate ela.
+  const activeSection = sectionRequest?.interfaceId === item.id ? sectionRequest.section : null;
+
+  useEffect(() => {
+    if (!activeSection || !sectionRequest) return;
+    const target = activeSection === 'OPTICAL' ? opticalRef.current : metricsRef.current;
+    target?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    clearSectionRequest(sectionRequest.requestId);
+  }, [activeSection, clearSectionRequest, sectionRequest]);
+
   return (
     <DrawerShell
       eyebrow={`${deviceName} / INTERFACE`}
@@ -616,10 +630,18 @@ function InterfaceDrawer({
           <Info label="Fontes" value={item.dataSources?.join(' + ') || '—'} />
         </div>
       </section>
-      <InterfaceOpticalDetails networkInterface={item} />
+      <div
+        ref={opticalRef}
+        className={`drawer-anchor ${activeSection === 'OPTICAL' ? 'is-focused' : ''}`}
+      >
+        <InterfaceOpticalDetails networkInterface={item} />
+      </div>
       {!readOnly && <PhysicalPortLink interfaceId={item.id} />}
       {!readOnly && <OpticalHistoryCharts networkInterface={item} />}
-      <section className="drawer-section live-metrics">
+      <section
+        ref={metricsRef}
+        className={`drawer-section live-metrics ${activeSection === 'METRICS' ? 'is-focused' : ''}`}
+      >
         <SectionTitle icon={<Activity size={14} />} label="MÉTRICAS ATUAIS" />
         <div className="metric-hero">
           <div className="rx">

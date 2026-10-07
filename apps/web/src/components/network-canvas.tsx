@@ -25,7 +25,12 @@ import {
 } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
 import { computeParallelLinkLayouts, type Alarm } from '@gmj/shared';
-import { countAlarmsByDevice, useActiveAlarms, useRecentResolvedAlarms } from '@/lib/use-alarms';
+import {
+  countAlarmsByDevice,
+  useActiveAlarms,
+  useRecentAlarmOccurrences,
+  useRecentResolvedAlarms,
+} from '@/lib/use-alarms';
 import { useMapFocus } from '@/lib/use-map-focus';
 import { DeviceNode, type DeviceFlowNode } from './device-node';
 import { GenericNode, type GenericFlowNode } from './generic-node';
@@ -34,7 +39,7 @@ import { TrafficEdge, type TrafficFlowEdge } from './traffic-edge';
 import { MapControls } from './map-controls';
 import { MapStatusBar } from './map-status-bar';
 import { EditToolbar } from './edit-toolbar';
-import { AlarmPanel, alarmFocusTarget } from './alarm-panel';
+import { AlarmPanel, alarmDrawerSection, alarmFocusTarget } from './alarm-panel';
 import { resolveEdgeHandles } from '@/lib/edge-handles';
 import {
   getTrafficLabelOffsets,
@@ -98,6 +103,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
   const setViewport = useMapStore((state) => state.setViewport);
   const focusRequest = useMapStore((state) => state.focusRequest);
   const clearFocusRequest = useMapStore((state) => state.clearFocusRequest);
+  const focusInterfaceSection = useMapStore((state) => state.focusInterfaceSection);
 
   const mapQuery = useQuery({
     queryKey: ['map', activeMapId],
@@ -111,6 +117,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
   // query do painel, dos badges e da rail de camadas).
   const alarms = useActiveAlarms(!readOnly);
   const recentResolvedAlarms = useRecentResolvedAlarms(!readOnly, 3);
+  const recentOccurrences = useRecentAlarmOccurrences(!readOnly);
   const alarmCountByDevice = useMemo(() => countAlarmsByDevice(alarms), [alarms]);
 
   // Recorte visual (camada + site + tipo + vizinhança). Não altera o grafo:
@@ -264,9 +271,27 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         }
         setSelection({ kind: 'device', id: target.deviceId });
       }
+      // O mapa continua focando link/equipamento como antes; quando a interface
+      // do alarme esta no mapa, o drawer dela abre acima disso e recebe o
+      // destaque da secao relevante (optico ou metricas).
+      const device = map?.devices.find((item) => item.id === alarm.deviceId);
+      if (device?.interfaces.some((item) => item.id === alarm.interfaceId)) {
+        setSelection({ kind: 'interface', id: alarm.interfaceId, deviceId: alarm.deviceId });
+        const section = alarmDrawerSection(alarm);
+        if (section) focusInterfaceSection(alarm.interfaceId, section);
+      }
       if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
     },
-    [domainNodes, flow, map, rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
+    [
+      domainNodes,
+      flow,
+      focusInterfaceSection,
+      map,
+      rotation.active,
+      rotation.pauseOnInteraction,
+      setRotationPaused,
+      setSelection,
+    ],
   );
 
   const domainEdges = useMemo<TrafficFlowEdge[]>(() => {
@@ -480,6 +505,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
           <AlarmPanel
             alarms={alarms}
             resolvedAlarms={recentResolvedAlarms}
+            occurrences={recentOccurrences}
             onFocus={focusAlarm}
           />
         )}
