@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const media = vi.hoisted(() => ({
   getMediaIntegrations: vi.fn(),
+  getMediaIntegrationsByPurpose: vi.fn(),
   getMediaSummary: vi.fn(),
   getRecentMediaLogs: vi.fn(),
   getMediaLogs: vi.fn(),
@@ -30,6 +31,7 @@ const media = vi.hoisted(() => ({
 }));
 
 vi.mock('@/lib/media-api', () => media);
+vi.mock('@/lib/use-alarms', () => ({ useAlarmIndex: () => new Map() }));
 
 import { MediaIntegrationsPanel } from './media-integrations-panel';
 
@@ -300,5 +302,36 @@ describe('CONFIGURAÇÕES → MÍDIAS', () => {
     });
 
     expect(media.updateMediaIntegration).toHaveBeenCalledWith('media-1', { enabled: true });
+  });
+
+  it('oferece as abas por purpose e mostra o canal efetivo dos alarmes', async () => {
+    media.getMediaIntegrationsByPurpose.mockResolvedValue({
+      repositoryKind: 'DATABASE',
+      migrationReady: true,
+      resolvedPurpose: 'BGP_MITIGATION',
+      shared: true,
+      legacyEnv: {
+        outboundUrlConfigured: true,
+        outboundTokenConfigured: true,
+        inboundTokenConfigured: false,
+        inboundEndpointPath: '',
+      },
+      integration,
+    });
+    await render(createElement(MediaIntegrationsPanel));
+
+    const tabs = [...container.querySelectorAll<HTMLButtonElement>('.media-purpose-tabs button')];
+    expect(tabs.map((tab) => tab.textContent)).toEqual(['MITIGAÇÃO DDOS', 'ALARMES DE REDE']);
+
+    await act(async () => {
+      tabs[1]?.click();
+      await flush();
+    });
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('n8n — Alarmes de Rede');
+    expect(text).toContain('Canal compartilhado com Mitigação DDoS');
+    expect(text).toContain('resolvedPurpose=BGP_MITIGATION');
+    expect(media.getMediaIntegrationsByPurpose).toHaveBeenCalledWith('NETWORK_ALARMS');
   });
 });
