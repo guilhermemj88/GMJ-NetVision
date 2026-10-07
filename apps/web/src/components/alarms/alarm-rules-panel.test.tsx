@@ -152,7 +152,7 @@ describe('painel CONFIGURAÇÕES → ALARMES', () => {
       mapLinkedOnly: true,
       scope: {},
       config: {
-        thresholdPerMinute: 1,
+        thresholdPerMinute: 0,
         recoveryThresholdPerMinute: 0,
         triggerSamples: 1,
         recoverySamples: 1,

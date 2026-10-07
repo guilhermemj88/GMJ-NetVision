@@ -10,20 +10,21 @@ import {
 } from './alarm-rule-presets';
 
 describe('presets e resumos de regra de alarme', () => {
-  it('preset QUALQUER CRC usa 1 amostra e severidade WARNING', () => {
+  it('preset QUALQUER CRC usa threshold 0 (delta > 0), 1 amostra e WARNING', () => {
     expect(ANY_CRC_PRESET.type).toBe('INTERFACE_CRC');
     expect(ANY_CRC_PRESET.severity).toBe('WARNING');
     expect(ANY_CRC_PRESET.config).toMatchObject({
-      thresholdPerMinute: 1,
+      thresholdPerMinute: 0,
       recoveryThresholdPerMinute: 0,
       triggerSamples: 1,
       recoverySamples: 1,
     });
   });
 
-  it('oferece preset de qualquer discard e de discard sustentado', () => {
+  it('oferece preset de qualquer discard (delta > 0) e de discard sustentado (taxa/min)', () => {
     const presets = presetsForType('INTERFACE_DISCARDS');
     expect(presets.map((preset) => preset.id)).toEqual(['discards-any', 'discards-sustained']);
+    expect(presets[0]!.config).toMatchObject({ thresholdPerMinute: 0, triggerSamples: 1 });
     const sustained = presets[1]!;
     expect(sustained.config).toMatchObject({ thresholdPerMinute: 20, triggerSamples: 3 });
   });
@@ -46,7 +47,13 @@ describe('presets e resumos de regra de alarme', () => {
       type: 'INTERFACE_CRC',
       config: ALARM_RULE_PRESETS[0]!.config,
     } as unknown as Pick<AlarmRuleDto, 'type' | 'config'>;
-    expect(describeAlarmRule(crc)).toBe('RX > 1 CRC/min · 1 amostra');
+    expect(describeAlarmRule(crc)).toBe('RX qualquer ocorrência (delta > 0) · 1 amostra');
+
+    const rateCrc = {
+      type: 'INTERFACE_CRC',
+      config: { thresholdPerMinute: 2, recoveryThresholdPerMinute: 0, triggerSamples: 1, recoverySamples: 1 },
+    } as unknown as Pick<AlarmRuleDto, 'type' | 'config'>;
+    expect(describeAlarmRule(rateCrc)).toBe('RX > 2 CRC/min · 1 amostra');
 
     const optical = {
       type: 'OPTICAL_RX_DEGRADATION',

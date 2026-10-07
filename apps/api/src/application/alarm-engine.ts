@@ -252,6 +252,19 @@ export function evaluateSamplePair(
   };
 }
 
+/**
+ * Predicado de trigger da taxa. `thresholdPerMinute === 0` significa QUALQUER
+ * ocorrencia: o intervalo avaliado precisa ter delta > 0, independentemente de
+ * quantos segundos ele durou (poll irregular nao muda a semantica). Um intervalo
+ * sem delta (0) nunca casa, e delta ausente/reset continua invalido.
+ */
+export function thresholdTriggerPredicate(
+  thresholdPerMinute: number,
+): (ratePerMinute: number) => boolean {
+  if (thresholdPerMinute > 0) return (ratePerMinute) => ratePerMinute >= thresholdPerMinute;
+  return (ratePerMinute) => ratePerMinute > 0;
+}
+
 /** Ultimas `required` avaliacoes (da cauda) validas e aderentes ao predicado. */
 export function consecutiveMatch(
   evaluations: readonly SamplePairEvaluation[],
@@ -292,9 +305,16 @@ export function metricAlarmMessage(input: {
   direction: MetricDirection | null;
   ratePerMinute: number;
   thresholdPerMinute: number;
+  /** Delta do intervalo avaliado (delta > 0 e o criterio do preset QUALQUER). */
+  delta?: string | undefined;
 }): string {
   const metric = metricLabel(input.type, input.direction);
-  return `${input.deviceName}: ${input.interfaceLabel} (${input.interfaceName}) — ${metric} ${formatRate(input.ratePerMinute)}/min (limite ${formatRate(input.thresholdPerMinute)}/min)`;
+  const scope = `${input.deviceName}: ${input.interfaceLabel} (${input.interfaceName})`;
+  if (input.thresholdPerMinute <= 0) {
+    const delta = input.delta ? ` (+${input.delta} no intervalo)` : '';
+    return `${scope} — ${metric} qualquer ocorrência (delta > 0)${delta}`;
+  }
+  return `${scope} — ${metric} ${formatRate(input.ratePerMinute)}/min (limite ${formatRate(input.thresholdPerMinute)}/min)`;
 }
 
 function metricLabel(type: MetricAlarmType, direction: MetricDirection | null): string {
@@ -728,7 +748,7 @@ export class AlarmEngine {
             if (
               consecutiveMatch(
                 evaluations,
-                (rate) => rate >= config.thresholdPerMinute,
+                thresholdTriggerPredicate(config.thresholdPerMinute),
                 config.triggerSamples,
               )
             ) {
@@ -766,6 +786,7 @@ export class AlarmEngine {
                   direction: toggle.direction,
                   ratePerMinute,
                   thresholdPerMinute: config.thresholdPerMinute,
+                  delta: latest.delta.toString(),
                 }),
                 startedAt: this.now(),
               });

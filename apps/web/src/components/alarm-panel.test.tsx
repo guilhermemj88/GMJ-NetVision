@@ -467,6 +467,23 @@ describe('cards por tipo, ocorrencias e destino do clique (F8)', () => {
     expect(container.textContent).toContain('+36 no período');
   });
 
+  it('card de CRC com threshold 0 mostra QUALQUER OCORRÊNCIA (preset delta > 0)', async () => {
+    const container = await mount([
+      makeAlarm({
+        type: 'INTERFACE_CRC',
+        severity: 'WARNING',
+        metricKey: 'FCS',
+        currentValue: 0.5,
+        thresholdValue: 0,
+        metadata: { direction: 'RX', ratePerMinute: 0.5, thresholdPerMinute: 0, delta: '1' },
+      }),
+    ]);
+
+    expect(container.textContent).toContain('RX 0.5 CRC/min');
+    expect(container.textContent).toContain('QUALQUER OCORRÊNCIA');
+    expect(container.textContent).not.toContain('Limite 0/min');
+  });
+
   it('mostra o card de DISCARDS com a taxa da direcao', async () => {
     const container = await mount([
       makeAlarm({

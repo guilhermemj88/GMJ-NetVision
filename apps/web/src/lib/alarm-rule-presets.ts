@@ -12,9 +12,10 @@ import type {
 /**
  * Presets operacionais de regra (F8, secao I).
  *
- * O motor avalia TAXA por minuto entre amostras persistidas, entao "qualquer
- * ocorrencia" e expresso como >= 1/min com 1 amostra: no poll padrao de 60s,
- * um unico CRC/discard no intervalo ja satisfaz a regra.
+ * "Qualquer ocorrencia" e expresso como `thresholdPerMinute: 0`, que o motor
+ * entende como delta > 0 no intervalo — sem depender da duracao do poll (1 CRC
+ * em 60s ou em 120s disparam igual). `thresholdPerMinute > 0` continua sendo a
+ * taxa/min classica.
  */
 export interface AlarmRulePreset {
   id: string;
@@ -25,12 +26,13 @@ export interface AlarmRulePreset {
   config: AlarmRuleConfig;
 }
 
-export const ANY_OCCURRENCE_THRESHOLD_PER_MINUTE = 1;
+/** Threshold que o motor interpreta como "qualquer ocorrência" (delta > 0). */
+export const ANY_OCCURRENCE_THRESHOLD_PER_MINUTE = 0;
 
 export const ANY_CRC_PRESET: AlarmRulePreset = {
   id: 'crc-any',
   label: 'QUALQUER CRC',
-  summary: 'qualquer ocorrência (≥ 1/min) · 1 amostra',
+  summary: 'qualquer ocorrência (delta > 0) · 1 amostra',
   type: 'INTERFACE_CRC',
   severity: 'WARNING',
   config: {
@@ -44,7 +46,7 @@ export const ANY_CRC_PRESET: AlarmRulePreset = {
 export const ANY_DISCARDS_PRESET: AlarmRulePreset = {
   id: 'discards-any',
   label: 'QUALQUER DISCARD',
-  summary: 'qualquer ocorrência (≥ 1/min) · 1 amostra',
+  summary: 'RX ou TX com delta > 0 · 1 amostra',
   type: 'INTERFACE_DISCARDS',
   severity: 'WARNING',
   config: {
@@ -141,7 +143,11 @@ export function describeAlarmRule(rule: Pick<AlarmRuleDto, 'type' | 'config'>): 
     ? `${DIRECTION_LABELS[(config as InterfaceErrorsRuleConfig).direction]} `
     : 'RX ';
   const unit = rule.type === 'INTERFACE_CRC' ? 'CRC' : 'discards';
-  return `${direction}> ${formatNumber(config.thresholdPerMinute)} ${unit}/min · ${config.triggerSamples} amostra${config.triggerSamples > 1 ? 's' : ''}`;
+  const samples = `${config.triggerSamples} amostra${config.triggerSamples > 1 ? 's' : ''}`;
+  if (config.thresholdPerMinute <= 0) {
+    return `${direction}qualquer ocorrência (delta > 0) · ${samples}`;
+  }
+  return `${direction}> ${formatNumber(config.thresholdPerMinute)} ${unit}/min · ${samples}`;
 }
 
 /** Resumo do escopo: velocidades, devices/interfaces e vinculo de mapa. */

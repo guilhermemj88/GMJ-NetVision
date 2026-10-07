@@ -124,7 +124,9 @@ function MetricAlarmBody({ alarm }: { alarm: Alarm }) {
         {direction ? `${direction} ` : ''}
         {formatNumber(rate)} {unit}/min
       </span>
-      <span className="alarm-panel__limit">Limite {formatNumber(limit)}/min</span>
+      <span className="alarm-panel__limit">
+        {limit !== null && limit <= 0 ? 'QUALQUER OCORRÊNCIA' : `Limite ${formatNumber(limit)}/min`}
+      </span>
       {alarm.type === 'INTERFACE_CRC' && metadata?.delta ? (
         <span className="alarm-panel__limit">+{metadata.delta} no período</span>
       ) : null}

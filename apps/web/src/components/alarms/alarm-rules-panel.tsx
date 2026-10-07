@@ -580,10 +580,10 @@ function RuleForm({
               </label>
             ) : null}
             <label>
-              <span>THRESHOLD (/min)</span>
+              <span>THRESHOLD (/min) — 0 = QUALQUER</span>
               <input
                 type="number"
-                min={0.01}
+                min={0}
                 step={0.1}
                 value={draft.thresholdPerMinute}
                 onChange={(event) => patch({ thresholdPerMinute: Number(event.target.value) })}

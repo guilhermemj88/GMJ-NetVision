@@ -125,6 +125,37 @@ describe('parsers de leitura (revalidacao do que veio do banco)', () => {
     expect(parseAlarmRuleConfig('UNKNOWN', {})).toBeNull();
   });
 
+  it('threshold 0 (qualquer ocorrencia) e aceito com recovery 0 e rejeitado com recovery > 0', () => {
+    const anyCrc = {
+      name: 'Qualquer CRC',
+      type: 'INTERFACE_CRC',
+      severity: 'WARNING',
+      config: {
+        thresholdPerMinute: 0,
+        recoveryThresholdPerMinute: 0,
+        triggerSamples: 1,
+        recoverySamples: 1,
+      },
+    };
+    expect(createAlarmRuleSchema.parse(anyCrc).config).toMatchObject({
+      thresholdPerMinute: 0,
+      triggerSamples: 1,
+    });
+    expect(
+      createAlarmRuleSchema.safeParse({
+        ...anyCrc,
+        config: { ...anyCrc.config, recoveryThresholdPerMinute: 1 },
+      }).success,
+    ).toBe(false);
+    // Rate/min classico continua exigindo recovery estritamente menor.
+    expect(
+      createAlarmRuleSchema.safeParse({
+        ...anyCrc,
+        config: { ...anyCrc.config, thresholdPerMinute: 5, recoveryThresholdPerMinute: 5 },
+      }).success,
+    ).toBe(false);
+  });
+
   it('config optica aplica defaults e rejeita escada/janela invertidas', () => {
     expect(parseAlarmRuleConfig('OPTICAL_RX_DEGRADATION', {})).toMatchObject({
       warningProximityPercent: 90,

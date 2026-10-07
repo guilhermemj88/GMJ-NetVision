@@ -9,6 +9,7 @@ import {
   opticalProximityPercent,
   opticalTrendDropDb,
   ruleMatchesInterface,
+  thresholdTriggerPredicate,
 } from './alarm-engine';
 import type {
   AlarmRepository,
@@ -1467,5 +1468,239 @@ describe('criterios opticos puros', () => {
       trendDropObservedDb: 2.9,
     }))).toBe('NONE');
     expect(opticalLadderFor(criteria({ currentPowerDbm: -14.5 }))).toBe('CRITICAL');
+  });
+});
+
+/**
+ * Janela com intervalos ARBITRARIOS (segundos) entre amostras consecutivas:
+ * `deltas[i]` e o delta do intervalo que termina na amostra i+1.
+ */
+function intervalWindow(
+  interfaceId: string,
+  intervalSeconds: number,
+  deltas: bigint[],
+): InterfaceMetricWindowRow[] {
+  const rows: InterfaceMetricWindowRow[] = [];
+  let raw = 1_000n;
+  let elapsedSeconds = 0;
+  rows.push(
+    rowAt(interfaceId, (deltas.length * intervalSeconds) / 60, {
+      fcsErrors: raw,
+      fcsErrorsDelta: 0n,
+    }),
+  );
+  deltas.forEach((delta) => {
+    raw += delta;
+    elapsedSeconds += intervalSeconds;
+    rows.push(
+      rowAt(interfaceId, (deltas.length * intervalSeconds - elapsedSeconds) / 60, {
+        fcsErrors: raw,
+        fcsErrorsDelta: delta,
+      }),
+    );
+  });
+  return rows;
+}
+
+const asDiscardRows = (rows: InterfaceMetricWindowRow[]): InterfaceMetricWindowRow[] =>
+  rows.map((row) => ({
+    ...row,
+    inDiscards: row.fcsErrors ?? 0n,
+    inDiscardsDelta: row.fcsErrorsDelta,
+  }));
+
+describe('QUALQUER CRC / QUALQUER DISCARD (threshold 0 = delta > 0)', () => {
+  const anyCrcRule = ruleOf({
+    type: 'INTERFACE_CRC',
+    severity: 'WARNING',
+    mapLinkedOnly: false,
+    config: {
+      thresholdPerMinute: 0,
+      recoveryThresholdPerMinute: 0,
+      triggerSamples: 1,
+      recoverySamples: 1,
+    },
+  });
+  const anyDiscardsRule = ruleOf({
+    type: 'INTERFACE_DISCARDS',
+    severity: 'WARNING',
+    mapLinkedOnly: false,
+    config: {
+      direction: 'BOTH',
+      thresholdPerMinute: 0,
+      recoveryThresholdPerMinute: 0,
+      triggerSamples: 1,
+      recoverySamples: 1,
+    },
+  });
+
+  it('dispara com 1 CRC em 60 s', async () => {
+    const built = buildEngine({
+      rules: [anyCrcRule],
+      rows: intervalWindow('if-1', 60, [0n, 1n]),
+    });
+    await built.engine.processDeviceMetrics({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [IFACE],
+    });
+
+    expect(built.openMetricAlarm).toHaveBeenCalledTimes(1);
+    expect(built.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      type: 'INTERFACE_CRC',
+      metricKey: 'FCS',
+      thresholdValue: 0,
+      metadata: { delta: '1', thresholdPerMinute: 0, sampleIntervalSeconds: 60 },
+    });
+    expect(built.openMetricAlarm.mock.calls[0]?.[0]?.message).toContain('qualquer ocorrência');
+  });
+
+  it('dispara com 1 CRC em 120 s (poll irregular nao muda a semantica)', async () => {
+    const built = buildEngine({
+      rules: [anyCrcRule],
+      rows: intervalWindow('if-1', 120, [0n, 1n]),
+    });
+    await built.engine.processDeviceMetrics({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [IFACE],
+    });
+
+    expect(built.openMetricAlarm).toHaveBeenCalledTimes(1);
+    // A taxa cai pela metade, mas o criterio e delta > 0.
+    expect(built.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      currentValue: 0.5,
+      thresholdValue: 0,
+      metadata: { delta: '1', sampleIntervalSeconds: 120 },
+    });
+  });
+
+  it('delta 0 nao dispara', async () => {
+    const built = buildEngine({
+      rules: [anyCrcRule],
+      rows: intervalWindow('if-1', 60, [0n, 0n]),
+    });
+    await built.engine.processDeviceMetrics({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [IFACE],
+    });
+    expect(built.openMetricAlarm).not.toHaveBeenCalled();
+  });
+
+  it('QUALQUER DISCARD dispara com 1 discard em qualquer intervalo', async () => {
+    const rx = buildEngine({
+      rules: [anyDiscardsRule],
+      rows: asDiscardRows(intervalWindow('if-1', 120, [0n, 1n])),
+    });
+    await rx.engine.processDeviceMetrics({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [IFACE],
+    });
+    expect(rx.openMetricAlarm).toHaveBeenCalledTimes(1);
+    expect(rx.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      type: 'INTERFACE_DISCARDS',
+      metricKey: 'RX',
+      thresholdValue: 0,
+    });
+
+    // TX com delta > 0 tambem dispara (direcao BOTH), sem alarme duplicado no RX.
+    const txRows = intervalWindow('if-1', 60, [0n, 0n]).map((row) => ({
+      ...row,
+      outDiscards: row.fcsErrors ?? 0n,
+      outDiscardsDelta: row.fcsErrorsDelta,
+    }));
+    const tx = buildEngine({ rules: [anyDiscardsRule], rows: txRows });
+    await tx.engine.processDeviceMetrics({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [IFACE],
+    });
+    expect(tx.openMetricAlarm).not.toHaveBeenCalled();
+
+    const txWithDelta = buildEngine({
+      rules: [anyDiscardsRule],
+      rows: intervalWindow('if-1', 60, [0n, 1n]).map((row) => ({
+        ...row,
+        outDiscards: row.fcsErrors ?? 0n,
+        outDiscardsDelta: row.fcsErrorsDelta,
+      })),
+    });
+    await txWithDelta.engine.processDeviceMetrics({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [IFACE],
+    });
+    expect(txWithDelta.openMetricAlarm).toHaveBeenCalledTimes(1);
+    expect(txWithDelta.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({ metricKey: 'TX' });
+  });
+
+  it('regra rate/min existente continua igual (1 CRC em 120s nao passa de 2/min)', async () => {
+    const rateRule = ruleOf({
+      type: 'INTERFACE_CRC',
+      mapLinkedOnly: false,
+      config: {
+        thresholdPerMinute: 2,
+        recoveryThresholdPerMinute: 0,
+        triggerSamples: 1,
+        recoverySamples: 1,
+      },
+    });
+    const below = buildEngine({ rules: [rateRule], rows: intervalWindow('if-1', 120, [0n, 1n]) });
+    await below.engine.processDeviceMetrics({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [IFACE],
+    });
+    expect(below.openMetricAlarm).not.toHaveBeenCalled();
+
+    const above = buildEngine({ rules: [rateRule], rows: intervalWindow('if-1', 30, [0n, 2n]) });
+    await above.engine.processDeviceMetrics({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [IFACE],
+    });
+    expect(above.openMetricAlarm).toHaveBeenCalledTimes(1);
+    // 2 CRC em 30s = 4/min.
+    expect(above.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({ currentValue: 4 });
+  });
+
+  it('recupera quando o intervalo volta a ter delta 0', async () => {
+    const open = openedAlarm({
+      deviceId: 'dev-1',
+      interfaceId: 'if-1',
+      ifIndex: 1,
+      ruleId: 'rule-1',
+      type: 'INTERFACE_CRC',
+      severity: 'WARNING',
+      metricKey: 'FCS',
+      currentValue: 1,
+      thresholdValue: 0,
+      unit: 'per_min',
+      metadata: {},
+      message: 'aberto',
+      startedAt: new Date(NOW.getTime() - 300_000),
+    });
+    const built = buildEngine({
+      rules: [anyCrcRule],
+      rows: intervalWindow('if-1', 60, [0n, 0n]),
+      open: [open],
+    });
+    await built.engine.processDeviceMetrics({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [IFACE],
+    });
+    expect(built.resolveMetricAlarm).toHaveBeenCalledTimes(1);
+  });
+
+  it('thresholdTriggerPredicate distingue qualquer ocorrencia de taxa', () => {
+    const any = thresholdTriggerPredicate(0);
+    expect(any(0)).toBe(false);
+    expect(any(0.5)).toBe(true);
+    const rate = thresholdTriggerPredicate(2);
+    expect(rate(1.99)).toBe(false);
+    expect(rate(2)).toBe(true);
   });
 });

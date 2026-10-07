@@ -33,18 +33,25 @@ export const alarmRuleScopeSchema = z
   .strict();
 
 const metricThresholdFields = {
-  thresholdPerMinute: z.number().positive().max(10_000_000),
+  /**
+   * 0 = QUALQUER ocorrencia: o intervalo precisa ter delta > 0, sem depender da
+   * duracao do poll (usado pelos presets QUALQUER CRC / QUALQUER DISCARD).
+   */
+  thresholdPerMinute: z.number().min(0).max(10_000_000),
   recoveryThresholdPerMinute: z.number().min(0).max(10_000_000),
   triggerSamples: z.number().int().min(1).max(MAX_ALARM_RULE_SAMPLES),
   recoverySamples: z.number().int().min(1).max(MAX_ALARM_RULE_SAMPLES),
 };
 
-const RECOVERY_MESSAGE = 'recoveryThresholdPerMinute deve ser menor que thresholdPerMinute';
+const RECOVERY_MESSAGE =
+  'recoveryThresholdPerMinute deve ser menor que thresholdPerMinute (e 0 quando o threshold for 0)';
 
 const recoveryBelowTrigger = (value: {
   thresholdPerMinute: number;
   recoveryThresholdPerMinute: number;
-}): boolean => value.recoveryThresholdPerMinute < value.thresholdPerMinute;
+}): boolean => (value.thresholdPerMinute > 0
+  ? value.recoveryThresholdPerMinute < value.thresholdPerMinute
+  : value.recoveryThresholdPerMinute === 0);
 
 export const interfaceErrorsConfigSchema = z
   .object({
