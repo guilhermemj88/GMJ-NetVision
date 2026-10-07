@@ -934,9 +934,10 @@ describe('SnmpService Ã¢â‚¬â€ thresholds opticos SNMP (F7.5)', () => 
     lanes: [],
   };
 
-  it('persiste os thresholds SNMP como DEVICE com refreshAfter renovado', async () => {
+  it('persiste os thresholds SNMP como DEVICE sem renovar a janela do slow path SSH', async () => {
+    const retainedRefreshAfter = new Date('2026-08-24T00:00:00.000Z');
     const repo = opticalRepository([{
-      interfaceId: 'if-1', thresholds: null, source: null, updatedAt: null, refreshAfter: null,
+      interfaceId: 'if-1', thresholds: null, source: null, updatedAt: null, refreshAfter: retainedRefreshAfter,
     }]);
     const service = new SnmpService(repo, undefined, 0);
     const internals = opticalInternals(service);
@@ -971,11 +972,66 @@ describe('SnmpService Ã¢â‚¬â€ thresholds opticos SNMP (F7.5)', () => 
       source: 'DEVICE',
       thresholds: { version: 1 },
       updatedAt: expect.any(Date),
-      refreshAfter: expect.any(Date),
     });
-    expect((entries[0]?.refreshAfter as Date).getTime()
-      - (entries[0]?.updatedAt as Date).getTime()).toBe(24 * 3_600_000);
+    // A janela pertence ao slow path SSH (deteccao de USER SET): o SNMP atualiza
+    // o valor e NAO adia a verificacao.
+    expect(entries[0]?.refreshAfter).toEqual(retainedRefreshAfter);
     expect(repo.updateInterfaceOptics).toHaveBeenCalledTimes(1);
+  });
+
+  it('sem registro anterior o SNMP grava refreshAfter nulo (verificacao SSH pendente)', async () => {
+    const repo = opticalRepository();
+    const service = new SnmpService(repo, undefined, 0);
+    const internals = opticalInternals(service);
+    const device = snmpHost([networkInterface('100GE1/0/1', 1, 'UP')], { model: 'S6750-H' });
+    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([{
+      ...device.interfaces[0]!,
+      opticalThresholds: snmpThresholds,
+    }]);
+
+    await internals.refreshOpticalPower(device, 'public');
+
+    const entries = (
+      repo as unknown as { updateInterfaceOpticalThresholds: { mock: { calls: unknown[][] } } }
+    ).updateInterfaceOpticalThresholds.mock.calls[0]?.[1] as Array<Record<string, unknown>>;
+    expect(entries[0]?.refreshAfter).toBeNull();
+  });
+
+  it('SNMP DEVICE nao sobrescreve USER SET persistido pelo SSH', async () => {
+    const repo = opticalRepository([{
+      interfaceId: 'if-1',
+      thresholds: {
+        version: 1,
+        scalar: {
+          rx: { lowAlarmDbm: -13, highAlarmDbm: -2, lowSource: 'USER', highSource: 'USER' },
+          tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+        },
+        lanes: [],
+      },
+      source: 'USER',
+      updatedAt: new Date(),
+      refreshAfter: new Date(),
+    }]);
+    const service = new SnmpService(repo, undefined, 0);
+    const internals = opticalInternals(service);
+    const device = snmpHost([networkInterface('100GE1/0/1', 1, 'UP')], { model: 'S6750-H' });
+    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([{
+      ...device.interfaces[0]!,
+      opticalThresholds: snmpThresholds,
+    }]);
+
+    await internals.refreshOpticalPower(device, 'public');
+
+    const entries = (
+      repo as unknown as { updateInterfaceOpticalThresholds: { mock: { calls: unknown[][] } } }
+    ).updateInterfaceOpticalThresholds.mock.calls[0]?.[1] as Array<{
+      source: string | null;
+      thresholds: { scalar: Record<string, unknown> };
+    }>;
+    expect(entries[0]?.thresholds.scalar.rx).toEqual({
+      lowAlarmDbm: -13, highAlarmDbm: -2, lowSource: 'USER', highSource: 'USER',
+    });
+    expect(entries[0]?.source).toBe('USER');
   });
 
   it('merge preserva o lado persistido que o SNMP nao reporta', async () => {

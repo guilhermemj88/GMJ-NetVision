@@ -1185,6 +1185,81 @@ describe('motor + notificacao de midia (NETWORK_ALARMS)', () => {
     expect(built.openMetricAlarm).toHaveBeenCalledTimes(1);
     expect(notifier.notifyOpened).toHaveBeenCalledTimes(1);
   });
+
+  it('MANUAL da regra so entra quando o equipamento nao tem threshold aplicavel', async () => {
+    const rows = [opticalRow(10, atProximity(90)), opticalRow(5, atProximity(90)), opticalRow(0, atProximity(90))];
+    const noEquipmentThreshold = buildOpticalEngine({
+      rules: [opticalRuleOf({ config: opticalConfig({ manualRxLowAlarmDbm: -14, manualRxHighAlarmDbm: -1 }) })],
+      rows,
+      thresholds: [thresholdRecord(null, null)],
+    });
+    await noEquipmentThreshold.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: atProximity(90) })],
+    });
+    expect(noEquipmentThreshold.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      metricKey: 'RX',
+      metadata: { thresholdSource: 'MANUAL', rxLowAlarmDbm: -14, rxHighAlarmDbm: -1 },
+    });
+
+    const withEquipmentThreshold = buildOpticalEngine({
+      rules: [opticalRuleOf({ config: opticalConfig({ manualRxLowAlarmDbm: -18, manualRxHighAlarmDbm: -5 }) })],
+      rows,
+      thresholds: [OPTICAL_THRESHOLDS],
+    });
+    await withEquipmentThreshold.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: atProximity(90) })],
+    });
+    // O -14/-1 do equipamento vence o MANUAL -18/-5 da regra.
+    expect(withEquipmentThreshold.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      metadata: { thresholdSource: 'DEVICE', rxLowAlarmDbm: -14, rxHighAlarmDbm: -1 },
+    });
+  });
+
+  it('consome a mesma Interface.opticalThresholds mesclada: lane USER vence o scalar DEVICE', async () => {
+    // Resultado do merge SNMP (scalar DEVICE -12.31/+3.40) + SSH (lane 3 USER).
+    const merged = thresholdRecord(-12.31, 3.4, [{ lane: 3, low: -10.5, high: 3.4 }]);
+    const lane3 = merged.thresholds?.lanes[0];
+    if (lane3) {
+      lane3.rx.lowSource = 'USER';
+      lane3.rx.highSource = 'USER';
+    }
+    const built = buildOpticalEngine({
+      rows: [
+        laneRow(10, { 0: 0.19, 3: -10 }),
+        laneRow(5, { 0: 0.19, 3: -10 }),
+        laneRow(0, { 0: 0.19, 3: -10 }),
+      ],
+      thresholds: [merged],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({
+        rxPowerDbm: 0.19,
+        opticalLaneSource: 'SNMP',
+        opticalLanes: [
+          { lane: 0, rxPowerDbm: 0.19, txPowerDbm: -0.74 },
+          { lane: 3, rxPowerDbm: -10, txPowerDbm: -0.76 },
+        ],
+      })],
+    });
+
+    expect(built.openMetricAlarm).toHaveBeenCalledTimes(1);
+    expect(built.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      metricKey: 'RX_LANE_3',
+      severity: 'MAJOR',
+      metadata: {
+        lane: 3,
+        rxLowAlarmDbm: -10.5,
+        rxHighAlarmDbm: 3.4,
+        thresholdSource: 'USER',
+      },
+    });
+  });
 });
 
 describe('criterios opticos puros', () => {

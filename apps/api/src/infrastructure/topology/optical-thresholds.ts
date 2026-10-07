@@ -125,27 +125,59 @@ export function opticalThresholdLaneIds(thresholds: OpticalThresholdsV1 | null):
   return (thresholds?.lanes ?? []).map((lane) => lane.lane).sort((left, right) => left - right);
 }
 
+/**
+ * Autoridade da leitura que esta sendo mesclada:
+ * - PARTIAL (SNMP .13-.16): NAO distingue USER SET de DEVICE/DEFAULT — o valor
+ *   novo nunca rebaixa nem sobrescreve uma fonte de rank maior.
+ * - AUTHORITATIVE (SSH verbose): o rotulo User Set/Default/Device do CLI e
+ *   conclusivo, entao pode rebaixar um USER que sumiu do equipamento (sem
+ *   deixar threshold obsoleto eterno), mas nunca troca DEVICE valido por um
+ *   DEFAULT do CLI.
+ */
+export type OpticalThresholdMergeAuthority = 'PARTIAL' | 'AUTHORITATIVE';
+
+function incomingWins(
+  existingSource: OpticalThresholdSource | null,
+  incomingSource: OpticalThresholdSource | null,
+  authority: OpticalThresholdMergeAuthority,
+): boolean {
+  if (!incomingSource) return !existingSource;
+  if (!existingSource) return true;
+  if (OPTICAL_THRESHOLD_SOURCE_RANK[incomingSource] >= OPTICAL_THRESHOLD_SOURCE_RANK[existingSource]) {
+    return true;
+  }
+  return authority === 'AUTHORITATIVE' && existingSource === 'USER';
+}
+
 function mergeThresholdSide(
   existing: OpticalThresholdSide,
   incoming: OpticalThresholdSide,
+  authority: OpticalThresholdMergeAuthority,
 ): OpticalThresholdSide {
-  return {
-    lowAlarmDbm: incoming.lowAlarmDbm ?? existing.lowAlarmDbm,
-    highAlarmDbm: incoming.highAlarmDbm ?? existing.highAlarmDbm,
-    lowSource: incoming.lowAlarmDbm === null ? existing.lowSource : incoming.lowSource,
-    highSource: incoming.highAlarmDbm === null ? existing.highSource : incoming.highSource,
-  };
+  const result: OpticalThresholdSide = { ...existing };
+  for (const which of ['low', 'high'] as const) {
+    const valueKey = which === 'low' ? 'lowAlarmDbm' : 'highAlarmDbm';
+    const sourceKey = which === 'low' ? 'lowSource' : 'highSource';
+    if (incoming[valueKey] === null) continue;
+    if (!incomingWins(existing[sourceKey], incoming[sourceKey], authority)) continue;
+    result[valueKey] = incoming[valueKey];
+    result[sourceKey] = incoming[sourceKey];
+  }
+  return result;
 }
 
 /**
- * Merge dos thresholds do coletor (SNMP primario) sobre o que ja esta
- * persistido: o valor valido novo vence, o lado ausente/invalido NUNCA apaga um
- * valor valido existente, e lanes sao unidas por id. Assim uma leitura parcial
- * do equipamento nao destrói o ultimo threshold bom.
+ * Merge dos thresholds lidos do equipamento sobre o que ja esta persistido: o
+ * valor valido novo vence conforme a autoridade da leitura (ver
+ * `OpticalThresholdMergeAuthority`), o lado ausente/invalido NUNCA apaga um
+ * valor valido existente e lanes sao unidas por id. Assim uma leitura parcial
+ * nao destrói o ultimo threshold bom nem eterniza um USER SET que saiu do
+ * equipamento.
  */
 export function mergeOpticalThresholds(
   existing: OpticalThresholdsV1 | null,
   incoming: OpticalThresholdsV1,
+  authority: OpticalThresholdMergeAuthority,
 ): OpticalThresholdsV1 {
   if (!existing) return incoming;
   const lanes = new Map<number, { rx: OpticalThresholdSide; tx: OpticalThresholdSide }>();
@@ -155,14 +187,17 @@ export function mergeOpticalThresholds(
   for (const lane of incoming.lanes) {
     const current = lanes.get(lane.lane);
     lanes.set(lane.lane, current
-      ? { rx: mergeThresholdSide(current.rx, lane.rx), tx: mergeThresholdSide(current.tx, lane.tx) }
+      ? {
+        rx: mergeThresholdSide(current.rx, lane.rx, authority),
+        tx: mergeThresholdSide(current.tx, lane.tx, authority),
+      }
       : { rx: { ...lane.rx }, tx: { ...lane.tx } });
   }
   return {
     version: 1,
     scalar: {
-      rx: mergeThresholdSide(existing.scalar.rx, incoming.scalar.rx),
-      tx: mergeThresholdSide(existing.scalar.tx, incoming.scalar.tx),
+      rx: mergeThresholdSide(existing.scalar.rx, incoming.scalar.rx, authority),
+      tx: mergeThresholdSide(existing.scalar.tx, incoming.scalar.tx, authority),
     },
     lanes: [...lanes.entries()]
       .sort(([left], [right]) => left - right)

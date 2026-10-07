@@ -100,8 +100,6 @@ export class SnmpService {
     private readonly bgp?: BgpPollingService,
     private readonly alarmEngine?: AlarmEngine,
     private readonly opticalThresholds?: OpticalThresholdService,
-    /** Validade renovada para o slow path SSH dos thresholds (default 24h). */
-    private readonly opticalThresholdRefreshMs: number = 24 * 3_600_000,
   ) {
     this.client = new SnmpClientImpl(3000, 1);
     this.discoveryAdapter = new SnmpV2cDiscoveryAdapter(repository);
@@ -502,10 +500,13 @@ export class SnmpService {
   }
 
   /**
-   * Thresholds lidos por SNMP (.13-.16) sao a fonte PRIMARIA: merge com o que ja
-   * esta persistido (valor valido novo vence; lado ausente/invalido NUNCA apaga
-   * valor valido) e `refreshAfter` renovado para o slow path SSH ficar apenas
-   * como fallback de quem nao tem threshold via SNMP.
+   * Thresholds lidos por SNMP (.13-.16) sao a fonte PRIMARIA do valor DEVICE:
+   * merge com o que ja esta persistido (valor valido novo vence; lado
+   * ausente/invalido NUNCA apaga valor valido) com autoridade PARTIAL — o SNMP
+   * nao distingue USER SET de DEVICE/DEFAULT, entao nunca sobrescreve um USER
+   * persistido. `refreshAfter` NAO e renovado aqui: a janela pertence ao slow
+   * path SSH, que revalida a origem (USER SET) dentro dela; renovar no SNMP
+   * adiaria essa verificacao para sempre.
    */
   private async persistSnmpOpticalThresholds(
     deviceId: string,
@@ -519,19 +520,19 @@ export class SnmpService {
 
     const existing = new Map(
       (await this.repository.getInterfaceOpticalThresholds(deviceId))
-        .map((record) => [record.interfaceId, record.thresholds]),
+        .map((record) => [record.interfaceId, record]),
     );
-    const refreshAfter = new Date(collectedAt.getTime() + this.opticalThresholdRefreshMs);
     await this.repository.updateInterfaceOpticalThresholds(
       deviceId,
       incoming.map(({ item, thresholds }) => {
-        const merged = mergeOpticalThresholds(existing.get(item.id) ?? null, thresholds);
+        const previous = existing.get(item.id) ?? null;
+        const merged = mergeOpticalThresholds(previous?.thresholds ?? null, thresholds, 'PARTIAL');
         return {
           interfaceId: item.id,
           thresholds: merged,
           source: summaryOpticalThresholdSource(merged),
           updatedAt: collectedAt,
-          refreshAfter,
+          refreshAfter: previous?.refreshAfter ?? null,
         };
       }),
     );

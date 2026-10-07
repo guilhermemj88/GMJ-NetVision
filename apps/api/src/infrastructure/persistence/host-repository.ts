@@ -81,7 +81,7 @@ export interface InterfaceStatusUpdate {
   operStatus?: NetworkInterface['operStatus'];
 }
 
-/** Thresholds opticos persistidos de uma interface (slow path, 24h). */
+/** Thresholds opticos persistidos de uma interface (SNMP primario + janela do slow path SSH). */
 export interface InterfaceOpticalThresholdRecord {
   interfaceId: string;
   thresholds: OpticalThresholdsV1 | null;
@@ -95,7 +95,12 @@ export interface InterfaceOpticalThresholdUpdateInput {
   thresholds: OpticalThresholdsV1 | null;
   source: OpticalThresholdSource | null;
   updatedAt: Date;
-  refreshAfter: Date;
+  /**
+   * Janela do slow path SSH (quem a renova e a leitura SSH). O SNMP atualiza o
+   * valor DEVICE e preserva o que estiver gravado aqui; `null` = verificacao
+   * de origem pendente.
+   */
+  refreshAfter: Date | null;
 }
 
 export interface InterfaceStatusTransition {

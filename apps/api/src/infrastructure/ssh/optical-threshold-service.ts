@@ -61,6 +61,13 @@ function needsThresholdRefresh(
  * `enrichOpticalPower` retorna cedo quando o SNMP esta fresco (correto para a
  * potencia atual, nao para os thresholds). Aqui so entram interfaces sem
  * threshold persistido, com `refreshAfter` vencido ou com layout de lane novo.
+ *
+ * `refreshAfter` e a janela DESTE slow path (quem escreve e o proprio SSH; o
+ * SNMP nao a renova). E assim que um USER SET configurado no CLI e descoberto
+ * dentro da janela, sem SSH a cada poll: o SNMP mantem o valor DEVICE fresco e
+ * o SSH revalida a origem periodicamente. A leitura do CLI e AUTHORITATIVE no
+ * merge, entao um User Set que desapareceu vira DEVICE/DEFAULT em vez de ficar
+ * para sempre no painel.
  */
 export class OpticalThresholdService {
   private readonly refreshMs: number;
@@ -120,6 +127,7 @@ export class OpticalThresholdService {
     await this.repository.updateInterfaceOpticalThresholds(
       device.id,
       stale.map((candidate) => {
+        const previous = records.get(candidate.id) ?? null;
         const reading = [
           ...interfaceNameKeys(candidate.name),
           ...interfaceNameKeys(candidate.description),
@@ -129,11 +137,13 @@ export class OpticalThresholdService {
         const parsed = reading && (useful || laneIds.length)
           ? opticalThresholdsV1FromHuawei(reading.thresholds, laneIds)
           : null;
-        // Merge preserva um lado SNMP que o SSH nao reporta: o fallback preenche
-        // lacunas, nunca apaga um threshold valido so porque nao o viu.
+        // Merge preserva um lado SNMP que o SSH nao reporta e, por ser leitura
+        // AUTHORITATIVE, rebaixa USER -> DEVICE/DEFAULT quando o CLI prova que o
+        // User Set saiu. Sem leitura util o registro anterior fica INTACTO: uma
+        // passada que nao viu nada nunca apaga threshold valido.
         const thresholds = parsed
-          ? mergeOpticalThresholds(records.get(candidate.id)?.thresholds ?? null, parsed)
-          : null;
+          ? mergeOpticalThresholds(previous?.thresholds ?? null, parsed, 'AUTHORITATIVE')
+          : previous?.thresholds ?? null;
         return {
           interfaceId: candidate.id,
           thresholds,

@@ -237,6 +237,88 @@ describe('OpticalThresholdService slow path', () => {
     });
   });
 
+  /** Registro rx DEVICE -12.31/+3.40 vindo do SNMP (.13/.14), com janela SSH vencida. */
+  const snmpDeviceRecord = () => record({
+    thresholds: {
+      version: 1 as const,
+      scalar: {
+        rx: { lowAlarmDbm: -12.31, highAlarmDbm: 3.4, lowSource: 'DEVICE' as const, highSource: 'DEVICE' as const },
+        tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+      },
+      lanes: [],
+    },
+    source: 'DEVICE' as const,
+    refreshAfter: new Date('2026-08-23T11:59:00.000Z'),
+  });
+
+  it('SSH sem User Set nao rebaixa o DEVICE valido persistido pelo SNMP', async () => {
+    vi.spyOn(SshClientImpl.prototype, 'execute').mockResolvedValue(oneResult(`
+100GE0/0/2 transceiver information:
+   Default Thresholds:
+     Rx Power High Alarm Threshold : 3.40
+     Rx Power Low Alarm Threshold  : -12.31
+`));
+    const { repo, updateThresholds } = repository([snmpDeviceRecord()]);
+
+    await service(repo).refreshOpticalThresholds(
+      device([networkInterface('100GE0/0/2', { rxPowerDbm: -9 })]),
+    );
+
+    const [, entries] = updateThresholds.mock.calls[0] as [string, Array<{
+      source: string | null;
+      thresholds: { scalar: { rx: Record<string, unknown> } };
+    }>];
+    // DEFAULT do CLI nao vence DEVICE do SNMP: o valor e a origem ficam intactos.
+    expect(entries[0]?.thresholds.scalar.rx).toEqual({
+      lowAlarmDbm: -12.31, highAlarmDbm: 3.4, lowSource: 'DEVICE', highSource: 'DEVICE',
+    });
+    expect(entries[0]?.source).toBe('DEVICE');
+  });
+
+  it('USER SET explicito do SSH prevalece sobre o DEVICE do SNMP', async () => {
+    vi.spyOn(SshClientImpl.prototype, 'execute').mockResolvedValue(oneResult(`
+100GE0/0/2 transceiver information:
+   User Set Thresholds:
+     Rx Power High Alarm Threshold : -2.00
+     Rx Power Low Alarm Threshold  : -13.00
+`));
+    const { repo, updateThresholds } = repository([snmpDeviceRecord()]);
+
+    await service(repo).refreshOpticalThresholds(
+      device([networkInterface('100GE0/0/2', { rxPowerDbm: -9 })]),
+    );
+
+    const [, entries] = updateThresholds.mock.calls[0] as [string, Array<{
+      source: string | null;
+      thresholds: { scalar: { rx: Record<string, unknown> } };
+    }>];
+    expect(entries[0]?.thresholds.scalar.rx).toEqual({
+      lowAlarmDbm: -13, highAlarmDbm: -2, lowSource: 'USER', highSource: 'USER',
+    });
+    expect(entries[0]?.source).toBe('USER');
+  });
+
+  it('leitura SSH sem nenhum threshold nao apaga o registro do SNMP', async () => {
+    vi.spyOn(SshClientImpl.prototype, 'execute').mockResolvedValue(oneResult(`
+100GE0/0/2 transceiver information:
+   Current RX Power (dBm) : -9.00
+`));
+    const { repo, updateThresholds } = repository([snmpDeviceRecord()]);
+
+    await service(repo).refreshOpticalThresholds(
+      device([networkInterface('100GE0/0/2', { rxPowerDbm: -9 })]),
+    );
+
+    const [, entries] = updateThresholds.mock.calls[0] as [string, Array<{
+      source: string | null;
+      thresholds: unknown;
+      refreshAfter: Date;
+    }>];
+    expect(entries[0]?.thresholds).toEqual(snmpDeviceRecord().thresholds);
+    expect(entries[0]?.source).toBe('DEVICE');
+    expect(entries[0]?.refreshAfter).toEqual(new Date(NOW + 24 * 3_600_000));
+  });
+
   it('records the observed lane layout even without lane thresholds', async () => {
     vi.spyOn(SshClientImpl.prototype, 'execute').mockResolvedValue(oneResult(`
 100GE0/0/2 transceiver information:

@@ -87,7 +87,7 @@ describe('canonical optical thresholds', () => {
       [],
     );
 
-    const merged = mergeOpticalThresholds(existing, incoming);
+    const merged = mergeOpticalThresholds(existing, incoming, 'PARTIAL');
     expect(merged.scalar.rx).toEqual({
       lowAlarmDbm: -12.31, highAlarmDbm: 3.4, lowSource: 'DEVICE', highSource: 'DEVICE',
     });
@@ -98,7 +98,73 @@ describe('canonical optical thresholds', () => {
     expect(merged.lanes[0]?.rx).toMatchObject({ lowAlarmDbm: -13, highAlarmDbm: 3.4 });
     expect(merged.lanes[1]?.rx).toMatchObject({ lowAlarmDbm: -13.5 });
     // Sem registro anterior o merge devolve o proprio incoming.
-    expect(mergeOpticalThresholds(null, incoming)).toEqual(incoming);
+    expect(mergeOpticalThresholds(null, incoming, 'PARTIAL')).toEqual(incoming);
+  });
+
+  it('PARTIAL (SNMP) nao sobrescreve USER; AUTHORITATIVE (SSH) rebaixa o USER que sumiu', () => {
+    const existing = opticalThresholdsV1FromHuawei(
+      {
+        scalar: {
+          rx: { lowAlarmDbm: -12.31, highAlarmDbm: 3.4, lowSource: 'DEVICE', highSource: 'DEVICE' },
+          tx: { lowAlarmDbm: -10.4, highAlarmDbm: 3.4, lowSource: 'USER', highSource: 'USER' },
+        },
+        lanes: [],
+      },
+      [],
+    );
+    const side = (low: number | null, high: number | null, source: 'DEVICE' | 'DEFAULT' | 'USER') => ({
+      lowAlarmDbm: low,
+      highAlarmDbm: high,
+      lowSource: low === null ? null : source,
+      highSource: high === null ? null : source,
+    });
+
+    // SNMP (.13-.16) e leitura PARTIAL: renova DEVICE, nunca toca no USER.
+    const snmpRead = opticalThresholdsV1FromHuawei({
+      scalar: {
+        rx: side(-12.5, 3.5, 'DEVICE'),
+        tx: side(-11.1, 4.1, 'DEVICE'),
+      },
+      lanes: [],
+    }, []);
+    const afterSnmp = mergeOpticalThresholds(existing, snmpRead, 'PARTIAL');
+    expect(afterSnmp.scalar.rx).toEqual(side(-12.5, 3.5, 'DEVICE'));
+    expect(afterSnmp.scalar.tx).toEqual(existing.scalar.tx);
+
+    // Um USER SET com valor novo continua vencendo (rank igual, leitura nova).
+    const snmpNewerUserValues = mergeOpticalThresholds(
+      existing,
+      opticalThresholdsV1FromHuawei(
+        { scalar: { rx: side(null, null, 'USER'), tx: side(-10.9, 3.9, 'USER') }, lanes: [] },
+        [],
+      ),
+      'AUTHORITATIVE',
+    );
+    expect(snmpNewerUserValues.scalar.tx).toEqual(side(-10.9, 3.9, 'USER'));
+
+    // SSH verboso e AUTHORITATIVE: o CLI provou que o User Set saiu do equipamento.
+    const sshRead = opticalThresholdsV1FromHuawei({
+      scalar: {
+        // DEFAULT do CLI nao rebaixa um DEVICE valido vindo do SNMP...
+        rx: side(-13, -1, 'DEFAULT'),
+        // ...mas rebaixa o USER que desapareceu.
+        tx: side(-10.4, 3.4, 'DEVICE'),
+      },
+      lanes: [],
+    }, []);
+    const afterSsh = mergeOpticalThresholds(existing, sshRead, 'AUTHORITATIVE');
+    expect(afterSsh.scalar.rx).toEqual(side(-12.31, 3.4, 'DEVICE'));
+    expect(afterSsh.scalar.tx).toEqual(side(-10.4, 3.4, 'DEVICE'));
+
+    const sshDefaultAfterUser = mergeOpticalThresholds(
+      existing,
+      opticalThresholdsV1FromHuawei(
+        { scalar: { rx: side(null, null, 'DEVICE'), tx: side(-10.4, 3.4, 'DEFAULT') }, lanes: [] },
+        [],
+      ),
+      'AUTHORITATIVE',
+    );
+    expect(sshDefaultAfterUser.scalar.tx).toEqual(side(-10.4, 3.4, 'DEFAULT'));
   });
 
   it('rejects malformed or future JSON versions from the database column', () => {
