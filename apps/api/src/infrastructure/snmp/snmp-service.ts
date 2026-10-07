@@ -15,7 +15,8 @@ import { SnmpV2cDiscoveryAdapter } from './snmpv2c-discovery-adapter';
 import type { SshInterfaceService } from '../ssh/ssh-interface-service';
 import { SnmpProfileMetricService } from './profile-metric-service';
 import type { SnmpProfileDiagnostic } from './profiles/types';
-import { calculateCounterDelta } from './counter-delta';
+import { calculateCounterDelta, calculateFcsErrorsDelta } from './counter-delta';
+import { ETHERLIKE_FCS_OIDS } from './etherlike-oids';
 import { BASELINE_ONLY_RATE_BPS, evaluateTrafficRate } from './traffic-rate';
 import { decodeSnmpText } from './snmp-text';
 import {
@@ -57,6 +58,8 @@ interface CounterRow {
   outErrors: bigint;
   inDiscards: bigint;
   outDiscards: bigint;
+  /** FCS/CRC por ifIndex (EtherLike-MIB); ausente/null = nao coletado. */
+  fcsErrors?: bigint | null;
   timestamp: Date;
 }
 
@@ -312,6 +315,8 @@ export class SnmpService {
         outErrorsDelta: calculateCounterDelta(counter.outErrors, prior?.outErrors),
         inDiscardsDelta: calculateCounterDelta(counter.inDiscards, prior?.inDiscards),
         outDiscardsDelta: calculateCounterDelta(counter.outDiscards, prior?.outDiscards),
+        fcsErrors: counter.fcsErrors ?? null,
+        fcsErrorsDelta: calculateFcsErrorsDelta(counter.fcsErrors ?? null, prior?.fcsErrors),
         operStatus: statuses.get(counter.ifIndex)?.operStatus ?? networkInterface.operStatus,
       });
     }
@@ -485,6 +490,14 @@ export class SnmpService {
     const inDiscards = await this.safeWalk(device.snmp.host, INTERFACE_OIDS.inDiscards, options);
     const outDiscards = await this.safeWalk(device.snmp.host, INTERFACE_OIDS.outDiscards, options);
 
+    // EtherLike-MIB e OPCIONAL: HC (Counter64) primeiro, fallback Counter32.
+    // Falha/ausencia vira ausencia de metrica (null) e nunca quebra o IF-MIB.
+    let fcsRows = await this.safeWalk(device.snmp.host, ETHERLIKE_FCS_OIDS.hcFcsErrors, options);
+    if (!fcsRows.length) {
+      fcsRows = await this.safeWalk(device.snmp.host, ETHERLIKE_FCS_OIDS.fcsErrors, options);
+    }
+    const fcsByIndex = this.toBigIntIndexMap(fcsRows);
+
     const inErrorsMap = this.toBigIntIndexMap(inErrors);
     const outErrorsMap = this.toBigIntIndexMap(outErrors);
     const inDiscardsMap = this.toBigIntIndexMap(inDiscards);
@@ -501,6 +514,7 @@ export class SnmpService {
         outErrors: outErrorsMap.get(ifIndex) ?? 0n,
         inDiscards: inDiscardsMap.get(ifIndex) ?? 0n,
         outDiscards: outDiscardsMap.get(ifIndex) ?? 0n,
+        fcsErrors: fcsByIndex.get(ifIndex) ?? null,
         timestamp: now,
       });
     }

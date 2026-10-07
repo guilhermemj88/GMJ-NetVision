@@ -30,6 +30,8 @@ export interface InterfaceCounterSnapshot {
   outErrors: bigint;
   inDiscards: bigint;
   outDiscards: bigint;
+  /** FCS/CRC (EtherLike-MIB); ausente/null = nao coletado ou sem suporte. */
+  fcsErrors?: bigint | null | undefined;
 }
 
 export interface InterfaceMetricSampleInput extends InterfaceCounterSnapshot {
@@ -39,6 +41,9 @@ export interface InterfaceMetricSampleInput extends InterfaceCounterSnapshot {
   outErrorsDelta: bigint;
   inDiscardsDelta: bigint;
   outDiscardsDelta: bigint;
+  /** NULL = metrica nao suportada/nao coletada; 0 = coletada e sem erro. */
+  fcsErrors?: bigint | null | undefined;
+  fcsErrorsDelta?: bigint | null | undefined;
   operStatus: NetworkInterface['operStatus'];
 }
 

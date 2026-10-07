@@ -4,6 +4,7 @@ import type { HostRepository } from '../persistence/host-repository';
 import type { DeviceMetricSampleInput } from '../persistence/host-repository';
 import { SnmpClientImpl } from './snmp-client-impl';
 import { SnmpService } from './snmp-service';
+import { ETHERLIKE_FCS_OIDS } from './etherlike-oids';
 
 function host(overrides: Partial<HostRecord> = {}): HostRecord {
   const timestamp = new Date().toISOString();
@@ -130,6 +131,7 @@ function counterRow(ifIndex: number, timestamp = new Date()) {
     outErrors: 0n,
     inDiscards: 0n,
     outDiscards: 0n,
+    fcsErrors: null,
   };
 }
 
@@ -1229,5 +1231,135 @@ describe('SNMP credential safety', () => {
       'SNMP authentication failed - check community/credentials and version compatibility';
     expect(errorMessage).not.toContain('private');
     expect(errorMessage).not.toContain('public');
+  });
+});
+
+describe('SnmpService — EtherLike FCS/CRC', () => {
+  function internalsOf(service: SnmpService) {
+    return service as unknown as {
+      client: { walk: (host: string, oid: string, options: unknown) => Promise<unknown[]> };
+      collectSystem: () => Promise<DeviceMetricSampleInput>;
+      profileMetrics: { collect: () => Promise<Record<string, never>> };
+    };
+  }
+
+  /** Responde apenas os OIDs genericos do IF-MIB usados pelo poll. */
+  function octetWalks(oid: string): unknown[] | null {
+    if (oid.endsWith('.6') || oid.endsWith('.10')) return [{ oid: `${oid}.24`, value: 1_000 }];
+    if (oid.endsWith('.14') || oid.endsWith('.20') || oid.endsWith('.13') || oid.endsWith('.19')) {
+      return [{ oid: `${oid}.24`, value: 0 }];
+    }
+    return null;
+  }
+
+  it('coleta dot3HCStatsFCSErrors (Counter64) por ifIndex', async () => {
+    const service = new SnmpService(repository());
+    const internals = internalsOf(service);
+    vi.spyOn(internals.client, 'walk').mockImplementation(async (_host, oid) => {
+      if (oid === ETHERLIKE_FCS_OIDS.hcFcsErrors) return [{ oid: `${oid}.24`, value: '4294967300' }];
+      if (oid === ETHERLIKE_FCS_OIDS.fcsErrors) return [{ oid: `${oid}.24`, value: 99 }];
+      return octetWalks(oid) ?? [];
+    });
+
+    const counters = await service.collectCounters(
+      snmpHost([networkInterface('100GE1/0/24', 24)]),
+      'secret',
+    );
+    expect(counters.get(24)?.fcsErrors).toBe(4_294_967_300n);
+  });
+
+  it('usa dot3StatsFCSErrors (Counter32) quando o HC nao responde', async () => {
+    const service = new SnmpService(repository());
+    const internals = internalsOf(service);
+    vi.spyOn(internals.client, 'walk').mockImplementation(async (_host, oid) => {
+      if (oid === ETHERLIKE_FCS_OIDS.fcsErrors) return [{ oid: `${oid}.24`, value: 12 }];
+      return octetWalks(oid) ?? [];
+    });
+
+    const counters = await service.collectCounters(
+      snmpHost([networkInterface('100GE1/0/24', 24)]),
+      'secret',
+    );
+    expect(counters.get(24)?.fcsErrors).toBe(12n);
+  });
+
+  it('mantem null quando a EtherLike-MIB nao responde (0 seria "coletado sem erro")', async () => {
+    const service = new SnmpService(repository());
+    const internals = internalsOf(service);
+    vi.spyOn(internals.client, 'walk').mockImplementation(async (_host, oid) => octetWalks(oid) ?? []);
+
+    const counters = await service.collectCounters(
+      snmpHost([networkInterface('100GE1/0/24', 24)]),
+      'secret',
+    );
+    expect(counters.get(24)?.fcsErrors).toBeNull();
+  });
+
+  it('persiste raw + delta reais de FCS no poll', async () => {
+    const now = new Date('2026-08-23T12:01:00.000Z');
+    const port = networkInterface('100GE1/0/24', 24);
+    const repo = repository();
+    vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(
+      new Map([
+        [
+          24,
+          {
+            interfaceId: port.id,
+            ifIndex: 24,
+            timestamp: new Date('2026-08-23T12:00:00.000Z'),
+            inOctets: 500n,
+            outOctets: 500n,
+            inErrors: 0n,
+            outErrors: 0n,
+            inDiscards: 0n,
+            outDiscards: 0n,
+            fcsErrors: 5n,
+          },
+        ],
+      ]),
+    );
+    const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
+    const internals = internalsOf(service);
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([[24, { ifIndex: 24, adminStatus: 'UP' as const, operStatus: 'UP' as const }]]),
+    );
+    vi.spyOn(internals.client, 'walk').mockImplementation(async (_host, oid) => {
+      if (oid === ETHERLIKE_FCS_OIDS.hcFcsErrors) return [{ oid: `${oid}.24`, value: 8 }];
+      return octetWalks(oid) ?? [];
+    });
+    vi.spyOn(internals.profileMetrics, 'collect').mockResolvedValue({});
+    vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
+
+    await service.pollHost(snmpHost([port]));
+
+    expect(repo.saveSnmpPoll).toHaveBeenCalledWith('test-1', expect.any(Object), [
+      expect.objectContaining({ interfaceId: port.id, fcsErrors: 8n, fcsErrorsDelta: 3n }),
+    ]);
+  });
+
+  it('falha total da EtherLike nao derruba o polling IF-MIB (vira null)', async () => {
+    const now = new Date('2026-08-23T12:01:00.000Z');
+    const port = networkInterface('100GE1/0/24', 24);
+    const repo = repository();
+    const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
+    const internals = internalsOf(service);
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([[24, { ifIndex: 24, adminStatus: 'UP' as const, operStatus: 'UP' as const }]]),
+    );
+    vi.spyOn(internals.client, 'walk').mockImplementation(async (_host, oid) => {
+      if (oid === ETHERLIKE_FCS_OIDS.hcFcsErrors || oid === ETHERLIKE_FCS_OIDS.fcsErrors) {
+        throw new Error('etherlike walk failed');
+      }
+      return octetWalks(oid) ?? [];
+    });
+    vi.spyOn(internals.profileMetrics, 'collect').mockResolvedValue({});
+    vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
+
+    const result = await service.pollHost(snmpHost([port]));
+
+    expect(result.interfaceSamples).toBe(1);
+    expect(repo.saveSnmpPoll).toHaveBeenCalledWith('test-1', expect.any(Object), [
+      expect.objectContaining({ interfaceId: port.id, fcsErrors: null, fcsErrorsDelta: null }),
+    ]);
   });
 });

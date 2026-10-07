@@ -114,6 +114,7 @@ type LatestMetricRow = {
   outErrors: bigint;
   inDiscards: bigint;
   outDiscards: bigint;
+  fcsErrors: bigint | null;
   inErrorsDelta: bigint;
   outErrorsDelta: bigint;
   inDiscardsDelta: bigint;
@@ -629,6 +630,7 @@ export class PrismaHostRepository implements HostRepository {
         s."outErrors" AS "outErrors",
         s."inDiscards" AS "inDiscards",
         s."outDiscards" AS "outDiscards",
+        s."fcsErrors" AS "fcsErrors",
         s."operStatus"::text AS "operStatus"
       FROM "Interface" i
       JOIN LATERAL (
@@ -643,6 +645,7 @@ export class PrismaHostRepository implements HostRepository {
           m."outErrors",
           m."inDiscards",
           m."outDiscards",
+          m."fcsErrors",
           m."operStatus"
         FROM "InterfaceMetricSample" m
         WHERE m."interfaceId" = i."id"
@@ -661,6 +664,7 @@ export class PrismaHostRepository implements HostRepository {
       outErrors: row.outErrors,
       inDiscards: row.inDiscards,
       outDiscards: row.outDiscards,
+      fcsErrors: row.fcsErrors,
     }]));
   }
 
@@ -702,6 +706,8 @@ export class PrismaHostRepository implements HostRepository {
             outErrorsDelta: sample.outErrorsDelta,
             inDiscardsDelta: sample.inDiscardsDelta,
             outDiscardsDelta: sample.outDiscardsDelta,
+            fcsErrors: sample.fcsErrors ?? null,
+            fcsErrorsDelta: sample.fcsErrorsDelta ?? null,
             operStatus: sample.operStatus,
           })),
         });
@@ -805,6 +811,7 @@ export class PrismaHostRepository implements HostRepository {
         s."outErrorsDelta" AS "outErrorsDelta",
         s."inDiscardsDelta" AS "inDiscardsDelta",
         s."outDiscardsDelta" AS "outDiscardsDelta",
+        s."fcsErrors" AS "fcsErrors",
         s."operStatus"::text AS "operStatus"
       FROM "Interface" i
       JOIN LATERAL (
@@ -822,6 +829,7 @@ export class PrismaHostRepository implements HostRepository {
           m."outErrorsDelta",
           m."inDiscardsDelta",
           m."outDiscardsDelta",
+          m."fcsErrors",
           m."operStatus"
         FROM "InterfaceMetricSample" m
         WHERE m."interfaceId" = i."id"
