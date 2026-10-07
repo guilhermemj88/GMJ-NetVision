@@ -19,6 +19,11 @@ import {
 } from '@gmj/shared';
 import type { CredentialVault } from '../../application/credential-vault';
 import { Prisma, PrismaClient } from '../../generated/prisma/index.js';
+import {
+  filterUsableTrafficSamples,
+  pickLatestUsableTrafficSample,
+} from '../snmp/traffic-rate';
+import { USABLE_TRAFFIC_SAMPLE_SQL } from './traffic-sample-sql';
 import { CredentialEncryptionUnavailableError } from './demo-map-repository';
 import type {
   DeviceMetricSampleInput,
@@ -705,11 +710,24 @@ export class PrismaHostRepository implements HostRepository {
   }
 
   async getInterfaceHistory(interfaceId: string, period: HistoryPeriod): Promise<MetricPoint[]> {
-    const rows = await this.prisma.interfaceMetricSample.findMany({
-      where: { interfaceId, timestamp: { gte: historyStart(period) } },
-      orderBy: { timestamp: 'asc' },
-    });
-    return aggregateMetricHistory(rows.map((row) => ({
+    const [rows, iface] = await Promise.all([
+      this.prisma.interfaceMetricSample.findMany({
+        where: { interfaceId, timestamp: { gte: historyStart(period) } },
+        orderBy: { timestamp: 'asc' },
+      }),
+      this.prisma.interface.findUnique({
+        where: { id: interfaceId },
+        select: { speedBps: true },
+      }),
+    ]);
+    /**
+     * Guard READ-SIDE: amostra inválida (sentinela de rebase ou taxa acima da
+     * capacidade + tolerância) vira AUSÊNCIA no histórico — não zero falso e
+     * nunca o valor impossível. O filtro é aplicado ANTES de agregar, para um
+     * spike já persistido não envenenar a média/`Max` do bucket.
+     */
+    const usable = filterUsableTrafficSamples(rows, iface?.speedBps ?? null);
+    return aggregateMetricHistory(usable.map((row) => ({
       timestamp: row.timestamp.toISOString(),
       rxBps: row.rxBps,
       txBps: row.txBps,
@@ -737,11 +755,18 @@ export class PrismaHostRepository implements HostRepository {
   }
 
   async getInterfaceMetrics(interfaceId: string): Promise<Record<string, number | string> | null> {
-    const row = await this.prisma.interfaceMetricSample.findFirst({
+    /**
+     * Guard READ-SIDE: pega o sample mais recente VÁLIDO. Se o topo for um spike
+     * fisicamente impossível ou uma linha de rebase, volta para o anterior
+     * válido — nunca devolve o valor inválido nem `null` havendo anterior bom.
+     */
+    const rows = await this.prisma.interfaceMetricSample.findMany({
       where: { interfaceId },
       orderBy: { timestamp: 'desc' },
+      take: 500,
       include: { interface: { select: { speedBps: true } } },
     });
+    const row = pickLatestUsableTrafficSample(rows, rows[0]?.interface.speedBps ?? null);
     if (!row) return null;
     const speedBps = safeNumber(row.interface.speedBps);
     return {
@@ -800,6 +825,7 @@ export class PrismaHostRepository implements HostRepository {
           m."operStatus"
         FROM "InterfaceMetricSample" m
         WHERE m."interfaceId" = i."id"
+          AND (${Prisma.raw(USABLE_TRAFFIC_SAMPLE_SQL)})
         ORDER BY m."timestamp" DESC
         LIMIT 1
       ) s ON TRUE

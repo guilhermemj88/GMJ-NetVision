@@ -16,6 +16,7 @@ import type { SshInterfaceService } from '../ssh/ssh-interface-service';
 import { SnmpProfileMetricService } from './profile-metric-service';
 import type { SnmpProfileDiagnostic } from './profiles/types';
 import { calculateCounterDelta } from './counter-delta';
+import { BASELINE_ONLY_RATE_BPS, evaluateTrafficRate } from './traffic-rate';
 import { decodeSnmpText } from './snmp-text';
 import {
   GENERIC_INTERFACE_OIDS,
@@ -280,16 +281,29 @@ export class SnmpService {
       if (prior && seconds > 0 && seconds < MIN_COUNTER_SAMPLE_SECONDS) continue;
       if (prior && counter.timestamp <= prior.timestamp) continue;
 
-      const rxBps = this.calculateBps(counter.inOctets, prior?.inOctets, seconds);
-      const txBps = this.calculateBps(counter.outOctets, prior?.outOctets, seconds);
+      /**
+       * Fail-safe de contador SNMP (ver `traffic-rate.ts`): descontinuidade
+       * (contador voltando) e taxa fisicamente impossível viram amostra de
+       * BASELINE (rebase), nunca valor de tráfego. O contador atual sempre vira
+       * o novo baseline, então o próximo poll não continua comparando com um
+       * valor antigo — e a linha de rebase é filtrada dos consumidores.
+       */
+      const rate = evaluateTrafficRate({
+        currentInOctets: counter.inOctets,
+        currentOutOctets: counter.outOctets,
+        previousInOctets: prior?.inOctets,
+        previousOutOctets: prior?.outOctets,
+        seconds,
+        speedBps: networkInterface.speedBps,
+      });
       samples.push({
         interfaceId: networkInterface.id,
         ifIndex: counter.ifIndex,
         timestamp: counter.timestamp,
         inOctets: counter.inOctets,
         outOctets: counter.outOctets,
-        rxBps,
-        txBps,
+        rxBps: rate.usable ? rate.rxBps : BASELINE_ONLY_RATE_BPS,
+        txBps: rate.usable ? rate.txBps : BASELINE_ONLY_RATE_BPS,
         inErrors: counter.inErrors,
         outErrors: counter.outErrors,
         inDiscards: counter.inDiscards,
@@ -571,13 +585,6 @@ export class SnmpService {
     let result = 0n;
     for (const byte of value) result = (result << 8n) | BigInt(byte);
     return result;
-  }
-
-  private calculateBps(current: bigint, previous: bigint | undefined, seconds: number): number {
-    if (previous === undefined || seconds <= 0 || current < previous) return 0;
-    const deltaBits = (current - previous) * 8n;
-    const value = Number(deltaBits) / seconds;
-    return Number.isFinite(value) && value >= 0 ? value : 0;
   }
 
   private parseAdminStatus(
