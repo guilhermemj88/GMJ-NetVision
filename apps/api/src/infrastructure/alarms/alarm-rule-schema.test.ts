@@ -137,8 +137,12 @@ describe('parsers de leitura (revalidacao do que veio do banco)', () => {
       recoveryProximityPercent: 85,
       recoverySamples: 3,
       trendDropDb: 3,
+      trendMajorDropDb: 5,
       trendWindowMinutes: 30,
     });
+    expect(
+      parseAlarmRuleConfig('OPTICAL_RX_DEGRADATION', { trendDropDb: 6, trendMajorDropDb: 4 }),
+    ).toBeNull();
     expect(
       parseAlarmRuleConfig('OPTICAL_RX_DEGRADATION', { warningProximityPercent: 95, majorProximityPercent: 95 }),
     ).toBeNull();

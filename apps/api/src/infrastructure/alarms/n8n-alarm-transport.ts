@@ -54,6 +54,8 @@ export interface NetworkAlarmWebhookPayload {
   proximityPercent: number | null;
   trendDropDb: number | null;
   trendWindowMinutes: number | null;
+  /** Motivos aplicaveis da avaliacao optica (ex.: RAPID_DROP + PROXIMITY). */
+  triggerReasons: string[] | null;
   currentPowerSource: string | null;
   thresholdSource: string | null;
   startedAt: string;
@@ -99,6 +101,7 @@ export function buildNetworkAlarmWebhookPayload(
     proximityPercent: metadataValue(metadata, 'proximityPercent'),
     trendDropDb: metadataValue(metadata, 'trendDropDb'),
     trendWindowMinutes: metadataValue(metadata, 'trendWindowMinutes'),
+    triggerReasons: metadata?.triggerReasons ? [...metadata.triggerReasons] : null,
     currentPowerSource: metadataValue(metadata, 'currentPowerSource'),
     thresholdSource: metadataValue(metadata, 'thresholdSource'),
     startedAt: alarm.startedAt,

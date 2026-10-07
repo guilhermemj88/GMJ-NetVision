@@ -563,6 +563,7 @@ function opticalConfig(overrides: Partial<OpticalRuleConfig> = {}): OpticalRuleC
     recoveryProximityPercent: 85,
     recoverySamples: 3,
     trendDropDb: 3,
+    trendMajorDropDb: 5,
     trendWindowMinutes: 30,
     ...overrides,
   };
@@ -1260,6 +1261,159 @@ describe('motor + notificacao de midia (NETWORK_ALARMS)', () => {
       },
     });
   });
+
+  it('abre WARNING por queda de 3.2 dB em 30 min sem nenhum threshold', async () => {
+    const built = buildOpticalEngine({
+      rows: [
+        opticalRow(25, -5),
+        opticalRow(20, -6),
+        opticalRow(15, -8.1),
+        opticalRow(10, -8.2),
+        opticalRow(5, -8.2),
+        opticalRow(0, -8.2),
+      ],
+      thresholds: [],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: -8.2 })],
+    });
+    expect(built.openMetricAlarm).toHaveBeenCalledTimes(1);
+    expect(built.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      severity: 'WARNING',
+      unit: 'dB',
+      currentValue: 3.2,
+      thresholdValue: 3,
+      metadata: {
+        triggerReasons: ['RAPID_DROP'],
+        trendDropDb: 3.2,
+        trendWindowMinutes: 30,
+      },
+    });
+    expect(built.openMetricAlarm.mock.calls[0]?.[0]?.message).toContain('caiu 3.2 dB em 30 min');
+  });
+
+  it('escala para MAJOR com queda de 5.1 dB mesmo longe do LOW', async () => {
+    const built = buildOpticalEngine({
+      rows: [
+        opticalRow(25, -5),
+        opticalRow(20, -7),
+        opticalRow(15, -10),
+        opticalRow(10, -10.1),
+        opticalRow(5, -10.1),
+        opticalRow(0, -10.1),
+      ],
+      // LOW -20 / HIGH +3: o atual esta a 57% do limite, longe de qualquer alarme optico.
+      thresholds: [thresholdRecord(-20, 3)],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: -10.1 })],
+    });
+    expect(built.openMetricAlarm).toHaveBeenCalledTimes(1);
+    expect(built.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      severity: 'MAJOR',
+      unit: 'dB',
+      currentValue: 5.1,
+      thresholdValue: 5,
+      metadata: { triggerReasons: ['RAPID_DROP'] },
+    });
+  });
+
+  it('nao abre alarme de trend depois que a potencia recuperou', async () => {
+    const built = buildOpticalEngine({
+      rows: [opticalRow(20, -5), opticalRow(10, -10), opticalRow(0, -5)],
+      thresholds: [],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: -5 })],
+    });
+    expect(built.openMetricAlarm).not.toHaveBeenCalled();
+  });
+
+  it('pico isolado invalido/reset nao gera trend falso', async () => {
+    const built = buildOpticalEngine({
+      rows: [opticalRow(20, -5), opticalRow(10, 18), opticalRow(0, -5.4)],
+      thresholds: [],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: -5.4 })],
+    });
+    expect(built.openMetricAlarm).not.toHaveBeenCalled();
+  });
+
+  it('proximidade e queda no MESMO alarme: maior severidade e TODOS os motivos', async () => {
+    // LOW -14 / HIGH -1: -12.83 dBm => 91% de proximidade (WARNING);
+    // pico -7.7 => queda de 5.13 dB (MAJOR de trend, que domina).
+    const built = buildOpticalEngine({
+      rows: [
+        opticalRow(25, -7.7),
+        opticalRow(20, -9.5),
+        opticalRow(15, -12.83),
+        opticalRow(10, -12.83),
+        opticalRow(5, -12.83),
+        opticalRow(0, -12.83),
+      ],
+      thresholds: [OPTICAL_THRESHOLDS],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: -12.83 })],
+    });
+    expect(built.openMetricAlarm).toHaveBeenCalledTimes(1);
+    expect(built.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      severity: 'MAJOR',
+      unit: 'dB',
+      currentValue: 5.13,
+      thresholdValue: 5,
+      metadata: {
+        triggerReasons: ['RAPID_DROP', 'PROXIMITY'],
+        proximityPercent: 91,
+        trendDropDb: 5.13,
+      },
+    });
+  });
+
+  it('queda em uma lane nao contamina as outras lanes', async () => {
+    const built = buildOpticalEngine({
+      rows: [
+        laneRow(25, { 0: 0.19, 3: -5 }),
+        laneRow(20, { 0: 0.19, 3: -7 }),
+        laneRow(15, { 0: 0.19, 3: -10 }),
+        laneRow(10, { 0: 0.19, 3: -10.1 }),
+        laneRow(5, { 0: 0.19, 3: -10.1 }),
+        laneRow(0, { 0: 0.19, 3: -10.1 }),
+      ],
+      thresholds: [thresholdRecord(-20, 3)],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({
+        rxPowerDbm: 0.19,
+        opticalLaneSource: 'SNMP',
+        opticalLanes: [
+          { lane: 0, rxPowerDbm: 0.19, txPowerDbm: -0.74 },
+          { lane: 3, rxPowerDbm: -10.1, txPowerDbm: -0.76 },
+        ],
+      })],
+    });
+    expect(built.openMetricAlarm).toHaveBeenCalledTimes(1);
+    expect(built.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      metricKey: 'RX_LANE_3',
+      severity: 'MAJOR',
+      unit: 'dB',
+      metadata: { lane: 3, triggerReasons: ['RAPID_DROP'] },
+    });
+    expect(built.openMetricAlarm.mock.calls.every(([item]) => item.metricKey !== 'RX')).toBe(true);
+  });
 });
 
 describe('criterios opticos puros', () => {
@@ -1273,6 +1427,7 @@ describe('criterios opticos puros', () => {
     warningMarginDb: 3,
     trendDropObservedDb: 0,
     trendDropThresholdDb: 3,
+    trendMajorDropThresholdDb: 5,
     ...overrides,
   });
 
@@ -1285,18 +1440,27 @@ describe('criterios opticos puros', () => {
     expect(opticalProximityPercent(-5, -1, -14)).toBeNull();
   });
 
-  it('usa max drawdown determinista e tolera poll irregular', () => {
+  it('mede a queda ate a amostra ATUAL e tolera poll irregular', () => {
     expect(opticalTrendDropDb([-8, -9.5, -11, -12, -12.2])).toBe(4.2);
     expect(opticalTrendDropDb([-12, -8])).toBe(0);
-    expect(opticalTrendDropDb([-8, -1, -9])).toBe(8);
+    // Queda antiga ja recuperada nao existe: o gatilho e o estado ATUAL.
+    expect(opticalTrendDropDb([-5, -10, -5])).toBe(0);
+    // Pico isolado acima dos vizinhos e glitch/reset, nunca referencia de queda.
+    expect(opticalTrendDropDb([-8, -1, -9])).toBe(1);
+    expect(opticalTrendDropDb([-5, 20, -6])).toBe(1);
   });
 
-  it('mantem o trend como WARNING independente de threshold', () => {
+  it('mantem o trend como WARNING/MAJOR independente de threshold', () => {
     expect(opticalLadderFor(criteria({
       lowAlarmDbm: null,
       highAlarmDbm: null,
       trendDropObservedDb: 3.5,
     }))).toBe('WARNING');
+    expect(opticalLadderFor(criteria({
+      lowAlarmDbm: null,
+      highAlarmDbm: null,
+      trendDropObservedDb: 5.2,
+    }))).toBe('MAJOR');
     expect(opticalLadderFor(criteria({
       lowAlarmDbm: null,
       highAlarmDbm: null,

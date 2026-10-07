@@ -40,6 +40,7 @@ const OPTICAL_ALARM: Alarm = {
     proximityPercent: 96.15,
     trendDropDb: 1.2,
     trendWindowMinutes: 30,
+    triggerReasons: ['RAPID_DROP', 'PROXIMITY'],
     currentPowerSource: 'SNMP',
     thresholdSource: 'DEVICE',
     speedBps: 100_000_000_000,
@@ -74,6 +75,7 @@ const PAYLOAD_KEYS = [
   'thresholdValue',
   'trendDropDb',
   'trendWindowMinutes',
+  'triggerReasons',
   'type',
   'unit',
 ].sort();
@@ -144,6 +146,7 @@ describe('transporte de midia dos alarmes (NETWORK_ALARMS)', () => {
       proximityPercent: 96.15,
       trendDropDb: 1.2,
       trendWindowMinutes: 30,
+      triggerReasons: ['RAPID_DROP', 'PROXIMITY'],
       currentPowerSource: 'SNMP',
       thresholdSource: 'DEVICE',
       startedAt: NOW.toISOString(),

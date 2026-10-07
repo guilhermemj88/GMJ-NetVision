@@ -112,6 +112,11 @@ export interface AlarmMetadata {
   proximityPercent?: number | null | undefined;
   trendDropDb?: number | null | undefined;
   trendWindowMinutes?: number | undefined;
+  /**
+   * TODOS os motivos aplicaveis da avaliacao optica (o alarme e unico; a
+   * severidade e o maximo entre eles), ex.: `["RAPID_DROP","PROXIMITY"]`.
+   */
+  triggerReasons?: OpticalTriggerReason[] | undefined;
   /** Fonte da potencia ATUAL (SNMP/SSH) — nunca misturada com thresholdSource. */
   currentPowerSource?: 'SNMP' | 'SSH' | null | undefined;
   thresholdSource?: OpticalThresholdSource | null | undefined;
@@ -122,6 +127,14 @@ export interface AlarmMetadata {
 
 /** Motivo administrativo seguro de uma resolucao sem recuperacao real. */
 export type AlarmResolutionReason = 'RULE_DISABLED' | 'RULE_DELETED';
+
+/**
+ * Criterio optico que sustentou o alarme. `RAPID_DROP` e a queda relevante na
+ * janela (com o valor ATUAL ainda degradado), `PROXIMITY` e a proximidade
+ * percentual do Low Alarm, `MARGIN` a margem em dB quando so existe o Low e
+ * `AT_LOW` o RX no/abaixo do Low.
+ */
+export type OpticalTriggerReason = 'AT_LOW' | 'RAPID_DROP' | 'PROXIMITY' | 'MARGIN';
 
 /** Origem efetiva de um threshold optico (prioridade USER > DEVICE > DEFAULT > MANUAL). */
 export type OpticalThresholdSource = 'USER' | 'DEVICE' | 'DEFAULT' | 'MANUAL';
@@ -187,7 +200,10 @@ export interface OpticalRuleConfig {
   warningMarginDb: number;
   recoveryProximityPercent: number;
   recoverySamples: number;
+  /** Queda (dB) na janela que dispara WARNING; funciona sem nenhum threshold. */
   trendDropDb: number;
+  /** Queda (dB) na janela que escala para MAJOR. Nunca abre CRITICAL sozinha. */
+  trendMajorDropDb: number;
   trendWindowMinutes: number;
   /** Threshold manual usado SOMENTE quando o equipamento nao fornece nenhum. */
   manualRxLowAlarmDbm?: number | null | undefined;
@@ -212,6 +228,34 @@ export interface AlarmRuleDto {
   createdAt: string;
   updatedAt: string;
 }
+/** Tipo de ocorrencia recente derivada das amostras de contador persistidas. */
+export type InterfaceOccurrenceKind = 'CRC' | 'DISCARDS';
+
+/**
+ * Ocorrencia recente de CRC/FCS ou discards: read model do que ACONTECEU, sem
+ * criar alarme artificial. Deltas sao bigint serializados como string.
+ */
+export interface InterfaceOccurrence {
+  kind: InterfaceOccurrenceKind;
+  deviceId: string;
+  deviceName: string;
+  interfaceId: string;
+  interfaceName: string;
+  interfaceLabel: string;
+  ifIndex: number;
+  /** Delta acumulado na janela por contador (CRC usa apenas `crcDelta`). */
+  crcDelta: string;
+  rxDelta: string;
+  txDelta: string;
+  /** Taxa por minuto do contador de maior delta na janela. */
+  ratePerMinute: number;
+  /** Ultimo intervalo da janela com delta > 0. */
+  lastOccurrenceAt: string;
+  /** Quantos intervalos de amostra tiveram ocorrencia (>= 1). */
+  intervals: number;
+  windowMinutes: number;
+}
+
 export interface LinkMetricSource {
   interfaceId: string;
   side: LinkMetricSourceSide;

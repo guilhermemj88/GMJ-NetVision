@@ -9,6 +9,7 @@ import type {
   NetworkInterface,
   OpticalRuleConfig,
   OpticalThresholdSource,
+  OpticalTriggerReason,
 } from '@gmj/shared';
 import type { AlarmRepository } from '../infrastructure/alarms/alarm-repository';
 import type { AlarmRuleRecord, AlarmRuleRepository } from '../infrastructure/alarms/alarm-rule-repository';
@@ -62,15 +63,50 @@ export function opticalProximityPercent(current: number, low: number, high: numb
   return Math.min(100, Math.max(0, raw));
 }
 
-/** Maior queda (max drawdown) da janela: max(x_i - x_j) com i antes de j. */
+const OPTICAL_LADDER_RANK: Record<OpticalLadder, number> = {
+  NONE: 0,
+  WARNING: 1,
+  MAJOR: 2,
+  CRITICAL: 3,
+};
+
+function highestLadder(left: OpticalLadder, right: OpticalLadder): OpticalLadder {
+  return OPTICAL_LADDER_RANK[left] >= OPTICAL_LADDER_RANK[right] ? left : right;
+}
+
+/**
+ * Um valor que salta tao acima dos vizinhos e um pico ISOLADO (glitch/reset de
+ * leitura), nao uma condicao real: ele nunca serve de referencia para a queda,
+ * senao a volta ao normal viraria um falso MAJOR.
+ */
+const OPTICAL_TREND_SPIKE_GUARD_DB = 5;
+
+function isIsolatedUpwardSpike(points: readonly number[], index: number): boolean {
+  const value = points[index];
+  if (value === undefined) return false;
+  const previous = points[index - 1];
+  const next = points[index + 1];
+  if (previous === undefined && next === undefined) return false;
+  const neighbourPeak = Math.max(previous ?? Number.NEGATIVE_INFINITY, next ?? Number.NEGATIVE_INFINITY);
+  return Number.isFinite(neighbourPeak) && value - neighbourPeak > OPTICAL_TREND_SPIKE_GUARD_DB;
+}
+
+/**
+ * Queda RELEVANTE no estado atual: maior valor da janela (ignorando picos
+ * isolados) menos a amostra MAIS RECENTE. Queda antiga ja recuperada zera — nao
+ * se abre alarme de trend depois que a potencia voltou.
+ */
 export function opticalTrendDropDb(points: readonly number[]): number {
+  const current = points.at(-1);
+  if (current === undefined) return 0;
   let peak = Number.NEGATIVE_INFINITY;
-  let drop = 0;
-  for (const value of points) {
+  for (let index = 0; index < points.length; index += 1) {
+    const value = points[index] as number;
+    if (isIsolatedUpwardSpike(points, index)) continue;
     if (value > peak) peak = value;
-    else drop = Math.max(drop, peak - value);
   }
-  return round2(drop);
+  if (!Number.isFinite(peak)) return 0;
+  return round2(Math.max(0, peak - current));
 }
 
 export interface OpticalLadderCriteria {
@@ -84,36 +120,51 @@ export interface OpticalLadderCriteria {
   /** Queda observada na janela (0 quando ha menos de 3 amostras validas). */
   trendDropObservedDb: number;
   trendDropThresholdDb: number;
+  /** Queda (dB) que escala a severidade para MAJOR; nunca abre CRITICAL sozinha. */
+  trendMajorDropThresholdDb: number;
 }
 
 /** Tolerancia (em pontos percentuais) para nao perder um limiar exato por ponto flutuante. */
 const PROXIMITY_EPSILON = 1e-9;
 
-/**
- * Escada deterministica por amostra: CRITICAL quando o RX alcanca/cruza o Low
- * Alarm; MAJOR/WARNING por proximidade percentual quando a faixa Low..High e
- * conhecida; WARNING por margem quando so existe o Low; e WARNING por trend,
- * que funciona mesmo sem nenhum threshold (nunca inventa alarme sem criterio).
- */
-export function opticalLadderFor(criteria: OpticalLadderCriteria): OpticalLadder {
+/** Escada de proximidade/margem do Low (o CRITICAL do Low e tratado a parte). */
+function opticalProximityLadder(criteria: OpticalLadderCriteria): OpticalLadder {
   const { currentPowerDbm: current, lowAlarmDbm: low, highAlarmDbm: high } = criteria;
-  if (low !== null && criteria.criticalAtLowAlarm && current <= low) return 'CRITICAL';
-
-  let ladder: OpticalLadder = 'NONE';
   if (low !== null && high !== null) {
     const proximity = opticalProximityPercent(current, low, high);
-    if (proximity !== null) {
-      if (proximity >= criteria.majorProximityPercent - PROXIMITY_EPSILON) ladder = 'MAJOR';
-      else if (proximity >= criteria.warningProximityPercent - PROXIMITY_EPSILON) ladder = 'WARNING';
-    }
-  } else if (low !== null && current - low <= criteria.warningMarginDb) {
-    ladder = 'WARNING';
+    if (proximity === null) return 'NONE';
+    if (proximity >= criteria.majorProximityPercent - PROXIMITY_EPSILON) return 'MAJOR';
+    if (proximity >= criteria.warningProximityPercent - PROXIMITY_EPSILON) return 'WARNING';
+    return 'NONE';
   }
+  if (low !== null && current - low <= criteria.warningMarginDb) return 'WARNING';
+  return 'NONE';
+}
 
-  if (ladder !== 'MAJOR' && criteria.trendDropObservedDb >= criteria.trendDropThresholdDb) {
-    ladder = 'WARNING';
+/** Escada de variacao rapida: MAJOR/WARNING pela queda; CRITICAL nunca por queda. */
+function opticalTrendLadder(criteria: OpticalLadderCriteria): OpticalLadder {
+  const drop = criteria.trendDropObservedDb;
+  if (drop >= criteria.trendMajorDropThresholdDb) return 'MAJOR';
+  if (drop >= criteria.trendDropThresholdDb) return 'WARNING';
+  return 'NONE';
+}
+
+/**
+ * Escada deterministica por amostra: MAXIMO entre os criterios INDEPENDENTES.
+ * CRITICAL quando o RX alcanca/cruza o Low Alarm; MAJOR/WARNING por proximidade
+ * percentual (faixa Low..High conhecida); WARNING por margem quando so existe o
+ * Low; e WARNING/MAJOR por queda na janela, que funciona mesmo sem nenhum
+ * threshold (nunca inventa alarme sem criterio).
+ */
+export function opticalLadderFor(criteria: OpticalLadderCriteria): OpticalLadder {
+  if (
+    criteria.lowAlarmDbm !== null
+    && criteria.criticalAtLowAlarm
+    && criteria.currentPowerDbm <= criteria.lowAlarmDbm
+  ) {
+    return 'CRITICAL';
   }
-  return ladder;
+  return highestLadder(opticalProximityLadder(criteria), opticalTrendLadder(criteria));
 }
 
 /** Recuperacao: proximidade abaixo do limite, margem folgada ou trend limpo. */
@@ -328,6 +379,17 @@ export function opticalAlarmOutcome(
       thresholdValue: round2(low),
     };
   }
+  const trendLadder = opticalTrendLadder(criteria);
+  if (OPTICAL_LADDER_RANK[trendLadder] > OPTICAL_LADDER_RANK[opticalProximityLadder(criteria)]) {
+    return {
+      reason: 'TREND',
+      unit: 'dB',
+      currentValue: criteria.trendDropObservedDb,
+      thresholdValue: trendLadder === 'MAJOR'
+        ? criteria.trendMajorDropThresholdDb
+        : criteria.trendDropThresholdDb,
+    };
+  }
   if (low !== null && high !== null) {
     const proximity = opticalProximityPercent(current, low, high) ?? 0;
     return {
@@ -526,8 +588,26 @@ function opticalCriteriaAt(
     warningMarginDb: config.warningMarginDb,
     trendDropObservedDb: trendObservedAt(series.points, index, trendWindowMs),
     trendDropThresholdDb: config.trendDropDb,
+    trendMajorDropThresholdDb: config.trendMajorDropDb,
     recoveryProximityPercent: config.recoveryProximityPercent,
   };
+}
+
+/** Todos os motivos aplicaveis da amostra (ordem estavel para o NOC). */
+function opticalTriggerReasons(criteria: OpticalLadderCriteria): OpticalTriggerReason[] {
+  const reasons: OpticalTriggerReason[] = [];
+  const { currentPowerDbm: current, lowAlarmDbm: low, highAlarmDbm: high } = criteria;
+  if (low !== null && criteria.criticalAtLowAlarm && current <= low) reasons.push('AT_LOW');
+  if (opticalTrendLadder(criteria) !== 'NONE') reasons.push('RAPID_DROP');
+  if (low !== null && high !== null) {
+    const proximity = opticalProximityPercent(current, low, high);
+    if (proximity !== null && proximity >= criteria.warningProximityPercent - PROXIMITY_EPSILON) {
+      reasons.push('PROXIMITY');
+    }
+  } else if (low !== null && current - low <= criteria.warningMarginDb) {
+    reasons.push('MARGIN');
+  }
+  return reasons;
 }
 
 function opticalAlarmMetadata(
@@ -549,6 +629,7 @@ function opticalAlarmMetadata(
     proximityPercent: proximity,
     trendDropDb: criteria.trendDropObservedDb,
     trendWindowMinutes: config.trendWindowMinutes,
+    triggerReasons: opticalTriggerReasons(criteria),
     currentPowerSource: series.powerSource,
     thresholdSource: series.thresholdSource,
     speedBps: series.speedBps,

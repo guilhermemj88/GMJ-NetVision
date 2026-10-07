@@ -64,6 +64,7 @@ export const interfaceCrcConfigSchema = z
 
 const OPTICAL_WINDOW_MESSAGE = 'recoveryProximityPercent deve ser menor que warningProximityPercent';
 const OPTICAL_LADDER_MESSAGE = 'majorProximityPercent deve ser maior que warningProximityPercent';
+const OPTICAL_TREND_MESSAGE = 'trendMajorDropDb deve ser maior ou igual a trendDropDb';
 
 /** Limiares opticos (proximidade/margem/tendencia) validados na entrada. */
 export const opticalConfigSchema = z
@@ -78,6 +79,7 @@ export const opticalConfigSchema = z
     recoveryProximityPercent: z.number().min(0).max(100).default(85),
     recoverySamples: z.number().int().min(1).max(MAX_ALARM_RULE_SAMPLES).default(3),
     trendDropDb: z.number().min(0).max(60).default(3),
+    trendMajorDropDb: z.number().min(0).max(60).default(5),
     trendWindowMinutes: z.number().int().min(5).max(1440).default(30),
     manualRxLowAlarmDbm: z.number().min(-60).max(20).nullish(),
     manualRxHighAlarmDbm: z.number().min(-60).max(20).nullish(),
@@ -89,6 +91,9 @@ export const opticalConfigSchema = z
   )
   .refine((value) => value.warningProximityPercent < value.majorProximityPercent, {
     message: OPTICAL_LADDER_MESSAGE,
+  })
+  .refine((value) => value.trendMajorDropDb >= value.trendDropDb, {
+    message: OPTICAL_TREND_MESSAGE,
   });
 
 export const alarmRuleConfigByType = {
