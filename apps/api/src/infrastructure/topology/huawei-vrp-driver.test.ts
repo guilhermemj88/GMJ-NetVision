@@ -4,6 +4,7 @@ import {
   huaweiInterfaceTransceiverVerboseCommand,
   huaweiVerboseInterfaceName,
 } from './huawei-vrp-driver';
+import { emptyHuaweiOpticalThresholds } from './optical-thresholds';
 
 describe('HuaweiVrpDriver display interface description', () => {
   it('parses technical names, physical/protocol state and configured descriptions', () => {
@@ -36,7 +37,13 @@ XGigabitEthernet0/0/2 transceiver information:
   Current TX Power (dBm): 99
 `;
     expect(new HuaweiVrpDriver().parseOpticalPower(output)).toEqual([
-      { name: '100GE 0/0/1', rxPowerDbm: -3.42, txPowerDbm: -2.11, opticalLanes: [] },
+      {
+        name: '100GE 0/0/1',
+        rxPowerDbm: -3.42,
+        txPowerDbm: -2.11,
+        opticalLanes: [],
+        thresholds: emptyHuaweiOpticalThresholds(),
+      },
     ]);
   });
 
@@ -72,6 +79,13 @@ Voltage(V)         3.24            2.80        3.70       normal
           { lane: 2, rxPowerDbm: -16.25, txPowerDbm: 2.01, biasCurrentMa: 62.72 },
           { lane: 3, rxPowerDbm: -2.17, txPowerDbm: 1.97, biasCurrentMa: 63.05 },
         ],
+        thresholds: {
+          scalar: {
+            rx: { lowAlarmDbm: -23.1, highAlarmDbm: -6, lowSource: 'DEVICE', highSource: 'DEVICE' },
+            tx: { lowAlarmDbm: -2, highAlarmDbm: 5, lowSource: 'DEVICE', highSource: 'DEVICE' },
+          },
+          lanes: [],
+        },
       },
     ]);
   });
@@ -134,6 +148,98 @@ Diagnostic information:
         { lane: 2, rxPowerDbm: -3.07, txPowerDbm: 0.63, biasCurrentMa: 63.05 },
         { lane: 3, rxPowerDbm: -2.98, txPowerDbm: 1.2, biasCurrentMa: 52.59 },
       ],
+      thresholds: emptyHuaweiOpticalThresholds(),
+    }]);
+  });
+
+  it('parses scalar verbose thresholds with USER SET winning over DEFAULT', () => {
+    const output = `
+100GE0/0/5 transceiver information:
+Diagnostic information:
+   Current RX Power (dBm)                :-5.00
+   Current TX Power (dBm)                :0.10
+
+   User Set Thresholds:
+     Rx Power High Alarm Threshold : -2.00
+     Rx Power Low Alarm Threshold  : -13.00
+     Tx Power High Alarm Threshold : 1.50
+     Tx Power Low Alarm Threshold  : -8.50
+
+   Default Thresholds:
+     Rx Power High Alarm Threshold : -1.00
+     Rx Power Low Alarm Threshold  : -14.00
+     Tx Power High Alarm Threshold : 2.00
+     Tx Power Low Alarm Threshold  : -9.00
+`;
+    const reading = new HuaweiVrpDriver().parseOpticalPower(output)[0];
+    expect(reading?.thresholds.scalar.rx).toEqual({
+      lowAlarmDbm: -13, highAlarmDbm: -2, lowSource: 'USER', highSource: 'USER',
+    });
+    expect(reading?.thresholds.scalar.tx).toEqual({
+      lowAlarmDbm: -8.5, highAlarmDbm: 1.5, lowSource: 'USER', highSource: 'USER',
+    });
+    expect(reading?.thresholds.lanes).toEqual([]);
+  });
+
+  it('keeps DEFAULT source when only default thresholds are printed', () => {
+    const output = `
+100GE0/0/6 transceiver information:
+   (Default) Rx Power High Alarm Threshold : -1.00
+   (Default) Rx Power Low Alarm Threshold  : -14.00
+`;
+    const reading = new HuaweiVrpDriver().parseOpticalPower(output)[0];
+    expect(reading?.thresholds.scalar.rx).toEqual({
+      lowAlarmDbm: -14, highAlarmDbm: -1, lowSource: 'DEFAULT', highSource: 'DEFAULT',
+    });
+    expect(reading?.thresholds.scalar.tx).toEqual({
+      lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null,
+    });
+  });
+
+  it('parses per-lane thresholds only when the output annotates the lane', () => {
+    const output = `
+40GE0/0/7 transceiver information:
+   Rx Power High Alarm Threshold (lane 1): -2.00
+   Rx Power High Alarm Threshold (lane 3): -2.50
+   Rx Power Low Alarm Threshold (lane 1) : -13.20
+`;
+    const reading = new HuaweiVrpDriver().parseOpticalPower(output)[0];
+    expect(reading?.thresholds.lanes).toEqual([
+      {
+        lane: 1,
+        rx: { lowAlarmDbm: -13.2, highAlarmDbm: -2, lowSource: 'DEVICE', highSource: 'DEVICE' },
+        tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+      },
+      {
+        lane: 3,
+        rx: { lowAlarmDbm: null, highAlarmDbm: -2.5, lowSource: null, highSource: 'DEVICE' },
+        tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+      },
+    ]);
+    expect(reading?.thresholds.scalar).toEqual({
+      rx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+      tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+    });
+  });
+
+  it('keeps a reading that carries only thresholds and no usable power', () => {
+    const output = `
+100GE0/0/8 transceiver information:
+   Rx Power High Alarm Threshold : -1.00
+   Rx Power Low Alarm Threshold  : -14.00
+`;
+    expect(new HuaweiVrpDriver().parseOpticalPower(output)).toEqual([{
+      name: '100GE0/0/8',
+      rxPowerDbm: null,
+      txPowerDbm: null,
+      opticalLanes: [],
+      thresholds: {
+        scalar: {
+          rx: { lowAlarmDbm: -14, highAlarmDbm: -1, lowSource: 'DEVICE', highSource: 'DEVICE' },
+          tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+        },
+        lanes: [],
+      },
     }]);
   });
 

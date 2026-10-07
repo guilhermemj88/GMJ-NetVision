@@ -31,12 +31,15 @@ import type {
   InterfaceCounterSnapshot,
   InterfaceMetricSampleInput,
   InterfaceMetricWindowRow,
+  InterfaceOpticalThresholdRecord,
+  InterfaceOpticalThresholdUpdateInput,
   InterfaceStatusTransition,
   InterfaceStatusUpdate,
   SnmpCredentialSecret,
   SshCredentialSecret,
 } from './host-repository';
 import { normalizeLegacySnmpText } from '../snmp/snmp-text';
+import { isOpticalThresholdSource, parseOpticalThresholdsV1 } from '../topology/optical-thresholds';
 
 function disabledHealth(): SourceHealth {
   return { state: 'DISABLED', lastSuccess: null, lastFailure: null, lastErrorSafe: null };
@@ -615,6 +618,46 @@ export class PrismaHostRepository implements HostRepository {
         });
       }
     });
+  }
+
+  async getInterfaceOpticalThresholds(deviceId: string): Promise<InterfaceOpticalThresholdRecord[]> {
+    const rows = await this.prisma.interface.findMany({
+      where: { deviceId },
+      select: {
+        id: true,
+        opticalThresholds: true,
+        opticalThresholdSource: true,
+        opticalThresholdsUpdatedAt: true,
+        opticalThresholdsRefreshAfter: true,
+      },
+    });
+    return rows.map((row) => ({
+      interfaceId: row.id,
+      thresholds: parseOpticalThresholdsV1(row.opticalThresholds),
+      source: isOpticalThresholdSource(row.opticalThresholdSource)
+        ? row.opticalThresholdSource
+        : null,
+      updatedAt: row.opticalThresholdsUpdatedAt,
+      refreshAfter: row.opticalThresholdsRefreshAfter,
+    }));
+  }
+
+  async updateInterfaceOpticalThresholds(
+    deviceId: string,
+    entries: InterfaceOpticalThresholdUpdateInput[],
+  ): Promise<void> {
+    if (!entries.length) return;
+    await this.prisma.$transaction(entries.map((entry) => this.prisma.interface.updateMany({
+      where: { deviceId, id: entry.interfaceId },
+      data: {
+        opticalThresholds: entry.thresholds === null
+          ? Prisma.DbNull
+          : (entry.thresholds as unknown as Prisma.InputJsonValue),
+        opticalThresholdSource: entry.source,
+        opticalThresholdsUpdatedAt: entry.updatedAt,
+        opticalThresholdsRefreshAfter: entry.refreshAfter,
+      },
+    })));
   }
 
   async getLatestCounterSnapshots(hostId: string): Promise<Map<number, InterfaceCounterSnapshot>> {

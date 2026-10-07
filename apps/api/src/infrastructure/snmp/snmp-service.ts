@@ -13,6 +13,7 @@ import type {
 import { SnmpClientImpl } from './snmp-client-impl';
 import { SnmpV2cDiscoveryAdapter } from './snmpv2c-discovery-adapter';
 import type { SshInterfaceService } from '../ssh/ssh-interface-service';
+import type { OpticalThresholdService } from '../ssh/optical-threshold-service';
 import { SnmpProfileMetricService } from './profile-metric-service';
 import type { SnmpProfileDiagnostic } from './profiles/types';
 import { calculateCounterDelta, calculateFcsErrorsDelta } from './counter-delta';
@@ -94,6 +95,7 @@ export class SnmpService {
     private readonly alarms?: AlarmService,
     private readonly bgp?: BgpPollingService,
     private readonly alarmEngine?: AlarmEngine,
+    private readonly opticalThresholds?: OpticalThresholdService,
   ) {
     this.client = new SnmpClientImpl(3000, 1);
     this.discoveryAdapter = new SnmpV2cDiscoveryAdapter(repository);
@@ -449,6 +451,16 @@ export class SnmpService {
         }
       }
       await this.repository.updateInterfaceOptics(device.id, interfaces, startedAt);
+
+      // Slow path de thresholds opticos: roda depois da potencia, com
+      // validade de 24h por interface e nunca derruba o polling.
+      if (this.opticalThresholds) {
+        try {
+          await this.opticalThresholds.refreshOpticalThresholds(device);
+        } catch {
+          // Threshold e opcional; o ciclo de potencia/SNMP permanece valido.
+        }
+      }
     } catch {
       // Optional DDM enrichment must never fail the traffic poll.
     }

@@ -47,7 +47,8 @@ export type AlarmType =
   | 'INTERFACE_DOWN'
   | 'INTERFACE_ERRORS'
   | 'INTERFACE_CRC'
-  | 'INTERFACE_DISCARDS';
+  | 'INTERFACE_DISCARDS'
+  | 'OPTICAL_RX_DEGRADATION';
 /** Tipos metricos que podem ser governados por AlarmRule nesta fase. */
 export type MetricAlarmType = 'INTERFACE_ERRORS' | 'INTERFACE_CRC' | 'INTERFACE_DISCARDS';
 export type AlarmDirection = 'RX' | 'TX' | 'BOTH';

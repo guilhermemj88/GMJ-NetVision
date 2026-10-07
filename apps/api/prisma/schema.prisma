@@ -98,6 +98,7 @@ enum AlarmType {
   INTERFACE_ERRORS
   INTERFACE_CRC
   INTERFACE_DISCARDS
+  OPTICAL_RX_DEGRADATION
 }
 
 enum AlarmSeverity {
@@ -547,6 +548,11 @@ model Interface {
   opticalLanesUpdatedAt DateTime?
   opticalSource         String?
   opticalUpdatedAt      DateTime?
+  /// Thresholds efetivos do transceiver (JSON canonico versionado, slow path 24h).
+  opticalThresholds             Json?
+  opticalThresholdSource        String?
+  opticalThresholdsUpdatedAt    DateTime?
+  opticalThresholdsRefreshAfter DateTime?
   rxItemId              String?
   txItemId              String?
   statusItemId          String?

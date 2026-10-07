@@ -137,6 +137,7 @@ import {
 import { registerMediaRoutes } from './media-routes';
 import { SshClientImpl } from './infrastructure/ssh/ssh-client-impl';
 import { SshInterfaceService } from './infrastructure/ssh/ssh-interface-service';
+import { OpticalThresholdService } from './infrastructure/ssh/optical-threshold-service';
 import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-adapter';
 import { HuaweiVrpDriver } from './infrastructure/topology/huawei-vrp-driver';
 import { LldpSnmpDiscoveryAdapter } from './infrastructure/topology/lldp-snmp-adapter';
@@ -555,6 +556,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     alarms: alarmRepository,
     rules: alarmRuleRepository,
   });
+  const opticalThresholds = new OpticalThresholdService(hosts, {
+    refreshHours: config.OPTICAL_THRESHOLD_REFRESH_HOURS,
+    failureCooldownMs: config.OPTICAL_THRESHOLD_FAILURE_COOLDOWN_MINUTES * 60_000,
+  });
   const snmp = new SnmpService(
     hosts,
     ssh,
@@ -564,6 +569,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     alarms,
     bgpPolling,
     alarmEngine,
+    opticalThresholds,
   );
   const poller = new SnmpPoller(hosts, snmp, config.SNMP_POLL_INTERVAL_SECONDS * 1000);
   const zabbix =

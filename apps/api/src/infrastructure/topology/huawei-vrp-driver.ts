@@ -1,13 +1,27 @@
-import type { DiscoveredNeighbor, NetworkInterface, OpticalLaneReading } from '@gmj/shared';
+import type {
+  DiscoveredNeighbor,
+  NetworkInterface,
+  OpticalLaneReading,
+  OpticalThresholdSide,
+  OpticalThresholdSource,
+} from '@gmj/shared';
 import type { DeviceIdentity, SshDeviceDriver } from '../../domain/ports';
 import { normalizeHuaweiBiasCurrentMa } from './huawei-optical';
 import { normalizeOpticalDbm } from './optical-power';
+import {
+  assignOpticalThresholdSide,
+  emptyHuaweiOpticalThresholds,
+  emptyOpticalThresholdSide,
+  hasUsefulOpticalThresholds,
+  type HuaweiOpticalThresholds,
+} from './optical-thresholds';
 
 export interface HuaweiOpticalReading {
   name: string;
   rxPowerDbm: number | null;
   txPowerDbm: number | null;
   opticalLanes: OpticalLaneReading[];
+  thresholds: HuaweiOpticalThresholds;
 }
 
 function field(block: string, pattern: RegExp): string | undefined {
@@ -118,6 +132,158 @@ function parseOpticalLanes(block: string): OpticalLaneReading[] {
     txPowerDbm: values.tx.get(lane) ?? null,
     ...(values.bias.has(lane) ? { biasCurrentMa: values.bias.get(lane) ?? null } : {}),
   }));
+}
+
+type ThresholdMetric = 'rx' | 'tx';
+
+interface ThresholdHit {
+  metric: ThresholdMetric;
+  side: 'low' | 'high';
+  lane: number | null;
+  value: number;
+  source: OpticalThresholdSource;
+}
+
+/** Marcadores de bloco (`User Set/Default/Device Thresholds:`) que valem para as linhas seguintes. */
+function thresholdSourceContext(line: string): OpticalThresholdSource | null {
+  if (/^\s*user\s*(?:set)?\s+thresholds?\s*:?\s*$/i.test(line)) return 'USER';
+  if (/^\s*default\s+thresholds?\s*:?\s*$/i.test(line)) return 'DEFAULT';
+  if (/^\s*device\s+thresholds?\s*:?\s*$/i.test(line)) return 'DEVICE';
+  return null;
+}
+
+function explicitThresholdSource(line: string): OpticalThresholdSource | null {
+  if (/user\s*set/i.test(line) || /\buser\b/i.test(line)) return 'USER';
+  if (/\bdefault\b/i.test(line)) return 'DEFAULT';
+  if (/\bdevice\b/i.test(line)) return 'DEVICE';
+  return null;
+}
+
+/** Linha escalar `RX Power (High Alarm Threshold) : -1.00 dBm` (verbose). */
+function parseThresholdLine(line: string, context: OpticalThresholdSource | null): ThresholdHit | null {
+  const valueMatch = /(?:=|:)\s*(-?\d+(?:\.\d+)?)/.exec(line);
+  if (!valueMatch || valueMatch.index === undefined) return null;
+  const label = line.slice(0, valueMatch.index);
+  if (!/threshold/i.test(label) || !/alarm/i.test(label)) return null;
+  const metric: ThresholdMetric | null = /(?:^|[^a-z])r\s*x\s*power/i.test(label)
+    ? 'rx'
+    : /(?:^|[^a-z])t\s*x\s*power/i.test(label)
+      ? 'tx'
+      : null;
+  if (!metric) return null;
+  const hasLow = /\blow\b/i.test(label);
+  const hasHigh = /\bhigh\b/i.test(label);
+  if (hasLow === hasHigh) return null;
+  const value = normalizeOpticalDbm(valueMatch[1]);
+  if (value === null) return null;
+  const lane = /\(\s*lane\s*(\d+)\s*\)/i.exec(line)?.[1];
+  return {
+    metric,
+    side: hasLow ? 'low' : 'high',
+    lane: lane === undefined ? null : Number(lane),
+    value,
+    source: explicitThresholdSource(line) ?? context ?? 'DEVICE',
+  };
+}
+
+function numericTokens(line: string): number[] {
+  return [...line.replace(/\([^)]*\)/g, ' ').matchAll(/-?\d+(?:\.\d+)?/g)].map((match) => Number(match[0]));
+}
+
+/** Conta valores que sao, eles mesmos, valores de lane (`1.50 (lane0)`). */
+function laneAnnotatedTokenCount(line: string): number {
+  return [...line.matchAll(/-?\d+(?:\.\d+)?\s*\(\s*lane\s*\d+\s*\)/gi)].length;
+}
+
+/**
+ * Tabela do `display transceiver diagnosis interface`: Current + Low Alarm +
+ * High Alarm na mesma linha do metrica (a primeira linha daquele metrica).
+ * Linhas de continuacao trazem um valor por lane e nao montam threshold.
+ */
+function parseTableThresholds(block: string): Map<ThresholdMetric, { low: number; high: number }> {
+  const found = new Map<ThresholdMetric, { low: number; high: number }>();
+  let pending: ThresholdMetric | null = null;
+
+  const record = (metric: ThresholdMetric, tokens: number[]): boolean => {
+    const low = normalizeOpticalDbm(tokens[1]);
+    const high = normalizeOpticalDbm(tokens[2]);
+    if (low === null || high === null || low >= high) return false;
+    found.set(metric, { low, high });
+    return true;
+  };
+
+  for (const line of block.split(/\r?\n/)) {
+    const heading = laneMetricHeading(line);
+    if (heading) {
+      const metric = heading === 'bias' ? null : heading;
+      // O VRP imprime a linha do metrica JA com Current/Low/High; a lista de
+      // lanes vem nas linhas seguintes (um valor por linha).
+      if (!line.includes('|') && laneAnnotatedTokenCount(line) <= 1) {
+        const tokens = numericTokens(line);
+        if (tokens.length === 3) {
+          if (metric) record(metric, tokens);
+          pending = null;
+          continue;
+        }
+      }
+      pending = metric;
+      continue;
+    }
+    if (/^\s*(?:Temperature|Temp|Voltage)\s*\(/i.test(line)) {
+      pending = null;
+      continue;
+    }
+    if (!pending || !/\d/.test(line)) continue;
+    const metric = pending;
+    pending = null;
+    if (line.includes('|') || laneAnnotatedTokenCount(line) > 1) continue;
+    const tokens = numericTokens(line);
+    if (tokens.length === 3) record(metric, tokens);
+  }
+
+  return found;
+}
+
+function parseOpticalThresholds(block: string): HuaweiOpticalThresholds {
+  const thresholds = emptyHuaweiOpticalThresholds();
+
+  for (const [metric, pair] of parseTableThresholds(block)) {
+    assignOpticalThresholdSide(thresholds.scalar[metric], 'low', pair.low, 'DEVICE');
+    assignOpticalThresholdSide(thresholds.scalar[metric], 'high', pair.high, 'DEVICE');
+  }
+
+  const laneSides = new Map<number, { rx: OpticalThresholdSide; tx: OpticalThresholdSide }>();
+  let context: OpticalThresholdSource | null = null;
+  for (const line of block.split(/\r?\n/)) {
+    const declared = thresholdSourceContext(line);
+    if (declared) {
+      context = declared;
+      continue;
+    }
+    const hit = parseThresholdLine(line, context);
+    if (!hit) continue;
+    let target: OpticalThresholdSide;
+    if (hit.lane === null) {
+      target = thresholds.scalar[hit.metric];
+    } else {
+      const lane = laneSides.get(hit.lane) ?? {
+        rx: emptyOpticalThresholdSide(),
+        tx: emptyOpticalThresholdSide(),
+      };
+      laneSides.set(hit.lane, lane);
+      target = lane[hit.metric];
+    }
+    assignOpticalThresholdSide(target, hit.side, hit.value, hit.source);
+  }
+
+  thresholds.lanes = [...laneSides.entries()]
+    .filter(([, sides]) =>
+      sides.rx.lowAlarmDbm !== null || sides.rx.highAlarmDbm !== null
+      || sides.tx.lowAlarmDbm !== null || sides.tx.highAlarmDbm !== null)
+    .map(([lane, sides]) => ({ lane, rx: sides.rx, tx: sides.tx }))
+    .sort((left, right) => left.lane - right.lane);
+
+  return thresholds;
 }
 
 export class HuaweiVrpDriver implements SshDeviceDriver {
@@ -232,6 +398,7 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
       const end = starts[index + 1]?.index ?? output.length;
       const block = output.slice(match.index, end);
       const opticalLanes = parseOpticalLanes(block);
+      const thresholds = parseOpticalThresholds(block);
 
       const rx =
         block.match(
@@ -245,13 +412,21 @@ export class HuaweiVrpDriver implements SshDeviceDriver {
       const lane0 = opticalLanes.find((lane) => lane.lane === 0) ?? opticalLanes[0];
       const rxPowerDbm = normalizeOpticalDbm(rx) ?? lane0?.rxPowerDbm ?? null;
       const txPowerDbm = normalizeOpticalDbm(tx) ?? lane0?.txPowerDbm ?? null;
-      if (rxPowerDbm === null && txPowerDbm === null && opticalLanes.length === 0) return [];
+      if (
+        rxPowerDbm === null
+        && txPowerDbm === null
+        && opticalLanes.length === 0
+        && !hasUsefulOpticalThresholds(thresholds)
+      ) {
+        return [];
+      }
       return [
         {
           name,
           rxPowerDbm,
           txPowerDbm,
           opticalLanes,
+          thresholds,
         },
       ];
     });

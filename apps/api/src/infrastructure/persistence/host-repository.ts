@@ -7,6 +7,8 @@ import type {
   MetricPoint,
   NetworkInterface,
   OpticalHistoryPoint,
+  OpticalThresholdSource,
+  OpticalThresholdsV1,
   UpdateHostInput,
 } from '@gmj/shared';
 
@@ -69,6 +71,23 @@ export interface InterfaceStatusUpdate {
   operStatus?: NetworkInterface['operStatus'];
 }
 
+/** Thresholds opticos persistidos de uma interface (slow path, 24h). */
+export interface InterfaceOpticalThresholdRecord {
+  interfaceId: string;
+  thresholds: OpticalThresholdsV1 | null;
+  source: OpticalThresholdSource | null;
+  updatedAt: Date | null;
+  refreshAfter: Date | null;
+}
+
+export interface InterfaceOpticalThresholdUpdateInput {
+  interfaceId: string;
+  thresholds: OpticalThresholdsV1 | null;
+  source: OpticalThresholdSource | null;
+  updatedAt: Date;
+  refreshAfter: Date;
+}
+
 export interface InterfaceStatusTransition {
   deviceId: string;
   interfaceId: string;
@@ -105,6 +124,12 @@ export interface HostRepository {
     hostId: string,
     interfaces: NetworkInterface[],
     collectedAfter?: Date,
+  ): Promise<void>;
+  /** Thresholds persistidos de todas as interfaces do device (slow path). */
+  getInterfaceOpticalThresholds(deviceId: string): Promise<InterfaceOpticalThresholdRecord[]>;
+  updateInterfaceOpticalThresholds(
+    deviceId: string,
+    entries: InterfaceOpticalThresholdUpdateInput[],
   ): Promise<void>;
   getLatestCounterSnapshots(hostId: string): Promise<Map<number, InterfaceCounterSnapshot>>;
   /** Amostras recentes do device (janela do motor de alarmes), ordem crescente. */
