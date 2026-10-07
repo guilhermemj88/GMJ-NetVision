@@ -9,6 +9,7 @@ import {
 } from '../topology/huawei-vrp-driver';
 import {
   hasUsefulOpticalThresholds,
+  mergeOpticalThresholds,
   opticalThresholdsLayoutChanged,
   opticalThresholdsV1FromHuawei,
   summaryOpticalThresholdSource,
@@ -125,8 +126,13 @@ export class OpticalThresholdService {
         ].map((key) => byName.get(key)).find(Boolean);
         const laneIds = observedLaneIds(candidate);
         const useful = reading ? hasUsefulOpticalThresholds(reading.thresholds) : false;
-        const thresholds = reading && (useful || laneIds.length)
+        const parsed = reading && (useful || laneIds.length)
           ? opticalThresholdsV1FromHuawei(reading.thresholds, laneIds)
+          : null;
+        // Merge preserva um lado SNMP que o SSH nao reporta: o fallback preenche
+        // lacunas, nunca apaga um threshold valido so porque nao o viu.
+        const thresholds = parsed
+          ? mergeOpticalThresholds(records.get(candidate.id)?.thresholds ?? null, parsed)
           : null;
         return {
           interfaceId: candidate.id,

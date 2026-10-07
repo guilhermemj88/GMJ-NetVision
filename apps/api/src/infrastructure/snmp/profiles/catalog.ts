@@ -2,11 +2,14 @@ import { genericProfile } from './generic';
 import { huaweiGenericProfile } from './huawei/generic';
 import { huaweiNe8000Profile } from './huawei/ne8000';
 import { huaweiS6730Profile } from './huawei/s6730';
+import { huaweiS6750Profile } from './huawei/s6750';
 import { mikrotikProfile } from './mikrotik';
 import type { SnmpProfile, SnmpProfileIdentity } from './types';
+import type { HuaweiOpticalScalarEncoding } from '../../topology/huawei-optical';
 
 export const SNMP_PROFILES: SnmpProfile[] = [
   huaweiNe8000Profile,
+  huaweiS6750Profile,
   huaweiS6730Profile,
   mikrotikProfile,
   huaweiGenericProfile,
@@ -50,4 +53,15 @@ export function selectSnmpProfile(identity: SnmpProfileIdentity): SnmpProfile {
  */
 export function selectPppOnlineOid(identity: SnmpProfileIdentity): string | null {
   return selectSnmpProfile(identity).pppOnlineOid ?? null;
+}
+
+/**
+ * Encoding do RAW .8/.9 conforme o profile selecionado. `UNKNOWN` = o coletor
+ * NAO decodifica o scalar (nunca adivinha por sinal do valor); as lanes
+ * .32/.33 e o fallback SSH seguem valendo normalmente.
+ */
+export function selectOpticalScalarEncoding(
+  identity: SnmpProfileIdentity,
+): HuaweiOpticalScalarEncoding {
+  return selectSnmpProfile(identity).opticalScalarEncoding ?? 'UNKNOWN';
 }

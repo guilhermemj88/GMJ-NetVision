@@ -202,6 +202,41 @@ describe('OpticalThresholdService slow path', () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
+  it('nao apaga o lado SNMP que o SSH nao reporta (merge do fallback)', async () => {
+    vi.spyOn(SshClientImpl.prototype, 'execute').mockResolvedValue(oneResult(`
+100GE0/0/2 transceiver information:
+   Tx Power High Alarm Threshold : 1.50
+   Tx Power Low Alarm Threshold  : -8.50
+`));
+    const { repo, updateThresholds } = repository([
+      record({
+        thresholds: {
+          version: 1,
+          scalar: {
+            // Limite RX vindo do SNMP (DEVICE) permanece no registro.
+            rx: { lowAlarmDbm: -12.31, highAlarmDbm: 3.4, lowSource: 'DEVICE', highSource: 'DEVICE' },
+            tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+          },
+          lanes: [],
+        },
+        refreshAfter: new Date('2026-08-23T11:59:00.000Z'),
+      }),
+    ]);
+
+    await service(repo).refreshOpticalThresholds(
+      device([networkInterface('100GE0/0/2', { rxPowerDbm: -9 })]),
+    );
+
+    const [, entries] = updateThresholds.mock.calls[0] as [string, Array<{
+      source: string | null;
+      thresholds: { scalar: { rx: Record<string, unknown>; tx: Record<string, unknown> } };
+    }>];
+    expect(entries[0]?.thresholds.scalar.rx).toMatchObject({ lowAlarmDbm: -12.31, highAlarmDbm: 3.4 });
+    expect(entries[0]?.thresholds.scalar.tx).toMatchObject({
+      lowAlarmDbm: -8.5, highAlarmDbm: 1.5, lowSource: 'DEVICE', highSource: 'DEVICE',
+    });
+  });
+
   it('records the observed lane layout even without lane thresholds', async () => {
     vi.spyOn(SshClientImpl.prototype, 'execute').mockResolvedValue(oneResult(`
 100GE0/0/2 transceiver information:

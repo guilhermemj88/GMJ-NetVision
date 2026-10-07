@@ -125,6 +125,51 @@ export function opticalThresholdLaneIds(thresholds: OpticalThresholdsV1 | null):
   return (thresholds?.lanes ?? []).map((lane) => lane.lane).sort((left, right) => left - right);
 }
 
+function mergeThresholdSide(
+  existing: OpticalThresholdSide,
+  incoming: OpticalThresholdSide,
+): OpticalThresholdSide {
+  return {
+    lowAlarmDbm: incoming.lowAlarmDbm ?? existing.lowAlarmDbm,
+    highAlarmDbm: incoming.highAlarmDbm ?? existing.highAlarmDbm,
+    lowSource: incoming.lowAlarmDbm === null ? existing.lowSource : incoming.lowSource,
+    highSource: incoming.highAlarmDbm === null ? existing.highSource : incoming.highSource,
+  };
+}
+
+/**
+ * Merge dos thresholds do coletor (SNMP primario) sobre o que ja esta
+ * persistido: o valor valido novo vence, o lado ausente/invalido NUNCA apaga um
+ * valor valido existente, e lanes sao unidas por id. Assim uma leitura parcial
+ * do equipamento nao destrói o ultimo threshold bom.
+ */
+export function mergeOpticalThresholds(
+  existing: OpticalThresholdsV1 | null,
+  incoming: OpticalThresholdsV1,
+): OpticalThresholdsV1 {
+  if (!existing) return incoming;
+  const lanes = new Map<number, { rx: OpticalThresholdSide; tx: OpticalThresholdSide }>();
+  for (const lane of existing.lanes) {
+    lanes.set(lane.lane, { rx: { ...lane.rx }, tx: { ...lane.tx } });
+  }
+  for (const lane of incoming.lanes) {
+    const current = lanes.get(lane.lane);
+    lanes.set(lane.lane, current
+      ? { rx: mergeThresholdSide(current.rx, lane.rx), tx: mergeThresholdSide(current.tx, lane.tx) }
+      : { rx: { ...lane.rx }, tx: { ...lane.tx } });
+  }
+  return {
+    version: 1,
+    scalar: {
+      rx: mergeThresholdSide(existing.scalar.rx, incoming.scalar.rx),
+      tx: mergeThresholdSide(existing.scalar.tx, incoming.scalar.tx),
+    },
+    lanes: [...lanes.entries()]
+      .sort(([left], [right]) => left - right)
+      .map(([lane, sides]) => ({ lane, rx: sides.rx, tx: sides.tx })),
+  };
+}
+
 /**
  * Mudanca de layout so e considerada quando o registro JA tem lanes gravados:
  * equipamento que nunca reporta threshold por lane nao pode forcar refresh a

@@ -1,3 +1,5 @@
+import type { HuaweiOpticalScalarEncoding } from '../../topology/huawei-optical';
+
 export type SnmpProfileMetricName = 'cpu' | 'memory' | 'temperature';
 
 export interface SnmpProfileIdentity {
@@ -35,6 +37,12 @@ export interface SnmpProfile {
   sysDescrPatterns?: RegExp[];
   sysObjectIdPatterns?: RegExp[];
   metrics: Partial<Record<SnmpProfileMetricName, SnmpMetricDefinition>>;
+  /**
+   * Encoding do campo RAW da potencia scalarem .8/.9 da
+   * HUAWEI-ENTITY-EXTENT-MIB (uW no VRP classico, centi-dBm no YunShan).
+   * Ausente/UNKNOWN = nao decodifica scalar (nunca adivinha por sinal).
+   */
+  opticalScalarEncoding?: HuaweiOpticalScalarEncoding;
   /**
    * Scalar OID for the PPP/PPPoE online counter (capability based). When the
    * selected profile does not declare it, the device is treated as not

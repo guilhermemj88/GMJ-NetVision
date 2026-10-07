@@ -895,6 +895,161 @@ describe('SnmpService', () => {
   });
 });
 
+describe('SnmpService Ã¢â‚¬â€ thresholds opticos SNMP (F7.5)', () => {
+  function opticalInternals(service: SnmpService) {
+    return service as unknown as {
+      refreshOpticalPower: (
+        device: HostRecord,
+        community: string,
+        system?: { sysDescr?: string; sysObjectId?: string; sysName?: string },
+      ) => Promise<void>;
+      discoveryAdapter: {
+        enrichOpticalPower: (
+          device: HostRecord,
+          interfaces: HostRecord['interfaces'],
+          community?: string,
+          system?: { sysDescr?: string },
+        ) => Promise<HostRecord['interfaces']>;
+      };
+    };
+  }
+
+  function opticalRepository(records: Array<Record<string, unknown>> = []) {
+    const repo = repository();
+    const internals = repo as unknown as {
+      getInterfaceOpticalThresholds: ReturnType<typeof vi.fn>;
+      updateInterfaceOpticalThresholds: ReturnType<typeof vi.fn>;
+    };
+    internals.getInterfaceOpticalThresholds = vi.fn().mockResolvedValue(records);
+    internals.updateInterfaceOpticalThresholds = vi.fn().mockResolvedValue(undefined);
+    return repo;
+  }
+
+  const snmpThresholds = {
+    version: 1 as const,
+    scalar: {
+      rx: { lowAlarmDbm: -12.31, highAlarmDbm: 3.4, lowSource: 'DEVICE' as const, highSource: 'DEVICE' as const },
+      tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+    },
+    lanes: [],
+  };
+
+  it('persiste os thresholds SNMP como DEVICE com refreshAfter renovado', async () => {
+    const repo = opticalRepository([{
+      interfaceId: 'if-1', thresholds: null, source: null, updatedAt: null, refreshAfter: null,
+    }]);
+    const service = new SnmpService(repo, undefined, 0);
+    const internals = opticalInternals(service);
+    const device = snmpHost([networkInterface('100GE1/0/1', 1, 'UP')], {
+      vendor: 'Huawei',
+      model: 'S6750-H',
+    });
+    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([{
+      ...device.interfaces[0]!,
+      rxPowerDbm: 0.18,
+      opticalSource: 'SNMP',
+      opticalThresholds: snmpThresholds,
+      opticalThresholdSource: 'DEVICE',
+    }]);
+
+    await internals.refreshOpticalPower(device, 'public', {
+      sysDescr: 'Huawei YunShan OS CloudEngine S6750-H',
+    });
+
+    expect(internals.discoveryAdapter.enrichOpticalPower).toHaveBeenCalledWith(
+      device,
+      device.interfaces,
+      'public',
+      { sysDescr: 'Huawei YunShan OS CloudEngine S6750-H' },
+    );
+    const [deviceId, entries] = (
+      repo as unknown as { updateInterfaceOpticalThresholds: { mock: { calls: unknown[][] } } }
+    ).updateInterfaceOpticalThresholds.mock.calls[0] as [string, Array<Record<string, unknown>>];
+    expect(deviceId).toBe('test-1');
+    expect(entries[0]).toMatchObject({
+      interfaceId: 'if-1',
+      source: 'DEVICE',
+      thresholds: { version: 1 },
+      updatedAt: expect.any(Date),
+      refreshAfter: expect.any(Date),
+    });
+    expect((entries[0]?.refreshAfter as Date).getTime()
+      - (entries[0]?.updatedAt as Date).getTime()).toBe(24 * 3_600_000);
+    expect(repo.updateInterfaceOptics).toHaveBeenCalledTimes(1);
+  });
+
+  it('merge preserva o lado persistido que o SNMP nao reporta', async () => {
+    const repo = opticalRepository([{
+      interfaceId: 'if-1',
+      thresholds: {
+        version: 1,
+        scalar: {
+          rx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+          tx: { lowAlarmDbm: -10.4, highAlarmDbm: 3.4, lowSource: 'USER', highSource: 'USER' },
+        },
+        lanes: [],
+      },
+      source: 'USER',
+      updatedAt: new Date(),
+      refreshAfter: new Date(),
+    }]);
+    const service = new SnmpService(repo, undefined, 0);
+    const internals = opticalInternals(service);
+    const device = snmpHost([networkInterface('100GE1/0/1', 1, 'UP')], { model: 'S6750-H' });
+    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([{
+      ...device.interfaces[0]!,
+      opticalThresholds: snmpThresholds,
+    }]);
+
+    await internals.refreshOpticalPower(device, 'public');
+
+    const entries = (
+      repo as unknown as { updateInterfaceOpticalThresholds: { mock: { calls: unknown[][] } } }
+    ).updateInterfaceOpticalThresholds.mock.calls[0]?.[1] as Array<{ thresholds: { scalar: Record<string, unknown> } }>;
+    expect(entries[0]?.thresholds.scalar.rx).toMatchObject({ lowAlarmDbm: -12.31 });
+    // O lado TX ja persistido (USER) continua valido: merge nao apaga.
+    expect(entries[0]?.thresholds.scalar.tx).toMatchObject({
+      lowAlarmDbm: -10.4, highAlarmDbm: 3.4, lowSource: 'USER', highSource: 'USER',
+    });
+  });
+
+  it('falha ao persistir threshold nao bloqueia a potencia nem propaga erro', async () => {
+    const repo = opticalRepository();
+    (repo as unknown as { updateInterfaceOpticalThresholds: unknown }).updateInterfaceOpticalThresholds =
+      vi.fn().mockRejectedValue(new Error('db down'));
+    const service = new SnmpService(repo, undefined, 0);
+    const internals = opticalInternals(service);
+    const device = snmpHost([networkInterface('100GE1/0/1', 1, 'UP')], { model: 'S6750-H' });
+    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([{
+      ...device.interfaces[0]!,
+      opticalThresholds: snmpThresholds,
+    }]);
+
+    await expect(internals.refreshOpticalPower(device, 'public')).resolves.toBeUndefined();
+    expect(repo.updateInterfaceOptics).toHaveBeenCalledTimes(1);
+  });
+
+  it('sem thresholds no SNMP nao escreve nada nem chama o repositorio de thresholds', async () => {
+    const repo = opticalRepository();
+    const service = new SnmpService(repo, undefined, 0);
+    const internals = opticalInternals(service);
+    const device = snmpHost([networkInterface('100GE1/0/1', 1, 'UP')], { model: 'S6750-H' });
+    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([{
+      ...device.interfaces[0]!,
+      rxPowerDbm: 0.18,
+      opticalSource: 'SNMP',
+    }]);
+
+    await internals.refreshOpticalPower(device, 'public');
+
+    expect(
+      (repo as unknown as { updateInterfaceOpticalThresholds: ReturnType<typeof vi.fn> })
+        .updateInterfaceOpticalThresholds,
+    ).not.toHaveBeenCalled();
+    expect(repo.updateInterfaceOptics).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('SnmpService unknown interface auto-discovery', () => {
   function pollService(repo: HostRepository): SnmpService {
     return new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
@@ -1234,7 +1389,7 @@ describe('SNMP credential safety', () => {
   });
 });
 
-describe('SnmpService — EtherLike FCS/CRC', () => {
+describe('SnmpService Ã¢â‚¬â€ EtherLike FCS/CRC', () => {
   function internalsOf(service: SnmpService) {
     return service as unknown as {
       client: { walk: (host: string, oid: string, options: unknown) => Promise<unknown[]> };
@@ -1364,7 +1519,7 @@ describe('SnmpService — EtherLike FCS/CRC', () => {
   });
 });
 
-describe('SnmpService — motor de alarmes metricos', () => {
+describe('SnmpService Ã¢â‚¬â€ motor de alarmes metricos', () => {
   it('keeps polling healthy when the metric alarm engine fails', async () => {
     const now = new Date('2026-10-07T12:00:05.000Z');
     const repo = repository();

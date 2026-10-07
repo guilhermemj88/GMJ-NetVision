@@ -4,6 +4,7 @@ import {
   emptyHuaweiOpticalThresholds,
   emptyOpticalThresholdSide,
   hasUsefulOpticalThresholds,
+  mergeOpticalThresholds,
   opticalThresholdsLayoutChanged,
   opticalThresholdsV1FromHuawei,
   parseOpticalThresholdsV1,
@@ -59,6 +60,45 @@ describe('canonical optical thresholds', () => {
     expect(opticalThresholdsLayoutChanged(withLanes, [0, 1])).toBe(false);
     expect(opticalThresholdsLayoutChanged(withLanes, [0, 1, 2, 3])).toBe(true);
     expect(opticalThresholdsLayoutChanged(withLanes, [])).toBe(false);
+  });
+
+  it('merge preserva lado valido e nunca apaga com valor ausente/invalido', () => {
+    const existing = opticalThresholdsV1FromHuawei(
+      {
+        scalar: {
+          rx: { lowAlarmDbm: -12.31, highAlarmDbm: null, lowSource: 'DEVICE', highSource: null },
+          tx: { lowAlarmDbm: -10.4, highAlarmDbm: 3.4, lowSource: 'USER', highSource: 'USER' },
+        },
+        lanes: [{ lane: 0, rx: { lowAlarmDbm: -13, highAlarmDbm: null, lowSource: 'DEVICE', highSource: null }, tx: emptyOpticalThresholdSide() }],
+      },
+      [],
+    );
+    const incoming = opticalThresholdsV1FromHuawei(
+      {
+        scalar: {
+          rx: { lowAlarmDbm: null, highAlarmDbm: 3.4, lowSource: null, highSource: 'DEVICE' },
+          tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+        },
+        lanes: [
+          { lane: 0, rx: { lowAlarmDbm: null, highAlarmDbm: 3.4, lowSource: null, highSource: 'DEVICE' }, tx: emptyOpticalThresholdSide() },
+          { lane: 1, rx: { lowAlarmDbm: -13.5, highAlarmDbm: null, lowSource: 'DEVICE', highSource: null }, tx: emptyOpticalThresholdSide() },
+        ],
+      },
+      [],
+    );
+
+    const merged = mergeOpticalThresholds(existing, incoming);
+    expect(merged.scalar.rx).toEqual({
+      lowAlarmDbm: -12.31, highAlarmDbm: 3.4, lowSource: 'DEVICE', highSource: 'DEVICE',
+    });
+    expect(merged.scalar.tx).toEqual({
+      lowAlarmDbm: -10.4, highAlarmDbm: 3.4, lowSource: 'USER', highSource: 'USER',
+    });
+    expect(merged.lanes.map((lane) => lane.lane)).toEqual([0, 1]);
+    expect(merged.lanes[0]?.rx).toMatchObject({ lowAlarmDbm: -13, highAlarmDbm: 3.4 });
+    expect(merged.lanes[1]?.rx).toMatchObject({ lowAlarmDbm: -13.5 });
+    // Sem registro anterior o merge devolve o proprio incoming.
+    expect(mergeOpticalThresholds(null, incoming)).toEqual(incoming);
   });
 
   it('rejects malformed or future JSON versions from the database column', () => {

@@ -13,6 +13,9 @@ export const huaweiNe8000Profile: SnmpProfile = {
   modelPatterns: [/NE\s*8000/i, /F1A(?:-C)?/i],
   sysDescrPatterns: [/NetEngine\s*8000/i, /NE\s*8000/i],
   pppOnlineOid: HUAWEI_PPP_ONLINE_OID,
+  // NetEngine 8000 roda o VRP classico: .8/.9 em MICRO_WATTS (comportamento
+  // historico preservado; nao ha evidencia de centi-dBm nessa familia).
+  opticalScalarEncoding: 'MICRO_WATTS',
   metrics: {
     cpu: {
       unit: '%',

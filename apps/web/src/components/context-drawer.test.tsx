@@ -357,6 +357,73 @@ describe('ContextDrawer verification action', () => {
     expect(html).not.toContain('-11.14 dBm');
     expect(html).not.toContain('SNMP + SSH');
   });
+
+  it('mostra os limites do módulo uma única vez e N/D quando não há threshold', () => {
+    const base = {
+      ...device.interfaces[0]!,
+      opticalLaneSource: 'SNMP' as const,
+      opticalLanesUpdatedAt: '2026-08-23T12:00:01.000Z',
+      opticalLanes: [
+        { lane: 0, rxPowerDbm: 0.19, txPowerDbm: -0.74 },
+        { lane: 1, rxPowerDbm: 0.69, txPowerDbm: -0.69 },
+        { lane: 2, rxPowerDbm: 1.02, txPowerDbm: -0.72 },
+        { lane: 3, rxPowerDbm: 0.11, txPowerDbm: -0.76 },
+      ],
+    };
+
+    const withThresholds = renderToStaticMarkup(
+      <InterfaceOpticalDetails
+        networkInterface={{
+          ...base,
+          opticalThresholds: {
+            version: 1,
+            scalar: {
+              rx: { lowAlarmDbm: -12.31, highAlarmDbm: 3.4, lowSource: 'DEVICE', highSource: 'DEVICE' },
+              tx: { lowAlarmDbm: -10.4, highAlarmDbm: 3.4, lowSource: 'DEVICE', highSource: 'DEVICE' },
+            },
+            lanes: [],
+          },
+          opticalThresholdSource: 'DEVICE',
+          opticalThresholdsUpdatedAt: '2026-08-23T12:00:02.000Z',
+        }}
+      />,
+    );
+    // Limite do modulo aparece UMA vez (nao repetido nas 4 lanes).
+    expect(withThresholds.match(/Limites do módulo RX/g)).toHaveLength(1);
+    expect(withThresholds).toContain('LOW -12.31 dBm · HIGH 3.40 dBm');
+    expect(withThresholds).toContain('LOW -10.40 dBm · HIGH 3.40 dBm');
+    expect(withThresholds).toContain('Limites do módulo TX');
+    expect(withThresholds).toContain('DEVICE');
+    expect(withThresholds).not.toContain('Lim RX');
+
+    const withoutThresholds = renderToStaticMarkup(
+      <InterfaceOpticalDetails networkInterface={{ ...base, opticalThresholds: null }} />,
+    );
+    // Sem threshold real a secao de limites nem aparece (nada inventado).
+    expect(withoutThresholds).not.toContain('Limites do módulo');
+
+    // Lane com threshold PROPRIA ganha a linha de limite naquela lane.
+    const laneSpecific = renderToStaticMarkup(
+      <InterfaceOpticalDetails
+        networkInterface={{
+          ...base,
+          opticalThresholds: {
+            version: 1,
+            scalar: {
+              rx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+              tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+            },
+            lanes: [{
+              lane: 2,
+              rx: { lowAlarmDbm: -13.5, highAlarmDbm: 2, lowSource: 'USER', highSource: 'USER' },
+              tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+            }],
+          },
+        }}
+      />,
+    );
+    expect(laneSpecific).toContain('Lim RX LOW -13.50 dBm · HIGH 2.00 dBm');
+  });
 });
 
 function setInputValue(input: HTMLInputElement, value: string) {

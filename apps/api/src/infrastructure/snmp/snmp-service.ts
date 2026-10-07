@@ -21,6 +21,10 @@ import { ETHERLIKE_FCS_OIDS } from './etherlike-oids';
 import { BASELINE_ONLY_RATE_BPS, evaluateTrafficRate } from './traffic-rate';
 import { decodeSnmpText } from './snmp-text';
 import {
+  mergeOpticalThresholds,
+  summaryOpticalThresholdSource,
+} from '../topology/optical-thresholds';
+import {
   GENERIC_INTERFACE_OIDS,
   GENERIC_LEGACY_COUNTER_OIDS,
   GENERIC_SYSTEM_OIDS,
@@ -96,6 +100,8 @@ export class SnmpService {
     private readonly bgp?: BgpPollingService,
     private readonly alarmEngine?: AlarmEngine,
     private readonly opticalThresholds?: OpticalThresholdService,
+    /** Validade renovada para o slow path SSH dos thresholds (default 24h). */
+    private readonly opticalThresholdRefreshMs: number = 24 * 3_600_000,
   ) {
     this.client = new SnmpClientImpl(3000, 1);
     this.discoveryAdapter = new SnmpV2cDiscoveryAdapter(repository);
@@ -345,14 +351,13 @@ export class SnmpService {
     }
 
     await this.discoverUnknownInterfaces(currentDevice, unknownIfIndexes);
-    await this.refreshOpticalPower(currentDevice, community);
+    await this.refreshOpticalPower(currentDevice, community, system);
     await this.refreshMpls(currentDevice, community);
     await this.refreshPpp(currentDevice, community, system);
     await this.refreshBgp(currentDevice, community);
     await this.repository.updateSourceHealth(currentDevice.id, {
       source: 'SNMP',
-      state: 'CONNECTED',
-      message: `Polling SNMP concluído com ${statuses.size} interfaces verificadas e ${samples.length} amostras`,
+      state: 'CONNECTED',      message: `Polling SNMP concluído com ${statuses.size} interfaces verificadas e ${samples.length} amostras`,
       checkedAt: system.timestamp.toISOString(),
     });
 
@@ -430,7 +435,11 @@ export class SnmpService {
     }
   }
 
-  private async refreshOpticalPower(device: HostRecord, community: string): Promise<void> {
+  private async refreshOpticalPower(
+    device: HostRecord,
+    community: string,
+    system?: { sysObjectId?: string; sysDescr?: string; sysName?: string },
+  ): Promise<void> {
     const now = Date.now();
     const lastAttempt = this.lastOpticalAttempts.get(device.id) ?? 0;
     if (now - lastAttempt < this.opticalIntervalMs) return;
@@ -442,6 +451,7 @@ export class SnmpService {
         device,
         device.interfaces,
         community,
+        system,
       );
       if (device.sshEnabled && this.sshInterfaces) {
         try {
@@ -450,7 +460,16 @@ export class SnmpService {
           // SSH DDM is a per-interface fallback; its failure does not affect SNMP.
         }
       }
+
       await this.repository.updateInterfaceOptics(device.id, interfaces, startedAt);
+
+      // Thresholds SNMP (.13-.16) sao a fonte PRIMARIA: persistidos depois da
+      // potencia e SEMPRE best-effort (falha nao bloqueia potencia nem motor).
+      try {
+        await this.persistSnmpOpticalThresholds(device.id, interfaces, startedAt);
+      } catch {
+        // Threshold e opcional; o ciclo de potencia/SNMP permanece valido.
+      }
 
       // Motor optico roda DEPOIS de persistir as amostras e e fail-safe.
       if (this.alarmEngine) {
@@ -480,6 +499,42 @@ export class SnmpService {
     } catch {
       // Optional DDM enrichment must never fail the traffic poll.
     }
+  }
+
+  /**
+   * Thresholds lidos por SNMP (.13-.16) sao a fonte PRIMARIA: merge com o que ja
+   * esta persistido (valor valido novo vence; lado ausente/invalido NUNCA apaga
+   * valor valido) e `refreshAfter` renovado para o slow path SSH ficar apenas
+   * como fallback de quem nao tem threshold via SNMP.
+   */
+  private async persistSnmpOpticalThresholds(
+    deviceId: string,
+    interfaces: readonly NetworkInterface[],
+    collectedAt: Date,
+  ): Promise<void> {
+    const incoming = interfaces.flatMap((item) =>
+      item.opticalThresholds ? [{ item, thresholds: item.opticalThresholds }] : [],
+    );
+    if (!incoming.length) return;
+
+    const existing = new Map(
+      (await this.repository.getInterfaceOpticalThresholds(deviceId))
+        .map((record) => [record.interfaceId, record.thresholds]),
+    );
+    const refreshAfter = new Date(collectedAt.getTime() + this.opticalThresholdRefreshMs);
+    await this.repository.updateInterfaceOpticalThresholds(
+      deviceId,
+      incoming.map(({ item, thresholds }) => {
+        const merged = mergeOpticalThresholds(existing.get(item.id) ?? null, thresholds);
+        return {
+          interfaceId: item.id,
+          thresholds: merged,
+          source: summaryOpticalThresholdSource(merged),
+          updatedAt: collectedAt,
+          refreshAfter,
+        };
+      }),
+    );
   }
 
   async collectInterfaceStatuses(

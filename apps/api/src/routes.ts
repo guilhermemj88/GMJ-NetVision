@@ -585,6 +585,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     bgpPolling,
     alarmEngine,
     opticalThresholds,
+    config.OPTICAL_THRESHOLD_REFRESH_HOURS * 3_600_000,
   );
   const poller = new SnmpPoller(hosts, snmp, config.SNMP_POLL_INTERVAL_SECONDS * 1000);
   const zabbix =

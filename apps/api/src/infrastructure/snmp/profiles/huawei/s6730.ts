@@ -11,5 +11,8 @@ export const huaweiS6730Profile: SnmpProfile = {
   modelPatterns: [/S6730/i],
   sysDescrPatterns: [/S6730/i],
   pppOnlineOid: HUAWEI_PPP_ONLINE_OID,
+  // Evidencia real (BHE-VTA-6730-MPLS-01): .8/.9 em MICRO_WATTS e .13-.16 em
+  // centi-dBm (raw / 100).
+  opticalScalarEncoding: 'MICRO_WATTS',
   metrics: huaweiGenericProfile.metrics,
 };

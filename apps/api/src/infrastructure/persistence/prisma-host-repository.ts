@@ -962,6 +962,8 @@ export class PrismaHostRepository implements HostRepository {
       rxPowerDbm: number | null; txPowerDbm: number | null; opticalLanes: unknown;
       opticalLaneSource: string | null; opticalLanesUpdatedAt: Date | null;
       opticalSource: string | null; opticalUpdatedAt: Date | null;
+      opticalThresholds: unknown; opticalThresholdSource: string | null;
+      opticalThresholdsUpdatedAt: Date | null; opticalThresholdsRefreshAfter: Date | null;
       rxItemId: string | null; txItemId: string | null; statusItemId: string | null; inErrorsItemId: string | null;
       outErrorsItemId: string | null; inDiscardsItemId: string | null; outDiscardsItemId: string | null; dataSources: unknown;
       metricSamples: Array<{
@@ -1030,6 +1032,11 @@ export class PrismaHostRepository implements HostRepository {
         opticalLanesUpdatedAt: item.opticalLanesUpdatedAt?.toISOString() ?? null,
         opticalSource: item.opticalSource === 'SNMP' || item.opticalSource === 'SSH' ? item.opticalSource : null,
         opticalUpdatedAt: item.opticalUpdatedAt?.toISOString() ?? null,
+        opticalThresholds: parseOpticalThresholdsV1(item.opticalThresholds),
+        opticalThresholdSource: isOpticalThresholdSource(item.opticalThresholdSource)
+          ? item.opticalThresholdSource
+          : null,
+        opticalThresholdsUpdatedAt: item.opticalThresholdsUpdatedAt?.toISOString() ?? null,
         rxItemId: item.rxItemId,
         txItemId: item.txItemId,
         statusItemId: item.statusItemId,

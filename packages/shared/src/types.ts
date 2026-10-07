@@ -278,6 +278,13 @@ export interface NetworkInterface {
   opticalLanesUpdatedAt?: string | null;
   opticalSource?: 'SNMP' | 'SSH' | null;
   opticalUpdatedAt?: string | null;
+  /**
+   * Thresholds efetivos do transceiver (JSON canonico v1, MESMA coluna que o
+   * Alarm Engine le). Preenchido pelo coletor (SNMP primario, SSH fallback).
+   */
+  opticalThresholds?: OpticalThresholdsV1 | null | undefined;
+  opticalThresholdSource?: OpticalThresholdSource | null | undefined;
+  opticalThresholdsUpdatedAt?: string | null | undefined;
   rxItemId?: string | null;
   txItemId?: string | null;
   statusItemId?: string | null;

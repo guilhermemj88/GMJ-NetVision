@@ -1,12 +1,15 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { OpticalHistoryPoint } from '@gmj/shared';
+import type { NetworkInterface, OpticalHistoryPoint } from '@gmj/shared';
 import {
   OpticalHistoryTooltip,
+  axisWindow,
   formatAxisDbm,
   laneIdsWithPower,
   opticalChartData,
   opticalSeries,
+  opticalThresholdRange,
+  thresholdMarkers,
 } from './optical-history-charts';
 
 const point: OpticalHistoryPoint = {
@@ -152,5 +155,79 @@ describe('optical history rendering', () => {
     expect(formatAxisDbm(1.1)).toBe('1.10');
     expect(formatAxisDbm(-4.2)).toBe('-4.20');
     expect(formatAxisDbm(0)).toBe('0.00');
+  });
+});
+
+describe('thresholds no grafico optico (F7.5)', () => {
+  const baseInterface = {
+    id: 'if-1', deviceId: 'dev-1', name: '100GE1/0/1', alias: '', description: '',
+    ifIndex: 1, mac: '', mtu: 1500, speedBps: 100_000_000_000,
+    adminStatus: 'UP', operStatus: 'UP', rxBps: 0, txBps: 0, rxUtilization: 0,
+    txUtilization: 0, rxErrors: 0, txErrors: 0, rxDiscards: 0, txDiscards: 0,
+    dataSources: ['SNMP'],
+  } as unknown as NetworkInterface;
+
+  it('le o MESMO opticalThresholds canonico (scalar do modulo, com origem)', () => {
+    const range = opticalThresholdRange({
+      ...baseInterface,
+      opticalThresholds: {
+        version: 1,
+        scalar: {
+          rx: { lowAlarmDbm: -12.31, highAlarmDbm: 3.4, lowSource: 'DEVICE', highSource: 'DEVICE' },
+          tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+        },
+        lanes: [],
+      },
+    }, 'rx');
+    expect(range).toEqual({ low: -12.31, high: 3.4, source: 'DEVICE', scope: 'MODULE' });
+  });
+
+  it('sem scalar usa a envoltoria dos limites por lane e nunca inventa valor', () => {
+    const range = opticalThresholdRange({
+      ...baseInterface,
+      opticalThresholds: {
+        version: 1,
+        scalar: {
+          rx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+          tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+        },
+        lanes: [
+          { lane: 0, rx: { lowAlarmDbm: -13.5, highAlarmDbm: 2, lowSource: 'USER', highSource: 'USER' }, tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null } },
+          { lane: 1, rx: { lowAlarmDbm: -11, highAlarmDbm: 3, lowSource: 'USER', highSource: 'USER' }, tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null } },
+        ],
+      },
+    }, 'rx');
+    expect(range).toMatchObject({ low: -13.5, high: 3, source: 'USER', scope: 'LANE' });
+
+    expect(opticalThresholdRange(baseInterface, 'rx')).toEqual({
+      low: null, high: null, source: null, scope: null,
+    });
+  });
+
+  it('janela Y vem SO dos dados: threshold distante nao achata as lanes', () => {
+    const window = axisWindow([0.19, 0.69, 1.02, 0.11]);
+    expect(window?.[0]).toBeLessThan(0.11);
+    expect(window?.[1]).toBeGreaterThan(1.02);
+    // Faixa real das 4 lanes (0.11..1.02) preservada, sem incluir -12.31/+3.40.
+    expect(window?.[0]).toBeGreaterThan(-1);
+
+    const markers = thresholdMarkers({ low: -12.31, high: 3.4, source: 'DEVICE', scope: 'MODULE' }, window);
+    // LOW abaixo da janela e HIGH acima: chip mostra a direcao, sem linha falsa.
+    expect(markers.low).toEqual({ value: -12.31, visible: false, hint: 'below' });
+    expect(markers.high).toEqual({ value: 3.4, visible: false, hint: 'above' });
+  });
+
+  it('threshold dentro da janela vira linha de referencia visivel', () => {
+    const window = axisWindow([-3.0, -2.4, -2.8]);
+    const markers = thresholdMarkers({ low: -3.0, high: -2.5, source: 'DEVICE', scope: 'MODULE' }, window);
+    expect(markers.low?.visible).toBe(true);
+    expect(markers.high?.visible).toBe(true);
+    expect(markers.low?.hint).toBeNull();
+  });
+
+  it('sem dados nao ha janela e nenhum threshold e desenhado', () => {
+    expect(axisWindow([null, undefined])).toBeNull();
+    expect(thresholdMarkers({ low: null, high: null, source: null, scope: null }, null))
+      .toEqual({ low: null, high: null });
   });
 });

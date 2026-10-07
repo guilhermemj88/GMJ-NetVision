@@ -1,12 +1,18 @@
 'use client';
 
 import { useState } from 'react';
-import type { HistoryPeriod, NetworkInterface, OpticalHistoryPoint } from '@gmj/shared';
+import type {
+  HistoryPeriod,
+  NetworkInterface,
+  OpticalHistoryPoint,
+  OpticalThresholdSource,
+} from '@gmj/shared';
 import { useQuery } from '@tanstack/react-query';
 import {
   CartesianGrid,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -113,6 +119,97 @@ export function opticalSeries(laneIds: number[], direction: 'rx' | 'tx') {
   }));
 }
 
+/** Limite LOW/HIGH efetivo de um lado, com a origem que o forneceu. */
+export interface OpticalThresholdRange {
+  low: number | null;
+  high: number | null;
+  source: OpticalThresholdSource | null;
+  scope: 'MODULE' | 'LANE' | null;
+}
+
+/**
+ * Le o MESMO `Interface.opticalThresholds` canonico usado pelo Alarm Engine.
+ * Prefere o limite do modulo; sem ele, usa a envoltoria dos limites por lane.
+ * Sem threshold real devolve nulls (o grafico mostra N/D, nunca um limite falso).
+ */
+export function opticalThresholdRange(
+  networkInterface: NetworkInterface,
+  direction: 'rx' | 'tx',
+): OpticalThresholdRange {
+  const thresholds = networkInterface.opticalThresholds ?? null;
+  const scalarSide = direction === 'rx' ? thresholds?.scalar.rx : thresholds?.scalar.tx;
+  if (scalarSide && (scalarSide.lowAlarmDbm !== null || scalarSide.highAlarmDbm !== null)) {
+    return {
+      low: scalarSide.lowAlarmDbm,
+      high: scalarSide.highAlarmDbm,
+      source: scalarSide.lowSource ?? scalarSide.highSource ?? networkInterface.opticalThresholdSource ?? null,
+      scope: 'MODULE',
+    };
+  }
+  const laneSides = (thresholds?.lanes ?? []).map((lane) => (direction === 'rx' ? lane.rx : lane.tx));
+  const lows = laneSides.map((side) => side.lowAlarmDbm).filter((value): value is number => value !== null);
+  const highs = laneSides.map((side) => side.highAlarmDbm).filter((value): value is number => value !== null);
+  if (!lows.length && !highs.length) return { low: null, high: null, source: null, scope: null };
+  return {
+    low: lows.length ? Math.min(...lows) : null,
+    high: highs.length ? Math.max(...highs) : null,
+    source: laneSides.find((side) => side.lowSource ?? side.highSource)?.lowSource
+      ?? networkInterface.opticalThresholdSource
+      ?? null,
+    scope: 'LANE',
+  };
+}
+
+/**
+ * Janela Y a partir SOMENTE dos dados: as lanes mantem a variacao visivel e um
+ * threshold distante nunca achata o grafico. `null` = deixa o recharts decidir.
+ */
+export function axisWindow(
+  values: ReadonlyArray<number | null | undefined>,
+  paddingRatio = 0.08,
+): [number, number] | null {
+  const finite = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  if (!finite.length) return null;
+  const min = Math.min(...finite);
+  const max = Math.max(...finite);
+  const span = max - min;
+  const padding = span > 0 ? span * paddingRatio : Math.max(Math.abs(max) * 0.02, 0.1);
+  return [Number((min - padding).toFixed(2)), Number((max + padding).toFixed(2))];
+}
+
+export interface OpticalThresholdMarker {
+  value: number;
+  /** Dentro da janela Y: vira linha de referencia tracejada. */
+  visible: boolean;
+  /** Fora da janela: o chip mostra o valor e para que lado ele esta. */
+  hint: 'above' | 'below' | null;
+}
+
+export function thresholdMarker(
+  value: number | null,
+  window: [number, number] | null,
+): OpticalThresholdMarker | null {
+  if (value === null) return null;
+  if (!window) return { value, visible: true, hint: null };
+  const [min, max] = window;
+  if (value < min) return { value, visible: false, hint: 'below' };
+  if (value > max) return { value, visible: false, hint: 'above' };
+  return { value, visible: true, hint: null };
+}
+
+export function thresholdMarkers(
+  range: OpticalThresholdRange,
+  window: [number, number] | null,
+): { low: OpticalThresholdMarker | null; high: OpticalThresholdMarker | null } {
+  return { low: thresholdMarker(range.low, window), high: thresholdMarker(range.high, window) };
+}
+
+function thresholdHintLabel(marker: OpticalThresholdMarker | null): string {
+  if (marker?.hint === 'below') return ' ↓ abaixo da janela';
+  if (marker?.hint === 'above') return ' ↑ acima da janela';
+  return '';
+}
+
 export function OpticalHistoryCharts({
   networkInterface,
 }: {
@@ -157,8 +254,18 @@ export function OpticalHistoryCharts({
         <div className="chart-empty">Sem amostras ópticas no período</div>
       ) : (
         <div className="chart-pair chart-pair--optical">
-          <OpticalPowerChart data={data} laneIds={rxLaneIds} direction="rx" />
-          <OpticalPowerChart data={data} laneIds={txLaneIds} direction="tx" />
+          <OpticalPowerChart
+            data={data}
+            laneIds={rxLaneIds}
+            direction="rx"
+            thresholds={opticalThresholdRange(networkInterface, 'rx')}
+          />
+          <OpticalPowerChart
+            data={data}
+            laneIds={txLaneIds}
+            direction="tx"
+            thresholds={opticalThresholdRange(networkInterface, 'tx')}
+          />
         </div>
       )}
     </section>
@@ -169,12 +276,25 @@ function OpticalPowerChart({
   data,
   laneIds,
   direction,
+  thresholds,
 }: {
   data: OpticalChartDatum[];
   laneIds: number[];
   direction: 'rx' | 'tx';
+  thresholds: OpticalThresholdRange;
 }) {
   const title = direction.toUpperCase();
+  const series = opticalSeries(laneIds, direction);
+  const values = data.flatMap((datum) =>
+    series.map((item) => {
+      const value = datum[item.dataKey];
+      return typeof value === 'number' ? value : null;
+    }));
+  // Dominio SO dos dados: LOW/HIGH distante nao achatam as lanes; quando estao
+  // dentro da janela entram como linha tracejada, quando fora viram chip.
+  const window = axisWindow(values);
+  const markers = thresholdMarkers(thresholds, window);
+
   return (
     <div className="chart-block chart-block--optical">
       <div className="chart-block__legend">
@@ -185,12 +305,21 @@ function OpticalPowerChart({
           </span>
         ))}
       </div>
+      <div className="chart-thresholds">
+        <span>
+          {title} LOW {formatDbm(thresholds.low)}{thresholdHintLabel(markers.low)}
+        </span>
+        <span>
+          {title} HIGH {formatDbm(thresholds.high)}{thresholdHintLabel(markers.high)}
+        </span>
+        <span>{thresholds.source ?? 'N/D'}</span>
+      </div>
       <ResponsiveContainer width="100%" height={150}>
         <LineChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
           <CartesianGrid stroke="#23303a" vertical={false} strokeDasharray="2 4" />
           <XAxis dataKey="label" tick={{ fill: '#6f8392', fontSize: 8 }} minTickGap={24} />
           <YAxis
-            domain={['auto', 'auto']}
+            domain={window ?? ['auto', 'auto']}
             tick={{ fill: '#6f8392', fontSize: 8 }}
             tickLine={false}
             axisLine={false}
@@ -204,13 +333,41 @@ function OpticalPowerChart({
               laneIds={laneIds}
             />
           )} />
-          {opticalSeries(laneIds, direction).map((series) => (
+          {markers.low?.visible && (
+            <ReferenceLine
+              y={markers.low.value}
+              stroke="#e3a64b"
+              strokeDasharray="3 3"
+              strokeWidth={1}
+              label={{
+                value: `LOW ${formatAxisDbm(markers.low.value)}`,
+                position: 'insideBottomRight',
+                fill: '#e3a64b',
+                fontSize: 8,
+              }}
+            />
+          )}
+          {markers.high?.visible && (
+            <ReferenceLine
+              y={markers.high.value}
+              stroke="#d17a65"
+              strokeDasharray="3 3"
+              strokeWidth={1}
+              label={{
+                value: `HIGH ${formatAxisDbm(markers.high.value)}`,
+                position: 'insideTopRight',
+                fill: '#d17a65',
+                fontSize: 8,
+              }}
+            />
+          )}
+          {series.map((item) => (
             <Line
-              key={series.dataKey}
+              key={item.dataKey}
               type="stepAfter"
-              dataKey={series.dataKey}
-              name={series.name}
-              stroke={series.stroke}
+              dataKey={item.dataKey}
+              name={item.name}
+              stroke={item.stroke}
               strokeWidth={1.5}
               dot={false}
               connectNulls={false}

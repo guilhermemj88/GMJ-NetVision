@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { selectPppOnlineOid, selectSnmpProfile } from './catalog';
+import { selectOpticalScalarEncoding, selectPppOnlineOid, selectSnmpProfile } from './catalog';
 import { HUAWEI_PPP_ONLINE_OID, MIKROTIK_PPP_ONLINE_OID } from './ppp-oids';
 
 describe('SNMP profile catalog', () => {
@@ -15,6 +15,25 @@ describe('SNMP profile catalog', () => {
   it('prioritizes S6730 and NE8000 model profiles', () => {
     expect(selectSnmpProfile({ vendor: 'Huawei', model: 'S6730-H48X6C' }).id).toBe('huawei-s6730');
     expect(selectSnmpProfile({ vendor: 'Huawei', model: 'NetEngine NE8000 F1A' }).id).toBe('huawei-ne8000');
+  });
+
+  it('identifica o S6750-H (YunShan) por modelo ou sysDescr', () => {
+    expect(selectSnmpProfile({ vendor: 'Huawei', model: 'S6750-H' }).id).toBe('huawei-s6750');
+    expect(selectSnmpProfile({
+      vendor: 'Huawei',
+      sysDescr: 'Huawei YunShan OS CloudEngine S6750-H V600R024C00SPC500',
+    }).id).toBe('huawei-s6750');
+  });
+
+  it('encoding do RAW .8/.9 vem do profile (nunca do sinal do valor)', () => {
+    expect(selectOpticalScalarEncoding({ vendor: 'Huawei', model: 'S6750-H' })).toBe('CENTI_DBM');
+    expect(selectOpticalScalarEncoding({ vendor: 'Huawei', model: 'S6730-H48X6C' })).toBe('MICRO_WATTS');
+    expect(selectOpticalScalarEncoding({ vendor: 'Huawei', model: 'NE8000 F1A-C' })).toBe('MICRO_WATTS');
+    // Huawei generico preserva o comportamento historico (uW) do parque VRP.
+    expect(selectOpticalScalarEncoding({ vendor: 'Huawei', model: 'Desconhecido' })).toBe('MICRO_WATTS');
+    // Outros vendors nao herdam decode Huawei: scalar fica em UNKNOWN.
+    expect(selectOpticalScalarEncoding({ vendor: 'MikroTik' })).toBe('UNKNOWN');
+    expect(selectOpticalScalarEncoding({ vendor: 'Other' })).toBe('UNKNOWN');
   });
 
   it('resolves Huawei and MikroTik PPP OIDs without inventing values', () => {

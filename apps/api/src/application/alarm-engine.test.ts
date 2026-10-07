@@ -989,6 +989,94 @@ describe('motor optico (OPTICAL_RX_DEGRADATION)', () => {
       new Date(NOW.getTime() - 60 * 60_000),
     );
   });
+
+  it('S6750-H real: avaliacao por lane contra o threshold do modulo (-12.31/+3.40)', async () => {
+    // Thresholds reais .13/.14 do modulo (SNMP DEVICE) aplicados a cada lane.
+    const moduleThresholds = thresholdRecord(-12.31, 3.4);
+    const healthy = buildOpticalEngine({
+      rows: [
+        laneRow(10, { 0: 0.19, 1: 0.69, 2: 1.02, 3: 0.11 }),
+        laneRow(5, { 0: 0.19, 1: 0.69, 2: 1.02, 3: 0.11 }),
+        laneRow(0, { 0: 0.19, 1: 0.69, 2: 1.02, 3: 0.11 }),
+      ],
+      thresholds: [moduleThresholds],
+    });
+    await healthy.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({
+        rxPowerDbm: 0.19,
+        opticalLaneSource: 'SNMP',
+        opticalLanes: [
+          { lane: 0, rxPowerDbm: 0.19, txPowerDbm: -0.74 },
+          { lane: 1, rxPowerDbm: 0.69, txPowerDbm: -0.69 },
+          { lane: 2, rxPowerDbm: 1.02, txPowerDbm: -0.72 },
+          { lane: 3, rxPowerDbm: 0.11, txPowerDbm: -0.76 },
+        ],
+      })],
+    });
+    expect(healthy.openMetricAlarm).not.toHaveBeenCalled();
+
+    // Lane 3 degradada (~94% da faixa ate o Low Alarm) abre UM alarme de lane.
+    const degraded = buildOpticalEngine({
+      rows: [
+        laneRow(10, { 0: 0.19, 1: 0.69, 2: 1.02, 3: -11.0 }),
+        laneRow(5, { 0: 0.19, 1: 0.69, 2: 1.02, 3: -11.0 }),
+        laneRow(0, { 0: 0.19, 1: 0.69, 2: 1.02, 3: -11.0 }),
+      ],
+      thresholds: [moduleThresholds],
+    });
+    await degraded.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({
+        rxPowerDbm: 0.19,
+        opticalLaneSource: 'SNMP',
+        opticalLanes: [
+          { lane: 0, rxPowerDbm: 0.19, txPowerDbm: -0.74 },
+          { lane: 1, rxPowerDbm: 0.69, txPowerDbm: -0.69 },
+          { lane: 2, rxPowerDbm: 1.02, txPowerDbm: -0.72 },
+          { lane: 3, rxPowerDbm: -11.0, txPowerDbm: -0.76 },
+        ],
+      })],
+    });
+    expect(degraded.openMetricAlarm).toHaveBeenCalledTimes(1);
+    expect(degraded.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      metricKey: 'RX_LANE_3',
+      severity: 'WARNING',
+      unit: '%',
+      metadata: {
+        lane: 3,
+        rxLowAlarmDbm: -12.31,
+        rxHighAlarmDbm: 3.4,
+        thresholdSource: 'DEVICE',
+        currentPowerSource: 'SNMP',
+      },
+    });
+    expect(degraded.openMetricAlarm.mock.calls.every(([item]) => item.metricKey !== 'RX')).toBe(true);
+  });
+
+  it('S6730 real: modulo scalar usa current em dBm e thresholds do equipamento', async () => {
+    // 65 uW => -11.87 dBm com thresholds -22.01/-2.00 (mesma coluna canonica).
+    const built = buildOpticalEngine({
+      rows: [opticalRow(10, -20.5), opticalRow(5, -20.5), opticalRow(0, -20.5)],
+      thresholds: [thresholdRecord(-22.01, -2)],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: -20.5 })],
+    });
+    const input = built.openMetricAlarm.mock.calls[0]?.[0];
+    expect(input).toMatchObject({ metricKey: 'RX', severity: 'WARNING' });
+    expect(input?.metadata).toMatchObject({
+      rxPowerDbm: -20.5,
+      rxLowAlarmDbm: -22.01,
+      rxHighAlarmDbm: -2,
+      thresholdSource: 'DEVICE',
+      proximityPercent: 92.45,
+    });
+  });
 });
 
 describe('motor + notificacao de midia (NETWORK_ALARMS)', () => {
