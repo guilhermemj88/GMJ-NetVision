@@ -44,7 +44,7 @@ export type OpenPanel =
   | 'media'
   | 'alarms'
   | null;
-export type WorkspaceView = 'MAP' | 'HOSTS' | 'PHYSICAL' | 'BGP';
+export type WorkspaceView = 'MAP' | 'HOSTS' | 'PHYSICAL' | 'BGP' | 'ALERTS';
 
 export interface PresetApplication {
   nodeDisplayMode: NodeDisplayMode;

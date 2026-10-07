@@ -84,6 +84,10 @@ import { AlarmSuppressionService } from './application/alarm-suppression-service
 import { AlarmNotificationService, type AlarmNotifier } from './application/alarm-notification-service';
 import { N8nAlarmTransport } from './infrastructure/alarms/n8n-alarm-transport';
 import { OperationalOccurrenceService } from './application/operational-occurrence-service';
+import { AlertCenterService } from './application/alert-center-service';
+import { registerAlertCenterRoutes } from './alert-center-routes';
+import { DemoAlertCenterRepository } from './infrastructure/alarms/demo-alert-center-repository';
+import { PrismaAlertCenterRepository } from './infrastructure/alarms/prisma-alert-center-repository';
 import { registerOperationalOccurrenceRoutes } from './operational-occurrence-routes';
 import { DemoOperationalOccurrenceRepository } from './infrastructure/alarms/demo-operational-occurrence-repository';
 import { PrismaOperationalOccurrenceRepository } from './infrastructure/alarms/prisma-operational-occurrence-repository';
@@ -567,6 +571,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     ? new DemoOperationalOccurrenceRepository()
     : new PrismaOperationalOccurrenceRepository();
   const operationalOccurrences = new OperationalOccurrenceService(operationalOccurrenceRepository);
+  const alertCenterRepository = config.DEMO_MODE
+    ? new DemoAlertCenterRepository(alarmRepository, operationalOccurrenceRepository, alarmSuppressionRepository)
+    : new PrismaAlertCenterRepository();
+  const alertCenter = new AlertCenterService(alertCenterRepository);
   const alarms = new AlarmService(alarmRepository, alarmSuppressionRepository);
   // Holder da notificacao de midia: definido junto ao motor e ligado depois
   // que a camada de midias (que depende do vault) estiver pronta.
@@ -635,6 +643,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
   registerOperationalOccurrenceRoutes(app, {
     occurrences: operationalOccurrences,
+    currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
+  });
+  registerAlertCenterRoutes(app, {
+    alertCenter,
     currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
   });
   registerBgpRoutes(app, {
@@ -951,6 +963,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       await alarmSuppressionRepository.disconnect();
     if (operationalOccurrenceRepository instanceof PrismaOperationalOccurrenceRepository)
       await operationalOccurrenceRepository.disconnect();
+    if (alertCenterRepository instanceof PrismaAlertCenterRepository)
+      await alertCenterRepository.disconnect();
     await physicalRepository.disconnect();
   });
 

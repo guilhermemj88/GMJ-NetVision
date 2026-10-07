@@ -1,12 +1,17 @@
 import {
+  ALERT_CENTER_DEFAULT_LIMIT,
   type AddDeviceResult,
   type Alarm,
   type AlarmRuleDto,
   type AlarmSuppression,
   type AlarmSuppressionMode,
   type AlarmSuppressionReason,
+  type AlertCenterListQuery,
+  type AlertCenterResponse,
+  type AlertCenterSummary,
   type AuthUser,
   type InterfaceOccurrence,
+  type OperationalOccurrenceAckResponse,
   type BgpAlertsResponse,
   type BgpAddressFamilyFilter,
   type BgpAdminAction,
@@ -293,6 +298,47 @@ export function releaseAlarmSuppression(suppressionId: string): Promise<AlarmSup
 export function getAlarmSuppressions(activeOnly = false, limit = 50): Promise<AlarmSuppression[]> {
   const params = new URLSearchParams({ active: String(activeOnly), limit: String(limit) });
   return request<AlarmSuppression[]>(`/api/alarm-suppressions?${params}`);
+}
+
+/** ACK de ocorrencia operacional (F9.2): encerra o episodio, preserva historico. */
+export function acknowledgeOperationalOccurrence(
+  occurrenceId: string,
+): Promise<OperationalOccurrenceAckResponse> {
+  return request<OperationalOccurrenceAckResponse>(
+    `/api/operational-occurrences/${encodeURIComponent(occurrenceId)}/acknowledge`,
+    { method: 'POST' },
+  );
+}
+
+/** Serializa os filtros da Central de Alertas para a query string da API. */
+export function alertCenterQueryString(query: AlertCenterListQuery = {}): string {
+  const params = new URLSearchParams();
+  if (query.state) params.set('state', query.state);
+  if (query.category) params.set('category', query.category);
+  for (const type of query.types ?? []) params.append('type', type);
+  for (const severity of query.severities ?? []) params.append('severity', severity);
+  if (query.period) params.set('period', query.period);
+  const search = query.search?.trim();
+  if (search) params.set('search', search);
+  if (query.deviceId) params.set('deviceId', query.deviceId);
+  if (query.interfaceId) params.set('interfaceId', query.interfaceId);
+  params.set('limit', String(query.limit ?? ALERT_CENTER_DEFAULT_LIMIT));
+  params.set('offset', String(query.offset ?? 0));
+  return params.toString();
+}
+
+/**
+ * Pagina unica da Central de Alertas: alarmes + ocorrencias ja fundidos e
+ * ordenados no backend, com o resumo operacional junto (nada de reconciliar
+ * tres endpoints no browser).
+ */
+export function getAlertCenter(query: AlertCenterListQuery = {}): Promise<AlertCenterResponse> {
+  return request<AlertCenterResponse>(`/api/alert-center?${alertCenterQueryString(query)}`);
+}
+
+/** Resumo leve para o badge da TopBar (mesmos numeros dos cards da Central). */
+export function getAlertCenterSummary(): Promise<{ summary: AlertCenterSummary }> {
+  return request<{ summary: AlertCenterSummary }>('/api/alert-center/summary');
 }
 
 export function getAlarmRules(): Promise<AlarmRuleDto[]> {

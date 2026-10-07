@@ -1,4 +1,5 @@
 export * from './alarm-label';
+export * from './alert-center';
 export * from './alarm-suppression';
 export * from './bgp';
 export * from './bgp-advertised-routes';
