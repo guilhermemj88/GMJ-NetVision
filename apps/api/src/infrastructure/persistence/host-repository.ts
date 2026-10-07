@@ -53,6 +53,24 @@ export interface InterfaceMetricWindowRow {
   fcsErrorsDelta: bigint | null;
 }
 
+/**
+ * Intervalo persistido COM ocorrencia (delta > 0) de CRC/FCS ou discards, com a
+ * identidade necessaria para o read model de ocorrencias recentes.
+ */
+export interface InterfaceOccurrenceRow {
+  interfaceId: string;
+  deviceId: string;
+  deviceName: string;
+  interfaceName: string;
+  interfaceDescription: string | null;
+  interfaceAlias: string | null;
+  ifIndex: number;
+  timestamp: Date;
+  fcsErrorsDelta: bigint | null;
+  inDiscardsDelta: bigint;
+  outDiscardsDelta: bigint;
+}
+
 /** Amostra optica persistida usada pelo motor (janela do RX por lane/scalar). */
 export interface InterfaceOpticalWindowRow {
   interfaceId: string;
@@ -149,6 +167,11 @@ export interface HostRepository {
   getLatestCounterSnapshots(hostId: string): Promise<Map<number, InterfaceCounterSnapshot>>;
   /** Amostras recentes do device (janela do motor de alarmes), ordem crescente. */
   getRecentInterfaceMetricSamples(deviceId: string, since: Date): Promise<InterfaceMetricWindowRow[]>;
+  /**
+   * Intervalos com ocorrencia (delta > 0) de CRC/FCS ou discards em TODOS os
+   * devices, ordem decrescente — a base do read model de ocorrencias recentes.
+   */
+  getRecentInterfaceOccurrenceRows(since: Date): Promise<InterfaceOccurrenceRow[]>;
   /** Amostras opticas recentes do device (janela do motor optico), ordem crescente. */
   getRecentInterfaceOpticalSamples(deviceId: string, since: Date): Promise<InterfaceOpticalWindowRow[]>;
   saveSnmpPoll(

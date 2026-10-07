@@ -31,6 +31,7 @@ import type {
   InterfaceCounterSnapshot,
   InterfaceMetricSampleInput,
   InterfaceMetricWindowRow,
+  InterfaceOccurrenceRow,
   InterfaceOpticalThresholdRecord,
   InterfaceOpticalThresholdUpdateInput,
   InterfaceOpticalWindowRow,
@@ -659,6 +660,50 @@ export class PrismaHostRepository implements HostRepository {
         opticalThresholdsRefreshAfter: entry.refreshAfter,
       },
     })));
+  }
+
+  async getRecentInterfaceOccurrenceRows(since: Date): Promise<InterfaceOccurrenceRow[]> {
+    const rows = await this.prisma.interfaceMetricSample.findMany({
+      where: {
+        timestamp: { gte: since },
+        OR: [
+          { fcsErrorsDelta: { gt: 0n } },
+          { inDiscardsDelta: { gt: 0n } },
+          { outDiscardsDelta: { gt: 0n } },
+        ],
+      },
+      orderBy: { timestamp: 'desc' },
+      take: 5_000,
+      select: {
+        interfaceId: true,
+        timestamp: true,
+        fcsErrorsDelta: true,
+        inDiscardsDelta: true,
+        outDiscardsDelta: true,
+        interface: {
+          select: {
+            name: true,
+            alias: true,
+            description: true,
+            ifIndex: true,
+            device: { select: { id: true, name: true, displayName: true } },
+          },
+        },
+      },
+    });
+    return rows.map((row) => ({
+      interfaceId: row.interfaceId,
+      deviceId: row.interface.device.id,
+      deviceName: row.interface.device.displayName || row.interface.device.name,
+      interfaceName: row.interface.name,
+      interfaceDescription: row.interface.description,
+      interfaceAlias: row.interface.alias,
+      ifIndex: row.interface.ifIndex,
+      timestamp: row.timestamp,
+      fcsErrorsDelta: row.fcsErrorsDelta,
+      inDiscardsDelta: row.inDiscardsDelta,
+      outDiscardsDelta: row.outDiscardsDelta,
+    }));
   }
 
   async getRecentInterfaceOpticalSamples(

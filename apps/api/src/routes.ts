@@ -80,6 +80,7 @@ import { AlarmService } from './application/alarm-service';
 import { AlarmEngine } from './application/alarm-engine';
 import { AlarmNotificationService, type AlarmNotifier } from './application/alarm-notification-service';
 import { N8nAlarmTransport } from './infrastructure/alarms/n8n-alarm-transport';
+import { collectInterfaceOccurrences } from './application/interface-occurrence-service';
 import { registerAlarmRoutes } from './alarm-routes';
 import { HuaweiVplsSnmpCollector } from './infrastructure/mpls/huawei-vpls-snmp';
 import { MplsPollingService } from './infrastructure/mpls/mpls-polling-service';
@@ -609,6 +610,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   registerAlarmRoutes(app, {
     alarms: alarmRepository,
     rules: alarmRuleRepository,
+    occurrences: (windowMinutes, limit) => collectInterfaceOccurrences(hosts, { windowMinutes, limit }),
     currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
   });
   registerBgpRoutes(app, {

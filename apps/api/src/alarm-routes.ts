@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import type { AlarmRuleDto, AuthUser } from '@gmj/shared';
+import type { AlarmRuleDto, AuthUser, InterfaceOccurrence } from '@gmj/shared';
 import type { AlarmRepository } from './infrastructure/alarms/alarm-repository';
 import type { AlarmRuleRecord, AlarmRuleRepository } from './infrastructure/alarms/alarm-rule-repository';
 import { createAlarmRuleSchema } from './infrastructure/alarms/alarm-rule-schema';
@@ -9,6 +9,8 @@ export interface AlarmRouteDependencies {
   alarms: AlarmRepository;
   /** CRUD de regras: registrado somente quando o repositorio esta disponivel. */
   rules?: AlarmRuleRepository;
+  /** Read model das ocorrencias recentes (CRC/discards) derivado das amostras. */
+  occurrences?: (windowMinutes: number, limit: number) => Promise<InterfaceOccurrence[]>;
   currentUser?: (request: FastifyRequest) => Promise<AuthUser | null>;
 }
 
@@ -32,9 +34,25 @@ export function registerAlarmRoutes(
   app: FastifyInstance,
   dependencies: AlarmRouteDependencies,
 ): void {
-  const { alarms, rules, currentUser } = dependencies;
+  const { alarms, rules, occurrences, currentUser } = dependencies;
 
   app.get('/api/alarms', async () => alarms.listActive());
+
+  /**
+   * Ocorrencias recentes de CRC/FCS e discards: leitura derivada das amostras
+   * persistidas, sem criar alarme e sem duplicar contador.
+   */
+  if (occurrences) {
+    app.get('/api/alarms/occurrences', async (request) => {
+      const { minutes, limit } = z
+        .object({
+          minutes: z.coerce.number().int().min(1).max(120).default(15),
+          limit: z.coerce.number().int().min(1).max(50).default(12),
+        })
+        .parse(request.query);
+      return occurrences(minutes, limit);
+    });
+  }
 
   app.get('/api/alarms/history', async (request) => {
     const { limit, resolved } = z

@@ -14,6 +14,7 @@ import type {
   InterfaceCounterSnapshot,
   InterfaceMetricSampleInput,
   InterfaceMetricWindowRow,
+  InterfaceOccurrenceRow,
   InterfaceOpticalThresholdRecord,
   InterfaceOpticalThresholdUpdateInput,
   InterfaceOpticalWindowRow,
@@ -140,6 +141,10 @@ export class DemoHostRepositoryAdapter implements HostRepository {
         refreshAfter: entry.refreshAfter,
       });
     }
+  }
+
+  async getRecentInterfaceOccurrenceRows(_since: Date): Promise<InterfaceOccurrenceRow[]> {
+    return [];
   }
 
   async getLatestCounterSnapshots(_hostId: string): Promise<Map<number, InterfaceCounterSnapshot>> {
