@@ -16,6 +16,10 @@ import type {
   MetricAlarmEscalationInput,
   MetricAlarmOpenInput,
 } from '../infrastructure/alarms/alarm-repository';
+import type {
+  AlarmSuppressionRecord,
+  AlarmSuppressionRepository,
+} from '../infrastructure/alarms/alarm-suppression-repository';
 import type { AlarmRuleRecord, AlarmRuleRepository } from '../infrastructure/alarms/alarm-rule-repository';
 import type {
   HostRepository,
@@ -158,6 +162,7 @@ function buildEngine(options: {
   open?: Alarm[];
   linked?: Set<string>;
   notifier?: ReturnType<typeof notifierMock>;
+  suppressions?: AlarmSuppressionRecord[];
 }) {
   const listEnabled = vi.fn().mockResolvedValue(options.rules);
   const openMetricAlarm = vi
@@ -168,6 +173,11 @@ function buildEngine(options: {
   const findLinkedInterfaceIds = vi.fn().mockResolvedValue(options.linked ?? new Set<string>());
   const getRecentInterfaceMetricSamples = vi.fn().mockResolvedValue(options.rows ?? []);
   const notifier = options.notifier ?? notifierMock();
+  const listActiveSuppressions = vi.fn().mockResolvedValue(options.suppressions ?? []);
+  const clearSuppression = vi
+    .fn()
+    .mockImplementation(async () => options.suppressions?.[0] ?? null);
+  const expireDue = vi.fn().mockResolvedValue(0);
 
   const engine = new AlarmEngine({
     hosts: { getRecentInterfaceMetricSamples } as unknown as HostRepository,
@@ -178,6 +188,11 @@ function buildEngine(options: {
       findLinkedInterfaceIds,
     } as unknown as AlarmRepository,
     rules: { listEnabled } as unknown as AlarmRuleRepository,
+    suppressions: {
+      listActive: listActiveSuppressions,
+      clear: clearSuppression,
+      expireDue,
+    } as unknown as AlarmSuppressionRepository,
     notifier,
     now: () => NOW,
   });
@@ -191,6 +206,33 @@ function buildEngine(options: {
     findLinkedInterfaceIds,
     getRecentInterfaceMetricSamples,
     notifier,
+    listActiveSuppressions,
+    clearSuppression,
+    expireDue,
+  };
+}
+
+/** Supressao ativa do fingerprint do alarme aberto pela janela de erros RX. */
+function suppressionOf(overrides: Partial<AlarmSuppressionRecord> = {}): AlarmSuppressionRecord {
+  return {
+    id: 'sup-1',
+    fingerprint: 'if-1|INTERFACE_ERRORS|rule-1|RX',
+    deviceId: 'dev-1',
+    interfaceId: 'if-1',
+    type: 'INTERFACE_ERRORS',
+    ruleId: 'rule-1',
+    metricKey: 'RX',
+    mode: 'UNTIL_CLEAR',
+    reason: 'INTENTIONAL_SHUTDOWN',
+    note: null,
+    suppressedAt: NOW,
+    suppressedBy: 'qa-preview',
+    expiresAt: null,
+    clearedAt: null,
+    clearedReason: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
   };
 }
 
@@ -1506,7 +1548,7 @@ const asDiscardRows = (rows: InterfaceMetricWindowRow[]): InterfaceMetricWindowR
   rows.map((row) => ({
     ...row,
     inDiscards: row.fcsErrors ?? 0n,
-    inDiscardsDelta: row.fcsErrorsDelta,
+    inDiscardsDelta: row.fcsErrorsDelta ?? 0n,
   }));
 
 describe('QUALQUER CRC / QUALQUER DISCARD (threshold 0 = delta > 0)', () => {
@@ -1609,7 +1651,7 @@ describe('QUALQUER CRC / QUALQUER DISCARD (threshold 0 = delta > 0)', () => {
     const txRows = intervalWindow('if-1', 60, [0n, 0n]).map((row) => ({
       ...row,
       outDiscards: row.fcsErrors ?? 0n,
-      outDiscardsDelta: row.fcsErrorsDelta,
+      outDiscardsDelta: row.fcsErrorsDelta ?? 0n,
     }));
     const tx = buildEngine({ rules: [anyDiscardsRule], rows: txRows });
     await tx.engine.processDeviceMetrics({
@@ -1624,7 +1666,7 @@ describe('QUALQUER CRC / QUALQUER DISCARD (threshold 0 = delta > 0)', () => {
       rows: intervalWindow('if-1', 60, [0n, 1n]).map((row) => ({
         ...row,
         outDiscards: row.fcsErrors ?? 0n,
-        outDiscardsDelta: row.fcsErrorsDelta,
+        outDiscardsDelta: row.fcsErrorsDelta ?? 0n,
       })),
     });
     await txWithDelta.engine.processDeviceMetrics({
@@ -1702,5 +1744,79 @@ describe('QUALQUER CRC / QUALQUER DISCARD (threshold 0 = delta > 0)', () => {
     const rate = thresholdTriggerPredicate(2);
     expect(rate(1.99)).toBe(false);
     expect(rate(2)).toBe(true);
+  });
+});
+
+
+describe('supressao operacional no motor metrico (F9.1)', () => {
+  const evaluating = () => ({
+    deviceId: 'dev-1',
+    deviceName: 'F1A',
+    interfaces: [IFACE],
+  });
+
+  it('nao reabre o alarme do fingerprint suprimido enquanto a condicao segue ruim', async () => {
+    const { engine, openMetricAlarm, clearSuppression } = buildEngine({
+      rules: [ruleOf()],
+      rows: errorWindow('if-1', [300n, 300n, 300n]),
+      suppressions: [suppressionOf()],
+    });
+
+    await engine.processDeviceMetrics(evaluating());
+
+    expect(openMetricAlarm).not.toHaveBeenCalled();
+    expect(clearSuppression).not.toHaveBeenCalled();
+  });
+
+  it('libera a supressao UNTIL_CLEAR quando a condicao normaliza', async () => {
+    const { engine, openMetricAlarm, clearSuppression } = buildEngine({
+      rules: [ruleOf()],
+      rows: errorWindow('if-1', [0n, 0n, 0n]),
+      suppressions: [suppressionOf()],
+    });
+
+    await engine.processDeviceMetrics(evaluating());
+
+    expect(clearSuppression).toHaveBeenCalledWith('sup-1', NOW, 'RECOVERED');
+    expect(openMetricAlarm).not.toHaveBeenCalled();
+  });
+
+  it('mantem a janela UNTIL_TIME mesmo com a condicao recuperada', async () => {
+    const { engine, openMetricAlarm, clearSuppression } = buildEngine({
+      rules: [ruleOf()],
+      rows: errorWindow('if-1', [0n, 0n, 0n]),
+      suppressions: [
+        suppressionOf({ mode: 'UNTIL_TIME', expiresAt: new Date(NOW.getTime() + 3_600_000) }),
+      ],
+    });
+
+    await engine.processDeviceMetrics(evaluating());
+
+    expect(clearSuppression).not.toHaveBeenCalled();
+    expect(openMetricAlarm).not.toHaveBeenCalled();
+  });
+
+  it('supressao de outro fingerprint/regra nao bloqueia o alarme', async () => {
+    const { engine, openMetricAlarm } = buildEngine({
+      rules: [ruleOf()],
+      rows: errorWindow('if-1', [300n, 300n, 300n]),
+      suppressions: [suppressionOf({ fingerprint: 'if-1|INTERFACE_ERRORS|rule-9|RX' })],
+    });
+
+    await engine.processDeviceMetrics(evaluating());
+
+    expect(openMetricAlarm).toHaveBeenCalledTimes(1);
+  });
+
+  it('consulta as supressoes do equipamento e roda o housekeeping de expiradas', async () => {
+    const { engine, listActiveSuppressions, expireDue } = buildEngine({
+      rules: [ruleOf()],
+      rows: errorWindow('if-1', [300n]),
+    });
+
+    await engine.processDeviceMetrics(evaluating());
+
+    expect(listActiveSuppressions).toHaveBeenCalledWith(NOW, { deviceId: 'dev-1' });
+    expect(expireDue).toHaveBeenCalledTimes(1);
   });
 });

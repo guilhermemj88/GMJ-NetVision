@@ -2,6 +2,9 @@ import {
   type AddDeviceResult,
   type Alarm,
   type AlarmRuleDto,
+  type AlarmSuppression,
+  type AlarmSuppressionMode,
+  type AlarmSuppressionReason,
   type AuthUser,
   type InterfaceOccurrence,
   type BgpAlertsResponse,
@@ -245,6 +248,52 @@ export function getAlarmOccurrences(minutes = 15, limit = 12): Promise<Interface
 
 /** Corpo aceito pela API de regras (validado por Zod no backend). */
 export type AlarmRuleInput = Omit<AlarmRuleDto, 'id' | 'createdAt' | 'updatedAt'>;
+
+/** Corpo aceito pelo POST de retirada/supressao (validado por Zod no backend). */
+export interface SuppressAlarmPayload {
+  mode: AlarmSuppressionMode;
+  reason: AlarmSuppressionReason;
+  note?: string | null | undefined;
+  /** Obrigatorio em UNTIL_TIME (ISO 8601, sempre no futuro). */
+  expiresAt?: string | null | undefined;
+}
+
+/**
+ * ACK: registra o operador da sessao sem resolver o alarme. Repetir e
+ * idempotente — o primeiro reconhecimento e o que permanece.
+ */
+export function acknowledgeAlarm(alarmId: string): Promise<Alarm> {
+  return request<Alarm>(`/api/alarms/${encodeURIComponent(alarmId)}/acknowledge`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Retirar/Suprimir: encerra o alarme aberto com motivo administrativo e impede
+ * a reabertura do mesmo fingerprint enquanto a supressao valer.
+ */
+export function suppressAlarm(
+  alarmId: string,
+  payload: SuppressAlarmPayload,
+): Promise<{ suppression: AlarmSuppression; closedAlarms: number }> {
+  return request<{ suppression: AlarmSuppression; closedAlarms: number }>(
+    `/api/alarms/${encodeURIComponent(alarmId)}/suppress`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+}
+
+/** Liberacao explicita: o fingerprint volta a poder abrir alarme. */
+export function releaseAlarmSuppression(suppressionId: string): Promise<AlarmSuppression> {
+  return request<AlarmSuppression>(
+    `/api/alarm-suppressions/${encodeURIComponent(suppressionId)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export function getAlarmSuppressions(activeOnly = false, limit = 50): Promise<AlarmSuppression[]> {
+  const params = new URLSearchParams({ active: String(activeOnly), limit: String(limit) });
+  return request<AlarmSuppression[]>(`/api/alarm-suppressions?${params}`);
+}
 
 export function getAlarmRules(): Promise<AlarmRuleDto[]> {
   return request<AlarmRuleDto[]>('/api/alarm-rules');

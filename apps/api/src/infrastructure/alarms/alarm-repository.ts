@@ -1,4 +1,4 @@
-import type { Alarm, AlarmMetadata, AlarmResolutionReason, AlarmSeverity, MetricAlarmType } from '@gmj/shared';
+import type { Alarm, AlarmMetadata, AlarmResolutionReason, AlarmSeverity, AlarmType, MetricAlarmType } from '@gmj/shared';
 
 export interface AlarmOpenInput {
   deviceId: string;
@@ -55,6 +55,29 @@ export interface AlarmRepository {
   listActive(): Promise<Alarm[]>;
   /** Alarms ordered by start time, most recent first (see options for resolved). */
   listHistory(limit: number, options?: AlarmHistoryOptions): Promise<Alarm[]>;
+  /** Um alarme por id (ACK e supressao operacional). */
+  findById(alarmId: string): Promise<Alarm | null>;
+  /**
+   * ACK idempotente: registra quem reconheceu e quando, sem resolver o alarme,
+   * sem alterar endedAt, sem mexer na regra e sem notificar midia. Repetir o
+   * ACK preserva o primeiro reconhecimento.
+   */
+  acknowledge(alarmId: string, acknowledgedBy: string, acknowledgedAt: Date): Promise<Alarm | null>;
+  /**
+   * Encerra administrativamente os alarmes abertos de um fingerprint
+   * (supressao do operador), gravando o motivo no metadata. Nunca notifica
+   * RESOLVED: a saida nao e recuperacao tecnica.
+   */
+  closeOpenAlarmsForFingerprint(
+    input: {
+      interfaceId: string;
+      type: AlarmType;
+      ruleId?: string | null | undefined;
+      metricKey?: string | null | undefined;
+    },
+    closedAt: Date,
+    reason: AlarmResolutionReason,
+  ): Promise<number>;
   /** Which of the given interfaces belong to at least one map link. */
   findLinkedInterfaceIds(interfaceIds: string[]): Promise<Set<string>>;
   /**

@@ -1,4 +1,11 @@
-import { createLocalId, type Alarm, type AlarmResolutionReason, type MetricAlarmType } from '@gmj/shared';
+import {
+  createLocalId,
+  type Alarm,
+  type AlarmMetadata,
+  type AlarmResolutionReason,
+  type AlarmType,
+  type MetricAlarmType,
+} from '@gmj/shared';
 import type {
   AlarmHistoryOptions,
   AlarmNotifiedPatch,
@@ -35,6 +42,52 @@ export class DemoAlarmRepository implements AlarmRepository {
 
   async findLinkedInterfaceIds(interfaceIds: string[]): Promise<Set<string>> {
     return new Set(interfaceIds);
+  }
+
+  async findById(alarmId: string): Promise<Alarm | null> {
+    return this.alarms.find((alarm) => alarm.id === alarmId) ?? null;
+  }
+
+  async acknowledge(
+    alarmId: string,
+    acknowledgedBy: string,
+    acknowledgedAt: Date,
+  ): Promise<Alarm | null> {
+    const alarm = this.alarms.find((item) => item.id === alarmId);
+    if (!alarm) return null;
+    // Idempotencia: o primeiro reconhecimento e o que fica registrado.
+    if (!alarm.acknowledgedAt) {
+      alarm.acknowledgedAt = acknowledgedAt.toISOString();
+      alarm.acknowledgedBy = acknowledgedBy;
+    }
+    return alarm;
+  }
+
+  async closeOpenAlarmsForFingerprint(
+    input: {
+      interfaceId: string;
+      type: AlarmType;
+      ruleId?: string | null | undefined;
+      metricKey?: string | null | undefined;
+    },
+    closedAt: Date,
+    reason: AlarmResolutionReason,
+  ): Promise<number> {
+    let closed = 0;
+    for (const alarm of this.alarms) {
+      if (alarm.endedAt || alarm.interfaceId !== input.interfaceId || alarm.type !== input.type) {
+        continue;
+      }
+      if (input.ruleId != null && alarm.ruleId !== input.ruleId) continue;
+      if (input.metricKey != null && alarm.metricKey !== input.metricKey) continue;
+      alarm.endedAt = closedAt.toISOString();
+      alarm.metadata = {
+        ...((alarm.metadata as AlarmMetadata | null) ?? {}),
+        resolutionReason: reason,
+      };
+      closed += 1;
+    }
+    return closed;
   }
 
   async openInterfaceDownAlarms(inputs: AlarmOpenInput[]): Promise<Alarm[]> {

@@ -1,4 +1,4 @@
-import { alarmInterfaceLabel, METRIC_ALARM_TYPES } from '@gmj/shared';
+import { alarmInterfaceLabel, alarmSuppressionFingerprint, METRIC_ALARM_TYPES } from '@gmj/shared';
 import type {
   Alarm,
   AlarmMetadata,
@@ -14,6 +14,8 @@ import type {
 import type { AlarmRepository } from '../infrastructure/alarms/alarm-repository';
 import type { AlarmRuleRecord, AlarmRuleRepository } from '../infrastructure/alarms/alarm-rule-repository';
 import type { AlarmNotifier } from './alarm-notification-service';
+import { indexActiveSuppressions } from './alarm-suppression-service';
+import type { AlarmSuppressionRepository, AlarmSuppressionRecord } from '../infrastructure/alarms/alarm-suppression-repository';
 import type {
   HostRepository,
   InterfaceMetricWindowRow,
@@ -679,6 +681,8 @@ export interface AlarmEngineDependencies {
   rules: AlarmRuleRepository;
   /** Notificacao de midia (NETWORK_ALARMS); ausente = motor sem midia. */
   notifier?: AlarmNotifier | undefined;
+  /** Supressao operacional: ausente = motor sem retirada manual. */
+  suppressions?: AlarmSuppressionRepository | undefined;
   now?: () => Date;
 }
 
@@ -689,13 +693,34 @@ export interface AlarmEngineDependencies {
  */
 export class AlarmEngine {
   private readonly now: () => Date;
+  /** Housekeeping de supressoes expiradas roda no maximo 1x por minuto. */
+  private lastSuppressionSweepAt = 0;
 
   constructor(private readonly deps: AlarmEngineDependencies) {
     this.now = deps.now ?? (() => new Date());
   }
 
+  /** Supressoes ativas do equipamento, indexadas pelo fingerprint do alarme. */
+  private async activeSuppressions(
+    deviceId: string,
+  ): Promise<Map<string, AlarmSuppressionRecord>> {
+    if (!this.deps.suppressions) return new Map<string, AlarmSuppressionRecord>();
+    const rows = await this.deps.suppressions.listActive(this.now(), { deviceId });
+    return indexActiveSuppressions(rows);
+  }
+
+  private async housekeepSuppressions(): Promise<void> {
+    if (!this.deps.suppressions) return;
+    const now = this.now().getTime();
+    if (now - this.lastSuppressionSweepAt < 60_000) return;
+    this.lastSuppressionSweepAt = now;
+    await this.deps.suppressions.expireDue(new Date(now));
+  }
+
   async processDeviceMetrics(input: MetricEvaluationInput): Promise<void> {
     if (!input.interfaces.length) return;
+
+    await this.housekeepSuppressions();
 
     const rules = (await this.deps.rules.listEnabled(METRIC_ALARM_TYPES)).filter(
       (rule) => !isOpticalRule(rule),
@@ -727,6 +752,7 @@ export class AlarmEngine {
         alarm,
       ]),
     );
+    const suppressions = await this.activeSuppressions(input.deviceId);
 
     for (const networkInterface of input.interfaces) {
       const interfaceRows = rowsByInterface.get(networkInterface.id);
@@ -743,8 +769,23 @@ export class AlarmEngine {
           );
           const open = openFingerprints.get(fingerprint);
           const config = thresholdConfigFor(rule);
+          const suppression = suppressions.get(fingerprint) ?? null;
+          const recovered = consecutiveMatch(
+            evaluations,
+            (rate) => rate <= config.recoveryThresholdPerMinute,
+            config.recoverySamples,
+          );
 
           if (!open) {
+            if (suppression) {
+              // Supressao ativa: nunca reabre. UNTIL_CLEAR e liberada quando a
+              // condicao normaliza; UNTIL_TIME espera o proprio horario.
+              if (suppression.mode === 'UNTIL_CLEAR' && recovered) {
+                await this.deps.suppressions?.clear(suppression.id, this.now(), 'RECOVERED');
+                suppressions.delete(fingerprint);
+              }
+              continue;
+            }
             if (
               consecutiveMatch(
                 evaluations,
@@ -800,13 +841,7 @@ export class AlarmEngine {
             continue;
           }
 
-          if (
-            consecutiveMatch(
-              evaluations,
-              (rate) => rate <= config.recoveryThresholdPerMinute,
-              config.recoverySamples,
-            )
-          ) {
+          if (recovered) {
             const resolved = await this.deps.alarms.resolveMetricAlarm(
               networkInterface.id,
               rule.type,
@@ -876,6 +911,7 @@ export class AlarmEngine {
           alarm,
         ]),
     );
+    const suppressions = await this.activeSuppressions(input.deviceId);
 
     for (const networkInterface of input.interfaces) {
       for (const rule of applicable) {
@@ -897,6 +933,7 @@ export class AlarmEngine {
             config,
             series,
             openByFingerprint,
+            suppressions,
           });
         }
       }
@@ -911,6 +948,7 @@ export class AlarmEngine {
     config: OpticalRuleConfig;
     series: OpticalSeries;
     openByFingerprint: Map<string, Alarm>;
+    suppressions: Map<string, AlarmSuppressionRecord>;
   }): Promise<void> {
     const { series, config, rule, networkInterface } = input;
     const trendWindowMs = config.trendWindowMinutes * 60_000;
@@ -922,13 +960,13 @@ export class AlarmEngine {
     );
     const fingerprint = fingerprintOf(rule.id, networkInterface.id, rule.type, series.metricKey);
     const open = input.openByFingerprint.get(fingerprint);
+    const recoveries = criteriaList.map((criteria) =>
+      criteria ? opticalRecovered(criteria) : false,
+    );
+    const sustainedRecovery = recoveries.length >= config.recoverySamples
+      && recoveries.slice(-config.recoverySamples).every(Boolean);
 
     if (open) {
-      const recoveries = criteriaList.map((criteria) =>
-        criteria ? opticalRecovered(criteria) : false,
-      );
-      const sustainedRecovery = recoveries.length >= config.recoverySamples
-        && recoveries.slice(-config.recoverySamples).every(Boolean);
       if (sustainedRecovery) {
         const resolved = await this.deps.alarms.resolveMetricAlarm(
           networkInterface.id,
@@ -947,6 +985,16 @@ export class AlarmEngine {
         }
         return;
       }
+    }
+
+    const suppression = input.suppressions.get(fingerprint) ?? null;
+    if (!open && suppression) {
+      // Supressao ativa: nao reabre; UNTIL_CLEAR libera quando a leitura volta.
+      if (suppression.mode === 'UNTIL_CLEAR' && sustainedRecovery) {
+        await this.deps.suppressions?.clear(suppression.id, this.now(), 'RECOVERED');
+        input.suppressions.delete(fingerprint);
+      }
+      return;
     }
 
     const target = (['CRITICAL', 'MAJOR', 'WARNING'] as const).find((severity) =>
@@ -1083,5 +1131,11 @@ function fingerprintOf(
   type: string,
   metricKey: string,
 ): string {
-  return `${ruleId}|${interfaceId}|${type}|${metricKey}`;
+  // Mesmo fingerprint da supressao: uma unica chave para dedupe e retirada.
+  return alarmSuppressionFingerprint({
+    interfaceId,
+    type: type as Alarm['type'],
+    ruleId,
+    metricKey,
+  });
 }

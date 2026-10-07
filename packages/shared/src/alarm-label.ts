@@ -61,3 +61,44 @@ export function alarmTypeLabel(type: string): string {
       return type;
   }
 }
+
+/**
+ * Motivo de encerramento exibido no historico. Ausente = recuperacao tecnica
+ * (a condicao normalizou); nenhum detalhe administrativo e inventado.
+ */
+const ALARM_RESOLUTION_REASON_LABELS: Record<string, string> = {
+  RULE_DISABLED: 'regra desativada',
+  RULE_DELETED: 'regra excluída',
+  MANUAL_SUPPRESSION: 'suprimido pelo operador',
+  INTENTIONAL_SHUTDOWN: 'desligamento intencional',
+  MAINTENANCE: 'manutenção',
+  FALSE_POSITIVE: 'falso positivo',
+};
+
+/** Texto do motivo administrativo; `null` quando a saida foi tecnica. */
+export function alarmResolutionReasonLabel(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  return ALARM_RESOLUTION_REASON_LABELS[reason] ?? reason;
+}
+
+const ALARM_SUPPRESSION_REASON_LABELS: Record<string, string> = {
+  INTENTIONAL_SHUTDOWN: 'Desligamento intencional',
+  MAINTENANCE: 'Manutenção',
+  FALSE_POSITIVE: 'Falso positivo',
+  OTHER: 'Outro',
+};
+
+const ALARM_SUPPRESSION_MODE_LABELS: Record<string, string> = {
+  UNTIL_CLEAR: 'Até normalizar',
+  UNTIL_TIME: 'Até o horário',
+};
+
+export function alarmSuppressionReasonLabel(reason: string | null | undefined): string | null {
+  if (!reason) return null;
+  return ALARM_SUPPRESSION_REASON_LABELS[reason] ?? reason;
+}
+
+export function alarmSuppressionModeLabel(mode: string | null | undefined): string | null {
+  if (!mode) return null;
+  return ALARM_SUPPRESSION_MODE_LABELS[mode] ?? mode;
+}

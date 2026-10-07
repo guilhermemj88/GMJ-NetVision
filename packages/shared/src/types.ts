@@ -126,7 +126,13 @@ export interface AlarmMetadata {
 }
 
 /** Motivo administrativo seguro de uma resolucao sem recuperacao real. */
-export type AlarmResolutionReason = 'RULE_DISABLED' | 'RULE_DELETED';
+export type AlarmResolutionReason =
+  | 'RULE_DISABLED'
+  | 'RULE_DELETED'
+  | 'MANUAL_SUPPRESSION'
+  | 'INTENTIONAL_SHUTDOWN'
+  | 'MAINTENANCE'
+  | 'FALSE_POSITIVE';
 
 /**
  * Criterio optico que sustentou o alarme. `RAPID_DROP` e a queda relevante na

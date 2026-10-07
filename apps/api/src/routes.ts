@@ -74,10 +74,13 @@ import { SnmpService } from './infrastructure/snmp/snmp-service';
 import { DemoMplsRepository } from './infrastructure/mpls/demo-mpls-repository';
 import { DemoAlarmRepository } from './infrastructure/alarms/demo-alarm-repository';
 import { DemoAlarmRuleRepository } from './infrastructure/alarms/demo-alarm-rule-repository';
+import { DemoAlarmSuppressionRepository } from './infrastructure/alarms/demo-alarm-suppression-repository';
 import { PrismaAlarmRepository } from './infrastructure/alarms/prisma-alarm-repository';
 import { PrismaAlarmRuleRepository } from './infrastructure/alarms/prisma-alarm-rule-repository';
+import { PrismaAlarmSuppressionRepository } from './infrastructure/alarms/prisma-alarm-suppression-repository';
 import { AlarmService } from './application/alarm-service';
 import { AlarmEngine } from './application/alarm-engine';
+import { AlarmSuppressionService } from './application/alarm-suppression-service';
 import { AlarmNotificationService, type AlarmNotifier } from './application/alarm-notification-service';
 import { N8nAlarmTransport } from './infrastructure/alarms/n8n-alarm-transport';
 import { collectInterfaceOccurrences } from './application/interface-occurrence-service';
@@ -553,7 +556,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const alarmRuleRepository = config.DEMO_MODE
     ? new DemoAlarmRuleRepository()
     : new PrismaAlarmRuleRepository();
-  const alarms = new AlarmService(alarmRepository);
+  const alarmSuppressionRepository = config.DEMO_MODE
+    ? new DemoAlarmSuppressionRepository()
+    : new PrismaAlarmSuppressionRepository();
+  const alarmSuppressions = new AlarmSuppressionService(alarmRepository, alarmSuppressionRepository);
+  const alarms = new AlarmService(alarmRepository, alarmSuppressionRepository);
   // Holder da notificacao de midia: definido junto ao motor e ligado depois
   // que a camada de midias (que depende do vault) estiver pronta.
   const alarmMediaHolder: { notifier: AlarmNotifier | null } = { notifier: null };
@@ -561,6 +568,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     hosts,
     alarms: alarmRepository,
     rules: alarmRuleRepository,
+    suppressions: alarmSuppressionRepository,
     // A camada de midias e construida depois deste motor; o holder mantem a
     // ligacao explicita sem inverter a ordem de criacao.
     notifier: {
@@ -611,6 +619,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     alarms: alarmRepository,
     rules: alarmRuleRepository,
     occurrences: (windowMinutes, limit) => collectInterfaceOccurrences(hosts, { windowMinutes, limit }),
+    suppressions: alarmSuppressions,
     currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
   });
   registerBgpRoutes(app, {
@@ -923,6 +932,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       await mitigationSchemaProbe.disconnect();
     if (bgpAudit instanceof PrismaBgpAdminAuditRepository) await bgpAudit.disconnect();
     if (alarmRepository instanceof PrismaAlarmRepository) await alarmRepository.disconnect();
+    if (alarmSuppressionRepository instanceof PrismaAlarmSuppressionRepository)
+      await alarmSuppressionRepository.disconnect();
     await physicalRepository.disconnect();
   });
 

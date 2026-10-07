@@ -4,6 +4,7 @@ import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Alarm, InterfaceOccurrence } from '@gmj/shared';
+import type { SuppressAlarmPayload } from '@/lib/api';
 import { AlarmPanel, alarmDrawerSection, alarmFocusTarget } from './alarm-panel';
 
 function makeAlarm(overrides: Partial<Alarm> = {}): Alarm {
@@ -645,5 +646,206 @@ describe('cards por tipo, ocorrencias e destino do clique (F8)', () => {
     expect(alarmDrawerSection(makeAlarm({ type: 'INTERFACE_DISCARDS' }))).toBe('METRICS');
     expect(alarmDrawerSection(makeAlarm({ type: 'INTERFACE_ERRORS' }))).toBe('METRICS');
     expect(alarmDrawerSection(makeAlarm({ type: 'INTERFACE_DOWN' }))).toBeNull();
+  });
+});
+
+describe('ACK e retirada/supressao no painel (F9.1)', () => {
+  const roots: Array<{ root: Root; container: HTMLDivElement }> = [];
+
+  async function mount(
+    alarms: Alarm[],
+    options: {
+      onFocus?: (alarm: Alarm) => void;
+      onAcknowledge?: (alarm: Alarm) => void;
+      onSuppress?: (alarm: Alarm, payload: SuppressAlarmPayload) => void;
+      resolvedAlarms?: Alarm[];
+    } = {},
+  ) {
+    const container = document.createElement('div');
+    document.body.appendChild(container);
+    const root = createRoot(container);
+    roots.push({ root, container });
+    await act(async () => {
+      root.render(
+        <AlarmPanel
+          alarms={alarms}
+          resolvedAlarms={options.resolvedAlarms ?? []}
+          onFocus={options.onFocus ?? vi.fn()}
+          {...(options.onAcknowledge ? { onAcknowledge: options.onAcknowledge } : {})}
+          {...(options.onSuppress ? { onSuppress: options.onSuppress } : {})}
+        />,
+      );
+    });
+    return container;
+  }
+
+  function buttons(container: HTMLElement, label: string): HTMLButtonElement[] {
+    return [...container.querySelectorAll<HTMLButtonElement>('button')].filter((item) =>
+      item.textContent?.toLowerCase().includes(label.toLowerCase()),
+    );
+  }
+
+  function click(element: HTMLElement): Promise<void> {
+    return act(async () => {
+      element.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+  }
+
+  function typeInto(input: HTMLInputElement, value: string): void {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+    setter?.call(input, value);
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
+  function selectValue(select: HTMLSelectElement, value: string): void {
+    const setter = Object.getOwnPropertyDescriptor(
+      window.HTMLSelectElement.prototype,
+      'value',
+    )?.set;
+    setter?.call(select, value);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  beforeEach(() => {
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    window.localStorage.clear();
+  });
+
+  afterEach(async () => {
+    for (const { root, container } of roots.splice(0)) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+    window.localStorage.clear();
+  });
+
+  it('reconhece o alarme sem retira-lo da lista', async () => {
+    const onAcknowledge = vi.fn();
+    const container = await mount([makeAlarm()], { onAcknowledge });
+
+    await click(buttons(container, 'Reconhecer')[0]!);
+
+    expect(onAcknowledge).toHaveBeenCalledTimes(1);
+    expect(onAcknowledge.mock.calls[0]?.[0]).toMatchObject({ id: 'alarm-1' });
+    expect(container.querySelectorAll('.alarm-panel__item')).toHaveLength(1);
+  });
+
+  it('mostra o estado RECONHECIDO, reduz o destaque e nao oferece ACK de novo', async () => {
+    const acknowledgedAt = new Date(2026, 9, 7, 14, 32, 10).toISOString();
+    const container = await mount(
+      [makeAlarm({ acknowledgedAt, acknowledgedBy: 'qa-preview' })],
+      { onAcknowledge: vi.fn(), onSuppress: vi.fn() },
+    );
+
+    const item = container.querySelector('.alarm-panel__item')!;
+    expect(item.textContent).toContain('RECONHECIDO — qa-preview às 14:32:10');
+    expect(container.querySelector('.alarm-panel__row--ack')).not.toBeNull();
+    expect(buttons(container, 'Reconhecer')).toHaveLength(0);
+    expect(buttons(container, 'Retirar')).toHaveLength(1);
+  });
+
+  it('abre o formulario de retirada e envia UNTIL_CLEAR com o motivo escolhido', async () => {
+    const onSuppress = vi.fn();
+    const container = await mount([makeAlarm()], { onSuppress });
+
+    await click(buttons(container, 'Retirar')[0]!);
+    const form = container.querySelector<HTMLFormElement>('.alarm-panel__suppress');
+    expect(form).not.toBeNull();
+
+    await act(async () => {
+      selectValue(form!.querySelectorAll('select')[1]!, 'MAINTENANCE');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await act(async () => {
+      typeInto(form!.querySelector<HTMLInputElement>('input[type="text"]')!, 'janela do cliente');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    await click(buttons(container, 'SUPRIMIR')[0]!);
+
+    expect(onSuppress).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'alarm-1' }),
+      { mode: 'UNTIL_CLEAR', reason: 'MAINTENANCE', note: 'janela do cliente', expiresAt: null },
+    );
+    expect(container.querySelector('.alarm-panel__suppress')).toBeNull();
+  });
+
+  it('exige horario futuro no modo UNTIL_TIME', async () => {
+    const onSuppress = vi.fn();
+    const container = await mount([makeAlarm()], { onSuppress });
+
+    await click(buttons(container, 'Retirar')[0]!);
+    const form = container.querySelector<HTMLFormElement>('.alarm-panel__suppress')!;
+
+    await act(async () => {
+      selectValue(form.querySelectorAll('select')[0]!, 'UNTIL_TIME');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const submit = buttons(container, 'SUPRIMIR')[0]!;
+    expect(submit.disabled).toBe(true);
+    expect(container.querySelector('.alarm-panel__suppress-hint')).not.toBeNull();
+
+    const until = new Date(Date.now() + 3_600_000);
+    const local = `${until.getFullYear()}-${String(until.getMonth() + 1).padStart(2, '0')}-${String(
+      until.getDate(),
+    ).padStart(2, '0')}T${String(until.getHours()).padStart(2, '0')}:${String(
+      until.getMinutes(),
+    ).padStart(2, '0')}`;
+    await act(async () => {
+      typeInto(form.querySelector<HTMLInputElement>('input[type="datetime-local"]')!, local);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const reopened = container.querySelector<HTMLFormElement>('.alarm-panel__suppress')!;
+    expect(buttons(container, 'SUPRIMIR')[0]!.disabled).toBe(false);
+    await click(buttons(container, 'SUPRIMIR')[0]!);
+
+    expect(onSuppress).toHaveBeenCalledTimes(1);
+    const payload = onSuppress.mock.calls[0]?.[1] as SuppressAlarmPayload;
+    expect(payload.mode).toBe('UNTIL_TIME');
+    expect(payload.reason).toBe('INTENTIONAL_SHUTDOWN');
+    // datetime-local tem precisao de minuto; basta estar dentro da janela pedida.
+    const expiresAtMs = Date.parse(payload.expiresAt as string);
+    expect(expiresAtMs).toBeGreaterThan(Date.now());
+    expect(Math.abs(expiresAtMs - until.getTime())).toBeLessThan(60_000);
+    expect(reopened).not.toBeNull();
+  });
+
+  it('cancela a retirada sem chamar o handler', async () => {
+    const onSuppress = vi.fn();
+    const container = await mount([makeAlarm()], { onSuppress });
+
+    await click(buttons(container, 'Retirar')[0]!);
+    await click(buttons(container, 'CANCELAR')[0]!);
+
+    expect(onSuppress).not.toHaveBeenCalled();
+    expect(container.querySelector('.alarm-panel__suppress')).toBeNull();
+  });
+
+  it('sem os handlers nao renderiza acoes (painel continua somente leitura)', async () => {
+    const container = await mount([makeAlarm()]);
+
+    expect(buttons(container, 'Reconhecer')).toHaveLength(0);
+    expect(buttons(container, 'Retirar')).toHaveLength(0);
+  });
+
+  it('mostra o motivo administrativo no card de resolvido suprimido', async () => {
+    const startedAt = new Date(2026, 9, 7, 12, 0, 0);
+    const container = await mount([], {
+      resolvedAlarms: [
+        makeAlarm({
+          id: 'resolved-sup',
+          startedAt: startedAt.toISOString(),
+          endedAt: new Date(startedAt.getTime() + 60_000).toISOString(),
+          metadata: { resolutionReason: 'INTENTIONAL_SHUTDOWN' },
+        }),
+      ],
+    });
+
+    const resolved = container.querySelector('.alarm-panel__resolved')!;
+    expect(resolved.textContent).toContain('desligamento intencional');
   });
 });

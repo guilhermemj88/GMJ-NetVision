@@ -117,6 +117,62 @@ export class PrismaAlarmRepository implements AlarmRepository {
     return rows.map(toAlarm);
   }
 
+  async findById(alarmId: string): Promise<Alarm | null> {
+    const row = await this.prisma.alarm.findUnique({ where: { id: alarmId }, include: alarmInclude });
+    return row ? toAlarm(row as AlarmRow) : null;
+  }
+
+  async acknowledge(
+    alarmId: string,
+    acknowledgedBy: string,
+    acknowledgedAt: Date,
+  ): Promise<Alarm | null> {
+    // Idempotencia: o primeiro reconhecimento e o que fica registrado.
+    await this.prisma.alarm.updateMany({
+      where: { id: alarmId, acknowledgedAt: null },
+      data: { acknowledgedAt, acknowledgedBy },
+    });
+    return this.findById(alarmId);
+  }
+
+  async closeOpenAlarmsForFingerprint(
+    input: {
+      interfaceId: string;
+      type: AlarmType;
+      ruleId?: string | null | undefined;
+      metricKey?: string | null | undefined;
+    },
+    closedAt: Date,
+    reason: AlarmResolutionReason,
+  ): Promise<number> {
+    const open = await this.prisma.alarm.findMany({
+      where: {
+        interfaceId: input.interfaceId,
+        type: input.type,
+        endedAt: null,
+        ...(input.ruleId != null ? { ruleId: input.ruleId } : {}),
+        ...(input.metricKey != null ? { metricKey: input.metricKey } : {}),
+      },
+      select: { id: true, metadata: true },
+    });
+    if (!open.length) return 0;
+    await this.prisma.$transaction(
+      open.map((row) =>
+        this.prisma.alarm.update({
+          where: { id: row.id },
+          data: {
+            endedAt: closedAt,
+            metadata: {
+              ...((row.metadata as Record<string, unknown> | null) ?? {}),
+              resolutionReason: reason,
+            } as unknown as Prisma.InputJsonValue,
+          },
+        }),
+      ),
+    );
+    return open.length;
+  }
+
   async findLinkedInterfaceIds(interfaceIds: string[]): Promise<Set<string>> {
     if (!interfaceIds.length) return new Set();
     const links = await this.prisma.link.findMany({

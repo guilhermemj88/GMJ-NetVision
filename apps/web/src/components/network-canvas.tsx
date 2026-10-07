@@ -27,9 +27,11 @@ import { useMapStore } from '@/store/map-store';
 import { computeParallelLinkLayouts, type Alarm } from '@gmj/shared';
 import {
   countAlarmsByDevice,
+  useAcknowledgeAlarm,
   useActiveAlarms,
   useRecentAlarmOccurrences,
   useRecentResolvedAlarms,
+  useSuppressAlarm,
 } from '@/lib/use-alarms';
 import { useMapFocus } from '@/lib/use-map-focus';
 import { DeviceNode, type DeviceFlowNode } from './device-node';
@@ -118,6 +120,8 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
   const alarms = useActiveAlarms(!readOnly);
   const recentResolvedAlarms = useRecentResolvedAlarms(!readOnly, 3);
   const recentOccurrences = useRecentAlarmOccurrences(!readOnly);
+  const acknowledgeAlarm = useAcknowledgeAlarm();
+  const suppressAlarm = useSuppressAlarm();
   const alarmCountByDevice = useMemo(() => countAlarmsByDevice(alarms), [alarms]);
 
   // Recorte visual (camada + site + tipo + vizinhança). Não altera o grafo:
@@ -507,6 +511,10 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
             resolvedAlarms={recentResolvedAlarms}
             occurrences={recentOccurrences}
             onFocus={focusAlarm}
+            onAcknowledge={(alarm) => acknowledgeAlarm.mutate(alarm.id)}
+            onSuppress={(alarm, payload) =>
+              suppressAlarm.mutate({ alarmId: alarm.id, payload })
+            }
           />
         )}
         {editMode && alignmentGuides.length > 0 && (

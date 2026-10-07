@@ -12591,3 +12591,108 @@ label > small {
   background: var(--panel-2);
   color: var(--text);
 }
+
+/* --- F9.1: ACK e retirada/supressao no painel compacto --- */
+.alarm-panel__row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.alarm-panel__row--ack .alarm-panel__item {
+  opacity: 0.62;
+  border-color: #2c4a3c;
+  background: rgba(14, 32, 26, 0.6);
+}
+.alarm-panel__row--ack .alarm-panel__item:hover {
+  opacity: 0.85;
+}
+.alarm-panel__ack {
+  align-self: flex-start;
+  padding: 1px 5px;
+  border: 1px solid #2f6b52;
+  border-radius: 3px;
+  color: #86e0b4;
+  font: 700 8px var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.alarm-panel__row-actions {
+  display: flex;
+  gap: 6px;
+  padding: 0 2px 2px 2px;
+}
+.alarm-panel__row-actions button {
+  flex: 1;
+  padding: 3px 6px;
+  border: 1px solid #22343e;
+  border-radius: 4px;
+  background: rgba(18, 30, 38, 0.85);
+  color: #9fd8ea;
+  font: 700 9px var(--font-mono);
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    color 0.12s;
+}
+.alarm-panel__row-actions button:hover {
+  border-color: #3f7f96;
+  color: #d7f4ff;
+}
+.alarm-panel__suppress {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 6px 0 2px;
+  padding: 8px;
+  border: 1px solid #3f7f96;
+  border-radius: 5px;
+  background: rgba(12, 24, 31, 0.92);
+}
+.alarm-panel__suppress > strong {
+  font: 750 9px var(--font-mono);
+  letter-spacing: 0.06em;
+  color: #ffd479;
+}
+.alarm-panel__suppress label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font: 700 8px var(--font-mono);
+  letter-spacing: 0.04em;
+  color: #7fa6b6;
+}
+.alarm-panel__suppress select,
+.alarm-panel__suppress input {
+  padding: 4px 5px;
+  border: 1px solid #22343e;
+  border-radius: 4px;
+  background: rgba(9, 18, 24, 0.95);
+  color: #d7f4ff;
+  font: 11px var(--font-sans);
+}
+.alarm-panel__suppress-hint {
+  color: #ffb4a2;
+  font: 700 8px var(--font-mono);
+}
+.alarm-panel__suppress-actions {
+  display: flex;
+  gap: 6px;
+}
+.alarm-panel__suppress-actions button {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid #22343e;
+  border-radius: 4px;
+  background: rgba(18, 30, 38, 0.9);
+  color: #9fd8ea;
+  font: 700 9px var(--font-mono);
+  cursor: pointer;
+}
+.alarm-panel__suppress-actions button[type='submit'] {
+  border-color: #3f7f96;
+  color: #d7f4ff;
+}
+.alarm-panel__suppress-actions button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}

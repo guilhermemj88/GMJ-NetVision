@@ -2,14 +2,19 @@
 
 import { useMemo, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import {
+  alarmResolutionReasonLabel,
+  alarmSuppressionReasonLabel,
   alarmTypeLabel,
   formatAlarmDownSince,
   formatAlarmDuration,
   type Alarm,
   type AlarmPanelPosition,
+  type AlarmSuppressionMode,
+  type AlarmSuppressionReason,
   type InterfaceOccurrence,
 } from '@gmj/shared';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import type { SuppressAlarmPayload } from '@/lib/api';
 import {
   ALARM_SCALE_OPTIONS,
   getAlarmScale,
@@ -84,10 +89,6 @@ function formatClock(value: string): string {
   return formatAlarmDownSince(value);
 }
 
-const RESOLUTION_REASON_LABELS: Record<string, string> = {
-  RULE_DISABLED: 'regra desativada',
-  RULE_DELETED: 'regra excluída',
-};
 
 /**
  * Motivos legiveis do alarme ativo. O alarme e UNICO: quando proximidade e
@@ -166,36 +167,75 @@ function AlarmBody({ alarm }: { alarm: Alarm }) {
   return <MetricAlarmBody alarm={alarm} />;
 }
 
-function AlarmCard({ alarm, onFocus }: { alarm: Alarm; onFocus: (alarm: Alarm) => void }) {
+function AlarmCard({
+  alarm,
+  onFocus,
+  onAcknowledge,
+  onRequestSuppress,
+}: {
+  alarm: Alarm;
+  onFocus: (alarm: Alarm) => void;
+  onAcknowledge?: ((alarm: Alarm) => void) | undefined;
+  onRequestSuppress?: ((alarm: Alarm) => void) | undefined;
+}) {
+  const acknowledged = Boolean(alarm.acknowledgedAt);
   return (
-    <button
-      type="button"
-      className="alarm-panel__item"
-      onClick={() => onFocus(alarm)}
-      title="Focar no mapa e abrir a interface"
-    >
-      <span className={`alarm-panel__severity alarm-panel__severity--${alarm.severity.toLowerCase()}`}>
-        {severityLabels[alarm.severity]}
-      </span>
-      <span className="alarm-panel__item-body">
-        <strong>{alarmTypeLabel(alarm.type)}</strong>
-        <span className="alarm-panel__device">{alarm.deviceName}</span>
-        {alarm.type === 'INTERFACE_DOWN' ? (
-          <span className="alarm-panel__interface">
-            {alarm.interfaceLabel} — {alarm.interfaceName}
-          </span>
-        ) : null}
-        <AlarmBody alarm={alarm} />
-      </span>
-    </button>
+    <div className={`alarm-panel__row ${acknowledged ? 'alarm-panel__row--ack' : ''}`}>
+      <button
+        type="button"
+        className="alarm-panel__item"
+        onClick={() => onFocus(alarm)}
+        title="Focar no mapa e abrir a interface"
+      >
+        <span className={`alarm-panel__severity alarm-panel__severity--${alarm.severity.toLowerCase()}`}>
+          {severityLabels[alarm.severity]}
+        </span>
+        <span className="alarm-panel__item-body">
+          <strong>{alarmTypeLabel(alarm.type)}</strong>
+          <span className="alarm-panel__device">{alarm.deviceName}</span>
+          {alarm.type === 'INTERFACE_DOWN' ? (
+            <span className="alarm-panel__interface">
+              {alarm.interfaceLabel} — {alarm.interfaceName}
+            </span>
+          ) : null}
+          <AlarmBody alarm={alarm} />
+          {acknowledged ? (
+            <span className="alarm-panel__ack">
+              ✓ RECONHECIDO — {alarm.acknowledgedBy ?? 'operador'} às{' '}
+              {formatClock(alarm.acknowledgedAt as string)}
+            </span>
+          ) : null}
+        </span>
+      </button>
+      {onAcknowledge || onRequestSuppress ? (
+        <div className="alarm-panel__row-actions">
+          {onAcknowledge && !acknowledged ? (
+            <button type="button" onClick={() => onAcknowledge(alarm)} title="Reconhecer sem resolver">
+              Reconhecer
+            </button>
+          ) : null}
+          {onRequestSuppress ? (
+            <button
+              type="button"
+              onClick={() => onRequestSuppress(alarm)}
+              title="Retirar / suprimir enquanto a condição durar"
+            >
+              Retirar
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
   );
 }
+
+const RESOLUTION_REASON_FALLBACK = 'motivo administrativo';
 
 /** Card de resolvido: duracao, valores do encerramento e motivo ficam visiveis. */
 function ResolvedCard({ alarm, onFocus }: { alarm: Alarm; onFocus: (alarm: Alarm) => void }) {
   const metadata = alarm.metadata ?? null;
   const resolutionReason = metadata?.resolutionReason
-    ? RESOLUTION_REASON_LABELS[metadata.resolutionReason] ?? null
+    ? (alarmResolutionReasonLabel(metadata.resolutionReason) ?? RESOLUTION_REASON_FALLBACK)
     : null;
   const drop = metadata?.trendDropDb ?? null;
   return (
@@ -231,8 +271,7 @@ function ResolvedCard({ alarm, onFocus }: { alarm: Alarm; onFocus: (alarm: Alarm
   );
 }
 
-function OccurrenceCard({ occurrence }: { occurrence: InterfaceOccurrence }) {
-  const counters = occurrence.kind === 'CRC'
+function OccurrenceCard({ occurrence }: { occurrence: InterfaceOccurrence }) {  const counters = occurrence.kind === 'CRC'
     ? `+${occurrence.crcDelta} CRC`
     : `RX +${occurrence.rxDelta} · TX +${occurrence.txDelta}`;
   return (
@@ -252,18 +291,133 @@ function OccurrenceCard({ occurrence }: { occurrence: InterfaceOccurrence }) {
   );
 }
 
+const SUPPRESSION_REASONS: AlarmSuppressionReason[] = [
+  'INTENTIONAL_SHUTDOWN',
+  'MAINTENANCE',
+  'FALSE_POSITIVE',
+  'OTHER',
+];
+
+/**
+ * Retirada do alarme: a condicao continua existindo, mas o operador assume a
+ * ocorrencia (porta desligada de proposito, manutencao, falso positivo).
+ * Enquanto a supressao valer o mesmo fingerprint nao reabre alarme.
+ */
+function SuppressForm({
+  alarm,
+  onCancel,
+  onSubmit,
+}: {
+  alarm: Alarm;
+  onCancel: () => void;
+  onSubmit: (payload: SuppressAlarmPayload) => void;
+}) {
+  const [mode, setMode] = useState<AlarmSuppressionMode>('UNTIL_CLEAR');
+  const [reason, setReason] = useState<AlarmSuppressionReason>('INTENTIONAL_SHUTDOWN');
+  const [note, setNote] = useState('');
+  const [until, setUntil] = useState('');
+
+  const untilMs = until ? new Date(until).getTime() : Number.NaN;
+  const untilValid = Number.isFinite(untilMs) && untilMs > Date.now();
+  const canSubmit = mode === 'UNTIL_CLEAR' || untilValid;
+
+  return (
+    <form
+      className="alarm-panel__suppress"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!canSubmit) return;
+        onSubmit({
+          mode,
+          reason,
+          note: note.trim() ? note.trim() : null,
+          expiresAt: mode === 'UNTIL_TIME' ? new Date(untilMs).toISOString() : null,
+        });
+      }}
+    >
+      <strong>RETIRAR ALARME</strong>
+      <span className="alarm-panel__device">{alarm.deviceName}</span>
+      <span className="alarm-panel__interface">
+        {alarm.interfaceLabel} — {alarm.interfaceName}
+      </span>
+      <label>
+        MODO
+        <select
+          value={mode}
+          onChange={(event) => setMode(event.target.value as AlarmSuppressionMode)}
+        >
+          <option value="UNTIL_CLEAR">Até normalizar</option>
+          <option value="UNTIL_TIME">Até o horário</option>
+        </select>
+      </label>
+      <label>
+        MOTIVO
+        <select
+          value={reason}
+          onChange={(event) => setReason(event.target.value as AlarmSuppressionReason)}
+        >
+          {SUPPRESSION_REASONS.map((value) => (
+            <option key={value} value={value}>
+              {alarmSuppressionReasonLabel(value)}
+            </option>
+          ))}
+        </select>
+      </label>
+      {mode === 'UNTIL_TIME' ? (
+        <label>
+          ATÉ
+          <input
+            type="datetime-local"
+            value={until}
+            onChange={(event) => setUntil(event.target.value)}
+            required
+          />
+        </label>
+      ) : null}
+      <label>
+        NOTA (opcional)
+        <input
+          type="text"
+          value={note}
+          maxLength={280}
+          placeholder="ex.: porta desligada para manutenção do cliente"
+          onChange={(event) => setNote(event.target.value)}
+        />
+      </label>
+      {mode === 'UNTIL_TIME' && !untilValid ? (
+        <small className="alarm-panel__suppress-hint">Informe um horário futuro.</small>
+      ) : null}
+      <div className="alarm-panel__suppress-actions">
+        <button type="submit" disabled={!canSubmit}>
+          SUPRIMIR
+        </button>
+        <button type="button" onClick={onCancel}>
+          CANCELAR
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function AlarmPanel({
   alarms,
   resolvedAlarms = [],
   occurrences = [],
   onFocus,
+  onAcknowledge,
+  onSuppress,
 }: {
   alarms: Alarm[];
   resolvedAlarms?: Alarm[];
   occurrences?: InterfaceOccurrence[];
   onFocus: (alarm: Alarm) => void;
+  /** ACK: registra o operador; o alarme continua ativo. */
+  onAcknowledge?: ((alarm: Alarm) => void) | undefined;
+  /** Retirar/Suprimir: encerra o alarme e bloqueia a reabertura. */
+  onSuppress?: ((alarm: Alarm, payload: SuppressAlarmPayload) => void) | undefined;
 }) {
   const [position, setPosition] = useState<AlarmPanelPosition>(loadPosition);
+  const [suppressTarget, setSuppressTarget] = useState<Alarm | null>(null);
   const alarmScale = useSyncExternalStore(subscribeAlarmScale, getAlarmScale, getAlarmScale);
 
   // The panel stays compact: at most the 3 most recently resolved alarms,
@@ -405,10 +559,25 @@ export function AlarmPanel({
           <ul className="alarm-panel__list">
             {alarms.map((alarm) => (
               <li key={alarm.id}>
-                <AlarmCard alarm={alarm} onFocus={onFocus} />
+                <AlarmCard
+                  alarm={alarm}
+                  onFocus={onFocus}
+                  onAcknowledge={onAcknowledge}
+                  onRequestSuppress={onSuppress ? setSuppressTarget : undefined}
+                />
               </li>
             ))}
           </ul>
+          {suppressTarget && onSuppress ? (
+            <SuppressForm
+              alarm={suppressTarget}
+              onCancel={() => setSuppressTarget(null)}
+              onSubmit={(payload) => {
+                onSuppress(suppressTarget, payload);
+                setSuppressTarget(null);
+              }}
+            />
+          ) : null}
         </>
       )}
       {recentOccurrences.length > 0 && (
