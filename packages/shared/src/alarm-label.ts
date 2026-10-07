@@ -49,6 +49,12 @@ export function alarmTypeLabel(type: string): string {
   switch (type) {
     case 'INTERFACE_DOWN':
       return 'LINK DOWN';
+    case 'INTERFACE_ERRORS':
+      return 'ERROS';
+    case 'INTERFACE_CRC':
+      return 'CRC/FCS';
+    case 'INTERFACE_DISCARDS':
+      return 'DESCARTES';
     default:
       return type;
   }

@@ -43,7 +43,14 @@ export type PppDisplayMode = 'AUTO' | 'SHOW' | 'HIDE';
 export type PppLabelPosition = 'TOP' | 'BOTTOM' | 'LEFT' | 'RIGHT' | 'CENTER';
 export type MapWidgetType = 'PPP_TOTAL';
 export type MapWidgetMode = 'AUTO' | 'MANUAL';
-export type AlarmType = 'INTERFACE_DOWN';
+export type AlarmType =
+  | 'INTERFACE_DOWN'
+  | 'INTERFACE_ERRORS'
+  | 'INTERFACE_CRC'
+  | 'INTERFACE_DISCARDS';
+/** Tipos metricos que podem ser governados por AlarmRule nesta fase. */
+export type MetricAlarmType = 'INTERFACE_ERRORS' | 'INTERFACE_CRC' | 'INTERFACE_DISCARDS';
+export type AlarmDirection = 'RX' | 'TX' | 'BOTH';
 export type AlarmSeverity = 'CRITICAL' | 'MAJOR' | 'WARNING' | 'INFO';
 export type AlarmPanelPosition = 'LEFT' | 'RIGHT' | 'HIDDEN';
 export interface Alarm {
@@ -63,6 +70,61 @@ export interface Alarm {
   acknowledgedAt: string | null;
   acknowledgedBy: string | null;
   message: string;
+  /** Fingerprint do alarme metrico (regra + metrica + direcao). */
+  ruleId?: string | null | undefined;
+  metricKey?: string | null | undefined;
+  currentValue?: number | null | undefined;
+  thresholdValue?: number | null | undefined;
+  unit?: string | null | undefined;
+  /** Whitelist segura por tipo; nunca contem segredo. */
+  metadata?: AlarmMetadata | null | undefined;
+}
+
+/** Metadados seguros de um alarme metrico (errors/discards/CRC). */
+export interface AlarmMetadata {
+  direction?: 'RX' | 'TX' | undefined;
+  delta?: string | undefined;
+  ratePerMinute?: number | undefined;
+  thresholdPerMinute?: number | undefined;
+  sampleIntervalSeconds?: number | undefined;
+}
+
+/** Escopo de uma AlarmRule: lista ausente = todos. */
+export interface AlarmRuleScope {
+  devices?: string[] | undefined;
+  interfaces?: string[] | undefined;
+  /** Velocidades exatas em bps (1G/10G/40G/100G ou custom). */
+  speedsBps?: number[] | undefined;
+}
+
+export interface MetricThresholdRuleConfig {
+  thresholdPerMinute: number;
+  recoveryThresholdPerMinute: number;
+  triggerSamples: number;
+  recoverySamples: number;
+}
+
+export interface InterfaceErrorsRuleConfig extends MetricThresholdRuleConfig {
+  direction: AlarmDirection;
+}
+
+/** FCS/CRC e metrica de recepcao (RX); sem direcao configuravel. */
+export type InterfaceCrcRuleConfig = MetricThresholdRuleConfig;
+export type InterfaceDiscardsRuleConfig = InterfaceErrorsRuleConfig;
+export type AlarmRuleConfig = InterfaceErrorsRuleConfig | InterfaceCrcRuleConfig;
+
+export interface AlarmRuleDto {
+  id: string;
+  name: string;
+  type: MetricAlarmType;
+  enabled: boolean;
+  severity: AlarmSeverity;
+  mapLinkedOnly: boolean;
+  mediaEnabled: boolean;
+  scope: AlarmRuleScope;
+  config: AlarmRuleConfig;
+  createdAt: string;
+  updatedAt: string;
 }
 export interface LinkMetricSource {
   interfaceId: string;

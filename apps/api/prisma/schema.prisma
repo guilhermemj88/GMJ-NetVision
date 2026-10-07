@@ -95,6 +95,9 @@ enum InterfaceStatus {
 
 enum AlarmType {
   INTERFACE_DOWN
+  INTERFACE_ERRORS
+  INTERFACE_CRC
+  INTERFACE_DISCARDS
 }
 
 enum AlarmSeverity {
@@ -967,6 +970,10 @@ model InterfaceMetricSample {
   outErrorsDelta   BigInt          @default(0)
   inDiscardsDelta  BigInt          @default(0)
   outDiscardsDelta BigInt          @default(0)
+  /// FCS/CRC por ifIndex (EtherLike-MIB). NULL = nao suportado/nao coletado;
+  /// 0 = coletado e sem erro.
+  fcsErrors        BigInt?
+  fcsErrorsDelta   BigInt?
   operStatus       InterfaceStatus @default(UNKNOWN)
   interface        Interface       @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
 
@@ -1013,6 +1020,18 @@ model Alarm {
   acknowledgedAt DateTime?
   acknowledgedBy String?
   message        String
+  /// Fingerprint do alarme metrico: ruleId + interfaceId + type + metricKey.
+  ruleId         String?
+  metricKey      String?
+  currentValue   Float?
+  thresholdValue Float?
+  unit           String?
+  /// Whitelist por tipo (direcao, taxa, intervalo). Nunca contem segredo.
+  metadata       Json?
+  /// Dedupe de notificacao de midia (usado a partir da fase de integracao).
+  notifiedSeverity     AlarmSeverity?
+  notifiedAt           DateTime?
+  resolutionNotifiedAt DateTime?
   device         Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   interface      Interface     @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
   link           Link?         @relation(fields: [linkId], references: [id], onDelete: SetNull)
@@ -1020,8 +1039,27 @@ model Alarm {
   updatedAt      DateTime      @updatedAt
 
   @@index([deviceId])
+  @@index([deviceId, type, endedAt])
   @@index([interfaceId, endedAt])
   @@index([startedAt])
+}
+
+/// Regra configuravel dos alarmes metricos (errors/discards/CRC nesta fase).
+/// scope/config sao validados por Zod no backend antes de persistir.
+model AlarmRule {
+  id            String        @id @default(cuid())
+  name          String
+  type          AlarmType
+  enabled       Boolean       @default(true)
+  severity      AlarmSeverity
+  mapLinkedOnly Boolean       @default(true)
+  mediaEnabled  Boolean       @default(false)
+  scope         Json
+  config        Json
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([type, enabled])
 }
 
 model Link {

@@ -73,7 +73,9 @@ import { SnmpPoller } from './infrastructure/snmp/snmp-poller';
 import { SnmpService } from './infrastructure/snmp/snmp-service';
 import { DemoMplsRepository } from './infrastructure/mpls/demo-mpls-repository';
 import { DemoAlarmRepository } from './infrastructure/alarms/demo-alarm-repository';
+import { DemoAlarmRuleRepository } from './infrastructure/alarms/demo-alarm-rule-repository';
 import { PrismaAlarmRepository } from './infrastructure/alarms/prisma-alarm-repository';
+import { PrismaAlarmRuleRepository } from './infrastructure/alarms/prisma-alarm-rule-repository';
 import { AlarmService } from './application/alarm-service';
 import { registerAlarmRoutes } from './alarm-routes';
 import { HuaweiVplsSnmpCollector } from './infrastructure/mpls/huawei-vpls-snmp';
@@ -543,6 +545,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const alarmRepository = config.DEMO_MODE
     ? new DemoAlarmRepository()
     : new PrismaAlarmRepository();
+  const alarmRuleRepository = config.DEMO_MODE
+    ? new DemoAlarmRuleRepository()
+    : new PrismaAlarmRuleRepository();
   const alarms = new AlarmService(alarmRepository);
   const snmp = new SnmpService(
     hosts,
@@ -573,7 +578,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   registerHostRoutes(app, { legacyMaps, mapMembership: maps, hosts, discovery, snmp, ssh, zabbix });
   registerMplsRoutes(app, { hosts, mpls: mplsRepository });
-  registerAlarmRoutes(app, { alarms: alarmRepository });
+  registerAlarmRoutes(app, {
+    alarms: alarmRepository,
+    rules: alarmRuleRepository,
+    currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
+  });
   registerBgpRoutes(app, {
     bgp: bgpRepository,
     hosts,
