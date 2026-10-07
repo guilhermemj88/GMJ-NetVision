@@ -59,6 +59,7 @@ import { firstInterfaceId, InterfacePicker } from './interface-picker';
 import { PublicLinksPanel } from './public-links-manager';
 import { UsersPanel } from './users-manager';
 import { MediaIntegrationsPanel } from './media/media-integrations-panel';
+import { AlarmRulesPanel } from './alarms/alarm-rules-panel';
 
 export function ActionPanels() {
   const panel = useMapStore((state) => state.panel);
@@ -72,6 +73,7 @@ export function ActionPanels() {
   if (panel === 'rotation') return <RotationPanel />;
   if (panel === 'users') return <UsersPanel />;
   if (panel === 'media') return <MediaIntegrationsPanel />;
+  if (panel === 'alarms') return <AlarmRulesPanel />;
   return null;
 }
 
@@ -1005,13 +1007,26 @@ function SettingsPanel() {
           </div>
           <Badge tone="info">PREPARADO</Badge>
         </div>
+        <h3>ALARMES</h3>
+        <div className="integration-row">
+          <span className="integration-icon">
+            <BellRing size={20} />
+          </span>
+          <div>
+            <strong>Regras de alarme</strong>
+            <small>Erros, CRC/FCS, discards e degradação óptica · presets prontos</small>
+          </div>
+          <Button compact variant="secondary" onClick={() => setPanel('alarms')}>
+            Gerenciar regras
+          </Button>
+        </div>
         <h3>MÍDIAS</h3>
         <div className="integration-row">
           <span className="integration-icon">
             <BellRing size={20} />
           </span>
           <div>
-            <strong>n8n — Mitigação DDoS</strong>
+            <strong>n8n — Mitigação DDoS e Alarmes de Rede</strong>
             <small>Webhook de saída e comandos de entrada · o Telegram fica no n8n</small>
           </div>
           <Button compact variant="secondary" onClick={() => setPanel('media')}>
