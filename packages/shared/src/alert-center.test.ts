@@ -14,6 +14,7 @@ import {
   alertCenterStateFilterLabel,
   alertCenterStateLabel,
   alertCenterStateTitle,
+  alertCenterTypesForCategory,
   alertCenterTypesMatching,
   type AlertCenterSummary,
 } from './alert-center';
@@ -138,5 +139,23 @@ describe('badge operacional', () => {
 
   it('sem pendências o badge fica em zero', () => {
     expect(alertCenterAttentionCount(summary({ alarmsActiveAcknowledged: 2 }))).toBe(0);
+  });
+});
+
+describe('tipos por categoria (busca da Central)', () => {
+  it('separa os tipos citados pela busca entre alarme e ocorrencia', () => {
+    const matches = alertCenterTypesMatching('crc');
+    expect(matches).toContain('INTERFACE_CRC');
+    expect(matches).toContain('CRC_FCS');
+    expect(alertCenterTypesForCategory(matches, 'ALARM')).toEqual(['INTERFACE_CRC']);
+    expect(alertCenterTypesForCategory(matches, 'OCCURRENCE')).toEqual(['CRC_FCS']);
+  });
+
+  it('descarta tipos da outra entidade em qualquer direcao', () => {
+    expect(alertCenterTypesForCategory(['INTERFACE_DOWN'], 'OCCURRENCE')).toEqual([]);
+    expect(alertCenterTypesForCategory(['DISCARDS', 'INTERFACE_DISCARDS'], 'ALARM')).toEqual([
+      'INTERFACE_DISCARDS',
+    ]);
+    expect(alertCenterTypesForCategory([], 'ALARM')).toEqual([]);
   });
 });

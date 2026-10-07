@@ -350,3 +350,18 @@ export function alertCenterTypesMatching(search: string): string[] {
   }
   return matches;
 }
+
+const TYPE_CATEGORY = new Map(ALERT_CENTER_TYPE_OPTIONS.map((option) => [option.value, option.category]));
+
+/**
+ * Tipos da busca que pertencem a categoria pedida. A busca textual cita tipos
+ * das DUAS entidades (ex.: "crc" cobre `INTERFACE_CRC` e `CRC_FCS`), e cada
+ * consulta so aceita os valores do proprio enum — misturar os dois derruba a
+ * consulta no Prisma (`Invalid value for argument 'in'`).
+ */
+export function alertCenterTypesForCategory(
+  types: readonly string[],
+  category: AlertCenterCategory,
+): string[] {
+  return types.filter((type) => TYPE_CATEGORY.get(type) === category);
+}

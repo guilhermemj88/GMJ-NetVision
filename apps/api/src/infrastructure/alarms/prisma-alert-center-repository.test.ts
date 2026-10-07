@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { Prisma } from '../../generated/prisma/index.js';
 import type { AlertCenterQuery } from './alert-center-repository';
 import { buildAlarmWhere, buildOccurrenceWhere } from './prisma-alert-center-repository';
 
@@ -39,6 +40,29 @@ describe('buildAlarmWhere (SQL do read model)', () => {
     expect(suppressedConditions).not.toContain('"NOT"');
   });
 
+  /**
+   * Regressao F9.4.1: `NOT` sobre o path JSON descartava silenciosamente os
+   * alarmes resolvidos com `metadata` NULL (o caso de LINK DOWN) ou sem a
+   * chave `resolutionReason`, porque a comparacao vira NULL no SQL.
+   */
+  it('RESOLVIDOS e nulo-seguro para metadata NULL e chave ausente', () => {
+    const where = buildAlarmWhere(query({ state: 'RESOLVED' }));
+    const conditions = (where.AND ?? []) as Prisma.AlarmWhereInput[];
+    const nullSafe = conditions.find((entry) => Array.isArray(entry.OR));
+    expect(nullSafe).toBeDefined();
+    const branches = (nullSafe?.OR ?? []) as Prisma.AlarmWhereInput[];
+    expect(branches).toHaveLength(3);
+    expect(branches[0]).toEqual({ metadata: { equals: Prisma.DbNull } });
+    expect(branches[1]).toEqual({
+      metadata: { path: ['resolutionReason'], equals: Prisma.AnyNull },
+    });
+    expect(branches[2]).toMatchObject({ NOT: { OR: expect.any(Array) } });
+    // A negacao crua (sem os ramos nulos) nao pode voltar a ser usada sozinha.
+    expect(conditions.some((entry) => entry.NOT !== undefined && entry.OR === undefined)).toBe(
+      false,
+    );
+  });
+
   it('periodo preserva alarme ativo e corta apenas o historico', () => {
     const where = buildAlarmWhere(query({ fromMs: NOW.getTime() - HOUR }));
     const conditions = JSON.stringify(where.AND);
@@ -74,6 +98,31 @@ describe('buildAlarmWhere (SQL do read model)', () => {
     expect(conditions).toContain('interface');
     expect(conditions).toContain('INTERFACE_CRC');
     expect(conditions).toContain('"mode":"insensitive"');
+  });
+
+  /**
+   * Regressao F9.4.1: a busca cita tipos das DUAS entidades e o filtro de enum
+   * do Prisma so aceita os valores do proprio modelo — `CRC_FCS` no alarme (ou
+   * `INTERFACE_CRC` na ocorrencia) derrubava a consulta com 500.
+   */
+  it('busca por tipo nunca mistura o enum da outra entidade', () => {
+    const alarmWhere = JSON.stringify(buildAlarmWhere(query({ search: 'crc' })).AND);
+    expect(alarmWhere).toContain('INTERFACE_CRC');
+    expect(alarmWhere).not.toContain('CRC_FCS');
+
+    const occurrenceWhere = JSON.stringify(
+      buildOccurrenceWhere(query({ state: 'ALL', search: 'crc' })).AND,
+    );
+    expect(occurrenceWhere).toContain('CRC_FCS');
+    expect(occurrenceWhere).not.toContain('INTERFACE_CRC');
+
+    const downWhere = JSON.stringify(buildOccurrenceWhere(query({ state: 'ALL', search: 'down' })).AND);
+    expect(downWhere).not.toContain('INTERFACE_DOWN');
+    const discardWhere = JSON.stringify(
+      buildAlarmWhere(query({ search: 'discard' })).AND,
+    );
+    expect(discardWhere).toContain('INTERFACE_DISCARDS');
+    expect(discardWhere).not.toContain('"DISCARDS"');
   });
 });
 

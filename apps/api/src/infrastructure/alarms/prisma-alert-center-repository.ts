@@ -1,5 +1,6 @@
 import {
   alarmSuppressionFingerprint,
+  alertCenterTypesForCategory,
   alertCenterTypesMatching,
   type AlarmMetadata,
   type AlarmSeverity,
@@ -57,6 +58,19 @@ export function buildAlarmWhere(query: AlertCenterQuery): Prisma.AlarmWhereInput
       metadata: { path: ['resolutionReason'], equals: reason },
     })),
   };
+  /**
+   * `NOT` sobre o path JSON nao basta: com `metadata` NULL (ou sem a chave) a
+   * comparacao vira NULL no SQL e a linha cai fora — alarme resolvido por
+   * recuperacao tecnica ficava invisivel. Estes dois ramos explicitos cobrem
+   * `metadata` NULL e a chave ausente antes da negacao.
+   */
+  const suppressionReasonAbsentFilter: Prisma.AlarmWhereInput = {
+    OR: [
+      { metadata: { equals: Prisma.DbNull } },
+      { metadata: { path: ['resolutionReason'], equals: Prisma.AnyNull } },
+      { NOT: suppressedReasonFilter },
+    ],
+  };
 
   switch (query.state) {
     case 'ACTIVE':
@@ -72,7 +86,7 @@ export function buildAlarmWhere(query: AlertCenterQuery): Prisma.AlarmWhereInput
       break;
     case 'RESOLVED':
       and.push({ endedAt: { not: null } });
-      and.push({ NOT: suppressedReasonFilter });
+      and.push(suppressionReasonAbsentFilter);
       break;
     case 'SUPPRESSED':
       and.push({ endedAt: { not: null } });
@@ -94,10 +108,13 @@ export function buildAlarmWhere(query: AlertCenterQuery): Prisma.AlarmWhereInput
   if (query.interfaceId) where.interfaceId = query.interfaceId;
   if (query.search?.trim()) {
     const term = query.search.trim();
+    // Somente tipos do enum do ALARME: a busca cita as duas entidades e o
+    // Prisma recusa um tipo de ocorrencia no filtro de alarme.
+    const typeMatches = alertCenterTypesForCategory(alertCenterTypesMatching(term), 'ALARM');
     and.push({
       OR: [
         ...searchWhere(term),
-        { type: { in: alertCenterTypesMatching(term) as never[] } },
+        ...(typeMatches.length ? [{ type: { in: typeMatches as never[] } }] : []),
       ],
     });
   }
@@ -139,10 +156,12 @@ export function buildOccurrenceWhere(
   if (query.interfaceId) where.interfaceId = query.interfaceId;
   if (query.search?.trim()) {
     const term = query.search.trim();
+    // Somente tipos do enum da OCORRENCIA (o inverso do alarme).
+    const typeMatches = alertCenterTypesForCategory(alertCenterTypesMatching(term), 'OCCURRENCE');
     and.push({
       OR: [
         ...occurrenceSearchWhere(term),
-        { type: { in: alertCenterTypesMatching(term) as never[] } },
+        ...(typeMatches.length ? [{ type: { in: typeMatches as never[] } }] : []),
       ],
     });
   }
