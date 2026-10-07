@@ -1,851 +1,971 @@
 // @vitest-environment jsdom
 
-import { act } from 'react';
+import { act, createElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type {
+  AlertCenterItem,
+  AlertCenterListQuery,
+  AlertCenterResponse,
+  AlertCenterSummary,
+  NetworkMap,
+  OpticalTriggerReason,
+} from '@gmj/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Alarm, InterfaceOccurrence } from '@gmj/shared';
-import type { SuppressAlarmPayload } from '@/lib/api';
-import { AlarmPanel, alarmDrawerSection, alarmFocusTarget } from './alarm-panel';
+import { useMapStore } from '@/store/map-store';
 
-function makeAlarm(overrides: Partial<Alarm> = {}): Alarm {
+const api = vi.hoisted(() => ({
+  getAlertCenter: vi.fn(),
+  getAlertCenterSummary: vi.fn(),
+  acknowledgeAlarm: vi.fn(),
+  acknowledgeOperationalOccurrence: vi.fn(),
+  suppressAlarm: vi.fn(),
+  // Rotas antigas: o painel NAO pode mais reconstruir a visao por elas.
+  getAlarms: vi.fn(),
+  getAlarmOccurrences: vi.fn(),
+  getRecentResolvedAlarms: vi.fn(),
+}));
+
+vi.mock('@/lib/api', () => api);
+
+import { AlarmPanel } from './alarm-panel';
+
+Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+
+const NOW = new Date('2026-10-12T12:00:00.000Z').getTime();
+const MINUTE = 60 * 1000;
+const HOUR = 60 * MINUTE;
+
+/** Dados servidos pelos mocks: cada teste troca os arrays e invalida. */
+let activeFixture: AlertCenterItem[] = [];
+let occurrenceFixture: AlertCenterItem[] = [];
+let resolvedFixture: AlertCenterItem[] = [];
+let suppressedFixture: AlertCenterItem[] = [];
+let activeTotal = 0;
+let occurrenceTotal = 0;
+let summaryFixture: AlertCenterSummary = {
+  alarmsActive: 0,
+  alarmsActiveCritical: 0,
+  alarmsActiveMajor: 0,
+  alarmsActiveWarning: 0,
+  alarmsActiveInfo: 0,
+  alarmsActiveUnacknowledged: 0,
+  alarmsActiveAcknowledged: 0,
+  occurrencesUnacknowledged: 0,
+  occurrencesAcknowledged: 0,
+  occurrencesQuiet24h: 0,
+};
+
+function summary(patch: Partial<AlertCenterSummary> = {}): AlertCenterSummary {
   return {
-    id: 'alarm-1',
-    deviceId: 'device-1',
-    deviceName: 'SW-CBF-01',
-    interfaceId: 'iface-1',
-    interfaceName: '40GE0/0/1',
-    interfaceLabel: 'SW-SPA-SJO-5732-MPLS-01',
-    ifIndex: 118,
-    linkId: 'link-1',
-    linkLabel: 'Backbone',
-    type: 'INTERFACE_DOWN',
-    severity: 'CRITICAL',
-    startedAt: new Date(2026, 8, 16, 21, 17, 32).toISOString(),
-    endedAt: null,
-    acknowledgedAt: null,
-    acknowledgedBy: null,
-    message: 'SW-CBF-01: SW-SPA-SJO-5732-MPLS-01 (40GE0/0/1) DOWN',
-    ...overrides,
+    alarmsActive: 0,
+    alarmsActiveCritical: 0,
+    alarmsActiveMajor: 0,
+    alarmsActiveWarning: 0,
+    alarmsActiveInfo: 0,
+    alarmsActiveUnacknowledged: 0,
+    alarmsActiveAcknowledged: 0,
+    occurrencesUnacknowledged: 0,
+    occurrencesAcknowledged: 0,
+    occurrencesQuiet24h: 0,
+    ...patch,
   };
 }
 
-function makeResolvedAlarm(overrides: Partial<Alarm> = {}): Alarm {
-  const startedAt = new Date(2026, 8, 16, 20, 0, 0);
-  return makeAlarm({
-    id: 'resolved-1',
-    deviceName: 'SW-JDM-01',
-    interfaceLabel: 'PE-SP',
-    interfaceName: '100GE0/0/1',
-    startedAt: startedAt.toISOString(),
-    endedAt: new Date(startedAt.getTime() + 218_000).toISOString(),
-    ...overrides,
+type AlarmDetailFixture = NonNullable<AlertCenterItem['alarm']>;
+
+function alarmDetail(patch: Partial<AlarmDetailFixture> = {}): AlarmDetailFixture {
+  return {
+    ruleId: 'rule-1',
+    ruleName: 'Link down',
+    metricKey: null,
+    direction: null,
+    currentValue: null,
+    thresholdValue: null,
+    unit: null,
+    ratePerMinute: null,
+    thresholdPerMinute: null,
+    delta: null,
+    message: 'Interface DOWN',
+    linkId: null,
+    linkLabel: null,
+    resolutionReason: null,
+    suppression: null,
+    optical: null,
+    ...patch,
+  };
+}
+
+function alarmItem(patch: Partial<AlertCenterItem> = {}): AlertCenterItem {
+  return {
+    id: 'alarm-1',
+    category: 'ALARM',
+    state: 'ACTIVE_UNACKNOWLEDGED',
+    severity: 'CRITICAL',
+    type: 'INTERFACE_DOWN',
+    typeLabel: 'LINK DOWN',
+    deviceId: 'dev-1',
+    deviceName: 'RNS-FLOR-6730-MPLS-01',
+    deviceHostname: 'rns-flor-6730-mpls-01',
+    site: 'RNS',
+    interfaceId: 'iface-1',
+    interfaceName: '100GE0/0/2',
+    interfaceAlias: 'CLIENTE-ACME',
+    interfaceLabel: 'CLIENTE-ACME',
+    ifIndex: 67502222,
+    startedAt: new Date(NOW - 3 * HOUR).toISOString(),
+    lastSeenAt: new Date(NOW - MINUTE).toISOString(),
+    endedAt: null,
+    acknowledgedAt: null,
+    acknowledgedBy: null,
+    valueSummary: 'DOWN',
+    mapIds: ['map-1'],
+    alarm: alarmDetail(),
+    ...patch,
+  };
+}
+
+function metricAlarm(patch: Partial<AlertCenterItem> = {}): AlertCenterItem {
+  return alarmItem({
+    id: 'alarm-crc',
+    type: 'INTERFACE_CRC',
+    typeLabel: 'CRC/FCS',
+    severity: 'WARNING',
+    interfaceName: 'XGE0/0/15',
+    interfaceLabel: 'SBA-GEN-UPLINK',
+    alarm: alarmDetail({
+      metricKey: 'FCS',
+      direction: 'RX',
+      currentValue: 0.8,
+      thresholdValue: 5,
+      unit: 'crc',
+      ratePerMinute: 0.8,
+      thresholdPerMinute: 5,
+      delta: '17',
+    }),
+    ...patch,
   });
 }
 
-describe('alarmFocusTarget', () => {
-  it('focuses the link that owns the interface when there is one', () => {
-    expect(alarmFocusTarget(makeAlarm({ linkId: 'link-7' }))).toEqual({
-      kind: 'link',
-      deviceId: 'device-1',
-      linkId: 'link-7',
-    });
+function opticalDetail(patch: Partial<NonNullable<AlarmDetailFixture['optical']>> = {}) {
+  return {
+    lane: 2,
+    rxPowerDbm: -10.02,
+    rxLowAlarmDbm: -12.31,
+    rxHighAlarmDbm: 3.4,
+    marginDb: 2.29,
+    proximityPercent: 91.3,
+    trendDropDb: 4.3,
+    trendWindowMinutes: 30,
+    triggerReasons: ['PROXIMITY', 'RAPID_DROP'] as OpticalTriggerReason[],
+    thresholdSource: 'DEVICE' as const,
+    currentPowerSource: 'SNMP' as const,
+    ...patch,
+  };
+}
+
+function opticalItem(patch: Partial<AlertCenterItem> = {}): AlertCenterItem {
+  return alarmItem({
+    id: 'alarm-optical',
+    type: 'OPTICAL_RX_DEGRADATION',
+    typeLabel: 'RX ÓPTICO',
+    severity: 'MAJOR',
+    alarm: alarmDetail({
+      metricKey: 'LANE_2',
+      currentValue: -10.02,
+      thresholdValue: -12.31,
+      unit: 'dBm',
+      optical: opticalDetail(),
+    }),
+    ...patch,
   });
+}
 
-  it('focuses the device when the alarm has no link', () => {
-    expect(alarmFocusTarget(makeAlarm({ linkId: null }))).toEqual({
-      kind: 'device',
-      deviceId: 'device-1',
-    });
+function occurrenceItem(patch: Partial<AlertCenterItem> = {}): AlertCenterItem {
+  return {
+    id: 'occ-1',
+    category: 'OCCURRENCE',
+    state: 'UNACKNOWLEDGED',
+    severity: null,
+    type: 'CRC_FCS',
+    typeLabel: 'CRC/FCS',
+    deviceId: 'dev-2',
+    deviceName: 'SBA-GEN-6730-MPLS-01',
+    deviceHostname: 'sba-gen-6730-mpls-01',
+    site: 'SBA',
+    interfaceId: 'iface-2',
+    interfaceName: 'XGigabitEthernet0/0/15',
+    interfaceAlias: 'SBA-GEN-UPLINK',
+    interfaceLabel: 'SBA-GEN-UPLINK',
+    ifIndex: 1015,
+    startedAt: new Date(NOW - 5 * HOUR).toISOString(),
+    lastSeenAt: new Date(NOW - 3 * MINUTE).toISOString(),
+    endedAt: null,
+    acknowledgedAt: null,
+    acknowledgedBy: null,
+    valueSummary: '+17 CRC · 0.8/min',
+    mapIds: [],
+    occurrence: {
+      occurrenceCount: 4,
+      crcDeltaTotal: 17,
+      rxDiscardDeltaTotal: 0,
+      txDiscardDeltaTotal: 0,
+      currentRatePerMin: 0.8,
+      peakRatePerMin: 4.2,
+      closeReason: null,
+      closedAt: null,
+      mediaAvailable: false,
+    },
+    ...patch,
+  };
+}
+
+function discardItem(patch: Partial<AlertCenterItem> = {}): AlertCenterItem {
+  return occurrenceItem({
+    id: 'occ-dc',
+    type: 'DISCARDS',
+    typeLabel: 'DISCARDS',
+    interfaceName: 'Eth-Trunk33',
+    interfaceLabel: 'Eth-Trunk33',
+    lastSeenAt: new Date(NOW - 7 * MINUTE).toISOString(),
+    valueSummary: 'RX 23 · TX 1364 · 90.9/min',
+    occurrence: {
+      ...occurrenceItem().occurrence!,
+      occurrenceCount: 6,
+      crcDeltaTotal: 0,
+      rxDiscardDeltaTotal: 23,
+      txDiscardDeltaTotal: 1364,
+      currentRatePerMin: 90.9,
+      peakRatePerMin: 142.3,
+    },
+    ...patch,
   });
-});
+}
 
-describe('AlarmPanel', () => {
-  const roots: Array<{ root: Root; container: HTMLDivElement }> = [];
+function response(
+  items: AlertCenterItem[],
+  patch: Partial<AlertCenterResponse> = {},
+): AlertCenterResponse {
+  return {
+    items,
+    total: items.length,
+    limit: 50,
+    offset: 0,
+    hasMore: false,
+    state: 'ACTIVE',
+    summary: summaryFixture,
+    generatedAt: new Date(NOW).toISOString(),
+    ...patch,
+  };
+}
 
-  async function mount(
-    alarms: Alarm[],
-    onFocus: (alarm: Alarm) => void,
-    resolvedAlarms: Alarm[] = [],
-  ) {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    roots.push({ root, container });
+/** Mapa minimo no store: permite testar "abrir interface" e "abrir no mapa". */
+function mapFixture(): NetworkMap {
+  return {
+    id: 'map-1',
+    name: 'Backbone',
+    description: '',
+    mode: 'HYBRID',
+    isDefault: true,
+    settings: {
+      nodeDisplayMode: 'ICON_2D',
+      linkDisplayStyle: 'HYBRID',
+      linkMetricDisplay: 'BOTH',
+      trafficLabelMode: 'CARD',
+      filters: {
+        showTraffic: true,
+        showUtilization: true,
+        showLabels: true,
+        showOffline: true,
+        showInterfaces: false,
+        showTrafficAnimation: true,
+      },
+      viewport: { x: 0, y: 0, zoom: 1 },
+      nodeScale: 100,
+      linkScale: 100,
+      labelScale: 100,
+    },
+    devices: [
+      {
+        id: 'dev-1',
+        name: 'RNS-FLOR-6730-MPLS-01',
+        interfaces: [{ id: 'iface-1', name: '100GE0/0/2' }],
+      },
+    ],
+    nodes: [],
+    links: [],
+    widgets: [],
+  } as unknown as NetworkMap;
+}
+
+async function settle(): Promise<void> {
+  await act(async () => {
+    await new Promise((resolve) => window.setTimeout(resolve, 0));
+  });
+}
+
+function findButton(scope: HTMLElement, label: string): HTMLButtonElement {
+  const button = Array.from(scope.querySelectorAll('button')).find((candidate) =>
+    candidate.textContent?.trim().includes(label),
+  );
+  if (!(button instanceof HTMLButtonElement)) throw new Error(`Botão não encontrado: ${label}`);
+  return button;
+}
+
+function hasButton(scope: HTMLElement, label: string): boolean {
+  return Array.from(scope.querySelectorAll('button')).some((candidate) =>
+    candidate.textContent?.trim().includes(label),
+  );
+}
+
+async function click(element: HTMLElement): Promise<void> {
+  await act(async () => {
+    element.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  });
+  await settle();
+}
+
+function cards(scope: HTMLElement, selector: string): Element[] {
+  return Array.from(scope.querySelectorAll(selector));
+}
+
+describe('AlarmPanel compacto (F9.4)', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let client: QueryClient;
+
+  async function render(): Promise<void> {
     await act(async () => {
-      root.render(
-        <AlarmPanel alarms={alarms} resolvedAlarms={resolvedAlarms} onFocus={onFocus} />,
-      );
+      root.render(createElement(QueryClientProvider, { client }, createElement(AlarmPanel)));
     });
-    return container;
+    await settle();
   }
 
-  function findButtons(container: HTMLElement): HTMLButtonElement[] {
-    return [...container.querySelectorAll<HTMLButtonElement>('button')];
+  async function reload(): Promise<void> {
+    await act(async () => {
+      await client.invalidateQueries();
+    });
+    await settle();
   }
 
-  function findScaleButton(container: HTMLElement, label: string): HTMLButtonElement {
-    const button = [
-      ...container.querySelectorAll<HTMLButtonElement>('.alarm-panel__scale button'),
-    ].find((item) => item.textContent === label);
-    if (!button) throw new Error(`Scale button ${label} not found`);
-    return button;
+  function alertCenterQueries(): AlertCenterListQuery[] {
+    return api.getAlertCenter.mock.calls.map(([query]) => query as AlertCenterListQuery);
   }
 
-  beforeEach(() => {
-    (
-      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
-    ).IS_REACT_ACT_ENVIRONMENT = true;
+  beforeEach(async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.setSystemTime(NOW);
+    vi.clearAllMocks();
+    summaryFixture = summary();
+    api.getAlertCenterSummary.mockImplementation(async () => ({ summary: summaryFixture }));
+    api.acknowledgeAlarm.mockResolvedValue({});
+    api.acknowledgeOperationalOccurrence.mockResolvedValue({ acknowledged: true });
+    api.suppressAlarm.mockResolvedValue({ suppression: { id: 'sup-1' }, closedAlarms: 1 });
+    api.getAlertCenter.mockImplementation(async (query: AlertCenterListQuery) => {
+      if (query.state === 'ACTIVE') {
+        return response(activeFixture, {
+          total: activeTotal || activeFixture.length,
+          state: 'ACTIVE',
+        });
+      }
+      if (query.state === 'UNACKNOWLEDGED') {
+        return response(occurrenceFixture, {
+          total: occurrenceTotal || occurrenceFixture.length,
+          state: 'UNACKNOWLEDGED',
+        });
+      }
+      if (query.state === 'RESOLVED') return response(resolvedFixture, { state: 'RESOLVED' });
+      if (query.state === 'SUPPRESSED') return response(suppressedFixture, { state: 'SUPPRESSED' });
+      return response([]);
+    });
+    activeFixture = [alarmItem()];
+    occurrenceFixture = [];
+    resolvedFixture = [];
+    suppressedFixture = [];
+    activeTotal = 0;
+    occurrenceTotal = 0;
     window.localStorage.clear();
+    useMapStore.setState({
+      view: 'MAP',
+      map: mapFixture(),
+      activeMapId: 'map-1',
+      maps: [],
+      selection: null,
+      panel: null,
+      toast: null,
+    });
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
+    });
+    await render();
   });
 
   afterEach(async () => {
-    for (const { root, container } of roots.splice(0)) {
-      await act(async () => root.unmount());
-      container.remove();
-    }
-    window.localStorage.clear();
+    await act(async () => root.unmount());
+    client.clear();
+    container.remove();
+    vi.useRealTimers();
+    vi.clearAllMocks();
   });
 
-  it('lists active alarms with severity, device, interface and down-since time', async () => {
-    const container = await mount([makeAlarm()], vi.fn());
+  it('le a Central de Alertas e nao usa as rotas antigas de alarme', () => {
+    const queries = alertCenterQueries();
+    expect(queries).toContainEqual({ state: 'ACTIVE', category: 'ALARM', limit: 25 });
+    expect(queries).toContainEqual({ state: 'UNACKNOWLEDGED', category: 'OCCURRENCE', limit: 5 });
+    expect(queries).toContainEqual({ state: 'RESOLVED', category: 'ALARM', period: '24h', limit: 3 });
+    expect(queries).toContainEqual({
+      state: 'SUPPRESSED',
+      category: 'ALARM',
+      period: '24h',
+      limit: 3,
+    });
+    expect(api.getAlarms).not.toHaveBeenCalled();
+    expect(api.getAlarmOccurrences).not.toHaveBeenCalled();
+    expect(api.getRecentResolvedAlarms).not.toHaveBeenCalled();
+    expect(api.getAlertCenterSummary).toHaveBeenCalled();
+  });
 
-    expect(container.querySelector('.alarm-panel')).not.toBeNull();
+  it('mostra o alarme ativo com severidade, equipamento, interface e down desde', () => {
+    const text = container.textContent ?? '';
+    expect(text).toContain('LINK DOWN');
+    expect(text).toContain('CRIT');
+    expect(text).toContain('RNS-FLOR-6730-MPLS-01');
+    expect(text).toContain('CLIENTE-ACME');
+    expect(text).toContain('Down desde');
+    expect(cards(container, '.alarm-panel__item:not(.alarm-panel__item--occurrence)')).toHaveLength(1);
+  });
+
+  it('mantem o alarme ativo de 40 dias na lista (idade nao esconde ativo)', async () => {
+    activeFixture = [
+      alarmItem({
+        startedAt: new Date(NOW - 40 * 24 * HOUR).toISOString(),
+        lastSeenAt: new Date(NOW - 40 * 24 * HOUR).toISOString(),
+      }),
+    ];
+    await reload();
     expect(container.textContent).toContain('LINK DOWN');
-    expect(container.textContent).toContain('SW-CBF-01');
-    expect(container.textContent).toContain('SW-SPA-SJO-5732-MPLS-01 — 40GE0/0/1');
-    expect(container.textContent).toContain('CRIT');
-    expect(container.textContent).toContain('Down desde 21:17:32');
+    expect(container.textContent).toContain('Down desde');
   });
 
-  it('shows an empty state when there are no active alarms', async () => {
-    const container = await mount([], vi.fn());
-    expect(container.textContent).toContain('Sem alarmes ativos');
-  });
-
-  it('clicking an alarm asks the map to focus the correct device or link', async () => {
-    const onFocus = vi.fn();
-    const withLink = makeAlarm({ id: 'alarm-link' });
-    const withoutLink = makeAlarm({ id: 'alarm-device', linkId: null, interfaceId: 'iface-2' });
-    const container = await mount([withLink, withoutLink], onFocus);
-
-    const items = [
-      ...container.querySelectorAll<HTMLButtonElement>('.alarm-panel__item'),
-    ];
-    expect(items).toHaveLength(2);
-
-    await act(async () => {
-      items[0]!.click();
-    });
-    expect(onFocus).toHaveBeenCalledTimes(1);
-    expect(onFocus).toHaveBeenCalledWith(withLink);
-    expect(alarmFocusTarget(withLink).kind).toBe('link');
-
-    await act(async () => {
-      items[1]!.click();
-    });
-    expect(onFocus).toHaveBeenCalledTimes(2);
-    expect(onFocus).toHaveBeenCalledWith(withoutLink);
-    expect(alarmFocusTarget(withoutLink)).toEqual({ kind: 'device', deviceId: 'device-1' });
-  });
-
-  it('hides the panel and reveals it again through the floating badge', async () => {
-    const container = await mount([makeAlarm(), makeAlarm({ id: 'alarm-2' })], vi.fn());
-    const hide = findButtons(container).find((button) =>
-      (button.getAttribute('aria-label') ?? '').includes('Ocultar'),
-    );
-    expect(hide).toBeDefined();
-
-    await act(async () => {
-      hide!.click();
-    });
-    expect(container.querySelector('.alarm-panel')).toBeNull();
-    const reveal = container.querySelector<HTMLButtonElement>('.alarm-panel__reveal');
-    expect(reveal).not.toBeNull();
-    expect(reveal!.textContent).toBe('⚠ 2');
-
-    await act(async () => {
-      reveal!.click();
-    });
-    expect(container.querySelector('.alarm-panel')).not.toBeNull();
-  });
-
-  it('moves the panel between the left and right sides', async () => {
-    const container = await mount([makeAlarm()], vi.fn());
-    expect(container.querySelector('.alarm-panel--left')).not.toBeNull();
-
-    const move = findButtons(container).find((button) =>
-      (button.getAttribute('aria-label') ?? '').includes('Mover'),
-    );
-    expect(move).toBeDefined();
-
-    await act(async () => {
-      move!.click();
-    });
-    expect(container.querySelector('.alarm-panel--right')).not.toBeNull();
-    expect(container.querySelector('.alarm-panel--left')).toBeNull();
-  });
-
-  it('shows the panel on the left by default', async () => {
-    const container = await mount([makeAlarm()], vi.fn());
-    expect(container.querySelector('.alarm-panel--left')).not.toBeNull();
-    expect(container.querySelector('.alarm-panel--right')).toBeNull();
-  });
-
-  it('respects a previously saved RIGHT position', async () => {
-    window.localStorage.setItem('gmj:alarms:panel-position', 'RIGHT');
-    const container = await mount([makeAlarm()], vi.fn());
-    expect(container.querySelector('.alarm-panel--right')).not.toBeNull();
-    expect(container.querySelector('.alarm-panel--left')).toBeNull();
-  });
-
-  it('respects a previously saved HIDDEN position', async () => {
-    window.localStorage.setItem('gmj:alarms:panel-position', 'HIDDEN');
-    const container = await mount([makeAlarm()], vi.fn());
-    expect(container.querySelector('.alarm-panel')).toBeNull();
-    expect(container.querySelector('.alarm-panel__reveal')).not.toBeNull();
-  });
-
-  it('defaults alarmScale to 125%', async () => {
-    const container = await mount([makeAlarm()], vi.fn());
-    const aside = container.querySelector<HTMLElement>('.alarm-panel');
-    expect(aside!.style.getPropertyValue('--alarm-scale')).toBe('1.25');
-  });
-
-  it('offers Normal, Grande and Extra sizes and persists the choice', async () => {
-    const container = await mount([makeAlarm()], vi.fn());
-    const aside = container.querySelector<HTMLElement>('.alarm-panel');
-
-    await act(async () => {
-      findScaleButton(container, 'Normal').click();
-    });
-    expect(aside!.style.getPropertyValue('--alarm-scale')).toBe('1');
-    expect(window.localStorage.getItem('gmj:alarms:panel-scale')).toBe('100');
-
-    await act(async () => {
-      findScaleButton(container, 'Grande').click();
-    });
-    expect(aside!.style.getPropertyValue('--alarm-scale')).toBe('1.25');
-    expect(window.localStorage.getItem('gmj:alarms:panel-scale')).toBe('125');
-
-    await act(async () => {
-      findScaleButton(container, 'Extra').click();
-    });
-    expect(aside!.style.getPropertyValue('--alarm-scale')).toBe('1.5');
-    expect(window.localStorage.getItem('gmj:alarms:panel-scale')).toBe('150');
-  });
-
-  it('restores a persisted alarmScale from localStorage', async () => {
-    window.localStorage.setItem('gmj:alarms:panel-scale', '150');
-    const container = await mount([makeAlarm()], vi.fn());
-    const aside = container.querySelector<HTMLElement>('.alarm-panel');
-    expect(aside!.style.getPropertyValue('--alarm-scale')).toBe('1.5');
-    expect(findScaleButton(container, 'Extra').getAttribute('aria-pressed')).toBe('true');
-  });
-
-  it('scales both active and resolved alarm sections', async () => {
-    const resolved = [makeResolvedAlarm({ id: 'r1' })];
-    const container = await mount([makeAlarm()], vi.fn(), resolved);
-
-    await act(async () => {
-      findScaleButton(container, 'Extra').click();
-    });
-
-    const aside = container.querySelector<HTMLElement>('.alarm-panel');
-    expect(aside!.style.getPropertyValue('--alarm-scale')).toBe('1.5');
-    expect(aside!.querySelector('.alarm-panel__item')).not.toBeNull();
-    expect(aside!.querySelector('.alarm-panel__resolved')).not.toBeNull();
-  });
-
-  it('shows at most the 3 most recent resolved alarms', async () => {
-    const resolved = [
-      makeResolvedAlarm({ id: 'r1' }),
-      makeResolvedAlarm({ id: 'r2' }),
-      makeResolvedAlarm({ id: 'r3' }),
-      makeResolvedAlarm({ id: 'r4' }),
-      makeResolvedAlarm({ id: 'r5' }),
-    ];
-    const container = await mount([], vi.fn(), resolved);
-
-    const items = [
-      ...container.querySelectorAll<HTMLButtonElement>('.alarm-panel__resolved'),
-    ];
-    expect(items).toHaveLength(3);
-    expect(container.querySelectorAll('.alarm-panel__resolved-body')).toHaveLength(3);
-  });
-
-  it('orders resolved alarms by endedAt descending', async () => {
-    const resolved = [
-      makeResolvedAlarm({
-        id: 'oldest',
-        deviceName: 'OLDEST',
-        endedAt: new Date(2026, 8, 16, 8, 0, 0).toISOString(),
-      }),
-      makeResolvedAlarm({
-        id: 'newest',
-        deviceName: 'NEWEST',
-        endedAt: new Date(2026, 8, 16, 12, 0, 0).toISOString(),
-      }),
-      makeResolvedAlarm({
-        id: 'middle',
-        deviceName: 'MIDDLE',
-        endedAt: new Date(2026, 8, 16, 10, 0, 0).toISOString(),
+  it('alarme reconhecido continua ativo, atenuado e sem novo ACK', async () => {
+    activeFixture = [
+      alarmItem({
+        state: 'ACTIVE_ACKNOWLEDGED',
+        acknowledgedAt: new Date(NOW - 30 * MINUTE).toISOString(),
+        acknowledgedBy: 'operador.noite',
       }),
     ];
-    const container = await mount([], vi.fn(), resolved);
-
-    const names = [
-      ...container.querySelectorAll<HTMLElement>(
-        '.alarm-panel__resolved-body .alarm-panel__device',
-      ),
-    ].map((node) => node.textContent);
-    expect(names).toEqual(['NEWEST', 'MIDDLE', 'OLDEST']);
+    await reload();
+    expect(container.querySelector('.alarm-panel__row--ack')).not.toBeNull();
+    expect(container.textContent).toContain('✓ RECONHECIDO por operador.noite');
+    expect(hasButton(container, 'Reconhecer')).toBe(false);
+    expect(container.querySelectorAll('.alarm-panel__section--resolved')).toHaveLength(0);
   });
 
-  it('does not count resolved alarms in the ALARMES badge', async () => {
-    const resolved = [
-      makeResolvedAlarm({ id: 'r1' }),
-      makeResolvedAlarm({ id: 'r2' }),
-      makeResolvedAlarm({ id: 'r3' }),
-    ];
-    const container = await mount(
-      [makeAlarm(), makeAlarm({ id: 'alarm-2' })],
-      vi.fn(),
-      resolved,
-    );
-
-    const count = container.querySelector('.alarm-panel__count');
-    expect(count).not.toBeNull();
-    expect(count!.textContent).toBe('2');
-    expect(container.textContent).toContain('Resolvidos recentemente');
-  });
-
-  it('does not show the resolved section when there are no resolved alarms', async () => {
-    const container = await mount([makeAlarm()], vi.fn(), []);
-    expect(container.querySelector('.alarm-panel__section--resolved')).toBeNull();
-    expect(container.querySelector('.alarm-panel__resolved')).toBeNull();
-  });
-
-  it('shows resolved alarms even when there are no active alarms', async () => {
-    const resolved = [makeResolvedAlarm({ id: 'r1' })];
-    const container = await mount([], vi.fn(), resolved);
-
-    expect(container.textContent).toContain('Sem alarmes ativos');
-    expect(container.textContent).toContain('Resolvidos recentemente');
-    expect(container.textContent).toContain('SW-JDM-01');
-  });
-
-  it('renders resolved duration and resolution time', async () => {
-    const startedAt = new Date(2026, 8, 16, 8, 37, 43);
-    const resolved = [
-      makeResolvedAlarm({
-        id: 'r1',
-        startedAt: startedAt.toISOString(),
-        endedAt: new Date(startedAt.getTime() + 3 * 60_000 + 27_000).toISOString(),
-      }),
-    ];
-    const container = await mount([], vi.fn(), resolved);
-
-    expect(container.textContent).toContain('Duração 3m27s');
-    expect(container.textContent).toContain('Resolvido às');
-  });
-
-  it('clicking a resolved alarm asks the map to focus it', async () => {
-    const onFocus = vi.fn();
-    const resolved = makeResolvedAlarm({ id: 'resolved-click' });
-    const container = await mount([makeAlarm()], onFocus, [resolved]);
-
-    const resolvedItems = [
-      ...container.querySelectorAll<HTMLButtonElement>('.alarm-panel__resolved'),
-    ];
-    expect(resolvedItems).toHaveLength(1);
-
-    await act(async () => {
-      resolvedItems[0]!.click();
-    });
-    expect(onFocus).toHaveBeenCalledTimes(1);
-    expect(onFocus).toHaveBeenCalledWith(resolved);
-  });
-});
-
-describe('cards por tipo, ocorrencias e destino do clique (F8)', () => {
-  const roots: Array<{ root: Root; container: HTMLDivElement }> = [];
-
-  async function mount(
-    alarms: Alarm[],
-    options: {
-      resolvedAlarms?: Alarm[];
-      occurrences?: InterfaceOccurrence[];
-      onFocus?: (alarm: Alarm) => void;
-    } = {},
-  ) {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    roots.push({ root, container });
-    await act(async () => {
-      root.render(
-        <AlarmPanel
-          alarms={alarms}
-          resolvedAlarms={options.resolvedAlarms ?? []}
-          occurrences={options.occurrences ?? []}
-          onFocus={options.onFocus ?? vi.fn()}
-        />,
-      );
-    });
-    return container;
-  }
-
-  function makeOccurrence(overrides: Partial<InterfaceOccurrence> = {}): InterfaceOccurrence {
-    return {
-      kind: 'CRC',
-      deviceId: 'device-1',
-      deviceName: 'BHE-VTA-S6750-MPLS-01',
-      interfaceId: 'iface-9',
-      interfaceName: '100GE1/0/1',
-      interfaceLabel: 'TO-CORE-01',
-      ifIndex: 9,
-      crcDelta: '4',
-      rxDelta: '0',
-      txDelta: '0',
-      ratePerMinute: 0.27,
-      lastOccurrenceAt: new Date(2026, 9, 7, 14, 32, 10).toISOString(),
-      intervals: 1,
-      windowMinutes: 15,
-      ...overrides,
-    };
-  }
-
-  beforeEach(() => {
-    (
-      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
-    ).IS_REACT_ACT_ENVIRONMENT = true;
-    window.localStorage.clear();
-  });
-
-  afterEach(async () => {
-    for (const { root, container } of roots.splice(0)) {
-      await act(async () => root.unmount());
-      container.remove();
-    }
-    window.localStorage.clear();
-  });
-
-  it('mostra o card de ERROS com taxa, limite e ativo desde', async () => {
-    const container = await mount([
-      makeAlarm({
-        type: 'INTERFACE_ERRORS',
+  it('ordena ativos por severidade nao reconhecida antes dos reconhecidos', async () => {
+    activeFixture = [
+      alarmItem({
+        id: 'alarm-ack',
         severity: 'WARNING',
-        metricKey: 'RX',
-        currentValue: 18.4,
-        thresholdValue: 10,
-        metadata: { direction: 'RX', ratePerMinute: 18.4, thresholdPerMinute: 10 },
+        typeLabel: 'ACK',
+        state: 'ACTIVE_ACKNOWLEDGED',
+        acknowledgedAt: new Date(NOW - MINUTE).toISOString(),
       }),
-    ]);
-
-    expect(container.textContent).toContain('ERROS');
-    expect(container.textContent).toContain('RX 18.4 erros/min');
-    expect(container.textContent).toContain('Limite 10/min');
-    expect(container.textContent).toContain('Ativo desde 21:17:32');
-    // Metricos usam "Ativo desde", nunca "Down desde".
-    expect(container.textContent).not.toContain('Down desde');
+      alarmItem({ id: 'alarm-warn', severity: 'WARNING', typeLabel: 'WARN' }),
+      alarmItem({ id: 'alarm-crit', severity: 'CRITICAL', typeLabel: 'CRIT' }),
+    ];
+    await reload();
+    const labels = cards(container, '.alarm-panel__item-body strong').map((node) => node.textContent);
+    expect(labels.slice(0, 3)).toEqual(['CRIT', 'WARN', 'ACK']);
   });
 
-  it('mostra o card de CRC/FCS com taxa, limite e delta do periodo', async () => {
-    const container = await mount([
-      makeAlarm({
-        type: 'INTERFACE_CRC',
-        severity: 'MAJOR',
-        metricKey: 'FCS',
-        currentValue: 7.2,
-        thresholdValue: 2,
-        metadata: { direction: 'RX', ratePerMinute: 7.2, thresholdPerMinute: 2, delta: '36' },
+  it('reconhece o alarme pelo endpoint da F9.1 sem resolve-lo', async () => {
+    await click(findButton(container, 'Reconhecer'));
+    expect(api.acknowledgeAlarm).toHaveBeenCalledWith('alarm-1');
+    activeFixture = [
+      alarmItem({
+        state: 'ACTIVE_ACKNOWLEDGED',
+        acknowledgedAt: new Date(NOW).toISOString(),
+        acknowledgedBy: 'qa-preview',
       }),
-    ]);
-
-    expect(container.textContent).toContain('CRC/FCS');
-    expect(container.textContent).toContain('RX 7.2 CRC/min');
-    expect(container.textContent).toContain('Limite 2/min');
-    expect(container.textContent).toContain('+36 no período');
+    ];
+    await reload();
+    expect(container.textContent).toContain('✓ RECONHECIDO por qa-preview');
+    expect(container.querySelectorAll('.alarm-panel__section--resolved')).toHaveLength(0);
   });
 
-  it('card de CRC com threshold 0 mostra QUALQUER OCORRÊNCIA (preset delta > 0)', async () => {
-    const container = await mount([
-      makeAlarm({
-        type: 'INTERFACE_CRC',
-        severity: 'WARNING',
-        metricKey: 'FCS',
-        currentValue: 0.5,
-        thresholdValue: 0,
-        metadata: { direction: 'RX', ratePerMinute: 0.5, thresholdPerMinute: 0, delta: '1' },
-      }),
-    ]);
+  it('mostra o card de ERROS com taxa, limite e delta do periodo', async () => {
+    activeFixture = [
+      metricAlarm({ type: 'INTERFACE_ERRORS', typeLabel: 'ERROS', severity: 'MAJOR' }),
+    ];
+    await reload();
+    const text = container.textContent ?? '';
+    expect(text).toContain('RX 0.8 erros/min');
+    expect(text).toContain('Limite 5/min');
+    expect(text).toContain('+17 no período');
+  });
 
-    expect(container.textContent).toContain('RX 0.5 CRC/min');
+  it('card de CRC com limite 0 mostra QUALQUER OCORRÊNCIA (preset delta > 0)', async () => {
+    activeFixture = [
+      metricAlarm({
+        alarm: alarmDetail({
+          metricKey: 'FCS',
+          direction: 'RX',
+          ratePerMinute: 0,
+          thresholdPerMinute: 0,
+        }),
+      }),
+    ];
+    await reload();
     expect(container.textContent).toContain('QUALQUER OCORRÊNCIA');
-    expect(container.textContent).not.toContain('Limite 0/min');
   });
 
-  it('mostra o card de DISCARDS com a taxa da direcao', async () => {
-    const container = await mount([
-      makeAlarm({
+  it('card de DISCARDS mostra a direcao avaliada', async () => {
+    activeFixture = [
+      metricAlarm({
         type: 'INTERFACE_DISCARDS',
-        severity: 'WARNING',
-        metricKey: 'TX',
-        currentValue: 42.1,
-        thresholdValue: 20,
-        metadata: { direction: 'TX', ratePerMinute: 42.1, thresholdPerMinute: 20 },
+        typeLabel: 'DISCARDS',
+        alarm: alarmDetail({
+          metricKey: 'DISCARDS',
+          direction: 'TX',
+          ratePerMinute: 42,
+          thresholdPerMinute: 20,
+        }),
       }),
-    ]);
-
-    expect(container.textContent).toContain('DESCARTES');
-    expect(container.textContent).toContain('TX 42.1 discards/min');
+    ];
+    await reload();
+    expect(container.textContent).toContain('TX 42 discards/min');
     expect(container.textContent).toContain('Limite 20/min');
   });
 
-  it('card optico por proximidade mostra RX, LOW, margem e % do limite', async () => {
-    const container = await mount([
-      makeAlarm({
-        type: 'OPTICAL_RX_DEGRADATION',
-        severity: 'WARNING',
-        metricKey: 'RX',
-        metadata: {
-          direction: 'RX',
-          rxPowerDbm: -10.02,
-          rxLowAlarmDbm: -18,
-          marginDb: 7.98,
-          proximityPercent: 91.3,
-          trendDropDb: 0,
-          triggerReasons: ['PROXIMITY'],
-        },
-      }),
-    ]);
-
-    expect(container.textContent).toContain('RX OPTICO');
-    expect(container.textContent).toContain('RX atual -10.02 dBm · LOW -18.00 dBm');
-    expect(container.textContent).toContain('Margem 8.0 dB');
-    expect(container.textContent).toContain('91.3% do limite');
-  });
-
-  it('card optico por queda rapida mostra a queda na janela e nao esconde a lane', async () => {
-    const container = await mount([
-      makeAlarm({
-        type: 'OPTICAL_RX_DEGRADATION',
-        severity: 'MAJOR',
-        metricKey: 'RX_LANE_2',
-        metadata: {
-          direction: 'RX',
-          lane: 2,
-          rxPowerDbm: -10.1,
-          rxLowAlarmDbm: -20,
-          marginDb: 9.9,
-          proximityPercent: 54,
-          trendDropDb: 5.1,
-          trendWindowMinutes: 30,
-          triggerReasons: ['RAPID_DROP'],
-        },
-      }),
-    ]);
-
-    expect(container.textContent).toContain('40GE0/0/1 · Lane 2');
-    expect(container.textContent).toContain('↓ 5.1 dB em 30 min');
-    expect(container.textContent).not.toContain('% do limite');
-  });
-
-  it('card optico com proximidade E queda mostra os DOIS motivos', async () => {
-    const container = await mount([
-      makeAlarm({
-        type: 'OPTICAL_RX_DEGRADATION',
-        severity: 'MAJOR',
-        metadata: {
-          direction: 'RX',
-          rxPowerDbm: -12.83,
-          rxLowAlarmDbm: -14,
-          marginDb: 1.17,
-          proximityPercent: 91,
-          trendDropDb: 5.13,
-          trendWindowMinutes: 30,
-          triggerReasons: ['RAPID_DROP', 'PROXIMITY'],
-        },
-      }),
-    ]);
-
-    expect(container.textContent).toContain('91% do limite');
-    expect(container.textContent).toContain('↓ 5.1 dB em 30 min');
-  });
-
-  it('mostra ocorrencias recentes de CRC e discards com ultima ocorrencia e taxa', async () => {
-    const container = await mount([makeAlarm()], {
-      occurrences: [
-        makeOccurrence(),
-        makeOccurrence({
-          kind: 'DISCARDS',
-          interfaceId: 'iface-10',
-          interfaceName: '100GE1/0/2',
-          crcDelta: '0',
-          rxDelta: '23',
-          txDelta: '0',
-          ratePerMinute: 1.53,
-          lastOccurrenceAt: new Date(2026, 9, 7, 14, 36, 20).toISOString(),
+  it('card optico escalar nao mostra lane', async () => {
+    activeFixture = [
+      opticalItem({
+        alarm: alarmDetail({
+          optical: opticalDetail({
+            lane: null,
+            rxPowerDbm: -11.5,
+            rxHighAlarmDbm: null,
+            marginDb: 0.81,
+            proximityPercent: 88,
+            trendDropDb: null,
+            trendWindowMinutes: null,
+            triggerReasons: ['PROXIMITY'],
+          }),
         }),
-      ],
+      }),
+    ];
+    await reload();
+    const text = container.textContent ?? '';
+    expect(text).toContain('RX atual -11.50 dBm');
+    expect(text).toContain('LOW -12.31 dBm');
+    expect(text).toContain('Margem 0.8 dB');
+    expect(text).not.toContain('Lane');
+  });
+
+  it('card optico por lane mostra lane, RX, LOW, HIGH, proximidade e queda', async () => {
+    activeFixture = [opticalItem()];
+    await reload();
+    const text = container.textContent ?? '';
+    expect(text).toContain('Lane 2');
+    expect(text).toContain('RX atual -10.02 dBm');
+    expect(text).toContain('HIGH +3.40 dBm');
+    expect(text).toContain('Proximidade 91.3%');
+    expect(text).toContain('Queda ↓ 4.3 dB / 30 min');
+  });
+
+  it('mostra apenas a proximidade quando a queda nao sustenta o alarme', async () => {
+    activeFixture = [
+      opticalItem({
+        alarm: alarmDetail({
+          optical: opticalDetail({ triggerReasons: ['PROXIMITY'] }),
+        }),
+      }),
+    ];
+    await reload();
+    expect(container.textContent).toContain('Proximidade 91.3%');
+    expect(container.textContent).not.toContain('Queda');
+  });
+
+  it('mostra apenas a queda quando so RAPID_DROP sustenta o alarme', async () => {
+    activeFixture = [
+      opticalItem({
+        alarm: alarmDetail({
+          optical: opticalDetail({ triggerReasons: ['RAPID_DROP'] }),
+        }),
+      }),
+    ];
+    await reload();
+    expect(container.textContent).toContain('Queda ↓ 4.3 dB / 30 min');
+    expect(container.textContent).not.toContain('Proximidade');
+  });
+
+  it('card de ocorrencia CRC mostra deltas, ocorrencias, taxa, pico e ultima', async () => {
+    occurrenceFixture = [occurrenceItem()];
+    await reload();
+    const text = container.textContent ?? '';
+    expect(text).toContain('OCORRÊNCIA');
+    expect(text).toContain('CRC/FCS');
+    expect(text).toContain('+17 CRC');
+    expect(text).toContain('4 ocorrências');
+    expect(text).toContain('Atual 0.8/min');
+    expect(text).toContain('Pico 4.2/min');
+    expect(text).toContain('Última há 3 min');
+    expect(cards(container, '.alarm-panel__item--occurrence')).toHaveLength(1);
+  });
+
+  it('agrega RX e TX de discard em UM card, sem severidade inventada', async () => {
+    activeFixture = [];
+    occurrenceFixture = [discardItem()];
+    await reload();
+    const text = container.textContent ?? '';
+    expect(text).toContain('DISCARDS');
+    expect(text).toContain('RX +23 · TX +1364');
+    expect(text).toContain('6 ocorrências');
+    expect(text).toContain('Atual 90.9/min');
+    expect(text).toContain('Pico 142.3/min');
+    expect(cards(container, '.alarm-panel__item--occurrence')).toHaveLength(1);
+    const card = container.querySelector('.alarm-panel__item--occurrence')!;
+    expect(card.textContent).toContain('OCORRÊNCIA');
+    // O card de ocorrencia nunca ganha severidade de regra.
+    expect(card.textContent).not.toContain('CRIT');
+    expect(card.textContent).not.toContain('MAJOR');
+    expect(card.textContent).not.toContain('WARN');
+  });
+
+  it('ocorrencia vigente a 23h59 continua no painel', async () => {
+    occurrenceFixture = [
+      occurrenceItem({ lastSeenAt: new Date(NOW - (23 * HOUR + 59 * MINUTE)).toISOString() }),
+    ];
+    await reload();
+    expect(container.textContent).toContain('CRC/FCS');
+    expect(container.textContent).toContain('Última há 23h59m');
+  });
+
+  it('ocorrencia parada ha mais de 24h nao aparece no painel', async () => {
+    occurrenceFixture = [occurrenceItem({ lastSeenAt: new Date(NOW - 25 * HOUR).toISOString() })];
+    await reload();
+    expect(container.querySelectorAll('.alarm-panel__item--occurrence')).toHaveLength(0);
+    expect(container.textContent).not.toContain('Ocorrências não reconhecidas');
+  });
+
+  it('ACK de ocorrencia reconhece e tira o card do painel', async () => {
+    activeFixture = [];
+    occurrenceFixture = [occurrenceItem()];
+    await reload();
+    await click(findButton(container, 'Reconhecer'));
+    expect(api.acknowledgeOperationalOccurrence).toHaveBeenCalledWith('occ-1');
+    occurrenceFixture = [];
+    await reload();
+    expect(container.querySelectorAll('.alarm-panel__item--occurrence')).toHaveLength(0);
+  });
+
+  it('novo episodio depois do ACK aparece como card novo', async () => {
+    occurrenceFixture = [];
+    await reload();
+    occurrenceFixture = [occurrenceItem({ id: 'occ-2', lastSeenAt: new Date(NOW).toISOString() })];
+    await reload();
+    expect(cards(container, '.alarm-panel__item--occurrence')).toHaveLength(1);
+    expect(container.textContent).toContain('Última agora');
+  });
+
+  it('conta somente alarmes nos contadores e mostra EVENTOS separado', async () => {
+    activeFixture = [
+      alarmItem({ id: 'a1', severity: 'CRITICAL' }),
+      alarmItem({ id: 'a2', severity: 'MAJOR' }),
+      alarmItem({
+        id: 'a3',
+        severity: 'MAJOR',
+        state: 'ACTIVE_ACKNOWLEDGED',
+        acknowledgedAt: new Date(NOW).toISOString(),
+      }),
+    ];
+    occurrenceFixture = [occurrenceItem(), discardItem()];
+    summaryFixture = summary({
+      alarmsActive: 3,
+      alarmsActiveCritical: 1,
+      alarmsActiveMajor: 2,
+      alarmsActiveUnacknowledged: 2,
+      alarmsActiveAcknowledged: 1,
+      occurrencesUnacknowledged: 2,
     });
-
-    expect(container.textContent).toContain('Ocorrências recentes');
-    expect(container.textContent).toContain('CRC/FCS · +4 CRC');
-    expect(container.textContent).toContain('Última ocorrência 14:32:10');
-    expect(container.textContent).toContain('DISCARDS · RX +23 · TX +0');
-    expect(container.textContent).toContain('Última ocorrência 14:36:20');
+    await reload();
+    const counters = cards(container, '.alarm-panel__counter').map((node) =>
+      node.textContent?.trim(),
+    );
+    expect(counters).toEqual(['CRIT 1', 'MAJOR 2', 'WARN 0', 'EVENTOS 2']);
+    expect(container.querySelector('.alarm-panel__count')?.textContent).toBe('3');
   });
 
-  it('sem ocorrencias recentes a secao nao aparece', async () => {
-    const container = await mount([makeAlarm()]);
-    expect(container.querySelector('.alarm-panel__list--occurrences')).toBeNull();
+  it('resolvido tecnico aparece com normalizacao e duracao', async () => {
+    resolvedFixture = [
+      alarmItem({
+        id: 'alarm-res',
+        state: 'RESOLVED',
+        startedAt: new Date(NOW - 2 * HOUR).toISOString(),
+        lastSeenAt: new Date(NOW - 10 * MINUTE).toISOString(),
+        endedAt: new Date(NOW - 10 * MINUTE).toISOString(),
+      }),
+    ];
+    await reload();
+    const text = container.textContent ?? '';
+    expect(text).toContain('RESOLVIDO');
+    expect(text).toContain('Normalizado (recuperação técnica)');
+    expect(text).toContain('Duração');
+    expect(text).toContain('Resolvido às');
   });
 
-  it('card resolvido optico mostra ultimo RX, LOW, queda e duracao', async () => {
-    const startedAt = new Date(2026, 8, 16, 14, 15, 0);
-    const container = await mount([], {
-      resolvedAlarms: [
-        makeResolvedAlarm({
-          type: 'OPTICAL_RX_DEGRADATION',
-          severity: 'MAJOR',
-          startedAt: startedAt.toISOString(),
-          endedAt: new Date(startedAt.getTime() + 17 * 60_000).toISOString(),
-          metadata: {
-            direction: 'RX',
-            lane: 2,
-            rxPowerDbm: -17.3,
-            rxLowAlarmDbm: -18,
-            trendDropDb: 4.8,
+  it('resolvido administrativo mostra o motivo e marca SUPRIMIDO', async () => {
+    suppressedFixture = [
+      alarmItem({
+        id: 'alarm-sup',
+        state: 'SUPPRESSED',
+        endedAt: new Date(NOW - 5 * MINUTE).toISOString(),
+        alarm: alarmDetail({
+          resolutionReason: 'MANUAL_SUPPRESSION',
+          suppression: {
+            id: 'sup-1',
+            mode: 'UNTIL_CLEAR',
+            reason: 'MAINTENANCE',
+            note: 'janela do cliente',
+            suppressedBy: 'operador.noite',
+            suppressedAt: new Date(NOW - 5 * MINUTE).toISOString(),
+            expiresAt: null,
           },
         }),
-      ],
-    });
-
-    expect(container.textContent).toContain('RESOLVIDO · RX OPTICO');
-    expect(container.textContent).toContain('Último RX -17.30 dBm · LOW -18.00 dBm · Queda 4.8 dB');
-    expect(container.textContent).toContain('Duração 17m00s');
+      }),
+    ];
+    await reload();
+    const text = container.textContent ?? '';
+    expect(text).toContain('SUPRIMIDO');
+    expect(text).toContain('Manutenção');
   });
 
-  it('card resolvido por regra desativada mostra o motivo administrativo', async () => {
-    const container = await mount([], {
-      resolvedAlarms: [
-        makeResolvedAlarm({
-          endedAt: new Date(2026, 8, 16, 21, 0, 0).toISOString(),
-          metadata: { resolutionReason: 'RULE_DISABLED' },
+  it('resolvidos recentes entram misturados e limitados a 3, do mais novo', async () => {
+    resolvedFixture = [
+      alarmItem({
+        id: 'r1',
+        typeLabel: 'RES-1',
+        state: 'RESOLVED',
+        endedAt: new Date(NOW - 30 * MINUTE).toISOString(),
+      }),
+      alarmItem({
+        id: 'r2',
+        typeLabel: 'RES-2',
+        state: 'RESOLVED',
+        endedAt: new Date(NOW - 20 * MINUTE).toISOString(),
+      }),
+      alarmItem({
+        id: 'r3',
+        typeLabel: 'RES-3',
+        state: 'RESOLVED',
+        endedAt: new Date(NOW - 40 * MINUTE).toISOString(),
+      }),
+    ];
+    suppressedFixture = [
+      alarmItem({
+        id: 's1',
+        typeLabel: 'SUP-1',
+        state: 'SUPPRESSED',
+        endedAt: new Date(NOW - 2 * MINUTE).toISOString(),
+      }),
+    ];
+    await reload();
+    const labels = cards(container, '.alarm-panel__resolved-body strong').map(
+      (node) => node.textContent,
+    );
+    expect(labels).toHaveLength(3);
+    expect(labels[0]).toContain('SUP-1');
+    expect(labels[1]).toContain('RES-2');
+    expect(labels[2]).toContain('RES-1');
+  });
+
+  it('limita ativos a 5 e ocorrencias a 5 indicando quanto ficou de fora', async () => {
+    activeFixture = Array.from({ length: 6 }, (_, index) => alarmItem({ id: `a${index}` }));
+    occurrenceFixture = Array.from({ length: 7 }, (_, index) =>
+      occurrenceItem({ id: `o${index}`, lastSeenAt: new Date(NOW - index * MINUTE).toISOString() }),
+    );
+    activeTotal = 6;
+    occurrenceTotal = 7;
+    await reload();
+    expect(cards(container, '.alarm-panel__item:not(.alarm-panel__item--occurrence)')).toHaveLength(5);
+    expect(cards(container, '.alarm-panel__item--occurrence')).toHaveLength(5);
+    expect(container.textContent).toContain('+1');
+    expect(container.textContent).toContain('+2');
+  });
+
+  it('abre o detalhe reutilizando o drawer da Central', async () => {
+    await click(container.querySelector<HTMLButtonElement>('.alarm-panel__item')!);
+    const drawer = container.querySelector('.alerts-drawer');
+    expect(drawer).not.toBeNull();
+    expect(drawer!.textContent).toContain('RNS-FLOR-6730-MPLS-01');
+    expect(drawer!.textContent).toContain('LINK DOWN');
+    expect(drawer!.textContent).toContain('CLIENTE-ACME');
+  });
+
+  it('retirar abre o modal da F9.1 e envia o payload escolhido', async () => {
+    await click(findButton(container, 'Retirar'));
+    const modal = container.querySelector('.alerts-modal') as HTMLElement;
+    expect(modal.textContent).toContain('RETIRAR / SUPRIMIR ALARME');
+    const select = modal.querySelectorAll('select')[1] as HTMLSelectElement;
+    await act(async () => {
+      select.value = 'MAINTENANCE';
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    const note = modal.querySelector('input[type="text"]') as HTMLInputElement;
+    await act(async () => {
+      // Setter nativo: sem ele o React nao enxerga o valor do input controlado.
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!;
+      setter.call(note, 'janela do cliente');
+      note.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    await settle();
+    await click(findButton(modal, 'SUPRIMIR'));
+    expect(api.suppressAlarm).toHaveBeenCalledWith('alarm-1', {
+      mode: 'UNTIL_CLEAR',
+      reason: 'MAINTENANCE',
+      note: 'janela do cliente',
+      expiresAt: null,
+    });
+  });
+
+  it('depois de suprimir o alarme sai dos ativos e nao vira recuperacao tecnica', async () => {
+    await click(findButton(container, 'Retirar'));
+    const modal = container.querySelector('.alerts-modal') as HTMLElement;
+    await click(findButton(modal, 'SUPRIMIR'));
+    expect(api.suppressAlarm).toHaveBeenCalled();
+    activeFixture = [];
+    suppressedFixture = [
+      alarmItem({
+        id: 'alarm-1',
+        state: 'SUPPRESSED',
+        endedAt: new Date(NOW).toISOString(),
+        alarm: alarmDetail({
+          resolutionReason: 'MANUAL_SUPPRESSION',
+          suppression: {
+            id: 'sup-1',
+            mode: 'UNTIL_CLEAR',
+            reason: 'INTENTIONAL_SHUTDOWN',
+            note: null,
+            suppressedBy: 'qa',
+            suppressedAt: new Date(NOW).toISOString(),
+            expiresAt: null,
+          },
         }),
-      ],
+      }),
+    ];
+    await reload();
+    expect(container.textContent).not.toContain('Down desde');
+    expect(container.textContent).toContain('SUPRIMIDO');
+  });
+
+  it('VER TODOS OS ALERTAS abre o workspace sem tirar o mapa do contexto', async () => {
+    await click(findButton(container, 'VER TODOS OS ALERTAS'));
+    expect(useMapStore.getState().view).toBe('ALERTS');
+    expect(useMapStore.getState().map?.id).toBe('map-1');
+  });
+
+  it('estado vazio vira faixa compacta com atalho para a Central', async () => {
+    activeFixture = [];
+    occurrenceFixture = [];
+    await reload();
+    const strip = container.querySelector('.alarm-panel--compact') as HTMLElement;
+    expect(strip.textContent).toContain('Alarmes');
+    expect(strip.textContent).toContain('Nenhum alerta exigindo atenção.');
+    await click(findButton(strip, 'Ver Central'));
+    expect(useMapStore.getState().view).toBe('ALERTS');
+  });
+
+  it('loading discreto enquanto a Central nao responde', async () => {
+    await act(async () => root.unmount());
+    api.getAlertCenter.mockImplementation(() => new Promise<AlertCenterResponse>(() => undefined));
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false, gcTime: 0 }, mutations: { retry: false } },
     });
-
-    expect(container.textContent).toContain('regra desativada');
-  });
-
-  it('mapeia o destino do clique por tipo (optico x metricas)', () => {
-    expect(alarmDrawerSection(makeAlarm({ type: 'OPTICAL_RX_DEGRADATION' }))).toBe('OPTICAL');
-    expect(alarmDrawerSection(makeAlarm({ type: 'INTERFACE_CRC' }))).toBe('METRICS');
-    expect(alarmDrawerSection(makeAlarm({ type: 'INTERFACE_DISCARDS' }))).toBe('METRICS');
-    expect(alarmDrawerSection(makeAlarm({ type: 'INTERFACE_ERRORS' }))).toBe('METRICS');
-    expect(alarmDrawerSection(makeAlarm({ type: 'INTERFACE_DOWN' }))).toBeNull();
-  });
-});
-
-describe('ACK e retirada/supressao no painel (F9.1)', () => {
-  const roots: Array<{ root: Root; container: HTMLDivElement }> = [];
-
-  async function mount(
-    alarms: Alarm[],
-    options: {
-      onFocus?: (alarm: Alarm) => void;
-      onAcknowledge?: (alarm: Alarm) => void;
-      onSuppress?: (alarm: Alarm, payload: SuppressAlarmPayload) => void;
-      resolvedAlarms?: Alarm[];
-    } = {},
-  ) {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const root = createRoot(container);
-    roots.push({ root, container });
+    root = createRoot(container);
     await act(async () => {
-      root.render(
-        <AlarmPanel
-          alarms={alarms}
-          resolvedAlarms={options.resolvedAlarms ?? []}
-          onFocus={options.onFocus ?? vi.fn()}
-          {...(options.onAcknowledge ? { onAcknowledge: options.onAcknowledge } : {})}
-          {...(options.onSuppress ? { onSuppress: options.onSuppress } : {})}
-        />,
-      );
+      root.render(createElement(QueryClientProvider, { client }, createElement(AlarmPanel)));
     });
-    return container;
-  }
+    expect(container.textContent).toContain('Carregando alertas…');
+    expect(container.textContent).not.toContain('Não foi possível carregar alertas.');
+  });
 
-  function buttons(container: HTMLElement, label: string): HTMLButtonElement[] {
-    return [...container.querySelectorAll<HTMLButtonElement>('button')].filter((item) =>
-      item.textContent?.toLowerCase().includes(label.toLowerCase()),
+  it('falha da Central mostra erro seguro e retry sem quebrar o mapa', async () => {
+    api.getAlertCenter.mockRejectedValue(new Error('API fora'));
+    await reload();
+    expect(container.textContent).toContain('Não foi possível carregar alertas.');
+    expect(container.textContent).not.toContain('Error');
+    const error = container.querySelector('.alarm-panel__error') as HTMLElement;
+    api.getAlertCenter.mockImplementation(async () => response([alarmItem()]));
+    await click(findButton(error, 'Tentar novamente'));
+    expect(container.textContent).toContain('LINK DOWN');
+  });
+
+  it('badge flutuante conta ativos nao reconhecidos + ocorrencias vigentes', async () => {
+    occurrenceFixture = [occurrenceItem()];
+    summaryFixture = summary({
+      alarmsActive: 4,
+      alarmsActiveCritical: 2,
+      alarmsActiveUnacknowledged: 2,
+      alarmsActiveAcknowledged: 2,
+      occurrencesUnacknowledged: 1,
+    });
+    await reload();
+    await click(
+      container.querySelector<HTMLButtonElement>(
+        '.alarm-panel__actions button[aria-label="Ocultar painel de alertas"]',
+      )!,
     );
-  }
+    const reveal = container.querySelector('.alarm-panel__reveal') as HTMLButtonElement;
+    expect(reveal.textContent).toContain('3');
+    expect(reveal.className).toContain('alarm-panel__reveal--active');
+    await click(reveal);
+    expect(container.querySelector('.alarm-panel')).not.toBeNull();
+  });
 
-  function click(element: HTMLElement): Promise<void> {
-    return act(async () => {
-      element.click();
-      await new Promise((resolve) => setTimeout(resolve, 0));
+  it('mantem escala e posicao do painel (Normal, Grande, Extra)', async () => {
+    expect(container.querySelector('.alarm-panel__scale .is-active')?.textContent).toBe('Grande');
+    await click(findButton(container, 'Extra'));
+    expect(window.localStorage.getItem('gmj:alarms:panel-scale')).toBe('150');
+    expect(findButton(container, 'Extra').className).toContain('is-active');
+    expect(
+      (container.querySelector('.alarm-panel') as HTMLElement).style.getPropertyValue(
+        '--alarm-scale',
+      ),
+    ).toBe('1.5');
+  });
+
+  it('respeita posicao salva a direita', async () => {
+    window.localStorage.setItem('gmj:alarms:panel-position', 'RIGHT');
+    await act(async () => root.unmount());
+    root = createRoot(container);
+    await render();
+    expect(container.querySelector('.alarm-panel--right')).not.toBeNull();
+  });
+
+  it('abrir interface usa a mesma acao da Central (foca a interface no mapa)', async () => {
+    activeFixture = [metricAlarm()];
+    await reload();
+    await click(container.querySelector<HTMLButtonElement>('.alarm-panel__item')!);
+    await click(findButton(container, 'ABRIR INTERFACE'));
+    expect(useMapStore.getState().selection).toEqual({
+      kind: 'interface',
+      id: 'iface-1',
+      deviceId: 'dev-1',
     });
-  }
-
-  function typeInto(input: HTMLInputElement, value: string): void {
-    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
-    setter?.call(input, value);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-  }
-
-  function selectValue(select: HTMLSelectElement, value: string): void {
-    const setter = Object.getOwnPropertyDescriptor(
-      window.HTMLSelectElement.prototype,
-      'value',
-    )?.set;
-    setter?.call(select, value);
-    select.dispatchEvent(new Event('change', { bubbles: true }));
-  }
-
-  beforeEach(() => {
-    (
-      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
-    ).IS_REACT_ACT_ENVIRONMENT = true;
-    window.localStorage.clear();
+    expect(useMapStore.getState().interfaceSectionRequest?.section).toBe('METRICS');
   });
 
-  afterEach(async () => {
-    for (const { root, container } of roots.splice(0)) {
-      await act(async () => root.unmount());
-      container.remove();
-    }
-    window.localStorage.clear();
-  });
-
-  it('reconhece o alarme sem retira-lo da lista', async () => {
-    const onAcknowledge = vi.fn();
-    const container = await mount([makeAlarm()], { onAcknowledge });
-
-    await click(buttons(container, 'Reconhecer')[0]!);
-
-    expect(onAcknowledge).toHaveBeenCalledTimes(1);
-    expect(onAcknowledge.mock.calls[0]?.[0]).toMatchObject({ id: 'alarm-1' });
-    expect(container.querySelectorAll('.alarm-panel__item')).toHaveLength(1);
-  });
-
-  it('mostra o estado RECONHECIDO, reduz o destaque e nao oferece ACK de novo', async () => {
-    const acknowledgedAt = new Date(2026, 9, 7, 14, 32, 10).toISOString();
-    const container = await mount(
-      [makeAlarm({ acknowledgedAt, acknowledgedBy: 'qa-preview' })],
-      { onAcknowledge: vi.fn(), onSuppress: vi.fn() },
-    );
-
-    const item = container.querySelector('.alarm-panel__item')!;
-    expect(item.textContent).toContain('RECONHECIDO — qa-preview às 14:32:10');
-    expect(container.querySelector('.alarm-panel__row--ack')).not.toBeNull();
-    expect(buttons(container, 'Reconhecer')).toHaveLength(0);
-    expect(buttons(container, 'Retirar')).toHaveLength(1);
-  });
-
-  it('abre o formulario de retirada e envia UNTIL_CLEAR com o motivo escolhido', async () => {
-    const onSuppress = vi.fn();
-    const container = await mount([makeAlarm()], { onSuppress });
-
-    await click(buttons(container, 'Retirar')[0]!);
-    const form = container.querySelector<HTMLFormElement>('.alarm-panel__suppress');
-    expect(form).not.toBeNull();
-
-    await act(async () => {
-      selectValue(form!.querySelectorAll('select')[1]!, 'MAINTENANCE');
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    await act(async () => {
-      typeInto(form!.querySelector<HTMLInputElement>('input[type="text"]')!, 'janela do cliente');
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-    await click(buttons(container, 'SUPRIMIR')[0]!);
-
-    expect(onSuppress).toHaveBeenCalledWith(
-      expect.objectContaining({ id: 'alarm-1' }),
-      { mode: 'UNTIL_CLEAR', reason: 'MAINTENANCE', note: 'janela do cliente', expiresAt: null },
-    );
-    expect(container.querySelector('.alarm-panel__suppress')).toBeNull();
-  });
-
-  it('exige horario futuro no modo UNTIL_TIME', async () => {
-    const onSuppress = vi.fn();
-    const container = await mount([makeAlarm()], { onSuppress });
-
-    await click(buttons(container, 'Retirar')[0]!);
-    const form = container.querySelector<HTMLFormElement>('.alarm-panel__suppress')!;
-
-    await act(async () => {
-      selectValue(form.querySelectorAll('select')[0]!, 'UNTIL_TIME');
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-
-    const submit = buttons(container, 'SUPRIMIR')[0]!;
-    expect(submit.disabled).toBe(true);
-    expect(container.querySelector('.alarm-panel__suppress-hint')).not.toBeNull();
-
-    const until = new Date(Date.now() + 3_600_000);
-    const local = `${until.getFullYear()}-${String(until.getMonth() + 1).padStart(2, '0')}-${String(
-      until.getDate(),
-    ).padStart(2, '0')}T${String(until.getHours()).padStart(2, '0')}:${String(
-      until.getMinutes(),
-    ).padStart(2, '0')}`;
-    await act(async () => {
-      typeInto(form.querySelector<HTMLInputElement>('input[type="datetime-local"]')!, local);
-      await new Promise((resolve) => setTimeout(resolve, 0));
-    });
-
-    const reopened = container.querySelector<HTMLFormElement>('.alarm-panel__suppress')!;
-    expect(buttons(container, 'SUPRIMIR')[0]!.disabled).toBe(false);
-    await click(buttons(container, 'SUPRIMIR')[0]!);
-
-    expect(onSuppress).toHaveBeenCalledTimes(1);
-    const payload = onSuppress.mock.calls[0]?.[1] as SuppressAlarmPayload;
-    expect(payload.mode).toBe('UNTIL_TIME');
-    expect(payload.reason).toBe('INTENTIONAL_SHUTDOWN');
-    // datetime-local tem precisao de minuto; basta estar dentro da janela pedida.
-    const expiresAtMs = Date.parse(payload.expiresAt as string);
-    expect(expiresAtMs).toBeGreaterThan(Date.now());
-    expect(Math.abs(expiresAtMs - until.getTime())).toBeLessThan(60_000);
-    expect(reopened).not.toBeNull();
-  });
-
-  it('cancela a retirada sem chamar o handler', async () => {
-    const onSuppress = vi.fn();
-    const container = await mount([makeAlarm()], { onSuppress });
-
-    await click(buttons(container, 'Retirar')[0]!);
-    await click(buttons(container, 'CANCELAR')[0]!);
-
-    expect(onSuppress).not.toHaveBeenCalled();
-    expect(container.querySelector('.alarm-panel__suppress')).toBeNull();
-  });
-
-  it('sem os handlers nao renderiza acoes (painel continua somente leitura)', async () => {
-    const container = await mount([makeAlarm()]);
-
-    expect(buttons(container, 'Reconhecer')).toHaveLength(0);
-    expect(buttons(container, 'Retirar')).toHaveLength(0);
-  });
-
-  it('mostra o motivo administrativo no card de resolvido suprimido', async () => {
-    const startedAt = new Date(2026, 9, 7, 12, 0, 0);
-    const container = await mount([], {
-      resolvedAlarms: [
-        makeAlarm({
-          id: 'resolved-sup',
-          startedAt: startedAt.toISOString(),
-          endedAt: new Date(startedAt.getTime() + 60_000).toISOString(),
-          metadata: { resolutionReason: 'INTENTIONAL_SHUTDOWN' },
-        }),
-      ],
-    });
-
-    const resolved = container.querySelector('.alarm-panel__resolved')!;
-    expect(resolved.textContent).toContain('desligamento intencional');
+  it('sem mapa ativo o alerta avisa sem quebrar o painel', async () => {
+    useMapStore.setState({ map: null, activeMapId: null });
+    activeFixture = [alarmItem({ mapIds: [] })];
+    await reload();
+    await click(container.querySelector<HTMLButtonElement>('.alarm-panel__item')!);
+    await click(findButton(container, 'ABRIR NO MAPA'));
+    expect(useMapStore.getState().toast).toContain('não está em nenhum mapa');
+    expect(container.querySelector('.alarm-panel')).not.toBeNull();
   });
 });

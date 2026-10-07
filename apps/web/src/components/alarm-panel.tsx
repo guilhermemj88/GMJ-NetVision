@@ -2,60 +2,79 @@
 
 import { useMemo, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import {
-  alarmResolutionReasonLabel,
-  alarmSuppressionReasonLabel,
-  alarmTypeLabel,
+  alertCenterAttentionCount,
   formatAlarmDownSince,
   formatAlarmDuration,
-  type Alarm,
   type AlarmPanelPosition,
-  type AlarmSuppressionMode,
-  type AlarmSuppressionReason,
-  type InterfaceOccurrence,
+  type AlarmSeverity,
+  type AlertCenterItem,
+  type AlertCenterListQuery,
 } from '@gmj/shared';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
-import type { SuppressAlarmPayload } from '@/lib/api';
 import {
   ALARM_SCALE_OPTIONS,
   getAlarmScale,
   setAlarmScale,
   subscribeAlarmScale,
 } from '@/lib/alarm-panel-preferences';
+import type { SuppressAlarmPayload } from '@/lib/api';
+import {
+  useAcknowledgeAlertItem,
+  useAlertCenterList,
+  useAlertCenterSummary,
+  useSuppressAlertItem,
+} from '@/lib/use-alert-center';
+import { useMapStore } from '@/store/map-store';
+import { AlertDetailDrawer } from './alerts/alert-detail-drawer';
+import { openAlertInterface, openAlertOnMap } from './alerts/alert-navigation';
+import { SuppressAlarmDialog } from './alerts/suppress-alarm-dialog';
+import {
+  ALARM_PANEL_VISIBLE_ALARMS,
+  ALARM_PANEL_VISIBLE_OCCURRENCES,
+  ALARM_PANEL_VISIBLE_RESOLVED,
+  alertLastSeenText,
+  comparePanelAlarms,
+  mergeRecentResolved,
+  occurrenceCountersText,
+  panelOccurrenceVisible,
+  resolvedReasonText,
+} from './alerts/alerts-format';
 
 const POSITION_STORAGE_KEY = 'gmj:alarms:panel-position';
 
-export type AlarmFocusTarget =
-  | { kind: 'device'; deviceId: string }
-  | { kind: 'link'; deviceId: string; linkId: string };
-
 /**
- * Resolves what the map should focus when an alarm is clicked: the link that
- * owns the interface when there is one, otherwise the device node.
+ * Painel compacto do mapa (F9.4): visao resumida da MESMA Central de Alertas
+ * (/api/alert-center). Ele nao recalcula ocorrencias nem monta a visao pelas
+ * rotas antigas de alarme: cada secao e uma janela pequena do read-model da
+ * F9.3, e o resumo operacional vem do cache compartilhado com a TopBar e a
+ * propria Central (mesma familia de query keys).
  */
-export function alarmFocusTarget(alarm: Alarm): AlarmFocusTarget {
-  return alarm.linkId
-    ? { kind: 'link', deviceId: alarm.deviceId, linkId: alarm.linkId }
-    : { kind: 'device', deviceId: alarm.deviceId };
-}
+const ACTIVE_QUERY: AlertCenterListQuery = {
+  state: 'ACTIVE',
+  category: 'ALARM',
+  // Varredura maior que o corte visual: a ordem final e por severidade.
+  limit: 25,
+};
+const OCCURRENCE_QUERY: AlertCenterListQuery = {
+  state: 'UNACKNOWLEDGED',
+  category: 'OCCURRENCE',
+  limit: ALARM_PANEL_VISIBLE_OCCURRENCES,
+};
+const RESOLVED_QUERY: AlertCenterListQuery = {
+  state: 'RESOLVED',
+  category: 'ALARM',
+  period: '24h',
+  limit: ALARM_PANEL_VISIBLE_RESOLVED,
+};
+const SUPPRESSED_QUERY: AlertCenterListQuery = {
+  state: 'SUPPRESSED',
+  category: 'ALARM',
+  period: '24h',
+  limit: ALARM_PANEL_VISIBLE_RESOLVED,
+};
 
-/** Secao do drawer da interface aberta pelo clique no alarme. */
-export type AlarmDrawerSection = 'OPTICAL' | 'METRICS' | null;
-
-/**
- * Onde o operador precisa olhar depois de clicar no alarme: opticos abrem no
- * bloco/grafico optico; erros/CRC/discards abrem nas metricas da interface.
- */
-export function alarmDrawerSection(alarm: Alarm): AlarmDrawerSection {
-  if (alarm.type === 'OPTICAL_RX_DEGRADATION') return 'OPTICAL';
-  if (
-    alarm.type === 'INTERFACE_ERRORS'
-    || alarm.type === 'INTERFACE_CRC'
-    || alarm.type === 'INTERFACE_DISCARDS'
-  ) {
-    return 'METRICS';
-  }
-  return null;
-}
+/** Lista vazia ESTAVEL: identidade nova a cada render realimentaria os memos. */
+const EMPTY_ITEMS: readonly AlertCenterItem[] = Object.freeze([]);
 
 function loadPosition(): AlarmPanelPosition {
   if (typeof window === 'undefined') return 'LEFT';
@@ -68,7 +87,7 @@ function loadPosition(): AlarmPanelPosition {
   return 'LEFT';
 }
 
-const severityLabels: Record<Alarm['severity'], string> = {
+const severityLabels: Record<AlarmSeverity, string> = {
   CRITICAL: 'CRIT',
   MAJOR: 'MAJOR',
   WARNING: 'WARN',
@@ -89,34 +108,14 @@ function formatClock(value: string): string {
   return formatAlarmDownSince(value);
 }
 
-
-/**
- * Motivos legiveis do alarme ativo. O alarme e UNICO: quando proximidade e
- * queda valem juntos, os dois aparecem em vez de virar dois cards.
- */
-export function alarmReasonText(alarm: Alarm): string | null {
-  const metadata = alarm.metadata ?? null;
-  const reasons = metadata?.triggerReasons ?? [];
-  const parts: string[] = [];
-  if (reasons.includes('PROXIMITY') && metadata?.proximityPercent != null) {
-    parts.push(`${formatNumber(metadata.proximityPercent)}% do limite`);
-  }
-  if (reasons.includes('RAPID_DROP') && metadata?.trendDropDb != null) {
-    parts.push(
-      `↓ ${formatNumber(metadata.trendDropDb)} dB em ${metadata.trendWindowMinutes ?? 30} min`,
-    );
-  }
-  return parts.length ? parts.join(' · ') : null;
-}
-
-function MetricAlarmBody({ alarm }: { alarm: Alarm }) {
-  const metadata = alarm.metadata ?? null;
-  const direction = metadata?.direction ?? (alarm.metricKey === 'FCS' ? 'RX' : null);
-  const rate = metadata?.ratePerMinute ?? alarm.currentValue ?? null;
-  const limit = metadata?.thresholdPerMinute ?? alarm.thresholdValue ?? null;
-  const unit = alarm.type === 'INTERFACE_CRC'
+function MetricAlarmBody({ item }: { item: AlertCenterItem }) {
+  const alarm = item.alarm ?? null;
+  const direction = alarm?.direction ?? (alarm?.metricKey === 'FCS' ? 'RX' : null);
+  const rate = alarm?.ratePerMinute ?? alarm?.currentValue ?? null;
+  const limit = alarm?.thresholdPerMinute ?? alarm?.thresholdValue ?? null;
+  const unit = item.type === 'INTERFACE_CRC'
     ? 'CRC'
-    : alarm.type === 'INTERFACE_DISCARDS'
+    : item.type === 'INTERFACE_DISCARDS'
       ? 'discards'
       : 'erros';
   return (
@@ -128,323 +127,279 @@ function MetricAlarmBody({ alarm }: { alarm: Alarm }) {
       <span className="alarm-panel__limit">
         {limit !== null && limit <= 0 ? 'QUALQUER OCORRÊNCIA' : `Limite ${formatNumber(limit)}/min`}
       </span>
-      {alarm.type === 'INTERFACE_CRC' && metadata?.delta ? (
-        <span className="alarm-panel__limit">+{metadata.delta} no período</span>
+      {alarm?.delta ? (
+        <span className="alarm-panel__limit">+{alarm.delta} no período</span>
       ) : null}
-      <small>Ativo desde {formatClock(alarm.startedAt)}</small>
+      <small>Ativo desde {formatClock(item.startedAt)}</small>
     </>
   );
 }
 
-function OpticalAlarmBody({ alarm }: { alarm: Alarm }) {
-  const metadata = alarm.metadata ?? null;
-  const reason = alarmReasonText(alarm);
-  const low = metadata?.rxLowAlarmDbm ?? null;
-  const margin = metadata?.marginDb ?? null;
+/**
+ * Optico multi-lane: os motivos vem de `triggerReasons`, entao proximidade e
+ * queda rapida aparecem JUNTOS quando os dois sustentam o mesmo alarme.
+ */
+function OpticalAlarmBody({ item }: { item: AlertCenterItem }) {
+  const optical = item.alarm?.optical ?? null;
+  const reasons = optical?.triggerReasons ?? [];
+  const details: string[] = [];
+  if (reasons.includes('PROXIMITY') && optical?.proximityPercent != null) {
+    details.push(`Proximidade ${formatNumber(optical.proximityPercent)}%`);
+  }
+  if (reasons.includes('RAPID_DROP') && optical?.trendDropDb != null) {
+    details.push(
+      `Queda ↓ ${formatNumber(optical.trendDropDb)} dB / ${optical.trendWindowMinutes ?? 30} min`,
+    );
+  }
   return (
     <>
       <span className="alarm-panel__scope">
-        {alarm.interfaceName}
-        {metadata?.lane == null ? '' : ` · Lane ${metadata.lane}`}
+        {item.interfaceLabel ?? item.interfaceName}
+        {optical?.lane == null ? '' : ` · Lane ${optical.lane}`}
       </span>
       <span className="alarm-panel__optical">
-        RX atual {formatDbm(metadata?.rxPowerDbm)} · LOW {formatDbm(low)}
+        RX atual {formatDbm(optical?.rxPowerDbm)} · LOW {formatDbm(optical?.rxLowAlarmDbm)}
       </span>
-      {margin !== null ? (
-        <span className="alarm-panel__optical">Margem {formatNumber(margin)} dB</span>
+      {optical?.rxHighAlarmDbm != null ? (
+        <span className="alarm-panel__optical">HIGH {formatDbm(optical.rxHighAlarmDbm)}</span>
       ) : null}
-      {reason ? <span className="alarm-panel__reason">{reason}</span> : null}
-      <small>Ativo desde {formatClock(alarm.startedAt)}</small>
+      {optical?.marginDb != null ? (
+        <span className="alarm-panel__optical">Margem {formatNumber(optical.marginDb)} dB</span>
+      ) : null}
+      {details.length ? <span className="alarm-panel__reason">{details.join(' · ')}</span> : null}
+      <small>Ativo desde {formatClock(item.startedAt)}</small>
     </>
   );
 }
 
-function AlarmBody({ alarm }: { alarm: Alarm }) {
-  if (alarm.type === 'INTERFACE_DOWN') {
-    return <small>Down desde {formatClock(alarm.startedAt)}</small>;
+function AlarmBody({ item }: { item: AlertCenterItem }) {
+  if (item.type === 'INTERFACE_DOWN') {
+    return (
+      <>
+        <span className="alarm-panel__interface">
+          {item.interfaceLabel && item.interfaceLabel !== item.interfaceName
+            ? `${item.interfaceLabel} — ${item.interfaceName}`
+            : (item.interfaceName ?? item.interfaceLabel ?? '—')}
+        </span>
+        <small>Down desde {formatClock(item.startedAt)}</small>
+      </>
+    );
   }
-  if (alarm.type === 'OPTICAL_RX_DEGRADATION') return <OpticalAlarmBody alarm={alarm} />;
-  return <MetricAlarmBody alarm={alarm} />;
+  if (item.type === 'OPTICAL_RX_DEGRADATION') return <OpticalAlarmBody item={item} />;
+  return <MetricAlarmBody item={item} />;
 }
 
 function AlarmCard({
-  alarm,
-  onFocus,
+  item,
+  pending,
+  onDetail,
   onAcknowledge,
   onRequestSuppress,
 }: {
-  alarm: Alarm;
-  onFocus: (alarm: Alarm) => void;
-  onAcknowledge?: ((alarm: Alarm) => void) | undefined;
-  onRequestSuppress?: ((alarm: Alarm) => void) | undefined;
+  item: AlertCenterItem;
+  pending: boolean;
+  onDetail: (item: AlertCenterItem) => void;
+  onAcknowledge: (item: AlertCenterItem) => void;
+  onRequestSuppress: (item: AlertCenterItem) => void;
 }) {
-  const acknowledged = Boolean(alarm.acknowledgedAt);
+  const acknowledged = Boolean(item.acknowledgedAt);
+  const severity = item.severity ?? 'INFO';
   return (
     <div className={`alarm-panel__row ${acknowledged ? 'alarm-panel__row--ack' : ''}`}>
       <button
         type="button"
         className="alarm-panel__item"
-        onClick={() => onFocus(alarm)}
-        title="Focar no mapa e abrir a interface"
+        onClick={() => onDetail(item)}
+        title="Abrir detalhes do alerta"
       >
-        <span className={`alarm-panel__severity alarm-panel__severity--${alarm.severity.toLowerCase()}`}>
-          {severityLabels[alarm.severity]}
+        <span className={`alarm-panel__severity alarm-panel__severity--${severity.toLowerCase()}`}>
+          {severityLabels[severity]}
         </span>
         <span className="alarm-panel__item-body">
-          <strong>{alarmTypeLabel(alarm.type)}</strong>
-          <span className="alarm-panel__device">{alarm.deviceName}</span>
-          {alarm.type === 'INTERFACE_DOWN' ? (
-            <span className="alarm-panel__interface">
-              {alarm.interfaceLabel} — {alarm.interfaceName}
-            </span>
-          ) : null}
-          <AlarmBody alarm={alarm} />
+          <strong>{item.typeLabel}</strong>
+          <span className="alarm-panel__device">{item.deviceName}</span>
+          <AlarmBody item={item} />
           {acknowledged ? (
             <span className="alarm-panel__ack">
-              ✓ RECONHECIDO — {alarm.acknowledgedBy ?? 'operador'} às{' '}
-              {formatClock(alarm.acknowledgedAt as string)}
+              ✓ RECONHECIDO por {item.acknowledgedBy ?? 'operador'} às{' '}
+              {formatClock(item.acknowledgedAt as string)}
             </span>
           ) : null}
         </span>
       </button>
-      {onAcknowledge || onRequestSuppress ? (
-        <div className="alarm-panel__row-actions">
-          {onAcknowledge && !acknowledged ? (
-            <button type="button" onClick={() => onAcknowledge(alarm)} title="Reconhecer sem resolver">
-              Reconhecer
-            </button>
-          ) : null}
-          {onRequestSuppress ? (
-            <button
-              type="button"
-              onClick={() => onRequestSuppress(alarm)}
-              title="Retirar / suprimir enquanto a condição durar"
-            >
-              Retirar
-            </button>
-          ) : null}
-        </div>
-      ) : null}
+      <div className="alarm-panel__row-actions">
+        {acknowledged ? null : (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => onAcknowledge(item)}
+            title="Reconhecer sem resolver"
+          >
+            Reconhecer
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={pending}
+          onClick={() => onRequestSuppress(item)}
+          title="Retirar / suprimir enquanto a condição durar"
+        >
+          Retirar
+        </button>
+      </div>
     </div>
   );
 }
 
-const RESOLUTION_REASON_FALLBACK = 'motivo administrativo';
-
-/** Card de resolvido: duracao, valores do encerramento e motivo ficam visiveis. */
-function ResolvedCard({ alarm, onFocus }: { alarm: Alarm; onFocus: (alarm: Alarm) => void }) {
-  const metadata = alarm.metadata ?? null;
-  const resolutionReason = metadata?.resolutionReason
-    ? (alarmResolutionReasonLabel(metadata.resolutionReason) ?? RESOLUTION_REASON_FALLBACK)
-    : null;
-  const drop = metadata?.trendDropDb ?? null;
-  return (
-    <button
-      type="button"
-      className="alarm-panel__resolved"
-      onClick={() => onFocus(alarm)}
-      title="Focar no mapa e abrir a interface"
-    >
-      <span className="alarm-panel__resolved-check" aria-hidden="true">
-        ✓
-      </span>
-      <span className="alarm-panel__resolved-body">
-        <strong>RESOLVIDO · {alarmTypeLabel(alarm.type)}</strong>
-        <span className="alarm-panel__device">{alarm.deviceName}</span>
-        <span className="alarm-panel__interface">
-          {alarm.interfaceLabel} — {alarm.interfaceName}
-          {metadata?.lane == null ? '' : ` · Lane ${metadata.lane}`}
-        </span>
-        {alarm.type === 'OPTICAL_RX_DEGRADATION' ? (
-          <small>
-            Último RX {formatDbm(metadata?.rxPowerDbm)} · LOW {formatDbm(metadata?.rxLowAlarmDbm)}
-            {drop ? ` · Queda ${formatNumber(drop)} dB` : ''}
-          </small>
-        ) : null}
-        <small>
-          {resolutionReason ? `${resolutionReason} · ` : ''}
-          Duração {formatAlarmDuration(alarm.startedAt, alarm.endedAt ?? '')} · Resolvido às{' '}
-          {formatClock(alarm.endedAt ?? '')}
-        </small>
-      </span>
-    </button>
-  );
-}
-
-function OccurrenceCard({ occurrence }: { occurrence: InterfaceOccurrence }) {  const counters = occurrence.kind === 'CRC'
-    ? `+${occurrence.crcDelta} CRC`
-    : `RX +${occurrence.rxDelta} · TX +${occurrence.txDelta}`;
-  return (
-    <li className="alarm-panel__occurrence">
-      <strong>
-        {occurrence.kind === 'CRC' ? 'CRC/FCS' : 'DISCARDS'} · {counters}
-      </strong>
-      <span className="alarm-panel__device">{occurrence.deviceName}</span>
-      <span className="alarm-panel__interface">
-        {occurrence.interfaceLabel} — {occurrence.interfaceName}
-      </span>
-      <small>
-        Última ocorrência {formatClock(occurrence.lastOccurrenceAt)} ·{' '}
-        {formatNumber(occurrence.ratePerMinute)}/min
-      </small>
-    </li>
-  );
-}
-
-const SUPPRESSION_REASONS: AlarmSuppressionReason[] = [
-  'INTENTIONAL_SHUTDOWN',
-  'MAINTENANCE',
-  'FALSE_POSITIVE',
-  'OTHER',
-];
-
-/**
- * Retirada do alarme: a condicao continua existindo, mas o operador assume a
- * ocorrencia (porta desligada de proposito, manutencao, falso positivo).
- * Enquanto a supressao valer o mesmo fingerprint nao reabre alarme.
- */
-function SuppressForm({
-  alarm,
-  onCancel,
-  onSubmit,
+/** Episodio de CRC/FCS ou de descartes: RX e TX do MESMO card. */
+function OccurrenceCard({
+  item,
+  nowMs,
+  pending,
+  onDetail,
+  onAcknowledge,
 }: {
-  alarm: Alarm;
-  onCancel: () => void;
-  onSubmit: (payload: SuppressAlarmPayload) => void;
+  item: AlertCenterItem;
+  nowMs: number;
+  pending: boolean;
+  onDetail: (item: AlertCenterItem) => void;
+  onAcknowledge: (item: AlertCenterItem) => void;
 }) {
-  const [mode, setMode] = useState<AlarmSuppressionMode>('UNTIL_CLEAR');
-  const [reason, setReason] = useState<AlarmSuppressionReason>('INTENTIONAL_SHUTDOWN');
-  const [note, setNote] = useState('');
-  const [until, setUntil] = useState('');
-
-  const untilMs = until ? new Date(until).getTime() : Number.NaN;
-  const untilValid = Number.isFinite(untilMs) && untilMs > Date.now();
-  const canSubmit = mode === 'UNTIL_CLEAR' || untilValid;
-
+  const occurrence = item.occurrence ?? null;
+  const count = occurrence?.occurrenceCount ?? 0;
   return (
-    <form
-      className="alarm-panel__suppress"
-      onSubmit={(event) => {
-        event.preventDefault();
-        if (!canSubmit) return;
-        onSubmit({
-          mode,
-          reason,
-          note: note.trim() ? note.trim() : null,
-          expiresAt: mode === 'UNTIL_TIME' ? new Date(untilMs).toISOString() : null,
-        });
-      }}
-    >
-      <strong>RETIRAR ALARME</strong>
-      <span className="alarm-panel__device">{alarm.deviceName}</span>
-      <span className="alarm-panel__interface">
-        {alarm.interfaceLabel} — {alarm.interfaceName}
-      </span>
-      <label>
-        MODO
-        <select
-          value={mode}
-          onChange={(event) => setMode(event.target.value as AlarmSuppressionMode)}
-        >
-          <option value="UNTIL_CLEAR">Até normalizar</option>
-          <option value="UNTIL_TIME">Até o horário</option>
-        </select>
-      </label>
-      <label>
-        MOTIVO
-        <select
-          value={reason}
-          onChange={(event) => setReason(event.target.value as AlarmSuppressionReason)}
-        >
-          {SUPPRESSION_REASONS.map((value) => (
-            <option key={value} value={value}>
-              {alarmSuppressionReasonLabel(value)}
-            </option>
-          ))}
-        </select>
-      </label>
-      {mode === 'UNTIL_TIME' ? (
-        <label>
-          ATÉ
-          <input
-            type="datetime-local"
-            value={until}
-            onChange={(event) => setUntil(event.target.value)}
-            required
-          />
-        </label>
-      ) : null}
-      <label>
-        NOTA (opcional)
-        <input
-          type="text"
-          value={note}
-          maxLength={280}
-          placeholder="ex.: porta desligada para manutenção do cliente"
-          onChange={(event) => setNote(event.target.value)}
-        />
-      </label>
-      {mode === 'UNTIL_TIME' && !untilValid ? (
-        <small className="alarm-panel__suppress-hint">Informe um horário futuro.</small>
-      ) : null}
-      <div className="alarm-panel__suppress-actions">
-        <button type="submit" disabled={!canSubmit}>
-          SUPRIMIR
-        </button>
-        <button type="button" onClick={onCancel}>
-          CANCELAR
+    <div className="alarm-panel__row">
+      <button
+        type="button"
+        className="alarm-panel__item alarm-panel__item--occurrence"
+        onClick={() => onDetail(item)}
+        title="Abrir detalhes da ocorrência"
+      >
+        <span className="alarm-panel__severity alarm-panel__severity--occurrence">OCORRÊNCIA</span>
+        <span className="alarm-panel__item-body">
+          <strong className="alarm-panel__occurrence-type">{item.typeLabel}</strong>
+          <span className="alarm-panel__device">{item.deviceName}</span>
+          <span className="alarm-panel__interface">
+            {item.interfaceLabel ?? item.interfaceName ?? '—'}
+          </span>
+          <span className="alarm-panel__rate">{occurrenceCountersText(item)}</span>
+          <span className="alarm-panel__limit">
+            {count} {count === 1 ? 'ocorrência' : 'ocorrências'}
+          </span>
+          <span className="alarm-panel__limit">
+            Atual {formatNumber(occurrence?.currentRatePerMin)}/min
+          </span>
+          <span className="alarm-panel__limit">
+            Pico {formatNumber(occurrence?.peakRatePerMin)}/min
+          </span>
+          <small>{alertLastSeenText(item.lastSeenAt, nowMs)}</small>
+        </span>
+      </button>
+      <div className="alarm-panel__row-actions">
+        <button type="button" disabled={pending} onClick={() => onAcknowledge(item)}>
+          Reconhecer
         </button>
       </div>
-    </form>
+    </div>
   );
 }
 
-export function AlarmPanel({
-  alarms,
-  resolvedAlarms = [],
-  occurrences = [],
-  onFocus,
-  onAcknowledge,
-  onSuppress,
+/**
+ * Resolvido recente: duracao e horario sempre; o motivo administrativo
+ * (regra desativada, manutencao, retirada) nunca e confundido com recuperacao
+ * tecnica.
+ */
+function ResolvedCard({
+  item,
+  onDetail,
 }: {
-  alarms: Alarm[];
-  resolvedAlarms?: Alarm[];
-  occurrences?: InterfaceOccurrence[];
-  onFocus: (alarm: Alarm) => void;
-  /** ACK: registra o operador; o alarme continua ativo. */
-  onAcknowledge?: ((alarm: Alarm) => void) | undefined;
-  /** Retirar/Suprimir: encerra o alarme e bloqueia a reabertura. */
-  onSuppress?: ((alarm: Alarm, payload: SuppressAlarmPayload) => void) | undefined;
+  item: AlertCenterItem;
+  onDetail: (item: AlertCenterItem) => void;
 }) {
+  const suppressed = item.state === 'SUPPRESSED';
+  return (
+    <div className="alarm-panel__row">
+      <button
+        type="button"
+        className="alarm-panel__resolved"
+        onClick={() => onDetail(item)}
+        title="Abrir detalhes do alerta"
+      >
+        <span className="alarm-panel__resolved-check">✓</span>
+        <span className="alarm-panel__resolved-body">
+          <strong>
+            {suppressed ? 'SUPRIMIDO' : 'RESOLVIDO'} · {item.typeLabel}
+          </strong>
+          <span className="alarm-panel__device">{item.deviceName}</span>
+          <span className="alarm-panel__interface">
+            {item.interfaceLabel ?? item.interfaceName ?? '—'}
+          </span>
+          <small>{resolvedReasonText(item)}</small>
+          <small>
+            Duração {formatAlarmDuration(item.startedAt, item.endedAt ?? '')} · Resolvido às{' '}
+            {formatClock(item.endedAt ?? '')}
+          </small>
+        </span>
+      </button>
+    </div>
+  );
+}
+
+export function AlarmPanel() {
   const [position, setPosition] = useState<AlarmPanelPosition>(loadPosition);
-  const [suppressTarget, setSuppressTarget] = useState<Alarm | null>(null);
+  const [detail, setDetail] = useState<AlertCenterItem | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [suppressTarget, setSuppressTarget] = useState<AlertCenterItem | null>(null);
+  const [suppressError, setSuppressError] = useState<string | null>(null);
   const alarmScale = useSyncExternalStore(subscribeAlarmScale, getAlarmScale, getAlarmScale);
 
-  // The panel stays compact: at most the 3 most recently resolved alarms,
-  // ordered by resolution time descending regardless of the source order.
-  const recentResolved = useMemo(
+  const active = useAlertCenterList(ACTIVE_QUERY);
+  const occurrences = useAlertCenterList(OCCURRENCE_QUERY);
+  const resolved = useAlertCenterList(RESOLVED_QUERY);
+  const suppressed = useAlertCenterList(SUPPRESSED_QUERY);
+  const summary = useAlertCenterSummary();
+  const acknowledge = useAcknowledgeAlertItem();
+  const suppress = useSuppressAlertItem();
+
+  // Relogio da leitura: a idade das ocorrencias acompanha o que foi recebido.
+  const nowMs = active.data ? new Date(active.data.generatedAt).getTime() : Date.now();
+  const activeItems = active.data?.items ?? EMPTY_ITEMS;
+
+  const alarms = useMemo(
+    () => [...activeItems].sort(comparePanelAlarms).slice(0, ALARM_PANEL_VISIBLE_ALARMS),
+    [activeItems],
+  );
+  const occurrenceItems = occurrences.data?.items ?? EMPTY_ITEMS;
+  const visibleOccurrences = useMemo(
     () =>
-      [...resolvedAlarms]
-        .filter((alarm) => alarm.endedAt)
-        .sort(
-          (a, b) =>
-            new Date(b.endedAt as string).getTime() - new Date(a.endedAt as string).getTime(),
-        )
-        .slice(0, 3),
-    [resolvedAlarms],
+      occurrenceItems
+        .filter((item) => panelOccurrenceVisible(item, nowMs))
+        .slice(0, ALARM_PANEL_VISIBLE_OCCURRENCES),
+    [occurrenceItems, nowMs],
+  );
+  const resolvedItems = resolved.data?.items ?? EMPTY_ITEMS;
+  const suppressedItems = suppressed.data?.items ?? EMPTY_ITEMS;
+  const recentResolved = useMemo(
+    () => mergeRecentResolved(resolvedItems, suppressedItems, ALARM_PANEL_VISIBLE_RESOLVED),
+    [resolvedItems, suppressedItems],
   );
 
-  const counters = useMemo(() => {
-    const result = { CRITICAL: 0, MAJOR: 0, WARNING: 0 };
-    for (const alarm of alarms) {
-      if (alarm.severity === 'CRITICAL') result.CRITICAL += 1;
-      else if (alarm.severity === 'MAJOR') result.MAJOR += 1;
-      else if (alarm.severity === 'WARNING') result.WARNING += 1;
-    }
-    return result;
-  }, [alarms]);
+  const alarmsTotal = active.data?.total ?? 0;
+  const occurrencesTotal = occurrences.data?.total ?? 0;
+  const hiddenAlarms = Math.max(alarmsTotal - alarms.length, 0);
+  const hiddenOccurrences = Math.max(occurrencesTotal - visibleOccurrences.length, 0);
+  const attention = alertCenterAttentionCount(summary);
 
-  const recentOccurrences = useMemo(() => occurrences.slice(0, 6), [occurrences]);
+  const loading = active.isPending && !active.data;
+  // Falha da leitura principal derruba o corpo para o aviso com retry, igual a
+  // Central: o mapa continua utilizavel e nada de stack trace na tela.
+  const failed = active.isError || occurrences.isError;
+  const isEmpty =
+    !loading
+    && !failed
+    && alarmsTotal === 0
+    && occurrencesTotal === 0
+    && recentResolved.length === 0;
 
   const updatePosition = (next: AlarmPanelPosition) => {
     setPosition(next);
@@ -455,160 +410,288 @@ export function AlarmPanel({
     }
   };
 
+  const retry = () => {
+    void active.refetch();
+    void occurrences.refetch();
+    void resolved.refetch();
+    void suppressed.refetch();
+  };
+
+  const openAlertCenter = () => {
+    useMapStore.getState().setView('ALERTS');
+  };
+
+  const openDetail = (item: AlertCenterItem) => {
+    setDetailError(null);
+    setDetail(item);
+  };
+
+  const acknowledgeItem = async (item: AlertCenterItem) => {
+    setDetailError(null);
+    try {
+      await acknowledge.mutateAsync(item);
+    } catch (error) {
+      setDetailError(error instanceof Error ? error.message : 'falha ao reconhecer');
+    }
+  };
+
+  const requestSuppression = (item: AlertCenterItem) => {
+    setSuppressError(null);
+    setSuppressTarget(item);
+  };
+
+  const submitSuppression = async (item: AlertCenterItem, payload: SuppressAlarmPayload) => {
+    setSuppressError(null);
+    try {
+      await suppress.mutateAsync({ item, payload });
+      setSuppressTarget(null);
+      setDetail(null);
+    } catch (error) {
+      setSuppressError(error instanceof Error ? error.message : 'falha ao retirar o alarme');
+    }
+  };
+
+  /** Navegacao compartilhada com a Central; sem destino, avisa sem quebrar. */
+  const goToInterface = (item: AlertCenterItem) => {
+    const message = openAlertInterface(item);
+    if (message) useMapStore.getState().showToast(message);
+    setDetail(null);
+  };
+
+  const goToMap = (item: AlertCenterItem) => {
+    const message = openAlertOnMap(item);
+    if (message) useMapStore.getState().showToast(message);
+    setDetail(null);
+  };
+
+  const detailDrawer = detail ? (
+    <AlertDetailDrawer
+      item={detail}
+      nowMs={nowMs}
+      pending={acknowledge.isPending}
+      error={detailError}
+      onClose={() => setDetail(null)}
+      onAcknowledge={(item) => void acknowledgeItem(item)}
+      onSuppress={requestSuppression}
+      onOpenInterface={goToInterface}
+      onOpenMap={goToMap}
+    />
+  ) : null;
+  const suppressDialog = suppressTarget ? (
+    <SuppressAlarmDialog
+      item={suppressTarget}
+      pending={suppress.isPending}
+      error={suppressError}
+      onCancel={() => setSuppressTarget(null)}
+      onSubmit={(payload) => void submitSuppression(suppressTarget, payload)}
+    />
+  ) : null;
+
   if (position === 'HIDDEN') {
     return (
-      <button
-        type="button"
-        className={`alarm-panel__reveal ${alarms.length ? 'alarm-panel__reveal--active' : ''}`}
-        onClick={() => updatePosition('LEFT')}
-        title="Mostrar painel de alarmes"
-        aria-label="Mostrar painel de alarmes"
-      >
-        ⚠ {alarms.length}
-      </button>
-    );
-  }
-
-  // Sem alarmes, resoluções nem ocorrências o painel não precisa ocupar área
-  // nobre do canvas: vira uma faixa compacta, e a escala some junto.
-  const isEmpty =
-    alarms.length === 0 && recentResolved.length === 0 && recentOccurrences.length === 0;
-
-  if (isEmpty) {
-    return (
-      <aside
-        className={`alarm-panel alarm-panel--compact alarm-panel--${position.toLowerCase()}`}
-        aria-label="Painel de alarmes"
-      >
-        <span className="alarm-panel__ok" aria-hidden="true">
-          ✓
-        </span>
-        <strong>Sem alarmes ativos</strong>
+      <>
         <button
           type="button"
-          onClick={() => updatePosition('HIDDEN')}
-          title="Ocultar painel de alarmes"
-          aria-label="Ocultar painel de alarmes"
+          className={`alarm-panel__reveal ${attention ? 'alarm-panel__reveal--active' : ''}`}
+          onClick={() => updatePosition('LEFT')}
+          title="Mostrar painel de alertas"
+          aria-label="Mostrar painel de alertas"
         >
-          <X size={13} />
+          ⚠ {attention}
         </button>
-      </aside>
+        {detailDrawer}
+        {suppressDialog}
+      </>
     );
   }
 
-  return (
-    <aside
-      className={`alarm-panel alarm-panel--${position.toLowerCase()}`}
-      aria-label="Painel de alarmes"
-      style={{ '--alarm-scale': alarmScale / 100 } as CSSProperties}
-    >
-      <header className="alarm-panel__header">
-        <strong>Alarmes</strong>
-        <span className={`alarm-panel__count ${alarms.length ? 'alarm-panel__count--active' : ''}`}>
-          {alarms.length}
-        </span>
-        <span className="alarm-panel__actions">
-          <button
-            type="button"
-            onClick={() => updatePosition(position === 'RIGHT' ? 'LEFT' : 'RIGHT')}
-            title={position === 'RIGHT' ? 'Mover para a esquerda' : 'Mover para a direita'}
-            aria-label={position === 'RIGHT' ? 'Mover para a esquerda' : 'Mover para a direita'}
-          >
-            {position === 'RIGHT' ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+  // Nada exigindo acao: faixa compacta em vez de uma caixa grande no canvas.
+  if (isEmpty) {
+    return (
+      <>
+        <aside
+          className={`alarm-panel alarm-panel--compact alarm-panel--${position.toLowerCase()}`}
+          aria-label="Painel de alertas"
+        >
+          <span className="alarm-panel__ok" aria-hidden="true">
+            ✓
+          </span>
+          <strong>Alarmes</strong>
+          <span className="alarm-panel__compact-text">Nenhum alerta exigindo atenção.</span>
+          <button type="button" className="alarm-panel__compact-link" onClick={openAlertCenter}>
+            Ver Central
           </button>
           <button
             type="button"
             onClick={() => updatePosition('HIDDEN')}
-            title="Ocultar painel de alarmes"
-            aria-label="Ocultar painel de alarmes"
+            title="Ocultar painel de alertas"
+            aria-label="Ocultar painel de alertas"
           >
-            <X size={14} />
+            <X size={13} />
           </button>
-        </span>
-      </header>
-      <div className="alarm-panel__counters" role="group" aria-label="Contadores por severidade">
-        <span className="alarm-panel__counter alarm-panel__counter--critical">
-          CRIT {counters.CRITICAL}
-        </span>
-        <span className="alarm-panel__counter alarm-panel__counter--major">
-          MAJOR {counters.MAJOR}
-        </span>
-        <span className="alarm-panel__counter alarm-panel__counter--warning">
-          WARN {counters.WARNING}
-        </span>
-      </div>
-      <div className="alarm-panel__scale" role="group" aria-label="Tamanho do painel de alarmes">
-        {ALARM_SCALE_OPTIONS.map(({ value, label }) => (
-          <button
-            type="button"
-            key={value}
-            className={alarmScale === value ? 'is-active' : ''}
-            aria-pressed={alarmScale === value}
-            title={`Tamanho ${label.toLowerCase()}`}
-            onClick={() => setAlarmScale(value)}
+        </aside>
+        {detailDrawer}
+        {suppressDialog}
+      </>
+    );
+  }
+
+  return (
+    <>
+      <aside
+        className={`alarm-panel alarm-panel--${position.toLowerCase()}`}
+        aria-label="Painel de alertas"
+        style={{ '--alarm-scale': alarmScale / 100 } as CSSProperties}
+      >
+        <header className="alarm-panel__header">
+          <strong>Alarmes</strong>
+          <span
+            className={`alarm-panel__count ${
+              summary.alarmsActive ? 'alarm-panel__count--active' : ''
+            }`}
+            title="Alarmes ativos"
           >
-            {label}
+            {summary.alarmsActive}
+          </span>
+          <span className="alarm-panel__actions">
+            <button
+              type="button"
+              onClick={() => updatePosition(position === 'RIGHT' ? 'LEFT' : 'RIGHT')}
+              title={position === 'RIGHT' ? 'Mover para a esquerda' : 'Mover para a direita'}
+              aria-label={position === 'RIGHT' ? 'Mover para a esquerda' : 'Mover para a direita'}
+            >
+              {position === 'RIGHT' ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
+            </button>
+            <button
+              type="button"
+              onClick={() => updatePosition('HIDDEN')}
+              title="Ocultar painel de alertas"
+              aria-label="Ocultar painel de alertas"
+            >
+              <X size={14} />
+            </button>
+          </span>
+        </header>
+        <div className="alarm-panel__counters" role="group" aria-label="Contadores por severidade">
+          <span
+            className="alarm-panel__counter alarm-panel__counter--critical"
+            title="Alarmes ativos críticos"
+          >
+            CRIT {summary.alarmsActiveCritical}
+          </span>
+          <span
+            className="alarm-panel__counter alarm-panel__counter--major"
+            title="Alarmes ativos major"
+          >
+            MAJOR {summary.alarmsActiveMajor}
+          </span>
+          <span
+            className="alarm-panel__counter alarm-panel__counter--warning"
+            title="Alarmes ativos warning"
+          >
+            WARN {summary.alarmsActiveWarning}
+          </span>
+          <span
+            className="alarm-panel__counter alarm-panel__counter--event"
+            title="Ocorrências não reconhecidas e vigentes (sem severidade de regra)"
+          >
+            EVENTOS {summary.occurrencesUnacknowledged}
+          </span>
+        </div>
+        <div className="alarm-panel__scale" role="group" aria-label="Tamanho do painel de alarmes">
+          {ALARM_SCALE_OPTIONS.map(({ value, label }) => (
+            <button
+              type="button"
+              key={value}
+              className={alarmScale === value ? 'is-active' : ''}
+              aria-pressed={alarmScale === value}
+              title={`Tamanho ${label.toLowerCase()}`}
+              onClick={() => setAlarmScale(value)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div className="alarm-panel__body">
+          {failed ? (
+            <div className="alarm-panel__error" role="alert">
+              <span>Não foi possível carregar alertas.</span>
+              <button type="button" onClick={retry}>
+                Tentar novamente
+              </button>
+            </div>
+          ) : loading ? (
+            <p className="alarm-panel__loading">Carregando alertas…</p>
+          ) : (
+            <>
+              {alarms.length ? (
+                <>
+                  <p className="alarm-panel__section alarm-panel__section--active">
+                    🔴 Ativos{hiddenAlarms ? ` · +${hiddenAlarms}` : ''}
+                  </p>
+                  <ul className="alarm-panel__list">
+                    {alarms.map((item) => (
+                      <li key={item.id}>
+                        <AlarmCard
+                          item={item}
+                          pending={acknowledge.isPending || suppress.isPending}
+                          onDetail={openDetail}
+                          onAcknowledge={(alarm) => void acknowledgeItem(alarm)}
+                          onRequestSuppress={requestSuppression}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : (
+                <p className="alarm-panel__empty">Sem alarmes ativos</p>
+              )}
+              {visibleOccurrences.length ? (
+                <>
+                  <p className="alarm-panel__section alarm-panel__section--occurrences">
+                    ❗ Ocorrências não reconhecidas
+                    {hiddenOccurrences ? ` · +${hiddenOccurrences}` : ''}
+                  </p>
+                  <ul className="alarm-panel__list alarm-panel__list--occurrences">
+                    {visibleOccurrences.map((item) => (
+                      <li key={item.id}>
+                        <OccurrenceCard
+                          item={item}
+                          nowMs={nowMs}
+                          pending={acknowledge.isPending}
+                          onDetail={openDetail}
+                          onAcknowledge={(occurrence) => void acknowledgeItem(occurrence)}
+                        />
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+              {recentResolved.length ? (
+                <>
+                  <p className="alarm-panel__section alarm-panel__section--resolved">
+                    ✓ Resolvidos recentemente
+                  </p>
+                  <ul className="alarm-panel__list alarm-panel__list--resolved">
+                    {recentResolved.map((item) => (
+                      <li key={item.id}>
+                        <ResolvedCard item={item} onDetail={openDetail} />
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+            </>
+          )}
+        </div>
+        <footer className="alarm-panel__footer">
+          <button type="button" className="alarm-panel__all" onClick={openAlertCenter}>
+            VER TODOS OS ALERTAS
           </button>
-        ))}
-      </div>
-      {alarms.length === 0 ? (
-        <p className="alarm-panel__empty">Sem alarmes ativos</p>
-      ) : (
-        <>
-          <p className="alarm-panel__section alarm-panel__section--active">🔴 Ativos</p>
-          <ul className="alarm-panel__list">
-            {alarms.map((alarm) => (
-              <li key={alarm.id}>
-                <AlarmCard
-                  alarm={alarm}
-                  onFocus={onFocus}
-                  onAcknowledge={onAcknowledge}
-                  onRequestSuppress={onSuppress ? setSuppressTarget : undefined}
-                />
-              </li>
-            ))}
-          </ul>
-          {suppressTarget && onSuppress ? (
-            <SuppressForm
-              alarm={suppressTarget}
-              onCancel={() => setSuppressTarget(null)}
-              onSubmit={(payload) => {
-                onSuppress(suppressTarget, payload);
-                setSuppressTarget(null);
-              }}
-            />
-          ) : null}
-        </>
-      )}
-      {recentOccurrences.length > 0 && (
-        <>
-          <p className="alarm-panel__section alarm-panel__section--occurrences">
-            ❗ Ocorrências recentes
-          </p>
-          <ul className="alarm-panel__list alarm-panel__list--occurrences">
-            {recentOccurrences.map((occurrence) => (
-              <OccurrenceCard
-                key={`${occurrence.kind}-${occurrence.interfaceId}`}
-                occurrence={occurrence}
-              />
-            ))}
-          </ul>
-        </>
-      )}
-      {recentResolved.length > 0 && (
-        <>
-          <p className="alarm-panel__section alarm-panel__section--resolved">
-            ✓ Resolvidos recentemente
-          </p>
-          <ul className="alarm-panel__list alarm-panel__list--resolved">
-            {recentResolved.map((alarm) => (
-              <li key={alarm.id}>
-                <ResolvedCard alarm={alarm} onFocus={onFocus} />
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
-    </aside>
+        </footer>
+      </aside>
+      {detailDrawer}
+      {suppressDialog}
+    </>
   );
 }

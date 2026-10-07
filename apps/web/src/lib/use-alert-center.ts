@@ -12,6 +12,8 @@ import {
   acknowledgeOperationalOccurrence,
   getAlertCenter,
   getAlertCenterSummary,
+  suppressAlarm,
+  type SuppressAlarmPayload,
 } from '@/lib/api';
 import {
   ALERT_CENTER_DEFAULT_LIMIT,
@@ -142,6 +144,19 @@ export function useAcknowledgeAlertItem() {
       }
       await acknowledgeOperationalOccurrence(item.id);
     },
+    onSettled: () => invalidateAlertCenter(queryClient),
+  });
+}
+
+/**
+ * Retirada/supressao (F9.1) a partir de um item da Central: encerra o alarme e
+ * bloqueia a reabertura do fingerprint. Nao existe supressao de occurrence.
+ */
+export function useSuppressAlertItem() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ item, payload }: { item: AlertCenterItem; payload: SuppressAlarmPayload }) =>
+      suppressAlarm(item.id, payload),
     onSettled: () => invalidateAlertCenter(queryClient),
   });
 }

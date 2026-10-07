@@ -13300,3 +13300,104 @@ label > small {
     top: 0;
   }
 }
+/* --- F9.4: painel compacto integrado a Central de Alertas --- */
+.alarm-panel__body {
+  flex: 1 1 auto;
+  min-height: 56px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* Um unico scroll interno: o painel rola, nao cada lista. */
+.alarm-panel__body .alarm-panel__list {
+  overflow-y: visible;
+}
+.alarm-panel__footer {
+  flex: 0 0 auto;
+  padding: 6px 8px;
+  border-top: 1px solid #22343e;
+  background: rgba(7, 12, 16, 0.6);
+}
+.alarm-panel__all {
+  width: 100%;
+  height: 24px;
+  border: 1px solid #2a4d5c;
+  border-radius: 4px;
+  background: #10222b;
+  color: #9fd8ea;
+  font: 700 9px var(--font-mono);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition:
+    border-color 0.12s,
+    color 0.12s;
+}
+.alarm-panel__all:hover {
+  border-color: #3f7f96;
+  color: #d7f4ff;
+}
+.alarm-panel__counter--event {
+  color: #8fb6c8;
+  border-color: #2c4a58;
+}
+.alarm-panel__severity--occurrence {
+  color: #9fdcff;
+  border: 1px solid #2f5f7c;
+  background: #10222e;
+}
+.alarm-panel__item--occurrence {
+  border-left: 2px solid #3d7ea6;
+}
+.alarm-panel__item--occurrence .alarm-panel__item-body strong {
+  color: #9fdcff;
+}
+.alarm-panel__item--occurrence .alarm-panel__rate {
+  color: #bfe9ff;
+}
+.alarm-panel__loading {
+  margin: 0;
+  padding: 12px 10px;
+  color: #526570;
+  font: 500 10px var(--font-mono);
+  text-align: center;
+}
+.alarm-panel__error {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 10px;
+  color: #ffb1b3;
+  font: 500 10px var(--font-mono);
+}
+.alarm-panel__error button {
+  align-self: flex-start;
+  padding: 3px 8px;
+  border: 1px solid #6b3235;
+  border-radius: 4px;
+  background: #30191c;
+  color: #ff9d9f;
+  font: 700 9px var(--font-mono);
+  cursor: pointer;
+}
+.alarm-panel__error button:hover {
+  border-color: #8a4246;
+  color: #ffc6c7;
+}
+.alarm-panel--compact .alarm-panel__compact-text {
+  color: #64798a;
+  font: 500 10px var(--font-mono);
+}
+.alarm-panel--compact .alarm-panel__compact-link {
+  margin-left: 2px;
+  padding: 3px 7px;
+  border: 1px solid #2a4d5c;
+  border-radius: 4px;
+  background: #10222b;
+  color: #9fd8ea;
+  font: 700 9px var(--font-mono);
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+.alarm-panel--compact .alarm-panel__compact-link:hover {
+  border-color: #3f7f96;
+  color: #d7f4ff;
+}

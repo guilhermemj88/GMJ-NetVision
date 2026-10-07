@@ -137,6 +137,12 @@ export interface AlertCenterAlarmDetail {
   currentValue: number | null;
   thresholdValue: number | null;
   unit: string | null;
+  /** Taxa por minuto avaliada pela regra métrica (quando existir). */
+  ratePerMinute: number | null;
+  /** Limite por minuto avaliado pela regra métrica (quando existir). */
+  thresholdPerMinute: number | null;
+  /** Delta agregado no período do episódio, já em texto (nunca BigInt cru). */
+  delta: string | null;
   message: string;
   linkId: string | null;
   linkLabel: string | null;

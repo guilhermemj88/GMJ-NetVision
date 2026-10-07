@@ -149,6 +149,11 @@ function alarmDetail(row: AlertCenterAlarmRow): AlertCenterAlarmDetail {
     currentValue: row.currentValue,
     thresholdValue: row.thresholdValue,
     unit: row.unit,
+    // Leitura crua da regra metrica: o painel compacto (F9.4) reusa o renderer
+    // da F8, que mostra taxa/limite/delta separados do resumo textual.
+    ratePerMinute: metadata?.ratePerMinute ?? null,
+    thresholdPerMinute: metadata?.thresholdPerMinute ?? null,
+    delta: metadata?.delta ?? null,
     message: row.message,
     linkId: row.linkId,
     linkLabel: row.linkLabel,

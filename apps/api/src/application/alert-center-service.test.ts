@@ -198,8 +198,45 @@ describe('AlertCenterService — leitura e unificacao', () => {
     });
   });
 
-  it('nunca vaza BigInt no JSON da ocorrencia', async () => {
+  it('expoe taxa, limite e delta crus para o painel compacto (F9.4)', async () => {
     const { repo } = repository({
+      alarms: [
+        alarmRow({
+          ruleId: 'rule-crc',
+          metricKey: 'FCS',
+          currentValue: 0.8,
+          thresholdValue: 5,
+          unit: 'crc',
+          metadata: {
+            direction: 'RX',
+            ratePerMinute: 0.8,
+            thresholdPerMinute: 5,
+            delta: '17',
+          },
+        }),
+      ],
+    });
+    const response = await service(repo).list({ category: 'ALARM' });
+    expect(response.items[0]!.alarm).toMatchObject({
+      direction: 'RX',
+      ratePerMinute: 0.8,
+      thresholdPerMinute: 5,
+      delta: '17',
+    });
+  });
+
+  it('sem metadata os campos do painel ficam nulos (nunca undefined)', async () => {
+    const { repo } = repository({ alarms: [alarmRow()] });
+    const response = await service(repo).list({ category: 'ALARM' });
+    expect(response.items[0]!.alarm).toMatchObject({
+      ratePerMinute: null,
+      thresholdPerMinute: null,
+      delta: null,
+    });
+    expect(JSON.stringify(response.items[0])).not.toContain('undefined');
+  });
+
+  it('nunca vaza BigInt no JSON da ocorrencia', async () => {    const { repo } = repository({
       occurrences: [
         occurrenceRow({
           crcDeltaTotal: 9_007_199_254_740_993n,

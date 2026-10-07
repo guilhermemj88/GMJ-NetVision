@@ -17,16 +17,17 @@ import {
   type AlarmSeverity,
 } from '@gmj/shared';
 import { RefreshCw, Search } from 'lucide-react';
-import { suppressAlarm, type SuppressAlarmPayload } from '@/lib/api';
+import type { SuppressAlarmPayload } from '@/lib/api';
 import {
   ALERT_CENTER_PAGE_SIZE,
   useAcknowledgeAlertItem,
   useAcknowledgeAlertItems,
   useAlertCenterList,
   useAlertCenterSummary,
+  useSuppressAlertItem,
 } from '@/lib/use-alert-center';
-import { useMapStore } from '@/store/map-store';
 import { AlertDetailDrawer } from './alert-detail-drawer';
+import { openAlertInterface, openAlertOnMap } from './alert-navigation';
 import { SuppressAlarmDialog } from './suppress-alarm-dialog';
 import {
   alertAgeText,
@@ -132,6 +133,7 @@ export function AlertCenterWorkspace() {
   const summary = useAlertCenterSummary();
   const acknowledgeItem = useAcknowledgeAlertItem();
   const acknowledgeBatch = useAcknowledgeAlertItems();
+  const suppressItem = useSuppressAlertItem();
 
   const items = useMemo(() => list.data?.items ?? EMPTY_ITEMS, [list.data]);
   const total = list.data?.total ?? 0;
@@ -199,49 +201,21 @@ export function AlertCenterWorkspace() {
   const submitSuppression = async (item: AlertCenterItem, payload: SuppressAlarmPayload) => {
     setSuppressError(null);
     try {
-      await suppressAlarm(item.id, payload);
+      await suppressItem.mutateAsync({ item, payload });
       setSuppressTarget(null);
       setDetail(null);
       setFeedback(`Alarme retirado: ${item.typeLabel} — ${item.deviceName}`);
-      await list.refetch();
     } catch (error) {
       setSuppressError(error instanceof Error ? error.message : 'falha ao retirar o alarme');
     }
   };
 
   const openInterface = (item: AlertCenterItem) => {
-    setNavError(null);
-    if (!item.interfaceId) {
-      setNavError('Este alerta não tem interface associada.');
-      return;
-    }
-    const store = useMapStore.getState();
-    if (store.openInterfaceInActiveMap(item.deviceId, item.interfaceId)) return;
-    const mapId = item.mapIds[0];
-    if (mapId) {
-      // Sem a interface no mapa ativo: abre o equipamento e avisa o operador.
-      store.openHostOnMap(item.deviceId, mapId);
-      setNavError('A interface não está no mapa ativo — abrimos o equipamento.');
-      return;
-    }
-    setNavError('O equipamento deste alerta não está em nenhum mapa.');
+    setNavError(openAlertInterface(item));
   };
 
   const openMap = (item: AlertCenterItem) => {
-    setNavError(null);
-    const store = useMapStore.getState();
-    const activeMapId = store.map?.id ?? null;
-    if (activeMapId && store.map?.devices.some((device) => device.id === item.deviceId)) {
-      if (item.interfaceId) store.openInterfaceInActiveMap(item.deviceId, item.interfaceId);
-      else store.openHostOnMap(item.deviceId, activeMapId);
-      return;
-    }
-    const mapId = item.mapIds[0];
-    if (!mapId) {
-      setNavError('O equipamento deste alerta não está em nenhum mapa.');
-      return;
-    }
-    store.openHostOnMap(item.deviceId, mapId);
+    setNavError(openAlertOnMap(item));
   };
 
   return (

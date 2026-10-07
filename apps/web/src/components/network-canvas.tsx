@@ -24,15 +24,8 @@ import {
   updateNetworkMap,
 } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
-import { computeParallelLinkLayouts, type Alarm } from '@gmj/shared';
-import {
-  countAlarmsByDevice,
-  useAcknowledgeAlarm,
-  useActiveAlarms,
-  useRecentAlarmOccurrences,
-  useRecentResolvedAlarms,
-  useSuppressAlarm,
-} from '@/lib/use-alarms';
+import { computeParallelLinkLayouts } from '@gmj/shared';
+import { countAlarmsByDevice, useActiveAlarms } from '@/lib/use-alarms';
 import { useMapFocus } from '@/lib/use-map-focus';
 import { DeviceNode, type DeviceFlowNode } from './device-node';
 import { GenericNode, type GenericFlowNode } from './generic-node';
@@ -41,7 +34,7 @@ import { TrafficEdge, type TrafficFlowEdge } from './traffic-edge';
 import { MapControls } from './map-controls';
 import { MapStatusBar } from './map-status-bar';
 import { EditToolbar } from './edit-toolbar';
-import { AlarmPanel, alarmDrawerSection, alarmFocusTarget } from './alarm-panel';
+import { AlarmPanel } from './alarm-panel';
 import { resolveEdgeHandles } from '@/lib/edge-handles';
 import {
   getTrafficLabelOffsets,
@@ -105,7 +98,6 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
   const setViewport = useMapStore((state) => state.setViewport);
   const focusRequest = useMapStore((state) => state.focusRequest);
   const clearFocusRequest = useMapStore((state) => state.clearFocusRequest);
-  const focusInterfaceSection = useMapStore((state) => state.focusInterfaceSection);
 
   const mapQuery = useQuery({
     queryKey: ['map', activeMapId],
@@ -115,13 +107,9 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     refetchIntervalInBackground: true,
   });
 
-  // Alarmes ativos/resolvidos vêm de hooks compartilhados (mesmas chaves de
-  // query do painel, dos badges e da rail de camadas).
+  // Alarmes ativos alimentam o badge de cada equipamento no mapa; o painel
+  // compacto le a MESMA Central de Alertas (/api/alert-center).
   const alarms = useActiveAlarms(!readOnly);
-  const recentResolvedAlarms = useRecentResolvedAlarms(!readOnly, 3);
-  const recentOccurrences = useRecentAlarmOccurrences(!readOnly);
-  const acknowledgeAlarm = useAcknowledgeAlarm();
-  const suppressAlarm = useSuppressAlarm();
   const alarmCountByDevice = useMemo(() => countAlarmsByDevice(alarms), [alarms]);
 
   // Recorte visual (camada + site + tipo + vizinhança). Não altera o grafo:
@@ -245,58 +233,6 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     });
     clearFocusRequest(focusRequest.requestId);
   }, [clearFocusRequest, domainNodes, flow, focusRequest]);
-
-  const focusAlarm = useCallback(
-    (alarm: Alarm) => {
-      const target = alarmFocusTarget(alarm);
-      if (target.kind === 'link') {
-        const link = map?.links.find((item) => item.id === target.linkId);
-        const nodePosition = (key: string | null | undefined) =>
-          map?.nodes.find((node) => (node.deviceId ?? node.id) === key)?.position;
-        const sourcePosition = link && nodePosition(link.sourceDeviceId ?? link.sourceNodeId);
-        const targetPosition = link && nodePosition(link.targetDeviceId ?? link.targetNodeId);
-        if (sourcePosition && targetPosition) {
-          void flow.setCenter(
-            (sourcePosition.x + targetPosition.x) / 2,
-            (sourcePosition.y + targetPosition.y) / 2,
-            { duration: 650, zoom: Math.max(1.05, flow.getZoom()) },
-          );
-        }
-        setSelection({ kind: 'link', id: target.linkId });
-      } else {
-        const node = domainNodes.find((item) => item.id === target.deviceId);
-        if (node) {
-          const width = node.measured?.width ?? node.width ?? DEFAULT_NODE_WIDTH;
-          const height = node.measured?.height ?? node.height ?? DEFAULT_NODE_HEIGHT;
-          void flow.setCenter(node.position.x + width / 2, node.position.y + height / 2, {
-            duration: 650,
-            zoom: Math.max(1.05, flow.getZoom()),
-          });
-        }
-        setSelection({ kind: 'device', id: target.deviceId });
-      }
-      // O mapa continua focando link/equipamento como antes; quando a interface
-      // do alarme esta no mapa, o drawer dela abre acima disso e recebe o
-      // destaque da secao relevante (optico ou metricas).
-      const device = map?.devices.find((item) => item.id === alarm.deviceId);
-      if (device?.interfaces.some((item) => item.id === alarm.interfaceId)) {
-        setSelection({ kind: 'interface', id: alarm.interfaceId, deviceId: alarm.deviceId });
-        const section = alarmDrawerSection(alarm);
-        if (section) focusInterfaceSection(alarm.interfaceId, section);
-      }
-      if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
-    },
-    [
-      domainNodes,
-      flow,
-      focusInterfaceSection,
-      map,
-      rotation.active,
-      rotation.pauseOnInteraction,
-      setRotationPaused,
-      setSelection,
-    ],
-  );
 
   const domainEdges = useMemo<TrafficFlowEdge[]>(() => {
     if (!map) return [];
@@ -505,18 +441,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
               <PppTotalWidget widget={widget} devices={map.devices} readOnly={readOnly} />
             </ViewportPortal>
           ))}
-        {!readOnly && (
-          <AlarmPanel
-            alarms={alarms}
-            resolvedAlarms={recentResolvedAlarms}
-            occurrences={recentOccurrences}
-            onFocus={focusAlarm}
-            onAcknowledge={(alarm) => acknowledgeAlarm.mutate(alarm.id)}
-            onSuppress={(alarm, payload) =>
-              suppressAlarm.mutate({ alarmId: alarm.id, payload })
-            }
-          />
-        )}
+        {!readOnly && <AlarmPanel />}
         {editMode && alignmentGuides.length > 0 && (
           <ViewportPortal>
             {alignmentGuides.map((guide) => (
