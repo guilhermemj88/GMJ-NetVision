@@ -1,4 +1,4 @@
-import { createLocalId, type Alarm, type MetricAlarmType } from '@gmj/shared';
+import { createLocalId, type Alarm, type AlarmResolutionReason, type MetricAlarmType } from '@gmj/shared';
 import type {
   AlarmHistoryOptions,
   AlarmOpenInput,
@@ -139,11 +139,16 @@ export class DemoAlarmRepository implements AlarmRepository {
     return resolved;
   }
 
-  async resolveOpenMetricAlarmsForRule(ruleId: string, resolvedAt: Date): Promise<number> {
+  async resolveOpenMetricAlarmsForRule(
+    ruleId: string,
+    resolvedAt: Date,
+    reason: AlarmResolutionReason,
+  ): Promise<number> {
     let resolved = 0;
     for (const alarm of this.alarms) {
       if (!alarm.endedAt && alarm.ruleId === ruleId) {
         alarm.endedAt = resolvedAt.toISOString();
+        alarm.metadata = { ...(alarm.metadata ?? {}), resolutionReason: reason };
         resolved += 1;
       }
     }

@@ -1,4 +1,4 @@
-import type { Alarm, AlarmMetadata, AlarmSeverity, MetricAlarmType } from '@gmj/shared';
+import type { Alarm, AlarmMetadata, AlarmResolutionReason, AlarmSeverity, MetricAlarmType } from '@gmj/shared';
 
 export interface AlarmOpenInput {
   deviceId: string;
@@ -62,6 +62,10 @@ export interface AlarmRepository {
     metricKey: string,
     resolvedAt: Date,
   ): Promise<boolean>;
-  /** Closes every open metric alarm of a rule (disable/delete). */
-  resolveOpenMetricAlarmsForRule(ruleId: string, resolvedAt: Date): Promise<number>;
+  /** Closes every open metric alarm of a rule (disable/delete), preserving history. */
+  resolveOpenMetricAlarmsForRule(
+    ruleId: string,
+    resolvedAt: Date,
+    reason: AlarmResolutionReason,
+  ): Promise<number>;
 }

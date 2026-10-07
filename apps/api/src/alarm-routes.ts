@@ -104,7 +104,7 @@ export function registerAlarmRoutes(
     const record = await rules.setEnabled(id, enabled);
     if (!record) return reply.code(404).send({ message: 'Regra de alarme não encontrada' });
     // Regra desabilitada nao pode deixar alarme orfao aberto no painel.
-    if (!enabled) await alarms.resolveOpenMetricAlarmsForRule(id, new Date());
+    if (!enabled) await alarms.resolveOpenMetricAlarmsForRule(id, new Date(), 'RULE_DISABLED');
     return toRuleDto(record);
   });
 
@@ -113,7 +113,7 @@ export function registerAlarmRoutes(
     const { id } = ruleParams.parse(request.params);
     const removed = await rules.remove(id);
     if (!removed) return reply.code(404).send({ message: 'Regra de alarme não encontrada' });
-    await alarms.resolveOpenMetricAlarmsForRule(id, new Date());
+    await alarms.resolveOpenMetricAlarmsForRule(id, new Date(), 'RULE_DELETED');
     return { removed: true };
   });
 }

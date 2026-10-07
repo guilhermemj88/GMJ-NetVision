@@ -102,12 +102,21 @@ describe('API de regras de alarme', () => {
     });
     expect(disabled.statusCode).toBe(200);
     expect(disabled.json().enabled).toBe(false);
-    expect(resolveOpenMetricAlarmsForRule).toHaveBeenCalledWith(rule.id, expect.any(Date));
+    expect(resolveOpenMetricAlarmsForRule).toHaveBeenCalledWith(
+      rule.id,
+      expect.any(Date),
+      'RULE_DISABLED',
+    );
 
     const removed = await app.inject({ method: 'DELETE', url: `/api/alarm-rules/${rule.id}` });
     expect(removed.statusCode).toBe(200);
     expect(removed.json()).toEqual({ removed: true });
     expect(resolveOpenMetricAlarmsForRule).toHaveBeenCalledTimes(2);
+    expect(resolveOpenMetricAlarmsForRule).toHaveBeenLastCalledWith(
+      rule.id,
+      expect.any(Date),
+      'RULE_DELETED',
+    );
     const after = await app.inject({ method: 'GET', url: '/api/alarm-rules' });
     expect(after.json()).toHaveLength(0);
 

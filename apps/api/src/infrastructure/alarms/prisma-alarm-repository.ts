@@ -4,6 +4,7 @@ import {
   METRIC_ALARM_TYPES,
   type Alarm,
   type AlarmMetadata,
+  type AlarmResolutionReason,
   type AlarmSeverity,
   type AlarmType,
   type MetricAlarmType,
@@ -268,11 +269,30 @@ export class PrismaAlarmRepository implements AlarmRepository {
     return result.count > 0;
   }
 
-  async resolveOpenMetricAlarmsForRule(ruleId: string, resolvedAt: Date): Promise<number> {
-    const result = await this.prisma.alarm.updateMany({
+  async resolveOpenMetricAlarmsForRule(
+    ruleId: string,
+    resolvedAt: Date,
+    reason: AlarmResolutionReason,
+  ): Promise<number> {
+    const open = await this.prisma.alarm.findMany({
       where: { ruleId, endedAt: null, type: { in: [...METRIC_ALARM_TYPES] } },
-      data: { endedAt: resolvedAt },
+      select: { id: true, metadata: true },
     });
-    return result.count;
+    if (!open.length) return 0;
+    await this.prisma.$transaction(
+      open.map((row) =>
+        this.prisma.alarm.update({
+          where: { id: row.id },
+          data: {
+            endedAt: resolvedAt,
+            metadata: {
+              ...((row.metadata as Record<string, unknown> | null) ?? {}),
+              resolutionReason: reason,
+            } as unknown as Prisma.InputJsonValue,
+          },
+        }),
+      ),
+    );
+    return open.length;
   }
 }

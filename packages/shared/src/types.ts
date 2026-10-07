@@ -85,13 +85,56 @@ export interface Alarm {
   metadata?: AlarmMetadata | null | undefined;
 }
 
-/** Metadados seguros de um alarme metrico (errors/discards/CRC). */
+/** Metadados seguros de um alarme metrico (errors/discards/CRC/optica). */
 export interface AlarmMetadata {
   direction?: 'RX' | 'TX' | undefined;
   delta?: string | undefined;
   ratePerMinute?: number | undefined;
   thresholdPerMinute?: number | undefined;
   sampleIntervalSeconds?: number | undefined;
+  /** Optica: lane avaliada (ausente = leitura escalar). */
+  lane?: number | undefined;
+  rxPowerDbm?: number | undefined;
+  rxLowAlarmDbm?: number | null | undefined;
+  rxHighAlarmDbm?: number | null | undefined;
+  marginDb?: number | null | undefined;
+  proximityPercent?: number | null | undefined;
+  trendDropDb?: number | null | undefined;
+  trendWindowMinutes?: number | undefined;
+  /** Fonte da potencia ATUAL (SNMP/SSH) — nunca misturada com thresholdSource. */
+  currentPowerSource?: 'SNMP' | 'SSH' | null | undefined;
+  thresholdSource?: OpticalThresholdSource | null | undefined;
+  speedBps?: number | undefined;
+  /** Motivo administrativo da resolucao (disable/delete da regra). */
+  resolutionReason?: AlarmResolutionReason | undefined;
+}
+
+/** Motivo administrativo seguro de uma resolucao sem recuperacao real. */
+export type AlarmResolutionReason = 'RULE_DISABLED' | 'RULE_DELETED';
+
+/** Origem efetiva de um threshold optico (prioridade USER > DEVICE > DEFAULT > MANUAL). */
+export type OpticalThresholdSource = 'USER' | 'DEVICE' | 'DEFAULT' | 'MANUAL';
+
+/** Um lado (low/high) de um threshold optico, com a origem do valor efetivo. */
+export interface OpticalThresholdSide {
+  lowAlarmDbm: number | null;
+  highAlarmDbm: number | null;
+  lowSource: OpticalThresholdSource | null;
+  highSource: OpticalThresholdSource | null;
+}
+
+/** Estrutura canonica (versionada) de thresholds do transceiver por interface. */
+export interface OpticalThresholdsV1 {
+  version: 1;
+  scalar: {
+    rx: OpticalThresholdSide;
+    tx: OpticalThresholdSide;
+  };
+  lanes: Array<{
+    lane: number;
+    rx: OpticalThresholdSide;
+    tx: OpticalThresholdSide;
+  }>;
 }
 
 /** Escopo de uma AlarmRule: lista ausente = todos. */
