@@ -1,9 +1,27 @@
-import type { Alarm } from '@gmj/shared';
+import type { Alarm, AlarmMetadata, AlarmSeverity, MetricAlarmType } from '@gmj/shared';
 
 export interface AlarmOpenInput {
   deviceId: string;
   interfaceId: string;
   ifIndex: number;
+  startedAt: Date;
+}
+
+/** Entrada de um alarme metrico (errors/discards/CRC) com fingerprint. */
+export interface MetricAlarmOpenInput {
+  deviceId: string;
+  interfaceId: string;
+  ifIndex: number;
+  ruleId: string;
+  type: MetricAlarmType;
+  severity: AlarmSeverity;
+  /** Parte do fingerprint: RX/TX para errors/discards; FCS para CRC. */
+  metricKey: string;
+  currentValue: number;
+  thresholdValue: number;
+  unit: string;
+  metadata: AlarmMetadata;
+  message: string;
   startedAt: Date;
 }
 
@@ -30,4 +48,20 @@ export interface AlarmRepository {
   openInterfaceDownAlarms(inputs: AlarmOpenInput[]): Promise<Alarm[]>;
   /** Closes every open INTERFACE_DOWN alarm for the given interfaces. */
   resolveInterfaceDownAlarms(interfaceIds: string[], resolvedAt: Date): Promise<void>;
+  /**
+   * Persists one metric alarm per fingerprint (ruleId + interfaceId + type +
+   * metricKey), ignoring a fingerprint that already has an open alarm.
+   */
+  openMetricAlarm(input: MetricAlarmOpenInput): Promise<Alarm | null>;
+  /** Open metric alarms of one device (dedupe/escalation state). */
+  listOpenMetricAlarms(deviceId: string): Promise<Alarm[]>;
+  /** Closes the open metric alarm of one fingerprint, when it exists. */
+  resolveMetricAlarm(
+    interfaceId: string,
+    type: MetricAlarmType,
+    metricKey: string,
+    resolvedAt: Date,
+  ): Promise<boolean>;
+  /** Closes every open metric alarm of a rule (disable/delete). */
+  resolveOpenMetricAlarmsForRule(ruleId: string, resolvedAt: Date): Promise<number>;
 }

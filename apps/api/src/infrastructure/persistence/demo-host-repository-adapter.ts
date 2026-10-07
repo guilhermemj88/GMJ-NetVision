@@ -13,6 +13,7 @@ import type {
   HostRepository,
   InterfaceCounterSnapshot,
   InterfaceMetricSampleInput,
+  InterfaceMetricWindowRow,
   InterfaceStatusTransition,
   InterfaceStatusUpdate,
   SnmpCredentialSecret,
@@ -115,6 +116,13 @@ export class DemoHostRepositoryAdapter implements HostRepository {
 
   async getLatestCounterSnapshots(_hostId: string): Promise<Map<number, InterfaceCounterSnapshot>> {
     return new Map();
+  }
+
+  async getRecentInterfaceMetricSamples(
+    _deviceId: string,
+    _since: Date,
+  ): Promise<InterfaceMetricWindowRow[]> {
+    return [];
   }
 
   async saveSnmpPoll(

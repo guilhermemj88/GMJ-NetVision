@@ -34,6 +34,22 @@ export interface InterfaceCounterSnapshot {
   fcsErrors?: bigint | null | undefined;
 }
 
+/** Linha crua da janela do motor de alarmes (deltas persistidos por par). */
+export interface InterfaceMetricWindowRow {
+  interfaceId: string;
+  timestamp: Date;
+  inErrors: bigint;
+  outErrors: bigint;
+  inDiscards: bigint;
+  outDiscards: bigint;
+  inErrorsDelta: bigint;
+  outErrorsDelta: bigint;
+  inDiscardsDelta: bigint;
+  outDiscardsDelta: bigint;
+  fcsErrors: bigint | null;
+  fcsErrorsDelta: bigint | null;
+}
+
 export interface InterfaceMetricSampleInput extends InterfaceCounterSnapshot {
   rxBps: number;
   txBps: number;
@@ -91,6 +107,8 @@ export interface HostRepository {
     collectedAfter?: Date,
   ): Promise<void>;
   getLatestCounterSnapshots(hostId: string): Promise<Map<number, InterfaceCounterSnapshot>>;
+  /** Amostras recentes do device (janela do motor de alarmes), ordem crescente. */
+  getRecentInterfaceMetricSamples(deviceId: string, since: Date): Promise<InterfaceMetricWindowRow[]>;
   saveSnmpPoll(
     hostId: string,
     deviceSample: DeviceMetricSampleInput,

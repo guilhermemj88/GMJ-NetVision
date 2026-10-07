@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthUser } from '@gmj/shared';
 import { registerAlarmRoutes } from './alarm-routes';
 import type { AlarmRepository } from './infrastructure/alarms/alarm-repository';
@@ -9,10 +9,17 @@ import { DemoAlarmRuleRepository } from './infrastructure/alarms/demo-alarm-rule
 const ADMIN = { id: 'u1', username: 'admin', role: 'ADMIN' } as unknown as AuthUser;
 const VIEWER = { id: 'u2', username: 'viewer', role: 'VIEWER' } as unknown as AuthUser;
 
+const resolveOpenMetricAlarmsForRule = vi.fn().mockResolvedValue(0);
+
 const alarmRepository = {
   listActive: async () => [],
   listHistory: async () => [],
+  resolveOpenMetricAlarmsForRule,
 } as unknown as AlarmRepository;
+
+beforeEach(() => {
+  resolveOpenMetricAlarmsForRule.mockClear();
+});
 
 async function buildApp(user: AuthUser | null = ADMIN): Promise<FastifyInstance> {
   const app = Fastify();
@@ -95,10 +102,12 @@ describe('API de regras de alarme', () => {
     });
     expect(disabled.statusCode).toBe(200);
     expect(disabled.json().enabled).toBe(false);
+    expect(resolveOpenMetricAlarmsForRule).toHaveBeenCalledWith(rule.id, expect.any(Date));
 
     const removed = await app.inject({ method: 'DELETE', url: `/api/alarm-rules/${rule.id}` });
     expect(removed.statusCode).toBe(200);
     expect(removed.json()).toEqual({ removed: true });
+    expect(resolveOpenMetricAlarmsForRule).toHaveBeenCalledTimes(2);
     const after = await app.inject({ method: 'GET', url: '/api/alarm-rules' });
     expect(after.json()).toHaveLength(0);
 

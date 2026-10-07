@@ -1,12 +1,20 @@
 import {
   alarmInterfaceLabel,
   formatAlarmDownSince,
+  METRIC_ALARM_TYPES,
   type Alarm,
+  type AlarmMetadata,
   type AlarmSeverity,
   type AlarmType,
+  type MetricAlarmType,
 } from '@gmj/shared';
-import { PrismaClient } from '../../generated/prisma/index.js';
-import type { AlarmHistoryOptions, AlarmOpenInput, AlarmRepository } from './alarm-repository';
+import { Prisma, PrismaClient } from '../../generated/prisma/index.js';
+import type {
+  AlarmHistoryOptions,
+  AlarmOpenInput,
+  AlarmRepository,
+  MetricAlarmOpenInput,
+} from './alarm-repository';
 
 const alarmInclude = {
   device: { select: { id: true, name: true, displayName: true } },
@@ -50,6 +58,12 @@ function toAlarm(row: AlarmRow): Alarm {
     acknowledgedAt: row.acknowledgedAt?.toISOString() ?? null,
     acknowledgedBy: row.acknowledgedBy,
     message: row.message,
+    ruleId: row.ruleId ?? null,
+    metricKey: row.metricKey ?? null,
+    currentValue: row.currentValue ?? null,
+    thresholdValue: row.thresholdValue ?? null,
+    unit: row.unit ?? null,
+    metadata: (row.metadata as unknown as AlarmMetadata | null) ?? null,
   };
 }
 
@@ -175,5 +189,90 @@ export class PrismaAlarmRepository implements AlarmRepository {
       where: { interfaceId: { in: interfaceIds }, type: 'INTERFACE_DOWN', endedAt: null },
       data: { endedAt: resolvedAt },
     });
+  }
+
+  async openMetricAlarm(input: MetricAlarmOpenInput): Promise<Alarm | null> {
+    let created: Alarm | null = null;
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.alarm.findFirst({
+        where: {
+          ruleId: input.ruleId,
+          interfaceId: input.interfaceId,
+          type: input.type,
+          metricKey: input.metricKey,
+          endedAt: null,
+        },
+      });
+      if (existing) return;
+
+      const networkInterface = await tx.interface.findUnique({
+        where: { id: input.interfaceId },
+        select: { id: true },
+      });
+      if (!networkInterface) return;
+
+      // Link e opcional no alarme metrico: serve apenas para o foco no mapa.
+      const link = await tx.link.findFirst({
+        where: {
+          OR: [
+            { sourceInterfaceId: input.interfaceId },
+            { targetInterfaceId: input.interfaceId },
+          ],
+        },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+
+      const row = await tx.alarm.create({
+        data: {
+          deviceId: input.deviceId,
+          interfaceId: input.interfaceId,
+          linkId: link?.id ?? null,
+          type: input.type,
+          severity: input.severity,
+          startedAt: input.startedAt,
+          message: input.message,
+          ruleId: input.ruleId,
+          metricKey: input.metricKey,
+          currentValue: input.currentValue,
+          thresholdValue: input.thresholdValue,
+          unit: input.unit,
+          metadata: input.metadata as unknown as Prisma.InputJsonValue,
+        },
+        include: alarmInclude,
+      });
+      created = toAlarm(row as AlarmRow);
+    });
+    return created;
+  }
+
+  async listOpenMetricAlarms(deviceId: string): Promise<Alarm[]> {
+    const rows = await this.prisma.alarm.findMany({
+      where: { deviceId, endedAt: null, type: { in: [...METRIC_ALARM_TYPES] } },
+      include: alarmInclude,
+      orderBy: { startedAt: 'desc' },
+    });
+    return rows.map((row) => toAlarm(row as AlarmRow));
+  }
+
+  async resolveMetricAlarm(
+    interfaceId: string,
+    type: MetricAlarmType,
+    metricKey: string,
+    resolvedAt: Date,
+  ): Promise<boolean> {
+    const result = await this.prisma.alarm.updateMany({
+      where: { interfaceId, type, metricKey, endedAt: null },
+      data: { endedAt: resolvedAt },
+    });
+    return result.count > 0;
+  }
+
+  async resolveOpenMetricAlarmsForRule(ruleId: string, resolvedAt: Date): Promise<number> {
+    const result = await this.prisma.alarm.updateMany({
+      where: { ruleId, endedAt: null, type: { in: [...METRIC_ALARM_TYPES] } },
+      data: { endedAt: resolvedAt },
+    });
+    return result.count;
   }
 }

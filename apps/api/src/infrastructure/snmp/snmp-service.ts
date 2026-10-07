@@ -28,6 +28,7 @@ import type { MplsPollingService } from '../mpls/mpls-polling-service';
 import type { PppPollingService } from '../ppp/ppp-polling-service';
 import type { BgpPollingService } from '../bgp/bgp-polling-service';
 import type { AlarmService } from '../../application/alarm-service';
+import type { AlarmEngine } from '../../application/alarm-engine';
 
 // Consolidated GENERIC SNMP base (SNMPv2-MIB / IF-MIB). Vendor profiles
 // complement this set; they never duplicate it.
@@ -92,6 +93,7 @@ export class SnmpService {
     private readonly ppp?: PppPollingService,
     private readonly alarms?: AlarmService,
     private readonly bgp?: BgpPollingService,
+    private readonly alarmEngine?: AlarmEngine,
   ) {
     this.client = new SnmpClientImpl(3000, 1);
     this.discoveryAdapter = new SnmpV2cDiscoveryAdapter(repository);
@@ -322,6 +324,24 @@ export class SnmpService {
     }
 
     await this.repository.saveSnmpPoll(currentDevice.id, system, samples);
+
+    // Motor metrico roda DEPOIS da persistencia e e fail-safe: nenhuma falha
+    // dele pode invalidar o polling SNMP concluido.
+    if (this.alarmEngine) {
+      try {
+        await this.alarmEngine.processDeviceMetrics({
+          deviceId: currentDevice.id,
+          deviceName: currentDevice.displayName || currentDevice.name,
+          interfaces: currentDevice.interfaces,
+        });
+      } catch (error) {
+        console.error(
+          `Falha ao avaliar alarmes metricos de ${currentDevice.id}:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
+
     await this.discoverUnknownInterfaces(currentDevice, unknownIfIndexes);
     await this.refreshOpticalPower(currentDevice, community);
     await this.refreshMpls(currentDevice, community);

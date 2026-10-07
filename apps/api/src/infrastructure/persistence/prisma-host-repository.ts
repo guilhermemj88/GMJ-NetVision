@@ -30,6 +30,7 @@ import type {
   HostRepository,
   InterfaceCounterSnapshot,
   InterfaceMetricSampleInput,
+  InterfaceMetricWindowRow,
   InterfaceStatusTransition,
   InterfaceStatusUpdate,
   SnmpCredentialSecret,
@@ -666,6 +667,35 @@ export class PrismaHostRepository implements HostRepository {
       outDiscards: row.outDiscards,
       fcsErrors: row.fcsErrors,
     }]));
+  }
+
+  /**
+   * Amostras recentes do device para o motor de alarmes, na ordem em que foram
+   * persistidas (os deltas sao por par consecutivo — nunca o bruto sozinho).
+   */
+  async getRecentInterfaceMetricSamples(
+    deviceId: string,
+    since: Date,
+  ): Promise<InterfaceMetricWindowRow[]> {
+    return this.prisma.interfaceMetricSample.findMany({
+      where: { timestamp: { gte: since }, interface: { deviceId } },
+      orderBy: [{ interfaceId: 'asc' }, { timestamp: 'asc' }],
+      take: 20_000,
+      select: {
+        interfaceId: true,
+        timestamp: true,
+        inErrors: true,
+        outErrors: true,
+        inDiscards: true,
+        outDiscards: true,
+        inErrorsDelta: true,
+        outErrorsDelta: true,
+        inDiscardsDelta: true,
+        outDiscardsDelta: true,
+        fcsErrors: true,
+        fcsErrorsDelta: true,
+      },
+    });
   }
 
   async saveSnmpPoll(hostId: string, deviceSample: DeviceMetricSampleInput, samples: InterfaceMetricSampleInput[]): Promise<void> {

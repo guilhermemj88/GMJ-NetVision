@@ -31,6 +31,10 @@ function repository(overrides: Partial<AlarmRepository> = {}): RepositoryMocks {
     findLinkedInterfaceIds: vi.fn().mockResolvedValue(new Set<string>()),
     openInterfaceDownAlarms: vi.fn().mockResolvedValue([]),
     resolveInterfaceDownAlarms: vi.fn().mockResolvedValue(undefined),
+    openMetricAlarm: vi.fn().mockResolvedValue(null),
+    listOpenMetricAlarms: vi.fn().mockResolvedValue([]),
+    resolveMetricAlarm: vi.fn().mockResolvedValue(false),
+    resolveOpenMetricAlarmsForRule: vi.fn().mockResolvedValue(0),
     ...overrides,
   };
   return {

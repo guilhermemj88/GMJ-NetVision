@@ -51,6 +51,11 @@ export type AlarmType =
 /** Tipos metricos que podem ser governados por AlarmRule nesta fase. */
 export type MetricAlarmType = 'INTERFACE_ERRORS' | 'INTERFACE_CRC' | 'INTERFACE_DISCARDS';
 export type AlarmDirection = 'RX' | 'TX' | 'BOTH';
+export const METRIC_ALARM_TYPES = [
+  'INTERFACE_ERRORS',
+  'INTERFACE_CRC',
+  'INTERFACE_DISCARDS',
+] as const satisfies readonly MetricAlarmType[];
 export type AlarmSeverity = 'CRITICAL' | 'MAJOR' | 'WARNING' | 'INFO';
 export type AlarmPanelPosition = 'LEFT' | 'RIGHT' | 'HIDDEN';
 export interface Alarm {

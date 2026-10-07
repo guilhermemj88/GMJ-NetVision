@@ -1363,3 +1363,41 @@ describe('SnmpService — EtherLike FCS/CRC', () => {
     ]);
   });
 });
+
+describe('SnmpService — motor de alarmes metricos', () => {
+  it('keeps polling healthy when the metric alarm engine fails', async () => {
+    const now = new Date('2026-10-07T12:00:05.000Z');
+    const repo = repository();
+    const processDeviceMetrics = vi.fn().mockRejectedValue(new Error('engine boom'));
+    const engine = {
+      processDeviceMetrics,
+    } as unknown as import('../../application/alarm-engine').AlarmEngine;
+    const service = new SnmpService(
+      repo,
+      undefined,
+      Number.POSITIVE_INFINITY,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      engine,
+    );
+    vi.spyOn(service, 'collectInterfaceStatuses').mockResolvedValue(
+      new Map([[1, { ifIndex: 1, adminStatus: 'UP' as const, operStatus: 'UP' as const }]]),
+    );
+    vi.spyOn(service, 'collectCounters').mockResolvedValue(new Map([[1, counterRow(1, now)]]));
+    const internals = service as unknown as {
+      collectSystem: () => Promise<DeviceMetricSampleInput>;
+    };
+    vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await service.pollHost(snmpHost([networkInterface('GE0/0/1', 1, 'UP')]));
+
+    expect(processDeviceMetrics).toHaveBeenCalledWith(
+      expect.objectContaining({ deviceId: 'test-1', deviceName: 'Test Device' }),
+    );
+    expect(consoleSpy).toHaveBeenCalledTimes(1);
+    expect(repo.saveSnmpPoll).toHaveBeenCalledTimes(1);
+  });
+});

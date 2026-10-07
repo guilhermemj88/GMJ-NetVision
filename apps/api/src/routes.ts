@@ -77,6 +77,7 @@ import { DemoAlarmRuleRepository } from './infrastructure/alarms/demo-alarm-rule
 import { PrismaAlarmRepository } from './infrastructure/alarms/prisma-alarm-repository';
 import { PrismaAlarmRuleRepository } from './infrastructure/alarms/prisma-alarm-rule-repository';
 import { AlarmService } from './application/alarm-service';
+import { AlarmEngine } from './application/alarm-engine';
 import { registerAlarmRoutes } from './alarm-routes';
 import { HuaweiVplsSnmpCollector } from './infrastructure/mpls/huawei-vpls-snmp';
 import { MplsPollingService } from './infrastructure/mpls/mpls-polling-service';
@@ -549,6 +550,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     ? new DemoAlarmRuleRepository()
     : new PrismaAlarmRuleRepository();
   const alarms = new AlarmService(alarmRepository);
+  const alarmEngine = new AlarmEngine({
+    hosts,
+    alarms: alarmRepository,
+    rules: alarmRuleRepository,
+  });
   const snmp = new SnmpService(
     hosts,
     ssh,
@@ -557,6 +563,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     pppPolling,
     alarms,
     bgpPolling,
+    alarmEngine,
   );
   const poller = new SnmpPoller(hosts, snmp, config.SNMP_POLL_INTERVAL_SECONDS * 1000);
   const zabbix =
