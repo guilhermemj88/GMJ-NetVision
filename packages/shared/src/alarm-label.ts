@@ -55,6 +55,8 @@ export function alarmTypeLabel(type: string): string {
       return 'CRC/FCS';
     case 'INTERFACE_DISCARDS':
       return 'DESCARTES';
+    case 'OPTICAL_RX_DEGRADATION':
+      return 'RX OPTICO';
     default:
       return type;
   }

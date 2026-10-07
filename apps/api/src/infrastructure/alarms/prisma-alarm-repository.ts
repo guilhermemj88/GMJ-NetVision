@@ -14,6 +14,7 @@ import type {
   AlarmHistoryOptions,
   AlarmOpenInput,
   AlarmRepository,
+  MetricAlarmEscalationInput,
   MetricAlarmOpenInput,
 } from './alarm-repository';
 
@@ -245,6 +246,30 @@ export class PrismaAlarmRepository implements AlarmRepository {
       created = toAlarm(row as AlarmRow);
     });
     return created;
+  }
+
+  async escalateMetricAlarm(
+    alarmId: string,
+    input: MetricAlarmEscalationInput,
+  ): Promise<Alarm | null> {
+    const existing = await this.prisma.alarm.findFirst({
+      where: { id: alarmId, endedAt: null },
+      select: { id: true },
+    });
+    if (!existing) return null;
+    const row = await this.prisma.alarm.update({
+      where: { id: alarmId },
+      data: {
+        severity: input.severity,
+        currentValue: input.currentValue,
+        thresholdValue: input.thresholdValue,
+        unit: input.unit,
+        metadata: input.metadata as unknown as Prisma.InputJsonValue,
+        message: input.message,
+      },
+      include: alarmInclude,
+    });
+    return toAlarm(row as AlarmRow);
   }
 
   async listOpenMetricAlarms(deviceId: string): Promise<Alarm[]> {

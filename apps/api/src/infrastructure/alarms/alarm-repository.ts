@@ -25,6 +25,16 @@ export interface MetricAlarmOpenInput {
   startedAt: Date;
 }
 
+/** Escalation de um alarme metrico JA aberto (mesma linha, sem downgrade). */
+export interface MetricAlarmEscalationInput {
+  severity: AlarmSeverity;
+  currentValue: number;
+  thresholdValue: number;
+  unit: string;
+  metadata: AlarmMetadata;
+  message: string;
+}
+
 export interface AlarmHistoryOptions {
   /**
    * When true, return only resolved alarms (endedAt is not null), ordered by
@@ -55,6 +65,11 @@ export interface AlarmRepository {
   openMetricAlarm(input: MetricAlarmOpenInput): Promise<Alarm | null>;
   /** Open metric alarms of one device (dedupe/escalation state). */
   listOpenMetricAlarms(deviceId: string): Promise<Alarm[]>;
+  /**
+   * Escalation in-place: atualiza severidade/valores/mensagem do MESMO alarme
+   * aberto. Nunca rebaixa (o motor ja compara as severidades antes).
+   */
+  escalateMetricAlarm(alarmId: string, input: MetricAlarmEscalationInput): Promise<Alarm | null>;
   /** Closes the open metric alarm of one fingerprint, when it exists. */
   resolveMetricAlarm(
     interfaceId: string,

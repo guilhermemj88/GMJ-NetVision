@@ -7,6 +7,7 @@ import type {
   MetricPoint,
   NetworkInterface,
   OpticalHistoryPoint,
+  OpticalLaneReading,
   OpticalThresholdSource,
   OpticalThresholdsV1,
   UpdateHostInput,
@@ -50,6 +51,15 @@ export interface InterfaceMetricWindowRow {
   outDiscardsDelta: bigint;
   fcsErrors: bigint | null;
   fcsErrorsDelta: bigint | null;
+}
+
+/** Amostra optica persistida usada pelo motor (janela do RX por lane/scalar). */
+export interface InterfaceOpticalWindowRow {
+  interfaceId: string;
+  timestamp: Date;
+  rxPowerDbm: number | null;
+  txPowerDbm: number | null;
+  opticalLanes: OpticalLaneReading[];
 }
 
 export interface InterfaceMetricSampleInput extends InterfaceCounterSnapshot {
@@ -134,6 +144,8 @@ export interface HostRepository {
   getLatestCounterSnapshots(hostId: string): Promise<Map<number, InterfaceCounterSnapshot>>;
   /** Amostras recentes do device (janela do motor de alarmes), ordem crescente. */
   getRecentInterfaceMetricSamples(deviceId: string, since: Date): Promise<InterfaceMetricWindowRow[]>;
+  /** Amostras opticas recentes do device (janela do motor optico), ordem crescente. */
+  getRecentInterfaceOpticalSamples(deviceId: string, since: Date): Promise<InterfaceOpticalWindowRow[]>;
   saveSnmpPoll(
     hostId: string,
     deviceSample: DeviceMetricSampleInput,

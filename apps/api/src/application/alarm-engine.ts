@@ -1,20 +1,146 @@
 import { alarmInterfaceLabel, METRIC_ALARM_TYPES } from '@gmj/shared';
 import type {
+  Alarm,
+  AlarmMetadata,
+  AlarmSeverity,
   InterfaceErrorsRuleConfig,
   MetricAlarmType,
   MetricThresholdRuleConfig,
   NetworkInterface,
+  OpticalRuleConfig,
+  OpticalThresholdSource,
 } from '@gmj/shared';
 import type { AlarmRepository } from '../infrastructure/alarms/alarm-repository';
 import type { AlarmRuleRecord, AlarmRuleRepository } from '../infrastructure/alarms/alarm-rule-repository';
 import type {
   HostRepository,
   InterfaceMetricWindowRow,
+  InterfaceOpticalThresholdRecord,
+  InterfaceOpticalWindowRow,
 } from '../infrastructure/persistence/host-repository';
 import { isPlausibleCounter32Wrap } from '../infrastructure/snmp/counter-delta';
 
 /** Janela de leitura das amostras recentes (30 min cobre os tetos de samples). */
 export const METRIC_ALARM_WINDOW_MS = 30 * 60_000;
+
+/**
+ * Janela minima das amostras opticas: cobre o trend de 30 min e triggers de
+ * ate 10 amostras do poll optico (300s). `*TriggerSamples` contam AMOSTRAS
+ * OPTICAS, nunca minutos.
+ */
+export const OPTICAL_ALARM_WINDOW_MS = 60 * 60_000;
+
+/** Tolerancia para nao duplicar a amostra recem-persistida ao avaliar o agora. */
+const OPTICAL_SAMPLE_TOLERANCE_MS = 5_000;
+
+export type OpticalLadder = 'NONE' | 'WARNING' | 'MAJOR' | 'CRITICAL';
+
+const SEVERITY_RANK: Record<AlarmSeverity, number> = {
+  INFO: 1,
+  WARNING: 2,
+  MAJOR: 3,
+  CRITICAL: 4,
+};
+
+function highestSeverity(left: AlarmSeverity, right: AlarmSeverity): AlarmSeverity {
+  return SEVERITY_RANK[left] >= SEVERITY_RANK[right] ? left : right;
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * Proximidade (%) do RX em relacao ao Low Alarm: 100 = no Low, 0 = no High.
+ * NUNCA deriva um threshold falso (nada de `low * 0.9`); o valor e apenas a
+ * posicao relativa dentro da faixa real do transceiver, com clamp 0..100.
+ */
+export function opticalProximityPercent(current: number, low: number, high: number): number | null {
+  if (!(high > low)) return null;
+  const raw = ((high - current) / (high - low)) * 100;
+  return Math.min(100, Math.max(0, raw));
+}
+
+/** Maior queda (max drawdown) da janela: max(x_i - x_j) com i antes de j. */
+export function opticalTrendDropDb(points: readonly number[]): number {
+  let peak = Number.NEGATIVE_INFINITY;
+  let drop = 0;
+  for (const value of points) {
+    if (value > peak) peak = value;
+    else drop = Math.max(drop, peak - value);
+  }
+  return round2(drop);
+}
+
+export interface OpticalLadderCriteria {
+  currentPowerDbm: number;
+  lowAlarmDbm: number | null;
+  highAlarmDbm: number | null;
+  warningProximityPercent: number;
+  majorProximityPercent: number;
+  criticalAtLowAlarm: boolean;
+  warningMarginDb: number;
+  /** Queda observada na janela (0 quando ha menos de 3 amostras validas). */
+  trendDropObservedDb: number;
+  trendDropThresholdDb: number;
+}
+
+/** Tolerancia (em pontos percentuais) para nao perder um limiar exato por ponto flutuante. */
+const PROXIMITY_EPSILON = 1e-9;
+
+/**
+ * Escada deterministica por amostra: CRITICAL quando o RX alcanca/cruza o Low
+ * Alarm; MAJOR/WARNING por proximidade percentual quando a faixa Low..High e
+ * conhecida; WARNING por margem quando so existe o Low; e WARNING por trend,
+ * que funciona mesmo sem nenhum threshold (nunca inventa alarme sem criterio).
+ */
+export function opticalLadderFor(criteria: OpticalLadderCriteria): OpticalLadder {
+  const { currentPowerDbm: current, lowAlarmDbm: low, highAlarmDbm: high } = criteria;
+  if (low !== null && criteria.criticalAtLowAlarm && current <= low) return 'CRITICAL';
+
+  let ladder: OpticalLadder = 'NONE';
+  if (low !== null && high !== null) {
+    const proximity = opticalProximityPercent(current, low, high);
+    if (proximity !== null) {
+      if (proximity >= criteria.majorProximityPercent - PROXIMITY_EPSILON) ladder = 'MAJOR';
+      else if (proximity >= criteria.warningProximityPercent - PROXIMITY_EPSILON) ladder = 'WARNING';
+    }
+  } else if (low !== null && current - low <= criteria.warningMarginDb) {
+    ladder = 'WARNING';
+  }
+
+  if (ladder !== 'MAJOR' && criteria.trendDropObservedDb >= criteria.trendDropThresholdDb) {
+    ladder = 'WARNING';
+  }
+  return ladder;
+}
+
+/** Recuperacao: proximidade abaixo do limite, margem folgada ou trend limpo. */
+export function opticalRecovered(
+  criteria: OpticalLadderCriteria & { recoveryProximityPercent: number },
+): boolean {
+  const { currentPowerDbm: current, lowAlarmDbm: low, highAlarmDbm: high } = criteria;
+  if (low !== null && high !== null) {
+    const proximity = opticalProximityPercent(current, low, high);
+    return proximity !== null
+      && proximity <= criteria.recoveryProximityPercent + PROXIMITY_EPSILON;
+  }
+  if (low !== null) return current - low > criteria.warningMarginDb;
+  return criteria.trendDropObservedDb < criteria.trendDropThresholdDb;
+}
+
+/** As N ultimas amostras satisfazem a severidade exigida? (por amostra, sem minutos). */
+function sustainedSeverity(
+  ladders: readonly OpticalLadder[],
+  severity: Exclude<OpticalLadder, 'NONE'>,
+  required: number,
+): boolean {
+  if (required < 1 || ladders.length < required) return false;
+  const rank = SEVERITY_RANK[severity];
+  return ladders
+    .slice(-required)
+    .every((ladder) => ladder !== 'NONE' && SEVERITY_RANK[ladder] >= rank);
+}
 
 export type MetricDirection = 'RX' | 'TX';
 
@@ -174,7 +300,272 @@ export function thresholdConfigFor(rule: AlarmRuleRecord): MetricThresholdRuleCo
   return rule.config as MetricThresholdRuleConfig;
 }
 
+export type OpticalAlarmReason = 'AT_LOW' | 'PROXIMITY' | 'MARGIN' | 'TREND';
+
+export interface OpticalLadderOutcome {
+  reason: OpticalAlarmReason;
+  unit: string;
+  currentValue: number;
+  thresholdValue: number;
+}
+
+/**
+ * Valores publicados no alarme conforme o criterio que sustentou a severidade.
+ * A proximidade usa a faixa real LOW..HIGH do equipamento; nunca um threshold
+ * derivado (`low * 0.9` e proibido por decisao de projeto).
+ */
+export function opticalAlarmOutcome(
+  criteria: OpticalLadderCriteria,
+  ladder: OpticalLadder,
+): OpticalLadderOutcome {
+  const { currentPowerDbm: current, lowAlarmDbm: low, highAlarmDbm: high } = criteria;
+  if (ladder === 'CRITICAL' && low !== null && criteria.criticalAtLowAlarm && current <= low) {
+    return {
+      reason: 'AT_LOW',
+      unit: 'dBm',
+      currentValue: round2(current),
+      thresholdValue: round2(low),
+    };
+  }
+  if (low !== null && high !== null) {
+    const proximity = opticalProximityPercent(current, low, high) ?? 0;
+    return {
+      reason: 'PROXIMITY',
+      unit: '%',
+      currentValue: round2(proximity),
+      thresholdValue: ladder === 'MAJOR'
+        ? criteria.majorProximityPercent
+        : criteria.warningProximityPercent,
+    };
+  }
+  if (low !== null) {
+    return {
+      reason: 'MARGIN',
+      unit: 'dB',
+      currentValue: round2(current - low),
+      thresholdValue: criteria.warningMarginDb,
+    };
+  }
+  return {
+    reason: 'TREND',
+    unit: 'dB',
+    currentValue: criteria.trendDropObservedDb,
+    thresholdValue: criteria.trendDropThresholdDb,
+  };
+}
+
+export function opticalAlarmMessage(input: {
+  deviceName: string;
+  interfaceLabel: string;
+  interfaceName: string;
+  metricKey: string;
+  reason: OpticalAlarmReason;
+  outcome: OpticalLadderOutcome;
+  lowAlarmDbm: number | null;
+  highAlarmDbm: number | null;
+  trendWindowMinutes: number;
+}): string {
+  const scope = input.metricKey === 'RX'
+    ? 'RX optico'
+    : `RX optico lane ${input.metricKey.replace('RX_LANE_', '')}`;
+  const prefix = `${input.deviceName}: ${input.interfaceLabel} (${input.interfaceName}) — ${scope}`;
+  const { currentValue, thresholdValue } = input.outcome;
+  switch (input.reason) {
+    case 'AT_LOW':
+      return `${prefix} em ${currentValue} dBm (Low Alarm ${thresholdValue} dBm)`;
+    case 'PROXIMITY':
+      return `${prefix} com proximidade ${currentValue}% do Low Alarm (${input.lowAlarmDbm} a ${input.highAlarmDbm} dBm)`;
+    case 'MARGIN':
+      return `${prefix} com margem de ${currentValue} dB acima do Low Alarm ${input.lowAlarmDbm} dBm`;
+    default:
+      return `${prefix} caiu ${currentValue} dB em ${input.trendWindowMinutes} min`;
+  }
+}
+
+interface OpticalPoint {
+  timestampMs: number;
+  rxPowerDbm: number | null;
+}
+
+interface OpticalSeries {
+  metricKey: string;
+  lane: number | null;
+  powerSource: 'SNMP' | 'SSH' | null;
+  speedBps: number;
+  lowAlarmDbm: number | null;
+  highAlarmDbm: number | null;
+  thresholdSource: OpticalThresholdSource | null;
+  points: OpticalPoint[];
+}
+
+/** Fonte efetiva do threshold: lane > scalar > manual da regra > nada. */
+function opticalThresholdSideFor(
+  record: InterfaceOpticalThresholdRecord | null,
+  lane: number | null,
+  config: OpticalRuleConfig,
+): Pick<OpticalSeries, 'lowAlarmDbm' | 'highAlarmDbm' | 'thresholdSource'> {
+  const scopes = lane === null
+    ? [record?.thresholds?.scalar.rx]
+    : [
+        record?.thresholds?.lanes.find((item) => item.lane === lane)?.rx,
+        record?.thresholds?.scalar.rx,
+      ];
+  for (const side of scopes) {
+    if (side && (side.lowAlarmDbm !== null || side.highAlarmDbm !== null)) {
+      return {
+        lowAlarmDbm: side.lowAlarmDbm,
+        highAlarmDbm: side.highAlarmDbm,
+        thresholdSource: side.lowSource ?? side.highSource ?? null,
+      };
+    }
+  }
+  if (config.manualRxLowAlarmDbm != null || config.manualRxHighAlarmDbm != null) {
+    return {
+      lowAlarmDbm: config.manualRxLowAlarmDbm ?? null,
+      highAlarmDbm: config.manualRxHighAlarmDbm ?? null,
+      thresholdSource: 'MANUAL',
+    };
+  }
+  return { lowAlarmDbm: null, highAlarmDbm: null, thresholdSource: null };
+}
+
+/**
+ * Series avaliadas na interface: modo LANE quando ha 2+ lanes com leitura
+ * (scalar deixa de ser avaliado, sem alarme duplicado) e modo SCALAR caso
+ * contrario. Cada lane vira um fingerprint `RX_LANE_n` independente.
+ */
+export function opticalSeriesFor(
+  networkInterface: NetworkInterface,
+  samples: readonly InterfaceOpticalWindowRow[],
+  record: InterfaceOpticalThresholdRecord | null,
+  config: OpticalRuleConfig,
+  nowMs: number,
+): OpticalSeries[] {
+  const ordered = [...samples].sort((left, right) => left.timestamp.getTime() - right.timestamp.getTime());
+  const laneReadings = (networkInterface.opticalLanes ?? [])
+    .filter((lane) => typeof lane.rxPowerDbm === 'number');
+  const speedBps = Number(networkInterface.speedBps ?? 0);
+
+  const withCurrent = (points: OpticalPoint[], currentValue: number | null): OpticalPoint[] => {
+    if (currentValue === null) return points;
+    const last = points.at(-1);
+    if (!last || nowMs - last.timestampMs > OPTICAL_SAMPLE_TOLERANCE_MS) {
+      points.push({ timestampMs: nowMs, rxPowerDbm: currentValue });
+    }
+    return points;
+  };
+
+  if (laneReadings.length >= 2) {
+    return laneReadings.flatMap((lane) => {
+      const side = opticalThresholdSideFor(record, lane.lane, config);
+      const points = withCurrent(
+        ordered.map((sample) => ({
+          timestampMs: sample.timestamp.getTime(),
+          rxPowerDbm: sample.opticalLanes.find((item) => item.lane === lane.lane)?.rxPowerDbm ?? null,
+        })),
+        lane.rxPowerDbm ?? null,
+      );
+      return [{
+        metricKey: `RX_LANE_${lane.lane}`,
+        lane: lane.lane,
+        powerSource: networkInterface.opticalLaneSource ?? null,
+        speedBps,
+        ...side,
+        points,
+      }];
+    });
+  }
+
+  const scalar = networkInterface.rxPowerDbm;
+  if (typeof scalar !== 'number') return [];
+  return [{
+    metricKey: 'RX',
+    lane: null,
+    powerSource: networkInterface.opticalSource ?? null,
+    speedBps,
+    ...opticalThresholdSideFor(record, null, config),
+    points: withCurrent(
+      ordered.map((sample) => ({
+        timestampMs: sample.timestamp.getTime(),
+        rxPowerDbm: sample.rxPowerDbm,
+      })),
+      scalar,
+    ),
+  }];
+}
+
+function trendObservedAt(points: readonly OpticalPoint[], index: number, trendWindowMs: number): number {
+  const end = points[index];
+  if (!end) return 0;
+  const startMs = end.timestampMs - trendWindowMs;
+  const values: number[] = [];
+  for (let position = index; position >= 0; position -= 1) {
+    const point = points[position];
+    if (!point || point.timestampMs < startMs) break;
+    if (point.rxPowerDbm !== null) values.unshift(point.rxPowerDbm);
+  }
+  return values.length >= 3 ? opticalTrendDropDb(values) : 0;
+}
+
+function opticalCriteriaAt(
+  series: OpticalSeries,
+  index: number,
+  config: OpticalRuleConfig,
+  trendWindowMs: number,
+): (OpticalLadderCriteria & { recoveryProximityPercent: number }) | null {
+  const current = series.points[index]?.rxPowerDbm;
+  if (current === null || current === undefined) return null;
+  return {
+    currentPowerDbm: current,
+    lowAlarmDbm: series.lowAlarmDbm,
+    highAlarmDbm: series.highAlarmDbm,
+    warningProximityPercent: config.warningProximityPercent,
+    majorProximityPercent: config.majorProximityPercent,
+    criticalAtLowAlarm: config.criticalAtLowAlarm,
+    warningMarginDb: config.warningMarginDb,
+    trendDropObservedDb: trendObservedAt(series.points, index, trendWindowMs),
+    trendDropThresholdDb: config.trendDropDb,
+    recoveryProximityPercent: config.recoveryProximityPercent,
+  };
+}
+
+function opticalAlarmMetadata(
+  series: OpticalSeries,
+  criteria: OpticalLadderCriteria,
+  config: OpticalRuleConfig,
+): AlarmMetadata {
+  const proximity = criteria.lowAlarmDbm !== null && criteria.highAlarmDbm !== null
+    ? round2(opticalProximityPercent(criteria.currentPowerDbm, criteria.lowAlarmDbm, criteria.highAlarmDbm) ?? 0)
+    : null;
+  return {
+    direction: 'RX',
+    rxPowerDbm: round2(criteria.currentPowerDbm),
+    rxLowAlarmDbm: criteria.lowAlarmDbm,
+    rxHighAlarmDbm: criteria.highAlarmDbm,
+    marginDb: criteria.lowAlarmDbm !== null
+      ? round2(criteria.currentPowerDbm - criteria.lowAlarmDbm)
+      : null,
+    proximityPercent: proximity,
+    trendDropDb: criteria.trendDropObservedDb,
+    trendWindowMinutes: config.trendWindowMinutes,
+    currentPowerSource: series.powerSource,
+    thresholdSource: series.thresholdSource,
+    speedBps: series.speedBps,
+    ...(series.lane === null ? {} : { lane: series.lane }),
+  };
+}
+
+function isOpticalRule(rule: AlarmRuleRecord): boolean {
+  return rule.type === 'OPTICAL_RX_DEGRADATION';
+}
+
 export interface MetricEvaluationInput {
+  deviceId: string;
+  deviceName: string;
+  interfaces: readonly NetworkInterface[];
+}
+
+export interface OpticalEvaluationInput {
   deviceId: string;
   deviceName: string;
   interfaces: readonly NetworkInterface[];
@@ -202,7 +593,9 @@ export class AlarmEngine {
   async processDeviceMetrics(input: MetricEvaluationInput): Promise<void> {
     if (!input.interfaces.length) return;
 
-    const rules = await this.deps.rules.listEnabled(METRIC_ALARM_TYPES);
+    const rules = (await this.deps.rules.listEnabled(METRIC_ALARM_TYPES)).filter(
+      (rule) => !isOpticalRule(rule),
+    );
     const applicable = rules.filter(
       (rule) => !rule.scope.devices?.length || rule.scope.devices.includes(input.deviceId),
     );
@@ -316,6 +709,187 @@ export class AlarmEngine {
       }
     }
   }
+
+  /**
+   * Avalia o RX optico persistido (AMOSTRAS OPTICAS de 300s). STATELESS: a
+   * escada, os triggers e a recuperacao saem das amostras do banco. A escalada
+   * acontece na MESMA linha do alarme aberto (sem downgrade) e a recuperacao
+   * sustentada e o unico caminho de saida.
+   */
+  async processOpticalReadings(input: OpticalEvaluationInput): Promise<void> {
+    if (!input.interfaces.length) return;
+
+    const rules = (await this.deps.rules.listEnabled(METRIC_ALARM_TYPES)).filter(isOpticalRule);
+    const applicable = rules.filter(
+      (rule) => !rule.scope.devices?.length || rule.scope.devices.includes(input.deviceId),
+    );
+    if (!applicable.length) return;
+
+    const linked = applicable.some((rule) => rule.mapLinkedOnly)
+      ? await this.deps.alarms.findLinkedInterfaceIds(input.interfaces.map((item) => item.id))
+      : null;
+
+    const trendWindows = applicable.map(
+      (rule) => (rule.config as OpticalRuleConfig).trendWindowMinutes * 60_000,
+    );
+    const windowMs = Math.max(OPTICAL_ALARM_WINDOW_MS, ...trendWindows);
+    const now = this.now();
+    const samples = await this.deps.hosts.getRecentInterfaceOpticalSamples(
+      input.deviceId,
+      new Date(now.getTime() - windowMs),
+    );
+    const samplesByInterface = new Map<string, InterfaceOpticalWindowRow[]>();
+    for (const sample of samples) {
+      const list = samplesByInterface.get(sample.interfaceId);
+      if (list) list.push(sample);
+      else samplesByInterface.set(sample.interfaceId, [sample]);
+    }
+    const thresholds = new Map(
+      (await this.deps.hosts.getInterfaceOpticalThresholds(input.deviceId)).map((record) => [
+        record.interfaceId,
+        record,
+      ]),
+    );
+    const openByFingerprint = new Map(
+      (await this.deps.alarms.listOpenMetricAlarms(input.deviceId))
+        .filter((alarm) => alarm.type === 'OPTICAL_RX_DEGRADATION')
+        .map((alarm) => [
+          fingerprintOf(alarm.ruleId ?? '', alarm.interfaceId, alarm.type, alarm.metricKey ?? ''),
+          alarm,
+        ]),
+    );
+
+    for (const networkInterface of input.interfaces) {
+      for (const rule of applicable) {
+        if (!ruleMatchesInterface(rule, input.deviceId, networkInterface, linked)) continue;
+        const config = rule.config as OpticalRuleConfig;
+        const seriesList = opticalSeriesFor(
+          networkInterface,
+          samplesByInterface.get(networkInterface.id) ?? [],
+          thresholds.get(networkInterface.id) ?? null,
+          config,
+          now.getTime(),
+        );
+        for (const series of seriesList) {
+          await this.evaluateOpticalSeries({
+            deviceId: input.deviceId,
+            deviceName: input.deviceName,
+            networkInterface,
+            rule,
+            config,
+            series,
+            openByFingerprint,
+          });
+        }
+      }
+    }
+  }
+
+  private async evaluateOpticalSeries(input: {
+    deviceId: string;
+    deviceName: string;
+    networkInterface: NetworkInterface;
+    rule: AlarmRuleRecord;
+    config: OpticalRuleConfig;
+    series: OpticalSeries;
+    openByFingerprint: Map<string, Alarm>;
+  }): Promise<void> {
+    const { series, config, rule, networkInterface } = input;
+    const trendWindowMs = config.trendWindowMinutes * 60_000;
+    const criteriaList = series.points.map((_, index) =>
+      opticalCriteriaAt(series, index, config, trendWindowMs),
+    );
+    const ladders = criteriaList.map((criteria) =>
+      criteria ? opticalLadderFor(criteria) : ('NONE' as OpticalLadder),
+    );
+    const fingerprint = fingerprintOf(rule.id, networkInterface.id, rule.type, series.metricKey);
+    const open = input.openByFingerprint.get(fingerprint);
+
+    if (open) {
+      const recoveries = criteriaList.map((criteria) =>
+        criteria ? opticalRecovered(criteria) : false,
+      );
+      const sustainedRecovery = recoveries.length >= config.recoverySamples
+        && recoveries.slice(-config.recoverySamples).every(Boolean);
+      if (sustainedRecovery) {
+        const resolved = await this.deps.alarms.resolveMetricAlarm(
+          networkInterface.id,
+          rule.type,
+          series.metricKey,
+          this.now(),
+        );
+        if (resolved) input.openByFingerprint.delete(fingerprint);
+        return;
+      }
+    }
+
+    const target = (['CRITICAL', 'MAJOR', 'WARNING'] as const).find((severity) =>
+      sustainedSeverity(ladders, severity, triggerSamplesFor(config, severity)),
+    );
+    const latest = criteriaList.at(-1) ?? null;
+    if (!target || !latest) return;
+
+    const severity = highestSeverity(rule.severity, target);
+    const outcome = opticalAlarmOutcome(latest, target);
+    const metadata = opticalAlarmMetadata(series, latest, config);
+    const message = opticalAlarmMessage({
+      deviceName: input.deviceName,
+      interfaceLabel: alarmInterfaceLabel(
+        networkInterface.alias,
+        networkInterface.description,
+        networkInterface.name,
+        networkInterface.ifIndex,
+      ),
+      interfaceName: networkInterface.name,
+      metricKey: series.metricKey,
+      reason: outcome.reason,
+      outcome,
+      lowAlarmDbm: series.lowAlarmDbm,
+      highAlarmDbm: series.highAlarmDbm,
+      trendWindowMinutes: config.trendWindowMinutes,
+    });
+
+    if (!open) {
+      const opened = await this.deps.alarms.openMetricAlarm({
+        deviceId: input.deviceId,
+        interfaceId: networkInterface.id,
+        ifIndex: networkInterface.ifIndex,
+        ruleId: rule.id,
+        type: rule.type,
+        severity,
+        metricKey: series.metricKey,
+        currentValue: outcome.currentValue,
+        thresholdValue: outcome.thresholdValue,
+        unit: outcome.unit,
+        metadata,
+        message,
+        startedAt: this.now(),
+      });
+      if (opened) input.openByFingerprint.set(fingerprint, opened);
+      return;
+    }
+
+    // Mesma linha: so escala, nunca rebaixa (INFO < WARNING < MAJOR < CRITICAL).
+    if (SEVERITY_RANK[severity] <= SEVERITY_RANK[open.severity]) return;
+    const escalated = await this.deps.alarms.escalateMetricAlarm(open.id, {
+      severity,
+      currentValue: outcome.currentValue,
+      thresholdValue: outcome.thresholdValue,
+      unit: outcome.unit,
+      metadata,
+      message,
+    });
+    if (escalated) input.openByFingerprint.set(fingerprint, escalated);
+  }
+}
+
+function triggerSamplesFor(
+  config: OpticalRuleConfig,
+  severity: Exclude<OpticalLadder, 'NONE'>,
+): number {
+  if (severity === 'CRITICAL') return config.criticalTriggerSamples;
+  if (severity === 'MAJOR') return config.majorTriggerSamples;
+  return config.warningTriggerSamples;
 }
 
 function evaluateWindow(

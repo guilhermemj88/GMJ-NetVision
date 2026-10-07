@@ -124,4 +124,27 @@ describe('parsers de leitura (revalidacao do que veio do banco)', () => {
     expect(parseAlarmRuleConfig('INTERFACE_DOWN', {})).toBeNull();
     expect(parseAlarmRuleConfig('UNKNOWN', {})).toBeNull();
   });
+
+  it('config optica aplica defaults e rejeita escada/janela invertidas', () => {
+    expect(parseAlarmRuleConfig('OPTICAL_RX_DEGRADATION', {})).toMatchObject({
+      warningProximityPercent: 90,
+      majorProximityPercent: 95,
+      criticalAtLowAlarm: true,
+      warningTriggerSamples: 3,
+      majorTriggerSamples: 2,
+      criticalTriggerSamples: 1,
+      warningMarginDb: 3,
+      recoveryProximityPercent: 85,
+      recoverySamples: 3,
+      trendDropDb: 3,
+      trendWindowMinutes: 30,
+    });
+    expect(
+      parseAlarmRuleConfig('OPTICAL_RX_DEGRADATION', { warningProximityPercent: 95, majorProximityPercent: 95 }),
+    ).toBeNull();
+    expect(parseAlarmRuleConfig('OPTICAL_RX_DEGRADATION', { recoveryProximityPercent: 90 })).toBeNull();
+    expect(
+      parseAlarmRuleConfig('OPTICAL_RX_DEGRADATION', { manualRxLowAlarmDbm: -30.5 }),
+    ).toMatchObject({ manualRxLowAlarmDbm: -30.5 });
+  });
 });

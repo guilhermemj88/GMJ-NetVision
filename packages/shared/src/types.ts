@@ -50,12 +50,17 @@ export type AlarmType =
   | 'INTERFACE_DISCARDS'
   | 'OPTICAL_RX_DEGRADATION';
 /** Tipos metricos que podem ser governados por AlarmRule nesta fase. */
-export type MetricAlarmType = 'INTERFACE_ERRORS' | 'INTERFACE_CRC' | 'INTERFACE_DISCARDS';
+export type MetricAlarmType =
+  | 'INTERFACE_ERRORS'
+  | 'INTERFACE_CRC'
+  | 'INTERFACE_DISCARDS'
+  | 'OPTICAL_RX_DEGRADATION';
 export type AlarmDirection = 'RX' | 'TX' | 'BOTH';
 export const METRIC_ALARM_TYPES = [
   'INTERFACE_ERRORS',
   'INTERFACE_CRC',
   'INTERFACE_DISCARDS',
+  'OPTICAL_RX_DEGRADATION',
 ] as const satisfies readonly MetricAlarmType[];
 export type AlarmSeverity = 'CRITICAL' | 'MAJOR' | 'WARNING' | 'INFO';
 export type AlarmPanelPosition = 'LEFT' | 'RIGHT' | 'HIDDEN';
@@ -160,7 +165,34 @@ export interface InterfaceErrorsRuleConfig extends MetricThresholdRuleConfig {
 /** FCS/CRC e metrica de recepcao (RX); sem direcao configuravel. */
 export type InterfaceCrcRuleConfig = MetricThresholdRuleConfig;
 export type InterfaceDiscardsRuleConfig = InterfaceErrorsRuleConfig;
-export type AlarmRuleConfig = InterfaceErrorsRuleConfig | InterfaceCrcRuleConfig;
+
+/**
+ * Regra do alarme optico (OPTICAL_RX_DEGRADATION). Os tres criterios sao
+ * INDEPENDENTES: proximidade percentual do Low Alarm, margem (quando so existe
+ * o Low) e tendencia (queda dentro da janela), que funciona sem threshold.
+ * `*TriggerSamples` contam AMOSTRAS OPTICAS (poll de 300s), nunca minutos.
+ */
+export interface OpticalRuleConfig {
+  warningProximityPercent: number;
+  majorProximityPercent: number;
+  criticalAtLowAlarm: boolean;
+  warningTriggerSamples: number;
+  majorTriggerSamples: number;
+  criticalTriggerSamples: number;
+  warningMarginDb: number;
+  recoveryProximityPercent: number;
+  recoverySamples: number;
+  trendDropDb: number;
+  trendWindowMinutes: number;
+  /** Threshold manual usado SOMENTE quando o equipamento nao fornece nenhum. */
+  manualRxLowAlarmDbm?: number | null | undefined;
+  manualRxHighAlarmDbm?: number | null | undefined;
+}
+
+export type AlarmRuleConfig =
+  | InterfaceErrorsRuleConfig
+  | InterfaceCrcRuleConfig
+  | OpticalRuleConfig;
 
 export interface AlarmRuleDto {
   id: string;

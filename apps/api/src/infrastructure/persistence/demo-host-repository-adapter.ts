@@ -16,6 +16,7 @@ import type {
   InterfaceMetricWindowRow,
   InterfaceOpticalThresholdRecord,
   InterfaceOpticalThresholdUpdateInput,
+  InterfaceOpticalWindowRow,
   InterfaceStatusTransition,
   InterfaceStatusUpdate,
   SnmpCredentialSecret,
@@ -149,6 +150,13 @@ export class DemoHostRepositoryAdapter implements HostRepository {
     _deviceId: string,
     _since: Date,
   ): Promise<InterfaceMetricWindowRow[]> {
+    return [];
+  }
+
+  async getRecentInterfaceOpticalSamples(
+    _deviceId: string,
+    _since: Date,
+  ): Promise<InterfaceOpticalWindowRow[]> {
     return [];
   }
 

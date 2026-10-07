@@ -1,15 +1,23 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Alarm, NetworkInterface } from '@gmj/shared';
+import type { Alarm, NetworkInterface, OpticalRuleConfig } from '@gmj/shared';
 import {
   AlarmEngine,
   consecutiveMatch,
   evaluateSamplePair,
   metricAlarmMessage,
+  opticalLadderFor,
+  opticalProximityPercent,
+  opticalTrendDropDb,
   ruleMatchesInterface,
 } from './alarm-engine';
 import type { AlarmRepository, MetricAlarmOpenInput } from '../infrastructure/alarms/alarm-repository';
 import type { AlarmRuleRecord, AlarmRuleRepository } from '../infrastructure/alarms/alarm-rule-repository';
-import type { HostRepository, InterfaceMetricWindowRow } from '../infrastructure/persistence/host-repository';
+import type {
+  HostRepository,
+  InterfaceMetricWindowRow,
+  InterfaceOpticalThresholdRecord,
+  InterfaceOpticalWindowRow,
+} from '../infrastructure/persistence/host-repository';
 
 const NOW = new Date('2026-10-07T12:00:00.000Z');
 
@@ -522,5 +530,484 @@ describe('AlarmEngine — trigger/recovery/dedupe', () => {
     });
     expect(none.getRecentInterfaceMetricSamples).not.toHaveBeenCalled();
     expect(none.listOpenMetricAlarms).not.toHaveBeenCalled();
+  });
+});
+
+const OPTICAL_RULE_ID = 'rule-opt';
+
+function opticalConfig(overrides: Partial<OpticalRuleConfig> = {}): OpticalRuleConfig {
+  return {
+    warningProximityPercent: 90,
+    majorProximityPercent: 95,
+    criticalAtLowAlarm: true,
+    warningTriggerSamples: 3,
+    majorTriggerSamples: 2,
+    criticalTriggerSamples: 1,
+    warningMarginDb: 3,
+    recoveryProximityPercent: 85,
+    recoverySamples: 3,
+    trendDropDb: 3,
+    trendWindowMinutes: 30,
+    ...overrides,
+  };
+}
+
+function opticalRuleOf(overrides: Partial<AlarmRuleRecord> = {}): AlarmRuleRecord {
+  return {
+    id: OPTICAL_RULE_ID,
+    name: 'RX optico',
+    type: 'OPTICAL_RX_DEGRADATION',
+    enabled: true,
+    severity: 'WARNING',
+    mapLinkedOnly: false,
+    mediaEnabled: false,
+    scope: {},
+    config: opticalConfig(),
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  };
+}
+
+function opticalInterface(
+  overrides: Partial<NetworkInterface> = {},
+): NetworkInterface {
+  return {
+    ...networkInterfaceAt('if-1', 1, 100_000_000_000),
+    rxPowerDbm: -12,
+    opticalSource: 'SNMP',
+    opticalUpdatedAt: NOW.toISOString(),
+    ...overrides,
+  };
+}
+
+function opticalRow(
+  minutesAgo: number,
+  rxPowerDbm: number | null,
+  interfaceId = 'if-1',
+): InterfaceOpticalWindowRow {
+  return {
+    interfaceId,
+    timestamp: new Date(NOW.getTime() - minutesAgo * 60_000),
+    rxPowerDbm,
+    txPowerDbm: null,
+    opticalLanes: [],
+  };
+}
+
+function laneRow(
+  minutesAgo: number,
+  lanePowers: Record<number, number | null>,
+  interfaceId = 'if-1',
+): InterfaceOpticalWindowRow {
+  return {
+    interfaceId,
+    timestamp: new Date(NOW.getTime() - minutesAgo * 60_000),
+    rxPowerDbm: null,
+    txPowerDbm: null,
+    opticalLanes: Object.entries(lanePowers).map(([lane, rxPowerDbm]) => ({
+      lane: Number(lane),
+      rxPowerDbm,
+      txPowerDbm: null,
+    })),
+  };
+}
+
+function thresholdSide(low: number | null, high: number | null) {
+  return {
+    lowAlarmDbm: low,
+    highAlarmDbm: high,
+    lowSource: low === null ? null : ('DEVICE' as const),
+    highSource: high === null ? null : ('DEVICE' as const),
+  };
+}
+
+function thresholdRecord(
+  low: number | null,
+  high: number | null,
+  lanes: Array<{ lane: number; low: number | null; high: number | null }> = [],
+  interfaceId = 'if-1',
+): InterfaceOpticalThresholdRecord {
+  return {
+    interfaceId,
+    thresholds: {
+      version: 1,
+      scalar: { rx: thresholdSide(low, high), tx: thresholdSide(null, null) },
+      lanes: lanes.map((lane) => ({
+        lane: lane.lane,
+        rx: thresholdSide(lane.low, lane.high),
+        tx: thresholdSide(null, null),
+      })),
+    },
+    source: 'DEVICE',
+    updatedAt: NOW,
+    refreshAfter: NOW,
+  };
+}
+
+function existingOpticalAlarm(overrides: Partial<Alarm> = {}): Alarm {
+  return {
+    ...openedAlarm({
+      deviceId: 'dev-1',
+      interfaceId: 'if-1',
+      ifIndex: 1,
+      ruleId: OPTICAL_RULE_ID,
+      type: 'OPTICAL_RX_DEGRADATION',
+      severity: 'WARNING',
+      metricKey: 'RX',
+      currentValue: 90,
+      thresholdValue: 90,
+      unit: '%',
+      metadata: {},
+      message: 'RX optico com proximidade 90%',
+      startedAt: NOW,
+    }),
+    ...overrides,
+  };
+}
+
+function buildOpticalEngine(options: {
+  rules?: AlarmRuleRecord[];
+  rows?: InterfaceOpticalWindowRow[];
+  thresholds?: InterfaceOpticalThresholdRecord[];
+  open?: Alarm[];
+}) {
+  const listEnabled = vi.fn().mockResolvedValue(options.rules ?? [opticalRuleOf()]);
+  const openMetricAlarm = vi
+    .fn()
+    .mockImplementation(async (input: MetricAlarmOpenInput) => openedAlarm(input, 'alarm-opt'));
+  const escalateMetricAlarm = vi.fn().mockResolvedValue(null);
+  const resolveMetricAlarm = vi.fn().mockResolvedValue(true);
+  const listOpenMetricAlarms = vi.fn().mockResolvedValue(options.open ?? []);
+  const findLinkedInterfaceIds = vi.fn().mockResolvedValue(new Set<string>());
+  const getRecentInterfaceOpticalSamples = vi.fn().mockResolvedValue(options.rows ?? []);
+  const getInterfaceOpticalThresholds = vi.fn().mockResolvedValue(options.thresholds ?? []);
+
+  const engine = new AlarmEngine({
+    hosts: {
+      getRecentInterfaceOpticalSamples,
+      getInterfaceOpticalThresholds,
+    } as unknown as HostRepository,
+    alarms: {
+      openMetricAlarm,
+      escalateMetricAlarm,
+      resolveMetricAlarm,
+      listOpenMetricAlarms,
+      findLinkedInterfaceIds,
+    } as unknown as AlarmRepository,
+    rules: { listEnabled } as unknown as AlarmRuleRepository,
+    now: () => NOW,
+  });
+
+  return {
+    engine,
+    openMetricAlarm,
+    escalateMetricAlarm,
+    resolveMetricAlarm,
+    listOpenMetricAlarms,
+    getRecentInterfaceOpticalSamples,
+    getInterfaceOpticalThresholds,
+  };
+}
+
+/** low -14 / high -1 => 13 dB de faixa: cada 1% de proximidade = 0.13 dB. */
+function round2optical(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+const OPTICAL_THRESHOLDS = thresholdRecord(-14, -1);
+const atProximity = (percent: number) => round2optical(-1 - percent * 0.13);
+
+describe('motor optico (OPTICAL_RX_DEGRADATION)', () => {
+  it('abre WARNING com 3 amostras opticas na proximidade de 90% e publica a formula real', async () => {
+    const built = buildOpticalEngine({
+      rows: [opticalRow(10, atProximity(90)), opticalRow(5, atProximity(90)), opticalRow(0, atProximity(90))],
+      thresholds: [OPTICAL_THRESHOLDS],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: atProximity(90) })],
+    });
+
+    expect(built.openMetricAlarm).toHaveBeenCalledTimes(1);
+    expect(built.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      type: 'OPTICAL_RX_DEGRADATION',
+      severity: 'WARNING',
+      metricKey: 'RX',
+      currentValue: 90,
+      thresholdValue: 90,
+      unit: '%',
+      metadata: {
+        direction: 'RX',
+        rxPowerDbm: -12.7,
+        rxLowAlarmDbm: -14,
+        rxHighAlarmDbm: -1,
+        marginDb: 1.3,
+        proximityPercent: 90,
+        currentPowerSource: 'SNMP',
+        thresholdSource: 'DEVICE',
+        trendDropDb: 0,
+        trendWindowMinutes: 30,
+        speedBps: 100_000_000_000,
+      },
+    });
+  });
+
+  it('nao dispara com 89% de proximidade (nunca usa low * 0.9 como threshold)', async () => {
+    const built = buildOpticalEngine({
+      rows: [opticalRow(10, atProximity(89)), opticalRow(5, atProximity(89)), opticalRow(0, atProximity(89))],
+      thresholds: [OPTICAL_THRESHOLDS],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: atProximity(89) })],
+    });
+    expect(built.openMetricAlarm).not.toHaveBeenCalled();
+  });
+
+  it('escala para MAJOR com 2 amostras em 95% e para CRITICAL no Low Alarm com 1 amostra', async () => {
+    const major = buildOpticalEngine({
+      rows: [opticalRow(5, atProximity(95)), opticalRow(0, atProximity(95))],
+      thresholds: [OPTICAL_THRESHOLDS],
+    });
+    await major.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: atProximity(95) })],
+    });
+    expect(major.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      severity: 'MAJOR', unit: '%', currentValue: 95, thresholdValue: 95,
+    });
+
+    const critical = buildOpticalEngine({
+      rows: [opticalRow(0, -14.2)],
+      thresholds: [OPTICAL_THRESHOLDS],
+    });
+    await critical.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: -14.2 })],
+    });
+    expect(critical.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      severity: 'CRITICAL', unit: 'dBm', currentValue: -14.2, thresholdValue: -14,
+    });
+  });
+
+  it('resolve o alarme depois de 3 amostras com proximidade <= 85%', async () => {
+    const built = buildOpticalEngine({
+      rows: [opticalRow(10, atProximity(84)), opticalRow(5, atProximity(84)), opticalRow(0, atProximity(84))],
+      thresholds: [OPTICAL_THRESHOLDS],
+      open: [existingOpticalAlarm({ severity: 'CRITICAL' })],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: atProximity(84) })],
+    });
+    expect(built.resolveMetricAlarm).toHaveBeenCalledWith('if-1', 'OPTICAL_RX_DEGRADATION', 'RX', NOW);
+    expect(built.openMetricAlarm).not.toHaveBeenCalled();
+    expect(built.escalateMetricAlarm).not.toHaveBeenCalled();
+  });
+
+  it('usa a margem quando o equipamento so informa o Low Alarm', async () => {
+    const built = buildOpticalEngine({
+      rows: [opticalRow(10, -18), opticalRow(5, -18), opticalRow(0, -18)],
+      thresholds: [thresholdRecord(-20, null)],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: -18 })],
+    });
+    expect(built.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      severity: 'WARNING',
+      unit: 'dB',
+      currentValue: 2,
+      thresholdValue: 3,
+      metadata: { marginDb: 2, proximityPercent: null, rxLowAlarmDbm: -20, rxHighAlarmDbm: null },
+    });
+  });
+
+  it('dispara por trend (queda >= 3 dB em 30 min) sem nenhum threshold', async () => {
+    const built = buildOpticalEngine({
+      rows: [
+        opticalRow(25, -8),
+        opticalRow(20, -9),
+        opticalRow(15, -10),
+        opticalRow(10, -11),
+        opticalRow(5, -11.5),
+        opticalRow(0, -11.6),
+      ],
+      thresholds: [],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: -11.6 })],
+    });
+    expect(built.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({
+      severity: 'WARNING',
+      unit: 'dB',
+      currentValue: 3.6,
+      thresholdValue: 3,
+      metadata: {
+        trendDropDb: 3.6,
+        trendWindowMinutes: 30,
+        thresholdSource: null,
+      },
+    });
+    expect(built.openMetricAlarm.mock.calls[0]?.[0]?.message).toContain('caiu 3.6 dB em 30 min');
+  });
+
+  it('nao inventa alarme sem threshold e sem tendencia', async () => {
+    const built = buildOpticalEngine({
+      rows: [opticalRow(10, -12), opticalRow(5, -12), opticalRow(0, -12)],
+      thresholds: [],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: -12 })],
+    });
+    expect(built.openMetricAlarm).not.toHaveBeenCalled();
+    expect(built.getInterfaceOpticalThresholds).toHaveBeenCalled();
+  });
+
+  it('isola a lane degradada e nao duplica o scalar no modo lane', async () => {
+    const built = buildOpticalEngine({
+      rows: [
+        laneRow(10, { 0: -4, 1: -4, 2: -13.5, 3: -4 }),
+        laneRow(5, { 0: -4, 1: -4, 2: -13.5, 3: -4 }),
+        laneRow(0, { 0: -4, 1: -4, 2: -13.5, 3: -4 }),
+      ],
+      thresholds: [OPTICAL_THRESHOLDS],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({
+        rxPowerDbm: -4,
+        opticalLaneSource: 'SNMP',
+        opticalLanes: [
+          { lane: 0, rxPowerDbm: -4, txPowerDbm: null },
+          { lane: 1, rxPowerDbm: -4, txPowerDbm: null },
+          { lane: 2, rxPowerDbm: -13.5, txPowerDbm: null },
+          { lane: 3, rxPowerDbm: -4, txPowerDbm: null },
+        ],
+      })],
+    });
+    expect(built.openMetricAlarm).toHaveBeenCalledTimes(1);
+    const input = built.openMetricAlarm.mock.calls[0]?.[0];
+    expect(input).toMatchObject({ metricKey: 'RX_LANE_2', severity: 'MAJOR' });
+    expect(input?.metadata).toMatchObject({ lane: 2, currentPowerSource: 'SNMP' });
+    expect(built.openMetricAlarm.mock.calls.every(([item]) => item.metricKey !== 'RX')).toBe(true);
+  });
+
+  it('escala na MESMA linha (WARNING -> MAJOR -> CRITICAL) sem downgrade', async () => {
+    const toMajor = buildOpticalEngine({
+      rows: [opticalRow(5, atProximity(96)), opticalRow(0, atProximity(96))],
+      thresholds: [OPTICAL_THRESHOLDS],
+      open: [existingOpticalAlarm({ severity: 'WARNING' })],
+    });
+    await toMajor.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: atProximity(96) })],
+    });
+    expect(toMajor.openMetricAlarm).not.toHaveBeenCalled();
+    expect(toMajor.escalateMetricAlarm).toHaveBeenCalledTimes(1);
+    expect(toMajor.escalateMetricAlarm.mock.calls[0]?.[0]).toBe('alarm-created');
+    expect(toMajor.escalateMetricAlarm.mock.calls[0]?.[1]).toMatchObject({
+      severity: 'MAJOR', unit: '%', thresholdValue: 95,
+    });
+
+    const toCritical = buildOpticalEngine({
+      rows: [opticalRow(0, -14.5)],
+      thresholds: [OPTICAL_THRESHOLDS],
+      open: [existingOpticalAlarm({ severity: 'MAJOR' })],
+    });
+    await toCritical.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: -14.5 })],
+    });
+    expect(toCritical.escalateMetricAlarm.mock.calls[0]?.[1]).toMatchObject({ severity: 'CRITICAL' });
+
+    const noDowngrade = buildOpticalEngine({
+      rows: [opticalRow(10, atProximity(91)), opticalRow(5, atProximity(91)), opticalRow(0, atProximity(91))],
+      thresholds: [OPTICAL_THRESHOLDS],
+      open: [existingOpticalAlarm({ severity: 'CRITICAL' })],
+    });
+    await noDowngrade.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: atProximity(91) })],
+    });
+    expect(noDowngrade.escalateMetricAlarm).not.toHaveBeenCalled();
+    expect(noDowngrade.resolveMetricAlarm).not.toHaveBeenCalled();
+  });
+
+  it('continua stateless: uma instancia nova decide igual a partir do banco', async () => {
+    const rows = [opticalRow(10, atProximity(90)), opticalRow(5, atProximity(90)), opticalRow(0, atProximity(90))];
+    const first = buildOpticalEngine({ rows, thresholds: [OPTICAL_THRESHOLDS] });
+    const second = buildOpticalEngine({ rows, thresholds: [OPTICAL_THRESHOLDS] });
+    const input = {
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [opticalInterface({ rxPowerDbm: atProximity(90) })],
+    };
+    await first.engine.processOpticalReadings(input);
+    await second.engine.processOpticalReadings(input);
+
+    expect(second.openMetricAlarm.mock.calls[0]?.[0]).toEqual(first.openMetricAlarm.mock.calls[0]?.[0]);
+    expect(second.getRecentInterfaceOpticalSamples).toHaveBeenCalledWith(
+      'dev-1',
+      new Date(NOW.getTime() - 60 * 60_000),
+    );
+  });
+});
+
+describe('criterios opticos puros', () => {
+  const criteria = (overrides: Partial<Parameters<typeof opticalLadderFor>[0]> = {}) => ({
+    currentPowerDbm: -12,
+    lowAlarmDbm: -14,
+    highAlarmDbm: -1,
+    warningProximityPercent: 90,
+    majorProximityPercent: 95,
+    criticalAtLowAlarm: true,
+    warningMarginDb: 3,
+    trendDropObservedDb: 0,
+    trendDropThresholdDb: 3,
+    ...overrides,
+  });
+
+  it('calcula proximidade na faixa real com clamp 0..100', () => {
+    expect(opticalProximityPercent(-14, -14, -1)).toBe(100);
+    expect(opticalProximityPercent(-1, -14, -1)).toBe(0);
+    expect(opticalProximityPercent(-12.7, -14, -1)).toBeCloseTo(90, 6);
+    expect(opticalProximityPercent(-20, -14, -1)).toBe(100);
+    expect(opticalProximityPercent(5, -14, -1)).toBe(0);
+    expect(opticalProximityPercent(-5, -1, -14)).toBeNull();
+  });
+
+  it('usa max drawdown determinista e tolera poll irregular', () => {
+    expect(opticalTrendDropDb([-8, -9.5, -11, -12, -12.2])).toBe(4.2);
+    expect(opticalTrendDropDb([-12, -8])).toBe(0);
+    expect(opticalTrendDropDb([-8, -1, -9])).toBe(8);
+  });
+
+  it('mantem o trend como WARNING independente de threshold', () => {
+    expect(opticalLadderFor(criteria({
+      lowAlarmDbm: null,
+      highAlarmDbm: null,
+      trendDropObservedDb: 3.5,
+    }))).toBe('WARNING');
+    expect(opticalLadderFor(criteria({
+      lowAlarmDbm: null,
+      highAlarmDbm: null,
+      trendDropObservedDb: 2.9,
+    }))).toBe('NONE');
+    expect(opticalLadderFor(criteria({ currentPowerDbm: -14.5 }))).toBe('CRITICAL');
   });
 });

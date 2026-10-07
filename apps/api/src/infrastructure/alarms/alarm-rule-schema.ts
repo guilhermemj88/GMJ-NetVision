@@ -13,6 +13,7 @@ export const CREATABLE_ALARM_RULE_TYPES = [
   'INTERFACE_ERRORS',
   'INTERFACE_CRC',
   'INTERFACE_DISCARDS',
+  'OPTICAL_RX_DEGRADATION',
 ] as const;
 
 export const MAX_ALARM_RULE_SAMPLES = 10;
@@ -61,10 +62,40 @@ export const interfaceCrcConfigSchema = z
   .strict()
   .refine(recoveryBelowTrigger, { message: RECOVERY_MESSAGE });
 
+const OPTICAL_WINDOW_MESSAGE = 'recoveryProximityPercent deve ser menor que warningProximityPercent';
+const OPTICAL_LADDER_MESSAGE = 'majorProximityPercent deve ser maior que warningProximityPercent';
+
+/** Limiares opticos (proximidade/margem/tendencia) validados na entrada. */
+export const opticalConfigSchema = z
+  .object({
+    warningProximityPercent: z.number().min(0).max(100).default(90),
+    majorProximityPercent: z.number().min(0).max(100).default(95),
+    criticalAtLowAlarm: z.boolean().default(true),
+    warningTriggerSamples: z.number().int().min(1).max(MAX_ALARM_RULE_SAMPLES).default(3),
+    majorTriggerSamples: z.number().int().min(1).max(MAX_ALARM_RULE_SAMPLES).default(2),
+    criticalTriggerSamples: z.number().int().min(1).max(MAX_ALARM_RULE_SAMPLES).default(1),
+    warningMarginDb: z.number().min(0).max(30).default(3),
+    recoveryProximityPercent: z.number().min(0).max(100).default(85),
+    recoverySamples: z.number().int().min(1).max(MAX_ALARM_RULE_SAMPLES).default(3),
+    trendDropDb: z.number().min(0).max(60).default(3),
+    trendWindowMinutes: z.number().int().min(5).max(1440).default(30),
+    manualRxLowAlarmDbm: z.number().min(-60).max(20).nullish(),
+    manualRxHighAlarmDbm: z.number().min(-60).max(20).nullish(),
+  })
+  .strict()
+  .refine(
+    (value) => value.recoveryProximityPercent < value.warningProximityPercent,
+    { message: OPTICAL_WINDOW_MESSAGE },
+  )
+  .refine((value) => value.warningProximityPercent < value.majorProximityPercent, {
+    message: OPTICAL_LADDER_MESSAGE,
+  });
+
 export const alarmRuleConfigByType = {
   INTERFACE_ERRORS: interfaceErrorsConfigSchema,
   INTERFACE_CRC: interfaceCrcConfigSchema,
   INTERFACE_DISCARDS: interfaceDiscardsConfigSchema,
+  OPTICAL_RX_DEGRADATION: opticalConfigSchema,
 } as const;
 
 const ruleBaseShape = {
@@ -88,6 +119,13 @@ export const createAlarmRuleSchema = z.discriminatedUnion('type', [
       ...ruleBaseShape,
       type: z.literal('INTERFACE_DISCARDS'),
       config: interfaceDiscardsConfigSchema,
+    })
+    .strict(),
+  z
+    .object({
+      ...ruleBaseShape,
+      type: z.literal('OPTICAL_RX_DEGRADATION'),
+      config: opticalConfigSchema,
     })
     .strict(),
 ]);

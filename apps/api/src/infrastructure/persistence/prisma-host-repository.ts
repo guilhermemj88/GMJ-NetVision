@@ -33,6 +33,7 @@ import type {
   InterfaceMetricWindowRow,
   InterfaceOpticalThresholdRecord,
   InterfaceOpticalThresholdUpdateInput,
+  InterfaceOpticalWindowRow,
   InterfaceStatusTransition,
   InterfaceStatusUpdate,
   SnmpCredentialSecret,
@@ -658,6 +659,30 @@ export class PrismaHostRepository implements HostRepository {
         opticalThresholdsRefreshAfter: entry.refreshAfter,
       },
     })));
+  }
+
+  async getRecentInterfaceOpticalSamples(
+    deviceId: string,
+    since: Date,
+  ): Promise<InterfaceOpticalWindowRow[]> {
+    const rows = await this.prisma.interfaceOpticalSample.findMany({
+      where: { timestamp: { gte: since }, interface: { deviceId } },
+      orderBy: { timestamp: 'asc' },
+      select: {
+        interfaceId: true,
+        timestamp: true,
+        rxPowerDbm: true,
+        txPowerDbm: true,
+        opticalLanes: true,
+      },
+    });
+    return rows.map((row) => ({
+      interfaceId: row.interfaceId,
+      timestamp: row.timestamp,
+      rxPowerDbm: row.rxPowerDbm,
+      txPowerDbm: row.txPowerDbm,
+      opticalLanes: opticalLanesFromDb(row.opticalLanes) ?? [],
+    }));
   }
 
   async getLatestCounterSnapshots(hostId: string): Promise<Map<number, InterfaceCounterSnapshot>> {

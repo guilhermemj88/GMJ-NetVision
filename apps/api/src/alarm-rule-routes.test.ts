@@ -144,6 +144,54 @@ describe('API de regras de alarme', () => {
     await app.close();
   });
 
+  it('aceita regra optica com os defaults documentados e rejeita combinacoes invalidas', async () => {
+    const app = await buildApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/alarm-rules',
+      payload: { name: 'RX optico', type: 'OPTICAL_RX_DEGRADATION', severity: 'WARNING', config: {} },
+    });
+    expect(created.statusCode).toBe(200);
+    expect(created.json().config).toMatchObject({
+      warningProximityPercent: 90,
+      majorProximityPercent: 95,
+      criticalAtLowAlarm: true,
+      warningTriggerSamples: 3,
+      majorTriggerSamples: 2,
+      criticalTriggerSamples: 1,
+      warningMarginDb: 3,
+      recoveryProximityPercent: 85,
+      recoverySamples: 3,
+      trendDropDb: 3,
+      trendWindowMinutes: 30,
+    });
+
+    const ladder = await app.inject({
+      method: 'POST',
+      url: '/api/alarm-rules',
+      payload: {
+        name: 'Ladder invertida',
+        type: 'OPTICAL_RX_DEGRADATION',
+        severity: 'WARNING',
+        config: { majorProximityPercent: 80 },
+      },
+    });
+    expect(ladder.statusCode).toBe(400);
+
+    const recovery = await app.inject({
+      method: 'POST',
+      url: '/api/alarm-rules',
+      payload: {
+        name: 'Recovery acima do warning',
+        type: 'OPTICAL_RX_DEGRADATION',
+        severity: 'WARNING',
+        config: { recoveryProximityPercent: 95 },
+      },
+    });
+    expect(recovery.statusCode).toBe(400);
+    await app.close();
+  });
+
   it('devolve 404 para regra inexistente', async () => {
     const app = await buildApp();
     const put = await app.inject({ method: 'PUT', url: '/api/alarm-rules/missing', payload: validRule });

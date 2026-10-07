@@ -452,6 +452,22 @@ export class SnmpService {
       }
       await this.repository.updateInterfaceOptics(device.id, interfaces, startedAt);
 
+      // Motor optico roda DEPOIS de persistir as amostras e e fail-safe.
+      if (this.alarmEngine) {
+        try {
+          await this.alarmEngine.processOpticalReadings({
+            deviceId: device.id,
+            deviceName: device.displayName || device.name,
+            interfaces,
+          });
+        } catch (error) {
+          console.error(
+            `Falha ao avaliar alarmes opticos de ${device.id}:`,
+            error instanceof Error ? error.message : error,
+          );
+        }
+      }
+
       // Slow path de thresholds opticos: roda depois da potencia, com
       // validade de 24h por interface e nunca derruba o polling.
       if (this.opticalThresholds) {

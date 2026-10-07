@@ -3,6 +3,7 @@ import type {
   AlarmHistoryOptions,
   AlarmOpenInput,
   AlarmRepository,
+  MetricAlarmEscalationInput,
   MetricAlarmOpenInput,
 } from './alarm-repository';
 import { isMetricAlarmType } from './alarm-rule-schema';
@@ -116,6 +117,21 @@ export class DemoAlarmRepository implements AlarmRepository {
     return this.alarms.filter(
       (alarm) => !alarm.endedAt && alarm.deviceId === deviceId && isMetricAlarmType(alarm.type),
     );
+  }
+
+  async escalateMetricAlarm(
+    alarmId: string,
+    input: MetricAlarmEscalationInput,
+  ): Promise<Alarm | null> {
+    const alarm = this.alarms.find((item) => item.id === alarmId && !item.endedAt);
+    if (!alarm) return null;
+    alarm.severity = input.severity;
+    alarm.currentValue = input.currentValue;
+    alarm.thresholdValue = input.thresholdValue;
+    alarm.unit = input.unit;
+    alarm.metadata = input.metadata;
+    alarm.message = input.message;
+    return alarm;
   }
 
   async resolveMetricAlarm(
