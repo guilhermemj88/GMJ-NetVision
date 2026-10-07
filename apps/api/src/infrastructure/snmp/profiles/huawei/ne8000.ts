@@ -18,6 +18,9 @@ export const huaweiNe8000Profile: SnmpProfile = {
   // (validacao de campo pendente). Nao inferir que o F1A se comporta como o
   // S6730 ou o S6750.
   opticalScalarEncoding: 'MICRO_WATTS',
+  // Lanes em dBm: comportamento atual preservado (NE8000/F1A ainda sem
+  // validacao empirica de lane encoding nesta rodada).
+  opticalLaneEncoding: 'DBM',
   metrics: {
     cpu: {
       unit: '%',

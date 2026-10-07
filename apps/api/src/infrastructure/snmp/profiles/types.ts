@@ -1,4 +1,7 @@
-import type { HuaweiOpticalScalarEncoding } from '../../topology/huawei-optical';
+import type {
+  HuaweiOpticalLaneEncoding,
+  HuaweiOpticalScalarEncoding,
+} from '../../topology/huawei-optical';
 
 export type SnmpProfileMetricName = 'cpu' | 'memory' | 'temperature';
 
@@ -43,6 +46,12 @@ export interface SnmpProfile {
    * Ausente/UNKNOWN = nao decodifica scalar (nunca adivinha por sinal).
    */
   opticalScalarEncoding?: HuaweiOpticalScalarEncoding;
+  /**
+   * Encoding das colunas CSV de potencia POR LANE (.32/.33). Ausente/UNKNOWN =
+   * nao decodifica potencia de lane (bias continua valido); nunca adivinha a
+   * unidade pelo tamanho do numero.
+   */
+  opticalLaneEncoding?: HuaweiOpticalLaneEncoding;
   /**
    * Scalar OID for the PPP/PPPoE online counter (capability based). When the
    * selected profile does not declare it, the device is treated as not

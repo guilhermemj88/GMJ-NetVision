@@ -5,7 +5,10 @@ import { huaweiS6730Profile } from './huawei/s6730';
 import { huaweiS6750Profile } from './huawei/s6750';
 import { mikrotikProfile } from './mikrotik';
 import type { SnmpProfile, SnmpProfileIdentity } from './types';
-import type { HuaweiOpticalScalarEncoding } from '../../topology/huawei-optical';
+import type {
+  HuaweiOpticalLaneEncoding,
+  HuaweiOpticalScalarEncoding,
+} from '../../topology/huawei-optical';
 
 export const SNMP_PROFILES: SnmpProfile[] = [
   huaweiNe8000Profile,
@@ -64,4 +67,16 @@ export function selectOpticalScalarEncoding(
   identity: SnmpProfileIdentity,
 ): HuaweiOpticalScalarEncoding {
   return selectSnmpProfile(identity).opticalScalarEncoding ?? 'UNKNOWN';
+}
+
+/**
+ * Encoding do CSV de potencia POR LANE (.32/.33) conforme o profile. `UNKNOWN`
+ * explicito = nao decodifica potencia de lane (o bias continua valido); um
+ * profile que NAO declara o campo cai no comportamento historico `DBM` (lanes
+ * ja em dBm) — nunca em CENTI_DBM, que exige evidencia de campo.
+ */
+export function selectOpticalLaneEncoding(
+  identity: SnmpProfileIdentity,
+): HuaweiOpticalLaneEncoding {
+  return selectSnmpProfile(identity).opticalLaneEncoding ?? 'DBM';
 }

@@ -259,6 +259,41 @@ describe('SNMP IF-MIB interface discovery', () => {
       });
     });
 
+    it('S6730 real 100G: lanes .32/.33 em centi-dBm (index 67502222 / 100GE0/0/2)', async () => {
+      walkOptical('100GE0/0/2', 67_502_222, {
+        raw: 42,
+        rawTx: 1191,
+        rxLow: -2148,
+        rxHigh: -250,
+        txLow: -250,
+        txHigh: 650,
+        bias: '47.89,67.46,47.90,51.08',
+        rxLane: '-1372.63,-1226.95,-1311.58,-1294.14',
+        txLane: '76.06,76.68,66.62,43.72',
+      });
+      const [enriched] = await new SnmpV2cDiscoveryAdapter({} as HostRepository).enrichOpticalPower(
+        { ...baseHost, model: 'S6730-H48X6C' } as unknown as HostRecord,
+        [ifaceNamed('100GE0/0/2')],
+        'secret',
+      );
+
+      // Scalar continua MICRO_WATTS (42 uW / 1191 uW).
+      expect(enriched?.rxPowerDbm).toBeCloseTo(-13.77, 2);
+      expect(enriched?.txPowerDbm).toBeCloseTo(0.76, 2);
+      // Lanes: o CSV do S6730 e centi-dBm — sem /100 o RX seria descartado.
+      expect(enriched?.opticalLanes).toEqual([
+        { lane: 0, rxPowerDbm: -13.73, txPowerDbm: 0.76, biasCurrentMa: 47.89 },
+        { lane: 1, rxPowerDbm: -12.27, txPowerDbm: 0.77, biasCurrentMa: 67.46 },
+        { lane: 2, rxPowerDbm: -13.12, txPowerDbm: 0.67, biasCurrentMa: 47.9 },
+        { lane: 3, rxPowerDbm: -12.94, txPowerDbm: 0.44, biasCurrentMa: 51.08 },
+      ]);
+      expect(enriched?.opticalLaneSource).toBe('SNMP');
+      // .13-.16 preservados: -21.48 / -2.50 / -2.50 / +6.50.
+      expect(enriched?.opticalThresholds?.scalar).toEqual({
+        rx: { lowAlarmDbm: -21.48, highAlarmDbm: -2.5, lowSource: 'DEVICE', highSource: 'DEVICE' },
+        tx: { lowAlarmDbm: -2.5, highAlarmDbm: 6.5, lowSource: 'DEVICE', highSource: 'DEVICE' },
+      });
+    });
     it('familia nao classificada: UNKNOWN nao decodifica scalar, mas mantem lanes e thresholds', async () => {
       walkOptical('100GE0/0/1', 9001, {
         raw: 18,

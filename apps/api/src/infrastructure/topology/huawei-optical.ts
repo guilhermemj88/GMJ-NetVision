@@ -11,7 +11,9 @@ import { microWattsToDbm, normalizeOpticalDbm } from './optical-power';
  *   isso o decode vem do profile e nunca de heuristicas;
  * - .13-.16: thresholds de alarme do transceiver em CENTI-dBm nas duas familias
  *   comprovadas (raw / 100);
- * - .31/.32/.33: bias/RX/TX por lane em CSV, valores JA em dBm.
+ * - .31/.32/.33: bias/RX/TX por lane em CSV. Bias e sempre mA; a potencia RX/TX
+ *   vem em dBm ou centi-dBm conforme o `opticalLaneEncoding` do profile (o S6750
+ *   entrega dBm cru e o S6730 entrega centi-dBm), nunca por heuristica.
  */
 export const HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS = {
   rxPowerRaw: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.8',
@@ -30,6 +32,18 @@ export const HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS = {
  * nunca do sinal do valor: heuristica por "negativo ou positivo" e proibida.
  */
 export type HuaweiOpticalScalarEncoding = 'MICRO_WATTS' | 'CENTI_DBM' | 'UNKNOWN';
+
+/**
+ * Encoding das colunas CSV .32 (RX) / .33 (TX) POR LANE. Tambem e propriedade
+ * do PROFILE, nunca do tamanho do numero:
+ *
+ * - S6750 (YunShan): `DBM` — o CSV ja vem em dBm (`0.19,0.69,1.02,0.11`);
+ * - S6730 (VRP classico): `CENTI_DBM` — o CSV vem em centi-dBm e o valor cru
+ *   (`-1372.63`) estoura a faixa optica se lido como dBm (evidencia real:
+ *   67502222 / 100GE0/0/2);
+ * - `UNKNOWN`: nao decodifica potencia de lane (bias segue normal).
+ */
+export type HuaweiOpticalLaneEncoding = 'DBM' | 'CENTI_DBM' | 'UNKNOWN';
 
 /**
  * Sentinelas conhecidos de "unsupported" nos OIDs de threshold. `-1` NAO pode
@@ -69,6 +83,21 @@ export function decodeHuaweiScalarPowerDbm(
   if (encoding === 'MICRO_WATTS') return microWattsToDbm(value);
   if (encoding === 'CENTI_DBM') return centiDbmToDbm(value);
   return null;
+}
+
+/**
+ * Potencia de UMA lane (.32/.33) conforme o encoding do profile. O valor cru
+ * passa primeiro por `rawNumber` (CSV e sempre texto) e depois pela validacao
+ * fisica normal; `UNKNOWN` devolve null em vez de arriscar uma unidade errada.
+ */
+export function decodeHuaweiLanePowerDbm(
+  value: unknown,
+  encoding: HuaweiOpticalLaneEncoding,
+): number | null {
+  if (encoding === 'UNKNOWN') return null;
+  const raw = rawNumber(value);
+  if (raw === null) return null;
+  return encoding === 'CENTI_DBM' ? normalizeOpticalDbm(raw / 100) : normalizeOpticalDbm(raw);
 }
 
 /** Par low/high de um lado (RX/TX) lido do SNMP, sempre com origem DEVICE. */
@@ -127,15 +156,12 @@ export function normalizeHuaweiBiasCurrentMa(value: unknown): number | null {
     : null;
 }
 
-function opticalDbm(value: string | undefined): number | null {
-  return value ? normalizeOpticalDbm(value) : null;
-}
-
 /** Converts the three Huawei CSV columns into independent, sparse lane readings. */
 export function parseHuaweiOpticalLaneCsv(
   rxCsv: unknown,
   txCsv: unknown,
   biasCsv: unknown,
+  laneEncoding: HuaweiOpticalLaneEncoding,
 ): OpticalLaneReading[] {
   const rxValues = csvValues(rxCsv);
   const txValues = csvValues(txCsv);
@@ -144,8 +170,8 @@ export function parseHuaweiOpticalLaneCsv(
   const lanes: OpticalLaneReading[] = [];
 
   for (let lane = 0; lane < laneCount; lane += 1) {
-    const rxPowerDbm = opticalDbm(rxValues[lane]);
-    const txPowerDbm = opticalDbm(txValues[lane]);
+    const rxPowerDbm = decodeHuaweiLanePowerDbm(rxValues[lane], laneEncoding);
+    const txPowerDbm = decodeHuaweiLanePowerDbm(txValues[lane], laneEncoding);
     const biasCurrentMa = normalizeHuaweiBiasCurrentMa(biasValues[lane]);
     if (rxPowerDbm === null && txPowerDbm === null && biasCurrentMa === null) continue;
     lanes.push({

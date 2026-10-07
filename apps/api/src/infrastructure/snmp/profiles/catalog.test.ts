@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { selectOpticalScalarEncoding, selectPppOnlineOid, selectSnmpProfile } from './catalog';
+import {
+  selectOpticalLaneEncoding,
+  selectOpticalScalarEncoding,
+  selectPppOnlineOid,
+  selectSnmpProfile,
+} from './catalog';
 import { HUAWEI_PPP_ONLINE_OID, MIKROTIK_PPP_ONLINE_OID } from './ppp-oids';
 
 describe('SNMP profile catalog', () => {
@@ -80,6 +85,20 @@ describe('SNMP profile catalog', () => {
     expect(selectOpticalScalarEncoding({ vendor: 'Other' })).toBe('UNKNOWN');
   });
 
+  it('encoding das lanes .32/.33 tambem vem do profile (S6730 centi-dBm, S6750 dBm)', () => {
+    expect(selectOpticalLaneEncoding({ vendor: 'Huawei', model: 'S6730-H48X6C' })).toBe('CENTI_DBM');
+    expect(selectOpticalLaneEncoding({ vendor: 'Huawei', model: 'S6750-H' })).toBe('DBM');
+    expect(selectOpticalLaneEncoding({ vendor: 'Huawei', model: 'NE8000 F1A-C' })).toBe('DBM');
+    // Huawei generico preserva o comportamento historico (dBm) e NUNCA assume
+    // centi-dBm sem evidencia de campo.
+    expect(selectOpticalLaneEncoding({ vendor: 'Huawei', model: 'Desconhecido' })).toBe('DBM');
+    expect(selectOpticalLaneEncoding({
+      vendor: 'Huawei',
+      sysDescr: 'Huawei CloudEngine S5731-H48T4XC YunShan OS',
+    })).toBe('DBM');
+    // Perfil sem o campo declarado (outro vendor) tambem mantem DBM historico.
+    expect(selectOpticalLaneEncoding({ vendor: 'Other' })).toBe('DBM');
+  });
   it('resolves Huawei and MikroTik PPP OIDs without inventing values', () => {
     expect(selectPppOnlineOid({ vendor: 'Huawei', model: 'NE40E-X8A' })).toBe(HUAWEI_PPP_ONLINE_OID);
     expect(selectPppOnlineOid({ vendor: 'MikroTik', sysDescr: 'RouterOS 7' })).toBe(

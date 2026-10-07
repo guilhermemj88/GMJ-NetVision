@@ -27,5 +27,8 @@ export const huaweiS6750Profile: SnmpProfile = {
   sysObjectIdPatterns: [/^\.?1\.3\.6\.1\.4\.1\.2011\.2\.23\.1247$/],
   pppOnlineOid: HUAWEI_PPP_ONLINE_OID,
   opticalScalarEncoding: 'CENTI_DBM',
+  // YunShan ja entrega o CSV de lane em dBm (real: 0.19,0.69,1.02,0.11) — nao
+  // dividir por 100.
+  opticalLaneEncoding: 'DBM',
   metrics: huaweiGenericProfile.metrics,
 };

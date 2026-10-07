@@ -16,6 +16,9 @@ export const huaweiGenericProfile: SnmpProfile = {
   // VRP classico: .8/.9 em MICRO_WATTS (evidencia real S6730). Mantem o
   // comportamento historico dos modelos Huawei nao classificados.
   opticalScalarEncoding: 'MICRO_WATTS',
+  // Lanes em dBm: comportamento historico preservado (sem evidencia de
+  // centi-dBm em modelo generico).
+  opticalLaneEncoding: 'DBM',
   metrics: {
     cpu: {
       unit: '%',

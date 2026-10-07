@@ -15,11 +15,12 @@ import {
   decodeHuaweiScalarPowerDbm,
   decodeHuaweiThresholdDbm,
   parseHuaweiOpticalLaneCsv,
+  type HuaweiOpticalLaneEncoding,
   type HuaweiOpticalScalarEncoding,
 } from '../topology/huawei-optical';
 import { interfaceNameKeys } from '../topology/interface-correlation';
 import { SnmpClientImpl } from './snmp-client-impl';
-import { selectOpticalScalarEncoding } from './profiles/catalog';
+import { selectOpticalLaneEncoding, selectOpticalScalarEncoding } from './profiles/catalog';
 import type { SnmpProfileIdentity } from './profiles/types';
 import { decodeSnmpText } from './snmp-text';
 
@@ -172,6 +173,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
         hostRecord,
         snmpCommunity,
         selectOpticalScalarEncoding(snmpIdentityFor(hostRecord)),
+        selectOpticalLaneEncoding(snmpIdentityFor(hostRecord)),
       );
 
       const descByIndex = this.indexMap(descrs, IF_MIB_OIDS.ifDescr);
@@ -248,7 +250,13 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     const snmpCommunity = community ?? (await this.getSnmpCommunity(device.id));
     if (!snmpCommunity) return interfaces;
     const encoding = selectOpticalScalarEncoding(snmpIdentityFor(device, system));
-    const readings = await this.collectOpticalByInterfaceName(device, snmpCommunity, encoding);
+    const laneEncoding = selectOpticalLaneEncoding(snmpIdentityFor(device, system));
+    const readings = await this.collectOpticalByInterfaceName(
+      device,
+      snmpCommunity,
+      encoding,
+      laneEncoding,
+    );
     const now = new Date().toISOString();
 
     return interfaces.map((networkInterface) => {
@@ -267,6 +275,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     host: HostRecord,
     community: string,
     encoding: HuaweiOpticalScalarEncoding,
+    laneEncoding: HuaweiOpticalLaneEncoding,
   ): Promise<Map<string, OpticalReading>> {
     const [names, scalarRx, scalarTx, rxLow, rxHigh, txLow, txHigh, laneBias, laneRx, laneTx] =
       await Promise.all([
@@ -293,6 +302,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
       laneRx,
       laneTx,
       encoding,
+      laneEncoding,
     );
   }
 
@@ -360,6 +370,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     laneRxValues: VarBind[],
     laneTxValues: VarBind[],
     encoding: HuaweiOpticalScalarEncoding,
+    laneEncoding: HuaweiOpticalLaneEncoding,
   ): Map<string, OpticalReading> {
     const namesByIndex = this.indexMap(names, ENTITY_MIB_OIDS.physicalName);
     const scalarRxByIndex = this.indexMap(
@@ -396,6 +407,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
         laneRxByIndex.get(index),
         laneTxByIndex.get(index),
         laneBiasByIndex.get(index),
+        laneEncoding,
       );
       const thresholds = buildHuaweiDeviceThresholds({
         rx: {
