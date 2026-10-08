@@ -2,6 +2,7 @@
 
 import { Badge, Button } from '@gmj/ui';
 import {
+  BellRing,
   ChevronDown,
   Compass,
   Globe,
@@ -20,6 +21,8 @@ import { useAuth } from '@/app/providers';
 import { FreshnessTag } from './freshness-tag';
 import { newestCollectionStamp } from '@/lib/map-freshness';
 import { GlobalInterfaceSearch } from './global-interface-search';
+import { alertCenterAttentionCount } from '@gmj/shared';
+import { useAlertCenterSummary } from '@/lib/use-alert-center';
 
 export function TopBar() {
   const map = useMapStore((state) => state.map);
@@ -32,6 +35,9 @@ export function TopBar() {
   const view = useMapStore((state) => state.view);
   const setView = useMapStore((state) => state.setView);
   const { user, logout } = useAuth();
+  const authRequired = Boolean(user);
+  // Mesma leitura da Central (cache compartilhado): nada de polling paralelo.
+  const attention = alertCenterAttentionCount(useAlertCenterSummary(authRequired));
   if (!map && view === 'MAP') return <header className="topbar topbar--loading" />;
 
   return (
@@ -76,6 +82,18 @@ export function TopBar() {
           onClick={() => setView('BGP')}
         >
           <Network size={14} /> BGP
+        </button>
+        <button
+          type="button"
+          className={view === 'ALERTS' ? 'is-active' : ''}
+          onClick={() => setView('ALERTS')}
+        >
+          <BellRing size={14} /> Alertas
+          {attention > 0 ? (
+            <span className="primary-nav__badge" aria-label={`${attention} alertas exigindo atenção`}>
+              {attention}
+            </span>
+          ) : null}
         </button>
       </nav>
       {view === 'MAP' && map && (

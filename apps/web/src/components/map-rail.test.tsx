@@ -5,9 +5,9 @@ import { createRoot, type Root } from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { cloneDemoMaps } from '@gmj/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Alarm } from '@gmj/shared';
+import type { AlertCenterItem, AlertCenterResponse } from '@gmj/shared';
 import { useMapStore } from '@/store/map-store';
-import { updateNetworkMap } from '@/lib/api';
+import { getAlertCenter, updateNetworkMap } from '@/lib/api';
 import { MAP_LAYERS_PANEL_COLLAPSED_KEY } from '@/lib/map-layers-panel';
 import { AlarmPanel } from './alarm-panel';
 import { MapRail } from './map-rail';
@@ -16,7 +16,94 @@ vi.mock('@/lib/api', () => ({
   updateNetworkMap: vi.fn().mockResolvedValue(undefined),
   getAlarms: vi.fn().mockResolvedValue([]),
   getRecentResolvedAlarms: vi.fn().mockResolvedValue([]),
+  getAlertCenter: vi.fn().mockResolvedValue({
+    items: [],
+    total: 0,
+    limit: 50,
+    offset: 0,
+    hasMore: false,
+    state: 'ACTIVE',
+    summary: {
+      alarmsActive: 0,
+      alarmsActiveCritical: 0,
+      alarmsActiveMajor: 0,
+      alarmsActiveWarning: 0,
+      alarmsActiveInfo: 0,
+      alarmsActiveUnacknowledged: 0,
+      alarmsActiveAcknowledged: 0,
+      occurrencesUnacknowledged: 0,
+      occurrencesAcknowledged: 0,
+      occurrencesQuiet24h: 0,
+    },
+    generatedAt: new Date('2026-10-12T12:00:00.000Z').toISOString(),
+  }),
+  getAlertCenterSummary: vi.fn().mockResolvedValue({
+    summary: {
+      alarmsActive: 1,
+      alarmsActiveCritical: 1,
+      alarmsActiveMajor: 0,
+      alarmsActiveWarning: 0,
+      alarmsActiveInfo: 0,
+      alarmsActiveUnacknowledged: 1,
+      alarmsActiveAcknowledged: 0,
+      occurrencesUnacknowledged: 0,
+      occurrencesAcknowledged: 0,
+      occurrencesQuiet24h: 0,
+    },
+  }),
+  acknowledgeAlarm: vi.fn(),
+  acknowledgeOperationalOccurrence: vi.fn(),
+  suppressAlarm: vi.fn(),
 }));
+
+/** Resposta da Central com o mesmo alarme usado no antigo painel por props. */
+function alertCenterResponse(): AlertCenterResponse {
+  const item: AlertCenterItem = {
+    id: 'alarm-1',
+    category: 'ALARM',
+    state: 'ACTIVE_UNACKNOWLEDGED',
+    severity: 'CRITICAL',
+    type: 'INTERFACE_DOWN',
+    typeLabel: 'LINK DOWN',
+    deviceId: 'device-1',
+    deviceName: 'SW-CBF-01',
+    deviceHostname: null,
+    site: null,
+    interfaceId: 'iface-1',
+    interfaceName: '40GE0/0/1',
+    interfaceAlias: null,
+    interfaceLabel: 'SW-SPA-SJO-5732-MPLS-01',
+    ifIndex: 118,
+    startedAt: new Date(2026, 8, 16, 21, 17, 32).toISOString(),
+    lastSeenAt: new Date(2026, 8, 16, 21, 17, 32).toISOString(),
+    endedAt: null,
+    acknowledgedAt: null,
+    acknowledgedBy: null,
+    valueSummary: 'DOWN',
+    mapIds: [],
+  };
+  return {
+    items: [item],
+    total: 1,
+    limit: 50,
+    offset: 0,
+    hasMore: false,
+    state: 'ACTIVE',
+    summary: {
+      alarmsActive: 1,
+      alarmsActiveCritical: 1,
+      alarmsActiveMajor: 0,
+      alarmsActiveWarning: 0,
+      alarmsActiveInfo: 0,
+      alarmsActiveUnacknowledged: 1,
+      alarmsActiveAcknowledged: 0,
+      occurrencesUnacknowledged: 0,
+      occurrencesAcknowledged: 0,
+      occurrencesQuiet24h: 0,
+    },
+    generatedAt: new Date(2026, 8, 16, 21, 17, 32).toISOString(),
+  };
+}
 
 function findButton(container: HTMLElement, label: string): HTMLButtonElement {
   const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find((item) =>
@@ -320,31 +407,17 @@ describe('MapRail', () => {
       selection: null,
       showToast,
     });
-    const alarm: Alarm = {
-      id: 'alarm-1',
-      deviceId: 'device-1',
-      deviceName: 'SW-CBF-01',
-      interfaceId: 'iface-1',
-      interfaceName: '40GE0/0/1',
-      interfaceLabel: 'SW-SPA-SJO-5732-MPLS-01',
-      ifIndex: 118,
-      linkId: 'link-1',
-      linkLabel: 'Backbone',
-      type: 'INTERFACE_DOWN',
-      severity: 'CRITICAL',
-      startedAt: new Date(2026, 8, 16, 21, 17, 32).toISOString(),
-      endedAt: null,
-      acknowledgedAt: null,
-      acknowledgedBy: null,
-      message: 'SW-CBF-01: SW-SPA-SJO-5732-MPLS-01 (40GE0/0/1) DOWN',
-    };
+    vi.mocked(getAlertCenter).mockResolvedValue(alertCenterResponse());
     await act(async () => {
       root.render(
         <QueryClientProvider client={client}>
           <MapRail />
-          <AlarmPanel alarms={[alarm]} onFocus={() => undefined} />
+          <AlarmPanel />
         </QueryClientProvider>,
       );
+    });
+    await act(async () => {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
     });
 
     const alarmPanel = container.querySelector('.alarm-panel');

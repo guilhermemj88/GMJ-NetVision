@@ -227,7 +227,12 @@ export function registerHostRoutes(
     const host = await hosts.getHost(hostId);
     if (!host) return reply.code(404).send({ message: 'Host not found' });
     try {
-      return await snmp.pollHost(host);
+      /**
+       * Poll MANUAL (botão VERIFICAR AGORA): força a leitura óptica fora do
+       * intervalo de 300 s (com anti-spam curto dentro do serviço). O scheduler
+       * automático continua chamando `pollHost` sem `forceOptical`.
+       */
+      return await snmp.pollHost(host, { forceOptical: true });
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Falha segura no polling SNMP';
       await hosts.updateSourceHealth(hostId, safeConnectionResult('SNMP', 'FAILED', message));

@@ -5,6 +5,7 @@
 // `rotateInboundToken`, que mostra o token novo UMA vez para o operador
 // copiar — depois disso ele não é recuperável pela UI.
 
+import type { NetworkAlarmTestSelectionInput } from '@gmj/shared';
 import { request } from './api';
 
 export type MediaOperationalStatus =
@@ -16,11 +17,13 @@ export type MediaOperationalStatus =
 
 export type MediaConfigSource = 'DATABASE' | 'ENV' | 'MEMORY' | 'NONE';
 
+export type MediaIntegrationPurpose = 'BGP_MITIGATION' | 'NETWORK_ALARMS';
+
 export interface MediaIntegrationDto {
   id: string;
   name: string;
   type: 'WEBHOOK';
-  purpose: 'BGP_MITIGATION';
+  purpose: MediaIntegrationPurpose;
   enabled: boolean;
   configSource: MediaConfigSource;
   status: MediaOperationalStatus;
@@ -50,6 +53,8 @@ export interface MediaIntegrationDto {
 export interface MediaIntegrationsOverview {
   repositoryKind: 'DATABASE' | 'MEMORY';
   migrationReady: boolean;
+  /** Canal DESTE purpose quando configurado e ligado (nunca o de outro purpose). */
+  resolvedPurpose: MediaIntegrationPurpose | null;
   legacyEnv: {
     outboundUrlConfigured: boolean;
     outboundTokenConfigured: boolean;
@@ -103,13 +108,21 @@ export function getMediaIntegrations(): Promise<MediaIntegrationsOverview> {
   return request<MediaIntegrationsOverview>('/api/media/integrations');
 }
 
+/** Overview de outro purpose (ex.: NETWORK_ALARMS informa o canal compartilhado). */
+export function getMediaIntegrationsByPurpose(
+  purpose: MediaIntegrationPurpose,
+): Promise<MediaIntegrationsOverview> {
+  const params = new URLSearchParams({ purpose });
+  return request<MediaIntegrationsOverview>(`/api/media/integrations?${params.toString()}`);
+}
+
 export function getMediaSummary(): Promise<MediaSummary> {
   return request<MediaSummary>('/api/media/summary');
 }
 
 export function createMediaIntegration(input: {
   name: string;
-  purpose: 'BGP_MITIGATION';
+  purpose: MediaIntegrationPurpose;
   enabled?: boolean;
   outboundUrl?: string | null;
   outboundToken?: string;
@@ -143,6 +156,25 @@ export function testMediaWebhook(id: string): Promise<MediaWebhookTestResult> {
   return request<MediaWebhookTestResult>(`/api/media/integrations/${encodeURIComponent(id)}/test`, {
     method: 'POST',
   });
+}
+
+/**
+ * TESTAR ALARME (F9.5): envia o payload sintetico pelo canal NETWORK_ALARMS,
+ * com a mesma serializacao dos alarmes reais. Nunca toca na mitigacao.
+ * F9.5.1: a selecao (tipo/evento/severidade) vai no corpo; sem ela vale o
+ * default do simulador.
+ */
+export function testMediaAlarm(
+  id: string,
+  selection?: NetworkAlarmTestSelectionInput,
+): Promise<MediaWebhookTestResult> {
+  return request<MediaWebhookTestResult>(
+    `/api/media/integrations/${encodeURIComponent(id)}/test-alarm`,
+    {
+      method: 'POST',
+      ...(selection ? { body: JSON.stringify(selection) } : {}),
+    },
+  );
 }
 
 export function rotateMediaInboundToken(

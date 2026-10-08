@@ -17,6 +17,10 @@ const envSchema = z.object({
     .transform((value) => value === 'true'),
   SNMP_POLL_INTERVAL_SECONDS: z.coerce.number().int().min(15).default(60),
   OPTICAL_POLL_INTERVAL_SECONDS: z.coerce.number().int().min(60).default(300),
+  /** Validade dos thresholds opticos coletados por SSH (slow path). */
+  OPTICAL_THRESHOLD_REFRESH_HOURS: z.coerce.number().int().min(1).max(168).default(24),
+  /** Cooldown por device depois de falha SSH ao coletar thresholds. */
+  OPTICAL_THRESHOLD_FAILURE_COOLDOWN_MINUTES: z.coerce.number().int().min(5).max(1440).default(60),
   SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(7),
   DEMO_ADMIN_PASSWORD: z.string().min(1).default('admin'),
   DEFAULT_ADMIN_USERNAME: z.string().min(1).default('admin'),

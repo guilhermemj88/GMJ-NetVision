@@ -95,6 +95,10 @@ enum InterfaceStatus {
 
 enum AlarmType {
   INTERFACE_DOWN
+  INTERFACE_ERRORS
+  INTERFACE_CRC
+  INTERFACE_DISCARDS
+  OPTICAL_RX_DEGRADATION
 }
 
 enum AlarmSeverity {
@@ -514,6 +518,8 @@ model Device {
   bgpPeers             BgpPeer[]
   mitigationProfiles   BgpMitigationProfile[]
   alarms               Alarm[]
+  alarmSuppressions    AlarmSuppression[]
+  occurrences          OperationalOccurrence[]
   physicalAsset        PhysicalAsset?
   createdAt            DateTime               @default(now())
   updatedAt            DateTime               @updatedAt
@@ -544,6 +550,11 @@ model Interface {
   opticalLanesUpdatedAt DateTime?
   opticalSource         String?
   opticalUpdatedAt      DateTime?
+  /// Thresholds efetivos do transceiver (JSON canonico versionado, slow path 24h).
+  opticalThresholds             Json?
+  opticalThresholdSource        String?
+  opticalThresholdsUpdatedAt    DateTime?
+  opticalThresholdsRefreshAfter DateTime?
   rxItemId              String?
   txItemId              String?
   statusItemId          String?
@@ -563,6 +574,9 @@ model Interface {
   bgpPeers              BgpPeer[]
   mitigationProfiles    BgpMitigationProfile[]
   alarms                Alarm[]
+  alarmSuppressions     AlarmSuppression[]
+  occurrences           OperationalOccurrence[]
+  occurrenceSources     OperationalOccurrenceSource[]
   physicalPort          PhysicalPort?
   createdAt             DateTime                 @default(now())
   updatedAt             DateTime                 @updatedAt
@@ -967,6 +981,10 @@ model InterfaceMetricSample {
   outErrorsDelta   BigInt          @default(0)
   inDiscardsDelta  BigInt          @default(0)
   outDiscardsDelta BigInt          @default(0)
+  /// FCS/CRC por ifIndex (EtherLike-MIB). NULL = nao suportado/nao coletado;
+  /// 0 = coletado e sem erro.
+  fcsErrors        BigInt?
+  fcsErrorsDelta   BigInt?
   operStatus       InterfaceStatus @default(UNKNOWN)
   interface        Interface       @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
 
@@ -1013,6 +1031,18 @@ model Alarm {
   acknowledgedAt DateTime?
   acknowledgedBy String?
   message        String
+  /// Fingerprint do alarme metrico: ruleId + interfaceId + type + metricKey.
+  ruleId         String?
+  metricKey      String?
+  currentValue   Float?
+  thresholdValue Float?
+  unit           String?
+  /// Whitelist por tipo (direcao, taxa, intervalo). Nunca contem segredo.
+  metadata       Json?
+  /// Dedupe de notificacao de midia (usado a partir da fase de integracao).
+  notifiedSeverity     AlarmSeverity?
+  notifiedAt           DateTime?
+  resolutionNotifiedAt DateTime?
   device         Device        @relation(fields: [deviceId], references: [id], onDelete: Cascade)
   interface      Interface     @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
   link           Link?         @relation(fields: [linkId], references: [id], onDelete: SetNull)
@@ -1020,10 +1050,147 @@ model Alarm {
   updatedAt      DateTime      @updatedAt
 
   @@index([deviceId])
+  @@index([deviceId, type, endedAt])
   @@index([interfaceId, endedAt])
   @@index([startedAt])
 }
 
+/// Regra configuravel dos alarmes metricos (errors/discards/CRC nesta fase).
+/// scope/config sao validados por Zod no backend antes de persistir.
+model AlarmRule {
+  id            String        @id @default(cuid())
+  name          String
+  type          AlarmType
+  enabled       Boolean       @default(true)
+  severity      AlarmSeverity
+  mapLinkedOnly Boolean       @default(true)
+  mediaEnabled  Boolean       @default(false)
+  scope         Json
+  config        Json
+  /// Slot da aba BASICO (F9.6): no maximo UMA regra por slot. Regra custom = NULL.
+  managedKey    String?       @unique
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([type, enabled])
+}
+
+/// Modo da supressao: ate a condicao normalizar ou ate um horario combinado.
+enum AlarmSuppressionMode {
+  UNTIL_CLEAR
+  UNTIL_TIME
+}
+
+/// Motivo estruturado da retirada do alarme (nunca um texto livre solto).
+enum AlarmSuppressionReason {
+  INTENTIONAL_SHUTDOWN
+  MAINTENANCE
+  FALSE_POSITIVE
+  OTHER
+}
+
+/// Supressao operacional: "eu desliguei de proposito / estou em manutencao".
+/// Enquanto ativa, o mesmo fingerprint NAO reabre alarme; o alarme aberto e
+/// encerrado administrativamente com o motivo (nunca como recuperacao tecnica).
+model AlarmSuppression {
+  id           String                 @id @default(cuid())
+  /// interfaceId + tipo + regra + metrica (INTERFACE_DOWN usa so interface).
+  fingerprint  String
+  deviceId     String
+  interfaceId  String
+  type         AlarmType
+  ruleId       String?
+  metricKey    String?
+  mode         AlarmSuppressionMode
+  reason       AlarmSuppressionReason
+  note         String?
+  suppressedAt DateTime               @default(now())
+  suppressedBy String
+  /// Preenchido apenas em UNTIL_TIME.
+  expiresAt    DateTime?
+  clearedAt    DateTime?
+  /// RECOVERED | MANUAL | EXPIRED
+  clearedReason String?
+  device       Device                 @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  interface    Interface              @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  @@index([fingerprint, clearedAt])
+  @@index([deviceId, clearedAt])
+  @@index([interfaceId, clearedAt])
+  @@index([clearedAt, expiresAt])
+}
+
+/// Tipo do episodio operacional persistente (F9.2).
+enum OperationalOccurrenceType {
+  CRC_FCS
+  DISCARDS
+}
+
+/// Por que o episodio saiu do painel compacto.
+enum OperationalOccurrenceCloseReason {
+  ACKNOWLEDGED
+  QUIET_24H
+  MANUAL
+}
+
+/// Episodio persistente de ocorrencia (CRC/FCS ou DISCARDS): "algo aconteceu".
+/// Telemetria factual: nao envia midia, nao tem regra e nunca vira alarme por
+/// conta propria (o Alarm Engine segue independente).
+model OperationalOccurrence {
+  id                  String                           @id @default(cuid())
+  /// interfaceId + tipo (RX/TX de discard NUNCA sao dois episodios).
+  fingerprint         String
+  type                OperationalOccurrenceType
+  deviceId            String
+  interfaceId         String
+  firstSeenAt         DateTime
+  lastSeenAt          DateTime
+  /// Ultima amostra com ocorrencia considerada (base do intervalo da taxa).
+  lastSampleAt        DateTime
+  occurrenceCount     Int                              @default(0)
+  crcDeltaTotal       BigInt                           @default(0)
+  rxDiscardDeltaTotal BigInt                           @default(0)
+  txDiscardDeltaTotal BigInt                           @default(0)
+  currentRatePerMin   Float                            @default(0)
+  peakRatePerMin      Float                            @default(0)
+  acknowledgedAt      DateTime?
+  acknowledgedBy      String?
+  closedAt            DateTime?
+  closeReason         OperationalOccurrenceCloseReason?
+  device              Device                           @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  interface           Interface                        @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
+  sources             OperationalOccurrenceSource[]
+  createdAt           DateTime                         @default(now())
+  updatedAt           DateTime                         @updatedAt
+
+  @@index([fingerprint, closedAt])
+  @@index([fingerprint, lastSampleAt])
+  @@index([interfaceId, lastSeenAt])
+  @@index([deviceId, lastSeenAt])
+  @@index([type, lastSeenAt])
+  @@index([acknowledgedAt])
+  @@index([closedAt])
+}
+
+/// Associacao idempotente amostra -> episodio. A chave unica (interface,
+/// timestamp da amostra, tipo) garante que retry, restart ou replay da MESMA
+/// InterfaceMetricSample nunca some delta duas vezes nem cria episodio novo.
+model OperationalOccurrenceSource {
+  id              String                    @id @default(cuid())
+  occurrenceId    String
+  interfaceId     String
+  type            OperationalOccurrenceType
+  sourceTimestamp DateTime
+  createdAt       DateTime                  @default(now())
+  occurrence      OperationalOccurrence     @relation(fields: [occurrenceId], references: [id], onDelete: Cascade)
+  interface       Interface                 @relation(fields: [interfaceId], references: [id], onDelete: Cascade)
+
+  @@unique([interfaceId, sourceTimestamp, type])
+  @@index([occurrenceId])
+  @@index([sourceTimestamp])
+}
 model Link {
   id                      String              @id @default(cuid())
   mapId                   String
@@ -1552,6 +1719,7 @@ enum MediaIntegrationType {
 
 enum MediaIntegrationPurpose {
   BGP_MITIGATION
+  NETWORK_ALARMS
 }
 
 enum MediaDeliveryDirection {

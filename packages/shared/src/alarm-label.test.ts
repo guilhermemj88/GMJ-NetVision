@@ -81,6 +81,12 @@ describe('alarmTypeLabel', () => {
     expect(alarmTypeLabel('INTERFACE_DOWN')).toBe('LINK DOWN');
   });
 
+  it('maps the metric alarm types to their NOC captions', () => {
+    expect(alarmTypeLabel('INTERFACE_ERRORS')).toBe('ERROS');
+    expect(alarmTypeLabel('INTERFACE_CRC')).toBe('CRC/FCS');
+    expect(alarmTypeLabel('INTERFACE_DISCARDS')).toBe('DESCARTES');
+  });
+
   it('keeps unknown types as-is', () => {
     expect(alarmTypeLabel('CUSTOM')).toBe('CUSTOM');
   });

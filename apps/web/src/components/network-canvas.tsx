@@ -24,8 +24,8 @@ import {
   updateNetworkMap,
 } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
-import { computeParallelLinkLayouts, type Alarm } from '@gmj/shared';
-import { countAlarmsByDevice, useActiveAlarms, useRecentResolvedAlarms } from '@/lib/use-alarms';
+import { computeParallelLinkLayouts } from '@gmj/shared';
+import { countAlarmsByDevice, useActiveAlarms } from '@/lib/use-alarms';
 import { useMapFocus } from '@/lib/use-map-focus';
 import { DeviceNode, type DeviceFlowNode } from './device-node';
 import { GenericNode, type GenericFlowNode } from './generic-node';
@@ -34,7 +34,7 @@ import { TrafficEdge, type TrafficFlowEdge } from './traffic-edge';
 import { MapControls } from './map-controls';
 import { MapStatusBar } from './map-status-bar';
 import { EditToolbar } from './edit-toolbar';
-import { AlarmPanel, alarmFocusTarget } from './alarm-panel';
+import { AlarmPanel } from './alarm-panel';
 import { resolveEdgeHandles } from '@/lib/edge-handles';
 import {
   getTrafficLabelOffsets,
@@ -107,10 +107,9 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     refetchIntervalInBackground: true,
   });
 
-  // Alarmes ativos/resolvidos vêm de hooks compartilhados (mesmas chaves de
-  // query do painel, dos badges e da rail de camadas).
+  // Alarmes ativos alimentam o badge de cada equipamento no mapa; o painel
+  // compacto le a MESMA Central de Alertas (/api/alert-center).
   const alarms = useActiveAlarms(!readOnly);
-  const recentResolvedAlarms = useRecentResolvedAlarms(!readOnly, 3);
   const alarmCountByDevice = useMemo(() => countAlarmsByDevice(alarms), [alarms]);
 
   // Recorte visual (camada + site + tipo + vizinhança). Não altera o grafo:
@@ -234,40 +233,6 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     });
     clearFocusRequest(focusRequest.requestId);
   }, [clearFocusRequest, domainNodes, flow, focusRequest]);
-
-  const focusAlarm = useCallback(
-    (alarm: Alarm) => {
-      const target = alarmFocusTarget(alarm);
-      if (target.kind === 'link') {
-        const link = map?.links.find((item) => item.id === target.linkId);
-        const nodePosition = (key: string | null | undefined) =>
-          map?.nodes.find((node) => (node.deviceId ?? node.id) === key)?.position;
-        const sourcePosition = link && nodePosition(link.sourceDeviceId ?? link.sourceNodeId);
-        const targetPosition = link && nodePosition(link.targetDeviceId ?? link.targetNodeId);
-        if (sourcePosition && targetPosition) {
-          void flow.setCenter(
-            (sourcePosition.x + targetPosition.x) / 2,
-            (sourcePosition.y + targetPosition.y) / 2,
-            { duration: 650, zoom: Math.max(1.05, flow.getZoom()) },
-          );
-        }
-        setSelection({ kind: 'link', id: target.linkId });
-      } else {
-        const node = domainNodes.find((item) => item.id === target.deviceId);
-        if (node) {
-          const width = node.measured?.width ?? node.width ?? DEFAULT_NODE_WIDTH;
-          const height = node.measured?.height ?? node.height ?? DEFAULT_NODE_HEIGHT;
-          void flow.setCenter(node.position.x + width / 2, node.position.y + height / 2, {
-            duration: 650,
-            zoom: Math.max(1.05, flow.getZoom()),
-          });
-        }
-        setSelection({ kind: 'device', id: target.deviceId });
-      }
-      if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
-    },
-    [domainNodes, flow, map, rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
-  );
 
   const domainEdges = useMemo<TrafficFlowEdge[]>(() => {
     if (!map) return [];
@@ -476,13 +441,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
               <PppTotalWidget widget={widget} devices={map.devices} readOnly={readOnly} />
             </ViewportPortal>
           ))}
-        {!readOnly && (
-          <AlarmPanel
-            alarms={alarms}
-            resolvedAlarms={recentResolvedAlarms}
-            onFocus={focusAlarm}
-          />
-        )}
+        {!readOnly && <AlarmPanel />}
         {editMode && alignmentGuides.length > 0 && (
           <ViewportPortal>
             {alignmentGuides.map((guide) => (

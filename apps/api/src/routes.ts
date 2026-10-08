@@ -73,8 +73,24 @@ import { SnmpPoller } from './infrastructure/snmp/snmp-poller';
 import { SnmpService } from './infrastructure/snmp/snmp-service';
 import { DemoMplsRepository } from './infrastructure/mpls/demo-mpls-repository';
 import { DemoAlarmRepository } from './infrastructure/alarms/demo-alarm-repository';
+import { DemoAlarmRuleRepository } from './infrastructure/alarms/demo-alarm-rule-repository';
+import { DemoAlarmSuppressionRepository } from './infrastructure/alarms/demo-alarm-suppression-repository';
 import { PrismaAlarmRepository } from './infrastructure/alarms/prisma-alarm-repository';
+import { PrismaAlarmRuleRepository } from './infrastructure/alarms/prisma-alarm-rule-repository';
+import { PrismaAlarmSuppressionRepository } from './infrastructure/alarms/prisma-alarm-suppression-repository';
 import { AlarmService } from './application/alarm-service';
+import { AlarmEngine } from './application/alarm-engine';
+import { AlarmSuppressionService } from './application/alarm-suppression-service';
+import { AlarmNotificationService, type AlarmNotifier } from './application/alarm-notification-service';
+import { N8nAlarmTransport } from './infrastructure/alarms/n8n-alarm-transport';
+import { OperationalOccurrenceService } from './application/operational-occurrence-service';
+import { AlertCenterService } from './application/alert-center-service';
+import { registerAlertCenterRoutes } from './alert-center-routes';
+import { DemoAlertCenterRepository } from './infrastructure/alarms/demo-alert-center-repository';
+import { PrismaAlertCenterRepository } from './infrastructure/alarms/prisma-alert-center-repository';
+import { registerOperationalOccurrenceRoutes } from './operational-occurrence-routes';
+import { DemoOperationalOccurrenceRepository } from './infrastructure/alarms/demo-operational-occurrence-repository';
+import { PrismaOperationalOccurrenceRepository } from './infrastructure/alarms/prisma-operational-occurrence-repository';
 import { registerAlarmRoutes } from './alarm-routes';
 import { HuaweiVplsSnmpCollector } from './infrastructure/mpls/huawei-vpls-snmp';
 import { MplsPollingService } from './infrastructure/mpls/mpls-polling-service';
@@ -134,6 +150,7 @@ import {
 import { registerMediaRoutes } from './media-routes';
 import { SshClientImpl } from './infrastructure/ssh/ssh-client-impl';
 import { SshInterfaceService } from './infrastructure/ssh/ssh-interface-service';
+import { OpticalThresholdService } from './infrastructure/ssh/optical-threshold-service';
 import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-adapter';
 import { HuaweiVrpDriver } from './infrastructure/topology/huawei-vrp-driver';
 import { LldpSnmpDiscoveryAdapter } from './infrastructure/topology/lldp-snmp-adapter';
@@ -543,7 +560,45 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const alarmRepository = config.DEMO_MODE
     ? new DemoAlarmRepository()
     : new PrismaAlarmRepository();
-  const alarms = new AlarmService(alarmRepository);
+  const alarmRuleRepository = config.DEMO_MODE
+    ? new DemoAlarmRuleRepository()
+    : new PrismaAlarmRuleRepository();
+  const alarmSuppressionRepository = config.DEMO_MODE
+    ? new DemoAlarmSuppressionRepository()
+    : new PrismaAlarmSuppressionRepository();
+  const alarmSuppressions = new AlarmSuppressionService(alarmRepository, alarmSuppressionRepository);
+  const operationalOccurrenceRepository = config.DEMO_MODE
+    ? new DemoOperationalOccurrenceRepository()
+    : new PrismaOperationalOccurrenceRepository();
+  const operationalOccurrences = new OperationalOccurrenceService(operationalOccurrenceRepository);
+  const alertCenterRepository = config.DEMO_MODE
+    ? new DemoAlertCenterRepository(alarmRepository, operationalOccurrenceRepository, alarmSuppressionRepository)
+    : new PrismaAlertCenterRepository();
+  const alertCenter = new AlertCenterService(alertCenterRepository);
+  const alarms = new AlarmService(alarmRepository, alarmSuppressionRepository);
+  // Holder da notificacao de midia: definido junto ao motor e ligado depois
+  // que a camada de midias (que depende do vault) estiver pronta.
+  const alarmMediaHolder: { notifier: AlarmNotifier | null } = { notifier: null };
+  const alarmEngine = new AlarmEngine({
+    hosts,
+    alarms: alarmRepository,
+    rules: alarmRuleRepository,
+    suppressions: alarmSuppressionRepository,
+    // A camada de midias e construida depois deste motor; o holder mantem a
+    // ligacao explicita sem inverter a ordem de criacao.
+    notifier: {
+      notifyOpened: (alarm, options) =>
+        alarmMediaHolder.notifier?.notifyOpened(alarm, options) ?? Promise.resolve(),
+      notifyEscalated: (alarm, options) =>
+        alarmMediaHolder.notifier?.notifyEscalated(alarm, options) ?? Promise.resolve(),
+      notifyResolved: (alarm, options) =>
+        alarmMediaHolder.notifier?.notifyResolved(alarm, options) ?? Promise.resolve(),
+    },
+  });
+  const opticalThresholds = new OpticalThresholdService(hosts, {
+    refreshHours: config.OPTICAL_THRESHOLD_REFRESH_HOURS,
+    failureCooldownMs: config.OPTICAL_THRESHOLD_FAILURE_COOLDOWN_MINUTES * 60_000,
+  });
   const snmp = new SnmpService(
     hosts,
     ssh,
@@ -552,6 +607,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     pppPolling,
     alarms,
     bgpPolling,
+    alarmEngine,
+    opticalThresholds,
+    operationalOccurrences,
   );
   const poller = new SnmpPoller(hosts, snmp, config.SNMP_POLL_INTERVAL_SECONDS * 1000);
   const zabbix =
@@ -573,7 +631,24 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   registerHostRoutes(app, { legacyMaps, mapMembership: maps, hosts, discovery, snmp, ssh, zabbix });
   registerMplsRoutes(app, { hosts, mpls: mplsRepository });
-  registerAlarmRoutes(app, { alarms: alarmRepository });
+  registerAlarmRoutes(app, {
+    alarms: alarmRepository,
+    rules: alarmRuleRepository,
+    // Contrato `InterfaceOccurrence[]` preservado (F8), agora servido pelo
+    // modelo persistente de ocorrencias (F9.2).
+    occurrences: (windowMinutes, limit) =>
+      operationalOccurrences.listInterfaceOccurrences(windowMinutes, limit),
+    suppressions: alarmSuppressions,
+    currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
+  });
+  registerOperationalOccurrenceRoutes(app, {
+    occurrences: operationalOccurrences,
+    currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
+  });
+  registerAlertCenterRoutes(app, {
+    alertCenter,
+    currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
+  });
   registerBgpRoutes(app, {
     bgp: bgpRepository,
     hosts,
@@ -608,12 +683,27 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     },
     logger: (message, meta) => app.log.warn(meta ?? {}, message),
   });
+  const webhookSender = createFetchWebhookSender();
   const mediaTransport = new N8nMediaTransport({
     media: mediaService,
-    send: createFetchWebhookSender(),
+    send: webhookSender,
   });
   // Ligacao tardia: o transporte resolve URL/token pela camada de midias.
   mediaService.attachTransport(mediaTransport);
+
+  // Alarmes de rede usam o MESMO sender HTTP e o MESMO log operacional da
+  // camada de midias, porem com canal PROPRIO: `resolveOutbound('NETWORK_ALARMS')`
+  // nunca cai no canal nem no ENV da mitigacao (F9.5).
+  if (alarmMediaHolder.notifier) {
+    throw new Error('notifier de alarmes ja inicializado');
+  }
+  const alarmTransport = new N8nAlarmTransport({ media: mediaService, send: webhookSender });
+  // O TESTAR ALARME reusa este transporte (serializer canonico, sem payload paralelo).
+  mediaService.attachAlarmTransport(alarmTransport);
+  alarmMediaHolder.notifier = new AlarmNotificationService({
+    alarms: alarmRepository,
+    transport: alarmTransport,
+  });
 
   // Configuracao explicita de EXECUCAO (fail-closed): MOCK por padrao; o
   // executor Huawei so entra quando `MITIGATION_EXECUTOR=HUAWEI`. A escrita real
@@ -873,6 +963,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       await mitigationSchemaProbe.disconnect();
     if (bgpAudit instanceof PrismaBgpAdminAuditRepository) await bgpAudit.disconnect();
     if (alarmRepository instanceof PrismaAlarmRepository) await alarmRepository.disconnect();
+    if (alarmSuppressionRepository instanceof PrismaAlarmSuppressionRepository)
+      await alarmSuppressionRepository.disconnect();
+    if (operationalOccurrenceRepository instanceof PrismaOperationalOccurrenceRepository)
+      await operationalOccurrenceRepository.disconnect();
+    if (alertCenterRepository instanceof PrismaAlertCenterRepository)
+      await alertCenterRepository.disconnect();
     await physicalRepository.disconnect();
   });
 

@@ -17,6 +17,7 @@ import {
   X,
 } from 'lucide-react';
 import { useMapStore } from '@/store/map-store';
+import { NetworkAlarmsMediaSection } from './network-alarms-media-section';
 import {
   MEDIA_SOURCE_LABELS,
   MEDIA_STATUS_LABELS,
@@ -39,8 +40,7 @@ const DEFAULT_NAME = 'n8n — Mitigação DDoS';
  * Nenhum segredo é exibido depois de salvo: apenas "configurado: sim/não".
  * O token de entrada aparece UMA vez, logo após a rotação.
  */
-export function MediaIntegrationsPanel() {
-  const setPanel = useMapStore((state) => state.setPanel);
+function BgpMitigationMediaSection() {
   const queryClient = useQueryClient();
 
   const overviewQuery = useQuery({
@@ -178,28 +178,7 @@ export function MediaIntegrationsPanel() {
     importMutation.isPending;
 
   return (
-    <div
-      className="panel-overlay"
-      role="presentation"
-      onMouseDown={(event) => event.target === event.currentTarget && setPanel(null)}
-    >
-      <section
-        className="action-panel action-panel--wide"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Mídias"
-      >
-        <header>
-          <div>
-            <span>CONFIGURAÇÕES · MÍDIAS</span>
-            <h2>n8n — Mitigação DDoS</h2>
-          </div>
-          <button type="button" aria-label="Fechar" onClick={() => setPanel(null)}>
-            <X size={18} />
-          </button>
-        </header>
-
-        <div className="panel-body media-panel">
+    <div className="panel-body media-panel">
           {!migrationReady ? (
             <div className="panel-note media-panel__warn">
               <TriangleAlert size={17} />
@@ -444,8 +423,66 @@ export function MediaIntegrationsPanel() {
               responsável pelo Telegram.
             </span>
           </div>
-        </div>
+    </div>
+  );
+}
 
+type MediaPurposeTab = 'BGP_MITIGATION' | 'NETWORK_ALARMS';
+
+/**
+ * CONFIGURAÇÕES → MÍDIAS.
+ *
+ * A tela cobre os dois purposes com editores INDEPENDENTES (F9.5): Mitigação
+ * DDoS (outbound + inbound) e Alarmes de Rede (somente outbound, com TESTAR
+ * ALARME). Nenhuma URL/token é compartilhada entre as abas e nenhum segredo
+ * volta ao navegador depois de salvo.
+ */
+export function MediaIntegrationsPanel() {
+  const setPanel = useMapStore((state) => state.setPanel);
+  const [purpose, setPurpose] = useState<MediaPurposeTab>('BGP_MITIGATION');
+
+  return (
+    <div
+      className="panel-overlay"
+      role="presentation"
+      onMouseDown={(event) => event.target === event.currentTarget && setPanel(null)}
+    >
+      <section
+        className="action-panel action-panel--wide"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Mídias"
+      >
+        <header>
+          <div>
+            <span>CONFIGURAÇÕES · MÍDIAS</span>
+            <h2>{purpose === 'BGP_MITIGATION' ? 'n8n — Mitigação DDoS' : 'n8n — Alarmes de Rede'}</h2>
+          </div>
+          <button type="button" aria-label="Fechar" onClick={() => setPanel(null)}>
+            <X size={18} />
+          </button>
+        </header>
+        <div className="media-purpose-tabs" role="tablist" aria-label="Canal de mídia">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={purpose === 'BGP_MITIGATION'}
+            className={purpose === 'BGP_MITIGATION' ? 'is-active' : ''}
+            onClick={() => setPurpose('BGP_MITIGATION')}
+          >
+            MITIGAÇÃO DDOS
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={purpose === 'NETWORK_ALARMS'}
+            className={purpose === 'NETWORK_ALARMS' ? 'is-active' : ''}
+            onClick={() => setPurpose('NETWORK_ALARMS')}
+          >
+            ALARMES DE REDE
+          </button>
+        </div>
+        {purpose === 'BGP_MITIGATION' ? <BgpMitigationMediaSection /> : <NetworkAlarmsMediaSection />}
         <footer>
           <Button variant="ghost" onClick={() => setPanel(null)}>
             Fechar

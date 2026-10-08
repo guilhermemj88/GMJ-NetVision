@@ -42,8 +42,9 @@ export type OpenPanel =
   | 'public-links'
   | 'users'
   | 'media'
+  | 'alarms'
   | null;
-export type WorkspaceView = 'MAP' | 'HOSTS' | 'PHYSICAL' | 'BGP';
+export type WorkspaceView = 'MAP' | 'HOSTS' | 'PHYSICAL' | 'BGP' | 'ALERTS';
 
 export interface PresetApplication {
   nodeDisplayMode: NodeDisplayMode;
@@ -244,6 +245,17 @@ interface MapState {
   toast: string | null;
   focusRequest: MapFocusRequest | null;
   pendingInterfaceNavigation: { mapId: string; deviceId: string; interfaceId: string } | null;
+  /**
+   * Secao do drawer da interface que deve ser destacada/rolada (clique em
+   * alarme): o drawer rola ate ela e limpa o pedido.
+   */
+  interfaceSectionRequest: {
+    interfaceId: string;
+    section: 'OPTICAL' | 'METRICS';
+    requestId: number;
+  } | null;
+  focusInterfaceSection: (interfaceId: string, section: 'OPTICAL' | 'METRICS') => void;
+  clearInterfaceSectionRequest: (requestId: number) => void;
   pendingDeviceNavigation: { mapId: string; deviceId: string } | null;
   hostDetailRequest: string | null;
   focusSequence: number;
@@ -453,6 +465,18 @@ export const useMapStore = create<MapState>((set, get) => ({
   toast: null,
   focusRequest: null,
   pendingInterfaceNavigation: null,
+  interfaceSectionRequest: null,
+  focusInterfaceSection: (interfaceId, section) =>
+    set((state) => ({
+      interfaceSectionRequest: { interfaceId, section, requestId: state.focusSequence + 1 },
+      focusSequence: state.focusSequence + 1,
+    })),
+  clearInterfaceSectionRequest: (requestId) =>
+    set((state) =>
+      state.interfaceSectionRequest?.requestId === requestId
+        ? { interfaceSectionRequest: null }
+        : state,
+    ),
   pendingDeviceNavigation: null,
   hostDetailRequest: null,
   focusSequence: 0,
@@ -550,6 +574,7 @@ export const useMapStore = create<MapState>((set, get) => ({
       selection: null,
       panel: null,
       pendingInterfaceNavigation: null,
+      interfaceSectionRequest: null,
       pendingDeviceNavigation: null,
       focusRequest: null,
       // Recortes de foco são específicos do mapa aberto.

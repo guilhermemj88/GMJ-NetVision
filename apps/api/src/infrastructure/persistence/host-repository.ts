@@ -7,6 +7,9 @@ import type {
   MetricPoint,
   NetworkInterface,
   OpticalHistoryPoint,
+  OpticalLaneReading,
+  OpticalThresholdSource,
+  OpticalThresholdsV1,
   UpdateHostInput,
 } from '@gmj/shared';
 
@@ -30,6 +33,51 @@ export interface InterfaceCounterSnapshot {
   outErrors: bigint;
   inDiscards: bigint;
   outDiscards: bigint;
+  /** FCS/CRC (EtherLike-MIB); ausente/null = nao coletado ou sem suporte. */
+  fcsErrors?: bigint | null | undefined;
+}
+
+/** Linha crua da janela do motor de alarmes (deltas persistidos por par). */
+export interface InterfaceMetricWindowRow {
+  interfaceId: string;
+  timestamp: Date;
+  inErrors: bigint;
+  outErrors: bigint;
+  inDiscards: bigint;
+  outDiscards: bigint;
+  inErrorsDelta: bigint;
+  outErrorsDelta: bigint;
+  inDiscardsDelta: bigint;
+  outDiscardsDelta: bigint;
+  fcsErrors: bigint | null;
+  fcsErrorsDelta: bigint | null;
+}
+
+/**
+ * Intervalo persistido COM ocorrencia (delta > 0) de CRC/FCS ou discards, com a
+ * identidade necessaria para o read model de ocorrencias recentes.
+ */
+export interface InterfaceOccurrenceRow {
+  interfaceId: string;
+  deviceId: string;
+  deviceName: string;
+  interfaceName: string;
+  interfaceDescription: string | null;
+  interfaceAlias: string | null;
+  ifIndex: number;
+  timestamp: Date;
+  fcsErrorsDelta: bigint | null;
+  inDiscardsDelta: bigint;
+  outDiscardsDelta: bigint;
+}
+
+/** Amostra optica persistida usada pelo motor (janela do RX por lane/scalar). */
+export interface InterfaceOpticalWindowRow {
+  interfaceId: string;
+  timestamp: Date;
+  rxPowerDbm: number | null;
+  txPowerDbm: number | null;
+  opticalLanes: OpticalLaneReading[];
 }
 
 export interface InterfaceMetricSampleInput extends InterfaceCounterSnapshot {
@@ -39,6 +87,9 @@ export interface InterfaceMetricSampleInput extends InterfaceCounterSnapshot {
   outErrorsDelta: bigint;
   inDiscardsDelta: bigint;
   outDiscardsDelta: bigint;
+  /** NULL = metrica nao suportada/nao coletada; 0 = coletada e sem erro. */
+  fcsErrors?: bigint | null | undefined;
+  fcsErrorsDelta?: bigint | null | undefined;
   operStatus: NetworkInterface['operStatus'];
 }
 
@@ -46,6 +97,28 @@ export interface InterfaceStatusUpdate {
   ifIndex: number;
   adminStatus?: NetworkInterface['adminStatus'];
   operStatus?: NetworkInterface['operStatus'];
+}
+
+/** Thresholds opticos persistidos de uma interface (SNMP primario + janela do slow path SSH). */
+export interface InterfaceOpticalThresholdRecord {
+  interfaceId: string;
+  thresholds: OpticalThresholdsV1 | null;
+  source: OpticalThresholdSource | null;
+  updatedAt: Date | null;
+  refreshAfter: Date | null;
+}
+
+export interface InterfaceOpticalThresholdUpdateInput {
+  interfaceId: string;
+  thresholds: OpticalThresholdsV1 | null;
+  source: OpticalThresholdSource | null;
+  updatedAt: Date;
+  /**
+   * Janela do slow path SSH (quem a renova e a leitura SSH). O SNMP atualiza o
+   * valor DEVICE e preserva o que estiver gravado aqui; `null` = verificacao
+   * de origem pendente.
+   */
+  refreshAfter: Date | null;
 }
 
 export interface InterfaceStatusTransition {
@@ -85,7 +158,22 @@ export interface HostRepository {
     interfaces: NetworkInterface[],
     collectedAfter?: Date,
   ): Promise<void>;
+  /** Thresholds persistidos de todas as interfaces do device (slow path). */
+  getInterfaceOpticalThresholds(deviceId: string): Promise<InterfaceOpticalThresholdRecord[]>;
+  updateInterfaceOpticalThresholds(
+    deviceId: string,
+    entries: InterfaceOpticalThresholdUpdateInput[],
+  ): Promise<void>;
   getLatestCounterSnapshots(hostId: string): Promise<Map<number, InterfaceCounterSnapshot>>;
+  /** Amostras recentes do device (janela do motor de alarmes), ordem crescente. */
+  getRecentInterfaceMetricSamples(deviceId: string, since: Date): Promise<InterfaceMetricWindowRow[]>;
+  /**
+   * Intervalos com ocorrencia (delta > 0) de CRC/FCS ou discards em TODOS os
+   * devices, ordem decrescente — a base do read model de ocorrencias recentes.
+   */
+  getRecentInterfaceOccurrenceRows(since: Date): Promise<InterfaceOccurrenceRow[]>;
+  /** Amostras opticas recentes do device (janela do motor optico), ordem crescente. */
+  getRecentInterfaceOpticalSamples(deviceId: string, since: Date): Promise<InterfaceOpticalWindowRow[]>;
   saveSnmpPoll(
     hostId: string,
     deviceSample: DeviceMetricSampleInput,

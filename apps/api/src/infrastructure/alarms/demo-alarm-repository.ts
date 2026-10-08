@@ -1,5 +1,20 @@
-import { createLocalId, type Alarm } from '@gmj/shared';
-import type { AlarmHistoryOptions, AlarmOpenInput, AlarmRepository } from './alarm-repository';
+import {
+  createLocalId,
+  type Alarm,
+  type AlarmMetadata,
+  type AlarmResolutionReason,
+  type AlarmType,
+  type MetricAlarmType,
+} from '@gmj/shared';
+import type {
+  AlarmHistoryOptions,
+  AlarmNotifiedPatch,
+  AlarmOpenInput,
+  AlarmRepository,
+  MetricAlarmEscalationInput,
+  MetricAlarmOpenInput,
+} from './alarm-repository';
+import { isMetricAlarmType } from './alarm-rule-schema';
 
 /**
  * In-memory fallback used in DEMO_MODE. Alarm detection does not run there
@@ -27,6 +42,52 @@ export class DemoAlarmRepository implements AlarmRepository {
 
   async findLinkedInterfaceIds(interfaceIds: string[]): Promise<Set<string>> {
     return new Set(interfaceIds);
+  }
+
+  async findById(alarmId: string): Promise<Alarm | null> {
+    return this.alarms.find((alarm) => alarm.id === alarmId) ?? null;
+  }
+
+  async acknowledge(
+    alarmId: string,
+    acknowledgedBy: string,
+    acknowledgedAt: Date,
+  ): Promise<Alarm | null> {
+    const alarm = this.alarms.find((item) => item.id === alarmId);
+    if (!alarm) return null;
+    // Idempotencia: o primeiro reconhecimento e o que fica registrado.
+    if (!alarm.acknowledgedAt) {
+      alarm.acknowledgedAt = acknowledgedAt.toISOString();
+      alarm.acknowledgedBy = acknowledgedBy;
+    }
+    return alarm;
+  }
+
+  async closeOpenAlarmsForFingerprint(
+    input: {
+      interfaceId: string;
+      type: AlarmType;
+      ruleId?: string | null | undefined;
+      metricKey?: string | null | undefined;
+    },
+    closedAt: Date,
+    reason: AlarmResolutionReason,
+  ): Promise<number> {
+    let closed = 0;
+    for (const alarm of this.alarms) {
+      if (alarm.endedAt || alarm.interfaceId !== input.interfaceId || alarm.type !== input.type) {
+        continue;
+      }
+      if (input.ruleId != null && alarm.ruleId !== input.ruleId) continue;
+      if (input.metricKey != null && alarm.metricKey !== input.metricKey) continue;
+      alarm.endedAt = closedAt.toISOString();
+      alarm.metadata = {
+        ...((alarm.metadata as AlarmMetadata | null) ?? {}),
+        resolutionReason: reason,
+      };
+      closed += 1;
+    }
+    return closed;
   }
 
   async openInterfaceDownAlarms(inputs: AlarmOpenInput[]): Promise<Alarm[]> {
@@ -65,5 +126,115 @@ export class DemoAlarmRepository implements AlarmRepository {
         alarm.endedAt = resolvedAt.toISOString();
       }
     }
+  }
+
+  async openMetricAlarm(input: MetricAlarmOpenInput): Promise<Alarm | null> {
+    const exists = this.alarms.some(
+      (alarm) =>
+        !alarm.endedAt &&
+        alarm.ruleId === input.ruleId &&
+        alarm.interfaceId === input.interfaceId &&
+        alarm.type === input.type &&
+        alarm.metricKey === input.metricKey,
+    );
+    if (exists) return null;
+
+    const alarm: Alarm = {
+      id: createLocalId('alarm'),
+      deviceId: input.deviceId,
+      deviceName: input.deviceId,
+      interfaceId: input.interfaceId,
+      interfaceName: `ifIndex ${input.ifIndex}`,
+      interfaceLabel: `ifIndex ${input.ifIndex}`,
+      ifIndex: input.ifIndex,
+      linkId: null,
+      linkLabel: null,
+      type: input.type,
+      severity: input.severity,
+      startedAt: input.startedAt.toISOString(),
+      endedAt: null,
+      acknowledgedAt: null,
+      acknowledgedBy: null,
+      message: input.message,
+      ruleId: input.ruleId,
+      metricKey: input.metricKey,
+      currentValue: input.currentValue,
+      thresholdValue: input.thresholdValue,
+      unit: input.unit,
+      metadata: input.metadata,
+    };
+    this.alarms.unshift(alarm);
+    return alarm;
+  }
+
+  async listOpenMetricAlarms(deviceId: string): Promise<Alarm[]> {
+    return this.alarms.filter(
+      (alarm) => !alarm.endedAt && alarm.deviceId === deviceId && isMetricAlarmType(alarm.type),
+    );
+  }
+
+  async escalateMetricAlarm(
+    alarmId: string,
+    input: MetricAlarmEscalationInput,
+  ): Promise<Alarm | null> {
+    const alarm = this.alarms.find((item) => item.id === alarmId && !item.endedAt);
+    if (!alarm) return null;
+    alarm.severity = input.severity;
+    alarm.currentValue = input.currentValue;
+    alarm.thresholdValue = input.thresholdValue;
+    alarm.unit = input.unit;
+    alarm.metadata = input.metadata;
+    alarm.message = input.message;
+    return alarm;
+  }
+
+  async resolveMetricAlarm(
+    interfaceId: string,
+    type: MetricAlarmType,
+    metricKey: string,
+    resolvedAt: Date,
+  ): Promise<boolean> {
+    let resolved = false;
+    for (const alarm of this.alarms) {
+      if (
+        !alarm.endedAt &&
+        alarm.interfaceId === interfaceId &&
+        alarm.type === type &&
+        alarm.metricKey === metricKey
+      ) {
+        alarm.endedAt = resolvedAt.toISOString();
+        resolved = true;
+      }
+    }
+    return resolved;
+  }
+
+  async markAlarmNotified(alarmId: string, patch: AlarmNotifiedPatch): Promise<void> {
+    const alarm = this.alarms.find((item) => item.id === alarmId);
+    if (!alarm) return;
+    alarm.notifiedSeverity = patch.notifiedSeverity;
+    alarm.notifiedAt = patch.notifiedAt.toISOString();
+  }
+
+  async markAlarmResolutionNotified(alarmId: string, notifiedAt: Date): Promise<void> {
+    const alarm = this.alarms.find((item) => item.id === alarmId);
+    if (!alarm) return;
+    alarm.resolutionNotifiedAt = notifiedAt.toISOString();
+  }
+
+  async resolveOpenMetricAlarmsForRule(
+    ruleId: string,
+    resolvedAt: Date,
+    reason: AlarmResolutionReason,
+  ): Promise<number> {
+    let resolved = 0;
+    for (const alarm of this.alarms) {
+      if (!alarm.endedAt && alarm.ruleId === ruleId) {
+        alarm.endedAt = resolvedAt.toISOString();
+        alarm.metadata = { ...(alarm.metadata ?? {}), resolutionReason: reason };
+        resolved += 1;
+      }
+    }
+    return resolved;
   }
 }

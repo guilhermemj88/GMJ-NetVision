@@ -1,12 +1,22 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { OpticalHistoryPoint } from '@gmj/shared';
+import type { HistoryPeriod, NetworkInterface, OpticalHistoryPoint } from '@gmj/shared';
 import {
   OpticalHistoryTooltip,
+  OpticalHistoryView,
+  OpticalThresholdChips,
+  OpticalScalePicker,
+  axisWindow,
+  chartScale,
   formatAxisDbm,
   laneIdsWithPower,
+  limitsWindow,
   opticalChartData,
+  opticalDots,
   opticalSeries,
+  opticalThresholdRange,
+  thresholdHint,
+  thresholdMarkers,
 } from './optical-history-charts';
 
 const point: OpticalHistoryPoint = {
@@ -152,5 +162,291 @@ describe('optical history rendering', () => {
     expect(formatAxisDbm(1.1)).toBe('1.10');
     expect(formatAxisDbm(-4.2)).toBe('-4.20');
     expect(formatAxisDbm(0)).toBe('0.00');
+  });
+});
+
+describe('thresholds no grafico optico (F7.5)', () => {
+  const baseInterface = {
+    id: 'if-1', deviceId: 'dev-1', name: '100GE1/0/1', alias: '', description: '',
+    ifIndex: 1, mac: '', mtu: 1500, speedBps: 100_000_000_000,
+    adminStatus: 'UP', operStatus: 'UP', rxBps: 0, txBps: 0, rxUtilization: 0,
+    txUtilization: 0, rxErrors: 0, txErrors: 0, rxDiscards: 0, txDiscards: 0,
+    dataSources: ['SNMP'],
+  } as unknown as NetworkInterface;
+
+  it('le o MESMO opticalThresholds canonico (scalar do modulo, com origem)', () => {
+    const range = opticalThresholdRange({
+      ...baseInterface,
+      opticalThresholds: {
+        version: 1,
+        scalar: {
+          rx: { lowAlarmDbm: -12.31, highAlarmDbm: 3.4, lowSource: 'DEVICE', highSource: 'DEVICE' },
+          tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+        },
+        lanes: [],
+      },
+    }, 'rx');
+    expect(range).toEqual({ low: -12.31, high: 3.4, source: 'DEVICE', scope: 'MODULE' });
+  });
+
+  it('sem scalar usa a envoltoria dos limites por lane e nunca inventa valor', () => {
+    const range = opticalThresholdRange({
+      ...baseInterface,
+      opticalThresholds: {
+        version: 1,
+        scalar: {
+          rx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+          tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+        },
+        lanes: [
+          { lane: 0, rx: { lowAlarmDbm: -13.5, highAlarmDbm: 2, lowSource: 'USER', highSource: 'USER' }, tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null } },
+          { lane: 1, rx: { lowAlarmDbm: -11, highAlarmDbm: 3, lowSource: 'USER', highSource: 'USER' }, tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null } },
+        ],
+      },
+    }, 'rx');
+    expect(range).toMatchObject({ low: -13.5, high: 3, source: 'USER', scope: 'LANE' });
+
+    expect(opticalThresholdRange(baseInterface, 'rx')).toEqual({
+      low: null, high: null, source: null, scope: null,
+    });
+  });
+
+  it('janela Y vem SO dos dados: threshold distante nao achata as lanes', () => {
+    const window = axisWindow([0.19, 0.69, 1.02, 0.11]);
+    expect(window?.[0]).toBeLessThan(0.11);
+    expect(window?.[1]).toBeGreaterThan(1.02);
+    // Faixa real das 4 lanes (0.11..1.02) preservada, sem incluir -12.31/+3.40.
+    expect(window?.[0]).toBeGreaterThan(-1);
+
+    const markers = thresholdMarkers({ low: -12.31, high: 3.4, source: 'DEVICE', scope: 'MODULE' }, window);
+    // LOW abaixo da janela e HIGH acima: chip mostra a direcao, sem linha falsa.
+    expect(markers.low).toEqual({ value: -12.31, visible: false, hint: 'below' });
+    expect(markers.high).toEqual({ value: 3.4, visible: false, hint: 'above' });
+  });
+
+  it('threshold dentro da janela vira linha de referencia visivel', () => {
+    const window = axisWindow([-3.0, -2.4, -2.8]);
+    const markers = thresholdMarkers({ low: -3.0, high: -2.5, source: 'DEVICE', scope: 'MODULE' }, window);
+    expect(markers.low?.visible).toBe(true);
+    expect(markers.high?.visible).toBe(true);
+    expect(markers.low?.hint).toBeNull();
+  });
+
+  it('sem dados nao ha janela e nenhum threshold e desenhado', () => {
+    expect(axisWindow([null, undefined])).toBeNull();
+    expect(thresholdMarkers({ low: null, high: null, source: null, scope: null }, null))
+      .toEqual({ low: null, high: null });
+  });
+});
+
+describe('escala AUTO/LIMITES do historico optico (F9.4.2)', () => {
+  // Valores reais do CEM-CEN-6730-MPLS-01 / 100GE0/0/2 no preview.
+  const rxValues = [-13.7, -12.3, -13.1, -12.8];
+  const device = { low: -21.48, high: -2.5, source: 'DEVICE' as const, scope: 'MODULE' as const };
+
+  it('AUTO: dominio SO dos dados e LOW/HIGH fora viram chip direcional', () => {
+    const scale = chartScale('AUTO', rxValues, device);
+    // Nao achata as lanes ate -21.48/-2.50.
+    expect(scale.domain?.[0]).toBeGreaterThan(-14);
+    expect(scale.domain?.[1]).toBeLessThan(-12);
+    expect(scale.showHints).toBe(true);
+    expect(scale.low).toEqual({ value: -21.48, visible: false, hint: 'below' });
+    expect(scale.high).toEqual({ value: -2.5, visible: false, hint: 'above' });
+    expect(thresholdHint(scale.low)).toBe('↓ abaixo da janela');
+    expect(thresholdHint(scale.high)).toBe('↑ acima da janela');
+  });
+
+  it('AUTO: threshold dentro do dominio vira ReferenceLine, sem hint de janela', () => {
+    const scale = chartScale('AUTO', [-3, -2.4, -2.8], {
+      low: -3, high: -2.5, source: 'USER', scope: 'MODULE',
+    });
+    expect(scale.low?.visible).toBe(true);
+    expect(scale.high?.visible).toBe(true);
+    expect(scale.low?.hint).toBeNull();
+    expect(thresholdHint(scale.low)).toBeNull();
+    expect(thresholdHint(scale.high)).toBeNull();
+  });
+
+  it('LIMITES: o dominio passa a incluir LOW e HIGH, com padding', () => {
+    const domain = limitsWindow(rxValues, device);
+    expect(domain?.[0]).toBeLessThan(-21.48);
+    expect(domain?.[1]).toBeGreaterThan(-2.5);
+
+    const scale = chartScale('LIMITS', rxValues, device);
+    expect(scale.domain).toEqual(domain);
+    expect(scale.low?.visible).toBe(true);
+    expect(scale.high?.visible).toBe(true);
+    expect(scale.showHints).toBe(false);
+  });
+
+  it('LIMITES: as duas linhas de referencia aparecem e nenhum chip fala em janela', () => {
+    const scale = chartScale('LIMITS', rxValues, device);
+    const html = renderToStaticMarkup(<OpticalThresholdChips thresholds={device} scale={scale} />);
+    expect(html.match(/<span class="chart-thresholds__chip/g)).toHaveLength(3);
+    expect(html).toContain('-21.48 dBm');
+    expect(html).toContain('-2.50 dBm');
+    expect(html).toContain('DEVICE');
+    expect(html).not.toContain('janela');
+  });
+
+  it('AUTO/LIMITES nao mexem nos dados nem nas series (troca so o dominio)', () => {
+    const auto = chartScale('AUTO', rxValues, device);
+    const limits = chartScale('LIMITS', rxValues, device);
+    expect(auto.domain).not.toEqual(limits.domain);
+
+    const series = opticalSeries([0, 1, 2, 3], 'rx');
+    const data = opticalChartData([point], [0, 1, 2, 3], '1h');
+    // Mesmo array/series para os dois modos: nada e refeito ou perdido.
+    expect(data).toHaveLength(1);
+    expect(data[0]).toMatchObject({ lane_0_rxAvg: -12, lane_3_rxAvg: -9 });
+    expect(Math.max(...series.map((item) => item.dataKey.length))).toBeGreaterThan(0);
+    expect(chartScale('AUTO', rxValues, device).domain).toEqual(auto.domain);
+  });
+
+  it('RX e TX calculam dominios independentes', () => {
+    const rx = chartScale('AUTO', rxValues, device);
+    const tx = chartScale('AUTO', [0.4, 0.8], { low: -2.5, high: 6.5, source: 'DEVICE', scope: 'MODULE' });
+    expect(rx.domain).not.toEqual(tx.domain);
+    expect(rx.low?.hint).toBe('below');
+    expect(tx.low?.hint).toBe('below');
+    expect(tx.high?.hint).toBe('above');
+  });
+
+  it('chips: LOW, HIGH e fonte em blocos separados, hint dentro do proprio chip', () => {
+    const scale = chartScale('AUTO', rxValues, device);
+    const html = renderToStaticMarkup(<OpticalThresholdChips thresholds={device} scale={scale} />);
+    expect(html.match(/<span class="chart-thresholds__chip/g)).toHaveLength(3);
+    expect(html).toContain('chart-thresholds__chip--source');
+    expect(html).toContain('<em>LOW</em>');
+    expect(html).toContain('<em>HIGH</em>');
+    expect(html).toContain('<em>FONTE</em>');
+    expect(html).toContain('↓ abaixo da janela');
+    expect(html).toContain('↑ acima da janela');
+    // Nada concatenado: depois de "janela" sempre vem markup, nunca outro rotulo.
+    expect(html).not.toMatch(/janela[A-Z]/);
+  });
+
+  it('sem threshold real os chips mostram N/D e nenhum hint', () => {
+    const empty = { low: null, high: null, source: null, scope: null } as const;
+    const scale = chartScale('AUTO', rxValues, empty);
+    const html = renderToStaticMarkup(<OpticalThresholdChips thresholds={empty} scale={scale} />);
+    expect(html).toContain('N/D');
+    expect(html).not.toContain('janela');
+  });
+
+  it('single sample desenha os pontos; com historico a linha volta a ser linha', () => {
+    expect(opticalDots(1)).toBe(true);
+    expect(opticalDots(2)).toBe(false);
+    expect(opticalDots(0)).toBe(false);
+  });
+
+  it('seletor de escala nasce em AUTO e expoe os dois modos', () => {
+    const auto = renderToStaticMarkup(<OpticalScalePicker mode="AUTO" onChange={() => {}} />);
+    expect(auto).toContain('AUTO');
+    expect(auto).toContain('LIMITES');
+    const active = auto.match(/class="is-active"[^>]*>([^<]+)</);
+    expect(active?.[1]).toBe('AUTO');
+    const limits = renderToStaticMarkup(<OpticalScalePicker mode="LIMITS" onChange={() => {}} />);
+    expect(limits).toMatch(/class="is-active"[\s\S]*LIMITES/);
+  });
+});
+
+
+/**
+ * F9.6: o histórico óptico vazio informa a idade da última coleta óptica
+ * (escalar ou lanes, o que for mais recente) em vez de só dizer "sem amostras".
+ */
+describe('estado vazio do historico optico (F9.6)', () => {
+  const NETWORK_INTERFACE = {
+    id: 'if-1',
+    deviceId: 'dev-1',
+    name: '100GE0/0/2',
+    alias: '',
+    description: '',
+    ifIndex: 2,
+    mac: '',
+    mtu: 1500,
+    speedBps: 100_000_000_000,
+    adminStatus: 'UP',
+    operStatus: 'UP',
+    rxBps: 0,
+    txBps: 0,
+    rxUtilization: 0,
+    txUtilization: 0,
+    rxErrors: 0,
+    txErrors: 0,
+    rxDiscards: 0,
+    txDiscards: 0,
+    dataSources: ['SNMP'],
+    opticalLanes: [0, 1, 2, 3].map((lane) => ({ lane })),
+    opticalUpdatedAt: '2026-10-07T16:54:21.000Z',
+    opticalLanesUpdatedAt: '2026-10-08T00:40:10.000Z',
+  } as unknown as NetworkInterface;
+
+  function renderView(points: OpticalHistoryPoint[], period: HistoryPeriod = '6h'): string {
+    return renderToStaticMarkup(
+      <OpticalHistoryView
+        networkInterface={NETWORK_INTERFACE}
+        points={points}
+        period={period}
+        scaleMode="AUTO"
+        onPeriodChange={() => {}}
+        onScaleModeChange={() => {}}
+      />,
+    );
+  }
+
+  it('sem amostras mostra a janela e a idade da ultima coleta optica', () => {
+    const html = renderView([]);
+    expect(html).toContain('Sem amostras nas últimas 6 h');
+    expect(html).toContain('Última coleta: há');
+  });
+
+  it('sem coleta anterior o texto e explicito', () => {
+    const withoutOptics = {
+      ...NETWORK_INTERFACE,
+      opticalUpdatedAt: null,
+      opticalLanesUpdatedAt: null,
+    } as unknown as NetworkInterface;
+    const html = renderToStaticMarkup(
+      <OpticalHistoryView
+        networkInterface={withoutOptics}
+        points={[]}
+        period="24h"
+        scaleMode="AUTO"
+        onPeriodChange={() => {}}
+        onScaleModeChange={() => {}}
+      />,
+    );
+    expect(html).toContain('Sem amostras nas últimas 24 h');
+    expect(html).toContain('Sem coleta anterior');
+  });
+
+  it('com amostras no periodo nao mostra aviso de vazio', () => {
+    const html = renderView([
+      {
+        timestamp: '2026-10-08T00:40:10.000Z',
+        sampleCount: 1,
+        rxAvg: -13.67,
+        rxMin: -13.67,
+        rxMax: -13.67,
+        txAvg: 0.76,
+        txMin: 0.76,
+        txMax: 0.76,
+        lanes: [0, 1, 2, 3].map((lane) => ({
+          lane,
+          sampleCount: 1,
+          rxAvg: -13.7 + lane * 0.3,
+          rxMin: -13.7 + lane * 0.3,
+          rxMax: -13.7 + lane * 0.3,
+          txAvg: 0.4 + lane * 0.1,
+          txMin: 0.4 + lane * 0.1,
+          txMax: 0.4 + lane * 0.1,
+        })),
+      },
+    ]);
+    expect(html).not.toContain('Sem amostras nas últimas');
+    expect(html).toContain('Lane 0');
+    expect(html).toContain('RX · dBm');
   });
 });

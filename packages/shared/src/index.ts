@@ -1,4 +1,6 @@
 export * from './alarm-label';
+export * from './alert-center';
+export * from './alarm-suppression';
 export * from './bgp';
 export * from './bgp-advertised-routes';
 export * from './demo';
@@ -11,6 +13,7 @@ export * from './link-layout';
 export * from './link-telemetry';
 export * from './mitigation';
 export * from './mpls';
+export * from './operational-occurrence';
 export * from './optical-history';
 export * from './physical';
 export * from './physical-interface';

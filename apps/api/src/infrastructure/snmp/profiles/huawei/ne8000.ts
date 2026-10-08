@@ -13,6 +13,14 @@ export const huaweiNe8000Profile: SnmpProfile = {
   modelPatterns: [/NE\s*8000/i, /F1A(?:-C)?/i],
   sysDescrPatterns: [/NetEngine\s*8000/i, /NE\s*8000/i],
   pppOnlineOid: HUAWEI_PPP_ONLINE_OID,
+  // ATENCAO: MICRO_WATTS e o comportamento historico PRESERVADO do VRP classico
+  // e ainda NAO foi validado empiricamente em NE8000/F1A real nesta rodada
+  // (validacao de campo pendente). Nao inferir que o F1A se comporta como o
+  // S6730 ou o S6750.
+  opticalScalarEncoding: 'MICRO_WATTS',
+  // Lanes em dBm: comportamento atual preservado (NE8000/F1A ainda sem
+  // validacao empirica de lane encoding nesta rodada).
+  opticalLaneEncoding: 'DBM',
   metrics: {
     cpu: {
       unit: '%',

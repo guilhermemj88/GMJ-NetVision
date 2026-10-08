@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { resetLinkGeometry, type LinkGeometry } from '@/lib/link-curvature';
 import { Badge, Button } from '@gmj/ui';
 import { ConfirmDialog } from '@gmj/ui';
@@ -594,6 +594,20 @@ function InterfaceDrawer({
   onBack: () => void;
   onClose: () => void;
 }) {
+  const sectionRequest = useMapStore((state) => state.interfaceSectionRequest);
+  const clearSectionRequest = useMapStore((state) => state.clearInterfaceSectionRequest);
+  const opticalRef = useRef<HTMLDivElement | null>(null);
+  const metricsRef = useRef<HTMLElement | null>(null);
+  // Clique em alarme pede a secao (optico/metricas); o drawer rola ate ela.
+  const activeSection = sectionRequest?.interfaceId === item.id ? sectionRequest.section : null;
+
+  useEffect(() => {
+    if (!activeSection || !sectionRequest) return;
+    const target = activeSection === 'OPTICAL' ? opticalRef.current : metricsRef.current;
+    target?.scrollIntoView?.({ block: 'start', behavior: 'smooth' });
+    clearSectionRequest(sectionRequest.requestId);
+  }, [activeSection, clearSectionRequest, sectionRequest]);
+
   return (
     <DrawerShell
       eyebrow={`${deviceName} / INTERFACE`}
@@ -616,10 +630,18 @@ function InterfaceDrawer({
           <Info label="Fontes" value={item.dataSources?.join(' + ') || '—'} />
         </div>
       </section>
-      <InterfaceOpticalDetails networkInterface={item} />
+      <div
+        ref={opticalRef}
+        className={`drawer-anchor ${activeSection === 'OPTICAL' ? 'is-focused' : ''}`}
+      >
+        <InterfaceOpticalDetails networkInterface={item} />
+      </div>
       {!readOnly && <PhysicalPortLink interfaceId={item.id} />}
       {!readOnly && <OpticalHistoryCharts networkInterface={item} />}
-      <section className="drawer-section live-metrics">
+      <section
+        ref={metricsRef}
+        className={`drawer-section live-metrics ${activeSection === 'METRICS' ? 'is-focused' : ''}`}
+      >
         <SectionTitle icon={<Activity size={14} />} label="MÉTRICAS ATUAIS" />
         <div className="metric-hero">
           <div className="rx">
@@ -695,6 +717,31 @@ function PhysicalPortLink({ interfaceId }: { interfaceId: string }) {
   );
 }
 
+/** Texto compacto de um par LOW/HIGH; `N/D` quando nao ha threshold real. */
+export function opticalLimitText(low: number | null | undefined, high: number | null | undefined): string {
+  if (low == null && high == null) return 'N/D';
+  return `LOW ${formatOpticalPower(low)} · HIGH ${formatOpticalPower(high)}`;
+}
+
+/** Sides (low/high) de um lado RX/TX, do modulo ou de uma lane especifica. */
+function thresholdSideOf(
+  thresholds: NetworkInterface['opticalThresholds'],
+  direction: 'rx' | 'tx',
+  lane?: number,
+): { low: number | null; high: number | null; source: string | null } {
+  const side = lane === undefined
+    ? (direction === 'rx' ? thresholds?.scalar.rx : thresholds?.scalar.tx)
+    : (() => {
+        const entry = (thresholds?.lanes ?? []).find((item) => item.lane === lane);
+        return entry ? (direction === 'rx' ? entry.rx : entry.tx) : undefined;
+      })();
+  return {
+    low: side?.lowAlarmDbm ?? null,
+    high: side?.highAlarmDbm ?? null,
+    source: side?.lowSource ?? side?.highSource ?? null,
+  };
+}
+
 export function InterfaceOpticalDetails({
   networkInterface: item,
 }: {
@@ -706,6 +753,19 @@ export function InterfaceOpticalDetails({
     )
     .sort((left, right) => left.lane - right.lane);
   const multiLane = lanes.length > 1;
+  const moduleRx = thresholdSideOf(item.opticalThresholds, 'rx');
+  const moduleTx = thresholdSideOf(item.opticalThresholds, 'tx');
+  const hasModuleLimit = moduleRx.low != null || moduleRx.high != null
+    || moduleTx.low != null || moduleTx.high != null;
+  // Lanes ganham linha de limite SO quando o equipamento informa um threshold
+  // proprio da lane; o limite do modulo aparece uma unica vez.
+  const laneSideThresholds = (laneId: number) => {
+    const rx = thresholdSideOf(item.opticalThresholds, 'rx', laneId);
+    const tx = thresholdSideOf(item.opticalThresholds, 'tx', laneId);
+    return rx.low != null || rx.high != null || tx.low != null || tx.high != null
+      ? { rx, tx }
+      : null;
+  };
 
   return (
     <section className="drawer-section">
@@ -730,16 +790,37 @@ export function InterfaceOpticalDetails({
           )}
         />
       </div>
+      {hasModuleLimit && (
+        <div className="info-grid">
+          <Info label="Limites do módulo RX" value={opticalLimitText(moduleRx.low, moduleRx.high)} mono />
+          <Info label="Limites do módulo TX" value={opticalLimitText(moduleTx.low, moduleTx.high)} mono />
+          <Info
+            label="Fonte do limite"
+            value={moduleRx.source ?? moduleTx.source ?? item.opticalThresholdSource ?? 'N/D'}
+          />
+          <Info
+            label="Limite atualizado"
+            value={formatOpticalTimestamp(item.opticalThresholdsUpdatedAt)}
+          />
+        </div>
+      )}
       {lanes.length > 0 && (
         <div className="info-grid">
-          {lanes.map((lane) => (
-            <Info
-              key={lane.lane}
-              label={`Lane ${lane.lane}`}
-              value={`RX ${formatOpticalPower(lane.rxPowerDbm)} · TX ${formatOpticalPower(lane.txPowerDbm)}${lane.biasCurrentMa == null ? '' : ` · Bias ${lane.biasCurrentMa.toFixed(2)} mA`}`}
-              mono
-            />
-          ))}
+          {lanes.map((lane) => {
+            const laneThresholds = laneSideThresholds(lane.lane);
+            const limitSuffix = laneThresholds
+              ? ` · Lim RX ${opticalLimitText(laneThresholds.rx.low, laneThresholds.rx.high)}`
+                + ` · Lim TX ${opticalLimitText(laneThresholds.tx.low, laneThresholds.tx.high)}`
+              : '';
+            return (
+              <Info
+                key={lane.lane}
+                label={`Lane ${lane.lane}`}
+                value={`RX ${formatOpticalPower(lane.rxPowerDbm)} · TX ${formatOpticalPower(lane.txPowerDbm)}${lane.biasCurrentMa == null ? '' : ` · Bias ${lane.biasCurrentMa.toFixed(2)} mA`}${limitSuffix}`}
+                mono
+              />
+            );
+          })}
         </div>
       )}
     </section>

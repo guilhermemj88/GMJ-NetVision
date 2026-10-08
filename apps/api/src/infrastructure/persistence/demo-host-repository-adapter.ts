@@ -13,6 +13,11 @@ import type {
   HostRepository,
   InterfaceCounterSnapshot,
   InterfaceMetricSampleInput,
+  InterfaceMetricWindowRow,
+  InterfaceOccurrenceRow,
+  InterfaceOpticalThresholdRecord,
+  InterfaceOpticalThresholdUpdateInput,
+  InterfaceOpticalWindowRow,
   InterfaceStatusTransition,
   InterfaceStatusUpdate,
   SnmpCredentialSecret,
@@ -22,6 +27,8 @@ import type { DemoMapRepository } from './demo-map-repository';
 import type { ConnectionTestResult } from '@gmj/shared';
 
 export class DemoHostRepositoryAdapter implements HostRepository {
+  private readonly opticalThresholds = new Map<string, InterfaceOpticalThresholdRecord>();
+
   constructor(private readonly repository: DemoMapRepository) {}
 
   async listHosts(): Promise<HostRecord[]> {
@@ -113,8 +120,49 @@ export class DemoHostRepositoryAdapter implements HostRepository {
     _collectedAfter?: Date,
   ): Promise<void> {}
 
+  async getInterfaceOpticalThresholds(deviceId: string): Promise<InterfaceOpticalThresholdRecord[]> {
+    const host = await this.repository.getHost(deviceId);
+    const interfaceIds = new Set((host?.interfaces ?? []).map((networkInterface) => networkInterface.id));
+    return [...this.opticalThresholds.values()].filter((record) =>
+      interfaceIds.has(record.interfaceId),
+    );
+  }
+
+  async updateInterfaceOpticalThresholds(
+    _deviceId: string,
+    entries: InterfaceOpticalThresholdUpdateInput[],
+  ): Promise<void> {
+    for (const entry of entries) {
+      this.opticalThresholds.set(entry.interfaceId, {
+        interfaceId: entry.interfaceId,
+        thresholds: entry.thresholds,
+        source: entry.source,
+        updatedAt: entry.updatedAt,
+        refreshAfter: entry.refreshAfter,
+      });
+    }
+  }
+
+  async getRecentInterfaceOccurrenceRows(_since: Date): Promise<InterfaceOccurrenceRow[]> {
+    return [];
+  }
+
   async getLatestCounterSnapshots(_hostId: string): Promise<Map<number, InterfaceCounterSnapshot>> {
     return new Map();
+  }
+
+  async getRecentInterfaceMetricSamples(
+    _deviceId: string,
+    _since: Date,
+  ): Promise<InterfaceMetricWindowRow[]> {
+    return [];
+  }
+
+  async getRecentInterfaceOpticalSamples(
+    _deviceId: string,
+    _since: Date,
+  ): Promise<InterfaceOpticalWindowRow[]> {
+    return [];
   }
 
   async saveSnmpPoll(

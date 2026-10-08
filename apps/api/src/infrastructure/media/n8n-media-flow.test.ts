@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { CredentialVault } from '../../application/credential-vault';
 import { registerN8nRoutes } from '../../n8n-routes';
 import { MitigationCommandService } from '../bgp/mitigation/mitigation-command-service';
+import type { MitigationWebhookPayload } from '../bgp/mitigation/mitigation-webhook';
 import { MockMitigationExecutor } from '../bgp/mitigation/mitigation-executor';
 import { InMemoryMitigationRepository } from '../bgp/mitigation/in-memory-mitigation-repository';
 import { InMemoryMediaRepository } from './in-memory-media-repository';
@@ -47,7 +48,7 @@ async function buildFlow(options: {
   const sender: WebhookDeliverySender =
     options.sender ??
     (async (url, payload, headers) => {
-      sent.push({ url, headers, event: payload.event });
+      sent.push({ url, headers, event: (payload as MitigationWebhookPayload).event });
       return { httpStatus: 200, latencyMs: 182 };
     });
   const transport = new N8nMediaTransport({ media, send: sender, now: () => NOW });

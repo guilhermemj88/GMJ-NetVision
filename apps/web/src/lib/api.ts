@@ -1,7 +1,18 @@
 import {
+  ALERT_CENTER_DEFAULT_LIMIT,
   type AddDeviceResult,
   type Alarm,
+  type AlarmRuleDto,
+  type AlarmSuppression,
+  type AlarmSuppressionMode,
+  type AlarmSuppressionReason,
+  type AlertCenterListQuery,
+  type AlertCenterResponse,
+  type AlertCenterSummary,
   type AuthUser,
+  type BasicAlarmRuleKey,
+  type InterfaceOccurrence,
+  type OperationalOccurrenceAckResponse,
   type BgpAlertsResponse,
   type BgpAddressFamilyFilter,
   type BgpAdminAction,
@@ -121,6 +132,22 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** Feedback de telemetria do poll (F9.6): samples, pulos e baselines. */
+export interface HostPollTelemetryFeedback {
+  samples: number;
+  skipped: number;
+  baselines: number;
+  retryAfterSeconds: number | null;
+}
+
+/** Feedback do óptico no poll (F9.6). */
+export interface HostPollOpticalFeedback {
+  sampled: boolean;
+  interfacesSampled: number;
+  skipped: boolean;
+  retryAfterSeconds: number | null;
+}
+
 export interface HostPollResult {
   hostId: string;
   polledAt: string;
@@ -130,6 +157,8 @@ export interface HostPollResult {
   sysDescr?: string;
   sysObjectId?: string;
   uptimeSeconds?: number;
+  telemetry?: HostPollTelemetryFeedback;
+  optical?: HostPollOpticalFeedback;
 }
 
 export function getMaps(): Promise<MapSummary[]> {
@@ -230,6 +259,145 @@ export function getAlarmHistory(limit = 100): Promise<Alarm[]> {
 export function getRecentResolvedAlarms(limit = 3): Promise<Alarm[]> {
   const params = new URLSearchParams({ limit: String(limit), resolved: 'true' });
   return request<Alarm[]>(`/api/alarms/history?${params}`);
+}
+
+/**
+ * Ocorrencias recentes (CRC/FCS e discards) derivadas das amostras persistidas.
+ * Ocorrencia NAO e alarme: nenhuma regra precisa existir para aparecer aqui.
+ */
+export function getAlarmOccurrences(minutes = 15, limit = 12): Promise<InterfaceOccurrence[]> {
+  const params = new URLSearchParams({ minutes: String(minutes), limit: String(limit) });
+  return request<InterfaceOccurrence[]>(`/api/alarms/occurrences?${params}`);
+}
+
+/** Corpo aceito pela API de regras (validado por Zod no backend). */
+export type AlarmRuleInput = Omit<
+  AlarmRuleDto,
+  'id' | 'createdAt' | 'updatedAt' | 'managedKey'
+> & {
+  /**
+   * Presente apenas quando o Básico cria/gerencia o slot (F9.6). Ausente no
+   * PUT, o vínculo com o slot é PRESERVADO pelo backend.
+   */
+  managedKey?: BasicAlarmRuleKey | null;
+};
+
+/** Corpo aceito pelo POST de retirada/supressao (validado por Zod no backend). */
+export interface SuppressAlarmPayload {
+  mode: AlarmSuppressionMode;
+  reason: AlarmSuppressionReason;
+  note?: string | null | undefined;
+  /** Obrigatorio em UNTIL_TIME (ISO 8601, sempre no futuro). */
+  expiresAt?: string | null | undefined;
+}
+
+/**
+ * ACK: registra o operador da sessao sem resolver o alarme. Repetir e
+ * idempotente — o primeiro reconhecimento e o que permanece.
+ */
+export function acknowledgeAlarm(alarmId: string): Promise<Alarm> {
+  return request<Alarm>(`/api/alarms/${encodeURIComponent(alarmId)}/acknowledge`, {
+    method: 'POST',
+  });
+}
+
+/**
+ * Retirar/Suprimir: encerra o alarme aberto com motivo administrativo e impede
+ * a reabertura do mesmo fingerprint enquanto a supressao valer.
+ */
+export function suppressAlarm(
+  alarmId: string,
+  payload: SuppressAlarmPayload,
+): Promise<{ suppression: AlarmSuppression; closedAlarms: number }> {
+  return request<{ suppression: AlarmSuppression; closedAlarms: number }>(
+    `/api/alarms/${encodeURIComponent(alarmId)}/suppress`,
+    { method: 'POST', body: JSON.stringify(payload) },
+  );
+}
+
+/** Liberacao explicita: o fingerprint volta a poder abrir alarme. */
+export function releaseAlarmSuppression(suppressionId: string): Promise<AlarmSuppression> {
+  return request<AlarmSuppression>(
+    `/api/alarm-suppressions/${encodeURIComponent(suppressionId)}`,
+    { method: 'DELETE' },
+  );
+}
+
+export function getAlarmSuppressions(activeOnly = false, limit = 50): Promise<AlarmSuppression[]> {
+  const params = new URLSearchParams({ active: String(activeOnly), limit: String(limit) });
+  return request<AlarmSuppression[]>(`/api/alarm-suppressions?${params}`);
+}
+
+/** ACK de ocorrencia operacional (F9.2): encerra o episodio, preserva historico. */
+export function acknowledgeOperationalOccurrence(
+  occurrenceId: string,
+): Promise<OperationalOccurrenceAckResponse> {
+  return request<OperationalOccurrenceAckResponse>(
+    `/api/operational-occurrences/${encodeURIComponent(occurrenceId)}/acknowledge`,
+    { method: 'POST' },
+  );
+}
+
+/** Serializa os filtros da Central de Alertas para a query string da API. */
+export function alertCenterQueryString(query: AlertCenterListQuery = {}): string {
+  const params = new URLSearchParams();
+  if (query.state) params.set('state', query.state);
+  if (query.category) params.set('category', query.category);
+  for (const type of query.types ?? []) params.append('type', type);
+  for (const severity of query.severities ?? []) params.append('severity', severity);
+  if (query.period) params.set('period', query.period);
+  const search = query.search?.trim();
+  if (search) params.set('search', search);
+  if (query.deviceId) params.set('deviceId', query.deviceId);
+  if (query.interfaceId) params.set('interfaceId', query.interfaceId);
+  params.set('limit', String(query.limit ?? ALERT_CENTER_DEFAULT_LIMIT));
+  params.set('offset', String(query.offset ?? 0));
+  return params.toString();
+}
+
+/**
+ * Pagina unica da Central de Alertas: alarmes + ocorrencias ja fundidos e
+ * ordenados no backend, com o resumo operacional junto (nada de reconciliar
+ * tres endpoints no browser).
+ */
+export function getAlertCenter(query: AlertCenterListQuery = {}): Promise<AlertCenterResponse> {
+  return request<AlertCenterResponse>(`/api/alert-center?${alertCenterQueryString(query)}`);
+}
+
+/** Resumo leve para o badge da TopBar (mesmos numeros dos cards da Central). */
+export function getAlertCenterSummary(): Promise<{ summary: AlertCenterSummary }> {
+  return request<{ summary: AlertCenterSummary }>('/api/alert-center/summary');
+}
+
+export function getAlarmRules(): Promise<AlarmRuleDto[]> {
+  return request<AlarmRuleDto[]>('/api/alarm-rules');
+}
+
+export function createAlarmRule(input: AlarmRuleInput): Promise<AlarmRuleDto> {
+  return request<AlarmRuleDto>('/api/alarm-rules', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateAlarmRule(id: string, input: AlarmRuleInput): Promise<AlarmRuleDto> {
+  return request<AlarmRuleDto>(`/api/alarm-rules/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    body: JSON.stringify(input),
+  });
+}
+
+export function setAlarmRuleEnabled(id: string, enabled: boolean): Promise<AlarmRuleDto> {
+  return request<AlarmRuleDto>(`/api/alarm-rules/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
+  });
+}
+
+export function deleteAlarmRule(id: string): Promise<{ removed: boolean }> {
+  return request<{ removed: boolean }>(`/api/alarm-rules/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+  });
 }
 
 export function createNetworkMap(input: CreateMapInput) {

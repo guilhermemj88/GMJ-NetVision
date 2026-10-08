@@ -2,6 +2,11 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AuthUser } from '@gmj/shared';
 import {
+  NETWORK_ALARM_TEST_EVENTS,
+  NETWORK_ALARM_TEST_SEVERITIES,
+  NETWORK_ALARM_TEST_TYPES,
+} from '@gmj/shared';
+import {
   MediaIntegrationService,
   MediaSecretUnavailableError,
 } from './infrastructure/media/media-integration-service';
@@ -51,6 +56,19 @@ const logsQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
+/** Simulador do TESTAR ALARME (F9.5.1): eixos do payload sintetico. */
+const alarmTestSchema = z
+  .object({
+    type: z.enum(NETWORK_ALARM_TEST_TYPES).optional(),
+    event: z.enum(NETWORK_ALARM_TEST_EVENTS).optional(),
+    severity: z.enum(NETWORK_ALARM_TEST_SEVERITIES).optional(),
+  })
+  .strict();
+
+const overviewQuery = z.object({
+  purpose: z.enum(MEDIA_INTEGRATION_PURPOSES).default('BGP_MITIGATION'),
+});
+
 export interface MediaRouteDependencies {
   media: MediaIntegrationService;
   currentUser?: (request: FastifyRequest) => Promise<AuthUser | null>;
@@ -90,7 +108,8 @@ export function registerMediaRoutes(
 
   app.get('/api/media/integrations', async (request, reply) => {
     if (!(await requireUser(request, reply))) return undefined;
-    return media.overview();
+    const query = overviewQuery.parse(request.query ?? {});
+    return media.overview(query.purpose);
   });
 
   app.get('/api/media/integrations/:id', async (request, reply) => {
@@ -129,7 +148,16 @@ export function registerMediaRoutes(
   app.post('/api/media/integrations/:id/rotate-inbound-token', async (request, reply) => {
     if (!(await requireAdmin(request, reply))) return undefined;
     const { id } = integrationParams.parse(request.params);
-    if (await notFound(id, reply)) return undefined;
+    const integration = await media.get(id);
+    if (!integration) {
+      return reply.code(404).send({ message: 'Integração de mídia não encontrada' });
+    }
+    // Inbound existe SOMENTE na mitigacao (F9.5): alarmes nao tem comando de entrada.
+    if (integration.purpose !== 'BGP_MITIGATION') {
+      return reply.code(400).send({
+        message: 'Este canal não possui inbound: o token de comando é exclusivo da Mitigação DDoS',
+      });
+    }
     const rotated = await media.rotateInboundToken(id);
     // Unica resposta da API que carrega o token em texto claro: mostrada uma vez.
     return {
@@ -144,6 +172,20 @@ export function registerMediaRoutes(
     const { id } = integrationParams.parse(request.params);
     if (await notFound(id, reply)) return undefined;
     return media.testWebhook(id);
+  });
+
+  /**
+   * TESTAR ALARME (F9.5): envia um payload sintetico pelo canal NETWORK_ALARMS,
+   * com a MESMA serializacao/transporte dos alarmes reais. Nunca usa a
+   * mitigacao e nunca cria alarme de verdade. F9.5.1: o corpo opcional escolhe
+   * tipo/evento/severidade do teste.
+   */
+  app.post('/api/media/integrations/:id/test-alarm', async (request, reply) => {
+    if (!(await requireAdmin(request, reply))) return undefined;
+    const { id } = integrationParams.parse(request.params);
+    const selection = alarmTestSchema.parse(request.body ?? {});
+    if (await notFound(id, reply)) return undefined;
+    return media.testAlarmWebhook(id, selection);
   });
 
   app.get('/api/media/integrations/:id/logs', async (request, reply) => {

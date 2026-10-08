@@ -1,12 +1,23 @@
 import {
   alarmInterfaceLabel,
   formatAlarmDownSince,
+  METRIC_ALARM_TYPES,
   type Alarm,
+  type AlarmMetadata,
+  type AlarmResolutionReason,
   type AlarmSeverity,
   type AlarmType,
+  type MetricAlarmType,
 } from '@gmj/shared';
-import { PrismaClient } from '../../generated/prisma/index.js';
-import type { AlarmHistoryOptions, AlarmOpenInput, AlarmRepository } from './alarm-repository';
+import { Prisma, PrismaClient } from '../../generated/prisma/index.js';
+import type {
+  AlarmHistoryOptions,
+  AlarmNotifiedPatch,
+  AlarmOpenInput,
+  AlarmRepository,
+  MetricAlarmEscalationInput,
+  MetricAlarmOpenInput,
+} from './alarm-repository';
 
 const alarmInclude = {
   device: { select: { id: true, name: true, displayName: true } },
@@ -50,6 +61,15 @@ function toAlarm(row: AlarmRow): Alarm {
     acknowledgedAt: row.acknowledgedAt?.toISOString() ?? null,
     acknowledgedBy: row.acknowledgedBy,
     message: row.message,
+    ruleId: row.ruleId ?? null,
+    metricKey: row.metricKey ?? null,
+    currentValue: row.currentValue ?? null,
+    thresholdValue: row.thresholdValue ?? null,
+    unit: row.unit ?? null,
+    metadata: (row.metadata as unknown as AlarmMetadata | null) ?? null,
+    notifiedSeverity: (row.notifiedSeverity as AlarmSeverity | null) ?? null,
+    notifiedAt: row.notifiedAt?.toISOString() ?? null,
+    resolutionNotifiedAt: row.resolutionNotifiedAt?.toISOString() ?? null,
   };
 }
 
@@ -95,6 +115,62 @@ export class PrismaAlarmRepository implements AlarmRepository {
       take: limit,
     });
     return rows.map(toAlarm);
+  }
+
+  async findById(alarmId: string): Promise<Alarm | null> {
+    const row = await this.prisma.alarm.findUnique({ where: { id: alarmId }, include: alarmInclude });
+    return row ? toAlarm(row as AlarmRow) : null;
+  }
+
+  async acknowledge(
+    alarmId: string,
+    acknowledgedBy: string,
+    acknowledgedAt: Date,
+  ): Promise<Alarm | null> {
+    // Idempotencia: o primeiro reconhecimento e o que fica registrado.
+    await this.prisma.alarm.updateMany({
+      where: { id: alarmId, acknowledgedAt: null },
+      data: { acknowledgedAt, acknowledgedBy },
+    });
+    return this.findById(alarmId);
+  }
+
+  async closeOpenAlarmsForFingerprint(
+    input: {
+      interfaceId: string;
+      type: AlarmType;
+      ruleId?: string | null | undefined;
+      metricKey?: string | null | undefined;
+    },
+    closedAt: Date,
+    reason: AlarmResolutionReason,
+  ): Promise<number> {
+    const open = await this.prisma.alarm.findMany({
+      where: {
+        interfaceId: input.interfaceId,
+        type: input.type,
+        endedAt: null,
+        ...(input.ruleId != null ? { ruleId: input.ruleId } : {}),
+        ...(input.metricKey != null ? { metricKey: input.metricKey } : {}),
+      },
+      select: { id: true, metadata: true },
+    });
+    if (!open.length) return 0;
+    await this.prisma.$transaction(
+      open.map((row) =>
+        this.prisma.alarm.update({
+          where: { id: row.id },
+          data: {
+            endedAt: closedAt,
+            metadata: {
+              ...((row.metadata as Record<string, unknown> | null) ?? {}),
+              resolutionReason: reason,
+            } as unknown as Prisma.InputJsonValue,
+          },
+        }),
+      ),
+    );
+    return open.length;
   }
 
   async findLinkedInterfaceIds(interfaceIds: string[]): Promise<Set<string>> {
@@ -174,6 +250,148 @@ export class PrismaAlarmRepository implements AlarmRepository {
     await this.prisma.alarm.updateMany({
       where: { interfaceId: { in: interfaceIds }, type: 'INTERFACE_DOWN', endedAt: null },
       data: { endedAt: resolvedAt },
+    });
+  }
+
+  async openMetricAlarm(input: MetricAlarmOpenInput): Promise<Alarm | null> {
+    let created: Alarm | null = null;
+    await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.alarm.findFirst({
+        where: {
+          ruleId: input.ruleId,
+          interfaceId: input.interfaceId,
+          type: input.type,
+          metricKey: input.metricKey,
+          endedAt: null,
+        },
+      });
+      if (existing) return;
+
+      const networkInterface = await tx.interface.findUnique({
+        where: { id: input.interfaceId },
+        select: { id: true },
+      });
+      if (!networkInterface) return;
+
+      // Link e opcional no alarme metrico: serve apenas para o foco no mapa.
+      const link = await tx.link.findFirst({
+        where: {
+          OR: [
+            { sourceInterfaceId: input.interfaceId },
+            { targetInterfaceId: input.interfaceId },
+          ],
+        },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+
+      const row = await tx.alarm.create({
+        data: {
+          deviceId: input.deviceId,
+          interfaceId: input.interfaceId,
+          linkId: link?.id ?? null,
+          type: input.type,
+          severity: input.severity,
+          startedAt: input.startedAt,
+          message: input.message,
+          ruleId: input.ruleId,
+          metricKey: input.metricKey,
+          currentValue: input.currentValue,
+          thresholdValue: input.thresholdValue,
+          unit: input.unit,
+          metadata: input.metadata as unknown as Prisma.InputJsonValue,
+        },
+        include: alarmInclude,
+      });
+      created = toAlarm(row as AlarmRow);
+    });
+    return created;
+  }
+
+  async escalateMetricAlarm(
+    alarmId: string,
+    input: MetricAlarmEscalationInput,
+  ): Promise<Alarm | null> {
+    const existing = await this.prisma.alarm.findFirst({
+      where: { id: alarmId, endedAt: null },
+      select: { id: true },
+    });
+    if (!existing) return null;
+    const row = await this.prisma.alarm.update({
+      where: { id: alarmId },
+      data: {
+        severity: input.severity,
+        currentValue: input.currentValue,
+        thresholdValue: input.thresholdValue,
+        unit: input.unit,
+        metadata: input.metadata as unknown as Prisma.InputJsonValue,
+        message: input.message,
+      },
+      include: alarmInclude,
+    });
+    return toAlarm(row as AlarmRow);
+  }
+
+  async listOpenMetricAlarms(deviceId: string): Promise<Alarm[]> {
+    const rows = await this.prisma.alarm.findMany({
+      where: { deviceId, endedAt: null, type: { in: [...METRIC_ALARM_TYPES] } },
+      include: alarmInclude,
+      orderBy: { startedAt: 'desc' },
+    });
+    return rows.map((row) => toAlarm(row as AlarmRow));
+  }
+
+  async resolveMetricAlarm(
+    interfaceId: string,
+    type: MetricAlarmType,
+    metricKey: string,
+    resolvedAt: Date,
+  ): Promise<boolean> {
+    const result = await this.prisma.alarm.updateMany({
+      where: { interfaceId, type, metricKey, endedAt: null },
+      data: { endedAt: resolvedAt },
+    });
+    return result.count > 0;
+  }
+
+  async resolveOpenMetricAlarmsForRule(
+    ruleId: string,
+    resolvedAt: Date,
+    reason: AlarmResolutionReason,
+  ): Promise<number> {
+    const open = await this.prisma.alarm.findMany({
+      where: { ruleId, endedAt: null, type: { in: [...METRIC_ALARM_TYPES] } },
+      select: { id: true, metadata: true },
+    });
+    if (!open.length) return 0;
+    await this.prisma.$transaction(
+      open.map((row) =>
+        this.prisma.alarm.update({
+          where: { id: row.id },
+          data: {
+            endedAt: resolvedAt,
+            metadata: {
+              ...((row.metadata as Record<string, unknown> | null) ?? {}),
+              resolutionReason: reason,
+            } as unknown as Prisma.InputJsonValue,
+          },
+        }),
+      ),
+    );
+    return open.length;
+  }
+
+  async markAlarmNotified(alarmId: string, patch: AlarmNotifiedPatch): Promise<void> {
+    await this.prisma.alarm.updateMany({
+      where: { id: alarmId },
+      data: { notifiedSeverity: patch.notifiedSeverity, notifiedAt: patch.notifiedAt },
+    });
+  }
+
+  async markAlarmResolutionNotified(alarmId: string, notifiedAt: Date): Promise<void> {
+    await this.prisma.alarm.updateMany({
+      where: { id: alarmId },
+      data: { resolutionNotifiedAt: notifiedAt },
     });
   }
 }

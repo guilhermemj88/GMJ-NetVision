@@ -91,9 +91,55 @@ describe('VerifyHostButton', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['interfaces', 'huawei-s6750'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['map'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['history'] });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['optical-history'] });
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['host-mpls', 'huawei-s6750'] });
     expect(showToast).toHaveBeenCalledWith(
       'Equipamento atualizado com sucesso · 42 interfaces verificadas',
+    );
+  });
+
+  it('F9.6: explica baseline e telemetria pulada usando o feedback real do poll', async () => {
+    vi.mocked(pollHost).mockResolvedValue({
+      hostId: 'huawei-s6750',
+      polledAt: '2026-10-08T12:00:00.000Z',
+      interfacesChecked: 131,
+      interfaceSamples: 131,
+      telemetry: { samples: 0, skipped: 0, baselines: 131, retryAfterSeconds: null },
+      optical: { sampled: true, interfacesSampled: 6, skipped: false, retryAfterSeconds: null },
+    });
+    await act(async () => {
+      root.render(
+        <QueryClientProvider client={client}>
+          <VerifyHostButton hostId="huawei-s6750" enabled />
+        </QueryClientProvider>,
+      );
+    });
+
+    const button = container.querySelector('button')!;
+    await act(async () => {
+      button.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+
+    // "VERIFICADO" não pode esconder que nenhuma taxa nova foi medida.
+    expect(container.querySelector('[role="status"]')?.textContent).toContain('Baseline atualizado');
+    expect(container.querySelector('[role="status"]')?.textContent).toContain('45 s');
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Baseline atualizado'));
+
+    vi.mocked(pollHost).mockResolvedValue({
+      hostId: 'huawei-s6750',
+      polledAt: '2026-10-08T12:01:00.000Z',
+      interfacesChecked: 131,
+      interfaceSamples: 4,
+      telemetry: { samples: 0, skipped: 4, baselines: 0, retryAfterSeconds: 30 },
+      optical: { sampled: true, interfacesSampled: 6, skipped: false, retryAfterSeconds: null },
+    });
+    await act(async () => {
+      button.click();
+      await new Promise((resolve) => window.setTimeout(resolve, 10));
+    });
+    expect(container.querySelector('[role="status"]')?.textContent).toContain(
+      'Óptico atualizado. Telemetria aguardando intervalo mínimo de 30 s',
     );
   });
 

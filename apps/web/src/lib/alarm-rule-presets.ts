@@ -1,0 +1,300 @@
+import type {
+  AlarmRuleConfig,
+  AlarmRuleDto,
+  AlarmSeverity,
+  BasicAlarmRuleKey,
+  InterfaceCrcRuleConfig,
+  InterfaceDiscardsRuleConfig,
+  InterfaceErrorsRuleConfig,
+  MetricAlarmType,
+  OpticalRuleConfig,
+} from '@gmj/shared';
+
+/**
+ * Presets operacionais de regra (F8, secao I).
+ *
+ * "Qualquer ocorrencia" e expresso como `thresholdPerMinute: 0`, que o motor
+ * entende como delta > 0 no intervalo — sem depender da duracao do poll (1 CRC
+ * em 60s ou em 120s disparam igual). `thresholdPerMinute > 0` continua sendo a
+ * taxa/min classica.
+ */
+export interface AlarmRulePreset {
+  id: string;
+  label: string;
+  summary: string;
+  type: MetricAlarmType;
+  severity: AlarmSeverity;
+  config: AlarmRuleConfig;
+}
+
+/** Threshold que o motor interpreta como "qualquer ocorrência" (delta > 0). */
+export const ANY_OCCURRENCE_THRESHOLD_PER_MINUTE = 0;
+
+export const ANY_CRC_PRESET: AlarmRulePreset = {
+  id: 'crc-any',
+  label: 'QUALQUER CRC',
+  summary: 'qualquer ocorrência (delta > 0) · 1 amostra',
+  type: 'INTERFACE_CRC',
+  severity: 'WARNING',
+  config: {
+    thresholdPerMinute: ANY_OCCURRENCE_THRESHOLD_PER_MINUTE,
+    recoveryThresholdPerMinute: 0,
+    triggerSamples: 1,
+    recoverySamples: 1,
+  } satisfies InterfaceCrcRuleConfig,
+};
+
+export const ANY_DISCARDS_PRESET: AlarmRulePreset = {
+  id: 'discards-any',
+  label: 'QUALQUER DISCARD',
+  summary: 'RX ou TX com delta > 0 · 1 amostra',
+  type: 'INTERFACE_DISCARDS',
+  severity: 'WARNING',
+  config: {
+    direction: 'BOTH',
+    thresholdPerMinute: ANY_OCCURRENCE_THRESHOLD_PER_MINUTE,
+    recoveryThresholdPerMinute: 0,
+    triggerSamples: 1,
+    recoverySamples: 1,
+  } satisfies InterfaceDiscardsRuleConfig,
+};
+
+export const SUSTAINED_DISCARDS_PRESET: AlarmRulePreset = {
+  id: 'discards-sustained',
+  label: 'DISCARD SUSTENTADO',
+  summary: 'acima de 20/min por 3 amostras',
+  type: 'INTERFACE_DISCARDS',
+  severity: 'WARNING',
+  config: {
+    direction: 'BOTH',
+    thresholdPerMinute: 20,
+    recoveryThresholdPerMinute: 5,
+    triggerSamples: 3,
+    recoverySamples: 3,
+  } satisfies InterfaceDiscardsRuleConfig,
+};
+
+export const SUSTAINED_ERRORS_PRESET: AlarmRulePreset = {
+  id: 'errors-sustained',
+  label: 'ERROS SUSTENTADOS',
+  summary: 'acima de 10/min por 3 amostras',
+  type: 'INTERFACE_ERRORS',
+  severity: 'MAJOR',
+  config: {
+    direction: 'RX',
+    thresholdPerMinute: 10,
+    recoveryThresholdPerMinute: 2,
+    triggerSamples: 3,
+    recoverySamples: 3,
+  } satisfies InterfaceErrorsRuleConfig,
+};
+
+export const ALARM_RULE_PRESETS: readonly AlarmRulePreset[] = [
+  ANY_CRC_PRESET,
+  ANY_DISCARDS_PRESET,
+  SUSTAINED_DISCARDS_PRESET,
+  SUSTAINED_ERRORS_PRESET,
+];
+
+/** Defaults da regra optica, iguais aos do schema do backend. */
+export function opticalRuleDefaults(): OpticalRuleConfig {
+  return {
+    warningProximityPercent: 90,
+    majorProximityPercent: 95,
+    criticalAtLowAlarm: true,
+    warningTriggerSamples: 3,
+    majorTriggerSamples: 2,
+    criticalTriggerSamples: 1,
+    warningMarginDb: 3,
+    recoveryProximityPercent: 85,
+    recoverySamples: 3,
+    trendDropDb: 3,
+    trendMajorDropDb: 5,
+    trendWindowMinutes: 30,
+    manualRxLowAlarmDbm: null,
+    manualRxHighAlarmDbm: null,
+  };
+}
+
+export function presetsForType(type: MetricAlarmType): readonly AlarmRulePreset[] {
+  return ALARM_RULE_PRESETS.filter((preset) => preset.type === type);
+}
+
+const DIRECTION_LABELS: Record<InterfaceErrorsRuleConfig['direction'], string> = {
+  RX: 'RX',
+  TX: 'TX',
+  BOTH: 'RX/TX',
+};
+
+function formatNumber(value: number): string {
+  return Number.isInteger(value) ? String(value) : value.toFixed(1);
+}
+
+/** Resumo curto da configuracao, usado nos cards do painel de regras. */
+export function describeAlarmRule(rule: Pick<AlarmRuleDto, 'type' | 'config'>): string {
+  if (rule.type === 'OPTICAL_RX_DEGRADATION') {
+    const config = rule.config as OpticalRuleConfig;
+    return [
+      `limites do equipamento · ${config.warningProximityPercent}% WARN / ${config.majorProximityPercent}% MAJOR / LOW CRIT`,
+      `queda ${formatNumber(config.trendDropDb)} dB WARN / ${formatNumber(config.trendMajorDropDb)} dB MAJOR / ${config.trendWindowMinutes} min`,
+    ].join(' · ');
+  }
+  const config = rule.config as InterfaceCrcRuleConfig;
+  const direction = 'direction' in config
+    ? `${DIRECTION_LABELS[(config as InterfaceErrorsRuleConfig).direction]} `
+    : 'RX ';
+  const unit = rule.type === 'INTERFACE_CRC' ? 'CRC' : 'discards';
+  const samples = `${config.triggerSamples} amostra${config.triggerSamples > 1 ? 's' : ''}`;
+  if (config.thresholdPerMinute <= 0) {
+    return `${direction}qualquer ocorrência (delta > 0) · ${samples}`;
+  }
+  return `${direction}> ${formatNumber(config.thresholdPerMinute)} ${unit}/min · ${samples}`;
+}
+
+/** Resumo do escopo: velocidades, devices/interfaces e vinculo de mapa. */
+export function describeAlarmRuleScope(
+  scope: AlarmRuleDto['scope'],
+  mapLinkedOnly: boolean,
+): string {
+  const parts: string[] = [];
+  if (scope.speedsBps?.length) {
+    parts.push(scope.speedsBps.map(formatSpeedBps).join(' / '));
+  }
+  if (scope.devices?.length) parts.push(`${scope.devices.length} equipamento(s)`);
+  if (scope.interfaces?.length) parts.push(`${scope.interfaces.length} interface(s)`);
+  if (!parts.length) parts.push('todas as interfaces');
+  if (mapLinkedOnly) parts.push('somente em enlaces');
+  return parts.join(' · ');
+}
+
+export function formatSpeedBps(speedBps: number): string {
+  if (speedBps >= 1_000_000_000) return `${Math.round(speedBps / 1_000_000_000)}G`;
+  if (speedBps >= 1_000_000) return `${Math.round(speedBps / 1_000_000)}M`;
+  return `${Math.round(speedBps / 1_000)}k`;
+}
+
+export const RULE_SPEED_OPTIONS = [
+  { bps: 1_000_000_000, label: '1G' },
+  { bps: 10_000_000_000, label: '10G' },
+  { bps: 40_000_000_000, label: '40G' },
+  { bps: 100_000_000_000, label: '100G' },
+] as const;
+
+/**
+ * Slots da aba BÁSICO (F9.6).
+ *
+ * Cada slot corresponde a UMA regra gerenciada (`AlarmRule.managedKey`), com o
+ * preset RECOMENDADO. O Básico só liga/desliga, escolhe escopo/mídia e manda
+ * personalizar; nenhum preset é criado sem ação explícita do operador.
+ */
+export interface BasicAlarmRuleSlot {
+  managedKey: BasicAlarmRuleKey;
+  type: MetricAlarmType;
+  title: string;
+  description: string;
+  severity: AlarmSeverity;
+  config: AlarmRuleConfig;
+  /** Nome criado quando o operador liga o card (renomeável no Avançado). */
+  defaultName: string;
+}
+
+export const BASIC_ALARM_RULE_SLOTS: readonly BasicAlarmRuleSlot[] = [
+  {
+    managedKey: 'BASIC_INTERFACE_CRC',
+    type: 'INTERFACE_CRC',
+    title: 'CRC / FCS',
+    description: 'Erros de CRC/FCS persistentes no receptor (RX).',
+    severity: 'WARNING',
+    defaultName: 'CRC/FCS (recomendado)',
+    config: {
+      thresholdPerMinute: 10,
+      recoveryThresholdPerMinute: 2,
+      triggerSamples: 3,
+      recoverySamples: 3,
+    } satisfies InterfaceCrcRuleConfig,
+  },
+  {
+    managedKey: 'BASIC_INTERFACE_DISCARDS',
+    type: 'INTERFACE_DISCARDS',
+    title: 'DISCARDS',
+    description: 'Descarte sustentado de pacotes (RX ou TX).',
+    severity: 'WARNING',
+    defaultName: 'Discards (recomendado)',
+    config: {
+      direction: 'BOTH',
+      thresholdPerMinute: 20,
+      recoveryThresholdPerMinute: 5,
+      triggerSamples: 3,
+      recoverySamples: 3,
+    } satisfies InterfaceDiscardsRuleConfig,
+  },
+  {
+    managedKey: 'BASIC_INTERFACE_ERRORS',
+    type: 'INTERFACE_ERRORS',
+    title: 'ERROS DE INTERFACE',
+    description: 'Erros de recepção persistentes (inErrors, direção RX).',
+    severity: 'MAJOR',
+    defaultName: 'Erros de interface (recomendado)',
+    config: {
+      direction: 'RX',
+      thresholdPerMinute: 10,
+      recoveryThresholdPerMinute: 2,
+      triggerSamples: 3,
+      recoverySamples: 3,
+    } satisfies InterfaceErrorsRuleConfig,
+  },
+  {
+    managedKey: 'BASIC_OPTICAL_RX_DEGRADATION',
+    type: 'OPTICAL_RX_DEGRADATION',
+    title: 'DEGRADAÇÃO ÓPTICA',
+    description: 'Usa os limites do equipamento/transceiver (DEVICE/USER/DEFAULT) e detecta queda rápida.',
+    severity: 'WARNING',
+    defaultName: 'Degradação óptica (recomendado)',
+    config: opticalRuleDefaults(),
+  },
+];
+
+export function basicSlotByManagedKey(
+  managedKey: BasicAlarmRuleKey | null | undefined,
+): BasicAlarmRuleSlot | null {
+  if (!managedKey) return null;
+  return BASIC_ALARM_RULE_SLOTS.find((slot) => slot.managedKey === managedKey) ?? null;
+}
+
+function canonical(value: unknown): unknown {
+  if (typeof value === 'number') return Number(value.toFixed(6));
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, canonical(item)]),
+    );
+  }
+  return value === undefined ? null : value;
+}
+
+/**
+ * RECOMENDADA x PERSONALIZADA (F9.6): compara os parâmetros TÉCNICOS da regra
+ * com o preset do slot — config (números normalizados), severity e
+ * mapLinkedOnly. `mediaEnabled`/`enabled` NÃO tornam a regra personalizada.
+ */
+export function isRecommendedConfiguration(
+  rule: Pick<AlarmRuleDto, 'config' | 'severity' | 'mapLinkedOnly'>,
+  slot: BasicAlarmRuleSlot,
+): boolean {
+  if (rule.severity !== slot.severity) return false;
+  if (!rule.mapLinkedOnly) return false;
+  return JSON.stringify(canonical(rule.config)) === JSON.stringify(canonical(slot.config));
+}
+
+/** Outras regras (custom ou de outro slot) do MESMO tipo, habilitadas. */
+export function otherEnabledRulesOfType(
+  rules: readonly AlarmRuleDto[],
+  slot: BasicAlarmRuleSlot,
+  managedRuleId: string | null,
+): number {
+  return rules.filter(
+    (rule) => rule.type === slot.type && rule.enabled && rule.id !== managedRuleId,
+  ).length;
+}

@@ -2,11 +2,17 @@ import { genericProfile } from './generic';
 import { huaweiGenericProfile } from './huawei/generic';
 import { huaweiNe8000Profile } from './huawei/ne8000';
 import { huaweiS6730Profile } from './huawei/s6730';
+import { huaweiS6750Profile } from './huawei/s6750';
 import { mikrotikProfile } from './mikrotik';
 import type { SnmpProfile, SnmpProfileIdentity } from './types';
+import type {
+  HuaweiOpticalLaneEncoding,
+  HuaweiOpticalScalarEncoding,
+} from '../../topology/huawei-optical';
 
 export const SNMP_PROFILES: SnmpProfile[] = [
   huaweiNe8000Profile,
+  huaweiS6750Profile,
   huaweiS6730Profile,
   mikrotikProfile,
   huaweiGenericProfile,
@@ -50,4 +56,27 @@ export function selectSnmpProfile(identity: SnmpProfileIdentity): SnmpProfile {
  */
 export function selectPppOnlineOid(identity: SnmpProfileIdentity): string | null {
   return selectSnmpProfile(identity).pppOnlineOid ?? null;
+}
+
+/**
+ * Encoding do RAW .8/.9 conforme o profile selecionado. `UNKNOWN` = o coletor
+ * NAO decodifica o scalar (nunca adivinha por sinal do valor); as lanes
+ * .32/.33 e o fallback SSH seguem valendo normalmente.
+ */
+export function selectOpticalScalarEncoding(
+  identity: SnmpProfileIdentity,
+): HuaweiOpticalScalarEncoding {
+  return selectSnmpProfile(identity).opticalScalarEncoding ?? 'UNKNOWN';
+}
+
+/**
+ * Encoding do CSV de potencia POR LANE (.32/.33) conforme o profile. `UNKNOWN`
+ * explicito = nao decodifica potencia de lane (o bias continua valido); um
+ * profile que NAO declara o campo cai no comportamento historico `DBM` (lanes
+ * ja em dBm) — nunca em CENTI_DBM, que exige evidencia de campo.
+ */
+export function selectOpticalLaneEncoding(
+  identity: SnmpProfileIdentity,
+): HuaweiOpticalLaneEncoding {
+  return selectSnmpProfile(identity).opticalLaneEncoding ?? 'DBM';
 }

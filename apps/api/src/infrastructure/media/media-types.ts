@@ -10,7 +10,7 @@
 export const MEDIA_INTEGRATION_TYPES = ['WEBHOOK'] as const;
 export type MediaIntegrationType = (typeof MEDIA_INTEGRATION_TYPES)[number];
 
-export const MEDIA_INTEGRATION_PURPOSES = ['BGP_MITIGATION'] as const;
+export const MEDIA_INTEGRATION_PURPOSES = ['BGP_MITIGATION', 'NETWORK_ALARMS'] as const;
 export type MediaIntegrationPurpose = (typeof MEDIA_INTEGRATION_PURPOSES)[number];
 
 export const MEDIA_DIRECTIONS = ['OUTBOUND', 'INBOUND'] as const;
@@ -145,13 +145,15 @@ export interface MediaIntegrationRepository {
   delete(id: string): Promise<void>;
 }
 
-/** Configuracao EFETIVA de um canal, ja resolvida (banco > ENV). */
+/** Configuracao EFETIVA de um canal, ja resolvida (banco > ENV da mitigacao). */
 export interface ResolvedMediaChannel {
   integrationId: string | null;
   source: MediaConfigSource;
   enabled: boolean;
   url: string | null;
   token: string | null;
+  /** Purpose que forneceu a configuracao: sempre o purpose pedido (F9.5). */
+  resolvedPurpose?: MediaIntegrationPurpose | undefined;
 }
 
 /**
@@ -210,6 +212,8 @@ export interface MediaIntegrationListDto {
   repositoryKind: 'DATABASE' | 'MEMORY';
   /** A migration da camada de midias esta aplicada? */
   migrationReady: boolean;
+  /** Canal deste purpose quando configurado e ligado (nunca o de outro purpose). */
+  resolvedPurpose: MediaIntegrationPurpose | null;
   legacyEnv: {
     outboundUrlConfigured: boolean;
     outboundTokenConfigured: boolean;

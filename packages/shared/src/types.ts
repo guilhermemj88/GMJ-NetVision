@@ -43,8 +43,135 @@ export type PppDisplayMode = 'AUTO' | 'SHOW' | 'HIDE';
 export type PppLabelPosition = 'TOP' | 'BOTTOM' | 'LEFT' | 'RIGHT' | 'CENTER';
 export type MapWidgetType = 'PPP_TOTAL';
 export type MapWidgetMode = 'AUTO' | 'MANUAL';
-export type AlarmType = 'INTERFACE_DOWN';
+export type AlarmType =
+  | 'INTERFACE_DOWN'
+  | 'INTERFACE_ERRORS'
+  | 'INTERFACE_CRC'
+  | 'INTERFACE_DISCARDS'
+  | 'OPTICAL_RX_DEGRADATION';
+/** Tipos metricos que podem ser governados por AlarmRule nesta fase. */
+export type MetricAlarmType =
+  | 'INTERFACE_ERRORS'
+  | 'INTERFACE_CRC'
+  | 'INTERFACE_DISCARDS'
+  | 'OPTICAL_RX_DEGRADATION';
+export type AlarmDirection = 'RX' | 'TX' | 'BOTH';
+export const METRIC_ALARM_TYPES = [
+  'INTERFACE_ERRORS',
+  'INTERFACE_CRC',
+  'INTERFACE_DISCARDS',
+  'OPTICAL_RX_DEGRADATION',
+] as const satisfies readonly MetricAlarmType[];
 export type AlarmSeverity = 'CRITICAL' | 'MAJOR' | 'WARNING' | 'INFO';
+
+/**
+ * SIMULADOR do TESTAR ALARME (F9.5.1).
+ *
+ * Nao existe tipo sintetico paralelo: os eixos abaixo sao exatamente os valores
+ * reais do contrato (`AlarmType`, eventos e severidades). A fixture sintetica
+ * alimenta o MESMO builder e o MESMO transporte dos alarmes reais.
+ */
+export const NETWORK_ALARM_TEST_TYPES = [
+  'INTERFACE_DOWN',
+  'INTERFACE_CRC',
+  'INTERFACE_DISCARDS',
+  'INTERFACE_ERRORS',
+  'OPTICAL_RX_DEGRADATION',
+] as const satisfies readonly AlarmType[];
+export type NetworkAlarmTestType = (typeof NETWORK_ALARM_TEST_TYPES)[number];
+
+/** Eventos publicados no payload (mesmos valores do fluxo real). */
+export const NETWORK_ALARM_TEST_EVENTS = ['OPENED', 'ESCALATED', 'RESOLVED'] as const;
+export type NetworkAlarmTestEvent = (typeof NETWORK_ALARM_TEST_EVENTS)[number];
+
+export const NETWORK_ALARM_TEST_SEVERITIES = ['WARNING', 'MAJOR', 'CRITICAL'] as const;
+export type NetworkAlarmTestSeverity = (typeof NETWORK_ALARM_TEST_SEVERITIES)[number];
+
+/** Severidade inicial sugerida por tipo (a UI pode trocar para testar formato). */
+export const NETWORK_ALARM_TEST_DEFAULT_SEVERITY: Record<
+  NetworkAlarmTestType,
+  NetworkAlarmTestSeverity
+> = {
+  INTERFACE_DOWN: 'CRITICAL',
+  INTERFACE_CRC: 'WARNING',
+  INTERFACE_DISCARDS: 'WARNING',
+  INTERFACE_ERRORS: 'MAJOR',
+  OPTICAL_RX_DEGRADATION: 'MAJOR',
+};
+
+/** Rotulo curto de cada tipo no seletor do TESTAR ALARME. */
+export const NETWORK_ALARM_TEST_TYPE_LABELS: Record<NetworkAlarmTestType, string> = {
+  INTERFACE_DOWN: 'Interface DOWN',
+  INTERFACE_CRC: 'CRC/FCS',
+  INTERFACE_DISCARDS: 'Discards',
+  INTERFACE_ERRORS: 'Erros de interface',
+  OPTICAL_RX_DEGRADATION: 'Degradação óptica',
+};
+
+export interface NetworkAlarmTestSelection {
+  type: NetworkAlarmTestType;
+  event: NetworkAlarmTestEvent;
+  severity: NetworkAlarmTestSeverity;
+}
+
+/**
+ * Entrada parcial do simulador. Tipada com `| undefined` explicito porque o
+ * projeto usa `exactOptionalPropertyTypes` (o corpo validado pela API chega
+ * com chaves opcionais de valor `undefined`).
+ */
+export interface NetworkAlarmTestSelectionInput {
+  type?: NetworkAlarmTestType | undefined;
+  event?: NetworkAlarmTestEvent | undefined;
+  severity?: NetworkAlarmTestSeverity | undefined;
+}
+
+/**
+ * Severidade ANTERIOR da escalada sintetica: CRITICAL veio de MAJOR, MAJOR veio
+ * de WARNING e WARNING (o menor testavel) veio de INFO.
+ */
+export function networkAlarmTestPreviousSeverity(
+  severity: NetworkAlarmTestSeverity,
+): AlarmSeverity {
+  if (severity === 'CRITICAL') return 'MAJOR';
+  if (severity === 'MAJOR') return 'WARNING';
+  return 'INFO';
+}
+
+/** Defaults do simulador: INTERFACE_DOWN / OPENED e a severidade do tipo. */
+export function resolveNetworkAlarmTestSelection(
+  input: NetworkAlarmTestSelectionInput | null | undefined,
+): NetworkAlarmTestSelection {
+  const type = (NETWORK_ALARM_TEST_TYPES as readonly string[]).includes(input?.type ?? '')
+    ? (input?.type as NetworkAlarmTestType)
+    : 'INTERFACE_DOWN';
+  const event = (NETWORK_ALARM_TEST_EVENTS as readonly string[]).includes(input?.event ?? '')
+    ? (input?.event as NetworkAlarmTestEvent)
+    : 'OPENED';
+  const severity = (NETWORK_ALARM_TEST_SEVERITIES as readonly string[]).includes(
+    input?.severity ?? '',
+  )
+    ? (input?.severity as NetworkAlarmTestSeverity)
+    : NETWORK_ALARM_TEST_DEFAULT_SEVERITY[type];
+  return { type, event, severity };
+}
+
+/**
+ * Slots de regra gerenciados pela aba BASICO de Alarmes (F9.6).
+ *
+ * `AlarmRule.managedKey` garante no máximo UMA regra por slot; regras criadas
+ * no AVANÇADO ficam com `managedKey = null` (custom).
+ */
+export const BASIC_ALARM_RULE_KEYS = [
+  'BASIC_INTERFACE_CRC',
+  'BASIC_INTERFACE_DISCARDS',
+  'BASIC_INTERFACE_ERRORS',
+  'BASIC_OPTICAL_RX_DEGRADATION',
+] as const;
+export type BasicAlarmRuleKey = (typeof BASIC_ALARM_RULE_KEYS)[number];
+
+export function isBasicAlarmRuleKey(value: unknown): value is BasicAlarmRuleKey {
+  return typeof value === 'string' && (BASIC_ALARM_RULE_KEYS as readonly string[]).includes(value);
+}
 export type AlarmPanelPosition = 'LEFT' | 'RIGHT' | 'HIDDEN';
 export interface Alarm {
   id: string;
@@ -63,7 +190,194 @@ export interface Alarm {
   acknowledgedAt: string | null;
   acknowledgedBy: string | null;
   message: string;
+  /** Fingerprint do alarme metrico (regra + metrica + direcao). */
+  ruleId?: string | null | undefined;
+  metricKey?: string | null | undefined;
+  currentValue?: number | null | undefined;
+  thresholdValue?: number | null | undefined;
+  unit?: string | null | undefined;
+  /** Dedupe da notificacao de midia (OPENED/ESCALATED exatamente 1x por severidade). */
+  notifiedSeverity?: AlarmSeverity | null | undefined;
+  notifiedAt?: string | null | undefined;
+  /** Dedupe do evento RESOLVED (exatamente 1x). */
+  resolutionNotifiedAt?: string | null | undefined;
+  /** Whitelist segura por tipo; nunca contem segredo. */
+  metadata?: AlarmMetadata | null | undefined;
 }
+
+/** Metadados seguros de um alarme metrico (errors/discards/CRC/optica). */
+export interface AlarmMetadata {
+  /**
+   * Direcao avaliada. O motor metrico abre um alarme por direcao (RX/TX), por
+   * isso `BOTH` so aparece no simulador do TESTAR ALARME, que reproduz a
+   * direcao configurada na regra (ex.: discards RX+TX).
+   */
+  direction?: AlarmDirection | undefined;
+  delta?: string | undefined;
+  ratePerMinute?: number | undefined;
+  thresholdPerMinute?: number | undefined;
+  sampleIntervalSeconds?: number | undefined;
+  /** Optica: lane avaliada (ausente = leitura escalar). */
+  lane?: number | undefined;
+  rxPowerDbm?: number | undefined;
+  rxLowAlarmDbm?: number | null | undefined;
+  rxHighAlarmDbm?: number | null | undefined;
+  marginDb?: number | null | undefined;
+  proximityPercent?: number | null | undefined;
+  trendDropDb?: number | null | undefined;
+  trendWindowMinutes?: number | undefined;
+  /**
+   * TODOS os motivos aplicaveis da avaliacao optica (o alarme e unico; a
+   * severidade e o maximo entre eles), ex.: `["RAPID_DROP","PROXIMITY"]`.
+   */
+  triggerReasons?: OpticalTriggerReason[] | undefined;
+  /** Fonte da potencia ATUAL (SNMP/SSH) — nunca misturada com thresholdSource. */
+  currentPowerSource?: 'SNMP' | 'SSH' | null | undefined;
+  thresholdSource?: OpticalThresholdSource | null | undefined;
+  speedBps?: number | undefined;
+  /** Motivo administrativo da resolucao (disable/delete da regra). */
+  resolutionReason?: AlarmResolutionReason | undefined;
+}
+
+/** Motivo administrativo seguro de uma resolucao sem recuperacao real. */
+export type AlarmResolutionReason =
+  | 'RULE_DISABLED'
+  | 'RULE_DELETED'
+  | 'MANUAL_SUPPRESSION'
+  | 'INTENTIONAL_SHUTDOWN'
+  | 'MAINTENANCE'
+  | 'FALSE_POSITIVE';
+
+/**
+ * Criterio optico que sustentou o alarme. `RAPID_DROP` e a queda relevante na
+ * janela (com o valor ATUAL ainda degradado), `PROXIMITY` e a proximidade
+ * percentual do Low Alarm, `MARGIN` a margem em dB quando so existe o Low e
+ * `AT_LOW` o RX no/abaixo do Low.
+ */
+export type OpticalTriggerReason = 'AT_LOW' | 'RAPID_DROP' | 'PROXIMITY' | 'MARGIN';
+
+/** Origem efetiva de um threshold optico (prioridade USER > DEVICE > DEFAULT > MANUAL). */
+export type OpticalThresholdSource = 'USER' | 'DEVICE' | 'DEFAULT' | 'MANUAL';
+
+/** Um lado (low/high) de um threshold optico, com a origem do valor efetivo. */
+export interface OpticalThresholdSide {
+  lowAlarmDbm: number | null;
+  highAlarmDbm: number | null;
+  lowSource: OpticalThresholdSource | null;
+  highSource: OpticalThresholdSource | null;
+}
+
+/** Estrutura canonica (versionada) de thresholds do transceiver por interface. */
+export interface OpticalThresholdsV1 {
+  version: 1;
+  scalar: {
+    rx: OpticalThresholdSide;
+    tx: OpticalThresholdSide;
+  };
+  lanes: Array<{
+    lane: number;
+    rx: OpticalThresholdSide;
+    tx: OpticalThresholdSide;
+  }>;
+}
+
+/** Escopo de uma AlarmRule: lista ausente = todos. */
+export interface AlarmRuleScope {
+  devices?: string[] | undefined;
+  interfaces?: string[] | undefined;
+  /** Velocidades exatas em bps (1G/10G/40G/100G ou custom). */
+  speedsBps?: number[] | undefined;
+}
+
+export interface MetricThresholdRuleConfig {
+  thresholdPerMinute: number;
+  recoveryThresholdPerMinute: number;
+  triggerSamples: number;
+  recoverySamples: number;
+}
+
+export interface InterfaceErrorsRuleConfig extends MetricThresholdRuleConfig {
+  direction: AlarmDirection;
+}
+
+/** FCS/CRC e metrica de recepcao (RX); sem direcao configuravel. */
+export type InterfaceCrcRuleConfig = MetricThresholdRuleConfig;
+export type InterfaceDiscardsRuleConfig = InterfaceErrorsRuleConfig;
+
+/**
+ * Regra do alarme optico (OPTICAL_RX_DEGRADATION). Os tres criterios sao
+ * INDEPENDENTES: proximidade percentual do Low Alarm, margem (quando so existe
+ * o Low) e tendencia (queda dentro da janela), que funciona sem threshold.
+ * `*TriggerSamples` contam AMOSTRAS OPTICAS (poll de 300s), nunca minutos.
+ */
+export interface OpticalRuleConfig {
+  warningProximityPercent: number;
+  majorProximityPercent: number;
+  criticalAtLowAlarm: boolean;
+  warningTriggerSamples: number;
+  majorTriggerSamples: number;
+  criticalTriggerSamples: number;
+  warningMarginDb: number;
+  recoveryProximityPercent: number;
+  recoverySamples: number;
+  /** Queda (dB) na janela que dispara WARNING; funciona sem nenhum threshold. */
+  trendDropDb: number;
+  /** Queda (dB) na janela que escala para MAJOR. Nunca abre CRITICAL sozinha. */
+  trendMajorDropDb: number;
+  trendWindowMinutes: number;
+  /** Threshold manual usado SOMENTE quando o equipamento nao fornece nenhum. */
+  manualRxLowAlarmDbm?: number | null | undefined;
+  manualRxHighAlarmDbm?: number | null | undefined;
+}
+
+export type AlarmRuleConfig =
+  | InterfaceErrorsRuleConfig
+  | InterfaceCrcRuleConfig
+  | OpticalRuleConfig;
+
+export interface AlarmRuleDto {
+  id: string;
+  name: string;
+  type: MetricAlarmType;
+  enabled: boolean;
+  severity: AlarmSeverity;
+  mapLinkedOnly: boolean;
+  mediaEnabled: boolean;
+  scope: AlarmRuleScope;
+  config: AlarmRuleConfig;
+  /** Slot gerenciado pela aba BASICO; `null` em regra custom (Avançado). */
+  managedKey: BasicAlarmRuleKey | null;
+  createdAt: string;
+  updatedAt: string;
+}
+/** Tipo de ocorrencia recente derivada das amostras de contador persistidas. */
+export type InterfaceOccurrenceKind = 'CRC' | 'DISCARDS';
+
+/**
+ * Ocorrencia recente de CRC/FCS ou discards: read model do que ACONTECEU, sem
+ * criar alarme artificial. Deltas sao bigint serializados como string.
+ */
+export interface InterfaceOccurrence {
+  kind: InterfaceOccurrenceKind;
+  deviceId: string;
+  deviceName: string;
+  interfaceId: string;
+  interfaceName: string;
+  interfaceLabel: string;
+  ifIndex: number;
+  /** Delta acumulado na janela por contador (CRC usa apenas `crcDelta`). */
+  crcDelta: string;
+  rxDelta: string;
+  txDelta: string;
+  /** Taxa por minuto do contador de maior delta na janela. */
+  ratePerMinute: number;
+  /** Ultimo intervalo da janela com delta > 0. */
+  lastOccurrenceAt: string;
+  /** Quantos intervalos de amostra tiveram ocorrencia (>= 1). */
+  intervals: number;
+  windowMinutes: number;
+}
+
 export interface LinkMetricSource {
   interfaceId: string;
   side: LinkMetricSourceSide;
@@ -130,6 +444,13 @@ export interface NetworkInterface {
   opticalLanesUpdatedAt?: string | null;
   opticalSource?: 'SNMP' | 'SSH' | null;
   opticalUpdatedAt?: string | null;
+  /**
+   * Thresholds efetivos do transceiver (JSON canonico v1, MESMA coluna que o
+   * Alarm Engine le). Preenchido pelo coletor (SNMP primario, SSH fallback).
+   */
+  opticalThresholds?: OpticalThresholdsV1 | null | undefined;
+  opticalThresholdSource?: OpticalThresholdSource | null | undefined;
+  opticalThresholdsUpdatedAt?: string | null | undefined;
   rxItemId?: string | null;
   txItemId?: string | null;
   statusItemId?: string | null;

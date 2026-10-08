@@ -13,6 +13,12 @@ export const huaweiGenericProfile: SnmpProfile = {
   sysDescrPatterns: [/huawei|vrp/i],
   sysObjectIdPatterns: [/^1\.3\.6\.1\.4\.1\.2011(?:\.|$)/],
   pppOnlineOid: HUAWEI_PPP_ONLINE_OID,
+  // VRP classico: .8/.9 em MICRO_WATTS (evidencia real S6730). Mantem o
+  // comportamento historico dos modelos Huawei nao classificados.
+  opticalScalarEncoding: 'MICRO_WATTS',
+  // Lanes em dBm: comportamento historico preservado (sem evidencia de
+  // centi-dBm em modelo generico).
+  opticalLaneEncoding: 'DBM',
   metrics: {
     cpu: {
       unit: '%',

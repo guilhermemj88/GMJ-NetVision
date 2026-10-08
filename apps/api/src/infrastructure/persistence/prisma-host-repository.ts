@@ -19,18 +19,29 @@ import {
 } from '@gmj/shared';
 import type { CredentialVault } from '../../application/credential-vault';
 import { Prisma, PrismaClient } from '../../generated/prisma/index.js';
+import {
+  filterUsableTrafficSamples,
+  pickLatestUsableTrafficSample,
+} from '../snmp/traffic-rate';
+import { USABLE_TRAFFIC_SAMPLE_SQL } from './traffic-sample-sql';
 import { CredentialEncryptionUnavailableError } from './demo-map-repository';
 import type {
   DeviceMetricSampleInput,
   HostRepository,
   InterfaceCounterSnapshot,
   InterfaceMetricSampleInput,
+  InterfaceMetricWindowRow,
+  InterfaceOccurrenceRow,
+  InterfaceOpticalThresholdRecord,
+  InterfaceOpticalThresholdUpdateInput,
+  InterfaceOpticalWindowRow,
   InterfaceStatusTransition,
   InterfaceStatusUpdate,
   SnmpCredentialSecret,
   SshCredentialSecret,
 } from './host-repository';
 import { normalizeLegacySnmpText } from '../snmp/snmp-text';
+import { isOpticalThresholdSource, parseOpticalThresholdsV1 } from '../topology/optical-thresholds';
 
 function disabledHealth(): SourceHealth {
   return { state: 'DISABLED', lastSuccess: null, lastFailure: null, lastErrorSafe: null };
@@ -109,6 +120,7 @@ type LatestMetricRow = {
   outErrors: bigint;
   inDiscards: bigint;
   outDiscards: bigint;
+  fcsErrors: bigint | null;
   inErrorsDelta: bigint;
   outErrorsDelta: bigint;
   inDiscardsDelta: bigint;
@@ -610,6 +622,114 @@ export class PrismaHostRepository implements HostRepository {
     });
   }
 
+  async getInterfaceOpticalThresholds(deviceId: string): Promise<InterfaceOpticalThresholdRecord[]> {
+    const rows = await this.prisma.interface.findMany({
+      where: { deviceId },
+      select: {
+        id: true,
+        opticalThresholds: true,
+        opticalThresholdSource: true,
+        opticalThresholdsUpdatedAt: true,
+        opticalThresholdsRefreshAfter: true,
+      },
+    });
+    return rows.map((row) => ({
+      interfaceId: row.id,
+      thresholds: parseOpticalThresholdsV1(row.opticalThresholds),
+      source: isOpticalThresholdSource(row.opticalThresholdSource)
+        ? row.opticalThresholdSource
+        : null,
+      updatedAt: row.opticalThresholdsUpdatedAt,
+      refreshAfter: row.opticalThresholdsRefreshAfter,
+    }));
+  }
+
+  async updateInterfaceOpticalThresholds(
+    deviceId: string,
+    entries: InterfaceOpticalThresholdUpdateInput[],
+  ): Promise<void> {
+    if (!entries.length) return;
+    await this.prisma.$transaction(entries.map((entry) => this.prisma.interface.updateMany({
+      where: { deviceId, id: entry.interfaceId },
+      data: {
+        opticalThresholds: entry.thresholds === null
+          ? Prisma.DbNull
+          : (entry.thresholds as unknown as Prisma.InputJsonValue),
+        opticalThresholdSource: entry.source,
+        opticalThresholdsUpdatedAt: entry.updatedAt,
+        opticalThresholdsRefreshAfter: entry.refreshAfter,
+      },
+    })));
+  }
+
+  async getRecentInterfaceOccurrenceRows(since: Date): Promise<InterfaceOccurrenceRow[]> {
+    const rows = await this.prisma.interfaceMetricSample.findMany({
+      where: {
+        timestamp: { gte: since },
+        OR: [
+          { fcsErrorsDelta: { gt: 0n } },
+          { inDiscardsDelta: { gt: 0n } },
+          { outDiscardsDelta: { gt: 0n } },
+        ],
+      },
+      orderBy: { timestamp: 'desc' },
+      take: 5_000,
+      select: {
+        interfaceId: true,
+        timestamp: true,
+        fcsErrorsDelta: true,
+        inDiscardsDelta: true,
+        outDiscardsDelta: true,
+        interface: {
+          select: {
+            name: true,
+            alias: true,
+            description: true,
+            ifIndex: true,
+            device: { select: { id: true, name: true, displayName: true } },
+          },
+        },
+      },
+    });
+    return rows.map((row) => ({
+      interfaceId: row.interfaceId,
+      deviceId: row.interface.device.id,
+      deviceName: row.interface.device.displayName || row.interface.device.name,
+      interfaceName: row.interface.name,
+      interfaceDescription: row.interface.description,
+      interfaceAlias: row.interface.alias,
+      ifIndex: row.interface.ifIndex,
+      timestamp: row.timestamp,
+      fcsErrorsDelta: row.fcsErrorsDelta,
+      inDiscardsDelta: row.inDiscardsDelta,
+      outDiscardsDelta: row.outDiscardsDelta,
+    }));
+  }
+
+  async getRecentInterfaceOpticalSamples(
+    deviceId: string,
+    since: Date,
+  ): Promise<InterfaceOpticalWindowRow[]> {
+    const rows = await this.prisma.interfaceOpticalSample.findMany({
+      where: { timestamp: { gte: since }, interface: { deviceId } },
+      orderBy: { timestamp: 'asc' },
+      select: {
+        interfaceId: true,
+        timestamp: true,
+        rxPowerDbm: true,
+        txPowerDbm: true,
+        opticalLanes: true,
+      },
+    });
+    return rows.map((row) => ({
+      interfaceId: row.interfaceId,
+      timestamp: row.timestamp,
+      rxPowerDbm: row.rxPowerDbm,
+      txPowerDbm: row.txPowerDbm,
+      opticalLanes: opticalLanesFromDb(row.opticalLanes) ?? [],
+    }));
+  }
+
   async getLatestCounterSnapshots(hostId: string): Promise<Map<number, InterfaceCounterSnapshot>> {
     const rows = await this.prisma.$queryRaw<Array<LatestMetricRow & { ifIndex: number }>>(Prisma.sql`
       SELECT
@@ -624,6 +744,7 @@ export class PrismaHostRepository implements HostRepository {
         s."outErrors" AS "outErrors",
         s."inDiscards" AS "inDiscards",
         s."outDiscards" AS "outDiscards",
+        s."fcsErrors" AS "fcsErrors",
         s."operStatus"::text AS "operStatus"
       FROM "Interface" i
       JOIN LATERAL (
@@ -638,6 +759,7 @@ export class PrismaHostRepository implements HostRepository {
           m."outErrors",
           m."inDiscards",
           m."outDiscards",
+          m."fcsErrors",
           m."operStatus"
         FROM "InterfaceMetricSample" m
         WHERE m."interfaceId" = i."id"
@@ -656,7 +778,37 @@ export class PrismaHostRepository implements HostRepository {
       outErrors: row.outErrors,
       inDiscards: row.inDiscards,
       outDiscards: row.outDiscards,
+      fcsErrors: row.fcsErrors,
     }]));
+  }
+
+  /**
+   * Amostras recentes do device para o motor de alarmes, na ordem em que foram
+   * persistidas (os deltas sao por par consecutivo — nunca o bruto sozinho).
+   */
+  async getRecentInterfaceMetricSamples(
+    deviceId: string,
+    since: Date,
+  ): Promise<InterfaceMetricWindowRow[]> {
+    return this.prisma.interfaceMetricSample.findMany({
+      where: { timestamp: { gte: since }, interface: { deviceId } },
+      orderBy: [{ interfaceId: 'asc' }, { timestamp: 'asc' }],
+      take: 20_000,
+      select: {
+        interfaceId: true,
+        timestamp: true,
+        inErrors: true,
+        outErrors: true,
+        inDiscards: true,
+        outDiscards: true,
+        inErrorsDelta: true,
+        outErrorsDelta: true,
+        inDiscardsDelta: true,
+        outDiscardsDelta: true,
+        fcsErrors: true,
+        fcsErrorsDelta: true,
+      },
+    });
   }
 
   async saveSnmpPoll(hostId: string, deviceSample: DeviceMetricSampleInput, samples: InterfaceMetricSampleInput[]): Promise<void> {
@@ -697,6 +849,8 @@ export class PrismaHostRepository implements HostRepository {
             outErrorsDelta: sample.outErrorsDelta,
             inDiscardsDelta: sample.inDiscardsDelta,
             outDiscardsDelta: sample.outDiscardsDelta,
+            fcsErrors: sample.fcsErrors ?? null,
+            fcsErrorsDelta: sample.fcsErrorsDelta ?? null,
             operStatus: sample.operStatus,
           })),
         });
@@ -705,11 +859,24 @@ export class PrismaHostRepository implements HostRepository {
   }
 
   async getInterfaceHistory(interfaceId: string, period: HistoryPeriod): Promise<MetricPoint[]> {
-    const rows = await this.prisma.interfaceMetricSample.findMany({
-      where: { interfaceId, timestamp: { gte: historyStart(period) } },
-      orderBy: { timestamp: 'asc' },
-    });
-    return aggregateMetricHistory(rows.map((row) => ({
+    const [rows, iface] = await Promise.all([
+      this.prisma.interfaceMetricSample.findMany({
+        where: { interfaceId, timestamp: { gte: historyStart(period) } },
+        orderBy: { timestamp: 'asc' },
+      }),
+      this.prisma.interface.findUnique({
+        where: { id: interfaceId },
+        select: { speedBps: true },
+      }),
+    ]);
+    /**
+     * Guard READ-SIDE: amostra inválida (sentinela de rebase ou taxa acima da
+     * capacidade + tolerância) vira AUSÊNCIA no histórico — não zero falso e
+     * nunca o valor impossível. O filtro é aplicado ANTES de agregar, para um
+     * spike já persistido não envenenar a média/`Max` do bucket.
+     */
+    const usable = filterUsableTrafficSamples(rows, iface?.speedBps ?? null);
+    return aggregateMetricHistory(usable.map((row) => ({
       timestamp: row.timestamp.toISOString(),
       rxBps: row.rxBps,
       txBps: row.txBps,
@@ -737,11 +904,18 @@ export class PrismaHostRepository implements HostRepository {
   }
 
   async getInterfaceMetrics(interfaceId: string): Promise<Record<string, number | string> | null> {
-    const row = await this.prisma.interfaceMetricSample.findFirst({
+    /**
+     * Guard READ-SIDE: pega o sample mais recente VÁLIDO. Se o topo for um spike
+     * fisicamente impossível ou uma linha de rebase, volta para o anterior
+     * válido — nunca devolve o valor inválido nem `null` havendo anterior bom.
+     */
+    const rows = await this.prisma.interfaceMetricSample.findMany({
       where: { interfaceId },
       orderBy: { timestamp: 'desc' },
+      take: 500,
       include: { interface: { select: { speedBps: true } } },
     });
+    const row = pickLatestUsableTrafficSample(rows, rows[0]?.interface.speedBps ?? null);
     if (!row) return null;
     const speedBps = safeNumber(row.interface.speedBps);
     return {
@@ -780,6 +954,7 @@ export class PrismaHostRepository implements HostRepository {
         s."outErrorsDelta" AS "outErrorsDelta",
         s."inDiscardsDelta" AS "inDiscardsDelta",
         s."outDiscardsDelta" AS "outDiscardsDelta",
+        s."fcsErrors" AS "fcsErrors",
         s."operStatus"::text AS "operStatus"
       FROM "Interface" i
       JOIN LATERAL (
@@ -797,9 +972,11 @@ export class PrismaHostRepository implements HostRepository {
           m."outErrorsDelta",
           m."inDiscardsDelta",
           m."outDiscardsDelta",
+          m."fcsErrors",
           m."operStatus"
         FROM "InterfaceMetricSample" m
         WHERE m."interfaceId" = i."id"
+          AND (${Prisma.raw(USABLE_TRAFFIC_SAMPLE_SQL)})
         ORDER BY m."timestamp" DESC
         LIMIT 1
       ) s ON TRUE
@@ -830,6 +1007,8 @@ export class PrismaHostRepository implements HostRepository {
       rxPowerDbm: number | null; txPowerDbm: number | null; opticalLanes: unknown;
       opticalLaneSource: string | null; opticalLanesUpdatedAt: Date | null;
       opticalSource: string | null; opticalUpdatedAt: Date | null;
+      opticalThresholds: unknown; opticalThresholdSource: string | null;
+      opticalThresholdsUpdatedAt: Date | null; opticalThresholdsRefreshAfter: Date | null;
       rxItemId: string | null; txItemId: string | null; statusItemId: string | null; inErrorsItemId: string | null;
       outErrorsItemId: string | null; inDiscardsItemId: string | null; outDiscardsItemId: string | null; dataSources: unknown;
       metricSamples: Array<{
@@ -898,6 +1077,11 @@ export class PrismaHostRepository implements HostRepository {
         opticalLanesUpdatedAt: item.opticalLanesUpdatedAt?.toISOString() ?? null,
         opticalSource: item.opticalSource === 'SNMP' || item.opticalSource === 'SSH' ? item.opticalSource : null,
         opticalUpdatedAt: item.opticalUpdatedAt?.toISOString() ?? null,
+        opticalThresholds: parseOpticalThresholdsV1(item.opticalThresholds),
+        opticalThresholdSource: isOpticalThresholdSource(item.opticalThresholdSource)
+          ? item.opticalThresholdSource
+          : null,
+        opticalThresholdsUpdatedAt: item.opticalThresholdsUpdatedAt?.toISOString() ?? null,
         rxItemId: item.rxItemId,
         txItemId: item.txItemId,
         statusItemId: item.statusItemId,
