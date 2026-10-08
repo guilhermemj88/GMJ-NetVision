@@ -692,13 +692,17 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   mediaService.attachTransport(mediaTransport);
 
   // Alarmes de rede usam o MESMO sender HTTP e o MESMO log operacional da
-  // camada de midias (purpose NETWORK_ALARMS, com fallback no canal BGP).
+  // camada de midias, porem com canal PROPRIO: `resolveOutbound('NETWORK_ALARMS')`
+  // nunca cai no canal nem no ENV da mitigacao (F9.5).
   if (alarmMediaHolder.notifier) {
     throw new Error('notifier de alarmes ja inicializado');
   }
+  const alarmTransport = new N8nAlarmTransport({ media: mediaService, send: webhookSender });
+  // O TESTAR ALARME reusa este transporte (serializer canonico, sem payload paralelo).
+  mediaService.attachAlarmTransport(alarmTransport);
   alarmMediaHolder.notifier = new AlarmNotificationService({
     alarms: alarmRepository,
-    transport: new N8nAlarmTransport({ media: mediaService, send: webhookSender }),
+    transport: alarmTransport,
   });
 
   // Configuracao explicita de EXECUCAO (fail-closed): MOCK por padrao; o

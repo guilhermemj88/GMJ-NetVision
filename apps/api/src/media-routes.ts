@@ -134,7 +134,16 @@ export function registerMediaRoutes(
   app.post('/api/media/integrations/:id/rotate-inbound-token', async (request, reply) => {
     if (!(await requireAdmin(request, reply))) return undefined;
     const { id } = integrationParams.parse(request.params);
-    if (await notFound(id, reply)) return undefined;
+    const integration = await media.get(id);
+    if (!integration) {
+      return reply.code(404).send({ message: 'Integração de mídia não encontrada' });
+    }
+    // Inbound existe SOMENTE na mitigacao (F9.5): alarmes nao tem comando de entrada.
+    if (integration.purpose !== 'BGP_MITIGATION') {
+      return reply.code(400).send({
+        message: 'Este canal não possui inbound: o token de comando é exclusivo da Mitigação DDoS',
+      });
+    }
     const rotated = await media.rotateInboundToken(id);
     // Unica resposta da API que carrega o token em texto claro: mostrada uma vez.
     return {
@@ -149,6 +158,18 @@ export function registerMediaRoutes(
     const { id } = integrationParams.parse(request.params);
     if (await notFound(id, reply)) return undefined;
     return media.testWebhook(id);
+  });
+
+  /**
+   * TESTAR ALARME (F9.5): envia um payload sintetico pelo canal NETWORK_ALARMS,
+   * com a MESMA serializacao/transporte dos alarmes reais. Nunca usa a
+   * mitigacao e nunca cria alarme de verdade.
+   */
+  app.post('/api/media/integrations/:id/test-alarm', async (request, reply) => {
+    if (!(await requireAdmin(request, reply))) return undefined;
+    const { id } = integrationParams.parse(request.params);
+    if (await notFound(id, reply)) return undefined;
+    return media.testAlarmWebhook(id);
   });
 
   app.get('/api/media/integrations/:id/logs', async (request, reply) => {

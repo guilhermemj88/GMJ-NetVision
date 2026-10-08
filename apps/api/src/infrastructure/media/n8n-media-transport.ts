@@ -101,11 +101,8 @@ export interface MediaDeliveryOutcome {
 
 /** Porta minima que o transporte precisa da camada de midias. */
 export interface MediaChannelPort {
-  resolveOutbound(
-    purpose: MediaIntegrationPurpose,
-    /** Canal COMPARTILHADO usado quando o purpose nao tem integracao propria. */
-    fallbackPurpose?: MediaIntegrationPurpose,
-  ): Promise<ResolvedMediaChannel>;
+  /** Resolve o canal do PROPRIO purpose (sem fallback cruzado — F9.5). */
+  resolveOutbound(purpose: MediaIntegrationPurpose): Promise<ResolvedMediaChannel>;
   recordOutboundAttempt(input: {
     integrationId: string | null;
     event: string;

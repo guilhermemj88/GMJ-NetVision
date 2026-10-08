@@ -31,6 +31,16 @@ async function buildApp(user: AuthUser | null = ADMIN): Promise<FastifyInstance>
     now: () => NOW,
   });
   media.attachTransport(transport);
+  media.attachAlarmTransport({
+    publishAlarmTest: async () => ({
+      ok: true,
+      skipped: false,
+      httpStatus: 200,
+      latencyMs: 41,
+      safeError: null,
+      event: 'NETWORK_ALARM_TEST',
+    }),
+  });
 
   const app = Fastify();
   registerMediaRoutes(app, { media, currentUser: async () => user });
@@ -191,6 +201,68 @@ describe('API de MÍDIAS', () => {
       url: `/api/media/integrations/${missing}/test`,
     });
     expect(tested.statusCode).toBe(404);
+
+    const alarmTested = await app.inject({
+      method: 'POST',
+      url: `/api/media/integrations/${missing}/test-alarm`,
+    });
+    expect(alarmTested.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('TESTAR ALARME envia só pelo canal de alarmes e loga NETWORK_ALARM_TEST', async () => {
+    const app = await buildApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/media/integrations',
+      payload: {
+        name: 'n8n — Alarmes de Rede',
+        purpose: 'NETWORK_ALARMS',
+        outboundUrl: 'https://n8n.exemplo.com/webhook/alarmes',
+        outboundToken: 'token-alarmes',
+      },
+    });
+    const id = created.json().id as string;
+
+    const tested = await app.inject({ method: 'POST', url: `/api/media/integrations/${id}/test-alarm` });
+    expect(tested.statusCode).toBe(200);
+    expect(tested.json()).toMatchObject({
+      ok: true,
+      httpStatus: 200,
+      latencyMs: 41,
+      event: 'NETWORK_ALARM_TEST',
+    });
+    expect(JSON.stringify(tested.json())).not.toContain('token-alarmes');
+    await app.close();
+  });
+
+  it('o inbound é exclusivo da mitigação: alarmes não rotacionam token de entrada', async () => {
+    const app = await buildApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/media/integrations',
+      payload: { name: 'n8n — Alarmes de Rede', purpose: 'NETWORK_ALARMS' },
+    });
+    const id = created.json().id as string;
+
+    const rotated = await app.inject({
+      method: 'POST',
+      url: `/api/media/integrations/${id}/rotate-inbound-token`,
+    });
+    expect(rotated.statusCode).toBe(400);
+    expect(rotated.json().message).toContain('não possui inbound');
+
+    const mitigation = await app.inject({
+      method: 'POST',
+      url: '/api/media/integrations',
+      payload: { name: 'n8n — Mitigação DDoS', purpose: 'BGP_MITIGATION' },
+    });
+    const ok = await app.inject({
+      method: 'POST',
+      url: `/api/media/integrations/${mitigation.json().id}/rotate-inbound-token`,
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(typeof ok.json().token).toBe('string');
     await app.close();
   });
 });

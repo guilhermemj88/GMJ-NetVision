@@ -12,7 +12,6 @@ import type {
   MediaOperationalStatus,
   ResolvedMediaChannel,
 } from './media-types';
-import { MEDIA_SHARED_PURPOSE } from './media-types';
 import {
   generateIntegrationToken,
   safeDestination,
@@ -44,6 +43,11 @@ export interface MediaIntegrationServiceDeps {
   now?: () => Date;
   logRetention?: number;
   logger?: (message: string, meta?: Record<string, unknown>) => void;
+}
+
+/** Porta do transporte de alarmes usada apenas pelo TESTAR ALARME (F9.5). */
+export interface MediaAlarmTestPort {
+  publishAlarmTest(input?: { profileId?: string | null }): Promise<MediaDeliveryOutcome>;
 }
 
 export interface CreateMediaIntegrationInput {
@@ -79,6 +83,7 @@ export class MediaIntegrationService implements MediaChannelPort {
   private readonly now: () => Date;
   private readonly logRetention: number;
   private transport: N8nMediaTransport | null = null;
+  private alarmTransport: MediaAlarmTestPort | null = null;
 
   constructor(private readonly deps: MediaIntegrationServiceDeps) {
     this.now = deps.now ?? (() => new Date());
@@ -90,17 +95,24 @@ export class MediaIntegrationService implements MediaChannelPort {
     this.transport = transport;
   }
 
+  /**
+   * Ligacao tardia do transporte de ALARMES, usado apenas pelo TESTAR ALARME.
+   * Mantem a serializacao canonica do alarme (nao existe payload paralelo).
+   */
+  attachAlarmTransport(transport: MediaAlarmTestPort): void {
+    this.alarmTransport = transport;
+  }
+
   // ---- leitura / cadastro -------------------------------------------------
 
   async overview(purpose: MediaIntegrationPurpose = 'BGP_MITIGATION'): Promise<MediaIntegrationListDto> {
     const migrationReady = await this.isMigrationReady();
     const integration = await this.read(() => this.deps.repository.findByPurpose(purpose), null);
-    const channel = await this.resolveOutbound(purpose, MEDIA_SHARED_PURPOSE[purpose]);
+    const channel = await this.resolveOutbound(purpose);
     return {
       repositoryKind: this.deps.repositoryKind,
       migrationReady,
       resolvedPurpose: channel.enabled ? channel.resolvedPurpose ?? purpose : null,
-      shared: Boolean(channel.shared),
       legacyEnv: {
         outboundUrlConfigured: Boolean(this.deps.env.outboundUrl),
         outboundTokenConfigured: Boolean(this.deps.env.outboundToken),
@@ -200,16 +212,18 @@ export class MediaIntegrationService implements MediaChannelPort {
     return await this.toDto(record);
   }
 
-  // ---- resolucao de configuracao (banco > ENV) ----------------------------
+  // ---- resolucao de configuracao (banco > ENV da mitigacao) ---------------
 
   /**
-   * Resolve o canal OUTBOUND: integracao explicita do purpose > canal
-   * COMPARTILHADO (quando informado) > ENV legado > desligado.
-   * O token continua sendo decriptado aqui: nunca e copiado para outro registro.
+   * Resolve o canal OUTBOUND do purpose pedido.
+   *
+   * F9.5: NADA de fallback cruzado. `NETWORK_ALARMS` resolve SOMENTE a
+   * integracao `NETWORK_ALARMS`; `BGP_MITIGATION` resolve SOMENTE a integracao
+   * `BGP_MITIGATION` e, sem ela, o ENV legado da mitigacao. O ENV legado e
+   * exclusivo da mitigacao: alarmes nunca caem nele.
    */
   async resolveOutbound(
     purpose: MediaIntegrationPurpose = 'BGP_MITIGATION',
-    fallbackPurpose?: MediaIntegrationPurpose,
   ): Promise<ResolvedMediaChannel> {
     const integration = await this.read(() => this.deps.repository.findByPurpose(purpose), null);
     const source = await this.sourceLabel();
@@ -221,35 +235,17 @@ export class MediaIntegrationService implements MediaChannelPort {
         url: integration.outboundUrl,
         token: this.deps.secretBox.decrypt(integration.outboundSecretEncrypted),
         resolvedPurpose: purpose,
-        shared: false,
       };
     }
-    if (fallbackPurpose) {
-      const shared = await this.read(
-        () => this.deps.repository.findByPurpose(fallbackPurpose),
-        null,
-      );
-      if (shared && shared.enabled && shared.outboundUrl) {
-        return {
-          integrationId: shared.id,
-          source,
-          enabled: true,
-          url: shared.outboundUrl,
-          token: this.deps.secretBox.decrypt(shared.outboundSecretEncrypted),
-          resolvedPurpose: fallbackPurpose,
-          shared: true,
-        };
-      }
-    }
-    if (this.deps.env.outboundUrl) {
+    const envOutboundUrl = purpose === 'BGP_MITIGATION' ? this.deps.env.outboundUrl : null;
+    if (envOutboundUrl) {
       return {
         integrationId: integration?.id ?? null,
         source: 'ENV',
         enabled: true,
-        url: this.deps.env.outboundUrl,
+        url: envOutboundUrl,
         token: this.deps.env.outboundToken,
         resolvedPurpose: purpose,
-        shared: false,
       };
     }
     return {
@@ -259,7 +255,6 @@ export class MediaIntegrationService implements MediaChannelPort {
       url: null,
       token: null,
       resolvedPurpose: purpose,
-      shared: false,
     };
   }
 
@@ -453,6 +448,7 @@ export class MediaIntegrationService implements MediaChannelPort {
 
   // ---- teste de webhook ---------------------------------------------------
 
+  /** TESTAR WEBHOOK da mitigacao: payload MITIGATION_TEST, canal BGP_MITIGATION. */
   async testWebhook(id?: string): Promise<MediaDeliveryOutcome & { checkedAt: string }> {
     const transport = this.transport;
     if (!transport) {
@@ -471,6 +467,41 @@ export class MediaIntegrationService implements MediaChannelPort {
       : await this.read(() => this.deps.repository.findByPurpose('BGP_MITIGATION'), null);
     const outcome = await transport.publishTest({ profileId: integration?.id ?? null });
     return { ...outcome, checkedAt: this.now().toISOString() };
+  }
+
+  /**
+   * TESTAR ALARME (F9.5): mesma serializacao e mesmo transporte dos alarmes
+   * reais, porem SO pelo canal NETWORK_ALARMS e com `test: true` no payload.
+   * Nao cria Alarm, nao cria OperationalOccurrence e nao mexe na mitigacao.
+   */
+  async testAlarmWebhook(id: string): Promise<MediaDeliveryOutcome & { checkedAt: string }> {
+    const checkedAt = this.now().toISOString();
+    const integration = await this.read(() => this.deps.repository.get(id), null);
+    if (!integration || integration.purpose !== 'NETWORK_ALARMS') {
+      return {
+        ok: false,
+        skipped: true,
+        httpStatus: null,
+        latencyMs: null,
+        safeError: 'Integração de alarmes de rede não encontrada',
+        event: 'NETWORK_ALARM_TEST',
+        checkedAt,
+      };
+    }
+    const transport = this.alarmTransport;
+    if (!transport) {
+      return {
+        ok: false,
+        skipped: true,
+        httpStatus: null,
+        latencyMs: null,
+        safeError: 'Transporte de alarmes indisponível',
+        event: 'NETWORK_ALARM_TEST',
+        checkedAt,
+      };
+    }
+    const outcome = await transport.publishAlarmTest({ profileId: integration.id });
+    return { ...outcome, checkedAt };
   }
 
   // ---- helpers ------------------------------------------------------------

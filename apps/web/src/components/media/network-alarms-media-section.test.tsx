@@ -9,6 +9,9 @@ import type { Alarm } from '@gmj/shared';
 const media = vi.hoisted(() => ({
   getMediaIntegrationsByPurpose: vi.fn(),
   getRecentMediaLogs: vi.fn(),
+  createMediaIntegration: vi.fn(),
+  updateMediaIntegration: vi.fn(),
+  testMediaAlarm: vi.fn(),
   MEDIA_STATUS_LABELS: {
     DISABLED: 'Desativado',
     NOT_CONFIGURED: 'Não configurado',
@@ -24,15 +27,16 @@ const media = vi.hoisted(() => ({
   },
 }));
 
-const alarms = vi.hoisted(() => ({ useAlarmIndex: vi.fn() }));
+const alarms = vi.hoisted(() => ({ useAlarmIndex: vi.fn(() => new Map()) }));
 
 vi.mock('@/lib/media-api', () => media);
 vi.mock('@/lib/use-alarms', () => alarms);
 
 import {
+  AlarmTestResultBanner,
   NetworkAlarmsMediaSection,
   alarmLogReference,
-  describeAlarmChannel,
+  alarmStatusRows,
   isNetworkAlarmEvent,
 } from './network-alarms-media-section';
 
@@ -43,7 +47,6 @@ function overview(overrides: Record<string, unknown> = {}) {
     repositoryKind: 'DATABASE' as const,
     migrationReady: true,
     resolvedPurpose: 'NETWORK_ALARMS' as const,
-    shared: false,
     legacyEnv: {
       outboundUrlConfigured: false,
       outboundTokenConfigured: false,
@@ -58,7 +61,7 @@ function overview(overrides: Record<string, unknown> = {}) {
 function integration(overrides: Record<string, unknown> = {}) {
   return {
     id: 'media-2',
-    name: 'n8n — Alarmes',
+    name: 'n8n — Alarmes de Rede',
     type: 'WEBHOOK' as const,
     purpose: 'NETWORK_ALARMS' as const,
     enabled: true,
@@ -91,109 +94,140 @@ function integration(overrides: Record<string, unknown> = {}) {
 
 const ALARM = {
   id: 'alarm-1',
-  deviceId: 'dev-1',
   deviceName: 'BHE-VTA-S6750-MPLS-01',
-  interfaceId: 'if-1',
   interfaceName: '100GE1/0/1',
-  interfaceLabel: 'TO-CORE-01',
-  ifIndex: 1,
-  linkId: null,
-  linkLabel: null,
   type: 'OPTICAL_RX_DEGRADATION',
   severity: 'MAJOR',
-  startedAt: '2026-10-07T11:50:00.000Z',
-  endedAt: null,
-  acknowledgedAt: null,
-  acknowledgedBy: null,
-  message: 'RX optico',
   metadata: { lane: 2 },
 } as unknown as Alarm;
+
+const ALARM_LOG = {
+  id: 'log-1',
+  direction: 'OUTBOUND' as const,
+  event: 'NETWORK_ALARM_OPENED',
+  action: null,
+  profileId: null,
+  requestId: 'alarm-1',
+  status: 'SUCCESS' as const,
+  httpStatus: 200,
+  latencyMs: 190,
+  idempotent: null,
+  safeError: null,
+  destination: 'https://n8n.exemplo.com',
+  createdAt: '2026-10-07T12:00:00.000Z',
+};
+
+const MITIGATION_LOG = {
+  ...ALARM_LOG,
+  id: 'log-2',
+  event: 'MITIGATION_VERIFIED',
+  requestId: 'req-9',
+};
 
 describe('canal e eventos de alarme na camada de mídia', () => {
   it('identifica apenas eventos NETWORK_ALARM_*', () => {
     expect(isNetworkAlarmEvent('NETWORK_ALARM_OPENED')).toBe(true);
+    expect(isNetworkAlarmEvent('NETWORK_ALARM_TEST')).toBe(true);
     expect(isNetworkAlarmEvent('MITIGATION_VERIFIED')).toBe(false);
     expect(isNetworkAlarmEvent(null)).toBe(false);
   });
 
-  it('descreve canal compartilhado com a mitigação DDoS', () => {
-    const description = describeAlarmChannel(
-      overview({
-        shared: true,
-        resolvedPurpose: 'BGP_MITIGATION',
-        integration: integration({ purpose: 'BGP_MITIGATION', configSource: 'DATABASE' }),
-      }) as never,
-    );
-    expect(description.channel).toBe('Canal compartilhado com Mitigação DDoS');
-    expect(description.detail).toContain('resolvedPurpose=BGP_MITIGATION');
-    expect(description.shared).toBe(true);
-  });
+  it('o status do canal de alarmes não tem inbound nem último comando', () => {
+    const rows = alarmStatusRows(overview({ integration: integration() }) as never);
+    expect(rows.map((row) => row.label)).toEqual([
+      'Ativo',
+      'Outbound configurado',
+      'Configuração',
+      'Último envio',
+      'Resultado',
+      'Último evento',
+    ]);
+    const byLabel = Object.fromEntries(rows.map((row) => [row.label, row.value]));
+    expect(byLabel).toMatchObject({
+      Ativo: 'SIM',
+      'Outbound configurado': 'SIM',
+      Configuração: 'BANCO',
+      Resultado: 'Último envio OK',
+      'Último evento': 'NETWORK_ALARM_OPENED',
+    });
+    // Data formatada no fuso do navegador: basta não ser o placeholder.
+    expect(byLabel['Último envio']).not.toBe('—');
 
-  it('descreve canal próprio, ENV e não configurado (SKIPPED)', () => {
-    expect(describeAlarmChannel(overview({ integration: integration() }) as never).channel)
-      .toBe('Canal próprio');
-    expect(
-      describeAlarmChannel(
-        overview({
-          resolvedPurpose: null,
-          legacyEnv: {
-            outboundUrlConfigured: true,
-            outboundTokenConfigured: true,
-            inboundTokenConfigured: false,
-            inboundEndpointPath: '',
-          },
-        }) as never,
-      ).channel,
-    ).toBe('ENV (legado)');
-    const skipped = describeAlarmChannel(overview({ resolvedPurpose: null }) as never);
-    expect(skipped.channel).toBe('NÃO CONFIGURADO');
-    expect(skipped.detail).toContain('SKIPPED');
+    const empty = alarmStatusRows(overview() as never);
+    expect(empty.find((row) => row.label === 'Resultado')?.value).toBe('Não configurado');
+    expect(empty.find((row) => row.label === 'Ativo')?.value).toBe('—');
   });
 
   it('resolve a referência do alarme pelo requestId do log (sem payload bruto)', () => {
-    const reference = alarmLogReference(
-      {
-        id: 'log-1',
-        direction: 'OUTBOUND',
-        event: 'NETWORK_ALARM_OPENED',
-        action: null,
-        profileId: null,
-        requestId: 'alarm-1',
-        status: 'SUCCESS',
-        httpStatus: 200,
-        latencyMs: 12,
-        idempotent: null,
-        safeError: null,
-        destination: 'https://n8n.exemplo.com/webhook/abc',
-        createdAt: '2026-10-07T12:00:00.000Z',
-      },
-      new Map([['alarm-1', ALARM]]),
+    expect(alarmLogReference(ALARM_LOG, new Map([['alarm-1', ALARM]]))).toBe(
+      'BHE-VTA-S6750-MPLS-01 · 100GE1/0/1 · Lane 2 · RX OPTICO · MAJOR',
     );
-    expect(reference).toBe('BHE-VTA-S6750-MPLS-01 · 100GE1/0/1 · Lane 2 · RX OPTICO · MAJOR');
-    expect(
-      alarmLogReference(
-        {
-          id: 'log-2',
-          direction: 'OUTBOUND',
-          event: 'NETWORK_ALARM_OPENED',
-          action: null,
-          profileId: null,
-          requestId: 'alarm-antigo',
-          status: 'SUCCESS',
+    expect(alarmLogReference(ALARM_LOG, new Map())).toBe('');
+  });
+
+  it('banner do teste cobre sucesso, falha e não configurado', () => {
+    const ok = renderToText(
+      <AlarmTestResultBanner
+        result={{
+          ok: true,
+          skipped: false,
           httpStatus: 200,
-          latencyMs: 12,
-          idempotent: null,
+          latencyMs: 41,
           safeError: null,
-          destination: null,
-          createdAt: '2026-10-07T12:00:00.000Z',
-        },
-        new Map(),
-      ),
-    ).toBe('');
+          event: 'NETWORK_ALARM_TEST',
+          checkedAt: '2026-10-07T12:00:00.000Z',
+        }}
+      />,
+    );
+    expect(ok).toContain('Webhook de alarme enviado com sucesso');
+    expect(ok).toContain('HTTP 200');
+    expect(ok).toContain('41 ms');
+
+    const failed = renderToText(
+      <AlarmTestResultBanner
+        result={{
+          ok: false,
+          skipped: false,
+          httpStatus: 500,
+          latencyMs: 12,
+          safeError: 'Webhook respondeu HTTP 500',
+          event: 'NETWORK_ALARM_TEST',
+          checkedAt: '2026-10-07T12:00:00.000Z',
+        }}
+      />,
+    );
+    expect(failed).toContain('Falha no webhook de alarmes · HTTP 500');
+    expect(failed).toContain('Webhook respondeu HTTP 500');
+
+    const skipped = renderToText(
+      <AlarmTestResultBanner
+        result={{
+          ok: false,
+          skipped: true,
+          httpStatus: null,
+          latencyMs: null,
+          safeError: 'Webhook não configurado',
+          event: 'NETWORK_ALARM_TEST',
+          checkedAt: '2026-10-07T12:00:00.000Z',
+        }}
+      />,
+    );
+    expect(skipped).toContain('Webhook de alarmes não configurado');
   });
 });
 
-describe('render da seção de alarmes na mídia', () => {
+function renderToText(element: ReactElement): string {
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  act(() => {
+    root.render(element);
+  });
+  const text = container.textContent ?? '';
+  act(() => root.unmount());
+  return text;
+}
+
+describe('editor da aba ALARMES DE REDE (F9.5)', () => {
   let container: HTMLDivElement;
   let root: Root;
 
@@ -220,72 +254,87 @@ describe('render da seção de alarmes na mídia', () => {
 
   beforeEach(() => {
     media.getMediaIntegrationsByPurpose.mockResolvedValue(
-      overview({
-        shared: true,
-        resolvedPurpose: 'BGP_MITIGATION',
-        integration: integration({ purpose: 'BGP_MITIGATION', outboundUrl: 'https://n8n.exemplo.com/webhook/abc?token=segredo' }),
-      }),
+      overview({ integration: integration() }),
     );
-    media.getRecentMediaLogs.mockResolvedValue([
-      {
-        id: 'log-1',
-        direction: 'OUTBOUND',
-        event: 'NETWORK_ALARM_OPENED',
-        action: null,
-        profileId: null,
-        requestId: 'alarm-1',
-        status: 'SUCCESS',
-        httpStatus: 200,
-        latencyMs: 190,
-        idempotent: null,
-        safeError: null,
-        destination: 'https://n8n.exemplo.com/webhook/abc',
-        createdAt: '2026-10-07T12:00:00.000Z',
-      },
-      {
-        id: 'log-2',
-        direction: 'OUTBOUND',
-        event: 'MITIGATION_VERIFIED',
-        action: null,
-        profileId: 'p1',
-        requestId: 'req-9',
-        status: 'SUCCESS',
-        httpStatus: 200,
-        latencyMs: 30,
-        idempotent: null,
-        safeError: null,
-        destination: 'https://n8n.exemplo.com/webhook/abc',
-        createdAt: '2026-10-07T12:01:00.000Z',
-      },
-    ]);
-    alarms.useAlarmIndex.mockReturnValue(new Map([['alarm-1', ALARM]]));
+    media.getRecentMediaLogs.mockResolvedValue([ALARM_LOG, MITIGATION_LOG]);
+    media.testMediaAlarm.mockResolvedValue({
+      ok: true,
+      skipped: false,
+      httpStatus: 200,
+      latencyMs: 41,
+      safeError: null,
+      event: 'NETWORK_ALARM_TEST',
+      checkedAt: '2026-10-07T12:00:00.000Z',
+    });
+    media.updateMediaIntegration.mockResolvedValue(integration());
+    media.createMediaIntegration.mockResolvedValue(integration());
   });
 
-  afterEach(async () => {
-    await act(async () => root.unmount());
+  afterEach(() => {
+    act(() => root.unmount());
     container.remove();
     vi.clearAllMocks();
   });
 
-  it('mostra canal compartilhado, última entrega e logs filtrados por purpose', async () => {
-    await mount();
-
-    expect(container.textContent).toContain('Canal compartilhado com Mitigação DDoS');
-    expect(container.textContent).toContain('resolvedPurpose=BGP_MITIGATION');
-    expect(container.textContent).toContain('NETWORK_ALARM_OPENED');
-    expect(container.textContent).toContain('BHE-VTA-S6750-MPLS-01 · 100GE1/0/1 · Lane 2');
-    expect(container.textContent).toContain('HTTP 200');
-    expect(container.textContent).toContain('190 ms');
-    // Log de mitigação não é log de alarme.
-    expect(container.textContent).not.toContain('MITIGATION_VERIFIED');
-  });
-
-  it('nunca renderiza token, segredo ou URL sensível', async () => {
+  it('mostra URL própria, token mascarado e nenhum bloco inbound', async () => {
     await mount();
     const text = container.textContent ?? '';
+
     expect(text).toContain('ALARMES DE REDE');
-    for (const forbidden of ['segredo', 'token', 'X-NetVision-Token', 'community', 'senha']) {
-      expect(text.toLowerCase()).not.toContain(forbidden.toLowerCase());
-    }
+    expect(text).toContain('OUTBOUND — NetVision → n8n');
+    expect(text).toContain('TESTAR ALARME');
+    expect(text).toContain('Canal exclusivo dos alarmes');
+    expect(text).not.toContain('INBOUND');
+    expect(text).not.toContain('ÚLTIMOS COMANDOS');
+    expect(text).not.toContain('GERAR NOVO TOKEN');
+
+    const url = container.querySelector<HTMLInputElement>('input[type="url"]');
+    expect(url?.value).toBe('https://n8n.exemplo.com/webhook/alarmes');
+    const token = container.querySelector<HTMLInputElement>('input[aria-label="Token outbound de alarmes"]');
+    expect(token?.type).toBe('password');
+    expect(token?.value).toBe('');
+  });
+
+  it('lista somente entregas da própria integração (sem mitigação)', async () => {
+    await mount();
+    expect(media.getRecentMediaLogs).toHaveBeenCalledWith(
+      { direction: 'OUTBOUND', limit: 30 },
+      'media-2',
+    );
+    const text = container.textContent ?? '';
+    expect(text).toContain('NETWORK_ALARM_OPENED');
+    expect(text).not.toContain('MITIGATION_VERIFIED');
+  });
+
+  it('TESTAR ALARME usa o endpoint de alarmes e mostra o resultado', async () => {
+    await mount();
+    const button = [...container.querySelectorAll('button')].find(
+      (item) => item.textContent?.includes('TESTAR ALARME'),
+    );
+    expect(button).toBeTruthy();
+
+    await act(async () => {
+      button?.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(media.testMediaAlarm).toHaveBeenCalledWith('media-2');
+    expect(container.textContent).toContain('Webhook de alarme enviado com sucesso');
+    expect(container.textContent).toContain('HTTP 200');
+  });
+
+  it('sem integração o canal aparece como não configurado e o teste fica bloqueado', async () => {
+    media.getMediaIntegrationsByPurpose.mockResolvedValue(overview());
+    media.getRecentMediaLogs.mockResolvedValue([]);
+    await mount();
+
+    const text = container.textContent ?? '';
+    expect(text).toContain('Não configurado');
+    expect(text).toContain('Nenhuma entrega de alarme registrada');
+    const button = [...container.querySelectorAll('button')].find(
+      (item) => item.textContent?.includes('TESTAR ALARME'),
+    ) as HTMLButtonElement | undefined;
+    expect(button?.disabled).toBe(true);
   });
 });

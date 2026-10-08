@@ -3,6 +3,7 @@ import type { Alarm } from '@gmj/shared';
 import { WebhookDeliveryError, type MediaChannelPort } from '../media/n8n-media-transport';
 import {
   N8nAlarmTransport,
+  buildNetworkAlarmTestAlarm,
   buildNetworkAlarmWebhookPayload,
 } from './n8n-alarm-transport';
 
@@ -51,10 +52,13 @@ const PAYLOAD_KEYS = [
   'alarmId',
   'currentPowerSource',
   'currentValue',
+  'device',
   'deviceId',
   'deviceName',
   'direction',
   'event',
+  'eventKey',
+  'interface',
   'interfaceId',
   'interfaceLabel',
   'interfaceName',
@@ -62,15 +66,22 @@ const PAYLOAD_KEYS = [
   'linkId',
   'linkLabel',
   'marginDb',
+  'message',
+  'metricKey',
+  'optical',
+  'occurredAt',
   'proximityPercent',
+  'purpose',
   'resolvedAt',
   'ruleId',
   'rxHighAlarmDbm',
   'rxLowAlarmDbm',
   'rxPowerDbm',
+  'schemaVersion',
   'severity',
   'speedBps',
   'startedAt',
+  'test',
   'thresholdSource',
   'thresholdValue',
   'trendDropDb',
@@ -82,13 +93,12 @@ const PAYLOAD_KEYS = [
 
 function channel(overrides: Record<string, unknown> = {}) {
   return {
-    integrationId: 'media-1',
+    integrationId: 'media-2',
     source: 'DATABASE' as const,
     enabled: true,
-    url: 'https://n8n.exemplo.com/webhook/abc?token=nao-pode-vazar',
-    token: 'token-secreto-123',
-    resolvedPurpose: 'BGP_MITIGATION' as const,
-    shared: true,
+    url: 'https://n8n.exemplo.com/webhook/alarmes?token=nao-pode-vazar',
+    token: 'token-alarmes-123',
+    resolvedPurpose: 'NETWORK_ALARMS' as const,
     ...overrides,
   };
 }
@@ -108,7 +118,8 @@ function build(options: {
     recordOutboundDelivery,
   } as unknown as MediaChannelPort;
   return {
-    transport: new N8nAlarmTransport({ media, send }),
+    transport: new N8nAlarmTransport({ media, send, now: () => NOW }),
+    media,
     resolveOutbound,
     recordOutboundAttempt,
     recordOutboundDelivery,
@@ -117,12 +128,31 @@ function build(options: {
 }
 
 describe('transporte de midia dos alarmes (NETWORK_ALARMS)', () => {
-  it('monta o payload whitelist exato e nunca inclui segredo', () => {
+  it('monta o payload whitelist exato com o bloco canonico e nunca inclui segredo', () => {
     const payload = buildNetworkAlarmWebhookPayload(OPTICAL_ALARM, 'NETWORK_ALARM_ESCALATED');
     expect(Object.keys(payload).sort()).toEqual(PAYLOAD_KEYS);
     expect(payload).toMatchObject({
-      event: 'NETWORK_ALARM_ESCALATED',
+      schemaVersion: 1,
+      purpose: 'NETWORK_ALARMS',
+      event: 'ESCALATED',
+      eventKey: 'NETWORK_ALARM_ESCALATED',
+      test: false,
       alarmId: 'alarm-1',
+      message: 'F1A: CLIENTE-X (100GE0/0/2) — RX optico com proximidade 96%',
+      device: { id: 'dev-1', name: 'F1A' },
+      interface: { id: 'if-1', name: '100GE0/0/2', alias: 'CLIENTE-X' },
+      metricKey: 'RX_LANE_2',
+      optical: {
+        lane: 2,
+        rxPowerDbm: -13.5,
+        lowThresholdDbm: -14,
+        highThresholdDbm: -1,
+        proximityPercent: 96.15,
+        dropDb: 1.2,
+        dropWindowMinutes: 30,
+        triggerReasons: ['RAPID_DROP', 'PROXIMITY'],
+      },
+      occurredAt: NOW.toISOString(),
       ruleId: 'rule-1',
       type: 'OPTICAL_RX_DEGRADATION',
       severity: 'MAJOR',
@@ -158,16 +188,27 @@ describe('transporte de midia dos alarmes (NETWORK_ALARMS)', () => {
     }
   });
 
-  it('resolve NETWORK_ALARMS com fallback no canal BGP e envia o token em header', async () => {
+  it('alarme nao-optico nao inventa bloco optical', () => {
+    const payload = buildNetworkAlarmWebhookPayload(
+      { ...OPTICAL_ALARM, type: 'INTERFACE_DOWN', metadata: null },
+      'NETWORK_ALARM_OPENED',
+    );
+    expect(payload.optical).toBeNull();
+    expect(payload.event).toBe('OPENED');
+    expect(payload.lane).toBeNull();
+  });
+
+  it('resolve SOMENTE NETWORK_ALARMS e envia o token em header', async () => {
     const built = build();
     const outcome = await built.transport.publish('NETWORK_ALARM_OPENED', OPTICAL_ALARM);
     expect(outcome).toMatchObject({ ok: true, skipped: false, httpStatus: 200 });
-    expect(built.resolveOutbound).toHaveBeenCalledWith('NETWORK_ALARMS', 'BGP_MITIGATION');
+    expect(built.resolveOutbound).toHaveBeenCalledWith('NETWORK_ALARMS');
+    expect(built.resolveOutbound).not.toHaveBeenCalledWith('NETWORK_ALARMS', 'BGP_MITIGATION');
     const [, payload, headers] = built.send.mock.calls[0] as [string, object, Record<string, string>];
-    expect(headers['X-NetVision-Token']).toBe('token-secreto-123');
-    expect(JSON.stringify(payload)).not.toContain('token-secreto-123');
+    expect(headers['X-NetVision-Token']).toBe('token-alarmes-123');
+    expect(JSON.stringify(payload)).not.toContain('token-alarmes-123');
     expect(built.recordOutboundAttempt).toHaveBeenCalledWith(expect.objectContaining({
-      integrationId: 'media-1',
+      integrationId: 'media-2',
       event: 'NETWORK_ALARM_OPENED',
       profileId: 'rule-1',
       requestId: 'alarm-1',
@@ -215,5 +256,99 @@ describe('transporte de midia dos alarmes (NETWORK_ALARMS)', () => {
       httpStatus: 500,
       destination: 'https://n8n.exemplo.com',
     }));
+  });
+});
+
+describe('TESTAR ALARME (NETWORK_ALARMS)', () => {
+  it('envia pelo canal NETWORK_ALARMS e nunca pela mitigacao', async () => {
+    const built = build();
+    const outcome = await built.transport.publishAlarmTest({ profileId: 'media-2' });
+
+    expect(outcome).toMatchObject({ ok: true, skipped: false, event: 'NETWORK_ALARM_TEST' });
+    expect(built.resolveOutbound).toHaveBeenCalledTimes(1);
+    expect(built.resolveOutbound).toHaveBeenCalledWith('NETWORK_ALARMS');
+    const [url, payload, headers] = built.send.mock.calls[0] as [string, Record<string, unknown>, Record<string, string>];
+    expect(url).toBe('https://n8n.exemplo.com/webhook/alarmes?token=nao-pode-vazar');
+    expect(headers['X-NetVision-Token']).toBe('token-alarmes-123');
+    expect(payload).toMatchObject({
+      schemaVersion: 1,
+      purpose: 'NETWORK_ALARMS',
+      event: 'OPENED',
+      test: true,
+      alarmId: 'TEST-NETVISION',
+      severity: 'CRITICAL',
+      type: 'INTERFACE_DOWN',
+      message: 'Teste de alarme do GMJ NetVision',
+      device: { id: 'test-device', name: 'NETVISION-TEST' },
+      interface: { id: 'test-interface', name: '100GE0/0/1', alias: 'TESTE-WEBHOOK' },
+      optical: null,
+    });
+    expect(payload.occurredAt).toBe(NOW.toISOString());
+    expect(JSON.stringify(payload)).not.toContain('token-alarmes-123');
+  });
+
+  it('registra NETWORK_ALARM_TEST no log da propria integracao', async () => {
+    const built = build();
+    await built.transport.publishAlarmTest({ profileId: 'media-2' });
+    expect(built.recordOutboundAttempt).toHaveBeenCalledWith(expect.objectContaining({
+      integrationId: 'media-2',
+      event: 'NETWORK_ALARM_TEST',
+      profileId: 'media-2',
+      requestId: 'TEST-NETVISION',
+    }));
+    expect(built.recordOutboundDelivery).toHaveBeenCalledWith(expect.objectContaining({
+      event: 'NETWORK_ALARM_TEST',
+      ok: true,
+      httpStatus: 200,
+      latencyMs: 25,
+    }));
+  });
+
+  it('config ausente devolve SKIPPED/NOT_CONFIGURED sem chamar a rede', async () => {
+    const built = build({ channel: channel({ enabled: false, url: null, token: null, integrationId: null }) });
+    const outcome = await built.transport.publishAlarmTest();
+    expect(outcome).toMatchObject({
+      ok: false,
+      skipped: true,
+      safeError: 'Webhook não configurado',
+      event: 'NETWORK_ALARM_TEST',
+    });
+    expect(built.send).not.toHaveBeenCalled();
+  });
+
+  it('HTTP 500 devolve FAILED com erro seguro', async () => {
+    const send = vi.fn().mockRejectedValue(
+      new WebhookDeliveryError('HTTP 500', 500, 12, 'Webhook respondeu HTTP 500'),
+    );
+    const built = build({ send });
+    const outcome = await built.transport.publishAlarmTest();
+    expect(outcome).toMatchObject({ ok: false, skipped: false, httpStatus: 500, latencyMs: 12 });
+    expect(built.recordOutboundDelivery).toHaveBeenCalledWith(expect.objectContaining({
+      ok: false,
+      httpStatus: 500,
+      safeError: 'Webhook respondeu HTTP 500',
+    }));
+  });
+
+  it('timeout devolve erro seguro, sem stack nem token', async () => {
+    const send = vi.fn().mockRejectedValue(
+      new WebhookDeliveryError('timeout', null, 10_000, 'Timeout ao chamar o webhook'),
+    );
+    const built = build({ send });
+    const outcome = await built.transport.publishAlarmTest();
+    expect(outcome.safeError).toBe('Timeout ao chamar o webhook');
+    expect(JSON.stringify(outcome)).not.toContain('token-alarmes-123');
+  });
+
+  it('o alarme sintetico nao e persistido: o transporte so fala com a camada de midias', async () => {
+    const alarm = buildNetworkAlarmTestAlarm(NOW);
+    expect(alarm).toMatchObject({ id: 'TEST-NETVISION', endedAt: null, ruleId: null });
+
+    const built = build();
+    await built.transport.publishAlarmTest();
+    // A porta de midias nao possui nenhum metodo de alarme/ocorrencia: se o
+    // teste tentasse criar row, o proprio mock quebraria.
+    const portMethods = Object.keys(built.media);
+    expect(portMethods.sort()).toEqual(['recordOutboundAttempt', 'recordOutboundDelivery', 'resolveOutbound']);
   });
 });

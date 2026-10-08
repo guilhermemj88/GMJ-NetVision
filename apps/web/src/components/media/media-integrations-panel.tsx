@@ -432,9 +432,10 @@ type MediaPurposeTab = 'BGP_MITIGATION' | 'NETWORK_ALARMS';
 /**
  * CONFIGURAÇÕES → MÍDIAS.
  *
- * A tela cobre os dois purposes: Mitigação DDoS (editor completo do canal) e
- * Alarmes de Rede (canal efetivo, que pode ser o compartilhado). Nenhum segredo
- * é exibido: só "configurado: sim/não".
+ * A tela cobre os dois purposes com editores INDEPENDENTES (F9.5): Mitigação
+ * DDoS (outbound + inbound) e Alarmes de Rede (somente outbound, com TESTAR
+ * ALARME). Nenhuma URL/token é compartilhada entre as abas e nenhum segredo
+ * volta ao navegador depois de salvo.
  */
 export function MediaIntegrationsPanel() {
   const setPanel = useMapStore((state) => state.setPanel);

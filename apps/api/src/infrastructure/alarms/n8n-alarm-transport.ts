@@ -6,14 +6,15 @@ import {
   type MediaDeliveryOutcome,
   type WebhookDeliverySender,
 } from '../media/n8n-media-transport';
+import type { MediaAlarmTestPort } from '../media/media-integration-service';
 
 /**
  * TRANSPORTE de midia dos alarmes de REDE (purpose NETWORK_ALARMS).
  *
- * Reutiliza integralmente a camada de midias: o canal e resolvido por
- * `resolveOutbound` (integracao explicita > canal COMPARTILHADO do
- * BGP_MITIGATION > ENV), o token vem decriptado da propria resolucao (nunca e
- * copiado entre registros) e a entrega entra no MESMO log operacional.
+ * F9.5: o canal e resolvido SO por `resolveOutbound('NETWORK_ALARMS')` — nunca
+ * pelo canal da mitigacao e nunca pelo ENV legado. O mesmo sender HTTP, o mesmo
+ * serializer e o mesmo log operacional da camada de midias atendem os eventos
+ * reais (OPENED/ESCALATED/RESOLVED) e o botao TESTAR ALARME (`test: true`).
  */
 
 export const NETWORK_ALARM_EVENTS = [
@@ -23,14 +24,52 @@ export const NETWORK_ALARM_EVENTS = [
 ] as const;
 export type NetworkAlarmEvent = (typeof NETWORK_ALARM_EVENTS)[number];
 
+/** Evento de log do TESTAR ALARME (MediaDeliveryLog.event e String). */
+export const NETWORK_ALARM_TEST_EVENT = 'NETWORK_ALARM_TEST';
+
+/** Evento publicado no payload, no contrato que o n8n consome. */
+export type NetworkAlarmPublicEvent = 'OPENED' | 'ESCALATED' | 'RESOLVED';
+
+export const NETWORK_ALARM_PUBLIC_EVENT: Record<NetworkAlarmEvent, NetworkAlarmPublicEvent> = {
+  NETWORK_ALARM_OPENED: 'OPENED',
+  NETWORK_ALARM_ESCALATED: 'ESCALATED',
+  NETWORK_ALARM_RESOLVED: 'RESOLVED',
+};
+
+export interface NetworkAlarmOpticalPayload {
+  lane: number | null;
+  rxPowerDbm: number | null;
+  lowThresholdDbm: number | null;
+  highThresholdDbm: number | null;
+  proximityPercent: number | null;
+  dropDb: number | null;
+  dropWindowMinutes: number | null;
+  triggerReasons: string[] | null;
+}
+
 /**
  * Payload WHITELIST: apenas campos de exibicao do alarme. Nunca entram
  * community SNMP, senha SSH, DATABASE_URL, token, secret, output bruto de SNMP
  * ou de SSH.
+ *
+ * O bloco canonico (schemaVersion/purpose/event/test/device/interface/optical)
+ * e o contrato novo; os campos flat continuam para nao quebrar o workflow que
+ * ja consome os alarmes.
  */
 export interface NetworkAlarmWebhookPayload {
-  event: NetworkAlarmEvent;
+  schemaVersion: number;
+  purpose: 'NETWORK_ALARMS';
+  event: NetworkAlarmPublicEvent;
+  test: boolean;
   alarmId: string;
+  message: string | null;
+  device: { id: string; name: string };
+  interface: { id: string; name: string; alias: string };
+  metricKey: string | null;
+  optical: NetworkAlarmOpticalPayload | null;
+  occurredAt: string;
+  /** Chave interna do evento (fluxo real). */
+  eventKey: NetworkAlarmEvent;
   ruleId: string | null;
   type: string;
   severity: string;
@@ -73,11 +112,51 @@ function metadataValue<K extends keyof AlarmMetadata>(
 export function buildNetworkAlarmWebhookPayload(
   alarm: Alarm,
   event: NetworkAlarmEvent,
+  options: { test?: boolean } = {},
 ): NetworkAlarmWebhookPayload {
   const metadata = alarm.metadata ?? null;
+  const triggerReasons = metadata?.triggerReasons ? [...metadata.triggerReasons] : null;
+  const lane = metadataValue(metadata, 'lane');
+  const rxPowerDbm = metadataValue(metadata, 'rxPowerDbm');
+  const lowThresholdDbm = metadataValue(metadata, 'rxLowAlarmDbm');
+  const highThresholdDbm = metadataValue(metadata, 'rxHighAlarmDbm');
+  const proximityPercent = metadataValue(metadata, 'proximityPercent');
+  const dropDb = metadataValue(metadata, 'trendDropDb');
+  const dropWindowMinutes = metadataValue(metadata, 'trendWindowMinutes');
+  const hasOptical = [
+    lane,
+    rxPowerDbm,
+    lowThresholdDbm,
+    highThresholdDbm,
+    proximityPercent,
+    dropDb,
+    dropWindowMinutes,
+    triggerReasons,
+  ].some((value) => value !== null);
   return {
-    event,
+    schemaVersion: 1,
+    purpose: 'NETWORK_ALARMS',
+    event: NETWORK_ALARM_PUBLIC_EVENT[event],
+    test: options.test ?? false,
     alarmId: alarm.id,
+    message: alarm.message ?? null,
+    device: { id: alarm.deviceId, name: alarm.deviceName },
+    interface: { id: alarm.interfaceId, name: alarm.interfaceName, alias: alarm.interfaceLabel },
+    metricKey: alarm.metricKey ?? null,
+    optical: hasOptical
+      ? {
+          lane,
+          rxPowerDbm,
+          lowThresholdDbm,
+          highThresholdDbm,
+          proximityPercent,
+          dropDb,
+          dropWindowMinutes,
+          triggerReasons,
+        }
+      : null,
+    occurredAt: alarm.startedAt,
+    eventKey: event,
     ruleId: alarm.ruleId ?? null,
     type: alarm.type,
     severity: alarm.severity,
@@ -90,22 +169,53 @@ export function buildNetworkAlarmWebhookPayload(
     linkId: alarm.linkId,
     linkLabel: alarm.linkLabel,
     direction: metadataValue(metadata, 'direction'),
-    lane: metadataValue(metadata, 'lane'),
+    lane,
     currentValue: alarm.currentValue ?? null,
     thresholdValue: alarm.thresholdValue ?? null,
     unit: alarm.unit ?? null,
-    rxPowerDbm: metadataValue(metadata, 'rxPowerDbm'),
-    rxLowAlarmDbm: metadataValue(metadata, 'rxLowAlarmDbm'),
-    rxHighAlarmDbm: metadataValue(metadata, 'rxHighAlarmDbm'),
+    rxPowerDbm,
+    rxLowAlarmDbm: lowThresholdDbm,
+    rxHighAlarmDbm: highThresholdDbm,
     marginDb: metadataValue(metadata, 'marginDb'),
-    proximityPercent: metadataValue(metadata, 'proximityPercent'),
-    trendDropDb: metadataValue(metadata, 'trendDropDb'),
-    trendWindowMinutes: metadataValue(metadata, 'trendWindowMinutes'),
-    triggerReasons: metadata?.triggerReasons ? [...metadata.triggerReasons] : null,
+    proximityPercent,
+    trendDropDb: dropDb,
+    trendWindowMinutes: dropWindowMinutes,
+    triggerReasons,
     currentPowerSource: metadataValue(metadata, 'currentPowerSource'),
     thresholdSource: metadataValue(metadata, 'thresholdSource'),
     startedAt: alarm.startedAt,
     resolvedAt: alarm.endedAt,
+  };
+}
+
+/**
+ * Alarme sintetico do TESTAR ALARME. Nao entra em banco: existe so em memoria,
+ * marcado com `test: true` no payload.
+ */
+export function buildNetworkAlarmTestAlarm(now: Date): Alarm {
+  return {
+    id: 'TEST-NETVISION',
+    deviceId: 'test-device',
+    deviceName: 'NETVISION-TEST',
+    interfaceId: 'test-interface',
+    interfaceName: '100GE0/0/1',
+    interfaceLabel: 'TESTE-WEBHOOK',
+    ifIndex: 1,
+    linkId: null,
+    linkLabel: null,
+    type: 'INTERFACE_DOWN',
+    severity: 'CRITICAL',
+    startedAt: now.toISOString(),
+    endedAt: null,
+    acknowledgedAt: null,
+    acknowledgedBy: null,
+    message: 'Teste de alarme do GMJ NetVision',
+    ruleId: null,
+    metricKey: null,
+    currentValue: null,
+    thresholdValue: null,
+    unit: null,
+    metadata: null,
   };
 }
 
@@ -117,13 +227,50 @@ export interface AlarmNotificationTransport {
 export interface N8nAlarmTransportDeps {
   media: MediaChannelPort;
   send: WebhookDeliverySender;
+  now?: () => Date;
 }
 
-export class N8nAlarmTransport implements AlarmNotificationTransport {
-  constructor(private readonly deps: N8nAlarmTransportDeps) {}
+export class N8nAlarmTransport implements AlarmNotificationTransport, MediaAlarmTestPort {
+  private readonly now: () => Date;
 
+  constructor(private readonly deps: N8nAlarmTransportDeps) {
+    this.now = deps.now ?? (() => new Date());
+  }
+
+  /** Caminho dos alarmes REAIS (OPENED/ESCALATED/RESOLVED). */
   async publish(event: NetworkAlarmEvent, alarm: Alarm): Promise<MediaDeliveryOutcome> {
-    const channel = await this.deps.media.resolveOutbound('NETWORK_ALARMS', 'BGP_MITIGATION');
+    return this.deliverAlarm(
+      event,
+      alarm,
+      alarm.ruleId ?? null,
+      buildNetworkAlarmWebhookPayload(alarm, event),
+    );
+  }
+
+  /**
+   * TESTAR ALARME: o MESMO serializer, o MESMO transporte e o MESMO sender dos
+   * alarmes reais, trocando apenas o canal resolvido (NETWORK_ALARMS) e o
+   * payload sintetico (`test: true`, alarmId TEST-NETVISION). Nao cria linha em
+   * Alarm/OperationalOccurrence e nao altera badge nenhum.
+   */
+  async publishAlarmTest(input: { profileId?: string | null } = {}): Promise<MediaDeliveryOutcome> {
+    const alarm = buildNetworkAlarmTestAlarm(this.now());
+    return this.deliverAlarm(
+      NETWORK_ALARM_TEST_EVENT,
+      alarm,
+      input.profileId ?? null,
+      buildNetworkAlarmWebhookPayload(alarm, 'NETWORK_ALARM_OPENED', { test: true }),
+    );
+  }
+
+  private async deliverAlarm(
+    event: string,
+    alarm: Alarm,
+    profileId: string | null,
+    payload: NetworkAlarmWebhookPayload,
+  ): Promise<MediaDeliveryOutcome> {
+    // F9.5: somente o canal NETWORK_ALARMS (sem fallback cruzado).
+    const channel = await this.deps.media.resolveOutbound('NETWORK_ALARMS');
     const destination = safeDestination(channel.url);
     const requestId = alarm.id;
 
@@ -131,7 +278,7 @@ export class N8nAlarmTransport implements AlarmNotificationTransport {
       await this.deps.media.recordOutboundDelivery({
         integrationId: channel.integrationId,
         event,
-        profileId: alarm.ruleId ?? null,
+        profileId,
         requestId,
         destination,
         ok: false,
@@ -152,7 +299,7 @@ export class N8nAlarmTransport implements AlarmNotificationTransport {
     await this.deps.media.recordOutboundAttempt({
       integrationId: channel.integrationId,
       event,
-      profileId: alarm.ruleId ?? null,
+      profileId,
       requestId,
       destination,
     });
@@ -163,15 +310,11 @@ export class N8nAlarmTransport implements AlarmNotificationTransport {
     };
 
     try {
-      const result = await this.deps.send(
-        channel.url,
-        buildNetworkAlarmWebhookPayload(alarm, event),
-        headers,
-      );
+      const result = await this.deps.send(channel.url, payload, headers);
       await this.deps.media.recordOutboundDelivery({
         integrationId: channel.integrationId,
         event,
-        profileId: alarm.ruleId ?? null,
+        profileId,
         requestId,
         destination,
         ok: true,
@@ -194,7 +337,7 @@ export class N8nAlarmTransport implements AlarmNotificationTransport {
       await this.deps.media.recordOutboundDelivery({
         integrationId: channel.integrationId,
         event,
-        profileId: alarm.ruleId ?? null,
+        profileId,
         requestId,
         destination,
         ok: false,

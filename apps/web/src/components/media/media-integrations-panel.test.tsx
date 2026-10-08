@@ -14,6 +14,7 @@ const media = vi.hoisted(() => ({
   createMediaIntegration: vi.fn(),
   updateMediaIntegration: vi.fn(),
   testMediaWebhook: vi.fn(),
+  testMediaAlarm: vi.fn(),
   rotateMediaInboundToken: vi.fn(),
   MEDIA_STATUS_LABELS: {
     DISABLED: 'Desativado',
@@ -304,24 +305,42 @@ describe('CONFIGURAÇÕES → MÍDIAS', () => {
     expect(media.updateMediaIntegration).toHaveBeenCalledWith('media-1', { enabled: true });
   });
 
-  it('oferece as abas por purpose e mostra o canal efetivo dos alarmes', async () => {
+  it('oferece as abas por purpose com editores independentes (F9.5)', async () => {
+    const alarmsIntegration = {
+      ...integration,
+      id: 'media-2',
+      name: 'n8n — Alarmes de Rede',
+      purpose: 'NETWORK_ALARMS' as const,
+      outboundUrl: 'https://n8n.exemplo.com/webhook/alarmes',
+      lastOutboundEvent: 'NETWORK_ALARM_OPENED',
+      inboundEnabled: false,
+      inboundConfigured: false,
+      inboundTokenConfigured: false,
+      lastInboundAction: null,
+      lastInboundAt: null,
+    };
     media.getMediaIntegrationsByPurpose.mockResolvedValue({
       repositoryKind: 'DATABASE',
       migrationReady: true,
-      resolvedPurpose: 'BGP_MITIGATION',
-      shared: true,
+      resolvedPurpose: 'NETWORK_ALARMS',
       legacyEnv: {
         outboundUrlConfigured: true,
         outboundTokenConfigured: true,
         inboundTokenConfigured: false,
         inboundEndpointPath: '',
       },
-      integration,
+      integration: alarmsIntegration,
     });
     await render(createElement(MediaIntegrationsPanel));
 
     const tabs = [...container.querySelectorAll<HTMLButtonElement>('.media-purpose-tabs button')];
     expect(tabs.map((tab) => tab.textContent)).toEqual(['MITIGAÇÃO DDOS', 'ALARMES DE REDE']);
+
+    // Aba da mitigação: só a URL da mitigação, nada de alarmes.
+    const mitigationUrls = [...container.querySelectorAll<HTMLInputElement>('input[type="url"]')]
+      .map((input) => input.value);
+    expect(mitigationUrls).toEqual(['https://n8n.exemplo.com/webhook/abc']);
+    expect(container.textContent).not.toContain('TESTAR ALARME');
 
     await act(async () => {
       tabs[1]?.click();
@@ -330,8 +349,21 @@ describe('CONFIGURAÇÕES → MÍDIAS', () => {
 
     const text = container.textContent ?? '';
     expect(text).toContain('n8n — Alarmes de Rede');
-    expect(text).toContain('Canal compartilhado com Mitigação DDoS');
-    expect(text).toContain('resolvedPurpose=BGP_MITIGATION');
+    expect(text).toContain('TESTAR ALARME');
+    expect(text).toContain('Canal exclusivo dos alarmes');
+    // A URL da aba é a da integração de alarmes — nunca a da mitigação.
+    const urlInputs = [...container.querySelectorAll<HTMLInputElement>('input[type="url"]')]
+      .map((input) => input.value);
+    expect(urlInputs).toEqual(['https://n8n.exemplo.com/webhook/alarmes']);
+    // Aba de alarmes não tem inbound nem comandos.
+    expect(text).not.toContain('Inbound configurado');
+    expect(text).not.toContain('ÚLTIMOS COMANDOS');
+    expect(text).not.toContain('Canal compartilhado');
     expect(media.getMediaIntegrationsByPurpose).toHaveBeenCalledWith('NETWORK_ALARMS');
+    // O log consultado é o da própria integração de alarmes.
+    expect(media.getRecentMediaLogs).toHaveBeenCalledWith(
+      { direction: 'OUTBOUND', limit: 30 },
+      'media-2',
+    );
   });
 });

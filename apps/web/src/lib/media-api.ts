@@ -52,10 +52,8 @@ export interface MediaIntegrationDto {
 export interface MediaIntegrationsOverview {
   repositoryKind: 'DATABASE' | 'MEMORY';
   migrationReady: boolean;
-  /** Canal que realmente entrega este purpose (pode ser o compartilhado). */
+  /** Canal DESTE purpose quando configurado e ligado (nunca o de outro purpose). */
   resolvedPurpose: MediaIntegrationPurpose | null;
-  /** true quando o canal efetivo é o compartilhado (ex.: BGP para alarmes). */
-  shared: boolean;
   legacyEnv: {
     outboundUrlConfigured: boolean;
     outboundTokenConfigured: boolean;
@@ -123,7 +121,7 @@ export function getMediaSummary(): Promise<MediaSummary> {
 
 export function createMediaIntegration(input: {
   name: string;
-  purpose: 'BGP_MITIGATION';
+  purpose: MediaIntegrationPurpose;
   enabled?: boolean;
   outboundUrl?: string | null;
   outboundToken?: string;
@@ -157,6 +155,17 @@ export function testMediaWebhook(id: string): Promise<MediaWebhookTestResult> {
   return request<MediaWebhookTestResult>(`/api/media/integrations/${encodeURIComponent(id)}/test`, {
     method: 'POST',
   });
+}
+
+/**
+ * TESTAR ALARME (F9.5): envia o payload sintetico pelo canal NETWORK_ALARMS,
+ * com a mesma serializacao dos alarmes reais. Nunca toca na mitigacao.
+ */
+export function testMediaAlarm(id: string): Promise<MediaWebhookTestResult> {
+  return request<MediaWebhookTestResult>(
+    `/api/media/integrations/${encodeURIComponent(id)}/test-alarm`,
+    { method: 'POST' },
+  );
 }
 
 export function rotateMediaInboundToken(

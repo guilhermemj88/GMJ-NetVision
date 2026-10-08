@@ -173,89 +173,174 @@ describe('resolução de configuração (banco vence ENV)', () => {
   });
 });
 
-describe('canal compartilhado dos alarmes (NETWORK_ALARMS)', () => {
-  it('prioriza a integração explícita de NETWORK_ALARMS', async () => {
-    const { service } = buildService({ env: { outboundUrl: 'https://env/webhook' } });
-    await service.create({
-      name: 'bgp',
-      purpose: 'BGP_MITIGATION',
-      outboundUrl: 'https://bgp/webhook',
-      outboundToken: 'bgp-token',
-    });
-    await service.create({
-      name: 'alarmes',
-      purpose: 'NETWORK_ALARMS',
-      outboundUrl: 'https://alarmes/webhook',
-      outboundToken: 'alarmes-token',
-    });
-    const channel = await service.resolveOutbound('NETWORK_ALARMS', 'BGP_MITIGATION');
-    expect(channel).toMatchObject({
-      url: 'https://alarmes/webhook',
-      token: 'alarmes-token',
-      shared: false,
-      resolvedPurpose: 'NETWORK_ALARMS',
-    });
-  });
+describe('mídias SEPARADAS: BGP_MITIGATION x NETWORK_ALARMS (F9.5)', () => {
+  const bgp = {
+    name: 'n8n — Mitigação DDoS',
+    purpose: 'BGP_MITIGATION' as const,
+    outboundUrl: 'https://bgp/webhook',
+    outboundToken: 'bgp-token',
+  };
+  const alarms = {
+    name: 'n8n — Alarmes de Rede',
+    purpose: 'NETWORK_ALARMS' as const,
+    outboundUrl: 'https://alarmes/webhook',
+    outboundToken: 'alarmes-token',
+  };
 
-  it('reutiliza o canal do BGP_MITIGATION sem copiar o token para outro registro', async () => {
-    const { service, repository } = buildService();
-    await service.create({
-      name: 'bgp',
-      purpose: 'BGP_MITIGATION',
-      outboundUrl: 'https://bgp/webhook',
-      outboundToken: 'bgp-token',
-    });
-    const channel = await service.resolveOutbound('NETWORK_ALARMS', 'BGP_MITIGATION');
-    expect(channel).toMatchObject({
+  it('cada purpose resolve SOMENTE a própria integração, com URL e token próprios', async () => {
+    const { service } = buildService();
+    await service.create(bgp);
+    await service.create(alarms);
+
+    const mitigation = await service.resolveOutbound('BGP_MITIGATION');
+    expect(mitigation).toMatchObject({
       url: 'https://bgp/webhook',
       token: 'bgp-token',
-      shared: true,
       resolvedPurpose: 'BGP_MITIGATION',
     });
-    expect(await repository.findByPurpose('NETWORK_ALARMS')).toBeNull();
-  });
 
-  it('cai para o ENV quando nenhum canal persistido existe', async () => {
-    const { service } = buildService({
-      env: { outboundUrl: 'https://env/webhook', outboundToken: 'env-token' },
+    const networkAlarms = await service.resolveOutbound('NETWORK_ALARMS');
+    expect(networkAlarms).toMatchObject({
+      url: 'https://alarmes/webhook',
+      token: 'alarmes-token',
+      resolvedPurpose: 'NETWORK_ALARMS',
     });
-    const channel = await service.resolveOutbound('NETWORK_ALARMS', 'BGP_MITIGATION');
-    expect(channel).toMatchObject({ source: 'ENV', url: 'https://env/webhook', shared: false });
+    expect(networkAlarms.integrationId).not.toBe(mitigation.integrationId);
   });
 
-  it('fica desligado (SKIPPED) sem banco, sem canal compartilhado e sem ENV', async () => {
+  it('NETWORK_ALARMS ausente NÃO cai no canal da mitigação', async () => {
     const { service } = buildService();
-    const channel = await service.resolveOutbound('NETWORK_ALARMS', 'BGP_MITIGATION');
+    await service.create(bgp);
+
+    const channel = await service.resolveOutbound('NETWORK_ALARMS');
+    expect(channel.enabled).toBe(false);
+    expect(channel.url).toBeNull();
+    expect(channel.token).toBeNull();
+    expect(channel.integrationId).toBeNull();
+  });
+
+  it('BGP_MITIGATION ausente NÃO cai no canal de alarmes', async () => {
+    const { service } = buildService();
+    await service.create(alarms);
+
+    const channel = await service.resolveOutbound('BGP_MITIGATION');
     expect(channel.enabled).toBe(false);
     expect(channel.url).toBeNull();
   });
 
-  it('o overview do purpose informa quando o canal efetivo é o compartilhado', async () => {
-    const { service } = buildService();
-    await service.create({
-      name: 'bgp',
-      purpose: 'BGP_MITIGATION',
-      outboundUrl: 'https://bgp/webhook',
-      outboundToken: 'bgp-token',
-    });
-    const shared = await service.overview('NETWORK_ALARMS');
-    expect(shared).toMatchObject({
-      resolvedPurpose: 'BGP_MITIGATION',
-      shared: true,
-      integration: null,
+  it('o ENV legado da mitigação nunca é usado por NETWORK_ALARMS', async () => {
+    const { service } = buildService({
+      env: { outboundUrl: 'https://env/webhook', outboundToken: 'env-token' },
     });
 
-    await service.create({
-      name: 'alarmes',
-      purpose: 'NETWORK_ALARMS',
-      outboundUrl: 'https://alarmes/webhook',
+    // Mitigação usa o ENV (comportamento preservado)...
+    const mitigation = await service.resolveOutbound('BGP_MITIGATION');
+    expect(mitigation).toMatchObject({ source: 'ENV', url: 'https://env/webhook' });
+
+    // ...e os alarmes ficam SKIPPED, sem tocar no ENV.
+    const networkAlarms = await service.resolveOutbound('NETWORK_ALARMS');
+    expect(networkAlarms).toMatchObject({ enabled: false, url: null, token: null });
+    expect(networkAlarms.source).not.toBe('ENV');
+  });
+
+  it('desabilitar um canal não afeta o outro (enable independente)', async () => {
+    const { service } = buildService();
+    const created = await service.create({ ...bgp, enabled: false });
+    await service.create(alarms);
+
+    const mitigation = await service.resolveOutbound('BGP_MITIGATION');
+    expect(mitigation.enabled).toBe(false);
+
+    const networkAlarms = await service.resolveOutbound('NETWORK_ALARMS');
+    expect(networkAlarms.enabled).toBe(true);
+
+    await service.update(created.id, { enabled: true });
+    expect((await service.resolveOutbound('BGP_MITIGATION')).enabled).toBe(true);
+    expect((await service.resolveOutbound('NETWORK_ALARMS')).enabled).toBe(true);
+  });
+
+  it('rotacionar o token de um purpose não invalida o do outro', async () => {
+    const { service } = buildService();
+    await service.create(bgp);
+    const alarmsIntegration = await service.create(alarms);
+
+    await service.setOutboundToken(alarmsIntegration.id, 'alarmes-token-2');
+    expect((await service.resolveOutbound('NETWORK_ALARMS')).token).toBe('alarmes-token-2');
+    expect((await service.resolveOutbound('BGP_MITIGATION')).token).toBe('bgp-token');
+  });
+
+  it('o overview informa o canal do próprio purpose (sem campo de compartilhamento)', async () => {
+    const { service } = buildService();
+    await service.create(bgp);
+
+    const withoutOwn = await service.overview('NETWORK_ALARMS');
+    expect(withoutOwn).toMatchObject({ resolvedPurpose: null, integration: null });
+    expect(withoutOwn).not.toHaveProperty('shared');
+
+    await service.create(alarms);
+    const withOwn = await service.overview('NETWORK_ALARMS');
+    expect(withOwn).toMatchObject({ resolvedPurpose: 'NETWORK_ALARMS' });
+    expect(withOwn.integration).toMatchObject({ purpose: 'NETWORK_ALARMS' });
+  });
+
+  it('TESTAR ALARME usa o transporte de alarmes e o canal NETWORK_ALARMS', async () => {
+    const { service, repository } = buildService();
+    await service.create(alarms);
+    const sent: Array<{ url: string; payload: Record<string, unknown>; headers: Record<string, string> }> = [];
+    const alarmsIntegration = await repository.findByPurpose('NETWORK_ALARMS');
+    service.attachAlarmTransport({
+      publishAlarmTest: async () => {
+        const channel = await service.resolveOutbound('NETWORK_ALARMS');
+        sent.push({
+          url: channel.url ?? '',
+          payload: { purpose: 'NETWORK_ALARMS', test: true },
+          headers: channel.token ? { 'X-NetVision-Token': channel.token } : {},
+        });
+        return {
+          ok: true,
+          skipped: false,
+          httpStatus: 200,
+          latencyMs: 33,
+          safeError: null,
+          event: 'NETWORK_ALARM_TEST',
+        };
+      },
     });
-    const explicit = await service.overview('NETWORK_ALARMS');
-    expect(explicit).toMatchObject({
-      resolvedPurpose: 'NETWORK_ALARMS',
-      shared: false,
+
+    const outcome = await service.testAlarmWebhook(alarmsIntegration?.id ?? '');
+    expect(outcome).toMatchObject({ ok: true, httpStatus: 200, event: 'NETWORK_ALARM_TEST' });
+    expect(sent[0]?.url).toBe('https://alarmes/webhook');
+    expect(sent[0]?.headers['X-NetVision-Token']).toBe('alarmes-token');
+  });
+
+  it('TESTAR ALARME recusa integração de mitigação ou id desconhecido', async () => {
+    const { service } = buildService();
+    const mitigation = await service.create(bgp);
+    const outcome = await service.testAlarmWebhook(mitigation.id);
+    expect(outcome).toMatchObject({ ok: false, skipped: true, event: 'NETWORK_ALARM_TEST' });
+    expect(await service.testAlarmWebhook('inexistente')).toMatchObject({ ok: false, skipped: true });
+  });
+
+  it('TESTAR ALARME sem configuração devolve SKIPPED/NOT_CONFIGURED e não chama a rede', async () => {
+    const { service } = buildService();
+    const created = await service.create({ name: 'n8n — Alarmes de Rede', purpose: 'NETWORK_ALARMS' });
+    let called = 0;
+    service.attachAlarmTransport({
+      publishAlarmTest: async () => {
+        called += 1;
+        return {
+          ok: false,
+          skipped: true,
+          httpStatus: null,
+          latencyMs: null,
+          safeError: 'Webhook não configurado',
+          event: 'NETWORK_ALARM_TEST',
+        };
+      },
     });
-    expect(explicit.integration).toMatchObject({ purpose: 'NETWORK_ALARMS' });
+    const outcome = await service.testAlarmWebhook(created.id);
+    expect(outcome).toMatchObject({ ok: false, skipped: true, safeError: 'Webhook não configurado' });
+    expect(called).toBe(1);
   });
 });
 
