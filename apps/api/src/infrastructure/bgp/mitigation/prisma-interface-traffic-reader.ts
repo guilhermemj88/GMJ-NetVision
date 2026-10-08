@@ -1,4 +1,5 @@
 import { Prisma, PrismaClient } from '../../../generated/prisma/index.js';
+import { USABLE_TRAFFIC_SAMPLE_SQL } from '../../persistence/traffic-sample-sql';
 
 /**
  * Leitor READ-ONLY da telemetria REAL de interface do NetVision.
@@ -32,7 +33,9 @@ export class PrismaInterfaceTrafficReader implements InterfaceTrafficReader {
       SELECT m."interfaceId" AS "interfaceId", m."rxBps" AS "rxBps", m."txBps" AS "txBps",
              m."timestamp" AS "timestamp"
       FROM "InterfaceMetricSample" m
+      JOIN "Interface" i ON i."id" = m."interfaceId"
       WHERE m."interfaceId" = ${interfaceId}
+        AND (${Prisma.raw(USABLE_TRAFFIC_SAMPLE_SQL)})
       ORDER BY m."timestamp" DESC
       LIMIT 1
     `);

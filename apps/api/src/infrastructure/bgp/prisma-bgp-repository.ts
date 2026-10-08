@@ -1,4 +1,5 @@
 import { Prisma, PrismaClient, type BgpPeerRole, type BgpState, type BgpAdminState as PrismaBgpAdminState, type BgpAddressFamily as PrismaBgpAddressFamily } from '../../generated/prisma/index.js';
+import { USABLE_TRAFFIC_SAMPLE_SQL } from '../persistence/traffic-sample-sql';
 import {
   bigintToJsonNumber,
   bigintToJsonString,
@@ -485,6 +486,7 @@ export class PrismaBgpRepository implements BgpRepository {
           SELECT m."rxBps", m."txBps"
           FROM "InterfaceMetricSample" m
           WHERE m."interfaceId" = i."id"
+            AND (${Prisma.raw(USABLE_TRAFFIC_SAMPLE_SQL)})
           ORDER BY m."timestamp" DESC
           LIMIT 1
         ) s ON TRUE
