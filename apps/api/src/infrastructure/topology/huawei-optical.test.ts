@@ -220,3 +220,49 @@ describe('Lane encoding por profile (evidencia real S6730 100G)', () => {
     ]);
   });
 });
+describe('thresholds WARNING (.20-.23) do transceiver', () => {
+  it('mantem ALARM e WARNING como pares independentes', () => {
+    const thresholds = buildHuaweiDeviceThresholds({
+      rx: { low: -23.1, high: -6 },
+      tx: { low: -2, high: 5 },
+      rxWarning: { low: -22.07, high: -7 },
+      txWarning: { low: -1, high: 4 },
+    });
+    expect(thresholds?.scalar.rx.lowAlarmDbm).toBe(-23.1);
+    expect(thresholds?.scalar.rx.lowWarningDbm).toBe(-22.07);
+    expect(thresholds?.scalar.rx.highWarningDbm).toBe(-7);
+    expect(thresholds?.scalar.rx.lowSource).toBe('DEVICE');
+    expect(thresholds?.scalar.tx.highWarningDbm).toBe(4);
+  });
+
+  it('familia sem WARNING (YunShan) fica null, nunca copiando o ALARM', () => {
+    const thresholds = buildHuaweiDeviceThresholds({
+      rx: { low: -13.6, high: 5.5 },
+      tx: { low: -6.3, high: 5.5 },
+    });
+    expect(thresholds?.scalar.rx.lowWarningDbm).toBeUndefined();
+    expect(thresholds?.scalar.rx.highWarningDbm).toBeUndefined();
+  });
+
+  it('WARNING fora da janela HARD e descartado inteiro', () => {
+    const thresholds = buildHuaweiDeviceThresholds({
+      rx: { low: -23.1, high: -6 },
+      tx: { low: -2, high: 5 },
+      rxWarning: { low: -24.9, high: -7 },
+    });
+    expect(thresholds?.scalar.rx.lowWarningDbm).toBeNull();
+    expect(thresholds?.scalar.rx.highWarningDbm).toBe(-7);
+    expect(thresholds?.scalar.tx.lowWarningDbm).toBeUndefined();
+  });
+
+  it('so WARNING (sem ALARM valido) ainda produz estrutura com source DEVICE', () => {
+    const thresholds = buildHuaweiDeviceThresholds({
+      rx: { low: null, high: null },
+      tx: { low: null, high: null },
+      rxWarning: { low: -20.51, high: -7 },
+    });
+    expect(thresholds?.scalar.rx.lowWarningDbm).toBe(-20.51);
+    expect(thresholds?.scalar.rx.lowSource).toBe('DEVICE');
+    expect(thresholds?.scalar.tx.lowSource).toBeNull();
+  });
+});

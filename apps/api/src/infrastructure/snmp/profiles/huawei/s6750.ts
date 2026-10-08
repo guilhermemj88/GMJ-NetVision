@@ -30,5 +30,8 @@ export const huaweiS6750Profile: SnmpProfile = {
   // YunShan ja entrega o CSV de lane em dBm (real: 0.19,0.69,1.02,0.11) — nao
   // dividir por 100.
   opticalLaneEncoding: 'DBM',
+  // YunShan NAO publica as colunas .20-.23 (comprovado por walk em campo):
+  // WARNING fica null e o motor cai para a janela HARD.
+  opticalWarningEncoding: 'ABSENT',
   metrics: huaweiGenericProfile.metrics,
 };

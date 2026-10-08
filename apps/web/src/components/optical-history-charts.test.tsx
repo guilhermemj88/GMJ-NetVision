@@ -186,7 +186,14 @@ describe('thresholds no grafico optico (F7.5)', () => {
         lanes: [],
       },
     }, 'rx');
-    expect(range).toEqual({ low: -12.31, high: 3.4, source: 'DEVICE', scope: 'MODULE' });
+    expect(range).toEqual({
+      low: -12.31,
+      high: 3.4,
+      lowWarning: null,
+      highWarning: null,
+      source: 'DEVICE',
+      scope: 'MODULE',
+    });
   });
 
   it('sem scalar usa a envoltoria dos limites por lane e nunca inventa valor', () => {
@@ -207,7 +214,7 @@ describe('thresholds no grafico optico (F7.5)', () => {
     expect(range).toMatchObject({ low: -13.5, high: 3, source: 'USER', scope: 'LANE' });
 
     expect(opticalThresholdRange(baseInterface, 'rx')).toEqual({
-      low: null, high: null, source: null, scope: null,
+      low: null, high: null, lowWarning: null, highWarning: null, source: null, scope: null,
     });
   });
 
@@ -282,7 +289,7 @@ describe('escala AUTO/LIMITES do historico optico (F9.4.2)', () => {
   it('LIMITES: as duas linhas de referencia aparecem e nenhum chip fala em janela', () => {
     const scale = chartScale('LIMITS', rxValues, device);
     const html = renderToStaticMarkup(<OpticalThresholdChips thresholds={device} scale={scale} />);
-    expect(html.match(/<span class="chart-thresholds__chip/g)).toHaveLength(3);
+    expect(html.match(/<span class="chart-thresholds__chip/g)).toHaveLength(5);
     expect(html).toContain('-21.48 dBm');
     expect(html).toContain('-2.50 dBm');
     expect(html).toContain('DEVICE');
@@ -315,10 +322,14 @@ describe('escala AUTO/LIMITES do historico optico (F9.4.2)', () => {
   it('chips: LOW, HIGH e fonte em blocos separados, hint dentro do proprio chip', () => {
     const scale = chartScale('AUTO', rxValues, device);
     const html = renderToStaticMarkup(<OpticalThresholdChips thresholds={device} scale={scale} />);
-    expect(html.match(/<span class="chart-thresholds__chip/g)).toHaveLength(3);
+    expect(html.match(/<span class="chart-thresholds__chip/g)).toHaveLength(5);
     expect(html).toContain('chart-thresholds__chip--source');
-    expect(html).toContain('<em>LOW</em>');
-    expect(html).toContain('<em>HIGH</em>');
+    expect(html).toContain('<em>LOW ALARM</em>');
+    expect(html).toContain('<em>HIGH ALARM</em>');
+    expect(html).toContain('<em>LOW WARN</em>');
+    expect(html).toContain('<em>HIGH WARN</em>');
+    expect(html).toContain('chart-thresholds__chip--warn');
+    expect(html).toContain('chart-thresholds__chip--alarm');
     expect(html).toContain('<em>FONTE</em>');
     expect(html).toContain('↓ abaixo da janela');
     expect(html).toContain('↑ acima da janela');
@@ -332,6 +343,33 @@ describe('escala AUTO/LIMITES do historico optico (F9.4.2)', () => {
     const html = renderToStaticMarkup(<OpticalThresholdChips thresholds={empty} scale={scale} />);
     expect(html).toContain('N/D');
     expect(html).not.toContain('janela');
+  });
+
+  it('WARNING e ALARM sao linhas distintas; valores iguais nao duplicam', () => {
+    const withWarning = { low: -23.1, high: -6, lowWarning: -22.07, highWarning: -7, source: 'DEVICE' as const, scope: 'MODULE' as const };
+    const scale = chartScale('AUTO', [-13, -13.2, -13.1], withWarning);
+    expect(scale.low?.visible).toBe(false);
+    expect(scale.lowWarning?.visible).toBe(false);
+    expect(scale.lowWarning?.hint).toBe('below');
+
+    const duplicated = { ...withWarning, lowWarning: -23.1, highWarning: -6 };
+    const deduped = chartScale('AUTO', [-13, -13.2, -13.1], duplicated);
+    expect(deduped.lowWarning).toBeNull();
+    expect(deduped.highWarning).toBeNull();
+  });
+
+  it('LIMITES inclui WARNING e ALARM no dominio (as quatro linhas aparecem)', () => {
+    const thresholds = { low: -23.1, high: -6, lowWarning: -22.07, highWarning: -7, source: 'DEVICE' as const, scope: 'MODULE' as const };
+    const values = [-13, -13.2, -13.1];
+    const auto = chartScale('AUTO', values, thresholds);
+    const limits = chartScale('LIMITS', values, thresholds);
+    expect(auto.domain?.[0] ?? 0).toBeGreaterThan(limits.domain?.[0] ?? 0);
+    expect(limits.domain?.[0]).toBeLessThanOrEqual(-23.1);
+    expect(limits.domain?.[1]).toBeGreaterThanOrEqual(-6);
+    expect(limits.low?.visible).toBe(true);
+    expect(limits.high?.visible).toBe(true);
+    expect(limits.lowWarning?.visible).toBe(true);
+    expect(limits.highWarning?.visible).toBe(true);
   });
 
   it('single sample desenha os pontos; com historico a linha volta a ser linha', () => {

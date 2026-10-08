@@ -18,5 +18,7 @@ export const huaweiS6730Profile: SnmpProfile = {
   // 100GE0/0/2 (entPhysicalIndex 67502222) o RX cru e -1372.63, que so fecha com
   // o scalar (42 uW = -13.77 dBm) depois de /100 -> -13.73 dBm.
   opticalLaneEncoding: 'CENTI_DBM',
+  // .20-.23 (WARNING) existem no VRP classico â€” validado em campo no S6730.
+  opticalWarningEncoding: 'CENTI_DBM',
   metrics: huaweiGenericProfile.metrics,
 };

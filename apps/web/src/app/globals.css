@@ -3673,6 +3673,26 @@ button {
   font: 500 8px var(--font-mono);
   white-space: nowrap;
 }
+
+/* Fase WARNING: WARN (degradacao antecipada) x ALARM (hard) */
+.chart-thresholds__chip--warn em {
+  color: #e3a64b;
+}
+
+.chart-thresholds__chip--warn strong,
+.chart-thresholds__chip--warn span {
+  color: #e3a64b;
+}
+
+.chart-thresholds__chip--alarm em {
+  color: #e05c5c;
+}
+
+.chart-thresholds__chip--alarm strong,
+.chart-thresholds__chip--alarm span {
+  color: #e05c5c;
+}
+
 .chart-thresholds__chip em {
   color: #6f838d;
   font-style: normal;

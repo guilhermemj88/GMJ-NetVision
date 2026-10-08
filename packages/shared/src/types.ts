@@ -222,6 +222,11 @@ export interface AlarmMetadata {
   rxPowerDbm?: number | undefined;
   rxLowAlarmDbm?: number | null | undefined;
   rxHighAlarmDbm?: number | null | undefined;
+  /** WARNING (.20-.23) do transceiver; usado na proximidade quando existe. */
+  rxLowWarningDbm?: number | null | undefined;
+  rxHighWarningDbm?: number | null | undefined;
+  /** Janela efetiva da proximidade desta avaliacao (WARNING quando publicada). */
+  proximityReference?: OpticalProximityReference | null | undefined;
   marginDb?: number | null | undefined;
   proximityPercent?: number | null | undefined;
   trendDropDb?: number | null | undefined;
@@ -263,9 +268,19 @@ export type OpticalThresholdSource = 'USER' | 'DEVICE' | 'DEFAULT' | 'MANUAL';
 export interface OpticalThresholdSide {
   lowAlarmDbm: number | null;
   highAlarmDbm: number | null;
+  /**
+   * WARNING do transceiver (.20-.23): faixa em que o link ainda opera, porem
+   * degradado. `null` = o equipamento nao publica WARNING (ex.: YunShan/S6750),
+   * nunca "igual ao ALARM".
+   */
+  lowWarningDbm?: number | null | undefined;
+  highWarningDbm?: number | null | undefined;
   lowSource: OpticalThresholdSource | null;
   highSource: OpticalThresholdSource | null;
 }
+
+/** Janela usada no calculo de proximidade do RX. */
+export type OpticalProximityReference = 'WARNING' | 'ALARM';
 
 /** Estrutura canonica (versionada) de thresholds do transceiver por interface. */
 export interface OpticalThresholdsV1 {

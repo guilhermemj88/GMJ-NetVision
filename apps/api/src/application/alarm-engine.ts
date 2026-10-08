@@ -7,6 +7,7 @@ import type {
   MetricAlarmType,
   MetricThresholdRuleConfig,
   NetworkInterface,
+  OpticalProximityReference,
   OpticalRuleConfig,
   OpticalThresholdSource,
   OpticalTriggerReason,
@@ -115,6 +116,14 @@ export interface OpticalLadderCriteria {
   currentPowerDbm: number;
   lowAlarmDbm: number | null;
   highAlarmDbm: number | null;
+  /**
+   * WARNING do transceiver (.20-.23). Quando o par existe e e coerente a
+   * proximidade passa a ser medida nele (degradacao antecipada); quando nao
+   * existe (`null`, ex.: YunShan/S6750) o fallback e a janela HARD, que e o
+   * comportamento historico â€” nunca uma janela inventada com um lado so.
+   */
+  lowWarningDbm?: number | null | undefined;
+  highWarningDbm?: number | null | undefined;
   warningProximityPercent: number;
   majorProximityPercent: number;
   criticalAtLowAlarm: boolean;
@@ -129,17 +138,40 @@ export interface OpticalLadderCriteria {
 /** Tolerancia (em pontos percentuais) para nao perder um limiar exato por ponto flutuante. */
 const PROXIMITY_EPSILON = 1e-9;
 
+/**
+ * Janela efetiva da proximidade: WARNING quando o equipamento publica o par
+ * completo e coerente; senao o par HARD (ALARM). Um lado so nunca forma janela.
+ */
+function opticalProximityWindow(criteria: OpticalLadderCriteria): {
+  low: number;
+  high: number;
+  reference: OpticalProximityReference;
+} | null {
+  const warningLow = criteria.lowWarningDbm ?? null;
+  const warningHigh = criteria.highWarningDbm ?? null;
+  if (warningLow !== null && warningHigh !== null && warningLow < warningHigh) {
+    return { low: warningLow, high: warningHigh, reference: 'WARNING' };
+  }
+  const low = criteria.lowAlarmDbm;
+  const high = criteria.highAlarmDbm;
+  if (low !== null && high !== null && low < high) {
+    return { low, high, reference: 'ALARM' };
+  }
+  return null;
+}
+
 /** Escada de proximidade/margem do Low (o CRITICAL do Low e tratado a parte). */
 function opticalProximityLadder(criteria: OpticalLadderCriteria): OpticalLadder {
-  const { currentPowerDbm: current, lowAlarmDbm: low, highAlarmDbm: high } = criteria;
-  if (low !== null && high !== null) {
-    const proximity = opticalProximityPercent(current, low, high);
+  const window = opticalProximityWindow(criteria);
+  if (window) {
+    const proximity = opticalProximityPercent(criteria.currentPowerDbm, window.low, window.high);
     if (proximity === null) return 'NONE';
     if (proximity >= criteria.majorProximityPercent - PROXIMITY_EPSILON) return 'MAJOR';
     if (proximity >= criteria.warningProximityPercent - PROXIMITY_EPSILON) return 'WARNING';
     return 'NONE';
   }
-  if (low !== null && current - low <= criteria.warningMarginDb) return 'WARNING';
+  const low = criteria.lowAlarmDbm;
+  if (low !== null && criteria.currentPowerDbm - low <= criteria.warningMarginDb) return 'WARNING';
   return 'NONE';
 }
 
@@ -173,9 +205,10 @@ export function opticalLadderFor(criteria: OpticalLadderCriteria): OpticalLadder
 export function opticalRecovered(
   criteria: OpticalLadderCriteria & { recoveryProximityPercent: number },
 ): boolean {
-  const { currentPowerDbm: current, lowAlarmDbm: low, highAlarmDbm: high } = criteria;
-  if (low !== null && high !== null) {
-    const proximity = opticalProximityPercent(current, low, high);
+  const { currentPowerDbm: current, lowAlarmDbm: low } = criteria;
+  const window = opticalProximityWindow(criteria);
+  if (window) {
+    const proximity = opticalProximityPercent(current, window.low, window.high);
     return proximity !== null
       && proximity <= criteria.recoveryProximityPercent + PROXIMITY_EPSILON;
   }
@@ -392,7 +425,7 @@ export function opticalAlarmOutcome(
   criteria: OpticalLadderCriteria,
   ladder: OpticalLadder,
 ): OpticalLadderOutcome {
-  const { currentPowerDbm: current, lowAlarmDbm: low, highAlarmDbm: high } = criteria;
+  const { currentPowerDbm: current, lowAlarmDbm: low } = criteria;
   if (ladder === 'CRITICAL' && low !== null && criteria.criticalAtLowAlarm && current <= low) {
     return {
       reason: 'AT_LOW',
@@ -412,8 +445,9 @@ export function opticalAlarmOutcome(
         : criteria.trendDropThresholdDb,
     };
   }
-  if (low !== null && high !== null) {
-    const proximity = opticalProximityPercent(current, low, high) ?? 0;
+  const window = opticalProximityWindow(criteria);
+  if (window) {
+    const proximity = opticalProximityPercent(current, window.low, window.high) ?? 0;
     return {
       reason: 'PROXIMITY',
       unit: '%',
@@ -479,6 +513,8 @@ interface OpticalSeries {
   speedBps: number;
   lowAlarmDbm: number | null;
   highAlarmDbm: number | null;
+  lowWarningDbm: number | null;
+  highWarningDbm: number | null;
   thresholdSource: OpticalThresholdSource | null;
   points: OpticalPoint[];
 }
@@ -488,7 +524,10 @@ function opticalThresholdSideFor(
   record: InterfaceOpticalThresholdRecord | null,
   lane: number | null,
   config: OpticalRuleConfig,
-): Pick<OpticalSeries, 'lowAlarmDbm' | 'highAlarmDbm' | 'thresholdSource'> {
+): Pick<
+  OpticalSeries,
+  'lowAlarmDbm' | 'highAlarmDbm' | 'lowWarningDbm' | 'highWarningDbm' | 'thresholdSource'
+> {
   const scopes = lane === null
     ? [record?.thresholds?.scalar.rx]
     : [
@@ -496,22 +535,38 @@ function opticalThresholdSideFor(
         record?.thresholds?.scalar.rx,
       ];
   for (const side of scopes) {
-    if (side && (side.lowAlarmDbm !== null || side.highAlarmDbm !== null)) {
-      return {
-        lowAlarmDbm: side.lowAlarmDbm,
-        highAlarmDbm: side.highAlarmDbm,
-        thresholdSource: side.lowSource ?? side.highSource ?? null,
-      };
-    }
+    if (!side) continue;
+    const lowWarning = side.lowWarningDbm ?? null;
+    const highWarning = side.highWarningDbm ?? null;
+    const hasAny = side.lowAlarmDbm !== null
+      || side.highAlarmDbm !== null
+      || lowWarning !== null
+      || highWarning !== null;
+    if (!hasAny) continue;
+    return {
+      lowAlarmDbm: side.lowAlarmDbm,
+      highAlarmDbm: side.highAlarmDbm,
+      lowWarningDbm: lowWarning,
+      highWarningDbm: highWarning,
+      thresholdSource: side.lowSource ?? side.highSource ?? null,
+    };
   }
   if (config.manualRxLowAlarmDbm != null || config.manualRxHighAlarmDbm != null) {
     return {
       lowAlarmDbm: config.manualRxLowAlarmDbm ?? null,
       highAlarmDbm: config.manualRxHighAlarmDbm ?? null,
+      lowWarningDbm: null,
+      highWarningDbm: null,
       thresholdSource: 'MANUAL',
     };
   }
-  return { lowAlarmDbm: null, highAlarmDbm: null, thresholdSource: null };
+  return {
+    lowAlarmDbm: null,
+    highAlarmDbm: null,
+    lowWarningDbm: null,
+    highWarningDbm: null,
+    thresholdSource: null,
+  };
 }
 
 /**
@@ -604,6 +659,8 @@ function opticalCriteriaAt(
     currentPowerDbm: current,
     lowAlarmDbm: series.lowAlarmDbm,
     highAlarmDbm: series.highAlarmDbm,
+    lowWarningDbm: series.lowWarningDbm,
+    highWarningDbm: series.highWarningDbm,
     warningProximityPercent: config.warningProximityPercent,
     majorProximityPercent: config.majorProximityPercent,
     criticalAtLowAlarm: config.criticalAtLowAlarm,
@@ -618,11 +675,12 @@ function opticalCriteriaAt(
 /** Todos os motivos aplicaveis da amostra (ordem estavel para o NOC). */
 function opticalTriggerReasons(criteria: OpticalLadderCriteria): OpticalTriggerReason[] {
   const reasons: OpticalTriggerReason[] = [];
-  const { currentPowerDbm: current, lowAlarmDbm: low, highAlarmDbm: high } = criteria;
+  const { currentPowerDbm: current, lowAlarmDbm: low } = criteria;
   if (low !== null && criteria.criticalAtLowAlarm && current <= low) reasons.push('AT_LOW');
   if (opticalTrendLadder(criteria) !== 'NONE') reasons.push('RAPID_DROP');
-  if (low !== null && high !== null) {
-    const proximity = opticalProximityPercent(current, low, high);
+  const window = opticalProximityWindow(criteria);
+  if (window) {
+    const proximity = opticalProximityPercent(current, window.low, window.high);
     if (proximity !== null && proximity >= criteria.warningProximityPercent - PROXIMITY_EPSILON) {
       reasons.push('PROXIMITY');
     }
@@ -637,14 +695,18 @@ function opticalAlarmMetadata(
   criteria: OpticalLadderCriteria,
   config: OpticalRuleConfig,
 ): AlarmMetadata {
-  const proximity = criteria.lowAlarmDbm !== null && criteria.highAlarmDbm !== null
-    ? round2(opticalProximityPercent(criteria.currentPowerDbm, criteria.lowAlarmDbm, criteria.highAlarmDbm) ?? 0)
+  const window = opticalProximityWindow(criteria);
+  const proximity = window
+    ? round2(opticalProximityPercent(criteria.currentPowerDbm, window.low, window.high) ?? 0)
     : null;
   return {
     direction: 'RX',
     rxPowerDbm: round2(criteria.currentPowerDbm),
     rxLowAlarmDbm: criteria.lowAlarmDbm,
     rxHighAlarmDbm: criteria.highAlarmDbm,
+    rxLowWarningDbm: criteria.lowWarningDbm ?? null,
+    rxHighWarningDbm: criteria.highWarningDbm ?? null,
+    proximityReference: window?.reference ?? null,
     marginDb: criteria.lowAlarmDbm !== null
       ? round2(criteria.currentPowerDbm - criteria.lowAlarmDbm)
       : null,

@@ -1,6 +1,7 @@
 import type {
   HuaweiOpticalLaneEncoding,
   HuaweiOpticalScalarEncoding,
+  HuaweiOpticalWarningEncoding,
 } from '../../topology/huawei-optical';
 
 export type SnmpProfileMetricName = 'cpu' | 'memory' | 'temperature';
@@ -52,6 +53,12 @@ export interface SnmpProfile {
    * unidade pelo tamanho do numero.
    */
   opticalLaneEncoding?: HuaweiOpticalLaneEncoding;
+  /**
+   * Familia publica os thresholds de WARNING (.20-.23)? `ABSENT` = nem varre os
+   * OIDs (YunShan/S6750 nao tem as colunas) â€” ausencia legitima, nunca copia do
+   * ALARM.
+   */
+  opticalWarningEncoding?: HuaweiOpticalWarningEncoding;
   /**
    * Scalar OID for the PPP/PPPoE online counter (capability based). When the
    * selected profile does not declare it, the device is treated as not

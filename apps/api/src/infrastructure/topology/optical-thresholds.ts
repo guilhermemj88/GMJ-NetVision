@@ -91,6 +91,11 @@ const opticalThresholdSourceSchema = z.enum(['USER', 'DEVICE', 'DEFAULT', 'MANUA
 const opticalThresholdSideSchema = z.object({
   lowAlarmDbm: z.number().finite().nullable(),
   highAlarmDbm: z.number().finite().nullable(),
+  // Fase WARNING: o JSON V1 gravado antes da coleta de .20-.23 nao tem os
+  // campos. Opcional (sem default) mantem a leitura retrocompativel e nao
+  // inventa chave em registro que o equipamento nao publica.
+  lowWarningDbm: z.number().finite().nullable().optional(),
+  highWarningDbm: z.number().finite().nullable().optional(),
   lowSource: opticalThresholdSourceSchema.nullable(),
   highSource: opticalThresholdSourceSchema.nullable(),
 });
@@ -157,10 +162,14 @@ function mergeThresholdSide(
   const result: OpticalThresholdSide = { ...existing };
   for (const which of ['low', 'high'] as const) {
     const valueKey = which === 'low' ? 'lowAlarmDbm' : 'highAlarmDbm';
+    const warningKey = which === 'low' ? 'lowWarningDbm' : 'highWarningDbm';
     const sourceKey = which === 'low' ? 'lowSource' : 'highSource';
-    if (incoming[valueKey] === null) continue;
+    const incomingWarning = incoming[warningKey] ?? null;
+    // Leitura sem ALARM e sem WARNING naquele lado nao diz nada: nao apaga.
+    if (incoming[valueKey] === null && incomingWarning === null) continue;
     if (!incomingWins(existing[sourceKey], incoming[sourceKey], authority)) continue;
-    result[valueKey] = incoming[valueKey];
+    if (incoming[valueKey] !== null) result[valueKey] = incoming[valueKey];
+    if (incomingWarning !== null) result[warningKey] = incomingWarning;
     result[sourceKey] = incoming[sourceKey];
   }
   return result;

@@ -1822,3 +1822,54 @@ describe('supressao operacional no motor metrico (F9.1)', () => {
     expect(expireDue).toHaveBeenCalledTimes(1);
   });
 });
+describe('proximidade com janela WARNING (Fase WARNING optico)', () => {
+  const base = {
+    currentPowerDbm: -21,
+    lowAlarmDbm: -23.1,
+    highAlarmDbm: -6,
+    warningProximityPercent: 80,
+    majorProximityPercent: 90,
+    criticalAtLowAlarm: true,
+    warningMarginDb: 3,
+    trendDropObservedDb: 0,
+    trendDropThresholdDb: 3,
+    trendMajorDropThresholdDb: 6,
+  };
+
+  it('com WARNING publicado a proximidade usa a janela WARNING', () => {
+    // ((-7 - (-21)) / (-7 - (-22.07))) = 92.9% -> MAJOR na janela WARNING;
+    expect(opticalLadderFor({
+      ...base,
+      lowWarningDbm: -22.07,
+      highWarningDbm: -7,
+    })).toBe('MAJOR');
+  });
+
+  it('sem WARNING o fallback e a janela HARD (comportamento historico)', () => {
+    // ((-6 - (-21)) / (-6 - (-23.1))) = 87.7% -> WARNING na janela HARD
+    expect(opticalLadderFor({
+      ...base,
+      lowWarningDbm: null,
+      highWarningDbm: null,
+    })).toBe('WARNING');
+  });
+
+  it('LOW WARNING nunca promove para CRITICAL; CRITICAL exige o HARD LOW', () => {
+    const criteria = {
+      ...base,
+      currentPowerDbm: -22.5,
+      lowWarningDbm: -22.07,
+      highWarningDbm: -7,
+    };
+    expect(opticalLadderFor(criteria)).not.toBe('CRITICAL');
+    expect(opticalLadderFor({ ...criteria, currentPowerDbm: -23.5 })).toBe('CRITICAL');
+  });
+
+  it('par WARNING incompleto nao forma janela: cai para o HARD', () => {
+    expect(opticalLadderFor({
+      ...base,
+      lowWarningDbm: -22.07,
+      highWarningDbm: null,
+    })).toBe('WARNING');
+  });
+});

@@ -135,8 +135,27 @@ export function opticalSeries(laneIds: number[], direction: 'rx' | 'tx') {
 export interface OpticalThresholdRange {
   low: number | null;
   high: number | null;
+  /**
+   * WARNING (.20-.23): par SEPARADO do ALARM. `null` = equipamento nao publica
+   * WARNING (ex.: YunShan/S6750) â€” nunca igualado ao ALARM.
+   */
+  lowWarning?: number | null | undefined;
+  highWarning?: number | null | undefined;
   source: OpticalThresholdSource | null;
   scope: 'MODULE' | 'LANE' | null;
+}
+
+const EMPTY_THRESHOLD_RANGE: OpticalThresholdRange = {
+  low: null,
+  high: null,
+  lowWarning: null,
+  highWarning: null,
+  source: null,
+  scope: null,
+};
+
+function isNumber(value: number | null | undefined): value is number {
+  return typeof value === 'number' && Number.isFinite(value);
 }
 
 /**
@@ -150,21 +169,37 @@ export function opticalThresholdRange(
 ): OpticalThresholdRange {
   const thresholds = networkInterface.opticalThresholds ?? null;
   const scalarSide = direction === 'rx' ? thresholds?.scalar.rx : thresholds?.scalar.tx;
-  if (scalarSide && (scalarSide.lowAlarmDbm !== null || scalarSide.highAlarmDbm !== null)) {
+  const scalarLowWarning = scalarSide?.lowWarningDbm ?? null;
+  const scalarHighWarning = scalarSide?.highWarningDbm ?? null;
+  const scalarHasAny = scalarSide !== undefined && (
+    scalarSide.lowAlarmDbm !== null
+    || scalarSide.highAlarmDbm !== null
+    || scalarLowWarning !== null
+    || scalarHighWarning !== null
+  );
+  if (scalarSide && scalarHasAny) {
     return {
       low: scalarSide.lowAlarmDbm,
       high: scalarSide.highAlarmDbm,
+      lowWarning: scalarLowWarning,
+      highWarning: scalarHighWarning,
       source: scalarSide.lowSource ?? scalarSide.highSource ?? networkInterface.opticalThresholdSource ?? null,
       scope: 'MODULE',
     };
   }
   const laneSides = (thresholds?.lanes ?? []).map((lane) => (direction === 'rx' ? lane.rx : lane.tx));
-  const lows = laneSides.map((side) => side.lowAlarmDbm).filter((value): value is number => value !== null);
-  const highs = laneSides.map((side) => side.highAlarmDbm).filter((value): value is number => value !== null);
-  if (!lows.length && !highs.length) return { low: null, high: null, source: null, scope: null };
+  const lows = laneSides.map((side) => side.lowAlarmDbm).filter(isNumber);
+  const highs = laneSides.map((side) => side.highAlarmDbm).filter(isNumber);
+  const lowWarnings = laneSides.map((side) => side.lowWarningDbm).filter(isNumber);
+  const highWarnings = laneSides.map((side) => side.highWarningDbm).filter(isNumber);
+  if (!lows.length && !highs.length && !lowWarnings.length && !highWarnings.length) {
+    return { ...EMPTY_THRESHOLD_RANGE };
+  }
   return {
     low: lows.length ? Math.min(...lows) : null,
     high: highs.length ? Math.max(...highs) : null,
+    lowWarning: lowWarnings.length ? Math.min(...lowWarnings) : null,
+    highWarning: highWarnings.length ? Math.max(...highWarnings) : null,
     source: laneSides.find((side) => side.lowSource ?? side.highSource)?.lowSource
       ?? networkInterface.opticalThresholdSource
       ?? null,
@@ -222,17 +257,24 @@ export function thresholdMarkers(
  */
 export function limitsWindow(
   values: ReadonlyArray<number | null | undefined>,
-  range: Pick<OpticalThresholdRange, 'low' | 'high'>,
+  range: Pick<OpticalThresholdRange, 'low' | 'high' | 'lowWarning' | 'highWarning'>,
   paddingRatio = 0.08,
 ): [number, number] | null {
-  return axisWindow([...values, range.low, range.high], paddingRatio);
+  return axisWindow(
+    [...values, range.low, range.high, range.lowWarning, range.highWarning],
+    paddingRatio,
+  );
 }
 
 export interface OpticalChartScale {
   /** Domínio Y efetivo (`null` = deixa o recharts decidir). */
   domain: [number, number] | null;
+  /** LOW/HIGH ALARM (HARD) â€” referencia de CRITICAL. */
   low: OpticalThresholdMarker | null;
   high: OpticalThresholdMarker | null;
+  /** LOW/HIGH WARNING â€” referencia de degradacao antecipada (WARNING/MAJOR). */
+  lowWarning: OpticalThresholdMarker | null;
+  highWarning: OpticalThresholdMarker | null;
   /** Chip mostra "abaixo/acima da janela"? Só no AUTO com limite fora. */
   showHints: boolean;
 }
@@ -242,6 +284,20 @@ export interface OpticalChartScale {
  * independente). Não conhece período nem histórico: trocar o modo de escala
  * nunca refaz dados, não muda thresholds e não toca no Alarm Engine.
  */
+/**
+ * WARNING igual ao ALARM nao vira segunda linha (o equipamento pode publicar o
+ * mesmo valor nas duas colunas): a linha seria sobreposta e o chip duplicado.
+ */
+function dedupedWarningMarker(
+  warning: number | null,
+  alarm: number | null,
+  domain: [number, number] | null,
+): OpticalThresholdMarker | null {
+  if (warning === null) return null;
+  if (alarm !== null && Math.abs(warning - alarm) < 1e-9) return null;
+  return thresholdMarker(warning, domain);
+}
+
 export function chartScale(
   mode: OpticalScaleMode,
   values: ReadonlyArray<number | null | undefined>,
@@ -252,6 +308,8 @@ export function chartScale(
     domain,
     low: thresholdMarker(thresholds.low, domain),
     high: thresholdMarker(thresholds.high, domain),
+    lowWarning: dedupedWarningMarker(thresholds.lowWarning ?? null, thresholds.low, domain),
+    highWarning: dedupedWarningMarker(thresholds.highWarning ?? null, thresholds.high, domain),
     showHints: mode === 'AUTO',
   };
 }
@@ -275,15 +333,17 @@ export function OpticalThresholdChips({
   scale: OpticalChartScale;
 }) {
   const chips = [
-    { key: 'LOW', label: 'LOW', value: thresholds.low, marker: scale.low },
-    { key: 'HIGH', label: 'HIGH', value: thresholds.high, marker: scale.high },
+    { key: 'LOW_WARN', label: 'LOW WARN', value: thresholds.lowWarning ?? null, marker: scale.lowWarning, kind: 'warn' },
+    { key: 'HIGH_WARN', label: 'HIGH WARN', value: thresholds.highWarning ?? null, marker: scale.highWarning, kind: 'warn' },
+    { key: 'LOW', label: 'LOW ALARM', value: thresholds.low, marker: scale.low, kind: 'alarm' },
+    { key: 'HIGH', label: 'HIGH ALARM', value: thresholds.high, marker: scale.high, kind: 'alarm' },
   ] as const;
   return (
     <div className="chart-thresholds">
       {chips.map((chip) => {
         const hint = scale.showHints ? thresholdHint(chip.marker) : null;
         return (
-          <span key={chip.key} className="chart-thresholds__chip">
+          <span key={chip.key} className={`chart-thresholds__chip chart-thresholds__chip--${chip.kind}`}>
             <em>{chip.label}</em>
             <span>{formatDbm(chip.value)}</span>
             {hint ? <small>{hint}</small> : null}
@@ -321,7 +381,7 @@ export function OpticalScalePicker({
         type="button"
         className={mode === 'LIMITS' ? 'is-active' : ''}
         aria-pressed={mode === 'LIMITS'}
-        title="Escala incluindo os limites LOW e HIGH"
+        title="Escala incluindo os limites WARNING e ALARM"
         onClick={() => onChange('LIMITS')}
       >
         LIMITES
@@ -495,16 +555,44 @@ function OpticalPowerChart({
               laneIds={laneIds}
             />
           )} />
-          {scale.low?.visible && (
+          {scale.lowWarning?.visible && (
             <ReferenceLine
-              y={scale.low.value}
+              y={scale.lowWarning.value}
               stroke="#e3a64b"
               strokeDasharray="3 3"
               strokeWidth={1}
               label={{
-                value: `LOW ${formatAxisDbm(scale.low.value)}`,
+                value: `LOW WARN ${formatAxisDbm(scale.lowWarning.value)}`,
+                position: 'insideTopRight',
+                fill: '#e3a64b',
+                fontSize: 8,
+              }}
+            />
+          )}
+          {scale.highWarning?.visible && (
+            <ReferenceLine
+              y={scale.highWarning.value}
+              stroke="#e3a64b"
+              strokeDasharray="3 3"
+              strokeWidth={1}
+              label={{
+                value: `HIGH WARN ${formatAxisDbm(scale.highWarning.value)}`,
                 position: 'insideBottomRight',
                 fill: '#e3a64b',
+                fontSize: 8,
+              }}
+            />
+          )}
+          {scale.low?.visible && (
+            <ReferenceLine
+              y={scale.low.value}
+              stroke="#e05c5c"
+              strokeDasharray="5 2"
+              strokeWidth={1.2}
+              label={{
+                value: `LOW ALARM ${formatAxisDbm(scale.low.value)}`,
+                position: 'insideBottomRight',
+                fill: '#e05c5c',
                 fontSize: 8,
               }}
             />
@@ -512,13 +600,13 @@ function OpticalPowerChart({
           {scale.high?.visible && (
             <ReferenceLine
               y={scale.high.value}
-              stroke="#d17a65"
-              strokeDasharray="3 3"
-              strokeWidth={1}
+              stroke="#e05c5c"
+              strokeDasharray="5 2"
+              strokeWidth={1.2}
               label={{
-                value: `HIGH ${formatAxisDbm(scale.high.value)}`,
+                value: `HIGH ALARM ${formatAxisDbm(scale.high.value)}`,
                 position: 'insideTopRight',
-                fill: '#d17a65',
+                fill: '#e05c5c',
                 fontSize: 8,
               }}
             />

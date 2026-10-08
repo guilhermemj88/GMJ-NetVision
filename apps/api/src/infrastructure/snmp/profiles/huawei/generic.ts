@@ -2,6 +2,11 @@ import type { SnmpProfile } from '../types';
 import { HUAWEI_PPP_ONLINE_OID } from '../ppp-oids';
 
 export const HUAWEI_ENTITY_NAME_OID = '1.3.6.1.2.1.47.1.1.1.1.7';
+/**
+ * Familia generica Huawei: assume o conjunto VRP classico (.20-.23 presentes).
+ * Quando a coluna nao existe o walk volta vazio e o merge simplesmente preserva
+ * o valor anterior â€” nunca inventa WARNING a partir do ALARM.
+ */
 export const HUAWEI_ENTITY_CPU_USAGE_OID = '1.3.6.1.4.1.2011.5.25.31.1.1.1.1.5';
 
 export const huaweiGenericProfile: SnmpProfile = {

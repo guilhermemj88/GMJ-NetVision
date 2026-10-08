@@ -8,6 +8,7 @@ import type { SnmpProfile, SnmpProfileIdentity } from './types';
 import type {
   HuaweiOpticalLaneEncoding,
   HuaweiOpticalScalarEncoding,
+  HuaweiOpticalWarningEncoding,
 } from '../../topology/huawei-optical';
 
 export const SNMP_PROFILES: SnmpProfile[] = [
@@ -63,6 +64,17 @@ export function selectPppOnlineOid(identity: SnmpProfileIdentity): string | null
  * NAO decodifica o scalar (nunca adivinha por sinal do valor); as lanes
  * .32/.33 e o fallback SSH seguem valendo normalmente.
  */
+/**
+ * Encoding dos WARNING (.20-.23) conforme o profile. Default `CENTI_DBM` (VRP
+ * classico, unica familia comprovada em campo); `ABSTRACT` explicito no profile
+ * do YunShan evita 4 walks inuteis por interface.
+ */
+export function selectOpticalWarningEncoding(
+  identity: SnmpProfileIdentity,
+): HuaweiOpticalWarningEncoding {
+  return selectSnmpProfile(identity).opticalWarningEncoding ?? 'CENTI_DBM';
+}
+
 export function selectOpticalScalarEncoding(
   identity: SnmpProfileIdentity,
 ): HuaweiOpticalScalarEncoding {

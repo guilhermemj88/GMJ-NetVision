@@ -22,6 +22,13 @@ export const HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS = {
   rxHighAlarmCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.14',
   txLowAlarmCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.15',
   txHighAlarmCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.16',
+  // WARNING (degradacao antecipada) em CENTI-dBm, PAR SEPARADO do ALARM. O VRP
+  // classico (S6730/NE8000) publica; o YunShan (S6750) nao existe a coluna â€”
+  // ausencia legitima, nunca copiada do ALARM.
+  rxLowWarningCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.20',
+  rxHighWarningCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.21',
+  txLowWarningCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.22',
+  txHighWarningCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.23',
   biasCurrentByLane: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.31',
   rxPowerByLane: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.32',
   txPowerByLane: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.33',
@@ -32,6 +39,14 @@ export const HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS = {
  * nunca do sinal do valor: heuristica por "negativo ou positivo" e proibida.
  */
 export type HuaweiOpticalScalarEncoding = 'MICRO_WATTS' | 'CENTI_DBM' | 'UNKNOWN';
+
+/**
+ * Encoding dos WARNING (.20-.23). Propriedade do PROFILE, nunca do valor:
+ * - `CENTI_DBM` quando a familia publica a coluna (VRP classico/YunShan);
+ * - `ABSENT` quando a familia NAO tem a coluna (YunShan/S6750): nem sequer
+ *   varremos os OIDs, para nao gravar nada e nao gastar SNMP.
+ */
+export type HuaweiOpticalWarningEncoding = 'CENTI_DBM' | 'ABSENT';
 
 /**
  * Encoding das colunas CSV .32 (RX) / .33 (TX) POR LANE. Tambem e propriedade
@@ -114,26 +129,47 @@ export interface HuaweiThresholdValues {
 export function buildHuaweiDeviceThresholds(input: {
   rx: HuaweiThresholdValues;
   tx: HuaweiThresholdValues;
+  /** Par WARNING do RX (.20/.21); ausente/null = familia sem WARNING. */
+  rxWarning?: HuaweiThresholdValues | undefined;
+  /** Par WARNING do TX (.22/.23); ausente/null = familia sem WARNING. */
+  txWarning?: HuaweiThresholdValues | undefined;
 }): OpticalThresholdsV1 | null {
   const source: OpticalThresholdSource = 'DEVICE';
-  const side = (values: HuaweiThresholdValues) => {
-    const coherent = values.low === null
-      || values.high === null
-      || values.low < values.high;
-    const low = coherent ? values.low : null;
-    const high = coherent ? values.high : null;
+  const coherentPair = (values: HuaweiThresholdValues): { low: number | null; high: number | null } => {
+    const coherent = values.low === null || values.high === null || values.low < values.high;
+    return { low: coherent ? values.low : null, high: coherent ? values.high : null };
+  };
+  const side = (
+    values: HuaweiThresholdValues,
+    warning: HuaweiThresholdValues | undefined,
+  ) => {
+    const pair = coherentPair(values);
+    const warningPair = warning ? coherentPair(warning) : { low: null, high: null };
+    // WARNING incoerente com o ALARM (fora da janela hard) e descartado inteiro,
+    // do mesmo jeito que o par low >= high â€” nunca se inventa um lado.
+    const lowOrdered = pair.low === null || warningPair.low === null || warningPair.low >= pair.low;
+    const highOrdered = pair.high === null || warningPair.high === null || warningPair.high <= pair.high;
+    const lowWarning = lowOrdered ? warningPair.low : null;
+    const highWarning = highOrdered ? warningPair.high : null;
+    const hasWarning = lowWarning !== null || highWarning !== null;
     return {
-      lowAlarmDbm: low,
-      highAlarmDbm: high,
-      lowSource: low === null ? null : source,
-      highSource: high === null ? null : source,
+      lowAlarmDbm: pair.low,
+      highAlarmDbm: pair.high,
+      // Sem WARNING publicado nao se inventa chave: o JSON fica identico ao da
+      // fase anterior (YunShan nao publica .20-.23).
+      ...(hasWarning ? { lowWarningDbm: lowWarning, highWarningDbm: highWarning } : {}),
+      lowSource: pair.low === null && lowWarning === null ? null : source,
+      highSource: pair.high === null && highWarning === null ? null : source,
     };
   };
-  const rx = side(input.rx);
-  const tx = side(input.tx);
-  if (rx.lowAlarmDbm === null && rx.highAlarmDbm === null && tx.lowAlarmDbm === null && tx.highAlarmDbm === null) {
-    return null;
-  }
+  const rx = side(input.rx, input.rxWarning);
+  const tx = side(input.tx, input.txWarning);
+  const empty = (values: ReturnType<typeof side>) =>
+    values.lowAlarmDbm === null
+    && values.highAlarmDbm === null
+    && (values.lowWarningDbm ?? null) === null
+    && (values.highWarningDbm ?? null) === null;
+  if (empty(rx) && empty(tx)) return null;
   return { version: 1, scalar: { rx, tx }, lanes: [] };
 }
 

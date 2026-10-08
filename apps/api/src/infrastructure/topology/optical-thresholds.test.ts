@@ -177,3 +177,75 @@ describe('canonical optical thresholds', () => {
       .toBeNull();
   });
 });
+
+describe('WARNING optico (.20-.23) â€” retrocompativel', () => {
+  const legacyJson = {
+    version: 1,
+    scalar: {
+      rx: { lowAlarmDbm: -23.1, highAlarmDbm: -6, lowSource: 'DEVICE', highSource: 'DEVICE' },
+      tx: { lowAlarmDbm: -2, highAlarmDbm: 5, lowSource: 'DEVICE', highSource: 'DEVICE' },
+    },
+    lanes: [],
+  };
+
+  it('le JSON V1 antigo (sem WARNING) sem invalidar e normaliza para null', () => {
+    const parsed = parseOpticalThresholdsV1(legacyJson);
+    expect(parsed).not.toBeNull();
+    expect(parsed?.scalar.rx.lowAlarmDbm).toBe(-23.1);
+    expect(parsed?.scalar.rx.lowWarningDbm).toBeUndefined();
+    expect(parsed?.scalar.tx.highWarningDbm).toBeUndefined();
+  });
+
+  it('merge de leitura sem WARNING preserva o WARNING ja persistido', () => {
+    const existing = {
+      version: 1 as const,
+      scalar: {
+        rx: {
+          lowAlarmDbm: -23.1,
+          highAlarmDbm: -6,
+          lowWarningDbm: -22.07,
+          highWarningDbm: -7,
+          lowSource: 'DEVICE' as const,
+          highSource: 'DEVICE' as const,
+        },
+        tx: {
+          lowAlarmDbm: -2,
+          highAlarmDbm: 5,
+          lowWarningDbm: null,
+          highWarningDbm: null,
+          lowSource: 'DEVICE' as const,
+          highSource: 'DEVICE' as const,
+        },
+      },
+      lanes: [],
+    };
+    const incoming = parseOpticalThresholdsV1(legacyJson);
+    expect(incoming).not.toBeNull();
+    const merged = mergeOpticalThresholds(existing, incoming!, 'PARTIAL');
+    expect(merged.scalar.rx.lowWarningDbm).toBe(-22.07);
+    expect(merged.scalar.rx.highWarningDbm).toBe(-7);
+    expect(merged.scalar.rx.lowAlarmDbm).toBe(-23.1);
+  });
+
+  it('leitura com WARNING aplica o par novo sem tocar no ALARM', () => {
+    const existing = parseOpticalThresholdsV1(legacyJson)!;
+    const incoming = parseOpticalThresholdsV1({
+      ...legacyJson,
+      scalar: {
+        rx: {
+          lowAlarmDbm: -23.47,
+          highAlarmDbm: -6,
+          lowWarningDbm: -20.51,
+          highWarningDbm: -7,
+          lowSource: 'DEVICE',
+          highSource: 'DEVICE',
+        },
+        tx: legacyJson.scalar.tx,
+      },
+    })!;
+    const merged = mergeOpticalThresholds(existing, incoming, 'PARTIAL');
+    expect(merged.scalar.rx.lowWarningDbm).toBe(-20.51);
+    expect(merged.scalar.rx.highWarningDbm).toBe(-7);
+    expect(merged.scalar.rx.lowAlarmDbm).toBe(-23.47);
+  });
+});

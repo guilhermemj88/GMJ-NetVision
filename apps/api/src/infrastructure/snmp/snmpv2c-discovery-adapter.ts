@@ -17,10 +17,15 @@ import {
   parseHuaweiOpticalLaneCsv,
   type HuaweiOpticalLaneEncoding,
   type HuaweiOpticalScalarEncoding,
+  type HuaweiOpticalWarningEncoding,
 } from '../topology/huawei-optical';
 import { interfaceNameKeys } from '../topology/interface-correlation';
 import { SnmpClientImpl } from './snmp-client-impl';
-import { selectOpticalLaneEncoding, selectOpticalScalarEncoding } from './profiles/catalog';
+import {
+  selectOpticalLaneEncoding,
+  selectOpticalScalarEncoding,
+  selectOpticalWarningEncoding,
+} from './profiles/catalog';
 import type { SnmpProfileIdentity } from './profiles/types';
 import { decodeSnmpText } from './snmp-text';
 
@@ -174,6 +179,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
         snmpCommunity,
         selectOpticalScalarEncoding(snmpIdentityFor(hostRecord)),
         selectOpticalLaneEncoding(snmpIdentityFor(hostRecord)),
+        selectOpticalWarningEncoding(snmpIdentityFor(hostRecord)),
       );
 
       const descByIndex = this.indexMap(descrs, IF_MIB_OIDS.ifDescr);
@@ -251,11 +257,13 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     if (!snmpCommunity) return interfaces;
     const encoding = selectOpticalScalarEncoding(snmpIdentityFor(device, system));
     const laneEncoding = selectOpticalLaneEncoding(snmpIdentityFor(device, system));
+    const warningEncoding = selectOpticalWarningEncoding(snmpIdentityFor(device, system));
     const readings = await this.collectOpticalByInterfaceName(
       device,
       snmpCommunity,
       encoding,
       laneEncoding,
+      warningEncoding,
     );
     const now = new Date().toISOString();
 
@@ -276,8 +284,12 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     community: string,
     encoding: HuaweiOpticalScalarEncoding,
     laneEncoding: HuaweiOpticalLaneEncoding,
+    warningEncoding: HuaweiOpticalWarningEncoding,
   ): Promise<Map<string, OpticalReading>> {
-    const [names, scalarRx, scalarTx, rxLow, rxHigh, txLow, txHigh, laneBias, laneRx, laneTx] =
+    // Familia sem WARNING (.20-.23) nem consulta: ausencia legitima.
+    const warningWalk = (oid: string) =>
+      warningEncoding === 'ABSENT' ? Promise.resolve([] as VarBind[]) : this.safeWalk(host, oid, community);
+    const [names, scalarRx, scalarTx, rxLow, rxHigh, txLow, txHigh, rxWarnLow, rxWarnHigh, txWarnLow, txWarnHigh, laneBias, laneRx, laneTx] =
       await Promise.all([
         this.safeWalk(host, ENTITY_MIB_OIDS.physicalName, community),
         this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxPowerRaw, community),
@@ -286,6 +298,10 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
         this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxHighAlarmCentiDbm, community),
         this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txLowAlarmCentiDbm, community),
         this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txHighAlarmCentiDbm, community),
+        warningWalk(HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxLowWarningCentiDbm),
+        warningWalk(HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxHighWarningCentiDbm),
+        warningWalk(HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txLowWarningCentiDbm),
+        warningWalk(HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txHighWarningCentiDbm),
         this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.biasCurrentByLane, community),
         this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxPowerByLane, community),
         this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txPowerByLane, community),
@@ -298,6 +314,10 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
       rxHigh,
       txLow,
       txHigh,
+      rxWarnLow,
+      rxWarnHigh,
+      txWarnLow,
+      txWarnHigh,
       laneBias,
       laneRx,
       laneTx,
@@ -366,6 +386,10 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     rxHighValues: VarBind[],
     txLowValues: VarBind[],
     txHighValues: VarBind[],
+    rxWarningLowValues: VarBind[],
+    rxWarningHighValues: VarBind[],
+    txWarningLowValues: VarBind[],
+    txWarningHighValues: VarBind[],
     laneBiasValues: VarBind[],
     laneRxValues: VarBind[],
     laneTxValues: VarBind[],
@@ -385,6 +409,22 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     const rxHighByIndex = this.indexMap(rxHighValues, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxHighAlarmCentiDbm);
     const txLowByIndex = this.indexMap(txLowValues, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txLowAlarmCentiDbm);
     const txHighByIndex = this.indexMap(txHighValues, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txHighAlarmCentiDbm);
+    const rxWarningLowByIndex = this.indexMap(
+      rxWarningLowValues,
+      HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxLowWarningCentiDbm,
+    );
+    const rxWarningHighByIndex = this.indexMap(
+      rxWarningHighValues,
+      HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxHighWarningCentiDbm,
+    );
+    const txWarningLowByIndex = this.indexMap(
+      txWarningLowValues,
+      HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txLowWarningCentiDbm,
+    );
+    const txWarningHighByIndex = this.indexMap(
+      txWarningHighValues,
+      HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txHighWarningCentiDbm,
+    );
     const laneBiasByIndex = this.indexMap(
       laneBiasValues,
       HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.biasCurrentByLane,
@@ -417,6 +457,14 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
         tx: {
           low: decodeHuaweiThresholdDbm(txLowByIndex.get(index)),
           high: decodeHuaweiThresholdDbm(txHighByIndex.get(index)),
+        },
+        rxWarning: {
+          low: decodeHuaweiThresholdDbm(rxWarningLowByIndex.get(index)),
+          high: decodeHuaweiThresholdDbm(rxWarningHighByIndex.get(index)),
+        },
+        txWarning: {
+          low: decodeHuaweiThresholdDbm(txWarningLowByIndex.get(index)),
+          high: decodeHuaweiThresholdDbm(txWarningHighByIndex.get(index)),
         },
       });
       if (rxPowerDbm === null && txPowerDbm === null && opticalLanes.length === 0 && !thresholds) {

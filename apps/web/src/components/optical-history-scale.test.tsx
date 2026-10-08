@@ -179,7 +179,8 @@ describe('escala AUTO/LIMITES na tela do historico optico', () => {
     expect(container.textContent).toContain('↓ abaixo da janela');
     expect(container.textContent).toContain('↑ acima da janela');
     expect(container.textContent).toContain('FONTE');
-    expect(container.querySelectorAll('.chart-thresholds__chip')).toHaveLength(6);
+    // 4 chips (LOW/HIGH WARN + LOW/HIGH ALARM) + FONTE, em RX e TX.
+    expect(container.querySelectorAll('.chart-thresholds__chip')).toHaveLength(10);
   });
 
   it('AUTO com threshold dentro da janela: linha de referencia real, sem hint', async () => {

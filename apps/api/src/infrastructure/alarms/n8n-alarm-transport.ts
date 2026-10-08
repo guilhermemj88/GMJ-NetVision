@@ -3,6 +3,7 @@ import type {
   AlarmMetadata,
   AlarmSeverity,
   NetworkAlarmTestSelectionInput,
+  OpticalProximityReference,
 } from '@gmj/shared';
 import { resolveNetworkAlarmTestSelection } from '@gmj/shared';
 import { safeDestination } from '../media/media-secret-box';
@@ -60,8 +61,17 @@ const SEVERITY_RANK: Record<AlarmSeverity, number> = {
 export interface NetworkAlarmOpticalPayload {
   lane: number | null;
   rxPowerDbm: number | null;
+  /** Compatibilidade: ALARM low/high (mesmo valor de `lowAlarmDbm`). */
   lowThresholdDbm: number | null;
   highThresholdDbm: number | null;
+  /** HARD (ALARM) â€” nomes explicitos da fase WARNING. */
+  lowAlarmDbm: number | null;
+  highAlarmDbm: number | null;
+  /** WARNING (.20-.23) do transceiver; null quando o equipamento nao publica. */
+  lowWarningDbm: number | null;
+  highWarningDbm: number | null;
+  /** Janela usada no calculo de proximidade (WARNING quando publicada). */
+  proximityReference: OpticalProximityReference | null;
   proximityPercent: number | null;
   dropDb: number | null;
   dropWindowMinutes: number | null;
@@ -147,6 +157,9 @@ export function buildNetworkAlarmWebhookPayload(
   const rxPowerDbm = metadataValue(metadata, 'rxPowerDbm');
   const lowThresholdDbm = metadataValue(metadata, 'rxLowAlarmDbm');
   const highThresholdDbm = metadataValue(metadata, 'rxHighAlarmDbm');
+  const lowWarningDbm = metadataValue(metadata, 'rxLowWarningDbm');
+  const highWarningDbm = metadataValue(metadata, 'rxHighWarningDbm');
+  const proximityReference = metadataValue(metadata, 'proximityReference');
   const proximityPercent = metadataValue(metadata, 'proximityPercent');
   const dropDb = metadataValue(metadata, 'trendDropDb');
   const dropWindowMinutes = metadataValue(metadata, 'trendWindowMinutes');
@@ -155,6 +168,9 @@ export function buildNetworkAlarmWebhookPayload(
     rxPowerDbm,
     lowThresholdDbm,
     highThresholdDbm,
+    lowWarningDbm,
+    highWarningDbm,
+    proximityReference,
     proximityPercent,
     dropDb,
     dropWindowMinutes,
@@ -184,6 +200,11 @@ export function buildNetworkAlarmWebhookPayload(
           rxPowerDbm,
           lowThresholdDbm,
           highThresholdDbm,
+          lowAlarmDbm: lowThresholdDbm,
+          highAlarmDbm: highThresholdDbm,
+          lowWarningDbm,
+          highWarningDbm,
+          proximityReference,
           proximityPercent,
           dropDb,
           dropWindowMinutes,
