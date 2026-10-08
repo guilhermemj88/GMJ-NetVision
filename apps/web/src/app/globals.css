@@ -12593,6 +12593,48 @@ label > small {
   line-height: 1.6;
 }
 
+/* Simulador do TESTAR ALARME (F9.5.1): linha compacta, nunca um formulario. */
+.media-test-sim {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed #2b3f4a;
+  border-radius: 4px;
+  background: #0f181e;
+}
+
+.media-test-sim__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.media-test-sim__row label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.media-test-sim__row label > span {
+  color: #657b86;
+  font: 600 8px var(--font-mono);
+  letter-spacing: 0.1em;
+}
+
+.media-test-sim__row select {
+  height: 30px;
+  max-width: 240px;
+  padding: 0 8px;
+  border: 1px solid #2a3c46;
+  border-radius: 4px;
+  background: #0d151b;
+  color: #cfe0e7;
+  font: 10px var(--font-mono);
+}
+
 .media-inbound {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

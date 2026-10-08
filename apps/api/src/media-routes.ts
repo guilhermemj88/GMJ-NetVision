@@ -2,6 +2,11 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AuthUser } from '@gmj/shared';
 import {
+  NETWORK_ALARM_TEST_EVENTS,
+  NETWORK_ALARM_TEST_SEVERITIES,
+  NETWORK_ALARM_TEST_TYPES,
+} from '@gmj/shared';
+import {
   MediaIntegrationService,
   MediaSecretUnavailableError,
 } from './infrastructure/media/media-integration-service';
@@ -50,6 +55,15 @@ const logsQuery = z.object({
   direction: z.enum(MEDIA_DIRECTIONS).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
+
+/** Simulador do TESTAR ALARME (F9.5.1): eixos do payload sintetico. */
+const alarmTestSchema = z
+  .object({
+    type: z.enum(NETWORK_ALARM_TEST_TYPES).optional(),
+    event: z.enum(NETWORK_ALARM_TEST_EVENTS).optional(),
+    severity: z.enum(NETWORK_ALARM_TEST_SEVERITIES).optional(),
+  })
+  .strict();
 
 const overviewQuery = z.object({
   purpose: z.enum(MEDIA_INTEGRATION_PURPOSES).default('BGP_MITIGATION'),
@@ -163,13 +177,15 @@ export function registerMediaRoutes(
   /**
    * TESTAR ALARME (F9.5): envia um payload sintetico pelo canal NETWORK_ALARMS,
    * com a MESMA serializacao/transporte dos alarmes reais. Nunca usa a
-   * mitigacao e nunca cria alarme de verdade.
+   * mitigacao e nunca cria alarme de verdade. F9.5.1: o corpo opcional escolhe
+   * tipo/evento/severidade do teste.
    */
   app.post('/api/media/integrations/:id/test-alarm', async (request, reply) => {
     if (!(await requireAdmin(request, reply))) return undefined;
     const { id } = integrationParams.parse(request.params);
+    const selection = alarmTestSchema.parse(request.body ?? {});
     if (await notFound(id, reply)) return undefined;
-    return media.testAlarmWebhook(id);
+    return media.testAlarmWebhook(id, selection);
   });
 
   app.get('/api/media/integrations/:id/logs', async (request, reply) => {

@@ -65,6 +65,97 @@ export const METRIC_ALARM_TYPES = [
 export type AlarmSeverity = 'CRITICAL' | 'MAJOR' | 'WARNING' | 'INFO';
 
 /**
+ * SIMULADOR do TESTAR ALARME (F9.5.1).
+ *
+ * Nao existe tipo sintetico paralelo: os eixos abaixo sao exatamente os valores
+ * reais do contrato (`AlarmType`, eventos e severidades). A fixture sintetica
+ * alimenta o MESMO builder e o MESMO transporte dos alarmes reais.
+ */
+export const NETWORK_ALARM_TEST_TYPES = [
+  'INTERFACE_DOWN',
+  'INTERFACE_CRC',
+  'INTERFACE_DISCARDS',
+  'INTERFACE_ERRORS',
+  'OPTICAL_RX_DEGRADATION',
+] as const satisfies readonly AlarmType[];
+export type NetworkAlarmTestType = (typeof NETWORK_ALARM_TEST_TYPES)[number];
+
+/** Eventos publicados no payload (mesmos valores do fluxo real). */
+export const NETWORK_ALARM_TEST_EVENTS = ['OPENED', 'ESCALATED', 'RESOLVED'] as const;
+export type NetworkAlarmTestEvent = (typeof NETWORK_ALARM_TEST_EVENTS)[number];
+
+export const NETWORK_ALARM_TEST_SEVERITIES = ['WARNING', 'MAJOR', 'CRITICAL'] as const;
+export type NetworkAlarmTestSeverity = (typeof NETWORK_ALARM_TEST_SEVERITIES)[number];
+
+/** Severidade inicial sugerida por tipo (a UI pode trocar para testar formato). */
+export const NETWORK_ALARM_TEST_DEFAULT_SEVERITY: Record<
+  NetworkAlarmTestType,
+  NetworkAlarmTestSeverity
+> = {
+  INTERFACE_DOWN: 'CRITICAL',
+  INTERFACE_CRC: 'WARNING',
+  INTERFACE_DISCARDS: 'WARNING',
+  INTERFACE_ERRORS: 'MAJOR',
+  OPTICAL_RX_DEGRADATION: 'MAJOR',
+};
+
+/** Rotulo curto de cada tipo no seletor do TESTAR ALARME. */
+export const NETWORK_ALARM_TEST_TYPE_LABELS: Record<NetworkAlarmTestType, string> = {
+  INTERFACE_DOWN: 'Interface DOWN',
+  INTERFACE_CRC: 'CRC/FCS',
+  INTERFACE_DISCARDS: 'Discards',
+  INTERFACE_ERRORS: 'Erros de interface',
+  OPTICAL_RX_DEGRADATION: 'Degradação óptica',
+};
+
+export interface NetworkAlarmTestSelection {
+  type: NetworkAlarmTestType;
+  event: NetworkAlarmTestEvent;
+  severity: NetworkAlarmTestSeverity;
+}
+
+/**
+ * Entrada parcial do simulador. Tipada com `| undefined` explicito porque o
+ * projeto usa `exactOptionalPropertyTypes` (o corpo validado pela API chega
+ * com chaves opcionais de valor `undefined`).
+ */
+export interface NetworkAlarmTestSelectionInput {
+  type?: NetworkAlarmTestType | undefined;
+  event?: NetworkAlarmTestEvent | undefined;
+  severity?: NetworkAlarmTestSeverity | undefined;
+}
+
+/**
+ * Severidade ANTERIOR da escalada sintetica: CRITICAL veio de MAJOR, MAJOR veio
+ * de WARNING e WARNING (o menor testavel) veio de INFO.
+ */
+export function networkAlarmTestPreviousSeverity(
+  severity: NetworkAlarmTestSeverity,
+): AlarmSeverity {
+  if (severity === 'CRITICAL') return 'MAJOR';
+  if (severity === 'MAJOR') return 'WARNING';
+  return 'INFO';
+}
+
+/** Defaults do simulador: INTERFACE_DOWN / OPENED e a severidade do tipo. */
+export function resolveNetworkAlarmTestSelection(
+  input: NetworkAlarmTestSelectionInput | null | undefined,
+): NetworkAlarmTestSelection {
+  const type = (NETWORK_ALARM_TEST_TYPES as readonly string[]).includes(input?.type ?? '')
+    ? (input?.type as NetworkAlarmTestType)
+    : 'INTERFACE_DOWN';
+  const event = (NETWORK_ALARM_TEST_EVENTS as readonly string[]).includes(input?.event ?? '')
+    ? (input?.event as NetworkAlarmTestEvent)
+    : 'OPENED';
+  const severity = (NETWORK_ALARM_TEST_SEVERITIES as readonly string[]).includes(
+    input?.severity ?? '',
+  )
+    ? (input?.severity as NetworkAlarmTestSeverity)
+    : NETWORK_ALARM_TEST_DEFAULT_SEVERITY[type];
+  return { type, event, severity };
+}
+
+/**
  * Slots de regra gerenciados pela aba BASICO de Alarmes (F9.6).
  *
  * `AlarmRule.managedKey` garante no máximo UMA regra por slot; regras criadas
@@ -116,7 +207,12 @@ export interface Alarm {
 
 /** Metadados seguros de um alarme metrico (errors/discards/CRC/optica). */
 export interface AlarmMetadata {
-  direction?: 'RX' | 'TX' | undefined;
+  /**
+   * Direcao avaliada. O motor metrico abre um alarme por direcao (RX/TX), por
+   * isso `BOTH` so aparece no simulador do TESTAR ALARME, que reproduz a
+   * direcao configurada na regra (ex.: discards RX+TX).
+   */
+  direction?: AlarmDirection | undefined;
   delta?: string | undefined;
   ratePerMinute?: number | undefined;
   thresholdPerMinute?: number | undefined;

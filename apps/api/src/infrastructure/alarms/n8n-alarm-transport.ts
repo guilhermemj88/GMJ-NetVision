@@ -1,4 +1,10 @@
-import type { Alarm, AlarmMetadata } from '@gmj/shared';
+import type {
+  Alarm,
+  AlarmMetadata,
+  AlarmSeverity,
+  NetworkAlarmTestSelectionInput,
+} from '@gmj/shared';
+import { resolveNetworkAlarmTestSelection } from '@gmj/shared';
 import { safeDestination } from '../media/media-secret-box';
 import type { MediaChannelPort } from '../media/n8n-media-transport';
 import {
@@ -7,6 +13,7 @@ import {
   type WebhookDeliverySender,
 } from '../media/n8n-media-transport';
 import type { MediaAlarmTestPort } from '../media/media-integration-service';
+import { buildNetworkAlarmTestAlarm } from './alarm-test-fixtures';
 
 /**
  * TRANSPORTE de midia dos alarmes de REDE (purpose NETWORK_ALARMS).
@@ -25,7 +32,7 @@ export const NETWORK_ALARM_EVENTS = [
 export type NetworkAlarmEvent = (typeof NETWORK_ALARM_EVENTS)[number];
 
 /** Evento de log do TESTAR ALARME (MediaDeliveryLog.event e String). */
-export const NETWORK_ALARM_TEST_EVENT = 'NETWORK_ALARM_TEST';
+export const NETWORK_ALARM_TEST_EVENT = 'NETWORK_ALARM_TEST' as const;
 
 /** Evento publicado no payload, no contrato que o n8n consome. */
 export type NetworkAlarmPublicEvent = 'OPENED' | 'ESCALATED' | 'RESOLVED';
@@ -34,6 +41,20 @@ export const NETWORK_ALARM_PUBLIC_EVENT: Record<NetworkAlarmEvent, NetworkAlarmP
   NETWORK_ALARM_OPENED: 'OPENED',
   NETWORK_ALARM_ESCALATED: 'ESCALATED',
   NETWORK_ALARM_RESOLVED: 'RESOLVED',
+};
+
+/** Inverso: evento publico escolhido no TESTAR ALARME -> chave real do fluxo. */
+export const NETWORK_ALARM_EVENT_KEY: Record<NetworkAlarmPublicEvent, NetworkAlarmEvent> = {
+  OPENED: 'NETWORK_ALARM_OPENED',
+  ESCALATED: 'NETWORK_ALARM_ESCALATED',
+  RESOLVED: 'NETWORK_ALARM_RESOLVED',
+};
+
+const SEVERITY_RANK: Record<AlarmSeverity, number> = {
+  INFO: 1,
+  WARNING: 2,
+  MAJOR: 3,
+  CRITICAL: 4,
 };
 
 export interface NetworkAlarmOpticalPayload {
@@ -68,8 +89,14 @@ export interface NetworkAlarmWebhookPayload {
   metricKey: string | null;
   optical: NetworkAlarmOpticalPayload | null;
   occurredAt: string;
-  /** Chave interna do evento (fluxo real). */
-  eventKey: NetworkAlarmEvent;
+  /** Chave interna do evento: real (OPENED/ESCALATED/RESOLVED) ou NETWORK_ALARM_TEST. */
+  eventKey: NetworkAlarmEvent | typeof NETWORK_ALARM_TEST_EVENT;
+  /**
+   * Severidade ANTERIOR da escalada (so existe quando o evento e ESCALATED e o
+   * alarme realmente subiu de nivel). Ausente nos demais eventos, para nao
+   * alterar o payload que o n8n ja consome.
+   */
+  previousSeverity?: AlarmSeverity;
   ruleId: string | null;
   type: string;
   severity: string;
@@ -112,7 +139,7 @@ function metadataValue<K extends keyof AlarmMetadata>(
 export function buildNetworkAlarmWebhookPayload(
   alarm: Alarm,
   event: NetworkAlarmEvent,
-  options: { test?: boolean } = {},
+  options: { test?: boolean; eventKey?: NetworkAlarmEvent | typeof NETWORK_ALARM_TEST_EVENT } = {},
 ): NetworkAlarmWebhookPayload {
   const metadata = alarm.metadata ?? null;
   const triggerReasons = metadata?.triggerReasons ? [...metadata.triggerReasons] : null;
@@ -133,10 +160,18 @@ export function buildNetworkAlarmWebhookPayload(
     dropWindowMinutes,
     triggerReasons,
   ].some((value) => value !== null);
+  const publicEvent = NETWORK_ALARM_PUBLIC_EVENT[event];
+  const notified = alarm.notifiedSeverity ?? null;
+  // Escalada REAL: a severidade ja notificada é a anterior. Nunca entra em
+  // OPENED/RESOLVED para o payload existente seguir identico.
+  const previousSeverity =
+    publicEvent === 'ESCALATED' && notified && SEVERITY_RANK[notified] < SEVERITY_RANK[alarm.severity]
+      ? notified
+      : null;
   return {
     schemaVersion: 1,
     purpose: 'NETWORK_ALARMS',
-    event: NETWORK_ALARM_PUBLIC_EVENT[event],
+    event: publicEvent,
     test: options.test ?? false,
     alarmId: alarm.id,
     message: alarm.message ?? null,
@@ -156,7 +191,8 @@ export function buildNetworkAlarmWebhookPayload(
         }
       : null,
     occurredAt: alarm.startedAt,
-    eventKey: event,
+    eventKey: options.eventKey ?? event,
+    ...(previousSeverity ? { previousSeverity } : {}),
     ruleId: alarm.ruleId ?? null,
     type: alarm.type,
     severity: alarm.severity,
@@ -190,34 +226,10 @@ export function buildNetworkAlarmWebhookPayload(
 
 /**
  * Alarme sintetico do TESTAR ALARME. Nao entra em banco: existe so em memoria,
- * marcado com `test: true` no payload.
+ * marcado com `test: true` no payload. As fixtures por tipo vivem em
+ * `alarm-test-fixtures.ts` e alimentam o MESMO builder dos alarmes reais.
  */
-export function buildNetworkAlarmTestAlarm(now: Date): Alarm {
-  return {
-    id: 'TEST-NETVISION',
-    deviceId: 'test-device',
-    deviceName: 'NETVISION-TEST',
-    interfaceId: 'test-interface',
-    interfaceName: '100GE0/0/1',
-    interfaceLabel: 'TESTE-WEBHOOK',
-    ifIndex: 1,
-    linkId: null,
-    linkLabel: null,
-    type: 'INTERFACE_DOWN',
-    severity: 'CRITICAL',
-    startedAt: now.toISOString(),
-    endedAt: null,
-    acknowledgedAt: null,
-    acknowledgedBy: null,
-    message: 'Teste de alarme do GMJ NetVision',
-    ruleId: null,
-    metricKey: null,
-    currentValue: null,
-    thresholdValue: null,
-    unit: null,
-    metadata: null,
-  };
-}
+export { buildNetworkAlarmTestAlarm } from './alarm-test-fixtures';
 
 /** Porta usada pelo servico de notificacao (facilita o teste do motor). */
 export interface AlarmNotificationTransport {
@@ -249,17 +261,25 @@ export class N8nAlarmTransport implements AlarmNotificationTransport, MediaAlarm
 
   /**
    * TESTAR ALARME: o MESMO serializer, o MESMO transporte e o MESMO sender dos
-   * alarmes reais, trocando apenas o canal resolvido (NETWORK_ALARMS) e o
-   * payload sintetico (`test: true`, alarmId TEST-NETVISION). Nao cria linha em
-   * Alarm/OperationalOccurrence e nao altera badge nenhum.
+   * alarmes reais, trocando apenas o canal resolvido (NETWORK_ALARMS) e a
+   * fixture sintetica (`test: true`, eventKey NETWORK_ALARM_TEST). O campo
+   * `event` do payload reflete a selecao (OPENED/ESCALATED/RESOLVED), o tipo e a
+   * severidade escolhidos. Nao cria linha em Alarm/OperationalOccurrence, nao
+   * roda SNMP e nao altera badge nenhum.
    */
-  async publishAlarmTest(input: { profileId?: string | null } = {}): Promise<MediaDeliveryOutcome> {
-    const alarm = buildNetworkAlarmTestAlarm(this.now());
+  async publishAlarmTest(
+    input: { profileId?: string | null } & NetworkAlarmTestSelectionInput = {},
+  ): Promise<MediaDeliveryOutcome> {
+    const selection = resolveNetworkAlarmTestSelection(input);
+    const alarm = buildNetworkAlarmTestAlarm(selection, this.now());
     return this.deliverAlarm(
       NETWORK_ALARM_TEST_EVENT,
       alarm,
       input.profileId ?? null,
-      buildNetworkAlarmWebhookPayload(alarm, 'NETWORK_ALARM_OPENED', { test: true }),
+      buildNetworkAlarmWebhookPayload(alarm, NETWORK_ALARM_EVENT_KEY[selection.event], {
+        test: true,
+        eventKey: NETWORK_ALARM_TEST_EVENT,
+      }),
     );
   }
 

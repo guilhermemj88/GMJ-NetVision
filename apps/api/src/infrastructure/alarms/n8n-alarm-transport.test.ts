@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Alarm } from '@gmj/shared';
+import type { Alarm, NetworkAlarmTestSelectionInput } from '@gmj/shared';
+import { NETWORK_ALARM_TEST_EVENTS, NETWORK_ALARM_TEST_TYPES } from '@gmj/shared';
 import { WebhookDeliveryError, type MediaChannelPort } from '../media/n8n-media-transport';
 import {
   N8nAlarmTransport,
   buildNetworkAlarmTestAlarm,
   buildNetworkAlarmWebhookPayload,
+  type NetworkAlarmWebhookPayload,
 } from './n8n-alarm-transport';
 
 const NOW = new Date('2026-10-07T12:00:00.000Z');
@@ -274,11 +276,12 @@ describe('TESTAR ALARME (NETWORK_ALARMS)', () => {
       schemaVersion: 1,
       purpose: 'NETWORK_ALARMS',
       event: 'OPENED',
+      eventKey: 'NETWORK_ALARM_TEST',
       test: true,
       alarmId: 'TEST-NETVISION',
       severity: 'CRITICAL',
       type: 'INTERFACE_DOWN',
-      message: 'Teste de alarme do GMJ NetVision',
+      message: 'Teste de queda de interface do GMJ NetVision',
       device: { id: 'test-device', name: 'NETVISION-TEST' },
       interface: { id: 'test-interface', name: '100GE0/0/1', alias: 'TESTE-WEBHOOK' },
       optical: null,
@@ -341,7 +344,7 @@ describe('TESTAR ALARME (NETWORK_ALARMS)', () => {
   });
 
   it('o alarme sintetico nao e persistido: o transporte so fala com a camada de midias', async () => {
-    const alarm = buildNetworkAlarmTestAlarm(NOW);
+    const alarm = buildNetworkAlarmTestAlarm({ type: 'INTERFACE_DOWN', event: 'OPENED' }, NOW);
     expect(alarm).toMatchObject({ id: 'TEST-NETVISION', endedAt: null, ruleId: null });
 
     const built = build();
@@ -350,5 +353,204 @@ describe('TESTAR ALARME (NETWORK_ALARMS)', () => {
     // teste tentasse criar row, o proprio mock quebraria.
     const portMethods = Object.keys(built.media);
     expect(portMethods.sort()).toEqual(['recordOutboundAttempt', 'recordOutboundDelivery', 'resolveOutbound']);
+  });
+});
+
+describe('simulador do TESTAR ALARME por tipo/evento (F9.5.1)', () => {
+  async function testPayload(
+    selection: NetworkAlarmTestSelectionInput,
+  ): Promise<NetworkAlarmWebhookPayload> {
+    const built = build();
+    await built.transport.publishAlarmTest({ profileId: 'media-2', ...selection });
+    return built.send.mock.calls[0]?.[1] as NetworkAlarmWebhookPayload;
+  }
+
+  it('INTERFACE_DOWN: queda sem valores metricos', async () => {
+    const payload = await testPayload({ type: 'INTERFACE_DOWN', event: 'OPENED' });
+    expect(payload).toMatchObject({
+      type: 'INTERFACE_DOWN',
+      severity: 'CRITICAL',
+      message: 'Teste de queda de interface do GMJ NetVision',
+      device: { id: 'test-device', name: 'NETVISION-TEST' },
+      interface: { id: 'test-interface', name: '100GE0/0/1', alias: 'TESTE-WEBHOOK' },
+      metricKey: null,
+      currentValue: null,
+      thresholdValue: null,
+      unit: null,
+      direction: null,
+      optical: null,
+    });
+  });
+
+  it('INTERFACE_CRC: metrica, valor, limite, unidade e direcao RX', async () => {
+    const payload = await testPayload({ type: 'INTERFACE_CRC', event: 'OPENED' });
+    expect(payload).toMatchObject({
+      type: 'INTERFACE_CRC',
+      severity: 'WARNING',
+      message: 'Teste de CRC/FCS do GMJ NetVision',
+      interface: { id: 'test-interface', name: '100GE0/0/2', alias: 'BACKBONE-TEST' },
+      metricKey: 'crc_rx',
+      currentValue: 18,
+      thresholdValue: 10,
+      unit: 'errors/min',
+      direction: 'RX',
+      lane: null,
+      optical: null,
+    });
+  });
+
+  it('INTERFACE_DISCARDS: direcao BOTH com valor 35 sobre limite 20', async () => {
+    const payload = await testPayload({ type: 'INTERFACE_DISCARDS', event: 'OPENED' });
+    expect(payload).toMatchObject({
+      type: 'INTERFACE_DISCARDS',
+      severity: 'WARNING',
+      message: 'Teste de descartes de interface do GMJ NetVision',
+      metricKey: 'discards_rx_tx',
+      currentValue: 35,
+      thresholdValue: 20,
+      unit: 'discards/min',
+      direction: 'BOTH',
+    });
+  });
+
+  it('INTERFACE_ERRORS: erros RX com severidade default MAJOR', async () => {
+    const payload = await testPayload({ type: 'INTERFACE_ERRORS', event: 'OPENED' });
+    expect(payload).toMatchObject({
+      type: 'INTERFACE_ERRORS',
+      severity: 'MAJOR',
+      message: 'Teste de erros de interface do GMJ NetVision',
+      metricKey: 'errors_rx',
+      currentValue: 24,
+      thresholdValue: 10,
+      unit: 'errors/min',
+      direction: 'RX',
+    });
+  });
+
+  it('OPTICAL_RX_DEGRADATION: lane + bloco optico completo', async () => {
+    const payload = await testPayload({ type: 'OPTICAL_RX_DEGRADATION', event: 'OPENED' });
+    expect(payload).toMatchObject({
+      type: 'OPTICAL_RX_DEGRADATION',
+      severity: 'MAJOR',
+      message: 'Teste de degradação óptica do GMJ NetVision',
+      metricKey: 'rx_power_dbm',
+      currentValue: -18.7,
+      thresholdValue: -21.48,
+      unit: 'dBm',
+      direction: 'RX',
+      lane: 2,
+      rxPowerDbm: -18.7,
+      rxLowAlarmDbm: -21.48,
+      rxHighAlarmDbm: -2.5,
+      proximityPercent: 92,
+      trendDropDb: 3.4,
+      trendWindowMinutes: 30,
+      triggerReasons: ['PROXIMITY', 'RAPID_DROP'],
+      currentPowerSource: 'SNMP',
+      thresholdSource: 'DEVICE',
+      optical: {
+        lane: 2,
+        rxPowerDbm: -18.7,
+        lowThresholdDbm: -21.48,
+        highThresholdDbm: -2.5,
+        proximityPercent: 92,
+        dropDb: 3.4,
+        dropWindowMinutes: 30,
+        triggerReasons: ['PROXIMITY', 'RAPID_DROP'],
+      },
+    });
+  });
+
+  it('OPENED mantem startedAt e nao traz previousSeverity/resolvedAt', async () => {
+    const payload = await testPayload({ type: 'INTERFACE_CRC', event: 'OPENED' });
+    expect(payload.event).toBe('OPENED');
+    expect(payload.eventKey).toBe('NETWORK_ALARM_TEST');
+    expect(Object.keys(payload)).not.toContain('previousSeverity');
+    expect(payload.resolvedAt).toBeNull();
+    expect(payload.startedAt).toBe(NOW.toISOString());
+    expect(payload.occurredAt).toBe(NOW.toISOString());
+  });
+
+  it('ESCALATED traz previousSeverity coerente com a severidade escolhida', async () => {
+    const escalated = await testPayload({
+      type: 'INTERFACE_CRC',
+      event: 'ESCALATED',
+      severity: 'MAJOR',
+    });
+    expect(escalated.event).toBe('ESCALATED');
+    expect(escalated.severity).toBe('MAJOR');
+    expect(escalated.previousSeverity).toBe('WARNING');
+    expect(escalated.resolvedAt).toBeNull();
+
+    const critical = await testPayload({
+      type: 'INTERFACE_CRC',
+      event: 'ESCALATED',
+      severity: 'CRITICAL',
+    });
+    expect(critical.previousSeverity).toBe('MAJOR');
+  });
+
+  it('RESOLVED traz resolvedAt e a mensagem de resolucao mantendo o contexto do tipo', async () => {
+    const payload = await testPayload({
+      type: 'INTERFACE_CRC',
+      event: 'RESOLVED',
+      severity: 'WARNING',
+    });
+    expect(payload.event).toBe('RESOLVED');
+    expect(payload.resolvedAt).toBe(NOW.toISOString());
+    expect(payload.message).toBe('Teste de resolução de alarme do GMJ NetVision');
+    expect(payload.metricKey).toBe('crc_rx');
+    expect(payload.currentValue).toBe(18);
+    expect(payload.thresholdValue).toBe(10);
+    expect(Object.keys(payload)).not.toContain('previousSeverity');
+  });
+
+  it('todos os tipos usam test:true, purpose NETWORK_ALARMS e eventKey NETWORK_ALARM_TEST', async () => {
+    for (const type of NETWORK_ALARM_TEST_TYPES) {
+      for (const event of NETWORK_ALARM_TEST_EVENTS) {
+        const payload = await testPayload({ type, event });
+        expect(payload.test).toBe(true);
+        expect(payload.purpose).toBe('NETWORK_ALARMS');
+        expect(payload.eventKey).toBe('NETWORK_ALARM_TEST');
+        expect(payload.event).toBe(event);
+        expect(payload.type).toBe(type);
+        expect(payload.alarmId).toBe('TEST-NETVISION');
+      }
+    }
+  });
+
+  it('a severidade escolhida prevalece sobre o default do tipo', async () => {
+    const payload = await testPayload({ type: 'INTERFACE_CRC', severity: 'CRITICAL', event: 'OPENED' });
+    expect(payload.severity).toBe('CRITICAL');
+  });
+
+  it('usa SO o canal NETWORK_ALARMS: nenhuma chamada a mitigacao', async () => {
+    const built = build();
+    await built.transport.publishAlarmTest({ type: 'INTERFACE_ERRORS', event: 'OPENED' });
+    expect(built.resolveOutbound.mock.calls.map((call) => call[0])).toEqual(['NETWORK_ALARMS']);
+    expect(JSON.stringify(built.send.mock.calls[0]?.[1])).not.toContain('mitigation');
+  });
+
+  it('o payload dos alarmes REAIS segue sem previousSeverity em OPENED/RESOLVED', async () => {
+    const opened = buildNetworkAlarmWebhookPayload(OPTICAL_ALARM, 'NETWORK_ALARM_OPENED');
+    expect(Object.keys(opened).sort()).toEqual(PAYLOAD_KEYS);
+    expect(opened.eventKey).toBe('NETWORK_ALARM_OPENED');
+    expect(opened.test).toBe(false);
+
+    const resolved = buildNetworkAlarmWebhookPayload(
+      { ...OPTICAL_ALARM, endedAt: NOW.toISOString(), notifiedSeverity: 'WARNING' },
+      'NETWORK_ALARM_RESOLVED',
+    );
+    expect(Object.keys(resolved).sort()).toEqual(PAYLOAD_KEYS);
+    expect(resolved.resolvedAt).toBe(NOW.toISOString());
+  });
+
+  it('a escalada REAL ganha previousSeverity a partir da severidade ja notificada', () => {
+    const escalated = buildNetworkAlarmWebhookPayload(
+      { ...OPTICAL_ALARM, notifiedSeverity: 'WARNING' },
+      'NETWORK_ALARM_ESCALATED',
+    );
+    expect(escalated.previousSeverity).toBe('WARNING');
+    expect(Object.keys(escalated).sort()).toEqual([...PAYLOAD_KEYS, 'previousSeverity'].sort());
   });
 });

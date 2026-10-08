@@ -319,9 +319,107 @@ describe('editor da aba ALARMES DE REDE (F9.5)', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
 
-    expect(media.testMediaAlarm).toHaveBeenCalledWith('media-2');
+    // Defaults do simulador quando o operador não mexe nos seletores.
+    expect(media.testMediaAlarm).toHaveBeenCalledWith('media-2', {
+      type: 'INTERFACE_DOWN',
+      event: 'OPENED',
+      severity: 'CRITICAL',
+    });
     expect(container.textContent).toContain('Webhook de alarme enviado com sucesso');
     expect(container.textContent).toContain('HTTP 200');
+  });
+
+  it('simulador lista tipo/evento/severidade e avisa que nada é criado', async () => {
+    await mount();
+    const text = container.textContent ?? '';
+    expect(text).toContain('TIPO DE TESTE');
+    expect(text).toContain('EVENTO');
+    expect(text).toContain('SEVERIDADE');
+    expect(text).toContain('Simulação: não cria alarme no NetVision.');
+
+    const typeSelect = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Tipo de teste do alarme"]',
+    );
+    const options = [...(typeSelect?.options ?? [])].map((option) => option.value);
+    expect(options).toEqual([
+      'INTERFACE_DOWN',
+      'INTERFACE_CRC',
+      'INTERFACE_DISCARDS',
+      'INTERFACE_ERRORS',
+      'OPTICAL_RX_DEGRADATION',
+    ]);
+    const eventSelect = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Evento do alarme de teste"]',
+    );
+    expect([...(eventSelect?.options ?? [])].map((option) => option.value)).toEqual([
+      'OPENED',
+      'ESCALATED',
+      'RESOLVED',
+    ]);
+  });
+
+  it('trocar o TIPO reposiciona a severidade no default daquele tipo', async () => {
+    await mount();
+    const typeSelect = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Tipo de teste do alarme"]',
+    );
+    const severitySelect = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Severidade do alarme de teste"]',
+    );
+    expect(severitySelect?.value).toBe('CRITICAL');
+
+    await act(async () => {
+      if (typeSelect) {
+        typeSelect.value = 'OPTICAL_RX_DEGRADATION';
+        typeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(severitySelect?.value).toBe('MAJOR');
+
+    // O operador pode sobrescrever para testar formatação.
+    await act(async () => {
+      if (severitySelect) {
+        severitySelect.value = 'CRITICAL';
+        severitySelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(severitySelect?.value).toBe('CRITICAL');
+  });
+
+  it('envia a seleção escolhida no corpo do teste', async () => {
+    await mount();
+    const typeSelect = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Tipo de teste do alarme"]',
+    );
+    const eventSelect = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Evento do alarme de teste"]',
+    );
+    await act(async () => {
+      if (typeSelect) {
+        typeSelect.value = 'INTERFACE_CRC';
+        typeSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (eventSelect) {
+        eventSelect.value = 'RESOLVED';
+        eventSelect.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    const button = [...container.querySelectorAll('button')].find(
+      (item) => item.textContent?.includes('TESTAR ALARME'),
+    );
+    await act(async () => {
+      button?.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(media.testMediaAlarm).toHaveBeenCalledWith('media-2', {
+      type: 'INTERFACE_CRC',
+      event: 'RESOLVED',
+      severity: 'WARNING',
+    });
   });
 
   it('sem integração o canal aparece como não configurado e o teste fica bloqueado', async () => {

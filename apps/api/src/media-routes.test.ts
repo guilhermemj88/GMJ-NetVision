@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { AuthUser } from '@gmj/shared';
 import { CredentialVault } from './application/credential-vault';
 import { registerMediaRoutes } from './media-routes';
@@ -13,6 +13,16 @@ const KEY = Buffer.alloc(32, 9).toString('base64');
 const NOW = new Date('2026-09-29T14:03:00.000Z');
 const ADMIN = { id: 'u1', username: 'admin', role: 'ADMIN' } as unknown as AuthUser;
 const VIEWER = { id: 'u2', username: 'viewer', role: 'VIEWER' } as unknown as AuthUser;
+
+/** Porta do TESTAR ALARME: espia a selecao repassada pela rota. */
+const alarmTestPort = vi.fn(async () => ({
+  ok: true,
+  skipped: false,
+  httpStatus: 200,
+  latencyMs: 41,
+  safeError: null,
+  event: 'NETWORK_ALARM_TEST',
+}));
 
 async function buildApp(user: AuthUser | null = ADMIN): Promise<FastifyInstance> {
   const repository = new InMemoryMediaRepository();
@@ -32,14 +42,7 @@ async function buildApp(user: AuthUser | null = ADMIN): Promise<FastifyInstance>
   });
   media.attachTransport(transport);
   media.attachAlarmTransport({
-    publishAlarmTest: async () => ({
-      ok: true,
-      skipped: false,
-      httpStatus: 200,
-      latencyMs: 41,
-      safeError: null,
-      event: 'NETWORK_ALARM_TEST',
-    }),
+    publishAlarmTest: alarmTestPort,
   });
 
   const app = Fastify();
@@ -223,6 +226,7 @@ describe('API de MÍDIAS', () => {
       },
     });
     const id = created.json().id as string;
+    alarmTestPort.mockClear();
 
     const tested = await app.inject({ method: 'POST', url: `/api/media/integrations/${id}/test-alarm` });
     expect(tested.statusCode).toBe(200);
@@ -233,6 +237,72 @@ describe('API de MÍDIAS', () => {
       event: 'NETWORK_ALARM_TEST',
     });
     expect(JSON.stringify(tested.json())).not.toContain('token-alarmes');
+    // Sem corpo: o default do simulador (INTERFACE_DOWN/OPENED/CRITICAL) desce.
+    expect(alarmTestPort).toHaveBeenCalledWith({
+      profileId: id,
+      type: 'INTERFACE_DOWN',
+      event: 'OPENED',
+      severity: 'CRITICAL',
+    });
+    await app.close();
+  });
+
+  it('TESTAR ALARME aceita a seleção de tipo/evento/severidade do simulador', async () => {
+    const app = await buildApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/media/integrations',
+      payload: { name: 'n8n — Alarmes de Rede', purpose: 'NETWORK_ALARMS' },
+    });
+    const id = created.json().id as string;
+    alarmTestPort.mockClear();
+
+    const tested = await app.inject({
+      method: 'POST',
+      url: `/api/media/integrations/${id}/test-alarm`,
+      payload: { type: 'OPTICAL_RX_DEGRADATION', event: 'ESCALATED', severity: 'CRITICAL' },
+    });
+    expect(tested.statusCode).toBe(200);
+    expect(alarmTestPort).toHaveBeenCalledWith({
+      profileId: id,
+      type: 'OPTICAL_RX_DEGRADATION',
+      event: 'ESCALATED',
+      severity: 'CRITICAL',
+    });
+    await app.close();
+  });
+
+  it('TESTAR ALARME rejeita tipo/evento/severidade fora do contrato', async () => {
+    const app = await buildApp();
+    const created = await app.inject({
+      method: 'POST',
+      url: '/api/media/integrations',
+      payload: { name: 'n8n — Alarmes de Rede', purpose: 'NETWORK_ALARMS' },
+    });
+    const id = created.json().id as string;
+    alarmTestPort.mockClear();
+
+    const bogusType = await app.inject({
+      method: 'POST',
+      url: `/api/media/integrations/${id}/test-alarm`,
+      payload: { type: 'INTERFACE_BOGUS' },
+    });
+    expect(bogusType.statusCode).toBe(400);
+
+    const bogusSeverity = await app.inject({
+      method: 'POST',
+      url: `/api/media/integrations/${id}/test-alarm`,
+      payload: { severity: 'BLOCKER' },
+    });
+    expect(bogusSeverity.statusCode).toBe(400);
+
+    const extra = await app.inject({
+      method: 'POST',
+      url: `/api/media/integrations/${id}/test-alarm`,
+      payload: { type: 'INTERFACE_CRC', alarmId: 'hack' },
+    });
+    expect(extra.statusCode).toBe(400);
+    expect(alarmTestPort).not.toHaveBeenCalled();
     await app.close();
   });
 

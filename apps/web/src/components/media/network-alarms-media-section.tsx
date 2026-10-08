@@ -4,7 +4,14 @@ import { useEffect, useState } from 'react';
 import { Badge, Button } from '@gmj/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BellRing, KeyRound, LoaderCircle, Power, Send, ShieldOff, TriangleAlert } from 'lucide-react';
-import { alarmTypeLabel, type Alarm } from '@gmj/shared';
+import { alarmTypeLabel, type Alarm, type NetworkAlarmTestEvent, type NetworkAlarmTestSeverity, type NetworkAlarmTestType } from '@gmj/shared';
+import {
+  NETWORK_ALARM_TEST_DEFAULT_SEVERITY,
+  NETWORK_ALARM_TEST_EVENTS,
+  NETWORK_ALARM_TEST_SEVERITIES,
+  NETWORK_ALARM_TEST_TYPES,
+  NETWORK_ALARM_TEST_TYPE_LABELS,
+} from '@gmj/shared';
 import { useAlarmIndex } from '@/lib/use-alarms';
 import {
   MEDIA_SOURCE_LABELS,
@@ -44,6 +51,102 @@ export function alarmLogReference(
   if (!alarm) return '';
   const lane = alarm.metadata?.lane == null ? '' : ` · Lane ${alarm.metadata.lane}`;
   return `${alarm.deviceName} · ${alarm.interfaceName}${lane} · ${alarmTypeLabel(alarm.type)} · ${alarm.severity}`;
+}
+
+export interface AlarmTestDraft {
+  type: NetworkAlarmTestType;
+  event: NetworkAlarmTestEvent;
+  severity: NetworkAlarmTestSeverity;
+}
+
+/**
+ * Simulador do TESTAR ALARME (F9.5.1): trocar o TIPO reposiciona a severidade
+ * no default daquele tipo (o operador ainda pode escolher outra para testar
+ * formatacao). O evento nunca altera a severidade.
+ */
+export function alarmTestDraftAfterTypeChange(
+  draft: AlarmTestDraft,
+  type: NetworkAlarmTestType,
+): AlarmTestDraft {
+  return { ...draft, type, severity: NETWORK_ALARM_TEST_DEFAULT_SEVERITY[type] };
+}
+
+const DEFAULT_ALARM_TEST_DRAFT: AlarmTestDraft = {
+  type: 'INTERFACE_DOWN',
+  event: 'OPENED',
+  severity: NETWORK_ALARM_TEST_DEFAULT_SEVERITY.INTERFACE_DOWN,
+};
+
+/** Linha compacta TIPO / EVENTO / SEVERIDADE + botao do simulador. */
+export function AlarmTestSimulator({
+  draft,
+  onChange,
+  onTest,
+  disabled,
+}: {
+  draft: AlarmTestDraft;
+  onChange: (draft: AlarmTestDraft) => void;
+  onTest: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <div className="media-test-sim">
+      <div className="media-test-sim__row">
+        <label>
+          <span>TIPO DE TESTE</span>
+          <select
+            aria-label="Tipo de teste do alarme"
+            value={draft.type}
+            onChange={(event) =>
+              onChange(alarmTestDraftAfterTypeChange(draft, event.target.value as NetworkAlarmTestType))
+            }
+          >
+            {NETWORK_ALARM_TEST_TYPES.map((type) => (
+              <option key={type} value={type}>
+                {type} — {NETWORK_ALARM_TEST_TYPE_LABELS[type]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>EVENTO</span>
+          <select
+            aria-label="Evento do alarme de teste"
+            value={draft.event}
+            onChange={(event) =>
+              onChange({ ...draft, event: event.target.value as NetworkAlarmTestEvent })
+            }
+          >
+            {NETWORK_ALARM_TEST_EVENTS.map((event) => (
+              <option key={event} value={event}>
+                {event}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>SEVERIDADE</span>
+          <select
+            aria-label="Severidade do alarme de teste"
+            value={draft.severity}
+            onChange={(event) =>
+              onChange({ ...draft, severity: event.target.value as NetworkAlarmTestSeverity })
+            }
+          >
+            {NETWORK_ALARM_TEST_SEVERITIES.map((severity) => (
+              <option key={severity} value={severity}>
+                {severity}
+              </option>
+            ))}
+          </select>
+        </label>
+        <Button variant="ghost" onClick={onTest} disabled={disabled}>
+          <Send size={15} /> TESTAR ALARME
+        </Button>
+      </div>
+      <p className="media-panel__hint">Simulação: não cria alarme no NetVision.</p>
+    </div>
+  );
 }
 
 /** Banner do TESTAR ALARME (sucesso/falha), sem payload nem token. */
@@ -115,6 +218,8 @@ export function NetworkAlarmsMediaSection() {
   const [tokenDraft, setTokenDraft] = useState('');
   const [tokenVisible, setTokenVisible] = useState(false);
   const [testResult, setTestResult] = useState<MediaWebhookTestResult | null>(null);
+  // Simulador do TESTAR ALARME (F9.5.1): escolha local, nada e persistido.
+  const [testDraft, setTestDraft] = useState<AlarmTestDraft>(DEFAULT_ALARM_TEST_DRAFT);
 
   const integrationUrl = integration?.outboundUrl ?? null;
   useEffect(() => {
@@ -160,9 +265,9 @@ export function NetworkAlarmsMediaSection() {
   });
 
   const testMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (selection: AlarmTestDraft) => {
       if (!integration) throw new Error('Salve a configuração antes de testar');
-      return testMediaAlarm(integration.id);
+      return testMediaAlarm(integration.id, selection);
     },
     onSuccess: (result) => {
       setTestResult(result);
@@ -267,14 +372,13 @@ export function NetworkAlarmsMediaSection() {
             {enabledToggle.isPending ? <LoaderCircle size={15} /> : <Power size={15} />}{' '}
             {integration?.enabled ? 'DESATIVAR' : 'ATIVAR'}
           </Button>
-          <Button
-            variant="ghost"
-            onClick={() => testMutation.mutate()}
-            disabled={busy || !integration}
-          >
-            <Send size={15} /> TESTAR ALARME
-          </Button>
         </div>
+        <AlarmTestSimulator
+          draft={testDraft}
+          onChange={setTestDraft}
+          onTest={() => testMutation.mutate(testDraft)}
+          disabled={busy || !integration}
+        />
         <p className="media-panel__hint">
           O TESTAR ALARME usa o MESMO payload dos alarmes reais (com <code>test: true</code>), não
           cria alarme e não mexe na mitigação.

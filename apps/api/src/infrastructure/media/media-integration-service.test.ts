@@ -313,6 +313,45 @@ describe('mídias SEPARADAS: BGP_MITIGATION x NETWORK_ALARMS (F9.5)', () => {
     expect(sent[0]?.headers['X-NetVision-Token']).toBe('alarmes-token');
   });
 
+  it('TESTAR ALARME repassa a seleção do simulador já resolvida (defaults do tipo)', async () => {
+    const { service, repository } = buildService();
+    await service.create(alarms);
+    const received: Array<Record<string, unknown>> = [];
+    service.attachAlarmTransport({
+      publishAlarmTest: async (input) => {
+        received.push({ ...input });
+        return {
+          ok: true,
+          skipped: false,
+          httpStatus: 200,
+          latencyMs: 12,
+          safeError: null,
+          event: 'NETWORK_ALARM_TEST',
+        };
+      },
+    });
+    const integration = await repository.findByPurpose('NETWORK_ALARMS');
+
+    await service.testAlarmWebhook(integration?.id ?? '', {
+      type: 'INTERFACE_DISCARDS',
+      event: 'ESCALATED',
+    });
+    expect(received[0]).toEqual({
+      profileId: integration?.id,
+      type: 'INTERFACE_DISCARDS',
+      event: 'ESCALATED',
+      severity: 'WARNING',
+    });
+
+    await service.testAlarmWebhook(integration?.id ?? '', undefined);
+    expect(received[1]).toEqual({
+      profileId: integration?.id,
+      type: 'INTERFACE_DOWN',
+      event: 'OPENED',
+      severity: 'CRITICAL',
+    });
+  });
+
   it('TESTAR ALARME recusa integração de mitigação ou id desconhecido', async () => {
     const { service } = buildService();
     const mitigation = await service.create(bgp);

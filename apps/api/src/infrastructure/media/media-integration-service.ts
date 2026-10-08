@@ -12,6 +12,8 @@ import type {
   MediaOperationalStatus,
   ResolvedMediaChannel,
 } from './media-types';
+import type { NetworkAlarmTestSelectionInput } from '@gmj/shared';
+import { resolveNetworkAlarmTestSelection } from '@gmj/shared';
 import {
   generateIntegrationToken,
   safeDestination,
@@ -47,7 +49,9 @@ export interface MediaIntegrationServiceDeps {
 
 /** Porta do transporte de alarmes usada apenas pelo TESTAR ALARME (F9.5). */
 export interface MediaAlarmTestPort {
-  publishAlarmTest(input?: { profileId?: string | null }): Promise<MediaDeliveryOutcome>;
+  publishAlarmTest(
+    input?: { profileId?: string | null } & NetworkAlarmTestSelectionInput,
+  ): Promise<MediaDeliveryOutcome>;
 }
 
 export interface CreateMediaIntegrationInput {
@@ -470,11 +474,16 @@ export class MediaIntegrationService implements MediaChannelPort {
   }
 
   /**
-   * TESTAR ALARME (F9.5): mesma serializacao e mesmo transporte dos alarmes
-   * reais, porem SO pelo canal NETWORK_ALARMS e com `test: true` no payload.
-   * Nao cria Alarm, nao cria OperationalOccurrence e nao mexe na mitigacao.
+   * TESTAR ALARME (F9.5.1): mesma serializacao e mesmo transporte dos alarmes
+   * reais, porem SO pelo canal NETWORK_ALARMS e com `test: true` no payload. O
+   * tipo/evento/severidade vem do simulador da aba de alarmes; sem selecao vale
+   * o default (INTERFACE_DOWN / OPENED / severidade do tipo). Nao cria Alarm,
+   * nao cria OperationalOccurrence e nao mexe na mitigacao.
    */
-  async testAlarmWebhook(id: string): Promise<MediaDeliveryOutcome & { checkedAt: string }> {
+  async testAlarmWebhook(
+    id: string,
+    selection?: NetworkAlarmTestSelectionInput | null,
+  ): Promise<MediaDeliveryOutcome & { checkedAt: string }> {
     const checkedAt = this.now().toISOString();
     const integration = await this.read(() => this.deps.repository.get(id), null);
     if (!integration || integration.purpose !== 'NETWORK_ALARMS') {
@@ -500,7 +509,10 @@ export class MediaIntegrationService implements MediaChannelPort {
         checkedAt,
       };
     }
-    const outcome = await transport.publishAlarmTest({ profileId: integration.id });
+    const outcome = await transport.publishAlarmTest({
+      profileId: integration.id,
+      ...resolveNetworkAlarmTestSelection(selection),
+    });
     return { ...outcome, checkedAt };
   }
 

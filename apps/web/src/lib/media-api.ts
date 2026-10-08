@@ -5,6 +5,7 @@
 // `rotateInboundToken`, que mostra o token novo UMA vez para o operador
 // copiar — depois disso ele não é recuperável pela UI.
 
+import type { NetworkAlarmTestSelectionInput } from '@gmj/shared';
 import { request } from './api';
 
 export type MediaOperationalStatus =
@@ -160,11 +161,19 @@ export function testMediaWebhook(id: string): Promise<MediaWebhookTestResult> {
 /**
  * TESTAR ALARME (F9.5): envia o payload sintetico pelo canal NETWORK_ALARMS,
  * com a mesma serializacao dos alarmes reais. Nunca toca na mitigacao.
+ * F9.5.1: a selecao (tipo/evento/severidade) vai no corpo; sem ela vale o
+ * default do simulador.
  */
-export function testMediaAlarm(id: string): Promise<MediaWebhookTestResult> {
+export function testMediaAlarm(
+  id: string,
+  selection?: NetworkAlarmTestSelectionInput,
+): Promise<MediaWebhookTestResult> {
   return request<MediaWebhookTestResult>(
     `/api/media/integrations/${encodeURIComponent(id)}/test-alarm`,
-    { method: 'POST' },
+    {
+      method: 'POST',
+      ...(selection ? { body: JSON.stringify(selection) } : {}),
+    },
   );
 }
 
