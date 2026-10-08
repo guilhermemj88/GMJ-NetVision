@@ -14,6 +14,8 @@
  *   baseline (rebase), para o próximo delta partir do valor certo;
  * - taxa acima da capacidade da interface + tolerância → amostra **não
  *   utilizável**, também com rebase;
+ * - intervalo acima de `STALE_COUNTER_SAMPLE_SECONDS` (polling parado/host
+ *   inalcançável) → **BASELINE**: uma média de horas não é a taxa atual;
  * - `speedBps` desconhecido → não há como validar capacidade; o cálculo é
  *   mantido (comportamento seguro e documentado) e só a descontinuidade é
  *   rejeitada;
@@ -30,6 +32,17 @@
 export const BASELINE_ONLY_RATE_BPS = -1;
 
 /**
+ * Intervalo MÁXIMO entre duas leituras de contador para a taxa continuar sendo
+ * "atual" (F9.6). Acima disso o delta cobre horas e a média não representa o
+ * tráfego de agora: a amostra vira BASELINE (rebase) e o próximo poll — já
+ * respeitando `MIN_COUNTER_SAMPLE_SECONDS` — produz a taxa real.
+ *
+ * 15 minutos = 15× o intervalo padrão de polling (60 s) e metade do menor
+ * período de histórico agregado que ainda mostra "agora" (1h em buckets de 1 min).
+ */
+export const STALE_COUNTER_SAMPLE_SECONDS = 15 * 60;
+
+/**
  * Tolerância sobre `speedBps` para absorver overhead/jitter de contadores SNMP e
  * `speedBps` arredondado para baixo.
  *
@@ -38,7 +51,7 @@ export const BASELINE_ONLY_RATE_BPS = -1;
  */
 export const COUNTER_RATE_TOLERANCE_RATIO = 0.1;
 
-export type TrafficRateInvalidReason = 'DISCONTINUITY' | 'ABOVE_CAPACITY';
+export type TrafficRateInvalidReason = 'DISCONTINUITY' | 'ABOVE_CAPACITY' | 'STALE_INTERVAL';
 
 export interface TrafficRateInput {
   currentInOctets: bigint;
@@ -150,6 +163,7 @@ export function evaluateTrafficRate(input: TrafficRateInput): TrafficRateResult 
   const rxBps = octetsToBps(input.currentInOctets - previousInOctets, seconds);
   const txBps = octetsToBps(input.currentOutOctets - previousOutOctets, seconds);
   const aboveCapacity = limitBps !== null && (rxBps > limitBps || txBps > limitBps);
+  const staleInterval = seconds > STALE_COUNTER_SAMPLE_SECONDS;
 
   if (discontinuity) {
     return {
@@ -172,6 +186,23 @@ export function evaluateTrafficRate(input: TrafficRateInput): TrafficRateResult 
       aboveCapacity: true,
       usable: false,
       reason: 'ABOVE_CAPACITY',
+    };
+  }
+
+  /**
+   * Gap longo (polling parado, host inalcançável): a média do intervalo inteiro
+   * NÃO é a taxa atual. Persistir como baseline evita um número plausível e
+   * enganoso no histórico/painel; o próximo poll com delta curto volta a valer.
+   */
+  if (staleInterval) {
+    return {
+      rxBps,
+      txBps,
+      limitBps,
+      discontinuity: false,
+      aboveCapacity: false,
+      usable: false,
+      reason: 'STALE_INTERVAL',
     };
   }
 

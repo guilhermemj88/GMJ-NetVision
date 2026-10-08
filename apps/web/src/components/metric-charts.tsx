@@ -18,6 +18,7 @@ import {
 } from 'recharts';
 import { getHistory } from '@/lib/api';
 import { withTemporalGapMarkers } from '@/lib/chart-history';
+import { emptyHistoryNotice } from '@/lib/telemetry-feedback';
 
 const periods: HistoryPeriod[] = ['15m', '1h', '6h', '24h', '7d'];
 export const TRAFFIC_CURVE_TYPE = 'stepAfter' as const;
@@ -118,7 +119,13 @@ export function MetricCharts({ networkInterface }: { networkInterface: NetworkIn
               <span className="tx">TX {formatBitsPerSecond(lastHistorical.txBps)}</span>
             </>
           ) : (
-            <span>Sem amostras no período</span>
+            /**
+             * F9.6: período vazio precisa dizer QUANDO foi a última coleta — sem
+             * isso um preview sem polling parece um bug de gráfico.
+             */
+            <span className="chart-empty-inline">
+              {emptyHistoryNotice(period, networkInterface.telemetryUpdatedAt)}
+            </span>
           )}
         </div>
         <div className="chart-series-key">

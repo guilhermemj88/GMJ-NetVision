@@ -1,8 +1,9 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { NetworkInterface, OpticalHistoryPoint } from '@gmj/shared';
+import type { HistoryPeriod, NetworkInterface, OpticalHistoryPoint } from '@gmj/shared';
 import {
   OpticalHistoryTooltip,
+  OpticalHistoryView,
   OpticalThresholdChips,
   OpticalScalePicker,
   axisWindow,
@@ -347,5 +348,105 @@ describe('escala AUTO/LIMITES do historico optico (F9.4.2)', () => {
     expect(active?.[1]).toBe('AUTO');
     const limits = renderToStaticMarkup(<OpticalScalePicker mode="LIMITS" onChange={() => {}} />);
     expect(limits).toMatch(/class="is-active"[\s\S]*LIMITES/);
+  });
+});
+
+
+/**
+ * F9.6: o histórico óptico vazio informa a idade da última coleta óptica
+ * (escalar ou lanes, o que for mais recente) em vez de só dizer "sem amostras".
+ */
+describe('estado vazio do historico optico (F9.6)', () => {
+  const NETWORK_INTERFACE = {
+    id: 'if-1',
+    deviceId: 'dev-1',
+    name: '100GE0/0/2',
+    alias: '',
+    description: '',
+    ifIndex: 2,
+    mac: '',
+    mtu: 1500,
+    speedBps: 100_000_000_000,
+    adminStatus: 'UP',
+    operStatus: 'UP',
+    rxBps: 0,
+    txBps: 0,
+    rxUtilization: 0,
+    txUtilization: 0,
+    rxErrors: 0,
+    txErrors: 0,
+    rxDiscards: 0,
+    txDiscards: 0,
+    dataSources: ['SNMP'],
+    opticalLanes: [0, 1, 2, 3].map((lane) => ({ lane })),
+    opticalUpdatedAt: '2026-10-07T16:54:21.000Z',
+    opticalLanesUpdatedAt: '2026-10-08T00:40:10.000Z',
+  } as unknown as NetworkInterface;
+
+  function renderView(points: OpticalHistoryPoint[], period: HistoryPeriod = '6h'): string {
+    return renderToStaticMarkup(
+      <OpticalHistoryView
+        networkInterface={NETWORK_INTERFACE}
+        points={points}
+        period={period}
+        scaleMode="AUTO"
+        onPeriodChange={() => {}}
+        onScaleModeChange={() => {}}
+      />,
+    );
+  }
+
+  it('sem amostras mostra a janela e a idade da ultima coleta optica', () => {
+    const html = renderView([]);
+    expect(html).toContain('Sem amostras nas últimas 6 h');
+    expect(html).toContain('Última coleta: há');
+  });
+
+  it('sem coleta anterior o texto e explicito', () => {
+    const withoutOptics = {
+      ...NETWORK_INTERFACE,
+      opticalUpdatedAt: null,
+      opticalLanesUpdatedAt: null,
+    } as unknown as NetworkInterface;
+    const html = renderToStaticMarkup(
+      <OpticalHistoryView
+        networkInterface={withoutOptics}
+        points={[]}
+        period="24h"
+        scaleMode="AUTO"
+        onPeriodChange={() => {}}
+        onScaleModeChange={() => {}}
+      />,
+    );
+    expect(html).toContain('Sem amostras nas últimas 24 h');
+    expect(html).toContain('Sem coleta anterior');
+  });
+
+  it('com amostras no periodo nao mostra aviso de vazio', () => {
+    const html = renderView([
+      {
+        timestamp: '2026-10-08T00:40:10.000Z',
+        sampleCount: 1,
+        rxAvg: -13.67,
+        rxMin: -13.67,
+        rxMax: -13.67,
+        txAvg: 0.76,
+        txMin: 0.76,
+        txMax: 0.76,
+        lanes: [0, 1, 2, 3].map((lane) => ({
+          lane,
+          sampleCount: 1,
+          rxAvg: -13.7 + lane * 0.3,
+          rxMin: -13.7 + lane * 0.3,
+          rxMax: -13.7 + lane * 0.3,
+          txAvg: 0.4 + lane * 0.1,
+          txMin: 0.4 + lane * 0.1,
+          txMax: 0.4 + lane * 0.1,
+        })),
+      },
+    ]);
+    expect(html).not.toContain('Sem amostras nas últimas');
+    expect(html).toContain('Lane 0');
+    expect(html).toContain('RX · dBm');
   });
 });

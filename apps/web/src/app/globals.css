@@ -3833,6 +3833,10 @@ button {
   font: 500 9px var(--font-mono);
   text-align: center;
 }
+/* Estado vazio dentro da legenda (tráfego): mesma informação, sem caixa nova. */
+.chart-empty-inline {
+  color: #c8964f;
+}
 .edit-link-form .form-field {
   margin-bottom: 10px;
 }
@@ -5696,6 +5700,127 @@ label > small {
 }
 
 /* CONFIGURACOES -> ALARMES (F8). */
+.alarms-tabs {
+  display: flex;
+  gap: 6px;
+  padding: 0 18px 10px;
+}
+.alarms-tabs button {
+  padding: 5px 10px;
+  border: 1px solid #2a3d47;
+  border-radius: 4px;
+  background: rgba(11, 19, 24, 0.72);
+  color: #7d919c;
+  font: 650 10px var(--font-mono);
+  cursor: pointer;
+}
+.alarms-tabs button.is-active {
+  color: #cfe6f2;
+  border-color: #3d7ea6;
+  background: rgba(21, 42, 54, 0.92);
+}
+
+/* CONFIGURACOES -> ALARMES -> BASICO (F9.6): cards por slot gerenciado. */
+.alarms-basic {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 10px;
+}
+.alarms-basic-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #25363f;
+  border-radius: 6px;
+  background: #0f181e;
+}
+.alarms-basic-card.is-off {
+  border-style: dashed;
+  opacity: 0.86;
+}
+.alarms-basic-card--native {
+  grid-column: 1 / -1;
+  border-color: #2f4a58;
+  background: #101b22;
+}
+.alarms-basic-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.alarms-basic-card > header strong {
+  color: #c6d7de;
+  font: 650 11px var(--font-mono);
+  letter-spacing: 0.04em;
+}
+.alarms-basic-card p {
+  margin: 0;
+  color: #8ea2ac;
+  font-size: 11px;
+}
+.alarms-basic-card small {
+  color: #6f838d;
+  font-size: 10px;
+}
+.alarms-basic-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin: 0;
+}
+.alarms-basic-card__meta div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.alarms-basic-card__meta dt {
+  color: #627781;
+  font: 600 8px var(--font-mono);
+  letter-spacing: 0.1em;
+}
+.alarms-basic-card__meta dd {
+  margin: 0;
+  color: #b7c9d1;
+  font: 600 10px var(--font-mono);
+}
+.alarms-basic-card__toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.alarms-basic-card__toggle {
+  padding: 4px 8px;
+  border: 1px solid #2a3d47;
+  border-radius: 4px;
+  background: rgba(11, 19, 24, 0.72);
+  color: #7d919c;
+  font: 600 9px var(--font-mono);
+  cursor: pointer;
+}
+.alarms-basic-card__toggle.is-on {
+  border-color: #3d7ea6;
+  background: rgba(21, 42, 54, 0.92);
+  color: #cfe6f2;
+}
+.alarms-basic-card__toggle:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.alarms-basic-card__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: auto;
+  color: #7d919c;
+  font: 600 9px var(--font-mono);
+}
+.alarms-basic-card__hint {
+  color: #c8964f !important;
+}
+
 .alarms-panel__toolbar {
   display: flex;
   align-items: center;

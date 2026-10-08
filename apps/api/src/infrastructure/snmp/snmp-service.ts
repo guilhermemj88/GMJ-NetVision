@@ -4,6 +4,7 @@ import type {
   NetworkInterface,
   SourceConnectionState,
 } from '@gmj/shared';
+import { opticalSampleFromInterface } from '@gmj/shared';
 import type {
   DeviceMetricSampleInput,
   HostRepository,
@@ -60,6 +61,13 @@ const MIN_COUNTER_SAMPLE_SECONDS = 45;
 const INTERFACE_REFRESH_MILLISECONDS = 60 * 60 * 1000;
 const INTERFACE_DISCOVERY_COOLDOWN_MILLISECONDS = 5 * 60 * 1000;
 
+/**
+ * Anti-spam do óptico quando o poll é MANUAL (`forceOptical`): o intervalo de
+ * 300 s é ignorado para dar feedback imediato, mas dois cliques seguidos não
+ * martelam o transceptor/DDM.
+ */
+export const MANUAL_OPTICAL_MIN_INTERVAL_SECONDS = 15;
+
 interface CounterRow {
   ifIndex: number;
   inOctets: bigint;
@@ -75,6 +83,32 @@ interface CounterRow {
 
 type VarBind = { oid: string; value: string | number | Uint8Array };
 
+/**
+ * Feedback de TELEMETRIA do poll (F9.6): o que foi e o que NÃO foi coletado.
+ * O botão VERIFICAR AGORA usa isso para explicar o resultado real ao operador
+ * (nada de "verificado" quando nenhuma amostra nova foi criada).
+ */
+export interface SnmpPollTelemetryFeedback {
+  /** Amostras de tráfego persistidas com taxa válida. */
+  samples: number;
+  /** Interfaces puladas por `MIN_COUNTER_SAMPLE_SECONDS` (poll anterior muito recente). */
+  skipped: number;
+  /** Amostras persistidas apenas como BASELINE (rebase/descontinuidade/gap longo). */
+  baselines: number;
+  /** Menor espera (s) até uma nova taxa poder ser medida; `null` quando não há espera. */
+  retryAfterSeconds: number | null;
+}
+
+/** Feedback do óptico no poll: se rodou, se amostrou e quando pode tentar de novo. */
+export interface SnmpPollOpticalFeedback {
+  /** Ao menos uma interface ganhou leitura óptica nova persistida neste poll. */
+  sampled: boolean;
+  interfacesSampled: number;
+  /** O passo óptico foi ignorado (anti-spam manual ou intervalo automático). */
+  skipped: boolean;
+  retryAfterSeconds: number | null;
+}
+
 export interface SnmpPollResult {
   hostId: string;
   polledAt: string;
@@ -84,6 +118,15 @@ export interface SnmpPollResult {
   sysDescr?: string;
   sysObjectId?: string;
   uptimeSeconds?: number;
+  /** F9.6: feedback do tráfego (samples/skips/baselines). */
+  telemetry: SnmpPollTelemetryFeedback;
+  /** F9.6: feedback do óptico (force manual, anti-spam, sem dado). */
+  optical: SnmpPollOpticalFeedback;
+}
+
+/** Opções do poll: o caminho MANUAL (botão) força o óptico; o automático não. */
+export interface SnmpPollOptions {
+  forceOptical?: boolean;
 }
 
 export class SnmpService {
@@ -203,18 +246,26 @@ export class SnmpService {
     return this.repository.replaceInterfaces(device.id, merged);
   }
 
-  async pollHost(device: HostRecord): Promise<SnmpPollResult> {
+  async pollHost(device: HostRecord, options: SnmpPollOptions = {}): Promise<SnmpPollResult> {
+    /**
+     * Dedupe por device: um clique manual durante o poll agendado reaproveita o
+     * poll em andamento (e devolve o feedback dele) — nunca dois ciclos SNMP
+     * paralelos no mesmo equipamento.
+     */
     const running = this.activePolls.get(device.id);
     if (running) return running;
 
-    const poll = this.pollHostUnlocked(device).finally(() => {
+    const poll = this.pollHostUnlocked(device, options).finally(() => {
       if (this.activePolls.get(device.id) === poll) this.activePolls.delete(device.id);
     });
     this.activePolls.set(device.id, poll);
     return poll;
   }
 
-  private async pollHostUnlocked(device: HostRecord): Promise<SnmpPollResult> {
+  private async pollHostUnlocked(
+    device: HostRecord,
+    options: SnmpPollOptions = {},
+  ): Promise<SnmpPollResult> {
     if (!device.snmpEnabled || !device.snmp?.host)
       throw new Error('SNMP não está habilitado para este host');
     if (device.snmp.version !== 'SNMP_V2C') throw new Error('SNMPv3 ainda não está implementado');
@@ -285,6 +336,9 @@ export class SnmpService {
     const byIndex = new Map(currentDevice.interfaces.map((item) => [item.ifIndex, item]));
     const samples: InterfaceMetricSampleInput[] = [];
     const occurrenceSamples: OperationalOccurrenceIngestSample[] = [];
+    let skippedByInterval = 0;
+    let skippedRetryAfterSeconds: number | null = null;
+    let baselineSamples = 0;
     for (const counter of counters.values()) {
       const networkInterface = byIndex.get(counter.ifIndex);
       if (!networkInterface) continue;
@@ -295,7 +349,15 @@ export class SnmpService {
       // A manual poll right after the scheduled poll can therefore return the same
       // counters and create a false zero-rate sample. Skip rate samples until there
       // is enough elapsed time for the counter delta to be meaningful.
-      if (prior && seconds > 0 && seconds < MIN_COUNTER_SAMPLE_SECONDS) continue;
+      if (prior && seconds > 0 && seconds < MIN_COUNTER_SAMPLE_SECONDS) {
+        // F9.6: o pulo é reportado no resultado — o operador precisa saber que
+        // "verificado" não significa "sample novo" nesse caso.
+        skippedByInterval += 1;
+        const retry = Math.max(1, Math.ceil(MIN_COUNTER_SAMPLE_SECONDS - seconds));
+        skippedRetryAfterSeconds =
+          skippedRetryAfterSeconds === null ? retry : Math.min(skippedRetryAfterSeconds, retry);
+        continue;
+      }
       if (prior && counter.timestamp <= prior.timestamp) continue;
 
       /**
@@ -316,6 +378,7 @@ export class SnmpService {
       const fcsErrorsDelta = calculateFcsErrorsDelta(counter.fcsErrors ?? null, prior?.fcsErrors);
       const inDiscardsDelta = calculateCounterDelta(counter.inDiscards, prior?.inDiscards);
       const outDiscardsDelta = calculateCounterDelta(counter.outDiscards, prior?.outDiscards);
+      if (!rate.usable) baselineSamples += 1;
       samples.push({
         interfaceId: networkInterface.id,
         ifIndex: counter.ifIndex,
@@ -383,7 +446,9 @@ export class SnmpService {
     }
 
     await this.discoverUnknownInterfaces(currentDevice, unknownIfIndexes);
-    await this.refreshOpticalPower(currentDevice, community, system);
+    const optical = await this.refreshOpticalPower(currentDevice, community, system, {
+      force: options.forceOptical === true,
+    });
     await this.refreshMpls(currentDevice, community);
     await this.refreshPpp(currentDevice, community, system);
     await this.refreshBgp(currentDevice, community);
@@ -398,6 +463,13 @@ export class SnmpService {
       polledAt: system.timestamp.toISOString(),
       interfacesChecked: statuses.size,
       interfaceSamples: samples.length,
+      telemetry: {
+        samples: samples.length - baselineSamples,
+        skipped: skippedByInterval,
+        baselines: baselineSamples,
+        retryAfterSeconds: skippedRetryAfterSeconds,
+      },
+      optical,
       ...(system.sysName ? { sysName: system.sysName } : {}),
       ...(system.sysDescr ? { sysDescr: system.sysDescr } : {}),
       ...(system.sysObjectId ? { sysObjectId: system.sysObjectId } : {}),
@@ -467,14 +539,34 @@ export class SnmpService {
     }
   }
 
+  /**
+   * Coleta óptica do poll. O AUTOMÁTICO respeita `opticalIntervalMs` (300 s por
+   * padrão); o MANUAL (`force`, botão VERIFICAR AGORA) ignora esse intervalo —
+   * mantendo apenas um anti-spam curto para não martelar o DDM.
+   *
+   * Devolve o feedback do passo (F9.6) para o operador saber se houve leitura
+   * nova, se foi ignorado por anti-spam ou se o equipamento não informou nada.
+   */
   private async refreshOpticalPower(
     device: HostRecord,
     community: string,
     system?: { sysObjectId?: string; sysDescr?: string; sysName?: string },
-  ): Promise<void> {
+    options: { force?: boolean } = {},
+  ): Promise<SnmpPollOpticalFeedback> {
     const now = Date.now();
     const lastAttempt = this.lastOpticalAttempts.get(device.id) ?? 0;
-    if (now - lastAttempt < this.opticalIntervalMs) return;
+    const elapsed = now - lastAttempt;
+    const minIntervalMs = options.force
+      ? MANUAL_OPTICAL_MIN_INTERVAL_SECONDS * 1000
+      : this.opticalIntervalMs;
+    if (elapsed < minIntervalMs) {
+      return {
+        sampled: false,
+        interfacesSampled: 0,
+        skipped: true,
+        retryAfterSeconds: Math.max(1, Math.ceil((minIntervalMs - elapsed) / 1000)),
+      };
+    }
     this.lastOpticalAttempts.set(device.id, now);
     const startedAt = new Date(now);
 
@@ -494,6 +586,11 @@ export class SnmpService {
       }
 
       await this.repository.updateInterfaceOptics(device.id, interfaces, startedAt);
+      // MESMO predicado da persistência: só conta leitura FRESCA deste ciclo.
+      const interfacesSampled = interfaces.filter(
+        (item) => item.deviceId === device.id
+          && opticalSampleFromInterface(item, startedAt, startedAt) !== null,
+      ).length;
 
       // Thresholds SNMP (.13-.16) sao a fonte PRIMARIA: persistidos depois da
       // potencia e SEMPRE best-effort (falha nao bloqueia potencia nem motor).
@@ -528,8 +625,16 @@ export class SnmpService {
           // Threshold e opcional; o ciclo de potencia/SNMP permanece valido.
         }
       }
+
+      return {
+        sampled: interfacesSampled > 0,
+        interfacesSampled,
+        skipped: false,
+        retryAfterSeconds: null,
+      };
     } catch {
       // Optional DDM enrichment must never fail the traffic poll.
+      return { sampled: false, interfacesSampled: 0, skipped: false, retryAfterSeconds: null };
     }
   }
 

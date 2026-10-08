@@ -10,6 +10,7 @@ import {
   type AlertCenterResponse,
   type AlertCenterSummary,
   type AuthUser,
+  type BasicAlarmRuleKey,
   type InterfaceOccurrence,
   type OperationalOccurrenceAckResponse,
   type BgpAlertsResponse,
@@ -131,6 +132,22 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T;
 }
 
+/** Feedback de telemetria do poll (F9.6): samples, pulos e baselines. */
+export interface HostPollTelemetryFeedback {
+  samples: number;
+  skipped: number;
+  baselines: number;
+  retryAfterSeconds: number | null;
+}
+
+/** Feedback do óptico no poll (F9.6). */
+export interface HostPollOpticalFeedback {
+  sampled: boolean;
+  interfacesSampled: number;
+  skipped: boolean;
+  retryAfterSeconds: number | null;
+}
+
 export interface HostPollResult {
   hostId: string;
   polledAt: string;
@@ -140,6 +157,8 @@ export interface HostPollResult {
   sysDescr?: string;
   sysObjectId?: string;
   uptimeSeconds?: number;
+  telemetry?: HostPollTelemetryFeedback;
+  optical?: HostPollOpticalFeedback;
 }
 
 export function getMaps(): Promise<MapSummary[]> {
@@ -252,7 +271,16 @@ export function getAlarmOccurrences(minutes = 15, limit = 12): Promise<Interface
 }
 
 /** Corpo aceito pela API de regras (validado por Zod no backend). */
-export type AlarmRuleInput = Omit<AlarmRuleDto, 'id' | 'createdAt' | 'updatedAt'>;
+export type AlarmRuleInput = Omit<
+  AlarmRuleDto,
+  'id' | 'createdAt' | 'updatedAt' | 'managedKey'
+> & {
+  /**
+   * Presente apenas quando o Básico cria/gerencia o slot (F9.6). Ausente no
+   * PUT, o vínculo com o slot é PRESERVADO pelo backend.
+   */
+  managedKey?: BasicAlarmRuleKey | null;
+};
 
 /** Corpo aceito pelo POST de retirada/supressao (validado por Zod no backend). */
 export interface SuppressAlarmPayload {

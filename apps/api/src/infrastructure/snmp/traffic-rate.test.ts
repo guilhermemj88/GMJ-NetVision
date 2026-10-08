@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BASELINE_ONLY_RATE_BPS,
   COUNTER_RATE_TOLERANCE_RATIO,
+  STALE_COUNTER_SAMPLE_SECONDS,
   evaluateTrafficRate,
   filterUsableTrafficSamples,
   isUsableTrafficSample,
@@ -144,6 +145,67 @@ describe('avaliação fail-safe da taxa de tráfego SNMP', () => {
     expect(first.rxBps).toBe(0);
     expect(first.txBps).toBe(0);
     expect(first.usable).toBe(true);
+  });
+
+  it('7) gap maior que o limite stale vira BASELINE, nunca "taxa atual" de horas', () => {
+    // Polling parado por ~11h (caso real do preview): o delta médio pareceria
+    // plausível (ex.: 30 Gbps), mas não representa o tráfego de agora.
+    const elevenHours = 11 * 60 * 60 + 39 * 60;
+    const stale = evaluateTrafficRate({
+      currentInOctets: octetsFor(30 * GIGA, elevenHours),
+      currentOutOctets: octetsFor(30 * GIGA, elevenHours),
+      previousInOctets: 0n,
+      previousOutOctets: 0n,
+      seconds: elevenHours,
+      speedBps: HUNDRED_G,
+    });
+
+    expect(stale.usable).toBe(false);
+    expect(stale.reason).toBe('STALE_INTERVAL');
+    expect(stale.discontinuity).toBe(false);
+    expect(stale.aboveCapacity).toBe(false);
+    // A média até é calculada, mas NÃO é utilizável: o chamador grava a sentinela.
+    expect(stale.rxBps).toBeCloseTo(30 * GIGA, 0);
+  });
+
+  it('7b) o limite stale é exatamente 15 min: logo abaixo é taxa válida, acima é baseline', () => {
+    const atLimit = evaluateTrafficRate({
+      currentInOctets: octetsFor(30 * GIGA, STALE_COUNTER_SAMPLE_SECONDS),
+      currentOutOctets: octetsFor(30 * GIGA, STALE_COUNTER_SAMPLE_SECONDS),
+      previousInOctets: 0n,
+      previousOutOctets: 0n,
+      seconds: STALE_COUNTER_SAMPLE_SECONDS,
+      speedBps: HUNDRED_G,
+    });
+    expect(atLimit.usable).toBe(true);
+
+    const overLimit = evaluateTrafficRate({
+      currentInOctets: octetsFor(30 * GIGA, STALE_COUNTER_SAMPLE_SECONDS + 1),
+      currentOutOctets: octetsFor(30 * GIGA, STALE_COUNTER_SAMPLE_SECONDS + 1),
+      previousInOctets: 0n,
+      previousOutOctets: 0n,
+      seconds: STALE_COUNTER_SAMPLE_SECONDS + 1,
+      speedBps: HUNDRED_G,
+    });
+    expect(overLimit.usable).toBe(false);
+    expect(overLimit.reason).toBe('STALE_INTERVAL');
+  });
+
+  it('7c) depois do baseline stale, o próximo delta curto volta a ser taxa válida', () => {
+    // Poll 1 (stale) rebaseia; poll 2, 60 s depois, mede normalmente.
+    const rebased = octetsFor(30 * GIGA, 11 * 60 * 60);
+    const next = evaluateTrafficRate({
+      currentInOctets: rebased + octetsFor(42 * GIGA),
+      currentOutOctets: rebased + octetsFor(6 * GIGA),
+      previousInOctets: rebased,
+      previousOutOctets: rebased,
+      seconds: 60,
+      speedBps: HUNDRED_G,
+    });
+    expect(next.usable).toBe(true);
+    expect(next.reason).toBeNull();
+    expect(next.rxBps).toBeCloseTo(42 * GIGA, 0);
+    expect(next.txBps).toBeCloseTo(6 * GIGA, 0);
   });
 });
 

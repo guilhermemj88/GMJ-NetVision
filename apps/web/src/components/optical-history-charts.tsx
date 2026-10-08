@@ -20,6 +20,7 @@ import {
 } from 'recharts';
 import { getOpticalHistory } from '@/lib/api';
 import { withTemporalGapMarkers } from '@/lib/chart-history';
+import { emptyHistoryNotice, latestOpticalCollectionAt } from '@/lib/telemetry-feedback';
 
 const periods: HistoryPeriod[] = ['15m', '1h', '6h', '24h', '7d'];
 const laneColors = ['#43d6b5', '#44a8e8', '#e3a64b', '#d165b8', '#a8d565', '#d17a65'];
@@ -385,7 +386,12 @@ export function OpticalHistoryView({
       </div>
 
       {!data.length ? (
-        <div className="chart-empty">Sem amostras ópticas no período</div>
+        <div className="chart-empty">
+          {emptyHistoryNotice(
+            period,
+            latestOpticalCollectionAt(networkInterface.opticalUpdatedAt, networkInterface.opticalLanesUpdatedAt),
+          )}
+        </div>
       ) : (
         <div className="chart-pair chart-pair--optical">
           <OpticalPowerChart

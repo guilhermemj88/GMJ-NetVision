@@ -5,6 +5,7 @@ import { Button } from '@gmj/ui';
 import { LoaderCircle, RefreshCw } from 'lucide-react';
 import { useMutation, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { pollHost } from '@/lib/api';
+import { describePollFeedback, type PollFeedbackTone } from '@/lib/telemetry-feedback';
 import { useMapStore } from '@/store/map-store';
 
 export async function refreshHostQueries(client: QueryClient, hostId: string): Promise<void> {
@@ -22,6 +23,13 @@ export async function refreshHostQueries(client: QueryClient, hostId: string): P
   ]);
 }
 
+const FEEDBACK_CLASS: Record<PollFeedbackTone, string> = {
+  ok: 'is-success',
+  partial: 'is-partial',
+  baseline: 'is-partial',
+  warning: 'is-partial',
+};
+
 export function VerifyHostButton({
   hostId,
   enabled,
@@ -33,22 +41,30 @@ export function VerifyHostButton({
 }) {
   const client = useQueryClient();
   const showToast = useMapStore((state) => state.showToast);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ message: string; tone: PollFeedbackTone } | null>(null);
   const mutation = useMutation({
     mutationFn: () => pollHost(hostId),
     onMutate: () => setFeedback(null),
     onSuccess: async (result) => {
       await refreshHostQueries(client, hostId);
-      const message =
-        result.interfacesChecked > 0
-          ? `Equipamento atualizado com sucesso · ${result.interfacesChecked} interfaces verificadas`
-          : 'Equipamento atualizado com sucesso';
-      setFeedback(message);
+      /**
+       * F9.6: a mensagem vem do resultado REAL do poll (telemetria/óptico).
+       * "Verificado" quando nada novo foi coletado deixava o operador sem saber
+       * que precisava esperar o intervalo mínimo dos contadores.
+       */
+      const outcome = describePollFeedback(result);
+      const verified = result.interfacesChecked > 0
+        ? ` · ${result.interfacesChecked} interfaces verificadas`
+        : '';
+      const message = verified
+        ? `${outcome.message.replace(/\.$/, '')}${verified}`
+        : outcome.message;
+      setFeedback({ message, tone: outcome.tone });
       showToast(message);
     },
     onError: () => {
       const message = 'Falha ao verificar equipamento';
-      setFeedback(message);
+      setFeedback({ message, tone: 'warning' });
       showToast(message);
     },
   });
@@ -72,8 +88,11 @@ export function VerifyHostButton({
         {label}
       </Button>
       {feedback && (
-        <small className={mutation.isError ? 'is-error' : 'is-success'} role="status">
-          {feedback}
+        <small
+          className={mutation.isError ? 'is-error' : FEEDBACK_CLASS[feedback.tone]}
+          role="status"
+        >
+          {feedback.message}
         </small>
       )}
     </div>
