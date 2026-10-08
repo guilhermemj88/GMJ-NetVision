@@ -3,12 +3,18 @@ import { describe, expect, it } from 'vitest';
 import type { NetworkInterface, OpticalHistoryPoint } from '@gmj/shared';
 import {
   OpticalHistoryTooltip,
+  OpticalThresholdChips,
+  OpticalScalePicker,
   axisWindow,
+  chartScale,
   formatAxisDbm,
   laneIdsWithPower,
+  limitsWindow,
   opticalChartData,
+  opticalDots,
   opticalSeries,
   opticalThresholdRange,
+  thresholdHint,
   thresholdMarkers,
 } from './optical-history-charts';
 
@@ -229,5 +235,117 @@ describe('thresholds no grafico optico (F7.5)', () => {
     expect(axisWindow([null, undefined])).toBeNull();
     expect(thresholdMarkers({ low: null, high: null, source: null, scope: null }, null))
       .toEqual({ low: null, high: null });
+  });
+});
+
+describe('escala AUTO/LIMITES do historico optico (F9.4.2)', () => {
+  // Valores reais do CEM-CEN-6730-MPLS-01 / 100GE0/0/2 no preview.
+  const rxValues = [-13.7, -12.3, -13.1, -12.8];
+  const device = { low: -21.48, high: -2.5, source: 'DEVICE' as const, scope: 'MODULE' as const };
+
+  it('AUTO: dominio SO dos dados e LOW/HIGH fora viram chip direcional', () => {
+    const scale = chartScale('AUTO', rxValues, device);
+    // Nao achata as lanes ate -21.48/-2.50.
+    expect(scale.domain?.[0]).toBeGreaterThan(-14);
+    expect(scale.domain?.[1]).toBeLessThan(-12);
+    expect(scale.showHints).toBe(true);
+    expect(scale.low).toEqual({ value: -21.48, visible: false, hint: 'below' });
+    expect(scale.high).toEqual({ value: -2.5, visible: false, hint: 'above' });
+    expect(thresholdHint(scale.low)).toBe('↓ abaixo da janela');
+    expect(thresholdHint(scale.high)).toBe('↑ acima da janela');
+  });
+
+  it('AUTO: threshold dentro do dominio vira ReferenceLine, sem hint de janela', () => {
+    const scale = chartScale('AUTO', [-3, -2.4, -2.8], {
+      low: -3, high: -2.5, source: 'USER', scope: 'MODULE',
+    });
+    expect(scale.low?.visible).toBe(true);
+    expect(scale.high?.visible).toBe(true);
+    expect(scale.low?.hint).toBeNull();
+    expect(thresholdHint(scale.low)).toBeNull();
+    expect(thresholdHint(scale.high)).toBeNull();
+  });
+
+  it('LIMITES: o dominio passa a incluir LOW e HIGH, com padding', () => {
+    const domain = limitsWindow(rxValues, device);
+    expect(domain?.[0]).toBeLessThan(-21.48);
+    expect(domain?.[1]).toBeGreaterThan(-2.5);
+
+    const scale = chartScale('LIMITS', rxValues, device);
+    expect(scale.domain).toEqual(domain);
+    expect(scale.low?.visible).toBe(true);
+    expect(scale.high?.visible).toBe(true);
+    expect(scale.showHints).toBe(false);
+  });
+
+  it('LIMITES: as duas linhas de referencia aparecem e nenhum chip fala em janela', () => {
+    const scale = chartScale('LIMITS', rxValues, device);
+    const html = renderToStaticMarkup(<OpticalThresholdChips thresholds={device} scale={scale} />);
+    expect(html.match(/<span class="chart-thresholds__chip/g)).toHaveLength(3);
+    expect(html).toContain('-21.48 dBm');
+    expect(html).toContain('-2.50 dBm');
+    expect(html).toContain('DEVICE');
+    expect(html).not.toContain('janela');
+  });
+
+  it('AUTO/LIMITES nao mexem nos dados nem nas series (troca so o dominio)', () => {
+    const auto = chartScale('AUTO', rxValues, device);
+    const limits = chartScale('LIMITS', rxValues, device);
+    expect(auto.domain).not.toEqual(limits.domain);
+
+    const series = opticalSeries([0, 1, 2, 3], 'rx');
+    const data = opticalChartData([point], [0, 1, 2, 3], '1h');
+    // Mesmo array/series para os dois modos: nada e refeito ou perdido.
+    expect(data).toHaveLength(1);
+    expect(data[0]).toMatchObject({ lane_0_rxAvg: -12, lane_3_rxAvg: -9 });
+    expect(Math.max(...series.map((item) => item.dataKey.length))).toBeGreaterThan(0);
+    expect(chartScale('AUTO', rxValues, device).domain).toEqual(auto.domain);
+  });
+
+  it('RX e TX calculam dominios independentes', () => {
+    const rx = chartScale('AUTO', rxValues, device);
+    const tx = chartScale('AUTO', [0.4, 0.8], { low: -2.5, high: 6.5, source: 'DEVICE', scope: 'MODULE' });
+    expect(rx.domain).not.toEqual(tx.domain);
+    expect(rx.low?.hint).toBe('below');
+    expect(tx.low?.hint).toBe('below');
+    expect(tx.high?.hint).toBe('above');
+  });
+
+  it('chips: LOW, HIGH e fonte em blocos separados, hint dentro do proprio chip', () => {
+    const scale = chartScale('AUTO', rxValues, device);
+    const html = renderToStaticMarkup(<OpticalThresholdChips thresholds={device} scale={scale} />);
+    expect(html.match(/<span class="chart-thresholds__chip/g)).toHaveLength(3);
+    expect(html).toContain('chart-thresholds__chip--source');
+    expect(html).toContain('<em>LOW</em>');
+    expect(html).toContain('<em>HIGH</em>');
+    expect(html).toContain('<em>FONTE</em>');
+    expect(html).toContain('↓ abaixo da janela');
+    expect(html).toContain('↑ acima da janela');
+    // Nada concatenado: depois de "janela" sempre vem markup, nunca outro rotulo.
+    expect(html).not.toMatch(/janela[A-Z]/);
+  });
+
+  it('sem threshold real os chips mostram N/D e nenhum hint', () => {
+    const empty = { low: null, high: null, source: null, scope: null } as const;
+    const scale = chartScale('AUTO', rxValues, empty);
+    const html = renderToStaticMarkup(<OpticalThresholdChips thresholds={empty} scale={scale} />);
+    expect(html).toContain('N/D');
+    expect(html).not.toContain('janela');
+  });
+
+  it('single sample desenha os pontos; com historico a linha volta a ser linha', () => {
+    expect(opticalDots(1)).toBe(true);
+    expect(opticalDots(2)).toBe(false);
+    expect(opticalDots(0)).toBe(false);
+  });
+
+  it('seletor de escala nasce em AUTO e expoe os dois modos', () => {
+    const auto = renderToStaticMarkup(<OpticalScalePicker mode="AUTO" onChange={() => {}} />);
+    expect(auto).toContain('AUTO');
+    expect(auto).toContain('LIMITES');
+    const active = auto.match(/class="is-active"[^>]*>([^<]+)</);
+    expect(active?.[1]).toBe('AUTO');
+    const limits = renderToStaticMarkup(<OpticalScalePicker mode="LIMITS" onChange={() => {}} />);
+    expect(limits).toMatch(/class="is-active"[\s\S]*LIMITES/);
   });
 });

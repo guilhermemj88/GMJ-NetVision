@@ -32,6 +32,17 @@ export type OpticalChartDatum = {
   [key: string]: string | number | OpticalHistoryPoint | null;
 };
 
+/** AUTO = escala só com os dados medidos; LIMITES = dados + LOW + HIGH. */
+export type OpticalScaleMode = 'AUTO' | 'LIMITS';
+
+/**
+ * Com UMA amostra um gráfico de linha não desenha nada: nesse caso os pontos
+ * viram dots, para as lanes e o timestamp continuarem visíveis.
+ */
+export function opticalDots(sampleCount: number): boolean {
+  return sampleCount === 1;
+}
+
 function timeLabel(value: string, period: HistoryPeriod): string {
   const date = new Date(value);
   if (period === '7d') {
@@ -204,23 +215,142 @@ export function thresholdMarkers(
   return { low: thresholdMarker(range.low, window), high: thresholdMarker(range.high, window) };
 }
 
-function thresholdHintLabel(marker: OpticalThresholdMarker | null): string {
-  if (marker?.hint === 'below') return ' ↓ abaixo da janela';
-  if (marker?.hint === 'above') return ' ↑ acima da janela';
-  return '';
+/**
+ * LIMITES: o domínio Y passa a cobrir dados + LOW + HIGH (com padding), para as
+ * duas linhas de referência aparecerem na posição matemática correta.
+ */
+export function limitsWindow(
+  values: ReadonlyArray<number | null | undefined>,
+  range: Pick<OpticalThresholdRange, 'low' | 'high'>,
+  paddingRatio = 0.08,
+): [number, number] | null {
+  return axisWindow([...values, range.low, range.high], paddingRatio);
 }
 
-export function OpticalHistoryCharts({
-  networkInterface,
+export interface OpticalChartScale {
+  /** Domínio Y efetivo (`null` = deixa o recharts decidir). */
+  domain: [number, number] | null;
+  low: OpticalThresholdMarker | null;
+  high: OpticalThresholdMarker | null;
+  /** Chip mostra "abaixo/acima da janela"? Só no AUTO com limite fora. */
+  showHints: boolean;
+}
+
+/**
+ * Decide domínio + markers de UM gráfico (RX e TX calculam o seu, de forma
+ * independente). Não conhece período nem histórico: trocar o modo de escala
+ * nunca refaz dados, não muda thresholds e não toca no Alarm Engine.
+ */
+export function chartScale(
+  mode: OpticalScaleMode,
+  values: ReadonlyArray<number | null | undefined>,
+  thresholds: OpticalThresholdRange,
+): OpticalChartScale {
+  const domain = mode === 'LIMITS' ? limitsWindow(values, thresholds) : axisWindow(values);
+  return {
+    domain,
+    low: thresholdMarker(thresholds.low, domain),
+    high: thresholdMarker(thresholds.high, domain),
+    showHints: mode === 'AUTO',
+  };
+}
+
+/** Texto do chip quando o limite está fora da janela (nunca concatenado). */
+export function thresholdHint(marker: OpticalThresholdMarker | null): string | null {
+  if (marker?.hint === 'below') return '↓ abaixo da janela';
+  if (marker?.hint === 'above') return '↑ acima da janela';
+  return null;
+}
+
+/**
+ * Cabeçalho do gráfico: cada informação em seu próprio chip/bloco. Nunca
+ * concatenar LOW, HIGH e a fonte no mesmo texto.
+ */
+export function OpticalThresholdChips({
+  thresholds,
+  scale,
 }: {
-  networkInterface: NetworkInterface;
+  thresholds: OpticalThresholdRange;
+  scale: OpticalChartScale;
 }) {
-  const [period, setPeriod] = useState<HistoryPeriod>('1h');
-  const history = useQuery({
-    queryKey: ['optical-history', networkInterface.id, period],
-    queryFn: () => getOpticalHistory(networkInterface.id, period),
-  });
-  const points = history.data ?? [];
+  const chips = [
+    { key: 'LOW', label: 'LOW', value: thresholds.low, marker: scale.low },
+    { key: 'HIGH', label: 'HIGH', value: thresholds.high, marker: scale.high },
+  ] as const;
+  return (
+    <div className="chart-thresholds">
+      {chips.map((chip) => {
+        const hint = scale.showHints ? thresholdHint(chip.marker) : null;
+        return (
+          <span key={chip.key} className="chart-thresholds__chip">
+            <em>{chip.label}</em>
+            <span>{formatDbm(chip.value)}</span>
+            {hint ? <small>{hint}</small> : null}
+          </span>
+        );
+      })}
+      <span className="chart-thresholds__chip chart-thresholds__chip--source">
+        <em>FONTE</em>
+        <span>{thresholds.source ?? 'N/D'}</span>
+      </span>
+    </div>
+  );
+}
+
+/** Seletor de escala do eixo Y: AUTO (default) ou LIMITES. */
+export function OpticalScalePicker({
+  mode,
+  onChange,
+}: {
+  mode: OpticalScaleMode;
+  onChange: (mode: OpticalScaleMode) => void;
+}) {
+  return (
+    <div className="scale-picker" role="group" aria-label="Escala do eixo Y">
+      <button
+        type="button"
+        className={mode === 'AUTO' ? 'is-active' : ''}
+        aria-pressed={mode === 'AUTO'}
+        title="Escala somente com os valores medidos"
+        onClick={() => onChange('AUTO')}
+      >
+        AUTO
+      </button>
+      <button
+        type="button"
+        className={mode === 'LIMITS' ? 'is-active' : ''}
+        aria-pressed={mode === 'LIMITS'}
+        title="Escala incluindo os limites LOW e HIGH"
+        onClick={() => onChange('LIMITS')}
+      >
+        LIMITES
+      </button>
+    </div>
+  );
+}
+
+export interface OpticalHistoryViewProps {
+  networkInterface: NetworkInterface;
+  /** Pontos já carregados (o histórico nunca é recalculado ao trocar a escala). */
+  points: OpticalHistoryPoint[];
+  period: HistoryPeriod;
+  scaleMode: OpticalScaleMode;
+  onPeriodChange: (period: HistoryPeriod) => void;
+  onScaleModeChange: (mode: OpticalScaleMode) => void;
+}
+
+/**
+ * Parte APRESENTACIONAL do histórico óptico (sem query): período e escala são
+ * estados do container, então alternar AUTO/LIMITES só re-renderiza o eixo.
+ */
+export function OpticalHistoryView({
+  networkInterface,
+  points,
+  period,
+  scaleMode,
+  onPeriodChange,
+  onScaleModeChange,
+}: OpticalHistoryViewProps) {
   const laneIds = [...new Set([
     ...(networkInterface.opticalLanes ?? []).map((lane) => lane.lane),
     ...points.flatMap((point) => point.lanes.map((lane) => lane.lane)),
@@ -236,17 +366,21 @@ export function OpticalHistoryCharts({
           <span>HISTÓRICO ÓPTICO</span>
           <strong>Potência recebida e transmitida</strong>
         </div>
-        <div className="period-picker">
-          {periods.map((item) => (
-            <button
-              key={item}
-              type="button"
-              className={period === item ? 'is-active' : ''}
-              onClick={() => setPeriod(item)}
-            >
-              {item}
-            </button>
-          ))}
+        <div className="chart-heading__actions">
+          <div className="period-picker">
+            {periods.map((item) => (
+              <button
+                key={item}
+                type="button"
+                className={period === item ? 'is-active' : ''}
+                aria-pressed={period === item}
+                onClick={() => onPeriodChange(item)}
+              >
+                {item}
+              </button>
+            ))}
+          </div>
+          <OpticalScalePicker mode={scaleMode} onChange={onScaleModeChange} />
         </div>
       </div>
 
@@ -259,16 +393,42 @@ export function OpticalHistoryCharts({
             laneIds={rxLaneIds}
             direction="rx"
             thresholds={opticalThresholdRange(networkInterface, 'rx')}
+            scaleMode={scaleMode}
           />
           <OpticalPowerChart
             data={data}
             laneIds={txLaneIds}
             direction="tx"
             thresholds={opticalThresholdRange(networkInterface, 'tx')}
+            scaleMode={scaleMode}
           />
         </div>
       )}
     </section>
+  );
+}
+
+export function OpticalHistoryCharts({
+  networkInterface,
+}: {
+  networkInterface: NetworkInterface;
+}) {
+  const [period, setPeriod] = useState<HistoryPeriod>('1h');
+  const [scaleMode, setScaleMode] = useState<OpticalScaleMode>('AUTO');
+  const history = useQuery({
+    queryKey: ['optical-history', networkInterface.id, period],
+    queryFn: () => getOpticalHistory(networkInterface.id, period),
+  });
+
+  return (
+    <OpticalHistoryView
+      networkInterface={networkInterface}
+      points={history.data ?? []}
+      period={period}
+      scaleMode={scaleMode}
+      onPeriodChange={setPeriod}
+      onScaleModeChange={setScaleMode}
+    />
   );
 }
 
@@ -277,11 +437,13 @@ function OpticalPowerChart({
   laneIds,
   direction,
   thresholds,
+  scaleMode,
 }: {
   data: OpticalChartDatum[];
   laneIds: number[];
   direction: 'rx' | 'tx';
   thresholds: OpticalThresholdRange;
+  scaleMode: OpticalScaleMode;
 }) {
   const title = direction.toUpperCase();
   const series = opticalSeries(laneIds, direction);
@@ -290,10 +452,12 @@ function OpticalPowerChart({
       const value = datum[item.dataKey];
       return typeof value === 'number' ? value : null;
     }));
-  // Dominio SO dos dados: LOW/HIGH distante nao achatam as lanes; quando estao
-  // dentro da janela entram como linha tracejada, quando fora viram chip.
-  const window = axisWindow(values);
-  const markers = thresholdMarkers(thresholds, window);
+  // AUTO: domínio SÓ dos dados (lanes com variação visível) e limite distante
+  // vira chip direcional. LIMITES: domínio cobre dados + LOW + HIGH e as duas
+  // linhas de referência aparecem na posição real, sem hint de janela.
+  const scale = chartScale(scaleMode, values, thresholds);
+  const sampleCount = data.filter((datum) => datum.source !== null).length;
+  const dots = opticalDots(sampleCount);
 
   return (
     <div className="chart-block chart-block--optical">
@@ -305,21 +469,13 @@ function OpticalPowerChart({
           </span>
         ))}
       </div>
-      <div className="chart-thresholds">
-        <span>
-          {title} LOW {formatDbm(thresholds.low)}{thresholdHintLabel(markers.low)}
-        </span>
-        <span>
-          {title} HIGH {formatDbm(thresholds.high)}{thresholdHintLabel(markers.high)}
-        </span>
-        <span>{thresholds.source ?? 'N/D'}</span>
-      </div>
+      <OpticalThresholdChips thresholds={thresholds} scale={scale} />
       <ResponsiveContainer width="100%" height={150}>
         <LineChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
           <CartesianGrid stroke="#23303a" vertical={false} strokeDasharray="2 4" />
           <XAxis dataKey="label" tick={{ fill: '#6f8392', fontSize: 8 }} minTickGap={24} />
           <YAxis
-            domain={window ?? ['auto', 'auto']}
+            domain={scale.domain ?? ['auto', 'auto']}
             tick={{ fill: '#6f8392', fontSize: 8 }}
             tickLine={false}
             axisLine={false}
@@ -333,28 +489,28 @@ function OpticalPowerChart({
               laneIds={laneIds}
             />
           )} />
-          {markers.low?.visible && (
+          {scale.low?.visible && (
             <ReferenceLine
-              y={markers.low.value}
+              y={scale.low.value}
               stroke="#e3a64b"
               strokeDasharray="3 3"
               strokeWidth={1}
               label={{
-                value: `LOW ${formatAxisDbm(markers.low.value)}`,
+                value: `LOW ${formatAxisDbm(scale.low.value)}`,
                 position: 'insideBottomRight',
                 fill: '#e3a64b',
                 fontSize: 8,
               }}
             />
           )}
-          {markers.high?.visible && (
+          {scale.high?.visible && (
             <ReferenceLine
-              y={markers.high.value}
+              y={scale.high.value}
               stroke="#d17a65"
               strokeDasharray="3 3"
               strokeWidth={1}
               label={{
-                value: `HIGH ${formatAxisDbm(markers.high.value)}`,
+                value: `HIGH ${formatAxisDbm(scale.high.value)}`,
                 position: 'insideTopRight',
                 fill: '#d17a65',
                 fontSize: 8,
@@ -369,7 +525,7 @@ function OpticalPowerChart({
               name={item.name}
               stroke={item.stroke}
               strokeWidth={1.5}
-              dot={false}
+              dot={dots ? { r: 3, fill: item.stroke, strokeWidth: 0 } : false}
               connectNulls={false}
             />
           ))}

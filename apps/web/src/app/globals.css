@@ -3552,8 +3552,10 @@ button {
 }
 .chart-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: flex-end;
   justify-content: space-between;
+  gap: 8px;
   margin-bottom: 14px;
 }
 .chart-heading > div:first-child {
@@ -3570,10 +3572,19 @@ button {
   color: #b7c9d1;
   font-size: 11px;
 }
-.period-picker {
+.chart-heading__actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+.period-picker,
+.scale-picker {
   display: flex;
 }
-.period-picker button {
+.period-picker button,
+.scale-picker button {
   height: 22px;
   padding: 0 6px;
   border: 1px solid #293b45;
@@ -3583,16 +3594,22 @@ button {
   font: 500 8px var(--font-mono);
   cursor: pointer;
 }
-.period-picker button:first-child {
+.period-picker button:first-child,
+.scale-picker button:first-child {
   border-radius: 3px 0 0 3px;
 }
-.period-picker button:last-child {
+.period-picker button:last-child,
+.scale-picker button:last-child {
   border-right: 1px solid #293b45;
   border-radius: 0 3px 3px 0;
 }
-.period-picker button.is-active {
+.period-picker button.is-active,
+.scale-picker button.is-active {
   background: #1b5364;
   color: #cceaf1;
+}
+.scale-picker button[aria-pressed='false'] {
+  color: #55707c;
 }
 .chart-block {
   padding: 12px 7px 2px;
@@ -3630,6 +3647,43 @@ button {
   font-size: 8px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+/*
+ * Thresholds do histórico óptico: cada valor em seu PRÓPRIO chip. Sem esta
+ * regra os spans ficavam inline e colados (LOW+HIGH+FONTE num texto só).
+ */
+.chart-thresholds {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 5px 7px;
+}
+.chart-thresholds__chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid #25363f;
+  border-radius: 3px;
+  background: #111b21;
+  color: #b7c9d1;
+  font: 500 8px var(--font-mono);
+  white-space: nowrap;
+}
+.chart-thresholds__chip em {
+  color: #6f838d;
+  font-style: normal;
+  letter-spacing: 0.06em;
+}
+.chart-thresholds__chip small {
+  color: #c8964f;
+}
+.chart-thresholds__chip--source {
+  border-style: dashed;
+  color: #8da2ac;
 }
 .chart-series-key {
   display: flex;
