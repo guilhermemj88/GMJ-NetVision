@@ -62,6 +62,8 @@ const alarmTestSchema = z
     type: z.enum(NETWORK_ALARM_TEST_TYPES).optional(),
     event: z.enum(NETWORK_ALARM_TEST_EVENTS).optional(),
     severity: z.enum(NETWORK_ALARM_TEST_SEVERITIES).optional(),
+    /** INCLUIR GRÁFICO: default OFF (o teste segue texto-only). */
+    includeChart: z.boolean().optional(),
   })
   .strict();
 
@@ -183,9 +185,9 @@ export function registerMediaRoutes(
   app.post('/api/media/integrations/:id/test-alarm', async (request, reply) => {
     if (!(await requireAdmin(request, reply))) return undefined;
     const { id } = integrationParams.parse(request.params);
-    const selection = alarmTestSchema.parse(request.body ?? {});
+    const { includeChart, ...selection } = alarmTestSchema.parse(request.body ?? {});
     if (await notFound(id, reply)) return undefined;
-    return media.testAlarmWebhook(id, selection);
+    return media.testAlarmWebhook(id, selection, { includeChart: includeChart ?? false });
   });
 
   app.get('/api/media/integrations/:id/logs', async (request, reply) => {

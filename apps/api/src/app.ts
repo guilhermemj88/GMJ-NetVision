@@ -13,7 +13,9 @@ export interface BuildAppOptions {
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
-  const app = Fastify({ logger: process.env.NODE_ENV !== 'test' });
+  // maxParamLength: as URLs ASSINADAS de snapshot (pagina e PNG) levam o token
+  // HMAC no caminho e passam dos 100 caracteres do default do Fastify (414).
+  const app = Fastify({ logger: process.env.NODE_ENV !== 'test', maxParamLength: 4096 });
   await app.register(cors, { origin: true, credentials: true });
   await app.register(cookie);
   registerRoutes(app, options);

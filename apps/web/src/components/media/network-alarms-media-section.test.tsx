@@ -324,6 +324,7 @@ describe('editor da aba ALARMES DE REDE (F9.5)', () => {
       type: 'INTERFACE_DOWN',
       event: 'OPENED',
       severity: 'CRITICAL',
+      includeChart: false,
     });
     expect(container.textContent).toContain('Webhook de alarme enviado com sucesso');
     expect(container.textContent).toContain('HTTP 200');
@@ -419,6 +420,7 @@ describe('editor da aba ALARMES DE REDE (F9.5)', () => {
       type: 'INTERFACE_CRC',
       event: 'RESOLVED',
       severity: 'WARNING',
+      includeChart: false,
     });
   });
 

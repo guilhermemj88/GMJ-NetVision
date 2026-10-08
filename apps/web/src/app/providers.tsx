@@ -31,8 +31,16 @@ export function useAuth(): AuthState {
   return useContext(AuthContext);
 }
 
-function isPublicPath(pathname: string): boolean {
-  return pathname === '/login' || pathname.startsWith('/view/');
+/**
+ * Rotas sem sessão: login, links públicos de mapa/NOC e a pagina interna de
+ * snapshot (protegida por token ASSINADO e curto, aberta só pelo renderer).
+ */
+export function isPublicPath(pathname: string): boolean {
+  return (
+    pathname === '/login' ||
+    pathname.startsWith('/view/') ||
+    pathname.startsWith('/snapshot/')
+  );
 }
 
 export function Providers({ children }: { children: ReactNode }) {

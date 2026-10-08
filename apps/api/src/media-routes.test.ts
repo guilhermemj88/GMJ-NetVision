@@ -243,6 +243,7 @@ describe('API de MÍDIAS', () => {
       type: 'INTERFACE_DOWN',
       event: 'OPENED',
       severity: 'CRITICAL',
+      includeChart: false,
     });
     await app.close();
   });
@@ -268,7 +269,20 @@ describe('API de MÍDIAS', () => {
       type: 'OPTICAL_RX_DEGRADATION',
       event: 'ESCALATED',
       severity: 'CRITICAL',
+      includeChart: false,
     });
+
+    // INCLUIR GRÁFICO: a rota repassa o pedido de snapshot para o transporte.
+    alarmTestPort.mockClear();
+    const withChart = await app.inject({
+      method: 'POST',
+      url: `/api/media/integrations/${id}/test-alarm`,
+      payload: { type: 'INTERFACE_CRC', includeChart: true },
+    });
+    expect(withChart.statusCode).toBe(200);
+    expect(alarmTestPort).toHaveBeenCalledWith(
+      expect.objectContaining({ includeChart: true, type: 'INTERFACE_CRC' }),
+    );
     await app.close();
   });
 

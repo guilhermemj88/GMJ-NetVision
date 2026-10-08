@@ -341,6 +341,7 @@ describe('mídias SEPARADAS: BGP_MITIGATION x NETWORK_ALARMS (F9.5)', () => {
       type: 'INTERFACE_DISCARDS',
       event: 'ESCALATED',
       severity: 'WARNING',
+      includeChart: false,
     });
 
     await service.testAlarmWebhook(integration?.id ?? '', undefined);
@@ -349,7 +350,11 @@ describe('mídias SEPARADAS: BGP_MITIGATION x NETWORK_ALARMS (F9.5)', () => {
       type: 'INTERFACE_DOWN',
       event: 'OPENED',
       severity: 'CRITICAL',
+      includeChart: false,
     });
+
+    await service.testAlarmWebhook(integration?.id ?? '', { type: 'INTERFACE_CRC' }, { includeChart: true });
+    expect(received[2]).toMatchObject({ includeChart: true, type: 'INTERFACE_CRC' });
   });
 
   it('TESTAR ALARME recusa integração de mitigação ou id desconhecido', async () => {

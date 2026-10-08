@@ -83,6 +83,8 @@ import { AlarmEngine } from './application/alarm-engine';
 import { AlarmSuppressionService } from './application/alarm-suppression-service';
 import { AlarmNotificationService, type AlarmNotifier } from './application/alarm-notification-service';
 import { N8nAlarmTransport } from './infrastructure/alarms/n8n-alarm-transport';
+import { createAlarmChartSnapshot } from './infrastructure/media/alarm-chart-snapshot';
+import { registerSnapshotRoutes } from './infrastructure/media/snapshot-routes';
 import { OperationalOccurrenceService } from './application/operational-occurrence-service';
 import { AlertCenterService } from './application/alert-center-service';
 import { registerAlertCenterRoutes } from './alert-center-routes';
@@ -697,7 +699,19 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   if (alarmMediaHolder.notifier) {
     throw new Error('notifier de alarmes ja inicializado');
   }
-  const alarmTransport = new N8nAlarmTransport({ media: mediaService, send: webhookSender });
+  const alarmChartSnapshot = createAlarmChartSnapshot({
+    rendererUrl: config.SNAPSHOT_RENDERER_URL,
+    signingKey: config.SNAPSHOT_SIGNING_KEY,
+    webInternalUrl: config.SNAPSHOT_WEB_INTERNAL_URL,
+    apiPublicUrl: config.SNAPSHOT_PUBLIC_API_URL,
+    cacheDir: config.SNAPSHOT_CACHE_DIR,
+    ttlSeconds: config.SNAPSHOT_TTL_SECONDS,
+  });
+  const alarmTransport = new N8nAlarmTransport({
+    media: mediaService,
+    send: webhookSender,
+    chartSnapshot: alarmChartSnapshot,
+  });
   // O TESTAR ALARME reusa este transporte (serializer canonico, sem payload paralelo).
   mediaService.attachAlarmTransport(alarmTransport);
   alarmMediaHolder.notifier = new AlarmNotificationService({
@@ -861,6 +875,14 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   registerMediaRoutes(app, {
     media: mediaService,
     currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
+  });
+  registerSnapshotRoutes(app, {
+    getInterfaceHistory: (interfaceId, period) => hosts.getInterfaceHistory(interfaceId, period),
+    getInterfaceOpticalHistory: (interfaceId, period) =>
+      hosts.getInterfaceOpticalHistory(interfaceId, period),
+    signingKey: config.SNAPSHOT_SIGNING_KEY ?? null,
+    cacheDir: config.SNAPSHOT_CACHE_DIR,
+    ttlSeconds: config.SNAPSHOT_TTL_SECONDS,
   });
   registerPhysicalRoutes(app, {
     repository: physicalRepository,

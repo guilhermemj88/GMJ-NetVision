@@ -27,6 +27,16 @@ const envSchema = z.object({
   DEFAULT_ADMIN_EMAIL: z.string().email().default('admin@netvision.local'),
   DEFAULT_ADMIN_NAME: z.string().default('Administrador'),
   DEFAULT_ADMIN_PASSWORD: z.string().min(1).default('admin'),
+  /**
+   * Snapshot do gráfico do alarme (renderer isolado em 127.0.0.1:3351). Sem
+   * estas variaveis o recurso fica DESLIGADO e o alarme segue texto-only.
+   */
+  SNAPSHOT_RENDERER_URL: z.string().optional(),
+  SNAPSHOT_SIGNING_KEY: z.string().min(16).optional(),
+  SNAPSHOT_WEB_INTERNAL_URL: z.string().optional(),
+  SNAPSHOT_PUBLIC_API_URL: z.string().optional(),
+  SNAPSHOT_CACHE_DIR: z.string().default('/var/lib/netvision-alarm-snapshots'),
+  SNAPSHOT_TTL_SECONDS: z.coerce.number().int().min(60).max(7200).default(900),
 });
 
 const parsed = envSchema.parse(process.env);
@@ -41,4 +51,8 @@ export const config = {
   SNMP_POLLING_ENABLED: isTest ? false : parsed.SNMP_POLLING_ENABLED,
   ZABBIX_URL: isTest ? undefined : parsed.ZABBIX_URL,
   ZABBIX_TOKEN: isTest ? undefined : parsed.ZABBIX_TOKEN,
+  SNAPSHOT_RENDERER_URL: isTest ? undefined : parsed.SNAPSHOT_RENDERER_URL,
+  SNAPSHOT_SIGNING_KEY: isTest ? undefined : parsed.SNAPSHOT_SIGNING_KEY,
+  SNAPSHOT_WEB_INTERNAL_URL: isTest ? undefined : parsed.SNAPSHOT_WEB_INTERNAL_URL,
+  SNAPSHOT_PUBLIC_API_URL: isTest ? undefined : parsed.SNAPSHOT_PUBLIC_API_URL,
 };

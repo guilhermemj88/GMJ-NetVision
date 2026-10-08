@@ -162,11 +162,13 @@ export function testMediaWebhook(id: string): Promise<MediaWebhookTestResult> {
  * TESTAR ALARME (F9.5): envia o payload sintetico pelo canal NETWORK_ALARMS,
  * com a mesma serializacao dos alarmes reais. Nunca toca na mitigacao.
  * F9.5.1: a selecao (tipo/evento/severidade) vai no corpo; sem ela vale o
- * default do simulador.
+ * default do simulador. `includeChart` (default OFF) liga o snapshot do
+ * gráfico no payload de teste, usando uma interface real so como fonte de
+ * histórico.
  */
 export function testMediaAlarm(
   id: string,
-  selection?: NetworkAlarmTestSelectionInput,
+  selection?: NetworkAlarmTestSelectionInput & { includeChart?: boolean },
 ): Promise<MediaWebhookTestResult> {
   return request<MediaWebhookTestResult>(
     `/api/media/integrations/${encodeURIComponent(id)}/test-alarm`,

@@ -50,7 +50,7 @@ export interface MediaIntegrationServiceDeps {
 /** Porta do transporte de alarmes usada apenas pelo TESTAR ALARME (F9.5). */
 export interface MediaAlarmTestPort {
   publishAlarmTest(
-    input?: { profileId?: string | null } & NetworkAlarmTestSelectionInput,
+    input?: { profileId?: string | null; includeChart?: boolean } & NetworkAlarmTestSelectionInput,
   ): Promise<MediaDeliveryOutcome>;
 }
 
@@ -483,6 +483,7 @@ export class MediaIntegrationService implements MediaChannelPort {
   async testAlarmWebhook(
     id: string,
     selection?: NetworkAlarmTestSelectionInput | null,
+    options: { includeChart?: boolean } = {},
   ): Promise<MediaDeliveryOutcome & { checkedAt: string }> {
     const checkedAt = this.now().toISOString();
     const integration = await this.read(() => this.deps.repository.get(id), null);
@@ -512,6 +513,8 @@ export class MediaIntegrationService implements MediaChannelPort {
     const outcome = await transport.publishAlarmTest({
       profileId: integration.id,
       ...resolveNetworkAlarmTestSelection(selection),
+      // Default OFF: ligar o grafico so acontece quando o operador escolhe.
+      includeChart: options.includeChart ?? false,
     });
     return { ...outcome, checkedAt };
   }

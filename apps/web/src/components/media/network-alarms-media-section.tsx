@@ -57,6 +57,8 @@ export interface AlarmTestDraft {
   type: NetworkAlarmTestType;
   event: NetworkAlarmTestEvent;
   severity: NetworkAlarmTestSeverity;
+  /** INCLUIR GRÁFICO: default OFF; liga o snapshot no payload de teste. */
+  includeChart: boolean;
 }
 
 /**
@@ -75,6 +77,7 @@ const DEFAULT_ALARM_TEST_DRAFT: AlarmTestDraft = {
   type: 'INTERFACE_DOWN',
   event: 'OPENED',
   severity: NETWORK_ALARM_TEST_DEFAULT_SEVERITY.INTERFACE_DOWN,
+  includeChart: false,
 };
 
 /** Linha compacta TIPO / EVENTO / SEVERIDADE + botao do simulador. */
@@ -140,11 +143,25 @@ export function AlarmTestSimulator({
             ))}
           </select>
         </label>
+        <label className="media-test-sim__toggle">
+          <input
+            type="checkbox"
+            aria-label="Incluir gráfico no alarme de teste"
+            checked={draft.includeChart}
+            onChange={(event) => onChange({ ...draft, includeChart: event.target.checked })}
+          />
+          <span>INCLUIR GRÁFICO [{draft.includeChart ? 'ON' : 'OFF'}]</span>
+        </label>
         <Button variant="ghost" onClick={onTest} disabled={disabled}>
           <Send size={15} /> TESTAR ALARME
         </Button>
       </div>
-      <p className="media-panel__hint">Simulação: não cria alarme no NetVision.</p>
+      <p className="media-panel__hint">
+        Simulação: não cria alarme no NetVision.
+        {draft.includeChart
+          ? ' Com gráfico: o PNG usa o histórico real de uma interface e o webhook continua sem base64.'
+          : ''}
+      </p>
     </div>
   );
 }

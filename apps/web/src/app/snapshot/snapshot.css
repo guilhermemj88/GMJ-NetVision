@@ -1,0 +1,160 @@
+/* Pagina interna do snapshot (PNG do alarme): 1200x720, sem chrome de app. */
+.snapshot-canvas {
+  width: 1200px;
+  height: 720px;
+  padding: 20px 24px;
+  box-sizing: border-box;
+  background: #0b1218;
+  color: #d8e3ea;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.snapshot-canvas--empty {
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  color: #8fa4b3;
+}
+
+.snapshot-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-bottom: 1px solid #23303a;
+  padding-bottom: 10px;
+}
+
+.snapshot-header__brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.snapshot-header__brand strong {
+  font-size: 18px;
+  letter-spacing: 0.3px;
+  color: #f2f7fa;
+}
+
+.snapshot-header__brand span {
+  font-size: 11px;
+  color: #7d93a3;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.snapshot-header__event {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 15px;
+  color: #f2f7fa;
+}
+
+.snapshot-severity {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid #3a4b57;
+  color: #cfd9e0;
+  text-transform: uppercase;
+}
+
+.snapshot-severity--critical {
+  border-color: #e05c5c;
+  color: #e05c5c;
+}
+
+.snapshot-severity--major {
+  border-color: #e3a64b;
+  color: #e3a64b;
+}
+
+.snapshot-severity--warning {
+  border-color: #d6c04b;
+  color: #d6c04b;
+}
+
+.snapshot-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 22px;
+  margin: 0;
+}
+
+.snapshot-facts div {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.snapshot-facts dt {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #6f8392;
+}
+
+.snapshot-facts dd {
+  margin: 0;
+  font-size: 13px;
+  color: #d8e3ea;
+}
+
+.snapshot-facts__recovery {
+  color: #43d6b5;
+}
+
+.snapshot-message {
+  margin: 0;
+  font-size: 12px;
+  color: #9db0bd;
+}
+
+.snapshot-chart {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+}
+
+.snapshot-chart .charts-section {
+  padding: 0;
+  margin: 0;
+  background: transparent;
+}
+
+.snapshot-chart .chart-heading,
+.snapshot-chart .period-picker,
+.snapshot-chart .chart-block__legend--history {
+  display: none;
+}
+
+.snapshot-chart .chart-pair {
+  display: flex;
+  gap: 14px;
+  padding: 0;
+}
+
+.snapshot-chart .chart-block--small {
+  flex: 1;
+  padding: 6px 8px;
+  background: #101820;
+  border: 1px solid #23303a;
+  border-radius: 8px;
+}
+
+.snapshot-chart .chart-block--optical {
+  width: 100%;
+}
+
+.snapshot-empty {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #8fa4b3;
+}

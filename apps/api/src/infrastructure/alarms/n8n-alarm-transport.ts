@@ -25,6 +25,8 @@ import { buildNetworkAlarmTestAlarm } from './alarm-test-fixtures';
  * reais (OPENED/ESCALATED/RESOLVED) e o botao TESTAR ALARME (`test: true`).
  */
 
+import { isChartableAlarmType, type AlarmChartMedia } from '../media/alarm-chart-snapshot';
+
 export const NETWORK_ALARM_EVENTS = [
   'NETWORK_ALARM_OPENED',
   'NETWORK_ALARM_ESCALATED',
@@ -136,6 +138,33 @@ export interface NetworkAlarmWebhookPayload {
   thresholdSource: string | null;
   startedAt: string;
   resolvedAt: string | null;
+  /**
+   * Snapshot do gráfico do evento (aditivo). Ausente quando o canal nao esta
+   * configurado, o tipo nao tem serie ou a renderizacao falhou — nesses casos o
+   * n8n continua com o texto, sem perder nem atrasar o alarme.
+   */
+  media?: { chart: AlarmChartPayload };
+}
+
+/** Campos publicos do snapshot (o resto do estado interno nao vai para o n8n). */
+export interface AlarmChartPayload {
+  available: boolean;
+  url: string | null;
+  mimeType: string;
+  period: string | null;
+  generatedAt: string | null;
+  expiresAt: string | null;
+}
+
+function toChartPayload(chart: AlarmChartMedia): AlarmChartPayload {
+  return {
+    available: chart.available,
+    url: chart.url,
+    mimeType: chart.mimeType,
+    period: chart.period,
+    generatedAt: chart.generatedAt,
+    expiresAt: chart.expiresAt,
+  };
 }
 
 function metadataValue<K extends keyof AlarmMetadata>(
@@ -149,7 +178,11 @@ function metadataValue<K extends keyof AlarmMetadata>(
 export function buildNetworkAlarmWebhookPayload(
   alarm: Alarm,
   event: NetworkAlarmEvent,
-  options: { test?: boolean; eventKey?: NetworkAlarmEvent | typeof NETWORK_ALARM_TEST_EVENT } = {},
+  options: {
+    test?: boolean;
+    eventKey?: NetworkAlarmEvent | typeof NETWORK_ALARM_TEST_EVENT;
+    chart?: AlarmChartMedia | undefined;
+  } = {},
 ): NetworkAlarmWebhookPayload {
   const metadata = alarm.metadata ?? null;
   const triggerReasons = metadata?.triggerReasons ? [...metadata.triggerReasons] : null;
@@ -242,6 +275,7 @@ export function buildNetworkAlarmWebhookPayload(
     thresholdSource: metadataValue(metadata, 'thresholdSource'),
     startedAt: alarm.startedAt,
     resolvedAt: alarm.endedAt,
+    ...(options.chart ? { media: { chart: toChartPayload(options.chart) } } : {}),
   };
 }
 
@@ -261,6 +295,11 @@ export interface N8nAlarmTransportDeps {
   media: MediaChannelPort;
   send: WebhookDeliverySender;
   now?: () => Date;
+  /**
+   * Snapshot do gráfico do evento. Falha aqui NUNCA bloqueia o envio: o
+   * payload sai sem `media.chart` (fallback texto-only).
+   */
+  chartSnapshot?: ((payload: NetworkAlarmWebhookPayload) => Promise<AlarmChartMedia>) | undefined;
 }
 
 export class N8nAlarmTransport implements AlarmNotificationTransport, MediaAlarmTestPort {
@@ -277,6 +316,7 @@ export class N8nAlarmTransport implements AlarmNotificationTransport, MediaAlarm
       alarm,
       alarm.ruleId ?? null,
       buildNetworkAlarmWebhookPayload(alarm, event),
+      { includeChart: true },
     );
   }
 
@@ -289,7 +329,7 @@ export class N8nAlarmTransport implements AlarmNotificationTransport, MediaAlarm
    * roda SNMP e nao altera badge nenhum.
    */
   async publishAlarmTest(
-    input: { profileId?: string | null } & NetworkAlarmTestSelectionInput = {},
+    input: { profileId?: string | null; includeChart?: boolean } & NetworkAlarmTestSelectionInput = {},
   ): Promise<MediaDeliveryOutcome> {
     const selection = resolveNetworkAlarmTestSelection(input);
     const alarm = buildNetworkAlarmTestAlarm(selection, this.now());
@@ -301,7 +341,26 @@ export class N8nAlarmTransport implements AlarmNotificationTransport, MediaAlarm
         test: true,
         eventKey: NETWORK_ALARM_TEST_EVENT,
       }),
+      { includeChart: input.includeChart ?? false },
     );
+  }
+
+  /**
+   * Snapshot opcional do grafico. `includeChart: false` (default do TESTAR
+   * ALARME) nem chama o renderer; qualquer excecao vira ausencia do bloco.
+   */
+  private async chartMedia(
+    payload: NetworkAlarmWebhookPayload,
+    includeChart: boolean,
+  ): Promise<AlarmChartMedia | null> {
+    const snapshot = this.deps.chartSnapshot;
+    if (!snapshot || !includeChart || !isChartableAlarmType(payload.type)) return null;
+    try {
+      const media = await snapshot(payload);
+      return media.available ? media : null;
+    } catch {
+      return null;
+    }
   }
 
   private async deliverAlarm(
@@ -309,6 +368,7 @@ export class N8nAlarmTransport implements AlarmNotificationTransport, MediaAlarm
     alarm: Alarm,
     profileId: string | null,
     payload: NetworkAlarmWebhookPayload,
+    options: { includeChart?: boolean } = {},
   ): Promise<MediaDeliveryOutcome> {
     // F9.5: somente o canal NETWORK_ALARMS (sem fallback cruzado).
     const channel = await this.deps.media.resolveOutbound('NETWORK_ALARMS');
@@ -337,6 +397,9 @@ export class N8nAlarmTransport implements AlarmNotificationTransport, MediaAlarm
       };
     }
 
+    const chart = await this.chartMedia(payload, options.includeChart ?? false);
+    const outgoing = chart ? { ...payload, media: { chart: toChartPayload(chart) } } : payload;
+
     await this.deps.media.recordOutboundAttempt({
       integrationId: channel.integrationId,
       event,
@@ -351,7 +414,7 @@ export class N8nAlarmTransport implements AlarmNotificationTransport, MediaAlarm
     };
 
     try {
-      const result = await this.deps.send(channel.url, payload, headers);
+      const result = await this.deps.send(channel.url, outgoing, headers);
       await this.deps.media.recordOutboundDelivery({
         integrationId: channel.integrationId,
         event,

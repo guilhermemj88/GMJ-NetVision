@@ -390,6 +390,13 @@ export function OpticalScalePicker({
   );
 }
 
+export interface OpticalChartMarker {
+  /** Rotulo do bucket (o X do gráfico e categorico: o valor precisa existir). */
+  label: string;
+  title: string;
+  tone: 'ALARM' | 'RECOVERY';
+}
+
 export interface OpticalHistoryViewProps {
   networkInterface: NetworkInterface;
   /** Pontos já carregados (o histórico nunca é recalculado ao trocar a escala). */
@@ -398,6 +405,8 @@ export interface OpticalHistoryViewProps {
   scaleMode: OpticalScaleMode;
   onPeriodChange: (period: HistoryPeriod) => void;
   onScaleModeChange: (mode: OpticalScaleMode) => void;
+  /** Linhas verticais do evento (snapshot do alarme); ausente = tela normal. */
+  markers?: OpticalChartMarker[] | undefined;
 }
 
 /**
@@ -411,6 +420,7 @@ export function OpticalHistoryView({
   scaleMode,
   onPeriodChange,
   onScaleModeChange,
+  markers,
 }: OpticalHistoryViewProps) {
   const laneIds = [...new Set([
     ...(networkInterface.opticalLanes ?? []).map((lane) => lane.lane),
@@ -460,6 +470,7 @@ export function OpticalHistoryView({
             direction="rx"
             thresholds={opticalThresholdRange(networkInterface, 'rx')}
             scaleMode={scaleMode}
+            markers={markers}
           />
           <OpticalPowerChart
             data={data}
@@ -467,6 +478,7 @@ export function OpticalHistoryView({
             direction="tx"
             thresholds={opticalThresholdRange(networkInterface, 'tx')}
             scaleMode={scaleMode}
+            markers={markers}
           />
         </div>
       )}
@@ -504,12 +516,14 @@ function OpticalPowerChart({
   direction,
   thresholds,
   scaleMode,
+  markers,
 }: {
   data: OpticalChartDatum[];
   laneIds: number[];
   direction: 'rx' | 'tx';
   thresholds: OpticalThresholdRange;
   scaleMode: OpticalScaleMode;
+  markers?: OpticalChartMarker[] | undefined;
 }) {
   const title = direction.toUpperCase();
   const series = opticalSeries(laneIds, direction);
@@ -611,6 +625,21 @@ function OpticalPowerChart({
               }}
             />
           )}
+          {(markers ?? []).map((marker) => (
+            <ReferenceLine
+              key={`${marker.tone}-${marker.label}`}
+              x={marker.label}
+              stroke={marker.tone === 'RECOVERY' ? '#43d6b5' : '#f2f2f2'}
+              strokeDasharray="4 3"
+              strokeWidth={1.2}
+              label={{
+                value: marker.title,
+                position: 'insideTopLeft',
+                fill: marker.tone === 'RECOVERY' ? '#43d6b5' : '#f2f2f2',
+                fontSize: 8,
+              }}
+            />
+          ))}
           {series.map((item) => (
             <Line
               key={item.dataKey}
