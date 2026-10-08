@@ -17,8 +17,12 @@ interface ZabbixResponse<T> {
 interface ZabbixHostInterface {
   interfaceid: string;
   ip: string;
+  dns?: string;
+  useip?: string;
   main: string;
   type: string;
+  port?: string;
+  details?: { version?: string; community?: string; bulk?: string };
 }
 
 interface ZabbixHost {
@@ -28,6 +32,56 @@ interface ZabbixHost {
   status: string;
   interfaces?: ZabbixHostInterface[];
   inventory?: { vendor?: string; model?: string; type?: string };
+}
+
+const SNMP_INTERFACE_TYPE = '2';
+/**
+ * Campos públicos de interface usados pelo preview. `details` fica de fora: é
+ * onde o Zabbix devolve a community e nenhum fluxo de preview pode recebê-la.
+ */
+const ZABBIX_PUBLIC_INTERFACE_FIELDS = ['interfaceid', 'ip', 'dns', 'useip', 'port', 'main', 'type'];
+/** Campos privados da importação — única consulta autorizada a pedir `details`. */
+const ZABBIX_PRIVATE_SNMP_INTERFACE_FIELDS = [...ZABBIX_PUBLIC_INTERFACE_FIELDS, 'details'];
+/** Macro Zabbix não resolvida (ex.: {$SNMP_COMMUNITY}) nunca é community real. */
+const ZABBIX_MACRO_PATTERN = /\{\$[^}]+\}/;
+
+function selectSnmpInterface(
+  interfaces: ZabbixHostInterface[] | undefined,
+): ZabbixHostInterface | null {
+  const candidates = (interfaces ?? []).filter((item) => item.type === SNMP_INTERFACE_TYPE);
+  if (candidates.length === 0) return null;
+  return candidates.find((item) => item.main === '1') ?? candidates[0] ?? null;
+}
+
+function isUnresolvedZabbixMacro(value: string): boolean {
+  return ZABBIX_MACRO_PATTERN.test(value);
+}
+
+/** IPs placeholder que o Zabbix grava quando useip=0 (a interface usa DNS). */
+function usableManagementIp(value: string | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === '0.0.0.0' || trimmed === '::' || trimmed === '127.0.0.1' || trimmed === '::1') {
+    return null;
+  }
+  return trimmed;
+}
+
+function snmpPortOf(zabbixInterface: ZabbixHostInterface | null): number | null {
+  const port = Number(zabbixInterface?.port);
+  return Number.isInteger(port) && port > 0 && port <= 65_535 ? port : null;
+}
+
+/**
+ * Configuração SNMP privada derivada da interface SNMP do Zabbix. Circula
+ * somente no backend durante a importação: a community nunca vai para o
+ * preview, respostas públicas, logs, erros ou MCP.
+ */
+export interface ZabbixSnmpImportConfig {
+  enabled: true;
+  version: 'SNMP_V2C';
+  host: string;
+  port: number;
+  community: string;
 }
 
 export interface ZabbixItem {
@@ -205,29 +259,86 @@ export class ZabbixAdapter implements MetricSourceAdapter {
   async getHostCandidates(): Promise<ZabbixHostCandidate[]> {
     const hosts = await this.call<ZabbixHost[]>('host.get', {
       output: ['hostid', 'host', 'name', 'status'],
-      selectInterfaces: ['interfaceid', 'ip', 'main', 'type'],
+      selectInterfaces: ZABBIX_PUBLIC_INTERFACE_FIELDS,
       selectInventory: ['vendor', 'model', 'type'],
       sortfield: 'host',
     });
     return Promise.all(
       hosts.map(async (host) => {
-        const main = host.interfaces?.find((item) => item.main === '1') ?? host.interfaces?.[0];
+        const snmpInterface = selectSnmpInterface(host.interfaces);
+        const legacyInterface =
+          host.interfaces?.find((item) => item.main === '1' && item.type !== SNMP_INTERFACE_TYPE) ??
+          host.interfaces?.find((item) => item.type !== SNMP_INTERFACE_TYPE);
+        // useip=0 significa "conectar via DNS": o ip da interface SNMP vira
+        // placeholder (127.0.0.1/0.0.0.0) e não é autoritativo. O managementIp
+        // do NetVision é orientado a IP, então mantemos o melhor IP real
+        // disponível (interface legada → ip da SNMP) sem nunca zerá-lo.
+        const snmpIp = usableManagementIp(snmpInterface?.ip);
+        const snmpUsesIp = String(snmpInterface?.useip ?? '1') === '1';
+        let managementIp: string;
+        let primaryInterfaceId: string;
+        if (snmpInterface) {
+          primaryInterfaceId = snmpInterface.interfaceid;
+          managementIp =
+            (snmpUsesIp ? snmpIp : null) ?? usableManagementIp(legacyInterface?.ip) ?? snmpIp ?? '';
+        } else {
+          const legacy =
+            host.interfaces?.find((item) => item.main === '1') ?? host.interfaces?.[0];
+          primaryInterfaceId = legacy?.interfaceid ?? '';
+          managementIp = legacy?.ip ?? '';
+        }
         const interfaces = await this.getInterfaces(host.hostid);
         return {
           hostId: host.hostid,
           hostname: host.host,
           displayName: host.name || host.host,
-          managementIp: main?.ip ?? '',
-          primaryInterfaceId: main?.interfaceid ?? '',
+          managementIp,
+          primaryInterfaceId,
           vendor: host.inventory?.vendor ?? '',
           model: host.inventory?.model ?? host.inventory?.type ?? '',
           status: host.status === '0' ? ('UP' as const) : ('UNKNOWN' as const),
           alreadyRegistered: false,
           matchedHostId: null,
           interfaceCount: interfaces.length,
+          snmpAvailable: Boolean(snmpInterface),
+          // A versão vive em `details` (privado): só a importação pode resolvê-la.
+          snmpVersion: null,
+          snmpPort: snmpPortOf(snmpInterface),
         };
       }),
     );
+  }
+
+  /**
+   * Config SNMP privada para a importação (somente backend). Retorna null
+   * quando não há interface SNMP v2c com community utilizável — nunca inventa
+   * community, nunca copia segredos de SNMPv3 e ignora macros não resolvidas.
+   */
+  async getSnmpImportConfig(hostId: string): Promise<ZabbixSnmpImportConfig | null> {
+    const hosts = await this.call<ZabbixHost[]>('host.get', {
+      hostids: hostId.replace(/^zabbix-/, ''),
+      output: ['hostid'],
+      selectInterfaces: ZABBIX_PRIVATE_SNMP_INTERFACE_FIELDS,
+    });
+    const snmpInterface = selectSnmpInterface(hosts[0]?.interfaces);
+    if (!snmpInterface || snmpInterface.details?.version !== '2') return null;
+    const community = snmpInterface.details?.community?.trim();
+    // Macro não resolvida ({$SNMP_COMMUNITY}) não é community: não criptografa
+    // o token literal nem tenta resolver macros globais/templates nesta fase.
+    if (!community || isUnresolvedZabbixMacro(community)) return null;
+    const ip = snmpInterface.ip?.trim() ?? '';
+    const dns = snmpInterface.dns?.trim() ?? '';
+    const useip = String(snmpInterface.useip ?? '1') === '1';
+    // useip=0: o alvo SNMP é o nome DNS configurado (o cliente SNMP resolve).
+    const target = useip ? ip : dns || usableManagementIp(ip) || '';
+    if (!target) return null;
+    return {
+      enabled: true,
+      version: 'SNMP_V2C',
+      host: target,
+      port: snmpPortOf(snmpInterface) ?? 161,
+      community,
+    };
   }
 
   async getDevices(): Promise<Device[]> {

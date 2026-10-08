@@ -16,8 +16,16 @@ import type {
 import type { DiscoveryService } from './application/discovery-service';
 import { config } from './config';
 import { isValidSshContextCommand, normalizeSshContextCommand } from '@gmj/shared';
-import { demoZabbixCandidates, type ZabbixAdapter } from './infrastructure/metrics/zabbix-adapter';
-import { CredentialEncryptionUnavailableError, type DemoMapRepository } from './infrastructure/persistence/demo-map-repository';
+import {
+  demoZabbixCandidates,
+  type ZabbixAdapter,
+  type ZabbixSnmpImportConfig,
+} from './infrastructure/metrics/zabbix-adapter';
+import {
+  CredentialEncryptionUnavailableError,
+  type DemoMapRepository,
+  type ZabbixImportPlanEntry,
+} from './infrastructure/persistence/demo-map-repository';
 import type { HostRepository } from './infrastructure/persistence/host-repository';
 import type { SnmpService } from './infrastructure/snmp/snmp-service';
 import type { SshInterfaceService } from './infrastructure/ssh/ssh-interface-service';
@@ -91,23 +99,24 @@ async function zabbixCandidates(
   return { candidates, version, demoMode: false };
 }
 
-function importInput(record: HostRecord): CreateHostInput {
+function importInput(base: CreateHostInput, snmpConfig: ZabbixSnmpImportConfig | null): CreateHostInput {
+  // Fase Zabbix/SNMP: a community vinda do Zabbix viaja somente daqui para o
+  // CredentialVault — nunca aparece em preview, resposta pública, logs ou erros.
   return {
-    hostname: record.hostname,
-    displayName: record.displayName,
-    managementIp: record.managementIp,
-    vendor: record.vendor,
-    model: record.model,
-    deviceType: record.deviceType,
-    site: record.site,
-    description: record.description,
-    notes: record.notes,
-    origin: record.origin,
-    zabbix: record.zabbix
-      ? { enabled: true, hostId: record.zabbix.hostId, hostName: record.zabbix.hostName, primaryInterfaceId: record.zabbix.primaryInterfaceId, ip: record.zabbix.ip }
-      : { enabled: false, hostId: '', hostName: '', primaryInterfaceId: '', ip: '' },
-    ssh: { enabled: false, host: record.managementIp, port: 22, username: '' },
-    snmp: { enabled: false, version: 'SNMP_V2C', host: record.managementIp, port: 161, username: '', securityLevel: 'NO_AUTH_NO_PRIV', authProtocol: null, privacyProtocol: null },
+    ...base,
+    snmp: snmpConfig
+      ? {
+          enabled: true,
+          version: snmpConfig.version,
+          host: snmpConfig.host,
+          port: snmpConfig.port,
+          community: snmpConfig.community,
+          username: '',
+          securityLevel: 'NO_AUTH_NO_PRIV',
+          authProtocol: null,
+          privacyProtocol: null,
+        }
+      : base.snmp,
   };
 }
 
@@ -155,11 +164,58 @@ export function registerHostRoutes(
     if (zabbix) {
       await Promise.all(body.hostIds.map(async (hostId) => interfaces.set(hostId, await zabbix.getInterfaces(hostId))));
     }
-    const result = legacyMaps.importZabbixHosts(body.previewId, body.hostIds, interfaces);
-    if (!result) return reply.code(404).send({ message: 'Preview expirado ou inexistente' });
-    const imported = [];
-    for (const record of result.imported) imported.push(await hosts.createHost(importInput(record), record.interfaces));
-    return { imported, skippedHostIds: result.skippedHostIds };
+    // PREFLIGHT: valida a seleção e monta os inputs sem mutar nada.
+    const plan = legacyMaps.prepareZabbixImport(body.previewId, body.hostIds, interfaces);
+    if (!plan) return reply.code(404).send({ message: 'Preview expirado ou inexistente' });
+
+    // PREFLIGHT: resolve a config SNMP privada de todos os hosts antes da
+    // primeira mutação. Falha da API Zabbix NÃO vira "host sem SNMP": a
+    // importação é cancelada com falha explícita para o operador.
+    const prepared: Array<{ entry: ZabbixImportPlanEntry; input: CreateHostInput }> = [];
+    const failedHostIds: string[] = [];
+    const failureReasons: Array<{ hostId: string; reason: string }> = [];
+    for (const entry of plan.entries) {
+      try {
+        const snmpConfig =
+          zabbix && entry.candidate.snmpAvailable !== false
+            ? await zabbix.getSnmpImportConfig(entry.hostId)
+            : null;
+        prepared.push({ entry, input: importInput(entry.input, snmpConfig) });
+      } catch (error) {
+        failedHostIds.push(entry.hostId);
+        failureReasons.push({
+          hostId: entry.hostId,
+          reason: error instanceof Error ? error.message : 'unknown',
+        });
+      }
+    }
+    if (failedHostIds.length > 0) {
+      app.log.warn(
+        { failures: failureReasons },
+        'Zabbix SNMP import aborted: Zabbix API lookup failed',
+      );
+      return reply.code(502).send({
+        message: 'Falha ao consultar o Zabbix para a configuração SNMP — importação cancelada; nenhum host foi importado',
+        failedHostIds,
+      });
+    }
+
+    try {
+      const imported = [];
+      // Persistência primeiro, estado legado/demonstrativo depois: uma falha de
+      // credencial não deixa host pela metade nem retry marcado como duplicado.
+      for (const item of prepared) {
+        const created = await hosts.createHost(item.input, item.entry.interfaces);
+        legacyMaps.applyPreparedZabbixImport(plan, [item.entry.hostId]);
+        imported.push(created);
+      }
+      return { imported, skippedHostIds: plan.skippedHostIds };
+    } catch (error) {
+      if (error instanceof CredentialEncryptionUnavailableError) {
+        return reply.code(409).send({ message: 'Configure CREDENTIAL_ENCRYPTION_KEY antes de salvar credenciais' });
+      }
+      throw error;
+    }
   });
 
   app.get('/api/hosts/:hostId', async (request, reply) => {

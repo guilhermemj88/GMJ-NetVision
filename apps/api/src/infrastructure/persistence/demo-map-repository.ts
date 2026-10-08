@@ -143,6 +143,26 @@ export class CredentialEncryptionUnavailableError extends Error {
   }
 }
 
+/** Entrada pré-validada do preview, pronta para virar host — nada mutado ainda. */
+export interface ZabbixImportPlanEntry {
+  hostId: string;
+  candidate: ZabbixHostCandidate;
+  input: CreateHostInput;
+  interfaces: NetworkInterface[];
+}
+
+/**
+ * Preflight da importação Zabbix: montado sem tocar no estado legado para que
+ * a persistência aconteça antes de qualquer mutação em memória.
+ */
+export interface ZabbixImportPlan {
+  previewId: string;
+  previewVersion: string;
+  previewCreatedAt: string;
+  entries: ZabbixImportPlanEntry[];
+  skippedHostIds: string[];
+}
+
 export class DemoMapRepository {
   private devices: HostRecord[];
   private maps: StoredMap[];
@@ -415,14 +435,19 @@ export class DemoMapRepository {
     return preview;
   }
 
-  importZabbixHosts(
+  /**
+   * Valida a seleção do preview e monta o plano de importação SEM mutar nada:
+   * duplicidade, interfaces efetivas e input base ficam prontos para o caller
+   * persistir antes de aplicar no estado legado.
+   */
+  prepareZabbixImport(
     previewId: string,
     hostIds: string[],
     interfacesByHostId: Map<string, NetworkInterface[]> = new Map(),
-  ): ZabbixImportResult | null {
+  ): ZabbixImportPlan | null {
     const preview = this.zabbixPreviews.get(previewId);
     if (!preview) return null;
-    const imported: HostRecord[] = [];
+    const entries: ZabbixImportPlanEntry[] = [];
     const skippedHostIds: string[] = [];
     for (const hostId of hostIds) {
       const candidate = preview.hosts.find((item) => item.hostId === hostId);
@@ -434,8 +459,12 @@ export class DemoMapRepository {
         skippedHostIds.push(hostId);
         continue;
       }
-      const host = this.createHost(
-        {
+      const provided = interfacesByHostId.get(hostId);
+      entries.push({
+        hostId,
+        candidate,
+        interfaces: provided?.length ? provided : defaultInterfaces(`zabbix-import-${hostId}`),
+        input: {
           hostname: candidate.hostname,
           displayName: candidate.displayName,
           managementIp: candidate.managementIp,
@@ -465,20 +494,53 @@ export class DemoMapRepository {
             privacyProtocol: null,
           },
         },
-        interfacesByHostId.get(hostId),
-      );
+      });
+    }
+    return {
+      previewId,
+      previewVersion: preview.version,
+      previewCreatedAt: preview.createdAt,
+      entries,
+      skippedHostIds,
+    };
+  }
+
+  /**
+   * Aplica no estado legado/demonstrativo apenas os hosts já persistidos pelo
+   * caller (createHost do HostRepository primeiro): uma falha de credencial não
+   * deixa host parcial nem retry marcado como duplicado.
+   */
+  applyPreparedZabbixImport(plan: ZabbixImportPlan, hostIds: string[]): HostRecord[] {
+    const wanted = new Set(hostIds);
+    const imported: HostRecord[] = [];
+    for (const entry of plan.entries) {
+      if (!wanted.has(entry.hostId)) continue;
+      const host = this.createHost(entry.input, entry.interfaces);
       const stored = this.findHost(host.id)!;
-      stored.status = candidate.status;
-      stored.lastPollingAt = preview.createdAt;
+      stored.status = entry.candidate.status;
+      stored.lastPollingAt = plan.previewCreatedAt;
       stored.sourceHealth.ZABBIX = {
         state: 'CONNECTED',
-        lastSuccess: preview.createdAt,
+        lastSuccess: plan.previewCreatedAt,
         lastFailure: null,
         lastErrorSafe: null,
       };
       imported.push(this.getHost(host.id)!);
     }
-    return { imported, skippedHostIds };
+    return imported;
+  }
+
+  importZabbixHosts(
+    previewId: string,
+    hostIds: string[],
+    interfacesByHostId: Map<string, NetworkInterface[]> = new Map(),
+  ): ZabbixImportResult | null {
+    const plan = this.prepareZabbixImport(previewId, hostIds, interfacesByHostId);
+    if (!plan) return null;
+    return {
+      imported: this.applyPreparedZabbixImport(plan, plan.entries.map((entry) => entry.hostId)),
+      skippedHostIds: plan.skippedHostIds,
+    };
   }
 
   createDiscoveryPreview(

@@ -841,6 +841,15 @@ export interface ZabbixHostCandidate {
   alreadyRegistered: boolean;
   matchedHostId: string | null;
   interfaceCount: number;
+  /**
+   * Metadados públicos da interface SNMP do Zabbix para o preview. A community
+   * NUNCA entra no candidato — ela existe apenas em estrutura interna do
+   * backend durante a importação. A versão também só é resolvida na importação
+   * privada (o preview não solicita `details`) e por isso vem null aqui.
+   */
+  snmpAvailable?: boolean;
+  snmpVersion?: SnmpVersion | null;
+  snmpPort?: number | null;
 }
 export interface ZabbixImportPreview {
   id: string;
