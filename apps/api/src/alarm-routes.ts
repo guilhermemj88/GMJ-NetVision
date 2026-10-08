@@ -31,6 +31,7 @@ function toRuleDto(record: AlarmRuleRecord): AlarmRuleDto {
     mediaEnabled: record.mediaEnabled,
     scope: record.scope,
     config: record.config,
+    managedKey: record.managedKey,
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };

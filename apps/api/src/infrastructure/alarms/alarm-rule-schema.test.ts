@@ -59,6 +59,24 @@ describe('createAlarmRuleSchema', () => {
     expect(result.success).toBe(false);
   });
 
+  it('F9.6: aceita managedKey do Básico e rejeita chave desconhecida', () => {
+    const withSlot = createAlarmRuleSchema.safeParse({
+      ...validErrorsRule,
+      managedKey: 'BASIC_INTERFACE_ERRORS',
+    });
+    expect(withSlot.success).toBe(true);
+    expect(withSlot.success && withSlot.data.managedKey).toBe('BASIC_INTERFACE_ERRORS');
+
+    // Ausente continua válido: nesse caso o valor persistido é PRESERVADO no update.
+    const withoutSlot = createAlarmRuleSchema.safeParse(validErrorsRule);
+    expect(withoutSlot.success).toBe(true);
+    expect(withoutSlot.success && withoutSlot.data.managedKey).toBeUndefined();
+
+    expect(
+      createAlarmRuleSchema.safeParse({ ...validErrorsRule, managedKey: 'BASIC_QUALQUER' }).success,
+    ).toBe(false);
+  });
+
   it('CRC nao aceita direcao (metrica de recepcao) e valida Counter64/32 pela mesma config', () => {
     const crc = {
       name: 'CRC/FCS 100G',

@@ -27,6 +27,7 @@ export class DemoAlarmRuleRepository implements AlarmRuleRepository {
     const now = new Date();
     const record: AlarmRuleRecord = {
       ...input,
+      managedKey: input.managedKey ?? null,
       id: createLocalId('alarm-rule'),
       createdAt: now,
       updatedAt: now,
@@ -39,7 +40,13 @@ export class DemoAlarmRuleRepository implements AlarmRuleRepository {
     const index = this.rules.findIndex((rule) => rule.id === id);
     const current = this.rules[index];
     if (!current) return null;
-    const record: AlarmRuleRecord = { ...current, ...input, updatedAt: new Date() };
+    const record: AlarmRuleRecord = {
+      ...current,
+      ...input,
+      // Sem `managedKey` no input o slot gerenciado é preservado (F9.6).
+      managedKey: input.managedKey === undefined ? current.managedKey : (input.managedKey ?? null),
+      updatedAt: new Date(),
+    };
     this.rules[index] = record;
     return record;
   }

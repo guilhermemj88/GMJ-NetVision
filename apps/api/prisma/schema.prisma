@@ -1067,6 +1067,8 @@ model AlarmRule {
   mediaEnabled  Boolean       @default(false)
   scope         Json
   config        Json
+  /// Slot da aba BASICO (F9.6): no maximo UMA regra por slot. Regra custom = NULL.
+  managedKey    String?       @unique
   createdAt     DateTime      @default(now())
   updatedAt     DateTime      @updatedAt
 

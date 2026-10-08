@@ -1,5 +1,6 @@
 import type { AlarmRuleRecord, AlarmRuleInput, AlarmRuleRepository } from './alarm-rule-repository';
 import type { MetricAlarmType } from '@gmj/shared';
+import { isBasicAlarmRuleKey } from '@gmj/shared';
 import { Prisma, PrismaClient } from '../../generated/prisma/index.js';
 import {
   isMetricAlarmType,
@@ -41,7 +42,12 @@ export class PrismaAlarmRuleRepository implements AlarmRuleRepository {
 
   async update(id: string, input: AlarmRuleInput): Promise<AlarmRuleRecord | null> {
     try {
-      const row = await this.prisma.alarmRule.update({ where: { id }, data: this.toData(input) });
+      const row = await this.prisma.alarmRule.update({
+        where: { id },
+        // F9.6: sem `managedKey` no input o vínculo com o Básico é PRESERVADO —
+        // a edição avançada nunca desfaz o slot por acidente.
+        data: this.toData(input, { preserveManagedKey: input.managedKey === undefined }),
+      });
       return this.toRecord(row);
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
@@ -68,7 +74,10 @@ export class PrismaAlarmRuleRepository implements AlarmRuleRepository {
     return result.count > 0;
   }
 
-  private toData(input: AlarmRuleInput): Prisma.AlarmRuleUncheckedCreateInput {
+  private toData(
+    input: AlarmRuleInput,
+    options: { preserveManagedKey?: boolean } = {},
+  ): Prisma.AlarmRuleUncheckedCreateInput {
     return {
       name: input.name,
       type: input.type,
@@ -78,6 +87,7 @@ export class PrismaAlarmRuleRepository implements AlarmRuleRepository {
       mediaEnabled: input.mediaEnabled,
       scope: input.scope as unknown as Prisma.InputJsonValue,
       config: input.config as unknown as Prisma.InputJsonValue,
+      ...(options.preserveManagedKey ? {} : { managedKey: input.managedKey ?? null }),
     };
   }
 
@@ -96,6 +106,7 @@ export class PrismaAlarmRuleRepository implements AlarmRuleRepository {
       mediaEnabled: row.mediaEnabled,
       scope,
       config,
+      managedKey: isBasicAlarmRuleKey(row.managedKey) ? row.managedKey : null,
       createdAt: row.createdAt,
       updatedAt: row.updatedAt,
     };

@@ -2,6 +2,7 @@ import type {
   AlarmRuleConfig,
   AlarmRuleDto,
   AlarmSeverity,
+  BasicAlarmRuleKey,
   InterfaceCrcRuleConfig,
   InterfaceDiscardsRuleConfig,
   InterfaceErrorsRuleConfig,
@@ -178,3 +179,122 @@ export const RULE_SPEED_OPTIONS = [
   { bps: 40_000_000_000, label: '40G' },
   { bps: 100_000_000_000, label: '100G' },
 ] as const;
+
+/**
+ * Slots da aba BÁSICO (F9.6).
+ *
+ * Cada slot corresponde a UMA regra gerenciada (`AlarmRule.managedKey`), com o
+ * preset RECOMENDADO. O Básico só liga/desliga, escolhe escopo/mídia e manda
+ * personalizar; nenhum preset é criado sem ação explícita do operador.
+ */
+export interface BasicAlarmRuleSlot {
+  managedKey: BasicAlarmRuleKey;
+  type: MetricAlarmType;
+  title: string;
+  description: string;
+  severity: AlarmSeverity;
+  config: AlarmRuleConfig;
+  /** Nome criado quando o operador liga o card (renomeável no Avançado). */
+  defaultName: string;
+}
+
+export const BASIC_ALARM_RULE_SLOTS: readonly BasicAlarmRuleSlot[] = [
+  {
+    managedKey: 'BASIC_INTERFACE_CRC',
+    type: 'INTERFACE_CRC',
+    title: 'CRC / FCS',
+    description: 'Erros de CRC/FCS persistentes no receptor (RX).',
+    severity: 'WARNING',
+    defaultName: 'CRC/FCS (recomendado)',
+    config: {
+      thresholdPerMinute: 10,
+      recoveryThresholdPerMinute: 2,
+      triggerSamples: 3,
+      recoverySamples: 3,
+    } satisfies InterfaceCrcRuleConfig,
+  },
+  {
+    managedKey: 'BASIC_INTERFACE_DISCARDS',
+    type: 'INTERFACE_DISCARDS',
+    title: 'DISCARDS',
+    description: 'Descarte sustentado de pacotes (RX ou TX).',
+    severity: 'WARNING',
+    defaultName: 'Discards (recomendado)',
+    config: {
+      direction: 'BOTH',
+      thresholdPerMinute: 20,
+      recoveryThresholdPerMinute: 5,
+      triggerSamples: 3,
+      recoverySamples: 3,
+    } satisfies InterfaceDiscardsRuleConfig,
+  },
+  {
+    managedKey: 'BASIC_INTERFACE_ERRORS',
+    type: 'INTERFACE_ERRORS',
+    title: 'ERROS DE INTERFACE',
+    description: 'Erros de recepção persistentes (inErrors, direção RX).',
+    severity: 'MAJOR',
+    defaultName: 'Erros de interface (recomendado)',
+    config: {
+      direction: 'RX',
+      thresholdPerMinute: 10,
+      recoveryThresholdPerMinute: 2,
+      triggerSamples: 3,
+      recoverySamples: 3,
+    } satisfies InterfaceErrorsRuleConfig,
+  },
+  {
+    managedKey: 'BASIC_OPTICAL_RX_DEGRADATION',
+    type: 'OPTICAL_RX_DEGRADATION',
+    title: 'DEGRADAÇÃO ÓPTICA',
+    description: 'Usa os limites do equipamento/transceiver (DEVICE/USER/DEFAULT) e detecta queda rápida.',
+    severity: 'WARNING',
+    defaultName: 'Degradação óptica (recomendado)',
+    config: opticalRuleDefaults(),
+  },
+];
+
+export function basicSlotByManagedKey(
+  managedKey: BasicAlarmRuleKey | null | undefined,
+): BasicAlarmRuleSlot | null {
+  if (!managedKey) return null;
+  return BASIC_ALARM_RULE_SLOTS.find((slot) => slot.managedKey === managedKey) ?? null;
+}
+
+function canonical(value: unknown): unknown {
+  if (typeof value === 'number') return Number(value.toFixed(6));
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, item]) => [key, canonical(item)]),
+    );
+  }
+  return value === undefined ? null : value;
+}
+
+/**
+ * RECOMENDADA x PERSONALIZADA (F9.6): compara os parâmetros TÉCNICOS da regra
+ * com o preset do slot — config (números normalizados), severity e
+ * mapLinkedOnly. `mediaEnabled`/`enabled` NÃO tornam a regra personalizada.
+ */
+export function isRecommendedConfiguration(
+  rule: Pick<AlarmRuleDto, 'config' | 'severity' | 'mapLinkedOnly'>,
+  slot: BasicAlarmRuleSlot,
+): boolean {
+  if (rule.severity !== slot.severity) return false;
+  if (!rule.mapLinkedOnly) return false;
+  return JSON.stringify(canonical(rule.config)) === JSON.stringify(canonical(slot.config));
+}
+
+/** Outras regras (custom ou de outro slot) do MESMO tipo, habilitadas. */
+export function otherEnabledRulesOfType(
+  rules: readonly AlarmRuleDto[],
+  slot: BasicAlarmRuleSlot,
+  managedRuleId: string | null,
+): number {
+  return rules.filter(
+    (rule) => rule.type === slot.type && rule.enabled && rule.id !== managedRuleId,
+  ).length;
+}

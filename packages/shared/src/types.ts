@@ -63,6 +63,24 @@ export const METRIC_ALARM_TYPES = [
   'OPTICAL_RX_DEGRADATION',
 ] as const satisfies readonly MetricAlarmType[];
 export type AlarmSeverity = 'CRITICAL' | 'MAJOR' | 'WARNING' | 'INFO';
+
+/**
+ * Slots de regra gerenciados pela aba BASICO de Alarmes (F9.6).
+ *
+ * `AlarmRule.managedKey` garante no máximo UMA regra por slot; regras criadas
+ * no AVANÇADO ficam com `managedKey = null` (custom).
+ */
+export const BASIC_ALARM_RULE_KEYS = [
+  'BASIC_INTERFACE_CRC',
+  'BASIC_INTERFACE_DISCARDS',
+  'BASIC_INTERFACE_ERRORS',
+  'BASIC_OPTICAL_RX_DEGRADATION',
+] as const;
+export type BasicAlarmRuleKey = (typeof BASIC_ALARM_RULE_KEYS)[number];
+
+export function isBasicAlarmRuleKey(value: unknown): value is BasicAlarmRuleKey {
+  return typeof value === 'string' && (BASIC_ALARM_RULE_KEYS as readonly string[]).includes(value);
+}
 export type AlarmPanelPosition = 'LEFT' | 'RIGHT' | 'HIDDEN';
 export interface Alarm {
   id: string;
@@ -231,6 +249,8 @@ export interface AlarmRuleDto {
   mediaEnabled: boolean;
   scope: AlarmRuleScope;
   config: AlarmRuleConfig;
+  /** Slot gerenciado pela aba BASICO; `null` em regra custom (Avançado). */
+  managedKey: BasicAlarmRuleKey | null;
   createdAt: string;
   updatedAt: string;
 }

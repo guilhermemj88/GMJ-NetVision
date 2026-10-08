@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BASIC_ALARM_RULE_KEYS } from '@gmj/shared';
 import type { AlarmRuleConfig, AlarmRuleScope, MetricAlarmType } from '@gmj/shared';
 
 /**
@@ -117,6 +118,11 @@ const ruleBaseShape = {
   mapLinkedOnly: z.boolean().optional().default(true),
   mediaEnabled: z.boolean().optional().default(false),
   scope: alarmRuleScopeSchema.optional().default({}),
+  /**
+   * F9.6: slot gerenciado pela aba BASICO. Opcional em TODAS as operações:
+   * ausente no PUT o vínculo é preservado (o Avançado não apaga por acidente).
+   */
+  managedKey: z.enum(BASIC_ALARM_RULE_KEYS).optional(),
 };
 
 export const createAlarmRuleSchema = z.discriminatedUnion('type', [

@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import { Badge, Button } from '@gmj/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellRing, Pencil, Plus, Power, Trash2, X } from 'lucide-react';
+import { BellRing, Pencil, Plus, Power, ShieldCheck, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import { alarmTypeLabel, type AlarmRuleDto, type AlarmSeverity, type MetricAlarmType, type OpticalRuleConfig } from '@gmj/shared';
 import { useMapStore } from '@/store/map-store';
+import { getMediaIntegrationsByPurpose } from '@/lib/media-api';
 import {
   createAlarmRule,
   deleteAlarmRule,
@@ -15,12 +16,16 @@ import {
   type AlarmRuleInput,
 } from '@/lib/api';
 import {
+  BASIC_ALARM_RULE_SLOTS,
   describeAlarmRule,
   describeAlarmRuleScope,
+  isRecommendedConfiguration,
   opticalRuleDefaults,
+  otherEnabledRulesOfType,
   presetsForType,
   RULE_SPEED_OPTIONS,
   type AlarmRulePreset,
+  type BasicAlarmRuleSlot,
 } from '@/lib/alarm-rule-presets';
 
 const RULE_TYPES: Array<{ value: MetricAlarmType; label: string }> = [
@@ -129,13 +134,20 @@ function applyPreset(draft: RuleDraft, preset: AlarmRulePreset): RuleDraft {
 }
 
 /**
- * CONFIGURAÇÕES → ALARMES: CRUD visual das AlarmRules metricas (backend F2).
- * Nenhuma regra e criada sem o operador salvar; desativar/excluir resolve os
- * alarmes abertos daquela regra no backend.
+ * CONFIGURAÇÕES → ALARMES.
+ *
+ * BÁSICO (F9.6): camada operacional sobre `AlarmRule` — 4 slots gerenciados por
+ * `managedKey` + a proteção nativa de queda de interface (que NÃO é AlarmRule).
+ * Abrir a aba nunca cria linha; só o gesto explícito ATIVAR cria.
+ *
+ * AVANÇADO: o CRUD completo de sempre (presets, thresholds, samples, recovery,
+ * velocidades, escopo, fallback manual, severidade, mídia, excluir). Editar uma
+ * regra gerenciada aqui preserva o `managedKey` e a marca como PERSONALIZADA.
  */
 export function AlarmRulesPanel() {
   const setPanel = useMapStore((state) => state.setPanel);
   const queryClient = useQueryClient();
+  const [tab, setTab] = useState<'BASIC' | 'ADVANCED'>('BASIC');
   const [editing, setEditing] = useState<AlarmRuleDto | null>(null);
   const [creating, setCreating] = useState(false);
   const [draft, setDraft] = useState<RuleDraft>(() => newDraft());
@@ -176,6 +188,33 @@ export function AlarmRulesPanel() {
     },
   });
 
+  /** BÁSICO: cria o slot com o preset recomendado (ação explícita do operador). */
+  const enableSlotMutation = useMutation({
+    mutationFn: async (slot: BasicAlarmRuleSlot) => {
+      const managed = rules.find((rule) => rule.managedKey === slot.managedKey);
+      if (managed) return setAlarmRuleEnabled(managed.id, true);
+      return createAlarmRule({
+        name: slot.defaultName,
+        type: slot.type,
+        enabled: true,
+        severity: slot.severity,
+        mapLinkedOnly: true,
+        mediaEnabled: false,
+        scope: {},
+        config: slot.config,
+        managedKey: slot.managedKey,
+      });
+    },
+    onSuccess: invalidate,
+  });
+
+  /** BÁSICO: liga/desliga um campo sem perder nome/config/scope da regra. */
+  const patchRuleMutation = useMutation({
+    mutationFn: ({ rule, changes }: { rule: AlarmRuleDto; changes: Partial<AlarmRuleInput> }) =>
+      updateAlarmRule(rule.id, { ...ruleInputFromRecord(rule), ...changes }),
+    onSuccess: invalidate,
+  });
+
   const startCreate = () => {
     setEditing(null);
     setCreating(true);
@@ -191,6 +230,19 @@ export function AlarmRulesPanel() {
   const closeForm = () => {
     setEditing(null);
     setCreating(false);
+  };
+
+  const openAdvancedForSlot = (slot: BasicAlarmRuleSlot) => {
+    const managed = rules.find((rule) => rule.managedKey === slot.managedKey) ?? null;
+    setTab('ADVANCED');
+    if (managed) {
+      startEdit(managed);
+      return;
+    }
+    // Sem regra ainda: abre o formulário preenchido com o preset, SEM persistir.
+    setEditing(null);
+    setCreating(true);
+    setDraft(draftFromSlot(slot));
   };
 
   const formOpen = creating || editing !== null;
@@ -218,99 +270,143 @@ export function AlarmRulesPanel() {
           </button>
         </header>
 
+        <div className="alarms-tabs" role="tablist" aria-label="Modo de configuração">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'BASIC'}
+            className={tab === 'BASIC' ? 'is-active' : ''}
+            onClick={() => setTab('BASIC')}
+          >
+            BÁSICO
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === 'ADVANCED'}
+            className={tab === 'ADVANCED' ? 'is-active' : ''}
+            onClick={() => setTab('ADVANCED')}
+          >
+            AVANÇADO
+          </button>
+        </div>
+
         <div className="panel-body alarms-panel">
-          <div className="alarms-panel__toolbar">
-            <span>
-              {rules.length} regra{rules.length === 1 ? '' : 's'} · alerta sem regra continua visível
-              nas ocorrências recentes
-            </span>
-            <Button compact variant="primary" onClick={startCreate} disabled={busy}>
-              <Plus size={14} /> NOVA REGRA
-            </Button>
-          </div>
-
-          {formOpen ? (
-            <RuleForm
-              draft={draft}
-              editing={editing}
-              busy={busy}
-              onChange={setDraft}
-              onCancel={closeForm}
-              onSave={() => saveMutation.mutate()}
+          {tab === 'BASIC' ? (
+            <AlarmRulesBasicTab
+              rules={rules}
+              busy={busy || enableSlotMutation.isPending || patchRuleMutation.isPending}
+              onEnableSlot={(slot) => enableSlotMutation.mutate(slot)}
+              onDisableRule={(rule) => toggleMutation.mutate({ id: rule.id, enabled: false })}
+              onToggleMedia={(rule, mediaEnabled) =>
+                patchRuleMutation.mutate({ rule, changes: { mediaEnabled } })
+              }
+              onToggleMapLinked={(rule, mapLinkedOnly) =>
+                patchRuleMutation.mutate({ rule, changes: { mapLinkedOnly } })
+              }
+              onPersonalize={openAdvancedForSlot}
             />
-          ) : null}
-
-          {rules.length === 0 && !formOpen ? (
-            <p className="panel-note">
-              Nenhuma regra cadastrada. Use os presets (qualquer CRC, discard sustentado) para
-              começar — sem regra, nenhum alarme métrico é aberto, mas as ocorrências recentes
-              continuam aparecendo no painel.
-            </p>
-          ) : null}
-
-          <ul className="alarms-panel__list">
-            {rules.map((rule) => (
-              <li key={rule.id} className={`alarms-rule ${rule.enabled ? '' : 'is-disabled'}`}>
-                <div className="alarms-rule__head">
-                  <span className={`alarms-rule__dot alarms-rule__dot--${rule.severity.toLowerCase()}`} />
-                  <strong>{rule.name}</strong>
-                  <Badge tone={rule.enabled ? 'info' : 'neutral'}>
-                    {rule.enabled ? 'ATIVA' : 'DESATIVADA'}
-                  </Badge>
-                  <Badge tone="info">{rule.severity}</Badge>
-                  {rule.mediaEnabled ? (
-                    <Badge tone="info">
-                      <BellRing size={12} /> MÍDIA: SIM
-                    </Badge>
-                  ) : (
-                    <Badge tone="neutral">MÍDIA: NÃO</Badge>
-                  )}
-                </div>
-                <span className="alarms-rule__type">{alarmTypeLabel(rule.type)}</span>
-                <span className="alarms-rule__config">{describeAlarmRule(rule)}</span>
-                <span className="alarms-rule__scope">
-                  {describeAlarmRuleScope(rule.scope, rule.mapLinkedOnly)}
+          ) : (
+            <>
+              <div className="alarms-panel__toolbar">
+                <span>
+                  {rules.length} regra{rules.length === 1 ? '' : 's'} · alerta sem regra continua visível
+                  nas ocorrências recentes
                 </span>
-                <div className="alarms-rule__actions">
-                  <Button compact variant="secondary" onClick={() => startEdit(rule)} disabled={busy}>
-                    <Pencil size={13} /> EDITAR
-                  </Button>
-                  <Button
-                    compact
-                    variant="secondary"
-                    disabled={busy}
-                    onClick={() => toggleMutation.mutate({ id: rule.id, enabled: !rule.enabled })}
-                  >
-                    <Power size={13} /> {rule.enabled ? 'DESATIVAR' : 'ATIVAR'}
-                  </Button>
-                  {confirmingDelete === rule.id ? (
-                    <>
+                <Button compact variant="primary" onClick={startCreate} disabled={busy}>
+                  <Plus size={14} /> NOVA REGRA
+                </Button>
+              </div>
+
+              {formOpen ? (
+                <RuleForm
+                  draft={draft}
+                  editing={editing}
+                  busy={busy}
+                  onChange={setDraft}
+                  onCancel={closeForm}
+                  onSave={() => saveMutation.mutate()}
+                />
+              ) : null}
+
+              {rules.length === 0 && !formOpen ? (
+                <p className="panel-note">
+                  Nenhuma regra cadastrada. Use os presets (qualquer CRC, discard sustentado) para
+                  começar — sem regra, nenhum alarme métrico é aberto, mas as ocorrências recentes
+                  continuam aparecendo no painel.
+                </p>
+              ) : null}
+
+              <ul className="alarms-panel__list">
+                {rules.map((rule) => (
+                  <li key={rule.id} className={`alarms-rule ${rule.enabled ? '' : 'is-disabled'}`}>
+                    <div className="alarms-rule__head">
+                      <span className={`alarms-rule__dot alarms-rule__dot--${rule.severity.toLowerCase()}`} />
+                      <strong>{rule.name}</strong>
+                      <Badge tone={rule.enabled ? 'info' : 'neutral'}>
+                        {rule.enabled ? 'ATIVA' : 'DESATIVADA'}
+                      </Badge>
+                      <Badge tone="info">{rule.severity}</Badge>
+                      {rule.managedKey ? (
+                        <Badge tone="info">
+                          <ShieldCheck size={12} /> GERENCIADA PELO BÁSICO
+                        </Badge>
+                      ) : null}
+                      {rule.mediaEnabled ? (
+                        <Badge tone="info">
+                          <BellRing size={12} /> MÍDIA: SIM
+                        </Badge>
+                      ) : (
+                        <Badge tone="neutral">MÍDIA: NÃO</Badge>
+                      )}
+                    </div>
+                    <span className="alarms-rule__type">{alarmTypeLabel(rule.type)}</span>
+                    <span className="alarms-rule__config">{describeAlarmRule(rule)}</span>
+                    <span className="alarms-rule__scope">
+                      {describeAlarmRuleScope(rule.scope, rule.mapLinkedOnly)}
+                    </span>
+                    <div className="alarms-rule__actions">
+                      <Button compact variant="secondary" onClick={() => startEdit(rule)} disabled={busy}>
+                        <Pencil size={13} /> EDITAR
+                      </Button>
                       <Button
                         compact
-                        variant="primary"
+                        variant="secondary"
                         disabled={busy}
-                        onClick={() => deleteMutation.mutate(rule.id)}
+                        onClick={() => toggleMutation.mutate({ id: rule.id, enabled: !rule.enabled })}
                       >
-                        <Trash2 size={13} /> CONFIRMAR EXCLUSÃO
+                        <Power size={13} /> {rule.enabled ? 'DESATIVAR' : 'ATIVAR'}
                       </Button>
-                      <Button compact variant="ghost" onClick={() => setConfirmingDelete(null)}>
-                        CANCELAR
-                      </Button>
-                    </>
-                  ) : (
-                    <Button
-                      compact
-                      variant="ghost"
-                      disabled={busy}
-                      onClick={() => setConfirmingDelete(rule.id)}
-                    >
-                      <Trash2 size={13} /> EXCLUIR
-                    </Button>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
+                      {confirmingDelete === rule.id ? (
+                        <>
+                          <Button
+                            compact
+                            variant="primary"
+                            disabled={busy}
+                            onClick={() => deleteMutation.mutate(rule.id)}
+                          >
+                            <Trash2 size={13} /> CONFIRMAR EXCLUSÃO
+                          </Button>
+                          <Button compact variant="ghost" onClick={() => setConfirmingDelete(null)}>
+                            CANCELAR
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          compact
+                          variant="ghost"
+                          disabled={busy}
+                          onClick={() => setConfirmingDelete(rule.id)}
+                        >
+                          <Trash2 size={13} /> EXCLUIR
+                        </Button>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </div>
 
         <footer>
@@ -321,6 +417,191 @@ export function AlarmRulesPanel() {
       </section>
     </div>
   );
+}
+
+/** Corpo do BÁSICO: proteção nativa + 4 cards gerenciados. */
+export function AlarmRulesBasicTab({
+  rules,
+  busy,
+  onEnableSlot,
+  onDisableRule,
+  onToggleMedia,
+  onToggleMapLinked,
+  onPersonalize,
+}: {
+  rules: readonly AlarmRuleDto[];
+  busy: boolean;
+  onEnableSlot: (slot: BasicAlarmRuleSlot) => void;
+  onDisableRule: (rule: AlarmRuleDto) => void;
+  onToggleMedia: (rule: AlarmRuleDto, mediaEnabled: boolean) => void;
+  onToggleMapLinked: (rule: AlarmRuleDto, mapLinkedOnly: boolean) => void;
+  onPersonalize: (slot: BasicAlarmRuleSlot) => void;
+}) {
+  /**
+   * Mídia dos alarmes: canal NETWORK_ALARMS (nunca a mitigação). Sem canal
+   * configurado o toggle continua permitido, mas o card avisa.
+   */
+  const mediaQuery = useQuery({
+    queryKey: ['media-integrations', 'NETWORK_ALARMS'],
+    queryFn: () => getMediaIntegrationsByPurpose('NETWORK_ALARMS'),
+  });
+  const mediaChannelReady = Boolean(
+    mediaQuery.data?.integration?.enabled && mediaQuery.data.integration.outboundConfigured,
+  );
+
+  return (
+    <div className="alarms-basic">
+      <article className="alarms-basic-card alarms-basic-card--native">
+        <header>
+          <strong>QUEDA DE INTERFACE</strong>
+          <Badge tone="info">
+            <ShieldCheck size={12} /> PROTEÇÃO NATIVA
+          </Badge>
+        </header>
+        <p>
+          Abre alarme CRITICAL quando uma interface pertencente a um enlace fica DOWN e resolve
+          quando volta UP.
+        </p>
+        <dl className="alarms-basic-card__meta">
+          <div>
+            <dt>Status</dt>
+            <dd>ATIVA</dd>
+          </div>
+          <div>
+            <dt>Escopo</dt>
+            <dd>Somente enlaces de mapa</dd>
+          </div>
+          <div>
+            <dt>Mídia</dt>
+            <dd>Sem notificação (fluxo nativo)</dd>
+          </div>
+        </dl>
+        <small>Configuração desta proteção será disponibilizada em uma fase futura.</small>
+      </article>
+
+      {BASIC_ALARM_RULE_SLOTS.map((slot) => {
+        const rule = rules.find((item) => item.managedKey === slot.managedKey) ?? null;
+        const recommended = rule ? isRecommendedConfiguration(rule, slot) : false;
+        const extraRules = otherEnabledRulesOfType(rules, slot, rule?.id ?? null);
+        return (
+          <article
+            key={slot.managedKey}
+            className={`alarms-basic-card ${rule?.enabled ? '' : 'is-off'}`}
+          >
+            <header>
+              <strong>{slot.title}</strong>
+              <Badge tone={rule?.enabled ? 'info' : 'neutral'}>
+                {rule ? (rule.enabled ? 'ON' : 'OFF') : 'OFF'}
+              </Badge>
+            </header>
+            <p>{slot.description}</p>
+            <div className="alarms-basic-card__toggles">
+              <button
+                type="button"
+                className={`alarms-basic-card__toggle ${rule?.enabled ? 'is-on' : ''}`}
+                aria-pressed={Boolean(rule?.enabled)}
+                disabled={busy}
+                onClick={() => (rule?.enabled ? onDisableRule(rule) : onEnableSlot(slot))}
+                title={
+                  rule?.enabled
+                    ? 'Desativar encerra os alarmes atualmente abertos por esta regra.'
+                    : 'Criar/ativar a regra recomendada para esta proteção'
+                }
+              >
+                ATIVO {rule?.enabled ? 'ON' : 'OFF'}
+              </button>
+              <button
+                type="button"
+                className={`alarms-basic-card__toggle ${rule?.mediaEnabled ? 'is-on' : ''}`}
+                aria-pressed={Boolean(rule?.mediaEnabled)}
+                disabled={busy || !rule}
+                title="Envia OPENED/ESCALATED/RESOLVED para o canal de alarmes (NETWORK_ALARMS)"
+                onClick={() => rule && onToggleMedia(rule, !rule.mediaEnabled)}
+              >
+                MÍDIA {rule?.mediaEnabled ? 'ON' : 'OFF'}
+              </button>
+              <button
+                type="button"
+                className={`alarms-basic-card__toggle ${rule?.mapLinkedOnly ? 'is-on' : ''}`}
+                aria-pressed={rule ? rule.mapLinkedOnly : true}
+                disabled={busy || !rule}
+                title="Somente interfaces associadas a enlaces de mapa"
+                onClick={() => rule && onToggleMapLinked(rule, !rule.mapLinkedOnly)}
+              >
+                SOMENTE ENLACES {rule?.mapLinkedOnly ? 'ON' : 'OFF'}
+              </button>
+            </div>
+            <div className="alarms-basic-card__footer">
+              <span>
+                CONFIGURAÇÃO:{' '}
+                {rule ? (recommended ? 'RECOMENDADA' : 'PERSONALIZADA') : 'DISPONÍVEL'}
+              </span>
+              <Button
+                compact
+                variant="secondary"
+                onClick={() => onPersonalize(slot)}
+                disabled={busy}
+              >
+                <SlidersHorizontal size={13} /> PERSONALIZAR
+              </Button>
+            </div>
+            {extraRules > 0 ? (
+              <small className="alarms-basic-card__hint">
+                +{extraRules} regra{extraRules > 1 ? 's' : ''} avançada{extraRules > 1 ? 's' : ''}{' '}
+                ativa{extraRules > 1 ? 's' : ''} do mesmo tipo — podem abrir alarmes além deste card.
+              </small>
+            ) : null}
+            {rule?.mediaEnabled && !mediaChannelReady ? (
+              <small className="alarms-basic-card__hint">
+                Canal de mídia não configurado — os eventos ficam registrados como PULADO até a
+                integração de Alarmes de Rede ser configurada em Mídias.
+              </small>
+            ) : null}
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Corpo aceito pela API a partir de uma regra existente: preserva nome, tipo,
+ * severidade, escopo, config e o `managedKey`; o Básico só troca os campos
+ * pedidos (enabled/mediaEnabled/mapLinkedOnly).
+ */
+export function ruleInputFromRecord(rule: AlarmRuleDto): AlarmRuleInput {
+  return {
+    name: rule.name,
+    type: rule.type,
+    enabled: rule.enabled,
+    severity: rule.severity,
+    mapLinkedOnly: rule.mapLinkedOnly,
+    mediaEnabled: rule.mediaEnabled,
+    scope: rule.scope,
+    config: rule.config,
+    managedKey: rule.managedKey,
+  };
+}
+
+/** Draft do formulário preenchido com o preset do slot (sem persistir nada). */
+function draftFromSlot(slot: BasicAlarmRuleSlot): RuleDraft {
+  const base = newDraft(slot.type);
+  const config = slot.config as unknown as Record<string, number | string | undefined>;
+  return {
+    ...base,
+    name: slot.defaultName,
+    severity: slot.severity,
+    direction: (config.direction as 'RX' | 'TX' | 'BOTH' | undefined) ?? base.direction,
+    thresholdPerMinute: Number(config.thresholdPerMinute ?? base.thresholdPerMinute),
+    recoveryThresholdPerMinute: Number(
+      config.recoveryThresholdPerMinute ?? base.recoveryThresholdPerMinute,
+    ),
+    triggerSamples: Number(config.triggerSamples ?? base.triggerSamples),
+    recoverySamples: Number(config.recoverySamples ?? base.recoverySamples),
+    optical: slot.type === 'OPTICAL_RX_DEGRADATION'
+      ? { ...opticalRuleDefaults(), ...(slot.config as OpticalRuleConfig) }
+      : base.optical,
+  };
 }
 
 function RuleForm({
@@ -347,6 +628,14 @@ function RuleForm({
   return (
     <div className="alarms-form">
       <h3>{editing ? `EDITAR · ${editing.name}` : 'NOVA REGRA'}</h3>
+      {editing?.managedKey ? (
+        <p className="alarms-form__note">
+          <small>
+            Regra GERENCIADA PELO BÁSICO. Alterar qualquer parâmetro técnico aqui marca o card
+            como PERSONALIZADA — o vínculo com o Básico é mantido.
+          </small>
+        </p>
+      ) : null}
       <div className="alarms-form__grid">
         <label>
           <span>NOME</span>

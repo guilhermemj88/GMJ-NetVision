@@ -1,4 +1,4 @@
-import type { AlarmRuleConfig, AlarmRuleScope, AlarmSeverity, MetricAlarmType } from '@gmj/shared';
+import type { AlarmRuleConfig, AlarmRuleScope, AlarmSeverity, BasicAlarmRuleKey, MetricAlarmType } from '@gmj/shared';
 
 /** Regra de alarme no dominio (scope/config ja validados por Zod). */
 export interface AlarmRuleRecord {
@@ -11,6 +11,8 @@ export interface AlarmRuleRecord {
   mediaEnabled: boolean;
   scope: AlarmRuleScope;
   config: AlarmRuleConfig;
+  /** Slot da aba BASICO (F9.6); `null` = regra custom. */
+  managedKey: BasicAlarmRuleKey | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -24,6 +26,12 @@ export interface AlarmRuleInput {
   mediaEnabled: boolean;
   scope: AlarmRuleScope;
   config: AlarmRuleConfig;
+  /**
+   * Presente apenas quando a criação/edição quer mexer no slot gerenciado.
+   * `undefined` no update PRESERVA o valor atual (o Avançado nunca apaga o
+   * vínculo por acidente).
+   */
+  managedKey?: BasicAlarmRuleKey | null | undefined;
 }
 
 export interface AlarmRuleRepository {
