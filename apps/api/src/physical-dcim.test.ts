@@ -588,6 +588,35 @@ describe('physical DCIM catalog, modules and LLDP (catálogo YAML real)', () => 
       })();
     });
 
+    it('MA5800-X15 expõe módulos Huawei compatíveis e slots com moduleKeys por papel', () => {
+      return (async () => {
+        const asset = await oltAsset('huawei-ma5800-x15');
+        const keys = asset.template.modules.map((module) => module.catalogKey).sort();
+        expect(keys).toEqual(
+          [
+            'huawei-gpfd-16',
+            'huawei-h901mpsc',
+            'huawei-h902mpla',
+            'huawei-pac600s12-cb',
+            'huawei-xgspon-16',
+          ].sort(),
+        );
+        const byIndex = new Map(asset.template.slots.map((slot) => [slot.index, slot]));
+        const serviceSlot = byIndex.get(1);
+        expect(serviceSlot).toBeDefined();
+        expect(serviceSlot!.moduleKeys).toContain('huawei-gpfd-16');
+        expect(serviceSlot!.moduleKeys).toContain('huawei-xgspon-16');
+
+        const controlSlot = byIndex.get(8);
+        expect(controlSlot).toBeDefined();
+        expect(controlSlot!.moduleKeys).toContain('huawei-h901mpsc');
+
+        const powerSlot = byIndex.get(18);
+        expect(powerSlot).toBeDefined();
+        expect(powerSlot!.moduleKeys).toContain('huawei-pac600s12-cb');
+      })();
+    });
+
     it('MA5683T continua sem estrutura de slots e sem placas instaláveis', () => {
       return (async () => {
         const asset = await oltAsset('huawei-ma5683t');

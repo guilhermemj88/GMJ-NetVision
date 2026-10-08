@@ -8,6 +8,7 @@ import type {
   CreatePhysicalSiteInput,
   PhysicalAsset,
   PhysicalCatalogEntry,
+  PhysicalCatalogModule,
   PhysicalConnection,
   PhysicalConnectionEndpoint,
   PhysicalEquipmentTemplate,
@@ -582,10 +583,104 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
           skipDuplicates: true,
         });
       }
+      await this.syncModuleTemplates(entry, existing.id);
       await this.linkSlotModuleOptions(entry);
       updated += 1;
     }
     return { created, updated, total: entries.length };
+  }
+
+  /**
+   * Idempotently creates/updates the module templates declared by a catalog entry
+   * and their ports. New modules are added; existing SYSTEM modules have their
+   * metadata synchronized; module ports are merged by name. Existing installed
+   * modules are never removed to preserve operator customizations.
+   */
+  private async syncModuleTemplates(
+    entry: PhysicalCatalogEntry,
+    templateId: string,
+  ): Promise<void> {
+    if (!entry.modules.length) return;
+
+    const existingModules = await this.prisma.physicalModuleTemplate.findMany({
+      where: { templateId },
+      include: { ports: true },
+    });
+
+    for (const module of entry.modules) {
+      const existing = existingModules.find((item) => item.catalogKey === module.key);
+      if (!existing) {
+        await this.prisma.physicalModuleTemplate.create({
+          data: {
+            templateId,
+            catalogKey: module.key,
+            name: module.name,
+            model: module.model,
+            description: module.description,
+            slotsRequired: module.slotsRequired,
+            ports: {
+              create: module.ports.map((port) => ({
+                name: port.name,
+                label: port.label,
+                sortOrder: port.order,
+                type: port.type,
+              })),
+            },
+          },
+        });
+        continue;
+      }
+
+      await this.prisma.physicalModuleTemplate.update({
+        where: { id: existing.id },
+        data: {
+          name: module.name,
+          model: module.model,
+          description: module.description,
+          slotsRequired: module.slotsRequired,
+        },
+      });
+
+      await this.syncModuleTemplatePorts(existing, module);
+    }
+  }
+
+  private async syncModuleTemplatePorts(
+    existing: { id: string; ports: Array<{ id: string; name: string; label: string; sortOrder: number; type: string }> },
+    module: PhysicalCatalogModule,
+  ): Promise<void> {
+    const existingByName = new Map(existing.ports.map((port) => [port.name, port]));
+
+    for (const port of module.ports) {
+      const current = existingByName.get(port.name);
+      if (!current) {
+        await this.prisma.physicalModuleTemplatePort.create({
+          data: {
+            moduleTemplateId: existing.id,
+            name: port.name,
+            label: port.label,
+            sortOrder: port.order,
+            type: port.type,
+          },
+        });
+        continue;
+      }
+
+      if (
+        current.label !== port.label ||
+        current.sortOrder !== port.order ||
+        current.type !== port.type
+      ) {
+        await this.prisma.physicalModuleTemplatePort.update({
+          where: { id: current.id },
+          data: {
+            label: port.label,
+            sortOrder: port.order,
+            type: port.type,
+          },
+        });
+      }
+    }
   }
 
   /** Links slot ↔ module options for an already persisted SYSTEM template. */
@@ -646,7 +741,12 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
             where: { id: templateId },
             include: {
               ports: { orderBy: { sortOrder: 'asc' } },
-              slots: { orderBy: { index: 'asc' } },
+              slots: {
+                orderBy: { index: 'asc' },
+                include: {
+                  moduleOptions: { select: { moduleTemplate: { select: { catalogKey: true } } } },
+                },
+              },
             },
           })
         : Promise.resolve(null),
@@ -662,7 +762,9 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
               index: slot.index,
               label: slot.label,
               description: slot.description,
-              moduleKeys: [],
+              moduleKeys: slot.moduleOptions.flatMap((option) =>
+                option.moduleTemplate.catalogKey ? [option.moduleTemplate.catalogKey] : [],
+              ),
             })),
             ports: template.ports.map((port) => ({
               name: port.name,
