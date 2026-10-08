@@ -33,7 +33,8 @@ import {
   type UpdateMapWidgetInput,
   type UpsertMapWidgetInput,
 } from '@gmj/shared';
-import { PrismaClient, Prisma } from '../../generated/prisma/index.js';
+import { Prisma } from '../../generated/prisma/index.js';
+import { prismaClient } from './prisma-client.js';
 import type { HostRepository } from './host-repository';
 import type { NodePositionUpdate } from './demo-map-repository';
 
@@ -274,7 +275,7 @@ function asJson<T>(value: T): Prisma.InputJsonValue {
 }
 
 export class PrismaMapRepository {
-  private readonly prisma = new PrismaClient();
+  private readonly prisma = prismaClient;
 
   constructor(private readonly hosts: HostRepository) {}
 

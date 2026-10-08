@@ -1,4 +1,5 @@
-import { Prisma, PrismaClient } from '../../generated/prisma/index.js';
+import { Prisma } from '../../generated/prisma/index.js';
+import { prismaClient } from './prisma-client.js';
 import type { LldpTopologyPreview } from '@gmj/shared';
 import type { TopologyPreviewStore, TopologyRawDiscoveryResult } from '../../domain/ports';
 
@@ -8,7 +9,7 @@ import type { TopologyPreviewStore, TopologyRawDiscoveryResult } from '../../dom
  * This keeps a long discovery available after an API restart.
  */
 export class PrismaTopologyPreviewStore implements TopologyPreviewStore {
-  private readonly prisma = new PrismaClient();
+  private readonly prisma = prismaClient;
 
   async disconnect(): Promise<void> {
     await this.prisma.$disconnect();

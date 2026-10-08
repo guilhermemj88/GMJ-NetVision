@@ -1,4 +1,5 @@
 import { PrismaClient } from '../../generated/prisma/index.js';
+import { prismaClient } from '../persistence/prisma-client.js';
 
 // A migration da Fase 9 (camada de midias) e preparada mas NAO aplicada em
 // producao. O probe responde read-only se as tabelas existem, sem nunca
@@ -8,7 +9,7 @@ export interface MediaSchemaProbe {
 }
 
 export class PrismaMediaSchemaProbe implements MediaSchemaProbe {
-  constructor(private readonly prisma = new PrismaClient()) {}
+  constructor(private readonly prisma: PrismaClient = prismaClient) {}
 
   async probe(): Promise<{ migrationReady: boolean; databaseReady: boolean }> {
     try {

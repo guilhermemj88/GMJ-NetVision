@@ -7,6 +7,7 @@ import {
   type AlertCenterSummary,
 } from '@gmj/shared';
 import { Prisma, PrismaClient } from '../../generated/prisma/index.js';
+import { prismaClient } from '../persistence/prisma-client.js';
 import type {
   AlertCenterAlarmRow,
   AlertCenterOccurrenceRow,
@@ -209,7 +210,7 @@ function suppressionFingerprint(row: {
 }
 
 export class PrismaAlertCenterRepository implements AlertCenterRepository {
-  constructor(private readonly prisma = new PrismaClient()) {}
+  constructor(private readonly prisma: PrismaClient = prismaClient) {}
 
   async disconnect(): Promise<void> {
     await this.prisma.$disconnect();

@@ -1,4 +1,5 @@
 import { Prisma, PrismaClient } from '../../../generated/prisma/index.js';
+import { prismaClient } from '../../persistence/prisma-client.js';
 import { USABLE_TRAFFIC_SAMPLE_SQL } from '../../persistence/traffic-sample-sql';
 
 /**
@@ -26,7 +27,7 @@ export interface InterfaceTrafficReader {
 type RawRow = { interfaceId: string; rxBps: number; txBps: number; timestamp: Date };
 
 export class PrismaInterfaceTrafficReader implements InterfaceTrafficReader {
-  constructor(private readonly prisma = new PrismaClient()) {}
+  constructor(private readonly prisma: PrismaClient = prismaClient) {}
 
   async latestTraffic(interfaceId: string): Promise<InterfaceTrafficRow | null> {
     const rows = await this.prisma.$queryRaw<RawRow[]>(Prisma.sql`

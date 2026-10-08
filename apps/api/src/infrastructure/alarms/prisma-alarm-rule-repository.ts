@@ -2,6 +2,7 @@ import type { AlarmRuleRecord, AlarmRuleInput, AlarmRuleRepository } from './ala
 import type { MetricAlarmType } from '@gmj/shared';
 import { isBasicAlarmRuleKey } from '@gmj/shared';
 import { Prisma, PrismaClient } from '../../generated/prisma/index.js';
+import { prismaClient } from '../persistence/prisma-client.js';
 import {
   isMetricAlarmType,
   parseAlarmRuleConfig,
@@ -11,7 +12,7 @@ import {
 type AlarmRuleRow = Awaited<ReturnType<PrismaClient['alarmRule']['findMany']>>[number];
 
 export class PrismaAlarmRuleRepository implements AlarmRuleRepository {
-  constructor(private readonly prisma = new PrismaClient()) {}
+  constructor(private readonly prisma: PrismaClient = prismaClient) {}
 
   async list(): Promise<AlarmRuleRecord[]> {
     const rows = await this.prisma.alarmRule.findMany({ orderBy: [{ createdAt: 'desc' }] });

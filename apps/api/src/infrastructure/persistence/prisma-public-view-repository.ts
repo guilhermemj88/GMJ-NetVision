@@ -1,4 +1,4 @@
-import { PrismaClient } from '../../generated/prisma/index.js';
+import { prismaClient } from './prisma-client.js';
 import type { PublicViewRepository, PublicViewRecord } from './public-view-repository';
 
 function fromRow(row: {
@@ -28,7 +28,7 @@ function fromRow(row: {
 }
 
 export class PrismaPublicViewRepository implements PublicViewRepository {
-  private readonly prisma = new PrismaClient();
+  private readonly prisma = prismaClient;
 
   async disconnect(): Promise<void> {
     await this.prisma.$disconnect();

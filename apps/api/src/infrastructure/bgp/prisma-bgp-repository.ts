@@ -1,4 +1,5 @@
 import { Prisma, PrismaClient, type BgpPeerRole, type BgpState, type BgpAdminState as PrismaBgpAdminState, type BgpAddressFamily as PrismaBgpAddressFamily } from '../../generated/prisma/index.js';
+import { prismaClient } from '../persistence/prisma-client.js';
 import { USABLE_TRAFFIC_SAMPLE_SQL } from '../persistence/traffic-sample-sql';
 import {
   bigintToJsonNumber,
@@ -49,7 +50,7 @@ function existingState(row: {
 }
 
 export class PrismaBgpRepository implements BgpRepository {
-  constructor(private readonly prisma = new PrismaClient()) {}
+  constructor(private readonly prisma: PrismaClient = prismaClient) {}
 
   async disconnect(): Promise<void> {
     await this.prisma.$disconnect();

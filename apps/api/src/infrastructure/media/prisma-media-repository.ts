@@ -1,4 +1,5 @@
 import { PrismaClient, type Prisma } from '../../generated/prisma/index.js';
+import { prismaClient } from '../persistence/prisma-client.js';
 import type {
   MediaDeliveryLogFilter,
   MediaDeliveryLogInput,
@@ -17,7 +18,7 @@ import type {
 
 /** Persistencia real da camada de midias (Postgres). */
 export class PrismaMediaRepository implements MediaIntegrationRepository {
-  constructor(private readonly prisma = new PrismaClient()) {}
+  constructor(private readonly prisma: PrismaClient = prismaClient) {}
 
   async list(): Promise<MediaIntegrationRecord[]> {
     const rows = await this.prisma.mediaIntegration.findMany({ orderBy: { createdAt: 'asc' } });

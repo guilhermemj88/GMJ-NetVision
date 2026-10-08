@@ -1,4 +1,5 @@
 import { PrismaClient } from '../../../generated/prisma/index.js';
+import { prismaClient } from '../../persistence/prisma-client.js';
 
 // A migration da mitigacao ainda NAO esta aplicada em producao. O probe responde
 // read-only se as tabelas existem, sem nunca derrubar a API: qualquer falha
@@ -8,7 +9,7 @@ export interface BgpMitigationSchemaProbe {
 }
 
 export class PrismaMitigationSchemaProbe implements BgpMitigationSchemaProbe {
-  constructor(private readonly prisma = new PrismaClient()) {}
+  constructor(private readonly prisma: PrismaClient = prismaClient) {}
 
   async probe(): Promise<{ migrationReady: boolean; databaseReady: boolean }> {
     try {
@@ -47,7 +48,7 @@ export interface BgpMitigationPeerExclusionSchemaProbe {
 export class PrismaMitigationPeerExclusionSchemaProbe
   implements BgpMitigationPeerExclusionSchemaProbe
 {
-  constructor(private readonly prisma = new PrismaClient()) {}
+  constructor(private readonly prisma: PrismaClient = prismaClient) {}
 
   async probe(): Promise<boolean> {
     try {

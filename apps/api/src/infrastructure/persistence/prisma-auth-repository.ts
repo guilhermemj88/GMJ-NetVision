@@ -1,4 +1,4 @@
-import { PrismaClient } from '../../generated/prisma/index.js';
+import { prismaClient } from './prisma-client.js';
 import { hashToken, randomToken } from '../../application/auth-service';
 import type { AuthRepository, AuthUserRecord } from './auth-repository';
 
@@ -23,7 +23,7 @@ function fromRow(row: {
 }
 
 export class PrismaAuthRepository implements AuthRepository {
-  private readonly prisma = new PrismaClient();
+  private readonly prisma = prismaClient;
 
   async disconnect(): Promise<void> {
     await this.prisma.$disconnect();

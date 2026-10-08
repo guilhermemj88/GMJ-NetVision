@@ -1,4 +1,5 @@
 import { Prisma, PrismaClient } from '../../../generated/prisma/index.js';
+import { prismaClient } from '../../persistence/prisma-client.js';
 import type {
   MitigationAddressFamily,
   MitigationEventInput,
@@ -150,7 +151,7 @@ function mapEvent(row: EventRow): MitigationEventRecord {
  * interface `MitigationRepository`, não desta classe.
  */
 export class PrismaMitigationRepository implements MitigationRepository {
-  constructor(private readonly prisma = new PrismaClient()) {}
+  constructor(private readonly prisma: PrismaClient = prismaClient) {}
 
   async disconnect(): Promise<void> {
     await this.prisma.$disconnect();

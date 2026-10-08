@@ -64,8 +64,8 @@ import { PrismaPublicViewRepository } from './infrastructure/persistence/prisma-
 import { PrismaTopologyPreviewStore } from './infrastructure/persistence/prisma-topology-preview-store';
 import {
   createPrismaHostRepository,
-  PrismaHostRepository,
 } from './infrastructure/persistence/prisma-host-repository';
+import { disconnectPrismaClient, prismaClient } from './infrastructure/persistence/prisma-client';
 import type { HostRepository } from './infrastructure/persistence/host-repository';
 import type { PublicViewRecord } from './infrastructure/persistence/public-view-repository';
 import { SnmpClientImpl } from './infrastructure/snmp/snmp-client-impl';
@@ -468,16 +468,16 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const metrics = new DemoMetricAdapter();
   const discovery = new DiscoveryService([new DemoTopologyAdapter()]);
   const ssh = new SshInterfaceService(hosts);
-  const mplsRepository = config.DEMO_MODE ? new DemoMplsRepository() : new PrismaMplsRepository();
+  const mplsRepository = config.DEMO_MODE ? new DemoMplsRepository() : new PrismaMplsRepository(prismaClient);
   const mplsPolling = new MplsPollingService(
     new HuaweiVplsSnmpCollector(new SnmpClientImpl(3000, 1)),
     mplsRepository,
   );
-  const pppRepository = config.DEMO_MODE ? null : new PrismaPppRepository();
+  const pppRepository = config.DEMO_MODE ? null : new PrismaPppRepository(prismaClient);
   const pppPolling = pppRepository
     ? new PppPollingService(new SnmpClientImpl(3000, 1), pppRepository)
     : undefined;
-  const bgpRepository = config.DEMO_MODE ? new DemoBgpRepository() : new PrismaBgpRepository();
+  const bgpRepository = config.DEMO_MODE ? new DemoBgpRepository() : new PrismaBgpRepository(prismaClient);
   const bgpPolling = new BgpPollingService(
     new HuaweiBgpSnmpCollector(new SnmpClientImpl(3000, 1)),
     bgpRepository,
@@ -485,7 +485,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const bgpDiscovery = new BgpDiscoveryService(new HuaweiBgpSshService(hosts), bgpRepository);
   const bgpAudit = config.DEMO_MODE
     ? new InMemoryBgpAdminAuditRepository()
-    : new PrismaBgpAdminAuditRepository();
+    : new PrismaBgpAdminAuditRepository(prismaClient);
   const bgpAdmin = new BgpAdminService({
     bgp: bgpRepository,
     hosts,
@@ -507,19 +507,19 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const mitigationMemoryRepository = new InMemoryMitigationRepository();
   const mitigationSchemaProbe = config.DEMO_MODE
     ? new AlwaysReadyMitigationSchemaProbe()
-    : new PrismaMitigationSchemaProbe();
+    : new PrismaMitigationSchemaProbe(prismaClient);
   const mitigationSchemaReady = createCachedSchemaCheck(() => mitigationSchemaProbe.probe());
   // A exclusao PREVENTIVA por peer nasce em migration propria: enquanto a tabela
   // nao existir, apenas essas tres chamadas caem para o espelho em memoria.
   const mitigationPeerExclusionProbe = config.DEMO_MODE
     ? new AlwaysReadyMitigationPeerExclusionSchemaProbe()
-    : new PrismaMitigationPeerExclusionSchemaProbe();
+    : new PrismaMitigationPeerExclusionSchemaProbe(prismaClient);
   const mitigationPeerExclusionReady = createCachedSchemaCheck(async () => ({
     databaseReady: true,
     migrationReady: await mitigationPeerExclusionProbe.probe(),
   }));  const mitigationPrismaRepository = config.DEMO_MODE
     ? null
-    : new PrismaMitigationRepository();
+    : new PrismaMitigationRepository(prismaClient);
   const mitigationRepository =
     config.DEMO_MODE || mitigationPrismaRepository === null
       ? mitigationMemoryRepository
@@ -555,25 +555,25 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
   const physicalRepository = config.DEMO_MODE
     ? new DemoPhysicalRepository(hosts)
-    : new PrismaPhysicalRepository();
+    : new PrismaPhysicalRepository(prismaClient);
   const physicalService = new PhysicalService(physicalRepository);
   const alarmRepository = config.DEMO_MODE
     ? new DemoAlarmRepository()
-    : new PrismaAlarmRepository();
+    : new PrismaAlarmRepository(prismaClient);
   const alarmRuleRepository = config.DEMO_MODE
     ? new DemoAlarmRuleRepository()
-    : new PrismaAlarmRuleRepository();
+    : new PrismaAlarmRuleRepository(prismaClient);
   const alarmSuppressionRepository = config.DEMO_MODE
     ? new DemoAlarmSuppressionRepository()
-    : new PrismaAlarmSuppressionRepository();
+    : new PrismaAlarmSuppressionRepository(prismaClient);
   const alarmSuppressions = new AlarmSuppressionService(alarmRepository, alarmSuppressionRepository);
   const operationalOccurrenceRepository = config.DEMO_MODE
     ? new DemoOperationalOccurrenceRepository()
-    : new PrismaOperationalOccurrenceRepository();
+    : new PrismaOperationalOccurrenceRepository(prismaClient);
   const operationalOccurrences = new OperationalOccurrenceService(operationalOccurrenceRepository);
   const alertCenterRepository = config.DEMO_MODE
     ? new DemoAlertCenterRepository(alarmRepository, operationalOccurrenceRepository, alarmSuppressionRepository)
-    : new PrismaAlertCenterRepository();
+    : new PrismaAlertCenterRepository(prismaClient);
   const alertCenter = new AlertCenterService(alertCenterRepository);
   const alarms = new AlarmService(alarmRepository, alarmSuppressionRepository);
   // Holder da notificacao de midia: definido junto ao motor e ligado depois
@@ -664,9 +664,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const mediaMemoryRepository = new InMemoryMediaRepository();
   const mediaSchemaProbe = config.DEMO_MODE
     ? new AlwaysReadyMediaSchemaProbe()
-    : new PrismaMediaSchemaProbe();
+    : new PrismaMediaSchemaProbe(prismaClient);
   const mediaSchemaReady = createCachedSchemaCheck(() => mediaSchemaProbe.probe());
-  const mediaPrismaRepository = config.DEMO_MODE ? null : new PrismaMediaRepository();
+  const mediaPrismaRepository = config.DEMO_MODE ? null : new PrismaMediaRepository(prismaClient);
   const mediaRepository =
     config.DEMO_MODE || mediaPrismaRepository === null
       ? mediaMemoryRepository
@@ -792,7 +792,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
           });
       },
     },
-    traffic: new InterfaceTrafficSource(new PrismaInterfaceTrafficReader(), {
+    traffic: new InterfaceTrafficSource(new PrismaInterfaceTrafficReader(prismaClient), {
       directionByProfile: autoDirections,
       maxAgeMs: autoMaxAgeMs,
     }),
@@ -944,32 +944,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
   app.addHook('onClose', async () => {
     poller.stop();
-    if (productionMaps) await productionMaps.disconnect();
-    if (topologyPreviewStore instanceof PrismaTopologyPreviewStore)
-      await topologyPreviewStore.disconnect();
-    if (hosts instanceof PrismaHostRepository) await hosts.disconnect();
-    if (authRepository instanceof PrismaAuthRepository) await authRepository.disconnect();
-    if (publicViewRepository instanceof PrismaPublicViewRepository)
-      await publicViewRepository.disconnect();
-    if (mplsRepository instanceof PrismaMplsRepository) await mplsRepository.disconnect();
-    if (pppRepository instanceof PrismaPppRepository) await pppRepository.disconnect();
-    if (bgpRepository instanceof PrismaBgpRepository) await bgpRepository.disconnect();
-    if (mitigationRepository instanceof PrismaMitigationRepository)
-      await mitigationRepository.disconnect();
-    if (mitigationSchemaProbe instanceof PrismaMitigationSchemaProbe)
-      await mitigationSchemaProbe.disconnect();
-    if (mitigationPrismaRepository) await mitigationPrismaRepository.disconnect();
-    if (mitigationSchemaProbe instanceof PrismaMitigationSchemaProbe)
-      await mitigationSchemaProbe.disconnect();
-    if (bgpAudit instanceof PrismaBgpAdminAuditRepository) await bgpAudit.disconnect();
-    if (alarmRepository instanceof PrismaAlarmRepository) await alarmRepository.disconnect();
-    if (alarmSuppressionRepository instanceof PrismaAlarmSuppressionRepository)
-      await alarmSuppressionRepository.disconnect();
-    if (operationalOccurrenceRepository instanceof PrismaOperationalOccurrenceRepository)
-      await operationalOccurrenceRepository.disconnect();
-    if (alertCenterRepository instanceof PrismaAlertCenterRepository)
-      await alertCenterRepository.disconnect();
+    // Fase Prisma-pool: os repositorios compartilham UM client, entao um unico
+    // disconnect encerra todas as conexoes do processo.
     await physicalRepository.disconnect();
+    await disconnectPrismaClient();
   });
 
   app.get('/health', async () => ({

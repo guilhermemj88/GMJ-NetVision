@@ -19,6 +19,7 @@ import {
 } from '@gmj/shared';
 import type { CredentialVault } from '../../application/credential-vault';
 import { Prisma, PrismaClient } from '../../generated/prisma/index.js';
+import { prismaClient } from './prisma-client.js';
 import {
   filterUsableTrafficSamples,
   pickLatestUsableTrafficSample,
@@ -1314,5 +1315,5 @@ export class PrismaHostRepository implements HostRepository {
 }
 
 export function createPrismaHostRepository(vault: CredentialVault | null): PrismaHostRepository {
-  return new PrismaHostRepository(new PrismaClient(), vault);
+  return new PrismaHostRepository(prismaClient, vault);
 }

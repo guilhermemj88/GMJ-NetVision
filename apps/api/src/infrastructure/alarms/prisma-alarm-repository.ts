@@ -10,6 +10,7 @@ import {
   type MetricAlarmType,
 } from '@gmj/shared';
 import { Prisma, PrismaClient } from '../../generated/prisma/index.js';
+import { prismaClient } from '../persistence/prisma-client.js';
 import type {
   AlarmHistoryOptions,
   AlarmNotifiedPatch,
@@ -83,7 +84,7 @@ function alarmMessage(
 }
 
 export class PrismaAlarmRepository implements AlarmRepository {
-  constructor(private readonly prisma = new PrismaClient()) {}
+  constructor(private readonly prisma: PrismaClient = prismaClient) {}
 
   async disconnect(): Promise<void> {
     await this.prisma.$disconnect();

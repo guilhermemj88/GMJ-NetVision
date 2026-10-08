@@ -1,5 +1,6 @@
 import type { AlarmSuppressionClearReason, AlarmType } from '@gmj/shared';
 import { Prisma, PrismaClient } from '../../generated/prisma/index.js';
+import { prismaClient } from '../persistence/prisma-client.js';
 import type {
   AlarmSuppressionCreateInput,
   AlarmSuppressionFilter,
@@ -40,7 +41,7 @@ function activeWhere(now: Date): Prisma.AlarmSuppressionWhereInput {
 }
 
 export class PrismaAlarmSuppressionRepository implements AlarmSuppressionRepository {
-  constructor(private readonly prisma = new PrismaClient()) {}
+  constructor(private readonly prisma: PrismaClient = prismaClient) {}
 
   async disconnect(): Promise<void> {
     await this.prisma.$disconnect();

@@ -1,8 +1,9 @@
 import { PrismaClient, type BgpAdminAction } from '../../generated/prisma/index.js';
+import { prismaClient } from '../persistence/prisma-client.js';
 import type { BgpAdminAuditEntry, BgpAdminAuditRepository } from './bgp-admin-audit';
 
 export class PrismaBgpAdminAuditRepository implements BgpAdminAuditRepository {
-  constructor(private readonly prisma = new PrismaClient()) {}
+  constructor(private readonly prisma: PrismaClient = prismaClient) {}
 
   async disconnect(): Promise<void> {
     await this.prisma.$disconnect();

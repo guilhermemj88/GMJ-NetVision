@@ -8,6 +8,7 @@ import {
   type MplsVsi,
 } from '@gmj/shared';
 import { PrismaClient } from '../../generated/prisma/index.js';
+import { prismaClient } from '../persistence/prisma-client.js';
 import type { HuaweiVplsCollection } from './huawei-vpls-snmp';
 import {
   HUAWEI_VPLS_AC_COLUMNS,
@@ -129,7 +130,7 @@ function pwKey(vsiName: string, pwId: number, remoteIp: string): string {
 }
 
 export class PrismaMplsRepository implements MplsRepository {
-  constructor(private readonly prisma = new PrismaClient()) {}
+  constructor(private readonly prisma: PrismaClient = prismaClient) {}
 
   async disconnect(): Promise<void> {
     await this.prisma.$disconnect();

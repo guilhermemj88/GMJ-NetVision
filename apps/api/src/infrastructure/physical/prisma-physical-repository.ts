@@ -20,6 +20,7 @@ import type {
   PhysicalSlot,
 } from '@gmj/shared';
 import { Prisma, PrismaClient } from '../../generated/prisma';
+import { prismaClient } from '../persistence/prisma-client';
 import { materializeTemplate, planInterfaceSync, portState, isVendorTemplate, syncDiagnostics } from './physical-domain';
 import type {
   CreatePhysicalTemplateInput,
@@ -302,7 +303,7 @@ function mapConnection(connection: DbConnection): PhysicalConnection | null {
 export class PrismaPhysicalRepository implements PhysicalRepository {
   private readonly prisma: PrismaClient;
 
-  constructor(prisma = new PrismaClient()) {
+  constructor(prisma: PrismaClient = prismaClient) {
     this.prisma = prisma;
   }
 

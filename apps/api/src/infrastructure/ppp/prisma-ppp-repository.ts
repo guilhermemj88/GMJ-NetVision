@@ -1,8 +1,9 @@
 import { PrismaClient } from '../../generated/prisma/index.js';
+import { prismaClient } from '../persistence/prisma-client.js';
 import type { PppReadingInput, PppRepository } from './ppp-repository';
 
 export class PrismaPppRepository implements PppRepository {
-  constructor(private readonly prisma = new PrismaClient()) {}
+  constructor(private readonly prisma: PrismaClient = prismaClient) {}
 
   async disconnect(): Promise<void> {
     await this.prisma.$disconnect();
