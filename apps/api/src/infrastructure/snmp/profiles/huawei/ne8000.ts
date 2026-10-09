@@ -1,5 +1,6 @@
 import type { SnmpProfile } from '../types';
 import { HUAWEI_PPP_ONLINE_OID } from '../ppp-oids';
+import { huaweiOpticalCapability } from '../../../topology/huawei-optical';
 import { HUAWEI_ENTITY_CPU_USAGE_OID, HUAWEI_ENTITY_NAME_OID } from './generic';
 
 export const HUAWEI_AVG_CPU_1MIN_OID = '1.3.6.1.4.1.2011.6.3.4.1.3';
@@ -12,15 +13,26 @@ export const huaweiNe8000Profile: SnmpProfile = {
   vendorPatterns: [/huawei/i],
   modelPatterns: [/NE\s*8000/i, /F1A(?:-C)?/i],
   sysDescrPatterns: [/NetEngine\s*8000/i, /NE\s*8000/i],
+  sysObjectIdPatterns: [/^\.?1\.3\.6\.1\.4\.1\.2011\.2\.360(?:\.|$)/],
   pppOnlineOid: HUAWEI_PPP_ONLINE_OID,
-  // ATENCAO: MICRO_WATTS e o comportamento historico PRESERVADO do VRP classico
-  // e ainda NAO foi validado empiricamente em NE8000/F1A real nesta rodada
-  // (validacao de campo pendente). Nao inferir que o F1A se comporta como o
-  // S6730 ou o S6750.
-  opticalScalarEncoding: 'MICRO_WATTS',
-  // Lanes em dBm: comportamento atual preservado (NE8000/F1A ainda sem
-  // validacao empirica de lane encoding nesta rodada).
-  opticalLaneEncoding: 'DBM',
+  /**
+   * NE8000 F1A / VRP8 V800R022C00SPC600 (evidencia de campo 2026-10-09,
+   * BHE-VTA-F1A-BGP-01):
+   * - .8/.9 em CENTI-dBm e AGREGADOS: `601` = +6.01 dBm, que e a soma em mW das
+   *   4 lanes do QSFP (o proprio equipamento nao publica scalar por lane);
+   * - .32/.33 em CSV de INTEIROS centi-dBm (`29,-33,-14,14`), inclusive com um
+   *   unico valor em porta de uma lane (`-326`);
+   * - .31 nao implementado; .20-.23 (WARNING) e .38-.41 (max/min) existem.
+   */
+  optical: huaweiOpticalCapability({
+    scalarEncoding: 'CENTI_DBM',
+    scalarSemantics: 'AGGREGATED_LANES',
+    laneEncoding: 'INT_CENTI_DBM',
+    laneBiasEncoding: 'UNSUPPORTED',
+    alarmThresholdEncoding: 'CENTI_DBM',
+    warningThresholdEncoding: 'CENTI_DBM',
+    minMaxEncoding: 'CENTI_DBM',
+  }),
   metrics: {
     cpu: {
       unit: '%',

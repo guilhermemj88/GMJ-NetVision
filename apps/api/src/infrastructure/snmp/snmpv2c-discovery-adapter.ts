@@ -12,20 +12,19 @@ import type { HostRepository } from '../persistence/host-repository';
 import {
   HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS,
   buildHuaweiDeviceThresholds,
-  decodeHuaweiScalarPowerDbm,
-  decodeHuaweiThresholdDbm,
+  decodeOpticalScalarDbm,
+  decodeOpticalThresholdDbm,
   parseHuaweiOpticalLaneCsv,
-  type HuaweiOpticalLaneEncoding,
-  type HuaweiOpticalScalarEncoding,
-  type HuaweiOpticalWarningEncoding,
+  type HuaweiOpticalCapability,
 } from '../topology/huawei-optical';
 import { interfaceNameKeys } from '../topology/interface-correlation';
-import { SnmpClientImpl } from './snmp-client-impl';
 import {
-  selectOpticalLaneEncoding,
-  selectOpticalScalarEncoding,
-  selectOpticalWarningEncoding,
-} from './profiles/catalog';
+  HuaweiOpticalCapabilityProbe,
+  opticalWalkPlan,
+  type OpticalCapabilitySnapshot,
+} from './optical-capability';
+import { SnmpClientImpl } from './snmp-client-impl';
+import { selectOpticalCapability } from './profiles/catalog';
 import type { SnmpProfileIdentity } from './profiles/types';
 import { decodeSnmpText } from './snmp-text';
 
@@ -120,9 +119,22 @@ function parseSpeed(value: unknown): number {
 export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
   readonly kind = 'LLDP_SNMP' as const;
   private readonly client: SnmpClientImpl;
+  /** Sonda de capability optica READ-ONLY, cacheada por device (ver modulo). */
+  private readonly opticalProbe: HuaweiOpticalCapabilityProbe;
 
   constructor(private readonly repository: HostRepository) {
     this.client = new SnmpClientImpl(3000, 1);
+    this.opticalProbe = new HuaweiOpticalCapabilityProbe(this.client);
+  }
+
+  /** Ultimo snapshot de capability optica (diagnostico; nao dispara sonda). */
+  getOpticalCapability(deviceId: string): OpticalCapabilitySnapshot | null {
+    return this.opticalProbe.getCached(deviceId);
+  }
+
+  /** Rediscovery explicito invalida o cache da sonda (re-avalia a capability). */
+  invalidateOpticalCapability(deviceId: string): void {
+    this.opticalProbe.invalidate(deviceId);
   }
 
   async discoverDevice(host: string): Promise<DeviceIdentity> {
@@ -173,13 +185,12 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
 
       // Huawei exposes optical DDM through HUAWEI-ENTITY-EXTENT-MIB. The index
       // is entPhysicalIndex, so correlate it to the IF-MIB interface by
-      // entPhysicalName. Unsupported devices simply return no optical data.
+      // entPhysicalName. Unsupported devices simply return no optical data, and
+      // the capability probe decides what this device actually publishes.
       const opticalByName = await this.collectOpticalByInterfaceName(
         hostRecord,
         snmpCommunity,
-        selectOpticalScalarEncoding(snmpIdentityFor(hostRecord)),
-        selectOpticalLaneEncoding(snmpIdentityFor(hostRecord)),
-        selectOpticalWarningEncoding(snmpIdentityFor(hostRecord)),
+        selectOpticalCapability(snmpIdentityFor(hostRecord)),
       );
 
       const descByIndex = this.indexMap(descrs, IF_MIB_OIDS.ifDescr);
@@ -255,15 +266,12 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     if (!device.snmp?.host || !device.snmp.port) return interfaces;
     const snmpCommunity = community ?? (await this.getSnmpCommunity(device.id));
     if (!snmpCommunity) return interfaces;
-    const encoding = selectOpticalScalarEncoding(snmpIdentityFor(device, system));
-    const laneEncoding = selectOpticalLaneEncoding(snmpIdentityFor(device, system));
-    const warningEncoding = selectOpticalWarningEncoding(snmpIdentityFor(device, system));
+    const identity = snmpIdentityFor(device, system);
     const readings = await this.collectOpticalByInterfaceName(
       device,
       snmpCommunity,
-      encoding,
-      laneEncoding,
-      warningEncoding,
+      selectOpticalCapability(identity),
+      system,
     );
     const now = new Date().toISOString();
 
@@ -282,29 +290,74 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
   private async collectOpticalByInterfaceName(
     host: HostRecord,
     community: string,
-    encoding: HuaweiOpticalScalarEncoding,
-    laneEncoding: HuaweiOpticalLaneEncoding,
-    warningEncoding: HuaweiOpticalWarningEncoding,
+    optical: HuaweiOpticalCapability,
+    system?: { sysDescr?: string; sysObjectId?: string; sysName?: string },
   ): Promise<Map<string, OpticalReading>> {
-    // Familia sem WARNING (.20-.23) nem consulta: ausencia legitima.
-    const warningWalk = (oid: string) =>
-      warningEncoding === 'ABSENT' ? Promise.resolve([] as VarBind[]) : this.safeWalk(host, oid, community);
+    if (!optical.capabilities.table) return new Map();
+
+    // O profile da o default; a sonda (cacheada) confirma o que o equipamento
+    // realmente publica. `RESTRICTED_VIEW`/`UNSUPPORTED` = nenhum walk optico.
+    const identity = snmpIdentityFor(host, system);
+    const snapshot = await this.opticalProbe.capabilityFor({
+      deviceId: host.id,
+      host: host.snmp!.host,
+      port: host.snmp!.port,
+      community,
+      fingerprint: [
+        host.vendor ?? '',
+        host.model ?? '',
+        identity.sysObjectId ?? '',
+        identity.sysDescr ?? '',
+      ].join('|'),
+      expectsOpticalTable: optical.capabilities.table,
+      profile: optical,
+    });
+    const plan = opticalWalkPlan(optical, snapshot);
+    if (!plan.table) return new Map();
+
+    const skip = (): Promise<VarBind[]> => Promise.resolve([] as VarBind[]);
     const [names, scalarRx, scalarTx, rxLow, rxHigh, txLow, txHigh, rxWarnLow, rxWarnHigh, txWarnLow, txWarnHigh, laneBias, laneRx, laneTx] =
       await Promise.all([
         this.safeWalk(host, ENTITY_MIB_OIDS.physicalName, community),
-        this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxPowerRaw, community),
-        this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txPowerRaw, community),
-        this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxLowAlarmCentiDbm, community),
-        this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxHighAlarmCentiDbm, community),
-        this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txLowAlarmCentiDbm, community),
-        this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txHighAlarmCentiDbm, community),
-        warningWalk(HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxLowWarningCentiDbm),
-        warningWalk(HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxHighWarningCentiDbm),
-        warningWalk(HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txLowWarningCentiDbm),
-        warningWalk(HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txHighWarningCentiDbm),
-        this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.biasCurrentByLane, community),
-        this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxPowerByLane, community),
-        this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txPowerByLane, community),
+        plan.scalarPower
+          ? this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxPowerRaw, community)
+          : skip(),
+        plan.scalarPower
+          ? this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txPowerRaw, community)
+          : skip(),
+        plan.alarmThresholds
+          ? this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxLowAlarmCentiDbm, community)
+          : skip(),
+        plan.alarmThresholds
+          ? this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxHighAlarmCentiDbm, community)
+          : skip(),
+        plan.alarmThresholds
+          ? this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txLowAlarmCentiDbm, community)
+          : skip(),
+        plan.alarmThresholds
+          ? this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txHighAlarmCentiDbm, community)
+          : skip(),
+        plan.warnings
+          ? this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxLowWarningCentiDbm, community)
+          : skip(),
+        plan.warnings
+          ? this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxHighWarningCentiDbm, community)
+          : skip(),
+        plan.warnings
+          ? this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txLowWarningCentiDbm, community)
+          : skip(),
+        plan.warnings
+          ? this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txHighWarningCentiDbm, community)
+          : skip(),
+        plan.laneBias
+          ? this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.biasCurrentByLane, community)
+          : skip(),
+        plan.lanes
+          ? this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.rxPowerByLane, community)
+          : skip(),
+        plan.lanes
+          ? this.safeWalk(host, HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS.txPowerByLane, community)
+          : skip(),
       ]);
     return this.opticalByInterfaceName(
       names,
@@ -321,8 +374,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
       laneBias,
       laneRx,
       laneTx,
-      encoding,
-      laneEncoding,
+      optical,
     );
   }
 
@@ -393,8 +445,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     laneBiasValues: VarBind[],
     laneRxValues: VarBind[],
     laneTxValues: VarBind[],
-    encoding: HuaweiOpticalScalarEncoding,
-    laneEncoding: HuaweiOpticalLaneEncoding,
+    optical: HuaweiOpticalCapability,
   ): Map<string, OpticalReading> {
     const namesByIndex = this.indexMap(names, ENTITY_MIB_OIDS.physicalName);
     const scalarRxByIndex = this.indexMap(
@@ -439,32 +490,33 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
     );
     const result = new Map<string, OpticalReading>();
     for (const [index, rawName] of namesByIndex) {
-      // O RAW .8/.9 e interpretado pelo encoding do profile; UNKNOWN nunca vira
-      // potencia (as lanes .32/.33 e o fallback SSH continuam valendo).
-      const rxPowerDbm = decodeHuaweiScalarPowerDbm(scalarRxByIndex.get(index), encoding);
-      const txPowerDbm = decodeHuaweiScalarPowerDbm(scalarTxByIndex.get(index), encoding);
+      // O RAW .8/.9 e interpretado pelo encoding do profile; UNSUPPORTED nunca
+      // vira potencia (as lanes .32/.33 e o fallback SSH continuam valendo).
+      const rxPowerDbm = decodeOpticalScalarDbm(scalarRxByIndex.get(index), optical.scalarEncoding);
+      const txPowerDbm = decodeOpticalScalarDbm(scalarTxByIndex.get(index), optical.scalarEncoding);
       const opticalLanes = parseHuaweiOpticalLaneCsv(
         laneRxByIndex.get(index),
         laneTxByIndex.get(index),
         laneBiasByIndex.get(index),
-        laneEncoding,
+        optical.laneEncoding,
+        optical.laneBiasEncoding,
       );
       const thresholds = buildHuaweiDeviceThresholds({
         rx: {
-          low: decodeHuaweiThresholdDbm(rxLowByIndex.get(index)),
-          high: decodeHuaweiThresholdDbm(rxHighByIndex.get(index)),
+          low: decodeOpticalThresholdDbm(rxLowByIndex.get(index), optical.alarmThresholdEncoding),
+          high: decodeOpticalThresholdDbm(rxHighByIndex.get(index), optical.alarmThresholdEncoding),
         },
         tx: {
-          low: decodeHuaweiThresholdDbm(txLowByIndex.get(index)),
-          high: decodeHuaweiThresholdDbm(txHighByIndex.get(index)),
+          low: decodeOpticalThresholdDbm(txLowByIndex.get(index), optical.alarmThresholdEncoding),
+          high: decodeOpticalThresholdDbm(txHighByIndex.get(index), optical.alarmThresholdEncoding),
         },
         rxWarning: {
-          low: decodeHuaweiThresholdDbm(rxWarningLowByIndex.get(index)),
-          high: decodeHuaweiThresholdDbm(rxWarningHighByIndex.get(index)),
+          low: decodeOpticalThresholdDbm(rxWarningLowByIndex.get(index), optical.warningThresholdEncoding),
+          high: decodeOpticalThresholdDbm(rxWarningHighByIndex.get(index), optical.warningThresholdEncoding),
         },
         txWarning: {
-          low: decodeHuaweiThresholdDbm(txWarningLowByIndex.get(index)),
-          high: decodeHuaweiThresholdDbm(txWarningHighByIndex.get(index)),
+          low: decodeOpticalThresholdDbm(txWarningLowByIndex.get(index), optical.warningThresholdEncoding),
+          high: decodeOpticalThresholdDbm(txWarningHighByIndex.get(index), optical.warningThresholdEncoding),
         },
       });
       if (rxPowerDbm === null && txPowerDbm === null && opticalLanes.length === 0 && !thresholds) {

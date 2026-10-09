@@ -1,19 +1,23 @@
 import type { OpticalLaneReading, OpticalThresholdSource, OpticalThresholdsV1 } from '@gmj/shared';
 import { decodeSnmpText } from '../snmp/snmp-text';
-import { microWattsToDbm, normalizeOpticalDbm } from './optical-power';
+import { SNMP_OPTICAL_DBM_DECIMALS, microWattsToDbm, normalizeOpticalDbm } from './optical-power';
 
 /**
  * HUAWEI-ENTITY-EXTENT-MIB (hwEntityStateExtTable), tudo indexado por
- * entPhysicalIndex e correlacionado por entPhysicalName:
+ * entPhysicalIndex e correlacionado por entPhysicalName. A UNIDADE de cada
+ * coluna muda por plataforma (matriz modelo x versao x capability de
+ * 2026-10-09), por isso TODO decode vem do profile e nunca de heuristica por
+ * magnitude/sinal:
  *
- * - .8/.9: potencia SCALAR RX/TX em valor RAW — a unidade depende da familia
- *   (uW no VRP classico do S6730/NE8000; centi-dBm no YunShan do S6750-H), por
- *   isso o decode vem do profile e nunca de heuristicas;
- * - .13-.16: thresholds de alarme do transceiver em CENTI-dBm nas duas familias
- *   comprovadas (raw / 100);
- * - .31/.32/.33: bias/RX/TX por lane em CSV. Bias e sempre mA; a potencia RX/TX
- *   vem em dBm ou centi-dBm conforme o `opticalLaneEncoding` do profile (o S6750
- *   entrega dBm cru e o S6730 entrega centi-dBm), nunca por heuristica.
+ * - .8/.9: potencia SCALAR RX/TX. uW (S6730/VRP5), centi-dBm (F1A/VRP8 e
+ *   S6750/YunShan). A SEMANTICA tambem muda: no F1A e a potencia AGREGADA das
+ *   lanes (soma em mW); no S6730/S6750 e a lane 0;
+ * - .13-.16: thresholds de ALARME do transceiver (centi-dBm nas 3 familias);
+ * - .20-.23: thresholds de WARNING (F1A e S6730); o S6750 nao publica;
+ * - .31: bias por lane em CSV decimal de mA (o F1A nao implementa);
+ * - .32/.33: potencia por lane em CSV — inteiro centi-dBm (F1A), decimal
+ *   centi-dBm (S6730) ou decimal dBm (S6750);
+ * - .38-.41: max/min das lanes (so F1A; centi-dBm).
  */
 export const HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS = {
   rxPowerRaw: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.8',
@@ -22,9 +26,6 @@ export const HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS = {
   rxHighAlarmCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.14',
   txLowAlarmCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.15',
   txHighAlarmCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.16',
-  // WARNING (degradacao antecipada) em CENTI-dBm, PAR SEPARADO do ALARM. O VRP
-  // classico (S6730/NE8000) publica; o YunShan (S6750) nao existe a coluna â€”
-  // ausencia legitima, nunca copiada do ALARM.
   rxLowWarningCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.20',
   rxHighWarningCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.21',
   txLowWarningCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.22',
@@ -32,39 +33,102 @@ export const HUAWEI_ENTITY_EXTENT_OPTICAL_OIDS = {
   biasCurrentByLane: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.31',
   rxPowerByLane: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.32',
   txPowerByLane: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.33',
+  maxRxPowerCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.38',
+  minRxPowerCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.39',
+  maxTxPowerCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.40',
+  minTxPowerCentiDbm: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.41',
 } as const;
 
-/**
- * Encoding do campo RAW .8/.9. E propriedade do PROFILE (modelo/sysDescr/OS) e
- * nunca do sinal do valor: heuristica por "negativo ou positivo" e proibida.
- */
-export type HuaweiOpticalScalarEncoding = 'MICRO_WATTS' | 'CENTI_DBM' | 'UNKNOWN';
+/** Testemunha da MIB na mesma subarvore (capability probe). */
+export const HUAWEI_ENTITY_STATE_WITNESS_OID = '1.3.6.1.4.1.2011.5.25.31.1.1.1.1.1';
+
+/** Encoding do campo RAW .8/.9. Propriedade do PROFILE, nunca do valor. */
+export type HuaweiOpticalScalarEncoding = 'MICRO_WATTS' | 'CENTI_DBM' | 'DBM' | 'UNSUPPORTED';
 
 /**
- * Encoding dos WARNING (.20-.23). Propriedade do PROFILE, nunca do valor:
- * - `CENTI_DBM` quando a familia publica a coluna (VRP classico/YunShan);
- * - `ABSENT` quando a familia NAO tem a coluna (YunShan/S6750): nem sequer
- *   varremos os OIDs, para nao gravar nada e nao gastar SNMP.
+ * O que o scalar .8/.9 REPRESENTA quando o modulo tem varias lanes:
+ * `AGGREGATED_LANES` (F1A/VRP8: soma em mW de todas as lanes) ou `LANE_0`
+ * (S6730/S6750: apenas a primeira lane). Nunca inferir pelo valor.
  */
-export type HuaweiOpticalWarningEncoding = 'CENTI_DBM' | 'ABSENT';
+export type HuaweiOpticalScalarSemantics = 'LANE_0' | 'AGGREGATED_LANES' | 'UNKNOWN';
+
+/** Encoding do CSV de potencia das lanes (.32/.33). */
+export type HuaweiOpticalLaneEncoding =
+  | 'INT_CENTI_DBM'
+  | 'DECIMAL_CENTI_DBM'
+  | 'DECIMAL_DBM'
+  | 'UNSUPPORTED';
+
+/** Encoding do bias por lane (.31). */
+export type HuaweiOpticalLaneBiasEncoding = 'DECIMAL_MA' | 'MICRO_AMPS' | 'UNSUPPORTED';
+
+/** Encoding de uma coluna de threshold/min-max (alarme, warning, min/max). */
+export type HuaweiOpticalThresholdEncoding = 'CENTI_DBM' | 'DBM' | 'UNSUPPORTED';
 
 /**
- * Encoding das colunas CSV .32 (RX) / .33 (TX) POR LANE. Tambem e propriedade
- * do PROFILE, nunca do tamanho do numero:
- *
- * - S6750 (YunShan): `DBM` — o CSV ja vem em dBm (`0.19,0.69,1.02,0.11`);
- * - S6730 (VRP classico): `CENTI_DBM` — o CSV vem em centi-dBm e o valor cru
- *   (`-1372.63`) estoura a faixa optica se lido como dBm (evidencia real:
- *   67502222 / 100GE0/0/2);
- * - `UNKNOWN`: nao decodifica potencia de lane (bias segue normal).
+ * Capability optica declarativa por familia/OS. `capabilities` e DERIVADA dos
+ * encodings por `huaweiOpticalCapability()` para nunca sair de sincronia.
  */
-export type HuaweiOpticalLaneEncoding = 'DBM' | 'CENTI_DBM' | 'UNKNOWN';
+export interface HuaweiOpticalCapability {
+  scalarEncoding: HuaweiOpticalScalarEncoding;
+  scalarSemantics: HuaweiOpticalScalarSemantics;
+  laneEncoding: HuaweiOpticalLaneEncoding;
+  laneBiasEncoding: HuaweiOpticalLaneBiasEncoding;
+  alarmThresholdEncoding: HuaweiOpticalThresholdEncoding;
+  warningThresholdEncoding: HuaweiOpticalThresholdEncoding;
+  minMaxEncoding: HuaweiOpticalThresholdEncoding;
+  capabilities: {
+    table: boolean;
+    scalarPower: boolean;
+    alarmThresholds: boolean;
+    laneBias: boolean;
+    lanes: boolean;
+    warnings: boolean;
+    minMax: boolean;
+  };
+}
+
+/** Monta a capability derivando `capabilities` dos encodings (fonte unica). */
+export function huaweiOpticalCapability(
+  input: Omit<HuaweiOpticalCapability, 'capabilities'>,
+): HuaweiOpticalCapability {
+  return {
+    ...input,
+    capabilities: {
+      table: input.scalarEncoding !== 'UNSUPPORTED'
+        || input.laneEncoding !== 'UNSUPPORTED'
+        || input.laneBiasEncoding !== 'UNSUPPORTED',
+      scalarPower: input.scalarEncoding !== 'UNSUPPORTED',
+      alarmThresholds: input.alarmThresholdEncoding !== 'UNSUPPORTED',
+      laneBias: input.laneBiasEncoding !== 'UNSUPPORTED',
+      lanes: input.laneEncoding !== 'UNSUPPORTED',
+      warnings: input.warningThresholdEncoding !== 'UNSUPPORTED',
+      minMax: input.minMaxEncoding !== 'UNSUPPORTED',
+    },
+  };
+}
+
+/** Plataforma sem leitura optica via HUAWEI-ENTITY-EXTENT (ex.: MA5800). */
+export const UNSUPPORTED_HUAWEI_OPTICAL_CAPABILITY: HuaweiOpticalCapability =
+  huaweiOpticalCapability({
+    scalarEncoding: 'UNSUPPORTED',
+    scalarSemantics: 'UNKNOWN',
+    laneEncoding: 'UNSUPPORTED',
+    laneBiasEncoding: 'UNSUPPORTED',
+    alarmThresholdEncoding: 'UNSUPPORTED',
+    warningThresholdEncoding: 'UNSUPPORTED',
+    minMaxEncoding: 'UNSUPPORTED',
+  });
 
 /**
- * Sentinelas conhecidos de "unsupported" nos OIDs de threshold. `-1` NAO pode
- * virar -0.01 dBm: e descartado antes de virar threshold real.
+ * Sentinela crua de coluna de threshold/min-max: `-1` e `-255` aparecem em
+ * portas SEM modulo e nao sao limites reais (`-2.55 dBm` de alarme seria
+ * absurdo). Nao vale para potencia: ali `-40 dBm` continua sendo leitura real.
  */
-const UNSUPPORTED_THRESHOLD_RAW = new Set([-1]);
+const CENTI_DBM_THRESHOLD_SENTINELS = new Set([-1, -255]);
+
+const MAX_PLAUSIBLE_OPTICAL_BIAS_MA = 1_000;
+const DBM_DECIMALS = SNMP_OPTICAL_DBM_DECIMALS;
 
 function rawNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null;
@@ -74,45 +138,76 @@ function rawNumber(value: unknown): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-/** RAW em centi-dBm (raw / 100) com validacao de faixa optica. */
-export function centiDbmToDbm(value: unknown): number | null {
-  const raw = rawNumber(value);
-  return raw === null ? null : normalizeOpticalDbm(raw / 100);
-}
-
 /**
- * Threshold de alarme do transceiver (raw em centi-dBm). Valor sentinela,
- * nao numerico ou fora da faixa optica retorna null: nunca inventa limite.
+ * Potencia SCALAR RX/TX (.8/.9) conforme o encoding do profile.
+ * `MICRO_WATTS`: uW -> dBm (0/negativo nao e leitura; conversao transcendente
+ * arredondada como todo o caminho em dBm do produto);
+ * `CENTI_DBM`/`DBM`: valor cru com o decode ANTES da validacao de faixa,
+ * preservando a resolucao do vendor;
+ * `UNSUPPORTED`: nunca decodifica (nao adivinha unidade).
  */
-export function decodeHuaweiThresholdDbm(value: unknown): number | null {
-  const raw = rawNumber(value);
-  if (raw === null || UNSUPPORTED_THRESHOLD_RAW.has(raw)) return null;
-  return normalizeOpticalDbm(raw / 100);
-}
-
-/** Potencia scalar RX/TX conforme o encoding do profile (UNKNOWN = nao adivinha). */
-export function decodeHuaweiScalarPowerDbm(
+export function decodeOpticalScalarDbm(
   value: unknown,
   encoding: HuaweiOpticalScalarEncoding,
 ): number | null {
+  if (encoding === 'UNSUPPORTED') return null;
   if (encoding === 'MICRO_WATTS') return microWattsToDbm(value);
-  if (encoding === 'CENTI_DBM') return centiDbmToDbm(value);
-  return null;
+  const raw = rawNumber(value);
+  if (raw === null) return null;
+  return normalizeOpticalDbm(encoding === 'CENTI_DBM' ? raw / 100 : raw, DBM_DECIMALS);
 }
 
 /**
- * Potencia de UMA lane (.32/.33) conforme o encoding do profile. O valor cru
- * passa primeiro por `rawNumber` (CSV e sempre texto) e depois pela validacao
- * fisica normal; `UNKNOWN` devolve null em vez de arriscar uma unidade errada.
+ * Potencia de UMA lane (.32/.33). O CSV chega como texto; o decode vem ANTES
+ * de qualquer validacao de faixa (`-1372.63` centi-dBm = `-13.7263` dBm e um
+ * valor legitimo que seria descartado se lido como dBm cru).
  */
-export function decodeHuaweiLanePowerDbm(
+export function decodeOpticalLaneDbm(
   value: unknown,
   encoding: HuaweiOpticalLaneEncoding,
 ): number | null {
-  if (encoding === 'UNKNOWN') return null;
+  const raw = rawNumber(value);
+  if (raw === null || encoding === 'UNSUPPORTED') return null;
+  if (encoding === 'DECIMAL_DBM') return normalizeOpticalDbm(raw, DBM_DECIMALS);
+  return normalizeOpticalDbm(raw / 100, DBM_DECIMALS);
+}
+
+/**
+ * Threshold (.13-.16 / .20-.23) conforme o encoding declarado no profile.
+ * Sentinela e valor fora da faixa optica viram null: nunca inventa limite.
+ */
+export function decodeOpticalThresholdDbm(
+  value: unknown,
+  encoding: HuaweiOpticalThresholdEncoding,
+): number | null {
+  if (encoding === 'UNSUPPORTED') return null;
   const raw = rawNumber(value);
   if (raw === null) return null;
-  return encoding === 'CENTI_DBM' ? normalizeOpticalDbm(raw / 100) : normalizeOpticalDbm(raw);
+  if (encoding === 'CENTI_DBM') {
+    if (CENTI_DBM_THRESHOLD_SENTINELS.has(raw)) return null;
+    return normalizeOpticalDbm(raw / 100, DBM_DECIMALS);
+  }
+  return normalizeOpticalDbm(raw, DBM_DECIMALS);
+}
+
+/** Max/min das lanes (.38-.41): mesma regra e sentinelas dos thresholds. */
+export function decodeOpticalMinMaxDbm(
+  value: unknown,
+  encoding: HuaweiOpticalThresholdEncoding,
+): number | null {
+  return decodeOpticalThresholdDbm(value, encoding);
+}
+
+/** Bias de UMA lane (.31): decimal em mA ou micro-amps inteiros. */
+export function decodeOpticalBiasMa(
+  value: unknown,
+  encoding: HuaweiOpticalLaneBiasEncoding,
+): number | null {
+  if (encoding === 'UNSUPPORTED') return null;
+  const raw = rawNumber(value);
+  if (raw === null) return null;
+  const milliamps = encoding === 'MICRO_AMPS' ? raw / 1000 : raw;
+  return milliamps >= 0 && milliamps <= MAX_PLAUSIBLE_OPTICAL_BIAS_MA ? milliamps : null;
 }
 
 /** Par low/high de um lado (RX/TX) lido do SNMP, sempre com origem DEVICE. */
@@ -126,14 +221,16 @@ export interface HuaweiThresholdValues {
  * permitida; par incoerente (low >= high) e descartado inteiro, sem inventar
  * um dos lados. Retorna null quando nenhum lado valido existe.
  */
-export function buildHuaweiDeviceThresholds(input: {
-  rx: HuaweiThresholdValues;
-  tx: HuaweiThresholdValues;
-  /** Par WARNING do RX (.20/.21); ausente/null = familia sem WARNING. */
-  rxWarning?: HuaweiThresholdValues | undefined;
-  /** Par WARNING do TX (.22/.23); ausente/null = familia sem WARNING. */
-  txWarning?: HuaweiThresholdValues | undefined;
-}): OpticalThresholdsV1 | null {
+export function buildHuaweiDeviceThresholds(
+  input: {
+    rx: HuaweiThresholdValues;
+    tx: HuaweiThresholdValues;
+    /** Par WARNING do RX (.20/.21); ausente/null = familia sem WARNING. */
+    rxWarning?: HuaweiThresholdValues | undefined;
+    /** Par WARNING do TX (.22/.23); ausente/null = familia sem WARNING. */
+    txWarning?: HuaweiThresholdValues | undefined;
+  },
+): OpticalThresholdsV1 | null {
   const source: OpticalThresholdSource = 'DEVICE';
   const coherentPair = (values: HuaweiThresholdValues): { low: number | null; high: number | null } => {
     const coherent = values.low === null || values.high === null || values.low < values.high;
@@ -146,7 +243,7 @@ export function buildHuaweiDeviceThresholds(input: {
     const pair = coherentPair(values);
     const warningPair = warning ? coherentPair(warning) : { low: null, high: null };
     // WARNING incoerente com o ALARM (fora da janela hard) e descartado inteiro,
-    // do mesmo jeito que o par low >= high â€” nunca se inventa um lado.
+    // do mesmo jeito que o par low >= high — nunca se inventa um lado.
     const lowOrdered = pair.low === null || warningPair.low === null || warningPair.low >= pair.low;
     const highOrdered = pair.high === null || warningPair.high === null || warningPair.high <= pair.high;
     const lowWarning = lowOrdered ? warningPair.low : null;
@@ -180,8 +277,7 @@ function csvValues(value: unknown): string[] {
   return text.split(',').map((item) => item.trim());
 }
 
-const MAX_PLAUSIBLE_OPTICAL_BIAS_MA = 1_000;
-
+/** Bias em mA do caminho SSH (texto ja em mA). */
 export function normalizeHuaweiBiasCurrentMa(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   const text = value instanceof Uint8Array ? decodeSnmpText(value) : String(value);
@@ -192,12 +288,17 @@ export function normalizeHuaweiBiasCurrentMa(value: unknown): number | null {
     : null;
 }
 
-/** Converts the three Huawei CSV columns into independent, sparse lane readings. */
+/**
+ * Converte as tres colunas CSV em lanes independentes e esparsas. Cada campo e
+ * ignorado individualmente (nunca desloca as lanes seguintes) e uma lane so
+ * existe quando tem ao menos um valor valido.
+ */
 export function parseHuaweiOpticalLaneCsv(
   rxCsv: unknown,
   txCsv: unknown,
   biasCsv: unknown,
   laneEncoding: HuaweiOpticalLaneEncoding,
+  biasEncoding: HuaweiOpticalLaneBiasEncoding,
 ): OpticalLaneReading[] {
   const rxValues = csvValues(rxCsv);
   const txValues = csvValues(txCsv);
@@ -206,9 +307,9 @@ export function parseHuaweiOpticalLaneCsv(
   const lanes: OpticalLaneReading[] = [];
 
   for (let lane = 0; lane < laneCount; lane += 1) {
-    const rxPowerDbm = decodeHuaweiLanePowerDbm(rxValues[lane], laneEncoding);
-    const txPowerDbm = decodeHuaweiLanePowerDbm(txValues[lane], laneEncoding);
-    const biasCurrentMa = normalizeHuaweiBiasCurrentMa(biasValues[lane]);
+    const rxPowerDbm = decodeOpticalLaneDbm(rxValues[lane], laneEncoding);
+    const txPowerDbm = decodeOpticalLaneDbm(txValues[lane], laneEncoding);
+    const biasCurrentMa = decodeOpticalBiasMa(biasValues[lane], biasEncoding);
     if (rxPowerDbm === null && txPowerDbm === null && biasCurrentMa === null) continue;
     lanes.push({
       lane,

@@ -1,8 +1,4 @@
-import type {
-  HuaweiOpticalLaneEncoding,
-  HuaweiOpticalScalarEncoding,
-  HuaweiOpticalWarningEncoding,
-} from '../../topology/huawei-optical';
+import type { HuaweiOpticalCapability } from '../../topology/huawei-optical';
 
 export type SnmpProfileMetricName = 'cpu' | 'memory' | 'temperature';
 
@@ -12,6 +8,15 @@ export interface SnmpProfileIdentity {
   sysObjectId?: string;
   sysDescr?: string;
   sysName?: string;
+  /**
+   * Versao/plataforma coletadas quando disponiveis (HUAWEI-DEVICE-EXT-MIB).
+   * Servem para diagnostico/auditoria e para um futuro override por versao —
+   * NUNCA como unico criterio de selecao do decoder.
+   */
+  softwareVersion?: string;
+  platformVersion?: string;
+  productVersion?: string;
+  productModel?: string;
 }
 
 export interface SnmpMetricCandidate {
@@ -42,23 +47,12 @@ export interface SnmpProfile {
   sysObjectIdPatterns?: RegExp[];
   metrics: Partial<Record<SnmpProfileMetricName, SnmpMetricDefinition>>;
   /**
-   * Encoding do campo RAW da potencia scalarem .8/.9 da
-   * HUAWEI-ENTITY-EXTENT-MIB (uW no VRP classico, centi-dBm no YunShan).
-   * Ausente/UNKNOWN = nao decodifica scalar (nunca adivinha por sinal).
+   * Capability optica declarativa da plataforma (HUAWEI-ENTITY-EXTENT-MIB).
+   * Ausente = o profile NAO declara leitura optica por essa MIB (nenhum walk e
+   * feito e nada e decodificado) — nunca se assume o encoding de outra familia.
+   * O runtime confirma/refina com o capability probe por equipamento.
    */
-  opticalScalarEncoding?: HuaweiOpticalScalarEncoding;
-  /**
-   * Encoding das colunas CSV de potencia POR LANE (.32/.33). Ausente/UNKNOWN =
-   * nao decodifica potencia de lane (bias continua valido); nunca adivinha a
-   * unidade pelo tamanho do numero.
-   */
-  opticalLaneEncoding?: HuaweiOpticalLaneEncoding;
-  /**
-   * Familia publica os thresholds de WARNING (.20-.23)? `ABSENT` = nem varre os
-   * OIDs (YunShan/S6750 nao tem as colunas) â€” ausencia legitima, nunca copia do
-   * ALARM.
-   */
-  opticalWarningEncoding?: HuaweiOpticalWarningEncoding;
+  optical?: HuaweiOpticalCapability;
   /**
    * Scalar OID for the PPP/PPPoE online counter (capability based). When the
    * selected profile does not declare it, the device is treated as not

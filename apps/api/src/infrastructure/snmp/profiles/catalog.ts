@@ -1,18 +1,20 @@
 import { genericProfile } from './generic';
 import { huaweiGenericProfile } from './huawei/generic';
+import { huaweiMa5800Profile } from './huawei/ma5800';
 import { huaweiNe8000Profile } from './huawei/ne8000';
 import { huaweiS6730Profile } from './huawei/s6730';
 import { huaweiS6750Profile } from './huawei/s6750';
 import { mikrotikProfile } from './mikrotik';
 import type { SnmpProfile, SnmpProfileIdentity } from './types';
-import type {
-  HuaweiOpticalLaneEncoding,
-  HuaweiOpticalScalarEncoding,
-  HuaweiOpticalWarningEncoding,
+import {
+  UNSUPPORTED_HUAWEI_OPTICAL_CAPABILITY,
+  type HuaweiOpticalCapability,
+  type HuaweiOpticalScalarSemantics,
 } from '../../topology/huawei-optical';
 
 export const SNMP_PROFILES: SnmpProfile[] = [
   huaweiNe8000Profile,
+  huaweiMa5800Profile,
   huaweiS6750Profile,
   huaweiS6730Profile,
   mikrotikProfile,
@@ -60,35 +62,21 @@ export function selectPppOnlineOid(identity: SnmpProfileIdentity): string | null
 }
 
 /**
- * Encoding do RAW .8/.9 conforme o profile selecionado. `UNKNOWN` = o coletor
- * NAO decodifica o scalar (nunca adivinha por sinal do valor); as lanes
- * .32/.33 e o fallback SSH seguem valendo normalmente.
+ * Capability optica do profile selecionado. Sem declaracao explicita NAO ha
+ * leitura optica por HUAWEI-ENTITY-EXTENT: nenhum walk e feito e nenhum valor e
+ * decodificado (nunca se assume o encoding de outra familia).
  */
-/**
- * Encoding dos WARNING (.20-.23) conforme o profile. Default `CENTI_DBM` (VRP
- * classico, unica familia comprovada em campo); `ABSTRACT` explicito no profile
- * do YunShan evita 4 walks inuteis por interface.
- */
-export function selectOpticalWarningEncoding(
-  identity: SnmpProfileIdentity,
-): HuaweiOpticalWarningEncoding {
-  return selectSnmpProfile(identity).opticalWarningEncoding ?? 'CENTI_DBM';
-}
-
-export function selectOpticalScalarEncoding(
-  identity: SnmpProfileIdentity,
-): HuaweiOpticalScalarEncoding {
-  return selectSnmpProfile(identity).opticalScalarEncoding ?? 'UNKNOWN';
+export function selectOpticalCapability(identity: SnmpProfileIdentity): HuaweiOpticalCapability {
+  return selectSnmpProfile(identity).optical ?? UNSUPPORTED_HUAWEI_OPTICAL_CAPABILITY;
 }
 
 /**
- * Encoding do CSV de potencia POR LANE (.32/.33) conforme o profile. `UNKNOWN`
- * explicito = nao decodifica potencia de lane (o bias continua valido); um
- * profile que NAO declara o campo cai no comportamento historico `DBM` (lanes
- * ja em dBm) — nunca em CENTI_DBM, que exige evidencia de campo.
+ * Semantica do scalar .8/.9 do profile. `AGGREGATED_LANES` (F1A) impede o motor
+ * optico de comparar o valor agregado com thresholds POR LANE; qualquer outra
+ * plataforma preserva o comportamento legado.
  */
-export function selectOpticalLaneEncoding(
+export function selectOpticalScalarSemantics(
   identity: SnmpProfileIdentity,
-): HuaweiOpticalLaneEncoding {
-  return selectSnmpProfile(identity).opticalLaneEncoding ?? 'DBM';
+): HuaweiOpticalScalarSemantics {
+  return selectOpticalCapability(identity).scalarSemantics;
 }

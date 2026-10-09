@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  selectOpticalLaneEncoding,
-  selectOpticalScalarEncoding,
+  selectOpticalCapability,
+  selectOpticalScalarSemantics,
   selectPppOnlineOid,
   selectSnmpProfile,
 } from './catalog';
@@ -20,6 +20,11 @@ describe('SNMP profile catalog', () => {
   it('prioritizes S6730 and NE8000 model profiles', () => {
     expect(selectSnmpProfile({ vendor: 'Huawei', model: 'S6730-H48X6C' }).id).toBe('huawei-s6730');
     expect(selectSnmpProfile({ vendor: 'Huawei', model: 'NetEngine NE8000 F1A' }).id).toBe('huawei-ne8000');
+    // sysObjectID real do F1A-8H20Q validado em campo (2026-10-09).
+    expect(selectSnmpProfile({
+      vendor: 'Huawei',
+      sysObjectId: '1.3.6.1.4.1.2011.2.360.1.5',
+    }).id).toBe('huawei-ne8000');
   });
 
   it('identifica o S6750-H por modelo, sysDescr ou sysObjectID real', () => {
@@ -33,6 +38,23 @@ describe('SNMP profile catalog', () => {
       vendor: 'Huawei',
       sysObjectId: '1.3.6.1.4.1.2011.2.23.1247',
     }).id).toBe('huawei-s6750');
+  });
+
+  it('identifica o MA5800-X15 (access) e declara optica UNSUPPORTED', () => {
+    expect(selectSnmpProfile({ vendor: 'Huawei', model: 'MA5800-X15' }).id).toBe('huawei-ma5800');
+    expect(selectSnmpProfile({
+      vendor: 'Huawei',
+      sysDescr: 'Huawei Integrated Access Software',
+    }).id).toBe('huawei-ma5800');
+    // sysObjectID real da OLT validada (1.3.6.1.4.1.2011.2.316).
+    expect(selectSnmpProfile({
+      vendor: 'Huawei',
+      sysObjectId: '1.3.6.1.4.1.2011.2.316',
+    }).id).toBe('huawei-ma5800');
+    const capability = selectOpticalCapability({ vendor: 'Huawei', model: 'MA5800-X15' });
+    expect(capability.capabilities.table).toBe(false);
+    expect(capability.scalarEncoding).toBe('UNSUPPORTED');
+    expect(capability.warningThresholdEncoding).toBe('UNSUPPORTED');
   });
 
   it('matcher do S6750 e estrito: YunShan/CloudEngine sem S6750 nao viram S6750', () => {
@@ -59,46 +81,61 @@ describe('SNMP profile catalog', () => {
     }).id).toBe('huawei-generic');
   });
 
-  it('YunShan sem evidencia de S6750 nao herda CENTI_DBM', () => {
-    expect(selectOpticalScalarEncoding({
-      vendor: 'Huawei',
-      sysDescr: 'Huawei YunShan OS V600R024C00SPC500',
-    })).toBe('MICRO_WATTS');
-    expect(selectOpticalScalarEncoding({
-      vendor: 'Huawei',
-      sysDescr: 'Huawei CloudEngine S5731-H48T4XC YunShan OS',
-    })).toBe('MICRO_WATTS');
-    expect(selectOpticalScalarEncoding({
-      vendor: 'Huawei',
-      sysObjectId: '1.3.6.1.4.1.2011.2.23.1247',
-    })).toBe('CENTI_DBM');
+  it('capability F1A: CENTI_DBM agregado com lanes inteiras centi-dBm', () => {
+    const capability = selectOpticalCapability({ vendor: 'Huawei', model: 'NE8000 F1A-C' });
+    expect(capability.scalarEncoding).toBe('CENTI_DBM');
+    expect(capability.scalarSemantics).toBe('AGGREGATED_LANES');
+    expect(capability.laneEncoding).toBe('INT_CENTI_DBM');
+    expect(capability.laneBiasEncoding).toBe('UNSUPPORTED');
+    expect(capability.capabilities).toEqual({
+      table: true,
+      scalarPower: true,
+      alarmThresholds: true,
+      laneBias: false,
+      lanes: true,
+      warnings: true,
+      minMax: true,
+    });
+    expect(selectOpticalScalarSemantics({ vendor: 'Huawei', model: 'NE8000 F1A-C' }))
+      .toBe('AGGREGATED_LANES');
   });
 
-  it('encoding do RAW .8/.9 vem do profile (nunca do sinal do valor)', () => {
-    expect(selectOpticalScalarEncoding({ vendor: 'Huawei', model: 'S6750-H' })).toBe('CENTI_DBM');
-    expect(selectOpticalScalarEncoding({ vendor: 'Huawei', model: 'S6730-H48X6C' })).toBe('MICRO_WATTS');
-    expect(selectOpticalScalarEncoding({ vendor: 'Huawei', model: 'NE8000 F1A-C' })).toBe('MICRO_WATTS');
-    // Huawei generico preserva o comportamento historico (uW) do parque VRP.
-    expect(selectOpticalScalarEncoding({ vendor: 'Huawei', model: 'Desconhecido' })).toBe('MICRO_WATTS');
-    // Outros vendors nao herdam decode Huawei: scalar fica em UNKNOWN.
-    expect(selectOpticalScalarEncoding({ vendor: 'MikroTik' })).toBe('UNKNOWN');
-    expect(selectOpticalScalarEncoding({ vendor: 'Other' })).toBe('UNKNOWN');
+  it('capability S6730: micro-watts lane 0, lanes decimais centi-dBm e bias mA', () => {
+    const capability = selectOpticalCapability({ vendor: 'Huawei', model: 'S6730-H48X6C' });
+    expect(capability.scalarEncoding).toBe('MICRO_WATTS');
+    expect(capability.scalarSemantics).toBe('LANE_0');
+    expect(capability.laneEncoding).toBe('DECIMAL_CENTI_DBM');
+    expect(capability.laneBiasEncoding).toBe('DECIMAL_MA');
+    expect(capability.warningThresholdEncoding).toBe('CENTI_DBM');
+    expect(capability.minMaxEncoding).toBe('UNSUPPORTED');
   });
 
-  it('encoding das lanes .32/.33 tambem vem do profile (S6730 centi-dBm, S6750 dBm)', () => {
-    expect(selectOpticalLaneEncoding({ vendor: 'Huawei', model: 'S6730-H48X6C' })).toBe('CENTI_DBM');
-    expect(selectOpticalLaneEncoding({ vendor: 'Huawei', model: 'S6750-H' })).toBe('DBM');
-    expect(selectOpticalLaneEncoding({ vendor: 'Huawei', model: 'NE8000 F1A-C' })).toBe('DBM');
-    // Huawei generico preserva o comportamento historico (dBm) e NUNCA assume
-    // centi-dBm sem evidencia de campo.
-    expect(selectOpticalLaneEncoding({ vendor: 'Huawei', model: 'Desconhecido' })).toBe('DBM');
-    expect(selectOpticalLaneEncoding({
-      vendor: 'Huawei',
-      sysDescr: 'Huawei CloudEngine S5731-H48T4XC YunShan OS',
-    })).toBe('DBM');
-    // Perfil sem o campo declarado (outro vendor) tambem mantem DBM historico.
-    expect(selectOpticalLaneEncoding({ vendor: 'Other' })).toBe('DBM');
+  it('capability S6750: centi-dBm lane 0, lanes dBm, sem WARNING e sem min/max', () => {
+    const capability = selectOpticalCapability({ vendor: 'Huawei', model: 'S6750-H' });
+    expect(capability.scalarEncoding).toBe('CENTI_DBM');
+    expect(capability.scalarSemantics).toBe('LANE_0');
+    expect(capability.laneEncoding).toBe('DECIMAL_DBM');
+    expect(capability.capabilities.warnings).toBe(false);
+    expect(capability.capabilities.minMax).toBe(false);
   });
+
+  it('Huawei generico preserva o historico e NUNCA assume agregado', () => {
+    const capability = selectOpticalCapability({ vendor: 'Huawei', model: 'Desconhecido' });
+    expect(capability.scalarEncoding).toBe('MICRO_WATTS');
+    expect(capability.scalarSemantics).toBe('UNKNOWN');
+    expect(capability.laneEncoding).toBe('DECIMAL_DBM');
+    expect(capability.capabilities.table).toBe(true);
+  });
+
+  it('outros vendors: capability optica UNSUPPORTED (nenhum walk e tentado)', () => {
+    for (const identity of [{ vendor: 'MikroTik' }, { vendor: 'Other' }]) {
+      const capability = selectOpticalCapability(identity);
+      expect(capability.capabilities.table).toBe(false);
+      expect(capability.scalarEncoding).toBe('UNSUPPORTED');
+      expect(selectOpticalScalarSemantics(identity)).toBe('UNKNOWN');
+    }
+  });
+
   it('resolves Huawei and MikroTik PPP OIDs without inventing values', () => {
     expect(selectPppOnlineOid({ vendor: 'Huawei', model: 'NE40E-X8A' })).toBe(HUAWEI_PPP_ONLINE_OID);
     expect(selectPppOnlineOid({ vendor: 'MikroTik', sysDescr: 'RouterOS 7' })).toBe(
@@ -106,5 +143,7 @@ describe('SNMP profile catalog', () => {
     );
     expect(selectPppOnlineOid({ vendor: 'Juniper' })).toBeNull();
     expect(selectPppOnlineOid({ vendor: 'Datacom' })).toBeNull();
+    // OLT MA5800 nao declara PPP online (dominio de acesso, nao BRAS).
+    expect(selectPppOnlineOid({ vendor: 'Huawei', model: 'MA5800-X15' })).toBeNull();
   });
 });

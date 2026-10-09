@@ -158,6 +158,10 @@ describe('SNMP IF-MIB interface discovery', () => {
       rxHigh: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.14',
       txLow: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.15',
       txHigh: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.16',
+      rxWarnLow: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.20',
+      rxWarnHigh: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.21',
+      txWarnLow: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.22',
+      txWarnHigh: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.23',
       bias: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.31',
       rxLane: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.32',
       txLane: '1.3.6.1.4.1.2011.5.25.31.1.1.3.1.33',
@@ -280,12 +284,13 @@ describe('SNMP IF-MIB interface discovery', () => {
       // Scalar continua MICRO_WATTS (42 uW / 1191 uW).
       expect(enriched?.rxPowerDbm).toBeCloseTo(-13.77, 2);
       expect(enriched?.txPowerDbm).toBeCloseTo(0.76, 2);
-      // Lanes: o CSV do S6730 e centi-dBm — sem /100 o RX seria descartado.
+      // Lanes: o CSV do S6730 e centi-dBm e a resolucao do vendor e preservada
+      // (2 casas em centi-dBm = 4 em dBm) — sem /100 o RX seria descartado.
       expect(enriched?.opticalLanes).toEqual([
-        { lane: 0, rxPowerDbm: -13.73, txPowerDbm: 0.76, biasCurrentMa: 47.89 },
-        { lane: 1, rxPowerDbm: -12.27, txPowerDbm: 0.77, biasCurrentMa: 67.46 },
-        { lane: 2, rxPowerDbm: -13.12, txPowerDbm: 0.67, biasCurrentMa: 47.9 },
-        { lane: 3, rxPowerDbm: -12.94, txPowerDbm: 0.44, biasCurrentMa: 51.08 },
+        { lane: 0, rxPowerDbm: -13.7263, txPowerDbm: 0.7606, biasCurrentMa: 47.89 },
+        { lane: 1, rxPowerDbm: -12.2695, txPowerDbm: 0.7668, biasCurrentMa: 67.46 },
+        { lane: 2, rxPowerDbm: -13.1158, txPowerDbm: 0.6662, biasCurrentMa: 47.9 },
+        { lane: 3, rxPowerDbm: -12.9414, txPowerDbm: 0.4372, biasCurrentMa: 51.08 },
       ]);
       expect(enriched?.opticalLaneSource).toBe('SNMP');
       // .13-.16 preservados: -21.48 / -2.50 / -2.50 / +6.50.
@@ -294,24 +299,113 @@ describe('SNMP IF-MIB interface discovery', () => {
         tx: { lowAlarmDbm: -2.5, highAlarmDbm: 6.5, lowSource: 'DEVICE', highSource: 'DEVICE' },
       });
     });
-    it('familia nao classificada: UNKNOWN nao decodifica scalar, mas mantem lanes e thresholds', async () => {
-      walkOptical('100GE0/0/1', 9001, {
+    it('vendor sem capability Huawei: nenhum walk optico e nenhum dado inventado', async () => {
+      const walk = walkOptical('100GE0/0/1', 9001, {
         raw: 18,
         rawTx: -74,
         rxLow: -1231,
         rxLane: '0.19,0.69',
       });
+      const original = ifaceNamed('100GE0/0/1');
       const [enriched] = await new SnmpV2cDiscoveryAdapter({} as HostRepository).enrichOpticalPower(
         { ...baseHost, vendor: 'VendorDesconhecido', model: '' } as unknown as HostRecord,
-        [ifaceNamed('100GE0/0/1')],
+        [original],
         'secret',
       );
 
-      expect(enriched?.rxPowerDbm).toBeUndefined();
-      expect(enriched?.txPowerDbm).toBeUndefined();
-      expect(enriched?.opticalSource).toBeUndefined();
-      expect(enriched?.opticalLanes).toHaveLength(2);
-      expect(enriched?.opticalThresholds?.scalar.rx.lowAlarmDbm).toBe(-12.31);
+      // Sem profile Huawei nao existe capability optica declarada: nem a tabela
+      // .8 e tocada (antes o coletor varria os OIDs Huawei em qualquer vendor).
+      expect(enriched).toEqual(original);
+      expect(walk).not.toHaveBeenCalled();
+    });
+
+    it('F1A real: scalar agregado em centi-dBm, lanes inteiras e warning do modulo', async () => {
+      walkOptical('100GE0/1/48', 16_847_153, {
+        raw: 601,
+        rawTx: 586,
+        rxLow: -1230,
+        rxHigh: 339,
+        txLow: -1040,
+        txHigh: 339,
+        rxWarnLow: -1030,
+        rxWarnHigh: 239,
+        txWarnLow: -760,
+        txWarnHigh: 239,
+        rxLane: '29,-33,-14,14',
+        txLane: '-58,-22,-12,27',
+      });
+      const [enriched] = await new SnmpV2cDiscoveryAdapter({} as HostRepository).enrichOpticalPower(
+        { ...baseHost, model: 'NE8000 F1A-C' } as unknown as HostRecord,
+        [ifaceNamed('100GE0/1/48')],
+        'secret',
+        { sysDescr: 'Huawei VRP 8.220 NetEngine 8000 V800R022C00SPC600' },
+      );
+
+      // .8 = 601 => +6.01 dBm (antes: -2.21 dBm por ler como micro-watts).
+      expect(enriched?.rxPowerDbm).toBe(6.01);
+      expect(enriched?.txPowerDbm).toBe(5.86);
+      expect(enriched?.opticalLanes).toEqual([
+        { lane: 0, rxPowerDbm: 0.29, txPowerDbm: -0.58 },
+        { lane: 1, rxPowerDbm: -0.33, txPowerDbm: -0.22 },
+        { lane: 2, rxPowerDbm: -0.14, txPowerDbm: -0.12 },
+        { lane: 3, rxPowerDbm: 0.14, txPowerDbm: 0.27 },
+      ]);
+      // .31 nao existe no F1A: nenhum bias e inventado.
+      expect(enriched?.opticalLanes?.every((lane) => !('biasCurrentMa' in lane))).toBe(true);
+      expect(enriched?.opticalThresholds?.scalar).toEqual({
+        rx: {
+          lowAlarmDbm: -12.3,
+          highAlarmDbm: 3.39,
+          lowWarningDbm: -10.3,
+          highWarningDbm: 2.39,
+          lowSource: 'DEVICE',
+          highSource: 'DEVICE',
+        },
+        tx: {
+          lowAlarmDbm: -10.4,
+          highAlarmDbm: 3.39,
+          lowWarningDbm: -7.6,
+          highWarningDbm: 2.39,
+          lowSource: 'DEVICE',
+          highSource: 'DEVICE',
+        },
+      });
+    });
+
+    it('S6750 nao tem WARNING: o walk .20-.23 nao e tentado', async () => {
+      const walk = walkOptical('100GE1/0/1', 16_850_434, {
+        raw: 1,
+        rawTx: -74,
+        rxLow: -1231,
+        rxHigh: 340,
+        txLow: -1040,
+        txHigh: 340,
+        rxLane: '0.01,0.72,1.05,0.15',
+      });
+      await new SnmpV2cDiscoveryAdapter({} as HostRepository).enrichOpticalPower(
+        { ...baseHost, model: 'S6750-H' } as unknown as HostRecord,
+        [ifaceNamed('100GE1/0/1')],
+        'secret',
+      );
+      // A sonda confirma UMA vez que a coluna nao existe (diagnostico); nenhum
+      // walk de COLETA (.20-.23 = 4 walks) e tentado.
+      const warningWalks = walk.mock.calls.filter(([, oid]) =>
+        /^1\.3\.6\.1\.4\.1\.2011\.5\.25\.31\.1\.1\.3\.1\.2[0-3]$/.test(oid));
+      expect(warningWalks).toHaveLength(1);
+    });
+
+    it('MA5800 (optica UNSUPPORTED): nenhum walk optico e tentado contra a OLT', async () => {
+      const walk = vi.spyOn(SnmpClientImpl.prototype, 'walk').mockImplementation(async () => []);
+      const original = ifaceNamed('GigabitEthernet0/1/1');
+      const [enriched] = await new SnmpV2cDiscoveryAdapter({} as HostRepository).enrichOpticalPower(
+        { ...baseHost, model: 'MA5800-X15' } as unknown as HostRecord,
+        [original],
+        'secret',
+        { sysDescr: 'Huawei Integrated Access Software', sysObjectId: '1.3.6.1.4.1.2011.2.316' },
+      );
+
+      expect(enriched).toEqual(original);
+      expect(walk).not.toHaveBeenCalled();
     });
 
     it('aceita threshold parcial, descarta par incoerente e ignora o sentinela -1', async () => {

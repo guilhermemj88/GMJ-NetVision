@@ -1,14 +1,17 @@
 import type { SnmpProfile } from '../types';
 import { HUAWEI_PPP_ONLINE_OID } from '../ppp-oids';
+import { huaweiOpticalCapability } from '../../../topology/huawei-optical';
 
 export const HUAWEI_ENTITY_NAME_OID = '1.3.6.1.2.1.47.1.1.1.1.7';
-/**
- * Familia generica Huawei: assume o conjunto VRP classico (.20-.23 presentes).
- * Quando a coluna nao existe o walk volta vazio e o merge simplesmente preserva
- * o valor anterior â€” nunca inventa WARNING a partir do ALARM.
- */
 export const HUAWEI_ENTITY_CPU_USAGE_OID = '1.3.6.1.4.1.2011.5.25.31.1.1.1.1.5';
 
+/**
+ * Familia generica Huawei (VRP classico nao classificado): mantem o
+ * comportamento historico - .8/.9 em MICRO_WATTS, lanes em dBm cru e WARNING
+ * publicado. NUNCA assume scalar agregado: `scalarSemantics: 'UNKNOWN'` deixa o
+ * motor optico no caminho legado (scalar comparavel) e o capability probe
+ * confirma o que o equipamento realmente publica.
+ */
 export const huaweiGenericProfile: SnmpProfile = {
   id: 'huawei-generic',
   vendor: 'Huawei',
@@ -18,12 +21,15 @@ export const huaweiGenericProfile: SnmpProfile = {
   sysDescrPatterns: [/huawei|vrp/i],
   sysObjectIdPatterns: [/^1\.3\.6\.1\.4\.1\.2011(?:\.|$)/],
   pppOnlineOid: HUAWEI_PPP_ONLINE_OID,
-  // VRP classico: .8/.9 em MICRO_WATTS (evidencia real S6730). Mantem o
-  // comportamento historico dos modelos Huawei nao classificados.
-  opticalScalarEncoding: 'MICRO_WATTS',
-  // Lanes em dBm: comportamento historico preservado (sem evidencia de
-  // centi-dBm em modelo generico).
-  opticalLaneEncoding: 'DBM',
+  optical: huaweiOpticalCapability({
+    scalarEncoding: 'MICRO_WATTS',
+    scalarSemantics: 'UNKNOWN',
+    laneEncoding: 'DECIMAL_DBM',
+    laneBiasEncoding: 'DECIMAL_MA',
+    alarmThresholdEncoding: 'CENTI_DBM',
+    warningThresholdEncoding: 'CENTI_DBM',
+    minMaxEncoding: 'UNSUPPORTED',
+  }),
   metrics: {
     cpu: {
       unit: '%',
