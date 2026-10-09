@@ -24,6 +24,7 @@ import type {
   InterfaceOpticalWindowRow,
 } from '../infrastructure/persistence/host-repository';
 import { isPlausibleCounter32Wrap } from '../infrastructure/snmp/counter-delta';
+import type { HuaweiOpticalScalarSemantics } from '../infrastructure/topology/huawei-optical';
 
 /** Janela de leitura das amostras recentes (30 min cobre os tetos de samples). */
 export const METRIC_ALARM_WINDOW_MS = 30 * 60_000;
@@ -573,6 +574,13 @@ function opticalThresholdSideFor(
  * Series avaliadas na interface: modo LANE quando ha 2+ lanes com leitura
  * (scalar deixa de ser avaliado, sem alarme duplicado) e modo SCALAR caso
  * contrario. Cada lane vira um fingerprint `RX_LANE_n` independente.
+ *
+ * ATENCAO (F1A/NE8000, `AGGREGATED_LANES`): o scalar .8/.9 e a SOMA em mW das
+ * lanes, enquanto .13-.16/.20-.23 sao thresholds POR LANE. Comparar o agregado
+ * com esses limites gera falso alarme (ex.: scalar +6.01 dBm vs warning high
+ * +2.39 dBm em um modulo saudavel). Por isso, quando a semantica e agregada e o
+ * modulo tem mais de uma lane, o scalar NAO e avaliado - as lanes respondem por
+ * ele. Modulos de uma lane (agregado == a propria lane) seguem no modo scalar.
  */
 export function opticalSeriesFor(
   networkInterface: NetworkInterface,
@@ -580,10 +588,11 @@ export function opticalSeriesFor(
   record: InterfaceOpticalThresholdRecord | null,
   config: OpticalRuleConfig,
   nowMs: number,
+  options: { scalarSemantics?: HuaweiOpticalScalarSemantics } = {},
 ): OpticalSeries[] {
   const ordered = [...samples].sort((left, right) => left.timestamp.getTime() - right.timestamp.getTime());
-  const laneReadings = (networkInterface.opticalLanes ?? [])
-    .filter((lane) => typeof lane.rxPowerDbm === 'number');
+  const moduleLanes = networkInterface.opticalLanes ?? [];
+  const laneReadings = moduleLanes.filter((lane) => typeof lane.rxPowerDbm === 'number');
   const speedBps = Number(networkInterface.speedBps ?? 0);
 
   const withCurrent = (points: OpticalPoint[], currentValue: number | null): OpticalPoint[] => {
@@ -618,6 +627,8 @@ export function opticalSeriesFor(
 
   const scalar = networkInterface.rxPowerDbm;
   if (typeof scalar !== 'number') return [];
+  // Scalar AGREGADO de modulo multi-lane nunca vira serie: ver doc acima.
+  if (options.scalarSemantics === 'AGGREGATED_LANES' && moduleLanes.length >= 2) return [];
   return [{
     metricKey: 'RX',
     lane: null,
@@ -735,6 +746,11 @@ export interface OpticalEvaluationInput {
   deviceId: string;
   deviceName: string;
   interfaces: readonly NetworkInterface[];
+  /**
+   * Semantica do scalar .8/.9 do profile (`AGGREGATED_LANES` no F1A): impede
+   * comparar o valor agregado com thresholds por lane. Ausente = legado.
+   */
+  scalarSemantics?: HuaweiOpticalScalarSemantics;
 }
 
 export interface AlarmEngineDependencies {
@@ -985,6 +1001,9 @@ export class AlarmEngine {
           thresholds.get(networkInterface.id) ?? null,
           config,
           now.getTime(),
+          {
+            ...(input.scalarSemantics ? { scalarSemantics: input.scalarSemantics } : {}),
+          },
         );
         for (const series of seriesList) {
           await this.evaluateOpticalSeries({

@@ -973,6 +973,67 @@ describe('motor optico (OPTICAL_RX_DEGRADATION)', () => {
     expect(built.openMetricAlarm.mock.calls.every(([item]) => item.metricKey !== 'RX')).toBe(true);
   });
 
+  it('F1A: scalar AGREGADO nunca e avaliado contra thresholds por lane', async () => {
+    // Modulo de 4 lanes com apenas UMA leitura de RX: o modo lane nao fecha e o
+    // aggregate +6.01 dBm NAO pode virar serie comparavel a .13-.16/.20-.23.
+    const moduleWithSparseLanes = opticalInterface({
+      rxPowerDbm: 6.01,
+      opticalLaneSource: 'SNMP',
+      opticalLanes: [
+        { lane: 0, rxPowerDbm: -11.5, txPowerDbm: null },
+        { lane: 1, rxPowerDbm: null, txPowerDbm: null },
+        { lane: 2, rxPowerDbm: null, txPowerDbm: null },
+        { lane: 3, rxPowerDbm: null, txPowerDbm: null },
+      ],
+    });
+    const built = buildOpticalEngine({
+      rows: [opticalRow(10, -11.5), opticalRow(5, -11.5), opticalRow(0, -11.5)],
+      thresholds: [thresholdRecord(-12.3, 3.39)],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [moduleWithSparseLanes],
+      scalarSemantics: 'AGGREGATED_LANES',
+    });
+    expect(built.openMetricAlarm).not.toHaveBeenCalled();
+
+    // Controle: sem a semantica declarada (LANE_0/legado) o mesmo tipo de cenario
+    // segue alarmando pelo scalar — o guard nao altera plataforma nenhuma que
+    // declare a lane 0.
+    const legacy = buildOpticalEngine({
+      rows: [opticalRow(10, -11.5), opticalRow(5, -11.5), opticalRow(0, -11.5)],
+      thresholds: [thresholdRecord(-12.3, 3.39)],
+    });
+    await legacy.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'S6730',
+      interfaces: [opticalInterface({ rxPowerDbm: -11.5 })],
+    });
+    expect(legacy.openMetricAlarm).toHaveBeenCalledTimes(1);
+    expect(legacy.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({ metricKey: 'RX' });
+  });
+
+  it('F1A: modulo de UMA lane (agregado == lane) continua no modo scalar', async () => {
+    const singleLane = opticalInterface({
+      rxPowerDbm: -11.5,
+      opticalLaneSource: 'SNMP',
+      opticalLanes: [{ lane: 0, rxPowerDbm: -11.5, txPowerDbm: null }],
+    });
+    const built = buildOpticalEngine({
+      rows: [opticalRow(10, -11.5), opticalRow(5, -11.5), opticalRow(0, -11.5)],
+      thresholds: [thresholdRecord(-12.3, 3.39)],
+    });
+    await built.engine.processOpticalReadings({
+      deviceId: 'dev-1',
+      deviceName: 'F1A',
+      interfaces: [singleLane],
+      scalarSemantics: 'AGGREGATED_LANES',
+    });
+    expect(built.openMetricAlarm).toHaveBeenCalledTimes(1);
+    expect(built.openMetricAlarm.mock.calls[0]?.[0]).toMatchObject({ metricKey: 'RX' });
+  });
+
   it('escala na MESMA linha (WARNING -> MAJOR -> CRITICAL) sem downgrade', async () => {
     const toMajor = buildOpticalEngine({
       rows: [opticalRow(5, atProximity(96)), opticalRow(0, atProximity(96))],
