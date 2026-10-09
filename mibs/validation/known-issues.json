@@ -1,0 +1,85 @@
+{
+  "generatedAt": "2026-10-09T00:55:00Z",
+  "policy": "MIBs vendorizadas em mibs/ sao PRISTINE: byte-for-byte iguais as fontes registradas em SOURCES.md/manifest.json. Nenhuma correcao e aplicada nos originais. Correcoes existem apenas no validation overlay (arvore temporaria descartavel).",
+  "validator": "pysmi 2.0 / mibdump --destination-format=null --rebuild",
+  "issues": [
+    {
+      "id": "HUAWEI-MIB-DUP-SYMBOLS",
+      "module": "HUAWEI-MIB",
+      "file": "huawei/HUAWEI-MIB.mib",
+      "version": "V7.21",
+      "kind": "duplicate-object-identifier",
+      "upstream": true,
+      "pristineStatus": "FAIL",
+      "overlayStatus": "PASS",
+      "validatorMessage": "Duplicate symbol found: USG6635F at MIB HUAWEI-MIB",
+      "blocks": [
+        "HUAWEI-MIB",
+        "HUAWEI-DEVICE-EXT-MIB",
+        "HUAWEI-DEVICE-MIB",
+        "HUAWEI-ENTITY-EXTENT-MIB",
+        "HUAWEI-GTL-MIB",
+        "HUAWEI-IF-EXT-MIB",
+        "HUAWEI-IMA-MIB",
+        "HUAWEI-PORT-MIB"
+      ],
+      "duplicates": [
+        { "symbol": "eudemon200S", "lines": [4520, 4525] },
+        { "symbol": "USG6635F", "lines": [5634, 5745], "note": "historico do modulo (linha 1106) registra 'Changed the name of USG6635F-AC to USG6635F'" },
+        { "symbol": "USG6525F", "lines": [5764, 5776] },
+        { "symbol": "USG6565F", "lines": [5766, 5775] },
+        { "symbol": "ne40ex16b", "lines": [5960, 5962] }
+      ],
+      "overlayFix": "renomear a 2a ocorrencia de cada simbolo para <SIMBOLO>-DUP (somente no diretorio temporario)"
+    },
+    {
+      "id": "HUAWEI-TC-MIB-TRAILING-HYPHEN",
+      "module": "HUAWEI-TC-MIB",
+      "file": "huawei/HUAWEI-TC-MIB.mib",
+      "version": "V13.65",
+      "kind": "invalid-identifier",
+      "upstream": true,
+      "pristineStatus": "FAIL",
+      "overlayStatus": "PASS",
+      "validatorMessage": "Identifier should not end with '-': subbname8090DEVCR5D00P8E871-",
+      "blocks": ["HUAWEI-TC-MIB", "HUAWEI-DEVICE-MIB"],
+      "invalidIdentifiers": [
+        { "line": 22728, "name": "subbname8090DEVCR5D00P8E871-" },
+        { "line": 22729, "name": "subbname8090DEVCR5D00P8E870-" },
+        { "line": 22730, "name": "subbname8090DEVCR5D00CFE171-" },
+        { "line": 22731, "name": "subbname8090DEVCR5D00P8E8K0-" },
+        { "line": 22732, "name": "subbname8090DEVCR5D00P8E8K1-" },
+        { "line": 22733, "name": "subbname8090DEVCR5D00CFE1K1-" },
+        { "line": 22744, "name": "subbname8090DEVCR5D00E8GF73-" },
+        { "line": 22745, "name": "subbname8090DEVCR5D00E8GF72-" },
+        { "line": 22746, "name": "subbname8090DEVCR5D00C2CF71-" }
+      ],
+      "overlayFix": "remover o '-' final dos 9 identificadores (somente no diretorio temporario)"
+    },
+    {
+      "id": "RFC-1212-LIBSMI-STUB",
+      "module": "RFC-1212",
+      "file": "ietf/RFC-1212.mib",
+      "version": "n/a (modulo SMIv1)",
+      "kind": "packaging-stub",
+      "upstream": false,
+      "mirror": true,
+      "pristineStatus": "LEGACY_COMPATIBILITY_STUB",
+      "overlayStatus": "PASS",
+      "validatorMessage": "Bad grammar near offset 435 at MIB RFC-1212, line 79",
+      "blocks": [
+        "RFC-1212",
+        "Q-BRIDGE-MIB",
+        "RMON2-MIB",
+        "RMON-MIB",
+        "RFC1271-MIB",
+        "TOKEN-RING-RMON-MIB",
+        "RFC1213-MIB",
+        "HUAWEI-IF-EXT-MIB"
+      ],
+      "evidence": "o proprio arquivo declara: 'file: RFC-1212.my / Removed IMPORTS / Commented out OBJECT-TYPE macro definition and replaced with SMIC directive to enable it' (artefato para libsmi, identico no LibreNMS e no mibs.pysnmp.com)",
+      "overlayFix": "no diretorio temporario o arquivo e substituido por um modulo RFC-1212 com o macro OBJECT-TYPE do RFC 1212 habilitado (SMIv1), permitindo validar a cadeia Q-BRIDGE/RMON; o original permanece intacto em mibs/ietf/"
+    }
+  ],
+  "note": "Ferramentas tolerantes (Net-SNMP/snmptranslate) implementam os macros SMIv1 nativamente e normalmente carregam os modulos com aviso, sem overlay."
+}

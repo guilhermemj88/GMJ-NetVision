@@ -1,0 +1,356 @@
+{
+    "timestamp":  "20261009T004537Z",
+    "validator":  "C:\\Users\\g_men\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\mibdump.exe",
+    "mibsRoot":  "C:\\projetos\\GMJ-NetVision\\mibs",
+    "overlayNotes":  [
+                         "HUAWEI-MIB: 5 simbolo(s) duplicado(s) renomeado(s) no overlay",
+                         "HUAWEI-TC-MIB: 12 identificador(es) com \u0027-\u0027 final corrigido(s) no overlay",
+                         "RFC-1212: stub de libsmi substituido por modulo SMIv1 equivalente (somente no overlay)"
+                     ],
+    "pristine":  {
+                     "ATM-TC-MIB":  {
+                                        "status":  "PASS",
+                                        "exit":  0,
+                                        "detail":  ""
+                                    },
+                     "BRIDGE-MIB":  {
+                                        "status":  "PASS",
+                                        "exit":  0,
+                                        "detail":  ""
+                                    },
+                     "ENTITY-MIB":  {
+                                        "status":  "PASS",
+                                        "exit":  0,
+                                        "detail":  ""
+                                    },
+                     "HCNUM-TC":  {
+                                      "status":  "PASS",
+                                      "exit":  0,
+                                      "detail":  ""
+                                  },
+                     "HUAWEI-DEVICE-EXT-MIB":  {
+                                                   "status":  "FAIL",
+                                                   "exit":  79,
+                                                   "detail":  "HUAWEI-MIB (Duplicate symbol found: USG6635F at MIB HUAWEI-MIB)"
+                                               },
+                     "HUAWEI-DEVICE-MIB":  {
+                                               "status":  "FAIL",
+                                               "exit":  79,
+                                               "detail":  "HUAWEI-MIB (Duplicate symbol found: USG6635F at MIB HUAWEI-MIB)"
+                                           },
+                     "HUAWEI-ENTITY-EXTENT-MIB":  {
+                                                      "status":  "FAIL",
+                                                      "exit":  79,
+                                                      "detail":  "HUAWEI-MIB (Duplicate symbol found: USG6635F at MIB HUAWEI-MIB)"
+                                                  },
+                     "HUAWEI-GTL-MIB":  {
+                                            "status":  "FAIL",
+                                            "exit":  79,
+                                            "detail":  "HUAWEI-MIB (Duplicate symbol found: USG6635F at MIB HUAWEI-MIB)"
+                                        },
+                     "HUAWEI-IF-EXT-MIB":  {
+                                               "status":  "FAIL",
+                                               "exit":  79,
+                                               "detail":  "HUAWEI-MIB (Duplicate symbol found: USG6635F at MIB HUAWEI-MIB)"
+                                           },
+                     "HUAWEI-IMA-MIB":  {
+                                            "status":  "FAIL",
+                                            "exit":  79,
+                                            "detail":  "HUAWEI-MIB (Duplicate symbol found: USG6635F at MIB HUAWEI-MIB)"
+                                        },
+                     "HUAWEI-MIB":  {
+                                        "status":  "FAIL",
+                                        "exit":  79,
+                                        "detail":  "HUAWEI-MIB (Duplicate symbol found: USG6635F at MIB HUAWEI-MIB)"
+                                    },
+                     "HUAWEI-PORT-MIB":  {
+                                             "status":  "FAIL",
+                                             "exit":  79,
+                                             "detail":  "HUAWEI-MIB (Duplicate symbol found: USG6635F at MIB HUAWEI-MIB)"
+                                         },
+                     "HUAWEI-TC-MIB":  {
+                                           "status":  "FAIL",
+                                           "exit":  79,
+                                           "detail":  "HUAWEI-TC-MIB (Identifier should not end with \u0027-\u0027: subbname8090DEVCR5D00P8E871- at MIB HUAWEI-TC-MIB, line 22728)"
+                                       },
+                     "IANA-ENTITY-MIB":  {
+                                             "status":  "PASS",
+                                             "exit":  0,
+                                             "detail":  ""
+                                         },
+                     "IANAifType-MIB":  {
+                                            "status":  "PASS",
+                                            "exit":  0,
+                                            "detail":  ""
+                                        },
+                     "IF-MIB":  {
+                                    "status":  "PASS",
+                                    "exit":  0,
+                                    "detail":  ""
+                                },
+                     "INET-ADDRESS-MIB":  {
+                                              "status":  "PASS",
+                                              "exit":  0,
+                                              "detail":  ""
+                                          },
+                     "IP-MIB":  {
+                                    "status":  "PASS",
+                                    "exit":  0,
+                                    "detail":  ""
+                                },
+                     "P-BRIDGE-MIB":  {
+                                          "status":  "PASS",
+                                          "exit":  0,
+                                          "detail":  ""
+                                      },
+                     "Q-BRIDGE-MIB":  {
+                                          "status":  "FAIL",
+                                          "exit":  79,
+                                          "detail":  "RFC-1212 (Bad grammar near offset 435 at MIB RFC-1212, line 79)"
+                                      },
+                     "RFC1155-SMI":  {
+                                         "status":  "PASS",
+                                         "exit":  0,
+                                         "detail":  ""
+                                     },
+                     "RFC-1212":  {
+                                      "status":  "FAIL",
+                                      "exit":  79,
+                                      "detail":  "RFC-1212 (Bad grammar near offset 435 at MIB RFC-1212, line 79)"
+                                  },
+                     "RFC1213-MIB":  {
+                                         "status":  "FAIL",
+                                         "exit":  79,
+                                         "detail":  "RFC-1212 (Bad grammar near offset 435 at MIB RFC-1212, line 79)"
+                                     },
+                     "RFC1271-MIB":  {
+                                         "status":  "FAIL",
+                                         "exit":  79,
+                                         "detail":  "RFC-1212 (Bad grammar near offset 435 at MIB RFC-1212, line 79)"
+                                     },
+                     "RMON2-MIB":  {
+                                       "status":  "FAIL",
+                                       "exit":  79,
+                                       "detail":  "RFC-1212 (Bad grammar near offset 435 at MIB RFC-1212, line 79)"
+                                   },
+                     "RMON-MIB":  {
+                                      "status":  "PASS",
+                                      "exit":  0,
+                                      "detail":  ""
+                                  },
+                     "SNMP-FRAMEWORK-MIB":  {
+                                                "status":  "PASS",
+                                                "exit":  0,
+                                                "detail":  ""
+                                            },
+                     "SNMPv2-CONF":  {
+                                         "status":  "PASS",
+                                         "exit":  0,
+                                         "detail":  ""
+                                     },
+                     "SNMPv2-MIB":  {
+                                        "status":  "PASS",
+                                        "exit":  0,
+                                        "detail":  ""
+                                    },
+                     "SNMPv2-SMI":  {
+                                        "status":  "PASS",
+                                        "exit":  0,
+                                        "detail":  ""
+                                    },
+                     "SNMPv2-TC":  {
+                                       "status":  "PASS",
+                                       "exit":  0,
+                                       "detail":  ""
+                                   },
+                     "TOKEN-RING-RMON-MIB":  {
+                                                 "status":  "FAIL",
+                                                 "exit":  79,
+                                                 "detail":  "RFC-1212 (Bad grammar near offset 435 at MIB RFC-1212, line 79)"
+                                             },
+                     "UUID-TC-MIB":  {
+                                         "status":  "PASS",
+                                         "exit":  0,
+                                         "detail":  ""
+                                     }
+                 },
+    "overlay":  {
+                    "ATM-TC-MIB":  {
+                                       "status":  "PASS",
+                                       "exit":  0,
+                                       "detail":  ""
+                                   },
+                    "BRIDGE-MIB":  {
+                                       "status":  "PASS",
+                                       "exit":  0,
+                                       "detail":  ""
+                                   },
+                    "ENTITY-MIB":  {
+                                       "status":  "PASS",
+                                       "exit":  0,
+                                       "detail":  ""
+                                   },
+                    "HCNUM-TC":  {
+                                     "status":  "PASS",
+                                     "exit":  0,
+                                     "detail":  ""
+                                 },
+                    "HUAWEI-DEVICE-EXT-MIB":  {
+                                                  "status":  "PASS",
+                                                  "exit":  0,
+                                                  "detail":  ""
+                                              },
+                    "HUAWEI-DEVICE-MIB":  {
+                                              "status":  "PASS",
+                                              "exit":  0,
+                                              "detail":  ""
+                                          },
+                    "HUAWEI-ENTITY-EXTENT-MIB":  {
+                                                     "status":  "PASS",
+                                                     "exit":  0,
+                                                     "detail":  ""
+                                                 },
+                    "HUAWEI-GTL-MIB":  {
+                                           "status":  "PASS",
+                                           "exit":  0,
+                                           "detail":  ""
+                                       },
+                    "HUAWEI-IF-EXT-MIB":  {
+                                              "status":  "PASS",
+                                              "exit":  0,
+                                              "detail":  ""
+                                          },
+                    "HUAWEI-IMA-MIB":  {
+                                           "status":  "PASS",
+                                           "exit":  0,
+                                           "detail":  ""
+                                       },
+                    "HUAWEI-MIB":  {
+                                       "status":  "PASS",
+                                       "exit":  0,
+                                       "detail":  ""
+                                   },
+                    "HUAWEI-PORT-MIB":  {
+                                            "status":  "PASS",
+                                            "exit":  0,
+                                            "detail":  ""
+                                        },
+                    "HUAWEI-TC-MIB":  {
+                                          "status":  "PASS",
+                                          "exit":  0,
+                                          "detail":  ""
+                                      },
+                    "IANA-ENTITY-MIB":  {
+                                            "status":  "PASS",
+                                            "exit":  0,
+                                            "detail":  ""
+                                        },
+                    "IANAifType-MIB":  {
+                                           "status":  "PASS",
+                                           "exit":  0,
+                                           "detail":  ""
+                                       },
+                    "IF-MIB":  {
+                                   "status":  "PASS",
+                                   "exit":  0,
+                                   "detail":  ""
+                               },
+                    "INET-ADDRESS-MIB":  {
+                                             "status":  "PASS",
+                                             "exit":  0,
+                                             "detail":  ""
+                                         },
+                    "IP-MIB":  {
+                                   "status":  "PASS",
+                                   "exit":  0,
+                                   "detail":  ""
+                               },
+                    "P-BRIDGE-MIB":  {
+                                         "status":  "PASS",
+                                         "exit":  0,
+                                         "detail":  ""
+                                     },
+                    "Q-BRIDGE-MIB":  {
+                                         "status":  "PASS",
+                                         "exit":  0,
+                                         "detail":  ""
+                                     },
+                    "RFC1155-SMI":  {
+                                        "status":  "PASS",
+                                        "exit":  0,
+                                        "detail":  ""
+                                    },
+                    "RFC-1212":  {
+                                     "status":  "PASS",
+                                     "exit":  0,
+                                     "detail":  ""
+                                 },
+                    "RFC1213-MIB":  {
+                                        "status":  "PASS",
+                                        "exit":  0,
+                                        "detail":  ""
+                                    },
+                    "RFC1271-MIB":  {
+                                        "status":  "PASS",
+                                        "exit":  0,
+                                        "detail":  ""
+                                    },
+                    "RMON2-MIB":  {
+                                      "status":  "PASS",
+                                      "exit":  0,
+                                      "detail":  ""
+                                  },
+                    "RMON-MIB":  {
+                                     "status":  "PASS",
+                                     "exit":  0,
+                                     "detail":  ""
+                                 },
+                    "SNMP-FRAMEWORK-MIB":  {
+                                               "status":  "PASS",
+                                               "exit":  0,
+                                               "detail":  ""
+                                           },
+                    "SNMPv2-CONF":  {
+                                        "status":  "PASS",
+                                        "exit":  0,
+                                        "detail":  ""
+                                    },
+                    "SNMPv2-MIB":  {
+                                       "status":  "PASS",
+                                       "exit":  0,
+                                       "detail":  ""
+                                   },
+                    "SNMPv2-SMI":  {
+                                       "status":  "PASS",
+                                       "exit":  0,
+                                       "detail":  ""
+                                   },
+                    "SNMPv2-TC":  {
+                                      "status":  "PASS",
+                                      "exit":  0,
+                                      "detail":  ""
+                                  },
+                    "TOKEN-RING-RMON-MIB":  {
+                                                "status":  "PASS",
+                                                "exit":  0,
+                                                "detail":  ""
+                                            },
+                    "UUID-TC-MIB":  {
+                                        "status":  "PASS",
+                                        "exit":  0,
+                                        "detail":  ""
+                                    }
+                },
+    "summary":  {
+                    "modules":  33,
+                    "pristinePass":  18,
+                    "pristineFail":  15,
+                    "overlayPass":  33,
+                    "overlayFail":  0,
+                    "knownIssueIds":  [
+                                          "HUAWEI-MIB-DUP-SYMBOLS",
+                                          "HUAWEI-TC-MIB-TRAILING-HYPHEN",
+                                          "RFC-1212-LIBSMI-STUB"
+                                      ]
+                }
+}
