@@ -37,6 +37,8 @@ const envSchema = z.object({
   SNAPSHOT_PUBLIC_API_URL: z.string().optional(),
   SNAPSHOT_CACHE_DIR: z.string().default('/var/lib/netvision-alarm-snapshots'),
   SNAPSHOT_TTL_SECONDS: z.coerce.number().int().min(60).max(7200).default(900),
+  /** Retencao dos PNGs no cache do snapshot (horas). */
+  SNAPSHOT_CACHE_KEEP_HOURS: z.coerce.number().int().min(1).max(720).default(24),
 });
 
 const parsed = envSchema.parse(process.env);

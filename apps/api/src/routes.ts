@@ -706,6 +706,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     apiPublicUrl: config.SNAPSHOT_PUBLIC_API_URL,
     cacheDir: config.SNAPSHOT_CACHE_DIR,
     ttlSeconds: config.SNAPSHOT_TTL_SECONDS,
+    cacheKeepHours: config.SNAPSHOT_CACHE_KEEP_HOURS,
   });
   const alarmTransport = new N8nAlarmTransport({
     media: mediaService,

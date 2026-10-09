@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -269,6 +269,51 @@ describe('orquestracao do PNG (renderer injetado)', () => {
       render: async () => {
         throw new Error('sem renderer');
       },
+    });
+    await expect(snapshot(payloadFor('INTERFACE_CRC'))).resolves.toMatchObject({ available: true });
+  });
+});
+
+describe('limpeza do cache de snapshots', () => {
+  it('apaga PNGs vencidos, preserva recentes e nunca toca outros arquivos', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'snapshot-cache-'));
+    const oldPng = join(dir, 'aaaaaaaa-vencido.png');
+    const freshPng = join(dir, 'bbbbbbbb-recente.png');
+    const otherFile = join(dir, 'cccccccc-manter.txt');
+    await writeFile(oldPng, Buffer.from('png-antigo'));
+    await writeFile(freshPng, Buffer.from('png-recente'));
+    await writeFile(otherFile, Buffer.from('nao-e-png'));
+    const longAgo = new Date(Date.now() - 40 * 3_600_000);
+    await utimes(oldPng, longAgo, longAgo);
+    await utimes(otherFile, longAgo, longAgo);
+
+    const snapshot = createAlarmChartSnapshot({
+      render: async () => Buffer.from('png-novo'),
+      signingKey: KEY,
+      webInternalUrl: 'http://127.0.0.1:3005',
+      apiPublicUrl: 'http://127.0.0.1:3340',
+      cacheDir: dir,
+      ttlSeconds: 900,
+      cacheKeepHours: 24,
+      now: () => new Date(),
+    });
+    const media = await snapshot(payloadFor('INTERFACE_CRC'));
+    expect(media.available).toBe(true);
+
+    await expect(stat(oldPng)).rejects.toThrow();
+    await expect(stat(freshPng)).resolves.toBeDefined();
+    await expect(readFile(otherFile, 'utf8')).resolves.toBe('nao-e-png');
+  });
+
+  it('cache sem diretorio nao gera erro no caminho de escrita', async () => {
+    const snapshot = createAlarmChartSnapshot({
+      render: async () => Buffer.from('png'),
+      signingKey: KEY,
+      webInternalUrl: 'http://127.0.0.1:3005',
+      apiPublicUrl: 'http://127.0.0.1:3340',
+      cacheDir: join(tmpdir(), 'snapshot-cache-inexistente-prune-qa'),
+      ttlSeconds: 900,
+      now: () => new Date(),
     });
     await expect(snapshot(payloadFor('INTERFACE_CRC'))).resolves.toMatchObject({ available: true });
   });

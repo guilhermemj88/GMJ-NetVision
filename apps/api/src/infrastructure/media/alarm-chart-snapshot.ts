@@ -1,4 +1,4 @@
-import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { HistoryPeriod } from '@gmj/shared';
 import type { NetworkAlarmWebhookPayload } from '../alarms/n8n-alarm-transport';
@@ -41,6 +41,15 @@ export const UNAVAILABLE_ALARM_CHART: AlarmChartMedia = {
 
 export const SNAPSHOT_VIEWPORT = { width: 1200, height: 720 } as const;
 const DEFAULT_RENDER_TIMEOUT_MS = 12_000;
+/**
+ * Limpeza do cache de PNGs: roda no maximo a cada 30 min, apaga em lote
+ * limitado e SOMENTE arquivos `*.png` do diretorio de cache (nunca recursivo,
+ * nunca rm -rf). O token assinado expira em minutos; a retencao existe so para
+ * o cache nao crescer sem limite.
+ */
+const CACHE_PRUNE_INTERVAL_MS = 30 * 60_000;
+const CACHE_PRUNE_MAX_DELETIONS = 200;
+export const DEFAULT_SNAPSHOT_CACHE_KEEP_HOURS = 24;
 
 const CRC_SERIES: SnapshotSeriesSpec[] = [{ key: 'rxErrors', label: 'CRC RX', tone: 'crc' }];
 const ERRORS_SERIES: SnapshotSeriesSpec[] = [
@@ -156,6 +165,8 @@ export interface AlarmChartSnapshotDeps {
   apiPublicUrl?: string | undefined;
   cacheDir: string;
   ttlSeconds?: number;
+  /** Retencao dos PNGs em cache (horas). Default: 24. */
+  cacheKeepHours?: number;
   timeoutMs?: number;
   now?: () => Date;
   /** Injetavel nos testes; por padrao fala HTTP com o renderer isolado. */
@@ -206,6 +217,34 @@ export function createAlarmChartSnapshot(deps: AlarmChartSnapshotDeps): AlarmCha
   );
 
   const filePath = (cacheKey: string) => join(deps.cacheDir, `${cacheKey}.png`);
+  const keepMs = (deps.cacheKeepHours ?? DEFAULT_SNAPSHOT_CACHE_KEEP_HOURS) * 3_600_000;
+  let lastPruneMs = 0;
+
+  /**
+   * Limpeza LIMITADA ao diretorio de cache: remove apenas `*.png` mais antigos
+   * que a janela de retencao. Best-effort: qualquer falha (diretorio ausente,
+   * permissao) nao afeta o snapshot nem o alarme.
+   */
+  async function pruneCache(): Promise<void> {
+    const current = now().getTime();
+    if (current - lastPruneMs < CACHE_PRUNE_INTERVAL_MS) return;
+    lastPruneMs = current;
+    try {
+      const entries = await readdir(deps.cacheDir, { withFileTypes: true });
+      let deleted = 0;
+      for (const entry of entries) {
+        if (deleted >= CACHE_PRUNE_MAX_DELETIONS) break;
+        if (!entry.isFile() || !entry.name.endsWith('.png')) continue;
+        const path = join(deps.cacheDir, entry.name);
+        const info = await stat(path).catch(() => null);
+        if (!info || current - info.mtimeMs <= keepMs) continue;
+        await unlink(path).catch(() => undefined);
+        deleted += 1;
+      }
+    } catch {
+      // Cache ausente/ilegivel: o snapshot segue normalmente.
+    }
+  }
 
   async function readCached(cacheKey: string): Promise<Buffer | null> {
     try {
@@ -239,6 +278,7 @@ export function createAlarmChartSnapshot(deps: AlarmChartSnapshotDeps): AlarmCha
         await writeFile(filePath(cacheKey), png);
       }
       const mediaToken = signMediaToken(cacheKey, signingKey, ttlSeconds, generatedAt.getTime());
+      await pruneCache();
       return {
         available: true,
         url: new URL(mediaSnapshotPath(mediaToken), deps.apiPublicUrl).toString(),
