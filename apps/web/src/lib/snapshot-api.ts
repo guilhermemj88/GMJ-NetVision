@@ -19,6 +19,11 @@ export interface SnapshotChartSpec {
     message: string | null;
     eventAt: string;
     resolvedAt: string | null;
+    /** TESTAR ALARME: o PNG e de um teste, nao de um alarme real. */
+    test?: boolean;
+    /** Origem REAL do historico quando o PNG e de teste. */
+    sourceDeviceName?: string | null;
+    sourceInterfaceName?: string | null;
   };
   metric: {
     series: SnapshotChartSeries[];

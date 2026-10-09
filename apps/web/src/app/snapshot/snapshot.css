@@ -46,6 +46,13 @@
   letter-spacing: 0.6px;
 }
 
+/* Origem REAL do histórico no PNG de teste (TESTAR ALARME). */
+.snapshot-header__source {
+  color: #9fd4e4 !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+}
+
 .snapshot-header__event {
   display: flex;
   align-items: center;

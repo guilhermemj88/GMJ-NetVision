@@ -3,8 +3,8 @@
 import { useEffect, useState } from 'react';
 import { Badge, Button } from '@gmj/ui';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { BellRing, KeyRound, LoaderCircle, Power, Send, ShieldOff, TriangleAlert } from 'lucide-react';
-import { alarmTypeLabel, type Alarm, type NetworkAlarmTestEvent, type NetworkAlarmTestSeverity, type NetworkAlarmTestType } from '@gmj/shared';
+import { BellRing, KeyRound, LoaderCircle, Power, Search, Send, ShieldOff, TriangleAlert, X } from 'lucide-react';
+import { alarmTypeLabel, isChartableAlarmType, type Alarm, type InterfaceSearchResult, type NetworkAlarmTestEvent, type NetworkAlarmTestSeverity, type NetworkAlarmTestType } from '@gmj/shared';
 import {
   NETWORK_ALARM_TEST_DEFAULT_SEVERITY,
   NETWORK_ALARM_TEST_EVENTS,
@@ -13,6 +13,7 @@ import {
   NETWORK_ALARM_TEST_TYPE_LABELS,
 } from '@gmj/shared';
 import { useAlarmIndex } from '@/lib/use-alarms';
+import { searchInterfaces } from '@/lib/api';
 import {
   MEDIA_SOURCE_LABELS,
   MEDIA_STATUS_LABELS,
@@ -59,6 +60,12 @@ export interface AlarmTestDraft {
   severity: NetworkAlarmTestSeverity;
   /** INCLUIR GRÁFICO: default OFF; liga o snapshot no payload de teste. */
   includeChart: boolean;
+  /**
+   * Interface REAL que empresta o histórico para o PNG (F9.5.2). Vale SOMENTE
+   * no caminho de teste: o texto do alarme continua sendo a fixture e nenhum
+   * estado operacional é criado.
+   */
+  chartInterfaceId: string | null;
 }
 
 /**
@@ -78,20 +85,134 @@ const DEFAULT_ALARM_TEST_DRAFT: AlarmTestDraft = {
   event: 'OPENED',
   severity: NETWORK_ALARM_TEST_DEFAULT_SEVERITY.INTERFACE_DOWN,
   includeChart: false,
+  chartInterfaceId: null,
 };
+
+/** O teste pediu gráfico E o tipo tem série histórica para desenhar. */
+export function alarmTestNeedsChartInterface(draft: AlarmTestDraft): boolean {
+  return draft.includeChart && isChartableAlarmType(draft.type);
+}
+
+/** Rótulo do resultado da busca: equipamento · interface · alias. */
+export function chartSourceLabel(result: InterfaceSearchResult): string {
+  const host = result.hostname || result.deviceName;
+  return [host, result.interfaceName, result.alias].filter(Boolean).join(' · ');
+}
+
+/**
+ * Seletor da INTERFACE DE REFERÊNCIA DO GRÁFICO: busca server-side no MESMO
+ * endpoint do inventário usado pela busca global (debounce de 250 ms, limite de
+ * 40 itens). Nada é carregado em massa e a escolha vive só na tela.
+ */
+export function AlarmTestChartSourceField({
+  selected,
+  onSelect,
+  disabled,
+}: {
+  selected: InterfaceSearchResult | null;
+  onSelect: (result: InterfaceSearchResult | null) => void;
+  disabled: boolean;
+}) {
+  const [query, setQuery] = useState('');
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+
+  useEffect(() => {
+    const normalized = query.trim();
+    if (normalized.length < 2) {
+      setDebouncedQuery('');
+      return;
+    }
+    const timer = window.setTimeout(() => setDebouncedQuery(normalized), 250);
+    return () => window.clearTimeout(timer);
+  }, [query]);
+
+  const resultsQuery = useQuery({
+    queryKey: ['interface-search', debouncedQuery],
+    queryFn: () => searchInterfaces(debouncedQuery, 40),
+    enabled: !disabled && debouncedQuery.length >= 2,
+    staleTime: 15_000,
+  });
+  const results = resultsQuery.data ?? [];
+
+  const choose = (result: InterfaceSearchResult) => {
+    onSelect(result);
+    setQuery('');
+    setDebouncedQuery('');
+  };
+
+  if (selected) {
+    return (
+      <div className="media-test-sim__source" data-testid="chart-source-selected">
+        <span className="media-test-sim__source-value">{chartSourceLabel(selected)}</span>
+        <Button
+          variant="ghost"
+          onClick={() => onSelect(null)}
+          disabled={disabled}
+          aria-label="Remover interface de referência do gráfico"
+        >
+          <X size={14} /> REMOVER
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="media-test-sim__source">
+      <Search size={14} />
+      <input
+        value={query}
+        aria-label="Buscar interface de referência do gráfico"
+        placeholder="Equipamento, interface, alias, ifIndex ou IP"
+        disabled={disabled}
+        onChange={(event) => setQuery(event.target.value)}
+      />
+      {resultsQuery.isFetching ? <LoaderCircle className="spin" size={14} /> : null}
+      {debouncedQuery.length >= 2 ? (
+        <div className="media-test-sim__source-results" role="listbox" aria-label="Interfaces encontradas">
+          {resultsQuery.isError ? (
+            <p className="media-panel__hint">Não foi possível consultar o inventário.</p>
+          ) : results.length === 0 && !resultsQuery.isFetching ? (
+            <p className="media-panel__hint">Nenhuma interface encontrada.</p>
+          ) : (
+            results.map((result) => (
+              <button
+                type="button"
+                role="option"
+                aria-selected={false}
+                key={result.interfaceId}
+                onClick={() => choose(result)}
+              >
+                <strong>{result.hostname || result.deviceName}</strong>
+                <span>{result.interfaceName}</span>
+                {result.alias ? <small>{result.alias}</small> : null}
+              </button>
+            ))
+          )}
+        </div>
+      ) : null}
+    </div>
+  );
+}
 
 /** Linha compacta TIPO / EVENTO / SEVERIDADE + botao do simulador. */
 export function AlarmTestSimulator({
   draft,
   onChange,
+  chartSource,
+  onChartSourceChange,
   onTest,
   disabled,
 }: {
   draft: AlarmTestDraft;
   onChange: (draft: AlarmTestDraft) => void;
+  chartSource: InterfaceSearchResult | null;
+  onChartSourceChange: (result: InterfaceSearchResult | null) => void;
   onTest: () => void;
   disabled: boolean;
 }) {
+  const needsChartSource = alarmTestNeedsChartInterface(draft);
+  const missingChartSource = needsChartSource && draft.chartInterfaceId === null;
+
   return (
     <div className="media-test-sim">
       <div className="media-test-sim__row">
@@ -152,15 +273,39 @@ export function AlarmTestSimulator({
           />
           <span>INCLUIR GRÁFICO [{draft.includeChart ? 'ON' : 'OFF'}]</span>
         </label>
-        <Button variant="ghost" onClick={onTest} disabled={disabled}>
+        <Button
+          variant="ghost"
+          onClick={onTest}
+          disabled={disabled || missingChartSource}
+          title={
+            missingChartSource
+              ? 'Selecione a interface de referência do gráfico antes de testar'
+              : undefined
+          }
+        >
           <Send size={15} /> TESTAR ALARME
         </Button>
       </div>
+      {needsChartSource ? (
+        <div className="media-test-sim__row media-test-sim__row--source">
+          <span className="media-test-sim__row-label">INTERFACE DE REFERÊNCIA DO GRÁFICO</span>
+          <AlarmTestChartSourceField
+            selected={chartSource}
+            onSelect={(result) => {
+              onChartSourceChange(result);
+              onChange({ ...draft, chartInterfaceId: result?.interfaceId ?? null });
+            }}
+            disabled={disabled}
+          />
+        </div>
+      ) : null}
       <p className="media-panel__hint">
         Simulação: não cria alarme no NetVision.
-        {draft.includeChart
-          ? ' Com gráfico: o PNG usa o histórico real de uma interface e o webhook continua sem base64.'
-          : ''}
+        {needsChartSource
+          ? ' Com gráfico: selecione uma interface real acima; somente o histórico dela será usado no PNG. O alarme de teste continua sintético e não cria estado operacional.'
+          : draft.includeChart
+            ? ' Este tipo de alarme não tem série histórica: o teste sai somente com o texto.'
+            : ''}
       </p>
     </div>
   );
@@ -178,15 +323,17 @@ export function AlarmTestResultBanner({ result }: { result: MediaWebhookTestResu
       </div>
     );
   }
+  // `safeError` e a mensagem mais util (validacao do grafico, canal nao
+  // configurado); o HTTP so entra quando existe resposta do destino.
+  const headline =
+    result.httpStatus !== null
+      ? `Falha no webhook de alarmes · HTTP ${result.httpStatus}`
+      : (result.safeError ?? (result.skipped ? 'Webhook de alarmes não configurado' : 'Falha no webhook de alarmes'));
   return (
     <div className="media-test media-test--fail" role="status">
       <TriangleAlert size={17} />
-      {result.skipped
-        ? 'Webhook de alarmes não configurado'
-        : result.httpStatus !== null
-          ? `Falha no webhook de alarmes · HTTP ${result.httpStatus}`
-          : 'Falha no webhook de alarmes'}
-      {result.safeError ? <span>{result.safeError}</span> : null}
+      {headline}
+      {result.httpStatus !== null && result.safeError ? <span>{result.safeError}</span> : null}
     </div>
   );
 }
@@ -237,6 +384,9 @@ export function NetworkAlarmsMediaSection() {
   const [testResult, setTestResult] = useState<MediaWebhookTestResult | null>(null);
   // Simulador do TESTAR ALARME (F9.5.1): escolha local, nada e persistido.
   const [testDraft, setTestDraft] = useState<AlarmTestDraft>(DEFAULT_ALARM_TEST_DRAFT);
+  // Interface real escolhida para o histórico do PNG (rotulo da tela; a
+  // requisicao envia apenas o id do draft).
+  const [chartSource, setChartSource] = useState<InterfaceSearchResult | null>(null);
 
   const integrationUrl = integration?.outboundUrl ?? null;
   useEffect(() => {
@@ -282,9 +432,16 @@ export function NetworkAlarmsMediaSection() {
   });
 
   const testMutation = useMutation({
-    mutationFn: async (selection: AlarmTestDraft) => {
+    mutationFn: async (draft: AlarmTestDraft) => {
       if (!integration) throw new Error('Salve a configuração antes de testar');
-      return testMediaAlarm(integration.id, selection);
+      return testMediaAlarm(integration.id, {
+        type: draft.type,
+        event: draft.event,
+        severity: draft.severity,
+        includeChart: draft.includeChart,
+        // So vai no corpo quando existe: a API valida a interface no inventario.
+        ...(draft.chartInterfaceId ? { chartInterfaceId: draft.chartInterfaceId } : {}),
+      });
     },
     onSuccess: (result) => {
       setTestResult(result);
@@ -393,6 +550,8 @@ export function NetworkAlarmsMediaSection() {
         <AlarmTestSimulator
           draft={testDraft}
           onChange={setTestDraft}
+          chartSource={chartSource}
+          onChartSourceChange={setChartSource}
           onTest={() => testMutation.mutate(testDraft)}
           disabled={busy || !integration}
         />

@@ -13,7 +13,8 @@ import type {
   ResolvedMediaChannel,
 } from './media-types';
 import type { NetworkAlarmTestSelectionInput } from '@gmj/shared';
-import { resolveNetworkAlarmTestSelection } from '@gmj/shared';
+import { isChartableAlarmType, resolveNetworkAlarmTestSelection } from '@gmj/shared';
+import type { AlarmChartSource } from './alarm-chart-snapshot';
 import {
   generateIntegrationToken,
   safeDestination,
@@ -42,15 +43,30 @@ export interface MediaIntegrationServiceDeps {
   /** A migration da Fase 9 esta aplicada? */
   migrationReady: () => Promise<boolean>;
   env: MediaEnvBootstrap;
+  /**
+   * Inventario READ-ONLY para o grafico do TESTAR ALARME: valida a interface de
+   * referencia e informa as lanes conhecidas. Ausente em montagens de teste, o
+   * caminho com grafico devolve erro seguro.
+   */
+  chartSource?: MediaChartSourcePort | undefined;
   now?: () => Date;
   logRetention?: number;
   logger?: (message: string, meta?: Record<string, unknown>) => void;
 }
 
+/** Leitura do inventario usada SO para montar o grafico de teste. */
+export interface MediaChartSourcePort {
+  resolveChartSource(interfaceId: string): Promise<AlarmChartSource | null>;
+}
+
 /** Porta do transporte de alarmes usada apenas pelo TESTAR ALARME (F9.5). */
 export interface MediaAlarmTestPort {
   publishAlarmTest(
-    input?: { profileId?: string | null; includeChart?: boolean } & NetworkAlarmTestSelectionInput,
+    input?: {
+      profileId?: string | null;
+      includeChart?: boolean;
+      chartSource?: AlarmChartSource | null;
+    } & NetworkAlarmTestSelectionInput,
   ): Promise<MediaDeliveryOutcome>;
 }
 
@@ -479,11 +495,16 @@ export class MediaIntegrationService implements MediaChannelPort {
    * tipo/evento/severidade vem do simulador da aba de alarmes; sem selecao vale
    * o default (INTERFACE_DOWN / OPENED / severidade do tipo). Nao cria Alarm,
    * nao cria OperationalOccurrence e nao mexe na mitigacao.
+   *
+   * Com grafico: `chartInterfaceId` e OBRIGATORIO para tipos que tem serie
+   * historica e precisa existir no inventario. A interface entra apenas como
+   * fonte READ-ONLY do historico do PNG — o texto do teste continua sintetico.
+   * Referencia ausente/invalida devolve erro seguro e NADA e enviado.
    */
   async testAlarmWebhook(
     id: string,
     selection?: NetworkAlarmTestSelectionInput | null,
-    options: { includeChart?: boolean } = {},
+    options: { includeChart?: boolean; chartInterfaceId?: string | null } = {},
   ): Promise<MediaDeliveryOutcome & { checkedAt: string }> {
     const checkedAt = this.now().toISOString();
     const integration = await this.read(() => this.deps.repository.get(id), null);
@@ -510,16 +531,46 @@ export class MediaIntegrationService implements MediaChannelPort {
         checkedAt,
       };
     }
+    const selectionResolved = resolveNetworkAlarmTestSelection(selection);
+    const includeChart = options.includeChart ?? false;
+    // Default OFF: ligar o grafico so acontece quando o operador escolhe.
+    let chartSource: AlarmChartSource | null = null;
+    if (includeChart && isChartableAlarmType(selectionResolved.type)) {
+      const reference = (options.chartInterfaceId ?? '').trim();
+      chartSource = reference ? await this.resolveChartSource(reference) : null;
+      if (!chartSource) {
+        return {
+          ok: false,
+          skipped: true,
+          httpStatus: null,
+          latencyMs: null,
+          safeError: 'Selecione uma interface válida para gerar o gráfico de teste.',
+          event: 'NETWORK_ALARM_TEST',
+          checkedAt,
+        };
+      }
+    }
     const outcome = await transport.publishAlarmTest({
       profileId: integration.id,
-      ...resolveNetworkAlarmTestSelection(selection),
-      // Default OFF: ligar o grafico so acontece quando o operador escolhe.
-      includeChart: options.includeChart ?? false,
+      ...selectionResolved,
+      includeChart,
+      chartSource,
     });
     return { ...outcome, checkedAt };
   }
 
   // ---- helpers ------------------------------------------------------------
+
+  /** Interface real do historico do grafico de teste (read-only, nunca lanca). */
+  private async resolveChartSource(interfaceId: string): Promise<AlarmChartSource | null> {
+    const port = this.deps.chartSource;
+    if (!port) return null;
+    try {
+      return await port.resolveChartSource(interfaceId);
+    } catch {
+      return null;
+    }
+  }
 
   private async isMigrationReady(): Promise<boolean> {
     if (this.deps.repositoryKind === 'MEMORY') return false;

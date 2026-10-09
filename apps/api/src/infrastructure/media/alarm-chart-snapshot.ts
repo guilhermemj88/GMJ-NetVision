@@ -1,6 +1,6 @@
 import { mkdir, readdir, readFile, stat, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { HistoryPeriod } from '@gmj/shared';
+import { isChartableAlarmType, type HistoryPeriod } from '@gmj/shared';
 import type { NetworkAlarmWebhookPayload } from '../alarms/n8n-alarm-transport';
 import {
   SNAPSHOT_TOKEN_TTL_SECONDS,
@@ -61,14 +61,42 @@ const DISCARD_SERIES: SnapshotSeriesSpec[] = [
   { key: 'txDiscards', label: 'Discards TX', tone: 'tx' },
 ];
 
-/** Tipos que possuem serie historica real para desenhar (os demais ficam texto-only). */
-export function isChartableAlarmType(type: string): boolean {
-  return (
-    type === 'INTERFACE_CRC' ||
-    type === 'INTERFACE_ERRORS' ||
-    type === 'INTERFACE_DISCARDS' ||
-    type === 'OPTICAL_RX_DEGRADATION'
-  );
+/**
+ * Tipos que possuem serie historica real para desenhar (os demais ficam
+ * texto-only). Mesma fonte de verdade do frontend (`@gmj/shared`).
+ */
+export { isChartableAlarmType };
+
+/**
+ * Origem REAL do historico do PNG. Existe apenas no caminho TESTAR ALARME: o
+ * alarme sintetico continua com `device`/`interface` da fixture no payload; o
+ * grafico e que precisa de uma interface de verdade para ter serie.
+ */
+export interface AlarmChartSource {
+  interfaceId: string;
+  deviceName: string;
+  interfaceName: string;
+  alias: string;
+  /** Lanes opticas conhecidas do inventario (vazio = nada a resolver). */
+  lanes: number[];
+}
+
+export interface AlarmChartSpecOptions {
+  /** Usa esta interface SOMENTE como fonte da serie historica. */
+  source?: AlarmChartSource | null;
+  /** Marca o PNG como TESTE e credita a interface real usada no historico. */
+  test?: boolean;
+}
+
+/**
+ * Lane creditada no PNG: a do alarme quando ela existe no modulo real; fora
+ * disso vale a MENOR lane disponivel (deterministico, prefere a 0). O escalar
+ * agregado do F1A NUNCA vira lane.
+ */
+function chartLane(lane: number | null, available: readonly number[]): number | null {
+  if (!available.length) return lane;
+  if (lane !== null && available.includes(lane)) return lane;
+  return Math.min(...available);
 }
 
 /** RAPID_DROP encurta a janela optica (1h) para o PNG mostrar a queda. */
@@ -85,8 +113,13 @@ export function buildAlarmChartSpec(
   payload: NetworkAlarmWebhookPayload,
   ttlSeconds: number = SNAPSHOT_TOKEN_TTL_SECONDS,
   now: number = Date.now(),
+  options: AlarmChartSpecOptions = {},
 ): SnapshotSpec | null {
   if (!isChartableAlarmType(payload.type)) return null;
+  const source = options.source ?? null;
+  // A interface exibida no texto continua sendo a do payload (fixture no
+  // TESTAR ALARME); `source` troca SOMENTE a origem da serie historica.
+  const sourceInterfaceId = source?.interfaceId ?? payload.interfaceId;
   const header = {
     device: payload.deviceName,
     interfaceName: payload.interfaceName,
@@ -96,18 +129,25 @@ export function buildAlarmChartSpec(
     message: payload.message,
     eventAt: payload.occurredAt,
     resolvedAt: payload.event === 'RESOLVED' ? (payload.resolvedAt ?? payload.occurredAt) : null,
+    ...(options.test
+      ? {
+          test: true,
+          sourceDeviceName: source?.deviceName ?? null,
+          sourceInterfaceName: source?.interfaceName ?? null,
+        }
+      : {}),
   };
   if (payload.type === 'OPTICAL_RX_DEGRADATION') {
     const optical = payload.optical;
     const spec = signSpec(
       {
         kind: 'OPTICAL' as const,
-        interfaceId: payload.interfaceId,
+        interfaceId: sourceInterfaceId,
         period: opticalChartPeriod(payload.triggerReasons),
         header,
         metric: null,
         optical: {
-          lane: optical?.lane ?? payload.lane ?? null,
+          lane: chartLane(optical?.lane ?? payload.lane ?? null, source?.lanes ?? []),
           lowAlarmDbm: optical?.lowAlarmDbm ?? null,
           highAlarmDbm: optical?.highAlarmDbm ?? null,
           lowWarningDbm: optical?.lowWarningDbm ?? null,
@@ -128,7 +168,7 @@ export function buildAlarmChartSpec(
   return signSpec(
     {
       kind: 'METRIC' as const,
-      interfaceId: payload.interfaceId,
+      interfaceId: sourceInterfaceId,
       period: '15m' as HistoryPeriod,
       header,
       metric: {
@@ -174,7 +214,10 @@ export interface AlarmChartSnapshotDeps {
 }
 
 export interface AlarmChartSnapshot {
-  (payload: NetworkAlarmWebhookPayload): Promise<AlarmChartMedia>;
+  (
+    payload: NetworkAlarmWebhookPayload,
+    options?: AlarmChartSpecOptions,
+  ): Promise<AlarmChartMedia>;
   /** Reaproveita PNG ja renderizado (cache TTL) para o QA e para o n8n. */
   read(cacheKey: string): Promise<Buffer | null>;
 }
@@ -256,13 +299,16 @@ export function createAlarmChartSnapshot(deps: AlarmChartSnapshotDeps): AlarmCha
     }
   }
 
-  const snapshot = async (payload: NetworkAlarmWebhookPayload): Promise<AlarmChartMedia> => {
+  const snapshot = async (
+    payload: NetworkAlarmWebhookPayload,
+    options: AlarmChartSpecOptions = {},
+  ): Promise<AlarmChartMedia> => {
     const unavailable = (reason: string): AlarmChartMedia => ({
       ...UNAVAILABLE_ALARM_CHART,
       reason,
     });
     if (!configured) return unavailable('snapshot desabilitado');
-    const spec = buildAlarmChartSpec(payload, ttlSeconds, now().getTime());
+    const spec = buildAlarmChartSpec(payload, ttlSeconds, now().getTime(), options);
     if (!spec) return unavailable('tipo sem serie historica');
     const signingKey = deps.signingKey as string;
     const pageToken = signSnapshotToken(spec, signingKey, ttlSeconds, now().getTime());

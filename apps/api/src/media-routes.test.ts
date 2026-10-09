@@ -8,6 +8,7 @@ import { InMemoryMediaRepository } from './infrastructure/media/in-memory-media-
 import { createMediaSecretBox } from './infrastructure/media/media-secret-box';
 import { MediaIntegrationService } from './infrastructure/media/media-integration-service';
 import { N8nMediaTransport } from './infrastructure/media/n8n-media-transport';
+import type { AlarmChartSource } from './infrastructure/media/alarm-chart-snapshot';
 
 const KEY = Buffer.alloc(32, 9).toString('base64');
 const NOW = new Date('2026-09-29T14:03:00.000Z');
@@ -24,13 +25,17 @@ const alarmTestPort = vi.fn(async () => ({
   event: 'NETWORK_ALARM_TEST',
 }));
 
-async function buildApp(user: AuthUser | null = ADMIN): Promise<FastifyInstance> {
+async function buildApp(
+  user: AuthUser | null = ADMIN,
+  chartSource?: { resolveChartSource: (interfaceId: string) => Promise<AlarmChartSource | null> },
+): Promise<FastifyInstance> {
   const repository = new InMemoryMediaRepository();
   const media = new MediaIntegrationService({
     repository,
     secretBox: createMediaSecretBox(new CredentialVault(KEY)),
     repositoryKind: 'DATABASE',
     migrationReady: async () => true,
+    ...(chartSource ? { chartSource } : {}),
     env: { outboundUrl: null, outboundToken: null, inboundToken: null },
     now: () => NOW,
     logger: () => undefined,
@@ -244,6 +249,7 @@ describe('API de MÍDIAS', () => {
       event: 'OPENED',
       severity: 'CRITICAL',
       includeChart: false,
+      chartSource: null,
     });
     await app.close();
   });
@@ -270,19 +276,56 @@ describe('API de MÍDIAS', () => {
       event: 'ESCALATED',
       severity: 'CRITICAL',
       includeChart: false,
+      chartSource: null,
     });
 
-    // INCLUIR GRÁFICO: a rota repassa o pedido de snapshot para o transporte.
+    // INCLUIR GRÁFICO sem interface de referência: validacao no backend, nada e
+    // enviado (o botao so libera com interface escolhida).
     alarmTestPort.mockClear();
-    const withChart = await app.inject({
+    const withoutInterface = await app.inject({
       method: 'POST',
       url: `/api/media/integrations/${id}/test-alarm`,
       payload: { type: 'INTERFACE_CRC', includeChart: true },
     });
+    expect(withoutInterface.statusCode).toBe(200);
+    expect(withoutInterface.json()).toMatchObject({
+      ok: false,
+      skipped: true,
+      safeError: 'Selecione uma interface válida para gerar o gráfico de teste.',
+    });
+    expect(alarmTestPort).not.toHaveBeenCalled();
+
+    // Com a interface de referencia a rota repassa o pedido de snapshot.
+    const chartApp = await buildApp(ADMIN, {
+      resolveChartSource: async () => ({
+        interfaceId: 'if-1',
+        deviceName: 'BHE-VTA-F1A-BGP-01',
+        interfaceName: '100GE0/1/48',
+        alias: '',
+        lanes: [0, 1, 2, 3],
+      }),
+    });
+    const chartCreated = await chartApp.inject({
+      method: 'POST',
+      url: '/api/media/integrations',
+      payload: { name: 'n8n — Alarmes de Rede', purpose: 'NETWORK_ALARMS' },
+    });
+    const chartId = chartCreated.json().id as string;
+    alarmTestPort.mockClear();
+    const withChart = await chartApp.inject({
+      method: 'POST',
+      url: `/api/media/integrations/${chartId}/test-alarm`,
+      payload: { type: 'INTERFACE_CRC', includeChart: true, chartInterfaceId: 'if-1' },
+    });
     expect(withChart.statusCode).toBe(200);
     expect(alarmTestPort).toHaveBeenCalledWith(
-      expect.objectContaining({ includeChart: true, type: 'INTERFACE_CRC' }),
+      expect.objectContaining({
+        includeChart: true,
+        type: 'INTERFACE_CRC',
+        chartSource: expect.objectContaining({ interfaceId: 'if-1' }),
+      }),
     );
+    await chartApp.close();
     await app.close();
   });
 

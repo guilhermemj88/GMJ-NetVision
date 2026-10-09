@@ -11,6 +11,7 @@ import type {
 import type {
   DeviceMetricSampleInput,
   HostRepository,
+  InterfaceChartSourceRecord,
   InterfaceCounterSnapshot,
   InterfaceMetricSampleInput,
   InterfaceMetricWindowRow,
@@ -77,6 +78,26 @@ export class DemoHostRepositoryAdapter implements HostRepository {
 
   async getHost(hostId: string): Promise<HostRecord | null> {
     return this.repository.getHost(hostId);
+  }
+
+  /**
+   * Fonte READ-ONLY do historico do PNG de teste no modo demo: procura a
+   * interface no espelho em memoria. Interface inexistente devolve `null`.
+   */
+  async getInterfaceChartSource(interfaceId: string): Promise<InterfaceChartSourceRecord | null> {
+    for (const host of this.repository.listHosts()) {
+      const networkInterface = host.interfaces.find((item) => item.id === interfaceId);
+      if (!networkInterface) continue;
+      return {
+        interfaceId: networkInterface.id,
+        deviceId: host.id,
+        deviceName: host.displayName || host.name,
+        interfaceName: networkInterface.name,
+        alias: networkInterface.alias ?? '',
+        lanes: (networkInterface.opticalLanes ?? []).map((lane) => lane.lane),
+      };
+    }
+    return null;
   }
 
   async createHost(input: CreateHostInput, interfaces?: NetworkInterface[]): Promise<HostRecord> {

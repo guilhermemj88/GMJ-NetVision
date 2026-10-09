@@ -29,6 +29,7 @@ import { CredentialEncryptionUnavailableError } from './demo-map-repository';
 import type {
   DeviceMetricSampleInput,
   HostRepository,
+  InterfaceChartSourceRecord,
   InterfaceCounterSnapshot,
   InterfaceMetricSampleInput,
   InterfaceMetricWindowRow,
@@ -934,6 +935,33 @@ export class PrismaHostRepository implements HostRepository {
       rxDiscardsTotal: safeNumber(row.inDiscards),
       txDiscardsTotal: safeNumber(row.outDiscards),
       operStatus: row.operStatus,
+    };
+  }
+
+  /**
+   * Fonte READ-ONLY do historico do PNG de teste: identidade de exibicao e as
+   * lanes opticas conhecidas do inventario. Interface inexistente devolve
+   * `null` (o TESTAR ALARME responde com erro seguro, sem chamar o webhook).
+   */
+  async getInterfaceChartSource(interfaceId: string): Promise<InterfaceChartSourceRecord | null> {
+    const row = await this.prisma.interface.findUnique({
+      where: { id: interfaceId },
+      select: {
+        id: true,
+        name: true,
+        alias: true,
+        opticalLanes: true,
+        device: { select: { id: true, name: true, displayName: true, hostname: true } },
+      },
+    });
+    if (!row) return null;
+    return {
+      interfaceId: row.id,
+      deviceId: row.device.id,
+      deviceName: row.device.displayName || row.device.name || row.device.hostname,
+      interfaceName: row.name,
+      alias: row.alias ?? '',
+      lanes: (opticalLanesFromDb(row.opticalLanes) ?? []).map((lane) => lane.lane),
     };
   }
 

@@ -678,6 +678,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     secretBox: createMediaSecretBox(vault),
     repositoryKind: config.DEMO_MODE ? 'MEMORY' : 'DATABASE',
     migrationReady: mediaSchemaReady,
+    // Inventario READ-ONLY: valida a interface de referencia e informa as lanes
+    // do PNG de teste (nunca cria/edita e nunca fala com o equipamento).
+    chartSource: {
+      resolveChartSource: (interfaceId) => hosts.getInterfaceChartSource(interfaceId),
+    },
     env: {
       outboundUrl: process.env.MITIGATION_N8N_WEBHOOK_URL?.trim() || null,
       outboundToken: process.env.MITIGATION_N8N_WEBHOOK_TOKEN?.trim() || null,

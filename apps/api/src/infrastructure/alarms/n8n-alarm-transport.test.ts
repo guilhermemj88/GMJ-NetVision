@@ -2,6 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import type { Alarm, NetworkAlarmTestSelectionInput } from '@gmj/shared';
 import { NETWORK_ALARM_TEST_EVENTS, NETWORK_ALARM_TEST_TYPES } from '@gmj/shared';
 import { WebhookDeliveryError, type MediaChannelPort } from '../media/n8n-media-transport';
+import type {
+  AlarmChartMedia,
+  AlarmChartSource,
+  AlarmChartSpecOptions,
+} from '../media/alarm-chart-snapshot';
 import {
   N8nAlarmTransport,
   buildNetworkAlarmTestAlarm,
@@ -108,6 +113,10 @@ function channel(overrides: Record<string, unknown> = {}) {
 function build(options: {
   channel?: ReturnType<typeof channel>;
   send?: ReturnType<typeof vi.fn>;
+  chartSnapshot?: (
+    payload: NetworkAlarmWebhookPayload,
+    snapshotOptions?: AlarmChartSpecOptions,
+  ) => Promise<AlarmChartMedia>;
 } = {}) {
   const resolveOutbound = vi.fn().mockResolvedValue(options.channel ?? channel());
   const recordOutboundAttempt = vi.fn().mockResolvedValue(undefined);
@@ -120,7 +129,12 @@ function build(options: {
     recordOutboundDelivery,
   } as unknown as MediaChannelPort;
   return {
-    transport: new N8nAlarmTransport({ media, send, now: () => NOW }),
+    transport: new N8nAlarmTransport({
+      media,
+      send,
+      now: () => NOW,
+      ...(options.chartSnapshot ? { chartSnapshot: options.chartSnapshot } : {}),
+    }),
     media,
     resolveOutbound,
     recordOutboundAttempt,
@@ -557,5 +571,109 @@ describe('simulador do TESTAR ALARME por tipo/evento (F9.5.1)', () => {
     );
     expect(escalated.previousSeverity).toBe('WARNING');
     expect(Object.keys(escalated).sort()).toEqual([...PAYLOAD_KEYS, 'previousSeverity'].sort());
+  });
+});
+
+/**
+ * F9.5.2 — grafico do TESTAR ALARME: a interface REAL da serie viaja como
+ * opcao do snapshot, nunca como identidade do payload (que segue fixture).
+ */
+describe('grafico do TESTAR ALARME (F9.5.2)', () => {
+  const chart: AlarmChartMedia = {
+    available: true,
+    url: 'http://45.163.144.8/media/snapshot/token.png',
+    mimeType: 'image/png',
+    period: '24h',
+    generatedAt: NOW.toISOString(),
+    expiresAt: NOW.toISOString(),
+  };
+  const f1a: AlarmChartSource = {
+    interfaceId: 'if-f1a-48',
+    deviceName: 'BHE-VTA-F1A-BGP-01',
+    interfaceName: '100GE0/1/48',
+    alias: 'BHE-VTA-S6750-MPLS-01-100GE1/0/1',
+    lanes: [0, 1, 2, 3],
+  };
+
+  it('D/G) repassa a interface real e marca test:true sem trocar a identidade do payload', async () => {
+    const seen: Array<{ options: AlarmChartSpecOptions | undefined }> = [];
+    const built = build({
+      chartSnapshot: async (_payload, snapshotOptions) => {
+        seen.push({ options: snapshotOptions });
+        return chart;
+      },
+    });
+
+    const outcome = await built.transport.publishAlarmTest({
+      profileId: 'media-2',
+      type: 'OPTICAL_RX_DEGRADATION',
+      severity: 'CRITICAL',
+      includeChart: true,
+      chartSource: f1a,
+    });
+
+    expect(outcome).toMatchObject({ ok: true, event: 'NETWORK_ALARM_TEST' });
+    expect(seen[0]?.options).toEqual({ source: f1a, test: true });
+    const payload = built.send.mock.calls[0]?.[1] as NetworkAlarmWebhookPayload;
+    expect(payload.test).toBe(true);
+    expect(payload.device).toEqual({ id: 'test-device', name: 'NETVISION-TEST' });
+    expect(payload.interface).toEqual({
+      id: 'test-interface',
+      name: '100GE0/0/2',
+      alias: 'BACKBONE-TEST',
+    });
+    expect(payload.interfaceId).toBe('test-interface');
+    expect(payload.media?.chart.url).toBe(chart.url);
+  });
+
+  it('sem interface de referencia o snapshot NAO e chamado (texto-only)', async () => {
+    let called = 0;
+    const built = build({
+      chartSnapshot: async () => {
+        called += 1;
+        return chart;
+      },
+    });
+
+    await built.transport.publishAlarmTest({ profileId: 'media-2', includeChart: true });
+    expect(called).toBe(0);
+    const payload = built.send.mock.calls[0]?.[1] as NetworkAlarmWebhookPayload;
+    expect(payload.media).toBeUndefined();
+  });
+
+  it('I) alarme REAL continua sem opcao nenhuma e usando payload.interfaceId', async () => {
+    const options: Array<AlarmChartSpecOptions | undefined> = [];
+    const built = build({
+      chartSnapshot: async (_payload, snapshotOptions) => {
+        options.push(snapshotOptions);
+        return chart;
+      },
+    });
+
+    await built.transport.publish('NETWORK_ALARM_OPENED', OPTICAL_ALARM);
+
+    expect(options[0]).toEqual({});
+    const payload = built.send.mock.calls[0]?.[1] as NetworkAlarmWebhookPayload;
+    expect(payload.test).toBe(false);
+    expect(payload.interfaceId).toBe('if-1');
+    expect(payload.media?.chart.available).toBe(true);
+  });
+
+  it('falha do snapshot nunca bloqueia o envio (payload sem media)', async () => {
+    const built = build({
+      chartSnapshot: async () => {
+        throw new Error('renderer fora do ar');
+      },
+    });
+
+    const outcome = await built.transport.publishAlarmTest({
+      profileId: 'media-2',
+      type: 'INTERFACE_CRC',
+      includeChart: true,
+      chartSource: f1a,
+    });
+    expect(outcome).toMatchObject({ ok: true });
+    const payload = built.send.mock.calls[0]?.[1] as NetworkAlarmWebhookPayload;
+    expect(payload.media).toBeUndefined();
   });
 });

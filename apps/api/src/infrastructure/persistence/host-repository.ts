@@ -129,6 +129,20 @@ export interface InterfaceStatusTransition {
   newStatus: NetworkInterface['operStatus'];
 }
 
+/**
+ * Referencia READ-ONLY de uma interface para o grafico do TESTAR ALARME:
+ * identidade de exibicao e as lanes opticas conhecidas do inventario. Nao cria,
+ * nao altera e nao consulta o equipamento.
+ */
+export interface InterfaceChartSourceRecord {
+  interfaceId: string;
+  deviceId: string;
+  deviceName: string;
+  interfaceName: string;
+  alias: string;
+  lanes: number[];
+}
+
 export interface DeviceMetricSampleInput {
   timestamp: Date;
   uptimeSeconds?: bigint;
@@ -185,4 +199,6 @@ export interface HostRepository {
     period: HistoryPeriod,
   ): Promise<OpticalHistoryPoint[]>;
   getInterfaceMetrics(interfaceId: string): Promise<Record<string, number | string> | null>;
+  /** Fonte do historico do grafico de teste (validacao + lanes do inventario). */
+  getInterfaceChartSource(interfaceId: string): Promise<InterfaceChartSourceRecord | null>;
 }

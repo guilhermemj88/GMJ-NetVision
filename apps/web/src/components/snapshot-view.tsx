@@ -54,8 +54,20 @@ export function SnapshotView({ data }: { data: SnapshotChartPayload }) {
       <SnapshotReadySignal />
       <header className="snapshot-header">
         <div className="snapshot-header__brand">
-          <strong>GMJ NetVision</strong>
-          <span>Alarme de rede · gráfico do evento</span>
+          <strong>{spec.header.test ? 'TESTE — GMJ NETVISION' : 'GMJ NetVision'}</strong>
+          <span>
+            {spec.header.test
+              ? 'Simulador do TESTAR ALARME · gráfico histórico'
+              : 'Alarme de rede · gráfico do evento'}
+          </span>
+          {spec.header.test ? (
+            <span className="snapshot-header__source">
+              Dados históricos:{' '}
+              {[spec.header.sourceDeviceName, spec.header.sourceInterfaceName]
+                .filter(Boolean)
+                .join(' · ') || 'interface de referência não informada'}
+            </span>
+          ) : null}
         </div>
         <div className="snapshot-header__event">
           <span className={`snapshot-severity snapshot-severity--${spec.header.severity.toLowerCase()}`}>

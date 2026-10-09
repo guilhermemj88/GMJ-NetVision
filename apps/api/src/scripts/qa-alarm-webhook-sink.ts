@@ -2,9 +2,9 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { join } from 'node:path';
 import { inflateSync } from 'node:zlib';
-import type { Alarm } from '@gmj/shared';
 import {
   NETWORK_ALARM_EVENT_KEY,
+  NETWORK_ALARM_TEST_EVENT,
   N8nAlarmTransport,
   buildNetworkAlarmTestAlarm,
   buildNetworkAlarmWebhookPayload,
@@ -12,10 +12,10 @@ import {
 } from '../infrastructure/alarms/n8n-alarm-transport';
 import { config } from '../config';
 import {
+  UNAVAILABLE_ALARM_CHART,
   buildAlarmChartSpec,
   createAlarmChartSnapshot,
   isChartableAlarmType,
-  type AlarmChartMedia,
 } from '../infrastructure/media/alarm-chart-snapshot';
 import {
   createFetchWebhookSender,
@@ -212,17 +212,6 @@ function analyzePng(png: Buffer): PngStats {
 }
 
 /** Mesma forma publica que o transporte envia em `media.chart`. */
-function chartPayload(chart: AlarmChartMedia) {
-  return {
-    available: chart.available,
-    url: chart.url,
-    mimeType: chart.mimeType,
-    period: chart.period,
-    generatedAt: chart.generatedAt,
-    expiresAt: chart.expiresAt,
-  };
-}
-
 function sanitize(value: unknown): string {
   return JSON.stringify(value, null, 1)
     .replace(/\/media\/snapshot\/[^/"]+/g, '/media/snapshot/<SIGNED_TOKEN>')
@@ -238,6 +227,18 @@ async function main(): Promise<void> {
     include: { device: { select: { id: true, name: true } } },
   });
   if (!iface) throw new Error('interface 100GE0/1/48 do F1A nao encontrada no preview');
+  /** Fonte READ-ONLY do historico (mesma forma que o backend resolve). */
+  const chartSource = {
+    interfaceId: iface.id,
+    deviceName: iface.device.name,
+    interfaceName: iface.name,
+    alias: iface.alias ?? '',
+    lanes: Array.isArray(iface.opticalLanes)
+      ? (iface.opticalLanes as Array<{ lane?: unknown }>)
+          .map((lane) => Number(lane?.lane))
+          .filter((lane) => Number.isFinite(lane))
+      : [],
+  };
   const real = {
     interfaceId: iface.id,
     deviceId: iface.device.id,
@@ -245,7 +246,9 @@ async function main(): Promise<void> {
     interfaceName: iface.name,
     alias: iface.alias ?? '',
   };
-  console.log(`F1A de QA: ${real.deviceName} / ${real.interfaceName} (${real.interfaceId})`);
+  console.log(
+    `F1A de QA: ${real.deviceName} / ${real.interfaceName} (${real.interfaceId}) lanes=[${chartSource.lanes.join(',')}]`,
+  );
 
   const historyInterfaceId = process.env.QA_HISTORY_INTERFACE_ID ?? real.interfaceId;
   const { server, calls } = startSink();
@@ -381,41 +384,38 @@ async function main(): Promise<void> {
     void outcome;
   }
 
-  console.log('\n== 2) F1A com identidade real (payload de alarme real + grafico 24h) ==');
-  const f1aAlarm: Alarm = {
-    ...buildNetworkAlarmTestAlarm({ type: 'OPTICAL_RX_DEGRADATION', event: 'OPENED', severity: 'MAJOR' }, new Date()),
-    deviceId: real.deviceId,
-    deviceName: real.deviceName,
-    interfaceId: real.interfaceId,
-    interfaceName: real.interfaceName,
-    interfaceLabel: real.alias,
-    metadata: {
-      lane: 2,
-      rxPowerDbm: 0.13,
-      rxLowAlarmDbm: -12.3,
-      rxHighAlarmDbm: 3.39,
-      rxLowWarningDbm: -10.3,
-      rxHighWarningDbm: 2.39,
-      proximityPercent: 82,
-      proximityReference: 'WARNING',
-      triggerReasons: ['PROXIMITY'],
-      thresholdSource: 'DEVICE',
-    },
-  };
-  const f1aPayload = buildNetworkAlarmWebhookPayload(f1aAlarm, NETWORK_ALARM_EVENT_KEY.OPENED);
-  const f1aChart = await realSnapshot(f1aPayload);
-  const f1aOutgoing = f1aChart.available
-    ? { ...f1aPayload, media: { chart: chartPayload(f1aChart) } }
-    : f1aPayload;
-  await sender(sinkUrl, f1aOutgoing, { 'content-type': 'application/json', 'X-NetVision-Token': SINK_TOKEN });
+  console.log('\n== 2) F1A: TESTAR ALARME com interface REAL como fonte do grafico ==');
+  // F9.5.2: o texto continua sendo a fixture; a interface real entra SO como
+  // `chartSource` (fonte read-only do historico).
+  const f1aTransport = new N8nAlarmTransport({
+    media,
+    send: sender,
+    chartSnapshot: realSnapshot,
+  });
+  const f1aOutcome = await f1aTransport.publishAlarmTest({
+    type: 'OPTICAL_RX_DEGRADATION',
+    event: 'OPENED',
+    severity: 'CRITICAL',
+    includeChart: true,
+    chartSource,
+  });
   const f1aCall = calls[calls.length - 1];
-  const f1aUrl = f1aCall?.payload.media?.chart.url ?? null;
+  const f1aDelivered = f1aCall?.payload;
+  const fixtureKept =
+    f1aDelivered?.test === true &&
+    f1aDelivered?.device.name === 'NETVISION-TEST' &&
+    f1aDelivered?.interface.id === 'test-interface' &&
+    f1aDelivered?.interface.name === '100GE0/0/2';
+  const f1aUrl = f1aDelivered?.media?.chart.url ?? null;
   let f1aLine = 'F1A: sem imagem (fallback texto-only)';
   if (f1aUrl) {
     const response = await fetch(f1aUrl);
     const buffer = Buffer.from(await response.arrayBuffer());
     const stats = analyzePng(buffer);
-    const spec = buildAlarmChartSpec(f1aPayload, config.SNAPSHOT_TTL_SECONDS, Date.now());
+    const spec = buildAlarmChartSpec(f1aDelivered!, config.SNAPSHOT_TTL_SECONDS, Date.now(), {
+      source: chartSource,
+      test: true,
+    });
     const pageToken = spec ? snapshotCacheKey(spec) : null;
     let laneCheck = 'n/a';
     if (pageToken) {
@@ -426,14 +426,92 @@ async function main(): Promise<void> {
       .filter(([, count]) => count > 60)
       .map(([name, count]) => `${name}:${count}`)
       .join(' ');
-    f1aLine = `F1A: http=${response.status} ${response.headers.get('content-type')} bytes=${buffer.length} png=${stats.width}x${stats.height} tinta=${(stats.inkRatio * 100).toFixed(1)}% cores[${colors}] periodo=${f1aCall?.payload.media?.chart.period} cache=${laneCheck}`;
-    await writeFile(join(OUTPUT_DIR, 'payload-f1a-real.json'), `${sanitize(f1aCall?.payload)}\n`);
-    await writeFile(join(OUTPUT_DIR, 'f1a-optical-24h.png'), buffer);
+    f1aLine = `F1A: http=${response.status} ${response.headers.get('content-type')} bytes=${buffer.length} png=${stats.width}x${stats.height} tinta=${(stats.inkRatio * 100).toFixed(1)}% cores[${colors}] periodo=${f1aDelivered?.media?.chart.period} lane=${spec?.optical?.lane} hist=${spec?.interfaceId === chartSource.interfaceId ? 'f1a-real' : 'FIXTURE'} cache=${laneCheck} fixture=${fixtureKept ? 'ok' : 'MISTUROU'}`;
+    await writeFile(join(OUTPUT_DIR, 'payload-f1a-real.json'), `${sanitize(f1aDelivered)}\n`);
+    await writeFile(join(OUTPUT_DIR, 'f1a-optical-1h.png'), buffer);
+    // A janela vem do fixture (RAPID_DROP -> 1h). O coletor do preview esta
+    // desligado, entao a serie pode estar vazia: a prova das LANES e feita na
+    // janela de 24h logo abaixo.
     const ok = response.status === 200 && stats.width === 1200 && stats.height === 720
-      && stats.inkRatio > 0.005 && (stats.colors.rx_teal ?? 0) > 60;
+      && stats.inkRatio > 0.005
+      && spec?.interfaceId === chartSource.interfaceId && fixtureKept;
     if (!ok) failures += 1;
+  } else {
+    failures += 1;
   }
   console.log(`  ${f1aLine}`);
+  console.log(
+    `  payload: test=${f1aDelivered?.test} device=${f1aDelivered?.device.name} interface=${f1aDelivered?.interface.name} chartSourceNoPayload=${JSON.stringify(f1aDelivered ?? {}).includes(chartSource.interfaceId) ? 'VAZOU' : 'nao'} evento=${f1aOutcome.event}`,
+  );
+
+  console.log('\n== 2c) F1A na janela de 24h: LANES reais no PNG (sem o agregado) ==');
+  const base24h = buildNetworkAlarmWebhookPayload(
+    buildNetworkAlarmTestAlarm(
+      { type: 'OPTICAL_RX_DEGRADATION', event: 'OPENED', severity: 'CRITICAL' },
+      new Date(),
+    ),
+    NETWORK_ALARM_EVENT_KEY.OPENED,
+    { test: true, eventKey: NETWORK_ALARM_TEST_EVENT },
+  );
+  // Mesma fixture, apenas sem o RAPID_DROP: a janela vira 24h (onde o preview
+  // tem historico optico real do F1A).
+  const payload24h: NetworkAlarmWebhookPayload = {
+    ...base24h,
+    triggerReasons: ['PROXIMITY'],
+    optical: base24h.optical
+      ? { ...base24h.optical, triggerReasons: ['PROXIMITY'], dropDb: null, dropWindowMinutes: null }
+      : null,
+  };
+  const spec24h = buildAlarmChartSpec(payload24h, config.SNAPSHOT_TTL_SECONDS, Date.now(), {
+    source: chartSource,
+    test: true,
+  });
+  const media24h = await realSnapshot(payload24h, { source: chartSource, test: true });
+  if (spec24h && media24h.available && media24h.url) {
+    const response = await fetch(media24h.url);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const stats = analyzePng(buffer);
+    const colors24 = Object.entries(stats.colors)
+      .filter(([, count]) => count > 60)
+      .map(([name, count]) => `${name}:${count}`)
+      .join(' ');
+    const lanesDrawn = (stats.colors.rx_teal ?? 0) > 60;
+    const ok = response.status === 200 && stats.width === 1200 && stats.height === 720
+      && lanesDrawn && spec24h.period === '24h' && spec24h.interfaceId === chartSource.interfaceId;
+    if (!ok) failures += 1;
+    console.log(
+      `  F1A-24h: ${ok ? 'OK' : 'FALHA'} http=${response.status} png=${stats.width}x${stats.height} periodo=${spec24h.period} lanesDesenhadas=${lanesDrawn ? 'sim' : 'NAO'} lane=${spec24h.optical?.lane} cores[${colors24}]`,
+    );
+    await writeFile(join(OUTPUT_DIR, 'f1a-optical-24h.png'), buffer);
+  } else {
+    failures += 1;
+    console.log(`  F1A-24h: FALHA (media unavailable: ${media24h.reason ?? '-'})`);
+  }
+
+  console.log('\n== 2b) TESTAR ALARME sem interface de referencia: texto-only ==');
+  // A obrigatoriedade da interface e validada no SERVICO (testes C/F da suite):
+  // aqui provamos que, sem serie historica, o payload segue texto-only.
+  const semFonte = new N8nAlarmTransport({
+    media,
+    send: sender,
+    chartSnapshot: async () => ({
+      ...UNAVAILABLE_ALARM_CHART,
+      reason: 'sem interface de referencia',
+    }),
+  });
+  const beforeSemFonte = calls.length;
+  await semFonte.publishAlarmTest({
+    type: 'OPTICAL_RX_DEGRADATION',
+    event: 'OPENED',
+    includeChart: true,
+  });
+  const semFonteCall = calls[beforeSemFonte];
+  const semFonteOk =
+    semFonteCall !== undefined && semFonteCall.payload.media === undefined && semFonteCall.payload.test === true;
+  if (!semFonteOk) failures += 1;
+  console.log(
+    `  sem-fonte: chegou=${semFonteCall ? 'sim' : 'NAO'} media=${semFonteCall?.payload.media === undefined ? 'ausente (texto-only)' : 'PRESENTE (inesperado)'} test=${semFonteCall?.payload.test}`,
+  );
 
   console.log('\n== 3) token: expirado, adulterado e outro recurso ==');
   const publicBase = (config.SNAPSHOT_PUBLIC_API_URL ?? '').replace(/\/+$/, '');
@@ -461,7 +539,7 @@ async function main(): Promise<void> {
   }
 
   console.log('\n== 3b) dados do F1A na pagina assinada (lanes reais, sem o agregado) ==');
-  const f1aSpec = buildAlarmChartSpec(f1aPayload, config.SNAPSHOT_TTL_SECONDS, Date.now());
+  const f1aSpec = spec24h;
   if (f1aSpec) {
     const pageToken = signSnapshotToken(f1aSpec, signingKey, 120, Date.now());
     const pageResponse = await fetch(`${publicBase}/api/public/snapshot/${pageToken}`);
@@ -503,13 +581,23 @@ async function main(): Promise<void> {
   const downTransport = new N8nAlarmTransport({
     media,
     send: sender,
-    chartSnapshot: (payload) => brokenSnapshot(withRealHistory(payload)),
+    chartSnapshot: (payload, options) => brokenSnapshot(withRealHistory(payload), options),
   });
-  await downTransport.publishAlarmTest({ type: 'INTERFACE_CRC', event: 'OPENED', includeChart: true });
+  await downTransport.publishAlarmTest({
+    type: 'INTERFACE_CRC',
+    event: 'OPENED',
+    includeChart: true,
+    chartSource,
+  });
   const downCall = calls[downBefore];
-  const mediaBroken = await brokenSnapshot(withRealHistory(f1aPayload));
+  const brokenPayload = buildNetworkAlarmWebhookPayload(
+    buildNetworkAlarmTestAlarm({ type: 'INTERFACE_CRC', event: 'OPENED' }, new Date()),
+    NETWORK_ALARM_EVENT_KEY.OPENED,
+    { test: true, eventKey: NETWORK_ALARM_TEST_EVENT },
+  );
+  const mediaBroken = await brokenSnapshot(brokenPayload, { source: chartSource, test: true });
   console.log(
-    `  sink_recebeu=${downCall ? 'sim' : 'NAO'} media_no_payload=${downCall?.payload.media === undefined ? 'ausente' : 'PRESENTE'} available=${mediaBroken.available} reason=${mediaBroken.available ? '-' : 'falha ao renderizar'}`,
+    `  sink_recebeu=${downCall ? 'sim' : 'NAO'} media_no_payload=${downCall?.payload.media === undefined ? 'ausente' : 'PRESENTE'} available=${mediaBroken.available} reason=${mediaBroken.available ? '-' : mediaBroken.reason ?? 'falha ao renderizar'}`,
   );
   if (!downCall || downCall.payload.media !== undefined || mediaBroken.available) failures += 1;
   await writeFile(

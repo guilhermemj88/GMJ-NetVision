@@ -29,10 +29,14 @@ const media = vi.hoisted(() => ({
 
 const alarms = vi.hoisted(() => ({ useAlarmIndex: vi.fn(() => new Map()) }));
 
+const api = vi.hoisted(() => ({ searchInterfaces: vi.fn() }));
+
 vi.mock('@/lib/media-api', () => media);
 vi.mock('@/lib/use-alarms', () => alarms);
+vi.mock('@/lib/api', () => api);
 
 import {
+  AlarmTestChartSourceField,
   AlarmTestResultBanner,
   NetworkAlarmsMediaSection,
   alarmLogReference,
@@ -212,7 +216,25 @@ describe('canal e eventos de alarme na camada de mídia', () => {
         }}
       />,
     );
-    expect(skipped).toContain('Webhook de alarmes não configurado');
+    expect(skipped).toContain('Webhook não configurado');
+  });
+
+  it('banner usa a mensagem segura do backend quando o grafico foi recusado', () => {
+    const refused = renderToText(
+      <AlarmTestResultBanner
+        result={{
+          ok: false,
+          skipped: true,
+          httpStatus: null,
+          latencyMs: null,
+          safeError: 'Selecione uma interface válida para gerar o gráfico de teste.',
+          event: 'NETWORK_ALARM_TEST',
+          checkedAt: '2026-10-07T12:00:00.000Z',
+        }}
+      />,
+    );
+    expect(refused).toContain('Selecione uma interface válida para gerar o gráfico de teste.');
+    expect(refused).not.toContain('HTTP');
   });
 });
 
@@ -226,6 +248,94 @@ function renderToText(element: ReactElement): string {
   act(() => root.unmount());
   return text;
 }
+
+function clickCheckbox(input: HTMLInputElement | null): void {
+  input?.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+}
+
+/** Input controlado no React: o value so muda pelo setter nativo + `input`. */
+function typeInto(input: HTMLInputElement | null, value: string): void {
+  if (!input) return;
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set;
+  setter?.call(input, value);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+function selectOption(select: HTMLSelectElement | null, value: string): void {
+  if (!select) return;
+  select.value = value;
+  select.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+/** Espera ativa (debounce + react-query) ate a opcao aparecer na lista. */
+async function waitForOption(scope: HTMLElement, text: string): Promise<HTMLButtonElement | null> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    const found = [...scope.querySelectorAll('button')].find((item) =>
+      item.textContent?.includes(text),
+    );
+    if (found) return found as HTMLButtonElement;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+  }
+  return null;
+}
+
+describe('campo de referência do gráfico (F9.5.2)', () => {
+  it('busca no inventário, lista os resultados e devolve a escolha', async () => {
+    const onSelect = vi.fn();
+    api.searchInterfaces.mockResolvedValue([
+      {
+        interfaceId: 'if-f1a-48',
+        deviceId: 'host-f1a',
+        hostname: 'BHE-VTA-F1A-BGP-01',
+        deviceName: 'BHE-VTA-F1A-BGP-01',
+        interfaceName: '100GE0/1/48',
+        alias: '',
+        description: '',
+        ifIndex: 48,
+        status: 'UP',
+        ip: null,
+        vlan: null,
+        maps: [],
+      },
+    ]);
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const root = createRoot(host);
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+    await act(async () => {
+      root.render(
+        createElement(
+          QueryClientProvider,
+          { client: queryClient },
+          createElement(AlarmTestChartSourceField, { selected: null, onSelect, disabled: false }),
+        ),
+      );
+    });
+    const input = host.querySelector<HTMLInputElement>(
+      'input[aria-label="Buscar interface de referência do gráfico"]',
+    );
+    await act(async () => {
+      typeInto(input, '100GE0/1/48');
+      await new Promise((resolve) => setTimeout(resolve, 320));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(api.searchInterfaces).toHaveBeenCalledWith('100GE0/1/48', 40);
+
+    const option = await waitForOption(host, '100GE0/1/48');
+    expect(option).not.toBeNull();
+    await act(async () => {
+      option?.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ interfaceId: 'if-f1a-48', interfaceName: '100GE0/1/48' }),
+    );
+    await act(async () => root.unmount());
+    host.remove();
+  });
+});
 
 describe('editor da aba ALARMES DE REDE (F9.5)', () => {
   let container: HTMLDivElement;
@@ -257,6 +367,7 @@ describe('editor da aba ALARMES DE REDE (F9.5)', () => {
       overview({ integration: integration() }),
     );
     media.getRecentMediaLogs.mockResolvedValue([ALARM_LOG, MITIGATION_LOG]);
+    api.searchInterfaces.mockResolvedValue([]);
     media.testMediaAlarm.mockResolvedValue({
       ok: true,
       skipped: false,
@@ -387,6 +498,140 @@ describe('editor da aba ALARMES DE REDE (F9.5)', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(severitySelect?.value).toBe('CRITICAL');
+  });
+
+  /**
+   * F9.5.2 — INCLUIR GRÁFICO ON pede a INTERFACE DE REFERÊNCIA: o seletor só
+   * aparece para tipos com série, exige escolha antes de testar e manda apenas
+   * o id no corpo (o texto do alarme continua sendo a fixture).
+   */
+  it('seletor de interface: só aparece para tipo com série e bloqueia o teste sem escolha', async () => {
+    await mount();
+    const toggle = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Incluir gráfico no alarme de teste"]',
+    );
+    expect(container.textContent).not.toContain('INTERFACE DE REFERÊNCIA DO GRÁFICO');
+
+    // INTERFACE_DOWN não tem série: ligar o gráfico mostra o aviso, não exige nada.
+    await act(async () => {
+      clickCheckbox(toggle);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.textContent).toContain('INCLUIR GRÁFICO [ON]');
+    expect(container.textContent).toContain('não tem série histórica');
+    expect(container.textContent).not.toContain('INTERFACE DE REFERÊNCIA DO GRÁFICO');
+
+    // Tipo com série: o seletor aparece e o botão fica bloqueado até escolher.
+    const typeSelect = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Tipo de teste do alarme"]',
+    );
+    await act(async () => {
+      selectOption(typeSelect, 'OPTICAL_RX_DEGRADATION');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.textContent).toContain('INTERFACE DE REFERÊNCIA DO GRÁFICO');
+    const button = [...container.querySelectorAll('button')].find(
+      (item) => item.textContent?.includes('TESTAR ALARME'),
+    );
+    expect(button?.disabled).toBe(true);
+  });
+
+  it('seletor busca no inventário, escolhe a interface e envia chartInterfaceId', async () => {
+    api.searchInterfaces.mockResolvedValue([
+      {
+        interfaceId: 'if-f1a-48',
+        deviceId: 'host-f1a',
+        hostname: 'BHE-VTA-F1A-BGP-01',
+        deviceName: 'BHE-VTA-F1A-BGP-01',
+        interfaceName: '100GE0/1/48',
+        alias: 'BHE-VTA-S6750-MPLS-01-100GE1/0/1',
+        description: '',
+        ifIndex: 48,
+        status: 'UP',
+        ip: '10.0.0.1',
+        vlan: null,
+        maps: [],
+      },
+    ]);
+    await mount();
+    await act(async () => {
+      selectOption(
+        container.querySelector<HTMLSelectElement>('select[aria-label="Tipo de teste do alarme"]'),
+        'OPTICAL_RX_DEGRADATION',
+      );
+      clickCheckbox(
+        container.querySelector<HTMLInputElement>(
+          'input[aria-label="Incluir gráfico no alarme de teste"]',
+        ),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    const search = container.querySelector<HTMLInputElement>(
+      'input[aria-label="Buscar interface de referência do gráfico"]',
+    );
+    await act(async () => {
+      typeInto(search, '100GE0/1/48');
+      await new Promise((resolve) => setTimeout(resolve, 320));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(api.searchInterfaces).toHaveBeenCalledWith('100GE0/1/48', 40);
+
+    const option = await waitForOption(container, '100GE0/1/48');
+    await act(async () => {
+      option?.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.querySelector('[data-testid="chart-source-selected"]')?.textContent).toContain(
+      'BHE-VTA-F1A-BGP-01',
+    );
+
+    const button = [...container.querySelectorAll('button')].find(
+      (item) => item.textContent?.includes('TESTAR ALARME'),
+    );
+    expect(button?.disabled).toBe(false);
+    await act(async () => {
+      button?.click();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(media.testMediaAlarm).toHaveBeenCalledWith('media-2', {
+      type: 'OPTICAL_RX_DEGRADATION',
+      event: 'OPENED',
+      severity: 'MAJOR',
+      includeChart: true,
+      chartInterfaceId: 'if-f1a-48',
+    });
+  });
+
+  it('desligar INCLUIR GRÁFICO preserva a interface escolhida', async () => {
+    await mount();
+    const toggle = () =>
+      container.querySelector<HTMLInputElement>(
+        'input[aria-label="Incluir gráfico no alarme de teste"]',
+      );
+    await act(async () => {
+      selectOption(
+        container.querySelector<HTMLSelectElement>('select[aria-label="Tipo de teste do alarme"]'),
+        'INTERFACE_CRC',
+      );
+      clickCheckbox(toggle());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.textContent).toContain('INTERFACE DE REFERÊNCIA DO GRÁFICO');
+
+    await act(async () => {
+      clickCheckbox(toggle());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.textContent).not.toContain('INTERFACE DE REFERÊNCIA DO GRÁFICO');
+
+    await act(async () => {
+      clickCheckbox(toggle());
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(container.textContent).toContain('INTERFACE DE REFERÊNCIA DO GRÁFICO');
   });
 
   it('envia a seleção escolhida no corpo do teste', async () => {

@@ -64,6 +64,11 @@ const alarmTestSchema = z
     severity: z.enum(NETWORK_ALARM_TEST_SEVERITIES).optional(),
     /** INCLUIR GRÁFICO: default OFF (o teste segue texto-only). */
     includeChart: z.boolean().optional(),
+    /**
+     * Interface REAL usada SO como fonte do historico do PNG de teste. O texto
+     * do alarme e o canal continuam sinteticos (fixture + `test: true`).
+     */
+    chartInterfaceId: z.string().trim().min(1).max(160).optional(),
   })
   .strict();
 
@@ -180,14 +185,20 @@ export function registerMediaRoutes(
    * TESTAR ALARME (F9.5): envia um payload sintetico pelo canal NETWORK_ALARMS,
    * com a MESMA serializacao/transporte dos alarmes reais. Nunca usa a
    * mitigacao e nunca cria alarme de verdade. F9.5.1: o corpo opcional escolhe
-   * tipo/evento/severidade do teste.
+   * tipo/evento/severidade do teste. F9.5.2: `chartInterfaceId` escolhe a
+   * interface REAL que empresta o historico para o PNG (texto continua fixture).
    */
   app.post('/api/media/integrations/:id/test-alarm', async (request, reply) => {
     if (!(await requireAdmin(request, reply))) return undefined;
     const { id } = integrationParams.parse(request.params);
-    const { includeChart, ...selection } = alarmTestSchema.parse(request.body ?? {});
+    const { includeChart, chartInterfaceId, ...selection } = alarmTestSchema.parse(
+      request.body ?? {},
+    );
     if (await notFound(id, reply)) return undefined;
-    return media.testAlarmWebhook(id, selection, { includeChart: includeChart ?? false });
+    return media.testAlarmWebhook(id, selection, {
+      includeChart: includeChart ?? false,
+      chartInterfaceId: chartInterfaceId ?? null,
+    });
   });
 
   app.get('/api/media/integrations/:id/logs', async (request, reply) => {

@@ -3,6 +3,7 @@ import { CredentialVault } from '../../application/credential-vault';
 import { InMemoryMediaRepository } from './in-memory-media-repository';
 import { createMediaSecretBox } from './media-secret-box';
 import { MediaIntegrationService } from './media-integration-service';
+import type { AlarmChartSource } from './alarm-chart-snapshot';
 import {
   N8nMediaTransport,
   createFetchWebhookSender,
@@ -19,6 +20,7 @@ function buildService(
     migrationReady?: boolean;
     secretBox?: ReturnType<typeof createMediaSecretBox>;
     sender?: WebhookDeliverySender;
+    chartSource?: { resolveChartSource: (interfaceId: string) => Promise<AlarmChartSource | null> };
   } = {},
 ) {
   const repository = new InMemoryMediaRepository();
@@ -28,6 +30,7 @@ function buildService(
     secretBox: options.secretBox ?? createMediaSecretBox(vault),
     repositoryKind: options.repositoryKind ?? 'DATABASE',
     migrationReady: async () => options.migrationReady ?? true,
+    ...(options.chartSource ? { chartSource: options.chartSource } : {}),
     env: {
       outboundUrl: options.env?.outboundUrl ?? null,
       outboundToken: options.env?.outboundToken ?? null,
@@ -342,6 +345,7 @@ describe('mídias SEPARADAS: BGP_MITIGATION x NETWORK_ALARMS (F9.5)', () => {
       event: 'ESCALATED',
       severity: 'WARNING',
       includeChart: false,
+      chartSource: null,
     });
 
     await service.testAlarmWebhook(integration?.id ?? '', undefined);
@@ -351,10 +355,172 @@ describe('mídias SEPARADAS: BGP_MITIGATION x NETWORK_ALARMS (F9.5)', () => {
       event: 'OPENED',
       severity: 'CRITICAL',
       includeChart: false,
+      chartSource: null,
+    });
+  });
+
+  /**
+   * F9.5.2 — o gráfico do TESTAR ALARME deixa de usar a fixture como interface:
+   * `chartInterfaceId` escolhe a interface REAL que empresta o histórico. O
+   * texto continua sintético e nada é criado no estado operacional.
+   */
+  describe('TESTAR ALARME com gráfico (F9.5.2)', () => {
+    const f1a: AlarmChartSource = {
+      interfaceId: 'if-f1a-48',
+      deviceName: 'BHE-VTA-F1A-BGP-01',
+      interfaceName: '100GE0/1/48',
+      alias: 'BHE-VTA-S6750-MPLS-01-100GE1/0/1',
+      lanes: [0, 1, 2, 3],
+    };
+
+    function attachRecorder(service: MediaIntegrationService) {
+      const received: Array<Record<string, unknown>> = [];
+      service.attachAlarmTransport({
+        publishAlarmTest: async (input) => {
+          received.push({ ...input });
+          return {
+            ok: true,
+            skipped: false,
+            httpStatus: 200,
+            latencyMs: 10,
+            safeError: null,
+            event: 'NETWORK_ALARM_TEST',
+          };
+        },
+      });
+      return received;
+    }
+
+    it('A) sem gráfico nada muda: nem exige interface, nem resolve inventário', async () => {
+      let looked = 0;
+      const { service, repository } = buildService({
+        chartSource: {
+          resolveChartSource: async () => {
+            looked += 1;
+            return f1a;
+          },
+        },
+      });
+      await service.create(alarms);
+      const received = attachRecorder(service);
+      const integration = await repository.findByPurpose('NETWORK_ALARMS');
+
+      const outcome = await service.testAlarmWebhook(integration?.id ?? '', {
+        type: 'OPTICAL_RX_DEGRADATION',
+      });
+      expect(outcome).toMatchObject({ ok: true, event: 'NETWORK_ALARM_TEST' });
+      expect(received[0]).toMatchObject({ includeChart: false, chartSource: null });
+      expect(looked).toBe(0);
     });
 
-    await service.testAlarmWebhook(integration?.id ?? '', { type: 'INTERFACE_CRC' }, { includeChart: true });
-    expect(received[2]).toMatchObject({ includeChart: true, type: 'INTERFACE_CRC' });
+    it('B) INTERFACE_DOWN com gráfico ligado segue texto-only e não exige interface', async () => {
+      const { service, repository } = buildService();
+      await service.create(alarms);
+      const received = attachRecorder(service);
+      const integration = await repository.findByPurpose('NETWORK_ALARMS');
+
+      const outcome = await service.testAlarmWebhook(
+        integration?.id ?? '',
+        { type: 'INTERFACE_DOWN' },
+        { includeChart: true },
+      );
+      expect(outcome).toMatchObject({ ok: true });
+      expect(received[0]).toMatchObject({ includeChart: true, chartSource: null, type: 'INTERFACE_DOWN' });
+    });
+
+    it('C) tipo com série exige interface de referência: erro seguro e NADA é enviado', async () => {
+      const { service, repository } = buildService();
+      await service.create(alarms);
+      const received = attachRecorder(service);
+      const integration = await repository.findByPurpose('NETWORK_ALARMS');
+
+      const outcome = await service.testAlarmWebhook(
+        integration?.id ?? '',
+        { type: 'OPTICAL_RX_DEGRADATION' },
+        { includeChart: true },
+      );
+      expect(outcome).toMatchObject({
+        ok: false,
+        skipped: true,
+        httpStatus: null,
+        safeError: 'Selecione uma interface válida para gerar o gráfico de teste.',
+      });
+      expect(received).toHaveLength(0);
+    });
+
+    it('D) interface válida vira a fonte do histórico e é repassada ao transporte', async () => {
+      const { service, repository } = buildService({ chartSource: { resolveChartSource: async () => f1a } });
+      await service.create(alarms);
+      const received = attachRecorder(service);
+      const integration = await repository.findByPurpose('NETWORK_ALARMS');
+
+      const outcome = await service.testAlarmWebhook(
+        integration?.id ?? '',
+        { type: 'OPTICAL_RX_DEGRADATION', severity: 'CRITICAL' },
+        { includeChart: true, chartInterfaceId: f1a.interfaceId },
+      );
+
+      expect(outcome).toMatchObject({ ok: true });
+      expect(received[0]).toMatchObject({
+        includeChart: true,
+        chartSource: f1a,
+        type: 'OPTICAL_RX_DEGRADATION',
+        severity: 'CRITICAL',
+      });
+    });
+
+    it('F) interface inexistente (ou inventário indisponível) devolve erro seguro sem enviar', async () => {
+      const inexistente = buildService({ chartSource: { resolveChartSource: async () => null } });
+      await inexistente.service.create(alarms);
+      const received = attachRecorder(inexistente.service);
+      const integration = await inexistente.repository.findByPurpose('NETWORK_ALARMS');
+
+      const outcome = await inexistente.service.testAlarmWebhook(
+        integration?.id ?? '',
+        { type: 'INTERFACE_CRC' },
+        { includeChart: true, chartInterfaceId: 'nao-existe' },
+      );
+      expect(outcome).toMatchObject({ ok: false, skipped: true });
+      expect(received).toHaveLength(0);
+
+      // Sem porta de inventário configurada o comportamento é o mesmo (fail-closed).
+      const semPorta = buildService();
+      await semPorta.service.create(alarms);
+      const semPortaReceived = attachRecorder(semPorta.service);
+      const semPortaIntegration = await semPorta.repository.findByPurpose('NETWORK_ALARMS');
+      const semPortaOutcome = await semPorta.service.testAlarmWebhook(
+        semPortaIntegration?.id ?? '',
+        { type: 'INTERFACE_CRC' },
+        { includeChart: true, chartInterfaceId: 'if-qualquer' },
+      );
+      expect(semPortaOutcome).toMatchObject({ ok: false, skipped: true });
+      expect(semPortaReceived).toHaveLength(0);
+
+      // Nenhum estado operacional: segue existindo só a integração criada.
+      expect(await semPorta.repository.findByPurpose('NETWORK_ALARMS')).not.toBeNull();
+    });
+
+    it('E) CRC com interface real também monta o gráfico', async () => {
+      const real: AlarmChartSource = {
+        interfaceId: 'if-crc',
+        deviceName: 'CEM-CEN-S6730-01',
+        interfaceName: '100GE0/0/6',
+        alias: '',
+        lanes: [],
+      };
+      const { service, repository } = buildService({ chartSource: { resolveChartSource: async () => real } });
+      await service.create(alarms);
+      const received = attachRecorder(service);
+      const integration = await repository.findByPurpose('NETWORK_ALARMS');
+
+      const outcome = await service.testAlarmWebhook(
+        integration?.id ?? '',
+        { type: 'INTERFACE_CRC' },
+        { includeChart: true, chartInterfaceId: real.interfaceId },
+      );
+      expect(outcome).toMatchObject({ ok: true });
+      expect(received[0]).toMatchObject({ includeChart: true, chartSource: real });
+    });
   });
 
   it('TESTAR ALARME recusa integração de mitigação ou id desconhecido', async () => {

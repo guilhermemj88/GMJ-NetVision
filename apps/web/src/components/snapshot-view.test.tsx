@@ -167,6 +167,33 @@ describe('pagina de snapshot renderizada', () => {
     expect(text).toContain('Recuperação');
   });
 
+  /**
+   * F9.5.2 — PNG do TESTAR ALARME: o cabeçalho deixa claro que é TESTE e credita
+   * a interface REAL que emprestou o histórico, sem trocar a identidade do
+   * alerta sintético (que continua na fixture).
+   */
+  it('PNG de teste marca TESTE e mostra a origem real do histórico', async () => {
+    const payload = metricPayload();
+    payload.spec.header = {
+      ...payload.spec.header,
+      test: true,
+      sourceDeviceName: 'BHE-VTA-F1A-BGP-01',
+      sourceInterfaceName: '100GE0/1/48',
+    };
+    const text = await mount(<SnapshotView data={payload} />);
+    expect(text).toContain('TESTE — GMJ NETVISION');
+    expect(text).toContain('Dados históricos: BHE-VTA-F1A-BGP-01 · 100GE0/1/48');
+    // O alerta em si segue sendo a fixture.
+    expect(text).toContain('CEM-CEN-6730-MPLS-01');
+    expect(text).toContain('100GE0/0/1 · TESTE-WEBHOOK');
+  });
+
+  it('PNG de alarme real não ganha o selo de TESTE', async () => {
+    const text = await mount(<SnapshotView data={metricPayload()} />);
+    expect(text).not.toContain('TESTE — GMJ NETVISION');
+    expect(text).not.toContain('Dados históricos:');
+  });
+
   it('tipo óptico reusa o histórico óptico com as linhas de WARN e ALARM', async () => {
     const payload: SnapshotChartPayload = {
       spec: {
@@ -220,14 +247,23 @@ describe('INCLUIR GRÁFICO no TESTAR ALARME', () => {
     event: 'OPENED',
     severity: 'WARNING',
     includeChart: false,
+    chartInterfaceId: null,
   };
 
   it('default OFF e rótulo explícito', () => {
     const html = renderToStaticMarkup(
-      <AlarmTestSimulator draft={draft} onChange={() => undefined} onTest={() => undefined} disabled={false} />,
+      <AlarmTestSimulator
+        draft={draft}
+        onChange={() => undefined}
+        chartSource={null}
+        onChartSourceChange={() => undefined}
+        onTest={() => undefined}
+        disabled={false}
+      />,
     );
     expect(html).toContain('INCLUIR GRÁFICO [OFF]');
     expect(html).toContain('Simulação: não cria alarme no NetVision.');
+    expect(html).not.toContain('INTERFACE DE REFERÊNCIA DO GRÁFICO');
   });
 
   it('ligar o gráfico envia includeChart=true no mesmo draft', async () => {
@@ -237,7 +273,14 @@ describe('INCLUIR GRÁFICO no TESTAR ALARME', () => {
     const root = createRoot(container);
     await act(async () => {
       root.render(
-        <AlarmTestSimulator draft={draft} onChange={onChange} onTest={() => undefined} disabled={false} />,
+        <AlarmTestSimulator
+          draft={draft}
+          onChange={onChange}
+          chartSource={null}
+          onChartSourceChange={() => undefined}
+          onTest={() => undefined}
+          disabled={false}
+        />,
       );
     });
     const checkbox = container.querySelector(

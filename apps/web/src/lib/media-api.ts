@@ -164,11 +164,14 @@ export function testMediaWebhook(id: string): Promise<MediaWebhookTestResult> {
  * F9.5.1: a selecao (tipo/evento/severidade) vai no corpo; sem ela vale o
  * default do simulador. `includeChart` (default OFF) liga o snapshot do
  * gráfico no payload de teste, usando uma interface real so como fonte de
- * histórico.
+ * histórico; `chartInterfaceId` escolhe essa interface.
  */
 export function testMediaAlarm(
   id: string,
-  selection?: NetworkAlarmTestSelectionInput & { includeChart?: boolean },
+  selection?: NetworkAlarmTestSelectionInput & {
+    includeChart?: boolean;
+    chartInterfaceId?: string | null;
+  },
 ): Promise<MediaWebhookTestResult> {
   return request<MediaWebhookTestResult>(
     `/api/media/integrations/${encodeURIComponent(id)}/test-alarm`,

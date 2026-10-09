@@ -62,6 +62,16 @@ export const METRIC_ALARM_TYPES = [
   'INTERFACE_DISCARDS',
   'OPTICAL_RX_DEGRADATION',
 ] as const satisfies readonly MetricAlarmType[];
+
+/**
+ * O tipo TEM série histórica para desenhar no PNG do alerta (os demais seguem
+ * texto-only). Mesma lista do motor de regras: um tipo só entra aqui quando o
+ * histórico correspondente existe de verdade.
+ */
+export function isChartableAlarmType(type: string): boolean {
+  return (METRIC_ALARM_TYPES as readonly string[]).includes(type);
+}
+
 export type AlarmSeverity = 'CRITICAL' | 'MAJOR' | 'WARNING' | 'INFO';
 
 /**

@@ -101,6 +101,89 @@ describe('spec do snapshot por tipo de alarme', () => {
   });
 });
 
+/**
+ * F9.5.2 — TESTAR ALARME com grafico: a serie vem de uma interface REAL
+ * (`source`), enquanto o texto do payload continua sendo a fixture.
+ */
+describe('spec do snapshot com interface REAL (TESTAR ALARME)', () => {
+  const f1a = {
+    interfaceId: 'if-f1a-48',
+    deviceName: 'BHE-VTA-F1A-BGP-01',
+    interfaceName: '100GE0/1/48',
+    alias: 'BHE-VTA-S6750-MPLS-01-100GE1/0/1',
+    lanes: [0, 1, 2, 3],
+  };
+
+  it('D) usa o interfaceId da interface real como fonte da serie', () => {
+    const payload = payloadFor('OPTICAL_RX_DEGRADATION');
+    expect(payload.interfaceId).toBe('test-interface');
+    const spec = buildAlarmChartSpec(payload, 900, NOW.getTime(), { source: f1a, test: true });
+    expect(spec?.interfaceId).toBe('if-f1a-48');
+    // Texto/caption continuam da fixture — ninguem confunde teste com real.
+    expect(spec?.header.device).toBe(payload.deviceName);
+    expect(spec?.header.interfaceName).toBe(payload.interfaceName);
+    expect(spec?.header.alias).toBe(payload.interfaceLabel);
+  });
+
+  it('marca o header como TESTE e credita a origem real do historico', () => {
+    const spec = buildAlarmChartSpec(payloadFor('INTERFACE_CRC'), 900, NOW.getTime(), {
+      source: f1a,
+      test: true,
+    });
+    expect(spec?.header.test).toBe(true);
+    expect(spec?.header.sourceDeviceName).toBe('BHE-VTA-F1A-BGP-01');
+    expect(spec?.header.sourceInterfaceName).toBe('100GE0/1/48');
+  });
+
+  it('sem `test` o header nao ganha os campos de teste (alarme real intacto)', () => {
+    const spec = buildAlarmChartSpec(payloadFor('INTERFACE_CRC'), 900, NOW.getTime());
+    expect(spec?.header.test).toBeUndefined();
+    expect(spec?.header.sourceDeviceName).toBeUndefined();
+    expect(spec?.interfaceId).toBe('test-interface');
+  });
+
+  it('a chave de cache separa o PNG de teste do PNG do alarme real', () => {
+    const payload = payloadFor('OPTICAL_RX_DEGRADATION');
+    const testSpec = buildAlarmChartSpec(payload, 900, NOW.getTime(), { source: f1a, test: true });
+    const fixtureSpec = buildAlarmChartSpec(payload, 900, NOW.getTime());
+    expect(testSpec && fixtureSpec && snapshotCacheKey(testSpec)).not.toBe(snapshotCacheKey(fixtureSpec!));
+  });
+
+  /**
+   * J) lane: a da fixture vale quando existe no modulo real; fora disso vence a
+   * MENOR lane disponivel (deterministico). O escalar agregado do F1A (+6 dBm)
+   * nunca entra como lane.
+   */
+  it('J) lane da fixture existe na interface real: mantem a lane', () => {
+    const spec = buildAlarmChartSpec(payloadFor('OPTICAL_RX_DEGRADATION'), 900, NOW.getTime(), {
+      source: f1a,
+      test: true,
+    });
+    expect(spec?.optical?.lane).toBe(2);
+  });
+
+  it('J) lane da fixture nao existe: cai na menor lane real (prefere 0)', () => {
+    const twoLanes = { ...f1a, lanes: [0, 1] };
+    const spec = buildAlarmChartSpec(payloadFor('OPTICAL_RX_DEGRADATION'), 900, NOW.getTime(), {
+      source: twoLanes,
+      test: true,
+    });
+    expect(spec?.optical?.lane).toBe(0);
+  });
+
+  it('J) sem lanes conhecidas a lane da fixture e preservada (nunca inventa serie)', () => {
+    const semLanes = { ...f1a, lanes: [] };
+    const spec = buildAlarmChartSpec(payloadFor('OPTICAL_RX_DEGRADATION'), 900, NOW.getTime(), {
+      source: semLanes,
+      test: true,
+    });
+    expect(spec?.optical?.lane).toBe(2);
+    // O agregado do F1A (+6 dBm) so aparece no payload como valor do evento,
+    // nunca como lane desenhada.
+    expect(spec?.optical?.lane).not.toBe(6);
+  });
+});
+
 describe('payload NETWORK_ALARMS com snapshot', () => {
   it('6/9/10/11/12) OPENED de teste mantem test, eventKey, purpose e canal de alarmes', () => {
     const spec = buildAlarmChartSpec(payloadFor('INTERFACE_CRC'), 900, NOW.getTime());
@@ -211,6 +294,44 @@ describe('orquestracao do PNG (renderer injetado)', () => {
     expect(verified?.kind).toBe('OPTICAL');
     expect(verifySnapshotToken(pageToken, KEY, NOW.getTime() + 901_000)).toBeNull();
     expect(verifySnapshotToken(`${pageToken}x`, KEY, NOW.getTime())).toBeNull();
+  });
+
+  it('o snapshot de teste usa a interface real e o cache nao colide com o do alarme', async () => {
+    const f1a = {
+      interfaceId: 'if-f1a-48',
+      deviceName: 'BHE-VTA-F1A-BGP-01',
+      interfaceName: '100GE0/1/48',
+      alias: '',
+      lanes: [0, 1, 2, 3],
+    };
+    const render = vi.fn(async (_url: string, _timeoutMs: number) => Buffer.from([1, 2, 3]));
+    const snapshot = createAlarmChartSnapshot({ ...deps(), render });
+
+    const media = await snapshot(payloadFor('OPTICAL_RX_DEGRADATION'), { source: f1a, test: true });
+    expect(media.available).toBe(true);
+
+    // A pagina interna recebe a interface REAL e o selo de TESTE.
+    const pageToken = render.mock.calls[0]![0].split('/snapshot/')[1]!;
+    const spec = verifySnapshotToken(pageToken, KEY, NOW.getTime());
+    expect(spec?.interfaceId).toBe('if-f1a-48');
+    expect(spec?.header.test).toBe(true);
+    expect(spec?.header.sourceDeviceName).toBe('BHE-VTA-F1A-BGP-01');
+    expect(spec?.header.sourceInterfaceName).toBe('100GE0/1/48');
+    expect(spec?.optical?.lane).toBe(2);
+
+    // O PNG do teste vive em outra chave de cache que o do alarme real.
+    const testKey = snapshotCacheKey(buildAlarmChartSpec(
+      payloadFor('OPTICAL_RX_DEGRADATION'),
+      900,
+      NOW.getTime(),
+      { source: f1a, test: true },
+    )!);
+    expect(await snapshot.read(testKey)).not.toBeNull();
+    const realKey = snapshotCacheKey(
+      buildAlarmChartSpec(payloadFor('OPTICAL_RX_DEGRADATION'), 900, NOW.getTime())!,
+    );
+    expect(realKey).not.toBe(testKey);
+    expect(await snapshot.read(realKey)).toBeNull();
   });
 
   it('cache em disco existe e tem o mesmo sha do render', async () => {

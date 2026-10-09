@@ -47,6 +47,11 @@ export interface SnapshotHeaderSpec {
   message: string | null;
   eventAt: string;
   resolvedAt: string | null;
+  /** TESTAR ALARME: o PNG nao veio de um alarme real. */
+  test?: boolean;
+  /** Origem REAL do historico quando o PNG e de teste. */
+  sourceDeviceName?: string | null;
+  sourceInterfaceName?: string | null;
 }
 
 export interface SnapshotSpec {
@@ -80,6 +85,9 @@ const specSchema = z.object({
     message: z.string().nullable(),
     eventAt: z.string(),
     resolvedAt: z.string().nullable(),
+    test: z.boolean().optional(),
+    sourceDeviceName: z.string().nullable().optional(),
+    sourceInterfaceName: z.string().nullable().optional(),
   }),
   metric: z
     .object({

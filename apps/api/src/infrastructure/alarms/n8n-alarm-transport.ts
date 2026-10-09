@@ -25,7 +25,12 @@ import { buildNetworkAlarmTestAlarm } from './alarm-test-fixtures';
  * reais (OPENED/ESCALATED/RESOLVED) e o botao TESTAR ALARME (`test: true`).
  */
 
-import { isChartableAlarmType, type AlarmChartMedia } from '../media/alarm-chart-snapshot';
+import {
+  isChartableAlarmType,
+  type AlarmChartMedia,
+  type AlarmChartSource,
+  type AlarmChartSpecOptions,
+} from '../media/alarm-chart-snapshot';
 
 export const NETWORK_ALARM_EVENTS = [
   'NETWORK_ALARM_OPENED',
@@ -297,9 +302,15 @@ export interface N8nAlarmTransportDeps {
   now?: () => Date;
   /**
    * Snapshot do gráfico do evento. Falha aqui NUNCA bloqueia o envio: o
-   * payload sai sem `media.chart` (fallback texto-only).
+   * payload sai sem `media.chart` (fallback texto-only). As opções só existem
+   * no caminho TESTAR ALARME (`source` = interface real do histórico).
    */
-  chartSnapshot?: ((payload: NetworkAlarmWebhookPayload) => Promise<AlarmChartMedia>) | undefined;
+  chartSnapshot?:
+    | ((
+        payload: NetworkAlarmWebhookPayload,
+        options?: AlarmChartSpecOptions,
+      ) => Promise<AlarmChartMedia>)
+    | undefined;
 }
 
 export class N8nAlarmTransport implements AlarmNotificationTransport, MediaAlarmTestPort {
@@ -329,7 +340,12 @@ export class N8nAlarmTransport implements AlarmNotificationTransport, MediaAlarm
    * roda SNMP e nao altera badge nenhum.
    */
   async publishAlarmTest(
-    input: { profileId?: string | null; includeChart?: boolean } & NetworkAlarmTestSelectionInput = {},
+    input: {
+      profileId?: string | null;
+      includeChart?: boolean;
+      /** Interface REAL usada SO como fonte do historico do PNG. */
+      chartSource?: AlarmChartSource | null;
+    } & NetworkAlarmTestSelectionInput = {},
   ): Promise<MediaDeliveryOutcome> {
     const selection = resolveNetworkAlarmTestSelection(input);
     const alarm = buildNetworkAlarmTestAlarm(selection, this.now());
@@ -341,7 +357,11 @@ export class N8nAlarmTransport implements AlarmNotificationTransport, MediaAlarm
         test: true,
         eventKey: NETWORK_ALARM_TEST_EVENT,
       }),
-      { includeChart: input.includeChart ?? false },
+      {
+        includeChart: input.includeChart ?? false,
+        chartSource: input.chartSource ?? null,
+        test: true,
+      },
     );
   }
 
@@ -351,12 +371,16 @@ export class N8nAlarmTransport implements AlarmNotificationTransport, MediaAlarm
    */
   private async chartMedia(
     payload: NetworkAlarmWebhookPayload,
-    includeChart: boolean,
+    options: { includeChart?: boolean; chartSource?: AlarmChartSource | null; test?: boolean },
   ): Promise<AlarmChartMedia | null> {
     const snapshot = this.deps.chartSnapshot;
-    if (!snapshot || !includeChart || !isChartableAlarmType(payload.type)) return null;
+    if (!snapshot || !options.includeChart || !isChartableAlarmType(payload.type)) return null;
+    const snapshotOptions: AlarmChartSpecOptions = {
+      ...(options.chartSource ? { source: options.chartSource } : {}),
+      ...(options.test ? { test: true } : {}),
+    };
     try {
-      const media = await snapshot(payload);
+      const media = await snapshot(payload, snapshotOptions);
       return media.available ? media : null;
     } catch {
       return null;
@@ -368,7 +392,7 @@ export class N8nAlarmTransport implements AlarmNotificationTransport, MediaAlarm
     alarm: Alarm,
     profileId: string | null,
     payload: NetworkAlarmWebhookPayload,
-    options: { includeChart?: boolean } = {},
+    options: { includeChart?: boolean; chartSource?: AlarmChartSource | null; test?: boolean } = {},
   ): Promise<MediaDeliveryOutcome> {
     // F9.5: somente o canal NETWORK_ALARMS (sem fallback cruzado).
     const channel = await this.deps.media.resolveOutbound('NETWORK_ALARMS');
@@ -397,7 +421,7 @@ export class N8nAlarmTransport implements AlarmNotificationTransport, MediaAlarm
       };
     }
 
-    const chart = await this.chartMedia(payload, options.includeChart ?? false);
+    const chart = await this.chartMedia(payload, options);
     const outgoing = chart ? { ...payload, media: { chart: toChartPayload(chart) } } : payload;
 
     await this.deps.media.recordOutboundAttempt({
