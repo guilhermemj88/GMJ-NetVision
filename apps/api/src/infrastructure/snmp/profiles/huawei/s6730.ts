@@ -31,5 +31,10 @@ export const huaweiS6730Profile: SnmpProfile = {
     warningThresholdEncoding: 'CENTI_DBM',
     minMaxEncoding: 'UNSUPPORTED',
   }),
+  cli: {
+    opticalDiagnosis: 'display transceiver diagnosis interface {interface}',
+    opticalVerbose: 'display transceiver verbose interface {interface}',
+    version: 'display version',
+  },
   metrics: huaweiGenericProfile.metrics,
 };

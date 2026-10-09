@@ -30,5 +30,9 @@ export const huaweiMa5800Profile: SnmpProfile = {
     warningThresholdEncoding: 'UNSUPPORTED',
     minMaxEncoding: 'UNSUPPORTED',
   }),
+  cli: {
+    // Optico PON/ONT e dominio da XPON MIB (fase futura): so versao/board.
+    version: 'display version',
+  },
   metrics: huaweiGenericProfile.metrics,
 };

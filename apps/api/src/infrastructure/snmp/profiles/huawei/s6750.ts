@@ -39,5 +39,10 @@ export const huaweiS6750Profile: SnmpProfile = {
     warningThresholdEncoding: 'UNSUPPORTED',
     minMaxEncoding: 'UNSUPPORTED',
   }),
+  cli: {
+    // YunShan OS: diagnostico (potencia/bias/limites) em um unico comando.
+    opticalDiagnosis: 'display interface {interface} transceiver verbose',
+    version: 'display version',
+  },
   metrics: huaweiGenericProfile.metrics,
 };

@@ -33,6 +33,13 @@ export const huaweiNe8000Profile: SnmpProfile = {
     warningThresholdEncoding: 'CENTI_DBM',
     minMaxEncoding: 'CENTI_DBM',
   }),
+  cli: {
+    // No NE8000-8H20Q o diagnostico por lane sai do proprio `display interface`
+    // (potencias por lane e "Rx Warning range"); nao existe
+    // `display transceiver diagnosis` valido nessa plataforma.
+    opticalDiagnosis: 'display interface {interface}',
+    version: 'display version',
+  },
   metrics: {
     cpu: {
       unit: '%',

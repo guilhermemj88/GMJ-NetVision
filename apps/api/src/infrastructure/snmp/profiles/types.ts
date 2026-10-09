@@ -36,6 +36,21 @@ export interface SnmpMetricDefinition {
   candidates: SnmpMetricCandidate[];
 }
 
+/**
+ * Dialeto CLI READ-ONLY da familia (evidencia de campo 2026-10-09).
+ * `{interface}` = nome da porta exatamente como publicado no SNMP.
+ * O polling SNMP nao executa nenhum destes comandos: a declaracao existe para
+ * o fallback SSH/diagnostico e para auditoria do que foi validado em campo.
+ */
+export interface SnmpCliDialect {
+  /** Diagnostico optico (potencia por lane, thresholds, bias). */
+  opticalDiagnosis?: string;
+  /** Variante verbosa, quando a plataforma exige outro comando. */
+  opticalVerbose?: string;
+  /** Versao/software da plataforma. */
+  version?: string;
+}
+
 export interface SnmpProfile {
   id: string;
   vendor: string;
@@ -53,6 +68,11 @@ export interface SnmpProfile {
    * O runtime confirma/refina com o capability probe por equipamento.
    */
   optical?: HuaweiOpticalCapability;
+  /**
+   * Comandos CLI read-only validados em campo nesta familia. Apenas metadata:
+   * a camada optica decide o que ler por SNMP/SSH, nunca executa isto sozinha.
+   */
+  cli?: SnmpCliDialect;
   /**
    * Scalar OID for the PPP/PPPoE online counter (capability based). When the
    * selected profile does not declare it, the device is treated as not
@@ -75,6 +95,8 @@ export interface SnmpCandidateAttempt {
 export interface SnmpProfileDiagnostic {
   deviceId: string;
   profileId: string;
+  /** Dialeto CLI declarado pelo profile selecionado (auditoria/QA). */
+  cli?: SnmpCliDialect | null;
   identity: SnmpProfileIdentity;
   metrics: Partial<Record<SnmpProfileMetricName, {
     attempts: SnmpCandidateAttempt[];

@@ -30,6 +30,11 @@ export const huaweiGenericProfile: SnmpProfile = {
     warningThresholdEncoding: 'CENTI_DBM',
     minMaxEncoding: 'UNSUPPORTED',
   }),
+  cli: {
+    opticalDiagnosis: 'display transceiver diagnosis interface {interface}',
+    opticalVerbose: 'display transceiver verbose interface {interface}',
+    version: 'display version',
+  },
   metrics: {
     cpu: {
       unit: '%',

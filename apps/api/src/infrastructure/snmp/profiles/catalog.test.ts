@@ -136,6 +136,27 @@ describe('SNMP profile catalog', () => {
     }
   });
 
+  it('declara o dialeto CLI read-only por familia (nada e executado no polling)', () => {
+    expect(selectSnmpProfile({ sysObjectId: '1.3.6.1.4.1.2011.2.360.1.5' }).cli).toEqual({
+      opticalDiagnosis: 'display interface {interface}',
+      version: 'display version',
+    });
+    expect(selectSnmpProfile({ model: 'S6730-H48X6C' }).cli).toEqual({
+      opticalDiagnosis: 'display transceiver diagnosis interface {interface}',
+      opticalVerbose: 'display transceiver verbose interface {interface}',
+      version: 'display version',
+    });
+    expect(selectSnmpProfile({ sysObjectId: '1.3.6.1.4.1.2011.2.23.1247' }).cli).toEqual({
+      opticalDiagnosis: 'display interface {interface} transceiver verbose',
+      version: 'display version',
+    });
+    // MA5800: optico PON e dominio XPON (fase futura) - so versao/board.
+    expect(selectSnmpProfile({ model: 'MA5800-X15' }).cli).toEqual({ version: 'display version' });
+    expect(selectSnmpProfile({ vendor: 'Huawei', model: 'Desconhecido' }).cli?.opticalVerbose)
+      .toBe('display transceiver verbose interface {interface}');
+    expect(selectSnmpProfile({ vendor: 'Other' }).cli).toBeUndefined();
+  });
+
   it('resolves Huawei and MikroTik PPP OIDs without inventing values', () => {
     expect(selectPppOnlineOid({ vendor: 'Huawei', model: 'NE40E-X8A' })).toBe(HUAWEI_PPP_ONLINE_OID);
     expect(selectPppOnlineOid({ vendor: 'MikroTik', sysDescr: 'RouterOS 7' })).toBe(

@@ -61,6 +61,7 @@ export class SnmpProfileMetricService {
     const diagnostic: SnmpProfileDiagnostic = {
       deviceId,
       profileId: profile.id,
+      cli: profile.cli ?? null,
       identity,
       metrics: {},
       checkedAt: new Date().toISOString(),
