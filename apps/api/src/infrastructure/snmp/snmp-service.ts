@@ -30,6 +30,9 @@ import {
   GENERIC_LEGACY_COUNTER_OIDS,
   GENERIC_SYSTEM_OIDS,
 } from './profiles/generic-oids';
+import { selectOpticalScalarSemantics } from './profiles/catalog';
+import { snmpIdentityFor } from './snmpv2c-discovery-adapter';
+import type { OpticalCapabilitySnapshot } from './optical-capability';
 import type { MplsPollingService } from '../mpls/mpls-polling-service';
 import type { PppPollingService } from '../ppp/ppp-polling-service';
 import type { BgpPollingService } from '../bgp/bgp-polling-service';
@@ -158,6 +161,14 @@ export class SnmpService {
     return this.profileMetrics.getDiagnostic(deviceId);
   }
 
+  /**
+   * Capability optica confirmada pela sonda (cacheada) para diagnostico/QA.
+   * `null` = a sonda ainda nao rodou para este device.
+   */
+  getOpticalDiagnostic(deviceId: string): OpticalCapabilitySnapshot | null {
+    return this.discoveryAdapter.getOpticalCapability(deviceId);
+  }
+
   async testConnectivity(device: HostRecord): Promise<{
     state: Exclude<SourceConnectionState, 'CONFIGURED'>;
     message: string;
@@ -222,6 +233,8 @@ export class SnmpService {
   }
 
   async discoverAndPersistInterfaces(device: HostRecord): Promise<NetworkInterface[]> {
+    // Rediscovery explicito: a capability optica pode ter mudado (view/versao).
+    this.discoveryAdapter.invalidateOpticalCapability(device.id);
     const discovered = await this.discoverInterfaces(device);
     if (!discovered.length) throw new Error('SNMP IF-MIB returned no valid interfaces');
     let merged = discovered;
@@ -577,6 +590,9 @@ export class SnmpService {
         community,
         system,
       );
+      const scalarSemantics = system
+        ? selectOpticalScalarSemantics(snmpIdentityFor(device, system))
+        : selectOpticalScalarSemantics(snmpIdentityFor(device));
       if (device.sshEnabled && this.sshInterfaces) {
         try {
           interfaces = await this.sshInterfaces.enrichOpticalPower(device, interfaces, startedAt);
@@ -600,13 +616,16 @@ export class SnmpService {
         // Threshold e opcional; o ciclo de potencia/SNMP permanece valido.
       }
 
-      // Motor optico roda DEPOIS de persistir as amostras e e fail-safe.
+      // Motor optico roda DEPOIS de persistir as amostras e e fail-safe. A
+      // semantica do scalar vem do profile: `AGGREGATED_LANES` (F1A) impede o
+      // motor de comparar o agregado com thresholds por lane.
       if (this.alarmEngine) {
         try {
           await this.alarmEngine.processOpticalReadings({
             deviceId: device.id,
             deviceName: device.displayName || device.name,
             interfaces,
+            ...(scalarSemantics ? { scalarSemantics } : {}),
           });
         } catch (error) {
           console.error(

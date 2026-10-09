@@ -258,10 +258,16 @@ export function registerHostRoutes(
     const { hostId } = hostIdParams.parse(request.params);
     const host = await hosts.getHost(hostId);
     if (!host) return reply.code(404).send({ message: 'Host not found' });
-    return snmp.getProfileDiagnostic(hostId) ?? {
-      deviceId: hostId,
-      profileId: null,
-      message: 'O perfil será avaliado no próximo polling SNMP',
+    const diagnostic = snmp.getProfileDiagnostic(hostId);
+    // Capability optica confirmada pela sonda (READ-ONLY, cacheada por device).
+    const optical = snmp.getOpticalDiagnostic(hostId);
+    return {
+      ...(diagnostic ?? {
+        deviceId: hostId,
+        profileId: null,
+        message: 'O perfil será avaliado no próximo polling SNMP',
+      }),
+      ...(optical ? { optical } : {}),
     };
   });
 
