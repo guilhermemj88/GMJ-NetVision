@@ -112,6 +112,9 @@ async function buildHarness(
         }),
       },
       repositoryKind: 'MEMORY',
+      // Stub: o endpoint manual SEMPRE pede refresh; o efeito real e testado no
+      // suite do BgpMitigationService (mitigation-refresh-metadata.test.ts).
+      interfaceMetadataRefresher: { refresh: async () => ({ interfaces: 203 }) },
       now: () => FIXED_NOW,
     }),
     currentUser: async () => (options.authenticated === false ? null : OPERATOR),
@@ -301,6 +304,89 @@ describe('API de mitigacao DDoS (SIMULATION_ONLY)', () => {
     expect(unauthorized.statusCode).toBe(401);
     expect(tooMany.statusCode).toBe(400);
     expect(empty.statusCode).toBe(400);
+  });
+
+  it('DESCOBRIR CLIENTES: refresh de interfaces roda 1x ANTES do discovery e aparece nos warnings', async () => {
+    const repository = new InMemoryMitigationRepository();
+    const order: string[] = [];
+    const refreshHosts: string[] = [];
+    const app4 = Fastify();
+    const discoveryResult = (deviceId: string): MitigationDiscoveryResult => ({
+      deviceId,
+      scannedPeers: 1,
+      candidateInterfaces: 1,
+      ignoredNoBandwidth: 0,
+      createdProfiles: 0,
+      updatedProfiles: 1,
+      blockedProfiles: 0,
+      outOfScopeProfiles: [],
+      ambiguousPeers: [],
+      warnings: [],
+      profiles: [],
+    });
+    registerMitigationRoutes(app4, {
+      service: new BgpMitigationService({
+        repository,
+        discovery: {
+          async discoverMitigationProfiles(hostRecord: HostRecord): Promise<MitigationDiscoveryResult> {
+            order.push('discovery');
+            return discoveryResult(hostRecord.id);
+          },
+          async discoverFromBgpOutcome(hostRecord: HostRecord): Promise<MitigationDiscoveryResult> {
+            order.push('discovery');
+            return discoveryResult(hostRecord.id);
+          },
+        } as never,
+        hosts: { getHost: async () => host('device-1', 'BGP-01') } as never,
+        persistedPeers: {
+          async listForDevice() {
+            order.push('persistedPeers');
+            return [{
+              peerAddress: '10.200.201.22',
+              addressFamily: 'IPV4',
+              remoteAs: '263420',
+              stateCode: 6,
+              state: 'ESTABLISHED',
+              receivedPrefixes: 1,
+              interface: {
+                id: 'if-3066',
+                name: 'Eth-Trunk1.3066',
+                alias: 'FAST TELECOM_10G',
+                description: '',
+              },
+            }] as never;
+          },
+        },
+        interfaceMetadataRefresher: {
+          async refresh(device) {
+            order.push('refresh');
+            refreshHosts.push(device.id);
+            return { interfaces: 203 };
+          },
+        },
+        schemaProbe: { probe: async () => ({ migrationReady: true, databaseReady: true }) },
+        repositoryKind: 'MEMORY',
+      }),
+      currentUser: async () => OPERATOR,
+    });
+    app4.setErrorHandler((_error, _request, reply) =>
+      reply.code(500).send({ message: 'Internal server error' }),
+    );
+    await app4.ready();
+
+    const response = await app4.inject({
+      method: 'POST',
+      url: '/api/bgp/mitigation/discover',
+      payload: { deviceId: 'device-1' },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(refreshHosts).toEqual(['device-1']);
+    expect(order).toEqual(['refresh', 'persistedPeers', 'discovery']);
+    expect((response.json().warnings as string[]).join('\n')).toContain(
+      'Interfaces atualizadas via SNMP/SSH antes do discovery (203 interfaces).',
+    );
+    await app4.close();
   });
 
   it('PATCH aceita apenas o override de banda e permite remove-lo', async () => {
@@ -631,6 +717,7 @@ describe('API de mitigacao DDoS (SIMULATION_ONLY)', () => {
         hosts: { getHost: async () => host('device-1', 'BGP-01') },
         schemaProbe: { probe: async () => ({ migrationReady: false, databaseReady: true }) },
         repositoryKind: 'DATABASE',
+        interfaceMetadataRefresher: { refresh: async () => ({ interfaces: 1 }) },
         now: () => FIXED_NOW,
       }),
       currentUser: async () => OPERATOR,

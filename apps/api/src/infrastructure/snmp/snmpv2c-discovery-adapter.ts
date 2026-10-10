@@ -164,6 +164,24 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
   }
 
   async discoverInterfaces(device: Device, community?: string): Promise<NetworkInterface[]> {
+    return this.discoverIfMib(device, community, true);
+  }
+
+  /**
+   * SOMENTE metadata: IF-MIB puro (ifIndex/ifName/ifDescr/ifAlias/status/
+   * speed/MAC). NUNCA caminha HUAWEI-ENTITY-EXTENT-MIB, nunca roda o probe de
+   * capability e nunca devolve campo optico — e o caminho do refresh do
+   * DESCOBRIR CLIENTES.
+   */
+  async discoverInterfaceMetadata(device: Device, community?: string): Promise<NetworkInterface[]> {
+    return this.discoverIfMib(device, community, false);
+  }
+
+  private async discoverIfMib(
+    device: Device,
+    community: string | undefined,
+    includeOptical: boolean,
+  ): Promise<NetworkInterface[]> {
     const hostRecord = device as HostRecord;
     if (!hostRecord.snmp?.host || !hostRecord.snmp.port) return [];
 
@@ -187,11 +205,14 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
       // is entPhysicalIndex, so correlate it to the IF-MIB interface by
       // entPhysicalName. Unsupported devices simply return no optical data, and
       // the capability probe decides what this device actually publishes.
-      const opticalByName = await this.collectOpticalByInterfaceName(
-        hostRecord,
-        snmpCommunity,
-        selectOpticalCapability(snmpIdentityFor(hostRecord)),
-      );
+      // Metadata-only pula TUDO isso: nenhum OID 2011.*, nem probe.
+      const opticalByName = includeOptical
+        ? await this.collectOpticalByInterfaceName(
+            hostRecord,
+            snmpCommunity,
+            selectOpticalCapability(snmpIdentityFor(hostRecord)),
+          )
+        : null;
 
       const descByIndex = this.indexMap(descrs, IF_MIB_OIDS.ifDescr);
       const speedByIndex = this.indexMap(speeds, IF_MIB_OIDS.ifSpeed);
@@ -218,9 +239,11 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
         const speedBps = highSpeedMbps > 0
           ? highSpeedMbps * 1_000_000
           : parseSpeed(speedByIndex.get(suffix) ?? 0);
-        const optical = [...interfaceNameKeys(name), ...interfaceNameKeys(description)]
-          .map((key) => opticalByName.get(key))
-          .find(Boolean);
+        const optical = includeOptical
+          ? [...interfaceNameKeys(name), ...interfaceNameKeys(description)]
+              .map((key) => opticalByName?.get(key))
+              .find(Boolean)
+          : undefined;
 
         return [{
           id: createLocalId('interface'),
@@ -242,7 +265,7 @@ export class SnmpV2cDiscoveryAdapter implements TopologyDiscoveryAdapter {
           txErrors: 0,
           rxDiscards: 0,
           txDiscards: 0,
-          ...this.snmpOpticalFields(optical, now),
+          ...(includeOptical ? this.snmpOpticalFields(optical, now) : {}),
           dataSources: ['SNMP'],
         } satisfies NetworkInterface];
       });

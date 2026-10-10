@@ -250,6 +250,86 @@ describe('PrismaHostRepository interface replacement persistence', () => {
     expect(result[0]?.id).toBe('abc');
   });
 
+  it('refresh de metadata atualiza o alias mantendo o MESMO id (deviceId + ifIndex)', async () => {
+    const upsert = vi.fn().mockResolvedValue({ id: 'IF-123', ifIndex: 248 });
+    const findMany = vi.fn().mockResolvedValue([{
+      id: 'IF-123', ifIndex: 248, name: 'Eth-Trunk1.3066', alias: 'FAST TELECOM', description: null,
+      mac: null, mtu: 1500, speedBps: 10000000000n,
+      rxPowerDbm: null, txPowerDbm: null,
+      opticalLanes: null, opticalLaneSource: null, opticalLanesUpdatedAt: null,
+      opticalSource: null, opticalUpdatedAt: null, dataSources: ['SNMP'],
+    }]);
+    const transactionClient = {
+      interface: { findMany, upsert },
+      device: { update: vi.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (operation: (tx: typeof transactionClient) => Promise<void>) =>
+        operation(transactionClient)),
+    };
+    const repository = new PrismaHostRepository(prisma as never, null);
+    vi.spyOn(repository, 'getHost').mockResolvedValue({
+      interfaces: [{ id: 'IF-123', ifIndex: 248 }],
+    } as HostRecord);
+
+    const result = await repository.replaceInterfaces('device-1', [{
+      id: 'temp-id', deviceId: 'device-1', name: 'Eth-Trunk1.3066', alias: 'FAST TELECOM_10G',
+      description: 'TO FAST TELECOM', ifIndex: 248, mac: '', mtu: 1500, speedBps: 10_000_000_000,
+      adminStatus: 'UP', operStatus: 'UP', rxBps: 0, txBps: 0,
+      rxUtilization: 0, txUtilization: 0, rxErrors: 0, txErrors: 0,
+      rxDiscards: 0, txDiscards: 0, dataSources: ['SNMP', 'SSH'],
+    }]);
+
+    expect(upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { deviceId_ifIndex: { deviceId: 'device-1', ifIndex: 248 } },
+    }));
+    const upsertArgs = upsert.mock.calls[0]?.[0];
+    expect(upsertArgs.create).not.toHaveProperty('id');
+    expect(upsertArgs.update).not.toHaveProperty('id');
+    expect(upsertArgs.update.alias).toBe('FAST TELECOM_10G');
+    expect(result[0]?.id).toBe('IF-123');
+  });
+
+  it('metadata refresh preserva os campos opticos existentes (fallback por ifIndex)', async () => {
+    const upsert = vi.fn().mockResolvedValue({ id: 'IF-248', ifIndex: 248 });
+    const findMany = vi.fn().mockResolvedValue([{
+      id: 'IF-248', ifIndex: 248, name: 'Eth-Trunk1.3066', alias: 'FAST TELECOM', description: null,
+      mac: null, mtu: 1500, speedBps: 10000000000n,
+      rxPowerDbm: -3.4, txPowerDbm: 0.2,
+      opticalLanes: null, opticalLaneSource: null, opticalLanesUpdatedAt: null,
+      opticalSource: 'SNMP', opticalUpdatedAt: new Date('2026-10-10T12:00:00.000Z'),
+      dataSources: ['SNMP'], operStatus: 'UP',
+    }]);
+    const transactionClient = {
+      interface: { findMany, upsert },
+      device: { update: vi.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      $transaction: vi.fn(async (operation: (tx: typeof transactionClient) => Promise<void>) =>
+        operation(transactionClient)),
+    };
+    const repository = new PrismaHostRepository(prisma as never, null);
+    vi.spyOn(repository, 'getHost').mockResolvedValue({
+      interfaces: [{ id: 'IF-248', ifIndex: 248 }],
+    } as HostRecord);
+
+    await repository.replaceInterfaces('device-1', [{
+      id: 'temp-id', deviceId: 'device-1', name: 'Eth-Trunk1.3066', alias: 'FAST TELECOM_10G',
+      description: '', ifIndex: 248, mac: '', mtu: 1500, speedBps: 10_000_000_000,
+      adminStatus: 'UP', operStatus: 'UP', rxBps: 0, txBps: 0,
+      rxUtilization: 0, txUtilization: 0, rxErrors: 0, txErrors: 0,
+      rxDiscards: 0, txDiscards: 0, dataSources: ['SNMP', 'SSH'],
+    }]);
+
+    const update = upsert.mock.calls[0]?.[0]?.update;
+    expect(update.alias).toBe('FAST TELECOM_10G');
+    expect(update.rxPowerDbm).toBe(-3.4);
+    expect(update.txPowerDbm).toBe(0.2);
+    expect(update.opticalSource).toBe('SNMP');
+    expect(update.opticalUpdatedAt).toEqual(new Date('2026-10-10T12:00:00.000Z'));
+    expect(update.dataSources).toEqual(['SNMP', 'SSH']);
+  });
+
   it('adds a new interface and does not delete interfaces that are no longer seen', async () => {
     const upsert = vi.fn().mockResolvedValue({ id: 'new-id', ifIndex: 2193 });
     const findMany = vi.fn().mockResolvedValue([]);

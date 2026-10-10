@@ -1966,3 +1966,99 @@ describe('SnmpService Ã¢â‚¬â€ motor de alarmes metricos', () => {
     expect(repo.saveSnmpPoll).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('SnmpService — refresh de METADATA (DESCOBRIR CLIENTES)', () => {
+  it('usa enrichInterfaceMetadata (sem optica) e persiste as descricoes', async () => {
+    const repo = repository();
+    const enrichInterfaceMetadata = vi.fn();
+    const enrichInterfaces = vi.fn();
+    const service = new SnmpService(
+      repo,
+      { enrichInterfaceMetadata, enrichInterfaces } as never,
+      Number.POSITIVE_INFINITY,
+    );
+    const interfaces = [networkInterface('Eth-Trunk1.3066', 248)];
+    vi.spyOn(service, 'discoverInterfaceMetadata').mockResolvedValue(interfaces);
+    const discoverFull = vi.spyOn(service, 'discoverInterfaces');
+    enrichInterfaceMetadata.mockImplementation(
+      async (_device: unknown, list: HostRecord['interfaces']) =>
+        list.map((item) => ({ ...item, alias: `${item.name}_10G` })),
+    );
+    const device = snmpHost(interfaces, {
+      sshEnabled: true,
+      ssh: { host: '10.0.0.1', port: 22, username: 'operator' } as never,
+    });
+
+    const result = await service.discoverAndPersistInterfaceMetadata(device);
+
+    expect(enrichInterfaceMetadata).toHaveBeenCalledTimes(1);
+    expect(enrichInterfaces).not.toHaveBeenCalled();
+    expect(discoverFull).not.toHaveBeenCalled();
+    expect(repo.replaceInterfaces).toHaveBeenCalledWith('test-1', expect.any(Array));
+    expect(repo.updateSourceHealth).toHaveBeenCalledWith(
+      'test-1',
+      expect.objectContaining({ source: 'SSH', state: 'CONNECTED' }),
+    );
+    expect(result[0]?.alias).toBe('Eth-Trunk1.3066_10G');
+  });
+
+  it('SSH falhou: persiste o que o SNMP trouxe e marca a saude FAILED', async () => {
+    const repo = repository();
+    const enrichInterfaceMetadata = vi.fn().mockRejectedValue(new Error('SSH timeout'));
+    const service = new SnmpService(
+      repo,
+      { enrichInterfaceMetadata, enrichInterfaces: vi.fn() } as never,
+      Number.POSITIVE_INFINITY,
+    );
+    const interfaces = [networkInterface('Eth-Trunk1.3066', 248)];
+    vi.spyOn(service, 'discoverInterfaceMetadata').mockResolvedValue(interfaces);
+    const device = snmpHost(interfaces, {
+      sshEnabled: true,
+      ssh: { host: '10.0.0.1', port: 22, username: 'operator' } as never,
+    });
+
+    const result = await service.discoverAndPersistInterfaceMetadata(device);
+
+    expect(result[0]?.alias).toBe('');
+    expect(repo.updateSourceHealth).toHaveBeenCalledWith(
+      'test-1',
+      expect.objectContaining({ source: 'SSH', state: 'FAILED' }),
+    );
+  });
+
+  it('discoverAndPersistInterfaces (FULL) continua usando enrichInterfaces', async () => {
+    const repo = repository();
+    const enrichInterfaceMetadata = vi.fn();
+    const enrichInterfaces = vi.fn();
+    const service = new SnmpService(
+      repo,
+      { enrichInterfaceMetadata, enrichInterfaces } as never,
+      Number.POSITIVE_INFINITY,
+    );
+    const interfaces = [networkInterface('100GE0/0/1', 1, 'UP')];
+    vi.spyOn(service, 'discoverInterfaces').mockResolvedValue(interfaces);
+    const discoverMetadata = vi.spyOn(service, 'discoverInterfaceMetadata');
+    enrichInterfaces.mockResolvedValue(interfaces);
+    const device = snmpHost(interfaces, {
+      sshEnabled: true,
+      ssh: { host: '10.0.0.1', port: 22, username: 'operator' } as never,
+    });
+
+    await service.discoverAndPersistInterfaces(device);
+
+    expect(enrichInterfaces).toHaveBeenCalledTimes(1);
+    expect(enrichInterfaceMetadata).not.toHaveBeenCalled();
+    expect(discoverMetadata).not.toHaveBeenCalled();
+  });
+
+  it('IF-MIB vazio: o refresh de metadata falha igual ao FULL', async () => {
+    const repo = repository();
+    const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
+    vi.spyOn(service, 'discoverInterfaceMetadata').mockResolvedValue([]);
+    const device = snmpHost([]);
+
+    await expect(service.discoverAndPersistInterfaceMetadata(device)).rejects.toThrow(
+      'SNMP IF-MIB returned no valid interfaces',
+    );
+  });
+});

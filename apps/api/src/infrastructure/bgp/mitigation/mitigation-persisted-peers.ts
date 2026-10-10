@@ -42,7 +42,7 @@ export function persistedPeersToBgpOutcome(
     warnings: [
       withInterface === 0
         ? 'Nenhum peer persistido tem interface correlacionada; rode o discovery BGP em BGP > SESSÕES para correlacionar.'
-        : 'Correlação peer → interface reutilizada do último discovery BGP (sem novo SSH por peer).',
+        : 'Correlação peer → interface reutilizada do último discovery BGP (sem route lookup SSH por peer).',
     ],
   };
 }

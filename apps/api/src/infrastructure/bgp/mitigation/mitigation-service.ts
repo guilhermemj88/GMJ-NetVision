@@ -21,6 +21,7 @@ import type {
 import type { BgpDashboardPeer } from '@gmj/shared';
 import { effectiveBandwidthBps } from './bandwidth-parser';
 import { persistedPeersToBgpOutcome } from './mitigation-persisted-peers';
+import type { MitigationInterfaceMetadataRefresher } from './mitigation-interface-refresher';
 import {
   DEFAULT_MITIGATION_RT,
   mitigationConfigFromEnv,
@@ -63,8 +64,13 @@ export interface BgpMitigationServiceDeps {
   repository: MitigationRepository;
   discovery: Pick<BgpMitigationDiscoveryService, 'discoverMitigationProfiles'> &
     Partial<Pick<BgpMitigationDiscoveryService, 'discoverFromBgpOutcome'>>;
-  /** Peers BGP ja persistidos (com interface correlacionada), quando houver. */
-  persistedPeers?: { listForDevice(deviceId: string): Promise<BgpDashboardPeer[]> };
+/** Peers BGP ja persistidos (com interface correlacionada), quando houver. */
+persistedPeers?: { listForDevice(deviceId: string): Promise<BgpDashboardPeer[]> };
+/**
+ * Refresh de metadata das interfaces (SNMP + `display interface description`)
+ * para o discovery MANUAL. Ausente = so o que ja esta persistido.
+ */
+interfaceMetadataRefresher?: MitigationInterfaceMetadataRefresher;
   hosts: { getHost(id: string): Promise<HostRecord | null> };
   schemaProbe: BgpMitigationSchemaProbe;
   repositoryKind: 'DATABASE' | 'MEMORY';
@@ -227,7 +233,7 @@ export class BgpMitigationService {
         this.hydrationCompletedAt = this.now();
         return { devices: 0, succeeded: 0, failed: 0 };
       }
-      const response = await this.discover(deviceIds);
+const response = await this.discover(deviceIds, { refreshInterfaceMetadata: false });
       const succeeded = response.results.filter((result) => result.scannedPeers > 0).length;
       const failed = Math.max(0, deviceIds.length - succeeded);
       this.hydrationDevicesSucceeded = succeeded;
@@ -323,21 +329,62 @@ export class BgpMitigationService {
     return this.toProfileDto(record, runtime, peers, deviceName, this.discoveryCache.get(record.id));
   }
 
-  async discover(deviceIds: string[]): Promise<BgpMitigationDiscoveryResponseDto> {
+  /**
+   * `refreshInterfaceMetadata` (padrao false) e usado SOMENTE pelo clique
+   * manual: renova IF-MIB + `display interface description` antes de
+   * classificar (a banda vem da description). Reidratacao e AUTO nunca
+   * pagam esse refresh.
+   */
+  async discover(
+    deviceIds: string[],
+    options: { refreshInterfaceMetadata?: boolean } = {},
+  ): Promise<BgpMitigationDiscoveryResponseDto> {
     const targets = [...new Set(deviceIds)].slice(0, this.maxDevicesPerDiscovery);
     const results: BgpMitigationDiscoveryDeviceDto[] = [];
     const profiles: BgpMitigationProfileDto[] = [];
     const warnings: string[] = [];
 
     for (const deviceId of targets) {
-      const host = await this.deps.hosts.getHost(deviceId);
-      if (!host) {
+      const hostBefore = await this.deps.hosts.getHost(deviceId);
+      if (!hostBefore) {
         warnings.push(`dispositivo ${deviceId}: host nao encontrado`);
         continue;
       }
-      if (!host.sshEnabled) {
-        warnings.push(`${this.hostLabel(host)}: SSH nao esta habilitado`);
+      if (!hostBefore.sshEnabled) {
+        warnings.push(`${this.hostLabel(hostBefore)}: SSH nao esta habilitado`);
         continue;
+      }
+      let host = hostBefore;
+      if (options.refreshInterfaceMetadata) {
+        const refresher = this.deps.interfaceMetadataRefresher;
+        if (!refresher) {
+          warnings.push(
+            `${this.hostLabel(hostBefore)}: refresh de interfaces indisponivel; ` +
+              'discovery de mitigacao nao executado com metadata possivelmente desatualizado',
+          );
+          continue;
+        }
+        try {
+          const refreshed = await refresher.refresh(hostBefore);
+          warnings.push(
+            `Interfaces atualizadas via SNMP/SSH antes do discovery (${refreshed.interfaces} interfaces).`,
+          );
+        } catch (error) {
+          // FAIL-VISIBLE: sem metadata fresca este device nao e classificado
+          // (nunca out-of-scope/DISABLED por leitura falha) e profiles ficam intactos.
+          warnings.push(
+            `${this.hostLabel(hostBefore)}: falha ao atualizar interfaces do equipamento ` +
+              `(${error instanceof Error ? error.message : 'erro desconhecido'}); ` +
+              'discovery de mitigacao nao executado com metadata possivelmente desatualizado',
+          );
+          continue;
+        }
+        const reloaded = await this.deps.hosts.getHost(deviceId);
+        if (!reloaded) {
+          warnings.push(`${this.hostLabel(hostBefore)}: host nao encontrado apos o refresh de interfaces`);
+          continue;
+        }
+        host = reloaded;
       }
       try {
         const outcome = await this.discoverForDevice(deviceId, host);

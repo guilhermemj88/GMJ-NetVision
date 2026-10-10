@@ -45,6 +45,25 @@ describe('interface source correlation', () => {
     );
   });
 
+  it('FAST TELECOM: description nova entra quando o ifAlias SNMP nao tem valor util', () => {
+    const snmp = networkInterface({ id: 'IF-248', name: 'Eth-Trunk1.3066', ifIndex: 248, alias: '' });
+    const ssh = networkInterface({ id: 'ssh-1', ifIndex: 1, name: 'Eth-Trunk1.3066', alias: 'FAST TELECOM_10G' });
+    const [merged] = mergeSnmpAndSshInterfaces([snmp], [ssh]);
+    expect(merged).toMatchObject({ id: 'IF-248', ifIndex: 248, alias: 'FAST TELECOM_10G' });
+  });
+
+  it('refresh com ifAlias novo do SNMP mantem identidade e marca as duas fontes', () => {
+    const snmp = networkInterface({ id: 'IF-248', name: 'Eth-Trunk1.3066', ifIndex: 248, alias: 'FAST TELECOM_10G' });
+    const ssh = networkInterface({ id: 'ssh-1', ifIndex: 1, name: 'Eth-Trunk1.3066', alias: 'FAST TELECOM_10G' });
+    const [merged] = mergeSnmpAndSshInterfaces([snmp], [ssh]);
+    expect(merged).toMatchObject({
+      id: 'IF-248',
+      ifIndex: 248,
+      alias: 'FAST TELECOM_10G',
+      dataSources: ['SNMP', 'SSH'],
+    });
+  });
+
   it('does not append unmatched SSH rows or duplicate a correlated port', () => {
     const snmp = networkInterface({});
     const ssh = networkInterface({ id: 'ssh-1', name: 'Eth-Trunk3', alias: 'ITOP TELECOM' });

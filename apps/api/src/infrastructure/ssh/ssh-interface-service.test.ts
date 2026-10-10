@@ -256,3 +256,65 @@ describe('Huawei SSH interface enrichment', () => {
     });
   });
 });
+
+describe('refresh de metadata (DESCOBRIR CLIENTES)', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('roda UM display interface description e ZERO comando optico', async () => {
+    const execute = vi.spyOn(SshClientImpl.prototype, 'execute').mockResolvedValue([{
+      stdout: [
+        'Eth-Trunk1.3066 up up FAST TELECOM_10G',
+        'Eth-Trunk1.3065 up up FAST TELECOM CONTAGEM_10GB',
+      ].join('\n'),
+      stderr: '',
+      exitCode: 0,
+    }]);
+    const interfaces = [
+      networkInterface('Eth-Trunk1.3066', { id: 'IF-248', ifIndex: 248, alias: '' }),
+      networkInterface('Eth-Trunk1.3065', {
+        id: 'IF-247',
+        ifIndex: 247,
+        alias: 'FAST TELECOM CONTAGEM',
+      }),
+    ];
+
+    const result = await service().enrichInterfaceMetadata(device(), interfaces);
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute.mock.calls[0]?.[1]).toEqual([
+      'screen-length 0 temporary',
+      'display interface description',
+    ]);
+    // Identidade do IF-MIB preservada (id/ifIndex) e alias vazio preenchido.
+    expect(result.map((item) => [item.id, item.ifIndex])).toEqual([
+      ['IF-248', 248],
+      ['IF-247', 247],
+    ]);
+    expect(result[0]?.alias).toBe('FAST TELECOM_10G');
+    // Alias SNMP util continua autoritativo (precedencia documentada do merge).
+    expect(result[1]?.alias).toBe('FAST TELECOM CONTAGEM');
+    // Nenhum campo optico foi tocado: nem scalar, nem lanes, nem source.
+    expect(result.every((item) => item.rxPowerDbm === undefined)).toBe(true);
+    expect(result.every((item) => item.opticalLanes === undefined)).toBe(true);
+    expect(result.every((item) => item.opticalSource === undefined)).toBe(true);
+  });
+
+  it('enrichInterfaces (poll normal) continua coletando optica', async () => {
+    const execute = vi.spyOn(SshClientImpl.prototype, 'execute').mockImplementation(
+      async (_host, commands) => [{
+        stdout: commands.includes('display interface description')
+          ? '100GE0/0/2 up up CLIENTE_X'
+          : multiLaneOutput('100GE0/0/2'),
+        stderr: '',
+        exitCode: 0,
+      }],
+    );
+    const interfaces = [networkInterface('100GE0/0/2', freshSnmp)];
+
+    const result = await service().enrichInterfaces(device(), interfaces);
+
+    expect(result[0]?.opticalLanes).toHaveLength(4);
+    const commands = execute.mock.calls.flatMap(([, list]) => list);
+    expect(commands).toContain('display transceiver diagnosis interface 100GE0/0/2');
+  });
+});

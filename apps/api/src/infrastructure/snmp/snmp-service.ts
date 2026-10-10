@@ -232,19 +232,48 @@ export class SnmpService {
     return this.discoveryAdapter.discoverInterfaces(device, community);
   }
 
+  /** Igual ao discoverInterfaces, porem 100% metadata (sem entity-extent/optical). */
+  async discoverInterfaceMetadata(device: HostRecord): Promise<NetworkInterface[]> {
+    if (!device.snmpEnabled || !device.snmp?.host || device.snmp.version !== 'SNMP_V2C') return [];
+    const community = await this.requireCommunity(device.id);
+    return this.discoveryAdapter.discoverInterfaceMetadata(device, community);
+  }
+
   async discoverAndPersistInterfaces(device: HostRecord): Promise<NetworkInterface[]> {
     // Rediscovery explicito: a capability optica pode ter mudado (view/versao).
     this.discoveryAdapter.invalidateOpticalCapability(device.id);
-    const discovered = await this.discoverInterfaces(device);
+    return this.discoverAndPersist(device, 'FULL');
+  }
+
+  /**
+   * Refresh de METADATA (IF-MIB + `display interface description`), SEM
+   * coleta optica por interface: e o que o DESCOBRIR CLIENTES precisa para
+   * nome/descricao/alias/velocidade frescos sem pagar DDM nem route lookup.
+   */
+  async discoverAndPersistInterfaceMetadata(device: HostRecord): Promise<NetworkInterface[]> {
+    return this.discoverAndPersist(device, 'METADATA_ONLY');
+  }
+
+  private async discoverAndPersist(
+    device: HostRecord,
+    mode: 'FULL' | 'METADATA_ONLY',
+  ): Promise<NetworkInterface[]> {
+    const discovered = mode === 'FULL'
+      ? await this.discoverInterfaces(device)
+      : await this.discoverInterfaceMetadata(device);
     if (!discovered.length) throw new Error('SNMP IF-MIB returned no valid interfaces');
     let merged = discovered;
     if (device.sshEnabled && this.sshInterfaces) {
       try {
-        merged = await this.sshInterfaces.enrichInterfaces(device, discovered);
+        merged = mode === 'FULL'
+          ? await this.sshInterfaces.enrichInterfaces(device, discovered)
+          : await this.sshInterfaces.enrichInterfaceMetadata(device, discovered);
         await this.repository.updateSourceHealth(device.id, {
           source: 'SSH',
           state: 'CONNECTED',
-          message: 'Descrições de interfaces complementadas via SSH Huawei',
+          message: mode === 'FULL'
+            ? 'Descrições de interfaces complementadas via SSH Huawei'
+            : 'Descrições de interfaces atualizadas via SSH Huawei (sem coleta optica)',
           checkedAt: new Date().toISOString(),
         });
       } catch (error) {

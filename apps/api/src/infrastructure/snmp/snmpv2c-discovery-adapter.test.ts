@@ -47,6 +47,60 @@ describe('SNMP IF-MIB interface discovery', () => {
     expect(networkInterface?.alias).not.toContain(',');
   });
 
+  it('discoverInterfaceMetadata: IF-MIB puro, zero OID optico/capability', async () => {
+    // Allowlist EXATA do IF-MIB metadata: qualquer walk fora dela (entity-extent
+    // 2011.*, sysObjectId do probe, etc.) faz este teste falhar.
+    const allowlist = new Set([
+      '1.3.6.1.2.1.2.2.1.1',   // ifIndex
+      '1.3.6.1.2.1.31.1.1.1.1', // ifName
+      '1.3.6.1.2.1.2.2.1.2',   // ifDescr
+      '1.3.6.1.2.1.2.2.1.7',   // ifAdminStatus
+      '1.3.6.1.2.1.2.2.1.8',   // ifOperStatus
+      '1.3.6.1.2.1.31.1.1.1.15', // ifHighSpeed
+      '1.3.6.1.2.1.2.2.1.5',   // ifSpeed
+      '1.3.6.1.2.1.31.1.1.1.18', // ifAlias
+      '1.3.6.1.2.1.2.2.1.6',   // ifPhysAddress
+    ]);
+    const walked: string[] = [];
+    vi.spyOn(SnmpClientImpl.prototype, 'walk').mockImplementation(async (_host, oid) => {
+      const key = String(oid);
+      walked.push(key);
+      const row = (value: string | number | Uint8Array) => [{ oid: `${key}.248`, value }];
+      if (key === '1.3.6.1.2.1.2.2.1.1') return row(248);
+      if (key === '1.3.6.1.2.1.31.1.1.1.1') return row('Eth-Trunk1.3066');
+      if (key === '1.3.6.1.2.1.2.2.1.2') return row('Trunk');
+      if (key === '1.3.6.1.2.1.2.2.1.7') return row(1);
+      if (key === '1.3.6.1.2.1.2.2.1.8') return row(1);
+      if (key === '1.3.6.1.2.1.31.1.1.1.15') return row(10_000);
+      if (key === '1.3.6.1.2.1.31.1.1.1.18') return row('FAST TELECOM_10G');
+      if (key === '1.3.6.1.2.1.2.2.1.6') return row(new Uint8Array([0, 1, 2, 3, 4, 5]));
+      return [];
+    });
+    const repository = {
+      getDecryptedSnmpCredentials: vi.fn().mockResolvedValue({ community: 'secret' }),
+    } as unknown as HostRepository;
+
+    const [networkInterface] = await new SnmpV2cDiscoveryAdapter(repository)
+      .discoverInterfaceMetadata(baseHost, 'secret');
+
+    expect(networkInterface).toMatchObject({
+      ifIndex: 248,
+      name: 'Eth-Trunk1.3066',
+      alias: 'FAST TELECOM_10G',
+      speedBps: 10_000_000_000,
+      adminStatus: 'UP',
+      operStatus: 'UP',
+      mac: '00:01:02:03:04:05',
+      dataSources: ['SNMP'],
+    });
+    expect(networkInterface?.rxPowerDbm).toBeUndefined();
+    expect(networkInterface?.txPowerDbm).toBeUndefined();
+    expect(networkInterface?.opticalLanes).toBeUndefined();
+    expect(networkInterface?.opticalSource).toBeUndefined();
+    expect(walked.length).toBeGreaterThan(0);
+    expect(walked.filter((oid) => !allowlist.has(oid))).toEqual([]);
+  });
+
   it('correlates Huawei entity DDM by interface name and converts microWatts to dBm', async () => {
     vi.spyOn(SnmpClientImpl.prototype, 'walk').mockImplementation(async (_host, oid) => {
       if (oid === '1.3.6.1.2.1.47.1.1.1.1.7') {

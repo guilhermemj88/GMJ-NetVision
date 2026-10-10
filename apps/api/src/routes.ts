@@ -112,6 +112,7 @@ import { PrismaBgpRepository } from './infrastructure/bgp/prisma-bgp-repository'
 import { InMemoryMitigationRepository } from './infrastructure/bgp/mitigation/in-memory-mitigation-repository';
 import { PrismaMitigationRepository } from './infrastructure/bgp/mitigation/prisma-mitigation-repository';
 import { BgpMitigationDiscoveryService } from './infrastructure/bgp/mitigation/mitigation-discovery-service';
+import { SnmpInterfaceMetadataRefresher } from './infrastructure/snmp/snmp-interface-metadata-refresher';
 import { HuaweiBgpMitigationConfigSource } from './infrastructure/bgp/mitigation/mitigation-config-source';
 import { BgpMitigationService } from './infrastructure/bgp/mitigation/mitigation-service';
 import {
@@ -548,6 +549,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     persistedPeers: {
       listForDevice: (deviceId) =>
         bgpRepository.listDashboardPeers({ scope: 'all', state: 'all', deviceId }),
+    },
+    // Clique MANUAL (DESCOBRIR CLIENTES): renova metadata das interfaces
+    // (SNMP IF-MIB + display interface description) antes de classificar.
+    // O SnmpService nasce depois; o closure so resolve na requisicao.
+    interfaceMetadataRefresher: {
+      refresh: (device) => new SnmpInterfaceMetadataRefresher(snmp).refresh(device),
     },
     schemaProbe: mitigationSchemaProbe,
     repositoryKind: config.DEMO_MODE ? 'MEMORY' : 'DATABASE',

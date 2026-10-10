@@ -403,7 +403,7 @@ export function BgpMitigationWorkspace() {
         </Button>
         {discoveryMutation.isPending && (
           <span className="mitigation-loading" role="status">
-            Analisando peers e descrições…
+            Atualizando interfaces e analisando clientes…
           </span>
         )}
       </div>

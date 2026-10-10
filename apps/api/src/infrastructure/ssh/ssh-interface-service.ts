@@ -75,13 +75,25 @@ export class SshInterfaceService {
     }
   }
 
-  async enrichInterfaces(
+  /**
+   * SOMENTE metadata: `display interface description` + merge. Nunca coleta
+   * optica (nem `display transceiver verbose` nem diagnosis por interface):
+   * quem chama decide se o custo do DDM se justifica (ex.: DESCOBRIR CLIENTES).
+   */
+  async enrichInterfaceMetadata(
     device: HostRecord,
     snmpInterfaces: NetworkInterface[],
   ): Promise<NetworkInterface[]> {
     const sshInterfaces = await this.discoverInterfaces(device);
     if (!sshInterfaces.length) throw new Error('SSH display interface description returned no valid interfaces');
-    const merged = mergeSnmpAndSshInterfaces(snmpInterfaces, sshInterfaces);
+    return mergeSnmpAndSshInterfaces(snmpInterfaces, sshInterfaces);
+  }
+
+  async enrichInterfaces(
+    device: HostRecord,
+    snmpInterfaces: NetworkInterface[],
+  ): Promise<NetworkInterface[]> {
+    const merged = await this.enrichInterfaceMetadata(device, snmpInterfaces);
 
     // Fallback is evaluated per interface. SNMP data on one port must not stop
     // SSH from filling a different port that has no DDM through SNMP.

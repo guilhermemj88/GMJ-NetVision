@@ -129,9 +129,11 @@ export function registerMitigationRoutes(
   app.post('/api/bgp/mitigation/discover', async (request, reply) => {
     const user = await requireUser(request, reply);
     if (!user) return undefined;
-    const payload = discoverSchema.parse(request.body ?? {});
-    const deviceIds = payload.deviceIds ?? (payload.deviceId ? [payload.deviceId] : []);
-    return service.discover(deviceIds);
+const payload = discoverSchema.parse(request.body ?? {});
+const deviceIds = payload.deviceIds ?? (payload.deviceId ? [payload.deviceId] : []);
+// Clique MANUAL: renova o metadata das interfaces (SNMP + display interface
+// description) antes de classificar; nunca um SSH por peer.
+return service.discover(deviceIds, { refreshInterfaceMetadata: true });
   });
 
   app.post('/api/bgp/mitigation/profiles/:id/simulate', async (request, reply) => {
