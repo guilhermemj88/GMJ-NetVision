@@ -7,6 +7,7 @@ import type {
   BgpMitigationProfileDto,
   BgpMitigationSimulationDto,
   MitigationExclusionReason,
+  MitigationRuntimeState,
 } from '@gmj/shared';
 import { Search } from 'lucide-react';
 import { Button, MetaFact } from '@gmj/ui';
@@ -36,6 +37,7 @@ import {
   exclusionReasonLabel,
   EXCLUSION_REASON_OPTIONS,
   readinessLabel,
+  runtimeStateBadge,
   runtimeStateLabel,
   simulationResultLabel,
   workerStateLabel,
@@ -75,6 +77,20 @@ function errorMessage(error: unknown, fallback: string): string {
 function newRequestId(): string {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) return crypto.randomUUID();
   return `req-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+/**
+ * Estado de runtime renderizado na PROPRIA tabela: quem esta MITIGADO aparece
+ * sem precisar abrir DETALHES. Sem runtime avaliado (candidato), mostra "—".
+ */
+function RuntimeStateBadge({ state }: { state: MitigationRuntimeState | null }) {
+  const badge = runtimeStateBadge(state);
+  if (!badge) return '—';
+  return (
+    <span className={`mitigation-badge is-${badge.tone}`} title={badge.title}>
+      {badge.label}
+    </span>
+  );
 }
 
 export function BgpMitigationWorkspace() {
@@ -462,6 +478,7 @@ export function BgpMitigationWorkspace() {
             <thead>
               <tr>
                 <th scope="col">Estado</th>
+                <th scope="col">Mitigação</th>
                 <th scope="col">AF</th>
                 <th scope="col">Cliente</th>
                 <th scope="col">Equipamento</th>
@@ -501,6 +518,9 @@ export function BgpMitigationWorkspace() {
                         {readinessLabel(row.readiness)}
                       </span>
                     )}
+                  </td>
+                  <td>
+                    <RuntimeStateBadge state={row.runtimeState} />
                   </td>
                   <td>
                     {row.addressFamily === 'IPV6' ? 'IPv6' : 'IPv4'}

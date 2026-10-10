@@ -38,9 +38,9 @@ function telecomPeer(alias: string): BgpDashboardPeer {
   } as unknown as BgpDashboardPeer;
 }
 
-function discoveryRow(): Record<string, unknown> {
+function discoveryRow(profileId: string): Record<string, unknown> {
   return {
-    profileId: 'profile-fast',
+    profileId,
     policyName: POLICY,
     addressFamily: 'IPV4',
     sharedPolicy: false,
@@ -79,9 +79,10 @@ interface Harness {
   liveDiscoveryCalls: { value: number };
   discoveryHosts: HostRecord[];
   outcomeAliases: (string | null)[];
+  profileIdHolder: { value: string };
 }
 
-function buildHarness(options: { failRefresh?: boolean } = {}): Harness {
+function buildHarness(options: { failRefresh?: boolean; discoveryProfileId?: string } = {}): Harness {
   const repository = new InMemoryMitigationRepository();
   const order: string[] = [];
   const refreshCalls: string[] = [];
@@ -123,19 +124,26 @@ function buildHarness(options: { failRefresh?: boolean } = {}): Harness {
     outOfScopeProfiles: [],
     ambiguousPeers: [],
     warnings: [],
-    profiles: [discoveryRow() as never],
+    profiles: [],
   };
+  // Os rows do discovery sao montados na CHAMADA: o teste consegue apontar o
+  // profileId para o profile semeado (e assim exercitar o runtime real).
+  const profileIdHolder = { value: options.discoveryProfileId ?? 'profile-fast' };
+  const withProfiles = (): MitigationDiscoveryResult => ({
+    ...result,
+    profiles: [discoveryRow(profileIdHolder.value) as never],
+  });
 
   const discovery = {
     async discoverMitigationProfiles() {
       liveDiscoveryCalls.value += 1;
-      return result;
+      return withProfiles();
     },
     async discoverFromBgpOutcome(device: HostRecord, outcome: { peers: readonly { interfaceAlias: string | null }[] }) {
       order.push('discovery');
       discoveryHosts.push(device);
       outcomeAliases.push(outcome.peers[0]?.interfaceAlias ?? null);
-      return result;
+      return withProfiles();
     },
   };
 
@@ -149,7 +157,16 @@ function buildHarness(options: { failRefresh?: boolean } = {}): Harness {
     repositoryKind: 'MEMORY',
   });
 
-  return { service, repository, order, refreshCalls, liveDiscoveryCalls, discoveryHosts, outcomeAliases };
+  return {
+    service,
+    repository,
+    order,
+    refreshCalls,
+    liveDiscoveryCalls,
+    discoveryHosts,
+    outcomeAliases,
+    profileIdHolder,
+  };
 }
 
 describe('DESCOBRIR CLIENTES: refresh de metadata antes do discovery', () => {
@@ -302,5 +319,29 @@ describe('DESCOBRIR CLIENTES: refresh de metadata antes do discovery', () => {
       'peers:device-2',
       'discovery:device-2',
     ]);
+  });
+});
+
+describe('DESCOBRIR CLIENTES × estado de runtime', () => {
+  it('nunca rebaixa MITIGATED: a resposta mantem MITIGATED e o runtime fica intacto', async () => {
+    const h = buildHarness();
+    const seeded = await h.repository.upsertProfile({
+      deviceId: DEVICE,
+      policyName: POLICY,
+      interfaceId: IFACE_ID,
+      addressFamily: 'IPV4',
+      detectedBandwidthBps: 10_000_000_000n,
+      bandwidthSource: 'DESCRIPTION',
+    });
+    h.profileIdHolder.value = seeded.id;
+    await h.repository.upsertRuntime(seeded.id, { state: 'MITIGATED', plannedNode: 2 });
+
+    const response = await h.service.discover([DEVICE], { refreshInterfaceMetadata: true });
+
+    // O profile mitigado continua MITIGATED na resposta do clique manual...
+    const dto = response.profiles.find((profile) => profile.id === seeded.id);
+    expect(dto?.runtimeState).toBe('MITIGATED');
+    // ...e o runtime persistido segue MITIGATED (o discovery nao o sobrescreve).
+    expect((await h.repository.getRuntime(seeded.id))?.state).toBe('MITIGATED');
   });
 });

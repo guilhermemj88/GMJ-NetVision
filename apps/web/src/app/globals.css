@@ -12189,6 +12189,32 @@ label > small {
   color: var(--red);
   border-color: var(--red);
 }
+.mitigation-badge.is-idle {
+  color: var(--muted);
+  border-color: var(--line);
+}
+.mitigation-badge.is-mitigating {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+.mitigation-badge.is-mitigated {
+  color: #0b1116;
+  background: var(--red);
+  border-color: var(--red);
+  font-weight: 600;
+}
+.mitigation-badge.is-recovering {
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+.mitigation-badge.is-failed {
+  color: var(--red);
+  border-color: var(--red);
+}
+.mitigation-badge.is-revalidation {
+  color: var(--amber);
+  border-color: var(--amber);
+}
 .mitigation-detail {
   border: 1px solid var(--line);
   border-radius: 10px;

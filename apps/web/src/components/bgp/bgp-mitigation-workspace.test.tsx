@@ -947,3 +947,91 @@ describe('snapshot de discovery ausente (pos-restart)', () => {
     expect(text()).not.toContain('SEM SNAPSHOT');
   });
 });
+
+describe('estado de mitigacao visivel na tabela (runtimeState)', () => {
+  function tableRow(customer: string): Element {
+    const row = [...container.querySelectorAll('tbody tr')].find((candidate) =>
+      (candidate.textContent ?? '').includes(customer),
+    );
+    if (!row) throw new Error(`linha nao encontrada na tabela: ${customer}`);
+    return row;
+  }
+
+  async function abrirTabela(profiles: BgpMitigationProfileDto[]): Promise<void> {
+    api.discoverMitigationProfiles.mockResolvedValue({ ...discovery, profiles });
+    await render(createElement(BgpMitigationWorkspace));
+    await chooseDevice('device-1');
+    await clickByText('DESCOBRIR CLIENTES');
+  }
+
+  it('MITIGATED aparece como MITIGADO na tabela, sem abrir DETALHES', async () => {
+    await abrirTabela([{ ...readyProfile, runtimeState: 'MITIGATED' }, candidateProfile]);
+
+    const row = tableRow('HORIZONTE_IP');
+    expect(row.textContent).toContain('MITIGADO');
+    expect(row.querySelector('.mitigation-badge.is-mitigated')).not.toBeNull();
+    expect(container.querySelector('[aria-label^="Detalhes de"]')).toBeNull();
+  });
+
+  it('NORMAL mostra NORMAL e nunca MITIGADO', async () => {
+    await abrirTabela([{ ...readyProfile, runtimeState: 'NORMAL' }, candidateProfile]);
+
+    const row = tableRow('HORIZONTE_IP');
+    expect(row.textContent).toContain('NORMAL');
+    expect(row.textContent).not.toContain('MITIGADO');
+  });
+
+  it('MITIGATING aparece como ATIVANDO', async () => {
+    await abrirTabela([{ ...readyProfile, runtimeState: 'MITIGATING' }, candidateProfile]);
+
+    expect(tableRow('HORIZONTE_IP').textContent).toContain('ATIVANDO');
+  });
+
+  it('RECOVERING aparece como RETIRANDO', async () => {
+    await abrirTabela([{ ...readyProfile, runtimeState: 'RECOVERING' }, candidateProfile]);
+
+    expect(tableRow('HORIZONTE_IP').textContent).toContain('RETIRANDO');
+  });
+
+  it('RECOVERY_PENDING, FAILED e RECONCILIATION_REQUIRED tem rotulos proprios', async () => {
+    await abrirTabela([
+      { ...readyProfile, id: 'p-recovery', customer: 'CLIENTE_RECOVERY', runtimeState: 'RECOVERY_PENDING' },
+      { ...readyProfile, id: 'p-failed', customer: 'CLIENTE_FAILED', runtimeState: 'FAILED' },
+      { ...readyProfile, id: 'p-revalidar', customer: 'CLIENTE_REVALIDAR', runtimeState: 'RECONCILIATION_REQUIRED' },
+    ]);
+
+    expect(tableRow('CLIENTE_RECOVERY').textContent).toContain('RECUPERAÇÃO PENDENTE');
+    expect(tableRow('CLIENTE_FAILED').textContent).toContain('FALHA');
+    expect(tableRow('CLIENTE_REVALIDAR').textContent).toContain('REVALIDAR');
+  });
+
+  it('cliente MITIGATED continua com RETIRAR MITIGACAO disponivel no DETALHES', async () => {
+    await abrirTabela([{ ...readyProfile, runtimeState: 'MITIGATED' }, candidateProfile]);
+    await openDetails('HORIZONTE_IP');
+
+    const retirar = [...detailPanel().querySelectorAll('button')].find((button) =>
+      (button.textContent ?? '').includes('RETIRAR MITIGAÇÃO'),
+    ) as HTMLButtonElement | undefined;
+
+    expect(retirar).toBeTruthy();
+    expect(retirar?.disabled).toBe(false);
+  });
+
+  it('depois de REMOVED_VERIFIED + releitura do profile o badge volta para NORMAL', async () => {
+    api.runMitigationCommand.mockResolvedValue({
+      ...commandResult,
+      action: 'REMOVE',
+      status: 'REMOVED_VERIFIED',
+    });
+    api.getMitigationProfile.mockResolvedValue({ ...readyProfile, runtimeState: 'NORMAL' });
+    await abrirTabela([{ ...readyProfile, runtimeState: 'MITIGATED' }, candidateProfile]);
+    await openDetails('HORIZONTE_IP');
+
+    await clickIn(detailPanel(), 'RETIRAR MITIGAÇÃO');
+    await clickIn(find('[role="dialog"][aria-label="Confirmar ação de mitigação"]'), 'CONFIRMAR RETIRADA');
+
+    const row = tableRow('HORIZONTE_IP');
+    expect(row.textContent).toContain('NORMAL');
+    expect(row.textContent).not.toContain('MITIGADO');
+  });
+});

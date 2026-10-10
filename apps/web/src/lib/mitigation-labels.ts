@@ -24,12 +24,12 @@ export const RUNTIME_STATE_LABEL: Record<MitigationRuntimeState, string> = {
   ALERT_ONLY: 'SOMENTE ALERTA',
   NORMAL: 'NORMAL',
   TRIGGER_PENDING: 'AGUARDANDO GATILHO',
-  MITIGATING: 'MITIGANDO',
+  MITIGATING: 'ATIVANDO',
   MITIGATED: 'MITIGADO',
-  RECOVERY_PENDING: 'AGUARDANDO RECUPERAÇÃO',
-  RECOVERING: 'RECUPERANDO',
-  FAILED: 'FALHOU',
-  RECONCILIATION_REQUIRED: 'REQUER REVALIDAÇÃO',
+  RECOVERY_PENDING: 'RECUPERAÇÃO PENDENTE',
+  RECOVERING: 'RETIRANDO',
+  FAILED: 'FALHA',
+  RECONCILIATION_REQUIRED: 'REVALIDAR',
 };
 
 export const PREFIX_STATUS_LABEL: Record<MitigationPrefixStatus, string> = {
@@ -126,6 +126,42 @@ export function mitigationSnapshotBadge(
 
 export function runtimeStateLabel(value: MitigationRuntimeState | null | undefined): string {
   return safeLabel(RUNTIME_STATE_LABEL, value);
+}
+
+/**
+ * Tom visual do badge de runtime usado na TABELA (quem esta efetivamente em
+ * mitigacao aparece sem abrir DETALHES). `null` = sem runtime avaliado
+ * (candidato do discovery): a tabela mostra "—", nunca um estado inventado.
+ */
+const RUNTIME_STATE_BADGE: Partial<Record<MitigationRuntimeState, { tone: string; title: string }>> = {
+  NORMAL: { tone: 'idle', title: 'Sem mitigação ativa para este cliente' },
+  ALERT_ONLY: { tone: 'idle', title: 'Perfil somente alerta: nenhuma mitigação ativa' },
+  DISABLED: { tone: 'idle', title: 'Mitigação desativada neste perfil' },
+  TRIGGER_PENDING: { tone: 'idle', title: 'Limite cruzado: aguardando a ativação da mitigação' },
+  MITIGATING: { tone: 'mitigating', title: 'Ativação da mitigação em andamento no equipamento' },
+  MITIGATED: {
+    tone: 'mitigated',
+    title: 'Mitigação ativa: cliente efetivamente mitigado no equipamento',
+  },
+  RECOVERY_PENDING: {
+    tone: 'recovering',
+    title: 'Retirada agendada: aguardando as condições de recuperação',
+  },
+  RECOVERING: { tone: 'recovering', title: 'Retirada da mitigação em andamento no equipamento' },
+  FAILED: { tone: 'failed', title: 'A última execução de mitigação falhou' },
+  RECONCILIATION_REQUIRED: {
+    tone: 'revalidation',
+    title: 'Estado divergente: revalidar a mitigação no equipamento',
+  },
+};
+
+export function runtimeStateBadge(
+  value: MitigationRuntimeState | null | undefined,
+): { label: string; tone: string; title: string } | null {
+  if (!value) return null;
+  const badge = RUNTIME_STATE_BADGE[value];
+  if (!badge) return null;
+  return { label: runtimeStateLabel(value), ...badge };
 }
 
 export function prefixStatusLabel(value: MitigationPrefixStatus | null | undefined): string {

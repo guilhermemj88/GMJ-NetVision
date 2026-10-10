@@ -923,6 +923,12 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
     const record = row.profileId
       ? await this.read(() => this.deps.repository.getProfile(row.profileId as string), null)
       : null;
+    // O runtime (MITIGATED, RECOVERING, ...) vive FORA do discovery: sem esta
+    // leitura a resposta do DESCOBRIR CLIENTES perderia o estado de quem ja
+    // esta mitigado ate a proxima listagem.
+    const runtime = record
+      ? await this.read(() => this.deps.repository.getRuntime(record.id), null)
+      : null;
     return {
       id,
       persisted: record !== null,
@@ -956,7 +962,7 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
       mitigationExcluded: record?.mitigationExcluded ?? false,
       mitigationExclusionReason: record?.mitigationExclusionReason ?? null,
       mitigationExclusionNote: record?.mitigationExclusionNote ?? null,
-      runtimeState: null,
+      runtimeState: asRuntimeState(runtime?.state ?? null),
       mode: (record?.mode as MitigationProfileMode | undefined) ?? 'ALERT_ONLY',
       enabled: record?.enabled ?? true,
       mitigationRt: record?.mitigationRt ?? DEFAULT_MITIGATION_RT,
