@@ -16,6 +16,7 @@ const config: SnapshotRendererConfig = {
   maxConcurrent: 1,
   timeoutMs: 5_000,
   navTimeoutMs: 5_000,
+  timeZone: 'America/Sao_Paulo',
 };
 
 let close: (() => Promise<void>) | null = null;

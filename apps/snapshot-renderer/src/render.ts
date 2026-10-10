@@ -24,7 +24,7 @@ export const READY_FLAG = 'window.__netvisionSnapshotReady === true';
 
 export function createRenderer(
   browserHandle: BrowserHandle,
-  options: { navTimeoutMs: number },
+  options: { navTimeoutMs: number; timeZone: string },
 ): Renderer {
   const stats: RenderStats = { renders: 0, failures: 0, lastDurationMs: null, maxDurationMs: null };
 
@@ -35,6 +35,8 @@ export function createRenderer(
       viewport: { width: request.width, height: request.height },
       deviceScaleFactor: 1,
       reducedMotion: 'reduce',
+      // Fuso operacional no proprio Chromium: corrige EVENTO/RECUPERACAO e eixos.
+      timezoneId: options.timeZone,
     });
     try {
       const page = await context.newPage();

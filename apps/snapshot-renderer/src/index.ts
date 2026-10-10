@@ -5,7 +5,10 @@ import { createSnapshotServer } from './server.js';
 
 const config = loadConfig();
 const browser = createBrowserHandle();
-const render = createRenderer(browser, { navTimeoutMs: config.navTimeoutMs });
+const render = createRenderer(browser, {
+  navTimeoutMs: config.navTimeoutMs,
+  timeZone: config.timeZone,
+});
 const server = createSnapshotServer({
   config,
   render,
@@ -15,7 +18,7 @@ const server = createSnapshotServer({
 server.listen(config.port, config.host, () => {
   console.log(
     `netvision-alarm-snapshot renderer em http://${config.host}:${config.port} ` +
-      `(origem ${config.allowedOrigin}, cache ${config.cacheDir})`,
+      `(origem ${config.allowedOrigin}, cache ${config.cacheDir}, fuso ${config.timeZone})`,
   );
 });
 

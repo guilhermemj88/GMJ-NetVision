@@ -12,6 +12,11 @@ export interface SnapshotRendererConfig {
   maxConcurrent: number;
   timeoutMs: number;
   navTimeoutMs: number;
+  /**
+   * Fuso IANA emulado pelo Chromium (EVENTO, RECUPERACAO e eixos dos graficos).
+   * O host roda em UTC; sem isso o PNG sai adiantado do horario operacional.
+   */
+  timeZone: string;
 }
 
 function readNumber(value: string | undefined, fallback: number): number {
@@ -29,5 +34,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SnapshotRender
     maxConcurrent: readNumber(env.SNAPSHOT_MAX_CONCURRENT, 1),
     timeoutMs: readNumber(env.SNAPSHOT_RENDER_TIMEOUT_MS, 15_000),
     navTimeoutMs: readNumber(env.SNAPSHOT_NAV_TIMEOUT_MS, 10_000),
+    timeZone: env.SNAPSHOT_TIME_ZONE?.trim() || 'America/Sao_Paulo',
   };
 }
