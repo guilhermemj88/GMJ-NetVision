@@ -183,6 +183,30 @@ export function assessPolicyPhysicalState(input: {
   };
 }
 
+/**
+ * NORMALIZACAO (somente para o TOKEN de preview): remove APENAS o envelope
+ * volatil da sessao SSH - banner de VTY/login - e normaliza quebras de linha
+ * (CRLF/LF e um artefato de transporte, nunca configuracao).
+ *
+ * Regras conservadoras e ancoradas (nunca regex amplo): cada remocao exige a
+ * linha EXATA de metadados de sessao observada no equipamento real
+ * (`Info: The max number of VTY users is ...` e `The current login time is ...`).
+ * NENHUMA linha da policy e removida: linhas desconhecidas, nodes, actions,
+ * prefix-lists, RTs e ordem permanecem INTEGRALMENTE no hash - qualquer
+ * alteracao fisica real continua mudando o previewId.
+ */
+export function normalizeReadBackForToken(readBack: string): string {
+  return readBack
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .filter(
+      (line) =>
+        !/^\s*The current login time is\b/.test(line) &&
+        !/^Info: The max number of VTY users is\b/.test(line),
+    )
+    .join('\n');
+}
+
 function sha256(value: string): string {
   return createHash('sha256').update(value, 'utf8').digest('hex');
 }
@@ -203,7 +227,9 @@ function previewToken(input: {
     [
       input.deviceId,
       input.policyName,
-      sha256(input.readBack),
+      // SOMENTE o envelope de sessao e normalizado; a configuracao entra
+      // integralmente (qualquer alteracao fisica muda o token).
+      sha256(normalizeReadBackForToken(input.readBack)),
       input.assessment.state,
       // Evidencia fisica COMPLETA: qualquer mudanca de nodes (inclusive um par
       // diferente do planejado) muda o token e invalida o preview (HTTP 409).
@@ -301,6 +327,14 @@ export class MitigationPolicyReconciler {
     if (fresh.previewId !== previewId) {
       throw new PolicyReconcileStaleError(
         'Preview expirado: o equipamento ou os runtimes mudaram desde a leitura; gere um novo preview.',
+      );
+    }
+    if (fresh.assessment.state === 'RECONCILIATION_REQUIRED') {
+      // Leitura FISICA inconclusiva (estrutura nao reconhecida/parcial):
+      // APPLY bloqueado - nunca gravar estado a partir de evidencia
+      // insuficiente (mesmo que o token coincida com o preview).
+      throw new PolicyReconcileStaleError(
+        'Leitura fisica inconclusiva: APPLY bloqueado; nenhuma escrita local foi feita. Revise a policy no equipamento e gere novo preview.',
       );
     }
     // MITIGATED: propaga o par FISICO para todos os profiles do escopo,
