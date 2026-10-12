@@ -26,6 +26,10 @@ import {
   buildMitigationRemovalCommands,
   type MitigationWritePlan,
 } from './mitigation-write-guard';
+import {
+  inspectPolicyMitigation,
+  type PolicyMitigationPhysical,
+} from './mitigation-policy-physical';
 
 /**
  * Executor REAL (Huawei VRP), manual e fail-closed.
@@ -186,6 +190,27 @@ export class HuaweiMitigationExecutor {
   }
 
   /**
+   * F3: estrutura FISICA de mitigacao da POLICY INTEIRA, a partir do read-back
+   * REAL (`display route-policy`) - nunca do runtime/plano. Usada nas duas
+   * direcoes do preflight (ACTIVATE nao instala segundo par; REMOVE nao
+   * retira par com estrutura ambigua).
+   */
+  private inspectMitigation(
+    input: MitigationPreflightInput,
+    readBack: string | null,
+  ): PolicyMitigationPhysical {
+    return inspectPolicyMitigation({
+      policyName: input.policyName,
+      readBack: readBack ?? '',
+      rts: [input.rt, this.rt],
+      labels: {
+        bogonPrefixList: input.bogonPrefixList,
+        targetPrefixList: input.targetPrefixList,
+      },
+    });
+  }
+
+  /**
    * Preflight READ-ONLY. Nunca lanca: qualquer falha vira `ok:false` com o motivo
    * em `blockedReasons`, para o operador ver exatamente o que divergiu.
    */
@@ -301,6 +326,25 @@ export class HuaweiMitigationExecutor {
     const bothMatch = bogonNodeMatches && mitigationNodeMatches;
     const partial = (bogonNodeMatches || mitigationNodeMatches) && !bothMatch;
 
+    // INTEGRIDADE DO READ-BACK: o `display route-policy` TEM de listar os
+    // MESMOS nodes do config-read. Divergencia = saida truncada/parcial: sem
+    // isso, uma leitura incompleta poderia "provar" ausencia de nodes e
+    // liberar ACTIVATE (segundo par) ou REMOVE (retirada parcial). Fail-closed
+    // nas DUAS direcoes.
+    const readBackNodeNumbers = [...readBackNodes.map((entry) => entry.node)].sort(
+      (left, right) => left - right,
+    );
+    const configNodeNumbers = [...existingNodes].sort((left, right) => left - right);
+    const readBackIntegrity =
+      readBackOutput !== null && sameNodes(readBackNodeNumbers, configNodeNumbers);
+    checks.push({
+      id: 'readback_integrity',
+      ok: readBackIntegrity,
+      detail: readBackIntegrity
+        ? `read-back completo (nodes [${configNodeNumbers.join(', ')}] iguais ao config)`
+        : `read-back divergente/incompleto: display [${readBackNodeNumbers.join(', ') || 'nenhum'}] x config [${configNodeNumbers.join(', ') || 'nenhum'}]`,
+    });
+
     if (mode === 'ACTIVATE') {
       const bogonFree =
         routePolicyConfiguration !== null && !existingNodes.includes(input.bogonNode);
@@ -347,9 +391,34 @@ export class HuaweiMitigationExecutor {
           ? `ip-prefix ${input.targetPrefixList} definida`
           : `ip-prefix ${input.targetPrefixList} ausente`,
       });
+
+      // F3: NUNCA instalar um SEGUNDO par de mitigacao na mesma policy fisica.
+      // A prova e o read-back REAL (`display route-policy`), exatamente como a
+      // verificacao pos-escrita; runtime e plano NAO decidem nada aqui.
+      // Estrutura suspeita/parcial/multipla ou leitura inconclusiva BLOQUEIA
+      // (reconciliacao obrigatoria) - o AUTO tambem passa por este preflight.
+      const physical = this.inspectMitigation(input, readBackOutput);
+      checks.push({
+        id: 'policy_mitigation_scope',
+        ok: physical.state === 'NORMAL',
+        detail: physical.detail,
+      });
     } else {
       // REMOVE: o par TEM de estar presente e exatamente correto. Nunca remover
       // "as cegas" um node com conteudo diferente.
+      // F3-REMOVE: com estrutura AMBIGUA (multiplos pares, nodes suspeitos ou
+      // leitura inconclusiva) a retirada fica bloqueada - remover UM par e
+      // sincronizar o escopo como NORMAL esconderia o que sobrou.
+      const removalPhysical = this.inspectMitigation(input, readBackOutput);
+      checks.push({
+        id: 'policy_mitigation_scope',
+        ok: removalPhysical.state !== 'RECONCILIATION_REQUIRED',
+        detail:
+          removalPhysical.state === 'RECONCILIATION_REQUIRED'
+            ? `${removalPhysical.detail} (reconciliacao obrigatoria antes de retirar)`
+            : 'estrutura de mitigacao reconhecida',
+      });
+
       checks.push({
         id: 'bogon_node_present',
         ok: bogonNodeExists && bogonNodeMatches,

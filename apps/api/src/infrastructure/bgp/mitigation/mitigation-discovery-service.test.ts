@@ -735,24 +735,26 @@ describe('plannedNode nao sobrevive a condicao que deixou de existir', () => {
 
     expect(result.profiles[0]?.blockedReason).toBe('READBACK_FAILED');
     expect((await harness.repository.getRuntime(profile!.id))?.plannedNode).toBeNull();
-    expect((await harness.repository.getRuntime(profile!.id))?.state).toBe(
-      'RECONCILIATION_REQUIRED',
-    );
+    // F1: o bloqueio do discovery NAO e dono do estado de mitigacao - o runtime
+    // existente e PRESERVADO (a condicao aparece em readiness/blockedReason).
+    expect((await harness.repository.getRuntime(profile!.id))?.state).toBe('NORMAL');
   });
 });
 
 describe('retorno ao estado operacional apropriado', () => {
-  it('volta a READY e retorna a NORMAL quando o bloqueio desaparece', async () => {
+  it('F1: bloqueio do discovery nao altera o estado; readiness volta a READY', async () => {
     const harness = createHarness({ bgp: BGP_BUSY, routePolicy: RP_BUSY_FREE });
     await discover(harness, [makePeer({ peerAddress: '10.200.200.50' })]);
     const [profile] = await harness.repository.listProfiles({ deviceId: DEVICE.id });
     expect((await harness.repository.getRuntime(profile!.id))?.state).toBe('NORMAL');
 
     harness.config.routePolicy = RP_BUSY_IN;
-    await discover(harness, [makePeer({ peerAddress: '10.200.200.50' })]);
-    expect((await harness.repository.getRuntime(profile!.id))?.state).toBe(
-      'RECONCILIATION_REQUIRED',
-    );
+    const second = await discover(harness, [makePeer({ peerAddress: '10.200.200.50' })]);
+    // F1: o bloqueio aparece em readiness/blockedReason; o runtime NAO vira
+    // RECONCILIATION_REQUIRED nem NORMAL - ele e preservado como esta.
+    expect(second.profiles[0]?.readiness).toBe('NOT_READY');
+    expect(second.profiles[0]?.blockedReason).toBe('NO_SAFE_TEMPORARY_NODE');
+    expect((await harness.repository.getRuntime(profile!.id))?.state).toBe('NORMAL');
 
     harness.config.routePolicy = RP_BUSY_FREE;
     const third = await discover(harness, [makePeer({ peerAddress: '10.200.200.50' })]);
@@ -773,6 +775,90 @@ describe('retorno ao estado operacional apropriado', () => {
 
     expect(result.profiles[0]?.readiness).toBe('READY');
     expect((await harness.repository.getRuntime(profile!.id))?.state).toBe('MITIGATED');
+  });
+
+  it('F1: falha de LEITURA do runtime nao derruba o discovery e nao grava estado', async () => {
+    const harness = createHarness();
+    await discover(harness, [makePeer({ peerAddress: '10.200.200.106' })]);
+    const [profile] = await harness.repository.listProfiles({ deviceId: DEVICE.id });
+    await harness.repository.upsertRuntime(profile!.id, { state: 'MITIGATED' });
+
+    // A leitura do runtime falha (banco indisponivel): o discovery NAO pode
+    // derrubar o ciclo nem gravar estado por conta propria.
+    const originalGetRuntime = harness.repository.getRuntime.bind(harness.repository);
+    let calls = 0;
+    (harness.repository as { getRuntime: unknown }).getRuntime = async (id: string) => {
+      calls += 1;
+      if (calls === 1) throw new Error('banco indisponivel');
+      return originalGetRuntime(id);
+    };
+
+    const result = await discover(harness, [makePeer({ peerAddress: '10.200.200.106' })]);
+
+    expect(
+      result.warnings.some((warning) => warning.includes('nao foi possivel persistir')),
+    ).toBe(true);
+    expect((await originalGetRuntime(profile!.id))?.state).toBe('MITIGATED');
+  });
+
+  it('F1 CORRIGIDO: runtime RECONCILIATION_REQUIRED com par FISICO ativo e PRESERVADO', async () => {
+    // A policy do equipamento TEM o par de mitigacao instalado (deny BOGONS +
+    // permit PREFIX8to24 com RT): a leitura do discovery enxerga os nodes 1/2
+    // ocupados. O runtime, porem, foi marcado RECONCILIATION_REQUIRED pelo
+    // MitigationCommandService (escrita Huawei iniciada + read-back nao
+    // comprovado) e `blockedReason` do discovery continua null.
+    const routePolicy = [
+      'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
+      ' if-match ip-prefix BOGONS',
+      'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply extcommunity rt 268568:660 additive',
+      'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
+    ].join('\n');
+    const harness = createHarness({ routePolicy });
+    await discover(harness, [makePeer({ peerAddress: '10.200.200.106' })]);
+    const [profile] = await harness.repository.listProfiles({ deviceId: DEVICE.id });
+    await harness.repository.upsertRuntime(profile!.id, { state: 'RECONCILIATION_REQUIRED' });
+
+    const result = await discover(harness, [makePeer({ peerAddress: '10.200.200.106' })]);
+
+    expect(result.profiles[0]?.readiness).toBe('READY');
+    const runtime = await harness.repository.getRuntime(profile!.id);
+    // F1 CORRIGIDO: sem prova fisica o discovery NUNCA rebaixa o estado. O
+    // MESMO caminho roda na reidratacao pos-restart/redeploy
+    // (mitigation-service.rehydrateSnapshots) - antes ele virava NORMAL.
+    expect(runtime?.state).toBe('RECONCILIATION_REQUIRED');
+    // O planejamento continua sendo do discovery: o par 1/2 esta ocupado, o
+    // plano segue para 3/4 - e o reconciler (F2) passa a enxergar o par FISICO
+    // 1/2 no read-back em vez de declarar NORMAL.
+    expect(runtime?.plannedBogonNode).toBe(3);
+    expect(runtime?.plannedMitigationNode).toBe(4);
+  });
+
+  it('REPRODUCAO: com o par fisico 1/2 ATIVO o discovery preserva MITIGATED mas reescreve o plano para 3/4', async () => {
+    const routePolicy = [
+      'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
+      ' if-match ip-prefix BOGONS',
+      'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply extcommunity rt 268568:660 additive',
+      'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
+    ].join('\n');
+    const harness = createHarness({ routePolicy });
+    await discover(harness, [makePeer({ peerAddress: '10.200.200.106' })]);
+    const [profile] = await harness.repository.listProfiles({ deviceId: DEVICE.id });
+    await harness.repository.upsertRuntime(profile!.id, { state: 'MITIGATED' });
+
+    await discover(harness, [makePeer({ peerAddress: '10.200.200.106' })]);
+
+    const runtime = await harness.repository.getRuntime(profile!.id);
+    // O estado operacional em andamento e preservado (correto)...
+    expect(runtime?.state).toBe('MITIGATED');
+    // ...mas o PLANO e reescrito para o menor par livre, divergindo do par
+    // FISICO ativo (1/2). O reconciler usa o plano para verificar a presenca:
+    // com plano 3/4 ele declara NORMAL mesmo com o par 1/2 ativo.
+    expect(runtime?.plannedBogonNode).toBe(3);
+    expect(runtime?.plannedMitigationNode).toBe(4);
   });
 });
 

@@ -159,6 +159,7 @@ import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-ada
 import { HuaweiVrpDriver } from './infrastructure/topology/huawei-vrp-driver';
 import { LldpSnmpDiscoveryAdapter } from './infrastructure/topology/lldp-snmp-adapter';
 import { LldpSshDiscoveryAdapter } from './infrastructure/topology/lldp-ssh-adapter';
+import { InMemoryPolicyScopeLock } from './infrastructure/bgp/mitigation/mitigation-policy-lock';
 
 const mapIdParams = z.object({ mapId: z.string().min(1) });
 const nodeParams = z.object({ mapId: z.string().min(1), nodeId: z.string().min(1) });
@@ -744,6 +745,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     rt: mitigationEngineConfig.mitigationRt,
     labels: mitigationLabels,
   });
+  // F4: MESMA exclusao mutua para UI, n8n, AUTO e APPLY LOCAL do reconciler.
+  const mitigationScopeLock = new InMemoryPolicyScopeLock();
   const mitigationCommands = new MitigationCommandService({
     repository: mitigationRepository,
     hosts,
@@ -755,6 +758,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     // Snapshot do discovery: o preflight compara existingNodes e aborta sem ele.
     expectedNodes: async (profileId) =>
       mitigationService.discoverySnapshot(profileId)?.existingNodes ?? null,
+    scopeLock: mitigationScopeLock,
   });
 
   // ---- Motor AUTO real: mesmo caminho canônico do ACTIVATE (UI/n8n) --------
@@ -792,6 +796,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
             return {
               profileId: dto.id,
               deviceId: dto.deviceId,
+              policyName: dto.policyName,
               interfaceId: dto.interfaceId,
               customer: dto.customer,
               mode: dto.mode,
@@ -880,6 +885,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     hosts,
     readPolicy: (device, policyName) => mitigationLiveExecutor.readRoutePolicy(device, policyName),
     labels: mitigationLabels,
+    lock: mitigationScopeLock,
   });
 
   registerMitigationRoutes(app, {

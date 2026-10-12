@@ -47,7 +47,8 @@ class FakeSsh implements MitigationSshPort {
   readonly applied: { deviceId: string; commands: string[] }[] = [];
   routePolicyConfiguration: string | null = ROUTE_POLICY;
   prefixListConfiguration: string | null = IP_PREFIX;
-  readBack = ROUTE_POLICY;
+  /** Override explicito do `display route-policy`; null = espelha a config. */
+  readBack: string | null = null;
   applyOk = true;
   applyOutput: string | null = 'ok';
   readThrows = false;
@@ -68,7 +69,9 @@ class FakeSsh implements MitigationSshPort {
 
   async readMitigationRoutePolicy(): Promise<string> {
     if (this.readBackThrows) throw new Error('SSH command failed');
-    return this.readBack;
+    // Fiel ao equipamento real: `display route-policy` reflete a config atual
+    // (o preflight agora compara as DUAS leituras contra truncamento).
+    return this.readBack ?? this.routePolicyConfiguration ?? '';
   }
 
   async applyMitigationCommands(

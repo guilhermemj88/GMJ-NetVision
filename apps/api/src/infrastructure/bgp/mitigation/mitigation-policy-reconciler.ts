@@ -12,6 +12,8 @@ import {
   syncPolicyRuntime,
   type PolicyExecutionScope,
 } from './mitigation-policy-scope';
+import { inspectPolicyMitigation, type PolicyMitigationPhysical } from './mitigation-policy-physical';
+import type { PolicyScopeLock } from './mitigation-policy-lock';
 
 // RECONCILIACAO READ-ONLY do estado FISICO de uma route-policy.
 //
@@ -33,6 +35,8 @@ export interface PolicyScopeTarget {
 export interface PolicyScopeTargetAssessment {
   profileId: string;
   runtimeState: string | null;
+  /** Par PLANEJADO do runtime (detalhe; o estado fisico vem do read-back). */
+  pair: { bogonNode: number; mitigationNode: number } | null;
   bogonOk: boolean;
   mitigationOk: boolean;
   removalOk: boolean;
@@ -45,6 +49,8 @@ export interface PolicyScopeAssessment {
   state: PolicyPhysicalState;
   detail: string;
   targets: PolicyScopeTargetAssessment[];
+  /** Estrutura FISICA completa lida no read-back (evidencia do estado). */
+  physical: PolicyMitigationPhysical;
 }
 
 export interface PolicyReconcileDeps {
@@ -53,6 +59,8 @@ export interface PolicyReconcileDeps {
   /** Leitura READ-ONLY do read-back real da policy (display route-policy). */
   readPolicy(device: HostRecord, policyName: string): Promise<string>;
   labels?: { bogonPrefixList: string; targetPrefixList: string };
+  /** F4: o APPLY LOCAL entra na MESMA serializacao do command service. */
+  lock?: PolicyScopeLock;
   now?: () => Date;
 }
 
@@ -68,6 +76,8 @@ export interface PolicyReconcileTargetPreview {
   profileId: string;
   runtimeState: string | null;
   proposedRuntimeState: PolicyPhysicalState;
+  /** Par fisico que sera propagado quando o estado proposto for MITIGATED. */
+  proposedPair: { bogonNode: number; mitigationNode: number } | null;
   change: boolean;
 }
 
@@ -80,6 +90,8 @@ export interface PolicyReconcilePreview {
   policyName: string;
   state: PolicyPhysicalState;
   detail: string;
+  /** Estrutura fisica completa (nodes BOGONS, mitigacao, suspeitos, par). */
+  physical: PolicyMitigationPhysical;
   readAt: string;
   /** Token da leitura; o APPLY LOCAL exige este id e revalida antes de gravar. */
   previewId: string;
@@ -111,11 +123,22 @@ export function assessPolicyPhysicalState(input: {
   labels: { bogonPrefixList: string; targetPrefixList: string };
   targets: readonly PolicyScopeTarget[];
 }): Omit<PolicyScopeAssessment, 'deviceId'> {
+  // EVIDENCIA FISICA COMPLETA: a classificacao vem da POLICY INTEIRA (todos
+  // os nodes de mitigacao presentes no read-back), nunca apenas da ausencia do
+  // par planejado. Par fisico diferente do plano NAO vira NORMAL.
+  const physical = inspectPolicyMitigation({
+    policyName: input.policyName,
+    readBack: input.readBack,
+    rts: [...new Set(input.targets.map((target) => target.mitigationRt))],
+    labels: input.labels,
+  });
+
   const targets: PolicyScopeTargetAssessment[] = input.targets.map((target) => {
     if (!target.pair) {
       return {
         profileId: target.profileId,
         runtimeState: target.runtimeState,
+        pair: null,
         bogonOk: false,
         mitigationOk: false,
         removalOk: false,
@@ -133,6 +156,7 @@ export function assessPolicyPhysicalState(input: {
     return {
       profileId: target.profileId,
       runtimeState: target.runtimeState,
+      pair: { ...target.pair },
       bogonOk: activation.bogonOk,
       mitigationOk: activation.mitigationOk,
       removalOk: removal.verified,
@@ -146,32 +170,16 @@ export function assessPolicyPhysicalState(input: {
       state: 'RECONCILIATION_REQUIRED',
       detail: 'policy sem targets persistidos; nada pode ser confirmado no equipamento',
       targets,
+      physical,
     };
   }
-  if (targets.every((target) => target.bogonOk && target.mitigationOk)) {
-    return {
-      policyName: input.policyName,
-      state: 'MITIGATED',
-      detail: 'par de mitigacao presente e valido para todos os targets da policy',
-      targets,
-    };
-  }
-  if (targets.every((target) => target.removalOk)) {
-    return {
-      policyName: input.policyName,
-      state: 'NORMAL',
-      detail: 'nenhum node de mitigacao presente para os targets da policy',
-      targets,
-    };
-  }
-  const reasons = targets
-    .map((target) => (target.reason ? `${target.profileId}: ${target.reason}` : null))
-    .filter((reason): reason is string => reason !== null);
+
   return {
     policyName: input.policyName,
-    state: 'RECONCILIATION_REQUIRED',
-    detail: reasons.join('; ') || 'leitura do equipamento inconclusiva',
+    state: physical.state,
+    detail: physical.detail,
     targets,
+    physical,
   };
 }
 
@@ -189,6 +197,7 @@ function previewToken(input: {
   policyName: string;
   readBack: string;
   assessment: { state: PolicyPhysicalState; targets: readonly PolicyScopeTargetAssessment[] };
+  physical: PolicyMitigationPhysical;
 }): string {
   return sha256(
     [
@@ -196,8 +205,21 @@ function previewToken(input: {
       input.policyName,
       sha256(input.readBack),
       input.assessment.state,
+      // Evidencia fisica COMPLETA: qualquer mudanca de nodes (inclusive um par
+      // diferente do planejado) muda o token e invalida o preview (HTTP 409).
+      `bogon:[${input.physical.bogonNodes.join(',')}]`,
+      `mitigacao:[${input.physical.mitigationNodes.join(',')}]`,
+      `suspeitos:[${input.physical.partialNodes
+        .map((entry) => `${entry.node}:${entry.reason}`)
+        .join('|')}]`,
+      input.physical.pair
+        ? `par:${input.physical.pair.bogonNode}-${input.physical.pair.mitigationNode}`
+        : 'par:-',
       ...input.assessment.targets.map(
-        (target) => `${target.profileId}:${target.runtimeState ?? '-'}`,
+        (target) =>
+          `${target.profileId}:${target.runtimeState ?? '-'}:${
+            target.pair ? `${target.pair.bogonNode}-${target.pair.mitigationNode}` : '-'
+          }`,
       ),
     ].join('\n'),
   );
@@ -228,19 +250,30 @@ export class MitigationPolicyReconciler {
    */
   async preview(scope: PolicyExecutionScope): Promise<PolicyReconcilePreview> {
     const { assessment, previewId, readAt } = await this.assessWithToken(scope);
+    const proposedPair =
+      assessment.state === 'MITIGATED' ? (assessment.physical.pair ?? null) : null;
     return {
       deviceId: scope.deviceId,
       policyName: scope.policyName,
       state: assessment.state,
       detail: assessment.detail,
+      physical: assessment.physical,
       readAt: readAt.toISOString(),
       previewId,
-      targets: assessment.targets.map((target) => ({
-        profileId: target.profileId,
-        runtimeState: target.runtimeState,
-        proposedRuntimeState: assessment.state,
-        change: target.runtimeState !== assessment.state,
-      })),
+      targets: assessment.targets.map((target) => {
+        const pairChange =
+          proposedPair !== null &&
+          (target.pair === null ||
+            target.pair.bogonNode !== proposedPair.bogonNode ||
+            target.pair.mitigationNode !== proposedPair.mitigationNode);
+        return {
+          profileId: target.profileId,
+          runtimeState: target.runtimeState,
+          proposedRuntimeState: assessment.state,
+          proposedPair,
+          change: target.runtimeState !== assessment.state || pairChange,
+        };
+      }),
     };
   }
 
@@ -253,17 +286,33 @@ export class MitigationPolicyReconciler {
     scope: PolicyExecutionScope,
     previewId: string,
   ): Promise<PolicyReconcileApplyResult> {
+    if (this.deps.lock) {
+      // F4: o APPLY LOCAL disputa o MESMO escopo com o command service.
+      return this.deps.lock.run(scope, () => this.applyLocalLocked(scope, previewId));
+    }
+    return this.applyLocalLocked(scope, previewId);
+  }
+
+  private async applyLocalLocked(
+    scope: PolicyExecutionScope,
+    previewId: string,
+  ): Promise<PolicyReconcileApplyResult> {
     const fresh = await this.assessWithToken(scope);
     if (fresh.previewId !== previewId) {
       throw new PolicyReconcileStaleError(
         'Preview expirado: o equipamento ou os runtimes mudaram desde a leitura; gere um novo preview.',
       );
     }
+    // MITIGATED: propaga o par FISICO para todos os profiles do escopo,
+    // reparando plano x equipamento sob autorizacao explicita do operador.
+    const activePair =
+      fresh.assessment.state === 'MITIGATED' ? fresh.assessment.physical.pair : null;
     const synced = await syncPolicyRuntime(
       this.deps.repository,
       scope,
       fresh.assessment.state,
       this.now(),
+      activePair,
     );
     return {
       deviceId: scope.deviceId,
@@ -309,6 +358,7 @@ export class MitigationPolicyReconciler {
         policyName: scope.policyName,
         readBack,
         assessment,
+        physical: assessment.physical,
       }),
       readAt: this.now(),
     };

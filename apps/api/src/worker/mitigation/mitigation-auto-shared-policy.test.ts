@@ -14,6 +14,7 @@ import type {
   MitigationPreflightInput,
   MitigationPreflightResult,
 } from '../../infrastructure/bgp/mitigation/huawei-mitigation-executor';
+import { inspectPolicyMitigation } from '../../infrastructure/bgp/mitigation/mitigation-policy-physical';
 import { MitigationAutoEngine } from './mitigation-auto-engine';
 import { SequenceTrafficSource } from './mitigation-traffic-source';
 
@@ -82,6 +83,20 @@ class DeviceTruthExecutor implements MitigationLiveExecutorPort {
       } else if (expected.join(',') !== current.join(',')) {
         reasons.push(`esperado [${expected.join(', ')}], lido [${current.join(', ')}]`);
       }
+      // F3 (espelho do executor real): policy ja mitigada nao aceita um
+      // SEGUNDO par - a prova e o read-back, nunca o runtime/plano.
+      const physical = inspectPolicyMitigation({
+        policyName: input.policyName,
+        readBack: this.renderPolicy(input.policyName),
+        rts: [input.rt],
+        labels: {
+          bogonPrefixList: input.bogonPrefixList,
+          targetPrefixList: input.targetPrefixList,
+        },
+      });
+      if (physical.state !== 'NORMAL') {
+        reasons.push(`policy ja possui estrutura de mitigacao (${physical.detail})`);
+      }
     } else {
       if (!this.nodes.has(input.bogonNode) && !this.nodes.has(input.mitigationNode)) {
         reasons.push('par ausente na policy');
@@ -134,20 +149,25 @@ class DeviceTruthExecutor implements MitigationLiveExecutorPort {
     return { output: 'ok' };
   }
 
-  async readRoutePolicy(): Promise<string> {
+  /** Read-back REAL do que esta na policy (mesma forma do executor). */
+  private renderPolicy(policyName: string): string {
     const lines: string[] = [];
     if (this.nodes.has(PAIR.bogonNode)) {
-      lines.push(`route-policy ${POLICY_V4} deny node ${PAIR.bogonNode}`, ' if-match ip-prefix BOGONS');
+      lines.push(`route-policy ${policyName} deny node ${PAIR.bogonNode}`, ' if-match ip-prefix BOGONS');
     }
     if (this.nodes.has(PAIR.mitigationNode)) {
       lines.push(
-        `route-policy ${POLICY_V4} permit node ${PAIR.mitigationNode}`,
+        `route-policy ${policyName} permit node ${PAIR.mitigationNode}`,
         ' if-match ip-prefix PREFIX8to24',
         ` apply extcommunity rt ${RT} additive`,
       );
     }
-    lines.push(`route-policy ${POLICY_V4} permit node 10`);
+    lines.push(`route-policy ${policyName} permit node 10`);
     return lines.join('\n');
+  }
+
+  async readRoutePolicy(): Promise<string> {
+    return this.renderPolicy(POLICY_V4);
   }
 }
 
@@ -220,6 +240,7 @@ async function harness(options: HarnessOptions = {}) {
             return {
               profileId: record.id,
               deviceId: record.deviceId,
+              policyName: record.policyName,
               interfaceId: record.interfaceId,
               customer: `CLIENTE ${index + 1}`,
               mode: 'AUTO' as const,
@@ -432,13 +453,15 @@ describe('AUTO x route-policy compartilhada (deviceId + policyName)', () => {
     expect(decisions.every((decision) => decision.reason === 'ALREADY_MITIGATED')).toBe(true);
   });
 
-  it('13) profile NOVO no escopo ja mitigado: tentativa bloqueada pelo equipamento, sem escrita dupla', async () => {
+  it('13) profile NOVO no escopo ja mitigado: AUTO nao tenta um segundo par (SCOPE_ALREADY_MITIGATED)', async () => {
     const h = await harness({ policies: [POLICY_V4], devices: [DEVICE_A] });
     const [p1] = h.profileIds as [string];
     await h.run(3, [h.over]); // P1 ativa; policy passa a ter os nodes.
     expect(h.live.activateCalls).toBe(1);
+    const preflightsAfterActivation = h.live.preflightCalls;
 
     // Novo profile descoberto DEPOIS da mitigacao (runtime NORMAL no banco).
+    // O planner REAL nunca repete o par ocupado: o plano dele e 3/4.
     const extra = await h.repository.upsertProfile({
       deviceId: DEVICE_A,
       policyName: POLICY_V4,
@@ -452,9 +475,9 @@ describe('AUTO x route-policy compartilhada (deviceId + policyName)', () => {
     ]);
     await h.repository.upsertRuntime(extra.id, {
       state: 'NORMAL',
-      plannedBogonNode: PAIR.bogonNode,
-      plannedMitigationNode: PAIR.mitigationNode,
-      plannedNode: PAIR.mitigationNode,
+      plannedBogonNode: 3,
+      plannedMitigationNode: 4,
+      plannedNode: 4,
     });
     const ids = h.profileIds as string[];
     ids.push(extra.id);
@@ -466,14 +489,60 @@ describe('AUTO x route-policy compartilhada (deviceId + policyName)', () => {
       decisions = await h.engine.tick();
     }
 
-    // O equipamento (fonte fisica) bloqueia: sem segunda escrita, runtime intacto.
+    // F3: o irmao MITIGATED do MESMO escopo (device+policy) interrompe o AUTO
+    // ANTES de qualquer preflight/escrita - nenhum segundo par e instalado e a
+    // tentativa nao se repete caro a cada tick.
     expect(h.live.activateCalls).toBe(1);
+    expect(h.live.preflightCalls).toBe(preflightsAfterActivation);
     const novo = decisions.find((decision) => decision.profileId === extra.id);
-    expect(novo?.outcome).toBe('FAILED');
-    expect(novo?.reason).toBe('PREFLIGHT_FAILED');
+    expect(novo?.outcome).toBe('NO_ACTION');
+    expect(novo?.reason).toBe('SCOPE_ALREADY_MITIGATED');
     // O novo profile nunca fica MITIGATED por engano (segue "quer mitigar").
     expect(await stateOf(h.repository, extra.id)).not.toBe('MITIGATED');
     expect(await stateOf(h.repository, p1)).toBe('MITIGATED');
+  });
+
+  it('13b) F3 no FISICO: ACTIVATE manual de profile novo (plano 3/4) e bloqueado pelo read-back', async () => {
+    const h = await harness({ policies: [POLICY_V4], devices: [DEVICE_A] });
+    const [p1] = h.profileIds as [string];
+    await h.run(3, [h.over]); // policy fisica com o par 1/2 (o "novo" plano evita 1/2)
+    expect(h.live.activateCalls).toBe(1);
+
+    const extra = await h.repository.upsertProfile({
+      deviceId: DEVICE_A,
+      policyName: POLICY_V4,
+      interfaceId: 'if-novo',
+      addressFamily: 'IPV4',
+      detectedBandwidthBps: BANDWIDTH,
+      bandwidthSource: 'DESCRIPTION',
+    });
+    await h.repository.replaceProfilePeers(extra.id, [
+      { peerId: 'peer-novo', peerAddress: '10.200.201.99', primary: true },
+    ]);
+    await h.repository.upsertRuntime(extra.id, {
+      state: 'NORMAL',
+      plannedBogonNode: 3,
+      plannedMitigationNode: 4,
+      plannedNode: 4,
+    });
+
+    // Comando MANUAL usa o MESMO servico: o preflight fisico (read-back) tem
+    // de bloquear - os nodes 3/4 estao livres e o snapshot bate, entao SO a
+    // checagem F3 pode estar barrando a escrita.
+    const manual = await h.commands.execute({
+      requestId: 'manual-novo',
+      action: 'ACTIVATE',
+      profileId: extra.id,
+    });
+
+    expect(manual.status).toBe('REVALIDATION_FAILED');
+    expect(manual.verified).toBe(false);
+    expect(manual.safeError ?? '').toContain('estrutura de mitigacao');
+    expect(h.live.activateCalls).toBe(1);
+    expect(await stateOf(h.repository, extra.id)).toBe('NORMAL');
+    expect(await stateOf(h.repository, p1)).toBe('MITIGATED');
+    expect(h.live.nodes.has(3)).toBe(false);
+    expect(h.live.nodes.has(4)).toBe(false);
   });
 
   it('14) dois REMOVE manuais no mesmo escopo: uma retirada fisica e runtime consistente', async () => {

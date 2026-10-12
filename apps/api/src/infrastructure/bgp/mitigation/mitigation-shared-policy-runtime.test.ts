@@ -397,17 +397,23 @@ describe('reconciler read-only por policy fisica', () => {
       targets: [target('p1'), target('p2')],
     });
     expect(assessment.state).toBe('RECONCILIATION_REQUIRED');
-    expect(assessment.detail).toContain('p1');
+    // F2: a evidencia agora e ESTRUTURAL (nodes do read-back), nao por target.
+    expect(assessment.detail).toContain('BOGONS');
+    expect(assessment.physical.bogonNodes).toEqual([1]);
+    expect(assessment.physical.mitigationNodes).toEqual([]);
+    expect(assessment.physical.pair).toBeNull();
   });
 
-  it('RECONCILIATION_REQUIRED quando falta o par planejado', () => {
+  it('F2: par FISICO presente com plano nulo => MITIGATED (nunca NORMAL)', () => {
     const assessment = assessPolicyPhysicalState({
       policyName: POLICY,
       readBack: READBACK_ACTIVE,
       labels,
       targets: [{ ...target('p1'), pair: null }],
     });
-    expect(assessment.state).toBe('RECONCILIATION_REQUIRED');
+    // A ausencia do PLANO nao pode virar NORMAL: o read-back TEM o par 1/2.
+    expect(assessment.state).toBe('MITIGATED');
+    expect(assessment.physical.pair).toEqual({ bogonNode: 1, mitigationNode: 2 });
   });
 });
 

@@ -29,6 +29,7 @@ import type {
   MitigationPreflightMode,
   MitigationPreflightResult,
 } from './huawei-mitigation-executor';
+import { PolicyScopeBusyError, type PolicyScopeLock } from './mitigation-policy-lock';
 
 // Servico unico das acoes de mitigacao.
 //
@@ -153,6 +154,11 @@ export interface MitigationCommandDeps {
   live?: MitigationLiveExecutorPort;
   /** existingNodes do ultimo discovery, para o preflight fail-closed. */
   expectedNodes?: (profileId: string) => Promise<number[] | null>;
+  /**
+   * F4: exclusao mutua por policy fisica (deviceId + policyName). Ausente =
+   * comportamento anterior (sem lock). UI, n8n e AUTO usam ESTE servico.
+   */
+  scopeLock?: PolicyScopeLock;
   now?: () => Date;
 }
 
@@ -236,6 +242,42 @@ export class MitigationCommandService {
       };
     }
 
+    // F4: comandos MUTANTES rodam serializados por policy FISICA
+    // (deviceId + policyName). A leitura fresca do runtime, o preflight, a
+    // escrita Huawei, o read-back e a sincronizacao do escopo acontecem
+    // DENTRO do lock; sem lock o caminho e o mesmo de antes.
+    if (MUTATING_ACTIONS.includes(input.action) && this.deps.scopeLock) {
+      const scope = policyExecutionScope(profile);
+      try {
+        return await this.deps.scopeLock.run(scope, () =>
+          this.executeScopedAction(input, outcome, profile, base),
+        );
+      } catch (error) {
+        if (error instanceof PolicyScopeBusyError) {
+          return this.policyBusyResult(input, profile, base);
+        }
+        throw error;
+      }
+    }
+    return this.executeScopedAction(input, outcome, profile, base);
+  }
+
+  /**
+   * Corpo da acao com escopo reconciliado (runtime -> preflight -> escrita ->
+   * read-back -> persistencia). Extraido para rodar sob o lock de escopo (F4).
+   */
+  private async executeScopedAction(
+    input: MitigationCommandInput,
+    outcome: MitigationNotificationOutcome,
+    profile: MitigationProfileRecord,
+    base: {
+      requestId: string;
+      action: MitigationCommandAction;
+      profileId: string;
+      idempotent: boolean;
+      executedAt: string;
+    },
+  ): Promise<MitigationActionResult> {
     const peers = await this.read(() => this.deps.repository.listProfilePeers(profile.id), []);
     const runtime = await this.read(() => this.deps.repository.getRuntime(profile.id), null);
     // A mitigacao e o PAR (BOGONS + mitigacao). Compatibilidade: um runtime
@@ -557,6 +599,48 @@ export class MitigationCommandService {
         safeError: `Falha ao executar a acao no equipamento: ${executionReason(error)}`,
       };
     }
+  }
+
+  /**
+   * F4: outra operacao detem o lock do MESMO escopo fisico. Nenhuma escrita foi
+   * tentada; o chamador (UI/n8n/AUTO) recebe um codigo explicito em `status`.
+   */
+  private async policyBusyResult(
+    input: MitigationCommandInput,
+    profile: MitigationProfileRecord,
+    base: {
+      requestId: string;
+      action: MitigationCommandAction;
+      profileId: string;
+      idempotent: boolean;
+      executedAt: string;
+    },
+  ): Promise<MitigationActionResult> {
+    const host = await this.read(() => this.deps.hosts.getHost(profile.deviceId), null);
+    const label = resolveInterfaceLabel(host, profile.interfaceId);
+    return {
+      ...base,
+      ok: false,
+      status: 'POLICY_BUSY',
+      customer: label.customer,
+      device: host ? host.displayName || host.hostname : profile.deviceId,
+      interface: label.interfaceName ?? profile.interfaceId,
+      interfaceId: profile.interfaceId,
+      addressFamily: profile.addressFamily,
+      policy: profile.policyName,
+      node: null,
+      bogonNode: null,
+      mitigationNode: null,
+      rt: profile.mitigationRt,
+      sharedPolicy: false,
+      sharedPolicyTargets: [],
+      affectedPeers: [],
+      verified: false,
+      commandPreview: [],
+      verification: null,
+      safeError:
+        'Policy ocupada por outra operacao no mesmo equipamento (deviceId + policy). Nenhuma escrita foi feita; tente novamente.',
+    };
   }
 
   /**

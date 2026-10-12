@@ -47,9 +47,29 @@ import type { BandwidthSource, MitigationBlockReason, PrefixStatus } from './mit
 //    que continua preservado em interfaceDescriptionRaw;
 //  - interface que perdeu a banda sai do escopo: o profile NAO e apagado, mas o runtime
 //    e marcado DISABLED para nunca seguir ativo em silencio;
-//  - profile NOT_READY NUNCA e persistido como NORMAL. Como MitigationState nao tem um
-//    estado proprio de "nao pronto", usamos RECONCILIATION_REQUIRED: o worker nao pode
-//    tratar esse profile como pronto e a condicao precisa ser revalidada/reconciliada.
+//  - o DISCOVERY NAO E DONO do estado de mitigacao: ele atualiza readiness, planejamento
+//    e timestamps, mas NUNCA sobrescreve o `state` de um runtime existente. Estados
+//    confirmados ou inconclusivos (MITIGATED, MITIGATING, RECOVERING, RECOVERY_PENDING,
+//    FAILED, RECONCILIATION_REQUIRED) so mudam por um caminho que PROVA o estado fisico
+//    (comando verificado ou reconciliacao autorizada). Runtime NOVO nasce NORMAL - ou
+//    RECONCILIATION_REQUIRED quando o profile ja nasce bloqueado/desconhecido.
+
+/**
+ * F1: estados que NAO pertencem ao discovery (fisicos, operacionais ou do
+ * AUTO). Sair de escopo NUNCA pode apaga-los - so o proprio dono (comando
+ * verificado, reconciliacao autorizada ou AUTO) muda estes valores. O
+ * discovery so marca DISABLED a partir de NORMAL/DISABLED.
+ */
+const PRESERVED_OUT_OF_SCOPE_STATES: readonly string[] = [
+  'ALERT_ONLY',
+  'TRIGGER_PENDING',
+  'MITIGATING',
+  'MITIGATED',
+  'RECOVERY_PENDING',
+  'RECOVERING',
+  'FAILED',
+  'RECONCILIATION_REQUIRED',
+];
 
 /** Outro target (interface+familia) que usa a MESMA policy IN. */
 export interface MitigationSharedTarget {
@@ -385,11 +405,19 @@ export class BgpMitigationDiscoveryService {
           plannedNode,
           plannedBogonNode,
           plannedMitigationNode: plannedNode,
-          ...(blockedReason !== null
-            ? { state: 'RECONCILIATION_REQUIRED' as const }
-            : runtime === null ||
-                runtime.state === 'DISABLED' ||
-                runtime.state === 'RECONCILIATION_REQUIRED'
+          // F1: `state` pertence aos caminhos que PROVAM o estado fisico. O
+          // discovery apenas INICIALIZA a linha (runtime novo) e reativa o
+          // proprio marcador de fora de escopo (DISABLED); qualquer outro
+          // estado existente e PRESERVADO - o estado nunca vira NORMAL apenas
+          // porque `blockedReason === null`.
+          ...(runtime === null
+            ? {
+                state:
+                  blockedReason !== null
+                    ? ('RECONCILIATION_REQUIRED' as const)
+                    : ('NORMAL' as const),
+              }
+            : runtime.state === 'DISABLED'
               ? { state: 'NORMAL' as const }
               : {}),
         });
@@ -515,14 +543,23 @@ export class BgpMitigationDiscoveryService {
       if (runtime?.state === 'DISABLED' && runtime.plannedNode === null) continue;
       const peers = await this.deps.repository.listProfilePeers(profile.id);
       if (peers.length === 0) continue;
-      await this.deps.repository.upsertRuntime(profile.id, {
-        state: 'DISABLED',
-        plannedNode: null,
-        lastReconciledAt: now,
-      });
+      // F1: estado fisico/operacional NUNCA e apagado por sair de escopo - o
+      // equipamento pode seguir mitigado e o par precisa continuar visivel
+      // para o reconciler/REMOVE. Somente estados SEM mitigacao provada viram
+      // DISABLED, como antes.
+      const preserved = runtime !== null && PRESERVED_OUT_OF_SCOPE_STATES.includes(runtime.state);
+      if (!preserved) {
+        await this.deps.repository.upsertRuntime(profile.id, {
+          state: 'DISABLED',
+          plannedNode: null,
+          lastReconciledAt: now,
+        });
+      }
       outOfScope.push(profile.policyName);
       warnings.push(
-        `policy ${profile.policyName}: fora do escopo automatico; runtime marcado como DISABLED (historico preservado)`,
+        preserved
+          ? `policy ${profile.policyName}: fora do escopo automatico; runtime ${runtime!.state} PRESERVADO (o discovery nao apaga estado fisico)`
+          : `policy ${profile.policyName}: fora do escopo automatico; runtime marcado como DISABLED (historico preservado)`,
       );
     }
     return outOfScope;

@@ -53,11 +53,16 @@ export type MitigationAutoBlockReason =
   | 'PREFLIGHT_FAILED'
   | 'ACTIVATE_FAILED'
   | 'VERIFY_FAILED'
+  | 'SCOPE_ALREADY_MITIGATED'
+  | 'SCOPE_OPERATION_IN_FLIGHT'
+  | 'POLICY_BUSY'
   | 'CONCURRENT_TICK';
 
 export interface MitigationAutoTargetState {
   profileId: string;
   deviceId: string;
+  /** Nome da route-policy fisica: escopo compartilhado do AUTO (F3). */
+  policyName?: string | null;
   interfaceId: string | null;
   customer: string | null;
   mode: MitigationProfileMode;
@@ -456,6 +461,13 @@ export class MitigationAutoEngine {
       return decided('ALREADY_MITIGATED', 'NO_ACTION');
     }
 
+    // F3 (escopo fisico compartilhado): um irmao da MESMA policy ja mitigado (ou
+    // com operacao em andamento) significa que a policy fisica JA esta mitigada.
+    // O AUTO nao tenta instalar um segundo par; sem irmao comprovado o preflight
+    // fisico (read-back real) continua sendo a barreira final.
+    const scopeReason = await this.detectScopeMitigation(target);
+    if (scopeReason !== null) return decided(scopeReason, 'NO_ACTION');
+
     const requestId = `auto-activate-${target.profileId}-${counters.triggerStartedAtMs ?? at.getTime()}`;
     this.inFlight.add(target.profileId);
     this.deps.logger?.('auto: disparando ACTIVATE', {
@@ -512,6 +524,8 @@ export class MitigationAutoEngine {
     if (typeof result.blockedReason === 'string' && result.blockedReason.startsWith('preflight')) {
       return 'PREFLIGHT_FAILED';
     }
+    // F4: lock ocupado por outra operacao do MESMO escopo.
+    if (result.status === 'POLICY_BUSY') return 'POLICY_BUSY';
     if (result.status === 'ACTIVATED_NOT_VERIFIED') return 'VERIFY_FAILED';
     return 'ACTIVATE_FAILED';
   }
@@ -546,6 +560,41 @@ export class MitigationAutoEngine {
    * Leitura fresca do runtime (estado + sucesso da leitura). Falha de leitura e
    * tratada como "nao sei": nunca autoriza o motor a sobrescrever estado.
    */
+  /**
+   * F3: o escopo fisico e `deviceId + policyName`. Se qualquer OUTRO target do
+   * mesmo escopo esta MITIGATED/RECOVERY_PENDING, a policy ja esta mitigada e
+   * um novo ACTIVATE instalaria um SEGUNDO par (proibido). MITIGATING/RECOVERING
+   * indicam operacao em andamento (nao competir com ela). Leitura de runtime
+   * indisponivel NAO bloqueia: o preflight fisico decide com prova real.
+   */
+  private async detectScopeMitigation(
+    target: MitigationAutoTargetState,
+  ): Promise<MitigationAutoBlockReason | null> {
+    const policyName = target.policyName ?? null;
+    if (policyName === null) return null;
+    let siblings: MitigationAutoTargetState[];
+    try {
+      siblings = (await this.deps.targets.list()).filter(
+        (candidate) =>
+          candidate.profileId !== target.profileId &&
+          candidate.deviceId === target.deviceId &&
+          candidate.policyName === policyName,
+      );
+    } catch {
+      return null;
+    }
+    for (const sibling of siblings) {
+      const state = (await this.readRuntimeState(sibling.profileId)).state;
+      if (state === 'MITIGATED' || state === 'RECOVERY_PENDING') {
+        return 'SCOPE_ALREADY_MITIGATED';
+      }
+      if (state === 'MITIGATING' || state === 'RECOVERING') {
+        return 'SCOPE_OPERATION_IN_FLIGHT';
+      }
+    }
+    return null;
+  }
+
   private async readRuntimeState(
     profileId: string,
   ): Promise<{ ok: boolean; state: MitigationState | null }> {
