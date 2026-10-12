@@ -158,6 +158,16 @@ export interface MitigationAutoEngineDeps {
   };
   now?: () => Date;
   logger?: (message: string, meta?: Record<string, unknown>) => void;
+  /**
+   * Log de INVESTIGACAO: recebe TODA decisao (um profile por tick). Deve ir
+   * para o nivel DEBUG - e esta via que mantem o detalhe completo sem inundar
+   * o syslog com a mesma decisao normal a cada 5 s.
+   */
+  debugLogger?: (message: string, meta?: Record<string, unknown>) => void;
+  /** Janela do resumo agregado das decisoes normais (default 5 min). */
+  summaryIntervalMs?: number;
+  /** Silencio minimo por profile entre mudancas NAO criticas (default 30 s). */
+  transitionThrottleMs?: number;
 }
 
 interface AutoCounters {
@@ -178,6 +188,26 @@ const MITIGATED_STATES: readonly MitigationState[] = [
   'RECOVERING',
 ];
 
+/** Outcomes que SEMPRE aparecem em INFO: operacao real ou falha. */
+const ALWAYS_LOGGED_OUTCOMES: readonly MitigationAutoOutcome[] = [
+  'ACTIVATED',
+  'FAILED',
+  'ALERT_TRIGGERED',
+  'RECOVERY_PENDING',
+];
+
+interface DecisionSummary {
+  startedAtMs: number;
+  total: number;
+  suppressed: number;
+  byOutcome: Map<string, number>;
+  byReason: Map<string, number>;
+}
+
+function newSummary(startedAtMs: number): DecisionSummary {
+  return { startedAtMs, total: 0, suppressed: 0, byOutcome: new Map(), byReason: new Map() };
+}
+
 /**
  * Estados que o AUTO POSSUI: somente de/para eles o motor escreve `state` no
  * runtime. MITIGATED/RECOVERY_* e principalmente RECONCILIATION_REQUIRED/FAILED
@@ -197,9 +227,18 @@ export class MitigationAutoEngine {
   private readonly decisions = new Map<string, MitigationAutoDecision>();
   private lastVerifiedActivate: MitigationAutoDecision | null = null;
   private readonly now: () => Date;
+  /** Ultima decisao emitida em INFO por profile (`outcome|reason|state`). */
+  private readonly loggedDecisions = new Map<string, string>();
+  /** Instante da ultima emissao em INFO por profile (throttle de transicao). */
+  private readonly loggedAtMs = new Map<string, number>();
+  private summary: DecisionSummary = newSummary(0);
+  private readonly summaryIntervalMs: number;
+  private readonly transitionThrottleMs: number;
 
   constructor(private readonly deps: MitigationAutoEngineDeps) {
     this.now = deps.now ?? (() => new Date());
+    this.summaryIntervalMs = deps.summaryIntervalMs ?? 300_000;
+    this.transitionThrottleMs = deps.transitionThrottleMs ?? 30_000;
   }
 
   /** Ultima decisao por target (observabilidade da UI/health). */
@@ -257,6 +296,8 @@ export class MitigationAutoEngine {
         result.push(decision);
       }
     }
+    // Resumo agregado das decisoes normais (substitui o log por tick).
+    this.flushSummaryIfDue();
     return result;
   }
 
@@ -530,13 +571,78 @@ export class MitigationAutoEngine {
     return 'ACTIVATE_FAILED';
   }
 
+  /**
+   * Registro da decisao em DUAS camadas (nao muda NADA da decisao em si):
+   *  - `debugLogger` (DEBUG): uma linha por profile/tick, detalhe completo;
+   *  - `logger` (INFO): transicoes de estado/motivo, operacoes reais e falhas.
+   * Decisao normal repetida NAO vira linha: entra no contador e sai no resumo
+   * periodico (`auto: resumo de decisoes`).
+   */
   private record(decision: MitigationAutoDecision): MitigationAutoDecision {
-    this.deps.logger?.('auto: decisao', {
+    this.logDecision(decision);
+    return decision;
+  }
+
+  private logDecision(decision: MitigationAutoDecision): void {
+    const meta = {
       profileId: decision.profileId,
+      deviceId: decision.deviceId,
       outcome: decision.outcome,
       reason: decision.reason,
+      runtimeState: decision.runtimeState,
+      trafficBps: decision.trafficBps,
+      thresholdBps: decision.thresholdBps,
+      samplesOver: decision.samplesOver,
+      samplesBelow: decision.samplesBelow,
+      requiredSamples: decision.requiredSamples,
+      detail: decision.detail,
+    };
+    this.deps.debugLogger?.('auto: decisao (debug)', meta);
+
+    const nowMs = this.now().getTime();
+    if (this.summary.startedAtMs === 0) this.summary.startedAtMs = nowMs;
+    this.summary.total += 1;
+    const outcomeKey = decision.outcome;
+    this.summary.byOutcome.set(outcomeKey, (this.summary.byOutcome.get(outcomeKey) ?? 0) + 1);
+    const reasonKey = decision.reason ?? 'SEM_BLOQUEIO';
+    this.summary.byReason.set(reasonKey, (this.summary.byReason.get(reasonKey) ?? 0) + 1);
+
+    const key = `${decision.outcome}|${decision.reason ?? ''}|${decision.runtimeState ?? ''}`;
+    if (!ALWAYS_LOGGED_OUTCOMES.includes(decision.outcome)) {
+      // Sem transicao => decisao normal repetida (o caso dos 35 profiles sem
+      // direction para o AUTO a cada 5 s).
+      if (this.loggedDecisions.get(decision.profileId) === key) {
+        this.summary.suppressed += 1;
+        return;
+      }
+      // Transicao real, mas dentro do silencio minimo do profile (evita
+      // metralhadora quando o motivo oscila a cada tick). A chave NAO e gravada:
+      // se o estado se mantiver, a proxima janela emite a linha.
+      const lastAtMs = this.loggedAtMs.get(decision.profileId) ?? 0;
+      if (lastAtMs !== 0 && nowMs - lastAtMs < this.transitionThrottleMs) {
+        this.summary.suppressed += 1;
+        return;
+      }
+    }
+    this.loggedDecisions.set(decision.profileId, key);
+    this.loggedAtMs.set(decision.profileId, nowMs);
+    this.deps.logger?.('auto: decisao', meta);
+  }
+
+  /** Resumo das decisoes da janela (substitui as linhas suprimidas). */
+  private flushSummaryIfDue(): void {
+    const nowMs = this.now().getTime();
+    if (this.summary.startedAtMs === 0) return;
+    if (nowMs - this.summary.startedAtMs < this.summaryIntervalMs) return;
+    const windowSeconds = Math.max(1, Math.round((nowMs - this.summary.startedAtMs) / 1000));
+    this.deps.logger?.('auto: resumo de decisoes', {
+      windowSeconds,
+      decisions: this.summary.total,
+      suppressed: this.summary.suppressed,
+      byOutcome: Object.fromEntries(this.summary.byOutcome),
+      byReason: Object.fromEntries(this.summary.byReason),
     });
-    return decision;
+    this.summary = newSummary(nowMs);
   }
 
   private async loadCounters(target: MitigationAutoTargetState): Promise<AutoCounters> {

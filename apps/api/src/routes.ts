@@ -834,7 +834,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       },
     },
     commands: { execute: (input) => mitigationCommands.execute(input) },
+    // Decisao normal repetida NAO vira linha INFO: transicoes de estado/motivo,
+    // operacoes reais e falhas continuam no INFO; o detalhe por tick fica no
+    // DEBUG e as decisoes suprimidas saem no resumo periodico.
     logger: (message, meta) => app.log.info(meta ?? {}, message),
+    debugLogger: (message, meta) => app.log.debug(meta ?? {}, message),
   });
   autoRuntimeRef = new MitigationAutoRuntime({
     engine: mitigationAutoEngine,
