@@ -472,3 +472,25 @@ describe('parseHuaweiAdvertisedRoutes (VRP tabular real)', () => {
     });
   });
 });
+
+describe('parseHuaweiAdvertisedRoutes (rota default anunciada)', () => {
+  it('reconhece a nota "A default route is advertised originally" como resposta legitima', () => {
+    // Captura REAL do peer FAST TELECOM (IPv4): o VRP resume a resposta com a
+    // nota da rota default em vez de imprimir a linha da 0.0.0.0/0.
+    const output = [
+      '<BHE-VTA-F1A-BGP-01>screen-length 0 temporary',
+      '<BHE-VTA-F1A-BGP-01>display bgp routing-table peer 10.200.201.22 advertised-routes',
+      ' ',
+      ' A default route is advertised originally',
+      '<BHE-VTA-F1A-BGP-01>',
+    ].join('\n');
+    const parsed = parseHuaweiAdvertisedRoutes(output, { localAs: LOCAL_AS, addressFamily: 'IPV4' });
+
+    // Nunca inventar a rota 0.0.0.0/0 que a CLI nao imprimiu.
+    expect(parsed.routes).toEqual([]);
+    expect(parsed.reportedTotal).toBeNull();
+    const warnings = parsed.warnings.join('\n');
+    expect(warnings).toContain('apenas a rota default');
+    expect(warnings).not.toContain('não reconhecido');
+  });
+});

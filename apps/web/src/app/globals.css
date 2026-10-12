@@ -11869,6 +11869,16 @@ label > small {
   color: #d8bf8f;
   font: 500 9px var(--font-mono);
 }
+.bgp-adv__partial {
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid rgba(210, 94, 97, 0.5);
+  border-radius: 4px;
+  background: rgba(210, 94, 97, 0.12);
+  color: #f0b4b6;
+  font: 650 10px var(--font-mono);
+  letter-spacing: 0.05em;
+}
 .bgp-adv__filters {
   display: flex;
   flex-wrap: wrap;

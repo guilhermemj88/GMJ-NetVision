@@ -830,7 +830,9 @@ export function BgpMitigationWorkspace() {
             {selected.sharedPolicy && (
               <div className="mitigation-shared-policy" role="status">
                 <strong>
-                  Esta route-policy é compartilhada e a alteração também afetaria:
+                  {pendingAction === 'REMOVE'
+                    ? 'ATENÇÃO: retirar por este cliente remove FISICAMENTE a mitigação de TODOS os targets abaixo (é a mesma route-policy no equipamento):'
+                    : 'Esta route-policy é compartilhada e a alteração também afetaria:'}
                 </strong>
                 <ul>
                   {selected.sharedPolicyTargets.map((target) => (

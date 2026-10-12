@@ -707,6 +707,17 @@ describe('acoes de mitigacao na UI (executor MOCK)', () => {
 
     expect(api.getMitigationProfile).toHaveBeenCalledWith('profile-1');
   });
+
+  it('RETIRAR em policy compartilhada avisa que a retirada remove a mitigacao de TODOS', async () => {
+    await abrirDrawer();
+
+    await clickIn(detailPanel(), 'RETIRAR MITIGAÇÃO');
+    const dialog = find('[role="dialog"][aria-label="Confirmar ação de mitigação"]');
+
+    expect(dialog.textContent).toContain('FISICAMENTE');
+    expect(dialog.textContent).toContain('HORIZONTE_IP_02');
+    expect(dialog.textContent).toContain('CONFIRMAR RETIRADA');
+  });
 });
 
 describe('scroll vertical da aba e drawer de detalhes', () => {

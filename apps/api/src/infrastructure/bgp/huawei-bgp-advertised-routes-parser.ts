@@ -77,6 +77,14 @@ const ASN_TOKEN = /^(?:\d+(?:\.\d+)?|\{[^}]*\})$/;
 /** Backspace (U+0008) left by some VRP shells when echoing over SSH. */
 const BACKSPACE = String.fromCharCode(8);
 
+/**
+ * Quando SÓ a rota default é anunciada, o VRP resume a resposta com esta linha
+ * em vez de imprimir a linha da 0.0.0.0/0. É resposta LEGÍTIMA (vazia em
+ * prefixos explícitos) e nunca deve virar "formato não reconhecido" — nem
+ * justificar inventar uma rota default que a CLI não imprimiu.
+ */
+const DEFAULT_ROUTE_NOTE = /A default route is advertised originally/i;
+
 /** Ordered by specificity: the first match wins. */
 const REPORTED_TOTAL_KEYS = [
   /Total\s+number\s+of\s+routes\s*[:=]?\s*(\d+)/i,
@@ -483,6 +491,12 @@ export function parseHuaweiAdvertisedRoutes(
     // A CLI that explicitly says "0 routes" is a legitimate empty answer, not a
     // parsing failure: only an unrecognized output deserves a warning.
     if (reportedTotal === 0) return { routes: [], reportedTotal, warnings };
+    if (lines.some((line) => DEFAULT_ROUTE_NOTE.test(line))) {
+      warnings.push(
+        'O equipamento anuncia apenas a rota default (0.0.0.0/0) a este peer; a CLI não listou prefixos explícitos.',
+      );
+      return { routes: [], reportedTotal, warnings };
+    }
     warnings.push('Formato da saída não reconhecido: nenhum prefixo anunciado foi interpretado.');
     return { routes: [], reportedTotal, warnings };
   }

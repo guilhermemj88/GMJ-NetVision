@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type {
   BgpAdvertisedRouteDto,
   BgpAdvertisedRoutesResponse,
@@ -48,6 +48,13 @@ function collectionAge(fetchedAt: string): string {
   return formatRelative(Date.now() - parsed);
 }
 
+/** Horário ABSOLUTO da coleta (HH:mm:ss), no fuso do operador. */
+function collectionTime(fetchedAt: string): string {
+  const parsed = Date.parse(fetchedAt);
+  if (!Number.isFinite(parsed)) return '—';
+  return new Date(parsed).toLocaleTimeString('pt-BR', { hour12: false });
+}
+
 function sortRoutes(routes: BgpAdvertisedRouteDto[], key: SortKey): BgpAdvertisedRouteDto[] {
   const collator = new Intl.Collator('pt-BR', { numeric: true, sensitivity: 'base' });
   return [...routes].sort((left, right) => {
@@ -68,6 +75,8 @@ function Facts({ data }: { data: BgpAdvertisedRoutesResponse }) {
     [formatNumber(withPrepend), 'com prepend local', withPrepend > 0 ? 'warn' : 'value'],
     [formatNumber(maxPrepend), 'maior prepend', maxPrepend > 0 ? 'warn' : 'value'],
     [data.localAs ?? '—', 'ASN local', 'value'],
+    [data.peerAddress ?? '—', 'peer consultado', 'value'],
+    [collectionTime(data.fetchedAt), 'coletado via SSH em', 'info'],
     [collectionAge(data.fetchedAt), 'idade da coleta', 'info'],
   ];
   if (data.reportedTotal !== null) {
@@ -209,13 +218,28 @@ function RoutesTable({
  */
 export function BgpAdvertisedRoutesPanel({ peer }: { peer: BgpDashboardPeer }) {
   const [state, setState] = useState<CollectionState>({ status: 'IDLE' });
+  /**
+   * Sequencia da coleta: cada clique incrementa o contador e uma resposta só é
+   * aceita se ainda for a MAIS RECENTE. Trocar de peer invalida a coleta em
+   * voo — resposta do peer antigo nunca sobrescreve o painel novo.
+   */
+  const requestSeq = useRef(0);
+
+  useEffect(() => {
+    requestSeq.current += 1;
+    setState({ status: 'IDLE' });
+  }, [peer.id]);
 
   async function collect(): Promise<void> {
+    const seq = requestSeq.current + 1;
+    requestSeq.current = seq;
     setState({ status: 'LOADING' });
     try {
       const data = await getBgpPeerAdvertisedRoutes(peer.id);
+      if (requestSeq.current !== seq) return;
       setState({ status: 'SUCCESS', data });
     } catch (error) {
+      if (requestSeq.current !== seq) return;
       setState({
         status: 'ERROR',
         message:
@@ -280,6 +304,13 @@ export function BgpAdvertisedRoutesPanel({ peer }: { peer: BgpDashboardPeer }) {
       {state.status === 'SUCCESS' ? (
         <>
           <Facts data={state.data} />
+          {state.data.reportedTotal !== null &&
+          state.data.reportedTotal !== state.data.routes.length ? (
+            <p className="bgp-adv__partial" role="status">
+              PARCIAL: CLI {formatNumber(state.data.reportedTotal)} / interpretadas{' '}
+              {formatNumber(state.data.routes.length)}
+            </p>
+          ) : null}
           {state.data.warnings.length ? (
             <ul className="bgp-adv__warnings">
               {state.data.warnings.map((warning) => (

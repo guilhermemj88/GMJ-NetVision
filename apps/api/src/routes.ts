@@ -132,6 +132,7 @@ import { MockMitigationExecutor } from './infrastructure/bgp/mitigation/mitigati
 import { mitigationConfigFromEnv } from './infrastructure/bgp/mitigation/mitigation-config';
 import { mitigationExecutionConfigFromEnv } from './infrastructure/bgp/mitigation/mitigation-execution-config';
 import { HuaweiMitigationExecutor } from './infrastructure/bgp/mitigation/huawei-mitigation-executor';
+import { MitigationPolicyReconciler } from './infrastructure/bgp/mitigation/mitigation-policy-reconciler';
 import { PrismaInterfaceTrafficReader } from './infrastructure/bgp/mitigation/prisma-interface-traffic-reader';
 import { MitigationAutoEngine } from './worker/mitigation/mitigation-auto-engine';
 import { MitigationAutoRuntime } from './worker/mitigation/mitigation-auto-runtime';
@@ -872,12 +873,22 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       });
     },
   });
+  // Reconciliacao por policy fisica: leitura SEMPRE pelo mesmo executor
+  // read-only do comando (display route-policy); o apply grava apenas runtime.
+  const mitigationReconciler = new MitigationPolicyReconciler({
+    repository: mitigationRepository,
+    hosts,
+    readPolicy: (device, policyName) => mitigationLiveExecutor.readRoutePolicy(device, policyName),
+    labels: mitigationLabels,
+  });
+
   registerMitigationRoutes(app, {
     service: mitigationService,
     // mesma instancia do n8n: UI e n8n passam pelo MESMO servico
     commands: mitigationCommands,
     // identidade do peer para a exclusao preventiva (sem profile)
     peers: bgpRepository,
+    reconciler: mitigationReconciler,
     currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
   });
   registerMediaRoutes(app, {

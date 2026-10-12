@@ -1,10 +1,11 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { AuthUser, HostRecord } from '@gmj/shared';
 import { MitigationCommandService } from './infrastructure/bgp/mitigation/mitigation-command-service';
 import { MockMitigationExecutor } from './infrastructure/bgp/mitigation/mitigation-executor';
 import { registerMitigationRoutes } from './mitigation-routes';
+import { MitigationPolicyReconciler } from './infrastructure/bgp/mitigation/mitigation-policy-reconciler';
 import { InMemoryMitigationRepository } from './infrastructure/bgp/mitigation/in-memory-mitigation-repository';
 import { BgpMitigationService } from './infrastructure/bgp/mitigation/mitigation-service';
 import type { MitigationRepository } from './infrastructure/bgp/mitigation/mitigation-repository';
@@ -94,7 +95,12 @@ interface Harness {
 }
 
 async function buildHarness(
-  options: { migrationReady?: boolean; authenticated?: boolean } = {},
+  options: {
+    migrationReady?: boolean;
+    authenticated?: boolean;
+    /** Presente = registro das rotas de reconciliacao, com estas leituras. */
+    readPolicyQueue?: string[];
+  } = {},
 ): Promise<Harness> {
   const repository = new InMemoryMitigationRepository();
   const discovery = new FakeDiscovery();
@@ -117,6 +123,16 @@ async function buildHarness(
       interfaceMetadataRefresher: { refresh: async () => ({ interfaces: 203 }) },
       now: () => FIXED_NOW,
     }),
+    ...(options.readPolicyQueue
+      ? {
+          reconciler: new MitigationPolicyReconciler({
+            repository,
+            hosts: { getHost: async (id) => hosts.get(id) ?? null },
+            readPolicy: async () => options.readPolicyQueue!.shift() ?? '',
+            now: () => FIXED_NOW,
+          }),
+        }
+      : {}),
     currentUser: async () => (options.authenticated === false ? null : OPERATOR),
   });
   app.setErrorHandler((error, _request, reply) => {
@@ -864,4 +880,93 @@ describe('comando INTERNO da UI (mesma camada do n8n)', () => {
     await harness.app.close();
   });
 });
+});
+
+describe('API de reconciliacao por policy fisica (preview / apply local)', () => {
+  const POLICY = 'PL-HORIZONTES_IPv4-IN';
+  const NORMAL_READBACK = `route-policy ${POLICY} permit node 11`;
+  const scope = { deviceId: 'device-1', policyName: POLICY };
+
+  let app: FastifyInstance | null = null;
+
+  afterEach(async () => {
+    if (app) await app.close();
+    app = null;
+  });
+
+  it('preview devolve estado fisico e proposta sem gravar runtime', async () => {
+    const harness = await buildHarness({ readPolicyQueue: [NORMAL_READBACK] });
+    app = harness.app;
+    const profile = await seedProfile(harness.repository);
+    await harness.repository.upsertRuntime(profile.id, { state: 'MITIGATED' });
+    const upsert = vi.spyOn(harness.repository, 'upsertRuntime');
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/bgp/mitigation/policies/reconcile/preview',
+      payload: scope,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json();
+    expect(body.state).toBe('NORMAL');
+    expect(body.previewId).toMatch(/^[0-9a-f]{64}$/);
+    expect(body.targets).toEqual([
+      expect.objectContaining({ profileId: profile.id, runtimeState: 'MITIGATED', proposedRuntimeState: 'NORMAL', change: true }),
+    ]);
+    expect(upsert).not.toHaveBeenCalled();
+    upsert.mockRestore();
+  });
+
+  it('apply com previewId invalido responde 409 e NAO grava nada', async () => {
+    const harness = await buildHarness({ readPolicyQueue: [NORMAL_READBACK, NORMAL_READBACK] });
+    app = harness.app;
+    const profile = await seedProfile(harness.repository);
+    await harness.repository.upsertRuntime(profile.id, { state: 'MITIGATED' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/bgp/mitigation/policies/reconcile/apply',
+      payload: { ...scope, previewId: '0'.repeat(64) },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json().message).toContain('Preview expirado');
+    expect((await harness.repository.getRuntime(profile.id))?.state).toBe('MITIGATED');
+  });
+
+  it('apply valido grava somente o runtime (NORMAL) do escopo', async () => {
+    const harness = await buildHarness({ readPolicyQueue: [NORMAL_READBACK, NORMAL_READBACK] });
+    app = harness.app;
+    const profile = await seedProfile(harness.repository);
+    await harness.repository.upsertRuntime(profile.id, { state: 'MITIGATED' });
+
+    const preview = await app.inject({
+      method: 'POST',
+      url: '/api/bgp/mitigation/policies/reconcile/preview',
+      payload: scope,
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/bgp/mitigation/policies/reconcile/apply',
+      payload: { ...scope, previewId: preview.json().previewId },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ state: 'NORMAL', applied: 1, failed: 0 });
+    expect((await harness.repository.getRuntime(profile.id))?.state).toBe('NORMAL');
+  });
+
+  it('reconciliacao exige operador autenticado', async () => {
+    const harness = await buildHarness({ authenticated: false, readPolicyQueue: [NORMAL_READBACK] });
+    app = harness.app;
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/bgp/mitigation/policies/reconcile/preview',
+      payload: scope,
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
 });

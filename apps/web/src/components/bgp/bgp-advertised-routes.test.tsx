@@ -214,6 +214,8 @@ describe('BgpAdvertisedRoutesPanel', () => {
       ['com prepend local', '2'],
       ['maior prepend', '2'],
       ['ASN local', '268568'],
+      ['peer consultado', '200.194.223.86'],
+      ['coletado via SSH em', expect.stringMatching(/^\d{2}:\d{2}:\d{2}$/)],
       ['idade da coleta', expect.stringMatching(/^há \d+s$/)],
       ['total reportado pela CLI', '4'],
     ]);
@@ -352,5 +354,86 @@ describe('BgpAdvertisedRoutesPanel', () => {
     });
     await settle();
     expect(api.getBgpPeerAdvertisedRoutes).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('BgpAdvertisedRoutesPanel (observabilidade e robustez)', () => {
+  const peer2 = { ...peer, id: 'peer-2', peerAddress: '10.9.9.9' } as BgpDashboardPeer;
+  let container: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+
+  async function rerender(withPeer: BgpDashboardPeer): Promise<void> {
+    await act(async () => {
+      root.render(createElement(BgpAdvertisedRoutesPanel, { peer: withPeer }));
+    });
+    await settle();
+  }
+
+  async function collect(): Promise<void> {
+    await act(async () => {
+      button(container, 'Carregar anúncios').click();
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    });
+  }
+
+  it('mostra peer consultado, horario absoluto e badge PARCIAL quando a CLI reporta mais', async () => {
+    api.getBgpPeerAdvertisedRoutes.mockResolvedValue({ ...response, reportedTotal: 5 });
+    await rerender(peer);
+    await collect();
+
+    expect(container.textContent).toContain('peer consultado');
+    expect(container.textContent).toContain('200.194.223.86');
+    expect(container.textContent).toContain('coletado via SSH em');
+    const partial = container.querySelector('.bgp-adv__partial');
+    expect(partial?.textContent).toContain('PARCIAL: CLI 5 / interpretadas 4');
+  });
+
+  it('sem divergencia entre CLI e parser nao mostra o badge PARCIAL', async () => {
+    api.getBgpPeerAdvertisedRoutes.mockResolvedValue({ ...response, reportedTotal: 4 });
+    await rerender(peer);
+    await collect();
+
+    expect(container.querySelector('.bgp-adv__partial')).toBeNull();
+  });
+
+  it('trocar de peer zera o painel (resultado antigo nao vaza para o peer novo)', async () => {
+    api.getBgpPeerAdvertisedRoutes.mockResolvedValue(response);
+    await rerender(peer);
+    await collect();
+    expect(container.querySelector('.bgp-adv__table')).not.toBeNull();
+
+    await rerender(peer2);
+
+    expect(container.textContent).toContain('Os anúncios ainda não foram consultados.');
+    expect(container.querySelector('.bgp-adv__table')).toBeNull();
+    expect(container.querySelector('.bgp-adv__facts')).toBeNull();
+  });
+
+  it('resposta fora de ordem do peer antigo e descartada', async () => {
+    const pending = deferred<BgpAdvertisedRoutesResponse>();
+    api.getBgpPeerAdvertisedRoutes.mockReturnValue(pending.promise);
+    await rerender(peer);
+    await collect();
+
+    // O operador troca de peer enquanto a coleta do anterior esta em voo.
+    await rerender(peer2);
+    pending.resolve(response);
+    await settle();
+
+    expect(container.textContent).toContain('Os anúncios ainda não foram consultados.');
+    expect(container.querySelector('.bgp-adv__facts')).toBeNull();
+    expect(container.querySelector('.bgp-adv__table')).toBeNull();
   });
 });

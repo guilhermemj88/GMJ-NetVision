@@ -6,6 +6,10 @@ import {
   MITIGATION_COMMAND_ACTIONS,
   type MitigationCommandService,
 } from './infrastructure/bgp/mitigation/mitigation-command-service';
+import {
+  PolicyReconcileStaleError,
+  type MitigationPolicyReconciler,
+} from './infrastructure/bgp/mitigation/mitigation-policy-reconciler';
 
 // API REST da mitigacao DDoS (SIMULATION_ONLY).
 //
@@ -61,6 +65,22 @@ const limitSchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
+/** Escopo FISICO da reconciliacao: uma route-policy de UM equipamento. */
+const reconcileScopeSchema = z
+  .object({
+    deviceId: z.string().min(1).max(160),
+    policyName: z.string().min(1).max(200),
+  })
+  .strict();
+
+const reconcileApplySchema = z
+  .object({
+    deviceId: z.string().min(1).max(160),
+    policyName: z.string().min(1).max(200),
+    previewId: z.string().min(16).max(128),
+  })
+  .strict();
+
 /**
  * Exclusao administrativa do target ("nunca mitigar este peer").
  * `excluded=false` limpa motivo/observacao (reabilitacao).
@@ -82,6 +102,11 @@ export interface MitigationRouteDependencies {
    * preventiva por peer (endpoint independente de profile).
    */
   peers?: { getPeerDetail(peerId: string): Promise<BgpPeerDetail | null> };
+  /**
+   * Reconciliacao por policy fisica: PREVIEW (somente leitura do Huawei) e
+   * APPLY LOCAL (somente runtime no banco do NetVision).
+   */
+  reconciler?: MitigationPolicyReconciler;
   currentUser?: (request: FastifyRequest) => Promise<AuthUser | null>;
 }
 
@@ -89,7 +114,7 @@ export function registerMitigationRoutes(
   app: FastifyInstance,
   dependencies: MitigationRouteDependencies,
 ): void {
-  const { service, currentUser, commands, peers } = dependencies;
+  const { service, currentUser, commands, peers, reconciler } = dependencies;
 
   // Leitura: mesma exposicao do BGP (protegida pelo hook global de autenticacao).
   app.get('/api/bgp/mitigation/health', async () => service.health());
@@ -165,7 +190,39 @@ return service.discover(deviceIds, { refreshInterfaceMetadata: true });
     });
   }
 
-  // Exclusao PREVENTIVA por PEER BGP ("nunca mitigar este peer"): vale mesmo
+  // Reconciliacao READ-ONLY por policy fisica (device + policyName).
+  if (reconciler) {
+    app.post('/api/bgp/mitigation/policies/reconcile/preview', async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) return undefined;
+      const payload = reconcileScopeSchema.parse(request.body ?? {});
+      return reconciler.preview({
+        deviceId: payload.deviceId,
+        policyName: payload.policyName,
+      });
+    });
+
+    // APPLY LOCAL: grava SOMENTE o runtime no banco do NetVision; revalida o
+    // preview contra uma leitura NOVA do equipamento e recusa preview velho.
+    app.post('/api/bgp/mitigation/policies/reconcile/apply', async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) return undefined;
+      const payload = reconcileApplySchema.parse(request.body ?? {});
+      try {
+        return await reconciler.applyLocal(
+          { deviceId: payload.deviceId, policyName: payload.policyName },
+          payload.previewId,
+        );
+      } catch (error) {
+        if (error instanceof PolicyReconcileStaleError) {
+          return reply.code(409).send({ message: error.message });
+        }
+        throw error;
+      }
+    });
+  }
+
+  // Exclusao PREVENTIVA por PEER BGP ("nao mitigar este peer"): vale mesmo
   // quando o peer NAO tem profile de mitigacao (uplink/transit/IX/backbone sem
   // banda declarada). Persistencia pura: sem discovery e sem SSH.
   if (peers) {

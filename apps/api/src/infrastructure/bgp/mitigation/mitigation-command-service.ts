@@ -5,7 +5,11 @@ import type {
   MitigationRemovalInput,
 } from './mitigation-executor';
 import { verifyActivation, verifyRemoval } from './mitigation-executor';
-import type { MitigationRepository } from './mitigation-repository';
+import type { MitigationProfileRecord, MitigationRepository } from './mitigation-repository';
+import {
+  policyExecutionScope,
+  syncPolicyRuntime,
+} from './mitigation-policy-scope';
 import { effectiveBandwidthBps } from './bandwidth-parser';
 import { interfaceMitigationScope } from './mitigation-scope';
 import {
@@ -43,6 +47,13 @@ export const MITIGATION_COMMAND_ACTIONS = [
 export type MitigationCommandAction = (typeof MITIGATION_COMMAND_ACTIONS)[number];
 
 export const MUTATING_ACTIONS: readonly MitigationCommandAction[] = ['ACTIVATE', 'REMOVE'];
+
+/**
+ * O equipamento ja foi alterado, mas o runtime local nao foi sincronizado por
+ * completo (repositorio indisponivel/parcial). Nunca reportar sucesso "limpo".
+ */
+export const RUNTIME_SYNC_FAILED_WARNING =
+  'Equipamento alterado, mas o runtime local não foi sincronizado por completo; revalide a policy (RECONCILIATION_REQUIRED).';
 
 export interface MitigationCommandInput {
   requestId: string;
@@ -234,7 +245,7 @@ export class MitigationCommandService {
     let pairSource: 'RUNTIME' | 'DEVICE' = 'RUNTIME';
     const activate = input.action === 'SIMULATE_ACTIVATE' || input.action === 'ACTIVATE';
     const host = await this.read(() => this.deps.hosts.getHost(profile.deviceId), null);
-    const shared = await this.read(() => this.sharedTargets(profile.id, profile.policyName), {
+    const shared = await this.read(() => this.sharedTargets(profile), {
       sharedPolicy: false,
       targets: [] as MitigationSharedTargetSummary[],
     });
@@ -431,12 +442,20 @@ export class MitigationCommandService {
 
     // ---- execucao (MOCK por padrao; HUAWEI so com live_write + allowlist) ----
     const liveDevice = live && host ? host : null;
+    /**
+     * A ESCRITA REAL foi iniciada? Depois deste ponto o equipamento pode ter
+     * recebido (parte d)a alteracao: se o resultado fisico nao for comprovado,
+     * o runtime do escopo inteiro vai para RECONCILIATION_REQUIRED. Falha de
+     * preflight/validacao ANTES daqui nao altera runtime nenhum.
+     */
+    let writeAttempted = false;
     try {
       let readBack: string;
       if (activate) {
         if (liveDevice && live) {
           // Fail-closed: sem preflight OK o equipamento NAO recebe escrita.
           if (!preflight?.ok) return this.preflightBlocked(common, preview, preflight);
+          writeAttempted = true;
           await live.activate(liveDevice, activationInput);
           readBack = await live.readRoutePolicy(liveDevice, profile.policyName);
         } else {
@@ -450,7 +469,7 @@ export class MitigationCommandService {
           profile.mitigationRt,
           this.labels,
         );
-        await this.record(profile.id, activate, check.verified, pair.mitigationNode, null);
+        const sync = await this.record(profile, activate, check.verified, pair, null);
         await this.publish(
           check.verified ? 'MITIGATION_VERIFIED' : 'MITIGATION_FAILED',
           {
@@ -470,12 +489,14 @@ export class MitigationCommandService {
           commandPreview: preview,
           verification: { command: `display route-policy ${profile.policyName}`, summary: check.summary },
           ...(preflight ? { preflight } : {}),
+          ...(sync.ok ? {} : { safeError: RUNTIME_SYNC_FAILED_WARNING }),
           ...(check.verified ? {} : { safeError: check.summary }),
         };
       }
 
       if (liveDevice && live) {
         if (!preflight?.ok) return this.preflightBlocked(common, preview, preflight);
+        writeAttempted = true;
         await live.remove(liveDevice, removalInput);
         readBack = await live.readRoutePolicy(liveDevice, profile.policyName);
       } else {
@@ -483,7 +504,7 @@ export class MitigationCommandService {
         readBack = await this.deps.executor.readRoutePolicy(profile.policyName);
       }
       const check = verifyRemoval(profile.policyName, readBack, pair);
-      await this.record(profile.id, false, check.verified, pair.mitigationNode, null);
+      const sync = await this.record(profile, false, check.verified, pair, null);
       await this.publish(
         check.verified ? 'MITIGATION_REMOVED_VERIFIED' : 'MITIGATION_FAILED',
         {
@@ -504,9 +525,16 @@ export class MitigationCommandService {
         verification: { command: `display route-policy ${profile.policyName}`, summary: check.summary },
         ...(preflight ? { preflight } : {}),
         ...(pairSource === 'DEVICE' ? { pairSource } : {}),
+        ...(sync.ok ? {} : { safeError: RUNTIME_SYNC_FAILED_WARNING }),
         ...(check.verified ? {} : { safeError: check.summary }),
       };
     } catch (error) {
+      // Escrita iniciada + estado fisico NAO comprovado: o runtime do escopo
+      // inteiro vira RECONCILIATION_REQUIRED (fail-closed). O evento continua
+      // no profile originador. Falha ANTES da escrita nao toca runtime.
+      if (writeAttempted) {
+        await this.record(profile, activate, false, pair, executionReason(error));
+      }
       await this.publish(
         'MITIGATION_FAILED',
         {
@@ -554,14 +582,18 @@ export class MitigationCommandService {
     };
   }
 
-  /** Outros targets que usam a mesma policy (aviso, NAO bloqueio). */
+  /**
+   * Outros targets que usam a MESMA policy FISICA (mesmo device + mesmo nome).
+   * Policy de outro equipamento com nome igual nunca e o mesmo objeto. Aviso,
+   * NAO bloqueio.
+   */
   private async sharedTargets(
-    profileId: string,
-    policyName: string,
+    profile: MitigationProfileRecord,
   ): Promise<{ sharedPolicy: boolean; targets: MitigationSharedTargetSummary[] }> {
-    const profiles = await this.deps.repository.listProfiles();
+    const scope = policyExecutionScope(profile);
+    const profiles = await this.deps.repository.listProfiles({ deviceId: scope.deviceId });
     const others = profiles.filter(
-      (candidate) => candidate.policyName === policyName && candidate.id !== profileId,
+      (candidate) => candidate.policyName === scope.policyName && candidate.id !== profile.id,
     );
     const targets: MitigationSharedTargetSummary[] = [];
     for (const other of others) {
@@ -583,29 +615,57 @@ export class MitigationCommandService {
     return { sharedPolicy: targets.length > 0, targets };
   }
 
+  /**
+   * Registra o evento SEMPRE no profile ORIGINADOR da acao e sincroniza o
+   * runtime de TODOS os profiles da MESMA policy fisica: os nodes da policy
+   * valem para todos que a compartilham no equipamento.
+   *
+   * - read-back confirmado: MITIGATED (ativacao) / NORMAL (retirada);
+   * - read-back NAO confirmado (parcial/inconclusivo): RECONCILIATION_REQUIRED
+   *   no escopo inteiro (fail-closed; nunca um MITIGATED isolado).
+   *
+   * `ok=false` = o equipamento foi alterado mas o estado local nao foi
+   * sincronizado por completo; o chamador reporta isso na resposta.
+   */
   private async record(
-    profileId: string,
+    profile: MitigationProfileRecord,
     activated: boolean,
     verified: boolean,
-    node: number,
+    pair: MitigationNodePair,
     safeError: string | null,
-  ): Promise<void> {
-    await this.read(async () => {
+  ): Promise<{ ok: boolean }> {
+    const state: MitigationState = !verified
+      ? 'RECONCILIATION_REQUIRED'
+      : activated
+        ? 'MITIGATED'
+        : 'NORMAL';
+    const eventOk = await this.read(async () => {
       await this.deps.repository.createEvent({
-        profileId,
+        profileId: profile.id,
         type: activated ? 'ACTIVATE' : 'REMOVE',
-        newState: (activated ? 'MITIGATED' : 'NORMAL') as MitigationState,
-        plannedNode: node,
+        newState: state,
+        plannedNode: pair.mitigationNode,
         success: verified,
         verified,
         safeError,
       });
-      await this.deps.repository.upsertRuntime(profileId, {
-        state: (activated ? 'MITIGATED' : 'NORMAL') as MitigationState,
-        lastValidatedAt: this.now(),
-      });
       return true;
     }, false);
+    // O par fisico ATIVO so e propagado quando o read-back confirmou a
+    // ativacao; na retirada os planos permanecem como estao.
+    const activePair = activated && verified ? pair : null;
+    const synced = await this.read(
+      () =>
+        syncPolicyRuntime(
+          this.deps.repository,
+          policyExecutionScope(profile),
+          state,
+          this.now(),
+          activePair,
+        ),
+      { updated: 0, failed: 1 },
+    );
+    return { ok: eventOk && synced.failed === 0 };
   }
 
   private async publish(
