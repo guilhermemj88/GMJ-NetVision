@@ -490,9 +490,19 @@ describe('motor AUTO real (GMJ NetVision)', () => {
     expect(h.live.activateCalls).toBe(1);
     expect(h.engine.isBusy(h.profileId)).toBe(false);
 
-    const second = await h.run(3, h.over);
+    // Novo ciclo: o motor rele o runtime antes de comandar; a ativacao acontece
+    // UMA vez e os ticks seguintes ja veem o estado fresco (ALREADY_MITIGATED),
+    // sem repetir o comando idempotente.
+    h.traffic.push(h.profileId, h.over);
+    const second = await h.engine.tick();
     expect(second[0]!.outcome).toBe('ACTIVATED');
     expect(h.live.preflightCalls).toBe(2); // read-back do caminho canonico antes da 2a escrita
+    expect(h.live.activateCalls).toBe(2);
+
+    h.traffic.push(h.profileId, h.over);
+    const third = await h.engine.tick();
+    expect(third[0]!.outcome).toBe('NO_ACTION');
+    expect(third[0]!.reason).toBe('ALREADY_MITIGATED');
     expect(h.live.activateCalls).toBe(2);
   });
 

@@ -173,6 +173,17 @@ const MITIGATED_STATES: readonly MitigationState[] = [
   'RECOVERING',
 ];
 
+/**
+ * Estados que o AUTO POSSUI: somente de/para eles o motor escreve `state` no
+ * runtime. MITIGATED/RECOVERY_* e principalmente RECONCILIATION_REQUIRED/FAILED
+ * sao de outros donos (comando/reconciliacao) e NUNCA podem ser sobrescritos
+ * por um tick - um estado fisico desconhecido nao vira NORMAL por decurso de
+ * tempo.
+ */
+function engineOwnsState(state: MitigationState | null | undefined): boolean {
+  return state === null || state === undefined || state === 'NORMAL' || state === 'TRIGGER_PENDING';
+}
+
 export class MitigationAutoEngine {
   private readonly counters = new Map<string, AutoCounters>();
   private readonly inFlight = new Set<string>();
@@ -296,6 +307,12 @@ export class MitigationAutoEngine {
     if (target.mode === 'DISABLED') return block('PROFILE_DISABLED');
     if (this.inFlight.has(target.profileId)) return pending('CONCURRENT_TICK', 'SKIPPED');
 
+    // O runtime pode ter mudado DURANTE o ciclo: outro profile do MESMO escopo
+    // (deviceId + policyName) acabou de mitigar a policy compartilhada, ou o
+    // comando marcou RECONCILIATION_REQUIRED. A leitura fresca evita decisao
+    // baseada em estado velho e impede o tick de rebaixar estado alheio.
+    const freshRead = await this.readRuntimeState(target.profileId);
+
     // ---------------------------------------------------------------------
     // Gates de ELEGIBILIDADE, comuns a AUTO e ALERT_ONLY (mesma semantica do
     // discovery). Rodam ANTES de threshold/telemetria, na ordem:
@@ -374,10 +391,11 @@ export class MitigationAutoEngine {
         counters.triggerStartedAtMs = null;
       }
     }
-    await this.persistCounters(target, counters, traffic, sample.occurredAt ?? at);
+    await this.persistCounters(target, counters, traffic, sample.occurredAt ?? at, freshRead);
 
     const currentlyMitigated =
-      target.runtimeState !== null && MITIGATED_STATES.includes(target.runtimeState);
+      (target.runtimeState !== null && MITIGATED_STATES.includes(target.runtimeState)) ||
+      (freshRead.ok && freshRead.state !== null && MITIGATED_STATES.includes(freshRead.state));
     const evaluation = evaluateTraffic({
       currentlyMitigated,
       consecutiveOverThreshold: counters.over,
@@ -425,6 +443,17 @@ export class MitigationAutoEngine {
     if (!this.deps.execution.liveWrite) return decided('LIVE_WRITE_DISABLED', 'WOULD_ACTIVATE');
     if (!this.deps.execution.allowedDeviceIds.includes(target.deviceId)) {
       return decided('DEVICE_NOT_ALLOWED', 'WOULD_ACTIVATE');
+    }
+
+    // Ultima barreira antes do comando: se a policy (ou o runtime) mudou entre
+    // o inicio do tick e agora, nao gastar comando num estado que ja mudou.
+    const preCommandRead = await this.readRuntimeState(target.profileId);
+    if (
+      preCommandRead.ok &&
+      preCommandRead.state !== null &&
+      MITIGATED_STATES.includes(preCommandRead.state)
+    ) {
+      return decided('ALREADY_MITIGATED', 'NO_ACTION');
     }
 
     const requestId = `auto-activate-${target.profileId}-${counters.triggerStartedAtMs ?? at.getTime()}`;
@@ -477,6 +506,9 @@ export class MitigationAutoEngine {
   private mapCommandReason(result: MitigationAutoCommandResult): MitigationAutoBlockReason {
     if (result.blockedReason === 'PEER_MITIGATION_EXCLUDED') return 'PEER_MITIGATION_EXCLUDED';
     if (result.blockedReason === 'MITIGATION_EXCLUDED') return 'MITIGATION_EXCLUDED';
+    // O preflight bloqueado reporta o motivo agregado em `safeError`; sem isto
+    // um bloqueio do equipamento virava um generico ACTIVATE_FAILED.
+    if (result.safeError?.startsWith('Preflight read-only falhou')) return 'PREFLIGHT_FAILED';
     if (typeof result.blockedReason === 'string' && result.blockedReason.startsWith('preflight')) {
       return 'PREFLIGHT_FAILED';
     }
@@ -510,11 +542,27 @@ export class MitigationAutoEngine {
     return counters;
   }
 
+  /**
+   * Leitura fresca do runtime (estado + sucesso da leitura). Falha de leitura e
+   * tratada como "nao sei": nunca autoriza o motor a sobrescrever estado.
+   */
+  private async readRuntimeState(
+    profileId: string,
+  ): Promise<{ ok: boolean; state: MitigationState | null }> {
+    try {
+      const runtime = await this.deps.runtime.get(profileId);
+      return { ok: true, state: runtime?.state ?? null };
+    } catch {
+      return { ok: false, state: null };
+    }
+  }
+
   private async persistCounters(
     target: MitigationAutoTargetState,
     counters: AutoCounters,
     traffic: bigint,
     sampleAt: Date,
+    fresh: { ok: boolean; state: MitigationState | null },
   ): Promise<void> {
     await this.deps.runtime.save(target.profileId, {
       triggerCounter: counters.over,
@@ -522,11 +570,12 @@ export class MitigationAutoEngine {
       currentTrafficBps: traffic,
       // lastSampleAt guarda o timestamp da AMOSTRA (freshness + identidade).
       lastSampleAt: sampleAt,
-      // O estado so e tocado quando o motor e dono dele: um target ja mitigado
-      // nao pode ter o estado rebaixado para NORMAL pelo AUTO.
-      ...(target.runtimeState !== null && MITIGATED_STATES.includes(target.runtimeState)
-        ? {}
-        : { state: counters.over >= target.triggerSamples ? 'TRIGGER_PENDING' : 'NORMAL' }),
+      // O estado so e tocado quando o motor e dono dele TANTO no snapshot
+      // quanto na leitura fresca: estado mitigado/desconhecido nunca e
+      // rebaixado pelo tick, e falha de leitura nunca autoriza escrita.
+      ...(fresh.ok && engineOwnsState(target.runtimeState) && engineOwnsState(fresh.state)
+        ? { state: counters.over >= target.triggerSamples ? 'TRIGGER_PENDING' : 'NORMAL' }
+        : {}),
     });
   }
 }
