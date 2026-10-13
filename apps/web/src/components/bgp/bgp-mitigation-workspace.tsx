@@ -47,6 +47,53 @@ import {
 
 const BPS_PER_GBPS = 1_000_000_000;
 
+/**
+ * Filtros do painel (UI-AUTO-1). Usam o ESTADO de runtime / MODO do perfil,
+ * nunca uma mistura dos dois: "somente AUTO" olha `mode`; os demais olham
+ * `runtimeState`.
+ */
+type MitigationTableFilter = 'ALL' | 'AUTO' | 'MITIGATED' | 'IN_PROGRESS' | 'ATTENTION';
+
+const MITIGATION_FILTERS: readonly { id: MitigationTableFilter; label: string }[] = [
+  { id: 'ALL', label: 'TODOS' },
+  { id: 'AUTO', label: 'SOMENTE AUTO' },
+  { id: 'MITIGATED', label: 'MITIGADOS' },
+  { id: 'IN_PROGRESS', label: 'EM ANDAMENTO' },
+  { id: 'ATTENTION', label: 'REQUER ATENÇÃO' },
+];
+
+const IN_PROGRESS_RUNTIME_STATES: readonly MitigationRuntimeState[] = [
+  'TRIGGER_PENDING',
+  'MITIGATING',
+  'RECOVERING',
+  'RECOVERY_PENDING',
+];
+
+const ATTENTION_RUNTIME_STATES: readonly MitigationRuntimeState[] = [
+  'FAILED',
+  'RECONCILIATION_REQUIRED',
+];
+
+function matchesMitigationFilter(
+  row: BgpMitigationProfileDto,
+  filter: MitigationTableFilter,
+): boolean {
+  switch (filter) {
+    case 'ALL':
+      return true;
+    case 'AUTO':
+      return row.mode === 'AUTO';
+    case 'MITIGATED':
+      return row.runtimeState === 'MITIGATED';
+    case 'IN_PROGRESS':
+      return row.runtimeState !== null && IN_PROGRESS_RUNTIME_STATES.includes(row.runtimeState);
+    case 'ATTENTION':
+      return row.runtimeState !== null && ATTENTION_RUNTIME_STATES.includes(row.runtimeState);
+    default:
+      return true;
+  }
+}
+
 function gbpsToBpsString(gbps: number): string {
   return BigInt(Math.round(gbps * BPS_PER_GBPS)).toString();
 }
@@ -105,6 +152,7 @@ export function BgpMitigationWorkspace() {
   const [commandResult, setCommandResult] = useState<MitigationCommandResult | null>(null);
   const [pendingAction, setPendingAction] = useState<'ACTIVATE' | 'REMOVE' | null>(null);
   const [evidenceOpen, setEvidenceOpen] = useState(false);
+  const [tableFilter, setTableFilter] = useState<MitigationTableFilter>('ALL');
   const setPanel = useMapStore((state) => state.setPanel);
   // Indicador discreto: a configuração completa fica em CONFIGURAÇÕES > MÍDIAS.
   const mediaSummary = useQuery({
@@ -291,12 +339,77 @@ export function BgpMitigationWorkspace() {
     liveWriteEnabled: health.data?.liveWriteEnabled === true,
     autoState: engine?.state ?? null,
   });
-  const profileCounts = health.data?.profiles ?? {
-    total: rows.length,
-    auto: 0,
-    alertOnly: 0,
-    disabled: 0,
-  };
+  /**
+   * UI-AUTO-1: os indicadores de RUNTIME sao calculados sobre os perfis
+   * carregados (`rows`) — nunca inventados. Enquanto a leitura nao chega, o
+   * painel mostra "—" em vez de zero; leitura parcial e sinalizada no title.
+   * A contagem por modo segue a mesma regra: sem contagem do servidor e sem
+   * perfis carregados, exibe "—" (zero so quando comprovado).
+   */
+  const profilesLoaded = discovery !== null || profiles.isSuccess;
+  const countsReady = profilesLoaded && rows.length > 0;
+  const serverProfileCounts = health.data?.profiles ?? null;
+  const runtimeCounts = useMemo(() => {
+    const counts = new Map<MitigationRuntimeState, number>();
+    let withoutRuntime = 0;
+    for (const row of rows) {
+      if (row.runtimeState === null) {
+        withoutRuntime += 1;
+        continue;
+      }
+      counts.set(row.runtimeState, (counts.get(row.runtimeState) ?? 0) + 1);
+    }
+    return { counts, withoutRuntime };
+  }, [rows]);
+  const countRuntimeStates = (...states: MitigationRuntimeState[]): number =>
+    states.reduce((total, state) => total + (runtimeCounts.counts.get(state) ?? 0), 0);
+  const countsComplete =
+    countsReady && (serverProfileCounts === null || serverProfileCounts.total === rows.length);
+  const countsHint = countsReady && !countsComplete
+    ? 'Contagem referente aos perfis carregados nesta tela (leitura parcial).'
+    : undefined;
+  const mitigatedCount = countRuntimeStates('MITIGATED');
+  const activatingCount = countRuntimeStates('MITIGATING');
+  const recoveringCount = countRuntimeStates('RECOVERING', 'RECOVERY_PENDING');
+  const triggerPendingCount = countRuntimeStates('TRIGGER_PENDING');
+  const attentionCount = countRuntimeStates('FAILED', 'RECONCILIATION_REQUIRED');
+  const interfacesCount = useMemo(
+    () => new Set(rows.map((row) => row.interfaceId).filter((id): id is string => Boolean(id))).size,
+    [rows],
+  );
+  const devicesCount = useMemo(() => new Set(rows.map((row) => row.deviceId)).size, [rows]);
+  const modeCounts = useMemo(
+    () => ({
+      auto: rows.filter((row) => row.mode === 'AUTO').length,
+      alertOnly: rows.filter((row) => row.mode === 'ALERT_ONLY').length,
+      disabled: rows.filter((row) => row.mode === 'DISABLED').length,
+    }),
+    [rows],
+  );
+  const profileCounts = serverProfileCounts ??
+    (profilesLoaded && rows.length > 0
+      ? { total: rows.length, auto: modeCounts.auto, alertOnly: modeCounts.alertOnly, disabled: modeCounts.disabled }
+      : null);
+  const autoProfiles = useMemo(() => rows.filter((row) => row.mode === 'AUTO'), [rows]);
+  /**
+   * Decisao do PERFIL AUTO (nao a global): usa `autoEngine.decisions`, que ja
+   * traz a decisao mais recente por profile. Sem dado por perfil o painel diz
+   * "indisponivel" — nunca atribui a decisao de outro perfil ao AUTO.
+   */
+  const autoDecision = useMemo(() => {
+    const decisions = engine?.decisions ?? [];
+    for (const profile of autoProfiles) {
+      const match = decisions.find((decision) => decision.profileId === profile.id);
+      if (match) return match;
+    }
+    return null;
+  }, [engine, autoProfiles]);
+  const filteredRows = useMemo(
+    () => rows.filter((row) => matchesMitigationFilter(row, tableFilter)),
+    [rows, tableFilter],
+  );
+  const filterCount = (filter: MitigationTableFilter): number =>
+    filter === 'ALL' ? rows.length : rows.filter((row) => matchesMitigationFilter(row, filter)).length;
 
   function runCommand(action: MitigationCommandAction, profileId: string): void {
     commandMutation.mutate({ id: profileId, action, requestId: newRequestId() });
@@ -319,9 +432,10 @@ export function BgpMitigationWorkspace() {
           tone={engineStatus.autoActive ? 'up' : 'info'}
         />
         <MetaFact
-          label="motor"
+          label="motor AUTO (API)"
           value={engine?.state ?? 'OFF'}
           tone={engine?.state === 'RUNNING' ? 'up' : 'info'}
+          title="Motor automático executado dentro da API. Não depende do worker externo."
         />
         <MetaFact
           label="executor"
@@ -334,21 +448,94 @@ export function BgpMitigationWorkspace() {
           tone={engineStatus.liveWriteLabel === 'SIM' ? 'up' : 'info'}
         />
         <MetaFact
-          label="profiles AUTO / ALERT / OFF"
-          value={`${profileCounts.auto} / ${profileCounts.alertOnly} / ${profileCounts.disabled}`}
+          label="mitigações ativas"
+          value={countsReady ? mitigatedCount : '—'}
+          tone={countsReady && mitigatedCount > 0 ? 'up' : 'neutral'}
+          title={countsHint ?? 'Perfis com runtime MITIGATED (mitigação aplicada).'}
+        />
+        <MetaFact
+          label="em ativação"
+          value={countsReady ? activatingCount : '—'}
+          tone={countsReady && activatingCount > 0 ? 'warning' : 'neutral'}
+          title={countsHint ?? 'Perfis com runtime MITIGATING (ativação em andamento no equipamento).'}
+        />
+        <MetaFact
+          label="retirada/recuperação"
+          value={countsReady ? recoveringCount : '—'}
+          tone={countsReady && recoveringCount > 0 ? 'info' : 'neutral'}
+          title={countsHint ?? 'Perfis com runtime RECOVERING ou RECOVERY_PENDING (fora do total de mitigados).'}
+        />
+        <MetaFact
+          label="aguardando gatilho"
+          value={countsReady ? triggerPendingCount : '—'}
+          tone="neutral"
+          title={countsHint ?? 'Perfis com runtime TRIGGER_PENDING (limite cruzado, ativação ainda não iniciada).'}
+        />
+        <MetaFact
+          label="requer atenção"
+          value={countsReady ? attentionCount : '—'}
+          tone={countsReady && attentionCount > 0 ? 'down' : 'neutral'}
+          title={countsHint ?? 'Perfis com runtime FAILED ou RECONCILIATION_REQUIRED.'}
+        />
+        <MetaFact
+          label="perfis AUTO / ALERT_ONLY / OFF"
+          value={
+            profileCounts
+              ? `${profileCounts.auto} / ${profileCounts.alertOnly} / ${profileCounts.disabled}`
+              : '—'
+          }
+          title="Modo de CONFIGURAÇÃO dos perfis (não confundir com o estado de runtime acima)."
+        />
+        <MetaFact
+          label="perfil AUTO"
+          value={
+            autoProfiles.length === 0
+              ? 'nenhum'
+              : autoProfiles.length === 1
+                ? `${autoProfiles[0]!.customer ?? autoProfiles[0]!.interfaceName ?? '—'} · ${autoProfiles[0]!.addressFamily}`
+                : `${autoProfiles.length} perfis`
+          }
+          tone={autoProfiles.some((profile) => profile.runtimeState === 'MITIGATED') ? 'up' : 'info'}
+          title={
+            autoProfiles.length > 0
+              ? autoProfiles
+                  .map(
+                    (profile) =>
+                      `${profile.deviceName} · ${profile.interfaceName ?? '—'} · ${profile.policyName ?? 'sem policy'} · runtime ${runtimeStateLabel(profile.runtimeState)}`,
+                  )
+                  .join(' | ')
+              : 'Nenhum perfil configurado em AUTO.'
+          }
         />
         <MetaFact
           label="última avaliação"
           value={formatDateTime(engine?.lastSuccessfulTickAt ?? engine?.lastTickAt ?? null)}
         />
         <MetaFact
-          label="última decisão"
+          label="decisão do perfil AUTO"
+          value={
+            autoDecision
+              ? `${autoDecision.outcome}${autoDecision.reason ? ` · ${autoDecision.reason}` : ''}`
+              : autoProfiles.length === 0
+                ? 'sem perfil AUTO'
+                : 'indisponível'
+          }
+          tone={autoDecision?.outcome === 'ACTIVATED' ? 'up' : 'info'}
+          title={
+            autoDecision
+              ? `Perfil ${autoDecision.profileId}${autoDecision.customer ? ` · ${autoDecision.customer}` : ''} · ${formatDateTime(autoDecision.at)}`
+              : 'O health do motor não trouxe decisão por perfil nesta leitura.'
+          }
+        />
+        <MetaFact
+          label="última decisão (global)"
           value={
             engine?.lastDecision
               ? `${engine.lastDecision.outcome}${engine.lastDecision.reason ? ` · ${engine.lastDecision.reason}` : ''}`
               : '—'
           }
           tone={engine?.lastDecision?.outcome === 'ACTIVATED' ? 'up' : 'info'}
+          title="Última decisão de QUALQUER perfil avaliado pelo motor — pode pertencer a um ALERT_ONLY."
         />
         <MetaFact
           label="último ACTIVATE verificado"
@@ -361,11 +548,18 @@ export function BgpMitigationWorkspace() {
         />
         {engine?.lastError ? <MetaFact label="último erro" value={engine.lastError} tone="down" /> : null}
         <MetaFact
-          label="worker"
-          value={workerStateLabel(health.data?.worker.state ?? 'STOPPED')}
-          tone={health.data?.worker.state === 'READY' ? 'up' : 'info'}
+          label="worker externo"
+          value={health.data?.worker.state === 'READY' ? workerStateLabel(health.data.worker.state) : 'não implantado'}
+          tone="neutral"
+          title="Componente externo de reconciliação. O motor AUTO roda dentro da API e continua avaliando normalmente sem ele."
         />
-        <MetaFact label="clientes descobertos" value={rows.length} />
+        <MetaFact
+          label="perfis de mitigação"
+          value={rows.length}
+          title="Perfis (targets) de mitigação carregados — não é a contagem de clientes."
+        />
+        <MetaFact label="equipamentos" value={devicesCount} />
+        <MetaFact label="interfaces" value={interfacesCount} />
         <MetaFact label="aptos" value={readyCount} tone="up" />
         <MetaFact label="não aptos" value={notReadyCount} tone="down" />
         {withoutSnapshotCount > 0 ? (
@@ -430,7 +624,7 @@ export function BgpMitigationWorkspace() {
             <strong>{discovery.scannedPeers}</strong> peers analisados
           </span>
           <span>
-            <strong>{discovery.candidateInterfaces}</strong> clientes candidatos
+            <strong>{discovery.candidateInterfaces}</strong> interfaces candidatas
           </span>
           <span>
             <strong>{discovery.ignoredNoBandwidth}</strong> interfaces ignoradas por não possuir banda
@@ -454,11 +648,11 @@ export function BgpMitigationWorkspace() {
 
       {profiles.isLoading && !discovery ? (
         <div className="hosts-empty">
-          <span>Carregando clientes de mitigação…</span>
+          <span>Carregando perfis de mitigação…</span>
         </div>
       ) : profiles.isError && !discovery ? (
         <div className="hosts-empty">
-          <span>Não foi possível carregar os clientes de mitigação.</span>
+          <span>Não foi possível carregar os perfis de mitigação.</span>
           <Button compact variant="secondary" onClick={() => void profiles.refetch()}>
             Tentar novamente
           </Button>
@@ -466,15 +660,42 @@ export function BgpMitigationWorkspace() {
       ) : rows.length === 0 ? (
         <div className="hosts-empty">
           <span>
-            Nenhum cliente descoberto. Use DESCOBRIR CLIENTES para analisar um equipamento.
+            Nenhum perfil de mitigação carregado. Use DESCOBRIR CLIENTES para analisar um equipamento.
           </span>
         </div>
       ) : (
-        <div className="hosts-table-wrap mitigation-table-wrap">
-          <table className="mitigation-table">
-            <caption className="mitigation-table__caption">
-              Clientes candidatos à mitigação (nenhuma ação automática nesta fase)
-            </caption>
+        <>
+          <div className="mitigation-toolbar" role="group" aria-label="Filtro de perfis de mitigação">
+            {MITIGATION_FILTERS.map((option) => (
+              <Button
+                key={option.id}
+                compact
+                variant={tableFilter === option.id ? 'primary' : 'secondary'}
+                aria-pressed={tableFilter === option.id}
+                onClick={() => setTableFilter(option.id)}
+                title={
+                  option.id === 'ALL'
+                    ? 'Todos os perfis carregados.'
+                    : option.id === 'AUTO'
+                      ? 'Somente perfis com modo de configuração AUTO.'
+                      : option.id === 'MITIGATED'
+                        ? 'Somente perfis com runtime MITIGATED.'
+                        : option.id === 'IN_PROGRESS'
+                          ? 'Runtime TRIGGER_PENDING, MITIGATING, RECOVERING ou RECOVERY_PENDING.'
+                          : 'Runtime FAILED ou RECONCILIATION_REQUIRED.'
+                }
+              >
+                {option.label} ({filterCount(option.id)})
+              </Button>
+            ))}
+          </div>
+          <div className="hosts-table-wrap mitigation-table-wrap">
+            <table className="mitigation-table">
+              <caption className="mitigation-table__caption">
+                Perfis de mitigação — modo {engineStatus.modeLabel} · executor {engineStatus.executorLabel} ·
+                live write {engineStatus.liveWriteLabel}
+                {engineStatus.autoActive ? ' · mitigação automática armada' : ''}
+              </caption>
             <thead>
               <tr>
                 <th scope="col">Estado</th>
@@ -494,7 +715,14 @@ export function BgpMitigationWorkspace() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((row) => {
+              {filteredRows.length === 0 ? (
+                <tr>
+                  <td colSpan={14} className="mitigation-table__empty">
+                    Nenhum perfil neste filtro.
+                  </td>
+                </tr>
+              ) : null}
+              {filteredRows.map((row) => {
                 const badge = snapshotBadgeOf(row);
                 return (
                 <tr
@@ -559,7 +787,8 @@ export function BgpMitigationWorkspace() {
               })}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
       )}
 
       {selected && (

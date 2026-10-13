@@ -336,8 +336,10 @@ async function setSelect(ariaLabel: string, value: string): Promise<void> {
 
 async function chooseDevice(value: string): Promise<void> {
   // A lista de equipamentos vem de uma query: sem esperar as options, atribuir
-  // o valor nao pega e o botao de discovery continua desabilitado.
-  for (let attempt = 0; attempt < 8; attempt += 1) {
+  // o valor nao pega e o botao de discovery continua desabilitado. O limite e por
+  // tempo (nao por numero de flushes) para nao depender da carga da suite.
+  const deadline = Date.now() + 3000;
+  while (Date.now() < deadline) {
     const select = find('select[aria-label="Equipamento"]') as HTMLSelectElement;
     if ([...select.options].some((option) => option.value === value)) {
       await act(async () => {
@@ -415,8 +417,8 @@ describe('workspace de mitigacao DDoS', () => {
 
     expect(text()).toContain('🧪 MOTOR EM MODO DE SIMULAÇÃO');
     expect(text()).toContain('SIMULAÇÃO');
-    expect(text()).toContain('PARADO');
-    expect(text()).toContain('clientes descobertos');
+    expect(text()).toContain('não implantado');
+    expect(text()).toContain('perfis de mitigação');
     expect(text()).toContain('Banco de dados ainda não migrado');
   });
 
@@ -457,7 +459,7 @@ describe('workspace de mitigacao DDoS', () => {
     await openDetails('HORIZONTE_IP');
 
     expect(text()).toContain('Descrição');
-    expect(text()).toContain('Clientes candidatos à mitigação');
+    expect(text()).toContain('Perfis de mitigação');
     expect(text()).toContain('HORIZONTE_IP_40GB');
     expect(text()).toContain('Detectada: 40.0 Gbps');
     expect(text()).toContain('Override: não configurado');
@@ -537,8 +539,12 @@ describe('workspace de mitigacao DDoS', () => {
     api.getMitigationProfiles.mockRejectedValue(new Error('API 500'));
 
     await render(createElement(BgpMitigationWorkspace));
+    await waitFor(
+      () => text().includes('Não foi possível carregar os perfis de mitigação.'),
+      'painel em estado de erro',
+    );
 
-    expect(text()).toContain('Não foi possível carregar os clientes de mitigação.');
+    expect(text()).toContain('Não foi possível carregar os perfis de mitigação.');
     expect(text()).toContain('Tentar novamente');
   });
 
@@ -547,7 +553,7 @@ describe('workspace de mitigacao DDoS', () => {
 
     await render(createElement(BgpMitigationWorkspace));
 
-    expect(text()).toContain('Carregando clientes de mitigação…');
+    expect(text()).toContain('Carregando perfis de mitigação…');
   });
 });
 
@@ -1044,5 +1050,306 @@ describe('estado de mitigacao visivel na tabela (runtimeState)', () => {
     const row = tableRow('HORIZONTE_IP');
     expect(row.textContent).toContain('NORMAL');
     expect(row.textContent).not.toContain('MITIGADO');
+  });
+});
+
+describe('UI-AUTO-1: clareza operacional do painel de mitigacao', () => {
+  function profileOf(overrides: Partial<BgpMitigationProfileDto> = {}): BgpMitigationProfileDto {
+    return { ...readyProfile, ...overrides };
+  }
+
+  function autoProfile(overrides: Partial<BgpMitigationProfileDto> = {}): BgpMitigationProfileDto {
+    return profileOf({
+      id: 'auto-1',
+      customer: 'BHNET-CEASA',
+      interfaceId: 'if-auto',
+      interfaceName: 'Eth-Trunk1.3043',
+      interfaceDescription: 'BHNET-CEASA_10GB',
+      policyName: 'PL-BHNET_IPv4-IN',
+      addressFamily: 'IPV4',
+      mode: 'AUTO',
+      runtimeState: 'NORMAL',
+      ...overrides,
+    });
+  }
+
+  function engineOf(overrides: Partial<NonNullable<BgpMitigationHealthDto['autoEngine']>> = {}) {
+    return {
+      state: 'RUNNING' as const,
+      evaluationIntervalMs: 5000,
+      startedAt: '2026-10-13T18:20:12.000Z',
+      lastTickAt: '2026-10-13T20:40:00.000Z',
+      lastSuccessfulTickAt: '2026-10-13T20:40:00.000Z',
+      lastError: null,
+      lastDecision: null,
+      decisions: [],
+      lastAutoActivateAt: null,
+      lastAutoActivateProfileId: null,
+      ...overrides,
+    };
+  }
+
+  function healthOf(overrides: Partial<BgpMitigationHealthDto> = {}): BgpMitigationHealthDto {
+    return {
+      ...health,
+      mode: 'AUTO',
+      executor: 'HUAWEI',
+      liveWriteEnabled: true,
+      allowedDeviceCount: 1,
+      worker: { state: 'STOPPED' },
+      ...overrides,
+    };
+  }
+
+  function fact(label: string): string {
+    const element = [...container.querySelectorAll('.nv-fact')].find((node) =>
+      (node.textContent ?? '').includes(label),
+    );
+    return element?.textContent ?? '';
+  }
+
+  /** Renderiza e aguarda a condicao de prontidao (evita flakiness de query). */
+  async function renderPanel(ready: () => boolean, label = 'painel carregado'): Promise<void> {
+    await render(createElement(BgpMitigationWorkspace));
+    await waitFor(ready, label);
+  }
+
+  it('indicadores: 1 AUTO / 35 ALERT_ONLY, 35 NORMAL + 1 DISABLED e 0 mitigações ativas', async () => {
+    const alertProfiles = Array.from({ length: 35 }, (_, index) =>
+      profileOf({
+        id: `alert-${index}`,
+        customer: `CLIENTE_${index}`,
+        mode: 'ALERT_ONLY',
+        runtimeState: index === 0 ? 'DISABLED' : 'NORMAL',
+      }),
+    );
+    api.getMitigationProfiles.mockResolvedValue([autoProfile(), ...alertProfiles]);
+    api.getMitigationHealth.mockResolvedValue(
+      healthOf({
+        profiles: { total: 36, auto: 1, alertOnly: 35, disabled: 0 },
+        autoEngine: engineOf(),
+      }),
+    );
+    await renderPanel(() => fact('perfis AUTO / ALERT_ONLY / OFF').includes('1 / 35 / 0'));
+
+    expect(fact('mitigações ativas').startsWith('0')).toBe(true);
+    expect(fact('em ativação').startsWith('0')).toBe(true);
+    expect(fact('retirada/recuperação').startsWith('0')).toBe(true);
+    expect(fact('requer atenção').startsWith('0')).toBe(true);
+    expect(fact('perfis AUTO / ALERT_ONLY / OFF')).toContain('1 / 35 / 0');
+    expect(fact('perfis de mitigação')).toContain('36');
+    expect(fact('equipamentos')).toContain('1');
+    expect(fact('perfil AUTO')).toContain('BHNET-CEASA');
+  });
+
+  it('indicadores separam MITIGATED, MITIGATING, RECOVERY e REQUER ATENÇÃO', async () => {
+    api.getMitigationProfiles.mockResolvedValue([
+      autoProfile({ runtimeState: 'MITIGATED' }),
+      profileOf({ id: 'g-1', mode: 'ALERT_ONLY', runtimeState: 'MITIGATING' }),
+      profileOf({ id: 'r-1', mode: 'ALERT_ONLY', runtimeState: 'RECOVERING' }),
+      profileOf({ id: 'r-2', mode: 'ALERT_ONLY', runtimeState: 'RECOVERY_PENDING' }),
+      profileOf({ id: 't-1', mode: 'ALERT_ONLY', runtimeState: 'TRIGGER_PENDING' }),
+      profileOf({ id: 'f-1', mode: 'ALERT_ONLY', runtimeState: 'FAILED' }),
+      profileOf({ id: 'c-1', mode: 'ALERT_ONLY', runtimeState: 'RECONCILIATION_REQUIRED' }),
+    ]);
+    api.getMitigationHealth.mockResolvedValue(
+      healthOf({
+        profiles: { total: 7, auto: 1, alertOnly: 6, disabled: 0 },
+        autoEngine: engineOf(),
+      }),
+    );
+    await renderPanel(() => fact('mitigações ativas').startsWith('1'));
+
+    expect(fact('mitigações ativas').startsWith('1')).toBe(true);
+    expect(fact('em ativação').startsWith('1')).toBe(true);
+    expect(fact('retirada/recuperação').startsWith('2')).toBe(true);
+    expect(fact('aguardando gatilho').startsWith('1')).toBe(true);
+    expect(fact('requer atenção').startsWith('2')).toBe(true);
+  });
+
+  it('decisão do perfil AUTO não herda a decisão global de um ALERT_ONLY bloqueado', async () => {
+    api.getMitigationProfiles.mockResolvedValue([
+      autoProfile(),
+      profileOf({
+        id: 'alert-blocked',
+        customer: 'WFREDES',
+        mode: 'ALERT_ONLY',
+        runtimeState: 'DISABLED',
+        snapshotAvailable: false,
+      }),
+    ]);
+    api.getMitigationHealth.mockResolvedValue(
+      healthOf({
+        profiles: { total: 2, auto: 1, alertOnly: 1, disabled: 0 },
+        autoEngine: engineOf({
+          lastDecision: {
+            at: '2026-10-13T20:39:00.000Z',
+            profileId: 'alert-blocked',
+            deviceId: 'device-1',
+            customer: 'WFREDES',
+            outcome: 'BLOCKED',
+            reason: 'SNAPSHOT_UNAVAILABLE',
+            trafficBps: null,
+            thresholdBps: null,
+            runtimeState: 'DISABLED',
+            commandStatus: null,
+            verified: false,
+            detail: null,
+          },
+          decisions: [
+            {
+              at: '2026-10-13T20:39:00.000Z',
+              profileId: 'alert-blocked',
+              deviceId: 'device-1',
+              customer: 'WFREDES',
+              outcome: 'BLOCKED',
+              reason: 'SNAPSHOT_UNAVAILABLE',
+              trafficBps: null,
+              thresholdBps: null,
+              runtimeState: 'DISABLED',
+              commandStatus: null,
+              verified: false,
+              detail: null,
+            },
+            {
+              at: '2026-10-13T20:39:30.000Z',
+              profileId: 'auto-1',
+              deviceId: 'device-1',
+              customer: 'BHNET-CEASA',
+              outcome: 'NO_ACTION',
+              reason: 'THRESHOLD_NOT_EXCEEDED',
+              trafficBps: null,
+              thresholdBps: null,
+              runtimeState: 'NORMAL',
+              commandStatus: null,
+              verified: false,
+              detail: null,
+            },
+          ],
+        }),
+      }),
+    );
+    await renderPanel(() => fact('decisão do perfil AUTO').includes('NO_ACTION'));
+
+    expect(fact('decisão do perfil AUTO')).toContain('NO_ACTION');
+    expect(fact('decisão do perfil AUTO')).not.toContain('SNAPSHOT_UNAVAILABLE');
+    expect(fact('última decisão (global)')).toContain('SNAPSHOT_UNAVAILABLE');
+  });
+
+  it('sem decisão por perfil o painel diz indisponível (não atribui decisão alheia)', async () => {
+    api.getMitigationProfiles.mockResolvedValue([autoProfile()]);
+    api.getMitigationHealth.mockResolvedValue(
+      healthOf({
+        profiles: { total: 1, auto: 1, alertOnly: 0, disabled: 0 },
+        autoEngine: engineOf({ decisions: [], lastDecision: null }),
+      }),
+    );
+    await renderPanel(() => fact('decisão do perfil AUTO').includes('indisponível'));
+
+    expect(fact('decisão do perfil AUTO')).toContain('indisponível');
+  });
+
+  it('sem perfis carregados os indicadores mostram — (nunca zero como total global)', async () => {
+    api.getMitigationProfiles.mockResolvedValue([]);
+    const healthWithoutProfiles = healthOf({ autoEngine: engineOf({ decisions: [] }) });
+    delete (healthWithoutProfiles as { profiles?: unknown }).profiles;
+    api.getMitigationHealth.mockResolvedValue(healthWithoutProfiles);
+    await renderPanel(() => !text().includes('Carregando perfis de mitigação…'));
+
+    expect(fact('mitigações ativas').startsWith('—')).toBe(true);
+    expect(fact('perfis AUTO / ALERT_ONLY / OFF')).toContain('—');
+  });
+
+  it('worker externo não aparece como motor desligado', async () => {
+    api.getMitigationProfiles.mockResolvedValue([autoProfile()]);
+    api.getMitigationHealth.mockResolvedValue(
+      healthOf({
+        worker: { state: 'STOPPED' },
+        profiles: { total: 1, auto: 1, alertOnly: 0, disabled: 0 },
+        autoEngine: engineOf(),
+      }),
+    );
+    await renderPanel(() => fact('motor AUTO (API)').includes('RUNNING'));
+
+    expect(fact('motor AUTO (API)')).toContain('RUNNING');
+    expect(fact('worker externo')).toContain('não implantado');
+    expect(text()).not.toContain('PARADO');
+  });
+
+  it('filtro SOMENTE AUTO mostra apenas os perfis AUTO e preserva DETALHES', async () => {
+    api.getMitigationProfiles.mockResolvedValue([
+      autoProfile(),
+      profileOf({ id: 'alert-1', customer: 'CLIENTE_ALERTA', mode: 'ALERT_ONLY' }),
+    ]);
+    api.getMitigationHealth.mockResolvedValue(
+      healthOf({
+        profiles: { total: 2, auto: 1, alertOnly: 1, disabled: 0 },
+        autoEngine: engineOf(),
+      }),
+    );
+    await renderPanel(() => text().includes('CLIENTE_ALERTA'));
+
+    expect(text()).toContain('CLIENTE_ALERTA');
+    await clickByText('SOMENTE AUTO');
+    expect(text()).toContain('BHNET-CEASA');
+    expect(text()).not.toContain('CLIENTE_ALERTA');
+    expect(container.textContent).toContain('SOMENTE AUTO (1)');
+
+    await clickByText('DETALHES');
+    expect(text()).toContain('Detalhes do cliente');
+  });
+
+  it('filtro MITIGADOS isola o perfil com runtime MITIGATED', async () => {
+    api.getMitigationProfiles.mockResolvedValue([
+      autoProfile({ id: 'm-1', customer: 'MITIGADO_X', runtimeState: 'MITIGATED' }),
+      profileOf({ id: 'n-1', customer: 'NORMAL_Y', runtimeState: 'NORMAL' }),
+    ]);
+    api.getMitigationHealth.mockResolvedValue(
+      healthOf({
+        profiles: { total: 2, auto: 1, alertOnly: 1, disabled: 0 },
+        autoEngine: engineOf(),
+      }),
+    );
+    await renderPanel(() => text().includes('NORMAL_Y'));
+
+    await clickByText('MITIGADOS');
+    expect(text()).toContain('MITIGADO_X');
+    expect(text()).not.toContain('NORMAL_Y');
+  });
+
+  it('filtro REQUER ATENÇÃO isola FAILED/RECONCILIATION_REQUIRED', async () => {
+    api.getMitigationProfiles.mockResolvedValue([
+      profileOf({ id: 'f-1', customer: 'FALHA_X', runtimeState: 'FAILED' }),
+      profileOf({ id: 'c-1', customer: 'REVALIDAR_Y', runtimeState: 'RECONCILIATION_REQUIRED' }),
+      profileOf({ id: 'n-1', customer: 'NORMAL_Z', runtimeState: 'NORMAL' }),
+    ]);
+    api.getMitigationHealth.mockResolvedValue(
+      healthOf({
+        profiles: { total: 3, auto: 0, alertOnly: 3, disabled: 0 },
+        autoEngine: engineOf(),
+      }),
+    );
+    await renderPanel(() => text().includes('FALHA_X'));
+
+    await clickByText('REQUER ATENÇÃO');
+    expect(text()).toContain('FALHA_X');
+    expect(text()).toContain('REVALIDAR_Y');
+    expect(text()).not.toContain('NORMAL_Z');
+  });
+
+  it('legenda reflete o modo efetivo (live write ativo) em vez de "nenhuma ação automática"', async () => {
+    api.getMitigationProfiles.mockResolvedValue([autoProfile()]);
+    api.getMitigationHealth.mockResolvedValue(
+      healthOf({
+        profiles: { total: 1, auto: 1, alertOnly: 0, disabled: 0 },
+        autoEngine: engineOf(),
+      }),
+    );
+    await renderPanel(() => text().includes('live write SIM'));
+
+    expect(text()).toContain('live write SIM');
+    expect(text()).toContain('mitigação automática armada');
+    expect(text()).not.toContain('nenhuma ação automática');
+    expect(text()).not.toContain('clientes descobertos');
   });
 });

@@ -12175,6 +12175,12 @@ label > small {
   color: var(--muted);
   font-size: 11px;
 }
+.mitigation-table__empty {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
 .mitigation-badge {
   display: inline-block;
   padding: 2px 8px;
