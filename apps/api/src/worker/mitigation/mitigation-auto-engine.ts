@@ -45,6 +45,13 @@ export type MitigationAutoBlockReason =
   | 'TARGET_BLOCKED'
   | 'MITIGATION_EXCLUDED'
   | 'PEER_MITIGATION_EXCLUDED'
+  /** AUTOMACAO bloqueada por policy compartilhada (config, com aprovacao explicita). */
+  | 'SHARED_POLICY_UNRESOLVED'
+  /**
+   * IPv4 e IPv6 da MESMA interface compartilham contadores: AUTO simultaneo nas
+   * duas familias exige aprovacao explicita do par (env). Fail-closed por padrao.
+   */
+  | 'FAMILY_CONTENTION_UNRESOLVED'
   | 'NO_SAFE_TEMPORARY_NODE'
   | 'GLOBAL_MODE_SIMULATION_ONLY'
   | 'EXECUTOR_NOT_HUAWEI'
@@ -66,6 +73,22 @@ export interface MitigationAutoTargetState {
   interfaceId: string | null;
   customer: string | null;
   mode: MitigationProfileMode;
+  /**
+   * Familia do alvo. IPv4 e IPv6 da MESMA interface compartilham os contadores
+   * SNMP - e por isso que AUTO simultaneo nas duas familias exige aprovacao.
+   */
+  addressFamily?: 'IPV4' | 'IPV6';
+  /**
+   * Direcao EFETIVA de telemetria deste perfil (persistida no perfil ou
+   * fallback ENV). `null`/ausente = nao configurada => TELEMETRY_UNAVAILABLE.
+   */
+  direction?: 'rx' | 'tx' | null;
+  directionSource?: 'PROFILE' | 'ENV' | null;
+  /**
+   * Policy compartilhada com outro target (config): quando a guarda de
+   * automacao esta ligada, o target AUTO so passa se estiver na allowlist.
+   */
+  sharedPolicyAutomationBlocked?: boolean;
   /** Ha snapshot de discovery nesta sessao; false => SNAPSHOT_UNAVAILABLE. */
   snapshotAvailable: boolean;
   readiness: 'READY' | 'NOT_READY';
@@ -108,6 +131,13 @@ export interface MitigationAutoDecision {
   requiredSamples: number;
   runtimeState: MitigationState | null;
   sharedPolicy: boolean;
+  /** Familia do alvo avaliado (auditoria do modo sombra). */
+  addressFamily?: 'IPV4' | 'IPV6';
+  /** Direcao EFETIVA e origem usadas nesta avaliacao. */
+  direction?: 'rx' | 'tx' | null;
+  directionSource?: 'PROFILE' | 'ENV' | null;
+  /** `true` = policy compartilhada com automacao bloqueada por config. */
+  sharedPolicyAutomationBlocked?: boolean;
   requestId: string | null;
   commandStatus: string | null;
   verified: boolean;
@@ -168,6 +198,23 @@ export interface MitigationAutoEngineDeps {
   summaryIntervalMs?: number;
   /** Silencio minimo por profile entre mudancas NAO criticas (default 30 s). */
   transitionThrottleMs?: number;
+  /**
+   * Guarda de automacao em POLICY COMPARTILHADA. Desligada por padrao: preserva
+   * exatamente o comportamento do AUTO atual (BHNET-CEASA, que compartilha a
+   * policy com outro cliente). Ligada, um target AUTO marcado como
+   * `sharedPolicyAutomationBlocked` (discovery) so passa se estiver na
+   * allowlist explicita do operador.
+   */
+  sharedPolicyGuard?: {
+    enabled: boolean;
+    allowedProfileIds: readonly string[];
+  };
+  /**
+   * Pares IPv4/IPv6 do MESMO escopo de contadores aprovados EXPLICITAMENTE para
+   * AUTO simultaneo (`[profileIdA, profileIdB]`, ordem indiferente). Ausente ou
+   * vazio = nenhum par aprovado (fail-closed).
+   */
+  approvedFamilyPairs?: readonly (readonly [string, string])[];
 }
 
 interface AutoCounters {
@@ -339,6 +386,10 @@ export class MitigationAutoEngine {
       requiredSamples: target.triggerSamples,
       runtimeState: target.runtimeState,
       sharedPolicy: target.sharedPolicy,
+      addressFamily: target.addressFamily ?? ('IPV4' as const),
+      direction: target.direction ?? null,
+      directionSource: target.directionSource ?? null,
+      sharedPolicyAutomationBlocked: target.sharedPolicyAutomationBlocked === true,
       requestId: null as string | null,
       commandStatus: null as string | null,
       verified: false,
@@ -374,6 +425,32 @@ export class MitigationAutoEngine {
     if (target.prefixStatus === 'EXCEEDED') return block('PREFIX_LIMIT_EXCEEDED');
     if (target.blockedReason !== null) return block('TARGET_BLOCKED');
     if (target.mitigationExcluded) return block('MITIGATION_EXCLUDED');
+
+    // Guarda de CONFIG para policy compartilhada. Desligada por padrao para nao
+    // alterar o AUTO existente; quando ligada, exige allowlist explicita.
+    const sharedGuard = this.deps.sharedPolicyGuard;
+    if (
+      target.mode === 'AUTO' &&
+      target.sharedPolicyAutomationBlocked === true &&
+      sharedGuard?.enabled === true &&
+      !sharedGuard.allowedProfileIds.includes(target.profileId)
+    ) {
+      return block('SHARED_POLICY_UNRESOLVED');
+    }
+
+    // IPv4/IPv6 da MESMA interface compartilham contadores: AUTO simultaneo nas
+    // duas familias exige aprovacao explicita do par (fail-closed).
+    if (target.mode === 'AUTO') {
+      const contendedBy = await this.detectFamilyContention(target);
+      if (contendedBy !== null) {
+        return this.record({
+          ...base,
+          outcome: 'BLOCKED',
+          reason: 'FAMILY_CONTENTION_UNRESOLVED',
+          detail: `Auto simultaneo IPv4/IPv6 no mesmo escopo sem aprovacao (par com ${contendedBy.join(', ')})`,
+        });
+      }
+    }
 
     const excludedPeers = await this.deps.exclusions.listPeerExclusions({
       deviceId: target.deviceId,
@@ -595,6 +672,8 @@ export class MitigationAutoEngine {
       samplesOver: decision.samplesOver,
       samplesBelow: decision.samplesBelow,
       requiredSamples: decision.requiredSamples,
+      direction: decision.direction ?? null,
+      directionSource: decision.directionSource ?? null,
       detail: decision.detail,
     };
     this.deps.debugLogger?.('auto: decisao (debug)', meta);
@@ -666,6 +745,53 @@ export class MitigationAutoEngine {
    * Leitura fresca do runtime (estado + sucesso da leitura). Falha de leitura e
    * tratada como "nao sei": nunca autoriza o motor a sobrescrever estado.
    */
+  /**
+   * IPv4 e IPv6 de UMA interface usam os MESMOS contadores SNMP: um unico pico
+   * alimenta os dois targets. Com as DUAS familias em AUTO (e direcao
+   * configurada) o mesmo ataque abriria duas ativacoes fisicas em policies
+   * diferentes - inclusive a familia que NAO foi atacada. Fail-closed: a
+   * familia secundaria (nao-IPv4) fica bloqueada ate o operador aprovar o par
+   * explicitamente (`MITIGATION_AUTO_FAMILY_PAIRS_ALLOWED`).
+   *
+   * ALERT_ONLY (modo sombra) NAO e afetado: sem escrita, a sombra pode medir as
+   * duas familias enquanto o operador coleta evidencia.
+   */
+  private async detectFamilyContention(
+    target: MitigationAutoTargetState,
+  ): Promise<string[] | null> {
+    const family = target.addressFamily ?? 'IPV4';
+    if (family === 'IPV4') return null;
+    const interfaceId = target.interfaceId;
+    if (interfaceId === null || target.direction === null || target.direction === undefined) {
+      return null;
+    }
+    let siblings: MitigationAutoTargetState[];
+    try {
+      siblings = (await this.deps.targets.list()).filter(
+        (candidate) =>
+          candidate.profileId !== target.profileId &&
+          candidate.deviceId === target.deviceId &&
+          candidate.interfaceId === interfaceId &&
+          candidate.mode === 'AUTO' &&
+          (candidate.direction ?? null) !== null &&
+          (candidate.addressFamily ?? 'IPV4') !== family,
+      );
+    } catch {
+      // Leitura indisponivel NAO bloqueia: o preflight fisico segue como ultima
+      // barreira (mesma semantica do F3).
+      return null;
+    }
+    if (siblings.length === 0) return null;
+    const approved = this.deps.approvedFamilyPairs ?? [];
+    const unapproved = siblings.filter(
+      (sibling) =>
+        !approved.some(
+          (pair) => pair.includes(target.profileId) && pair.includes(sibling.profileId),
+        ),
+    );
+    return unapproved.length > 0 ? unapproved.map((item) => item.profileId) : null;
+  }
+
   /**
    * F3: o escopo fisico e `deviceId + policyName`. Se qualquer OUTRO target do
    * mesmo escopo esta MITIGATED/RECOVERY_PENDING, a policy ja esta mitigada e

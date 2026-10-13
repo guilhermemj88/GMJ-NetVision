@@ -464,6 +464,12 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
     if (input.mode !== undefined) {
       await this.deps.repository.setProfileMode(id, input.mode);
     }
+    if (input.autoTrafficDirection !== undefined) {
+      await this.deps.repository.setProfileAutoTrafficDirection(
+        id,
+        input.autoTrafficDirection ?? null,
+      );
+    }
     return this.getProfile(id);
   }
 
@@ -908,6 +914,10 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
       mode: record.mode as MitigationProfileMode,
       enabled: record.enabled,
       mitigationRt: record.mitigationRt,
+      autoTrafficDirection: record.autoTrafficDirection,
+      bandwidthSource: record.bandwidthSource,
+      triggerSamples: record.triggerSamples,
+      recoverySamples: record.recoverySamples,
       lastDiscoveryAt: this.lastDiscoveryAt?.toISOString() ?? null,
     };
   }
@@ -966,6 +976,10 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
       mode: (record?.mode as MitigationProfileMode | undefined) ?? 'ALERT_ONLY',
       enabled: record?.enabled ?? true,
       mitigationRt: record?.mitigationRt ?? DEFAULT_MITIGATION_RT,
+      autoTrafficDirection: record?.autoTrafficDirection ?? null,
+      bandwidthSource: record?.bandwidthSource ?? null,
+      ...(record?.triggerSamples === undefined ? {} : { triggerSamples: record.triggerSamples }),
+      ...(record?.recoverySamples === undefined ? {} : { recoverySamples: record.recoverySamples }),
       lastDiscoveryAt: this.now().toISOString(),
     };
   }

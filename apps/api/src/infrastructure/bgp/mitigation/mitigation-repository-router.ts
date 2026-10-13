@@ -16,7 +16,11 @@ import type {
   MitigationSimulationInput,
   MitigationSimulationRecord,
 } from './mitigation-repository';
-import type { MitigationProfileMode, MitigationState } from './mitigation-types';
+import type {
+  MitigationAutoTrafficDirection,
+  MitigationProfileMode,
+  MitigationState,
+} from './mitigation-types';
 
 // A migration da mitigacao ainda NAO esta aplicada em producao.
 //
@@ -105,6 +109,13 @@ export class RoutingMitigationRepository implements MitigationRepository {
     bandwidthOverrideBps: bigint | null,
   ): Promise<void> {
     return (await this.target()).setProfileBandwidthOverride(id, bandwidthOverrideBps);
+  }
+
+  async setProfileAutoTrafficDirection(
+    id: string,
+    direction: MitigationAutoTrafficDirection | null,
+  ): Promise<void> {
+    return (await this.target()).setProfileAutoTrafficDirection(id, direction);
   }
 
   async replaceProfilePeers(

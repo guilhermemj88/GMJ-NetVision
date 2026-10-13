@@ -20,6 +20,7 @@ import type {
   MitigationSimulationRecord,
 } from './mitigation-repository';
 import type {
+  MitigationAutoTrafficDirection,
   MitigationExclusionReason,
   MitigationProfileMode,
   MitigationState,
@@ -53,6 +54,7 @@ function mapProfile(row: ProfileRow): MitigationProfileRecord {
     recoverySamples: row.recoverySamples,
     checkIntervalSeconds: row.checkIntervalSeconds,
     mitigationRt: row.mitigationRt,
+    autoTrafficDirection: row.autoTrafficDirection as MitigationAutoTrafficDirection | null,
     mitigationExcluded: row.mitigationExcluded,
     mitigationExclusionReason:
       row.mitigationExclusionReason as MitigationProfileRecord['mitigationExclusionReason'],
@@ -256,6 +258,16 @@ export class PrismaMitigationRepository implements MitigationRepository {
     await this.prisma.bgpMitigationProfile.update({
       where: { id },
       data: { bandwidthOverrideBps },
+    });
+  }
+
+  async setProfileAutoTrafficDirection(
+    id: string,
+    direction: MitigationAutoTrafficDirection | null,
+  ): Promise<void> {
+    await this.prisma.bgpMitigationProfile.update({
+      where: { id },
+      data: { autoTrafficDirection: direction },
     });
   }
 

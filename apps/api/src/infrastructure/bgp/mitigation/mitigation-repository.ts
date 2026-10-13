@@ -1,5 +1,6 @@
 import type {
   BandwidthSource,
+  MitigationAutoTrafficDirection,
   MitigationExclusionReason,
   MitigationProfileMode,
   MitigationState,
@@ -27,6 +28,12 @@ export interface MitigationProfileRecord {
   recoverySamples: number;
   checkIntervalSeconds: number;
   mitigationRt: string;
+  /**
+   * Direcao de telemetria do AUTO POR PERFIL (RX/TX). `null` = nao configurada:
+   * o motor trata a leitura como indisponivel (fail-closed) e o ENV legado
+   * (`MITIGATION_AUTO_TRAFFIC_DIRECTIONS`) continua valendo como fallback.
+   */
+  autoTrafficDirection: MitigationAutoTrafficDirection | null;
   /** Exclusao administrativa: "nunca mitigar este peer" (por target). */
   mitigationExcluded: boolean;
   mitigationExclusionReason: MitigationExclusionReason | null;
@@ -236,6 +243,15 @@ export interface MitigationRepository {
   setProfileMode(id: string, mode: MitigationProfileMode): Promise<void>;
   setProfileEnabled(id: string, enabled: boolean): Promise<void>;
   setProfileBandwidthOverride(id: string, bandwidthOverrideBps: bigint | null): Promise<void>;
+  /**
+   * Direcao de telemetria do AUTO por perfil. `null` limpa a configuracao
+   * (fail-closed). Nao passa pelo upsert do discovery: rediscovery NUNCA
+   * sobrescreve uma decisao do operador.
+   */
+  setProfileAutoTrafficDirection(
+    id: string,
+    direction: MitigationAutoTrafficDirection | null,
+  ): Promise<void>;
   /**
    * Exclusao administrativa da mitigacao. Bloqueia NOVO ACTIVATE no caminho
    * canonico; REMOVE de mitigacao ativa continua permitido.

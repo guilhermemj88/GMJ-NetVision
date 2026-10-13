@@ -88,6 +88,12 @@ export class InterfaceTrafficSource implements MitigationTrafficSource {
        * Por isso a direção é decisão do operador por target, não um default global.
        */
       directionByProfile?: Record<string, 'rx' | 'tx'>;
+      /**
+       * Resolver DINÂMICO (direção persistida no perfil, com fallback ENV).
+       * Consultado a cada amostra; `null` cai para `directionByProfile` e, sem
+       * isso, a leitura é indisponível. Nunca devolve direção "adivinhada".
+       */
+      resolveDirection?: (target: { profileId: string }) => 'rx' | 'tx' | null;
       /** Direção fixa (usada por testes/integrações que já a definem). */
       direction?: 'rx' | 'tx';
       maxAgeMs: number;
@@ -109,7 +115,10 @@ export class InterfaceTrafficSource implements MitigationTrafficSource {
 
   async sample(target: MitigationTrafficTarget): Promise<bigint | null> {
     if (!target.interfaceId) return null;
-    const direction = this.options.directionByProfile?.[target.profileId] ?? this.options.direction;
+    const direction =
+      this.options.resolveDirection?.(target) ??
+      this.options.directionByProfile?.[target.profileId] ??
+      this.options.direction;
     if (!direction) return null;
     const row = await this.reader.latestTraffic(target.interfaceId);
     if (!row) return null;

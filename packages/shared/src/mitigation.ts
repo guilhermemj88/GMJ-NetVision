@@ -25,6 +25,15 @@ export type MitigationMode = 'SIMULATION_ONLY' | 'AUTO';
 /** Familia do alvo: IPv4 e IPv6 sao targets independentes. */
 export type MitigationAddressFamily = 'IPV4' | 'IPV6';
 
+/**
+ * Direcao de telemetria do AUTO, POR PERFIL. Sem valor configurado o motor e
+ * fail-closed: a leitura e tratada como indisponivel (TELEMETRY_UNAVAILABLE).
+ */
+export type MitigationAutoTrafficDirection = 'RX' | 'TX';
+
+/** De onde veio a direcao efetiva usada pelo motor. */
+export type MitigationAutoDirectionSource = 'PROFILE' | 'ENV';
+
 export type MitigationBlockReason =
   | 'NO_SAFE_TEMPORARY_NODE'
   | 'PREFIX_LIMIT_EXCEEDED'
@@ -143,6 +152,17 @@ export interface BgpMitigationProfileDto {
   enabled: boolean;
   mitigationRt: string;
   lastDiscoveryAt: string | null;
+  /**
+   * Direcao de telemetria PERSISTIDA por perfil (RX/TX). `null` = nao
+   * configurada (motor fail-closed). O ENV legado continua valendo como
+   * fallback e a direcao EFETIVA aparece nas decisoes do motor.
+   */
+  autoTrafficDirection?: MitigationAutoTrafficDirection | null;
+  /** Origem da banda efetiva (DESCRIPTION/MANUAL/UNKNOWN). */
+  bandwidthSource?: string | null;
+  /** Histerese configurada (amostras) — auditoria do modo sombra. */
+  triggerSamples?: number;
+  recoverySamples?: number;
 }
 
 /** Decisão do motor AUTO exposta no health (sem segredos). */
@@ -159,6 +179,23 @@ export interface MitigationAutoDecisionDto {
   commandStatus: string | null;
   verified: boolean;
   detail: string | null;
+  /** Familia e direcao EFETIVA da avaliacao (auditoria do modo sombra). */
+  addressFamily?: MitigationAddressFamily;
+  direction?: MitigationAutoTrafficDirection | null;
+  directionSource?: MitigationAutoDirectionSource | null;
+  recoveryThresholdBps?: string | null;
+  samplesOver?: number;
+  samplesBelow?: number;
+  requiredSamples?: number;
+  /** Policy compartilhada com outro target (config), informativo na decisao. */
+  sharedPolicy?: boolean;
+  /** Block preventivo de automacao por policy compartilhada (config). */
+  sharedPolicyAutomationBlocked?: boolean;
+  /**
+   * `published` = notificacao REALMENTE entregue a camada de midias (n8n).
+   * `skipped=true` = nada foi enviado. ALERT_TRIGGERED e LOG apenas.
+   */
+  notification?: { published: boolean; skipped: boolean } | null;
 }
 
 /** Estado do runtime do motor AUTO no processo da API. */
@@ -174,6 +211,76 @@ export interface MitigationAutoRuntimeDto {
   decisions?: MitigationAutoDecisionDto[];
   lastAutoActivateAt: string | null;
   lastAutoActivateProfileId: string | null;
+}
+
+/**
+ * Relatorio de SOMBRA do motor AUTO (somente leitura): mostra exatamente o que
+ * o motor faria hoje, por perfil, sem depender de escrita no equipamento.
+ * `notificationDelivery` distingue log (ALERT_TRIGGERED) de entrega real.
+ */
+export interface MitigationAutoShadowEntryDto {
+  profileId: string;
+  customer: string | null;
+  policyName: string | null;
+  interfaceId: string | null;
+  interfaceName: string | null;
+  addressFamily: MitigationAddressFamily;
+  mode: MitigationProfileMode;
+  enabled: boolean;
+  /** Direcao EFETIVA (persistida no perfil ou fallback ENV). */
+  direction: MitigationAutoTrafficDirection | null;
+  directionSource: MitigationAutoDirectionSource | null;
+  effectiveBandwidthBps: string | null;
+  bandwidthSource: string | null;
+  thresholdBps: string | null;
+  recoveryThresholdBps: string | null;
+  trafficBps: string | null;
+  samplesOver: number;
+  requiredSamples: number;
+  samplesBelow: number;
+  requiredRecoverySamples: number;
+  /** True quando o target dispararia mitigacao se a escrita estivesse armada. */
+  wouldActivate: boolean;
+  outcome: string | null;
+  reason: string | null;
+  blockedReason: string | null;
+  readiness: MitigationReadiness;
+  snapshotAvailable: boolean;
+  runtimeState: string | null;
+  sharedPolicy: boolean;
+  sharedPolicyTargets: BgpMitigationSharedTargetDto[];
+  /** AUTOMACAO bloqueada por policy compartilhada (config; nao e estado de runtime). */
+  sharedPolicyAutomationBlocked: boolean;
+  /** `LOG_ONLY` = alerta apenas em log; `N8N_MEDIA` = entrega real a midia. */
+  notificationDelivery: 'LOG_ONLY' | 'N8N_MEDIA';
+  decisionAt: string | null;
+}
+
+export interface MitigationAutoShadowReportDto {
+  generatedAt: string;
+  engine: {
+    state: 'OFF' | 'RUNNING' | 'STOPPED';
+    evaluationIntervalMs: number;
+    lastTickAt: string | null;
+    lastError: string | null;
+  };
+  summary: {
+    total: number;
+    auto: number;
+    alertOnly: number;
+    disabled: number;
+    /** Perfis com direcao efetiva (persistida ou ENV). */
+    directionConfigured: number;
+    /** Perfis ALERT_ONLY sem direcao: prontos para sombra quando configurados. */
+    awaitingDirection: number;
+    /** ALERT_ONLY com direcao = avaliacao em sombra ativa (sem escrita). */
+    shadowActive: number;
+    blocked: number;
+    wouldActivate: number;
+    mitigated: number;
+    inProgress: number;
+  };
+  entries: MitigationAutoShadowEntryDto[];
 }
 
 export interface BgpMitigationHealthDto {
@@ -252,6 +359,8 @@ export interface BgpMitigationPatchInput {
   bandwidthOverrideBps?: string | null;
   enabled?: boolean;
   mode?: MitigationProfileMode;
+  /** Direcao de telemetria persistida (RX/TX); `null` limpa (fail-closed). */
+  autoTrafficDirection?: MitigationAutoTrafficDirection | null;
 }
 
 export interface BgpMitigationSimulateInput {

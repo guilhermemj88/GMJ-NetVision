@@ -1,6 +1,6 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import type { AuthUser, BgpPeerDetail } from '@gmj/shared';
+import type { AuthUser, BgpPeerDetail, MitigationAutoShadowReportDto } from '@gmj/shared';
 import type { BgpMitigationService } from './infrastructure/bgp/mitigation/mitigation-service';
 import {
   MITIGATION_COMMAND_ACTIONS,
@@ -29,6 +29,17 @@ const patchSchema = z
       .optional(),
     enabled: z.boolean().optional(),
     mode: z.enum(['DISABLED', 'ALERT_ONLY', 'AUTO']).optional(),
+    /**
+     * Direcao de telemetria do AUTO para ESTE perfil. `null` limpa a
+     * configuracao (o motor volta a ficar fail-closed para o target).
+     */
+    autoTrafficDirection: z.enum(['RX', 'TX']).nullish(),
+    /**
+     * Confirmacoes EXPLICITAS exigidas pela API quando a promocao para AUTO
+     * toca um escopo sensivel (policy compartilhada / par IPv4+IPv6).
+     */
+    acknowledgeSharedPolicy: z.boolean().optional(),
+    acknowledgeFamilyContention: z.boolean().optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, {
@@ -107,6 +118,26 @@ export interface MitigationRouteDependencies {
    * APPLY LOCAL (somente runtime no banco do NetVision).
    */
   reconciler?: MitigationPolicyReconciler;
+  /**
+   * Relatorio de SOMBRA do AUTO (somente leitura). Ausente = endpoint nao
+   * registrado (processos que nao hospedam o motor, ex.: CLI/worker).
+   */
+  autoShadow?: () => MitigationAutoShadowReportDto | Promise<MitigationAutoShadowReportDto>;
+  /**
+   * Gates de CONFIGURACAO para promover um perfil a AUTO. Fail-closed por
+   * padrao: a API recusa a promocao em escopo sensivel sem confirmacao
+   * explicita do operador (ou allowlist no ENV).
+   */
+  autoEnablement?: {
+    /** Guarda de policy compartilhada ligada por ENV (`..._GUARD`). */
+    sharedPolicyGuardEnabled: boolean;
+    /** Perfis liberados explicitamente no ENV (`..._ALLOWED`). */
+    sharedPolicyAllowedProfileIds: string[];
+    /** Direcoes vindas do ENV legado (fallback), para a checagem de par v4/v6. */
+    envDirections?: Record<string, 'rx' | 'tx'>;
+    /** Pares IPv4/IPv6 aprovados explicitamente (`..._FAMILY_PAIRS_ALLOWED`). */
+    approvedFamilyPairs: [string, string][];
+  };
   currentUser?: (request: FastifyRequest) => Promise<AuthUser | null>;
 }
 
@@ -114,10 +145,16 @@ export function registerMitigationRoutes(
   app: FastifyInstance,
   dependencies: MitigationRouteDependencies,
 ): void {
-  const { service, currentUser, commands, peers, reconciler } = dependencies;
+  const { service, currentUser, commands, peers, reconciler, autoShadow, autoEnablement } =
+    dependencies;
 
   // Leitura: mesma exposicao do BGP (protegida pelo hook global de autenticacao).
   app.get('/api/bgp/mitigation/health', async () => service.health());
+
+  // SOMBRA do AUTO (somente leitura): decisoes por perfil + direcao efetiva.
+  if (autoShadow) {
+    app.get('/api/bgp/mitigation/auto/shadow', async () => autoShadow());
+  }
 
   app.get('/api/bgp/mitigation/profiles', async () => service.listProfiles());
 
@@ -266,12 +303,59 @@ return service.discover(deviceIds, { refreshInterfaceMetadata: true });
     if (!user) return undefined;
     const { id } = profileParams.parse(request.params);
     const payload = patchSchema.parse(request.body ?? {});
+    // Promocao para AUTO em escopo sensivel: exige confirmacao EXPLICITA (ou
+    // allowlist no ENV). Fail-closed e ANTES da escrita - o motor continua com
+    // os gates proprios (F1-F4) e a contencao de familia.
+    if (payload.mode === 'AUTO' && autoEnablement) {
+      const profiles = await service.listProfiles();
+      const target = profiles.find((profile) => profile.id === id) ?? null;
+      if (target) {
+        const approvedShared = autoEnablement.sharedPolicyAllowedProfileIds.includes(id);
+        if (
+          target.autoBlockedReason === 'SHARED_POLICY' &&
+          !approvedShared &&
+          payload.acknowledgeSharedPolicy !== true
+        ) {
+          return reply.code(409).send({
+            code: 'SHARED_POLICY',
+            message:
+              'Policy compartilhada com outro target: promover para AUTO exige confirmacao explicita (acknowledgeSharedPolicy) ou allowlist no ENV.',
+          });
+        }
+        const sibling = profiles.find(
+          (candidate) =>
+            candidate.id !== id &&
+            candidate.deviceId === target.deviceId &&
+            candidate.interfaceId === target.interfaceId &&
+            candidate.addressFamily !== target.addressFamily &&
+            candidate.mode === 'AUTO' &&
+            (candidate.autoTrafficDirection ??
+              autoEnablement.envDirections?.[candidate.id] ??
+              null) !== null,
+        );
+        if (sibling) {
+          const approvedPair = autoEnablement.approvedFamilyPairs.some(
+            (pair) => pair.includes(id) && pair.includes(sibling.id),
+          );
+          if (!approvedPair && payload.acknowledgeFamilyContention !== true) {
+            return reply.code(409).send({
+              code: 'FAMILY_CONTENTION',
+              message:
+                'IPv4 e IPv6 desta interface compartilham os mesmos contadores SNMP: AUTO simultaneo exige aprovacao explicita do par (acknowledgeFamilyContention ou MITIGATION_AUTO_FAMILY_PAIRS_ALLOWED).',
+            });
+          }
+        }
+      }
+    }
     const updated = await service.patchProfile(id, {
       ...(payload.bandwidthOverrideBps === undefined
         ? {}
         : { bandwidthOverrideBps: payload.bandwidthOverrideBps }),
       ...(payload.enabled === undefined ? {} : { enabled: payload.enabled }),
       ...(payload.mode === undefined ? {} : { mode: payload.mode }),
+      ...(payload.autoTrafficDirection === undefined
+        ? {}
+        : { autoTrafficDirection: payload.autoTrafficDirection ?? null }),
     });
     if (!updated) return reply.code(404).send({ message: 'Perfil de mitigacao nao encontrado' });
     return updated;

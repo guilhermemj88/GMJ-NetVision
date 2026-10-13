@@ -32,6 +32,15 @@ export type MitigationState =
 
 export type BandwidthSource = 'DESCRIPTION' | 'MANUAL' | 'UNKNOWN';
 
+/**
+ * Direcao de telemetria do motor AUTO POR PERFIL. Sem valor configurado a
+ * leitura e tratada como indisponivel (fail-closed); nunca ha default implicito.
+ */
+export type MitigationAutoTrafficDirection = 'RX' | 'TX';
+
+/** De onde veio a direcao efetiva (auditoria do modo sombra). */
+export type MitigationAutoDirectionSource = 'PROFILE' | 'ENV';
+
 /** Motivo da exclusao administrativa (por target/peer, nunca por policy). */
 export type MitigationExclusionReason = 'UPLINK' | 'TRANSIT' | 'IX' | 'BACKBONE' | 'MANUAL';
 

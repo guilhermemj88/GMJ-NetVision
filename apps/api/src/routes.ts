@@ -136,6 +136,7 @@ import { MitigationPolicyReconciler } from './infrastructure/bgp/mitigation/miti
 import { PrismaInterfaceTrafficReader } from './infrastructure/bgp/mitigation/prisma-interface-traffic-reader';
 import { MitigationAutoEngine } from './worker/mitigation/mitigation-auto-engine';
 import { MitigationAutoRuntime } from './worker/mitigation/mitigation-auto-runtime';
+import { buildAutoShadowReport } from './worker/mitigation/mitigation-auto-shadow';
 import { InterfaceTrafficSource } from './worker/mitigation/mitigation-traffic-source';
 import type { MitigationState } from './infrastructure/bgp/mitigation/mitigation-types';
 import { InMemoryMediaRepository } from './infrastructure/media/in-memory-media-repository';
@@ -775,6 +776,39 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   }
   const autoMaxAgeRaw = Number(process.env.MITIGATION_AUTO_TRAFFIC_MAX_AGE_SECONDS ?? '');
   const autoMaxAgeMs = (Number.isFinite(autoMaxAgeRaw) && autoMaxAgeRaw > 0 ? autoMaxAgeRaw : 120) * 1000;
+
+  // ---- AUTO-ALL-PREP-1: direcao POR PERFIL (persistida) + gates de config ---
+  // A direcao gravada no perfil vence o ENV legado. Sem nenhum dos dois a
+  // direcao continua INDEFINIDA: a telemetria e tratada como indisponivel
+  // (fail-closed) e nunca existe default implicito do tipo "tx para todos".
+  const resolvedDirections = new Map<string, { direction: 'rx' | 'tx'; source: 'PROFILE' | 'ENV' }>();
+  const resolveAutoDirection = (
+    profileId: string,
+    stored: 'RX' | 'TX' | null | undefined,
+  ): { direction: 'rx' | 'tx'; source: 'PROFILE' | 'ENV' } | null => {
+    if (stored === 'RX') return { direction: 'rx', source: 'PROFILE' };
+    if (stored === 'TX') return { direction: 'tx', source: 'PROFILE' };
+    const envDirection = autoDirections[profileId];
+    return envDirection ? { direction: envDirection, source: 'ENV' } : null;
+  };
+  // Guarda OPCIONAL para automacao em policy compartilhada. Desligada por
+  // padrao: preserva exatamente o comportamento do AUTO atual (BHNET-CEASA,
+  // que compartilha a policy com outro cliente). Ligada, exige allowlist.
+  const sharedPolicyGuardEnabled = /^(1|true|yes|on)$/i.test(
+    process.env.MITIGATION_AUTO_SHARED_POLICY_GUARD?.trim() ?? '',
+  );
+  const sharedPolicyAllowedProfileIds = (process.env.MITIGATION_AUTO_SHARED_POLICY_ALLOWED ?? '')
+    .split(',')
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  // Pares IPv4/IPv6 do MESMO escopo aprovados explicitamente para AUTO
+  // simultaneo (`idA:idB,idC:idD`). Ausente = nenhum par aprovado.
+  const approvedFamilyPairs: [string, string][] = [];
+  for (const entry of (process.env.MITIGATION_AUTO_FAMILY_PAIRS_ALLOWED ?? '').split(',')) {
+    const [a, b] = entry.split(':').map((part) => part.trim());
+    if (a && b && a !== b) approvedFamilyPairs.push([a, b]);
+  }
+
   const mitigationAutoEngine = new MitigationAutoEngine({
     globalMode: mitigationEngineConfig.mode,
     execution: {
@@ -793,6 +827,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
           .filter((dto) => dto.persisted)
           .map((dto) => {
             const record = byId.get(dto.id);
+            // Direcao efetiva resolvida NO INICIO DO TICK: e a mesma fonte
+            // consumida pela telemetria logo abaixo (sem segunda leitura).
+            const resolved = resolveAutoDirection(dto.id, record?.autoTrafficDirection ?? null);
+            if (resolved) resolvedDirections.set(dto.id, resolved);
+            else resolvedDirections.delete(dto.id);
             return {
               profileId: dto.id,
               deviceId: dto.deviceId,
@@ -800,6 +839,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
               interfaceId: dto.interfaceId,
               customer: dto.customer,
               mode: dto.mode,
+              addressFamily: dto.addressFamily,
+              direction: resolved?.direction ?? null,
+              directionSource: resolved?.source ?? null,
+              sharedPolicyAutomationBlocked: dto.autoBlockedReason === 'SHARED_POLICY',
               readiness: dto.readiness,
               snapshotAvailable: dto.snapshotAvailable,
               prefixStatus: dto.prefixStatus,
@@ -822,6 +865,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     },
     traffic: new InterfaceTrafficSource(new PrismaInterfaceTrafficReader(prismaClient), {
       directionByProfile: autoDirections,
+      // A direcao PERSISTIDA (resolvida no inicio do tick) tem precedencia; sem
+      // ela, o ENV legado continua valendo e, sem ENV, a leitura fica
+      // indisponivel (fail-closed).
+      resolveDirection: (target) => resolvedDirections.get(target.profileId)?.direction ?? null,
       maxAgeMs: autoMaxAgeMs,
     }),
     exclusions: {
@@ -834,6 +881,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       },
     },
     commands: { execute: (input) => mitigationCommands.execute(input) },
+    sharedPolicyGuard: {
+      enabled: sharedPolicyGuardEnabled,
+      allowedProfileIds: sharedPolicyAllowedProfileIds,
+    },
+    approvedFamilyPairs,
     // Decisao normal repetida NAO vira linha INFO: transicoes de estado/motivo,
     // operacoes reais e falhas continuam no INFO; o detalhe por tick fica no
     // DEBUG e as decisoes suprimidas saem no resumo periodico.
@@ -900,6 +952,25 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     peers: bgpRepository,
     reconciler: mitigationReconciler,
     currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
+    // Relatorio de SOMBRA do AUTO (somente leitura): decisoes por perfil +
+    // direcao efetiva, sem qualquer escrita no equipamento.
+    autoShadow: async () => {
+      const [profiles, status] = await Promise.all([
+        mitigationService.listProfiles(),
+        Promise.resolve(autoRuntimeRef?.getStatus() ?? null),
+      ]);
+      return buildAutoShadowReport({
+        generatedAt: new Date().toISOString(),
+        profiles,
+        runtime: status,
+      });
+    },
+    autoEnablement: {
+      sharedPolicyGuardEnabled,
+      sharedPolicyAllowedProfileIds,
+      envDirections: autoDirections,
+      approvedFamilyPairs,
+    },
   });
   registerMediaRoutes(app, {
     media: mediaService,

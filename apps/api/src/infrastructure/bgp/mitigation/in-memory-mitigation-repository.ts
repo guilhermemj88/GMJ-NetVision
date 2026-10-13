@@ -97,6 +97,8 @@ export class InMemoryMitigationRepository implements MitigationRepository {
         recoverySamples: input.recoverySamples ?? existing.recoverySamples,
         checkIntervalSeconds: input.checkIntervalSeconds ?? existing.checkIntervalSeconds,
         mitigationRt: input.mitigationRt ?? existing.mitigationRt,
+        // A direcao do AUTO e decisao do OPERADOR: o discovery nunca mexe.
+        autoTrafficDirection: existing.autoTrafficDirection,
         // A exclusao administrativa NUNCA e sobrescrita pelo discovery.
         mitigationExcluded: input.mitigationExcluded ?? existing.mitigationExcluded,
         mitigationExclusionReason:
@@ -131,6 +133,7 @@ export class InMemoryMitigationRepository implements MitigationRepository {
       recoverySamples: input.recoverySamples ?? 12,
       checkIntervalSeconds: input.checkIntervalSeconds ?? 5,
       mitigationRt: input.mitigationRt ?? '268568:660',
+      autoTrafficDirection: null,
       mitigationExcluded: input.mitigationExcluded ?? false,
       mitigationExclusionReason: input.mitigationExclusionReason ?? null,
       mitigationExclusionNote: input.mitigationExclusionNote ?? null,
@@ -219,6 +222,16 @@ export class InMemoryMitigationRepository implements MitigationRepository {
   ): Promise<void> {
     const profile = this.store.profiles.get(id);
     if (profile) profile.bandwidthOverrideBps = bandwidthOverrideBps;
+  }
+
+  async setProfileAutoTrafficDirection(
+    id: string,
+    direction: MitigationProfileRecord['autoTrafficDirection'],
+  ): Promise<void> {
+    const profile = this.store.profiles.get(id);
+    if (!profile) return;
+    profile.autoTrafficDirection = direction;
+    profile.updatedAt = new Date();
   }
 
   async replaceProfilePeers(

@@ -5,6 +5,7 @@
 
 import type {
   BgpMitigationDiscoveryResponseDto,
+  MitigationAutoShadowReportDto,
   MitigationExclusionReason,
   BgpMitigationEventDto,
   BgpMitigationHealthDto,
@@ -24,6 +25,15 @@ export function getMitigationHealth(): Promise<BgpMitigationHealthDto> {
 
 export function getMitigationProfiles(): Promise<BgpMitigationProfileDto[]> {
   return request<BgpMitigationProfileDto[]>('/api/bgp/mitigation/profiles');
+}
+
+/**
+ * AUTO-ALL-PREP-1: relatorio de SOMBRA do motor AUTO (somente leitura).
+ * Traz, por perfil: direcao efetiva, trafego/threshold, amostras, ultima
+ * decisao e se a entrega de alerta e apenas LOG (nunca n8n hoje).
+ */
+export function getAutoShadowReport(): Promise<MitigationAutoShadowReportDto> {
+  return request<MitigationAutoShadowReportDto>('/api/bgp/mitigation/auto/shadow');
 }
 
 export function getMitigationProfile(id: string): Promise<BgpMitigationProfileDto> {

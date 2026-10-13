@@ -302,6 +302,15 @@ enum BgpMitigationBandwidthSource {
   UNKNOWN
 }
 
+/**
+ * Direcao de telemetria do motor AUTO, POR PERFIL. Sem valor = nao configurada
+ * e o motor fica fail-closed (TELEMETRY_UNAVAILABLE) para esse target.
+ */
+enum BgpMitigationTrafficDirection {
+  RX
+  TX
+}
+
 enum BgpMitigationExclusionReason {
   UPLINK
   TRANSIT
@@ -694,6 +703,12 @@ model BgpMitigationProfile {
   prefixLimit          Int                          @default(100)
   mode                 BgpMitigationProfileMode     @default(ALERT_ONLY)
   enabled              Boolean                      @default(true)
+  /**
+   * Direcao de telemetria do AUTO para ESTE perfil (RX/TX). `null` = nao
+   * configurada: o motor trata a leitura como indisponivel (fail-closed).
+   * O ENV `MITIGATION_AUTO_TRAFFIC_DIRECTIONS` continua valendo como fallback.
+   */
+  autoTrafficDirection BgpMitigationTrafficDirection?
   triggerPercent       Float                        @default(90)
   recoveryPercent      Float                        @default(70)
   triggerSamples       Int                          @default(3)

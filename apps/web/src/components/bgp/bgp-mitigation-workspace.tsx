@@ -6,6 +6,9 @@ import type {
   BgpMitigationDiscoveryResponseDto,
   BgpMitigationProfileDto,
   BgpMitigationSimulationDto,
+  MitigationAutoDecisionDto,
+  MitigationAutoShadowEntryDto,
+  MitigationAutoTrafficDirection,
   MitigationExclusionReason,
   MitigationRuntimeState,
 } from '@gmj/shared';
@@ -16,6 +19,7 @@ import { getMediaSummary } from '@/lib/media-api';
 import { useMapStore } from '@/store/map-store';
 import {
   discoverMitigationProfiles,
+  getAutoShadowReport,
   getMitigationHealth,
   getMitigationProfile,
   getMitigationProfiles,
@@ -171,6 +175,16 @@ export function BgpMitigationWorkspace() {
     queryKey: ['mitigation', 'profiles'],
     queryFn: getMitigationProfiles,
   });
+  /**
+   * AUTO-ALL-PREP-1: relatorio de SOMBRA do motor AUTO (somente leitura).
+   * Falha aqui nunca quebra o painel: os indicadores de sombra mostram "—".
+   */
+  const autoShadow = useQuery({
+    queryKey: ['mitigation', 'auto-shadow'],
+    queryFn: getAutoShadowReport,
+    retry: false,
+    refetchInterval: 60_000,
+  });
   const hosts = useQuery({ queryKey: ['hosts'], queryFn: () => getHosts() });
 
   const rows = useMemo(
@@ -181,6 +195,20 @@ export function BgpMitigationWorkspace() {
     () => rows.find((row) => row.id === selectedId) ?? null,
     [rows, selectedId],
   );
+  /** Sombra e decisao por perfil (AUTO-ALL-PREP-1): leitura pura do motor. */
+  const shadowEntries = useMemo(() => {
+    const map = new Map<string, MitigationAutoShadowEntryDto>();
+    for (const entry of autoShadow.data?.entries ?? []) map.set(entry.profileId, entry);
+    return map;
+  }, [autoShadow.data]);
+  const autoDecisions = useMemo(() => {
+    const map = new Map<string, MitigationAutoDecisionDto>();
+    for (const decision of health.data?.autoEngine?.decisions ?? []) {
+      map.set(decision.profileId, decision);
+    }
+    return map;
+  }, [health.data]);
+  const shadowSummary = autoShadow.data?.summary ?? null;
   const hydrationState = health.data?.snapshotHydration?.state ?? null;
   const snapshotBadgeOf = (row: BgpMitigationProfileDto) =>
     mitigationSnapshotBadge(row.snapshotAvailable, hydrationState);
@@ -201,8 +229,32 @@ export function BgpMitigationWorkspace() {
       setSimulation(null);
       setSelectedId(null);
       void queryClient.invalidateQueries({ queryKey: ['mitigation', 'profiles'] });
+      void queryClient.invalidateQueries({ queryKey: ['mitigation', 'auto-shadow'] });
     },
     onError: (error) => setNotice(errorMessage(error, 'Falha na descoberta de clientes')),
+  });
+
+  /**
+   * Direcao de telemetria do AUTO POR PERFIL (persistida). `null` limpa a
+   * configuracao e devolve o target ao estado fail-closed.
+   */
+  const directionMutation = useMutation({
+    mutationFn: (input: { id: string; direction: MitigationAutoTrafficDirection | null }) =>
+      patchMitigationProfile(input.id, { autoTrafficDirection: input.direction }),
+    onSuccess: async (updated) => {
+      setNotice('Direção de telemetria atualizada.');
+      setDiscovery((current) =>
+        current
+          ? {
+              ...current,
+              profiles: current.profiles.map((row) => (row.id === updated.id ? updated : row)),
+            }
+          : current,
+      );
+      await queryClient.invalidateQueries({ queryKey: ['mitigation', 'profiles'] });
+      await queryClient.invalidateQueries({ queryKey: ['mitigation', 'auto-shadow'] });
+    },
+    onError: (error) => setNotice(errorMessage(error, 'Falha ao salvar a direção de telemetria')),
   });
 
   const simulateMutation = useMutation({
@@ -478,6 +530,24 @@ export function BgpMitigationWorkspace() {
           title={countsHint ?? 'Perfis com runtime FAILED ou RECONCILIATION_REQUIRED.'}
         />
         <MetaFact
+          label="em sombra (sem escrita)"
+          value={shadowSummary ? shadowSummary.shadowActive : '—'}
+          tone={shadowSummary && shadowSummary.shadowActive > 0 ? 'info' : 'neutral'}
+          title="Perfis ALERT_ONLY com direção configurada: avaliados pelo motor a cada tick, sem qualquer escrita no equipamento."
+        />
+        <MetaFact
+          label="aguardando direção"
+          value={shadowSummary ? shadowSummary.awaitingDirection : '—'}
+          tone={shadowSummary && shadowSummary.awaitingDirection > 0 ? 'warning' : 'neutral'}
+          title="Perfis ALERT_ONLY sem direção de telemetria: o motor fica fail-closed (TELEMETRY_UNAVAILABLE) até o operador configurar RX/TX."
+        />
+        <MetaFact
+          label="bloqueados no motor"
+          value={shadowSummary ? shadowSummary.blocked : '—'}
+          tone={shadowSummary && shadowSummary.blocked > 0 ? 'warning' : 'neutral'}
+          title="Perfis com decisão BLOCKED no último tick do motor (motivo detalhado na coluna DECISÃO)."
+        />
+        <MetaFact
           label="perfis AUTO / ALERT_ONLY / OFF"
           value={
             profileCounts
@@ -704,9 +774,11 @@ export function BgpMitigationWorkspace() {
                 <th scope="col">Cliente</th>
                 <th scope="col">Equipamento</th>
                 <th scope="col">Interface</th>
+                <th scope="col">Direção</th>
                 <th scope="col">Banda</th>
                 <th scope="col">Tráfego</th>
                 <th scope="col">Utilização</th>
+                <th scope="col">Decisão</th>
                 <th scope="col">Policy</th>
                 <th scope="col">Peers</th>
                 <th scope="col">Prefixos</th>
@@ -717,13 +789,20 @@ export function BgpMitigationWorkspace() {
             <tbody>
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={14} className="mitigation-table__empty">
+                  <td colSpan={16} className="mitigation-table__empty">
                     Nenhum perfil neste filtro.
                   </td>
                 </tr>
               ) : null}
               {filteredRows.map((row) => {
                 const badge = snapshotBadgeOf(row);
+                const shadow = shadowEntries.get(row.id) ?? null;
+                const decision = autoDecisions.get(row.id) ?? null;
+                const direction = directionOf(row, shadow);
+                const utilization = utilizationPercent(
+                  row.effectiveBandwidthBps,
+                  shadow?.trafficBps ?? decision?.trafficBps ?? null,
+                );
                 return (
                 <tr
                   key={row.id}
@@ -763,9 +842,15 @@ export function BgpMitigationWorkspace() {
                   </td>
                   <td>{row.deviceName}</td>
                   <td>{row.interfaceName ?? '—'}</td>
+                  <td title={directionTitleOf(row, shadow)}>{direction ?? '—'}</td>
                   <td>{formatBandwidthBps(row.effectiveBandwidthBps)}</td>
-                  <td>—</td>
-                  <td>—</td>
+                  <td>{formatBandwidthBps(shadow?.trafficBps ?? decision?.trafficBps ?? null)}</td>
+                  <td>{formatPercent(utilization)}</td>
+                  <td title={decision?.detail ?? decision?.reason ?? ''}>
+                    {decision
+                      ? `${decision.outcome}${decision.reason ? ` · ${decision.reason}` : ''}`
+                      : '—'}
+                  </td>
                   <td>{row.policyName ?? 'não encontrada'}</td>
                   <td>{row.peerAddresses.length}</td>
                   <td>
@@ -852,6 +937,13 @@ export function BgpMitigationWorkspace() {
             </Button>
           </div>
 
+          <DirectionEditor
+            key={selected.id}
+            row={selected}
+            saving={directionMutation.isPending}
+            onSave={(direction) => directionMutation.mutate({ id: selected.id, direction })}
+          />
+
           <div className="mitigation-detail__block">
             <h4>BGP</h4>
             <p>Policy IN: {selected.policyName ?? 'não encontrada'}</p>
@@ -868,7 +960,10 @@ export function BgpMitigationWorkspace() {
                     </li>
                   ))}
                 </ul>
-                <small>Aviso, não bloqueio: a automação continua liberada.</small>
+                <small>
+                  Aviso, não bloqueio: o motor continua liberado, mas promover um destes
+                  perfis para AUTO exige confirmação explícita na API (SHARED_POLICY).
+                </small>
               </div>
             )}
             <p>Peer principal: {selected.primaryPeerAddress ?? '—'}</p>
@@ -1103,6 +1198,95 @@ export function BgpMitigationWorkspace() {
         />
       )}
     </section>
+  );
+}
+
+/**
+ * AUTO-ALL-PREP-1: direcao e utilizacao POR PERFIL na tabela.
+ *
+ * A direcao efetiva vem do relatorio de sombra (motor) e, sem ele, da
+ * configuracao persistida no perfil. `null` = nao configurada (fail-closed).
+ */
+function directionOf(
+  row: BgpMitigationProfileDto,
+  shadow: MitigationAutoShadowEntryDto | null,
+): MitigationAutoTrafficDirection | null {
+  return shadow?.direction ?? row.autoTrafficDirection ?? null;
+}
+
+function directionTitleOf(
+  row: BgpMitigationProfileDto,
+  shadow: MitigationAutoShadowEntryDto | null,
+): string {
+  const direction = directionOf(row, shadow);
+  if (direction === null) {
+    return 'Direção não configurada: o motor AUTO fica fail-closed (TELEMETRY_UNAVAILABLE) para este perfil.';
+  }
+  const source = shadow?.directionSource ?? 'PROFILE';
+  return source === 'ENV'
+    ? `Direção ${direction} vinda do ENV legado (fallback). O valor persistido no perfil tem precedência.`
+    : `Direção ${direction} persistida no perfil (decisão do operador).`;
+}
+
+function utilizationPercent(
+  bandwidthBps: string | null | undefined,
+  trafficBps: string | null | undefined,
+): number | null {
+  if (!bandwidthBps || !trafficBps) return null;
+  const bandwidth = Number(bandwidthBps);
+  const traffic = Number(trafficBps);
+  if (!Number.isFinite(bandwidth) || !Number.isFinite(traffic) || bandwidth <= 0) return null;
+  return (traffic / bandwidth) * 100;
+}
+
+/**
+ * AUTO-ALL-PREP-1: direcao de telemetria POR PERFIL (RX/TX/nao configurada).
+ * Nunca existe default implicito: sem direcao o motor fica fail-closed.
+ */
+function DirectionEditor({
+  row,
+  saving,
+  onSave,
+}: {
+  row: BgpMitigationProfileDto;
+  saving: boolean;
+  onSave: (direction: MitigationAutoTrafficDirection | null) => void;
+}) {
+  const [draft, setDraft] = useState<string>(row.autoTrafficDirection ?? 'NONE');
+  return (
+    <div className="mitigation-detail__block">
+      <h4>DIREÇÃO DE TELEMETRIA (AUTO)</h4>
+      <p>
+        Persistida:{' '}
+        {row.autoTrafficDirection === null || row.autoTrafficDirection === undefined
+          ? 'não configurada (motor fail-closed para este perfil)'
+          : row.autoTrafficDirection}
+      </p>
+      <label className="mitigation-toolbar__field">
+        <span>Direção</span>
+        <select
+          aria-label="Direção de telemetria"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+        >
+          <option value="NONE">não configurada</option>
+          <option value="RX">RX (recebido do cliente)</option>
+          <option value="TX">TX (enviado ao cliente)</option>
+        </select>
+      </label>
+      <Button
+        compact
+        variant="secondary"
+        disabled={saving}
+        onClick={() => onSave(draft === 'NONE' ? null : (draft as MitigationAutoTrafficDirection))}
+      >
+        APLICAR DIREÇÃO
+      </Button>
+      <small>
+        Com a direção configurada e o perfil em ALERT_ONLY, o motor avalia em modo SOMBRA
+        (sem escrita). A promoção para AUTO exige confirmação explícita em escopo sensível.
+      </small>
+    </div>
   );
 }
 

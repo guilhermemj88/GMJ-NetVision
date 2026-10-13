@@ -9,12 +9,14 @@ import type {
   BgpMitigationHealthDto,
   BgpMitigationProfileDto,
   BgpMitigationSimulationDto,
+  MitigationAutoShadowReportDto,
 } from '@gmj/shared';
 
 const api = vi.hoisted(() => ({
   getMitigationHealth: vi.fn(),
   getMitigationProfiles: vi.fn(),
   getMitigationProfile: vi.fn(),
+  getAutoShadowReport: vi.fn(),
   runMitigationCommand: vi.fn(),
   discoverMitigationProfiles: vi.fn(),
   simulateMitigationProfile: vi.fn(),
@@ -216,6 +218,34 @@ const simulation: BgpMitigationSimulationDto = {
 let container: HTMLDivElement;
 let root: Root;
 
+/**
+ * AUTO-ALL-PREP-1: relatorio de sombra minimo (default dos testes).
+ * Os testes de UI sobrescrevem summary/entries conforme o cenario.
+ */
+const shadowReport: MitigationAutoShadowReportDto = {
+  generatedAt: '2026-01-01T12:00:00.000Z',
+  engine: {
+    state: 'RUNNING',
+    evaluationIntervalMs: 5000,
+    lastTickAt: '2026-01-01T12:00:00.000Z',
+    lastError: null,
+  },
+  summary: {
+    total: 0,
+    auto: 0,
+    alertOnly: 0,
+    disabled: 0,
+    directionConfigured: 0,
+    awaitingDirection: 0,
+    shadowActive: 0,
+    blocked: 0,
+    wouldActivate: 0,
+    mitigated: 0,
+    inProgress: 0,
+  },
+  entries: [],
+};
+
 async function render(element: ReactElement): Promise<void> {
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -364,6 +394,7 @@ beforeEach(() => {
   api.getMitigationHealth.mockResolvedValue(health);
   api.getMitigationProfiles.mockResolvedValue([]);
   api.getMitigationProfile.mockResolvedValue(readyProfile);
+  api.getAutoShadowReport.mockResolvedValue(shadowReport);
   api.discoverMitigationProfiles.mockResolvedValue(discovery);
   api.simulateMitigationProfile.mockResolvedValue(simulation);
   api.patchMitigationProfile.mockResolvedValue({ ...readyProfile, bandwidthOverrideBps: '10000000000' });
@@ -1351,5 +1382,174 @@ describe('UI-AUTO-1: clareza operacional do painel de mitigacao', () => {
     expect(text()).toContain('mitigação automática armada');
     expect(text()).not.toContain('nenhuma ação automática');
     expect(text()).not.toContain('clientes descobertos');
+  });
+});
+
+describe('AUTO-ALL-PREP-1: sombra, direção e decisão por perfil', () => {
+  function fact(label: string): string {
+    const element = [...container.querySelectorAll('.nv-fact')].find((node) =>
+      (node.textContent ?? '').includes(label),
+    );
+    return element?.textContent ?? '';
+  }
+
+  async function setDirectionSelect(value: string): Promise<void> {
+    const select = find('select[aria-label="Direção de telemetria"]') as HTMLSelectElement;
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(
+        window.HTMLSelectElement.prototype,
+        'value',
+      )?.set;
+      setter?.call(select, value);
+      select.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+    await flush();
+  }
+
+  function rowOf(customer: string): HTMLTableRowElement {
+    const row = [...container.querySelectorAll('tbody tr')].find((candidate) =>
+      (candidate.textContent ?? '').includes(customer),
+    );
+    if (!row) throw new Error(`linha nao encontrada: ${customer}`);
+    return row as HTMLTableRowElement;
+  }
+
+  it('1) indicadores de sombra vêm do relatório do motor (nunca inventados)', async () => {
+    api.getMitigationProfiles.mockResolvedValue([readyProfile]);
+    api.getAutoShadowReport.mockResolvedValue({
+      ...shadowReport,
+      summary: {
+        ...shadowReport.summary,
+        total: 2,
+        shadowActive: 1,
+        awaitingDirection: 1,
+        blocked: 3,
+      },
+    });
+    await render(createElement(BgpMitigationWorkspace));
+    await waitFor(() => fact('em sombra (sem escrita)').includes('1'), 'sombra');
+
+    expect(fact('em sombra (sem escrita)')).toContain('1');
+    expect(fact('aguardando direção')).toContain('1');
+    expect(fact('bloqueados no motor')).toContain('3');
+  });
+
+  it('2) sem relatório de sombra os indicadores mostram — (sem inventar zero)', async () => {
+    api.getAutoShadowReport.mockRejectedValue(new Error('endpoint indisponivel'));
+    await render(createElement(BgpMitigationWorkspace));
+    await waitFor(() => fact('em sombra (sem escrita)').includes('—'), 'sombra indisponivel');
+
+    expect(fact('em sombra (sem escrita)')).toContain('—');
+    expect(fact('aguardando direção')).toContain('—');
+    expect(fact('bloqueados no motor')).toContain('—');
+  });
+
+  it('3) coluna DIREÇÃO mostra a direção efetiva (sombra) e — quando não configurada', async () => {
+    const withDirection = { ...readyProfile, autoTrafficDirection: 'TX' as const };
+    const withoutDirection = {
+      ...readyProfile,
+      id: 'profile-2',
+      customer: 'SEM_DIRECAO',
+      autoTrafficDirection: null,
+    };
+    api.getMitigationProfiles.mockResolvedValue([withDirection, withoutDirection]);
+    api.getAutoShadowReport.mockResolvedValue({
+      ...shadowReport,
+      entries: [
+        {
+          profileId: withDirection.id,
+          customer: withDirection.customer,
+          policyName: withDirection.policyName,
+          interfaceId: withDirection.interfaceId,
+          interfaceName: withDirection.interfaceName,
+          addressFamily: 'IPV4',
+          mode: 'ALERT_ONLY',
+          enabled: true,
+          direction: 'RX',
+          directionSource: 'PROFILE',
+          effectiveBandwidthBps: withDirection.effectiveBandwidthBps,
+          bandwidthSource: 'DESCRIPTION',
+          thresholdBps: '36000000000',
+          recoveryThresholdBps: '28000000000',
+          trafficBps: '18000000000',
+          samplesOver: 1,
+          requiredSamples: 3,
+          samplesBelow: 0,
+          requiredRecoverySamples: 12,
+          wouldActivate: false,
+          outcome: 'NO_ACTION',
+          reason: 'THRESHOLD_NOT_EXCEEDED',
+          blockedReason: null,
+          readiness: 'READY',
+          snapshotAvailable: true,
+          runtimeState: 'NORMAL',
+          sharedPolicy: false,
+          sharedPolicyTargets: [],
+          sharedPolicyAutomationBlocked: false,
+          notificationDelivery: 'LOG_ONLY',
+          decisionAt: '2026-01-01T12:00:00.000Z',
+        },
+      ],
+    });
+    await render(createElement(BgpMitigationWorkspace));
+    await waitFor(() => text().includes('SEM_DIRECAO'), 'linhas');
+
+    expect(rowOf('SEM_DIRECAO').textContent).toContain('—');
+    expect(rowOf('HORIZONTE_IP').textContent).toContain('RX');
+    expect(rowOf('HORIZONTE_IP').textContent).toContain('45,0%');
+  });
+
+  it('4) DETALHES define a direção por perfil e envia o PATCH administrativo', async () => {
+    const withDirection = { ...readyProfile, autoTrafficDirection: 'TX' as const };
+    api.getMitigationProfiles.mockResolvedValue([withDirection]);
+    api.patchMitigationProfile.mockResolvedValue({ ...withDirection, autoTrafficDirection: 'RX' });
+    await render(createElement(BgpMitigationWorkspace));
+    await openDetails('HORIZONTE_IP');
+
+    expect(text()).toContain('DIREÇÃO DE TELEMETRIA');
+    await setDirectionSelect('RX');
+    await clickByText('APLICAR DIREÇÃO');
+
+    expect(api.patchMitigationProfile).toHaveBeenCalledWith(withDirection.id, {
+      autoTrafficDirection: 'RX',
+    });
+  });
+
+  it('5) coluna DECISÃO mostra outcome/motivo por perfil vindos do motor', async () => {
+    api.getMitigationProfiles.mockResolvedValue([readyProfile]);
+    api.getMitigationHealth.mockResolvedValue({
+      ...health,
+      autoEngine: {
+        state: 'RUNNING',
+        evaluationIntervalMs: 5000,
+        startedAt: null,
+        lastTickAt: null,
+        lastSuccessfulTickAt: null,
+        lastError: null,
+        lastDecision: null,
+        decisions: [
+          {
+            at: '2026-01-01T12:00:00.000Z',
+            profileId: readyProfile.id,
+            deviceId: 'device-1',
+            customer: 'HORIZONTE_IP',
+            outcome: 'BLOCKED',
+            reason: 'TELEMETRY_UNAVAILABLE',
+            trafficBps: null,
+            thresholdBps: null,
+            runtimeState: 'NORMAL',
+            commandStatus: null,
+            verified: false,
+            detail: 'TELEMETRY_UNAVAILABLE',
+          },
+        ],
+        lastAutoActivateAt: null,
+        lastAutoActivateProfileId: null,
+      },
+    });
+    await render(createElement(BgpMitigationWorkspace));
+    await waitFor(() => text().includes('HORIZONTE_IP'), 'linhas');
+
+    expect(rowOf('HORIZONTE_IP').textContent).toContain('BLOCKED · TELEMETRY_UNAVAILABLE');
   });
 });
