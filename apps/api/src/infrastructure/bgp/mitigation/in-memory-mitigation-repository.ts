@@ -101,6 +101,8 @@ export class InMemoryMitigationRepository implements MitigationRepository {
         autoTrafficDirection: existing.autoTrafficDirection,
         // A excecao manual do AUTO tambem e do OPERADOR: nunca sobrescrita.
         autoModeExempt: existing.autoModeExempt,
+        // A proveniencia do AUTO e escrita APENAS pelo sweep/servico dedicado.
+        autoPromotedBySweep: existing.autoPromotedBySweep,
         // A exclusao administrativa NUNCA e sobrescrita pelo discovery.
         mitigationExcluded: input.mitigationExcluded ?? existing.mitigationExcluded,
         mitigationExclusionReason:
@@ -137,6 +139,7 @@ export class InMemoryMitigationRepository implements MitigationRepository {
       mitigationRt: input.mitigationRt ?? '268568:660',
       autoTrafficDirection: null,
       autoModeExempt: input.autoModeExempt ?? false,
+      autoPromotedBySweep: input.autoPromotedBySweep ?? false,
       mitigationExcluded: input.mitigationExcluded ?? false,
       mitigationExclusionReason: input.mitigationExclusionReason ?? null,
       mitigationExclusionNote: input.mitigationExclusionNote ?? null,
@@ -241,6 +244,13 @@ export class InMemoryMitigationRepository implements MitigationRepository {
     const profile = this.store.profiles.get(id);
     if (!profile) return;
     profile.autoModeExempt = exempt;
+    profile.updatedAt = new Date();
+  }
+
+  async setProfileAutoPromotedBySweep(id: string, promoted: boolean): Promise<void> {
+    const profile = this.store.profiles.get(id);
+    if (!profile) return;
+    profile.autoPromotedBySweep = promoted;
     profile.updatedAt = new Date();
   }
 

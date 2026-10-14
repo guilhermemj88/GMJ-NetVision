@@ -714,6 +714,13 @@ model BgpMitigationProfile {
    * perfil (diagnostico/teste/seguranca). O sweep nunca promove um exempt.
    */
   autoModeExempt       Boolean                      @default(false)
+  /**
+   * PROVENIENCIA do AUTO: `true` = o modo AUTO foi autorizado pelo sweep da
+   * DESCRIPTION (nao por intervencao manual). Permite ao motor pausar NOVAS
+   * ativacoes automaticas (`MITIGATION_AUTO_EXECUTION_ENABLED=0`) sem demover
+   * nada e sem afetar o AUTO configurado manualmente (ex.: BHNET-3043).
+   */
+  autoPromotedBySweep  Boolean                      @default(false)
   triggerPercent       Float                        @default(90)
   recoveryPercent      Float                        @default(70)
   triggerSamples       Int                          @default(3)

@@ -69,6 +69,13 @@ export type MitigationAutoBlockReason =
    * comando incompativel. Nao e bloqueio tecnico: e deteccao sem acao viavel.
    */
   | 'RX_MONITOR_ONLY'
+  /**
+   * AUTO-ALL: perfil promovido pelo sweep com o controle de execucao
+   * DESLIGADO (`MITIGATION_AUTO_EXECUTION_ENABLED=0`). O gatilho e reconhecido e
+   * registrado, mas NENHUMA nova ativacao automatica parte deste perfil. O AUTO
+   * manual (ex.: BHNET-3043) nao e afetado e mitigacoes ativas nao sao tocadas.
+   */
+  | 'AUTO_EXECUTION_DISABLED'
   | 'CONCURRENT_TICK';
 
 export interface MitigationAutoTargetState {
@@ -90,6 +97,11 @@ export interface MitigationAutoTargetState {
    */
   direction?: 'rx' | 'tx' | null;
   directionSource?: 'PROFILE' | 'ENV' | null;
+  /**
+   * AUTO-ALL: `true` = o modo AUTO veio do sweep da DESCRIPTION. Somente estes
+   * perfis respeitam o controle de execucao (pausa de NOVAS ativacoes).
+   */
+  autoPromotedBySweep?: boolean;
   /**
    * Policy compartilhada com outro target (config): quando a guarda de
    * automacao esta ligada, o target AUTO so passa se estiver na allowlist.
@@ -142,6 +154,8 @@ export interface MitigationAutoDecision {
   /** Direcao EFETIVA e origem usadas nesta avaliacao. */
   direction?: 'rx' | 'tx' | null;
   directionSource?: 'PROFILE' | 'ENV' | null;
+  /** AUTO-ALL: proveniencia do modo (sweep x manual) nesta avaliacao. */
+  promotedBySweep?: boolean;
   /**
    * DUAL: taxas lidas por direcao NESTA avaliacao (mesma amostra/identidade).
    * Ausente quando o alvo roda no caminho legado de direcao unica.
@@ -238,6 +252,13 @@ export interface MitigationAutoEngineDeps {
    * sem escrita. Desligado = caminho legado de direcao unica, inalterado.
    */
   dualDirections?: { enabled: boolean };
+  /**
+   * AUTO-ALL (flag `MITIGATION_AUTO_EXECUTION_ENABLED`): quando DESLIGADO, o
+   * motor nao inicia NOVAS ativacoes de perfis promovidos pelo sweep
+   * (`autoPromotedBySweep=true`). AUTO manual/legado (BHNET-3043) e mitigacoes
+   * ja ativas permanecem intactos; o REMOVE continua 100% manual.
+   */
+  executionControl?: { enabled: boolean };
 }
 
 interface DirectionCounters {
@@ -468,6 +489,7 @@ export class MitigationAutoEngine {
       addressFamily: target.addressFamily ?? ('IPV4' as const),
       direction: target.direction ?? null,
       directionSource: target.directionSource ?? null,
+      promotedBySweep: target.autoPromotedBySweep === true,
       sharedPolicyAutomationBlocked: target.sharedPolicyAutomationBlocked === true,
       requestId: null as string | null,
       commandStatus: null as string | null,
@@ -517,8 +539,8 @@ export class MitigationAutoEngine {
       return block('SHARED_POLICY_UNRESOLVED');
     }
 
-    // IPv4/IPv6 da MESMA interface compartilham contadores: AUTO simultaneo nas
-    // duas familias exige aprovacao explicita do par (fail-closed).
+    // IPv4/IPv6 da MESMA interface compartilham contadores: AUTO no alvo IPv6
+    // exige aprovacao explicita do par (fail-closed, independente de direcao).
     if (target.mode === 'AUTO') {
       const contendedBy = await this.detectFamilyContention(target);
       if (contendedBy !== null) {
@@ -526,7 +548,7 @@ export class MitigationAutoEngine {
           ...base,
           outcome: 'BLOCKED',
           reason: 'FAMILY_CONTENTION_UNRESOLVED',
-          detail: `Auto simultaneo IPv4/IPv6 no mesmo escopo sem aprovacao (par com ${contendedBy.join(', ')})`,
+          detail: `AUTO IPv6 sem aprovacao explicita de familia (${contendedBy.join(', ')})`,
         });
       }
     }
@@ -725,6 +747,14 @@ export class MitigationAutoEngine {
       return decided(null, 'ALERT_TRIGGERED');
     }
 
+    // AUTO-ALL: a flag de AUTORIZACAO (sweep) e a flag de EXECUCAO sao
+    // independentes. Com o controle de execucao desligado, um perfil promovido
+    // pelo sweep NAO inicia nova ativacao - o gatilho e registrado (WOULD_ACTIVATE)
+    // e nada e escrito. AUTO manual/legado nao e afetado e mitigacao ativa
+    // permanece intocada (REMOVE e 100% manual).
+    if (target.autoPromotedBySweep === true && this.deps.executionControl?.enabled !== true) {
+      return decided('AUTO_EXECUTION_DISABLED', 'WOULD_ACTIVATE');
+    }
     // Daqui para baixo o target esta apto: o que falta e a autorizacao de escrita.
     if (this.deps.globalMode !== 'AUTO') return decided('GLOBAL_MODE_SIMULATION_ONLY', 'WOULD_ACTIVATE');
     if (this.deps.execution.executor !== 'HUAWEI') return decided('EXECUTOR_NOT_HUAWEI', 'WOULD_ACTIVATE');
@@ -839,6 +869,7 @@ export class MitigationAutoEngine {
       requiredSamples: decision.requiredSamples,
       direction: decision.direction ?? null,
       directionSource: decision.directionSource ?? null,
+      promotedBySweep: decision.promotedBySweep ?? null,
       trafficByDirection: decision.trafficByDirection ?? null,
       triggeredDirections: decision.triggeredDirections ?? null,
       detail: decision.detail,
@@ -913,15 +944,16 @@ export class MitigationAutoEngine {
    * tratada como "nao sei": nunca autoriza o motor a sobrescrever estado.
    */
   /**
-   * IPv4 e IPv6 de UMA interface usam os MESMOS contadores SNMP: um unico pico
-   * alimenta os dois targets. Com as DUAS familias em AUTO (e direcao
-   * configurada) o mesmo ataque abriria duas ativacoes fisicas em policies
-   * diferentes - inclusive a familia que NAO foi atacada. Fail-closed: a
-   * familia secundaria (nao-IPv4) fica bloqueada ate o operador aprovar o par
-   * explicitamente (`MITIGATION_AUTO_FAMILY_PAIRS_ALLOWED`).
+   * CONTENCAO DE FAMILIA (camada de EXECUCAO, independente de direcao).
    *
-   * ALERT_ONLY (modo sombra) NAO e afetado: sem escrita, a sombra pode medir as
-   * duas familias enquanto o operador coleta evidencia.
+   * IPv4 e IPv6 de UMA interface usam os MESMOS contadores SNMP: um unico pico
+   * alimenta os dois targets. Em modo AUTO, o alvo IPv6 NUNCA inicia acao BGP
+   * sem aprovacao explicita do par, valendo para RX, TX, DUAL, direcao herdada
+   * do ENV, direcao persistida, ausencia de direcao, perfis promovidos pelo
+   * sweep e policy compartilhada.
+   *
+   * Aprovacao = `approvedFamilyPairs` contendo ESTE alvo e o irmao IPv4 da mesma
+   * interface. Sem irmao IPv4 tambem e fail-closed (nao ha par verificavel).
    */
   private async detectFamilyContention(
     target: MitigationAutoTargetState,
@@ -929,9 +961,7 @@ export class MitigationAutoEngine {
     const family = target.addressFamily ?? 'IPV4';
     if (family === 'IPV4') return null;
     const interfaceId = target.interfaceId;
-    if (interfaceId === null || target.direction === null || target.direction === undefined) {
-      return null;
-    }
+    if (interfaceId === null) return ['IF_NAO_IDENTIFICADA'];
     let siblings: MitigationAutoTargetState[];
     try {
       siblings = (await this.deps.targets.list()).filter(
@@ -940,15 +970,14 @@ export class MitigationAutoEngine {
           candidate.deviceId === target.deviceId &&
           candidate.interfaceId === interfaceId &&
           candidate.mode === 'AUTO' &&
-          (candidate.direction ?? null) !== null &&
           (candidate.addressFamily ?? 'IPV4') !== family,
       );
     } catch {
-      // Leitura indisponivel NAO bloqueia: o preflight fisico segue como ultima
-      // barreira (mesma semantica do F3).
-      return null;
+      // Leitura indisponivel NAO autoriza: sem saber os irmaos nao ha prova de
+      // seguranca de familia (fail-closed).
+      return ['IRMAOS_INDISPONIVEIS'];
     }
-    if (siblings.length === 0) return null;
+    if (siblings.length === 0) return ['SEM_VINCULO_IPV4'];
     const approved = this.deps.approvedFamilyPairs ?? [];
     const unapproved = siblings.filter(
       (sibling) =>

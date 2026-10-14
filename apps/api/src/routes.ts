@@ -827,6 +827,18 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     .filter((part): part is 'IPV4' | 'IPV6' => part === 'IPV4' || part === 'IPV6');
   const autoDescriptionFamilies: readonly ('IPV4' | 'IPV6')[] =
     configuredFamilies.length > 0 ? configuredFamilies : ['IPV4'];
+  // LOTES: quantas promocoes por execucao do sweep (default 5). `0` = sem
+  // limite. A graduacao e protecao de PACOTE de implantacao, nunca exigencia
+  // permanente de promocao manual (basta `MITIGATION_AUTO_DESCRIPTION_BATCH_SIZE=0`).
+  const configuredBatch = Number(process.env.MITIGATION_AUTO_DESCRIPTION_BATCH_SIZE ?? '');
+  const autoDescriptionBatchSize =
+    Number.isInteger(configuredBatch) && configuredBatch >= 0 ? configuredBatch : 5;
+  // EXECUCAO: flag DISTINTA da autorizacao. Desligada (default), perfis
+  // promovidos pelo sweep nao iniciam NOVAS ativacoes automaticas; o AUTO
+  // manual/legado (BHNET-3043) segue intacto e mitigacao ativa nunca e removida.
+  const autoExecutionEnabled = /^(1|true|yes|on)$/i.test(
+    process.env.MITIGATION_AUTO_EXECUTION_ENABLED?.trim() ?? '',
+  );
 
   const mitigationAutoEngine = new MitigationAutoEngine({
     globalMode: mitigationEngineConfig.mode,
@@ -861,6 +873,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
               addressFamily: dto.addressFamily,
               direction: resolved?.direction ?? null,
               directionSource: resolved?.source ?? null,
+              // AUTO-ALL: proveniencia decide se o controle de execucao pausa
+              // NOVAS ativacoes deste perfil (AUTO manual nunca e pausado).
+              autoPromotedBySweep: dto.autoPromotedBySweep === true,
               sharedPolicyAutomationBlocked: dto.autoBlockedReason === 'SHARED_POLICY',
               readiness: dto.readiness,
               snapshotAvailable: dto.snapshotAvailable,
@@ -906,6 +921,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     },
     approvedFamilyPairs,
     dualDirections: { enabled: autoDualDirectionsEnabled },
+    // Controle de EXECUCAO (distinto da autorizacao por DESCRIPTION).
+    executionControl: { enabled: autoExecutionEnabled },
     // Decisao normal repetida NAO vira linha INFO: transicoes de estado/motivo,
     // operacoes reais e falhas continuam no INFO; o detalhe por tick fica no
     // DEBUG e as decisoes suprimidas saem no resumo periodico.
@@ -918,24 +935,31 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     logger: (message, meta) => app.log.info(meta ?? {}, message),
   });
   // ---- AUTO-ALL: AUTO derivado da DESCRIPTION ------------------------------
-  // Sweep idempotente que escreve SOMENTE `mode` (AUTO <-> ALERT_ONLY). Nunca
-  // toca runtime, mitigacao, Huawei, exclusoes administrativas ou direcao. Com
-  // a flag OFF e no-op. A retirada de autorizacao NUNCA remove mitigacao: o
-  // REMOVE permanece 100% manual.
+  // Sweep idempotente que escreve SOMENTE `mode` + a PROVENIENCIA do AUTO.
+  // Nunca toca runtime, mitigacao, Huawei, exclusoes administrativas ou direcao.
+  // Com a flag OFF e no-op. A retirada de autorizacao NUNCA remove mitigacao: o
+  // REMOVE permanece 100% manual. A promocao e GRADUAL (lotes) e a ordem e
+  // deterministica; `batchSize=0` desliga o fatiamento (protecao de implantacao).
   const autoDescriptionSweep = new MitigationAutoDescriptionSweep({
     enabled: autoDescriptionEnabled,
     families: autoDescriptionFamilies,
+    batchSize: autoDescriptionBatchSize,
     listProfiles: async () =>
       (await mitigationService.listProfiles()).map((dto) => ({
         id: dto.id,
         persisted: dto.persisted,
         addressFamily: dto.addressFamily,
+        policyName: dto.policyName,
+        interfaceName: dto.interfaceName,
         mode: dto.mode,
         autoModeExempt: dto.autoModeExempt === true,
+        promotedBySweep: dto.autoPromotedBySweep === true,
         autoState: dto.autoState ?? 'OFF',
         autoStateReason: dto.autoStateReason ?? null,
       })),
     setMode: (id, mode) => mitigationRepository.setProfileMode(id, mode),
+    setProvenance: (id, promoted) =>
+      mitigationRepository.setProfileAutoPromotedBySweep(id, promoted),
     logger: (message, meta) => app.log.info(meta ?? {}, message),
   });
   const runAutoDescriptionSweep = async (): Promise<void> => {
@@ -951,7 +975,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
           skippedExempt: summary.skippedExempt,
           skippedDisabled: summary.skippedDisabled,
           skippedFamily: summary.skippedFamily,
+          heldByBatch: summary.heldByBatch,
+          promotedTotal: summary.promotedTotal,
           families: autoDescriptionFamilies,
+          batchSize: autoDescriptionBatchSize,
+          executionEnabled: autoExecutionEnabled,
         },
         'auto: sweep de autorizacao por DESCRIPTION',
       );

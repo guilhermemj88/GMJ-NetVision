@@ -99,6 +99,7 @@ export function buildAutoShadowReport(input: AutoShadowInput): MitigationAutoSha
         wouldActivate: decision !== null && outcomeWouldActivate(decision.outcome),
         outcome: decision?.outcome ?? null,
         reason: decision?.reason ?? null,
+        promotedBySweep: profile.autoPromotedBySweep === true,
         trafficByDirection: decision?.trafficByDirection ?? null,
         triggeredDirections: (decision?.triggeredDirections ?? [])
           .map((value) => toPublicDirection(value))
@@ -146,6 +147,7 @@ export function buildAutoShadowReport(input: AutoShadowInput): MitigationAutoSha
       shadowActive: entries.filter(
         (entry) => entry.mode === 'ALERT_ONLY' && entry.direction !== null,
       ).length,
+      promotedBySweep: entries.filter((entry) => entry.promotedBySweep === true).length,
       blocked: entries.filter((entry) => entry.outcome === 'BLOCKED').length,
       wouldActivate: entries.filter((entry) => entry.wouldActivate).length,
       mitigated: entries.filter(

@@ -238,6 +238,7 @@ const shadowReport: MitigationAutoShadowReportDto = {
     directionConfigured: 0,
     awaitingDirection: 0,
     shadowActive: 0,
+    promotedBySweep: 0,
     blocked: 0,
     wouldActivate: 0,
     mitigated: 0,

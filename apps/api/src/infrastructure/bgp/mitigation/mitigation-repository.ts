@@ -39,6 +39,12 @@ export interface MitigationProfileRecord {
    * sweep nunca promove um perfil exempt e devolve AUTO -> ALERT_ONLY.
    */
   autoModeExempt: boolean;
+  /**
+   * PROVENIENCIA do AUTO: `true` = promovido pelo sweep da DESCRIPTION.
+   * Somete perfis com esta marca podem ser pausados pelo controle de execucao
+   * (`MITIGATION_AUTO_EXECUTION_ENABLED`) - AUTO manual nunca e afetado.
+   */
+  autoPromotedBySweep: boolean;
   /** Exclusao administrativa: "nunca mitigar este peer" (por target). */
   mitigationExcluded: boolean;
   mitigationExclusionReason: MitigationExclusionReason | null;
@@ -66,6 +72,7 @@ export interface MitigationProfileInput {
   checkIntervalSeconds?: number;
   mitigationRt?: string;
   autoModeExempt?: boolean;
+  autoPromotedBySweep?: boolean;
   mitigationExcluded?: boolean;
   mitigationExclusionReason?: MitigationExclusionReason | null;
   mitigationExclusionNote?: string | null;
@@ -260,6 +267,8 @@ export interface MitigationRepository {
   ): Promise<void>;
   /** Excecao manual do AUTO por DESCRIPTION (pin explicito de ALERT_ONLY). */
   setProfileAutoModeExempt(id: string, exempt: boolean): Promise<void>;
+  /** Proveniencia do AUTO: marca se o modo AUTO veio do sweep da DESCRIPTION. */
+  setProfileAutoPromotedBySweep(id: string, promoted: boolean): Promise<void>;
   /**
    * Remove a banda detectada quando a interface SAIU DO ESCOPO em uma leitura
    * BEM-SUCEDIDA do device (falha temporaria de discovery NUNCA chama isto).

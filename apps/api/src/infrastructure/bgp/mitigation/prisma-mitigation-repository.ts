@@ -56,6 +56,7 @@ function mapProfile(row: ProfileRow): MitigationProfileRecord {
     mitigationRt: row.mitigationRt,
     autoTrafficDirection: row.autoTrafficDirection as MitigationAutoTrafficDirection | null,
     autoModeExempt: row.autoModeExempt,
+    autoPromotedBySweep: row.autoPromotedBySweep,
     mitigationExcluded: row.mitigationExcluded,
     mitigationExclusionReason:
       row.mitigationExclusionReason as MitigationProfileRecord['mitigationExclusionReason'],
@@ -276,6 +277,13 @@ export class PrismaMitigationRepository implements MitigationRepository {
     await this.prisma.bgpMitigationProfile.update({
       where: { id },
       data: { autoModeExempt: exempt },
+    });
+  }
+
+  async setProfileAutoPromotedBySweep(id: string, promoted: boolean): Promise<void> {
+    await this.prisma.bgpMitigationProfile.update({
+      where: { id },
+      data: { autoPromotedBySweep: promoted },
     });
   }
 

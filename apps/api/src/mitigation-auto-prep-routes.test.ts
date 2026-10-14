@@ -27,7 +27,10 @@ interface AutoStateRow {
   persisted: boolean;
   mode: 'DISABLED' | 'ALERT_ONLY' | 'AUTO';
   addressFamily: 'IPV4' | 'IPV6';
+  policyName?: string | null;
+  interfaceName?: string | null;
   autoModeExempt?: boolean;
+  autoPromotedBySweep?: boolean;
   autoDesired?: boolean;
   autoReady?: boolean;
   autoEffective?: boolean;
@@ -530,13 +533,18 @@ describe('AUTO-ALL: autorizacao por DESCRIPTION (DTO + excecao + sweep)', () => 
           id: row.id,
           persisted: row.persisted,
           addressFamily: row.addressFamily,
+          policyName: row.policyName ?? null,
+          interfaceName: row.interfaceName ?? null,
           mode: row.mode,
           autoModeExempt: row.autoModeExempt === true,
+          promotedBySweep: row.autoPromotedBySweep === true,
           autoState: row.autoState ?? 'OFF',
           autoStateReason: row.autoStateReason ?? null,
         }));
       },
       setMode: (id, mode) => harness.repository.setProfileMode(id, mode),
+      setProvenance: (id, promoted) =>
+        harness.repository.setProfileAutoPromotedBySweep(id, promoted),
     });
 
     const first = await sweep.run();
@@ -544,6 +552,8 @@ describe('AUTO-ALL: autorizacao por DESCRIPTION (DTO + excecao + sweep)', () => 
     expect(first.demoted).toEqual([]);
     expect(first.skippedFamily).toBe(1);
     expect((await harness.repository.getProfile(profile.id))?.mode).toBe('AUTO');
+    // Proveniencia registrada pelo sweep (base do controle de execucao).
+    expect((await harness.repository.getProfile(profile.id))?.autoPromotedBySweep).toBe(true);
     // IPv6 permanece em ALERT_ONLY (fase IPv4-only, sem ativacao real).
     expect((await harness.repository.getProfile(ipv6.id))?.mode).toBe('ALERT_ONLY');
 
@@ -583,6 +593,7 @@ describe('AUTO-ALL: autorizacao por DESCRIPTION (DTO + excecao + sweep)', () => 
       enabled: false,
       listProfiles: async () => [],
       setMode: async () => undefined,
+      setProvenance: async () => undefined,
     });
     const off = await disabled.run();
     expect(off.enabled).toBe(false);

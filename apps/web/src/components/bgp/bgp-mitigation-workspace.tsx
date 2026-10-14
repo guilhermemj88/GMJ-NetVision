@@ -588,6 +588,12 @@ export function BgpMitigationWorkspace() {
           title="Perfis ALERT_ONLY sem direção de telemetria: o motor fica fail-closed (TELEMETRY_UNAVAILABLE) até o operador configurar RX/TX."
         />
         <MetaFact
+          label="promovidos pelo sweep"
+          value={shadowSummary ? shadowSummary.promotedBySweep : '—'}
+          tone={shadowSummary && shadowSummary.promotedBySweep > 0 ? 'info' : 'neutral'}
+          title="Perfis com AUTO autorizado pelo sweep da DESCRIPTION (proveniência). Com o controle de execução desligado, estes perfis não iniciam NOVAS ativações; o AUTO manual (ex.: BHNET-3043) não é afetado."
+        />
+        <MetaFact
           label="bloqueados no motor"
           value={shadowSummary ? shadowSummary.blocked : '—'}
           tone={shadowSummary && shadowSummary.blocked > 0 ? 'warning' : 'neutral'}
@@ -999,6 +1005,9 @@ export function BgpMitigationWorkspace() {
           <div className="mitigation-detail__block">
             <h4>AUTO POR DESCRIPTION</h4>
             <p>Estado: {autoStateLabel(selected)}</p>
+            <p>
+              Autorização: {selected.autoPromotedBySweep ? 'sweep da DESCRIPTION (proveniência)' : 'manual/legado'}
+            </p>
             <p>Desejado (banda válida na DESCRIPTION e sem exclusão): {selected.autoDesired ? 'sim' : 'não'}</p>
             <p>Pronto (snapshot, readiness e nodes do par): {selected.autoReady ? 'sim' : 'não'}</p>
             <p>Efetivo (motor autorizado a atuar): {selected.autoEffective ? 'sim' : 'não'}</p>
@@ -1366,6 +1375,7 @@ function autoStateTitleOf(row: BgpMitigationProfileDto): string {
     `AUTO desejado: ${row.autoDesired ? 'sim' : 'não'} (banda válida na DESCRIPTION e sem exclusão)`,
     `AUTO pronto: ${row.autoReady ? 'sim' : 'não'} (snapshot, readiness e nodes do par)`,
     `AUTO efetivo: ${row.autoEffective ? 'sim' : 'não'} (motor autorizado a atuar)`,
+    row.autoPromotedBySweep ? 'Autorização: sweep da DESCRIPTION (pausável pelo controle de execução)' : null,
     row.autoStateReason ? `Bloqueio: ${row.autoStateReason}` : null,
     row.autoModeExempt ? 'Exceção manual: mantido em ALERT_ONLY' : null,
   ]

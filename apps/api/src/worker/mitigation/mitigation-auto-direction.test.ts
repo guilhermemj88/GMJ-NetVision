@@ -249,7 +249,7 @@ describe('AUTO: contencao IPv4/IPv6 no MESMO escopo de contadores', () => {
     }
   });
 
-  it('9) apenas IPv6 em AUTO (IPv4 sem direcao) NAO e bloqueado', async () => {
+  it('9) apenas IPv6 em AUTO (sem irmao IPv4): BLOQUEADO por design (fail-closed)', async () => {
     const targets = [targetState('p-v6', { mode: 'AUTO', addressFamily: 'IPV6' })];
     const h = harness(targets);
     h.feed(OVER, '2026-10-13T11:50:00.000Z');
@@ -258,8 +258,32 @@ describe('AUTO: contencao IPv4/IPv6 no MESMO escopo de contadores', () => {
     await h.engine.tick();
     h.feed(OVER, '2026-10-13T11:58:00.000Z');
     const decision = h.byProfile(await h.engine.tick(), 'p-v6');
-    expect(decision.reason).not.toBe('FAMILY_CONTENTION_UNRESOLVED');
-    expect(decision.outcome).toBe('WOULD_ACTIVATE');
+    expect(decision.outcome).toBe('BLOCKED');
+    expect(decision.reason).toBe('FAMILY_CONTENTION_UNRESOLVED');
+    expect(decision.detail ?? '').toContain('SEM_VINCULO_IPV4');
+  });
+
+  it('9b) irmao IPv4 SEM direcao (gap antigo): IPv6 segue BLOQUEADO', async () => {
+    const targets = [
+      targetState('p-v4', { mode: 'AUTO', addressFamily: 'IPV4', direction: null, directionSource: null }),
+      targetState('p-v6', {
+        mode: 'AUTO',
+        addressFamily: 'IPV6',
+        direction: null,
+        directionSource: null,
+      }),
+    ];
+    const h = harness(targets);
+    h.feed(OVER, '2026-10-13T11:50:00.000Z');
+    await h.engine.tick();
+    h.feed(OVER, '2026-10-13T11:54:00.000Z');
+    await h.engine.tick();
+    h.feed(OVER, '2026-10-13T11:58:00.000Z');
+    const decisions = await h.engine.tick();
+
+    const secondary = h.byProfile(decisions, 'p-v6');
+    expect(secondary.outcome).toBe('BLOCKED');
+    expect(secondary.reason).toBe('FAMILY_CONTENTION_UNRESOLVED');
   });
 
   it('10) SOMBRA (ALERT_ONLY) mede as duas familias sem contencao', async () => {

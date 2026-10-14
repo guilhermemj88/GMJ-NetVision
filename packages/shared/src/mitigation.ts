@@ -168,6 +168,12 @@ export interface BgpMitigationProfileDto {
    * `true` = o sweep automatico NUNCA promove este perfil.
    */
   autoModeExempt?: boolean;
+  /**
+   * AUTO-ALL: proveniencia do modo AUTO. `true` = promovido pelo sweep da
+   * DESCRIPTION (nao por intervencao manual). Somente estes perfis podem ser
+   * pausados pelo controle de execucao (`MITIGATION_AUTO_EXECUTION_ENABLED`).
+   */
+  autoPromotedBySweep?: boolean;
   /** AUTO desejado: autorizado pela DESCRIPTION (banda valida) e sem exclusao. */
   autoDesired?: boolean;
   /** AUTO pronto: verificacoes tecnicas aprovadas (snapshot/readiness/nodes). */
@@ -271,6 +277,8 @@ export interface MitigationAutoShadowEntryDto {
   requiredRecoverySamples: number;
   /** True quando o target dispararia mitigacao se a escrita estivesse armada. */
   wouldActivate: boolean;
+  /** AUTO-ALL: modo AUTO veio do sweep da DESCRIPTION (nao manual). */
+  promotedBySweep?: boolean;
   outcome: string | null;
   reason: string | null;
   blockedReason: string | null;
@@ -312,6 +320,8 @@ export interface MitigationAutoShadowReportDto {
     awaitingDirection: number;
     /** ALERT_ONLY com direcao = avaliacao em sombra ativa (sem escrita). */
     shadowActive: number;
+    /** AUTO-ALL: perfis com modo AUTO autorizado pelo sweep (promovidos). */
+    promotedBySweep: number;
     blocked: number;
     wouldActivate: number;
     mitigated: number;

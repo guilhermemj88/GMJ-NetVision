@@ -122,6 +122,10 @@ export class RoutingMitigationRepository implements MitigationRepository {
     return (await this.target()).setProfileAutoModeExempt(id, exempt);
   }
 
+  async setProfileAutoPromotedBySweep(id: string, promoted: boolean): Promise<void> {
+    return (await this.target()).setProfileAutoPromotedBySweep(id, promoted);
+  }
+
   async clearProfileDetectedBandwidth(id: string): Promise<void> {
     return (await this.target()).clearProfileDetectedBandwidth(id);
   }
