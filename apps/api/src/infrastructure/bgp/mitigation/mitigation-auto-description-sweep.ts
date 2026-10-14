@@ -23,17 +23,51 @@ import type { MitigationAutoState } from './mitigation-auto-authorization';
 // pode estender com `MITIGATION_AUTO_DESCRIPTION_FAMILIES=IPV4,IPV6` quando a
 // acao de mitigacao IPv6 estiver validada. Fail-closed por padrao.
 //
-// LOTES: a promocao e GRADUAL (`batchSize`, default 5). A ordem e
-// DETERMINISTICA (policy, interface, id) e `batchSize=0` significa "sem limite"
-// (a graduacao e protecao de implantacao, nunca exigencia permanente). Basta
-// desligar a flag de autorizacao para interromper a PROXIMA promocao - nenhuma
-// mitigacao e removida e nenhum modo ja promovido e alterado.
+// LOTES: a promocao e GRADUAL e a ordem e DETERMINISTICA (policy, interface,
+// id). A semantica de `MITIGATION_AUTO_DESCRIPTION_BATCH_SIZE` e UNAMBIGUA:
+//   - ausente/invalido (negativo, decimal, texto) -> 5 (fail-safe);
+//   - `0`            -> SEGURA (hold): nesta execucao NADA e promovido;
+//   - 1..N           -> promove no maximo N perfis por execucao;
+//   - `unlimited`    -> sem limite (promocao de todos os elegiveis de uma vez).
+// Interrupcao definitiva das promocoes = `MITIGATION_AUTO_DESCRIPTION_ENABLED=0`
+// (a flag de autorizacao). A graduacao e protecao de implantacao, nunca
+// exigencia permanente de promocao manual.
+//
+// CONCORRENCIA: `run()` nunca executa duas vezes em paralelo no mesmo processo
+// (rehydrate + intervalo): a segunda chamada concorrente devolve
+// `skippedConcurrent=true` sem promover nada - dois lotes simultaneos nao podem
+// "atropelar" o limite configurado.
+//
+// REINICIO: a ordem e deterministica e o que ja foi promovido esta persistido
+// (mode + proveniencia), entao apos um restart o sweep CONTINUA do lote
+// seguinte; a proveniencia mantem os promovidos sob o controle de execucao.
 //
 // PROVENIENCIA: cada promocao marca `autoPromotedBySweep=true` (e cada demote
 // limpa a marca). E essa marca que permite ao motor pausar NOVAS ativacoes
 // automaticas sem tocar no AUTO manual (ex.: BHNET-3043).
 
 export type SweepAddressFamily = 'IPV4' | 'IPV6';
+
+/** `0` = segurar (hold); numero > 0 = lote; `unlimited` = sem limite. */
+export type SweepBatchSize = number | 'unlimited';
+
+export const DEFAULT_SWEEP_BATCH_SIZE = 5;
+
+/**
+ * Converte o valor do ENV na semantica do lote. Valor ausente ou invalido cai
+ * no default SEGURO (5) - nunca em "sem limite" nem em "segurar" por acidente.
+ * Aceita APENAS digitos decimais (sem sinal, decimal, hexa ou notacao
+ * cientifica) ou as palavras `unlimited`/`all`.
+ */
+export function parseSweepBatchSize(raw: string | null | undefined): SweepBatchSize {
+  const value = (raw ?? '').trim().toLowerCase();
+  if (value === '') return DEFAULT_SWEEP_BATCH_SIZE;
+  if (value === 'unlimited' || value === 'all') return 'unlimited';
+  if (!/^\d+$/.test(value)) return DEFAULT_SWEEP_BATCH_SIZE;
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed)) return DEFAULT_SWEEP_BATCH_SIZE;
+  return parsed;
+}
 
 export interface AutoDescriptionSweepProfile {
   id: string;
@@ -62,6 +96,12 @@ export interface AutoDescriptionSweepResult {
   skippedFamily: number;
   /** Elegiveis que ficaram para os proximos lotes (interrompiveis). */
   heldByBatch: number;
+  /** `true` = execucao SEGURADA por `BATCH_SIZE=0` (nada foi promovido). */
+  held: boolean;
+  /** `true` = ja existia uma execucao em andamento (nada foi feito). */
+  skippedConcurrent: boolean;
+  /** Lote efetivo desta execucao (auditoria do rollout). */
+  batchSize: SweepBatchSize;
   /** Total de perfis com proveniencia de sweep ANTES desta execucao. */
   promotedTotalBefore: number;
   /** Total de perfis com proveniencia de sweep DEPOIS desta execucao. */
@@ -72,10 +112,8 @@ export interface MitigationAutoDescriptionSweepDeps {
   enabled: boolean;
   /** Familias habilitadas para promocao automatica. Default: `['IPV4']`. */
   families?: readonly SweepAddressFamily[];
-  /**
-   * Maximo de PROMOCOES por execucao (lote). `0` = sem limite. Default: 5.
-   */
-  batchSize?: number;
+  /** Lote por execucao (ver `SweepBatchSize`). Default: 5. */
+  batchSize?: SweepBatchSize;
   listProfiles(): Promise<AutoDescriptionSweepProfile[]>;
   setMode(id: string, mode: MitigationProfileMode): Promise<void>;
   /** Marca/limpa a proveniencia do AUTO (sweep x manual). */
@@ -84,9 +122,11 @@ export interface MitigationAutoDescriptionSweepDeps {
 }
 
 const DEFAULT_FAMILIES: readonly SweepAddressFamily[] = ['IPV4'];
-const DEFAULT_BATCH_SIZE = 5;
 
 export class MitigationAutoDescriptionSweep {
+  /** Guarda de concorrencia: uma execucao por vez NESTE processo. */
+  private running = false;
+
   constructor(private readonly deps: MitigationAutoDescriptionSweepDeps) {}
 
   async run(): Promise<AutoDescriptionSweepResult> {
@@ -100,12 +140,31 @@ export class MitigationAutoDescriptionSweep {
       skippedDisabled: 0,
       skippedFamily: 0,
       heldByBatch: 0,
+      held: false,
+      skippedConcurrent: false,
+      batchSize: this.deps.batchSize ?? DEFAULT_SWEEP_BATCH_SIZE,
       promotedTotalBefore: 0,
       promotedTotal: 0,
     };
     if (!this.deps.enabled) return result;
+    if (this.running) {
+      result.skippedConcurrent = true;
+      this.deps.logger?.('auto: sweep DESCRIPTION - execucao anterior ainda em andamento', {
+        skippedConcurrent: true,
+      });
+      return result;
+    }
+    this.running = true;
+    try {
+      return await this.runOnce(result);
+    } finally {
+      this.running = false;
+    }
+  }
+
+  private async runOnce(result: AutoDescriptionSweepResult): Promise<AutoDescriptionSweepResult> {
     const families = this.deps.families ?? DEFAULT_FAMILIES;
-    const batchSize = this.deps.batchSize ?? DEFAULT_BATCH_SIZE;
+    const batchSize = this.deps.batchSize ?? DEFAULT_SWEEP_BATCH_SIZE;
 
     const profiles = await this.deps.listProfiles();
     const persisted = profiles.filter((profile) => profile.persisted);
@@ -128,8 +187,16 @@ export class MitigationAutoDescriptionSweep {
           (left.interfaceName ?? '').localeCompare(right.interfaceName ?? '') ||
           left.id.localeCompare(right.id),
       );
-    const batch = batchSize > 0 ? eligible.slice(0, batchSize) : eligible;
+    // `0` = SEGURAR (hold): nada e promovido nesta execucao.
+    const batch =
+      batchSize === 0
+        ? []
+        : batchSize === 'unlimited'
+          ? eligible
+          : eligible.slice(0, batchSize);
     result.heldByBatch = eligible.length - batch.length;
+    result.held = batchSize === 0 && eligible.length > 0;
+    result.batchSize = batchSize;
 
     let demotedWithProvenance = 0;
 
@@ -168,8 +235,7 @@ export class MitigationAutoDescriptionSweep {
         result.promoted.push(profile.id);
         this.log('promocao automatica por DESCRIPTION (lote)', profile);
         continue;
-      }
-      if (profile.autoState === 'OFF' && profile.mode === 'AUTO') {
+      }      if (profile.autoState === 'OFF' && profile.mode === 'AUTO') {
         const hadProvenance = profile.promotedBySweep === true;
         await this.deps.setMode(profile.id, 'ALERT_ONLY');
         await this.deps.setProvenance(profile.id, false);

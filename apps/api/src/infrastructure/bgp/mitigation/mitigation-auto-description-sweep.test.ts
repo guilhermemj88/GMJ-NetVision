@@ -1,12 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import {
   MitigationAutoDescriptionSweep,
+  parseSweepBatchSize,
   type AutoDescriptionSweepProfile,
+  type SweepBatchSize,
 } from './mitigation-auto-description-sweep';
 
 // AUTO-ALL: sweep DESCRIPTION - idempotente, escreve SO `mode` + proveniencia.
-// Cobre: flag OFF, promocao, demote, excecao, bloqueio, familia IPv4-only e
-// LOTES deterministas (rollout gradual interrompivel).
+// Cobre: flag OFF, promocao, demote, excecao, bloqueio, familia IPv4-only,
+// LOTES deterministas (0 = hold, N = lote, `unlimited` = sem limite),
+// concorrencia e continuidade apos restart.
 
 function profile(overrides: Partial<AutoDescriptionSweepProfile>): AutoDescriptionSweepProfile {
   return {
@@ -29,7 +32,8 @@ function harness(
   options: {
     enabled?: boolean;
     families?: readonly ('IPV4' | 'IPV6')[];
-    batchSize?: number;
+    batchSize?: SweepBatchSize;
+    beforeList?: () => Promise<void>;
   } = {},
 ) {
   const writes: { id: string; mode: string }[] = [];
@@ -38,7 +42,10 @@ function harness(
     enabled: options.enabled ?? true,
     ...(options.families ? { families: options.families } : {}),
     ...(options.batchSize === undefined ? {} : { batchSize: options.batchSize }),
-    listProfiles: async () => profiles,
+    listProfiles: async () => {
+      if (options.beforeList) await options.beforeList();
+      return profiles;
+    },
     setMode: async (id, mode) => {
       writes.push({ id, mode });
       const target = profiles.find((item) => item.id === id);
@@ -176,14 +183,26 @@ describe('MitigationAutoDescriptionSweep', () => {
     expect(fourth.promotedTotalBefore).toBe(3);
   });
 
-  it('LOTES: batchSize=0 = sem limite (graduacao e protecao, nao exigencia)', async () => {
+  it('LOTES: batchSize=0 = SEGURAR (hold) - nada e promovido', async () => {
+    const h = harness([profile({ id: 'p-1' }), profile({ id: 'p-2' })], { batchSize: 0 });
+    const result = await h.sweep.run();
+    expect(result.promoted).toEqual([]);
+    expect(result.held).toBe(true);
+    expect(result.heldByBatch).toBe(2);
+    expect(result.batchSize).toBe(0);
+    expect(h.writes).toHaveLength(0);
+  });
+
+  it("LOTES: batchSize='unlimited' promove todos os elegiveis de uma vez", async () => {
     const h = harness(
       [profile({ id: 'p-1' }), profile({ id: 'p-2' }), profile({ id: 'p-3' })],
-      { batchSize: 0 },
+      { batchSize: 'unlimited' },
     );
     const result = await h.sweep.run();
     expect(result.promoted).toEqual(['p-1', 'p-2', 'p-3']);
     expect(result.heldByBatch).toBe(0);
+    expect(result.held).toBe(false);
+    expect(result.batchSize).toBe('unlimited');
   });
 
   it('LOTES: interromper = desligar a flag (nada e promovido nem revertido)', async () => {
@@ -197,5 +216,69 @@ describe('MitigationAutoDescriptionSweep', () => {
     expect(stopped.promoted).toEqual([]);
     expect(profiles[0]!.mode).toBe('AUTO'); // promovido anterior continua AUTO
     expect(profiles[1]!.mode).toBe('ALERT_ONLY'); // proximo lote nao parte
+  });
+
+  it('CONCORRENCIA: execucao sobreposta e ignorada (skippedConcurrent)', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let first = true;
+    const h = harness([profile({ id: 'p-1' }), profile({ id: 'p-2' })], {
+      batchSize: 1,
+      beforeList: async () => {
+        if (first) {
+          first = false;
+          await gate;
+        }
+      },
+    });
+
+    const running = h.sweep.run();
+    // A primeira execucao esta travada no listProfiles; a segunda nao pode
+    // promover nada (dois lotes simultaneos nao furam o limite configurado).
+    const concurrent = await h.sweep.run();
+    expect(concurrent.skippedConcurrent).toBe(true);
+    expect(concurrent.promoted).toEqual([]);
+    release();
+    const finished = await running;
+    expect(finished.promoted).toEqual(['p-1']);
+    expect(h.writes).toEqual([{ id: 'p-1', mode: 'AUTO' }]);
+  });
+
+  it('RESTART: nova instancia continua do lote seguinte (ordem deterministica)', async () => {
+    const profiles = [
+      profile({ id: 'p-1', policyName: 'PL-A-IN' }),
+      profile({ id: 'p-2', policyName: 'PL-B-IN' }),
+      profile({ id: 'p-3', policyName: 'PL-C-IN' }),
+    ];
+    const first = harness(profiles, { batchSize: 1 });
+    expect((await first.sweep.run()).promoted).toEqual(['p-1']);
+
+    // "Reinicio do servico": nova instancia do sweep sobre o MESMO estado
+    // persistido (modo + proveniencia sobrevivem ao restart).
+    const second = harness(profiles, { batchSize: 1 });
+    expect((await second.sweep.run()).promoted).toEqual(['p-2']);
+    const third = harness(profiles, { batchSize: 1 });
+    const last = await third.sweep.run();
+    expect(last.promoted).toEqual(['p-3']);
+    expect(last.heldByBatch).toBe(0);
+  });
+
+  it('PARSER: valores validos, hold e invalidos (fail-safe = 5)', () => {
+    expect(parseSweepBatchSize(undefined)).toBe(5);
+    expect(parseSweepBatchSize('')).toBe(5);
+    expect(parseSweepBatchSize('  ')).toBe(5);
+    expect(parseSweepBatchSize('0')).toBe(0);
+    expect(parseSweepBatchSize('1')).toBe(1);
+    expect(parseSweepBatchSize('18')).toBe(18);
+    expect(parseSweepBatchSize('unlimited')).toBe('unlimited');
+    expect(parseSweepBatchSize('ALL')).toBe('unlimited');
+    expect(parseSweepBatchSize('-1')).toBe(5);
+    expect(parseSweepBatchSize('2.5')).toBe(5);
+    expect(parseSweepBatchSize('abc')).toBe(5);
+    expect(parseSweepBatchSize('1e3')).toBe(5);
+    expect(parseSweepBatchSize('0x10')).toBe(5);
+    expect(parseSweepBatchSize('99999999999999999999')).toBe(5);
   });
 });

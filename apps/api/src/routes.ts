@@ -138,7 +138,7 @@ import { MitigationAutoEngine } from './worker/mitigation/mitigation-auto-engine
 import { MitigationAutoRuntime } from './worker/mitigation/mitigation-auto-runtime';
 import { buildAutoShadowReport } from './worker/mitigation/mitigation-auto-shadow';
 import { InterfaceTrafficSource } from './worker/mitigation/mitigation-traffic-source';
-import { MitigationAutoDescriptionSweep } from './infrastructure/bgp/mitigation/mitigation-auto-description-sweep';
+import { MitigationAutoDescriptionSweep, parseSweepBatchSize } from './infrastructure/bgp/mitigation/mitigation-auto-description-sweep';
 import type { MitigationState } from './infrastructure/bgp/mitigation/mitigation-types';
 import { InMemoryMediaRepository } from './infrastructure/media/in-memory-media-repository';
 import { PrismaMediaRepository } from './infrastructure/media/prisma-media-repository';
@@ -827,12 +827,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     .filter((part): part is 'IPV4' | 'IPV6' => part === 'IPV4' || part === 'IPV6');
   const autoDescriptionFamilies: readonly ('IPV4' | 'IPV6')[] =
     configuredFamilies.length > 0 ? configuredFamilies : ['IPV4'];
-  // LOTES: quantas promocoes por execucao do sweep (default 5). `0` = sem
-  // limite. A graduacao e protecao de PACOTE de implantacao, nunca exigencia
-  // permanente de promocao manual (basta `MITIGATION_AUTO_DESCRIPTION_BATCH_SIZE=0`).
-  const configuredBatch = Number(process.env.MITIGATION_AUTO_DESCRIPTION_BATCH_SIZE ?? '');
-  const autoDescriptionBatchSize =
-    Number.isInteger(configuredBatch) && configuredBatch >= 0 ? configuredBatch : 5;
+  // LOTES: quantas promocoes por execucao do sweep. Semantica UNAMBIGUA:
+  // ausente/invalido = 5 (fail-safe); `0` = SEGURA (hold); 1..N = lote;
+  // `unlimited` = sem limite. A graduacao e protecao de IMPLANTACAO; para
+  // interromper de vez use MITIGATION_AUTO_DESCRIPTION_ENABLED=0.
+  const autoDescriptionBatchSize = parseSweepBatchSize(
+    process.env.MITIGATION_AUTO_DESCRIPTION_BATCH_SIZE,
+  );
   // EXECUCAO: flag DISTINTA da autorizacao. Desligada (default), perfis
   // promovidos pelo sweep nao iniciam NOVAS ativacoes automaticas; o AUTO
   // manual/legado (BHNET-3043) segue intacto e mitigacao ativa nunca e removida.
@@ -976,9 +977,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
           skippedDisabled: summary.skippedDisabled,
           skippedFamily: summary.skippedFamily,
           heldByBatch: summary.heldByBatch,
+          held: summary.held,
+          skippedConcurrent: summary.skippedConcurrent,
           promotedTotal: summary.promotedTotal,
           families: autoDescriptionFamilies,
-          batchSize: autoDescriptionBatchSize,
+          batchSize: summary.batchSize,
           executionEnabled: autoExecutionEnabled,
         },
         'auto: sweep de autorizacao por DESCRIPTION',
