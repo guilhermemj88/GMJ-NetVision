@@ -422,8 +422,55 @@ describe('discovery de candidatos a mitigacao', () => {
     expect(result.ignoredNoBandwidth).toBe(1);
     expect(result.outOfScopeProfiles).toEqual(['PL-HORIZONTES_IPv4-IN']);
     expect((await harness.repository.getRuntime(profile!.id))?.state).toBe('DISABLED');
+    // AUTO-ALL: a DESCRIPTION deixou de autorizar o AUTO - a banda detectada e
+    // limpa (o sweep devolve o modo para ALERT_ONLY). Nada e apagado: profile e
+    // historico continuam.
+    const stored = await harness.repository.getProfile(profile!.id);
+    expect(stored?.detectedBandwidthBps).toBeNull();
+    expect(stored?.bandwidthSource).toBe('UNKNOWN');
+    expect(result.warnings.some((warning) => warning.includes('autorizacao AUTO suspensa'))).toBe(
+      true,
+    );
     // historico preservado: o profile continua existindo
     expect(await harness.repository.getProfile(profile!.id)).not.toBeNull();
+  });
+
+  it('19b) perda de banda limpa a autorizacao AUTO sem tocar na mitigacao ativa', async () => {
+    const harness = createHarness();
+    await discover(harness, [makePeer({ peerAddress: '10.200.200.106' })]);
+    const [profile] = await harness.repository.listProfiles({ deviceId: DEVICE.id });
+    await harness.repository.upsertRuntime(profile!.id, { state: 'MITIGATED' });
+
+    // Falha TOTAL de leitura (BGP + route-policy indisponiveis): discovery
+    // temporariamente invalido NUNCA revoga a banda ja autorizada.
+    harness.config.bgp = null;
+    harness.config.routePolicy = null;
+    const failed = await discover(harness, [makePeer({ peerAddress: '10.200.200.106' })]);
+    expect((await harness.repository.getProfile(profile!.id))?.detectedBandwidthBps).toBe(
+      40_000_000_000n,
+    );
+    expect(
+      failed.warnings.some((warning) => warning.includes('autorizacao AUTO suspensa')),
+    ).toBe(false);
+
+    // Leitura OK e DESCRIPTION sem banda contratada: a autorizacao acaba, mas o
+    // runtime MITIGATED e PRESERVADO (REMOVE e 100% manual).
+    harness.config.bgp = BGP_CONFIG;
+    harness.config.routePolicy = RP_CONFIG;
+    const retired = await discover(harness, [
+      makePeer({
+        peerAddress: '10.200.200.106',
+        interfaceAlias: 'HORIZONTE_IP',
+        interfaceDescription: 'HORIZONTE_IP',
+      }),
+    ]);
+    const stored = await harness.repository.getProfile(profile!.id);
+    expect(stored?.detectedBandwidthBps).toBeNull();
+    expect(stored?.bandwidthSource).toBe('UNKNOWN');
+    expect((await harness.repository.getRuntime(profile!.id))?.state).toBe('MITIGATED');
+    expect(
+      retired.warnings.some((warning) => warning.includes('autorizacao AUTO suspensa')),
+    ).toBe(true);
   });
 
   it('20) policy alterada reconcilia: novo profile criado e o antigo vira DISABLED', async () => {

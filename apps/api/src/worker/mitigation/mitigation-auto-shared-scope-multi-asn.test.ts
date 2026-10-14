@@ -334,13 +334,35 @@ describe('AUD-AUTO-ALL: multi-ASN na mesma policy -IN (ASN nunca e bloqueio)', (
     await h.run(3, [h.over, h.over, h.over, h.over]);
     expect(h.live.activateCalls).toBe(1);
 
+    // AUTO-ALL: a policy e a unidade BGP. Com OUTRO vinculo ativo no escopo, o
+    // REMOVE sem confirmacao explicita NAO chega ao equipamento e devolve o
+    // escopo afetado para o operador decidir.
+    const blocked = await h.commands.execute({
+      requestId: 'j5-remove-0',
+      action: 'REMOVE',
+      profileId: h.profileIds[0]!,
+    });
+    expect(blocked.ok).toBe(false);
+    expect(blocked.status).toBe('SCOPE_CONFIRMATION_REQUIRED');
+    expect(blocked.removalScope?.policy).toBe(POLICY_V4);
+    expect(blocked.removalScope?.affected).toHaveLength(3);
+    expect(blocked.removalScope?.affected.every((item) => item.runtimeState === 'MITIGATED')).toBe(
+      true,
+    );
+    expect(h.live.removeCalls).toBe(0);
+    for (const profileId of h.profileIds) {
+      expect(await stateOf(h.repository, profileId)).toBe('MITIGATED');
+    }
+
     const removal = await h.commands.execute({
       requestId: 'j5-remove-1',
       action: 'REMOVE',
       profileId: h.profileIds[0]!,
+      acknowledgeScopeRemoval: true,
     });
     expect(removal.ok).toBe(true);
     expect(removal.status).toBe('REMOVED_VERIFIED');
+    expect(removal.removalScope?.affected).toHaveLength(3);
     expect(h.live.removeCalls).toBe(1);
     for (const profileId of h.profileIds) {
       expect(await stateOf(h.repository, profileId)).toBe('NORMAL');

@@ -544,7 +544,7 @@ describe('F4: serializacao por deviceId + policyName', () => {
 
     const activate = h.commands.execute({ requestId: 'b1-act', action: 'ACTIVATE', profileId: p1 });
     await g.arrived;
-    const remove = h.commands.execute({ requestId: 'b1-rem', action: 'REMOVE', profileId: p2 });
+    const remove = h.commands.execute({ requestId: 'b1-rem', action: 'REMOVE', acknowledgeScopeRemoval: true, profileId: p2 });
     await Promise.resolve();
     expect(h.live.removals).toHaveLength(0);
 
@@ -574,7 +574,7 @@ describe('F4: serializacao por deviceId + policyName', () => {
     const g = gate();
     h.live.beforeWriteGates = [g];
 
-    const remove = h.commands.execute({ requestId: 'b2-rem', action: 'REMOVE', profileId: p1 });
+    const remove = h.commands.execute({ requestId: 'b2-rem', action: 'REMOVE', acknowledgeScopeRemoval: true, profileId: p1 });
     await g.arrived;
     const activate = h.commands.execute({ requestId: 'b2-act', action: 'ACTIVATE', profileId: p2 });
     await Promise.resolve();
@@ -607,9 +607,9 @@ describe('F4: serializacao por deviceId + policyName', () => {
     const g = gate();
     h.live.afterWriteGates = [g];
 
-    const first = h.commands.execute({ requestId: 'c-1', action: 'REMOVE', profileId: p1 });
+    const first = h.commands.execute({ requestId: 'c-1', action: 'REMOVE', acknowledgeScopeRemoval: true, profileId: p1 });
     await g.arrived;
-    const second = h.commands.execute({ requestId: 'c-2', action: 'REMOVE', profileId: p2 });
+    const second = h.commands.execute({ requestId: 'c-2', action: 'REMOVE', acknowledgeScopeRemoval: true, profileId: p2 });
     g.release();
     const [firstResult, secondResult] = await Promise.all([first, second]);
 
@@ -641,7 +641,7 @@ describe('F4: serializacao por deviceId + policyName', () => {
     await g.arrived;
     expect(h.live.activations).toHaveLength(1);
 
-    const remove = h.commands.execute({ requestId: 'd-rem', action: 'REMOVE', profileId: p2 });
+    const remove = h.commands.execute({ requestId: 'd-rem', action: 'REMOVE', acknowledgeScopeRemoval: true, profileId: p2 });
     let removeDone = false;
     void remove.then(() => {
       removeDone = true;
@@ -707,6 +707,7 @@ describe('F4: serializacao por deviceId + policyName', () => {
     const second = await h.commands.execute({
       requestId: 'f-b',
       action: 'REMOVE',
+      acknowledgeScopeRemoval: true,
       profileId: pB,
     });
     expect(second.status).toBe('REVALIDATION_FAILED');
@@ -768,7 +769,7 @@ describe('F4: serializacao por deviceId + policyName', () => {
     expect(firstResult.status).toBe('ACTIVATED_VERIFIED');
 
     // O lock foi liberado: uma NOVA operacao no escopo (REMOVE) funciona.
-    const later = await h.commands.execute({ requestId: 'q-3', action: 'REMOVE', profileId: p1 });
+    const later = await h.commands.execute({ requestId: 'q-3', action: 'REMOVE', acknowledgeScopeRemoval: true, profileId: p1 });
     expect(later.status).toBe('REMOVED_VERIFIED');
     expect(await stateOf(h.repository, p1)).toBe('NORMAL');
     expect(await stateOf(h.repository, p2)).toBe('NORMAL');
@@ -862,6 +863,7 @@ describe('F3: segundo par proibido e estruturas ambiguas', () => {
     const remove = await h.commands.execute({
       requestId: 'k-rem',
       action: 'REMOVE',
+      acknowledgeScopeRemoval: true,
       profileId: p1,
     });
     // Retirar UM par deixaria o outro ativo "sem dono": bloqueado.
@@ -897,6 +899,7 @@ describe('F3: segundo par proibido e estruturas ambiguas', () => {
     const remove = await h.commands.execute({
       requestId: 'l-rem',
       action: 'REMOVE',
+      acknowledgeScopeRemoval: true,
       profileId: p1,
     });
     expect(remove.status).toBe('REVALIDATION_FAILED');
@@ -980,6 +983,7 @@ describe('F3: segundo par proibido e estruturas ambiguas', () => {
     const removed = await h.commands.execute({
       requestId: 'p-rem',
       action: 'REMOVE',
+      acknowledgeScopeRemoval: true,
       profileId: p2,
     });
     expect(removed.status).toBe('REMOVED_VERIFIED');

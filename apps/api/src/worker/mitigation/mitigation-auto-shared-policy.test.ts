@@ -551,8 +551,18 @@ describe('AUTO x route-policy compartilhada (deviceId + policyName)', () => {
     const [p1, p2] = h.profileIds as [string, string];
 
     const results = await Promise.all([
-      h.commands.execute({ requestId: 'remove-1', action: 'REMOVE', profileId: p1 }),
-      h.commands.execute({ requestId: 'remove-2', action: 'REMOVE', profileId: p2 }),
+      h.commands.execute({
+        requestId: 'remove-1',
+        action: 'REMOVE',
+        profileId: p1,
+        acknowledgeScopeRemoval: true,
+      }),
+      h.commands.execute({
+        requestId: 'remove-2',
+        action: 'REMOVE',
+        profileId: p2,
+        acknowledgeScopeRemoval: true,
+      }),
     ]);
 
     // Sem lock por escopo no caminho MANUAL, as duas leituras do par ativo
@@ -565,5 +575,27 @@ describe('AUTO x route-policy compartilhada (deviceId + policyName)', () => {
     expect(await stateOf(h.repository, p1)).toBe('NORMAL');
     expect(await stateOf(h.repository, p2)).toBe('NORMAL');
     expect(results.some((result) => result.ok)).toBe(true);
+  });
+
+  it('14b) REMOVE sem confirmacao de escopo e bloqueado quando o irmao esta ativo', async () => {
+    const h = await harness({ runtimeStates: ['MITIGATED', 'MITIGATED'] });
+    h.live.nodes = new Set([1, 2]);
+    const [p1, p2] = h.profileIds as [string, string];
+
+    const blocked = await h.commands.execute({
+      requestId: 'remove-sem-ack',
+      action: 'REMOVE',
+      profileId: p1,
+    });
+
+    expect(blocked.ok).toBe(false);
+    expect(blocked.status).toBe('SCOPE_CONFIRMATION_REQUIRED');
+    expect(blocked.verified).toBe(false);
+    expect(blocked.removalScope?.affected.map((item) => item.profileId)).toEqual([p2]);
+    expect(blocked.commandPreview).toHaveLength(0);
+    expect(h.live.removeCalls).toBe(0);
+    expect(h.live.nodes.has(1)).toBe(true);
+    expect(await stateOf(h.repository, p1)).toBe('MITIGATED');
+    expect(await stateOf(h.repository, p2)).toBe('MITIGATED');
   });
 });

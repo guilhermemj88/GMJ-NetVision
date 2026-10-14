@@ -50,6 +50,20 @@ export type MitigationCommandAction = (typeof MITIGATION_COMMAND_ACTIONS)[number
 export const MUTATING_ACTIONS: readonly MitigationCommandAction[] = ['ACTIVATE', 'REMOVE'];
 
 /**
+ * Estados de runtime em que o vinculo ainda DEPENDE da RT na policy. Como a
+ * policy e a unidade BGP, um REMOVE manual derruba a mitigacao de TODOS os
+ * vinculos: se algum estiver ativo (ou em reconciliacao, fail-closed) a UI
+ * exige confirmacao explicita do escopo inteiro.
+ */
+export const REMOVAL_SCOPE_ACTIVE_STATES: readonly MitigationState[] = [
+  'MITIGATING',
+  'MITIGATED',
+  'RECOVERING',
+  'RECOVERY_PENDING',
+  'RECONCILIATION_REQUIRED',
+];
+
+/**
  * O equipamento ja foi alterado, mas o runtime local nao foi sincronizado por
  * completo (repositorio indisponivel/parcial). Nunca reportar sucesso "limpo".
  */
@@ -60,6 +74,11 @@ export interface MitigationCommandInput {
   requestId: string;
   action: MitigationCommandAction;
   profileId: string;
+  /**
+   * REMOVE manual em policy compartilhada: o operador confirma que sabe que a
+   * retirada atinge TODOS os vinculos ativos do escopo `device + policy`.
+   */
+  acknowledgeScopeRemoval?: boolean;
 }
 
 export interface MitigationSharedTargetSummary {
@@ -68,6 +87,28 @@ export interface MitigationSharedTargetSummary {
   customer: string | null;
   peerAddress: string | null;
   addressFamily: string | null;
+}
+
+/** Vinculo ATIVO do MESMO escopo fisico que um REMOVE manual tambem atinge. */
+export interface MitigationRemovalScopeEntry {
+  profileId: string;
+  interfaceId: string | null;
+  interfaceName: string | null;
+  customer: string | null;
+  peerAddress: string | null;
+  addressFamily: string | null;
+  runtimeState: string;
+}
+
+/**
+ * Escopo AFETADO por um REMOVE manual: informativo na resposta e base do gate
+ * `SCOPE_CONFIRMATION_REQUIRED` quando ha vinculo ativo na mesma policy.
+ */
+export interface MitigationRemovalScopeSummary {
+  deviceId: string;
+  policy: string;
+  /** Outros vinculos do escopo com mitigacao ativa/pendente HOJE. */
+  affected: MitigationRemovalScopeEntry[];
 }
 
 /** Resultado da publicacao na camada de MIDIAS (best effort). */
@@ -116,6 +157,11 @@ export interface MitigationCommandResult {
   pairSource?: 'RUNTIME' | 'DEVICE';
   /** Motivo de bloqueio administrativo (ex.: MITIGATION_EXCLUDED). */
   blockedReason?: MitigationBlockReason | null;
+  /**
+   * Presente quando o escopo `device + policy` tem OUTRO vinculo ativo (ou o
+   * REMOVE foi bloqueado pedindo confirmacao). Ausente em REMOVE simples.
+   */
+  removalScope?: MitigationRemovalScopeSummary;
   safeError?: string;
 }
 
@@ -291,6 +337,12 @@ export class MitigationCommandService {
       sharedPolicy: false,
       targets: [] as MitigationSharedTargetSummary[],
     });
+    // REMOVE MANUAL: levanta o escopo realmente afetado ANTES de qualquer
+    // escrita. A policy e a unidade BGP; a retirada atinge os irmaos ativos.
+    const removalScope =
+      input.action === 'REMOVE'
+        ? await this.read(() => this.activeScopeSiblings(profile), null)
+        : null;
 
     // Executor REAL so quando explicitamente habilitado (HUAWEI + allowlist).
     // `enabledFor` autoriza a LEITURA; a ESCRITA ainda exige live_write e e
@@ -335,6 +387,7 @@ export class MitigationCommandService {
       sharedPolicy: shared.sharedPolicy,
       sharedPolicyTargets: shared.targets,
       affectedPeers: peers.map((peer) => peer.peerAddress).sort(),
+      ...(removalScope && removalScope.affected.length > 0 ? { removalScope } : {}),
     };
 
     // Preflight READ-ONLY imediatamente antes de qualquer escrita. Sem ele a
@@ -386,6 +439,29 @@ export class MitigationCommandService {
             '"nunca mitigar este peer"',
         };
       }
+    }
+
+    // REMOVE MANUAL EM POLICY COMPARTILHADA: se outro vinculo do MESMO escopo
+    // ainda esta ativo, a retirada precisa de confirmacao explicita do operador
+    // (que ve a lista completa em `removalScope`). Fail-closed: sem o ack o
+    // comando nao chega ao preflight nem ao equipamento.
+    if (
+      input.action === 'REMOVE' &&
+      removalScope &&
+      removalScope.affected.length > 0 &&
+      input.acknowledgeScopeRemoval !== true
+    ) {
+      return {
+        ...common,
+        ok: false,
+        status: 'SCOPE_CONFIRMATION_REQUIRED',
+        verified: false,
+        commandPreview: [],
+        verification: null,
+        safeError:
+          `Remocao bloqueada: a policy ${removalScope.policy} e compartilhada por ` +
+          `${removalScope.affected.length} vinculo(s) ainda ativo(s); confirme a remocao do escopo inteiro`,
+      };
     }
 
     const liveMode: MitigationPreflightMode =
@@ -697,6 +773,40 @@ export class MitigationCommandService {
       });
     }
     return { sharedPolicy: targets.length > 0, targets };
+  }
+
+  /**
+   * Outros vinculos da MESMA policy fisica que HOJE dependem da mitigacao.
+   * Somente leitura: base do gate de confirmacao do REMOVE manual.
+   */
+  private async activeScopeSiblings(
+    profile: MitigationProfileRecord,
+  ): Promise<MitigationRemovalScopeSummary> {
+    const scope = policyExecutionScope(profile);
+    const profiles = await this.deps.repository.listProfiles({ deviceId: scope.deviceId });
+    const affected: MitigationRemovalScopeEntry[] = [];
+    for (const candidate of profiles) {
+      if (candidate.id === profile.id) continue;
+      if (candidate.policyName !== scope.policyName) continue;
+      const runtime = await this.read(() => this.deps.repository.getRuntime(candidate.id), null);
+      const state = runtime?.state ?? null;
+      if (!state || !REMOVAL_SCOPE_ACTIVE_STATES.includes(state)) continue;
+      const peers = await this.read(() => this.deps.repository.listProfilePeers(candidate.id), []);
+      const host = await this.read(() => this.deps.hosts.getHost(candidate.deviceId), null);
+      const label = resolveInterfaceLabel(host, candidate.interfaceId);
+      affected.push({
+        profileId: candidate.id,
+        interfaceId: candidate.interfaceId,
+        interfaceName: label.interfaceName,
+        customer: label.customer,
+        peerAddress:
+          peers.find((peer) => peer.primary)?.peerAddress ?? peers[0]?.peerAddress ?? null,
+        addressFamily: candidate.addressFamily,
+        runtimeState: state,
+      });
+    }
+    affected.sort((left, right) => left.profileId.localeCompare(right.profileId));
+    return { deviceId: scope.deviceId, policy: scope.policyName, affected };
   }
 
   /**

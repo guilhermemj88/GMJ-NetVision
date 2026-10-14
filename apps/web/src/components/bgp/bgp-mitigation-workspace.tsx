@@ -209,6 +209,7 @@ export function BgpMitigationWorkspace() {
     return map;
   }, [health.data]);
   const shadowSummary = autoShadow.data?.summary ?? null;
+  const selectedShadow = selected ? (shadowEntries.get(selected.id) ?? null) : null;
   const hydrationState = health.data?.snapshotHydration?.state ?? null;
   const snapshotBadgeOf = (row: BgpMitigationProfileDto) =>
     mitigationSnapshotBadge(row.snapshotAvailable, hydrationState);
@@ -257,6 +258,33 @@ export function BgpMitigationWorkspace() {
     onError: (error) => setNotice(errorMessage(error, 'Falha ao salvar a direção de telemetria')),
   });
 
+  /**
+   * AUTO-ALL: excecao manual do AUTO por DESCRIPTION. `true` fixa ALERT_ONLY
+   * (diagnostico/teste/seguranca) e o sweep automatico nunca promove o perfil.
+   */
+  const autoExemptMutation = useMutation({
+    mutationFn: (input: { id: string; exempt: boolean }) =>
+      patchMitigationProfile(input.id, { autoModeExempt: input.exempt }),
+    onSuccess: async (updated) => {
+      setNotice(
+        updated.autoModeExempt
+          ? 'Exceção aplicada: o perfil permanece em ALERT_ONLY.'
+          : 'Exceção removida: o perfil volta à regra automática por DESCRIPTION.',
+      );
+      setDiscovery((current) =>
+        current
+          ? {
+              ...current,
+              profiles: current.profiles.map((row) => (row.id === updated.id ? updated : row)),
+            }
+          : current,
+      );
+      await queryClient.invalidateQueries({ queryKey: ['mitigation', 'profiles'] });
+      await queryClient.invalidateQueries({ queryKey: ['mitigation', 'auto-shadow'] });
+    },
+    onError: (error) => setNotice(errorMessage(error, 'Falha ao salvar a exceção ALERT_ONLY')),
+  });
+
   const simulateMutation = useMutation({
     mutationFn: (input: {
       id: string;
@@ -302,8 +330,17 @@ export function BgpMitigationWorkspace() {
 
   // Acoes de mitigacao: MESMO MitigationCommandService usado pelo n8n inbound.
   const commandMutation = useMutation({
-    mutationFn: (input: { id: string; action: MitigationCommandAction; requestId: string }) =>
-      runMitigationCommand(input.id, { requestId: input.requestId, action: input.action }),
+    mutationFn: (input: {
+      id: string;
+      action: MitigationCommandAction;
+      requestId: string;
+      acknowledgeScopeRemoval?: boolean;
+    }) =>
+      runMitigationCommand(input.id, {
+        requestId: input.requestId,
+        action: input.action,
+        ...(input.acknowledgeScopeRemoval ? { acknowledgeScopeRemoval: true } : {}),
+      }),
     onSuccess: async (result, variables) => {
       setCommandResult(result);
       setPendingAction(null);
@@ -463,8 +500,17 @@ export function BgpMitigationWorkspace() {
   const filterCount = (filter: MitigationTableFilter): number =>
     filter === 'ALL' ? rows.length : rows.filter((row) => matchesMitigationFilter(row, filter)).length;
 
-  function runCommand(action: MitigationCommandAction, profileId: string): void {
-    commandMutation.mutate({ id: profileId, action, requestId: newRequestId() });
+  function runCommand(
+    action: MitigationCommandAction,
+    profileId: string,
+    acknowledgeScopeRemoval = false,
+  ): void {
+    commandMutation.mutate({
+      id: profileId,
+      action,
+      requestId: newRequestId(),
+      ...(acknowledgeScopeRemoval ? { acknowledgeScopeRemoval: true } : {}),
+    });
   }
 
   return (
@@ -770,6 +816,7 @@ export function BgpMitigationWorkspace() {
               <tr>
                 <th scope="col">Estado</th>
                 <th scope="col">Mitigação</th>
+                <th scope="col">AUTO</th>
                 <th scope="col">AF</th>
                 <th scope="col">Cliente</th>
                 <th scope="col">Equipamento</th>
@@ -789,7 +836,7 @@ export function BgpMitigationWorkspace() {
             <tbody>
               {filteredRows.length === 0 ? (
                 <tr>
-                  <td colSpan={16} className="mitigation-table__empty">
+                  <td colSpan={17} className="mitigation-table__empty">
                     Nenhum perfil neste filtro.
                   </td>
                 </tr>
@@ -828,6 +875,11 @@ export function BgpMitigationWorkspace() {
                   </td>
                   <td>
                     <RuntimeStateBadge state={row.runtimeState} />
+                  </td>
+                  <td title={autoStateTitleOf(row)}>
+                    <span className={`mitigation-badge is-${autoStateToneOf(row)}`}>
+                      {autoStateLabel(row)}
+                    </span>
                   </td>
                   <td>
                     {row.addressFamily === 'IPV6' ? 'IPv6' : 'IPv4'}
@@ -943,6 +995,42 @@ export function BgpMitigationWorkspace() {
             saving={directionMutation.isPending}
             onSave={(direction) => directionMutation.mutate({ id: selected.id, direction })}
           />
+
+          <div className="mitigation-detail__block">
+            <h4>AUTO POR DESCRIPTION</h4>
+            <p>Estado: {autoStateLabel(selected)}</p>
+            <p>Desejado (banda válida na DESCRIPTION e sem exclusão): {selected.autoDesired ? 'sim' : 'não'}</p>
+            <p>Pronto (snapshot, readiness e nodes do par): {selected.autoReady ? 'sim' : 'não'}</p>
+            <p>Efetivo (motor autorizado a atuar): {selected.autoEffective ? 'sim' : 'não'}</p>
+            {selected.autoStateReason ? <p>Bloqueio: {selected.autoStateReason}</p> : null}
+            <p>Origem da banda: {selected.bandwidthSource ?? '—'}</p>
+            <p>
+              Direção do último gatilho:{' '}
+              {selectedShadow?.triggeredDirections?.length
+                ? selectedShadow.triggeredDirections.join(' + ')
+                : '—'}
+            </p>
+            <p>
+              RX (monitor): {formatBandwidthBps(selectedShadow?.trafficByDirection?.rx ?? null)} ·
+              TX (ação): {formatBandwidthBps(selectedShadow?.trafficByDirection?.tx ?? null)}
+            </p>
+            <Button
+              compact
+              variant="secondary"
+              disabled={!selected.persisted || autoExemptMutation.isPending}
+              title="Exceção manual: mantém o perfil em ALERT_ONLY (o sweep automático nunca promove)"
+              onClick={() =>
+                autoExemptMutation.mutate({
+                  id: selected.id,
+                  exempt: selected.autoModeExempt !== true,
+                })
+              }
+            >
+              {selected.autoModeExempt
+                ? 'REMOVER EXCEÇÃO ALERT_ONLY'
+                : 'MANTER EM ALERT_ONLY (EXCEÇÃO)'}
+            </Button>
+          </div>
 
           <div className="mitigation-detail__block">
             <h4>BGP</h4>
@@ -1086,6 +1174,30 @@ export function BgpMitigationWorkspace() {
               </h4>
               <p>Modo: MOCK / SIMULAÇÃO</p>
               <p>Status: {commandResult.status}</p>
+              {commandResult.status === 'SCOPE_CONFIRMATION_REQUIRED' ? (
+                <div className="mitigation-shared-policy" role="alert">
+                  <strong>Confirmação de escopo obrigatória</strong>
+                  <span>
+                    A retirada atinge FISICAMENTE TODOS os vínculos ativos da policy{' '}
+                    {commandResult.removalScope?.policy ?? commandResult.policy ?? '—'}:
+                  </span>
+                  <ul>
+                    {(commandResult.removalScope?.affected ?? []).map((item) => (
+                      <li key={item.profileId}>
+                        {item.customer ?? '—'} · {item.interfaceName ?? '—'} · Peer:{' '}
+                        {item.peerAddress ?? '—'} · {item.runtimeState}
+                      </li>
+                    ))}
+                  </ul>
+                  <Button
+                    compact
+                    disabled={commandMutation.isPending}
+                    onClick={() => runCommand('REMOVE', commandResult.profileId, true)}
+                  >
+                    CONFIRMAR RETIRADA DO ESCOPO
+                  </Button>
+                </div>
+              ) : null}
               {commandResult.safeError && (
                 <p className="mitigation-result__error">Erro: {commandResult.safeError}</p>
               )}
@@ -1207,6 +1319,60 @@ export function BgpMitigationWorkspace() {
  * A direcao efetiva vem do relatorio de sombra (motor) e, sem ele, da
  * configuracao persistida no perfil. `null` = nao configurada (fail-closed).
  */
+/**
+ * AUTO-ALL: estado da AUTORIZACAO automatica derivada da DESCRIPTION.
+ *
+ * A UI nunca apresenta um perfil bloqueado como saudavel apenas porque o modo
+ * desejado e AUTO: `autoState` (desejado -> pronto -> efetivo/bloqueado) vem do
+ * backend, com o codigo do bloqueio quando existir.
+ */
+function autoStateLabel(row: BgpMitigationProfileDto): string {
+  switch (row.autoState) {
+    case 'EFFECTIVE':
+      return 'AUTO efetivo';
+    case 'READY':
+      return 'AUTO pronto';
+    case 'BLOCKED':
+      return row.autoStateReason ? `AUTO bloqueado · ${row.autoStateReason}` : 'AUTO bloqueado';
+    case 'EXEMPT':
+      return 'Exceção ALERT_ONLY';
+    case 'DISABLED':
+      return 'Desativado';
+    case 'OFF':
+      return row.autoDesired ? 'AUTO desejado' : 'Sem banda na DESCRIPTION';
+    default:
+      return '—';
+  }
+}
+
+/** Tons reutilizados do painel (sem CSS novo): verde/ambar/cinza. */
+function autoStateToneOf(row: BgpMitigationProfileDto): string {
+  switch (row.autoState) {
+    case 'EFFECTIVE':
+    case 'READY':
+      return 'ready';
+    case 'BLOCKED':
+      return 'not_ready';
+    default:
+      return 'revalidando';
+  }
+}
+
+function autoStateTitleOf(row: BgpMitigationProfileDto): string {
+  if (!row.autoState) {
+    return 'Estado AUTO indisponível: o backend ainda não publicou a autorização por DESCRIPTION.';
+  }
+  return [
+    `AUTO desejado: ${row.autoDesired ? 'sim' : 'não'} (banda válida na DESCRIPTION e sem exclusão)`,
+    `AUTO pronto: ${row.autoReady ? 'sim' : 'não'} (snapshot, readiness e nodes do par)`,
+    `AUTO efetivo: ${row.autoEffective ? 'sim' : 'não'} (motor autorizado a atuar)`,
+    row.autoStateReason ? `Bloqueio: ${row.autoStateReason}` : null,
+    row.autoModeExempt ? 'Exceção manual: mantido em ALERT_ONLY' : null,
+  ]
+    .filter((line): line is string => line !== null)
+    .join(' · ');
+}
+
 function directionOf(
   row: BgpMitigationProfileDto,
   shadow: MitigationAutoShadowEntryDto | null,
@@ -1223,9 +1389,12 @@ function directionTitleOf(
     return 'Direção não configurada: o motor AUTO fica fail-closed (TELEMETRY_UNAVAILABLE) para este perfil.';
   }
   const source = shadow?.directionSource ?? 'PROFILE';
+  const triggered = shadow?.triggeredDirections?.length
+    ? ` · Último gatilho: ${shadow.triggeredDirections.join(' + ')}`
+    : '';
   return source === 'ENV'
-    ? `Direção ${direction} vinda do ENV legado (fallback). O valor persistido no perfil tem precedência.`
-    : `Direção ${direction} persistida no perfil (decisão do operador).`;
+    ? `Direção ${direction} vinda do ENV legado (fallback). O valor persistido no perfil tem precedência.${triggered}`
+    : `Direção ${direction} persistida no perfil (decisão do operador).${triggered}`;
 }
 
 function utilizationPercent(

@@ -241,6 +241,8 @@ export class BgpMitigationDiscoveryService {
 
     const candidates: Candidate[] = [];
     const ambiguousPeers: string[] = [];
+    /** Interfaces LIDAS com sucesso que perderam banda valida na DESCRIPTION. */
+    const noBandwidthInterfaceIds = new Set<string>();
     let ignoredNoBandwidth = 0;
 
     for (const peer of outcome.peers) {
@@ -254,6 +256,7 @@ export class BgpMitigationDiscoveryService {
       });
       if (!scope.inScope) {
         ignoredNoBandwidth += 1;
+        noBandwidthInterfaceIds.add(peer.interfaceId);
         continue;
       }
       candidates.push({ peer, scope });
@@ -508,6 +511,7 @@ export class BgpMitigationDiscoveryService {
     const outOfScopeProfiles = await this.reconcileOutOfScope(
       device,
       touchedProfileIds,
+      noBandwidthInterfaceIds,
       now,
       warnings,
     );
@@ -533,12 +537,29 @@ export class BgpMitigationDiscoveryService {
   private async reconcileOutOfScope(
     device: HostRecord,
     touchedProfileIds: ReadonlySet<string>,
+    noBandwidthInterfaceIds: ReadonlySet<string>,
     now: Date,
     warnings: string[],
   ): Promise<string[]> {
     const outOfScope: string[] = [];
     for (const profile of await this.deps.repository.listProfiles({ deviceId: device.id })) {
       if (touchedProfileIds.has(profile.id)) continue;
+      // AUTO-ALL: a interface foi LIDA com sucesso pelo device, mas a
+      // DESCRIPTION deixou de entregar banda contratada valida => a autorizacao
+      // AUTO por DESCRIPTION acabou. Limpar a banda detectada NAO derruba
+      // mitigacao (REMOVE segue manual e o runtime nao e tocado); falha
+      // TEMPORARIA de leitura nunca chega aqui (nao ha interface "sem banda").
+      if (
+        profile.interfaceId !== null &&
+        noBandwidthInterfaceIds.has(profile.interfaceId) &&
+        (profile.detectedBandwidthBps !== null || profile.bandwidthSource !== 'UNKNOWN')
+      ) {
+        await this.deps.repository.clearProfileDetectedBandwidth(profile.id);
+        warnings.push(
+          `policy ${profile.policyName}: DESCRIPTION sem banda contratada valida; ` +
+            'autorizacao AUTO suspensa (mitigacao existente preservada)',
+        );
+      }
       const runtime = await this.deps.repository.getRuntime(profile.id);
       if (runtime?.state === 'DISABLED' && runtime.plannedNode === null) continue;
       const peers = await this.deps.repository.listProfilePeers(profile.id);

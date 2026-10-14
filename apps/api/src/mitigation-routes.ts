@@ -35,6 +35,11 @@ const patchSchema = z
      */
     autoTrafficDirection: z.enum(['RX', 'TX']).nullish(),
     /**
+     * Excecao manual do AUTO por DESCRIPTION: `true` fixa ALERT_ONLY para o
+     * perfil (o sweep automatico nunca promove). `false` devolve a regra.
+     */
+    autoModeExempt: z.boolean().optional(),
+    /**
      * Confirmacoes EXPLICITAS exigidas pela API quando a promocao para AUTO
      * toca um escopo sensivel (policy compartilhada / par IPv4+IPv6).
      */
@@ -69,6 +74,12 @@ const commandSchema = z
   .object({
     requestId: z.string().min(1).max(160),
     action: z.enum(MITIGATION_COMMAND_ACTIONS),
+    /**
+     * REMOVE em policy compartilhada: o operador confirma que a retirada atinge
+     * TODOS os vinculos ativos do escopo (o backend devolve a lista em
+     * `removalScope` e exige o ack quando existir vinculo ativo).
+     */
+    acknowledgeScopeRemoval: z.boolean().optional(),
   })
   .strict();
 
@@ -223,7 +234,14 @@ return service.discover(deviceIds, { refreshInterfaceMetadata: true });
       if (!user) return undefined;
       const { id } = profileParams.parse(request.params);
       const payload = commandSchema.parse(request.body ?? {});
-      return commands.execute({ ...payload, profileId: id });
+      return commands.execute({
+        requestId: payload.requestId,
+        action: payload.action,
+        profileId: id,
+        ...(payload.acknowledgeScopeRemoval === undefined
+          ? {}
+          : { acknowledgeScopeRemoval: payload.acknowledgeScopeRemoval }),
+      });
     });
   }
 
@@ -356,6 +374,9 @@ return service.discover(deviceIds, { refreshInterfaceMetadata: true });
       ...(payload.autoTrafficDirection === undefined
         ? {}
         : { autoTrafficDirection: payload.autoTrafficDirection ?? null }),
+      ...(payload.autoModeExempt === undefined
+        ? {}
+        : { autoModeExempt: payload.autoModeExempt }),
     });
     if (!updated) return reply.code(404).send({ message: 'Perfil de mitigacao nao encontrado' });
     return updated;

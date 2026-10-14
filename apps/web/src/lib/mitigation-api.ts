@@ -125,6 +125,21 @@ export interface MitigationCommandSharedTarget {
   peerAddress: string | null;
 }
 
+/** Escopo afetado por um REMOVE manual em policy compartilhada. */
+export interface MitigationRemovalScope {
+  deviceId: string;
+  policy: string;
+  affected: {
+    profileId: string;
+    interfaceId: string | null;
+    interfaceName: string | null;
+    customer: string | null;
+    peerAddress: string | null;
+    addressFamily: string | null;
+    runtimeState: string;
+  }[];
+}
+
 export interface MitigationCommandResult {
   ok: boolean;
   requestId: string;
@@ -147,6 +162,12 @@ export interface MitigationCommandResult {
   sharedPolicy: boolean;
   sharedPolicyTargets: MitigationCommandSharedTarget[];
   affectedPeers: string[];
+  /**
+   * REMOVE em policy compartilhada: OUTROS vinculos do MESMO escopo
+   * (`device + policy`) que ainda dependem da mitigacao. Presente apenas quando
+   * existe vinculo ativo no escopo.
+   */
+  removalScope?: MitigationRemovalScope | null;
   verified: boolean;
   executedAt: string;
   idempotent: boolean;
@@ -163,7 +184,12 @@ export interface MitigationCommandResult {
  */
 export function runMitigationCommand(
   profileId: string,
-  input: { requestId: string; action: MitigationCommandAction },
+  input: {
+    requestId: string;
+    action: MitigationCommandAction;
+    /** REMOVE em policy compartilhada: confirma que o escopo INTEIRO sera retirado. */
+    acknowledgeScopeRemoval?: boolean;
+  },
 ): Promise<MitigationCommandResult> {
   return request<MitigationCommandResult>(
     `/api/bgp/mitigation/profiles/${encodeURIComponent(profileId)}/command`,

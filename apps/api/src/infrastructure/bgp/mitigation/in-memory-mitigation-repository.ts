@@ -99,6 +99,8 @@ export class InMemoryMitigationRepository implements MitigationRepository {
         mitigationRt: input.mitigationRt ?? existing.mitigationRt,
         // A direcao do AUTO e decisao do OPERADOR: o discovery nunca mexe.
         autoTrafficDirection: existing.autoTrafficDirection,
+        // A excecao manual do AUTO tambem e do OPERADOR: nunca sobrescrita.
+        autoModeExempt: existing.autoModeExempt,
         // A exclusao administrativa NUNCA e sobrescrita pelo discovery.
         mitigationExcluded: input.mitigationExcluded ?? existing.mitigationExcluded,
         mitigationExclusionReason:
@@ -134,6 +136,7 @@ export class InMemoryMitigationRepository implements MitigationRepository {
       checkIntervalSeconds: input.checkIntervalSeconds ?? 5,
       mitigationRt: input.mitigationRt ?? '268568:660',
       autoTrafficDirection: null,
+      autoModeExempt: input.autoModeExempt ?? false,
       mitigationExcluded: input.mitigationExcluded ?? false,
       mitigationExclusionReason: input.mitigationExclusionReason ?? null,
       mitigationExclusionNote: input.mitigationExclusionNote ?? null,
@@ -231,6 +234,21 @@ export class InMemoryMitigationRepository implements MitigationRepository {
     const profile = this.store.profiles.get(id);
     if (!profile) return;
     profile.autoTrafficDirection = direction;
+    profile.updatedAt = new Date();
+  }
+
+  async setProfileAutoModeExempt(id: string, exempt: boolean): Promise<void> {
+    const profile = this.store.profiles.get(id);
+    if (!profile) return;
+    profile.autoModeExempt = exempt;
+    profile.updatedAt = new Date();
+  }
+
+  async clearProfileDetectedBandwidth(id: string): Promise<void> {
+    const profile = this.store.profiles.get(id);
+    if (!profile) return;
+    profile.detectedBandwidthBps = null;
+    profile.bandwidthSource = 'UNKNOWN';
     profile.updatedAt = new Date();
   }
 

@@ -138,6 +138,7 @@ import { MitigationAutoEngine } from './worker/mitigation/mitigation-auto-engine
 import { MitigationAutoRuntime } from './worker/mitigation/mitigation-auto-runtime';
 import { buildAutoShadowReport } from './worker/mitigation/mitigation-auto-shadow';
 import { InterfaceTrafficSource } from './worker/mitigation/mitigation-traffic-source';
+import { MitigationAutoDescriptionSweep } from './infrastructure/bgp/mitigation/mitigation-auto-description-sweep';
 import type { MitigationState } from './infrastructure/bgp/mitigation/mitigation-types';
 import { InMemoryMediaRepository } from './infrastructure/media/in-memory-media-repository';
 import { PrismaMediaRepository } from './infrastructure/media/prisma-media-repository';
@@ -809,6 +810,16 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     if (a && b && a !== b) approvedFamilyPairs.push([a, b]);
   }
 
+  // ---- AUTO-ALL: AUTO por DESCRIPTION (sweep) + DUAL RX/TX -----------------
+  // As DUAS nascem OFF: sem as flags o motor e o sweep publicados ficam byte a
+  // byte no comportamento atual (BHNET intacta).
+  const autoDescriptionEnabled = /^(1|true|yes|on)$/i.test(
+    process.env.MITIGATION_AUTO_DESCRIPTION_ENABLED?.trim() ?? '',
+  );
+  const autoDualDirectionsEnabled = /^(1|true|yes|on)$/i.test(
+    process.env.MITIGATION_AUTO_DUAL_DIRECTIONS?.trim() ?? '',
+  );
+
   const mitigationAutoEngine = new MitigationAutoEngine({
     globalMode: mitigationEngineConfig.mode,
     execution: {
@@ -886,6 +897,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       allowedProfileIds: sharedPolicyAllowedProfileIds,
     },
     approvedFamilyPairs,
+    dualDirections: { enabled: autoDualDirectionsEnabled },
     // Decisao normal repetida NAO vira linha INFO: transicoes de estado/motivo,
     // operacoes reais e falhas continuam no INFO; o detalhe por tick fica no
     // DEBUG e as decisoes suprimidas saem no resumo periodico.
@@ -897,6 +909,49 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     intervalMs: Math.max(1000, mitigationEngineConfig.checkIntervalSeconds * 1000),
     logger: (message, meta) => app.log.info(meta ?? {}, message),
   });
+  // ---- AUTO-ALL: AUTO derivado da DESCRIPTION ------------------------------
+  // Sweep idempotente que escreve SOMENTE `mode` (AUTO <-> ALERT_ONLY). Nunca
+  // toca runtime, mitigacao, Huawei, exclusoes administrativas ou direcao. Com
+  // a flag OFF e no-op. A retirada de autorizacao NUNCA remove mitigacao: o
+  // REMOVE permanece 100% manual.
+  const autoDescriptionSweep = new MitigationAutoDescriptionSweep({
+    enabled: autoDescriptionEnabled,
+    listProfiles: async () =>
+      (await mitigationService.listProfiles()).map((dto) => ({
+        id: dto.id,
+        persisted: dto.persisted,
+        mode: dto.mode,
+        autoModeExempt: dto.autoModeExempt === true,
+        autoState: dto.autoState ?? 'OFF',
+        autoStateReason: dto.autoStateReason ?? null,
+      })),
+    setMode: (id, mode) => mitigationRepository.setProfileMode(id, mode),
+    logger: (message, meta) => app.log.info(meta ?? {}, message),
+  });
+  const runAutoDescriptionSweep = async (): Promise<void> => {
+    try {
+      const summary = await autoDescriptionSweep.run();
+      if (!summary.enabled) return;
+      app.log.info(
+        {
+          evaluated: summary.evaluated,
+          promoted: summary.promoted.length,
+          demoted: summary.demoted.length,
+          blocked: summary.blocked.length,
+          skippedExempt: summary.skippedExempt,
+          skippedDisabled: summary.skippedDisabled,
+        },
+        'auto: sweep de autorizacao por DESCRIPTION',
+      );
+    } catch (error) {
+      app.log.error(
+        { error: error instanceof Error ? error.message : String(error) },
+        'auto: falha no sweep de autorizacao por DESCRIPTION',
+      );
+    }
+  };
+  const autoDescriptionSweepTimer = setInterval(() => void runAutoDescriptionSweep(), 300_000);
+  autoDescriptionSweepTimer.unref();
   if (mitigationEngineConfig.mode === 'AUTO') {
     autoRuntimeRef.start();
     app.log.warn(
@@ -910,6 +965,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   }
   app.addHook('onClose', async () => {
     autoRuntimeRef?.stop();
+    clearInterval(autoDescriptionSweepTimer);
   });
   registerN8nRoutes(app, {
     commands: mitigationCommands,
@@ -1027,11 +1083,15 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     // e sem qualquer escrita no Huawei. Não bloqueia o startup.
     if (!config.DEMO_MODE) {
       void mitigationService.rehydrateSnapshots().then(
-        (summary) =>
+        (summary) => {
           app.log.info(
             { devices: summary.devices, succeeded: summary.succeeded, failed: summary.failed },
             'reidratacao dos snapshots de mitigacao concluida',
-          ),
+          );
+          // Depois do rehydrate o snapshot/readiness e REAL: e o momento
+          // correto para o sweep de autorizacao por DESCRIPTION.
+          void runAutoDescriptionSweep();
+        },
         (error: unknown) =>
           app.log.error(
             { error: error instanceof Error ? error.message : String(error) },

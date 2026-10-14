@@ -55,6 +55,7 @@ function mapProfile(row: ProfileRow): MitigationProfileRecord {
     checkIntervalSeconds: row.checkIntervalSeconds,
     mitigationRt: row.mitigationRt,
     autoTrafficDirection: row.autoTrafficDirection as MitigationAutoTrafficDirection | null,
+    autoModeExempt: row.autoModeExempt,
     mitigationExcluded: row.mitigationExcluded,
     mitigationExclusionReason:
       row.mitigationExclusionReason as MitigationProfileRecord['mitigationExclusionReason'],
@@ -268,6 +269,20 @@ export class PrismaMitigationRepository implements MitigationRepository {
     await this.prisma.bgpMitigationProfile.update({
       where: { id },
       data: { autoTrafficDirection: direction },
+    });
+  }
+
+  async setProfileAutoModeExempt(id: string, exempt: boolean): Promise<void> {
+    await this.prisma.bgpMitigationProfile.update({
+      where: { id },
+      data: { autoModeExempt: exempt },
+    });
+  }
+
+  async clearProfileDetectedBandwidth(id: string): Promise<void> {
+    await this.prisma.bgpMitigationProfile.update({
+      where: { id },
+      data: { detectedBandwidthBps: null, bandwidthSource: 'UNKNOWN' },
     });
   }
 

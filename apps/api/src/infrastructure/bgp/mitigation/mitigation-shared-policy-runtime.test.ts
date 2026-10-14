@@ -187,7 +187,14 @@ function buildHarness(): Harness {
     activate: (profileId: string, requestId: string) =>
       service.execute({ requestId, action: 'ACTIVATE', profileId }),
     remove: (profileId: string, requestId: string) =>
-      service.execute({ requestId, action: 'REMOVE', profileId }),
+      // AUTO-ALL: REMOVE em escopo compartilhado exige a confirmacao explicita
+      // do operador (a suite valida a SINCRONIZACAO do escopo, nao o gate).
+      service.execute({
+        requestId,
+        action: 'REMOVE',
+        profileId,
+        acknowledgeScopeRemoval: true,
+      }),
   };
 }
 

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import type { AuthUser, HostRecord } from '@gmj/shared';
 import { registerMitigationRoutes } from './mitigation-routes';
 import { InMemoryMitigationRepository } from './infrastructure/bgp/mitigation/in-memory-mitigation-repository';
+import { MitigationAutoDescriptionSweep } from './infrastructure/bgp/mitigation/mitigation-auto-description-sweep';
 import { BgpMitigationService } from './infrastructure/bgp/mitigation/mitigation-service';
 import type {
   MitigationDiscoveryProfile,
@@ -19,6 +20,19 @@ import type { MitigationAutoDecision } from './worker/mitigation/mitigation-auto
 
 const OPERATOR = { id: 'u1', username: 'operador', role: 'OPERATOR' } as unknown as AuthUser;
 const FIXED_NOW = new Date('2026-10-13T12:00:00.000Z');
+
+/** Campos do AUTO por DESCRIPTION publicados no DTO de profile. */
+interface AutoStateRow {
+  id: string;
+  persisted: boolean;
+  mode: 'DISABLED' | 'ALERT_ONLY' | 'AUTO';
+  autoModeExempt?: boolean;
+  autoDesired?: boolean;
+  autoReady?: boolean;
+  autoEffective?: boolean;
+  autoState?: 'DISABLED' | 'EXEMPT' | 'OFF' | 'BLOCKED' | 'READY' | 'EFFECTIVE';
+  autoStateReason?: string | null;
+}
 
 function host(id: string, label: string): HostRecord {
   return { id, hostname: label, displayName: label, name: label, sshEnabled: true } as unknown as HostRecord;
@@ -163,8 +177,7 @@ async function seedProfile(
   return profile;
 }
 
-function decision(over: Partial<MitigationAutoDecision> = {}): MitigationAutoDecision {
-  return {
+function decision(over: Partial<MitigationAutoDecision> = {}): MitigationAutoDecision {  return {
     at: FIXED_NOW.toISOString(),
     profileId: 'p-1',
     deviceId: 'device-1',
@@ -435,5 +448,126 @@ describe('AUTO-ALL-PREP-1: relatorio de SOMBRA (somente leitura)', () => {
     app = harness.app;
     const response = await app.inject({ method: 'GET', url: '/api/bgp/mitigation/auto/shadow' });
     expect(response.statusCode).toBe(404);
+  });
+});
+
+describe('AUTO-ALL: autorizacao por DESCRIPTION (DTO + excecao + sweep)', () => {
+  let app: FastifyInstance | null = null;
+  afterEach(async () => {
+    if (app) await app.close();
+    app = null;
+  });
+
+  it('8) DTO publica desejado/pronto/efetivo e o motivo do bloqueio', async () => {
+    const harness = await buildHarness();
+    app = harness.app;
+    const profile = await seedProfile(harness.repository, { mode: 'ALERT_ONLY' });
+
+    // Sem snapshot de discovery nesta sessao o perfil NAO e "saudavel": fica
+    // BLOQUEADO por SNAPSHOT_UNAVAILABLE, mas a AUTORIZACAO ja aparece.
+    const blockedResponse = await app.inject({
+      method: 'GET',
+      url: '/api/bgp/mitigation/profiles',
+    });
+    const blocked = (blockedResponse.json() as AutoStateRow[]).find((row) => row.id === profile.id);
+    expect(blocked?.autoDesired).toBe(true);
+    expect(blocked?.autoReady).toBe(false);
+    expect(blocked?.autoEffective).toBe(false);
+    expect(blocked?.autoState).toBe('BLOCKED');
+    expect(blocked?.autoStateReason).toBe('SNAPSHOT_UNAVAILABLE');
+    expect(blocked?.autoModeExempt).toBe(false);
+
+    // Com snapshot REAL (discovery roda e o cache fica preenchido): READY.
+    harness.discovery.rows = [discoveryRow({ profileId: profile.id })];
+    await app.inject({
+      method: 'POST',
+      url: '/api/bgp/mitigation/discover',
+      payload: { deviceId: 'device-1' },
+    });
+    const readyResponse = await app.inject({ method: 'GET', url: '/api/bgp/mitigation/profiles' });
+    const ready = (readyResponse.json() as AutoStateRow[]).find((row) => row.id === profile.id);
+    expect(ready?.autoReady).toBe(true);
+    expect(ready?.autoState).toBe('READY');
+  });
+
+  it('9) sweep promove READY para AUTO, respeita a excecao e e idempotente', async () => {
+    const harness = await buildHarness();
+    app = harness.app;
+    const profile = await seedProfile(harness.repository, { mode: 'ALERT_ONLY' });
+    harness.discovery.rows = [discoveryRow({ profileId: profile.id })];
+    await app.inject({
+      method: 'POST',
+      url: '/api/bgp/mitigation/discover',
+      payload: { deviceId: 'device-1' },
+    });
+
+    // Fiacao IDENTICA a do processo: as LINHAS vem do DTO HTTP publicado e a
+    // escrita vai para o repositorio do perfil (somente `mode`).
+    const sweep = new MitigationAutoDescriptionSweep({
+      enabled: true,
+      listProfiles: async () => {
+        const response = await app!.inject({
+          method: 'GET',
+          url: '/api/bgp/mitigation/profiles',
+        });
+        return (response.json() as AutoStateRow[]).map((row) => ({
+          id: row.id,
+          persisted: row.persisted,
+          mode: row.mode,
+          autoModeExempt: row.autoModeExempt === true,
+          autoState: row.autoState ?? 'OFF',
+          autoStateReason: row.autoStateReason ?? null,
+        }));
+      },
+      setMode: (id, mode) => harness.repository.setProfileMode(id, mode),
+    });
+
+    const first = await sweep.run();
+    expect(first.promoted).toEqual([profile.id]);
+    expect(first.demoted).toEqual([]);
+    expect((await harness.repository.getProfile(profile.id))?.mode).toBe('AUTO');
+
+    // Efetivo: modo AUTO + pronto (o motor fica autorizado a avaliar).
+    const afterPromotion = await app.inject({ method: 'GET', url: '/api/bgp/mitigation/profiles' });
+    const effective = (afterPromotion.json() as AutoStateRow[]).find(
+      (row) => row.id === profile.id,
+    );
+    expect(effective?.autoState).toBe('EFFECTIVE');
+    expect(effective?.autoEffective).toBe(true);
+
+    // Idempotencia: sem mudanca de estado, nada e reescrito.
+    const second = await sweep.run();
+    expect(second.promoted).toEqual([]);
+    expect(second.demoted).toEqual([]);
+
+    // Excecao manual (operador): AUTO -> ALERT_ONLY, sem tocar em runtime.
+    const exempt = await app.inject({
+      method: 'PATCH',
+      url: `/api/bgp/mitigation/profiles/${profile.id}`,
+      payload: { autoModeExempt: true },
+    });
+    expect(exempt.statusCode).toBe(200);
+    const exemptRow = (exempt.json() as unknown as AutoStateRow);
+    expect(exemptRow.autoState).toBe('EXEMPT');
+    expect(exemptRow.autoModeExempt).toBe(true);
+
+    const third = await sweep.run();
+    expect(third.demoted).toEqual([profile.id]);
+    expect(third.skippedExempt).toBe(1);
+    const stored = await harness.repository.getProfile(profile.id);
+    expect(stored?.mode).toBe('ALERT_ONLY');
+    expect(stored?.autoModeExempt).toBe(true);
+
+    // Flag DESLIGADA (default de producao): o sweep e no-op.
+    const disabled = new MitigationAutoDescriptionSweep({
+      enabled: false,
+      listProfiles: async () => [],
+      setMode: async () => undefined,
+    });
+    const off = await disabled.run();
+    expect(off.enabled).toBe(false);
+    expect(off.evaluated).toBe(0);
+    expect(off.promoted).toEqual([]);
+    expect(off.demoted).toEqual([]);
   });
 });

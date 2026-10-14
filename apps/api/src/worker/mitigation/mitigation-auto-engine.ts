@@ -63,6 +63,12 @@ export type MitigationAutoBlockReason =
   | 'SCOPE_ALREADY_MITIGATED'
   | 'SCOPE_OPERATION_IN_FLIGHT'
   | 'POLICY_BUSY'
+  /**
+   * DUAL: o ataque foi detectado em RX. A mitigacao BGP existente diversa
+   * prefixos (acao valida em TX), entao RX e monitorado/alertado sem escrever
+   * comando incompativel. Nao e bloqueio tecnico: e deteccao sem acao viavel.
+   */
+  | 'RX_MONITOR_ONLY'
   | 'CONCURRENT_TICK';
 
 export interface MitigationAutoTargetState {
@@ -136,6 +142,16 @@ export interface MitigationAutoDecision {
   /** Direcao EFETIVA e origem usadas nesta avaliacao. */
   direction?: 'rx' | 'tx' | null;
   directionSource?: 'PROFILE' | 'ENV' | null;
+  /**
+   * DUAL: taxas lidas por direcao NESTA avaliacao (mesma amostra/identidade).
+   * Ausente quando o alvo roda no caminho legado de direcao unica.
+   */
+  trafficByDirection?: { rx: string | null; tx: string | null } | null;
+  /**
+   * DUAL: direcoes que cruzaram o threshold com amostras suficientes. `tx`
+   * habilita a mitigacao BGP existente; `rx` gera ALERT_TRIGGERED sem escrita.
+   */
+  triggeredDirections?: Array<'rx' | 'tx'>;
   /** `true` = policy compartilhada com automacao bloqueada por config. */
   sharedPolicyAutomationBlocked?: boolean;
   requestId: string | null;
@@ -215,17 +231,80 @@ export interface MitigationAutoEngineDeps {
    * vazio = nenhum par aprovado (fail-closed).
    */
   approvedFamilyPairs?: readonly (readonly [string, string])[];
+  /**
+   * DUAL RX+TX (flag `MITIGATION_AUTO_DUAL_DIRECTIONS`): avalia as DUAS
+   * direcoes da mesma amostra, com contadores independentes. TX continua sendo
+   * a direcao da mitigacao BGP; RX dispara ALERT_TRIGGERED (`RX_MONITOR_ONLY`)
+   * sem escrita. Desligado = caminho legado de direcao unica, inalterado.
+   */
+  dualDirections?: { enabled: boolean };
 }
 
-interface AutoCounters {
+interface DirectionCounters {
   over: number;
   below: number;
   triggerStartedAtMs: number | null;
-  loaded: boolean;
   /** Identidade da ultima amostra contada (distinct samples por timestamp). */
   lastSampleKey: string | null;
   /** Timestamp (ms) da ultima amostra contada, para exigir monotonicidade. */
   lastSampleAtMs: number | null;
+}
+
+interface AutoCounters extends DirectionCounters {
+  loaded: boolean;
+  /**
+   * DUAL: contadores de RX, INDEPENDENTES dos de TX (que sao a base persistida
+   * em `triggerCounter`/`recoveryCounter`). RX nao escreve no equipamento e nao
+   * tem histerese persistida: a memoria do processo basta e um restart apenas
+   * reinicia a contagem (fail-closed, nunca dispara escrita).
+   */
+  rx?: DirectionCounters;
+}
+
+function newDirectionCounters(): DirectionCounters {
+  return {
+    over: 0,
+    below: 0,
+    triggerStartedAtMs: null,
+    lastSampleKey: null,
+    lastSampleAtMs: null,
+  };
+}
+
+/**
+ * Conta a amostra UMA vez, por DIRECAO: identidade distinta (occurredAt
+ * monotonico; sem occurredAt, por sampleKey), threshold de gatilho e piso de
+ * recuperacao. Extraido para RX e TX usarem exatamente a mesma regra.
+ */
+function countDistinctSample(
+  counters: DirectionCounters,
+  sample: { bps: bigint; sampleKey: string; occurredAt: Date | null },
+  thresholds: { trigger: bigint; recovery: bigint },
+  atMs: number,
+): boolean {
+  let isNewSample: boolean;
+  if (sample.occurredAt) {
+    const atSampleMs = sample.occurredAt.getTime();
+    isNewSample = counters.lastSampleAtMs === null || atSampleMs > counters.lastSampleAtMs;
+    if (isNewSample) counters.lastSampleAtMs = atSampleMs;
+  } else {
+    isNewSample = counters.lastSampleKey !== sample.sampleKey;
+  }
+  counters.lastSampleKey = sample.sampleKey;
+  if (!isNewSample) return false;
+  if (sample.bps > thresholds.trigger) {
+    counters.over += 1;
+    counters.below = 0;
+    if (counters.triggerStartedAtMs === null) counters.triggerStartedAtMs = atMs;
+  } else if (sample.bps < thresholds.recovery) {
+    counters.below += 1;
+    counters.over = 0;
+  } else {
+    counters.over = 0;
+    counters.below = 0;
+    counters.triggerStartedAtMs = null;
+  }
+  return true;
 }
 
 const MITIGATED_STATES: readonly MitigationState[] = [
@@ -465,56 +544,142 @@ export class MitigationAutoEngine {
       return block('BANDWIDTH_UNKNOWN');
     }
 
-    const sample = await this.deps.traffic.sampleWithId({
-      profileId: target.profileId,
-      deviceId: target.deviceId,
-      interfaceId: target.interfaceId,
-      bandwidthBps: target.effectiveBandwidthBps,
-    });
-    if (sample === null) return block('TELEMETRY_UNAVAILABLE');
-    const traffic = sample.bps;
-
     const threshold = (target.effectiveBandwidthBps * BigInt(target.triggerPercent)) / 100n;
     const recoveryThreshold =
       (target.effectiveBandwidthBps * BigInt(target.recoveryPercent)) / 100n;
+    const thresholds = { trigger: threshold, recovery: recoveryThreshold };
+    const counters = await this.loadCounters(target);
+
+    // DUAL RX+TX (flag): as duas direcoes da MESMA amostra, com contadores
+    // independentes. O alvo com direcao PINADA em `rx` continua no caminho
+    // legado: nao existe acao BGP compativel com RX e o operador fixou essa
+    // leitura de proposito.
+    const dual =
+      this.deps.dualDirections?.enabled === true &&
+      typeof this.deps.traffic.sampleDirectionsWithId === 'function' &&
+      (target.direction === null || target.direction === undefined || target.direction === 'tx');
+
+    let traffic: bigint;
+    let trafficByDirection: { rx: string | null; tx: string | null } | null = null;
+    let triggeredDirections: Array<'rx' | 'tx'> | null = null;
+    if (dual) {
+      const sample = await this.deps.traffic.sampleDirectionsWithId!({
+        profileId: target.profileId,
+        deviceId: target.deviceId,
+        interfaceId: target.interfaceId,
+        bandwidthBps: target.effectiveBandwidthBps,
+      });
+      if (sample === null || (sample.rx === null && sample.tx === null)) {
+        return block('TELEMETRY_UNAVAILABLE');
+      }
+      const rxCounters = (counters.rx ??= newDirectionCounters());
+      // Mesma regra de amostra distinta, POR DIRECAO: a identidade (occurredAt
+      // monotonico) e a mesma linha do equipamento para RX e TX.
+      if (sample.rx !== null) countDistinctSample(rxCounters, sample.rx, thresholds, at.getTime());
+      if (sample.tx !== null) countDistinctSample(counters, sample.tx, thresholds, at.getTime());
+      const rxTriggered =
+        sample.rx !== null && sample.rx.bps > threshold && rxCounters.over >= target.triggerSamples;
+      const txTriggered =
+        sample.tx !== null && sample.tx.bps > threshold && counters.over >= target.triggerSamples;
+      trafficByDirection = {
+        rx: sample.rx !== null ? sample.rx.bps.toString() : null,
+        tx: sample.tx !== null ? sample.tx.bps.toString() : null,
+      };
+      triggeredDirections = [
+        ...(rxTriggered ? (['rx'] as const) : []),
+        ...(txTriggered ? (['tx'] as const) : []),
+      ];
+      // TX e a direcao da mitigacao existente (diversao de prefixo). Sem essa
+      // leitura nao existe acao viavel: com RX confirmado vira ALERTA (com
+      // registro), sem RX confirmado a telemetria util esta indisponivel.
+      if (sample.tx === null) {
+        return this.record({
+          ...base,
+          trafficBps: trafficByDirection.rx,
+          thresholdBps: threshold.toString(),
+          recoveryThresholdBps: recoveryThreshold.toString(),
+          samplesOver: rxCounters.over,
+          samplesBelow: rxCounters.below,
+          trafficByDirection,
+          triggeredDirections,
+          outcome: rxTriggered ? 'ALERT_TRIGGERED' : 'BLOCKED',
+          reason: rxTriggered ? 'RX_MONITOR_ONLY' : 'TELEMETRY_UNAVAILABLE',
+          detail: rxTriggered
+            ? 'Attack detectado em RX: alertado sem escrita (a acao BGP de diversao e valida em TX)'
+            : 'TELEMETRY_UNAVAILABLE',
+        });
+      }
+      await this.persistCounters(
+        target,
+        counters,
+        sample.tx.bps,
+        sample.tx.occurredAt ?? at,
+        freshRead,
+      );
+      // RX detectado e TX normal: registra/alertar SEM escrever. A mitigacao
+      // BGP nao resolve o cenario de RX (origem no cliente) com a acao atual.
+      if (rxTriggered && !txTriggered) {
+        return this.record({
+          ...base,
+          trafficBps: sample.tx.bps.toString(),
+          thresholdBps: threshold.toString(),
+          recoveryThresholdBps: recoveryThreshold.toString(),
+          samplesOver: rxCounters.over,
+          samplesBelow: rxCounters.below,
+          trafficByDirection,
+          triggeredDirections,
+          outcome: 'ALERT_TRIGGERED',
+          reason: 'RX_MONITOR_ONLY',
+          detail:
+            'Attack detectado em RX: alertado sem escrita (a acao BGP de diversao e valida em TX)',
+        });
+      }
+      // RX acumulando amostras (ainda sem gatilho) e TX normal: a decisao
+      // mostra o PENDENTE do RX em vez de um NO_ACTION enganoso.
+      if (!txTriggered && rxCounters.over > 0) {
+        return this.record({
+          ...base,
+          trafficBps: sample.tx.bps.toString(),
+          thresholdBps: threshold.toString(),
+          recoveryThresholdBps: recoveryThreshold.toString(),
+          samplesOver: rxCounters.over,
+          samplesBelow: rxCounters.below,
+          trafficByDirection,
+          triggeredDirections,
+          outcome: 'TRIGGER_PENDING',
+          reason: 'SAMPLES_INSUFFICIENT',
+          detail: 'RX acima do threshold: acumulando amostras distintas (TX sem gatilho)',
+        });
+      }
+      traffic = sample.tx.bps;
+    } else {
+      // Caminho LEGADO (direcao unica): identico ao publicado.
+      const sample = await this.deps.traffic.sampleWithId({
+        profileId: target.profileId,
+        deviceId: target.deviceId,
+        interfaceId: target.interfaceId,
+        bandwidthBps: target.effectiveBandwidthBps,
+      });
+      if (sample === null) return block('TELEMETRY_UNAVAILABLE');
+      traffic = sample.bps;
+      // CRITICO: so conta sample novo quando a IDENTIDADE da telemetria muda.
+      // 3 ticks lendo a MESMA InterfaceMetricSample valem 1 sample, nunca 3.
+      // Regra de amostra distinta:
+      //   - com occurredAt real: exige MONOTONICIDADE (T > lastSampleAt).
+      //     Igual => nao conta; menor (telemetria atrasada/reordenada) => nao conta.
+      //   - sem occurredAt (fontes de teste): identidade por sampleKey.
+      countDistinctSample(counters, sample, thresholds, at.getTime());
+      await this.persistCounters(target, counters, traffic, sample.occurredAt ?? at, freshRead);
+    }
+
     const withValues = {
       ...base,
       trafficBps: traffic.toString(),
       thresholdBps: threshold.toString(),
       recoveryThresholdBps: recoveryThreshold.toString(),
+      ...(trafficByDirection !== null ? { trafficByDirection } : {}),
+      ...(triggeredDirections !== null ? { triggeredDirections } : {}),
     };
-
-    const counters = await this.loadCounters(target);
-    // CRITICO: so conta sample novo quando a IDENTIDADE da telemetria muda.
-    // 3 ticks lendo a MESMA InterfaceMetricSample valem 1 sample, nunca 3.
-    // Regra de amostra distinta:
-    //   - com occurredAt real: exige MONOTONICIDADE (T > lastSampleAt).
-    //     Igual => nao conta; menor (telemetria atrasada/reordenada) => nao conta.
-    //   - sem occurredAt (fontes de teste): identidade por sampleKey.
-    let isNewSample: boolean;
-    if (sample.occurredAt) {
-      const atMs = sample.occurredAt.getTime();
-      isNewSample = counters.lastSampleAtMs === null || atMs > counters.lastSampleAtMs;
-      if (isNewSample) counters.lastSampleAtMs = atMs;
-    } else {
-      isNewSample = counters.lastSampleKey !== sample.sampleKey;
-    }
-    counters.lastSampleKey = sample.sampleKey;
-    if (isNewSample) {
-      if (traffic > threshold) {
-        counters.over += 1;
-        counters.below = 0;
-        if (counters.triggerStartedAtMs === null) counters.triggerStartedAtMs = at.getTime();
-      } else if (traffic < recoveryThreshold) {
-        counters.below += 1;
-        counters.over = 0;
-      } else {
-        counters.over = 0;
-        counters.below = 0;
-        counters.triggerStartedAtMs = null;
-      }
-    }
-    await this.persistCounters(target, counters, traffic, sample.occurredAt ?? at, freshRead);
 
     const currentlyMitigated =
       (target.runtimeState !== null && MITIGATED_STATES.includes(target.runtimeState)) ||
@@ -674,6 +839,8 @@ export class MitigationAutoEngine {
       requiredSamples: decision.requiredSamples,
       direction: decision.direction ?? null,
       directionSource: decision.directionSource ?? null,
+      trafficByDirection: decision.trafficByDirection ?? null,
+      triggeredDirections: decision.triggeredDirections ?? null,
       detail: decision.detail,
     };
     this.deps.debugLogger?.('auto: decisao (debug)', meta);

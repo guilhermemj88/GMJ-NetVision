@@ -163,7 +163,31 @@ export interface BgpMitigationProfileDto {
   /** Histerese configurada (amostras) — auditoria do modo sombra. */
   triggerSamples?: number;
   recoverySamples?: number;
+  /**
+   * AUTO-ALL: excecao manual do AUTO por DESCRIPTION (pin de ALERT_ONLY).
+   * `true` = o sweep automatico NUNCA promove este perfil.
+   */
+  autoModeExempt?: boolean;
+  /** AUTO desejado: autorizado pela DESCRIPTION (banda valida) e sem exclusao. */
+  autoDesired?: boolean;
+  /** AUTO pronto: verificacoes tecnicas aprovadas (snapshot/readiness/nodes). */
+  autoReady?: boolean;
+  /** AUTO efetivo: modo AUTO + pronto = motor autorizado a atuar. */
+  autoEffective?: boolean;
+  /** Estado agregado da autorizacao automatica (desejado/pronto/efetivo). */
+  autoState?: MitigationAutoState;
+  /** Codigo do bloqueio quando `autoState=BLOCKED` (nunca texto livre). */
+  autoStateReason?: string | null;
 }
+
+/** Estados do AUTO derivado da DESCRIPTION (backend e UI). */
+export type MitigationAutoState =
+  | 'DISABLED'
+  | 'EXEMPT'
+  | 'OFF'
+  | 'BLOCKED'
+  | 'READY'
+  | 'EFFECTIVE';
 
 /** Decisão do motor AUTO exposta no health (sem segredos). */
 export interface MitigationAutoDecisionDto {
@@ -187,6 +211,12 @@ export interface MitigationAutoDecisionDto {
   samplesOver?: number;
   samplesBelow?: number;
   requiredSamples?: number;
+  /**
+   * DUAL: trafego por direcao e direcoes que cruzaram o threshold nesta
+   * avaliacao (`RX` = alerta sem escrita; `TX` = mitigacao BGP).
+   */
+  trafficByDirection?: { rx: string | null; tx: string | null } | null;
+  triggeredDirections?: MitigationAutoTrafficDirection[];
   /** Policy compartilhada com outro target (config), informativo na decisao. */
   sharedPolicy?: boolean;
   /** Block preventivo de automacao por policy compartilhada (config). */
@@ -251,6 +281,13 @@ export interface MitigationAutoShadowEntryDto {
   sharedPolicyTargets: BgpMitigationSharedTargetDto[];
   /** AUTOMACAO bloqueada por policy compartilhada (config; nao e estado de runtime). */
   sharedPolicyAutomationBlocked: boolean;
+  /**
+   * DUAL: trafego por direcao na avaliacao mais recente (mesma amostra) e as
+   * direcoes que cruzaram o threshold. `RX` alerta sem escrita; `TX` aciona a
+   * mitigacao BGP existente.
+   */
+  trafficByDirection?: { rx: string | null; tx: string | null } | null;
+  triggeredDirections?: MitigationAutoTrafficDirection[];
   /** `LOG_ONLY` = alerta apenas em log; `N8N_MEDIA` = entrega real a midia. */
   notificationDelivery: 'LOG_ONLY' | 'N8N_MEDIA';
   decisionAt: string | null;
@@ -361,6 +398,11 @@ export interface BgpMitigationPatchInput {
   mode?: MitigationProfileMode;
   /** Direcao de telemetria persistida (RX/TX); `null` limpa (fail-closed). */
   autoTrafficDirection?: MitigationAutoTrafficDirection | null;
+  /**
+   * Excecao manual do AUTO por DESCRIPTION: `true` fixa ALERT_ONLY para o
+   * perfil (o sweep automatico nunca promove). `false` devolve o perfil a regra.
+   */
+  autoModeExempt?: boolean;
 }
 
 export interface BgpMitigationSimulateInput {

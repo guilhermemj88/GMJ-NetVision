@@ -45,6 +45,7 @@ import type { BgpMitigationSchemaProbe } from './mitigation-schema-probe';
 import { evaluateTraffic } from './mitigation-state-machine';
 import { SimulationCommandExecutor } from './simulation-command-executor';
 import { plannedPairOf } from './mitigation-command-service';
+import { computeAutoStateView } from './mitigation-auto-authorization';
 import {
   DEFAULT_BOGON_PREFIX_LIST,
   DEFAULT_TARGET_PREFIX_LIST,
@@ -469,6 +470,9 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
         id,
         input.autoTrafficDirection ?? null,
       );
+    }
+    if (input.autoModeExempt !== undefined) {
+      await this.deps.repository.setProfileAutoModeExempt(id, input.autoModeExempt === true);
     }
     return this.getProfile(id);
   }
@@ -915,9 +919,23 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
       enabled: record.enabled,
       mitigationRt: record.mitigationRt,
       autoTrafficDirection: record.autoTrafficDirection,
+      autoModeExempt: record.autoModeExempt,
       bandwidthSource: record.bandwidthSource,
       triggerSamples: record.triggerSamples,
       recoverySamples: record.recoverySamples,
+      ...computeAutoStateView({
+        mode: record.mode as MitigationProfileMode,
+        enabled: record.enabled,
+        autoModeExempt: record.autoModeExempt,
+        mitigationExcluded: record.mitigationExcluded,
+        bandwidthSource: record.bandwidthSource,
+        effectiveBandwidthBps: effectiveBandwidthBps(record),
+        snapshotAvailable: row !== undefined,
+        readiness: row?.readiness ?? 'NOT_READY',
+        plannedBogonNode: row?.plannedBogonNode ?? runtime?.plannedBogonNode ?? null,
+        plannedMitigationNode:
+          row?.plannedMitigationNode ?? runtime?.plannedMitigationNode ?? runtime?.plannedNode ?? null,
+      }),
       lastDiscoveryAt: this.lastDiscoveryAt?.toISOString() ?? null,
     };
   }
@@ -977,9 +995,22 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
       enabled: record?.enabled ?? true,
       mitigationRt: record?.mitigationRt ?? DEFAULT_MITIGATION_RT,
       autoTrafficDirection: record?.autoTrafficDirection ?? null,
+      autoModeExempt: record?.autoModeExempt ?? false,
       bandwidthSource: record?.bandwidthSource ?? null,
       ...(record?.triggerSamples === undefined ? {} : { triggerSamples: record.triggerSamples }),
       ...(record?.recoverySamples === undefined ? {} : { recoverySamples: record.recoverySamples }),
+      ...computeAutoStateView({
+        mode: (record?.mode as MitigationProfileMode | undefined) ?? 'ALERT_ONLY',
+        enabled: record?.enabled ?? true,
+        autoModeExempt: record?.autoModeExempt ?? false,
+        mitigationExcluded: record?.mitigationExcluded ?? false,
+        bandwidthSource: record?.bandwidthSource ?? 'UNKNOWN',
+        effectiveBandwidthBps: record ? effectiveBandwidthBps(record) : row.effectiveBandwidthBps,
+        snapshotAvailable: true,
+        readiness: row.readiness,
+        plannedBogonNode: row.plannedBogonNode,
+        plannedMitigationNode: row.plannedMitigationNode,
+      }),
       lastDiscoveryAt: this.now().toISOString(),
     };
   }

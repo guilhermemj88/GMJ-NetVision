@@ -34,6 +34,11 @@ export interface MitigationProfileRecord {
    * (`MITIGATION_AUTO_TRAFFIC_DIRECTIONS`) continua valendo como fallback.
    */
   autoTrafficDirection: MitigationAutoTrafficDirection | null;
+  /**
+   * Excecao manual do AUTO por DESCRIPTION: o operador fixou ALERT_ONLY. O
+   * sweep nunca promove um perfil exempt e devolve AUTO -> ALERT_ONLY.
+   */
+  autoModeExempt: boolean;
   /** Exclusao administrativa: "nunca mitigar este peer" (por target). */
   mitigationExcluded: boolean;
   mitigationExclusionReason: MitigationExclusionReason | null;
@@ -60,6 +65,7 @@ export interface MitigationProfileInput {
   recoverySamples?: number;
   checkIntervalSeconds?: number;
   mitigationRt?: string;
+  autoModeExempt?: boolean;
   mitigationExcluded?: boolean;
   mitigationExclusionReason?: MitigationExclusionReason | null;
   mitigationExclusionNote?: string | null;
@@ -252,6 +258,13 @@ export interface MitigationRepository {
     id: string,
     direction: MitigationAutoTrafficDirection | null,
   ): Promise<void>;
+  /** Excecao manual do AUTO por DESCRIPTION (pin explicito de ALERT_ONLY). */
+  setProfileAutoModeExempt(id: string, exempt: boolean): Promise<void>;
+  /**
+   * Remove a banda detectada quando a interface SAIU DO ESCOPO em uma leitura
+   * BEM-SUCEDIDA do device (falha temporaria de discovery NUNCA chama isto).
+   */
+  clearProfileDetectedBandwidth(id: string): Promise<void>;
   /**
    * Exclusao administrativa da mitigacao. Bloqueia NOVO ACTIVATE no caminho
    * canonico; REMOVE de mitigacao ativa continua permitido.

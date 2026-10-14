@@ -99,6 +99,10 @@ export function buildAutoShadowReport(input: AutoShadowInput): MitigationAutoSha
         wouldActivate: decision !== null && outcomeWouldActivate(decision.outcome),
         outcome: decision?.outcome ?? null,
         reason: decision?.reason ?? null,
+        trafficByDirection: decision?.trafficByDirection ?? null,
+        triggeredDirections: (decision?.triggeredDirections ?? [])
+          .map((value) => toPublicDirection(value))
+          .filter((value): value is MitigationAutoTrafficDirection => value !== null),
         blockedReason:
           decision?.outcome === 'BLOCKED' ? decision.reason : (profile.blockedReason ?? null),
         readiness: profile.readiness,

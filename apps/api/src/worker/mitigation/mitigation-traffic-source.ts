@@ -28,10 +28,29 @@ export interface MitigationTrafficSample {
   occurredAt: Date | null;
 }
 
+/**
+ * Leitura DUAL de UMA amostra do equipamento: RX e TX vem da MESMA linha, com
+ * a MESMA identidade (`sampleKey`/`occurredAt`). Cada direcao tem o proprio
+ * contador no motor; uma direcao ausente (dado faltante) nao invalida a outra.
+ */
+export interface MitigationDirectionsSample {
+  sampleKey: string;
+  occurredAt: Date | null;
+  rx: MitigationTrafficSample | null;
+  tx: MitigationTrafficSample | null;
+}
+
 export interface MitigationTrafficSource {
   sample(target: MitigationTrafficTarget): Promise<bigint | null>;
   /** Obrigatório para o motor AUTO: identidade + valor da amostra. */
   sampleWithId(target: MitigationTrafficTarget): Promise<MitigationTrafficSample | null>;
+  /**
+   * OPCIONAL: leitura RX+TX da mesma amostra (modo DUAL). Ausente = o motor
+   * segue no caminho legado de direcao unica (fail-closed).
+   */
+  sampleDirectionsWithId?(
+    target: MitigationTrafficTarget,
+  ): Promise<MitigationDirectionsSample | null>;
 }
 
 /**
@@ -113,6 +132,29 @@ export class InterfaceTrafficSource implements MitigationTrafficSource {
     };
   }
 
+  /**
+   * Modo DUAL: UMA leitura do equipamento, as DUAS direcoes com a MESMA
+   * identidade e o mesmo criterio de frescor da leitura unica. Valor ausente ou
+   * invalido em uma direcao vira `null` apenas NAQUELA direcao.
+   */
+  async sampleDirectionsWithId(
+    target: MitigationTrafficTarget,
+  ): Promise<MitigationDirectionsSample | null> {
+    if (!target.interfaceId) return null;
+    const row = await this.reader.latestTraffic(target.interfaceId);
+    if (!row) return null;
+    const now = (this.options.now ?? (() => new Date()))().getTime();
+    const age = now - row.timestamp.getTime();
+    if (!Number.isFinite(age) || age < 0 || age > this.options.maxAgeMs) return null;
+    const sampleKey = row.timestamp.toISOString();
+    return {
+      sampleKey,
+      occurredAt: row.timestamp,
+      rx: directionalSample(sampleKey, row.timestamp, row.rxBps),
+      tx: directionalSample(sampleKey, row.timestamp, row.txBps),
+    };
+  }
+
   async sample(target: MitigationTrafficTarget): Promise<bigint | null> {
     if (!target.interfaceId) return null;
     const direction =
@@ -131,8 +173,16 @@ export class InterfaceTrafficSource implements MitigationTrafficSource {
   }
 }
 
-/** Fonte determinística para teste: fila por profile + valor padrão opcional. */
-export class SequenceTrafficSource implements MitigationTrafficSource {
+function directionalSample(
+  sampleKey: string,
+  occurredAt: Date,
+  raw: number | null | undefined,
+): MitigationTrafficSample | null {
+  if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0) return null;
+  return { bps: BigInt(Math.round(raw)), sampleKey, occurredAt };
+}
+
+/** Fonte determinística para teste: fila por profile + valor padrão opcional. */export class SequenceTrafficSource implements MitigationTrafficSource {
   private readonly queues = new Map<string, { bps: bigint; sampleKey: string; occurredAt: Date | null }[]>();
   private readonly fallback = new Map<string, bigint | null>();
   private readonly sticky = new Map<string, { bps: bigint | null; sampleKey: string; occurredAt: Date | null }>();
