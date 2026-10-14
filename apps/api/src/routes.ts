@@ -819,6 +819,14 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const autoDualDirectionsEnabled = /^(1|true|yes|on)$/i.test(
     process.env.MITIGATION_AUTO_DUAL_DIRECTIONS?.trim() ?? '',
   );
+  // FAMILIA: fase IPv4-only por padrao. IPv6 so entra na promocao automatica
+  // com MITIGATION_AUTO_DESCRIPTION_FAMILIES=IPV4,IPV6 (apos validar a acao).
+  const configuredFamilies = (process.env.MITIGATION_AUTO_DESCRIPTION_FAMILIES ?? '')
+    .split(',')
+    .map((part) => part.trim().toUpperCase())
+    .filter((part): part is 'IPV4' | 'IPV6' => part === 'IPV4' || part === 'IPV6');
+  const autoDescriptionFamilies: readonly ('IPV4' | 'IPV6')[] =
+    configuredFamilies.length > 0 ? configuredFamilies : ['IPV4'];
 
   const mitigationAutoEngine = new MitigationAutoEngine({
     globalMode: mitigationEngineConfig.mode,
@@ -916,10 +924,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   // REMOVE permanece 100% manual.
   const autoDescriptionSweep = new MitigationAutoDescriptionSweep({
     enabled: autoDescriptionEnabled,
+    families: autoDescriptionFamilies,
     listProfiles: async () =>
       (await mitigationService.listProfiles()).map((dto) => ({
         id: dto.id,
         persisted: dto.persisted,
+        addressFamily: dto.addressFamily,
         mode: dto.mode,
         autoModeExempt: dto.autoModeExempt === true,
         autoState: dto.autoState ?? 'OFF',
@@ -940,6 +950,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
           blocked: summary.blocked.length,
           skippedExempt: summary.skippedExempt,
           skippedDisabled: summary.skippedDisabled,
+          skippedFamily: summary.skippedFamily,
+          families: autoDescriptionFamilies,
         },
         'auto: sweep de autorizacao por DESCRIPTION',
       );

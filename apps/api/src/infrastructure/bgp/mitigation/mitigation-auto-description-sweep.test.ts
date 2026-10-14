@@ -10,6 +10,7 @@ function profile(overrides: Partial<AutoDescriptionSweepProfile>): AutoDescripti
   return {
     id: 'p1',
     persisted: true,
+    addressFamily: 'IPV4',
     mode: 'ALERT_ONLY',
     autoModeExempt: false,
     autoState: 'READY',
@@ -18,10 +19,15 @@ function profile(overrides: Partial<AutoDescriptionSweepProfile>): AutoDescripti
   };
 }
 
-function harness(profiles: AutoDescriptionSweepProfile[], enabled = true) {
+function harness(
+  profiles: AutoDescriptionSweepProfile[],
+  enabled = true,
+  families?: readonly ('IPV4' | 'IPV6')[],
+) {
   const writes: { id: string; mode: string }[] = [];
   const sweep = new MitigationAutoDescriptionSweep({
     enabled,
+    ...(families ? { families } : {}),
     listProfiles: async () => profiles,
     setMode: async (id, mode) => {
       writes.push({ id, mode });
@@ -85,5 +91,36 @@ describe('MitigationAutoDescriptionSweep', () => {
     expect(result.skippedDisabled).toBe(1);
     expect(result.evaluated).toBe(1);
     expect(h.writes).toHaveLength(0);
+  });
+
+  it('FAMILIA: IPv6 fica fora da promocao no default IPv4-only', async () => {
+    const h = harness([
+      profile({ id: 'p-v4' }),
+      profile({ id: 'p-v6', addressFamily: 'IPV6' }),
+    ]);
+    const result = await h.sweep.run();
+    expect(result.promoted).toEqual(['p-v4']);
+    expect(result.skippedFamily).toBe(1);
+    expect(h.writes).toEqual([{ id: 'p-v4', mode: 'AUTO' }]);
+
+    // Nem sequer demove AUTO de familia fora da fase (modo preservado).
+    const second = harness([
+      profile({ id: 'p-v6-auto', addressFamily: 'IPV6', mode: 'AUTO', autoState: 'OFF' }),
+    ]);
+    const offResult = await second.sweep.run();
+    expect(offResult.demoted).toEqual([]);
+    expect(offResult.skippedFamily).toBe(1);
+    expect(second.writes).toHaveLength(0);
+  });
+
+  it('FAMILIA: habilitando IPV4,IPV6 o IPv6 volta a ser promovido', async () => {
+    const h = harness(
+      [profile({ id: 'p-v6', addressFamily: 'IPV6' })],
+      true,
+      ['IPV4', 'IPV6'],
+    );
+    const result = await h.sweep.run();
+    expect(result.promoted).toEqual(['p-v6']);
+    expect(result.skippedFamily).toBe(0);
   });
 });

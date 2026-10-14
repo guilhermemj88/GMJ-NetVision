@@ -26,6 +26,7 @@ interface AutoStateRow {
   id: string;
   persisted: boolean;
   mode: 'DISABLED' | 'ALERT_ONLY' | 'AUTO';
+  addressFamily: 'IPV4' | 'IPV6';
   autoModeExempt?: boolean;
   autoDesired?: boolean;
   autoReady?: boolean;
@@ -494,7 +495,22 @@ describe('AUTO-ALL: autorizacao por DESCRIPTION (DTO + excecao + sweep)', () => 
     const harness = await buildHarness();
     app = harness.app;
     const profile = await seedProfile(harness.repository, { mode: 'ALERT_ONLY' });
-    harness.discovery.rows = [discoveryRow({ profileId: profile.id })];
+    // Fase IPv4-only: um target IPv6 READY NAO pode ser promovido.
+    const ipv6 = await seedProfile(harness.repository, {
+      mode: 'ALERT_ONLY',
+      addressFamily: 'IPV6',
+      policyName: 'PL-BHNET_IPv6-IN',
+      interfaceId: 'if-2',
+    });
+    harness.discovery.rows = [
+      discoveryRow({ profileId: profile.id }),
+      discoveryRow({
+        profileId: ipv6.id,
+        policyName: 'PL-BHNET_IPv6-IN',
+        addressFamily: 'IPV6',
+        interfaceId: 'if-2',
+      }),
+    ];
     await app.inject({
       method: 'POST',
       url: '/api/bgp/mitigation/discover',
@@ -513,6 +529,7 @@ describe('AUTO-ALL: autorizacao por DESCRIPTION (DTO + excecao + sweep)', () => 
         return (response.json() as AutoStateRow[]).map((row) => ({
           id: row.id,
           persisted: row.persisted,
+          addressFamily: row.addressFamily,
           mode: row.mode,
           autoModeExempt: row.autoModeExempt === true,
           autoState: row.autoState ?? 'OFF',
@@ -525,7 +542,10 @@ describe('AUTO-ALL: autorizacao por DESCRIPTION (DTO + excecao + sweep)', () => 
     const first = await sweep.run();
     expect(first.promoted).toEqual([profile.id]);
     expect(first.demoted).toEqual([]);
+    expect(first.skippedFamily).toBe(1);
     expect((await harness.repository.getProfile(profile.id))?.mode).toBe('AUTO');
+    // IPv6 permanece em ALERT_ONLY (fase IPv4-only, sem ativacao real).
+    expect((await harness.repository.getProfile(ipv6.id))?.mode).toBe('ALERT_ONLY');
 
     // Efetivo: modo AUTO + pronto (o motor fica autorizado a avaliar).
     const afterPromotion = await app.inject({ method: 'GET', url: '/api/bgp/mitigation/profiles' });
