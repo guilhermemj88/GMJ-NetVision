@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import { getMe, login as loginRequest, logout as logoutRequest } from '@/lib/api';
+import { isMapVisualLabEnabled } from '@/lib/map-visual-lab';
 import type { AuthUser, LoginInput } from '@gmj/shared';
 
 interface AuthState {
@@ -31,8 +32,20 @@ export function useAuth(): AuthState {
   return useContext(AuthContext);
 }
 
+/**
+ * Rotas sem sessão: login e links públicos de mapa/NOC.
+ *
+ * O laboratório MAP-VISUAL-V2 (`/map-visual-preview`) também é sem sessão, mas
+ * SOMENTE quando habilitado em ambiente local/isolado (next dev ou build de
+ * preview). Em produção `isMapVisualLabEnabled()` é false, a rota responde 404 e
+ * segue o fluxo privado normal — a política de rotas da VNT não muda.
+ */
 function isPublicPath(pathname: string): boolean {
-  return pathname === '/login' || pathname.startsWith('/view/');
+  return (
+    pathname === '/login' ||
+    pathname.startsWith('/view/') ||
+    (isMapVisualLabEnabled() && pathname.startsWith('/map-visual-preview'))
+  );
 }
 
 export function Providers({ children }: { children: ReactNode }) {
