@@ -73,6 +73,7 @@ import {
 import { GENERIC_NODE_TYPES, normalizeGenericIconType, type NetworkDeviceIconType } from '@/lib/device-appearance';
 import { cacheLinkReplace } from '@/lib/link-persistence';
 import { useMapStore } from '@/store/map-store';
+import { LinkTrafficHistory } from './link-traffic-history';
 import { MetricCharts } from './metric-charts';
 import { OpticalHistoryCharts } from './optical-history-charts';
 import { AssistedDiscoveryReview } from './assisted-discovery-review';
@@ -1185,6 +1186,7 @@ function LinkDrawer({
           <Info label="Discards RX / TX" value={`${link.rxDiscards} / ${link.txDiscards}`} />
         </div>
       </section>
+      {!readOnly && <LinkTrafficHistory link={link} findInterface={findInterface} />}
       {editing && !readOnly && (
         <section className="drawer-section edit-link-form">
           <div className="edit-link-form__section">

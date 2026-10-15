@@ -3550,6 +3550,34 @@ button {
 .optical-history-section {
   border-bottom: 1px solid var(--line-soft);
 }
+.link-history-section {
+  border-top: 1px solid var(--line-soft);
+}
+.link-history-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 0 5px;
+  list-style: none;
+  color: #6f838d;
+  font: 500 8px var(--font-mono);
+}
+.link-history-notes li::before {
+  margin-right: 5px;
+  color: #4b6470;
+  content: '·';
+}
+.link-history-retry {
+  padding: 1px 6px;
+  border: 1px solid #2a3d49;
+  border-radius: 3px;
+  background: #11202a;
+  color: #8fc3d4;
+  font: 600 8px var(--font-mono);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
 .chart-heading {
   display: flex;
   flex-wrap: wrap;

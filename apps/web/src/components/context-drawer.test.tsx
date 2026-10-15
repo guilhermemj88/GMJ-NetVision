@@ -19,6 +19,7 @@ vi.mock('@/lib/api', async (importOriginal) => ({
   updateConceptualNode: vi.fn(),
 }));
 vi.mock('./metric-charts', () => ({ MetricCharts: () => null }));
+vi.mock('./link-traffic-history', () => ({ LinkTrafficHistory: () => null }));
 vi.mock('./optical-history-charts', () => ({ OpticalHistoryCharts: () => null }));
 vi.mock('./assisted-discovery-review', () => ({ AssistedDiscoveryReview: () => null }));
 vi.mock('./mpls-panel', () => ({ MplsPanel: () => <div data-testid="mpls-panel" /> }));
