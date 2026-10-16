@@ -194,3 +194,14 @@ export function perpendicularOf(geometry: BezierGeometry): Point {
   const length = Math.hypot(deltaX, deltaY) || 1;
   return { x: -deltaY / length, y: deltaX / length };
 }
+
+/**
+ * Tangente unitária do enlace (Fase J): direção em que a plaqueta pode deslizar
+ * AO LONGO do traço sem sair da linha nem mudar a geometria desenhada.
+ */
+export function tangentOf(geometry: BezierGeometry): Point {
+  const deltaX = geometry.p3.x - geometry.p0.x;
+  const deltaY = geometry.p3.y - geometry.p0.y;
+  const length = Math.hypot(deltaX, deltaY) || 1;
+  return { x: deltaX / length, y: deltaY / length };
+}
