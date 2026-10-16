@@ -32,9 +32,15 @@ import { DeviceNode, type DeviceFlowNode } from './device-node';
 import { GenericNode, type GenericFlowNode } from './generic-node';
 import { PppTotalWidget } from './ppp-total-widget';
 import { TrafficEdge, type TrafficFlowEdge } from './traffic-edge';
-import { TrafficEdgeV2, type LinkV2EdgeData, type LinkV2FlowEdge } from './traffic-edge-v2';
+import { TrafficEdgeV2, type LinkV2FlowEdge } from './traffic-edge-v2';
+import {
+  TrafficEdgeV2Weather,
+  type LinkV2WeatherEdgeData,
+  type LinkV2WeatherFlowEdge,
+} from './traffic-edge-v2-weathermap';
 import { MapControls } from './map-controls';
 import { MapStatusBar } from './map-status-bar';
+import { MapV2Legend } from './map-v2-legend';
 import { EditToolbar } from './edit-toolbar';
 import { AlarmPanel } from './alarm-panel';
 import { resolveEdgeHandles } from '@/lib/edge-handles';
@@ -45,13 +51,18 @@ import {
 } from '@/lib/traffic-label-offsets';
 import { newestCollectionStamp } from '@/lib/map-freshness';
 import { useMapVisualMode } from '@/lib/map-visual-v2-preview';
-import {
-  linkV2CompactLabel,
-  linkV2LabelPriority,
-  resolveRealLinkV2,
-} from '@/lib/map-visual-v2-link';
+import { useLinkV2AnimationMode } from '@/lib/map-visual-v2-animation';
+import { linkV2LabelPriority, resolveRealLinkV2 } from '@/lib/map-visual-v2-link';
 import { manualLabelOffset } from '@/lib/map-visual-v2-offsets';
-import { shouldShowLinkV2Label } from '@/lib/map-visual-v2';
+import {
+  WEATHER_LABEL_HALF_FRACTION,
+  resolveWeatherMap,
+} from '@/lib/map-visual-v2-weathermap';
+import {
+  buildArcTable,
+  halfAnchorPoint,
+  splitGeometryAtLength,
+} from '@/lib/map-visual-v2-arc';
 import {
   LINK_V2_LABEL_LIFT,
   resolveLinkV2LabelPlacements,
@@ -71,9 +82,13 @@ import {
 } from '@/lib/smart-alignment';
 
 const nodeTypes = { device: DeviceNode, generic: GenericNode };
-const edgeTypes = { traffic: TrafficEdge, trafficV2: TrafficEdgeV2 };
+const edgeTypes = {
+  traffic: TrafficEdge,
+  trafficV2: TrafficEdgeV2,
+  trafficWeather: TrafficEdgeV2Weather,
+};
 type MapFlowNode = DeviceFlowNode | GenericFlowNode;
-type MapFlowEdge = TrafficFlowEdge | LinkV2FlowEdge;
+type MapFlowEdge = TrafficFlowEdge | LinkV2FlowEdge | LinkV2WeatherFlowEdge;
 const DEFAULT_NODE_WIDTH = 64;
 const DEFAULT_NODE_HEIGHT = 70;
 const MAP_REFRESH_INTERVAL_MS = 30_000;
@@ -212,6 +227,8 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
    */
   const visualMode = useMapVisualMode(map?.settings.filters);
   const glyphEngine = visualMode === 'V2' ? 'v2' : 'v1';
+  /** Fase E: microanimação dos enlaces (só no preview; padrão inteligente). */
+  const animationMode = useLinkV2AnimationMode();
 
   /** Relógio para o frescor da telemetria (só o V2 usa; 1 min de granularidade). */
   const [nowMs, setNowMs] = useState(0);
@@ -306,11 +323,11 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
   }, [clearFocusRequest, domainNodes, flow, focusRequest]);
 
   /**
-   * MAP-VISUAL-V2 (Fase D): modelo de render dos enlaces REAIS + posição dos
-   * rótulos (anticolisão global, reaproveitando a MESMA geometria desenhada).
+   * MAP-VISUAL-V2 (Fase E): modelo do enlace BIDIRECIONAL dos enlaces REAIS +
+   * posição dos rótulos (anticolisão global sobre a MESMA geometria desenhada).
    * `null` quando o mapa está em V1 — o caminho da produção fica intacto.
    */
-  const linkV2EdgeData = useMemo<Map<string, LinkV2EdgeData> | null>(() => {
+  const linkV2EdgeData = useMemo<Map<string, LinkV2WeatherEdgeData> | null>(() => {
     if (!map || visualMode !== 'V2') return null;
     const collectionStamp = newestCollectionStamp(map.devices);
     const context = { nowMs: nowMs || Date.now(), collectionStamp };
@@ -344,7 +361,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     const selectedNodeId =
       selection?.kind === 'device' || selection?.kind === 'node' ? selection.id : null;
 
-    const entries = new Map<string, LinkV2EdgeData>();
+    const entries = new Map<string, LinkV2WeatherEdgeData>();
     const candidates: LinkV2LabelCandidate[] = [];
 
     for (const link of map.links) {
@@ -359,39 +376,32 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
       const alarmCount =
         (link.sourceDeviceId ? (alarmCountByDevice.get(link.sourceDeviceId) ?? 0) : 0) +
         (link.targetDeviceId ? (alarmCountByDevice.get(link.targetDeviceId) ?? 0) : 0);
+      const adjacentToSelectedNode =
+        selectedNodeId !== null && (sourceKey === selectedNodeId || targetKey === selectedNodeId);
+      const autoOffset = parallelLayouts.get(link.id)?.offset ?? 0;
+
       entries.set(link.id, {
         link,
         visual,
-        compactLabel: linkV2CompactLabel(visual),
+        animation: animationMode,
         manualOffset,
-        placement: null,
-        autoOffset: parallelLayouts.get(link.id)?.offset ?? 0,
+        manualHalf: visual.direction === 'b2a' ? 'b2a' : 'a2b',
+        placements: { a2b: null, b2a: null, state: null },
+        autoOffset,
         showLabels: preferences.showLabels,
         dimmed: focus.dimmedLinkIds.has(link.id),
-        related: !selectedNodeId || sourceKey === selectedNodeId || targetKey === selectedNodeId,
-        emphasized:
-          Boolean(selectedNodeId) &&
-          (sourceKey === selectedNodeId || targetKey === selectedNodeId),
+        emphasized: adjacentToSelectedNode,
       });
 
-      const adjacentToSelectedNode =
-        selectedNodeId !== null && (sourceKey === selectedNodeId || targetKey === selectedNodeId);
-      const priorities = linkV2LabelPriority({ visual, selected, alarmCount });
+      // Candidatos de rótulo: um por metade (o componente decide a visibilidade
+      // por política, mas a anticolisão sempre tem uma posição pronta — inclusive
+      // para o hover, que o canvas não conhece).
       const paths = (link.visualPaths?.length
         ? link.visualPaths
         : [{ order: 0, label: null, customColor: null, curvature: 0, enabled: true }]
       ).filter((path) => path.enabled);
       const primaryPath = paths[0];
-      const wantsLabel =
-        !manualOffset &&
-        preferences.showLabels &&
-        shouldShowLinkV2Label(visual, {
-          showAll: false,
-          selected,
-          hovered: false,
-          adjacentToSelectedNode,
-        });
-      if (!wantsLabel || !primaryPath) continue;
+      if (!primaryPath) continue;
 
       const handles = resolveEdgeHandles(
         sourcePosition,
@@ -413,38 +423,63 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         targetY: targetAnchor.y,
         targetPosition: handles.targetHandle,
         curvature: LINK_V2_EDGE_CURVATURE,
-        offset:
-          (parallelLayouts.get(link.id)?.offset ?? 0) +
-          (primaryPath.curvature ?? 0) * PATH_OFFSET_SCALE,
+        offset: autoOffset + (primaryPath.curvature ?? 0) * PATH_OFFSET_SCALE,
       });
+      const arc = buildArcTable(geometry);
+      const split = splitGeometryAtLength(geometry, arc, 0.5);
       const normal = perpendicularOf(geometry);
-      candidates.push({
-        id: link.id,
-        anchor: pointOnBezier(geometry, 0.5),
-        normal,
-        laneOffset: LINK_V2_LABEL_LIFT * (1 / Math.max(0.25, zoomForLabels)),
-        priority: priorities,
-        text: visual.labelText,
-        compactText: linkV2CompactLabel(visual),
-      });
+      const weather = resolveWeatherMap(visual, { animation: animationMode, selected });
+      const priorities = linkV2LabelPriority({ visual, selected, alarmCount });
+      const laneOffset = LINK_V2_LABEL_LIFT * (1 / Math.max(0.25, zoomForLabels));
+
+      for (const half of [weather.a2b, weather.b2a] as const) {
+        if (!manualOffset && !half.label && !half.compactLabel) continue;
+        candidates.push({
+          id: `${link.id}:${half.key}`,
+          anchor: halfAnchorPoint(
+            geometry,
+            arc,
+            split,
+            half.key === 'a2b' ? 'first' : 'second',
+            WEATHER_LABEL_HALF_FRACTION,
+          ),
+          normal,
+          laneOffset,
+          priority: priorities,
+          text: half.label ?? half.compactLabel ?? '',
+          compactText: half.compactLabel ?? half.label ?? '',
+        });
+      }
+      if (weather.stateLabel && !manualOffset) {
+        candidates.push({
+          id: `${link.id}:state`,
+          anchor: pointOnBezier(geometry, 0.5),
+          normal,
+          laneOffset,
+          priority: priorities,
+          text: weather.stateLabel,
+          compactText: weather.stateLabel,
+        });
+      }
     }
 
     const placements = resolveLinkV2LabelPlacements(candidates, rects, {
       scale: 1 / Math.max(0.25, zoomForLabels),
     });
-    for (const [id, placement] of placements) {
-      const entry = entries.get(id);
-      if (entry) entries.set(id, { ...entry, placement });
-    }
-    // Offset manual da V1 vence a anticolisão e nunca é escondido.
     for (const [id, entry] of entries) {
-      if (entry.manualOffset) {
-        entries.set(id, { ...entry, placement: { mode: 'full', ...entry.manualOffset } });
-      }
+      entries.set(id, {
+        ...entry,
+        placements: {
+          a2b: placements.get(`${id}:a2b`) ?? null,
+          b2a: placements.get(`${id}:b2a`) ?? null,
+          state: placements.get(`${id}:state`) ?? null,
+        },
+      });
     }
     return entries;
   }, [
     alarmCountByDevice,
+    animationMode,
     focus.dimmedLinkIds,
     labelOffsets,
     map,
@@ -500,12 +535,13 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         const selected = selection?.kind === 'link' && selection.id === link.id;
         const v2 = linkV2EdgeData?.get(link.id);
         if (v2) {
-          const v2Data: LinkV2EdgeData = {
+          const weatherData: LinkV2WeatherEdgeData = {
             ...v2,
             visualPath,
-            // Um rótulo por enlace lógico: só o caminho visual principal o exibe.
+            // Um conjunto de rótulos por enlace lógico: só o caminho principal
+            // exibe valores; os demais caminhos seguem desenhando as metades.
             showLabels: v2.showLabels && visibleIndex === 0,
-            placement: visibleIndex === 0 ? v2.placement : null,
+            placements: visibleIndex === 0 ? v2.placements : { a2b: null, b2a: null, state: null },
           };
           return {
             id: edgeId,
@@ -513,11 +549,11 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
             target: targetKey,
             sourceHandle: handles.sourceHandle,
             targetHandle: handles.targetHandle,
-            type: 'trafficV2',
+            type: 'trafficWeather',
             selectable: true,
             selected,
             ...(focus.dimmedLinkIds.has(link.id) ? { className: 'is-dimmed' } : {}),
-            data: v2Data,
+            data: weatherData,
           };
         }
         return {
@@ -716,6 +752,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         {editMode && !rotation.active && !readOnly && <EditToolbar />}
       </ReactFlow>
       <MapStatusBar focus={focus} />
+      {visualMode === 'V2' && <MapV2Legend animation={animationMode} />}
     </main>
   );
 }
