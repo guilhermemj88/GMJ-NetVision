@@ -1972,6 +1972,72 @@ button {
 .traffic-edge {
   fill: none;
 }
+/* MAP-VISUAL-V2 (Fase D): enlace de linha única no mapa real. */
+.traffic-edge-v2__line {
+  fill: none;
+  stroke-linecap: round;
+  pointer-events: none;
+  transition: opacity 120ms linear;
+}
+.traffic-edge-v2__halo {
+  fill: none;
+  stroke-linecap: round;
+  opacity: 0.22;
+  pointer-events: none;
+}
+.traffic-edge-v2__arrow {
+  pointer-events: none;
+}
+.traffic-edge-v2__label {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid #2a3d49;
+  background: rgba(9, 16, 21, 0.92);
+  color: #cfe0ea;
+  font-size: 11px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.traffic-edge-v2__label--compact {
+  font-size: 10px;
+  padding: 1px 6px;
+  color: #a9c0cd;
+}
+.traffic-edge-v2__label--normal {
+  border-color: #29564a;
+  color: #7fd8b4;
+}
+.traffic-edge-v2__label--attention {
+  border-color: #6d5626;
+  color: #e0b668;
+}
+.traffic-edge-v2__label--critical {
+  border-color: #7a3630;
+  color: #f08b80;
+}
+.traffic-edge-v2__label--down {
+  border-color: #7a3630;
+  border-style: dashed;
+  color: #f08b80;
+}
+.traffic-edge-v2__label--no-data,
+.traffic-edge-v2__label--stale {
+  border-color: #3a4a55;
+  border-style: dashed;
+  color: #9db3c0;
+}
+.traffic-edge-v2__label.is-manual {
+  border-color: #b4894a;
+  box-shadow: 0 0 0 3px rgba(217, 162, 75, 0.14);
+}
+.traffic-edge-v2__label.is-selected {
+  border-color: #7fb6d6;
+  color: #dbeaf3;
+}
 .traffic-edge--base {
   stroke: #22333d;
   opacity: 0.38;

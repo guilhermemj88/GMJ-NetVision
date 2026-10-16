@@ -23,6 +23,12 @@ import { newestCollectionStamp } from '@/lib/map-freshness';
 import { GlobalInterfaceSearch } from './global-interface-search';
 import { alertCenterAttentionCount } from '@gmj/shared';
 import { useAlertCenterSummary } from '@/lib/use-alert-center';
+import {
+  isVisualModeSelectorEnabled,
+  useMapVisualMode,
+  useSetMapVisualMode,
+} from '@/lib/map-visual-v2-preview';
+import type { MapVisualMode } from '@gmj/shared';
 
 export function TopBar() {
   const map = useMapStore((state) => state.map);
@@ -38,6 +44,13 @@ export function TopBar() {
   const authRequired = Boolean(user);
   // Mesma leitura da Central (cache compartilhado): nada de polling paralelo.
   const attention = alertCenterAttentionCount(useAlertCenterSummary(authRequired));
+  /**
+   * MAP-VISUAL-V2: seletor de visual SOMENTE no preview. Não grava nada no
+   * mapa — a escolha vive na aba do operador (ver lib/map-visual-v2-preview).
+   */
+  const visualMode = useMapVisualMode(map?.settings.filters);
+  const setVisualMode = useSetMapVisualMode();
+  const showVisualSelector = isVisualModeSelectorEnabled();
   if (!map && view === 'MAP') return <header className="topbar topbar--loading" />;
 
   return (
@@ -124,6 +137,22 @@ export function TopBar() {
             <MapPinned size={15} />
           </Button>
           <Badge tone="hybrid">{map.mode}</Badge>
+          {showVisualSelector && (
+            <label className="map-selector map-selector--visual" data-testid="map-visual-selector">
+              <span>VISUAL DO MAPA</span>
+              <div>
+                <select
+                  value={visualMode}
+                  onChange={(event) => setVisualMode(event.target.value as MapVisualMode)}
+                  aria-label="Visual do mapa"
+                >
+                  <option value="V1">Clássico (V1)</option>
+                  <option value="V2">Moderno (V2)</option>
+                </select>
+                <ChevronDown size={13} />
+              </div>
+            </label>
+          )}
         </>
       )}
       {/* Busca global de interface disponível em TODAS as áreas, não só no Mapa. */}

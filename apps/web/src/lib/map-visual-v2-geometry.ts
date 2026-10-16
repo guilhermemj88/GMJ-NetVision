@@ -11,6 +11,12 @@
 
 export type SidePosition = 'left' | 'right' | 'top' | 'bottom';
 
+/**
+ * Mesma curvatura base usada pelo renderer V1 (`EDGE_CURVATURE` em
+ * traffic-edge.tsx): com o MESMO offset, V1 e V2 desenham a mesma curva.
+ */
+export const LINK_V2_EDGE_CURVATURE = 0.24;
+
 export interface Point {
   x: number;
   y: number;
