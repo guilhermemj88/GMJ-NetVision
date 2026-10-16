@@ -45,7 +45,7 @@ export function GenericNode({ data, selected }: NodeProps<GenericFlowNode>) {
 
   return (
     <div
-      className={`device-node device-node--${displayMode.toLowerCase()} device-node--type-${iconType.toLowerCase().replaceAll('_', '-')} ${selected ? 'is-selected' : ''} ${mapNode.locked ? 'is-locked' : ''} ${dimmed ? 'is-dimmed' : ''}`}
+      className={`device-node device-node--${displayMode.toLowerCase()} device-node--type-${iconType.toLowerCase().replaceAll('_', '-')} ${glyphEngine === 'v2' ? 'device-node--v2' : ''} ${selected ? 'is-selected' : ''} ${mapNode.locked ? 'is-locked' : ''} ${dimmed ? 'is-dimmed' : ''}`}
       style={
         {
           '--node-scale': nodeScale / 100,
