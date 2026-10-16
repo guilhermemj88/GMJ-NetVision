@@ -1,9 +1,10 @@
 /**
- * Fase E — renderer do enlace bidirecional.
+ * Fase E/F — renderer do enlace bidirecional.
  *
- * Garante que o desenho tem UMA trajetória com DUAS metades, cada uma com sua
- * cor/seta/stream, que a área de clique continua sendo o caminho completo (o
- * mesmo da V1) e que estados sem tráfego nunca ganham animação.
+ * Garante que o desenho tem UMA trajetória com DUAS metades (recortadas com um
+ * vão no centro), que cada sentido tem cor, forma de seta e movimento próprios,
+ * que a área de clique continua sendo o caminho completo (o mesmo da V1) e que
+ * estados sem tráfego nunca ganham animação.
  */
 
 import { createElement, type ReactNode } from 'react';
@@ -160,11 +161,65 @@ describe('renderer do enlace bidirecional', () => {
     // A metade A começa na ponta A; a metade B termina na ponta B.
     expect(first.startsWith('M10,20')).toBe(true);
     expect(second.endsWith('310,160')).toBe(true);
-    // E as duas se encontram no MESMO ponto (centro do enlace).
+    // E as duas param ANTES do centro: o vão do encontro é o que mostra
+    // onde A→B termina e B→A começa.
     const firstEnd = /C[\d.,\s-]+?(-?[\d.]+),(-?[\d.]+)$/.exec(first);
     const secondStart = /^M(-?[\d.]+),(-?[\d.]+)/.exec(second)!;
-    expect(Number(firstEnd![1])).toBeCloseTo(Number(secondStart[1]), 6);
-    expect(Number(firstEnd![2])).toBeCloseTo(Number(secondStart[2]), 6);
+    const gap = Math.hypot(
+      Number(secondStart[1]) - Number(firstEnd![1]),
+      Number(secondStart[2]) - Number(firstEnd![2]),
+    );
+    expect(gap).toBeGreaterThan(6);
+    expect(gap).toBeLessThan(16);
+  });
+
+  it('diferencia os sentidos mesmo com a MESMA cor: A→B sólido, B→A esmaecido', () => {
+    // Enlace com os dois sentidos na mesma faixa (ambos normais).
+    const html = renderEdge({
+      linkOverrides: {
+        directions: {
+          A_TO_B: { bps: 20 * G, utilization: 20, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
+          B_TO_A: { bps: 22 * G, utilization: 22, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
+        },
+      },
+    });
+    const halves = pathsFor(html, 'traffic-edge-v2-half');
+    const a2b = halves.find((h) => h.includes('data-half="a2b"'))!;
+    const b2a = halves.find((h) => h.includes('data-half="b2a"'))!;
+    expect(a2b).toContain('data-state="normal"');
+    expect(b2a).toContain('data-state="normal"');
+    // Mesma cor de base, mas B→A entra esmaecida sobre o fundo do mapa.
+    expect(a2b).toContain('stroke:var(--wm-util-normal)');
+    expect(b2a).toContain('color-mix(in srgb, var(--wm-util-normal)');
+    expect(a2b).toContain('data-sense="solid"');
+    expect(b2a).toContain('data-sense="dimmed"');
+    // A espessura NÃO é usada para diferenciar (ela é capacidade).
+    expect(/stroke-width:([\d.]+)/.exec(a2b)![1]).toBe(/stroke-width:([\d.]+)/.exec(b2a)![1]);
+    // E as setas fixas também mudam de forma: cheia × chevron vazado.
+    const arrows = pathsFor(html, 'traffic-edge-v2-arrow');
+    const solid = arrows.find((a) => a.includes('data-half="a2b"'))!;
+    const chevron = arrows.find((a) => a.includes('data-half="b2a"'))!;
+    expect(solid).toContain('data-shape="solid"');
+    expect(solid).toContain('Z"');
+    expect(chevron).toContain('data-shape="chevron"');
+    expect(chevron).not.toContain('Z"');
+    expect(chevron).toContain('fill="none"');
+  });
+
+  it('marca o ponto de encontro no centro do enlace', () => {
+    const html = renderEdge();
+    const center = pathsFor(html, 'traffic-edge-v2-center');
+    expect(center).toHaveLength(1);
+    // Losango pequeno, entre as duas metades.
+    expect(center[0]).toContain('M0,-3.1 L3.1,0 L0,3.1 L-3.1,0 Z');
+    const halves = pathsFor(html, 'traffic-edge-v2-half');
+    const firstHalfPath = /d="(M[^"]+)"/.exec(halves[0]!)![1]!;
+    const firstEnd = /C[\d.,\s-]+?(-?[\d.]+),(-?[\d.]+)$/.exec(firstHalfPath)!;
+    const centerX = Number(/translate\((-?[\d.]+),/.exec(center[0]!)![1]);
+    expect(centerX).toBeGreaterThan(Number(firstEnd[1]));
+    // O marco fica na frente do fim da primeira metade e antes do início da segunda.
+    const secondStart = /^M(-?[\d.]+),(-?[\d.]+)/.exec(/d="(M[^"]+)"/.exec(halves[1]!)![1]!)!;
+    expect(centerX).toBeLessThan(Number(secondStart[1]));
   });
 
   it('a espessura é a mesma nas duas metades (capacidade do enlace)', () => {
@@ -194,7 +249,7 @@ describe('renderer do enlace bidirecional', () => {
       expect(half).toContain('data-valid="false"');
     }
     expect(pathsFor(html, 'traffic-edge-v2-arrow')).toHaveLength(0);
-    expect(pathsFor(html, 'traffic-edge-v2-stream')).toHaveLength(0);
+    expect(pathsFor(html, 'traffic-edge-v2-runner')).toHaveLength(0);
     expect(html).toContain('>DOWN<');
   });
 
@@ -203,19 +258,19 @@ describe('renderer do enlace bidirecional', () => {
     const halves = pathsFor(html, 'traffic-edge-v2-half');
     expect(halves[0]).toContain('var(--wm-state-no-data)');
     expect(pathsFor(html, 'traffic-edge-v2-arrow')).toHaveLength(0);
-    expect(pathsFor(html, 'traffic-edge-v2-stream')).toHaveLength(0);
+    expect(pathsFor(html, 'traffic-edge-v2-runner')).toHaveLength(0);
     expect(html).toContain('>SEM DADOS<');
   });
 
   it('telemetria antiga não anima nem desenha seta de tráfego', () => {
     const old = new Date(NOW - 30 * 60_000).toISOString();
     const html = renderEdge({ collectionStamp: old });
-    expect(pathsFor(html, 'traffic-edge-v2-stream')).toHaveLength(0);
+    expect(pathsFor(html, 'traffic-edge-v2-runner')).toHaveLength(0);
     expect(pathsFor(html, 'traffic-edge-v2-arrow')).toHaveLength(0);
     expect(html).toContain('DADOS ANTIGOS');
   });
 
-  it('anima só a metade em atenção no modo inteligente', () => {
+  it('anima com setas móveis só a metade em atenção no modo inteligente', () => {
     const html = renderEdge({
       animation: 'smart',
       linkOverrides: {
@@ -225,26 +280,43 @@ describe('renderer do enlace bidirecional', () => {
         },
       },
     });
-    const streams = pathsFor(html, 'traffic-edge-v2-stream');
-    expect(streams).toHaveLength(1);
-    expect(streams[0]).toContain('data-half="b2a"');
-    expect(streams[0]).toContain('--wm-duration');
-    expect(streams[0]).toContain('--wm-period');
-    // O sentido B→A anda contra a parametrização A→B da curva.
-    expect(streams[0]).toContain('traffic-edge-v2__stream--reverse');
+    const runners = [...html.matchAll(/<span[^>]*data-testid="traffic-edge-v2-runner"[^>]*>/g)].map((m) => m[0]);
+    expect(runners.length).toBeGreaterThan(0);
+    for (const runner of runners) {
+      expect(runner).toContain('data-half="b2a"');
+      // B→A caminha contra a parametrização: animação e rotação invertidas.
+      expect(runner).toContain('wm-runner-reverse');
+      expect(runner).toContain('auto 180deg');
+      expect(runner).toContain('offset-path:path(&quot;');
+    }
+    // A metade normal (A→B) fica estática.
+    expect(runners.some((r) => r.includes('data-half="a2b"'))).toBe(false);
   });
 
-  it('modo desligado remove o stream e modo sempre ativa anima enlace saudável', () => {
+  it('as setas móveis usam a forma do sentido (cheia × chevron)', () => {
+    const html = renderEdge({ animation: 'always' });
+    const runners = [...html.matchAll(/<span[^>]*data-testid="traffic-edge-v2-runner"[^>]*>([\s\S]*?)<\/span>/g)].map((m) => m[0]);
+    const a2b = runners.find((r) => r.includes('data-half="a2b"'))!;
+    const b2a = runners.find((r) => r.includes('data-half="b2a"'))!;
+    expect(a2b).toContain('data-shape="solid"');
+    expect(a2b).toContain('wm-runner-forward');
+    expect(b2a).toContain('data-shape="chevron"');
+    expect(b2a).toContain('fill="none"');
+  });
+
+  it('modo desligado remove o movimento e "sempre ativa" anima enlace saudável', () => {
     const healthy: Partial<NetworkLink> = {
       directions: {
         A_TO_B: { bps: 8 * G, utilization: 8, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
         B_TO_A: { bps: 6 * G, utilization: 6, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
       },
     };
-    expect(pathsFor(renderEdge({ animation: 'off', linkOverrides: healthy }), 'traffic-edge-v2-stream')).toHaveLength(0);
-    expect(pathsFor(renderEdge({ animation: 'smart', linkOverrides: healthy }), 'traffic-edge-v2-stream')).toHaveLength(0);
-    expect(pathsFor(renderEdge({ animation: 'always', linkOverrides: healthy }), 'traffic-edge-v2-stream')).toHaveLength(2);
-    // As setas continuam visíveis mesmo com a animação desligada.
+    const countRunners = (animation: 'off' | 'smart' | 'always') =>
+      [...renderEdge({ animation, linkOverrides: healthy }).matchAll(/data-testid="traffic-edge-v2-runner"/g)].length;
+    expect(countRunners('off')).toBe(0);
+    expect(countRunners('smart')).toBe(0);
+    expect(countRunners('always')).toBeGreaterThan(0);
+    // As setas de sentido continuam visíveis mesmo com a animação desligada.
     expect(pathsFor(renderEdge({ animation: 'off', linkOverrides: healthy }), 'traffic-edge-v2-arrow')).toHaveLength(2);
   });
 

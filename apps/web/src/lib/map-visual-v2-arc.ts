@@ -195,9 +195,40 @@ export function halfArrowPlacement(
   };
 }
 
-/** Ponto de ancoragem de um rótulo da metade (fração do próprio arco). */
-export function halfAnchorPoint(
+/**
+ * Extrai o trecho da curva entre duas frações do COMPRIMENTO percorrido.
+ *
+ * É o que permite deixar um vão explícito no centro do enlace: cada metade é
+ * desenhada de 0 → 50% − gap/2 e de 50% + gap/2 → 100%, então o encontro dos
+ * dois sentidos fica visível sem precisar de nenhum elemento extra por cima do
+ * traçado. O trecho devolvido é uma cúbica exata (dois cortes de Casteljau).
+ */
+export function splitGeometryRange(
   geometry: BezierGeometry,
+  table: ArcTable,
+  fromFraction: number,
+  toFraction: number,
+): BezierGeometry {
+  const clamp = (value: number) => Math.min(1, Math.max(0, Number.isFinite(value) ? value : 0));
+  const from = clamp(fromFraction);
+  const to = clamp(toFraction);
+  if (to - from <= 1e-6) return geometry;
+  if (from <= 1e-6 && to >= 1 - 1e-6) return geometry;
+  const total = table.total || 1;
+  const tFrom = paramAtLength(table, from * total);
+  const tTo = paramAtLength(table, to * total);
+  if (tTo - tFrom <= 1e-6) return geometry;
+  // 1) corta no fim do trecho e fica com a parte da esquerda (0 → tTo)
+  const [left] = splitCubicAt(geometry, tTo);
+  if (tFrom <= 1e-6) return left;
+  // 2) dentro dela, corta no início do trecho e fica com a parte da direita
+  const inner = tFrom / tTo;
+  const [, right] = splitCubicAt(left, inner);
+  return right;
+}
+
+/** Ponto de ancoragem de um rótulo da metade (fração do próprio arco). */
+export function halfAnchorPoint(  geometry: BezierGeometry,
   table: ArcTable,
   split: SplitGeometry,
   half: 'first' | 'second',

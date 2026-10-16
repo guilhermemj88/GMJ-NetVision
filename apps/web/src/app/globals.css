@@ -2150,6 +2150,8 @@ button {
   --wm-state-stale: #8a9fb0;
   --wm-state-inconsistent: #a98bd6;
   --wm-state-unknown: #4d6270;
+  /* Fase F: tom em que a metade B→A é esmaecida (fundo do mapa). */
+  --wm-dim-mix: #0a1218;
 }
 .traffic-edge-v2__half {
   fill: none;
@@ -2157,33 +2159,54 @@ button {
   pointer-events: none;
   transition: opacity 120ms linear;
 }
-.traffic-edge-v2__stream {
-  fill: none;
-  stroke-linecap: round;
+/* Fase F — setas móveis: pequenos glyphs que caminham até o centro. */
+.traffic-edge-v2__runner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--wm-runner-size, 9px);
+  height: var(--wm-runner-size, 9px);
+  margin: calc(var(--wm-runner-size, 9px) / -2) 0 0 calc(var(--wm-runner-size, 9px) / -2);
   pointer-events: none;
-  animation: wm-stream var(--wm-duration, 1.2s) linear infinite;
+  offset-distance: 0%;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  opacity: 0.92;
 }
-.traffic-edge-v2__stream--reverse {
-  animation-name: wm-stream-reverse;
+.traffic-edge-v2__runner svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
-@keyframes wm-stream {
+.traffic-edge-v2__runner--a2b svg path {
+  fill: var(--wm-runner-color, #43c59e);
+}
+.traffic-edge-v2__runner--b2a svg path {
+  stroke: var(--wm-runner-color, #43c59e);
+}
+@keyframes wm-runner-forward {
   from {
-    stroke-dashoffset: 0;
+    offset-distance: 0%;
   }
   to {
-    stroke-dashoffset: calc(-1 * var(--wm-period, 24px));
+    offset-distance: 100%;
   }
 }
-@keyframes wm-stream-reverse {
+@keyframes wm-runner-reverse {
   from {
-    stroke-dashoffset: 0;
+    offset-distance: 100%;
   }
   to {
-    stroke-dashoffset: var(--wm-period, 24px);
+    offset-distance: 0%;
   }
+}
+.traffic-edge-v2__center {
+  pointer-events: none;
+  stroke: rgba(9, 16, 22, 0.9);
+  stroke-width: 1;
 }
 @media (prefers-reduced-motion: reduce) {
-  .traffic-edge-v2__stream {
+  .traffic-edge-v2__runner {
     animation: none;
     opacity: 0;
   }
@@ -2253,6 +2276,23 @@ button {
     var(--wm-color, #718894) 0 5px,
     transparent 5px 9px
   );
+}
+/* Fase F: como distinguir os dois sentidos quando a cor é a mesma. */
+.map-v2-legend__item i.is-solid {
+  background: #43c59e;
+}
+.map-v2-legend__item i.is-dimmed {
+  background: color-mix(in srgb, #43c59e 72%, var(--wm-dim-mix));
+}
+.map-v2-legend__item i.is-center {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  transform: rotate(45deg);
+  background: #93a7b1;
+}
+.map-v2-legend__item--center {
+  color: #93a7b1;
 }
 .map-v2-legend__item small {
   color: #647882;
