@@ -340,6 +340,31 @@ describe('renderer do enlace bidirecional', () => {
     expect(pathsFor(renderEdge({ animation: 'off', linkOverrides: healthy }), 'traffic-edge-v2-arrow')).toHaveLength(2);
   });
 
+  it('Fase I: modo Desligada mantém setas, plaquetas e divisor — só o movimento sai', () => {
+    const criticalInOneDirection: Partial<NetworkLink> = {
+      directions: {
+        A_TO_B: { bps: 4 * G, utilization: 4, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
+        B_TO_A: { bps: 94 * G, utilization: 94, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
+      },
+    };
+    const html = renderEdge({ animation: 'off', linkOverrides: criticalInOneDirection, selected: true });
+    // Sem runners, mesmo com uma direção crítica e o enlace selecionado.
+    expect(pathsFor(html, 'traffic-edge-v2-runner')).toHaveLength(0);
+    expect(html).not.toContain('wm-runner-forward');
+    expect(html).not.toContain('wm-runner-reverse');
+    // O desenho estático permanece completo.
+    expect(pathsFor(html, 'traffic-edge-v2-arrow')).toHaveLength(2);
+    expect(pathsFor(html, 'traffic-edge-v2-center')).toHaveLength(1);
+    const labels = [...html.matchAll(/data-testid="traffic-edge-v2-half-label"[^>]*>([^<]*)</g)].map((m) => m[1]);
+    expect(labels.join(' | ')).toContain('4 Gbps · 4%');
+    expect(labels.join(' | ')).toContain('94 Gbps · 94%');
+    // Cores fixas de direção e plaqueta crítica preservadas.
+    const halves = pathsFor(html, 'traffic-edge-v2-half');
+    expect(halves[0]).toContain('var(--wm-dir-a2b)');
+    expect(halves[1]).toContain('var(--wm-dir-b2a)');
+    expect(html).toContain('--wm-pill:var(--wm-util-critical)');
+  });
+
   it('enlace selecionado mostra os dois sentidos e o halo do caminho completo', () => {
     const html = renderEdge({ selected: true });
     expect(html).toContain('traffic-edge-v2__halo');

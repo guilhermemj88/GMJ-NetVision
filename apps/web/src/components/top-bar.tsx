@@ -29,6 +29,7 @@ import {
   useSetMapVisualMode,
 } from '@/lib/map-visual-v2-preview';
 import {
+  useDiscardLegacyPreviewAnimation,
   useLinkV2AnimationMode,
   useSetLinkV2AnimationMode,
 } from '@/lib/map-visual-v2-animation';
@@ -58,6 +59,9 @@ export function TopBar() {
   const showVisualSelector = isVisualModeSelectorEnabled();
   const animationMode = useLinkV2AnimationMode();
   const setAnimationMode = useSetLinkV2AnimationMode();
+  // Fase I: descarta a preferência de animação das fases anteriores (a aba não
+  // pode reabrir "inteligente" sem escolha explícita do operador).
+  useDiscardLegacyPreviewAnimation();
   if (!map && view === 'MAP') return <header className="topbar topbar--loading" />;
 
   return (
@@ -171,9 +175,9 @@ export function TopBar() {
                   }
                   aria-label="Animação dos enlaces"
                 >
-                  <option value="off">Desligada</option>
-                  <option value="smart">Inteligente (padrão)</option>
-                  <option value="always">Sempre ativa</option>
+                  <option value="off">Desligada (padrão)</option>
+                  <option value="smart">Inteligente</option>
+                  <option value="always">Sempre ativa (experimental)</option>
                 </select>
                 <ChevronDown size={13} />
               </div>
