@@ -50,8 +50,8 @@ import {
   type TrafficLabelOffsets,
 } from '@/lib/traffic-label-offsets';
 import { newestCollectionStamp } from '@/lib/map-freshness';
-import { useMapVisualMode } from '@/lib/map-visual-v2-preview';
-import { useLinkV2AnimationMode } from '@/lib/map-visual-v2-animation';
+import { isPreviewInstance, useMapVisualMode } from '@/lib/map-visual-v2-preview';
+import { resolveLinkV2AnimationModeForUi, useLinkV2AnimationMode } from '@/lib/map-visual-v2-animation';
 import { linkV2LabelPriority, resolveRealLinkV2 } from '@/lib/map-visual-v2-link';
 import { manualLabelOffset } from '@/lib/map-visual-v2-offsets';
 import {
@@ -232,13 +232,19 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
 
   /**
    * MAP-VISUAL-V2 (Fase D): modo visual do mapa. Padrão do produto = V1
-   * (`Map.filters.visualMode` ausente); o preview permite alternar sem tocar no
-   * mapa — a escolha fica só na aba do operador.
+   * (`Map.filters.visualMode` ausente); o seletor de sessão (Fase N) permite ao
+   * operador usar a V2 sem tocar no mapa — a escolha fica só na aba.
    */
   const visualMode = useMapVisualMode(map?.settings.filters);
   const glyphEngine = visualMode === 'V2' ? 'v2' : 'v1';
-  /** Fase E: microanimação dos enlaces (só no preview; padrão inteligente). */
-  const animationMode = useLinkV2AnimationMode();
+  /**
+   * Fase N: animação DESLIGADA no produto (decisão do operador). O controle
+   * experimental e a preferência da aba continuam existindo apenas no preview.
+   */
+  const animationMode = resolveLinkV2AnimationModeForUi(
+    useLinkV2AnimationMode(),
+    isPreviewInstance(),
+  );
 
   /** Relógio para o frescor da telemetria (só o V2 usa; 1 min de granularidade). */
   const [nowMs, setNowMs] = useState(0);

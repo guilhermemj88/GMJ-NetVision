@@ -90,6 +90,22 @@ export function useSetLinkV2AnimationMode(): (mode: LinkV2AnimationMode | null) 
   return useCallback((mode: LinkV2AnimationMode | null) => writePreviewAnimation(mode), []);
 }
 
+/**
+ * FASE N — modo de animação que a UI deve usar.
+ *
+ * No PRODUTO a decisão do operador é "sem animação nesta versão": o modo é
+ * sempre `off`, mesmo que alguma aba tenha uma preferência antiga guardada (o
+ * código dos runners permanece no lugar, apenas não é acionado). No preview a
+ * preferência da aba continua valendo para os experimentos.
+ */
+export function resolveLinkV2AnimationModeForUi(
+  preference: LinkV2AnimationMode | null,
+  previewInstance: boolean,
+): LinkV2AnimationMode {
+  if (!previewInstance) return PREVIEW_ANIMATION_DEFAULT;
+  return preference ?? PREVIEW_ANIMATION_DEFAULT;
+}
+
 /** Descarta a preferência legada na primeira montagem da barra do preview. */
 export function useDiscardLegacyPreviewAnimation(): void {
   useEffect(() => {

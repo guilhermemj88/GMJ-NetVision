@@ -24,7 +24,8 @@ import { GlobalInterfaceSearch } from './global-interface-search';
 import { alertCenterAttentionCount } from '@gmj/shared';
 import { useAlertCenterSummary } from '@/lib/use-alert-center';
 import {
-  isVisualModeSelectorEnabled,
+  isPreviewInstance,
+  isVisualModeSessionSelectorEnabled,
   useMapVisualMode,
   useSetMapVisualMode,
 } from '@/lib/map-visual-v2-preview';
@@ -52,15 +53,18 @@ export function TopBar() {
   // Mesma leitura da Central (cache compartilhado): nada de polling paralelo.
   const attention = alertCenterAttentionCount(useAlertCenterSummary(authRequired));
   /**
-   * MAP-VISUAL-V2: seletor de visual SOMENTE no preview. Não grava nada no
-   * mapa — a escolha vive na aba do operador (ver lib/map-visual-v2-preview).
+   * MAP-VISUAL-V2 (Fase N): o seletor V1/V2 de SESSÃO existe no produto e no
+   * preview — é como o operador usa a V2 sem gravar nada no mapa. O controle
+   * experimental de ANIMAÇÃO continua exclusivo do preview (no produto a
+   * animação é forçada desligada; ver network-canvas).
    */
   const visualMode = useMapVisualMode(map?.settings.filters);
   const setVisualMode = useSetMapVisualMode();
-  const showVisualSelector = isVisualModeSelectorEnabled();
+  const showVisualSelector = isVisualModeSessionSelectorEnabled();
+  const showAnimationSelector = isPreviewInstance() && visualMode === 'V2';
   const animationMode = useLinkV2AnimationMode();
   const setAnimationMode = useSetLinkV2AnimationMode();
-  /** Fase M: estilo dos enlaces (A/B) — preferência da aba, só no preview. */
+  /** Fase M: estilo dos enlaces (A/B) — preferência da aba, sem escrita no banco. */
   const linkStyleMode = useLinkV2StyleMode();
   const setLinkStyleMode = useSetLinkV2StyleMode();
   // Fase I: descarta a preferência de animação das fases anteriores (a aba não
@@ -168,7 +172,7 @@ export function TopBar() {
               </div>
             </label>
           )}
-          {showVisualSelector && visualMode === 'V2' && (
+          {showAnimationSelector && (
             <label className="map-selector map-selector--visual" data-testid="map-animation-selector">
               <span>ANIMAÇÃO</span>
               <div>
@@ -187,7 +191,9 @@ export function TopBar() {
               </div>
             </label>
           )}
-          {showVisualSelector && visualMode === 'V2' && (
+          {/* Fase M/N: o estilo dos enlaces é recurso do produto (V2 apenas) —
+              a escolha é da aba e não altera dados do mapa. */}
+          {visualMode === 'V2' && (
             <label className="map-selector map-selector--visual" data-testid="map-link-style-selector">
               <span>ESTILO DOS ENLACES</span>
               <div>

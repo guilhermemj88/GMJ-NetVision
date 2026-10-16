@@ -14,6 +14,7 @@ import {
   discardLegacyPreviewAnimation,
   isLinkV2AnimationMode,
   readPreviewAnimation,
+  resolveLinkV2AnimationModeForUi,
   subscribePreviewAnimation,
   writePreviewAnimation,
 } from './map-visual-v2-animation';
@@ -98,5 +99,18 @@ describe('modo de animação do preview', () => {
     expect(readPreviewAnimation()).toBeNull();
     expect(() => writePreviewAnimation('off')).not.toThrow();
     expect(() => discardLegacyPreviewAnimation()).not.toThrow();
+  });
+
+  it('Fase N: no produto a UI usa sempre DESLIGADA, mesmo com preferência antiga na aba', () => {
+    window.sessionStorage.setItem(PREVIEW_ANIMATION_KEY, 'always');
+    expect(readPreviewAnimation()).toBe('always');
+    // O produto ignora a preferência: nenhum runner, nenhuma seta móvel.
+    expect(resolveLinkV2AnimationModeForUi('always', false)).toBe('off');
+    expect(resolveLinkV2AnimationModeForUi('smart', false)).toBe('off');
+    expect(resolveLinkV2AnimationModeForUi(null, false)).toBe('off');
+    // No preview a preferência continua valendo para os experimentos.
+    expect(resolveLinkV2AnimationModeForUi('smart', true)).toBe('smart');
+    expect(resolveLinkV2AnimationModeForUi(null, true)).toBe('off');
+    expect(PREVIEW_ANIMATION_DEFAULT).toBe('off');
   });
 });

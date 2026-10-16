@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import {
   PREVIEW_DEFAULT_VISUAL_MODE,
   PREVIEW_VISUAL_MODE_KEY,
+  isPreviewInstance,
   isVisualModeSelectorEnabled,
+  isVisualModeSessionSelectorEnabled,
   readPreviewVisualMode,
   resolvePreviewMapVisualMode,
   subscribePreviewVisualMode,
@@ -56,6 +58,21 @@ describe('seletor V1/V2 do preview', () => {
   it('o seletor só é habilitado em instância de preview', () => {
     // O ambiente de teste não define NEXT_PUBLIC_PREVIEW_MODE.
     expect(isVisualModeSelectorEnabled()).toBe(false);
+  });
+
+  it('Fase N: o seletor de SESSÃO V1/V2 existe também no produto (sem gravar nada)', () => {
+    // Vale nas duas instâncias: é como o operador usa a V2 sem tocar no banco.
+    expect(isVisualModeSessionSelectorEnabled()).toBe(true);
+    expect(isPreviewInstance()).toBe(false);
+    delete process.env.NEXT_PUBLIC_PREVIEW_MODE;
+    expect(isVisualModeSessionSelectorEnabled()).toBe(true);
+    expect(isPreviewInstance()).toBe(false);
+    process.env.NEXT_PUBLIC_PREVIEW_MODE = 'true';
+    expect(isPreviewInstance()).toBe(true);
+    // Mesmo com o preview ligado, o padrão do mapa sem flag continua resolvido
+    // por quem decide (a produção usa `isPreviewInstance()` só para V2-default).
+    expect(isVisualModeSessionSelectorEnabled()).toBe(true);
+    delete process.env.NEXT_PUBLIC_PREVIEW_MODE;
   });
 
   it('assinatura de mudança é estável e cancelável', () => {

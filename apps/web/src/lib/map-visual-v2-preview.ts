@@ -1,18 +1,21 @@
 'use client';
 
 /**
- * MAP-VISUAL-V2 — Fase D: seletor V1/V2 do preview.
+ * MAP-VISUAL-V2 — Fase D: seletor V1/V2 do preview (Fase N: sessão no produto).
  *
  * Regras (item 4 da especificação):
  *  - o valor INICIAL vem de `Map.filters.visualMode` — mapa sem configuração
  *    explícita continua em V1 no produto;
- *  - a troca feita pelo operador vive só nesta aba do preview (memória +
- *    `sessionStorage` com chave própria): NADA é enviado para a API, nenhuma
- *    preferência de produção é gravada;
+ *  - a troca feita pelo operador vive só nesta aba (memória + `sessionStorage`
+ *    com chave própria): NADA é enviado para a API, nenhuma preferência de
+ *    produção é gravada;
  *  - exceção combinada com o operador: na instância de PREVIEW, mapa sem flag
  *    explícita abre em V2 (`PREVIEW_DEFAULT_VISUAL_MODE`) para a avaliação
  *    visual começar pelo desenho novo; a flag explícita do mapa sempre vence e
  *    o seletor continua permitindo voltar para V1 na hora;
+ *  - Fase N: o seletor de SESSÃO passou a existir também na produção — é por ele
+ *    que o operador usa a V2 num mapa sem escrever no banco (a flag persistida
+ *    continua sendo o padrão do mapa, e mapas sem flag seguem em V1);
  *  - trocar de visual só muda a renderização: posições, enlaces, curvaturas,
  *    offsets, zoom e layout salvo continuam vindo do mapa real.
  */
@@ -62,9 +65,28 @@ export function writePreviewVisualMode(mode: MapVisualMode | null): void {
   emit();
 }
 
-/** O seletor só aparece em instância de preview (nunca no build de produção). */
-export function isVisualModeSelectorEnabled(): boolean {
+/**
+ * A instância é o PREVIEW (3004)? Só lá existem comportamentos especiais:
+ * V2 por padrão em mapa sem flag, laboratório e controle de animação.
+ * No produto (3000) a flag do mapa decide e a animação é sempre desligada.
+ */
+export function isPreviewInstance(): boolean {
   return process.env.NEXT_PUBLIC_PREVIEW_MODE === 'true';
+}
+
+/**
+ * O seletor V1/V2 de SESSÃO está disponível em QUALQUER instância (Fase N):
+ * é a forma de o operador usar a V2 sem gravar nada no banco. Não muda o padrão
+ * do mapa — `Map.filters.visualMode` continua decidindo o que abre por padrão e
+ * mapa sem flag continua em V1 no produto.
+ */
+export function isVisualModeSessionSelectorEnabled(): boolean {
+  return true;
+}
+
+/** Compatibilidade: o seletor antigo do preview (mesma semântica de instância). */
+export function isVisualModeSelectorEnabled(): boolean {
+  return isPreviewInstance();
 }
 
 export function usePreviewVisualModeOverride(): MapVisualMode | null {
