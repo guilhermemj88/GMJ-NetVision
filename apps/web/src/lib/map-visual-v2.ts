@@ -88,6 +88,84 @@ export const LINK_V2_CAPACITY_TIERS: readonly LinkV2CapacityTier[] = [
  */
 export const LINK_V2_UNKNOWN_CAPACITY_WIDTH = 1.6;
 
+/**
+ * Fase C — espessura compensada por zoom.
+ *
+ * A largura final é sempre em PIXELS DE TELA: o clamp garante que nenhum
+ * enlace desapareça (mínimo) nem domine o mapa (máximo) em qualquer zoom.
+ * `strokeWidth` no SVG é convertido para unidades de fluxo (dividindo pelo
+ * zoom) quando o modo é 'zoom'; no modo 'non-scaling' o valor permanece a
+ * largura-alvo e o `vector-effect` resolve no navegador.
+ */
+export const LINK_V2_SCREEN_MIN_PX = 1.2;
+export const LINK_V2_SCREEN_MAX_PX = 4.5;
+
+export type LinkV2StrokeMode = 'zoom' | 'non-scaling' | 'none';
+
+export function linkV2ScreenStrokeWidth(capacityBps: number | null): number {
+  const base = linkV2StrokeWidth(capacityBps);
+  return Math.min(LINK_V2_SCREEN_MAX_PX, Math.max(LINK_V2_SCREEN_MIN_PX, base));
+}
+
+/** Escala padronizada de `stroke-dasharray` (mesmo padrão em qualquer zoom). */
+export function scaleStrokeDasharray(
+  dash: string | undefined,
+  factor: number,
+): string | undefined {
+  if (!dash || !Number.isFinite(factor) || factor <= 0) return dash;
+  const parts = dash
+    .split(/[\s,]+/)
+    .map((part) => Number(part))
+    .filter((value) => Number.isFinite(value) && value > 0);
+  if (parts.length === 0) return dash;
+  return parts.map((value) => String(Math.round(value * factor * 100) / 100)).join(' ');
+}
+
+export interface LinkV2EdgeStroke {
+  strokeWidth: number;
+  strokeDasharray: string | undefined;
+  nonScaling: boolean;
+}
+
+export function resolveLinkV2EdgeStroke({
+  mode,
+  capacityBps,
+  dash,
+  zoom,
+}: {
+  mode: LinkV2StrokeMode;
+  capacityBps: number | null;
+  dash: string | undefined;
+  zoom: number;
+}): LinkV2EdgeStroke {
+  const screenWidth = linkV2ScreenStrokeWidth(capacityBps);
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  if (mode === 'zoom') {
+    return {
+      strokeWidth: screenWidth / safeZoom,
+      strokeDasharray: scaleStrokeDasharray(dash, 1 / safeZoom),
+      nonScaling: false,
+    };
+  }
+  return { strokeWidth: screenWidth, strokeDasharray: dash, nonScaling: mode === 'non-scaling' };
+}
+
+/**
+ * Escala da seta. A seta desenhada tem 12 unidades de largura; a meta é
+ * mantê-la legível na tela quando há compensação e deixá-la escalar com o
+ * zoom apenas no modo 'none' (baseline da Fase B).
+ */
+export function linkV2ArrowScale(
+  mode: LinkV2StrokeMode,
+  screenWidth: number,
+  zoom: number,
+): number {
+  if (mode === 'none') return 1;
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const raw = (8 + screenWidth) / 12 / safeZoom;
+  return Math.min(5, Math.max(0.4, raw));
+}
+
 export function linkV2CapacityTier(capacityBps: number | null): LinkV2CapacityTier | null {
   if (capacityBps === null || !Number.isFinite(capacityBps) || capacityBps <= 0) return null;
   return (

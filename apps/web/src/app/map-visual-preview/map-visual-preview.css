@@ -454,6 +454,11 @@
   border-style: dashed;
 }
 
+.mv2-edge-label.is-manual {
+  border-color: #b4894a;
+  box-shadow: 0 0 0 3px rgba(217, 162, 75, 0.14);
+}
+
 .mv2-edge-label--normal {
   border-color: #2f6b5a;
 }
@@ -626,6 +631,21 @@
   background: #0d1820;
   color: #b7c9d3;
   cursor: pointer;
+}
+
+.mv2-panel__contract {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  border: 1px dashed #22343f;
+  border-radius: 6px;
+  color: #9fb4c0;
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+.mv2-panel__contract code {
+  color: #c9dae3;
+  font-family: var(--font-mono), monospace;
 }
 
 .mv2-panel__facts {

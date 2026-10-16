@@ -107,20 +107,25 @@ export function LinkV2Edge({
         <path
           d={geometry.path}
           className="mv2-edge-halo"
-          style={{ stroke: visual.color, strokeWidth: visual.strokeWidth + 5 }}
+          vectorEffect={model.stroke.nonScaling ? 'non-scaling-stroke' : undefined}
+          style={{ stroke: visual.color, strokeWidth: model.haloStrokeWidth }}
         />
       )}
       <path
         id={id}
         d={geometry.path}
         className="mv2-edge"
+        data-edge={model.id}
+        data-link={model.selectionId}
+        data-path-index={model.pathIndex}
         data-state={visual.state}
         data-direction={visual.direction}
         data-partial={visual.partial ? 'true' : 'false'}
+        vectorEffect={model.stroke.nonScaling ? 'non-scaling-stroke' : undefined}
         style={{
           stroke: visual.color,
-          strokeWidth: visual.strokeWidth,
-          strokeDasharray: visual.strokeDasharray,
+          strokeWidth: model.stroke.strokeWidth,
+          strokeDasharray: model.stroke.strokeDasharray,
           opacity: selected ? 1 : STATE_OPACITY[visual.state],
         }}
       />
@@ -128,7 +133,7 @@ export function LinkV2Edge({
         <path
           d="M-5,-4.6 L7,0 L-5,4.6 Z"
           className="mv2-edge-arrow"
-          transform={`translate(${arrow.x},${arrow.y}) rotate(${arrow.angleDeg})`}
+          transform={`translate(${arrow.x},${arrow.y}) rotate(${arrow.angleDeg}) scale(${model.arrowScale})`}
           fill={visual.color}
         />
       )}
@@ -145,8 +150,10 @@ export function LinkV2Edge({
           <div
             className={`mv2-edge-label mv2-edge-label--${labelMode} mv2-edge-label--${visual.state} ${
               selected ? 'is-selected' : ''
-            } ${visual.partial ? 'is-partial' : ''} nodrag nopan`}
+            } ${visual.partial ? 'is-partial' : ''} ${model.manualLabelOffset ? 'is-manual' : ''} nodrag nopan`}
             data-testid={`mv2-edge-label-${model.id}`}
+            data-manual={model.manualLabelOffset ? 'true' : 'false'}
+            title={model.manualLabelOffset ? 'Rótulo em posição manual (offset da V1 preservado)' : undefined}
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
           >
             {labelMode === 'full' ? model.labelText : model.compactLabelText}
