@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PREVIEW_DEFAULT_VISUAL_MODE,
   PREVIEW_VISUAL_MODE_KEY,
   isVisualModeSelectorEnabled,
   readPreviewVisualMode,
+  resolvePreviewMapVisualMode,
   subscribePreviewVisualMode,
   writePreviewVisualMode,
 } from './map-visual-v2-preview';
@@ -13,6 +15,31 @@ describe('seletor V1/V2 do preview', () => {
     expect(resolveMapVisualMode(undefined)).toBe('V1');
     expect(resolveMapVisualMode({})).toBe('V1');
     expect(resolveMapVisualMode({ visualMode: 'V2' })).toBe('V2');
+  });
+
+  it('no preview, mapa sem flag explícita abre em V2 (decisão do operador)', () => {
+    expect(PREVIEW_DEFAULT_VISUAL_MODE).toBe('V2');
+    expect(resolvePreviewMapVisualMode(undefined, true)).toBe('V2');
+    expect(resolvePreviewMapVisualMode({}, true)).toBe('V2');
+    expect(resolvePreviewMapVisualMode({ visualMode: 'V2' }, true)).toBe('V2');
+  });
+
+  it('a flag explícita do mapa vence o padrão do preview', () => {
+    expect(resolvePreviewMapVisualMode({ visualMode: 'V1' }, true)).toBe('V1');
+    expect(resolvePreviewMapVisualMode({ visualMode: 'V1' }, false)).toBe('V1');
+    expect(resolvePreviewMapVisualMode({ visualMode: 'V2' }, false)).toBe('V2');
+  });
+
+  it('fora do preview (produção) o padrão continua V1', () => {
+    expect(resolvePreviewMapVisualMode(undefined, false)).toBe('V1');
+    expect(resolvePreviewMapVisualMode({}, false)).toBe('V1');
+    // Valor inválido no JSON do mapa não liga a V2.
+    expect(
+      resolvePreviewMapVisualMode({ visualMode: 'MODERNO' as never }, true),
+    ).toBe('V2');
+    expect(
+      resolvePreviewMapVisualMode({ visualMode: 'MODERNO' as never }, false),
+    ).toBe('V1');
   });
 
   it('a escolha do operador vive numa chave própria do preview', () => {
