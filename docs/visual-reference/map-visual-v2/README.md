@@ -1,14 +1,19 @@
-# MAP-VISUAL-V2 — capturas do laboratório de glifos
+# MAP-VISUAL-V2 — capturas do laboratório
 
 Capturas da rota interna `/map-visual-preview`: laboratório isolado de comparação dos
-glifos V2, do desenho candidato `CORE_SWITCH` e das variantes do BNG.
+glifos V2 (Fase A) e dos enlaces inteligentes/cenários densos (Fase B).
 
 - Disponível apenas em `next dev` local ou build de preview
-  (`NEXT_PUBLIC_PREVIEW_MODE=true`); em produção a rota responde 404.
+  (`NEXT_PUBLIC_PREVIEW_MODE=true`); no build de produção a rota devolve a página 404 do
+  framework (nenhum conteúdo do laboratório é servido). O status HTTP nesse caso continua
+  200 por comportamento do App Router — um 404 "duro" exigiria middleware de produção, que
+  ficou fora do escopo autorizado (registrado como limitação).
 - Todos os nós, estados e alarmes são mock: nada é lido do mapa real, nenhuma chamada
   de API é feita e nada é gravado.
-- A V1 permanece intacta: nenhum arquivo do mapa atual (device-node, ícones, canvas)
-  foi alterado.
+- A V1 permanece intacta: nenhum arquivo do mapa atual (device-node, ícones, canvas,
+  traffic-edge, ContextDrawer) foi alterado.
+
+## Fase A — glifos
 
 | Arquivo | O que mostra |
 | --- | --- |
@@ -20,6 +25,40 @@ glifos V2, do desenho candidato `CORE_SWITCH` e das variantes do BNG.
 | `06-react-flow-core-switch-candidato.png` | o mesmo canvas com o candidato selecionado (SW-CORE-01 passa a usar o desenho de dois chassis) |
 | `07-react-flow-16px-bng-compacta.png` | canvas em 16 px com a preferência do BNG em ação (compacta em tamanhos pequenos) |
 | `08-react-flow-v1-atual.png` | canvas com a engine V1 — baseline de produção (orbe + glifos atuais) |
+
+## Fase B — enlaces inteligentes e cenário denso
+
+Pasta `fase-b/`:
+
+| Arquivo | O que mostra |
+| --- | --- |
+| `01-catalogo-final-icones.png` | catálogo final V1 × V2 em 16/24/32/48 px (11 tipos com glifo V2, 12 em fallback, PNI) |
+| `02-backbone-simples-v1.png` | cenário A com o renderer V1 real (duas pistas + rótulos detalhados) e ícones V1 |
+| `03-backbone-simples-v2.png` | cenário A no V2: linha única, cores por estado, seta na tangente, rótulos inteligentes |
+| `04-backbone-denso-v2.png` | cenário B (27 nós, 33 linhas) provando legibilidade em condição densa |
+| `05-enlace-critico.png` | enlace crítico 94% selecionado (halo) + painel lateral com A/B, A→B, B→A, capacidade, qualidade |
+| `06-enlace-down.png` | enlace DOWN (vermelho tracejado, rótulo DOWN) + painel |
+| `07-sem-telemetria.png` | enlace sem telemetria (cinza tracejado) + painel |
+| `08-stale.png` | telemetria desatualizada ("· antigo") + painel |
+| `09-link-curto-rotulo-inteligente.png` | "mostrar todos os rótulos": o enlace curto recebe rótulo deslocado pela anticolisão |
+| `10-links-paralelos-lag.png` | quatro paralelos + grupo LAG 2×10G com membro DOWN (painel com capacidade agregada comprovada) |
+| `10b-lag-expandido.png` | o mesmo grupo LAG expandido em membros individuais (identidade preservada) |
+| `11-core-switch-candidato.png` | comparação dos dois desenhos de CORE_SWITCH (provisório × candidato) |
+| `12-bng-normal-vs-compacta.png` | matriz BNG normal × compacta em 16/24/32/48/112 px com a preferência ≤ 24 px |
+| `13-zoom-25.png` | cenário B a 25%: topologia inteira visível; degraus de espessura praticamente indistinguíveis |
+| `14-zoom-100.png` | cenário B a 100% |
+| `15-zoom-220.png` | cenário B a 220% (leitura de detalhe) |
+| `16-painel-lateral-enlace.png` | enlace selecionado com tooltip completo (RX/TX, qualidade divergente) + painel com histórico demonstrativo |
+
+Notas de avaliação da Fase B:
+
+- Em 25% de zoom os degraus 1.2/2.0/3.0/4.5 px deixam de ser distinguíveis na tela
+  (o traço escala com o zoom). Se o operador trabalhar muito nesse zoom, avaliar um
+  mínimo de espessura por tela (clamp por zoom) antes de promover o V2.
+- Os rótulos têm tamanho constante na tela; a anticolisão usa `1/zoom` para continuar
+  fiel ao que se vê (ver captura de 25%).
+- O painel lateral e o tooltip são demonstrativos; o ContextDrawer real e os gráficos
+  do MAP-LINK-GRAPHS não foram alterados.
 
 ## Como rodar o laboratório
 
