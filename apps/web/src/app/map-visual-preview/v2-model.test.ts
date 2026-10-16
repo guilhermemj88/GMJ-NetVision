@@ -83,8 +83,11 @@ describe('modelo do canvas V2 — cenários', () => {
 
   it('dois caminhos do MESMO enlace lógico compartilham o irmão paralelo', () => {
     const model = buildLinkV2Model(SCENARIO_DENSE, options());
-    const path1 = model.edges.find((edge) => edge.id === 'd-bngn-path1');
-    const path2 = model.edges.find((edge) => edge.id === 'd-bngn-path2');
+    const paths = model.edges.filter((edge) => edge.selectionId === 'll-bng-norte');
+    const path1 = paths[0];
+    const path2 = paths[1];
+    // Encoding do mapa operacional: o primário usa o id do link, os extras `:path:n`.
+    expect(paths.map((edge) => edge.id)).toEqual(['ll-bng-norte', 'll-bng-norte:path:1']);
     expect(path1?.logicalLinkId).toBe('ll-bng-norte');
     expect(path1?.autoOffset).toBe(path2?.autoOffset);
     expect(path1?.offset).not.toBe(path2?.offset);

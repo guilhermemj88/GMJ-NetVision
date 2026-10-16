@@ -23,13 +23,21 @@ import { PATH_OFFSET_SCALE } from '@/lib/link-curvature';
 import {
   LINK_V2_STATE_LABELS,
   formatCompactBps,
+  linkV2ArrowScale,
   linkV2CapacityTier,
+  linkV2ScreenStrokeWidth,
   linkV2StateDescription,
+  resolveLinkV2EdgeStroke,
   resolveLinkV2Visual,
   shouldShowLinkV2Label,
+  type LinkV2EdgeStroke,
   type LinkV2Input,
+  type LinkV2StrokeMode,
   type LinkV2Visual,
 } from '@/lib/map-visual-v2';
+import { manualLabelOffset, type ManualLabelOffset } from '@/lib/map-visual-v2-offsets';
+import { pathEdgeId } from '@/lib/map-visual-v2-selection';
+import type { TrafficLabelOffsets } from '@/lib/traffic-label-offsets';
 import {
   resolveLinkV2LabelPlacements,
   type LinkV2LabelPlacement,
@@ -76,6 +84,10 @@ export interface LinkV2TooltipModel {
 export interface LinkV2EdgeModel {
   id: string;
   linkId: string;
+  /** Id de seleção no contrato do mapa (`{ kind: 'link', id }`). */
+  selectionId: string;
+  /** Índice do caminho visual (0 = primário) — encoding `${linkId}:path:n`. */
+  pathIndex: number;
   label: string;
   a: string;
   b: string;
@@ -90,6 +102,13 @@ export interface LinkV2EdgeModel {
   autoOffset: number;
   offset: number;
   visual: LinkV2Visual;
+  /** Espessura/padrão já resolvidos para o modo de compensação escolhido. */
+  stroke: LinkV2EdgeStroke;
+  /** Espessura do halo de seleção (mantém 5 px de tela a mais). */
+  haloStrokeWidth: number;
+  arrowScale: number;
+  /** Deslocamento manual lido do contrato da V1 (unidades de fluxo). */
+  manualLabelOffset: ManualLabelOffset | null;
   labelText: string;
   compactLabelText: string;
   priority: number;
@@ -117,7 +136,12 @@ export interface LinkV2Model {
   edges: LinkV2EdgeModel[];
   groups: LinkV2GroupModel[];
   placements: Map<string, LinkV2LabelPlacement>;
+  /** Tempo total de reconstrução (nós + estados + geometria + rótulos). */
   buildMs: number;
+  /** Tempo só da anticolisão de rótulos. */
+  labelsMs: number;
+  /** Quantos rótulos vieram de offset manual da V1. */
+  manualLabelCount: number;
 }
 
 export interface LinkV2ModelOptions {
@@ -131,6 +155,10 @@ export interface LinkV2ModelOptions {
   positions?: Record<string, { x: number; y: number }>;
   /** Zoom atual do React Flow — mantém a anticolisão fiel ao que se vê. */
   zoom?: number;
+  /** Compensação de espessura (Fase C). Padrão: 'zoom' (clamp em px de tela). */
+  strokeMode?: LinkV2StrokeMode;
+  /** Offsets manuais de rótulo da V1 (leitura; nunca reescritos). */
+  labelOffsets?: TrafficLabelOffsets | null;
 }
 
 const NO_DATA_END: MockLinkEnd = { bps: null, sampleAgeSeconds: null, observedRxPercent: null };
@@ -390,6 +418,8 @@ export function buildLinkV2Model(
 ): LinkV2Model {
   const startedAt = performance.now();
   const nowMs = options.nowMs;
+  const zoom = options.zoom ?? 1;
+  const strokeMode = options.strokeMode ?? 'zoom';
   const resolvedNodes = scenario.nodes.map((node) => ({
     ...node,
     ...(options.positions?.[node.id] ?? {}),
@@ -494,7 +524,12 @@ export function buildLinkV2Model(
   const edges: LinkV2EdgeModel[] = [];
   const candidates = [];
   /** Rótulos são constantes na tela; em zoom < 1 ocupam mais unidades de fluxo. */
-  const labelScale = 1 / Math.max(0.25, options.zoom ?? 1);
+  const labelScale = 1 / Math.max(0.25, zoom);
+  /**
+   * Caminhos visuais do MESMO enlace recebem o encoding do mapa operacional
+   * (`linkId` no primário, `linkId:path:n` nos extras) — ver mapa-visual-v2-selection.
+   */
+  const nextPathIndex = new Map<string, number>();
 
   for (const edge of effective) {
     const visual = resolveLinkV2Visual(edge.input, { nowMs });
@@ -518,7 +553,18 @@ export function buildLinkV2Model(
     const midpoint = pointOnBezier(geometry, 0.5);
     const normal = perpendicularOf(geometry);
 
-    const selected = edge.id === options.selectedEdgeId;
+    const selectionId = edge.link.logicalLinkId ?? edge.link.id;
+    const pathIndex = nextPathIndex.get(selectionId) ?? 0;
+    nextPathIndex.set(selectionId, pathIndex + 1);
+    /**
+     * LAG recolhido mantém o id próprio do grupo (`lag:<groupId>`) — é o alvo
+     * das simulações e do botão de expansão; a seleção continua sendo o link
+     * representante (`selectionId`). Nos demais enlaces o id segue o encoding
+     * do mapa operacional (`linkId` no primário, `linkId:path:n` nos extras).
+     */
+    const edgeId = edge.id.startsWith('lag:') ? edge.id : pathEdgeId(selectionId, pathIndex);
+    const selected = edgeId === options.selectedEdgeId;
+    const manualOffset = manualLabelOffset(options.labelOffsets ?? null, selectionId, visual.direction);
     const adjacentToSelectedNode =
       options.selectedNodeId !== null &&
       (edge.group
@@ -561,9 +607,18 @@ export function buildLinkV2Model(
         ? `${Math.round(visual.utilizationPercent)}%`
         : '—';
 
+    const edgeStroke = resolveLinkV2EdgeStroke({
+      mode: strokeMode,
+      capacityBps: edge.link.capacityBps,
+      dash: visual.strokeDasharray,
+      zoom,
+    });
+
     const model: LinkV2EdgeModel = {
-      id: edge.id,
+      id: edgeId,
       linkId: edge.link.id,
+      selectionId,
+      pathIndex,
       label: edge.group ? `${edge.group.label} (${edge.link.label})` : edge.link.label,
       a: edge.link.a,
       b: edge.link.b,
@@ -577,6 +632,14 @@ export function buildLinkV2Model(
       autoOffset,
       offset,
       visual,
+      stroke: edgeStroke,
+      haloStrokeWidth: edgeStroke.strokeWidth + (strokeMode === 'zoom' ? 5 / Math.max(0.25, zoom) : 5),
+      arrowScale: linkV2ArrowScale(
+        strokeMode,
+        linkV2ScreenStrokeWidth(edge.link.capacityBps),
+        zoom,
+      ),
+      manualLabelOffset: manualOffset,
       labelText,
       compactLabelText,
       priority,
@@ -588,9 +651,9 @@ export function buildLinkV2Model(
     };
     edges.push(model);
 
-    if (showByPolicy) {
+    if (showByPolicy && !manualOffset) {
       candidates.push({
-        id: edge.id,
+        id: edgeId,
         anchor: midpoint,
         normal,
         laneOffset: LAB_LABEL_LIFT * labelScale,
@@ -601,6 +664,7 @@ export function buildLinkV2Model(
     }
   }
 
+  const labelsStarted = performance.now();
   const nodeRects = resolvedNodes.map((node) => ({
     x: node.x,
     y: node.y,
@@ -608,11 +672,30 @@ export function buildLinkV2Model(
     height: LAB_NODE_HEIGHT,
   }));
   const placements = resolveLinkV2LabelPlacements(candidates, nodeRects, { scale: labelScale });
+  const labelsMs = performance.now() - labelsStarted;
+
+  /**
+   * Offsets manuais da V1 vencem a anticolisão: posição do operador é
+   * preservada como está (mesmas unidades de fluxo, nada é reescrito).
+   */
+  let manualLabelCount = 0;
+  for (const edge of edges) {
+    if (edge.manualLabelOffset) {
+      manualLabelCount += 1;
+      placements.set(edge.id, {
+        mode: 'full',
+        dx: edge.manualLabelOffset.dx,
+        dy: edge.manualLabelOffset.dy,
+      });
+    }
+  }
 
   return {
     edges,
     groups,
     placements,
     buildMs: performance.now() - startedAt,
+    labelsMs,
+    manualLabelCount,
   };
 }

@@ -18,9 +18,11 @@ import { MapVisualCanvasSection } from './v2-canvas-section';
  *
  * Fase A: catálogo de glifos V1 × V2, comparação do CORE_SWITCH candidato e
  * matriz BNG normal/compacta. Fase B: canvases com enlaces inteligentes
- * (V1 × V2), cenários simples e denso, rótulos, simulações e painel lateral —
- * tudo mock, sem API e sem tocar no mapa operacional. O V1 permanece o padrão
- * do produto.
+ * (V1 × V2), cenários simples e denso, rótulos, simulações e painel lateral.
+ * Fase C: pré-integração operacional — espessura compensada por zoom, offsets
+ * manuais da V1, anticolisão sobre geometria REAL sanitizada, contrato de
+ * seleção do ContextDrawer e flag visual por mapa. Tudo mock, sem API e sem
+ * tocar no mapa operacional. O V1 permanece o padrão do produto.
  */
 
 const ICON_SIZE_STEPS = [16, 24, 32, 48] as const;
@@ -89,14 +91,18 @@ export function MapVisualLab() {
     <div className="mv2-lab">
       <header className="mv2-lab__header">
         <div>
-          <h1 className="mv2-lab__title">MAP-VISUAL-V2 · Laboratório (Fase A + Fase B)</h1>
+          <h1 className="mv2-lab__title">
+            MAP-VISUAL-V2 · Laboratório (Fase A + Fase B + Fase C)
+          </h1>
           <p className="mv2-lab__subtitle">
             Fase A: catálogo de glifos V1 × V2 em 16/24/32/48 px, comparação do{' '}
             <strong>CORE_SWITCH</strong> candidato e matriz <strong>BNG</strong> normal/compacta.
             Fase B: canvases com enlaces de linha única (cor por utilização, grossura por
             capacidade, seta na tangente, rótulos inteligentes), cenários simples e denso,
-            simulações, LAG demonstrativo e painel lateral. Tudo demonstrativo; nenhum dado real é
-            exibido, gravado ou enviado.
+            simulações, LAG demonstrativo e painel lateral. Fase C: pré-integração operacional —
+            espessura compensada por zoom, offsets manuais da V1 preservados, anticolisão sobre
+            geometria real sanitizada (cenário C), contrato de seleção do ContextDrawer e flag
+            visual por mapa. Tudo demonstrativo; nenhum dado real é exibido, gravado ou enviado.
           </p>
         </div>
         <div className="mv2-lab__chips">

@@ -72,6 +72,13 @@ export function LinkV2Panel({
         </button>
       </header>
 
+      <p className="mv2-panel__contract" data-testid="mv2-panel-contract">
+        Seleção (contrato do map-store): <code>{`{ kind: 'link', id: '${edge.selectionId}' }`}</code>
+        <br />
+        Aresta: <code>{edge.id}</code> · caminho visual: {edge.pathIndex} ·{' '}
+        {edge.manualLabelOffset ? 'rótulo com posição MANUAL (V1)' : 'rótulo automático'}
+      </p>
+
       <dl className="mv2-panel__facts">
         <div>
           <dt>Ponta A</dt>
