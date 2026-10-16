@@ -31,8 +31,12 @@ página/rota de produção fora do motor de desenho do mapa.
 ## Flags de build (isolamento do preview)
 
 - `NEXT_PUBLIC_PREVIEW_MODE` **ausente/false** → o seletor `VISUAL DO MAPA`, o
-  seletor `ANIMAÇÃO` e a faixa de preview não são embutidos; a página do
-  laboratório responde 404 (`app/map-visual-preview/page.tsx`).
+  seletor `ANIMAÇÃO` e a faixa de preview não são embutidos.
+- O laboratório sai do build de produção: a rota `app/map-visual-preview` é movida
+  para a pasta privada `app/_map-visual-preview` (pastas com `_` não geram rota no
+  App Router), preservando fonte, CSS e testes. Sem isso, o build estático do
+  Next 16 pré-renderiza o `notFound()` e a rota responderia **200** com a página
+  vazia (o status 404 depende da rota não existir).
 - `NEXT_PUBLIC_PREVIEW_META` e `apps/web/.env.production` do preview **não** são
   copiados (o arquivo é untracked; o worktree de release nasce limpo).
 - Env de produção lido de `/opt/GMJ-NetVision/.env` (`NEXT_PUBLIC_DDOS_MITIGATION_UI=true`,
