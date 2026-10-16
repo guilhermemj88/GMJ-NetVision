@@ -1,11 +1,19 @@
 /**
- * MAP-VISUAL-V2 — Fase E: modelo do enlace bidirecional (WeatherMap moderno).
+ * MAP-VISUAL-V2 — Fase G: modelo do enlace bidirecional (WeatherMap moderno).
  *
  * Cada enlace tem UMA trajetória e DUAS metades independentes:
  *  - a metade A→B representa o tráfego transmitido pela ponta A em direção à B;
  *  - a metade B→A representa o transmitido pela ponta B em direção à A;
- *  - cada metade tem cor (utilização daquele sentido), seta apontando para o
- *    centro e, opcionalmente, um stream animado.
+ *  - cada metade tem COR FIXA DE DIREÇÃO (A→B ciano, B→A violeta), seta
+ *    apontando para o centro e, opcionalmente, runners animados.
+ *
+ * Regra inegociável da Fase G: a UTILIZAÇÃO nunca pinta traço, seta ou runner.
+ * Ela vive exclusivamente na PLAQUETA de velocidade/percentual:
+ *  - abaixo de 50% → plaqueta na cor da direção (ciano/roxa);
+ *  - 50% a 79% → plaqueta âmbar;
+ *  - a partir de 80% → plaqueta coral.
+ * Estados operacionais anômalos (DOWN / sem dados / antigo / inconsistente)
+ * mantêm as cores semânticas de estado e o tracejado próprio.
  *
  * Este módulo é puro: recebe o `LinkV2Visual` já resolvido pelo adaptador real
  * (`map-visual-v2-link`) e devolve cores/tokens, textos e flags. Nada de React,
@@ -13,7 +21,7 @@
  * `unknown`/`no-data`, nunca "normal".
  *
  * As cores são TOKENS CSS (`--wm-*`, definidos em globals.css a partir da
- * paleta do NetVision) para que traço, seta, rótulo e legenda nunca divirjam.
+ * paleta do NetVision) para que traço, seta, plaqueta e legenda nunca divirjam.
  */
 
 import {
@@ -52,6 +60,25 @@ export const WEATHER_HALF_COLOR_VAR: Record<WeatherHalfState, string> = {
   inconsistent: 'var(--wm-state-inconsistent)',
   unknown: 'var(--wm-state-unknown)',
 };
+
+/**
+ * Fase G — TOKENS DE DIREÇÃO. São fixos: independem da utilização do sentido.
+ * `--wm-dir-a2b` = ciano da identidade; `--wm-dir-b2a` = violeta da identidade.
+ */
+export const WEATHER_DIRECTION_COLOR_VAR: Record<WeatherHalfKey, string> = {
+  a2b: 'var(--wm-dir-a2b)',
+  b2a: 'var(--wm-dir-b2a)',
+};
+
+/** Faixa de utilização da plaqueta (é a ÚNICA coisa que a utilização colore). */
+export type WeatherPillBand = 'normal' | 'attention' | 'critical';
+
+/** Token da plaqueta: direção abaixo de 50%, âmbar em 50–79%, coral a partir de 80%. */
+export function weatherPillColorVar(key: WeatherHalfKey, band: WeatherPillBand | null): string {
+  if (band === 'attention') return WEATHER_HALF_COLOR_VAR.attention;
+  if (band === 'critical') return WEATHER_HALF_COLOR_VAR.critical;
+  return WEATHER_DIRECTION_COLOR_VAR[key];
+}
 
 /** Estados cuja linha é tracejada (nunca "contínuo saudável"). */
 const DASHED_HALF_STATES: readonly WeatherHalfState[] = [
@@ -107,8 +134,15 @@ export function formatLinkV2Percent(percent: number | null | undefined): string 
 export interface WeatherHalf {
   key: WeatherHalfKey;
   state: WeatherHalfState;
-  /** Token CSS da cor do sentido. */
+  /**
+   * Token CSS do TRAÇO. Fase G: cor FIXA de direção (`--wm-dir-a2b`/`--wm-dir-b2a`)
+   * enquanto o sentido é operacional; só estados anômalos usam token de estado.
+   */
   color: string;
+  /** Token CSS da PLAQUETA (utilização): direção <50%, âmbar 50–79%, coral ≥80%. */
+  pillColor: string;
+  /** Faixa de utilização da plaqueta (null quando não há utilização confiável). */
+  band: WeatherPillBand | null;
   /** Taxa observada no sentido (bps) — null quando não há amostra. */
   bps: number | null;
   percent: number | null;
@@ -174,8 +208,25 @@ export function shouldAnimateHalf(
 
 /** Fração do ARCO da metade onde fica o rótulo (meio de cada metade). */
 export const WEATHER_LABEL_HALF_FRACTION = 0.5;
-/** Fração do ARCO da metade onde fica a seta (perto do centro, sem encostar). */
+/** Faixa do arco onde a seta fica (perto do centro, sem encostar). */
 export const WEATHER_ARROW_HALF_FRACTION = 0.72;
+
+/**
+ * Fase G — a plaqueta de tráfego é EMBUTIDA na linha: o candidato preferido da
+ * anticolisão fica exatamente sobre a curva (offset perpendicular 0) e só é
+ * empurrado para fora dela quando houver colisão real com nó, glifo, alarme,
+ * outro rótulo ou offset manual.
+ */
+export const WEATHER_PILL_LANE_OFFSET = 0;
+
+/**
+ * Geometria real da plaqueta (px de tela) — usada pela anticolisão. Manter em
+ * sincronia com `.traffic-edge-v2__label--pill` (font-size 10px, padding 1px 6px).
+ */
+export const WEATHER_PILL_FONT_SIZE = 10;
+export const WEATHER_PILL_HEIGHT = 17;
+/** Escadinha de deslocamentos: tenta ficar embutida e só sai para fora depois. */
+export const WEATHER_PILL_EXTRA_OFFSETS = [18, -18, 36, -36, 56, -56, 84, -84];
 
 /** Tracejado de cada estado de metade — herdado da paleta de estados da V2. */
 export function weatherHalfDash(half: Pick<WeatherHalf, 'state'>): string | undefined {
@@ -223,10 +274,17 @@ function buildHalf({
   const percentText = formatLinkV2Percent(percent);
   const core = trafficText && percentText ? `${trafficText} · ${percentText}` : (trafficText ?? percentText);
   const label = core ? (suffix ? `${core} · ${suffix}` : core) : null;
+  // Fase G: utilização só colore a plaqueta. O traço é da direção.
+  const operational = state === 'normal' || state === 'attention' || state === 'critical';
+  const band: WeatherPillBand | null =
+    state === 'attention' ? 'attention' : state === 'critical' ? 'critical' : state === 'normal' ? 'normal' : null;
+  const color = operational ? WEATHER_DIRECTION_COLOR_VAR[key] : WEATHER_HALF_COLOR_VAR[state];
   return {
     key,
     state,
-    color: WEATHER_HALF_COLOR_VAR[state],
+    color,
+    pillColor: operational ? weatherPillColorVar(key, band) : WEATHER_HALF_COLOR_VAR[state],
+    band,
     bps,
     percent,
     label: label ?? emptyLabel ?? null,
@@ -437,13 +495,21 @@ export function weatherCapacityLabel(capacityBps: number | null): string {
 }
 
 /**
- * Rótulo por metade (item 10): em foco mostra os dois sentidos; fora de foco só
- * aparece o lado em atenção/crítico/inconsistente — enlace saudável abaixo de
- * 50% fica sem valor permanente, mas mantém as setas.
+ * Rótulo por metade (Fase G): as plaquetas de tráfego são PERMANENTES — não
+ * dependem de hover. A degradação só acontece em zoom extremo, de forma
+ * determinística e documentada:
+ *  - zoom < `WEATHER_PILL_MIN_ZOOM`: só estados anômalos (e de forma compacta);
+ *  - zoom < `WEATHER_PILL_NORMAL_MIN_ZOOM`: suma a plaqueta de sentido saudável;
+ *  - atenção/crítico e estados anômalos continuam sempre legíveis.
+ * Foco (hover/seleção) e a preferência do mapa (`showAll`) promovem tudo a full.
  */
+export const WEATHER_PILL_MIN_ZOOM = 0.34;
+export const WEATHER_PILL_NORMAL_MIN_ZOOM = 0.5;
+
 export function weatherHalfLabelMode(
   half: WeatherHalf,
   context: WeatherLabelContext,
+  zoom = 1,
 ): WeatherLabelMode {
   if (!half.label && !half.compactLabel) return 'hidden';
   if (context.showAll || context.selected || context.hovered || context.adjacentToSelectedNode) {
@@ -452,19 +518,15 @@ export function weatherHalfLabelMode(
   if (half.state === 'attention' || half.state === 'critical' || half.state === 'inconsistent') {
     return 'full';
   }
-  if (half.state === 'stale') return 'compact';
-  return 'hidden';
+  if (half.state !== 'normal') {
+    return zoom < WEATHER_PILL_MIN_ZOOM ? 'compact' : 'full';
+  }
+  return zoom < WEATHER_PILL_NORMAL_MIN_ZOOM ? 'hidden' : 'full';
 }
 
 /** Estados sem direção mostram um rótulo único (DOWN / SEM DADOS / antigo). */
-export function weatherStateLabelMode(
-  resolution: WeatherMapResolution,
-  context: WeatherLabelContext,
-): WeatherLabelMode {
-  if (!resolution.stateLabel) return 'hidden';
-  return context.showAll || context.selected || context.hovered || context.adjacentToSelectedNode
-    ? 'full'
-    : 'full';
+export function weatherStateLabelMode(resolution: WeatherMapResolution): WeatherLabelMode {
+  return resolution.stateLabel ? 'full' : 'hidden';
 }
 
 export function weatherHalfText(half: WeatherHalf, mode: WeatherLabelMode): string | null {
@@ -504,28 +566,19 @@ export function weatherCenterGap(
 }
 
 /**
- * Como cada metade se distingue quando a cor é a MESMA (itens 2 e 3 do pedido):
- *  - A→B: cor cheia e seta cheia (triângulo);
- *  - B→A: mesma cor porém esmaecida e seta vazada (chevron).
- * A espessura continua idêntica: ela representa capacidade, não sentido.
+ * Como cada sentido se identifica (Fase G): a COR é fixa por direção (A→B ciano,
+ * B→A violeta) e a FORMA da seta reforça a leitura — triângulo cheio em A→B,
+ * chevron aberto em B→A. A espessura continua idêntica: ela representa
+ * capacidade do enlace, nunca o tráfego de um sentido.
  */
-export const WEATHER_B2A_STROKE_MIX_PERCENT = 72;
 export type WeatherArrowShape = 'solid' | 'chevron';
 
 export function weatherArrowShape(key: WeatherHalfKey): WeatherArrowShape {
   return key === 'a2b' ? 'solid' : 'chevron';
 }
 
-/** Cor efetiva do traço da metade (a B→A entra esmaecida sobre o fundo do mapa). */
-export function weatherHalfStroke(colorToken: string, key: WeatherHalfKey): string {
-  if (key === 'a2b') return colorToken;
-  return `color-mix(in srgb, ${colorToken} ${WEATHER_B2A_STROKE_MIX_PERCENT}%, var(--wm-dim-mix))`;
-}
-
-/** Cor das setas (cheia para A→B, mais clara/vazada para B→A). */
-export function weatherArrowTint(colorToken: string, key: WeatherHalfKey): string {
-  return key === 'a2b' ? colorToken : `color-mix(in srgb, ${colorToken} 82%, #dce8ee)`;
-}
+/** Meia-altura (unidades de fluxo) do divisor vertical do centro (→|←). */
+export const WEATHER_CENTER_BAR_HALF_HEIGHT = 5.4;
 
 /**
  * Setas móveis ("runners") ao longo de cada metade — item 4 do pedido.

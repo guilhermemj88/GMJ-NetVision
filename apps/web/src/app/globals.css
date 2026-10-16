@@ -14,6 +14,7 @@
   --green: #43c59e;
   --amber: #d9a24b;
   --red: #d25e61;
+  --violet: #b07ff0;
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
 }
@@ -2098,29 +2099,8 @@ button {
   padding: 1px 6px;
   color: #a9c0cd;
 }
-.traffic-edge-v2__label--normal {
-  border-color: #29564a;
-  color: #7fd8b4;
-}
-.traffic-edge-v2__label--attention {
-  border-color: #6d5626;
-  color: #e0b668;
-}
-.traffic-edge-v2__label--critical {
-  border-color: #7a3630;
-  color: #f08b80;
-}
-.traffic-edge-v2__label--down {
-  border-color: #7a3630;
-  border-style: dashed;
-  color: #f08b80;
-}
-.traffic-edge-v2__label--no-data,
-.traffic-edge-v2__label--stale {
-  border-color: #3a4a55;
-  border-style: dashed;
-  color: #9db3c0;
-}
+/* As cores de faixa/estado das plaquetas vêm do token `--wm-pill` (Fase G):
+   direção abaixo de 50%, âmbar de 50% a 79%, coral a partir de 80%. */
 .traffic-edge-v2__label.is-manual {
   border-color: #b4894a;
   box-shadow: 0 0 0 3px rgba(217, 162, 75, 0.14);
@@ -2150,8 +2130,13 @@ button {
   --wm-state-stale: #8a9fb0;
   --wm-state-inconsistent: #a98bd6;
   --wm-state-unknown: #4d6270;
-  /* Fase F: tom em que a metade B→A é esmaecida (fundo do mapa). */
-  --wm-dim-mix: #0a1218;
+  /* Fase G — CORES FIXAS DE DIREÇÃO: a linha informa o sentido, não o tráfego. */
+  --wm-dir-a2b: var(--cyan-bright);
+  --wm-dir-b2a: var(--violet);
+  /* Halo discreto de seleção (neutro, para não competir com as direções). */
+  --wm-halo: #9fc4dc;
+  /* Divisor central (→│←). */
+  --wm-center-bar: #dbe8ef;
 }
 .traffic-edge-v2__half {
   fill: none;
@@ -2179,10 +2164,10 @@ button {
   display: block;
 }
 .traffic-edge-v2__runner--a2b svg path {
-  fill: var(--wm-runner-color, #43c59e);
+  fill: var(--wm-runner-color, var(--wm-dir-a2b));
 }
 .traffic-edge-v2__runner--b2a svg path {
-  stroke: var(--wm-runner-color, #43c59e);
+  stroke: var(--wm-runner-color, var(--wm-dir-b2a));
 }
 @keyframes wm-runner-forward {
   from {
@@ -2200,10 +2185,13 @@ button {
     offset-distance: 0%;
   }
 }
+/* Fase G — divisor vertical do centro (→│←), não mais o losango da Fase F. */
 .traffic-edge-v2__center {
+  fill: none;
+  stroke: var(--wm-center-bar);
+  stroke-width: 1.7;
+  stroke-linecap: round;
   pointer-events: none;
-  stroke: rgba(9, 16, 22, 0.9);
-  stroke-width: 1;
 }
 @media (prefers-reduced-motion: reduce) {
   .traffic-edge-v2__runner {
@@ -2211,8 +2199,19 @@ button {
     opacity: 0;
   }
 }
+/* Plaqueta de tráfego: EMBUTIDA na linha (fundo opaco interrompe o traçado). */
+.traffic-edge-v2__label--pill {
+  padding: 1px 6px;
+  border-radius: 6px;
+  border-color: color-mix(in srgb, var(--wm-pill, var(--wm-dir-a2b)) 60%, transparent);
+  background: rgba(8, 14, 19, 0.97);
+  color: var(--wm-pill, var(--wm-dir-a2b));
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
 .traffic-edge-v2__label--half {
-  padding: 1px 5px;
+  padding: 1px 6px;
   font-size: 10px;
 }
 .traffic-edge-v2__label--state {
@@ -2220,15 +2219,26 @@ button {
   font-size: 10px;
   letter-spacing: 0.08em;
 }
-.traffic-edge-v2__label--inconsistent {
-  border-color: #4a3f6b;
+.traffic-edge-v2__label--state,
+.traffic-edge-v2__label--inconsistent,
+.traffic-edge-v2__label--down,
+.traffic-edge-v2__label--no-data,
+.traffic-edge-v2__label--stale,
+.traffic-edge-v2__label--unknown {
   border-style: dashed;
-  color: #c3a9ea;
 }
 .traffic-edge-v2__label--unknown {
-  border-color: #3a4a55;
-  border-style: dashed;
-  color: #8fa6b3;
+  border-color: color-mix(in srgb, var(--wm-pill, var(--wm-state-unknown)) 60%, transparent);
+  color: var(--wm-pill, var(--wm-state-unknown));
+}
+.traffic-edge-v2__label--down {
+  background: rgba(38, 14, 14, 0.95);
+}
+.traffic-edge-v2__label--attention {
+  background: rgba(34, 26, 10, 0.95);
+}
+.traffic-edge-v2__label--critical {
+  background: rgba(38, 14, 14, 0.95);
 }
 
 /* Legenda do WeatherMap (somente V2): fica acima da barra de status para não
@@ -2277,22 +2287,40 @@ button {
     transparent 5px 9px
   );
 }
-/* Fase F: como distinguir os dois sentidos quando a cor é a mesma. */
+/* Fase G: a cor identifica a DIREÇÃO (fixa); a plaqueta mostra a utilização. */
 .map-v2-legend__item i.is-solid {
-  background: #43c59e;
+  background: var(--wm-dir-a2b);
 }
-.map-v2-legend__item i.is-dimmed {
-  background: color-mix(in srgb, #43c59e 72%, var(--wm-dim-mix));
+.map-v2-legend__item i.is-chevron {
+  background: none;
+  border-top: 2px solid var(--wm-dir-b2a);
+  border-right: 2px solid var(--wm-dir-b2a);
+  height: 7px;
+  width: 7px;
+  border-radius: 1px;
+  transform: rotate(45deg) skew(-8deg, -8deg);
 }
 .map-v2-legend__item i.is-center {
-  width: 9px;
+  width: 2px;
   height: 9px;
-  border-radius: 2px;
-  transform: rotate(45deg);
-  background: #93a7b1;
+  border-radius: 1px;
+  background: var(--wm-center-bar);
 }
 .map-v2-legend__item--center {
   color: #93a7b1;
+}
+.map-v2-legend__item i.is-pill {
+  width: 26px;
+  height: 11px;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--wm-color, #718894) 60%, transparent);
+  background: rgba(8, 14, 19, 0.97);
+}
+/* <50%: a plaqueta usa a cor do PRÓPRIO sentido (ciano/roxa). */
+.map-v2-legend__item i.is-pill.is-normal {
+  border-color: color-mix(in srgb, var(--wm-dir-a2b) 45%, transparent);
+  background: linear-gradient(90deg, var(--wm-dir-a2b) 0 50%, var(--wm-dir-b2a) 50% 100%);
+  opacity: 0.9;
 }
 .map-v2-legend__item small {
   color: #647882;

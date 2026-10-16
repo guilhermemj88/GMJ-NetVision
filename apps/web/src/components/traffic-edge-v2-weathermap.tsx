@@ -1,22 +1,28 @@
 'use client';
 
 /**
- * MAP-VISUAL-V2 — Fase E: renderer do enlace bidirecional (WeatherMap moderno).
+ * MAP-VISUAL-V2 — Fase G: renderer do enlace bidirecional (WeatherMap moderno).
  *
  * Uma única trajetória por enlace (mesma Bézier da V1) dividida em DUAS METADES
  * pelo comprimento do arco:
  *
- *   ponta A ──▶━━━━━━━━━━●━━━━━━━━◀── ponta B
- *      metade A→B      centro      metade B→A
+ *   ponta A ──▶━━━━━━━━━━│━━━━━━━━◀── ponta B
+ *      metade A→B    divisor    metade B→A
  *
- * Cada metade tem cor de utilização própria, seta apontando para o centro
- * (tangente local) e, quando a animação permite, um trem de segmentos luminosos
- * percorrendo o sentido do tráfego. A espessura é a MESMA nas duas metades:
- * ela representa a capacidade do enlace, não o tráfego momentâneo.
+ * A COR do traço, das setas e dos runners é FIXA POR DIREÇÃO (A→B ciano,
+ * B→A violeta) e nunca reage à utilização: só estados operacionais anômalos
+ * (DOWN / sem dados / antigo / inconsistente) trocam para o token de estado.
+ *
+ * A PLAQUETA com velocidade e percentual fica EMBUTIDA sobre o traçado (fundo
+ * opaco interrompe a linha, sem atravessar os caracteres) e é o ÚNICO elemento
+ * que muda de cor conforme a utilização: direção abaixo de 50%, âmbar de 50% a
+ * 79% e coral a partir de 80%. Os valores são permanentes, sem depender de hover.
+ *
+ * A espessura é a MESMA nas duas metades: representa a capacidade do enlace.
  *
  * O traço visível usa exatamente a mesma curva da área de clique (o
- * `traffic-edge__hitarea` continua com o caminho completo), então seleção,
- * hover, ContextDrawer, MAP-LINK-GRAPHS e offsets manuais seguem iguais.
+ * `traffic-edge__hitarea` continua com o caminho completo), então seleção, hover,
+ * ContextDrawer, MAP-LINK-GRAPHS e offsets manuais seguem iguais.
  */
 
 import { memo, useMemo, useState } from 'react';
@@ -31,7 +37,6 @@ import {
 import {
   LINK_V2_EDGE_CURVATURE,
   buildBezierGeometry,
-  perpendicularOf,
   type BezierGeometry,
 } from '@/lib/map-visual-v2-geometry';
 import {
@@ -44,20 +49,20 @@ import {
   type ArcTable,
   type SplitGeometry,
 } from '@/lib/map-visual-v2-arc';
-import { LINK_V2_LABEL_LIFT, type LinkV2LabelPlacement } from '@/lib/map-visual-v2-labels';
+import type { LinkV2LabelPlacement } from '@/lib/map-visual-v2-labels';
 import type { ManualLabelOffset } from '@/lib/map-visual-v2-offsets';
 import { PATH_OFFSET_SCALE } from '@/lib/link-curvature';
 import {
   WEATHER_ARROW_HALF_FRACTION,
+  WEATHER_CENTER_BAR_HALF_HEIGHT,
+  WEATHER_HALF_COLOR_VAR,
   WEATHER_LABEL_HALF_FRACTION,
   WEATHER_RUNNER_MAX,
   resolveWeatherMap,
   weatherArrowShape,
-  weatherArrowTint,
   weatherCenterGap,
   weatherHalfDash,
   weatherHalfLabelMode,
-  weatherHalfStroke,
   weatherHalfText,
   weatherRunnerCount,
   weatherRunnerDuration,
@@ -115,7 +120,7 @@ interface HalfRender {
   length: number;
   /** Seta fixa junto ao centro (convergente). */
   arrowShape: WeatherArrowShape;
-  /** Chevron vazado para B→A; triângulo cheio para A→B. */
+  /** Chevron aberto para B→A; triângulo cheio para A→B. */
   stroke: string;
   arrowFill: string;
 }
@@ -277,8 +282,10 @@ function LinkV2WeatherEdgeContent({
       geometry: center.a,
       length: center.aLength,
       arrowShape: weatherArrowShape('a2b'),
-      stroke: weatherHalfStroke(weather.a2b.color, 'a2b'),
-      arrowFill: weatherArrowTint(weather.a2b.color, 'a2b'),
+      // Fase G: traço e seta SEMPRE na cor fixa da direção (a utilização vive
+      // apenas na plaqueta). Estados anômalos trocam para o token de estado.
+      stroke: weather.a2b.color,
+      arrowFill: weather.a2b.color,
     },
     {
       key: 'b2a',
@@ -286,16 +293,13 @@ function LinkV2WeatherEdgeContent({
       geometry: center.b,
       length: center.bLength,
       arrowShape: weatherArrowShape('b2a'),
-      stroke: weatherHalfStroke(weather.b2a.color, 'b2a'),
-      arrowFill: weatherArrowTint(weather.b2a.color, 'b2a'),
+      stroke: weather.b2a.color,
+      arrowFill: weather.b2a.color,
     },
   ];
 
-  const normal = perpendicularOf(geometry);
-  const fallbackShift = {
-    dx: normal.x * LINK_V2_LABEL_LIFT / Math.max(0.25, zoom),
-    dy: normal.y * LINK_V2_LABEL_LIFT / Math.max(0.25, zoom),
-  };
+  // Fase G: sem colocação da anticolisão, a plaqueta fica SOBRE a linha.
+  const fallbackShift = { dx: 0, dy: 0 };
 
   const labelsAllowed = data.showLabels || Boolean(selected) || hovered;
   const labelContext = {
@@ -310,7 +314,7 @@ function LinkV2WeatherEdgeContent({
   const labelFor = (key: WeatherHalfKey, half: WeatherHalf) => {
     if (data.dimmed || !labelsAllowed) return null;
     const manual = manualOffset && manualHalf === key ? manualOffset : null;
-    const mode = manual ? 'full' : weatherHalfLabelMode(half, labelContext);
+    const mode = manual ? 'full' : weatherHalfLabelMode(half, labelContext, zoom);
     const text = weatherHalfText(half, mode);
     if (!text) return null;
     const placement = manual ? { mode: 'full' as const, ...manual } : placements[key];
@@ -326,24 +330,32 @@ function LinkV2WeatherEdgeContent({
     const shift = placement ?? fallbackShift;
     return (
       <div
-        className={`traffic-edge-v2__label traffic-edge-v2__label--half traffic-edge-v2__label--${visualMode} traffic-edge-v2__label--${half.state} traffic-edge-v2__label--${key} ${selected ? 'is-selected' : ''} ${manual ? 'is-manual' : ''} nodrag nopan`}
+        className={`traffic-edge-v2__label traffic-edge-v2__label--pill traffic-edge-v2__label--half traffic-edge-v2__label--${visualMode} traffic-edge-v2__label--${half.state} traffic-edge-v2__label--${key} ${selected ? 'is-selected' : ''} ${manual ? 'is-manual' : ''} nodrag nopan`}
         data-testid="traffic-edge-v2-half-label"
         data-half={key}
         data-state={half.state}
+        data-band={half.band ?? 'state'}
         data-manual={manual ? 'true' : 'false'}
         title={
           manual
             ? 'Rótulo em posição manual (offset preservado da V1)'
             : `${half.reason} · sentido ${key === 'a2b' ? 'A→B' : 'B→A'}`
         }
-        style={{ transform: `translate(-50%, -50%) translate(${anchor.x + shift.dx}px, ${anchor.y + shift.dy}px)` }}
+        style={
+          {
+            // Utilização manda APENAS aqui: a plaqueta é o único elemento que
+            // troca de cor conforme a faixa (direção → âmbar → coral).
+            '--wm-pill': half.pillColor,
+            transform: `translate(-50%, -50%) translate(${anchor.x + shift.dx}px, ${anchor.y + shift.dy}px)`,
+          } as React.CSSProperties
+        }
       >
         {finalText}
       </div>
     );
   };
 
-  const stateLabelMode = weatherStateLabelMode(weather, labelContext);
+  const stateLabelMode = weatherStateLabelMode(weather);
   const stateText =
     stateLabelMode === 'hidden' || !weather.stateLabel || data.dimmed ? null : weather.stateLabel;
   const statePlacement = placements.state;
@@ -356,7 +368,7 @@ function LinkV2WeatherEdgeContent({
           d={geometry.path}
           className="traffic-edge-v2__halo"
           style={{
-            stroke: weather.stateColor,
+            stroke: 'var(--wm-halo)',
             strokeWidth: edgeStroke.strokeWidth + 5 / Math.max(0.25, zoom),
           }}
         />
@@ -382,7 +394,8 @@ function LinkV2WeatherEdgeContent({
               data-half={key}
               data-state={half.state}
               data-valid={half.valid ? 'true' : 'false'}
-              data-sense={key === 'a2b' ? 'solid' : 'dimmed'}
+              data-band={half.band ?? 'state'}
+              data-direction={key}
               vectorEffect={edgeStroke.nonScaling ? 'non-scaling-stroke' : undefined}
               style={{
                 stroke,
@@ -422,13 +435,12 @@ function LinkV2WeatherEdgeContent({
           </g>
         );
       })}
-      {/* Marco central: mostra onde A→B termina e B→A começa. */}
+      {/* Divisor central (→│←): mostra onde A→B termina e B→A começa. */}
       <path
-        d="M0,-3.1 L3.1,0 L0,3.1 L-3.1,0 Z"
+        d={`M0,${-WEATHER_CENTER_BAR_HALF_HEIGHT} L0,${WEATHER_CENTER_BAR_HALF_HEIGHT}`}
         className="traffic-edge-v2__center"
         data-testid="traffic-edge-v2-center"
         transform={`translate(${center.point.x},${center.point.y}) scale(${Math.min(2.4, Math.max(0.85, 1 / Math.max(0.4, zoom)))})`}
-        style={{ fill: weather.stateColor }}
         opacity={Math.min(0.95, opacity + 0.05)}
       />
       {/* Área de clique igual à da V1: o evento sobe para o React Flow. */}
@@ -464,13 +476,16 @@ function LinkV2WeatherEdgeContent({
           {labelFor('b2a', weather.b2a)}
           {stateText && (
             <div
-              className={`traffic-edge-v2__label traffic-edge-v2__label--state traffic-edge-v2__label--${weather.state} ${selected ? 'is-selected' : ''} nodrag nopan`}
+              className={`traffic-edge-v2__label traffic-edge-v2__label--pill traffic-edge-v2__label--state traffic-edge-v2__label--${weather.state} ${selected ? 'is-selected' : ''} nodrag nopan`}
               data-testid="traffic-edge-v2-state-label"
               data-state={weather.state}
               title={visual.reason}
-              style={{
-                transform: `translate(-50%, -50%) translate(${midpoint.x + (statePlacement?.dx ?? fallbackShift.dx)}px, ${midpoint.y + (statePlacement?.dy ?? fallbackShift.dy)}px)`,
-              }}
+              style={
+                {
+                  '--wm-pill': WEATHER_HALF_COLOR_VAR[weather.state],
+                  transform: `translate(-50%, -50%) translate(${midpoint.x + (statePlacement?.dx ?? fallbackShift.dx)}px, ${midpoint.y + (statePlacement?.dy ?? fallbackShift.dy)}px)`,
+                } as React.CSSProperties
+              }
             >
               {stateText}
             </div>
