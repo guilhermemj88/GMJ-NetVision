@@ -1,12 +1,12 @@
 /**
- * Fase E — contrato de estilo do WeatherMap bidirecional.
+ * Fase E/G — contrato de estilo do WeatherMap bidirecional.
  *
  * Lê o `globals.css` de verdade e garante:
- *  1. os tokens `--wm-*` derivam da paleta do NetVision (mesma cor no traço,
- *     na seta, no rótulo e na legenda);
- *  2. o stream animado existe nos dois sentidos e é desligado de verdade em
- *     `prefers-reduced-motion`;
- *  3. nenhuma regra nova toca as classes da V1 (`.traffic-edge`, `.map-statusbar`).
+ *  1. os tokens de DIREÇÃO são fixos e derivam da identidade do NetVision;
+ *  2. as plaquetas usam o token `--wm-pill` (utilização) e o runner a cor fixa
+ *     da direção;
+ *  3. o movimento é CSS puro e é desligado de verdade em `prefers-reduced-motion`;
+ *  4. nenhuma regra nova toca as classes da V1 (`.traffic-edge`, `.map-statusbar`).
  */
 
 import { readFileSync } from 'node:fs';
@@ -34,12 +34,29 @@ describe('tokens do WeatherMap', () => {
     expect(css).toContain('--wm-util-critical: var(--red)');
   });
 
+  it('define as cores FIXAS de direção (A→B ciano, B→A violeta)', () => {
+    expect(css).toContain('--wm-dir-a2b: var(--cyan-bright)');
+    expect(css).toContain('--wm-dir-b2a: var(--violet)');
+    // A identidade ganha o token de violeta no nível do tema.
+    expect(css).toMatch(/--violet: #[\da-fA-F]{6};/);
+  });
+
   it('define os estados sem tráfego com tons próprios', () => {
     expect(css).toContain('--wm-state-down: var(--red)');
     expect(css).toContain('--wm-state-no-data: #718894');
     expect(css).toContain('--wm-state-stale: #8a9fb0');
     expect(css).toContain('--wm-state-inconsistent: #a98bd6');
     expect(css).toContain('--wm-state-unknown: #4d6270');
+  });
+
+  it('a plaqueta é a única que consome a cor de utilização', () => {
+    const pill = ruleBody('.traffic-edge-v2__label--pill') ?? '';
+    expect(pill).toContain('var(--wm-pill');
+    // Fundo opaco: a linha não atravessa os caracteres da plaqueta.
+    expect(pill).toMatch(/background: rgba\(8, 14, 19, 0\.9\d\)/);
+    // O token antigo de esmaecimento saiu junto com o desenho da Fase F.
+    expect(css).not.toContain('--wm-dim-mix');
+    expect(css).not.toContain('.traffic-edge-v2__label--normal');
   });
 });
 
@@ -55,17 +72,26 @@ describe('microanimação', () => {
     expect(reverse).toContain('offset-distance: 0%');
   });
 
-  it('o chevron do B→A é vazado e o runner herdа o tom do sentido', () => {
+  it('o chevron do B→A é vazado e o runner herda o tom da direção', () => {
     expect(css).toContain('.traffic-edge-v2__runner--b2a svg path');
     expect(css).toContain('stroke: var(--wm-runner-color');
     expect(css).toContain('.traffic-edge-v2__runner--a2b svg path');
     expect(css).toContain('fill: var(--wm-runner-color');
+    // Fallback do runner: cor da direção, nunca cor de utilização.
+    expect(ruleBody('.traffic-edge-v2__runner--a2b svg path')).toContain('var(--wm-dir-a2b)');
+    expect(ruleBody('.traffic-edge-v2__runner--b2a svg path')).toContain('var(--wm-dir-b2a)');
   });
 
-  it('prefers-reduced-motion desliga o stream de verdade', () => {
+  it('prefers-reduced-motion desliga o movimento de verdade', () => {
     const block = /@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
     expect(block).toContain('.traffic-edge-v2__runner');
     expect(block).toContain('animation: none');
+  });
+
+  it('o divisor central é vertical (→│←) e neutro', () => {
+    const center = ruleBody('.traffic-edge-v2__center') ?? '';
+    expect(center).toContain('stroke: var(--wm-center-bar)');
+    expect(center).toContain('stroke-linecap: round');
   });
 });
 

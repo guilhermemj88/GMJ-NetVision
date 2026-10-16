@@ -1,12 +1,14 @@
 'use client';
 
 /**
- * MAP-VISUAL-V2 — Fase E: legenda do enlace bidirecional.
+ * MAP-VISUAL-V2 — Fase G: legenda do enlace bidirecional.
  *
  * Só aparece no modo V2 (a V1 mantém o rodapé dela intacto). As cores vêm dos
- * MESMOS tokens usados pelo traço, pelas setas e pelos rótulos (`--wm-*`), então
- * legenda e mapa não divergem. O texto de animação reflete o modo escolhido no
- * preview.
+ * MESMOS tokens usados pelo traço, pelas setas e pelas plaquetas (`--wm-*`),
+ * então legenda e mapa não divergem:
+ *  - DIREÇÃO é fixa (A→B ciano, B→A violeta);
+ *  - PLAQUETA é a única que muda com a utilização (direção → âmbar → coral);
+ *  - estados operacionais anômalos mantêm tracejado e cor semântica próprios.
  */
 
 import {
@@ -14,62 +16,57 @@ import {
   type LinkV2AnimationMode,
 } from '@/lib/map-visual-v2-weathermap';
 
-interface LegendItem {
+interface StateItem {
   label: string;
   state: string;
-  dashed?: boolean;
-  hint?: string;
+  color: string;
 }
 
-const UTILIZATION_ITEMS: readonly LegendItem[] = [
-  { label: 'Operacional (0–49%)', state: 'normal' },
-  { label: 'Atenção (50–79%)', state: 'attention' },
-  { label: 'Crítico (≥80%)', state: 'critical' },
-];
-
-const STATE_ITEMS: readonly LegendItem[] = [
-  { label: 'DOWN', state: 'down', dashed: true },
-  { label: 'Sem dados', state: 'no-data', dashed: true },
-  { label: 'Stale', state: 'stale', dashed: true },
-  { label: 'Inconsistente / parcial', state: 'inconsistent', dashed: true },
+const STATE_ITEMS: readonly StateItem[] = [
+  { label: 'DOWN', state: 'down', color: 'var(--wm-state-down)' },
+  { label: 'Sem dados', state: 'no-data', color: 'var(--wm-state-no-data)' },
+  { label: 'Stale', state: 'stale', color: 'var(--wm-state-stale)' },
+  { label: 'Inconsistente / parcial', state: 'inconsistent', color: 'var(--wm-state-inconsistent)' },
 ];
 
 export function MapV2Legend({ animation }: { animation: LinkV2AnimationMode }) {
   return (
     <div className="map-v2-legend" role="note" aria-label="Legenda dos enlaces (V2)">
-      {UTILIZATION_ITEMS.map((item) => (
-        <span className="map-v2-legend__item" key={item.state} data-state={item.state}>
-          <i style={{ '--wm-color': `var(--wm-util-${item.state})` } as React.CSSProperties} />
-          {item.label}
-        </span>
-      ))}
+      <span className="map-v2-legend__item" data-direction="a2b">
+        <i className="is-solid" />
+        A→B ciano (seta cheia)
+      </span>
+      <span className="map-v2-legend__item" data-direction="b2a">
+        <i className="is-chevron" />
+        B→A roxa (chevron)
+      </span>
+      <span className="map-v2-legend__item map-v2-legend__item--center">
+        <i className="is-center" />
+        sentidos se encontram no centro
+      </span>
+      <span className="map-v2-legend__sep" aria-hidden="true" />
+      <span className="map-v2-legend__item" data-pill="normal">
+        <i className="is-pill is-normal" />
+        &lt;50% na cor do sentido
+      </span>
+      <span className="map-v2-legend__item" data-pill="attention">
+        <i className="is-pill" style={{ '--wm-color': 'var(--wm-util-attention)' } as React.CSSProperties} />
+        50–79% âmbar
+      </span>
+      <span className="map-v2-legend__item" data-pill="critical">
+        <i className="is-pill" style={{ '--wm-color': 'var(--wm-util-critical)' } as React.CSSProperties} />
+        ≥80% crítico
+      </span>
       <span className="map-v2-legend__sep" aria-hidden="true" />
       {STATE_ITEMS.map((item) => (
         <span className="map-v2-legend__item" key={item.state} data-state={item.state}>
           <i
-            className={item.dashed ? 'is-dashed' : undefined}
-            style={
-              {
-                '--wm-color': `var(--wm-state-${item.state === 'no-data' ? 'no-data' : item.state})`,
-              } as React.CSSProperties
-            }
+            className="is-dashed"
+            style={{ '--wm-color': item.color } as React.CSSProperties}
           />
           {item.label}
         </span>
       ))}
-      <span className="map-v2-legend__sep" aria-hidden="true" />
-      <span className="map-v2-legend__item" data-sense="a2b">
-        <i className="is-solid" />
-        A→B sólido
-      </span>
-      <span className="map-v2-legend__item" data-sense="b2a">
-        <i className="is-dimmed" />
-        B→A esmaecido
-      </span>
-      <span className="map-v2-legend__item map-v2-legend__item--center">
-        <i className="is-center" />
-        troca de sentido no centro
-      </span>
       <span className="map-v2-legend__sep" aria-hidden="true" />
       <span className="map-v2-legend__flow" data-mode={animation}>
         <span aria-hidden="true" />

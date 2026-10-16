@@ -93,4 +93,42 @@ describe('anticolisão de rótulos V2', () => {
     expect(scaled.get('a')?.mode).toBe('full');
     expect(Math.abs(scaled.get('a')?.dy ?? 0)).toBeGreaterThan(Math.abs(base.get('a')?.dy ?? 0));
   });
+
+  it('Fase G: declara o tamanho real da plaqueta e evita compactar antes da hora', () => {
+    // Caixa de nó logo abaixo do rótulo: com a geometria ANTIGA (fonte 11 e
+    // altura 20) a plaqueta encosta nela e degrada; declarando a plaqueta real
+    // (fonte 10, altura 17) o valor completo cabe e continua "full".
+    const node: LinkV2NodeRect = { x: 150, y: 215, width: 100, height: 20 };
+    const legacy = resolveLinkV2LabelPlacements([candidate({ id: 'a' })], [node], {
+      fontSize: 11,
+      height: 20,
+      extraOffsets: [],
+    });
+    const pill = resolveLinkV2LabelPlacements([candidate({ id: 'a' })], [node], {
+      fontSize: 10,
+      height: 17,
+      extraOffsets: [],
+    });
+    expect(legacy.get('a')?.mode).not.toBe('full');
+    expect(pill.get('a')).toEqual({ mode: 'full', dx: 0, dy: 0 });
+  });
+
+  it('Fase G: a escadinha maior acha posição externa antes de compactar', () => {
+    // Blocos perto da linha (faixa ±70) deixam livre apenas a pista distante:
+    // a escadinha curta desiste, a escadinha da plaqueta acha o lugar.
+    const wall: LinkV2NodeRect[] = [
+      { x: 150, y: 140, width: 100, height: 40 },
+      { x: 150, y: 190, width: 100, height: 20 },
+      { x: 150, y: 220, width: 100, height: 40 },
+    ];
+    const narrow = resolveLinkV2LabelPlacements([candidate({ id: 'a', normal: { x: 0, y: -1 } })], wall, {
+      extraOffsets: [18, -18, 36, -36, 56, -56],
+    });
+    const wide = resolveLinkV2LabelPlacements([candidate({ id: 'a', normal: { x: 0, y: -1 } })], wall, {
+      extraOffsets: [18, -18, 36, -36, 56, -56, 84, -84],
+    });
+    expect(narrow.get('a')?.mode).not.toBe('full');
+    expect(wide.get('a')?.mode).toBe('full');
+    expect(Math.abs(wide.get('a')?.dy ?? 0)).toBeGreaterThanOrEqual(84);
+  });
 });
