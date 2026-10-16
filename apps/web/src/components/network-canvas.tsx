@@ -78,6 +78,7 @@ import {
   buildBezierGeometry,
   perpendicularOf,
   pointOnBezier,
+  tangentOf,
 } from '@/lib/map-visual-v2-geometry';
 import { PATH_OFFSET_SCALE } from '@/lib/link-curvature';
 import {
@@ -260,6 +261,14 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
       labelScale === undefined
     )
       return [];
+    /**
+     * Fase J: a seleção do nó é CONTROLADA pelo map-store (mesmo contrato dos
+     * enlaces). Antes o destaque vinha só da seleção interna do React Flow, que
+     * pode ser descartada num re-render (telemetria, mudança de zoom, troca de
+     * camada) e deixava o nó "sem destaque" mesmo com o ContextDrawer aberto.
+     */
+    const selectedNodeId =
+      selection?.kind === 'device' || selection?.kind === 'node' ? selection.id : null;
     return mapNodes.flatMap((mapNode): MapFlowNode[] => {
       const measured = measuredSizes.current.get(mapNode.deviceId ?? mapNode.id);
       if (mapNode.deviceId) {
@@ -270,6 +279,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
           type: 'device',
           position: mapNode.position,
           draggable: editMode && !mapNode.locked,
+          selected: device.id === selectedNodeId,
           ...(measured ? { measured } : {}),
           data: {
             device,
@@ -289,6 +299,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         type: 'generic',
         position: mapNode.position,
         draggable: editMode && !mapNode.locked,
+        selected: mapNode.id === selectedNodeId,
         ...(measured ? { measured } : {}),
         data: {
           mapNode,
@@ -312,6 +323,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     nodeDisplayMode,
     nodeScale,
     preferences.showOffline,
+    selection,
   ]);
 
   useEffect(() => {
@@ -433,9 +445,12 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
       const arc = buildArcTable(geometry);
       const split = splitGeometryAtLength(geometry, arc, 0.5);
       const normal = perpendicularOf(geometry);
+      const tangent = tangentOf(geometry);
       const weather = resolveWeatherMap(visual, { animation: animationMode, selected });
       const priorities = linkV2LabelPriority({ visual, selected, alarmCount });
       const laneOffset = WEATHER_PILL_LANE_OFFSET;
+      // Fase J: deslizar ao longo do traço antes de sair da linha (18% da metade).
+      const slideBudget = Math.max(0, Math.min(split.firstLength, split.secondLength)) * 0.18;
 
       for (const half of [weather.a2b, weather.b2a] as const) {
         if (!manualOffset && !half.label && !half.compactLabel) continue;
@@ -449,6 +464,8 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
             WEATHER_LABEL_HALF_FRACTION,
           ),
           normal,
+          tangent,
+          tangentBudget: slideBudget,
           laneOffset,
           priority: priorities,
           text: half.label ?? half.compactLabel ?? '',
@@ -460,6 +477,8 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
           id: `${link.id}:state`,
           anchor: pointOnBezier(geometry, 0.5),
           normal,
+          tangent,
+          tangentBudget: slideBudget,
           laneOffset,
           priority: priorities,
           text: weather.stateLabel,

@@ -20,11 +20,21 @@ export function isMapVisualMode(value: unknown): value is MapVisualMode {
   return value === 'V1' || value === 'V2';
 }
 
+/**
+ * Fase J: a flag aceita também os nomes explícitos da especificação
+ * (`MAP_VISUAL_V1` / `MAP_VISUAL_V2`) além dos valores canônicos persistidos
+ * ('V1'/'V2'). Qualquer outro valor é desconhecido → V1.
+ */
+export function normalizeMapVisualMode(value: unknown): MapVisualMode | null {
+  if (value === 'V1' || value === 'MAP_VISUAL_V1') return 'V1';
+  if (value === 'V2' || value === 'MAP_VISUAL_V2') return 'V2';
+  return null;
+}
+
 export function resolveMapVisualMode(
   preferences: Pick<MapPreferences, 'visualMode'> | null | undefined,
 ): MapVisualMode {
-  const value = preferences?.visualMode;
-  return isMapVisualMode(value) ? value : DEFAULT_MAP_VISUAL_MODE;
+  return normalizeMapVisualMode(preferences?.visualMode) ?? DEFAULT_MAP_VISUAL_MODE;
 }
 
 /** Devolve novas preferências com o modo ajustado (não muta a entrada). */
