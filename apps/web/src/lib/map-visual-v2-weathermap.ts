@@ -315,7 +315,9 @@ export function resolveWeatherMap(
   visual: LinkV2Visual,
   context: WeatherMapContext = {},
 ): WeatherMapResolution {
-  const mode = context.animation ?? 'smart';
+  // Fase I: sem modo explícito a animação fica DESLIGADA — o movimento só
+  // começa quando o operador escolhe Inteligente/Sempre ativa no preview.
+  const mode = context.animation ?? 'off';
   const interaction = { selected: Boolean(context.selected), hovered: Boolean(context.hovered) };
   const a = visual.aToB;
   const b = visual.bToA;
