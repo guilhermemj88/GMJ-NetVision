@@ -1,10 +1,11 @@
 /**
- * Fase E/F — renderer do enlace bidirecional.
+ * Fase E/F/G — renderer do enlace bidirecional.
  *
  * Garante que o desenho tem UMA trajetória com DUAS metades (recortadas com um
- * vão no centro), que cada sentido tem cor, forma de seta e movimento próprios,
- * que a área de clique continua sendo o caminho completo (o mesmo da V1) e que
- * estados sem tráfego nunca ganham animação.
+ * vão no centro), que o traço/seta/runner usam a COR FIXA DA DIREÇÃO (a
+ * utilização vive só na plaqueta), que as plaquetas de velocidade são
+ * permanentes e embutidas na linha, que a área de clique continua sendo o
+ * caminho completo (o mesmo da V1) e que estados sem tráfego nunca animam.
  */
 
 import { createElement, type ReactNode } from 'react';
@@ -125,9 +126,9 @@ describe('renderer do enlace bidirecional', () => {
     expect(arrows).toHaveLength(2);
     expect(halves[0]).toContain('data-half="a2b"');
     expect(halves[1]).toContain('data-half="b2a"');
-    // Cada metade recebe a cor da SUA utilização (62% atenção / 41% normal).
-    expect(halves[0]).toContain('var(--wm-util-attention)');
-    expect(halves[1]).toContain('var(--wm-util-normal)');
+    // Fase G: o traço usa a COR FIXA DA DIREÇÃO (nunca a utilização).
+    expect(halves[0]).toContain('var(--wm-dir-a2b)');
+    expect(halves[1]).toContain('var(--wm-dir-b2a)');
     // Área de clique única, com o caminho completo.
     const hitarea = pathsFor(html, 'traffic-edge-v2-hitarea');
     expect(hitarea).toHaveLength(1);
@@ -173,8 +174,35 @@ describe('renderer do enlace bidirecional', () => {
     expect(gap).toBeLessThan(16);
   });
 
-  it('diferencia os sentidos mesmo com a MESMA cor: A→B sólido, B→A esmaecido', () => {
-    // Enlace com os dois sentidos na mesma faixa (ambos normais).
+  it('a cor da linha NÃO muda com a utilização: só a plaqueta muda', () => {
+    const directionsOf = (aPercent: number, bPercent: number) => ({
+      A_TO_B: { bps: (aPercent / 100) * 100 * G, utilization: aPercent, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' as const },
+      B_TO_A: { bps: (bPercent / 100) * 100 * G, utilization: bPercent, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' as const },
+    });
+    const low = renderEdge({ linkOverrides: { directions: directionsOf(8, 5) } });
+    const mid = renderEdge({ linkOverrides: { directions: directionsOf(62, 75) } });
+    const high = renderEdge({ linkOverrides: { directions: directionsOf(94, 99) } });
+    const halveOf = (html: string, half: 'a2b' | 'b2a') =>
+      pathsFor(html, 'traffic-edge-v2-half').find((h) => h.includes(`data-half="${half}"`))!;
+    // Traço idêntico nos três percentuais, sempre na cor da direção.
+    for (const html of [low, mid, high]) {
+      expect(halveOf(html, 'a2b')).toContain('stroke:var(--wm-dir-a2b)');
+      expect(halveOf(html, 'b2a')).toContain('stroke:var(--wm-dir-b2a)');
+    }
+    // A plaqueta, sim, muda de faixa.
+    const pillOf = (html: string, half: 'a2b' | 'b2a') =>
+      [...html.matchAll(/<div[^>]*data-testid="traffic-edge-v2-half-label"[^>]*>/g)]
+        .map((m) => m[0])
+        .find((m) => m.includes(`data-half="${half}"`))!;
+    expect(pillOf(low, 'a2b')).toContain('--wm-pill:var(--wm-dir-a2b)');
+    expect(pillOf(low, 'b2a')).toContain('--wm-pill:var(--wm-dir-b2a)');
+    expect(pillOf(mid, 'a2b')).toContain('--wm-pill:var(--wm-util-attention)');
+    expect(pillOf(high, 'b2a')).toContain('--wm-pill:var(--wm-util-critical)');
+    expect(pillOf(high, 'a2b')).toContain('data-band="critical"');
+    expect(pillOf(mid, 'b2a')).toContain('data-band="attention"');
+  });
+
+  it('as setas fixas mantêm a forma do sentido (cheia × chevron)', () => {
     const html = renderEdge({
       linkOverrides: {
         directions: {
@@ -183,19 +211,6 @@ describe('renderer do enlace bidirecional', () => {
         },
       },
     });
-    const halves = pathsFor(html, 'traffic-edge-v2-half');
-    const a2b = halves.find((h) => h.includes('data-half="a2b"'))!;
-    const b2a = halves.find((h) => h.includes('data-half="b2a"'))!;
-    expect(a2b).toContain('data-state="normal"');
-    expect(b2a).toContain('data-state="normal"');
-    // Mesma cor de base, mas B→A entra esmaecida sobre o fundo do mapa.
-    expect(a2b).toContain('stroke:var(--wm-util-normal)');
-    expect(b2a).toContain('color-mix(in srgb, var(--wm-util-normal)');
-    expect(a2b).toContain('data-sense="solid"');
-    expect(b2a).toContain('data-sense="dimmed"');
-    // A espessura NÃO é usada para diferenciar (ela é capacidade).
-    expect(/stroke-width:([\d.]+)/.exec(a2b)![1]).toBe(/stroke-width:([\d.]+)/.exec(b2a)![1]);
-    // E as setas fixas também mudam de forma: cheia × chevron vazado.
     const arrows = pathsFor(html, 'traffic-edge-v2-arrow');
     const solid = arrows.find((a) => a.includes('data-half="a2b"'))!;
     const chevron = arrows.find((a) => a.includes('data-half="b2a"'))!;
@@ -204,14 +219,19 @@ describe('renderer do enlace bidirecional', () => {
     expect(chevron).toContain('data-shape="chevron"');
     expect(chevron).not.toContain('Z"');
     expect(chevron).toContain('fill="none"');
+    // Mesma espessura nas duas metades (capacidade, não sentido).
+    const halves = pathsFor(html, 'traffic-edge-v2-half');
+    expect(/stroke-width:([\d.]+)/.exec(halves[0]!)![1]).toBe(
+      /stroke-width:([\d.]+)/.exec(halves[1]!)![1],
+    );
   });
 
-  it('marca o ponto de encontro no centro do enlace', () => {
+  it('marca o ponto de encontro no centro do enlace com um divisor vertical', () => {
     const html = renderEdge();
     const center = pathsFor(html, 'traffic-edge-v2-center');
     expect(center).toHaveLength(1);
-    // Losango pequeno, entre as duas metades.
-    expect(center[0]).toContain('M0,-3.1 L3.1,0 L0,3.1 L-3.1,0 Z');
+    // Divisor vertical (→│←) entre as duas metades.
+    expect(center[0]).toMatch(/d="M0,(-?[\d.]+) L0,(-?[\d.]+)"/);
     const halves = pathsFor(html, 'traffic-edge-v2-half');
     const firstHalfPath = /d="(M[^"]+)"/.exec(halves[0]!)![1]!;
     const firstEnd = /C[\d.,\s-]+?(-?[\d.]+),(-?[\d.]+)$/.exec(firstHalfPath)!;
@@ -331,7 +351,7 @@ describe('renderer do enlace bidirecional', () => {
     expect(labels.join(' | ')).toContain('41 Gbps · 41%');
   });
 
-  it('sem seleção, enlace saudável não mostra valor permanente', () => {
+  it('sem hover/seleção, enlace saudável mostra os DOIS valores permanentes', () => {
     const html = renderEdge({
       linkOverrides: {
         directions: {
@@ -341,7 +361,16 @@ describe('renderer do enlace bidirecional', () => {
       },
       showLabels: true,
     });
-    expect(html).not.toContain('data-testid="traffic-edge-v2-half-label"');
+    const labels = [...html.matchAll(/data-testid="traffic-edge-v2-half-label"[^>]*>([^<]*)</g)].map(
+      (match) => match[1],
+    );
+    expect(labels).toHaveLength(2);
+    expect(labels.join(' | ')).toContain('8 Gbps · 8%');
+    expect(labels.join(' | ')).toContain('6 Gbps · 6%');
+    // Plaqueta embutida (fundo opaco) e na cor da direção abaixo de 50%.
+    expect(html).toContain('traffic-edge-v2__label--pill');
+    expect(html).toContain('--wm-pill:var(--wm-dir-a2b)');
+    expect(html).toContain('--wm-pill:var(--wm-dir-b2a)');
     expect(pathsFor(html, 'traffic-edge-v2-arrow')).toHaveLength(2);
   });
 
@@ -353,11 +382,10 @@ describe('renderer do enlace bidirecional', () => {
     // O rótulo manual é sempre exibido, com o valor completo do sentido.
     expect(html).toContain('62 Gbps · 62%');
     const positionOf = (raw: string) =>
-      /data-manual="true"[^>]*style="transform:[^"]*translate\((-?[\d.]+)px, (-?[\d.]+)px\)"/.exec(raw);
+      /data-manual="true"[^>]*style="[^"]*translate\((-?[\d.]+)px, (-?[\d.]+)px\)"/.exec(raw);
     const manualPosition = positionOf(html);
-    const automaticPosition = /style="transform:translate\(-50%, -50%\) translate\(([\d.]+)px, ([\d.]+)px\)"/.exec(
-      automatic,
-    );
+    const automaticPosition =
+      /style="[^"]*translate\(-50%, -50%\) translate\(([\d.]+)px, ([\d.]+)px\)"/.exec(automatic);
     expect(manualPosition).not.toBeNull();
     // A posição do rótulo manual difere da automática (offset aplicado).
     expect(manualPosition![1]).not.toBe(automaticPosition![1]);

@@ -16,16 +16,19 @@ import {
   weatherCenterGap,
   weatherHalfDash,
   weatherHalfLabelMode,
-  weatherHalfStroke,
   weatherHalfText,
+  weatherPillColorVar,
   weatherRunnerCount,
   weatherRunnerDuration,
   weatherStreamStyle,
   weatherStrokeWidth,
-  WEATHER_B2A_STROKE_MIX_PERCENT,
   WEATHER_CENTER_GAP_MAX_HALF_SHARE,
   WEATHER_CENTER_GAP_PX,
+  WEATHER_DIRECTION_COLOR_VAR,
   WEATHER_HALF_COLOR_VAR,
+  WEATHER_PILL_LANE_OFFSET,
+  WEATHER_PILL_MIN_ZOOM,
+  WEATHER_PILL_NORMAL_MIN_ZOOM,
   WEATHER_RUNNER_MAX,
   type WeatherLabelContext,
 } from './map-visual-v2-weathermap';
@@ -145,7 +148,7 @@ describe('duas direções', () => {
     expect(weather.a2b.percent).toBeLessThan(weather.b2a.percent!);
   });
 
-  it('cores independentes: crítico de um lado, normal do outro', () => {
+  it('faixas independentes: crítico de um lado, normal do outro (Fase G)', () => {
     const weather = resolveWeatherMap(
       visualOf(
         link({
@@ -158,11 +161,12 @@ describe('duas direções', () => {
     );
     expect(weather.a2b.state).toBe('normal');
     expect(weather.b2a.state).toBe('critical');
-    expect(weather.a2b.color).toBe(WEATHER_HALF_COLOR_VAR.normal);
-    expect(weather.b2a.color).toBe(WEATHER_HALF_COLOR_VAR.critical);
-    expect(weather.a2b.color).not.toBe(weather.b2a.color);
-    // O enlace NÃO é pintado inteiro de vermelho.
-    expect(weather.a2b.color).not.toBe(WEATHER_HALF_COLOR_VAR.critical);
+    // O traço continua na cor fixa da direção dos DOIS lados...
+    expect(weather.a2b.color).toBe(WEATHER_DIRECTION_COLOR_VAR.a2b);
+    expect(weather.b2a.color).toBe(WEATHER_DIRECTION_COLOR_VAR.b2a);
+    // ...o enlace NÃO é pintado inteiro de vermelho e a utilização só muda a plaqueta.
+    expect(weather.a2b.pillColor).toBe(WEATHER_DIRECTION_COLOR_VAR.a2b);
+    expect(weather.b2a.pillColor).toBe(WEATHER_HALF_COLOR_VAR.critical);
   });
 
   it('faixas 50/80 valem por sentido', () => {
@@ -291,15 +295,112 @@ describe('sentido sem evidência', () => {
   });
 });
 
+describe('cores fixas de direção e plaquetas de utilização (Fase G)', () => {
+  const directions = (aPercent: number, bPercent: number) => ({
+    A_TO_B: {
+      bps: (aPercent / 100) * 100 * G,
+      utilization: aPercent,
+      txBps: null,
+      observedRxBps: null,
+      deltaPercent: null,
+      consistency: 'CONSISTENT' as const,
+    },
+    B_TO_A: {
+      bps: (bPercent / 100) * 100 * G,
+      utilization: bPercent,
+      txBps: null,
+      observedRxBps: null,
+      deltaPercent: null,
+      consistency: 'CONSISTENT' as const,
+    },
+  });
+
+  it('A→B é sempre ciano com 8%, 62% e 94% de utilização', () => {
+    for (const percent of [8, 62, 94]) {
+      const weather = resolveWeatherMap(visualOf(link({ directions: directions(percent, 10) })));
+      expect(weather.a2b.color).toBe(WEATHER_DIRECTION_COLOR_VAR.a2b);
+      expect(weather.a2b.color).toBe('var(--wm-dir-a2b)');
+    }
+  });
+
+  it('B→A é sempre roxa com 5%, 75% e 99% de utilização', () => {
+    for (const percent of [5, 75, 99]) {
+      const weather = resolveWeatherMap(visualOf(link({ directions: directions(10, percent) })));
+      expect(weather.b2a.color).toBe(WEATHER_DIRECTION_COLOR_VAR.b2a);
+      expect(weather.b2a.color).toBe('var(--wm-dir-b2a)');
+    }
+  });
+
+  it('a plaqueta passa de direção para âmbar em 50% e para coral em 80%', () => {
+    expect(weatherPillColorVar('a2b', 'normal')).toBe('var(--wm-dir-a2b)');
+    expect(weatherPillColorVar('b2a', 'normal')).toBe('var(--wm-dir-b2a)');
+    expect(weatherPillColorVar('a2b', 'attention')).toBe('var(--wm-util-attention)');
+    expect(weatherPillColorVar('b2a', 'attention')).toBe('var(--wm-util-attention)');
+    expect(weatherPillColorVar('a2b', 'critical')).toBe('var(--wm-util-critical)');
+
+    const below = resolveWeatherMap(visualOf(link({ directions: directions(49, 49) })));
+    expect(below.a2b.band).toBe('normal');
+    expect(below.a2b.pillColor).toBe('var(--wm-dir-a2b)');
+
+    const at50 = resolveWeatherMap(visualOf(link({ directions: directions(50, 50) })));
+    expect(at50.a2b.band).toBe('attention');
+    expect(at50.a2b.pillColor).toBe('var(--wm-util-attention)');
+
+    const at79 = resolveWeatherMap(visualOf(link({ directions: directions(79, 79) })));
+    expect(at79.b2a.band).toBe('attention');
+
+    const at80 = resolveWeatherMap(visualOf(link({ directions: directions(80, 80) })));
+    expect(at80.b2a.band).toBe('critical');
+    expect(at80.b2a.pillColor).toBe('var(--wm-util-critical)');
+  });
+
+  it('a utilização muda SOMENTE a plaqueta — o traço continua na cor da direção', () => {
+    const low = resolveWeatherMap(visualOf(link({ directions: directions(8, 5) })));
+    const high = resolveWeatherMap(visualOf(link({ directions: directions(94, 99) })));
+    expect(low.a2b.color).toBe(high.a2b.color);
+    expect(low.b2a.color).toBe(high.b2a.color);
+    expect(low.a2b.pillColor).not.toBe(high.a2b.pillColor);
+    // Nem a espessura reage à utilização: ela é da capacidade.
+    expect(low.strokeWidth).toBe(high.strokeWidth);
+  });
+
+  it('cores especiais aparecem apenas nos estados operacionais previstos', () => {
+    const down = resolveWeatherMap(visualOf(link({ status: 'DOWN' })));
+    expect(down.a2b.color).toBe(WEATHER_HALF_COLOR_VAR.down);
+    expect(down.b2a.color).toBe(WEATHER_HALF_COLOR_VAR.down);
+    expect(down.a2b.pillColor).toBe(WEATHER_HALF_COLOR_VAR.down);
+
+    const noData = resolveWeatherMap(visualOf(link(), { collectionStamp: null }));
+    expect(noData.a2b.color).toBe(WEATHER_HALF_COLOR_VAR['no-data']);
+    expect(noData.a2b.color).not.toBe(WEATHER_DIRECTION_COLOR_VAR.a2b);
+
+    const stale = resolveWeatherMap(
+      visualOf(link(), { collectionStamp: new Date(NOW - 30 * 60_000).toISOString() }),
+    );
+    expect(stale.a2b.color).toBe(WEATHER_HALF_COLOR_VAR.stale);
+
+    const inconsistent = resolveWeatherMap(
+      visualOf(
+        link({
+          directions: {
+            A_TO_B: { bps: 5 * G, utilization: 5, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'DIVERGENT' },
+            B_TO_A: { bps: 4 * G, utilization: 4, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'DIVERGENT' },
+          },
+        }),
+      ),
+    );
+    expect(inconsistent.a2b.color).toBe(WEATHER_HALF_COLOR_VAR.inconsistent);
+  });
+});
+
 describe('diferenciação dos sentidos e leitura do centro', () => {
-  it('a forma da seta e o esmaecimento identificam o sentido sem depender da cor', () => {
+  it('a forma da seta reforça a direção sem depender da cor', () => {
     expect(weatherArrowShape('a2b')).toBe('solid');
     expect(weatherArrowShape('b2a')).toBe('chevron');
-    expect(weatherHalfStroke('var(--wm-util-normal)', 'a2b')).toBe('var(--wm-util-normal)');
-    const dimmed = weatherHalfStroke('var(--wm-util-normal)', 'b2a');
-    expect(dimmed).toContain('color-mix');
-    expect(dimmed).toContain('var(--wm-dim-mix)');
-    expect(WEATHER_B2A_STROKE_MIX_PERCENT).toBeGreaterThan(50);
+  });
+
+  it('a plaqueta é embutida na linha (offset zero como candidato preferido)', () => {
+    expect(WEATHER_PILL_LANE_OFFSET).toBe(0);
   });
 
   it('o vão central é explícito e limitado em enlaces curtos', () => {
@@ -391,9 +492,9 @@ describe('microanimação', () => {
   });
 });
 
-describe('política de rótulo', () => {
-  it('enlace saudável abaixo de 50% não mostra valor permanente', () => {
-    const weather = resolveWeatherMap(
+describe('política de rótulo (Fase G: plaquetas permanentes)', () => {
+  const healthy = () =>
+    resolveWeatherMap(
       visualOf(
         link({
           directions: {
@@ -403,38 +504,49 @@ describe('política de rótulo', () => {
         }),
       ),
     );
-    expect(weatherHalfLabelMode(weather.a2b, NO_FOCUS)).toBe('hidden');
-    expect(weatherHalfLabelMode(weather.b2a, NO_FOCUS)).toBe('hidden');
-    expect(weatherHalfText(weather.a2b, 'hidden')).toBeNull();
+
+  it('enlace saudável abaixo de 50% MOSTRA os dois valores sem hover', () => {
+    const weather = healthy();
+    expect(weatherHalfLabelMode(weather.a2b, NO_FOCUS, 1)).toBe('full');
+    expect(weatherHalfLabelMode(weather.b2a, NO_FOCUS, 1)).toBe('full');
+    expect(weatherHalfText(weather.a2b, 'full')).toBe('8 Gbps · 8%');
+    expect(weatherHalfText(weather.b2a, 'full')).toBe('6 Gbps · 6%');
   });
 
-  it('uma direção acima de 50% mostra só o lado relevante', () => {
-    const weather = resolveWeatherMap(
+  it('no zoom operacional reduzido as plaquetas normais continuam visíveis', () => {
+    const weather = healthy();
+    expect(WEATHER_PILL_NORMAL_MIN_ZOOM).toBeLessThanOrEqual(0.5);
+    expect(weatherHalfLabelMode(weather.a2b, NO_FOCUS, 0.5)).toBe('full');
+    expect(weatherHalfLabelMode(weather.a2b, NO_FOCUS, 0.83)).toBe('full');
+  });
+
+  it('a degradação em zoom extremo é determinística e documentada', () => {
+    const weather = healthy();
+    // Abaixo do limite da plaqueta normal: some só o sentido saudável.
+    expect(weatherHalfLabelMode(weather.a2b, NO_FOCUS, WEATHER_PILL_NORMAL_MIN_ZOOM - 0.01)).toBe('hidden');
+    // Atenção/crítico seguem legíveis mesmo em zoom extremo.
+    const attention = resolveWeatherMap(
       visualOf(
         link({
           directions: {
-            A_TO_B: { bps: 3 * G, utilization: 3, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
+            A_TO_B: { bps: 62 * G, utilization: 62, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
             B_TO_A: { bps: 94 * G, utilization: 94, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
           },
         }),
       ),
     );
-    expect(weatherHalfLabelMode(weather.b2a, NO_FOCUS)).toBe('full');
-    expect(weatherHalfLabelMode(weather.a2b, NO_FOCUS)).toBe('hidden');
-    expect(weatherHalfText(weather.b2a, 'full')).toBe('94 Gbps · 94%');
+    expect(weatherHalfLabelMode(attention.a2b, NO_FOCUS, 0.2)).toBe('full');
+    expect(weatherHalfLabelMode(attention.b2a, NO_FOCUS, 0.2)).toBe('full');
+    // Estado anômalo degrada para compacto (nunca desaparece).
+    const stale = resolveWeatherMap(
+      visualOf(link(), { collectionStamp: new Date(NOW - 30 * 60_000).toISOString() }),
+    );
+    expect(weatherHalfLabelMode(stale.a2b, NO_FOCUS, WEATHER_PILL_MIN_ZOOM - 0.01)).toBe('compact');
+    expect(weatherHalfLabelMode(stale.a2b, NO_FOCUS, 1)).toBe('full');
   });
 
-  it('hover/seleção/nó adjacente mostram os dois sentidos', () => {
-    const weather = resolveWeatherMap(
-      visualOf(
-        link({
-          directions: {
-            A_TO_B: { bps: 8 * G, utilization: 8, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
-            B_TO_A: { bps: 6 * G, utilization: 6, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
-          },
-        }),
-      ),
-    );
+  it('hover/seleção/nó adjacente promovem as duas plaquetas', () => {
+    const weather = healthy();
     for (const context of [
       { ...NO_FOCUS, hovered: true },
       { ...NO_FOCUS, selected: true },

@@ -62,11 +62,12 @@ function rectFor(
   offset: number,
   width: number,
   scale: number,
+  height = LINK_V2_LABEL_HEIGHT,
 ): Rect {
   const cx = anchor.x + normal.x * offset;
   const cy = anchor.y + normal.y * offset;
-  const height = LINK_V2_LABEL_HEIGHT * scale;
-  return { x: cx - width / 2, y: cy - height / 2, width, height };
+  const boxHeight = height * scale;
+  return { x: cx - width / 2, y: cy - boxHeight / 2, width, height: boxHeight };
 }
 
 /** Largura estimada da pílula — suficiente para a anticolisão, sem medir fonte. */
@@ -101,14 +102,26 @@ function expand(rect: LinkV2NodeRect, margin: number): Rect {
  *
  * `nodeRects` são as caixas dos nós (a pílula nunca cobre ícone, nome ou
  * badge de alarme). O resultado é o mapa id → colocação.
+ *
+ * `fontSize`/`height` permitem declarar o tamanho REAL da pílula (Fase G:
+ * plaqueta de tráfego pequena e embutida), o que deixa a anticolisão fiel e
+ * evita degradar para "compacto" antes da hora.
  */
 export function resolveLinkV2LabelPlacements(
   candidates: readonly LinkV2LabelCandidate[],
   nodeRects: readonly LinkV2NodeRect[],
-  options: { margin?: number; extraOffsets?: readonly number[]; scale?: number } = {},
+  options: {
+    margin?: number;
+    extraOffsets?: readonly number[];
+    scale?: number;
+    fontSize?: number;
+    height?: number;
+  } = {},
 ): Map<string, LinkV2LabelPlacement> {
   const margin = options.margin ?? 6;
   const extraOffsets = options.extraOffsets ?? LINK_V2_LABEL_EXTRA_OFFSETS;
+  const fontSize = options.fontSize && options.fontSize > 0 ? options.fontSize : undefined;
+  const labelHeight = options.height && options.height > 0 ? options.height : LINK_V2_LABEL_HEIGHT;
   /**
    * Rótulos têm tamanho praticamente constante na TELA, mas as contas rodam em
    * unidades de fluxo: com zoom < 1, cada px de tela vale mais unidades de
@@ -119,13 +132,15 @@ export function resolveLinkV2LabelPlacements(
   const sorted = [...candidates].sort((a, b) =>
     b.priority - a.priority || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
   );
+  const rectOf = (anchor: Point, normal: Point, offset: number, width: number) =>
+    rectFor(anchor, normal, offset, width, scale, labelHeight);
 
   const placedRects: Rect[] = [];
   const result = new Map<string, LinkV2LabelPlacement>();
 
   for (const candidate of sorted) {
-    const fullWidth = estimateLabelWidth(candidate.text) * scale;
-    const compactWidth = estimateLabelWidth(candidate.compactText) * scale;
+    const fullWidth = estimateLabelWidth(candidate.text, fontSize) * scale;
+    const compactWidth = estimateLabelWidth(candidate.compactText, fontSize) * scale;
     const offsets = [
       candidate.laneOffset,
       ...extraOffsets.map((extra) => candidate.laneOffset + extra * scale),
@@ -134,7 +149,7 @@ export function resolveLinkV2LabelPlacements(
     let placement: LinkV2LabelPlacement | null = null;
 
     for (const offset of offsets) {
-      const rect = rectFor(candidate.anchor, candidate.normal, offset, fullWidth, scale);
+      const rect = rectOf(candidate.anchor, candidate.normal, offset, fullWidth);
       if (!collides(rect, obstacles) && !collides(rect, placedRects)) {
         placement = { mode: 'full', dx: candidate.normal.x * offset, dy: candidate.normal.y * offset };
         placedRects.push(rect);
@@ -144,7 +159,7 @@ export function resolveLinkV2LabelPlacements(
 
     if (!placement) {
       for (const offset of offsets) {
-        const rect = rectFor(candidate.anchor, candidate.normal, offset, compactWidth, scale);
+        const rect = rectOf(candidate.anchor, candidate.normal, offset, compactWidth);
         if (!collides(rect, obstacles) && !collides(rect, placedRects)) {
           placement = {
             mode: 'compact',
@@ -163,17 +178,14 @@ export function resolveLinkV2LabelPlacements(
       const offset =
         offsets.find(
           (value) =>
-            !collides(
-              rectFor(candidate.anchor, candidate.normal, value, compactWidth, scale),
-              obstacles,
-            ),
+            !collides(rectOf(candidate.anchor, candidate.normal, value, compactWidth), obstacles),
         ) ?? candidate.laneOffset;
       placement = {
         mode: 'compact',
         dx: candidate.normal.x * offset,
         dy: candidate.normal.y * offset,
       };
-      placedRects.push(rectFor(candidate.anchor, candidate.normal, offset, compactWidth, scale));
+      placedRects.push(rectOf(candidate.anchor, candidate.normal, offset, compactWidth));
     }
 
     result.set(

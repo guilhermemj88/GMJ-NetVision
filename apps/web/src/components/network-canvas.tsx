@@ -55,6 +55,12 @@ import { useLinkV2AnimationMode } from '@/lib/map-visual-v2-animation';
 import { linkV2LabelPriority, resolveRealLinkV2 } from '@/lib/map-visual-v2-link';
 import { manualLabelOffset } from '@/lib/map-visual-v2-offsets';
 import {
+  // Fase G: plaquetas EMBUTIDAS na linha — o candidato preferido fica sobre a
+  // própria curva (offset 0) e só sai dela se a anticolisão exigir.
+  WEATHER_PILL_EXTRA_OFFSETS,
+  WEATHER_PILL_FONT_SIZE,
+  WEATHER_PILL_HEIGHT,
+  WEATHER_PILL_LANE_OFFSET,
   WEATHER_LABEL_HALF_FRACTION,
   resolveWeatherMap,
 } from '@/lib/map-visual-v2-weathermap';
@@ -64,7 +70,6 @@ import {
   splitGeometryAtLength,
 } from '@/lib/map-visual-v2-arc';
 import {
-  LINK_V2_LABEL_LIFT,
   resolveLinkV2LabelPlacements,
   type LinkV2LabelCandidate,
 } from '@/lib/map-visual-v2-labels';
@@ -430,7 +435,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
       const normal = perpendicularOf(geometry);
       const weather = resolveWeatherMap(visual, { animation: animationMode, selected });
       const priorities = linkV2LabelPriority({ visual, selected, alarmCount });
-      const laneOffset = LINK_V2_LABEL_LIFT * (1 / Math.max(0.25, zoomForLabels));
+      const laneOffset = WEATHER_PILL_LANE_OFFSET;
 
       for (const half of [weather.a2b, weather.b2a] as const) {
         if (!manualOffset && !half.label && !half.compactLabel) continue;
@@ -465,6 +470,9 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
 
     const placements = resolveLinkV2LabelPlacements(candidates, rects, {
       scale: 1 / Math.max(0.25, zoomForLabels),
+      fontSize: WEATHER_PILL_FONT_SIZE,
+      height: WEATHER_PILL_HEIGHT,
+      extraOffsets: WEATHER_PILL_EXTRA_OFFSETS,
     });
     for (const [id, entry] of entries) {
       entries.set(id, {
