@@ -1,18 +1,5 @@
 'use client';
 
-import { useMemo, useState, type ReactNode } from 'react';
-import {
-  Background,
-  BackgroundVariant,
-  Controls,
-  Handle,
-  Position,
-  ReactFlow,
-  ReactFlowProvider,
-  type Edge,
-  type Node,
-  type NodeProps,
-} from '@xyflow/react';
 import { NetworkDeviceIcon } from '@/components/network-device-icon';
 import {
   NetworkDeviceGlyphV2,
@@ -24,22 +11,21 @@ import {
   DEVICE_ICON_TYPES,
   type NetworkDeviceIconType,
 } from '@/lib/device-appearance';
+import { MapVisualCanvasSection } from './v2-canvas-section';
 
 /**
- * MAP-VISUAL-V2 — laboratório de glifos (rota /map-visual-preview).
+ * MAP-VISUAL-V2 — laboratório (rota /map-visual-preview).
  *
- * Compara V1 × V2, o desenho CORE_SWITCH candidato e as variantes do BNG em
- * 16/24/32/48 px. Tudo aqui é mock e apenas visual: o laboratório não escreve
- * no mapa, não altera o mapeamento global do módulo de glifos e não chama a
- * API. O V1 permanece o padrão do produto.
+ * Fase A: catálogo de glifos V1 × V2, comparação do CORE_SWITCH candidato e
+ * matriz BNG normal/compacta. Fase B: canvases com enlaces inteligentes
+ * (V1 × V2), cenários simples e denso, rótulos, simulações e painel lateral —
+ * tudo mock, sem API e sem tocar no mapa operacional. O V1 permanece o padrão
+ * do produto.
  */
 
 const ICON_SIZE_STEPS = [16, 24, 32, 48] as const;
 
-type Engine = 'v1' | 'v2';
-type CoreSwitchCandidate = 'SWITCH' | 'CORE_SWITCH';
 type BngMode = 'normal' | 'compact' | 'sugerida';
-type LabStatus = 'up' | 'warning' | 'down' | 'unknown';
 
 const LABEL_BY_TYPE = new Map<string, string>(
   DEVICE_ICON_OPTIONS.map((option) => [option.value, option.label]),
@@ -60,33 +46,6 @@ const TYPE_NOTES: Partial<Record<NetworkDeviceIconType, string>> = {
 
 function deviceColorClass(iconType: string): string {
   return `device-node--type-${iconType.toLowerCase().replaceAll('_', '-')}`;
-}
-
-function RadioOption<T extends string>({
-  name,
-  value,
-  current,
-  onSelect,
-  children,
-}: {
-  name: string;
-  value: T;
-  current: T;
-  onSelect: (value: T) => void;
-  children: ReactNode;
-}) {
-  return (
-    <label className="mv2-option">
-      <input
-        type="radio"
-        name={name}
-        value={value}
-        checked={current === value}
-        onChange={() => onSelect(value)}
-      />
-      <span>{children}</span>
-    </label>
-  );
 }
 
 function V1Sample({ iconType, size }: { iconType: NetworkDeviceIconType; size: number }) {
@@ -125,199 +84,28 @@ function bngCompactFor(mode: BngMode, size: number): boolean {
   return size <= 24;
 }
 
-interface MockDevice {
-  id: string;
-  name: string;
-  ip: string;
-  status: LabStatus;
-  legacyType: NetworkDeviceIconType;
-  x: number;
-  y: number;
-  alarms?: number;
-}
-
-const MOCK_DEVICES: MockDevice[] = [
-  { id: 'internet', name: 'INTERNET · AS28126', ip: '200.219.0.0/16', status: 'up', legacyType: 'CLOUD', x: 60, y: 130 },
-  { id: 'edge', name: 'NE-8000-BORDA-01', ip: '10.255.0.1', status: 'up', legacyType: 'CORE_ROUTER', x: 330, y: 40 },
-  { id: 'ix', name: 'IX-SP-01', ip: '187.16.0.1', status: 'unknown', legacyType: 'IX', x: 330, y: 230 },
-  { id: 'core', name: 'SW-CORE-01', ip: '10.255.1.1', status: 'up', legacyType: 'CORE_SWITCH', x: 640, y: 130 },
-  { id: 'bng', name: 'BNG-BRAS-01', ip: '10.255.2.1', status: 'up', legacyType: 'BNG', x: 950, y: 40 },
-  { id: 'agg', name: 'AGG-SUL-03', ip: '10.255.3.3', status: 'warning', legacyType: 'AGGREGATION', x: 950, y: 230, alarms: 2 },
-  { id: 'olt', name: 'OLT-CENTRO-VILA-NOVA-01', ip: '10.255.9.11', status: 'warning', legacyType: 'OLT', x: 1260, y: 130, alarms: 1 },
-  { id: 'dist', name: 'SW-DIST-02', ip: '10.255.4.2', status: 'down', legacyType: 'SWITCH', x: 640, y: 330 },
-  { id: 'clientes', name: 'CLIENTES-SUL', ip: '100.64.0.0/12', status: 'up', legacyType: 'CUSTOMERS', x: 950, y: 400 },
-];
-
-const MOCK_EDGES: Edge[] = [
-  { id: 'e-internet-edge', source: 'internet', target: 'edge' },
-  { id: 'e-edge-core', source: 'edge', target: 'core' },
-  { id: 'e-edge-ix', source: 'edge', target: 'ix' },
-  { id: 'e-core-bng', source: 'core', target: 'bng' },
-  { id: 'e-core-agg', source: 'core', target: 'agg' },
-  { id: 'e-agg-olt', source: 'agg', target: 'olt' },
-  { id: 'e-core-dist', source: 'core', target: 'dist' },
-  { id: 'e-bng-clientes', source: 'bng', target: 'clientes' },
-  { id: 'e-dist-clientes', source: 'dist', target: 'clientes' },
-];
-
-interface LabNodeData extends Record<string, unknown> {
-  name: string;
-  ip: string;
-  status: LabStatus;
-  legacyType: NetworkDeviceIconType;
-  /** Nulo = V1 (engine V1 ou tipo sem desenho V2 — fallback). */
-  glyph: DeviceGlyphV2Type | null;
-  iconSize: number;
-  bngCompact: boolean;
-  alarms: number | undefined;
-}
-
-type LabFlowNode = Node<LabNodeData, 'labDevice'>;
-
-const HANDLE_SIDES = ['left', 'right', 'top', 'bottom'] as const;
-const POSITION_BY_SIDE = {
-  left: Position.Left,
-  right: Position.Right,
-  top: Position.Top,
-  bottom: Position.Bottom,
-} as const;
-
-function LabDeviceNode({ data, selected }: NodeProps<LabFlowNode>) {
-  return (
-    <div
-      className={`device-node device-node--icon_2d ${deviceColorClass(data.legacyType)} status-${data.status} ${selected ? 'is-selected' : ''} ${data.glyph ? 'mv2-node--flat' : ''}`}
-      title={`${data.name} · ${data.ip} · ${data.status}`}
-    >
-      {HANDLE_SIDES.map((side) => (
-        <Handle
-          key={side}
-          id={side}
-          type="source"
-          position={POSITION_BY_SIDE[side]}
-          isConnectable={false}
-        />
-      ))}
-      <div className="device-node__icon">
-        {data.glyph ? (
-          <NetworkDeviceGlyphV2
-            type={data.glyph}
-            size={data.iconSize}
-            compact={data.bngCompact}
-          />
-        ) : (
-          <NetworkDeviceIcon type={data.legacyType} variant="2d" size={data.iconSize} />
-        )}
-        <span className="status-pulse" />
-      </div>
-      <div className="device-node__copy">
-        <strong>{data.name}</strong>
-        <span>{data.ip}</span>
-      </div>
-      {data.alarms ? (
-        <span
-          className="device-node__alarm-badge"
-          title={`${data.alarms} alarme(s) ativo(s)`}
-          aria-label={`${data.alarms} alarmes ativos`}
-        >
-          ⚠ {data.alarms}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-const LAB_NODE_TYPES = { labDevice: LabDeviceNode };
-
 export function MapVisualLab() {
-  const [engine, setEngine] = useState<Engine>('v2');
-  const [coreSwitchCandidate, setCoreSwitchCandidate] = useState<CoreSwitchCandidate>('SWITCH');
-  const [bngMode, setBngMode] = useState<BngMode>('sugerida');
-  const [canvasIconSize, setCanvasIconSize] = useState<number>(32);
-
-  const nodes = useMemo<LabFlowNode[]>(
-    () =>
-      MOCK_DEVICES.map((device) => {
-        const glyph =
-          engine === 'v2'
-            ? device.legacyType === 'CORE_SWITCH' && coreSwitchCandidate === 'CORE_SWITCH'
-              ? 'CORE_SWITCH'
-              : resolveDeviceGlyphV2(device.legacyType)
-            : null;
-        return {
-          id: device.id,
-          type: 'labDevice' as const,
-          position: { x: device.x, y: device.y },
-          data: {
-            name: device.name,
-            ip: device.ip,
-            status: device.status,
-            legacyType: device.legacyType,
-            glyph,
-            iconSize: canvasIconSize,
-            bngCompact: device.legacyType === 'BNG' && bngCompactFor(bngMode, canvasIconSize),
-            alarms: device.alarms,
-          },
-        };
-      }),
-    [engine, coreSwitchCandidate, bngMode, canvasIconSize],
-  );
-
   return (
     <div className="mv2-lab">
       <header className="mv2-lab__header">
         <div>
-          <h1 className="mv2-lab__title">MAP-VISUAL-V2 · Laboratório de glifos</h1>
+          <h1 className="mv2-lab__title">MAP-VISUAL-V2 · Laboratório (Fase A + Fase B)</h1>
           <p className="mv2-lab__subtitle">
-            Comparação V1 × V2 no React Flow real, com o desenho <strong>CORE_SWITCH</strong>{' '}
-            candidato e as variantes <strong>BNG normal/compacta</strong> em 16, 24, 32 e 48 px.
-            Todos os nós e estados são demonstrativos; nenhum dado real é exibido, gravado ou
-            enviado.
+            Fase A: catálogo de glifos V1 × V2 em 16/24/32/48 px, comparação do{' '}
+            <strong>CORE_SWITCH</strong> candidato e matriz <strong>BNG</strong> normal/compacta.
+            Fase B: canvases com enlaces de linha única (cor por utilização, grossura por
+            capacidade, seta na tangente, rótulos inteligentes), cenários simples e denso,
+            simulações, LAG demonstrativo e painel lateral. Tudo demonstrativo; nenhum dado real é
+            exibido, gravado ou enviado.
           </p>
         </div>
         <div className="mv2-lab__chips">
           <span className="mv2-chip mv2-chip--ok">V1 intacta</span>
           <span className="mv2-chip mv2-chip--ok">nada publicado</span>
           <span className="mv2-chip mv2-chip--warn">mapeamento CORE_SWITCH provisório</span>
+          <span className="mv2-chip">dados DEMONSTRATIVOS</span>
         </div>
       </header>
-
-      <section className="mv2-lab__section" id="controles">
-        <h2>Controles do canvas</h2>
-        <p className="mv2-lab__hint">
-          Os controles abaixo afetam apenas a topologia de demonstração desta página. Nenhuma
-          escolha é persistida nem altera o mapeamento global{' '}
-          <code>resolveDeviceGlyphV2</code>.
-        </p>
-        <div className="mv2-controls">
-          <div className="mv2-control">
-            <p className="mv2-control__title">Motor de ícones no canvas</p>
-            <div className="mv2-control__options">
-              <RadioOption name="mv2-engine" value="v1" current={engine} onSelect={setEngine}>
-                V1 (atual)
-              </RadioOption>
-              <RadioOption name="mv2-engine" value="v2" current={engine} onSelect={setEngine}>
-                V2 (novo)
-              </RadioOption>
-            </div>
-          </div>
-          <div className="mv2-control">
-            <p className="mv2-control__title">Tamanho do ícone no canvas</p>
-            <div className="mv2-control__options">
-              {ICON_SIZE_STEPS.map((size) => (
-                <RadioOption
-                  key={size}
-                  name="mv2-icon-size"
-                  value={String(size)}
-                  current={String(canvasIconSize)}
-                  onSelect={(value) => setCanvasIconSize(Number(value))}
-                >
-                  {size} px
-                </RadioOption>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
 
       <section className="mv2-lab__section" id="catalogo">
         <h2>Catálogo V1 × V2 · 16/24/32/48 px</h2>
@@ -480,31 +268,8 @@ export function MapVisualLab() {
             </div>
           </div>
         </div>
-        <div className="mv2-controls">
-          <div className="mv2-control">
-            <p className="mv2-control__title">Desenho aplicado ao CORE_SWITCH no canvas</p>
-            <div className="mv2-control__options">
-              <RadioOption
-                name="mv2-core-switch"
-                value="SWITCH"
-                current={coreSwitchCandidate}
-                onSelect={setCoreSwitchCandidate}
-              >
-                SWITCH (provisório atual)
-              </RadioOption>
-              <RadioOption
-                name="mv2-core-switch"
-                value="CORE_SWITCH"
-                current={coreSwitchCandidate}
-                onSelect={setCoreSwitchCandidate}
-              >
-                CORE_SWITCH (novo)
-              </RadioOption>
-            </div>
-          </div>
-        </div>
         <p className="mv2-lab__note">
-          Trocar o seletor muda apenas o nó SW-CORE-01 desta página. A linha{' '}
+          O desenho aplicado ao CORE_SWITCH é escolhido nos controles do canvas (Fase B). A linha{' '}
           <code>CORE_SWITCH: &quot;SWITCH&quot;</code> do módulo oficial foi preservada — a
           ativação global só depois da aprovação visual.
         </p>
@@ -590,58 +355,13 @@ export function MapVisualLab() {
             </div>
           </div>
         </div>
-        <div className="mv2-controls">
-          <div className="mv2-control">
-            <p className="mv2-control__title">Variante aplicada ao BNG no canvas</p>
-            <div className="mv2-control__options">
-              <RadioOption name="mv2-bng" value="normal" current={bngMode} onSelect={setBngMode}>
-                Normal
-              </RadioOption>
-              <RadioOption name="mv2-bng" value="compact" current={bngMode} onSelect={setBngMode}>
-                Compacta
-              </RadioOption>
-              <RadioOption name="mv2-bng" value="sugerida" current={bngMode} onSelect={setBngMode}>
-                Preferência (≤ 24 px compacta)
-              </RadioOption>
-            </div>
-          </div>
-        </div>
+        <p className="mv2-lab__note">
+          A variante aplicada ao BNG no canvas é escolhida nos controles da Fase B (normal,
+          compacta ou preferência ≤ 24 px).
+        </p>
       </section>
 
-      <section className="mv2-lab__section" id="canvas">
-        <h2>React Flow real — topologia de demonstração</h2>
-        <p className="mv2-lab__hint">
-          Nove nós mock (incluindo nomes longos, estados UP/WARNING/DOWN/UNKNOWN e alarms). No V2
-          o glifo fica plano, sem orbe/anel; no V1 o nó mantém exatamente o visual de produção.
-          Arraste os nós e use o zoom para avaliar a silhueta em cada tamanho.
-        </p>
-        <div className="mv2-lab__canvas">
-          <ReactFlowProvider>
-            <ReactFlow<LabFlowNode, Edge>
-              nodes={nodes}
-              edges={MOCK_EDGES}
-              nodeTypes={LAB_NODE_TYPES}
-              nodesConnectable={false}
-              nodesDraggable
-              elementsSelectable
-              fitView
-              fitViewOptions={{ padding: 0.18, maxZoom: 1.2 }}
-              minZoom={0.35}
-              maxZoom={2.4}
-              defaultEdgeOptions={{ style: { stroke: '#3a5a6b', strokeWidth: 1.6 } }}
-              proOptions={{ hideAttribution: true }}
-              colorMode="dark"
-            >
-              <Background variant={BackgroundVariant.Dots} gap={28} size={1.2} color="#1b2832" />
-              <Controls showInteractive={false} />
-            </ReactFlow>
-          </ReactFlowProvider>
-        </div>
-        <p className="mv2-lab__note">
-          Canvas isolado: nenhuma conexão com o mapa real, nenhuma chamada de API e nenhuma
-          escrita no banco. Seleção, hover e status pulse continuam funcionando.
-        </p>
-      </section>
+      <MapVisualCanvasSection />
 
       <section className="mv2-lab__section" id="notas">
         <h2>Notas e limites desta fase</h2>
@@ -671,16 +391,39 @@ export function MapVisualLab() {
             final em px — por isso a matriz fixa 16/24/32/48.
           </li>
           <li>
-            Todos os nós, enlaces, estados e alarmes são mock e permanecem no navegador; nenhum
-            tráfego sintético vai para a API ou para os equipamentos.
+            Todos os nós, enlaces, estados, alarmes e históricos são mock e permanecem no
+            navegador; nenhum tráfego sintético vai para a API ou para os equipamentos.
+          </li>
+          <li>
+            Fase B — regra de stale: a hipótese inicial da V2 é <strong>três ciclos de coleta</strong>{' '}
+            (SNMP padrão de 60s → 180s), parametrizável e ainda sujeita à cadência real. Nenhuma
+            classificação de enlace real usa esse número.
+          </li>
+          <li>
+            Fase B — anticolisão de rótulos: versão determinística sobre os dados mock (deslocamento
+            perpendicular → formato compacto → ocultação de rótulos secundários; seleção, DOWN e
+            alarme nunca são ocultados). Offsets manuais persistidos da V1 <em>não</em> são
+            consumidos pelo V2 nesta fase.
+          </li>
+          <li>
+            Fase B — LAG só é agrupado quando os dados mock declaram o grupo;{' '}
+            <code>aggregationMode SUM</code> não é tratado como LAG real e circuitos independentes
+            entre os mesmos nós nunca são agrupados automaticamente.
+          </li>
+          <li>
+            Fase B — o painel lateral é demonstrativo e usa dados mock; o ContextDrawer de produção
+            e os gráficos do MAP-LINK-GRAPHS não foram alterados.
           </li>
         </ul>
       </section>
 
       <footer className="mv2-lab__footer">
-        MAP-VISUAL-V2 · laboratório interno · rota disponível apenas em desenvolvimento local ou
-        build de preview (<code>NEXT_PUBLIC_PREVIEW_MODE=true</code>). Em produção a página
-        responde 404. Nenhum deploy, merge ou restart faz parte deste laboratório.
+        MAP-VISUAL-V2 · laboratório interno (Fases A e B) · rota disponível apenas em
+        desenvolvimento local ou build de preview (<code>NEXT_PUBLIC_PREVIEW_MODE=true</code>). No
+        build de produção a rota devolve o conteúdo 404 do framework — nenhum dado ou componente do
+        laboratório é servido (o App Router mantém status 200 nesse caso; ver limitações no
+        relatório da fase). Nenhum deploy, merge ou restart faz parte deste laboratório; a V2 não
+        aparece no mapa operacional nesta fase.
       </footer>
     </div>
   );
