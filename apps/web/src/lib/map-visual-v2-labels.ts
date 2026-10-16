@@ -45,6 +45,8 @@ export interface LinkV2LabelPlacement {
 
 export const LINK_V2_LABEL_KEEP_PRIORITY = 2;
 export const LINK_V2_LABEL_HEIGHT = 20;
+/** Deslocamento perpendicular inicial da pílula, para não sentar no traço. */
+export const LINK_V2_LABEL_LIFT = 14;
 export const LINK_V2_LABEL_EXTRA_OFFSETS = [18, -18, 36, -36, 56, -56];
 
 interface Rect {

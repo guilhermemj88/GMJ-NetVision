@@ -12,6 +12,7 @@ import {
   useEdgesState,
   useNodesState,
   useReactFlow,
+  useStore,
   type Connection,
   type EdgeMouseHandler,
   type NodeMouseHandler,
@@ -31,6 +32,7 @@ import { DeviceNode, type DeviceFlowNode } from './device-node';
 import { GenericNode, type GenericFlowNode } from './generic-node';
 import { PppTotalWidget } from './ppp-total-widget';
 import { TrafficEdge, type TrafficFlowEdge } from './traffic-edge';
+import { TrafficEdgeV2, type LinkV2EdgeData, type LinkV2FlowEdge } from './traffic-edge-v2';
 import { MapControls } from './map-controls';
 import { MapStatusBar } from './map-status-bar';
 import { EditToolbar } from './edit-toolbar';
@@ -41,6 +43,27 @@ import {
   subscribeTrafficLabelOffsets,
   type TrafficLabelOffsets,
 } from '@/lib/traffic-label-offsets';
+import { newestCollectionStamp } from '@/lib/map-freshness';
+import { useMapVisualMode } from '@/lib/map-visual-v2-preview';
+import {
+  linkV2CompactLabel,
+  linkV2LabelPriority,
+  resolveRealLinkV2,
+} from '@/lib/map-visual-v2-link';
+import { manualLabelOffset } from '@/lib/map-visual-v2-offsets';
+import { shouldShowLinkV2Label } from '@/lib/map-visual-v2';
+import {
+  LINK_V2_LABEL_LIFT,
+  resolveLinkV2LabelPlacements,
+  type LinkV2LabelCandidate,
+} from '@/lib/map-visual-v2-labels';
+import {
+  LINK_V2_EDGE_CURVATURE,
+  buildBezierGeometry,
+  perpendicularOf,
+  pointOnBezier,
+} from '@/lib/map-visual-v2-geometry';
+import { PATH_OFFSET_SCALE } from '@/lib/link-curvature';
 import {
   calculateSmartAlignment,
   type AlignmentGuide,
@@ -48,11 +71,14 @@ import {
 } from '@/lib/smart-alignment';
 
 const nodeTypes = { device: DeviceNode, generic: GenericNode };
-const edgeTypes = { traffic: TrafficEdge };
+const edgeTypes = { traffic: TrafficEdge, trafficV2: TrafficEdgeV2 };
 type MapFlowNode = DeviceFlowNode | GenericFlowNode;
+type MapFlowEdge = TrafficFlowEdge | LinkV2FlowEdge;
 const DEFAULT_NODE_WIDTH = 64;
 const DEFAULT_NODE_HEIGHT = 70;
 const MAP_REFRESH_INTERVAL_MS = 30_000;
+/** Passo do zoom usado para recalcular a anticolisão (evita refazer a cada frame). */
+const LINK_V2_LABEL_ZOOM_STEP = 0.1;
 
 function alignmentNode(node: MapFlowNode): AlignmentNode {
   return {
@@ -61,6 +87,24 @@ function alignmentNode(node: MapFlowNode): AlignmentNode {
     width: node.measured?.width ?? node.width ?? DEFAULT_NODE_WIDTH,
     height: node.measured?.height ?? node.height ?? DEFAULT_NODE_HEIGHT,
   };
+}
+
+/** Ponto de ancoragem de um lado do nó (mesma convenção dos handles da V1). */
+function linkAnchorPoint(
+  position: { x: number; y: number },
+  size: { width: number; height: number },
+  side: 'left' | 'right' | 'top' | 'bottom',
+): { x: number; y: number } {
+  switch (side) {
+    case 'left':
+      return { x: position.x, y: position.y + size.height / 2 };
+    case 'right':
+      return { x: position.x + size.width, y: position.y + size.height / 2 };
+    case 'top':
+      return { x: position.x + size.width / 2, y: position.y };
+    case 'bottom':
+      return { x: position.x + size.width / 2, y: position.y + size.height };
+  }
 }
 
 export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?: boolean }) {
@@ -161,6 +205,30 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
   const labelScale = map?.settings.labelScale;
   const measuredSizes = useRef(new Map<string, { width: number; height: number }>());
 
+  /**
+   * MAP-VISUAL-V2 (Fase D): modo visual do mapa. Padrão do produto = V1
+   * (`Map.filters.visualMode` ausente); o preview permite alternar sem tocar no
+   * mapa — a escolha fica só na aba do operador.
+   */
+  const visualMode = useMapVisualMode(map?.settings.filters);
+  const glyphEngine = visualMode === 'V2' ? 'v2' : 'v1';
+
+  /** Relógio para o frescor da telemetria (só o V2 usa; 1 min de granularidade). */
+  const [nowMs, setNowMs] = useState(0);
+  useEffect(() => {
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  /** Zoom atual (para a anticolisão do V2), quantizado para não refazer a cada frame. */
+  const zoomRaw = useStore((state) => state.transform[2]);
+  const zoomForLabels = useMemo(() => {
+    const safe = Number.isFinite(zoomRaw) && zoomRaw > 0 ? zoomRaw : 1;
+    const stepped = Math.round(safe / LINK_V2_LABEL_ZOOM_STEP) * LINK_V2_LABEL_ZOOM_STEP;
+    return Math.max(0.25, stepped);
+  }, [zoomRaw]);
+
   const domainNodes = useMemo<MapFlowNode[]>(() => {
     if (
       !mapNodes ||
@@ -190,6 +258,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
             labelScale,
             alarmCount: alarmCountByDevice.get(device.id) ?? 0,
             dimmed: focus.dimmedNodeIds.has(device.id),
+            glyphEngine,
           },
         }];
       }
@@ -206,6 +275,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
           nodeScale,
           labelScale,
           dimmed: focus.dimmedNodeIds.has(mapNode.id),
+          glyphEngine,
         },
       }];
     });
@@ -213,6 +283,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     alarmCountByDevice,
     editMode,
     focus.dimmedNodeIds,
+    glyphEngine,
     labelScale,
     mapDevices,
     mapNodes,
@@ -234,7 +305,157 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     clearFocusRequest(focusRequest.requestId);
   }, [clearFocusRequest, domainNodes, flow, focusRequest]);
 
-  const domainEdges = useMemo<TrafficFlowEdge[]>(() => {
+  /**
+   * MAP-VISUAL-V2 (Fase D): modelo de render dos enlaces REAIS + posição dos
+   * rótulos (anticolisão global, reaproveitando a MESMA geometria desenhada).
+   * `null` quando o mapa está em V1 — o caminho da produção fica intacto.
+   */
+  const linkV2EdgeData = useMemo<Map<string, LinkV2EdgeData> | null>(() => {
+    if (!map || visualMode !== 'V2') return null;
+    const collectionStamp = newestCollectionStamp(map.devices);
+    const context = { nowMs: nowMs || Date.now(), collectionStamp };
+    const handlesByKey = new Map(
+      map.nodes.map((node) => [node.deviceId ?? node.id, node.position] as const),
+    );
+    const parallelLayouts = computeParallelLinkLayouts(
+      map.links.map((link) => ({
+        id: link.id,
+        sourceKey: link.sourceDeviceId ?? link.sourceNodeId ?? '',
+        targetKey: link.targetDeviceId ?? link.targetNodeId ?? '',
+        layoutMode: link.linkLayoutMode ?? 'AUTO',
+      })),
+    );
+    const rects = map.nodes.map((node) => {
+      const measured = measuredSizes.current.get(node.deviceId ?? node.id);
+      return {
+        x: node.position.x,
+        y: node.position.y,
+        width: measured?.width ?? DEFAULT_NODE_WIDTH,
+        height: measured?.height ?? DEFAULT_NODE_HEIGHT,
+      };
+    });
+    const sizeByKey = new Map(
+      map.nodes.map((node, index) => [
+        node.deviceId ?? node.id,
+        { width: rects[index]?.width ?? DEFAULT_NODE_WIDTH, height: rects[index]?.height ?? DEFAULT_NODE_HEIGHT },
+      ] as const),
+    );
+    const selectedLinkId = selection?.kind === 'link' ? selection.id : null;
+    const selectedNodeId =
+      selection?.kind === 'device' || selection?.kind === 'node' ? selection.id : null;
+
+    const entries = new Map<string, LinkV2EdgeData>();
+    const candidates: LinkV2LabelCandidate[] = [];
+
+    for (const link of map.links) {
+      const sourceKey = link.sourceDeviceId ?? link.sourceNodeId ?? '';
+      const targetKey = link.targetDeviceId ?? link.targetNodeId ?? '';
+      const sourcePosition = handlesByKey.get(sourceKey);
+      const targetPosition = handlesByKey.get(targetKey);
+      if (!sourcePosition || !targetPosition) continue;
+      const visual = resolveRealLinkV2(link, context);
+      const manualOffset = manualLabelOffset(labelOffsets, link.id, visual.direction);
+      const selected = selectedLinkId === link.id;
+      const alarmCount =
+        (link.sourceDeviceId ? (alarmCountByDevice.get(link.sourceDeviceId) ?? 0) : 0) +
+        (link.targetDeviceId ? (alarmCountByDevice.get(link.targetDeviceId) ?? 0) : 0);
+      entries.set(link.id, {
+        link,
+        visual,
+        compactLabel: linkV2CompactLabel(visual),
+        manualOffset,
+        placement: null,
+        autoOffset: parallelLayouts.get(link.id)?.offset ?? 0,
+        showLabels: preferences.showLabels,
+        dimmed: focus.dimmedLinkIds.has(link.id),
+        related: !selectedNodeId || sourceKey === selectedNodeId || targetKey === selectedNodeId,
+        emphasized:
+          Boolean(selectedNodeId) &&
+          (sourceKey === selectedNodeId || targetKey === selectedNodeId),
+      });
+
+      const adjacentToSelectedNode =
+        selectedNodeId !== null && (sourceKey === selectedNodeId || targetKey === selectedNodeId);
+      const priorities = linkV2LabelPriority({ visual, selected, alarmCount });
+      const paths = (link.visualPaths?.length
+        ? link.visualPaths
+        : [{ order: 0, label: null, customColor: null, curvature: 0, enabled: true }]
+      ).filter((path) => path.enabled);
+      const primaryPath = paths[0];
+      const wantsLabel =
+        !manualOffset &&
+        preferences.showLabels &&
+        shouldShowLinkV2Label(visual, {
+          showAll: false,
+          selected,
+          hovered: false,
+          adjacentToSelectedNode,
+        });
+      if (!wantsLabel || !primaryPath) continue;
+
+      const handles = resolveEdgeHandles(
+        sourcePosition,
+        targetPosition,
+        link.sourceHandleSide,
+        link.targetHandleSide,
+      );
+      const sourceSize =
+        sizeByKey.get(sourceKey) ?? { width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT };
+      const targetSize =
+        sizeByKey.get(targetKey) ?? { width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT };
+      const sourceAnchor = linkAnchorPoint(sourcePosition, sourceSize, handles.sourceHandle);
+      const targetAnchor = linkAnchorPoint(targetPosition, targetSize, handles.targetHandle);
+      const geometry = buildBezierGeometry({
+        sourceX: sourceAnchor.x,
+        sourceY: sourceAnchor.y,
+        sourcePosition: handles.sourceHandle,
+        targetX: targetAnchor.x,
+        targetY: targetAnchor.y,
+        targetPosition: handles.targetHandle,
+        curvature: LINK_V2_EDGE_CURVATURE,
+        offset:
+          (parallelLayouts.get(link.id)?.offset ?? 0) +
+          (primaryPath.curvature ?? 0) * PATH_OFFSET_SCALE,
+      });
+      const normal = perpendicularOf(geometry);
+      candidates.push({
+        id: link.id,
+        anchor: pointOnBezier(geometry, 0.5),
+        normal,
+        laneOffset: LINK_V2_LABEL_LIFT * (1 / Math.max(0.25, zoomForLabels)),
+        priority: priorities,
+        text: visual.labelText,
+        compactText: linkV2CompactLabel(visual),
+      });
+    }
+
+    const placements = resolveLinkV2LabelPlacements(candidates, rects, {
+      scale: 1 / Math.max(0.25, zoomForLabels),
+    });
+    for (const [id, placement] of placements) {
+      const entry = entries.get(id);
+      if (entry) entries.set(id, { ...entry, placement });
+    }
+    // Offset manual da V1 vence a anticolisão e nunca é escondido.
+    for (const [id, entry] of entries) {
+      if (entry.manualOffset) {
+        entries.set(id, { ...entry, placement: { mode: 'full', ...entry.manualOffset } });
+      }
+    }
+    return entries;
+  }, [
+    alarmCountByDevice,
+    focus.dimmedLinkIds,
+    labelOffsets,
+    map,
+    nowMs,
+    preferences.showLabels,
+    selection,
+    visualMode,
+    zoomForLabels,
+  ]);
+
+  const domainEdges = useMemo<MapFlowEdge[]>(() => {
     if (!map) return [];
     const visible = new Set(domainNodes.map((node) => node.id));
     const positions = new Map(map.nodes.map((node) => [node.deviceId ?? node.id, node.position]));
@@ -274,22 +495,47 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         : [{ order: 0, label: null, customColor: null, curvature: 0, enabled: true }])
         .map((visualPath, pathIndex) => ({ visualPath, pathIndex }))
         .filter(({ visualPath }) => visualPath.enabled);
-      return paths.map(({ visualPath, pathIndex }, visibleIndex) => ({
-        id: pathIndex === 0 ? link.id : `${link.id}:path:${pathIndex}`,
-        source: sourceKey,
-        target: targetKey,
-        sourceHandle: handles.sourceHandle,
-        targetHandle: handles.targetHandle,
-        type: 'traffic',
-        selectable: true,
-        selected: selection?.kind === 'link' && selection.id === link.id,
-        ...(focus.dimmedLinkIds.has(link.id) ? { className: 'is-dimmed' } : {}),
-        data: {
-          link,
-          editMode,
-          readOnly,
-          labelOffsets,
-          labelMapId: activeMapId,
+      return paths.map(({ visualPath, pathIndex }, visibleIndex): MapFlowEdge => {
+        const edgeId = pathIndex === 0 ? link.id : `${link.id}:path:${pathIndex}`;
+        const selected = selection?.kind === 'link' && selection.id === link.id;
+        const v2 = linkV2EdgeData?.get(link.id);
+        if (v2) {
+          const v2Data: LinkV2EdgeData = {
+            ...v2,
+            visualPath,
+            // Um rótulo por enlace lógico: só o caminho visual principal o exibe.
+            showLabels: v2.showLabels && visibleIndex === 0,
+            placement: visibleIndex === 0 ? v2.placement : null,
+          };
+          return {
+            id: edgeId,
+            source: sourceKey,
+            target: targetKey,
+            sourceHandle: handles.sourceHandle,
+            targetHandle: handles.targetHandle,
+            type: 'trafficV2',
+            selectable: true,
+            selected,
+            ...(focus.dimmedLinkIds.has(link.id) ? { className: 'is-dimmed' } : {}),
+            data: v2Data,
+          };
+        }
+        return {
+          id: edgeId,
+          source: sourceKey,
+          target: targetKey,
+          sourceHandle: handles.sourceHandle,
+          targetHandle: handles.targetHandle,
+          type: 'traffic',
+          selectable: true,
+          selected,
+          ...(focus.dimmedLinkIds.has(link.id) ? { className: 'is-dimmed' } : {}),
+          data: {
+            link,
+            editMode,
+            readOnly,
+            labelOffsets,
+            labelMapId: activeMapId,
           labelAdjust: labelAdjustMode,
           dimmed: focus.dimmedLinkIds.has(link.id),
           ...(sourceInterface ? { sourceInterface } : {}),
@@ -310,12 +556,13 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
           related: !selectedId || sourceKey === selectedId || targetKey === selectedId,
           emphasized: Boolean(selectedId) && (sourceKey === selectedId || targetKey === selectedId),
         },
-      }));
+        };
+      });
     });
-  }, [activeMapId, domainNodes, focus.dimmedLinkIds, labelAdjustMode, labelOffsets, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, preferences.showTrafficAnimation, selection, editMode, readOnly]);
+  }, [activeMapId, domainNodes, focus.dimmedLinkIds, labelAdjustMode, labelOffsets, linkV2EdgeData, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, preferences.showTrafficAnimation, selection, editMode, readOnly]);
 
   const [nodes, setNodes] = useNodesState<MapFlowNode>([]);
-  const [edges, setEdges] = useEdgesState<TrafficFlowEdge>([]);
+  const [edges, setEdges] = useEdgesState<MapFlowEdge>([]);
 
   useEffect(() => setNodes(domainNodes), [domainNodes, setNodes]);
   useEffect(() => setEdges(domainEdges), [domainEdges, setEdges]);
@@ -344,7 +591,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
     }, [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
   );
 
-  const onEdgeClick: EdgeMouseHandler<TrafficFlowEdge> = useCallback(
+  const onEdgeClick: EdgeMouseHandler<MapFlowEdge> = useCallback(
     (_event, edge) => {
       setSelection({ kind: 'link', id: edge.data?.link?.id ?? edge.id });
       if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
@@ -392,7 +639,7 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
 
   return (
     <main className="map-shell">
-      <ReactFlow<MapFlowNode, TrafficFlowEdge>
+      <ReactFlow<MapFlowNode, MapFlowEdge>
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
