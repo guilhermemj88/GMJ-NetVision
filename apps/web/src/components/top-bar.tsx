@@ -28,6 +28,11 @@ import {
   useMapVisualMode,
   useSetMapVisualMode,
 } from '@/lib/map-visual-v2-preview';
+import {
+  useLinkV2AnimationMode,
+  useSetLinkV2AnimationMode,
+} from '@/lib/map-visual-v2-animation';
+import type { LinkV2AnimationMode } from '@/lib/map-visual-v2-weathermap';
 import type { MapVisualMode } from '@gmj/shared';
 
 export function TopBar() {
@@ -51,6 +56,8 @@ export function TopBar() {
   const visualMode = useMapVisualMode(map?.settings.filters);
   const setVisualMode = useSetMapVisualMode();
   const showVisualSelector = isVisualModeSelectorEnabled();
+  const animationMode = useLinkV2AnimationMode();
+  const setAnimationMode = useSetLinkV2AnimationMode();
   if (!map && view === 'MAP') return <header className="topbar topbar--loading" />;
 
   return (
@@ -148,6 +155,25 @@ export function TopBar() {
                 >
                   <option value="V1">Clássico (V1)</option>
                   <option value="V2">Moderno (V2)</option>
+                </select>
+                <ChevronDown size={13} />
+              </div>
+            </label>
+          )}
+          {showVisualSelector && visualMode === 'V2' && (
+            <label className="map-selector map-selector--visual" data-testid="map-animation-selector">
+              <span>ANIMAÇÃO</span>
+              <div>
+                <select
+                  value={animationMode}
+                  onChange={(event) =>
+                    setAnimationMode(event.target.value as LinkV2AnimationMode)
+                  }
+                  aria-label="Animação dos enlaces"
+                >
+                  <option value="off">Desligada</option>
+                  <option value="smart">Inteligente (padrão)</option>
+                  <option value="always">Sempre ativa</option>
                 </select>
                 <ChevronDown size={13} />
               </div>
