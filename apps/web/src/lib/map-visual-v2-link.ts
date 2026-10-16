@@ -12,10 +12,15 @@
  *  - frescor: o carimbo de COLETA mais recente do mapa (`newestCollectionStamp`),
  *    a mesma regra que a TopBar usa para dizer "pode estar desatualizado".
  *
- * Um sentido só recebe amostra quando o enlace realmente coleta naquele lado
- * (`metricSources` / interfaces dos canais, `trafficMode`). Sem carimbo de
- * coleta do mapa, nenhuma direção tem amostra e o V2 mostra "sem dados" — nunca
- * apresenta telemetria indisponível como saudável.
+ * Fase H — enlaces SINGLE_ENDED (trânsito IP, PNI, SEABORN…): existe UMA única
+ * interface monitorada e ela alimenta as DUAS direções (TX saindo pelo sentido
+ * direto e RX entrando pelo inverso). A falta de SNMP na ponta remota não pode
+ * zerar a direção oposta: a orientação já vem resolvida no contrato, com
+ * `txBps` = contador da ponta que transmite naquele sentido e `observedRxBps` =
+ * contador da ponta oposta que recebe.
+ *
+ * Sem carimbo de coleta do mapa, nenhuma direção tem amostra e o V2 mostra "sem
+ * dados" — nunca apresenta telemetria indisponível como saudável.
  */
 
 import type { NetworkLink } from '@gmj/shared';
@@ -52,6 +57,37 @@ function sideIsMonitored(link: NetworkLink, side: 'A' | 'B'): boolean {
   return side === 'A' ? link.sourceInterfaceId !== null : link.targetInterfaceId !== null;
 }
 
+type LinkV2DirectionMetric = NetworkLink['directions']['A_TO_B'];
+
+/**
+ * Este sentido tem amostra aproveitável?
+ *
+ * Contrato (packages/shared `link-telemetry.ts` → `direction()`):
+ *  - `txBps` é o contador da ponta que TRANSMITE no sentido;
+ *  - `observedRxBps` é o contador da ponta OPOSTA que recebe;
+ *  - sem nenhum dos dois o sentido é "vazio" e `bps` chega como 0.
+ *
+ * Logo a origem define qual interface precisa estar monitorada:
+ *  - A→B: TX da ponta A ou RX da ponta B;
+ *  - B→A: TX da ponta B ou RX da ponta A.
+ *
+ * Com isso um enlace SINGLE_ENDED (uma interface só) mostra TX em um sentido e
+ * RX no outro, sem exigir SNMP na ponta remota — e `TX = 0` continua sendo uma
+ * medição válida (tem origem), diferente de "sem medição" (bps 0 sem origem).
+ */
+function directionHasSample(
+  link: NetworkLink,
+  side: 'A' | 'B',
+  metric: LinkV2DirectionMetric,
+): boolean {
+  const opposite: 'A' | 'B' = side === 'A' ? 'B' : 'A';
+  if (Number.isFinite(metric.txBps)) return sideIsMonitored(link, side);
+  if (Number.isFinite(metric.observedRxBps)) return sideIsMonitored(link, opposite);
+  // Taxa positiva sem contador de origem só existe quando houve medição
+  // (o "vazio" do contrato é bps 0 sem origem); exige alguma ponta monitorada.
+  return metric.bps > 0 && (sideIsMonitored(link, side) || sideIsMonitored(link, opposite));
+}
+
 export function linkV2InputFromLink(
   link: NetworkLink,
   context: RealLinkV2Context,
@@ -59,12 +95,11 @@ export function linkV2InputFromLink(
   const sampledAtMs = sampledAtMsFromStamp(context.collectionStamp);
   const capacityBps =
     Number.isFinite(link.capacityBps) && link.capacityBps > 0 ? link.capacityBps : null;
-  const direction = (side: 'A' | 'B', metric: NetworkLink['directions']['A_TO_B']) => {
-    const monitored = sideIsMonitored(link, side);
-    const hasNumber = Number.isFinite(metric.bps);
+  const direction = (side: 'A' | 'B', metric: LinkV2DirectionMetric) => {
+    const sampled = directionHasSample(link, side, metric);
     return {
-      bps: monitored && hasNumber ? metric.bps : null,
-      sampledAtMs: monitored && hasNumber ? sampledAtMs : null,
+      bps: sampled ? metric.bps : null,
+      sampledAtMs: sampled ? sampledAtMs : null,
     };
   };
 
