@@ -477,6 +477,89 @@ export function weatherStateDash(resolution: WeatherMapResolution): string | und
   return LINK_V2_DASH[resolution.state];
 }
 
+// --- Diferenciação dos sentidos e leitura do centro (Fase F) -----------------
+
+/**
+ * Vão explícito no centro do enlace, em pixels de TELA. É o que mostra onde a
+ * metade A→B termina e a B→A começa sem colocar nada por cima do traçado.
+ */
+export const WEATHER_CENTER_GAP_PX = 12;
+/** Fração máxima de cada metade consumida pelo vão (enlace curto não vira nada). */
+export const WEATHER_CENTER_GAP_MAX_HALF_SHARE = 0.18;
+
+/**
+ * Vão central em unidades de FLUXO, limitado pela metade mais curta.
+ * Devolve `fraction` (metade do vão, em fração do arco total) pronto para
+ * `splitGeometryRange`.
+ */
+export function weatherCenterGap(
+  zoom: number,
+  halfLength: number,
+): { units: number; fraction: number } {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const safeHalf = Number.isFinite(halfLength) && halfLength > 0 ? halfLength : 1;
+  const raw = WEATHER_CENTER_GAP_PX / safeZoom;
+  const units = Math.min(raw, safeHalf * 2 * WEATHER_CENTER_GAP_MAX_HALF_SHARE);
+  return { units, fraction: units / 2 / safeHalf / 2 };
+}
+
+/**
+ * Como cada metade se distingue quando a cor é a MESMA (itens 2 e 3 do pedido):
+ *  - A→B: cor cheia e seta cheia (triângulo);
+ *  - B→A: mesma cor porém esmaecida e seta vazada (chevron).
+ * A espessura continua idêntica: ela representa capacidade, não sentido.
+ */
+export const WEATHER_B2A_STROKE_MIX_PERCENT = 72;
+export type WeatherArrowShape = 'solid' | 'chevron';
+
+export function weatherArrowShape(key: WeatherHalfKey): WeatherArrowShape {
+  return key === 'a2b' ? 'solid' : 'chevron';
+}
+
+/** Cor efetiva do traço da metade (a B→A entra esmaecida sobre o fundo do mapa). */
+export function weatherHalfStroke(colorToken: string, key: WeatherHalfKey): string {
+  if (key === 'a2b') return colorToken;
+  return `color-mix(in srgb, ${colorToken} ${WEATHER_B2A_STROKE_MIX_PERCENT}%, var(--wm-dim-mix))`;
+}
+
+/** Cor das setas (cheia para A→B, mais clara/vazada para B→A). */
+export function weatherArrowTint(colorToken: string, key: WeatherHalfKey): string {
+  return key === 'a2b' ? colorToken : `color-mix(in srgb, ${colorToken} 82%, #dce8ee)`;
+}
+
+/**
+ * Setas móveis ("runners") ao longo de cada metade — item 4 do pedido.
+ * Abaixo de `WEATHER_RUNNER_MIN_ZOOM` não vale a pena: o mapa está em visão
+ * geral e o movimento vira ruído (mesma lógica dos rótulos).
+ */
+export const WEATHER_RUNNER_MIN_ZOOM = 0.45;
+export const WEATHER_RUNNER_MAX = 3;
+/** Abaixo disso (px de tela) a metade é curta demais para mostrar movimento. */
+export const WEATHER_RUNNER_MIN_SCREEN_LENGTH = 34;
+
+export function weatherRunnerCount(zoom: number, halfLength: number): number {
+  if (!Number.isFinite(zoom) || zoom < WEATHER_RUNNER_MIN_ZOOM) return 0;
+  if (!Number.isFinite(halfLength) || halfLength <= 0) return 0;
+  const screenLength = halfLength * zoom;
+  if (screenLength < WEATHER_RUNNER_MIN_SCREEN_LENGTH) return 0;
+  if (screenLength < 90) return 1;
+  if (zoom < 1.15) return 2;
+  return WEATHER_RUNNER_MAX;
+}
+
+/**
+ * Duração de UMA travessia da metade (segundos). Mantém a velocidade percebida
+ * entre enlaces de tamanhos diferentes: 4 a 6 s por metade, conforme o item 11.
+ */
+export const WEATHER_RUNNER_TRAVEL_SECONDS = 5;
+
+export function weatherRunnerDuration(halfLength: number, zoom: number): number {
+  const safeZoom = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+  const screenLength = Math.max(24, (Number.isFinite(halfLength) ? halfLength : 24) * safeZoom);
+  const raw = (WEATHER_RUNNER_TRAVEL_SECONDS * screenLength) / 260;
+  return Math.min(6.5, Math.max(2.6, raw));
+}
+
 /** Rótulo de animação exposto na barra superior do preview. */
 export const LINK_V2_ANIMATION_LABELS: Record<LinkV2AnimationMode, string> = {
   off: 'Desligada',

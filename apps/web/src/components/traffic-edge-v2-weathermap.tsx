@@ -38,7 +38,9 @@ import {
   buildArcTable,
   halfAnchorPoint,
   halfArrowPlacement,
+  pointAtPathLength,
   splitGeometryAtLength,
+  splitGeometryRange,
   type ArcTable,
   type SplitGeometry,
 } from '@/lib/map-visual-v2-arc';
@@ -48,13 +50,20 @@ import { PATH_OFFSET_SCALE } from '@/lib/link-curvature';
 import {
   WEATHER_ARROW_HALF_FRACTION,
   WEATHER_LABEL_HALF_FRACTION,
+  WEATHER_RUNNER_MAX,
   resolveWeatherMap,
+  weatherArrowShape,
+  weatherArrowTint,
+  weatherCenterGap,
   weatherHalfDash,
   weatherHalfLabelMode,
+  weatherHalfStroke,
   weatherHalfText,
+  weatherRunnerCount,
+  weatherRunnerDuration,
   weatherStateLabelMode,
-  weatherStreamStyle,
   type LinkV2AnimationMode,
+  type WeatherArrowShape,
   type WeatherHalf,
   type WeatherHalfKey,
 } from '@/lib/map-visual-v2-weathermap';
@@ -99,15 +108,86 @@ function arcHalfOf(key: WeatherHalfKey): 'first' | 'second' {
   return key === 'a2b' ? 'first' : 'second';
 }
 
-function round2(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
 interface HalfRender {
   key: WeatherHalfKey;
   half: WeatherHalf;
   geometry: BezierGeometry;
   length: number;
+  /** Seta fixa junto ao centro (convergente). */
+  arrowShape: WeatherArrowShape;
+  /** Chevron vazado para B→A; triângulo cheio para A→B. */
+  stroke: string;
+  arrowFill: string;
+}
+
+/**
+ * Setas móveis ("runners") de uma metade: pequenos glyphs posicionados por
+ * `offset-path` e movidos por CSS puro (sem requestAnimationFrame por enlace).
+ * O sentido B→A usa a mesma animação invertida, então as duas metades sempre
+ * caminham para o centro.
+ */
+function HalfRunners({
+  path,
+  halfKey,
+  shape,
+  count,
+  durationSeconds,
+  color,
+  zoom,
+}: {
+  path: string;
+  halfKey: WeatherHalfKey;
+  shape: WeatherArrowShape;
+  count: number;
+  durationSeconds: number;
+  color: string;
+  zoom: number;
+}) {
+  if (count <= 0) return null;
+  const reverse = halfKey === 'b2a';
+  return (
+    <>
+      {Array.from({ length: Math.min(WEATHER_RUNNER_MAX, count) }, (_, index) => (
+        <span
+          key={index}
+          className={`traffic-edge-v2__runner traffic-edge-v2__runner--${halfKey}`}
+          data-testid="traffic-edge-v2-runner"
+          data-half={halfKey}
+          data-shape={shape}
+          aria-hidden="true"
+          style={
+            {
+              offsetPath: `path("${path}")`,
+              offsetRotate: reverse ? 'auto 180deg' : 'auto',
+              animationName: reverse ? 'wm-runner-reverse' : 'wm-runner-forward',
+              animationDuration: `${durationSeconds}s`,
+              animationDelay: `${-(index * durationSeconds) / Math.max(1, count)}s`,
+              // A camada de rótulos é escalada pelo zoom: o tamanho em unidades
+              // de fluxo é dividido pelo zoom para ficar constante na tela.
+              '--wm-runner-size': `${Math.round((9 / Math.max(0.25, zoom)) * 100) / 100}px`,
+              '--wm-runner-color': color,
+            } as React.CSSProperties
+          }
+        >
+          {shape === 'solid' ? (
+            <svg viewBox="0 0 10 10" aria-hidden="true">
+              <path d="M2,1.4 L8.4,5 L2,8.6 Z" />
+            </svg>
+          ) : (
+            <svg viewBox="0 0 10 10" aria-hidden="true">
+              <path
+                d="M2.4,1.6 L8.2,5 L2.4,8.4"
+                fill="none"
+                strokeWidth="2.1"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          )}
+        </span>
+      ))}
+    </>
+  );
 }
 
 function LinkV2WeatherEdgeContent({
@@ -157,6 +237,24 @@ function LinkV2WeatherEdgeContent({
     [geometry, arc],
   );
 
+  /**
+   * Vão central + metades já recortadas: o encontro dos sentidos fica explícito
+   * (cada metade para antes do centro e o losango marca o ponto de divisão).
+   */
+  const center = useMemo(() => {
+    const gap = weatherCenterGap(zoom, Math.min(split.firstLength, split.secondLength));
+    const a = splitGeometryRange(geometry, arc, 0, 0.5 - gap.fraction);
+    const b = splitGeometryRange(geometry, arc, 0.5 + gap.fraction, 1);
+    return {
+      gapUnits: gap.units,
+      a,
+      b,
+      point: pointAtPathLength(geometry, arc, arc.total / 2),
+      aLength: split.firstLength - gap.units / 2,
+      bLength: split.secondLength - gap.units / 2,
+    };
+  }, [geometry, arc, split.firstLength, split.secondLength, zoom]);
+
   const weather = useMemo(
     () => resolveWeatherMap(visual, { animation, selected: Boolean(selected), hovered }),
     [visual, animation, selected, hovered],
@@ -173,8 +271,24 @@ function LinkV2WeatherEdgeContent({
   const opacity = data.dimmed ? 0.22 : data.emphasized ? 1 : STATE_OPACITY[visual.state];
 
   const halves: HalfRender[] = [
-    { key: 'a2b', half: weather.a2b, geometry: split.first, length: split.firstLength },
-    { key: 'b2a', half: weather.b2a, geometry: split.second, length: split.secondLength },
+    {
+      key: 'a2b',
+      half: weather.a2b,
+      geometry: center.a,
+      length: center.aLength,
+      arrowShape: weatherArrowShape('a2b'),
+      stroke: weatherHalfStroke(weather.a2b.color, 'a2b'),
+      arrowFill: weatherArrowTint(weather.a2b.color, 'a2b'),
+    },
+    {
+      key: 'b2a',
+      half: weather.b2a,
+      geometry: center.b,
+      length: center.bLength,
+      arrowShape: weatherArrowShape('b2a'),
+      stroke: weatherHalfStroke(weather.b2a.color, 'b2a'),
+      arrowFill: weatherArrowTint(weather.b2a.color, 'b2a'),
+    },
   ];
 
   const normal = perpendicularOf(geometry);
@@ -247,9 +361,8 @@ function LinkV2WeatherEdgeContent({
           }}
         />
       )}
-      {halves.map(({ key, half, geometry: halfGeometry, length }) => {
+      {halves.map(({ key, half, geometry: halfGeometry, arrowShape, stroke, arrowFill }) => {
         const dash = weatherHalfDash(half);
-        const stream = half.animated ? weatherStreamStyle(length, zoom) : null;
         const arrow = half.arrow
           ? halfArrowPlacement(
               geometry,
@@ -269,50 +382,55 @@ function LinkV2WeatherEdgeContent({
               data-half={key}
               data-state={half.state}
               data-valid={half.valid ? 'true' : 'false'}
+              data-sense={key === 'a2b' ? 'solid' : 'dimmed'}
               vectorEffect={edgeStroke.nonScaling ? 'non-scaling-stroke' : undefined}
               style={{
-                stroke: half.color,
+                stroke,
                 strokeWidth: edgeStroke.strokeWidth,
                 strokeDasharray: dash,
                 opacity,
               }}
             />
-            {stream && (
-              <path
-                d={halfGeometry.path}
-                className={`traffic-edge-v2__stream traffic-edge-v2__stream--${half.streamDirection}`}
-                data-testid="traffic-edge-v2-stream"
-                data-half={key}
-                style={
-                  {
-                    // Segmentos um pouco mais claros que o traço: é o que faz o
-                    // fluxo ser percebido sem brilho nem partícula grande.
-                    stroke: `color-mix(in srgb, ${half.color} 58%, #eaf6fb)`,
-                    strokeWidth: round2(
-                      Math.min(edgeStroke.strokeWidth * 1.28, edgeStroke.strokeWidth + 1.4),
-                    ),
-                    strokeDasharray: stream.dashArray,
-                    opacity: Math.min(1, opacity + 0.1),
-                    '--wm-period': `${stream.period}px`,
-                    '--wm-duration': `${stream.durationSeconds}s`,
-                  } as React.CSSProperties
-                }
-              />
-            )}
-            {arrow && (
+            {arrow && arrowShape === 'solid' && (
               <path
                 d="M-5,-4.6 L7,0 L-5,4.6 Z"
                 className={`traffic-edge-v2__arrow traffic-edge-v2__arrow--${key}`}
                 data-testid="traffic-edge-v2-arrow"
                 data-half={key}
+                data-shape="solid"
                 transform={`translate(${arrow.x},${arrow.y}) rotate(${arrow.angleDeg}) scale(${arrowScale})`}
-                fill={half.color}
+                fill={arrowFill}
+                opacity={opacity}
+              />
+            )}
+            {arrow && arrowShape === 'chevron' && (
+              <path
+                d="M-3.6,-5.2 L6,0 L-3.6,5.2"
+                className={`traffic-edge-v2__arrow traffic-edge-v2__arrow--${key} traffic-edge-v2__arrow--chevron`}
+                data-testid="traffic-edge-v2-arrow"
+                data-half={key}
+                data-shape="chevron"
+                transform={`translate(${arrow.x},${arrow.y}) rotate(${arrow.angleDeg}) scale(${arrowScale})`}
+                fill="none"
+                stroke={arrowFill}
+                strokeWidth={2.4}
+                strokeLinecap="round"
+                strokeLinejoin="round"
                 opacity={opacity}
               />
             )}
           </g>
         );
       })}
+      {/* Marco central: mostra onde A→B termina e B→A começa. */}
+      <path
+        d="M0,-3.1 L3.1,0 L0,3.1 L-3.1,0 Z"
+        className="traffic-edge-v2__center"
+        data-testid="traffic-edge-v2-center"
+        transform={`translate(${center.point.x},${center.point.y}) scale(${Math.min(2.4, Math.max(0.85, 1 / Math.max(0.4, zoom)))})`}
+        style={{ fill: weather.stateColor }}
+        opacity={Math.min(0.95, opacity + 0.05)}
+      />
       {/* Área de clique igual à da V1: o evento sobe para o React Flow. */}
       <path
         id={id}
@@ -322,6 +440,24 @@ function LinkV2WeatherEdgeContent({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       />
+      {/* Setas móveis: ficam na camada HTML (posicionadas por offset-path nas
+          mesmas coordenadas de fluxo dos rótulos). */}
+      {halves.some(({ half }) => half.animated) && (
+        <EdgeLabelRenderer>
+          {halves.map(({ key, half, geometry: halfGeometry, length, arrowShape, arrowFill }) => (
+            <HalfRunners
+              key={`runner-${key}`}
+              path={halfGeometry.path}
+              halfKey={key}
+              shape={arrowShape}
+              count={half.animated ? weatherRunnerCount(zoom, length) : 0}
+              durationSeconds={weatherRunnerDuration(length, zoom)}
+              color={arrowFill}
+              zoom={zoom}
+            />
+          ))}
+        </EdgeLabelRenderer>
+      )}
       {(weather.a2b.label || weather.b2a.label || stateText) && (
         <EdgeLabelRenderer>
           {labelFor('a2b', weather.a2b)}

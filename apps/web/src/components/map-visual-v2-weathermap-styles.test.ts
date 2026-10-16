@@ -44,23 +44,27 @@ describe('tokens do WeatherMap', () => {
 });
 
 describe('microanimação', () => {
-  it('o stream usa animação CSS contínua, sem salto de loop', () => {
-    const stream = ruleBody('.traffic-edge-v2__stream');
-    expect(stream).toContain('animation: wm-stream');
-    expect(stream).toContain('linear infinite');
-    expect(ruleBody('.traffic-edge-v2__stream--reverse')).toContain(
-      'animation-name: wm-stream-reverse',
-    );
-    // O deslocamento do loop é exatamente um período (--wm-period).
-    const forward = /@keyframes wm-stream \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
-    expect(forward).toContain('calc(-1 * var(--wm-period');
-    const reverse = /@keyframes wm-stream-reverse \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
-    expect(reverse).toContain('stroke-dashoffset: var(--wm-period');
+  it('os runners usam animação CSS contínua e invertida por sentido', () => {
+    expect(ruleBody('.traffic-edge-v2__runner')).toContain('animation-iteration-count: infinite');
+    expect(ruleBody('.traffic-edge-v2__runner')).toContain('offset-distance: 0%');
+    const forward = /@keyframes wm-runner-forward \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
+    expect(forward).toContain('offset-distance: 0%');
+    expect(forward).toContain('offset-distance: 100%');
+    const reverse = /@keyframes wm-runner-reverse \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
+    expect(reverse).toContain('offset-distance: 100%');
+    expect(reverse).toContain('offset-distance: 0%');
+  });
+
+  it('o chevron do B→A é vazado e o runner herdа o tom do sentido', () => {
+    expect(css).toContain('.traffic-edge-v2__runner--b2a svg path');
+    expect(css).toContain('stroke: var(--wm-runner-color');
+    expect(css).toContain('.traffic-edge-v2__runner--a2b svg path');
+    expect(css).toContain('fill: var(--wm-runner-color');
   });
 
   it('prefers-reduced-motion desliga o stream de verdade', () => {
     const block = /@media \(prefers-reduced-motion: reduce\) \{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
-    expect(block).toContain('.traffic-edge-v2__stream');
+    expect(block).toContain('.traffic-edge-v2__runner');
     expect(block).toContain('animation: none');
   });
 });

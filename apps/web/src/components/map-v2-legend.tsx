@@ -58,6 +58,19 @@ export function MapV2Legend({ animation }: { animation: LinkV2AnimationMode }) {
         </span>
       ))}
       <span className="map-v2-legend__sep" aria-hidden="true" />
+      <span className="map-v2-legend__item" data-sense="a2b">
+        <i className="is-solid" />
+        A→B sólido
+      </span>
+      <span className="map-v2-legend__item" data-sense="b2a">
+        <i className="is-dimmed" />
+        B→A esmaecido
+      </span>
+      <span className="map-v2-legend__item map-v2-legend__item--center">
+        <i className="is-center" />
+        troca de sentido no centro
+      </span>
+      <span className="map-v2-legend__sep" aria-hidden="true" />
       <span className="map-v2-legend__flow" data-mode={animation}>
         <span aria-hidden="true" />
         <small style={{ fontSize: 9, color: '#647882' }}>ANIMAÇÃO</small>
@@ -65,9 +78,6 @@ export function MapV2Legend({ animation }: { animation: LinkV2AnimationMode }) {
           {LINK_V2_ANIMATION_LABELS[animation]}
         </strong>
         <span aria-hidden="true" />
-      </span>
-      <span className="map-v2-legend__item">
-        <small>Setas apontam para o centro · cada metade = um sentido</small>
       </span>
     </div>
   );
