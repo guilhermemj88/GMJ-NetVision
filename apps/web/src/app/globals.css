@@ -2129,6 +2129,163 @@ button {
   border-color: #7fb6d6;
   color: #dbeaf3;
 }
+
+/* =====================================================================
+   MAP-VISUAL-V2 — Fase E: enlace BIDIRECIONAL (WeatherMap moderno)
+
+   Cada enlace é desenhado em duas metades independentes (A→B e B→A) sobre a
+   MESMA curva da V1: cor de utilização por sentido, seta de cada lado apontando
+   para o centro e um trem de segmentos percorrendo o sentido do tráfego.
+
+   Tokens únicos (`--wm-*`) para traço, seta, rótulo e legenda nunca divergirem.
+   Tudo em classes próprias (`traffic-edge-v2__*` / `map-v2-*`): a V1 não é
+   tocada por nenhuma regra daqui.
+   ===================================================================== */
+:root {
+  --wm-util-normal: var(--green);
+  --wm-util-attention: var(--amber);
+  --wm-util-critical: var(--red);
+  --wm-state-down: var(--red);
+  --wm-state-no-data: #718894;
+  --wm-state-stale: #8a9fb0;
+  --wm-state-inconsistent: #a98bd6;
+  --wm-state-unknown: #4d6270;
+}
+.traffic-edge-v2__half {
+  fill: none;
+  stroke-linecap: round;
+  pointer-events: none;
+  transition: opacity 120ms linear;
+}
+.traffic-edge-v2__stream {
+  fill: none;
+  stroke-linecap: round;
+  pointer-events: none;
+  animation: wm-stream var(--wm-duration, 1.2s) linear infinite;
+}
+.traffic-edge-v2__stream--reverse {
+  animation-name: wm-stream-reverse;
+}
+@keyframes wm-stream {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: calc(-1 * var(--wm-period, 24px));
+  }
+}
+@keyframes wm-stream-reverse {
+  from {
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dashoffset: var(--wm-period, 24px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .traffic-edge-v2__stream {
+    animation: none;
+    opacity: 0;
+  }
+}
+.traffic-edge-v2__label--half {
+  padding: 1px 5px;
+  font-size: 10px;
+}
+.traffic-edge-v2__label--state {
+  padding: 1px 6px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+.traffic-edge-v2__label--inconsistent {
+  border-color: #4a3f6b;
+  border-style: dashed;
+  color: #c3a9ea;
+}
+.traffic-edge-v2__label--unknown {
+  border-color: #3a4a55;
+  border-style: dashed;
+  color: #8fa6b3;
+}
+
+/* Legenda do WeatherMap (somente V2): fica acima da barra de status para não
+   alterar o rodapé usado pela V1. */
+.map-v2-legend {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  bottom: 52px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  max-width: min(980px, calc(100% - 240px));
+  padding: 5px 12px;
+  border: 1px solid #253640;
+  border-radius: 6px;
+  background: rgba(11, 18, 24, 0.9);
+  backdrop-filter: blur(8px);
+  color: #93a7b1;
+  font: 500 10px var(--font-mono);
+}
+.map-v2-legend__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.map-v2-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.map-v2-legend__item i {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--wm-color, #718894);
+}
+.map-v2-legend__item i.is-dashed {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--wm-color, #718894) 0 5px,
+    transparent 5px 9px
+  );
+}
+.map-v2-legend__item small {
+  color: #647882;
+  font-size: 9px;
+}
+.map-v2-legend__sep {
+  width: 1px;
+  height: 14px;
+  background: #24343d;
+}
+.map-v2-legend__flow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #647882;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+.map-v2-legend__flow span::before,
+.map-v2-legend__flow span::after {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 2px;
+  margin: 0 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--cyan) 45%, transparent);
+  vertical-align: middle;
+}
+.map-v2-legend__flow span::after {
+  transform: rotate(180deg);
+}
+
 .traffic-edge--base {
   stroke: #22333d;
   opacity: 0.38;
