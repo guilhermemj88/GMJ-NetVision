@@ -17,7 +17,13 @@ import {
   pointAtPathLength,
   splitCubicAt,
   splitGeometryAtLength,
+  splitGeometryRange,
 } from './map-visual-v2-arc';
+import {
+  WEATHER_CENTER_GAP_MAX_HALF_SHARE,
+  WEATHER_CENTER_GAP_PX,
+  weatherCenterGap,
+} from './map-visual-v2-weathermap';
 
 /** Cúbica realmente reta (controles a 1/3 e 2/3 do segmento). */
 function straight(x1: number, y1: number, x2: number, y2: number): BezierGeometry {
@@ -201,6 +207,55 @@ describe('setas convergentes', () => {
       expect(arrow.x).toBeGreaterThanOrEqual(-0.001);
       expect(arrow.x).toBeLessThanOrEqual(60.001);
     }
+  });
+});
+
+describe('vão central (recorte das metades)', () => {
+  it('recorta o trecho pedido em frações do comprimento', () => {
+    const geometry = straight(0, 0, 400, 0);
+    const table = buildArcTable(geometry, 64);
+    const first = splitGeometryRange(geometry, table, 0, 0.45);
+    const second = splitGeometryRange(geometry, table, 0.55, 1);
+    expect(first.p0.x).toBeCloseTo(0, 3);
+    expect(first.p3.x).toBeCloseTo(180, 1);
+    expect(second.p0.x).toBeCloseTo(220, 1);
+    expect(second.p3.x).toBeCloseTo(400, 3);
+    // Vão de 40 unidades entre as duas metades (20 + 20).
+    expect(second.p0.x - first.p3.x).toBeCloseTo(40, 1);
+  });
+
+  it('mantém a espessura do trajeto (nada é inventado fora da curva)', () => {
+    const geometry = straight(0, 0, 300, 0);
+    const table = buildArcTable(geometry, 64);
+    const range = splitGeometryRange(geometry, table, 0.2, 0.4);
+    expect(range.p0.y).toBeCloseTo(0, 6);
+    expect(range.p3.y).toBeCloseTo(0, 6);
+    expect(range.p1.y).toBeCloseTo(0, 6);
+  });
+
+  it('é seguro nos extremos e em frações degeneradas', () => {
+    const geometry = straight(0, 0, 400, 0);
+    const table = buildArcTable(geometry, 64);
+    expect(splitGeometryRange(geometry, table, 0, 1)).toBe(geometry);
+    expect(splitGeometryRange(geometry, table, 0.5, 0.5)).toBe(geometry);
+    const clamped = splitGeometryRange(geometry, table, -1, 2);
+    expect(clamped.path).toBe(geometry.path);
+  });
+
+  it('remove exatamente o vão central calculado para o zoom', () => {
+    const geometry = straight(0, 0, 400, 0);
+    const table = buildArcTable(geometry, 64);
+    const gap = weatherCenterGap(1, table.total / 2);
+    const first = splitGeometryRange(geometry, table, 0, 0.5 - gap.fraction);
+    const second = splitGeometryRange(geometry, table, 0.5 + gap.fraction, 1);
+    expect(second.p0.x - first.p3.x).toBeCloseTo(gap.units, 1);
+    expect(gap.units).toBeCloseTo(WEATHER_CENTER_GAP_PX, 1);
+  });
+
+  it('em enlace curto o vão não engole as metades', () => {
+    const gap = weatherCenterGap(1, 20);
+    expect(gap.units).toBeLessThan(20 * 2 * WEATHER_CENTER_GAP_MAX_HALF_SHARE + 0.001);
+    expect(gap.units).toBeLessThan(WEATHER_CENTER_GAP_PX);
   });
 });
 

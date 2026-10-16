@@ -12,12 +12,21 @@ import {
   formatLinkV2TrafficBps,
   resolveWeatherMap,
   shouldAnimateHalf,
+  weatherArrowShape,
+  weatherCenterGap,
   weatherHalfDash,
   weatherHalfLabelMode,
+  weatherHalfStroke,
   weatherHalfText,
+  weatherRunnerCount,
+  weatherRunnerDuration,
   weatherStreamStyle,
   weatherStrokeWidth,
+  WEATHER_B2A_STROKE_MIX_PERCENT,
+  WEATHER_CENTER_GAP_MAX_HALF_SHARE,
+  WEATHER_CENTER_GAP_PX,
   WEATHER_HALF_COLOR_VAR,
+  WEATHER_RUNNER_MAX,
   type WeatherLabelContext,
 } from './map-visual-v2-weathermap';
 import { resolveRealLinkV2 } from './map-visual-v2-link';
@@ -279,6 +288,40 @@ describe('sentido sem evidência', () => {
     expect(weather.a2b.color).toBe(WEATHER_HALF_COLOR_VAR.inconsistent);
     expect(weather.a2b.label).toContain('inconsistente');
     expect(weather.a2b.animated).toBe(false);
+  });
+});
+
+describe('diferenciação dos sentidos e leitura do centro', () => {
+  it('a forma da seta e o esmaecimento identificam o sentido sem depender da cor', () => {
+    expect(weatherArrowShape('a2b')).toBe('solid');
+    expect(weatherArrowShape('b2a')).toBe('chevron');
+    expect(weatherHalfStroke('var(--wm-util-normal)', 'a2b')).toBe('var(--wm-util-normal)');
+    const dimmed = weatherHalfStroke('var(--wm-util-normal)', 'b2a');
+    expect(dimmed).toContain('color-mix');
+    expect(dimmed).toContain('var(--wm-dim-mix)');
+    expect(WEATHER_B2A_STROKE_MIX_PERCENT).toBeGreaterThan(50);
+  });
+
+  it('o vão central é explícito e limitado em enlaces curtos', () => {
+    const at1 = weatherCenterGap(1, 150);
+    expect(at1.units).toBeCloseTo(WEATHER_CENTER_GAP_PX, 5);
+    // Mais zoom = mesmo vão na TELA (unidades de fluxo menores).
+    expect(weatherCenterGap(2, 150).units).toBeCloseTo(WEATHER_CENTER_GAP_PX / 2, 5);
+    // Enlace curto: o vão encolhe para não engolir as metades.
+    expect(weatherCenterGap(1, 12).units).toBeLessThan(12 * 2 * WEATHER_CENTER_GAP_MAX_HALF_SHARE + 0.001);
+  });
+
+  it('as setas móveis respeitam zoom, tamanho do enlace e velocidade', () => {
+    expect(weatherRunnerCount(0.3, 200)).toBe(0);
+    expect(weatherRunnerCount(0.6, 30)).toBe(0);
+    expect(weatherRunnerCount(0.6, 200)).toBe(2);
+    expect(weatherRunnerCount(1, 120)).toBe(2);
+    expect(weatherRunnerCount(2, 200)).toBe(WEATHER_RUNNER_MAX);
+    const short = weatherRunnerDuration(80, 1);
+    const long = weatherRunnerDuration(400, 1);
+    expect(short).toBeGreaterThanOrEqual(2.6);
+    expect(long).toBeLessThanOrEqual(6.5);
+    expect(long).toBeGreaterThan(short);
   });
 });
 
