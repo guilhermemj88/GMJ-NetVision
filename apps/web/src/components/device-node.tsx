@@ -18,6 +18,13 @@ import {
   type DeviceIconType,
 } from '@/lib/device-appearance';
 import { NetworkDeviceIcon } from './network-device-icon';
+import { NetworkDeviceGlyphV2 } from './network-device-glyphs-v2';
+import {
+  MAP_GLYPH_BASE_SIZE,
+  isMapGlyphCompact,
+  mapGlyphEffectiveSize,
+  resolveMapDeviceGlyphV2,
+} from '@/lib/map-visual-v2-glyphs';
 import { DEVICE_HANDLE_SIDES } from '@/lib/edge-handles';
 
 export interface DeviceNodeData extends Record<string, unknown> {
@@ -30,6 +37,8 @@ export interface DeviceNodeData extends Record<string, unknown> {
   alarmCount: number;
   /** Fora da camada/recorte atual: atenuado, mas ainda clicável. */
   dimmed?: boolean;
+  /** MAP-VISUAL-V2: qual jogo de glifos usar (padrão V1 — produção intacta). */
+  glyphEngine?: 'v1' | 'v2';
 }
 
 export type DeviceFlowNode = Node<DeviceNodeData, 'device'>;
@@ -71,6 +80,7 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
     labelScale,
     alarmCount,
     dimmed,
+    glyphEngine = 'v1',
   } = data;
   const subscribe = useCallback(
     (onStoreChange: () => void) => subscribeDeviceIconPreference(device.id, onStoreChange),
@@ -80,6 +90,7 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
   const getServerSnapshot = useCallback((): DeviceIconType => 'AUTO', []);
   const preference = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
   const iconType = resolveDeviceIconType(device, preference);
+  const v2Glyph = glyphEngine === 'v2' ? resolveMapDeviceGlyphV2(iconType) : null;
   const iconVariant = displayMode === 'ICON_3D' ? '3d' : '2d';
   const showPpp = isPppVisible(mapNode.pppDisplayMode, device.pppSupported, device.pppOnline);
   const typeCode = DEVICE_TYPE_CODES[device.deviceType] ?? device.deviceType.toUpperCase();
@@ -109,12 +120,21 @@ export function DeviceNode({ data, selected }: NodeProps<DeviceFlowNode>) {
         />
       ))}
       <div className="device-node__icon">
-        <NetworkDeviceIcon
-          type={iconType}
-          variant={iconVariant}
-          status={device.status.toLowerCase()}
-          size={32}
-        />
+        {v2Glyph ? (
+          <NetworkDeviceGlyphV2
+            type={v2Glyph}
+            size={MAP_GLYPH_BASE_SIZE}
+            className="device-node__glyph"
+            compact={isMapGlyphCompact(v2Glyph, mapGlyphEffectiveSize(nodeScale))}
+          />
+        ) : (
+          <NetworkDeviceIcon
+            type={iconType}
+            variant={iconVariant}
+            status={device.status.toLowerCase()}
+            size={MAP_GLYPH_BASE_SIZE}
+          />
+        )}
         <span className="status-pulse" />
         <span className="device-node__type" title={`Tipo: ${device.deviceType}`}>
           {typeCode}

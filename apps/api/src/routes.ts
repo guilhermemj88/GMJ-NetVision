@@ -162,6 +162,7 @@ import { HuaweiVrpDriver } from './infrastructure/topology/huawei-vrp-driver';
 import { LldpSnmpDiscoveryAdapter } from './infrastructure/topology/lldp-snmp-adapter';
 import { LldpSshDiscoveryAdapter } from './infrastructure/topology/lldp-ssh-adapter';
 import { InMemoryPolicyScopeLock } from './infrastructure/bgp/mitigation/mitigation-policy-lock';
+import { isReadOnlyMode } from './read-only';
 
 const mapIdParams = z.object({ mapId: z.string().min(1) });
 const nodeParams = z.object({ mapId: z.string().min(1), nodeId: z.string().min(1) });
@@ -993,9 +994,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       );
     }
   };
-  const autoDescriptionSweepTimer = setInterval(() => void runAutoDescriptionSweep(), 300_000);
-  autoDescriptionSweepTimer.unref();
-  if (mitigationEngineConfig.mode === 'AUTO') {
+  const autoDescriptionSweepTimer = isReadOnlyMode()
+    ? null
+    : setInterval(() => void runAutoDescriptionSweep(), 300_000);
+  autoDescriptionSweepTimer?.unref();
+  if (mitigationEngineConfig.mode === 'AUTO' && !isReadOnlyMode()) {
     autoRuntimeRef.start();
     app.log.warn(
       {
@@ -1008,7 +1011,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   }
   app.addHook('onClose', async () => {
     autoRuntimeRef?.stop();
-    clearInterval(autoDescriptionSweepTimer);
+    if (autoDescriptionSweepTimer) clearInterval(autoDescriptionSweepTimer);
   });
   registerN8nRoutes(app, {
     commands: mitigationCommands,
@@ -1165,7 +1168,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         sourceMapId: null,
       });
     }
-    if (!config.DEMO_MODE && config.SNMP_POLLING_ENABLED) poller.start();
+    if (!config.DEMO_MODE && config.SNMP_POLLING_ENABLED && !isReadOnlyMode()) poller.start();
   });
   app.addHook('onClose', async () => {
     poller.stop();
