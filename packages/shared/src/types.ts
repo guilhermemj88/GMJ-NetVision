@@ -1044,7 +1044,15 @@ export interface MapPreferences {
   showOffline: boolean;
   showInterfaces: boolean;
   showTrafficAnimation: boolean;
+  /**
+   * MAP-VISUAL-V2 — modo visual do mapa. OPCIONAL e ADITIVO: mapas antigos não
+   * têm o campo e continuam na V1. Nada é escrito aqui pelo laboratório; o
+   * padrão do produto é sempre V1.
+   */
+  visualMode?: MapVisualMode;
 }
+
+export type MapVisualMode = 'V1' | 'V2';
 
 export type LldpConfidence = 'CONFIRMED' | 'PROBABLE' | 'AMBIGUOUS' | 'UNKNOWN_NEIGHBOR';
 export type LldpApplyAction = 'CREATE_LINK' | 'IGNORE';

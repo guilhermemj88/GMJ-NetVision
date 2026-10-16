@@ -58,7 +58,7 @@ export interface MockLink {
 }
 
 export interface MockScenario {
-  id: 'simple' | 'dense';
+  id: 'simple' | 'dense' | 'real';
   title: string;
   description: string;
   nodes: MockNode[];
@@ -269,6 +269,7 @@ export const SCENARIO_DENSE: MockScenario = {
 
 export const MOCK_SCENARIOS: readonly MockScenario[] = [SCENARIO_SIMPLE, SCENARIO_DENSE];
 
-export function scenarioById(id: MockScenario['id']): MockScenario {
+/** Cenários A/B — o cenário C (geometria real) vive em v2-scenario-catalog. */
+export function scenarioById(id: 'simple' | 'dense'): MockScenario {
   return id === 'dense' ? SCENARIO_DENSE : SCENARIO_SIMPLE;
 }

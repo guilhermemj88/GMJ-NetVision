@@ -8,7 +8,7 @@
  * dados de demonstração — sem API, sem banco, sem tocar no mapa operacional.
  */
 
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import {
   Background,
   BackgroundVariant,
@@ -30,7 +30,22 @@ import {
   type DeviceGlyphV2Type,
 } from '@/components/network-device-glyphs-v2';
 import { TrafficEdge, type TrafficEdgeData } from '@/components/traffic-edge';
+import { defaultVisualPath, type MapVisualMode } from '@gmj/shared';
 import type { NetworkDeviceIconType } from '@/lib/device-appearance';
+import { resolveMapVisualMode } from '@/lib/map-visual-mode';
+import type { LinkV2StrokeMode } from '@/lib/map-visual-v2';
+import {
+  LAB_OFFSETS_MAP_ID,
+  laneForDirection,
+  manualLabelOffset,
+} from '@/lib/map-visual-v2-offsets';
+import { selectionFromEdge } from '@/lib/map-visual-v2-selection';
+import {
+  getTrafficLabelOffsets,
+  resetTrafficLabelOffsets,
+  setTrafficLabelOffset,
+  subscribeTrafficLabelOffsets,
+} from '@/lib/traffic-label-offsets';
 import {
   buildLinkV2Model,
   type LinkV2EdgeModel,
@@ -39,7 +54,8 @@ import {
 } from './v2-model';
 import { LinkV2Edge, type LinkV2EdgeData } from './v2-link-edge';
 import { LinkV2Panel } from './v2-link-panel';
-import { scenarioById, type MockNodeStatus, type MockScenario } from './v2-scenarios';
+import { scenarioById } from './v2-scenario-catalog';
+import type { MockNodeStatus, MockScenario } from './v2-scenarios';
 
 type Engine = 'v1' | 'v2';
 type EdgeVisual = 'v1' | 'v2';
@@ -48,7 +64,7 @@ type BngMode = 'normal' | 'compact' | 'sugerida';
 type CoreSwitchCandidate = 'SWITCH' | 'CORE_SWITCH';
 
 const ICON_SIZE_STEPS = [16, 24, 32, 48] as const;
-const ZOOM_PRESETS = [25, 50, 100, 150, 220] as const;
+const ZOOM_PRESETS = [25, 50, 75, 100, 150, 220] as const;
 const HANDLE_SIDES = ['left', 'right', 'top', 'bottom'] as const;
 const POSITION_BY_SIDE = {
   left: Position.Left,
@@ -183,12 +199,20 @@ function Option<T extends string>({
 
 export function MapVisualCanvasSection() {
   const [scenarioId, setScenarioId] = useState<MockScenario['id']>('simple');
-  const [edgeVisual, setEdgeVisual] = useState<EdgeVisual>('v2');
+  /**
+   * Feature flag por mapa (Fase C): o laboratório usa um objeto de preferências
+   * de demonstração; o campo ausente resolve SEMPRE para V1 (padrão do produto).
+   */
+  const [labPreferences, setLabPreferences] = useState<{ visualMode?: MapVisualMode }>({});
+  const visualMode = resolveMapVisualMode(labPreferences);
+  const edgeVisual: EdgeVisual = visualMode === 'V2' ? 'v2' : 'v1';
   const [iconEngine, setIconEngine] = useState<Engine>('v2');
   const [iconSize, setIconSize] = useState<number>(32);
   const [coreSwitchCandidate, setCoreSwitchCandidate] = useState<CoreSwitchCandidate>('CORE_SWITCH');
   const [bngMode, setBngMode] = useState<BngMode>('sugerida');
   const [labelMode, setLabelMode] = useState<LabelMode>('smart');
+  const [strokeMode, setStrokeMode] = useState<LinkV2StrokeMode>('zoom');
+  const [v1LabelMode, setV1LabelMode] = useState<'CARD' | 'INLINE'>('CARD');
   const [forceTooltip, setForceTooltip] = useState(false);
   const [simulation, setSimulation] = useState<LinkV2Simulation | null>(null);
   const [expandedLagIds, setExpandedLagIds] = useState<string[]>([]);
@@ -203,6 +227,12 @@ export function MapVisualCanvasSection() {
   const [nowMs, setNowMs] = useState(0);
   const [mounted, setMounted] = useState(false);
   const [zoom, setZoom] = useState(1);
+  /** Offsets manuais da V1 — lidos pela API real; a chave do mapa é de laboratório. */
+  const labelOffsets = useSyncExternalStore(
+    subscribeTrafficLabelOffsets,
+    () => getTrafficLabelOffsets(LAB_OFFSETS_MAP_ID),
+    () => getTrafficLabelOffsets(null),
+  );
 
   const scenario = scenarioById(scenarioId);
 
@@ -268,8 +298,22 @@ export function MapVisualCanvasSection() {
         expandedLagIds,
         positions: positionOverrides,
         zoom,
+        strokeMode,
+        labelOffsets,
       }),
-    [scenario, nowMs, labelMode, selectedEdgeId, selectedNodeId, simulation, expandedLagIds, positionOverrides, zoom],
+    [
+      scenario,
+      nowMs,
+      labelMode,
+      selectedEdgeId,
+      selectedNodeId,
+      simulation,
+      expandedLagIds,
+      positionOverrides,
+      zoom,
+      strokeMode,
+      labelOffsets,
+    ],
   );
 
   const edges = useMemo<Edge[]>(
@@ -281,6 +325,8 @@ export function MapVisualCanvasSection() {
           target: edge.b,
           sourceHandle: edge.sourceHandle,
           targetHandle: edge.targetHandle,
+          // Igual ao mapa operacional: enlaces são clicáveis para selecionar.
+          selectable: true,
           selected: edge.id === selectedEdgeId,
         };
         if (edgeVisual === 'v2') {
@@ -300,19 +346,27 @@ export function MapVisualCanvasSection() {
           showTrafficAnimation: false,
           displayStyle: 'FLOW',
           metricDisplay: 'BOTH',
-          trafficLabelMode: 'CARD',
+          trafficLabelMode: v1LabelMode,
           related: true,
           emphasized: false,
           linkScale: 100,
           labelScale: 100,
           editMode: false,
           readOnly: true,
-          isPrimaryPath: true,
+          isPrimaryPath: edge.pathIndex === 0,
+          pathIndex: edge.pathIndex,
+          visualPath:
+            edge.networkLink.visualPaths[edge.pathIndex] ??
+            edge.networkLink.visualPaths[0] ??
+            defaultVisualPath(0),
           autoOffset: edge.autoOffset,
+          labelOffsets,
+          labelMapId: LAB_OFFSETS_MAP_ID,
+          labelAdjust: v1LabelMode === 'INLINE',
         };
         return { ...common, type: 'traffic', data };
       }),
-    [model, edgeVisual, selectedEdgeId, forceTooltip, scenario.demoLinkId],
+    [model, edgeVisual, selectedEdgeId, forceTooltip, scenario.demoLinkId, v1LabelMode, labelOffsets],
   );
 
   const selectedEdge: LinkV2EdgeModel | null =
@@ -321,6 +375,8 @@ export function MapVisualCanvasSection() {
     selectedEdge?.lagGroupId !== null && selectedEdge?.lagGroupId !== undefined
       ? model.groups.find((group) => group.groupId === selectedEdge.lagGroupId) ?? null
       : null;
+  /** Seleção no formato exato do map-store (contrato do ContextDrawer). */
+  const selection = selectedEdge ? selectionFromEdge(selectedEdge.selectionId) : null;
 
   const onNodesChange = useCallback((changes: NodeChange<LabFlowNode>[]) => {
     for (const change of changes) {
@@ -336,15 +392,36 @@ export function MapVisualCanvasSection() {
     setSelectedNodeId(params.nodes.find((node) => node.selected)?.id ?? params.nodes[0]?.id ?? null);
   }, []);
 
+  /**
+   * Mesmo contrato de clique do mapa operacional (network-canvas.tsx): o mapa é
+   * controlado, então a seleção vem dos handlers de clique — os "select changes"
+   * internos do React Flow não são aplicados quando `edges` é controlado.
+   */
+  const onEdgeClick = useCallback((_event: React.MouseEvent, edge: Edge) => {
+    setSelectedEdgeId(edge.id);
+    setSelectedNodeId(null);
+  }, []);
+
+  const onNodeClick = useCallback((_event: React.MouseEvent, node: LabFlowNode) => {
+    setSelectedNodeId(node.id);
+    setSelectedEdgeId(null);
+  }, []);
+
+  const onPaneClick = useCallback(() => {
+    setSelectedEdgeId(null);
+    setSelectedNodeId(null);
+  }, []);
+
   const applySimulation = useCallback(
     (mode: LinkV2SimulationMode | null) => {
       if (mode === null) {
         setSimulation(null);
         return;
       }
-      setSimulation({ linkId: selectedEdgeId ?? scenario.demoLinkId, mode });
+      const target = selectedEdge ? selectedEdge.linkId : scenario.demoLinkId;
+      setSimulation({ linkId: target, mode });
     },
-    [selectedEdgeId, scenario.demoLinkId],
+    [selectedEdge, scenario.demoLinkId],
   );
 
   const toggleLag = useCallback((groupId: string) => {
@@ -353,24 +430,63 @@ export function MapVisualCanvasSection() {
     );
   }, []);
 
+  /** Seleção de demonstração: sempre baseada no estado real do modelo. */
   const selectDemo = useCallback(
     (kind: 'critical' | 'down' | 'no-data' | 'stale' | 'lag') => {
-      const byTag = (tag: string) => scenario.links.find((link) => link.tag === tag)?.id ?? null;
-      const ids: Record<typeof kind, string | null> = {
-        critical: scenario.id === 'dense' ? 'd-transit-a' : 'a-core-bng',
-        down: byTag('DOWN') ?? scenario.links.find((link) => link.status === 'down')?.id ?? null,
-        'no-data': byTag('sem telemetria') ?? byTag('capacidade desconhecida'),
-        stale: byTag('stale'),
-        lag: scenario.demoLagGroupId ? `lag:${scenario.demoLagGroupId}` : null,
-      };
-      const id = ids[kind];
-      if (id) {
-        setSelectedEdgeId(id);
+      const byState = (state: LinkV2EdgeModel['visual']['state']) =>
+        model.edges.find((edge) => edge.visual.state === state);
+      let edge: LinkV2EdgeModel | undefined;
+      if (kind === 'critical') {
+        edge =
+          byState('critical') ??
+          [...model.edges].sort(
+            (a, b) => (b.visual.utilizationPercent ?? -1) - (a.visual.utilizationPercent ?? -1),
+          )[0];
+      } else if (kind === 'down') {
+        edge = byState('down');
+      } else if (kind === 'no-data') {
+        edge = byState('no-data');
+      } else if (kind === 'stale') {
+        edge = byState('stale');
+      } else {
+        edge = scenario.demoLagGroupId
+          ? model.edges.find((item) => item.id === `lag:${scenario.demoLagGroupId}`)
+          : undefined;
+      }
+      if (edge) {
+        setSelectedEdgeId(edge.id);
         setSelectedNodeId(null);
       }
     },
-    [scenario],
+    [model.edges, scenario.demoLagGroupId],
   );
+
+  /** Demonstra o deslocamento manual da V1 usando a API real (chave de laboratório). */
+  const setManualLabel = useCallback(() => {
+    const target =
+      selectedEdge ??
+      model.edges.find(
+        (edge) =>
+          edge.id === scenario.demoLinkId ||
+          edge.linkId === scenario.demoLinkId ||
+          edge.selectionId === scenario.demoLinkId,
+      );
+    if (!target) return;
+    const lane = laneForDirection(target.visual.direction);
+    setTrafficLabelOffset(LAB_OFFSETS_MAP_ID, target.selectionId, lane, { dx: 52, dy: -34 });
+  }, [selectedEdge, model.edges, scenario.demoLinkId]);
+
+  const clearManualLabels = useCallback(() => {
+    resetTrafficLabelOffsets(LAB_OFFSETS_MAP_ID);
+  }, []);
+
+  const manualLabelCount = useMemo(() => {
+    let count = 0;
+    for (const edge of model.edges) {
+      if (manualLabelOffset(labelOffsets, edge.selectionId, edge.visual.direction)) count += 1;
+    }
+    return count;
+  }, [model.edges, labelOffsets]);
 
   return (
     <section className="mv2-lab__section" id="canvas">
@@ -390,13 +506,50 @@ export function MapVisualCanvasSection() {
           <Option name="mv2-scenario" value="dense" current={scenarioId} onSelect={setScenarioId}>
             B · denso (27 nós)
           </Option>
-        </ControlGroup>
-        <ControlGroup title="Enlaces (renderer)">
-          <Option name="mv2-edge-visual" value="v1" current={edgeVisual} onSelect={setEdgeVisual}>
-            V1 (duas pistas)
+          <Option name="mv2-scenario" value="real" current={scenarioId} onSelect={setScenarioId}>
+            C · real (25 nós)
           </Option>
-          <Option name="mv2-edge-visual" value="v2" current={edgeVisual} onSelect={setEdgeVisual}>
-            V2 (linha única)
+        </ControlGroup>
+        <ControlGroup title="Feature flag do mapa (LAB-DEMO)">
+          <Option
+            name="mv2-visual-mode"
+            value="V2"
+            current={visualMode}
+            onSelect={(value) => setLabPreferences((current) => ({ ...current, visualMode: value }))}
+          >
+            MAP_VISUAL_V2
+          </Option>
+          <Option
+            name="mv2-visual-mode"
+            value="V1"
+            current={visualMode}
+            onSelect={(value) => setLabPreferences((current) => ({ ...current, visualMode: value }))}
+          >
+            MAP_VISUAL_V1 (padrão)
+          </Option>
+          <Option
+            name="mv2-visual-mode-reset"
+            value="reset"
+            current="reset"
+            onSelect={() => setLabPreferences({})}
+          >
+            Campo ausente (fallback)
+          </Option>
+        </ControlGroup>
+        <ControlGroup title="Compensação de espessura">
+          <Option name="mv2-stroke-mode" value="zoom" current={strokeMode} onSelect={setStrokeMode}>
+            Zoom · clamp (A)
+          </Option>
+          <Option
+            name="mv2-stroke-mode"
+            value="non-scaling"
+            current={strokeMode}
+            onSelect={setStrokeMode}
+          >
+            non-scaling (B)
+          </Option>
+          <Option name="mv2-stroke-mode" value="none" current={strokeMode} onSelect={setStrokeMode}>
+            Escala com zoom (Fase B)
           </Option>
         </ControlGroup>
         <ControlGroup title="Ícones">
@@ -428,6 +581,38 @@ export function MapVisualCanvasSection() {
             Mostrar todos
           </Option>
         </ControlGroup>
+        <div className="mv2-control">
+          <p className="mv2-control__title">Rótulos no V1 e offsets manuais</p>
+          <div className="mv2-control__options">
+            <Option name="mv2-v1-labels" value="CARD" current={v1LabelMode} onSelect={setV1LabelMode}>
+              V1 detalhado
+            </Option>
+            <Option name="mv2-v1-labels" value="INLINE" current={v1LabelMode} onSelect={setV1LabelMode}>
+              V1 em linha (arrastável)
+            </Option>
+            <button
+              type="button"
+              id="mv2-manual-set"
+              className="mv2-panel__button"
+              onClick={setManualLabel}
+            >
+              Definir rótulo manual
+            </button>
+            <button
+              type="button"
+              id="mv2-manual-clear"
+              className="mv2-panel__button"
+              onClick={clearManualLabels}
+            >
+              Limpar offsets manuais
+            </button>
+          </div>
+          <p className="mv2-lab__note" data-testid="mv2-manual-note">
+            Chave usada: <code>gmj:traffic-labels:{LAB_OFFSETS_MAP_ID}</code> · offsets ativos:{' '}
+            {manualLabelCount} · o V2 lê o mesmo contrato da V1 (unidades de fluxo) e não reescreve
+            nada.
+          </p>
+        </div>
         <ControlGroup title="CORE_SWITCH no canvas">
           <Option
             name="mv2-core-switch"
@@ -539,6 +724,9 @@ export function MapVisualCanvasSection() {
             edgeTypes={LAB_EDGE_TYPES}
             onNodesChange={onNodesChange}
             onSelectionChange={onSelectionChange}
+            onEdgeClick={onEdgeClick}
+            onNodeClick={onNodeClick}
+            onPaneClick={onPaneClick}
             onInit={(instance) => {
               window.setTimeout(() => setZoom(instance.getZoom()), 80);
             }}
@@ -598,9 +786,12 @@ export function MapVisualCanvasSection() {
       </div>
 
       <p className="mv2-lab__note" data-testid="mv2-build-stats">
-        Modelo reconstruído em {mounted ? model.buildMs.toFixed(2) : '—'} ms ·{' '}
+        Modelo: {mounted ? model.buildMs.toFixed(2) : '—'} ms · rótulos: {mounted ? model.labelsMs.toFixed(2) : '—'} ms ·{' '}
         {scenario.nodes.length} nós · {model.edges.length} linhas · rótulos inteligentes:{' '}
-        {model.placements.size} posicionados de {model.edges.length}. Cenário:{' '}
+        {model.placements.size} posicionados de {model.edges.length} · offsets manuais ativos:{' '}
+        {model.manualLabelCount} · modo de espessura: {strokeMode} · flag do mapa:{' '}
+        {labPreferences.visualMode ?? 'ausente → V1'} (resolvida: {visualMode}). Seleção:{' '}
+        {selection ? `{ kind: 'link', id: '${selection.id}' }` : '—'}. Cenário:{' '}
         {scenario.description}
       </p>
     </section>
