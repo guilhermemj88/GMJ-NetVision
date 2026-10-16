@@ -1895,6 +1895,97 @@ button {
 .device-node--icon_3d .device-node__copy em {
   display: none;
 }
+
+/* =====================================================================
+   MAP-VISUAL-V2 — nó SEM orb (glifo plano direto no mapa)
+
+   Escopo FECHADO nesta marca: nenhuma regra da V1 é alterada. O prefixo
+   `.device-node.device-node--v2` (2 classes) é de propósito: existem regras da
+   V1 com 2 classes declaradas DEPOIS deste ponto do arquivo
+   (ex.: `.device-node--icon_3d .device-node__icon`), e a V2 precisa vencer sem
+   que a V1 seja reescrita.
+
+   A caixa do nó (`width`/`height`/`--orb-size`/`--orb-top`) é mantida de
+   propósito: os handles do React Flow se posicionam por essas variáveis, então
+   preservar a métrica garante que alternar V1/V2 NÃO mova nenhum enlace.
+
+   Só a decoração do orb sai: borda circular, gradientes, brilho, anel externo
+   (`::before`) e o filtro de glow do SVG. Status, alarme, seleção e nome
+   continuam existindo — separados do glifo, como manda o projeto.
+   ===================================================================== */
+.device-node.device-node--v2 .device-node__icon {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  filter: none;
+}
+.device-node.device-node--v2 .device-node__icon::before {
+  content: none;
+}
+.device-node.device-node--v2:hover .device-node__icon,
+.device-node.device-node--v2.is-selected .device-node__icon {
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+/* Glifo novo e fallback da V1: sem halo permanente, ocupando a antiga caixa. */
+.device-node.device-node--v2 .device-node__glyph,
+.device-node.device-node--v2 .device-node__svg,
+.device-node.device-node--v2 .device-node__svg--3d {
+  width: calc(var(--orb-size) * 0.88);
+  height: calc(var(--orb-size) * 0.88);
+  overflow: visible;
+  filter: none;
+}
+/* Status: ponto discreto no canto, sem brilho permanente. */
+.device-node.device-node--v2 .status-pulse {
+  top: 0;
+  right: 2px;
+  width: 7px;
+  height: 7px;
+  border-color: rgba(6, 12, 16, 0.9);
+  box-shadow: none;
+}
+/* Tipo (ROUTER/SWITCH/OLT…): chip centrado sob o glifo.
+   No V1 o chip fica no canto superior do orb (.device-node--card) e não atrapalha
+   porque o desenho é pequeno; com o glifo plano ocupando a caixa, o mesmo canto
+   cobriria o desenho — por isso ele desce para baixo do glifo, sem encostar no nome. */
+.device-node.device-node--v2 .device-node__type {
+  top: calc(var(--orb-top) + var(--orb-size) - 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 3px;
+  border: 0;
+  background: rgba(6, 12, 16, 0.72);
+  font-weight: 600;
+}
+/* Seleção: realce local e temporário, sem transformar o nó em círculo. */
+.device-node.device-node--v2.is-selected::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: calc(var(--orb-top) - 3px);
+  width: calc(var(--orb-size) + 6px);
+  height: calc(var(--orb-size) + 6px);
+  transform: translateX(-50%);
+  border: 1px dashed rgba(141, 230, 250, 0.5);
+  border-radius: 10px;
+  background: rgba(71, 191, 220, 0.06);
+  pointer-events: none;
+}
+.device-node.device-node--v2.is-selected .device-node__glyph,
+.device-node.device-node--v2.is-selected .device-node__svg {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, currentColor 55%, transparent));
+}
+.device-node.device-node--v2:hover .device-node__glyph,
+.device-node.device-node--v2:hover .device-node__svg {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 35%, transparent));
+}
+/* O nó inteiro continua clicável e arrastável na MESMA caixa. */
+.device-node.device-node--v2 {
+  cursor: pointer;
+}
 .device-node--icon_3d .device-node__icon {
   background:
     radial-gradient(circle at 34% 27%, rgba(72, 112, 130, 0.78), transparent 29%),
