@@ -1,22 +1,33 @@
 'use client';
 
 /**
- * MAP-VISUAL-V2 — Fase E: modo da microanimação dos enlaces no preview.
+ * MAP-VISUAL-V2 — Fase I: modo da microanimação dos enlaces no preview.
  *
- *  - `smart` (padrão): anima seleção, hover e sentidos em atenção/crítico;
- *  - `always`: todos os sentidos com telemetria válida;
- *  - `off`: nenhum (as setas continuam visíveis).
+ *  - `off` (PADRÃO desde a Fase I): nenhum runner se move. As setas continuam
+ *    estáticas e visíveis, os sentidos seguem diferenciados por cor/forma e as
+ *    plaquetas mantêm velocidade e percentual;
+ *  - `smart` (opcional, escolha explícita): anima seleção, hover e sentidos em
+ *    atenção/crítico;
+ *  - `always` (experimental, escolha explícita): todos os sentidos válidos.
  *
- * A escolha vive SÓ nesta aba (memória + sessionStorage com chave própria):
- * nada é gravado no mapa, nenhuma preferência de produção é alterada e a V1
- * sequer conhece este controle. `prefers-reduced-motion` é tratado no CSS.
+ * Política de persistência (por ABA, nunca no mapa nem no banco):
+ *  - vale apenas a chave VERSIONADA (`gmj:preview:link-animation:v2`);
+ *  - a chave das fases E–H (`gmj:preview:link-animation`) é ignorada e
+ *    descartada — uma aba antiga que estava em "inteligente" não reativa o
+ *    movimento depois da atualização;
+ *  - sem escolha explícita nesta aba, o modo é `off`.
+ *
+ * `prefers-reduced-motion` continua tratado no CSS. Nada aqui cria render por
+ * frame nem altera a cadência das métricas.
  */
 
-import { useCallback, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import type { LinkV2AnimationMode } from './map-visual-v2-weathermap';
 
-export const PREVIEW_ANIMATION_KEY = 'gmj:preview:link-animation';
-export const PREVIEW_ANIMATION_DEFAULT: LinkV2AnimationMode = 'smart';
+export const PREVIEW_ANIMATION_KEY = 'gmj:preview:link-animation:v2';
+/** Chave das Fases E–H: sobrevive no storage, mas nunca é lida. */
+export const PREVIEW_ANIMATION_LEGACY_KEY = 'gmj:preview:link-animation';
+export const PREVIEW_ANIMATION_DEFAULT: LinkV2AnimationMode = 'off';
 
 const listeners = new Set<() => void>();
 
@@ -44,10 +55,18 @@ export function isLinkV2AnimationMode(value: unknown): value is LinkV2AnimationM
   return value === 'off' || value === 'smart' || value === 'always';
 }
 
-/** Escolha do operador nesta aba (null = padrão inteligente). */
+/** Escolha do operador NESTA aba e NESTA versão (null = padrão da fase). */
 export function readPreviewAnimation(): LinkV2AnimationMode | null {
   const raw = storage()?.getItem(PREVIEW_ANIMATION_KEY) ?? null;
   return isLinkV2AnimationMode(raw) ? raw : null;
+}
+
+/**
+ * Higiene da sessão: apaga a preferência das fases anteriores. Chamada uma vez
+ * pela barra do preview (não é leitura, então não fica no getSnapshot).
+ */
+export function discardLegacyPreviewAnimation(): void {
+  storage()?.removeItem(PREVIEW_ANIMATION_LEGACY_KEY);
 }
 
 export function writePreviewAnimation(mode: LinkV2AnimationMode | null): void {
@@ -62,11 +81,18 @@ export function usePreviewAnimationOverride(): LinkV2AnimationMode | null {
   return useSyncExternalStore(subscribePreviewAnimation, readPreviewAnimation, () => null);
 }
 
-/** Modo efetivo: escolha da aba > padrão inteligente. */
+/** Modo efetivo: escolha da aba > padrão (animação DESLIGADA). */
 export function useLinkV2AnimationMode(): LinkV2AnimationMode {
   return usePreviewAnimationOverride() ?? PREVIEW_ANIMATION_DEFAULT;
 }
 
 export function useSetLinkV2AnimationMode(): (mode: LinkV2AnimationMode | null) => void {
   return useCallback((mode: LinkV2AnimationMode | null) => writePreviewAnimation(mode), []);
+}
+
+/** Descarta a preferência legada na primeira montagem da barra do preview. */
+export function useDiscardLegacyPreviewAnimation(): void {
+  useEffect(() => {
+    discardLegacyPreviewAnimation();
+  }, []);
 }

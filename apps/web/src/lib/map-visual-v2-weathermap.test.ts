@@ -428,6 +428,29 @@ describe('diferenciação dos sentidos e leitura do centro', () => {
 });
 
 describe('microanimação', () => {
+  it('Fase I: sem modo explícito a animação fica DESLIGADA', () => {
+    const weather = resolveWeatherMap(visualOf(link()));
+    expect(weather.animated).toBe(false);
+    expect(weather.a2b.animated).toBe(false);
+    expect(weather.b2a.animated).toBe(false);
+  });
+
+  it('Fase I: hover e seleção NÃO animam quando o modo está Desligada', () => {
+    expect(shouldAnimateHalf('attention', 'off', { selected: true, hovered: true })).toBe(false);
+    expect(shouldAnimateHalf('critical', 'off', { selected: true, hovered: true })).toBe(false);
+    expect(shouldAnimateHalf('normal', 'off', { selected: true, hovered: true })).toBe(false);
+    const weather = resolveWeatherMap(visualOf(link()), {
+      animation: 'off',
+      selected: true,
+      hovered: true,
+    });
+    expect(weather.animated).toBe(false);
+    // O desenho continua completo: setas e valores nos dois sentidos.
+    expect(weather.a2b.arrow && weather.b2a.arrow).toBe(true);
+    expect(weather.a2b.label).not.toBeNull();
+    expect(weather.b2a.label).not.toBeNull();
+  });
+
   it('desligada: nenhuma metade anima', () => {
     const weather = resolveWeatherMap(visualOf(link()), { animation: 'off' });
     expect(weather.animated).toBe(false);

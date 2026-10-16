@@ -1,15 +1,17 @@
 /**
- * Fase E — controle de animação do preview.
+ * Fase E/I — controle de animação do preview.
  *
- * A escolha vive só na aba (sessionStorage) e NUNCA no mapa/banco: o teste
- * garante o padrão inteligente, a leitura/escrita e a recusa de valores
- * inválidos vindos do storage.
+ * A escolha vive só na aba (sessionStorage, chave VERSIONADA) e NUNCA no
+ * mapa/banco. A Fase I inverteu o padrão para DESLIGADA e passou a ignorar a
+ * preferência das fases anteriores, para a aba não reabrir animando.
  */
 
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   PREVIEW_ANIMATION_DEFAULT,
   PREVIEW_ANIMATION_KEY,
+  PREVIEW_ANIMATION_LEGACY_KEY,
+  discardLegacyPreviewAnimation,
   isLinkV2AnimationMode,
   readPreviewAnimation,
   subscribePreviewAnimation,
@@ -17,8 +19,9 @@ import {
 } from './map-visual-v2-animation';
 
 describe('modo de animação do preview', () => {
+  let store: Map<string, string>;
   beforeEach(() => {
-    const store = new Map<string, string>();
+    store = new Map<string, string>();
     (globalThis as { window?: unknown }).window = {
       sessionStorage: {
         getItem: (key: string) => store.get(key) ?? null,
@@ -32,10 +35,24 @@ describe('modo de animação do preview', () => {
     };
   });
 
-  it('a chave é própria e o padrão é inteligente', () => {
-    expect(PREVIEW_ANIMATION_KEY).toBe('gmj:preview:link-animation');
-    expect(PREVIEW_ANIMATION_DEFAULT).toBe('smart');
+  it('a chave é própria e versionada, e o padrão é DESLIGADA (Fase I)', () => {
+    expect(PREVIEW_ANIMATION_KEY).toBe('gmj:preview:link-animation:v2');
+    expect(PREVIEW_ANIMATION_LEGACY_KEY).toBe('gmj:preview:link-animation');
+    expect(PREVIEW_ANIMATION_DEFAULT).toBe('off');
     expect(readPreviewAnimation()).toBeNull();
+  });
+
+  it('a preferência das fases anteriores NÃO reativa a animação', () => {
+    // Simula uma aba antiga que estava em "inteligente" (ou "sempre ativa").
+    store.set(PREVIEW_ANIMATION_LEGACY_KEY, 'smart');
+    expect(readPreviewAnimation()).toBeNull();
+    store.set(PREVIEW_ANIMATION_LEGACY_KEY, 'always');
+    expect(readPreviewAnimation()).toBeNull();
+    // A higiene remove a chave velha e preserva a escolha nova da aba.
+    writePreviewAnimation('smart');
+    discardLegacyPreviewAnimation();
+    expect(store.has(PREVIEW_ANIMATION_LEGACY_KEY)).toBe(false);
+    expect(readPreviewAnimation()).toBe('smart');
   });
 
   it('aceita apenas os três modos válidos', () => {
@@ -63,6 +80,14 @@ describe('modo de animação do preview', () => {
     expect(readPreviewAnimation()).toBe('off');
   });
 
+  it('escolha explícita de Inteligente fica registrada na aba', () => {
+    writePreviewAnimation('smart');
+    expect(readPreviewAnimation()).toBe('smart');
+    // E volta para o padrão quando o operador limpa a escolha.
+    writePreviewAnimation(null);
+    expect(readPreviewAnimation() ?? PREVIEW_ANIMATION_DEFAULT).toBe('off');
+  });
+
   it('valor inválido no storage não vira modo', () => {
     window.sessionStorage.setItem(PREVIEW_ANIMATION_KEY, 'SEMPRE');
     expect(readPreviewAnimation()).toBeNull();
@@ -72,5 +97,6 @@ describe('modo de animação do preview', () => {
     (globalThis as { window?: unknown }).window = undefined;
     expect(readPreviewAnimation()).toBeNull();
     expect(() => writePreviewAnimation('off')).not.toThrow();
+    expect(() => discardLegacyPreviewAnimation()).not.toThrow();
   });
 });
