@@ -33,7 +33,8 @@ import {
   useLinkV2AnimationMode,
   useSetLinkV2AnimationMode,
 } from '@/lib/map-visual-v2-animation';
-import type { LinkV2AnimationMode } from '@/lib/map-visual-v2-weathermap';
+import { useLinkV2StyleMode, useSetLinkV2StyleMode } from '@/lib/map-visual-v2-style';
+import type { LinkV2AnimationMode, LinkV2StyleMode } from '@/lib/map-visual-v2-weathermap';
 import type { MapVisualMode } from '@gmj/shared';
 
 export function TopBar() {
@@ -59,6 +60,9 @@ export function TopBar() {
   const showVisualSelector = isVisualModeSelectorEnabled();
   const animationMode = useLinkV2AnimationMode();
   const setAnimationMode = useSetLinkV2AnimationMode();
+  /** Fase M: estilo dos enlaces (A/B) — preferência da aba, só no preview. */
+  const linkStyleMode = useLinkV2StyleMode();
+  const setLinkStyleMode = useSetLinkV2StyleMode();
   // Fase I: descarta a preferência de animação das fases anteriores (a aba não
   // pode reabrir "inteligente" sem escolha explícita do operador).
   useDiscardLegacyPreviewAnimation();
@@ -178,6 +182,22 @@ export function TopBar() {
                   <option value="off">Desligada (padrão)</option>
                   <option value="smart">Inteligente</option>
                   <option value="always">Sempre ativa (experimental)</option>
+                </select>
+                <ChevronDown size={13} />
+              </div>
+            </label>
+          )}
+          {showVisualSelector && visualMode === 'V2' && (
+            <label className="map-selector map-selector--visual" data-testid="map-link-style-selector">
+              <span>ESTILO DOS ENLACES</span>
+              <div>
+                <select
+                  value={linkStyleMode}
+                  onChange={(event) => setLinkStyleMode(event.target.value as LinkV2StyleMode)}
+                  aria-label="Estilo dos enlaces"
+                >
+                  <option value="directional">Direcional (padrão)</option>
+                  <option value="operational">Operacional (experimental)</option>
                 </select>
                 <ChevronDown size={13} />
               </div>

@@ -60,6 +60,46 @@ describe('tokens do WeatherMap', () => {
   });
 });
 
+describe('Fase M — paleta operacional (estilo A/B do preview)', () => {
+  it('define os três tons foscos e o texto branco suave', () => {
+    expect(css).toContain('--wm-op-normal: #43866e');
+    expect(css).toContain('--wm-op-attention: #c79a45');
+    expect(css).toContain('--wm-op-critical: #c65c63');
+    expect(css).toContain('--wm-op-text: #e1e8e5');
+  });
+
+  it('a borda da plaqueta operacional usa o MESMO token do traço/seta', () => {
+    const rule =
+      ruleBody(".traffic-edge-v2__label--pill[data-link-style='operational']") ?? '';
+    expect(rule).toContain('var(--wm-pill');
+    expect(rule).toContain('var(--wm-op-text)');
+  });
+
+  it('no modo operacional os ícones da legenda também seguem a paleta', () => {
+    expect(css).toContain(
+      ".map-v2-legend[data-link-style='operational'] .map-v2-legend__item i.is-solid",
+    );
+    expect(css).toContain(
+      ".map-v2-legend[data-link-style='operational'] .map-v2-legend__item i.is-chevron",
+    );
+  });
+
+  it('a V1 fica intocada: nenhum arquivo/regra dela conhece o estilo novo', () => {
+    const v1Edge = readFileSync(
+      fileURLToPath(new URL('./traffic-edge.tsx', import.meta.url)),
+      'utf8',
+    );
+    expect(v1Edge).not.toContain('map-visual-v2-style');
+    expect(v1Edge).not.toContain('--wm-op-');
+    // Nenhuma regra da paleta operacional atinge classes da V1.
+    const operationalRules = css.split('\n').filter((line) => line.includes('--wm-op-'));
+    for (const line of operationalRules) {
+      expect(line).not.toMatch(/\.traffic-edge\s*[,{]/);
+      expect(line).not.toMatch(/\.map-statusbar/);
+    }
+  });
+});
+
 describe('microanimação', () => {
   it('os runners usam animação CSS contínua e invertida por sentido', () => {
     expect(ruleBody('.traffic-edge-v2__runner')).toContain('animation-iteration-count: infinite');

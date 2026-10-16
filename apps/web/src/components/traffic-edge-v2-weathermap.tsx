@@ -9,9 +9,12 @@
  *   ponta A ──▶━━━━━━━━━━│━━━━━━━━◀── ponta B
  *      metade A→B    divisor    metade B→A
  *
- * A COR do traço, das setas e dos runners é FIXA POR DIREÇÃO (A→B ciano,
- * B→A violeta) e nunca reage à utilização: só estados operacionais anômalos
- * (DOWN / sem dados / antigo / inconsistente) trocam para o token de estado.
+ * A COR do traço e das setas depende do ESTILO escolhido no preview (Fase M):
+ *  - DIRECIONAL (padrão): cor FIXA POR DIREÇÃO (A→B ciano, B→A violeta), sem
+ *    reagir à utilização; só estados anômalos trocam para o token de estado;
+ *  - OPERACIONAL: a utilização de CADA METADE manda na linha, na seta e na borda
+ *    da plaqueta (mesma cor), mantendo os estados anômalos nas suas cores.
+ * Em ambos os modos o desenho é estático: nenhuma animação é executada.
  *
  * A PLAQUETA com velocidade e percentual fica EMBUTIDA sobre o traçado (fundo
  * opaco interrompe a linha, sem atravessar os caracteres) e é o ÚNICO elemento
@@ -55,7 +58,6 @@ import { PATH_OFFSET_SCALE } from '@/lib/link-curvature';
 import {
   WEATHER_ARROW_HALF_FRACTION,
   WEATHER_CENTER_BAR_HALF_HEIGHT,
-  WEATHER_HALF_COLOR_VAR,
   WEATHER_LABEL_HALF_FRACTION,
   WEATHER_RUNNER_MAX,
   resolveWeatherMap,
@@ -63,15 +65,18 @@ import {
   weatherCenterGap,
   weatherHalfDash,
   weatherHalfLabelMode,
+  weatherHalfStyle,
   weatherHalfText,
   weatherRunnerCount,
   weatherRunnerDuration,
   weatherStateLabelMode,
+  weatherStateStyleColor,
   type LinkV2AnimationMode,
   type WeatherArrowShape,
   type WeatherHalf,
   type WeatherHalfKey,
 } from '@/lib/map-visual-v2-weathermap';
+import { useLinkV2StyleMode } from '@/lib/map-visual-v2-style';
 
 const STATE_OPACITY: Record<LinkV2Visual['state'], number> = {
   normal: 0.95,
@@ -208,6 +213,12 @@ function LinkV2WeatherEdgeContent({
 }: EdgeProps<LinkV2WeatherFlowEdge> & { data: LinkV2WeatherEdgeData }) {
   const [hovered, setHovered] = useState(false);
   const zoom = useStore((state) => state.transform[2]);
+  /**
+   * Fase M: estilo dos enlaces vindo da preferência da ABA (preview). A troca
+   * re-renderiza apenas as cores — posições, geometria, anticolisão, seleção,
+   * zoom e pan não passam por aqui.
+   */
+  const styleMode = useLinkV2StyleMode();
 
   const { link, visual, animation, manualOffset, manualHalf, placements, visualPath, autoOffset = 0 } =
     data;
@@ -275,6 +286,15 @@ function LinkV2WeatherEdgeContent({
 
   const opacity = data.dimmed ? 0.22 : data.emphasized ? 1 : STATE_OPACITY[visual.state];
 
+  /**
+   * Fase M: cores da metade conforme o estilo ativo. Em DIRECIONAL é
+   * exatamente o que a Fase L usava (`half.color`/`half.pillColor`); em
+   * OPERACIONAL a linha, a seta e a borda da plaqueta da MESMA metade
+   * compartilham a cor da SUA utilização.
+   */
+  const styleA2b = weatherHalfStyle(weather.a2b, styleMode);
+  const styleB2a = weatherHalfStyle(weather.b2a, styleMode);
+
   const halves: HalfRender[] = [
     {
       key: 'a2b',
@@ -282,10 +302,8 @@ function LinkV2WeatherEdgeContent({
       geometry: center.a,
       length: center.aLength,
       arrowShape: weatherArrowShape('a2b'),
-      // Fase G: traço e seta SEMPRE na cor fixa da direção (a utilização vive
-      // apenas na plaqueta). Estados anômalos trocam para o token de estado.
-      stroke: weather.a2b.color,
-      arrowFill: weather.a2b.color,
+      stroke: styleA2b.stroke,
+      arrowFill: styleA2b.stroke,
     },
     {
       key: 'b2a',
@@ -293,8 +311,8 @@ function LinkV2WeatherEdgeContent({
       geometry: center.b,
       length: center.bLength,
       arrowShape: weatherArrowShape('b2a'),
-      stroke: weather.b2a.color,
-      arrowFill: weather.b2a.color,
+      stroke: styleB2a.stroke,
+      arrowFill: styleB2a.stroke,
     },
   ];
 
@@ -342,6 +360,7 @@ function LinkV2WeatherEdgeContent({
         data-half={key}
         data-state={half.state}
         data-band={half.band ?? 'state'}
+        data-link-style={styleMode}
         data-manual={manual ? 'true' : 'false'}
         title={
           manual
@@ -350,9 +369,10 @@ function LinkV2WeatherEdgeContent({
         }
         style={
           {
-            // Utilização manda APENAS aqui: a plaqueta é o único elemento que
-            // troca de cor conforme a faixa (direção → âmbar → coral).
-            '--wm-pill': half.pillColor,
+            // Utilização manda APENAS nesta cor: no modo direcional a borda é a
+            // cor da direção abaixo de 50% (âmbar/coral nas outras faixas); no
+            // modo operacional é a cor da utilização DESTA metade.
+            '--wm-pill': weatherHalfStyle(half, styleMode).pillBorder,
             transform: `translate(-50%, -50%) translate(${anchor.x + shift.dx}px, ${anchor.y + shift.dy}px)`,
           } as React.CSSProperties
         }
@@ -402,6 +422,7 @@ function LinkV2WeatherEdgeContent({
               data-state={half.state}
               data-valid={half.valid ? 'true' : 'false'}
               data-band={half.band ?? 'state'}
+              data-link-style={styleMode}
               data-direction={key}
               vectorEffect={edgeStroke.nonScaling ? 'non-scaling-stroke' : undefined}
               style={{
@@ -418,6 +439,7 @@ function LinkV2WeatherEdgeContent({
                 data-testid="traffic-edge-v2-arrow"
                 data-half={key}
                 data-shape="solid"
+                data-link-style={styleMode}
                 transform={`translate(${arrow.x},${arrow.y}) rotate(${arrow.angleDeg}) scale(${arrowScale})`}
                 fill={arrowFill}
                 opacity={opacity}
@@ -430,6 +452,7 @@ function LinkV2WeatherEdgeContent({
                 data-testid="traffic-edge-v2-arrow"
                 data-half={key}
                 data-shape="chevron"
+                data-link-style={styleMode}
                 transform={`translate(${arrow.x},${arrow.y}) rotate(${arrow.angleDeg}) scale(${arrowScale})`}
                 fill="none"
                 stroke={arrowFill}
@@ -486,10 +509,11 @@ function LinkV2WeatherEdgeContent({
               className={`traffic-edge-v2__label traffic-edge-v2__label--pill traffic-edge-v2__label--state traffic-edge-v2__label--${weather.state} ${selected ? 'is-selected' : ''} nodrag nopan`}
               data-testid="traffic-edge-v2-state-label"
               data-state={weather.state}
+              data-link-style={styleMode}
               title={visual.reason}
               style={
                 {
-                  '--wm-pill': WEATHER_HALF_COLOR_VAR[weather.state],
+                  '--wm-pill': weatherStateStyleColor(weather.state, styleMode),
                   transform: `translate(-50%, -50%) translate(${midpoint.x + (statePlacement?.dx ?? fallbackShift.dx)}px, ${midpoint.y + (statePlacement?.dy ?? fallbackShift.dy)}px)`,
                 } as React.CSSProperties
               }

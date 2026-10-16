@@ -34,6 +34,23 @@ import {
 } from './map-visual-v2-weathermap';
 import { resolveRealLinkV2 } from './map-visual-v2-link';
 import type { LinkV2Visual } from './map-visual-v2';
+import {
+  WEATHER_OPERATIONAL_COLOR_VAR,
+  WEATHER_OPERATIONAL_TEXT_VAR,
+  WEATHER_PILL_FONT_SIZE,
+  WEATHER_PILL_FONT_SIZE_COMPACT,
+  WEATHER_PILL_FONT_SIZE_SMALL,
+  WEATHER_PILL_HEIGHT,
+  WEATHER_PILL_HEIGHT_COMPACT,
+  WEATHER_PILL_HEIGHT_SMALL,
+  isLinkV2StyleMode,
+  weatherBandOfState,
+  weatherHalfStyle,
+  weatherOperationalColorVar,
+  weatherStateStyleColor,
+  type WeatherHalf,
+  type WeatherHalfState,
+} from './map-visual-v2-weathermap';
 
 const NOW = Date.parse('2026-10-16T12:00:00.000Z');
 const FRESH = new Date(NOW - 30_000).toISOString();
@@ -588,5 +605,349 @@ describe('política de rótulo (Fase G: plaquetas permanentes)', () => {
     expect(down.stateLabel).toBe('DOWN');
     expect(down.a2b.label).toBeNull();
     expect(down.b2a.label).toBeNull();
+  });
+});
+
+/**
+ * FASE M — experimento A/B de estilo dos enlaces (preview).
+ *
+ * O estilo é aplicado DEPOIS do modelo: `weatherHalfStyle` só devolve cores, de
+ * modo que posições, rótulos e anticolisão continuam idênticos nos dois modos.
+ */
+describe('Fase M — estilo dos enlaces: DIRECIONAL x OPERACIONAL', () => {
+  const dir = (percent: number, bps = (percent / 100) * 100 * G) => ({
+    bps,
+    utilization: percent,
+    txBps: null,
+    observedRxBps: null,
+    deltaPercent: null,
+    consistency: 'CONSISTENT' as const,
+  });
+  const directions = (a: number, b: number) => ({
+    A_TO_B: dir(a),
+    B_TO_A: dir(b),
+  });
+  const weatherAt = (a: number, b: number, overrides: Partial<NetworkLink> = {}) =>
+    resolveWeatherMap(visualOf(link({ directions: directions(a, b), ...overrides })));
+
+  const STYLE_MODES = ['directional', 'operational'] as const;
+
+  it('1. o modo DIRECIONAL é byte a byte a Fase L (traço/seta na direção, plaqueta na utilização)', () => {
+    const weather = weatherAt(30, 30);
+    for (const mode of STYLE_MODES) {
+      const style = weatherHalfStyle(weather.a2b, mode);
+      if (mode === 'directional') {
+        expect(style.stroke).toBe(weather.a2b.color);
+        expect(style.stroke).toBe(WEATHER_DIRECTION_COLOR_VAR.a2b);
+        expect(style.pillBorder).toBe(weather.a2b.pillColor);
+        expect(style.pillText).toBeNull();
+      }
+      expect(style.pillBorder).toBe(mode === 'directional' ? 'var(--wm-dir-a2b)' : 'var(--wm-op-normal)');
+    }
+    // Atenção/crítico no modo direcional continuam âmbar/coral na plaqueta.
+    const high = weatherAt(94, 94);
+    expect(weatherHalfStyle(high.a2b, 'directional')).toEqual({
+      stroke: 'var(--wm-dir-a2b)',
+      pillBorder: WEATHER_HALF_COLOR_VAR.critical,
+      pillText: null,
+    });
+  });
+
+  it('2. OPERACIONAL normal: verde-sálvia na linha, na seta e na borda, texto branco suave', () => {
+    const weather = weatherAt(12, 12);
+    const style = weatherHalfStyle(weather.a2b, 'operational');
+    expect(style.stroke).toBe('var(--wm-op-normal)');
+    expect(style.pillBorder).toBe(style.stroke);
+    expect(style.pillText).toBe(WEATHER_OPERATIONAL_TEXT_VAR);
+    expect(WEATHER_OPERATIONAL_COLOR_VAR.normal).toBe('var(--wm-op-normal)');
+  });
+
+  it('3. OPERACIONAL atenção: âmbar fosco com o mesmo valor de leitura', () => {
+    const weather = weatherAt(62, 41);
+    const style = weatherHalfStyle(weather.a2b, 'operational');
+    expect(weather.a2b.band).toBe('attention');
+    expect(style.stroke).toBe('var(--wm-op-attention)');
+    expect(style.pillBorder).toBe('var(--wm-op-attention)');
+    expect(weather.a2b.label).toBe(weatherHalfText(weather.a2b, 'full'));
+  });
+
+  it('4. OPERACIONAL crítico: coral fosco', () => {
+    const weather = weatherAt(94, 10);
+    const style = weatherHalfStyle(weather.a2b, 'operational');
+    expect(weather.a2b.band).toBe('critical');
+    expect(style.stroke).toBe('var(--wm-op-critical)');
+    expect(style.pillBorder).toBe('var(--wm-op-critical)');
+  });
+
+  it('5. A→B crítico e B→A normal: cada metade com a SUA cor (sem pintar o enlace inteiro)', () => {
+    const weather = weatherAt(94, 18);
+    const a2b = weatherHalfStyle(weather.a2b, 'operational');
+    const b2a = weatherHalfStyle(weather.b2a, 'operational');
+    expect(a2b.stroke).toBe('var(--wm-op-critical)');
+    expect(b2a.stroke).toBe('var(--wm-op-normal)');
+    expect(a2b.stroke).not.toBe(b2a.stroke);
+    // Nada é agregado: o percentual de cada metade continua o do seu sentido.
+    expect(weather.a2b.percent).toBe(94);
+    expect(weather.b2a.percent).toBe(18);
+  });
+
+  it('6. A→B normal e B→A crítico: a cor segue o sentido, não a posição no desenho', () => {
+    const weather = weatherAt(9, 88);
+    expect(weatherHalfStyle(weather.a2b, 'operational').stroke).toBe('var(--wm-op-normal)');
+    expect(weatherHalfStyle(weather.b2a, 'operational').stroke).toBe('var(--wm-op-critical)');
+    // A identidade do sentido continua explícita na forma da seta.
+    expect(weatherArrowShape('a2b')).toBe('solid');
+    expect(weatherArrowShape('b2a')).toBe('chevron');
+  });
+
+  it('7. limites exatos: 49% normal, 50% atenção, 79% atenção, 80% crítico (por sentido)', () => {
+    const expected: Array<[number, string]> = [
+      [49, 'var(--wm-op-normal)'],
+      [50, 'var(--wm-op-attention)'],
+      [79, 'var(--wm-op-attention)'],
+      [80, 'var(--wm-op-critical)'],
+    ];
+    for (const [percent, color] of expected) {
+      const weather = weatherAt(percent, percent);
+      expect(weatherHalfStyle(weather.a2b, 'operational').stroke).toBe(color);
+      expect(weatherHalfStyle(weather.b2a, 'operational').stroke).toBe(color);
+      // O percentual exibido é o do modelo, sem recálculo no renderer.
+      expect(weather.a2b.percent).toBe(percent);
+    }
+    // Assimétrico: 80% só de um lado.
+    const asymmetric = weatherAt(80, 79);
+    expect(weatherHalfStyle(asymmetric.a2b, 'operational').stroke).toBe('var(--wm-op-critical)');
+    expect(weatherHalfStyle(asymmetric.b2a, 'operational').stroke).toBe('var(--wm-op-attention)');
+  });
+
+  it('8. SINGLE_ENDED: TX e RX da MESMA interface viram as duas metades, cada uma com a sua cor', () => {
+    const single = {
+      trafficMode: 'SINGLE_ENDED' as const,
+      sourceInterfaceId: 'if-a',
+      targetInterfaceId: null,
+      directions: {
+        A_TO_B: { bps: 2 * G, utilization: 2, txBps: 2 * G, observedRxBps: null, deltaPercent: null, consistency: 'UNKNOWN' as const },
+        B_TO_A: { bps: 90 * G, utilization: 90, txBps: null, observedRxBps: 90 * G, deltaPercent: null, consistency: 'UNKNOWN' as const },
+      },
+    };
+    const weather = resolveWeatherMap(visualOf(link(single)));
+    expect(weather.a2b.state).toBe('normal');
+    expect(weather.b2a.state).toBe('critical');
+    expect(weatherHalfStyle(weather.a2b, 'operational').stroke).toBe('var(--wm-op-normal)');
+    expect(weatherHalfStyle(weather.b2a, 'operational').stroke).toBe('var(--wm-op-critical)');
+    // Nenhuma metade vira "sem dados" por causa do estilo.
+    expect(weather.a2b.valid).toBe(true);
+    expect(weather.b2a.valid).toBe(true);
+  });
+
+  it('9. DOUBLE_ENDED (BIDIRECTIONAL) não tem regressão: cada lado com a sua faixa', () => {
+    const weather = weatherAt(30, 84);
+    expect(weather.a2b.band).toBe('normal');
+    expect(weather.b2a.band).toBe('critical');
+    expect(weatherHalfStyle(weather.a2b, 'operational').pillBorder).toBe('var(--wm-op-normal)');
+    expect(weatherHalfStyle(weather.b2a, 'operational').pillBorder).toBe('var(--wm-op-critical)');
+  });
+
+  it('10. capacidade desconhecida NÃO vira verde: estado neutro', () => {
+    const visual = visualOf(
+      link({
+        capacityBps: 0,
+        directions: {
+          A_TO_B: dir(0, 3 * G),
+          B_TO_A: dir(0, 2 * G),
+        },
+      }),
+    );
+    const weather = resolveWeatherMap(visual);
+    expect(visual.reason).toBe('capacity-unknown');
+    expect(weather.a2b.percent).toBeNull();
+    expect(weather.a2b.band).toBeNull();
+    expect(weather.a2b.state).toBe('no-data');
+    expect(weatherHalfStyle(weather.a2b, 'operational').stroke).toBe('var(--wm-state-no-data)');
+    expect(weatherHalfStyle(weather.a2b, 'operational').stroke).not.toBe('var(--wm-op-normal)');
+  });
+
+  it('11. percentual indisponível não é lido como 0% (nem ganha seta verde)', () => {
+    const weather = resolveWeatherMap(
+      visualOf(
+        link({
+          capacityBps: 0,
+          directions: {
+            A_TO_B: dir(0, 2 * G),
+            B_TO_A: dir(0, 1 * G),
+          },
+        }),
+      ),
+    );
+    expect(weather.a2b.percent).toBeNull();
+    expect(weather.a2b.band).toBeNull();
+    expect(weather.a2b.state).not.toBe('normal');
+    expect(weather.a2b.label).toBeNull();
+    expect(weather.a2b.arrow).toBe(false);
+    expect(weather.stateLabel).toBeTruthy();
+    expect(weatherHalfStyle(weather.a2b, 'operational').stroke).toBe(
+      WEATHER_HALF_COLOR_VAR[weather.a2b.state],
+    );
+  });
+
+  it('12. zero VÁLIDO é diferente de ausência de telemetria (zero confiável = verde-sálvia)', () => {
+    // TX = 0 tem origem (contador da ponta A), então é medição válida.
+    const zero = resolveWeatherMap(
+      visualOf(
+        link({
+          directions: {
+            A_TO_B: { bps: 0, utilization: 0, txBps: 0, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
+            B_TO_A: { bps: 0, utilization: 0, txBps: null, observedRxBps: 0, deltaPercent: null, consistency: 'CONSISTENT' },
+          },
+        }),
+      ),
+    );
+    expect(zero.a2b.valid).toBe(true);
+    expect(zero.a2b.band).toBe('normal');
+    expect(weatherHalfStyle(zero.a2b, 'operational').stroke).toBe('var(--wm-op-normal)');
+    expect(zero.a2b.label).toContain('0%');
+    const absent = resolveWeatherMap(visualOf(link(), { collectionStamp: null }));
+    expect(absent.a2b.valid).toBe(false);
+    expect(weatherHalfStyle(absent.a2b, 'operational').stroke).toBe('var(--wm-state-no-data)');
+  });
+
+  it('13. DOWN manda: falha operacional nunca aparece verde-sálvia', () => {
+    const down = weatherAt(5, 5, { status: 'DOWN' });
+    expect(down.state).toBe('down');
+    expect(weatherHalfStyle(down.a2b, 'operational').stroke).toBe('var(--wm-state-down)');
+    expect(weatherHalfStyle(down.b2a, 'operational').stroke).toBe('var(--wm-state-down)');
+    expect(weatherStateStyleColor('down', 'operational')).toBe('var(--wm-state-down)');
+    expect(weatherHalfStyle(down.a2b, 'operational').stroke).not.toBe('var(--wm-op-normal)');
+    // A linha continua tracejada no estado de falha.
+    expect(weatherHalfDash(down.a2b)).not.toBeUndefined();
+  });
+
+  it('14. sem dados fica neutro e NUNCA verde', () => {
+    const noData = resolveWeatherMap(visualOf(link(), { collectionStamp: null }));
+    expect(noData.a2b.state).toBe('no-data');
+    expect(weatherHalfStyle(noData.a2b, 'operational').stroke).toBe('var(--wm-state-no-data)');
+    expect(weatherHalfStyle(noData.a2b, 'operational').stroke).not.toBe('var(--wm-op-normal)');
+  });
+
+  it('15. stale não é apresentado como leitura atual saudável', () => {
+    const stale = resolveWeatherMap(
+      visualOf(link(), { collectionStamp: new Date(NOW - 30 * 60_000).toISOString() }),
+    );
+    expect(stale.a2b.state).toBe('stale');
+    expect(weatherHalfStyle(stale.a2b, 'operational').stroke).toBe('var(--wm-state-stale)');
+    expect(weatherHalfStyle(stale.a2b, 'operational').stroke).not.toBe('var(--wm-op-normal)');
+  });
+
+  it('16. inconsistente permanece identificável (tracejado + token próprio, sem dominar)', () => {
+    const inconsistent = resolveWeatherMap(
+      visualOf(
+        link({
+          directions: {
+            A_TO_B: { bps: 5 * G, utilization: 5, txBps: null, observedRxBps: null, deltaPercent: 40, consistency: 'DIVERGENT' },
+            B_TO_A: { bps: 4 * G, utilization: 4, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'DIVERGENT' },
+          },
+        }),
+      ),
+    );
+    expect(inconsistent.a2b.state).toBe('inconsistent');
+    expect(weatherHalfStyle(inconsistent.a2b, 'operational').stroke).toBe(
+      'var(--wm-state-inconsistent)',
+    );
+    expect(weatherHalfDash(inconsistent.a2b)).not.toBeUndefined();
+    expect(inconsistent.a2b.label).toContain('inconsistente');
+  });
+
+  it('17. alternar o estilo não altera geometria, rótulo, faixa nem tracejado', () => {
+    const weather = weatherAt(94, 41);
+    const snapshot = (half: WeatherHalf) => ({
+      state: half.state,
+      band: half.band,
+      percent: half.percent,
+      bps: half.bps,
+      label: half.label,
+      compactLabel: half.compactLabel,
+      valid: half.valid,
+      arrow: half.arrow,
+      dashed: half.dashed,
+      animated: half.animated,
+    });
+    const before = {
+      a2b: snapshot(weather.a2b),
+      b2a: snapshot(weather.b2a),
+      strokeWidth: weather.strokeWidth,
+      stateLabel: weather.stateLabel,
+    };
+    for (const mode of STYLE_MODES) {
+      weatherHalfStyle(weather.a2b, mode);
+      weatherHalfStyle(weather.b2a, mode);
+    }
+    const after = {
+      a2b: snapshot(weather.a2b),
+      b2a: snapshot(weather.b2a),
+      strokeWidth: weather.strokeWidth,
+      stateLabel: weather.stateLabel,
+    };
+    expect(after).toEqual(before);
+    // O mesmo enlace resolvido de novo (o estilo não participa do modelo).
+    expect(snapshot(resolveWeatherMap(visualOf(link({ directions: directions(94, 41) }))).a2b)).toEqual(
+      before.a2b,
+    );
+  });
+
+  it('18. as plaquetas continuam as da Fase L (tamanhos e textos idênticos nos dois modos)', () => {
+    expect(WEATHER_PILL_FONT_SIZE).toBe(9);
+    expect(WEATHER_PILL_HEIGHT).toBe(15);
+    expect(WEATHER_PILL_FONT_SIZE_SMALL).toBe(8);
+    expect(WEATHER_PILL_HEIGHT_SMALL).toBe(13);
+    expect(WEATHER_PILL_FONT_SIZE_COMPACT).toBe(8);
+    expect(WEATHER_PILL_HEIGHT_COMPACT).toBe(13);
+    const weather = weatherAt(94, 12);
+    for (const mode of STYLE_MODES) {
+      expect(weatherHalfText(weather.a2b, 'full')).toBe(weather.a2b.label);
+      expect(weatherHalfText(weather.b2a, 'compact')).toBe(weather.b2a.compactLabel);
+      expect(weatherHalfLabelMode(weather.a2b, NO_FOCUS, 1)).toBe('full');
+      expect(mode).toBeTruthy();
+    }
+    // Offsets/prioridades da anticolisão não entram no cálculo de cor.
+    expect(weatherHalfStyle(weather.b2a, 'operational').stroke).toBe('var(--wm-op-normal)');
+  });
+
+  it('22. a animação continua DESLIGADA nos dois estilos', () => {
+    const weather = resolveWeatherMap(visualOf(link({ directions: directions(94, 12) })), {
+      animation: 'off',
+    });
+    expect(weather.a2b.animated).toBe(false);
+    expect(weather.b2a.animated).toBe(false);
+    for (const key of ['a2b', 'b2a'] as const) {
+      expect(shouldAnimateHalf(weather[key].state, 'off', { selected: true, hovered: true })).toBe(
+        false,
+      );
+    }
+    expect(weatherHalfStyle(weather.a2b, 'operational').stroke).not.toContain('animation');
+  });
+
+  it('o mapeamento estado → faixa é único e não inventa faixa para estados anômalos', () => {
+    expect(weatherBandOfState('normal')).toBe('normal');
+    expect(weatherBandOfState('attention')).toBe('attention');
+    expect(weatherBandOfState('critical')).toBe('critical');
+    for (const state of ['down', 'no-data', 'stale', 'inconsistent', 'unknown'] as WeatherHalfState[]) {
+      expect(weatherBandOfState(state)).toBeNull();
+      expect(weatherOperationalColorVar(state, null)).toBe(WEATHER_HALF_COLOR_VAR[state]);
+    }
+  });
+
+  it('aceita apenas os dois estilos previstos', () => {
+    expect(isLinkV2StyleMode('directional')).toBe(true);
+    expect(isLinkV2StyleMode('operational')).toBe(true);
+    expect(isLinkV2StyleMode('rainbow')).toBe(false);
+    expect(isLinkV2StyleMode(null)).toBe(false);
+  });
+
+  it('o rótulo de estado agregado segue o modo ativo', () => {
+    expect(weatherStateStyleColor('no-data', 'directional')).toBe('var(--wm-state-no-data)');
+    expect(weatherStateStyleColor('no-data', 'operational')).toBe('var(--wm-state-no-data)');
+    expect(weatherStateStyleColor('critical', 'directional')).toBe('var(--wm-util-critical)');
+    expect(weatherStateStyleColor('critical', 'operational')).toBe('var(--wm-op-critical)');
+    expect(weatherStateStyleColor('normal', 'operational')).toBe('var(--wm-op-normal)');
   });
 });

@@ -19,7 +19,8 @@ import {
   type LinkV2WeatherFlowEdge,
 } from './traffic-edge-v2-weathermap';
 import { resolveRealLinkV2 } from '@/lib/map-visual-v2-link';
-import type { LinkV2AnimationMode } from '@/lib/map-visual-v2-weathermap';
+import { setPreviewLinkStyleForTests } from '@/lib/map-visual-v2-style';
+import type { LinkV2AnimationMode, LinkV2StyleMode } from '@/lib/map-visual-v2-weathermap';
 
 vi.mock('@xyflow/react', async () => {
   const actual = await vi.importActual<typeof import('@xyflow/react')>('@xyflow/react');
@@ -62,6 +63,8 @@ function renderEdge(
     visualPath?: { curvature: number };
     autoOffset?: number;
     coordinates?: { sourceX: number; sourceY: number; targetX: number; targetY: number };
+    /** Fase M: estilo dos enlaces (preferência da aba, aqui via seam de teste). */
+    style?: LinkV2StyleMode;
   } = {},
 ): string {
   const target = link(options.linkOverrides);
@@ -92,23 +95,28 @@ function renderEdge(
     data,
   };
   const coordinates = options.coordinates ?? { sourceX: 10, sourceY: 20, targetX: 310, targetY: 160 };
-  return renderToStaticMarkup(
-    createElement(
-      ReactFlowProvider,
-      null,
-      createElement(TrafficEdgeV2Weather, {
-        id: edge.id,
-        type: 'trafficWeather',
-        source: edge.source,
-        target: edge.target,
-        data: edge.data!,
-        selected: options.selected ?? false,
-        sourcePosition: Position.Right,
-        targetPosition: Position.Left,
-        ...coordinates,
-      }),
-    ),
-  );
+  setPreviewLinkStyleForTests(options.style ?? null);
+  try {
+    return renderToStaticMarkup(
+      createElement(
+        ReactFlowProvider,
+        null,
+        createElement(TrafficEdgeV2Weather, {
+          id: edge.id,
+          type: 'trafficWeather',
+          source: edge.source,
+          target: edge.target,
+          data: edge.data!,
+          selected: options.selected ?? false,
+          sourcePosition: Position.Right,
+          targetPosition: Position.Left,
+          ...coordinates,
+        }),
+      ),
+    );
+  } finally {
+    setPreviewLinkStyleForTests(null);
+  }
 }
 
 function pathsFor(html: string, testId: string): string[] {
@@ -515,5 +523,128 @@ describe('renderer do enlace bidirecional', () => {
       ),
     );
     expect(html).toBe('');
+  });
+});
+
+/**
+ * FASE M — estilo A/B no desenho: a troca de paleta muda SÓ cor.
+ *
+ * Em OPERACIONAL a linha, a seta e a borda da plaqueta da MESMA metade usam a
+ * cor da utilização daquele sentido; em DIRECIONAL nada muda em relação à
+ * Fase L. Posições, textos e estados são idênticos nos dois modos.
+ */
+describe('Fase M — estilo dos enlaces no renderer', () => {
+  const directions = (aPercent: number, bPercent: number) => ({
+    A_TO_B: { bps: (aPercent / 100) * 100 * G, utilization: aPercent, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' as const },
+    B_TO_A: { bps: (bPercent / 100) * 100 * G, utilization: bPercent, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' as const },
+  });
+
+  const labelsOf = (html: string) =>
+    [...html.matchAll(/data-testid="traffic-edge-v2-half-label"[^>]*>([^<]*)</g)].map((m) => m[1]);
+
+  const transformsOf = (html: string) =>
+    [...html.matchAll(/data-testid="traffic-edge-v2-half-label"[^>]*style="([^"]*)"/g)].map((m) =>
+      // Só a transformação: a cor (`--wm-pill`) é o que muda entre os modos.
+      (/transform:[^;"]*/.exec(m[1] ?? '') ?? [''])[0],
+    );
+
+  it('cada metade leva a SUA cor na linha, na seta e na borda da plaqueta', () => {
+    const html = renderEdge({ linkOverrides: { directions: directions(94, 18) }, style: 'operational' });
+    const halves = pathsFor(html, 'traffic-edge-v2-half');
+    expect(halves[0]).toContain('var(--wm-op-critical)');
+    expect(halves[1]).toContain('var(--wm-op-normal)');
+    expect(halves[0]).toContain('data-link-style="operational"');
+    const arrows = pathsFor(html, 'traffic-edge-v2-arrow');
+    expect(arrows[0]).toContain('var(--wm-op-critical)');
+    expect(arrows[1]).toContain('var(--wm-op-normal)');
+    const pills = [...html.matchAll(/data-testid="traffic-edge-v2-half-label"[^>]*>/g)].map((m) => m[0]);
+    expect(pills[0]).toContain('--wm-pill:var(--wm-op-critical)');
+    expect(pills[1]).toContain('--wm-pill:var(--wm-op-normal)');
+    expect(pills[0]).toContain('data-link-style="operational"');
+    // Valores intactos: a paleta não inventa nem esconde medição.
+    expect(labelsOf(html).join(' | ')).toContain('94 Gbps · 94%');
+    expect(labelsOf(html).join(' | ')).toContain('18 Gbps · 18%');
+  });
+
+  it('atenção usa âmbar no traço e na plaqueta, sem mudar o texto', () => {
+    const html = renderEdge({ linkOverrides: { directions: directions(62, 41) }, style: 'operational' });
+    const halves = pathsFor(html, 'traffic-edge-v2-half');
+    expect(halves[0]).toContain('var(--wm-op-attention)');
+    expect(halves[0]).toContain('data-band="attention"');
+    expect(halves[1]).toContain('var(--wm-op-normal)');
+    expect(labelsOf(html).join(' | ')).toContain('62 Gbps · 62%');
+  });
+
+  it('1. o modo DIRECIONAL continua ciano/roxo com a plaqueta na cor do sentido', () => {
+    const html = renderEdge({ linkOverrides: { directions: directions(94, 18) } });
+    const halves = pathsFor(html, 'traffic-edge-v2-half');
+    expect(halves[0]).toContain('var(--wm-dir-a2b)');
+    expect(halves[1]).toContain('var(--wm-dir-b2a)');
+    const pills = [...html.matchAll(/data-testid="traffic-edge-v2-half-label"[^>]*>/g)].map((m) => m[0]);
+    expect(pills[0]).toContain('--wm-pill:var(--wm-util-critical)');
+    expect(pills[1]).toContain('--wm-pill:var(--wm-dir-b2a)');
+    expect(pills[0]).toContain('data-link-style="directional"');
+  });
+
+  it('17. trocar o estilo não muda geometria, texto nem posição das plaquetas', () => {
+    const overrides = { directions: directions(94, 18) };
+    const directional = renderEdge({ linkOverrides: overrides, style: 'directional' });
+    const operational = renderEdge({ linkOverrides: overrides, style: 'operational' });
+    expect(transformsOf(operational)).toEqual(transformsOf(directional));
+    expect(labelsOf(operational)).toEqual(labelsOf(directional));
+    expect(pathsFor(operational, 'traffic-edge-v2-half').map((p) => /d="([^"]*)"/.exec(p)![1])).toEqual(
+      pathsFor(directional, 'traffic-edge-v2-half').map((p) => /d="([^"]*)"/.exec(p)![1]),
+    );
+    expect(pathsFor(operational, 'traffic-edge-v2-arrow').map((p) => /transform="([^"]*)"/.exec(p)![1])).toEqual(
+      pathsFor(directional, 'traffic-edge-v2-arrow').map((p) => /transform="([^"]*)"/.exec(p)![1]),
+    );
+  });
+
+  it('19. a seleção do enlace sobrevive à troca de estilo', () => {
+    const directional = renderEdge({ selected: true, style: 'directional' });
+    const operational = renderEdge({ selected: true, style: 'operational' });
+    for (const html of [directional, operational]) {
+      expect(html).toContain('traffic-edge-v2__halo');
+      expect(html).toContain('is-selected');
+      expect(html).toContain('traffic-edge-v2__center');
+      expect(pathsFor(html, 'traffic-edge-v2-hitarea')).toHaveLength(1);
+    }
+  });
+
+  it('estados especiais mantêm o token semântico (sem verde para "sem dados")', () => {
+    const noData = renderEdge({ collectionStamp: null, style: 'operational' });
+    expect(pathsFor(noData, 'traffic-edge-v2-half')[0]).toContain('var(--wm-state-no-data)');
+    expect(noData).toContain('data-testid="traffic-edge-v2-state-label"');
+    expect(noData).toContain('--wm-pill:var(--wm-state-no-data)');
+    const down = renderEdge({ linkOverrides: { status: 'DOWN' }, style: 'operational' });
+    expect(pathsFor(down, 'traffic-edge-v2-half')[0]).toContain('var(--wm-state-down)');
+    expect(pathsFor(down, 'traffic-edge-v2-half')[0]).not.toContain('var(--wm-op-normal)');
+  });
+
+  it('SINGLE_ENDED com TX/RX da mesma interface segue a paleta por sentido', () => {
+    const html = renderEdge({
+      style: 'operational',
+      linkOverrides: {
+        trafficMode: 'SINGLE_ENDED',
+        sourceInterfaceId: 'if-a',
+        targetInterfaceId: null,
+        directions: {
+          A_TO_B: { bps: 2 * G, utilization: 2, txBps: 2 * G, observedRxBps: null, deltaPercent: null, consistency: 'UNKNOWN' },
+          B_TO_A: { bps: 90 * G, utilization: 90, txBps: null, observedRxBps: 90 * G, deltaPercent: null, consistency: 'UNKNOWN' },
+        },
+      },
+    });
+    const halves = pathsFor(html, 'traffic-edge-v2-half');
+    expect(halves[0]).toContain('var(--wm-op-normal)');
+    expect(halves[1]).toContain('var(--wm-op-critical)');
+    expect(pathsFor(html, 'traffic-edge-v2-arrow')).toHaveLength(2);
+    expect(labelsOf(html).join(' | ')).toContain('2 Gbps · 2%');
+  });
+
+  it('22. nenhum runner aparece em nenhum estilo com a animação desligada', () => {
+    const directional = renderEdge({ animation: 'off', style: 'directional' });
+    const operational = renderEdge({ animation: 'off', style: 'operational' });
+    expect(directional).not.toContain('traffic-edge-v2__runner');
+    expect(operational).not.toContain('traffic-edge-v2__runner');
   });
 });

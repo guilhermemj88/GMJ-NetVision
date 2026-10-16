@@ -80,6 +80,92 @@ export function weatherPillColorVar(key: WeatherHalfKey, band: WeatherPillBand |
   return WEATHER_DIRECTION_COLOR_VAR[key];
 }
 
+/** Faixa de utilização de um estado (null nos estados operacionais anômalos). */
+export function weatherBandOfState(state: WeatherHalfState): WeatherPillBand | null {
+  if (state === 'attention') return 'attention';
+  if (state === 'critical') return 'critical';
+  if (state === 'normal') return 'normal';
+  return null;
+}
+
+/**
+ * FASE M — ESTILO DOS ENLACES (experimento A/B, só no preview).
+ *
+ *  - `directional` (PADRÃO, fallback do experimento): Fase L intacta — traço e
+ *    seta usam a cor FIXA da direção e a utilização aparece só na plaqueta;
+ *  - `operational`: a utilização de CADA METADE manda em tudo — linha, seta e
+ *    borda da plaqueta compartilham a MESMA cor (#43866E verde-sálvia < 50%,
+ *    #C79A45 âmbar fosco 50–79%, #C65C63 coral fosco ≥ 80%). O sentido passa a
+ *    ser identificado pela forma/orientação da seta.
+ *
+ * Nenhum dos modos recalcula percentual: ambos leem `state`/`band` do modelo.
+ */
+export type LinkV2StyleMode = 'directional' | 'operational';
+
+export const LINK_V2_STYLE_MODES: readonly LinkV2StyleMode[] = ['directional', 'operational'];
+
+export const LINK_V2_STYLE_LABELS: Record<LinkV2StyleMode, string> = {
+  directional: 'Direcional',
+  operational: 'Operacional',
+};
+
+/** Paleta OPERACIONAL (Fase M): discreta, sem brilho neon. */
+export const WEATHER_OPERATIONAL_COLOR_VAR: Record<WeatherPillBand, string> = {
+  normal: 'var(--wm-op-normal)',
+  attention: 'var(--wm-op-attention)',
+  critical: 'var(--wm-op-critical)',
+};
+
+/** Texto da plaqueta no modo operacional (branco suave). */
+export const WEATHER_OPERATIONAL_TEXT_VAR = 'var(--wm-op-text)';
+
+export function isLinkV2StyleMode(value: unknown): value is LinkV2StyleMode {
+  return value === 'directional' || value === 'operational';
+}
+
+/**
+ * PRECEDÊNCIA VISUAL DO MODO OPERACIONAL (item 6 da especificação):
+ *  1. DOWN — falha operacional manda, mesmo com última medição baixa;
+ *  2. Sem dados — token neutro, nunca verde;
+ *  3. Stale — leitura antiga não vira leitura saudável;
+ *  4. Inconsistente / parcial / UNKNOWN — token semântico próprio;
+ *  5. Utilização por sentido — só quando existe percentual confiável (`band`).
+ * Ou seja: a cor da utilização só entra quando o modelo confirma a faixa; em
+ * qualquer estado anômalo o token de estado é preservado.
+ */
+export function weatherOperationalColorVar(
+  state: WeatherHalfState,
+  band: WeatherPillBand | null,
+): string {
+  const resolved = band ?? weatherBandOfState(state);
+  if (resolved) return WEATHER_OPERATIONAL_COLOR_VAR[resolved];
+  return WEATHER_HALF_COLOR_VAR[state];
+}
+
+/** Cores finais de UMA metade conforme o estilo ativo (traço = seta = borda). */
+export interface WeatherHalfStyle {
+  /** Cor do traço E da seta da metade. */
+  stroke: string;
+  /** Cor da borda da plaqueta. */
+  pillBorder: string;
+  /** Cor do texto da plaqueta (null = herdada do CSS do modo direcional). */
+  pillText: string | null;
+}
+
+export function weatherHalfStyle(half: WeatherHalf, mode: LinkV2StyleMode): WeatherHalfStyle {
+  if (mode === 'operational') {
+    const color = weatherOperationalColorVar(half.state, half.band);
+    return { stroke: color, pillBorder: color, pillText: WEATHER_OPERATIONAL_TEXT_VAR };
+  }
+  return { stroke: half.color, pillBorder: half.pillColor, pillText: null };
+}
+
+/** Cores do rótulo de estado agregado (ex.: "SEM DADOS") conforme o estilo. */
+export function weatherStateStyleColor(state: WeatherHalfState, mode: LinkV2StyleMode): string {
+  if (mode === 'operational') return weatherOperationalColorVar(state, null);
+  return WEATHER_HALF_COLOR_VAR[state];
+}
+
 /** Estados cuja linha é tracejada (nunca "contínuo saudável"). */
 const DASHED_HALF_STATES: readonly WeatherHalfState[] = [
   'down',
@@ -291,8 +377,7 @@ function buildHalf({
   const label = core ? (suffix ? `${core} · ${suffix}` : core) : null;
   // Fase G: utilização só colore a plaqueta. O traço é da direção.
   const operational = state === 'normal' || state === 'attention' || state === 'critical';
-  const band: WeatherPillBand | null =
-    state === 'attention' ? 'attention' : state === 'critical' ? 'critical' : state === 'normal' ? 'normal' : null;
+  const band: WeatherPillBand | null = weatherBandOfState(state);
   const color = operational ? WEATHER_DIRECTION_COLOR_VAR[key] : WEATHER_HALF_COLOR_VAR[state];
   return {
     key,

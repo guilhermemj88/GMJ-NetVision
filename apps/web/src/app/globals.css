@@ -2130,6 +2130,13 @@ button {
   --wm-state-stale: #8a9fb0;
   --wm-state-inconsistent: #a98bd6;
   --wm-state-unknown: #4d6270;
+  /* FASE M — PALETA OPERACIONAL (experimento A/B): cada metade do enlace usa a
+     cor da SUA utilização na linha, na seta e na borda da plaqueta. Tonalidades
+     fosca/discretas, sem brilho neon. */
+  --wm-op-normal: #43866e;
+  --wm-op-attention: #c79a45;
+  --wm-op-critical: #c65c63;
+  --wm-op-text: #e1e8e5;
   /* Fase G — CORES FIXAS DE DIREÇÃO: a linha informa o sentido, não o tráfego. */
   --wm-dir-a2b: var(--cyan-bright);
   --wm-dir-b2a: var(--violet);
@@ -2223,6 +2230,13 @@ button {
   border-radius: 4px;
   font-size: 8px;
   letter-spacing: 0;
+}
+/* FASE M — modo OPERACIONAL: a borda carrega a cor da utilização da própria
+   metade (mesmo `--wm-pill` do traço/seta) e o texto é o branco suave, para o
+   valor continuar legível sobre o fundo opaco em qualquer faixa. */
+.traffic-edge-v2__label--pill[data-link-style='operational'] {
+  border-color: color-mix(in srgb, var(--wm-pill, var(--wm-op-normal)) 72%, transparent);
+  color: var(--wm-op-text);
 }
 .traffic-edge-v2__label--half {
   padding: 1px 5px;
@@ -2319,6 +2333,15 @@ button {
   height: 9px;
   border-radius: 1px;
   background: var(--wm-center-bar);
+}
+/* Fase M: no modo operacional a cor representa utilização, então até os ícones
+   de forma (seta cheia / chevron) usam a paleta operacional. */
+.map-v2-legend[data-link-style='operational'] .map-v2-legend__item i.is-solid {
+  background: var(--wm-op-normal);
+}
+.map-v2-legend[data-link-style='operational'] .map-v2-legend__item i.is-chevron {
+  border-top-color: var(--wm-op-attention);
+  border-right-color: var(--wm-op-attention);
 }
 .map-v2-legend__item--center {
   color: #93a7b1;
