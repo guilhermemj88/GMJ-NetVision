@@ -319,7 +319,14 @@ function LinkV2WeatherEdgeContent({
     if (!text) return null;
     const placement = manual ? { mode: 'full' as const, ...manual } : placements[key];
     const visualMode = placement && placement.mode !== 'hidden' ? placement.mode : mode;
-    const finalText = visualMode === 'full' ? (half.label ?? text) : (half.compactLabel ?? text);
+    /**
+     * Fase L: `full` e `small` mostram o valor COMPLETO (unidade + %); só o
+     * formato compacto perde o percentual — a unidade do tráfego permanece.
+     */
+    const finalText =
+      visualMode === 'full' || visualMode === 'small'
+        ? (half.label ?? text)
+        : (half.compactLabel ?? text);
     const anchor = halfAnchorPoint(
       geometry,
       arc,

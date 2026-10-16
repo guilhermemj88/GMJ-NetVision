@@ -59,7 +59,11 @@ import {
   // própria curva (offset 0) e só sai dela se a anticolisão exigir.
   WEATHER_PILL_EXTRA_OFFSETS,
   WEATHER_PILL_FONT_SIZE,
+  WEATHER_PILL_FONT_SIZE_COMPACT,
+  WEATHER_PILL_FONT_SIZE_SMALL,
   WEATHER_PILL_HEIGHT,
+  WEATHER_PILL_HEIGHT_COMPACT,
+  WEATHER_PILL_HEIGHT_SMALL,
   WEATHER_PILL_LANE_OFFSET,
   WEATHER_LABEL_HALF_FRACTION,
   resolveWeatherMap,
@@ -491,6 +495,10 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
       scale: 1 / Math.max(0.25, zoomForLabels),
       fontSize: WEATHER_PILL_FONT_SIZE,
       height: WEATHER_PILL_HEIGHT,
+      fontSizeSmall: WEATHER_PILL_FONT_SIZE_SMALL,
+      heightSmall: WEATHER_PILL_HEIGHT_SMALL,
+      fontSizeCompact: WEATHER_PILL_FONT_SIZE_COMPACT,
+      heightCompact: WEATHER_PILL_HEIGHT_COMPACT,
       extraOffsets: WEATHER_PILL_EXTRA_OFFSETS,
     });
     for (const [id, entry] of entries) {

@@ -23,7 +23,7 @@ import {
   pointOnBezier,
   type SidePosition,
 } from '@/lib/map-visual-v2-geometry';
-import type { LinkV2LabelPlacement } from '@/lib/map-visual-v2-labels';
+import type { LinkV2LabelMode, LinkV2LabelPlacement } from '@/lib/map-visual-v2-labels';
 import { LAB_LABEL_LIFT, LINK_V2_CURVATURE, type LinkV2EdgeModel } from './v2-model';
 
 export interface LinkV2EdgeData extends Record<string, unknown> {
@@ -83,7 +83,7 @@ export function LinkV2Edge({
 
   const showLabel = data.showLabel || selected || hovered;
   const placement = data.placement;
-  const labelMode: 'full' | 'compact' | 'hidden' = !showLabel
+  const labelMode: LinkV2LabelMode = !showLabel
     ? 'hidden'
     : placement && placement.mode !== 'hidden'
       ? placement.mode

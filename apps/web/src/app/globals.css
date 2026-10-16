@@ -2201,22 +2201,36 @@ button {
 }
 /* Plaqueta de tráfego: EMBUTIDA na linha (fundo opaco interrompe o traçado). */
 .traffic-edge-v2__label--pill {
-  padding: 1px 6px;
-  border-radius: 6px;
-  border-color: color-mix(in srgb, var(--wm-pill, var(--wm-dir-a2b)) 60%, transparent);
+  padding: 1px 5px;
+  border-radius: 5px;
+  border-width: 1px;
+  border-color: color-mix(in srgb, var(--wm-pill, var(--wm-dir-a2b)) 45%, transparent);
   background: rgba(8, 14, 19, 0.97);
   color: var(--wm-pill, var(--wm-dir-a2b));
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 600;
   letter-spacing: 0.01em;
 }
+/* Degradação 2 (Fase L): mesmo valor, chrome mais justo — continua SOBRE a linha. */
+.traffic-edge-v2__label--pill.traffic-edge-v2__label--small {
+  padding: 0 3px;
+  border-radius: 4px;
+  font-size: 8px;
+}
+/* Degradação 3: valor com unidade, sem o percentual (ainda sobre a linha). */
+.traffic-edge-v2__label--pill.traffic-edge-v2__label--compact {
+  padding: 0 3px;
+  border-radius: 4px;
+  font-size: 8px;
+  letter-spacing: 0;
+}
 .traffic-edge-v2__label--half {
-  padding: 1px 6px;
-  font-size: 10px;
+  padding: 1px 5px;
+  font-size: 9px;
 }
 .traffic-edge-v2__label--state {
-  padding: 1px 6px;
-  font-size: 10px;
+  padding: 1px 5px;
+  font-size: 9px;
   letter-spacing: 0.08em;
 }
 .traffic-edge-v2__label--state,

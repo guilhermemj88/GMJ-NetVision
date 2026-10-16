@@ -221,12 +221,27 @@ export const WEATHER_PILL_LANE_OFFSET = 0;
 
 /**
  * Geometria real da plaqueta (px de tela) — usada pela anticolisão. Manter em
- * sincronia com `.traffic-edge-v2__label--pill` (font-size 10px, padding 1px 6px).
+ * sincronia com `.traffic-edge-v2__label--pill` no `globals.css`.
+ *
+ * Diretriz (Fase L): plaqueta MENOR e sempre embutida na linha. Três tamanhos
+ * reais, todos com fundo opaco e unidade completa:
+ *  - `full`: valor + % (padrão, o primeiro a ser tentado sobre a curva);
+ *  - `small`: mesmo texto com chrome mais justo (menos padding/fonte);
+ *  - `compact`: só o valor de tráfego (com unidade), sem o %
+ *    (ex.: `448 Mbps`), usado apenas quando falta espaço na própria linha.
  */
-export const WEATHER_PILL_FONT_SIZE = 10;
-export const WEATHER_PILL_HEIGHT = 17;
-/** Escadinha de deslocamentos: tenta ficar embutida e só sai para fora depois. */
-export const WEATHER_PILL_EXTRA_OFFSETS = [18, -18, 36, -36, 56, -56, 84, -84];
+export const WEATHER_PILL_FONT_SIZE = 9;
+export const WEATHER_PILL_HEIGHT = 15;
+export const WEATHER_PILL_FONT_SIZE_SMALL = 8;
+export const WEATHER_PILL_HEIGHT_SMALL = 13;
+export const WEATHER_PILL_FONT_SIZE_COMPACT = 8;
+export const WEATHER_PILL_HEIGHT_COMPACT = 13;
+/**
+ * Último recurso: deslocamento perpendicular de UMA altura de plaqueta —
+ * suficiente para escapar do traço/da plaqueta vizinha sem soltar o valor do
+ * enlace (valores grandes de fases antigas foram removidos).
+ */
+export const WEATHER_PILL_EXTRA_OFFSETS = [17, -17];
 
 /** Tracejado de cada estado de metade — herdado da paleta de estados da V2. */
 export function weatherHalfDash(half: Pick<WeatherHalf, 'state'>): string | undefined {
@@ -288,7 +303,12 @@ function buildHalf({
     bps,
     percent,
     label: label ?? emptyLabel ?? null,
-    compactLabel: percentText ?? (trafficText ? trafficText : (emptyLabel ?? null)),
+    /**
+     * Fase L: a versão compacta MANTÉM a unidade completa (o valor do tráfego
+     * continua legível); o que sai é o percentual. Só quando não há tráfego
+     * (estado anômalo, sem amostra) ela cai para o texto de estado/percentual.
+     */
+    compactLabel: trafficText ?? percentText ?? emptyLabel ?? null,
     valid,
     arrow,
     animated,

@@ -18,32 +18,55 @@ function candidate(overrides: Partial<LinkV2LabelCandidate> & { id: string }): L
   };
 }
 
+/** Tamanhos reais da plaqueta da Fase L (mesmos números do canvas). */
+const PILL_SIZES = {
+  fontSize: 9,
+  height: 15,
+  fontSizeSmall: 8,
+  heightSmall: 13,
+  fontSizeCompact: 8,
+  heightCompact: 13,
+};
+
 describe('anticolisão de rótulos V2', () => {
   it('coloca no deslocamento base quando há espaço', () => {
     const placements = resolveLinkV2LabelPlacements([candidate({ id: 'a' })], []);
     expect(placements.get('a')).toEqual({ mode: 'full', dx: 0, dy: 0 });
   });
 
-  it('sai de cima do nó quando a âncora cai dentro da caixa', () => {
+  it('não foge da linha quando a âncora cai dentro da caixa do nó', () => {
     const node: LinkV2NodeRect = { x: 170, y: 170, width: 60, height: 60 };
     const placements = resolveLinkV2LabelPlacements([candidate({ id: 'a' })], [node]);
+    // Fase L: o rótulo saudável sob o nó é ocultado — ele NÃO é empurrado para
+    // longe do traço (era o comportamento antigo, que soltava a plaqueta).
+    expect(placements.get('a')?.mode).toBe('hidden');
+  });
+
+  it('prioridade sob o nó fica compacta e continua colada no traço', () => {
+    const node: LinkV2NodeRect = { x: 170, y: 170, width: 60, height: 60 };
+    const placements = resolveLinkV2LabelPlacements(
+      [candidate({ id: 'a', priority: 2 })],
+      [node],
+      PILL_SIZES,
+    );
     const placement = placements.get('a');
-    expect(placement?.mode).toBe('full');
-    expect(placement?.dy).not.toBe(0);
-    // O rótulo desloca para fora da caixa do nó, não para dentro dele.
-    expect(placement?.dy).toBeGreaterThan(0);
+    // Nunca é ocultada, e quando sai do eixo é só o deslocamento mínimo da Fase L.
+    expect(placement?.mode).toBe('compact');
+    expect(Math.abs(placement?.dy ?? 0)).toBeLessThanOrEqual(17);
   });
 
   it('dois rótulos no mesmo ponto não se sobrepõem', () => {
     const placements = resolveLinkV2LabelPlacements(
       [candidate({ id: 'a' }), candidate({ id: 'b' })],
       [],
+      PILL_SIZES,
     );
     const first = placements.get('a');
     const second = placements.get('b');
-    expect(first?.mode).toBe('full');
-    expect(second?.mode).toBe('full');
+    expect(first).toEqual({ mode: 'full', dx: 0, dy: 0 });
+    expect(second?.mode).toBe('compact');
     expect(second?.dy).not.toBe(first?.dy);
+    expect(Math.abs(second?.dy ?? 0)).toBeLessThanOrEqual(17);
   });
 
   it('rótulo secundário bloqueado é ocultado; prioridade nunca é ocultada', () => {
@@ -83,44 +106,53 @@ describe('anticolisão de rótulos V2', () => {
     expect(estimateLabelWidth('62%')).toBeLessThan(estimateLabelWidth('25G · 62% · parcial'));
   });
 
-  it('com zoom reduzido (scale > 1) afasta mais o rótulo do nó', () => {
+  it('com zoom reduzido (scale > 1) o deslocamento mínimo respeita a proporção', () => {
     const node: LinkV2NodeRect = { x: 170, y: 170, width: 60, height: 60 };
-    const base = resolveLinkV2LabelPlacements([candidate({ id: 'a', laneOffset: 14 })], [node]);
-    const scaled = resolveLinkV2LabelPlacements([candidate({ id: 'a', laneOffset: 14 })], [node], {
-      scale: 2,
-    });
-    expect(base.get('a')?.mode).toBe('full');
-    expect(scaled.get('a')?.mode).toBe('full');
-    expect(Math.abs(scaled.get('a')?.dy ?? 0)).toBeGreaterThan(Math.abs(base.get('a')?.dy ?? 0));
+    const base = resolveLinkV2LabelPlacements(
+      [candidate({ id: 'a', laneOffset: 14, priority: 2 })],
+      [node],
+      PILL_SIZES,
+    );
+    const scaled = resolveLinkV2LabelPlacements(
+      [candidate({ id: 'a', laneOffset: 14, priority: 2 })],
+      [node],
+      { ...PILL_SIZES, scale: 2 },
+    );
+    expect(base.get('a')?.mode).toBe('compact');
+    expect(scaled.get('a')?.mode).toBe('compact');
+    // Mesmo com zoom reduzido a plaqueta não se solta do enlace.
+    expect(Math.abs(base.get('a')?.dy ?? 0)).toBeLessThanOrEqual(17);
+    expect(Math.abs(scaled.get('a')?.dy ?? 0)).toBeLessThanOrEqual(17 * 2);
   });
 
-  it('Fase J: desliza AO LONGO do traço antes de sair da linha', () => {
+  it('Fase L: prefere deslizar AO LONGO do traço a sair da linha', () => {
     // Obstáculo pequeno bem no meio da plaqueta: sem deslizamento, a única saída
-    // é sair da linha (deslocamento perpendicular).
+    // seria sair da linha (o que a Fase L evita).
     const obstacle: LinkV2NodeRect = { x: 190, y: 192, width: 20, height: 16 };
     const legacy = resolveLinkV2LabelPlacements(
-      [candidate({ id: 'a', normal: { x: 0, y: 1 } })],
+      [candidate({ id: 'a', normal: { x: 0, y: 1 }, priority: 2 })],
       [obstacle],
-      { extraOffsets: [18, -18, 36, -36, 56, -56, 84, -84] },
+      PILL_SIZES,
     );
     const sliding = resolveLinkV2LabelPlacements(
       [
         candidate({
           id: 'a',
           normal: { x: 0, y: 1 },
+          priority: 2,
           tangent: { x: 1, y: 0 },
           tangentBudget: 60,
         }),
       ],
       [obstacle],
-      { extraOffsets: [18, -18, 36, -36, 56, -56, 84, -84] },
+      PILL_SIZES,
     );
 
-    // Legado: preciso sair da linha para caber.
-    expect(legacy.get('a')?.mode).toBe('full');
-    expect(Math.abs(legacy.get('a')?.dy ?? 0)).toBeGreaterThan(0);
+    // Sem tangente a plaqueta degrada o formato e continua colada na linha.
+    expect(legacy.get('a')?.mode).toBe('compact');
+    expect(Math.abs(legacy.get('a')?.dy ?? 0)).toBeLessThanOrEqual(17);
 
-    // Fase J: continua EM CIMA da linha (dy = 0) e apenas desliza para o lado.
+    // Com tangente ela continua EM CIMA da linha (dy = 0) e apenas desliza.
     expect(sliding.get('a')?.mode).toBe('full');
     expect(sliding.get('a')?.dy).toBe(0);
     expect(Math.abs(sliding.get('a')?.dx ?? 0)).toBeGreaterThan(0);
@@ -162,22 +194,57 @@ describe('anticolisão de rótulos V2', () => {
     expect(pill.get('a')).toEqual({ mode: 'full', dx: 0, dy: 0 });
   });
 
-  it('Fase G: a escadinha maior acha posição externa antes de compactar', () => {
-    // Blocos perto da linha (faixa ±70) deixam livre apenas a pista distante:
-    // a escadinha curta desiste, a escadinha da plaqueta acha o lugar.
+  it('Fase L: a hierarquia degrada o TAMANHO antes de sair da linha', () => {
+    // Blocos perto da linha deixam a faixa externa livre — a Fase L ignora essa
+    // saída: prefere o formato menor SOBRE o traço.
     const wall: LinkV2NodeRect[] = [
       { x: 150, y: 140, width: 100, height: 40 },
       { x: 150, y: 190, width: 100, height: 20 },
       { x: 150, y: 220, width: 100, height: 40 },
     ];
-    const narrow = resolveLinkV2LabelPlacements([candidate({ id: 'a', normal: { x: 0, y: -1 } })], wall, {
-      extraOffsets: [18, -18, 36, -36, 56, -56],
-    });
-    const wide = resolveLinkV2LabelPlacements([candidate({ id: 'a', normal: { x: 0, y: -1 } })], wall, {
-      extraOffsets: [18, -18, 36, -36, 56, -56, 84, -84],
-    });
-    expect(narrow.get('a')?.mode).not.toBe('full');
-    expect(wide.get('a')?.mode).toBe('full');
-    expect(Math.abs(wide.get('a')?.dy ?? 0)).toBeGreaterThanOrEqual(84);
+    const placements = resolveLinkV2LabelPlacements(
+      [candidate({ id: 'a', normal: { x: 0, y: -1 }, priority: 2 })],
+      wall,
+      PILL_SIZES,
+    );
+    const placement = placements.get('a');
+    expect(placement?.mode).not.toBe('hidden');
+    // No máximo o deslocamento mínimo (uma altura de plaqueta na tela).
+    expect(Math.abs(placement?.dy ?? 0)).toBeLessThanOrEqual(17);
+  });
+
+  it('Fase L: nenhuma plaqueta fica longe do enlace em cenário denso', () => {
+    const wall: LinkV2NodeRect[] = [
+      { x: 100, y: 196, width: 240, height: 12 },
+      { x: 100, y: 214, width: 240, height: 12 },
+    ];
+    const candidates = [0, 1, 2, 3].map((index) =>
+      candidate({ id: `c${index}`, priority: 1, anchor: { x: 180 + index * 30, y: 200 } }),
+    );
+    const placements = resolveLinkV2LabelPlacements(candidates, wall, PILL_SIZES);
+    for (const placement of placements.values()) {
+      if (placement.mode === 'hidden') continue;
+      // normal = (0,1): dy é exatamente o deslocamento perpendicular.
+      expect(Math.abs(placement.dy)).toBeLessThanOrEqual(17);
+    }
+  });
+
+  it('Fase L: o formato menor é o degrau intermediário e mantém o valor na linha', () => {
+    // Diferença de largura entre `full` e `small` (mesmo texto, fonte menor).
+    expect(estimateLabelWidth('25G · 62%', 8)).toBeLessThan(
+      estimateLabelWidth('25G · 62%', 9),
+    );
+    // Nó encostando na plaqueta: prioridade continua SOBRE a linha, com o valor
+    // preservado — degrada o formato em vez de sair do traço.
+    const node: LinkV2NodeRect = { x: 190, y: 185, width: 22, height: 30 };
+    const placements = resolveLinkV2LabelPlacements(
+      [candidate({ id: 'a', priority: 2 })],
+      [node],
+      PILL_SIZES,
+    );
+    const placement = placements.get('a');
+    expect(placement?.mode).not.toBe('hidden');
+    expect(placement?.mode === 'small' || placement?.mode === 'compact').toBe(true);
+    expect(placement?.dy).toBe(0);
   });
 });

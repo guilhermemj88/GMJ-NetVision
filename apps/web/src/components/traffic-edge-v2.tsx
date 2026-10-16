@@ -33,7 +33,7 @@ import {
   arrowPlacement,
   buildBezierGeometry,
 } from '@/lib/map-visual-v2-geometry';
-import { LINK_V2_LABEL_LIFT, type LinkV2LabelPlacement } from '@/lib/map-visual-v2-labels';
+import { LINK_V2_LABEL_LIFT, type LinkV2LabelMode, type LinkV2LabelPlacement } from '@/lib/map-visual-v2-labels';
 import type { ManualLabelOffset } from '@/lib/map-visual-v2-offsets';
 import { PATH_OFFSET_SCALE } from '@/lib/link-curvature';
 
@@ -124,7 +124,7 @@ function LinkV2EdgeContent({
     dx: normal.x * LINK_V2_LABEL_LIFT,
     dy: normal.y * LINK_V2_LABEL_LIFT,
   };
-  const labelMode: 'full' | 'compact' | 'hidden' = !showLabel
+  const labelMode: LinkV2LabelMode = !showLabel
     ? 'hidden'
     : manualOffset
       ? 'full'
