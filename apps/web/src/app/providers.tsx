@@ -40,7 +40,7 @@ export function useAuth(): AuthState {
  * preview). Em produção `isMapVisualLabEnabled()` é false, a rota responde 404 e
  * segue o fluxo privado normal — a política de rotas da VNT não muda.
  */
-function isPublicPath(pathname: string): boolean {
+export function isPublicPath(pathname: string): boolean {
   return (
     pathname === '/login' ||
     pathname.startsWith('/view/') ||
