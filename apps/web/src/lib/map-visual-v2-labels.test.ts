@@ -94,6 +94,55 @@ describe('anticolisão de rótulos V2', () => {
     expect(Math.abs(scaled.get('a')?.dy ?? 0)).toBeGreaterThan(Math.abs(base.get('a')?.dy ?? 0));
   });
 
+  it('Fase J: desliza AO LONGO do traço antes de sair da linha', () => {
+    // Obstáculo pequeno bem no meio da plaqueta: sem deslizamento, a única saída
+    // é sair da linha (deslocamento perpendicular).
+    const obstacle: LinkV2NodeRect = { x: 190, y: 192, width: 20, height: 16 };
+    const legacy = resolveLinkV2LabelPlacements(
+      [candidate({ id: 'a', normal: { x: 0, y: 1 } })],
+      [obstacle],
+      { extraOffsets: [18, -18, 36, -36, 56, -56, 84, -84] },
+    );
+    const sliding = resolveLinkV2LabelPlacements(
+      [
+        candidate({
+          id: 'a',
+          normal: { x: 0, y: 1 },
+          tangent: { x: 1, y: 0 },
+          tangentBudget: 60,
+        }),
+      ],
+      [obstacle],
+      { extraOffsets: [18, -18, 36, -36, 56, -56, 84, -84] },
+    );
+
+    // Legado: preciso sair da linha para caber.
+    expect(legacy.get('a')?.mode).toBe('full');
+    expect(Math.abs(legacy.get('a')?.dy ?? 0)).toBeGreaterThan(0);
+
+    // Fase J: continua EM CIMA da linha (dy = 0) e apenas desliza para o lado.
+    expect(sliding.get('a')?.mode).toBe('full');
+    expect(sliding.get('a')?.dy).toBe(0);
+    expect(Math.abs(sliding.get('a')?.dx ?? 0)).toBeGreaterThan(0);
+    // E o deslizamento respeita o orçamento informado.
+    expect(Math.abs(sliding.get('a')?.dx ?? 0)).toBeLessThanOrEqual(60);
+  });
+
+  it('Fase J: sem tangente informada o comportamento antigo é preservado', () => {
+    const obstacle: LinkV2NodeRect = { x: 190, y: 192, width: 20, height: 16 };
+    const withBudgetOnly = resolveLinkV2LabelPlacements(
+      [candidate({ id: 'a', normal: { x: 0, y: 1 }, tangentBudget: 60 })],
+      [obstacle],
+      { extraOffsets: [18, -18] },
+    );
+    const without = resolveLinkV2LabelPlacements(
+      [candidate({ id: 'a', normal: { x: 0, y: 1 } })],
+      [obstacle],
+      { extraOffsets: [18, -18] },
+    );
+    expect(withBudgetOnly.get('a')).toEqual(without.get('a'));
+  });
+
   it('Fase G: declara o tamanho real da plaqueta e evita compactar antes da hora', () => {
     // Caixa de nó logo abaixo do rótulo: com a geometria ANTIGA (fonte 11 e
     // altura 20) a plaqueta encosta nela e degrada; declarando a plaqueta real

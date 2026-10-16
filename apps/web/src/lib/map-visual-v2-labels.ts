@@ -27,6 +27,14 @@ export interface LinkV2LabelCandidate {
   text: string;
   /** Texto compacto ("62%"). */
   compactText: string;
+  /**
+   * Fase J — direção TANGENTE (unitária) e orçamento de deslizamento em
+   * unidades de fluxo. Deslizar a plaqueta AO LONGO do traço resolve conflitos
+   * sem afastá-la da linha (evita "pílula flutuante" e preserva a associação
+   * valor↔sentido). Opcional: quem não informa continua no comportamento antigo.
+   */
+  tangent?: Point;
+  tangentBudget?: number;
 }
 
 export interface LinkV2NodeRect {
@@ -56,17 +64,24 @@ interface Rect {
   height: number;
 }
 
-function rectFor(
+/**
+ * Retângulo da plaqueta para uma posição: deslocamento perpendicular (em
+ * unidades de fluxo) + deslizamento opcional AO LONGO do traço (Fase J).
+ */
+function rectAt(
   anchor: Point,
   normal: Point,
   offset: number,
   width: number,
   scale: number,
-  height = LINK_V2_LABEL_HEIGHT,
+  options: { height?: number; tangent?: Point | undefined; slide?: number } = {},
 ): Rect {
-  const cx = anchor.x + normal.x * offset;
-  const cy = anchor.y + normal.y * offset;
-  const boxHeight = height * scale;
+  const boxHeight = (options.height ?? LINK_V2_LABEL_HEIGHT) * scale;
+  const slide = options.slide ?? 0;
+  const slideX = options.tangent ? options.tangent.x * slide : 0;
+  const slideY = options.tangent ? options.tangent.y * slide : 0;
+  const cx = anchor.x + normal.x * offset + slideX;
+  const cy = anchor.y + normal.y * offset + slideY;
   return { x: cx - width / 2, y: cy - boxHeight / 2, width, height: boxHeight };
 }
 
@@ -132,8 +147,6 @@ export function resolveLinkV2LabelPlacements(
   const sorted = [...candidates].sort((a, b) =>
     b.priority - a.priority || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0),
   );
-  const rectOf = (anchor: Point, normal: Point, offset: number, width: number) =>
-    rectFor(anchor, normal, offset, width, scale, labelHeight);
 
   const placedRects: Rect[] = [];
   const result = new Map<string, LinkV2LabelPlacement>();
@@ -145,47 +158,69 @@ export function resolveLinkV2LabelPlacements(
       candidate.laneOffset,
       ...extraOffsets.map((extra) => candidate.laneOffset + extra * scale),
     ];
+    /**
+     * Fase J: antes de sair da linha, a plaqueta desliza AO LONGO do traço.
+     * A ordem é determinística e sempre parte do meio da metade (deslize 0):
+     * meio → ±35% → ±70% do orçamento, e só depois o deslocamento perpendicular.
+     */
+    const budget = candidate.tangent && (candidate.tangentBudget ?? 0) > 0 ? candidate.tangentBudget! : 0;
+    const slides = budget > 0 ? [0, -0.35, 0.35, -0.7, 0.7, -1, 1].map((f) => f * budget) : [0];
+    const rectOf = (offset: number, width: number, slide: number) =>
+      rectAt(candidate.anchor, candidate.normal, offset, width, scale, {
+        height: labelHeight,
+        tangent: candidate.tangent,
+        slide,
+      });
+    const placementAt = (mode: 'full' | 'compact', offset: number, slide: number) => ({
+      mode,
+      dx: candidate.normal.x * offset + (candidate.tangent?.x ?? 0) * slide,
+      dy: candidate.normal.y * offset + (candidate.tangent?.y ?? 0) * slide,
+    });
 
     let placement: LinkV2LabelPlacement | null = null;
 
     for (const offset of offsets) {
-      const rect = rectOf(candidate.anchor, candidate.normal, offset, fullWidth);
-      if (!collides(rect, obstacles) && !collides(rect, placedRects)) {
-        placement = { mode: 'full', dx: candidate.normal.x * offset, dy: candidate.normal.y * offset };
-        placedRects.push(rect);
-        break;
-      }
-    }
-
-    if (!placement) {
-      for (const offset of offsets) {
-        const rect = rectOf(candidate.anchor, candidate.normal, offset, compactWidth);
+      for (const slide of slides) {
+        const rect = rectOf(offset, fullWidth, slide);
         if (!collides(rect, obstacles) && !collides(rect, placedRects)) {
-          placement = {
-            mode: 'compact',
-            dx: candidate.normal.x * offset,
-            dy: candidate.normal.y * offset,
-          };
+          placement = placementAt('full', offset, slide);
           placedRects.push(rect);
           break;
         }
       }
+      if (placement) break;
+    }
+
+    if (!placement) {
+      for (const offset of offsets) {
+        for (const slide of slides) {
+          const rect = rectOf(offset, compactWidth, slide);
+          if (!collides(rect, obstacles) && !collides(rect, placedRects)) {
+            placement = placementAt('compact', offset, slide);
+            placedRects.push(rect);
+            break;
+          }
+        }
+        if (placement) break;
+      }
     }
 
     if (!placement && candidate.priority >= LINK_V2_LABEL_KEEP_PRIORITY) {
-      // Prioridade não é ocultada: fica compacta no primeiro deslocamento que
-      // não cobre um nó (mesmo que outro rótulo já ocupe o lugar).
-      const offset =
-        offsets.find(
-          (value) =>
-            !collides(rectOf(candidate.anchor, candidate.normal, value, compactWidth), obstacles),
-        ) ?? candidate.laneOffset;
-      placement = {
-        mode: 'compact',
-        dx: candidate.normal.x * offset,
-        dy: candidate.normal.y * offset,
-      };
-      placedRects.push(rectOf(candidate.anchor, candidate.normal, offset, compactWidth));
+      // Prioridade não é ocultada: fica compacta na primeira posição que não
+      // cobre um nó (mesmo que outro rótulo já ocupe o lugar).
+      let found: { offset: number; slide: number } | null = null;
+      for (const offset of offsets) {
+        const slide = slides.find(
+          (value) => !collides(rectOf(offset, compactWidth, value), obstacles),
+        );
+        if (slide !== undefined) {
+          found = { offset, slide };
+          break;
+        }
+      }
+      const { offset, slide } = found ?? { offset: candidate.laneOffset, slide: 0 };
+      placement = placementAt('compact', offset, slide);
+      placedRects.push(rectOf(offset, compactWidth, slide));
     }
 
     result.set(
