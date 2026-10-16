@@ -183,8 +183,9 @@ describe('duas direções', () => {
         visualOf(
           link({
             directions: {
-              A_TO_B: { bps: (percent / 100) * 100 * G, utilization: percent, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
-              B_TO_A: { bps: 1 * G, utilization: 1, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
+              // Origem declarada (TX da ponta A): distingue 0% medido de "sem medição".
+              A_TO_B: { bps: (percent / 100) * 100 * G, utilization: percent, txBps: (percent / 100) * 100 * G, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
+              B_TO_A: { bps: 1 * G, utilization: 1, txBps: 1 * G, observedRxBps: null, deltaPercent: null, consistency: 'CONSISTENT' },
             },
           }),
         ),

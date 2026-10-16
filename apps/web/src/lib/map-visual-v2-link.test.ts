@@ -87,18 +87,6 @@ describe('adaptador do enlace real para o V2', () => {
     expect(visual.state).toBe('no-data');
   });
 
-  it('enlace de ponta única só tem amostra no lado monitorado', () => {
-    const single = link({
-      trafficMode: 'SINGLE_ENDED',
-      sourceInterfaceId: 'if-a',
-      targetInterfaceId: null,
-    });
-    const visual = resolveRealLinkV2(single, context());
-    expect(visual.aToB.hasSample).toBe(true);
-    expect(visual.bToA.hasSample).toBe(false);
-    expect(visual.partial).toBe(true);
-  });
-
   it('inconsistência declarada pela origem é respeitada', () => {
     const divergent = link({
       directions: {
@@ -115,6 +103,184 @@ describe('adaptador do enlace real para o V2', () => {
     const visual = resolveRealLinkV2(link({ status: 'UNKNOWN' }), context());
     expect(visual.state).not.toBe('normal');
     expect(visual.reason).toBe('operational-unknown');
+  });
+});
+
+describe('Fase H — SINGLE_ENDED: TX e RX da MESMA interface', () => {
+  const G = 1_000_000_000;
+
+  /** Enlace de trânsito com a interface monitorada na ponta A (ex.: CPTZ). */
+  const monitoredAtA = (overrides: Partial<NetworkLink> = {}) =>
+    link({
+      trafficMode: 'SINGLE_ENDED',
+      sourceInterfaceId: 'if-a',
+      targetInterfaceId: null,
+      directions: {
+        // A→B sai pela ponta A (TX) e B→A entra na ponta A (RX observado).
+        A_TO_B: { bps: 2 * G, utilization: 2, txBps: 2 * G, observedRxBps: null, deltaPercent: null, consistency: 'UNKNOWN' },
+        B_TO_A: { bps: 3 * G, utilization: 3, txBps: null, observedRxBps: 3 * G, deltaPercent: null, consistency: 'UNKNOWN' },
+      },
+      ...overrides,
+    });
+
+  /** Endpoints invertidos: a ponta monitorada é a B (ex.: TUDDO IP). */
+  const monitoredAtB = (overrides: Partial<NetworkLink> = {}) =>
+    link({
+      trafficMode: 'SINGLE_ENDED',
+      sourceInterfaceId: null,
+      targetInterfaceId: 'if-b',
+      directions: {
+        A_TO_B: { bps: 4 * G, utilization: 4, txBps: null, observedRxBps: 4 * G, deltaPercent: null, consistency: 'UNKNOWN' },
+        B_TO_A: { bps: 5 * G, utilization: 5, txBps: 5 * G, observedRxBps: null, deltaPercent: null, consistency: 'UNKNOWN' },
+      },
+      ...overrides,
+    });
+
+  it('1) interface monitorada na ponta A: A→B = TX(A) e B→A = RX(A)', () => {
+    const input = linkV2InputFromLink(monitoredAtA(), context());
+    expect(input.aToB.bps).toBe(2 * G);
+    expect(input.bToA.bps).toBe(3 * G);
+    const visual = resolveRealLinkV2(monitoredAtA(), context());
+    expect(visual.aToB.hasSample).toBe(true);
+    expect(visual.bToA.hasSample).toBe(true);
+    // Os dois sentidos avaliados: não é mais "parcial".
+    expect(visual.partial).toBe(false);
+    expect(visual.state).toBe('normal');
+  });
+
+  it('2) interface monitorada na ponta B (endpoints invertidos): A→B = RX(B), B→A = TX(B)', () => {
+    const input = linkV2InputFromLink(monitoredAtB(), context());
+    expect(input.aToB.bps).toBe(4 * G);
+    expect(input.bToA.bps).toBe(5 * G);
+    const visual = resolveRealLinkV2(monitoredAtB(), context());
+    expect(visual.aToB.hasSample).toBe(true);
+    expect(visual.bToA.hasSample).toBe(true);
+    expect(visual.partial).toBe(false);
+  });
+
+  it('3) só TX válido: a direção do TX aparece e a outra continua desconhecida', () => {
+    const onlyTx = monitoredAtA({
+      directions: {
+        A_TO_B: { bps: 2 * G, utilization: 2, txBps: 2 * G, observedRxBps: null, deltaPercent: null, consistency: 'UNKNOWN' },
+        B_TO_A: { bps: 0, utilization: 0, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'UNKNOWN' },
+      },
+    });
+    const visual = resolveRealLinkV2(onlyTx, context());
+    expect(visual.aToB.hasSample).toBe(true);
+    expect(visual.bToA.hasSample).toBe(false);
+    expect(visual.partial).toBe(true);
+  });
+
+  it('4) só RX válido: vale o espelho do caso anterior', () => {
+    const onlyRx = monitoredAtA({
+      directions: {
+        A_TO_B: { bps: 0, utilization: 0, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'UNKNOWN' },
+        B_TO_A: { bps: 3 * G, utilization: 3, txBps: null, observedRxBps: 3 * G, deltaPercent: null, consistency: 'UNKNOWN' },
+      },
+    });
+    const visual = resolveRealLinkV2(onlyRx, context());
+    expect(visual.aToB.hasSample).toBe(false);
+    expect(visual.bToA.hasSample).toBe(true);
+  });
+
+  it('5) TX = 0 é medição válida (não é ausência de dados)', () => {
+    const zeroTx = monitoredAtA({
+      directions: {
+        A_TO_B: { bps: 0, utilization: 0, txBps: 0, observedRxBps: null, deltaPercent: null, consistency: 'UNKNOWN' },
+        B_TO_A: { bps: 3 * G, utilization: 3, txBps: null, observedRxBps: 3 * G, deltaPercent: null, consistency: 'UNKNOWN' },
+      },
+    });
+    const visual = resolveRealLinkV2(zeroTx, context());
+    expect(visual.aToB.hasSample).toBe(true);
+    expect(visual.aToB.bps).toBe(0);
+    expect(visual.aToB.utilizationPercent).toBe(0);
+    expect(visual.state).not.toBe('no-data');
+  });
+
+  it('6) RX = 0 é medição válida', () => {
+    const zeroRx = monitoredAtA({
+      directions: {
+        A_TO_B: { bps: 2 * G, utilization: 2, txBps: 2 * G, observedRxBps: null, deltaPercent: null, consistency: 'UNKNOWN' },
+        B_TO_A: { bps: 0, utilization: 0, txBps: null, observedRxBps: 0, deltaPercent: null, consistency: 'UNKNOWN' },
+      },
+    });
+    const visual = resolveRealLinkV2(zeroRx, context());
+    expect(visual.bToA.hasSample).toBe(true);
+    expect(visual.bToA.bps).toBe(0);
+  });
+
+  it('7) sem TX e sem RX: "sem dados", nada inventado', () => {
+    const empty = monitoredAtA({
+      directions: {
+        A_TO_B: { bps: 0, utilization: 0, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'UNKNOWN' },
+        B_TO_A: { bps: 0, utilization: 0, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'UNKNOWN' },
+      },
+    });
+    const visual = resolveRealLinkV2(empty, context());
+    expect(visual.aToB.hasSample).toBe(false);
+    expect(visual.bToA.hasSample).toBe(false);
+    expect(visual.state).toBe('no-data');
+  });
+
+  it('8) enlace sem NENHUMA interface associada continua sem dados', () => {
+    const noInterface = link({
+      trafficMode: 'SINGLE_ENDED',
+      sourceInterfaceId: null,
+      targetInterfaceId: null,
+    });
+    const visual = resolveRealLinkV2(noInterface, context());
+    expect(visual.aToB.hasSample).toBe(false);
+    expect(visual.bToA.hasSample).toBe(false);
+    expect(visual.state).toBe('no-data');
+  });
+
+  it('9) métricas antigas preservam o estado stale', () => {
+    const visual = resolveRealLinkV2(monitoredAtA(), context(STALE));
+    expect(visual.state).toBe('stale');
+    expect(visual.stale).toBe(true);
+  });
+
+  it('10) DOWN continua DOWN mesmo com TX e RX na amostra', () => {
+    const visual = resolveRealLinkV2(monitoredAtA({ status: 'DOWN' }), context());
+    expect(visual.state).toBe('down');
+    expect(visual.labelText).toBe('DOWN');
+  });
+
+  it('11) capacidade desconhecida: mostra a taxa, nunca um percentual inventado', () => {
+    const visual = resolveRealLinkV2(monitoredAtA({ capacityBps: 0 }), context());
+    expect(visual.aToB.hasSample).toBe(true);
+    expect(visual.aToB.bps).toBe(2 * G);
+    expect(visual.aToB.utilizationPercent).toBeNull();
+    expect(visual.utilizationPercent).toBeNull();
+  });
+
+  it('12) interface remota não monitorada não é exigida', () => {
+    const visual = resolveRealLinkV2(monitoredAtA(), context());
+    // A ponta sem interface (operadora externa) não impede os dois sentidos.
+    expect(visual.aToB.hasSample && visual.bToA.hasSample).toBe(true);
+    expect(visual.reason).not.toBe('no-data');
+  });
+
+  it('13) DOUBLE_ENDED não regride: dois sentidos, sem parcial', () => {
+    const visual = resolveRealLinkV2(link(), context());
+    expect(visual.aToB.hasSample).toBe(true);
+    expect(visual.bToA.hasSample).toBe(true);
+    expect(visual.partial).toBe(false);
+    expect(visual.state).toBe('normal');
+  });
+
+  it('14) valores não são somados nem duplicados entre as direções', () => {
+    const visual = resolveRealLinkV2(monitoredAtA(), context());
+    expect(visual.aToB.bps).toBe(2 * G);
+    expect(visual.bToA.bps).toBe(3 * G);
+    expect(visual.aToB.bps).not.toBe(visual.bToA.bps);
+    expect(visual.dominantBps).toBe(3 * G);
+  });
+
+  it('15) percentuais seguem a capacidade do enlace, sentido a sentido', () => {
+    const visual = resolveRealLinkV2(monitoredAtA({ capacityBps: 100 * G }), context());
+    expect(visual.aToB.utilizationPercent).toBeCloseTo(2, 6);
+    expect(visual.bToA.utilizationPercent).toBeCloseTo(3, 6);
   });
 });
 

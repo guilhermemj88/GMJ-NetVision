@@ -418,6 +418,57 @@ describe('renderer do enlace bidirecional', () => {
     }
   });
 
+  it('SINGLE_ENDED com TX e RX da mesma interface mostra as DUAS plaquetas (Fase H)', () => {
+    const single = {
+      trafficMode: 'SINGLE_ENDED' as const,
+      sourceInterfaceId: 'if-a',
+      targetInterfaceId: null,
+      directions: {
+        A_TO_B: { bps: 2 * G, utilization: 2, txBps: 2 * G, observedRxBps: null, deltaPercent: null, consistency: 'UNKNOWN' as const },
+        B_TO_A: { bps: 3 * G, utilization: 3, txBps: null, observedRxBps: 3 * G, deltaPercent: null, consistency: 'UNKNOWN' as const },
+      },
+    };
+    const html = renderEdge({ linkOverrides: single });
+    const labels = [...html.matchAll(/data-testid="traffic-edge-v2-half-label"[^>]*>([^<]*)</g)].map(
+      (match) => match[1],
+    );
+    expect(labels).toHaveLength(2);
+    expect(labels.join(' | ')).toContain('2 Gbps · 2%');
+    expect(labels.join(' | ')).toContain('3 Gbps · 3%');
+    // Nenhuma metade em "sem dados" e nenhum sufixo "parcial".
+    expect(html).not.toContain('sem dados');
+    expect(html).not.toContain('parcial');
+    // Visual inalterado: traço ciano/roxo e as duas setas.
+    const halves = pathsFor(html, 'traffic-edge-v2-half');
+    expect(halves[0]).toContain('var(--wm-dir-a2b)');
+    expect(halves[1]).toContain('var(--wm-dir-b2a)');
+    expect(pathsFor(html, 'traffic-edge-v2-arrow')).toHaveLength(2);
+  });
+
+  it('SINGLE_ENDED com só TX mantém a outra direção sem dados (Fase H)', () => {
+    const html = renderEdge({
+      linkOverrides: {
+        trafficMode: 'SINGLE_ENDED',
+        sourceInterfaceId: 'if-a',
+        targetInterfaceId: null,
+        directions: {
+          A_TO_B: { bps: 2 * G, utilization: 2, txBps: 2 * G, observedRxBps: null, deltaPercent: null, consistency: 'UNKNOWN' },
+          B_TO_A: { bps: 0, utilization: 0, txBps: null, observedRxBps: null, deltaPercent: null, consistency: 'UNKNOWN' },
+        },
+      },
+    });
+    const labels = [...html.matchAll(/data-testid="traffic-edge-v2-half-label"[^>]*>([^<]*)</g)].map(
+      (match) => match[1],
+    );
+    expect(labels.join(' | ')).toContain('2 Gbps · 2%');
+    expect(labels.join(' | ')).toContain('sem dados');
+    const halves = pathsFor(html, 'traffic-edge-v2-half');
+    expect(halves[0]).toContain('data-state="normal"');
+    expect(halves[1]).toContain('data-state="unknown"');
+    // Só o sentido com medição ganha seta.
+    expect(pathsFor(html, 'traffic-edge-v2-arrow')).toHaveLength(1);
+  });
+
   it('não renderiza nada sem dados do enlace', () => {
     const html = renderToStaticMarkup(
       createElement(
