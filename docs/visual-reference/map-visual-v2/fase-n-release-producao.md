@@ -10,7 +10,8 @@ reversível **somente da Web**. API 3333, banco, SNMP e configurações não mud
 | Produção (antes) | `integration/map-visual-v2-production` @ `40adaa1` (release da Fase K) |
 | Desenvolvimento | `feature/map-visual-v2` @ `f6bb147` (Fases A–M) |
 | Commits integrados | Fase L `8471bbd` + Fase M `f0a295f` (cherry-pick sem conflito) |
-| Ajustes da Fase N | seletor de sessão e animação desligada no produto (este commit) |
+| Ajustes da Fase N | seletor de sessão e animação desligada no produto |
+| Adendo da Fase N | nomes de produto `Direcional (azul/roxo)` / `WeatherMap (utilização)` |
 
 O laboratório continua fora do build de produção (`_map-visual-preview`, decisão
 da Fase K). Nada foi copiado de `/opt/GMJ-NetVision-map-visual-v2`.
@@ -21,9 +22,11 @@ da Fase K). Nada foi copiado de `/opt/GMJ-NetVision-map-visual-v2`.
    produção: é a forma de o operador usar a V2 num mapa **sem gravar nada no
    banco**. A flag `Map.filters.visualMode` continua sendo o padrão do mapa e
    mapa sem flag continua abrindo em V1.
-2. **Seletor `ESTILO DOS ENLACES`** (Fase M) aparece sempre que o mapa está em
-   V2, com `Direcional (padrão)` e `Operacional (experimental)`; preferência da
-   aba (`gmj:preview:link-style:v1`), sem escrita no mapa/banco.
+2. **Seletor `ESTILO DOS ENLACES`** (Fase M, nomes de produto do adendo da
+   Fase N) aparece sempre que o mapa está em V2, com **`Direcional (azul/roxo)`**
+   (padrão) e **`WeatherMap (utilização)`** (valor interno `operational`);
+   preferência da aba (`gmj:preview:link-style:v1`), sem escrita no mapa/banco,
+   sem requisição de API e sem recarregar o mapa ao trocar.
 3. **Animação desligada por decisão do operador**: `resolveLinkV2AnimationModeForUi`
    devolve sempre `off` fora do preview (mesmo com preferência antiga na aba) e o
    controle `ANIMAÇÃO` continua exclusivo do preview. O código experimental dos

@@ -182,6 +182,11 @@ describe('TopBar — Fase N: estilos no produto', () => {
       'directional',
       'operational',
     ]);
+    // Nomes de produto exigidos pelo adendo da Fase N.
+    expect([...(style?.options ?? [])].map((option) => option.text)).toEqual([
+      'Direcional (azul/roxo)',
+      'WeatherMap (utilização)',
+    ]);
   });
 
   it('no preview o controle de ANIMAÇÃO continua disponível', async () => {
