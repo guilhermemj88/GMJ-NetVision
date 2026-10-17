@@ -35,7 +35,11 @@ import {
   useSetLinkV2AnimationMode,
 } from '@/lib/map-visual-v2-animation';
 import { useLinkV2StyleMode, useSetLinkV2StyleMode } from '@/lib/map-visual-v2-style';
-import type { LinkV2AnimationMode, LinkV2StyleMode } from '@/lib/map-visual-v2-weathermap';
+import {
+  LINK_V2_STYLE_LABELS,
+  type LinkV2AnimationMode,
+  type LinkV2StyleMode,
+} from '@/lib/map-visual-v2-weathermap';
 import type { MapVisualMode } from '@gmj/shared';
 
 export function TopBar() {
@@ -202,8 +206,8 @@ export function TopBar() {
                   onChange={(event) => setLinkStyleMode(event.target.value as LinkV2StyleMode)}
                   aria-label="Estilo dos enlaces"
                 >
-                  <option value="directional">Direcional (padrão)</option>
-                  <option value="operational">Operacional (experimental)</option>
+                  <option value="directional">{LINK_V2_STYLE_LABELS.directional}</option>
+                  <option value="operational">{LINK_V2_STYLE_LABELS.operational}</option>
                 </select>
                 <ChevronDown size={13} />
               </div>

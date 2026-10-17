@@ -9,9 +9,10 @@
  * então legenda e mapa não divergem:
  *  - DIRECIONAL (padrão): a DIREÇÃO é fixa (A→B ciano, B→A violeta) e a
  *    plaqueta é a única que muda com a utilização;
- *  - OPERACIONAL: cada metade tem a cor da SUA utilização (verde-sálvia <50%,
- *    âmbar fosco 50–79%, coral fosco ≥80%) na linha, na seta e na borda da
- *    plaqueta; o sentido continua explícito pela forma da seta;
+ *  - WEATHERMAP (utilização, valor interno `operational`): cada metade tem a cor
+ *    da SUA utilização (verde-sálvia <50%, âmbar fosco 50–79%, coral fosco ≥80%)
+ *    na linha, na seta e na borda da plaqueta; o sentido continua explícito pela
+ *    forma da seta;
  *  - em ambos, estados operacionais anômalos mantêm tracejado e cor semântica.
  */
 
@@ -56,7 +57,7 @@ export function MapV2Legend({ animation }: { animation: LinkV2AnimationMode }) {
       {operational ? (
         <>
           <span className="map-v2-legend__item map-v2-legend__item--center">
-            cor = utilização de CADA sentido
+            WeatherMap: cor = utilização de cada sentido
           </span>
           <span className="map-v2-legend__item" data-direction="a2b">
             <i className="is-solid" />
@@ -71,7 +72,7 @@ export function MapV2Legend({ animation }: { animation: LinkV2AnimationMode }) {
         <>
           <span className="map-v2-legend__item" data-direction="a2b">
             <i className="is-solid" />
-            A→B ciano (seta cheia)
+            Direcional: A→B ciano (seta cheia)
           </span>
           <span className="map-v2-legend__item" data-direction="b2a">
             <i className="is-chevron" />

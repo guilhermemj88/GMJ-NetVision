@@ -104,9 +104,15 @@ export type LinkV2StyleMode = 'directional' | 'operational';
 
 export const LINK_V2_STYLE_MODES: readonly LinkV2StyleMode[] = ['directional', 'operational'];
 
+/**
+ * Nomes de PRODUTO do seletor (Fase N, adendo): o operador escolhe entre o
+ * visual direcional e o WeatherMap clássico por utilização. O valor interno do
+ * estilo por utilização continua sendo `operational` — é o mesmo modo validado
+ * na Fase M, apenas com o nome que o operador usa.
+ */
 export const LINK_V2_STYLE_LABELS: Record<LinkV2StyleMode, string> = {
-  directional: 'Direcional',
-  operational: 'Operacional',
+  directional: 'Direcional (azul/roxo)',
+  operational: 'WeatherMap (utilização)',
 };
 
 /** Paleta OPERACIONAL (Fase M): discreta, sem brilho neon. */

@@ -44,8 +44,11 @@ pintados de verde. Zero **válido** (contador com origem) segue sendo normal.
 
 ## Seletor
 
-`ESTILO DOS ENLACES` na barra superior do preview (ao lado de `VISUAL DO MAPA` e
-`ANIMAÇÃO`), com `Direcional (padrão)` e `Operacional (experimental)`.
+`ESTILO DOS ENLACES` na barra superior (ao lado de `VISUAL DO MAPA` e, só no
+preview, `ANIMAÇÃO`), com os nomes de produto definidos no adendo da Fase N:
+
+- **Direcional (azul/roxo)** — padrão inicial;
+- **WeatherMap (utilização)** — valor interno `operational`.
 
 - independente da flag `Map.filters.visualMode` (V1/V2);
 - preferência **por aba** em `sessionStorage` (`gmj:preview:link-style:v1`);

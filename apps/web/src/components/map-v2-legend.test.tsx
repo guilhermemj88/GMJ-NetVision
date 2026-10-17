@@ -28,7 +28,7 @@ describe('legenda V2 por estilo', () => {
   it('modo DIRECIONAL: identidade fixa e plaquetas de utilização', () => {
     const html = legend('directional');
     expect(html).toContain('data-link-style="directional"');
-    expect(html).toContain('A→B ciano (seta cheia)');
+    expect(html).toContain('Direcional: A→B ciano (seta cheia)');
     expect(html).toContain('B→A roxa (chevron)');
     expect(html).toContain('&lt;50% na cor do sentido');
     expect(html).toContain('50–79% âmbar');
@@ -39,7 +39,7 @@ describe('legenda V2 por estilo', () => {
   it('modo OPERACIONAL: verde/âmbar/coral por sentido e seta indicando a direção', () => {
     const html = legend('operational');
     expect(html).toContain('data-link-style="operational"');
-    expect(html).toContain('cor = utilização de CADA sentido');
+    expect(html).toContain('WeatherMap: cor = utilização de cada sentido');
     expect(html).toContain('&lt;50% verde-sálvia');
     expect(html).toContain('50–79% âmbar');
     expect(html).toContain('≥80% coral');
