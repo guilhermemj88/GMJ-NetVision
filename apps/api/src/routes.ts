@@ -74,6 +74,11 @@ import { FastSnmpReader } from './infrastructure/snmp/fast-snmp-reader';
 import { PrismaFastTrafficStore } from './infrastructure/snmp/prisma-fast-traffic-store';
 import { listFastTrafficTargets } from './infrastructure/snmp/fast-traffic-targets';
 import { PriorityTrafficSource } from './worker/mitigation/fast-traffic-source';
+import {
+  isFastRoutedProfile,
+  matchesAutoEvidence,
+  samplingWindowForProfile,
+} from './worker/mitigation/mitigation-sampling-policy';
 import { SnmpService } from './infrastructure/snmp/snmp-service';
 import { DemoMplsRepository } from './infrastructure/mpls/demo-mpls-repository';
 import { DemoAlarmRepository } from './infrastructure/alarms/demo-alarm-repository';
@@ -1011,6 +1016,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     available: (id) => fastPoller.isAvailable(id),
   });
   const effectiveTraffic = new FastBridgeRoutingSource(bridgeConfig, bridgeSource, priorityTraffic);
+  const samplingForProfile = (profileId: string) =>
+    samplingWindowForProfile(profileId, {
+      legacyMaxAgeMs: autoMaxAgeMs,
+      bridge: bridgeConfig,
+      embedded: fastConfig,
+    });
   revalidateAutoEvidence = async (id, evidence) => {
     if (!evidence) return false;
     const profile = await mitigationRepository.getProfile(id);
@@ -1045,21 +1056,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       interfaceId: profile.interfaceId,
       bandwidthBps,
     });
-    if (
-      sample?.continuityKey !== evidence.continuityKey ||
-      !sample?.occurredAt ||
-      sample.occurredAt.getTime() < Date.parse(evidence.sampleAt)
-    )
+    if (!matchesAutoEvidence(sample, evidence, samplingForProfile(id), Date.now()))
       return false;
-    if (
-      !sample?.occurredAt ||
-      Date.now() < sample.occurredAt.getTime() ||
-      Date.now() - sample.occurredAt.getTime() > 45_000
-    )
-      return false;
-    if (sample.rateStartAt && sample.occurredAt.getTime() - sample.rateStartAt.getTime() > 45_000)
-      return false;
-    return sample.bps >= (bandwidthBps * BigInt(profile.triggerPercent)) / 100n;
+    return sample.bps > (bandwidthBps * BigInt(profile.triggerPercent)) / 100n;
   };
   const autoTargets = {
     list: async (profileIds?: readonly string[]) => {
@@ -1129,7 +1128,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     },
   };
   const mitigationAutoEngine = new MitigationAutoEngine({
-    requireRuntimeRead: bridgeConfig.mode !== 'OFF',
+    sampling: (target) => samplingForProfile(target.profileId),
+    evaluationScope: 'OPERATIONAL',
+    // Somente a fonte FAST exige leitura de runtime; LEGACY mantem a tolerancia
+    // publicada (o bridge em SHADOW nao adiciona dependencia ao motor legado).
+    requireRuntimeRead: (target) =>
+      isFastRoutedProfile(target.profileId, { bridge: bridgeConfig, embedded: fastConfig }),
     evaluationConcurrency: fastConfig.mode === 'OFF' && bridgeConfig.mode === 'OFF' ? 1 : 2,
     globalMode: mitigationEngineConfig.mode,
     execution: {
@@ -1190,9 +1194,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     logger: (message, meta) => app.log.info(meta ?? {}, message),
   });
   const shadowEngine = new MitigationAutoEngine({
+    // O shadow consome EXCLUSIVAMENTE a fonte FAST: janela FAST e escopo
+    // hipotético (nunca avalia gates de escrita nem o runtime operacional).
+    sampling: { maxAgeMs: bridgeConfig.maxAgeMs, maxGapMs: bridgeConfig.maxGapMs },
+    evaluationScope: 'SHADOW',
     globalMode: 'SIMULATION_ONLY',
     execution: { executor: 'MOCK', liveWrite: false, allowedDeviceIds: [] },
-    requireRuntimeRead: true,
+    requireRuntimeRead: false,
     targets: {
       list: async () =>
         (await autoTargets.list(bridgeConfig.profileIds)).filter(
@@ -1220,7 +1228,6 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     approvedFamilyPairs,
     dualDirections: { enabled: autoDualDirectionsEnabled },
     evaluationConcurrency: 2,
-    sampling: { maxAgeMs: bridgeConfig.maxAgeMs, maxGapMs: bridgeConfig.maxGapMs },
   });
   const shadowRuntime = new MitigationAutoRuntime({
     intervalMs: Math.max(1000, mitigationEngineConfig.checkIntervalSeconds * 1000),

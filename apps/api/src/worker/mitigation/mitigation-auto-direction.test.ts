@@ -81,6 +81,7 @@ function harness(targets: MitigationAutoTargetState[], options: HarnessOptions =
     now: NOW,
   });
   const engine = new MitigationAutoEngine({
+    sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
     globalMode: 'SIMULATION_ONLY',
     execution: { executor: 'MOCK', liveWrite: false, allowedDeviceIds: [DEVICE] },
     targets: { list: async () => targets },

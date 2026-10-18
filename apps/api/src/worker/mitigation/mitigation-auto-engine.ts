@@ -8,6 +8,7 @@ import type {
 } from '../../infrastructure/bgp/mitigation/mitigation-types';
 import type { MitigationExecutorKind } from '../../infrastructure/bgp/mitigation/mitigation-execution-config';
 import type { MitigationTrafficSample, MitigationTrafficSource } from './mitigation-traffic-source';
+import { withinSamplingWindow, type MitigationSamplingWindow } from './mitigation-sampling-policy';
 
 /**
  * MOTOR AUTO do GMJ NetVision.
@@ -191,10 +192,35 @@ export interface MitigationAutoDecision {
   timingsMs?: { preflight: number; execution: number; readback: number };
   totalResponseMs?: number | null;
   responseDeadlineExceeded?: boolean;
+  /** Escopo desta avaliação: operacional (pode escrever) ou hipotético (SHADOW). */
+  evaluationScope?: 'OPERATIONAL' | 'SHADOW';
+  /** SHADOW: estado FÍSICO real do perfil, reportado separadamente da hipótese. */
+  physicalState?: MitigationState | null;
+  /** SHADOW: `true` quando o perfil já está mitigado fisicamente. */
+  physicalMitigated?: boolean;
+  /** SHADOW: bloqueio operacional que impediria a escrita (não afeta a hipótese). */
+  operationalBlock?: MitigationAutoBlockReason | null;
+  /** Retentativa N da MESMA amostra confirmada (idempotente por `requestId`). */
+  retryAttempt?: number | null;
+  /** Janela temporal aplicada nesta avaliação (auditoria do contrato da fonte). */
+  samplingMaxAgeMs?: number;
+  samplingMaxGapMs?: number | null;
 }
 
+/**
+ * Janela por FONTE. `null` em `maxGapMs` = fonte sem regra de continuidade
+ * (contrato publicado do LEGACY). O motor não inicia sem esta configuração.
+ */
+export type MitigationAutoSamplingPolicy =
+  | MitigationSamplingWindow
+  | ((target: MitigationAutoTargetState) => MitigationSamplingWindow);
+
 export interface MitigationAutoEngineDeps {
-  requireRuntimeRead?: boolean;
+  /**
+   * Exigir leitura de runtime para este target. Booleano (todos) ou por target:
+   * somente fontes FAST exigem; LEGACY mantém a tolerância publicada.
+   */
+  requireRuntimeRead?: boolean | ((target: MitigationAutoTargetState) => boolean);
   /** Modo global do motor (AUTO so escreve quando o global tambem e AUTO). */
   globalMode: MitigationMode;
   execution: {
@@ -279,9 +305,23 @@ export interface MitigationAutoEngineDeps {
    * ja ativas permanecem intactos; o REMOVE continua 100% manual.
    */
   executionControl?: { enabled: boolean };
-  /** Maximum age AND gap for independent confirmations. No change to triggerSamples. */
-  sampling?: { maxAgeMs: number; maxGapMs: number };
+  /**
+   * OBRIGATÓRIO: janela da fonte roteada para este motor. Sem valor explícito o
+   * construtor falha — não existe fallback global (o antigo 45 s aplicado ao
+   * LEGACY foi a causa da regressão do Gate 2).
+   */
+  sampling: MitigationAutoSamplingPolicy;
+  /**
+   * `OPERATIONAL` decide escrita real; `SHADOW` avalia a hipótese em estado
+   * próprio e nunca passa pelos gates de autorização de escrita.
+   */
+  evaluationScope?: 'OPERATIONAL' | 'SHADOW';
   activationCooldownMs?: number;
+  /** Backoff após falha transitória de execução (default 15 s, escalonado). */
+  failureBackoffMs?: number;
+  maxFailureBackoffMs?: number;
+  /** Máximo de retentativas da MESMA amostra confirmada (default 2). */
+  maxRetriesPerSample?: number;
   /** Bounded evaluation of independent profiles; canonical policy locks still serialize writes. */
   evaluationConcurrency?: number;
 }
@@ -308,6 +348,20 @@ interface AutoCounters extends DirectionCounters {
   rx?: DirectionCounters;
 }
 
+/**
+ * Ultima tentativa de escrita por ESCOPO fisico (`deviceId:policy`).
+ * O cooldown so passa a contar quando a execucao TERMINA: falha transitoria
+ * (preflight/lock) usa backoff curto e escalonado, nunca a janela cheia.
+ */
+interface ScopeAttempt {
+  startedAtMs: number;
+  lastOutcomeAtMs: number | null;
+  /** Falhas consecutivas de execucao real (0 = ultima tentativa verificada). */
+  failures: number;
+  /** Identidade da amostra que autorizou a tentativa (retry da MESMA amostra). */
+  sampleKey: string | null;
+}
+
 function newDirectionCounters(): DirectionCounters {
   return {
     over: 0,
@@ -328,11 +382,13 @@ function countDistinctSample(
   sample: MitigationTrafficSample,
   thresholds: { trigger: bigint; recovery: bigint },
   atMs: number,
-  maxGapMs: number,
+  maxGapMs: number | null,
 ): boolean {
   const sampleMs = sample.occurredAt?.getTime() ?? atMs;
   if (
-    (counters.lastSampleAtMs !== null && sampleMs - counters.lastSampleAtMs > maxGapMs) ||
+    (maxGapMs !== null &&
+      counters.lastSampleAtMs !== null &&
+      sampleMs - counters.lastSampleAtMs > maxGapMs) ||
     (counters.continuityKey !== undefined && counters.continuityKey !== sample.continuityKey)
   ) {
     resetSequence(counters);
@@ -348,7 +404,7 @@ function countDistinctSample(
   if (!isNewSample) return false;
   counters.lastSampleKey = sample.sampleKey;
   counters.continuityKey = sample.continuityKey;
-  if (sample.bps >= thresholds.trigger) {
+  if (sample.bps > thresholds.trigger) {
     counters.over += 1;
     counters.below = 0;
     if (counters.triggerStartedAtMs === null) counters.triggerStartedAtMs = sampleMs;
@@ -410,7 +466,7 @@ function engineOwnsState(state: MitigationState | null | undefined): boolean {
 
 export class MitigationAutoEngine {
   private readonly history = new Map<string, MitigationAutoDecision[]>();
-  private readonly attempts = new Map<string, number>();
+  private readonly attempts = new Map<string, ScopeAttempt>();
   private readonly counters = new Map<string, AutoCounters>();
   private readonly configurationKeys = new Map<string, string>();
   private readonly inFlight = new Set<string>();
@@ -428,6 +484,7 @@ export class MitigationAutoEngine {
   private readonly transitionThrottleMs: number;
 
   constructor(private readonly deps: MitigationAutoEngineDeps) {
+    if (!deps.sampling) throw new Error('MITIGATION_AUTO_SAMPLING_REQUIRED');
     this.now = deps.now ?? (() => new Date());
     this.summaryIntervalMs = deps.summaryIntervalMs ?? 300_000;
     this.transitionThrottleMs = deps.transitionThrottleMs ?? 30_000;
@@ -537,12 +594,17 @@ export class MitigationAutoEngine {
   }
 
   private async evaluateOnce(target: MitigationAutoTargetState): Promise<MitigationAutoDecision> {
+    // Contrato por FONTE, resolvido a cada avaliação. Não existe fallback: o
+    // construtor garante que a política foi fornecida.
+    const sampling =
+      typeof this.deps.sampling === 'function' ? this.deps.sampling(target) : this.deps.sampling;
+    const maxGapMs = sampling.maxGapMs;
     if (target.configurationKey !== undefined) {
       const previous = this.configurationKeys.get(target.profileId);
       if (previous !== undefined && previous !== target.configurationKey) {
-        const counters = await this.loadCounters(target);
-        resetSequence(counters);
-        if (counters.rx) resetSequence(counters.rx);
+        const staleCounters = await this.loadCounters(target, sampling);
+        resetSequence(staleCounters);
+        if (staleCounters.rx) resetSequence(staleCounters.rx);
         await this.deps.runtime.save(target.profileId, { triggerCounter: 0, recoveryCounter: 0 });
       }
       this.configurationKeys.set(target.profileId, target.configurationKey);
@@ -585,7 +647,7 @@ export class MitigationAutoEngine {
     // comando marcou RECONCILIATION_REQUIRED. A leitura fresca evita decisao
     // baseada em estado velho e impede o tick de rebaixar estado alheio.
     const freshRead = await this.readRuntimeState(target.profileId);
-    if (this.deps.requireRuntimeRead && !freshRead.ok) return block('RUNTIME_UNAVAILABLE');
+    if (this.requiresRuntimeRead(target) && !freshRead.ok) return block('RUNTIME_UNAVAILABLE');
 
     // ---------------------------------------------------------------------
     // Gates de ELEGIBILIDADE, comuns a AUTO e ALERT_ONLY (mesma semantica do
@@ -646,20 +708,11 @@ export class MitigationAutoEngine {
     const recoveryThreshold =
       (target.effectiveBandwidthBps * BigInt(target.recoveryPercent)) / 100n;
     const thresholds = { trigger: threshold, recovery: recoveryThreshold };
-    const counters = await this.loadCounters(target);
-    const maxAgeMs = this.deps.sampling?.maxAgeMs ?? 45_000;
-    const maxGapMs = this.deps.sampling?.maxGapMs ?? 45_000;
-    const usable = (sample: MitigationTrafficSample | null): sample is MitigationTrafficSample => {
-      if (!sample || sample.bps < 0n) return false;
-      if (!sample.occurredAt) return true; // deterministic sources; production always supplies timestamps
-      const age = at.getTime() - sample.occurredAt.getTime();
-      const interval = sample.rateStartAt
-        ? sample.occurredAt.getTime() - sample.rateStartAt.getTime()
-        : 0;
-      return (
-        Number.isFinite(age) && age >= 0 && age <= maxAgeMs && interval >= 0 && interval <= maxGapMs
-      );
-    };
+    // Contrato por FONTE, resolvido a cada avaliação. Não existe fallback: o
+    // construtor garante que a política foi fornecida.
+    const counters = await this.loadCounters(target, sampling);
+    const usable = (sample: MitigationTrafficSample | null): sample is MitigationTrafficSample =>
+      withinSamplingWindow(sample, at.getTime(), sampling);
     const unavailable = async () => {
       resetSequence(counters);
       if (counters.rx) resetSequence(counters.rx);
@@ -722,10 +775,10 @@ export class MitigationAutoEngine {
       }
       const rxTriggered =
         sample.rx !== null &&
-        sample.rx.bps >= threshold &&
+        sample.rx.bps > threshold &&
         rxCounters.over >= target.triggerSamples;
       const txTriggered =
-        sample.tx !== null && sample.tx.bps >= threshold && counters.over >= target.triggerSamples;
+        sample.tx !== null && sample.tx.bps > threshold && counters.over >= target.triggerSamples;
       trafficByDirection = {
         rx: sample.rx !== null ? sample.rx.bps.toString() : null,
         tx: sample.tx !== null ? sample.tx.bps.toString() : null,
@@ -825,6 +878,7 @@ export class MitigationAutoEngine {
         await this.persistCounters(target, counters, traffic, sample.occurredAt ?? at, freshRead);
     }
 
+    const shadowScope = this.deps.evaluationScope === 'SHADOW';
     const withValues = {
       ...base,
       sampleAt: decisionSampleAt?.toISOString() ?? null,
@@ -845,13 +899,23 @@ export class MitigationAutoEngine {
           : null,
       responseDeadlineExceeded:
         counters.triggerStartedAtMs !== null && at.getTime() - counters.triggerStartedAtMs > 60_000,
+      evaluationScope: shadowScope ? ('SHADOW' as const) : ('OPERATIONAL' as const),
+      samplingMaxAgeMs: sampling.maxAgeMs,
+      samplingMaxGapMs: sampling.maxGapMs,
       ...(trafficByDirection !== null ? { trafficByDirection } : {}),
       ...(triggeredDirections !== null ? { triggeredDirections } : {}),
     };
+    let retryAttempt: number | null = null;
 
-    const currentlyMitigated =
-      (target.runtimeState !== null && MITIGATED_STATES.includes(target.runtimeState)) ||
-      (freshRead.ok && freshRead.state !== null && MITIGATED_STATES.includes(freshRead.state));
+    const physicalMitigated =
+      target.runtimeState !== null && MITIGATED_STATES.includes(target.runtimeState);
+    // SHADOW avalia a HIPOTESE em estado proprio: o runtime lido e o SHADOW, e o
+    // estado fisico real viaja separado (`physicalState`) sem bloquear a
+    // simulacao. No escopo operacional vale a regra publicada (fisico ou fresco).
+    const currentlyMitigated = shadowScope
+      ? freshRead.ok && freshRead.state !== null && MITIGATED_STATES.includes(freshRead.state)
+      : physicalMitigated ||
+        (freshRead.ok && freshRead.state !== null && MITIGATED_STATES.includes(freshRead.state));
     const evaluation = evaluateTraffic({
       currentlyMitigated,
       consecutiveOverThreshold: counters.over,
@@ -865,6 +929,7 @@ export class MitigationAutoEngine {
     const decided = (reason: MitigationAutoBlockReason | null, outcome: MitigationAutoOutcome) =>
       this.record({
         ...withValues,
+        retryAttempt,
         samplesOver: counters.over,
         samplesBelow: counters.below,
         outcome,
@@ -880,13 +945,30 @@ export class MitigationAutoEngine {
       return decided('ALREADY_MITIGATED', 'NO_ACTION');
     }
 
-    if (traffic < threshold) {
+    // Semantica publicada: igual ao limiar NAO e gatilho (`>` na contagem).
+    if (traffic <= threshold) {
       return decided('THRESHOLD_NOT_EXCEEDED', 'NO_ACTION');
     }
     if (counters.over < target.triggerSamples) {
       return decided('SAMPLES_INSUFFICIENT', 'TRIGGER_PENDING');
     }
-    if (!newTxSample) return decided('DUPLICATE_SAMPLE', 'SKIPPED');
+    const scopeKey = `${target.deviceId}:${target.policyName ?? target.profileId}`;
+    const attempt = this.attempts.get(scopeKey);
+    /**
+     * Fontes com regra de continuidade (FAST) têm cadência curta: reemitir o
+     * comando a cada 10 s sobre a MESMA amostra custaria SSH por nada. LEGACY
+     * preserva a semântica publicada (reemissão do MESMO `requestId`, que o
+     * comando canônico deduplica) — nenhum gate novo é aplicado.
+     */
+    const strictDispatch = !shadowScope && sampling.maxGapMs !== null;
+    if (!newTxSample) {
+      retryAttempt = attempt && attempt.failures > 0 ? attempt.failures : null;
+      if (strictDispatch) {
+        const authorized = this.retryAuthorization(scopeKey, counters, at.getTime(), sampling, attempt);
+        if (authorized === null) return decided('DUPLICATE_SAMPLE', 'SKIPPED');
+        retryAttempt = authorized;
+      }
+    }
     if (target.activationDirection === 'tx' && target.direction === 'rx')
       return decided('RX_MONITOR_ONLY', 'ALERT_TRIGGERED');
 
@@ -894,6 +976,30 @@ export class MitigationAutoEngine {
     // pelos MESMOS gates acima. ALERT_ONLY para aqui, com zero escrita.
     if (target.mode === 'ALERT_ONLY') {
       return decided(null, 'ALERT_TRIGGERED');
+    }
+
+    // SHADOW: a hipotese termina aqui. Os gates abaixo sao de AUTORIZACAO DE
+    // ESCRITA (operacionais) e nao respondem a pergunta do SHADOW; o bloqueio
+    // real correspondente e reportado em `operationalBlock`, ao lado do estado
+    // fisico. Nada e escrito e nenhum comando e emitido.
+    if (shadowScope) {
+      return this.record({
+        ...withValues,
+        samplesOver: counters.over,
+        samplesBelow: counters.below,
+        retryAttempt,
+        outcome: 'WOULD_ACTIVATE',
+        reason: null,
+        physicalState: target.runtimeState,
+        physicalMitigated,
+        operationalBlock:
+          target.autoPromotedBySweep === true && this.deps.executionControl?.enabled !== true
+            ? 'AUTO_EXECUTION_DISABLED'
+            : null,
+        detail: physicalMitigated
+          ? 'SHADOW: condicoes hipoteticas satisfeitas; estado fisico ja MITIGATED (preservado)'
+          : 'SHADOW: condicoes hipoteticas satisfeitas',
+      });
     }
 
     // AUTO-ALL: a flag de AUTORIZACAO (sweep) e a flag de EXECUCAO sao
@@ -932,21 +1038,39 @@ export class MitigationAutoEngine {
     const scopeReason = await this.detectScopeMitigation(target);
     if (scopeReason !== null) return decided(scopeReason, 'NO_ACTION');
 
-    const scopeKey = `${target.deviceId}:${target.policyName ?? target.profileId}`;
-    const lastAttempt = this.attempts.get(scopeKey);
-    if (
-      lastAttempt !== undefined &&
-      at.getTime() - lastAttempt < (this.deps.activationCooldownMs ?? 30_000)
-    ) {
-      return decided('ACTIVATION_COOLDOWN', 'SKIPPED');
+    // Cooldown/backoff apenas onde foi introduzido (fonte FAST). LEGACY nao
+    // ganha janela nova: a versao publicada nao tinha, e o comando e idempotente
+    // por `requestId`. O cooldown conta a partir do FIM da execucao real.
+    if (strictDispatch) {
+      const cooldownMs =
+        attempt && attempt.failures > 0
+          ? this.failureBackoffFor(attempt.failures)
+          : (this.deps.activationCooldownMs ?? 30_000);
+      if (
+        attempt?.lastOutcomeAtMs !== null &&
+        attempt?.lastOutcomeAtMs !== undefined &&
+        at.getTime() - attempt.lastOutcomeAtMs < cooldownMs
+      ) {
+        return decided('ACTIVATION_COOLDOWN', 'SKIPPED');
+      }
     }
-    this.attempts.set(scopeKey, at.getTime());
+    this.attempts.set(scopeKey, {
+      startedAtMs: at.getTime(),
+      lastOutcomeAtMs: attempt?.lastOutcomeAtMs ?? null,
+      failures: attempt?.failures ?? 0,
+      sampleKey: counters.lastSampleKey,
+    });
 
     const observationHash = createHash('sha256')
       .update(counters.lastSampleKey ?? String(at.getTime()))
       .digest('hex')
       .slice(0, 12);
-    const requestId = `auto-activate-${target.profileId}-${counters.triggerStartedAtMs ?? at.getTime()}-${observationHash}`;
+    // LEGACY preserva o `requestId` publicado (literal). FAST acrescenta a
+    // identidade da amostra para que um retry idempotente nunca se confunda com
+    // uma amostra nova.
+    const requestId = strictDispatch
+      ? `auto-activate-${target.profileId}-${counters.triggerStartedAtMs ?? at.getTime()}-${observationHash}`
+      : `auto-activate-${target.profileId}-${counters.triggerStartedAtMs ?? at.getTime()}`;
     this.inFlight.add(target.profileId);
     // Publish progress while the canonical operation is awaiting SSH/readback.
     // Three confirmations are not a verified mitigation.
@@ -956,7 +1080,9 @@ export class MitigationAutoEngine {
       profileId: target.profileId,
       deviceId: target.deviceId,
       requestId,
+      ...(retryAttempt !== null ? { retryAttempt } : {}),
     });
+    let attemptVerified = false;
     try {
       const commandStarted = this.now().getTime();
       const result = await this.deps.commands.execute({
@@ -966,10 +1092,12 @@ export class MitigationAutoEngine {
         ...(autoEvidence ? { autoEvidence } : {}),
       });
       const verified = result.ok && result.verified && result.status === 'ACTIVATED_VERIFIED';
+      attemptVerified = verified;
       const decision = this.record({
         ...withValues,
         samplesOver: counters.over,
         samplesBelow: counters.below,
+        retryAttempt,
         requestId,
         commandStatus: result.status,
         verified,
@@ -998,6 +1126,7 @@ export class MitigationAutoEngine {
         ...withValues,
         samplesOver: counters.over,
         samplesBelow: counters.below,
+        retryAttempt,
         requestId,
         outcome: 'FAILED',
         reason: 'ACTIVATE_FAILED',
@@ -1005,6 +1134,16 @@ export class MitigationAutoEngine {
       });
     } finally {
       this.inFlight.delete(target.profileId);
+      // A tentativa so conta como "concluida" aqui: o cooldown de sucesso ou o
+      // backoff de falha comecam a partir deste instante, nunca do inicio.
+      const current = this.attempts.get(scopeKey);
+      if (current && current.startedAtMs === at.getTime()) {
+        this.attempts.set(scopeKey, {
+          ...current,
+          lastOutcomeAtMs: this.now().getTime(),
+          failures: attemptVerified ? 0 : current.failures + 1,
+        });
+      }
     }
   }
 
@@ -1077,6 +1216,13 @@ export class MitigationAutoEngine {
       sampleAt: decision.sampleAt ?? null,
       sampleToDecisionMs: decision.sampleToDecisionMs ?? null,
       decisionMs: decision.decisionMs ?? null,
+      evaluationScope: decision.evaluationScope ?? 'OPERATIONAL',
+      physicalState: decision.physicalState ?? null,
+      physicalMitigated: decision.physicalMitigated ?? false,
+      operationalBlock: decision.operationalBlock ?? null,
+      retryAttempt: decision.retryAttempt ?? null,
+      samplingMaxAgeMs: decision.samplingMaxAgeMs ?? null,
+      samplingMaxGapMs: decision.samplingMaxGapMs ?? null,
     };
     this.deps.debugLogger?.('auto: decisao (debug)', meta);
 
@@ -1127,19 +1273,72 @@ export class MitigationAutoEngine {
     this.summary = newSummary(nowMs);
   }
 
-  private async loadCounters(target: MitigationAutoTargetState): Promise<AutoCounters> {
+  /**
+   * Somente fontes FAST exigem leitura de runtime. LEGACY preserva a tolerancia
+   * publicada (uma falha de leitura nao cria um bloqueio novo). SHADOW nunca
+   * exige: o estado simulado e best-effort e nao autoriza escrita.
+   */
+  private requiresRuntimeRead(target: MitigationAutoTargetState): boolean {
+    if (this.deps.evaluationScope === 'SHADOW') return false;
+    const rule = this.deps.requireRuntimeRead;
+    if (typeof rule === 'function') return rule(target);
+    return rule === true;
+  }
+
+  /** Backoff por falha transitoria: 15 s, 30 s, 60 s, 120 s (cap). */
+  private failureBackoffFor(failures: number): number {
+    const base = this.deps.failureBackoffMs ?? 15_000;
+    const cap = this.deps.maxFailureBackoffMs ?? 120_000;
+    return Math.min(base * 2 ** Math.min(Math.max(failures - 1, 0), 3), cap);
+  }
+
+  /**
+   * Autoriza reavaliar a MESMA amostra ja confirmada depois de uma falha
+   * transitoria (preflight/lock/execucao). Regras:
+   *  - nunca reconta (nao chama `countDistinctSample`);
+   *  - somente a mesma identidade de amostra que autorizou a tentativa;
+   *  - somente enquanto a evidencia continua dentro da janela da fonte;
+   *  - limitado por `maxRetriesPerSample` (default 2), com backoff.
+   */
+  private retryAuthorization(
+    scopeKey: string,
+    counters: AutoCounters,
+    atMs: number,
+    window: MitigationSamplingWindow,
+    attempt = this.attempts.get(scopeKey),
+  ): number | null {
+    if (!attempt || attempt.failures === 0) return null;
+    if (attempt.failures > (this.deps.maxRetriesPerSample ?? 2)) return null;
+    if (attempt.sampleKey === null || attempt.sampleKey !== counters.lastSampleKey) return null;
+    if (counters.lastSampleAtMs === null) return null;
+    if (atMs - counters.lastSampleAtMs > window.maxAgeMs) return null;
+    return attempt.failures;
+  }
+
+  private async loadCounters(
+    target: MitigationAutoTargetState,
+    sampling: MitigationSamplingWindow,
+  ): Promise<AutoCounters> {
     const cached = this.counters.get(target.profileId);
     if (cached) return cached;
     const runtime = await this.deps.runtime.get(target.profileId);
+    const lastSampleAt = runtime?.lastSampleAt ?? null;
+    const fresh =
+      lastSampleAt !== null && this.now().getTime() - lastSampleAt.getTime() <= sampling.maxAgeMs;
+    // Restart: a identidade da amostra persistida é sempre reidratada (para a
+    // MESMA leitura nunca contar duas vezes). As confirmações só sobrevivem no
+    // contrato LEGACY, com evidência ainda fresca e no máximo até uma amostra
+    // antes do gatilho: o restart exige ao menos uma confirmação nova. FAST
+    // sempre recomeça a sequência.
+    const rehydrate = fresh && sampling.maxGapMs === null;
+    const keep = Math.max(0, target.triggerSamples - 1);
     const counters: AutoCounters = {
-      // A restart cannot prove the previous sequence's continuity/quality.
-      over: 0,
-      below: 0,
+      over: rehydrate ? Math.min(Math.max(0, runtime?.triggerCounter ?? 0), keep) : 0,
+      below: rehydrate ? Math.max(0, runtime?.recoveryCounter ?? 0) : 0,
       triggerStartedAtMs: null,
       loaded: true,
-      // Reidrata a identidade do ultimo sample (sobrevive a restart).
-      lastSampleKey: runtime?.lastSampleAt?.toISOString() ?? null,
-      lastSampleAtMs: runtime?.lastSampleAt ? runtime.lastSampleAt.getTime() : null,
+      lastSampleKey: lastSampleAt?.toISOString() ?? null,
+      lastSampleAtMs: lastSampleAt ? lastSampleAt.getTime() : null,
     };
     this.counters.set(target.profileId, counters);
     return counters;
@@ -1256,7 +1455,11 @@ export class MitigationAutoEngine {
       // O estado so e tocado quando o motor e dono dele TANTO no snapshot
       // quanto na leitura fresca: estado mitigado/desconhecido nunca e
       // rebaixado pelo tick, e falha de leitura nunca autoriza escrita.
-      ...(fresh.ok && engineOwnsState(target.runtimeState) && engineOwnsState(fresh.state)
+      // No escopo SHADOW o snapshot e FISICO e nao governa o estado simulado:
+      // vale apenas a leitura do runtime SHADOW.
+      ...(fresh.ok &&
+      (this.deps.evaluationScope === 'SHADOW' || engineOwnsState(target.runtimeState)) &&
+      engineOwnsState(fresh.state)
         ? { state: counters.over >= target.triggerSamples ? 'TRIGGER_PENDING' : 'NORMAL' }
         : {}),
     });

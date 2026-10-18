@@ -84,6 +84,7 @@ function engine(
   const executed: string[] = [];
   const clock = { tick: 0 };
   const instance = new MitigationAutoEngine({
+    sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
     now: () => new Date(Date.UTC(2026, 9, 14, 12, 0, (clock.tick + 1) * 10)),
     globalMode: 'SIMULATION_ONLY',
     execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [DEVICE] },

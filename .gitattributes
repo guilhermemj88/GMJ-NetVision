@@ -1,0 +1,2 @@
+# Scripts de deploy/rollback são executados em Linux (bash): sempre LF.
+*.sh text eol=lf

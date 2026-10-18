@@ -113,6 +113,7 @@ function harness() {
   });
   const makeEngine = (mode: 'AUTO' | 'SIMULATION_ONLY' = 'AUTO') =>
     new MitigationAutoEngine({
+      sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
       globalMode: mode,
       requireRuntimeRead: true,
       execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: ['d'] },

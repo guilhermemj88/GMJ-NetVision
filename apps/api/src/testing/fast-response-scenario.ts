@@ -31,6 +31,7 @@ import {
   type MitigationAutoTargetState,
 } from '../worker/mitigation/mitigation-auto-engine';
 import { MitigationAutoRuntime } from '../worker/mitigation/mitigation-auto-runtime';
+import { legacySamplingWindow } from '../worker/mitigation/mitigation-sampling-policy';
 import type { SnmpVarBind } from '../domain/ports';
 import { SnmpPoller } from '../infrastructure/snmp/snmp-poller';
 import { SnmpClientImpl } from '../infrastructure/snmp/snmp-client-impl';
@@ -60,6 +61,11 @@ export async function fastResponseScenario(options: {
   repository?: MitigationRepository;
   scopeLock?: PolicyScopeLock;
   beforeProfiles?: (hosts: HostRecord[], interfaces: NetworkInterface[]) => Promise<void>;
+  /** Janela da fonte roteada para o motor (default: contrato LEGACY de 600 s). */
+  sampling?: (target: MitigationAutoTargetState) => { maxAgeMs: number; maxGapMs: number | null };
+  /** Escopo do motor: operacional (default) ou hipotético. */
+  evaluationScope?: 'OPERATIONAL' | 'SHADOW';
+  requireRuntimeRead?: boolean | ((target: MitigationAutoTargetState) => boolean);
 }) {
   const repository = options.repository ?? new InMemoryMitigationRepository();
   const hardware = new MockMitigationExecutor();
@@ -325,6 +331,12 @@ export async function fastResponseScenario(options: {
   const engine = new MitigationAutoEngine({
     globalMode: 'AUTO',
     evaluationConcurrency: 2,
+    evaluationScope: options.evaluationScope ?? 'OPERATIONAL',
+    // Sem fallback no motor: o harness declara a janela da fonte explicitamente.
+    sampling: options.sampling ?? legacySamplingWindow(600_000),
+    ...(options.requireRuntimeRead !== undefined
+      ? { requireRuntimeRead: options.requireRuntimeRead }
+      : {}),
     execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: hosts.map((h) => h.id) },
     targets: {
       list: async () =>

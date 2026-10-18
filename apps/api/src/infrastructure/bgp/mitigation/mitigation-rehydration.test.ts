@@ -233,6 +233,7 @@ describe('harness de restart: snapshot explicito no motor', () => {
 
   function engineFor(target: MitigationAutoTargetState, traffic: unknown) {
     return new MitigationAutoEngine({
+      sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
       globalMode: 'AUTO',
       execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [DEVICE] },
       targets: { list: async () => [target] },

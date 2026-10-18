@@ -201,6 +201,7 @@ async function harness(profileCount: number) {
 
   const traffic = new SequenceTrafficSource();
   const engine = new MitigationAutoEngine({
+    sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
     globalMode: 'AUTO',
     execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [DEVICE_A] },
     targets: {

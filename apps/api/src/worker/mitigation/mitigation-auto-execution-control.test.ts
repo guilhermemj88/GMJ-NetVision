@@ -89,6 +89,7 @@ function harness(options: {
     },
   };
   const engine = new MitigationAutoEngine({
+    sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
     globalMode: 'AUTO',
     execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [DEVICE] },
     targets: { list: async () => options.targets },
@@ -212,6 +213,7 @@ describe('AUTO: controle de execucao (autorizacao x execucao separadas)', () => 
     const executed: string[] = [];
     let tick = 0;
     const rxHigh = new MitigationAutoEngine({
+      sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
       now: () => new Date(Date.UTC(2026, 9, 14, 16, 0, (tick + 1) * 10)),
       globalMode: 'AUTO',
       execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [DEVICE] },

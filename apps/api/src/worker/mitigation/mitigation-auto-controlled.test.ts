@@ -128,6 +128,7 @@ async function scenario(mode: 'AUTO' | 'ALERT_ONLY') {
   });
   const traffic = new SequenceTrafficSource();
   const engine = new MitigationAutoEngine({
+    sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
     globalMode: 'AUTO',
     execution: { executor: 'HUAWEI', liveWrite: false, allowedDeviceIds: [F1A] },
     targets: {
@@ -188,11 +189,11 @@ describe('teste controlado do AUTO sem escrita (LIVE_WRITE=false)', () => {
     expect(decision.reason).toBe('THRESHOLD_NOT_EXCEEDED');
   });
 
-  it('90% exato com 3 samples => WOULD_ACTIVATE, sem live write', async () => {
+  it('90% exato NAO dispara (limiar exclusivo publicado)', async () => {
     const s = await scenario('AUTO');
     const decision = await s.runAt(90, 3);
-    expect(decision.outcome).toBe('WOULD_ACTIVATE');
-    expect(decision.reason).toBe('LIVE_WRITE_DISABLED');
+    expect(decision.outcome).toBe('NO_ACTION');
+    expect(decision.reason).toBe('THRESHOLD_NOT_EXCEEDED');
   });
 
   it('91% com 2 samples => SAMPLES_INSUFFICIENT', async () => {

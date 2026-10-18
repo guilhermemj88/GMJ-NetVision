@@ -10,10 +10,77 @@
 - Fast Response anterior: `44ca717`. Telemetry Recovery encerrada em `3732a1d555d20ce9a7e5bb776a204ec55f005160`; [relatório e inventário dos 36 perfis](DDOS_TELEMETRY_RECOVERY.md).
 - Integração: `999ab903b6d4a3c4e25f1ccb542fbccc7422f295`; leitura seletiva do SHADOW: `e983ad9b7c68c50a20921cf6bd8a8e5ce8ae91a7`.
 - Candidato unificado de código: **`accd265198f98f2f0e4a41b0a8cc1438c88a3650`**, branch `feature/ddos-fast-integration`, release **`v2026.10.18-ddos-fast-bridge-rc1`**.
+- RC2 de compatibilidade: branch `fix/ddos-fast-bridge-legacy-compat`, release **`v2026.10.18-ddos-fast-bridge-rc2`** (seção “RC2 — correção de compatibilidade LEGACY”).
 
 O frontend exigiu alinhamento explícito: sua versão publicada contém mapa V2 e identidade da instalação ausentes na base da API. As mudanças DDoS foram aplicadas primeiro numa worktree sobre o frontend publicado, commit `e667a0aebed0e59484f55e97d0000c346d762c85`, e incorporadas ao candidato unificado em `c9a2e3f6f66bd5d4a8e2e64055f6caa09d72d59f`. Naquele commit, os diretórios `apps/web` e `packages/shared` eram idênticos aos da worktree web; o commit final acrescenta somente a indicação DDoS de execução em andamento e seu teste. CSS global, mapa e identidade publicados foram preservados. Foi corrigida a tipagem do argumento opcional `flag=undefined`, sem mudar sua regra de execução. Não foram incorporadas alterações de backend de preview pertencentes à branch do frontend. [Manifesto dos arquivos e bases de comparação](benchmarks/ddos-fast-bridge-files.json).
 
 A worktree original com alterações de DCIM, a Fast Response e as outras worktrees permaneceram preservadas. Nenhum agente paralelo foi utilizado. Nenhum arquivo/configuração da FIBINET foi alterado. Os commits são locais, sem push ou merge em branch de produção.
+
+## RC2 — correção de compatibilidade LEGACY (`v2026.10.18-ddos-fast-bridge-rc2`)
+
+Branch `fix/ddos-fast-bridge-legacy-compat`, base `accd265` (`v2026.10.18-ddos-fast-bridge-rc1`). **Sem deploy, sem restart, sem migration, sem comando Huawei.**
+
+### Causa raiz, por arquivo e função
+
+| Arquivo | Ponto exato | Defeito |
+|---|---|---|
+| `apps/api/src/worker/mitigation/mitigation-auto-engine.ts` | `evaluateOnce` → `const maxAgeMs = this.deps.sampling?.maxAgeMs ?? 45_000` (rc1 L650-651) | Fallback global de 45 s aplicado a qualquer fonte |
+| idem | `countDistinctSample` (rc1 L335) | `sampleMs - lastSampleAtMs > maxGapMs ⇒ resetSequence` — lacuna LEGACY de 126–248 s zerava `over` |
+| idem | `evaluateOnce` (rc1 L351/L883) | `bps >= trigger` e `traffic < threshold`: semântica de limiar alterada |
+| `apps/api/src/routes.ts` | `new MitigationAutoEngine({…})` (rc1 L1131) | Motor **operacional** criado sem `sampling`; só o SHADOW recebia as janelas FAST |
+| `apps/api/src/infrastructure/bgp/mitigation/prisma-fast-shadow-runtime.ts` | `get()` | SHADOW lia o runtime **operacional** ⇒ `ALREADY_MITIGATED` e nunca `WOULD_ACTIVATE` |
+
+A versão publicada (`fc790ade…`, copiada congelada em `apps/api/src/worker/mitigation/legacy-auto-engine.fc790ad.ts`) **não tem** verificação de idade/lacuna no motor, **não tem** `DUPLICATE_SAMPLE`, **não tem** cooldown e usa `requestId = auto-activate-<profile>-<triggerStartedAt>`.
+
+### Contratos temporais
+
+| Fonte | Frescor (`maxAgeMs`) | Continuidade (`maxGapMs`) | Gate de duplicidade | Cooldown |
+|---|---|---|---|---|
+| **LEGACY** | 600 s (`MITIGATION_AUTO_TRAFFIC_MAX_AGE_SECONDS`), na fonte e revalidado no motor | **`null` — não existe** | nenhum (reemite o MESMO `requestId`, deduplicado pelo comando canônico) | **nenhum** |
+| **FAST** (ENFORCE roteado) | 30 s | 45 s (reset de sequência) | `DUPLICATE_SAMPLE` fora da janela de retry | 30 s após sucesso; backoff 15/30/60/120 s após falha |
+
+`sampling` passou a ser **obrigatório** no construtor (`MITIGATION_AUTO_SAMPLING_REQUIRED`): não existe mais default silencioso. `samplingWindowForProfile` devolve a janela da fonte **realmente roteada** — bridge em SHADOW mantém LEGACY.
+
+### Diferenças deliberadas em relação ao publicado (todas testadas)
+
+1. **Retry limitado da mesma amostra (FAST)**: após falha transitória (`POLICY_BUSY`, `PREFLIGHT_FAILED`, `ACTIVATE_FAILED`, `VERIFY_FAILED`), a mesma amostra é reavaliada sem reconta­gem, com o **mesmo `requestId`** (idempotente no `MitigationCommandService`), no máximo `maxRetriesPerSample = 2` e apenas enquanto a evidência estiver dentro da janela.
+2. **Cooldown/backoff somente FAST**, medido no **fim** da execução: falha transitória não consome a janela de 30 s de sucesso.
+3. **Restart**: a identidade da amostra persistida é sempre reidratada; confirmações LEGACY sobrevivem apenas com evidência fresca e no máximo `triggerSamples - 1` (exige ao menos uma confirmação nova). FAST nunca reidrata.
+
+### Correções adicionais
+
+- **SHADOW isolado**: `PrismaFastShadowRuntime.get` lê **somente** `MitigationFastShadowState`; decisões passam a expor `evaluationScope`, `physicalState`, `physicalMitigated` e `operationalBlock` separadamente. `operationalState()` reporta o estado físico real.
+- **Leitura de runtime por fonte**: `requireRuntimeRead` virou regra por target; só FAST exige. LEGACY não ganhou dependência nova com `bridge.mode=SHADOW`.
+- **Chave `sampling` duplicada** removida do objeto do SHADOW (L1189/L1220 do rascunho).
+- **Limiar**: `>` restaurado na contagem e `<=` na saída; `revalidateAutoEvidence` usa `>`.
+- **`requestId`**: LEGACY preserva o formato publicado; FAST acrescenta o hash da amostra.
+
+### Achados: DeepSeek × Codex × código
+
+| Achado | DeepSeek | Código/RC2 |
+|---|---|---|
+| 45 s global afetando LEGACY | confirmado | **CONFIRMADO** (fallback + motor sem `sampling`) |
+| Contagem de confirmações zerada | confirmado | **CONFIRMADO** (reset por lacuna) |
+| AUTO promovido bloqueado indevidamente | não reproduzido | **CONFIRMADO como inexistente**: `autoPromotedBySweep` correto; golden cobre promovido e manual |
+| Cooldown antes do preflight | inferido | **CONFIRMADO** no rc1; corrigido só no FAST |
+| SHADOW lendo runtime operacional | confirmado | **CONFIRMADO**; corrigido com estado próprio |
+| Mudança de limiar `>`→`>=` | confirmado | **CONFIRMADO**; revertido |
+
+### Testes
+
+- `mitigation-sampling-policy.test.ts` — contrato das janelas (SHADOW não muda a fonte operacional, 599/600/601 s, FAST 30/45 s, `matchesAutoEvidence`).
+- `mitigation-golden-decisions.test.ts` — **20 cenários GOLDEN** comparando o motor congelado `fc790ad` com a RC2 nas mesmas amostras: 126 s, 248 s, frescor 599/600/601 s, lacuna de 601 s, amostra repetida, stale, restart, limiar, promovido/manual, ALERT_ONLY, MITIGATED, policy compartilhada, gates de elegibilidade, autorizações de escrita, `ACTIVATED_NOT_VERIFIED` e evidência.
+- `mitigation-rc2-fast-contracts.test.ts` — 16 testes dos contratos novos (duplicidade, retry, backoff, SHADOW, leitura de runtime por fonte, promovido).
+- Suíte completa da API: **1.935 aprovados, 19 ignorados, zero falhas** (eram 1.905 no rc1); typecheck e lint dos arquivos alterados limpos.
+
+### Riscos restantes
+
+| Risco | Severidade | Observação |
+|---|---|---|
+| `requestId` LEGACY sem hash depende da deduplicação em memória do comando | baixa | mesmo comportamento publicado; o lock por policy continua serializando |
+| Backoff/retry FAST não persistido entre processos | baixa | restart reinicia a contagem e exige amostra nova |
+| SHADOW não mede tempo de SSH real | média | prova decisão, não aplicação Huawei |
+| SLA ≤60 s continua não homologado | — | depende de Gate 3 autorizado |
 
 ## Arquitetura final
 
@@ -156,6 +223,7 @@ Testes de rollback realizados: parada/retomada do produtor independente em Postg
 | Etapa | Decisão | Fundamento |
 |---|---|---|
 | Código/contrato/continuidade e pipeline isolado | **GO** | testes unitários e com PostgreSQL, bench e realtime aprovados |
+| RC2 (`v2026.10.18-ddos-fast-bridge-rc2`) — compatibilidade LEGACY | **GO técnico** | 20 cenários golden idênticos ao publicado; 1.935 testes verdes; build Linux OK |
 | Preparar e revisar deploy API SHADOW | **GO técnico, aguardando autorização** | separação de escrita, role RO, migrations aditivas, rollback preparado |
 | Executar deploy/restart na IMPLANTAR agora | **NO-GO sem autorização específica** | Gate 2 ainda não aprovado |
 | Rollout frontend amplo | **condicionado** | candidato alinhado; uma falha preexistente global precisa tratamento/aceite explícito |

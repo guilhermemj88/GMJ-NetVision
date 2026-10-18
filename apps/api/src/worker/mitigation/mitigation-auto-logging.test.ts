@@ -58,6 +58,7 @@ function harness(options: HarnessOptions) {
   const clock = { ms: NOW_MS };
   const samples = [...(options.samples ?? [])];
   const engine = new MitigationAutoEngine({
+    sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
     globalMode: 'AUTO',
     execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [DEVICE] },
     targets: { list: async () => options.targets },

@@ -235,6 +235,7 @@ async function harness(options: HarnessOptions = {}) {
 
   const traffic = new ThrowingTrafficSource();
   const engine = new MitigationAutoEngine({
+    sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
     globalMode: 'AUTO',
     execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [DEVICE_A] },
     targets: {

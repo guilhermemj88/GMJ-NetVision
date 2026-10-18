@@ -9,6 +9,12 @@ import {
   recordFastBridgeDecisions,
 } from '../../infrastructure/bgp/mitigation/prisma-fast-shadow-runtime';
 import { fastResponseScenario } from '../../testing/fast-response-scenario';
+import { PrismaInterfaceTrafficReader } from '../../infrastructure/bgp/mitigation/prisma-interface-traffic-reader';
+import { MitigationAutoEngine, type MitigationAutoTargetState } from './mitigation-auto-engine';
+import { InterfaceTrafficSource } from './mitigation-traffic-source';
+import { FastBridgeRoutingSource, fastBridgeConfig } from './fast-observation-bridge';
+import { fastPollerConfig } from '../../infrastructure/snmp/fast-traffic-poller';
+import { samplingWindowForProfile } from './mitigation-sampling-policy';
 
 const url = process.env.TELEMETRY_TEST_DATABASE_URL;
 if (url) {
@@ -223,10 +229,13 @@ describe.skipIf(!url)(
         lastSampleAt: new Date(),
         state: 'TRIGGER_PENDING',
       });
+      // Estado SHADOW e estado fisico sao reportados separadamente: a simulacao
+      // nao herda MITIGATED do runtime operacional (e nao o sobrescreve).
       expect(await runtime.get('bridge-test-shadow')).toMatchObject({
-        state: 'MITIGATED',
+        state: 'TRIGGER_PENDING',
         triggerCounter: 2,
       });
+      expect(await runtime.operationalState('bridge-test-shadow')).toBe('MITIGATED');
       expect(
         await db.bgpMitigationRuntime.count({ where: { profileId: 'bridge-test-shadow' } }),
       ).toBe(0);
@@ -258,6 +267,126 @@ describe.skipIf(!url)(
         }
       },
     );
+    it('real 126s LEGACY samples remain usable beside SHADOW without touching existing mitigation', async () => {
+      const deviceId = 'synthetic-device-legacy',
+        interfaceId = 'synthetic-if-legacy';
+      await db.device.create({
+        data: {
+          id: deviceId,
+          name: 'Synthetic legacy',
+          displayName: 'Synthetic legacy',
+          hostname: 'legacy-loopback',
+          ip: '127.0.0.1',
+          managementIp: '127.0.0.1',
+          deviceType: 'ROUTER',
+          source: 'SNMP',
+        },
+      });
+      await db.interface.create({
+        data: {
+          id: interfaceId,
+          deviceId,
+          name: 'Eth-Trunk1.3043',
+          ifIndex: 200,
+          speedBps: 300_000_000_000n,
+          adminStatus: 'UP',
+          operStatus: 'UP',
+        },
+      });
+      const profile = await repository.upsertProfile({
+        deviceId,
+        interfaceId,
+        policyName: 'PL-SYNTHETIC-LEGACY',
+        detectedBandwidthBps: 10_000_000_000n,
+        mode: 'AUTO',
+        triggerSamples: 3,
+      });
+      await repository.upsertRuntime(profile.id, {
+        state: 'MITIGATED',
+        plannedBogonNode: 1,
+        plannedMitigationNode: 2,
+      });
+      let now = Date.parse('2026-10-18T14:00:00Z');
+      const bridge = fastBridgeConfig({
+        MITIGATION_FAST_BRIDGE_MODE: 'SHADOW',
+        MITIGATION_FAST_BRIDGE_PROFILE_IDS: profile.id,
+      });
+      const legacy = new InterfaceTrafficSource(new PrismaInterfaceTrafficReader(db), {
+        direction: 'tx',
+        maxAgeMs: 600_000,
+        now: () => new Date(now),
+      });
+      const fast = { sample: vi.fn(), sampleWithId: vi.fn() };
+      const commands = vi.fn();
+      const target: MitigationAutoTargetState = {
+        profileId: profile.id,
+        deviceId,
+        interfaceId,
+        customer: 'fixture',
+        mode: 'AUTO',
+        direction: 'tx',
+        snapshotAvailable: true,
+        readiness: 'READY',
+        prefixStatus: 'SAFE',
+        blockedReason: null,
+        mitigationExcluded: false,
+        runtimeState: 'MITIGATED',
+        effectiveBandwidthBps: 10_000_000_000n,
+        bogonNode: 3,
+        mitigationNode: 4,
+        sharedPolicy: true,
+        peerAddresses: [],
+        triggerPercent: 90,
+        recoveryPercent: 70,
+        triggerSamples: 3,
+        recoverySamples: 12,
+      };
+      const engine = new MitigationAutoEngine({
+        globalMode: 'AUTO',
+        execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [deviceId] },
+        targets: { list: async () => [target] },
+        traffic: new FastBridgeRoutingSource(bridge, fast, legacy),
+        exclusions: { listPeerExclusions: async () => [] },
+        runtime: {
+          get: (id) => repository.getRuntime(id),
+          save: async (id, patch) => {
+            await repository.upsertRuntime(id, patch);
+          },
+        },
+        commands: { execute: commands },
+        sampling: (t) =>
+          samplingWindowForProfile(t.profileId, {
+            legacyMaxAgeMs: 600_000,
+            bridge,
+            embedded: fastPollerConfig({}),
+          }),
+        now: () => new Date(now),
+      });
+      const at = now - 80_000;
+      for (let n = -1; n < 14; n++) {
+        const timestamp = new Date(at + n * 126_000);
+        await db.interfaceMetricSample.create({
+          data: {
+            interfaceId,
+            timestamp,
+            inOctets: BigInt(n + 2),
+            outOctets: BigInt(n + 2),
+            rxBps: 300_000_000,
+            txBps: 3_000_000_000,
+            operStatus: 'UP',
+          },
+        });
+        if (n < 0) continue;
+        now = timestamp.getTime() + 80_000;
+        const [decision] = await engine.tick();
+        expect(decision?.trafficBps).toBe('3000000000');
+        expect(['ALREADY_MITIGATED', 'AUTO_REMOVE_DISABLED']).toContain(decision?.reason);
+        expect((await repository.getRuntime(profile.id))?.state).toBe('MITIGATED');
+      }
+      expect(commands).not.toHaveBeenCalled();
+      expect(fast.sampleWithId).not.toHaveBeenCalled();
+      expect(await repository.listEvents(profile.id, 20)).toHaveLength(0);
+    });
     it('rejects a read-write observation connection rather than silently trusting credentials', async () => {
       const reader = new PrismaFastBridgeReader(db, obs, async () => ({ entries: [] }));
       await expect(reader.snapshot('synthetic-if-0', 'p')).rejects.toThrow('read-only role');

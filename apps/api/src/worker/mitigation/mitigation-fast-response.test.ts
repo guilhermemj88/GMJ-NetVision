@@ -48,6 +48,7 @@ function fixture(patch: Partial<MitigationAutoTargetState> = {}) {
     sampleWithId: async () => row,
   };
   const engine = new MitigationAutoEngine({
+    sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
     globalMode: 'AUTO',
     execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: ['d'] },
     executionControl: { enabled: false },
@@ -194,11 +195,14 @@ describe('explicit temporal continuity', () => {
     await f.engine.evaluate(f.t);
     expect(f.calls()).toBe(1);
   });
-  it('exact threshold qualifies, below threshold breaks the sequence', async () => {
+  it('exact threshold does not qualify; above qualifies; below breaks the sequence', async () => {
     const f = fixture();
     f.set(100000, 9_000_000_000n);
+    // Limiar publicado é exclusivo (`>`): igual ao gatilho NÃO confirma.
+    expect((await f.engine.evaluate(f.t)).samplesOver).toBe(0);
+    f.set(110000, 9_000_000_001n);
     expect((await f.engine.evaluate(f.t)).samplesOver).toBe(1);
-    f.set(110000, 8_999_999_999n);
+    f.set(120000, 8_999_999_999n);
     expect((await f.engine.evaluate(f.t)).samplesOver).toBe(0);
   });
   it.each(['missing', 'stale', 'future', 'long-rate-window', 'generation', 'gap'])(

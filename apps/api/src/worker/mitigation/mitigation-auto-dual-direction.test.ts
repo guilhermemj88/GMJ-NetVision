@@ -88,6 +88,7 @@ function harness(targets: MitigationAutoTargetState[], options: HarnessOptions =
     { state: string; triggerCounter: number; recoveryCounter: number }
   >();
   const engine = new MitigationAutoEngine({
+    sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
     globalMode: options.armed ? 'AUTO' : 'SIMULATION_ONLY',
     execution: options.armed
       ? { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [DEVICE] }

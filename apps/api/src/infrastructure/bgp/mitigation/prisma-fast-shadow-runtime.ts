@@ -14,22 +14,27 @@ export class PrismaFastShadowRuntime implements ShadowRuntimePort {
     private readonly db: PrismaClient,
     private readonly repository: Pick<MitigationRepository, 'getRuntime'>,
   ) {}
+  /**
+   * Estado EXCLUSIVAMENTE SHADOW. Ler o runtime operacional aqui fazia o
+   * avaliador hipotético responder `ALREADY_MITIGATED` para perfis já
+   * protegidos (BHNET) e nunca produzir `WOULD_ACTIVATE`.
+   */
   async get(profileId: string) {
-    const [shadow, physical] = await Promise.all([
-      this.db.mitigationFastShadowState.findUnique({ where: { profileId } }),
-      this.repository.getRuntime(profileId),
-    ]);
-    const physicalState = physical?.state;
+    const shadow = await this.db.mitigationFastShadowState.findUnique({ where: { profileId } });
     return {
-      state:
-        physicalState &&
-        !['NORMAL', 'TRIGGER_PENDING', 'ALERT_ONLY', 'DISABLED'].includes(physicalState)
-          ? physicalState
-          : ((shadow?.state ?? 'NORMAL') as MitigationState),
+      state: (shadow?.state ?? 'NORMAL') as MitigationState,
       triggerCounter: shadow?.triggerCounter ?? 0,
       recoveryCounter: shadow?.recoveryCounter ?? 0,
       lastSampleAt: shadow?.lastSampleAt ?? null,
     };
+  }
+  /** Estado FÍSICO real: relatório separado, nunca insumo da simulação. */
+  async operationalState(profileId: string): Promise<MitigationState | null> {
+    try {
+      return (await this.repository.getRuntime(profileId))?.state ?? null;
+    } catch {
+      return null;
+    }
   }
   async save(profileId: string, patch: Parameters<MitigationAutoEngineDeps['runtime']['save']>[1]) {
     await this.db.mitigationFastShadowState.upsert({

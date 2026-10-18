@@ -204,6 +204,7 @@ async function harness(options: HarnessOptions = {}) {
 
   const traffic = new SequenceTrafficSource();
   const engine = new MitigationAutoEngine({
+    sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
     globalMode: options.globalMode ?? 'AUTO',
     execution: {
       executor: options.executor ?? 'HUAWEI',
@@ -322,12 +323,12 @@ describe('motor AUTO real (GMJ NetVision)', () => {
     expect(h.live.activateCalls).toBe(0);
   });
 
-  it('8) 90% exato confirma conforme o limiar inclusivo', async () => {
+  it('8) 90% exato NAO dispara (semantica publicada: limiar exclusivo)', async () => {
     const h = await harness();
     const decision = await h.run(3, h.exact);
-    expect(decision[0]!.outcome).toBe('ACTIVATED');
-    expect(decision[0]!.reason).toBe(null);
-    expect(h.live.activateCalls).toBe(1);
+    expect(decision[0]!.outcome).toBe('NO_ACTION');
+    expect(decision[0]!.reason).toBe('THRESHOLD_NOT_EXCEEDED');
+    expect(h.live.activateCalls).toBe(0);
   });
 
   it('9) >90% com menos de 3 samples => TRIGGER_PENDING', async () => {
