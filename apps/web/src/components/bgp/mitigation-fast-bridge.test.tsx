@@ -71,6 +71,22 @@ it('shows FAST confirmations and SHADOW without claiming execution/readback', as
   expect(el.textContent).toContain('NÃO CONFIRMADO');
   expect(el.textContent).toContain('Total: não medido');
 });
+it('shows an operation awaiting readback as MITIGATING with no verified protection claim', async () => {
+  const report = fixture();
+  report.mode = 'ENFORCE';
+  report.enforceProfileIds = ['p'];
+  report.inFlightProfileIds = ['p'];
+  report.decisions[0] = {
+    ...report.decisions[0]!,
+    runtimeState: 'MITIGATING',
+    commandStatus: 'IN_FLIGHT',
+    verified: false,
+  };
+  await render(report);
+  expect(el.textContent).toContain('FAST · ENFORCE · MITIGATING');
+  expect(el.textContent).toContain('readback: NÃO CONFIRMADO');
+  expect(el.textContent).not.toContain('FAST · ENFORCE · MITIGATED');
+});
 it('expires stale diagnostics and never presents an old CONFIRMED as current', async () => {
   vi.useFakeTimers();
   await render(fixture());

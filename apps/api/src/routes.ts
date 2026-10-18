@@ -1253,6 +1253,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
             bridgeConfig.mode === 'ENFORCE' && bridgeConfig.enforceProfileIds.includes(d.profileId),
         ),
     ],
+    inFlightProfileIds: bridgeConfig.profileIds.filter(id => mitigationAutoEngine.isBusy(id)),
     responseBudgetMs: 60_000,
     sshMetrics: mitigationSshMetrics,
   }));

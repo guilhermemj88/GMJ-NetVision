@@ -165,6 +165,34 @@ function harness() {
 }
 afterEach(() => vi.useRealTimers());
 describe('external observation bridge contract and engine continuity', () => {
+  it('exposes three confirmations and in-flight progress without claiming verified readback', async () => {
+    const h = harness(),
+      engine = h.makeEngine();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    h.commands.mockImplementation(async () => {
+      await gate;
+      return { ok: true, status: 'ACTIVATED_VERIFIED', verified: true };
+    });
+    await engine.evaluate(target());
+    h.step(2);
+    await engine.evaluate(target());
+    h.step(3);
+    const pending = engine.evaluate(target());
+    await vi.waitFor(() => expect(h.commands).toHaveBeenCalledTimes(1));
+    expect(engine.isBusy('p')).toBe(true);
+    expect(engine.getDecisions()[0]).toMatchObject({
+      samplesOver: 3,
+      commandStatus: 'IN_FLIGHT',
+      verified: false,
+    });
+    release();
+    expect((await pending).verified).toBe(true);
+    expect(engine.isBusy('p')).toBe(false);
+    expect(engine.getDecisions()[0]?.commandStatus).toBe('ACTIVATED_VERIFIED');
+  });
   it('requires separate explicit enforcement authorization and refuses concurrent collectors', () => {
     expect(fastBridgeConfig({}).mode).toBe('OFF');
     expect(() =>

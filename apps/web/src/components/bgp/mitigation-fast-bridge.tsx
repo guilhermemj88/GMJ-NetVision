@@ -26,10 +26,13 @@ export function MitigationFastBridgeFacts({
     !sample?.sampleAt ||
     now - new Date(sample.sampleAt).getTime() > 30_000;
   const mitigated =
-    decision?.outcome === 'ACTIVATED' ||
-    ['MITIGATED', 'MITIGATING', 'RECOVERY_PENDING'].includes(decision?.runtimeState ?? '');
-  const phase =
-    stale || !sample?.available
+    (decision?.outcome === 'ACTIVATED' && decision.verified) ||
+    decision?.runtimeState === 'MITIGATED';
+  const inFlight =
+    report.inFlightProfileIds?.includes(profileId) || decision?.runtimeState === 'MITIGATING';
+  const phase = inFlight
+    ? 'MITIGATING'
+    : stale || !sample?.available
       ? 'UNAVAILABLE'
       : mitigated
         ? 'MITIGATED'

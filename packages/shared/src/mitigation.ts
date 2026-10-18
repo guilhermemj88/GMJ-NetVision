@@ -307,6 +307,7 @@ export interface MitigationAutoRuntimeDto {
 }
 
 export interface MitigationFastBridgeStatusDto {
+  inFlightProfileIds?: string[];
   generatedAt: string;
   mode: 'OFF' | 'SHADOW' | 'ENFORCE';
   fallback: string;

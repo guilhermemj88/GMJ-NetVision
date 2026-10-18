@@ -948,6 +948,10 @@ export class MitigationAutoEngine {
       .slice(0, 12);
     const requestId = `auto-activate-${target.profileId}-${counters.triggerStartedAtMs ?? at.getTime()}-${observationHash}`;
     this.inFlight.add(target.profileId);
+    // Publish progress while the canonical operation is awaiting SSH/readback.
+    // Three confirmations are not a verified mitigation.
+    this.decisions.set(target.profileId, { ...withValues, samplesOver: counters.over, samplesBelow: counters.below,
+      outcome: 'TRIGGER_PENDING', reason: null, requestId, commandStatus: 'IN_FLIGHT', verified: false });
     this.deps.logger?.('auto: disparando ACTIVATE', {
       profileId: target.profileId,
       deviceId: target.deviceId,
@@ -1028,6 +1032,7 @@ export class MitigationAutoEngine {
    * periodico (`auto: resumo de decisoes`).
    */
   private record(decision: MitigationAutoDecision): MitigationAutoDecision {
+    this.decisions.set(decision.profileId, decision);
     const history = this.history.get(decision.profileId) ?? [];
     const signature = (d: MitigationAutoDecision) =>
       `${d.outcome}|${d.reason}|${Math.min(d.samplesOver, d.requiredSamples)}|${d.commandStatus}`;
