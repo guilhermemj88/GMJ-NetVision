@@ -184,7 +184,8 @@ export class InterfaceTrafficSource implements MitigationTrafficSource {
       (row.deviceId && row.deviceId !== target.deviceId) ||
       row.usable === false ||
       (row.adminStatus && row.adminStatus !== 'UP') ||
-      (row.operStatus && row.operStatus !== 'UP')
+      (row.operStatus && row.operStatus !== 'UP') ||
+      (row.currentOperStatus && row.currentOperStatus !== 'UP')
     )
       return false;
     const now = (this.options.now ?? (() => new Date()))().getTime();

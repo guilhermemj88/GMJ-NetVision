@@ -1,0 +1,227 @@
+{
+  "capturedAt": "2026-10-18T02:39:48.121711+00:00",
+  "release": "69b375f221b61c022ef446560fb357adb6bc108c",
+  "health": {
+    "release": "69b375f221b61c022ef446560fb357adb6bc108c",
+    "startedAt": "2026-10-18T02:34:41.481Z",
+    "observationOnly": true,
+    "executionAvailable": false,
+    "healthy": true,
+    "uptimeSeconds": 307.981452646,
+    "memory": {
+      "rss": 103714816,
+      "heapTotal": 16916480,
+      "heapUsed": 15542272,
+      "external": 2590470,
+      "arrayBuffers": 145449
+    },
+    "cpu": {
+      "user": 2320214,
+      "system": 394505
+    },
+    "mode": "OBSERVE",
+    "running": true,
+    "generation": "f3610cbd-6fcb-43b0-a7c5-c221fe598ed0",
+    "normalIntervalMs": 10000,
+    "suspectIntervalMs": 10000,
+    "activeDevices": 0,
+    "monitoredDevices": 1,
+    "requests": 31,
+    "failures": 0,
+    "lateStarts": 0,
+    "rejectedWrites": 0,
+    "qualityCounts": {
+      "ADMIN_DOWN": 62
+    },
+    "lastError": null,
+    "entries": [
+      {
+        "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+        "interfaceId": "cmsxk21el03odssimb81m5hjw",
+        "profileIds": [
+          "cmuoavm4x00c3sslhworjdb9i"
+        ],
+        "state": "UNAVAILABLE",
+        "quality": "ADMIN_DOWN",
+        "lastCollectedAt": "2026-10-18T02:39:42.947Z",
+        "lastValidAt": null,
+        "intervalMs": 10357,
+        "collectionMs": 341,
+        "rxBps": null,
+        "txBps": null,
+        "contractedPercent": {},
+        "intervalStatsMs": {
+          "count": 30,
+          "p50": 10018,
+          "p95": 10603,
+          "max": 10702
+        },
+        "validAgeMs": null,
+        "nextMeasurementAt": "2026-10-18T02:39:52.589Z",
+        "overdue": false
+      },
+      {
+        "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+        "interfaceId": "cmsxk21ep03ofssim8b1155z4",
+        "profileIds": [
+          "cmuoavm5i00c8sslhed09lt8p"
+        ],
+        "state": "UNAVAILABLE",
+        "quality": "ADMIN_DOWN",
+        "lastCollectedAt": "2026-10-18T02:39:42.947Z",
+        "lastValidAt": null,
+        "intervalMs": 10357,
+        "collectionMs": 341,
+        "rxBps": null,
+        "txBps": null,
+        "contractedPercent": {},
+        "intervalStatsMs": {
+          "count": 30,
+          "p50": 10018,
+          "p95": 10603,
+          "max": 10702
+        },
+        "validAgeMs": null,
+        "nextMeasurementAt": "2026-10-18T02:39:52.589Z",
+        "overdue": false
+      }
+    ]
+  },
+  "telemetry": [
+    {
+      "interfaceId": "cmsxk21el03odssimb81m5hjw",
+      "name": "Eth-Trunk1.3043",
+      "observations": 31,
+      "first": "2026-10-18T02:34:42.81",
+      "last": "2026-10-18T02:39:42.947",
+      "interval_p50_ms": 10019,
+      "interval_p95_ms": 10492.3,
+      "interval_max_ms": 10702.0,
+      "get_p50_ms": 6,
+      "get_p95_ms": 638.5,
+      "get_max_ms": 947.0,
+      "duplicates": 0,
+      "out_of_order": 0,
+      "uptime_regressions": 0,
+      "discontinuity_values": 1,
+      "ifindex_values": 1,
+      "input_counter_values": 1,
+      "output_counter_values": 1,
+      "valid_rate_samples": 0,
+      "admin_down_samples": 31,
+      "raw_in_octets": "10849160041667",
+      "raw_out_octets": "17485954741261",
+      "physical_capacity_bps": "300000000000"
+    },
+    {
+      "interfaceId": "cmsxk21ep03ofssim8b1155z4",
+      "name": "Eth-Trunk1.3044",
+      "observations": 31,
+      "first": "2026-10-18T02:34:42.81",
+      "last": "2026-10-18T02:39:42.947",
+      "interval_p50_ms": 10019,
+      "interval_p95_ms": 10492.3,
+      "interval_max_ms": 10702.0,
+      "get_p50_ms": 6,
+      "get_p95_ms": 638.5,
+      "get_max_ms": 947.0,
+      "duplicates": 0,
+      "out_of_order": 0,
+      "uptime_regressions": 0,
+      "discontinuity_values": 1,
+      "ifindex_values": 1,
+      "input_counter_values": 1,
+      "output_counter_values": 1,
+      "valid_rate_samples": 0,
+      "admin_down_samples": 31,
+      "raw_in_octets": "0",
+      "raw_out_octets": "91762298",
+      "physical_capacity_bps": "300000000000"
+    }
+  ],
+  "correlationWithConventionalPolling": [
+    {
+      "interfaceId": "cmsxk21el03odssimb81m5hjw",
+      "counterMatch": true
+    },
+    {
+      "interfaceId": "cmsxk21ep03ofssim8b1155z4",
+      "counterMatch": true
+    }
+  ],
+  "conventionalSamples": [
+    {
+      "id": "cmsxk21el03odssimb81m5hjw",
+      "name": "Eth-Trunk1.3043",
+      "timestamp": "2026-10-18T02:36:46.428",
+      "raw_in_octets": "10849160041667",
+      "raw_out_octets": "17485954741261",
+      "txBps": 0,
+      "operStatus": "DOWN"
+    },
+    {
+      "id": "cmsxk21ep03ofssim8b1155z4",
+      "name": "Eth-Trunk1.3044",
+      "timestamp": "2026-10-18T02:36:46.428",
+      "raw_in_octets": "0",
+      "raw_out_octets": "91762298",
+      "txBps": 0,
+      "operStatus": "DOWN"
+    }
+  ],
+  "checks": {
+    "sourceWritePrivileges": false,
+    "apiPidUnchanged": true,
+    "apiBundleUnchanged": true,
+    "executionFlagsUnchanged": true,
+    "profilesUnchanged": true,
+    "operationalMigrationCountUnchanged": true,
+    "newBhnetMitigationEvents": 0
+  },
+  "service": "MainPID=2243027\nNRestarts=0\nMemoryCurrent=38117376\nCPUUsageNSec=2724261000\n",
+  "sourcePermissions": [
+    {
+      "name": "Device",
+      "can_read": true,
+      "can_write": false
+    },
+    {
+      "name": "Interface",
+      "can_read": true,
+      "can_write": false
+    },
+    {
+      "name": "SnmpCredential",
+      "can_read": true,
+      "can_write": false
+    },
+    {
+      "name": "BgpMitigationProfile",
+      "can_read": true,
+      "can_write": false
+    },
+    {
+      "name": "BgpMitigationRuntime",
+      "can_read": false,
+      "can_write": false
+    },
+    {
+      "name": "BgpMitigationEvent",
+      "can_read": false,
+      "can_write": false
+    }
+  ],
+  "manifest": {
+    "commit": "69b375f221b61c022ef446560fb357adb6bc108c",
+    "builtAt": "2026-10-18T02:30:50.463Z",
+    "mode": "OBSERVE",
+    "executionAvailable": false,
+    "dependencies": {
+      "@prisma/client": "6.19.3",
+      "net-snmp": "3.26.3",
+      "asn1-ber": "1.2.2",
+      "smart-buffer": "4.2.0"
+    },
+    "sha256": "00e5560d4546597452d0885a6a3c37d2f92c4db28633f192f60c4b05fe9acdcb"
+  }
+}

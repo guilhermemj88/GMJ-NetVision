@@ -1,0 +1,30 @@
+{
+  "readOnlyCommands": ["display cpu-usage", "display bgp peer"],
+  "before": {
+    "at": "2026-10-17T23:24:59-03:00",
+    "systemCpuPercent": 16,
+    "oneMinuteCpuPercent": 16,
+    "fiveMinuteCpuPercent": 16,
+    "bgpPeers": 59,
+    "established": 40,
+    "bhnetStates": ["Idle", "Idle"]
+  },
+  "after": {
+    "at": "2026-10-17T23:40:41-03:00",
+    "systemCpuPercent": 17,
+    "oneMinuteCpuPercent": 14,
+    "fiveMinuteCpuPercent": 15,
+    "bgpPeers": 59,
+    "established": 40,
+    "bhnetStates": ["Idle", "Idle"]
+  },
+  "rollback": {
+    "service": "netvision-fast-observer.service",
+    "stoppedSeconds": 12,
+    "rowsBefore": 16,
+    "rowsAfter": 16,
+    "apiPid": 2165618,
+    "apiRestarted": false,
+    "observerResumedAt": "2026-10-17T23:34:39-03:00"
+  }
+}

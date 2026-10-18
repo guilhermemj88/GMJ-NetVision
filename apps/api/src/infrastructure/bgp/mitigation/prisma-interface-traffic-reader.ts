@@ -27,6 +27,7 @@ export interface InterfaceTrafficRow {
   usable?: boolean;
   adminStatus?: string;
   operStatus?: string;
+  currentOperStatus?: string;
 }
 
 export interface InterfaceTrafficReader {
@@ -43,6 +44,7 @@ export class PrismaInterfaceTrafficReader implements InterfaceTrafficReader {
       SELECT m."interfaceId" AS "interfaceId", m."rxBps" AS "rxBps", m."txBps" AS "txBps",
              m."timestamp" AS "timestamp", m."id"::text AS "sampleId", i."deviceId", i."ifIndex",
              m."inOctets", m."outOctets", i."adminStatus", m."operStatus"::text AS "operStatus",
+             i."operStatus"::text AS "currentOperStatus",
              (${Prisma.raw(USABLE_TRAFFIC_SAMPLE_SQL)}) AS usable,
              (SELECT p."timestamp" FROM "InterfaceMetricSample" p WHERE p."interfaceId" = m."interfaceId"
                AND p."timestamp" < m."timestamp" ORDER BY p."timestamp" DESC LIMIT 1) AS "rateStartAt"

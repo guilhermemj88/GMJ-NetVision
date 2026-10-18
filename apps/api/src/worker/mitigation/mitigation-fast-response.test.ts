@@ -136,7 +136,7 @@ describe('atomic traffic identity', () => {
     expect((await source.sampleWithId({ ...target, bandwidthBps: null }))?.bps).toBe(10n);
     expect(calls).toBe(1);
   });
-  it.each(['adminStatus', 'operStatus', 'usable', 'deviceId'])(
+  it.each(['adminStatus', 'operStatus', 'currentOperStatus', 'usable', 'deviceId'])(
     'rejects latest inconsistent %s without fallback',
     async (key) => {
       const row = {

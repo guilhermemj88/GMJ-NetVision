@@ -3,6 +3,8 @@
 Branch: `feature/ddos-fast-response`. Base: production API commit `fc790ade3455f2c16eeff372a8a9168deffb0d7d`.
 Release tag: `v2026.10.17-ddos-fast-observer-rc1`. The deployed `release.json` identifies the exact code commit and bundle hash.
 
+Operational observation is now active on IMPLANTAR. See [measured rollout and tested rollback](DDOS_FAST_RESPONSE_IMPLANTAR.md). The production API was not replaced; engine corrections remain in the isolated API candidate.
+
 ## Scope and architecture
 
 Two artifacts are intentionally distinct:
@@ -100,7 +102,7 @@ $env:FAST_REALTIME_TEST='1'
 npx vitest run src/worker/mitigation/mitigation-fast-realtime.test.ts --maxWorkers=1
 ```
 
-The PostgreSQL tests reject remote or operational database URLs. The optional real-clock test is intentionally skipped by the ordinary suite and was run separately. Full API suite: **1,835 passed, zero failures**, plus the separately passed real-clock test. Shared/web type checks and API build passed. Frontend tests expose pre-existing snapshot/BGP test failures reproduced from the untouched base; this is not a green frontend release and no frontend rollout is included.
+The PostgreSQL tests reject remote or operational database URLs. The optional real-clock test is intentionally skipped by the ordinary suite and was run separately. Full API suite: **1,836 passed, zero failures**, plus the separately passed real-clock test. Shared/web type checks and API build passed. Frontend tests expose pre-existing snapshot/BGP test failures reproduced from the untouched base; this is not a green frontend release and no frontend rollout is included.
 
 ## Migration and operational isolation
 

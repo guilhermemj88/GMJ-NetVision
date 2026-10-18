@@ -24,7 +24,6 @@ IPAddressAllow=127.0.0.1/32
 IPAddressAllow=45.163.144.1/32
 MemoryAccounting=yes
 MemoryMax=256M
-CPUAccounting=yes
 CPUQuota=20%
 LimitNOFILE=1024
 LimitCORE=0
