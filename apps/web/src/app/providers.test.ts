@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { isPublicPath } from '../app/providers';
 
 /**
@@ -7,6 +7,10 @@ import { isPublicPath } from '../app/providers';
  * sai com a tela de login em vez do gráfico.
  */
 describe('rotas publicas do app', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it('libera login, links publicos e a pagina de snapshot', () => {
     expect(isPublicPath('/login')).toBe(true);
     expect(isPublicPath('/view/map/abc')).toBe(true);
@@ -20,5 +24,15 @@ describe('rotas publicas do app', () => {
     expect(isPublicPath('/physical/rack-lab')).toBe(false);
     expect(isPublicPath('/snapshot')).toBe(false);
     expect(isPublicPath('/snapshotx/abc')).toBe(false);
+  });
+
+  it('mantem o laboratorio MAP-VISUAL-V2 privado fora do ambiente local/preview', () => {
+    expect(isPublicPath('/map-visual-preview')).toBe(false);
+  });
+
+  it('libera o laboratorio MAP-VISUAL-V2 apenas no preview isolado', () => {
+    vi.stubEnv('NEXT_PUBLIC_PREVIEW_MODE', 'true');
+    expect(isPublicPath('/map-visual-preview')).toBe(true);
+    expect(isPublicPath('/')).toBe(false);
   });
 });

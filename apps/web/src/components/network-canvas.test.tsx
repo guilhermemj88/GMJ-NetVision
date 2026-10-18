@@ -438,6 +438,168 @@ async function mount(fixture: { map: NetworkMap; link: NetworkLink }): Promise<H
   return harness;
 }
 
+describe('Fase J — seleção controlada pelo map-store', () => {
+  beforeEach(() => {
+    (
+      globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+    installLayoutShims();
+    installMatchMedia();
+  });
+
+  afterEach(async () => {
+    for (const { root, container } of roots.splice(0)) {
+      await act(async () => root.unmount());
+      container.remove();
+    }
+    vi.unstubAllGlobals();
+    vi.clearAllMocks();
+    useMapStore.setState({
+      map: null,
+      selection: null,
+      editMode: false,
+      readOnly: false,
+      linkGeometryDrafts: {},
+      toast: null,
+    });
+  });
+
+  const clickNode = async (container: HTMLDivElement, selector: string) => {
+    const node = container.querySelector<HTMLElement>(selector);
+    if (!node) throw new Error(`node ${selector} is not rendered`);
+    await act(async () => {
+      node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    });
+  };
+
+  it('mantém o EQUIPAMENTO selecionado (destaque e store) após o refetch de telemetria', async () => {
+    const fixture = deviceToDeviceMap();
+    const harness = await mount(fixture);
+    const nodeId = fixture.link.sourceDeviceId!;
+    // O destaque vive no n? interno (`.device-node`), n?o no wrapper do React Flow.
+    const nodeOf = () =>
+      harness.container.querySelector<HTMLElement>(`[data-id="${nodeId}"] .device-node`);
+
+    await clickNode(harness.container, `[data-id="${nodeId}"]`);
+    expect(useMapStore.getState().selection).toEqual({ kind: 'device', id: nodeId });
+    expect(nodeOf()?.className).toContain('is-selected');
+
+    // O refetch periódico troca TODOS os objetos do mapa (novas amostras SNMP).
+    const refetched = structuredClone(useMapStore.getState().map!);
+    await act(async () => {
+      useMapStore.getState().setMap(refetched);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    // A seleção continua: o destaque vem do store, não da seleção interna do RF.
+    expect(useMapStore.getState().selection).toEqual({ kind: 'device', id: nodeId });
+    expect(nodeOf()?.className).toContain('is-selected');
+    // E o ContextDrawer continua encontrando o equipamento pelo id.
+    expect(useMapStore.getState().map!.devices.find((d) => d.id === nodeId)).toBeDefined();
+  });
+
+  it('mantém o NÓ CONCEITUAL (CLOUD/PNI/IX) selecionado após o refetch', async () => {
+    const fixture = deviceToGenericMap('SOURCE');
+    const harness = await mount(fixture);
+    const nodeId = fixture.link.targetNodeId!;
+    // O destaque vive no n? interno (`.device-node`), n?o no wrapper do React Flow.
+    const nodeOf = () =>
+      harness.container.querySelector<HTMLElement>(`[data-id="${nodeId}"] .device-node`);
+
+    await clickNode(harness.container, `[data-id="${nodeId}"]`);
+    expect(useMapStore.getState().selection).toEqual({ kind: 'node', id: nodeId });
+    expect(nodeOf()?.className).toContain('is-selected');
+
+    await act(async () => {
+      useMapStore.getState().setMap(structuredClone(useMapStore.getState().map!));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(useMapStore.getState().selection).toEqual({ kind: 'node', id: nodeId });
+    expect(nodeOf()?.className).toContain('is-selected');
+    expect(useMapStore.getState().map!.nodes.find((n) => n.id === nodeId)).toBeDefined();
+  });
+
+  it('destaca o nó quando a seleção vem do STORE (ex.: Central de Alertas), sem clique no mapa', async () => {
+    const fixture = deviceToDeviceMap();
+    const harness = await mount(fixture);
+    const nodeId = fixture.link.sourceDeviceId!;
+    const nodeOf = () =>
+      harness.container.querySelector<HTMLElement>(`[data-id="${nodeId}"] .device-node`);
+
+    // Fluxo real do app: outro painel define a seleção e pede foco no mapa.
+    await act(async () => {
+      useMapStore.getState().setSelection({ kind: 'device', id: nodeId });
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(nodeOf()?.className).toContain('is-selected');
+
+    // E o destaque continua depois do refetch de telemetria.
+    await act(async () => {
+      useMapStore.getState().setMap(structuredClone(useMapStore.getState().map!));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(nodeOf()?.className).toContain('is-selected');
+
+    // Ao limpar a seleção o destaque sai (nada de estado visual preso).
+    await act(async () => {
+      useMapStore.getState().setSelection(null);
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(nodeOf()?.className).not.toContain('is-selected');
+  });
+
+  it('mantém o ENLACE selecionado após o refetch e preserva a geometria', async () => {
+    const fixture = deviceToDeviceMap();
+    const harness = await mount(fixture);
+    await harness.selectLink();
+    const pathBefore = harness.pathData();
+    const edgeBefore = harness.edgeElement();
+
+    expect(useMapStore.getState().selection).toEqual({ kind: 'link', id: fixture.link.id });
+
+    await act(async () => {
+      useMapStore.getState().setMap(structuredClone(useMapStore.getState().map!));
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(useMapStore.getState().selection).toEqual({ kind: 'link', id: fixture.link.id });
+    expect(harness.edgeElement()).toBe(edgeBefore);
+    expect(harness.pathData()).toBe(pathBefore);
+  });
+
+  it('troca de seleção limpa o destaque anterior (nó → enlace → nó)', async () => {
+    const fixture = deviceToDeviceMap();
+    const harness = await mount(fixture);
+    const nodeId = fixture.link.sourceDeviceId!;
+    const nodeOf = () =>
+      harness.container.querySelector<HTMLElement>(`[data-id="${nodeId}"] .device-node`);
+
+    await clickNode(harness.container, `[data-id="${nodeId}"]`);
+    expect(nodeOf()?.className).toContain('is-selected');
+
+    await harness.selectLink();
+    expect(useMapStore.getState().selection).toEqual({ kind: 'link', id: fixture.link.id });
+    expect(nodeOf()?.className).not.toContain('is-selected');
+
+    await clickNode(harness.container, `[data-id="${nodeId}"]`);
+    expect(useMapStore.getState().selection).toEqual({ kind: 'device', id: nodeId });
+    expect(nodeOf()?.className).toContain('is-selected');
+  });
+});
+
 describe('NetworkCanvas link rendering and editing', () => {
   beforeEach(() => {
     (

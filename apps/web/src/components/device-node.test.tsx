@@ -257,3 +257,89 @@ describe('DeviceNode alarm badge', () => {
     expect(badge!.getAttribute('aria-label')).toBe('3 alarmes ativos');
   });
 });
+
+describe('DeviceNode — engine V2 (sem orb circular)', () => {
+  const roots: Array<{ root: Root; container: HTMLDivElement }> = [];
+
+  beforeEach(() => {
+    (globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
+      true;
+    window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    for (const { root, container } of roots.splice(0)) {
+      act(() => root.unmount());
+      container.remove();
+    }
+    window.localStorage.clear();
+  });
+
+  function mountV2(
+    device: Device,
+    mapNode: MapNode,
+    alarmCount = 0,
+    dataOverrides: Partial<DeviceNodeData> = {},
+  ) {
+    const rendered = renderNode(device, mapNode, alarmCount, { glyphEngine: 'v2', ...dataOverrides });
+    roots.push({ root: rendered.root, container: rendered.container });
+    return rendered.container;
+  }
+
+  it('marca o no com device-node--v2 e desenha o glifo novo (sem icone antigo)', () => {
+    const container = mountV2(makeDevice({ deviceType: 'switch' }), makeNode());
+    const root = container.querySelector('.device-node')!;
+    expect(root.className).toContain('device-node--v2');
+    expect(container.querySelector('.device-node__glyph')).not.toBeNull();
+    expect(container.querySelector('.device-node__svg')).toBeNull();
+  });
+
+  it('mantem a MESMA metrica de caixa do V1 (handles nao se movem)', () => {
+    const v1 = renderNode(makeDevice({ deviceType: 'router' }), makeNode());
+    const v1Classes = v1.container.querySelector('.device-node')!.className;
+    const v2 = mountV2(makeDevice({ deviceType: 'router' }), makeNode());
+    const v2Classes = v2.querySelector('.device-node')!.className;
+
+    // Todas as classes de layout/tipo/status são as mesmas: o V2 só acrescenta a
+    // sua marca, nunca muda a métrica que posiciona os handles.
+    expect(v2Classes).toContain('device-node--v2');
+    expect(v1Classes).not.toContain('device-node--v2');
+    const withoutEngine = (value: string) => value.split(/\s+/).filter((token) => token !== 'device-node--v2').sort();
+    expect(withoutEngine(v2Classes)).toEqual(withoutEngine(v1Classes));
+    expect(v2Classes).toContain('device-node--icon_2d');
+    expect(v2Classes).toContain('status-up');
+    expect(v2.querySelectorAll('.react-flow__handle')).toHaveLength(4);
+  });
+
+  it('usa o glifo de dois chassis quando o tipo e CORE_SWITCH', () => {
+    window.localStorage.setItem('gmj:device-icon:dev-1', 'CORE_SWITCH');
+    const container = mountV2(makeDevice({ deviceType: 'switch' }), makeNode());
+    const glyph = container.querySelector('.device-node__glyph');
+    expect(glyph).not.toBeNull();
+    expect(glyph!.getAttribute('data-glyph')).toBe('CORE_SWITCH');
+  });
+
+  it('cai no desenho V1 quando o tipo nao tem glifo V2', () => {
+    window.localStorage.setItem('gmj:device-icon:dev-1', 'CARRIER');
+    const container = mountV2(makeDevice({ deviceType: 'generic' }), makeNode());
+    expect(container.querySelector('.device-node__glyph')).toBeNull();
+    expect(container.querySelector('.device-node__svg')).not.toBeNull();
+    expect(container.querySelector('.device-node')!.className).toContain('device-node--v2');
+  });
+
+  it('preserva status, alarme, nome e IP', () => {
+    const rendered = renderNode(
+      makeDevice({ status: 'WARNING', name: 'OLT-CENTRO-01', ip: '10.90.4.4' }),
+      makeNode(),
+      2,
+      { glyphEngine: 'v2' },
+    );
+    roots.push({ root: rendered.root, container: rendered.container });
+    const container = rendered.container;
+    expect(container.querySelector('.status-pulse')).not.toBeNull();
+    expect(container.querySelector('.device-node')!.className).toContain('status-warning');
+    expect(container.querySelector('.device-node__alarm-badge')!.textContent).toContain('2');
+    expect(container.querySelector('.device-node__copy strong')!.textContent).toBe('OLT-CENTRO-01');
+    expect(container.querySelector('.device-node__copy span')!.textContent).toBe('10.90.4.4');
+  });
+});

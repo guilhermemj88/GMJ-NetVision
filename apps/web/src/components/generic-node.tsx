@@ -7,6 +7,13 @@ import { LockKeyhole } from 'lucide-react';
 import { DEVICE_HANDLE_SIDES } from '@/lib/edge-handles';
 import { normalizeGenericIconType } from '@/lib/device-appearance';
 import { NetworkDeviceIcon } from './network-device-icon';
+import { NetworkDeviceGlyphV2 } from './network-device-glyphs-v2';
+import {
+  MAP_GLYPH_BASE_SIZE,
+  isMapGlyphCompact,
+  mapGlyphEffectiveSize,
+  resolveMapDeviceGlyphV2,
+} from '@/lib/map-visual-v2-glyphs';
 
 export interface GenericNodeData extends Record<string, unknown> {
   mapNode: DomainMapNode;
@@ -16,6 +23,8 @@ export interface GenericNodeData extends Record<string, unknown> {
   labelScale: number;
   /** Fora da camada/recorte atual: atenuado, mas ainda clicável. */
   dimmed?: boolean;
+  /** MAP-VISUAL-V2: qual jogo de glifos usar (padrão V1 — produção intacta). */
+  glyphEngine?: 'v1' | 'v2';
 }
 
 export type GenericFlowNode = Node<GenericNodeData, 'generic'>;
@@ -28,14 +37,15 @@ const handlePositions = {
 } as const;
 
 export function GenericNode({ data, selected }: NodeProps<GenericFlowNode>) {
-  const { mapNode, editMode, displayMode, nodeScale, labelScale, dimmed } = data;
+  const { mapNode, editMode, displayMode, nodeScale, labelScale, dimmed, glyphEngine = 'v1' } = data;
   const iconType = normalizeGenericIconType(mapNode.genericType);
   const iconVariant = displayMode === 'ICON_3D' ? '3d' : '2d';
   const label = mapNode.label || mapNode.genericType || 'Node';
+  const v2Glyph = glyphEngine === 'v2' ? resolveMapDeviceGlyphV2(iconType) : null;
 
   return (
     <div
-      className={`device-node device-node--${displayMode.toLowerCase()} device-node--type-${iconType.toLowerCase().replaceAll('_', '-')} ${selected ? 'is-selected' : ''} ${mapNode.locked ? 'is-locked' : ''} ${dimmed ? 'is-dimmed' : ''}`}
+      className={`device-node device-node--${displayMode.toLowerCase()} device-node--type-${iconType.toLowerCase().replaceAll('_', '-')} ${glyphEngine === 'v2' ? 'device-node--v2' : ''} ${selected ? 'is-selected' : ''} ${mapNode.locked ? 'is-locked' : ''} ${dimmed ? 'is-dimmed' : ''}`}
       style={
         {
           '--node-scale': nodeScale / 100,
@@ -54,7 +64,16 @@ export function GenericNode({ data, selected }: NodeProps<GenericFlowNode>) {
         />
       ))}
       <div className="device-node__icon">
-        <NetworkDeviceIcon type={iconType} variant={iconVariant} size={32} />
+        {v2Glyph ? (
+          <NetworkDeviceGlyphV2
+            type={v2Glyph}
+            size={MAP_GLYPH_BASE_SIZE}
+            className="device-node__glyph"
+            compact={isMapGlyphCompact(v2Glyph, mapGlyphEffectiveSize(nodeScale))}
+          />
+        ) : (
+          <NetworkDeviceIcon type={iconType} variant={iconVariant} size={MAP_GLYPH_BASE_SIZE} />
+        )}
       </div>
       <div className="device-node__copy">
         <strong>{label}</strong>

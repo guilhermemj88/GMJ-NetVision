@@ -23,6 +23,24 @@ import { newestCollectionStamp } from '@/lib/map-freshness';
 import { GlobalInterfaceSearch } from './global-interface-search';
 import { alertCenterAttentionCount } from '@gmj/shared';
 import { useAlertCenterSummary } from '@/lib/use-alert-center';
+import {
+  isPreviewInstance,
+  isVisualModeSessionSelectorEnabled,
+  useMapVisualMode,
+  useSetMapVisualMode,
+} from '@/lib/map-visual-v2-preview';
+import {
+  useDiscardLegacyPreviewAnimation,
+  useLinkV2AnimationMode,
+  useSetLinkV2AnimationMode,
+} from '@/lib/map-visual-v2-animation';
+import { useLinkV2StyleMode, useSetLinkV2StyleMode } from '@/lib/map-visual-v2-style';
+import {
+  LINK_V2_STYLE_LABELS,
+  type LinkV2AnimationMode,
+  type LinkV2StyleMode,
+} from '@/lib/map-visual-v2-weathermap';
+import type { MapVisualMode } from '@gmj/shared';
 
 export function TopBar() {
   const map = useMapStore((state) => state.map);
@@ -38,6 +56,24 @@ export function TopBar() {
   const authRequired = Boolean(user);
   // Mesma leitura da Central (cache compartilhado): nada de polling paralelo.
   const attention = alertCenterAttentionCount(useAlertCenterSummary(authRequired));
+  /**
+   * MAP-VISUAL-V2 (Fase N): o seletor V1/V2 de SESSÃO existe no produto e no
+   * preview — é como o operador usa a V2 sem gravar nada no mapa. O controle
+   * experimental de ANIMAÇÃO continua exclusivo do preview (no produto a
+   * animação é forçada desligada; ver network-canvas).
+   */
+  const visualMode = useMapVisualMode(map?.settings.filters);
+  const setVisualMode = useSetMapVisualMode();
+  const showVisualSelector = isVisualModeSessionSelectorEnabled();
+  const showAnimationSelector = isPreviewInstance() && visualMode === 'V2';
+  const animationMode = useLinkV2AnimationMode();
+  const setAnimationMode = useSetLinkV2AnimationMode();
+  /** Fase M: estilo dos enlaces (A/B) — preferência da aba, sem escrita no banco. */
+  const linkStyleMode = useLinkV2StyleMode();
+  const setLinkStyleMode = useSetLinkV2StyleMode();
+  // Fase I: descarta a preferência de animação das fases anteriores (a aba não
+  // pode reabrir "inteligente" sem escolha explícita do operador).
+  useDiscardLegacyPreviewAnimation();
   if (!map && view === 'MAP') return <header className="topbar topbar--loading" />;
 
   return (
@@ -124,6 +160,59 @@ export function TopBar() {
             <MapPinned size={15} />
           </Button>
           <Badge tone="hybrid">{map.mode}</Badge>
+          {showVisualSelector && (
+            <label className="map-selector map-selector--visual" data-testid="map-visual-selector">
+              <span>VISUAL DO MAPA</span>
+              <div>
+                <select
+                  value={visualMode}
+                  onChange={(event) => setVisualMode(event.target.value as MapVisualMode)}
+                  aria-label="Visual do mapa"
+                >
+                  <option value="V1">Clássico (V1)</option>
+                  <option value="V2">Moderno (V2)</option>
+                </select>
+                <ChevronDown size={13} />
+              </div>
+            </label>
+          )}
+          {showAnimationSelector && (
+            <label className="map-selector map-selector--visual" data-testid="map-animation-selector">
+              <span>ANIMAÇÃO</span>
+              <div>
+                <select
+                  value={animationMode}
+                  onChange={(event) =>
+                    setAnimationMode(event.target.value as LinkV2AnimationMode)
+                  }
+                  aria-label="Animação dos enlaces"
+                >
+                  <option value="off">Desligada (padrão)</option>
+                  <option value="smart">Inteligente</option>
+                  <option value="always">Sempre ativa (experimental)</option>
+                </select>
+                <ChevronDown size={13} />
+              </div>
+            </label>
+          )}
+          {/* Fase M/N: o estilo dos enlaces é recurso do produto (V2 apenas) —
+              a escolha é da aba e não altera dados do mapa. */}
+          {visualMode === 'V2' && (
+            <label className="map-selector map-selector--visual" data-testid="map-link-style-selector">
+              <span>ESTILO DOS ENLACES</span>
+              <div>
+                <select
+                  value={linkStyleMode}
+                  onChange={(event) => setLinkStyleMode(event.target.value as LinkV2StyleMode)}
+                  aria-label="Estilo dos enlaces"
+                >
+                  <option value="directional">{LINK_V2_STYLE_LABELS.directional}</option>
+                  <option value="operational">{LINK_V2_STYLE_LABELS.operational}</option>
+                </select>
+                <ChevronDown size={13} />
+              </div>
+            </label>
+          )}
         </>
       )}
       {/* Busca global de interface disponível em TODAS as áreas, não só no Mapa. */}

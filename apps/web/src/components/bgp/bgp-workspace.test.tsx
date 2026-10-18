@@ -728,4 +728,42 @@ describe('BgpWorkspace · exposição da mitigação DDoS', () => {
     expect(tabs).toEqual(['SESSÕES', 'MITIGAÇÃO DDoS']);
     expect(container.querySelector('#bgp-tab-mitigation')).not.toBeNull();
   });
+
+  /**
+   * REGRESSÃO QUE NÃO PODE VOLTAR: o release da produção foi construído numa
+   * worktree sem `.env`, a flag não foi inlinada e a aba desapareceu da
+   * IMPLANTAR. A identidade da instalação mantém a aba habilitada mesmo sem a
+   * flag — este teste impede que alguém volte a depender só da variável.
+   */
+  it('IMPLANTAR: a aba aparece pela IDENTIDADE, mesmo sem a flag de build', async () => {
+    vi.unstubAllEnvs();
+    vi.stubEnv('NEXT_PUBLIC_INSTALLATION_HOSTNAME', 'netvision-implantar');
+    await act(async () => {
+      root.render(
+        createElement(QueryClientProvider, { client }, createElement(BgpWorkspace)),
+      );
+    });
+    await settle();
+    const tabs = [...container.querySelectorAll('[role="tab"]')].map((tab) =>
+      tab.textContent?.trim(),
+    );
+    expect(tabs).toEqual(['SESSÕES', 'MITIGAÇÃO DDoS']);
+    expect(container.querySelector('#bgp-tab-mitigation')).not.toBeNull();
+  });
+
+  it('outra instalação: a aba continua oculta com qualquer hostname', async () => {
+    vi.unstubAllEnvs();
+    vi.stubEnv('NEXT_PUBLIC_INSTALLATION_HOSTNAME', 'netvision-vnt');
+    await act(async () => {
+      root.render(
+        createElement(QueryClientProvider, { client }, createElement(BgpWorkspace)),
+      );
+    });
+    await settle();
+    const tabs = [...container.querySelectorAll('[role="tab"]')].map((tab) =>
+      tab.textContent?.trim(),
+    );
+    expect(tabs).toEqual(['SESSÕES']);
+    expect(container.querySelector('#bgp-tab-mitigation')).toBeNull();
+  });
 });

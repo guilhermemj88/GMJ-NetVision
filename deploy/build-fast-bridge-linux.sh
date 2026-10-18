@@ -8,7 +8,7 @@ apt-get update -qq
 apt-get install -y --no-install-recommends openssl ca-certificates >/dev/null
 npm ci --ignore-scripts --no-audit --no-fund
 npm run build -w @gmj/api
-npm run build -w @gmj/web
+NETVISION_INSTALLATION_ID=IMPLANTAR NETVISION_INSTALLATION_HOSTNAME=netvision-implantar npm run build -w @gmj/web
 mkdir -p release/apps/api/src release/web
 tar -xf /source/candidate-source.tar -C release
 cp -a apps/api/dist release/apps/api/
@@ -33,16 +33,16 @@ const {PrismaClient}=require('./release/apps/api/src/generated/prisma');
 async function probe(){
   const db=new PrismaClient({datasources:{db:{url:process.env.LINUX_SMOKE_DATABASE_URL}}});
   try{console.log(JSON.stringify({linuxPrismaSmoke:await db.$queryRawUnsafe('SELECT current_database() AS database, version() AS version')}));}finally{await db.$disconnect();}
-  const base={...process.env,DEMO_MODE:'true',MITIGATION_MODE:'SIMULATION_ONLY',MITIGATION_FAST_BRIDGE_MODE:'OFF',SNMP_POLLING_ENABLED:'false',CREDENTIAL_ENCRYPTION_KEY:require('crypto').randomBytes(32).toString('base64')};
+  const base={...process.env,DEMO_MODE:'true',NETVISION_INSTALLATION_ID:'IMPLANTAR',MITIGATION_MODE:'SIMULATION_ONLY',MITIGATION_FAST_BRIDGE_MODE:'OFF',SNMP_POLLING_ENABLED:'false',CREDENTIAL_ENCRYPTION_KEY:require('crypto').randomBytes(32).toString('base64')};
   async function service(script,cwd,port,url){
     const child=cp.spawn(process.execPath,[script],{cwd,env:{...base,PORT:String(port),HOSTNAME:'127.0.0.1'},stdio:'ignore'});
-    try{let ok=false;for(let n=0;n<100;n++){try{const r=await fetch(url,{signal:AbortSignal.timeout(500)});if(r.ok){ok=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}if(!ok)throw Error('Linux service smoke failed: '+script);}
+    try{let ok=false;for(let n=0;n<100;n++){try{const r=await fetch(url,{signal:AbortSignal.timeout(500)});if(r.ok){if(url.endsWith('/installation')){const body=await r.json();if(body.modules.ddosMitigation.enabled!==true)throw Error('IMPLANTAR DDoS visibility missing');}ok=true;break;}}catch{}await new Promise(r=>setTimeout(r,100));}if(!ok)throw Error('Linux service smoke failed: '+script);}
     finally{const exit=child.exitCode!==null?Promise.resolve():new Promise(r=>child.once('exit',r));child.kill('SIGTERM');await exit;}
   }
   await service('/work/release/apps/api/dist/server.cjs','/work/release',3333,'http://127.0.0.1:3333/health');
   await service('/work/release/apps/api/dist/rollback-server.cjs','/work/release',3333,'http://127.0.0.1:3333/health');
-  await service('/work/release/web/apps/web/server.js','/work/release/web/apps/web',3000,'http://127.0.0.1:3000/login');
-  fs.writeFileSync('release/BUILD.json',JSON.stringify({node:process.version,platform:process.platform,arch:process.arch,sourceCommit:process.env.RELEASE_COMMIT,apiSmoke:true,webSmoke:true,prismaSmoke:true,baselineRollbackSmoke:true,baselineSource:'fc790ade3455f2c16eeff372a8a9168deffb0d7d',productionModified:false},null,2));
+  await service('/work/release/web/apps/web/server.js','/work/release/web/apps/web',3000,'http://127.0.0.1:3000/installation');
+  fs.writeFileSync('release/BUILD.json',JSON.stringify({node:process.version,platform:process.platform,arch:process.arch,sourceCommit:process.env.RELEASE_COMMIT,apiSmoke:true,webSmoke:true,installationIdentitySmoke:true,frontendBaseline:'bc559bec5d45080228c513db146c987c71c19633',prismaSmoke:true,baselineRollbackSmoke:true,baselineSource:'fc790ade3455f2c16eeff372a8a9168deffb0d7d',productionModified:false},null,2));
 }
 probe().catch(e=>{console.error(e.message);process.exitCode=1});
 NODE
