@@ -1,0 +1,71 @@
+{
+  "generatedAt": "2026-10-18T14:48:56.151Z",
+  "node": "v24.19.0",
+  "platform": "win32",
+  "arch": "x64",
+  "release": "v2026.10.18-ddos-fast-bridge-rc2",
+  "baseline": "fc790ade3455f2c16eeff372a8a9168deffb0d7d",
+  "note": "Virtual clock, synthetic source and synthetic executor. Measures decision cost only; no SSH/SQL/network.",
+  "results": [
+    {
+      "scenario": "FAST 10s (3 amostras)",
+      "iterations": 200,
+      "activatedRatio": 1,
+      "tickMs": {
+        "p50": 0.026,
+        "p95": 0.062,
+        "max": 2.455
+      },
+      "pipelineMs": {
+        "p50": 0.08,
+        "p95": 0.185,
+        "max": 2.83
+      }
+    },
+    {
+      "scenario": "FAST SHADOW (3 amostras)",
+      "iterations": 200,
+      "activatedRatio": 0,
+      "tickMs": {
+        "p50": 0.017,
+        "p95": 0.025,
+        "max": 0.618
+      },
+      "pipelineMs": {
+        "p50": 0.052,
+        "p95": 0.071,
+        "max": 0.664
+      }
+    },
+    {
+      "scenario": "LEGACY 126s",
+      "iterations": 200,
+      "activatedRatio": 1,
+      "tickMs": {
+        "p50": 0.022,
+        "p95": 0.04,
+        "max": 0.59
+      },
+      "pipelineMs": {
+        "p50": 0.113,
+        "p95": 0.164,
+        "max": 0.708
+      }
+    },
+    {
+      "scenario": "LEGACY publicado",
+      "iterations": 200,
+      "activatedRatio": 1,
+      "tickMs": {
+        "p50": 0.009,
+        "p95": 0.019,
+        "max": 0.79
+      },
+      "pipelineMs": {
+        "p50": 0.046,
+        "p95": 0.081,
+        "max": 1.086
+      }
+    }
+  ]
+}

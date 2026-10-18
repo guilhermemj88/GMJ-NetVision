@@ -51,7 +51,8 @@ COMMON_ENV=(
 boot() {
   local script="$1" label="$2"
   echo "==> subindo ${label}"
-  ( cd "${RELEASE_DIR}" && env "${COMMON_ENV[@]}" node "${script}" >/tmp/rc2-rollback-${label}.log 2>&1 ) &
+  # cwd = raiz da app: é onde `src/generated/prisma` (Query Engine) está.
+  ( cd "${RELEASE_DIR}/apps/api" && env "${COMMON_ENV[@]}" node "${script}" >/tmp/rc2-rollback-${label}.log 2>&1 ) &
   local pid=$!
   local ok=0
   for _ in $(seq 1 120); do
@@ -71,13 +72,13 @@ boot() {
   echo "    ${label}: OK"
 }
 
-boot "apps/api/dist/server.cjs" "rc2"
-boot "apps/api/dist/rollback-server.cjs" "baseline"
+boot "dist/server.cjs" "rc2"
+boot "dist/rollback-server.cjs" "baseline"
 
 if [[ -n "${LINUX_SMOKE_DATABASE_URL:-}" ]]; then
   echo "==> schema aditivo consultado pelas duas versões"
-  node -e '
-    const { PrismaClient } = require("./apps/api/src/generated/prisma");
+  ( cd "${RELEASE_DIR}/apps/api" && node -e '
+    const { PrismaClient } = require("./src/generated/prisma");
     (async () => {
       const db = new PrismaClient({ datasources: { db: { url: process.env.LINUX_SMOKE_DATABASE_URL } } });
       try {
@@ -90,7 +91,7 @@ if [[ -n "${LINUX_SMOKE_DATABASE_URL:-}" ]]; then
         await db.$disconnect();
       }
     })().catch((error) => { console.error(error.message); process.exitCode = 1; });
-  '
+  ' )
 fi
 
 echo

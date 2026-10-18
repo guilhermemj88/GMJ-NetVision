@@ -1,0 +1,14 @@
+{
+  "node": "v24.22.0",
+  "platform": "linux",
+  "arch": "x64",
+  "sourceCommit": "b687625cc70447771df5a5d32a109df2c8854175",
+  "apiSmoke": true,
+  "webSmoke": true,
+  "installationIdentitySmoke": true,
+  "frontendBaseline": "bc559bec5d45080228c513db146c987c71c19633",
+  "prismaSmoke": true,
+  "baselineRollbackSmoke": true,
+  "baselineSource": "fc790ade3455f2c16eeff372a8a9168deffb0d7d",
+  "productionModified": false
+}

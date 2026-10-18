@@ -73,6 +73,35 @@ A versão publicada (`fc790ade…`, copiada congelada em `apps/api/src/worker/mi
 - `mitigation-rc2-fast-contracts.test.ts` — 16 testes dos contratos novos (duplicidade, retry, backoff, SHADOW, leitura de runtime por fonte, promovido).
 - Suíte completa da API: **1.935 aprovados, 19 ignorados, zero falhas** (eram 1.905 no rc1); typecheck e lint dos arquivos alterados limpos.
 
+### Benchmark do caminho de decisão
+
+Relógio virtual, fonte e executor sintéticos; mede apenas o custo de avaliação (sem SSH/SQL/rede). 200 iterações por cenário, Node 24 ([JSON](benchmarks/rc2-benchmark-decisions.json)):
+
+| Cenário | tick p50 | tick p95 | pipeline p50 |
+|---|---:|---:|---:|
+| FAST 10 s (3 amostras) | 0,026 ms | 0,062 ms | 0,080 ms |
+| FAST SHADOW (3 amostras) | 0,017 ms | 0,025 ms | 0,052 ms |
+| LEGACY 126 s | 0,022 ms | 0,040 ms | 0,113 ms |
+| LEGACY publicado (`fc790ad`) | 0,009 ms | 0,019 ms | 0,046 ms |
+
+A RC2 custa microssegundos a mais por tick (resolução da janela por perfil e campos de auditoria), irrelevante diante do ciclo de 5 s. O tempo real de mitigação continua dominado por preflight/SSH/readback e não é medido aqui.
+
+### Build Linux
+
+Container descartável `node:24-bookworm` (Node 24.22.0, linux/x64), migrations aplicadas em PostgreSQL 16 isolado. [Proveniência](benchmarks/rc2-build-linux.json): `apiSmoke`, `webSmoke`, `installationIdentitySmoke`, `prismaSmoke` e `baselineRollbackSmoke` **todos verdadeiros**, `productionModified: false`. Artefato `netvision-fast-bridge-linux-candidate.tar.gz` (251 MB), SHA-256 `a9dbde08c2e11fa3550b44a5ef1c844cb34e5b2a7d006b20ffde541b8469cb48`. O build foi gerado a partir do commit de código `b687625`; o commit documental seguinte só acrescenta documentação, evidências e o ajuste do script de ensaio.
+
+### Ensaio de rollback isolado
+
+`deploy/verify-rc2-rollback.sh` (recusa-se a rodar na IMPLANTAR ou onde houver release de produção) sobe o bundle RC2 e o bundle publicado `rollback-server.cjs` no **mesmo schema aditivo**, com `DEMO_MODE=true`, `MITIGATION_EXECUTOR=MOCK`, `MITIGATION_LIVE_WRITE_ENABLED=false` e `MITIGATION_AUTO_EXECUTION_ENABLED=0`:
+
+```text
+==> subindo rc2        /health: {"status":"ok","demoMode":true,"snmpPolling":false}   rc2: OK
+==> subindo baseline   /health: {"status":"ok","demoMode":true,"snmpPolling":false}   baseline: OK
+==> schema aditivo     MitigationFastShadowState=0 MitigationFastDecision=0
+```
+
+Nenhum comando Huawei, nenhuma escrita em runtime, nenhum restart de serviço.
+
 ### Riscos restantes
 
 | Risco | Severidade | Observação |
