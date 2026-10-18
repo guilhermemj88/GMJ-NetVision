@@ -7,6 +7,7 @@ export * from './demo';
 export * from './format';
 export * from './history';
 export * from './id';
+export * from './installation-identity';
 export * from './ip';
 export * from './link-handles';
 export * from './link-layout';

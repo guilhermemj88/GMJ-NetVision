@@ -27,7 +27,7 @@ import { BgpManageDevices } from './bgp-manage-devices';
 import { BgpPeerDetail } from './bgp-peer-detail';
 import { BgpPeerTable } from './bgp-peer-table';
 import { BgpMitigationWorkspace } from './bgp-mitigation-workspace';
-import { isDdosMitigationUiEnabled } from '@/lib/feature-flags';
+import { useDdosMitigationUiEnabled } from '@/lib/use-ddos-mitigation-ui';
 import { BgpSummary } from './bgp-summary';
 import { useMapStore } from '@/store/map-store';
 
@@ -428,9 +428,13 @@ type BgpTab = 'SESSOES' | 'MITIGACAO';
  * que continua no repositório e pode ser religado por flag.
  */
 export function BgpWorkspace() {
-  const mitigationEnabled = isDdosMitigationUiEnabled();
+  /**
+   * Identidade da instalação (build + confirmação em `GET /installation`):
+   * na IMPLANTAR a aba existe sempre; nas demais, só com opt-in explícito.
+   */
+  const mitigationEnabled = useDdosMitigationUiEnabled();
   const [tab, setTab] = useState<BgpTab>('SESSOES');
-  /** Sem a flag, o workspace nunca sai de SESSÕES, mesmo que o estado mude. */
+  /** Sem o módulo disponível, o workspace nunca sai de SESSÕES. */
   const activeTab: BgpTab = mitigationEnabled ? tab : 'SESSOES';
   return (
     <div className="bgp-workspace">
