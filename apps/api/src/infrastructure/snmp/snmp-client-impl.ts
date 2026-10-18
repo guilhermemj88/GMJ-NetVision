@@ -10,10 +10,7 @@ export class SnmpClientImpl implements SnmpClient {
   private readonly timeout: number;
   private readonly retries: number;
 
-  constructor(
-    timeout: number = 5000,
-    retries: number = 2,
-  ) {
+  constructor(timeout: number = 5000, retries: number = 2) {
     this.timeout = timeout;
     this.retries = retries;
   }
@@ -38,7 +35,21 @@ export class SnmpClientImpl implements SnmpClient {
         version: snmp.Version2c,
       });
 
+      let settled = false;
+      const deadline = setTimeout(
+        () => {
+          if (settled) return;
+          settled = true;
+          session.close();
+          reject(new Error('SNMP request deadline exceeded'));
+        },
+        this.timeout * (this.retries + 1) + 100,
+      );
+      deadline.unref?.();
       session.get(oids, (error: Error | null, varbinds: snmp.VarBind[]) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(deadline);
         session.close();
         if (error) {
           reject(this.normalizeError(error, host, port));
@@ -162,7 +173,9 @@ export class SnmpClientImpl implements SnmpClient {
       return new Error(`Host ${host} is unreachable`);
     }
     if (message.includes('authentication') || message.includes('badversion')) {
-      return new Error('SNMP authentication failed - check community/credentials and version compatibility');
+      return new Error(
+        'SNMP authentication failed - check community/credentials and version compatibility',
+      );
     }
     if (message.includes('nosuchobject') || message.includes('nosuchinstance')) {
       return new Error('SNMP object not found on target');

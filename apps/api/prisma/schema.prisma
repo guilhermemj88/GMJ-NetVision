@@ -1018,6 +1018,34 @@ model InterfaceMetricSample {
   @@index([interfaceId, timestamp])
 }
 
+/// Isolated stream for priority mitigation polling. No conventional-poller baseline reuse.
+model MitigationTrafficObservation {
+  id                  String   @id
+  generation          String
+  deviceId            String
+  interfaceId         String
+  ifIndex             Int
+  interfaceName       String
+  requestStartedAt    DateTime
+  collectedAt         DateTime
+  previousCollectedAt DateTime?
+  intervalMs          Float?
+  inOctets            Decimal @db.Decimal(20, 0)
+  outOctets           Decimal @db.Decimal(20, 0)
+  uptimeTicks         BigInt
+  discontinuityTicks  BigInt
+  lastChangeTicks     BigInt
+  adminStatus         Int
+  operStatus          Int
+  speedBps            BigInt?
+  rxBps               Float?
+  txBps               Float?
+  quality             String
+
+  @@unique([interfaceId, collectedAt])
+  @@index([collectedAt])
+}
+
 model InterfaceOpticalSample {
   id           BigInt    @id @default(autoincrement())
   interfaceId  String

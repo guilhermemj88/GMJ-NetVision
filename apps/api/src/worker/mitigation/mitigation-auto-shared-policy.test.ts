@@ -131,7 +131,10 @@ class DeviceTruthExecutor implements MitigationLiveExecutorPort {
     };
   }
 
-  async activate(_device: HostRecord, input: MitigationActivationInput): Promise<{ output: string }> {
+  async activate(
+    _device: HostRecord,
+    input: MitigationActivationInput,
+  ): Promise<{ output: string }> {
     this.activateCalls += 1;
     this.nodes.add(input.bogonNode);
     this.nodes.add(input.mitigationNode);
@@ -153,7 +156,10 @@ class DeviceTruthExecutor implements MitigationLiveExecutorPort {
   private renderPolicy(policyName: string): string {
     const lines: string[] = [];
     if (this.nodes.has(PAIR.bogonNode)) {
-      lines.push(`route-policy ${policyName} deny node ${PAIR.bogonNode}`, ' if-match ip-prefix BOGONS');
+      lines.push(
+        `route-policy ${policyName} deny node ${PAIR.bogonNode}`,
+        ' if-match ip-prefix BOGONS',
+      );
     }
     if (this.nodes.has(PAIR.mitigationNode)) {
       lines.push(
@@ -421,7 +427,7 @@ describe('AUTO x route-policy compartilhada (deviceId + policyName)', () => {
 
     expect(h.live.activateCalls).toBe(0);
     expect(h.live.removeCalls).toBe(0);
-    expect(decisions[0]?.outcome).toBe('FAILED');
+    expect(decisions[0]?.outcome).toBe('BLOCKED');
   });
 
   it('11) escrita aplicada + falha depois: escopo RECONCILIATION_REQUIRED, zero remove', async () => {

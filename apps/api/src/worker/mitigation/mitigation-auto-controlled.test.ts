@@ -51,7 +51,10 @@ class CountingLiveExecutor implements MitigationLiveExecutorPort {
   async resolveActivePair() {
     return { bogonNode: 1, mitigationNode: 2 };
   }
-  async preflight(_d: HostRecord, input: MitigationPreflightInput): Promise<MitigationPreflightResult> {
+  async preflight(
+    _d: HostRecord,
+    input: MitigationPreflightInput,
+  ): Promise<MitigationPreflightResult> {
     this.preflightCalls += 1;
     return {
       ok: true,
@@ -185,11 +188,11 @@ describe('teste controlado do AUTO sem escrita (LIVE_WRITE=false)', () => {
     expect(decision.reason).toBe('THRESHOLD_NOT_EXCEEDED');
   });
 
-  it('90% exato com 3 samples => NO_ACTION', async () => {
+  it('90% exato com 3 samples => WOULD_ACTIVATE, sem live write', async () => {
     const s = await scenario('AUTO');
     const decision = await s.runAt(90, 3);
-    expect(decision.outcome).toBe('NO_ACTION');
-    expect(decision.reason).toBe('THRESHOLD_NOT_EXCEEDED');
+    expect(decision.outcome).toBe('WOULD_ACTIVATE');
+    expect(decision.reason).toBe('LIVE_WRITE_DISABLED');
   });
 
   it('91% com 2 samples => SAMPLES_INSUFFICIENT', async () => {

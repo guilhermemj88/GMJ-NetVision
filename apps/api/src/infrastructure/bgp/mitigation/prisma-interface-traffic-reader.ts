@@ -18,13 +18,22 @@ export interface InterfaceTrafficRow {
   rxBps: number;
   txBps: number;
   timestamp: Date;
+  sampleId?: string;
+  deviceId?: string;
+  ifIndex?: number;
+  inOctets?: bigint;
+  outOctets?: bigint;
+  rateStartAt?: Date | null;
+  usable?: boolean;
+  adminStatus?: string;
+  operStatus?: string;
 }
 
 export interface InterfaceTrafficReader {
   latestTraffic(interfaceId: string): Promise<InterfaceTrafficRow | null>;
 }
 
-type RawRow = { interfaceId: string; rxBps: number; txBps: number; timestamp: Date };
+type RawRow = InterfaceTrafficRow;
 
 export class PrismaInterfaceTrafficReader implements InterfaceTrafficReader {
   constructor(private readonly prisma: PrismaClient = prismaClient) {}
@@ -32,17 +41,21 @@ export class PrismaInterfaceTrafficReader implements InterfaceTrafficReader {
   async latestTraffic(interfaceId: string): Promise<InterfaceTrafficRow | null> {
     const rows = await this.prisma.$queryRaw<RawRow[]>(Prisma.sql`
       SELECT m."interfaceId" AS "interfaceId", m."rxBps" AS "rxBps", m."txBps" AS "txBps",
-             m."timestamp" AS "timestamp"
+             m."timestamp" AS "timestamp", m."id"::text AS "sampleId", i."deviceId", i."ifIndex",
+             m."inOctets", m."outOctets", i."adminStatus", m."operStatus"::text AS "operStatus",
+             (${Prisma.raw(USABLE_TRAFFIC_SAMPLE_SQL)}) AS usable,
+             (SELECT p."timestamp" FROM "InterfaceMetricSample" p WHERE p."interfaceId" = m."interfaceId"
+               AND p."timestamp" < m."timestamp" ORDER BY p."timestamp" DESC LIMIT 1) AS "rateStartAt"
       FROM "InterfaceMetricSample" m
       JOIN "Interface" i ON i."id" = m."interfaceId"
       WHERE m."interfaceId" = ${interfaceId}
-        AND (${Prisma.raw(USABLE_TRAFFIC_SAMPLE_SQL)})
       ORDER BY m."timestamp" DESC
       LIMIT 1
     `);
     const row = rows[0];
     if (!row) return null;
     return {
+      ...row,
       interfaceId: row.interfaceId,
       rxBps: Number(row.rxBps),
       txBps: Number(row.txBps),

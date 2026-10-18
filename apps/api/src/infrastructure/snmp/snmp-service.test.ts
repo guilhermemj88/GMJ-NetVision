@@ -763,17 +763,20 @@ describe('SnmpService', () => {
     const repo = repository();
     vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(
       new Map([
-        [1, {
-          interfaceId: iface.id,
-          ifIndex: 1,
-          timestamp: priorAt,
-          inOctets: 100n,
-          outOctets: 200n,
-          inErrors: 0n,
-          outErrors: 0n,
-          inDiscards: 0n,
-          outDiscards: 0n,
-        }],
+        [
+          1,
+          {
+            interfaceId: iface.id,
+            ifIndex: 1,
+            timestamp: priorAt,
+            inOctets: 100n,
+            outOctets: 200n,
+            inErrors: 0n,
+            outErrors: 0n,
+            inDiscards: 0n,
+            outDiscards: 0n,
+          },
+        ],
       ]),
     );
     const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
@@ -809,32 +812,38 @@ describe('SnmpService', () => {
     vi.mocked(repo.getLatestCounterSnapshots)
       .mockResolvedValueOnce(
         new Map([
-          [1, {
-            interfaceId: iface.id,
-            ifIndex: 1,
-            timestamp: staleAt,
-            inOctets: 0n,
-            outOctets: 0n,
-            inErrors: 0n,
-            outErrors: 0n,
-            inDiscards: 0n,
-            outDiscards: 0n,
-          }],
+          [
+            1,
+            {
+              interfaceId: iface.id,
+              ifIndex: 1,
+              timestamp: staleAt,
+              inOctets: 0n,
+              outOctets: 0n,
+              inErrors: 0n,
+              outErrors: 0n,
+              inDiscards: 0n,
+              outDiscards: 0n,
+            },
+          ],
         ]),
       )
       .mockResolvedValueOnce(
         new Map([
-          [1, {
-            interfaceId: iface.id,
-            ifIndex: 1,
-            timestamp: firstAt,
-            inOctets: 1_000n,
-            outOctets: 2_000n,
-            inErrors: 0n,
-            outErrors: 0n,
-            inDiscards: 0n,
-            outDiscards: 0n,
-          }],
+          [
+            1,
+            {
+              interfaceId: iface.id,
+              ifIndex: 1,
+              timestamp: firstAt,
+              inOctets: 1_000n,
+              outOctets: 2_000n,
+              inErrors: 0n,
+              outErrors: 0n,
+              inDiscards: 0n,
+              outDiscards: 0n,
+            },
+          ],
         ]),
       );
     const service = new SnmpService(repo, undefined, Number.POSITIVE_INFINITY);
@@ -850,22 +859,44 @@ describe('SnmpService', () => {
     const counters = vi.spyOn(service, 'collectCounters');
     const oneGbpsIn60s = BigInt(Math.round((1_000_000_000 * 60) / 8));
     counters
-      .mockResolvedValueOnce(new Map([[1, { ...counterRow(1, firstAt), inOctets: 1_000n, outOctets: 2_000n }]]))
-      .mockResolvedValueOnce(new Map([[1, {
-        ...counterRow(1, secondAt),
-        inOctets: 1_000n + oneGbpsIn60s,
-        outOctets: 2_000n + oneGbpsIn60s,
-      }]]));
+      .mockResolvedValueOnce(
+        new Map([[1, { ...counterRow(1, firstAt), inOctets: 1_000n, outOctets: 2_000n }]]),
+      )
+      .mockResolvedValueOnce(
+        new Map([
+          [
+            1,
+            {
+              ...counterRow(1, secondAt),
+              inOctets: 1_000n + oneGbpsIn60s,
+              outOctets: 2_000n + oneGbpsIn60s,
+            },
+          ],
+        ]),
+      );
 
     // 1º poll depois de 12h sem coleta: BASELINE (nunca média de horas como "agora").
     const first = await service.pollHost(snmpHost([iface]));
-    expect(first.telemetry).toEqual({ samples: 0, skipped: 0, baselines: 1, retryAfterSeconds: null });
+    expect(first.telemetry).toEqual({
+      samples: 0,
+      skipped: 0,
+      baselines: 1,
+      retryAfterSeconds: null,
+    });
     const firstRows = vi.mocked(repo.saveSnmpPoll).mock.calls[0]?.[2] ?? [];
-    expect(firstRows[0]).toMatchObject({ rxBps: BASELINE_ONLY_RATE_BPS, txBps: BASELINE_ONLY_RATE_BPS });
+    expect(firstRows[0]).toMatchObject({
+      rxBps: BASELINE_ONLY_RATE_BPS,
+      txBps: BASELINE_ONLY_RATE_BPS,
+    });
 
     // 2º poll 60 s depois: delta curto → taxa real de 1 Gbps.
     const second = await service.pollHost(snmpHost([iface]));
-    expect(second.telemetry).toEqual({ samples: 1, skipped: 0, baselines: 0, retryAfterSeconds: null });
+    expect(second.telemetry).toEqual({
+      samples: 1,
+      skipped: 0,
+      baselines: 0,
+      retryAfterSeconds: null,
+    });
     const secondRows = vi.mocked(repo.saveSnmpPoll).mock.calls[1]?.[2] ?? [];
     expect(secondRows[0]?.rxBps).toBeCloseTo(1_000_000_000, 0);
     expect(secondRows[0]?.txBps).toBeCloseTo(1_000_000_000, 0);
@@ -918,13 +949,15 @@ describe('SnmpService', () => {
     const service = new SnmpService(repo, undefined, 300_000);
     const internals = manualPollInternals(service);
     const device = snmpHost([networkInterface('100GE1/0/1', 1, 'UP')], { model: 'S6750-H' });
-    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([{
-      ...device.interfaces[0]!,
-      rxPowerDbm: -13.67,
-      txPowerDbm: 0.76,
-      opticalSource: 'SNMP',
-      opticalUpdatedAt: new Date().toISOString(),
-    }]);
+    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([
+      {
+        ...device.interfaces[0]!,
+        rxPowerDbm: -13.67,
+        txPowerDbm: 0.76,
+        opticalSource: 'SNMP',
+        opticalUpdatedAt: new Date().toISOString(),
+      },
+    ]);
     const t0 = Date.parse('2026-10-08T12:00:00.000Z');
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(t0);
 
@@ -940,7 +973,9 @@ describe('SnmpService', () => {
       expect(automatic.retryAfterSeconds).toBe(280);
 
       // …mas o MANUAL (force) ignora os 300 s e coleta de novo.
-      const forced = await internals.refreshOpticalPower(device, 'public', undefined, { force: true });
+      const forced = await internals.refreshOpticalPower(device, 'public', undefined, {
+        force: true,
+      });
       expect(internals.discoveryAdapter.enrichOpticalPower).toHaveBeenCalledTimes(2);
       expect(repo.updateInterfaceOptics).toHaveBeenCalledTimes(2);
       expect(forced.skipped).toBe(false);
@@ -959,7 +994,9 @@ describe('SnmpService', () => {
     vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([]);
 
     const first = await internals.refreshOpticalPower(device, 'public', undefined, { force: true });
-    const second = await internals.refreshOpticalPower(device, 'public', undefined, { force: true });
+    const second = await internals.refreshOpticalPower(device, 'public', undefined, {
+      force: true,
+    });
 
     expect(first.skipped).toBe(false);
     expect(second.skipped).toBe(true);
@@ -1112,6 +1149,7 @@ describe('SnmpService', () => {
 
   it('entrega os deltas de CRC/discard para as ocorrencias com a base do intervalo', async () => {
     const now = new Date('2026-10-12T12:00:00.000Z');
+    vi.spyOn(Date, 'now').mockReturnValue(now.getTime());
     const target = networkInterface('GE0/0/1', 1, 'UP');
     const repo = repository();
     vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(
@@ -1166,6 +1204,11 @@ describe('SnmpService', () => {
       collectSystem: () => Promise<DeviceMetricSampleInput>;
     };
     vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
+    // Isolate the optional vendor metrics too: this test must never send SNMP.
+    const metrics = (
+      service as unknown as { profileMetrics: { collect: () => Promise<Record<string, never>> } }
+    ).profileMetrics;
+    vi.spyOn(metrics, 'collect').mockResolvedValue({});
 
     await service.pollHost(snmpHost([target], { lastDiscoveryAt: now.toISOString() }));
 
@@ -1187,6 +1230,7 @@ describe('SnmpService', () => {
 
   it('falha das ocorrencias nao invalida o polling SNMP concluido', async () => {
     const now = new Date('2026-10-12T12:00:00.000Z');
+    vi.spyOn(Date, 'now').mockReturnValue(now.getTime());
     const target = networkInterface('GE0/0/1', 1, 'UP');
     const repo = repository();
     vi.mocked(repo.getLatestCounterSnapshots).mockResolvedValue(
@@ -1233,9 +1277,16 @@ describe('SnmpService', () => {
       collectSystem: () => Promise<DeviceMetricSampleInput>;
     };
     vi.spyOn(internals, 'collectSystem').mockResolvedValue({ timestamp: now });
+    // Isolate the optional vendor metrics too: this test must never send SNMP.
+    const metrics = (
+      service as unknown as { profileMetrics: { collect: () => Promise<Record<string, never>> } }
+    ).profileMetrics;
+    vi.spyOn(metrics, 'collect').mockResolvedValue({});
     const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
 
-    const result = await service.pollHost(snmpHost([target], { lastDiscoveryAt: now.toISOString() }));
+    const result = await service.pollHost(
+      snmpHost([target], { lastDiscoveryAt: now.toISOString() }),
+    );
 
     expect(result.interfaceSamples).toBe(1);
     expect(repo.saveSnmpPoll).toHaveBeenCalled();
@@ -1280,7 +1331,12 @@ describe('SnmpService Ã¢â‚¬â€ thresholds opticos SNMP (F7.5)', () => 
   const snmpThresholds = {
     version: 1 as const,
     scalar: {
-      rx: { lowAlarmDbm: -12.31, highAlarmDbm: 3.4, lowSource: 'DEVICE' as const, highSource: 'DEVICE' as const },
+      rx: {
+        lowAlarmDbm: -12.31,
+        highAlarmDbm: 3.4,
+        lowSource: 'DEVICE' as const,
+        highSource: 'DEVICE' as const,
+      },
       tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
     },
     lanes: [],
@@ -1288,22 +1344,30 @@ describe('SnmpService Ã¢â‚¬â€ thresholds opticos SNMP (F7.5)', () => 
 
   it('persiste os thresholds SNMP como DEVICE sem renovar a janela do slow path SSH', async () => {
     const retainedRefreshAfter = new Date('2026-08-24T00:00:00.000Z');
-    const repo = opticalRepository([{
-      interfaceId: 'if-1', thresholds: null, source: null, updatedAt: null, refreshAfter: retainedRefreshAfter,
-    }]);
+    const repo = opticalRepository([
+      {
+        interfaceId: 'if-1',
+        thresholds: null,
+        source: null,
+        updatedAt: null,
+        refreshAfter: retainedRefreshAfter,
+      },
+    ]);
     const service = new SnmpService(repo, undefined, 0);
     const internals = opticalInternals(service);
     const device = snmpHost([networkInterface('100GE1/0/1', 1, 'UP')], {
       vendor: 'Huawei',
       model: 'S6750-H',
     });
-    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([{
-      ...device.interfaces[0]!,
-      rxPowerDbm: 0.18,
-      opticalSource: 'SNMP',
-      opticalThresholds: snmpThresholds,
-      opticalThresholdSource: 'DEVICE',
-    }]);
+    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([
+      {
+        ...device.interfaces[0]!,
+        rxPowerDbm: 0.18,
+        opticalSource: 'SNMP',
+        opticalThresholds: snmpThresholds,
+        opticalThresholdSource: 'DEVICE',
+      },
+    ]);
 
     await internals.refreshOpticalPower(device, 'public', {
       sysDescr: 'Huawei YunShan OS CloudEngine S6750-H',
@@ -1336,10 +1400,12 @@ describe('SnmpService Ã¢â‚¬â€ thresholds opticos SNMP (F7.5)', () => 
     const service = new SnmpService(repo, undefined, 0);
     const internals = opticalInternals(service);
     const device = snmpHost([networkInterface('100GE1/0/1', 1, 'UP')], { model: 'S6750-H' });
-    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([{
-      ...device.interfaces[0]!,
-      opticalThresholds: snmpThresholds,
-    }]);
+    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([
+      {
+        ...device.interfaces[0]!,
+        opticalThresholds: snmpThresholds,
+      },
+    ]);
 
     await internals.refreshOpticalPower(device, 'public');
 
@@ -1350,27 +1416,31 @@ describe('SnmpService Ã¢â‚¬â€ thresholds opticos SNMP (F7.5)', () => 
   });
 
   it('SNMP DEVICE nao sobrescreve USER SET persistido pelo SSH', async () => {
-    const repo = opticalRepository([{
-      interfaceId: 'if-1',
-      thresholds: {
-        version: 1,
-        scalar: {
-          rx: { lowAlarmDbm: -13, highAlarmDbm: -2, lowSource: 'USER', highSource: 'USER' },
-          tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+    const repo = opticalRepository([
+      {
+        interfaceId: 'if-1',
+        thresholds: {
+          version: 1,
+          scalar: {
+            rx: { lowAlarmDbm: -13, highAlarmDbm: -2, lowSource: 'USER', highSource: 'USER' },
+            tx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+          },
+          lanes: [],
         },
-        lanes: [],
+        source: 'USER',
+        updatedAt: new Date(),
+        refreshAfter: new Date(),
       },
-      source: 'USER',
-      updatedAt: new Date(),
-      refreshAfter: new Date(),
-    }]);
+    ]);
     const service = new SnmpService(repo, undefined, 0);
     const internals = opticalInternals(service);
     const device = snmpHost([networkInterface('100GE1/0/1', 1, 'UP')], { model: 'S6750-H' });
-    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([{
-      ...device.interfaces[0]!,
-      opticalThresholds: snmpThresholds,
-    }]);
+    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([
+      {
+        ...device.interfaces[0]!,
+        opticalThresholds: snmpThresholds,
+      },
+    ]);
 
     await internals.refreshOpticalPower(device, 'public');
 
@@ -1381,57 +1451,72 @@ describe('SnmpService Ã¢â‚¬â€ thresholds opticos SNMP (F7.5)', () => 
       thresholds: { scalar: Record<string, unknown> };
     }>;
     expect(entries[0]?.thresholds.scalar.rx).toEqual({
-      lowAlarmDbm: -13, highAlarmDbm: -2, lowSource: 'USER', highSource: 'USER',
+      lowAlarmDbm: -13,
+      highAlarmDbm: -2,
+      lowSource: 'USER',
+      highSource: 'USER',
     });
     expect(entries[0]?.source).toBe('USER');
   });
 
   it('merge preserva o lado persistido que o SNMP nao reporta', async () => {
-    const repo = opticalRepository([{
-      interfaceId: 'if-1',
-      thresholds: {
-        version: 1,
-        scalar: {
-          rx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
-          tx: { lowAlarmDbm: -10.4, highAlarmDbm: 3.4, lowSource: 'USER', highSource: 'USER' },
+    const repo = opticalRepository([
+      {
+        interfaceId: 'if-1',
+        thresholds: {
+          version: 1,
+          scalar: {
+            rx: { lowAlarmDbm: null, highAlarmDbm: null, lowSource: null, highSource: null },
+            tx: { lowAlarmDbm: -10.4, highAlarmDbm: 3.4, lowSource: 'USER', highSource: 'USER' },
+          },
+          lanes: [],
         },
-        lanes: [],
+        source: 'USER',
+        updatedAt: new Date(),
+        refreshAfter: new Date(),
       },
-      source: 'USER',
-      updatedAt: new Date(),
-      refreshAfter: new Date(),
-    }]);
+    ]);
     const service = new SnmpService(repo, undefined, 0);
     const internals = opticalInternals(service);
     const device = snmpHost([networkInterface('100GE1/0/1', 1, 'UP')], { model: 'S6750-H' });
-    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([{
-      ...device.interfaces[0]!,
-      opticalThresholds: snmpThresholds,
-    }]);
+    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([
+      {
+        ...device.interfaces[0]!,
+        opticalThresholds: snmpThresholds,
+      },
+    ]);
 
     await internals.refreshOpticalPower(device, 'public');
 
     const entries = (
       repo as unknown as { updateInterfaceOpticalThresholds: { mock: { calls: unknown[][] } } }
-    ).updateInterfaceOpticalThresholds.mock.calls[0]?.[1] as Array<{ thresholds: { scalar: Record<string, unknown> } }>;
+    ).updateInterfaceOpticalThresholds.mock.calls[0]?.[1] as Array<{
+      thresholds: { scalar: Record<string, unknown> };
+    }>;
     expect(entries[0]?.thresholds.scalar.rx).toMatchObject({ lowAlarmDbm: -12.31 });
     // O lado TX ja persistido (USER) continua valido: merge nao apaga.
     expect(entries[0]?.thresholds.scalar.tx).toMatchObject({
-      lowAlarmDbm: -10.4, highAlarmDbm: 3.4, lowSource: 'USER', highSource: 'USER',
+      lowAlarmDbm: -10.4,
+      highAlarmDbm: 3.4,
+      lowSource: 'USER',
+      highSource: 'USER',
     });
   });
 
   it('falha ao persistir threshold nao bloqueia a potencia nem propaga erro', async () => {
     const repo = opticalRepository();
-    (repo as unknown as { updateInterfaceOpticalThresholds: unknown }).updateInterfaceOpticalThresholds =
-      vi.fn().mockRejectedValue(new Error('db down'));
+    (
+      repo as unknown as { updateInterfaceOpticalThresholds: unknown }
+    ).updateInterfaceOpticalThresholds = vi.fn().mockRejectedValue(new Error('db down'));
     const service = new SnmpService(repo, undefined, 0);
     const internals = opticalInternals(service);
     const device = snmpHost([networkInterface('100GE1/0/1', 1, 'UP')], { model: 'S6750-H' });
-    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([{
-      ...device.interfaces[0]!,
-      opticalThresholds: snmpThresholds,
-    }]);
+    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([
+      {
+        ...device.interfaces[0]!,
+        opticalThresholds: snmpThresholds,
+      },
+    ]);
 
     await expect(internals.refreshOpticalPower(device, 'public')).resolves.toMatchObject({
       skipped: false,
@@ -1444,11 +1529,13 @@ describe('SnmpService Ã¢â‚¬â€ thresholds opticos SNMP (F7.5)', () => 
     const service = new SnmpService(repo, undefined, 0);
     const internals = opticalInternals(service);
     const device = snmpHost([networkInterface('100GE1/0/1', 1, 'UP')], { model: 'S6750-H' });
-    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([{
-      ...device.interfaces[0]!,
-      rxPowerDbm: 0.18,
-      opticalSource: 'SNMP',
-    }]);
+    vi.spyOn(internals.discoveryAdapter, 'enrichOpticalPower').mockResolvedValue([
+      {
+        ...device.interfaces[0]!,
+        rxPowerDbm: 0.18,
+        opticalSource: 'SNMP',
+      },
+    ]);
 
     await internals.refreshOpticalPower(device, 'public');
 
@@ -1750,17 +1837,15 @@ describe('SnmpService alarm transition wiring', () => {
   it('keeps polling healthy when alarm processing fails', async () => {
     const now = new Date('2026-09-16T21:17:32.000Z');
     const repo = repository();
-    repo.updateInterfaceStatuses = vi
-      .fn()
-      .mockResolvedValue([
-        {
-          deviceId: 'test-1',
-          interfaceId: 'if-1',
-          ifIndex: 1,
-          previousStatus: 'UP' as const,
-          newStatus: 'DOWN' as const,
-        },
-      ]);
+    repo.updateInterfaceStatuses = vi.fn().mockResolvedValue([
+      {
+        deviceId: 'test-1',
+        interfaceId: 'if-1',
+        ifIndex: 1,
+        previousStatus: 'UP' as const,
+        newStatus: 'DOWN' as const,
+      },
+    ]);
     const processTransitions = vi.fn().mockRejectedValue(new Error('alarm boom'));
     const alarms = {
       processTransitions,
@@ -1821,7 +1906,8 @@ describe('SnmpService Ã¢â‚¬â€ EtherLike FCS/CRC', () => {
     const service = new SnmpService(repository());
     const internals = internalsOf(service);
     vi.spyOn(internals.client, 'walk').mockImplementation(async (_host, oid) => {
-      if (oid === ETHERLIKE_FCS_OIDS.hcFcsErrors) return [{ oid: `${oid}.24`, value: '4294967300' }];
+      if (oid === ETHERLIKE_FCS_OIDS.hcFcsErrors)
+        return [{ oid: `${oid}.24`, value: '4294967300' }];
       if (oid === ETHERLIKE_FCS_OIDS.fcsErrors) return [{ oid: `${oid}.24`, value: 99 }];
       return octetWalks(oid) ?? [];
     });
@@ -1851,7 +1937,9 @@ describe('SnmpService Ã¢â‚¬â€ EtherLike FCS/CRC', () => {
   it('mantem null quando a EtherLike-MIB nao responde (0 seria "coletado sem erro")', async () => {
     const service = new SnmpService(repository());
     const internals = internalsOf(service);
-    vi.spyOn(internals.client, 'walk').mockImplementation(async (_host, oid) => octetWalks(oid) ?? []);
+    vi.spyOn(internals.client, 'walk').mockImplementation(
+      async (_host, oid) => octetWalks(oid) ?? [],
+    );
 
     const counters = await service.collectCounters(
       snmpHost([networkInterface('100GE1/0/24', 24)]),

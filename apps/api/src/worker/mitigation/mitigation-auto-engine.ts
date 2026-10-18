@@ -1,11 +1,13 @@
 import { evaluateTraffic } from '../../infrastructure/bgp/mitigation/mitigation-state-machine';
+import { createHash } from 'node:crypto';
+import type { MitigationAutoEvidence } from '../../infrastructure/bgp/mitigation/mitigation-command-service';
 import type {
   MitigationMode,
   MitigationProfileMode,
   MitigationState,
 } from '../../infrastructure/bgp/mitigation/mitigation-types';
 import type { MitigationExecutorKind } from '../../infrastructure/bgp/mitigation/mitigation-execution-config';
-import type { MitigationTrafficSource } from './mitigation-traffic-source';
+import type { MitigationTrafficSample, MitigationTrafficSource } from './mitigation-traffic-source';
 
 /**
  * MOTOR AUTO do GMJ NetVision.
@@ -35,6 +37,8 @@ export type MitigationAutoBlockReason =
   | 'PROFILE_MODE_NOT_AUTO'
   | 'BANDWIDTH_UNKNOWN'
   | 'TELEMETRY_UNAVAILABLE'
+  | 'DUPLICATE_SAMPLE'
+  | 'ACTIVATION_COOLDOWN'
   | 'ALREADY_MITIGATED'
   | 'AUTO_REMOVE_DISABLED'
   | 'THRESHOLD_NOT_EXCEEDED'
@@ -132,6 +136,7 @@ export interface MitigationAutoCommandResult {
   blockedReason?: string | null;
   safeError?: string;
   notification?: { published: boolean; skipped: boolean } | null;
+  timingsMs?: { preflight: number; execution: number; readback: number };
 }
 
 export interface MitigationAutoDecision {
@@ -173,6 +178,12 @@ export interface MitigationAutoDecision {
   verified: boolean;
   notification: { published: boolean; skipped: boolean } | null;
   detail: string | null;
+  firstAbnormalAt?: string | null;
+  confirmationMs?: number | null;
+  commandMs?: number;
+  timingsMs?: { preflight: number; execution: number; readback: number };
+  totalResponseMs?: number | null;
+  responseDeadlineExceeded?: boolean;
 }
 
 export interface MitigationAutoEngineDeps {
@@ -214,6 +225,7 @@ export interface MitigationAutoEngineDeps {
       requestId: string;
       action: 'ACTIVATE';
       profileId: string;
+      autoEvidence?: MitigationAutoEvidence;
     }): Promise<MitigationAutoCommandResult>;
   };
   now?: () => Date;
@@ -259,6 +271,11 @@ export interface MitigationAutoEngineDeps {
    * ja ativas permanecem intactos; o REMOVE continua 100% manual.
    */
   executionControl?: { enabled: boolean };
+  /** Maximum age AND gap for independent confirmations. No change to triggerSamples. */
+  sampling?: { maxAgeMs: number; maxGapMs: number };
+  activationCooldownMs?: number;
+  /** Bounded evaluation of independent profiles; canonical policy locks still serialize writes. */
+  evaluationConcurrency?: number;
 }
 
 interface DirectionCounters {
@@ -269,6 +286,7 @@ interface DirectionCounters {
   lastSampleKey: string | null;
   /** Timestamp (ms) da ultima amostra contada, para exigir monotonicidade. */
   lastSampleAtMs: number | null;
+  continuityKey?: string | undefined;
 }
 
 interface AutoCounters extends DirectionCounters {
@@ -299,10 +317,18 @@ function newDirectionCounters(): DirectionCounters {
  */
 function countDistinctSample(
   counters: DirectionCounters,
-  sample: { bps: bigint; sampleKey: string; occurredAt: Date | null },
+  sample: MitigationTrafficSample,
   thresholds: { trigger: bigint; recovery: bigint },
   atMs: number,
+  maxGapMs: number,
 ): boolean {
+  const sampleMs = sample.occurredAt?.getTime() ?? atMs;
+  if (
+    (counters.lastSampleAtMs !== null && sampleMs - counters.lastSampleAtMs > maxGapMs) ||
+    (counters.continuityKey !== undefined && counters.continuityKey !== sample.continuityKey)
+  ) {
+    resetSequence(counters);
+  }
   let isNewSample: boolean;
   if (sample.occurredAt) {
     const atSampleMs = sample.occurredAt.getTime();
@@ -311,21 +337,29 @@ function countDistinctSample(
   } else {
     isNewSample = counters.lastSampleKey !== sample.sampleKey;
   }
-  counters.lastSampleKey = sample.sampleKey;
   if (!isNewSample) return false;
-  if (sample.bps > thresholds.trigger) {
+  counters.lastSampleKey = sample.sampleKey;
+  counters.continuityKey = sample.continuityKey;
+  if (sample.bps >= thresholds.trigger) {
     counters.over += 1;
     counters.below = 0;
-    if (counters.triggerStartedAtMs === null) counters.triggerStartedAtMs = atMs;
+    if (counters.triggerStartedAtMs === null) counters.triggerStartedAtMs = sampleMs;
   } else if (sample.bps < thresholds.recovery) {
     counters.below += 1;
     counters.over = 0;
+    counters.triggerStartedAtMs = null;
   } else {
     counters.over = 0;
     counters.below = 0;
     counters.triggerStartedAtMs = null;
   }
   return true;
+}
+
+function resetSequence(counters: DirectionCounters): void {
+  counters.over = 0;
+  counters.below = 0;
+  counters.triggerStartedAtMs = null;
 }
 
 const MITIGATED_STATES: readonly MitigationState[] = [
@@ -367,6 +401,8 @@ function engineOwnsState(state: MitigationState | null | undefined): boolean {
 }
 
 export class MitigationAutoEngine {
+  private readonly history = new Map<string, MitigationAutoDecision[]>();
+  private readonly attempts = new Map<string, number>();
   private readonly counters = new Map<string, AutoCounters>();
   private readonly inFlight = new Set<string>();
   /** Cadeia de avaliações por profile (serializa ticks concorrentes). */
@@ -393,6 +429,10 @@ export class MitigationAutoEngine {
     return [...this.decisions.values()];
   }
 
+  getDecisionHistory(profileId: string): MitigationAutoDecision[] {
+    return [...(this.history.get(profileId) ?? [])];
+  }
+
   getLastDecision(): MitigationAutoDecision | null {
     const all = this.getDecisions();
     if (all.length === 0) return null;
@@ -411,38 +451,54 @@ export class MitigationAutoEngine {
   async tick(): Promise<MitigationAutoDecision[]> {
     const targets = await this.deps.targets.list();
     const result: MitigationAutoDecision[] = [];
-    for (const target of targets) {
-      // Erro em UM profile nunca derruba a avaliacao dos outros.
-      try {
-        const decision = await this.evaluate(target);
-        this.decisions.set(target.profileId, decision);
-        result.push(decision);
-      } catch (error) {
-        const decision = this.record({
-          at: this.now().toISOString(),
-          profileId: target.profileId,
-          deviceId: target.deviceId,
-          customer: target.customer,
-          outcome: 'FAILED',
-          reason: 'ACTIVATE_FAILED',
-          trafficBps: null,
-          thresholdBps: null,
-          recoveryThresholdBps: null,
-          samplesOver: 0,
-          samplesBelow: 0,
-          requiredSamples: target.triggerSamples,
-          runtimeState: target.runtimeState,
-          sharedPolicy: target.sharedPolicy,
-          requestId: null,
-          commandStatus: null,
-          verified: false,
-          notification: null,
-          detail: error instanceof Error ? error.message : 'falha na avaliacao',
-        });
-        this.decisions.set(target.profileId, decision);
-        result.push(decision);
+    let nextIndex = 0;
+    const worker = async () => {
+      while (nextIndex < targets.length) {
+        const index = nextIndex++;
+        const target = targets[index]!;
+        // Erro em UM profile nunca derruba a avaliacao dos outros.
+        try {
+          const decision = await this.evaluate(target);
+          this.decisions.set(target.profileId, decision);
+          result[index] = decision;
+        } catch (error) {
+          const decision = this.record({
+            at: this.now().toISOString(),
+            profileId: target.profileId,
+            deviceId: target.deviceId,
+            customer: target.customer,
+            outcome: 'FAILED',
+            reason: 'ACTIVATE_FAILED',
+            trafficBps: null,
+            thresholdBps: null,
+            recoveryThresholdBps: null,
+            samplesOver: 0,
+            samplesBelow: 0,
+            requiredSamples: target.triggerSamples,
+            runtimeState: target.runtimeState,
+            sharedPolicy: target.sharedPolicy,
+            requestId: null,
+            commandStatus: null,
+            verified: false,
+            notification: null,
+            detail: error instanceof Error ? error.message : 'falha na avaliacao',
+          });
+          this.decisions.set(target.profileId, decision);
+          result[index] = decision;
+        }
       }
-    }
+    };
+    await Promise.all(
+      Array.from(
+        {
+          length: Math.min(
+            targets.length,
+            Math.max(1, Math.min(4, this.deps.evaluationConcurrency ?? 1)),
+          ),
+        },
+        worker,
+      ),
+    );
     // Resumo agregado das decisoes normais (substitui o log por tick).
     this.flushSummaryIfDue();
     return result;
@@ -571,6 +627,38 @@ export class MitigationAutoEngine {
       (target.effectiveBandwidthBps * BigInt(target.recoveryPercent)) / 100n;
     const thresholds = { trigger: threshold, recovery: recoveryThreshold };
     const counters = await this.loadCounters(target);
+    const maxAgeMs = this.deps.sampling?.maxAgeMs ?? 45_000;
+    const maxGapMs = this.deps.sampling?.maxGapMs ?? 45_000;
+    const usable = (sample: MitigationTrafficSample | null): sample is MitigationTrafficSample => {
+      if (!sample || sample.bps < 0n) return false;
+      if (!sample.occurredAt) return true; // deterministic sources; production always supplies timestamps
+      const age = at.getTime() - sample.occurredAt.getTime();
+      const interval = sample.rateStartAt
+        ? sample.occurredAt.getTime() - sample.rateStartAt.getTime()
+        : 0;
+      return (
+        Number.isFinite(age) && age >= 0 && age <= maxAgeMs && interval >= 0 && interval <= maxGapMs
+      );
+    };
+    const unavailable = async () => {
+      resetSequence(counters);
+      if (counters.rx) resetSequence(counters.rx);
+      await this.deps.runtime.save(target.profileId, {
+        triggerCounter: 0,
+        recoveryCounter: 0,
+        currentTrafficBps: null,
+        ...(freshRead.ok && engineOwnsState(freshRead.state) && engineOwnsState(target.runtimeState)
+          ? { state: 'NORMAL' as const }
+          : {}),
+      });
+      return block('TELEMETRY_UNAVAILABLE');
+    };
+    let newTxSample = false;
+    let autoEvidence: MitigationAutoEvidence | undefined;
+    const evidenceOf = (sample: MitigationTrafficSample): MitigationAutoEvidence | undefined =>
+      sample.occurredAt && sample.continuityKey
+        ? { sampleAt: sample.occurredAt.toISOString(), continuityKey: sample.continuityKey }
+        : undefined;
 
     // DUAL RX+TX (flag): as duas direcoes da MESMA amostra, com contadores
     // independentes. O alvo com direcao PINADA em `rx` continua no caminho
@@ -590,19 +678,31 @@ export class MitigationAutoEngine {
         deviceId: target.deviceId,
         interfaceId: target.interfaceId,
         bandwidthBps: target.effectiveBandwidthBps,
-      });
+      }).catch(() => null);
       if (sample === null || (sample.rx === null && sample.tx === null)) {
-        return block('TELEMETRY_UNAVAILABLE');
+        return unavailable();
       }
       const rxCounters = (counters.rx ??= newDirectionCounters());
       // Mesma regra de amostra distinta, POR DIRECAO: a identidade (occurredAt
       // monotonico) e a mesma linha do equipamento para RX e TX.
-      if (sample.rx !== null) countDistinctSample(rxCounters, sample.rx, thresholds, at.getTime());
-      if (sample.tx !== null) countDistinctSample(counters, sample.tx, thresholds, at.getTime());
+      if (usable(sample.rx))
+        countDistinctSample(rxCounters, sample.rx, thresholds, at.getTime(), maxGapMs);
+      else {
+        resetSequence(rxCounters);
+        sample.rx = null;
+      }
+      if (usable(sample.tx))
+        newTxSample = countDistinctSample(counters, sample.tx, thresholds, at.getTime(), maxGapMs);
+      else {
+        resetSequence(counters);
+        sample.tx = null;
+      }
       const rxTriggered =
-        sample.rx !== null && sample.rx.bps > threshold && rxCounters.over >= target.triggerSamples;
+        sample.rx !== null &&
+        sample.rx.bps >= threshold &&
+        rxCounters.over >= target.triggerSamples;
       const txTriggered =
-        sample.tx !== null && sample.tx.bps > threshold && counters.over >= target.triggerSamples;
+        sample.tx !== null && sample.tx.bps >= threshold && counters.over >= target.triggerSamples;
       trafficByDirection = {
         rx: sample.rx !== null ? sample.rx.bps.toString() : null,
         tx: sample.tx !== null ? sample.tx.bps.toString() : null,
@@ -631,13 +731,15 @@ export class MitigationAutoEngine {
             : 'TELEMETRY_UNAVAILABLE',
         });
       }
-      await this.persistCounters(
-        target,
-        counters,
-        sample.tx.bps,
-        sample.tx.occurredAt ?? at,
-        freshRead,
-      );
+      autoEvidence = evidenceOf(sample.tx);
+      if (newTxSample)
+        await this.persistCounters(
+          target,
+          counters,
+          sample.tx.bps,
+          sample.tx.occurredAt ?? at,
+          freshRead,
+        );
       // RX detectado e TX normal: registra/alertar SEM escrever. A mitigacao
       // BGP nao resolve o cenario de RX (origem no cliente) com a acao atual.
       if (rxTriggered && !txTriggered) {
@@ -676,22 +778,26 @@ export class MitigationAutoEngine {
       traffic = sample.tx.bps;
     } else {
       // Caminho LEGADO (direcao unica): identico ao publicado.
-      const sample = await this.deps.traffic.sampleWithId({
-        profileId: target.profileId,
-        deviceId: target.deviceId,
-        interfaceId: target.interfaceId,
-        bandwidthBps: target.effectiveBandwidthBps,
-      });
-      if (sample === null) return block('TELEMETRY_UNAVAILABLE');
+      const sample = await this.deps.traffic
+        .sampleWithId({
+          profileId: target.profileId,
+          deviceId: target.deviceId,
+          interfaceId: target.interfaceId,
+          bandwidthBps: target.effectiveBandwidthBps,
+        })
+        .catch(() => null);
+      if (!usable(sample)) return unavailable();
       traffic = sample.bps;
+      autoEvidence = evidenceOf(sample);
       // CRITICO: so conta sample novo quando a IDENTIDADE da telemetria muda.
       // 3 ticks lendo a MESMA InterfaceMetricSample valem 1 sample, nunca 3.
       // Regra de amostra distinta:
       //   - com occurredAt real: exige MONOTONICIDADE (T > lastSampleAt).
       //     Igual => nao conta; menor (telemetria atrasada/reordenada) => nao conta.
       //   - sem occurredAt (fontes de teste): identidade por sampleKey.
-      countDistinctSample(counters, sample, thresholds, at.getTime());
-      await this.persistCounters(target, counters, traffic, sample.occurredAt ?? at, freshRead);
+      newTxSample = countDistinctSample(counters, sample, thresholds, at.getTime(), maxGapMs);
+      if (newTxSample)
+        await this.persistCounters(target, counters, traffic, sample.occurredAt ?? at, freshRead);
     }
 
     const withValues = {
@@ -699,6 +805,16 @@ export class MitigationAutoEngine {
       trafficBps: traffic.toString(),
       thresholdBps: threshold.toString(),
       recoveryThresholdBps: recoveryThreshold.toString(),
+      firstAbnormalAt:
+        counters.triggerStartedAtMs === null
+          ? null
+          : new Date(counters.triggerStartedAtMs).toISOString(),
+      confirmationMs:
+        counters.over >= target.triggerSamples && counters.triggerStartedAtMs !== null
+          ? at.getTime() - counters.triggerStartedAtMs
+          : null,
+      responseDeadlineExceeded:
+        counters.triggerStartedAtMs !== null && at.getTime() - counters.triggerStartedAtMs > 60_000,
       ...(trafficByDirection !== null ? { trafficByDirection } : {}),
       ...(triggeredDirections !== null ? { triggeredDirections } : {}),
     };
@@ -734,12 +850,13 @@ export class MitigationAutoEngine {
       return decided('ALREADY_MITIGATED', 'NO_ACTION');
     }
 
-    if (traffic <= threshold) {
+    if (traffic < threshold) {
       return decided('THRESHOLD_NOT_EXCEEDED', 'NO_ACTION');
     }
     if (counters.over < target.triggerSamples) {
       return decided('SAMPLES_INSUFFICIENT', 'TRIGGER_PENDING');
     }
+    if (!newTxSample) return decided('DUPLICATE_SAMPLE', 'SKIPPED');
 
     // Modo decide a ACAO, nunca a elegibilidade: AUTO e ALERT_ONLY passaram
     // pelos MESMOS gates acima. ALERT_ONLY para aqui, com zero escrita.
@@ -756,8 +873,10 @@ export class MitigationAutoEngine {
       return decided('AUTO_EXECUTION_DISABLED', 'WOULD_ACTIVATE');
     }
     // Daqui para baixo o target esta apto: o que falta e a autorizacao de escrita.
-    if (this.deps.globalMode !== 'AUTO') return decided('GLOBAL_MODE_SIMULATION_ONLY', 'WOULD_ACTIVATE');
-    if (this.deps.execution.executor !== 'HUAWEI') return decided('EXECUTOR_NOT_HUAWEI', 'WOULD_ACTIVATE');
+    if (this.deps.globalMode !== 'AUTO')
+      return decided('GLOBAL_MODE_SIMULATION_ONLY', 'WOULD_ACTIVATE');
+    if (this.deps.execution.executor !== 'HUAWEI')
+      return decided('EXECUTOR_NOT_HUAWEI', 'WOULD_ACTIVATE');
     if (!this.deps.execution.liveWrite) return decided('LIVE_WRITE_DISABLED', 'WOULD_ACTIVATE');
     if (!this.deps.execution.allowedDeviceIds.includes(target.deviceId)) {
       return decided('DEVICE_NOT_ALLOWED', 'WOULD_ACTIVATE');
@@ -781,7 +900,21 @@ export class MitigationAutoEngine {
     const scopeReason = await this.detectScopeMitigation(target);
     if (scopeReason !== null) return decided(scopeReason, 'NO_ACTION');
 
-    const requestId = `auto-activate-${target.profileId}-${counters.triggerStartedAtMs ?? at.getTime()}`;
+    const scopeKey = `${target.deviceId}:${target.policyName ?? target.profileId}`;
+    const lastAttempt = this.attempts.get(scopeKey);
+    if (
+      lastAttempt !== undefined &&
+      at.getTime() - lastAttempt < (this.deps.activationCooldownMs ?? 30_000)
+    ) {
+      return decided('ACTIVATION_COOLDOWN', 'SKIPPED');
+    }
+    this.attempts.set(scopeKey, at.getTime());
+
+    const observationHash = createHash('sha256')
+      .update(counters.lastSampleKey ?? String(at.getTime()))
+      .digest('hex')
+      .slice(0, 12);
+    const requestId = `auto-activate-${target.profileId}-${counters.triggerStartedAtMs ?? at.getTime()}-${observationHash}`;
     this.inFlight.add(target.profileId);
     this.deps.logger?.('auto: disparando ACTIVATE', {
       profileId: target.profileId,
@@ -789,10 +922,12 @@ export class MitigationAutoEngine {
       requestId,
     });
     try {
+      const commandStarted = this.now().getTime();
       const result = await this.deps.commands.execute({
         requestId,
         action: 'ACTIVATE',
         profileId: target.profileId,
+        ...(autoEvidence ? { autoEvidence } : {}),
       });
       const verified = result.ok && result.verified && result.status === 'ACTIVATED_VERIFIED';
       const decision = this.record({
@@ -803,6 +938,15 @@ export class MitigationAutoEngine {
         commandStatus: result.status,
         verified,
         notification: result.notification ?? null,
+        commandMs: this.now().getTime() - commandStarted,
+        ...(result.timingsMs ? { timingsMs: result.timingsMs } : {}),
+        totalResponseMs:
+          counters.triggerStartedAtMs === null
+            ? null
+            : this.now().getTime() - counters.triggerStartedAtMs,
+        responseDeadlineExceeded:
+          counters.triggerStartedAtMs !== null &&
+          this.now().getTime() - counters.triggerStartedAtMs > 60_000,
         outcome: verified ? 'ACTIVATED' : 'FAILED',
         reason: verified
           ? null
@@ -829,6 +973,7 @@ export class MitigationAutoEngine {
   }
 
   private mapCommandReason(result: MitigationAutoCommandResult): MitigationAutoBlockReason {
+    if (result.status === 'AUTO_TELEMETRY_UNAVAILABLE') return 'TELEMETRY_UNAVAILABLE';
     if (result.blockedReason === 'PEER_MITIGATION_EXCLUDED') return 'PEER_MITIGATION_EXCLUDED';
     if (result.blockedReason === 'MITIGATION_EXCLUDED') return 'MITIGATION_EXCLUDED';
     // O preflight bloqueado reporta o motivo agregado em `safeError`; sem isto
@@ -851,12 +996,22 @@ export class MitigationAutoEngine {
    * periodico (`auto: resumo de decisoes`).
    */
   private record(decision: MitigationAutoDecision): MitigationAutoDecision {
+    const history = this.history.get(decision.profileId) ?? [];
+    const signature = (d: MitigationAutoDecision) =>
+      `${d.outcome}|${d.reason}|${Math.min(d.samplesOver, d.requiredSamples)}|${d.commandStatus}`;
+    const previous = history.at(-1);
+    if (!previous || signature(previous) !== signature(decision)) {
+      history.push(decision);
+      if (history.length > 20) history.shift();
+      this.history.set(decision.profileId, history);
+    }
     this.logDecision(decision);
     return decision;
   }
 
   private logDecision(decision: MitigationAutoDecision): void {
     const meta = {
+      at: decision.at,
       profileId: decision.profileId,
       deviceId: decision.deviceId,
       outcome: decision.outcome,
@@ -873,6 +1028,12 @@ export class MitigationAutoEngine {
       trafficByDirection: decision.trafficByDirection ?? null,
       triggeredDirections: decision.triggeredDirections ?? null,
       detail: decision.detail,
+      firstAbnormalAt: decision.firstAbnormalAt ?? null,
+      confirmationMs: decision.confirmationMs ?? null,
+      commandMs: decision.commandMs ?? null,
+      timingsMs: decision.timingsMs ?? null,
+      totalResponseMs: decision.totalResponseMs ?? null,
+      responseDeadlineExceeded: decision.responseDeadlineExceeded ?? false,
     };
     this.deps.debugLogger?.('auto: decisao (debug)', meta);
 
@@ -884,7 +1045,8 @@ export class MitigationAutoEngine {
     const reasonKey = decision.reason ?? 'SEM_BLOQUEIO';
     this.summary.byReason.set(reasonKey, (this.summary.byReason.get(reasonKey) ?? 0) + 1);
 
-    const key = `${decision.outcome}|${decision.reason ?? ''}|${decision.runtimeState ?? ''}`;
+    const progress = decision.outcome === 'TRIGGER_PENDING' ? decision.samplesOver : 0;
+    const key = `${decision.outcome}|${decision.reason ?? ''}|${decision.runtimeState ?? ''}|${progress}`;
     if (!ALWAYS_LOGGED_OUTCOMES.includes(decision.outcome)) {
       // Sem transicao => decisao normal repetida (o caso dos 35 profiles sem
       // direction para o AUTO a cada 5 s).
@@ -896,7 +1058,7 @@ export class MitigationAutoEngine {
       // metralhadora quando o motivo oscila a cada tick). A chave NAO e gravada:
       // se o estado se mantiver, a proxima janela emite a linha.
       const lastAtMs = this.loggedAtMs.get(decision.profileId) ?? 0;
-      if (lastAtMs !== 0 && nowMs - lastAtMs < this.transitionThrottleMs) {
+      if (progress === 0 && lastAtMs !== 0 && nowMs - lastAtMs < this.transitionThrottleMs) {
         this.summary.suppressed += 1;
         return;
       }
@@ -927,8 +1089,9 @@ export class MitigationAutoEngine {
     if (cached) return cached;
     const runtime = await this.deps.runtime.get(target.profileId);
     const counters: AutoCounters = {
-      over: runtime?.triggerCounter ?? 0,
-      below: runtime?.recoveryCounter ?? 0,
+      // A restart cannot prove the previous sequence's continuity/quality.
+      over: 0,
+      below: 0,
       triggerStartedAtMs: null,
       loaded: true,
       // Reidrata a identidade do ultimo sample (sobrevive a restart).

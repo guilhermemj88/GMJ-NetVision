@@ -83,7 +83,7 @@ function harness(options: {
       return {
         sampleKey: tx.sampleKey,
         occurredAt: tx.occurredAt,
-        rx: nextSample((BW * 10n) / 100n),
+        rx: { ...tx, bps: (BW * 10n) / 100n },
         tx,
       };
     },
@@ -119,6 +119,7 @@ function harness(options: {
         return { ok: true, status: 'ACTIVATED_VERIFIED', verified: true };
       },
     },
+    now: () => new Date(Date.UTC(2026, 9, 14, options.baseHour ?? 12, 0, (tick + 1) * 10)),
     ...(options.executionEnabled === undefined
       ? {}
       : { executionControl: { enabled: options.executionEnabled } }),
@@ -203,14 +204,15 @@ describe('AUTO: controle de execucao (autorizacao x execucao separadas)', () => 
     expect(restartedDecision.outcome).toBe('WOULD_ACTIVATE');
     expect(restartedDecision.reason).toBe('AUTO_EXECUTION_DISABLED');
     expect(restarted.executed).toHaveLength(0);
-    // Contadores continuam de onde pararam (persistidos no runtime).
-    expect(Number(restartedDecision.samplesOver)).toBeGreaterThanOrEqual(6);
+    // Restart restabelece confirmacoes: a qualidade da sequencia anterior nao e comprovavel.
+    expect(Number(restartedDecision.samplesOver)).toBe(3);
   });
 
   it('I) RX em perfil promovido continua MONITOR-ONLY (sem comando) com execucao off', async () => {
     const executed: string[] = [];
     let tick = 0;
     const rxHigh = new MitigationAutoEngine({
+      now: () => new Date(Date.UTC(2026, 9, 14, 16, 0, (tick + 1) * 10)),
       globalMode: 'AUTO',
       execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [DEVICE] },
       targets: { list: async () => [target('sweep-rx', { direction: null })] },

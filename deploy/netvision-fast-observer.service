@@ -1,0 +1,33 @@
+[Unit]
+Description=NetVision priority SNMP observation (no mitigation engine or SSH executor)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=exec
+DynamicUser=yes
+WorkingDirectory=/opt/netvision-fast-observer/current
+EnvironmentFile=/etc/netvision-fast-observer.env
+Environment=NODE_OPTIONS=--max-old-space-size=128
+ExecStart=/usr/bin/node /opt/netvision-fast-observer/current/dist/mitigation-fast-observer-main.cjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectProc=invisible
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+IPAddressDeny=any
+IPAddressAllow=127.0.0.1/32
+IPAddressAllow=45.163.144.1/32
+MemoryAccounting=yes
+MemoryMax=256M
+CPUAccounting=yes
+CPUQuota=20%
+LimitNOFILE=1024
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target

@@ -6,16 +6,10 @@ import type {
 } from './mitigation-executor';
 import { verifyActivation, verifyRemoval } from './mitigation-executor';
 import type { MitigationProfileRecord, MitigationRepository } from './mitigation-repository';
-import {
-  policyExecutionScope,
-  syncPolicyRuntime,
-} from './mitigation-policy-scope';
+import { policyExecutionScope, syncPolicyRuntime } from './mitigation-policy-scope';
 import { effectiveBandwidthBps } from './bandwidth-parser';
 import { interfaceMitigationScope } from './mitigation-scope';
-import {
-  DEFAULT_BOGON_PREFIX_LIST,
-  DEFAULT_TARGET_PREFIX_LIST,
-} from './mitigation-planner';
+import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import { SimulationCommandExecutor } from './simulation-command-executor';
 import type { MitigationNodePair } from './mitigation-planner';
 import type {
@@ -70,7 +64,13 @@ export const REMOVAL_SCOPE_ACTIVE_STATES: readonly MitigationState[] = [
 export const RUNTIME_SYNC_FAILED_WARNING =
   'Equipamento alterado, mas o runtime local não foi sincronizado por completo; revalide a policy (RECONCILIATION_REQUIRED).';
 
+export interface MitigationAutoEvidence {
+  sampleAt: string;
+  continuityKey: string;
+}
+
 export interface MitigationCommandInput {
+  autoEvidence?: MitigationAutoEvidence;
   requestId: string;
   action: MitigationCommandAction;
   profileId: string;
@@ -118,6 +118,7 @@ export interface MitigationNotificationOutcome {
 }
 
 export interface MitigationCommandResult {
+  timingsMs?: { preflight: number; execution: number; readback: number };
   ok: boolean;
   requestId: string;
   action: MitigationCommandAction;
@@ -190,6 +191,8 @@ export interface MitigationLiveExecutorPort {
 }
 
 export interface MitigationCommandDeps {
+  /** AUTO only: recheck recent UP telemetry AFTER preflight, BEFORE any write. */
+  autoEvidence?: (profileId: string, evidence?: MitigationAutoEvidence) => Promise<boolean>;
   repository: MitigationRepository;
   hosts: { getHost(id: string): Promise<HostRecord | null> };
   executor: MitigationExecutor;
@@ -324,6 +327,15 @@ export class MitigationCommandService {
       executedAt: string;
     },
   ): Promise<MitigationActionResult> {
+    const timingsMs = { preflight: 0, execution: 0, readback: 0 };
+    const timed = async <T>(stage: keyof typeof timingsMs, work: () => Promise<T>): Promise<T> => {
+      const start = this.now().getTime();
+      try {
+        return await work();
+      } finally {
+        timingsMs[stage] += this.now().getTime() - start;
+      }
+    };
     const peers = await this.read(() => this.deps.repository.listProfilePeers(profile.id), []);
     const runtime = await this.read(() => this.deps.repository.getRuntime(profile.id), null);
     // A mitigacao e o PAR (BOGONS + mitigacao). Compatibilidade: um runtime
@@ -374,6 +386,7 @@ export class MitigationCommandService {
 
     const common: MitigationCommandBase = {
       ...base,
+      ...(activate ? { timingsMs } : {}),
       customer: label.customer,
       device: host ? host.displayName || host.hostname : profile.deviceId,
       interface: label.interfaceName ?? profile.interfaceId,
@@ -465,9 +478,7 @@ export class MitigationCommandService {
     }
 
     const liveMode: MitigationPreflightMode =
-      input.action === 'SIMULATE_ACTIVATE' || input.action === 'ACTIVATE'
-        ? 'ACTIVATE'
-        : 'REMOVE';
+      input.action === 'SIMULATE_ACTIVATE' || input.action === 'ACTIVATE' ? 'ACTIVATE' : 'REMOVE';
 
     let preflight: MitigationPreflightResult | null = null;
     if (live && host && pair) {
@@ -478,16 +489,18 @@ export class MitigationCommandService {
         liveMode === 'ACTIVATE' && this.deps.expectedNodes
           ? await this.read(() => this.deps.expectedNodes!(profile.id), null)
           : null;
-      preflight = await live.preflight(host, {
-        mode: liveMode,
-        policyName: profile.policyName,
-        bogonNode: pair.bogonNode,
-        mitigationNode: pair.mitigationNode,
-        rt: profile.mitigationRt,
-        bogonPrefixList: this.labels.bogonPrefixList,
-        targetPrefixList: this.labels.targetPrefixList,
-        expectedExistingNodes,
-      });
+      preflight = await timed('preflight', () =>
+        live.preflight(host, {
+          mode: liveMode,
+          policyName: profile.policyName,
+          bogonNode: pair.bogonNode,
+          mitigationNode: pair.mitigationNode,
+          rt: profile.mitigationRt,
+          bogonPrefixList: this.labels.bogonPrefixList,
+          targetPrefixList: this.labels.targetPrefixList,
+          expectedExistingNodes,
+        }),
+      );
     }
 
     const activationInput: MitigationActivationInput = {
@@ -573,12 +586,33 @@ export class MitigationCommandService {
         if (liveDevice && live) {
           // Fail-closed: sem preflight OK o equipamento NAO recebe escrita.
           if (!preflight?.ok) return this.preflightBlocked(common, preview, preflight);
+          if (
+            input.requestId.startsWith('auto-activate-') &&
+            this.deps.autoEvidence &&
+            !(await this.deps.autoEvidence(profile.id, input.autoEvidence).catch(() => false))
+          ) {
+            return {
+              ...common,
+              ok: false,
+              status: 'AUTO_TELEMETRY_UNAVAILABLE',
+              verified: false,
+              commandPreview: preview,
+              verification: null,
+              preflight,
+              safeError:
+                'AUTO: telemetria recente, UP e acima do limiar indisponivel apos preflight',
+            };
+          }
           writeAttempted = true;
-          await live.activate(liveDevice, activationInput);
-          readBack = await live.readRoutePolicy(liveDevice, profile.policyName);
+          await timed('execution', () => live.activate(liveDevice, activationInput));
+          readBack = await timed('readback', () =>
+            live.readRoutePolicy(liveDevice, profile.policyName),
+          );
         } else {
-          await this.deps.executor.activate(activationInput);
-          readBack = await this.deps.executor.readRoutePolicy(profile.policyName);
+          await timed('execution', () => this.deps.executor.activate(activationInput));
+          readBack = await timed('readback', () =>
+            this.deps.executor.readRoutePolicy(profile.policyName),
+          );
         }
         const check = verifyActivation(
           profile.policyName,
@@ -605,7 +639,10 @@ export class MitigationCommandService {
           status: check.verified ? 'ACTIVATED_VERIFIED' : 'REVALIDATION_FAILED',
           verified: check.verified,
           commandPreview: preview,
-          verification: { command: `display route-policy ${profile.policyName}`, summary: check.summary },
+          verification: {
+            command: `display route-policy ${profile.policyName}`,
+            summary: check.summary,
+          },
           ...(preflight ? { preflight } : {}),
           ...(sync.ok ? {} : { safeError: RUNTIME_SYNC_FAILED_WARNING }),
           ...(check.verified ? {} : { safeError: check.summary }),
@@ -640,7 +677,10 @@ export class MitigationCommandService {
         status: check.verified ? 'REMOVED_VERIFIED' : 'REVALIDATION_FAILED',
         verified: check.verified,
         commandPreview: preview,
-        verification: { command: `display route-policy ${profile.policyName}`, summary: check.summary },
+        verification: {
+          command: `display route-policy ${profile.policyName}`,
+          summary: check.summary,
+        },
         ...(preflight ? { preflight } : {}),
         ...(pairSource === 'DEVICE' ? { pairSource } : {}),
         ...(sync.ok ? {} : { safeError: RUNTIME_SYNC_FAILED_WARNING }),
@@ -761,9 +801,7 @@ export class MitigationCommandService {
       const otherHost = await this.read(() => this.deps.hosts.getHost(other.deviceId), null);
       const otherLabel = resolveInterfaceLabel(otherHost, other.interfaceId);
       const peer =
-        peers.find((candidate) => candidate.primary)?.peerAddress ??
-        peers[0]?.peerAddress ??
-        null;
+        peers.find((candidate) => candidate.primary)?.peerAddress ?? peers[0]?.peerAddress ?? null;
       targets.push({
         interfaceId: other.interfaceId,
         interfaceName: otherLabel.interfaceName,
@@ -965,11 +1003,13 @@ function resolveInterfaceLabel(
  * Par planejado do runtime. `plannedNode` antigo vale como mitigationNode
  * (compatibilidade), mas o par so existe com os DOIS nodes.
  */
-export function plannedPairOf(runtime: {
-  plannedNode: number | null;
-  plannedBogonNode: number | null;
-  plannedMitigationNode: number | null;
-} | null): MitigationNodePair | null {
+export function plannedPairOf(
+  runtime: {
+    plannedNode: number | null;
+    plannedBogonNode: number | null;
+    plannedMitigationNode: number | null;
+  } | null,
+): MitigationNodePair | null {
   const mitigationNode = runtime?.plannedMitigationNode ?? runtime?.plannedNode ?? null;
   const bogonNode = runtime?.plannedBogonNode ?? null;
   if (mitigationNode === null || bogonNode === null) return null;

@@ -1,0 +1,93 @@
+{
+  "synthetic": true,
+  "clock": "Vitest virtual timers, real scheduler/engine/command/verification code",
+  "inventory": {
+    "hosts": 18,
+    "interfaces": 2379,
+    "protectedProfiles": 4,
+    "unconfiguredProfiles": 32
+  },
+  "durationMs": 300000,
+  "sampleIntervalMs": {
+    "count": 104,
+    "p50": 10000,
+    "p95": 20000,
+    "max": 20000
+  },
+  "collectionMs": {
+    "count": 108,
+    "p50": 175,
+    "p95": 900,
+    "max": 900
+  },
+  "detectionMs": {
+    "count": 4,
+    "p50": 5175,
+    "p95": 6150,
+    "max": 6150
+  },
+  "confirmationMs": {
+    "count": 4,
+    "p50": 24850,
+    "p95": 33525,
+    "max": 33525
+  },
+  "commandMs": {
+    "count": 4,
+    "p50": 9000,
+    "p95": 9000,
+    "max": 9000
+  },
+  "totalResponseMs": {
+    "count": 4,
+    "p50": 33850,
+    "p95": 42525,
+    "max": 42525
+  },
+  "stageTimings": [
+    {
+      "preflight": 3000,
+      "execution": 4000,
+      "readback": 2000
+    },
+    {
+      "preflight": 3000,
+      "execution": 4000,
+      "readback": 2000
+    },
+    {
+      "preflight": 3000,
+      "execution": 4000,
+      "readback": 2000
+    },
+    {
+      "preflight": 3000,
+      "execution": 4000,
+      "readback": 2000
+    }
+  ],
+  "snmpCallsPerDevice": {
+    "synthetic-0": 28,
+    "synthetic-1": 28,
+    "synthetic-2": 27,
+    "synthetic-3": 27
+  },
+  "varbindCount": {
+    "count": 110,
+    "p50": 9,
+    "p95": 9,
+    "max": 9
+  },
+  "conventionalCalls": 11,
+  "snmpFailures": 0,
+  "resourceMeasurement": {
+    "scope": "local test process with synthetic transport; not a production capacity estimate",
+    "wallMs": 33.59010000000001,
+    "cpuMicros": {
+      "user": 31000,
+      "system": 15000
+    },
+    "heapStartBytes": 20039192,
+    "peakHeapBytes": 23832696
+  }
+}

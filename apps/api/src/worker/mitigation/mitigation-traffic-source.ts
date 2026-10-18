@@ -26,6 +26,8 @@ export interface MitigationTrafficSample {
   bps: bigint;
   sampleKey: string;
   occurredAt: Date | null;
+  rateStartAt?: Date | null;
+  continuityKey?: string;
 }
 
 /**
@@ -68,10 +70,16 @@ export class RuntimeTrafficSource implements MitigationTrafficSource {
 
   async sampleWithId(target: MitigationTrafficTarget): Promise<MitigationTrafficSample | null> {
     const runtime = await this.repository.getRuntime(target.profileId);
-    const bps = await this.sample(target);
-    if (bps === null) return null;
+    if (runtime?.currentTrafficBps == null || !runtime.lastSampleAt) return null;
+    const age = this.now().getTime() - runtime.lastSampleAt.getTime();
+    if (age < 0 || age > this.maxAgeMs) return null;
+    const bps = runtime.currentTrafficBps;
     const occurredAt = runtime?.lastSampleAt ?? null;
-    return { bps, sampleKey: occurredAt ? occurredAt.toISOString() : `runtime:${bps.toString()}`, occurredAt };
+    return {
+      bps,
+      sampleKey: occurredAt ? occurredAt.toISOString() : `runtime:${bps.toString()}`,
+      occurredAt,
+    };
   }
 
   async sample(target: MitigationTrafficTarget): Promise<bigint | null> {
@@ -121,14 +129,24 @@ export class InterfaceTrafficSource implements MitigationTrafficSource {
   ) {}
 
   async sampleWithId(target: MitigationTrafficTarget): Promise<MitigationTrafficSample | null> {
-    const bps = await this.sample(target);
-    if (bps === null) return null;
-    const row = target.interfaceId ? await this.reader.latestTraffic(target.interfaceId) : null;
-    const occurredAt = row?.timestamp ?? null;
+    if (!target.interfaceId) return null;
+    const direction =
+      this.options.resolveDirection?.(target) ??
+      this.options.directionByProfile?.[target.profileId] ??
+      this.options.direction;
+    if (!direction) return null;
+    const row = await this.reader.latestTraffic(target.interfaceId);
+    if (!this.validRow(row, target)) return null;
+    const raw = direction === 'tx' ? row.txBps : row.rxBps;
+    if (!Number.isFinite(raw) || raw < 0) return null;
+    const bps = BigInt(Math.round(raw));
+    const occurredAt = row.timestamp;
     return {
       bps,
-      sampleKey: occurredAt ? occurredAt.toISOString() : `interface:${bps.toString()}`,
+      sampleKey: `${target.deviceId}:${target.interfaceId}:${direction}:${row.sampleId ?? occurredAt.toISOString()}`,
       occurredAt,
+      rateStartAt: row.rateStartAt ?? null,
+      continuityKey: `${target.deviceId}:${target.interfaceId}:${row.ifIndex ?? ''}:${direction}`,
     };
   }
 
@@ -142,10 +160,7 @@ export class InterfaceTrafficSource implements MitigationTrafficSource {
   ): Promise<MitigationDirectionsSample | null> {
     if (!target.interfaceId) return null;
     const row = await this.reader.latestTraffic(target.interfaceId);
-    if (!row) return null;
-    const now = (this.options.now ?? (() => new Date()))().getTime();
-    const age = now - row.timestamp.getTime();
-    if (!Number.isFinite(age) || age < 0 || age > this.options.maxAgeMs) return null;
+    if (!this.validRow(row, target)) return null;
     const sampleKey = row.timestamp.toISOString();
     return {
       sampleKey,
@@ -156,20 +171,25 @@ export class InterfaceTrafficSource implements MitigationTrafficSource {
   }
 
   async sample(target: MitigationTrafficTarget): Promise<bigint | null> {
-    if (!target.interfaceId) return null;
-    const direction =
-      this.options.resolveDirection?.(target) ??
-      this.options.directionByProfile?.[target.profileId] ??
-      this.options.direction;
-    if (!direction) return null;
-    const row = await this.reader.latestTraffic(target.interfaceId);
-    if (!row) return null;
+    return (await this.sampleWithId(target))?.bps ?? null;
+  }
+
+  private validRow(
+    row: Awaited<ReturnType<InterfaceTrafficReader['latestTraffic']>>,
+    target: MitigationTrafficTarget,
+  ): row is NonNullable<typeof row> {
+    if (
+      !row ||
+      row.interfaceId !== target.interfaceId ||
+      (row.deviceId && row.deviceId !== target.deviceId) ||
+      row.usable === false ||
+      (row.adminStatus && row.adminStatus !== 'UP') ||
+      (row.operStatus && row.operStatus !== 'UP')
+    )
+      return false;
     const now = (this.options.now ?? (() => new Date()))().getTime();
     const age = now - row.timestamp.getTime();
-    if (!Number.isFinite(age) || age < 0 || age > this.options.maxAgeMs) return null;
-    const raw = direction === 'tx' ? row.txBps : row.rxBps;
-    if (typeof raw !== 'number' || !Number.isFinite(raw) || raw < 0) return null;
-    return BigInt(Math.round(raw));
+    return Number.isFinite(age) && age >= 0 && age <= this.options.maxAgeMs;
   }
 }
 
@@ -182,17 +202,32 @@ function directionalSample(
   return { bps: BigInt(Math.round(raw)), sampleKey, occurredAt };
 }
 
-/** Fonte determinística para teste: fila por profile + valor padrão opcional. */export class SequenceTrafficSource implements MitigationTrafficSource {
-  private readonly queues = new Map<string, { bps: bigint; sampleKey: string; occurredAt: Date | null }[]>();
+/** Fonte determinística para teste: fila por profile + valor padrão opcional. */ export class SequenceTrafficSource implements MitigationTrafficSource {
+  private readonly queues = new Map<
+    string,
+    { bps: bigint; sampleKey: string; occurredAt: Date | null }[]
+  >();
   private readonly fallback = new Map<string, bigint | null>();
-  private readonly sticky = new Map<string, { bps: bigint | null; sampleKey: string; occurredAt: Date | null }>();
+  private readonly sticky = new Map<
+    string,
+    { bps: bigint | null; sampleKey: string; occurredAt: Date | null }
+  >();
   private sequence = 0;
 
   /** Cada `push` representa uma amostra NOVA do equipamento (identidade própria). */
-  push(profileId: string, value: bigint | null, sampleKey?: string, occurredAt: Date | null = null): void {
+  push(
+    profileId: string,
+    value: bigint | null,
+    sampleKey?: string,
+    occurredAt: Date | null = null,
+  ): void {
     if (value === null) return;
     const queue = this.queues.get(profileId) ?? [];
-    queue.push({ bps: value, sampleKey: sampleKey ?? `${profileId}-s${(this.sequence += 1)}`, occurredAt });
+    queue.push({
+      bps: value,
+      sampleKey: sampleKey ?? `${profileId}-s${(this.sequence += 1)}`,
+      occurredAt,
+    });
     this.queues.set(profileId, queue);
   }
 
@@ -201,7 +236,12 @@ function directionalSample(
   }
 
   /** Amostra "colada": repetida em todos os ticks com a MESMA identidade. */
-  setSticky(profileId: string, value: bigint | null, sampleKey = 'sticky', occurredAt: Date | null = null): void {
+  setSticky(
+    profileId: string,
+    value: bigint | null,
+    sampleKey = 'sticky',
+    occurredAt: Date | null = null,
+  ): void {
     this.sticky.set(profileId, { bps: value, sampleKey, occurredAt });
   }
 

@@ -49,11 +49,10 @@ function target(
   };
 }
 
-function trafficSource(): MitigationTrafficSource {
-  let tick = 0;
+function trafficSource(clock: { tick: number }): MitigationTrafficSource {
   const nextSample = () => {
-    tick += 1;
-    const at = new Date(Date.UTC(2026, 9, 14, 12, 0, tick * 10));
+    clock.tick += 1;
+    const at = new Date(Date.UTC(2026, 9, 14, 12, 0, clock.tick * 10));
     return { bps: OVER, sampleKey: at.toISOString(), occurredAt: at };
   };
   return {
@@ -83,11 +82,13 @@ function engine(
   } = {},
 ) {
   const executed: string[] = [];
+  const clock = { tick: 0 };
   const instance = new MitigationAutoEngine({
+    now: () => new Date(Date.UTC(2026, 9, 14, 12, 0, (clock.tick + 1) * 10)),
     globalMode: 'SIMULATION_ONLY',
     execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [DEVICE] },
     targets: { list: async () => targets },
-    traffic: trafficSource(),
+    traffic: trafficSource(clock),
     exclusions: { listPeerExclusions: async () => [] },
     runtime: {
       get: async () => ({
@@ -105,9 +106,7 @@ function engine(
       },
     },
     ...(options.dual ? { dualDirections: { enabled: true } } : {}),
-    ...(options.approvedFamilyPairs
-      ? { approvedFamilyPairs: options.approvedFamilyPairs }
-      : {}),
+    ...(options.approvedFamilyPairs ? { approvedFamilyPairs: options.approvedFamilyPairs } : {}),
   });
   const run3 = async () => {
     await instance.tick();

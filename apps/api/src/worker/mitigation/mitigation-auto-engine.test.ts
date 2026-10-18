@@ -102,7 +102,10 @@ class CountingLiveExecutor implements MitigationLiveExecutorPort {
     };
   }
 
-  async activate(_device: HostRecord, _input: MitigationActivationInput): Promise<{ output: string }> {
+  async activate(
+    _device: HostRecord,
+    _input: MitigationActivationInput,
+  ): Promise<{ output: string }> {
     this.activateCalls += 1;
     if (this.failNextActivate) {
       this.failNextActivate = false;
@@ -123,7 +126,10 @@ class CountingLiveExecutor implements MitigationLiveExecutorPort {
   }
 }
 
-function targetState(profileId: string, over: Partial<MitigationAutoTargetState> = {}): MitigationAutoTargetState {
+function targetState(
+  profileId: string,
+  over: Partial<MitigationAutoTargetState> = {},
+): MitigationAutoTargetState {
   return {
     profileId,
     deviceId: DEVICE,
@@ -230,7 +236,19 @@ async function harness(options: HarnessOptions = {}) {
   const exact = (BANDWIDTH * 90n) / 100n;
   const under = (BANDWIDTH * 50n) / 100n;
 
-  return { repository, profileId: profile.id, live, engine, traffic, notified, commands, run, over, exact, under };
+  return {
+    repository,
+    profileId: profile.id,
+    live,
+    engine,
+    traffic,
+    notified,
+    commands,
+    run,
+    over,
+    exact,
+    under,
+  };
 }
 
 describe('motor AUTO real (GMJ NetVision)', () => {
@@ -304,12 +322,12 @@ describe('motor AUTO real (GMJ NetVision)', () => {
     expect(h.live.activateCalls).toBe(0);
   });
 
-  it('8) 90% exato => NO_ACTION (nao escreve)', async () => {
+  it('8) 90% exato confirma conforme o limiar inclusivo', async () => {
     const h = await harness();
     const decision = await h.run(3, h.exact);
-    expect(decision[0]!.outcome).toBe('NO_ACTION');
-    expect(decision[0]!.reason).toBe('THRESHOLD_NOT_EXCEEDED');
-    expect(h.live.activateCalls).toBe(0);
+    expect(decision[0]!.outcome).toBe('ACTIVATED');
+    expect(decision[0]!.reason).toBe(null);
+    expect(h.live.activateCalls).toBe(1);
   });
 
   it('9) >90% com menos de 3 samples => TRIGGER_PENDING', async () => {
@@ -372,7 +390,7 @@ describe('motor AUTO real (GMJ NetVision)', () => {
 
   it('H4) restart entre samples: a MESMA amostra nao conta de novo (identidade persistida)', async () => {
     const h = await harness();
-    const key1 = '2026-09-30T23:00:00.000Z';
+    const key1 = '2026-09-30T23:59:30.000Z';
     h.traffic.setSticky(h.profileId, h.over, key1, new Date(key1));
     const first = await h.engine.tick();
     expect(first[0]!.samplesOver).toBe(1);
@@ -381,30 +399,30 @@ describe('motor AUTO real (GMJ NetVision)', () => {
     const h2 = await harness({ repository: h.repository });
     h2.traffic.setSticky(h.profileId, h.over, key1, new Date(key1));
     const afterRestart = await h2.engine.tick();
-    expect(afterRestart[0]!.samplesOver).toBe(1);
+    expect(afterRestart[0]!.samplesOver).toBe(0);
 
-    const key2 = '2026-09-30T23:05:00.000Z';
+    const key2 = '2026-09-30T23:59:40.000Z';
     h2.traffic.push(h.profileId, h.over, key2, new Date(key2));
     const second = await h2.engine.tick();
-    expect(second[0]!.samplesOver).toBe(2);
+    expect(second[0]!.samplesOver).toBe(1);
   });
 
   it('H5) timestamp mais ANTIGO (telemetria atrasada) NAO conta como nova amostra', async () => {
     const h = await harness();
-    const t2 = '2026-09-30T23:10:00.000Z';
+    const t2 = '2026-09-30T23:59:40.000Z';
     h.traffic.push(h.profileId, h.over, t2, new Date(t2));
     const first = await h.engine.tick();
     expect(first[0]!.samplesOver).toBe(1);
 
     // chega T1 < T2 (reordenacao/atraso): nao incrementa
-    const t1 = '2026-09-30T23:00:00.000Z';
+    const t1 = '2026-09-30T23:59:30.000Z';
     h.traffic.push(h.profileId, h.over, t1, new Date(t1));
     const stale = await h.engine.tick();
     expect(stale[0]!.samplesOver).toBe(1);
     expect(h.live.activateCalls).toBe(0);
 
     // T3 > T2: incrementa exatamente 1 vez
-    const t3 = '2026-09-30T23:15:00.000Z';
+    const t3 = '2026-09-30T23:59:50.000Z';
     h.traffic.push(h.profileId, h.over, t3, new Date(t3));
     const fresh = await h.engine.tick();
     expect(fresh[0]!.samplesOver).toBe(2);
@@ -490,20 +508,12 @@ describe('motor AUTO real (GMJ NetVision)', () => {
     expect(h.live.activateCalls).toBe(1);
     expect(h.engine.isBusy(h.profileId)).toBe(false);
 
-    // Novo ciclo: o motor rele o runtime antes de comandar; a ativacao acontece
-    // UMA vez e os ticks seguintes ja veem o estado fresco (ALREADY_MITIGATED),
-    // sem repetir o comando idempotente.
+    // Cooldown impede uma nova escrita cega no ciclo seguinte ao timeout.
     h.traffic.push(h.profileId, h.over);
     const second = await h.engine.tick();
-    expect(second[0]!.outcome).toBe('ACTIVATED');
-    expect(h.live.preflightCalls).toBe(2); // read-back do caminho canonico antes da 2a escrita
-    expect(h.live.activateCalls).toBe(2);
-
-    h.traffic.push(h.profileId, h.over);
-    const third = await h.engine.tick();
-    expect(third[0]!.outcome).toBe('NO_ACTION');
-    expect(third[0]!.reason).toBe('ALREADY_MITIGATED');
-    expect(h.live.activateCalls).toBe(2);
+    expect(second[0]!.outcome).toBe('SKIPPED');
+    expect(second[0]!.reason).toBe('ACTIVATION_COOLDOWN');
+    expect(h.live.activateCalls).toBe(1);
   });
 
   it('19) MITIGATED nao ativa novamente', async () => {
@@ -602,7 +612,9 @@ describe('motor AUTO x prefixos informativos (A-G)', () => {
   });
 
   it('G) policy/readback invalido => continua bloqueado sem escrita', async () => {
-    const policy = await harness({ target: { readiness: 'READY', blockedReason: 'POLICY_NOT_FOUND' } });
+    const policy = await harness({
+      target: { readiness: 'READY', blockedReason: 'POLICY_NOT_FOUND' },
+    });
     const p = await policy.run(3, policy.over);
     expect(p[0]!.outcome).toBe('BLOCKED');
     expect(p[0]!.reason).toBe('TARGET_BLOCKED');

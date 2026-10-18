@@ -62,14 +62,17 @@ import { PrismaAuthRepository } from './infrastructure/persistence/prisma-auth-r
 import { PrismaMapRepository } from './infrastructure/persistence/prisma-map-repository';
 import { PrismaPublicViewRepository } from './infrastructure/persistence/prisma-public-view-repository';
 import { PrismaTopologyPreviewStore } from './infrastructure/persistence/prisma-topology-preview-store';
-import {
-  createPrismaHostRepository,
-} from './infrastructure/persistence/prisma-host-repository';
+import { createPrismaHostRepository } from './infrastructure/persistence/prisma-host-repository';
 import { disconnectPrismaClient, prismaClient } from './infrastructure/persistence/prisma-client';
 import type { HostRepository } from './infrastructure/persistence/host-repository';
 import type { PublicViewRecord } from './infrastructure/persistence/public-view-repository';
 import { SnmpClientImpl } from './infrastructure/snmp/snmp-client-impl';
 import { SnmpPoller } from './infrastructure/snmp/snmp-poller';
+import { FastTrafficPoller, fastPollerConfig } from './infrastructure/snmp/fast-traffic-poller';
+import { FastSnmpReader } from './infrastructure/snmp/fast-snmp-reader';
+import { PrismaFastTrafficStore } from './infrastructure/snmp/prisma-fast-traffic-store';
+import { listFastTrafficTargets } from './infrastructure/snmp/fast-traffic-targets';
+import { PriorityTrafficSource } from './worker/mitigation/fast-traffic-source';
 import { SnmpService } from './infrastructure/snmp/snmp-service';
 import { DemoMplsRepository } from './infrastructure/mpls/demo-mpls-repository';
 import { DemoAlarmRepository } from './infrastructure/alarms/demo-alarm-repository';
@@ -81,7 +84,10 @@ import { PrismaAlarmSuppressionRepository } from './infrastructure/alarms/prisma
 import { AlarmService } from './application/alarm-service';
 import { AlarmEngine } from './application/alarm-engine';
 import { AlarmSuppressionService } from './application/alarm-suppression-service';
-import { AlarmNotificationService, type AlarmNotifier } from './application/alarm-notification-service';
+import {
+  AlarmNotificationService,
+  type AlarmNotifier,
+} from './application/alarm-notification-service';
 import { N8nAlarmTransport } from './infrastructure/alarms/n8n-alarm-transport';
 import { createAlarmChartSnapshot } from './infrastructure/media/alarm-chart-snapshot';
 import { registerSnapshotRoutes } from './infrastructure/media/snapshot-routes';
@@ -128,6 +134,7 @@ import {
 import { registerMitigationRoutes } from './mitigation-routes';
 import { registerN8nRoutes } from './n8n-routes';
 import { MitigationCommandService } from './infrastructure/bgp/mitigation/mitigation-command-service';
+import type { MitigationAutoEvidence } from './infrastructure/bgp/mitigation/mitigation-command-service';
 import { MockMitigationExecutor } from './infrastructure/bgp/mitigation/mitigation-executor';
 import { mitigationConfigFromEnv } from './infrastructure/bgp/mitigation/mitigation-config';
 import { mitigationExecutionConfigFromEnv } from './infrastructure/bgp/mitigation/mitigation-execution-config';
@@ -138,7 +145,10 @@ import { MitigationAutoEngine } from './worker/mitigation/mitigation-auto-engine
 import { MitigationAutoRuntime } from './worker/mitigation/mitigation-auto-runtime';
 import { buildAutoShadowReport } from './worker/mitigation/mitigation-auto-shadow';
 import { InterfaceTrafficSource } from './worker/mitigation/mitigation-traffic-source';
-import { MitigationAutoDescriptionSweep, parseSweepBatchSize } from './infrastructure/bgp/mitigation/mitigation-auto-description-sweep';
+import {
+  MitigationAutoDescriptionSweep,
+  parseSweepBatchSize,
+} from './infrastructure/bgp/mitigation/mitigation-auto-description-sweep';
 import type { MitigationState } from './infrastructure/bgp/mitigation/mitigation-types';
 import { InMemoryMediaRepository } from './infrastructure/media/in-memory-media-repository';
 import { PrismaMediaRepository } from './infrastructure/media/prisma-media-repository';
@@ -475,7 +485,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const metrics = new DemoMetricAdapter();
   const discovery = new DiscoveryService([new DemoTopologyAdapter()]);
   const ssh = new SshInterfaceService(hosts);
-  const mplsRepository = config.DEMO_MODE ? new DemoMplsRepository() : new PrismaMplsRepository(prismaClient);
+  const mplsRepository = config.DEMO_MODE
+    ? new DemoMplsRepository()
+    : new PrismaMplsRepository(prismaClient);
   const mplsPolling = new MplsPollingService(
     new HuaweiVplsSnmpCollector(new SnmpClientImpl(3000, 1)),
     mplsRepository,
@@ -484,7 +496,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const pppPolling = pppRepository
     ? new PppPollingService(new SnmpClientImpl(3000, 1), pppRepository)
     : undefined;
-  const bgpRepository = config.DEMO_MODE ? new DemoBgpRepository() : new PrismaBgpRepository(prismaClient);
+  const bgpRepository = config.DEMO_MODE
+    ? new DemoBgpRepository()
+    : new PrismaBgpRepository(prismaClient);
   const bgpPolling = new BgpPollingService(
     new HuaweiBgpSnmpCollector(new SnmpClientImpl(3000, 1)),
     bgpRepository,
@@ -524,7 +538,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const mitigationPeerExclusionReady = createCachedSchemaCheck(async () => ({
     databaseReady: true,
     migrationReady: await mitigationPeerExclusionProbe.probe(),
-  }));  const mitigationPrismaRepository = config.DEMO_MODE
+  }));
+  const mitigationPrismaRepository = config.DEMO_MODE
     ? null
     : new PrismaMitigationRepository(prismaClient);
   const mitigationRepository =
@@ -540,6 +555,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const mitigationSsh = new HuaweiBgpSshService(hosts);
   // Runtime do motor AUTO (atribuído depois das dependências canônicas).
   let autoRuntimeRef: MitigationAutoRuntime | null = null;
+  let revalidateAutoEvidence:
+    ((profileId: string, evidence?: MitigationAutoEvidence) => Promise<boolean>) | null = null;
   const mitigationService = new BgpMitigationService({
     repository: mitigationRepository,
     discovery: new BgpMitigationDiscoveryService({
@@ -579,13 +596,20 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const alarmSuppressionRepository = config.DEMO_MODE
     ? new DemoAlarmSuppressionRepository()
     : new PrismaAlarmSuppressionRepository(prismaClient);
-  const alarmSuppressions = new AlarmSuppressionService(alarmRepository, alarmSuppressionRepository);
+  const alarmSuppressions = new AlarmSuppressionService(
+    alarmRepository,
+    alarmSuppressionRepository,
+  );
   const operationalOccurrenceRepository = config.DEMO_MODE
     ? new DemoOperationalOccurrenceRepository()
     : new PrismaOperationalOccurrenceRepository(prismaClient);
   const operationalOccurrences = new OperationalOccurrenceService(operationalOccurrenceRepository);
   const alertCenterRepository = config.DEMO_MODE
-    ? new DemoAlertCenterRepository(alarmRepository, operationalOccurrenceRepository, alarmSuppressionRepository)
+    ? new DemoAlertCenterRepository(
+        alarmRepository,
+        operationalOccurrenceRepository,
+        alarmSuppressionRepository,
+      )
     : new PrismaAlertCenterRepository(prismaClient);
   const alertCenter = new AlertCenterService(alertCenterRepository);
   const alarms = new AlarmService(alarmRepository, alarmSuppressionRepository);
@@ -750,6 +774,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   // F4: MESMA exclusao mutua para UI, n8n, AUTO e APPLY LOCAL do reconciler.
   const mitigationScopeLock = new InMemoryPolicyScopeLock();
   const mitigationCommands = new MitigationCommandService({
+    autoEvidence: (id, evidence) =>
+      revalidateAutoEvidence?.(id, evidence) ?? Promise.resolve(false),
     repository: mitigationRepository,
     hosts,
     executor: mitigationExecutor,
@@ -776,13 +802,17 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     }
   }
   const autoMaxAgeRaw = Number(process.env.MITIGATION_AUTO_TRAFFIC_MAX_AGE_SECONDS ?? '');
-  const autoMaxAgeMs = (Number.isFinite(autoMaxAgeRaw) && autoMaxAgeRaw > 0 ? autoMaxAgeRaw : 120) * 1000;
+  const autoMaxAgeMs =
+    (Number.isFinite(autoMaxAgeRaw) && autoMaxAgeRaw > 0 ? autoMaxAgeRaw : 120) * 1000;
 
   // ---- AUTO-ALL-PREP-1: direcao POR PERFIL (persistida) + gates de config ---
   // A direcao gravada no perfil vence o ENV legado. Sem nenhum dos dois a
   // direcao continua INDEFINIDA: a telemetria e tratada como indisponivel
   // (fail-closed) e nunca existe default implicito do tipo "tx para todos".
-  const resolvedDirections = new Map<string, { direction: 'rx' | 'tx'; source: 'PROFILE' | 'ENV' }>();
+  const resolvedDirections = new Map<
+    string,
+    { direction: 'rx' | 'tx'; source: 'PROFILE' | 'ENV' }
+  >();
   const resolveAutoDirection = (
     profileId: string,
     stored: 'RX' | 'TX' | null | undefined,
@@ -841,7 +871,67 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     process.env.MITIGATION_AUTO_EXECUTION_ENABLED?.trim() ?? '',
   );
 
+  const fastConfig = fastPollerConfig();
+  const fastStore = new PrismaFastTrafficStore(prismaClient);
+  const fastPoller = new FastTrafficPoller({
+    config: fastConfig,
+    listTargets: () =>
+      listFastTrafficTargets({
+        profileIds: fastConfig.profileIds,
+        allowedDeviceIds: mitigationExecutionConfig.allowedDeviceIds,
+        listProfiles: () => mitigationRepository.listProfiles(),
+        hosts,
+        direction: (p) => resolveAutoDirection(p.id, p.autoTrafficDirection)?.direction ?? null,
+      }),
+    reader: new FastSnmpReader(hosts, new SnmpClientImpl(fastConfig.timeoutMs, fastConfig.retries)),
+    store: fastStore,
+    logger: (message, meta) => app.log.info(meta, message),
+  });
+  const legacyTraffic = new InterfaceTrafficSource(new PrismaInterfaceTrafficReader(prismaClient), {
+    directionByProfile: autoDirections,
+    resolveDirection: (target) => resolvedDirections.get(target.profileId)?.direction ?? null,
+    maxAgeMs: autoMaxAgeMs,
+  });
+  const priorityTraffic = new PriorityTrafficSource({
+    config: fastConfig,
+    store: fastStore,
+    legacy: legacyTraffic,
+    direction: (id) => resolvedDirections.get(id)?.direction ?? null,
+    available: (id) => fastPoller.isAvailable(id),
+  });
+  revalidateAutoEvidence = async (id, evidence) => {
+    if (!evidence) return false;
+    const profile = await mitigationRepository.getProfile(id);
+    if (!profile || !profile.enabled || profile.mode !== 'AUTO' || profile.mitigationExcluded)
+      return false;
+    const direction = resolveAutoDirection(id, profile.autoTrafficDirection)?.direction;
+    if (!direction || direction !== resolvedDirections.get(id)?.direction) return false;
+    const bandwidthBps = profile.bandwidthOverrideBps ?? profile.detectedBandwidthBps;
+    if (!bandwidthBps) return false;
+    const sample = await priorityTraffic.sampleWithId({
+      profileId: id,
+      deviceId: profile.deviceId,
+      interfaceId: profile.interfaceId,
+      bandwidthBps,
+    });
+    if (
+      sample?.continuityKey !== evidence.continuityKey ||
+      !sample?.occurredAt ||
+      sample.occurredAt.getTime() < Date.parse(evidence.sampleAt)
+    )
+      return false;
+    if (
+      !sample?.occurredAt ||
+      Date.now() < sample.occurredAt.getTime() ||
+      Date.now() - sample.occurredAt.getTime() > 45_000
+    )
+      return false;
+    if (sample.rateStartAt && sample.occurredAt.getTime() - sample.rateStartAt.getTime() > 45_000)
+      return false;
+    return sample.bps >= (bandwidthBps * BigInt(profile.triggerPercent)) / 100n;
+  };
   const mitigationAutoEngine = new MitigationAutoEngine({
+    evaluationConcurrency: fastConfig.mode === 'OFF' ? 1 : 2,
     globalMode: mitigationEngineConfig.mode,
     execution: {
       executor: mitigationExecutionConfig.executor,
@@ -898,14 +988,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
           });
       },
     },
-    traffic: new InterfaceTrafficSource(new PrismaInterfaceTrafficReader(prismaClient), {
-      directionByProfile: autoDirections,
-      // A direcao PERSISTIDA (resolvida no inicio do tick) tem precedencia; sem
-      // ela, o ENV legado continua valendo e, sem ENV, a leitura fica
-      // indisponivel (fail-closed).
-      resolveDirection: (target) => resolvedDirections.get(target.profileId)?.direction ?? null,
-      maxAgeMs: autoMaxAgeMs,
-    }),
+    traffic: priorityTraffic,
     exclusions: {
       listPeerExclusions: (filter) => mitigationRepository.listPeerExclusions(filter),
     },
@@ -935,6 +1018,41 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     intervalMs: Math.max(1000, mitigationEngineConfig.checkIntervalSeconds * 1000),
     logger: (message, meta) => app.log.info(meta ?? {}, message),
   });
+  app.get('/api/bgp/mitigation/fast-poller', async () => ({
+    ...fastPoller.status(),
+    profiles: fastConfig.profileIds.map((profileId) => {
+      const decision =
+        mitigationAutoEngine.getDecisions().find((d) => d.profileId === profileId) ?? null;
+      const phase = mitigationAutoEngine.isBusy(profileId)
+        ? 'MITIGATING'
+        : decision?.outcome === 'ACTIVATED' || decision?.runtimeState === 'MITIGATED'
+          ? 'COOLDOWN'
+          : decision && decision.samplesOver >= decision.requiredSamples
+            ? 'CONFIRMED_ATTACK'
+            : decision && decision.samplesOver > 0
+              ? 'SUSPECTED_ATTACK'
+              : 'NORMAL';
+      return {
+        profileId,
+        phase,
+        decision,
+        history: mitigationAutoEngine.getDecisionHistory(profileId),
+      };
+    }),
+    engine: autoRuntimeRef?.getStatus() ?? null,
+    responseBudgetMs: 60_000,
+    // Unmet deadlines remain visible while a command or engine tick is still in flight.
+    pendingDeadlineViolations: mitigationAutoEngine
+      .getDecisions()
+      .filter(
+        (d) =>
+          d.firstAbnormalAt &&
+          d.outcome !== 'ACTIVATED' &&
+          Date.now() - new Date(d.firstAbnormalAt).getTime() > 60_000,
+      )
+      .map((d) => d.profileId),
+  }));
+  if (!config.DEMO_MODE) fastPoller.start();
   // ---- AUTO-ALL: AUTO derivado da DESCRIPTION ------------------------------
   // Sweep idempotente que escreve SOMENTE `mode` + a PROVENIENCIA do AUTO.
   // Nunca toca runtime, mitigacao, Huawei, exclusoes administrativas ou direcao.
@@ -1007,6 +1125,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     );
   }
   app.addHook('onClose', async () => {
+    await fastPoller.stop();
     autoRuntimeRef?.stop();
     clearInterval(autoDescriptionSweepTimer);
   });

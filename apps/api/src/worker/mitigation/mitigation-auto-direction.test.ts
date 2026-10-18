@@ -98,9 +98,7 @@ function harness(targets: MitigationAutoTargetState[], options: HarnessOptions =
     commands: { execute: async () => ({ ok: true, status: 'OK', verified: true }) },
     now: NOW,
     ...(options.sharedPolicyGuard ? { sharedPolicyGuard: options.sharedPolicyGuard } : {}),
-    ...(options.approvedFamilyPairs
-      ? { approvedFamilyPairs: options.approvedFamilyPairs }
-      : {}),
+    ...(options.approvedFamilyPairs ? { approvedFamilyPairs: options.approvedFamilyPairs } : {}),
   });
   /** Amostra REAL do equipamento (na direcao tx por padrao) com identidade. */
   const feed = (value: bigint, at: string, interfaceId = 'if-1', field: 'tx' | 'rx' = 'tx') => {
@@ -119,7 +117,7 @@ function harness(targets: MitigationAutoTargetState[], options: HarnessOptions =
 describe('AUTO: direcao de telemetria por perfil (fail-closed)', () => {
   it('1) direcao EFETIVA e origem aparecem na decisao (auditoria do modo sombra)', async () => {
     const h = harness([targetState('p-1')]);
-    h.feed(UNDER, '2026-10-13T11:59:00.000Z');
+    h.feed(UNDER, '2026-10-13T11:59:30.000Z');
 
     const decision = (await h.engine.tick())[0]!;
     expect(decision.direction).toBe('tx');
@@ -130,7 +128,7 @@ describe('AUTO: direcao de telemetria por perfil (fail-closed)', () => {
 
   it('2) SEM direcao => TELEMETRY_UNAVAILABLE (nunca um default implicito)', async () => {
     const h = harness([targetState('p-1', { direction: null, directionSource: null })]);
-    h.feed(OVER, '2026-10-13T11:59:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:30.000Z');
 
     const decision = (await h.engine.tick())[0]!;
     expect(decision.outcome).toBe('BLOCKED');
@@ -139,10 +137,8 @@ describe('AUTO: direcao de telemetria por perfil (fail-closed)', () => {
   });
 
   it('3) ENV resolvido no alvo (routes) => decisao mostra rx/ENV', async () => {
-    const h = harness([
-      targetState('p-9', { direction: 'rx', directionSource: 'ENV' }),
-    ]);
-    h.feed(OVER, '2026-10-13T11:59:00.000Z', 'if-1', 'rx');
+    const h = harness([targetState('p-9', { direction: 'rx', directionSource: 'ENV' })]);
+    h.feed(OVER, '2026-10-13T11:59:30.000Z', 'if-1', 'rx');
 
     const decision = (await h.engine.tick())[0]!;
     expect(decision.direction).toBe('rx');
@@ -155,7 +151,7 @@ describe('AUTO: direcao de telemetria por perfil (fail-closed)', () => {
       directionByProfile: { 'p-9': 'rx' },
       useResolver: false,
     });
-    h.feed(OVER, '2026-10-13T11:59:00.000Z', 'if-1', 'rx');
+    h.feed(OVER, '2026-10-13T11:59:30.000Z', 'if-1', 'rx');
 
     const decision = (await h.engine.tick())[0]!;
     expect(decision.trafficBps).toBe(OVER.toString());
@@ -164,7 +160,7 @@ describe('AUTO: direcao de telemetria por perfil (fail-closed)', () => {
 
   it('4) tres amostras = tres OBSERVACOES distintas (a mesma nunca conta duas vezes)', async () => {
     const h = harness([targetState('p-1')]);
-    h.feed(OVER, '2026-10-13T11:50:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:30.000Z');
     const first = h.byProfile(await h.engine.tick(), 'p-1');
     expect(first.samplesOver).toBe(1);
     expect(first.outcome).toBe('TRIGGER_PENDING');
@@ -172,10 +168,10 @@ describe('AUTO: direcao de telemetria por perfil (fail-closed)', () => {
     const repeated = h.byProfile(await h.engine.tick(), 'p-1');
     expect(repeated.samplesOver).toBe(1);
 
-    h.feed(OVER, '2026-10-13T11:54:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:40.000Z');
     expect(h.byProfile(await h.engine.tick(), 'p-1').samplesOver).toBe(2);
 
-    h.feed(OVER, '2026-10-13T11:58:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:50.000Z');
     const third = h.byProfile(await h.engine.tick(), 'p-1');
     expect(third.samplesOver).toBe(3);
     expect(third.outcome).toBe('ALERT_TRIGGERED');
@@ -183,22 +179,22 @@ describe('AUTO: direcao de telemetria por perfil (fail-closed)', () => {
 
   it('5) amostra ATRASADA (timestamp menor) nao conta', async () => {
     const h = harness([targetState('p-1')]);
-    h.feed(OVER, '2026-10-13T11:50:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:30.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:58:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:50.000Z');
     expect(h.byProfile(await h.engine.tick(), 'p-1').samplesOver).toBe(2);
 
-    h.feed(OVER, '2026-10-13T11:55:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:35.000Z');
     expect(h.byProfile(await h.engine.tick(), 'p-1').samplesOver).toBe(2);
   });
 
   it('6) tráfego cai: contador zera e a ativacao exige novas amostras', async () => {
     const h = harness([targetState('p-1')]);
-    h.feed(OVER, '2026-10-13T11:50:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:30.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:54:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:40.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:58:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:50.000Z');
     expect(h.byProfile(await h.engine.tick(), 'p-1').outcome).toBe('ALERT_TRIGGERED');
 
     h.feed(UNDER, '2026-10-13T12:00:00.000Z');
@@ -215,11 +211,11 @@ describe('AUTO: contencao IPv4/IPv6 no MESMO escopo de contadores', () => {
       targetState('p-v6', { mode: 'AUTO', addressFamily: 'IPV6' }),
     ];
     const h = harness(targets);
-    h.feed(OVER, '2026-10-13T11:50:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:30.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:54:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:40.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:58:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:50.000Z');
     const decisions = await h.engine.tick();
 
     expect(h.byProfile(decisions, 'p-v4').reason).not.toBe('FAMILY_CONTENTION_UNRESOLVED');
@@ -235,11 +231,11 @@ describe('AUTO: contencao IPv4/IPv6 no MESMO escopo de contadores', () => {
       targetState('p-v6', { mode: 'AUTO', addressFamily: 'IPV6' }),
     ];
     const h = harness(targets, { approvedFamilyPairs: [['p-v4', 'p-v6']] });
-    h.feed(OVER, '2026-10-13T11:50:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:30.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:54:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:40.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:58:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:50.000Z');
     const decisions = await h.engine.tick();
 
     for (const id of ['p-v4', 'p-v6']) {
@@ -252,11 +248,11 @@ describe('AUTO: contencao IPv4/IPv6 no MESMO escopo de contadores', () => {
   it('9) apenas IPv6 em AUTO (sem irmao IPv4): BLOQUEADO por design (fail-closed)', async () => {
     const targets = [targetState('p-v6', { mode: 'AUTO', addressFamily: 'IPV6' })];
     const h = harness(targets);
-    h.feed(OVER, '2026-10-13T11:50:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:30.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:54:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:40.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:58:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:50.000Z');
     const decision = h.byProfile(await h.engine.tick(), 'p-v6');
     expect(decision.outcome).toBe('BLOCKED');
     expect(decision.reason).toBe('FAMILY_CONTENTION_UNRESOLVED');
@@ -265,7 +261,12 @@ describe('AUTO: contencao IPv4/IPv6 no MESMO escopo de contadores', () => {
 
   it('9b) irmao IPv4 SEM direcao (gap antigo): IPv6 segue BLOQUEADO', async () => {
     const targets = [
-      targetState('p-v4', { mode: 'AUTO', addressFamily: 'IPV4', direction: null, directionSource: null }),
+      targetState('p-v4', {
+        mode: 'AUTO',
+        addressFamily: 'IPV4',
+        direction: null,
+        directionSource: null,
+      }),
       targetState('p-v6', {
         mode: 'AUTO',
         addressFamily: 'IPV6',
@@ -274,11 +275,11 @@ describe('AUTO: contencao IPv4/IPv6 no MESMO escopo de contadores', () => {
       }),
     ];
     const h = harness(targets);
-    h.feed(OVER, '2026-10-13T11:50:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:30.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:54:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:40.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:58:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:50.000Z');
     const decisions = await h.engine.tick();
 
     const secondary = h.byProfile(decisions, 'p-v6');
@@ -292,11 +293,11 @@ describe('AUTO: contencao IPv4/IPv6 no MESMO escopo de contadores', () => {
       targetState('p-v6', { addressFamily: 'IPV6' }),
     ];
     const h = harness(targets);
-    h.feed(OVER, '2026-10-13T11:50:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:30.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:54:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:40.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:58:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:50.000Z');
     const decisions = await h.engine.tick();
 
     expect(h.byProfile(decisions, 'p-v4').outcome).toBe('ALERT_TRIGGERED');
@@ -306,46 +307,55 @@ describe('AUTO: contencao IPv4/IPv6 no MESMO escopo de contadores', () => {
 
 describe('AUTO: guarda de automacao em policy COMPARTILHADA', () => {
   it('11) guarda DESLIGADA preserva o comportamento atual (compat BHNET)', async () => {
-    const h = harness([targetState('bhnet', { mode: 'AUTO', sharedPolicyAutomationBlocked: true })]);
-    h.feed(OVER, '2026-10-13T11:50:00.000Z');
+    const h = harness([
+      targetState('bhnet', { mode: 'AUTO', sharedPolicyAutomationBlocked: true }),
+    ]);
+    h.feed(OVER, '2026-10-13T11:59:30.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:54:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:40.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:58:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:50.000Z');
     expect(h.byProfile(await h.engine.tick(), 'bhnet').outcome).toBe('WOULD_ACTIVATE');
   });
 
   it('12) guarda LIGADA bloqueia sem allowlist explicita', async () => {
-    const h = harness([targetState('bhnet', { mode: 'AUTO', sharedPolicyAutomationBlocked: true })], {
-      sharedPolicyGuard: { enabled: true, allowedProfileIds: [] },
-    });
-    h.feed(OVER, '2026-10-13T11:50:00.000Z');
+    const h = harness(
+      [targetState('bhnet', { mode: 'AUTO', sharedPolicyAutomationBlocked: true })],
+      {
+        sharedPolicyGuard: { enabled: true, allowedProfileIds: [] },
+      },
+    );
+    h.feed(OVER, '2026-10-13T11:59:30.000Z');
     const decision = h.byProfile(await h.engine.tick(), 'bhnet');
     expect(decision.outcome).toBe('BLOCKED');
     expect(decision.reason).toBe('SHARED_POLICY_UNRESOLVED');
   });
 
   it('13) guarda LIGADA libera perfil na allowlist', async () => {
-    const h = harness([targetState('bhnet', { mode: 'AUTO', sharedPolicyAutomationBlocked: true })], {
-      sharedPolicyGuard: { enabled: true, allowedProfileIds: ['bhnet'] },
-    });
-    h.feed(OVER, '2026-10-13T11:50:00.000Z');
+    const h = harness(
+      [targetState('bhnet', { mode: 'AUTO', sharedPolicyAutomationBlocked: true })],
+      {
+        sharedPolicyGuard: { enabled: true, allowedProfileIds: ['bhnet'] },
+      },
+    );
+    h.feed(OVER, '2026-10-13T11:59:30.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:54:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:40.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:58:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:50.000Z');
     expect(h.byProfile(await h.engine.tick(), 'bhnet').outcome).toBe('WOULD_ACTIVATE');
   });
 
   it('14) ALERT_ONLY (sombra) nunca passa pela guarda de policy compartilhada', async () => {
-    const h = harness([
-      targetState('bhnet', { mode: 'ALERT_ONLY', sharedPolicyAutomationBlocked: true }),
-    ], { sharedPolicyGuard: { enabled: true, allowedProfileIds: [] } });
-    h.feed(OVER, '2026-10-13T11:50:00.000Z');
+    const h = harness(
+      [targetState('bhnet', { mode: 'ALERT_ONLY', sharedPolicyAutomationBlocked: true })],
+      { sharedPolicyGuard: { enabled: true, allowedProfileIds: [] } },
+    );
+    h.feed(OVER, '2026-10-13T11:59:30.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:54:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:40.000Z');
     await h.engine.tick();
-    h.feed(OVER, '2026-10-13T11:58:00.000Z');
+    h.feed(OVER, '2026-10-13T11:59:50.000Z');
     expect(h.byProfile(await h.engine.tick(), 'bhnet').outcome).toBe('ALERT_TRIGGERED');
   });
 });

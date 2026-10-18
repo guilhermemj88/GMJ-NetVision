@@ -1,0 +1,75 @@
+{
+  "synthetic": true,
+  "clock": "Vitest virtual timers, real scheduler/engine/command/verification code",
+  "inventory": {
+    "hosts": 18,
+    "interfaces": 2379,
+    "protectedProfiles": 1,
+    "unconfiguredProfiles": 32
+  },
+  "durationMs": 300000,
+  "sampleIntervalMs": {
+    "count": 26,
+    "p50": 10000,
+    "p95": 20000,
+    "max": 20000
+  },
+  "collectionMs": {
+    "count": 27,
+    "p50": 150,
+    "p95": 150,
+    "max": 150
+  },
+  "detectionMs": {
+    "count": 1,
+    "p50": 5150,
+    "p95": 5150,
+    "max": 5150
+  },
+  "confirmationMs": {
+    "count": 1,
+    "p50": 24850,
+    "p95": 24850,
+    "max": 24850
+  },
+  "commandMs": {
+    "count": 1,
+    "p50": 9000,
+    "p95": 9000,
+    "max": 9000
+  },
+  "totalResponseMs": {
+    "count": 1,
+    "p50": 33850,
+    "p95": 33850,
+    "max": 33850
+  },
+  "stageTimings": [
+    {
+      "preflight": 3000,
+      "execution": 4000,
+      "readback": 2000
+    }
+  ],
+  "snmpCallsPerDevice": {
+    "synthetic-0": 28
+  },
+  "varbindCount": {
+    "count": 28,
+    "p50": 9,
+    "p95": 9,
+    "max": 9
+  },
+  "conventionalCalls": 11,
+  "snmpFailures": 0,
+  "resourceMeasurement": {
+    "scope": "local test process with synthetic transport; not a production capacity estimate",
+    "wallMs": 35.41279999999995,
+    "cpuMicros": {
+      "user": 47000,
+      "system": 0
+    },
+    "heapStartBytes": 18483744,
+    "peakHeapBytes": 21220952
+  }
+}

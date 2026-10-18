@@ -1,0 +1,31 @@
+{
+  "syntheticDevice": true,
+  "realClock": true,
+  "transport": "real SNMPv2c UDP on 127.0.0.1, GET-only fixture",
+  "realHuawei": false,
+  "wallMs": 54123,
+  "requests": 5,
+  "collectionMs": [
+    5,
+    2,
+    2,
+    2,
+    2
+  ],
+  "intervalMs": [
+    20187,
+    10224,
+    10229,
+    10230
+  ],
+  "firstAbnormalAt": "2026-10-18T02:28:54.111Z",
+  "confirmationMs": 24892,
+  "commandMs": 9016,
+  "timingsMs": {
+    "preflight": 3003,
+    "execution": 4003,
+    "readback": 2008
+  },
+  "totalResponseMs": 33909,
+  "responseDeadlineExceeded": false
+}

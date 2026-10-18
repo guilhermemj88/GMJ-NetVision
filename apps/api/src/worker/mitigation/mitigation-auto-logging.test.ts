@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  MitigationAutoEngine,
-  type MitigationAutoTargetState,
-} from './mitigation-auto-engine';
+import { MitigationAutoEngine, type MitigationAutoTargetState } from './mitigation-auto-engine';
 import type { MitigationTrafficSample } from './mitigation-traffic-source';
 
 // Testes da POLITICA DE LOG do motor AUTO.
@@ -181,17 +178,17 @@ describe('politica de log do motor AUTO', () => {
     expect(lines.at(-1)!.meta.runtimeState).toBe('RECONCILIATION_REQUIRED');
   });
 
-  it('5) falha de telemetria/excecao e SEMPRE registrada', async () => {
+  it('5) falha de telemetria e registrada em transicao, sem inundar o log', async () => {
     const h = harness({ targets: [target()], failTraffic: true });
     await h.engine.tick();
     h.clock.ms += 5_000;
     await h.engine.tick();
 
     const lines = decisionsOf(h.info);
-    expect(lines).toHaveLength(2);
+    expect(lines).toHaveLength(1);
     for (const line of lines) {
-      expect(line.meta.outcome).toBe('FAILED');
-      expect(line.meta.reason).toBe('ACTIVATE_FAILED');
+      expect(line.meta.outcome).toBe('BLOCKED');
+      expect(line.meta.reason).toBe('TELEMETRY_UNAVAILABLE');
     }
   });
 
