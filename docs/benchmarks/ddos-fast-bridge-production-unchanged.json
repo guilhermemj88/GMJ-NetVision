@@ -1,0 +1,121 @@
+{
+  "at": "2026-10-18T13:38:53.916Z",
+  "migrations": [
+    {
+      "count": 38
+    }
+  ],
+  "readerRole": [
+    {
+      "count": 0
+    }
+  ],
+  "newEvents": [],
+  "health": {
+    "status": "ok",
+    "demoMode": false,
+    "snmpPolling": true
+  },
+  "observer": {
+    "release": "69b375f221b61c022ef446560fb357adb6bc108c",
+    "startedAt": "2026-10-18T02:34:41.481Z",
+    "observationOnly": true,
+    "executionAvailable": false,
+    "healthy": true,
+    "uptimeSeconds": 39854.32466239,
+    "memory": {
+      "rss": 112746496,
+      "heapTotal": 20590592,
+      "heapUsed": 9834808,
+      "external": 2653190,
+      "arrayBuffers": 209419
+    },
+    "cpu": {
+      "user": 189858326,
+      "system": 23451414
+    },
+    "mode": "OBSERVE",
+    "running": true,
+    "generation": "f3610cbd-6fcb-43b0-a7c5-c221fe598ed0",
+    "normalIntervalMs": 10000,
+    "suspectIntervalMs": 10000,
+    "activeDevices": 0,
+    "monitoredDevices": 1,
+    "requests": 3976,
+    "failures": 3,
+    "lateStarts": 0,
+    "rejectedWrites": 0,
+    "qualityCounts": {
+      "ADMIN_DOWN": 6912,
+      "STATE_TRANSITION": 2,
+      "VALID": 1032
+    },
+    "lastError": null,
+    "entries": [
+      {
+        "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+        "interfaceId": "cmsxk21el03odssimb81m5hjw",
+        "profileIds": [
+          "cmuoavm4x00c3sslhworjdb9i"
+        ],
+        "state": "NORMAL",
+        "quality": "VALID",
+        "lastCollectedAt": "2026-10-18T13:38:49.433Z",
+        "lastValidAt": "2026-10-18T13:38:49.433Z",
+        "intervalMs": 10026,
+        "collectionMs": 6,
+        "rxBps": 462322239.77658087,
+        "txBps": 2261200876.920008,
+        "contractedPercent": {
+          "cmuoavm4x00c3sslhworjdb9i": 22.61200876920008
+        },
+        "intervalStatsMs": {
+          "count": 360,
+          "p50": 10022,
+          "p95": 10141,
+          "max": 11151
+        },
+        "validAgeMs": 4171,
+        "nextMeasurementAt": "2026-10-18T13:38:59.411Z",
+        "overdue": false
+      },
+      {
+        "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+        "interfaceId": "cmsxk21ep03ofssim8b1155z4",
+        "profileIds": [
+          "cmuoavm5i00c8sslhed09lt8p"
+        ],
+        "state": "NORMAL",
+        "quality": "VALID",
+        "lastCollectedAt": "2026-10-18T13:38:49.433Z",
+        "lastValidAt": "2026-10-18T13:38:49.433Z",
+        "intervalMs": 10026,
+        "collectionMs": 6,
+        "rxBps": 0,
+        "txBps": 0,
+        "contractedPercent": {
+          "cmuoavm5i00c8sslhed09lt8p": 0
+        },
+        "intervalStatsMs": {
+          "count": 360,
+          "p50": 10022,
+          "p95": 10141,
+          "max": 11151
+        },
+        "validAgeMs": 4171,
+        "nextMeasurementAt": "2026-10-18T13:38:59.411Z",
+        "overdue": false
+      }
+    ]
+  },
+  "services": "Id=netvision-api.service\nActiveState=active\nMainPID=2165618\nNRestarts=0\n\nId=netvision-web.service\nActiveState=active\nMainPID=2235940\nNRestarts=0\n\nId=netvision-fast-observer.service\nActiveState=active\nMainPID=2243027\nNRestarts=0\n",
+  "apiSha256": "ba2731fdee415fc7b9446efaf71727432ed019e110e7a49c77f118b5c732e469",
+  "apiHead": "fc790ade3455f2c16eeff372a8a9168deffb0d7d",
+  "webHead": "bc559bec5d45080228c513db146c987c71c19633",
+  "bridgeFlag": "unset",
+  "autoExecution": "0",
+  "profileComparison": {
+    "total": 36,
+    "differences": []
+  }
+}

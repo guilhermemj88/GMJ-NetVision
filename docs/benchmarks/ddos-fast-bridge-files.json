@@ -1,0 +1,430 @@
+{
+  "sourceCommit": "accd265198f98f2f0e4a41b0a8cc1438c88a3650",
+  "api": {
+    "baseline": "fc790ade3455f2c16eeff372a8a9168deffb0d7d",
+    "files": [
+      {
+        "status": "A",
+        "path": "apps/api/prisma/migrations/20261018020000_mitigation_priority_traffic/migration.sql"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/prisma/migrations/20261023000000_mitigation_direction_audit/migration.sql"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/prisma/migrations/20261024000000_mitigation_fast_bridge/migration.sql"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/prisma/schema.prisma"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/mitigation-command-service.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/mitigation-direction-review.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/mitigation-direction-review.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/mitigation-service.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/mitigation-telemetry-postgres.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/mitigation-telemetry.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/mitigation-telemetry.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/ne8000-observed-readback.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/prisma-direction-review-store.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/prisma-fast-shadow-runtime.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/prisma-interface-traffic-reader.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/prisma-mitigation-telemetry-reader.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/prisma-policy-scope-lock.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/fast-bridge-health.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/fast-observer-server.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/fast-observer.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/fast-snmp-reader.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/fast-snmp-wire.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/fast-traffic-poller.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/fast-traffic-postgres.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/fast-traffic-rate.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/fast-traffic-targets.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/fast-traffic-types.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/fast-traffic.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/prisma-fast-bridge-reader.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/prisma-fast-traffic-store.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/prisma-observer-traffic-store.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/infrastructure/snmp/snmp-client-impl.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/infrastructure/snmp/snmp-service.test.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/infrastructure/ssh/ssh-client-impl.test.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/infrastructure/ssh/ssh-client-impl.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/mitigation-fast-observer-main.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/mitigation-routes.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/routes.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/testing/fast-response-scenario.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/testing/fixtures/ne8000-route-policy-observed-anonymized.txt"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/testing/loopback-snmp-agent.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/worker/mitigation/fast-bridge-postgres.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/worker/mitigation/fast-observation-bridge.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/worker/mitigation/fast-observation-bridge.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/worker/mitigation/fast-traffic-source.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/worker/mitigation/mitigation-auto-controlled.test.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/worker/mitigation/mitigation-auto-direction.test.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/worker/mitigation/mitigation-auto-dual-direction.test.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/worker/mitigation/mitigation-auto-engine.test.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/worker/mitigation/mitigation-auto-engine.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/worker/mitigation/mitigation-auto-execution-control.test.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/worker/mitigation/mitigation-auto-family-guard.test.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/worker/mitigation/mitigation-auto-logging.test.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/worker/mitigation/mitigation-auto-shared-policy.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/worker/mitigation/mitigation-fast-pipeline.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/worker/mitigation/mitigation-fast-realtime.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/worker/mitigation/mitigation-fast-response.test.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/worker/mitigation/mitigation-traffic-source.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/tsup.config.ts"
+      }
+    ]
+  },
+  "frontendAndShared": {
+    "baseline": "bc559bec5d45080228c513db146c987c71c19633",
+    "files": [
+      {
+        "status": "M",
+        "path": "apps/web/src/components/bgp/bgp-mitigation-workspace.test.tsx"
+      },
+      {
+        "status": "M",
+        "path": "apps/web/src/components/bgp/bgp-mitigation-workspace.tsx"
+      },
+      {
+        "status": "A",
+        "path": "apps/web/src/components/bgp/mitigation-direction-review.module.css"
+      },
+      {
+        "status": "A",
+        "path": "apps/web/src/components/bgp/mitigation-direction-review.tsx"
+      },
+      {
+        "status": "A",
+        "path": "apps/web/src/components/bgp/mitigation-fast-bridge.test.tsx"
+      },
+      {
+        "status": "A",
+        "path": "apps/web/src/components/bgp/mitigation-fast-bridge.tsx"
+      },
+      {
+        "status": "A",
+        "path": "apps/web/src/components/bgp/mitigation-telemetry.module.css"
+      },
+      {
+        "status": "A",
+        "path": "apps/web/src/components/bgp/mitigation-telemetry.test.tsx"
+      },
+      {
+        "status": "A",
+        "path": "apps/web/src/components/bgp/mitigation-telemetry.tsx"
+      },
+      {
+        "status": "M",
+        "path": "apps/web/src/lib/mitigation-api.ts"
+      },
+      {
+        "status": "M",
+        "path": "packages/shared/src/installation-identity.ts"
+      },
+      {
+        "status": "M",
+        "path": "packages/shared/src/mitigation.ts"
+      }
+    ]
+  },
+  "integrationAfterTelemetryRecovery": {
+    "baseline": "3732a1d555d20ce9a7e5bb776a204ec55f005160",
+    "files": [
+      {
+        "status": "A",
+        "path": "apps/api/prisma/migrations/20261024000000_mitigation_fast_bridge/migration.sql"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/prisma/schema.prisma"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/mitigation-service.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/ne8000-observed-readback.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/prisma-fast-shadow-runtime.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/bgp/mitigation/prisma-policy-scope-lock.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/fast-bridge-health.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/infrastructure/snmp/prisma-fast-bridge-reader.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/infrastructure/snmp/prisma-observer-traffic-store.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/infrastructure/ssh/ssh-client-impl.test.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/infrastructure/ssh/ssh-client-impl.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/routes.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/testing/fast-response-scenario.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/testing/fixtures/ne8000-route-policy-observed-anonymized.txt"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/worker/mitigation/fast-bridge-postgres.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/worker/mitigation/fast-observation-bridge.test.ts"
+      },
+      {
+        "status": "A",
+        "path": "apps/api/src/worker/mitigation/fast-observation-bridge.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/worker/mitigation/mitigation-auto-engine.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/worker/mitigation/mitigation-fast-realtime.test.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/api/src/worker/mitigation/mitigation-traffic-source.ts"
+      },
+      {
+        "status": "M",
+        "path": "apps/web/src/components/bgp/bgp-mitigation-workspace.test.tsx"
+      },
+      {
+        "status": "M",
+        "path": "apps/web/src/components/bgp/bgp-mitigation-workspace.tsx"
+      },
+      {
+        "status": "M",
+        "path": "apps/web/src/components/bgp/bgp-workspace.test.tsx"
+      },
+      {
+        "status": "M",
+        "path": "apps/web/src/components/bgp/bgp-workspace.tsx"
+      },
+      {
+        "status": "A",
+        "path": "apps/web/src/components/bgp/mitigation-fast-bridge.test.tsx"
+      },
+      {
+        "status": "A",
+        "path": "apps/web/src/components/bgp/mitigation-fast-bridge.tsx"
+      },
+      {
+        "status": "M",
+        "path": "apps/web/src/components/bgp/mitigation-telemetry.test.tsx"
+      },
+      {
+        "status": "A",
+        "path": "deploy/build-fast-bridge-linux.sh"
+      },
+      {
+        "status": "A",
+        "path": "deploy/fast-bridge-reader.sql"
+      },
+      {
+        "status": "A",
+        "path": "deploy/fast-bridge.shadow.env.example"
+      },
+      {
+        "status": "M",
+        "path": "packages/shared/src/mitigation.ts"
+      },
+      {
+        "status": "M",
+        "path": "tools/ddos-telemetry-visual.mjs"
+      }
+    ]
+  }
+}

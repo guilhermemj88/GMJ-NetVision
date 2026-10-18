@@ -4,29 +4,29 @@
   "transport": "real SNMPv2c UDP on 127.0.0.1, GET-only fixture",
   "realHuawei": false,
   "externalBridge": true,
-  "wallMs": 54116,
+  "wallMs": 54109,
   "requests": 5,
   "collectionMs": [
     5,
+    3,
     2,
     1,
-    2,
-    2
+    1
   ],
   "intervalMs": [
-    20224,
-    10213,
-    10221,
-    10212
+    20204,
+    10228,
+    10255,
+    10248
   ],
-  "firstAbnormalAt": "2026-10-18T12:48:55.718Z",
-  "confirmationMs": 24838,
-  "commandMs": 9010,
+  "firstAbnormalAt": "2026-10-18T13:34:43.113Z",
+  "confirmationMs": 24840,
+  "commandMs": 9020,
   "timingsMs": {
-    "preflight": 3003,
-    "execution": 4002,
-    "readback": 2003
+    "preflight": 3011,
+    "execution": 4004,
+    "readback": 2002
   },
-  "totalResponseMs": 33849,
+  "totalResponseMs": 33861,
   "responseDeadlineExceeded": false
 }

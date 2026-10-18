@@ -1,6 +1,7 @@
 {
+  "sourceCommit": "accd265198f98f2f0e4a41b0a8cc1438c88a3650",
   "api": {
-    "passed": 1904,
+    "passed": 1905,
     "failed": 0,
     "skipped": 1,
     "allConditionalPostgresExecuted": true
@@ -9,23 +10,44 @@
     "executedSeparately": true,
     "passed": 1,
     "realHuawei": false,
-    "externalBridge": true
+    "externalBridge": true,
+    "totalResponseMs": 33861,
+    "evidence": "ddos-fast-bridge-real-clock.json"
   },
   "web": {
-    "passed": 970,
+    "passed": 1339,
     "failed": 1,
+    "productionFrontendBaseline": "bc559bec5d45080228c513db146c987c71c19633",
     "failures": [
       "dados do snapshot usa a MESMA serie do dashboard (mapa + gap temporal)"
     ],
     "baselineReproduced": true
   },
   "ddosFrontend": {
-    "passed": 61,
+    "passed": 76,
+    "failed": 0,
+    "mainWorkspaceTelemetryFastTests": 62
+  },
+  "shared": {
+    "passed": 187,
     "failed": 0
   },
-  "linuxBuild": {
+  "typechecks": {
     "api": true,
     "web": true,
-    "rollbackSmokePending": true
-  }
+    "shared": true
+  },
+  "changedDdosLint": true,
+  "linuxBuild": {
+    "node": "24.19.0",
+    "platform": "linux-x64",
+    "api": true,
+    "web": true,
+    "prismaQueryAgainstAdditiveSchema": true,
+    "candidateStartupSmoke": true,
+    "previousApiStartupSmoke": true,
+    "webInstallationIdentitySmoke": true,
+    "rollbackStartupMode": "DEMO, synthetic execution only"
+  },
+  "productionModified": false
 }

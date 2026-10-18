@@ -1,0 +1,51 @@
+{
+  "snapshotAt": "2026-10-18T13:09:21.442Z",
+  "realSnmpSnapshot": true,
+  "validationRunsLocally": true,
+  "runtimeIntegratedInProduction": false,
+  "commandsPortPresent": false,
+  "profileConfigurationChanges": 0,
+  "observerRelease": "69b375f221b61c022ef446560fb357adb6bc108c",
+  "results": [
+    {
+      "profileId": "cmuoavm4x00c3sslhworjdb9i",
+      "acceptedBps": "203126163",
+      "sampleAt": "2026-10-18T13:09:15.367Z",
+      "sampleKey": "FAST:host-377c554a-8d1e-47c4-baa4-f258693b4d91:cmsxk21el03odssimb81m5hjw:tx:0c72d66d-3f95-4171-93c8-9fbe223909e7"
+    },
+    {
+      "profileId": "cmuoavm5i00c8sslhed09lt8p",
+      "acceptedBps": "0",
+      "sampleAt": "2026-10-18T13:09:15.367Z",
+      "sampleKey": "FAST:host-377c554a-8d1e-47c4-baa4-f258693b4d91:cmsxk21ep03ofssim8b1155z4:tx:2c81b8ee-6fa1-47f9-a173-6f5a5de7b46b"
+    }
+  ],
+  "status": [
+    {
+      "profileId": "cmuoavm4x00c3sslhworjdb9i",
+      "source": "FAST",
+      "available": true,
+      "reason": null,
+      "sampleId": "0c72d66d-3f95-4171-93c8-9fbe223909e7",
+      "sampleAt": "2026-10-18T13:09:15.367Z",
+      "generation": "c178acb4-14a7-4219-8c07-861bc2f542e4",
+      "rxBps": "16972370",
+      "txBps": "203126163",
+      "intervalMs": 9973,
+      "readMs": 0
+    },
+    {
+      "profileId": "cmuoavm5i00c8sslhed09lt8p",
+      "source": "FAST",
+      "available": true,
+      "reason": null,
+      "sampleId": "2c81b8ee-6fa1-47f9-a173-6f5a5de7b46b",
+      "sampleAt": "2026-10-18T13:09:15.367Z",
+      "generation": "013c16b4-7a27-447c-91ed-2fe974950d46",
+      "rxBps": "0",
+      "txBps": "0",
+      "intervalMs": 9973,
+      "readMs": 0
+    }
+  ]
+}
