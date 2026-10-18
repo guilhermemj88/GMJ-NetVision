@@ -53,7 +53,7 @@ export class PrismaFastBridgeReader implements FastBridgeReader {
           FastBridgeMapping[]
         >`SELECT id, "deviceId", name, "ifIndex", "adminStatus", "operStatus"::text, "speedBps" FROM "Interface" WHERE id = ${interfaceId} FOR SHARE`;
         const mapping = mappings[0] ?? null;
-        const proof = await this.health();
+        let proof = await this.health();
         const rows = await this.observation.$transaction(
           async (source) => {
             const settings = await source.$queryRaw<
@@ -72,23 +72,57 @@ export class PrismaFastBridgeReader implements FastBridgeReader {
         const mapped = rows.map((row) => PrismaObserverTrafficStore.toObservation(row));
         const current = mapped[0] ?? null,
           previous = mapped[1] ?? null;
-        const entry = proof.entries?.find(
-          (e) =>
-            e.interfaceId === interfaceId &&
-            e.deviceId === mapping?.deviceId &&
-            e.profileIds.includes(profileId),
-        );
-        const collectorAvailable =
+        const matchingEntry = () =>
+          proof.entries?.find(
+            (e) =>
+              e.interfaceId === interfaceId &&
+              e.deviceId === mapping?.deviceId &&
+              e.profileIds.includes(profileId),
+          );
+        const observing = () =>
           proof.observationOnly === true &&
           proof.executionAvailable === false &&
           proof.healthy === true &&
           proof.running === true &&
-          proof.mode === 'OBSERVE' &&
+          proof.mode === 'OBSERVE';
+        let entry = matchingEntry();
+        let healthRechecked = false;
+        // The GET precedes the database read. A commit between these reads can
+        // make a healthy proof one generation of samples older than the row.
+        // Refresh only that exact race, once, within the existing 3s transaction.
+        // Never retry away collector failure, invalid quality or a newer proof.
+        if (
+          observing() &&
+          entry?.quality === 'VALID' &&
+          current?.quality === 'VALID' &&
+          entry.lastValidAt === entry.lastCollectedAt &&
+          entry.lastCollectedAt &&
+          Date.parse(entry.lastCollectedAt) < current.collectedAt.getTime()
+        ) {
+          proof = await this.health();
+          entry = matchingEntry();
+          healthRechecked = true;
+        }
+        const collectorAvailable =
+          observing() &&
           entry?.quality === 'VALID' &&
           !!current &&
           entry.lastCollectedAt === current.collectedAt.toISOString() &&
           entry.lastValidAt === entry.lastCollectedAt;
-        return { mapping, current, previous, collectorAvailable };
+        const collectorReason = collectorAvailable
+          ? null
+          : !observing()
+            ? 'OBSERVER_NOT_HEALTHY_OBSERVE'
+            : !entry
+              ? 'INTERFACE_NOT_IN_HEALTH'
+              : entry.quality !== 'VALID'
+                ? 'HEALTH_QUALITY_NOT_VALID'
+                : !current
+                  ? 'OBSERVATION_NOT_FOUND'
+                  : entry.lastCollectedAt !== current.collectedAt.toISOString()
+                    ? 'HEALTH_TIMESTAMP_MISMATCH'
+                    : 'HEALTH_LAST_VALID_MISMATCH';
+        return { mapping, current, previous, collectorAvailable, collectorReason, healthRechecked };
       },
       { timeout: 3000 },
     );

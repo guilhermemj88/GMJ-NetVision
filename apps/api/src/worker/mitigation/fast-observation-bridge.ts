@@ -62,6 +62,8 @@ export interface FastBridgeSnapshot {
   current: FastTrafficObservation | null;
   previous: FastTrafficObservation | null;
   collectorAvailable: boolean;
+  collectorReason?: string | null;
+  healthRechecked?: boolean;
 }
 export interface FastBridgeReader {
   snapshot(interfaceId: string, profileId: string): Promise<FastBridgeSnapshot>;
@@ -85,6 +87,8 @@ export interface FastBridgeStatusEntry {
   txBps: string | null;
   intervalMs: number | null;
   readMs: number;
+  collectorReason?: string | null;
+  healthRechecked?: boolean;
 }
 
 /** Read-only bridge. No SNMP, credential vault, command, executor, or baseline mutation. */
@@ -104,6 +108,8 @@ export class FastObservationSource implements MitigationTrafficSource {
   async sampleWithId(target: MitigationTrafficTarget): Promise<MitigationTrafficSample | null> {
     const start = (this.deps.now?.() ?? new Date()).getTime();
     let row: FastTrafficObservation | null = null;
+    let collectorReason: string | null = null;
+    let healthRechecked = false;
     const finish = (reason: string | null): MitigationTrafficSample | null => {
       this.entries.set(target.profileId, {
         profileId: target.profileId,
@@ -117,6 +123,8 @@ export class FastObservationSource implements MitigationTrafficSource {
         txBps: row?.txBps == null ? null : Math.round(row.txBps).toString(),
         intervalMs: row?.intervalMs ?? null,
         readMs: (this.deps.now?.() ?? new Date()).getTime() - start,
+        collectorReason,
+        healthRechecked,
       });
       if (reason || !row || !profile?.direction) return null;
       const raw = profile.direction === 'tx' ? row.txBps : row.rxBps;
@@ -144,6 +152,8 @@ export class FastObservationSource implements MitigationTrafficSource {
     try {
       const s = await this.deps.reader.snapshot(target.interfaceId, target.profileId);
       row = s.current;
+      collectorReason = s.collectorReason ?? null;
+      healthRechecked = s.healthRechecked ?? false;
       if (!s.collectorAvailable) return finish('COLLECTION_UNAVAILABLE');
       const m = s.mapping;
       if (!m) return finish('INTERFACE_NOT_FOUND');

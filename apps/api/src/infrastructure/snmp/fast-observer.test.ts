@@ -122,7 +122,9 @@ describe.skipIf(!process.env.FAST_TEST_DATABASE_URL)(
       const stop = async () => {
         if (!child) return;
         const processRef = child;
-        const exited = new Promise((r) => processRef.once('exit', r));
+        const exited = processRef.exitCode !== null || processRef.signalCode !== null
+          ? Promise.resolve()
+          : new Promise((r) => processRef.once('exit', r));
         processRef.kill('SIGTERM');
         await exited;
         child = null;

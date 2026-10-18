@@ -609,7 +609,7 @@ export class MitigationAutoEngine {
       }
       this.configurationKeys.set(target.profileId, target.configurationKey);
     }
-    const at = this.now();
+    let at = this.now();
     const base = {
       at: at.toISOString(),
       profileId: target.profileId,
@@ -711,6 +711,11 @@ export class MitigationAutoEngine {
     // Contrato por FONTE, resolvido a cada avaliação. Não existe fallback: o
     // construtor garante que a política foi fornecida.
     const counters = await this.loadCounters(target, sampling);
+    const refreshFastDecisionTime = () => {
+      if (sampling.maxGapMs === null) return; // preserve the published LEGACY timing
+      at = this.now();
+      base.at = at.toISOString();
+    };
     const usable = (sample: MitigationTrafficSample | null): sample is MitigationTrafficSample =>
       withinSamplingWindow(sample, at.getTime(), sampling);
     const unavailable = async () => {
@@ -754,6 +759,7 @@ export class MitigationAutoEngine {
         bandwidthBps: target.effectiveBandwidthBps,
         ...(target.configurationKey ? { configurationKey: target.configurationKey } : {}),
       }).catch(() => null);
+      refreshFastDecisionTime();
       if (sample === null || (sample.rx === null && sample.tx === null)) {
         return unavailable();
       }
@@ -863,6 +869,7 @@ export class MitigationAutoEngine {
           ...(target.configurationKey ? { configurationKey: target.configurationKey } : {}),
         })
         .catch(() => null);
+      refreshFastDecisionTime();
       if (!usable(sample)) return unavailable();
       decisionSampleAt = sample.occurredAt;
       traffic = sample.bps;

@@ -12,7 +12,13 @@ import { fastResponseScenario } from '../../testing/fast-response-scenario';
 import { PrismaInterfaceTrafficReader } from '../../infrastructure/bgp/mitigation/prisma-interface-traffic-reader';
 import { MitigationAutoEngine, type MitigationAutoTargetState } from './mitigation-auto-engine';
 import { InterfaceTrafficSource } from './mitigation-traffic-source';
-import { FastBridgeRoutingSource, fastBridgeConfig } from './fast-observation-bridge';
+import {
+  FastBridgeRoutingSource,
+  FastObservationSource,
+  fastBridgeConfig,
+} from './fast-observation-bridge';
+import { deriveFastTraffic } from '../../infrastructure/snmp/fast-traffic-rate';
+import type { FastCounterReading } from '../../infrastructure/snmp/fast-traffic-types';
 import { fastPollerConfig } from '../../infrastructure/snmp/fast-traffic-poller';
 import { samplingWindowForProfile } from './mitigation-sampling-policy';
 
@@ -386,6 +392,102 @@ describe.skipIf(!url)(
       expect(commands).not.toHaveBeenCalled();
       expect(fast.sampleWithId).not.toHaveBeenCalled();
       expect(await repository.listEvents(profile.id, 20)).toHaveLength(0);
+    });
+    it('recovers a health publication race using two real databases and the SELECT-only source role', async () => {
+      const deviceId = 'synthetic-device-race',
+        interfaceId = 'synthetic-if-race',
+        profileId = 'bridge-test-race';
+      await db.device.create({
+        data: {
+          id: deviceId,
+          name: 'Synthetic race',
+          displayName: 'Synthetic race',
+          hostname: 'race-loopback',
+          ip: '127.0.0.1',
+          managementIp: '127.0.0.1',
+          deviceType: 'ROUTER',
+          source: 'SNMP',
+        },
+      });
+      await db.interface.create({
+        data: {
+          id: interfaceId,
+          deviceId,
+          name: 'Eth-Trunk1.3043',
+          ifIndex: 200,
+          speedBps: 300_000_000_000n,
+          adminStatus: 'UP',
+          operStatus: 'UP',
+        },
+      });
+      const start = Date.parse('2026-10-18T23:00:00Z');
+      const target = {
+        deviceId,
+        interfaceId,
+        ifIndex: 200,
+        interfaceName: 'Eth-Trunk1.3043',
+        speedBps: 300_000_000_000n,
+        profiles: [],
+      };
+      const reading = (n: number): FastCounterReading => ({
+        deviceId, interfaceId, ifIndex: target.ifIndex,
+        interfaceName: target.interfaceName, speedBps: target.speedBps,
+        requestStartedAt: new Date(start + n * 10000 - 5),
+        collectedAt: new Date(start + n * 10000),
+        inOctets: BigInt(n) * 125_000_000n,
+        outOctets: BigInt(n) * 11_875_000_000n,
+        uptimeTicks: BigInt(100000 + n * 1000),
+        discontinuityTicks: 0n,
+        lastChangeTicks: 0n,
+        adminStatus: 1,
+        operStatus: 1,
+      });
+      const store = new PrismaObserverTrafficStore(obs);
+      for (let n = 0; n < 3; n++)
+        await store.append(
+          deriveFastTraffic(target, reading(n), n ? reading(n - 1) : undefined, 'race-generation'),
+        );
+      const healthAt = (n: number) => ({
+        observationOnly: true,
+        executionAvailable: false,
+        healthy: true,
+        running: true,
+        mode: 'OBSERVE',
+        entries: [
+          {
+            deviceId,
+            interfaceId,
+            profileIds: [profileId],
+            quality: 'VALID',
+            lastCollectedAt: reading(n).collectedAt.toISOString(),
+            lastValidAt: reading(n).collectedAt.toISOString(),
+          },
+        ],
+      });
+      const health = vi.fn().mockResolvedValueOnce(healthAt(1)).mockResolvedValue(healthAt(2));
+      const source = new FastObservationSource({
+        config: fastBridgeConfig({
+          MITIGATION_FAST_BRIDGE_MODE: 'SHADOW',
+          MITIGATION_FAST_BRIDGE_PROFILE_IDS: profileId,
+        }),
+        reader: new PrismaFastBridgeReader(db, ro, health),
+        profile: () => ({ profileId, deviceId, interfaceId, direction: 'tx', revision: 'test' }),
+        now: () => new Date(start + 21000),
+      });
+      const sample = await source.sampleWithId({
+        profileId,
+        deviceId,
+        interfaceId,
+        bandwidthBps: 10_000_000_000n,
+      });
+      expect(sample?.bps).toBe(9_500_000_000n);
+      expect(source.status()[0]).toMatchObject({
+        available: true,
+        collectorReason: null,
+        healthRechecked: true,
+      });
+      expect(health).toHaveBeenCalledTimes(2);
+      expect(await db.bgpMitigationRuntime.count({ where: { profileId } })).toBe(0);
     });
     it('rejects a read-write observation connection rather than silently trusting credentials', async () => {
       const reader = new PrismaFastBridgeReader(db, obs, async () => ({ entries: [] }));
