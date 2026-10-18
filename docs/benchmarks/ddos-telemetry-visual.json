@@ -1,0 +1,30 @@
+[
+  {
+    "width": 1440,
+    "viewport": 1440,
+    "document": 1440,
+    "filename": "ddos-telemetry-1440.png",
+    "preview": true
+  },
+  {
+    "width": 768,
+    "viewport": 768,
+    "document": 768,
+    "filename": "ddos-telemetry-768.png",
+    "preview": false
+  },
+  {
+    "width": 390,
+    "viewport": 390,
+    "document": 390,
+    "filename": "ddos-telemetry-390.png",
+    "preview": true
+  },
+  {
+    "width": 320,
+    "viewport": 320,
+    "document": 320,
+    "filename": "ddos-telemetry-320.png",
+    "preview": false
+  }
+]

@@ -13,6 +13,8 @@ import type {
   MitigationRuntimeState,
 } from '@gmj/shared';
 import { Search } from 'lucide-react';
+import { MitigationDirectionReviewPanel } from './mitigation-direction-review';
+import { MitigationTelemetryFacts, telemetryReasonLabel } from './mitigation-telemetry';
 import { Button, MetaFact } from '@gmj/ui';
 import { getHosts } from '@/lib/api';
 import { getMediaSummary } from '@/lib/media-api';
@@ -21,6 +23,7 @@ import {
   discoverMitigationProfiles,
   getAutoShadowReport,
   getMitigationHealth,
+  getMitigationTelemetry,
   getMitigationProfile,
   getMitigationProfiles,
   patchMitigationProfile,
@@ -175,6 +178,9 @@ export function BgpMitigationWorkspace() {
     queryKey: ['mitigation', 'profiles'],
     queryFn: getMitigationProfiles,
   });
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const telemetry = useQuery({ queryKey: ['mitigation', 'telemetry'], queryFn: getMitigationTelemetry, retry: false, refetchInterval: 10_000 });
+  const telemetryEntries = new Map((telemetry.data?.entries ?? []).map(d => [d.profileId, d]));
   /**
    * AUTO-ALL-PREP-1: relatorio de SOMBRA do motor AUTO (somente leitura).
    * Falha aqui nunca quebra o painel: os indicadores de sombra mostram "—".
@@ -239,25 +245,6 @@ export function BgpMitigationWorkspace() {
    * Direcao de telemetria do AUTO POR PERFIL (persistida). `null` limpa a
    * configuracao e devolve o target ao estado fail-closed.
    */
-  const directionMutation = useMutation({
-    mutationFn: (input: { id: string; direction: MitigationAutoTrafficDirection | null }) =>
-      patchMitigationProfile(input.id, { autoTrafficDirection: input.direction }),
-    onSuccess: async (updated) => {
-      setNotice('Direção de telemetria atualizada.');
-      setDiscovery((current) =>
-        current
-          ? {
-              ...current,
-              profiles: current.profiles.map((row) => (row.id === updated.id ? updated : row)),
-            }
-          : current,
-      );
-      await queryClient.invalidateQueries({ queryKey: ['mitigation', 'profiles'] });
-      await queryClient.invalidateQueries({ queryKey: ['mitigation', 'auto-shadow'] });
-    },
-    onError: (error) => setNotice(errorMessage(error, 'Falha ao salvar a direção de telemetria')),
-  });
-
   /**
    * AUTO-ALL: excecao manual do AUTO por DESCRIPTION. `true` fixa ALERT_ONLY
    * (diagnostico/teste/seguranca) e o sweep automatico nunca promove o perfil.
@@ -851,7 +838,8 @@ export function BgpMitigationWorkspace() {
                 const badge = snapshotBadgeOf(row);
                 const shadow = shadowEntries.get(row.id) ?? null;
                 const decision = autoDecisions.get(row.id) ?? null;
-                const direction = directionOf(row, shadow);
+                const diagnostic = telemetryEntries.get(row.id);
+                const direction = diagnostic ? diagnostic.direction : directionOf(row, shadow);
                 const utilization = utilizationPercent(
                   row.effectiveBandwidthBps,
                   shadow?.trafficBps ?? decision?.trafficBps ?? null,
@@ -882,9 +870,9 @@ export function BgpMitigationWorkspace() {
                   <td>
                     <RuntimeStateBadge state={row.runtimeState} />
                   </td>
-                  <td title={autoStateTitleOf(row)}>
+                  <td title={diagnostic ? diagnostic.executionBlocks.join(', ') : autoStateTitleOf(row)}>
                     <span className={`mitigation-badge is-${autoStateToneOf(row)}`}>
-                      {autoStateLabel(row)}
+                      {diagnostic ? row.mode + ' · ' + (diagnostic.executionAuthorized ? 'VER AUTORIZAÇÃO' : 'BLOQUEADO') : autoStateLabel(row)}
                     </span>
                   </td>
                   <td>
@@ -900,12 +888,12 @@ export function BgpMitigationWorkspace() {
                   </td>
                   <td>{row.deviceName}</td>
                   <td>{row.interfaceName ?? '—'}</td>
-                  <td title={directionTitleOf(row, shadow)}>{direction ?? '—'}</td>
+                  <td title={directionTitleOf(row, shadow)}>{direction ?? 'NÃO CONFIGURADA'}<small style={{ display: 'block' }}>{diagnostic?.directionSource ?? 'origem ausente'}</small></td>
                   <td>{formatBandwidthBps(row.effectiveBandwidthBps)}</td>
-                  <td>{formatBandwidthBps(shadow?.trafficBps ?? decision?.trafficBps ?? null)}</td>
+                  <td><MitigationTelemetryFacts entry={diagnostic} generatedAt={telemetry.data?.generatedAt} /></td>
                   <td>{formatPercent(utilization)}</td>
                   <td title={decision?.detail ?? decision?.reason ?? ''}>
-                    {decision
+                    {diagnostic?.blockedReason ? telemetryReasonLabel(diagnostic.blockedReason) : decision
                       ? `${decision.outcome}${decision.reason ? ` · ${decision.reason}` : ''}`
                       : '—'}
                   </td>
@@ -933,6 +921,9 @@ export function BgpMitigationWorkspace() {
           </div>
         </>
       )}
+
+      <Button compact variant="secondary" onClick={() => setReviewOpen(v => !v)}>{reviewOpen ? 'FECHAR REVISÃO' : 'REVISAR PERFIS SEM DIREÇÃO'}</Button>
+      {reviewOpen && <MitigationDirectionReviewPanel profiles={rows.filter(p => !telemetryEntries.get(p.id)?.direction)} entries={telemetry.data?.entries ?? []} />}
 
       {selected && (
         <aside
@@ -995,12 +986,8 @@ export function BgpMitigationWorkspace() {
             </Button>
           </div>
 
-          <DirectionEditor
-            key={selected.id}
-            row={selected}
-            saving={directionMutation.isPending}
-            onSave={(direction) => directionMutation.mutate({ id: selected.id, direction })}
-          />
+          <MitigationTelemetryFacts entry={telemetryEntries.get(selected.id)} generatedAt={telemetry.data?.generatedAt} />
+          <MitigationDirectionReviewPanel key={selected.id} profiles={[selected]} entries={telemetry.data?.entries ?? []} />
 
           <div className="mitigation-detail__block">
             <h4>AUTO POR DESCRIPTION</h4>
@@ -1422,53 +1409,6 @@ function utilizationPercent(
  * AUTO-ALL-PREP-1: direcao de telemetria POR PERFIL (RX/TX/nao configurada).
  * Nunca existe default implicito: sem direcao o motor fica fail-closed.
  */
-function DirectionEditor({
-  row,
-  saving,
-  onSave,
-}: {
-  row: BgpMitigationProfileDto;
-  saving: boolean;
-  onSave: (direction: MitigationAutoTrafficDirection | null) => void;
-}) {
-  const [draft, setDraft] = useState<string>(row.autoTrafficDirection ?? 'NONE');
-  return (
-    <div className="mitigation-detail__block">
-      <h4>DIREÇÃO DE TELEMETRIA (AUTO)</h4>
-      <p>
-        Persistida:{' '}
-        {row.autoTrafficDirection === null || row.autoTrafficDirection === undefined
-          ? 'não configurada (motor fail-closed para este perfil)'
-          : row.autoTrafficDirection}
-      </p>
-      <label className="mitigation-toolbar__field">
-        <span>Direção</span>
-        <select
-          aria-label="Direção de telemetria"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-        >
-          <option value="NONE">não configurada</option>
-          <option value="RX">RX (recebido do cliente)</option>
-          <option value="TX">TX (enviado ao cliente)</option>
-        </select>
-      </label>
-      <Button
-        compact
-        variant="secondary"
-        disabled={saving}
-        onClick={() => onSave(draft === 'NONE' ? null : (draft as MitigationAutoTrafficDirection))}
-      >
-        APLICAR DIREÇÃO
-      </Button>
-      <small>
-        Com a direção configurada e o perfil em ALERT_ONLY, o motor avalia em modo SOMBRA
-        (sem escrita). A promoção para AUTO exige confirmação explícita em escopo sensível.
-      </small>
-    </div>
-  );
-}
-
 /**
  * PROTEÇÃO CONTRA MITIGAÇÃO: exclusao administrativa do target. O estado do
  * formulario vive aqui (key={row.id} no pai), sem sincronizacao por efeito.

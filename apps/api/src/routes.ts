@@ -132,6 +132,10 @@ import {
   PrismaMitigationSchemaProbe,
 } from './infrastructure/bgp/mitigation/mitigation-schema-probe';
 import { registerMitigationRoutes } from './mitigation-routes';
+import { diagnoseMitigationTelemetry } from './infrastructure/bgp/mitigation/mitigation-telemetry';
+import { PrismaMitigationTelemetryReader } from './infrastructure/bgp/mitigation/prisma-mitigation-telemetry-reader';
+import { MitigationDirectionReview } from './infrastructure/bgp/mitigation/mitigation-direction-review';
+import { PrismaDirectionReviewStore } from './infrastructure/bgp/mitigation/prisma-direction-review-store';
 import { registerN8nRoutes } from './n8n-routes';
 import { MitigationCommandService } from './infrastructure/bgp/mitigation/mitigation-command-service';
 import type { MitigationAutoEvidence } from './infrastructure/bgp/mitigation/mitigation-command-service';
@@ -871,6 +875,35 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     process.env.MITIGATION_AUTO_EXECUTION_ENABLED?.trim() ?? '',
   );
 
+  const diagnosticReader = new PrismaMitigationTelemetryReader(prismaClient);
+  const telemetryReport = async () => diagnoseMitigationTelemetry(await mitigationService.listProfiles(), {
+    readInterface: (id) => diagnosticReader.readInterface(id), envDirections: autoDirections, maxAgeMs: autoMaxAgeMs,
+    authorization: (p) => {
+      const blocks: string[] = [];
+      if (!p.enabled || p.mode === 'DISABLED') blocks.push('PROFILE_DISABLED');
+      if (p.mode !== 'AUTO') blocks.push('PROFILE_MODE_NOT_AUTO');
+      if (p.autoPromotedBySweep && !autoExecutionEnabled) blocks.push('AUTO_EXECUTION_DISABLED');
+      if (p.mitigationExcluded) blocks.push('MITIGATION_EXCLUDED');
+      if (mitigationEngineConfig.mode !== 'AUTO') blocks.push('GLOBAL_MODE_SIMULATION_ONLY');
+      if (mitigationExecutionConfig.executor !== 'HUAWEI') blocks.push('EXECUTOR_NOT_HUAWEI');
+      if (!mitigationExecutionConfig.liveWriteEnabled) blocks.push('LIVE_WRITE_DISABLED');
+      if (!mitigationExecutionConfig.allowedDeviceIds.includes(p.deviceId)) blocks.push('DEVICE_NOT_ALLOWED');
+      if (!p.snapshotAvailable) blocks.push('SNAPSHOT_UNAVAILABLE');
+      if (p.readiness !== 'READY') blocks.push('TARGET_NOT_READY');
+      if (p.prefixStatus === 'UNKNOWN' || p.prefixStatus === 'EXCEEDED') blocks.push('PREFIX_NOT_SAFE');
+      if (p.blockedReason) blocks.push(p.blockedReason);
+      if (sharedPolicyGuardEnabled && p.autoBlockedReason === 'SHARED_POLICY' && !sharedPolicyAllowedProfileIds.includes(p.id)) blocks.push('SHARED_POLICY_UNRESOLVED');
+      const runtime = autoRuntimeRef?.getStatus();
+      if (runtime?.state !== 'RUNNING' || runtime.lastError) blocks.push('ENGINE_NOT_READY');
+      // A diagnostic never grants authorization beyond the latest real engine evaluation.
+      const decision = runtime?.decisions.find(d => d.profileId === p.id);
+      if (!decision || Date.now() - new Date(decision.at).getTime() > 30_000) blocks.push('ENGINE_EVALUATION_UNAVAILABLE');
+      else if (decision.outcome === 'BLOCKED' || decision.outcome === 'FAILED') blocks.push(decision.reason ?? 'ENGINE_BLOCKED');
+      return blocks;
+    },
+  });
+  const directionReview = new MitigationDirectionReview({ store: new PrismaDirectionReviewStore(prismaClient), telemetry: telemetryReport, envDirections: autoDirections });
+
   const fastConfig = fastPollerConfig();
   const fastStore = new PrismaFastTrafficStore(prismaClient);
   const fastPoller = new FastTrafficPoller({
@@ -1164,6 +1197,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   registerMitigationRoutes(app, {
     service: mitigationService,
+    telemetry: telemetryReport,
+    directionReview,
     // mesma instancia do n8n: UI e n8n passam pelo MESMO servico
     commands: mitigationCommands,
     // identidade do peer para a exclusao preventiva (sem profile)

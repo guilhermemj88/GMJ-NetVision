@@ -1,0 +1,15 @@
+.facts {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 210px;
+  max-width: 360px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 600px) {
+  .facts {
+    min-width: 0;
+    max-width: 100%;
+  }
+}

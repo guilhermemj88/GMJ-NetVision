@@ -34,6 +34,27 @@ export type MitigationAutoTrafficDirection = 'RX' | 'TX';
 /** De onde veio a direcao efetiva usada pelo motor. */
 export type MitigationAutoDirectionSource = 'PROFILE' | 'ENV';
 
+export type MitigationTelemetryReason = 'DIRECTION_NOT_CONFIGURED' | 'INTERFACE_NOT_LINKED' | 'INTERFACE_NOT_FOUND' | 'SAMPLE_NOT_FOUND' | 'SAMPLE_STALE' | 'INVALID_SAMPLE' | 'INTERFACE_ADMIN_DOWN' | 'INTERFACE_NOT_UP' | 'COLLECTION_UNAVAILABLE';
+
+export interface MitigationTelemetryEntryDto {
+  profileId: string; interfaceId: string | null; interfaceName: string | null; ifIndex: number | null;
+  adminStatus: string; operStatus: string; source: 'FAST' | 'LEGACY';
+  sampleId: string | null; sampleAt: string | null; sampleAgeMs: number | null; maxAgeMs: number;
+  rxBps: string | null; txBps: string | null;
+  direction: MitigationAutoTrafficDirection | null; directionSource: MitigationAutoDirectionSource | null;
+  telemetryAvailable: boolean; reasons: MitigationTelemetryReason[]; blockedReason: MitigationTelemetryReason | null;
+  mode: MitigationProfileMode; promotedBySweep: boolean; executionAuthorized: boolean; executionBlocks: string[];
+  sharedCounterProfileIds: string[];
+}
+export interface MitigationTelemetryReportDto { generatedAt: string; entries: MitigationTelemetryEntryDto[] }
+export interface MitigationDirectionChangeDto { profileId: string; direction: MitigationAutoTrafficDirection | null }
+export interface MitigationDirectionPreviewDto {
+  previewId: string; expiresAt: string;
+  changes: { profileId: string; customer: string | null; addressFamily: MitigationAddressFamily; interfaceName: string | null; mode: MitigationProfileMode;
+    before: MitigationAutoTrafficDirection | null; after: MitigationAutoTrafficDirection | null; effectiveAfter: MitigationAutoTrafficDirection | null;
+    sourceAfter: MitigationAutoDirectionSource | null; impact: string; rxBps: string | null; txBps: string | null }[];
+}
+
 export type MitigationBlockReason =
   | 'NO_SAFE_TEMPORARY_NODE'
   | 'PREFIX_LIMIT_EXCEEDED'

@@ -2,6 +2,8 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AuthUser, BgpPeerDetail, MitigationAutoShadowReportDto } from '@gmj/shared';
 import type { BgpMitigationService } from './infrastructure/bgp/mitigation/mitigation-service';
+import { DirectionReviewError, type MitigationDirectionReview } from './infrastructure/bgp/mitigation/mitigation-direction-review';
+import type { MitigationTelemetryReportDto } from '@gmj/shared';
 import {
   MITIGATION_COMMAND_ACTIONS,
   type MitigationCommandService,
@@ -116,6 +118,8 @@ const exclusionSchema = z
   .strict();
 
 export interface MitigationRouteDependencies {
+  telemetry?: () => Promise<MitigationTelemetryReportDto>;
+  directionReview?: MitigationDirectionReview;
   service: BgpMitigationService;
   /** Mesma instancia usada pelo inbound do n8n (uma unica camada de servico). */
   commands?: MitigationCommandService;
@@ -168,6 +172,7 @@ export function registerMitigationRoutes(
   }
 
   app.get('/api/bgp/mitigation/profiles', async () => service.listProfiles());
+  if (dependencies.telemetry) app.get('/api/bgp/mitigation/telemetry', async () => dependencies.telemetry!());
 
   app.get('/api/bgp/mitigation/profiles/:id', async (request, reply) => {
     const { id } = profileParams.parse(request.params);
@@ -198,6 +203,29 @@ export function registerMitigationRoutes(
     }
     return user;
   };
+
+  if (dependencies.directionReview) {
+    const changesSchema = z.object({ changes: z.array(z.object({ profileId: z.string().min(1).max(160), direction: z.enum(['RX', 'TX']).nullable() }).strict()).min(1).max(100) }).strict();
+    const applySchema = z.object({ previewId: z.string().uuid(), confirmed: z.literal(true) }).strict();
+    const handler = (apply: boolean) => async (request: FastifyRequest, reply: import('fastify').FastifyReply) => {
+      const user = await requireUser(request, reply);
+      if (!user) return;
+      if (user.role !== 'ADMIN' && user.role !== 'OPERATOR') return reply.code(403).send({ code: 'OPERATOR_REQUIRED' });
+      try {
+        if (apply) {
+          const payload = applySchema.parse(request.body);
+          return await dependencies.directionReview!.apply(user.id, payload.previewId, payload.confirmed);
+        }
+        const payload = changesSchema.parse(request.body);
+        return await dependencies.directionReview!.preview(user.id, payload.changes);
+      } catch (error) {
+        if (error instanceof DirectionReviewError) return reply.code(error.statusCode).send({ code: error.code, message: error.message });
+        throw error;
+      }
+    };
+    app.post('/api/bgp/mitigation/directions/preview', handler(false));
+    app.post('/api/bgp/mitigation/directions/apply', handler(true));
+  }
 
   app.post('/api/bgp/mitigation/discover', async (request, reply) => {
     const user = await requireUser(request, reply);
@@ -321,6 +349,9 @@ return service.discover(deviceIds, { refreshInterfaceMetadata: true });
     if (!user) return undefined;
     const { id } = profileParams.parse(request.params);
     const payload = patchSchema.parse(request.body ?? {});
+    if (dependencies.directionReview && payload.autoTrafficDirection !== undefined) {
+      return reply.code(409).send({ code: 'DIRECTION_REVIEW_REQUIRED', message: 'Revise e confirme a direção pela prévia individual/lote.' });
+    }
     // Promocao para AUTO em escopo sensivel: exige confirmacao EXPLICITA (ou
     // allowlist no ENV). Fail-closed e ANTES da escrita - o motor continua com
     // os gates proprios (F1-F4) e a contencao de familia.

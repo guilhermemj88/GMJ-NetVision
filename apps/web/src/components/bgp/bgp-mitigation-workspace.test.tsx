@@ -17,6 +17,9 @@ const api = vi.hoisted(() => ({
   getMitigationProfiles: vi.fn(),
   getMitigationProfile: vi.fn(),
   getAutoShadowReport: vi.fn(),
+  getMitigationTelemetry: vi.fn(),
+  previewMitigationDirections: vi.fn(),
+  applyMitigationDirections: vi.fn(),
   runMitigationCommand: vi.fn(),
   discoverMitigationProfiles: vi.fn(),
   simulateMitigationProfile: vi.fn(),
@@ -296,6 +299,8 @@ async function flush(): Promise<void> {
   await act(async () => {
     await Promise.resolve();
     await Promise.resolve();
+    // React Query batches observer updates in a timer, beyond the microtask queue.
+    await new Promise((resolve) => setTimeout(resolve, 0));
   });
 }
 
@@ -396,6 +401,7 @@ beforeEach(() => {
   api.getMitigationProfiles.mockResolvedValue([]);
   api.getMitigationProfile.mockResolvedValue(readyProfile);
   api.getAutoShadowReport.mockResolvedValue(shadowReport);
+  api.getMitigationTelemetry.mockResolvedValue({ generatedAt: new Date().toISOString(), entries: [] });
   api.discoverMitigationProfiles.mockResolvedValue(discovery);
   api.simulateMitigationProfile.mockResolvedValue(simulation);
   api.patchMitigationProfile.mockResolvedValue({ ...readyProfile, bandwidthOverrideBps: '10000000000' });
@@ -1395,7 +1401,7 @@ describe('AUTO-ALL-PREP-1: sombra, direção e decisão por perfil', () => {
   }
 
   async function setDirectionSelect(value: string): Promise<void> {
-    const select = find('select[aria-label="Direção de telemetria"]') as HTMLSelectElement;
+    const select = find('select[aria-label^="Direção profile-"]') as HTMLSelectElement;
     await act(async () => {
       const setter = Object.getOwnPropertyDescriptor(
         window.HTMLSelectElement.prototype,
@@ -1500,20 +1506,20 @@ describe('AUTO-ALL-PREP-1: sombra, direção e decisão por perfil', () => {
     expect(rowOf('HORIZONTE_IP').textContent).toContain('45,0%');
   });
 
-  it('4) DETALHES define a direção por perfil e envia o PATCH administrativo', async () => {
+  it('4) DETALHES prepara uma revisão de direção sem aplicar um PATCH direto', async () => {
     const withDirection = { ...readyProfile, autoTrafficDirection: 'TX' as const };
     api.getMitigationProfiles.mockResolvedValue([withDirection]);
-    api.patchMitigationProfile.mockResolvedValue({ ...withDirection, autoTrafficDirection: 'RX' });
+    api.previewMitigationDirections.mockResolvedValue({ previewId: 'review', expiresAt: new Date(Date.now() + 300000).toISOString(), changes: [] });
     await render(createElement(BgpMitigationWorkspace));
     await openDetails('HORIZONTE_IP');
 
-    expect(text()).toContain('DIREÇÃO DE TELEMETRIA');
+    expect(text()).toContain('REVISAR DIREÇÕES RX/TX');
     await setDirectionSelect('RX');
-    await clickByText('APLICAR DIREÇÃO');
+    await clickByText('GERAR PRÉVIA (1)');
 
-    expect(api.patchMitigationProfile).toHaveBeenCalledWith(withDirection.id, {
-      autoTrafficDirection: 'RX',
-    });
+    expect(api.previewMitigationDirections).toHaveBeenCalledWith([{ profileId: withDirection.id, direction: 'RX' }]);
+    expect(api.patchMitigationProfile).not.toHaveBeenCalled();
+    expect(api.applyMitigationDirections).not.toHaveBeenCalled();
   });
 
   it('5) coluna DECISÃO mostra outcome/motivo por perfil vindos do motor', async () => {

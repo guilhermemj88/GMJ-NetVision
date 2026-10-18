@@ -688,6 +688,15 @@ model BgpPeerStateEvent {
  * `ALERT_ONLY` (nenhum cliente novo entra em AUTO sozinho).
  * Nunca armazenamos credencial, token ou output SSH cru.
  */
+model MitigationDirectionAudit {
+  id String @id
+  actorId String
+  changes Json
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
 model BgpMitigationProfile {
   id                   String                       @id @default(cuid())
   deviceId             String

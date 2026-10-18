@@ -18,6 +18,11 @@ import type {
   BgpPeerMitigationExclusionReason,
 } from '@gmj/shared';
 import { request } from './api';
+import type { MitigationTelemetryReportDto, MitigationDirectionChangeDto, MitigationDirectionPreviewDto } from '@gmj/shared';
+
+export const getMitigationTelemetry = () => request<MitigationTelemetryReportDto>('/api/bgp/mitigation/telemetry');
+export const previewMitigationDirections = (changes: MitigationDirectionChangeDto[]) => request<MitigationDirectionPreviewDto>('/api/bgp/mitigation/directions/preview', { method: 'POST', body: JSON.stringify({ changes }) });
+export const applyMitigationDirections = (previewId: string) => request<{ applied: number }>('/api/bgp/mitigation/directions/apply', { method: 'POST', body: JSON.stringify({ previewId, confirmed: true }) });
 
 export function getMitigationHealth(): Promise<BgpMitigationHealthDto> {
   return request<BgpMitigationHealthDto>('/api/bgp/mitigation/health');
