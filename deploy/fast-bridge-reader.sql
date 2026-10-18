@@ -3,6 +3,7 @@
 -- Existing role => fail and review; this script never rotates an existing secret.
 \set ON_ERROR_STOP on
 BEGIN;
+DO $$ BEGIN IF current_database() <> 'netvision_fast_observe' THEN RAISE EXCEPTION 'Connect to netvision_fast_observe only'; END IF; END $$;
 CREATE ROLE netvision_fast_api_reader LOGIN PASSWORD :'reader_password' CONNECTION LIMIT 3;
 GRANT CONNECT ON DATABASE netvision_fast_observe TO netvision_fast_api_reader;
 GRANT USAGE ON SCHEMA public TO netvision_fast_api_reader;

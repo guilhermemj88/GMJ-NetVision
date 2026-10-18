@@ -298,8 +298,8 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
     return newest.updatedAt;
   }
 
-  async listProfiles(): Promise<BgpMitigationProfileDto[]> {
-    const records = await this.read(() => this.deps.repository.listProfiles(), []);
+  async listProfiles(profileIds?: readonly string[]): Promise<BgpMitigationProfileDto[]> {
+    const records = (await this.read(() => this.deps.repository.listProfiles(), [])).filter(record => !profileIds || profileIds.includes(record.id));
     const rows: BgpMitigationProfileDto[] = [];
     const deviceNames = new Map<string, string>();
     for (const record of records) {

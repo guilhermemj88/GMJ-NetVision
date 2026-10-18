@@ -1062,11 +1062,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     return sample.bps >= (bandwidthBps * BigInt(profile.triggerPercent)) / 100n;
   };
   const autoTargets = {
-    list: async () => {
+    list: async (profileIds?: readonly string[]) => {
       if (bridgeConfig.mode !== 'OFF')
         await prismaClient.$queryRaw`SELECT 1 FROM "BgpMitigationProfile" LIMIT 1`;
       const [dtos, records] = await Promise.all([
-        mitigationService.listProfiles(),
+        mitigationService.listProfiles(profileIds),
         mitigationRepository.listProfiles(),
       ]);
       const byId = new Map(records.map((record) => [record.id, record]));
@@ -1195,7 +1195,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     requireRuntimeRead: true,
     targets: {
       list: async () =>
-        (await autoTargets.list()).filter(
+        (await autoTargets.list(bridgeConfig.profileIds)).filter(
           (t) =>
             bridgeConfig.profileIds.includes(t.profileId) &&
             !(
@@ -1223,7 +1223,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     sampling: { maxAgeMs: bridgeConfig.maxAgeMs, maxGapMs: bridgeConfig.maxGapMs },
   });
   const shadowRuntime = new MitigationAutoRuntime({
-    intervalMs: 1000,
+    intervalMs: Math.max(1000, mitigationEngineConfig.checkIntervalSeconds * 1000),
     engine: {
       tick: async () => {
         const decisions = await shadowEngine.tick();
