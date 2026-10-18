@@ -12,6 +12,7 @@ import type {
   MitigationExclusionReason,
   MitigationRuntimeState,
 } from '@gmj/shared';
+import { MitigationFastBridgeFacts } from './mitigation-fast-bridge';
 import { Search } from 'lucide-react';
 import { MitigationDirectionReviewPanel } from './mitigation-direction-review';
 import { MitigationTelemetryFacts, telemetryReasonLabel } from './mitigation-telemetry';
@@ -24,6 +25,7 @@ import {
   getAutoShadowReport,
   getMitigationHealth,
   getMitigationTelemetry,
+  getMitigationFastBridge,
   getMitigationProfile,
   getMitigationProfiles,
   patchMitigationProfile,
@@ -181,6 +183,7 @@ export function BgpMitigationWorkspace() {
   const [reviewOpen, setReviewOpen] = useState(false);
   const telemetry = useQuery({ queryKey: ['mitigation', 'telemetry'], queryFn: getMitigationTelemetry, retry: false, refetchInterval: 10_000 });
   const telemetryEntries = new Map((telemetry.data?.entries ?? []).map(d => [d.profileId, d]));
+  const fastBridge = useQuery({ queryKey: ['mitigation', 'fast-bridge'], queryFn: getMitigationFastBridge, retry: false, refetchInterval: 2000 });
   /**
    * AUTO-ALL-PREP-1: relatorio de SOMBRA do motor AUTO (somente leitura).
    * Falha aqui nunca quebra o painel: os indicadores de sombra mostram "—".
@@ -890,7 +893,7 @@ export function BgpMitigationWorkspace() {
                   <td>{row.interfaceName ?? '—'}</td>
                   <td title={directionTitleOf(row, shadow)}>{direction ?? 'NÃO CONFIGURADA'}<small style={{ display: 'block' }}>{diagnostic?.directionSource ?? 'origem ausente'}</small></td>
                   <td>{formatBandwidthBps(row.effectiveBandwidthBps)}</td>
-                  <td><MitigationTelemetryFacts entry={diagnostic} generatedAt={telemetry.data?.generatedAt} /></td>
+                  <td><MitigationTelemetryFacts entry={diagnostic} generatedAt={telemetry.data?.generatedAt} /><MitigationFastBridgeFacts profileId={row.id} report={fastBridge.data} /></td>
                   <td>{formatPercent(utilization)}</td>
                   <td title={decision?.detail ?? decision?.reason ?? ''}>
                     {diagnostic?.blockedReason ? telemetryReasonLabel(diagnostic.blockedReason) : decision
@@ -987,7 +990,8 @@ export function BgpMitigationWorkspace() {
           </div>
 
           <MitigationTelemetryFacts entry={telemetryEntries.get(selected.id)} generatedAt={telemetry.data?.generatedAt} />
-          <MitigationDirectionReviewPanel key={selected.id} profiles={[selected]} entries={telemetry.data?.entries ?? []} />
+          <MitigationFastBridgeFacts profileId={selected.id} report={fastBridge.data} />
+          <MitigationDirectionReviewPanel key={'direction-' + selected.id} profiles={[selected]} entries={telemetry.data?.entries ?? []} />
 
           <div className="mitigation-detail__block">
             <h4>AUTO POR DESCRIPTION</h4>

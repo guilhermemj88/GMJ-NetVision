@@ -37,6 +37,7 @@ export type MitigationAutoBlockReason =
   | 'PROFILE_MODE_NOT_AUTO'
   | 'BANDWIDTH_UNKNOWN'
   | 'TELEMETRY_UNAVAILABLE'
+  | 'RUNTIME_UNAVAILABLE'
   | 'DUPLICATE_SAMPLE'
   | 'ACTIVATION_COOLDOWN'
   | 'ALREADY_MITIGATED'
@@ -83,6 +84,9 @@ export type MitigationAutoBlockReason =
   | 'CONCURRENT_TICK';
 
 export interface MitigationAutoTargetState {
+  /** Optional config epoch supplied by the integration; never a traffic identity. */
+  configurationKey?: string;
+  activationDirection?: 'tx';
   profileId: string;
   deviceId: string;
   /** Nome da route-policy fisica: escopo compartilhado do AUTO (F3). */
@@ -140,6 +144,9 @@ export interface MitigationAutoCommandResult {
 }
 
 export interface MitigationAutoDecision {
+  sampleAt?: string | null;
+  sampleToDecisionMs?: number | null;
+  decisionMs?: number;
   at: string;
   profileId: string;
   deviceId: string;
@@ -187,6 +194,7 @@ export interface MitigationAutoDecision {
 }
 
 export interface MitigationAutoEngineDeps {
+  requireRuntimeRead?: boolean;
   /** Modo global do motor (AUTO so escreve quando o global tambem e AUTO). */
   globalMode: MitigationMode;
   execution: {
@@ -404,6 +412,7 @@ export class MitigationAutoEngine {
   private readonly history = new Map<string, MitigationAutoDecision[]>();
   private readonly attempts = new Map<string, number>();
   private readonly counters = new Map<string, AutoCounters>();
+  private readonly configurationKeys = new Map<string, string>();
   private readonly inFlight = new Set<string>();
   /** Cadeia de avaliações por profile (serializa ticks concorrentes). */
   private readonly chains = new Map<string, Promise<void>>();
@@ -528,6 +537,16 @@ export class MitigationAutoEngine {
   }
 
   private async evaluateOnce(target: MitigationAutoTargetState): Promise<MitigationAutoDecision> {
+    if (target.configurationKey !== undefined) {
+      const previous = this.configurationKeys.get(target.profileId);
+      if (previous !== undefined && previous !== target.configurationKey) {
+        const counters = await this.loadCounters(target);
+        resetSequence(counters);
+        if (counters.rx) resetSequence(counters.rx);
+        await this.deps.runtime.save(target.profileId, { triggerCounter: 0, recoveryCounter: 0 });
+      }
+      this.configurationKeys.set(target.profileId, target.configurationKey);
+    }
     const at = this.now();
     const base = {
       at: at.toISOString(),
@@ -566,6 +585,7 @@ export class MitigationAutoEngine {
     // comando marcou RECONCILIATION_REQUIRED. A leitura fresca evita decisao
     // baseada em estado velho e impede o tick de rebaixar estado alheio.
     const freshRead = await this.readRuntimeState(target.profileId);
+    if (this.deps.requireRuntimeRead && !freshRead.ok) return block('RUNTIME_UNAVAILABLE');
 
     // ---------------------------------------------------------------------
     // Gates de ELEGIBILIDADE, comuns a AUTO e ALERT_ONLY (mesma semantica do
@@ -670,6 +690,7 @@ export class MitigationAutoEngine {
       (target.direction === null || target.direction === undefined || target.direction === 'tx');
 
     let traffic: bigint;
+    let decisionSampleAt: Date | null = null;
     let trafficByDirection: { rx: string | null; tx: string | null } | null = null;
     let triggeredDirections: Array<'rx' | 'tx'> | null = null;
     if (dual) {
@@ -678,10 +699,12 @@ export class MitigationAutoEngine {
         deviceId: target.deviceId,
         interfaceId: target.interfaceId,
         bandwidthBps: target.effectiveBandwidthBps,
+        ...(target.configurationKey ? { configurationKey: target.configurationKey } : {}),
       }).catch(() => null);
       if (sample === null || (sample.rx === null && sample.tx === null)) {
         return unavailable();
       }
+      decisionSampleAt = sample.occurredAt;
       const rxCounters = (counters.rx ??= newDirectionCounters());
       // Mesma regra de amostra distinta, POR DIRECAO: a identidade (occurredAt
       // monotonico) e a mesma linha do equipamento para RX e TX.
@@ -784,9 +807,11 @@ export class MitigationAutoEngine {
           deviceId: target.deviceId,
           interfaceId: target.interfaceId,
           bandwidthBps: target.effectiveBandwidthBps,
+          ...(target.configurationKey ? { configurationKey: target.configurationKey } : {}),
         })
         .catch(() => null);
       if (!usable(sample)) return unavailable();
+      decisionSampleAt = sample.occurredAt;
       traffic = sample.bps;
       autoEvidence = evidenceOf(sample);
       // CRITICO: so conta sample novo quando a IDENTIDADE da telemetria muda.
@@ -802,6 +827,11 @@ export class MitigationAutoEngine {
 
     const withValues = {
       ...base,
+      sampleAt: decisionSampleAt?.toISOString() ?? null,
+      sampleToDecisionMs: decisionSampleAt
+        ? Math.max(0, this.now().getTime() - decisionSampleAt.getTime())
+        : null,
+      decisionMs: this.now().getTime() - at.getTime(),
       trafficBps: traffic.toString(),
       thresholdBps: threshold.toString(),
       recoveryThresholdBps: recoveryThreshold.toString(),
@@ -857,6 +887,8 @@ export class MitigationAutoEngine {
       return decided('SAMPLES_INSUFFICIENT', 'TRIGGER_PENDING');
     }
     if (!newTxSample) return decided('DUPLICATE_SAMPLE', 'SKIPPED');
+    if (target.activationDirection === 'tx' && target.direction === 'rx')
+      return decided('RX_MONITOR_ONLY', 'ALERT_TRIGGERED');
 
     // Modo decide a ACAO, nunca a elegibilidade: AUTO e ALERT_ONLY passaram
     // pelos MESMOS gates acima. ALERT_ONLY para aqui, com zero escrita.
@@ -1034,6 +1066,12 @@ export class MitigationAutoEngine {
       timingsMs: decision.timingsMs ?? null,
       totalResponseMs: decision.totalResponseMs ?? null,
       responseDeadlineExceeded: decision.responseDeadlineExceeded ?? false,
+      verified: decision.verified,
+      commandStatus: decision.commandStatus,
+      requestId: decision.requestId,
+      sampleAt: decision.sampleAt ?? null,
+      sampleToDecisionMs: decision.sampleToDecisionMs ?? null,
+      decisionMs: decision.decisionMs ?? null,
     };
     this.deps.debugLogger?.('auto: decisao (debug)', meta);
 

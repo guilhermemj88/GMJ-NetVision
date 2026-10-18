@@ -1,0 +1,30 @@
+{
+  "at": "2026-10-18T12:42:27.849Z",
+  "realHuawei": true,
+  "readOnly": true,
+  "writeCommandsSent": 0,
+  "samples": [
+    { "sshConnectMs": 942, "shellMs": 10, "policyReadMs": 71 },
+    { "sshConnectMs": 818, "shellMs": 5, "policyReadMs": 68 },
+    { "sshConnectMs": 870, "shellMs": 5, "policyReadMs": 67 }
+  ],
+  "nearestRankPercentiles": {
+    "sshConnectMs": { "p50": 870, "p95": 942, "max": 942 },
+    "policyReadMs": { "p50": 68, "p95": 71, "max": 71 }
+  },
+  "failures": 0,
+  "timeouts": 0,
+  "retries": 0,
+  "observedPolicy": {
+    "name": "PL-BHNET_IPv4-IN",
+    "nodes": [1, 2, 10, 100],
+    "bogonNode": 1,
+    "mitigationNode": 2,
+    "mitigationRouteTarget": "268568:660",
+    "normalRouteTarget": "268568:140",
+    "alreadyActiveAtRead": true
+  },
+  "bgp": { "peers": 59, "established": 41, "bhnet3043": "Established", "bhnet3044": "Idle" },
+  "cpu": { "currentPercent": 17, "oneMinutePercent": 17, "fiveMinutePercent": 15 },
+  "limits": "Three read-only sessions. Does not measure policy execution, commit, full activation preflight, or newly applied mitigation latency. Existing policy state was preserved."
+}

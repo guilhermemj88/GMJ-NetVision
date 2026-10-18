@@ -18,6 +18,7 @@ const api = vi.hoisted(() => ({
   getMitigationProfile: vi.fn(),
   getAutoShadowReport: vi.fn(),
   getMitigationTelemetry: vi.fn(),
+  getMitigationFastBridge: vi.fn(),
   previewMitigationDirections: vi.fn(),
   applyMitigationDirections: vi.fn(),
   runMitigationCommand: vi.fn(),
@@ -401,6 +402,7 @@ beforeEach(() => {
   api.getMitigationProfiles.mockResolvedValue([]);
   api.getMitigationProfile.mockResolvedValue(readyProfile);
   api.getAutoShadowReport.mockResolvedValue(shadowReport);
+  api.getMitigationFastBridge.mockResolvedValue({ generatedAt: new Date().toISOString(), mode: 'OFF', profileIds: [] });
   api.getMitigationTelemetry.mockResolvedValue({ generatedAt: new Date().toISOString(), entries: [] });
   api.discoverMitigationProfiles.mockResolvedValue(discovery);
   api.simulateMitigationProfile.mockResolvedValue(simulation);

@@ -688,6 +688,31 @@ model BgpPeerStateEvent {
  * `ALERT_ONLY` (nenhum cliente novo entra em AUTO sozinho).
  * Nunca armazenamos credencial, token ou output SSH cru.
  */
+model MitigationFastShadowState {
+  profileId String @id
+  state String @default("NORMAL")
+  triggerCounter Int @default(0)
+  recoveryCounter Int @default(0)
+  currentTrafficBps BigInt?
+  lastSampleAt DateTime?
+  updatedAt DateTime @updatedAt
+}
+
+model MitigationFastDecision {
+  id String @id @default(cuid())
+  profileId String
+  mode String
+  sampleId String
+  sampleAt DateTime
+  outcome String
+  reason String?
+  decision Json
+  createdAt DateTime @default(now())
+
+  @@unique([profileId, mode, sampleId])
+  @@index([profileId, createdAt])
+}
+
 model MitigationDirectionAudit {
   id String @id
   actorId String

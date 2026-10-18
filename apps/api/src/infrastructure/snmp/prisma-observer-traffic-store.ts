@@ -1,4 +1,4 @@
-import type { PrismaClient } from '../../generated/prisma/index.js';
+import type { PrismaClient, MitigationTrafficObservation } from '../../generated/prisma/index.js';
 import type {
   FastTrafficObservation,
   FastTrafficQuality,
@@ -12,6 +12,14 @@ import type {
  * transactional lock on the operational inventory (which this process cannot write).
  */
 export class PrismaObserverTrafficStore implements FastTrafficStore {
+  static toObservation(row: MitigationTrafficObservation): FastTrafficObservation {
+    return {
+      ...row,
+      inOctets: BigInt(row.inOctets.toString()),
+      outOctets: BigInt(row.outOctets.toString()),
+      quality: row.quality as FastTrafficQuality,
+    };
+  }
   constructor(private readonly db: PrismaClient) {}
   async append(o: FastTrafficObservation): Promise<boolean> {
     return this.db.$transaction(async (tx) => {

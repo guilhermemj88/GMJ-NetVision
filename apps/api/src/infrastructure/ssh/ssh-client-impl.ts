@@ -2,7 +2,16 @@ import { Client, type ConnectConfig, type ClientChannel } from 'ssh2';
 import type { CommandResult, SshClient } from '../../domain/ports';
 import { withSshContext } from './ssh-context';
 
+export interface SshExecutionMetrics {
+  connectionMs: number | null;
+  commandMs: number | null;
+  totalMs: number;
+  ok: boolean;
+  timeout: boolean;
+  retries: 0;
+}
 interface SshClientOptions {
+  metrics?: (metrics: SshExecutionMetrics) => void;
   port: number;
   username: string;
   password: string;
@@ -35,6 +44,11 @@ export class SshClientImpl implements SshClient {
   constructor(private readonly options: SshClientOptions) {}
 
   async execute(host: string, commands: string[]): Promise<CommandResult[]> {
+    const start = Date.now();
+    let connectionMs: number | null = null,
+      commandStarted: number | null = null,
+      ok = false,
+      timeout = false;
     const preparedCommands = withSshContext(commands, this.options.contextCommand);
     const connection = new Client();
     const config: ConnectConfig = {
@@ -63,13 +77,31 @@ export class SshClientImpl implements SshClient {
 
     try {
       await Promise.race([ready, connectionFailure]);
+      connectionMs = Date.now() - start;
+      commandStarted = Date.now();
       const result = await Promise.race([
         this.executeShell(connection, preparedCommands),
         connectionFailure,
       ]);
+      ok = true;
       return [result];
+    } catch (error) {
+      timeout = error instanceof Error && /timeout/i.test(error.message);
+      throw error;
     } finally {
       connection.end();
+      try {
+        this.options.metrics?.({
+          connectionMs,
+          commandMs: commandStarted === null ? null : Date.now() - commandStarted,
+          totalMs: Date.now() - start,
+          ok,
+          timeout,
+          retries: 0,
+        });
+      } catch {
+        /* Observability must not affect a completed SSH operation. */
+      }
     }
   }
 
@@ -92,15 +124,19 @@ export class SshClientImpl implements SshClient {
         /** Offset em stdout onde o comando atual comecou (echo + saida). */
         let commandStartOffset = 0;
 
-        const timeout = setTimeout(() => {
-          if (settled) return;
-          settled = true;
-          if (idleTimer) clearTimeout(idleTimer);
-          stream.close();
-          reject(new Error('SSH command timeout'));
-        }, this.options.shellTimeoutMs ?? (this.options.readyTimeout ?? 8_000) + 7_000);
+        const timeout = setTimeout(
+          () => {
+            if (settled) return;
+            settled = true;
+            if (idleTimer) clearTimeout(idleTimer);
+            stream.close();
+            reject(new Error('SSH command timeout'));
+          },
+          this.options.shellTimeoutMs ?? (this.options.readyTimeout ?? 8_000) + 7_000,
+        );
 
-        const initialPasswordPrompt = /(initial password poses security risks|password needs to be changed|change now\?\s*\[y\/n\]\s*:)/i;
+        const initialPasswordPrompt =
+          /(initial password poses security risks|password needs to be changed|change now\?\s*\[y\/n\]\s*:)/i;
         const cliPrompt = /(?:^|[\r\n])\s*(?:<[^>\r\n]+>|\[[^\]\r\n]+\])\s*$/;
         const quitSequence =
           this.options.exitMode === 'return-quit'
@@ -191,7 +227,9 @@ export class SshClientImpl implements SshClient {
         stream.setEncoding('utf8');
         stream.on('data', (data: string | Buffer) => handleStdout(data.toString()));
         stream.stderr.setEncoding('utf8');
-        stream.stderr.on('data', (data: string | Buffer) => { stderr += data.toString(); });
+        stream.stderr.on('data', (data: string | Buffer) => {
+          stderr += data.toString();
+        });
 
         stream.once('close', () => {
           if (settled) return;
@@ -217,8 +255,13 @@ export class SshClientImpl implements SshClient {
     if (code.includes('auth') || message.includes('authentication')) {
       return new Error('SSH authentication failed');
     }
-    if (code.includes('timeout') || message.includes('timeout')) return new Error('SSH connection timeout');
-    if (code.includes('refused') || message.includes('refused') || message.includes('unreachable')) {
+    if (code.includes('timeout') || message.includes('timeout'))
+      return new Error('SSH connection timeout');
+    if (
+      code.includes('refused') ||
+      message.includes('refused') ||
+      message.includes('unreachable')
+    ) {
       return new Error('SSH host is unreachable');
     }
     return new Error('SSH transport failed');

@@ -18,11 +18,27 @@ import type {
   BgpPeerMitigationExclusionReason,
 } from '@gmj/shared';
 import { request } from './api';
-import type { MitigationTelemetryReportDto, MitigationDirectionChangeDto, MitigationDirectionPreviewDto } from '@gmj/shared';
+import type { MitigationFastBridgeStatusDto } from '@gmj/shared';
+export const getMitigationFastBridge = () =>
+  request<MitigationFastBridgeStatusDto>('/api/bgp/mitigation/fast-bridge');
+import type {
+  MitigationTelemetryReportDto,
+  MitigationDirectionChangeDto,
+  MitigationDirectionPreviewDto,
+} from '@gmj/shared';
 
-export const getMitigationTelemetry = () => request<MitigationTelemetryReportDto>('/api/bgp/mitigation/telemetry');
-export const previewMitigationDirections = (changes: MitigationDirectionChangeDto[]) => request<MitigationDirectionPreviewDto>('/api/bgp/mitigation/directions/preview', { method: 'POST', body: JSON.stringify({ changes }) });
-export const applyMitigationDirections = (previewId: string) => request<{ applied: number }>('/api/bgp/mitigation/directions/apply', { method: 'POST', body: JSON.stringify({ previewId, confirmed: true }) });
+export const getMitigationTelemetry = () =>
+  request<MitigationTelemetryReportDto>('/api/bgp/mitigation/telemetry');
+export const previewMitigationDirections = (changes: MitigationDirectionChangeDto[]) =>
+  request<MitigationDirectionPreviewDto>('/api/bgp/mitigation/directions/preview', {
+    method: 'POST',
+    body: JSON.stringify({ changes }),
+  });
+export const applyMitigationDirections = (previewId: string) =>
+  request<{ applied: number }>('/api/bgp/mitigation/directions/apply', {
+    method: 'POST',
+    body: JSON.stringify({ previewId, confirmed: true }),
+  });
 
 export function getMitigationHealth(): Promise<BgpMitigationHealthDto> {
   return request<BgpMitigationHealthDto>('/api/bgp/mitigation/health');
@@ -42,9 +58,7 @@ export function getAutoShadowReport(): Promise<MitigationAutoShadowReportDto> {
 }
 
 export function getMitigationProfile(id: string): Promise<BgpMitigationProfileDto> {
-  return request<BgpMitigationProfileDto>(
-    `/api/bgp/mitigation/profiles/${encodeURIComponent(id)}`,
-  );
+  return request<BgpMitigationProfileDto>(`/api/bgp/mitigation/profiles/${encodeURIComponent(id)}`);
 }
 
 export function discoverMitigationProfiles(input: {
@@ -107,7 +121,8 @@ export function setBgpPeerMitigationExclusion(
   );
 }
 
-export function getMitigationSimulations(): Promise<BgpMitigationSimulationRowDto[]> {  return request<BgpMitigationSimulationRowDto[]>('/api/bgp/mitigation/simulations');
+export function getMitigationSimulations(): Promise<BgpMitigationSimulationRowDto[]> {
+  return request<BgpMitigationSimulationRowDto[]>('/api/bgp/mitigation/simulations');
 }
 
 export function getMitigationEvents(): Promise<BgpMitigationEventDto[]> {
@@ -117,11 +132,7 @@ export function getMitigationEvents(): Promise<BgpMitigationEventDto[]> {
 // ---- Fase 8: comandos da UI (mesma camada de servico do n8n) -------------
 
 export type MitigationCommandAction =
-  | 'STATUS'
-  | 'SIMULATE_ACTIVATE'
-  | 'ACTIVATE'
-  | 'SIMULATE_REMOVE'
-  | 'REMOVE';
+  'STATUS' | 'SIMULATE_ACTIVATE' | 'ACTIVATE' | 'SIMULATE_REMOVE' | 'REMOVE';
 
 export interface MitigationCommandSharedTarget {
   interfaceId: string | null;

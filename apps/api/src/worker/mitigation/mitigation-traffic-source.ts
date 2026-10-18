@@ -9,6 +9,7 @@ import type { InterfaceTrafficReader } from '../../infrastructure/bgp/mitigation
  * NÃO escreve (fail-closed).
  */
 export interface MitigationTrafficTarget {
+  configurationKey?: string;
   profileId: string;
   deviceId: string;
   interfaceId: string | null;

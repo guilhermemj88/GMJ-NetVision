@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { BgpMitigationProfileDto, MitigationTelemetryEntryDto } from '@gmj/shared';
 import { MitigationTelemetryFacts, telemetryReasonLabel } from './mitigation-telemetry';
 import { MitigationDirectionReviewPanel } from './mitigation-direction-review';
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const api = vi.hoisted(() => ({
   previewMitigationDirections: vi.fn(),
   applyMitigationDirections: vi.fn(),

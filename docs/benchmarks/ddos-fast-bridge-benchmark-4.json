@@ -1,0 +1,100 @@
+{
+  "realHuawei": false,
+  "externalBridge": true,
+  "profiles": 4,
+  "p50Ms": 33850,
+  "p95Ms": 42525,
+  "maxMs": 42525,
+  "actions": [
+    {
+      "confirmationMs": 24850,
+      "timingsMs": {
+        "preflight": 3000,
+        "execution": 4000,
+        "readback": 2000
+      },
+      "totalResponseMs": 33850
+    },
+    {
+      "confirmationMs": 24825,
+      "timingsMs": {
+        "preflight": 3000,
+        "execution": 4000,
+        "readback": 2000
+      },
+      "totalResponseMs": 33825
+    },
+    {
+      "confirmationMs": 32850,
+      "timingsMs": {
+        "preflight": 3000,
+        "execution": 4000,
+        "readback": 2000
+      },
+      "totalResponseMs": 41850
+    },
+    {
+      "confirmationMs": 33525,
+      "timingsMs": {
+        "preflight": 3000,
+        "execution": 4000,
+        "readback": 2000
+      },
+      "totalResponseMs": 42525
+    }
+  ],
+  "sourceReads": [
+    {
+      "profileId": "profile-1",
+      "source": "FAST",
+      "available": true,
+      "reason": null,
+      "sampleId": "1b51e848-69fc-4251-8e60-54b5a0cac9d6",
+      "sampleAt": "2026-10-18T12:03:50.150Z",
+      "generation": "db3993a3-23f7-4530-aa3c-d6b453fc3023",
+      "rxBps": "0",
+      "txBps": "156000000000",
+      "intervalMs": 10000,
+      "readMs": 0
+    },
+    {
+      "profileId": "profile-2",
+      "source": "FAST",
+      "available": true,
+      "reason": null,
+      "sampleId": "c9085256-ce4a-4082-8c87-2274074a02de",
+      "sampleAt": "2026-10-18T12:03:50.175Z",
+      "generation": "5d45f891-62be-4140-b903-df5dcd553549",
+      "rxBps": "0",
+      "txBps": "156000000000",
+      "intervalMs": 10000,
+      "readMs": 0
+    },
+    {
+      "profileId": "profile-3",
+      "source": "FAST",
+      "available": true,
+      "reason": null,
+      "sampleId": "240e5c76-c349-4b8a-b358-44a60537f2d3",
+      "sampleAt": "2026-10-18T12:03:51.150Z",
+      "generation": "7b5204c6-a889-4eeb-8d49-8206393735fa",
+      "rxBps": "0",
+      "txBps": "156000000000",
+      "intervalMs": 10000,
+      "readMs": 0
+    },
+    {
+      "profileId": "profile-4",
+      "source": "FAST",
+      "available": true,
+      "reason": null,
+      "sampleId": "d06a10f3-54d4-429b-9dce-07dfa54eaed2",
+      "sampleAt": "2026-10-18T12:03:50.475Z",
+      "generation": "687cc791-52f4-4c65-b07a-99b1996a0e52",
+      "rxBps": "0",
+      "txBps": "156000000000",
+      "intervalMs": 10000,
+      "readMs": 0
+    }
+  ]
+}

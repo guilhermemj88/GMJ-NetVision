@@ -1,0 +1,31 @@
+{
+  "api": {
+    "passed": 1904,
+    "failed": 0,
+    "skipped": 1,
+    "allConditionalPostgresExecuted": true
+  },
+  "realtime": {
+    "executedSeparately": true,
+    "passed": 1,
+    "realHuawei": false,
+    "externalBridge": true
+  },
+  "web": {
+    "passed": 970,
+    "failed": 1,
+    "failures": [
+      "dados do snapshot usa a MESMA serie do dashboard (mapa + gap temporal)"
+    ],
+    "baselineReproduced": true
+  },
+  "ddosFrontend": {
+    "passed": 61,
+    "failed": 0
+  },
+  "linuxBuild": {
+    "api": true,
+    "web": true,
+    "rollbackSmokePending": true
+  }
+}

@@ -34,25 +34,67 @@ export type MitigationAutoTrafficDirection = 'RX' | 'TX';
 /** De onde veio a direcao efetiva usada pelo motor. */
 export type MitigationAutoDirectionSource = 'PROFILE' | 'ENV';
 
-export type MitigationTelemetryReason = 'DIRECTION_NOT_CONFIGURED' | 'INTERFACE_NOT_LINKED' | 'INTERFACE_NOT_FOUND' | 'SAMPLE_NOT_FOUND' | 'SAMPLE_STALE' | 'INVALID_SAMPLE' | 'INTERFACE_ADMIN_DOWN' | 'INTERFACE_NOT_UP' | 'COLLECTION_UNAVAILABLE';
+export type MitigationTelemetryReason =
+  | 'DIRECTION_NOT_CONFIGURED'
+  | 'INTERFACE_NOT_LINKED'
+  | 'INTERFACE_NOT_FOUND'
+  | 'SAMPLE_NOT_FOUND'
+  | 'SAMPLE_STALE'
+  | 'INVALID_SAMPLE'
+  | 'INTERFACE_ADMIN_DOWN'
+  | 'INTERFACE_NOT_UP'
+  | 'COLLECTION_UNAVAILABLE';
 
 export interface MitigationTelemetryEntryDto {
-  profileId: string; interfaceId: string | null; interfaceName: string | null; ifIndex: number | null;
-  adminStatus: string; operStatus: string; source: 'FAST' | 'LEGACY';
-  sampleId: string | null; sampleAt: string | null; sampleAgeMs: number | null; maxAgeMs: number;
-  rxBps: string | null; txBps: string | null;
-  direction: MitigationAutoTrafficDirection | null; directionSource: MitigationAutoDirectionSource | null;
-  telemetryAvailable: boolean; reasons: MitigationTelemetryReason[]; blockedReason: MitigationTelemetryReason | null;
-  mode: MitigationProfileMode; promotedBySweep: boolean; executionAuthorized: boolean; executionBlocks: string[];
+  profileId: string;
+  interfaceId: string | null;
+  interfaceName: string | null;
+  ifIndex: number | null;
+  adminStatus: string;
+  operStatus: string;
+  source: 'FAST' | 'LEGACY';
+  sampleId: string | null;
+  sampleAt: string | null;
+  sampleAgeMs: number | null;
+  maxAgeMs: number;
+  rxBps: string | null;
+  txBps: string | null;
+  direction: MitigationAutoTrafficDirection | null;
+  directionSource: MitigationAutoDirectionSource | null;
+  telemetryAvailable: boolean;
+  reasons: MitigationTelemetryReason[];
+  blockedReason: MitigationTelemetryReason | null;
+  mode: MitigationProfileMode;
+  promotedBySweep: boolean;
+  executionAuthorized: boolean;
+  executionBlocks: string[];
   sharedCounterProfileIds: string[];
 }
-export interface MitigationTelemetryReportDto { generatedAt: string; entries: MitigationTelemetryEntryDto[] }
-export interface MitigationDirectionChangeDto { profileId: string; direction: MitigationAutoTrafficDirection | null }
+export interface MitigationTelemetryReportDto {
+  generatedAt: string;
+  entries: MitigationTelemetryEntryDto[];
+}
+export interface MitigationDirectionChangeDto {
+  profileId: string;
+  direction: MitigationAutoTrafficDirection | null;
+}
 export interface MitigationDirectionPreviewDto {
-  previewId: string; expiresAt: string;
-  changes: { profileId: string; customer: string | null; addressFamily: MitigationAddressFamily; interfaceName: string | null; mode: MitigationProfileMode;
-    before: MitigationAutoTrafficDirection | null; after: MitigationAutoTrafficDirection | null; effectiveAfter: MitigationAutoTrafficDirection | null;
-    sourceAfter: MitigationAutoDirectionSource | null; impact: string; rxBps: string | null; txBps: string | null }[];
+  previewId: string;
+  expiresAt: string;
+  changes: {
+    profileId: string;
+    customer: string | null;
+    addressFamily: MitigationAddressFamily;
+    interfaceName: string | null;
+    mode: MitigationProfileMode;
+    before: MitigationAutoTrafficDirection | null;
+    after: MitigationAutoTrafficDirection | null;
+    effectiveAfter: MitigationAutoTrafficDirection | null;
+    sourceAfter: MitigationAutoDirectionSource | null;
+    impact: string;
+    rxBps: string | null;
+    txBps: string | null;
+  }[];
 }
 
 export type MitigationBlockReason =
@@ -97,19 +139,10 @@ export interface BgpMitigationSharedTargetDto {
 export type MitigationProfileMode = 'DISABLED' | 'ALERT_ONLY' | 'AUTO';
 
 export type MitigationWorkerState =
-  | 'STOPPED'
-  | 'DISCONNECTED'
-  | 'CONNECTING'
-  | 'READY'
-  | 'RECONNECTING'
-  | 'FAILED';
+  'STOPPED' | 'DISCONNECTED' | 'CONNECTING' | 'READY' | 'RECONNECTING' | 'FAILED';
 
 export type MitigationSimulationResult =
-  | 'WOULD_MITIGATE'
-  | 'WOULD_RECOVER'
-  | 'NO_ACTION'
-  | 'BLOCKED'
-  | 'FAILED';
+  'WOULD_MITIGATE' | 'WOULD_RECOVER' | 'NO_ACTION' | 'BLOCKED' | 'FAILED';
 
 /** Linha de leitura do cliente DDoS (persistida ou candidata do discovery). */
 export interface BgpMitigationProfileDto {
@@ -208,16 +241,19 @@ export interface BgpMitigationProfileDto {
 }
 
 /** Estados do AUTO derivado da DESCRIPTION (backend e UI). */
-export type MitigationAutoState =
-  | 'DISABLED'
-  | 'EXEMPT'
-  | 'OFF'
-  | 'BLOCKED'
-  | 'READY'
-  | 'EFFECTIVE';
+export type MitigationAutoState = 'DISABLED' | 'EXEMPT' | 'OFF' | 'BLOCKED' | 'READY' | 'EFFECTIVE';
 
 /** Decisão do motor AUTO exposta no health (sem segredos). */
 export interface MitigationAutoDecisionDto {
+  sampleAt?: string | null;
+  sampleToDecisionMs?: number | null;
+  decisionMs?: number;
+  firstAbnormalAt?: string | null;
+  confirmationMs?: number | null;
+  commandMs?: number;
+  timingsMs?: { preflight: number; execution: number; readback: number };
+  totalResponseMs?: number | null;
+  responseDeadlineExceeded?: boolean;
   at: string;
   profileId: string;
   deviceId: string;
@@ -268,6 +304,32 @@ export interface MitigationAutoRuntimeDto {
   decisions?: MitigationAutoDecisionDto[];
   lastAutoActivateAt: string | null;
   lastAutoActivateProfileId: string | null;
+}
+
+export interface MitigationFastBridgeStatusDto {
+  generatedAt: string;
+  mode: 'OFF' | 'SHADOW' | 'ENFORCE';
+  fallback: string;
+  executionAvailable: boolean;
+  profileIds: string[];
+  enforceProfileIds: string[];
+  samples: {
+    profileId: string;
+    source: 'FAST';
+    available: boolean;
+    reason: string | null;
+    sampleId: string | null;
+    sampleAt: string | null;
+    generation: string | null;
+    rxBps: string | null;
+    txBps: string | null;
+    intervalMs: number | null;
+    readMs: number;
+  }[];
+  decisions: MitigationAutoDecisionDto[];
+  shadow: { state: string; lastTickAt: string | null; lastError: string | null };
+  engine: { state: string; lastTickAt: string | null; lastError: string | null } | null;
+  responseBudgetMs: number;
 }
 
 /**

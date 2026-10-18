@@ -64,6 +64,7 @@ import { PrismaPublicViewRepository } from './infrastructure/persistence/prisma-
 import { PrismaTopologyPreviewStore } from './infrastructure/persistence/prisma-topology-preview-store';
 import { createPrismaHostRepository } from './infrastructure/persistence/prisma-host-repository';
 import { disconnectPrismaClient, prismaClient } from './infrastructure/persistence/prisma-client';
+import { PrismaClient } from './generated/prisma/index.js';
 import type { HostRepository } from './infrastructure/persistence/host-repository';
 import type { PublicViewRecord } from './infrastructure/persistence/public-view-repository';
 import { SnmpClientImpl } from './infrastructure/snmp/snmp-client-impl';
@@ -146,6 +147,22 @@ import { HuaweiMitigationExecutor } from './infrastructure/bgp/mitigation/huawei
 import { MitigationPolicyReconciler } from './infrastructure/bgp/mitigation/mitigation-policy-reconciler';
 import { PrismaInterfaceTrafficReader } from './infrastructure/bgp/mitigation/prisma-interface-traffic-reader';
 import { MitigationAutoEngine } from './worker/mitigation/mitigation-auto-engine';
+import {
+  fastBridgeConfig,
+  FastObservationSource,
+  FastBridgeRoutingSource,
+  fastProfileRevision,
+  type FastBridgeProfile,
+} from './worker/mitigation/fast-observation-bridge';
+import {
+  PrismaFastBridgeReader,
+  readObserverHealth,
+} from './infrastructure/snmp/prisma-fast-bridge-reader';
+import {
+  PrismaFastShadowRuntime,
+  recordFastBridgeDecisions,
+} from './infrastructure/bgp/mitigation/prisma-fast-shadow-runtime';
+import { PrismaPolicyScopeLock } from './infrastructure/bgp/mitigation/prisma-policy-scope-lock';
 import { MitigationAutoRuntime } from './worker/mitigation/mitigation-auto-runtime';
 import { buildAutoShadowReport } from './worker/mitigation/mitigation-auto-shadow';
 import { InterfaceTrafficSource } from './worker/mitigation/mitigation-traffic-source';
@@ -556,7 +573,20 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
           mitigationPeerExclusionReady,
         );
   // Uma unica sessao/credencial SSH para discovery E escrita manual.
-  const mitigationSsh = new HuaweiBgpSshService(hosts);
+  const mitigationSshMetrics: Array<
+    import('./infrastructure/ssh/ssh-client-impl').SshExecutionMetrics & { at: string }
+  > = [];
+  const mitigationSsh = new HuaweiBgpSshService(
+    hosts,
+    (options) =>
+      new SshClientImpl({
+        ...options,
+        metrics: (metrics) => {
+          mitigationSshMetrics.push({ at: new Date().toISOString(), ...metrics });
+          if (mitigationSshMetrics.length > 128) mitigationSshMetrics.shift();
+        },
+      }),
+  );
   // Runtime do motor AUTO (atribuído depois das dependências canônicas).
   let autoRuntimeRef: MitigationAutoRuntime | null = null;
   let revalidateAutoEvidence:
@@ -776,7 +806,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     labels: mitigationLabels,
   });
   // F4: MESMA exclusao mutua para UI, n8n, AUTO e APPLY LOCAL do reconciler.
-  const mitigationScopeLock = new InMemoryPolicyScopeLock();
+  const mitigationScopeLock = config.DEMO_MODE
+    ? new InMemoryPolicyScopeLock()
+    : new PrismaPolicyScopeLock(prismaClient);
   const mitigationCommands = new MitigationCommandService({
     autoEvidence: (id, evidence) =>
       revalidateAutoEvidence?.(id, evidence) ?? Promise.resolve(false),
@@ -876,35 +908,81 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   );
 
   const diagnosticReader = new PrismaMitigationTelemetryReader(prismaClient);
-  const telemetryReport = async () => diagnoseMitigationTelemetry(await mitigationService.listProfiles(), {
-    readInterface: (id) => diagnosticReader.readInterface(id), envDirections: autoDirections, maxAgeMs: autoMaxAgeMs,
-    authorization: (p) => {
-      const blocks: string[] = [];
-      if (!p.enabled || p.mode === 'DISABLED') blocks.push('PROFILE_DISABLED');
-      if (p.mode !== 'AUTO') blocks.push('PROFILE_MODE_NOT_AUTO');
-      if (p.autoPromotedBySweep && !autoExecutionEnabled) blocks.push('AUTO_EXECUTION_DISABLED');
-      if (p.mitigationExcluded) blocks.push('MITIGATION_EXCLUDED');
-      if (mitigationEngineConfig.mode !== 'AUTO') blocks.push('GLOBAL_MODE_SIMULATION_ONLY');
-      if (mitigationExecutionConfig.executor !== 'HUAWEI') blocks.push('EXECUTOR_NOT_HUAWEI');
-      if (!mitigationExecutionConfig.liveWriteEnabled) blocks.push('LIVE_WRITE_DISABLED');
-      if (!mitigationExecutionConfig.allowedDeviceIds.includes(p.deviceId)) blocks.push('DEVICE_NOT_ALLOWED');
-      if (!p.snapshotAvailable) blocks.push('SNAPSHOT_UNAVAILABLE');
-      if (p.readiness !== 'READY') blocks.push('TARGET_NOT_READY');
-      if (p.prefixStatus === 'UNKNOWN' || p.prefixStatus === 'EXCEEDED') blocks.push('PREFIX_NOT_SAFE');
-      if (p.blockedReason) blocks.push(p.blockedReason);
-      if (sharedPolicyGuardEnabled && p.autoBlockedReason === 'SHARED_POLICY' && !sharedPolicyAllowedProfileIds.includes(p.id)) blocks.push('SHARED_POLICY_UNRESOLVED');
-      const runtime = autoRuntimeRef?.getStatus();
-      if (runtime?.state !== 'RUNNING' || runtime.lastError) blocks.push('ENGINE_NOT_READY');
-      // A diagnostic never grants authorization beyond the latest real engine evaluation.
-      const decision = runtime?.decisions.find(d => d.profileId === p.id);
-      if (!decision || Date.now() - new Date(decision.at).getTime() > 30_000) blocks.push('ENGINE_EVALUATION_UNAVAILABLE');
-      else if (decision.outcome === 'BLOCKED' || decision.outcome === 'FAILED') blocks.push(decision.reason ?? 'ENGINE_BLOCKED');
-      return blocks;
-    },
+  const telemetryReport = async () =>
+    diagnoseMitigationTelemetry(await mitigationService.listProfiles(), {
+      readInterface: (id) => diagnosticReader.readInterface(id),
+      envDirections: autoDirections,
+      maxAgeMs: autoMaxAgeMs,
+      authorization: (p) => {
+        const blocks: string[] = [];
+        if (!p.enabled || p.mode === 'DISABLED') blocks.push('PROFILE_DISABLED');
+        if (p.mode !== 'AUTO') blocks.push('PROFILE_MODE_NOT_AUTO');
+        if (p.autoPromotedBySweep && !autoExecutionEnabled) blocks.push('AUTO_EXECUTION_DISABLED');
+        if (p.mitigationExcluded) blocks.push('MITIGATION_EXCLUDED');
+        if (mitigationEngineConfig.mode !== 'AUTO') blocks.push('GLOBAL_MODE_SIMULATION_ONLY');
+        if (mitigationExecutionConfig.executor !== 'HUAWEI') blocks.push('EXECUTOR_NOT_HUAWEI');
+        if (!mitigationExecutionConfig.liveWriteEnabled) blocks.push('LIVE_WRITE_DISABLED');
+        if (!mitigationExecutionConfig.allowedDeviceIds.includes(p.deviceId))
+          blocks.push('DEVICE_NOT_ALLOWED');
+        if (!p.snapshotAvailable) blocks.push('SNAPSHOT_UNAVAILABLE');
+        if (p.readiness !== 'READY') blocks.push('TARGET_NOT_READY');
+        if (p.prefixStatus === 'UNKNOWN' || p.prefixStatus === 'EXCEEDED')
+          blocks.push('PREFIX_NOT_SAFE');
+        if (p.blockedReason) blocks.push(p.blockedReason);
+        if (
+          sharedPolicyGuardEnabled &&
+          p.autoBlockedReason === 'SHARED_POLICY' &&
+          !sharedPolicyAllowedProfileIds.includes(p.id)
+        )
+          blocks.push('SHARED_POLICY_UNRESOLVED');
+        const runtime = autoRuntimeRef?.getStatus();
+        if (runtime?.state !== 'RUNNING' || runtime.lastError) blocks.push('ENGINE_NOT_READY');
+        // A diagnostic never grants authorization beyond the latest real engine evaluation.
+        const decision = runtime?.decisions.find((d) => d.profileId === p.id);
+        if (!decision || Date.now() - new Date(decision.at).getTime() > 30_000)
+          blocks.push('ENGINE_EVALUATION_UNAVAILABLE');
+        else if (decision.outcome === 'BLOCKED' || decision.outcome === 'FAILED')
+          blocks.push(decision.reason ?? 'ENGINE_BLOCKED');
+        return blocks;
+      },
+    });
+  const directionReview = new MitigationDirectionReview({
+    store: new PrismaDirectionReviewStore(prismaClient),
+    telemetry: telemetryReport,
+    envDirections: autoDirections,
   });
-  const directionReview = new MitigationDirectionReview({ store: new PrismaDirectionReviewStore(prismaClient), telemetry: telemetryReport, envDirections: autoDirections });
 
   const fastConfig = fastPollerConfig();
+  const bridgeConfig = fastBridgeConfig();
+  const observationUrl = process.env.MITIGATION_FAST_OBSERVATION_DATABASE_URL;
+  if (
+    bridgeConfig.mode !== 'OFF' &&
+    (!observationUrl ||
+      new URL(observationUrl).pathname ===
+        new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/').pathname)
+  )
+    throw new Error('Separate read-only observation database URL required');
+  const observationDb =
+    bridgeConfig.mode === 'OFF'
+      ? null
+      : new PrismaClient({ datasources: { db: { url: observationUrl! } } });
+  const bridgeProfiles = new Map<string, FastBridgeProfile>();
+  const bridgeReader = observationDb
+    ? new PrismaFastBridgeReader(prismaClient, observationDb, () =>
+        readObserverHealth(
+          process.env.MITIGATION_FAST_OBSERVER_HEALTH_URL ?? 'http://127.0.0.1:3355/health',
+        ),
+      )
+    : {
+        snapshot: async () => {
+          throw new Error('Bridge disabled');
+        },
+      };
+  const bridgeSource = new FastObservationSource({
+    config: bridgeConfig,
+    reader: bridgeReader,
+    profile: (id) => bridgeProfiles.get(id) ?? null,
+  });
   const fastStore = new PrismaFastTrafficStore(prismaClient);
   const fastPoller = new FastTrafficPoller({
     config: fastConfig,
@@ -932,16 +1010,36 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     direction: (id) => resolvedDirections.get(id)?.direction ?? null,
     available: (id) => fastPoller.isAvailable(id),
   });
+  const effectiveTraffic = new FastBridgeRoutingSource(bridgeConfig, bridgeSource, priorityTraffic);
   revalidateAutoEvidence = async (id, evidence) => {
     if (!evidence) return false;
     const profile = await mitigationRepository.getProfile(id);
     if (!profile || !profile.enabled || profile.mode !== 'AUTO' || profile.mitigationExcluded)
       return false;
+    if (profile.autoPromotedBySweep && !autoExecutionEnabled) return false;
+    if (profile.autoModeExempt) return false;
+    const currentPeers = await mitigationRepository.listProfilePeers(id);
+    if (
+      (
+        await mitigationRepository.listPeerExclusions({
+          deviceId: profile.deviceId,
+          peerAddresses: currentPeers.map((p) => p.peerAddress),
+        })
+      ).length > 0
+    )
+      return false;
     const direction = resolveAutoDirection(id, profile.autoTrafficDirection)?.direction;
     if (!direction || direction !== resolvedDirections.get(id)?.direction) return false;
+    if (bridgeConfig.mode === 'ENFORCE' && bridgeConfig.enforceProfileIds.includes(id)) {
+      if (
+        direction !== 'tx' ||
+        bridgeProfiles.get(id)?.revision !== fastProfileRevision({ profile, direction })
+      )
+        return false;
+    }
     const bandwidthBps = profile.bandwidthOverrideBps ?? profile.detectedBandwidthBps;
     if (!bandwidthBps) return false;
-    const sample = await priorityTraffic.sampleWithId({
+    const sample = await effectiveTraffic.sampleWithId({
       profileId: id,
       deviceId: profile.deviceId,
       interfaceId: profile.interfaceId,
@@ -963,65 +1061,84 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       return false;
     return sample.bps >= (bandwidthBps * BigInt(profile.triggerPercent)) / 100n;
   };
+  const autoTargets = {
+    list: async () => {
+      if (bridgeConfig.mode !== 'OFF')
+        await prismaClient.$queryRaw`SELECT 1 FROM "BgpMitigationProfile" LIMIT 1`;
+      const [dtos, records] = await Promise.all([
+        mitigationService.listProfiles(),
+        mitigationRepository.listProfiles(),
+      ]);
+      const byId = new Map(records.map((record) => [record.id, record]));
+      return dtos
+        .filter((dto) => dto.persisted)
+        .map((dto) => {
+          const record = byId.get(dto.id);
+          // Direcao efetiva resolvida NO INICIO DO TICK: e a mesma fonte
+          // consumida pela telemetria logo abaixo (sem segunda leitura).
+          const resolved = resolveAutoDirection(dto.id, record?.autoTrafficDirection ?? null);
+          if (resolved) resolvedDirections.set(dto.id, resolved);
+          else resolvedDirections.delete(dto.id);
+          const revision = fastProfileRevision({
+            profile: record,
+            direction: resolved?.direction ?? null,
+          });
+          bridgeProfiles.set(dto.id, {
+            profileId: dto.id,
+            deviceId: dto.deviceId,
+            interfaceId: dto.interfaceId,
+            direction: resolved?.direction ?? null,
+            revision,
+          });
+          return {
+            ...(bridgeConfig.profileIds.includes(dto.id) ? { configurationKey: revision } : {}),
+            ...(bridgeConfig.mode === 'ENFORCE' && bridgeConfig.enforceProfileIds.includes(dto.id)
+              ? { activationDirection: 'tx' as const }
+              : {}),
+            profileId: dto.id,
+            deviceId: dto.deviceId,
+            policyName: dto.policyName,
+            interfaceId: dto.interfaceId,
+            customer: dto.customer,
+            mode: dto.mode,
+            addressFamily: dto.addressFamily,
+            direction: resolved?.direction ?? null,
+            directionSource: resolved?.source ?? null,
+            // AUTO-ALL: proveniencia decide se o controle de execucao pausa
+            // NOVAS ativacoes deste perfil (AUTO manual nunca e pausado).
+            autoPromotedBySweep: dto.autoPromotedBySweep === true,
+            sharedPolicyAutomationBlocked: dto.autoBlockedReason === 'SHARED_POLICY',
+            readiness: dto.readiness,
+            snapshotAvailable: dto.snapshotAvailable,
+            prefixStatus: dto.prefixStatus,
+            blockedReason: dto.blockedReason,
+            mitigationExcluded: dto.mitigationExcluded === true,
+            runtimeState: (dto.runtimeState as MitigationState | null) ?? null,
+            effectiveBandwidthBps:
+              record?.bandwidthOverrideBps ?? record?.detectedBandwidthBps ?? null,
+            bogonNode: dto.plannedBogonNode ?? null,
+            mitigationNode: dto.plannedMitigationNode ?? null,
+            sharedPolicy: dto.sharedPolicy,
+            peerAddresses: dto.peerAddresses,
+            triggerPercent: record?.triggerPercent ?? mitigationEngineConfig.triggerPercent,
+            recoveryPercent: record?.recoveryPercent ?? mitigationEngineConfig.recoveryPercent,
+            triggerSamples: record?.triggerSamples ?? mitigationEngineConfig.triggerSamples,
+            recoverySamples: record?.recoverySamples ?? mitigationEngineConfig.recoverySamples,
+          };
+        });
+    },
+  };
   const mitigationAutoEngine = new MitigationAutoEngine({
-    evaluationConcurrency: fastConfig.mode === 'OFF' ? 1 : 2,
+    requireRuntimeRead: bridgeConfig.mode !== 'OFF',
+    evaluationConcurrency: fastConfig.mode === 'OFF' && bridgeConfig.mode === 'OFF' ? 1 : 2,
     globalMode: mitigationEngineConfig.mode,
     execution: {
       executor: mitigationExecutionConfig.executor,
       liveWrite: mitigationExecutionConfig.liveWriteEnabled,
       allowedDeviceIds: mitigationExecutionConfig.allowedDeviceIds,
     },
-    targets: {
-      list: async () => {
-        const [dtos, records] = await Promise.all([
-          mitigationService.listProfiles(),
-          mitigationRepository.listProfiles(),
-        ]);
-        const byId = new Map(records.map((record) => [record.id, record]));
-        return dtos
-          .filter((dto) => dto.persisted)
-          .map((dto) => {
-            const record = byId.get(dto.id);
-            // Direcao efetiva resolvida NO INICIO DO TICK: e a mesma fonte
-            // consumida pela telemetria logo abaixo (sem segunda leitura).
-            const resolved = resolveAutoDirection(dto.id, record?.autoTrafficDirection ?? null);
-            if (resolved) resolvedDirections.set(dto.id, resolved);
-            else resolvedDirections.delete(dto.id);
-            return {
-              profileId: dto.id,
-              deviceId: dto.deviceId,
-              policyName: dto.policyName,
-              interfaceId: dto.interfaceId,
-              customer: dto.customer,
-              mode: dto.mode,
-              addressFamily: dto.addressFamily,
-              direction: resolved?.direction ?? null,
-              directionSource: resolved?.source ?? null,
-              // AUTO-ALL: proveniencia decide se o controle de execucao pausa
-              // NOVAS ativacoes deste perfil (AUTO manual nunca e pausado).
-              autoPromotedBySweep: dto.autoPromotedBySweep === true,
-              sharedPolicyAutomationBlocked: dto.autoBlockedReason === 'SHARED_POLICY',
-              readiness: dto.readiness,
-              snapshotAvailable: dto.snapshotAvailable,
-              prefixStatus: dto.prefixStatus,
-              blockedReason: dto.blockedReason,
-              mitigationExcluded: dto.mitigationExcluded === true,
-              runtimeState: (dto.runtimeState as MitigationState | null) ?? null,
-              effectiveBandwidthBps:
-                record?.bandwidthOverrideBps ?? record?.detectedBandwidthBps ?? null,
-              bogonNode: dto.plannedBogonNode ?? null,
-              mitigationNode: dto.plannedMitigationNode ?? null,
-              sharedPolicy: dto.sharedPolicy,
-              peerAddresses: dto.peerAddresses,
-              triggerPercent: record?.triggerPercent ?? mitigationEngineConfig.triggerPercent,
-              recoveryPercent: record?.recoveryPercent ?? mitigationEngineConfig.recoveryPercent,
-              triggerSamples: record?.triggerSamples ?? mitigationEngineConfig.triggerSamples,
-              recoverySamples: record?.recoverySamples ?? mitigationEngineConfig.recoverySamples,
-            };
-          });
-      },
-    },
-    traffic: priorityTraffic,
+    targets: autoTargets,
+    traffic: effectiveTraffic,
     exclusions: {
       listPeerExclusions: (filter) => mitigationRepository.listPeerExclusions(filter),
     },
@@ -1046,11 +1163,100 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     logger: (message, meta) => app.log.info(meta ?? {}, message),
     debugLogger: (message, meta) => app.log.debug(meta ?? {}, message),
   });
+  const autoTickLock = new PrismaPolicyScopeLock(prismaClient);
   autoRuntimeRef = new MitigationAutoRuntime({
-    engine: mitigationAutoEngine,
+    engine: {
+      tick: async () => {
+        const tick = async () => {
+          const decisions = await mitigationAutoEngine.tick();
+          if (bridgeConfig.mode === 'ENFORCE')
+            await recordFastBridgeDecisions(
+              prismaClient,
+              'ENFORCE',
+              decisions.filter((d) => bridgeConfig.enforceProfileIds.includes(d.profileId)),
+              bridgeSource,
+            );
+          return decisions;
+        };
+        return config.DEMO_MODE
+          ? tick()
+          : autoTickLock.run(
+              { deviceId: 'NETVISION', policyName: 'AUTO_ENGINE_SINGLE_WRITER' },
+              tick,
+            );
+      },
+    },
     intervalMs: Math.max(1000, mitigationEngineConfig.checkIntervalSeconds * 1000),
     logger: (message, meta) => app.log.info(meta ?? {}, message),
   });
+  const shadowEngine = new MitigationAutoEngine({
+    globalMode: 'SIMULATION_ONLY',
+    execution: { executor: 'MOCK', liveWrite: false, allowedDeviceIds: [] },
+    requireRuntimeRead: true,
+    targets: {
+      list: async () =>
+        (await autoTargets.list()).filter(
+          (t) =>
+            bridgeConfig.profileIds.includes(t.profileId) &&
+            !(
+              bridgeConfig.mode === 'ENFORCE' &&
+              bridgeConfig.enforceProfileIds.includes(t.profileId)
+            ),
+        ),
+    },
+    traffic: bridgeSource,
+    runtime: new PrismaFastShadowRuntime(prismaClient, mitigationRepository),
+    exclusions: { listPeerExclusions: (filter) => mitigationRepository.listPeerExclusions(filter) },
+    commands: {
+      execute: async () => {
+        throw new Error('SHADOW_HAS_NO_EXECUTOR');
+      },
+    },
+    executionControl: { enabled: autoExecutionEnabled },
+    sharedPolicyGuard: {
+      enabled: sharedPolicyGuardEnabled,
+      allowedProfileIds: sharedPolicyAllowedProfileIds,
+    },
+    approvedFamilyPairs,
+    dualDirections: { enabled: autoDualDirectionsEnabled },
+    evaluationConcurrency: 2,
+    sampling: { maxAgeMs: bridgeConfig.maxAgeMs, maxGapMs: bridgeConfig.maxGapMs },
+  });
+  const shadowRuntime = new MitigationAutoRuntime({
+    intervalMs: 1000,
+    engine: {
+      tick: async () => {
+        const decisions = await shadowEngine.tick();
+        await recordFastBridgeDecisions(prismaClient, 'SHADOW', decisions, bridgeSource);
+        return decisions;
+      },
+    },
+  });
+  app.get('/api/bgp/mitigation/fast-bridge', async () => ({
+    generatedAt: new Date().toISOString(),
+    mode: bridgeConfig.mode,
+    fallback: 'FAIL_CLOSED_NO_LEGACY_FALLBACK',
+    source: 'EXTERNAL_OBSERVER_DATABASE',
+    executionAvailable: bridgeConfig.mode === 'ENFORCE',
+    shadowExecutionAvailable: false,
+    profileIds: bridgeConfig.profileIds,
+    enforceProfileIds: bridgeConfig.mode === 'ENFORCE' ? bridgeConfig.enforceProfileIds : [],
+    samples: bridgeSource.status(),
+    shadow: shadowRuntime.getStatus(),
+    engine: autoRuntimeRef?.getStatus() ?? null,
+    decisions: [
+      ...shadowEngine.getDecisions(),
+      ...mitigationAutoEngine
+        .getDecisions()
+        .filter(
+          (d) =>
+            bridgeConfig.mode === 'ENFORCE' && bridgeConfig.enforceProfileIds.includes(d.profileId),
+        ),
+    ],
+    responseBudgetMs: 60_000,
+    sshMetrics: mitigationSshMetrics,
+  }));
+  if (!config.DEMO_MODE && bridgeConfig.mode !== 'OFF') shadowRuntime.start();
   app.get('/api/bgp/mitigation/fast-poller', async () => ({
     ...fastPoller.status(),
     profiles: fastConfig.profileIds.map((profileId) => {
@@ -1160,6 +1366,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   app.addHook('onClose', async () => {
     await fastPoller.stop();
     autoRuntimeRef?.stop();
+    shadowRuntime.stop();
+    await observationDb?.$disconnect();
     clearInterval(autoDescriptionSweepTimer);
   });
   registerN8nRoutes(app, {

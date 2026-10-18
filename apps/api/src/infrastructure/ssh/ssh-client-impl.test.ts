@@ -104,6 +104,34 @@ describe('SshClientImpl — execucao sequencial por prompt', () => {
     return channel.events.indexOf(event);
   }
 
+  it('reports connection/query timings without commands or secrets and tolerates metric sink failure', async () => {
+    mockState.script = (command, channel) => {
+      if (command !== 'quit') echoWithPrompt(channel, command);
+    };
+    const metrics = vi.fn<(metrics: import('./ssh-client-impl').SshExecutionMetrics) => void>(() => {
+      throw Error('sink unavailable');
+    });
+    const client = new SshClientImpl({
+      port: 22,
+      username: 'u',
+      password: 'synthetic-secret',
+      commandIdleMs: FAST_IDLE,
+      metrics,
+    });
+    const result = await client.execute('127.0.0.1', ['display route-policy FIXTURE']);
+    expect(result[0]!.exitCode).toBe(0);
+    expect(metrics.mock.calls[0]![0]).toMatchObject({
+      ok: true,
+      timeout: false,
+      retries: 0,
+      connectionMs: expect.any(Number),
+      commandMs: expect.any(Number),
+      totalMs: expect.any(Number),
+    });
+    expect(JSON.stringify(metrics.mock.calls)).not.toContain('synthetic-secret');
+    expect(JSON.stringify(metrics.mock.calls)).not.toContain('route-policy');
+  });
+
   it('A) comando unico curto: command -> prompt -> quit', async () => {
     mockState.script = (command, channel) => {
       if (command === 'quit') return;

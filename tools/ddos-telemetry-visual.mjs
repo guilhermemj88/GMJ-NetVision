@@ -4,15 +4,21 @@ import http from 'node:http';
 import { build } from 'esbuild';
 import { chromium } from 'playwright';
 const root = process.cwd();
+const bridgeVisual = process.argv.includes('--bridge');
 const out = path.join(root, '.artifacts/telemetry-visual');
 await fs.mkdir(out, { recursive: true });
-const entry = `import React from 'react'; import {createRoot} from 'react-dom/client'; import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+let entry = `import React from 'react'; import {createRoot} from 'react-dom/client'; import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
 import {MitigationDirectionReviewPanel} from '../../apps/web/src/components/bgp/mitigation-direction-review';
 import {MitigationTelemetryFacts} from '../../apps/web/src/components/bgp/mitigation-telemetry';
 const at=new Date().toISOString(); const p={id:'play-v4',customer:'PLAY CONNECT',interfaceId:'if-play',interfaceName:'Eth-Trunk1.3024',addressFamily:'IPV4',mode:'ALERT_ONLY',autoTrafficDirection:null};
 const v6={...p,id:'play-v6',addressFamily:'IPV6'};
 const d={profileId:p.id,interfaceId:p.interfaceId,interfaceName:p.interfaceName,ifIndex:151,adminStatus:'UP',operStatus:'UP',source:'LEGACY',sampleId:'reference',sampleAt:at,sampleAgeMs:0,maxAgeMs:45000,rxBps:'148026493',txBps:'1188475611',direction:null,directionSource:null,telemetryAvailable:true,reasons:['DIRECTION_NOT_CONFIGURED'],blockedReason:'DIRECTION_NOT_CONFIGURED',mode:'ALERT_ONLY',promotedBySweep:false,executionAuthorized:false,executionBlocks:['PROFILE_MODE_NOT_AUTO'],sharedCounterProfileIds:[p.id,v6.id]};
 createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient()}><main><h1>BGP · Mitigação DDoS</h1><p>AMBIENTE ISOLADO · valores de referência da auditoria · sem conexão com produção</p><section className="sample"><h2>PLAY CONNECT · Eth-Trunk1.3024</h2><p>Banda contratada: 10 Gbps · capacidade física: 300 Gbps</p><MitigationTelemetryFacts entry={d} generatedAt={at}/></section><MitigationDirectionReviewPanel profiles={[p,v6]} entries={[d,{...d,profileId:v6.id}]}/></main></QueryClientProvider>);`;
+if (bridgeVisual) {
+  const report = { generatedAt: '__NOW__', mode: 'SHADOW', profileIds: ['fast-v4'], enforceProfileIds: [], executionAvailable: false, samples: [{ profileId: 'fast-v4', source: 'FAST', available: true, reason: null, sampleAt: '__NOW__', rxBps: '232000000', txBps: '9500000000', intervalMs: 10000 }], decisions: [{ profileId: 'fast-v4', outcome: 'WOULD_ACTIVATE', reason: 'GLOBAL_MODE_SIMULATION_ONLY', samplesOver: 3, requiredSamples: 3, thresholdBps: '9000000000', verified: false, decisionMs: 8, sampleToDecisionMs: 240 }], shadow: { state: 'RUNNING', lastError: null }, engine: null, responseBudgetMs: 60000 };
+  entry = "import {MitigationFastBridgeFacts} from '../../apps/web/src/components/bgp/mitigation-fast-bridge';\nconst bridge=" + JSON.stringify(report).replaceAll('"__NOW__"', 'new Date().toISOString()') + ';\n' + entry;
+  entry = entry.replace('<MitigationDirectionReviewPanel profiles=', '<section className="sample"><h2>Pipeline FAST · CENÁRIO SINTÉTICO · direção TX</h2><MitigationFastBridgeFacts profileId="fast-v4" report={bridge}/></section><MitigationDirectionReviewPanel profiles=');
+}
 await fs.writeFile(path.join(out, 'entry.tsx'), entry);
 await build({
   entryPoints: [path.join(out, 'entry.tsx')],
@@ -90,7 +96,7 @@ try {
       document: globalThis.document.documentElement.scrollWidth,
     }));
     if (sizes.document > sizes.viewport) throw Error('Horizontal overflow at ' + width);
-    const filename = 'ddos-telemetry-' + width + '.png';
+    const filename = (bridgeVisual ? 'ddos-fast-bridge-' : 'ddos-telemetry-') + width + '.png';
     await fs.mkdir(path.join(root, 'docs/evidence'), { recursive: true });
     await page.screenshot({ path: path.join(root, 'docs/evidence', filename), fullPage: true });
     evidence.push({ width, ...sizes, filename, preview: width === 1440 || width === 390 });
@@ -101,7 +107,7 @@ try {
   await new Promise((resolve) => server.close(resolve));
 }
 await fs.writeFile(
-  path.join(root, 'docs/benchmarks/ddos-telemetry-visual.json'),
+  path.join(root, 'docs/benchmarks/' + (bridgeVisual ? 'ddos-fast-bridge-visual.json' : 'ddos-telemetry-visual.json')),
   JSON.stringify(evidence, null, 2) + '\n',
 );
 console.log(JSON.stringify(evidence));

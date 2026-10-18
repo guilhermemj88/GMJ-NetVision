@@ -1,10 +1,16 @@
 /** Isolated harness. All transport and executors below are synthetic; no credentials or sockets. */
 import type { HostRecord, NetworkInterface } from '@gmj/shared';
 import { InMemoryMitigationRepository } from '../infrastructure/bgp/mitigation/in-memory-mitigation-repository';
-import type { MitigationProfileRecord } from '../infrastructure/bgp/mitigation/mitigation-repository';
+import type {
+  MitigationProfileRecord,
+  MitigationRepository,
+} from '../infrastructure/bgp/mitigation/mitigation-repository';
 import { MitigationCommandService } from '../infrastructure/bgp/mitigation/mitigation-command-service';
 import { MockMitigationExecutor } from '../infrastructure/bgp/mitigation/mitigation-executor';
-import { InMemoryPolicyScopeLock } from '../infrastructure/bgp/mitigation/mitigation-policy-lock';
+import {
+  InMemoryPolicyScopeLock,
+  type PolicyScopeLock,
+} from '../infrastructure/bgp/mitigation/mitigation-policy-lock';
 import { FastSnmpReader, FAST_OIDS } from '../infrastructure/snmp/fast-snmp-reader';
 import { FastTrafficPoller, fastPollerConfig } from '../infrastructure/snmp/fast-traffic-poller';
 import { listFastTrafficTargets } from '../infrastructure/snmp/fast-traffic-targets';
@@ -13,6 +19,12 @@ import type {
   FastTrafficStore,
 } from '../infrastructure/snmp/fast-traffic-types';
 import { PriorityTrafficSource } from '../worker/mitigation/fast-traffic-source';
+import {
+  FastObservationSource,
+  type FastBridgeReader,
+  type FastBridgeProfile,
+} from '../worker/mitigation/fast-observation-bridge';
+import type { MitigationTrafficSource } from '../worker/mitigation/mitigation-traffic-source';
 import {
   MitigationAutoEngine,
   type MitigationAutoDecision,
@@ -42,8 +54,14 @@ export async function fastResponseScenario(options: {
   frozenAt?: number;
   databaseDelayMs?: number;
   wirePort?: number;
+  externalBridge?: boolean;
+  bridgeReader?: FastBridgeReader;
+  observationStore?: FastTrafficStore;
+  repository?: MitigationRepository;
+  scopeLock?: PolicyScopeLock;
+  beforeProfiles?: (hosts: HostRecord[], interfaces: NetworkInterface[]) => Promise<void>;
 }) {
-  const repository = new InMemoryMitigationRepository();
+  const repository = options.repository ?? new InMemoryMitigationRepository();
   const hardware = new MockMitigationExecutor();
   const interfaces = Array.from(
     { length: 2379 },
@@ -87,6 +105,7 @@ export async function fastResponseScenario(options: {
       h.snmp!.port = options.wirePort;
     }
   const profiles: MitigationProfileRecord[] = [];
+  await options.beforeProfiles?.(hosts, interfaces);
   for (let i = 0; i < (options.protectedProfiles ?? 1); i++) {
     const profile = await repository.upsertProfile({
       deviceId: hosts[i]!.id,
@@ -122,7 +141,7 @@ export async function fastResponseScenario(options: {
   const selectedIds = profiles.map((p) => p.id);
   const config = { ...fastPollerConfig({}), mode: 'ENFORCE' as const, profileIds: selectedIds };
   const observations: FastTrafficObservation[] = [];
-  const store: FastTrafficStore = {
+  const memoryStore: FastTrafficStore = {
     append: async (o) => {
       if (options.databaseDelayMs) await sleep(options.databaseDelayMs);
       const prior = observations.filter((p) => p.interfaceId === o.interfaceId).at(-1);
@@ -132,6 +151,16 @@ export async function fastResponseScenario(options: {
     },
     latest: async (id) => observations.filter((o) => o.interfaceId === id).at(-1) ?? null,
   };
+  const store: FastTrafficStore = options.observationStore
+    ? {
+        append: async (o) => {
+          const accepted = await options.observationStore!.append(o);
+          if (accepted) observations.push(o);
+          return accepted;
+        },
+        latest: (id) => options.observationStore!.latest(id),
+      }
+    : memoryStore;
   const calls = new Map<string, number>();
   const counts: number[] = [];
   const reader = new FastSnmpReader(
@@ -189,7 +218,7 @@ export async function fastResponseScenario(options: {
         direction: (p) => (p.autoTrafficDirection === 'TX' ? 'tx' : null),
       }),
   });
-  const traffic = new PriorityTrafficSource({
+  const priorityTraffic = new PriorityTrafficSource({
     config,
     store,
     available: (id) => poller.isAvailable(id),
@@ -203,12 +232,55 @@ export async function fastResponseScenario(options: {
       },
     },
   });
+  const bridgeProfiles = new Map<string, FastBridgeProfile>(
+    profiles.map((p) => [
+      p.id,
+      {
+        profileId: p.id,
+        deviceId: p.deviceId,
+        interfaceId: p.interfaceId,
+        direction: 'tx',
+        revision: 'isolated-configuration',
+      },
+    ]),
+  );
+  const bridgeTraffic = new FastObservationSource({
+    config: {
+      mode: 'ENFORCE',
+      profileIds: selectedIds,
+      enforceProfileIds: selectedIds,
+      maxAgeMs: 30000,
+      maxGapMs: 45000,
+    },
+    profile: (id) => bridgeProfiles.get(id) ?? null,
+    reader: options.bridgeReader ?? {
+      snapshot: async (id) => {
+        const i = interfaces.find((i) => i.id === id)!;
+        const rows = observations.filter((o) => o.interfaceId === id);
+        return {
+          mapping: {
+            id,
+            deviceId: i.deviceId,
+            ifIndex: i.ifIndex,
+            name: i.name,
+            adminStatus: i.adminStatus,
+            operStatus: i.operStatus,
+            speedBps: BigInt(i.speedBps!),
+          },
+          current: rows.at(-1) ?? null,
+          previous: rows.at(-2) ?? null,
+          collectorAvailable: poller.isAvailable(id),
+        };
+      },
+    },
+  });
+  const traffic: MitigationTrafficSource = options.externalBridge ? bridgeTraffic : priorityTraffic;
   const commandResults: Array<{ at: number; profileId: string; timings: unknown }> = [];
   const commands = new MitigationCommandService({
     repository,
     hosts: hostPort,
     executor: hardware,
-    scopeLock: new InMemoryPolicyScopeLock(),
+    scopeLock: options.scopeLock ?? new InMemoryPolicyScopeLock(),
     expectedNodes: async () => [10, 100],
     autoEvidence: async (id, evidence) => {
       const p = profiles.find((p) => p.id === id)!;
@@ -328,6 +400,7 @@ export async function fastResponseScenario(options: {
     repository,
     hardware,
     observations,
+    bridgeTraffic,
     decisions,
     commandResults,
     calls,

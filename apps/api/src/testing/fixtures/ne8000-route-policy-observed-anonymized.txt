@@ -1,0 +1,17 @@
+Route-policy: PL-FIXTURE_IPv4-IN
+  deny : 1 (matched counts: 0)
+    Match clauses:
+      if-match ip-prefix BOGONS
+  permit : 2 (matched counts: 1)
+    Match clauses:
+      if-match ip-prefix PREFIX8to24
+    Apply clauses:
+      apply extcommunity rt 64512:660 additive
+  permit : 10 (matched counts: 0)
+    Match clauses:
+      if-match ip-prefix PREFIX-FIXTURE-IPV4
+    Apply clauses:
+      apply local-preference 1000
+      apply extcommunity rt 64512:140 additive
+  deny : 100 (matched counts: 0)
+<FIXTURE-NE8000>

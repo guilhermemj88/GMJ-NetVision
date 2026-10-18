@@ -27,7 +27,12 @@ it.skipIf(process.env.FAST_REALTIME_TEST !== '1')(
         return { type: 0x43, value: 0n };
       },
     });
-    const h = await fastResponseScenario({ startAt: start, attackAt: start, wirePort: agent.port });
+    const h = await fastResponseScenario({
+      startAt: start,
+      attackAt: start,
+      wirePort: agent.port,
+      externalBridge: true,
+    });
     try {
       h.start();
       while (Date.now() - start < 75000 && !h.decisions.some((d) => d.outcome === 'ACTIVATED'))
@@ -41,6 +46,7 @@ it.skipIf(process.env.FAST_REALTIME_TEST !== '1')(
         realClock: true,
         transport: 'real SNMPv2c UDP on 127.0.0.1, GET-only fixture',
         realHuawei: false,
+        externalBridge: true,
         wallMs: Date.now() - start,
         requests: agent.requests(),
         collectionMs: h.observations.map(
