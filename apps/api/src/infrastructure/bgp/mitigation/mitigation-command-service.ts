@@ -6,7 +6,7 @@ import type {
 } from './mitigation-executor';
 import { verifyActivation, verifyRemoval } from './mitigation-executor';
 import type { MitigationProfileRecord, MitigationRepository } from './mitigation-repository';
-import { policyExecutionScope, syncPolicyRuntime } from './mitigation-policy-scope';
+import { policyExecutionScope, profilesForPolicyScope, syncPolicyRuntime } from './mitigation-policy-scope';
 import { effectiveBandwidthBps } from './bandwidth-parser';
 import { interfaceMitigationScope } from './mitigation-scope';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
@@ -24,6 +24,12 @@ import type {
   MitigationPreflightResult,
 } from './huawei-mitigation-executor';
 import { PolicyScopeBusyError, type PolicyScopeLock } from './mitigation-policy-lock';
+import {
+  ScopeConfirmationStore,
+  scopeConfirmationHash,
+  type ScopeConfirmationFailure,
+  type ScopeConfirmationScope,
+} from './mitigation-scope-confirmation';
 
 // Servico unico das acoes de mitigacao.
 //
@@ -77,8 +83,30 @@ export interface MitigationCommandInput {
   /**
    * REMOVE manual em policy compartilhada: o operador confirma que sabe que a
    * retirada atinge TODOS os vinculos ativos do escopo `device + policy`.
+   * Caminho da UI (sessao autenticada, lista exibida na tela).
    */
   acknowledgeScopeRemoval?: boolean;
+  /**
+   * REMOVE manual em policy compartilhada pelo canal do n8n/Telegram: token de
+   * USO UNICO emitido pelo gate, vinculado ao escopo fisico + composicao exata
+   * dos vinculos. Substitui o booleano no inbound (nunca aceito por engano de
+   * outro perfil, expirado ou reutilizado).
+   */
+  scopeConfirmationToken?: string;
+  /** Identidade do operador no Telegram (auditoria; nunca autoriza sozinha). */
+  confirmedBy?: string | null;
+}
+
+/**
+ * Resumo da confirmacao de escopo devolvido ao chamador. `token` so existe no
+ * canal do n8n e NUNCA entra em notificacao/ log.
+ */
+export interface MitigationScopeConfirmationSummary {
+  required: boolean;
+  token?: string;
+  expiresAt?: string;
+  scopeHash?: string;
+  confirmedBy?: string | null;
 }
 
 export interface MitigationSharedTargetSummary {
@@ -163,6 +191,8 @@ export interface MitigationCommandResult {
    * REMOVE foi bloqueado pedindo confirmacao). Ausente em REMOVE simples.
    */
   removalScope?: MitigationRemovalScopeSummary;
+  /** Presente apenas quando o gate de escopo participou da decisao. */
+  scopeConfirmation?: MitigationScopeConfirmationSummary;
   safeError?: string;
 }
 
@@ -209,6 +239,23 @@ export interface MitigationCommandDeps {
    */
   scopeLock?: PolicyScopeLock;
   now?: () => Date;
+  /**
+   * Confirmacoes de retirada por escopo fisico (canal n8n/Telegram). Ausente =
+   * store proprio, em memoria, com TTL de 10 min.
+   */
+  scopeConfirmations?: ScopeConfirmationStore;
+  /** Prazo (ms) da confirmacao de escopo. Default 10 min. */
+  scopeConfirmationTtlMs?: number;
+  /**
+   * Chamado APOS uma retirada verificada do escopo fisico: o motor AUTO precisa
+   * esquecer a sequencia de amostras anterior (nenhuma reativacao imediata por
+   * evidencia colhida antes da retirada).
+   */
+  onScopeRemoved?: (scope: {
+    deviceId: string;
+    policyName: string;
+    profileIds: string[];
+  }) => void | Promise<void>;
 }
 
 type MitigationCommandBase = Omit<
@@ -225,6 +272,7 @@ export class MitigationCommandService {
   private readonly now: () => Date;
   private readonly preview = new SimulationCommandExecutor();
   private readonly labels: { bogonPrefixList: string; targetPrefixList: string };
+  private readonly scopeConfirmations: ScopeConfirmationStore;
 
   constructor(private readonly deps: MitigationCommandDeps) {
     this.now = deps.now ?? (() => new Date());
@@ -232,6 +280,27 @@ export class MitigationCommandService {
       bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST,
       targetPrefixList: DEFAULT_TARGET_PREFIX_LIST,
     };
+    this.scopeConfirmations =
+      deps.scopeConfirmations ??
+      new ScopeConfirmationStore({
+        now: this.now,
+        ...(deps.scopeConfirmationTtlMs === undefined
+          ? {}
+          : { ttlMs: deps.scopeConfirmationTtlMs }),
+      });
+  }
+
+  /**
+   * Perfil de origem de uma confirmacao de escopo pendente (uso unico).
+   *
+   * O callback do Telegram carrega SOMENTE o token: o NetVision resolve o
+   * perfil a partir da confirmacao emitida, nunca do texto do botao.
+   */
+  scopeConfirmationProfile(token: string): string | null {
+    const record = this.scopeConfirmations.peek(token);
+    if (!record || record.usedAtMs !== null) return null;
+    if (this.now().getTime() > record.expiresAtMs) return null;
+    return record.originProfileId;
   }
 
   async execute(input: MitigationCommandInput): Promise<MitigationCommandResult> {
@@ -356,6 +425,11 @@ export class MitigationCommandService {
         ? await this.read(() => this.activeScopeSiblings(profile), null)
         : null;
 
+    // GATE DE ESCOPO (fail-closed): sem confirmacao valida nada chega ao
+    // preflight nem ao equipamento. O canal n8n/Telegram usa um token de uso
+    // unico vinculado ao escopo + composicao; a UI mantem o ack booleano.
+    const scopeGate = this.evaluateScopeGate(input, profile, removalScope);
+
     // Executor REAL so quando explicitamente habilitado (HUAWEI + allowlist).
     // `enabledFor` autoriza a LEITURA; a ESCRITA ainda exige live_write e e
     // re-checada dentro do proprio executor.
@@ -401,6 +475,7 @@ export class MitigationCommandService {
       sharedPolicyTargets: shared.targets,
       affectedPeers: peers.map((peer) => peer.peerAddress).sort(),
       ...(removalScope && removalScope.affected.length > 0 ? { removalScope } : {}),
+      ...(scopeGate.summary ? { scopeConfirmation: scopeGate.summary } : {}),
     };
 
     // Preflight READ-ONLY imediatamente antes de qualquer escrita. Sem ele a
@@ -454,26 +529,18 @@ export class MitigationCommandService {
       }
     }
 
-    // REMOVE MANUAL EM POLICY COMPARTILHADA: se outro vinculo do MESMO escopo
-    // ainda esta ativo, a retirada precisa de confirmacao explicita do operador
-    // (que ve a lista completa em `removalScope`). Fail-closed: sem o ack o
-    // comando nao chega ao preflight nem ao equipamento.
-    if (
-      input.action === 'REMOVE' &&
-      removalScope &&
-      removalScope.affected.length > 0 &&
-      input.acknowledgeScopeRemoval !== true
-    ) {
+    // REMOVE MANUAL EM POLICY COMPARTILHADA: o gate acima ja decidiu. Sem
+    // confirmacao valida (ack da UI ou token do Telegram) o comando nao chega ao
+    // preflight nem ao equipamento.
+    if (scopeGate.blockedStatus) {
       return {
         ...common,
         ok: false,
-        status: 'SCOPE_CONFIRMATION_REQUIRED',
+        status: scopeGate.blockedStatus,
         verified: false,
         commandPreview: [],
         verification: null,
-        safeError:
-          `Remocao bloqueada: a policy ${removalScope.policy} e compartilhada por ` +
-          `${removalScope.affected.length} vinculo(s) ainda ativo(s); confirme a remocao do escopo inteiro`,
+        ...(scopeGate.blockedMessage ? { safeError: scopeGate.blockedMessage } : {}),
       };
     }
 
@@ -580,6 +647,12 @@ export class MitigationCommandService {
      * preflight/validacao ANTES daqui nao altera runtime nenhum.
      */
     let writeAttempted = false;
+    /**
+     * A escrita foi INICIADA (inclusive no executor MOCK). Governa o uso unico
+     * da confirmacao de escopo: uma tentativa que chegou ao equipamento consome
+     * o token mesmo que o resultado seja desconhecido.
+     */
+    let writeStarted = false;
     try {
       let readBack: string;
       if (activate) {
@@ -652,14 +725,19 @@ export class MitigationCommandService {
       if (liveDevice && live) {
         if (!preflight?.ok) return this.preflightBlocked(common, preview, preflight);
         writeAttempted = true;
+        writeStarted = true;
         await live.remove(liveDevice, removalInput);
         readBack = await live.readRoutePolicy(liveDevice, profile.policyName);
       } else {
+        writeStarted = true;
         await this.deps.executor.remove(removalInput);
         readBack = await this.deps.executor.readRoutePolicy(profile.policyName);
       }
       const check = verifyRemoval(profile.policyName, readBack, pair);
       const sync = await this.record(profile, false, check.verified, pair, null);
+      // A retirada INVALIDA a sequencia de amostras anterior: o AUTO precisa de
+      // evidencia NOVA (triggerSamples amostras novas) antes de reativar.
+      await this.resetScopeSequences(profile);
       await this.publish(
         check.verified ? 'MITIGATION_REMOVED_VERIFIED' : 'MITIGATION_FAILED',
         {
@@ -692,6 +770,7 @@ export class MitigationCommandService {
       // no profile originador. Falha ANTES da escrita nao toca runtime.
       if (writeAttempted) {
         await this.record(profile, activate, false, pair, executionReason(error));
+        if (!activate) await this.resetScopeSequences(profile);
       }
       await this.publish(
         'MITIGATION_FAILED',
@@ -714,6 +793,145 @@ export class MitigationCommandService {
         ...(preflight ? { preflight } : {}),
         safeError: `Falha ao executar a acao no equipamento: ${executionReason(error)}`,
       };
+    } finally {
+      // Uso unico: o token so e consumido de fato quando uma ESCRITA foi
+      // tentada. Bloqueio anterior (preflight, telemetria AUTO, policy ocupada)
+      // devolve a confirmacao para o operador tentar de novo dentro do prazo.
+      if (!writeStarted && scopeGate.consumedToken) {
+        this.scopeConfirmations.release(scopeGate.consumedToken);
+      }
+    }
+  }
+
+  /**
+   * GATE de retirada em policy compartilhada.
+   *
+   * Regras (fail-closed):
+   *  - REMOVE sem vinculo ativo irmao: nada a confirmar;
+   *  - UI: ack booleano explicito (`acknowledgeScopeRemoval`), contrato antigo;
+   *  - Telegram/n8n: token de USO UNICO, com prazo, vinculado ao escopo fisico
+   *    (device + policy), ao perfil originador e a composicao EXATA dos vinculos;
+   *  - token invalido/expirado/reutilizado/escopo alterado bloqueia e devolve
+   *    uma confirmacao NOVA ja com a lista atualizada.
+   */
+  private evaluateScopeGate(
+    input: MitigationCommandInput,
+    profile: MitigationProfileRecord,
+    removalScope: MitigationRemovalScopeSummary | null,
+  ): {
+    blockedStatus?: string;
+    blockedMessage?: string;
+    summary?: MitigationScopeConfirmationSummary;
+    consumedToken?: string;
+  } {
+    if (input.action !== 'REMOVE' || !removalScope) {
+      return {};
+    }
+    const hasAffected = removalScope.affected.length > 0;
+    // Sem vinculo ativo irmao e sem token: retirada simples, nada a confirmar.
+    if (!hasAffected && !input.scopeConfirmationToken) {
+      return {};
+    }
+    const scope: ScopeConfirmationScope = {
+      deviceId: removalScope.deviceId,
+      policyName: removalScope.policy,
+      originProfileId: profile.id,
+      affected: removalScope.affected.map((entry) => ({
+        profileId: entry.profileId,
+        runtimeState: entry.runtimeState,
+      })),
+    };
+    const confirmedBy = input.confirmedBy?.trim() ? input.confirmedBy.trim().slice(0, 120) : null;
+
+    // Token apresentado: validado SEMPRE, mesmo que o escopo ja tenha se
+    // esvaziado. Uma confirmacao de uso unico nunca autoriza uma segunda
+    // execucao (replay depois do sucesso cai em USED/SCOPE_CHANGED).
+    if (input.scopeConfirmationToken) {
+      const consumed = this.scopeConfirmations.consume(
+        input.scopeConfirmationToken,
+        scope,
+        { confirmedBy: confirmedBy ?? null },
+      );
+      if (!consumed.ok) {
+        return this.blockedScopeConfirmation(scope, consumed.code, consumed.message);
+      }
+      return {
+        summary: {
+          required: true,
+          scopeHash: consumed.record.scopeHash,
+          confirmedBy: consumed.record.confirmedBy,
+        },
+        consumedToken: consumed.record.token,
+      };
+    }
+
+    if (input.acknowledgeScopeRemoval === true) {
+      return {
+        summary: {
+          required: true,
+          scopeHash: scopeConfirmationHash(scope),
+          confirmedBy,
+        },
+      };
+    }
+
+    return this.blockedScopeConfirmation(
+      scope,
+      'SCOPE_CONFIRMATION_REQUIRED',
+      `Remocao bloqueada: a policy ${removalScope.policy} e compartilhada por ` +
+        `${removalScope.affected.length} vinculo(s) ainda ativo(s); confirme a remocao do escopo inteiro`,
+    );
+  }
+
+  private blockedScopeConfirmation(
+    scope: ScopeConfirmationScope,
+    code: ScopeConfirmationFailure,
+    message: string,
+  ): {
+    blockedStatus: string;
+    blockedMessage: string;
+    summary: MitigationScopeConfirmationSummary;
+  } {
+    const issue = this.scopeConfirmations.issue(scope);
+    return {
+      blockedStatus: code,
+      blockedMessage: message,
+      summary: {
+        required: true,
+        token: issue.token,
+        expiresAt: issue.expiresAt,
+        scopeHash: issue.scopeHash,
+        confirmedBy: null,
+      },
+    };
+  }
+
+  /**
+   * Depois de uma retirada do escopo fisico, a sequencia de gatilho pertence a
+   * evidencia ANTERIOR: zera os contadores persistidos de TODOS os vinculos da
+   * policy e avisa o motor AUTO (que tambem descarta o cache em memoria). Uma
+   * nova ativacao automatica passa a exigir `triggerSamples` amostras NOVAS.
+   */
+  private async resetScopeSequences(profile: MitigationProfileRecord): Promise<void> {
+    const scope = policyExecutionScope(profile);
+    const profiles = await this.read(
+      () => profilesForPolicyScope(this.deps.repository, scope),
+      [] as MitigationProfileRecord[],
+    );
+    for (const member of profiles) {
+      await this.read(
+        () => this.deps.repository.upsertRuntime(member.id, { triggerCounter: 0, recoveryCounter: 0 }),
+        null,
+      );
+    }
+    try {
+      await this.deps.onScopeRemoved?.({
+        deviceId: scope.deviceId,
+        policyName: scope.policyName,
+        profileIds: profiles.map((member) => member.id),
+      });
+    } catch {
+      // Observabilidade nunca transforma retirada verificada em falha.
     }
   }
 

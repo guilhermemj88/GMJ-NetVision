@@ -814,6 +814,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const mitigationScopeLock = config.DEMO_MODE
     ? new InMemoryPolicyScopeLock()
     : new PrismaPolicyScopeLock(prismaClient);
+  // Ligacao tardia: o servico de comandos e criado ANTES do motor AUTO.
+  const autoEngineRef: { current: { forgetProfiles(ids: readonly string[]): void } | null } = {
+    current: null,
+  };
   const mitigationCommands = new MitigationCommandService({
     autoEvidence: (id, evidence) =>
       revalidateAutoEvidence?.(id, evidence) ?? Promise.resolve(false),
@@ -828,6 +832,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     expectedNodes: async (profileId) =>
       mitigationService.discoverySnapshot(profileId)?.existingNodes ?? null,
     scopeLock: mitigationScopeLock,
+    // Retirada manual do escopo fisico: o AUTO perde a sequencia anterior.
+    onScopeRemoved: (scope) => autoEngineRef.current?.forgetProfiles(scope.profileIds),
   });
 
   // ---- Motor AUTO real: mesmo caminho canônico do ACTIVATE (UI/n8n) --------
@@ -1167,6 +1173,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     logger: (message, meta) => app.log.info(meta ?? {}, message),
     debugLogger: (message, meta) => app.log.debug(meta ?? {}, message),
   });
+  autoEngineRef.current = mitigationAutoEngine;
   const autoTickLock = new PrismaPolicyScopeLock(prismaClient);
   autoRuntimeRef = new MitigationAutoRuntime({
     engine: {

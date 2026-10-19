@@ -1,0 +1,154 @@
+{
+  "name": "NetVision - Retirada em policy compartilhada (solicitar)",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            { "name": "profileId" },
+            { "name": "requestedBy" },
+            { "name": "chatId" },
+            { "name": "messageThreadId" }
+          ]
+        }
+      },
+      "id": "a1000000-0000-4000-8000-000000000001",
+      "name": "Entrada (perfil + chat)",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NETVISION_API_BASE }}/api/integrations/n8n/mitigation-command",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.NETVISION_N8N_COMMAND_TOKEN }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ requestId: 'telegram-' + $execution.id + '-' + Date.now(), action: 'REMOVE', profileId: $json.profileId, ...($json.requestedBy ? { confirmedBy: 'telegram:' + $json.requestedBy } : {}) }) }}",
+        "options": {
+          "timeout": 60000,
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "a1000000-0000-4000-8000-000000000002",
+      "name": "API: solicitar REMOVE (sem token)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "cond-scope",
+              "leftValue": "={{ $json.scopeConfirmation?.token }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEmpty", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000003",
+      "name": "Precisa confirmar escopo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [480, 0]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Entrada (perfil + chat)').first().json.chatId }}",
+        "text": "=⚠️ RETIRADA DE MITIGAÇÃO — POLICY COMPARTILHADA\nEquipamento: {{ $json.device }}\nPolicy: {{ $json.policy }}  •  RT {{ $json.rt }}  •  nodes {{ $json.bogonNode }}/{{ $json.mitigationNode }}\n\nA retirada atinge TODOS os vínculos desta policy:\n\n• {{ $json.interface }} — {{ $json.customer }} — peer {{ $json.affectedPeers[0] }} (origem da solicitação)\n{{ $json.removalScope.affected.map(i => '• ' + (i.interfaceName || i.profileId) + ' — ' + (i.customer || 'sem cliente') + ' — peer ' + (i.peerAddress || '-') + ' (' + i.runtimeState + ')').join('\\n') }}\n\nSolicitado por: {{ $('Entrada (perfil + chat)').first().json.requestedBy || 'operador' }}.\nConfirmação válida até {{ $json.scopeConfirmation.expiresAt }}.\n\nStatus: {{ $json.status }}{{ $json.safeError ? '\\n' + $json.safeError : '' }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "CANCELAR",
+                    "additionalFields": { "callback_data": "=rmc:{{ $json.scopeConfirmation.token }}" }
+                  },
+                  {
+                    "text": "CONFIRMAR RETIRADA DE TODOS",
+                    "additionalFields": { "callback_data": "=rmx:{{ $json.scopeConfirmation.token }}" }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": { "appendAttribution": false }
+      },
+      "id": "a1000000-0000-4000-8000-000000000004",
+      "name": "Telegram: pedir confirmação do escopo",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [720, -100],
+      "credentials": { "telegramApi": { "id": "SUBSTITUIR_CREDENTIAL_ID", "name": "Telegram NetVision" } }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "b1", "name": "outcome", "value": "confirmation_required", "type": "string" },
+            { "id": "b2", "name": "status", "value": "={{ $json.status }}", "type": "string" },
+            { "id": "b3", "name": "expiresAt", "value": "={{ $json.scopeConfirmation.expiresAt }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000005",
+      "name": "Saída: aguardando confirmação",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [960, -100]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "c1", "name": "outcome", "value": "={{ $json.ok ? 'removed' : 'blocked' }}", "type": "string" },
+            { "id": "c2", "name": "status", "value": "={{ $json.status }}", "type": "string" },
+            { "id": "c3", "name": "verified", "value": "={{ $json.verified }}", "type": "boolean" },
+            { "id": "c4", "name": "summary", "value": "={{ $json.verified ? 'Retirada verificada por read-back.' : ($json.safeError || 'Retirada não confirmada.') }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a1000000-0000-4000-8000-000000000006",
+      "name": "Saída: execução direta",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [720, 100]
+    }
+  ],
+  "connections": {
+    "Entrada (perfil + chat)": {
+      "main": [[{ "node": "API: solicitar REMOVE (sem token)", "type": "main", "index": 0 }]]
+    },
+    "API: solicitar REMOVE (sem token)": {
+      "main": [[{ "node": "Precisa confirmar escopo?", "type": "main", "index": 0 }]]
+    },
+    "Precisa confirmar escopo?": {
+      "main": [
+        [{ "node": "Telegram: pedir confirmação do escopo", "type": "main", "index": 0 }],
+        [{ "node": "Saída: execução direta", "type": "main", "index": 0 }]
+      ]
+    },
+    "Telegram: pedir confirmação do escopo": {
+      "main": [[{ "node": "Saída: aguardando confirmação", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

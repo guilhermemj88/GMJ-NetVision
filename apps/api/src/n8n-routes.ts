@@ -11,14 +11,31 @@ import {
 // Endpoint semantico dedicado: o n8n pede UMA acao de mitigacao por perfil.
 // Nunca aceita CLI, policy, node, RT, host ou credencial - tudo isso e
 // reconstruido internamente pelo NetVision a partir do profile persistido.
+//
+// RETIRADA EM POLICY COMPARTILHADA (Telegram): o booleano `acknowledgeScopeRemoval`
+// NAO e aceito aqui. O n8n devolve o `scopeConfirmationToken` emitido pelo gate
+// (`SCOPE_CONFIRMATION_REQUIRED`), de uso unico e vinculado ao escopo fisico e a
+// composicao exata dos vinculos no momento da aprovacao.
 
 export const n8nCommandSchema = z
   .object({
     requestId: z.string().min(1).max(160),
     action: z.enum(MITIGATION_COMMAND_ACTIONS),
-    profileId: z.string().min(1).max(160),
+    /**
+     * Perfil de origem. Opcional APENAS quando ha `scopeConfirmationToken`: o
+     * callback do Telegram carrega somente o token e o NetVision resolve o
+     * perfil a partir da confirmacao emitida.
+     */
+    profileId: z.string().min(1).max(160).optional(),
+    /** Token opaco emitido pelo gate de escopo. Nunca e um comando nem um id de perfil. */
+    scopeConfirmationToken: z.string().min(16).max(128).optional(),
+    /** Operador do Telegram (auditoria). Nunca autoriza sozinho. */
+    confirmedBy: z.string().min(1).max(120).optional(),
   })
-  .strict();
+  .strict()
+  .refine((value) => Boolean(value.profileId) || Boolean(value.scopeConfirmationToken), {
+    message: 'profileId ou scopeConfirmationToken e obrigatorio',
+  });
 
 /** Log operacional do inbound: NUNCA carrega o bearer token. */
 export interface N8nInboundLog {
@@ -44,7 +61,6 @@ export interface N8nRouteDependencies {
   /** Observabilidade: chamado apos cada requisicao (sem segredo). */
   onCommandResult?: (log: N8nInboundLog) => Promise<void> | void;
 }
-
 function readBearer(header: string | undefined): string | null {
   if (!header) return null;
   const match = /^Bearer\s+(.+)$/i.exec(header.trim());
@@ -151,11 +167,46 @@ export function registerN8nRoutes(app: FastifyInstance, dependencies: N8nRouteDe
       });
     }
 
-    const result = await commands.execute(parsed.data);
+    const profileId =
+      parsed.data.profileId ??
+      (parsed.data.scopeConfirmationToken
+        ? commands.scopeConfirmationProfile(parsed.data.scopeConfirmationToken)
+        : null);
+    if (!profileId) {
+      await record({
+        requestId: parsed.data.requestId,
+        action: parsed.data.action,
+        profileId: null,
+        status: 'SCOPE_CONFIRMATION_TOKEN_UNKNOWN',
+        httpStatus: 200,
+        ok: false,
+        idempotent: null,
+        safeError: 'Confirmacao desconhecida ou expirada; solicite a retirada novamente',
+      });
+      return reply.code(200).send({
+        ok: false,
+        status: 'SCOPE_CONFIRMATION_TOKEN_UNKNOWN',
+        requestId: parsed.data.requestId,
+        action: parsed.data.action,
+        profileId: null,
+        safeError: 'Confirmacao desconhecida ou expirada; solicite a retirada novamente',
+      });
+    }
+
+    // exactOptionalPropertyTypes: campos opcionais so entram quando presentes.
+    const result = await commands.execute({
+      requestId: parsed.data.requestId,
+      action: parsed.data.action,
+      profileId,
+      ...(parsed.data.scopeConfirmationToken === undefined
+        ? {}
+        : { scopeConfirmationToken: parsed.data.scopeConfirmationToken }),
+      ...(parsed.data.confirmedBy === undefined ? {} : { confirmedBy: parsed.data.confirmedBy }),
+    });
     await record({
       requestId: parsed.data.requestId,
       action: parsed.data.action,
-      profileId: parsed.data.profileId,
+      profileId,
       status: result.status,
       httpStatus: 200,
       ok: result.ok,

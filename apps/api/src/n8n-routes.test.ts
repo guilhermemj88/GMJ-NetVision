@@ -235,8 +235,166 @@ describe('canal IN (n8n -> NetVision)', () => {
     expect(harness.executor.calls.length).toBe(chamadasDepoisDaPrimeira);
   });
 
-  it('sharedPolicy NAO bloqueia execucao e vem marcada na resposta', async () => {
+  it('retirada em policy compartilhada: sem token bloqueia e devolve a lista + confirmacao', async () => {
     const harness = await buildHarness({ shared: true });
+    app = harness.app;
+    await post(harness.app, { requestId: 'sh-a', action: 'ACTIVATE', profileId: harness.profileId });
+
+    const blocked = await post(harness.app, {
+      requestId: 'sh-r',
+      action: 'REMOVE',
+      profileId: harness.profileId,
+    });
+    const body = blocked.json();
+
+    expect(body.ok).toBe(false);
+    expect(body.status).toBe('SCOPE_CONFIRMATION_REQUIRED');
+    expect(body.removalScope).toMatchObject({ policy: POLICY });
+    const confirm = body.scopeConfirmation as { required: boolean; token: string; expiresAt: string };
+    expect(confirm.required).toBe(true);
+    expect(confirm.token).toMatch(/^[A-Za-z0-9_-]{16,}$/);
+    expect(Number.isFinite(Date.parse(confirm.expiresAt))).toBe(true);
+  });
+
+  it('o booleano acknowledgeScopeRemoval NAO e aceito no inbound (so token)', async () => {
+    const harness = await buildHarness({ shared: true });
+    app = harness.app;
+
+    const response = await post(harness.app, {
+      requestId: 'sh-bool',
+      action: 'REMOVE',
+      profileId: harness.profileId,
+      acknowledgeScopeRemoval: true,
+    });
+
+    // Schema estrito: o canal do Telegram nunca confirma por booleano.
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('confirmacao com token executa a retirada e nao vaza o token no log', async () => {
+    const logs: Record<string, unknown>[] = [];
+    const repository = new InMemoryMitigationRepository();
+    const executor = new MockMitigationExecutor();
+    executor.seedPolicy(POLICY, [11]);
+    const main = await repository.upsertProfile({
+      deviceId: 'device-1',
+      policyName: POLICY,
+      interfaceId: 'if-3011',
+      addressFamily: 'IPV4',
+      detectedBandwidthBps: 40_000_000_000n,
+      bandwidthSource: 'DESCRIPTION',
+      prefixLimit: 100,
+    });
+    await repository.replaceProfilePeers(main.id, [{ peerAddress: '10.200.200.222', primary: true }]);
+    await repository.upsertRuntime(main.id, {
+      state: 'MITIGATED',
+      plannedBogonNode: 1,
+      plannedMitigationNode: 2,
+      plannedNode: 2,
+    });
+    const sibling = await repository.upsertProfile({
+      deviceId: 'device-1',
+      policyName: POLICY,
+      interfaceId: 'if-3013',
+      addressFamily: 'IPV4',
+      detectedBandwidthBps: 40_000_000_000n,
+      bandwidthSource: 'DESCRIPTION',
+      prefixLimit: 100,
+    });
+    await repository.replaceProfilePeers(sibling.id, [{ peerAddress: '10.200.200.226', primary: true }]);
+    await repository.upsertRuntime(sibling.id, {
+      state: 'MITIGATED',
+      plannedBogonNode: 1,
+      plannedMitigationNode: 2,
+      plannedNode: 2,
+    });
+
+    const commands = new MitigationCommandService({
+      repository,
+      hosts: {
+        getHost: async (id) =>
+          ({ id, hostname: 'BHE-VTA-F1A-BGP-01', displayName: 'BHE-VTA-F1A-BGP-01' }) as unknown as HostRecord,
+      },
+      executor,
+      now: () => new Date('2026-01-01T12:00:00.000Z'),
+    });
+    const internal = Fastify();
+    registerN8nRoutes(internal, {
+      commands,
+      commandToken: TOKEN,
+      onCommandResult: (log) => {
+        logs.push(log as unknown as Record<string, unknown>);
+      },
+    });
+    app = internal;
+    await internal.ready();
+
+    // Ativacao simulada do par no "equipamento".
+    await commands.execute({ requestId: 'seed', action: 'ACTIVATE', profileId: main.id });
+
+    const blocked = await post(internal, { requestId: 'r-1', action: 'REMOVE', profileId: main.id });
+    const token = (blocked.json().scopeConfirmation as { token: string }).token;
+
+    const confirmed = await post(internal, {
+      requestId: 'r-2',
+      action: 'REMOVE',
+      profileId: main.id,
+      scopeConfirmationToken: token,
+      confirmedBy: 'telegram:1',
+    });
+    const body = confirmed.json();
+
+    expect(confirmed.statusCode).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(body.status).toBe('REMOVED_VERIFIED');
+    expect(body.scopeConfirmation).toMatchObject({ required: true, confirmedBy: 'telegram:1' });
+    expect(JSON.stringify(logs)).not.toContain(token);
+  });
+
+  it('callback do Telegram confirma apenas com o token (sem profileId)', async () => {
+    const harness = await buildHarness({ shared: true });
+    app = harness.app;
+    await post(harness.app, { requestId: 'cb-a', action: 'ACTIVATE', profileId: harness.profileId });
+
+    const blocked = await post(harness.app, { requestId: 'cb-1', action: 'REMOVE', profileId: harness.profileId });
+    const token = (blocked.json().scopeConfirmation as { token: string }).token;
+
+    // O botao do Telegram carrega SO o token: o NetVision resolve o perfil.
+    const confirmed = await post(harness.app, {
+      requestId: 'cb-2',
+      action: 'REMOVE',
+      scopeConfirmationToken: token,
+      confirmedBy: 'telegram:99',
+    });
+    expect(confirmed.statusCode).toBe(200);
+    expect(confirmed.json().status).toBe('REMOVED_VERIFIED');
+    expect(confirmed.json().profileId).toBe(harness.profileId);
+  });
+
+  it('token desconhecido sem profileId devolve TOKEN_UNKNOWN sem tocar o executor', async () => {
+    const harness = await buildHarness({ shared: true });
+    app = harness.app;
+
+    const response = await post(harness.app, {
+      requestId: 'cb-x',
+      action: 'REMOVE',
+      scopeConfirmationToken: 'token-que-nao-existe-123456',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().status).toBe('SCOPE_CONFIRMATION_TOKEN_UNKNOWN');
+    expect(harness.executor.calls).toEqual([]);
+  });
+
+  it('sem profileId e sem token o payload e invalido', async () => {
+    const harness = await buildHarness({ shared: true });
+    app = harness.app;
+
+    const response = await post(harness.app, { requestId: 'cb-y', action: 'REMOVE' });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it('sharedPolicy NAO bloqueia execucao e vem marcada na resposta', async () => {    const harness = await buildHarness({ shared: true });
     app = harness.app;
 
     const response = await post(harness.app, { requestId: 'sh-1', action: 'ACTIVATE', profileId: harness.profileId });

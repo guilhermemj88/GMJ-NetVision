@@ -1,0 +1,220 @@
+{
+  "name": "NetVision - Retirada em policy compartilhada (confirmar/cancelar)",
+  "nodes": [
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            { "name": "callbackData" },
+            { "name": "fromId" },
+            { "name": "chatId" },
+            { "name": "messageId" },
+            { "name": "callbackQueryId" }
+          ]
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000001",
+      "name": "Entrada (callback do Telegram)",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "cond-callback",
+              "leftValue": "={{ $json.callbackData }}",
+              "rightValue": "^(rmx|rmc):[A-Za-z0-9_-]{16,128}$",
+              "operator": { "type": "string", "operation": "regex" }
+            },
+            {
+              "id": "cond-operator",
+              "leftValue": "={{ ($env.NETVISION_TELEGRAM_OPERATORS || '').split(',').map(v => v.trim()).includes(String($json.fromId)) }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1000000-0000-4000-8000-000000000002",
+      "name": "Callback e operador válidos?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {
+        "callbackQueryId": "={{ $json.callbackQueryId }}",
+        "text": "Ação não permitida para este operador.",
+        "additionalFields": { "show_alert": true }
+      },
+      "id": "b1000000-0000-4000-8000-000000000003",
+      "name": "Telegram: recusar operador",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [480, 200],
+      "credentials": { "telegramApi": { "id": "SUBSTITUIR_CREDENTIAL_ID", "name": "Telegram NetVision" } }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "d1", "name": "mode", "value": "={{ $json.callbackData.startsWith('rmx:') ? 'confirm' : 'cancel' }}", "type": "string" },
+            { "id": "d2", "name": "token", "value": "={{ $json.callbackData.slice(4) }}", "type": "string" },
+            { "id": "d3", "name": "fromId", "value": "={{ $json.fromId }}", "type": "string" },
+            { "id": "d4", "name": "chatId", "value": "={{ $json.chatId }}", "type": "string" },
+            { "id": "d5", "name": "messageId", "value": "={{ $json.messageId }}", "type": "string" },
+            { "id": "d6", "name": "callbackQueryId", "value": "={{ $json.callbackQueryId }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1000000-0000-4000-8000-000000000004",
+      "name": "Interpretar callback",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [480, -100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "loose" },
+          "conditions": [
+            {
+              "id": "cond-cancel",
+              "leftValue": "={{ $json.mode }}",
+              "rightValue": "cancel",
+              "operator": { "type": "string", "operation": "equals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "b1000000-0000-4000-8000-000000000005",
+      "name": "Cancelar?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [720, -100]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NETVISION_API_BASE }}/api/integrations/n8n/mitigation-command",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Authorization", "value": "=Bearer {{ $env.NETVISION_N8N_COMMAND_TOKEN }}" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ requestId: 'telegram-confirm-' + $execution.id + '-' + Date.now(), action: 'REMOVE', scopeConfirmationToken: $json.token, confirmedBy: 'telegram:' + $json.fromId }) }}",
+        "options": {
+          "timeout": 90000,
+          "response": { "response": { "neverError": true } }
+        }
+      },
+      "id": "b1000000-0000-4000-8000-000000000006",
+      "name": "API: REMOVE com token de escopo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [960, -200]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Interpretar callback').first().json.chatId }}",
+        "messageId": "={{ $('Interpretar callback').first().json.messageId }}",
+        "text": "=🚫 Retirada cancelada pelo operador {{ $('Interpretar callback').first().json.fromId }}. Nenhuma alteração foi feita no equipamento.",
+        "additionalFields": { "replyMarkup": "none" }
+      },
+      "id": "b1000000-0000-4000-8000-000000000007",
+      "name": "Telegram: confirmar cancelamento",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [960, 0],
+      "credentials": { "telegramApi": { "id": "SUBSTITUIR_CREDENTIAL_ID", "name": "Telegram NetVision" } }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "e1", "name": "ok", "value": "={{ $json.ok }}", "type": "boolean" },
+            { "id": "e2", "name": "status", "value": "={{ $json.status }}", "type": "string" },
+            { "id": "e3", "name": "verified", "value": "={{ $json.verified }}", "type": "boolean" },
+            { "id": "e4", "name": "texto", "value": "={{ $json.ok && $json.verified ? '✅ RETIRADA DE TODOS CONCLUÍDA\\nPolicy: ' + $json.policy + ' • RT ' + $json.rt + '\\nNodes removidos: ' + $json.bogonNode + '/' + $json.mitigationNode + '\\nRead-back: ' + ($json.verification?.summary || 'ok') + '\\nConfirmado por: telegram:' + ($json.scopeConfirmation?.confirmedBy || 'operador') : '⚠️ RETIRADA NÃO CONCLUÍDA\\nStatus: ' + $json.status + '\\n' + ($json.safeError || 'Sem detalhe.') + ($json.scopeConfirmation?.token ? '\\nSolicite novamente a retirada para receber a lista atualizada.' : '')) }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b1000000-0000-4000-8000-000000000008",
+      "name": "Montar resultado",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1200, -200]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $('Interpretar callback').first().json.chatId }}",
+        "messageId": "={{ $('Interpretar callback').first().json.messageId }}",
+        "text": "={{ $json.texto }}",
+        "additionalFields": { "replyMarkup": "none" }
+      },
+      "id": "b1000000-0000-4000-8000-000000000009",
+      "name": "Telegram: editar mensagem com resultado",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1440, -200],
+      "credentials": { "telegramApi": { "id": "SUBSTITUIR_CREDENTIAL_ID", "name": "Telegram NetVision" } }
+    },
+    {
+      "parameters": {
+        "callbackQueryId": "={{ $('Interpretar callback').first().json.callbackQueryId }}",
+        "text": "={{ $json.ok ? 'Retirada confirmada pela API.' : 'Não foi possível confirmar: ' + $json.status }}",
+        "additionalFields": { "show_alert": false }
+      },
+      "id": "b1000000-0000-4000-8000-000000000010",
+      "name": "Telegram: responder callback",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [1680, -200],
+      "credentials": { "telegramApi": { "id": "SUBSTITUIR_CREDENTIAL_ID", "name": "Telegram NetVision" } }
+    }
+  ],
+  "connections": {
+    "Entrada (callback do Telegram)": {
+      "main": [[{ "node": "Callback e operador válidos?", "type": "main", "index": 0 }]]
+    },
+    "Callback e operador válidos?": {
+      "main": [
+        [{ "node": "Interpretar callback", "type": "main", "index": 0 }],
+        [{ "node": "Telegram: recusar operador", "type": "main", "index": 0 }]
+      ]
+    },
+    "Interpretar callback": {
+      "main": [[{ "node": "Cancelar?", "type": "main", "index": 0 }]]
+    },
+    "Cancelar?": {
+      "main": [
+        [{ "node": "Telegram: confirmar cancelamento", "type": "main", "index": 0 }],
+        [{ "node": "API: REMOVE com token de escopo", "type": "main", "index": 0 }]
+      ]
+    },
+    "API: REMOVE com token de escopo": {
+      "main": [[{ "node": "Montar resultado", "type": "main", "index": 0 }]]
+    },
+    "Montar resultado": {
+      "main": [[{ "node": "Telegram: editar mensagem com resultado", "type": "main", "index": 0 }]]
+    },
+    "Telegram: editar mensagem com resultado": {
+      "main": [[{ "node": "Telegram: responder callback", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "pinData": {}
+}

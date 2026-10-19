@@ -68,6 +68,11 @@ export type MitigationAutoBlockReason =
   | 'VERIFY_FAILED'
   | 'SCOPE_ALREADY_MITIGATED'
   | 'SCOPE_OPERATION_IN_FLIGHT'
+  /**
+   * A sequencia de amostras foi descartada (retirada manual do escopo fisico)
+   * no meio desta avaliacao: nada a fazer com evidencia anterior a retirada.
+   */
+  | 'SAMPLE_SEQUENCE_RESET'
   | 'POLICY_BUSY'
   /**
    * DUAL: o ataque foi detectado em RX. A mitigacao BGP existente diversa
@@ -511,6 +516,27 @@ export class MitigationAutoEngine {
 
   isBusy(profileId: string): boolean {
     return this.inFlight.has(profileId);
+  }
+
+  /**
+   * RETIRADA MANUAL DO ESCOPO FISICO: a sequencia de amostras pertence a
+   * evidencia ANTERIOR a retirada. Substitui os contadores em memoria por uma
+   * sequencia zerada (identidade NOVA), de modo que uma reativacao automatica
+   * exige `triggerSamples` amostras novas. Avaliacoes ja em andamento seguem
+   * com o objeto antigo e sao descartadas pelos guards de identidade.
+   */
+  forgetProfiles(profileIds: readonly string[]): void {
+    for (const profileId of profileIds) {
+      this.counters.set(profileId, {
+        over: 0,
+        below: 0,
+        triggerStartedAtMs: null,
+        loaded: true,
+        lastSampleKey: null,
+        lastSampleAtMs: null,
+      });
+      this.attempts.delete(profileId);
+    }
   }
 
   /** Avalia todos os targets. O chamador decide a cadencia (loop/timer). */
@@ -1037,6 +1063,11 @@ export class MitigationAutoEngine {
     ) {
       return decided('ALREADY_MITIGATED', 'NO_ACTION');
     }
+    // Retirada manual concorrente: os contadores desta avaliacao foram
+    // descartados; a sequencia precisa recomecar com amostras novas.
+    if (this.counters.get(target.profileId) !== counters) {
+      return decided('SAMPLE_SEQUENCE_RESET', 'NO_ACTION');
+    }
 
     // F3 (escopo fisico compartilhado): um irmao da MESMA policy ja mitigado (ou
     // com operacao em andamento) significa que a policy fisica JA esta mitigada.
@@ -1453,6 +1484,9 @@ export class MitigationAutoEngine {
     sampleAt: Date,
     fresh: { ok: boolean; state: MitigationState | null },
   ): Promise<void> {
+    // Uma retirada manual pode ter descartado esta sequencia durante a
+    // avaliacao: nao ressuscitar contadores de evidencia anterior.
+    if (this.counters.get(target.profileId) !== counters) return;
     await this.deps.runtime.save(target.profileId, {
       triggerCounter: counters.over,
       recoveryCounter: counters.below,
