@@ -236,9 +236,9 @@ workflow nunca afirma revogação sem resposta da API.
 | --- | --- |
 | Bearer do canal n8n | **credencial Header Auth** `NetVision n8n Command` (`Authorization: Bearer <token>`), referenciada pelos 2 nós HTTP — nenhum segredo no JSON |
 | `NETVISION_API_BASE` | usada apenas nos sub-workflows antigos; o arquivo único usa a URL fixa `http://45.163.144.8:3333` (mesma do nó legado) |
-| `NETVISION_TELEGRAM_OPERATORS` | opcional; ids (`from.id`) separados por vírgula. **Também** aceita a constante `OPERADORES_RETIRADA_COMPARTILHADA` no nó `Interpretar Callback` |
-| Autorização da retirada compartilhada | **operador nominal obrigatório**: `rmx:`/`rmc:` exigem `userId` na lista; lista vazia = ninguém (fail-closed). O grupo autorizado sozinho **não** basta |
-| Comandos legados | seguem a regra antiga (grupo `-5522540056` + usuário identificado) — nenhuma permissão existente foi alterada |
+| `NETVISION_TELEGRAM_OPERATORS` | **não é mais usada** — decisão do operador: a política de autorização é a do workflow original |
+| Autorização da retirada compartilhada | **qualquer integrante do grupo autorizado** (`-5522540056`), exatamente como no workflow original: exige chat de origem válido + `from.id` identificado. A auditoria registra **ID e username** (`telegram:<id>(@user)`) |
+| Comandos legados | mesma regra antiga (grupo + usuário identificado) — nenhuma permissão existente foi alterada |
 
 A resposta da API nunca é logada com o token: o log do inbound
 (`N8nInboundLog`) carrega apenas `requestId`, `action`, `profileId`, `status`,
@@ -255,9 +255,10 @@ A resposta da API nunca é logada com o token: o log do inbound
   o botão nunca carrega `profileId`.
 * O token **não** é o id do perfil: quem clica confirma o escopo aprovado, não
   um cliente.
-* Validar `callback_query.from.id` contra a lista de operadores e o `chat.id`
-  contra o grupo autorizado **antes** de chamar a API; responder com
-  `answerCallbackQuery` em caso de recusa.
+* Validar `chat.id` contra o grupo autorizado (`-5522540056`) e exigir
+  `from.id` identificado **antes** de chamar a API. A política de operador é a
+  do workflow original: qualquer integrante do grupo pode solicitar, confirmar
+  ou cancelar; o evento fica auditado com `telegram:<id>(@username)`.
 * A mensagem deve mostrar o prazo (`expiresAt`) e que a retirada afeta **todos**
   os clientes listados.
 * Um token confirmado não pode ser reaproveitado: a API responde `USED` e a
@@ -339,10 +340,11 @@ comportamento.
   `messageId` + `replyMarkup` top-level) e `answerQuery` (`callback/answerQuery`,
   `queryId` + `additionalFields.text`) — 17/17 nós válidos.
 * Simulação de execução (grafo real, Code nodes rodando, IFs avaliados, HTTP
-  mockado): **16/16** — legado (pedido, execução sem escopo, cancelamento),
+  mockado): **18/18** — legado (pedido, execução sem escopo, cancelamento),
   escopo com e **sem** token, `rmx` sucesso/escopo alterado/API fora,
-  `rmc` com revogação e com falha de rede, operador não autorizado, lista vazia
-  (fail-closed), chat não autorizado, token > 60 chars, callback desconhecido,
+  `rmc` com revogação e com falha de rede, **qualquer integrante do grupo
+  confirmando e cancelando**, chat não autorizado, usuário sem `from.id`,
+  token > 60 chars, callback desconhecido, auditoria `telegram:<id>(@user)`,
   corpo legado compatível com a RC3, mensagem com quebras reais.
 
 ## 6. Commits
@@ -449,7 +451,8 @@ O que o operador precisa fazer, nesta ordem:
 3. Criar a credencial **Header Auth** `NetVision n8n Command`
    (`Authorization` = `Bearer <token atual>`) e selecioná-la nos 2 nós HTTP.
 4. Preencher `OPERADORES_RETIRADA_COMPARTILHADA` (ids do Telegram) no nó
-   `Interpretar Callback` — sem isso, `rmx:`/`rmc:` são recusados (fail-closed).
+   `Interpretar Callback` — **não se aplica mais**: a autorização é a do
+   workflow original (qualquer integrante do grupo `-5522540056`).
 5. Salvar. Homologar em um perfil de laboratório antes de habilitar no grupo.
 6. Depois da RC4 no ar: `INCLUIR_DADOS_DE_ESCOPO = true` no nó
    `Montar Corpo do Comando`.
