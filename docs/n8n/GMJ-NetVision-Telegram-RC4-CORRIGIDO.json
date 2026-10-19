@@ -220,10 +220,6 @@
         "headerParameters": {
           "parameters": [
             {
-              "name": "Authorization",
-              "value": "={{ 'Bearer ' + $env.NETVISION_N8N_COMMAND_TOKEN }}"
-            },
-            {
               "name": "Content-Type",
               "value": "application/json"
             }
@@ -239,7 +235,9 @@
               "neverError": true
             }
           }
-        }
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
       },
       "id": "89f16e1d-1099-48c2-b7db-9979b519ca62",
       "name": "HTTP - NetVision Command",
@@ -249,6 +247,12 @@
         864,
         2256
       ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUBSTITUIR_CREDENTIAL_ID",
+          "name": "NetVision n8n Command"
+        }
+      },
       "onError": "continueRegularOutput",
       "alwaysOutputData": true
     },
@@ -1273,15 +1277,13 @@
         "headerParameters": {
           "parameters": [
             {
-              "name": "Authorization",
-              "value": "={{ 'Bearer ' + $env.NETVISION_N8N_COMMAND_TOKEN }}"
-            },
-            {
               "name": "Content-Type",
               "value": "application/json"
             }
           ]
         },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
@@ -1303,6 +1305,12 @@
         864,
         2096
       ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUBSTITUIR_CREDENTIAL_ID",
+          "name": "NetVision n8n Command"
+        }
+      },
       "onError": "continueRegularOutput",
       "alwaysOutputData": true
     },
