@@ -37,6 +37,7 @@ export type ScopeConfirmationFailure =
   | 'SCOPE_CONFIRMATION_EXPIRED'
   | 'SCOPE_CONFIRMATION_USED'
   | 'SCOPE_CONFIRMATION_SCOPE_MISMATCH'
+  | 'SCOPE_CONFIRMATION_CHAT_MISMATCH'
   | 'SCOPE_CHANGED';
 
 export interface ScopeConfirmationIssue {
@@ -46,11 +47,25 @@ export interface ScopeConfirmationIssue {
   ttlMs: number;
 }
 
+/**
+ * Contexto do solicitante. Nao entra no hash do escopo (que descreve o alvo
+ * fisico), mas impede que a confirmacao emitida em um chat/grupo seja usada por
+ * outro chat que recebeu o mesmo texto de botao.
+ */
+export interface ScopeConfirmationRequester {
+  /** Operador que PEDIU a retirada (auditoria). */
+  requestedBy?: string | null;
+  /** Chat/grupo do Telegram onde a solicitacao foi exibida. */
+  chatId?: string | null;
+}
+
 export interface ScopeConfirmationRecord extends ScopeConfirmationIssue {
   deviceId: string;
   policyName: string;
   originProfileId: string;
   members: ScopeConfirmationMember[];
+  requestedBy: string | null;
+  chatId: string | null;
   createdAtMs: number;
   expiresAtMs: number;
   usedAtMs: number | null;
@@ -100,6 +115,12 @@ function safeEquals(left: string, right: string): boolean {
   return timingSafeEqual(a, b);
 }
 
+/** Normaliza identificadores opcionais de solicitante (operador, chat/grupo). */
+function normalizeRef(value: string | null | undefined): string | null {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  return trimmed ? trimmed.slice(0, 120) : null;
+}
+
 /**
  * Store em memoria das confirmacoes pendentes.
  *
@@ -122,9 +143,11 @@ export class ScopeConfirmationStore {
   }
 
   /** Emite (ou reaproveita) uma confirmacao pendente para o escopo atual. */
-  issue(scope: ScopeConfirmationScope): ScopeConfirmationIssue {
+  issue(scope: ScopeConfirmationScope, requester: ScopeConfirmationRequester = {}): ScopeConfirmationIssue {
     this.prune();
     const scopeHash = scopeConfirmationHash(scope);
+    const chatId = normalizeRef(requester.chatId);
+    const requestedBy = normalizeRef(requester.requestedBy);
     const nowMs = this.now().getTime();
     for (const record of this.records.values()) {
       if (
@@ -133,7 +156,8 @@ export class ScopeConfirmationStore {
         record.scopeHash === scopeHash &&
         record.deviceId === scope.deviceId &&
         record.policyName === scope.policyName &&
-        record.originProfileId === scope.originProfileId
+        record.originProfileId === scope.originProfileId &&
+        record.chatId === chatId
       ) {
         return this.issueOf(record);
       }
@@ -146,6 +170,8 @@ export class ScopeConfirmationStore {
       policyName: scope.policyName,
       originProfileId: scope.originProfileId,
       members: canonicalMembers(scope.affected),
+      requestedBy,
+      chatId,
       createdAtMs: nowMs,
       expiresAtMs: nowMs + this.ttlMs,
       expiresAt: new Date(nowMs + this.ttlMs).toISOString(),
@@ -171,7 +197,7 @@ export class ScopeConfirmationStore {
   consume(
     token: string,
     current: ScopeConfirmationScope,
-    meta: { confirmedBy?: string | null } = {},
+    meta: { confirmedBy?: string | null; chatId?: string | null } = {},
   ): ScopeConfirmationConsumeResult {
     this.prune();
     const record = this.records.get(token);
@@ -208,6 +234,16 @@ export class ScopeConfirmationStore {
         message: 'Esta confirmacao pertence a outro perfil/escopo; solicite a retirada novamente',
       };
     }
+    // Vinculo com o chat de origem: o botao nao vale em outro grupo, mesmo que
+    // o texto seja encaminhado por um operador autorizado.
+    const currentChatId = normalizeRef(meta.chatId);
+    if (record.chatId !== null && currentChatId !== null && record.chatId !== currentChatId) {
+      return {
+        ok: false,
+        code: 'SCOPE_CONFIRMATION_CHAT_MISMATCH',
+        message: 'Esta confirmacao foi emitida em outro chat/grupo; solicite a retirada novamente',
+      };
+    }
     const currentHash = scopeConfirmationHash(current);
     if (!safeEquals(record.scopeHash, currentHash)) {
       return {
@@ -218,7 +254,7 @@ export class ScopeConfirmationStore {
       };
     }
     record.usedAtMs = this.now().getTime();
-    record.confirmedBy = meta.confirmedBy?.trim() ? meta.confirmedBy.trim().slice(0, 120) : null;
+    record.confirmedBy = normalizeRef(meta.confirmedBy);
     return { ok: true, record };
   }
 

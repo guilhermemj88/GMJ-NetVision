@@ -431,4 +431,99 @@ describe('retirada manual em policy compartilhada', () => {
     expect(result.scopeConfirmation).toBeUndefined();
     expect(result.removalScope).toBeUndefined();
   });
+
+  it('falha de commit Huawei consome o token e deixa o escopo em reconciliacao', async () => {
+    const h = await build();
+    const blocked = await h.commands.execute({
+      requestId: 't12',
+      action: 'REMOVE',
+      profileId: h.p1,
+    });
+    const token = blocked.scopeConfirmation!.token!;
+
+    const failing: MitigationExecutor = {
+      readRoutePolicy: (policyName) => h.executor.readRoutePolicy(policyName),
+      activate: (input) => h.executor.activate(input),
+      remove: async () => {
+        throw new Error('SSH timeout durante o commit');
+      },
+    };
+    const commands = new MitigationCommandService({
+      repository: h.repository,
+      hosts: {
+        getHost: async (id) =>
+          ({ id, hostname: 'BHE-VTA-F1A-BGP-01', displayName: 'BHE-VTA-F1A-BGP-01' }) as unknown as HostRecord,
+      },
+      executor: failing,
+      onScopeRemoved: h.onScopeRemoved,
+      scopeConfirmations: h.store,
+      now: () => new Date('2026-10-19T12:47:00.000Z'),
+    });
+
+    const result = await commands.execute({
+      requestId: 't12-a',
+      action: 'REMOVE',
+      profileId: h.p1,
+      scopeConfirmationToken: token,
+    });
+
+    // Nunca sucesso falso: resultado desconhecido vira reconciliacao.
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('REVALIDATION_FAILED');
+    expect(result.verified).toBe(false);
+    expect((await h.repository.getRuntime(h.p1))?.state).toBe('RECONCILIATION_REQUIRED');
+    expect((await h.repository.getRuntime(h.p2))?.state).toBe('RECONCILIATION_REQUIRED');
+
+    // Escrita iniciada => token consumido (replay recebe USED, nao repete).
+    expect(h.store.peek(token)?.usedAtMs).not.toBeNull();
+    const replay = await commands.execute({
+      requestId: 't12-b',
+      action: 'REMOVE',
+      profileId: h.p1,
+      scopeConfirmationToken: token,
+    });
+    expect(replay.status).toBe('SCOPE_CONFIRMATION_USED');
+
+    // A sequencia antiga do motor tambem e descartada.
+    expect(h.onScopeRemoved).toHaveBeenCalled();
+  });
+
+  it('reinicio da API invalida confirmacoes pendentes (store em memoria)', async () => {
+    const h = await build();
+    const blocked = await h.commands.execute({
+      requestId: 't13',
+      action: 'REMOVE',
+      profileId: h.p1,
+    });
+    const token = blocked.scopeConfirmation!.token!;
+
+    // Restart: nova instancia do servico com store vazio (nenhum estado em disco).
+    const restarted = new MitigationCommandService({
+      repository: h.repository,
+      hosts: {
+        getHost: async (id) =>
+          ({ id, hostname: 'BHE-VTA-F1A-BGP-01', displayName: 'BHE-VTA-F1A-BGP-01' }) as unknown as HostRecord,
+      },
+      executor: h.executor,
+      onScopeRemoved: h.onScopeRemoved,
+      now: () => new Date('2026-10-19T12:48:00.000Z'),
+    });
+    expect(restarted.scopeConfirmationProfile(token)).toBeNull();
+
+    const result = await restarted.execute({
+      requestId: 't13-a',
+      action: 'REMOVE',
+      profileId: h.p1,
+      scopeConfirmationToken: token,
+    });
+
+    // Fail-closed: sem confirmacao conhecida, nada chega ao equipamento.
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('SCOPE_CONFIRMATION_TOKEN_UNKNOWN');
+    expect(result.scopeConfirmation?.token).toBeTruthy();
+    expect(result.scopeConfirmation?.token).not.toBe(token);
+    expect(h.executor.calls).toEqual([]);
+    expect((await h.repository.getRuntime(h.p1))?.state).toBe('MITIGATED');
+    expect((await h.repository.getRuntime(h.p2))?.state).toBe('MITIGATED');
+  });
 });

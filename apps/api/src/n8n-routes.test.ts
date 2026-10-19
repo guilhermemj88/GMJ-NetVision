@@ -371,8 +371,43 @@ describe('canal IN (n8n -> NetVision)', () => {
     expect(confirmed.json().profileId).toBe(harness.profileId);
   });
 
-  it('token desconhecido sem profileId devolve TOKEN_UNKNOWN sem tocar o executor', async () => {
+  it('confirmacao emitida em um grupo nao vale em outro chat', async () => {
     const harness = await buildHarness({ shared: true });
+    app = harness.app;
+    await post(harness.app, { requestId: 'cg-a', action: 'ACTIVATE', profileId: harness.profileId });
+
+    const blocked = await post(harness.app, {
+      requestId: 'cg-1',
+      action: 'REMOVE',
+      profileId: harness.profileId,
+      confirmedBy: 'telegram:99',
+      chatId: '-100200',
+    });
+    const token = (blocked.json().scopeConfirmation as { token: string }).token;
+    const callsBefore = harness.executor.calls.length;
+
+    // Botao encaminhado para outro grupo: recusado sem tocar no equipamento.
+    const outroGrupo = await post(harness.app, {
+      requestId: 'cg-2',
+      action: 'REMOVE',
+      scopeConfirmationToken: token,
+      confirmedBy: 'telegram:99',
+      chatId: '-999',
+    });
+    expect(outroGrupo.json().status).toBe('SCOPE_CONFIRMATION_CHAT_MISMATCH');
+    expect(harness.executor.calls.length).toBe(callsBefore);
+
+    const mesmoGrupo = await post(harness.app, {
+      requestId: 'cg-3',
+      action: 'REMOVE',
+      scopeConfirmationToken: token,
+      confirmedBy: 'telegram:99',
+      chatId: '-100200',
+    });
+    expect(mesmoGrupo.json().status).toBe('REMOVED_VERIFIED');
+  });
+
+  it('token desconhecido sem profileId devolve TOKEN_UNKNOWN sem tocar o executor', async () => {    const harness = await buildHarness({ shared: true });
     app = harness.app;
 
     const response = await post(harness.app, {

@@ -28,6 +28,7 @@ import {
   ScopeConfirmationStore,
   scopeConfirmationHash,
   type ScopeConfirmationFailure,
+  type ScopeConfirmationRequester,
   type ScopeConfirmationScope,
 } from './mitigation-scope-confirmation';
 
@@ -95,6 +96,11 @@ export interface MitigationCommandInput {
   scopeConfirmationToken?: string;
   /** Identidade do operador no Telegram (auditoria; nunca autoriza sozinha). */
   confirmedBy?: string | null;
+  /**
+   * Chat/grupo do Telegram onde a solicitacao foi exibida. O token emitido fica
+   * vinculado a ele: o mesmo botao encaminhado para outro grupo nao confirma.
+   */
+  chatId?: string | null;
 }
 
 /**
@@ -729,6 +735,9 @@ export class MitigationCommandService {
         await live.remove(liveDevice, removalInput);
         readBack = await live.readRoutePolicy(liveDevice, profile.policyName);
       } else {
+        // Mesma semantica do caminho real: assim que o executor e acionado, o
+        // estado fisico e desconhecido e uma excecao exige reconciliacao.
+        writeAttempted = true;
         writeStarted = true;
         await this.deps.executor.remove(removalInput);
         readBack = await this.deps.executor.readRoutePolicy(profile.policyName);
@@ -842,6 +851,8 @@ export class MitigationCommandService {
       })),
     };
     const confirmedBy = input.confirmedBy?.trim() ? input.confirmedBy.trim().slice(0, 120) : null;
+    const chatId = input.chatId?.trim() ? input.chatId.trim().slice(0, 120) : null;
+    const requester = { requestedBy: confirmedBy, chatId };
 
     // Token apresentado: validado SEMPRE, mesmo que o escopo ja tenha se
     // esvaziado. Uma confirmacao de uso unico nunca autoriza uma segunda
@@ -850,10 +861,10 @@ export class MitigationCommandService {
       const consumed = this.scopeConfirmations.consume(
         input.scopeConfirmationToken,
         scope,
-        { confirmedBy: confirmedBy ?? null },
+        { confirmedBy, chatId },
       );
       if (!consumed.ok) {
-        return this.blockedScopeConfirmation(scope, consumed.code, consumed.message);
+        return this.blockedScopeConfirmation(scope, consumed.code, consumed.message, requester);
       }
       return {
         summary: {
@@ -880,6 +891,7 @@ export class MitigationCommandService {
       'SCOPE_CONFIRMATION_REQUIRED',
       `Remocao bloqueada: a policy ${removalScope.policy} e compartilhada por ` +
         `${removalScope.affected.length} vinculo(s) ainda ativo(s); confirme a remocao do escopo inteiro`,
+      requester,
     );
   }
 
@@ -887,12 +899,13 @@ export class MitigationCommandService {
     scope: ScopeConfirmationScope,
     code: ScopeConfirmationFailure,
     message: string,
+    requester: ScopeConfirmationRequester = {},
   ): {
     blockedStatus: string;
     blockedMessage: string;
     summary: MitigationScopeConfirmationSummary;
   } {
-    const issue = this.scopeConfirmations.issue(scope);
+    const issue = this.scopeConfirmations.issue(scope, requester);
     return {
       blockedStatus: code,
       blockedMessage: message,

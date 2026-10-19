@@ -31,6 +31,11 @@ export const n8nCommandSchema = z
     scopeConfirmationToken: z.string().min(16).max(128).optional(),
     /** Operador do Telegram (auditoria). Nunca autoriza sozinho. */
     confirmedBy: z.string().min(1).max(120).optional(),
+    /**
+     * Chat/grupo do Telegram. O token de escopo emitido fica vinculado a ele:
+     * a confirmacao so vale no mesmo chat em que a lista foi apresentada.
+     */
+    chatId: z.string().min(1).max(64).optional(),
   })
   .strict()
   .refine((value) => Boolean(value.profileId) || Boolean(value.scopeConfirmationToken), {
@@ -202,6 +207,7 @@ export function registerN8nRoutes(app: FastifyInstance, dependencies: N8nRouteDe
         ? {}
         : { scopeConfirmationToken: parsed.data.scopeConfirmationToken }),
       ...(parsed.data.confirmedBy === undefined ? {} : { confirmedBy: parsed.data.confirmedBy }),
+      ...(parsed.data.chatId === undefined ? {} : { chatId: parsed.data.chatId }),
     });
     await record({
       requestId: parsed.data.requestId,

@@ -136,4 +136,32 @@ describe('confirmacao de escopo fisico', () => {
     expect(consumed.ok).toBe(false);
     if (!consumed.ok) expect(consumed.code).toBe('SCOPE_CONFIRMATION_TOKEN_UNKNOWN');
   });
+
+  it('vincula a confirmacao ao chat/grupo de origem', () => {
+    const { store } = build();
+    const issue = store.issue(SCOPE, { requestedBy: 'telegram:42', chatId: '-100200' });
+
+    const outroGrupo = store.consume(issue.token, SCOPE, { confirmedBy: 'telegram:42', chatId: '-999' });
+    expect(outroGrupo.ok).toBe(false);
+    if (!outroGrupo.ok) expect(outroGrupo.code).toBe('SCOPE_CONFIRMATION_CHAT_MISMATCH');
+
+    const mesmoGrupo = store.consume(issue.token, SCOPE, { confirmedBy: 'telegram:42', chatId: '-100200' });
+    expect(mesmoGrupo.ok).toBe(true);
+    if (mesmoGrupo.ok) expect(mesmoGrupo.record.requestedBy).toBe('telegram:42');
+  });
+
+  it('nao reaproveita a pendencia emitida em outro chat', () => {
+    const { store } = build();
+    const primeiro = store.issue(SCOPE, { chatId: '-100200' });
+    const outroChat = store.issue(SCOPE, { chatId: '-999' });
+    expect(outroChat.token).not.toBe(primeiro.token);
+    expect(store.size).toBe(2);
+  });
+
+  it('sem chat conhecido no pedido, o token nao fica preso a um grupo', () => {
+    const { store } = build();
+    const issue = store.issue(SCOPE);
+    const consumed = store.consume(issue.token, SCOPE, { chatId: '-100200' });
+    expect(consumed.ok).toBe(true);
+  });
 });
