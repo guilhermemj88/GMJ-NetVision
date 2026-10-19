@@ -1,0 +1,2067 @@
+{
+  "name": "GMJ NetVision - Mitigacao DDoS - Bidirecional -v2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "netvision-mitigation",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "17977946-5616-4787-a5fe-91572167330c",
+      "name": "Webhook NetVision OUT",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -368,
+        1776
+      ],
+      "webhookId": "0b823bba-3ff2-4342-9705-0825cd94dda1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "066d3d7e-55dc-43f2-b667-1369e19e215f",
+              "leftValue": "={{ $json.headers['x-netvision-token'] }}",
+              "rightValue": "NgyXrBeEAUdM2CIUdhzCDijZZ7POHcBqK2PTljn96sk",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6fdda35a-5fef-4006-b03a-db7a7854ea02",
+      "name": "Validar Token OUT",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -144,
+        1776
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "raw",
+        "jsonOutput": "={{\n(() => {\n  const b = $json.body ?? $json;\n  const esc = (v) => v == null ? '' : String(v)\n    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')\n    .replace(/\\r/g,'').trim();\n\n  const evento = b.event ?? null;\n  const simulation = b.simulation === true;\n  const verified = b.verified === true;\n  const profileId = b.profileId ?? null;\n\n  const bogonNode = b.bogonNode ?? null;\n  const mitigationNode = b.mitigationNode ?? b.node ?? null;\n\n  const realActivated =\n    evento === 'MITIGATION_VERIFIED' &&\n    simulation === false &&\n    verified === true &&\n    typeof profileId === 'string' &&\n    profileId.length > 0;\n\n  const lines = [\n    '🛡️ <b>ALERTA NETVISION - MITIGAÇÃO DDoS</b>',\n    ''\n  ];\n\n  if (b.customer) lines.push(`<b>Cliente:</b> ${esc(b.customer)}`);\n  if (b.device) lines.push(`<b>Equipamento:</b> ${esc(b.device)}`);\n\n  const interfaceName = b.interfaceName ?? b.interface;\n  if (interfaceName) lines.push(`<b>Interface:</b> ${esc(interfaceName)}`);\n  if (b.addressFamily) lines.push(`<b>Família:</b> ${esc(b.addressFamily)}`);\n\n  lines.push('');\n\n  if (b.trafficGbps != null) lines.push(`<b>Tráfego:</b> ${esc(b.trafficGbps)} Gbps`);\n  if (b.bandwidthGbps != null) lines.push(`<b>Banda:</b> ${esc(b.bandwidthGbps)} Gbps`);\n  if (b.thresholdGbps != null) lines.push(`<b>Limite:</b> ${esc(b.thresholdGbps)} Gbps`);\n\n  lines.push('');\n\n  if (b.policy) lines.push(`<b>Policy:</b> ${esc(b.policy)}`);\n  if (bogonNode != null) lines.push(`<b>Node BOGONS:</b> ${esc(bogonNode)}`);\n  if (mitigationNode != null) lines.push(`<b>Node mitigação:</b> ${esc(mitigationNode)}`);\n  if (b.rt) lines.push(`<b>RT:</b> ${esc(b.rt)}`);\n  if (b.peer) lines.push(`<b>Peer principal:</b> ${esc(b.peer)}`);\n\n  lines.push('');\n  lines.push('✅ <b>MITIGAÇÃO ATIVADA E VERIFICADA NO EQUIPAMENTO</b>');\n\n  if (b.sharedPolicy) {\n    lines.push('');\n    lines.push('⚠️ <b>POLICY COMPARTILHADA</b>');\n    for (const t of b.sharedPolicyTargets ?? []) {\n      lines.push(`• ${esc(t.customer ?? '-')} | ${esc(t.interfaceName ?? '-')} | Peer: ${esc(t.peerAddress ?? '-')}`);\n    }\n  }\n\n  return {\n    EVENTO: evento,\n    SIMULACAO: simulation,\n    VERIFICADO: b.verified ?? null,\n    REAL_ACTIVATED: realActivated,\n    EVENT_ID: b.eventId ?? null,\n    PROFILE_ID: profileId,\n    CLIENTE: b.customer ?? null,\n    EQUIPAMENTO: b.device ?? null,\n    INTERFACE: interfaceName ?? null,\n    FAMILIA: b.addressFamily ?? null,\n    PEER: b.peer ?? null,\n    PEERS_AFETADOS: b.affectedPeers ?? [],\n    BANDA_GBPS: b.bandwidthGbps ?? null,\n    TRAFEGO_GBPS: b.trafficGbps ?? null,\n    LIMITE_GBPS: b.thresholdGbps ?? null,\n    POLICY: b.policy ?? null,\n    BOGON_NODE: bogonNode,\n    MITIGATION_NODE: mitigationNode,\n    RT: b.rt ?? null,\n    POLICY_COMPARTILHADA: b.sharedPolicy === true,\n    OUTROS_TARGETS: b.sharedPolicyTargets ?? [],\n    OCORREU_EM: b.occurredAt ?? null,\n    telegramText: lines.join('\\n')\n  };\n})()\n}}",
+        "options": {}
+      },
+      "id": "f0e1b554-36df-499b-ae9d-dc0c8f64ae69",
+      "name": "Normalizar Evento OUT",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        96,
+        1648
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "-5522540056",
+        "text": "={{ $json.telegramText }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "⛔ RETIRAR MITIGAÇÃO",
+                    "additionalFields": {
+                      "callback_data": "=remove_confirm|{{ $json.PROFILE_ID }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "6e15017f-f94f-4687-a8b1-a7e725871f8f",
+      "name": "Telegram - Alerta com Botoes",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        608,
+        1584
+      ],
+      "webhookId": "b2739d42-baa5-48b2-8f3d-27be1dd5f8e5",
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, received: true, event: $('Normalizar Evento OUT').item.json.EVENTO, profileId: $('Normalizar Evento OUT').item.json.PROFILE_ID } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "671133c1-4d4b-40b2-bc77-6b0eab539ffa",
+      "name": "Responder OUT 200",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        896,
+        1664
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: 'unauthorized' } }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "480437c5-81db-4389-a8ca-46b10a8c31b3",
+      "name": "Responder OUT 401",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        96,
+        1888
+      ]
+    },
+    {
+      "parameters": {
+        "updates": [
+          "callback_query"
+        ],
+        "additionalFields": {}
+      },
+      "id": "e63c8708-c117-4c7b-9d2d-53b889081b40",
+      "name": "Telegram Trigger - Callback",
+      "type": "n8n-nodes-base.telegramTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -336,
+        2224
+      ],
+      "webhookId": "5d4b610d-7fbb-49e7-9e8e-6149072f5a90",
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\n\nconst q =\n  input.callback_query ||\n  input.callbackQuery ||\n  input.raw?.callback_query ||\n  input.raw?.callbackQuery ||\n  input;\n\nconst data = String(q.data ?? input.data ?? '');\nconst allowedChatId = '-5522540056';\n\nconst chatId = q.message?.chat?.id ?? null;\nconst userId = q.from?.id ?? null;\nconst username = q.from?.username ?? null;\nconst messageId = q.message?.message_id ?? null;\nconst callbackQueryId = q.id ?? null;\n\n// RC4: callbacks de escopo compartilhado -> rmc:<token> (cancelar) | rmx:<token> (confirmar)\nconst scopeMatch = /^(rmc|rmx):([A-Za-z0-9_-]{16,128})$/.exec(data);\nconst isScopeCallback = scopeMatch !== null;\nconst isScopeConfirm = scopeMatch !== null && scopeMatch[1] === 'rmx';\nconst isScopeCancel = scopeMatch !== null && scopeMatch[1] === 'rmc';\nconst scopeToken = scopeMatch ? scopeMatch[2] : '';\n\n// Callbacks legados -> <comando>|<profileId>\nconst parts = data.split('|');\nconst legacyCmd = parts[0] ?? '';\nconst legacyProfileId = parts[1] ?? '';\n\nconst validCommands = new Set([\n  'remove_confirm',\n  'remove_execute',\n  'remove_cancel',\n]);\n\nconst legacyValid =\n  parts.length === 2 &&\n  validCommands.has(legacyCmd) &&\n  legacyProfileId.length > 0 &&\n  legacyProfileId.length <= 160 &&\n  /^[a-zA-Z0-9_.:-]+$/.test(legacyProfileId);\n\nconst callbackValid = isScopeCallback ? true : legacyValid;\n\nconst cmd = isScopeCallback\n  ? (isScopeConfirm ? 'scope_confirm' : 'scope_cancel')\n  : legacyCmd;\nconst profileId = isScopeCallback ? '' : legacyProfileId;\n\nconst groupAuthorized = chatId !== null && String(chatId) === allowedChatId;\nconst userIdentified = userId !== null && callbackQueryId !== null;\n\nconst authorized = callbackValid && groupAuthorized && userIdentified;\n\n// REMOVE legado somente apos confirmar e autorizar\nconst action = authorized && cmd === 'remove_execute' ? 'REMOVE' : null;\n\nreturn [{\n  json: {\n    raw: input,\n    callbackQueryId,\n    chatId,\n    userId,\n    username,\n    messageId,\n    cmd,\n    action,\n    profileId,\n    scopeToken,\n    isScopeCallback,\n    isScopeConfirm,\n    isScopeCancel,\n    callbackValid,\n    groupAuthorized,\n    authorized,\n    requestId: callbackQueryId ? ('telegram-' + callbackQueryId) : null,\n    allowedChatId,\n    canRemove: authorized && cmd === 'remove_execute',\n    requestedBy: username ? ('@' + username) : String(userId ?? 'desconhecido'),\n  },\n}];"
+      },
+      "id": "526077e3-47ee-496d-ac54-e90a8781527d",
+      "name": "Interpretar Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -112,
+        2224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "54c922fa-2236-47dd-a2e0-c7c408c9a447",
+              "leftValue": "={{ $json.authorized }}",
+              "rightValue": "={{ String($json.allowedChatId) }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f293d850-364f-443a-a079-b63d45d04dd9",
+      "name": "Autorizar Telegram",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        128,
+        2224
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://45.163.144.8:3333/api/integrations/n8n/mitigation-command",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.NETVISION_N8N_COMMAND_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ requestId: $json.requestId, action: $json.action, profileId: $json.profileId }) }}",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "89f16e1d-1099-48c2-b7db-9979b519ca62",
+      "name": "HTTP - NetVision Command",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        864,
+        2256
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "\nconst input = $input.first().json;\n\n// Compatível com respostas diretas ou encapsuladas em body.\nlet r = input.body ?? input;\n\nif (typeof r === 'string') {\n  try {\n    r = JSON.parse(r);\n  } catch {\n    r = {\n      ok: false,\n      status: 'INVALID_RESPONSE',\n      safeError: 'Resposta inválida recebida do NetVision'\n    };\n  }\n}\n\nconst esc = (value) => {\n  if (value === undefined || value === null) return '';\n\n  return String(value)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .replace(/\\r/g, '')\n    .trim();\n};\n\n// Recupera os dados originais do clique no Telegram.\nlet callback = {};\n\ntry {\n  callback = $('Interpretar Callback').first().json;\n} catch {\n  callback = {};\n}\n\nconst chatId = callback.chatId ?? null;\nconst requestedBy = callback.requestedBy ?? null;\n\nconst ok = r.ok === true;\nconst lines = [];\n\n// Confirmação real: exige read-back verificado.\nconst removed =\n  r.action === 'REMOVE' &&\n  r.status === 'REMOVED_VERIFIED' &&\n  r.verified === true &&\n  ok;\n\nconst activated =\n  r.action === 'ACTIVATE' &&\n  r.status === 'ACTIVATED_VERIFIED' &&\n  r.verified === true &&\n  ok;\n\n// Cabeçalho de acordo com o resultado.\nif (removed) {\n  lines.push('✅ <b>NETVISION - MITIGAÇÃO RETIRADA</b>');\n  lines.push('✅ Remoção verificada no equipamento.');\n} else if (activated) {\n  lines.push('🛡️ <b>NETVISION - MITIGAÇÃO ATIVADA</b>');\n  lines.push('✅ Ativação verificada no equipamento.');\n} else if (r.action === 'STATUS' && ok) {\n  lines.push('🔎 <b>NETVISION - CONSULTA DE STATUS</b>');\n} else if (r.action === 'SIMULATE_REMOVE' && ok) {\n  lines.push('🧪 <b>NETVISION - SIMULAÇÃO DE RETIRADA</b>');\n  lines.push('Nenhuma remoção foi executada.');\n} else if (r.action === 'SIMULATE_ACTIVATE' && ok) {\n  lines.push('🧪 <b>NETVISION - SIMULAÇÃO DE ATIVAÇÃO</b>');\n  lines.push('Nenhuma ativação foi executada.');\n} else {\n  lines.push('❌ <b>NETVISION - AÇÃO NÃO CONFIRMADA</b>');\n}\n\nlines.push('');\n\n// Identificação da solicitação.\nif (r.action) {\n  lines.push(`<b>Ação:</b> ${esc(r.action)}`);\n}\n\nif (r.status) {\n  lines.push(`<b>Status:</b> ${esc(r.status)}`);\n}\n\nif (r.profileId ?? callback.profileId) {\n  lines.push(\n    `<b>Perfil:</b> ${esc(r.profileId ?? callback.profileId)}`\n  );\n}\n\nif (r.customer) {\n  lines.push(`<b>Cliente:</b> ${esc(r.customer)}`);\n}\n\nif (r.device) {\n  lines.push(`<b>Equipamento:</b> ${esc(r.device)}`);\n}\n\nif (r.interface) {\n  lines.push(`<b>Interface:</b> ${esc(r.interface)}`);\n}\n\nif (r.addressFamily) {\n  lines.push(`<b>Família:</b> ${esc(r.addressFamily)}`);\n}\n\nif (r.policy) {\n  lines.push(`<b>Policy:</b> ${esc(r.policy)}`);\n}\n\nif (r.node !== undefined && r.node !== null) {\n  lines.push(`<b>Node:</b> ${esc(r.node)}`);\n}\n\nif (r.bogonNode != null) {\n  lines.push(`<b>Node BOGONS:</b> ${esc(r.bogonNode)}`);\n}\n\nif (r.mitigationNode != null) {\n  lines.push(`<b>Node mitigação:</b> ${esc(r.mitigationNode)}`);\n}\n\nif (r.rt) {\n  lines.push(`<b>RT:</b> ${esc(r.rt)}`);\n}\n\n// Peers afetados.\nif (\n  Array.isArray(r.affectedPeers) &&\n  r.affectedPeers.length > 0\n) {\n  lines.push(\n    `<b>Peers afetados:</b> ${r.affectedPeers.map(esc).join(', ')}`\n  );\n}\n\n// Verificação física.\nif (removed || activated) {\n  lines.push('');\n  lines.push('✅ <b>READ-BACK CONFIRMADO</b>');\n} else if (\n  r.verified === false &&\n  ['ACTIVATE', 'REMOVE'].includes(r.action)\n) {\n  lines.push('');\n  lines.push('⚠️ <b>Alteração não verificada no equipamento</b>');\n}\n\n// Policy compartilhada.\nif (r.sharedPolicy) {\n  lines.push('');\n  lines.push('⚠️ <b>POLICY COMPARTILHADA</b>');\n\n  if (Array.isArray(r.sharedPolicyTargets)) {\n    for (const target of r.sharedPolicyTargets) {\n      const parts = [];\n\n      if (target.customer) {\n        parts.push(esc(target.customer));\n      }\n\n      if (target.interfaceName) {\n        parts.push(esc(target.interfaceName));\n      }\n\n      if (target.peerAddress) {\n        parts.push(`Peer: ${esc(target.peerAddress)}`);\n      }\n\n      if (parts.length > 0) {\n        lines.push(`• ${parts.join(' | ')}`);\n      }\n    }\n  }\n}\n\n// Resultado do read-back Huawei.\nif (r.verification?.summary) {\n  lines.push('');\n  lines.push(\n    `<b>Read-back:</b> ${esc(r.verification.summary)}`\n  );\n}\n\n// Erros e alertas operacionais.\nif (r.safeError) {\n  lines.push('');\n  lines.push(`⚠️ <b>Aviso/Erro:</b> ${esc(r.safeError)}`);\n}\n\n// Código HTTP, quando disponível.\nconst httpStatus = input.statusCode ?? null;\n\nif (typeof httpStatus === 'number' && httpStatus >= 400) {\n  lines.push(`<b>HTTP:</b> ${httpStatus}`);\n}\n\n// Auditoria da solicitação.\nlines.push('');\n\nif (requestedBy) {\n  lines.push(`<b>Solicitado por:</b> ${esc(requestedBy)}`);\n}\n\nif (r.requestId ?? callback.requestId) {\n  lines.push(\n    `<b>Requisição:</b> ${esc(r.requestId ?? callback.requestId)}`\n  );\n}\n\n// Resposta pronta para Telegram.\nreturn [{\n  json: {\n    ...r,\n    chatId,\n    requestedBy,\n    removalVerified: removed,\n    telegramText: lines.join('\\n')\n  }\n}];\n"
+      },
+      "id": "b0ba9ccc-0e1f-4db1-b47e-cee94820c3d9",
+      "name": "Formatar Resposta NetVision",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        2256
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "-5522540056",
+        "text": "={{ $json.telegramText }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "8ad87a5a-9765-441d-93bb-90cee120bcb6",
+      "name": "Telegram - Resposta NetVision",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1344,
+        2256
+      ],
+      "webhookId": "d240df0e-f766-42c7-8440-da4a29850f15",
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "-5522540056",
+        "text": "=⛔ Ação ignorada: chat/usuário não autorizado ou callback inválido.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "f6479349-c613-4429-b7b2-198cc2e4a227",
+      "name": "Telegram - Nao Autorizado",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        368,
+        2448
+      ],
+      "webhookId": "acbe281a-7a68-400b-a164-6b35600b7f1e",
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "48b7f165-8499-4990-8853-ef6840777f0e",
+              "leftValue": "={{ $json.REAL_ACTIVATED }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "783164a7-cea7-458d-9128-e5107bd11b91",
+      "name": "Somente Mitigacao Real Verificada",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        352,
+        1648
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "de144afb-e730-4f0e-8378-e9e767c83e9b",
+              "leftValue": "={{ $json.cmd }}",
+              "rightValue": "remove_confirm",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ea6cc0f5-5a59-415a-8c46-6890d7a1097b",
+      "name": "Pedido de Retirada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        368,
+        2224
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "b2c4de01-e4f6-4309-af04-ad2c0641879e",
+              "leftValue": "={{ $json.cmd }}",
+              "rightValue": "remove_execute",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "db11a18b-17c5-4a87-901e-c573dfc5a00e",
+      "name": "Confirmou Retirada?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        608,
+        2304
+      ]
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "=⚠️ <b>CONFIRMAR RETIRADA DA MITIGAÇÃO?</b>\n\nA mitigação continuará ativa até você confirmar a retirada.",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "❌ CANCELAR",
+                    "additionalFields": {
+                      "callback_data": "=remove_cancel|{{ $json.profileId }}"
+                    }
+                  },
+                  {
+                    "text": "✅ CONFIRMAR RETIRADA",
+                    "additionalFields": {
+                      "callback_data": "=remove_execute|{{ $json.profileId }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "fcd9c7ff-2417-45ad-bcbd-8b42d1a04602",
+      "name": "Telegram - Confirmar Retirada",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        608,
+        2128
+      ],
+      "webhookId": "dd570543-f83d-4481-84ee-b4bafac05524",
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $json.chatId }}",
+        "text": "=✅ Retirada cancelada. A mitigação continua ativa.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "id": "0bec3eda-ed73-4a7c-ba27-8ab195895b4e",
+      "name": "Telegram - Retirada Cancelada",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        864,
+        2480
+      ],
+      "webhookId": "07843fb9-58fa-42be-ae51-7a2993b51afc",
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "066d3d7e-55dc-43f2-b667-1369e19e215f",
+              "leftValue": "={{ $json.headers['x-netvision-token'] }}",
+              "rightValue": "tolken-netvision009##",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "66dd96e1-1017-4637-80b3-f729e5773afc",
+      "name": "Validar Token OUT1",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -96,
+        1232
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: 'unauthorized' } }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "f557de69-c878-49c7-b2d2-e67559ed3766",
+      "name": "Responder OUT ",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        144,
+        1344
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "netvision-alarmes",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "27018995-e107-4026-a359-3da665197c72",
+      "name": "Webhook NetVision Alarmes",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -384,
+        1232
+      ],
+      "webhookId": "0b823bba-3ff2-4342-9705-0825cd94dda1"
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $json.body ?? $json;\n\nfunction esc(v) {\n  if (v === null || v === undefined || v === '') return '';\n  return String(v)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\nfunction fmtDate(v) {\n  if (!v) return '';\n  try {\n    return new Date(v).toLocaleString('pt-BR', {\n      timeZone: 'America/Sao_Paulo',\n      day: '2-digit',\n      month: '2-digit',\n      year: 'numeric',\n      hour: '2-digit',\n      minute: '2-digit',\n      second: '2-digit',\n    });\n  } catch {\n    return String(v);\n  }\n}\n\nconst severityIcon = {\n  CRITICAL: '🔴',\n  MAJOR: '🟠',\n  WARNING: '🟡',\n  INFO: '🔵',\n};\n\nconst eventIcon = {\n  OPENED: '🚨',\n  ESCALATED: '⬆️',\n  RESOLVED: '✅',\n};\n\nconst eventLabel = {\n  OPENED: 'ALARME ABERTO',\n  ESCALATED: 'ALARME ESCALADO',\n  RESOLVED: 'ALARME RESOLVIDO',\n};\n\nconst typeLabel = {\n  INTERFACE_DOWN: 'Interface DOWN',\n  INTERFACE_ERRORS: 'Erros de interface',\n  INTERFACE_CRC: 'CRC / FCS',\n  INTERFACE_DISCARDS: 'Discards',\n  OPTICAL_RX_DEGRADATION: 'Degradação óptica',\n};\n\nconst event = p.event ?? 'OPENED';\nconst severity = p.severity ?? 'INFO';\nconst isTest = p.test === true;\n\nconst lines = [];\n\nif (isTest) {\n  lines.push('🧪 <b>TESTE — GMJ NETVISION</b>');\n} else {\n  lines.push(`${eventIcon[event] ?? '🔔'} <b>${eventLabel[event] ?? esc(event)}</b>`);\n}\n\nlines.push('');\n\nlines.push(\n  `${severityIcon[severity] ?? '⚪'} <b>Severidade:</b> ${esc(severity)}`\n);\n\nlines.push(\n  `📋 <b>Tipo:</b> ${esc(typeLabel[p.type] ?? p.type ?? 'N/D')}`\n);\n\nif (p.device?.name || p.deviceName) {\n  lines.push(\n    `🖥️ <b>Equipamento:</b> ${esc(p.device?.name ?? p.deviceName)}`\n  );\n}\n\nconst ifName = p.interface?.name ?? p.interfaceName;\nconst ifAlias = p.interface?.alias ?? p.interfaceLabel;\n\nif (ifName) {\n  lines.push(`🔌 <b>Interface:</b> ${esc(ifName)}`);\n}\n\nif (ifAlias) {\n  lines.push(`🏷️ <b>Descrição:</b> ${esc(ifAlias)}`);\n}\n\nif (p.linkLabel) {\n  lines.push(`🔗 <b>Enlace:</b> ${esc(p.linkLabel)}`);\n}\n\nif (p.direction) {\n  lines.push(`↔️ <b>Direção:</b> ${esc(p.direction)}`);\n}\n\nif (p.lane !== null && p.lane !== undefined) {\n  lines.push(`🧵 <b>Lane:</b> ${esc(p.lane)}`);\n}\n\nif (p.currentValue !== null && p.currentValue !== undefined) {\n  const unit = p.unit ? ` ${p.unit}` : '';\n  lines.push(\n    `📈 <b>Valor atual:</b> ${esc(p.currentValue)}${esc(unit)}`\n  );\n}\n\nif (p.thresholdValue !== null && p.thresholdValue !== undefined) {\n  const unit = p.unit ? ` ${p.unit}` : '';\n  lines.push(\n    `🎯 <b>Threshold:</b> ${esc(p.thresholdValue)}${esc(unit)}`\n  );\n}\n\nconst optical = p.optical ?? null;\n\nif (\n  optical ||\n  p.rxPowerDbm !== null && p.rxPowerDbm !== undefined\n) {\n  lines.push('');\n  lines.push('🔦 <b>Óptico</b>');\n\n  const rx = optical?.rxPowerDbm ?? p.rxPowerDbm;\n  const low = optical?.lowThresholdDbm ?? p.rxLowAlarmDbm;\n  const high = optical?.highThresholdDbm ?? p.rxHighAlarmDbm;\n  const proximity = optical?.proximityPercent ?? p.proximityPercent;\n  const drop = optical?.dropDb ?? p.trendDropDb;\n  const windowMin = optical?.dropWindowMinutes ?? p.trendWindowMinutes;\n  const reasons = optical?.triggerReasons ?? p.triggerReasons;\n\n  if (rx !== null && rx !== undefined)\n    lines.push(`• RX: <b>${esc(rx)} dBm</b>`);\n\n  if (low !== null && low !== undefined)\n    lines.push(`• LOW: ${esc(low)} dBm`);\n\n  if (high !== null && high !== undefined)\n    lines.push(`• HIGH: ${esc(high)} dBm`);\n\n  if (proximity !== null && proximity !== undefined)\n    lines.push(`• Proximidade: ${esc(proximity)}%`);\n\n  if (drop !== null && drop !== undefined) {\n    lines.push(\n      `• Queda: ${esc(drop)} dB${windowMin ? ` / ${esc(windowMin)} min` : ''}`\n    );\n  }\n\n  if (Array.isArray(reasons) && reasons.length) {\n    lines.push(`• Motivo: ${esc(reasons.join(', '))}`);\n  }\n\n  if (p.thresholdSource) {\n    lines.push(`• Fonte threshold: ${esc(p.thresholdSource)}`);\n  }\n}\n\nif (p.message) {\n  lines.push('');\n  lines.push(`💬 ${esc(p.message)}`);\n}\n\nlines.push('');\n\nconst when =\n  p.occurredAt ??\n  p.startedAt ??\n  p.resolvedAt;\n\nif (when) {\n  lines.push(`🕒 ${fmtDate(when)}`);\n}\n\nif (p.alarmId) {\n  lines.push(`<code>${esc(p.alarmId)}</code>`);\n}\n\nreturn [{\n  json: {\n    ...$json,\n    telegramText: lines.join('\\n'),\n    alarmEvent: event,\n    alarmSeverity: severity,\n    isTest,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        144,
+        1152
+      ],
+      "id": "23ec2516-a9f1-41e3-a7a8-8011b413f0ed",
+      "name": "Montar Mensagem Telegram"
+    },
+    {
+      "parameters": {
+        "chatId": "-1004368051383",
+        "text": "={{ $json.telegramText }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "d5febad9-3ffa-4fbf-94f6-14c08c181f8b",
+      "name": "Telegram - Resposta NetVision-alarmes",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        624,
+        1344
+      ],
+      "webhookId": "d240df0e-f766-42c7-8440-da4a29850f15",
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "066d3d7e-55dc-43f2-b667-1369e19e215f",
+              "leftValue": "={{ $json.headers['x-netvision-token'] }}",
+              "rightValue": "tolken-netvision010##",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "20b24711-cae2-4159-8c17-89debd21a3a4",
+      "name": "Validar Token OUT2",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        656
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: 'unauthorized' } }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "5e5d9cfe-5cda-47a9-a79c-23c0a2a627ec",
+      "name": "Responder OUT 1",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $json.body ?? $json;\n\nfunction esc(v) {\n  if (v === null || v === undefined || v === '') return '';\n  return String(v)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\nfunction fmtDate(v) {\n  if (!v) return '';\n  try {\n    return new Date(v).toLocaleString('pt-BR', {\n      timeZone: 'America/Sao_Paulo',\n      day: '2-digit',\n      month: '2-digit',\n      year: 'numeric',\n      hour: '2-digit',\n      minute: '2-digit',\n      second: '2-digit',\n    });\n  } catch {\n    return String(v);\n  }\n}\n\nconst severityIcon = {\n  CRITICAL: '🔴',\n  MAJOR: '🟠',\n  WARNING: '🟡',\n  INFO: '🔵',\n};\n\nconst eventIcon = {\n  OPENED: '🚨',\n  ESCALATED: '⬆️',\n  RESOLVED: '✅',\n};\n\nconst eventLabel = {\n  OPENED: 'ALARME ABERTO',\n  ESCALATED: 'ALARME ESCALADO',\n  RESOLVED: 'ALARME RESOLVIDO',\n};\n\nconst typeLabel = {\n  INTERFACE_DOWN: 'Interface DOWN',\n  INTERFACE_ERRORS: 'Erros de interface',\n  INTERFACE_CRC: 'CRC / FCS',\n  INTERFACE_DISCARDS: 'Discards',\n  OPTICAL_RX_DEGRADATION: 'Degradação óptica',\n};\n\nconst event = p.event ?? 'OPENED';\nconst severity = p.severity ?? 'INFO';\nconst isTest = p.test === true;\n\nconst lines = [];\n\nif (isTest) {\n  lines.push('🧪 <b>TESTE — GMJ NETVISION</b>');\n} else {\n  lines.push(`${eventIcon[event] ?? '🔔'} <b>${eventLabel[event] ?? esc(event)}</b>`);\n}\n\nlines.push('');\n\nlines.push(\n  `${severityIcon[severity] ?? '⚪'} <b>Severidade:</b> ${esc(severity)}`\n);\n\nlines.push(\n  `📋 <b>Tipo:</b> ${esc(typeLabel[p.type] ?? p.type ?? 'N/D')}`\n);\n\nif (p.device?.name || p.deviceName) {\n  lines.push(\n    `🖥️ <b>Equipamento:</b> ${esc(p.device?.name ?? p.deviceName)}`\n  );\n}\n\nconst ifName = p.interface?.name ?? p.interfaceName;\nconst ifAlias = p.interface?.alias ?? p.interfaceLabel;\n\nif (ifName) {\n  lines.push(`🔌 <b>Interface:</b> ${esc(ifName)}`);\n}\n\nif (ifAlias) {\n  lines.push(`🏷️ <b>Descrição:</b> ${esc(ifAlias)}`);\n}\n\nif (p.linkLabel) {\n  lines.push(`🔗 <b>Enlace:</b> ${esc(p.linkLabel)}`);\n}\n\nif (p.direction) {\n  lines.push(`↔️ <b>Direção:</b> ${esc(p.direction)}`);\n}\n\nif (p.lane !== null && p.lane !== undefined) {\n  lines.push(`🧵 <b>Lane:</b> ${esc(p.lane)}`);\n}\n\nif (p.currentValue !== null && p.currentValue !== undefined) {\n  const unit = p.unit ? ` ${p.unit}` : '';\n  lines.push(\n    `📈 <b>Valor atual:</b> ${esc(p.currentValue)}${esc(unit)}`\n  );\n}\n\nif (p.thresholdValue !== null && p.thresholdValue !== undefined) {\n  const unit = p.unit ? ` ${p.unit}` : '';\n  lines.push(\n    `🎯 <b>Threshold:</b> ${esc(p.thresholdValue)}${esc(unit)}`\n  );\n}\n\nconst optical = p.optical ?? null;\n\nif (\n  optical ||\n  p.rxPowerDbm !== null && p.rxPowerDbm !== undefined\n) {\n  lines.push('');\n  lines.push('🔦 <b>Óptico</b>');\n\n  const rx = optical?.rxPowerDbm ?? p.rxPowerDbm;\n  const low = optical?.lowThresholdDbm ?? p.rxLowAlarmDbm;\n  const high = optical?.highThresholdDbm ?? p.rxHighAlarmDbm;\n  const proximity = optical?.proximityPercent ?? p.proximityPercent;\n  const drop = optical?.dropDb ?? p.trendDropDb;\n  const windowMin = optical?.dropWindowMinutes ?? p.trendWindowMinutes;\n  const reasons = optical?.triggerReasons ?? p.triggerReasons;\n\n  if (rx !== null && rx !== undefined)\n    lines.push(`• RX: <b>${esc(rx)} dBm</b>`);\n\n  if (low !== null && low !== undefined)\n    lines.push(`• LOW: ${esc(low)} dBm`);\n\n  if (high !== null && high !== undefined)\n    lines.push(`• HIGH: ${esc(high)} dBm`);\n\n  if (proximity !== null && proximity !== undefined)\n    lines.push(`• Proximidade: ${esc(proximity)}%`);\n\n  if (drop !== null && drop !== undefined) {\n    lines.push(\n      `• Queda: ${esc(drop)} dB${windowMin ? ` / ${esc(windowMin)} min` : ''}`\n    );\n  }\n\n  if (Array.isArray(reasons) && reasons.length) {\n    lines.push(`• Motivo: ${esc(reasons.join(', '))}`);\n  }\n\n  if (p.thresholdSource) {\n    lines.push(`• Fonte threshold: ${esc(p.thresholdSource)}`);\n  }\n}\n\nif (p.message) {\n  lines.push('');\n  lines.push(`💬 ${esc(p.message)}`);\n}\n\nlines.push('');\n\nconst when =\n  p.occurredAt ??\n  p.startedAt ??\n  p.resolvedAt;\n\nif (when) {\n  lines.push(`🕒 ${fmtDate(when)}`);\n}\n\nif (p.alarmId) {\n  lines.push(`<code>${esc(p.alarmId)}</code>`);\n}\n\nreturn [{\n  json: {\n    ...$json,\n    telegramText: lines.join('\\n'),\n    alarmEvent: event,\n    alarmSeverity: severity,\n    isTest,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        576
+      ],
+      "id": "86a2773e-59f1-4bd6-afb4-5056de54aea3",
+      "name": "Montar Mensagem Telegram1"
+    },
+    {
+      "parameters": {
+        "chatId": "-5501290489",
+        "text": "={{ $json.telegramText }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "5fe5c384-9aa3-435b-b194-f68e0722cee3",
+      "name": "Telegram - Resposta NetVision-alarmes1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        736,
+        768
+      ],
+      "webhookId": "d240df0e-f766-42c7-8440-da4a29850f15",
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "netvision-alarmes-vnt",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "0b06b6d9-6051-403f-b4b6-7fb4716ce113",
+      "name": "Webhook NetVision Alarmes - VNT",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        656
+      ],
+      "webhookId": "0b823bba-3ff2-4342-9705-0825cd94dda1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "52832e80-f1ae-43b3-b8eb-ae1c276a3c04",
+              "leftValue": "={{ $('Webhook NetVision Alarmes').item.json.body?.media?.chart?.available === true && !!$('Webhook NetVision Alarmes').item.json.body?.media?.chart?.url }}",
+              "rightValue": "=",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        352,
+        1152
+      ],
+      "id": "ab629cca-f087-457a-93fc-82f0b621fea2",
+      "name": "Tem gráfico?"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Webhook NetVision Alarmes').item.json.body.media.chart.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        624,
+        1136
+      ],
+      "id": "8a573c6d-dcb6-4a6d-8875-90e64551090b",
+      "name": "HTTP Request",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "52832e80-f1ae-43b3-b8eb-ae1c276a3c04",
+              "leftValue": "={{ !!$binary?.data }}",
+              "rightValue": "=",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        832,
+        1136
+      ],
+      "id": "746091d5-bde4-45b4-9fd3-11e216df1ae4",
+      "name": "Download do gráfico OK?"
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "-1004368051383",
+        "binaryData": true,
+        "additionalFields": {
+          "caption": "={{ $('Montar Mensagem Telegram').item.json.telegramText }}",
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "188f3cca-1f06-498a-a559-1df8e3e4423e",
+      "name": "Telegram - Alarme com gráfico",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1120,
+        1120
+      ],
+      "webhookId": "d240df0e-f766-42c7-8440-da4a29850f15",
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "52832e80-f1ae-43b3-b8eb-ae1c276a3c04",
+              "leftValue": "={{ $('Webhook NetVision Alarmes').item.json.body?.media?.chart?.available === true && !!$('Webhook NetVision Alarmes').item.json.body?.media?.chart?.url }}",
+              "rightValue": "=",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        464,
+        576
+      ],
+      "id": "51155ab3-c543-43e3-b340-1f371705c802",
+      "name": "Tem gráfico?1"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Webhook NetVision Alarmes').item.json.body.media.chart.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        736,
+        560
+      ],
+      "id": "77008764-cb00-49c3-9e47-1e0c0139b582",
+      "name": "HTTP Request1",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "52832e80-f1ae-43b3-b8eb-ae1c276a3c04",
+              "leftValue": "={{ !!$binary?.data }}",
+              "rightValue": "=",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        944,
+        560
+      ],
+      "id": "16f31fd6-d72d-41b9-a39d-7e3e4b91ee9b",
+      "name": "Download do gráfico OK?1"
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "-5501290489",
+        "binaryData": true,
+        "additionalFields": {
+          "caption": "={{ $('Montar Mensagem Telegram1').item.json.telegramText }}",
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "3ee8a2a1-939b-4845-8c73-d53a1c3916d5",
+      "name": "Telegram - Alarme com gráfico1",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1232,
+        544
+      ],
+      "webhookId": "d240df0e-f766-42c7-8440-da4a29850f15",
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "066d3d7e-55dc-43f2-b667-1369e19e215f",
+              "leftValue": "={{ $json.headers['x-netvision-token'] }}",
+              "rightValue": "tolken-netvision011##",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "60bb065a-96db-466f-b29a-ef2bdbedefdc",
+      "name": "Validar Token OUT3",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        0,
+        144
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: 'unauthorized' } }}",
+        "options": {
+          "responseCode": 401
+        }
+      },
+      "id": "9a0cf837-56db-4de8-888f-418a55c60dd8",
+      "name": "Responder OUT 2",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const p = $json.body ?? $json;\n\nfunction esc(v) {\n  if (v === null || v === undefined || v === '') return '';\n  return String(v)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;');\n}\n\nfunction fmtDate(v) {\n  if (!v) return '';\n  try {\n    return new Date(v).toLocaleString('pt-BR', {\n      timeZone: 'America/Sao_Paulo',\n      day: '2-digit',\n      month: '2-digit',\n      year: 'numeric',\n      hour: '2-digit',\n      minute: '2-digit',\n      second: '2-digit',\n    });\n  } catch {\n    return String(v);\n  }\n}\n\nconst severityIcon = {\n  CRITICAL: '🔴',\n  MAJOR: '🟠',\n  WARNING: '🟡',\n  INFO: '🔵',\n};\n\nconst eventIcon = {\n  OPENED: '🚨',\n  ESCALATED: '⬆️',\n  RESOLVED: '✅',\n};\n\nconst eventLabel = {\n  OPENED: 'ALARME ABERTO',\n  ESCALATED: 'ALARME ESCALADO',\n  RESOLVED: 'ALARME RESOLVIDO',\n};\n\nconst typeLabel = {\n  INTERFACE_DOWN: 'Interface DOWN',\n  INTERFACE_ERRORS: 'Erros de interface',\n  INTERFACE_CRC: 'CRC / FCS',\n  INTERFACE_DISCARDS: 'Discards',\n  OPTICAL_RX_DEGRADATION: 'Degradação óptica',\n};\n\nconst event = p.event ?? 'OPENED';\nconst severity = p.severity ?? 'INFO';\nconst isTest = p.test === true;\n\nconst lines = [];\n\nif (isTest) {\n  lines.push('🧪 <b>TESTE — GMJ NETVISION</b>');\n} else {\n  lines.push(`${eventIcon[event] ?? '🔔'} <b>${eventLabel[event] ?? esc(event)}</b>`);\n}\n\nlines.push('');\n\nlines.push(\n  `${severityIcon[severity] ?? '⚪'} <b>Severidade:</b> ${esc(severity)}`\n);\n\nlines.push(\n  `📋 <b>Tipo:</b> ${esc(typeLabel[p.type] ?? p.type ?? 'N/D')}`\n);\n\nif (p.device?.name || p.deviceName) {\n  lines.push(\n    `🖥️ <b>Equipamento:</b> ${esc(p.device?.name ?? p.deviceName)}`\n  );\n}\n\nconst ifName = p.interface?.name ?? p.interfaceName;\nconst ifAlias = p.interface?.alias ?? p.interfaceLabel;\n\nif (ifName) {\n  lines.push(`🔌 <b>Interface:</b> ${esc(ifName)}`);\n}\n\nif (ifAlias) {\n  lines.push(`🏷️ <b>Descrição:</b> ${esc(ifAlias)}`);\n}\n\nif (p.linkLabel) {\n  lines.push(`🔗 <b>Enlace:</b> ${esc(p.linkLabel)}`);\n}\n\nif (p.direction) {\n  lines.push(`↔️ <b>Direção:</b> ${esc(p.direction)}`);\n}\n\nif (p.lane !== null && p.lane !== undefined) {\n  lines.push(`🧵 <b>Lane:</b> ${esc(p.lane)}`);\n}\n\nif (p.currentValue !== null && p.currentValue !== undefined) {\n  const unit = p.unit ? ` ${p.unit}` : '';\n  lines.push(\n    `📈 <b>Valor atual:</b> ${esc(p.currentValue)}${esc(unit)}`\n  );\n}\n\nif (p.thresholdValue !== null && p.thresholdValue !== undefined) {\n  const unit = p.unit ? ` ${p.unit}` : '';\n  lines.push(\n    `🎯 <b>Threshold:</b> ${esc(p.thresholdValue)}${esc(unit)}`\n  );\n}\n\nconst optical = p.optical ?? null;\n\nif (\n  optical ||\n  p.rxPowerDbm !== null && p.rxPowerDbm !== undefined\n) {\n  lines.push('');\n  lines.push('🔦 <b>Óptico</b>');\n\n  const rx = optical?.rxPowerDbm ?? p.rxPowerDbm;\n  const low = optical?.lowThresholdDbm ?? p.rxLowAlarmDbm;\n  const high = optical?.highThresholdDbm ?? p.rxHighAlarmDbm;\n  const proximity = optical?.proximityPercent ?? p.proximityPercent;\n  const drop = optical?.dropDb ?? p.trendDropDb;\n  const windowMin = optical?.dropWindowMinutes ?? p.trendWindowMinutes;\n  const reasons = optical?.triggerReasons ?? p.triggerReasons;\n\n  if (rx !== null && rx !== undefined)\n    lines.push(`• RX: <b>${esc(rx)} dBm</b>`);\n\n  if (low !== null && low !== undefined)\n    lines.push(`• LOW: ${esc(low)} dBm`);\n\n  if (high !== null && high !== undefined)\n    lines.push(`• HIGH: ${esc(high)} dBm`);\n\n  if (proximity !== null && proximity !== undefined)\n    lines.push(`• Proximidade: ${esc(proximity)}%`);\n\n  if (drop !== null && drop !== undefined) {\n    lines.push(\n      `• Queda: ${esc(drop)} dB${windowMin ? ` / ${esc(windowMin)} min` : ''}`\n    );\n  }\n\n  if (Array.isArray(reasons) && reasons.length) {\n    lines.push(`• Motivo: ${esc(reasons.join(', '))}`);\n  }\n\n  if (p.thresholdSource) {\n    lines.push(`• Fonte threshold: ${esc(p.thresholdSource)}`);\n  }\n}\n\nif (p.message) {\n  lines.push('');\n  lines.push(`💬 ${esc(p.message)}`);\n}\n\nlines.push('');\n\nconst when =\n  p.occurredAt ??\n  p.startedAt ??\n  p.resolvedAt;\n\nif (when) {\n  lines.push(`🕒 ${fmtDate(when)}`);\n}\n\nif (p.alarmId) {\n  lines.push(`<code>${esc(p.alarmId)}</code>`);\n}\n\nreturn [{\n  json: {\n    ...$json,\n    telegramText: lines.join('\\n'),\n    alarmEvent: event,\n    alarmSeverity: severity,\n    isTest,\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        240,
+        64
+      ],
+      "id": "68acd94d-d811-4b03-a209-d2039e3e9938",
+      "name": "Montar Mensagem Telegram2"
+    },
+    {
+      "parameters": {
+        "chatId": "-5388654022",
+        "text": "={{ $json.telegramText }}",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "4c6764e5-443f-4ad1-ae40-a0c681bd4696",
+      "name": "Telegram - Resposta NetVision-alarmes2",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        736,
+        256
+      ],
+      "webhookId": "d240df0e-f766-42c7-8440-da4a29850f15",
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "52832e80-f1ae-43b3-b8eb-ae1c276a3c04",
+              "leftValue": "={{ $('Webhook NetVision Alarmes - Fibinet').item.json.body?.media?.chart?.available === true && !!$('Webhook NetVision Alarmes - Fibinet').item.json.body?.media?.chart?.url }}",
+              "rightValue": "=",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        464,
+        64
+      ],
+      "id": "3f6a77e0-0e31-46d0-95c2-3cdc1c70877c",
+      "name": "Tem gráfico?2"
+    },
+    {
+      "parameters": {
+        "url": "={{ $('Webhook NetVision Alarmes - Fibinet').item.json.body.media.chart.url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        736,
+        48
+      ],
+      "id": "4efa35a3-34af-4f78-8d6f-3082d75308e8",
+      "name": "HTTP Request2",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "52832e80-f1ae-43b3-b8eb-ae1c276a3c04",
+              "leftValue": "={{ !!$binary?.data }}",
+              "rightValue": "=",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        944,
+        48
+      ],
+      "id": "be592121-8bd4-41c9-89eb-3d6e0bac7e17",
+      "name": "Download do gráfico OK?2"
+    },
+    {
+      "parameters": {
+        "operation": "sendPhoto",
+        "chatId": "-5388654022",
+        "binaryData": true,
+        "additionalFields": {
+          "caption": "={{ $('Montar Mensagem Telegram2').item.json.telegramText }}",
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "809dd906-7ae2-495b-827a-9d653230f259",
+      "name": "Telegram - Alarme com gráfico2",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1232,
+        32
+      ],
+      "webhookId": "d240df0e-f766-42c7-8440-da4a29850f15",
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "netvision-alarmes-fibinet",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "ad87937c-a874-4a13-b309-4ddda396f53a",
+      "name": "Webhook NetVision Alarmes - Fibinet",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        144
+      ],
+      "webhookId": "0b823bba-3ff2-4342-9705-0825cd94dda1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c4000001-0000-4000-8000-000000000001",
+              "leftValue": "={{ $json.isScopeCallback }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c4000002-0000-4000-8000-000000000002",
+      "name": "IF - Callback de Escopo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        368,
+        1952
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "callback",
+        "operation": "answerCallbackQuery",
+        "callbackQueryId": "={{ $('Interpretar Callback').first().json.callbackQueryId }}",
+        "text": "Recebido. Processando..."
+      },
+      "id": "c4000003-0000-4000-8000-000000000003",
+      "name": "Telegram - ACK Escopo",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        600,
+        1840
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c4000004-0000-4000-8000-000000000004",
+              "leftValue": "={{ $('Interpretar Callback').first().json.isScopeConfirm }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c4000005-0000-4000-8000-000000000005",
+      "name": "IF - Confirmar Escopo (rmx)?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        600,
+        2000
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "editMessageText",
+        "chatId": "={{ $('Interpretar Callback').first().json.chatId }}",
+        "messageId": "={{ $('Interpretar Callback').first().json.messageId }}",
+        "text": "=🚫 <b>RETIRADA COMPARTILHADA CANCELADA</b>\n\nOperador: {{ $('Interpretar Callback').first().json.requestedBy }}\nNenhuma alteração foi feita no equipamento.\n\nA confirmação pendente não foi revogada no servidor: ela expira sozinha em até 10 minutos e não pode ser reutilizada depois de usada.",
+        "replyMarkup": "none",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "c4000006-0000-4000-8000-000000000006",
+      "name": "Telegram - Escopo Cancelado",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        864,
+        1904
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://45.163.144.8:3333/api/integrations/n8n/mitigation-command",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ 'Bearer ' + $env.NETVISION_N8N_COMMAND_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ requestId: $('Interpretar Callback').first().json.requestId + '-scope', action: 'REMOVE', scopeConfirmationToken: $('Interpretar Callback').first().json.scopeToken, confirmedBy: 'telegram:' + $('Interpretar Callback').first().json.userId, chatId: String($('Interpretar Callback').first().json.chatId) }) }}",
+        "options": {
+          "timeout": 90000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "c4000007-0000-4000-8000-000000000007",
+      "name": "HTTP - NetVision Scope Confirm",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        864,
+        2096
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst cb = $('Interpretar Callback').first().json;\n\nlet r = input.body ?? input;\nif (typeof r === 'string') {\n  try { r = JSON.parse(r); } catch {\n    r = { ok: false, status: 'INVALID_RESPONSE', safeError: 'Resposta inv\\u00E1lida recebida do NetVision' };\n  }\n}\n\nconst transporte =\n  (input.error !== undefined && input.error !== null) ||\n  (r.error !== undefined && r.error !== null);\n\nif (transporte && !r.status) {\n  r = { ok: false, status: 'API_INDISPONIVEL', safeError: 'Falha de comunica\\u00E7\\u00E3o com a API' };\n}\n\nconst esc = (value) => {\n  if (value === undefined || value === null) return '';\n  return String(value)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .trim();\n};\n\nconst confirm = r.scopeConfirmation || {};\nconst scope = r.removalScope || {};\nconst affected = Array.isArray(scope.affected) ? scope.affected : [];\nconst novoToken = confirm.token || '';\n\nconst ok = r.ok === true && r.verified === true && r.status === 'REMOVED_VERIFIED';\n\nconst linhas = [];\nif (ok) {\n  linhas.push('\\u2705 <b>RETIRADA DE TODOS CONCLU\\u00CDDA</b>');\n  linhas.push('<b>Policy:</b> ' + esc(r.policy) + ' \\u2022 <b>RT:</b> ' + esc(r.rt));\n  linhas.push('<b>Nodes removidos:</b> ' + esc(r.bogonNode) + '/' + esc(r.mitigationNode));\n  linhas.push('<b>Read-back:</b> ' + esc((r.verification || {}).summary || 'verificado'));\n  linhas.push('<b>Confirmado por:</b> ' + esc(confirm.confirmedBy || cb.requestedBy));\n  linhas.push('');\n  linhas.push('A mitiga\\u00E7\\u00E3o foi retirada para TODOS os v\\u00EDnculos da policy.');\n} else {\n  linhas.push('\\u26A0\\uFE0F <b>RETIRADA N\\u00C3O CONCLU\\u00CDDA</b>');\n  linhas.push('<b>Status:</b> ' + esc(r.status));\n  if (r.safeError) linhas.push('<b>Aviso:</b> ' + esc(r.safeError));\n  if (affected.length > 0) {\n    linhas.push('');\n    linhas.push('<b>Escopo atual:</b>');\n    for (const item of affected) {\n      linhas.push('\\u2022 ' + esc(item.interfaceName || item.profileId) + ' \\u2014 ' + esc(item.customer || 'sem cliente') + ' \\u2014 peer ' + esc(item.peerAddress || '-') + ' (' + esc(item.runtimeState) + ')');\n    }\n  }\n  if (novoToken) {\n    linhas.push('');\n    linhas.push('Nova confirma\\u00E7\\u00E3o v\\u00E1lida at\\u00E9: ' + esc(confirm.expiresAt));\n  }\n}\n\nreturn [{ json: {\n  ok: ok,\n  status: r.status || null,\n  verified: ok,\n  chatId: cb.chatId,\n  messageId: cb.messageId,\n  newToken: novoToken,\n  text: linhas.join('\\n'),\n} }];"
+      },
+      "id": "c4000008-0000-4000-8000-000000000008",
+      "name": "Formatar Resposta do Escopo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        2096
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c4000009-0000-4000-8000-000000000009",
+              "leftValue": "={{ $json.newToken }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c4000010-0000-4000-8000-000000000010",
+      "name": "IF - Reemitir confirmacao?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1344,
+        2096
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "editMessageText",
+        "chatId": "={{ $json.chatId }}",
+        "messageId": "={{ $json.messageId }}",
+        "text": "={{ $json.text }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "CANCELAR",
+                    "additionalFields": {
+                      "callback_data": "=rmc:{{ $json.newToken }}"
+                    }
+                  },
+                  {
+                    "text": "CONFIRMAR RETIRADA DE TODOS",
+                    "additionalFields": {
+                      "callback_data": "=rmx:{{ $json.newToken }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "c4000011-0000-4000-8000-000000000011",
+      "name": "Telegram - Resposta Escopo (novos botoes)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1584,
+        2000
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "editMessageText",
+        "chatId": "={{ $json.chatId }}",
+        "messageId": "={{ $json.messageId }}",
+        "text": "={{ $json.text }}",
+        "replyMarkup": "none",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "c4000012-0000-4000-8000-000000000012",
+      "name": "Telegram - Resposta Escopo (final)",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1584,
+        2176
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c4000013-0000-4000-8000-000000000013",
+              "leftValue": "={{ ['SCOPE_CONFIRMATION_REQUIRED','SCOPE_CONFIRMATION_USED','SCOPE_CONFIRMATION_EXPIRED','SCOPE_CONFIRMATION_TOKEN_UNKNOWN','SCOPE_CONFIRMATION_SCOPE_MISMATCH','SCOPE_CONFIRMATION_CHAT_MISMATCH','SCOPE_CHANGED'].includes(($json.body ?? $json).status) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c4000014-0000-4000-8000-000000000014",
+      "name": "IF - Escopo pendente?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1104,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst cb = $('Interpretar Callback').first().json;\n\nlet r = input.body ?? input;\nif (typeof r === 'string') {\n  try { r = JSON.parse(r); } catch { r = {}; }\n}\n\nconst esc = (value) => {\n  if (value === undefined || value === null) return '';\n  return String(value)\n    .replace(/&/g, '&amp;')\n    .replace(/</g, '&lt;')\n    .replace(/>/g, '&gt;')\n    .replace(/\"/g, '&quot;')\n    .trim();\n};\n\nconst scope = r.removalScope || {};\nconst confirm = r.scopeConfirmation || {};\nconst affected = Array.isArray(scope.affected) ? scope.affected : [];\nconst peers = Array.isArray(r.affectedPeers) ? r.affectedPeers : [];\nconst token = confirm.token || '';\n\nconst linhas = [];\nlinhas.push('\\u26A0\\uFE0F <b>RETIRADA DE MITIGA\\u00C7\\u00C3O \\u2014 POLICY COMPARTILHADA</b>');\nlinhas.push('<b>Equipamento:</b> ' + esc(r.device));\nlinhas.push('<b>Policy:</b> ' + esc(r.policy) + ' \\u2022 <b>RT:</b> ' + esc(r.rt));\nlinhas.push('<b>Nodes:</b> ' + esc(r.bogonNode) + '/' + esc(r.mitigationNode));\nlinhas.push('');\nlinhas.push('A retirada atinge <b>TODOS</b> os v\\u00EDnculos desta policy:');\nlinhas.push('');\nlinhas.push('\\u2022 <b>' + esc(r.interface) + '</b> \\u2014 ' + esc(r.customer || 'sem cliente') + ' \\u2014 peer ' + esc(peers[0] || '-') + ' (origem da solicita\\u00E7\\u00E3o)');\nfor (const item of affected) {\n  linhas.push('\\u2022 <b>' + esc(item.interfaceName || item.profileId) + '</b> \\u2014 ' + esc(item.customer || 'sem cliente') + ' \\u2014 peer ' + esc(item.peerAddress || '-') + ' (' + esc(item.runtimeState) + ')');\n}\nlinhas.push('');\nlinhas.push('Solicitado por: ' + esc(cb.requestedBy));\nlinhas.push('Confirma\\u00E7\\u00E3o v\\u00E1lida at\\u00E9: ' + esc(confirm.expiresAt));\nlinhas.push('');\nlinhas.push('Ao confirmar, a mitiga\\u00E7\\u00E3o ser\\u00E1 retirada para TODOS os clientes acima.');\n\nif (!token) {\n  linhas.push('');\n  linhas.push('\\u26A0\\uFE0F A API n\\u00E3o devolveu uma confirma\\u00E7\\u00E3o v\\u00E1lida. Solicite a retirada novamente.');\n}\n\nreturn [{ json: {\n  chatId: cb.chatId,\n  messageId: cb.messageId,\n  token: token,\n  status: r.status || null,\n  text: linhas.join('\\n'),\n} }];"
+      },
+      "id": "c4000015-0000-4000-8000-000000000015",
+      "name": "Montar Confirmacao Compartilhada",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1344,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "editMessageText",
+        "chatId": "={{ $json.chatId }}",
+        "messageId": "={{ $json.messageId }}",
+        "text": "={{ $json.text }}",
+        "replyMarkup": "inlineKeyboard",
+        "inlineKeyboard": {
+          "rows": [
+            {
+              "row": {
+                "buttons": [
+                  {
+                    "text": "CANCELAR",
+                    "additionalFields": {
+                      "callback_data": "=rmc:{{ $json.token }}"
+                    }
+                  },
+                  {
+                    "text": "CONFIRMAR RETIRADA DE TODOS",
+                    "additionalFields": {
+                      "callback_data": "=rmx:{{ $json.token }}"
+                    }
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "c4000016-0000-4000-8000-000000000016",
+      "name": "Telegram - Confirmar Retirada Compartilhada",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1584,
+        2400
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook NetVision OUT": {
+      "main": [
+        [
+          {
+            "node": "Validar Token OUT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Token OUT": {
+      "main": [
+        [
+          {
+            "node": "Normalizar Evento OUT",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder OUT 401",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalizar Evento OUT": {
+      "main": [
+        [
+          {
+            "node": "Somente Mitigacao Real Verificada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - Alerta com Botoes": {
+      "main": [
+        [
+          {
+            "node": "Responder OUT 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram Trigger - Callback": {
+      "main": [
+        [
+          {
+            "node": "Interpretar Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Interpretar Callback": {
+      "main": [
+        [
+          {
+            "node": "Autorizar Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Autorizar Telegram": {
+      "main": [
+        [
+          {
+            "node": "IF - Callback de Escopo?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Nao Autorizado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - NetVision Command": {
+      "main": [
+        [
+          {
+            "node": "IF - Escopo pendente?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Resposta NetVision": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Resposta NetVision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Somente Mitigacao Real Verificada": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Alerta com Botoes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder OUT 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pedido de Retirada?": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Confirmar Retirada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Confirmou Retirada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirmou Retirada?": {
+      "main": [
+        [
+          {
+            "node": "HTTP - NetVision Command",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Retirada Cancelada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Token OUT1": {
+      "main": [
+        [
+          {
+            "node": "Montar Mensagem Telegram",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder OUT ",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook NetVision Alarmes": {
+      "main": [
+        [
+          {
+            "node": "Validar Token OUT1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Mensagem Telegram": {
+      "main": [
+        [
+          {
+            "node": "Tem gráfico?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Token OUT2": {
+      "main": [
+        [
+          {
+            "node": "Montar Mensagem Telegram1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder OUT 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Mensagem Telegram1": {
+      "main": [
+        [
+          {
+            "node": "Tem gráfico?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook NetVision Alarmes - VNT": {
+      "main": [
+        [
+          {
+            "node": "Validar Token OUT2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem gráfico?": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Resposta NetVision-alarmes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - Resposta NetVision-alarmes": {
+      "main": [
+        []
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [
+          {
+            "node": "Download do gráfico OK?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download do gráfico OK?": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Alarme com gráfico",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem gráfico?1": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Resposta NetVision-alarmes1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request1": {
+      "main": [
+        [
+          {
+            "node": "Download do gráfico OK?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download do gráfico OK?1": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Alarme com gráfico1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validar Token OUT3": {
+      "main": [
+        [
+          {
+            "node": "Montar Mensagem Telegram2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Responder OUT 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Mensagem Telegram2": {
+      "main": [
+        [
+          {
+            "node": "Tem gráfico?2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tem gráfico?2": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request2",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Resposta NetVision-alarmes2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request2": {
+      "main": [
+        [
+          {
+            "node": "Download do gráfico OK?2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download do gráfico OK?2": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Alarme com gráfico2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook NetVision Alarmes - Fibinet": {
+      "main": [
+        [
+          {
+            "node": "Validar Token OUT3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Callback de Escopo?": {
+      "main": [
+        [
+          {
+            "node": "Telegram - ACK Escopo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Pedido de Retirada?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram - ACK Escopo": {
+      "main": [
+        [
+          {
+            "node": "IF - Confirmar Escopo (rmx)?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Confirmar Escopo (rmx)?": {
+      "main": [
+        [
+          {
+            "node": "HTTP - NetVision Scope Confirm",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Escopo Cancelado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - NetVision Scope Confirm": {
+      "main": [
+        [
+          {
+            "node": "Formatar Resposta do Escopo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Resposta do Escopo": {
+      "main": [
+        [
+          {
+            "node": "IF - Reemitir confirmacao?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Reemitir confirmacao?": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Resposta Escopo (novos botoes)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Resposta Escopo (final)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Escopo pendente?": {
+      "main": [
+        [
+          {
+            "node": "Montar Confirmacao Compartilhada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Formatar Resposta NetVision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Confirmacao Compartilhada": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Confirmar Retirada Compartilhada",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "availableInMCP": false
+  }
+}

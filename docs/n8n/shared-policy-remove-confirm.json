@@ -340,9 +340,9 @@
         "messageId": "={{ $json.messageId }}",
         "text": "={{ $json.texto }}",
         "additionalFields": {
-          "replyMarkup": "none",
           "appendAttribution": false
-        }
+        },
+        "replyMarkup": "none"
       },
       "id": "b1000000-0000-4000-8000-000000000011",
       "name": "Telegram: editar mensagem com resultado",
@@ -365,9 +365,9 @@
         "messageId": "={{ $('Interpretar callback').first().json.messageId }}",
         "text": "=🚫 Retirada cancelada pelo operador {{ $('Interpretar callback').first().json.fromId }}. Nenhuma alteração foi feita no equipamento.",
         "additionalFields": {
-          "replyMarkup": "none",
           "appendAttribution": false
-        }
+        },
+        "replyMarkup": "none"
       },
       "id": "b1000000-0000-4000-8000-000000000012",
       "name": "Telegram: confirmar cancelamento",
