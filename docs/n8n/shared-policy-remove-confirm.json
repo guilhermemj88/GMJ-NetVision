@@ -191,7 +191,7 @@
           "parameters": [
             {
               "name": "Authorization",
-              "value": "=Bearer {{ $env.NETVISION_N8N_COMMAND_TOKEN }}"
+              "value": "={{ 'Bearer ' + $env.NETVISION_N8N_COMMAND_TOKEN }}"
             }
           ]
         },
