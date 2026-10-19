@@ -164,4 +164,66 @@ describe('confirmacao de escopo fisico', () => {
     const consumed = store.consume(issue.token, SCOPE, { chatId: '-100200' });
     expect(consumed.ok).toBe(true);
   });
+
+  it('revoga a confirmacao pendente e o token deixa de existir', () => {
+    const { store } = build();
+    const issue = store.issue(SCOPE, { chatId: '-100200' });
+
+    const revoked = store.revoke(issue.token, { confirmedBy: 'telegram:42', chatId: '-100200' });
+    expect(revoked.ok).toBe(true);
+    expect(store.size).toBe(0);
+    expect(store.peek(issue.token)).toBeNull();
+
+    // Um `rmx:` antigo deixa de funcionar.
+    const after = store.consume(issue.token, SCOPE);
+    expect(after.ok).toBe(false);
+    if (!after.ok) expect(after.code).toBe('SCOPE_CONFIRMATION_TOKEN_UNKNOWN');
+  });
+
+  it('revogar de novo devolve TOKEN_UNKNOWN (idempotente)', () => {
+    const { store } = build();
+    const issue = store.issue(SCOPE);
+    expect(store.revoke(issue.token).ok).toBe(true);
+    const again = store.revoke(issue.token);
+    expect(again.ok).toBe(false);
+    if (!again.ok) expect(again.code).toBe('SCOPE_CONFIRMATION_TOKEN_UNKNOWN');
+  });
+
+  it('nao revoga confirmacao ja usada', () => {
+    const { store } = build();
+    const issue = store.issue(SCOPE);
+    expect(store.consume(issue.token, SCOPE).ok).toBe(true);
+    const revoked = store.revoke(issue.token);
+    expect(revoked.ok).toBe(false);
+    if (!revoked.ok) expect(revoked.code).toBe('SCOPE_CONFIRMATION_USED');
+  });
+
+  it('nao revoga confirmacao expirada', () => {
+    const { store, advance } = build({ ttlMs: 60_000 });
+    const issue = store.issue(SCOPE);
+    advance(61_000);
+    // Expirada ja e podada pelo store: o resultado e o mesmo de desconhecida.
+    const revoked = store.revoke(issue.token);
+    expect(revoked.ok).toBe(false);
+    if (!revoked.ok) expect(revoked.code).toBe('SCOPE_CONFIRMATION_TOKEN_UNKNOWN');
+    expect(store.consume(issue.token, SCOPE).ok).toBe(false);
+  });
+
+  it('nao revoga a partir de outro chat', () => {
+    const { store } = build();
+    const issue = store.issue(SCOPE, { chatId: '-100200' });
+    const revoked = store.revoke(issue.token, { chatId: '-999' });
+    expect(revoked.ok).toBe(false);
+    if (!revoked.ok) expect(revoked.code).toBe('SCOPE_CONFIRMATION_CHAT_MISMATCH');
+
+    // A confirmacao continua valida no chat de origem.
+    expect(store.consume(issue.token, SCOPE, { chatId: '-100200' }).ok).toBe(true);
+  });
+
+  it('token emitido cabe no callback_data de 64 bytes do Telegram', () => {
+    const store = new ScopeConfirmationStore();
+    const issue = store.issue(SCOPE);
+    // prefixo `rmx:`/`rmc:` + token precisa caber no limite do Telegram.
+    expect(Buffer.byteLength('rmx:' + issue.token, 'utf8')).toBeLessThanOrEqual(64);
+  });
 });

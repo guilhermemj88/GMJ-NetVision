@@ -84,6 +84,19 @@ function post(
   }) as never;
 }
 
+function postCancel(
+  target: FastifyInstance,
+  body: unknown,
+  token: string | null = TOKEN,
+): Promise<{ statusCode: number; json: () => Record<string, unknown> }> {
+  return target.inject({
+    method: 'POST',
+    url: '/api/integrations/n8n/mitigation-scope-cancel',
+    payload: body as object,
+    headers: token ? { authorization: `Bearer ${token}` } : {},
+  }) as never;
+}
+
 describe('canal IN (n8n -> NetVision)', () => {
   it('exige token: sem header e com token invalido responde 401', async () => {
     const harness = await buildHarness();
@@ -371,8 +384,7 @@ describe('canal IN (n8n -> NetVision)', () => {
     expect(confirmed.json().profileId).toBe(harness.profileId);
   });
 
-  it('confirmacao emitida em um grupo nao vale em outro chat', async () => {
-    const harness = await buildHarness({ shared: true });
+  it('confirmacao emitida em um grupo nao vale em outro chat', async () => {    const harness = await buildHarness({ shared: true });
     app = harness.app;
     await post(harness.app, { requestId: 'cg-a', action: 'ACTIVATE', profileId: harness.profileId });
 
@@ -405,6 +417,64 @@ describe('canal IN (n8n -> NetVision)', () => {
       chatId: '-100200',
     });
     expect(mesmoGrupo.json().status).toBe('REMOVED_VERIFIED');
+  });
+
+  it('cancelamento revoga o token e um rmx antigo nao executa nada', async () => {
+    const harness = await buildHarness({ shared: true });
+    app = harness.app;
+    await post(harness.app, { requestId: 'rv-a', action: 'ACTIVATE', profileId: harness.profileId });
+
+    const blocked = await post(harness.app, {
+      requestId: 'rv-1',
+      action: 'REMOVE',
+      profileId: harness.profileId,
+      confirmedBy: 'telegram:42',
+      chatId: '-100200',
+    });
+    const token = (blocked.json().scopeConfirmation as { token: string }).token;
+    const callsBefore = harness.executor.calls.length;
+
+    const revoked = await postCancel(harness.app, {
+      requestId: 'rv-2',
+      scopeConfirmationToken: token,
+      confirmedBy: 'telegram:42',
+      chatId: '-100200',
+    });
+    expect(revoked.statusCode).toBe(200);
+    expect(revoked.json()).toMatchObject({ ok: true, status: 'SCOPE_CONFIRMATION_REVOKED' });
+
+    // Replay do botao antigo: token nao existe mais e nada chega ao executor.
+    const after = await post(harness.app, {
+      requestId: 'rv-3',
+      action: 'REMOVE',
+      scopeConfirmationToken: token,
+      confirmedBy: 'telegram:42',
+      chatId: '-100200',
+    });
+    expect(after.json().status).toBe('SCOPE_CONFIRMATION_TOKEN_UNKNOWN');
+    expect(harness.executor.calls.length).toBe(callsBefore);
+  });
+
+  it('cancelamento exige bearer e recusa campos extras', async () => {
+    const harness = await buildHarness({ shared: true });
+    app = harness.app;
+
+    const semToken = await postCancel(
+      harness.app,
+      { requestId: 'rv-4', scopeConfirmationToken: 'token-qualquer-123456' },
+      null,
+    );
+    expect(semToken.statusCode).toBe(401);
+
+    const extra = await postCancel(harness.app, {
+      requestId: 'rv-5',
+      scopeConfirmationToken: 'token-qualquer-123456',
+      force: true,
+    });
+    expect(extra.statusCode).toBe(400);
+
+    const invalido = await postCancel(harness.app, { requestId: 'rv-6', scopeConfirmationToken: 'curto' });
+    expect(invalido.statusCode).toBe(400);
   });
 
   it('token desconhecido sem profileId devolve TOKEN_UNKNOWN sem tocar o executor', async () => {    const harness = await buildHarness({ shared: true });

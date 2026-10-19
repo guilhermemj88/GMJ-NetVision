@@ -488,8 +488,7 @@ describe('retirada manual em policy compartilhada', () => {
     expect(h.onScopeRemoved).toHaveBeenCalled();
   });
 
-  it('reinicio da API invalida confirmacoes pendentes (store em memoria)', async () => {
-    const h = await build();
+  it('reinicio da API invalida confirmacoes pendentes (store em memoria)', async () => {    const h = await build();
     const blocked = await h.commands.execute({
       requestId: 't13',
       action: 'REMOVE',
@@ -522,6 +521,36 @@ describe('retirada manual em policy compartilhada', () => {
     expect(result.status).toBe('SCOPE_CONFIRMATION_TOKEN_UNKNOWN');
     expect(result.scopeConfirmation?.token).toBeTruthy();
     expect(result.scopeConfirmation?.token).not.toBe(token);
+    expect(h.executor.calls).toEqual([]);
+    expect((await h.repository.getRuntime(h.p1))?.state).toBe('MITIGATED');
+    expect((await h.repository.getRuntime(h.p2))?.state).toBe('MITIGATED');
+  });
+
+  it('cancelamento revoga o token e impede a confirmacao posterior', async () => {
+    const h = await build();
+    const blocked = await h.commands.execute({
+      requestId: 't14',
+      action: 'REMOVE',
+      profileId: h.p1,
+    });
+    const token = blocked.scopeConfirmation!.token!;
+
+    const revoke = h.commands.revokeScopeConfirmation(token, {
+      confirmedBy: 'telegram:42',
+      chatId: '-100200',
+    });
+    expect(revoke.ok).toBe(true);
+    expect(revoke.status).toBe('SCOPE_CONFIRMATION_REVOKED');
+    expect(h.store.peek(token)).toBeNull();
+
+    const after = await h.commands.execute({
+      requestId: 't14-b',
+      action: 'REMOVE',
+      profileId: h.p1,
+      scopeConfirmationToken: token,
+    });
+    expect(after.ok).toBe(false);
+    expect(after.status).toBe('SCOPE_CONFIRMATION_TOKEN_UNKNOWN');
     expect(h.executor.calls).toEqual([]);
     expect((await h.repository.getRuntime(h.p1))?.state).toBe('MITIGATED');
     expect((await h.repository.getRuntime(h.p2))?.state).toBe('MITIGATED');

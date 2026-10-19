@@ -86,6 +86,37 @@ Status possíveis do gate: `SCOPE_CONFIRMATION_REQUIRED`, `SCOPE_CONFIRMATION_US
 `SCOPE_CHANGED`. Todos vêm acompanhados de uma confirmação **nova** já com a
 lista atualizada.
 
+### Cancelamento explícito (revogação do token)
+
+`POST /api/integrations/n8n/mitigation-scope-cancel` — mesmo bearer, schema
+**estrito**, **não executa comando e não toca no equipamento**: apenas remove a
+confirmação pendente do store.
+
+```json
+{
+  "requestId": "telegram-1434618946480210113-cancel",
+  "scopeConfirmationToken": "<token opaco>",
+  "confirmedBy": "telegram:1434618946480210113",
+  "chatId": "-1002000000000"
+}
+```
+
+| Resposta | Significado |
+| --- | --- |
+| `200 { ok: true, status: "SCOPE_CONFIRMATION_REVOKED" }` | token revogado; `rmx:` antigo passa a receber `TOKEN_UNKNOWN` |
+| `200 { ok: false, status: "SCOPE_CONFIRMATION_TOKEN_UNKNOWN" }` | já expirou, já foi usado ou já foi revogado |
+| `200 { ok: false, status: "SCOPE_CONFIRMATION_USED" }` | a confirmação já executou a retirada; não há o que revogar |
+| `200 { ok: false, status: "SCOPE_CONFIRMATION_CHAT_MISMATCH" }` | pedido veio de outro chat/grupo |
+| `401` / `400` | bearer inválido / payload fora do contrato (campo extra é recusado) |
+
+### Orçamento do `callback_data`
+
+O Telegram limita `callback_data` a **64 bytes**. O token é
+`randomBytes(18).toString('base64url')` = **24 caracteres ASCII**, então
+`rmx:<token>` / `rmc:<token>` ocupam **28 bytes**. O workflow ainda valida o
+tamanho em bytes na entrada (UTF-8) e aceita apenas `[A-Za-z0-9_-]{16,60}` —
+qualquer coisa maior é descartada como callback inválido.
+
 ## 3. Código corrigido
 
 | Arquivo | Mudança |
@@ -151,57 +182,67 @@ lista atualizada.
 
 ## 4. Ajustes no workflow n8n
 
-Duas partes, ambas em `docs/n8n/` (importáveis):
-
-1. `shared-policy-remove-request.json` — chamada de retirada que, ao receber os
-   status de escopo, envia a mensagem com **a lista completa** e os botões
-   `CANCELAR` / `CONFIRMAR RETIRADA DE TODOS`.
-2. `shared-policy-remove-confirm.json` — trata o callback do Telegram
-   (`rmc:` cancela, `rmx:` confirma), valida operador/grupo, chama a API com o
-   token e edita a mensagem com o resultado.
+O arquivo único **`docs/n8n/GMJ-NetVision-Telegram-RC4-CORRIGIDO.json`** substitui
+os dois sub-workflows anteriores: ele parte do export real
+(`GMJ NetVision - Mitigacao DDoS - Bidirecional -v2`) e mantém os **45 nós
+originais** (4 webhooks, alarmes, gráficos, downloads, VNT, FIBINET, credenciais)
+intactos, acrescentando 17 nós para o callback de escopo.
 
 ### Ligação no fluxo existente
 
-| Onde | Ajuste |
-| --- | --- |
-| Nó que chama a API de REMOVE | manter; passar a resposta adiante (não descartar o corpo) |
-| IF "Confirmou Retirada?" | **sem mudança** (continua correto para `remove_execute`) |
-| Após o nó HTTP de REMOVE | IF novo: `status` ∈ {SCOPE_CONFIRMATION_REQUIRED, SCOPE_CONFIRMATION_USED, SCOPE_CONFIRMATION_EXPIRED, SCOPE_CONFIRMATION_TOKEN_UNKNOWN, SCOPE_CONFIRMATION_SCOPE_MISMATCH, SCOPE_CONFIRMATION_CHAT_MISMATCH, SCOPE_CHANGED} → executar `shared-policy-remove-request` |
-| Telegram Trigger (callback_query) | se `data` começar com `rmc:` ou `rmx:` → executar `shared-policy-remove-confirm` (antes dos handlers atuais) |
-
-### Estrutura dos dois sub-workflows
-
-| Sub-workflow | Nós | Pontos de atenção |
+| Onde | Antes | Depois |
 | --- | --- | --- |
-| `shared-policy-remove-request` | Entrada → HTTP (REMOVE sem token) → **API respondeu?** → (falha: aviso no Telegram) / (ok: **Precisa confirmar escopo?**) → **Montar mensagem** (Code) → Telegram com botões → saída | O corpo do POST leva `profileId`, `confirmedBy` e `chatId` |
-| `shared-policy-remove-confirm` | Entrada → **Callback e operador válidos?** → recusa / **Interpretar callback** → **Cancelar?** → (cancela) / HTTP com token → `answerCallbackQuery` → **Montar resultado** (Code) → **Nova confirmação emitida?** → edita a mensagem (com ou sem botões novos) | `rmc:` não chama a API; `rmx:` chama apenas com o token |
+| `Autorizar Telegram` [0] | `Pedido de Retirada?` | `IF - Callback de Escopo?` → (ramo `false`) `Pedido de Retirada?` |
+| `Confirmou Retirada?` [0] | `HTTP - NetVision Command` | `Montar Corpo do Comando` → `HTTP - NetVision Command` |
+| `HTTP - NetVision Command` | `Formatar Resposta NetVision` | `IF - Escopo pendente?` → (sim) confirmação compartilhada / (não) formatação original |
+| `Telegram Trigger - Callback` | — | **inalterado** (um único trigger) |
+| IF "Confirmou Retirada?" | — | **inalterado** (continua `remove_execute`) |
 
-**Quebras de linha reais.** As duas mensagens longas são montadas em nós **Code**
-que devolvem uma string com `\n` de verdade; o nó do Telegram usa
-`{{ $json.text }}`/`{{ $json.texto }}`. Nada de `\n` literal dentro de expressão
-`=` (que o Telegram exibiria como texto).
+### Estrutura do workflow único
+
+| Trecho | Nós |
+| --- | --- |
+| Entrada de callback | `Interpretar Callback` (aceita `rmc:`/`rmx:` **e** os 3 comandos legados) → `Autorizar Telegram` |
+| Escopo | `IF - Callback de Escopo?` → `Telegram - ACK Escopo` → `IF - Confirmar Escopo (rmx)?` |
+| Confirmar | `HTTP - NetVision Scope Confirm` → `Formatar Resposta do Escopo` → `IF - Reemitir confirmacao?` → `Telegram - Resposta Escopo (novos botoes)` / `(final)` |
+| Cancelar | `HTTP - NetVision Scope Cancel` → `Formatar Cancelamento` → `Telegram - Escopo Cancelado` |
+| REMOVE legado | `Montar Corpo do Comando` → `HTTP - NetVision Command` → `IF - Escopo pendente?` |
+| Proposta de escopo | `Montar Confirmacao Compartilhada` → `IF - Tem token?` → `Telegram - Confirmar Retirada Compartilhada` / `Telegram - Escopo sem Confirmacao` |
+
+**Quebras de linha reais.** As mensagens longas são montadas em nós **Code** que
+devolvem uma string com `\n` de verdade; o nó do Telegram usa
+`{{ $json.text }}`. Nada de `\n` literal dentro de expressão `=` (que o Telegram
+exibiria como texto) — inclusive o texto original de `Telegram - Confirmar
+Retirada`, que estava com `\\n` duplo.
 
 **Reemissão do token.** Se a API recusar por `USED`/`EXPIRED`/`SCOPE_CHANGED`,
 ela devolve **outra** confirmação com a lista atualizada; o workflow edita a
 própria mensagem e reapresenta `CANCELAR` / `CONFIRMAR RETIRADA DE TODOS` com o
 token novo — sem obrigar o operador a clicar em RETIRAR de novo.
 
-**Falha de transporte.** O nó HTTP usa `neverError` + `onError:
-continueRegularOutput`: se a API estiver inacessível, o operador recebe "falha ao
-contatar a API" e nenhuma alteração é registrada.
+**Sem token, sem botões.** Se a API responder um status de escopo sem
+`scopeConfirmation.token`, a mensagem é editada com a lista e o aviso, **sem**
+inline keyboard (`IF - Tem token?` → `Telegram - Escopo sem Confirmacao`).
 
-### Variáveis exigidas no n8n
+**Falha de transporte.** Todos os nós HTTP usam `neverError` +
+`onError: continueRegularOutput`: se a API estiver inacessível, o operador recebe
+o status `API_INDISPONIVEL` e nenhuma alteração é registrada. No cancelamento, a
+mensagem diz explicitamente que **não foi possível confirmar a revogação** — o
+workflow nunca afirma revogação sem resposta da API.
 
-| Variável | Uso |
+### Credencial, variáveis e autorização
+
+| Item | Como |
 | --- | --- |
-| `NETVISION_API_BASE` | base da API (`http://127.0.0.1:3333` visto de dentro da IMPLANTAR) |
-| `NETVISION_N8N_COMMAND_TOKEN` | bearer do canal inbound (nunca fica no JSON do workflow) |
-| `NETVISION_TELEGRAM_OPERATORS` | lista de `from.id` autorizados, separada por vírgula |
+| Bearer do canal n8n | **credencial Header Auth** `NetVision n8n Command` (`Authorization: Bearer <token>`), referenciada pelos 2 nós HTTP — nenhum segredo no JSON |
+| `NETVISION_API_BASE` | usada apenas nos sub-workflows antigos; o arquivo único usa a URL fixa `http://45.163.144.8:3333` (mesma do nó legado) |
+| `NETVISION_TELEGRAM_OPERATORS` | opcional; ids (`from.id`) separados por vírgula. **Também** aceita a constante `OPERADORES_RETIRADA_COMPARTILHADA` no nó `Interpretar Callback` |
+| Autorização da retirada compartilhada | **operador nominal obrigatório**: `rmx:`/`rmc:` exigem `userId` na lista; lista vazia = ninguém (fail-closed). O grupo autorizado sozinho **não** basta |
+| Comandos legados | seguem a regra antiga (grupo `-5522540056` + usuário identificado) — nenhuma permissão existente foi alterada |
 
-O header é montado por expressão (`Bearer` + `$env`), então o token não é
-duplicado no repositório. A resposta da API nunca é logada com o token: o log
-do inbound (`N8nInboundLog`) carrega apenas `requestId`, `action`, `profileId`,
-`status`, `safeError`.
+A resposta da API nunca é logada com o token: o log do inbound
+(`N8nInboundLog`) carrega apenas `requestId`, `action`, `profileId`, `status`,
+`safeError`.
 
 > **Retenção no n8n:** o `callback_data` e o corpo do POST aparecem no histórico
 > de execuções do n8n. Restrinja quem acessa *Executions* e reduza a retenção
@@ -249,16 +290,18 @@ não o plano gravado no runtime: na BHNET o plano histórico é `3/4` e o par at
 
 ## 5. Testes e evidências
 
-`apps/api` — **1976 testes aprovados / 20 ignorados** (suíte completa), lint,
+`apps/api` — **1985 testes aprovados / 20 ignorados** (suíte completa), lint,
 typecheck e build limpos.
 
-Novos testes (34):
+Novos testes (43):
 
-* `mitigation-scope-confirmation.test.ts` (12): hash canônico e estável; TTL;
+* `mitigation-scope-confirmation.test.ts` (18): hash canônico e estável; TTL;
   uso único/replay; expiração; escopo/perfil divergente; composição alterada;
   `release` em bloqueio; token desconhecido; vínculo com o chat de origem;
-  não reaproveitamento entre chats; pedido sem chat continua compatível.
-* `mitigation-shared-remove-confirmation.test.ts` (13): solicitação de qualquer
+  não reaproveitamento entre chats; pedido sem chat continua compatível;
+  **revogação** (token deixa de existir, idempotência, já usado, expirado,
+  outro chat); **token ≤ 64 bytes com o prefixo do Telegram**.
+* `mitigation-shared-remove-confirmation.test.ts` (14): solicitação de qualquer
   um dos perfis; listagem completa; cancelar sem efeito; confirmação válida com
   **uma** retirada física (2 `undo` + 1 `commit`) e preservação do node 11;
   reconciliação dos dois runtimes; contadores zerados; hook do motor; replay;
@@ -267,20 +310,40 @@ Novos testes (34):
   `RECONCILIATION_REQUIRED`; bloqueio de preflight não consome o token; REMOVE
   simples segue sem token; falha de commit do executor → `REVALIDATION_FAILED`
   com escopo em reconciliação e token consumido; restart (store novo) →
-  `TOKEN_UNKNOWN` sem tocar o equipamento.
+  `TOKEN_UNKNOWN` sem tocar o equipamento; **cancelamento revoga e o `rmx:`
+  posterior não executa nada**.
 * `mitigation-auto-forget-sequence.test.ts` (2): após `forgetProfiles`, a
   reativação exige 3 amostras novas (não reaproveita o gatilho anterior) e o
   esquecimento vale para os dois perfis do escopo.
-* `n8n-routes.test.ts` (+7): gate devolve lista + token; booleano recusado com
+* `n8n-routes.test.ts` (+9): gate devolve lista + token; booleano recusado com
   400; confirmação com token executa e o token não aparece no log; callback
   confirma apenas com o token (perfil resolvido pela API); token desconhecido
   sem `profileId` → `TOKEN_UNKNOWN` sem tocar o executor; token de outro chat →
-  `CHAT_MISMATCH` sem escrita; sem `profileId` e sem token → 400.
+  `CHAT_MISMATCH` sem escrita; sem `profileId` e sem token → 400;
+  **revogação** (200 `SCOPE_CONFIRMATION_REVOKED`, replay depois dela →
+  `TOKEN_UNKNOWN` sem escrita); **revogação exige bearer e recusa campo extra**.
 
 Testes existentes preservados: 20 decisões douradas do motor LEGACY continuam
 idênticas; `mitigation-auto-shared-policy`, `mitigation-auto-shared-scope-multi-asn`,
-`mitigation-manual-concurrency`, `mitigation-shared-policy-runtime` sem alteração
-de comportamento.
+`mitigation-manual-concurrency` (ACTIVATE+REMOVE, AUTO+REMOVE, POLICY_BUSY,
+falha após escrita), `mitigation-shared-policy-runtime` sem alteração de
+comportamento.
+
+### Workflow n8n — validação exercitada
+
+* Estrutura: 62 nós, ids/nomes únicos, 45 originais intactos, 4 webhooks com
+  `path` e `webhookId` iguais, 1 `telegramTrigger`, nenhum nó sem entrada,
+  todos os `jsCode` compilam, 65 expressões balanceadas, **nenhum Bearer no JSON**.
+* Operações Telegram conferidas **contra o código-fonte do nó**
+  (`Telegram.node.ts`): `sendMessage`, `editMessageText` (com `chatId` +
+  `messageId` + `replyMarkup` top-level) e `answerQuery` (`callback/answerQuery`,
+  `queryId` + `additionalFields.text`) — 17/17 nós válidos.
+* Simulação de execução (grafo real, Code nodes rodando, IFs avaliados, HTTP
+  mockado): **16/16** — legado (pedido, execução sem escopo, cancelamento),
+  escopo com e **sem** token, `rmx` sucesso/escopo alterado/API fora,
+  `rmc` com revogação e com falha de rede, operador não autorizado, lista vazia
+  (fail-closed), chat não autorizado, token > 60 chars, callback desconhecido,
+  corpo legado compatível com a RC3, mensagem com quebras reais.
 
 ## 6. Commits
 
@@ -289,7 +352,10 @@ Branch `fix/ddos-shared-policy-remove-confirmation` (base `0e7099c`, tag RC3).
 | Commit | Conteúdo |
 | --- | --- |
 | `ef0fa50` | token de escopo de uso único, gate no `MitigationCommandService`, contrato inbound, `forgetProfiles`, testes e sub-workflows n8n |
-| `8e70d5a` | vínculo com o chat de origem, `chatId` no inbound, `writeAttempted` no caminho MOCK, sub-workflows com mensagens reais (nós Code) e ramo de falha de API, 6 testes novos |
+| `8e70d5a` | vínculo com o chat de origem, `chatId` no inbound, `writeAttempted` no caminho MOCK, mensagens reais (nós Code) e ramo de falha de API, 6 testes novos |
+| `69a0d7e` | workflow único `GMJ-NetVision-Telegram-RC4-CORRIGIDO.json` com o callback de escopo integrado ao export real |
+| `2d332a7` | bearer do canal n8n por credencial Header Auth (sem segredo no JSON) |
+| *RC4 final* | `POST /api/integrations/n8n/mitigation-scope-cancel` (revogação), orçamento de `callback_data`, operador nominal obrigatório, correção de `answerQuery`/`queryId` no workflow |
 
 ## 7. Plano de publicação e rollback
 
@@ -301,8 +367,8 @@ BHNET-3043 e a publicação exige restart da API.
 | Ordem | Por que |
 | --- | --- |
 | 1. API RC4 | O canal antigo continua funcionando (envia só `profileId`) e passa a receber `SCOPE_CONFIRMATION_REQUIRED` **com token**: nada é retirado sem confirmação |
-| 2. Sub-workflows | Se fossem importados antes, o schema estrito da RC3 recusaria `scopeConfirmationToken` com `400` — inofensivo, mas inútil |
-| 3. Ligação no fluxo principal | O `IF` novo só passa a chamar o sub-workflow depois de ele existir |
+| 2. Workflow único | Se fosse importado antes, o schema estrito da RC3 recusaria `scopeConfirmationToken` com `400` — inofensivo, mas inútil |
+| 3. `chatId`/`confirmedBy` no corpo legado | `Montar Corpo do Comando` tem a constante `INCLUIR_DADOS_DE_ESCOPO = false`; troque para `true` **depois** da RC4 no ar para o token passar a ficar preso ao chat |
 
 Nenhum estado intermediário executa retirada inesperada: o pior caso é o
 operador ver "solicite novamente" e clicar de novo em RETIRAR MITIGAÇÃO.
@@ -311,16 +377,20 @@ operador ver "solicite novamente" e clicar de novo em RETIRAR MITIGAÇÃO.
    operação em andamento (`POLICY_BUSY`/`IN_FLIGHT`).
 2. Build do commit em release separada (`/opt/netvision-fast-bridge/releases/rc4-<sha>`),
    preservando integralmente `rc3-0e7099c` (binário + BUILD.json + sha256).
-3. `systemctl restart netvision-api` (encerra o PID anterior antes de iniciar o novo).
+3. `systemctl restart netvision-api netvision-mcp` (o MCP tem `Requires=` na API
+   e **não** volta sozinho).
 4. Validar: `/health`, migrations inalteradas (41), 36 perfis, estado dos
    runtimes, `MITIGATION_FAST_BRIDGE_MODE`/`ENFORCE_PROFILE_IDS` vindos do
    `api-gate3.env`, BHNET ainda `MITIGATED`, readback Huawei inalterado
    (`/api/bgp/mitigation/policies/reconcile/preview`, somente leitura).
 5. Banco/MCP/Fast Observer: contagens inalteradas; observador sem restart.
-6. Importar os dois sub-workflows, ligar o `IF` e o roteamento do callback e
-   homologar no grupo de operação com um perfil de **laboratório** (policy
-   própria) antes de habilitar o botão de produção.
-7. `grep` no journal: nenhuma reativação automática inesperada em 15 min.
+6. n8n: criar a credencial `NetVision n8n Command`, importar o workflow único,
+   preencher `OPERADORES_RETIRADA_COMPARTILHADA` (ou
+   `NETVISION_TELEGRAM_OPERATORS`), salvar e homologar com **policy de
+   laboratório** antes de valer no grupo de operação.
+7. Depois da RC4 validada: `INCLUIR_DADOS_DE_ESCOPO = true` e novo teste de
+   `remove_execute` + `rmx:` (o token passa a recusar outro chat).
+8. `grep` no journal: nenhuma reativação automática inesperada em 15 min.
 
 ### Efeito do restart nas confirmações
 
@@ -372,16 +442,17 @@ alterado.
 O que o operador precisa fazer, nesta ordem:
 
 1. **Exportar** o workflow atual do Telegram (backup antes de qualquer mudança).
-2. **Importar** `docs/n8n/shared-policy-remove-request.json` e
-   `docs/n8n/shared-policy-remove-confirm.json`.
-3. Substituir `SUBSTITUIR_CREDENTIAL_ID` pela credencial real do bot Telegram
-   nos 6 nós de Telegram dos dois arquivos.
-4. Confirmar que existem `NETVISION_API_BASE`, `NETVISION_N8N_COMMAND_TOKEN` e
-   `NETVISION_TELEGRAM_OPERATORS` no ambiente do n8n.
-5. No fluxo principal: depois do nó HTTP de REMOVE, adicionar o `IF` de status de
-   escopo → `Execute Workflow` (request). No Telegram Trigger, rotear
-   `rmc:`/`rmx:` → `Execute Workflow` (confirm).
-6. Homologar em um perfil de laboratório antes de habilitar no grupo de operação.
+2. Abrir o **mesmo** workflow e usar ⋯ → *Import from File…* →
+   `docs/n8n/GMJ-NetVision-Telegram-RC4-CORRIGIDO.json` (substitui o conteúdo
+   preservando id, webhookIds e o único Telegram Trigger). **Não** importar como
+   workflow novo, para não duplicar trigger/webhook.
+3. Criar a credencial **Header Auth** `NetVision n8n Command`
+   (`Authorization` = `Bearer <token atual>`) e selecioná-la nos 2 nós HTTP.
+4. Preencher `OPERADORES_RETIRADA_COMPARTILHADA` (ids do Telegram) no nó
+   `Interpretar Callback` — sem isso, `rmx:`/`rmc:` são recusados (fail-closed).
+5. Salvar. Homologar em um perfil de laboratório antes de habilitar no grupo.
+6. Depois da RC4 no ar: `INCLUIR_DADOS_DE_ESCOPO = true` no nó
+   `Montar Corpo do Comando`.
 
 Nada disso foi publicado: o texto acima é procedimento, não estado atual.
 

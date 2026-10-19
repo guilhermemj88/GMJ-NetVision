@@ -76,9 +76,11 @@
     },
     {
       "parameters": {
-        "callbackQueryId": "={{ $json.callbackQueryId }}",
-        "text": "Ação não permitida para este operador.",
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $json.callbackQueryId }}",
         "additionalFields": {
+          "text": "Ação não permitida para este operador.",
           "show_alert": true
         }
       },
@@ -220,10 +222,11 @@
     },
     {
       "parameters": {
-        "callbackQueryId": "={{ $('Interpretar callback').first().json.callbackQueryId }}",
-        "text": "={{ $('API: REMOVE com token de escopo').first().json.ok ? 'Retirada confirmada pela API.' : 'N\\u00E3o foi poss\\u00EDvel confirmar: ' + ($('API: REMOVE com token de escopo').first().json.status || 'API indispon\\u00EDvel') }}",
+        "resource": "callback",
+        "operation": "answerQuery",
+        "queryId": "={{ $('Interpretar callback').first().json.callbackQueryId }}",
         "additionalFields": {
-          "show_alert": false
+          "text": "={{ $('API: REMOVE com token de escopo').first().json.ok ? 'Retirada confirmada pela API.' : 'Não foi possível confirmar: ' + ($('API: REMOVE com token de escopo').first().json.status || 'API indisponível') }}"
         }
       },
       "id": "b1000000-0000-4000-8000-000000000007",

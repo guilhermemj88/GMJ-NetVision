@@ -76,6 +76,10 @@ export type ScopeConfirmationConsumeResult =
   | { ok: true; record: ScopeConfirmationRecord }
   | { ok: false; code: ScopeConfirmationFailure; message: string };
 
+export type ScopeConfirmationRevokeResult =
+  | { ok: true; record: ScopeConfirmationRecord }
+  | { ok: false; code: ScopeConfirmationFailure; message: string };
+
 export interface ScopeConfirmationStoreOptions {
   ttlMs?: number;
   /** Teto de confirmacoes pendentes (as mais antigas expiram primeiro). */
@@ -262,6 +266,55 @@ export class ScopeConfirmationStore {
   release(token: string): void {
     const record = this.records.get(token);
     if (record) record.usedAtMs = null;
+  }
+
+  /**
+   * REVOGA a confirmacao pendente (cancelamento explicito do operador).
+   *
+   * Diferente de `release` (que devolve o token ao operador apos um bloqueio),
+   * aqui o registro e REMOVIDO: o mesmo token deixa de existir e uma tentativa
+   * posterior de confirmar cai em `SCOPE_CONFIRMATION_TOKEN_UNKNOWN`, sem
+   * tocar no equipamento. Idempotente na pratica: revogar de novo devolve o
+   * mesmo `TOKEN_UNKNOWN`.
+   */
+  revoke(
+    token: string,
+    meta: { confirmedBy?: string | null; chatId?: string | null } = {},
+  ): ScopeConfirmationRevokeResult {
+    this.prune();
+    const record = this.records.get(token);
+    if (!record) {
+      return {
+        ok: false,
+        code: 'SCOPE_CONFIRMATION_TOKEN_UNKNOWN',
+        message: 'Confirmacao desconhecida, expirada ou ja revogada',
+      };
+    }
+    if (record.usedAtMs !== null) {
+      return {
+        ok: false,
+        code: 'SCOPE_CONFIRMATION_USED',
+        message: 'Esta confirmacao ja foi utilizada e nao pode ser revogada',
+      };
+    }
+    if (this.now().getTime() > record.expiresAtMs) {
+      this.records.delete(token);
+      return {
+        ok: false,
+        code: 'SCOPE_CONFIRMATION_EXPIRED',
+        message: 'Confirmacao expirada',
+      };
+    }
+    const currentChatId = normalizeRef(meta.chatId);
+    if (record.chatId !== null && currentChatId !== null && record.chatId !== currentChatId) {
+      return {
+        ok: false,
+        code: 'SCOPE_CONFIRMATION_CHAT_MISMATCH',
+        message: 'Esta confirmacao foi emitida em outro chat/grupo',
+      };
+    }
+    this.records.delete(token);
+    return { ok: true, record: { ...record, confirmedBy: normalizeRef(meta.confirmedBy) } };
   }
 
   /** Leitura de auditoria/teste (nunca exposta por HTTP). */

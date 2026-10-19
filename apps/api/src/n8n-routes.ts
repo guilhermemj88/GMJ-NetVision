@@ -42,6 +42,21 @@ export const n8nCommandSchema = z
     message: 'profileId ou scopeConfirmationToken e obrigatorio',
   });
 
+/**
+ * CANCELAMENTO EXPLICITO de uma confirmacao de escopo pendente.
+ *
+ * Nao executa comando, nao resolve perfil e nao toca no equipamento: apenas
+ * invalida o token para que um `rmx:` antigo deixe de funcionar.
+ */
+export const n8nScopeCancelSchema = z
+  .object({
+    requestId: z.string().min(1).max(160),
+    scopeConfirmationToken: z.string().min(16).max(128),
+    confirmedBy: z.string().min(1).max(120).optional(),
+    chatId: z.string().min(1).max(64).optional(),
+  })
+  .strict();
+
 /** Log operacional do inbound: NUNCA carrega o bearer token. */
 export interface N8nInboundLog {
   requestId: string | null;
@@ -220,5 +235,88 @@ export function registerN8nRoutes(app: FastifyInstance, dependencies: N8nRouteDe
       safeError: result.safeError ?? null,
     });
     return result;
+  });
+
+  app.post('/api/integrations/n8n/mitigation-scope-cancel', async (request, reply) => {
+    const configured = await expectedToken();
+    if (!configured) {
+      await record({
+        requestId: null,
+        action: 'SCOPE_CONFIRMATION_REVOKE',
+        profileId: null,
+        status: 'NOT_CONFIGURED',
+        httpStatus: 503,
+        ok: false,
+        idempotent: null,
+        safeError: 'Integração n8n não configurada neste ambiente',
+      });
+      return reply.code(503).send({
+        ok: false,
+        status: 'NOT_CONFIGURED',
+        safeError: 'Integração n8n não configurada neste ambiente',
+      });
+    }
+
+    const bearer = readBearer(request.headers.authorization);
+    if (!bearer || !safeEqual(bearer, configured)) {
+      await record({
+        requestId: null,
+        action: 'SCOPE_CONFIRMATION_REVOKE',
+        profileId: null,
+        status: 'UNAUTHORIZED',
+        httpStatus: 401,
+        ok: false,
+        idempotent: null,
+        safeError: 'Token ausente ou inválido',
+      });
+      return reply.code(401).send({
+        ok: false,
+        status: 'UNAUTHORIZED',
+        safeError: 'Token ausente ou inválido',
+      });
+    }
+
+    const parsed = n8nScopeCancelSchema.safeParse(request.body ?? {});
+    if (!parsed.success) {
+      const campos = parsed.error.issues
+        .map((issue) => (issue.path.length ? issue.path.join('.') : 'body'))
+        .join(', ');
+      await record({
+        requestId: null,
+        action: 'SCOPE_CONFIRMATION_REVOKE',
+        profileId: null,
+        status: 'INVALID_REQUEST',
+        httpStatus: 400,
+        ok: false,
+        idempotent: null,
+        safeError: `Payload inválido (${campos})`,
+      });
+      return reply.code(400).send({
+        ok: false,
+        status: 'INVALID_REQUEST',
+        safeError: `Payload inválido (${campos})`,
+      });
+    }
+
+    const result = commands.revokeScopeConfirmation(parsed.data.scopeConfirmationToken, {
+      ...(parsed.data.confirmedBy === undefined ? {} : { confirmedBy: parsed.data.confirmedBy }),
+      ...(parsed.data.chatId === undefined ? {} : { chatId: parsed.data.chatId }),
+    });
+    await record({
+      requestId: parsed.data.requestId,
+      action: 'SCOPE_CONFIRMATION_REVOKE',
+      profileId: null,
+      status: result.status,
+      httpStatus: 200,
+      ok: result.ok,
+      idempotent: null,
+      safeError: result.safeError ?? null,
+    });
+    return reply.code(200).send({
+      ok: result.ok,
+      status: result.status,
+      requestId: parsed.data.requestId,
+      ...(result.safeError === undefined ? {} : { safeError: result.safeError }),
+    });
   });
 }

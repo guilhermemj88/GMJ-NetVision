@@ -167,7 +167,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const input = $input.first().json;\n\nconst q =\n  input.callback_query ||\n  input.callbackQuery ||\n  input.raw?.callback_query ||\n  input.raw?.callbackQuery ||\n  input;\n\nconst data = String(q.data ?? input.data ?? '');\nconst allowedChatId = '-5522540056';\n\nconst chatId = q.message?.chat?.id ?? null;\nconst userId = q.from?.id ?? null;\nconst username = q.from?.username ?? null;\nconst messageId = q.message?.message_id ?? null;\nconst callbackQueryId = q.id ?? null;\n\n// RC4: callbacks de escopo compartilhado -> rmc:<token> (cancelar) | rmx:<token> (confirmar)\nconst scopeMatch = /^(rmc|rmx):([A-Za-z0-9_-]{16,128})$/.exec(data);\nconst isScopeCallback = scopeMatch !== null;\nconst isScopeConfirm = scopeMatch !== null && scopeMatch[1] === 'rmx';\nconst isScopeCancel = scopeMatch !== null && scopeMatch[1] === 'rmc';\nconst scopeToken = scopeMatch ? scopeMatch[2] : '';\n\n// Callbacks legados -> <comando>|<profileId>\nconst parts = data.split('|');\nconst legacyCmd = parts[0] ?? '';\nconst legacyProfileId = parts[1] ?? '';\n\nconst validCommands = new Set([\n  'remove_confirm',\n  'remove_execute',\n  'remove_cancel',\n]);\n\nconst legacyValid =\n  parts.length === 2 &&\n  validCommands.has(legacyCmd) &&\n  legacyProfileId.length > 0 &&\n  legacyProfileId.length <= 160 &&\n  /^[a-zA-Z0-9_.:-]+$/.test(legacyProfileId);\n\nconst callbackValid = isScopeCallback ? true : legacyValid;\n\nconst cmd = isScopeCallback\n  ? (isScopeConfirm ? 'scope_confirm' : 'scope_cancel')\n  : legacyCmd;\nconst profileId = isScopeCallback ? '' : legacyProfileId;\n\nconst groupAuthorized = chatId !== null && String(chatId) === allowedChatId;\nconst userIdentified = userId !== null && callbackQueryId !== null;\n\nconst authorized = callbackValid && groupAuthorized && userIdentified;\n\n// REMOVE legado somente apos confirmar e autorizar\nconst action = authorized && cmd === 'remove_execute' ? 'REMOVE' : null;\n\nreturn [{\n  json: {\n    raw: input,\n    callbackQueryId,\n    chatId,\n    userId,\n    username,\n    messageId,\n    cmd,\n    action,\n    profileId,\n    scopeToken,\n    isScopeCallback,\n    isScopeConfirm,\n    isScopeCancel,\n    callbackValid,\n    groupAuthorized,\n    authorized,\n    requestId: callbackQueryId ? ('telegram-' + callbackQueryId) : null,\n    allowedChatId,\n    canRemove: authorized && cmd === 'remove_execute',\n    requestedBy: username ? ('@' + username) : String(userId ?? 'desconhecido'),\n  },\n}];"
+        "jsCode": "const input = $input.first().json;\n\nconst q =\n  input.callback_query ||\n  input.callbackQuery ||\n  input.raw?.callback_query ||\n  input.raw?.callbackQuery ||\n  input;\n\nconst data = String(q.data ?? input.data ?? '');\nconst allowedChatId = '-5522540056';\n\n// OPERADORES AUTORIZADOS A CONFIRMAR/CANCELAR RETIRADA COMPARTILHADA (Telegram user.id).\n// Lista VAZIA = ninguem autorizado (fail-closed). Preencha antes de homologar.\n// Aceita tambem NETVISION_TELEGRAM_OPERATORS (ids separados por virgula).\nconst OPERADORES_RETIRADA_COMPARTILHADA = [];\n\nlet operadores = OPERADORES_RETIRADA_COMPARTILHADA.slice();\ntry {\n  const raw =\n    typeof $env !== 'undefined' && $env.NETVISION_TELEGRAM_OPERATORS\n      ? String($env.NETVISION_TELEGRAM_OPERATORS)\n      : '';\n  const doEnv = raw.split(',').map((v) => v.trim()).filter((v) => v.length > 0);\n  if (doEnv.length > 0) operadores = operadores.concat(doEnv);\n} catch {\n  operadores = OPERADORES_RETIRADA_COMPARTILHADA.slice();\n}\noperadores = operadores.map((v) => String(v).trim()).filter((v) => v.length > 0);\n\nconst chatId = q.message?.chat?.id ?? null;\nconst userId = q.from?.id ?? null;\nconst username = q.from?.username ?? null;\nconst messageId = q.message?.message_id ?? null;\nconst callbackQueryId = q.id ?? null;\n\n// Telefone: callback_data do Telegram tem limite de 64 BYTES.\nlet callbackBytes = 0;\nfor (const ch of data) {\n  const cp = ch.codePointAt(0);\n  callbackBytes += cp < 0x80 ? 1 : cp < 0x800 ? 2 : cp < 0x10000 ? 3 : 4;\n}\n\n// RC4: rmc:<token> (cancelar) | rmx:<token> (confirmar)\nconst scopeMatch = /^(rmc|rmx):([A-Za-z0-9_-]{16,60})$/.exec(data);\nconst isScopeCallback = scopeMatch !== null && callbackBytes <= 64;\nconst isScopeConfirm = isScopeCallback && scopeMatch[1] === 'rmx';\nconst isScopeCancel = isScopeCallback && scopeMatch[1] === 'rmc';\nconst scopeToken = isScopeCallback ? scopeMatch[2] : '';\n\n// Callbacks legados -> <comando>|<profileId>\nconst parts = data.split('|');\nconst legacyCmd = parts[0] ?? '';\nconst legacyProfileId = parts[1] ?? '';\n\nconst validCommands = new Set([\n  'remove_confirm',\n  'remove_execute',\n  'remove_cancel',\n]);\n\nconst legacyValid =\n  parts.length === 2 &&\n  validCommands.has(legacyCmd) &&\n  legacyProfileId.length > 0 &&\n  legacyProfileId.length <= 160 &&\n  /^[a-zA-Z0-9_.:-]+$/.test(legacyProfileId);\n\nconst callbackValid = isScopeCallback ? true : legacyValid;\n\nconst cmd = isScopeCallback\n  ? (isScopeConfirm ? 'scope_confirm' : 'scope_cancel')\n  : legacyCmd;\nconst profileId = isScopeCallback ? '' : legacyProfileId;\n\nconst groupAuthorized = chatId !== null && String(chatId) === allowedChatId;\nconst userIdentified = userId !== null && callbackQueryId !== null;\n\n// Retirada compartilhada exige operador NOMEADO; o grupo sozinho nao basta.\nconst operatorAuthorized = operadores.includes(String(userId));\nconst scopeAuthorized = isScopeCallback ? operatorAuthorized : true;\n\nconst authorized = callbackValid && groupAuthorized && userIdentified && scopeAuthorized;\n\n// REMOVE legado somente apos confirmar e autorizar\nconst action = authorized && cmd === 'remove_execute' ? 'REMOVE' : null;\n\nreturn [{\n  json: {\n    raw: input,\n    callbackQueryId,\n    chatId,\n    userId,\n    username,\n    messageId,\n    cmd,\n    action,\n    profileId,\n    scopeToken,\n    isScopeCallback,\n    isScopeConfirm,\n    isScopeCancel,\n    callbackBytes,\n    callbackValid,\n    groupAuthorized,\n    operatorAuthorized,\n    authorized,\n    requestId: callbackQueryId ? ('telegram-' + callbackQueryId) : null,\n    allowedChatId,\n    canRemove: authorized && cmd === 'remove_execute',\n    requestedBy: username ? ('@' + username) : String(userId ?? 'desconhecido'),\n  },\n}];"
       },
       "id": "526077e3-47ee-496d-ac54-e90a8781527d",
       "name": "Interpretar Callback",
@@ -228,7 +228,7 @@
         "sendBody": true,
         "contentType": "raw",
         "rawContentType": "application/json",
-        "body": "={{ JSON.stringify({ requestId: $json.requestId, action: $json.action, profileId: $json.profileId }) }}",
+        "body": "={{ $json.bodyJson }}",
         "options": {
           "response": {
             "response": {
@@ -1187,9 +1187,11 @@
     {
       "parameters": {
         "resource": "callback",
-        "operation": "answerCallbackQuery",
-        "callbackQueryId": "={{ $('Interpretar Callback').first().json.callbackQueryId }}",
-        "text": "Recebido. Processando..."
+        "operation": "answerQuery",
+        "queryId": "={{ $('Interpretar Callback').first().json.callbackQueryId }}",
+        "additionalFields": {
+          "text": "Recebido. Processando..."
+        }
       },
       "id": "c4000003-0000-4000-8000-000000000003",
       "name": "Telegram - ACK Escopo",
@@ -1246,7 +1248,7 @@
         "operation": "editMessageText",
         "chatId": "={{ $('Interpretar Callback').first().json.chatId }}",
         "messageId": "={{ $('Interpretar Callback').first().json.messageId }}",
-        "text": "=🚫 <b>RETIRADA COMPARTILHADA CANCELADA</b>\n\nOperador: {{ $('Interpretar Callback').first().json.requestedBy }}\nNenhuma alteração foi feita no equipamento.\n\nA confirmação pendente não foi revogada no servidor: ela expira sozinha em até 10 minutos e não pode ser reutilizada depois de usada.",
+        "text": "={{ $json.text }}",
         "replyMarkup": "none",
         "additionalFields": {
           "appendAttribution": false,
@@ -1535,6 +1537,139 @@
         }
       },
       "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const cb = $('Interpretar Callback').first().json;\n\n// RC4 PUBLICADA? Mude para true SOMENTE depois do deploy da API RC4.\n// Enquanto false, o corpo mantem o contrato da RC3 (schema estrito: so\n// requestId/action/profileId). Com true, a confirmacao emitida pela RC4\n// passa a ficar vinculada ao chat e ao operador.\nconst INCLUIR_DADOS_DE_ESCOPO = false;\n\nconst body = {\n  requestId: cb.requestId,\n  action: cb.action,\n  profileId: cb.profileId,\n};\n\nif (INCLUIR_DADOS_DE_ESCOPO) {\n  body.chatId = String(cb.chatId);\n  body.confirmedBy = 'telegram:' + cb.userId;\n}\n\nreturn [{ json: Object.assign({}, cb, { bodyJson: JSON.stringify(body) }) }];"
+      },
+      "id": "c5000001-0000-4000-8000-000000000001",
+      "name": "Montar Corpo do Comando",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        2400
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c5000002-0000-4000-8000-000000000002",
+              "leftValue": "={{ $json.token }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c5000003-0000-4000-8000-000000000003",
+      "name": "IF - Tem token?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1584,
+        2560
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "editMessageText",
+        "chatId": "={{ $json.chatId }}",
+        "messageId": "={{ $json.messageId }}",
+        "text": "={{ $json.text }}",
+        "replyMarkup": "none",
+        "additionalFields": {
+          "appendAttribution": false,
+          "parse_mode": "HTML"
+        }
+      },
+      "id": "c5000004-0000-4000-8000-000000000004",
+      "name": "Telegram - Escopo sem Confirmacao",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1824,
+        2640
+      ],
+      "credentials": {
+        "telegramApi": {
+          "id": "gjbB9eOXEJWGKxQ5",
+          "name": "Telegram gmjflow_bot"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://45.163.144.8:3333/api/integrations/n8n/mitigation-scope-cancel",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ JSON.stringify({ requestId: $('Interpretar Callback').first().json.requestId + '-cancel', scopeConfirmationToken: $('Interpretar Callback').first().json.scopeToken, confirmedBy: 'telegram:' + $('Interpretar Callback').first().json.userId, chatId: String($('Interpretar Callback').first().json.chatId) }) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      },
+      "id": "c5000005-0000-4000-8000-000000000005",
+      "name": "HTTP - NetVision Scope Cancel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        864,
+        1952
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "SUBSTITUIR_CREDENTIAL_ID",
+          "name": "NetVision n8n Command"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst cb = $('Interpretar Callback').first().json;\n\nlet r = input.body ?? input;\nif (typeof r === 'string') {\n  try { r = JSON.parse(r); } catch { r = {}; }\n}\n\nconst transporte =\n  (input.error !== undefined && input.error !== null) ||\n  (r.error !== undefined && r.error !== null);\n\nconst revogado = !transporte && r.ok === true;\nconst status = transporte ? 'API_INDISPONIVEL' : (r.status || 'SEM_RESPOSTA');\n\nconst linhas = [];\nlinhas.push('\\uD83D\\uDEAB <b>RETIRADA COMPARTILHADA CANCELADA</b>');\nlinhas.push('');\nlinhas.push('<b>Operador:</b> ' + String(cb.requestedBy || '-'));\n\nif (revogado) {\n  linhas.push('\\u2705 A confirma\\u00E7\\u00E3o foi <b>revogada no servidor</b>: o bot\\u00E3o antigo n\\u00E3o retira mais nada.');\n} else if (transporte) {\n  linhas.push('\\u26A0\\uFE0F N\\u00E3o foi poss\\u00EDvel confirmar a revoga\\u00E7\\u00E3o no servidor (falha de comunica\\u00E7\\u00E3o).');\n  linhas.push('A confirma\\u00E7\\u00E3o expira sozinha em at\\u00E9 10 minutos.');\n} else {\n  linhas.push('\\u26A0\\uFE0F A confirma\\u00E7\\u00E3o j\\u00E1 n\\u00E3o era v\\u00E1lida no servidor (status ' + status + ').');\n}\n\nlinhas.push('');\nlinhas.push('Nenhuma altera\\u00E7\\u00E3o foi feita no equipamento.');\n\nreturn [{ json: {\n  chatId: cb.chatId,\n  messageId: cb.messageId,\n  revoked: revogado,\n  status: status,\n  text: linhas.join('\\n'),\n} }];"
+      },
+      "id": "c5000006-0000-4000-8000-000000000006",
+      "name": "Formatar Cancelamento",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1104,
+        1952
+      ]
     }
   ],
   "pinData": {},
@@ -1692,7 +1827,7 @@
       "main": [
         [
           {
-            "node": "HTTP - NetVision Command",
+            "node": "Montar Corpo do Comando",
             "type": "main",
             "index": 0
           }
@@ -1991,7 +2126,7 @@
         ],
         [
           {
-            "node": "Telegram - Escopo Cancelado",
+            "node": "HTTP - NetVision Scope Cancel",
             "type": "main",
             "index": 0
           }
@@ -2060,7 +2195,58 @@
       "main": [
         [
           {
+            "node": "IF - Tem token?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Montar Corpo do Comando": {
+      "main": [
+        [
+          {
+            "node": "HTTP - NetVision Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF - Tem token?": {
+      "main": [
+        [
+          {
             "node": "Telegram - Confirmar Retirada Compartilhada",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Telegram - Escopo sem Confirmacao",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP - NetVision Scope Cancel": {
+      "main": [
+        [
+          {
+            "node": "Formatar Cancelamento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Cancelamento": {
+      "main": [
+        [
+          {
+            "node": "Telegram - Escopo Cancelado",
             "type": "main",
             "index": 0
           }

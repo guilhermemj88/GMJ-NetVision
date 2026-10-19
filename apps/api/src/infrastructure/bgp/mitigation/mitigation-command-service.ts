@@ -309,6 +309,21 @@ export class MitigationCommandService {
     return record.originProfileId;
   }
 
+  /**
+   * Cancelamento explicito (botao `rmc:`): revoga o token pendente SEM tocar no
+   * equipamento. Depois disso o mesmo token nao confirma mais nada.
+   */
+  revokeScopeConfirmation(
+    token: string,
+    meta: { confirmedBy?: string | null; chatId?: string | null } = {},
+  ): { ok: boolean; status: string; safeError?: string } {
+    const result = this.scopeConfirmations.revoke(token, meta);
+    if (result.ok) {
+      return { ok: true, status: 'SCOPE_CONFIRMATION_REVOKED' };
+    }
+    return { ok: false, status: result.code, safeError: result.message };
+  }
+
   async execute(input: MitigationCommandInput): Promise<MitigationCommandResult> {
     const mutating = MUTATING_ACTIONS.includes(input.action);
     if (mutating) {
