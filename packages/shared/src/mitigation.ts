@@ -32,7 +32,7 @@ export type MitigationAddressFamily = 'IPV4' | 'IPV6';
 export type MitigationAutoTrafficDirection = 'RX' | 'TX';
 
 /** De onde veio a direcao efetiva usada pelo motor. */
-export type MitigationAutoDirectionSource = 'PROFILE' | 'ENV';
+export type MitigationAutoDirectionSource = 'PROFILE' | 'ENV' | 'INTERFACE';
 
 export type MitigationTelemetryReason =
   | 'DIRECTION_NOT_CONFIGURED'
@@ -78,6 +78,28 @@ export interface MitigationDirectionChangeDto {
   profileId: string;
   direction: MitigationAutoTrafficDirection | null;
 }
+/**
+ * Direcao herdada pela INTERFACE. Vale para todos os perfis que nao tenham
+ * override explicito (perfil ou ENV) e para perfis descobertos no futuro.
+ */
+export interface MitigationInterfaceDirectionChangeDto {
+  interfaceId: string;
+  direction: MitigationAutoTrafficDirection | null;
+}
+export interface MitigationInterfaceDirectionPreviewRow {
+  interfaceId: string;
+  deviceId: string;
+  interfaceName: string | null;
+  before: MitigationAutoTrafficDirection | null;
+  after: MitigationAutoTrafficDirection | null;
+  /** Perfis nao-AUTO da interface que passam a herdar a direcao. */
+  affectedProfileIds: string[];
+  /** Perfis AUTO da interface (bloqueiam a mudanca: exigem autorizacao propria). */
+  autoProfileIds: string[];
+  impact: string;
+  rxBps: string | null;
+  txBps: string | null;
+}
 export interface MitigationDirectionPreviewDto {
   previewId: string;
   expiresAt: string;
@@ -95,6 +117,8 @@ export interface MitigationDirectionPreviewDto {
     rxBps: string | null;
     txBps: string | null;
   }[];
+  /** Mudancas por interface (heranca) aprovadas no mesmo lote. */
+  interfaceChanges?: MitigationInterfaceDirectionPreviewRow[];
 }
 
 export type MitigationBlockReason =
@@ -212,6 +236,8 @@ export interface BgpMitigationProfileDto {
    * fallback e a direcao EFETIVA aparece nas decisoes do motor.
    */
   autoTrafficDirection?: MitigationAutoTrafficDirection | null;
+  /** Direcao herdada da INTERFACE (fallback quando o perfil/ENV nao definem). */
+  interfaceTrafficDirection?: MitigationAutoTrafficDirection | null;
   /** Origem da banda efetiva (DESCRIPTION/MANUAL/UNKNOWN). */
   bandwidthSource?: string | null;
   /** Histerese configurada (amostras) — auditoria do modo sombra. */

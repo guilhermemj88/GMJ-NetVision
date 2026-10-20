@@ -18,12 +18,14 @@ import { inspectPolicyMitigation } from '../../infrastructure/bgp/mitigation/mit
 import { InMemoryPolicyScopeLock } from '../../infrastructure/bgp/mitigation/mitigation-policy-lock';
 import { MitigationAutoEngine } from './mitigation-auto-engine';
 import { SequenceTrafficSource } from './mitigation-traffic-source';
+import { resolveTelemetryDirection } from '../../infrastructure/bgp/mitigation/mitigation-telemetry';
 
 // AUD-AUTO-ALL: validacao MULTI-ASN em route-policy compartilhada (-IN).
 //
 // A unidade de acao BGP e a POLICY (deviceId + policyName); a deteccao e por
 // interface. ASNs diferentes NAO sao bloqueio: o escopo nunca consulta o ASN
-// dos peers (prova por fixtures espelhando a JUSTNET: 4 interfaces, 3 ASNs).
+// dos peers (fixtures espelhando a PRODUCAO da JUSTNET: 4 interfaces, 5 peers,
+// 4 ASNs - Eth-Trunk1.2519 concentra dois peers).
 // Cenarios: 2 ASNs / 4 interfaces / ataques simultaneos / recuperacao parcial
 // (nunca remove sozinho) / REMOVE manual protegido / lock e deduplicacao.
 
@@ -35,12 +37,20 @@ const NOW = new Date('2026-10-14T15:00:00.000Z');
 const BASELINE_NODES = [10, 999];
 const PAIR = { bogonNode: 1, mitigationNode: 2 };
 
-// Peers reais da JUSTNET (ASNs distintos na MESMA policy -IN).
+// Peers REAIS da JUSTNET (5 peers, 4 ASNs, na MESMA policy -IN).
 const JUSTNET_PEERS = [
   { peerId: 'peer-as271217', peerAddress: '10.200.201.226' },
   { peerId: 'peer-as262663', peerAddress: '10.200.201.230' },
   { peerId: 'peer-as264886-a', peerAddress: '10.200.201.66' },
   { peerId: 'peer-as264886-b', peerAddress: '10.200.201.70' },
+  { peerId: 'peer-as64608', peerAddress: '10.200.201.254' },
+];
+// Vinculos por interface (-IN): a 2a interface anuncia por DOIS peers.
+const JUSTNET_INTERFACE_PEERS: readonly (readonly number[])[] = [
+  [0],
+  [1, 4],
+  [2],
+  [3],
 ];
 
 function device(id: string): HostRecord {
@@ -164,7 +174,7 @@ class DeviceTruthExecutor implements MitigationLiveExecutorPort {
   }
 }
 
-async function harness(profileCount: number) {
+async function harness(profileCount: number, options: { interfaceDirection?: 'TX' } = {}) {
   const repository = new InMemoryMitigationRepository();
   const live = new DeviceTruthExecutor();
   const profileIds: string[] = [];
@@ -177,9 +187,16 @@ async function harness(profileCount: number) {
       detectedBandwidthBps: BANDWIDTH,
       bandwidthSource: 'DESCRIPTION',
     });
-    await repository.replaceProfilePeers(profile.id, [
-      { ...JUSTNET_PEERS[index]!, primary: true },
-    ]);
+    const peerIndexes = JUSTNET_INTERFACE_PEERS[index] ?? [index];
+    await repository.replaceProfilePeers(
+      profile.id,
+      peerIndexes.map((peerIndex) => ({ ...JUSTNET_PEERS[peerIndex]!, primary: true })),
+    );
+    if (options.interfaceDirection)
+      await repository.setInterfaceAutoTrafficDirection(
+        `if-${index + 1}`,
+        options.interfaceDirection,
+      );
     await repository.upsertRuntime(profile.id, {
       state: 'NORMAL',
       plannedBogonNode: PAIR.bogonNode,
@@ -210,6 +227,12 @@ async function harness(profileCount: number) {
         return Promise.all(
           records.map(async (record, index) => {
             const runtime = await repository.getRuntime(record.id);
+            const resolved = resolveTelemetryDirection(
+              record.id,
+              record.autoTrafficDirection,
+              {},
+              record.interfaceTrafficDirection,
+            );
             return {
               profileId: record.id,
               deviceId: record.deviceId,
@@ -217,6 +240,10 @@ async function harness(profileCount: number) {
               interfaceId: record.interfaceId,
               customer: `CLIENTE ${index + 1}`,
               mode: 'AUTO' as const,
+              direction: resolved.direction
+                ? (resolved.direction.toLowerCase() as 'rx' | 'tx')
+                : null,
+              directionSource: resolved.source,
               snapshotAvailable: true,
               readiness: 'READY' as const,
               prefixStatus: 'SAFE' as const,
@@ -227,7 +254,9 @@ async function harness(profileCount: number) {
               bogonNode: runtime?.plannedBogonNode ?? null,
               mitigationNode: runtime?.plannedMitigationNode ?? null,
               sharedPolicy: true,
-              peerAddresses: [JUSTNET_PEERS[index]!.peerAddress],
+              peerAddresses: (JUSTNET_INTERFACE_PEERS[index] ?? [index]).map(
+                (peerIndex) => JUSTNET_PEERS[peerIndex]!.peerAddress,
+              ),
               triggerPercent: 90,
               recoveryPercent: 70,
               triggerSamples: 3,
@@ -284,13 +313,49 @@ describe('AUD-AUTO-ALL: multi-ASN na mesma policy -IN (ASN nunca e bloqueio)', (
     expect(sibling?.reason).toBe('ALREADY_MITIGATED');
   });
 
-  it('2) QUATRO interfaces (3 ASNs, JUSTNET-like): UMA ativacao e os 4 runtimes sincronizados', async () => {
+  it('2) QUATRO interfaces (5 peers, 4 ASNs, JUSTNET real): UMA ativacao e os 4 runtimes sincronizados', async () => {
     const h = await harness(4);
 
-    await h.run(3, [h.over, h.over, h.over, h.over]);
+    const decisions = await h.run(3, [h.over, h.over, h.over, h.over]);
 
     expect(h.live.activateCalls).toBe(1);
     expect(h.live.removeCalls).toBe(0);
+    for (const profileId of h.profileIds) {
+      expect(await stateOf(h.repository, profileId)).toBe('MITIGATED');
+    }
+    // A interface com DOIS peers continua sendo UM alvo (deviceId + interface + familia).
+    expect(decisions).toHaveLength(4);
+    // Prova da topologia REAL: 4 interfaces, 5 peers, 4 ASNs, UMA policy fisica.
+    const records = await h.repository.listProfiles();
+    expect(new Set(records.map((record) => `${record.deviceId}:${record.policyName}`)).size).toBe(1);
+    expect(new Set(records.map((record) => record.interfaceId)).size).toBe(4);
+    const peerIds = (
+      await Promise.all(h.profileIds.map((id) => h.repository.listProfilePeers(id)))
+    ).flatMap((peers) => peers.map((peer) => peer.peerId ?? ''));
+    expect(peerIds).toHaveLength(5);
+    const asns = new Set(peerIds.map((peerId) => peerId.replace(/^peer-as/, '').replace(/-[ab]$/, '')));
+    expect(asns).toEqual(new Set(['271217', '262663', '264886', '64608']));
+    const peers = await h.repository.listProfilePeers(h.profileIds[1]!);
+    expect(peers.map((peer) => peer.peerAddress).sort()).toEqual([
+      '10.200.201.230',
+      '10.200.201.254',
+    ]);
+  });
+
+  it('2b) QUATRO interfaces com direcao herdada da INTERFACE: mesma ativacao unica', async () => {
+    const h = await harness(4, { interfaceDirection: 'TX' });
+
+    const decisions = await h.run(3, [h.over, h.over, h.over, h.over]);
+
+    expect(h.live.activateCalls).toBe(1);
+    expect(h.live.removeCalls).toBe(0);
+    expect(decisions.map((decision) => decision.direction)).toEqual(['tx', 'tx', 'tx', 'tx']);
+    expect(decisions.map((decision) => decision.directionSource)).toEqual([
+      'INTERFACE',
+      'INTERFACE',
+      'INTERFACE',
+      'INTERFACE',
+    ]);
     for (const profileId of h.profileIds) {
       expect(await stateOf(h.repository, profileId)).toBe('MITIGATED');
     }

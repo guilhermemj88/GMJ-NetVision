@@ -205,7 +205,12 @@ export function registerMitigationRoutes(
   };
 
   if (dependencies.directionReview) {
-    const changesSchema = z.object({ changes: z.array(z.object({ profileId: z.string().min(1).max(160), direction: z.enum(['RX', 'TX']).nullable() }).strict()).min(1).max(100) }).strict();
+    const changeSchema = z.object({ profileId: z.string().min(1).max(160), direction: z.enum(['RX', 'TX']).nullable() }).strict();
+    const interfaceChangeSchema = z.object({ interfaceId: z.string().min(1).max(160), direction: z.enum(['RX', 'TX']).nullable() }).strict();
+    const changesSchema = z.object({
+      changes: z.array(changeSchema).max(100).optional(),
+      interfaceChanges: z.array(interfaceChangeSchema).max(100).optional(),
+    }).strict().refine((value) => (value.changes?.length ?? 0) + (value.interfaceChanges?.length ?? 0) > 0 && (value.changes?.length ?? 0) + (value.interfaceChanges?.length ?? 0) <= 100, { message: 'INVALID_DIRECTION_BATCH' });
     const applySchema = z.object({ previewId: z.string().uuid(), confirmed: z.literal(true) }).strict();
     const handler = (apply: boolean) => async (request: FastifyRequest, reply: import('fastify').FastifyReply) => {
       const user = await requireUser(request, reply);
@@ -217,7 +222,7 @@ export function registerMitigationRoutes(
           return await dependencies.directionReview!.apply(user.id, payload.previewId, payload.confirmed);
         }
         const payload = changesSchema.parse(request.body);
-        return await dependencies.directionReview!.preview(user.id, payload.changes);
+        return await dependencies.directionReview!.preview(user.id, payload.changes ?? [], payload.interfaceChanges ?? []);
       } catch (error) {
         if (error instanceof DirectionReviewError) return reply.code(error.statusCode).send({ code: error.code, message: error.message });
         throw error;

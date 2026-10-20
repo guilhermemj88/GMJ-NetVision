@@ -550,6 +550,12 @@ model Interface {
   mac                   String?
   mtu                   Int?
   speedBps              BigInt?
+  /**
+   * Direcao de telemetria do AUTO herdada por TODOS os perfis desta interface.
+   * Precedencia de resolucao: perfil (override) > ENV legado > interface.
+   * `null` = nao configurada (motor fail-closed quando nada resolve).
+   */
+  mitigationTrafficDirection BgpMitigationTrafficDirection?
   adminStatus           String
   operStatus            InterfaceStatus          @default(UNKNOWN)
   rxPowerDbm            Float?

@@ -28,6 +28,9 @@ import type {
 } from './mitigation-types';
 
 type ProfileRow = Prisma.BgpMitigationProfileGetPayload<Record<string, never>>;
+type ProfileRowWithInterface = ProfileRow & {
+  interface?: { mitigationTrafficDirection: 'RX' | 'TX' | null } | null;
+};
 type PeerRow = Prisma.BgpMitigationProfilePeerGetPayload<Record<string, never>>;
 type RuntimeRow = Prisma.BgpMitigationRuntimeGetPayload<Record<string, never>>;
 type SimulationRow = Prisma.BgpMitigationSimulationGetPayload<Record<string, never>>;
@@ -35,7 +38,7 @@ type EventRow = Prisma.BgpMitigationEventGetPayload<Record<string, never>>;
 
 type PeerExclusionRow = Prisma.BgpMitigationPeerExclusionGetPayload<Record<string, never>>;
 
-function mapProfile(row: ProfileRow): MitigationProfileRecord {
+export function mapProfile(row: ProfileRowWithInterface): MitigationProfileRecord {
   return {
     id: row.id,
     deviceId: row.deviceId,
@@ -55,6 +58,8 @@ function mapProfile(row: ProfileRow): MitigationProfileRecord {
     checkIntervalSeconds: row.checkIntervalSeconds,
     mitigationRt: row.mitigationRt,
     autoTrafficDirection: row.autoTrafficDirection as MitigationAutoTrafficDirection | null,
+    interfaceTrafficDirection:
+      (row.interface?.mitigationTrafficDirection as MitigationAutoTrafficDirection | null) ?? null,
     autoModeExempt: row.autoModeExempt,
     autoPromotedBySweep: row.autoPromotedBySweep,
     mitigationExcluded: row.mitigationExcluded,
@@ -218,7 +223,10 @@ export class PrismaMitigationRepository implements MitigationRepository {
   }
 
   async getProfile(id: string): Promise<MitigationProfileRecord | null> {
-    const row = await this.prisma.bgpMitigationProfile.findUnique({ where: { id } });
+    const row = await this.prisma.bgpMitigationProfile.findUnique({
+      where: { id },
+      include: { interface: { select: { mitigationTrafficDirection: true } } },
+    });
     return row ? mapProfile(row) : null;
   }
 
@@ -228,6 +236,7 @@ export class PrismaMitigationRepository implements MitigationRepository {
         ...(filter.deviceId === undefined ? {} : { deviceId: filter.deviceId }),
         ...(filter.enabled === undefined ? {} : { enabled: filter.enabled }),
       },
+      include: { interface: { select: { mitigationTrafficDirection: true } } },
       orderBy: { policyName: 'asc' },
     });
     return rows.map(mapProfile);
@@ -270,6 +279,16 @@ export class PrismaMitigationRepository implements MitigationRepository {
     await this.prisma.bgpMitigationProfile.update({
       where: { id },
       data: { autoTrafficDirection: direction },
+    });
+  }
+
+  async setInterfaceAutoTrafficDirection(
+    interfaceId: string,
+    direction: MitigationAutoTrafficDirection | null,
+  ): Promise<void> {
+    await this.prisma.interface.update({
+      where: { id: interfaceId },
+      data: { mitigationTrafficDirection: direction },
     });
   }
 

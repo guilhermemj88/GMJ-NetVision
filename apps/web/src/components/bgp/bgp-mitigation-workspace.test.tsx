@@ -1519,7 +1519,9 @@ describe('AUTO-ALL-PREP-1: sombra, direção e decisão por perfil', () => {
     await setDirectionSelect('RX');
     await clickByText('GERAR PRÉVIA (1)');
 
-    expect(api.previewMitigationDirections).toHaveBeenCalledWith([{ profileId: withDirection.id, direction: 'RX' }]);
+    expect(api.previewMitigationDirections).toHaveBeenCalledWith({
+      changes: [{ profileId: withDirection.id, direction: 'RX' }],
+    });
     expect(api.patchMitigationProfile).not.toHaveBeenCalled();
     expect(api.applyMitigationDirections).not.toHaveBeenCalled();
   });

@@ -62,6 +62,51 @@ describe('telemetry diagnostic independent of direction and execution', () => {
       (await diagnoseMitigationTelemetry([profile()], { ...options(), envDirections: { p: 'tx' } }))
         .entries[0]!,
     ).toMatchObject({ direction: 'TX', directionSource: 'ENV' }));
+  it('herda a direcao da INTERFACE e mantem a precedencia PROFILE > ENV > INTERFACE', async () => {
+    const fromInterface = await diagnoseMitigationTelemetry(
+      [profile({ interfaceTrafficDirection: 'TX' })],
+      options(),
+    );
+    expect(fromInterface.entries[0]!).toMatchObject({
+      direction: 'TX',
+      directionSource: 'INTERFACE',
+      telemetryAvailable: true,
+      executionAuthorized: false,
+      blockedReason: null,
+    });
+    expect(fromInterface.entries[0]!.reasons).not.toContain('DIRECTION_NOT_CONFIGURED');
+    const fromProfile = await diagnoseMitigationTelemetry(
+      [profile({ autoTrafficDirection: 'RX', interfaceTrafficDirection: 'TX' })],
+      { ...options(), envDirections: { p: 'tx' } },
+    );
+    expect(fromProfile.entries[0]!).toMatchObject({
+      direction: 'RX',
+      directionSource: 'PROFILE',
+    });
+    const fromEnv = await diagnoseMitigationTelemetry(
+      [profile({ interfaceTrafficDirection: 'TX' })],
+      { ...options(), envDirections: { p: 'rx' } },
+    );
+    expect(fromEnv.entries[0]!).toMatchObject({ direction: 'RX', directionSource: 'ENV' });
+  });
+  it('direcao herdada autoriza execucao somente quando nada mais bloqueia', async () => {
+    const result = await diagnoseMitigationTelemetry(
+      [profile({ mode: 'AUTO', interfaceTrafficDirection: 'TX', autoPromotedBySweep: false })],
+      { ...options(), authorization: () => [] },
+    );
+    expect(result.entries[0]!).toMatchObject({
+      direction: 'TX',
+      directionSource: 'INTERFACE',
+      telemetryAvailable: true,
+      executionAuthorized: true,
+      executionBlocks: [],
+    });
+    const swept = await diagnoseMitigationTelemetry(
+      [profile({ mode: 'AUTO', interfaceTrafficDirection: 'TX' })],
+      options(),
+    );
+    expect(swept.entries[0]!.executionAuthorized).toBe(false);
+  });
   it('reads shared v4/v6 once and keeps independent mode/direction/authorization', async () => {
     const deps = options();
     const result = await diagnoseMitigationTelemetry(

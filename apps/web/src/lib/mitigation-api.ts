@@ -25,14 +25,18 @@ import type {
   MitigationTelemetryReportDto,
   MitigationDirectionChangeDto,
   MitigationDirectionPreviewDto,
+  MitigationInterfaceDirectionChangeDto,
 } from '@gmj/shared';
 
 export const getMitigationTelemetry = () =>
   request<MitigationTelemetryReportDto>('/api/bgp/mitigation/telemetry');
-export const previewMitigationDirections = (changes: MitigationDirectionChangeDto[]) =>
+export const previewMitigationDirections = (input: {
+  changes?: MitigationDirectionChangeDto[];
+  interfaceChanges?: MitigationInterfaceDirectionChangeDto[];
+}) =>
   request<MitigationDirectionPreviewDto>('/api/bgp/mitigation/directions/preview', {
     method: 'POST',
-    body: JSON.stringify({ changes }),
+    body: JSON.stringify(input),
   });
 export const applyMitigationDirections = (previewId: string) =>
   request<{ applied: number }>('/api/bgp/mitigation/directions/apply', {

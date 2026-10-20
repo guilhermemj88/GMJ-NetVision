@@ -35,6 +35,11 @@ export interface MitigationProfileRecord {
    */
   autoTrafficDirection: MitigationAutoTrafficDirection | null;
   /**
+   * Direcao HERDADA da interface (fallback quando o perfil nao tem override e
+   * o ENV legado nao define). Nunca e escrita pelo discovery.
+   */
+  interfaceTrafficDirection: MitigationAutoTrafficDirection | null;
+  /**
    * Excecao manual do AUTO por DESCRIPTION: o operador fixou ALERT_ONLY. O
    * sweep nunca promove um perfil exempt e devolve AUTO -> ALERT_ONLY.
    */
@@ -254,6 +259,11 @@ export interface MitigationRepository {
   getProfile(id: string): Promise<MitigationProfileRecord | null>;
   listProfiles(filter?: MitigationProfileListFilter): Promise<MitigationProfileRecord[]>;
   setProfileMode(id: string, mode: MitigationProfileMode): Promise<void>;
+  /** Direcao herdada por TODOS os perfis da interface (nao toca modo/perfil). */
+  setInterfaceAutoTrafficDirection(
+    interfaceId: string,
+    direction: MitigationAutoTrafficDirection | null,
+  ): Promise<void>;
   setProfileEnabled(id: string, enabled: boolean): Promise<void>;
   setProfileBandwidthOverride(id: string, bandwidthOverrideBps: bigint | null): Promise<void>;
   /**

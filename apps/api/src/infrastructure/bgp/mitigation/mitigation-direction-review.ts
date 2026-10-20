@@ -2,10 +2,13 @@ import { createHash, randomUUID } from 'node:crypto';
 import type {
   MitigationDirectionChangeDto,
   MitigationDirectionPreviewDto,
+  MitigationInterfaceDirectionChangeDto,
+  MitigationInterfaceDirectionPreviewRow,
   MitigationTelemetryReportDto,
 } from '@gmj/shared';
 import type { MitigationProfileRecord } from './mitigation-repository';
 import { resolveTelemetryDirection } from './mitigation-telemetry';
+import type { MitigationAutoTrafficDirection } from './mitigation-types';
 
 export class DirectionReviewError extends Error {
   constructor(
@@ -29,6 +32,27 @@ export function directionProfileRevision(p: MitigationProfileRecord): string {
     )
     .digest('hex');
 }
+/**
+ * Revisao otimista da INTERFACE: qualquer edicao concorrente (direcao, perfis
+ * da interface ou modo AUTO) invalida o preview.
+ */
+export function directionInterfaceRevision(input: {
+  interfaceId: string;
+  direction: MitigationAutoTrafficDirection | null;
+  affectedProfileIds: string[];
+  autoProfileIds: string[];
+}): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        interfaceId: input.interfaceId,
+        direction: input.direction,
+        affectedProfileIds: [...input.affectedProfileIds].sort(),
+        autoProfileIds: [...input.autoProfileIds].sort(),
+      }),
+    )
+    .digest('hex');
+}
 export interface DirectionReviewStore {
   listProfiles(): Promise<MitigationProfileRecord[]>;
   apply(input: {
@@ -36,6 +60,8 @@ export interface DirectionReviewStore {
     actorId: string;
     revisions: Record<string, string>;
     changes: MitigationDirectionChangeDto[];
+    interfaceRevisions: Record<string, string>;
+    interfaceChanges: MitigationInterfaceDirectionChangeDto[];
   }): Promise<void>;
 }
 type Pending = {
@@ -43,9 +69,22 @@ type Pending = {
   actorId: string;
   revisions: Record<string, string>;
   changes: MitigationDirectionChangeDto[];
+  interfaceRevisions: Record<string, string>;
+  interfaceChanges: MitigationInterfaceDirectionChangeDto[];
 };
 
-/** No command/runtime/sweep port. Only non-AUTO profiles may be configured here. */
+/**
+ * Revisao de direcao de telemetria (preview + apply explicito).
+ *
+ * Escopo MINIMO: escreve apenas `autoTrafficDirection` (perfil) ou
+ * `Interface.mitigationTrafficDirection`. Nunca toca modo, proveniencia,
+ * runtime, sweep ou equipamento. Toda aplicacao e auditada (autor, momento,
+ * antes/depois) e protegida por revisao otimista.
+ *
+ * Perfis AUTO exigem autorizacao separada; interfaces que hospedam perfil AUTO
+ * tambem sao recusadas (a direcao herdada nao pode sobrescrever um override
+ * explicito de um perfil ja autorizado).
+ */
 export class MitigationDirectionReview {
   private readonly previews = new Map<string, Pending>();
   constructor(
@@ -59,15 +98,16 @@ export class MitigationDirectionReview {
   async preview(
     actorId: string,
     changes: MitigationDirectionChangeDto[],
+    interfaceChanges: MitigationInterfaceDirectionChangeDto[] = [],
   ): Promise<MitigationDirectionPreviewDto> {
     const now = (this.deps.now ?? (() => new Date()))();
     for (const [id, p] of this.previews)
       if (new Date(p.dto.expiresAt) <= now) this.previews.delete(id);
-    if (
-      !changes.length ||
-      changes.length > 100 ||
-      new Set(changes.map((c) => c.profileId)).size !== changes.length
-    )
+    const total = changes.length + interfaceChanges.length;
+    if (!total || total > 100) throw new DirectionReviewError('INVALID_DIRECTION_BATCH', 400);
+    if (new Set(changes.map((c) => c.profileId)).size !== changes.length)
+      throw new DirectionReviewError('INVALID_DIRECTION_BATCH', 400);
+    if (new Set(interfaceChanges.map((c) => c.interfaceId)).size !== interfaceChanges.length)
       throw new DirectionReviewError('INVALID_DIRECTION_BATCH', 400);
     if (this.previews.size >= 200) throw new DirectionReviewError('TOO_MANY_PREVIEWS', 429);
     const [records, diagnostics] = await Promise.all([
@@ -85,7 +125,12 @@ export class MitigationDirectionReview {
         throw new DirectionReviewError('INVALID_DIRECTION', 400);
       const d = diagnostics.entries.find((d) => d.profileId === p.id);
       revisions[p.id] = directionProfileRevision(p);
-      const resolved = resolveTelemetryDirection(p.id, change.direction, this.deps.envDirections);
+      const resolved = resolveTelemetryDirection(
+        p.id,
+        change.direction,
+        this.deps.envDirections,
+        p.interfaceTrafficDirection,
+      );
       rows.push({
         profileId: p.id,
         customer: null,
@@ -106,16 +151,61 @@ export class MitigationDirectionReview {
         txBps: d?.txBps ?? null,
       });
     }
-    const dto = {
+    const interfaceRevisions: Record<string, string> = {};
+    const interfaceRows: MitigationInterfaceDirectionPreviewRow[] = [];
+    for (const change of interfaceChanges) {
+      if (
+        change.direction !== null &&
+        change.direction !== 'RX' &&
+        change.direction !== 'TX'
+      )
+        throw new DirectionReviewError('INVALID_DIRECTION', 400);
+      const affected = records.filter((p) => p.interfaceId === change.interfaceId);
+      if (!affected.length) throw new DirectionReviewError('INTERFACE_NOT_FOUND', 404);
+      const autoProfileIds = affected.filter((p) => p.mode === 'AUTO').map((p) => p.id);
+      if (autoProfileIds.length)
+        throw new DirectionReviewError('INTERFACE_HAS_AUTO_PROFILE', 409);
+      if (affected.some((p) => changes.some((c) => c.profileId === p.id)))
+        throw new DirectionReviewError('CONFLICTING_DIRECTION_BATCH', 400);
+      const before = affected[0]!.interfaceTrafficDirection;
+      interfaceRevisions[change.interfaceId] = directionInterfaceRevision({
+        interfaceId: change.interfaceId,
+        direction: before,
+        affectedProfileIds: affected.map((p) => p.id),
+        autoProfileIds,
+      });
+      const d = diagnostics.entries.find((entry) =>
+        affected.some((p) => p.id === entry.profileId),
+      );
+      interfaceRows.push({
+        interfaceId: change.interfaceId,
+        deviceId: affected[0]!.deviceId,
+        interfaceName: d?.interfaceName ?? null,
+        before,
+        after: change.direction,
+        affectedProfileIds: affected.map((p) => p.id),
+        autoProfileIds,
+        impact:
+          change.direction === null
+            ? 'DIRECTION_STILL_REQUIRED'
+            : 'INHERITED_BY_PROFILES_SHADOW_EVALUATION_ONLY',
+        rxBps: d?.rxBps ?? null,
+        txBps: d?.txBps ?? null,
+      });
+    }
+    const dto: MitigationDirectionPreviewDto = {
       previewId: randomUUID(),
       expiresAt: new Date(now.getTime() + 300_000).toISOString(),
       changes: rows,
+      ...(interfaceRows.length ? { interfaceChanges: interfaceRows } : {}),
     };
     this.previews.set(dto.previewId, {
       dto,
       actorId,
       revisions,
       changes: changes.map((c) => ({ ...c })),
+      interfaceRevisions,
+      interfaceChanges: interfaceChanges.map((c) => ({ ...c })),
     });
     return dto;
   }
@@ -139,7 +229,9 @@ export class MitigationDirectionReview {
       actorId,
       revisions: pending.revisions,
       changes: pending.changes,
+      interfaceRevisions: pending.interfaceRevisions,
+      interfaceChanges: pending.interfaceChanges,
     });
-    return { applied: pending.changes.length };
+    return { applied: pending.changes.length + pending.interfaceChanges.length };
   }
 }

@@ -27,12 +27,17 @@ export function resolveTelemetryDirection(
   profileId: string,
   stored: MitigationAutoTrafficDirection | null | undefined,
   env: Record<string, 'rx' | 'tx'>,
+  interfaceStored?: MitigationAutoTrafficDirection | null,
 ) {
+  // Precedencia: override do PERFIL > ENV legado (override explicito dos 4
+  // perfis atuais) > direcao HERDADA da interface > indefinida (fail-closed).
   if (stored === 'RX' || stored === 'TX') return { direction: stored, source: 'PROFILE' as const };
   const legacy = env[profileId];
-  return legacy
-    ? { direction: legacy.toUpperCase() as MitigationAutoTrafficDirection, source: 'ENV' as const }
-    : { direction: null, source: null };
+  if (legacy)
+    return { direction: legacy.toUpperCase() as MitigationAutoTrafficDirection, source: 'ENV' as const };
+  if (interfaceStored === 'RX' || interfaceStored === 'TX')
+    return { direction: interfaceStored, source: 'INTERFACE' as const };
+  return { direction: null, source: null };
 }
 
 export interface TelemetryDiagnosticDeps {
@@ -56,6 +61,7 @@ export async function diagnoseMitigationTelemetry(
       p.id,
       p.autoTrafficDirection,
       deps.envDirections,
+      p.interfaceTrafficDirection,
     );
     const reasons: MitigationTelemetryReason[] = [];
     if (!direction) reasons.push('DIRECTION_NOT_CONFIGURED');

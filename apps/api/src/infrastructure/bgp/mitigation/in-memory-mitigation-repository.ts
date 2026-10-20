@@ -16,9 +16,12 @@ import type {
   MitigationSimulationInput,
   MitigationSimulationRecord,
 } from './mitigation-repository';
+import type { MitigationAutoTrafficDirection } from './mitigation-types';
 
 interface InMemoryStore {
   profiles: Map<string, MitigationProfileRecord>;
+  /** Direcao herdada por interface (nao e dado de perfil). */
+  interfaces: Map<string, MitigationAutoTrafficDirection | null>;
   peers: Map<string, MitigationProfilePeerRecord>;
   /** Exclusao PREVENTIVA por peer BGP, chaveada pelo id do peer. */
   peerExclusions: Map<string, MitigationPeerExclusionRecord>;
@@ -34,6 +37,7 @@ interface InMemoryStore {
 function createStore(): InMemoryStore {
   return {
     profiles: new Map(),
+    interfaces: new Map(),
     peers: new Map(),
     peerExclusions: new Map(),
     runtime: new Map(),
@@ -99,6 +103,8 @@ export class InMemoryMitigationRepository implements MitigationRepository {
         mitigationRt: input.mitigationRt ?? existing.mitigationRt,
         // A direcao do AUTO e decisao do OPERADOR: o discovery nunca mexe.
         autoTrafficDirection: existing.autoTrafficDirection,
+        interfaceTrafficDirection:
+          this.store.interfaces.get(input.interfaceId ?? existing.interfaceId ?? '') ?? null,
         // A excecao manual do AUTO tambem e do OPERADOR: nunca sobrescrita.
         autoModeExempt: existing.autoModeExempt,
         // A proveniencia do AUTO e escrita APENAS pelo sweep/servico dedicado.
@@ -138,6 +144,7 @@ export class InMemoryMitigationRepository implements MitigationRepository {
       checkIntervalSeconds: input.checkIntervalSeconds ?? 5,
       mitigationRt: input.mitigationRt ?? '268568:660',
       autoTrafficDirection: null,
+      interfaceTrafficDirection: this.store.interfaces.get(input.interfaceId ?? '') ?? null,
       autoModeExempt: input.autoModeExempt ?? false,
       autoPromotedBySweep: input.autoPromotedBySweep ?? false,
       mitigationExcluded: input.mitigationExcluded ?? false,
@@ -238,6 +245,18 @@ export class InMemoryMitigationRepository implements MitigationRepository {
     if (!profile) return;
     profile.autoTrafficDirection = direction;
     profile.updatedAt = new Date();
+  }
+
+  async setInterfaceAutoTrafficDirection(
+    interfaceId: string,
+    direction: MitigationAutoTrafficDirection | null,
+  ): Promise<void> {
+    this.store.interfaces.set(interfaceId, direction);
+    for (const profile of this.store.profiles.values())
+      if (profile.interfaceId === interfaceId) {
+        profile.interfaceTrafficDirection = direction;
+        profile.updatedAt = new Date();
+      }
   }
 
   async setProfileAutoModeExempt(id: string, exempt: boolean): Promise<void> {

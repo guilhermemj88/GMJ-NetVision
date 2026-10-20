@@ -118,6 +118,13 @@ export class RoutingMitigationRepository implements MitigationRepository {
     return (await this.target()).setProfileAutoTrafficDirection(id, direction);
   }
 
+  async setInterfaceAutoTrafficDirection(
+    interfaceId: string,
+    direction: MitigationAutoTrafficDirection | null,
+  ): Promise<void> {
+    return (await this.target()).setInterfaceAutoTrafficDirection(interfaceId, direction);
+  }
+
   async setProfileAutoModeExempt(id: string, exempt: boolean): Promise<void> {
     return (await this.target()).setProfileAutoModeExempt(id, exempt);
   }

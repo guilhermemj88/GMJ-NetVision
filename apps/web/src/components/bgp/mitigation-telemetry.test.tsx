@@ -67,12 +67,15 @@ async function click(label: string) {
   const button = [...el.querySelectorAll('button')].find((b) => b.textContent?.includes(label))!;
   await act(async () => button.click());
 }
-async function select(value: string) {
-  const select = el.querySelector('select[aria-label="Direção p"]')!;
+async function change(target: HTMLSelectElement, value: string) {
   await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(select, value);
-    select.dispatchEvent(new Event('change', { bubbles: true }));
+    Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value')!.set!.call(target, value);
+    target.dispatchEvent(new Event('change', { bubbles: true }));
   });
+}
+async function select(value: string) {
+  const select = el.querySelector<HTMLSelectElement>('select[aria-label="Direção p"]')!;
+  await change(select, value);
 }
 describe('telemetry operator view', () => {
   it('shows RX/TX and precise pending direction without presenting protection as authorized', async () => {
@@ -145,9 +148,9 @@ describe('telemetry operator view', () => {
     );
     await select('TX');
     await click('GERAR PRÉVIA');
-    expect(api.previewMitigationDirections).toHaveBeenCalledWith([
-      { profileId: 'p', direction: 'TX' },
-    ]);
+    expect(api.previewMitigationDirections).toHaveBeenCalledWith({
+      changes: [{ profileId: 'p', direction: 'TX' }],
+    });
     expect(api.applyMitigationDirections).not.toHaveBeenCalled();
     expect(el.textContent).toContain('ALERT_ONLY preservado');
     const confirm = [...el.querySelectorAll('label')]
@@ -156,5 +159,55 @@ describe('telemetry operator view', () => {
     await act(async () => confirm.click());
     await click('CONFIRMAR DIREÇÕES');
     expect(api.applyMitigationDirections).toHaveBeenCalledWith('preview');
+  });
+  it('escopo INTERFACE: lote herdado pelos perfis da interface, sem expor perfil AUTO', async () => {
+    api.previewMitigationDirections.mockResolvedValue({
+      previewId: 'pv-if',
+      expiresAt: new Date(Date.now() + 300000).toISOString(),
+      changes: [],
+      interfaceChanges: [
+        {
+          interfaceId: 'i',
+          deviceId: 'd',
+          interfaceName: 'Eth-Trunk1.3024',
+          before: null,
+          after: 'TX',
+          affectedProfileIds: ['p', 'p2'],
+          autoProfileIds: [],
+          impact: 'INHERITED_BY_PROFILES_SHADOW_EVALUATION_ONLY',
+        },
+      ],
+    });
+    api.applyMitigationDirections.mockResolvedValue({ applied: 1 });
+    const dir = 'Dire' + String.fromCharCode(0xe7, 0xe3) + 'o';
+    const escopo = 'Escopo da altera' + String.fromCharCode(0xe7, 0xe3) + 'o de dire' + String.fromCharCode(0xe7, 0xe3) + 'o';
+    await render(
+      <MitigationDirectionReviewPanel
+        profiles={
+          [
+            { ...p('p'), interfaceId: 'i' },
+            { ...p('p2'), interfaceId: 'i' },
+            p('auto', 'AUTO'),
+          ] as BgpMitigationProfileDto[]
+        }
+        entries={[entry()]}
+      />,
+    );
+    await change(el.querySelector<HTMLSelectElement>(`select[aria-label="${escopo}"]`)!, 'INTERFACE');
+    expect(el.textContent).toContain('Herdada pelos perfis da interface');
+    expect(el.querySelector(`select[aria-label="${dir} auto"]`)).toBeNull();
+    await change(el.querySelector<HTMLSelectElement>(`select[aria-label="${dir} da interface Eth-Trunk1.3024"]`)!, 'TX');
+    await click('GERAR PR' + String.fromCharCode(0xc9) + 'VIA');
+    expect(api.previewMitigationDirections).toHaveBeenCalledWith({
+      interfaceChanges: [{ interfaceId: 'i', direction: 'TX' }],
+    });
+    expect(el.textContent).toContain('perfil(is)');
+    const confirm = [...el.querySelectorAll('label')]
+      .find((l) => l.textContent?.includes('Confirmo estas altera'))!
+      .querySelector('input')!;
+    await act(async () => confirm.click());
+    await click('CONFIRMAR DIRE' + String.fromCharCode(0xc7, 0xd5) + 'ES');
+    expect(api.applyMitigationDirections).toHaveBeenCalledWith('pv-if');
+    expect(el.textContent).toContain('registradas com auditoria');
   });
 });

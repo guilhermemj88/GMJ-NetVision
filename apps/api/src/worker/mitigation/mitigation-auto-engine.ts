@@ -110,7 +110,7 @@ export interface MitigationAutoTargetState {
    * fallback ENV). `null`/ausente = nao configurada => TELEMETRY_UNAVAILABLE.
    */
   direction?: 'rx' | 'tx' | null;
-  directionSource?: 'PROFILE' | 'ENV' | null;
+  directionSource?: 'PROFILE' | 'ENV' | 'INTERFACE' | null;
   /**
    * AUTO-ALL: `true` = o modo AUTO veio do sweep da DESCRIPTION. Somente estes
    * perfis respeitam o controle de execucao (pausa de NOVAS ativacoes).
@@ -171,7 +171,7 @@ export interface MitigationAutoDecision {
   addressFamily?: 'IPV4' | 'IPV6';
   /** Direcao EFETIVA e origem usadas nesta avaliacao. */
   direction?: 'rx' | 'tx' | null;
-  directionSource?: 'PROFILE' | 'ENV' | null;
+  directionSource?: 'PROFILE' | 'ENV' | 'INTERFACE' | null;
   /** AUTO-ALL: proveniencia do modo (sweep x manual) nesta avaliacao. */
   promotedBySweep?: boolean;
   /**
@@ -1002,8 +1002,9 @@ export class MitigationAutoEngine {
         retryAttempt = authorized;
       }
     }
-    if (target.activationDirection === 'tx' && target.direction === 'rx')
-      return decided('RX_MONITOR_ONLY', 'ALERT_TRIGGERED');
+    // Direcao RX nunca escreve: a acao BGP de diversao e valida apenas em TX
+    // (trafego para o cliente). RX confirmado vira ALERTA com registro.
+    if (target.direction === 'rx') return decided('RX_MONITOR_ONLY', 'ALERT_TRIGGERED');
 
     // Modo decide a ACAO, nunca a elegibilidade: AUTO e ALERT_ONLY passaram
     // pelos MESMOS gates acima. ALERT_ONLY para aqui, com zero escrita.

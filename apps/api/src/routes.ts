@@ -858,16 +858,26 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   // (fail-closed) e nunca existe default implicito do tipo "tx para todos".
   const resolvedDirections = new Map<
     string,
-    { direction: 'rx' | 'tx'; source: 'PROFILE' | 'ENV' }
+    { direction: 'rx' | 'tx'; source: 'PROFILE' | 'ENV' | 'INTERFACE' }
   >();
+  /**
+   * Precedencia (espelha `resolveTelemetryDirection`):
+   * override do perfil > ENV legado > direcao herdada da interface > indefinida.
+   * Sem nenhuma das tres, a telemetria fica indisponivel (fail-closed): nunca
+   * existe direcao implicita por volume de trafego.
+   */
   const resolveAutoDirection = (
     profileId: string,
     stored: 'RX' | 'TX' | null | undefined,
-  ): { direction: 'rx' | 'tx'; source: 'PROFILE' | 'ENV' } | null => {
+    interfaceStored: 'RX' | 'TX' | null | undefined,
+  ): { direction: 'rx' | 'tx'; source: 'PROFILE' | 'ENV' | 'INTERFACE' } | null => {
     if (stored === 'RX') return { direction: 'rx', source: 'PROFILE' };
     if (stored === 'TX') return { direction: 'tx', source: 'PROFILE' };
     const envDirection = autoDirections[profileId];
-    return envDirection ? { direction: envDirection, source: 'ENV' } : null;
+    if (envDirection) return { direction: envDirection, source: 'ENV' };
+    if (interfaceStored === 'RX') return { direction: 'rx', source: 'INTERFACE' };
+    if (interfaceStored === 'TX') return { direction: 'tx', source: 'INTERFACE' };
+    return null;
   };
   // Guarda OPCIONAL para automacao em policy compartilhada. Desligada por
   // padrao: preserva exatamente o comportamento do AUTO atual (BHNET-CEASA,
@@ -904,7 +914,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     .filter((part): part is 'IPV4' | 'IPV6' => part === 'IPV4' || part === 'IPV6');
   const autoDescriptionFamilies: readonly ('IPV4' | 'IPV6')[] =
     configuredFamilies.length > 0 ? configuredFamilies : ['IPV4'];
-  // LOTES: quantas promocoes por execucao do sweep. Semantica UNAMBIGUA:
+  // LOTES: BATCH_SIZE controla o RITMO, nunca o total autorizado. O sweep roda
+  // no boot (pos-reidratacao) e a cada 300 s (5 min): com 15 IPv4 elegiveis,
+  // `1` promove ~1 por ciclo (todos em ~70 min, 14 ciclos apos o boot), `5`
+  // promove 5 por ciclo (todos em ~10 min) e `unlimited` promove todos no
+  // primeiro ciclo. Perfis descobertos depois entram no ciclo seguinte.
+  // Semantica UNAMBIGUA:
   // ausente/invalido = 5 (fail-safe); `0` = SEGURA (hold); 1..N = lote;
   // `unlimited` = sem limite. A graduacao e protecao de IMPLANTACAO; para
   // interromper de vez use MITIGATION_AUTO_DESCRIPTION_ENABLED=0.
@@ -1003,7 +1018,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         allowedDeviceIds: mitigationExecutionConfig.allowedDeviceIds,
         listProfiles: () => mitigationRepository.listProfiles(),
         hosts,
-        direction: (p) => resolveAutoDirection(p.id, p.autoTrafficDirection)?.direction ?? null,
+        direction: (p) =>
+          resolveAutoDirection(p.id, p.autoTrafficDirection, p.interfaceTrafficDirection)
+            ?.direction ?? null,
       }),
     reader: new FastSnmpReader(hosts, new SnmpClientImpl(fastConfig.timeoutMs, fastConfig.retries)),
     store: fastStore,
@@ -1045,7 +1062,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       ).length > 0
     )
       return false;
-    const direction = resolveAutoDirection(id, profile.autoTrafficDirection)?.direction;
+    const direction = resolveAutoDirection(
+      id,
+      profile.autoTrafficDirection,
+      profile.interfaceTrafficDirection,
+    )?.direction;
     if (!direction || direction !== resolvedDirections.get(id)?.direction) return false;
     if (bridgeConfig.mode === 'ENFORCE' && bridgeConfig.enforceProfileIds.includes(id)) {
       if (
@@ -1081,7 +1102,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
           const record = byId.get(dto.id);
           // Direcao efetiva resolvida NO INICIO DO TICK: e a mesma fonte
           // consumida pela telemetria logo abaixo (sem segunda leitura).
-          const resolved = resolveAutoDirection(dto.id, record?.autoTrafficDirection ?? null);
+          const resolved = resolveAutoDirection(
+            dto.id,
+            record?.autoTrafficDirection ?? null,
+            record?.interfaceTrafficDirection ?? null,
+          );
           if (resolved) resolvedDirections.set(dto.id, resolved);
           else resolvedDirections.delete(dto.id);
           const revision = fastProfileRevision({
