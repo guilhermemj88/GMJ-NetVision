@@ -32,14 +32,15 @@ export function fastPollerConfig(
   const mode = env.MITIGATION_FAST_POLL_MODE ?? 'OFF';
   if (mode !== 'OFF' && mode !== 'OBSERVE' && mode !== 'ENFORCE')
     throw new Error('Invalid MITIGATION_FAST_POLL_MODE');
-  const profileIds = [
-    ...new Set(
-      (env.MITIGATION_FAST_PROFILE_IDS ?? '')
-        .split(',')
-        .map((v) => v.trim())
-        .filter(Boolean),
-    ),
-  ];
+  const list = (key: string) =>
+    (env[key] ?? '')
+      .split(',')
+      .map((v) => v.trim())
+      .filter(Boolean);
+  // `MITIGATION_FAST_ROUTED_PROFILE_IDS` é a fonte de verdade do roteamento de
+  // telemetria: o observador coleta a UNIÃO dela com a lista legada, sem exigir
+  // que os operadores mantenham duas listas em sincronia.
+  const profileIds = [...new Set([...list('MITIGATION_FAST_PROFILE_IDS'), ...list('MITIGATION_FAST_ROUTED_PROFILE_IDS')])];
   if (mode !== 'OFF' && !profileIds.length)
     throw new Error('MITIGATION_FAST_PROFILE_IDS is required');
   return {
@@ -287,9 +288,11 @@ export class FastTrafficPoller {
         this.lastError =
           stage === 'PERSISTENCE'
             ? 'PERSISTENCE_ERROR'
-            : /timeout|deadline/i.test(message)
-              ? 'SNMP_TIMEOUT'
-              : 'SNMP_ERROR';
+            : /INCOMPLETE_RESPONSE/.test(message)
+              ? 'INCOMPLETE_RESPONSE'
+              : /timeout|deadline/i.test(message)
+                ? 'SNMP_TIMEOUT'
+                : 'SNMP_ERROR';
         for (const t of batch) {
           this.invalidate(t, this.lastError);
         }

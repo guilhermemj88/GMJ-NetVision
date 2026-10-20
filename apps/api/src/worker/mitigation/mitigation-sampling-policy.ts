@@ -1,4 +1,5 @@
 import type { FastBridgeConfig } from './fast-observation-bridge';
+import { fastRoutingActive } from './fast-observation-bridge';
 import type { FastPollerConfig } from '../../infrastructure/snmp/fast-traffic-poller';
 import type { MitigationTrafficSample } from './mitigation-traffic-source';
 
@@ -35,15 +36,14 @@ export function isFastRoutedProfile(
   profileId: string,
   config: { bridge: FastBridgeConfig; embedded: FastPollerConfig },
 ): boolean {
-  if (config.bridge.mode === 'ENFORCE' && config.bridge.enforceProfileIds.includes(profileId))
-    return true;
+  if (fastRoutingActive(config.bridge, profileId)) return true;
   return config.embedded.mode === 'ENFORCE' && config.embedded.profileIds.includes(profileId);
 }
 
 /**
- * Janela da fonte REALMENTE roteada para o motor canônico. SHADOW não roteia
- * FAST: nesse modo o perfil continua LEGACY, mesmo que esteja no escopo do
- * bridge. Aplicar a janela da simulação ao motor operacional foi a causa da
+ * Janela da fonte REALMENTE roteada para o motor canônico. SHADOW só roteia FAST
+ * quando a lista explícita de roteamento pede (coleta nunca é autorização de
+ * escrita). Aplicar a janela da simulação ao motor operacional foi a causa da
  * regressão do Gate 2.
  */
 export function samplingWindowForProfile(
@@ -54,7 +54,7 @@ export function samplingWindowForProfile(
     embedded: FastPollerConfig;
   },
 ): MitigationSamplingWindow {
-  if (config.bridge.mode === 'ENFORCE' && config.bridge.enforceProfileIds.includes(profileId))
+  if (fastRoutingActive(config.bridge, profileId))
     return { maxAgeMs: config.bridge.maxAgeMs, maxGapMs: config.bridge.maxGapMs };
   if (config.embedded.mode === 'ENFORCE' && config.embedded.profileIds.includes(profileId))
     return { maxAgeMs: config.embedded.maxGapMs, maxGapMs: config.embedded.maxGapMs };

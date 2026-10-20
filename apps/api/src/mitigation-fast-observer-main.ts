@@ -5,6 +5,11 @@ import { FastTrafficPoller, fastPollerConfig } from './infrastructure/snmp/fast-
 import { FastSnmpReader, type FastSnmpHostPort } from './infrastructure/snmp/fast-snmp-reader';
 import { SnmpClientImpl } from './infrastructure/snmp/snmp-client-impl';
 import { PrismaObserverTrafficStore } from './infrastructure/snmp/prisma-observer-traffic-store';
+import {
+  fastRetentionConfig,
+  PrismaFastObservationPurge,
+  purgeFastObservations,
+} from './infrastructure/snmp/fast-observation-retention';
 import { listFastTrafficTargets } from './infrastructure/snmp/fast-traffic-targets';
 import { fastObserverServer } from './infrastructure/snmp/fast-observer-server';
 import type { MitigationProfileRecord } from './infrastructure/bgp/mitigation/mitigation-repository';
@@ -119,11 +124,31 @@ async function main(): Promise<void> {
     server.once('error', reject);
     server.listen(port, '127.0.0.1', resolve);
   });
-  const retention = setInterval(
-    () => void store.prune().catch(() => process.stderr.write('observer retention failed\n')),
-    3600000,
-  );
+  // Retenção configurável, em lotes, SOMENTE no banco de observação. Auditoria e
+  // histórico de mitigação vivem no banco operacional (read-only para este processo).
+  const retentionConfig = fastRetentionConfig();
+  const purge = new PrismaFastObservationPurge(storage);
+  const runRetention = async () => {
+    try {
+      const result = await purgeFastObservations(purge, retentionConfig);
+      process.stdout.write(
+        JSON.stringify({
+          at: new Date().toISOString(),
+          message: 'observer retention',
+          retentionDays: retentionConfig.retentionDays,
+          cutoff: result.cutoff.toISOString(),
+          deleted: result.deleted,
+          batches: result.batches,
+          backlogRemaining: result.backlogRemaining,
+        }) + '\n',
+      );
+    } catch {
+      process.stderr.write('observer retention failed\n');
+    }
+  };
+  const retention = setInterval(() => void runRetention(), retentionConfig.intervalMs);
   retention.unref();
+  void runRetention();
   poller.start();
   const summary = setInterval(
     () =>

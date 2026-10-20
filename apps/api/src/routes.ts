@@ -157,6 +157,7 @@ import {
   FastObservationSource,
   FastBridgeRoutingSource,
   fastProfileRevision,
+  fastRoutingActive,
   type FastBridgeProfile,
 } from './worker/mitigation/fast-observation-bridge';
 import {
@@ -1238,10 +1239,15 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         (await autoTargets.list(bridgeConfig.profileIds)).filter(
           (t) =>
             bridgeConfig.profileIds.includes(t.profileId) &&
+            // Perfis com semântica de ENFORCE e perfis ROTEADOS para FAST saem do
+            // motor de shadow: os primeiros já são avaliados pelo motor real; os
+            // segundos passam a ser avaliados por ele com a MESMA fonte FAST
+            // (e continuam sem escrever enquanto o HOLD estiver ativo).
             !(
               bridgeConfig.mode === 'ENFORCE' &&
               bridgeConfig.enforceProfileIds.includes(t.profileId)
-            ),
+            ) &&
+            !fastRoutingActive(bridgeConfig, t.profileId),
         ),
     },
     traffic: bridgeSource,

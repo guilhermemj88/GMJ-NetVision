@@ -18,8 +18,12 @@ describe('observer cannot execute mitigation', () => {
     const bundle = readFileSync(observerBundle, 'utf8');
     for (const name of [
       'MitigationAutoEngine',
+      'MitigationAutoRuntime',
       'MitigationCommandService',
       'HuaweiMitigationExecutor',
+      'PersistentHuaweiSession',
+      'SshClientImpl',
+      'recordFastBridgeDecisions',
       'require("ssh2")',
     ])
       expect(bundle).not.toContain(name);
@@ -95,6 +99,7 @@ describe.skipIf(!process.env.FAST_TEST_DATABASE_URL)(
       await new Promise<void>((r) => reservation.close(() => r()));
       const id = 'observer-integration-only';
       let child: ReturnType<typeof spawn> | null = null;
+      let childLogs = '';
       const launch = () => {
         child = spawn(process.execPath, [observerBundle], {
           env: {
@@ -103,21 +108,33 @@ describe.skipIf(!process.env.FAST_TEST_DATABASE_URL)(
             MITIGATION_FAST_SOURCE_DATABASE_URL: readOnlyUrl.toString(),
             CREDENTIAL_ENCRYPTION_KEY: vaultKey,
             MITIGATION_FAST_POLL_MODE: 'OBSERVE',
-            MITIGATION_FAST_PROFILE_IDS: id,
+            // Somente a lista de ROTEAMENTO: o observador coleta a união dela com
+            // a lista legada, provando a separação telemetria × execução.
+            MITIGATION_FAST_ROUTED_PROFILE_IDS: id,
+            MITIGATION_FAST_RETENTION_DAYS: '7',
             MITIGATION_FAST_ALLOWED_DEVICE_IDS: id,
             MITIGATION_FAST_OBSERVER_PORT: String(port),
             MITIGATION_FAST_NORMAL_SECONDS: '10',
           },
-          stdio: 'ignore',
+          stdio: ['ignore', 'pipe', 'pipe'],
         });
+        child.stdout?.on('data', (chunk) => (childLogs += String(chunk)));
+        child.stderr?.on('data', (chunk) => (childLogs += String(chunk)));
         return child;
       };
       const waitUntil = async (test: () => Promise<boolean>) => {
-        for (let i = 0; i < 100; i++) {
+        // Orçamento de 20 s: o filho sobe Prisma + poller e, sob carga da suíte completa,
+        // o primeiro ciclo SNMP pode demorar bem mais que os 5 s usados em execução isolada.
+        for (let i = 0; i < 400; i++) {
           if (await test()) return;
           await new Promise((r) => setTimeout(r, 50));
         }
-        throw new Error('Observer condition timed out');
+        const health = await fetch(`http://127.0.0.1:${port}/health`)
+          .then((r) => r.text())
+          .catch((e) => 'health failed: ' + String(e));
+        throw new Error(
+          'Observer condition timed out :: ' + childLogs.slice(-1000) + ' :: ' + health.slice(0, 1500),
+        );
       };
       const stop = async () => {
         if (!child) return;
@@ -131,6 +148,32 @@ describe.skipIf(!process.env.FAST_TEST_DATABASE_URL)(
       };
       try {
         await storage.mitigationTrafficObservation.deleteMany({ where: { interfaceId: id } });
+        // Observação ANTIGA (10 dias) para provar a retenção de 7 dias.
+        const legacyObservationId = id + '-old';
+        await storage.mitigationTrafficObservation.create({
+          data: {
+            id: legacyObservationId,
+            generation: 'legacy',
+            deviceId: id,
+            interfaceId: id,
+            ifIndex: 200,
+            interfaceName: 'Eth-Trunk1.3043',
+            requestStartedAt: new Date(Date.now() - 10 * 86_400_000 - 10_000),
+            collectedAt: new Date(Date.now() - 10 * 86_400_000),
+            intervalMs: 10_000,
+            inOctets: '1',
+            outOctets: '2',
+            uptimeTicks: 1n,
+            discontinuityTicks: 0n,
+            lastChangeTicks: 0n,
+            adminStatus: 1,
+            operStatus: 1,
+            speedBps: 300_000_000_000n,
+            rxBps: 0,
+            txBps: 0,
+            quality: 'VALID',
+          },
+        });
         await source.snmpCredential.create({
           data: {
             id,
@@ -177,12 +220,25 @@ describe.skipIf(!process.env.FAST_TEST_DATABASE_URL)(
             autoTrafficDirection: 'TX',
           },
         });
+        // Evento de auditoria no banco OPERACIONAL: a retenção do observador não
+        // pode alcançá-lo (o processo só escreve no banco de observação).
+        await source.bgpMitigationEvent.create({
+          data: { profileId: id, type: 'SIMULATION', success: true, verified: true },
+        });
         launch();
         await waitUntil(
           async () =>
             (await storage.mitigationTrafficObservation.count({ where: { interfaceId: id } })) ===
             1,
         );
+        // Retenção de 7 dias removeu a linha de 10 dias, sem tocar na amostra nova.
+        await waitUntil(
+          async () =>
+            (await storage.mitigationTrafficObservation.count({
+              where: { id: legacyObservationId },
+            })) === 0,
+        );
+        expect(await source.bgpMitigationEvent.count({ where: { profileId: id } })).toBe(1);
         await stop();
         const requests = agent.requests();
         await new Promise((r) => setTimeout(r, 250));
@@ -197,7 +253,9 @@ describe.skipIf(!process.env.FAST_TEST_DATABASE_URL)(
         const profile = await source.bgpMitigationProfile.findUnique({ where: { id } });
         expect(profile?.triggerSamples).toBe(3);
         expect(profile?.mode).toBe('AUTO');
-        expect(await source.bgpMitigationEvent.count({ where: { profileId: id } })).toBe(0);
+        // O evento de auditoria criado no início continua intacto: a retenção do
+        // observador só alcança o banco de observação.
+        expect(await source.bgpMitigationEvent.count({ where: { profileId: id } })).toBe(1);
       } finally {
         await stop();
         await agent.close();

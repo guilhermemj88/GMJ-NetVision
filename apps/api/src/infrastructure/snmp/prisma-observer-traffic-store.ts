@@ -4,6 +4,7 @@ import type {
   FastTrafficQuality,
   FastTrafficStore,
 } from './fast-traffic-types';
+import { PrismaFastObservationPurge, retentionCutoff } from './fast-observation-retention';
 
 /**
  * OBSERVATION ONLY: separate database, no inventory mirrors and no actuator consumer.
@@ -50,9 +51,11 @@ export class PrismaObserverTrafficStore implements FastTrafficStore {
       : null;
   }
   async prune(): Promise<number> {
-    // Bounded retention in the OBSERVATION database only. Seven days, batches of 10000.
-    return this.db.$executeRaw`DELETE FROM "MitigationTrafficObservation" WHERE id IN
-      (SELECT id FROM "MitigationTrafficObservation" WHERE "collectedAt" < NOW() - INTERVAL '7 days'
-       ORDER BY "collectedAt" LIMIT 10000)`;
+    // Mantido para chamadas legadas: delega à política única de retenção
+    // (banco de OBSERVAÇÃO apenas, em lotes ordenados e com corte explícito).
+    return new PrismaFastObservationPurge(this.db).deleteObservationsBefore(
+      retentionCutoff(new Date(), 7),
+      10_000,
+    );
   }
 }

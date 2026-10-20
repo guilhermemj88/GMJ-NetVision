@@ -10,7 +10,20 @@ import type {
 export interface FastBridgeConfig {
   mode: 'OFF' | 'SHADOW' | 'ENFORCE';
   profileIds: string[];
+  /** Semântica de ENFORCE (autorização explícita). NUNCA significa "coleta FAST". */
   enforceProfileIds: string[];
+  /**
+   * Perfis ROTEADOS para telemetria FAST. Separado de `enforceProfileIds`:
+   * rotear a fonte NÃO autoriza escrita BGP — todos os gates (EXECUTION,
+   * LIVE_WRITE, allowlist, readiness, threshold, amostras, preflight, read-back,
+   * locks, dedupe por policy) continuam valendo.
+   *
+   * Ausente = herda `enforceProfileIds` (desenho anterior, byte a byte), portanto
+   * a compatibilidade com as configurações legadas é exata.
+   */
+  routedProfileIds?: string[];
+  /** `true` quando `routedProfileIds` veio EXPLICITAMENTE do ENV. */
+  routedExplicit?: boolean;
   maxAgeMs: number;
   maxGapMs: number;
 }
@@ -30,6 +43,10 @@ export function fastBridgeConfig(
   ];
   const profileIds = ids('MITIGATION_FAST_BRIDGE_PROFILE_IDS'),
     enforceProfileIds = ids('MITIGATION_FAST_ENFORCE_PROFILE_IDS');
+  const routedRaw = ids('MITIGATION_FAST_ROUTED_PROFILE_IDS');
+  const routedExplicit = routedRaw.length > 0;
+  // Sem a variável explícita, o roteamento continua sendo exatamente o de antes.
+  const routedProfileIds = routedExplicit ? routedRaw : enforceProfileIds;
   if (mode !== 'OFF' && !profileIds.length) throw Error('Explicit fast bridge profiles required');
   if (
     mode === 'ENFORCE' &&
@@ -38,15 +55,37 @@ export function fastBridgeConfig(
       enforceProfileIds.some((id) => !profileIds.includes(id)))
   )
     throw Error('Explicit per-profile fast execution authorization required');
+  if (mode === 'OFF' && routedExplicit)
+    throw Error('FAST routed profiles require an active bridge mode');
+  if (routedProfileIds.some((id) => !profileIds.includes(id)))
+    throw Error('Routed profiles must belong to the fast bridge profiles');
+  // Compatibilidade BHNET: um perfil com semântica de enforce não pode perder a
+  // fonte FAST por omissão na lista explícita de roteamento.
+  if (routedExplicit && enforceProfileIds.some((id) => !routedProfileIds.includes(id)))
+    throw Error('Enforce profiles must also be routed to FAST');
   if (mode !== 'OFF' && (env.MITIGATION_FAST_POLL_MODE ?? 'OFF') !== 'OFF')
     throw Error('External observer and in-process poller cannot be enabled together');
   return {
     mode: mode as FastBridgeConfig['mode'],
     profileIds,
     enforceProfileIds,
+    routedProfileIds,
+    routedExplicit,
     maxAgeMs: 30_000,
     maxGapMs: 45_000,
   };
+}
+/**
+ * `true` quando o perfil consome telemetria FAST.
+ *
+ * Lista EXPLÍCITA de roteamento vale em qualquer modo ativo (SHADOW/ENFORCE),
+ * porque a coleta não é autorização de escrita. Sem a lista explícita mantém o
+ * contrato anterior: somente ENFORCE roteia (o perfil em SHADOW segue LEGACY).
+ */
+export function fastRoutingActive(config: FastBridgeConfig, profileId: string): boolean {
+  const routed = config.routedProfileIds ?? config.enforceProfileIds;
+  const active = config.routedExplicit === true ? config.mode !== 'OFF' : config.mode === 'ENFORCE';
+  return active && routed.includes(profileId);
 }
 export interface FastBridgeMapping {
   id: string;
@@ -265,7 +304,7 @@ export class FastBridgeRoutingSource implements MitigationTrafficSource {
     private readonly legacy: MitigationTrafficSource,
   ) {}
   private selected(id: string) {
-    return this.config.mode === 'ENFORCE' && this.config.enforceProfileIds.includes(id);
+    return fastRoutingActive(this.config, id);
   }
   sampleWithId(t: MitigationTrafficTarget) {
     return (this.selected(t.profileId) ? this.fast : this.legacy).sampleWithId(t);
