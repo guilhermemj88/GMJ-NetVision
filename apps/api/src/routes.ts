@@ -140,6 +140,10 @@ import {
 import { registerMitigationRoutes } from './mitigation-routes';
 import { diagnoseMitigationTelemetry } from './infrastructure/bgp/mitigation/mitigation-telemetry';
 import { PrismaMitigationTelemetryReader } from './infrastructure/bgp/mitigation/prisma-mitigation-telemetry-reader';
+import {
+  sharedPolicyAutomationBlocked,
+  sharedPolicyScopes,
+} from './infrastructure/bgp/mitigation/mitigation-shared-policy';
 import { MitigationDirectionReview } from './infrastructure/bgp/mitigation/mitigation-direction-review';
 import { PrismaDirectionReviewStore } from './infrastructure/bgp/mitigation/prisma-direction-review-store';
 import { registerN8nRoutes } from './n8n-routes';
@@ -940,7 +944,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       readInterface: (id) => diagnosticReader.readInterface(id),
       envDirections: autoDirections,
       maxAgeMs: autoMaxAgeMs,
-      authorization: (p) => {
+      authorization: (p, scope) => {
         const blocks: string[] = [];
         if (!p.enabled || p.mode === 'DISABLED') blocks.push('PROFILE_DISABLED');
         if (p.mode !== 'AUTO') blocks.push('PROFILE_MODE_NOT_AUTO');
@@ -958,7 +962,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         if (p.blockedReason) blocks.push(p.blockedReason);
         if (
           sharedPolicyGuardEnabled &&
-          p.autoBlockedReason === 'SHARED_POLICY' &&
+          sharedPolicyAutomationBlocked(p, scope ?? null) &&
           !sharedPolicyAllowedProfileIds.includes(p.id)
         )
           blocks.push('SHARED_POLICY_UNRESOLVED');
@@ -1098,6 +1102,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         mitigationRepository.listProfiles(),
       ]);
       const byId = new Map(records.map((record) => [record.id, record]));
+      const sharedScopes = sharedPolicyScopes(dtos);
       return dtos
         .filter((dto) => dto.persisted)
         .map((dto) => {
@@ -1139,7 +1144,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
             // AUTO-ALL: proveniencia decide se o controle de execucao pausa
             // NOVAS ativacoes deste perfil (AUTO manual nunca e pausado).
             autoPromotedBySweep: dto.autoPromotedBySweep === true,
-            sharedPolicyAutomationBlocked: dto.autoBlockedReason === 'SHARED_POLICY',
+            sharedPolicyAutomationBlocked: sharedPolicyAutomationBlocked(
+              dto,
+              sharedScopes.get(dto.id) ?? null,
+            ),
             readiness: dto.readiness,
             snapshotAvailable: dto.snapshotAvailable,
             prefixStatus: dto.prefixStatus,

@@ -1,6 +1,10 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { AuthUser, BgpPeerDetail, MitigationAutoShadowReportDto } from '@gmj/shared';
+import {
+  sharedPolicyAutomationBlocked,
+  sharedPolicyScopes,
+} from './infrastructure/bgp/mitigation/mitigation-shared-policy';
 import type { BgpMitigationService } from './infrastructure/bgp/mitigation/mitigation-service';
 import { DirectionReviewError, type MitigationDirectionReview } from './infrastructure/bgp/mitigation/mitigation-direction-review';
 import type { MitigationTelemetryReportDto } from '@gmj/shared';
@@ -365,8 +369,11 @@ return service.discover(deviceIds, { refreshInterfaceMetadata: true });
       const target = profiles.find((profile) => profile.id === id) ?? null;
       if (target) {
         const approvedShared = autoEnablement.sharedPolicyAllowedProfileIds.includes(id);
+        // Escopo fisico (deviceId+policyName) dos perfis PERSISTIDOS: nao depende
+        // do metadata do discovery, que pode faltar (gap reproduzido em QA).
+        const sharedScope = sharedPolicyScopes(profiles).get(target.id) ?? null;
         if (
-          target.autoBlockedReason === 'SHARED_POLICY' &&
+          sharedPolicyAutomationBlocked(target, sharedScope) &&
           !approvedShared &&
           payload.acknowledgeSharedPolicy !== true
         ) {

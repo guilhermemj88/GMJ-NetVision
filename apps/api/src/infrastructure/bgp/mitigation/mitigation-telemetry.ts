@@ -45,14 +45,23 @@ export interface TelemetryDiagnosticDeps {
   envDirections: Record<string, 'rx' | 'tx'>;
   maxAgeMs: number;
   now?: () => Date;
-  authorization(profile: BgpMitigationProfileDto): string[];
+  authorization(
+    profile: BgpMitigationProfileDto,
+    scope?: SharedPolicyScope | null,
+  ): string[];
 }
+
+import type { SharedPolicyScope } from './mitigation-shared-policy';
+import { sharedPolicyScopes } from './mitigation-shared-policy';
 
 export async function diagnoseMitigationTelemetry(
   profiles: BgpMitigationProfileDto[],
   deps: TelemetryDiagnosticDeps,
 ) {
   const now = (deps.now ?? (() => new Date()))();
+  // Escopo fisico (deviceId+policyName) derivado dos perfis PERSISTIDOS:
+  // a autorizacao nunca depende so do metadata do discovery.
+  const sharedScopes = sharedPolicyScopes(profiles);
   // IPv4/IPv6 share exactly one inventory/sample read, never summed.
   const byInterface = new Map<string, Promise<DiagnosticInterface | null>>();
   const entries: MitigationTelemetryEntryDto[] = [];
@@ -110,7 +119,9 @@ export async function diagnoseMitigationTelemetry(
     }
     const measurementReasons = reasons.filter((r) => r !== 'DIRECTION_NOT_CONFIGURED');
     const available = iface !== null && sample !== null && measurementReasons.length === 0;
-    const gates = [...new Set([...deps.authorization(p), ...reasons])];
+    const gates = [
+      ...new Set([...deps.authorization(p, sharedScopes.get(p.id) ?? null), ...reasons]),
+    ];
     entries.push({
       profileId: p.id,
       interfaceId: p.interfaceId,

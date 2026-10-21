@@ -5,6 +5,10 @@ import type {
   MitigationAutoTrafficDirection,
   MitigationAutoDirectionSource,
 } from '@gmj/shared';
+import {
+  sharedPolicyAutomationBlocked,
+  sharedPolicyScopes,
+} from '../../infrastructure/bgp/mitigation/mitigation-shared-policy';
 import type { MitigationAutoDecision } from './mitigation-auto-engine';
 import type { MitigationAutoRuntimeStatus } from './mitigation-auto-runtime';
 
@@ -71,6 +75,8 @@ export function buildAutoShadowReport(input: AutoShadowInput): MitigationAutoSha
     if (previous === undefined || decision.at > previous.at) decisions.set(decision.profileId, decision);
   }
 
+  // Mesmo escopo fisico usado pelo motor e pela rota de promocao.
+  const sharedScopes = sharedPolicyScopes(input.profiles);
   const entries: MitigationAutoShadowEntryDto[] = input.profiles
     .filter((profile) => profile.persisted)
     .map((profile) => {
@@ -109,9 +115,12 @@ export function buildAutoShadowReport(input: AutoShadowInput): MitigationAutoSha
         readiness: profile.readiness,
         snapshotAvailable: profile.snapshotAvailable,
         runtimeState,
-        sharedPolicy: profile.sharedPolicy,
+        sharedPolicy: profile.sharedPolicy || sharedScopes.get(profile.id)?.shared === true,
         sharedPolicyTargets: profile.sharedPolicyTargets,
-        sharedPolicyAutomationBlocked: profile.autoBlockedReason === 'SHARED_POLICY',
+        sharedPolicyAutomationBlocked: sharedPolicyAutomationBlocked(
+          profile,
+          sharedScopes.get(profile.id) ?? null,
+        ),
         // Distincao explicita: ALERT_TRIGGERED nunca vai para a midia hoje.
         notificationDelivery:
           decision?.notification?.published === true
