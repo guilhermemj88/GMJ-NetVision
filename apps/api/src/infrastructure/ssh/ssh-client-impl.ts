@@ -2,6 +2,48 @@ import { Client, type ConnectConfig, type ClientChannel } from 'ssh2';
 import type { CommandResult, SshClient } from '../../domain/ports';
 import { withSshContext } from './ssh-context';
 
+/** Falha de transporte classificada; a mensagem publica continua sanitizada. */
+export type SshFailureKind =
+  | 'KEX_NEGOTIATION_FAILED'
+  | 'AUTHENTICATION_FAILED'
+  | 'CONNECTION_TIMEOUT'
+  | 'HOST_UNREACHABLE'
+  | 'TRANSPORT_FAILED';
+
+export class SshTransportError extends Error {
+  constructor(readonly kind: SshFailureKind, message: string) {
+    super(message);
+    this.name = 'SshTransportError';
+  }
+}
+
+/**
+ * KEX SHA-1 aceito APENAS na segunda tentativa, depois de o equipamento recusar
+ * todos os algoritmos modernos. `diffie-hellman-group1-sha1` fica de fora: e
+ * considerado quebrado e nunca deve ser negociado.
+ */
+const LEGACY_KEX_APPEND = ['diffie-hellman-group14-sha1'];
+
+/** Defaults do ssh2 na mesma ordem, com o KEX legado no FIM (modern first). */
+const LEGACY_KEX_ALGORITHMS: readonly string[] = [
+  'curve25519-sha256@libssh.org',
+  'curve25519-sha256',
+  'ecdh-sha2-nistp256',
+  'ecdh-sha2-nistp384',
+  'ecdh-sha2-nistp521',
+  'diffie-hellman-group-exchange-sha256',
+  'diffie-hellman-group14-sha256',
+  'diffie-hellman-group15-sha512',
+  'diffie-hellman-group16-sha512',
+  'diffie-hellman-group17-sha512',
+  'diffie-hellman-group18-sha512',
+  ...LEGACY_KEX_APPEND,
+];
+
+function isKexNegotiationFailure(error: unknown): boolean {
+  return error instanceof SshTransportError && error.kind === 'KEX_NEGOTIATION_FAILED';
+}
+
 interface SshClientOptions {
   port: number;
   username: string;
@@ -36,6 +78,29 @@ export class SshClientImpl implements SshClient {
 
   async execute(host: string, commands: string[]): Promise<CommandResult[]> {
     const preparedCommands = withSshContext(commands, this.options.contextCommand);
+    const result = await this.runWithKexFallback(host, preparedCommands);
+    return [result];
+  }
+
+  /**
+   * MODERN FIRST: tenta com os algoritmos padrao do ssh2 e so repete quando a
+   * falha foi comprovadamente de NEGOCIACAO DE CHAVE (equipamento legado que so
+   * oferece SHA-1). Senha errada, timeout, refused e unreachable nao repetem.
+   */
+  private async runWithKexFallback(host: string, commands: string[]): Promise<CommandResult> {
+    try {
+      return await this.runOnce(host, commands);
+    } catch (error) {
+      if (!isKexNegotiationFailure(error)) throw error;
+      return this.runOnce(host, commands, LEGACY_KEX_ALGORITHMS);
+    }
+  }
+
+  private async runOnce(
+    host: string,
+    commands: string[],
+    legacyKex?: readonly string[],
+  ): Promise<CommandResult> {
     const connection = new Client();
     const config: ConnectConfig = {
       host,
@@ -45,6 +110,7 @@ export class SshClientImpl implements SshClient {
       readyTimeout: this.options.readyTimeout ?? 8_000,
       keepaliveInterval: 2_000,
       keepaliveCountMax: 2,
+      ...(legacyKex ? { algorithms: { kex: [...legacyKex] } } : {}),
     };
 
     let rejectConnectionFailure: (error: Error) => void = () => undefined;
@@ -64,10 +130,10 @@ export class SshClientImpl implements SshClient {
     try {
       await Promise.race([ready, connectionFailure]);
       const result = await Promise.race([
-        this.executeShell(connection, preparedCommands),
+        this.executeShell(connection, commands),
         connectionFailure,
       ]);
-      return [result];
+      return result;
     } finally {
       connection.end();
     }
@@ -224,16 +290,27 @@ export class SshClientImpl implements SshClient {
     });
   }
 
-  private safeError(error: Error & { code?: unknown }): Error {
+  private safeError(error: Error & { code?: unknown; level?: unknown }): SshTransportError {
     const code = String(error.code ?? '').toLowerCase();
+    const level = String(error.level ?? '').toLowerCase();
     const message = String(error.message ?? '').toLowerCase();
-    if (code.includes('auth') || message.includes('authentication')) {
-      return new Error('SSH authentication failed');
+    if (/no matching key exchange|no common key exchange|key exchange (?:method|algorithm)s? not (?:found|supported)/.test(message)) {
+      return new SshTransportError('KEX_NEGOTIATION_FAILED', 'SSH key exchange negotiation failed');
     }
-    if (code.includes('timeout') || message.includes('timeout')) return new Error('SSH connection timeout');
+    if (code.includes('auth') || level.includes('authentication') || message.includes('authentication')) {
+      return new SshTransportError('AUTHENTICATION_FAILED', 'SSH authentication failed');
+    }
+    if (
+      code.includes('timeout')
+      || level.includes('timeout')
+      || message.includes('timeout')
+      || message.includes('timed out')
+    ) {
+      return new SshTransportError('CONNECTION_TIMEOUT', 'SSH connection timeout');
+    }
     if (code.includes('refused') || message.includes('refused') || message.includes('unreachable')) {
-      return new Error('SSH host is unreachable');
+      return new SshTransportError('HOST_UNREACHABLE', 'SSH host is unreachable');
     }
-    return new Error('SSH transport failed');
+    return new SshTransportError('TRANSPORT_FAILED', 'SSH transport failed');
   }
 }

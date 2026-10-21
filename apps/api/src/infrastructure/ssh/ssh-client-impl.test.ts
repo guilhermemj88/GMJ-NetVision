@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 interface FakeChannelState {
   writes: string[];
@@ -11,6 +11,10 @@ const mockState = vi.hoisted(() => ({
   script: null as null | ((command: string, channel: FakeChannelState) => void),
   /** Primeira saida do shell (prompt inicial ou desafio de senha). */
   initialOutput: '<HUAWEI>',
+  /** Configuracao entregue a cada `connect()`, na ordem das tentativas. */
+  connectConfigs: [] as unknown[],
+  /** Erros a emitir no proximo `connect()`, consumidos em ordem. */
+  connectErrors: [] as Error[],
 }));
 
 vi.mock('ssh2', async () => {
@@ -51,7 +55,13 @@ vi.mock('ssh2', async () => {
   }
 
   class FakeClient extends EventEmitter {
-    connect() {
+    connect(config?: unknown) {
+      mockState.connectConfigs.push(config);
+      const failure = mockState.connectErrors.shift();
+      if (failure) {
+        queueMicrotask(() => this.emit('error', failure));
+        return;
+      }
       queueMicrotask(() => this.emit('ready'));
     }
     shell(_options: unknown, callback: (error: undefined, stream: FakeChannel) => void) {
@@ -477,5 +487,111 @@ describe('SshClientImpl — prompt Junos e limites do reconhecimento', () => {
     expect(index('write:show interfaces descriptions | no-more\r\n')).toBeGreaterThan(
       index('prompt:show interfaces terse | no-more'),
     );
+  });
+});
+
+describe('SshClientImpl — fallback controlado de KEX legado', () => {
+  beforeEach(() => {
+    mockState.connectConfigs.length = 0;
+    mockState.connectErrors.length = 0;
+  });
+
+  afterEach(() => {
+    mockState.channels.length = 0;
+    mockState.script = null;
+    mockState.initialOutput = '<HUAWEI>';
+    mockState.connectConfigs.length = 0;
+    mockState.connectErrors.length = 0;
+  });
+
+  function respond(): void {
+    mockState.script = (command, channel) => {
+      if (command === 'quit') return;
+      echoWithPrompt(channel, command);
+    };
+  }
+
+  function kexOf(index: number): string[] | undefined {
+    const config = mockState.connectConfigs[index] as { algorithms?: { kex?: string[] } } | undefined;
+    return config?.algorithms?.kex;
+  }
+
+  function kexFailure(): Error {
+    return Object.assign(new Error('Handshake failed: no matching key exchange algorithm'), { level: 'client' });
+  }
+
+  function makeClient(): SshClientImpl {
+    return new SshClientImpl({ port: 22, username: 'u', password: 'p', commandIdleMs: FAST_IDLE, readyTimeout: 500 });
+  }
+
+  it('1) host moderno conecta numa unica tentativa, sem KEX legado', async () => {
+    respond();
+    const [result] = await makeClient().execute('10.0.0.1', ['display clock']);
+
+    expect(result!.exitCode).toBe(0);
+    expect(mockState.connectConfigs).toHaveLength(1);
+    expect(kexOf(0)).toBeUndefined();
+  });
+
+  it('2) recusa de KEX repete com diffie-hellman-group14-sha1', async () => {
+    respond();
+    mockState.connectErrors.push(kexFailure());
+
+    const [result] = await makeClient().execute('10.50.50.3', ['display lldp']);
+
+    expect(result!.exitCode).toBe(0);
+    expect(mockState.connectConfigs).toHaveLength(2);
+    expect(kexOf(0)).toBeUndefined();
+    expect(kexOf(1)?.at(-1)).toBe('diffie-hellman-group14-sha1');
+  });
+
+  it('3) authentication failed nao dispara retry legado', async () => {
+    mockState.connectErrors.push(Object.assign(
+      new Error('All configured authentication methods failed'),
+      { level: 'client-authentication' },
+    ));
+
+    await expect(makeClient().execute('10.0.0.1', ['display clock'])).rejects.toThrow('SSH authentication failed');
+    expect(mockState.connectConfigs).toHaveLength(1);
+  });
+
+  it('4) timeout nao dispara retry legado', async () => {
+    mockState.connectErrors.push(Object.assign(
+      new Error('Timed out while waiting for handshake'),
+      { level: 'client-timeout' },
+    ));
+
+    await expect(makeClient().execute('10.0.0.1', ['display clock'])).rejects.toThrow('SSH connection timeout');
+    expect(mockState.connectConfigs).toHaveLength(1);
+  });
+
+  it('5) refused / unreachable nao disparam retry legado', async () => {
+    mockState.connectErrors.push(Object.assign(
+      new Error('connect ECONNREFUSED 10.0.0.1:22'),
+      { code: 'ECONNREFUSED', level: 'client-socket' },
+    ));
+
+    await expect(makeClient().execute('10.0.0.1', ['display clock'])).rejects.toThrow('SSH host is unreachable');
+    expect(mockState.connectConfigs).toHaveLength(1);
+  });
+
+  it('6) fallback que tambem falha para em exatamente duas tentativas', async () => {
+    mockState.connectErrors.push(kexFailure(), kexFailure());
+
+    await expect(makeClient().execute('10.50.50.3', ['display lldp']))
+      .rejects.toThrow('SSH key exchange negotiation failed');
+    expect(mockState.connectConfigs).toHaveLength(2);
+    expect(mockState.connectErrors).toHaveLength(0);
+  });
+
+  it('7) diffie-hellman-group1-sha1 nunca e habilitado', async () => {
+    respond();
+    mockState.connectErrors.push(kexFailure());
+
+    await makeClient().execute('10.50.50.3', ['display lldp']);
+
+    const offered = mockState.connectConfigs.flatMap((_, index) => kexOf(index) ?? []);
+    expect(offered.length).toBeGreaterThan(0);
+    expect(offered).not.toContain('diffie-hellman-group1-sha1');
   });
 });
