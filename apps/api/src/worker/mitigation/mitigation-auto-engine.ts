@@ -87,6 +87,7 @@ export type MitigationAutoBlockReason =
    * manual (ex.: BHNET-3043) nao e afetado e mitigacoes ativas nao sao tocadas.
    */
   | 'AUTO_EXECUTION_DISABLED'
+  | 'AUTO_EXECUTION_NOT_AUTHORIZED'
   | 'CONCURRENT_TICK';
 
 export interface MitigationAutoTargetState {
@@ -309,7 +310,19 @@ export interface MitigationAutoEngineDeps {
    * (`autoPromotedBySweep=true`). AUTO manual/legado (BHNET-3043) e mitigacoes
    * ja ativas permanecem intactos; o REMOVE continua 100% manual.
    */
-  executionControl?: { enabled: boolean };
+  executionControl?: {
+    enabled: boolean;
+    /**
+     * ALLOWLIST DE EXECUCAO POR PERFIL (AUTO-ALL): quando informada e nao vazia,
+     * somente estes profileIds podem iniciar ACTIVATE real. Vale para AUTO
+     * promovido pelo sweep E para AUTO manual (fail-closed), exceto os perfis
+     * listados em `legacyExemptProfileIds`. Vazio/ausente = comportamento
+     * anterior (nenhum gate por perfil).
+     */
+    allowedProfileIds?: readonly string[];
+    /** Perfis isentos da allowlist (ex.: AUTO manual legado, BHNET-3043). */
+    legacyExemptProfileIds?: readonly string[];
+  };
   /**
    * OBRIGATÓRIO: janela da fonte roteada para este motor. Sem valor explícito o
    * construtor falha — não existe fallback global (o antigo 45 s aplicado ao
@@ -1043,6 +1056,17 @@ export class MitigationAutoEngine {
     // permanece intocada (REMOVE e 100% manual).
     if (target.autoPromotedBySweep === true && this.deps.executionControl?.enabled !== true) {
       return decided('AUTO_EXECUTION_DISABLED', 'WOULD_ACTIVATE');
+    }
+    // Gate de EXECUCAO POR PERFIL: quando a allowlist existe, nenhum AUTO fora
+    // dela (nem manual) inicia ativacao ? exceto os isentos explicitamente.
+    // Sem allowlist o comportamento permanece o anterior.
+    const execCtl = this.deps.executionControl;
+    const execAllowed = execCtl?.allowedProfileIds ?? [];
+    if (execCtl && execAllowed.length > 0 && target.mode === 'AUTO') {
+      const exempt = (execCtl.legacyExemptProfileIds ?? []).includes(target.profileId);
+      if (!exempt && !execAllowed.includes(target.profileId)) {
+        return decided('AUTO_EXECUTION_NOT_AUTHORIZED', 'WOULD_ACTIVATE');
+      }
     }
     // Daqui para baixo o target esta apto: o que falta e a autorizacao de escrita.
     if (this.deps.globalMode !== 'AUTO')

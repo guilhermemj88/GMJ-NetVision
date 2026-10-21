@@ -1201,7 +1201,17 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     approvedFamilyPairs,
     dualDirections: { enabled: autoDualDirectionsEnabled },
     // Controle de EXECUCAO (distinto da autorizacao por DESCRIPTION).
-    executionControl: { enabled: autoExecutionEnabled },
+    executionControl: {
+      enabled: autoExecutionEnabled,
+      allowedProfileIds: (process.env.MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS ?? '')
+        .split(',')
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0),
+      legacyExemptProfileIds: (process.env.MITIGATION_AUTO_EXECUTION_LEGACY_PROFILE_IDS ?? '')
+        .split(',')
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0),
+    },
     // Decisao normal repetida NAO vira linha INFO: transicoes de estado/motivo,
     // operacoes reais e falhas continuam no INFO; o detalhe por tick fica no
     // DEBUG e as decisoes suprimidas saem no resumo periodico.
