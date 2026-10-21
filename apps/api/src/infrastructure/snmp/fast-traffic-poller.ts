@@ -10,13 +10,25 @@ import type {
 
 export interface FastPollerConfig {
   mode: 'OFF' | 'OBSERVE' | 'ENFORCE';
+  /** Escopo total de ids observados (união legada + roteados). */
   profileIds: string[];
+  /**
+   * Subconjunto EXPLÍCITO de telemetria (`MITIGATION_FAST_ROUTED_PROFILE_IDS`).
+   * Perfis desta lista são medidos em QUALQUER modo — inclusive ALERT_ONLY —
+   * porque coletar não é autorizar. Fora dela vale a regra legada (só AUTO).
+   */
+  telemetryProfileIds: string[];
   normalIntervalMs: number;
   suspectIntervalMs: number;
   maxGapMs: number;
   timeoutMs: number;
   retries: number;
   concurrency: number;
+  /**
+   * Teto de interfaces observadas por device. Exceder o teto FALHA o refresh
+   * (fail-closed) em vez de truncar a coleta silenciosamente.
+   */
+  maxInterfacesPerDevice: number;
 }
 
 export function fastPollerConfig(
@@ -40,18 +52,21 @@ export function fastPollerConfig(
   // `MITIGATION_FAST_ROUTED_PROFILE_IDS` é a fonte de verdade do roteamento de
   // telemetria: o observador coleta a UNIÃO dela com a lista legada, sem exigir
   // que os operadores mantenham duas listas em sincronia.
-  const profileIds = [...new Set([...list('MITIGATION_FAST_PROFILE_IDS'), ...list('MITIGATION_FAST_ROUTED_PROFILE_IDS')])];
+  const telemetryProfileIds = list('MITIGATION_FAST_ROUTED_PROFILE_IDS');
+  const profileIds = [...new Set([...list('MITIGATION_FAST_PROFILE_IDS'), ...telemetryProfileIds])];
   if (mode !== 'OFF' && !profileIds.length)
     throw new Error('MITIGATION_FAST_PROFILE_IDS is required');
   return {
     mode,
     profileIds,
+    telemetryProfileIds,
     normalIntervalMs: integer('MITIGATION_FAST_NORMAL_SECONDS', 20, 10, 30) * 1000,
     suspectIntervalMs: 10_000,
     maxGapMs: 45_000,
     timeoutMs: integer('MITIGATION_FAST_TIMEOUT_MS', 1500, 100, 2000),
     retries: integer('MITIGATION_FAST_RETRIES', 0, 0, 1),
     concurrency: integer('MITIGATION_FAST_CONCURRENCY', 2, 1, 4),
+    maxInterfacesPerDevice: integer('MITIGATION_FAST_MAX_INTERFACES_PER_DEVICE', 8, 1, 64),
   };
 }
 
@@ -222,7 +237,8 @@ export class FastTrafficPoller {
       }
     for (const [id, ts] of groups) {
       // Reject an excessive scope rather than silently starving protected interfaces.
-      if (ts.length > 8) throw new Error('FAST_DEVICE_INTERFACE_LIMIT');
+      if (ts.length > this.deps.config.maxInterfacesPerDevice)
+        throw new Error('FAST_DEVICE_INTERFACE_LIMIT');
       const old = this.schedules.get(id);
       this.schedules.set(id, {
         targets: ts,

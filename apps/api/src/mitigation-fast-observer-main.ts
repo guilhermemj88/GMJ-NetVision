@@ -97,6 +97,7 @@ async function main(): Promise<void> {
     listTargets: () =>
       listFastTrafficTargets({
         profileIds: config.profileIds,
+        telemetryProfileIds: config.telemetryProfileIds,
         allowedDeviceIds: allowed,
         hosts,
         listProfiles: async () =>

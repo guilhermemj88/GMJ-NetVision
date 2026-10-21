@@ -1016,6 +1016,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     listTargets: () =>
       listFastTrafficTargets({
         profileIds: fastConfig.profileIds,
+        telemetryProfileIds: fastConfig.telemetryProfileIds,
         allowedDeviceIds: mitigationExecutionConfig.allowedDeviceIds,
         listProfiles: () => mitigationRepository.listProfiles(),
         hosts,
