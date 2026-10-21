@@ -127,3 +127,80 @@ describe('allowlist de promocao do sweep (piloto direcionado)', () => {
     expect([a, b].find((entry) => !entry.skippedConcurrent)!.promoted).toEqual([CLICK]);
   });
 });
+
+describe('RC9: casos adicionais da allowlist', () => {
+  it('profileId inexistente na lista => nada e promovido (fail-closed)', async () => {
+    const { result } = await run({ batchSize: 5, allowedProfileIds: ['profile-que-nao-existe'] });
+    expect(result.promoted).toEqual([]);
+    expect(result.heldByBatch).toBe(0);
+  });
+
+  it('dois IDs na lista => promove exatamente os dois', async () => {
+    const { result } = await run({ batchSize: 5, allowedProfileIds: [FLASH, GMS] });
+    expect(result.promoted.sort()).toEqual([FLASH, GMS].sort());
+  });
+
+  it('perfil JA em AUTO nao e tocado nem aparece como promovido', async () => {
+    const { result, store } = await run({ batchSize: 5, allowedProfileIds: [BHNET, CLICK] });
+    expect(result.promoted).toEqual([CLICK]);
+    expect(store.get(BHNET)!.mode).toBe('AUTO');
+    expect(store.get(BHNET)!.promotedBySweep).toBe(false);
+  });
+
+  it('IPv6 na lista NAO e promovido (familia fora da fase)', async () => {
+    const v6 = p('profile-v6', {
+      addressFamily: 'IPV6',
+      policyName: 'PL-CLICKING-V6-IN',
+      interfaceName: 'Eth-Trunk1.3528',
+    });
+    const { result } = await run({ batchSize: 5, allowedProfileIds: ['profile-v6'] }, [v6]);
+    expect(result.promoted).toEqual([]);
+    expect(result.skippedFamily).toBeGreaterThan(0);
+  });
+
+  it('perfil com autoState BLOCKED na lista continua bloqueado', async () => {
+    const blocked = p(GMS, {
+      autoState: 'BLOCKED',
+      autoStateReason: 'SHARED_POLICY',
+      policyName: 'PL-GMTELECOM_IPv4-IN',
+      interfaceName: 'Eth-Trunk1.3042',
+    });
+    const { result, store } = await run(
+      { batchSize: 5, allowedProfileIds: [GMS] },
+      [blocked, p(CLICK)],
+    );
+    expect(result.promoted).toEqual([]);
+    expect(store.get(GMS)!.mode).toBe('ALERT_ONLY');
+  });
+
+  it('promocao pelo sweep grava proveniencia e rollback direcionado a limpa', async () => {
+    const { store } = await run({ batchSize: 1, allowedProfileIds: [CLICK] });
+    expect(store.get(CLICK)!.mode).toBe('AUTO');
+    expect(store.get(CLICK)!.promotedBySweep).toBe(true);
+    expect(store.get(BHNET)!.mode).toBe('AUTO');
+    expect(store.get(BHNET)!.promotedBySweep).toBe(false);
+
+    // rollback direcionado: volta SO o CLICKING e limpa a proveniencia
+    const store2 = new Map(store);
+    store2.set(CLICK, { ...store.get(CLICK)!, mode: 'ALERT_ONLY', promotedBySweep: false });
+    expect(store2.get(CLICK)!.mode).toBe('ALERT_ONLY');
+    expect(store2.get(CLICK)!.promotedBySweep).toBe(false);
+    expect(store2.get(BHNET)!.mode).toBe('AUTO');
+  });
+
+  it('sweep NAO possui porta de execucao (somente setMode/setProvenance)', () => {
+    const deps = Object.keys({
+      enabled: true,
+      families: ['IPV4'],
+      batchSize: 1,
+      allowedProfileIds: [CLICK],
+      listProfiles: async () => POPULATION,
+      setMode: async () => undefined,
+      setProvenance: async () => undefined,
+    });
+    expect(deps.sort()).toEqual(
+      ['allowedProfileIds', 'batchSize', 'enabled', 'families', 'listProfiles', 'setMode', 'setProvenance'].sort(),
+    );
+    expect(deps.some((key) => /command|executor|activate|h3c|huawei|ssh/i.test(key))).toBe(false);
+  });
+});
