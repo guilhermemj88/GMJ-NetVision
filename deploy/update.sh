@@ -128,21 +128,14 @@ log "Preparando bundle standalone do Web"
 [[ -x "$NODE_BIN" ]] || fail "node não encontrado em $NODE_BIN (a unit netvision-web.service usa esse caminho)"
 [[ -f "$STANDALONE_WEB/server.js" ]] ||
   fail "bundle standalone não encontrado em $STANDALONE_WEB/server.js (confirme output: 'standalone' em apps/web/next.config.ts)"
-[[ -d "$WEB_DIR/public" ]] || fail "diretório $WEB_DIR/public não encontrado"
-[[ -d "$WEB_DIR/.next/static" ]] || fail "diretório $WEB_DIR/.next/static não encontrado"
 
 # O build standalone não copia `public` nem `.next/static`: sem isso o Web
 # sobe sem imagens, CSS e chunks (as rotas respondem, mas a página quebra).
-mkdir -p "$STANDALONE_WEB/.next"
-rm -rf "$STANDALONE_WEB/public"
-cp -a "$WEB_DIR/public" "$STANDALONE_WEB/public"
-rm -rf "$STANDALONE_WEB/.next/static"
-cp -a "$WEB_DIR/.next/static" "$STANDALONE_WEB/.next/static"
-
-[[ -d "$STANDALONE_WEB/public" ]] || fail "public não foi copiado para o bundle standalone"
-[[ -d "$STANDALONE_WEB/.next/static" ]] || fail "assets estáticos (.next/static) não foram copiados para o bundle standalone"
-[[ -f "$STANDALONE_WEB/public/physical-panels/huawei/s6730-h48x6c-front.png" ]] ||
-  fail "imagens dos painéis físicos não foram copiadas para o bundle standalone"
+# Empacotamento compartilhado com o deploy/install.sh — uma única
+# implementação, idempotente e com verificação de cópia completa.
+[[ -f "$PROJECT_DIR/deploy/package-standalone.sh" ]] ||
+  fail "$PROJECT_DIR/deploy/package-standalone.sh não encontrado"
+bash "$PROJECT_DIR/deploy/package-standalone.sh" --web-dir "$WEB_DIR" --standalone-dir "$STANDALONE_WEB"
 
 log "Instalando a unit do serviço Web"
 [[ -f "$PROJECT_DIR/deploy/netvision-web.service" ]] ||

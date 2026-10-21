@@ -132,6 +132,13 @@ npx prisma migrate deploy --schema apps/api/prisma/schema.prisma
 log "Gerando builds de produção"
 npm run build
 
+# O build standalone NÃO copia `.next/static` nem `public`: sem esse passo o
+# Web sobe, as rotas respondem 200, mas todo chunk JS/CSS sai 404 e a UI fica
+# presa em "Verificando sessão". A implementação é compartilhada com o
+# deploy/update.sh para instalação e atualização terem o mesmo comportamento.
+log "Empacotando o bundle standalone do Web"
+bash deploy/package-standalone.sh
+
 log "Instalando serviços systemd"
 install -m 0644 deploy/netvision-api.service "$SYSTEMD_DIR/netvision-api.service"
 install -m 0644 deploy/netvision-web.service "$SYSTEMD_DIR/netvision-web.service"
