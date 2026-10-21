@@ -155,6 +155,7 @@ import { SshInterfaceService } from './infrastructure/ssh/ssh-interface-service'
 import { OpticalThresholdService } from './infrastructure/ssh/optical-threshold-service';
 import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-adapter';
 import { HuaweiVrpDriver } from './infrastructure/topology/huawei-vrp-driver';
+import { JuniperJunosDriver } from './infrastructure/topology/juniper-junos-driver';
 import { LldpSnmpDiscoveryAdapter } from './infrastructure/topology/lldp-snmp-adapter';
 import { LldpSshDiscoveryAdapter } from './infrastructure/topology/lldp-ssh-adapter';
 
@@ -445,7 +446,8 @@ function buildTopologyAdapters(hosts: HostRepository): TopologyDiscoveryAdapter[
 
   return [
     new LldpSnmpDiscoveryAdapter(snmpClient, snmpTargetProvider),
-    new LldpSshDiscoveryAdapter([new HuaweiVrpDriver()], sshSessionFactory),
+    // Selecao por vendor: Huawei nunca recebe comando Junos e vice-versa.
+    new LldpSshDiscoveryAdapter([new HuaweiVrpDriver(), new JuniperJunosDriver()], sshSessionFactory),
   ];
 }
 

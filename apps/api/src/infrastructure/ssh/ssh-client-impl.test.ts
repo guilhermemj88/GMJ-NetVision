@@ -325,3 +325,157 @@ describe('SshClientImpl — contrato e comandos em lote', () => {
     );
   });
 });
+
+describe('SshClientImpl — prompt Junos e limites do reconhecimento', () => {
+  afterEach(() => {
+    mockState.channels.length = 0;
+    mockState.script = null;
+    mockState.initialOutput = '<HUAWEI>';
+  });
+
+  function lastChannel(): FakeChannelState {
+    const channel = mockState.channels.at(-1);
+    if (!channel) throw new Error('SSH channel was not created');
+    return channel;
+  }
+
+  /** Eco + saida + prompt Junos final (operational `>` ou configuration `#`). */
+  function junosEcho(
+    channel: FakeChannelState,
+    prompt: string,
+    command: string,
+    chunks: string[] = [],
+  ): void {
+    channel.emitData(`${prompt}${command}\r\n`);
+    chunks.forEach((chunk, index) => {
+      channel.events.push(`chunk:${command}:${index}`);
+      channel.emitData(chunk);
+    });
+    channel.events.push(`prompt:${command}`);
+    channel.emitData(`\r\n${prompt}`);
+  }
+
+  it('J) prompt Junos operacional `usuario@host>` avanca a sequencia', async () => {
+    const prompt = 'guilherme.jardim@VIANET-OUROPRETO>';
+    mockState.initialOutput = prompt;
+    mockState.script = (command, channel) => {
+      if (command === 'quit') return;
+      junosEcho(channel, prompt, command);
+    };
+
+    const client = new SshClientImpl({ port: 22, username: 'u', password: 'p', commandIdleMs: FAST_IDLE });
+    const [result] = await client.execute('10.0.0.1', [
+      'show version | no-more',
+      'show chassis hardware | no-more',
+    ]);
+
+    expect(result!.exitCode).toBe(0);
+    expect(lastChannel().writes).toEqual([
+      'show version | no-more\r\n',
+      'show chassis hardware | no-more\r\n',
+      'quit\r\n',
+    ]);
+  });
+
+  it('K) prompt Junos de configuration mode `usuario@host#` tambem e reconhecido', async () => {
+    const prompt = 'guilherme.jardim@BORDA-VIANET-NOVA-LIMA#';
+    mockState.initialOutput = prompt;
+    mockState.script = (command, channel) => {
+      if (command === 'quit') return;
+      junosEcho(channel, prompt, command);
+    };
+
+    const client = new SshClientImpl({ port: 22, username: 'u', password: 'p', commandIdleMs: FAST_IDLE });
+    const [result] = await client.execute('10.0.0.1', ['show lldp neighbors | no-more']);
+
+    expect(result!.exitCode).toBe(0);
+    expect(lastChannel().writes[0]).toBe('show lldp neighbors | no-more\r\n');
+  });
+
+  it('L) prompt Huawei `<HOST>` continua funcionando', async () => {
+    mockState.initialOutput = '<CORE-01>';
+    mockState.script = (command, channel) => {
+      if (command === 'quit') return;
+      channel.emitData(`<CORE-01>${command}\r\n`);
+      channel.events.push(`prompt:${command}`);
+      channel.emitData('\r\n<CORE-01>');
+    };
+
+    const client = new SshClientImpl({ port: 22, username: 'u', password: 'p', commandIdleMs: FAST_IDLE });
+    const [result] = await client.execute('10.0.0.1', ['display version']);
+
+    expect(result!.exitCode).toBe(0);
+    expect(lastChannel().writes).toEqual(['display version\r\n', 'quit\r\n']);
+  });
+
+  it('M) prompt Huawei `[HOST]` (system view) continua funcionando', async () => {
+    mockState.initialOutput = '[~CORE-01]';
+    mockState.script = (command, channel) => {
+      if (command === 'quit') return;
+      channel.emitData(`[~CORE-01]${command}\r\n`);
+      channel.events.push(`prompt:${command}`);
+      channel.emitData('\r\n[~CORE-01]');
+    };
+
+    const client = new SshClientImpl({ port: 22, username: 'u', password: 'p', commandIdleMs: FAST_IDLE });
+    const [result] = await client.execute('10.0.0.1', ['display version']);
+
+    expect(result!.exitCode).toBe(0);
+    expect(lastChannel().writes).toEqual(['display version\r\n', 'quit\r\n']);
+  });
+
+  it('N) texto comum terminado em ">" NAO e tratado como prompt', async () => {
+    mockState.initialOutput = 'Press any key to continue >';
+    mockState.script = () => undefined;
+
+    const client = new SshClientImpl({
+      port: 22,
+      username: 'u',
+      password: 'p',
+      shellTimeoutMs: 40,
+      commandIdleMs: 60_000,
+    });
+
+    await expect(client.execute('10.0.0.1', ['show version | no-more'])).rejects.toThrow(
+      'SSH command timeout',
+    );
+    expect(lastChannel().writes).toEqual([]);
+  });
+
+  it('O) texto comum contendo "#" NAO e tratado como prompt', async () => {
+    mockState.initialOutput = '# configuracao carregada, aguarde';
+    mockState.script = () => undefined;
+
+    const client = new SshClientImpl({
+      port: 22,
+      username: 'u',
+      password: 'p',
+      shellTimeoutMs: 40,
+      commandIdleMs: 60_000,
+    });
+
+    await expect(client.execute('10.0.0.1', ['show version | no-more'])).rejects.toThrow(
+      'SSH command timeout',
+    );
+    expect(lastChannel().writes).toEqual([]);
+  });
+
+  it('P) execucao sequencial em Junos so envia o proximo comando apos o prompt', async () => {
+    const prompt = 'op@MX240-NOVA-LIMA>';
+    mockState.initialOutput = prompt;
+    mockState.script = (command, channel) => {
+      if (command === 'quit') return;
+      // Saida grande: o prompt so vem no fim.
+      junosEcho(channel, prompt, command, ['linha 1\r\n', 'linha 2\r\n', 'linha 3\r\n']);
+    };
+
+    const client = new SshClientImpl({ port: 22, username: 'u', password: 'p', commandIdleMs: FAST_IDLE });
+    await client.execute('10.0.0.1', ['show interfaces terse | no-more', 'show interfaces descriptions | no-more']);
+
+    const channel = lastChannel();
+    const index = (event: string) => channel.events.indexOf(event);
+    expect(index('write:show interfaces descriptions | no-more\r\n')).toBeGreaterThan(
+      index('prompt:show interfaces terse | no-more'),
+    );
+  });
+});

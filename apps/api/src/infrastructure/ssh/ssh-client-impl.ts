@@ -101,7 +101,20 @@ export class SshClientImpl implements SshClient {
         }, this.options.shellTimeoutMs ?? (this.options.readyTimeout ?? 8_000) + 7_000);
 
         const initialPasswordPrompt = /(initial password poses security risks|password needs to be changed|change now\?\s*\[y\/n\]\s*:)/i;
-        const cliPrompt = /(?:^|[\r\n])\s*(?:<[^>\r\n]+>|\[[^\]\r\n]+\])\s*$/;
+        /**
+         * Prompt de linha de comando reconhecido no FIM da linha:
+         *
+         *  - Huawei VRP: `<HOST>` (user view) e `[HOST]` (system view);
+         *  - Juniper Junos: `usuario@host>` (operational) e `usuario@host#`
+         *    (configuration).
+         *
+         * O Junos EXIGE o formato `algo@algo` antes do `>`/`#`. Sem essa
+         * ancora, `/[#>]$/` casaria com saida comum (uma linha de texto
+         * terminada em `>`, um `#` em comentario), fazendo o cliente achar que
+         * o comando terminou e enviar o proximo cedo demais.
+         */
+        const cliPrompt =
+          /(?:^|[\r\n])\s*(?:<[^>\r\n]+>|\[[^\]\r\n]+\]|[A-Za-z0-9._-]+@[A-Za-z0-9._-]+[>#])\s*$/;
         const quitSequence =
           this.options.exitMode === 'return-quit'
             ? 'return\r\nquit\r\n'

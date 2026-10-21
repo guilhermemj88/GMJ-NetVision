@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CommandResult, LldpSshSessionFactory, SshClient } from '../../domain/ports';
 import type { Device } from '@gmj/shared';
 import { HuaweiVrpDriver } from './huawei-vrp-driver';
+import { JuniperJunosDriver } from './juniper-junos-driver';
 import { LldpSshDiscoveryAdapter } from './lldp-ssh-adapter';
 
 class FakeSshClient implements SshClient {
@@ -128,5 +129,95 @@ Local Intf    Neighbor Dev       Neighbor Intf      Exptime(s)
     await expect(discovery.discoverNeighbors(device())).rejects.toThrow(
       'SSH credentials not configured',
     );
+  });
+});
+
+describe('LldpSshDiscoveryAdapter — isolamento de comandos por vendor', () => {
+  /** Registry de producao: Huawei + Juniper, selecionados por vendor. */
+  function multiDriverAdapter(client: SshClient): LldpSshDiscoveryAdapter {
+    const sessions: LldpSshSessionFactory = {
+      open: async () => ({ client, host: '198.51.100.10' }),
+    };
+    return new LldpSshDiscoveryAdapter(
+      [new HuaweiVrpDriver(), new JuniperJunosDriver()],
+      sessions,
+    );
+  }
+
+  function commandsOf(client: FakeSshClient): string[] {
+    return client.calls.flatMap((call) => call.commands);
+  }
+
+  it('Juniper recebe SOMENTE comandos Junos, nunca `display`', async () => {
+    const client = new FakeSshClient([
+      result('LLDP                      : Disabled'),
+    ]);
+
+    const neighbors = await multiDriverAdapter(client).discoverNeighbors(device('Juniper'));
+
+    expect(neighbors).toEqual([]);
+    const commands = commandsOf(client);
+    expect(commands.length).toBeGreaterThan(0);
+    expect(commands).toEqual(['show lldp neighbors | no-more']);
+    expect(commands.some((command) => command.includes('display'))).toBe(false);
+    expect(commands.some((command) => command.includes('screen-length'))).toBe(false);
+  });
+
+  it('Huawei recebe SOMENTE comandos VRP, nunca `show ... no-more`', async () => {
+    const client = new FakeSshClient([
+      result(`
+100GE0/0/1 has 1 neighbor(s):
+Chassis ID : aaaa-bbbb-cccc
+Port ID : Ethernet1/1
+System name : REMOTE-SW-01
+`),
+    ]);
+
+    await multiDriverAdapter(client).discoverNeighbors(device('Huawei'));
+
+    const commands = commandsOf(client);
+    expect(commands).toContain('display lldp neighbor');
+    expect(commands.some((command) => command.startsWith('show '))).toBe(false);
+    expect(commands.some((command) => command.includes('no-more'))).toBe(false);
+  });
+
+  it('vendor vazio mantem o comportamento legado (driver Huawei)', async () => {
+    const client = new FakeSshClient([result('There is no LLDP neighbor.')]);
+
+    await multiDriverAdapter(client).discoverNeighbors(device(''));
+
+    expect(commandsOf(client)).toContain('display lldp neighbor');
+  });
+
+  it('vendor desconhecido falha fechado sem enviar nenhum comando', async () => {
+    const client = new FakeSshClient([]);
+
+    await expect(multiDriverAdapter(client).discoverNeighbors(device('Cisco'))).rejects.toThrow(
+      'No SSH driver configured for vendor Cisco',
+    );
+    expect(client.calls).toEqual([]);
+  });
+
+  it('descoberta de identidade sem vendor nao adivinha o driver com 2 registrados', async () => {
+    const client = new FakeSshClient([]);
+
+    await expect(multiDriverAdapter(client).getDeviceIdentity('198.51.100.10')).rejects.toThrow(
+      'SSH identity discovery requires a vendor-scoped driver',
+    );
+    expect(client.calls).toEqual([]);
+  });
+
+  it('descoberta de interfaces usa o driver Junos para equipamento Juniper', async () => {
+    const client = new FakeSshClient([
+      result('Interface               Admin Link Proto    Local                 Remote\nge-0/0/0                up    up'),
+    ]);
+
+    const interfaces = await multiDriverAdapter(client).discoverInterfaces(device('Juniper'));
+
+    expect(interfaces.map((item) => item.name)).toEqual(['ge-0/0/0']);
+    expect(commandsOf(client)).toEqual([
+      'show interfaces terse | no-more',
+      'show interfaces descriptions | no-more',
+    ]);
   });
 });

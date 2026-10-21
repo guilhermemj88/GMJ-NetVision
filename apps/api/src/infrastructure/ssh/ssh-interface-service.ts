@@ -10,6 +10,7 @@ import {
 import { hasHuaweiMultiLaneCapability } from '../topology/huawei-optical';
 import { interfaceNameKeys, mergeSnmpAndSshInterfaces } from '../topology/interface-correlation';
 import { SshClientImpl } from './ssh-client-impl';
+import { isJuniperVendor, sshDiscoveryDriverFor } from './ssh-driver-select';
 
 function hasValidLaneData(networkInterface: NetworkInterface): boolean {
   return hasHuaweiMultiLaneCapability(networkInterface.opticalLanes);
@@ -64,8 +65,8 @@ export class SshInterfaceService {
     try {
       const interfaces = await this.discoverInterfaces(device);
       return interfaces.length
-        ? { state: 'CONNECTED', message: `SSH respondeu ao display interface description com ${interfaces.length} interfaces` }
-        : { state: 'FAILED', message: 'SSH respondeu, mas display interface description não retornou interfaces válidas' };
+        ? { state: 'CONNECTED', message: `SSH respondeu com ${interfaces.length} interfaces` }
+        : { state: 'FAILED', message: 'SSH respondeu, mas não retornou interfaces válidas' };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'SSH transport failed';
       if (message.toLowerCase().includes('authentication')) return { state: 'AUTH_INVALID', message };
@@ -80,7 +81,7 @@ export class SshInterfaceService {
     snmpInterfaces: NetworkInterface[],
   ): Promise<NetworkInterface[]> {
     const sshInterfaces = await this.discoverInterfaces(device);
-    if (!sshInterfaces.length) throw new Error('SSH display interface description returned no valid interfaces');
+    if (!sshInterfaces.length) throw new Error('SSH interface discovery returned no valid interfaces');
     const merged = mergeSnmpAndSshInterfaces(snmpInterfaces, sshInterfaces);
 
     // Fallback is evaluated per interface. SNMP data on one port must not stop
@@ -93,6 +94,10 @@ export class SshInterfaceService {
     interfaces: NetworkInterface[],
     snmpFreshAfter?: Date,
   ): Promise<NetworkInterface[]> {
+    // Optical enrichment e especifico do VRP (Huawei). Para outro vendor o
+    // comando nao existe: sair sem tocar em nada evita rodar CLI Huawei num
+    // equipamento que nao a entende.
+    if (isJuniperVendor(device.vendor)) return interfaces;
     // Capability is evaluated per interface. Two fresh SNMP lanes suppress SSH,
     // while unresolved high-capacity ports proceed through the two CLI formats.
     const multiLaneCandidates = interfaces.filter((networkInterface) =>
@@ -234,8 +239,9 @@ export class SshInterfaceService {
     if (!credentials?.password) throw new Error('SSH credential not configured');
 
     // Many imported hosts have vendor empty/unknown even when the target is
-    // Huawei VRP. Do not block the explicit SSH test based on inventory metadata.
-    const driver = new HuaweiVrpDriver();
+    // Huawei VRP. Do not block the explicit SSH test based on inventory metadata:
+    // only Juniper is routed away from the legacy VRP commands.
+    const driver = sshDiscoveryDriverFor(device.vendor);
     const client = new SshClientImpl({
       port: device.ssh.port,
       username: device.ssh.username,
@@ -244,7 +250,7 @@ export class SshInterfaceService {
     });
     const results = await client.execute(device.ssh.host, driver.interfaceCommands());
     const commandResult = results.at(-1);
-    if (!commandResult || commandResult.exitCode !== 0) throw new Error('Huawei SSH command failed');
+    if (!commandResult || commandResult.exitCode !== 0) throw new Error('SSH command failed');
     return driver.parseInterfaces(device.id, commandResult.stdout);
   }
 }
