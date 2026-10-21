@@ -448,3 +448,152 @@ describe('TopologyPreviewService', () => {
     expect(preview.stats.hostsFailed).toBe(1);
   });
 });
+
+describe('TopologyPreviewService reciprocal confirmation', () => {
+  function pair(aToB: Partial<DiscoveredNeighbor>, bToA: Partial<DiscoveredNeighbor>) {
+    return new Map<string, DiscoveredNeighbor[] | Error>([
+      ['host-a', [neighbor({ remoteManagementAddress: '10.0.0.2', ...aToB })]],
+      ['host-b', [neighbor({
+        id: 'n2',
+        localDeviceId: 'host-b',
+        localPort: '100GE1/0/2',
+        remoteSystemName: 'bhe-a',
+        remotePort: '100GE1/0/1',
+        remoteManagementAddress: '10.0.0.1',
+        ...bToA,
+      })]],
+    ]);
+  }
+
+  it('keeps a reciprocal pair as a single CONFIRMED adjacency', async () => {
+    const adapter = new FakeTopologyAdapter('LLDP_SNMP', pair({}, {}));
+    const preview = await previewService(adapter, [hostA(), hostB()], makeMap({ id: 'map-1' })).discover('map-1');
+    expect(preview.stats.adjacencies).toBe(1);
+    expect(preview.adjacencies[0]).toMatchObject({
+      sourceHostId: 'host-a',
+      targetHostId: 'host-b',
+      sourceInterfaceId: 'a-if',
+      targetInterfaceId: 'b-if',
+      confidence: 'CONFIRMED',
+    });
+  });
+
+  it('confirms regardless of the order the observations are collected', async () => {
+    const forward = pair({}, {});
+    const reversed = new Map([...forward.entries()].reverse());
+    const preview = await previewService(
+      new FakeTopologyAdapter('LLDP_SNMP', reversed),
+      [hostB(), hostA()],
+      makeMap({ id: 'map-1' }),
+    ).discover('map-1');
+    expect(preview.stats.adjacencies).toBe(1);
+    expect(preview.stats.confirmed).toBe(1);
+    expect(new Set([preview.adjacencies[0]!.sourceHostId, preview.adjacencies[0]!.targetHostId]))
+      .toEqual(new Set(['host-a', 'host-b']));
+  });
+
+  it('confirms when one side is observed over SNMP and the other over SSH', async () => {
+    const snmp = new FakeTopologyAdapter('LLDP_SNMP', new Map([
+      ['host-a', [neighbor({ remoteManagementAddress: '10.0.0.2' })]],
+    ]));
+    const ssh = new FakeTopologyAdapter('LLDP_SSH', new Map([
+      ['host-b', [neighbor({
+        id: 'n2',
+        localDeviceId: 'host-b',
+        localPort: '100GE1/0/2',
+        remoteSystemName: 'bhe-a',
+        remotePort: '100GE1/0/1',
+        remoteManagementAddress: '10.0.0.1',
+        source: 'LLDP_SSH',
+      })]],
+    ]));
+    const service = new TopologyPreviewService(
+      [snmp, ssh],
+      { listHosts: async () => [hostA(), { ...hostB(), sshEnabled: true }] },
+      new FakeLinkRepository(makeMap({ id: 'map-1' })),
+      new InMemoryTopologyPreviewStore(),
+    );
+    const preview = await service.discover('map-1', { deepValidation: true });
+    expect(preview.stats.adjacencies).toBe(1);
+    expect(preview.adjacencies[0]?.confidence).toBe('CONFIRMED');
+  });
+
+  it('never confirms when the reverse direction uses incompatible ports', async () => {
+    const adapter = new FakeTopologyAdapter('LLDP_SNMP', new Map<string, DiscoveredNeighbor[] | Error>([
+      ['host-a', [neighbor({ remoteManagementAddress: '10.0.0.2' })]],
+      ['host-b', [neighbor({
+        id: 'n2',
+        localDeviceId: 'host-b',
+        localPort: '100GE1/0/9',
+        remoteSystemName: 'bhe-a',
+        remotePort: '100GE1/0/8',
+        remoteManagementAddress: '10.0.0.1',
+      })]],
+    ]));
+    const preview = await previewService(adapter, [hostA(), hostB()], makeMap({ id: 'map-1' })).discover('map-1');
+    expect(preview.adjacencies.every((adjacency) => adjacency.confidence !== 'CONFIRMED')).toBe(true);
+  });
+
+  it('never confirms when the local interface is not resolved in the inventory', async () => {
+    const bareA = makeHost({ id: 'host-a', hostname: 'bhe-a', managementIp: '10.0.0.1', interfaces: [] });
+    const adapter = new FakeTopologyAdapter('LLDP_SNMP', pair({}, {}));
+    const preview = await previewService(adapter, [bareA, hostB()], makeMap({ id: 'map-1' })).discover('map-1');
+    expect(preview.adjacencies.every((adjacency) => adjacency.confidence !== 'CONFIRMED')).toBe(true);
+  });
+
+  it('never confirms when the remote interface is not resolved in the inventory', async () => {
+    const bareB = makeHost({ id: 'host-b', hostname: 'bhe-b', managementIp: '10.0.0.2', interfaces: [] });
+    const adapter = new FakeTopologyAdapter('LLDP_SNMP', pair({}, {}));
+    const preview = await previewService(adapter, [hostA(), bareB], makeMap({ id: 'map-1' })).discover('map-1');
+    expect(preview.adjacencies.every((adjacency) => adjacency.confidence !== 'CONFIRMED')).toBe(true);
+  });
+
+  it('merges repeated observations of the same direction into one adjacency', async () => {
+    const adapter = new FakeTopologyAdapter('LLDP_SNMP', new Map<string, DiscoveredNeighbor[] | Error>([
+      ['host-a', [
+        neighbor({ remoteManagementAddress: '10.0.0.2' }),
+        neighbor({ id: 'n-dup', remoteManagementAddress: '10.0.0.2' }),
+      ]],
+      ['host-b', [neighbor({
+        id: 'n2',
+        localDeviceId: 'host-b',
+        localPort: '100GE1/0/2',
+        remoteSystemName: 'bhe-a',
+        remotePort: '100GE1/0/1',
+        remoteManagementAddress: '10.0.0.1',
+      })]],
+    ]));
+    const preview = await previewService(adapter, [hostA(), hostB()], makeMap({ id: 'map-1' })).discover('map-1');
+    expect(preview.stats.adjacencies).toBe(1);
+    expect(preview.adjacencies[0]?.confidence).toBe('CONFIRMED');
+  });
+
+  it('drops a management-port self reflection instead of proposing a loop', async () => {
+    const adapter = new FakeTopologyAdapter('LLDP_SNMP', new Map<string, DiscoveredNeighbor[] | Error>([
+      ['host-a', [neighbor({
+        localPort: 'MEth0/0/1',
+        remoteSystemName: 'bhe-a',
+        remotePort: 'MEth0/0/1',
+        remoteManagementAddress: '10.0.0.1',
+      })]],
+    ]));
+    const preview = await previewService(adapter, [hostA(), hostB()], makeMap({ id: 'map-1' })).discover('map-1');
+    expect(preview.adjacencies).toHaveLength(0);
+    expect(preview.warnings.join(' ')).toMatch(/proprio host/i);
+  });
+
+  it('stays stable and creates nothing when discovery runs twice', async () => {
+    const links = new FakeLinkRepository(makeMap({ id: 'map-1' }));
+    const service = new TopologyPreviewService(
+      [new FakeTopologyAdapter('LLDP_SNMP', pair({}, {}))],
+      { listHosts: async () => [hostA(), hostB()] },
+      links,
+      new InMemoryTopologyPreviewStore(),
+    );
+    const first = await service.discover('map-1');
+    const second = await service.discover('map-1');
+    expect(first.stats.adjacencies).toBe(1);
+    expect(second.stats.adjacencies).toBe(1);
+    expect(links.createCalls).toBe(0);
+  });
+});

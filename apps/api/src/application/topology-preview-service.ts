@@ -252,9 +252,19 @@ export class TopologyPreviewService {
     warnings: string[],
     hosts: HostRecord[],
   ): LldpAdjacencyProposal[] {
+    // A neighbour reported on the host's own management port that correlates back to
+    // the same host is a self reflection, never a link between two devices.
+    const scoped = observations.filter((observation) => {
+      if (observation.targetHost && observation.targetHost.id === observation.neighbor.localDeviceId) {
+        warnings.push(`${hostLabel(observation.sourceHost) ?? observation.neighbor.localDeviceId}: vizinho LLDP na porta ${observation.neighbor.localPort} aponta para o proprio host (ignorado)`);
+        return false;
+      }
+      return true;
+    });
+
     // Phase 1: merge same-direction observations (SNMP primary, SSH complements).
     const byDirection = new Map<string, LldpObservation[]>();
-    for (const observation of observations) {
+    for (const observation of scoped) {
       const key = this.directionKey(observation);
       byDirection.set(key, [...(byDirection.get(key) ?? []), observation]);
     }
@@ -306,14 +316,15 @@ export class TopologyPreviewService {
     return false;
   }
 
+  // Direction independent key: the unordered pair of port endpoints. Keying on the
+  // resolved interface ids instead split A->B from B->A whenever only one of the two
+  // observations resolved its interfaces, which silently disabled reciprocal
+  // confirmation and kept truly bidirectional links at PROBABLE forever.
   private observationKey(observation: LldpObservation): string {
-    const { neighbor, sourceInterface, targetInterface, targetHost } = observation;
-    if (sourceInterface && targetInterface) {
-      return `if:${[sourceInterface.id, targetInterface.id].sort().join('|')}`;
-    }
-    const sourceEndpoint = `${neighbor.localDeviceId}|${neighbor.localPort}`;
-    const targetEndpoint = `${targetHost?.id ?? `unk:${neighbor.remoteSystemName}`}|${neighbor.remotePort}`;
-    return `hp:${[sourceEndpoint, targetEndpoint].sort().join('|')}`;
+    const { neighbor, targetHost } = observation;
+    const sourceEndpoint = `${neighbor.localDeviceId}|${portKey(neighbor.localPort)}`;
+    const targetEndpoint = `${targetHost?.id ?? `unk:${neighbor.remoteSystemName}`}|${portKey(neighbor.remotePort)}`;
+    return `adj:${[sourceEndpoint, targetEndpoint].sort().join('|')}`;
   }
 
   private buildAdjacency(
