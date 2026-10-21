@@ -14,6 +14,7 @@
   --green: #43c59e;
   --amber: #d9a24b;
   --red: #d25e61;
+  --violet: #b07ff0;
   --font-sans: 'Inter', system-ui, sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
 }
@@ -1895,6 +1896,97 @@ button {
 .device-node--icon_3d .device-node__copy em {
   display: none;
 }
+
+/* =====================================================================
+   MAP-VISUAL-V2 — nó SEM orb (glifo plano direto no mapa)
+
+   Escopo FECHADO nesta marca: nenhuma regra da V1 é alterada. O prefixo
+   `.device-node.device-node--v2` (2 classes) é de propósito: existem regras da
+   V1 com 2 classes declaradas DEPOIS deste ponto do arquivo
+   (ex.: `.device-node--icon_3d .device-node__icon`), e a V2 precisa vencer sem
+   que a V1 seja reescrita.
+
+   A caixa do nó (`width`/`height`/`--orb-size`/`--orb-top`) é mantida de
+   propósito: os handles do React Flow se posicionam por essas variáveis, então
+   preservar a métrica garante que alternar V1/V2 NÃO mova nenhum enlace.
+
+   Só a decoração do orb sai: borda circular, gradientes, brilho, anel externo
+   (`::before`) e o filtro de glow do SVG. Status, alarme, seleção e nome
+   continuam existindo — separados do glifo, como manda o projeto.
+   ===================================================================== */
+.device-node.device-node--v2 .device-node__icon {
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  filter: none;
+}
+.device-node.device-node--v2 .device-node__icon::before {
+  content: none;
+}
+.device-node.device-node--v2:hover .device-node__icon,
+.device-node.device-node--v2.is-selected .device-node__icon {
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+/* Glifo novo e fallback da V1: sem halo permanente, ocupando a antiga caixa. */
+.device-node.device-node--v2 .device-node__glyph,
+.device-node.device-node--v2 .device-node__svg,
+.device-node.device-node--v2 .device-node__svg--3d {
+  width: calc(var(--orb-size) * 0.88);
+  height: calc(var(--orb-size) * 0.88);
+  overflow: visible;
+  filter: none;
+}
+/* Status: ponto discreto no canto, sem brilho permanente. */
+.device-node.device-node--v2 .status-pulse {
+  top: 0;
+  right: 2px;
+  width: 7px;
+  height: 7px;
+  border-color: rgba(6, 12, 16, 0.9);
+  box-shadow: none;
+}
+/* Tipo (ROUTER/SWITCH/OLT…): chip centrado sob o glifo.
+   No V1 o chip fica no canto superior do orb (.device-node--card) e não atrapalha
+   porque o desenho é pequeno; com o glifo plano ocupando a caixa, o mesmo canto
+   cobriria o desenho — por isso ele desce para baixo do glifo, sem encostar no nome. */
+.device-node.device-node--v2 .device-node__type {
+  top: calc(var(--orb-top) + var(--orb-size) - 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 3px;
+  border: 0;
+  background: rgba(6, 12, 16, 0.72);
+  font-weight: 600;
+}
+/* Seleção: realce local e temporário, sem transformar o nó em círculo. */
+.device-node.device-node--v2.is-selected::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: calc(var(--orb-top) - 3px);
+  width: calc(var(--orb-size) + 6px);
+  height: calc(var(--orb-size) + 6px);
+  transform: translateX(-50%);
+  border: 1px dashed rgba(141, 230, 250, 0.5);
+  border-radius: 10px;
+  background: rgba(71, 191, 220, 0.06);
+  pointer-events: none;
+}
+.device-node.device-node--v2.is-selected .device-node__glyph,
+.device-node.device-node--v2.is-selected .device-node__svg {
+  filter: drop-shadow(0 0 5px color-mix(in srgb, currentColor 55%, transparent));
+}
+.device-node.device-node--v2:hover .device-node__glyph,
+.device-node.device-node--v2:hover .device-node__svg {
+  filter: drop-shadow(0 0 3px color-mix(in srgb, currentColor 35%, transparent));
+}
+/* O nó inteiro continua clicável e arrastável na MESMA caixa. */
+.device-node.device-node--v2 {
+  cursor: pointer;
+}
 .device-node--icon_3d .device-node__icon {
   background:
     radial-gradient(circle at 34% 27%, rgba(72, 112, 130, 0.78), transparent 29%),
@@ -1972,6 +2064,333 @@ button {
 .traffic-edge {
   fill: none;
 }
+/* MAP-VISUAL-V2 (Fase D): enlace de linha única no mapa real. */
+.traffic-edge-v2__line {
+  fill: none;
+  stroke-linecap: round;
+  pointer-events: none;
+  transition: opacity 120ms linear;
+}
+.traffic-edge-v2__halo {
+  fill: none;
+  stroke-linecap: round;
+  opacity: 0.22;
+  pointer-events: none;
+}
+.traffic-edge-v2__arrow {
+  pointer-events: none;
+}
+.traffic-edge-v2__label {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  border: 1px solid #2a3d49;
+  background: rgba(9, 16, 21, 0.92);
+  color: #cfe0ea;
+  font-size: 11px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.traffic-edge-v2__label--compact {
+  font-size: 10px;
+  padding: 1px 6px;
+  color: #a9c0cd;
+}
+/* As cores de faixa/estado das plaquetas vêm do token `--wm-pill` (Fase G):
+   direção abaixo de 50%, âmbar de 50% a 79%, coral a partir de 80%. */
+.traffic-edge-v2__label.is-manual {
+  border-color: #b4894a;
+  box-shadow: 0 0 0 3px rgba(217, 162, 75, 0.14);
+}
+.traffic-edge-v2__label.is-selected {
+  border-color: #7fb6d6;
+  color: #dbeaf3;
+}
+
+/* =====================================================================
+   MAP-VISUAL-V2 — Fase E: enlace BIDIRECIONAL (WeatherMap moderno)
+
+   Cada enlace é desenhado em duas metades independentes (A→B e B→A) sobre a
+   MESMA curva da V1: cor de utilização por sentido, seta de cada lado apontando
+   para o centro e um trem de segmentos percorrendo o sentido do tráfego.
+
+   Tokens únicos (`--wm-*`) para traço, seta, rótulo e legenda nunca divergirem.
+   Tudo em classes próprias (`traffic-edge-v2__*` / `map-v2-*`): a V1 não é
+   tocada por nenhuma regra daqui.
+   ===================================================================== */
+:root {
+  --wm-util-normal: var(--green);
+  --wm-util-attention: var(--amber);
+  --wm-util-critical: var(--red);
+  --wm-state-down: var(--red);
+  --wm-state-no-data: #718894;
+  --wm-state-stale: #8a9fb0;
+  --wm-state-inconsistent: #a98bd6;
+  --wm-state-unknown: #4d6270;
+  /* FASE M — PALETA OPERACIONAL (experimento A/B): cada metade do enlace usa a
+     cor da SUA utilização na linha, na seta e na borda da plaqueta. Tonalidades
+     fosca/discretas, sem brilho neon. */
+  --wm-op-normal: #43866e;
+  --wm-op-attention: #c79a45;
+  --wm-op-critical: #c65c63;
+  --wm-op-text: #e1e8e5;
+  /* Fase G — CORES FIXAS DE DIREÇÃO: a linha informa o sentido, não o tráfego. */
+  --wm-dir-a2b: var(--cyan-bright);
+  --wm-dir-b2a: var(--violet);
+  /* Halo discreto de seleção (neutro, para não competir com as direções). */
+  --wm-halo: #9fc4dc;
+  /* Divisor central (→│←). */
+  --wm-center-bar: #dbe8ef;
+}
+.traffic-edge-v2__half {
+  fill: none;
+  stroke-linecap: round;
+  pointer-events: none;
+  transition: opacity 120ms linear;
+}
+/* Fase F — setas móveis: pequenos glyphs que caminham até o centro. */
+.traffic-edge-v2__runner {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--wm-runner-size, 9px);
+  height: var(--wm-runner-size, 9px);
+  margin: calc(var(--wm-runner-size, 9px) / -2) 0 0 calc(var(--wm-runner-size, 9px) / -2);
+  pointer-events: none;
+  offset-distance: 0%;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  opacity: 0.92;
+}
+.traffic-edge-v2__runner svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+.traffic-edge-v2__runner--a2b svg path {
+  fill: var(--wm-runner-color, var(--wm-dir-a2b));
+}
+.traffic-edge-v2__runner--b2a svg path {
+  stroke: var(--wm-runner-color, var(--wm-dir-b2a));
+}
+@keyframes wm-runner-forward {
+  from {
+    offset-distance: 0%;
+  }
+  to {
+    offset-distance: 100%;
+  }
+}
+@keyframes wm-runner-reverse {
+  from {
+    offset-distance: 100%;
+  }
+  to {
+    offset-distance: 0%;
+  }
+}
+/* Fase G — divisor vertical do centro (→│←), não mais o losango da Fase F. */
+.traffic-edge-v2__center {
+  fill: none;
+  stroke: var(--wm-center-bar);
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .traffic-edge-v2__runner {
+    animation: none;
+    opacity: 0;
+  }
+}
+/* Plaqueta de tráfego: EMBUTIDA na linha (fundo opaco interrompe o traçado). */
+.traffic-edge-v2__label--pill {
+  padding: 1px 5px;
+  border-radius: 5px;
+  border-width: 1px;
+  border-color: color-mix(in srgb, var(--wm-pill, var(--wm-dir-a2b)) 45%, transparent);
+  background: rgba(8, 14, 19, 0.97);
+  color: var(--wm-pill, var(--wm-dir-a2b));
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+/* Degradação 2 (Fase L): mesmo valor, chrome mais justo — continua SOBRE a linha. */
+.traffic-edge-v2__label--pill.traffic-edge-v2__label--small {
+  padding: 0 3px;
+  border-radius: 4px;
+  font-size: 8px;
+}
+/* Degradação 3: valor com unidade, sem o percentual (ainda sobre a linha). */
+.traffic-edge-v2__label--pill.traffic-edge-v2__label--compact {
+  padding: 0 3px;
+  border-radius: 4px;
+  font-size: 8px;
+  letter-spacing: 0;
+}
+/* FASE M — modo OPERACIONAL: a borda carrega a cor da utilização da própria
+   metade (mesmo `--wm-pill` do traço/seta) e o texto é o branco suave, para o
+   valor continuar legível sobre o fundo opaco em qualquer faixa. */
+.traffic-edge-v2__label--pill[data-link-style='operational'] {
+  border-color: color-mix(in srgb, var(--wm-pill, var(--wm-op-normal)) 72%, transparent);
+  color: var(--wm-op-text);
+}
+.traffic-edge-v2__label--half {
+  padding: 1px 5px;
+  font-size: 9px;
+}
+.traffic-edge-v2__label--state {
+  padding: 1px 5px;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+}
+.traffic-edge-v2__label--state,
+.traffic-edge-v2__label--inconsistent,
+.traffic-edge-v2__label--down,
+.traffic-edge-v2__label--no-data,
+.traffic-edge-v2__label--stale,
+.traffic-edge-v2__label--unknown {
+  border-style: dashed;
+}
+.traffic-edge-v2__label--unknown {
+  border-color: color-mix(in srgb, var(--wm-pill, var(--wm-state-unknown)) 60%, transparent);
+  color: var(--wm-pill, var(--wm-state-unknown));
+}
+.traffic-edge-v2__label--down {
+  background: rgba(38, 14, 14, 0.95);
+}
+.traffic-edge-v2__label--attention {
+  background: rgba(34, 26, 10, 0.95);
+}
+.traffic-edge-v2__label--critical {
+  background: rgba(38, 14, 14, 0.95);
+}
+
+/* Legenda do WeatherMap (somente V2): fica acima da barra de status para não
+   alterar o rodapé usado pela V1. */
+.map-v2-legend {
+  position: absolute;
+  z-index: 4;
+  left: 50%;
+  bottom: 52px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  max-width: min(980px, calc(100% - 240px));
+  padding: 5px 12px;
+  border: 1px solid #253640;
+  border-radius: 6px;
+  background: rgba(11, 18, 24, 0.9);
+  backdrop-filter: blur(8px);
+  color: #93a7b1;
+  font: 500 10px var(--font-mono);
+}
+.map-v2-legend__group {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.map-v2-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.map-v2-legend__item i {
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--wm-color, #718894);
+}
+.map-v2-legend__item i.is-dashed {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--wm-color, #718894) 0 5px,
+    transparent 5px 9px
+  );
+}
+/* Fase G: a cor identifica a DIREÇÃO (fixa); a plaqueta mostra a utilização. */
+.map-v2-legend__item i.is-solid {
+  background: var(--wm-dir-a2b);
+}
+.map-v2-legend__item i.is-chevron {
+  background: none;
+  border-top: 2px solid var(--wm-dir-b2a);
+  border-right: 2px solid var(--wm-dir-b2a);
+  height: 7px;
+  width: 7px;
+  border-radius: 1px;
+  transform: rotate(45deg) skew(-8deg, -8deg);
+}
+.map-v2-legend__item i.is-center {
+  width: 2px;
+  height: 9px;
+  border-radius: 1px;
+  background: var(--wm-center-bar);
+}
+/* Fase M: no modo operacional a cor representa utilização, então até os ícones
+   de forma (seta cheia / chevron) usam a paleta operacional. */
+.map-v2-legend[data-link-style='operational'] .map-v2-legend__item i.is-solid {
+  background: var(--wm-op-normal);
+}
+.map-v2-legend[data-link-style='operational'] .map-v2-legend__item i.is-chevron {
+  border-top-color: var(--wm-op-attention);
+  border-right-color: var(--wm-op-attention);
+}
+.map-v2-legend__item--center {
+  color: #93a7b1;
+}
+.map-v2-legend__item i.is-pill {
+  width: 26px;
+  height: 11px;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, var(--wm-color, #718894) 60%, transparent);
+  background: rgba(8, 14, 19, 0.97);
+}
+/* <50%: a plaqueta usa a cor do PRÓPRIO sentido (ciano/roxa). */
+.map-v2-legend__item i.is-pill.is-normal {
+  border-color: color-mix(in srgb, var(--wm-dir-a2b) 45%, transparent);
+  background: linear-gradient(90deg, var(--wm-dir-a2b) 0 50%, var(--wm-dir-b2a) 50% 100%);
+  opacity: 0.9;
+}
+.map-v2-legend__item small {
+  color: #647882;
+  font-size: 9px;
+}
+.map-v2-legend__sep {
+  width: 1px;
+  height: 14px;
+  background: #24343d;
+}
+.map-v2-legend__flow {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #647882;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+.map-v2-legend__flow span::before,
+.map-v2-legend__flow span::after {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 2px;
+  margin: 0 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--cyan) 45%, transparent);
+  vertical-align: middle;
+}
+.map-v2-legend__flow span::after {
+  transform: rotate(180deg);
+}
+
 .traffic-edge--base {
   stroke: #22333d;
   opacity: 0.38;
@@ -3549,6 +3968,34 @@ button {
 }
 .optical-history-section {
   border-bottom: 1px solid var(--line-soft);
+}
+.link-history-section {
+  border-top: 1px solid var(--line-soft);
+}
+.link-history-notes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding: 0 5px;
+  list-style: none;
+  color: #6f838d;
+  font: 500 8px var(--font-mono);
+}
+.link-history-notes li::before {
+  margin-right: 5px;
+  color: #4b6470;
+  content: '·';
+}
+.link-history-retry {
+  padding: 1px 6px;
+  border: 1px solid #2a3d49;
+  border-radius: 3px;
+  background: #11202a;
+  color: #8fc3d4;
+  font: 600 8px var(--font-mono);
+  letter-spacing: 0.06em;
+  cursor: pointer;
 }
 .chart-heading {
   display: flex;
@@ -11869,6 +12316,16 @@ label > small {
   color: #d8bf8f;
   font: 500 9px var(--font-mono);
 }
+.bgp-adv__partial {
+  margin: 0;
+  padding: 7px 10px;
+  border: 1px solid rgba(210, 94, 97, 0.5);
+  border-radius: 4px;
+  background: rgba(210, 94, 97, 0.12);
+  color: #f0b4b6;
+  font: 650 10px var(--font-mono);
+  letter-spacing: 0.05em;
+}
 .bgp-adv__filters {
   display: flex;
   flex-wrap: wrap;
@@ -12165,6 +12622,12 @@ label > small {
   color: var(--muted);
   font-size: 11px;
 }
+.mitigation-table__empty {
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
 .mitigation-badge {
   display: inline-block;
   padding: 2px 8px;
@@ -12188,6 +12651,32 @@ label > small {
 .mitigation-badge.is-sem-snapshot {
   color: var(--red);
   border-color: var(--red);
+}
+.mitigation-badge.is-idle {
+  color: var(--muted);
+  border-color: var(--line);
+}
+.mitigation-badge.is-mitigating {
+  color: var(--amber);
+  border-color: var(--amber);
+}
+.mitigation-badge.is-mitigated {
+  color: #0b1116;
+  background: var(--red);
+  border-color: var(--red);
+  font-weight: 600;
+}
+.mitigation-badge.is-recovering {
+  color: var(--cyan);
+  border-color: var(--cyan);
+}
+.mitigation-badge.is-failed {
+  color: var(--red);
+  border-color: var(--red);
+}
+.mitigation-badge.is-revalidation {
+  color: var(--amber);
+  border-color: var(--amber);
 }
 .mitigation-detail {
   border: 1px solid var(--line);
