@@ -114,6 +114,13 @@ export interface MitigationAutoDescriptionSweepDeps {
   families?: readonly SweepAddressFamily[];
   /** Lote por execucao (ver `SweepBatchSize`). Default: 5. */
   batchSize?: SweepBatchSize;
+  /**
+   * PILOTO DIRECIONADO: quando informado e nao vazio, SOMENTE estes profileIds
+   * podem ser promovidos pelo sweep. Vazio/ausente = comportamento anterior
+   * (todos os elegiveis). Democoes NAO sao afetadas: perfil que perdeu READY
+   * continua voltando para ALERT_ONLY.
+   */
+  allowedProfileIds?: readonly string[];
   listProfiles(): Promise<AutoDescriptionSweepProfile[]>;
   setMode(id: string, mode: MitigationProfileMode): Promise<void>;
   /** Marca/limpa a proveniencia do AUTO (sweep x manual). */
@@ -174,12 +181,17 @@ export class MitigationAutoDescriptionSweep {
     ).length;
 
     // 1) Elegiveis para LOTES: ordem DETERMINISTICA (policy, interface, id).
+    const allowed =
+      this.deps.allowedProfileIds && this.deps.allowedProfileIds.length > 0
+        ? new Set(this.deps.allowedProfileIds)
+        : null;
     const eligible = persisted
       .filter(
         (profile) =>
           families.includes(profile.addressFamily) &&
           profile.autoState === 'READY' &&
-          profile.mode !== 'AUTO',
+          profile.mode !== 'AUTO' &&
+          (allowed === null || allowed.has(profile.id)),
       )
       .sort(
         (left, right) =>

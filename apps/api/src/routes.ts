@@ -1357,6 +1357,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     enabled: autoDescriptionEnabled,
     families: autoDescriptionFamilies,
     batchSize: autoDescriptionBatchSize,
+    // PILOTO DIRECIONADO (opcional): vazio = todos os elegiveis (comportamento
+    // anterior). Com ids, o sweep promove SOMENTE esses perfis.
+    allowedProfileIds: (process.env.MITIGATION_AUTO_DESCRIPTION_ALLOWED_PROFILE_IDS ?? '')
+      .split(',')
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0),
     listProfiles: async () =>
       (await mitigationService.listProfiles()).map((dto) => ({
         id: dto.id,
