@@ -58,7 +58,16 @@ export class SnmpClientImpl implements SnmpClient {
   async walk(
     host: string,
     oid: string,
-    options?: { community?: string; version?: 'v2c' | 'v3'; port?: number },
+    options?: {
+      community?: string;
+      version?: 'v2c' | 'v3';
+      port?: number;
+      /**
+       * Limite de varbinds por walk. Default 4096 (comportamento historico);
+       * tabelas grandes (JUNIPER-SUBSCRIBER-MIB) declaram um limite maior.
+       */
+      maxVarbinds?: number;
+    },
   ): Promise<SnmpVarBind[]> {
     return new Promise((resolve, reject) => {
       if (options?.version === 'v3') {
@@ -78,7 +87,7 @@ export class SnmpClientImpl implements SnmpClient {
       const result: SnmpVarBind[] = [];
       const seenOids = new Set<string>();
       const subtreePrefix = `${oid}.`;
-      const maxVarbinds = 4096;
+      const maxVarbinds = options?.maxVarbinds ?? 4096;
       let finished = false;
 
       const doneCb = (error?: Error) => {

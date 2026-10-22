@@ -38,7 +38,7 @@ export type LinkLayoutMode = 'AUTO' | 'MANUAL';
  */
 export type LinkHandleSide = 'AUTO' | 'TOP' | 'RIGHT' | 'BOTTOM' | 'LEFT';
 export type LinkMetricSourceSide = 'SOURCE' | 'TARGET';
-export type PppSource = 'SNMP_HUAWEI' | 'SNMP_MIKROTIK';
+export type PppSource = 'SNMP_HUAWEI' | 'SNMP_MIKROTIK' | 'SNMP_JUNIPER';
 export type PppDisplayMode = 'AUTO' | 'SHOW' | 'HIDE';
 export type PppLabelPosition = 'TOP' | 'BOTTOM' | 'LEFT' | 'RIGHT' | 'CENTER';
 export type MapWidgetType = 'PPP_TOTAL';

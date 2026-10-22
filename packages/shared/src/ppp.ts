@@ -69,10 +69,27 @@ export interface PppTotalComputation {
  */
 export const PPP_FRESHNESS_WINDOW_MS = 180_000;
 
-function isFresh(updatedAt: string | null, now: number): boolean {
+/**
+ * Janela propria do Juniper: a subscriber table e coletada a cada 300 s, entao a
+ * janela de 180 s marcaria a leitura como velha em quase metade do ciclo. 660 s
+ * cobre dois ciclos + margem sem mascarar uma fonte realmente parada.
+ */
+export const PPP_JUNIPER_FRESHNESS_WINDOW_MS = 660_000;
+
+export function pppFreshnessWindowMs(
+  source: HostRecord['pppSource'] | null | undefined,
+): number {
+  return source === 'SNMP_JUNIPER' ? PPP_JUNIPER_FRESHNESS_WINDOW_MS : PPP_FRESHNESS_WINDOW_MS;
+}
+
+function isFresh(
+  updatedAt: string | null,
+  now: number,
+  source?: HostRecord['pppSource'] | null,
+): boolean {
   if (!updatedAt) return false;
   const timestamp = Date.parse(updatedAt);
-  return Number.isFinite(timestamp) && now - timestamp <= PPP_FRESHNESS_WINDOW_MS;
+  return Number.isFinite(timestamp) && now - timestamp <= pppFreshnessWindowMs(source);
 }
 
 /**
@@ -93,6 +110,6 @@ export function computePppTotal(
   return {
     total: inScope.reduce((sum, host) => sum + Math.max(0, Math.trunc(host.pppOnline)), 0),
     hostCount: inScope.length,
-    freshHostCount: inScope.filter((host) => isFresh(host.pppUpdatedAt, now)).length,
+    freshHostCount: inScope.filter((host) => isFresh(host.pppUpdatedAt, now, host.pppSource)).length,
   };
 }

@@ -1117,7 +1117,9 @@ export class PrismaHostRepository implements HostRepository {
       pppSupported: device.pppSupported,
       pppOnline: device.pppOnline,
       pppUpdatedAt: device.pppUpdatedAt?.toISOString() ?? null,
-      pppSource: device.pppSource === 'SNMP_HUAWEI' || device.pppSource === 'SNMP_MIKROTIK'
+      pppSource: device.pppSource === 'SNMP_HUAWEI'
+        || device.pppSource === 'SNMP_MIKROTIK'
+        || device.pppSource === 'SNMP_JUNIPER'
         ? device.pppSource
         : null,
       bgpMonitoringEnabled: device.bgpMonitoringEnabled,

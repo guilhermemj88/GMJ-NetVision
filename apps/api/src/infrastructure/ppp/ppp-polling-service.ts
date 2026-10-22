@@ -2,6 +2,10 @@ import type { HostRecord, PppSource } from '@gmj/shared';
 import type { SnmpProfileIdentity } from '../snmp/profiles/types';
 import { selectSnmpProfile } from '../snmp/profiles/catalog';
 import type { PppRepository } from './ppp-repository';
+import {
+  JuniperPppSubscriberCollector,
+  type PppWalkClient,
+} from './juniper-ppp-subscriber-collector';
 
 export interface PppScalarClient {
   get(
@@ -47,10 +51,53 @@ function pppSourceFor(vendor: string | undefined): PppSource | null {
  * whose profile has no PPP OID is marked unsupported.
  */
 export class PppPollingService {
+  private readonly subscriberCollector: JuniperPppSubscriberCollector | null;
+
   constructor(
     private readonly client: PppScalarClient,
     private readonly repository: PppRepository,
-  ) {}
+    walkClient?: PppWalkClient,
+  ) {
+    this.subscriberCollector = walkClient
+      ? new JuniperPppSubscriberCollector(walkClient)
+      : null;
+  }
+
+  private async pollSubscriberTable(
+    device: HostRecord,
+    community: string,
+    table: NonNullable<ReturnType<typeof selectSnmpProfile>['pppSubscriberTable']>,
+    attemptedAt: Date,
+  ): Promise<PppPollOutcome> {
+    if (!this.subscriberCollector) {
+      return { supported: null, collectedAt: attemptedAt.toISOString(), error: null };
+    }
+    const result = await this.subscriberCollector.collect(
+      { deviceId: device.id, host: device.snmp!.host, port: device.snmp!.port },
+      community,
+      table,
+    );
+    if (result === null) {
+      // Janela de 300 s ainda nao vencida ou coleta anterior em andamento:
+      // nao faz walk, nao grava failure e nao toca pppUpdatedAt.
+      return { supported: null, collectedAt: attemptedAt.toISOString(), error: null };
+    }
+    if (result.online === null) {
+      await this.repository.saveFailure(
+        device.id,
+        attemptedAt,
+        result.error ?? 'Falha na coleta PPP via subscriber table',
+      );
+      return { supported: null, collectedAt: attemptedAt.toISOString(), error: result.error };
+    }
+    await this.repository.saveReading(device.id, {
+      supported: true,
+      online: result.online,
+      source: table.source,
+      updatedAt: attemptedAt,
+    });
+    return { supported: true, collectedAt: attemptedAt.toISOString(), error: null };
+  }
 
   async poll(
     device: HostRecord,
@@ -63,6 +110,14 @@ export class PppPollingService {
     }
 
     const profile = selectSnmpProfile(identity);
+
+    // Estrategia por subscriber table (Juniper). Nao existe scalar de PPPoE
+    // online nessa familia, entao a capability declara os dois OIDs da tabela.
+    const table = profile.pppSubscriberTable;
+    if (table) {
+      return this.pollSubscriberTable(device, community, table, attemptedAt);
+    }
+
     const oid = profile.pppOnlineOid;
     if (!oid) {
       await this.repository.markUnsupported(device.id, attemptedAt);

@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  computePppTotal,
-  formatPppLabel,
-  formatPppOnline,
-  isPppVisible,
-} from './ppp';
+import { PPP_FRESHNESS_WINDOW_MS, PPP_JUNIPER_FRESHNESS_WINDOW_MS, computePppTotal, formatPppLabel, formatPppOnline, isPppVisible, pppFreshnessWindowMs } from './ppp';
 import type { HostRecord, PppTotalWidgetSettings } from './types';
 
 function host(
@@ -196,5 +191,21 @@ describe('computePppTotal freshness', () => {
       hostCount: 4,
       freshHostCount: 3,
     });
+  });
+});
+
+
+describe('pppFreshnessWindowMs', () => {
+  it('mantem 180 s para Huawei e MikroTik', () => {
+    expect(pppFreshnessWindowMs('SNMP_HUAWEI')).toBe(PPP_FRESHNESS_WINDOW_MS);
+    expect(pppFreshnessWindowMs('SNMP_MIKROTIK')).toBe(PPP_FRESHNESS_WINDOW_MS);
+  });
+  it('usa 660 s para Juniper (cadencia de 300 s)', () => {
+    expect(pppFreshnessWindowMs('SNMP_JUNIPER')).toBe(PPP_JUNIPER_FRESHNESS_WINDOW_MS);
+    expect(PPP_JUNIPER_FRESHNESS_WINDOW_MS).toBeGreaterThan(300_000);
+  });
+  it('sem source cai na janela padrao', () => {
+    expect(pppFreshnessWindowMs(null)).toBe(PPP_FRESHNESS_WINDOW_MS);
+    expect(pppFreshnessWindowMs(undefined)).toBe(PPP_FRESHNESS_WINDOW_MS);
   });
 });

@@ -25,7 +25,13 @@ export class SshTransportError extends Error {
 const LEGACY_KEX_APPEND = ['diffie-hellman-group14-sha1'];
 
 /** Defaults do ssh2 na mesma ordem, com o KEX legado no FIM (modern first). */
-const LEGACY_KEX_ALGORITHMS: readonly string[] = [
+/**
+ * Tipo real esperado por `ssh2` em `algorithms.kex`. O cast documenta que a
+ * lista abaixo contem apenas nomes validos de KEX suportados pela biblioteca.
+ */
+type SshKexList = NonNullable<NonNullable<ConnectConfig['algorithms']>['kex']>;
+
+const LEGACY_KEX_ALGORITHMS = [
   'curve25519-sha256@libssh.org',
   'curve25519-sha256',
   'ecdh-sha2-nistp256',
@@ -38,7 +44,7 @@ const LEGACY_KEX_ALGORITHMS: readonly string[] = [
   'diffie-hellman-group17-sha512',
   'diffie-hellman-group18-sha512',
   ...LEGACY_KEX_APPEND,
-];
+] as unknown as SshKexList;
 
 function isKexNegotiationFailure(error: unknown): boolean {
   return error instanceof SshTransportError && error.kind === 'KEX_NEGOTIATION_FAILED';
@@ -99,7 +105,7 @@ export class SshClientImpl implements SshClient {
   private async runOnce(
     host: string,
     commands: string[],
-    legacyKex?: readonly string[],
+    legacyKex?: SshKexList,
   ): Promise<CommandResult> {
     const connection = new Client();
     const config: ConnectConfig = {
@@ -110,7 +116,7 @@ export class SshClientImpl implements SshClient {
       readyTimeout: this.options.readyTimeout ?? 8_000,
       keepaliveInterval: 2_000,
       keepaliveCountMax: 2,
-      ...(legacyKex ? { algorithms: { kex: [...legacyKex] } } : {}),
+      ...(legacyKex ? { algorithms: { kex: legacyKex } } : {}),
     };
 
     let rejectConnectionFailure: (error: Error) => void = () => undefined;

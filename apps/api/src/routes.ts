@@ -479,7 +479,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   );
   const pppRepository = config.DEMO_MODE ? null : new PrismaPppRepository(prismaClient);
   const pppPolling = pppRepository
-    ? new PppPollingService(new SnmpClientImpl(3000, 1), pppRepository)
+    ? new PppPollingService(new SnmpClientImpl(3000, 1), pppRepository, new SnmpClientImpl(3000, 1))
     : undefined;
   const bgpRepository = config.DEMO_MODE ? new DemoBgpRepository() : new PrismaBgpRepository(prismaClient);
   const bgpPolling = new BgpPollingService(
