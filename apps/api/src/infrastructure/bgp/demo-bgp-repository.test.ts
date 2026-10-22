@@ -26,6 +26,7 @@ function collection(
     peers: [
       {
         peerAddress,
+        addressFamily: 'IPV4',
         stateCode,
         state: states[stateCode] ?? 'UNKNOWN',
         established: stateCode === 6,

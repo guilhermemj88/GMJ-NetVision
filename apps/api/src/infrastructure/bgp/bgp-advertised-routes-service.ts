@@ -1,8 +1,10 @@
-import type { BgpAdvertisedRoutesResponse } from '@gmj/shared';
+import type { BgpAdvertisedRoutesResponse, HostRecord } from '@gmj/shared';
 import { ipAddressFamily } from '@gmj/shared';
 import type { BgpRepository } from './bgp-repository';
 import type { HuaweiBgpSshService } from './huawei-bgp-ssh';
 import { parseHuaweiAdvertisedRoutes } from './huawei-bgp-advertised-routes-parser';
+import type { JuniperJunosBgpSshProvider } from './juniper-junos-bgp-ssh';
+import { bgpCapabilitiesFor } from './bgp-vendor';
 import type { HostRepository } from '../persistence/host-repository';
 
 export class BgpAdvertisedRoutesError extends Error {
@@ -19,17 +21,24 @@ export interface BgpAdvertisedRoutesDependencies {
   bgp: BgpRepository;
   hosts: HostRepository;
   ssh: HuaweiBgpSshService;
+  /** Provider Junos (somente leitura). Ausente = Juniper não suportado. */
+  juniper?: JuniperJunosBgpSshProvider;
   now?: () => Date;
 }
 
 /**
- * On-demand read of the routes a device announces to one peer.
+ * Leitura sob demanda das rotas anunciadas a UM peer.
  *
- * Everything the CLI needs is resolved from the persisted peer: the request
- * carries only the peer id, so no peer address, ASN or command fragment can be
- * injected from the frontend. The read is read-only, never enters
- * `system-view`/`bgp <asn>`, is not part of any polling loop and persists
- * nothing — the operator triggers a fresh SSH collection every time.
+ * Tudo o que o CLI precisa vem do peer persistido: a requisição carrega só o
+ * id, então não há endereço/ASN/fragmento de comando vindo do frontend.
+ *
+ * - Huawei: `display bgp routing-table peer <PEER> advertised-routes`
+ *   (AS local do processo, como antes).
+ * - Juniper: `show route advertising-protocol bgp <PEER> | no-more`
+ *   (SOMENTE LEITURA) usando o **AS local do peer** — um MX usa local-as
+ *   diferente por grupo.
+ *
+ * Nada é persistido e o comando nunca entra em polling.
  */
 export class BgpAdvertisedRoutesService {
   constructor(private readonly dependencies: BgpAdvertisedRoutesDependencies) {}
@@ -50,6 +59,12 @@ export class BgpAdvertisedRoutesService {
         'Endereço do peer é inválido para a família persistida; execute o discovery novamente.',
         409,
       );
+    }
+    const capabilities = bgpCapabilitiesFor(host.vendor, host.model);
+    // Plataforma não homologada mantém o caminho LEGADO (Huawei) — é o
+    // comportamento já publicado e o mesmo critério usado no discovery/SNMP.
+    if (capabilities.platform === 'JUNIPER_JUNOS') {
+      return this.executeJuniper(peer, host, now);
     }
     if (!host.sshEnabled || !host.ssh?.host || !host.ssh.username) {
       throw new BgpAdvertisedRoutesError('SSH não está habilitado para este equipamento', 409);
@@ -92,6 +107,47 @@ export class BgpAdvertisedRoutesService {
       routes: parsed.routes,
       reportedTotal: parsed.reportedTotal,
       warnings: parsed.warnings,
+    };
+  }
+
+  private async executeJuniper(
+    peer: Awaited<ReturnType<BgpRepository['getPeerDetail']>>,
+    host: HostRecord,
+    now: () => Date,
+  ): Promise<BgpAdvertisedRoutesResponse> {
+    const provider = this.dependencies.juniper;
+    if (!provider || !peer) {
+      throw new BgpAdvertisedRoutesError(
+        'Provider Junos indisponível para consulta de anúncios',
+        409,
+      );
+    }
+    const peerLocalAs = peer.localAs === null ? null : BigInt(peer.localAs);
+    if (peerLocalAs === null) {
+      throw new BgpAdvertisedRoutesError(
+        'AS local deste peer ainda não foi coletado. Execute "Atualizar agora" (SNMP BGP4-V2 ou configuração Junos).',
+        409,
+      );
+    }
+    let reading;
+    try {
+      reading = await provider.readAdvertisedRoutes(host, peer.peerAddress, peerLocalAs);
+    } catch (error) {
+      throw new BgpAdvertisedRoutesError(
+        error instanceof Error ? error.message : 'Falha ao consultar anúncios no equipamento',
+        502,
+      );
+    }
+    return {
+      peerId: peer.id,
+      deviceId: peer.deviceId,
+      peerAddress: peer.peerAddress,
+      addressFamily: peer.addressFamily,
+      localAs: peerLocalAs.toString(),
+      fetchedAt: now().toISOString(),
+      routes: reading.routes,
+      reportedTotal: reading.reportedTotal,
+      warnings: reading.warnings,
     };
   }
 }

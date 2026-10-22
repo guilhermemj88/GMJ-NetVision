@@ -1,6 +1,6 @@
 import type { HostRecord } from '@gmj/shared';
 import type { BgpRepository } from './bgp-repository';
-import type { HuaweiBgpSnmpCollector } from './huawei-bgp-snmp';
+import type { BgpSnmpCollector } from './bgp-snmp-collector';
 
 export interface BgpPollOutcome {
   collectedAt: string;
@@ -8,12 +8,20 @@ export interface BgpPollOutcome {
   error: string | null;
 }
 
+/**
+ * Polling BGP periódico.
+ *
+ * Recebe um RESOLVEDOR de coletor: o equipamento escolhe a implementação pela
+ * plataforma (Huawei → BGP4-MIB, Juniper → BGP4-V2-MIB-JUNIPER) sem espalhar
+ * `if (vendor)` pela aplicação.
+ */
 export class BgpPollingService {
   private readonly activePolls = new Map<string, Promise<BgpPollOutcome>>();
 
   constructor(
-    private readonly collector: HuaweiBgpSnmpCollector,
+    private readonly collectorFor: (device: HostRecord) => BgpSnmpCollector | null,
     private readonly repository: BgpRepository,
+    private readonly fallbackCollector: BgpSnmpCollector | null = null,
   ) {}
 
   async poll(device: HostRecord, community: string): Promise<BgpPollOutcome> {
@@ -31,8 +39,13 @@ export class BgpPollingService {
     if (!device.snmpEnabled || !device.snmp?.host || device.snmp.version !== 'SNMP_V2C') {
       return { collectedAt: attemptedAt.toISOString(), peers: 0, error: null };
     }
+    const collector = this.collectorFor(device) ?? this.fallbackCollector;
+    if (!collector) {
+      // Plataforma sem coletor homologado: não inventa leitura nem erro de rede.
+      return { collectedAt: attemptedAt.toISOString(), peers: 0, error: null };
+    }
     try {
-      const collection = await this.collector.collect(device.snmp.host, {
+      const collection = await collector.collect(device.snmp.host, {
         community,
         version: 'v2c',
         port: device.snmp.port,

@@ -6,6 +6,7 @@ import type { HostRepository } from '../persistence/host-repository';
 import { BgpDiscoveryService } from './bgp-discovery-service';
 import type { BgpRepository } from './bgp-repository';
 import { HuaweiBgpSshService } from './huawei-bgp-ssh';
+import { HuaweiBgpDiscoveryProvider } from './huawei-bgp-discovery-provider';
 
 function host(interfaces: NetworkInterface[] = []): HostRecord {
   return makeHost({
@@ -79,8 +80,10 @@ function simulator(responses: Record<string, string | null>, fallback = 'Summary
   });
 }
 
-function sshWith(execute: ReturnType<typeof vi.fn>): HuaweiBgpSshService {
-  return new HuaweiBgpSshService(repository(), () => ({ execute } as unknown as SshClient));
+function sshWith(execute: ReturnType<typeof vi.fn>): HuaweiBgpDiscoveryProvider {
+  return new HuaweiBgpDiscoveryProvider(
+    new HuaweiBgpSshService(repository(), () => ({ execute } as unknown as SshClient)),
+  );
 }
 
 describe('BGP SSH discovery service', () => {
@@ -263,7 +266,7 @@ Prefixes current: 1099912`,
     const device = host();
     device.ssh = { ...device.ssh!, contextCommand: 'switch virtual-system IMPLANTAR-IXBR' };
 
-    const result = await new BgpDiscoveryService(ssh, bgpRepository()).discover(device);
+    const result = await new BgpDiscoveryService(new HuaweiBgpDiscoveryProvider(ssh), bgpRepository()).discover(device);
 
     expect(result.localAs).toBe(268568n);
     expect(factory).toHaveBeenCalledWith(
@@ -319,7 +322,7 @@ Prefixes current: 1099912`,
       contextCommand: 'switch virtual-system IMPLANTAR-IXBR',
     };
 
-    await new BgpDiscoveryService(ssh, bgpRepository()).discover(device);
+    await new BgpDiscoveryService(new HuaweiBgpDiscoveryProvider(ssh), bgpRepository()).discover(device);
 
     expect(factory).toHaveBeenCalledWith(
       expect.objectContaining({ contextCommand: 'switch virtual-system IMPLANTAR-IXBR' }),
@@ -331,7 +334,7 @@ Prefixes current: 1099912`,
     const factory = vi.fn(() => ({ execute } as unknown as SshClient));
     const ssh = new HuaweiBgpSshService(repository(), factory);
 
-    await new BgpDiscoveryService(ssh, bgpRepository()).discover(host());
+    await new BgpDiscoveryService(new HuaweiBgpDiscoveryProvider(ssh), bgpRepository()).discover(host());
 
     expect(factory).toHaveBeenCalledWith(expect.objectContaining({ contextCommand: null }));
   });

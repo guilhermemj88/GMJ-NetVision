@@ -18,13 +18,17 @@ import type { BgpAdvertisedRoutesService } from './infrastructure/bgp/bgp-advert
 import { BgpAdvertisedRoutesError } from './infrastructure/bgp/bgp-advertised-routes-service';
 import type { HostRepository } from './infrastructure/persistence/host-repository';
 import type { MitigationRepository } from './infrastructure/bgp/mitigation/mitigation-repository';
+import { bgpCapabilitiesFor } from './infrastructure/bgp/bgp-vendor';
 
 export function summarizeBgpPeers(peers: BgpDashboardPeer[]): BgpDashboardSummary {
   const established = peers.filter((peer) => peer.established).length;
   const down = peers.length - established;
-  const receivedPrefixes = peers
-    .filter((peer) => peer.established && peer.receivedPrefixes !== null)
-    .reduce((sum, peer) => sum + (peer.receivedPrefixes ?? 0), 0);
+  const known = peers.filter((peer) => peer.established && peer.receivedPrefixes !== null);
+  // Nenhum peer com prefixos conhecidos => N/D (null). Nunca "0 rotas": zero só
+  // quando o equipamento realmente devolveu zero em pelo menos um peer.
+  const receivedPrefixes = known.length
+    ? known.reduce((sum, peer) => sum + (peer.receivedPrefixes ?? 0), 0)
+    : null;
   const byFamily: Record<BgpAddressFamily, number> = { IPV4: 0, IPV6: 0 };
   for (const peer of peers) byFamily[peer.addressFamily] += 1;
   return { peers: peers.length, established, down, receivedPrefixes, byFamily };
@@ -136,7 +140,26 @@ export function registerBgpRoutes(
       ...(query.q ? { q: query.q } : {}),
       ...(query.deviceId ? { deviceId: query.deviceId } : {}),
     });
-    return buildBgpDashboard(await withPeerExclusions(peers));
+    const response = buildBgpDashboard(await withPeerExclusions(peers));
+    if (!hosts) return response;
+    // Capabilities por equipamento: a UI desabilita admin/mitigação em Juniper
+    // sem precisar inferir vendor no cliente.
+    const unique = [...new Set(response.devices.map((device) => device.id))];
+    const resolved = new Map(
+      await Promise.all(
+        unique.map(async (deviceId) => {
+          const host = await hosts.getHost(deviceId).catch(() => null);
+          return [deviceId, bgpCapabilitiesFor(host?.vendor, host?.model)] as const;
+        }),
+      ),
+    );
+    return {
+      ...response,
+      devices: response.devices.map((device) => ({
+        ...device,
+        capabilities: resolved.get(device.id) ?? bgpCapabilitiesFor(null, null),
+      })),
+    };
   });
 
   app.get('/api/bgp/peers/:peerId', async (request, reply) => {
@@ -248,9 +271,12 @@ export function registerBgpRoutes(
             peerAddress: peer.peerAddress,
             addressFamily: peer.addressFamily,
             remoteAs: peer.remoteAs === null ? null : peer.remoteAs.toString(),
+            localAs: peer.localAs === null ? null : peer.localAs.toString(),
             stateCode: peer.stateCode,
             state: peer.state,
             sessionUptimeSeconds: peer.sessionUptimeSeconds,
+            cliReceivedPrefixes:
+              peer.cliReceivedPrefixes === null ? null : peer.cliReceivedPrefixes.toString(),
             bgpPeerDescription: peer.bgpPeerDescription,
             interfaceId: peer.interfaceId,
             interfaceName: peer.interfaceName,

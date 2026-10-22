@@ -20,6 +20,9 @@ export interface BgpPollingDecision {
   receivedPrefixes: bigint | null;
   establishedSince?: Date | null;
   lastStateChangedAt?: Date;
+  /** Campos que só alguns coletores entregam (Juniper); ausentes = não tocar. */
+  remoteAs?: bigint;
+  localAs?: bigint;
   event: {
     previousStateCode: number;
     previousState: BgpPeerState;
@@ -41,6 +44,27 @@ export function receivedPrefixesForPersistence(peer: CollectedBgpPeer): bigint |
     : null;
 }
 
+/** `establishedSince` derivado do uptime REAL da sessão, quando o coletor informa. */
+function establishedSinceFromUptime(
+  peer: CollectedBgpPeer,
+  timestamp: Date,
+): Date | null {
+  if (peer.stateCode !== 6) return null;
+  const seconds = peer.sessionUptimeSeconds;
+  if (seconds === null || seconds === undefined) return null;
+  if (!Number.isFinite(seconds) || seconds < 0) return null;
+  const derived = timestamp.getTime() - Math.trunc(seconds) * 1000;
+  return Number.isFinite(derived) ? new Date(derived) : null;
+}
+
+/** Campos opcionais que o coletor pode entregar (nunca zeram o que já existe). */
+function optionalPeerIdentity(peer: CollectedBgpPeer): { remoteAs?: bigint; localAs?: bigint } {
+  return {
+    ...(peer.remoteAs === null || peer.remoteAs === undefined ? {} : { remoteAs: peer.remoteAs }),
+    ...(peer.localAs === null || peer.localAs === undefined ? {} : { localAs: peer.localAs }),
+  };
+}
+
 export function decideBgpPollingUpdate(
   existing: ExistingBgpPeerState | null,
   current: CollectedBgpPeer,
@@ -51,18 +75,30 @@ export function decideBgpPollingUpdate(
     state: current.state,
     established: current.stateCode === 6,
     receivedPrefixes: receivedPrefixesForPersistence(current),
+    ...optionalPeerIdentity(current),
   };
+  const derivedSince = establishedSinceFromUptime(current, timestamp);
   if (!existing) {
     return {
       ...base,
-      establishedSince: base.established ? timestamp : null,
+      establishedSince: base.established ? (derivedSince ?? timestamp) : null,
       event: null,
     };
   }
-  if (existing.stateCode === current.stateCode) return { ...base, event: null };
+  if (existing.stateCode === current.stateCode) {
+    // Sessão que continua estabelecida mantém a data já persistida; o uptime
+    // real só preenche quando ainda não havia valor.
+    return {
+      ...base,
+      ...(base.established && existing.establishedSince === null && (derivedSince ?? null)
+        ? { establishedSince: derivedSince }
+        : {}),
+      event: null,
+    };
+  }
   return {
     ...base,
-    establishedSince: base.established ? timestamp : null,
+    establishedSince: base.established ? (derivedSince ?? timestamp) : null,
     lastStateChangedAt: timestamp,
     event: {
       previousStateCode: existing.stateCode,

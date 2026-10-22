@@ -12,7 +12,8 @@ import {
   type ExistingBgpPeerState,
 } from './bgp-persistence';
 import type { BgpDashboardQuery, BgpDiscoveryPeerInput, BgpRepository } from './bgp-repository';
-import type { HuaweiBgpCollection } from './huawei-bgp-snmp';
+import type { BgpSnmpCollection } from './bgp-snmp-collector';
+import type { BgpSnmpCollection } from './bgp-snmp-collector';
 import { computeBgpAlerts } from './bgp-alerts';
 import type {
   BgpAdminState,
@@ -56,7 +57,7 @@ export class PrismaBgpRepository implements BgpRepository {
     await this.prisma.$disconnect();
   }
 
-  async saveCollection(deviceId: string, collection: HuaweiBgpCollection): Promise<void> {
+  async saveCollection(deviceId: string, collection: BgpSnmpCollection): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       for (const current of collection.peers) {
         const key = { deviceId, peerAddress: current.peerAddress };
@@ -75,6 +76,8 @@ export class PrismaBgpRepository implements BgpRepository {
                 established: decision.established,
                 receivedPrefixes: decision.receivedPrefixes,
                 lastPollingAt: collection.collectedAt,
+                ...(decision.remoteAs === undefined ? {} : { remoteAs: decision.remoteAs }),
+                ...(decision.localAs === undefined ? {} : { localAs: decision.localAs }),
                 ...(decision.establishedSince === undefined
                   ? {}
                   : { establishedSince: decision.establishedSince }),
@@ -90,10 +93,13 @@ export class PrismaBgpRepository implements BgpRepository {
                 ...key,
                 role: 'OTHER',
                 monitoringEnabled: true,
+                addressFamily: current.addressFamily as PrismaBgpAddressFamily,
                 stateCode: decision.stateCode,
                 state: decision.state,
                 established: decision.established,
                 receivedPrefixes: decision.receivedPrefixes,
+                remoteAs: decision.remoteAs ?? null,
+                localAs: decision.localAs ?? null,
                 establishedSince: decision.establishedSince ?? null,
                 lastPollingAt: collection.collectedAt,
               },
@@ -103,6 +109,8 @@ export class PrismaBgpRepository implements BgpRepository {
                 established: decision.established,
                 receivedPrefixes: decision.receivedPrefixes,
                 lastPollingAt: collection.collectedAt,
+                ...(decision.remoteAs === undefined ? {} : { remoteAs: decision.remoteAs }),
+                ...(decision.localAs === undefined ? {} : { localAs: decision.localAs }),
               },
               select: { id: true, monitoringEnabled: true },
             });
@@ -176,6 +184,7 @@ export class PrismaBgpRepository implements BgpRepository {
             addressFamily: discovered.addressFamily as PrismaBgpAddressFamily,
             peerDescription: discovered.bgpPeerDescription,
             remoteAs: discovered.remoteAs,
+            localAs: discovered.localAs ?? null,
             interfaceId: interfaceUpdate.interfaceId ?? null,
             role: 'OTHER',
             monitoringEnabled: true,
@@ -190,6 +199,9 @@ export class PrismaBgpRepository implements BgpRepository {
           },
           update: {
             ...(discovered.remoteAs === null ? {} : { remoteAs: discovered.remoteAs }),
+            ...(discovered.localAs === null || discovered.localAs === undefined
+              ? {}
+              : { localAs: discovered.localAs }),
             ...(discovered.bgpPeerDescription === null
               ? {}
               : { peerDescription: discovered.bgpPeerDescription }),
@@ -415,6 +427,7 @@ export class PrismaBgpRepository implements BgpRepository {
       addressFamily: PrismaBgpAddressFamily;
       peerDescription: string | null;
       remoteAs: bigint | null;
+      localAs: bigint | null;
       interfaceId: string | null;
       monitoringEnabled: boolean;
       role: BgpPeerRole;
@@ -449,7 +462,9 @@ export class PrismaBgpRepository implements BgpRepository {
       peerAddress: row.peerAddress,
       displayName: deriveBgpPeerDisplayName(row.peerAddress, iface, row.peerDescription),
       addressFamily: row.addressFamily as BgpAddressFamily,
-      localAs: bigintToJsonString(row.device.bgpLocalAs),
+      // Per-peer local AS (Juniper) tem precedência; Huawei mantém o AS do
+      // dispositivo como fallback, exatamente como antes.
+      localAs: bigintToJsonString(row.localAs ?? row.device.bgpLocalAs),
       remoteAs: bigintToJsonString(row.remoteAs),
       role: row.role as BgpPeerRole,
       monitoringEnabled: row.monitoringEnabled,

@@ -4,6 +4,7 @@ import { makeHost } from '../../test-fixtures';
 import type { BgpRepository } from './bgp-repository';
 import type { HostRepository } from '../persistence/host-repository';
 import type { HuaweiBgpSshService } from './huawei-bgp-ssh';
+import type { JuniperJunosBgpSshProvider } from './juniper-junos-bgp-ssh';
 import {
   BgpAdvertisedRoutesError,
   BgpAdvertisedRoutesService,
@@ -74,6 +75,7 @@ function build(options: {
   host?: HostRecord | null;
   localAs?: bigint | null;
   reading?: unknown;
+  juniperReading?: unknown;
 } = {}) {
   const writes = {
     saveCollection: vi.fn(),
@@ -97,13 +99,25 @@ function build(options: {
     options.reading === undefined ? { status: 'SUCCESS', output: ADVERTISED_OUTPUT } : options.reading,
   );
   const ssh = { readAdvertisedRoutes } as unknown as HuaweiBgpSshService;
+  const readAdvertisedRoutesJunos = vi
+    .fn()
+    .mockResolvedValue(
+      options.juniperReading === undefined
+        ? { routes: [], reportedTotal: null, warnings: [] }
+        : options.juniperReading,
+    );
+  const juniper = {
+    discover: vi.fn(),
+    readAdvertisedRoutes: readAdvertisedRoutesJunos,
+  } as unknown as JuniperJunosBgpSshProvider;
   const service = new BgpAdvertisedRoutesService({
     bgp,
     hosts,
     ssh,
+    juniper,
     now: () => new Date('2026-09-25T12:34:56.000Z'),
   });
-  return { service, bgp, hosts, ssh, readAdvertisedRoutes, writes };
+  return { service, bgp, hosts, ssh, juniper, readAdvertisedRoutes, readAdvertisedRoutesJunos, writes };
 }
 
 async function expectError(promise: Promise<unknown>): Promise<BgpAdvertisedRoutesError> {
@@ -269,5 +283,85 @@ describe('BgpAdvertisedRoutesService', () => {
 
     expect(error.statusCode).toBe(409);
     expect(error.message).toMatch(/não suportada para sessões IPv6/);
+  });
+  describe('Junos (read-only)', () => {
+    const juniperHost = () =>
+      host({ id: 'mx-1', hostname: 'VIANET-OUROPRETO', vendor: 'Juniper', model: 'MX240' });
+
+    it('uses the peer local AS, never the device BGP process AS', async () => {
+      const { service, readAdvertisedRoutesJunos, bgp, readAdvertisedRoutes } = build({
+        host: juniperHost(),
+        // AS global do processo: nao pode substituir o local-as do peer.
+        localAs: 52_575n,
+        peer: peer({ deviceId: 'mx-1', peerAddress: '10.141.1.81', localAs: '265185' }),
+        juniperReading: {
+          routes: [
+            {
+              prefix: '167.250.0.0/22',
+              nextHop: 'Self',
+              med: null,
+              localPreference: null,
+              preferredValue: null,
+              asPath: ['265185', '265185', '265185', '[265185]'],
+              origin: 'i',
+              prependLocal: 2,
+            },
+          ],
+          reportedTotal: 1,
+          warnings: [],
+        },
+      });
+
+      const response = await service.execute('peer-1');
+
+      expect(response.localAs).toBe('265185');
+      expect(readAdvertisedRoutesJunos).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'mx-1' }),
+        '10.141.1.81',
+        265_185n,
+      );
+      expect(bgp.getDeviceLocalAs).not.toHaveBeenCalled();
+      expect(readAdvertisedRoutes).not.toHaveBeenCalled();
+      expect(response.routes).toHaveLength(1);
+    });
+
+    it('answers 409 when the peer local AS was never collected', async () => {
+      const { service, readAdvertisedRoutesJunos } = build({
+        host: juniperHost(),
+        localAs: 52_575n,
+        peer: peer({ deviceId: 'mx-1', localAs: null }),
+      });
+
+      const error = await expectError(service.execute('peer-1'));
+
+      expect(error.statusCode).toBe(409);
+      expect(error.message).toMatch(/AS local deste peer/);
+      expect(readAdvertisedRoutesJunos).not.toHaveBeenCalled();
+    });
+
+    it('answers 502 with the sanitized Junos failure', async () => {
+      const { service } = build({
+        host: juniperHost(),
+        peer: peer({ deviceId: 'mx-1', localAs: '265185' }),
+        juniperReading: Promise.reject(new Error('SSH transport failed')),
+      });
+
+      const error = await expectError(service.execute('peer-1'));
+
+      expect(error.statusCode).toBe(502);
+      expect(error.message).toBe('SSH transport failed');
+    });
+
+    it('keeps the Huawei path for a Huawei device', async () => {
+      const { service, readAdvertisedRoutes, readAdvertisedRoutesJunos } = build({
+        host: host({ vendor: 'Huawei', model: 'NE8000 M8' }),
+      });
+
+      const response = await service.execute('peer-1');
+
+      expect(response.localAs).toBe('268568');
+      expect(readAdvertisedRoutes).toHaveBeenCalled();
+      expect(readAdvertisedRoutesJunos).not.toHaveBeenCalled();
+    });
   });
 });

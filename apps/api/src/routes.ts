@@ -108,6 +108,10 @@ import { PrismaBgpAdminAuditRepository } from './infrastructure/bgp/prisma-bgp-a
 import { HuaweiBgpSshService } from './infrastructure/bgp/huawei-bgp-ssh';
 import { DemoBgpRepository } from './infrastructure/bgp/demo-bgp-repository';
 import { HuaweiBgpSnmpCollector } from './infrastructure/bgp/huawei-bgp-snmp';
+import { JuniperBgpSnmpCollector } from './infrastructure/bgp/juniper-bgp-snmp';
+import { HuaweiBgpDiscoveryProvider } from './infrastructure/bgp/huawei-bgp-discovery-provider';
+import { JuniperJunosBgpSshProvider } from './infrastructure/bgp/juniper-junos-bgp-ssh';
+import { BgpPlatformProviders } from './infrastructure/bgp/bgp-platform-providers';
 import { PrismaBgpRepository } from './infrastructure/bgp/prisma-bgp-repository';
 import { InMemoryMitigationRepository } from './infrastructure/bgp/mitigation/in-memory-mitigation-repository';
 import { PrismaMitigationRepository } from './infrastructure/bgp/mitigation/prisma-mitigation-repository';
@@ -482,11 +486,18 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     ? new PppPollingService(new SnmpClientImpl(3000, 1), pppRepository, new SnmpClientImpl(3000, 1))
     : undefined;
   const bgpRepository = config.DEMO_MODE ? new DemoBgpRepository() : new PrismaBgpRepository(prismaClient);
+  // Seleção por plataforma num único ponto (sem `if vendor` espalhado).
+  const bgpPlatforms = new BgpPlatformProviders({
+    huaweiSsh: new HuaweiBgpDiscoveryProvider(new HuaweiBgpSshService(hosts)),
+    juniperSsh: new JuniperJunosBgpSshProvider(hosts),
+    huaweiSnmp: new HuaweiBgpSnmpCollector(new SnmpClientImpl(3000, 1)),
+    juniperSnmp: new JuniperBgpSnmpCollector(new SnmpClientImpl(3000, 1)),
+  });
   const bgpPolling = new BgpPollingService(
-    new HuaweiBgpSnmpCollector(new SnmpClientImpl(3000, 1)),
+    (device) => bgpPlatforms.snmpFor(device),
     bgpRepository,
   );
-  const bgpDiscovery = new BgpDiscoveryService(new HuaweiBgpSshService(hosts), bgpRepository);
+  const bgpDiscovery = new BgpDiscoveryService(bgpPlatforms, bgpRepository);
   const bgpAudit = config.DEMO_MODE
     ? new InMemoryBgpAdminAuditRepository()
     : new PrismaBgpAdminAuditRepository(prismaClient);
@@ -496,10 +507,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     ssh: new HuaweiBgpSshService(hosts),
     audit: bgpAudit,
   });
+  const juniperBgpSsh = new JuniperJunosBgpSshProvider(hosts);
   const bgpAdvertisedRoutes = new BgpAdvertisedRoutesService({
     bgp: bgpRepository,
     hosts,
     ssh: new HuaweiBgpSshService(hosts),
+    juniper: juniperBgpSsh,
   });
   // Mitigacao DDoS: SIMULATION_ONLY. Em DEMO_MODE o repositorio e em memoria;
   // em producao o Prisma fica pronto, mas a leitura tolera schema ausente

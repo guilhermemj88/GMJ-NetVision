@@ -1,6 +1,6 @@
 import type { BgpPeerState } from './bgp4-peer-parser';
 import type { BgpInterfaceCorrelationStatus } from './bgp-interface-correlation';
-import type { HuaweiBgpCollection } from './huawei-bgp-snmp';
+import type { BgpSnmpCollection } from './bgp-snmp-collector';
 import type {
   BgpAddressFamily,
   BgpAddressFamilyFilter,
@@ -17,6 +17,8 @@ export interface BgpDiscoveryPeerInput {
   peerAddress: string;
   addressFamily: BgpAddressFamily;
   remoteAs: bigint | null;
+  /** AS local DESTA sessão (Juniper). `null` = desconhecido, nunca 0. */
+  localAs?: bigint | null;
   stateCode: number | null;
   state: BgpPeerState | null;
   sessionUptimeSeconds: number | null;
@@ -35,7 +37,7 @@ export interface BgpDashboardQuery {
 }
 
 export interface BgpRepository {
-  saveCollection(deviceId: string, collection: HuaweiBgpCollection): Promise<void>;
+  saveCollection(deviceId: string, collection: BgpSnmpCollection): Promise<void>;
   saveDiscovery(
     deviceId: string,
     peers: readonly BgpDiscoveryPeerInput[],

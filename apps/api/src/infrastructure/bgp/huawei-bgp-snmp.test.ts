@@ -52,31 +52,51 @@ describe('HuaweiBgpSnmpCollector', () => {
     expect(collection.peers).toEqual([
       {
         peerAddress: '200.150.1.193',
+        addressFamily: 'IPV4',
         stateCode: 6,
         state: 'ESTABLISHED',
         established: true,
+        remoteAs: null,
+        localAs: null,
+        sessionUptimeSeconds: null,
         receivedPrefixes: 1099912,
+        provenance: { state: 'SNMP', receivedPrefixes: 'SNMP' },
       },
       {
         peerAddress: '187.16.216.253',
+        addressFamily: 'IPV4',
         stateCode: 3,
         state: 'ACTIVE',
         established: false,
+        remoteAs: null,
+        localAs: null,
+        sessionUptimeSeconds: null,
         receivedPrefixes: null,
+        provenance: { state: 'SNMP', receivedPrefixes: 'SNMP' },
       },
       {
         peerAddress: '45.164.184.97',
+        addressFamily: 'IPV4',
         stateCode: 6,
         state: 'ESTABLISHED',
         established: true,
+        remoteAs: null,
+        localAs: null,
+        sessionUptimeSeconds: null,
         receivedPrefixes: 0,
+        provenance: { state: 'SNMP', receivedPrefixes: 'SNMP' },
       },
       {
         peerAddress: '172.16.0.6',
+        addressFamily: 'IPV4',
         stateCode: 2,
         state: 'CONNECT',
         established: false,
+        remoteAs: null,
+        localAs: null,
+        sessionUptimeSeconds: null,
         receivedPrefixes: null,
+        provenance: { state: 'SNMP', receivedPrefixes: 'SNMP' },
       },
     ]);
   });
@@ -95,10 +115,15 @@ describe('HuaweiBgpSnmpCollector', () => {
     expect(collection.peers).toEqual([
       {
         peerAddress: '200.150.1.193',
+        addressFamily: 'IPV4',
         stateCode: 6,
         state: 'ESTABLISHED',
         established: true,
+        remoteAs: null,
+        localAs: null,
+        sessionUptimeSeconds: null,
         receivedPrefixes: null,
+        provenance: { state: 'SNMP', receivedPrefixes: 'SNMP' },
       },
     ]);
     expect(collection.errors).toEqual([

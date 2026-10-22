@@ -591,6 +591,12 @@ model BgpPeer {
   addressFamily          BgpAddressFamily           @default(IPV4)
   peerDescription        String?
   remoteAs               BigInt?
+  /**
+   * AS local DESTA sessão. Obrigatório para Juniper (um MX usa local-as
+   * diferente por grupo/peer); Huawei mantém `Device.bgpLocalAs` e usa este
+   * campo como opcional. NULL = desconhecido, nunca 0.
+   */
+  localAs                BigInt?
   interfaceId            String?
   monitoringEnabled      Boolean                    @default(true)
   role                   BgpPeerRole                @default(OTHER)

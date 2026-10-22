@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { makeHost } from '../../test-fixtures';
 import { BgpPollingService } from './bgp-polling-service';
 import type { BgpRepository } from './bgp-repository';
-import type { HuaweiBgpCollection, HuaweiBgpSnmpCollector } from './huawei-bgp-snmp';
+import type { HuaweiBgpCollection } from './huawei-bgp-snmp';
+import type { BgpSnmpCollector } from './bgp-snmp-collector';
 
 function device() {
   return makeHost({
@@ -29,6 +30,7 @@ function collection(): HuaweiBgpCollection {
     peers: [
       {
         peerAddress: '200.150.1.193',
+        addressFamily: 'IPV4',
         stateCode: 6,
         state: 'ESTABLISHED',
         established: true,
@@ -58,7 +60,7 @@ describe('BgpPollingService', () => {
     const collector = { collect: vi.fn().mockResolvedValue(result) };
     const persistence = repository();
     const service = new BgpPollingService(
-      collector as unknown as HuaweiBgpSnmpCollector,
+      () => collector as unknown as BgpSnmpCollector,
       persistence,
     );
 
@@ -83,7 +85,7 @@ describe('BgpPollingService', () => {
     const collector = { collect: vi.fn().mockReturnValue(pending) };
     const persistence = repository();
     const service = new BgpPollingService(
-      collector as unknown as HuaweiBgpSnmpCollector,
+      () => collector as unknown as BgpSnmpCollector,
       persistence,
     );
 
@@ -100,7 +102,7 @@ describe('BgpPollingService', () => {
     const collector = { collect: vi.fn().mockRejectedValue(new Error('BGP unavailable')) };
     const persistence = repository();
     const service = new BgpPollingService(
-      collector as unknown as HuaweiBgpSnmpCollector,
+      () => collector as unknown as BgpSnmpCollector,
       persistence,
     );
 

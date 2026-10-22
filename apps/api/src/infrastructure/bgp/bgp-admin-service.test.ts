@@ -300,4 +300,42 @@ describe('BGP admin service', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
     expect(service).toBeDefined();
   });
+  it('refuses any administrative write on Junos (read-only platform)', async () => {
+    const { service, applyAdminState, audit } = harness({
+      hostRecord: host({ id: 'mx-1', hostname: 'VIANET-OUROPRETO', vendor: 'Juniper', model: 'MX240' }),
+      peer: peer({ deviceId: 'mx-1' }),
+    });
+
+    const failure = await service
+      .execute({
+        peerId: 'peer-1',
+        action: 'DISABLE',
+        user: { id: 'u1', username: 'admin', email: 'a@b.c', name: 'Admin', role: 'ADMIN' },
+      })
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+
+    expect(failure).toBeInstanceOf(BgpAdminActionError);
+    expect((failure as BgpAdminActionError).statusCode).toBe(409);
+    expect((failure as BgpAdminActionError).message).toMatch(/Junos/);
+    expect(applyAdminState).not.toHaveBeenCalled();
+    expect(audit.entries).toEqual([]);
+  });
+
+  it('keeps the administrative path on Huawei', async () => {
+    const { service, applyAdminState } = harness({
+      hostRecord: host({ vendor: 'Huawei', model: 'NE8000 M8' }),
+    });
+
+    const result = await service.execute({
+      peerId: 'peer-1',
+      action: 'DISABLE',
+      user: { id: 'u1', username: 'admin', email: 'a@b.c', name: 'Admin', role: 'ADMIN' },
+    });
+
+    expect(result.success).toBe(true);
+    expect(applyAdminState).toHaveBeenCalled();
+  });
 });

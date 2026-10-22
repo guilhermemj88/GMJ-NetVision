@@ -68,7 +68,11 @@ export interface BgpDashboardPeer {
   /** Derived at runtime: alias -> description -> interface.name -> peerAddress. */
   displayName: string;
   addressFamily: BgpAddressFamily;
-  /** Local ASN of the BGP process on the device; learned via SSH discovery. */
+  /**
+   * Local ASN of the BGP session. Per-peer value when the device exposes one
+   * (Junos `local-as` per group/neighbor or BGP4-V2-MIB); otherwise the device
+   * level ASN (Huawei). `null` = unknown, never 0.
+   */
   localAs: string | null;
   remoteAs: string | null;
   role: BgpPeerRole;
@@ -96,9 +100,18 @@ export interface BgpDashboardSummary {
   peers: number;
   established: number;
   down: number;
-  receivedPrefixes: number;
+  /** Sum of the known received-prefix counters; `null` when none is known. */
+  receivedPrefixes: number | null;
   /** Small dual-stack breakdown of the peer count. */
   byFamily: Record<BgpAddressFamily, number>;
+}
+
+/** O que o equipamento permite fazer nesta versão (Juniper é read-only). */
+export interface BgpDeviceCapabilities {
+  platform: 'HUAWEI_VRP' | 'JUNIPER_JUNOS' | 'UNSUPPORTED';
+  adminActions: boolean;
+  advertisedRoutes: boolean;
+  mitigation: boolean;
 }
 
 export interface BgpDashboardDevice {
@@ -106,6 +119,8 @@ export interface BgpDashboardDevice {
   hostname: string;
   displayName: string;
   bgpMonitoringEnabled: boolean;
+  /** Ausente em respostas antigas/test doubles: a UI assume "não suportado". */
+  capabilities?: BgpDeviceCapabilities;
   peers: BgpDashboardPeer[];
 }
 

@@ -5,6 +5,7 @@ import type {
   BgpPeerAdminStateResponse,
 } from '@gmj/shared';
 import { ipAddressFamily } from '@gmj/shared';
+import { bgpPlatformFor } from './bgp-vendor';
 import type { BgpAdminAuditRepository } from './bgp-admin-audit';
 import type { BgpRepository } from './bgp-repository';
 import type { HuaweiBgpSshService } from './huawei-bgp-ssh';
@@ -68,6 +69,16 @@ export class BgpAdminService {
 
     const host = await this.dependencies.hosts.getHost(peer.deviceId);
     if (!host) throw new BgpAdminActionError('Equipamento não encontrado', 404);
+
+    // Juniper é READ-ONLY nesta fase: a plataforma é a única fonte de verdade
+    // (nenhuma flag do cliente habilita escrita administrativa no Junos).
+    // Plataforma não homologada mantém o caminho legado já publicado.
+    if (bgpPlatformFor(host.vendor, host.model) === 'JUNIPER_JUNOS') {
+      throw new BgpAdminActionError(
+        'Habilitar/desabilitar vizinho não é suportado nesta plataforma (Junos é somente leitura)',
+        409,
+      );
+    }
 
     // The stored address must be valid for the stored family; the request never
     // carries an address, so this also blocks corrupted rows.

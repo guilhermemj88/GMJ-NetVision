@@ -1,16 +1,19 @@
 import type { HostRecord } from '@gmj/shared';
 import type { BgpPeerState } from './bgp4-peer-parser';
 import {
-  correlateBgpPeerInterface,
+  correlateFromLookup,
   type BgpInterfaceCorrelationStatus,
+  type BgpRouteLookup,
 } from './bgp-interface-correlation';
-import type { HuaweiBgpSshService } from './huawei-bgp-ssh';
+import type { BgpSshDiscoveryProvider } from './bgp-ssh-discovery';
 import type { BgpRepository } from './bgp-repository';
 
 export interface DiscoveredBgpPeer {
   peerAddress: string;
   addressFamily: 'IPV4' | 'IPV6';
   remoteAs: bigint | null;
+  /** AS local DESTA sessão. `null` quando o vendor não expõe por peer (Huawei). */
+  localAs: bigint | null;
   stateCode: number | null;
   state: BgpPeerState | null;
   sessionUptimeSeconds: number | null;
@@ -34,15 +37,22 @@ export interface BgpDiscoveryOutcome {
   warnings: string[];
 }
 
+/**
+ * Discovery BGP por SSH.
+ *
+ * Depende apenas de `BgpSshDiscoveryProvider`: Huawei e Juniper entregam os
+ * peers e o resultado de rota JÁ interpretado pelo parser do fabricante; este
+ * serviço só correlaciona (mesma regra de interface para ambos) e persiste.
+ */
 export class BgpDiscoveryService {
   constructor(
-    private readonly ssh: HuaweiBgpSshService,
+    private readonly provider: BgpSshDiscoveryProvider,
     private readonly repository: BgpRepository,
     private readonly now: () => Date = () => new Date(),
   ) {}
 
   async discover(device: HostRecord): Promise<BgpDiscoveryOutcome> {
-    const discovery = await this.ssh.discover(device);
+    const discovery = await this.provider.discover(device);
     const discoveredAt = this.now();
 
     // A local ASN is only persisted when the context exposed exactly one BGP
@@ -52,22 +62,26 @@ export class BgpDiscoveryService {
     }
 
     const peers = discovery.peers.map((peer) => {
-      const routeCommand = discovery.routeCommands.get(peer.peerAddress) ?? {
-        status: 'COMMAND_FAILED' as const,
-        error: 'SSH command failed',
-      };
-      const correlation = correlateBgpPeerInterface(
+      const lookup: BgpRouteLookup = peer.routeLookup;
+      const correlation = correlateFromLookup(
         device.id,
         peer.peerAddress,
-        peer.addressFamily,
-        routeCommand,
+        lookup,
         device.interfaces,
+        { allowLogicalUnitFallback: discovery.logicalUnitFallback },
       );
       const bgpPeerDescription = peer.bgpPeerDescription?.trim() || null;
       return {
-        ...peer,
-        ...correlation,
+        peerAddress: peer.peerAddress,
+        addressFamily: peer.addressFamily,
+        remoteAs: peer.remoteAs,
+        localAs: peer.localAs,
+        stateCode: peer.stateCode,
+        state: peer.state,
+        sessionUptimeSeconds: peer.sessionUptimeSeconds,
+        cliReceivedPrefixes: peer.cliReceivedPrefixes,
         bgpPeerDescription,
+        ...correlation,
         displayName: bgpPeerDescription || correlation.displayName,
       };
     });
