@@ -559,6 +559,42 @@ describe('parseJunosAdvertisedRoutes', () => {
     });
   });
 
+  it('parses the real 19.2 advertising output that marks active routes with *', () => {
+    // Output real (2026-10-22) com marcador de tabela e header separado por TAB.
+    const parsed = parseJunosAdvertisedRoutes(
+      `Last login: Thu Oct 22 11:19:56 2026 from 167.250.0.1
+
+--- JUNOS 19.2R1.8 Kernel 64-bit  JNPR-11.0-20190517.f0321c3_buil
+operator@VIANET-OUROPRETO> show route advertising-protocol bgp 10.141.1.81 | no-more
+
+inet.0: 1114624 destinations, 4579198 routes (1114621 active, 3 holddown, 1 hidden)
+  Prefix\t\t  Nexthop\t       MED     Lclpref    AS path
+* 167.250.0.0/22          Self                                    265185 265185 265185 [265185] I
+* 168.196.16.0/22         Self                                    265185 265185 265185 [265185] I
+* 168.196.19.0/24         Self                                    265185 265185 265185 [265185] I
+* 177.86.184.0/21         Self                                    265185 265185 [265185] 52575 I
+
+operator@VIANET-OUROPRETO>
+`,
+      { localAs: 265_185n },
+    );
+
+    expect(parsed.routes.map((route) => route.prefix)).toEqual([
+      '167.250.0.0/22',
+      '168.196.16.0/22',
+      '168.196.19.0/24',
+      '177.86.184.0/21',
+    ]);
+    expect(parsed.routes[0]).toMatchObject({
+      nextHop: 'Self',
+      origin: 'i',
+      asPath: ['265185', '265185', '265185', '[265185]'],
+      prependLocal: 2,
+    });
+    expect(parsed.reportedTotal).toBeNull();
+    expect(parsed.warnings).toEqual([]);
+  });
+
   it('never turns the RIB table size into the advertised-routes total', () => {
     // Header real de `show route advertising-protocol bgp <PEER>`: milhões de
     // rotas na RIB, apenas 3 prefixos anunciados a este peer.

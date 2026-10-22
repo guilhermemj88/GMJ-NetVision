@@ -445,14 +445,19 @@ export function parseJunosAdvertisedRoutes(
   for (const rawLine of output.split(/\r?\n/)) {
     const line = rawLine.replace(/\s+$/, '');
     if (!line.trim()) continue;
-    if (/^Prefix\s+Nexthop/.test(line.trim())) continue;
+    // O `advertising-protocol` imprime cada rota com o marcador de tabela
+    // (`+ = Active Route, - = Last Active, * = Both`), ex.: `* 167.250.0.0/22`.
+    // O marcador não faz parte do prefixo.
+    const trimmedLine = line.trim().replace(/^[+\-*]\s+/, '');
+    if (!trimmedLine) continue;
+    if (/^Prefix\s+Nexthop/.test(trimmedLine)) continue;
     // Cabeçalho de tabela/RIB (`inet.0: 1114132 destinations, 4582007 routes`)
     // nunca vira total anunciado ao peer.
-    if (/^\S+:\s+\d+\s+destinations?,\s+\d+\s+routes?/.test(line.trim())) continue;
-    if (!/^\S+\s+\S+/.test(line)) continue;
-    const columns = line.trim().split(/\s{2,}/);
+    if (/^\S+:\s+\d+\s+destinations?,\s+\d+\s+routes?/.test(trimmedLine)) continue;
+    if (!/^\S+\s+\S+/.test(trimmedLine)) continue;
+    const columns = trimmedLine.split(/\s{2,}/);
     if (columns.length < 3) {
-      if (/^\S+\/\d+/.test(line.trim())) warnings.push(`Linha não reconhecida: ${line.trim().slice(0, 120)}`);
+      if (/^\S+\/\d+/.test(trimmedLine)) warnings.push(`Linha não reconhecida: ${trimmedLine.slice(0, 120)}`);
       continue;
     }
     const prefix = columns[0]!.trim();
