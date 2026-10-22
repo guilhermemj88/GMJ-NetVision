@@ -467,6 +467,40 @@ describe('parseJunosRouteLookup', () => {
     expect(
       parseJunosRouteLookup('inet.0: 3 destinations, 3 routes (3 active, 0 holddown, 0 hidden)\n', 'IPV4'),
     ).toEqual({ routeFound: false, unresolvedRoute: false, interfaceNames: [] });
+    // Sem rota nenhuma e sem seção: mesma distinção preservada.
+    expect(parseJunosRouteLookup('', 'IPV4')).toEqual({
+      routeFound: false,
+      unresolvedRoute: false,
+      interfaceNames: [],
+    });
+  });
+
+  it('keeps routeFound when the route exists without a usable interface', () => {
+    const noVia = `inet.0: 1114132 destinations, 4582007 routes (1114132 active, 0 holddown, 1 hidden)
++ = Active Route, - = Last Active, * = Both
+
+10.141.1.81/32     *[Direct/0] 1d 00:00:23
+                    >  to 192.168.3.1
+`;
+
+    expect(parseJunosRouteLookup(noVia, 'IPV4')).toEqual({
+      routeFound: true,
+      unresolvedRoute: true,
+      interfaceNames: [],
+    });
+
+    // Next hop de descarte: a rota existe, mas não há interface de saída.
+    const discarded = `inet.0: 10 destinations, 10 routes (10 active, 0 holddown, 0 hidden)
++ = Active Route, - = Last Active, * = Both
+
+200.150.1.192/30   *[BGP/170] 1d 00:00:23, MED 0, localpref 100
+                    >  to 10.0.0.1 via Discard
+`;
+    expect(parseJunosRouteLookup(discarded, 'IPV4')).toEqual({
+      routeFound: true,
+      unresolvedRoute: true,
+      interfaceNames: [],
+    });
   });
 
   it('falls back to a non-global table only when the global one has no route', () => {
@@ -523,6 +557,27 @@ describe('parseJunosAdvertisedRoutes', () => {
       origin: 'e',
       prependLocal: 0,
     });
+  });
+
+  it('never turns the RIB table size into the advertised-routes total', () => {
+    // Header real de `show route advertising-protocol bgp <PEER>`: milhões de
+    // rotas na RIB, apenas 3 prefixos anunciados a este peer.
+    const parsed = parseJunosAdvertisedRoutes(
+      `inet.0: 1114132 destinations, 4582007 routes (1114132 active, 0 holddown, 1 hidden)
++ = Active Route, - = Last Active, * = Both
+
+Prefix                  Nexthop              MED     Lclpref    AS path
+167.250.0.0/22          Self                                    265185 265185 265185 [265185] I
+168.196.16.0/22         Self                                    265185 265185 265185 [265185] I
+177.86.184.0/21         Self                                    265185 265185 [265185] 52575 I
+`,
+      { localAs: 265_185n },
+    );
+
+    expect(parsed.routes).toHaveLength(3);
+    // 4582007 é o tamanho da tabela inet.0, não o total anunciado ao peer.
+    expect(parsed.reportedTotal).toBeNull();
+    expect(parsed.warnings).toEqual([]);
   });
 
   it('returns an empty list when the peer receives no advertisement', () => {

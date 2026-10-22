@@ -339,32 +339,53 @@ export function parseJunosBgpConfig(...outputs: string[]): JunosBgpConfigReading
  * linha `via <interface>`. Preferimos a tabela global (`inet.0`/`inet6.0`),
  * que é a usada pelo BGP, e só caímos para tabelas de VRF quando a global não
  * tem a rota — evitando escolher uma interface de VRF não relacionada.
+ *
+ * Distinguimos três estados, porque "sem interface" ≠ "sem rota":
+ *  - rota com `via`: `routeFound` + interface;
+ *  - rota presente sem next hop utilizável (ex.: `> to X` sem `via`, discard):
+ *    `routeFound: true`, `unresolvedRoute: true`, `interfaceNames: []`;
+ *  - nenhuma rota para o peer: `routeFound: false`, `unresolvedRoute: false`.
  */
 export function parseJunosRouteLookup(output: string, family: BgpAddressFamily): BgpRouteLookupData {
   const wantedTable = family === 'IPV6' ? 'inet6.0' : 'inet.0';
-  const sections: Array<{ table: string | null; interfaces: string[] }> = [];
-  let current: { table: string | null; interfaces: string[] } | null = null;
+  const sections: Array<{ table: string | null; interfaces: string[]; hasRoute: boolean }> = [];
+  let current: (typeof sections)[number] | null = null;
 
   for (const rawLine of output.split(/\r?\n/)) {
     const line = rawLine.replace(/\s+$/, '');
     const tableLine = /^(\S+):\s+\d+ destinations/.exec(line);
     if (tableLine) {
-      current = { table: tableLine[1] ?? null, interfaces: [] };
+      current = { table: tableLine[1] ?? null, interfaces: [], hasRoute: false };
       sections.push(current);
       continue;
     }
+    if (!current) continue;
+    const trimmed = line.trim();
+    // Linha de destino: `<prefixo> ... [Protocolo/Preferência] tempo`.
+    const destination = /^\S+\/\d+\s+\S/.test(trimmed) && /\[[^\]]+\]/.test(trimmed);
+    // Next hop de um destino já listado (`>  via ...`, `>  to ...`).
+    const nextHop = trimmed.startsWith('>');
+    if (destination || nextHop) current.hasRoute = true;
     const via = /\bvia\s+(\S+)/.exec(line);
-    if (via && current) current.interfaces.push(via[1]!);
+    // `via Discard|Reject|Receive|Next hop` não é interface de saída.
+    if (via && !/^(?:discard|reject|receive|next(?:-|\s)?hop)$/i.test(via[1]!)) {
+      current.interfaces.push(via[1]!);
+    }
   }
 
-  const withRoutes = sections.filter((section) => section.interfaces.length > 0);
-  if (!withRoutes.length) return { routeFound: false, unresolvedRoute: false, interfaceNames: [] };
+  const withInterfaces = sections.filter((section) => section.interfaces.length > 0);
+  if (withInterfaces.length) {
+    const global = withInterfaces.find((section) => section.table === wantedTable);
+    const chosen = global ?? withInterfaces[0]!;
+    const interfaces = [...new Set(chosen.interfaces)];
+    return { routeFound: true, unresolvedRoute: false, interfaceNames: interfaces };
+  }
 
-  const global = withRoutes.find((section) => section.table === wantedTable);
-  const chosen = global ?? withRoutes[0]!;
-  const interfaces = [...new Set(chosen.interfaces)];
-  // `unresolvedRoute` = a rota existe mas não aponta uma interface utilizável.
-  return { routeFound: true, unresolvedRoute: interfaces.length === 0, interfaceNames: interfaces };
+  // A rota existe (há destino/next hop) mas nenhum `via` foi impresso.
+  if (sections.some((section) => section.hasRoute)) {
+    return { routeFound: true, unresolvedRoute: true, interfaceNames: [] };
+  }
+  return { routeFound: false, unresolvedRoute: false, interfaceNames: [] };
 }
 
 const AS_PATH_TOKEN = /^(?:\d+|[[{(].*[\]})])$/;
@@ -408,6 +429,11 @@ export interface JunosAdvertisedRoutes {
  * `null`. `Self` é preservado como next hop. AS-SET `[..]`, confederação
  * `(..)` e conjunto `{..}` são mantidos como UM elemento do AS-PATH — o
  * conteúdo entre colchetes não é confundido com um ASN do caminho.
+ *
+ * `reportedTotal` fica SEMPRE `null` no Junos: a linha
+ * `inet.0: X destinations, Y routes` presente no output descreve o tamanho da
+ * RIB daquela tabela (milhões de rotas), NÃO quantas rotas foram anunciadas a
+ * este peer. Nenhum contador peer-specific é impresso aqui.
  */
 export function parseJunosAdvertisedRoutes(
   output: string,
@@ -415,17 +441,14 @@ export function parseJunosAdvertisedRoutes(
 ): JunosAdvertisedRoutes {
   const routes: BgpAdvertisedRouteDto[] = [];
   const warnings: string[] = [];
-  let reportedTotal: number | null = null;
 
   for (const rawLine of output.split(/\r?\n/)) {
     const line = rawLine.replace(/\s+$/, '');
     if (!line.trim()) continue;
     if (/^Prefix\s+Nexthop/.test(line.trim())) continue;
-    const total = /(\d+)\s+destinations?,\s+(\d+)\s+routes?/.exec(line);
-    if (total) {
-      reportedTotal = Number(total[2]);
-      continue;
-    }
+    // Cabeçalho de tabela/RIB (`inet.0: 1114132 destinations, 4582007 routes`)
+    // nunca vira total anunciado ao peer.
+    if (/^\S+:\s+\d+\s+destinations?,\s+\d+\s+routes?/.test(line.trim())) continue;
     if (!/^\S+\s+\S+/.test(line)) continue;
     const columns = line.trim().split(/\s{2,}/);
     if (columns.length < 3) {
@@ -463,7 +486,7 @@ export function parseJunosAdvertisedRoutes(
       prependLocal: computeLocalPrepend(asPath, options.localAs === null ? null : options.localAs.toString()),
     });
   }
-  return { routes, reportedTotal, warnings };
+  return { routes, reportedTotal: null, warnings };
 }
 
 export class JuniperBgpConfigError extends Error {
