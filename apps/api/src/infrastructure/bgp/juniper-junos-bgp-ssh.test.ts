@@ -279,6 +279,22 @@ describe('JuniperJunosBgpSshProvider', () => {
     expect(reading.routes[0]?.prependLocal).toBe(2);
   });
 
+  it('never uses show route receive-protocol in the periodic discovery', async () => {
+    const { factory, sessions } = factoryFor(STANDARD_OUTPUTS);
+    const provider = new JuniperJunosBgpSshProvider(repository(), factory);
+
+    await provider.discover(device());
+
+    const commands = sessions.flatMap((session) =>
+      session.execute.mock.calls.flatMap((call) => call[1] as string[]),
+    );
+    // `show bgp summary` já entrega o total recebido dos 24 peers de uma vez.
+    expect(commands.some((command) => command.includes('receive-protocol'))).toBe(false);
+    expect(
+      commands.filter((command) => command === 'show bgp summary | no-more'),
+    ).toHaveLength(1);
+  });
+
   it('passes the context command and never sends a write command', async () => {
     const { factory, sessions } = factoryFor(STANDARD_OUTPUTS);
     const provider = new JuniperJunosBgpSshProvider(repository(), factory);

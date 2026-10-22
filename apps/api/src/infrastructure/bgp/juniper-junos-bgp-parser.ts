@@ -28,9 +28,16 @@ export interface JunosBgpPeerReading {
   stateCode: number | null;
   state: BgpPeerState | null;
   sessionUptimeSeconds: number | null;
-  /** Segundo valor de Active/Received/Accepted/Damped. */
+  /**
+   * Linha da família `inet.0:` / `inet6.0:` no formato
+   * Active / Received / Accepted / Damped. `receivedPrefixes` é o SEGUNDO
+   * valor e `acceptedPrefixes` o TERCEIRO — são contadores distintos e podem
+   * divergir no equipamento real (ex.: 1071010 recebidos / 1071009 aceitos).
+   */
   receivedPrefixes: bigint | null;
   activePrefixes: number | null;
+  acceptedPrefixes: number | null;
+  dampedPrefixes: number | null;
   description: string | null;
   provenance: Readonly<Record<string, 'SNMP' | 'SSH'>>;
 }
@@ -96,15 +103,66 @@ export function parseJunosUptime(value: string): number | null {
   return weeks * 604_800 + days * 86_400 + hours * 3_600 + minutes * 60 + seconds;
 }
 
-const PEER_LINE = /^(\S+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s+(.+)$/;
-const FAMILY_LINE = /^\s+(inet6?\.\d+)\s*:\s*(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)/;
+const FAMILY_LINE = /^(\S+?)\s*:\s*(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)\s*\/\s*(\d+)/;
+const UPTIME_TOKEN = /^(?:\d+w)?(?:\d+d)?$|^\d+:\d{2}:\d{2}$/;
+
+/**
+ * Linha de peer do `show bgp summary`, interpretada por SIGNIFICADO — nunca
+ * por posição fixa de coluna.
+ *
+ * IPv6 desloca a coluna do AS (`2001:1291:1602:1::a  16735 ...`), então a
+ * única âncora confiável é o primeiro token ser um IP válido. A partir dele:
+ *  - os números seguintes são AS, InPkt, OutPkt, OutQ, Flaps (qualquer
+ *    quantidade, sem contar colunas);
+ *  - o último token é o estado BGP (`Establ`, `Active`, ...);
+ *  - entre os números e o estado fica o uptime, em um ou dois tokens
+ *    (`17:07:56`, `1d 18:02:46`, `12w3d 4:36:50`).
+ */
+function parsePeerLine(line: string): {
+  peerAddress: string;
+  remoteAs: bigint;
+  uptimeSeconds: number | null;
+  stateCode: number | null;
+  state: BgpPeerState | null;
+  stateToken: string;
+} | null {
+  const tokens = line.trim().split(/\s+/).filter(Boolean);
+  const peerAddress = tokens[0] ?? '';
+  if (isIP(peerAddress) === 0) return null;
+
+  let index = 1;
+  const numerics: string[] = [];
+  while (index < tokens.length && /^\d+$/.test(tokens[index]!)) {
+    numerics.push(tokens[index]!);
+    index += 1;
+  }
+  // Sem pelo menos AS + 4 contadores a linha não é um peer válido.
+  if (numerics.length < 5) return null;
+
+  const stateToken = tokens[tokens.length - 1] ?? '';
+  const uptimeTokens = tokens.slice(index, tokens.length - 1);
+  const uptimeText = uptimeTokens.join(' ');
+  const uptimeValid =
+    uptimeTokens.length <= 2 && uptimeTokens.length > 0 && uptimeTokens.every((token) => UPTIME_TOKEN.test(token));
+  const { code, state } = stateFromToken(stateToken);
+  return {
+    peerAddress,
+    remoteAs: BigInt(numerics[0]!),
+    uptimeSeconds: uptimeValid ? parseJunosUptime(uptimeText) : null,
+    stateCode: code,
+    state,
+    stateToken,
+  };
+}
 
 /**
  * `show bgp summary | no-more`.
  *
- * Cada peer é uma linha; a família vem da linha seguinte (`inet.0:` IPv4,
- * `inet6.0:` IPv6). Um peer sem linha de família fica sem `receivedPrefixes`
- * (null) — nunca zero inventado.
+ * Cada peer é uma linha; a linha de família imediatamente seguinte
+ * (`inet.0:` IPv4, `inet6.0:` IPv6) pertence a ELE e traz
+ * Active/Received/Accepted/Damped — `receivedPrefixes` é o SEGUNDO valor.
+ * Um peer sem linha de família fica sem `receivedPrefixes` (null) — nunca
+ * zero inventado.
  */
 export function parseJunosBgpSummary(output: string): JunosBgpSummary {
   const peers: JunosBgpPeerReading[] = [];
@@ -123,31 +181,29 @@ export function parseJunosBgpSummary(output: string): JunosBgpSummary {
       declaredDownPeers = Number(header[3]);
       continue;
     }
-    const family = FAMILY_LINE.exec(line);
+    const family = FAMILY_LINE.exec(line.trim());
     if (family && pending) {
       const table = family[1] ?? '';
       const addressFamily: BgpAddressFamily = table.startsWith('inet6') ? 'IPV6' : 'IPV4';
       // Active / Received / Accepted / Damped
       const active = Number(family[2]);
       const received = Number(family[3]);
+      const accepted = Number(family[4]);
+      const damped = Number(family[5]);
       pending.addressFamily = addressFamily;
       pending.activePrefixes = Number.isFinite(active) ? active : null;
       pending.receivedPrefixes =
         pending.stateCode === 6 && Number.isFinite(received) ? BigInt(received) : null;
+      pending.acceptedPrefixes = Number.isFinite(accepted) ? accepted : null;
+      pending.dampedPrefixes = Number.isFinite(damped) ? damped : null;
       peers.push(pending);
       pending = null;
       continue;
     }
-    const peer = PEER_LINE.exec(line);
+    const peer = parsePeerLine(line);
     if (!peer) continue;
-    const peerAddress = peer[1]!;
-    const remoteAs = BigInt(peer[2]!);
-    const tail = peer[7]!.trim().split(/\s+/);
-    const stateToken = tail[tail.length - 1] ?? '';
-    const uptimeToken = tail.slice(0, -1).join(' ');
-    const { code, state } = stateFromToken(stateToken);
-    if (code === null) {
-      warnings.push(`Peer ${peerAddress}: estado "${stateToken}" não reconhecido`);
+    if (peer.stateCode === null) {
+      warnings.push(`Peer ${peer.peerAddress}: estado "${peer.stateToken}" não reconhecido`);
     }
     // Um peer anterior sem linha de família não pode ser perdido silenciosamente.
     if (pending) {
@@ -155,14 +211,18 @@ export function parseJunosBgpSummary(output: string): JunosBgpSummary {
       warnings.push(`Peer ${pending.peerAddress}: linha de família ausente no summary`);
     }
     pending = {
-      peerAddress,
-      addressFamily: peerAddress.includes(':') ? 'IPV6' : 'IPV4',
-      remoteAs,
-      stateCode: code,
-      state,
-      sessionUptimeSeconds: parseJunosUptime(uptimeToken),
+      peerAddress: peer.peerAddress,
+      // A família definitiva vem da linha `inet.0:`/`inet6.0:`; o endereço só
+      // dá a expectativa inicial.
+      addressFamily: peer.peerAddress.includes(':') ? 'IPV6' : 'IPV4',
+      remoteAs: peer.remoteAs,
+      stateCode: peer.stateCode,
+      state: peer.state,
+      sessionUptimeSeconds: peer.uptimeSeconds,
       receivedPrefixes: null,
       activePrefixes: null,
+      acceptedPrefixes: null,
+      dampedPrefixes: null,
       description: null,
       provenance: {
         peerAddress: 'SSH',

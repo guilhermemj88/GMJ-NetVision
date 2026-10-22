@@ -11,25 +11,97 @@ import {
   parseJunosUptime,
 } from './juniper-junos-bgp-parser';
 
-/** Trecho REAL do `show bgp summary | no-more` de VIANET-OUROPRETO (19.2R1.8). */
-const SUMMARY_19_2 = `Threading mode: BGP I/O
+/**
+ * Output REAL e COMPLETO do `show bgp summary | no-more` de VIANET-OUROPRETO
+ * (Junos 19.2R1.8, captura de 2026-10-22, read-only). Apenas o prompt foi
+ * sanitizado (`operator@VIANET-OUROPRETO>`). 24 peers = 12 IPv4 + 12 IPv6.
+ */
+const SUMMARY_19_2 = `Last login: Wed Oct 22 12:07:41 2026 from 167.250.0.1
+
+--- JUNOS 19.2R1.8 Kernel 64-bit  JNPR-11.0-20190517.f0321c3_buil
+operator@VIANET-OUROPRETO> show bgp summary | no-more
+Threading mode: BGP I/O
 Groups: 17 Peers: 24 Down peers: 0
 Table          Tot Paths  Act Paths Suppressed    History Damp State    Pending
 inet6.0
-                 1200483     261589          0          0          0          0
+                 1199907     261471          0          0          0          0
 inet.0
-                 4578834    1110477          0          0          0          0
+                 4575898    1110734          0          0          0          0
 Peer                     AS      InPkt     OutPkt    OutQ   Flaps Last Up/Dwn State|#Active/Received/Accepted/Damped...
-10.141.1.81           23106   25109521      97966       0      27 4w3d 21:18:46 Establ
-  inet.0: 491930/1103955/1103955/0
-167.250.0.242        265185     157917     147344       0       5 6w5d 23:07:57 Establ
+10.141.1.81           23106   25492303      99647       0      27 4w4d 10:27:22 Establ
+  inet.0: 493460/1104280/1104280/0
+100.127.0.60         269096   41778194     267909       0      11 12w3d 4:58:17 Establ
+  inet.0: 329848/1100712/1100712/0
+167.250.0.94          11344      20997      22396       0      82 1w0d 6:56:43 Establ
+  inet.0: 0/0/0/0
+167.250.0.130         40027      80012      74680       0      17 3w3d 7:21:55 Establ
+  inet.0: 0/0/0/0
+167.250.0.238         52575    7789496   19997162       0      14 4w0d 16:51:26 Establ
+  inet.0: 3763/825521/825521/0
+167.250.0.242        265185     159727     149027       0       5 6w6d 12:16:33 Establ
   inet.0: 0/18/18/0
-187.16.216.254        26162      99720        561       0      67     4:20:47 Establ
-  inet.0: 3465/213788/213788/0
-2001:1291:1602:1::a       16735  250209872     235895       0      15 10w6d 18:57:19 Establ
-  inet6.0: 18301/245187/245187/0
-2804:2bf8:dddd:1::fffe       11344      19419      20709       0      81 6d 17:48:07 Establ
+187.16.216.252        20121       5801       5430       0      99 1d 18:24:13 Establ
+  inet.0: 0/0/0/0
+187.16.216.253        26162     649023       5429       0      72 1d 18:24:02 Establ
+  inet.0: 163548/213069/213069/0
+187.16.216.254        26162     345648       2243       0      67    17:29:23 Establ
+  inet.0: 6033/213014/213014/0
+187.72.100.246        16735   24534482     237597       0      17 11w0d 8:05:51 Establ
+  inet.0: 110172/1071038/1071037/0
+200.219.139.253       26162     874602      69807       0       5 3w1d 17:20:30 Establ
+  inet.0: 2458/24123/24123/0
+200.219.139.254       26162     853897      69806       0      13 3w1d 17:20:26 Establ
+  inet.0: 1452/24123/24123/0
+2001:1291:1602:1::a       16735  251913865     237577       0      15 11w0d 8:05:55 Establ
+  inet6.0: 19874/245255/245255/0
+2001:12f8::252        20121       5812       5427       0      23 1d 18:23:46 Establ
   inet6.0: 0/0/0/0
+2001:12f8::253        26162     794536       5427       0      13 1d 18:23:32 Establ
+  inet6.0: 73405/88917/88917/0
+2001:12f8::254        26162     361790       2278       0      15    17:46:11 Establ
+  inet6.0: 3335/88931/88931/0
+2001:12f8:0:3::253       26162    8382650      69805       0       4 3w1d 17:20:35 Establ
+  inet6.0: 1086/6106/6106/0
+2001:12f8:0:3::254       26162    8413885      69805       0      12 3w1d 17:20:36 Establ
+  inet6.0: 923/6087/6087/0
+2804:2bf8:0:2::2       52575   45474387   58474318       0       8 4w4d 10:27:18 Establ
+  inet6.0: 0/253951/253951/0
+2804:2bf8:2000::1      265185     159671     149028       0       5 6w6d 12:16:33 Establ
+  inet6.0: 2/3/3/0
+2804:2bf8:dddd:1::fffe       11344      20997      22392       0      81 1w0d 6:56:43 Establ
+  inet6.0: 0/0/0/0
+2804:2bf8:dddd:2::4       40027      79945      74673       0      17 3w3d 7:21:55 Establ
+  inet6.0: 0/0/0/0
+2804:5f64:1000::305      269096   53895745     267896       0      14 12w3d 4:58:18 Establ
+  inet6.0: 80407/256189/256189/0
+fd00:0:1::151         23106   26646387      99665       0      30 4w4d 10:37:13 Establ
+  inet6.0: 82439/254468/254468/0
+`;
+
+/**
+ * Recorte do MESMO comando, informado pelo operador em 2026-10-22, com os
+ * valores usados nas assertions de contrato (received × accepted).
+ */
+const SUMMARY_OPERATOR_SNAPSHOT = `Groups: 17 Peers: 24 Down peers: 0
+Peer                     AS      InPkt     OutPkt    OutQ   Flaps Last Up/Dwn State|#Active/Received/Accepted/Damped...
+10.141.1.81           23106   25109521      97966       0      27 4w4d 10:05:55 Establ
+  inet.0: 493399/1104194/1104194/0
+100.127.0.60         269096   41561403     266227       0      11 12w3d 4:36:50 Establ
+  inet.0: 330724/1100593/1100593/0
+167.250.0.238         52575    7659943   19658489       0      14 4w0d 3:42:50 Establ
+  inet.0: 3829/825595/825595/0
+187.16.216.253        26162     612109       3748       0      72 1w0d 6:35:16 Establ
+  inet.0: 166187/213023/213023/0
+187.72.100.246        16735   24391034     235915       0      17 11w0d 7:44:24 Establ
+  inet.0: 110237/1071010/1071009/0
+2001:1291:1602:1::a       16735  250209872     235895       0      15 11w0d 7:44:28 Establ
+  inet6.0: 18481/245228/245228/0
+2001:12f8::253        26162     629995       3746       0      13 1d 18:02:46 Establ
+  inet6.0: 74111/88936/88936/0
+2804:2bf8:0:2::2       52575   44802887   57570484       0       8 17:07:56 Establ
+  inet6.0: 0/253861/253861/0
+fd00:0:1::151         23106   26297862      97984       0      30 4w4d 10:06:37 Establ
+  inet6.0: 82437/254485/254485/0
 `;
 
 /** Trecho REAL do `show bgp summary | no-more` de BORDA-VIANET-NOVA-LIMA (19.4R3-S10.3). */
@@ -120,34 +192,73 @@ describe('parseJunosUptime', () => {
 });
 
 describe('parseJunosBgpSummary', () => {
-  it('reads IPv4 and IPv6 peers from a single 19.2 summary', () => {
+  it('reads all 24 peers (12 IPv4 + 12 IPv6) from a single 19.2 summary', () => {
     const summary = parseJunosBgpSummary(SUMMARY_19_2);
 
     expect(summary.groups).toBe(17);
     expect(summary.declaredPeers).toBe(24);
     expect(summary.declaredDownPeers).toBe(0);
     expect(summary.warnings).toEqual([]);
-    expect(summary.peers.map((peer) => [peer.peerAddress, peer.addressFamily])).toEqual([
+    expect(summary.peers).toHaveLength(24);
+    expect(summary.peers.filter((peer) => peer.addressFamily === 'IPV4')).toHaveLength(12);
+    expect(summary.peers.filter((peer) => peer.addressFamily === 'IPV6')).toHaveLength(12);
+    // A família vem da linha `inet.0:`/`inet6.0:`, não do formato do endereço.
+    expect(summary.peers.every((peer) => peer.state === 'ESTABLISHED')).toBe(true);
+    expect(
+      summary.peers.map((peer) => [peer.peerAddress, peer.addressFamily]).slice(0, 4),
+    ).toEqual([
       ['10.141.1.81', 'IPV4'],
-      ['167.250.0.242', 'IPV4'],
-      ['187.16.216.254', 'IPV4'],
-      ['2001:1291:1602:1::a', 'IPV6'],
-      ['2804:2bf8:dddd:1::fffe', 'IPV6'],
+      ['100.127.0.60', 'IPV4'],
+      ['167.250.0.94', 'IPV4'],
+      ['167.250.0.130', 'IPV4'],
     ]);
+    expect(
+      summary.peers.map((peer) => [peer.peerAddress, peer.addressFamily]).slice(-2),
+    ).toEqual([
+      ['2804:5f64:1000::305', 'IPV6'],
+      ['fd00:0:1::151', 'IPV6'],
+    ]);
+  });
+
+  it('parses an IPv6 peer line without relying on column offsets', () => {
+    // No IPv6 a coluna do AS desloca; o parser ancora no IP e lê por significado.
+    const summary = parseJunosBgpSummary(`2001:1291:1602:1::a       16735  251913865     237577       0      15 11w0d 8:05:55 Establ
+  inet6.0: 19874/245255/245255/0
+`);
+
+    expect(summary.peers).toHaveLength(1);
+    expect(summary.peers[0]).toMatchObject({
+      peerAddress: '2001:1291:1602:1::a',
+      addressFamily: 'IPV6',
+      remoteAs: 16_735n,
+      state: 'ESTABLISHED',
+      receivedPrefixes: 245_255n,
+      acceptedPrefixes: 245_255,
+    });
+    expect(summary.peers[0]?.sessionUptimeSeconds).toBe(
+      11 * 604_800 + 0 * 86_400 + 8 * 3_600 + 5 * 60 + 55,
+    );
   });
 
   it('uses the SECOND value of Active/Received/Accepted/Damped as receivedPrefixes', () => {
     const peers = parseJunosBgpSummary(SUMMARY_19_2).peers;
     const byAddress = new Map(peers.map((peer) => [peer.peerAddress, peer]));
 
-    // inet.0: 491930/1103955/1103955/0 → recebidos = 1103955, nunca 491930.
-    expect(byAddress.get('10.141.1.81')?.activePrefixes).toBe(491_930);
-    expect(byAddress.get('10.141.1.81')?.receivedPrefixes).toBe(1_103_955n);
-    // inet.6: 18301/245187/245187/0 → recebidos = 245187.
-    expect(byAddress.get('2001:1291:1602:1::a')?.activePrefixes).toBe(18_301);
-    expect(byAddress.get('2001:1291:1602:1::a')?.receivedPrefixes).toBe(245_187n);
+    // inet.0: 493460/1104280/1104280/0 → recebidos = 1104280, nunca 493460.
+    expect(byAddress.get('10.141.1.81')?.activePrefixes).toBe(493_460);
+    expect(byAddress.get('10.141.1.81')?.receivedPrefixes).toBe(1_104_280n);
+    expect(byAddress.get('10.141.1.81')?.acceptedPrefixes).toBe(1_104_280);
+    // inet6.0: 19874/245255/245255/0 → recebidos = 245255.
+    expect(byAddress.get('2001:1291:1602:1::a')?.activePrefixes).toBe(19_874);
+    expect(byAddress.get('2001:1291:1602:1::a')?.receivedPrefixes).toBe(245_255n);
     // um peer estabelecido pode legitimamente receber 0 (não é ausência de dado).
     expect(byAddress.get('2804:2bf8:dddd:1::fffe')?.receivedPrefixes).toBe(0n);
+    // Received e Accepted são campos DIFERENTES no equipamento real.
+    expect(byAddress.get('187.72.100.246')).toMatchObject({
+      receivedPrefixes: 1_071_038n,
+      acceptedPrefixes: 1_071_037,
+      dampedPrefixes: 0,
+    });
   });
 
   it('captures the remote AS from the AS column and never treats it as localAs', () => {
@@ -157,8 +268,95 @@ describe('parseJunosBgpSummary', () => {
     expect(byAddress.get('10.141.1.81')?.remoteAs).toBe(23_106n);
     expect(byAddress.get('167.250.0.242')?.remoteAs).toBe(265_185n);
     expect(byAddress.get('2001:1291:1602:1::a')?.remoteAs).toBe(16_735n);
+    expect(byAddress.get('fd00:0:1::151')?.remoteAs).toBe(23_106n);
     // localAs não existe no summary: é resolvido pela MIB/config, nunca aqui.
     expect(Object.keys(byAddress.get('10.141.1.81')!)).not.toContain('localAs');
+  });
+
+  it('matches the operator snapshot values for the eight asserted peers', () => {
+    const summary = parseJunosBgpSummary(SUMMARY_OPERATOR_SNAPSHOT);
+    const byAddress = new Map(summary.peers.map((peer) => [peer.peerAddress, peer]));
+
+    expect(summary.declaredPeers).toBe(24);
+    expect(summary.declaredDownPeers).toBe(0);
+    expect(summary.warnings).toEqual([]);
+    expect(byAddress.size).toBe(9);
+
+    expect(byAddress.get('10.141.1.81')).toMatchObject({
+      addressFamily: 'IPV4',
+      remoteAs: 23_106n,
+      state: 'ESTABLISHED',
+      receivedPrefixes: 1_104_194n,
+    });
+    expect(byAddress.get('100.127.0.60')).toMatchObject({
+      addressFamily: 'IPV4',
+      remoteAs: 269_096n,
+      receivedPrefixes: 1_100_593n,
+    });
+    expect(byAddress.get('167.250.0.238')).toMatchObject({
+      addressFamily: 'IPV4',
+      remoteAs: 52_575n,
+      receivedPrefixes: 825_595n,
+    });
+    expect(byAddress.get('187.16.216.253')).toMatchObject({
+      addressFamily: 'IPV4',
+      remoteAs: 26_162n,
+      receivedPrefixes: 213_023n,
+    });
+    expect(byAddress.get('2001:1291:1602:1::a')).toMatchObject({
+      addressFamily: 'IPV6',
+      remoteAs: 16_735n,
+      receivedPrefixes: 245_228n,
+    });
+    expect(byAddress.get('2001:12f8::253')).toMatchObject({
+      addressFamily: 'IPV6',
+      remoteAs: 26_162n,
+      receivedPrefixes: 88_936n,
+    });
+    expect(byAddress.get('2804:2bf8:0:2::2')).toMatchObject({
+      addressFamily: 'IPV6',
+      remoteAs: 52_575n,
+      receivedPrefixes: 253_861n,
+    });
+    expect(byAddress.get('fd00:0:1::151')).toMatchObject({
+      addressFamily: 'IPV6',
+      remoteAs: 23_106n,
+      receivedPrefixes: 254_485n,
+    });
+    // Received ≠ Accepted: `110237/1071010/1071009/0`.
+    expect(byAddress.get('187.72.100.246')).toMatchObject({
+      activePrefixes: 110_237,
+      receivedPrefixes: 1_071_010n,
+      acceptedPrefixes: 1_071_009,
+      dampedPrefixes: 0,
+    });
+  });
+
+  it('converts every uptime shape printed by the two MX', () => {
+    const summary = parseJunosBgpSummary(SUMMARY_OPERATOR_SNAPSHOT);
+    const byAddress = new Map(summary.peers.map((peer) => [peer.peerAddress, peer]));
+
+    // 12w3d 4:36:50
+    expect(byAddress.get('100.127.0.60')?.sessionUptimeSeconds).toBe(
+      12 * 604_800 + 3 * 86_400 + 4 * 3_600 + 36 * 60 + 50,
+    );
+    // 4w4d 10:05:55
+    expect(byAddress.get('10.141.1.81')?.sessionUptimeSeconds).toBe(
+      4 * 604_800 + 4 * 86_400 + 10 * 3_600 + 5 * 60 + 55,
+    );
+    // 1w0d 6:35:16
+    expect(byAddress.get('187.16.216.253')?.sessionUptimeSeconds).toBe(
+      7 * 86_400 + 6 * 3_600 + 35 * 60 + 16,
+    );
+    // 1d 18:02:46
+    expect(byAddress.get('2001:12f8::253')?.sessionUptimeSeconds).toBe(
+      86_400 + 18 * 3_600 + 2 * 60 + 46,
+    );
+    // 17:07:56 (sem dias)
+    expect(byAddress.get('2804:2bf8:0:2::2')?.sessionUptimeSeconds).toBe(
+      17 * 3_600 + 7 * 60 + 56,
+    );
+    expect(summary.peers.every((peer) => peer.sessionUptimeSeconds !== null)).toBe(true);
   });
 
   it('parses state and uptime from both Junos releases', () => {

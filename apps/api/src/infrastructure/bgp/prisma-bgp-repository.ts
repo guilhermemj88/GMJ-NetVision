@@ -13,7 +13,6 @@ import {
 } from './bgp-persistence';
 import type { BgpDashboardQuery, BgpDiscoveryPeerInput, BgpRepository } from './bgp-repository';
 import type { BgpSnmpCollection } from './bgp-snmp-collector';
-import type { BgpSnmpCollection } from './bgp-snmp-collector';
 import { computeBgpAlerts } from './bgp-alerts';
 import type {
   BgpAdminState,
