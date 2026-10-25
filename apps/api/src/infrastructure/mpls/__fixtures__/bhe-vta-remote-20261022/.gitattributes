@@ -1,0 +1,2 @@
+*.sanitized.txt text eol=lf whitespace=-blank-at-eol
+*.pub text eol=lf

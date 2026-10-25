@@ -1,0 +1,57 @@
+
+<BHE-VTA-6730-MPLS-01>display vsi name 1041-IX-BH-V4 verbose
+ 
+ ***VSI Name               : 1041-IX-BH-V4
+    Administrator VSI      : no
+    Isolate Spoken         : disable
+    VSI Index              : 169
+    PW Signaling           : bgp
+    Member Discovery Style : --
+    PW MAC Learn Style     : unqualify
+    Encapsulation Type     : vlan
+    MTU                    : 1500
+    Diffserv Mode          : uniform
+    Mpls Exp               : --
+    DomainId               : 255
+    Domain Name            : 
+    Ignore AcState         : disable
+    P2P VSI                : disable
+    Create Time            : 400 days, 7 hours, 42 minutes, 5 seconds
+    VSI State              : up
+ 
+    BGP RD                 : 268568:51041
+    SiteID/Range/Offset    : 1/30/1
+    Import vpn target      : 268568:51041           
+    Export vpn target      : 268568:51041           
+    Remote Label Block     : 1016584/8/1 
+    Local Label Block      : 0/40919/30/1 
+
+    Interface Name         : Vlanif1041
+    State                  : up
+    Access Port            : false
+    Last Up Time           : 2026/10/07 10:37:07
+    Total Up Time          : 397 days, 1 hours, 25 minutes, 25 seconds
+
+  **PW Information:
+
+   *Peer Ip Address        : 10.100.101.255
+    PW State               : up
+    Local VC Label         : 40943
+    Remote VC Label        : 1016584
+    PW Type                : label 
+    Local  VCCV            : --
+    Remote VCCV            : --
+    Tunnel ID              : 0x480016a0 
+    Broadcast Tunnel ID    : 0x480016a0 
+    Broad BackupTunnel ID  : 0x0 
+    Ckey                   : 0xec
+    Nkey                   : 0x1b
+    Main PW Token          : 0x480016a0 
+    Slave PW Token         : 0x0 
+    Tnl Type               : LSP 
+    OutInterface           : Vlanif1617 
+    Backup OutInterface    :  
+    Stp Enable             : 0 
+    PW Last Up Time        : 2026/10/07 10:37:07
+    PW Total Up Time       : 15 days, 4 hours, 35 minutes, 54 seconds
+<BHE-VTA-6730-MPLS-01>

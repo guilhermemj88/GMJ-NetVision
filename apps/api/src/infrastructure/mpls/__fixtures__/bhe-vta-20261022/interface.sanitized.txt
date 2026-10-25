@@ -1,0 +1,12 @@
+Vlanif1041 current state : UP
+Line protocol current state : UP
+Description:1041-IX-BH-V4
+Route Port,The Maximum Transmit Unit is 1500
+Internet protocol processing : disabled
+IP Sending Frames' Format is PKTFMT_ETHNT_2, Hardware address is [MAC OMITIDO]
+[HORARIO DO EQUIPAMENTO OMITIDO]
+    Input bandwidth utilization  : --
+    Output bandwidth utilization : --
+
+<BHE-VTA-6730-MPLS-01>
+<BHE-VTA-6730-MPLS-01>

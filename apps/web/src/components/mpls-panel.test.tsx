@@ -81,6 +81,14 @@ const overview: MplsHostOverview = {
 };
 
 describe('MplsContent', () => {
+  it('hides diagnosis for public/readOnly by default and enables it only through explicit authorization', () => {
+    const publicView = renderToStaticMarkup(<MplsContent overview={overview} events={[]} />);
+    expect(publicView).not.toContain('Diagnosticar');
+    const operatorView = renderToStaticMarkup(
+      <MplsContent overview={overview} events={[]} canDiagnose />,
+    );
+    expect(operatorView).toContain('Diagnosticar');
+  });
   it('shows a multipoint VSI with every peer and keeps VLAN unknown without heuristics', () => {
     const html = renderToStaticMarkup(<MplsContent overview={overview} events={[]} />);
 

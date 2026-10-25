@@ -1,0 +1,218 @@
+{
+  "status": "NOT_COLLECTED",
+  "error": "SSH_DIAGNOSTIC_AUDIT_FAILED",
+  "observedAt": "2026-10-22T20:51:49.470Z",
+  "durationMs": 1470,
+  "profile": {
+    "hostId": "host-f995bc3c-1ffa-4f1b-adf5-ffb0578528b4",
+    "endpoint": "10.100.101.255",
+    "port": 2222,
+    "username": "guilherme3",
+    "context": null,
+    "fingerprint": "SHA256:OXJzyxUT3sO8G7u8D/gSy7kG9AAR3iV3G/wMsGNsMm8",
+    "initialPrompt": "<BHE-VTA-S6750-MPLS-01>",
+    "expectedPrompt": "<BHE-VTA-S6750-MPLS-01>",
+    "routingContext": "GLOBAL",
+    "firmwareEvidence": "Observed S6750-H36C YunShan OS 1.24.0.1 V600R024C00SPC500 patch V600R024SPH221; EDOC1100411548 temporary user-view section",
+    "vendor": "HUAWEI",
+    "disablePagingTemporary": true,
+    "validFrom": "2026-10-22T20:51:46.551Z",
+    "expiresAt": "2026-10-22T20:52:17.551Z",
+    "operations": [
+      "LSR",
+      "LOOPBACKS",
+      "VSI",
+      "INTERFACE"
+    ]
+  },
+  "target": "BHE-VTA-S6750-MPLS-01",
+  "roleAAA": "NOT_VERIFIED",
+  "context": "PHYSICAL_USER_VIEW",
+  "limits": {
+    "totalMs": 12000,
+    "readyMs": 8000,
+    "idleMs": 3000,
+    "outputBytes": 131072,
+    "concurrency": 1
+  },
+  "audit": [
+    {
+      "at": "2026-10-22T20:51:48.747Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "115b5643-98f0-4371-9bf2-f84ec34ebda5:R3_R4_CONDITIONAL;call_7cd919a2ede04a0ba14b35590e4358b3:KEY_APPROVED",
+      "hostId": "host-f995bc3c-1ffa-4f1b-adf5-ffb0578528b4",
+      "event": "BEFORE_SEND",
+      "command": "screen-length 0 temporary",
+      "sequence": 0
+    },
+    {
+      "at": "2026-10-22T20:51:48.766Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "115b5643-98f0-4371-9bf2-f84ec34ebda5:R3_R4_CONDITIONAL;call_7cd919a2ede04a0ba14b35590e4358b3:KEY_APPROVED",
+      "hostId": "host-f995bc3c-1ffa-4f1b-adf5-ffb0578528b4",
+      "event": "COMPLETE",
+      "command": "screen-length 0 temporary",
+      "completedAt": "2026-10-22T20:51:48.766Z",
+      "complete": true,
+      "bytes": 133,
+      "sha256": "d7924d1dd2e3e153e4bb020daa1c8bbf4064c95e5bf6692ec62ae2c3d0352106"
+    },
+    {
+      "at": "2026-10-22T20:51:48.770Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "115b5643-98f0-4371-9bf2-f84ec34ebda5:R3_R4_CONDITIONAL;call_7cd919a2ede04a0ba14b35590e4358b3:KEY_APPROVED",
+      "hostId": "host-f995bc3c-1ffa-4f1b-adf5-ffb0578528b4",
+      "event": "BEFORE_SEND",
+      "command": "display version",
+      "sequence": 1
+    },
+    {
+      "at": "2026-10-22T20:51:49.090Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "115b5643-98f0-4371-9bf2-f84ec34ebda5:R3_R4_CONDITIONAL;call_7cd919a2ede04a0ba14b35590e4358b3:KEY_APPROVED",
+      "hostId": "host-f995bc3c-1ffa-4f1b-adf5-ffb0578528b4",
+      "event": "COMPLETE",
+      "command": "display version",
+      "completedAt": "2026-10-22T20:51:49.090Z",
+      "complete": true,
+      "bytes": 706,
+      "sha256": "d733f3f6703f966692bdb2a0cd62b44a2be728f21f32b57318aba2bd59eb248a"
+    },
+    {
+      "at": "2026-10-22T20:51:49.093Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "115b5643-98f0-4371-9bf2-f84ec34ebda5:R3_R4_CONDITIONAL;call_7cd919a2ede04a0ba14b35590e4358b3:KEY_APPROVED",
+      "hostId": "host-f995bc3c-1ffa-4f1b-adf5-ffb0578528b4",
+      "event": "BEFORE_SEND",
+      "command": "display mpls ldp",
+      "sequence": 2
+    },
+    {
+      "at": "2026-10-22T20:51:49.373Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "115b5643-98f0-4371-9bf2-f84ec34ebda5:R3_R4_CONDITIONAL;call_7cd919a2ede04a0ba14b35590e4358b3:KEY_APPROVED",
+      "hostId": "host-f995bc3c-1ffa-4f1b-adf5-ffb0578528b4",
+      "event": "COMPLETE",
+      "command": "display mpls ldp",
+      "completedAt": "2026-10-22T20:51:49.373Z",
+      "complete": true,
+      "bytes": 1445,
+      "sha256": "f859a2d56972bf156112e28734f748dfbe372c402a9667aac8cd9b5e17850104"
+    },
+    {
+      "at": "2026-10-22T20:51:49.375Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "115b5643-98f0-4371-9bf2-f84ec34ebda5:R3_R4_CONDITIONAL;call_7cd919a2ede04a0ba14b35590e4358b3:KEY_APPROVED",
+      "hostId": "host-f995bc3c-1ffa-4f1b-adf5-ffb0578528b4",
+      "event": "BEFORE_SEND",
+      "command": "display ip interface brief",
+      "sequence": 3
+    },
+    {
+      "at": "2026-10-22T20:51:49.461Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "115b5643-98f0-4371-9bf2-f84ec34ebda5:R3_R4_CONDITIONAL;call_7cd919a2ede04a0ba14b35590e4358b3:KEY_APPROVED",
+      "hostId": "host-f995bc3c-1ffa-4f1b-adf5-ffb0578528b4",
+      "event": "COMPLETE",
+      "command": "display ip interface brief",
+      "completedAt": "2026-10-22T20:51:49.461Z",
+      "complete": true,
+      "bytes": 2548,
+      "sha256": "a5a05791562f748f2399165a39c0b5a6cebeb9bc738e2d5a0e3ad98a2b0f7281"
+    },
+    {
+      "at": "2026-10-22T20:51:49.467Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "115b5643-98f0-4371-9bf2-f84ec34ebda5:R3_R4_CONDITIONAL;call_7cd919a2ede04a0ba14b35590e4358b3:KEY_APPROVED",
+      "hostId": "host-f995bc3c-1ffa-4f1b-adf5-ffb0578528b4",
+      "event": "SESSION_ABORTED",
+      "error": "SSH_DIAGNOSTIC_AUDIT_FAILED"
+    }
+  ],
+  "statusIsReal": true,
+  "routerSessions": 1,
+  "automaticRetries": 0,
+  "remoteAccesses": 1,
+  "ping": 0,
+  "tracert": 0,
+  "configurationWrites": 0,
+  "restorationCommands": 0,
+  "processExitCode": 2,
+  "stderrPresent": false,
+  "bodyReceived": false,
+  "finalPromptReceived": false,
+  "cleanCompletion": false,
+  "approval": {
+    "questionCallId": "call_7cd919a2ede04a0ba14b35590e4358b3",
+    "answer": "Confirmo a fingerprint e autorizo R2",
+    "source": "USER_EXPLICIT_REPLY_CURRENT_CONVERSATION",
+    "recordedAt": "2026-10-22T20:38:35.596345+00:00",
+    "authorizedPhase": "R2_DISPLAY_VERSION_ONLY"
+  },
+  "canonicalFingerprint": "SHA256:OXJzyxUT3sO8G7u8D/gSy7kG9AAR3iV3G/wMsGNsMm8",
+  "harnessSha256": "e34d5aa901c65cf1d200e6edfee2a44d15f4b966b2b7325825d02573e3fa213c",
+  "sourceRevision": "69dcb0f5657dd6d34ff574fe5dcfb7c5c30cb0c2",
+  "servicesChanged": [],
+  "sessionPreparation": "screen-length 0 temporary",
+  "conditionalWindowAuthorization": "115b5643-98f0-4371-9bf2-f84ec34ebda5 phases R3/R4",
+  "preparationDocumentReview": "EDOC1100411548#EN-US_CLIREF_0000001960725964",
+  "contextCommands": [],
+  "outputs": [
+    {
+      "command": "screen-length 0 temporary",
+      "completedAt": "2026-10-22T20:51:48.766Z",
+      "complete": true,
+      "bytes": 133,
+      "fixture": "r4-attempt1-preparation.sanitized.txt",
+      "sha256": "80789b9e1b9f1b716f1d294ecc44ae40bd4b5fa7e61d48784975d09c1d722437",
+      "host": "BHE-VTA-S6750-MPLS-01",
+      "platform": "S6750-H36C / YunShan OS 1.24.0.1",
+      "firmware": "V600R024C00SPC500",
+      "prompt": "<BHE-VTA-S6750-MPLS-01>"
+    },
+    {
+      "command": "display version",
+      "completedAt": "2026-10-22T20:51:49.090Z",
+      "complete": true,
+      "bytes": 706,
+      "fixture": "r4-attempt1-version.sanitized.txt",
+      "sha256": "d0c1eef85c5c1061546ae3dfc00696a0549038e63072f9e05be58e9b27722dcd",
+      "host": "BHE-VTA-S6750-MPLS-01",
+      "platform": "S6750-H36C / YunShan OS 1.24.0.1",
+      "firmware": "V600R024C00SPC500",
+      "prompt": "<BHE-VTA-S6750-MPLS-01>"
+    },
+    {
+      "command": "display mpls ldp",
+      "completedAt": "2026-10-22T20:51:49.373Z",
+      "complete": true,
+      "bytes": 1445,
+      "fixture": "r4-attempt1-ldp.sanitized.txt",
+      "sha256": "39b11cc0d0162b42967376ecd52bfb90555cdda98275679d55f5d34e630f1996",
+      "host": "BHE-VTA-S6750-MPLS-01",
+      "platform": "S6750-H36C / YunShan OS 1.24.0.1",
+      "firmware": "V600R024C00SPC500",
+      "prompt": "<BHE-VTA-S6750-MPLS-01>"
+    },
+    {
+      "command": "display ip interface brief",
+      "completedAt": "2026-10-22T20:51:49.461Z",
+      "complete": true,
+      "bytes": 2548,
+      "fixture": "r4-attempt1-brief.sanitized.txt",
+      "sha256": "6e32c5ee8be64f78a22aa480d106e4506acf05c0a4953cfe1485678b501f121c",
+      "host": "BHE-VTA-S6750-MPLS-01",
+      "platform": "S6750-H36C / YunShan OS 1.24.0.1",
+      "firmware": "V600R024C00SPC500",
+      "prompt": "<BHE-VTA-S6750-MPLS-01>"
+    }
+  ],
+  "analysis": {
+    "cause": "PRE_SEND_LOOPBACK_GATE_REJECTED_UNSUPPORTED_VPN_COLUMN",
+    "auditStorageFailure": false,
+    "vsiCommandSent": false,
+    "interfaceCommandSent": false,
+    "sessionClosedOnFailure": true,
+    "finalPromptForLastExecutedCommand": true
+  }
+}

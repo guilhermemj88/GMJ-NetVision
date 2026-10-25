@@ -1,0 +1,87 @@
+{
+  "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+  "target": "BHE-VTA-6730-MPLS-01",
+  "endpoint": "10.100.101.0",
+  "port": 2222,
+  "fingerprint": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+  "trustSource": "Manual user confirmation in chat; independent channel not specified",
+  "modelObserved": "S6730-H48X6C",
+  "firmwareObserved": "VRP 5.170 / V200R022C00SPC500",
+  "promptObserved": "<BHE-VTA-6730-MPLS-01>",
+  "roleAAA": "NOT_VERIFIED",
+  "routingContextObserved": "LDP instance 0; empty VPN-Instance; no context switch sent",
+  "fixtures": [
+    {
+      "fixture": "identified-version.sanitized.txt",
+      "command": "display version",
+      "observedAt": "2026-10-22T17:28:30.204Z",
+      "durationMs": 2266,
+      "transportStatus": "NOT_COLLECTED",
+      "transportError": "SSH_DIAGNOSTIC_INTERACTION_OR_ERROR",
+      "paginated": true,
+      "finalPromptInBody": false,
+      "harnessSha256": "0c417460bf81b12b04d710ff2bc82748adbcfeb98243d5f39e4a9302e7801f04",
+      "fixtureSha256": "2eb142752ced94b32cd4678a18b8ba2865411554946b06579f4b104c46c2e4f6"
+    },
+    {
+      "fixture": "ldp.sanitized.txt",
+      "command": "display mpls ldp",
+      "observedAt": "2026-10-22T17:29:47.152Z",
+      "durationMs": 2101,
+      "transportStatus": "NOT_COLLECTED",
+      "transportError": "SSH transport failed",
+      "paginated": false,
+      "finalPromptInBody": true,
+      "harnessSha256": "0c417460bf81b12b04d710ff2bc82748adbcfeb98243d5f39e4a9302e7801f04",
+      "fixtureSha256": "e2881755a7cb3a5697adc03038e97d8354f3975ae9c7c9fa9af01ab1af0ead67"
+    },
+    {
+      "fixture": "brief.sanitized.txt",
+      "command": "display ip interface brief",
+      "observedAt": "2026-10-22T17:30:32.858Z",
+      "durationMs": 3240,
+      "transportStatus": "NOT_COLLECTED",
+      "transportError": "SSH_DIAGNOSTIC_INTERACTION_OR_ERROR",
+      "paginated": true,
+      "finalPromptInBody": false,
+      "harnessSha256": "0c417460bf81b12b04d710ff2bc82748adbcfeb98243d5f39e4a9302e7801f04",
+      "fixtureSha256": "e558e843c501ec383bbf82e7ffbeab7b3cad943e57adf0f6f33115542559a9cf"
+    },
+    {
+      "fixture": "vsi.sanitized.txt",
+      "command": "display vsi name 1041-IX-BH-V4 verbose",
+      "observedAt": "2026-10-22T17:31:05.013Z",
+      "durationMs": 2132,
+      "transportStatus": "NOT_COLLECTED",
+      "transportError": "SSH_DIAGNOSTIC_INTERACTION_OR_ERROR",
+      "paginated": true,
+      "finalPromptInBody": false,
+      "harnessSha256": "0c417460bf81b12b04d710ff2bc82748adbcfeb98243d5f39e4a9302e7801f04",
+      "fixtureSha256": "67a4d63ac1bec660626b01d3409d13d2cf382717f457325f61d6d92e53edb108"
+    },
+    {
+      "fixture": "interface.sanitized.txt",
+      "command": "display interface Vlanif1041",
+      "observedAt": "2026-10-22T17:31:43.135Z",
+      "durationMs": 2129,
+      "transportStatus": "COLLECTED",
+      "transportError": null,
+      "paginated": false,
+      "finalPromptInBody": true,
+      "harnessSha256": "0c417460bf81b12b04d710ff2bc82748adbcfeb98243d5f39e4a9302e7801f04",
+      "fixtureSha256": "b50c8b9c8147036e979c10ebcdf31ec11c5f0be5dd936d0fefd17aecc523c7fa"
+    }
+  ],
+  "equipmentCommandsExecuted": 5,
+  "configurationCommandsExecuted": 0,
+  "pingTracerouteCommandsExecuted": 0,
+  "remotePeConnections": 0,
+  "sanitization": [
+    "Login banner removed",
+    "Hardware MAC removed",
+    "Unnecessary device clock field removed",
+    "Trailing whitespace normalized; columns preserved",
+    "No credentials or secret payloads included"
+  ],
+  "partialCollectionWarning": "Version, brief and VSI paginated; LDP reached final prompt but the transport used for the capture reported disconnect; no probe authorization derived from partial pages"
+}

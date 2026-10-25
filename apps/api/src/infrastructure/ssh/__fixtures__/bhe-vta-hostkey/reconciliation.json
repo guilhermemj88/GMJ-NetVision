@@ -1,0 +1,43 @@
+{
+  "canonicalFingerprint": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+  "algorithm": "ecdsa-sha2-nistp521",
+  "curve": "secp521r1",
+  "captureAt": "2026-10-22T17:53:51.923Z",
+  "historicalPublicKeyBlobRetained": false,
+  "publicKeyCaptureIsNewUnauthenticatedExchange": true,
+  "sourceComparisons": {
+    "offlinePython": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+    "offlineOpenSSH": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+    "capturedHandshake": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+    "historicalHandshake": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+    "approvalQuestion": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+    "historicalHostVerifierHarness": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+    "checkpointReport": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+    "authenticatedCapture:identified-version": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+    "authenticatedCapture:ldp": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+    "authenticatedCapture:brief": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+    "authenticatedCapture:vsi": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+    "authenticatedCapture:interface": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg"
+  },
+  "distinctFingerprints": 1,
+  "approvalQuestion": "A Etapa 1 do seu anexo exige conferir a chave por fonte confi\u00e1vel antes de enviar a senha. O BHE-VTA-6730-MPLS-01 (10.100.101.0:2222) apresentou chave ecdsa-sha2-nistp521, fingerprint SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg. Ela ainda n\u00e3o consta nos registros de confian\u00e7a consultados; o handshake sozinho n\u00e3o comprova a identidade. Voc\u00ea consegue confirmar essa fingerprint por console, administrador respons\u00e1vel ou outro registro confi\u00e1vel, indicando a fonte da confer\u00eancia?",
+  "apparentDivergence": {
+    "citedFragment": "SHA256:+OoG3kp...",
+    "presentInOriginalQuestion": false,
+    "explanation": "The original approval call contains the complete canonical fingerprint. The new request quotes an abbreviated fragment with capital O instead of zero; the log does not support a different fingerprint or a UI rendering cause."
+  },
+  "devicePasswordSentDuringReconciliation": false,
+  "approvalCallId": "call_721b371dc83543b9a346c9e55a889e59",
+  "approvalRecord": {
+    "line": 3427,
+    "recordSha256": "9683a5ef294bda74b7aab93f996d5bf577eb8a45383570565cd62007be8d823a",
+    "type": "function_call",
+    "name": "request_user_input_async",
+    "questions": [
+      {
+        "title": "A Etapa 1 do seu anexo exige conferir a chave por fonte confi\u00e1vel antes de enviar a senha. O BHE-VTA-6730-MPLS-01 (10.100.101.0:2222) apresentou chave ecdsa-sha2-nistp521, fingerprint SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg. Ela ainda n\u00e3o consta nos registros de confian\u00e7a consultados; o handshake sozinho n\u00e3o comprova a identidade. Voc\u00ea consegue confirmar essa fingerprint por console, administrador respons\u00e1vel ou outro registro confi\u00e1vel, indicando a fonte da confer\u00eancia?"
+      }
+    ]
+  },
+  "context": "Public key evidence only; not a runtime authorization file or a second inventory"
+}

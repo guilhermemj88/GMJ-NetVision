@@ -1,0 +1,20 @@
+
+Info: The max number of VTY users is 10, and the number
+      of current VTY users on line is 1.
+      The current login time is 2026-10-22 19:48:31-03:00.
+[REMOVIDO]
+
+Info: Smart-upgrade is currently disabled. Enable Smart-upgrade to get recommended version information.
+<BHE-VTA-6730-MPLS-01>ping -a 10.100.101.0 -c 3 10.100.101.255
+  PING 10.100.101.255: 56  data bytes, press CTRL_C to break
+    Reply from 10.100.101.255: bytes=56 Sequence=1 ttl=254 time=5 ms
+    Reply from 10.100.101.255: bytes=56 Sequence=2 ttl=254 time=7 ms
+    Reply from 10.100.101.255: bytes=56 Sequence=3 ttl=254 time=1 ms
+
+  --- 10.100.101.255 ping statistics ---
+    3 packet(s) transmitted
+    3 packet(s) received
+    0.00% packet loss
+    round-trip min/avg/max = 1/4/7 ms
+
+<BHE-VTA-6730-MPLS-01>

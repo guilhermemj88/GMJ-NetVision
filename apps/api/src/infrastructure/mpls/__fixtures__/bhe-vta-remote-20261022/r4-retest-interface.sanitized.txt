@@ -1,0 +1,14 @@
+
+<BHE-VTA-S6750-MPLS-01>display interface Vlanif1041
+Vlanif1041 current state : UP (ifindex: 69)
+Line protocol current state : UP 
+Description: 1041-IX-BH-V4
+Route Port,The Maximum Transmit Unit is 1500
+Internet protocol processing : disabled
+IP Sending Frames' Format is PKTFMT_ETHNT_2, Hardware address is 3c86-9a95-38b7
+Physical is VLANIF
+Current system time: 2026-10-22 21:42:01
+    Input bandwidth utilization  : --
+    Output bandwidth utilization : --
+
+<BHE-VTA-S6750-MPLS-01>

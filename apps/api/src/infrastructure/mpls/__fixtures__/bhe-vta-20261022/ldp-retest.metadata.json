@@ -1,0 +1,35 @@
+{
+  "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+  "target": "BHE-VTA-6730-MPLS-01",
+  "endpoint": "10.100.101.0",
+  "port": 2222,
+  "roleAAA": "NOT_VERIFIED",
+  "canonicalFingerprint": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+  "command": "display mpls ldp",
+  "observedAt": "2026-10-22T17:59:38.221Z",
+  "durationMs": 2192,
+  "sourceRevision": "d2c2d16fc150addd7541be09bf5ec96dc68a8bd8",
+  "bodyReceived": true,
+  "finalPromptReceived": true,
+  "cleanCompletion": true,
+  "processExitCode": 0,
+  "stderrPresent": false,
+  "audit": [
+    {
+      "at": "2026-10-22T17:59:38.178Z",
+      "command": "display mpls ldp"
+    }
+  ],
+  "sessionPreparation": null,
+  "contextCommands": [],
+  "automaticRetries": 0,
+  "harnessSha256": "bc515d7ed3b12d15e4717a58177109bed3c891f0ab93173607d449221151d136",
+  "complete": true,
+  "partial": false,
+  "fixtureSha256": "596883a725413084a2f6ac33c58cfad977e521203537ec2e7ce3ca82afa52e76",
+  "sanitization": [
+    "Login banner removed",
+    "Trailing whitespace normalized; columns preserved"
+  ],
+  "note": "LDP retest only; does not promote the old paginated brief to a confirmed source"
+}

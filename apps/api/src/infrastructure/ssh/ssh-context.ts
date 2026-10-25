@@ -18,3 +18,8 @@ export function withSshContext(
   const insertAt = screenLengthIndex >= 0 ? screenLengthIndex + 1 : 0;
   return [...commands.slice(0, insertAt), context, ...commands.slice(insertAt)];
 }
+
+/** Diagnostic sessions accept only one explicit user-view context switch. */
+export function isDiagnosticSshContext(value: string): boolean {
+  return /^switch virtual-system [A-Za-z0-9._-]{1,120}$/.test(value) && !/[\r\n]/.test(value);
+}

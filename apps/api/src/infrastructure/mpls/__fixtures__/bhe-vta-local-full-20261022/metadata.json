@@ -1,0 +1,244 @@
+{
+  "status": "COLLECTED",
+  "error": null,
+  "observedAt": "2026-10-22T18:20:48.260Z",
+  "durationMs": 3235,
+  "profile": {
+    "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+    "endpoint": "10.100.101.0",
+    "port": 2222,
+    "username": "guilherme3",
+    "context": null,
+    "fingerprint": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+    "initialPrompt": "<BHE-VTA-6730-MPLS-01>",
+    "expectedPrompt": "<BHE-VTA-6730-MPLS-01>",
+    "routingContext": "GLOBAL",
+    "firmwareEvidence": "Observed S6730-H48X6C VRP5.170 V200R022C00SPC500",
+    "vendor": "HUAWEI",
+    "disablePagingTemporary": true,
+    "validFrom": "2026-10-22T18:20:43.819Z",
+    "expiresAt": "2026-10-22T18:21:14.819Z",
+    "operations": [
+      "LSR",
+      "LOOPBACKS",
+      "VSI",
+      "INTERFACE"
+    ]
+  },
+  "target": "BHE-VTA-6730-MPLS-01",
+  "roleAAA": "NOT_VERIFIED",
+  "context": "PHYSICAL_USER_VIEW",
+  "limits": {
+    "totalMs": 12000,
+    "readyMs": 8000,
+    "idleMs": 3000,
+    "outputBytes": 131072,
+    "concurrency": 1
+  },
+  "audit": [
+    {
+      "at": "2026-10-22T18:20:47.093Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "c7f80e3e-ade5-446f-b194-26adebe18a26",
+      "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+      "event": "BEFORE_SEND",
+      "command": "screen-length 0 temporary",
+      "sequence": 0
+    },
+    {
+      "at": "2026-10-22T18:20:47.134Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "c7f80e3e-ade5-446f-b194-26adebe18a26",
+      "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+      "event": "COMPLETE",
+      "command": "screen-length 0 temporary",
+      "completedAt": "2026-10-22T18:20:47.132Z",
+      "complete": true,
+      "bytes": 132,
+      "sha256": "087cb1e57afa6126663e80e47f6f71be4c9a7342bf49a23aa2bc1ce6b0cc8398"
+    },
+    {
+      "at": "2026-10-22T18:20:47.136Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "c7f80e3e-ade5-446f-b194-26adebe18a26",
+      "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+      "event": "BEFORE_SEND",
+      "command": "display version",
+      "sequence": 1
+    },
+    {
+      "at": "2026-10-22T18:20:47.198Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "c7f80e3e-ade5-446f-b194-26adebe18a26",
+      "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+      "event": "COMPLETE",
+      "command": "display version",
+      "completedAt": "2026-10-22T18:20:47.197Z",
+      "complete": true,
+      "bytes": 1041,
+      "sha256": "e94589e4a1c4a6f35afdce5d2ff85a567a4a8ca092404f8fe9a398b829489271"
+    },
+    {
+      "at": "2026-10-22T18:20:47.201Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "c7f80e3e-ade5-446f-b194-26adebe18a26",
+      "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+      "event": "BEFORE_SEND",
+      "command": "display mpls ldp",
+      "sequence": 2
+    },
+    {
+      "at": "2026-10-22T18:20:47.288Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "c7f80e3e-ade5-446f-b194-26adebe18a26",
+      "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+      "event": "COMPLETE",
+      "command": "display mpls ldp",
+      "completedAt": "2026-10-22T18:20:47.288Z",
+      "complete": true,
+      "bytes": 1314,
+      "sha256": "06d17f3f34c9f9b9383f017fb65976b93717917c2fe238b37aaf970dcf5f65b3"
+    },
+    {
+      "at": "2026-10-22T18:20:47.291Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "c7f80e3e-ade5-446f-b194-26adebe18a26",
+      "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+      "event": "BEFORE_SEND",
+      "command": "display ip interface brief",
+      "sequence": 3
+    },
+    {
+      "at": "2026-10-22T18:20:47.879Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "c7f80e3e-ade5-446f-b194-26adebe18a26",
+      "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+      "event": "COMPLETE",
+      "command": "display ip interface brief",
+      "completedAt": "2026-10-22T18:20:47.879Z",
+      "complete": true,
+      "bytes": 2887,
+      "sha256": "56f2b67f9e1cd253f56c1c1271308caaad4b45e30b9bd07fd829f009757a5c4f"
+    },
+    {
+      "at": "2026-10-22T18:20:47.881Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "c7f80e3e-ade5-446f-b194-26adebe18a26",
+      "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+      "event": "BEFORE_SEND",
+      "command": "display vsi name 1041-IX-BH-V4 verbose",
+      "sequence": 4
+    },
+    {
+      "at": "2026-10-22T18:20:48.200Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "c7f80e3e-ade5-446f-b194-26adebe18a26",
+      "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+      "event": "COMPLETE",
+      "command": "display vsi name 1041-IX-BH-V4 verbose",
+      "completedAt": "2026-10-22T18:20:48.199Z",
+      "complete": true,
+      "bytes": 2052,
+      "sha256": "c0ef63b9c7a11c7fd3f72d44eee87ba4b61c7f54a30523011971e3d064d805a2"
+    },
+    {
+      "at": "2026-10-22T18:20:48.202Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "c7f80e3e-ade5-446f-b194-26adebe18a26",
+      "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+      "event": "BEFORE_SEND",
+      "command": "display interface Vlanif1041",
+      "sequence": 5
+    },
+    {
+      "at": "2026-10-22T18:20:48.249Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "c7f80e3e-ade5-446f-b194-26adebe18a26",
+      "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+      "event": "COMPLETE",
+      "command": "display interface Vlanif1041",
+      "completedAt": "2026-10-22T18:20:48.249Z",
+      "complete": true,
+      "bytes": 465,
+      "sha256": "fc4a694bc2c5fec992a40fba412169237602c12220418225137287aae55c8ffe"
+    },
+    {
+      "at": "2026-10-22T18:20:48.254Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "c7f80e3e-ade5-446f-b194-26adebe18a26",
+      "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+      "event": "SESSION_CLOSED_AFTER_FINAL_PROMPT",
+      "configurationWrites": 0
+    }
+  ],
+  "statusIsReal": true,
+  "routerSessions": 1,
+  "automaticRetries": 0,
+  "remoteAccesses": 0,
+  "ping": 0,
+  "tracert": 0,
+  "configurationWrites": 0,
+  "restorationCommands": 0,
+  "processExitCode": 0,
+  "stderrPresent": false,
+  "bodyReceived": true,
+  "finalPromptReceived": true,
+  "cleanCompletion": true,
+  "canonicalFingerprint": "SHA256:ttovy+0oG3kpC+dO0KhcN+RGUOHemebeIWZenOE7tzg",
+  "harnessSha256": "f68f13c0d85d2de7e058743994012b645332b1cb8a5954d1a64c3ec20564ab01",
+  "sourceRevision": "57bd95977f750dd472b661ce9d918b206a7dfed0",
+  "servicesChanged": [],
+  "sessionPreparation": "screen-length 0 temporary",
+  "contextCommands": [],
+  "outputs": [
+    {
+      "command": "screen-length 0 temporary",
+      "completedAt": "2026-10-22T18:20:47.132Z",
+      "complete": true,
+      "bytes": 132,
+      "fixture": "preparation.sanitized.txt",
+      "fixtureSha256": "e88c0a08fdfca4cd653b0c5bccbb90bfdcde47fc3234c562155e67c72f7bc37b"
+    },
+    {
+      "command": "display version",
+      "completedAt": "2026-10-22T18:20:47.197Z",
+      "complete": true,
+      "bytes": 1041,
+      "fixture": "version.sanitized.txt",
+      "fixtureSha256": "eb3b23334271de8281d8f4b9b08d8bbe46a7264359e1a7eaf6867112fd6f9a1c"
+    },
+    {
+      "command": "display mpls ldp",
+      "completedAt": "2026-10-22T18:20:47.288Z",
+      "complete": true,
+      "bytes": 1314,
+      "fixture": "ldp.sanitized.txt",
+      "fixtureSha256": "391d4dfddddc003fb700389005856e3d9dc8a28a451232e780f7de2ad54120e3"
+    },
+    {
+      "command": "display ip interface brief",
+      "completedAt": "2026-10-22T18:20:47.879Z",
+      "complete": true,
+      "bytes": 2887,
+      "fixture": "brief.sanitized.txt",
+      "fixtureSha256": "fe0bf5c975fe347b6364fceedc19316fcf3a408ee341ade61b6cd00ac156a94b"
+    },
+    {
+      "command": "display vsi name 1041-IX-BH-V4 verbose",
+      "completedAt": "2026-10-22T18:20:48.199Z",
+      "complete": true,
+      "bytes": 2052,
+      "fixture": "vsi.sanitized.txt",
+      "fixtureSha256": "9bc576518de5f4f1bcd8242db13162f9bd7f6d4564ec50b9c1a2ed795e32f7a6"
+    },
+    {
+      "command": "display interface Vlanif1041",
+      "completedAt": "2026-10-22T18:20:48.249Z",
+      "complete": true,
+      "bytes": 465,
+      "fixture": "interface.sanitized.txt",
+      "fixtureSha256": "9b11f7d76ce1b5f647daef68c97981d119a0b1c89428631618ade084987cd85b"
+    }
+  ],
+  "sourceRevisionNote": "Bundled uncommitted homologation patch on initial HEAD; harness hash identifies exact executed bundle. Final commit recorded separately."
+}

@@ -1,0 +1,25 @@
+Huawei Versatile Routing Platform Software
+VRP (R) software, Version 5.170 (S6730 V200R022C00SPC500)
+Copyright (C) 2000-2022 HUAWEI TECH Co., Ltd.
+HUAWEI S6730-H48X6C Routing Switch uptime is 157 weeks, 0 day, 8 hours, 40 minutes
+
+ES6D2S54S000 0(Master)  : uptime is 157 weeks, 0 day, 8 hours, 38 minutes
+DDR             Memory Size : 4096  M bytes
+FLASH Total     Memory Size : 2048  M bytes
+FLASH Available Memory Size : 1651  M bytes
+Pcb           Version   : VER.C
+MAB           Version   : 5
+BootROM       Version   : 0000.0528
+BootLoad      Version   : 0216.0000
+CPLD          Version   : 0109
+Software      Version   : VRP (R) Software, Version 5.170 (V200R022C00SPC500)
+FLASH         Version   : 0000.0000
+PWR2 information
+Pcb           Version   : PWR VER.B
+FAN1 information
+Pcb           Version   : NA
+FAN2 information
+Pcb           Version   : NA
+FAN3 information
+Pcb           Version   : NA
+  ---- More ----

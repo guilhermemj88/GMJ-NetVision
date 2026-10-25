@@ -3,9 +3,11 @@ import cors from '@fastify/cors';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
 import { registerRoutes } from './routes';
+import { VsiDiagnosticError } from './infrastructure/mpls/vsi-diagnostic-service';
 import { PhysicalInventoryError } from './infrastructure/physical/physical-repository';
 import { Prisma } from './generated/prisma';
 import { MediaSecretUnavailableError } from './infrastructure/media/media-integration-service';
+import { ReadOnlyViolationError, registerReadOnlyGuard } from './read-only';
 
 export interface BuildAppOptions {
   credentialEncryptionKey?: string | null;
@@ -18,8 +20,17 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const app = Fastify({ logger: process.env.NODE_ENV !== 'test', maxParamLength: 4096 });
   await app.register(cors, { origin: true, credentials: true });
   await app.register(cookie);
+  // Preview isolado: nenhuma escrita passa (HTTP nem Prisma) e sem background.
+  registerReadOnlyGuard(app);
   registerRoutes(app, options);
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof ReadOnlyViolationError) {
+      return reply
+        .code(403)
+        .send({ message: error.message, readOnly: true, operation: error.operation });
+    }
+    if (error instanceof VsiDiagnosticError)
+      return reply.code(error.statusCode).send({ message: error.message });
     if (error instanceof ZodError) {
       return reply.code(400).send({ message: 'Invalid request', issues: error.issues });
     }

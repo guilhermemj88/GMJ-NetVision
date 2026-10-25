@@ -1,0 +1,36 @@
+*down: administratively down
+^down: standby
+(l): loopback
+(s): spoofing
+(E): E-Trunk down
+The number of interface that is UP in Physical is 12
+The number of interface that is DOWN in Physical is 19
+The number of interface that is UP in Protocol is 5
+The number of interface that is DOWN in Protocol is 26
+
+Interface                         IP Address/Mask      Physical   Protocol
+LoopBack0                         10.100.101.0/32      up         up(s)
+MEth0/0/1                         192.168.1.253/24     down       down
+NULL0                             unassigned           up         up(s)
+Tunnel1                           10.100.101.0/32      up         down
+Vlanif729                         unassigned           up         down
+Vlanif955                         unassigned           down       down
+Vlanif999                         172.16.0.21/30       down       down
+Vlanif1033                        unassigned           down       down
+Vlanif1034                        unassigned           down       down
+Vlanif1048                        unassigned           down       down
+Vlanif1057                        unassigned           down       down
+Vlanif1099                        unassigned           up         down
+Vlanif1100                        unassigned           up         down
+Vlanif1111                        unassigned           down       down
+Vlanif1135                        unassigned           down       down
+Vlanif1251                        unassigned           *down      down
+Vlanif1499                        10.100.100.253/30    down       down
+Vlanif1501                        10.100.100.6/30      down       down
+Vlanif1502                        unassigned           down       down
+Vlanif1503                        10.100.100.9/30      down       down
+Vlanif1611                        unassigned           *down      down
+Vlanif1613                        10.100.100.81/30     down       down
+Vlanif1617                        10.100.100.122/30    up         up
+Vlanif1620                        10.100.100.133/30    up         up
+  ---- More ----

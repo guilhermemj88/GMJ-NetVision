@@ -1,0 +1,2 @@
+# Preserve observed spacing and stable evidence checksums on Windows and Linux.
+*.sanitized.txt text eol=lf whitespace=-blank-at-eol

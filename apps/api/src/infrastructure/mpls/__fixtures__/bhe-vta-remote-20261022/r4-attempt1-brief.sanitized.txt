@@ -1,0 +1,40 @@
+
+<BHE-VTA-S6750-MPLS-01>display ip interface brief
+*down: administratively down
+!down: FIB overload down
+^down: standby
+(l): loopback
+(s): spoofing
+(d): Dampening Suppressed
+(ed): error down
+The number of interface that is UP in Physical is 24
+The number of interface that is DOWN in Physical is 1
+The number of interface that is UP in Protocol is 14
+The number of interface that is DOWN in Protocol is 11
+Interface                   IP Address/Mask    Physical Protocol VPN           
+LoopBack0                   10.100.101.255/32  up       up(s)    --            
+MEth0/0/0                   unassigned         up       down     --            
+NULL0                       unassigned         up       up(s)    --            
+Tunnel10                    10.100.101.255/32  up       up       --            
+Vlanif111                   10.100.100.169/30  up       up       --            
+Vlanif999                   172.16.0.21/30     up       up       --            
+Vlanif1026                  unassigned         up       down     --            
+Vlanif1027                  unassigned         up       down     --            
+Vlanif1501                  10.100.100.6/30    up       up       --            
+Vlanif1505                  unassigned         up       down     --            
+Vlanif1600                  10.100.100.25/30   up       up       --            
+Vlanif1602                  10.100.100.33/30   up       up       --            
+Vlanif1606                  10.100.100.85/30   up       up       --            
+Vlanif1607                  10.100.100.53/30   up       up       --            
+Vlanif1612                  10.100.100.77/30   up       up       --            
+Vlanif1613                  10.100.100.165/30  up       up       --            
+Vlanif1616                  10.100.100.161/30  up       up       --            
+Vlanif1617                  10.100.100.121/30  up       up       --            
+Vlanif1619                  unassigned         down     down     --            
+Vlanif1755                  unassigned         up       down     --            
+Vlanif1826                  unassigned         up       down     --            
+Vlanif1827                  unassigned         up       down     --            
+Vlanif3007                  unassigned         up       down     --            
+Vlanif3972                  unassigned         up       down     --            
+Vlanif3994                  unassigned         up       down     --            
+<BHE-VTA-S6750-MPLS-01>

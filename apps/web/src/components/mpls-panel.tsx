@@ -12,6 +12,8 @@ import {
 } from '@gmj/shared';
 import { useQuery } from '@tanstack/react-query';
 import { getHostMpls, getHostMplsEvents } from '@/lib/api';
+import { useAuth } from '@/app/providers';
+import { VsiDiagnosticPanel } from './vsi-diagnostic-panel';
 
 type Filter = 'ALL' | 'UP' | 'DOWN' | 'DEGRADED' | 'UNKNOWN';
 
@@ -61,8 +63,15 @@ function filterMatches(status: MplsStatus, filter: Filter): boolean {
   return status === filter;
 }
 
+/**
+ * Gate de ativacao da UI. Default FALSE: o botao Diagnosticar nao deve existir enquanto a
+ * API estiver com VSI_DIAGNOSTIC_ENABLED=false.
+ */
+const VSI_DIAGNOSTIC_UI_ENABLED = process.env.NEXT_PUBLIC_VSI_DIAGNOSTIC_ENABLED === 'true';
+
 export function MplsPanel({ hostId, readOnly }: { hostId: string; readOnly: boolean }) {
-  const publicToken = readOnly ? tokenFromPublicPath() : null;
+  const { user } = useAuth();
+  const publicToken = tokenFromPublicPath();
   const overview = useQuery({
     queryKey: ['host-mpls', hostId, publicToken],
     queryFn: () => getHostMpls(hostId, publicToken),
@@ -91,7 +100,16 @@ export function MplsPanel({ hostId, readOnly }: { hostId: string; readOnly: bool
   return (
     <>
       {overview.data.lastErrorSafe && <MplsCollectionWarning overview={overview.data} />}
-      <MplsContent overview={overview.data} events={events.data ?? []} />
+      <MplsContent
+        overview={overview.data}
+        events={events.data ?? []}
+        canDiagnose={
+          !readOnly &&
+          !publicToken &&
+          VSI_DIAGNOSTIC_UI_ENABLED &&
+          (user?.role === 'ADMIN' || user?.role === 'OPERATOR')
+        }
+      />
     </>
   );
 }
@@ -134,9 +152,11 @@ export function MplsCollectionWarning({ overview }: { overview: MplsHostOverview
 export function MplsContent({
   overview,
   events,
+  canDiagnose = false,
 }: {
   overview: MplsHostOverview;
   events: MplsStateEvent[];
+  canDiagnose?: boolean;
 }) {
   const [filter, setFilter] = useState<Filter>('ALL');
   const [search, setSearch] = useState('');
@@ -260,6 +280,7 @@ export function MplsContent({
                   {vsi.status === 'ADMIN_DOWN' ? 'ADMIN DOWN' : vsi.status}
                 </Badge>
               </header>
+              {canDiagnose && <VsiDiagnosticPanel hostId={vsi.hostId} vsiId={vsi.id} />}
               <div className="mpls-vsi-card__count">
                 <span>PWs</span>
                 <strong>{overview.capabilities.pw ? `${up}/${vsi.pws.length} UP` : 'N/D'}</strong>

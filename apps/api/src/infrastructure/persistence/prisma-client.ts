@@ -1,4 +1,5 @@
 import { PrismaClient } from '../../generated/prisma/index.js';
+import { isReadOnlyMode, readOnlyPrismaExtension } from '../../read-only';
 
 /**
  * Um unico PrismaClient por processo.
@@ -10,13 +11,23 @@ import { PrismaClient } from '../../generated/prisma/index.js';
  *
  * `globalThis` evita segundo pool quando o modulo e avaliado duas vezes
  * (hot reload / bundle duplicado).
+ *
+ * Fase D: em `NETVISION_READ_ONLY=1` o cliente recebe a extensao que barra
+ * qualquer escrita antes de chegar ao banco (previews isolados).
  */
 const globalForPrisma = globalThis as typeof globalThis & {
   __netvisionPrismaClient?: PrismaClient;
 };
 
+function createPrismaClient(): PrismaClient {
+  const client = new PrismaClient();
+  if (!isReadOnlyMode()) return client;
+  // O cast mantem o tipo publico intacto: a extensao so troca o runtime.
+  return client.$extends(readOnlyPrismaExtension()) as unknown as PrismaClient;
+}
+
 export const prismaClient: PrismaClient =
-  globalForPrisma.__netvisionPrismaClient ?? new PrismaClient();
+  globalForPrisma.__netvisionPrismaClient ?? createPrismaClient();
 
 globalForPrisma.__netvisionPrismaClient = prismaClient;
 

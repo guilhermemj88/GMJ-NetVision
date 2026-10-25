@@ -1,0 +1,26 @@
+
+<BHE-VTA-S6750-MPLS-01>display mpls ldp
+
+                           LDP Global Information
+ ------------------------------------------------------------------------------
+ Protocol Version        : V1            Neighbor Liveness     : 600 Sec
+ Graceful Restart        : Off           FT Reconnect Timer    : 300 Sec
+ MTU Signaling           : On            Recovery Timer        : 300 Sec
+ Capability-Announcement : Off           Longest-match         : Off
+ mLDP P2MP Capability    : Off           mLDP MBB Capability   : Off
+ mLDP MP2MP Capability   : Off           mLDP Recursive-fec    : Off
+
+                          LDP Instance Information
+ ------------------------------------------------------------------------------
+ Instance ID             : 0             VPN-Instance          :
+ Instance Status         : Active        LSR ID                : 10.100.101.255
+ Hop Count Limit         : 32            Path Vector Limit     : 32
+ Loop Detection          : Off
+ DU Re-advertise Timer   : 10 Sec        DU Re-advertise Flag  : Off
+ DU Explicit Request     : Off           Request Retry Flag    : Off
+ Label Distribution Mode : Ordered
+ Label Retention Mode    : Liberal(DU)/Conservative(DOD)
+ Graceful-Delete         : Off           Graceful-Delete Timer : 5 Sec
+ Igp-sync-delay Timer    : 10 Sec        
+ ------------------------------------------------------------------------------
+<BHE-VTA-S6750-MPLS-01>

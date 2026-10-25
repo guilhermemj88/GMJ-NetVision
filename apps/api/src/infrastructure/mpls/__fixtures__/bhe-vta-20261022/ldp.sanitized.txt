@@ -1,0 +1,22 @@
+                           LDP Global Information
+ ------------------------------------------------------------------------------
+ Protocol Version        : V1            Neighbor Liveness    : 600 Sec
+ Graceful Restart        : Off           FT Reconnect Timer   : 300 Sec
+ MTU Signaling           : On            Recovery Timer       : 300 Sec
+ Capability-Announcement : Off           Longest-match        : Off
+ mLDP P2MP Capability    : Off           mLDP MBB Capability  : Off
+ mLDP MP2MP Capability   : Off
+
+                          LDP Instance Information
+ ------------------------------------------------------------------------------
+ Instance ID             : 0             VPN-Instance         :
+ Instance Status         : Active        LSR ID               : 10.100.101.0
+ Loop Detection          : Off           Path Vector Limit    : 32
+ Label Distribution Mode : Ordered
+ Label Retention Mode    : Liberal(DU)/Conservative(DOD)
+ Instance Deleting State : No            Instance Resetting State : No
+ Graceful-Delete         : Off           Graceful-Delete Timer : 5 Sec
+ ------------------------------------------------------------------------------
+
+<BHE-VTA-6730-MPLS-01>
+<BHE-VTA-6730-MPLS-01>

@@ -32,6 +32,9 @@ import { TopologyPreviewService } from './application/topology-preview-service';
 import { config } from './config';
 import { registerHostRoutes } from './host-routes';
 import { registerMplsRoutes } from './mpls-routes';
+import { registerVsiDiagnosticRoutes } from './vsi-diagnostic-routes';
+import { VsiDiagnosticService } from './infrastructure/mpls/vsi-diagnostic-service';
+import { InventoryVsiDiagnosticRunner } from './infrastructure/mpls/vsi-diagnostic-ssh';
 import { registerBgpRoutes } from './bgp-routes';
 import { registerPhysicalRoutes } from './physical-routes';
 
@@ -712,6 +715,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
 
   registerHostRoutes(app, { legacyMaps, mapMembership: maps, hosts, discovery, snmp, ssh, zabbix });
   registerMplsRoutes(app, { hosts, mpls: mplsRepository });
+  const vsiDiagnostics = new VsiDiagnosticService(hosts, mplsRepository,
+    new InventoryVsiDiagnosticRunner(hosts), (event) => app.log.info(event, 'vsi-diagnostic: comando somente leitura'));
+  registerVsiDiagnosticRoutes(app, vsiDiagnostics, (request) => auth.userForToken(request.cookies.netvision_session));
+  app.addHook('onClose', () => vsiDiagnostics.close());
   registerAlarmRoutes(app, {
     alarms: alarmRepository,
     rules: alarmRuleRepository,

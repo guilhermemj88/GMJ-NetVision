@@ -1,0 +1,106 @@
+{
+  "status": "COLLECTED",
+  "error": null,
+  "observedAt": "2026-10-22T20:38:51.421Z",
+  "durationMs": 1341,
+  "profile": {
+    "hostId": "host-f995bc3c-1ffa-4f1b-adf5-ffb0578528b4",
+    "endpoint": "10.100.101.255",
+    "port": 2222,
+    "username": "guilherme3",
+    "context": null,
+    "fingerprint": "SHA256:OXJzyxUT3sO8G7u8D/gSy7kG9AAR3iV3G/wMsGNsMm8",
+    "initialPrompt": "<BHE-VTA-S6750-MPLS-01>",
+    "expectedPrompt": "<BHE-VTA-S6750-MPLS-01>",
+    "routingContext": "GLOBAL",
+    "firmwareEvidence": "R2_IDENTITY_PENDING_NO_PAGING_PREPARATION",
+    "vendor": "HUAWEI",
+    "validFrom": "2026-10-22T20:38:48.799Z",
+    "expiresAt": "2026-10-22T20:39:19.799Z",
+    "operations": [
+      "VERSION_ONLY"
+    ]
+  },
+  "target": "BHE-VTA-S6750-MPLS-01",
+  "roleAAA": "NOT_VERIFIED",
+  "context": "PHYSICAL_USER_VIEW",
+  "limits": {
+    "totalMs": 12000,
+    "readyMs": 8000,
+    "idleMs": 3000,
+    "outputBytes": 131072,
+    "concurrency": 1
+  },
+  "audit": [
+    {
+      "at": "2026-10-22T20:38:51.098Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "call_7cd919a2ede04a0ba14b35590e4358b3:USER_APPROVED_R2",
+      "hostId": "host-f995bc3c-1ffa-4f1b-adf5-ffb0578528b4",
+      "event": "BEFORE_SEND",
+      "command": "display version",
+      "sequence": 0
+    },
+    {
+      "at": "2026-10-22T20:38:51.415Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "call_7cd919a2ede04a0ba14b35590e4358b3:USER_APPROVED_R2",
+      "hostId": "host-f995bc3c-1ffa-4f1b-adf5-ffb0578528b4",
+      "event": "COMPLETE",
+      "command": "display version",
+      "completedAt": "2026-10-22T20:38:51.414Z",
+      "complete": true,
+      "bytes": 683,
+      "sha256": "cad32dd79a9f7cde6ce88d185398db2afedaacebadbd03a85ba01686b14bffbb"
+    },
+    {
+      "at": "2026-10-22T20:38:51.419Z",
+      "operator": "USER_EXPLICIT_ATTACHMENT_AUTHORIZATION",
+      "authorization": "call_7cd919a2ede04a0ba14b35590e4358b3:USER_APPROVED_R2",
+      "hostId": "host-f995bc3c-1ffa-4f1b-adf5-ffb0578528b4",
+      "event": "SESSION_CLOSED_AFTER_FINAL_PROMPT",
+      "configurationWrites": 0
+    }
+  ],
+  "statusIsReal": true,
+  "routerSessions": 1,
+  "automaticRetries": 0,
+  "remoteAccesses": 1,
+  "ping": 0,
+  "tracert": 0,
+  "configurationWrites": 0,
+  "restorationCommands": 0,
+  "processExitCode": 0,
+  "stderrPresent": false,
+  "bodyReceived": true,
+  "finalPromptReceived": true,
+  "cleanCompletion": true,
+  "approval": {
+    "questionCallId": "call_7cd919a2ede04a0ba14b35590e4358b3",
+    "answer": "Confirmo a fingerprint e autorizo R2",
+    "source": "USER_EXPLICIT_REPLY_CURRENT_CONVERSATION",
+    "recordedAt": "2026-10-22T20:38:35.596345+00:00",
+    "authorizedPhase": "R2_DISPLAY_VERSION_ONLY"
+  },
+  "canonicalFingerprint": "SHA256:OXJzyxUT3sO8G7u8D/gSy7kG9AAR3iV3G/wMsGNsMm8",
+  "harnessSha256": "eff953b0d11b4cfff4837c82e89a6b60ec272a8458760963e760eb7b35f0230e",
+  "sourceRevision": "69dcb0f5657dd6d34ff574fe5dcfb7c5c30cb0c2",
+  "servicesChanged": [],
+  "sessionPreparation": null,
+  "contextCommands": [],
+  "outputs": [
+    {
+      "command": "display version",
+      "completedAt": "2026-10-22T20:38:51.414Z",
+      "complete": true,
+      "bytes": 683,
+      "fixture": "r2-version.sanitized.txt",
+      "sha256": "6bac00dc1221b62b7cccd61c4db03e582c1ae3da97baced7fdfc6a2a5f0aeefc",
+      "host": "BHE-VTA-S6750-MPLS-01",
+      "platform": "Huawei CloudEngine S6750-H36C / YunShan OS 1.24.0.1",
+      "firmware": "V600R024C00SPC500",
+      "patch": "V600R024SPH221",
+      "prompt": "<BHE-VTA-S6750-MPLS-01>"
+    }
+  ]
+}

@@ -1,0 +1,16 @@
+
+Info: The max number of VTY users is 5, the number of current VTY users online is 1, and total number of terminal users online is 1.
+      The current login time is 2026-10-22 22:57:16.
+<BHE-VTA-S6750-MPLS-01>ping -a 10.100.101.255 -c 3 10.100.101.0
+  PING 10.100.101.0: 56  data bytes, press CTRL_C to break
+    Reply from 10.100.101.0: bytes=56 Sequence=1 ttl=254 time=1 ms
+    Reply from 10.100.101.0: bytes=56 Sequence=2 ttl=254 time=1 ms
+    Reply from 10.100.101.0: bytes=56 Sequence=3 ttl=254 time=1 ms
+
+  --- 10.100.101.0 ping statistics ---
+    3 packet(s) transmitted
+    3 packet(s) received
+    0.00% packet loss
+    round-trip min/avg/max = 1/1/1 ms
+ 
+<BHE-VTA-S6750-MPLS-01>

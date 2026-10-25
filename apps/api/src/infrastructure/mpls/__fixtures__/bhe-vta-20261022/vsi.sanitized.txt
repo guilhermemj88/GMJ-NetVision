@@ -1,0 +1,25 @@
+
+ ***VSI Name               : 1041-IX-BH-V4
+    Administrator VSI      : no
+    Isolate Spoken         : disable
+    VSI Index              : 169
+    PW Signaling           : bgp
+    Member Discovery Style : --
+    PW MAC Learn Style     : unqualify
+    Encapsulation Type     : vlan
+    MTU                    : 1500
+    Diffserv Mode          : uniform
+    Mpls Exp               : --
+    DomainId               : 255
+    Domain Name            :
+    Ignore AcState         : disable
+    P2P VSI                : disable
+    Create Time            : 400 days, 6 hours, 52 minutes, 22 seconds
+    VSI State              : up
+
+    BGP RD                 : 268568:51041
+    SiteID/Range/Offset    : 1/30/1
+    Import vpn target      : 268568:51041
+    Export vpn target      : 268568:51041
+    Remote Label Block     : 1016584/8/1
+  ---- More ----
