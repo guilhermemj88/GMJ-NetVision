@@ -23,3 +23,25 @@
 .panel code {
   overflow-wrap: anywhere;
 }
+.context h3 {
+  margin: 0 0 6px;
+  font-size: 1em;
+}
+.context dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 12px;
+  margin: 0;
+}
+.context dt {
+  opacity: 0.75;
+}
+.context dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 640px) {
+  .context dl {
+    grid-template-columns: 1fr;
+  }
+}

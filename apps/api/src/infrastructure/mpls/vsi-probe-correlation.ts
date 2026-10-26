@@ -149,7 +149,7 @@ export function correlateVsiEvidence(input: {
     input.startedAt
       ? 'Conclusão limitada às evidências e horários desta execução; não certifica toda a rede ou o serviço do cliente.'
       : 'Conclusão limitada aos comandos e horários registrados; as coletas VSI/PW/AC anteriores não comprovam estado simultâneo ao ping.',
-    'Ping IP não comprova caminho físico, caminho completo da VSI, LSP ou entrega ao cliente. AAA não verificado nesta janela.',
+    'Ping IP não comprova caminho físico, caminho completo da VSI, LSP ou entrega ao cliente.',
   ];
   if (pings.some((p) => p && p.lossPercent > 0 && p.lossPercent < 100))
     warnings.push('Perda parcial observada; manter métricas por direção.');

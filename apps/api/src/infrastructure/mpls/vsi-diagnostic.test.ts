@@ -38,6 +38,7 @@ function fixture(
     unknownPwState?: boolean;
     remotePwMissing?: boolean;
     remoteLabelMismatch?: boolean;
+    remoteCliErrorAt?: string;
   } = {},
 ) {
   const a = {
@@ -160,6 +161,9 @@ function fixture(
       ]) {
         signal.throwIfAborted();
         wire(h, command!, fn);
+        // The real client aborts the session on a CLI `Error:` line before emitting it.
+        if (d === 'REMOTE' && options.remoteCliErrorAt === kind)
+          throw new Error('SSH_DIAGNOSTIC_INTERACTION_OR_ERROR');
         let stdout = file(d, kind!);
         if (d === 'REMOTE' && options.peerMismatch && kind === 'vsi')
           stdout = stdout.replace(/(Peer Ip Address\s*:\s*)[\d.]+/, '${1}192.0.2.99');
@@ -560,14 +564,149 @@ describe('capability-aware native VSI inventory precheck with an offline SSH run
     expect(result.warnings.some((w) => w.includes('PW_SNMP_UNAVAILABLE'))).toBe(false);
     expect(f.audit).toHaveLength(14);
   });
-  it('keeps AAA unverified and trace not homologated after a successful offline run', async () => {
+  it('keeps AAA unverified as context, not limitation, and trace not homologated after a successful offline run', async () => {
     const f = fixture(),
       result = await finish(f);
-    expect(result.warnings.join(' ')).toContain('AAA = NOT_VERIFIED');
+    expect(result.warnings.join(' ')).not.toMatch(/AAA/);
+    expect(result.warnings.join(' ')).toContain('Traceroute real desabilitado: NOT_HOMOLOGATED.');
+    expect(result.warnings.join(' ')).toContain('Ping IP não comprova caminho físico');
+    expect(result.warnings.join(' ')).toContain('F1A, cliente final');
+    expect(
+      result.executionContext!.endpoints.every((e) => e.devicePrivilegeLevel === 'NOT_VERIFIED'),
+    ).toBe(true);
     expect(result.probes.every((p) => p.tracerouteNotExecutedReason === 'NOT_HOMOLOGATED')).toBe(
       true,
     );
     expect(f.audit.some((a) => a.command.startsWith('tracert'))).toBe(false);
+  });
+});
+
+describe('execution context: NetVision RBAC, SSH service account and device command authorization', () => {
+  it('confirms authorization only for the commands executed on each PE of a complete OK run', async () => {
+    const f = fixture(),
+      result = await finish(f);
+    expect(result.overallStatus).toBe('OK');
+    expect(result.underlayClassification).toBe('UNDERLAY_REACHABLE');
+    expect(result.operator).toEqual(actor);
+    expect(result.executionContext).toEqual({
+      endpoints: [
+        {
+          hostId: 'A',
+          name: 'BHE-VTA-6730-MPLS-01',
+          sshUsername: 'reader',
+          commandAuthorization: 'CONFIRMED_FOR_EXECUTED_COMMANDS',
+          executedCommands: 7,
+          acceptedCommands: 7,
+          devicePrivilegeLevel: 'NOT_VERIFIED',
+        },
+        {
+          hostId: 'B',
+          name: 'BHE-VTA-S6750-MPLS-01',
+          sshUsername: 'reader',
+          commandAuthorization: 'CONFIRMED_FOR_EXECUTED_COMMANDS',
+          executedCommands: 7,
+          acceptedCommands: 7,
+          devicePrivilegeLevel: 'NOT_VERIFIED',
+        },
+      ],
+    });
+    expect(f.audit).toHaveLength(14);
+  });
+  it('a CLI-rejected mandatory command is never reported as authorized; partial evidence is kept', async () => {
+    const f = fixture({ remoteCliErrorAt: 'vsi' }),
+      result = await finish(f);
+    expect(result.overallStatus).toBe('INSUFFICIENT_DATA');
+    expect(f.run).not.toHaveBeenCalled();
+    expect(
+      result.checks.some(
+        (c) =>
+          c.hostId === 'B' &&
+          c.status === 'INSUFFICIENT_DATA' &&
+          c.message.includes('SSH_DIAGNOSTIC_INTERACTION_OR_ERROR'),
+      ),
+    ).toBe(true);
+    expect(
+      result.evidence
+        .filter((e) => e.hostId === 'B' && e.source === 'LIVE_SSH')
+        .map((e) => e.command),
+    ).toEqual([
+      'screen-length 0 temporary',
+      'display version',
+      'display mpls ldp',
+      'display ip interface brief',
+    ]);
+    const [local, remote] = result.executionContext!.endpoints;
+    expect(remote).toMatchObject({
+      commandAuthorization: 'NOT_CONFIRMED',
+      executedCommands: 5,
+      acceptedCommands: 4,
+      devicePrivilegeLevel: 'NOT_VERIFIED',
+    });
+    // Local collection succeeded, but its mandatory probe never ran: not confirmed either.
+    expect(local).toMatchObject({
+      commandAuthorization: 'NOT_CONFIRMED',
+      executedCommands: 6,
+      acceptedCommands: 6,
+    });
+  });
+  it('a failed probe leaves both PEs not confirmed', async () => {
+    const f = fixture();
+    f.run.mockRejectedValue(new Error('SSH_DIAGNOSTIC_TIMEOUT'));
+    const result = await finish(f);
+    expect(result.executionContext!.endpoints.map((e) => e.commandAuthorization)).toEqual([
+      'NOT_CONFIRMED',
+      'NOT_CONFIRMED',
+    ]);
+  });
+  it('a run blocked before SSH reports no executed command and no service account', async () => {
+    const f = fixture();
+    f.validate.mockImplementation(async () => {
+      throw new Error('INVENTORY_CHANGED');
+    });
+    const result = await finish(f);
+    expect(result.executionContext).toEqual({
+      endpoints: [
+        {
+          hostId: 'A',
+          name: 'BHE-VTA-6730-MPLS-01',
+          sshUsername: null,
+          commandAuthorization: 'NOT_EXECUTED',
+          executedCommands: 0,
+          acceptedCommands: 0,
+          devicePrivilegeLevel: 'NOT_VERIFIED',
+        },
+      ],
+    });
+  });
+  it('the context never changes the verdict and exposes no credential material', async () => {
+    const f = fixture({ acDown: true });
+    (f.a.ssh as unknown as Record<string, unknown>).password = 'SEGREDO-NAO-VAZAR';
+    const result = await finish(f);
+    expect(result.overallStatus).toBe('FAILED');
+    const serialized = JSON.stringify(result.executionContext);
+    expect(serialized).not.toContain('SEGREDO-NAO-VAZAR');
+    expect(serialized).not.toMatch(/password|secret|fingerprint|SHA256:/i);
+    for (const e of result.executionContext!.endpoints)
+      expect(Object.keys(e).sort()).toEqual([
+        'acceptedCommands',
+        'commandAuthorization',
+        'devicePrivilegeLevel',
+        'executedCommands',
+        'hostId',
+        'name',
+        'sshUsername',
+      ]);
+  });
+  it('RBAC is unchanged: ADMIN may start, VIEWER is rejected before any SSH', async () => {
+    const f = fixture();
+    const admin = { id: 'admin', username: 'admin', role: 'ADMIN' as const };
+    await expect(
+      f.service.start(f.a.id, f.av.id, { ...admin, role: 'VIEWER' as never }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(f.collectEndpoint).not.toHaveBeenCalled();
+    const job = await f.service.start(f.a.id, f.av.id, admin);
+    expect(job.operator).toEqual(admin);
+    expect(f.beforeStart).toHaveBeenCalledTimes(1);
   });
 });
 

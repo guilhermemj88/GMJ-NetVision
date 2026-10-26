@@ -8,6 +8,7 @@ import {
   type VsiDiagnosticCategory as Category,
   type VsiDiagnosticStatus as Status,
   type VsiDiagnosticEndpoint as Endpoint,
+  type VsiDiagnosticExecutionContext as ExecutionContext,
 } from '@gmj/shared';
 import type { HostRepository } from '../persistence/host-repository';
 import type { MplsRepository } from './mpls-repository';
@@ -39,6 +40,15 @@ type Job = {
   vsi: MplsVsi;
   host: HostRecord;
   wireCommands: number;
+  access: Map<string, HostAccess>;
+};
+/** Comandos por PE desta execução: enviados vs. aceitos com evidência completa. */
+type HostAccess = {
+  username: string | null;
+  sent: string[];
+  accepted: Set<string>;
+  collected: boolean;
+  probed: boolean;
 };
 async function abortable<T>(signal: AbortSignal, promise: Promise<T>): Promise<T> {
   signal.throwIfAborted();
@@ -124,9 +134,7 @@ export class VsiDiagnosticService {
         checks: [],
         evidence: [],
         probes: [],
-        warnings: [
-          'AAA = NOT_VERIFIED; privilégios da conta não foram verificados pelo diagnóstico.',
-        ],
+        warnings: [],
         nextTests: [],
       };
       for (const [id, old] of this.jobs) {
@@ -138,6 +146,7 @@ export class VsiDiagnosticService {
       const controller = new AbortController();
       const job: Job = {
         wireCommands: 0,
+        access: new Map(),
         result,
         controller,
         host,
@@ -199,6 +208,7 @@ export class VsiDiagnosticService {
           : 'Concluído',
     );
     r.completedAt = new Date().toISOString();
+    r.executionContext = this.executionContext(job);
     clearTimeout(job.timer);
     this.reserved.delete(JSON.stringify([r.hostId, r.vsiId]));
     if (state !== 'COMPLETED') {
@@ -248,6 +258,48 @@ export class VsiDiagnosticService {
           : warning
             ? 'Há anomalias ou divergências; consultar evidências e limitações.'
             : 'Os testes obrigatórios concluídos não indicaram falha no serviço investigado.';
+  }
+  /**
+   * CONFIRMED_FOR_EXECUTED_COMMANDS somente se todo comando enviado ao PE voltou
+   * completo, a coleta obrigatória concluiu com capturas válidas e o ping foi
+   * reconhecido. O nível AAA nunca é consultado: permanece NOT_VERIFIED.
+   */
+  private executionContext(job: Job): ExecutionContext {
+    const r = job.result;
+    return {
+      endpoints: [r.local, ...r.remotes].map((endpoint) => {
+        const access = job.access.get(endpoint.hostId);
+        const executed = access?.sent.length ?? 0;
+        const accepted = access?.sent.filter((c) => access.accepted.has(c)).length ?? 0;
+        return {
+          hostId: endpoint.hostId,
+          name: endpoint.name,
+          sshUsername: executed ? access!.username : null,
+          commandAuthorization: !executed
+            ? 'NOT_EXECUTED'
+            : access!.collected && access!.probed && accepted === executed
+              ? 'CONFIRMED_FOR_EXECUTED_COMMANDS'
+              : 'NOT_CONFIRMED',
+          executedCommands: executed,
+          acceptedCommands: accepted,
+          devicePrivilegeLevel: 'NOT_VERIFIED',
+        };
+      }),
+    };
+  }
+  private hostAccess(job: Job, host: HostRecord): HostAccess {
+    let access = job.access.get(host.id);
+    if (!access) {
+      access = {
+        username: host.ssh?.username ?? null,
+        sent: [],
+        accepted: new Set(),
+        collected: false,
+        probed: false,
+      };
+      job.access.set(host.id, access);
+    }
+    return access;
   }
   private drain() {
     if (this.running || this.closing) return;
@@ -331,6 +383,7 @@ export class VsiDiagnosticService {
       sha256: item.sha256 ?? createHash('sha256').update(item.stdout).digest('hex'),
       ...(item.durationMs === undefined ? {} : { durationMs: item.durationMs }),
     });
+    if (item.complete) this.hostAccess(job, host).accepted.add(item.command);
   }
   private auditCommand(job: Job, host: HostRecord, command: string) {
     job.controller.signal.throwIfAborted();
@@ -342,6 +395,7 @@ export class VsiDiagnosticService {
       command,
     });
     job.wireCommands++;
+    this.hostAccess(job, host).sent.push(command);
   }
   private async collectFresh(job: Job, host: HostRecord, vsi: MplsVsi, endpoint: Endpoint) {
     const r = job.result;
@@ -501,23 +555,21 @@ export class VsiDiagnosticService {
         ? `${acName}: físico ${state.physical}, lógico ${state.logical}; vínculo proveniente da VSI atual.`
         : 'AC não confirmada por CLI nesta execução. VLAN isolada não cria vínculo.',
     );
-    return {
-      captures:
-        ldp &&
-        brief &&
-        v &&
-        ac &&
-        state &&
-        facts?.status &&
-        facts.attachments.length === 1 &&
-        ['UP', 'DOWN'].includes(facts.attachments[0]!.state ?? '') &&
-        facts.peers.length === 1 &&
-        facts.peers[0]!.state
-          ? { ldp, brief, vsi: v, ac }
-          : null,
-      platform,
-      facts,
-    };
+    const captures =
+      ldp &&
+      brief &&
+      v &&
+      ac &&
+      state &&
+      facts?.status &&
+      facts.attachments.length === 1 &&
+      ['UP', 'DOWN'].includes(facts.attachments[0]!.state ?? '') &&
+      facts.peers.length === 1 &&
+      facts.peers[0]!.state
+        ? { ldp, brief, vsi: v, ac }
+        : null;
+    if (captures && platform) this.hostAccess(job, host).collected = true;
+    return { captures, platform, facts };
   }
   private async execute(job: Job) {
     const r = job.result;
@@ -818,6 +870,7 @@ export class VsiDiagnosticService {
         if (errorCode) r.evidence.at(-1)!.errorCode = errorCode;
         pings[direction] = observation;
         const parsed = errorCode ? null : observeHuaweiPing(observation, direction, target);
+        if (parsed) this.hostAccess(job, host).probed = true;
         if (!parsed)
           this.check(
             r,

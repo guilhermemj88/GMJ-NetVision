@@ -76,6 +76,27 @@ export interface VsiDiagnosticProbe {
   received?: number;
   tracerouteNotExecutedReason?: 'NOT_HOMOLOGATED';
 }
+/**
+ * Autorização observada dos comandos de UMA execução num PE. Nunca afirma
+ * privilégio da conta nem autorização de comandos não executados.
+ */
+export type VsiCommandAuthorization =
+  'CONFIRMED_FOR_EXECUTED_COMMANDS' | 'NOT_CONFIRMED' | 'NOT_EXECUTED';
+export interface VsiDiagnosticEndpointAccess {
+  hostId: string;
+  name: string;
+  /** Conta de serviço SSH usada no PE; somente o username, nunca segredo. */
+  sshUsername: string | null;
+  commandAuthorization: VsiCommandAuthorization;
+  executedCommands: number;
+  acceptedCommands: number;
+  /** O nível AAA da sessão não é consultado de forma independente. */
+  devicePrivilegeLevel: 'NOT_VERIFIED';
+}
+/** Informativo; não participa do veredito. RBAC do NetVision está em `operator`. */
+export interface VsiDiagnosticExecutionContext {
+  endpoints: VsiDiagnosticEndpointAccess[];
+}
 export interface VsiDiagnosticResult {
   diagnosticId: string;
   hostId: string;
@@ -102,6 +123,7 @@ export interface VsiDiagnosticResult {
   probes: VsiDiagnosticProbe[];
   warnings: string[];
   nextTests: string[];
+  executionContext?: VsiDiagnosticExecutionContext;
 }
 export const VSI_DIAGNOSTIC_LIMITS = Object.freeze({
   concurrency: 1,

@@ -117,7 +117,6 @@ describe('VSI diagnose action', () => {
       summary: 'Nenhuma falha encontrada no PW/underlay avaliado.',
       warnings: [
         'REMOTE_PW_SNMP_UNAVAILABLE: PW SNMP indisponível no PE remoto; validação realizada por SSH.',
-        'AAA = NOT_VERIFIED',
       ],
     };
     await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled />));
@@ -126,7 +125,6 @@ describe('VSI diagnose action', () => {
     await diagnosticar();
     expect(container.textContent).toContain('OK');
     expect(container.textContent).toContain('REMOTE_PW_SNMP_UNAVAILABLE');
-    expect(container.textContent).toContain('AAA = NOT_VERIFIED');
     expect(container.textContent).not.toContain('PW DOWN');
     expect(container.textContent).not.toContain('PW inexistente');
   });
@@ -138,6 +136,11 @@ describe('VSI diagnose action', () => {
     await armar();
     await diagnosticar();
     expect(container.textContent).toContain('Coletando PE remoto');
+    expect(container.textContent).toContain('DIAGNÓSTICO EM ANDAMENTO');
+    expect(container.textContent).toContain('Coletando e validando evidências dos PEs…');
+    // The provisional backend status is not a verdict while the job runs.
+    expect(container.textContent).not.toContain('INSUFFICIENT_DATA');
+    expect(container.textContent).not.toContain('Sem origem comprovada.');
     const cancelar = button('Cancelar')!;
     nextResult = { ...result, state: 'CANCELLED', summary: 'Evidências parciais preservadas.' };
     await act(async () => cancelar.click());
@@ -167,6 +170,7 @@ describe('VSI diagnose action', () => {
           rttMs: { min: 1, avg: 2, max: 3 },
           transmitted: 3,
           received: 3,
+          status: 'OK',
           hops: [],
           tracerouteNotExecutedReason: 'NOT_HOMOLOGATED',
         },
@@ -177,7 +181,10 @@ describe('VSI diagnose action', () => {
     await diagnosticar();
     expect(container.textContent).toContain('UNDERLAY_REACHABLE');
     expect(container.textContent).toContain('PE remoto');
-    expect(container.textContent).toContain('respostas 3/3');
+    const text = container.textContent!;
+    expect(text).toContain('Alcançável · 3/3 respostas · RTT médio 2 ms');
+    // Loss stays a secondary detail after replies, never the headline with 3 probes.
+    expect(text.indexOf('perda 0% em 3 pacotes')).toBeGreaterThan(text.indexOf('3/3 respostas'));
     expect(container.textContent).toContain('NOT_HOMOLOGATED');
     expect(container.querySelector('details')!.open).toBe(false);
   });
@@ -252,6 +259,19 @@ describe('VSI diagnose action', () => {
     expect(container.textContent).not.toContain('Janela one-shot válida');
   });
 
+  it('ADMIN continua podendo preparar a janela e diagnosticar', async () => {
+    await act(async () =>
+      root.render(
+        <VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled canArm canExecute />,
+      ),
+    );
+    expect((button('Preparar janela') as HTMLButtonElement).disabled).toBe(false);
+    await armar();
+    expect((button('Diagnosticar') as HTMLButtonElement).disabled).toBe(false);
+    await diagnosticar();
+    expect(fetch).toHaveBeenCalledWith(DIAGNOSE_URL, expect.objectContaining({ method: 'POST' }));
+  });
+
   it('descarta a janela quando a execucao falha (fail-closed)', async () => {
     await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled />));
     vi.mocked(fetch).mockImplementationOnce(async () => Response.json(approval()));
@@ -263,5 +283,165 @@ describe('VSI diagnose action', () => {
     expect(container.textContent).toContain('Aprovacao expirada');
     expect(button('Preparar janela')).toBeDefined();
     expect(button('Renovar janela')).toBeUndefined();
+  });
+});
+
+describe('Contexto de execução', () => {
+  const endpoint = (hostId: string, name: string, extra: Record<string, unknown> = {}) => ({
+    hostId,
+    name,
+    sshUsername: 'guilherme3',
+    commandAuthorization: 'CONFIRMED_FOR_EXECUTED_COMMANDS',
+    executedCommands: 7,
+    acceptedCommands: 7,
+    devicePrivilegeLevel: 'NOT_VERIFIED',
+    ...extra,
+  });
+  const completed = {
+    ...result,
+    diagnosticId: '04778b69-33e2-4242-baf9-6591381f8375',
+    operator: { id: 'admin', username: 'admin', role: 'ADMIN' },
+    vsiName: '1809-L2L-VCONLINE-QinQ',
+    overallStatus: 'OK',
+    underlayClassification: 'UNDERLAY_REACHABLE',
+    summary:
+      'Nenhuma falha foi identificada no underlay entre os PEs, no pseudowire ou nos attachment circuits avaliados.',
+    local: { hostId: 'IIE', name: 'IIE-VSR-6730-MPLS-01', loopback: { address: '10.100.101.5' } },
+    remotes: [
+      { hostId: 'RNS', name: 'RNS-FLOR-6730-MPLS-01', loopback: { address: '10.100.101.6' } },
+    ],
+    checks: [
+      {
+        id: 'c1',
+        category: 'PW',
+        label: 'Reciprocidade e labels',
+        status: 'OK',
+        hostId: 'RNS',
+        message: 'Peers recíprocos e labels cruzados MATCH na execução atual.',
+        evidence: [],
+        durationMs: 0,
+        certainty: 'CONFIRMED',
+        required: true,
+      },
+    ],
+    warnings: ['Traceroute real desabilitado: NOT_HOMOLOGATED.'],
+    executionContext: {
+      endpoints: [
+        endpoint('IIE', 'IIE-VSR-6730-MPLS-01'),
+        endpoint('RNS', 'RNS-FLOR-6730-MPLS-01'),
+      ],
+    },
+  };
+  async function render(next: unknown) {
+    nextResult = next;
+    await act(async () =>
+      root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled />),
+    );
+    await armar();
+    await diagnosticar();
+    return container.textContent!;
+  }
+
+  it('separa RBAC, conta de serviço e autorização dos comandos numa execução OK', async () => {
+    const text = await render(completed);
+    const context = container.querySelector('[aria-label="Contexto de execução"]')!;
+    expect(context).not.toBeNull();
+    expect(context.textContent).toContain('Permissão no NetVision');
+    expect(context.textContent).toContain('admin (ADMIN)');
+    expect(context.textContent).toContain('Conta de serviço guilherme3.');
+    expect(context.textContent).toContain(
+      'Todos os comandos necessários desta execução foram aceitos e produziram evidência válida nos dois PEs.',
+    );
+    expect(context.textContent).toContain(
+      'Vale somente para os comandos executados nesta execução.',
+    );
+    expect(context.textContent).toContain(
+      'Não verificado explicitamente. Isso não afeta o resultado desta execução.',
+    );
+    expect(text).not.toContain('AAA = NOT_VERIFIED');
+    expect(text).not.toMatch(/Limitação:[^.]*privilégio/);
+    expect(text).toContain('Limitação: Traceroute real desabilitado: NOT_HOMOLOGATED.');
+    // Technical result first, context after it.
+    expect(text.indexOf('OK · 1809-L2L-VCONLINE-QinQ')).toBeLessThan(
+      text.indexOf('Contexto de execução'),
+    );
+    expect(text.indexOf('Reciprocidade e labels')).toBeLessThan(
+      text.indexOf('Contexto de execução'),
+    );
+  });
+
+  it('nunca confirma autorização quando um comando obrigatório não produziu evidência válida', async () => {
+    const text = await render({
+      ...completed,
+      overallStatus: 'INSUFFICIENT_DATA',
+      executionContext: {
+        endpoints: [
+          endpoint('IIE', 'IIE-VSR-6730-MPLS-01', {
+            commandAuthorization: 'NOT_CONFIRMED',
+            executedCommands: 6,
+            acceptedCommands: 6,
+          }),
+          endpoint('RNS', 'RNS-FLOR-6730-MPLS-01', {
+            commandAuthorization: 'NOT_CONFIRMED',
+            executedCommands: 5,
+            acceptedCommands: 4,
+          }),
+        ],
+      },
+    });
+    expect(text).toContain('INSUFFICIENT_DATA · 1809-L2L-VCONLINE-QinQ');
+    expect(text).not.toContain('foram aceitos e produziram evidência válida');
+    expect(text).toContain(
+      'RNS-FLOR-6730-MPLS-01: não confirmada (4/5 comandos com evidência válida).',
+    );
+    expect(text).toContain('Não verificado explicitamente.');
+    expect(text).not.toContain('Isso não afeta o resultado');
+  });
+
+  it('execução bloqueada antes do SSH não exibe conta de serviço nem autorização', async () => {
+    const text = await render({
+      ...completed,
+      overallStatus: 'INSUFFICIENT_DATA',
+      remotes: [],
+      executionContext: {
+        endpoints: [
+          endpoint('IIE', 'IIE-VSR-6730-MPLS-01', {
+            sshUsername: null,
+            commandAuthorization: 'NOT_EXECUTED',
+            executedCommands: 0,
+            acceptedCommands: 0,
+          }),
+        ],
+      },
+    });
+    expect(text).toContain('Nenhuma sessão SSH aberta nesta execução.');
+    expect(text).toContain('IIE-VSR-6730-MPLS-01: nenhum comando executado.');
+    expect(text).not.toContain('guilherme3');
+  });
+
+  it('renderiza somente campos permitidos, sem vazar material de credencial', async () => {
+    const text = await render({
+      ...completed,
+      executionContext: {
+        endpoints: [
+          endpoint('IIE', 'IIE-VSR-6730-MPLS-01', { password: 'SEGREDO', fingerprint: 'SHA256:x' }),
+          endpoint('RNS', 'RNS-FLOR-6730-MPLS-01'),
+        ],
+      },
+    });
+    expect(text).not.toContain('SEGREDO');
+    expect(text).not.toContain('SHA256:');
+  });
+
+  it('não mostra o contexto enquanto o diagnóstico está em andamento', async () => {
+    vi.useFakeTimers();
+    const text = await render({
+      ...completed,
+      state: 'RUNNING',
+      overallStatus: 'INSUFFICIENT_DATA',
+    });
+    expect(text).toContain('DIAGNÓSTICO EM ANDAMENTO');
+    expect(text).not.toContain('Contexto de execução');
+    expect(text).not.toContain('INSUFFICIENT_DATA');
   });
 });
