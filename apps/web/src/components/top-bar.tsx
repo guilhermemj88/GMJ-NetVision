@@ -13,6 +13,7 @@ import {
   Server,
   Settings,
   Sparkles,
+  Stethoscope,
   Users,
   Warehouse,
 } from 'lucide-react';
@@ -130,6 +131,13 @@ export function TopBar() {
               {attention}
             </span>
           ) : null}
+        </button>
+        <button
+          type="button"
+          className={view === 'DIAGNOSTICS' ? 'is-active' : ''}
+          onClick={() => setView('DIAGNOSTICS')}
+        >
+          <Stethoscope size={14} /> Diagnóstico
         </button>
       </nav>
       {view === 'MAP' && map && (

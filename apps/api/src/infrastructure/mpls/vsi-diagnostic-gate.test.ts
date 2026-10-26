@@ -147,6 +147,69 @@ describe('gate de ativacao do diagnostico VSI', () => {
     restore();
   });
 
+  it('rota de status responde nos dois estados e exige sessao', async () => {
+    const restore = withGate(undefined);
+    const calls: string[] = [];
+    const app = Fastify();
+    registerVsiDiagnosticRoutes(app as never, buildService(calls) as never, async () => null, store);
+    const semSessao = await app.inject({ method: 'GET', url: '/api/diagnostics/status' });
+    expect(semSessao.statusCode).toBe(401);
+    await app.close();
+
+    const appOperador = Fastify();
+    registerVsiDiagnosticRoutes(
+      appOperador as never,
+      buildService(calls) as never,
+      async () => operator as never,
+      store,
+    );
+    const desligado = await appOperador.inject({ method: 'GET', url: '/api/diagnostics/status' });
+    expect(desligado.statusCode).toBe(200);
+    expect(JSON.parse(desligado.body).diagnosticEnabled).toBe(false);
+    await appOperador.close();
+
+    process.env.VSI_DIAGNOSTIC_ENABLED = 'true';
+    const appLigado = Fastify();
+    registerVsiDiagnosticRoutes(
+      appLigado as never,
+      buildService(calls) as never,
+      async () => operator as never,
+      store,
+    );
+    const ligado = await appLigado.inject({ method: 'GET', url: '/api/diagnostics/status' });
+    expect(JSON.parse(ligado.body).diagnosticEnabled).toBe(true);
+    await appLigado.close();
+    expect(calls).toEqual([]);
+    restore();
+  });
+
+  it('com gate desligado a criacao de aprovacao e o diagnostico ficam bloqueados', async () => {
+    const restore = withGate('false');
+    const calls: string[] = [];
+    const app = Fastify();
+    registerVsiDiagnosticRoutes(
+      app as never,
+      buildService(calls) as never,
+      async () => admin as never,
+      store,
+    );
+    const aprovacao = await app.inject({
+      method: 'POST',
+      url: '/api/hosts/host-x/mpls/vsis/vsi-y/diagnostic-approvals',
+      payload: {},
+    });
+    expect(aprovacao.statusCode).toBe(503);
+    const diagnostico = await app.inject({
+      method: 'POST',
+      url: '/api/hosts/host-x/mpls/vsis/vsi-y/diagnose',
+      payload: { approvalId: '11111111-2222-4333-8444-555555555555' },
+    });
+    expect(diagnostico.statusCode).toBe(503);
+    expect(calls).toEqual([]);
+    await app.close();
+    restore();
+  });
+
   it('exige sessao em todas as rotas com gate ligado', async () => {
     const restore = withGate('true');
     const calls: string[] = [];

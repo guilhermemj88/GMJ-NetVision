@@ -13,6 +13,7 @@ import { HostsWorkspace } from './hosts-workspace';
 import { BgpWorkspace } from './bgp/bgp-workspace';
 import { PhysicalWorkspace } from './physical/physical-workspace';
 import { AlertCenterWorkspace } from './alerts/alert-center-workspace';
+import { DiagnosticsWorkspace } from './diagnostics/diagnostics-workspace';
 
 export function NetworkWorkspace({ publicMode = false }: { publicMode?: boolean }) {
   const toast = useMapStore((state) => state.toast);
@@ -29,6 +30,7 @@ export function NetworkWorkspace({ publicMode = false }: { publicMode?: boolean 
     else if (requested === 'physical' || requested === 'fisico') setView('PHYSICAL');
     else if (requested === 'bgp') setView('BGP');
     else if (requested === 'alerts' || requested === 'alertas') setView('ALERTS');
+    else if (requested === 'diagnostics' || requested === 'diagnostico') setView('DIAGNOSTICS');
   }, [publicMode, setView]);
 
   return (
@@ -48,6 +50,8 @@ export function NetworkWorkspace({ publicMode = false }: { publicMode?: boolean 
         <BgpWorkspace />
       ) : view === 'ALERTS' && !publicMode ? (
         <AlertCenterWorkspace />
+      ) : view === 'DIAGNOSTICS' && !publicMode ? (
+        <DiagnosticsWorkspace />
       ) : (
         <>
           <ReactFlowProvider>

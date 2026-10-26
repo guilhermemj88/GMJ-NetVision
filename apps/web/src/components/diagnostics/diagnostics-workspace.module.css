@@ -1,0 +1,91 @@
+.workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px;
+  overflow-y: auto;
+  height: 100%;
+}
+.header h1 {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+.header p {
+  margin: 0;
+  opacity: 0.72;
+  font-size: 13px;
+}
+.module {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 12px;
+  background: rgba(15, 23, 42, 0.28);
+  max-width: 920px;
+}
+.module h2 {
+  margin: 0;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.86;
+}
+.selectors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+.selectors label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.78;
+}
+.selectors select {
+  min-width: 260px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(2, 6, 23, 0.6);
+  color: inherit;
+  font-size: 13px;
+}
+.state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 28px;
+  margin: 0;
+}
+.state div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.state dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.62;
+}
+.state dd {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.on {
+  color: #34d399;
+}
+.off {
+  color: #f87171;
+}
+.hint,
+.future {
+  margin: 0;
+  font-size: 12px;
+  opacity: 0.6;
+}

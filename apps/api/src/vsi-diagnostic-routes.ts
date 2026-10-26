@@ -6,12 +6,32 @@ import {
   type VsiDiagnosticService,
 } from './infrastructure/mpls/vsi-diagnostic-service';
 import type { VsiDiagnosticApprovalStore } from './infrastructure/mpls/vsi-diagnostic-approval';
+import { readVsiAccessProfiles } from './infrastructure/mpls/vsi-diagnostic-ssh';
 /**
  * Gate de ativacao. Default FALSE: sem a flag a acao produtiva nao existe e nenhum SSH pode ocorrer.
  * Fica FORA da logica field-validated (precheck/runner/parsers/policy).
  */
 export function vsiDiagnosticEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return (env.VSI_DIAGNOSTIC_ENABLED ?? '').trim().toLowerCase() === 'true';
+}
+let trustProbe: { at: number; state: 'AVAILABLE' | 'UNAVAILABLE' } | null = null;
+/**
+ * Estado do trust para a UI. Somente leitura, com cache curto: o arquivo e
+ * revalidado pelo loader real (modo, symlink, tamanho, schema).
+ */
+export async function vsiDiagnosticTrustState(
+  now = Date.now(),
+): Promise<'AVAILABLE' | 'UNAVAILABLE'> {
+  if (trustProbe && now - trustProbe.at < 30_000) return trustProbe.state;
+  let state: 'AVAILABLE' | 'UNAVAILABLE' = 'UNAVAILABLE';
+  try {
+    const profiles = await readVsiAccessProfiles(process.env.VSI_DIAGNOSTIC_ACCESS_FILE);
+    state = profiles.length > 0 ? 'AVAILABLE' : 'UNAVAILABLE';
+  } catch {
+    state = 'UNAVAILABLE';
+  }
+  trustProbe = { at: now, state };
+  return state;
 }
 const params = z
   .object({ hostId: z.string().min(1).max(100), vsiId: z.string().min(1).max(100) })
@@ -22,6 +42,21 @@ export function registerVsiDiagnosticRoutes(
   currentUser: (request: FastifyRequest) => Promise<AuthUser | null>,
   approvals: VsiDiagnosticApprovalStore,
 ) {
+  /**
+   * Estado do recurso para a UI. Registrada ANTES do gate: precisa responder tanto
+   * com a feature ligada quanto desligada, e nunca toca service, runner ou socket.
+   */
+  app.get('/api/diagnostics/status', async (request, reply) => {
+    const user = await currentUser(request);
+    if (!user) throw new VsiDiagnosticError('Sessão operacional obrigatória', 401);
+    z.object({})
+      .strict()
+      .parse(request.query ?? {});
+    return reply.send({
+      diagnosticEnabled: vsiDiagnosticEnabled(),
+      diagnosticTrust: await vsiDiagnosticTrustState(),
+    });
+  });
   if (!vsiDiagnosticEnabled()) {
     const disabled = async (_request: FastifyRequest, reply: FastifyReply) =>
       reply.code(503).send({

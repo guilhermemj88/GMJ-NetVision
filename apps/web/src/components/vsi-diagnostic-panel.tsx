@@ -10,7 +10,19 @@ type Approval = {
   createdAt: string;
   expiresAt: string;
 };
-export function VsiDiagnosticPanel({ hostId, vsiId }: { hostId: string; vsiId: string }) {
+export function VsiDiagnosticPanel({
+  hostId,
+  vsiId,
+  diagnosticEnabled = false,
+  canArm = true,
+  canExecute = true,
+}: {
+  hostId: string;
+  vsiId: string;
+  diagnosticEnabled?: boolean;
+  canArm?: boolean;
+  canExecute?: boolean;
+}) {
   const [result, setResult] = useState<VsiDiagnosticResult | null>(null);
   const [approval, setApproval] = useState<Approval | null>(null);
   const [clock, setClock] = useState(() => Date.now());
@@ -68,6 +80,7 @@ export function VsiDiagnosticPanel({ hostId, vsiId }: { hostId: string; vsiId: s
     };
   }, [base, diagnosticId, jobState]);
   async function arm() {
+    if (!diagnosticEnabled || !canArm) return;
     setBusy(true);
     setError('');
     controller.current?.abort();
@@ -87,6 +100,7 @@ export function VsiDiagnosticPanel({ hostId, vsiId }: { hostId: string; vsiId: s
     }
   }
   async function start() {
+    if (!diagnosticEnabled || !canExecute) return;
     if (!approvalValid) {
       setError('Prepare a janela one-shot antes de diagnosticar.');
       return;
@@ -114,10 +128,19 @@ export function VsiDiagnosticPanel({ hostId, vsiId }: { hostId: string; vsiId: s
   const running = result && ['QUEUED', 'RUNNING'].includes(result.state);
   return (
     <section className={styles.panel} aria-label="Diagnóstico automático da VSI">
-      <Button disabled={busy || Boolean(running)} onClick={() => void arm()}>
+      {!diagnosticEnabled && <p role="status">Diagnóstico VSI desativado</p>}
+      <Button
+        disabled={busy || Boolean(running) || !diagnosticEnabled || !canArm}
+        onClick={() => void arm()}
+      >
         {approvalValid ? 'Renovar janela' : 'Preparar janela'}
       </Button>
-      <Button disabled={busy || Boolean(running) || !approvalValid} onClick={() => void start()}>
+      <Button
+        disabled={
+          busy || Boolean(running) || !diagnosticEnabled || !canExecute || !approvalValid
+        }
+        onClick={() => void start()}
+      >
         {busy || running ? 'Diagnóstico em andamento...' : 'Diagnosticar'}
       </Button>
       {approvalValid && <p role="status">Janela one-shot válida por {approvalLeft}s.</p>}

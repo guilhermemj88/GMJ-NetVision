@@ -118,6 +118,55 @@ describe('TopBar — acesso a Central de Alertas (F9.3)', () => {
   });
 });
 
+describe('TopBar — aba Diagnóstico', () => {
+  let container: HTMLDivElement;
+  let root: Root;
+  let client: QueryClient;
+
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    auth.useAuth.mockReturnValue({
+      user: { id: 'u1', name: 'QA', email: 'qa@preview.local', username: 'qa-preview', role: 'ADMIN' },
+      logout: vi.fn(),
+    });
+    api.getAlertCenterSummary.mockResolvedValue({ summary: summary() });
+    useMapStore.setState({ view: 'HOSTS', map: null, maps: [], activeMapId: null, panel: null });
+    container = document.createElement('div');
+    document.body.appendChild(container);
+    root = createRoot(container);
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    await act(async () => {
+      root.render(createElement(QueryClientProvider, { client }, createElement(TopBar)));
+    });
+    await settle();
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    client.clear();
+    container.remove();
+    vi.clearAllMocks();
+  });
+
+  it('mostra a aba Diagnóstico no mesmo nível das demais', () => {
+    const labels = Array.from(container.querySelectorAll('.primary-nav button')).map(
+      (button) => button.textContent?.trim() ?? '',
+    );
+    for (const expected of ['Físico', 'Mapa', 'Hosts', 'BGP', 'Alertas', 'Diagnóstico'])
+      expect(labels.some((label) => label.includes(expected))).toBe(true);
+  });
+
+  it('clicar em Diagnóstico muda a view para DIAGNOSTICS', async () => {
+    await act(async () => {
+      navButton(container, 'Diagnóstico').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await settle();
+    expect(useMapStore.getState().view).toBe('DIAGNOSTICS');
+  });
+});
+
 /**
  * FASE N — a barra de produção e a do preview:
  *  - seletor de SESSÃO V1/V2 existe nas duas instâncias (nada é gravado no mapa);

@@ -63,12 +63,6 @@ function filterMatches(status: MplsStatus, filter: Filter): boolean {
   return status === filter;
 }
 
-/**
- * Gate de ativacao da UI. Default FALSE: o botao Diagnosticar nao deve existir enquanto a
- * API estiver com VSI_DIAGNOSTIC_ENABLED=false.
- */
-const VSI_DIAGNOSTIC_UI_ENABLED = process.env.NEXT_PUBLIC_VSI_DIAGNOSTIC_ENABLED === 'true';
-
 export function MplsPanel({ hostId, readOnly }: { hostId: string; readOnly: boolean }) {
   const { user } = useAuth();
   const publicToken = tokenFromPublicPath();
@@ -104,11 +98,10 @@ export function MplsPanel({ hostId, readOnly }: { hostId: string; readOnly: bool
         overview={overview.data}
         events={events.data ?? []}
         canDiagnose={
-          !readOnly &&
-          !publicToken &&
-          VSI_DIAGNOSTIC_UI_ENABLED &&
-          (user?.role === 'ADMIN' || user?.role === 'OPERATOR')
+          !readOnly && !publicToken && (user?.role === 'ADMIN' || user?.role === 'OPERATOR')
         }
+        canArm={!readOnly && !publicToken && user?.role === 'ADMIN'}
+        diagnosticEnabled={overview.data.diagnosticEnabled === true}
       />
     </>
   );
@@ -153,10 +146,14 @@ export function MplsContent({
   overview,
   events,
   canDiagnose = false,
+  canArm = false,
+  diagnosticEnabled = false,
 }: {
   overview: MplsHostOverview;
   events: MplsStateEvent[];
   canDiagnose?: boolean;
+  canArm?: boolean;
+  diagnosticEnabled?: boolean;
 }) {
   const [filter, setFilter] = useState<Filter>('ALL');
   const [search, setSearch] = useState('');
@@ -280,7 +277,14 @@ export function MplsContent({
                   {vsi.status === 'ADMIN_DOWN' ? 'ADMIN DOWN' : vsi.status}
                 </Badge>
               </header>
-              {canDiagnose && <VsiDiagnosticPanel hostId={vsi.hostId} vsiId={vsi.id} />}
+              {canDiagnose && (
+                <VsiDiagnosticPanel
+                  hostId={vsi.hostId}
+                  vsiId={vsi.id}
+                  diagnosticEnabled={diagnosticEnabled}
+                  canArm={canArm}
+                />
+              )}
               <div className="mpls-vsi-card__count">
                 <span>PWs</span>
                 <strong>{overview.capabilities.pw ? `${up}/${vsi.pws.length} UP` : 'N/D'}</strong>

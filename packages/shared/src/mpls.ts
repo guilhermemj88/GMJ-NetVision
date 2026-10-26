@@ -127,6 +127,13 @@ export interface MplsHostOverview {
   lastErrorSafe: string | null;
   summary: MplsSummary;
   vsis: MplsVsi[];
+  /**
+   * Estado do diagnostico VSI no processo da API (runtime). A UI representa o
+   * recurso a partir deste campo — nunca de um flag de build.
+   */
+  diagnosticEnabled?: boolean;
+  /** Trust (arquivo de profiles) legivel pelo processo da API no momento da consulta. */
+  diagnosticTrust?: 'AVAILABLE' | 'UNAVAILABLE';
 }
 
 export function summarizeMpls(vsis: MplsVsi[]): MplsSummary {

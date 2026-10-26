@@ -19,6 +19,9 @@ vi.mock('./bgp/bgp-workspace', () => ({ BgpWorkspace: () => createElement('div',
 vi.mock('./alerts/alert-center-workspace', () => ({
   AlertCenterWorkspace: () => createElement('div', { id: 'alerts' }),
 }));
+vi.mock('./diagnostics/diagnostics-workspace', () => ({
+  DiagnosticsWorkspace: () => createElement('div', { id: 'diagnostics' }),
+}));
 
 import { NetworkWorkspace } from './network-workspace';
 
@@ -85,6 +88,27 @@ describe('NetworkWorkspace — rota de view por query param', () => {
       expect(useMapStore.getState().view).toBe(expected);
       expect(container.querySelector(selector)).not.toBeNull();
     }
+  });
+
+  it('abre a area de Diagnostico por ?view=diagnostics', async () => {
+    window.history.replaceState(null, '', '/?view=diagnostics');
+    await act(async () => {
+      root.render(createElement(NetworkWorkspace));
+    });
+    await settle();
+    expect(useMapStore.getState().view).toBe('DIAGNOSTICS');
+    expect(container.querySelector('#diagnostics')).not.toBeNull();
+    expect(container.querySelector('#canvas')).toBeNull();
+  });
+
+  it('aceita o alias em portugues ?view=diagnostico', async () => {
+    window.history.replaceState(null, '', '/?view=diagnostico');
+    await act(async () => {
+      root.render(createElement(NetworkWorkspace));
+    });
+    await settle();
+    expect(useMapStore.getState().view).toBe('DIAGNOSTICS');
+    expect(container.querySelector('#diagnostics')).not.toBeNull();
   });
 
   it('sem query param continua abrindo o mapa', async () => {

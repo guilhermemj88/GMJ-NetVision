@@ -82,7 +82,7 @@ afterEach(() => {
 
 describe('VSI diagnose action', () => {
   it('exige janela one-shot: sem armar nao dispara nada', async () => {
-    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" />));
+    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled />));
     expect(fetch).not.toHaveBeenCalled();
     expect(button('Preparar janela')).toBeDefined();
     const diagnostico = button('Diagnosticar') as HTMLButtonElement;
@@ -92,7 +92,7 @@ describe('VSI diagnose action', () => {
   });
 
   it('arma a janela, mostra a contagem e envia approvalId no diagnostico', async () => {
-    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" />));
+    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled />));
     await armar();
     expect(fetch).toHaveBeenCalledWith(APPROVAL_URL, expect.objectContaining({ method: 'POST' }));
     expect(container.textContent).toContain('Janela one-shot válida');
@@ -120,7 +120,7 @@ describe('VSI diagnose action', () => {
         'AAA = NOT_VERIFIED',
       ],
     };
-    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" />));
+    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled />));
     expect(fetch).not.toHaveBeenCalled();
     await armar();
     await diagnosticar();
@@ -134,7 +134,7 @@ describe('VSI diagnose action', () => {
   it('shows progress, cancellation and the native completed result without automatic device actions', async () => {
     vi.useFakeTimers();
     nextResult = { ...result, state: 'RUNNING', stage: 'Coletando PE remoto' };
-    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" />));
+    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled />));
     await armar();
     await diagnosticar();
     expect(container.textContent).toContain('Coletando PE remoto');
@@ -172,7 +172,7 @@ describe('VSI diagnose action', () => {
         },
       ],
     };
-    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" />));
+    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled />));
     await armar();
     await diagnosticar();
     expect(container.textContent).toContain('UNDERLAY_REACHABLE');
@@ -183,7 +183,7 @@ describe('VSI diagnose action', () => {
   });
 
   it('does not execute on mount, sends host/VSI in the URL and never a free-form body', async () => {
-    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" />));
+    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled />));
     expect(fetch).not.toHaveBeenCalled();
     await armar();
     await diagnosticar();
@@ -210,15 +210,50 @@ describe('VSI diagnose action', () => {
         },
       ],
     };
-    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" />));
+    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled />));
     await armar();
     await diagnosticar();
     expect(container.querySelector('script')).toBeNull();
     expect(container.querySelector('pre')?.textContent).toBe('<script>alert(1)</script>');
   });
 
+  it('com recurso desativado mostra o estado e nao dispara nenhuma request', async () => {
+    await act(async () =>
+      root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled={false} />),
+    );
+    expect(container.textContent).toContain('Diagnóstico VSI desativado');
+    for (const label of ['Preparar janela', 'Diagnosticar']) {
+      expect((button(label) as HTMLButtonElement).disabled).toBe(true);
+    }
+    await act(async () => (button('Preparar janela') as HTMLButtonElement).click());
+    await act(async () => (button('Diagnosticar') as HTMLButtonElement).click());
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('sem permissao de armar a janela o botao fica bloqueado', async () => {
+    await act(async () =>
+      root.render(
+        <VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled canArm={false} />,
+      ),
+    );
+    expect((button('Preparar janela') as HTMLButtonElement).disabled).toBe(true);
+    expect((button('Diagnosticar') as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => (button('Preparar janela') as HTMLButtonElement).click());
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('janela expirada desabilita o diagnostico', async () => {
+    vi.mocked(fetch).mockImplementationOnce(async () =>
+      Response.json({ ...approval(), expiresAt: new Date(Date.now() - 1_000).toISOString() }),
+    );
+    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled />));
+    await armar();
+    expect((button('Diagnosticar') as HTMLButtonElement).disabled).toBe(true);
+    expect(container.textContent).not.toContain('Janela one-shot válida');
+  });
+
   it('descarta a janela quando a execucao falha (fail-closed)', async () => {
-    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" />));
+    await act(async () => root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled />));
     vi.mocked(fetch).mockImplementationOnce(async () => Response.json(approval()));
     vi.mocked(fetch).mockImplementationOnce(async () =>
       Response.json({ message: 'Aprovacao expirada' }, { status: 423 }),

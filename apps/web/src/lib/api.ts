@@ -640,6 +640,13 @@ export function pollHost(hostId: string): Promise<HostPollResult> {
   });
 }
 
+export interface VsiDiagnosticStatus {
+  diagnosticEnabled: boolean;
+  diagnosticTrust: 'AVAILABLE' | 'UNAVAILABLE';
+}
+export function getVsiDiagnosticStatus(): Promise<VsiDiagnosticStatus> {
+  return request<VsiDiagnosticStatus>('/api/diagnostics/status');
+}
 export function getHostMpls(
   hostId: string,
   publicToken?: string | null,
