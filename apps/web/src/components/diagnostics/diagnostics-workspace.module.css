@@ -4,7 +4,9 @@
   gap: 20px;
   padding: 24px;
   overflow-y: auto;
-  height: 100%;
+  height: calc(100dvh - var(--topbar-height));
+  min-width: 0;
+  overscroll-behavior: contain;
 }
 .header h1 {
   margin: 0 0 4px;
@@ -16,6 +18,7 @@
   font-size: 13px;
 }
 .module {
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -38,6 +41,8 @@
   gap: 16px;
 }
 .selectors label {
+  min-width: 0;
+  flex: 1 1 260px;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -47,7 +52,8 @@
   opacity: 0.78;
 }
 .selectors select {
-  min-width: 260px;
+  min-width: 0;
+  width: 100%;
   padding: 7px 10px;
   border-radius: 8px;
   border: 1px solid rgba(148, 163, 184, 0.35);
@@ -88,4 +94,16 @@
   margin: 0;
   font-size: 12px;
   opacity: 0.6;
+}
+@media (max-width: 720px), (max-height: 500px) {
+  .workspace {
+    padding: 12px;
+    gap: 12px;
+  }
+  .module {
+    padding: 12px;
+  }
+  .selectors select {
+    min-height: 44px;
+  }
 }

@@ -16,7 +16,7 @@
  *  - em ambos, estados operacionais anômalos mantêm tracejado e cor semântica.
  */
 
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { useLinkV2StyleMode } from '@/lib/map-visual-v2-style';
 import {
   LINK_V2_ANIMATION_LABELS,
@@ -34,7 +34,11 @@ const STATE_ITEMS: readonly StateItem[] = [
   { label: 'DOWN', state: 'down', color: 'var(--wm-state-down)' },
   { label: 'Sem dados', state: 'no-data', color: 'var(--wm-state-no-data)' },
   { label: 'Stale', state: 'stale', color: 'var(--wm-state-stale)' },
-  { label: 'Inconsistente / parcial', state: 'inconsistent', color: 'var(--wm-state-inconsistent)' },
+  {
+    label: 'Inconsistente / parcial',
+    state: 'inconsistent',
+    color: 'var(--wm-state-inconsistent)',
+  },
 ];
 
 const OPERATIONAL_ITEMS = [
@@ -44,6 +48,7 @@ const OPERATIONAL_ITEMS = [
 ] as const;
 
 export function MapV2Legend({ animation }: { animation: LinkV2AnimationMode }) {
+  const [expanded, setExpanded] = useState(false);
   const style = useLinkV2StyleMode();
   const operational = style === 'operational';
 
@@ -51,82 +56,96 @@ export function MapV2Legend({ animation }: { animation: LinkV2AnimationMode }) {
     <div
       className="map-v2-legend"
       data-link-style={style}
+      data-expanded={expanded}
       role="note"
       aria-label="Legenda dos enlaces (V2)"
     >
-      {operational ? (
-        <>
-          <span className="map-v2-legend__item map-v2-legend__item--center">
-            WeatherMap: cor = utilização de cada sentido
-          </span>
-          <span className="map-v2-legend__item" data-direction="a2b">
-            <i className="is-solid" />
-            A→B (seta cheia)
-          </span>
-          <span className="map-v2-legend__item" data-direction="b2a">
-            <i className="is-chevron" />
-            B→A (chevron)
-          </span>
-        </>
-      ) : (
-        <>
-          <span className="map-v2-legend__item" data-direction="a2b">
-            <i className="is-solid" />
-            Direcional: A→B ciano (seta cheia)
-          </span>
-          <span className="map-v2-legend__item" data-direction="b2a">
-            <i className="is-chevron" />
-            B→A roxa (chevron)
-          </span>
-          <span className="map-v2-legend__item map-v2-legend__item--center">
-            <i className="is-center" />
-            sentidos se encontram no centro
-          </span>
-        </>
-      )}
-      <span className="map-v2-legend__sep" aria-hidden="true" />
-      {operational ? (
-        OPERATIONAL_ITEMS.map((item) => (
-          <span className="map-v2-legend__item" key={item.key} data-op-band={item.key}>
-            <i style={{ '--wm-color': item.token } as CSSProperties} />
+      <button
+        className="map-v2-legend__toggle"
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded(!expanded)}
+      >
+        {expanded ? 'Fechar legenda' : 'Legenda dos enlaces'}
+      </button>
+      <div className="map-v2-legend__content">
+        {operational ? (
+          <>
+            <span className="map-v2-legend__item map-v2-legend__item--center">
+              WeatherMap: cor = utilização de cada sentido
+            </span>
+            <span className="map-v2-legend__item" data-direction="a2b">
+              <i className="is-solid" />
+              A→B (seta cheia)
+            </span>
+            <span className="map-v2-legend__item" data-direction="b2a">
+              <i className="is-chevron" />
+              B→A (chevron)
+            </span>
+          </>
+        ) : (
+          <>
+            <span className="map-v2-legend__item" data-direction="a2b">
+              <i className="is-solid" />
+              Direcional: A→B ciano (seta cheia)
+            </span>
+            <span className="map-v2-legend__item" data-direction="b2a">
+              <i className="is-chevron" />
+              B→A roxa (chevron)
+            </span>
+            <span className="map-v2-legend__item map-v2-legend__item--center">
+              <i className="is-center" />
+              sentidos se encontram no centro
+            </span>
+          </>
+        )}
+        <span className="map-v2-legend__sep" aria-hidden="true" />
+        {operational ? (
+          OPERATIONAL_ITEMS.map((item) => (
+            <span className="map-v2-legend__item" key={item.key} data-op-band={item.key}>
+              <i style={{ '--wm-color': item.token } as CSSProperties} />
+              {item.label}
+            </span>
+          ))
+        ) : (
+          <>
+            <span className="map-v2-legend__item" data-pill="normal">
+              <i className="is-pill is-normal" />
+              &lt;50% na cor do sentido
+            </span>
+            <span className="map-v2-legend__item" data-pill="attention">
+              <i
+                className="is-pill"
+                style={{ '--wm-color': 'var(--wm-util-attention)' } as CSSProperties}
+              />
+              50–79% âmbar
+            </span>
+            <span className="map-v2-legend__item" data-pill="critical">
+              <i
+                className="is-pill"
+                style={{ '--wm-color': 'var(--wm-util-critical)' } as CSSProperties}
+              />
+              ≥80% crítico
+            </span>
+          </>
+        )}
+        <span className="map-v2-legend__sep" aria-hidden="true" />
+        {STATE_ITEMS.map((item) => (
+          <span className="map-v2-legend__item" key={item.state} data-state={item.state}>
+            <i className="is-dashed" style={{ '--wm-color': item.color } as CSSProperties} />
             {item.label}
           </span>
-        ))
-      ) : (
-        <>
-          <span className="map-v2-legend__item" data-pill="normal">
-            <i className="is-pill is-normal" />
-            &lt;50% na cor do sentido
-          </span>
-          <span className="map-v2-legend__item" data-pill="attention">
-            <i className="is-pill" style={{ '--wm-color': 'var(--wm-util-attention)' } as CSSProperties} />
-            50–79% âmbar
-          </span>
-          <span className="map-v2-legend__item" data-pill="critical">
-            <i className="is-pill" style={{ '--wm-color': 'var(--wm-util-critical)' } as CSSProperties} />
-            ≥80% crítico
-          </span>
-        </>
-      )}
-      <span className="map-v2-legend__sep" aria-hidden="true" />
-      {STATE_ITEMS.map((item) => (
-        <span className="map-v2-legend__item" key={item.state} data-state={item.state}>
-          <i
-            className="is-dashed"
-            style={{ '--wm-color': item.color } as CSSProperties}
-          />
-          {item.label}
+        ))}
+        <span className="map-v2-legend__sep" aria-hidden="true" />
+        <span className="map-v2-legend__flow" data-mode={animation}>
+          <span aria-hidden="true" />
+          <small style={{ fontSize: 9, color: '#647882' }}>ANIMAÇÃO</small>
+          <strong style={{ fontWeight: 620, color: '#93a7b1' }}>
+            {LINK_V2_ANIMATION_LABELS[animation]}
+          </strong>
+          <span aria-hidden="true" />
         </span>
-      ))}
-      <span className="map-v2-legend__sep" aria-hidden="true" />
-      <span className="map-v2-legend__flow" data-mode={animation}>
-        <span aria-hidden="true" />
-        <small style={{ fontSize: 9, color: '#647882' }}>ANIMAÇÃO</small>
-        <strong style={{ fontWeight: 620, color: '#93a7b1' }}>
-          {LINK_V2_ANIMATION_LABELS[animation]}
-        </strong>
-        <span aria-hidden="true" />
-      </span>
+      </div>
     </div>
   );
 }

@@ -1,8 +1,10 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { IBM_Plex_Mono, Inter } from 'next/font/google';
 import '@xyflow/react/dist/style.css';
 import './globals.css';
 import './physical-preview.css';
+import './responsive-content.css';
+import './responsive.css';
 import { Providers } from './providers';
 import { PreviewBanner } from '@/components/preview-banner';
 import { isPreviewMode } from '@/lib/preview-mode';
@@ -13,6 +15,8 @@ const mono = IBM_Plex_Mono({
   weight: ['400', '500', '600'],
   variable: '--font-mono',
 });
+
+export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' };
 
 export const metadata: Metadata = {
   title: 'GMJ NetVision',

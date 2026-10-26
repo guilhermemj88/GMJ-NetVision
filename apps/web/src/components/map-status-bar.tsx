@@ -27,6 +27,7 @@ function useNow(intervalMs = 1000): number {
  * alto, alarmes ativos e o recorte de camada/vizinhança aplicado.
  */
 export function MapStatusBar({ focus }: { focus: MapFocusView }) {
+  const [expanded, setExpanded] = useState(false);
   const map = useMapStore((state) => state.map);
   const layerFilter = useMapStore((state) => state.layerFilter);
   const focusHops = useMapStore((state) => state.focusHops);
@@ -45,42 +46,57 @@ export function MapStatusBar({ focus }: { focus: MapFocusView }) {
       : null;
 
   return (
-    <div className="map-statusbar" role="status" aria-label="Status do mapa">
-      <span className="map-statusbar__label">EQUIPAMENTOS</span>
-      <span className="map-statusbar__item map-statusbar__item--up">
-        <b>{stats.devicesUp}</b> UP
-      </span>
-      <span className="map-statusbar__item map-statusbar__item--warning">
-        <b>{stats.devicesWarning}</b> WARN
-      </span>
-      <span className="map-statusbar__item map-statusbar__item--down">
-        <b>{stats.devicesDown}</b> DOWN
-      </span>
-      <span className="map-statusbar__sep" aria-hidden="true" />
-      <span className="map-statusbar__label">ENLACES</span>
-      <span className="map-statusbar__item">
-        <b>{stats.links}</b> total
-      </span>
-      <span className="map-statusbar__item map-statusbar__item--down">
-        <b>{stats.linksDown}</b> down
-      </span>
-      <span className="map-statusbar__item map-statusbar__item--warning">
-        <b>{stats.linksHighUtilization}</b> ≥70%
-      </span>
-      <span className="map-statusbar__sep" aria-hidden="true" />
-      <span className="map-statusbar__item map-statusbar__item--info">
-        <b>{stats.alarms}</b> alarme(s)
-      </span>
-      <span className="map-statusbar__sep" aria-hidden="true" />
-      <span className="map-statusbar__label">
-        {layerFilter === 'ALL' ? 'CAMADA: TODOS' : `CAMADA: ${layerFilter}`}
-        {focusHops > 0 && selectionLabel ? ` · ${focusHops} HOP (${selectionLabel})` : ''}
-        {focus.dimmedTotal > 0 ? ` · ${focus.dimmedTotal} ATENUADO(S)` : ''}
-      </span>
-      <span className="map-statusbar__sep" aria-hidden="true" />
-      <span className="map-statusbar__label" title={collectionStamp ?? undefined}>
-        {age ? `COLETA: ${age}` : 'SEM CARIMBO DE COLETA'}
-      </span>
+    <div
+      className="map-statusbar"
+      role="status"
+      aria-label="Status do mapa"
+      data-expanded={expanded}
+    >
+      <button
+        className="map-statusbar__toggle"
+        type="button"
+        aria-expanded={expanded}
+        onClick={() => setExpanded(!expanded)}
+      >
+        {expanded ? 'Fechar status' : 'Status do mapa'}
+      </button>
+      <div className="map-statusbar__content">
+        <span className="map-statusbar__label">EQUIPAMENTOS</span>
+        <span className="map-statusbar__item map-statusbar__item--up">
+          <b>{stats.devicesUp}</b> UP
+        </span>
+        <span className="map-statusbar__item map-statusbar__item--warning">
+          <b>{stats.devicesWarning}</b> WARN
+        </span>
+        <span className="map-statusbar__item map-statusbar__item--down">
+          <b>{stats.devicesDown}</b> DOWN
+        </span>
+        <span className="map-statusbar__sep" aria-hidden="true" />
+        <span className="map-statusbar__label">ENLACES</span>
+        <span className="map-statusbar__item">
+          <b>{stats.links}</b> total
+        </span>
+        <span className="map-statusbar__item map-statusbar__item--down">
+          <b>{stats.linksDown}</b> down
+        </span>
+        <span className="map-statusbar__item map-statusbar__item--warning">
+          <b>{stats.linksHighUtilization}</b> ≥70%
+        </span>
+        <span className="map-statusbar__sep" aria-hidden="true" />
+        <span className="map-statusbar__item map-statusbar__item--info">
+          <b>{stats.alarms}</b> alarme(s)
+        </span>
+        <span className="map-statusbar__sep" aria-hidden="true" />
+        <span className="map-statusbar__label">
+          {layerFilter === 'ALL' ? 'CAMADA: TODOS' : `CAMADA: ${layerFilter}`}
+          {focusHops > 0 && selectionLabel ? ` · ${focusHops} HOP (${selectionLabel})` : ''}
+          {focus.dimmedTotal > 0 ? ` · ${focus.dimmedTotal} ATENUADO(S)` : ''}
+        </span>
+        <span className="map-statusbar__sep" aria-hidden="true" />
+        <span className="map-statusbar__label" title={collectionStamp ?? undefined}>
+          {age ? `COLETA: ${age}` : 'SEM CARIMBO DE COLETA'}
+        </span>
+      </div>
     </div>
   );
 }

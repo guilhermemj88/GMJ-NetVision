@@ -70,6 +70,7 @@ export function DiagnosticsWorkspace() {
           <label>
             Equipamento
             <select
+              aria-label="Equipamento"
               value={hostId}
               onChange={(event) => {
                 setHostId(event.target.value);
@@ -87,6 +88,7 @@ export function DiagnosticsWorkspace() {
           <label>
             VSI
             <select
+              aria-label="VSI"
               value={vsiId}
               onChange={(event) => setVsiId(event.target.value)}
               disabled={!hostId || vsis.length === 0}

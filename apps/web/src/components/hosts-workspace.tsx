@@ -184,9 +184,9 @@ export function HostsWorkspace() {
   const [origin, setOrigin] = useState<HostOrigin | 'ALL'>('ALL');
   const [source, setSource] = useState<SourceKind | 'ALL'>('ALL');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
-  const [sort, setSort] = useState<'severity' | 'hostname' | 'managementIp' | 'vendor' | 'updatedAt'>(
-    'severity',
-  );
+  const [sort, setSort] = useState<
+    'severity' | 'hostname' | 'managementIp' | 'vendor' | 'updatedAt'
+  >('severity');
   const [descending, setDescending] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(hostDetailRequest);
   const [editing, setEditing] = useState<HostRecord | 'new' | null>(null);
@@ -285,7 +285,11 @@ export function HostsWorkspace() {
         subtitle="Equipamentos monitorados e não monitorados, independentemente dos mapas."
         meta={
           <>
-            <MetaFact icon={<Network size={12} />} value={hostsQuery.data?.length ?? 0} label="hosts" />
+            <MetaFact
+              icon={<Network size={12} />}
+              value={hostsQuery.data?.length ?? 0}
+              label="hosts"
+            />
             <MetaFact
               icon={<TriangleAlert size={12} />}
               value={(hostsQuery.data ?? []).filter((host) => host.status === 'WARNING').length}
@@ -308,12 +312,12 @@ export function HostsWorkspace() {
         }
         actions={
           <>
-          <Button variant="secondary" onClick={() => setImportOpen(true)}>
-            <CloudDownload size={15} /> Importar do Zabbix
-          </Button>
-          <Button variant="primary" onClick={() => setEditing('new')}>
-            <CirclePlus size={15} /> Adicionar host
-          </Button>
+            <Button variant="secondary" onClick={() => setImportOpen(true)}>
+              <CloudDownload size={15} /> Importar do Zabbix
+            </Button>
+            <Button variant="primary" onClick={() => setEditing('new')}>
+              <CirclePlus size={15} /> Adicionar host
+            </Button>
           </>
         }
       />
@@ -376,6 +380,49 @@ export function HostsWorkspace() {
           {hosts.length} / {hostsQuery.data?.length ?? 0}
         </span>
       </section>
+
+      {/*
+        Celular: lista de cards no lugar da tabela. A tabela continua sendo o
+        layout do tablet e do desktop. O card traz so o que decide alguma coisa
+        (identidade, estado, IP, modelo, tipo e a ultima coleta); o resto vive
+        no drawer de detalhes.
+      */}
+      <ul className="hosts-cards" aria-label="Equipamentos monitorados">
+        {hosts.map((host) => (
+          <li key={host.id}>
+            <button
+              type="button"
+              className={`hosts-card${selectedId === host.id ? ' is-selected' : ''}`}
+              onClick={() => setSelectedId(host.id)}
+            >
+              <span className="hosts-card__top">
+                <strong>{host.hostname}</strong>
+                <StatusPill status={host.status} size="sm" />
+              </span>
+              <span className="hosts-card__name">{host.displayName}</span>
+              <span className="hosts-card__grid">
+                <span>
+                  <span className="hosts-card__label">Gerenciamento</span>
+                  {host.managementIp || 'sem IP'}
+                </span>
+                <span>
+                  <span className="hosts-card__label">Modelo</span>
+                  {[host.vendor, host.model].filter(Boolean).join(' ') || '—'}
+                </span>
+                <span>
+                  <span className="hosts-card__label">Tipo</span>
+                  {host.deviceType}
+                </span>
+                <span>
+                  <span className="hosts-card__label">Última coleta</span>
+                  {dateText(host.lastPollingAt)}
+                </span>
+              </span>
+              <ChevronRight className="hosts-card__chevron" size={16} aria-hidden="true" />
+            </button>
+          </li>
+        ))}
+      </ul>
 
       <section className="hosts-table-wrap">
         <table className="hosts-table">
@@ -692,13 +739,13 @@ function HostDetail({
                 <dt>Status</dt>
                 <dd>{host.status}</dd>
               </div>
-              {host.detectedHostname
-                && host.detectedHostname.toLowerCase() !== host.hostname.toLowerCase() && (
-                <div>
-                  <dt>sysName detectado</dt>
-                  <dd>{host.detectedHostname} (hostname cadastrado preservado)</dd>
-                </div>
-              )}
+              {host.detectedHostname &&
+                host.detectedHostname.toLowerCase() !== host.hostname.toLowerCase() && (
+                  <div>
+                    <dt>sysName detectado</dt>
+                    <dd>{host.detectedHostname} (hostname cadastrado preservado)</dd>
+                  </div>
+                )}
               <div>
                 <dt>Mapas</dt>
                 <dd>{host.mapCount}</dd>
@@ -732,7 +779,9 @@ function HostDetail({
                   </div>
                   <div>
                     <dt>Admin / Oper</dt>
-                    <dd>{networkInterface.adminStatus} / {networkInterface.operStatus}</dd>
+                    <dd>
+                      {networkInterface.adminStatus} / {networkInterface.operStatus}
+                    </dd>
                   </div>
                   <div>
                     <dt>Velocidade</dt>
@@ -740,22 +789,33 @@ function HostDetail({
                   </div>
                   <div>
                     <dt>RX / TX</dt>
-                    <dd>{formatBitsPerSecond(networkInterface.rxBps)} / {formatBitsPerSecond(networkInterface.txBps)}</dd>
+                    <dd>
+                      {formatBitsPerSecond(networkInterface.rxBps)} /{' '}
+                      {formatBitsPerSecond(networkInterface.txBps)}
+                    </dd>
                   </div>
                   <div>
                     <dt>Erros RX / TX agora</dt>
-                    <dd>{networkInterface.rxErrors} / {networkInterface.txErrors}</dd>
+                    <dd>
+                      {networkInterface.rxErrors} / {networkInterface.txErrors}
+                    </dd>
                   </div>
                   <div>
                     <dt>Descartes RX / TX agora</dt>
-                    <dd>{networkInterface.rxDiscards} / {networkInterface.txDiscards}</dd>
+                    <dd>
+                      {networkInterface.rxDiscards} / {networkInterface.txDiscards}
+                    </dd>
                   </div>
                   <div>
                     <dt>Óptico RX / TX</dt>
                     <dd>
-                      {networkInterface.rxPowerDbm == null ? 'N/D' : `${networkInterface.rxPowerDbm.toFixed(2)} dBm`}
+                      {networkInterface.rxPowerDbm == null
+                        ? 'N/D'
+                        : `${networkInterface.rxPowerDbm.toFixed(2)} dBm`}
                       {' / '}
-                      {networkInterface.txPowerDbm == null ? 'N/D' : `${networkInterface.txPowerDbm.toFixed(2)} dBm`}
+                      {networkInterface.txPowerDbm == null
+                        ? 'N/D'
+                        : `${networkInterface.txPowerDbm.toFixed(2)} dBm`}
                     </dd>
                   </div>
                   <div>

@@ -1,7 +1,12 @@
 .panel {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
   gap: 12px;
   padding: 12px 0;
+}
+.panel > * {
+  min-width: 0;
 }
 .panel p {
   overflow-wrap: anywhere;

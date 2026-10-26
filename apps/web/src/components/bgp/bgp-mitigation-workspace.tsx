@@ -181,9 +181,19 @@ export function BgpMitigationWorkspace() {
     queryFn: getMitigationProfiles,
   });
   const [reviewOpen, setReviewOpen] = useState(false);
-  const telemetry = useQuery({ queryKey: ['mitigation', 'telemetry'], queryFn: getMitigationTelemetry, retry: false, refetchInterval: 10_000 });
-  const telemetryEntries = new Map((telemetry.data?.entries ?? []).map(d => [d.profileId, d]));
-  const fastBridge = useQuery({ queryKey: ['mitigation', 'fast-bridge'], queryFn: getMitigationFastBridge, retry: false, refetchInterval: 2000 });
+  const telemetry = useQuery({
+    queryKey: ['mitigation', 'telemetry'],
+    queryFn: getMitigationTelemetry,
+    retry: false,
+    refetchInterval: 10_000,
+  });
+  const telemetryEntries = new Map((telemetry.data?.entries ?? []).map((d) => [d.profileId, d]));
+  const fastBridge = useQuery({
+    queryKey: ['mitigation', 'fast-bridge'],
+    queryFn: getMitigationFastBridge,
+    retry: false,
+    refetchInterval: 2000,
+  });
   /**
    * AUTO-ALL-PREP-1: relatorio de SOMBRA do motor AUTO (somente leitura).
    * Falha aqui nunca quebra o painel: os indicadores de sombra mostram "—".
@@ -229,7 +239,10 @@ export function BgpMitigationWorkspace() {
   const notReadyCount = rows.filter(
     (row) => snapshotBadgeOf(row) === null && row.readiness === 'NOT_READY',
   ).length;
-  const sshHosts = useMemo(() => (hosts.data ?? []).filter((host) => host.sshEnabled), [hosts.data]);
+  const sshHosts = useMemo(
+    () => (hosts.data ?? []).filter((host) => host.sshEnabled),
+    [hosts.data],
+  );
 
   const discoveryMutation = useMutation({
     mutationFn: (target: string) => discoverMitigationProfiles({ deviceId: target }),
@@ -444,16 +457,18 @@ export function BgpMitigationWorkspace() {
     states.reduce((total, state) => total + (runtimeCounts.counts.get(state) ?? 0), 0);
   const countsComplete =
     countsReady && (serverProfileCounts === null || serverProfileCounts.total === rows.length);
-  const countsHint = countsReady && !countsComplete
-    ? 'Contagem referente aos perfis carregados nesta tela (leitura parcial).'
-    : undefined;
+  const countsHint =
+    countsReady && !countsComplete
+      ? 'Contagem referente aos perfis carregados nesta tela (leitura parcial).'
+      : undefined;
   const mitigatedCount = countRuntimeStates('MITIGATED');
   const activatingCount = countRuntimeStates('MITIGATING');
   const recoveringCount = countRuntimeStates('RECOVERING', 'RECOVERY_PENDING');
   const triggerPendingCount = countRuntimeStates('TRIGGER_PENDING');
   const attentionCount = countRuntimeStates('FAILED', 'RECONCILIATION_REQUIRED');
   const interfacesCount = useMemo(
-    () => new Set(rows.map((row) => row.interfaceId).filter((id): id is string => Boolean(id))).size,
+    () =>
+      new Set(rows.map((row) => row.interfaceId).filter((id): id is string => Boolean(id))).size,
     [rows],
   );
   const devicesCount = useMemo(() => new Set(rows.map((row) => row.deviceId)).size, [rows]);
@@ -465,9 +480,15 @@ export function BgpMitigationWorkspace() {
     }),
     [rows],
   );
-  const profileCounts = serverProfileCounts ??
+  const profileCounts =
+    serverProfileCounts ??
     (profilesLoaded && rows.length > 0
-      ? { total: rows.length, auto: modeCounts.auto, alertOnly: modeCounts.alertOnly, disabled: modeCounts.disabled }
+      ? {
+          total: rows.length,
+          auto: modeCounts.auto,
+          alertOnly: modeCounts.alertOnly,
+          disabled: modeCounts.disabled,
+        }
       : null);
   const autoProfiles = useMemo(() => rows.filter((row) => row.mode === 'AUTO'), [rows]);
   /**
@@ -488,7 +509,9 @@ export function BgpMitigationWorkspace() {
     [rows, tableFilter],
   );
   const filterCount = (filter: MitigationTableFilter): number =>
-    filter === 'ALL' ? rows.length : rows.filter((row) => matchesMitigationFilter(row, filter)).length;
+    filter === 'ALL'
+      ? rows.length
+      : rows.filter((row) => matchesMitigationFilter(row, filter)).length;
 
   function runCommand(
     action: MitigationCommandAction,
@@ -505,10 +528,7 @@ export function BgpMitigationWorkspace() {
 
   return (
     <section className="mitigation-shell" aria-label="Mitigação DDoS">
-      <div
-        className={`mitigation-banner mitigation-banner--${engineStatus.tone}`}
-        role="status"
-      >
+      <div className={`mitigation-banner mitigation-banner--${engineStatus.tone}`} role="status">
         <span className="mitigation-banner__title">{engineStatus.title}</span>
         <span className="mitigation-banner__text">{engineStatus.text}</span>
       </div>
@@ -545,19 +565,27 @@ export function BgpMitigationWorkspace() {
           label="em ativação"
           value={countsReady ? activatingCount : '—'}
           tone={countsReady && activatingCount > 0 ? 'warning' : 'neutral'}
-          title={countsHint ?? 'Perfis com runtime MITIGATING (ativação em andamento no equipamento).'}
+          title={
+            countsHint ?? 'Perfis com runtime MITIGATING (ativação em andamento no equipamento).'
+          }
         />
         <MetaFact
           label="retirada/recuperação"
           value={countsReady ? recoveringCount : '—'}
           tone={countsReady && recoveringCount > 0 ? 'info' : 'neutral'}
-          title={countsHint ?? 'Perfis com runtime RECOVERING ou RECOVERY_PENDING (fora do total de mitigados).'}
+          title={
+            countsHint ??
+            'Perfis com runtime RECOVERING ou RECOVERY_PENDING (fora do total de mitigados).'
+          }
         />
         <MetaFact
           label="aguardando gatilho"
           value={countsReady ? triggerPendingCount : '—'}
           tone="neutral"
-          title={countsHint ?? 'Perfis com runtime TRIGGER_PENDING (limite cruzado, ativação ainda não iniciada).'}
+          title={
+            countsHint ??
+            'Perfis com runtime TRIGGER_PENDING (limite cruzado, ativação ainda não iniciada).'
+          }
         />
         <MetaFact
           label="requer atenção"
@@ -607,7 +635,9 @@ export function BgpMitigationWorkspace() {
                 ? `${autoProfiles[0]!.customer ?? autoProfiles[0]!.interfaceName ?? '—'} · ${autoProfiles[0]!.addressFamily}`
                 : `${autoProfiles.length} perfis`
           }
-          tone={autoProfiles.some((profile) => profile.runtimeState === 'MITIGATED') ? 'up' : 'info'}
+          tone={
+            autoProfiles.some((profile) => profile.runtimeState === 'MITIGATED') ? 'up' : 'info'
+          }
           title={
             autoProfiles.length > 0
               ? autoProfiles
@@ -658,10 +688,16 @@ export function BgpMitigationWorkspace() {
           }
           tone={engine?.lastAutoActivateAt ? 'up' : 'info'}
         />
-        {engine?.lastError ? <MetaFact label="último erro" value={engine.lastError} tone="down" /> : null}
+        {engine?.lastError ? (
+          <MetaFact label="último erro" value={engine.lastError} tone="down" />
+        ) : null}
         <MetaFact
           label="worker externo"
-          value={health.data?.worker.state === 'READY' ? workerStateLabel(health.data.worker.state) : 'não implantado'}
+          value={
+            health.data?.worker.state === 'READY'
+              ? workerStateLabel(health.data.worker.state)
+              : 'não implantado'
+          }
           tone="neutral"
           title="Componente externo de reconciliação. O motor AUTO roda dentro da API e continua avaliando normalmente sem ele."
         />
@@ -720,8 +756,7 @@ export function BgpMitigationWorkspace() {
           disabled={!deviceId || discoveryMutation.isPending}
           onClick={() => discoveryMutation.mutate(deviceId)}
         >
-          <Search size={15} />{' '}
-          {discoveryMutation.isPending ? 'Descobrindo…' : 'DESCOBRIR CLIENTES'}
+          <Search size={15} /> {discoveryMutation.isPending ? 'Descobrindo…' : 'DESCOBRIR CLIENTES'}
         </Button>
         {discoveryMutation.isPending && (
           <span className="mitigation-loading" role="status">
@@ -739,10 +774,12 @@ export function BgpMitigationWorkspace() {
             <strong>{discovery.candidateInterfaces}</strong> interfaces candidatas
           </span>
           <span>
-            <strong>{discovery.ignoredNoBandwidth}</strong> interfaces ignoradas por não possuir banda
+            <strong>{discovery.ignoredNoBandwidth}</strong> interfaces ignoradas por não possuir
+            banda
           </span>
           <span>
-            <strong>{discovery.createdProfiles + discovery.updatedProfiles}</strong> policies prontas
+            <strong>{discovery.createdProfiles + discovery.updatedProfiles}</strong> policies
+            prontas
           </span>
           <span>
             <strong>{discovery.blockedProfiles}</strong> não aptas
@@ -772,12 +809,17 @@ export function BgpMitigationWorkspace() {
       ) : rows.length === 0 ? (
         <div className="hosts-empty">
           <span>
-            Nenhum perfil de mitigação carregado. Use DESCOBRIR CLIENTES para analisar um equipamento.
+            Nenhum perfil de mitigação carregado. Use DESCOBRIR CLIENTES para analisar um
+            equipamento.
           </span>
         </div>
       ) : (
         <>
-          <div className="mitigation-toolbar" role="group" aria-label="Filtro de perfis de mitigação">
+          <div
+            className="mitigation-toolbar"
+            role="group"
+            aria-label="Filtro de perfis de mitigação"
+          >
             {MITIGATION_FILTERS.map((option) => (
               <Button
                 key={option.id}
@@ -804,129 +846,166 @@ export function BgpMitigationWorkspace() {
           <div className="hosts-table-wrap mitigation-table-wrap">
             <table className="mitigation-table">
               <caption className="mitigation-table__caption">
-                Perfis de mitigação — modo {engineStatus.modeLabel} · executor {engineStatus.executorLabel} ·
-                live write {engineStatus.liveWriteLabel}
+                Perfis de mitigação — modo {engineStatus.modeLabel} · executor{' '}
+                {engineStatus.executorLabel} · live write {engineStatus.liveWriteLabel}
                 {engineStatus.autoActive ? ' · mitigação automática armada' : ''}
               </caption>
-            <thead>
-              <tr>
-                <th scope="col">Estado</th>
-                <th scope="col">Mitigação</th>
-                <th scope="col">AUTO</th>
-                <th scope="col">AF</th>
-                <th scope="col">Cliente</th>
-                <th scope="col">Equipamento</th>
-                <th scope="col">Interface</th>
-                <th scope="col">Direção</th>
-                <th scope="col">Banda</th>
-                <th scope="col">Tráfego</th>
-                <th scope="col">Utilização</th>
-                <th scope="col">Decisão</th>
-                <th scope="col">Policy</th>
-                <th scope="col">Peers</th>
-                <th scope="col">Prefixos</th>
-                <th scope="col">Node</th>
-                <th scope="col">Ação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredRows.length === 0 ? (
+              <thead>
                 <tr>
-                  <td colSpan={17} className="mitigation-table__empty">
-                    Nenhum perfil neste filtro.
-                  </td>
+                  <th scope="col">Estado</th>
+                  <th scope="col">Mitigação</th>
+                  <th scope="col">AUTO</th>
+                  <th scope="col">AF</th>
+                  <th scope="col">Cliente</th>
+                  <th scope="col">Equipamento</th>
+                  <th scope="col">Interface</th>
+                  <th scope="col">Direção</th>
+                  <th scope="col">Banda</th>
+                  <th scope="col">Tráfego</th>
+                  <th scope="col">Utilização</th>
+                  <th scope="col">Decisão</th>
+                  <th scope="col">Policy</th>
+                  <th scope="col">Peers</th>
+                  <th scope="col">Prefixos</th>
+                  <th scope="col">Node</th>
+                  <th scope="col">Ação</th>
                 </tr>
-              ) : null}
-              {filteredRows.map((row) => {
-                const badge = snapshotBadgeOf(row);
-                const shadow = shadowEntries.get(row.id) ?? null;
-                const decision = autoDecisions.get(row.id) ?? null;
-                const diagnostic = telemetryEntries.get(row.id);
-                const direction = diagnostic ? diagnostic.direction : directionOf(row, shadow);
-                const utilization = utilizationPercent(
-                  row.effectiveBandwidthBps,
-                  shadow?.trafficBps ?? decision?.trafficBps ?? null,
-                );
-                return (
-                <tr
-                  key={row.id}
-                  className={
-                    badge ? 'is-pending' : row.readiness === 'READY' ? 'is-ready' : 'is-blocked'
-                  }
-                >
-                  <td>
-                    {badge ? (
-                      <span
-                        className={`mitigation-badge ${
-                          badge.tone === 'info' ? 'is-revalidando' : 'is-sem-snapshot'
-                        }`}
-                        title="Sem snapshot de discovery nesta sessão: nenhuma avaliação real até a reidratação concluir"
+              </thead>
+              <tbody>
+                {filteredRows.length === 0 ? (
+                  <tr>
+                    <td colSpan={17} className="mitigation-table__empty">
+                      Nenhum perfil neste filtro.
+                    </td>
+                  </tr>
+                ) : null}
+                {filteredRows.map((row) => {
+                  const badge = snapshotBadgeOf(row);
+                  const shadow = shadowEntries.get(row.id) ?? null;
+                  const decision = autoDecisions.get(row.id) ?? null;
+                  const diagnostic = telemetryEntries.get(row.id);
+                  const direction = diagnostic ? diagnostic.direction : directionOf(row, shadow);
+                  const utilization = utilizationPercent(
+                    row.effectiveBandwidthBps,
+                    shadow?.trafficBps ?? decision?.trafficBps ?? null,
+                  );
+                  return (
+                    <tr
+                      key={row.id}
+                      className={
+                        badge ? 'is-pending' : row.readiness === 'READY' ? 'is-ready' : 'is-blocked'
+                      }
+                    >
+                      <td data-label="Estado">
+                        {badge ? (
+                          <span
+                            className={`mitigation-badge ${
+                              badge.tone === 'info' ? 'is-revalidando' : 'is-sem-snapshot'
+                            }`}
+                            title="Sem snapshot de discovery nesta sessão: nenhuma avaliação real até a reidratação concluir"
+                          >
+                            {badge.label}
+                          </span>
+                        ) : (
+                          <span className={`mitigation-badge is-${row.readiness.toLowerCase()}`}>
+                            {readinessLabel(row.readiness)}
+                          </span>
+                        )}
+                      </td>
+                      <td data-label="Runtime">
+                        <RuntimeStateBadge state={row.runtimeState} />
+                      </td>
+                      <td
+                        data-label="Modo AUTO"
+                        title={
+                          diagnostic ? diagnostic.executionBlocks.join(', ') : autoStateTitleOf(row)
+                        }
                       >
-                        {badge.label}
-                      </span>
-                    ) : (
-                      <span className={`mitigation-badge is-${row.readiness.toLowerCase()}`}>
-                        {readinessLabel(row.readiness)}
-                      </span>
-                    )}
-                  </td>
-                  <td>
-                    <RuntimeStateBadge state={row.runtimeState} />
-                  </td>
-                  <td title={diagnostic ? diagnostic.executionBlocks.join(', ') : autoStateTitleOf(row)}>
-                    <span className={`mitigation-badge is-${autoStateToneOf(row)}`}>
-                      {diagnostic ? row.mode + ' · ' + (diagnostic.executionAuthorized ? 'VER AUTORIZAÇÃO' : 'BLOQUEADO') : autoStateLabel(row)}
-                    </span>
-                  </td>
-                  <td>
-                    {row.addressFamily === 'IPV6' ? 'IPv6' : 'IPv4'}
-                  </td>
-                  <td>
-                    {row.customer ?? '—'}
-                    {row.mitigationExcluded ? (
-                      <span className="mitigation-excluded-badge" title="Excluído da mitigação">
-                        🛡 Excluído da mitigação
-                      </span>
-                    ) : null}
-                  </td>
-                  <td>{row.deviceName}</td>
-                  <td>{row.interfaceName ?? '—'}</td>
-                  <td title={directionTitleOf(row, shadow)}>{direction ?? 'NÃO CONFIGURADA'}<small style={{ display: 'block' }}>{diagnostic?.directionSource ?? 'origem ausente'}</small></td>
-                  <td>{formatBandwidthBps(row.effectiveBandwidthBps)}</td>
-                  <td><MitigationTelemetryFacts entry={diagnostic} generatedAt={telemetry.data?.generatedAt} /><MitigationFastBridgeFacts profileId={row.id} report={fastBridge.data} /></td>
-                  <td>{formatPercent(utilization)}</td>
-                  <td title={decision?.detail ?? decision?.reason ?? ''}>
-                    {diagnostic?.blockedReason ? telemetryReasonLabel(diagnostic.blockedReason) : decision
-                      ? `${decision.outcome}${decision.reason ? ` · ${decision.reason}` : ''}`
-                      : '—'}
-                  </td>
-                  <td>{row.policyName ?? 'não encontrada'}</td>
-                  <td>{row.peerAddresses.length}</td>
-                  <td>
-                    {row.prefixCount === null
-                      ? `— / ${row.prefixLimit}`
-                      : `${row.prefixCount} / ${row.prefixLimit}`}
-                    {row.prefixStatus === 'UNKNOWN' ? (
-                      <small className="mitigation-prefix-unknown"> contagem indisponível</small>
-                    ) : null}
-                  </td>
-                  <td>{row.plannedNode ?? '—'}</td>
-                  <td>
-                    <Button compact variant="secondary" onClick={() => setSelectedId(row.id)}>
-                      DETALHES
-                    </Button>
-                  </td>
-                </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                        <span className={`mitigation-badge is-${autoStateToneOf(row)}`}>
+                          {diagnostic
+                            ? row.mode +
+                              ' · ' +
+                              (diagnostic.executionAuthorized ? 'VER AUTORIZAÇÃO' : 'BLOQUEADO')
+                            : autoStateLabel(row)}
+                        </span>
+                      </td>
+                      <td data-label="AF">{row.addressFamily === 'IPV6' ? 'IPv6' : 'IPv4'}</td>
+                      <td data-label="Cliente">
+                        {row.customer ?? '—'}
+                        {row.blockedReason && (
+                          <small className="mitigation-blocked-reason">
+                            {blockReasonLabel(row.blockedReason)}
+                          </small>
+                        )}
+                        {row.mitigationExcluded ? (
+                          <span className="mitigation-excluded-badge" title="Excluído da mitigação">
+                            🛡 Excluído da mitigação
+                          </span>
+                        ) : null}
+                      </td>
+                      <td data-label="Equipamento">{row.deviceName}</td>
+                      <td data-label="Interface">{row.interfaceName ?? '—'}</td>
+                      <td data-label="Direção" title={directionTitleOf(row, shadow)}>
+                        {direction ?? 'NÃO CONFIGURADA'}
+                        <small style={{ display: 'block' }}>
+                          {diagnostic?.directionSource ?? 'origem ausente'}
+                        </small>
+                      </td>
+                      <td data-label="Capacidade">
+                        {formatBandwidthBps(row.effectiveBandwidthBps)}
+                      </td>
+                      <td data-label="Tráfego">
+                        <MitigationTelemetryFacts
+                          entry={diagnostic}
+                          generatedAt={telemetry.data?.generatedAt}
+                        />
+                        <MitigationFastBridgeFacts profileId={row.id} report={fastBridge.data} />
+                      </td>
+                      <td data-label="Utilização">{formatPercent(utilization)}</td>
+                      <td data-label="Decisão" title={decision?.detail ?? decision?.reason ?? ''}>
+                        {diagnostic?.blockedReason
+                          ? telemetryReasonLabel(diagnostic.blockedReason)
+                          : decision
+                            ? `${decision.outcome}${decision.reason ? ` · ${decision.reason}` : ''}`
+                            : '—'}
+                      </td>
+                      <td data-label="Policy">{row.policyName ?? 'não encontrada'}</td>
+                      <td data-label="Peers">{row.peerAddresses.length}</td>
+                      <td data-label="Prefixos">
+                        {row.prefixCount === null
+                          ? `— / ${row.prefixLimit}`
+                          : `${row.prefixCount} / ${row.prefixLimit}`}
+                        {row.prefixStatus === 'UNKNOWN' ? (
+                          <small className="mitigation-prefix-unknown">
+                            {' '}
+                            contagem indisponível
+                          </small>
+                        ) : null}
+                      </td>
+                      <td data-label="Node">{row.plannedNode ?? '—'}</td>
+                      <td data-label="Ações">
+                        <Button compact variant="secondary" onClick={() => setSelectedId(row.id)}>
+                          DETALHES
+                        </Button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </>
       )}
 
-      <Button compact variant="secondary" onClick={() => setReviewOpen(v => !v)}>{reviewOpen ? 'FECHAR REVISÃO' : 'REVISAR PERFIS SEM DIREÇÃO'}</Button>
-      {reviewOpen && <MitigationDirectionReviewPanel profiles={rows.filter(p => !telemetryEntries.get(p.id)?.direction)} entries={telemetry.data?.entries ?? []} />}
+      <Button compact variant="secondary" onClick={() => setReviewOpen((v) => !v)}>
+        {reviewOpen ? 'FECHAR REVISÃO' : 'REVISAR PERFIS SEM DIREÇÃO'}
+      </Button>
+      {reviewOpen && (
+        <MitigationDirectionReviewPanel
+          profiles={rows.filter((p) => !telemetryEntries.get(p.id)?.direction)}
+          entries={telemetry.data?.entries ?? []}
+        />
+      )}
 
       {selected && (
         <aside
@@ -943,305 +1022,327 @@ export function BgpMitigationWorkspace() {
           </header>
 
           <div className="mitigation-drawer__body">
-          <div className="mitigation-detail__grid">
-            <div>
-              <span className="mitigation-detail__label">Cliente</span>
-              <strong>{selected.customer ?? '—'}</strong>
-            </div>
-            <div>
-              <span className="mitigation-detail__label">Equipamento</span>
-              <strong>{selected.deviceName}</strong>
-            </div>
-            <div>
-              <span className="mitigation-detail__label">Interface</span>
-              <strong>{selected.interfaceName ?? '—'}</strong>
-            </div>
-            <div>
-              <span className="mitigation-detail__label">Descrição</span>
-              <strong>{selected.interfaceDescription ?? '—'}</strong>
-            </div>
-          </div>
-
-          <div className="mitigation-detail__block mitigation-media-status">
-            <h4>NOTIFICAÇÕES</h4>
-            <p>
-              {mediaSummary.data
-                ? `n8n ${mediaSummary.data.configured ? '● configurado' : '○ não configurado'}`
-                : 'n8n — verificando…'}
-            </p>
-            <Button compact variant="secondary" onClick={() => setPanel('media')}>
-              CONFIGURAR MÍDIAS
-            </Button>
-          </div>
-
-          <div className="mitigation-detail__block">
-            <h4>BANDA</h4>
-            <p>Detectada: {formatBandwidthBps(selected.detectedBandwidthBps)}</p>
-            <p>
-              Override:{' '}
-              {selected.bandwidthOverrideBps === null
-                ? 'não configurado'
-                : formatBandwidthBps(selected.bandwidthOverrideBps)}
-            </p>
-            <p>Efetiva: {formatBandwidthBps(selected.effectiveBandwidthBps)}</p>
-            <Button compact variant="secondary" onClick={() => setOverrideOpen(true)}>
-              EDITAR OVERRIDE
-            </Button>
-          </div>
-
-          <MitigationTelemetryFacts entry={telemetryEntries.get(selected.id)} generatedAt={telemetry.data?.generatedAt} />
-          <MitigationFastBridgeFacts profileId={selected.id} report={fastBridge.data} />
-          <MitigationDirectionReviewPanel key={'direction-' + selected.id} profiles={[selected]} entries={telemetry.data?.entries ?? []} />
-
-          <div className="mitigation-detail__block">
-            <h4>AUTO POR DESCRIPTION</h4>
-            <p>Estado: {autoStateLabel(selected)}</p>
-            <p>
-              Autorização: {selected.autoPromotedBySweep ? 'sweep da DESCRIPTION (proveniência)' : 'manual/legado'}
-            </p>
-            <p>Desejado (banda válida na DESCRIPTION e sem exclusão): {selected.autoDesired ? 'sim' : 'não'}</p>
-            <p>Pronto (snapshot, readiness e nodes do par): {selected.autoReady ? 'sim' : 'não'}</p>
-            <p>Efetivo (motor autorizado a atuar): {selected.autoEffective ? 'sim' : 'não'}</p>
-            {selected.autoStateReason ? <p>Bloqueio: {selected.autoStateReason}</p> : null}
-            <p>Origem da banda: {selected.bandwidthSource ?? '—'}</p>
-            <p>
-              Direção do último gatilho:{' '}
-              {selectedShadow?.triggeredDirections?.length
-                ? selectedShadow.triggeredDirections.join(' + ')
-                : '—'}
-            </p>
-            <p>
-              RX (monitor): {formatBandwidthBps(selectedShadow?.trafficByDirection?.rx ?? null)} ·
-              TX (ação): {formatBandwidthBps(selectedShadow?.trafficByDirection?.tx ?? null)}
-            </p>
-            <Button
-              compact
-              variant="secondary"
-              disabled={!selected.persisted || autoExemptMutation.isPending}
-              title="Exceção manual: mantém o perfil em ALERT_ONLY (o sweep automático nunca promove)"
-              onClick={() =>
-                autoExemptMutation.mutate({
-                  id: selected.id,
-                  exempt: selected.autoModeExempt !== true,
-                })
-              }
-            >
-              {selected.autoModeExempt
-                ? 'REMOVER EXCEÇÃO ALERT_ONLY'
-                : 'MANTER EM ALERT_ONLY (EXCEÇÃO)'}
-            </Button>
-          </div>
-
-          <div className="mitigation-detail__block">
-            <h4>BGP</h4>
-            <p>Policy IN: {selected.policyName ?? 'não encontrada'}</p>
-            <p>Família: {selected.addressFamily}</p>
-            {selected.sharedPolicy && (
-              <div className="mitigation-shared-policy" role="status">
-                <strong>ATENÇÃO: esta policy é compartilhada.</strong>
-                <span>A alteração também afetaria:</span>
-                <ul>
-                  {selected.sharedPolicyTargets.map((target) => (
-                    <li key={`${target.interfaceId ?? 'sem'}-${target.peerAddress}`}>
-                      {target.customer ?? '—'} · {target.interfaceName ?? '—'} · Peer:{' '}
-                      {target.peerAddress}
-                    </li>
-                  ))}
-                </ul>
-                <small>
-                  Aviso, não bloqueio: o motor continua liberado, mas promover um destes
-                  perfis para AUTO exige confirmação explícita na API (SHARED_POLICY).
-                </small>
+            <div className="mitigation-detail__grid">
+              <div>
+                <span className="mitigation-detail__label">Cliente</span>
+                <strong>{selected.customer ?? '—'}</strong>
               </div>
-            )}
-            <p>Peer principal: {selected.primaryPeerAddress ?? '—'}</p>
-            <p>Peers afetados: {selected.peerAddresses.join(', ') || '—'}</p>
-            <p>
-              Prefixos:{' '}
-              {selected.prefixCount === null
-                ? `— / ${selected.prefixLimit}`
-                : `${selected.prefixCount} / ${selected.prefixLimit}`}
-            </p>
-            <p>Status: {prefixStatusLabel(selected.prefixStatus)}</p>
-            {selected.prefixStatus === 'UNKNOWN' ? (
-              <p className="mitigation-prefix-unknown">
-                Contagem indisponível — informativo: não bloqueia a mitigação.
-              </p>
-            ) : null}
-          </div>
-
-          <div className="mitigation-detail__block">
-            <h4>ROUTE-POLICY</h4>
-            <p>
-              Nodes existentes:{' '}
-              {selected.existingNodes.length ? selected.existingNodes.join(', ') : 'nenhum'}
-            </p>
-            <p>
-              Nodes de mitigação:{' '}
-              {selected.mitigationNodes.length ? selected.mitigationNodes.join(', ') : 'nenhum'}
-            </p>
-            <p>Node BOGONS planejado: {selected.plannedBogonNode ?? '—'}</p>
-            <p>Node mitigação planejado: {selected.plannedMitigationNode ?? selected.plannedNode ?? '—'}</p>
-            <p>Prefix-list BOGONS: {selected.bogonPrefixList ?? 'BOGONS'}</p>
-            <p>Prefix-list mitigação: {selected.targetPrefixList ?? 'PREFIX8to24'}</p>
-            <p>Node planejado (compat): {selected.plannedNode ?? '—'}</p>
-            <p>RT de mitigação: {selected.mitigationRt}</p>
-          </div>
-
-          <ExclusionEditor
-            key={selected.id}
-            row={selected}
-            saving={exclusionMutation.isPending}
-            onSave={(input) => exclusionMutation.mutate({ id: selected.id, ...input })}
-          />
-
-          <div className="mitigation-detail__block">
-            <h4>SITUAÇÃO</h4>
-            <p>
-              Estado:{' '}
-              {mitigationSnapshotBadge(selected.snapshotAvailable, hydrationState)?.label ??
-                readinessLabel(selected.readiness)}
-            </p>
-            {mitigationSnapshotBadge(selected.snapshotAvailable, hydrationState) ? (
-              <p className="mitigation-prefix-unknown">
-                Sem snapshot de discovery nesta sessão — nenhuma avaliação real até a
-                reidratação concluir.
-              </p>
-            ) : null}
-            <p>Runtime: {runtimeStateLabel(selected.runtimeState)}</p>
-            <p>Modo do perfil: {profileModeLabel(selected.mode)}</p>
-            {selected.blockedReason && <p>Motivo: {blockReasonLabel(selected.blockedReason)}</p>}
-            <div className="mitigation-mock-notice" role="status">
-              <strong>MODO DE EXECUÇÃO: SIMULAÇÃO / MOCK</strong>
-              <span>Nenhum comando será enviado ao equipamento.</span>
+              <div>
+                <span className="mitigation-detail__label">Equipamento</span>
+                <strong>{selected.deviceName}</strong>
+              </div>
+              <div>
+                <span className="mitigation-detail__label">Interface</span>
+                <strong>{selected.interfaceName ?? '—'}</strong>
+              </div>
+              <div>
+                <span className="mitigation-detail__label">Descrição</span>
+                <strong>{selected.interfaceDescription ?? '—'}</strong>
+              </div>
             </div>
-            <div className="mitigation-actions">
-              <Button
-                compact
-                disabled={!selected.persisted || commandMutation.isPending}
-                onClick={() => {
-                  setSimulation(null);
-                  setSimulateOpen(true);
-                }}
-              >
-                SIMULAR MITIGAÇÃO
+
+            <div className="mitigation-detail__block mitigation-media-status">
+              <h4>NOTIFICAÇÕES</h4>
+              <p>
+                {mediaSummary.data
+                  ? `n8n ${mediaSummary.data.configured ? '● configurado' : '○ não configurado'}`
+                  : 'n8n — verificando…'}
+              </p>
+              <Button compact variant="secondary" onClick={() => setPanel('media')}>
+                CONFIGURAR MÍDIAS
               </Button>
-              <Button
-                compact
-                disabled={
-                  !selected.persisted || commandMutation.isPending || selected.mitigationExcluded
-                }
-                title={
-                  selected.mitigationExcluded
-                    ? 'Mitigação desativada administrativamente para este peer'
-                    : undefined
-                }
-                onClick={() => setPendingAction('ACTIVATE')}
-              >
-                ATIVAR MITIGAÇÃO
+            </div>
+
+            <div className="mitigation-detail__block">
+              <h4>BANDA</h4>
+              <p>Detectada: {formatBandwidthBps(selected.detectedBandwidthBps)}</p>
+              <p>
+                Override:{' '}
+                {selected.bandwidthOverrideBps === null
+                  ? 'não configurado'
+                  : formatBandwidthBps(selected.bandwidthOverrideBps)}
+              </p>
+              <p>Efetiva: {formatBandwidthBps(selected.effectiveBandwidthBps)}</p>
+              <Button compact variant="secondary" onClick={() => setOverrideOpen(true)}>
+                EDITAR OVERRIDE
               </Button>
+            </div>
+
+            <MitigationTelemetryFacts
+              entry={telemetryEntries.get(selected.id)}
+              generatedAt={telemetry.data?.generatedAt}
+            />
+            <MitigationFastBridgeFacts profileId={selected.id} report={fastBridge.data} />
+            <MitigationDirectionReviewPanel
+              key={'direction-' + selected.id}
+              profiles={[selected]}
+              entries={telemetry.data?.entries ?? []}
+            />
+
+            <div className="mitigation-detail__block">
+              <h4>AUTO POR DESCRIPTION</h4>
+              <p>Estado: {autoStateLabel(selected)}</p>
+              <p>
+                Autorização:{' '}
+                {selected.autoPromotedBySweep
+                  ? 'sweep da DESCRIPTION (proveniência)'
+                  : 'manual/legado'}
+              </p>
+              <p>
+                Desejado (banda válida na DESCRIPTION e sem exclusão):{' '}
+                {selected.autoDesired ? 'sim' : 'não'}
+              </p>
+              <p>
+                Pronto (snapshot, readiness e nodes do par): {selected.autoReady ? 'sim' : 'não'}
+              </p>
+              <p>Efetivo (motor autorizado a atuar): {selected.autoEffective ? 'sim' : 'não'}</p>
+              {selected.autoStateReason ? <p>Bloqueio: {selected.autoStateReason}</p> : null}
+              <p>Origem da banda: {selected.bandwidthSource ?? '—'}</p>
+              <p>
+                Direção do último gatilho:{' '}
+                {selectedShadow?.triggeredDirections?.length
+                  ? selectedShadow.triggeredDirections.join(' + ')
+                  : '—'}
+              </p>
+              <p>
+                RX (monitor): {formatBandwidthBps(selectedShadow?.trafficByDirection?.rx ?? null)} ·
+                TX (ação): {formatBandwidthBps(selectedShadow?.trafficByDirection?.tx ?? null)}
+              </p>
               <Button
                 compact
                 variant="secondary"
-                disabled={!selected.persisted || commandMutation.isPending}
-                onClick={() => runCommand('SIMULATE_REMOVE', selected.id)}
+                disabled={!selected.persisted || autoExemptMutation.isPending}
+                title="Exceção manual: mantém o perfil em ALERT_ONLY (o sweep automático nunca promove)"
+                onClick={() =>
+                  autoExemptMutation.mutate({
+                    id: selected.id,
+                    exempt: selected.autoModeExempt !== true,
+                  })
+                }
               >
-                SIMULAR RETIRADA
-              </Button>
-              <Button
-                compact
-                variant="secondary"
-                disabled={!selected.persisted || commandMutation.isPending}
-                onClick={() => setPendingAction('REMOVE')}
-              >
-                RETIRAR MITIGAÇÃO
+                {selected.autoModeExempt
+                  ? 'REMOVER EXCEÇÃO ALERT_ONLY'
+                  : 'MANTER EM ALERT_ONLY (EXCEÇÃO)'}
               </Button>
             </div>
-          </div>
 
-          {commandMutation.isPending && (
-            <p className="mitigation-loading" role="status">
-              Executando em modo simulação…
-            </p>
-          )}
-
-          {commandResult && (
-            <div className="mitigation-result" aria-label="Resultado da execução">
-              <h4>
-                {commandResult.action === 'REMOVE' || commandResult.action === 'SIMULATE_REMOVE'
-                  ? 'SIMULAÇÃO DE RETIRADA CONCLUÍDA'
-                  : 'SIMULAÇÃO DE EXECUÇÃO CONCLUÍDA'}
-              </h4>
-              <p>Modo: MOCK / SIMULAÇÃO</p>
-              <p>Status: {commandResult.status}</p>
-              {commandResult.status === 'SCOPE_CONFIRMATION_REQUIRED' ? (
-                <div className="mitigation-shared-policy" role="alert">
-                  <strong>Confirmação de escopo obrigatória</strong>
-                  <span>
-                    A retirada atinge FISICAMENTE TODOS os vínculos ativos da policy{' '}
-                    {commandResult.removalScope?.policy ?? commandResult.policy ?? '—'}:
-                  </span>
+            <div className="mitigation-detail__block">
+              <h4>BGP</h4>
+              <p>Policy IN: {selected.policyName ?? 'não encontrada'}</p>
+              <p>Família: {selected.addressFamily}</p>
+              {selected.sharedPolicy && (
+                <div className="mitigation-shared-policy" role="status">
+                  <strong>ATENÇÃO: esta policy é compartilhada.</strong>
+                  <span>A alteração também afetaria:</span>
                   <ul>
-                    {(commandResult.removalScope?.affected ?? []).map((item) => (
-                      <li key={item.profileId}>
-                        {item.customer ?? '—'} · {item.interfaceName ?? '—'} · Peer:{' '}
-                        {item.peerAddress ?? '—'} · {item.runtimeState}
+                    {selected.sharedPolicyTargets.map((target) => (
+                      <li key={`${target.interfaceId ?? 'sem'}-${target.peerAddress}`}>
+                        {target.customer ?? '—'} · {target.interfaceName ?? '—'} · Peer:{' '}
+                        {target.peerAddress}
                       </li>
                     ))}
                   </ul>
-                  <Button
-                    compact
-                    disabled={commandMutation.isPending}
-                    onClick={() => runCommand('REMOVE', commandResult.profileId, true)}
-                  >
-                    CONFIRMAR RETIRADA DO ESCOPO
-                  </Button>
+                  <small>
+                    Aviso, não bloqueio: o motor continua liberado, mas promover um destes perfis
+                    para AUTO exige confirmação explícita na API (SHARED_POLICY).
+                  </small>
                 </div>
-              ) : null}
-              {commandResult.safeError && (
-                <p className="mitigation-result__error">Erro: {commandResult.safeError}</p>
               )}
-              <p>Policy: {commandResult.policy ?? '—'}</p>
-              <p>Node: {commandResult.node ?? '—'}</p>
-              <p>RT: {commandResult.rt ?? '—'}</p>
-              <p>Shared policy: {commandResult.sharedPolicy ? 'sim' : 'não'}</p>
-              <p className="mitigation-result__notification">
-                Notificação: <strong>{notificationOutcomeLabel(commandResult)}</strong>
+              <p>Peer principal: {selected.primaryPeerAddress ?? '—'}</p>
+              <p>Peers afetados: {selected.peerAddresses.join(', ') || '—'}</p>
+              <p>
+                Prefixos:{' '}
+                {selected.prefixCount === null
+                  ? `— / ${selected.prefixLimit}`
+                  : `${selected.prefixCount} / ${selected.prefixLimit}`}
               </p>
-              <p>Peers afetados: {commandResult.affectedPeers.length}</p>
-              <p>Verified: {commandResult.verified ? 'sim' : 'não'}</p>
-              <p>Idempotent: {commandResult.idempotent ? 'sim' : 'não'}</p>
-              <p>ExecutedAt: {commandResult.executedAt}</p>
-              {commandResult.verification && (
-                <>
-                  <p>Read-back: {commandResult.verified ? 'OK' : 'FALHOU'}</p>
-                  <p>Comando de verificação: {commandResult.verification.command}</p>
-                  <p>Resultado: {commandResult.verification.summary}</p>
-                </>
-              )}
-              <Button compact variant="secondary" onClick={() => setEvidenceOpen((open) => !open)}>
-                {evidenceOpen ? 'OCULTAR EVIDÊNCIA' : 'VER EVIDÊNCIA'}
-              </Button>
-              {evidenceOpen && (
-                <pre className="mitigation-command-preview">
-                  {JSON.stringify(
-                    {
-                      request: {
-                        requestId: commandResult.requestId,
-                        action: commandResult.action,
-                        profileId: commandResult.profileId,
-                      },
-                      commandPreview: commandResult.commandPreview,
-                      verification: commandResult.verification,
-                      response: commandResult,
-                    },
-                    null,
-                    2,
-                  )}
-                </pre>
-              )}
+              <p>Status: {prefixStatusLabel(selected.prefixStatus)}</p>
+              {selected.prefixStatus === 'UNKNOWN' ? (
+                <p className="mitigation-prefix-unknown">
+                  Contagem indisponível — informativo: não bloqueia a mitigação.
+                </p>
+              ) : null}
             </div>
-          )}
+
+            <div className="mitigation-detail__block">
+              <h4>ROUTE-POLICY</h4>
+              <p>
+                Nodes existentes:{' '}
+                {selected.existingNodes.length ? selected.existingNodes.join(', ') : 'nenhum'}
+              </p>
+              <p>
+                Nodes de mitigação:{' '}
+                {selected.mitigationNodes.length ? selected.mitigationNodes.join(', ') : 'nenhum'}
+              </p>
+              <p>Node BOGONS planejado: {selected.plannedBogonNode ?? '—'}</p>
+              <p>
+                Node mitigação planejado:{' '}
+                {selected.plannedMitigationNode ?? selected.plannedNode ?? '—'}
+              </p>
+              <p>Prefix-list BOGONS: {selected.bogonPrefixList ?? 'BOGONS'}</p>
+              <p>Prefix-list mitigação: {selected.targetPrefixList ?? 'PREFIX8to24'}</p>
+              <p>Node planejado (compat): {selected.plannedNode ?? '—'}</p>
+              <p>RT de mitigação: {selected.mitigationRt}</p>
+            </div>
+
+            <ExclusionEditor
+              key={selected.id}
+              row={selected}
+              saving={exclusionMutation.isPending}
+              onSave={(input) => exclusionMutation.mutate({ id: selected.id, ...input })}
+            />
+
+            <div className="mitigation-detail__block">
+              <h4>SITUAÇÃO</h4>
+              <p>
+                Estado:{' '}
+                {mitigationSnapshotBadge(selected.snapshotAvailable, hydrationState)?.label ??
+                  readinessLabel(selected.readiness)}
+              </p>
+              {mitigationSnapshotBadge(selected.snapshotAvailable, hydrationState) ? (
+                <p className="mitigation-prefix-unknown">
+                  Sem snapshot de discovery nesta sessão — nenhuma avaliação real até a reidratação
+                  concluir.
+                </p>
+              ) : null}
+              <p>Runtime: {runtimeStateLabel(selected.runtimeState)}</p>
+              <p>Modo do perfil: {profileModeLabel(selected.mode)}</p>
+              {selected.blockedReason && <p>Motivo: {blockReasonLabel(selected.blockedReason)}</p>}
+              <div className="mitigation-mock-notice" role="status">
+                <strong>MODO DE EXECUÇÃO: SIMULAÇÃO / MOCK</strong>
+                <span>Nenhum comando será enviado ao equipamento.</span>
+              </div>
+              <div className="mitigation-actions">
+                <Button
+                  compact
+                  disabled={!selected.persisted || commandMutation.isPending}
+                  onClick={() => {
+                    setSimulation(null);
+                    setSimulateOpen(true);
+                  }}
+                >
+                  SIMULAR MITIGAÇÃO
+                </Button>
+                <Button
+                  compact
+                  disabled={
+                    !selected.persisted || commandMutation.isPending || selected.mitigationExcluded
+                  }
+                  title={
+                    selected.mitigationExcluded
+                      ? 'Mitigação desativada administrativamente para este peer'
+                      : undefined
+                  }
+                  onClick={() => setPendingAction('ACTIVATE')}
+                >
+                  ATIVAR MITIGAÇÃO
+                </Button>
+                <Button
+                  compact
+                  variant="secondary"
+                  disabled={!selected.persisted || commandMutation.isPending}
+                  onClick={() => runCommand('SIMULATE_REMOVE', selected.id)}
+                >
+                  SIMULAR RETIRADA
+                </Button>
+                <Button
+                  compact
+                  variant="secondary"
+                  disabled={!selected.persisted || commandMutation.isPending}
+                  onClick={() => setPendingAction('REMOVE')}
+                >
+                  RETIRAR MITIGAÇÃO
+                </Button>
+              </div>
+            </div>
+
+            {commandMutation.isPending && (
+              <p className="mitigation-loading" role="status">
+                Executando em modo simulação…
+              </p>
+            )}
+
+            {commandResult && (
+              <div className="mitigation-result" aria-label="Resultado da execução">
+                <h4>
+                  {commandResult.action === 'REMOVE' || commandResult.action === 'SIMULATE_REMOVE'
+                    ? 'SIMULAÇÃO DE RETIRADA CONCLUÍDA'
+                    : 'SIMULAÇÃO DE EXECUÇÃO CONCLUÍDA'}
+                </h4>
+                <p>Modo: MOCK / SIMULAÇÃO</p>
+                <p>Status: {commandResult.status}</p>
+                {commandResult.status === 'SCOPE_CONFIRMATION_REQUIRED' ? (
+                  <div className="mitigation-shared-policy" role="alert">
+                    <strong>Confirmação de escopo obrigatória</strong>
+                    <span>
+                      A retirada atinge FISICAMENTE TODOS os vínculos ativos da policy{' '}
+                      {commandResult.removalScope?.policy ?? commandResult.policy ?? '—'}:
+                    </span>
+                    <ul>
+                      {(commandResult.removalScope?.affected ?? []).map((item) => (
+                        <li key={item.profileId}>
+                          {item.customer ?? '—'} · {item.interfaceName ?? '—'} · Peer:{' '}
+                          {item.peerAddress ?? '—'} · {item.runtimeState}
+                        </li>
+                      ))}
+                    </ul>
+                    <Button
+                      compact
+                      disabled={commandMutation.isPending}
+                      onClick={() => runCommand('REMOVE', commandResult.profileId, true)}
+                    >
+                      CONFIRMAR RETIRADA DO ESCOPO
+                    </Button>
+                  </div>
+                ) : null}
+                {commandResult.safeError && (
+                  <p className="mitigation-result__error">Erro: {commandResult.safeError}</p>
+                )}
+                <p>Policy: {commandResult.policy ?? '—'}</p>
+                <p>Node: {commandResult.node ?? '—'}</p>
+                <p>RT: {commandResult.rt ?? '—'}</p>
+                <p>Shared policy: {commandResult.sharedPolicy ? 'sim' : 'não'}</p>
+                <p className="mitigation-result__notification">
+                  Notificação: <strong>{notificationOutcomeLabel(commandResult)}</strong>
+                </p>
+                <p>Peers afetados: {commandResult.affectedPeers.length}</p>
+                <p>Verified: {commandResult.verified ? 'sim' : 'não'}</p>
+                <p>Idempotent: {commandResult.idempotent ? 'sim' : 'não'}</p>
+                <p>ExecutedAt: {commandResult.executedAt}</p>
+                {commandResult.verification && (
+                  <>
+                    <p>Read-back: {commandResult.verified ? 'OK' : 'FALHOU'}</p>
+                    <p>Comando de verificação: {commandResult.verification.command}</p>
+                    <p>Resultado: {commandResult.verification.summary}</p>
+                  </>
+                )}
+                <Button
+                  compact
+                  variant="secondary"
+                  onClick={() => setEvidenceOpen((open) => !open)}
+                >
+                  {evidenceOpen ? 'OCULTAR EVIDÊNCIA' : 'VER EVIDÊNCIA'}
+                </Button>
+                {evidenceOpen && (
+                  <pre className="mitigation-command-preview">
+                    {JSON.stringify(
+                      {
+                        request: {
+                          requestId: commandResult.requestId,
+                          action: commandResult.action,
+                          profileId: commandResult.profileId,
+                        },
+                        commandPreview: commandResult.commandPreview,
+                        verification: commandResult.verification,
+                        response: commandResult,
+                      },
+                      null,
+                      2,
+                    )}
+                  </pre>
+                )}
+              </div>
+            )}
           </div>
         </aside>
       )}
@@ -1256,7 +1357,11 @@ export function BgpMitigationWorkspace() {
       )}
 
       {selected && pendingAction && (
-        <section className="mitigation-modal" role="dialog" aria-label="Confirmar ação de mitigação">
+        <section
+          className="mitigation-modal"
+          role="dialog"
+          aria-label="Confirmar ação de mitigação"
+        >
           <div className="mitigation-modal__body">
             <h3>{pendingAction === 'ACTIVATE' ? 'CONFIRMAR ATIVAÇÃO' : 'CONFIRMAR RETIRADA'}</h3>
             <div className="mitigation-mock-notice" role="status">
@@ -1366,7 +1471,9 @@ function autoStateTitleOf(row: BgpMitigationProfileDto): string {
     `AUTO desejado: ${row.autoDesired ? 'sim' : 'não'} (banda válida na DESCRIPTION e sem exclusão)`,
     `AUTO pronto: ${row.autoReady ? 'sim' : 'não'} (snapshot, readiness e nodes do par)`,
     `AUTO efetivo: ${row.autoEffective ? 'sim' : 'não'} (motor autorizado a atuar)`,
-    row.autoPromotedBySweep ? 'Autorização: sweep da DESCRIPTION (pausável pelo controle de execução)' : null,
+    row.autoPromotedBySweep
+      ? 'Autorização: sweep da DESCRIPTION (pausável pelo controle de execução)'
+      : null,
     row.autoStateReason ? `Bloqueio: ${row.autoStateReason}` : null,
     row.autoModeExempt ? 'Exceção manual: mantido em ALERT_ONLY' : null,
   ]
@@ -1424,11 +1531,7 @@ function ExclusionEditor({
 }: {
   row: BgpMitigationProfileDto;
   saving: boolean;
-  onSave: (input: {
-    excluded: boolean;
-    reason: MitigationExclusionReason;
-    note: string;
-  }) => void;
+  onSave: (input: { excluded: boolean; reason: MitigationExclusionReason; note: string }) => void;
 }) {
   const [excluded, setExcluded] = useState(row.mitigationExcluded === true);
   const [reason, setReason] = useState<MitigationExclusionReason>(
@@ -1442,7 +1545,9 @@ function ExclusionEditor({
       {row.mitigationExcluded ? (
         <p className="mitigation-exclusion__badge" role="status">
           🛡 EXCLUÍDO DA MITIGAÇÃO
-          {row.mitigationExclusionReason ? ` · ${exclusionReasonLabel(row.mitigationExclusionReason)}` : ''}
+          {row.mitigationExclusionReason
+            ? ` · ${exclusionReasonLabel(row.mitigationExclusionReason)}`
+            : ''}
         </p>
       ) : null}
       <label className="mitigation-exclusion__toggle">
@@ -1486,8 +1591,8 @@ function ExclusionEditor({
       ) : null}
       {row.mitigationExcluded ? (
         <p className="mitigation-modal__hint">
-          Mitigação desativada administrativamente para este peer. Bloqueia NOVO ACTIVATE (UI,
-          n8n e AUTO); a retirada de uma mitigação ativa continua permitida.
+          Mitigação desativada administrativamente para este peer. Bloqueia NOVO ACTIVATE (UI, n8n e
+          AUTO); a retirada de uma mitigação ativa continua permitida.
         </p>
       ) : null}
       <div className="mitigation-actions">
@@ -1640,8 +1745,7 @@ function SimulationModal({
             </p>
             <p>Utilização: {formatPercent(simulation.utilizationPercent)}</p>
             <p>
-              Limite: {formatBandwidthBps(simulation.thresholdBps)} /{' '}
-              {simulation.thresholdPercent}%
+              Limite: {formatBandwidthBps(simulation.thresholdBps)} / {simulation.thresholdPercent}%
             </p>
             <p>
               Confirmação: {simulation.samples} / {simulation.requiredSamples}
@@ -1656,7 +1760,10 @@ function SimulationModal({
               {prefixStatusLabel(simulation.prefixStatus)}
             </p>
             <p>Node BOGONS planejado: {simulation.plannedBogonNode ?? '—'}</p>
-            <p>Node mitigação planejado: {simulation.plannedMitigationNode ?? simulation.plannedNode ?? '—'}</p>
+            <p>
+              Node mitigação planejado:{' '}
+              {simulation.plannedMitigationNode ?? simulation.plannedNode ?? '—'}
+            </p>
             <p>Prefix-list BOGONS: {simulation.bogonPrefixList ?? 'BOGONS'}</p>
             <p>Prefix-list mitigação: {simulation.targetPrefixList ?? 'PREFIX8to24'}</p>
             <p>RT: {simulation.mitigationRt}</p>
@@ -1672,9 +1779,7 @@ function SimulationModal({
                     </li>
                   ))}
                 </ul>
-                <p>
-                  Peers efetivamente afetados pela policy: {simulation.affectedPolicyPeerCount}
-                </p>
+                <p>Peers efetivamente afetados pela policy: {simulation.affectedPolicyPeerCount}</p>
               </div>
             )}
             <p className="mitigation-simulation__result">

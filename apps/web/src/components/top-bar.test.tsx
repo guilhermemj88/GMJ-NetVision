@@ -58,7 +58,13 @@ describe('TopBar — acesso a Central de Alertas (F9.3)', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     auth.useAuth.mockReturnValue({
-      user: { id: 'u1', name: 'QA', email: 'qa@preview.local', username: 'qa-preview', role: 'ADMIN' },
+      user: {
+        id: 'u1',
+        name: 'QA',
+        email: 'qa@preview.local',
+        username: 'qa-preview',
+        role: 'ADMIN',
+      },
       logout: vi.fn(),
     });
     api.getAlertCenterSummary.mockResolvedValue({ summary: summary() });
@@ -67,7 +73,9 @@ describe('TopBar — acesso a Central de Alertas (F9.3)', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
-    client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
     await act(async () => {
       root.render(createElement(QueryClientProvider, { client }, createElement(TopBar)));
     });
@@ -103,7 +111,11 @@ describe('TopBar — acesso a Central de Alertas (F9.3)', () => {
 
   it('mostra o badge com o que exige atencao (alarme nao reconhecido + ocorrencia vigente)', async () => {
     api.getAlertCenterSummary.mockResolvedValue({
-      summary: summary({ alarmsActiveUnacknowledged: 3, occurrencesUnacknowledged: 2, alarmsActive: 9 }),
+      summary: summary({
+        alarmsActiveUnacknowledged: 3,
+        occurrencesUnacknowledged: 2,
+        alarmsActive: 9,
+      }),
     });
     await act(async () => {
       await client.invalidateQueries();
@@ -126,7 +138,13 @@ describe('TopBar — aba Diagnóstico', () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     auth.useAuth.mockReturnValue({
-      user: { id: 'u1', name: 'QA', email: 'qa@preview.local', username: 'qa-preview', role: 'ADMIN' },
+      user: {
+        id: 'u1',
+        name: 'QA',
+        email: 'qa@preview.local',
+        username: 'qa-preview',
+        role: 'ADMIN',
+      },
       logout: vi.fn(),
     });
     api.getAlertCenterSummary.mockResolvedValue({ summary: summary() });
@@ -184,7 +202,9 @@ describe('TopBar — Fase N: estilos no produto', () => {
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
-    client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+    client = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
     await act(async () => {
       root.render(createElement(QueryClientProvider, { client }, createElement(TopBar)));
     });
@@ -223,9 +243,13 @@ describe('TopBar — Fase N: estilos no produto', () => {
     expect(container.querySelector('[data-testid="map-link-style-selector"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="map-animation-selector"]')).toBeNull();
     // O mapa abre no que a flag diz (V2 do piloto) e o estilo padrão é o direcional.
-    const visual = container.querySelector<HTMLSelectElement>('select[aria-label="Visual do mapa"]');
+    const visual = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Visual do mapa"]',
+    );
     expect(visual?.value).toBe('V2');
-    const style = container.querySelector<HTMLSelectElement>('select[aria-label="Estilo dos enlaces"]');
+    const style = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Estilo dos enlaces"]',
+    );
     expect(style?.value).toBe('directional');
     expect([...(style?.options ?? [])].map((option) => option.value)).toEqual([
       'directional',
@@ -247,8 +271,12 @@ describe('TopBar — Fase N: estilos no produto', () => {
   it('trocar VISUAL/ESTILO grava só na sessão da aba — o mapa não é alterado', async () => {
     delete process.env.NEXT_PUBLIC_PREVIEW_MODE;
     await renderTopBar();
-    const visual = container.querySelector<HTMLSelectElement>('select[aria-label="Visual do mapa"]')!;
-    const style = container.querySelector<HTMLSelectElement>('select[aria-label="Estilo dos enlaces"]')!;
+    const visual = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Visual do mapa"]',
+    )!;
+    const style = container.querySelector<HTMLSelectElement>(
+      'select[aria-label="Estilo dos enlaces"]',
+    )!;
     await act(async () => {
       style.value = 'operational';
       style.dispatchEvent(new Event('change', { bubbles: true }));
@@ -281,4 +309,36 @@ describe('TopBar — Fase N: estilos no produto', () => {
     expect(container.querySelector('[data-testid="map-link-style-selector"]')).toBeNull();
     expect(container.querySelector('[data-testid="map-visual-selector"]')).not.toBeNull();
   });
+
+  it.each([360, 844, 1920])(
+    'mantém todos os controles do mapa e a navegação em %ipx',
+    async (width) => {
+      const previousWidth = window.innerWidth;
+      Object.defineProperty(window, 'innerWidth', { value: width, configurable: true });
+      auth.useAuth.mockReturnValue({ user: { role: 'ADMIN', name: 'QA' }, logout: vi.fn() });
+      useMapStore.setState({
+        maps: [{ ...demo, nodeCount: demo.nodes.length, linkCount: demo.links.length }],
+      });
+      await renderTopBar();
+      const toolbar = container.querySelector('.topbar__map-scroll');
+      expect(toolbar).not.toBeNull();
+      expect(toolbar?.querySelector('[role="region"]')?.getAttribute('tabindex')).toBe('0');
+      for (const label of ['NOC', 'Editar mapa', 'Descobrir', 'Links', 'Usuários']) {
+        expect(toolbar?.textContent).toContain(label);
+      }
+      for (const name of ['Gerenciar mapas', 'Configurações', 'Usuários e senhas', 'Sair']) {
+        expect(toolbar?.querySelector(`button[aria-label="${name}"]`)).not.toBeNull();
+      }
+      expect(container.querySelectorAll('.primary-nav button')).toHaveLength(6);
+      await act(async () => {
+        const edit = [...toolbar!.querySelectorAll('button')].find((button) =>
+          button.textContent?.includes('Editar mapa'),
+        )!;
+        edit.click();
+      });
+      expect(useMapStore.getState().editMode).toBe(true);
+      await act(async () => useMapStore.setState({ editMode: false }));
+      Object.defineProperty(window, 'innerWidth', { value: previousWidth, configurable: true });
+    },
+  );
 });
