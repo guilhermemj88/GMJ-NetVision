@@ -11,6 +11,7 @@ import type {
 import { EvidenceDrawer } from './evidence-drawer';
 import { HealthCards } from './health-cards';
 import {
+  buildExecutionContext,
   buildHealthCards,
   buildSections,
   durationLabel,
@@ -18,6 +19,7 @@ import {
   formatUtc,
   headlineStatus,
   isRunning,
+  probeHeadline,
   sectionSummary,
   toneOf,
   type Tone,
@@ -88,20 +90,13 @@ function CompareGrid({
 }
 
 function ProbeRow({ probe }: { probe: VsiDiagnosticProbe }) {
-  const transmitted = probe.transmitted ?? 0;
-  const received = probe.received ?? 0;
-  const reachable = transmitted > 0 && received >= transmitted;
   return (
     <li className={styles.probe}>
       <div className={styles.probeHead}>
         <span className={`${styles.chip} ${styles[`chip_${toneOf(probe.status)}`]}`}>
           {probe.status}
         </span>
-        <strong>
-          {reachable
-            ? `Alcançável · ${received}/${transmitted} respostas`
-            : `${received}/${transmitted} respostas`}
-        </strong>
+        <strong>{probeHeadline(probe)}</strong>
         <code className={styles.probePath}>
           {probe.source} → {probe.destination}
         </code>
@@ -166,16 +161,20 @@ export function VsiDiagnosticResultView({ result }: { result: VsiDiagnosticResul
   const sections = buildSections(result);
   const cards = buildHealthCards(result);
   const commands = [...new Set(result.evidence.map((e) => e.command).filter(Boolean))] as string[];
-  const aaaNotVerified = result.warnings.some((w) => /AAA\s*=\s*NOT_VERIFIED/i.test(w));
+  const context = buildExecutionContext(result);
   const probes = result.probes ?? [];
+  const observedPeers = [result.local, ...(remote ? [remote] : [])].flatMap((endpoint) =>
+    (endpoint.observedVsi?.peers ?? []).map((peer) => ({ endpoint: endpoint.name, peer })),
+  );
 
   return (
     <article className={styles.result} aria-label="Resultado do diagnóstico">
       <header className={styles.header}>
         <div className={styles.headerTop}>
-          <span className={`${styles.status} ${styles[`status_${status}`]}`}>{status}</span>
+          <span className={`${styles.status} ${styles[`status_${status}`]}`}>
+            {running ? 'DIAGNÓSTICO EM ANDAMENTO' : status}
+          </span>
           <h3 className={styles.title}>{result.vsiName}</h3>
-          {running ? <span className={styles.runningBadge}>em execução</span> : null}
           {!running && result.state !== 'COMPLETED' ? (
             <span className={styles.stateBadge}>{result.state}</span>
           ) : null}
@@ -185,7 +184,10 @@ export function VsiDiagnosticResultView({ result }: { result: VsiDiagnosticResul
           <span aria-hidden="true"> ↔ </span>
           <strong>{remote?.name ?? 'PE remoto não identificado'}</strong>
         </p>
-        <p className={styles.summaryText}>{result.summary}</p>
+        {/* O resumo do backend so e conclusao depois do job; antes disso seria veredito provisorio. */}
+        <p className={styles.summaryText}>
+          {running ? 'Coletando e validando evidências dos PEs…' : result.summary}
+        </p>
         <dl className={styles.meta}>
           <div>
             <dt>Underlay</dt>
@@ -252,10 +254,11 @@ export function VsiDiagnosticResultView({ result }: { result: VsiDiagnosticResul
               summary={sections[2] ? sectionSummary(sections[2]) : 'não avaliado'}
             >
               <CompareGrid result={result} categories={['PW', 'ETH_TRUNK']} />
-              {(result.local.observedVsi?.peers ?? []).length > 0 ? (
+              {observedPeers.length > 0 ? (
                 <table className={styles.peersTable}>
                   <thead>
                     <tr>
+                      <th>PE</th>
                       <th>Peer</th>
                       <th>VC-ID</th>
                       <th>Estado</th>
@@ -263,8 +266,9 @@ export function VsiDiagnosticResultView({ result }: { result: VsiDiagnosticResul
                     </tr>
                   </thead>
                   <tbody>
-                    {(result.local.observedVsi?.peers ?? []).map((peer) => (
-                      <tr key={peer.address}>
+                    {observedPeers.map(({ endpoint, peer }) => (
+                      <tr key={`${endpoint}-${peer.address}`}>
+                        <td>{endpoint}</td>
                         <td>{peer.address}</td>
                         <td>{peer.vcId ?? '—'}</td>
                         <td>{peer.state ?? '—'}</td>
@@ -316,36 +320,28 @@ export function VsiDiagnosticResultView({ result }: { result: VsiDiagnosticResul
             <Section
               title="Contexto de execução"
               tone="neutral"
-              summary={`${result.operator.username} · ${result.operator.role} · ${commands.length} comando${
+              summary={`${context.netvision} · ${commands.length} comando${
                 commands.length === 1 ? '' : 's'
               }`}
               variant="context"
             >
-              <dl className={styles.evidenceMeta}>
+              {/* Informativo: RBAC do NetVision, conta SSH e AAA do equipamento sao dominios distintos. */}
+              <dl className={styles.evidenceMeta} aria-label="Contexto de execução">
                 <div>
-                  <dt>Usuário NetVision</dt>
-                  <dd>
-                    {result.operator.username} · {result.operator.role}
-                  </dd>
+                  <dt>Permissão no NetVision</dt>
+                  <dd>{context.netvision} — usuário que iniciou esta execução.</dd>
                 </div>
                 <div>
-                  <dt>Conta de serviço SSH</dt>
-                  <dd>gerenciada pelo servidor (não exposta ao navegador)</dd>
+                  <dt>Acesso aos equipamentos</dt>
+                  <dd>{context.deviceAccess}</dd>
                 </div>
                 <div>
                   <dt>Autorização dos comandos</dt>
-                  <dd>
-                    janela one-shot consumida nesta execução · {commands.length} comando
-                    {commands.length === 1 ? '' : 's'} de leitura
-                  </dd>
+                  <dd>{context.commandAuthorization}</dd>
                 </div>
                 <div>
-                  <dt>Privilégio no equipamento</dt>
-                  <dd>
-                    {aaaNotVerified
-                      ? 'não verificado explicitamente (AAA = NOT_VERIFIED) — limitação de escopo, não falha'
-                      : 'não verificado explicitamente — limitação de escopo, não falha'}
-                  </dd>
+                  <dt>Nível de privilégio no equipamento</dt>
+                  <dd>{context.privilegeLevel}</dd>
                 </div>
                 <div>
                   <dt>Início</dt>

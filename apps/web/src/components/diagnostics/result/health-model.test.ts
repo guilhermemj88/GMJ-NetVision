@@ -196,3 +196,83 @@ describe('health-model — apresentacao sem alterar contrato', () => {
     expect(durationLabel(result({ completedAt: null, state: 'CANCELLED' }))).toBe('não concluído');
   });
 });
+
+describe('execution context, reachability por sentido e evidencia (integracao 318d169)', () => {
+  it('buildExecutionContext usa somente o executionContext do backend', async () => {
+    const { buildExecutionContext } = await import('./health-model');
+    const { vsi1809Result, access, VSI_1809_IDS } = await import('./vsi-1809.fixture');
+    expect(buildExecutionContext(vsi1809Result)).toEqual({
+      netvision: 'admin (ADMIN)',
+      deviceAccess: 'Conta de serviço guilherme3.',
+      commandAuthorization:
+        'Confirmada para os comandos executados nesta execução nos dois PEs. Vale somente para os comandos executados nesta execução.',
+      privilegeLevel: 'Não verificado explicitamente. Isso não afeta o resultado desta execução.',
+    });
+    const partial = buildExecutionContext({
+      ...vsi1809Result,
+      executionContext: {
+        endpoints: [
+          access(VSI_1809_IDS.LOCAL, 'IIE', { sshUsername: 'svc-a' }),
+          access(VSI_1809_IDS.REMOTE, 'RNS', {
+            sshUsername: 'svc-b',
+            commandAuthorization: 'NOT_CONFIRMED',
+            acceptedCommands: 4,
+            executedCommands: 5,
+          }),
+        ],
+      },
+    });
+    expect(partial.deviceAccess).toBe('IIE: svc-a · RNS: svc-b');
+    expect(partial.commandAuthorization).toContain(
+      'IIE: confirmada para os 7 comandos executados (7/7).',
+    );
+    expect(partial.commandAuthorization).toContain(
+      'RNS: não confirmada (4/5 comandos com evidência válida).',
+    );
+    expect(partial.privilegeLevel).toBe('Não verificado explicitamente.');
+  });
+
+  it('reachability nunca soma os dois sentidos num total unico', async () => {
+    const { vsi1809Result } = await import('./vsi-1809.fixture');
+    const card = (r: VsiDiagnosticResult) =>
+      buildHealthCards(r).find((c) => c.id === 'reachability')!;
+    expect(card(vsi1809Result).detail).toBe('Alcançável · 3/3 respostas em cada sentido');
+    const [a, b] = vsi1809Result.probes;
+    expect(
+      card({
+        ...vsi1809Result,
+        probes: [a!, { ...b!, received: 0, lossPercent: 100, status: 'FAILED' }],
+      }).detail,
+    ).toBe('Alcançável · 3/3 respostas · 0/3 respostas');
+  });
+
+  it('endpointLabels mostra os labels in/out do proprio PE', async () => {
+    const { endpointLabels } = await import('./health-model');
+    const { vsi1809Result } = await import('./vsi-1809.fixture');
+    expect(endpointLabels(vsi1809Result.local)).toBe('38464 / 37134');
+    expect(endpointLabels(vsi1809Result.remotes[0]!)).toBe('37134 / 38464');
+    expect(endpointLabels(null)).toBe('—');
+  });
+
+  it('evidenceJson so serializa os campos do contrato', async () => {
+    const { evidenceJson } = await import('./health-model');
+    const { vsi1809Result } = await import('./vsi-1809.fixture');
+    const json = evidenceJson({
+      ...vsi1809Result.evidence[0]!,
+      password: 'x',
+      token: 'y',
+    } as unknown as (typeof vsi1809Result.evidence)[0]);
+    expect(Object.keys(JSON.parse(json))).toEqual([
+      'id',
+      'diagnosticId',
+      'hostId',
+      'source',
+      'observedAt',
+      'collectedAt',
+      'command',
+      'durationMs',
+      'complete',
+      'output',
+    ]);
+  });
+});

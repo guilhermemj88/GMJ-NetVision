@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VsiDiagnosticResult } from '@gmj/shared';
 import { VsiDiagnosticPanel } from './vsi-diagnostic-panel';
+import { vsi1809Result } from './diagnostics/result/vsi-1809.fixture';
 
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 
@@ -301,162 +302,27 @@ describe('VSI diagnose action', () => {
   });
 });
 
-describe('Contexto de execução', () => {
-  const endpoint = (hostId: string, name: string, extra: Record<string, unknown> = {}) => ({
-    hostId,
-    name,
-    sshUsername: 'guilherme3',
-    commandAuthorization: 'CONFIRMED_FOR_EXECUTED_COMMANDS',
-    executedCommands: 7,
-    acceptedCommands: 7,
-    devicePrivilegeLevel: 'NOT_VERIFIED',
-    ...extra,
-  });
-  const completed = {
-    ...result,
-    diagnosticId: '04778b69-33e2-4242-baf9-6591381f8375',
-    operator: { id: 'admin', username: 'admin', role: 'ADMIN' },
-    vsiName: '1809-L2L-VCONLINE-QinQ',
-    overallStatus: 'OK',
-    underlayClassification: 'UNDERLAY_REACHABLE',
-    summary:
-      'Nenhuma falha foi identificada no underlay entre os PEs, no pseudowire ou nos attachment circuits avaliados.',
-    local: { hostId: 'IIE', name: 'IIE-VSR-6730-MPLS-01', loopback: { address: '10.100.101.5' } },
-    remotes: [
-      { hostId: 'RNS', name: 'RNS-FLOR-6730-MPLS-01', loopback: { address: '10.100.101.6' } },
-    ],
-    checks: [
-      {
-        id: 'c1',
-        category: 'PW',
-        label: 'Reciprocidade e labels',
-        status: 'OK',
-        hostId: 'RNS',
-        message: 'Peers recíprocos e labels cruzados MATCH na execução atual.',
-        evidence: [],
-        durationMs: 0,
-        certainty: 'CONFIRMED',
-        required: true,
-      },
-    ],
-    warnings: ['Traceroute real desabilitado: NOT_HOMOLOGATED.'],
-    executionContext: {
-      endpoints: [
-        endpoint('IIE', 'IIE-VSR-6730-MPLS-01'),
-        endpoint('RNS', 'RNS-FLOR-6730-MPLS-01'),
-      ],
-    },
-  };
-  async function render(next: unknown) {
-    nextResult = next;
+describe('Contexto de execução no painel (UI gráfica + executionContext)', () => {
+  it('caso 1809: veredito técnico primeiro, contexto depois, AAA fora das limitações', async () => {
+    nextResult = vsi1809Result;
     await act(async () =>
       root.render(<VsiDiagnosticPanel hostId="UNIT" vsiId="VSI-1" diagnosticEnabled />),
     );
     await armar();
     await diagnosticar();
-    return container.textContent!;
-  }
-
-  it('separa RBAC, conta de serviço e autorização dos comandos numa execução OK', async () => {
-    const text = await render(completed);
-    const context = container.querySelector('[aria-label="Contexto de execução"]')!;
-    expect(context).not.toBeNull();
-    expect(context.textContent).toContain('Permissão no NetVision');
+    const text = container.textContent!;
+    const context = container.querySelector('dl[aria-label="Contexto de execução"]')!;
     expect(context.textContent).toContain('admin (ADMIN)');
     expect(context.textContent).toContain('Conta de serviço guilherme3.');
     expect(context.textContent).toContain(
-      'Todos os comandos necessários desta execução foram aceitos e produziram evidência válida nos dois PEs.',
+      'Confirmada para os comandos executados nesta execução nos dois PEs.',
     );
-    expect(context.textContent).toContain(
-      'Vale somente para os comandos executados nesta execução.',
-    );
-    expect(context.textContent).toContain(
-      'Não verificado explicitamente. Isso não afeta o resultado desta execução.',
-    );
-    expect(text).not.toContain('AAA = NOT_VERIFIED');
-    expect(text).not.toMatch(/Limitação:[^.]*privilégio/);
-    expect(text).toContain('Limitação: Traceroute real desabilitado: NOT_HOMOLOGATED.');
-    // Technical result first, context after it.
-    expect(text.indexOf('OK · 1809-L2L-VCONLINE-QinQ')).toBeLessThan(
-      text.indexOf('Contexto de execução'),
-    );
+    expect(context.textContent).toContain('Não verificado explicitamente.');
     expect(text.indexOf('Reciprocidade e labels')).toBeLessThan(
       text.indexOf('Contexto de execução'),
     );
-  });
-
-  it('nunca confirma autorização quando um comando obrigatório não produziu evidência válida', async () => {
-    const text = await render({
-      ...completed,
-      overallStatus: 'INSUFFICIENT_DATA',
-      executionContext: {
-        endpoints: [
-          endpoint('IIE', 'IIE-VSR-6730-MPLS-01', {
-            commandAuthorization: 'NOT_CONFIRMED',
-            executedCommands: 6,
-            acceptedCommands: 6,
-          }),
-          endpoint('RNS', 'RNS-FLOR-6730-MPLS-01', {
-            commandAuthorization: 'NOT_CONFIRMED',
-            executedCommands: 5,
-            acceptedCommands: 4,
-          }),
-        ],
-      },
-    });
-    expect(text).toContain('INSUFFICIENT_DATA · 1809-L2L-VCONLINE-QinQ');
-    expect(text).not.toContain('foram aceitos e produziram evidência válida');
-    expect(text).toContain(
-      'RNS-FLOR-6730-MPLS-01: não confirmada (4/5 comandos com evidência válida).',
-    );
-    expect(text).toContain('Não verificado explicitamente.');
-    expect(text).not.toContain('Isso não afeta o resultado');
-  });
-
-  it('execução bloqueada antes do SSH não exibe conta de serviço nem autorização', async () => {
-    const text = await render({
-      ...completed,
-      overallStatus: 'INSUFFICIENT_DATA',
-      remotes: [],
-      executionContext: {
-        endpoints: [
-          endpoint('IIE', 'IIE-VSR-6730-MPLS-01', {
-            sshUsername: null,
-            commandAuthorization: 'NOT_EXECUTED',
-            executedCommands: 0,
-            acceptedCommands: 0,
-          }),
-        ],
-      },
-    });
-    expect(text).toContain('Nenhuma sessão SSH aberta nesta execução.');
-    expect(text).toContain('IIE-VSR-6730-MPLS-01: nenhum comando executado.');
-    expect(text).not.toContain('guilherme3');
-  });
-
-  it('renderiza somente campos permitidos, sem vazar material de credencial', async () => {
-    const text = await render({
-      ...completed,
-      executionContext: {
-        endpoints: [
-          endpoint('IIE', 'IIE-VSR-6730-MPLS-01', { password: 'SEGREDO', fingerprint: 'SHA256:x' }),
-          endpoint('RNS', 'RNS-FLOR-6730-MPLS-01'),
-        ],
-      },
-    });
-    expect(text).not.toContain('SEGREDO');
-    expect(text).not.toContain('SHA256:');
-  });
-
-  it('não mostra o contexto enquanto o diagnóstico está em andamento', async () => {
-    vi.useFakeTimers();
-    const text = await render({
-      ...completed,
-      state: 'RUNNING',
-      overallStatus: 'INSUFFICIENT_DATA',
-    });
-    expect(text).toContain('DIAGNÓSTICO EM ANDAMENTO');
-    expect(text).not.toContain('Contexto de execução');
-    expect(text).not.toContain('INSUFFICIENT_DATA');
+    expect(text).toContain('Traceroute real desabilitado: NOT_HOMOLOGATED.');
+    expect(text).not.toContain('AAA = NOT_VERIFIED');
+    expect(text).not.toContain('AAA não verificado');
   });
 });

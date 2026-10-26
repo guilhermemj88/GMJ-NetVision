@@ -1,16 +1,12 @@
 'use client';
 
-import type { VsiDiagnosticResult } from '@gmj/shared';
-import type { Tone } from './health-model';
+import type { VsiDiagnosticCheck, VsiDiagnosticResult } from '@gmj/shared';
+import { endpointLabels, toneOf, type Tone } from './health-model';
 import styles from './result-view.module.css';
 
-function labelOf(result: VsiDiagnosticResult): { local: string; remote: string } {
-  const pw = result.checks.find((check) => check.category === 'PW' && /^PW /.test(check.label));
-  const parts = pw ? pw.label.replace(/^PW\s+/, '').split(/\s+/) : [];
-  return {
-    local: result.local.observedVsi?.peers[0]?.outboundLabel?.toString() ?? parts[0] ?? '—',
-    remote: result.local.observedVsi?.peers[0]?.inboundLabel?.toString() ?? parts[1] ?? '—',
-  };
+/** Sem check de AC nao ha evidencia: a linha fica neutra, nunca verde. */
+function lineTone(check: VsiDiagnosticCheck | undefined): Tone {
+  return check ? toneOf(check.status) : 'neutral';
 }
 
 function toneFor(result: VsiDiagnosticResult): Tone {
@@ -28,7 +24,6 @@ function toneFor(result: VsiDiagnosticResult): Tone {
 export function TopologyDiagram({ result }: { result: VsiDiagnosticResult }) {
   const local = result.local;
   const remote = result.remotes[0] ?? null;
-  const labels = labelOf(result);
   const pwTone = toneFor(result);
   const acLocal = result.checks.find((c) => c.category === 'AC' && c.hostId === local.hostId);
   const acRemote = remote
@@ -44,10 +39,10 @@ export function TopologyDiagram({ result }: { result: VsiDiagnosticResult }) {
         <span className={styles.nodeMeta}>
           AC {acLocal ? acLocal.label.replace(/^AC\s*/, '') : 'não comprovada'}
         </span>
-        <span className={styles.nodeMeta}>label {labels.local}</span>
+        <span className={styles.nodeMeta}>labels in/out {endpointLabels(local)}</span>
       </div>
       <div className={styles.link} aria-hidden="true">
-        <span className={`${styles.linkLine} ${styles[`line_${acLocal?.status === 'FAILED' ? 'error' : 'ok'}`]}`} />
+        <span className={`${styles.linkLine} ${styles[`line_${lineTone(acLocal)}`]}`} />
       </div>
       <div className={styles.node}>
         <strong>VSI</strong>
@@ -64,7 +59,7 @@ export function TopologyDiagram({ result }: { result: VsiDiagnosticResult }) {
         <code>{remote?.vsiId ?? '—'}</code>
       </div>
       <div className={styles.link} aria-hidden="true">
-        <span className={`${styles.linkLine} ${styles[`line_${acRemote?.status === 'FAILED' ? 'error' : 'ok'}`]}`} />
+        <span className={`${styles.linkLine} ${styles[`line_${lineTone(acRemote)}`]}`} />
       </div>
       <div className={`${styles.node} ${styles.nodeEnd}`}>
         <strong>{remote?.name ?? 'PE remoto não identificado'}</strong>
@@ -73,7 +68,7 @@ export function TopologyDiagram({ result }: { result: VsiDiagnosticResult }) {
         <span className={styles.nodeMeta}>
           AC {acRemote ? acRemote.label.replace(/^AC\s*/, '') : 'não comprovada'}
         </span>
-        <span className={styles.nodeMeta}>label {labels.remote}</span>
+        <span className={styles.nodeMeta}>labels in/out {endpointLabels(remote)}</span>
       </div>
     </div>
   );

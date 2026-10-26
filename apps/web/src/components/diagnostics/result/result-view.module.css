@@ -203,6 +203,8 @@
 }
 .line_ok { background: rgba(52, 211, 153, 0.6); }
 .line_error { background: rgba(248, 113, 113, 0.7); }
+.line_attention { background: rgba(251, 191, 36, 0.6); }
+.line_neutral { background: rgba(148, 163, 184, 0.45); }
 .linkTag {
   position: absolute;
   top: 50%;
