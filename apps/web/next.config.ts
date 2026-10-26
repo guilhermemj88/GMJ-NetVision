@@ -17,6 +17,14 @@ const internalApiUrl = (process.env.API_INTERNAL_URL ?? 'http://127.0.0.1:3333')
  * O valor explícito de `NEXT_PUBLIC_DDOS_MITIGATION_UI` continua valendo como
  * opt-in para outras instalações (laboratórios).
  */
+/**
+ * Gate do diagnostico VSI na UI. Tambem precisa ser inlinado no build: sem esta
+ * entrada em `env` o componente le `process.env` no cliente e o valor nunca
+ * chega, mantendo o botao oculto mesmo com a API habilitada.
+ */
+const vsiDiagnosticUi =
+  (process.env.NEXT_PUBLIC_VSI_DIAGNOSTIC_ENABLED ?? '').trim().toLowerCase() === 'true';
+
 const installation = resolveInstallationModuleAvailability('DDOS_MITIGATION_UI', {
   hostname: process.env.NETVISION_INSTALLATION_HOSTNAME ?? osHostname(),
   installationId: process.env.NETVISION_INSTALLATION_ID ?? null,
@@ -30,6 +38,7 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_INSTALLATION_HOSTNAME: process.env.NETVISION_INSTALLATION_HOSTNAME ?? osHostname(),
     NEXT_PUBLIC_INSTALLATION_ID: process.env.NETVISION_INSTALLATION_ID ?? '',
     NEXT_PUBLIC_DDOS_MITIGATION_UI: installation.enabled ? 'true' : 'false',
+    NEXT_PUBLIC_VSI_DIAGNOSTIC_ENABLED: vsiDiagnosticUi ? 'true' : 'false',
   },
   experimental: {
     // O discovery (BGP/mitigacao) e sincrono e faz SSH por peer; o proxy
