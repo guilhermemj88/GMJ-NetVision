@@ -201,12 +201,29 @@ describe('execution context, reachability por sentido e evidencia (integracao 31
   it('buildExecutionContext usa somente o executionContext do backend', async () => {
     const { buildExecutionContext } = await import('./health-model');
     const { vsi1809Result, access, VSI_1809_IDS } = await import('./vsi-1809.fixture');
-    expect(buildExecutionContext(vsi1809Result)).toEqual({
+    expect(buildExecutionContext(vsi1809Result)).toMatchObject({
+      summary: 'admin (ADMIN) · comandos autorizados nos 2 PEs',
       netvision: 'admin (ADMIN)',
       deviceAccess: 'Conta de serviço guilherme3.',
       commandAuthorization:
         'Confirmada para os comandos executados nesta execução nos dois PEs. Vale somente para os comandos executados nesta execução.',
       privilegeLevel: 'Não verificado explicitamente. Isso não afeta o resultado desta execução.',
+      endpoints: [
+        {
+          role: 'PE local',
+          name: 'IIE-VSR-6730-MPLS-01',
+          sshUsername: 'guilherme3',
+          authorization: 'Confirmada para os comandos executados nesta execução',
+          commands: '7 comandos enviados · 7 com evidência válida',
+        },
+        {
+          role: 'PE remoto',
+          name: 'RNS-FLOR-6730-MPLS-01',
+          sshUsername: 'guilherme3',
+          authorization: 'Confirmada para os comandos executados nesta execução',
+          commands: '7 comandos enviados · 7 com evidência válida',
+        },
+      ],
     });
     const partial = buildExecutionContext({
       ...vsi1809Result,
@@ -274,5 +291,100 @@ describe('execution context, reachability por sentido e evidencia (integracao 31
       'complete',
       'output',
     ]);
+  });
+});
+
+function withoutUnderlay(r: VsiDiagnosticResult): VsiDiagnosticResult {
+  const copy = { ...r };
+  delete copy.underlayClassification;
+  return copy;
+}
+
+describe('polish 02: rotulos transitorios, contagem por PE e wording ao operador', () => {
+  it('resumo do contexto nunca usa contagem global de comandos', async () => {
+    const { buildExecutionContext } = await import('./health-model');
+    const { vsi1809Result, access, VSI_1809_IDS } = await import('./vsi-1809.fixture');
+    const summaries = [
+      buildExecutionContext(vsi1809Result).summary,
+      buildExecutionContext({
+        ...vsi1809Result,
+        executionContext: {
+          endpoints: [
+            access(VSI_1809_IDS.LOCAL, 'IIE'),
+            access(VSI_1809_IDS.REMOTE, 'RNS', {
+              commandAuthorization: 'NOT_CONFIRMED',
+              acceptedCommands: 4,
+              executedCommands: 5,
+            }),
+          ],
+        },
+      }).summary,
+      buildExecutionContext({
+        ...vsi1809Result,
+        executionContext: {
+          endpoints: [
+            access(VSI_1809_IDS.LOCAL, 'IIE', {
+              sshUsername: null,
+              commandAuthorization: 'NOT_EXECUTED',
+              acceptedCommands: 0,
+              executedCommands: 0,
+            }),
+          ],
+        },
+      }).summary,
+    ];
+    expect(summaries).toEqual([
+      'admin (ADMIN) · comandos autorizados nos 2 PEs',
+      'admin (ADMIN) · autorização não confirmada em todos os PEs',
+      'admin (ADMIN) · nenhum comando executado',
+    ]);
+    for (const summary of summaries) expect(summary).not.toMatch(/\d+ comandos?\b/);
+  });
+
+  it('RUNNING usa rotulos transitorios para PE remoto e underlay', async () => {
+    const { remotePeerLabel, underlayLabel } = await import('./health-model');
+    const { vsi1809Result } = await import('./vsi-1809.fixture');
+    const running = withoutUnderlay({ ...vsi1809Result, state: 'RUNNING', remotes: [] });
+    expect(remotePeerLabel(running)).toBe('PE remoto aguardando identificação');
+    expect(underlayLabel(running)).toBe('em análise');
+    expect(underlayLabel({ ...running, underlayClassification: 'UNDERLAY_REACHABLE' })).toBe(
+      'em análise',
+    );
+    const finished: VsiDiagnosticResult = { ...running, state: 'COMPLETED' };
+    expect(remotePeerLabel(finished)).toBe('PE remoto não identificado');
+    expect(underlayLabel(finished)).toBe('não classificado');
+    expect(remotePeerLabel(vsi1809Result)).toBe('RNS-FLOR-6730-MPLS-01');
+    expect(underlayLabel(vsi1809Result)).toBe('UNDERLAY_REACHABLE');
+  });
+
+  it('card Labels match usa resumo curto, sem a frase truncada do backend', async () => {
+    const { vsi1809Result } = await import('./vsi-1809.fixture');
+    const labels = (r: VsiDiagnosticResult) => buildHealthCards(r).find((c) => c.id === 'labels')!;
+    expect(labels(vsi1809Result).detail).toBe('Peers recíprocos · labels MATCH');
+    expect(labels(vsi1809Result).detail).not.toContain('na execução atual');
+    const unproven = vsi1809Result.checks.map((c) =>
+      c.id === 'recip' ? { ...c, status: 'INSUFFICIENT_DATA' as const } : c,
+    );
+    expect(labels({ ...vsi1809Result, checks: unproven }).detail).toBe(
+      'Peers/labels não comprovados',
+    );
+  });
+
+  it('traceroute amigavel e pendencia de desenvolvimento fora das recomendacoes', async () => {
+    const { limitationText, operationalNextTests } = await import('./health-model');
+    expect(limitationText('Traceroute real desabilitado: NOT_HOMOLOGATED.')).toBe(
+      'Traceroute: ainda não homologado para execução ativa.',
+    );
+    expect(
+      limitationText('F1A, cliente final, porta física, CRC, LLDP e LSP detalhado não avaliados.'),
+    ).toBe('F1A, cliente final, porta física, CRC, LLDP e LSP detalhado não avaliados.');
+    const operational =
+      'Verificar o circuito de acesso e a ponta do cliente na interface indicada, sem alterar a configuração.';
+    expect(
+      operationalNextTests([
+        'Homologar o fluxo nativo completo pela API/WEB em release isolada, mediante nova autorização para testes ativos.',
+        operational,
+      ]),
+    ).toEqual([operational]);
   });
 });

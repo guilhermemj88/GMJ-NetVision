@@ -150,7 +150,14 @@ export function buildHealthCards(result: VsiDiagnosticResult): HealthCard[] {
       id: 'labels',
       title: 'Labels match',
       tone: labelsCheck ? toneOf(labelsCheck.status) : 'neutral',
-      detail: labelsCheck?.message ?? 'não avaliado nesta execução',
+      // Resumo curto para o card; a mensagem completa segue na secao PW.
+      detail: !labelsCheck
+        ? 'não avaliado nesta execução'
+        : labelsCheck.status === 'OK'
+          ? 'Peers recíprocos · labels MATCH'
+          : labelsCheck.status === 'FAILED'
+            ? 'Peers/labels divergentes'
+            : 'Peers/labels não comprovados',
     },
   ];
 }
@@ -247,7 +254,52 @@ export function endpointLabels(endpoint: VsiDiagnosticEndpoint | null): string {
   return `${peer.inboundLabel ?? '—'} / ${peer.outboundLabel ?? '—'}`;
 }
 
+/** Rotulos transitorios enquanto o job roda; o valor de backend nao muda. */
+export function remotePeerLabel(result: VsiDiagnosticResult): string {
+  const remote = result.remotes[0];
+  if (remote) return remote.name;
+  return isRunning(result) ? 'PE remoto aguardando identificação' : 'PE remoto não identificado';
+}
+
+export function underlayLabel(result: VsiDiagnosticResult): string {
+  return isRunning(result) ? 'em análise' : (result.underlayClassification ?? 'não classificado');
+}
+
+/**
+ * Textos de backend reescritos so para o operador (contrato inalterado):
+ * o estado interno continua NOT_HOMOLOGATED.
+ */
+const LIMITATION_WORDING: Record<string, string> = {
+  'Traceroute real desabilitado: NOT_HOMOLOGATED.':
+    'Traceroute: ainda não homologado para execução ativa.',
+};
+
+export function limitationText(warning: string): string {
+  return LIMITATION_WORDING[warning] ?? warning;
+}
+
+/** Pendencias de homologacao do proprio NetVision nao sao recomendacao sobre a VSI. */
+const DEVELOPMENT_PENDING = [/^Homologar o fluxo nativo completo pela API\/WEB/];
+
+export function operationalNextTests(nextTests: string[]): string[] {
+  return nextTests.filter((next) => !DEVELOPMENT_PENDING.some((pattern) => pattern.test(next)));
+}
+
+export interface ExecutionEndpointView {
+  hostId: string;
+  role: 'PE local' | 'PE remoto';
+  name: string;
+  sshUsername: string;
+  authorization: string;
+  /** Somente contagens reais do executionContext (enviados/aceitos por PE). */
+  commands: string;
+}
+
 export interface ExecutionContextView {
+  /** Resumo da secao fechada; nunca uma contagem global derivada da lista de evidencias. */
+  summary: string;
+  /** Por PE, a partir do executionContext; vazio sem executionContext. */
+  endpoints: ExecutionEndpointView[];
   /** RBAC do NetVision: quem iniciou a execucao. */
   netvision: string;
   /** Conta de servico SSH usada nos equipamentos. */
@@ -278,6 +330,8 @@ export function buildExecutionContext(result: VsiDiagnosticResult): ExecutionCon
   const context = result.executionContext;
   if (!context)
     return {
+      summary: netvision,
+      endpoints: [],
       netvision,
       deviceAccess: 'não informado pelo servidor',
       commandAuthorization: 'não informada pelo servidor',
@@ -292,7 +346,34 @@ export function buildExecutionContext(result: VsiDiagnosticResult): ExecutionCon
       (endpoint) => endpoint.commandAuthorization === 'CONFIRMED_FOR_EXECUTED_COMMANDS',
     );
   const pes = endpoints.length === 2 ? 'nos dois PEs' : 'no PE';
+  const executed = endpoints.filter((endpoint) => endpoint.commandAuthorization !== 'NOT_EXECUTED');
+  const summary = `${netvision} · ${
+    confirmed
+      ? `comandos autorizados ${endpoints.length === 1 ? 'no PE' : `nos ${endpoints.length} PEs`}`
+      : executed.length === 0
+        ? 'nenhum comando executado'
+        : 'autorização não confirmada em todos os PEs'
+  }`;
   return {
+    summary,
+    endpoints: endpoints.map((endpoint) => ({
+      hostId: endpoint.hostId,
+      role: endpoint.hostId === result.local.hostId ? 'PE local' : 'PE remoto',
+      name: endpoint.name,
+      sshUsername: endpoint.sshUsername ?? 'nenhuma sessão SSH aberta',
+      authorization:
+        endpoint.commandAuthorization === 'CONFIRMED_FOR_EXECUTED_COMMANDS'
+          ? 'Confirmada para os comandos executados nesta execução'
+          : endpoint.commandAuthorization === 'NOT_EXECUTED'
+            ? 'Nenhum comando executado nesta execução'
+            : 'Não confirmada nesta execução',
+      commands:
+        endpoint.executedCommands === 0
+          ? 'nenhum comando enviado'
+          : `${endpoint.executedCommands} comando${endpoint.executedCommands === 1 ? '' : 's'} enviado${
+              endpoint.executedCommands === 1 ? '' : 's'
+            } · ${endpoint.acceptedCommands} com evidência válida`,
+    })),
     netvision,
     deviceAccess:
       sessions.length === 0

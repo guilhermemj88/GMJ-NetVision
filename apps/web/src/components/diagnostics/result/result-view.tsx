@@ -19,9 +19,13 @@ import {
   formatUtc,
   headlineStatus,
   isRunning,
+  limitationText,
+  operationalNextTests,
   probeHeadline,
+  remotePeerLabel,
   sectionSummary,
   toneOf,
+  underlayLabel,
   type Tone,
 } from './health-model';
 import { RunningStepper } from './running-stepper';
@@ -160,8 +164,9 @@ export function VsiDiagnosticResultView({ result }: { result: VsiDiagnosticResul
   const remote = result.remotes[0] ?? null;
   const sections = buildSections(result);
   const cards = buildHealthCards(result);
-  const commands = [...new Set(result.evidence.map((e) => e.command).filter(Boolean))] as string[];
   const context = buildExecutionContext(result);
+  const limitations = result.warnings.map(limitationText);
+  const nextTests = operationalNextTests(result.nextTests);
   const probes = result.probes ?? [];
   const observedPeers = [result.local, ...(remote ? [remote] : [])].flatMap((endpoint) =>
     (endpoint.observedVsi?.peers ?? []).map((peer) => ({ endpoint: endpoint.name, peer })),
@@ -182,7 +187,7 @@ export function VsiDiagnosticResultView({ result }: { result: VsiDiagnosticResul
         <p className={styles.peers}>
           <strong>{result.local.name}</strong>
           <span aria-hidden="true"> ↔ </span>
-          <strong>{remote?.name ?? 'PE remoto não identificado'}</strong>
+          <strong>{remotePeerLabel(result)}</strong>
         </p>
         {/* O resumo do backend so e conclusao depois do job; antes disso seria veredito provisorio. */}
         <p className={styles.summaryText}>
@@ -191,7 +196,7 @@ export function VsiDiagnosticResultView({ result }: { result: VsiDiagnosticResul
         <dl className={styles.meta}>
           <div>
             <dt>Underlay</dt>
-            <dd>{result.underlayClassification ?? 'não classificado'}</dd>
+            <dd>{underlayLabel(result)}</dd>
           </div>
           <div>
             <dt>Execução</dt>
@@ -320,9 +325,7 @@ export function VsiDiagnosticResultView({ result }: { result: VsiDiagnosticResul
             <Section
               title="Contexto de execução"
               tone="neutral"
-              summary={`${context.netvision} · ${commands.length} comando${
-                commands.length === 1 ? '' : 's'
-              }`}
+              summary={context.summary}
               variant="context"
             >
               {/* Informativo: RBAC do NetVision, conta SSH e AAA do equipamento sao dominios distintos. */}
@@ -354,39 +357,46 @@ export function VsiDiagnosticResultView({ result }: { result: VsiDiagnosticResul
                   </dd>
                 </div>
               </dl>
-              {commands.length > 0 ? (
-                <ul className={styles.commandList}>
-                  {commands.map((command) => (
-                    <li key={command}>
-                      <code>{command}</code>
+              {context.endpoints.length > 0 ? (
+                <ul className={styles.contextEndpoints} aria-label="Contexto por PE">
+                  {context.endpoints.map((endpoint) => (
+                    <li key={endpoint.hostId} className={styles.contextEndpoint}>
+                      <span className={styles.contextRole}>{endpoint.role}</span>
+                      <strong>{endpoint.name}</strong>
+                      <span>Conta SSH: {endpoint.sshUsername}</span>
+                      <span>{endpoint.authorization}</span>
+                      <span className={styles.contextCount}>{endpoint.commands}</span>
                     </li>
                   ))}
                 </ul>
               ) : null}
+              <p className={styles.empty}>
+                A lista completa de comandos está em Evidências e comandos.
+              </p>
             </Section>
 
             <Section
               title="Limitações da análise"
               tone="attention"
-              summary={`${result.warnings.length + result.nextTests.length} ${
-                result.warnings.length + result.nextTests.length === 1 ? 'item' : 'itens'
+              summary={`${limitations.length + nextTests.length} ${
+                limitations.length + nextTests.length === 1 ? 'item' : 'itens'
               } de escopo`}
               variant="limitations"
             >
-              {result.warnings.length > 0 ? (
+              {limitations.length > 0 ? (
                 <ul className={styles.limitationList}>
-                  {result.warnings.map((warning) => (
+                  {limitations.map((warning) => (
                     <li key={warning}>{warning}</li>
                   ))}
                 </ul>
               ) : (
                 <p className={styles.empty}>nenhuma limitação declarada nesta execução</p>
               )}
-              {result.nextTests.length > 0 ? (
+              {nextTests.length > 0 ? (
                 <>
                   <h5 className={styles.compareTitle}>Próximas verificações sugeridas</h5>
                   <ul className={styles.limitationList}>
-                    {result.nextTests.map((next) => (
+                    {nextTests.map((next) => (
                       <li key={next}>{next}</li>
                     ))}
                   </ul>

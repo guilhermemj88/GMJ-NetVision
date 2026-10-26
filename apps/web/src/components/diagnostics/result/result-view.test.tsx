@@ -26,6 +26,12 @@ function contextText(): string {
   return container.querySelector('dl[aria-label="Contexto de execução"]')?.textContent ?? '';
 }
 
+function withoutUnderlay(r: VsiDiagnosticResult): VsiDiagnosticResult {
+  const copy = { ...r };
+  delete copy.underlayClassification;
+  return copy;
+}
+
 beforeEach(() => {
   container = document.createElement('div');
   document.body.appendChild(container);
@@ -128,6 +134,39 @@ describe('Contexto de execução (fonte: executionContext do backend)', () => {
     expect(text).not.toMatch(/privilégio (total|suficiente)|nível máximo/i);
   });
 
+  it('resumo fechado sem contagem global; detalhe por PE com contagens reais do executionContext', async () => {
+    await render(base);
+    const summary = summaryOf('Contexto de execução')!.textContent ?? '';
+    expect(summary).toContain('admin (ADMIN) · comandos autorizados nos 2 PEs');
+    expect(summary).not.toMatch(/\d+ comandos?\b/);
+    const perPe = [...container.querySelectorAll('ul[aria-label="Contexto por PE"] li')].map(
+      (node) => node.textContent ?? '',
+    );
+    expect(perPe).toHaveLength(2);
+    expect(perPe[0]).toContain('PE local');
+    expect(perPe[0]).toContain('IIE-VSR-6730-MPLS-01');
+    expect(perPe[0]).toContain('Conta SSH: guilherme3');
+    expect(perPe[0]).toContain('Confirmada para os comandos executados nesta execução');
+    expect(perPe[0]).toContain('7 comandos enviados · 7 com evidência válida');
+    expect(perPe[1]).toContain('PE remoto');
+    expect(perPe[1]).toContain('RNS-FLOR-6730-MPLS-01');
+    // A lista de comandos fica em Evidências e comandos, nao no contexto.
+    const section = summaryOf('Contexto de execução')!.parentElement!;
+    expect(section.querySelectorAll('code')).toHaveLength(0);
+    expect(section.textContent).toContain(
+      'A lista completa de comandos está em Evidências e comandos.',
+    );
+  });
+
+  it('card Labels match: resumo curto, sem a frase truncada antiga', async () => {
+    await render(base);
+    const card = [...container.querySelectorAll('ul[aria-label="Saúde dos componentes"] li')].find(
+      (node) => node.textContent?.includes('Labels match'),
+    )!;
+    expect(card.textContent).toContain('Peers recíprocos · labels MATCH');
+    expect(card.textContent).not.toContain('MATCH na');
+  });
+
   it('NOT_CONFIRMED nunca diz que todos os comandos foram autorizados', async () => {
     await render({
       ...base,
@@ -157,6 +196,10 @@ describe('Contexto de execução (fonte: executionContext do backend)', () => {
     );
     expect(text).toContain('Não verificado explicitamente.');
     expect(text).not.toContain('Isso não afeta o resultado');
+    expect(summaryOf('Contexto de execução')!.textContent).toContain(
+      'autorização não confirmada em todos os PEs',
+    );
+    expect(container.textContent).toContain('5 comandos enviados · 4 com evidência válida');
   });
 
   it('NOT_EXECUTED fica neutro e nunca vira "permission denied"', async () => {
@@ -180,6 +223,8 @@ describe('Contexto de execução (fonte: executionContext do backend)', () => {
     expect(text).toContain('IIE-VSR-6730-MPLS-01: nenhum comando executado nesta execução.');
     expect(text).not.toMatch(/denied|negad|sem permiss/i);
     expect(text).not.toContain('guilherme3');
+    expect(summaryOf('Contexto de execução')!.textContent).toContain('nenhum comando executado');
+    expect(container.textContent).toContain('nenhum comando enviado');
   });
 
   it('sem executionContext (API antiga) nao infere autorizacao', async () => {
@@ -197,13 +242,18 @@ describe('Limitacoes, AAA e RUNNING', () => {
     await act(async () => summaryOf('Limitações da análise')!.click());
     const limitations = summaryOf('Limitações da análise')!.parentElement!.textContent ?? '';
     for (const real of [
-      'Traceroute real desabilitado: NOT_HOMOLOGATED.',
+      'Traceroute: ainda não homologado para execução ativa.',
       'F1A, cliente final, porta física, CRC, LLDP e LSP detalhado não avaliados.',
       'Conclusão limitada às evidências e horários desta execução',
       'Ping IP não comprova caminho físico, caminho completo da VSI, LSP ou entrega ao cliente.',
     ])
       expect(limitations).toContain(real);
+    expect(limitations).not.toContain('Traceroute real desabilitado');
     expect(limitations).not.toMatch(/AAA|privilégio/i);
+    // Pendencia de homologacao do NetVision nao e recomendacao sobre a VSI; sem itens, sem subtitulo.
+    expect(limitations).not.toContain('Homologar o fluxo nativo completo pela API/WEB');
+    expect(limitations).not.toContain('Próximas verificações sugeridas');
+    expect(summaryOf('Limitações da análise')!.textContent).toContain('4 itens de escopo');
     expect(text).not.toContain('AAA = NOT_VERIFIED');
     expect(text).not.toContain('AAA não verificado');
     expect(text).not.toContain('privilégios da conta');
@@ -226,6 +276,63 @@ describe('Limitacoes, AAA e RUNNING', () => {
     expect(container.querySelector('ul[aria-label="Saúde dos componentes"]')).toBeNull();
     expect(container.querySelector('[aria-label="Cadeia do circuito"]')).toBeNull();
     expect(container.querySelectorAll('details')).toHaveLength(0);
+  });
+
+  it('RUNNING inicial: PE remoto aguardando identificação e underlay em análise', async () => {
+    await render(
+      withoutUnderlay({
+        ...base,
+        state: 'RUNNING',
+        stage: 'Preparando diagnóstico e validando os PEs',
+        completedAt: null,
+        overallStatus: 'INSUFFICIENT_DATA',
+        remotes: [],
+        checks: [],
+        probes: [],
+        evidence: [],
+      }),
+    );
+    const header = container.querySelector('header')!.textContent ?? '';
+    expect(header).toContain('PE remoto aguardando identificação');
+    expect(header).not.toContain('PE remoto não identificado');
+    expect(header).toContain('em análise');
+    expect(header).not.toContain('não classificado');
+  });
+
+  it('RUNNING apos o PE local: remoto ja resolvido aparece pelo nome, underlay segue em análise', async () => {
+    await render(
+      withoutUnderlay({
+        ...base,
+        state: 'RUNNING',
+        stage: 'Validando e coletando PE remoto: RNS-FLOR-6730-MPLS-01',
+        completedAt: null,
+        overallStatus: 'INSUFFICIENT_DATA',
+      }),
+    );
+    const header = container.querySelector('header')!.textContent ?? '';
+    expect(header).toContain('RNS-FLOR-6730-MPLS-01');
+    expect(header).toContain('em análise');
+    expect(container.textContent).not.toContain('INSUFFICIENT_DATA');
+  });
+
+  it.each([
+    ['Preparando diagnóstico e validando os PEs', 'Inventário'],
+    ['Validando e coletando PE local: IIE-VSR-6730-MPLS-01', 'PE local'],
+    ['Validando e coletando PE remoto: RNS-FLOR-6730-MPLS-01', 'PE remoto'],
+    ['Testando conectividade IIE-VSR-6730-MPLS-01', 'Reachability'],
+    ['Correlacionando evidências', 'Correlação'],
+  ])('stepper marca a etapa ativa a partir do estagio real do backend: %s', async (stage, step) => {
+    await render({ ...base, state: 'RUNNING', stage, completedAt: null });
+    const active = container.querySelector(
+      '[aria-label="Diagnóstico em andamento"] li[class*="step_active"]',
+    );
+    expect(active?.textContent).toBe(step);
+  });
+
+  it('job concluido sem PE remoto usa o estado real (não identificado)', async () => {
+    await render({ ...base, overallStatus: 'INSUFFICIENT_DATA', remotes: [] });
+    expect(container.querySelector('header')!.textContent).toContain('PE remoto não identificado');
+    expect(container.textContent).not.toContain('aguardando identificação');
   });
 
   it('INSUFFICIENT_DATA final continua aparecendo como veredito', async () => {

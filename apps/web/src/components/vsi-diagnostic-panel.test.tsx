@@ -321,7 +321,8 @@ describe('Contexto de execução no painel (UI gráfica + executionContext)', ()
     expect(text.indexOf('Reciprocidade e labels')).toBeLessThan(
       text.indexOf('Contexto de execução'),
     );
-    expect(text).toContain('Traceroute real desabilitado: NOT_HOMOLOGATED.');
+    expect(text).toContain('Traceroute: ainda não homologado para execução ativa.');
+    expect(text).not.toContain('Homologar o fluxo nativo completo pela API/WEB');
     expect(text).not.toContain('AAA = NOT_VERIFIED');
     expect(text).not.toContain('AAA não verificado');
   });

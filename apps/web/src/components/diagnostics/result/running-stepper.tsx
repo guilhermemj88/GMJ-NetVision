@@ -18,7 +18,7 @@ function reached(stage: string, step: string): boolean {
   if (key === 'inventário') return /invent|pré|pre/.test(normalized);
   if (key === 'pe local') return /local/.test(normalized);
   if (key === 'pe remoto') return /remot/.test(normalized);
-  if (key === 'reachability') return /ping|reach|probe|alcanc/.test(normalized);
+  if (key === 'reachability') return /ping|reach|probe|alcanc|conectiv/.test(normalized);
   if (key === 'correlação') return /correlac|compar|reciproc/.test(normalized);
   return /conclu|resultado final|finaliz/.test(normalized);
 }
