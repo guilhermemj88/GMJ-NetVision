@@ -2,7 +2,7 @@ import { afterEach, describe, it, expect, vi } from 'vitest';
 
 // Gate default=false: este arquivo exercita o caminho HABILITADO (identidade/autorizacao).
 process.env.VSI_DIAGNOSTIC_ENABLED = 'true';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import Fastify from 'fastify';
 import {
@@ -14,6 +14,7 @@ import {
 } from '@gmj/shared';
 import { VsiDiagnosticService, VsiDiagnosticError } from './vsi-diagnostic-service';
 import { InventoryVsiDiagnosticRunner, type ObservationSink } from './vsi-diagnostic-ssh';
+import { VsiDiagnosticApprovalStore } from './vsi-diagnostic-approval';
 import { vsiCommand, type VsiOperation } from './vsi-diagnostic-policy';
 import { resolveMplsLoopback, parseVsiFacts, parsePing } from './vsi-diagnostic-parser';
 import { registerVsiDiagnosticRoutes } from '../../vsi-diagnostic-routes';
@@ -614,7 +615,12 @@ describe('closed commands and authenticated native API', () => {
     const f = fixture(),
       app = Fastify();
     let user: AuthUser | null = null;
-    registerVsiDiagnosticRoutes(app, f.service, async () => user);
+    registerVsiDiagnosticRoutes(
+      app,
+      f.service,
+      async () => user,
+      new VsiDiagnosticApprovalStore(mkdtempSync(`${process.env.TMPDIR ?? '/tmp'}/vsi-routes-`)),
+    );
     app.setErrorHandler((e, _q, r) =>
       r.code(e instanceof VsiDiagnosticError ? e.statusCode : 400).send({ message: 'safe' }),
     );

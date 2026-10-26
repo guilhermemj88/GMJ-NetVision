@@ -1,13 +1,18 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import Fastify from 'fastify';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { registerVsiDiagnosticRoutes, vsiDiagnosticEnabled } from '../../vsi-diagnostic-routes';
+import { VsiDiagnosticApprovalStore } from './vsi-diagnostic-approval';
 
-const user = { id: 'gate-operator', username: 'gate-operator', role: 'OPERATOR' as const };
+const operator = { id: 'gate-operator', username: 'gate-operator', role: 'OPERATOR' as const };
+const admin = { id: 'gate-admin', username: 'gate-admin', role: 'ADMIN' as const };
 
 function buildService(calls: string[]) {
   return {
-    start: async () => {
-      calls.push('start');
+    start: async (...args: unknown[]) => {
+      calls.push(`start:${String(args[3] ?? 'none')}`);
       return { diagnosticId: 'should-not-run' };
     },
     get: async () => {
@@ -22,6 +27,27 @@ function buildService(calls: string[]) {
 }
 
 describe('gate de ativacao do diagnostico VSI', () => {
+  let dir: string;
+  let store: VsiDiagnosticApprovalStore;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'vsi-gate-'));
+    store = new VsiDiagnosticApprovalStore(dir);
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function withGate(value: string | undefined) {
+    const previous = process.env.VSI_DIAGNOSTIC_ENABLED;
+    if (value === undefined) delete process.env.VSI_DIAGNOSTIC_ENABLED;
+    else process.env.VSI_DIAGNOSTIC_ENABLED = value;
+    return () => {
+      if (previous === undefined) delete process.env.VSI_DIAGNOSTIC_ENABLED;
+      else process.env.VSI_DIAGNOSTIC_ENABLED = previous;
+    };
+  }
+
   it('e desabilitado por padrao', () => {
     expect(vsiDiagnosticEnabled({} as NodeJS.ProcessEnv)).toBe(false);
     expect(vsiDiagnosticEnabled({ NODE_ENV: 'production' } as NodeJS.ProcessEnv)).toBe(false);
@@ -38,47 +64,102 @@ describe('gate de ativacao do diagnostico VSI', () => {
     expect(vsiDiagnosticEnabled({ VSI_DIAGNOSTIC_ENABLED: ' TRUE ' } as NodeJS.ProcessEnv)).toBe(true);
   });
 
-  it('com gate desligado responde 503 e NUNCA chama o service (zero SSH)', async () => {
-    const previous = process.env.VSI_DIAGNOSTIC_ENABLED;
-    delete process.env.VSI_DIAGNOSTIC_ENABLED;
+  it('com gate desligado responde 503 nas 4 rotas e NUNCA chama o service (zero SSH)', async () => {
+    const restore = withGate(undefined);
     const calls: string[] = [];
     const app = Fastify();
     registerVsiDiagnosticRoutes(
       app as never,
       buildService(calls) as never,
-      async () => user as never,
+      async () => operator as never,
+      store,
     );
-    const response = await app.inject({
-      method: 'POST',
-      url: '/api/hosts/host-x/mpls/vsis/vsi-y/diagnose',
-      payload: {},
-    });
-    expect(response.statusCode).toBe(503);
-    expect(JSON.parse(response.body).enabled).toBe(false);
+    const urls: Array<[string, string]> = [
+      ['POST', '/api/hosts/host-x/mpls/vsis/vsi-y/diagnose'],
+      ['POST', '/api/hosts/host-x/mpls/vsis/vsi-y/diagnostic-approvals'],
+      ['GET', '/api/hosts/host-x/mpls/vsis/vsi-y/diagnostics/00000000-0000-4000-8000-000000000000'],
+      ['POST', '/api/hosts/host-x/mpls/vsis/vsi-y/diagnostics/00000000-0000-4000-8000-000000000000/cancel'],
+    ];
+    for (const [method, url] of urls) {
+      const response = await app.inject({ method: method as never, url, payload: {} });
+      expect(response.statusCode).toBe(503);
+      expect(JSON.parse(response.body).enabled).toBe(false);
+    }
     expect(calls).toEqual([]);
     await app.close();
-    if (previous !== undefined) process.env.VSI_DIAGNOSTIC_ENABLED = previous;
+    restore();
   });
 
-  it('com gate ligado a rota volta a exigir o fluxo normal', async () => {
-    const previous = process.env.VSI_DIAGNOSTIC_ENABLED;
-    process.env.VSI_DIAGNOSTIC_ENABLED = 'true';
+  it('com gate ligado exige aprovacao one-shot', async () => {
+    const restore = withGate('true');
     const calls: string[] = [];
     const app = Fastify();
-    registerVsiDiagnosticRoutes(
-      app as never,
-      buildService(calls) as never,
-      async () => user as never,
-    );
-    const response = await app.inject({
+    registerVsiDiagnosticRoutes(app as never, buildService(calls) as never, async () => operator as never, store);
+
+    const semAprovacao = await app.inject({
       method: 'POST',
       url: '/api/hosts/host-x/mpls/vsis/vsi-y/diagnose',
       payload: {},
     });
-    expect(response.statusCode).toBe(202);
-    expect(calls).toEqual(['start']);
+    expect(semAprovacao.statusCode).toBe(202);
+    expect(calls).toEqual(['start:none']);
+
+    calls.length = 0;
+    const comAprovacao = await app.inject({
+      method: 'POST',
+      url: '/api/hosts/host-x/mpls/vsis/vsi-y/diagnose',
+      payload: { approvalId: 'abc-123' },
+    });
+    expect(comAprovacao.statusCode).toBe(202);
+    expect(calls).toEqual(['start:abc-123']);
     await app.close();
-    if (previous === undefined) delete process.env.VSI_DIAGNOSTIC_ENABLED;
-    else process.env.VSI_DIAGNOSTIC_ENABLED = previous;
+    restore();
+  });
+
+  it('somente ADMIN cria aprovacao', async () => {
+    const restore = withGate('true');
+    const calls: string[] = [];
+    const app = Fastify();
+    registerVsiDiagnosticRoutes(app as never, buildService(calls) as never, async () => operator as never, store);
+    const negado = await app.inject({
+      method: 'POST',
+      url: '/api/hosts/host-x/mpls/vsis/vsi-y/diagnostic-approvals',
+      payload: {},
+    });
+    expect(negado.statusCode).toBe(403);
+    await app.close();
+
+    const appAdmin = Fastify();
+    registerVsiDiagnosticRoutes(appAdmin as never, buildService(calls) as never, async () => admin as never, store);
+    const criado = await appAdmin.inject({
+      method: 'POST',
+      url: '/api/hosts/host-x/mpls/vsis/vsi-y/diagnostic-approvals',
+      payload: { ttlSeconds: 120 },
+    });
+    expect(criado.statusCode).toBe(201);
+    const body = JSON.parse(criado.body);
+    expect(body.hostId).toBe('host-x');
+    expect(body.vsiId).toBe('vsi-y');
+    expect(body.createdBy).toBe('gate-admin');
+    expect(Date.parse(body.expiresAt) - Date.parse(body.createdAt)).toBe(120_000);
+    expect(calls).toEqual([]);
+    await appAdmin.close();
+    restore();
+  });
+
+  it('exige sessao em todas as rotas com gate ligado', async () => {
+    const restore = withGate('true');
+    const calls: string[] = [];
+    const app = Fastify();
+    registerVsiDiagnosticRoutes(app as never, buildService(calls) as never, async () => null, store);
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/hosts/host-x/mpls/vsis/vsi-y/diagnostic-approvals',
+      payload: {},
+    });
+    expect(response.statusCode).toBe(401);
+    expect(calls).toEqual([]);
+    await app.close();
+    restore();
   });
 });

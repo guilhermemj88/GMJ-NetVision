@@ -5,6 +5,7 @@ import {
   VsiDiagnosticError,
   type VsiDiagnosticService,
 } from './infrastructure/mpls/vsi-diagnostic-service';
+import type { VsiDiagnosticApprovalStore } from './infrastructure/mpls/vsi-diagnostic-approval';
 /**
  * Gate de ativacao. Default FALSE: sem a flag a acao produtiva nao existe e nenhum SSH pode ocorrer.
  * Fica FORA da logica field-validated (precheck/runner/parsers/policy).
@@ -19,6 +20,7 @@ export function registerVsiDiagnosticRoutes(
   app: FastifyInstance,
   service: VsiDiagnosticService,
   currentUser: (request: FastifyRequest) => Promise<AuthUser | null>,
+  approvals: VsiDiagnosticApprovalStore,
 ) {
   if (!vsiDiagnosticEnabled()) {
     const disabled = async (_request: FastifyRequest, reply: FastifyReply) =>
@@ -28,6 +30,7 @@ export function registerVsiDiagnosticRoutes(
         enabled: false,
       });
     app.post('/api/hosts/:hostId/mpls/vsis/:vsiId/diagnose', disabled);
+    app.post('/api/hosts/:hostId/mpls/vsis/:vsiId/diagnostic-approvals', disabled);
     app.get('/api/hosts/:hostId/mpls/vsis/:vsiId/diagnostics/:diagnosticId', disabled);
     app.post('/api/hosts/:hostId/mpls/vsis/:vsiId/diagnostics/:diagnosticId/cancel', disabled);
     return;
@@ -42,13 +45,27 @@ export function registerVsiDiagnosticRoutes(
       .parse(request.query ?? {});
     return user;
   };
+  app.post('/api/hosts/:hostId/mpls/vsis/:vsiId/diagnostic-approvals', async (request, reply) => {
+    const user = await authorize(request, true);
+    if (user.role !== 'ADMIN')
+      throw new VsiDiagnosticError('Criação de aprovação exige ADMIN', 403);
+    const { hostId, vsiId } = params.parse(request.params);
+    const body = z
+      .object({ ttlSeconds: z.number().int().min(30).max(900).optional() })
+      .strict()
+      .parse(request.body ?? {});
+    return reply
+      .code(201)
+      .send(approvals.create({ hostId, vsiId, createdBy: user.username, ttlSeconds: body.ttlSeconds }));
+  });
   app.post('/api/hosts/:hostId/mpls/vsis/:vsiId/diagnose', async (request, reply) => {
     const user = await authorize(request, true);
-    z.object({})
+    const body = z
+      .object({ approvalId: z.string().min(1).max(64).optional() })
       .strict()
       .parse(request.body ?? {});
     const { hostId, vsiId } = params.parse(request.params);
-    return reply.code(202).send(await service.start(hostId, vsiId, user));
+    return reply.code(202).send(await service.start(hostId, vsiId, user, body.approvalId));
   });
   const jobParams = params.extend({ diagnosticId: z.uuid() });
   app.get('/api/hosts/:hostId/mpls/vsis/:vsiId/diagnostics/:diagnosticId', async (request) => {

@@ -71,16 +71,17 @@ export class VsiDiagnosticService {
       hostId: string;
       command: string;
     }) => void = () => {},
-    private readonly beforeStart: (hostId: string, vsiId: string) => void = () => {},
+    private readonly beforeStart: (hostId: string, vsiId: string, approvalId?: string) => void = () => {},
   ) {}
   async start(
     hostId: string,
     vsiId: string,
     operator: Pick<AuthUser, 'id' | 'username' | 'role'>,
+    approvalId?: string,
   ): Promise<Result> {
     if (!['ADMIN', 'OPERATOR'].includes(operator.role))
       throw new VsiDiagnosticError('Execução exige ADMIN ou OPERATOR', 403);
-    this.beforeStart(hostId, vsiId);
+    this.beforeStart(hostId, vsiId, approvalId);
     if (this.closing) throw new VsiDiagnosticError('Serviço encerrando', 503);
     const key = JSON.stringify([hostId, vsiId]);
     if (this.reserved.has(key))
