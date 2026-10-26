@@ -182,9 +182,9 @@ describe('VSI diagnose action', () => {
     expect(container.textContent).toContain('UNDERLAY_REACHABLE');
     expect(container.textContent).toContain('PE remoto');
     const text = container.textContent!;
-    expect(text).toContain('Alcançável · 3/3 respostas · RTT médio 2 ms');
-    // Loss stays a secondary detail after replies, never the headline with 3 probes.
-    expect(text.indexOf('perda 0% em 3 pacotes')).toBeGreaterThan(text.indexOf('3/3 respostas'));
+    expect(text).toContain('Alcançável · 3/3 respostas');
+    // Loss stays a secondary detail after the replies headline, never the headline with 3 probes.
+    expect(text.indexOf('perda 0%')).toBeGreaterThan(text.indexOf('Alcançável · 3/3 respostas'));
     expect(container.textContent).toContain('NOT_HOMOLOGATED');
     expect(container.querySelector('details')!.open).toBe(false);
   });
@@ -221,7 +221,22 @@ describe('VSI diagnose action', () => {
     await armar();
     await diagnosticar();
     expect(container.querySelector('script')).toBeNull();
-    expect(container.querySelector('pre')?.textContent).toBe('<script>alert(1)</script>');
+    const secaoEvidencias = [...container.querySelectorAll('summary')].find((node) =>
+      node.textContent?.includes('Evidências e comandos'),
+    ) as HTMLElement;
+    await act(async () => secaoEvidencias.click());
+    const itemEvidencia = [...container.querySelectorAll('button')].find((node) =>
+      node.className.includes('evidenceItem'),
+    ) as HTMLButtonElement;
+    await act(async () => itemEvidencia.click());
+    const abaSaida = [...container.querySelectorAll('[role="dialog"] button')].find(
+      (node) => node.textContent === 'Saída bruta',
+    ) as HTMLButtonElement;
+    await act(async () => abaSaida.click());
+    expect(container.querySelector('script')).toBeNull();
+    expect(container.querySelector('[role="dialog"] pre')?.textContent).toBe(
+      '<script>alert(1)</script>',
+    );
   });
 
   it('com recurso desativado mostra o estado e nao dispara nenhuma request', async () => {

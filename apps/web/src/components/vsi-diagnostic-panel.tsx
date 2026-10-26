@@ -1,77 +1,9 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import type {
-  VsiDiagnosticExecutionContext,
-  VsiDiagnosticResult,
-  VsiDiagnosticStatus,
-} from '@gmj/shared';
+import type { VsiDiagnosticResult } from '@gmj/shared';
 import { Button } from '@gmj/ui';
 import styles from './vsi-diagnostic.module.css';
-function reachability(status: VsiDiagnosticStatus): string {
-  return status === 'OK'
-    ? 'Alcançável'
-    : status === 'WARNING'
-      ? 'Alcançável com perda'
-      : status === 'FAILED'
-        ? 'Sem resposta'
-        : 'Inconclusivo';
-}
-/** Informativo: separa RBAC do NetVision, conta SSH e autorização no equipamento. */
-function ExecutionContext({
-  result,
-  context,
-}: {
-  result: VsiDiagnosticResult;
-  context: VsiDiagnosticExecutionContext;
-}) {
-  const sessions = context.endpoints.filter((e) => e.executedCommands > 0);
-  const usernames = [...new Set(sessions.map((e) => e.sshUsername).filter(Boolean))];
-  const confirmed =
-    context.endpoints.length > 0 &&
-    context.endpoints.every((e) => e.commandAuthorization === 'CONFIRMED_FOR_EXECUTED_COMMANDS');
-  const pes = context.endpoints.length === 2 ? 'nos dois PEs' : 'no PE';
-  return (
-    <section className={styles.context} aria-label="Contexto de execução">
-      <h3>Contexto de execução</h3>
-      <dl>
-        <dt>Permissão no NetVision</dt>
-        <dd>
-          {result.operator.username} ({result.operator.role}) — usuário que iniciou esta execução.
-        </dd>
-        <dt>Acesso aos equipamentos</dt>
-        <dd>
-          {sessions.length === 0
-            ? 'Nenhuma sessão SSH aberta nesta execução.'
-            : usernames.length === 1
-              ? `Conta de serviço ${usernames[0]}.`
-              : sessions.map((e) => `${e.name}: ${e.sshUsername ?? 'N/D'}`).join(' · ')}
-        </dd>
-        <dt>Autorização dos comandos</dt>
-        <dd>
-          {confirmed
-            ? `Todos os comandos necessários desta execução foram aceitos e produziram evidência válida ${pes}.`
-            : context.endpoints
-                .map((e) =>
-                  e.commandAuthorization === 'CONFIRMED_FOR_EXECUTED_COMMANDS'
-                    ? `${e.name}: comandos desta execução aceitos (${e.acceptedCommands}/${e.executedCommands}).`
-                    : e.commandAuthorization === 'NOT_EXECUTED'
-                      ? `${e.name}: nenhum comando executado.`
-                      : e.acceptedCommands < e.executedCommands
-                        ? `${e.name}: não confirmada (${e.acceptedCommands}/${e.executedCommands} comandos com evidência válida).`
-                        : `${e.name}: não confirmada; nem todos os comandos necessários foram executados (${e.acceptedCommands}/${e.executedCommands} executados com evidência válida).`,
-                )
-                .join(' ')}{' '}
-          Vale somente para os comandos executados nesta execução.
-        </dd>
-        <dt>Nível de privilégio no equipamento</dt>
-        <dd>
-          Não verificado explicitamente.
-          {confirmed && ' Isso não afeta o resultado desta execução.'}
-        </dd>
-      </dl>
-    </section>
-  );
-}
+import { VsiDiagnosticResultView } from './diagnostics/result/result-view';
 type Approval = {
   approvalId: string;
   hostId: string;
@@ -216,60 +148,14 @@ export function VsiDiagnosticPanel({
       {error && <p role="alert">{error}</p>}
       {result && (
         <div aria-live="polite">
-          {running ? (
-            <>
-              <strong>DIAGNÓSTICO EM ANDAMENTO · {result.vsiName}</strong>
-              <p>Coletando e validando evidências dos PEs…</p>
-              <p>{result.stage}</p>
-            </>
-          ) : (
-            <>
-              <strong>
-                {result.overallStatus} · {result.vsiName}
-              </strong>
-              <p>{result.stage}</p>
-              <p>{result.summary}</p>
-            </>
-          )}
-          {result.underlayClassification && (
-            <p>
-              Underlay: <strong>{result.underlayClassification}</strong>
-            </p>
-          )}
-          <p>
-            Execução: {result.diagnosticId} · {result.operator.username} · {result.state}
-          </p>
-          {result.remotes.map((remote) => (
-            <p key={remote.hostId}>
-              PE remoto: {remote.name} · LoopBack {remote.loopback?.address ?? 'não confirmada'}
-            </p>
-          ))}
-          {result.probes?.map((probe) => (
-            <p key={probe.sourceHostId + probe.destinationHostId}>
-              IP {probe.source} → {probe.destination} · {reachability(probe.status)} ·{' '}
-              {probe.received ?? 'N/D'}/{probe.transmitted ?? 'N/D'} respostas · RTT médio{' '}
-              {probe.rttMs?.avg ?? 'N/D'} ms
-              {probe.lossPercent !== null && (
-                <small>
-                  {' '}
-                  (perda {probe.lossPercent}% em {probe.transmitted ?? 'N/D'} pacotes)
-                </small>
-              )}
-              {probe.tracerouteNotExecutedReason && (
-                <span> · Tracert não executado: {probe.tracerouteNotExecutedReason}</span>
-              )}
-              {probe.hops.map((hop) => (
-                <span key={hop.ttl}>
-                  {' '}
-                  · salto {hop.ttl}: {hop.address ?? '*'} ({hop.timesMs.join('/') || 'N/D'} ms)
-                </span>
-              ))}
-            </p>
-          ))}
+          <VsiDiagnosticResultView result={result} />
           {running && (
             <Button
               onClick={() =>
-                void json<VsiDiagnosticResult>(`${base}/diagnostics/${result.diagnosticId}/cancel`, 'POST')
+                void json<VsiDiagnosticResult>(
+                  `${base}/diagnostics/${result.diagnosticId}/cancel`,
+                  'POST',
+                )
                   .then(setResult)
                   .catch((e) => setError(e.message))
               }
@@ -277,52 +163,6 @@ export function VsiDiagnosticPanel({
               Cancelar
             </Button>
           )}
-          <p>
-            Origem MPLS: {result.local.loopback?.address ?? 'não confirmada'} · VLAN não é inferida
-            pelo nome ou sufixo.
-          </p>
-          <ol>
-            {result.checks.map((check) => (
-              <li key={check.id}>
-                <strong>
-                  {check.category} · {check.status}
-                </strong>
-                <p>
-                  {check.label} · equipamento{' '}
-                  {result.local.hostId === check.hostId
-                    ? result.local.name
-                    : (result.remotes.find((r) => r.hostId === check.hostId)?.name ?? check.hostId)}
-                </p>
-                <p>
-                  {check.message} · {check.certainty}
-                </p>
-              </li>
-            ))}
-          </ol>
-          {result.nextTests.map((text) => (
-            <p key={text}>Próximo teste: {text}</p>
-          ))}
-          {!running && result.executionContext && (
-            <ExecutionContext result={result} context={result.executionContext} />
-          )}
-          {result.warnings.map((text) => (
-            <p key={text}>Limitação: {text}</p>
-          ))}
-          <details>
-            <summary>Evidências e comandos ({result.evidence.length})</summary>
-            {result.evidence.map((e) => (
-              <div key={e.id}>
-                <strong>
-                  {e.source} · {e.hostId}
-                </strong>
-                <p>
-                  Observado: {e.observedAt ?? 'não confirmado'} · coletado: {e.collectedAt}
-                </p>
-                {e.command && <code>{e.command}</code>}
-                <pre>{e.output || 'Sem saída confirmada.'}</pre>
-              </div>
-            ))}
-          </details>
           <p>Resultado temporário; retenção em memória. Não substitui monitoramento recorrente.</p>
         </div>
       )}
