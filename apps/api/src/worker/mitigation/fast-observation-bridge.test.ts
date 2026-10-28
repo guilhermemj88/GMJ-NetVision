@@ -111,7 +111,7 @@ function harness() {
       },
     },
   });
-  const makeEngine = (mode: 'AUTO' | 'SIMULATION_ONLY' = 'AUTO') =>
+  const makeEngine = (mode: 'AUTO' | 'SIMULATION_ONLY' = 'AUTO', executionEnabled = true) =>
     new MitigationAutoEngine({
       sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
       globalMode: mode,
@@ -133,7 +133,10 @@ function harness() {
       },
       commands: { execute: commands },
       now: () => new Date(now),
-      executionControl: { enabled: false },
+      // Contrato da PONTE (confirmacoes/continuidade ate o comando): exige a
+      // execucao ligada. Com o kill switch desligado nenhum comando sairia
+      // (coberto em mitigation-safety-gates-03.test.ts).
+      executionControl: { enabled: executionEnabled },
     });
   return {
     source,
@@ -304,7 +307,8 @@ describe('external observation bridge contract and engine continuity', () => {
     '%s retains execution guard with telemetry present',
     async (kind) => {
       const h = harness(),
-        e = h.makeEngine(kind === 'SHADOW' ? 'SIMULATION_ONLY' : 'AUTO');
+        // PROMOTED = guarda do kill switch (MITIGATION_AUTO_EXECUTION_ENABLED=0).
+        e = h.makeEngine(kind === 'SHADOW' ? 'SIMULATION_ONLY' : 'AUTO', kind !== 'PROMOTED');
       const t = target({
         ...(kind === 'ALERT_ONLY' ? { mode: 'ALERT_ONLY' } : {}),
         ...(kind === 'DISABLED' ? { mode: 'DISABLED' } : {}),

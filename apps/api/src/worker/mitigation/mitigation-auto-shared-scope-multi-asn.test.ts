@@ -207,6 +207,7 @@ async function harness(profileCount: number, options: { interfaceDirection?: 'TX
   }
 
   const commands = new MitigationCommandService({
+    autoExecutionEnabled: () => true,
     repository,
     hosts: { getHost: async (id) => (id === DEVICE_A ? device(id) : null) },
     executor: new MockMitigationExecutor(),
@@ -218,6 +219,8 @@ async function harness(profileCount: number, options: { interfaceDirection?: 'TX
 
   const traffic = new SequenceTrafficSource();
   const engine = new MitigationAutoEngine({
+    // Kill switch: sem dependencia o motor e fail-closed; o teste declara ON.
+    executionControl: { enabled: true },
     sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
     globalMode: 'AUTO',
     execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [DEVICE_A] },

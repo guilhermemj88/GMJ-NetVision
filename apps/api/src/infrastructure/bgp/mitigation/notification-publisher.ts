@@ -21,6 +21,13 @@ export type MitigationNotificationEvent =
   | 'MITIGATION_SIMULATION_TRIGGERED'
   | 'MITIGATION_REMOVE_SIMULATED'
   | 'MITIGATION_REMOVED_VERIFIED'
+  /**
+   * DETECCAO SEM ESCRITA: o gatilho foi atingido, mas a mitigacao NAO foi
+   * aplicada (execucao automatica desligada ou escrita nao autorizada).
+   * `verified=false` e `simulation=true` por contrato: nunca confundir com
+   * `MITIGATION_TRIGGERED`, que representa mitigacao aplicada/em curso.
+   */
+  | 'MITIGATION_DETECTION_BLOCKED'
   /** Evento sintético do botão TESTAR WEBHOOK: não cria mitigação. */
   | 'MITIGATION_TEST';
 
@@ -43,6 +50,18 @@ export interface MitigationNotification {
     addressFamily: string | null;
   }[];
   occurredAt?: string | null;
+  /** S5: identidade do EPISODIO de ataque (dedupe do alerta de deteccao). */
+  episodeId?: string | null;
+  /** S5: motivo pelo qual a escrita NAO foi autorizada. */
+  blockedReason?: string | null;
+  /** S5: direcao efetiva da telemetria e sua origem. */
+  direction?: 'rx' | 'tx' | null;
+  directionSource?: string | null;
+  /**
+   * S5: nomes de campo que NAO puderam ser resolvidos. O transporte deve exibir
+   * "indisponivel" em vez de inventar valor.
+   */
+  fieldsUnavailable?: string[];
   /** Sempre `true` nesta versão (SIMULATION_ONLY): nenhuma alteração foi feita. */
   simulation: boolean;
   customer: string | null;

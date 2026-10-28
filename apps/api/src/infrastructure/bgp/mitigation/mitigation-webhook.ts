@@ -26,6 +26,12 @@ export interface MitigationWebhookPayload {
   bandwidthGbps: number | null;
   trafficGbps: number | null;
   thresholdGbps: number | null;
+  /**
+   * R5-8: mesma medida em Mbps. Abaixo de 1 Gbps o campo Gbps arredonda para
+   * 0; o transporte deve exibir Mbps nesse caso (nunca "0 Gbps").
+   */
+  trafficMbps: number | null;
+  thresholdMbps: number | null;
   policy: string | null;
   /** Compatibilidade com consumidores antigos (= mitigationNode). */
   node: number | null;
@@ -45,6 +51,12 @@ export interface MitigationWebhookPayload {
     addressFamily: string | null;
   }[];
   occurredAt: string | null;
+  /** S5 (deteccao bloqueada): episodio, motivo, direcao e campos ausentes. */
+  episodeId: string | null;
+  blockedReason: string | null;
+  direction: 'rx' | 'tx' | null;
+  directionSource: string | null;
+  fieldsUnavailable: string[];
 }
 
 /** O sender recebe os headers prontos: o token vai em HEADER, nunca na URL. */
@@ -53,6 +65,11 @@ export type WebhookSender = (
   payload: MitigationWebhookPayload,
   headers: Record<string, string>,
 ) => Promise<void>;
+
+function toMbps(bps: bigint | null): number | null {
+  if (bps === null) return null;
+  return Math.round((Number(bps) / 1_000_000) * 100) / 100;
+}
 
 function toGbps(bps: bigint | null): number | null {
   if (bps === null) return null;
@@ -74,6 +91,8 @@ export function buildMitigationWebhookPayload(
     bandwidthGbps: toGbps(notification.effectiveBandwidthBps),
     trafficGbps: toGbps(notification.trafficBps),
     thresholdGbps: toGbps(notification.thresholdBps),
+    trafficMbps: toMbps(notification.trafficBps),
+    thresholdMbps: toMbps(notification.thresholdBps),
     policy: notification.policy,
     node: notification.mitigationNode ?? notification.node,
     bogonNode: notification.bogonNode ?? null,
@@ -86,6 +105,11 @@ export function buildMitigationWebhookPayload(
     sharedPolicy: notification.sharedPolicy ?? false,
     sharedPolicyTargets: notification.sharedPolicyTargets ?? [],
     occurredAt: notification.occurredAt ?? null,
+    episodeId: notification.episodeId ?? null,
+    blockedReason: notification.blockedReason ?? null,
+    direction: notification.direction ?? null,
+    directionSource: notification.directionSource ?? null,
+    fieldsUnavailable: notification.fieldsUnavailable ?? [],
   };
 }
 

@@ -121,6 +121,7 @@ async function scenario(mode: 'AUTO' | 'ALERT_ONLY') {
 
   const live = new CountingLiveExecutor();
   const commands = new MitigationCommandService({
+    autoExecutionEnabled: () => true,
     repository,
     hosts: { getHost: async () => host() },
     executor: new MockMitigationExecutor(),
@@ -128,6 +129,8 @@ async function scenario(mode: 'AUTO' | 'ALERT_ONLY') {
   });
   const traffic = new SequenceTrafficSource();
   const engine = new MitigationAutoEngine({
+    // Kill switch: sem dependencia o motor e fail-closed; o teste declara ON.
+    executionControl: { enabled: true },
     sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
     globalMode: 'AUTO',
     execution: { executor: 'HUAWEI', liveWrite: false, allowedDeviceIds: [F1A] },

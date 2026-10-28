@@ -281,7 +281,10 @@ export class Runner {
           );
         },
       },
-      ...(options.executionControl ? { executionControl: options.executionControl } : {}),
+      // Kill switch: o motor e fail-closed sem a dependencia. O harness declara
+      // a execucao LIGADA por padrao (cenarios de escrita); o teste que exercita
+      // o desligamento passa `{ enabled: false }`.
+      executionControl: options.executionControl ?? { enabled: true },
       ...(options.requireRuntimeRead !== undefined
         ? { requireRuntimeRead: options.requireRuntimeRead }
         : {}),

@@ -576,14 +576,19 @@ describe('AUTO-ALL: telemetria, direcao e execucao', () => {
     expect(h.calls).toEqual([]);
   });
 
-  it('AUTO manual continua autorizado com EXECUTION=0 (compatibilidade)', async () => {
+  // SAFETY-GATES-03 (M8): o contrato anterior ("AUTO manual continua autorizado
+  // com EXECUTION=0") foi REVOGADO. O kill switch vale para toda origem AUTO.
+  it('AUTO manual com EXECUTION=0 tambem fica em WOULD_ACTIVATE (kill switch global)', async () => {
     const h = await engineHarness({
       direction: { iface: 'TX' },
       promotedBySweep: false,
       executionControlEnabled: false,
     });
-    expect((await h.run(3)).outcome).toBe('ACTIVATED');
-    expect(h.calls).toHaveLength(1);
+    expect(await h.run(3)).toMatchObject({
+      outcome: 'WOULD_ACTIVATE',
+      reason: 'AUTO_EXECUTION_DISABLED',
+    });
+    expect(h.calls).toHaveLength(0);
   });
 
   it('falha de preflight vira FAILED sem mitigar o runtime', async () => {

@@ -9,6 +9,11 @@ import type {
 import type { MitigationExecutorKind } from '../../infrastructure/bgp/mitigation/mitigation-execution-config';
 import type { MitigationTrafficSample, MitigationTrafficSource } from './mitigation-traffic-source';
 import { withinSamplingWindow, type MitigationSamplingWindow } from './mitigation-sampling-policy';
+import {
+  DEFAULT_RETRY_BACKOFF_MS,
+  type DetectionAlertPolicy,
+  resolveDetectionAlertPolicy,
+} from './mitigation-detection-alert-policy';
 
 /**
  * MOTOR AUTO do GMJ NetVision.
@@ -81,10 +86,10 @@ export type MitigationAutoBlockReason =
    */
   | 'RX_MONITOR_ONLY'
   /**
-   * AUTO-ALL: perfil promovido pelo sweep com o controle de execucao
-   * DESLIGADO (`MITIGATION_AUTO_EXECUTION_ENABLED=0`). O gatilho e reconhecido e
-   * registrado, mas NENHUMA nova ativacao automatica parte deste perfil. O AUTO
-   * manual (ex.: BHNET-3043) nao e afetado e mitigacoes ativas nao sao tocadas.
+   * KILL SWITCH: execucao automatica DESLIGADA
+   * (`MITIGATION_AUTO_EXECUTION_ENABLED` != true). O gatilho e reconhecido e
+   * registrado, mas NENHUMA ativacao automatica parte de perfil algum (sweep,
+   * manual, legado ou allowlist). Mitigacoes ativas nao sao tocadas.
    */
   | 'AUTO_EXECUTION_DISABLED'
   | 'AUTO_EXECUTION_NOT_AUTHORIZED'
@@ -166,6 +171,8 @@ export interface MitigationAutoDecision {
   samplesOver: number;
   samplesBelow: number;
   requiredSamples: number;
+  /** RC6-A1: amostras consecutivas para comprovar NORMALIZACAO. */
+  recoverySamples?: number;
   runtimeState: MitigationState | null;
   sharedPolicy: boolean;
   /** Familia do alvo avaliado (auditoria do modo sombra). */
@@ -187,6 +194,19 @@ export interface MitigationAutoDecision {
   triggeredDirections?: Array<'rx' | 'tx'>;
   /** `true` = policy compartilhada com automacao bloqueada por config. */
   sharedPolicyAutomationBlocked?: boolean;
+  /** S5: policy BGP e interface do alvo (payload do alerta de deteccao). */
+  policyName?: string | null;
+  interfaceId?: string | null;
+  peerAddress?: string | null;
+  /** R5-8: TODOS os peers do alvo (policy compartilhada). */
+  peerAddresses?: string[];
+  /**
+   * S5: `EMITTED` quando esta transicao gerou alerta de DETECCAO BLOQUEADA
+   * (ataque observado, escrita nao autorizada). `null`/ausente = sem alerta.
+   */
+  detectionAlert?: 'EMITTED' | null;
+  /** S5: episodio de ataque a que esta decisao pertence (identidade do alerta). */
+  episodeId?: string | null;
   requestId: string | null;
   commandStatus: string | null;
   verified: boolean;
@@ -305,12 +325,34 @@ export interface MitigationAutoEngineDeps {
    */
   dualDirections?: { enabled: boolean };
   /**
-   * AUTO-ALL (flag `MITIGATION_AUTO_EXECUTION_ENABLED`): quando DESLIGADO, o
-   * motor nao inicia NOVAS ativacoes de perfis promovidos pelo sweep
-   * (`autoPromotedBySweep=true`). AUTO manual/legado (BHNET-3043) e mitigacoes
-   * ja ativas permanecem intactos; o REMOVE continua 100% manual.
+   * S5 - POLITICA DE ALERTA DE DETECCAO (episodio de ataque).
+   *
+   * `onBlockedActivation` dispara UMA vez por EPISODIO, nao por transicao de
+   * decisao: no FAST o tick (5 s) alterna `SKIPPED/DUPLICATE_SAMPLE` e
+   * `WOULD_ACTIVATE/AUTO_EXECUTION_DISABLED`, e contar transicao produzia ~59
+   * alertas em 10 minutos para o MESMO ataque.
+   */
+  detectionAlertPolicy?: Partial<DetectionAlertPolicy>;
+  /**
+   * DETECCAO x AUTORIZACAO (S5). Chamado UMA vez por TRANSICAO quando um perfil
+   * cruza o gatilho mas a escrita NAO esta autorizada (kill switch global,
+   * allowlist, LIVE_WRITE, device, direcao). Mantem o alerta vivo com a execucao
+   * automatica desligada, sem fabricar evento de mitigacao aplicada.
+   *
+   * Best effort: excecao/rejeicao do gancho nunca afeta o motor.
+   */
+  onBlockedActivation?: (
+    decision: MitigationAutoDecision,
+  ) => DetectionDeliveryResult | void | Promise<DetectionDeliveryResult | void>;
+  /**
+   * KILL SWITCH GLOBAL (flag `MITIGATION_AUTO_EXECUTION_ENABLED`): quando
+   * DESLIGADO - ou AUSENTE (fail-closed) - nao parte ativacao automatica,
+   * qualquer que seja a origem do AUTO (sweep, manual, isento legado,
+   * allowlist). Observacao, alertas e SHADOW continuam; mitigacoes ja ativas nao
+   * sao tocadas e o REMOVE continua 100% manual.
    */
   executionControl?: {
+    /** Lido a cada decisao (inclusive logo antes do comando). */
     enabled: boolean;
     /**
      * ALLOWLIST DE EXECUCAO POR PERFIL (AUTO-ALL): quando informada e nao vazia,
@@ -444,6 +486,46 @@ function resetSequence(counters: DirectionCounters): void {
   counters.triggerStartedAtMs = null;
 }
 
+/**
+ * S5: motivos em que houve DETECCAO real (gatilho atingido) e a ESCRITA foi
+ * recusada por autorizacao/configuracao - nao por falta de evidencia. Sao estes
+ * que precisam gerar alerta mesmo com a execucao automatica desligada.
+ */
+const BLOCKED_ACTIVATION_ALERT_REASONS: ReadonlySet<MitigationAutoBlockReason> = new Set([
+  'AUTO_EXECUTION_DISABLED',
+  'AUTO_EXECUTION_NOT_AUTHORIZED',
+  'LIVE_WRITE_DISABLED',
+  'DEVICE_NOT_ALLOWED',
+  'GLOBAL_MODE_SIMULATION_ONLY',
+  'EXECUTOR_NOT_HUAWEI',
+]);
+
+/** Resultado de transporte do alerta. So `delivered:true` confirma o episodio. */
+export interface DetectionDeliveryResult {
+  delivered: boolean;
+  /** Detalhe seguro (sem segredo) para log/auditoria. */
+  detail?: string | null;
+}
+
+type DetectionAlertState = 'PENDING' | 'RETRY_SCHEDULED' | 'SENT' | 'FAILED';
+
+interface DetectionEpisode {
+  episodeId: string;
+  startedAtMs: number;
+  lastDetectionAtMs: number;
+  lastAlertAtMs: number | null;
+  alerts: number;
+  /** R5-4: estado de ENTREGA (nao de deteccao). */
+  alertState: DetectionAlertState;
+  attempts: number;
+  nextAttemptAtMs: number | null;
+  lastError: string | null;
+  /** RC6-A3: tentativa em voo - nunca duas ao mesmo tempo para o mesmo episodio. */
+  delivering: boolean;
+  /** RC6-A6: lembrete explicito do MESMO episodio (nao sofre o rate limit). */
+  explicitRepeat: boolean;
+}
+
 const MITIGATED_STATES: readonly MitigationState[] = [
   'MITIGATING',
   'MITIGATED',
@@ -491,6 +573,13 @@ export class MitigationAutoEngine {
   /** Cadeia de avaliações por profile (serializa ticks concorrentes). */
   private readonly chains = new Map<string, Promise<void>>();
   private readonly decisions = new Map<string, MitigationAutoDecision>();
+  /** S5: episodio de deteccao aberto por profile (dedupe de alerta). */
+  private readonly detectionEpisodes = new Map<string, DetectionEpisode>();
+  /** R5-6: ultima EMISSAO confirmada por profile (rate limit entre episodios). */
+  private readonly lastEmissionAtMs = new Map<string, number>();
+  /** Entregas em voo (settle em testes/desligamento). */
+  private readonly pendingDeliveries = new Set<Promise<void>>();
+  private resolvedPolicy: DetectionAlertPolicy | null = null;
   private lastVerifiedActivate: MitigationAutoDecision | null = null;
   private readonly now: () => Date;
   /** Ultima decisao emitida em INFO por profile (`outcome|reason|state`). */
@@ -580,6 +669,7 @@ export class MitigationAutoEngine {
             samplesOver: 0,
             samplesBelow: 0,
             requiredSamples: target.triggerSamples,
+            recoverySamples: target.recoverySamples,
             runtimeState: target.runtimeState,
             sharedPolicy: target.sharedPolicy,
             requestId: null,
@@ -660,6 +750,7 @@ export class MitigationAutoEngine {
       samplesOver: 0,
       samplesBelow: 0,
       requiredSamples: target.triggerSamples,
+      recoverySamples: target.recoverySamples,
       runtimeState: target.runtimeState,
       sharedPolicy: target.sharedPolicy,
       addressFamily: target.addressFamily ?? ('IPV4' as const),
@@ -667,6 +758,10 @@ export class MitigationAutoEngine {
       directionSource: target.directionSource ?? null,
       promotedBySweep: target.autoPromotedBySweep === true,
       sharedPolicyAutomationBlocked: target.sharedPolicyAutomationBlocked === true,
+      policyName: target.policyName ?? null,
+      interfaceId: target.interfaceId ?? null,
+      peerAddress: target.peerAddresses[0] ?? null,
+      peerAddresses: [...target.peerAddresses],
       requestId: null as string | null,
       commandStatus: null as string | null,
       verified: false,
@@ -1039,22 +1134,19 @@ export class MitigationAutoEngine {
         reason: null,
         physicalState: target.runtimeState,
         physicalMitigated,
-        operationalBlock:
-          target.autoPromotedBySweep === true && this.deps.executionControl?.enabled !== true
-            ? 'AUTO_EXECUTION_DISABLED'
-            : null,
+        operationalBlock: this.autoExecutionEnabled() ? null : 'AUTO_EXECUTION_DISABLED',
         detail: physicalMitigated
           ? 'SHADOW: condicoes hipoteticas satisfeitas; estado fisico ja MITIGATED (preservado)'
           : 'SHADOW: condicoes hipoteticas satisfeitas',
       });
     }
 
-    // AUTO-ALL: a flag de AUTORIZACAO (sweep) e a flag de EXECUCAO sao
-    // independentes. Com o controle de execucao desligado, um perfil promovido
-    // pelo sweep NAO inicia nova ativacao - o gatilho e registrado (WOULD_ACTIVATE)
-    // e nada e escrito. AUTO manual/legado nao e afetado e mitigacao ativa
-    // permanece intocada (REMOVE e 100% manual).
-    if (target.autoPromotedBySweep === true && this.deps.executionControl?.enabled !== true) {
+    // KILL SWITCH GLOBAL (`MITIGATION_AUTO_EXECUTION_ENABLED`): com a execucao
+    // desligada NENHUM perfil inicia ativacao automatica - promovido pelo sweep,
+    // AUTO manual, isento legado ou presente na allowlist. O gatilho e
+    // registrado (WOULD_ACTIVATE) e nada e escrito. Mitigacao ativa permanece
+    // intocada (REMOVE e 100% manual).
+    if (!this.autoExecutionEnabled()) {
       return decided('AUTO_EXECUTION_DISABLED', 'WOULD_ACTIVATE');
     }
     // Gate de EXECUCAO POR PERFIL: quando a allowlist existe, nenhum AUTO fora
@@ -1116,6 +1208,11 @@ export class MitigationAutoEngine {
       ) {
         return decided('ACTIVATION_COOLDOWN', 'SKIPPED');
       }
+    }
+    // Kill switch reconsultado APOS todas as revalidacoes do motor (runtime,
+    // escopo, cooldown): nenhuma escrita parte de uma decisao antiga.
+    if (!this.autoExecutionEnabled()) {
+      return decided('AUTO_EXECUTION_DISABLED', 'WOULD_ACTIVATE');
     }
     this.attempts.set(scopeKey, {
       startedAtMs: at.getTime(),
@@ -1212,6 +1309,8 @@ export class MitigationAutoEngine {
 
   private mapCommandReason(result: MitigationAutoCommandResult): MitigationAutoBlockReason {
     if (result.status === 'AUTO_TELEMETRY_UNAVAILABLE') return 'TELEMETRY_UNAVAILABLE';
+    // Kill switch reconsultado pelo command service imediatamente antes da escrita.
+    if (result.status === 'AUTO_EXECUTION_DISABLED') return 'AUTO_EXECUTION_DISABLED';
     if (result.blockedReason === 'PEER_MITIGATION_EXCLUDED') return 'PEER_MITIGATION_EXCLUDED';
     if (result.blockedReason === 'MITIGATION_EXCLUDED') return 'MITIGATION_EXCLUDED';
     // O preflight bloqueado reporta o motivo agregado em `safeError`; sem isto
@@ -1244,8 +1343,224 @@ export class MitigationAutoEngine {
       if (history.length > 20) history.shift();
       this.history.set(decision.profileId, history);
     }
+    // S5: o episodio e rastreado em TODA decisao (inclusive nas de tick sem
+    // amostra nova); a emissao e decidida dentro de `trackDetection`.
+    this.trackDetection(decision);
     this.logDecision(decision);
     return decision;
+  }
+
+  /**
+   * S5 / REVIEW-05 — DETECCAO -> alerta por EPISODIO com estado de ENTREGA.
+   *
+   * R5-4: o episodio NAO e marcado como alertado quando o hook e chamado; ele
+   * so vai para `SENT` quando o transporte confirma `delivered:true`. Falha
+   * agenda nova tentativa com backoff (30 s / 2 min / 5 min) e, apos o limite,
+   * fica `FAILED` com log WARN — observavel ao operador.
+   *
+   * R5-5: o episodio NAO termina por silencio de telemetria. `DUPLICATE_SAMPLE`
+   * e `TELEMETRY_UNAVAILABLE` mantem o episodio aberto; so evidencia POSITIVA
+   * de recuperacao (`RECOVERY_PENDING`, histerese cumprida) o encerra.
+   *
+   * R5-6: intervalo minimo por profile entre emissoes (`minAlertIntervalMs`)
+   * contem restart/crash-loop sem depender de persistencia.
+   */
+  private trackDetection(decision: MitigationAutoDecision): void {
+    // RC6-A1: NORMALIZACAO e um fato de TELEMETRIA, nao de runtime de mitigacao.
+    // `samplesBelow` conta amostras NOVAS e consecutivas abaixo do limiar de
+    // recuperacao; ao atingir `recoverySamples` a normalizacao esta comprovada,
+    // independentemente de o perfil estar MITIGATED ou de o AUTO estar ligado.
+    // Duplicata e ausencia de telemetria NAO incrementam esse contador, entao
+    // lacuna de dados nunca encerra episodio.
+    const recoverySamples = decision.recoverySamples ?? 0;
+    const normalized =
+      recoverySamples > 0 &&
+      decision.samplesOver === 0 &&
+      decision.samplesBelow >= recoverySamples &&
+      decision.trafficBps !== null;
+    if (normalized || decision.outcome === 'RECOVERY_PENDING') {
+      this.detectionEpisodes.delete(decision.profileId);
+      return;
+    }
+    if (decision.outcome !== 'WOULD_ACTIVATE') return;
+    const reason = decision.reason;
+    if (reason === null || !BLOCKED_ACTIVATION_ALERT_REASONS.has(reason)) return;
+
+    const policy = this.detectionPolicy();
+    const atMs = Date.parse(decision.at);
+    if (!Number.isFinite(atMs)) return;
+
+    const existing = this.detectionEpisodes.get(decision.profileId);
+    if (existing !== undefined && atMs - existing.startedAtMs > policy.episodeMaxMs) {
+      // Rede de seguranca: episodio sem prova de recuperacao ha muito tempo.
+      this.deps.logger?.('auto: episodio de deteccao expirado sem recuperacao comprovada', {
+        profileId: decision.profileId,
+        episodeId: existing.episodeId,
+        startedAtMs: existing.startedAtMs,
+        alertState: existing.alertState,
+      });
+      this.detectionEpisodes.delete(decision.profileId);
+    }
+
+    const episode = this.detectionEpisodes.get(decision.profileId);
+    if (episode === undefined) {
+      const candidate: DetectionEpisode = {
+        episodeId: `${decision.profileId}:${atMs}`,
+        startedAtMs: atMs,
+        lastDetectionAtMs: atMs,
+        lastAlertAtMs: null,
+        alerts: 0,
+        alertState: 'PENDING',
+        attempts: 0,
+        nextAttemptAtMs: atMs,
+        lastError: null,
+        delivering: false,
+        explicitRepeat: false,
+      };
+      this.detectionEpisodes.set(decision.profileId, candidate);
+      decision.episodeId = candidate.episodeId;
+      this.maybeAttemptDelivery(candidate, decision, atMs, policy);
+      return;
+    }
+
+    episode.lastDetectionAtMs = atMs;
+    decision.episodeId = episode.episodeId;
+
+    if (episode.alertState === 'SENT') {
+      const repeat = policy.repeatEveryMs;
+      if (repeat !== null && episode.lastAlertAtMs !== null) {
+        // RC6-A6: o piso de REPEAT (>= 300 s) ja e validado na politica; o
+        // intervalo minimo NAO pode anular silenciosamente um REPEAT valido.
+        const due = episode.lastAlertAtMs + repeat;
+        if (atMs >= due) {
+          episode.alertState = 'PENDING';
+          episode.attempts = 0;
+          episode.nextAttemptAtMs = due;
+          // Lembrete explicito: o piso de REPEAT ja foi validado na politica e
+          // NAO pode ser suprimido pelo intervalo minimo entre episodios.
+          episode.explicitRepeat = true;
+        }
+      }
+      if (episode.alertState === 'SENT') return;
+    }
+    if (episode.alertState === 'FAILED') return;
+    this.maybeAttemptDelivery(episode, decision, atMs, policy);
+  }
+
+  /** Dispara a entrega se o horario permite; nunca duas tentativas no mesmo tick. */
+  private maybeAttemptDelivery(
+    episode: DetectionEpisode,
+    decision: MitigationAutoDecision,
+    atMs: number,
+    policy: DetectionAlertPolicy,
+  ): void {
+    // RC6-A3: uma unica entrega em voo por episodio (sem corrida entre ticks).
+    if (episode.delivering) return;
+    const due = episode.nextAttemptAtMs;
+    if (due !== null && atMs < due) return;
+    const hook = this.deps.onBlockedActivation;
+    if (!hook) {
+      episode.alertState = 'FAILED';
+      episode.lastError = 'publisher ausente';
+      this.deps.logger?.('auto: alerta de deteccao sem publisher configurado', {
+        profileId: decision.profileId,
+        episodeId: episode.episodeId,
+      });
+      return;
+    }
+
+    if (episode.alertState === 'PENDING' && !episode.explicitRepeat) {
+      const previousEmission = this.lastEmissionAtMs.get(decision.profileId);
+      if (
+        previousEmission !== undefined &&
+        atMs - previousEmission < policy.minAlertIntervalMs
+      ) {
+        // R5-6: contencao de restart/crash-loop (rate limit por profile).
+        episode.nextAttemptAtMs = previousEmission + policy.minAlertIntervalMs;
+        return;
+      }
+    }
+
+    episode.alertState = 'PENDING';
+    episode.delivering = true;
+    episode.explicitRepeat = false;
+    decision.detectionAlert = 'EMITTED';
+    const attempt = episode.attempts + 1;
+    const pending = Promise.resolve()
+      .then(() => hook({ ...decision }))
+      .then((result) => {
+        const delivered = (result as DetectionDeliveryResult | void)?.delivered === true;
+        if (!delivered) throw new Error('transporte nao confirmou a entrega');
+        episode.alertState = 'SENT';
+        episode.attempts = attempt;
+        episode.alerts += 1;
+        episode.lastAlertAtMs = atMs;
+        episode.lastError = null;
+        episode.nextAttemptAtMs = null;
+        this.lastEmissionAtMs.set(decision.profileId, atMs);
+      })
+      .catch((error: unknown) => {
+        episode.attempts = attempt;
+        episode.lastError = error instanceof Error ? error.message : String(error);
+        if (attempt >= policy.maxDeliveryAttempts) {
+          episode.alertState = 'FAILED';
+          episode.nextAttemptAtMs = null;
+          this.deps.logger?.('auto: alerta de deteccao NAO entregue (limite de tentativas)', {
+            profileId: decision.profileId,
+            episodeId: episode.episodeId,
+            attempts: attempt,
+            error: episode.lastError,
+          });
+          return;
+        }
+        episode.alertState = 'RETRY_SCHEDULED';
+        const backoff = policy.retryBackoffMs[Math.min(attempt - 1, policy.retryBackoffMs.length - 1)];
+        episode.nextAttemptAtMs = atMs + (backoff ?? DEFAULT_RETRY_BACKOFF_MS[0]!);
+        this.deps.logger?.('auto: falha de entrega do alerta; nova tentativa agendada', {
+          profileId: decision.profileId,
+          episodeId: episode.episodeId,
+          attempts: attempt,
+          nextAttemptAtMs: episode.nextAttemptAtMs,
+          error: episode.lastError,
+        });
+      })
+      .finally(() => {
+        episode.delivering = false;
+        this.pendingDeliveries.delete(pending);
+      });
+    this.pendingDeliveries.add(pending);
+  }
+
+  /** Aguarda as entregas em voo (testes/desligamento). */
+  async settleDetectionAlerts(): Promise<void> {
+    while (this.pendingDeliveries.size > 0) {
+      await Promise.all([...this.pendingDeliveries]);
+    }
+  }
+
+  /** Politica efetiva (defaults + validacao de ENV). */
+  private detectionPolicy(): DetectionAlertPolicy {
+    if (this.resolvedPolicy === null) {
+      const configured = this.deps.detectionAlertPolicy ?? {};
+      const base = resolveDetectionAlertPolicy();
+      this.resolvedPolicy = {
+        ...base.policy,
+        ...(configured.episodeIdleMs !== undefined ? { episodeIdleMs: configured.episodeIdleMs } : {}),
+        ...(configured.repeatEveryMs !== undefined ? { repeatEveryMs: configured.repeatEveryMs } : {}),
+        ...(configured.minAlertIntervalMs !== undefined
+          ? { minAlertIntervalMs: configured.minAlertIntervalMs }
+          : {}),
+        ...(configured.maxDeliveryAttempts !== undefined
+          ? { maxDeliveryAttempts: configured.maxDeliveryAttempts }
+          : {}),
+      };
+    }
+    return this.resolvedPolicy;
+  }
+
+  /** Episodios de deteccao abertos (observabilidade/auditoria). */
+  activeDetectionEpisodes(): Array<{ profileId: string; episodeId: string; startedAtMs: number; lastDetectionAtMs: number; alerts: number }> {
+    return [...this.detectionEpisodes.entries()].map(([profileId, episode]) => ({ profileId, ...episode }));
   }
 
   private logDecision(decision: MitigationAutoDecision): void {
@@ -1489,6 +1804,11 @@ export class MitigationAutoEngine {
       }
     }
     return null;
+  }
+
+  /** Kill switch: somente `enabled === true` libera; ausente = desligado. */
+  private autoExecutionEnabled(): boolean {
+    return this.deps.executionControl?.enabled === true;
   }
 
   private async readRuntimeState(

@@ -222,8 +222,8 @@ describe('leitura de runtime: exigência apenas para a fonte FAST', () => {
   });
 });
 
-describe('AUTO promovido: regra preservada', () => {
-  it('promovido bloqueado pela flag e manual liberado, com a mesma fonte FAST', async () => {
+describe('AUTO promovido e manual: kill switch global (SAFETY-GATES-03)', () => {
+  it('flag desligada bloqueia promovido E manual, com a mesma fonte FAST', async () => {
     const promoted = await run(
       { target: { autoPromotedBySweep: true }, executionControl: { enabled: false } },
       threeFastSamples,
@@ -235,6 +235,28 @@ describe('AUTO promovido: regra preservada', () => {
       { target: { autoPromotedBySweep: false }, executionControl: { enabled: false } },
       threeFastSamples,
     );
-    expect(manual.commandCalls).toHaveLength(1);
+    expect(manual.decisions.at(-1)!.reason).toBe('AUTO_EXECUTION_DISABLED');
+    expect(manual.commandCalls).toHaveLength(0);
+
+    const enabled = await run(
+      { target: { autoPromotedBySweep: false }, executionControl: { enabled: true } },
+      threeFastSamples,
+    );
+    expect(enabled.commandCalls).toHaveLength(1);
+  });
+
+  it('SHADOW reporta o bloqueio operacional tambem para AUTO manual', async () => {
+    const result = await run(
+      {
+        evaluationScope: 'SHADOW',
+        target: { runtimeState: 'MITIGATED', autoPromotedBySweep: false },
+        executionControl: { enabled: false },
+      },
+      threeFastSamples,
+    );
+    const last = result.raw.at(-1)!;
+    expect(last.outcome).toBe('WOULD_ACTIVATE');
+    expect(last.operationalBlock).toBe('AUTO_EXECUTION_DISABLED');
+    expect(result.commandCalls).toHaveLength(0);
   });
 });

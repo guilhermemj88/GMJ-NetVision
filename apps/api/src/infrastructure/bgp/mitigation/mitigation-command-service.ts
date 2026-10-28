@@ -50,6 +50,12 @@ export type MitigationCommandAction = (typeof MITIGATION_COMMAND_ACTIONS)[number
 
 export const MUTATING_ACTIONS: readonly MitigationCommandAction[] = ['ACTIVATE', 'REMOVE'];
 
+/** Prefixo do `requestId` gerado pelo motor AUTO (`auto-activate-<id>-...`). */
+export const AUTO_COMMAND_REQUEST_PREFIX = 'auto-activate-';
+
+/** Status do comando AUTO recusado pelo kill switch global da automacao. */
+export const AUTO_EXECUTION_DISABLED_STATUS = 'AUTO_EXECUTION_DISABLED';
+
 /**
  * Estados de runtime em que o vinculo ainda DEPENDE da RT na policy. Como a
  * policy e a unidade BGP, um REMOVE manual derruba a mitigacao de TODOS os
@@ -77,6 +83,12 @@ export interface MitigationAutoEvidence {
 }
 
 export interface MitigationCommandInput {
+  /**
+   * Origem declarada do comando. `AUTO` = fiacao do motor automatico; ausente =
+   * manual. O kill switch global usa este campo (mais o prefixo do `requestId` e
+   * a evidencia de telemetria) para reconhecer comando automatico.
+   */
+  origin?: 'AUTO' | 'MANUAL';
   autoEvidence?: MitigationAutoEvidence;
   requestId: string;
   action: MitigationCommandAction;
@@ -101,6 +113,22 @@ export interface MitigationCommandInput {
    * vinculado a ele: o mesmo botao encaminhado para outro grupo nao confirma.
    */
   chatId?: string | null;
+}
+
+/**
+ * O comando e de ORIGEM AUTOMATICA? Qualquer um dos sinais basta (fail-closed):
+ * a origem declarada pela fiacao do motor, o prefixo do `requestId` do motor ou
+ * a evidencia de telemetria que so o motor anexa. Um comando manual que imite o
+ * prefixo e tratado como AUTO (fica MAIS restrito, nunca menos).
+ */
+export function isAutomaticCommand(
+  input: Pick<MitigationCommandInput, 'origin' | 'requestId' | 'autoEvidence'>,
+): boolean {
+  return (
+    input.origin === 'AUTO' ||
+    input.requestId.startsWith(AUTO_COMMAND_REQUEST_PREFIX) ||
+    input.autoEvidence !== undefined
+  );
 }
 
 /**
@@ -229,6 +257,11 @@ export interface MitigationLiveExecutorPort {
 export interface MitigationCommandDeps {
   /** AUTO only: recheck recent UP telemetry AFTER preflight, BEFORE any write. */
   autoEvidence?: (profileId: string, evidence?: MitigationAutoEvidence) => Promise<boolean>;
+  /**
+   * KILL SWITCH GLOBAL (`MITIGATION_AUTO_EXECUTION_ENABLED`). Ausente ou erro =
+   * execucao automatica DESLIGADA (fail-closed). Manual nunca e afetado.
+   */
+  autoExecutionEnabled?: () => boolean;
   repository: MitigationRepository;
   hosts: { getHost(id: string): Promise<HostRecord | null> };
   executor: MitigationExecutor;
@@ -499,6 +532,13 @@ export class MitigationCommandService {
       ...(scopeGate.summary ? { scopeConfirmation: scopeGate.summary } : {}),
     };
 
+    // KILL SWITCH GLOBAL (entrada): comando mutante de origem AUTO com a
+    // execucao automatica desligada para aqui - antes de preflight e SSH. Vale
+    // para qualquer perfil (manual, promovido, legado, allowlist).
+    if (MUTATING_ACTIONS.includes(input.action) && this.autoExecutionBlocked(input)) {
+      return this.autoExecutionDisabledResult(common, []);
+    }
+
     // Preflight READ-ONLY imediatamente antes de qualquer escrita. Sem ele a
     // escrita nao acontece (fail-closed).
     // GATE OBRIGATORIO (backend, caminho canonico): target com exclusao
@@ -697,12 +737,20 @@ export class MitigationCommandService {
                 'AUTO: telemetria recente, UP e acima do limiar indisponivel apos preflight',
             };
           }
+          // KILL SWITCH (ultima barreira): reconsultado APOS preflight e
+          // revalidacao da evidencia, imediatamente antes da escrita Huawei.
+          if (this.autoExecutionBlocked(input)) {
+            return this.autoExecutionDisabledResult(common, preview, preflight);
+          }
           writeAttempted = true;
           await timed('execution', () => live.activate(liveDevice, activationInput));
           readBack = await timed('readback', () =>
             live.readRoutePolicy(liveDevice, profile.policyName),
           );
         } else {
+          if (this.autoExecutionBlocked(input)) {
+            return this.autoExecutionDisabledResult(common, preview, preflight);
+          }
           await timed('execution', () => this.deps.executor.activate(activationInput));
           readBack = await timed('readback', () =>
             this.deps.executor.readRoutePolicy(profile.policyName),
@@ -743,6 +791,11 @@ export class MitigationCommandService {
         };
       }
 
+      // REMOVE automatico nao existe nesta fase; o kill switch fecha o caminho
+      // mesmo assim, imediatamente antes da escrita.
+      if (this.autoExecutionBlocked(input)) {
+        return this.autoExecutionDisabledResult(common, preview, preflight);
+      }
       if (liveDevice && live) {
         if (!preflight?.ok) return this.preflightBlocked(common, preview, preflight);
         writeAttempted = true;
@@ -1002,6 +1055,38 @@ export class MitigationCommandService {
       verification: null,
       safeError:
         'Policy ocupada por outra operacao no mesmo equipamento (deviceId + policy). Nenhuma escrita foi feita; tente novamente.',
+    };
+  }
+
+  /**
+   * `true` = comando de origem AUTO com o kill switch desligado (ou sem a
+   * dependencia: fail-closed). Comando manual nunca e afetado. Erro ao consultar
+   * a flag conta como DESLIGADO.
+   */
+  private autoExecutionBlocked(input: MitigationCommandInput): boolean {
+    if (!isAutomaticCommand(input)) return false;
+    try {
+      return this.deps.autoExecutionEnabled?.() !== true;
+    } catch {
+      return true;
+    }
+  }
+
+  private autoExecutionDisabledResult(
+    base: MitigationCommandBase,
+    preview: string[],
+    preflight: MitigationPreflightResult | null = null,
+  ): MitigationActionResult {
+    return {
+      ...base,
+      ok: false,
+      status: AUTO_EXECUTION_DISABLED_STATUS,
+      verified: false,
+      commandPreview: preview,
+      verification: null,
+      ...(preflight ? { preflight } : {}),
+      safeError:
+        'Execucao automatica desligada (MITIGATION_AUTO_EXECUTION_ENABLED): nenhuma escrita automatica foi feita.',
     };
   }
 

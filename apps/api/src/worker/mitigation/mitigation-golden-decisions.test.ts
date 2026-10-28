@@ -204,13 +204,19 @@ describe('GOLDEN: LEGACY mantém decisões idênticas às publicadas', () => {
     expect(baseline.commandCalls).toHaveLength(0);
   });
 
-  it('AUTO manual não é afetado pelo controle de execução', async () => {
-    const { rc2 } = await compare(
+  // SAFETY-GATES-03 (M8): divergencia INTENCIONAL do baseline publicado. O
+  // baseline deixava o AUTO manual escrever com a execucao desligada; agora o
+  // kill switch vale para toda origem AUTO.
+  it('AUTO manual com execução desligada não escreve (kill switch global)', async () => {
+    // Sem `compare`: a igualdade com o baseline e QUEBRADA de proposito aqui.
+    const { baseline, rc2 } = await runScenario(
       { target: { autoPromotedBySweep: false }, executionControl: { enabled: false } },
       cadence(126_000),
-      'manual',
     );
-    expect(new Set(rc2.commandCalls.map((c) => c.requestId)).size).toBe(1);
+    expect(baseline.commandCalls.length).toBeGreaterThan(0);
+    expect(rc2.decisions.at(-2)!.reason).toBe('AUTO_EXECUTION_DISABLED');
+    expect(rc2.decisions.at(-2)!.outcome).toBe('WOULD_ACTIVATE');
+    expect(rc2.commandCalls).toHaveLength(0);
   });
 
   it('ALERT_ONLY alerta sem escrever', async () => {

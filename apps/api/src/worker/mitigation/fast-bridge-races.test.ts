@@ -112,6 +112,7 @@ describe('sample arrives during an asynchronous FAST read', () => {
     const engine = new MitigationAutoEngine({
       sampling: { maxAgeMs: 30000, maxGapMs: 45000 },
       globalMode: 'AUTO',
+      executionControl: { enabled: true },
       execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: ['ne8000'] },
       targets: { list: async () => [defaultTarget()] },
       traffic: {
@@ -145,6 +146,7 @@ describe('sample arrives during an asynchronous FAST read', () => {
     const engine = new MitigationAutoEngine({
       sampling: { maxAgeMs: 30000, maxGapMs: 45000 },
       globalMode: 'AUTO',
+      executionControl: { enabled: true },
       execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: ['ne8000'] },
       targets: { list: async () => [defaultTarget()] },
       traffic: {

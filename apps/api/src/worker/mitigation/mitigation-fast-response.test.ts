@@ -32,7 +32,7 @@ const target: MitigationAutoTargetState = {
   recoverySamples: 12,
 };
 
-function fixture(patch: Partial<MitigationAutoTargetState> = {}) {
+function fixture(patch: Partial<MitigationAutoTargetState> = {}, executionEnabled = true) {
   let clock = 100000;
   let row: MitigationTrafficSample | null = null;
   let calls = 0;
@@ -51,7 +51,9 @@ function fixture(patch: Partial<MitigationAutoTargetState> = {}) {
     sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
     globalMode: 'AUTO',
     execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: ['d'] },
-    executionControl: { enabled: false },
+    // Contrato de continuidade ate o comando: execucao ligada por padrao (o
+    // kill switch tem testes proprios em mitigation-safety-gates-03.test.ts).
+    executionControl: { enabled: executionEnabled },
     targets: { list: async () => [t] },
     traffic,
     exclusions: { listPeerExclusions: async () => [] },
@@ -253,7 +255,8 @@ describe('explicit temporal continuity', () => {
     [{ readiness: 'NOT_READY' }, 'BLOCKED'],
     [{ mitigationExcluded: true }, 'BLOCKED'],
   ] as const)('preserves scope/mode guard %j', async (patch, outcome) => {
-    const f = fixture(patch);
+    // Perfil promovido: guarda do kill switch (MITIGATION_AUTO_EXECUTION_ENABLED=0).
+    const f = fixture(patch, !('autoPromotedBySweep' in patch));
     for (const time of [100000, 110000, 120000]) {
       f.set(time);
       await f.engine.evaluate(f.t);

@@ -10,8 +10,9 @@ import type { MitigationState } from '../../infrastructure/bgp/mitigation/mitiga
 //
 // Cenario central: 18 perfis promovidos pelo sweep (`autoPromotedBySweep=true`).
 // Com `MITIGATION_AUTO_EXECUTION_ENABLED=0` (executionControl.enabled=false) o
-// motor NAO inicia NOVAS ativacoes desses perfis; o AUTO manual/legado
-// (BHNET-3043, proveniencia false) continua atuando e mitigacao ativa permanece.
+// motor NAO inicia NOVAS ativacoes desses perfis e mitigacao ativa permanece.
+// SAFETY-GATES-03 (M8): o kill switch passou a valer para TODA origem AUTO; o
+// AUTO manual/legado (BHNET-3043, proveniencia false) tambem fica pausado.
 
 const DEVICE = 'device-1';
 const BW = 10_000_000_000n;
@@ -147,15 +148,24 @@ describe('AUTO: controle de execucao (autorizacao x execucao separadas)', () => 
     expect(armed.executed).toEqual(['sweep-1']);
   });
 
-  it('C) AUTO manual/legado (BHNET-3043, proveniencia false) NAO e pausado', async () => {
+  it('C) AUTO manual/legado (BHNET-3043, proveniencia false) TAMBEM e pausado', async () => {
     const h = harness({
       targets: [target('bhnet-3043', { autoPromotedBySweep: false, directionSource: 'ENV' })],
       executionEnabled: false,
     });
     const decision = await h.run3();
-    expect(decision.outcome).toBe('ACTIVATED');
+    expect(decision.outcome).toBe('WOULD_ACTIVATE');
+    expect(decision.reason).toBe('AUTO_EXECUTION_DISABLED');
     expect(decision.promotedBySweep).toBe(false);
-    expect(h.executed).toEqual(['bhnet-3043']);
+    expect(h.executed).toEqual([]);
+
+    const armed = harness({
+      targets: [target('bhnet-3043', { autoPromotedBySweep: false, directionSource: 'ENV' })],
+      executionEnabled: true,
+      baseHour: 13,
+    });
+    expect((await armed.run3()).outcome).toBe('ACTIVATED');
+    expect(armed.executed).toEqual(['bhnet-3043']);
   });
 
   it('D/F) mitigacao ativa preservada: sem REMOVE e sem comando durante a pausa', async () => {
@@ -264,16 +274,18 @@ describe('AUTO: controle de execucao (autorizacao x execucao separadas)', () => 
     expect(executed).toHaveLength(0);
   });
 
-  it('J) SEM proveniencia (ou sem controle no codigo) o promovido voltaria a atuar', async () => {
-    // Simula o cenario de rollback de codigo: o binario antigo nao conhece
-    // proveniencia nem controle de execucao => o perfil promovido (AUTO no
-    // banco) volta a ser elegivel para NOVA ativacao. Por isso o rollback de
-    // codigo exige PRIMEIRO o gate global (MITIGATION_MODE / live write).
-    const semProveniencia = harness({
+  it('J) SEM controle de execucao na fiacao: fail-closed (nenhuma escrita)', async () => {
+    // Antes do SAFETY-GATES-03 a ausencia do controle liberava a ativacao. Agora
+    // o motor so escreve com `executionControl.enabled === true` declarado.
+    // ROLLBACK de codigo para um binario anterior continua exigindo PRIMEIRO o
+    // gate global (MITIGATION_MODE / live write): o binario antigo nao conhece
+    // esta regra.
+    const semControle = harness({
       targets: [target('sweep-1', { autoPromotedBySweep: false })],
     });
-    const decision = await semProveniencia.run3();
-    expect(decision.outcome).toBe('ACTIVATED');
-    expect(semProveniencia.executed).toEqual(['sweep-1']);
+    const decision = await semControle.run3();
+    expect(decision.outcome).toBe('WOULD_ACTIVATE');
+    expect(decision.reason).toBe('AUTO_EXECUTION_DISABLED');
+    expect(semControle.executed).toEqual([]);
   });
 });

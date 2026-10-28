@@ -60,6 +60,8 @@ export async function fastResponseScenario(options: {
   observationStore?: FastTrafficStore;
   repository?: MitigationRepository;
   scopeLock?: PolicyScopeLock;
+  /** Kill switch da execucao automatica (default: ligado, como o cenario de escrita). */
+  autoExecutionEnabled?: boolean;
   beforeProfiles?: (hosts: HostRecord[], interfaces: NetworkInterface[]) => Promise<void>;
   /** Janela da fonte roteada para o motor (default: contrato LEGACY de 600 s). */
   sampling?: (target: MitigationAutoTargetState) => { maxAgeMs: number; maxGapMs: number | null };
@@ -287,6 +289,7 @@ export async function fastResponseScenario(options: {
     hosts: hostPort,
     executor: hardware,
     scopeLock: options.scopeLock ?? new InMemoryPolicyScopeLock(),
+    autoExecutionEnabled: () => options.autoExecutionEnabled ?? true,
     expectedNodes: async () => [10, 100],
     autoEvidence: async (id, evidence) => {
       const p = profiles.find((p) => p.id === id)!;
@@ -332,6 +335,7 @@ export async function fastResponseScenario(options: {
     globalMode: 'AUTO',
     evaluationConcurrency: 2,
     evaluationScope: options.evaluationScope ?? 'OPERATIONAL',
+    executionControl: { enabled: options.autoExecutionEnabled ?? true },
     // Sem fallback no motor: o harness declara a janela da fonte explicitamente.
     sampling: options.sampling ?? legacySamplingWindow(600_000),
     ...(options.requireRuntimeRead !== undefined
@@ -382,7 +386,7 @@ export async function fastResponseScenario(options: {
     },
     commands: {
       execute: async (input) => {
-        const r = await commands.execute(input);
+        const r = await commands.execute({ ...input, origin: 'AUTO' });
         commandResults.push({ at: Date.now(), profileId: input.profileId, timings: r.timingsMs });
         return r;
       },

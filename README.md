@@ -31,6 +31,17 @@ Esta primeira versão funcional entrega um backbone ISP demonstrativo com 13 equ
 - schema Prisma/PostgreSQL completo para os modelos iniciais;
 - contratos e implementações iniciais de LLDP/SNMP, LLDP/SSH, Huawei VRP e Zabbix.
 
+### DDoS FAST — detecção e alerta (RC14-F)
+
+O motor FAST observa o tráfego e registra o gatilho de mitigação, mas a escrita automática no
+equipamento fica atrás do kill switch global `MITIGATION_AUTO_EXECUTION_ENABLED` (desligado por padrão,
+lido no boot, fail-closed). Com ele desligado **nenhum** perfil inicia ACTIVATE/REMOVE automático — sweep,
+AUTO manual, isento legado e allowlist — e o ataque continua gerando o alerta
+`MITIGATION_DETECTION_BLOCKED` no Telegram (uma vez por episódio, sem botões de retirada). O comando
+manual pela UI/n8n continua funcionando e o motor nunca emite REMOVE.
+
+Detalhes, fluxograma e contrato do payload: [docs/DDOS_DETECTION_ALERTS_RC14F.md](./docs/DDOS_DETECTION_ALERTS_RC14F.md).
+
 ## Arquitetura
 
 O monorepo usa npm workspaces:

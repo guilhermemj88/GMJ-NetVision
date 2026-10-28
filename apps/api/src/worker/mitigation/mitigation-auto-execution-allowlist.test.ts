@@ -90,8 +90,10 @@ describe('gate de execucao por perfil (allowlist)', () => {
     expect(h.execute).toHaveBeenCalledTimes(1);
   });
 
-  it('sem allowlist (vazio) o comportamento anterior e preservado', async () => {
-    const h = harness({ t: target(), executionControl: { enabled: false, allowedProfileIds: [] } });
+  it('sem allowlist (vazio) o gate por perfil nao restringe ninguem', async () => {
+    // Kill switch LIGADO: sem allowlist o gate por perfil e inerte. O estado
+    // DESLIGADO e coberto por `mitigation-auto-execution-control.test.ts`.
+    const h = harness({ t: target(), executionControl: { enabled: true, allowedProfileIds: [] } });
     const d = await h.run(THREE);
     expect(d.outcome).toBe('ACTIVATED');
   });

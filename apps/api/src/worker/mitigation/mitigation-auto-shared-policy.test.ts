@@ -222,6 +222,7 @@ async function harness(options: HarnessOptions = {}) {
   }
 
   const commands = new MitigationCommandService({
+    autoExecutionEnabled: () => true,
     repository,
     hosts: {
       getHost: async (id) => (id === DEVICE_A || id === DEVICE_B ? device(id) : null),
@@ -235,6 +236,8 @@ async function harness(options: HarnessOptions = {}) {
 
   const traffic = new ThrowingTrafficSource();
   const engine = new MitigationAutoEngine({
+    // Kill switch: sem dependencia o motor e fail-closed; o teste declara ON.
+    executionControl: { enabled: true },
     sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
     globalMode: 'AUTO',
     execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [DEVICE_A] },

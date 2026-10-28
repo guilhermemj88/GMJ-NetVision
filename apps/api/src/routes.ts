@@ -160,6 +160,8 @@ import { HuaweiMitigationExecutor } from './infrastructure/bgp/mitigation/huawei
 import { MitigationPolicyReconciler } from './infrastructure/bgp/mitigation/mitigation-policy-reconciler';
 import { PrismaInterfaceTrafficReader } from './infrastructure/bgp/mitigation/prisma-interface-traffic-reader';
 import { MitigationAutoEngine } from './worker/mitigation/mitigation-auto-engine';
+import { resolveDetectionAlertPolicy } from './worker/mitigation/mitigation-detection-alert-policy';
+import { createDetectionAlertPublisher } from './application/mitigation-detection-alert';
 import {
   fastBridgeConfig,
   FastObservationSource,
@@ -456,6 +458,15 @@ const deviceSchema = z.object({
 interface RouteRegistrationOptions {
   credentialEncryptionKey?: string | null;
   requireAuth?: boolean;
+}
+
+/** ENV numerica opcional: ausente/vazia vira `undefined` (usa default). */
+function parseOptionalNumber(raw: string | undefined): number | undefined {
+  if (raw === undefined) return undefined;
+  const trimmed = raw.trim();
+  if (trimmed === '') return undefined;
+  const value = Number(trimmed);
+  return Number.isFinite(value) ? value : Number.NaN;
 }
 
 function buildTopologyAdapters(hosts: HostRepository): TopologyDiscoveryAdapter[] {
@@ -844,6 +855,14 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const autoEngineRef: { current: { forgetProfiles(ids: readonly string[]): void } | null } = {
     current: null,
   };
+  // KILL SWITCH GLOBAL da execucao automatica. Lido UMA vez no boot (como todo
+  // o ENV deste processo): mudar a flag exige restart da API para valer.
+  // Desligado, NENHUMA escrita automatica acontece (motor + command service),
+  // qualquer que seja a origem do AUTO. Comandos manuais nao sao afetados.
+  const autoExecutionEnabled = /^(1|true|yes|on)$/i.test(
+    process.env.MITIGATION_AUTO_EXECUTION_ENABLED?.trim() ?? '',
+  );
+
   const mitigationCommands = new MitigationCommandService({
     autoEvidence: (id, evidence) =>
       revalidateAutoEvidence?.(id, evidence) ?? Promise.resolve(false),
@@ -858,8 +877,39 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     expectedNodes: async (profileId) =>
       mitigationService.discoverySnapshot(profileId)?.existingNodes ?? null,
     scopeLock: mitigationScopeLock,
+    // Kill switch reconsultado pelo command service imediatamente antes de
+    // qualquer escrita de origem AUTO (fail-closed se ausente/erro).
+    autoExecutionEnabled: () => autoExecutionEnabled,
     // Retirada manual do escopo fisico: o AUTO perde a sequencia anterior.
     onScopeRemoved: (scope) => autoEngineRef.current?.forgetProfiles(scope.profileIds),
+  });
+
+  // ---- S5: DETECCAO separada da AUTORIZACAO de escrita ----------------------
+  // Com `MITIGATION_AUTO_EXECUTION_ENABLED=0` o motor deixa de escrever, mas o
+  // ataque continua sendo OBSERVADO e precisa gerar alerta. O motor emite UMA
+  // vez por EPISODIO (ver `detectionAlertPolicy`); aqui o evento vira payload.
+  //
+  // Politica de repeticao e EXPLICITA por ENV (sem default ligado):
+  //   MITIGATION_AUTO_DETECTION_EPISODE_IDLE_SECONDS (default 120)
+  //   MITIGATION_AUTO_DETECTION_REPEAT_SECONDS        (sem valor = sem lembrete)
+  const detectionPolicyResolved = resolveDetectionAlertPolicy({
+    episodeIdleSeconds: parseOptionalNumber(process.env.MITIGATION_AUTO_DETECTION_EPISODE_IDLE_SECONDS),
+    repeatSeconds: parseOptionalNumber(process.env.MITIGATION_AUTO_DETECTION_REPEAT_SECONDS),
+    alertIntervalSeconds: parseOptionalNumber(process.env.MITIGATION_AUTO_DETECTION_INTERVAL_SECONDS),
+    maxDeliveryAttempts: parseOptionalNumber(process.env.MITIGATION_AUTO_DETECTION_MAX_ATTEMPTS),
+  });
+  for (const rejected of detectionPolicyResolved.rejected) {
+    app.log.warn(
+      { env: rejected },
+      'valor de ENV de alerta de deteccao recusado (fora da faixa segura); usando default',
+    );
+  }
+  const detectionAlertPolicy = detectionPolicyResolved.policy;
+
+  // Handler do alerta de deteccao: modulo testavel em application/.
+  const publishBlockedDetection = createDetectionAlertPublisher({
+    hosts,
+    transport: mediaTransport,
   });
 
   // ---- Motor AUTO real: mesmo caminho canônico do ACTIVATE (UI/n8n) --------
@@ -952,13 +1002,6 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const autoDescriptionBatchSize = parseSweepBatchSize(
     process.env.MITIGATION_AUTO_DESCRIPTION_BATCH_SIZE,
   );
-  // EXECUCAO: flag DISTINTA da autorizacao. Desligada (default), perfis
-  // promovidos pelo sweep nao iniciam NOVAS ativacoes automaticas; o AUTO
-  // manual/legado (BHNET-3043) segue intacto e mitigacao ativa nunca e removida.
-  const autoExecutionEnabled = /^(1|true|yes|on)$/i.test(
-    process.env.MITIGATION_AUTO_EXECUTION_ENABLED?.trim() ?? '',
-  );
-
   const diagnosticReader = new PrismaMitigationTelemetryReader(prismaClient);
   const telemetryReport = async () =>
     diagnoseMitigationTelemetry(await mitigationService.listProfiles(), {
@@ -969,7 +1012,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         const blocks: string[] = [];
         if (!p.enabled || p.mode === 'DISABLED') blocks.push('PROFILE_DISABLED');
         if (p.mode !== 'AUTO') blocks.push('PROFILE_MODE_NOT_AUTO');
-        if (p.autoPromotedBySweep && !autoExecutionEnabled) blocks.push('AUTO_EXECUTION_DISABLED');
+        if (!autoExecutionEnabled) blocks.push('AUTO_EXECUTION_DISABLED');
         if (p.mitigationExcluded) blocks.push('MITIGATION_EXCLUDED');
         if (mitigationEngineConfig.mode !== 'AUTO') blocks.push('GLOBAL_MODE_SIMULATION_ONLY');
         if (mitigationExecutionConfig.executor !== 'HUAWEI') blocks.push('EXECUTOR_NOT_HUAWEI');
@@ -1077,7 +1120,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     const profile = await mitigationRepository.getProfile(id);
     if (!profile || !profile.enabled || profile.mode !== 'AUTO' || profile.mitigationExcluded)
       return false;
-    if (profile.autoPromotedBySweep && !autoExecutionEnabled) return false;
+    // Kill switch global: vale para toda origem AUTO, nao so para o promovido.
+    if (!autoExecutionEnabled) return false;
     if (profile.autoModeExempt) return false;
     const currentPeers = await mitigationRepository.listProfilePeers(id);
     if (
@@ -1214,7 +1258,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         await mitigationRepository.upsertRuntime(profileId, patch);
       },
     },
-    commands: { execute: (input) => mitigationCommands.execute(input) },
+    // Origem declarada pela fiacao (nunca pelo HTTP): o command service aplica
+    // o kill switch a todo comando que sai do motor.
+    commands: { execute: (input) => mitigationCommands.execute({ ...input, origin: 'AUTO' }) },
     sharedPolicyGuard: {
       enabled: sharedPolicyGuardEnabled,
       allowedProfileIds: sharedPolicyAllowedProfileIds,
@@ -1238,6 +1284,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     // DEBUG e as decisoes suprimidas saem no resumo periodico.
     logger: (message, meta) => app.log.info(meta ?? {}, message),
     debugLogger: (message, meta) => app.log.debug(meta ?? {}, message),
+    // S5: alerta de deteccao bloqueada (uma vez por EPISODIO, best effort).
+    onBlockedActivation: publishBlockedDetection,
+    detectionAlertPolicy,
   });
   autoEngineRef.current = mitigationAutoEngine;
   const autoTickLock = new PrismaPolicyScopeLock(prismaClient);

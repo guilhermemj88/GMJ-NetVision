@@ -189,6 +189,7 @@ async function harness(options: HarnessOptions = {}) {
   const live = new CountingLiveExecutor();
   const notified: string[] = [];
   const commands = new MitigationCommandService({
+    autoExecutionEnabled: () => true,
     repository,
     hosts: { getHost: async () => host() },
     executor: new MockMitigationExecutor(),
@@ -204,6 +205,8 @@ async function harness(options: HarnessOptions = {}) {
 
   const traffic = new SequenceTrafficSource();
   const engine = new MitigationAutoEngine({
+    // Kill switch: sem dependencia o motor e fail-closed; o teste declara ON.
+    executionControl: { enabled: true },
     sampling: { maxAgeMs: 45_000, maxGapMs: 45_000 },
     globalMode: options.globalMode ?? 'AUTO',
     execution: {

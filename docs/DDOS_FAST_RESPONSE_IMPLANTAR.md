@@ -4,6 +4,14 @@
 
 Implantado em 17/10/2026 às 23:33 BRT (18/10 às 02:33 UTC). A API e o frontend de produção continuam nos builds anteriores; nenhuma reinicialização desses serviços foi feita. As correções do motor e a integração para execução permanecem na versão candidata isolada.
 
+## Alertas de deteccao e kill switch (RC14-F)
+
+O alerta FAST de **deteccao bloqueada** (`MITIGATION_DETECTION_BLOCKED`) e o kill switch global M8 estao
+documentados em [DDOS_DETECTION_ALERTS_RC14F.md](./DDOS_DETECTION_ALERTS_RC14F.md).
+Enquanto `MITIGATION_AUTO_EXECUTION_ENABLED` estiver desligado, o motor observa e alerta, mas **nao escreve**
+em nenhum perfil (incluindo AUTO manual, isento legado e allowlist); o comando manual por UI/n8n continua
+funcionando e o motor nunca emite REMOVE.
+
 ## Release e componentes
 
 - Branch local: `feature/ddos-fast-response`, baseada na API `fc790ade3455f2c16eeff372a8a9168deffb0d7d`.

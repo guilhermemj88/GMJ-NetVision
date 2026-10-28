@@ -495,7 +495,8 @@ describe('FAST global: HOLD e AUTO manual preservado', () => {
     expect(h.calls).toHaveLength(0);
   });
 
-  it('AUTO manual continua autorizado com EXECUTION=0 (compatibilidade)', async () => {
+  // SAFETY-GATES-03 (M8): compatibilidade anterior revogada.
+  it('AUTO manual com EXECUTION=0 nao escreve (kill switch global)', async () => {
     const h = fastHarness({
       txBps: [0, 9_500_000_000, 9_500_000_000, 9_500_000_000],
       executionControlEnabled: false,
@@ -504,8 +505,8 @@ describe('FAST global: HOLD e AUTO manual preservado', () => {
     await h.tickAt(1);
     await h.tickAt(2);
     const decision = await h.tickAt(3);
-    expect(decision.outcome).toBe('ACTIVATED');
-    expect(h.calls).toHaveLength(1);
+    expect(decision).toMatchObject({ outcome: 'WOULD_ACTIVATE', reason: 'AUTO_EXECUTION_DISABLED' });
+    expect(h.calls).toHaveLength(0);
   });
 });
 
@@ -553,13 +554,36 @@ describe('FAST global: segurança durante o HOLD', () => {
     expect(h.calls).toHaveLength(0);
   });
 
-  it('AUTO manual BHNET-3043 preserva o comportamento (FAST + ENFORCE, EXECUTION=0)', async () => {
+  it('AUTO manual BHNET-3043 com EXECUTION=0: FAST + ENFORCE NAO escreve (kill switch)', async () => {
     const h = fastHarness({
       txBps: [0, 9_500_000_000, 9_500_000_000, 9_500_000_000],
       profileId: 'bhnet-3043',
       policyName: 'PL-BHNET_IPv4-IN',
       promotedBySweep: false,
       executionControlEnabled: false,
+      bridgeEnv: {
+        MITIGATION_FAST_BRIDGE_MODE: 'ENFORCE',
+        MITIGATION_FAST_BRIDGE_PROFILE_IDS: 'bhnet-3043',
+        MITIGATION_FAST_ENFORCE_PROFILE_IDS: 'bhnet-3043',
+        MITIGATION_FAST_ROUTED_PROFILE_IDS: 'bhnet-3043',
+        MITIGATION_FAST_BRIDGE_WRITES_ENABLED: 'true',
+      },
+    });
+    await h.tickAt(1);
+    await h.tickAt(2);
+    const decision = await h.tickAt(3);
+    expect(decision).toMatchObject({ outcome: 'WOULD_ACTIVATE', reason: 'AUTO_EXECUTION_DISABLED' });
+    expect(h.calls).toEqual([]);
+    expect(h.legacy.sampleWithId).not.toHaveBeenCalled();
+  });
+
+  it('AUTO manual BHNET-3043 com EXECUTION=1 preserva o caminho FAST + ENFORCE', async () => {
+    const h = fastHarness({
+      txBps: [0, 9_500_000_000, 9_500_000_000, 9_500_000_000],
+      profileId: 'bhnet-3043',
+      policyName: 'PL-BHNET_IPv4-IN',
+      promotedBySweep: false,
+      executionControlEnabled: true,
       bridgeEnv: {
         MITIGATION_FAST_BRIDGE_MODE: 'ENFORCE',
         MITIGATION_FAST_BRIDGE_PROFILE_IDS: 'bhnet-3043',

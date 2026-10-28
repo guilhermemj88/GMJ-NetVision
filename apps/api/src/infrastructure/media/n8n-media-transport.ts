@@ -21,6 +21,13 @@ import type { MediaIntegrationPurpose, ResolvedMediaChannel } from './media-type
 export interface WebhookDeliveryResult {
   httpStatus: number;
   latencyMs: number;
+  /**
+   * Corpo da resposta (JSON), quando o destino devolver.
+   *
+   * REVIEW-05 (R5-4/R5-11): HTTP 200 do webhook NAO e prova de entrega. O n8n
+   * devolve `{ routed, delivered }`; so `delivered:true` confirma o alerta.
+   */
+  body?: unknown;
 }
 
 /** Erro de entrega com status/duracao, para o log operacional. */
@@ -73,7 +80,11 @@ export function createFetchWebhookSender(
           `Webhook respondeu HTTP ${response.status}`,
         );
       }
-      return { httpStatus: response.status, latencyMs };
+      const body = await response
+        .clone()
+        .json()
+        .catch(() => null);
+      return { httpStatus: response.status, latencyMs, body };
     } catch (error) {
       if (error instanceof WebhookDeliveryError) throw error;
       const latencyMs = Date.now() - started;
@@ -232,6 +243,34 @@ export class N8nMediaTransport implements NotificationPublisher {
 
     try {
       const result = await this.deps.send(channel.url, input.payload, headers);
+      // R5-4: alerta de deteccao so conta como entregue com confirmacao do
+      // destino. Sem `delivered:true` o chamador agenda nova tentativa.
+      if (input.event === 'MITIGATION_DETECTION_BLOCKED') {
+        const delivered =
+          (result.body as { delivered?: unknown } | null | undefined)?.delivered === true;
+        if (!delivered) {
+          const safeError = 'Webhook nao confirmou a entrega do alerta (delivered != true)';
+          await this.deps.media.recordOutboundDelivery({
+            integrationId: channel.integrationId,
+            event: input.event,
+            profileId: input.profileId,
+            requestId: input.requestId,
+            destination,
+            ok: false,
+            httpStatus: result.httpStatus,
+            latencyMs: result.latencyMs,
+            safeError,
+          });
+          return {
+            ok: false,
+            skipped: false,
+            httpStatus: result.httpStatus,
+            latencyMs: result.latencyMs,
+            safeError,
+            event: input.event,
+          };
+        }
+      }
       await this.deps.media.recordOutboundDelivery({
         integrationId: channel.integrationId,
         event: input.event,
