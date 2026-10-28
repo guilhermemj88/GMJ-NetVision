@@ -575,6 +575,11 @@ export class MitigationAutoEngine {
   private readonly decisions = new Map<string, MitigationAutoDecision>();
   /** S5: episodio de deteccao aberto por profile (dedupe de alerta). */
   private readonly detectionEpisodes = new Map<string, DetectionEpisode>();
+  /** Entrega pendente sobrevive à recuperação do ataque, dentro deste processo. */
+  private readonly detectionDeliveryQueue = new Map<
+    string,
+    { episode: DetectionEpisode; decision: MitigationAutoDecision }
+  >();
   /** R5-6: ultima EMISSAO confirmada por profile (rate limit entre episodios). */
   private readonly lastEmissionAtMs = new Map<string, number>();
   /** Entregas em voo (settle em testes/desligamento). */
@@ -643,6 +648,9 @@ export class MitigationAutoEngine {
 
   /** Avalia todos os targets. O chamador decide a cadencia (loop/timer). */
   async tick(): Promise<MitigationAutoDecision[]> {
+    // Retry é responsabilidade do transporte, não depende de nova amostra,
+    // de tráfego ainda acima do limiar ou da presença atual do perfil na lista.
+    this.retryDetectionDeliveries();
     const targets = await this.deps.targets.list();
     const result: MitigationAutoDecision[] = [];
     let nextIndex = 0;
@@ -1454,13 +1462,22 @@ export class MitigationAutoEngine {
     atMs: number,
     policy: DetectionAlertPolicy,
   ): void {
+    if (!this.detectionDeliveryQueue.has(episode.episodeId)) {
+      this.detectionDeliveryQueue.set(episode.episodeId, { episode, decision: { ...decision } });
+    }
     // RC6-A3: uma unica entrega em voo por episodio (sem corrida entre ticks).
     if (episode.delivering) return;
+    // Episódios recuperados podem coexistir com um novo ataque no mesmo perfil.
+    // Serializa suas entregas para o rate limit não ser contornado por concorrência.
+    for (const queued of this.detectionDeliveryQueue.values()) {
+      if (queued.episode !== episode && queued.decision.profileId === decision.profileId && queued.episode.delivering) return;
+    }
     const due = episode.nextAttemptAtMs;
     if (due !== null && atMs < due) return;
     const hook = this.deps.onBlockedActivation;
     if (!hook) {
       episode.alertState = 'FAILED';
+      this.detectionDeliveryQueue.delete(episode.episodeId);
       episode.lastError = 'publisher ausente';
       this.deps.logger?.('auto: alerta de deteccao sem publisher configurado', {
         profileId: decision.profileId,
@@ -1498,12 +1515,14 @@ export class MitigationAutoEngine {
         episode.lastError = null;
         episode.nextAttemptAtMs = null;
         this.lastEmissionAtMs.set(decision.profileId, atMs);
+        this.detectionDeliveryQueue.delete(episode.episodeId);
       })
       .catch((error: unknown) => {
         episode.attempts = attempt;
         episode.lastError = error instanceof Error ? error.message : String(error);
         if (attempt >= policy.maxDeliveryAttempts) {
           episode.alertState = 'FAILED';
+          this.detectionDeliveryQueue.delete(episode.episodeId);
           episode.nextAttemptAtMs = null;
           this.deps.logger?.('auto: alerta de deteccao NAO entregue (limite de tentativas)', {
             profileId: decision.profileId,
@@ -1529,6 +1548,25 @@ export class MitigationAutoEngine {
         this.pendingDeliveries.delete(pending);
       });
     this.pendingDeliveries.add(pending);
+  }
+
+  private retryDetectionDeliveries(): void {
+    const atMs = this.now().getTime();
+    const policy = this.detectionPolicy();
+    for (const queued of this.detectionDeliveryQueue.values()) {
+      if (!queued.episode.delivering && atMs - queued.episode.startedAtMs > policy.episodeMaxMs) {
+        queued.episode.alertState = 'FAILED';
+        queued.episode.lastError = 'prazo de entrega do episodio expirado';
+        this.detectionDeliveryQueue.delete(queued.episode.episodeId);
+        this.deps.logger?.('auto: alerta de deteccao expirado sem entrega', {
+          profileId: queued.decision.profileId,
+          episodeId: queued.episode.episodeId,
+          attempts: queued.episode.attempts,
+        });
+        continue;
+      }
+      this.maybeAttemptDelivery(queued.episode, queued.decision, atMs, policy);
+    }
   }
 
   /** Aguarda as entregas em voo (testes/desligamento). */

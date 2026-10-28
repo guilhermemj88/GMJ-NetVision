@@ -91,7 +91,7 @@ Amostra FAST (5 s)
                                         ▼              ▼
                                    SENT (fim)   RETRY_SCHEDULED
                                                 (backoff 30s→10min,
-                                                 ate 5 tentativas)
+                                                 até 12 tentativas por padrão)
                                                        │
                                                        ▼
                                                   FAILED + WARN
@@ -187,5 +187,17 @@ Prova: `apps/api/src/infrastructure/bgp/mitigation/mitigation-rc14f-parity.test.
 
 ## 9. Rollback
 
-Reverter apenas o drop-in de release para a RC13 **reabre o buraco do M8**.
-Antes de reverter, garanta `MITIGATION_AUTO_EXECUTION_ENABLED=0` no ambiente da API (na RC13 essa flag e o unico freio do AUTO "manual"). Ver `RELATORIO-RC14-F-FAST-ALERTS-SAFE-RELEASE.md` §12.
+O roteiro original apenas com M8=0 foi rejeitado. Ver o
+[plano Codex corrigido](RC14F_CODEX_DEPLOY_ROLLBACK.md): congelar MODE e LIVE_WRITE,
+preservar HUAWEI/allowlist e verificar precedência de EnvironmentFile. Nenhuma
+publicação nem rollback foi executado nesta auditoria.
+
+## 10. Correção Codex de entrega
+
+Um alerta pendente não é mais descartado quando a telemetria comprova recuperação.
+A fila de entrega em memória é drenada em cada tick, mesmo sem nova amostra ou sem
+perfil na lista. Mantém episodeId e payload do primeiro evento, backoff, limite de
+tentativas e serialização por perfil. Expira com falha observável em até seis horas.
+Não há persistência da fila entre processos; não prometer entrega at-least-once
+durável. Rate limit continua local ao processo. A expiração de episódio e da fila
+pode levar a uma nova emissão de um ataque longo após seis horas.

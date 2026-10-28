@@ -142,7 +142,7 @@ Estados: `PENDING → RETRY_SCHEDULED → SENT` / `FAILED`.
 - Sucesso **somente** com HTTP 2xx **e** `body.delivered === true` do n8n.
 - Falha agenda retry com backoff `30 s → 60 s → 120 s → 300 s → 600 s`, ate `maxDeliveryAttempts` (default 5); depois `FAILED` com WARN.
 - `explicitRepeat` (lembrete do mesmo episodio) **nao** e anulado pelo intervalo minimo entre episodios (RC6-A6).
-- Intervalo minimo por profile entre emissoes (`minAlertIntervalMs`, default 30 min) contem restart/crash-loop.
+- Intervalo mínimo por profile entre emissões (`minAlertIntervalMs`, default 30 min) é somente em memória: NÃO contém restart/crash-loop entre processos.
 
 ---
 
@@ -311,28 +311,17 @@ Referencia: a RC14 tinha 2604 testes. A diferenca de ~150 testes corresponde exa
 
 ---
 
-## 12. Rollback para RC13 (NAO EXECUTADO)
+## 12. Rollback para RC13 — ROTEIRO ORIGINAL REJEITADO PELA AUDITORIA
 
-**Perigo central:** reverter para a RC13 **reabre o buraco do M8** — na RC13 o kill switch so valia para perfis promovidos pelo sweep, e todo perfil AUTO "manual" continuava escrevendo.
+A auditoria Codex comprovou comportamentalmente que `MITIGATION_AUTO_EXECUTION_ENABLED=0`
+**não** bloqueia todos os perfis AUTO manuais na RC13 efetiva. O procedimento
+anterior que dependia apenas dessa flag foi removido por ser inseguro.
 
-Procedimento seguro, nesta ordem:
-
-```bash
-# 1) PRIMEIRO fechar a escrita automatica por ENV (independente da release)
-#    no drop-in da API: MITIGATION_AUTO_EXECUTION_ENABLED=0
-#    (na RC14-F o motor ja bloqueia; na RC13 isto e o que impede o AUTO manual)
-sudo systemctl edit netvision-api    # adicionar Environment=MITIGATION_AUTO_EXECUTION_ENABLED=0
-
-# 2) alternar o drop-in de release de volta para rc13-d6c07f2
-sudo rm /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzz-rc14f-<sha>.conf
-sudo systemctl daemon-reload
-sudo systemctl restart netvision-api
-systemctl is-active netvision-api && curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:3333/health
-```
-
-**Nunca** fazer rollback apenas trocando o drop-in: sem o passo 1, a RC13 volta com o kill switch furado. Nao usar RC13 como rollback se `MITIGATION_AUTO_EXECUTION_ENABLED=1` estiver configurado.
-
-Nao se presume que exista release construida para `673de03`; nao se usa RC13 nem RC14 como rollback sem esta avaliacao.
+Usar exclusivamente o [plano corrigido de deploy/rollback](docs/RC14F_CODEX_DEPLOY_ROLLBACK.md),
+com `MITIGATION_MODE=SIMULATION_ONLY` e `MITIGATION_LIVE_WRITE_ENABLED=false`,
+HUAWEI/allowlist preservados e EnvironmentFile de guardas com precedência final.
+Isso bloqueia temporariamente ACTIVATE e REMOVE manuais reais e nunca retira uma
+mitigação física automaticamente. Nenhum rollback foi executado.
 
 ---
 
