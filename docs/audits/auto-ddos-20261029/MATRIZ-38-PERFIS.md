@@ -2,7 +2,7 @@
 
 Inventario read-only: 2026-10-29T11:40:10Z; FAST: 2026-10-29T12:03:52Z. Nenhum modo ou threshold alterado.
 
-**Todos permanecem NO-GO operacional nesta missao.** Candidato significa somente prioridade de homologacao, sem autorizacao de escrita. CSV acompanha banda/threshold em bps, samples, RT, nodes, peers, direcoes, velocidade fisica, timestamps e historico por perfil. O estado NORMAL e de runtime; nao e readback Huawei novo.
+**Todos permanecem NO-GO operacional nesta missao.** Candidato significa somente prioridade de homologacao, sem autorizacao de escrita. CSV acompanha banda/threshold em bps, samples, RT, nodes, peers, direcoes, velocidade fisica, timestamps e historico por perfil. O estado NORMAL e de runtime; nao e readback Huawei novo. Estados BGP sao persistidos em banco, nao uma leitura CLI nova. PLAYCONNECT IPv4 tem um peer ACTIVE e outro ESTABLISHED; requer verificacao adicional antes do piloto.
 
 | Policy                   | Interface       | Familia | Modo       | Direcao/origem  | Banda Gbps | Escopo | Classificacao           |
 | ------------------------ | --------------- | ------- | ---------- | --------------- | ---------: | -----: | ----------------------- |
