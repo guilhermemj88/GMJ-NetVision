@@ -387,6 +387,31 @@ export class PrismaMitigationRepository implements MitigationRepository {
     return rows.map(mapPeer);
   }
 
+  async reconcileDiscoveryRuntime(
+    profileId: string,
+    patch: MitigationRuntimePatch,
+    expected: MitigationRuntimeRecord | null,
+  ): Promise<void> {
+    if (expected === null) {
+      await this.prisma.bgpMitigationRuntime.upsert({
+        where: { profileId },
+        create: { profileId, ...patch },
+        update: {},
+      });
+      return;
+    }
+    await this.prisma.bgpMitigationRuntime.updateMany({
+      where: {
+        profileId,
+        state: expected.state,
+        updatedAt: expected.updatedAt,
+        plannedBogonNode: expected.plannedBogonNode,
+        plannedMitigationNode: expected.plannedMitigationNode,
+      },
+      data: patch,
+    });
+  }
+
   async upsertRuntime(
     profileId: string,
     patch: MitigationRuntimePatch,
@@ -417,7 +442,9 @@ export class PrismaMitigationRepository implements MitigationRepository {
         ...(patch.triggerCounter === undefined ? {} : { triggerCounter: patch.triggerCounter }),
         ...(patch.recoveryCounter === undefined ? {} : { recoveryCounter: patch.recoveryCounter }),
         ...(patch.plannedNode === undefined ? {} : { plannedNode: patch.plannedNode }),
-        ...(patch.plannedBogonNode === undefined ? {} : { plannedBogonNode: patch.plannedBogonNode }),
+        ...(patch.plannedBogonNode === undefined
+          ? {}
+          : { plannedBogonNode: patch.plannedBogonNode }),
         ...(patch.plannedMitigationNode === undefined
           ? {}
           : { plannedMitigationNode: patch.plannedMitigationNode }),

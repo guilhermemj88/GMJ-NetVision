@@ -220,8 +220,7 @@ export class InMemoryMitigationRepository implements MitigationRepository {
   async listPeerExclusions(
     filter: MitigationPeerExclusionFilter = {},
   ): Promise<MitigationPeerExclusionRecord[]> {
-    const addresses =
-      filter.peerAddresses === undefined ? null : new Set(filter.peerAddresses);
+    const addresses = filter.peerAddresses === undefined ? null : new Set(filter.peerAddresses);
     return [...this.store.peerExclusions.values()].filter((row) => {
       if (filter.deviceId !== undefined && row.deviceId !== filter.deviceId) return false;
       if (addresses !== null && !addresses.has(row.peerAddress)) return false;
@@ -304,6 +303,25 @@ export class InMemoryMitigationRepository implements MitigationRepository {
     return [...this.store.peers.values()].filter((peer) => peer.profileId === profileId);
   }
 
+  async reconcileDiscoveryRuntime(
+    profileId: string,
+    patch: MitigationRuntimePatch,
+    expected: MitigationRuntimeRecord | null,
+  ): Promise<void> {
+    const current = this.store.runtime.get(profileId);
+    if (!expected && current) return;
+    if (
+      expected &&
+      (!current ||
+        current.state !== expected.state ||
+        current.updatedAt.getTime() !== expected.updatedAt.getTime() ||
+        current.plannedBogonNode !== expected.plannedBogonNode ||
+        current.plannedMitigationNode !== expected.plannedMitigationNode)
+    )
+      return;
+    await this.upsertRuntime(profileId, patch);
+  }
+
   async upsertRuntime(
     profileId: string,
     patch: MitigationRuntimePatch,
@@ -339,9 +357,7 @@ export class InMemoryMitigationRepository implements MitigationRepository {
         lastReconciledAt: hasPatch(patch, 'lastReconciledAt')
           ? (patch.lastReconciledAt ?? null)
           : existing.lastReconciledAt,
-        safeError: hasPatch(patch, 'safeError')
-          ? (patch.safeError ?? null)
-          : existing.safeError,
+        safeError: hasPatch(patch, 'safeError') ? (patch.safeError ?? null) : existing.safeError,
         updatedAt: new Date(),
       };
       this.store.runtime.set(profileId, updated);
@@ -371,7 +387,9 @@ export class InMemoryMitigationRepository implements MitigationRepository {
     return this.store.runtime.get(profileId) ?? null;
   }
 
-  async listRuntimeByState(states: MitigationRuntimeRecord['state'][]): Promise<MitigationRuntimeRecord[]> {
+  async listRuntimeByState(
+    states: MitigationRuntimeRecord['state'][],
+  ): Promise<MitigationRuntimeRecord[]> {
     return [...this.store.runtime.values()].filter((runtime) => states.includes(runtime.state));
   }
 

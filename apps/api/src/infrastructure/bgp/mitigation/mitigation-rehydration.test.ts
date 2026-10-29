@@ -305,3 +305,16 @@ describe('harness de restart: snapshot explicito no motor', () => {
     expect(decision!.reason).toBe('SNAPSHOT_UNAVAILABLE');
   });
 });
+
+it('phase01 repeated rehydration invalidates a removed snapshot without changing the profile', async () => {
+  const repository = await seed();
+  const rows = [row()];
+  const service = serviceFor(repository, discoveryStub(rows).discovery);
+  await service.rehydrateSnapshots();
+  expect((await service.getProfile('profile-1'))?.snapshotAvailable).toBe(true);
+  const before = await repository.getProfile('profile-1');
+  rows.length = 0;
+  await service.rehydrateSnapshots();
+  expect((await service.getProfile('profile-1'))?.snapshotAvailable).toBe(false);
+  expect(await repository.getProfile('profile-1')).toEqual(before);
+});

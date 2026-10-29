@@ -33,11 +33,10 @@ import type { BandwidthSource, MitigationBlockReason, PrefixStatus } from './mit
 // (nunca Prisma direto).
 //
 // Decisoes documentadas:
-//  - identidade do profile e (deviceId, policyName): a acao pertence a POLICY/CLIENTE,
-//    entao varios peers que compartilham a policy viram UM profile com N peers;
-//  - interface considerada e a do peer de menor endereco (deterministico); se os peers
-//    da policy apontam para interfaces diferentes, o profile fica NOT_READY com
-//    INTERFACE_AMBIGUOUS (nunca inferimos);
+//  - identidade do profile: deviceId + interfaceId + addressFamily + policyName;
+//    outra interface/familia e outro target, mesmo com policy compartilhada;
+//  - SNAPSHOT_ONLY nunca persiste. RECONCILE_EXISTING nao cria targets.
+//    REGISTER_NEW e reservado ao discovery explicitamente solicitado.
 //  - currentPrefixCount e o MAIOR contador entre os peers da policy (a route-policy e
 //    avaliada por sessao); qualquer peer com contagem desconhecida torna UNKNOWN;
 //  - "node de mitigacao" e o node de PERMIT que aplica a route-target do motor
@@ -84,7 +83,11 @@ export interface MitigationSharedTarget {
 
 export type MitigationReadiness = 'READY' | 'NOT_READY';
 
+export type DiscoveryPersistence = 'SNAPSHOT_ONLY' | 'RECONCILE_EXISTING' | 'REGISTER_NEW';
+
 export interface MitigationDiscoveryProfile {
+  /** Candidates without a persisted identity require explicit discovery/review. */
+  registrationStatus?: 'EXISTING' | 'CREATED_REVIEW_REQUIRED' | 'PENDING_REVIEW';
   /** Id do profile persistido; `null` para candidato sem policy. */
   profileId: string | null;
   /** `null` quando a policy IN nao pode ser resolvida (profile nao persistido). */
@@ -209,15 +212,21 @@ export class BgpMitigationDiscoveryService {
   }
 
   /** Entrada principal: roda o discovery BGP existente e depois o de mitigacao. */
-  async discoverMitigationProfiles(device: HostRecord): Promise<MitigationDiscoveryResult> {
+  async discoverMitigationProfiles(
+    device: HostRecord,
+    persistence: DiscoveryPersistence = 'REGISTER_NEW',
+  ): Promise<MitigationDiscoveryResult> {
+    if (persistence !== 'REGISTER_NEW')
+      throw new Error('READ_ONLY_DISCOVERY_REQUIRES_PERSISTED_PEERS');
     const outcome = await this.deps.bgpDiscovery.discover(device);
-    return this.discoverFromBgpOutcome(device, outcome);
+    return this.discoverFromBgpOutcome(device, outcome, persistence);
   }
 
   /** Mesma logica, consumindo um resultado BGP ja obtido (testavel isolado). */
   async discoverFromBgpOutcome(
     device: HostRecord,
     outcome: BgpDiscoveryOutcome,
+    persistence: DiscoveryPersistence = 'REGISTER_NEW',
   ): Promise<MitigationDiscoveryResult> {
     const now = this.now();
     const warnings: string[] = [...outcome.warnings];
@@ -233,10 +242,14 @@ export class BgpMitigationDiscoveryService {
       ? parseHuaweiRoutePolicyNodes(snapshot.routePolicyConfiguration)
       : null;
 
-    const existingPolicyNames = new Set(
-      (await this.deps.repository.listProfiles({ deviceId: device.id })).map(
-        (profile) => profile.policyName,
-      ),
+    const existingProfiles = await this.deps.repository.listProfiles({ deviceId: device.id });
+    const identity = (interfaceId: string | null, family: string, policy: string) =>
+      JSON.stringify([interfaceId, family, policy]);
+    const existingByIdentity = new Map(
+      existingProfiles.map((profile) => [
+        identity(profile.interfaceId, profile.addressFamily, profile.policyName),
+        profile,
+      ]),
     );
 
     const candidates: Candidate[] = [];
@@ -300,10 +313,11 @@ export class BgpMitigationDiscoveryService {
     let createdProfiles = 0;
     let updatedProfiles = 0;
 
-    const orderedTargets = [...targets.values()].sort((left, right) =>
-      left.policyName.localeCompare(right.policyName) ||
-      left.interfaceId.localeCompare(right.interfaceId) ||
-      left.addressFamily.localeCompare(right.addressFamily),
+    const orderedTargets = [...targets.values()].sort(
+      (left, right) =>
+        left.policyName.localeCompare(right.policyName) ||
+        left.interfaceId.localeCompare(right.interfaceId) ||
+        left.addressFamily.localeCompare(right.addressFamily),
     );
 
     for (const target of orderedTargets) {
@@ -346,9 +360,7 @@ export class BgpMitigationDiscoveryService {
         ? mitigationPermitNodes(policyNodes, this.mitigationRt, DEFAULT_TARGET_PREFIX_LIST)
         : [];
       // BOGONS = DENY + if-match da prefix-list. Um deny qualquer NAO entra.
-      const bogonNodes = policyNodes
-        ? bogonDenyNodes(policyNodes, DEFAULT_BOGON_PREFIX_LIST)
-        : [];
+      const bogonNodes = policyNodes ? bogonDenyNodes(policyNodes, DEFAULT_BOGON_PREFIX_LIST) : [];
       const normalNodes = policyNodes
         ? permitNodesOf(policyNodes).filter((node) => !mitigationNodes.includes(node))
         : [];
@@ -374,56 +386,90 @@ export class BgpMitigationDiscoveryService {
       // Persistencia "best effort": sem a migration aplicada (ou com o banco
       // indisponivel) a ANALISE continua e a linha vai para o resultado com
       // profileId null + aviso explicito - nunca perdemos a descoberta.
-      let persistedProfileId: string | null = null;
-      let persistedOverrideBps: bigint | null = null;
-      try {
-        const profile = await this.deps.repository.upsertProfile({
-          deviceId: device.id,
-          policyName,
-          interfaceId,
-          addressFamily,
-          detectedBandwidthBps: primary.scope.detectedBandwidthBps,
-          bandwidthSource: primary.scope.bandwidthSource,
-          prefixLimit: this.prefixLimit,
-        });
-        persistedProfileId = profile.id;
-        persistedOverrideBps = profile.bandwidthOverrideBps;
-        touchedProfileIds.add(profile.id);
-        if (existingPolicyNames.has(policyName)) updatedProfiles += 1;
-        else createdProfiles += 1;
-
-        await this.deps.repository.replaceProfilePeers(
-          profile.id,
-          sorted.map((item) => ({
-            peerAddress: item.peer.peerAddress,
-            addressFamily: item.peer.addressFamily,
-            primary: item.peer.peerAddress === primary.peer.peerAddress,
-          })),
+      const existingProfile = existingByIdentity.get(
+        identity(interfaceId, addressFamily, policyName),
+      );
+      const configurationChanged =
+        persistence === 'SNAPSHOT_ONLY' &&
+        existingProfile !== undefined &&
+        (existingProfile.detectedBandwidthBps !== primary.scope.detectedBandwidthBps ||
+          existingProfile.bandwidthSource !== primary.scope.bandwidthSource);
+      if (configurationChanged)
+        warnings.push(
+          `policy ${policyName}: snapshot diverge da banda persistida; revisao necessaria, AUTO nao pronto`,
         );
+      let persistedProfileId: string | null = existingProfile?.id ?? null;
+      let persistedOverrideBps: bigint | null = existingProfile?.bandwidthOverrideBps ?? null;
+      try {
+        if (
+          persistence !== 'SNAPSHOT_ONLY' &&
+          (existingProfile || persistence === 'REGISTER_NEW')
+        ) {
+          const observationChanged =
+            !existingProfile ||
+            existingProfile.detectedBandwidthBps !== primary.scope.detectedBandwidthBps ||
+            existingProfile.bandwidthSource !== primary.scope.bandwidthSource;
+          const profile = observationChanged
+            ? await this.deps.repository.upsertProfile({
+                deviceId: device.id,
+                policyName,
+                interfaceId,
+                addressFamily,
+                detectedBandwidthBps: primary.scope.detectedBandwidthBps,
+                bandwidthSource: primary.scope.bandwidthSource,
+                ...(existingProfile ? {} : { prefixLimit: this.prefixLimit }),
+              })
+            : existingProfile!;
+          persistedProfileId = profile.id;
+          persistedOverrideBps = profile.bandwidthOverrideBps;
+          touchedProfileIds.add(profile.id);
+          if (existingProfile) updatedProfiles += 1;
+          else {
+            createdProfiles += 1;
+            warnings.push(
+              `profile ${profile.id}: cadastro ALERT_ONLY pendente de revisao; nenhuma autorizacao AUTO adicionada`,
+            );
+          }
 
-        const runtime = await this.deps.repository.getRuntime(profile.id);
-        await this.deps.repository.upsertRuntime(profile.id, {
-          lastValidatedAt: now,
-          lastReconciledAt: now,
-          plannedNode,
-          plannedBogonNode,
-          plannedMitigationNode: plannedNode,
-          // F1: `state` pertence aos caminhos que PROVAM o estado fisico. O
-          // discovery apenas INICIALIZA a linha (runtime novo) e reativa o
-          // proprio marcador de fora de escopo (DISABLED); qualquer outro
-          // estado existente e PRESERVADO - o estado nunca vira NORMAL apenas
-          // porque `blockedReason === null`.
-          ...(runtime === null
-            ? {
-                state:
-                  blockedReason !== null
-                    ? ('RECONCILIATION_REQUIRED' as const)
-                    : ('NORMAL' as const),
-              }
-            : runtime.state === 'DISABLED'
-              ? { state: 'NORMAL' as const }
-              : {}),
-        });
+          await this.deps.repository.replaceProfilePeers(
+            profile.id,
+            sorted.map((item) => ({
+              peerAddress: item.peer.peerAddress,
+              addressFamily: item.peer.addressFamily,
+              primary: item.peer.peerAddress === primary.peer.peerAddress,
+            })),
+          );
+
+          const runtime = await this.deps.repository.getRuntime(profile.id);
+          await this.deps.repository.reconcileDiscoveryRuntime?.(
+            profile.id,
+            {
+              lastValidatedAt: now,
+              lastReconciledAt: now,
+              ...(runtime && PRESERVED_OUT_OF_SCOPE_STATES.includes(runtime.state)
+                ? {}
+                : {
+                    plannedNode,
+                    plannedBogonNode,
+                    plannedMitigationNode: plannedNode,
+                  }),
+              // F1: `state` pertence aos caminhos que PROVAM o estado fisico. O
+              // discovery apenas INICIALIZA a linha (runtime novo) e preserva o
+              // marcador administrativo DISABLED; qualquer outro
+              // estado existente e PRESERVADO - o estado nunca vira NORMAL apenas
+              // porque `blockedReason === null`.
+              ...(runtime === null
+                ? {
+                    state:
+                      blockedReason !== null
+                        ? ('RECONCILIATION_REQUIRED' as const)
+                        : ('NORMAL' as const),
+                  }
+                : {}),
+            },
+            runtime,
+          );
+        }
       } catch {
         persistedProfileId = null;
         warnings.push(
@@ -433,6 +479,11 @@ export class BgpMitigationDiscoveryService {
       }
 
       profiles.push({
+        registrationStatus: existingProfile
+          ? 'EXISTING'
+          : persistedProfileId
+            ? 'CREATED_REVIEW_REQUIRED'
+            : 'PENDING_REVIEW',
         profileId: persistedProfileId,
         policyName,
         addressFamily,
@@ -463,7 +514,7 @@ export class BgpMitigationDiscoveryService {
         plannedNode,
         plannedBogonNode,
         plannedMitigationNode: plannedNode,
-        readiness: blockedReason === null ? 'READY' : 'NOT_READY',
+        readiness: blockedReason === null && !configurationChanged ? 'READY' : 'NOT_READY',
         blockedReason,
       });
     }
@@ -508,13 +559,16 @@ export class BgpMitigationDiscoveryService {
       });
     }
 
-    const outOfScopeProfiles = await this.reconcileOutOfScope(
-      device,
-      touchedProfileIds,
-      noBandwidthInterfaceIds,
-      now,
-      warnings,
-    );
+    const outOfScopeProfiles =
+      persistence === 'SNAPSHOT_ONLY'
+        ? []
+        : await this.reconcileOutOfScope(
+            device,
+            touchedProfileIds,
+            noBandwidthInterfaceIds,
+            now,
+            warnings,
+          );
 
     return {
       deviceId: device.id,
@@ -570,11 +624,15 @@ export class BgpMitigationDiscoveryService {
       // DISABLED, como antes.
       const preserved = runtime !== null && PRESERVED_OUT_OF_SCOPE_STATES.includes(runtime.state);
       if (!preserved) {
-        await this.deps.repository.upsertRuntime(profile.id, {
-          state: 'DISABLED',
-          plannedNode: null,
-          lastReconciledAt: now,
-        });
+        await this.deps.repository.reconcileDiscoveryRuntime?.(
+          profile.id,
+          {
+            state: 'DISABLED',
+            plannedNode: null,
+            lastReconciledAt: now,
+          },
+          runtime,
+        );
       }
       outOfScope.push(profile.policyName);
       warnings.push(

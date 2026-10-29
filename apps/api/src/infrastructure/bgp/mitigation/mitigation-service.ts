@@ -32,6 +32,7 @@ import {
 import type {
   BgpMitigationDiscoveryService,
   MitigationDiscoveryProfile,
+  DiscoveryPersistence,
 } from './mitigation-discovery-service';
 import { prefixStatus, safetyBlocks } from './mitigation-planner';
 import type {
@@ -202,7 +203,7 @@ export class BgpMitigationService {
   /**
    * Reidrata os snapshots de discovery dos devices que já têm profiles.
    *
-   * READ-ONLY no Huawei (reusa o discovery normal: peers persistidos + um dump de
+   * READ-ONLY no banco e no Huawei (reusa peers persistidos: peers persistidos + um dump de
    * configuração por device), preserva mode/exclusões/override/thresholds e NUNCA
    * executa ACTIVATE/REMOVE. Falha de um device não derruba a API: vira DEGRADED.
    */
@@ -234,7 +235,10 @@ export class BgpMitigationService {
         this.hydrationCompletedAt = this.now();
         return { devices: 0, succeeded: 0, failed: 0 };
       }
-const response = await this.discover(deviceIds, { refreshInterfaceMetadata: false });
+      const response = await this.discover(deviceIds, {
+        refreshInterfaceMetadata: false,
+        persistence: 'SNAPSHOT_ONLY',
+      });
       const succeeded = response.results.filter((result) => result.scannedPeers > 0).length;
       const failed = Math.max(0, deviceIds.length - succeeded);
       this.hydrationDevicesSucceeded = succeeded;
@@ -256,10 +260,10 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
   }
 
   async health(): Promise<BgpMitigationHealthDto> {
-    const probe = await this.read(
-      () => this.deps.schemaProbe.probe(),
-      { migrationReady: false, databaseReady: false },
-    );
+    const probe = await this.read(() => this.deps.schemaProbe.probe(), {
+      migrationReady: false,
+      databaseReady: false,
+    });
     const lastDiscoveryAt = this.lastDiscoveryAt ?? (await this.derivedLastDiscoveryAt(probe));
     const profiles = await this.read(() => this.deps.repository.listProfiles(), []);
     const auto = this.deps.autoStatus?.() ?? null;
@@ -286,9 +290,7 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
     };
   }
 
-  private async derivedLastDiscoveryAt(probe: {
-    migrationReady: boolean;
-  }): Promise<Date | null> {
+  private async derivedLastDiscoveryAt(probe: { migrationReady: boolean }): Promise<Date | null> {
     if (!probe.migrationReady) return null;
     const profiles = await this.read(() => this.deps.repository.listProfiles(), []);
     if (!profiles.length) return null;
@@ -299,14 +301,18 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
   }
 
   async listProfiles(profileIds?: readonly string[]): Promise<BgpMitigationProfileDto[]> {
-    const records = (await this.read(() => this.deps.repository.listProfiles(), [])).filter(record => !profileIds || profileIds.includes(record.id));
+    const records = (await this.read(() => this.deps.repository.listProfiles(), [])).filter(
+      (record) => !profileIds || profileIds.includes(record.id),
+    );
     const rows: BgpMitigationProfileDto[] = [];
     const deviceNames = new Map<string, string>();
     for (const record of records) {
       const peers = await this.read(() => this.deps.repository.listProfilePeers(record.id), []);
       const runtime = await this.read(() => this.deps.repository.getRuntime(record.id), null);
       const deviceName = await this.deviceName(record.deviceId, deviceNames);
-      rows.push(this.toProfileDto(record, runtime, peers, deviceName, this.discoveryCache.get(record.id)));
+      rows.push(
+        this.toProfileDto(record, runtime, peers, deviceName, this.discoveryCache.get(record.id)),
+      );
     }
     return rows;
   }
@@ -327,7 +333,13 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
     const peers = await this.read(() => this.deps.repository.listProfilePeers(record.id), []);
     const runtime = await this.read(() => this.deps.repository.getRuntime(record.id), null);
     const deviceName = await this.deviceName(record.deviceId, new Map());
-    return this.toProfileDto(record, runtime, peers, deviceName, this.discoveryCache.get(record.id));
+    return this.toProfileDto(
+      record,
+      runtime,
+      peers,
+      deviceName,
+      this.discoveryCache.get(record.id),
+    );
   }
 
   /**
@@ -338,7 +350,7 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
    */
   async discover(
     deviceIds: string[],
-    options: { refreshInterfaceMetadata?: boolean } = {},
+    options: { refreshInterfaceMetadata?: boolean; persistence?: DiscoveryPersistence } = {},
   ): Promise<BgpMitigationDiscoveryResponseDto> {
     const targets = [...new Set(deviceIds)].slice(0, this.maxDevicesPerDiscovery);
     const results: BgpMitigationDiscoveryDeviceDto[] = [];
@@ -346,6 +358,9 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
     const warnings: string[] = [];
 
     for (const deviceId of targets) {
+      // A failed/missing replacement snapshot invalidates old evidence for this device.
+      for (const [id, entry] of this.discoveryCache)
+        if (entry.deviceId === deviceId) this.discoveryCache.delete(id);
       const hostBefore = await this.deps.hosts.getHost(deviceId);
       if (!hostBefore) {
         warnings.push(`dispositivo ${deviceId}: host nao encontrado`);
@@ -356,7 +371,7 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
         continue;
       }
       let host = hostBefore;
-      if (options.refreshInterfaceMetadata) {
+      if (options.refreshInterfaceMetadata && options.persistence !== 'SNAPSHOT_ONLY') {
         const refresher = this.deps.interfaceMetadataRefresher;
         if (!refresher) {
           warnings.push(
@@ -382,13 +397,19 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
         }
         const reloaded = await this.deps.hosts.getHost(deviceId);
         if (!reloaded) {
-          warnings.push(`${this.hostLabel(hostBefore)}: host nao encontrado apos o refresh de interfaces`);
+          warnings.push(
+            `${this.hostLabel(hostBefore)}: host nao encontrado apos o refresh de interfaces`,
+          );
           continue;
         }
         host = reloaded;
       }
       try {
-        const outcome = await this.discoverForDevice(deviceId, host);
+        const outcome = await this.discoverForDevice(
+          deviceId,
+          host,
+          options.persistence ?? 'REGISTER_NEW',
+        );
         const deviceName = this.hostLabel(host);
         results.push({
           deviceId,
@@ -444,7 +465,8 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
       createdProfiles: single?.createdProfiles ?? totals.createdProfiles,
       updatedProfiles: single?.updatedProfiles ?? totals.updatedProfiles,
       blockedProfiles: single?.blockedProfiles ?? totals.blockedProfiles,
-      outOfScopeProfiles: single?.outOfScopeProfiles ?? results.flatMap((item) => item.outOfScopeProfiles),
+      outOfScopeProfiles:
+        single?.outOfScopeProfiles ?? results.flatMap((item) => item.outOfScopeProfiles),
       ambiguousPeers: single?.ambiguousPeers ?? results.flatMap((item) => item.ambiguousPeers),
     };
   }
@@ -456,7 +478,8 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
     const record = await this.deps.repository.getProfile(id);
     if (!record) return null;
     if (input.bandwidthOverrideBps !== undefined) {
-      const override = input.bandwidthOverrideBps === null ? null : BigInt(input.bandwidthOverrideBps);
+      const override =
+        input.bandwidthOverrideBps === null ? null : BigInt(input.bandwidthOverrideBps);
       await this.deps.repository.setProfileBandwidthOverride(id, override);
     }
     if (input.enabled !== undefined) {
@@ -541,9 +564,7 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
     };
   }
 
-  async getPeerMitigationExclusion(
-    peerId: string,
-  ): Promise<BgpPeerMitigationExclusionDto | null> {
+  async getPeerMitigationExclusion(peerId: string): Promise<BgpPeerMitigationExclusionDto | null> {
     const record = await this.read(() => this.deps.repository.getPeerExclusion(peerId), null);
     if (!record) return null;
     return this.toPeerExclusionDto(record);
@@ -599,7 +620,8 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
       prefixLimit: record.prefixLimit,
       mitigationRt: record.mitigationRt,
     };
-    const thresholdBps = effectiveBps === null ? null : mitigationThresholdBps(config, effectiveBps);
+    const thresholdBps =
+      effectiveBps === null ? null : mitigationThresholdBps(config, effectiveBps);
     const recoveryBps = effectiveBps === null ? null : recoveryThresholdBps(config, effectiveBps);
     const status = prefixStatus(prefixCount, record.prefixLimit);
     const plannedNode = runtime?.plannedNode ?? null;
@@ -838,19 +860,15 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
   private async discoverForDevice(
     deviceId: string,
     host: HostRecord,
-  ): Promise<Awaited<ReturnType<BgpMitigationDiscoveryService[
-    'discoverMitigationProfiles'
-  ]>>> {
+    persistence: DiscoveryPersistence,
+  ): Promise<Awaited<ReturnType<BgpMitigationDiscoveryService['discoverMitigationProfiles']>>> {
     const fromPersisted = this.deps.discovery.discoverFromBgpOutcome;
     if (this.deps.persistedPeers && fromPersisted) {
-      const peers = await this.read(
-        () => this.deps.persistedPeers!.listForDevice(deviceId),
-        [],
-      );
+      const peers = await this.read(() => this.deps.persistedPeers!.listForDevice(deviceId), []);
       const outcome = persistedPeersToBgpOutcome(peers);
-      if (outcome) return fromPersisted.call(this.deps.discovery, host, outcome);
+      if (outcome) return fromPersisted.call(this.deps.discovery, host, outcome, persistence);
     }
-    return this.deps.discovery.discoverMitigationProfiles(host);
+    return this.deps.discovery.discoverMitigationProfiles(host, persistence);
   }
 
   private hostLabel(host: HostRecord): string {
@@ -888,7 +906,10 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
       targetPrefixList: row?.targetPrefixList ?? DEFAULT_TARGET_PREFIX_LIST,
       plannedBogonNode: row?.plannedBogonNode ?? runtime?.plannedBogonNode ?? null,
       plannedMitigationNode:
-        row?.plannedMitigationNode ?? runtime?.plannedMitigationNode ?? runtime?.plannedNode ?? null,
+        row?.plannedMitigationNode ??
+        runtime?.plannedMitigationNode ??
+        runtime?.plannedNode ??
+        null,
       interfaceDescription: row?.interfaceDescriptionRaw ?? null,
       detectedBandwidthBps: bigintToString(record.detectedBandwidthBps),
       bandwidthOverrideBps: bigintToString(record.bandwidthOverrideBps),
@@ -899,7 +920,8 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
       sharedPolicyTargets: row?.sharedPolicyTargets ?? [],
       autoBlockedReason: asBlockReason(row?.autoBlockedReason ?? null),
       peerAddresses,
-      primaryPeerAddress: peers.find((peer) => peer.primary)?.peerAddress ?? peerAddresses[0] ?? null,
+      primaryPeerAddress:
+        peers.find((peer) => peer.primary)?.peerAddress ?? peerAddresses[0] ?? null,
       prefixCount: row?.prefixCount ?? null,
       prefixLimit: record.prefixLimit,
       prefixStatus: (row?.prefixStatus ?? 'UNKNOWN') as MitigationPrefixStatus,
@@ -936,7 +958,10 @@ const response = await this.discover(deviceIds, { refreshInterfaceMetadata: fals
         readiness: row?.readiness ?? 'NOT_READY',
         plannedBogonNode: row?.plannedBogonNode ?? runtime?.plannedBogonNode ?? null,
         plannedMitigationNode:
-          row?.plannedMitigationNode ?? runtime?.plannedMitigationNode ?? runtime?.plannedNode ?? null,
+          row?.plannedMitigationNode ??
+          runtime?.plannedMitigationNode ??
+          runtime?.plannedNode ??
+          null,
       }),
       lastDiscoveryAt: this.lastDiscoveryAt?.toISOString() ?? null,
     };

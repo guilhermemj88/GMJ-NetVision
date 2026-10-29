@@ -305,6 +305,12 @@ export interface MitigationRepository {
     peers: MitigationPeerInput[],
   ): Promise<MitigationProfilePeerRecord[]>;
   listProfilePeers(profileId: string): Promise<MitigationProfilePeerRecord[]>;
+  /** Discovery cannot overwrite a runtime changed by a command after its read. */
+  reconcileDiscoveryRuntime?(
+    profileId: string,
+    patch: MitigationRuntimePatch,
+    expected: MitigationRuntimeRecord | null,
+  ): Promise<void>;
   upsertRuntime(profileId: string, patch: MitigationRuntimePatch): Promise<MitigationRuntimeRecord>;
   getRuntime(profileId: string): Promise<MitigationRuntimeRecord | null>;
   listRuntimeByState(states: MitigationState[]): Promise<MitigationRuntimeRecord[]>;

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { HostRecord } from '@gmj/shared';
 import type { BgpDiscoveryOutcome, DiscoveredBgpPeer } from '../bgp-discovery-service';
 import { InMemoryMitigationRepository } from './in-memory-mitigation-repository';
@@ -1149,5 +1149,62 @@ describe('regra PREFIX_UNKNOWN informativo (casos A-H)', () => {
     ]);
     expect(result.createdProfiles).toBe(0);
     expect(result.profiles).toHaveLength(0);
+  });
+});
+
+describe('phase01 read-only boot boundaries', () => {
+  it('boot runs analysis twice without invoking any persistence mutator', async () => {
+    const h = createHarness();
+    const registered = await discover(h, [makePeer({ peerAddress: '10.200.200.106' })]);
+    const id = registered.profiles[0]!.profileId!;
+    await h.repository.setProfileMode(id, 'AUTO');
+    await h.repository.upsertRuntime(id, { state: 'DISABLED' });
+    const before = await h.repository.getProfile(id);
+    const mutations = [
+      vi.spyOn(h.repository, 'upsertProfile'),
+      vi.spyOn(h.repository, 'replaceProfilePeers'),
+      vi.spyOn(h.repository, 'upsertRuntime'),
+      vi.spyOn(h.repository, 'reconcileDiscoveryRuntime'),
+      vi.spyOn(h.repository, 'clearProfileDetectedBandwidth'),
+    ];
+    for (let n = 0; n < 2; n++) {
+      const result = await h.service.discoverFromBgpOutcome(
+        DEVICE,
+        outcomeOf([
+          makePeer({
+            peerAddress: '10.200.200.106',
+            interfaceAlias: 'CHANGED_20GB',
+            interfaceDescription: 'CHANGED_20GB',
+          }),
+          makePeer({ peerAddress: '10.200.200.10', interfaceId: 'new-interface' }),
+        ]),
+        'SNAPSHOT_ONLY',
+      );
+      expect(result.profiles.find((p) => p.interfaceId === 'new-interface')?.profileId).toBeNull();
+      expect(result.createdProfiles).toBe(0);
+    }
+    for (const spy of mutations) expect(spy).not.toHaveBeenCalled();
+    expect(await h.repository.getProfile(id)).toEqual(before);
+    expect((await h.repository.getRuntime(id))?.state).toBe('DISABLED');
+  });
+  it('read-only discovery cannot fall back to live BGP discovery that persists peers', async () => {
+    const h = createHarness();
+    await expect(h.service.discoverMitigationProfiles(DEVICE, 'SNAPSHOT_ONLY')).rejects.toThrow(
+      'READ_ONLY_DISCOVERY_REQUIRES_PERSISTED_PEERS',
+    );
+  });
+  it('partial explicit registration failure is visible and repairable on retry without a duplicate', async () => {
+    const h = createHarness();
+    const fail = vi
+      .spyOn(h.repository, 'replaceProfilePeers')
+      .mockRejectedValueOnce(Error('transport unavailable'));
+    const first = await discover(h, [makePeer({ peerAddress: '10.200.200.106' })]);
+    expect(first.profiles[0]?.profileId).toBeNull();
+    expect(first.warnings.join(' ')).toContain('persistir');
+    fail.mockRestore();
+    const retry = await discover(h, [makePeer({ peerAddress: '10.200.200.106' })]);
+    expect(retry.profiles[0]?.profileId).not.toBeNull();
+    expect(await h.repository.listProfiles()).toHaveLength(1);
+    expect((await h.repository.listProfiles())[0]?.mode).toBe('ALERT_ONLY');
   });
 });
