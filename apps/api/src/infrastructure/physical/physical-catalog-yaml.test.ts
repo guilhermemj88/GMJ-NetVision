@@ -322,6 +322,7 @@ describe('physical catalog YAML (política de falha)', () => {
       resolve(file),
       resolve('/workspace', 'apps/api/catalog/physical-catalog-v1.yaml'),
       resolve('/workspace', 'catalog/physical-catalog-v1.yaml'),
+      resolve('/workspace', 'dist/catalog/physical-catalog-v1.yaml'),
     ]);
   });
 });

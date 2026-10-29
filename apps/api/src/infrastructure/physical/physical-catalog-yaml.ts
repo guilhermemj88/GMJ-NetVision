@@ -261,6 +261,7 @@ export function catalogCandidates(cwd = process.cwd()): string[] {
     ...(override ? [resolve(override)] : []),
     resolve(cwd, 'apps/api/catalog/physical-catalog-v1.yaml'),
     resolve(cwd, 'catalog/physical-catalog-v1.yaml'),
+    resolve(cwd, 'dist/catalog/physical-catalog-v1.yaml'),
   ];
 }
 

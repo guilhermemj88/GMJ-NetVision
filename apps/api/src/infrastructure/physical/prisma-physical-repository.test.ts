@@ -121,9 +121,10 @@ function buildPrismaStub() {
     findMany: mockAsync([]),
   };
 
-  return {
+  const stub = {
+    $executeRaw: mockAsync(1),
     $transaction: vi.fn(async (arg: unknown) => {
-      if (typeof arg === 'function') return arg({} as never);
+      if (typeof arg === 'function') return arg(stub as never);
       if (Array.isArray(arg)) return Promise.all(arg);
       return arg;
     }),
@@ -139,6 +140,7 @@ function buildPrismaStub() {
     physicalSite,
     physicalConnection,
   };
+  return stub;
 }
 
 describe('PrismaPhysicalRepository.syncCatalog', () => {
@@ -223,7 +225,7 @@ describe('PrismaPhysicalRepository.syncCatalog', () => {
     await repository.syncCatalog([entry]);
 
     expect(prisma.physicalModuleTemplate.create).not.toHaveBeenCalled();
-    expect(prisma.physicalModuleTemplate.update).toHaveBeenCalledTimes(2);
+    expect(prisma.physicalModuleTemplate.update).not.toHaveBeenCalled();
     expect(prisma.physicalModuleTemplatePort.create).not.toHaveBeenCalled();
     expect(prisma.physicalModuleTemplatePort.update).not.toHaveBeenCalled();
   });

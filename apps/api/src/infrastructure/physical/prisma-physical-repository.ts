@@ -349,8 +349,9 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
 
   private async rack(id: string): Promise<PhysicalRack | null> {
     return (
-      (await this.getInventory()).sites.flatMap((site) => site.racks).find((rack) => rack.id === id) ??
-      null
+      (await this.getInventory()).sites
+        .flatMap((site) => site.racks)
+        .find((rack) => rack.id === id) ?? null
     );
   }
 
@@ -407,7 +408,9 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
   }
 
   async createRack(siteId: string, input: CreatePhysicalRackInput): Promise<PhysicalRack | null> {
-    if (!(await this.prisma.physicalSite.findUnique({ where: { id: siteId }, select: { id: true } }))) {
+    if (
+      !(await this.prisma.physicalSite.findUnique({ where: { id: siteId }, select: { id: true } }))
+    ) {
       return null;
     }
     const created = await this.prisma.physicalRack.create({
@@ -473,15 +476,36 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
    * untouched, so operator customizations are never overwritten silently.
    */
   async syncCatalog(entries: readonly PhysicalCatalogEntry[]): Promise<PhysicalCatalogSyncResult> {
+    return this.prisma.$transaction(
+      async (tx) => {
+        // Serialize bootstraps, including separate processes, inside the atomic batch.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(71601401)`;
+        return this.syncCatalogEntries(entries, tx);
+      },
+      { maxWait: 30_000, timeout: 60_000 },
+    );
+  }
+
+  private async syncCatalogEntries(
+    entries: readonly PhysicalCatalogEntry[],
+    db: Prisma.TransactionClient,
+  ): Promise<PhysicalCatalogSyncResult> {
     let created = 0;
     let updated = 0;
     for (const entry of entries) {
-      const existing = await this.prisma.physicalEquipmentTemplate.findUnique({
+      const byName = await db.physicalEquipmentTemplate.findUnique({ where: { name: entry.name } });
+      if (byName && byName.catalogKey !== entry.catalogKey) {
+        // A name is not an identity. Never adopt/rename CUSTOM or another SYSTEM key.
+        throw new Error(
+          `PHYSICAL_CATALOG_NAME_CONFLICT: catalogKey=${entry.catalogKey}; existingKey=${byName.catalogKey ?? 'CUSTOM'}; origin=${byName.origin}`,
+        );
+      }
+      const existing = await db.physicalEquipmentTemplate.findUnique({
         where: { catalogKey: entry.catalogKey },
         include: { ports: true, slots: { include: { moduleOptions: true } }, modules: true },
       });
       if (!existing) {
-        await this.prisma.physicalEquipmentTemplate.create({
+        await db.physicalEquipmentTemplate.create({
           data: {
             catalogKey: entry.catalogKey,
             name: entry.name,
@@ -532,33 +556,51 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
           },
         });
         created += 1;
-        await this.linkSlotModuleOptions(entry);
+        await this.linkSlotModuleOptions(entry, db);
         continue;
       }
       if (existing.origin === 'CUSTOM') continue;
-      await this.prisma.physicalEquipmentTemplate.update({
-        where: { id: existing.id },
-        data: {
-          name: entry.name,
-          category: entry.category,
-          manufacturer: entry.manufacturer,
-          family: entry.family,
-          model: entry.model,
-          kind: entry.kind,
-          heightU: entry.heightU,
-          description: entry.description,
-          vendorVerified: entry.vendorVerified,
-          structureConfirmed: entry.structureConfirmed,
-          referenceUrl: entry.referenceUrl,
-        },
-      });
-      const existingSlots = await this.prisma.physicalTemplateSlot.findMany({
+      const metadata = {
+        name: entry.name,
+        category: entry.category,
+        manufacturer: entry.manufacturer,
+        family: entry.family,
+        model: entry.model,
+        kind: entry.kind,
+        heightU: entry.heightU,
+        description: entry.description,
+        vendorVerified: entry.vendorVerified,
+        structureConfirmed: entry.structureConfirmed,
+        referenceUrl: entry.referenceUrl,
+      };
+      if (
+        Object.entries(metadata).some(
+          ([key, value]) => existing[key as keyof typeof existing] !== value,
+        )
+      )
+        await db.physicalEquipmentTemplate.update({
+          where: { id: existing.id },
+          data: {
+            name: entry.name,
+            category: entry.category,
+            manufacturer: entry.manufacturer,
+            family: entry.family,
+            model: entry.model,
+            kind: entry.kind,
+            heightU: entry.heightU,
+            description: entry.description,
+            vendorVerified: entry.vendorVerified,
+            structureConfirmed: entry.structureConfirmed,
+            referenceUrl: entry.referenceUrl,
+          },
+        });
+      const existingSlots = await db.physicalTemplateSlot.findMany({
         where: { templateId: existing.id },
         select: { id: true, index: true },
       });
       for (const slot of entry.slots) {
         if (existingSlots.some((row) => row.index === slot.index)) continue;
-        await this.prisma.physicalTemplateSlot.create({
+        await db.physicalTemplateSlot.create({
           data: {
             templateId: existing.id,
             index: slot.index,
@@ -572,7 +614,7 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
         (port) => !existingNames.has(`${port.side}:${port.name}`),
       );
       if (additions.length) {
-        await this.prisma.physicalTemplatePort.createMany({
+        await db.physicalTemplatePort.createMany({
           data: additions.map((port) => ({
             templateId: existing.id,
             name: port.name,
@@ -581,11 +623,10 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
             side: port.side,
             type: port.type,
           })),
-          skipDuplicates: true,
         });
       }
-      await this.syncModuleTemplates(entry, existing.id);
-      await this.linkSlotModuleOptions(entry);
+      await this.syncModuleTemplates(entry, existing.id, db);
+      await this.linkSlotModuleOptions(entry, db);
       updated += 1;
     }
     return { created, updated, total: entries.length };
@@ -600,10 +641,11 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
   private async syncModuleTemplates(
     entry: PhysicalCatalogEntry,
     templateId: string,
+    db: Prisma.TransactionClient,
   ): Promise<void> {
     if (!entry.modules.length) return;
 
-    const existingModules = await this.prisma.physicalModuleTemplate.findMany({
+    const existingModules = await db.physicalModuleTemplate.findMany({
       where: { templateId },
       include: { ports: true },
     });
@@ -611,7 +653,7 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
     for (const module of entry.modules) {
       const existing = existingModules.find((item) => item.catalogKey === module.key);
       if (!existing) {
-        await this.prisma.physicalModuleTemplate.create({
+        await db.physicalModuleTemplate.create({
           data: {
             templateId,
             catalogKey: module.key,
@@ -632,30 +674,40 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
         continue;
       }
 
-      await this.prisma.physicalModuleTemplate.update({
-        where: { id: existing.id },
-        data: {
-          name: module.name,
-          model: module.model,
-          description: module.description,
-          slotsRequired: module.slotsRequired,
-        },
-      });
+      if (
+        existing.name !== module.name ||
+        existing.model !== module.model ||
+        existing.description !== module.description ||
+        existing.slotsRequired !== module.slotsRequired
+      )
+        await db.physicalModuleTemplate.update({
+          where: { id: existing.id },
+          data: {
+            name: module.name,
+            model: module.model,
+            description: module.description,
+            slotsRequired: module.slotsRequired,
+          },
+        });
 
-      await this.syncModuleTemplatePorts(existing, module);
+      await this.syncModuleTemplatePorts(existing, module, db);
     }
   }
 
   private async syncModuleTemplatePorts(
-    existing: { id: string; ports: Array<{ id: string; name: string; label: string; sortOrder: number; type: string }> },
+    existing: {
+      id: string;
+      ports: Array<{ id: string; name: string; label: string; sortOrder: number; type: string }>;
+    },
     module: PhysicalCatalogModule,
+    db: Prisma.TransactionClient,
   ): Promise<void> {
     const existingByName = new Map(existing.ports.map((port) => [port.name, port]));
 
     for (const port of module.ports) {
       const current = existingByName.get(port.name);
       if (!current) {
-        await this.prisma.physicalModuleTemplatePort.create({
+        await db.physicalModuleTemplatePort.create({
           data: {
             moduleTemplateId: existing.id,
             name: port.name,
@@ -672,7 +724,7 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
         current.sortOrder !== port.order ||
         current.type !== port.type
       ) {
-        await this.prisma.physicalModuleTemplatePort.update({
+        await db.physicalModuleTemplatePort.update({
           where: { id: current.id },
           data: {
             label: port.label,
@@ -685,19 +737,22 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
   }
 
   /** Links slot ↔ module options for an already persisted SYSTEM template. */
-  private async linkSlotModuleOptions(entry: PhysicalCatalogEntry): Promise<void> {
+  private async linkSlotModuleOptions(
+    entry: PhysicalCatalogEntry,
+    db: Prisma.TransactionClient,
+  ): Promise<void> {
     if (!entry.slots.length || !entry.modules.length) return;
-    const template = await this.prisma.physicalEquipmentTemplate.findUnique({
+    const template = await db.physicalEquipmentTemplate.findUnique({
       where: { catalogKey: entry.catalogKey },
       select: { id: true },
     });
     if (!template) return;
     const [slots, modules] = await Promise.all([
-      this.prisma.physicalTemplateSlot.findMany({
+      db.physicalTemplateSlot.findMany({
         where: { templateId: template.id },
         select: { id: true, index: true },
       }),
-      this.prisma.physicalModuleTemplate.findMany({
+      db.physicalModuleTemplate.findMany({
         where: { templateId: template.id },
         select: { id: true, catalogKey: true },
       }),
@@ -708,7 +763,7 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
       for (const moduleKey of slot.moduleKeys) {
         const moduleRow = modules.find((row) => row.catalogKey === moduleKey);
         if (!moduleRow) continue;
-        await this.prisma.physicalTemplateSlotModule.upsert({
+        await db.physicalTemplateSlotModule.upsert({
           where: {
             slotId_moduleTemplateId: { slotId: slotRow.id, moduleTemplateId: moduleRow.id },
           },
@@ -723,14 +778,15 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
     rackId: string,
     input: CreatePhysicalAssetInput,
   ): Promise<PhysicalAsset | null> {
-    const templateId = input.templateId
-      ?? (input.catalogKey
-        ? (
+    const templateId =
+      input.templateId ??
+      (input.catalogKey
+        ? ((
             await this.prisma.physicalEquipmentTemplate.findUnique({
               where: { catalogKey: input.catalogKey },
               select: { id: true },
             })
-          )?.id ?? null
+          )?.id ?? null)
         : null);
     const [rack, device, template] = await Promise.all([
       this.prisma.physicalRack.findUnique({ where: { id: rackId }, select: { id: true } }),
@@ -755,32 +811,33 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
     if (!rack || (input.deviceId && !device) || (templateId && !template)) return null;
 
     const applyTemplate = input.applyTemplate ?? true;
-    const materialized = template && applyTemplate
-      ? materializeTemplate(
-          {
-            structureConfirmed: template.structureConfirmed,
-            slots: template.slots.map((slot) => ({
-              index: slot.index,
-              label: slot.label,
-              description: slot.description,
-              moduleKeys: slot.moduleOptions.flatMap((option) =>
-                option.moduleTemplate.catalogKey ? [option.moduleTemplate.catalogKey] : [],
-              ),
-            })),
-            ports: template.ports.map((port) => ({
-              name: port.name,
-              label: port.label,
-              order: port.sortOrder,
-              side: port.side,
-              type: port.type,
-            })),
-          },
-          { genericPorts: input.genericPorts },
-        )
-      : materializeTemplate(
-          { structureConfirmed: false, slots: [], ports: [] },
-          { genericPorts: input.genericPorts },
-        );
+    const materialized =
+      template && applyTemplate
+        ? materializeTemplate(
+            {
+              structureConfirmed: template.structureConfirmed,
+              slots: template.slots.map((slot) => ({
+                index: slot.index,
+                label: slot.label,
+                description: slot.description,
+                moduleKeys: slot.moduleOptions.flatMap((option) =>
+                  option.moduleTemplate.catalogKey ? [option.moduleTemplate.catalogKey] : [],
+                ),
+              })),
+              ports: template.ports.map((port) => ({
+                name: port.name,
+                label: port.label,
+                order: port.sortOrder,
+                side: port.side,
+                type: port.type,
+              })),
+            },
+            { genericPorts: input.genericPorts },
+          )
+        : materializeTemplate(
+            { structureConfirmed: false, slots: [], ports: [] },
+            { genericPorts: input.genericPorts },
+          );
     const templatePortByName = new Map(
       (template?.ports ?? []).map((port) => [`${port.side}:${port.name}`, port.id]),
     );
@@ -813,7 +870,10 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
             type: port.type,
             role: port.role,
             ...(port.templatePortName
-              ? { templatePortId: templatePortByName.get(`${port.side}:${port.templatePortName}`) ?? null }
+              ? {
+                  templatePortId:
+                    templatePortByName.get(`${port.side}:${port.templatePortName}`) ?? null,
+                }
               : {}),
           })),
         },
@@ -826,7 +886,10 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
   async updateAsset(id: string, input: UpdatePhysicalAssetInput): Promise<PhysicalAsset | null> {
     if (
       input.deviceId &&
-      !(await this.prisma.device.findUnique({ where: { id: input.deviceId }, select: { id: true } }))
+      !(await this.prisma.device.findUnique({
+        where: { id: input.deviceId },
+        select: { id: true },
+      }))
     ) {
       return null;
     }
@@ -890,22 +953,27 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
     return this.port(created.id);
   }
 
-  async pairPorts(portId: string, pairedPortId: string): Promise<[PhysicalPort, PhysicalPort] | null> {
-    const count = await this.prisma.$transaction(async (tx) => {
-      const a = await tx.physicalPort.updateMany({
-        where: { id: portId, pairedPortId: null },
-        data: { pairedPortId },
+  async pairPorts(
+    portId: string,
+    pairedPortId: string,
+  ): Promise<[PhysicalPort, PhysicalPort] | null> {
+    const count = await this.prisma
+      .$transaction(async (tx) => {
+        const a = await tx.physicalPort.updateMany({
+          where: { id: portId, pairedPortId: null },
+          data: { pairedPortId },
+        });
+        const b = await tx.physicalPort.updateMany({
+          where: { id: pairedPortId, pairedPortId: null },
+          data: { pairedPortId: portId },
+        });
+        if (a.count !== 1 || b.count !== 1) throw new Error('PAIR_CONFLICT');
+        return a.count + b.count;
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.message === 'PAIR_CONFLICT') return 0;
+        throw error;
       });
-      const b = await tx.physicalPort.updateMany({
-        where: { id: pairedPortId, pairedPortId: null },
-        data: { pairedPortId: portId },
-      });
-      if (a.count !== 1 || b.count !== 1) throw new Error('PAIR_CONFLICT');
-      return a.count + b.count;
-    }).catch((error: unknown) => {
-      if (error instanceof Error && error.message === 'PAIR_CONFLICT') return 0;
-      throw error;
-    });
     if (count !== 2) return null;
     const [a, b] = await Promise.all([this.port(portId), this.port(pairedPortId)]);
     return a && b ? [a, b] : null;
@@ -1181,36 +1249,38 @@ export class PrismaPhysicalRepository implements PhysicalRepository {
   }
 
   async createConnection(input: CreatePhysicalConnectionInput): Promise<PhysicalConnection | null> {
-    const connectionId = await this.prisma.$transaction(async (tx) => {
-      const ports = await tx.physicalPort.findMany({
-        where: { id: { in: [input.portAId, input.portBId] } },
-        select: { id: true, connectionId: true },
+    const connectionId = await this.prisma
+      .$transaction(async (tx) => {
+        const ports = await tx.physicalPort.findMany({
+          where: { id: { in: [input.portAId, input.portBId] } },
+          select: { id: true, connectionId: true },
+        });
+        if (ports.length !== 2 || ports.some((port) => port.connectionId)) {
+          throw new Error('PORT_OCCUPIED');
+        }
+        const connection = await tx.physicalConnection.create({
+          data: {
+            medium: input.medium ?? 'UNKNOWN',
+            label: input.label?.trim() ?? '',
+            notes: input.notes?.trim() ?? '',
+            lengthMeters: input.lengthMeters ?? null,
+          },
+        });
+        const a = await tx.physicalPort.updateMany({
+          where: { id: input.portAId, connectionId: null },
+          data: { connectionId: connection.id, connectionEnd: 'A' },
+        });
+        const b = await tx.physicalPort.updateMany({
+          where: { id: input.portBId, connectionId: null },
+          data: { connectionId: connection.id, connectionEnd: 'B' },
+        });
+        if (a.count !== 1 || b.count !== 1) throw new Error('PORT_OCCUPIED');
+        return connection.id;
+      })
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.message === 'PORT_OCCUPIED') return null;
+        throw error;
       });
-      if (ports.length !== 2 || ports.some((port) => port.connectionId)) {
-        throw new Error('PORT_OCCUPIED');
-      }
-      const connection = await tx.physicalConnection.create({
-        data: {
-          medium: input.medium ?? 'UNKNOWN',
-          label: input.label?.trim() ?? '',
-          notes: input.notes?.trim() ?? '',
-          lengthMeters: input.lengthMeters ?? null,
-        },
-      });
-      const a = await tx.physicalPort.updateMany({
-        where: { id: input.portAId, connectionId: null },
-        data: { connectionId: connection.id, connectionEnd: 'A' },
-      });
-      const b = await tx.physicalPort.updateMany({
-        where: { id: input.portBId, connectionId: null },
-        data: { connectionId: connection.id, connectionEnd: 'B' },
-      });
-      if (a.count !== 1 || b.count !== 1) throw new Error('PORT_OCCUPIED');
-      return connection.id;
-    }).catch((error: unknown) => {
-      if (error instanceof Error && error.message === 'PORT_OCCUPIED') return null;
-      throw error;
-    });
     if (!connectionId) return null;
     const created = await this.prisma.physicalConnection.findUnique({
       where: { id: connectionId },
