@@ -6,7 +6,11 @@ import type {
 } from './mitigation-executor';
 import { verifyActivation, verifyRemoval } from './mitigation-executor';
 import type { MitigationProfileRecord, MitigationRepository } from './mitigation-repository';
-import { policyExecutionScope, profilesForPolicyScope, syncPolicyRuntime } from './mitigation-policy-scope';
+import {
+  policyExecutionScope,
+  profilesForPolicyScope,
+  syncPolicyRuntime,
+} from './mitigation-policy-scope';
 import { effectiveBandwidthBps } from './bandwidth-parser';
 import { interfaceMitigationScope } from './mitigation-scope';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
@@ -83,6 +87,8 @@ export interface MitigationAutoEvidence {
 }
 
 export interface MitigationCommandInput {
+  /** Internal durable journal identity; never accepted from the HTTP schemas. */
+  autoOperationId?: string;
   /**
    * Origem declarada do comando. `AUTO` = fiacao do motor automatico; ausente =
    * manual. O kill switch global usa este campo (mais o prefixo do `requestId` e
@@ -122,11 +128,13 @@ export interface MitigationCommandInput {
  * prefixo e tratado como AUTO (fica MAIS restrito, nunca menos).
  */
 export function isAutomaticCommand(
-  input: Pick<MitigationCommandInput, 'origin' | 'requestId' | 'autoEvidence'>,
+  input: Pick<MitigationCommandInput, 'origin' | 'requestId' | 'autoEvidence' | 'autoOperationId'>,
 ): boolean {
   return (
     input.origin === 'AUTO' ||
     input.requestId.startsWith(AUTO_COMMAND_REQUEST_PREFIX) ||
+    input.requestId.startsWith('auto-remove-') ||
+    input.autoOperationId !== undefined ||
     input.autoEvidence !== undefined
   );
 }
@@ -231,7 +239,7 @@ export interface MitigationCommandResult {
 }
 
 /** Resultado interno da acao: `run` anexa a notificacao no fim. */
-type MitigationActionResult = Omit<MitigationCommandResult, 'notification'>;
+export type MitigationActionResult = Omit<MitigationCommandResult, 'notification'>;
 
 /**
  * Porta estreita do executor REAL (Huawei). Fica ausente por padrao: sem ela o
@@ -255,6 +263,12 @@ export interface MitigationLiveExecutorPort {
 }
 
 export interface MitigationCommandDeps {
+  requireAutomaticAuthorization?: boolean;
+  autoWriteAuthorization?: (
+    input: MitigationCommandInput,
+    pair: { bogonNode: number; mitigationNode: number } | null,
+  ) => Promise<boolean>;
+  beforeManualWrite?: (deviceId: string, policyName: string) => Promise<void>;
   /** AUTO only: recheck recent UP telemetry AFTER preflight, BEFORE any write. */
   autoEvidence?: (profileId: string, evidence?: MitigationAutoEvidence) => Promise<boolean>;
   /**
@@ -450,6 +464,10 @@ export class MitigationCommandService {
       executedAt: string;
     },
   ): Promise<MitigationActionResult> {
+    if (MUTATING_ACTIONS.includes(input.action) && !isAutomaticCommand(input)) {
+      // Manual intent also revokes ownership on an idempotent ACTIVATE.
+      await this.deps.beforeManualWrite?.(profile.deviceId, profile.policyName);
+    }
     const timingsMs = { preflight: 0, execution: 0, readback: 0 };
     const timed = async <T>(stage: keyof typeof timingsMs, work: () => Promise<T>): Promise<T> => {
       const start = this.now().getTime();
@@ -701,6 +719,27 @@ export class MitigationCommandService {
 
     // ---- execucao (MOCK por padrao; HUAWEI so com live_write + allowlist) ----
     const liveDevice = live && host ? host : null;
+    if (isAutomaticCommand(input) && this.deps.requireAutomaticAuthorization && !liveDevice) {
+      return {
+        ...common,
+        ok: false,
+        status: 'AUTO_REAL_EXECUTOR_REQUIRED',
+        verified: false,
+        commandPreview: preview,
+        verification: null,
+      };
+    }
+    const authorizeWrite = async () => {
+      if (isAutomaticCommand(input)) {
+        if (
+          this.deps.requireAutomaticAuthorization &&
+          !(await this.deps.autoWriteAuthorization?.(input, pair).catch(() => false))
+        ) {
+          throw new Error('AUTO_DURABLE_OWNERSHIP_REQUIRED');
+        }
+      }
+      if (this.autoExecutionBlocked(input)) throw new Error('AUTO_EXECUTION_DISABLED');
+    };
     /**
      * A ESCRITA REAL foi iniciada? Depois deste ponto o equipamento pode ter
      * recebido (parte d)a alteracao: se o resultado fisico nao for comprovado,
@@ -742,6 +781,7 @@ export class MitigationCommandService {
           if (this.autoExecutionBlocked(input)) {
             return this.autoExecutionDisabledResult(common, preview, preflight);
           }
+          await authorizeWrite();
           writeAttempted = true;
           await timed('execution', () => live.activate(liveDevice, activationInput));
           readBack = await timed('readback', () =>
@@ -751,6 +791,7 @@ export class MitigationCommandService {
           if (this.autoExecutionBlocked(input)) {
             return this.autoExecutionDisabledResult(common, preview, preflight);
           }
+          await authorizeWrite();
           await timed('execution', () => this.deps.executor.activate(activationInput));
           readBack = await timed('readback', () =>
             this.deps.executor.readRoutePolicy(profile.policyName),
@@ -791,13 +832,13 @@ export class MitigationCommandService {
         };
       }
 
-      // REMOVE automatico nao existe nesta fase; o kill switch fecha o caminho
-      // mesmo assim, imediatamente antes da escrita.
+      // REMOVE AUTO requires the durable lifecycle authorization as well as M8.
       if (this.autoExecutionBlocked(input)) {
         return this.autoExecutionDisabledResult(common, preview, preflight);
       }
       if (liveDevice && live) {
         if (!preflight?.ok) return this.preflightBlocked(common, preview, preflight);
+        await authorizeWrite();
         writeAttempted = true;
         writeStarted = true;
         await live.remove(liveDevice, removalInput);
@@ -805,6 +846,7 @@ export class MitigationCommandService {
       } else {
         // Mesma semantica do caminho real: assim que o executor e acionado, o
         // estado fisico e desconhecido e uma excecao exige reconciliacao.
+        await authorizeWrite();
         writeAttempted = true;
         writeStarted = true;
         await this.deps.executor.remove(removalInput);
@@ -926,11 +968,10 @@ export class MitigationCommandService {
     // esvaziado. Uma confirmacao de uso unico nunca autoriza uma segunda
     // execucao (replay depois do sucesso cai em USED/SCOPE_CHANGED).
     if (input.scopeConfirmationToken) {
-      const consumed = this.scopeConfirmations.consume(
-        input.scopeConfirmationToken,
-        scope,
-        { confirmedBy, chatId },
-      );
+      const consumed = this.scopeConfirmations.consume(input.scopeConfirmationToken, scope, {
+        confirmedBy,
+        chatId,
+      });
       if (!consumed.ok) {
         return this.blockedScopeConfirmation(scope, consumed.code, consumed.message, requester);
       }
@@ -1001,7 +1042,8 @@ export class MitigationCommandService {
     );
     for (const member of profiles) {
       await this.read(
-        () => this.deps.repository.upsertRuntime(member.id, { triggerCounter: 0, recoveryCounter: 0 }),
+        () =>
+          this.deps.repository.upsertRuntime(member.id, { triggerCounter: 0, recoveryCounter: 0 }),
         null,
       );
     }

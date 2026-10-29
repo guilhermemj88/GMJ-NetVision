@@ -135,6 +135,7 @@ export interface MediaChannelPort {
 }
 
 export interface N8nMediaTransportDeps {
+  requireAcknowledgement?: boolean;
   media: MediaChannelPort;
   send: WebhookDeliverySender;
   now?: () => Date;
@@ -159,13 +160,15 @@ export class N8nMediaTransport implements NotificationPublisher {
   }
 
   /** TESTAR WEBHOOK: mesmo transporte, payload de teste, nada de mitigacao real. */
-  async publishTest(input: {
-    customer?: string;
-    policy?: string;
-    rt?: string;
-    node?: number | null;
-    profileId?: string | null;
-  } = {}): Promise<MediaDeliveryOutcome> {
+  async publishTest(
+    input: {
+      customer?: string;
+      policy?: string;
+      rt?: string;
+      node?: number | null;
+      profileId?: string | null;
+    } = {},
+  ): Promise<MediaDeliveryOutcome> {
     const notification: MitigationNotification = {
       event: 'MITIGATION_TEST',
       simulation: true,
@@ -245,10 +248,10 @@ export class N8nMediaTransport implements NotificationPublisher {
       const result = await this.deps.send(channel.url, input.payload, headers);
       // R5-4: alerta de deteccao so conta como entregue com confirmacao do
       // destino. Sem `delivered:true` o chamador agenda nova tentativa.
-      if (input.event === 'MITIGATION_DETECTION_BLOCKED') {
+      if (input.event === 'MITIGATION_DETECTION_BLOCKED' || this.deps.requireAcknowledgement) {
         const delivered =
           (result.body as { delivered?: unknown } | null | undefined)?.delivered === true;
-        if (!delivered) {
+        if (!delivered || result.httpStatus < 200 || result.httpStatus >= 300) {
           const safeError = 'Webhook nao confirmou a entrega do alerta (delivered != true)';
           await this.deps.media.recordOutboundDelivery({
             integrationId: channel.integrationId,

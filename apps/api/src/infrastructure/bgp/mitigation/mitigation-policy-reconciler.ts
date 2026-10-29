@@ -3,16 +3,16 @@ import type { HostRecord } from '@gmj/shared';
 import { verifyActivation, verifyRemoval } from './mitigation-executor';
 import type { MitigationRepository } from './mitigation-repository';
 import { plannedPairOf } from './mitigation-command-service';
-import {
-  DEFAULT_BOGON_PREFIX_LIST,
-  DEFAULT_TARGET_PREFIX_LIST,
-} from './mitigation-planner';
+import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import {
   profilesForPolicyScope,
   syncPolicyRuntime,
   type PolicyExecutionScope,
 } from './mitigation-policy-scope';
-import { inspectPolicyMitigation, type PolicyMitigationPhysical } from './mitigation-policy-physical';
+import {
+  inspectPolicyMitigation,
+  type PolicyMitigationPhysical,
+} from './mitigation-policy-physical';
 import type { PolicyScopeLock } from './mitigation-policy-lock';
 
 // RECONCILIACAO READ-ONLY do estado FISICO de uma route-policy.
@@ -54,6 +54,7 @@ export interface PolicyScopeAssessment {
 }
 
 export interface PolicyReconcileDeps {
+  beforeApply?: (deviceId: string, policyName: string) => Promise<void>;
   repository: MitigationRepository;
   hosts: { getHost(id: string): Promise<HostRecord | null> };
   /** Leitura READ-ONLY do read-back real da policy (display route-policy). */
@@ -341,6 +342,7 @@ export class MitigationPolicyReconciler {
     // reparando plano x equipamento sob autorizacao explicita do operador.
     const activePair =
       fresh.assessment.state === 'MITIGATED' ? fresh.assessment.physical.pair : null;
+    await this.deps.beforeApply?.(scope.deviceId, scope.policyName);
     const synced = await syncPolicyRuntime(
       this.deps.repository,
       scope,

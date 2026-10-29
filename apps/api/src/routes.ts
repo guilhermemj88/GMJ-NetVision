@@ -160,6 +160,19 @@ import { HuaweiMitigationExecutor } from './infrastructure/bgp/mitigation/huawei
 import { MitigationPolicyReconciler } from './infrastructure/bgp/mitigation/mitigation-policy-reconciler';
 import { PrismaInterfaceTrafficReader } from './infrastructure/bgp/mitigation/prisma-interface-traffic-reader';
 import { MitigationAutoEngine } from './worker/mitigation/mitigation-auto-engine';
+import {
+  AutoMitigationLifecycle,
+  lifecycleConfig,
+  type LifecycleTarget,
+} from './worker/mitigation/auto-lifecycle';
+import {
+  independentRecoveryProof,
+  recoveryMappings,
+} from './worker/mitigation/auto-recovery-proof';
+import { PrismaAutomationStore } from './worker/mitigation/automation-store';
+import { DurableMitigationOutbox } from './worker/mitigation/durable-mitigation-outbox';
+import { buildDetectionAlertNotification } from './application/mitigation-detection-alert';
+import { inspectPolicyMitigation } from './infrastructure/bgp/mitigation/mitigation-policy-physical';
 import { resolveDetectionAlertPolicy } from './worker/mitigation/mitigation-detection-alert-policy';
 import { createDetectionAlertPublisher } from './application/mitigation-detection-alert';
 import {
@@ -798,10 +811,44 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
   const webhookSender = createFetchWebhookSender();
   const mediaTransport = new N8nMediaTransport({
+    requireAcknowledgement: process.env.MITIGATION_AUTO_PERSISTENCE_ENABLED === '1',
     media: mediaService,
     send: webhookSender,
   });
   // Ligacao tardia: o transporte resolve URL/token pela camada de midias.
+  const lifecycleSettings = lifecycleConfig(process.env);
+  const persistenceEnabled =
+    !config.DEMO_MODE &&
+    lifecycleSettings.installation === 'IMPLANTAR' &&
+    process.env.MITIGATION_AUTO_PERSISTENCE_ENABLED === '1';
+  if (lifecycleSettings.enabled && !persistenceEnabled)
+    throw new Error('AUTO_LIFECYCLE_REQUIRES_IMPLANTAR_PERSISTENCE');
+  const automationStore = persistenceEnabled ? new PrismaAutomationStore(prismaClient) : null;
+  const durableOutbox = automationStore
+    ? new DurableMitigationOutbox(automationStore, mediaTransport)
+    : null;
+  let lifecycle: AutoMitigationLifecycle | null = null;
+  let lifecycleReady = false;
+  app.get('/api/bgp/mitigation/auto/lifecycle', async () => ({
+    installation: lifecycleSettings.installation,
+    persistenceEnabled,
+    lifecycleReady,
+    lifecycleEnabled: lifecycleSettings.enabled,
+    executionEnabled: lifecycleSettings.executionEnabled,
+    removeEnabled: lifecycleSettings.removeEnabled,
+    allowedProfiles: lifecycleSettings.profiles,
+    allowedDevices: lifecycleSettings.devices,
+    maxActive: lifecycleSettings.maxActive,
+    minHoldMs: lifecycleSettings.minHoldMs,
+    recoveryMs: lifecycleSettings.recoveryMs,
+    cooldownMs: lifecycleSettings.cooldownMs,
+    records: automationStore
+      ? await prismaClient.mitigationAutomationRecord.groupBy({
+          by: ['kind', 'status'],
+          _count: { _all: true },
+        })
+      : [],
+  }));
   mediaService.attachTransport(mediaTransport);
 
   // Alarmes de rede usam o MESMO sender HTTP e o MESMO log operacional da
@@ -859,9 +906,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   // o ENV deste processo): mudar a flag exige restart da API para valer.
   // Desligado, NENHUMA escrita automatica acontece (motor + command service),
   // qualquer que seja a origem do AUTO. Comandos manuais nao sao afetados.
-  const autoExecutionEnabled = /^(1|true|yes|on)$/i.test(
-    process.env.MITIGATION_AUTO_EXECUTION_ENABLED?.trim() ?? '',
-  );
+  const autoExecutionEnabled =
+    persistenceEnabled &&
+    lifecycleSettings.enabled &&
+    /^(1|true|yes|on)$/i.test(process.env.MITIGATION_AUTO_EXECUTION_ENABLED?.trim() ?? '');
 
   const mitigationCommands = new MitigationCommandService({
     autoEvidence: (id, evidence) =>
@@ -871,7 +919,19 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     executor: mitigationExecutor,
     labels: mitigationLabels,
     // OUTBOUND: o dominio publica; a camada de midias decide o transporte.
-    notifications: mediaTransport,
+    notifications: {
+      publish: (notification) => {
+        // Automatic result and outbox entry commit together in the journal.
+        if (lifecycle && /^(auto-activate-|auto-remove-)/.test(notification.eventId ?? ''))
+          return Promise.resolve({ published: false, skipped: true });
+        return (durableOutbox ?? mediaTransport).publish(notification);
+      },
+    },
+    requireAutomaticAuthorization: lifecycleSettings.enabled,
+    autoWriteAuthorization: (input, pair) =>
+      lifecycle?.authorize(input, pair) ?? Promise.resolve(false),
+    beforeManualWrite: (deviceId, policyName) =>
+      lifecycle?.manualMutation(deviceId, policyName) ?? Promise.resolve(),
     ...(mitigationExecutionConfig.executor === 'HUAWEI' ? { live: mitigationLiveExecutor } : {}),
     // Snapshot do discovery: o preflight compara existingNodes e aborta sem ele.
     expectedNodes: async (profileId) =>
@@ -893,9 +953,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   //   MITIGATION_AUTO_DETECTION_EPISODE_IDLE_SECONDS (default 120)
   //   MITIGATION_AUTO_DETECTION_REPEAT_SECONDS        (sem valor = sem lembrete)
   const detectionPolicyResolved = resolveDetectionAlertPolicy({
-    episodeIdleSeconds: parseOptionalNumber(process.env.MITIGATION_AUTO_DETECTION_EPISODE_IDLE_SECONDS),
+    episodeIdleSeconds: parseOptionalNumber(
+      process.env.MITIGATION_AUTO_DETECTION_EPISODE_IDLE_SECONDS,
+    ),
     repeatSeconds: parseOptionalNumber(process.env.MITIGATION_AUTO_DETECTION_REPEAT_SECONDS),
-    alertIntervalSeconds: parseOptionalNumber(process.env.MITIGATION_AUTO_DETECTION_INTERVAL_SECONDS),
+    alertIntervalSeconds: parseOptionalNumber(
+      process.env.MITIGATION_AUTO_DETECTION_INTERVAL_SECONDS,
+    ),
     maxDeliveryAttempts: parseOptionalNumber(process.env.MITIGATION_AUTO_DETECTION_MAX_ATTEMPTS),
   });
   for (const rejected of detectionPolicyResolved.rejected) {
@@ -1154,8 +1218,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       interfaceId: profile.interfaceId,
       bandwidthBps,
     });
-    if (!matchesAutoEvidence(sample, evidence, samplingForProfile(id), Date.now()))
-      return false;
+    if (!matchesAutoEvidence(sample, evidence, samplingForProfile(id), Date.now())) return false;
     return sample.bps > (bandwidthBps * BigInt(profile.triggerPercent)) / 100n;
   };
   const autoTargets = {
@@ -1260,7 +1323,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     },
     // Origem declarada pela fiacao (nunca pelo HTTP): o command service aplica
     // o kill switch a todo comando que sai do motor.
-    commands: { execute: (input) => mitigationCommands.execute({ ...input, origin: 'AUTO' }) },
+    commands: {
+      execute: (input) =>
+        lifecycle?.activate(input) ??
+        Promise.resolve({ ok: false, status: 'AUTO_EXECUTION_DISABLED', verified: false }),
+    },
     sharedPolicyGuard: {
       enabled: sharedPolicyGuardEnabled,
       allowedProfileIds: sharedPolicyAllowedProfileIds,
@@ -1285,16 +1352,112 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     logger: (message, meta) => app.log.info(meta ?? {}, message),
     debugLogger: (message, meta) => app.log.debug(meta ?? {}, message),
     // S5: alerta de deteccao bloqueada (uma vez por EPISODIO, best effort).
-    onBlockedActivation: publishBlockedDetection,
+    onBlockedActivation: (decision) =>
+      lifecycle
+        ? lifecycle.detection(decision, async (stable) => {
+            let deviceName: string | null = null,
+              interfaceName: string | null = null;
+            try {
+              const host = await hosts.getHost(stable.deviceId);
+              deviceName = host?.displayName || host?.hostname || null;
+              interfaceName =
+                host?.interfaces.find((i) => i.id === stable.interfaceId)?.name ?? null;
+            } catch {
+              /* inventory lookup never invents a name */
+            }
+            return buildDetectionAlertNotification({ decision: stable, deviceName, interfaceName });
+          })
+        : publishBlockedDetection(decision),
     detectionAlertPolicy,
   });
   autoEngineRef.current = mitigationAutoEngine;
+  if (automationStore) {
+    const proofMappings = recoveryMappings(process.env.MITIGATION_AUTO_RECOVERY_PROOF_JSON);
+    const proofReader = new PrismaInterfaceTrafficReader(prismaClient);
+    const lifecycleTarget = async (id: string): Promise<LifecycleTarget | null> => {
+      const all = await autoTargets.list();
+      const t = all.find((row) => row.profileId === id);
+      if (!t) return null;
+      const profile = await mitigationRepository.getProfile(id);
+      if (!profile) return null;
+      return {
+        ...t,
+        rt: profile.mitigationRt,
+        enabled: profile.enabled,
+        scopeMembers: all.filter((p) => p.deviceId === t.deviceId && p.policyName === t.policyName)
+          .length,
+        otherFamilyAuto: all.some(
+          (p) =>
+            p.profileId !== id &&
+            p.deviceId === t.deviceId &&
+            p.interfaceId === t.interfaceId &&
+            p.addressFamily !== t.addressFamily &&
+            p.mode === 'AUTO',
+        ),
+        fast: isFastRoutedProfile(id, { bridge: bridgeConfig, embedded: fastConfig }),
+        recoveryProofKey: proofMappings.get(id)?.key,
+      };
+    };
+    lifecycle = new AutoMitigationLifecycle({
+      store: automationStore,
+      config: () => ({
+        ...lifecycleSettings,
+        enabled: lifecycleSettings.enabled && lifecycleReady,
+      }),
+      target: lifecycleTarget,
+      execute: (input) => mitigationCommands.execute(input),
+      recoveryProof: (t) => independentRecoveryProof(t, proofMappings, proofReader),
+      physical: async (t) => {
+        const host = await hosts.getHost(t.deviceId);
+        if (!host || !mitigationLiveExecutor.enabledFor(host))
+          throw Error('AUTO_PHYSICAL_READ_UNAVAILABLE');
+        const readBack = await mitigationLiveExecutor.readRoutePolicy(host, t.policyName!);
+        const physical = inspectPolicyMitigation({
+          policyName: t.policyName!,
+          readBack,
+          rts: [t.rt],
+          labels: mitigationLabels,
+        });
+        return {
+          state:
+            physical.recognized && physical.state !== 'RECONCILIATION_REQUIRED'
+              ? physical.state
+              : 'UNKNOWN',
+          bogon: physical.pair?.bogonNode ?? null,
+          mitigation: physical.pair?.mitigationNode ?? null,
+          rt: physical.pair ? t.rt : null,
+        };
+      },
+    });
+    app.addHook('onReady', async () => {
+      await lifecycle!.reconcile();
+      lifecycleReady = true;
+    });
+  }
+  let outboxRunning = false;
+  const outboxTimer = durableOutbox
+    ? setInterval(() => {
+        if (outboxRunning) return;
+        outboxRunning = true;
+        void durableOutbox
+          .drain()
+          .catch(() => app.log.error('durable mitigation outbox failed; pending evidence retained'))
+          .finally(() => {
+            outboxRunning = false;
+          });
+      }, 5000)
+    : null;
+  outboxTimer?.unref();
+  app.addHook('onClose', async () => {
+    if (outboxTimer) clearInterval(outboxTimer);
+  });
   const autoTickLock = new PrismaPolicyScopeLock(prismaClient);
   autoRuntimeRef = new MitigationAutoRuntime({
     engine: {
       tick: async () => {
         const tick = async () => {
           const decisions = await mitigationAutoEngine.tick();
+          if (lifecycle) for (const decision of decisions) await lifecycle.observe(decision);
           if (bridgeConfig.mode === 'ENFORCE')
             await recordFastBridgeDecisions(
               prismaClient,
@@ -1387,7 +1550,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
             bridgeConfig.mode === 'ENFORCE' && bridgeConfig.enforceProfileIds.includes(d.profileId),
         ),
     ],
-    inFlightProfileIds: bridgeConfig.profileIds.filter(id => mitigationAutoEngine.isBusy(id)),
+    inFlightProfileIds: bridgeConfig.profileIds.filter((id) => mitigationAutoEngine.isBusy(id)),
     responseBudgetMs: 60_000,
     sshMetrics: mitigationSshMetrics,
   }));
@@ -1537,6 +1700,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   // Reconciliacao por policy fisica: leitura SEMPRE pelo mesmo executor
   // read-only do comando (display route-policy); o apply grava apenas runtime.
   const mitigationReconciler = new MitigationPolicyReconciler({
+    beforeApply: (deviceId, policyName) =>
+      lifecycle?.manualMutation(deviceId, policyName) ?? Promise.resolve(),
     repository: mitigationRepository,
     hosts,
     readPolicy: (device, policyName) => mitigationLiveExecutor.readRoutePolicy(device, policyName),
