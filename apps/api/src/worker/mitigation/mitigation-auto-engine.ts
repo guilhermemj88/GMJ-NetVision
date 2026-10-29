@@ -238,8 +238,7 @@ export interface MitigationAutoDecision {
  * (contrato publicado do LEGACY). O motor não inicia sem esta configuração.
  */
 export type MitigationAutoSamplingPolicy =
-  | MitigationSamplingWindow
-  | ((target: MitigationAutoTargetState) => MitigationSamplingWindow);
+  MitigationSamplingWindow | ((target: MitigationAutoTargetState) => MitigationSamplingWindow);
 
 export interface MitigationAutoEngineDeps {
   /**
@@ -642,7 +641,11 @@ export class MitigationAutoEngine {
         lastSampleKey: null,
         lastSampleAtMs: null,
       });
-      this.attempts.delete(profileId);
+      const previous = this.decisions.get(profileId);
+      this.attempts.delete(
+        previous ? `${previous.deviceId}:${previous.policyName ?? profileId}` : profileId,
+      );
+      this.detectionEpisodes.delete(profileId);
     }
   }
 
@@ -922,9 +925,7 @@ export class MitigationAutoEngine {
         sample.tx = null;
       }
       const rxTriggered =
-        sample.rx !== null &&
-        sample.rx.bps > threshold &&
-        rxCounters.over >= target.triggerSamples;
+        sample.rx !== null && sample.rx.bps > threshold && rxCounters.over >= target.triggerSamples;
       const txTriggered =
         sample.tx !== null && sample.tx.bps > threshold && counters.over >= target.triggerSamples;
       trafficByDirection = {
@@ -1113,7 +1114,13 @@ export class MitigationAutoEngine {
     if (!newTxSample) {
       retryAttempt = attempt && attempt.failures > 0 ? attempt.failures : null;
       if (strictDispatch) {
-        const authorized = this.retryAuthorization(scopeKey, counters, at.getTime(), sampling, attempt);
+        const authorized = this.retryAuthorization(
+          scopeKey,
+          counters,
+          at.getTime(),
+          sampling,
+          attempt,
+        );
         if (authorized === null) return decided('DUPLICATE_SAMPLE', 'SKIPPED');
         retryAttempt = authorized;
       }
@@ -1242,8 +1249,16 @@ export class MitigationAutoEngine {
     this.inFlight.add(target.profileId);
     // Publish progress while the canonical operation is awaiting SSH/readback.
     // Three confirmations are not a verified mitigation.
-    this.decisions.set(target.profileId, { ...withValues, samplesOver: counters.over, samplesBelow: counters.below,
-      outcome: 'TRIGGER_PENDING', reason: null, requestId, commandStatus: 'IN_FLIGHT', verified: false });
+    this.decisions.set(target.profileId, {
+      ...withValues,
+      samplesOver: counters.over,
+      samplesBelow: counters.below,
+      outcome: 'TRIGGER_PENDING',
+      reason: null,
+      requestId,
+      commandStatus: 'IN_FLIGHT',
+      verified: false,
+    });
     this.deps.logger?.('auto: disparando ACTIVATE', {
       profileId: target.profileId,
       deviceId: target.deviceId,
@@ -1257,7 +1272,19 @@ export class MitigationAutoEngine {
         requestId,
         action: 'ACTIVATE',
         profileId: target.profileId,
-        ...(autoEvidence ? { autoEvidence } : {}),
+        ...(autoEvidence
+          ? {
+              autoEvidence: {
+                ...autoEvidence,
+                ...(counters.triggerStartedAtMs !== null
+                  ? {
+                      sequenceStartedAt: new Date(counters.triggerStartedAtMs).toISOString(),
+                      samplesOver: counters.over,
+                    }
+                  : {}),
+              },
+            }
+          : {}),
       });
       const verified = result.ok && result.verified && result.status === 'ACTIVATED_VERIFIED';
       attemptVerified = verified;
@@ -1470,7 +1497,12 @@ export class MitigationAutoEngine {
     // Episódios recuperados podem coexistir com um novo ataque no mesmo perfil.
     // Serializa suas entregas para o rate limit não ser contornado por concorrência.
     for (const queued of this.detectionDeliveryQueue.values()) {
-      if (queued.episode !== episode && queued.decision.profileId === decision.profileId && queued.episode.delivering) return;
+      if (
+        queued.episode !== episode &&
+        queued.decision.profileId === decision.profileId &&
+        queued.episode.delivering
+      )
+        return;
     }
     const due = episode.nextAttemptAtMs;
     if (due !== null && atMs < due) return;
@@ -1488,10 +1520,7 @@ export class MitigationAutoEngine {
 
     if (episode.alertState === 'PENDING' && !episode.explicitRepeat) {
       const previousEmission = this.lastEmissionAtMs.get(decision.profileId);
-      if (
-        previousEmission !== undefined &&
-        atMs - previousEmission < policy.minAlertIntervalMs
-      ) {
+      if (previousEmission !== undefined && atMs - previousEmission < policy.minAlertIntervalMs) {
         // R5-6: contencao de restart/crash-loop (rate limit por profile).
         episode.nextAttemptAtMs = previousEmission + policy.minAlertIntervalMs;
         return;
@@ -1533,7 +1562,8 @@ export class MitigationAutoEngine {
           return;
         }
         episode.alertState = 'RETRY_SCHEDULED';
-        const backoff = policy.retryBackoffMs[Math.min(attempt - 1, policy.retryBackoffMs.length - 1)];
+        const backoff =
+          policy.retryBackoffMs[Math.min(attempt - 1, policy.retryBackoffMs.length - 1)];
         episode.nextAttemptAtMs = atMs + (backoff ?? DEFAULT_RETRY_BACKOFF_MS[0]!);
         this.deps.logger?.('auto: falha de entrega do alerta; nova tentativa agendada', {
           profileId: decision.profileId,
@@ -1583,8 +1613,12 @@ export class MitigationAutoEngine {
       const base = resolveDetectionAlertPolicy();
       this.resolvedPolicy = {
         ...base.policy,
-        ...(configured.episodeIdleMs !== undefined ? { episodeIdleMs: configured.episodeIdleMs } : {}),
-        ...(configured.repeatEveryMs !== undefined ? { repeatEveryMs: configured.repeatEveryMs } : {}),
+        ...(configured.episodeIdleMs !== undefined
+          ? { episodeIdleMs: configured.episodeIdleMs }
+          : {}),
+        ...(configured.repeatEveryMs !== undefined
+          ? { repeatEveryMs: configured.repeatEveryMs }
+          : {}),
         ...(configured.minAlertIntervalMs !== undefined
           ? { minAlertIntervalMs: configured.minAlertIntervalMs }
           : {}),
@@ -1597,8 +1631,17 @@ export class MitigationAutoEngine {
   }
 
   /** Episodios de deteccao abertos (observabilidade/auditoria). */
-  activeDetectionEpisodes(): Array<{ profileId: string; episodeId: string; startedAtMs: number; lastDetectionAtMs: number; alerts: number }> {
-    return [...this.detectionEpisodes.entries()].map(([profileId, episode]) => ({ profileId, ...episode }));
+  activeDetectionEpisodes(): Array<{
+    profileId: string;
+    episodeId: string;
+    startedAtMs: number;
+    lastDetectionAtMs: number;
+    alerts: number;
+  }> {
+    return [...this.detectionEpisodes.entries()].map(([profileId, episode]) => ({
+      profileId,
+      ...episode,
+    }));
   }
 
   private logDecision(decision: MitigationAutoDecision): void {

@@ -1,5 +1,7 @@
 # Matriz dos 38 perfis — IMPLANTAR
 
+Atualização de escopo: somente ACTIVATE pode ser automático; REMOVE é sempre manual. Este inventário histórico permanece como referência dos 38 perfis. A avaliação vigente dos cinco candidatos e as evidências CLI posteriores estão em [AUTO_ACTIVATE_MANUAL_REMOVE_HOMOLOGATION.md](../../AUTO_ACTIVATE_MANUAL_REMOVE_HOMOLOGATION.md). CLICKING requer revisão da configuração manual preexistente; PLAYCONNECT requer revisão dos dois AS/peers. Nenhuma fonte independente de recuperação é requisito para este fluxo.
+
 Inventario read-only: 2026-10-29T11:40:10Z; FAST: 2026-10-29T12:03:52Z. Nenhum modo ou threshold alterado.
 
 **Todos permanecem NO-GO operacional nesta missao.** Candidato significa somente prioridade de homologacao, sem autorizacao de escrita. CSV acompanha banda/threshold em bps, samples, RT, nodes, peers, direcoes, velocidade fisica, timestamps e historico por perfil. O estado NORMAL e de runtime; nao e readback Huawei novo. Estados BGP sao persistidos em banco, nao uma leitura CLI nova. PLAYCONNECT IPv4 tem um peer ACTIVE e outro ESTABLISHED; requer verificacao adicional antes do piloto.

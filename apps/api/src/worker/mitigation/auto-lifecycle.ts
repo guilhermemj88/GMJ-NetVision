@@ -10,19 +10,17 @@ import type {
 } from '../../infrastructure/bgp/mitigation/mitigation-command-service';
 import type { MitigationNotification } from '../../infrastructure/bgp/mitigation/notification-publisher';
 import type { AutomationStore, AutomationTx } from './automation-store';
+import type { ClientBinding } from './auto-client-binding';
 import { enqueueNotification } from './durable-mitigation-outbox';
-import type { MitigationTrafficSample } from './mitigation-traffic-source';
 
 export interface LifecycleConfig {
   installation: string;
   enabled: boolean;
   executionEnabled: boolean;
-  removeEnabled: boolean;
+  removeEnabled: false;
   profiles: readonly string[];
   devices: readonly string[];
   maxActive: number;
-  minHoldMs: number;
-  recoveryMs: number;
   cooldownMs: number;
   maxAgeMs: number;
   maxGapMs: number;
@@ -33,31 +31,34 @@ export interface LifecycleTarget extends MitigationAutoTargetState {
   scopeMembers: number;
   fast: boolean;
   otherFamilyAuto: boolean;
-  recoveryProofKey?: string | undefined;
+  clientBinding: ClientBinding | null;
 }
 export function lifecycleConfig(env: Record<string, string | undefined>): LifecycleConfig {
-  const list = (key: string) =>
-    (env[key] ?? '')
+  const removal = env.MITIGATION_AUTO_REMOVE_ENABLED?.trim();
+  const production =
+    env.NETVISION_INSTALLATION_ID === 'IMPLANTAR' &&
+    (env.NODE_ENV === 'production' ||
+      env.MITIGATION_AUTO_LIFECYCLE_ENABLED === '1' ||
+      env.MITIGATION_AUTO_PERSISTENCE_ENABLED === '1');
+  if ((removal !== undefined && removal !== '0') || (production && removal !== '0'))
+    throw Error('MITIGATION_AUTO_REMOVE_ENABLED_MUST_BE_0');
+  const flag = (k: string) => /^(1|true)$/i.test(env[k]?.trim() ?? '');
+  const list = (k: string) =>
+    (env[k] ?? '')
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-  const flag = (key: string) => /^(1|true)$/i.test(env[key]?.trim() ?? '');
-  const seconds = (key: string, def: number, min: number) => {
-    const n = Number(env[key]);
-    return Number.isInteger(n) && n >= min ? n * 1000 : def * 1000;
-  };
-  const max = Number(env.MITIGATION_AUTO_MAX_ACTIVE);
+  const max = Number(env.MITIGATION_AUTO_MAX_ACTIVE),
+    cooldown = Number(env.MITIGATION_AUTO_COOLDOWN_SECONDS);
   return {
     installation: env.NETVISION_INSTALLATION_ID ?? '',
     enabled: flag('MITIGATION_AUTO_LIFECYCLE_ENABLED'),
     executionEnabled: flag('MITIGATION_AUTO_EXECUTION_ENABLED'),
-    removeEnabled: flag('MITIGATION_AUTO_REMOVE_ENABLED'),
+    removeEnabled: false,
     profiles: list('MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS'),
     devices: list('MITIGATION_ALLOWED_DEVICE_IDS'),
     maxActive: Number.isInteger(max) && max >= 1 && max <= 10 ? max : 1,
-    minHoldMs: seconds('MITIGATION_AUTO_MIN_HOLD_SECONDS', 900, 60),
-    recoveryMs: seconds('MITIGATION_AUTO_RECOVERY_SECONDS', 60, 10),
-    cooldownMs: seconds('MITIGATION_AUTO_COOLDOWN_SECONDS', 600, 60),
+    cooldownMs: Number.isInteger(cooldown) && cooldown >= 60 ? cooldown * 1000 : 600_000,
     maxAgeMs: 15000,
     maxGapMs: 15000,
   };
@@ -85,12 +86,10 @@ export function targetRevision(t: LifecycleTarget) {
         t.mitigationNode,
         t.effectiveBandwidthBps?.toString(),
         t.triggerPercent,
-        t.recoveryPercent,
         t.triggerSamples,
-        t.recoverySamples,
         [...t.peerAddresses].sort(),
         t.configurationKey ?? null,
-        t.recoveryProofKey ?? null,
+        t.clientBinding?.key ?? null,
       ]),
     )
     .digest('hex');
@@ -100,6 +99,7 @@ export interface ScopeOwnership {
   profileId: string;
   owner: string;
   revision: string;
+  // REMOVING is a legacy quarantine state only; this version cannot create it.
   phase: 'ACTIVATING' | 'ACTIVE' | 'REMOVING' | 'COOLDOWN' | 'UNCERTAIN' | 'MANUAL';
   target: {
     deviceId: string;
@@ -112,18 +112,22 @@ export interface ScopeOwnership {
   activatedAt: number;
   cooldownUntil: number;
   lastSample: number | null;
-  below: number;
-  firstLow: number | null;
   operationId: string;
   reason: string | null;
+  removedAt?: number;
 }
 export interface JournalCommand {
   id: string;
   scope: string;
   action: 'ACTIVATE' | 'REMOVE';
-  state: 'PLANNED' | 'STARTED' | 'VERIFIED' | 'UNCERTAIN';
+  origin: 'AUTO' | 'MANUAL';
+  state: 'PLANNED' | 'STARTED' | 'VERIFIED' | 'UNCERTAIN' | 'REJECTED';
   result: MitigationActionResult | null;
   at: number;
+  requestId?: string;
+  profileId?: string;
+  deviceId?: string;
+  policyName?: string;
 }
 interface Episode {
   id: string;
@@ -131,7 +135,6 @@ interface Episode {
   closed: boolean;
   lastSample: number | null;
   below: number;
-  firstLow: number | null;
   at: number;
 }
 export interface LifecycleDeps {
@@ -139,7 +142,6 @@ export interface LifecycleDeps {
   config: () => LifecycleConfig;
   target: (id: string) => Promise<LifecycleTarget | null>;
   execute: (input: MitigationCommandInput) => Promise<MitigationActionResult>;
-  recoveryProof: (target: LifecycleTarget) => Promise<MitigationTrafficSample | null>;
   physical: (target: LifecycleTarget) => Promise<{
     state: 'NORMAL' | 'MITIGATED' | 'UNKNOWN';
     bogon: number | null;
@@ -154,17 +156,18 @@ const rejected = (reason: string): MitigationAutoCommandResult => ({
   status: reason,
   safeError: reason,
 });
+const manualKey = (id: string) => 'manual-command:' + createHash('sha256').update(id).digest('hex');
 
+/** AUTO ACTIVATE only. No timer, observation or restart can dispatch REMOVE. */
 export class AutoMitigationLifecycle {
   private readonly now: () => number;
   constructor(private readonly deps: LifecycleDeps) {
     this.now = deps.now ?? Date.now;
   }
-  private allowed(t: LifecycleTarget, remove = false): string | null {
+  private allowed(t: LifecycleTarget): string | null {
     const c = this.deps.config();
     if (c.installation !== 'IMPLANTAR' || !c.enabled || !c.executionEnabled)
       return 'AUTO_EXECUTION_DISABLED';
-    if (remove && !c.removeEnabled) return 'AUTO_REMOVE_DISABLED';
     if (!c.profiles.includes(t.profileId) || !c.devices.includes(t.deviceId))
       return 'AUTO_NOT_ALLOWLISTED';
     if (
@@ -177,11 +180,22 @@ export class AutoMitigationLifecycle {
       t.blockedReason
     )
       return 'AUTO_TARGET_NOT_READY';
+    const b = t.clientBinding;
+    if (
+      !b ||
+      b.profileId !== t.profileId ||
+      b.deviceId !== t.deviceId ||
+      b.interfaceId !== t.interfaceId ||
+      b.customer !== t.customer ||
+      b.direction !== t.direction ||
+      b.effectiveBandwidthBps !== t.effectiveBandwidthBps?.toString()
+    )
+      return 'AUTO_CLIENT_BINDING_INVALID';
     if (
       !t.fast ||
       t.direction !== 'tx' ||
-      !t.interfaceId ||
       !t.policyName ||
+      !t.interfaceId ||
       !t.addressFamily ||
       !t.rt
     )
@@ -190,24 +204,19 @@ export class AutoMitigationLifecycle {
     if (
       !Number.isInteger(t.bogonNode) ||
       !Number.isInteger(t.mitigationNode) ||
-      t.bogonNode === t.mitigationNode ||
       t.bogonNode! <= 0 ||
-      t.mitigationNode! <= 0
+      t.mitigationNode! <= 0 ||
+      t.bogonNode === t.mitigationNode
     )
       return 'AUTO_PAIR_INVALID';
-    if (remove && !t.recoveryProofKey) return 'AUTO_INDEPENDENT_RECOVERY_PROOF_REQUIRED';
     if (
       !t.effectiveBandwidthBps ||
       t.effectiveBandwidthBps <= 0n ||
       !Number.isInteger(t.triggerPercent) ||
-      !Number.isInteger(t.recoveryPercent) ||
-      t.recoveryPercent <= 0 ||
-      t.triggerPercent <= t.recoveryPercent ||
+      t.triggerPercent <= 0 ||
       t.triggerPercent > 100 ||
       !Number.isInteger(t.triggerSamples) ||
-      t.triggerSamples < 2 ||
-      !Number.isInteger(t.recoverySamples) ||
-      t.recoverySamples < 2
+      t.triggerSamples < 1
     )
       return 'AUTO_THRESHOLDS_INVALID';
     return null;
@@ -220,30 +229,48 @@ export class AutoMitigationLifecycle {
     if (!t) return rejected('AUTO_TARGET_MISSING');
     const reason = this.allowed(t);
     if (reason) return rejected(reason);
-    const evidence = input.autoEvidence;
-    const sampleAt = Date.parse(evidence?.sampleAt ?? '');
+    const e = input.autoEvidence,
+      at = Date.parse(e?.sampleAt ?? ''),
+      start = Date.parse(e?.sequenceStartedAt ?? '');
     if (
-      !evidence?.continuityKey ||
-      !Number.isFinite(sampleAt) ||
-      sampleAt > this.now() ||
-      this.now() - sampleAt > this.deps.config().maxAgeMs
+      !e?.continuityKey ||
+      !Number.isFinite(at) ||
+      at > this.now() ||
+      this.now() - at > this.deps.config().maxAgeMs ||
+      !Number.isFinite(start) ||
+      start > at ||
+      !Number.isInteger(e.samplesOver) ||
+      e.samplesOver! < t.triggerSamples
     )
       return rejected('AUTO_EVIDENCE_REQUIRED');
+    // Check the durable gate before any hardware read. Runtime NORMAL is never
+    // accepted as physical evidence and an existing policy is never adopted.
+    const prior = await this.deps.store.transaction((tx) => tx.get<ScopeOwnership>(scopeKey(t)));
+    const gate = this.activationGate(prior, start);
+    if (gate) return rejected(gate);
+    let p: Awaited<ReturnType<LifecycleDeps['physical']>>;
+    try {
+      p = await this.deps.physical(t);
+    } catch {
+      return rejected('AUTO_PHYSICAL_READ_FAILED');
+    }
+    if (p.state !== 'NORMAL' || p.bogon !== null || p.mitigation !== null || p.rt !== null)
+      return rejected('AUTO_PHYSICAL_SCOPE_NOT_NORMAL');
     const reservation = await this.deps.store.transaction(async (tx) => {
       const key = scopeKey(t),
         old = await tx.get<ScopeOwnership>(key);
-      if (old && old.phase !== 'COOLDOWN') return null;
-      if (old && old.cooldownUntil > this.now()) return null;
+      if (this.activationGate(old, start)) return null;
       const scopes = await tx.list<ScopeOwnership>('scope', [
         'ACTIVATING',
         'ACTIVE',
         'REMOVING',
         'UNCERTAIN',
+        'MANUAL',
       ]);
       if (scopes.length >= this.deps.config().maxActive) return null;
       const owner = randomUUID(),
-        id = 'auto-activate-' + owner;
-      const scope: ScopeOwnership = {
+        operationId = 'auto-activate-' + owner;
+      const s: ScopeOwnership = {
         key,
         profileId: t.profileId,
         owner,
@@ -258,81 +285,79 @@ export class AutoMitigationLifecycle {
           mitigation: t.mitigationNode!,
         },
         activatedAt: 0,
-        cooldownUntil: 0,
-        lastSample: sampleAt,
-        below: 0,
-        firstLow: null,
-        operationId: id,
+        cooldownUntil: old?.cooldownUntil ?? 0,
+        lastSample: at,
+        operationId,
         reason: null,
+        ...(old?.removedAt !== undefined ? { removedAt: old.removedAt } : {}),
       };
-      await tx.put(key, 'scope', scope.phase, scope);
-      await tx.put(id, 'command', 'PLANNED', {
-        id,
+      await tx.put(key, 'scope', s.phase, s);
+      await tx.put(operationId, 'command', 'PLANNED', {
+        id: operationId,
         scope: key,
         action: 'ACTIVATE',
+        origin: 'AUTO',
         state: 'PLANNED',
         result: null,
         at: this.now(),
       } satisfies JournalCommand);
-      return scope;
+      return s;
     });
     if (!reservation) return rejected('AUTO_CAPACITY_OR_SCOPE_BUSY');
-    return this.dispatch(reservation, t, 'ACTIVATE', evidence);
-  }
-  private async dispatch(
-    scope: ScopeOwnership,
-    t: LifecycleTarget,
-    action: 'ACTIVATE' | 'REMOVE',
-    evidence?: MitigationCommandInput['autoEvidence'],
-  ): Promise<MitigationAutoCommandResult> {
     let result: MitigationActionResult;
     try {
       result = await this.deps.execute({
-        requestId: scope.operationId,
-        action,
+        requestId: reservation.operationId,
+        action: 'ACTIVATE',
         profileId: t.profileId,
         origin: 'AUTO',
-        autoOperationId: scope.operationId,
-        ...(evidence ? { autoEvidence: evidence } : {}),
+        autoOperationId: reservation.operationId,
+        autoEvidence: e,
       });
     } catch {
-      return this.uncertain(scope, 'COMMAND_TRANSPORT_FAILED');
+      return this.uncertain(reservation, 'COMMAND_TRANSPORT_FAILED');
     }
-    const expected = action === 'ACTIVATE' ? 'ACTIVATED_VERIFIED' : 'REMOVED_VERIFIED';
-    const physicallyVerified =
-      result.ok && result.verified === true && result.status === expected && !result.safeError;
-    const verified = await this.deps.store.transaction(async (tx) => {
-      const journal = await tx.get<JournalCommand>(scope.operationId);
-      // An idempotent pre-existing physical policy is never adopted as AUTO.
-      const verified =
-        physicallyVerified &&
-        journal?.state === 'STARTED' &&
-        result.bogonNode === scope.target.bogon &&
-        result.mitigationNode === scope.target.mitigation &&
-        result.rt === scope.target.rt;
-      const current = await tx.get<ScopeOwnership>(scope.key);
-      if (
-        !current ||
-        current.owner !== scope.owner ||
-        current.operationId !== scope.operationId ||
-        !['ACTIVATING', 'REMOVING'].includes(current.phase)
-      )
+    const journal = await this.deps.store.transaction((tx) =>
+      tx.get<JournalCommand>(reservation.operationId),
+    );
+    if (journal?.state === 'VERIFIED' && result.ok && !result.safeError) return result;
+    if (journal?.state === 'STARTED' || journal?.state === 'PLANNED')
+      return this.uncertain(reservation, 'AUTO_RESULT_NOT_COMMITTED');
+    return rejected('AUTO_RECONCILIATION_REQUIRED');
+  }
+  /** Called before the canonical policy lock is released. */
+  async completeActivation(
+    input: MitigationCommandInput,
+    result: MitigationActionResult,
+    real: boolean,
+  ): Promise<void> {
+    if (input.action !== 'ACTIVATE' || !input.autoOperationId) return;
+    const t = await this.deps.target(input.profileId);
+    if (!t) throw Error('AUTO_RESULT_TARGET_MISSING');
+    await this.deps.store.transaction(async (tx) => {
+      const j = await tx.get<JournalCommand>(input.autoOperationId!);
+      if (!j || j.origin !== 'AUTO' || j.action !== 'ACTIVATE') throw Error('AUTO_JOURNAL_MISSING');
+      const s = await tx.get<ScopeOwnership>(j.scope);
+      if (!s || s.operationId !== j.id || s.phase !== 'ACTIVATING')
         throw Error('AUTO_OWNERSHIP_CHANGED');
-      current.phase = verified ? (action === 'ACTIVATE' ? 'ACTIVE' : 'COOLDOWN') : 'UNCERTAIN';
-      current.reason = verified ? null : result.status;
-      if (verified && action === 'ACTIVATE') {
-        current.activatedAt = this.now();
-        current.below = 0;
-        current.firstLow = null;
-      }
-      if (verified && action === 'REMOVE')
-        current.cooldownUntil = this.now() + this.deps.config().cooldownMs;
-      await tx.put(current.key, 'scope', current.phase, current);
-      await tx.put(scope.operationId, 'command', verified ? 'VERIFIED' : 'UNCERTAIN', {
-        id: scope.operationId,
-        scope: scope.key,
-        action,
-        state: verified ? 'VERIFIED' : 'UNCERTAIN',
+      const good =
+        real &&
+        result.ok &&
+        result.verified &&
+        result.status === 'ACTIVATED_VERIFIED' &&
+        !result.safeError &&
+        j.state === 'STARTED' &&
+        s.revision === targetRevision(t) &&
+        result.bogonNode === s.target.bogon &&
+        result.mitigationNode === s.target.mitigation &&
+        result.rt === s.target.rt;
+      s.phase = good ? 'ACTIVE' : 'UNCERTAIN';
+      s.reason = good ? null : result.status;
+      if (good) s.activatedAt = this.now();
+      await tx.put(s.key, 'scope', s.phase, s);
+      await tx.put(j.id, 'command', good ? 'VERIFIED' : 'UNCERTAIN', {
+        ...j,
+        state: good ? 'VERIFIED' : 'UNCERTAIN',
         result,
         at: this.now(),
       } satisfies JournalCommand);
@@ -341,242 +366,273 @@ export class AutoMitigationLifecycle {
         this.notification(
           t,
           result,
-          verified
-            ? action === 'ACTIVATE'
-              ? 'MITIGATION_VERIFIED'
-              : 'MITIGATION_REMOVED_VERIFIED'
-            : 'MITIGATION_FAILED',
-          scope.operationId,
+          good ? 'MITIGATION_VERIFIED' : 'MITIGATION_FAILED',
+          s.operationId,
+          !real,
         ),
         this.now(),
       );
-      return verified;
     });
-    return verified ? result : rejected('AUTO_RECONCILIATION_REQUIRED');
   }
-  private async uncertain(
-    scope: ScopeOwnership,
-    reason: string,
-  ): Promise<MitigationAutoCommandResult> {
-    const target = await this.deps.target(scope.profileId).catch(() => null);
-    await this.deps.store.transaction(async (tx) => {
-      const current = await tx.get<ScopeOwnership>(scope.key);
-      if (!current || current.owner !== scope.owner) return;
-      current.phase = 'UNCERTAIN';
-      current.reason = reason;
-      await tx.put(current.key, 'scope', current.phase, current);
-      const op = await tx.get<JournalCommand>(scope.operationId);
-      if (op) {
-        op.state = 'UNCERTAIN';
-        await tx.put(op.id, 'command', op.state, op);
-      }
-      if (target)
-        await enqueueNotification(
-          tx,
-          this.notification(
-            target,
-            { verified: false, customer: target.customer, device: null, interface: null },
-            'MITIGATION_FAILED',
-            scope.operationId + ':uncertain',
-          ),
-          this.now(),
-        );
-    });
-    return rejected(reason);
+  private activationGate(s: ScopeOwnership | null, start: number): string | null {
+    if (!s) return null;
+    if (s.phase !== 'COOLDOWN') return 'AUTO_CAPACITY_OR_SCOPE_BUSY';
+    if (s.cooldownUntil > this.now()) return 'AUTO_COOLDOWN_ACTIVE';
+    if (start <= Math.max(s.cooldownUntil, s.removedAt ?? 0)) return 'AUTO_NEW_EPISODE_REQUIRED';
+    return null;
   }
-  /** Runs inside the canonical policy lock, after preflight, immediately before SSH. */
+  /** Executed inside the canonical policy lock immediately before ACTIVATE. */
   async authorize(
     input: MitigationCommandInput,
     pair: { bogonNode: number; mitigationNode: number } | null,
   ): Promise<boolean> {
-    if (!input.autoOperationId || !pair) return false;
+    if (input.action !== 'ACTIVATE' || !input.autoOperationId || !pair) return false;
     const t = await this.deps.target(input.profileId);
-    if (!t || this.allowed(t, input.action === 'REMOVE')) return false;
-    const proof =
-      input.action === 'REMOVE' ? await this.deps.recoveryProof(t).catch(() => null) : null;
-    const proofAt = proof?.occurredAt?.getTime();
+    if (!t || this.allowed(t)) return false;
+    const evidence = input.autoEvidence;
+    const start = Date.parse(evidence?.sequenceStartedAt ?? '');
+    const sampledAt = Date.parse(evidence?.sampleAt ?? '');
+    if (
+      !evidence?.continuityKey ||
+      !Number.isFinite(start) ||
+      !Number.isFinite(sampledAt) ||
+      start > sampledAt ||
+      sampledAt > this.now() ||
+      this.now() - sampledAt > this.deps.config().maxAgeMs ||
+      !Number.isInteger(evidence.samplesOver) ||
+      evidence.samplesOver! < t.triggerSamples
+    )
+      return false;
     return this.deps.store.transaction(async (tx) => {
-      const scope = await tx.get<ScopeOwnership>(scopeKey(t));
-      const command = await tx.get<JournalCommand>(input.autoOperationId!);
+      const s = await tx.get<ScopeOwnership>(scopeKey(t)),
+        j = await tx.get<JournalCommand>(input.autoOperationId!);
       if (
-        !scope ||
-        !command ||
-        command.state !== 'PLANNED' ||
-        command.action !== input.action ||
-        scope.operationId !== command.id ||
-        scope.profileId !== t.profileId ||
-        scope.revision !== targetRevision(t)
+        !s ||
+        !j ||
+        s.phase !== 'ACTIVATING' ||
+        j.origin !== 'AUTO' ||
+        j.action !== 'ACTIVATE' ||
+        j.state !== 'PLANNED' ||
+        s.operationId !== j.id ||
+        s.profileId !== t.profileId ||
+        s.revision !== targetRevision(t) ||
+        s.target.bogon !== pair.bogonNode ||
+        s.target.mitigation !== pair.mitigationNode ||
+        s.target.rt !== t.rt ||
+        s.target.family !== t.addressFamily
       )
         return false;
-      if (
-        scope.phase !== (input.action === 'ACTIVATE' ? 'ACTIVATING' : 'REMOVING') ||
-        scope.target.bogon !== pair.bogonNode ||
-        scope.target.mitigation !== pair.mitigationNode ||
-        scope.target.rt !== t.rt ||
-        scope.target.family !== t.addressFamily
-      )
+      if (s.removedAt !== undefined && start <= Math.max(s.removedAt, s.cooldownUntil))
         return false;
-      if (
-        input.action === 'REMOVE' &&
-        (!proof ||
-          !proof.continuityKey ||
-          proof.continuityKey !== t.recoveryProofKey ||
-          proofAt == null ||
-          proofAt < this.now() - this.deps.config().maxAgeMs ||
-          proofAt > this.now() ||
-          scope.lastSample === null ||
-          proofAt < scope.lastSample ||
-          proofAt - scope.lastSample > this.deps.config().maxGapMs ||
-          proof.bps < 0n ||
-          proof.bps >= (t.effectiveBandwidthBps! * BigInt(t.recoveryPercent)) / 100n ||
-          scope.below < t.recoverySamples ||
-          scope.firstLow === null ||
-          proofAt - scope.firstLow < this.deps.config().recoveryMs ||
-          this.now() - scope.activatedAt < this.deps.config().minHoldMs)
-      )
-        return false;
-      command.state = 'STARTED';
-      await tx.put(command.id, 'command', command.state, command);
+      j.state = 'STARTED';
+      await tx.put(j.id, 'command', j.state, j);
       return true;
     });
   }
-  /** Manual mutation revokes automation ownership before any physical write. */
-  async manualMutation(deviceId: string, policyName: string): Promise<void> {
-    const key = scopeKey({ deviceId, policyName });
-    await this.deps.store.transaction(async (tx) => {
-      const s = await tx.get<ScopeOwnership>(key);
-      if (s) {
-        s.phase = 'MANUAL';
-        s.reason = 'MANUAL_OPERATION';
-        await tx.put(key, 'scope', s.phase, s);
-      }
-    });
-  }
-  async observe(decision: MitigationAutoDecision): Promise<void> {
-    const t = await this.deps.target(decision.profileId);
+  /** No observation can write to Huawei. While owned, even zero traffic holds. */
+  async observe(d: MitigationAutoDecision): Promise<void> {
+    const t = await this.deps.target(d.profileId);
     if (!t) return;
-    const at = Date.parse(decision.sampleAt ?? '');
-    const c = this.deps.config();
-    const fresh =
-      decision.direction === 'tx' &&
-      Number.isFinite(at) &&
-      at <= this.now() &&
-      this.now() - at <= c.maxAgeMs &&
-      decision.trafficBps !== null &&
-      BigInt(decision.trafficBps) >= 0n;
-    const proof = t.recoveryProofKey ? await this.deps.recoveryProof(t).catch(() => null) : null;
-    const proofAt = proof?.occurredAt?.getTime();
-    const proofFresh =
-      !!proof &&
-      proof.continuityKey === t.recoveryProofKey &&
-      proofAt != null &&
-      proofAt <= this.now() &&
-      this.now() - proofAt <= c.maxAgeMs &&
-      proof.bps >= 0n;
-    const prepared = await this.deps.store.transaction(async (tx) => {
-      const scope = await tx.get<ScopeOwnership>(scopeKey(t));
-      const diverted =
+    const at = Date.parse(d.sampleAt ?? ''),
+      fresh =
+        d.direction === t.direction &&
+        Number.isFinite(at) &&
+        at <= this.now() &&
+        this.now() - at <= this.deps.config().maxAgeMs &&
+        d.trafficBps !== null &&
+        BigInt(d.trafficBps) >= 0n;
+    await this.deps.store.transaction(async (tx) => {
+      const s = await tx.get<ScopeOwnership>(scopeKey(t));
+      if (s && s.phase !== 'COOLDOWN') return; // ACTIVE/MANUAL/UNCERTAIN wait indefinitely.
+      if (
         [
           'MITIGATING',
           'MITIGATED',
           'RECOVERING',
           'RECOVERY_PENDING',
           'RECONCILIATION_REQUIRED',
-        ].includes(t.runtimeState ?? '') ||
-        (!!scope && ['ACTIVE', 'REMOVING', 'UNCERTAIN'].includes(scope.phase));
-      // A diverted client counter cannot positively close an attack episode.
-      const episodeFresh =
-        fresh &&
-        (!diverted ||
-          (proofFresh &&
-            proof!.bps < (t.effectiveBandwidthBps! * BigInt(t.recoveryPercent)) / 100n));
-      await this.recoverEpisode(tx, t, decision, episodeFresh ? at : null);
-      if (!scope || scope.phase !== 'ACTIVE' || scope.profileId !== t.profileId) return null;
-      if (scope.revision !== targetRevision(t)) {
-        scope.phase = 'UNCERTAIN';
-        scope.reason = 'CONFIGURATION_CHANGED';
-        await tx.put(scope.key, 'scope', scope.phase, scope);
-        return null;
-      }
-      if (!fresh || !proofFresh) {
-        scope.below = 0;
-        scope.firstLow = null;
-        await tx.put(scope.key, 'scope', scope.phase, scope);
-        return null;
-      }
-      const recoveryAt = proofAt!;
-      if (scope.lastSample !== null && recoveryAt <= scope.lastSample) return null;
-      if (scope.lastSample !== null && recoveryAt - scope.lastSample > c.maxGapMs) {
-        scope.below = 0;
-        scope.firstLow = null;
-      }
-      scope.lastSample = recoveryAt;
-      const low = proof!.bps < (t.effectiveBandwidthBps! * BigInt(t.recoveryPercent)) / 100n;
-      scope.below = low ? scope.below + 1 : 0;
-      scope.firstLow = low ? (scope.firstLow ?? recoveryAt) : null;
-      await tx.put(scope.key, 'scope', scope.phase, scope);
-      if (
-        !low ||
-        scope.below < t.recoverySamples ||
-        scope.firstLow === null ||
-        recoveryAt - scope.firstLow < c.recoveryMs ||
-        this.now() - scope.activatedAt < c.minHoldMs ||
-        this.allowed(t, true)
+        ].includes(t.runtimeState ?? '')
       )
-        return null;
-      return scope;
+        return;
+      await this.observeUnmitigatedEpisode(tx, t, d, fresh ? at : null);
     });
-    if (!prepared) return;
-    let physical: Awaited<ReturnType<LifecycleDeps['physical']>>;
-    try {
-      physical = await this.deps.physical(t);
-    } catch {
-      return;
-    }
-    if (
-      physical.state !== 'MITIGATED' ||
-      physical.bogon !== prepared.target.bogon ||
-      physical.mitigation !== prepared.target.mitigation ||
-      physical.rt !== prepared.target.rt
-    ) {
-      await this.uncertain(prepared, 'PHYSICAL_OWNERSHIP_DIVERGED');
-      return;
-    }
-    const claimed = await this.deps.store.transaction(async (tx) => {
-      const s = await tx.get<ScopeOwnership>(prepared.key);
+  }
+  /** APPLY LOCAL changes ownership only, never rearms or removes a policy. */
+  async manualMutation(deviceId: string, policyName: string): Promise<void> {
+    await this.deps.store.transaction(async (tx) => {
+      const key = scopeKey({ deviceId, policyName }),
+        s = await tx.get<ScopeOwnership>(key);
+      if (s) {
+        s.phase = 'MANUAL';
+        s.reason = 'MANUAL_RECONCILIATION';
+        await tx.put(key, 'scope', s.phase, s);
+      }
+    });
+  }
+  /** These callbacks run under the same policy lock as preflight/write/readback. */
+  async beginManual(
+    input: MitigationCommandInput,
+    deviceId: string,
+    policyName: string,
+  ): Promise<MitigationActionResult | null> {
+    return this.deps.store.transaction(async (tx) => {
+      const id = manualKey(input.requestId),
+        key = scopeKey({ deviceId, policyName }),
+        old = await tx.get<JournalCommand>(id);
       if (
-        !s ||
-        s.phase !== 'ACTIVE' ||
-        s.owner !== prepared.owner ||
-        s.lastSample !== prepared.lastSample ||
-        s.below !== prepared.below ||
-        s.revision !== targetRevision(t) ||
-        this.allowed(t, true)
+        old &&
+        (old.origin !== 'MANUAL' ||
+          old.action !== input.action ||
+          old.profileId !== input.profileId ||
+          old.scope !== key)
       )
-        return null;
-      s.phase = 'REMOVING';
-      s.operationId = 'auto-remove-' + s.owner;
-      await tx.put(s.key, 'scope', s.phase, s);
-      await tx.put(s.operationId, 'command', 'PLANNED', {
-        id: s.operationId,
-        scope: s.key,
-        action: 'REMOVE',
+        throw Error('MANUAL_IDEMPOTENCY_CONFLICT');
+      if (old?.state === 'VERIFIED' && old.result) return { ...old.result, idempotent: true };
+      if (old && ['STARTED', 'UNCERTAIN'].includes(old.state))
+        throw Error('MANUAL_RECONCILIATION_REQUIRED');
+      const s = await tx.get<ScopeOwnership>(key);
+      if (s) {
+        s.phase = 'MANUAL';
+        s.reason = 'MANUAL_COMMAND_PENDING';
+        await tx.put(key, 'scope', s.phase, s);
+      }
+      await tx.put(id, 'command', 'PLANNED', {
+        id,
+        scope: key,
+        action: input.action as 'ACTIVATE' | 'REMOVE',
+        origin: 'MANUAL',
         state: 'PLANNED',
         result: null,
+        requestId: input.requestId,
+        profileId: input.profileId,
+        deviceId,
+        policyName,
         at: this.now(),
       } satisfies JournalCommand);
-      return s;
+      return null;
     });
-    if (claimed) await this.dispatch(claimed, t, 'REMOVE');
   }
-  /** Restart never replays an ambiguous write or adopts a legacy/manual policy. */
+  async authorizeManual(input: MitigationCommandInput): Promise<boolean> {
+    return this.deps.store.transaction(async (tx) => {
+      const j = await tx.get<JournalCommand>(manualKey(input.requestId));
+      if (
+        !j ||
+        j.origin !== 'MANUAL' ||
+        j.state !== 'PLANNED' ||
+        j.action !== input.action ||
+        j.profileId !== input.profileId
+      )
+        return false;
+      j.state = 'STARTED';
+      await tx.put(j.id, 'command', j.state, j);
+      return true;
+    });
+  }
+  async completeManual(
+    input: MitigationCommandInput,
+    result: MitigationActionResult,
+    real: boolean,
+  ): Promise<void> {
+    await this.deps.store.transaction(async (tx) => {
+      const j = await tx.get<JournalCommand>(manualKey(input.requestId));
+      if (
+        !j ||
+        j.origin !== 'MANUAL' ||
+        j.action !== input.action ||
+        j.profileId !== input.profileId
+      )
+        throw Error('MANUAL_JOURNAL_MISSING');
+      const verified =
+        real &&
+        j.state === 'STARTED' &&
+        result.ok &&
+        result.verified &&
+        !result.safeError &&
+        result.status === (input.action === 'REMOVE' ? 'REMOVED_VERIFIED' : 'ACTIVATED_VERIFIED');
+      let s = await tx.get<ScopeOwnership>(j.scope);
+      if (!s && verified) {
+        if (
+          !j.deviceId ||
+          !j.policyName ||
+          !result.addressFamily ||
+          !result.rt ||
+          result.bogonNode === null ||
+          result.mitigationNode === null
+        )
+          throw Error('MANUAL_RESULT_SCOPE_MISSING');
+        s = {
+          key: j.scope,
+          profileId: input.profileId,
+          owner: 'manual:' + input.requestId,
+          revision: 'MANUAL',
+          phase: 'MANUAL',
+          target: {
+            deviceId: j.deviceId,
+            policy: j.policyName,
+            family: result.addressFamily,
+            rt: result.rt,
+            bogon: result.bogonNode,
+            mitigation: result.mitigationNode,
+          },
+          activatedAt: this.now(),
+          cooldownUntil: 0,
+          lastSample: null,
+          operationId: j.id,
+          reason: 'MANUAL_ACTIVATE_VERIFIED',
+        };
+      }
+      if (s) {
+        if (verified && input.action === 'REMOVE') {
+          s.phase = 'COOLDOWN';
+          s.owner = 'released:' + input.requestId;
+          s.reason = 'MANUAL_REMOVE_VERIFIED';
+          s.removedAt = this.now();
+          s.cooldownUntil = this.now() + this.deps.config().cooldownMs;
+          s.lastSample = null;
+          await this.closeEpisode(tx, s.profileId);
+          if (s.profileId !== input.profileId) await this.closeEpisode(tx, input.profileId);
+        } else {
+          s.phase = verified ? 'MANUAL' : j.state === 'STARTED' ? 'UNCERTAIN' : 'MANUAL';
+          s.reason = verified ? 'MANUAL_ACTIVATE_VERIFIED' : result.status;
+        }
+        s.operationId = j.id;
+        if (verified && input.action === 'ACTIVATE') s.owner = 'manual:' + input.requestId;
+        await tx.put(s.key, 'scope', s.phase, s);
+      } else if (verified && input.action === 'REMOVE')
+        await this.closeEpisode(tx, input.profileId);
+      j.state = verified ? 'VERIFIED' : j.state === 'STARTED' ? 'UNCERTAIN' : 'REJECTED';
+      // Scope confirmation tokens are short-lived authorization material, not journal data.
+      j.result = { ...result };
+      if (result.scopeConfirmation) {
+        const { token: _token, ...summary } = result.scopeConfirmation;
+        j.result.scopeConfirmation = summary;
+      }
+      j.at = this.now();
+      await tx.put(j.id, 'command', j.state, j);
+      if (j.state === 'REJECTED') return; // Preflight/confirmation rejection never pretends a physical result.
+      const event = verified
+        ? input.action === 'REMOVE'
+          ? 'MITIGATION_REMOVED_VERIFIED'
+          : 'MITIGATION_VERIFIED'
+        : 'MITIGATION_FAILED';
+      await enqueueNotification(
+        tx,
+        this.resultNotification(result, event, input.requestId, !real),
+        this.now(),
+      );
+    });
+  }
+  /** Legacy interrupted REMOVE intents are quarantined, never replayed. */
   async reconcile(): Promise<void> {
     const scopes = await this.deps.store.transaction((tx) =>
       tx.list<ScopeOwnership>('scope', ['ACTIVATING', 'REMOVING', 'ACTIVE']),
     );
     for (const s of scopes) {
       if (s.phase !== 'ACTIVE') {
-        await this.uncertain(s, 'RESTART_DURING_COMMAND');
+        await this.uncertain(
+          s,
+          s.phase === 'REMOVING' ? 'LEGACY_AUTO_REMOVE_QUARANTINED' : 'RESTART_DURING_ACTIVATE',
+        );
         continue;
       }
       const t = await this.deps.target(s.profileId);
@@ -598,100 +654,166 @@ export class AutoMitigationLifecycle {
       }
     }
   }
-  async detection(
-    decision: MitigationAutoDecision,
-    build: (decision: MitigationAutoDecision) => Promise<MitigationNotification>,
-  ): Promise<{ delivered: boolean }> {
-    if (!decision.episodeId) throw Error('DURABLE_ENGINE_EPISODE_ID_REQUIRED');
-    const episode = await this.deps.store.transaction(async (tx) => {
-      const aliasKey =
-        'episode-alias:' +
-        createHash('sha256')
-          .update(JSON.stringify([decision.profileId, decision.episodeId]))
-          .digest('hex');
-      const alias = await tx.get<{ id: string }>(aliasKey);
-      if (alias) {
-        const existing = await tx.get<Episode>('episode-history:' + alias.id);
-        if (!existing) throw Error('DURABLE_EPISODE_HISTORY_MISSING');
-        return existing;
+  private async uncertain(
+    scope: ScopeOwnership,
+    reason: string,
+  ): Promise<MitigationAutoCommandResult> {
+    const t = await this.deps.target(scope.profileId).catch(() => null);
+    await this.deps.store.transaction(async (tx) => {
+      const s = await tx.get<ScopeOwnership>(scope.key);
+      if (!s || s.owner !== scope.owner) return;
+      s.phase = 'UNCERTAIN';
+      s.reason = reason;
+      await tx.put(s.key, 'scope', s.phase, s);
+      const j = await tx.get<JournalCommand>(scope.operationId);
+      if (j) {
+        j.state = 'UNCERTAIN';
+        await tx.put(j.id, 'command', j.state, j);
       }
-      const key = 'episode-current:' + decision.profileId;
-      let ep = await tx.get<Episode>(key);
-      if (!ep || ep.closed) {
-        ep = {
+      if (t)
+        await enqueueNotification(
+          tx,
+          this.notification(
+            t,
+            { verified: false, customer: t.customer, device: null, interface: null },
+            'MITIGATION_FAILED',
+            s.operationId + ':uncertain',
+            false,
+          ),
+          this.now(),
+        );
+    });
+    return rejected(reason);
+  }
+  async detection(
+    d: MitigationAutoDecision,
+    build: (d: MitigationAutoDecision) => Promise<MitigationNotification>,
+  ): Promise<{ delivered: boolean }> {
+    if (!d.episodeId) throw Error('DURABLE_ENGINE_EPISODE_ID_REQUIRED');
+    const ep = await this.deps.store.transaction(async (tx) => {
+      const aliasKey =
+          'episode-alias:' +
+          createHash('sha256')
+            .update(JSON.stringify([d.profileId, d.episodeId]))
+            .digest('hex'),
+        alias = await tx.get<{ id: string }>(aliasKey);
+      if (alias) {
+        const old = await tx.get<Episode>('episode-history:' + alias.id);
+        if (!old) throw Error('DURABLE_EPISODE_HISTORY_MISSING');
+        return old;
+      }
+      const key = 'episode-current:' + d.profileId;
+      let e = await tx.get<Episode>(key);
+      if (!e || e.closed) {
+        e = {
           id: randomUUID(),
-          profileId: decision.profileId,
+          profileId: d.profileId,
           closed: false,
           lastSample: null,
           below: 0,
-          firstLow: null,
           at: this.now(),
         };
-        await tx.put(key, 'episode', 'OPEN', ep);
-        await tx.put('episode-history:' + ep.id, 'episode-history', 'OPEN', ep);
+        await tx.put(key, 'episode', 'OPEN', e);
+        await tx.put('episode-history:' + e.id, 'episode-history', 'OPEN', e);
       }
-      await tx.put(aliasKey, 'episode-alias', 'MAPPED', { id: ep.id });
-      return ep;
+      await tx.put(aliasKey, 'episode-alias', 'MAPPED', { id: e.id });
+      return e;
     });
-    const n = await build({ ...decision, episodeId: episode.id });
-    const delivered = await this.deps.store.transaction((tx) =>
-      enqueueNotification(tx, n, this.now()),
-    );
-    return { delivered };
+    const n = await build({ ...d, episodeId: ep.id });
+    return {
+      delivered: await this.deps.store.transaction((tx) => enqueueNotification(tx, n, this.now())),
+    };
   }
-  private async recoverEpisode(
+  private async closeEpisode(tx: AutomationTx, profileId: string) {
+    const key = 'episode-current:' + profileId,
+      e = await tx.get<Episode>(key);
+    if (e && !e.closed) {
+      e.closed = true;
+      await tx.put(key, 'episode', 'CLOSED', e);
+      await tx.put('episode-history:' + e.id, 'episode-history', 'CLOSED', e);
+    }
+  }
+  private async observeUnmitigatedEpisode(
     tx: AutomationTx,
     t: LifecycleTarget,
     d: MitigationAutoDecision,
     at: number | null,
   ) {
-    const key = 'episode-current:' + t.profileId;
-    const ep = await tx.get<Episode>(key);
-    if (!ep || ep.closed) return;
+    const key = 'episode-current:' + t.profileId,
+      e = await tx.get<Episode>(key);
+    if (!e || e.closed) return;
     if (at === null) {
-      ep.below = 0;
-      ep.firstLow = null;
-      await tx.put(key, 'episode', 'OPEN', ep);
+      e.below = 0;
+      await tx.put(key, 'episode', 'OPEN', e);
       return;
     }
-    if (ep.lastSample !== null && at <= ep.lastSample) return;
-    if (ep.lastSample !== null && at - ep.lastSample > this.deps.config().maxGapMs) {
-      ep.below = 0;
-      ep.firstLow = null;
-    }
-    ep.lastSample = at;
+    if (e.lastSample !== null && at <= e.lastSample) return;
+    if (e.lastSample !== null && at - e.lastSample > this.deps.config().maxGapMs) e.below = 0;
+    e.lastSample = at;
     const low =
       t.effectiveBandwidthBps !== null &&
       d.trafficBps !== null &&
       BigInt(d.trafficBps) < (t.effectiveBandwidthBps * BigInt(t.recoveryPercent)) / 100n;
-    ep.below = low ? ep.below + 1 : 0;
-    ep.firstLow = low ? (ep.firstLow ?? at) : null;
+    e.below = low ? e.below + 1 : 0;
     if (
-      ep.below >= t.recoverySamples &&
-      ep.firstLow !== null &&
-      at - ep.firstLow >= this.deps.config().recoveryMs
-    ) {
-      ep.closed = true;
-      await tx.put('episode-history:' + ep.id, 'episode-history', 'CLOSED', ep);
-    }
-    await tx.put(key, 'episode', ep.closed ? 'CLOSED' : 'OPEN', ep);
+      Number.isInteger(t.recoverySamples) &&
+      t.recoverySamples > 0 &&
+      e.below >= t.recoverySamples
+    )
+      e.closed = true;
+    await tx.put(key, 'episode', e.closed ? 'CLOSED' : 'OPEN', e);
+    if (e.closed) await tx.put('episode-history:' + e.id, 'episode-history', 'CLOSED', e);
+  }
+  private resultNotification(
+    r: MitigationActionResult,
+    event: MitigationNotification['event'],
+    id: string,
+    simulation: boolean,
+  ): MitigationNotification {
+    return {
+      event,
+      eventId: id,
+      profileId: r.profileId,
+      addressFamily: (r.addressFamily as 'IPV4' | 'IPV6' | null) ?? null,
+      simulation,
+      verified: event !== 'MITIGATION_FAILED' && r.verified,
+      customer: r.customer,
+      device: r.device,
+      interfaceName: r.interface,
+      peer: r.affectedPeers[0] ?? null,
+      affectedPeers: r.affectedPeers,
+      sharedPolicy: r.sharedPolicy,
+      sharedPolicyTargets: r.sharedPolicyTargets,
+      detectedBandwidthBps: null,
+      bandwidthOverrideBps: null,
+      effectiveBandwidthBps: null,
+      trafficBps: null,
+      thresholdBps: null,
+      policy: r.policy,
+      node: r.mitigationNode,
+      bogonNode: r.bogonNode,
+      mitigationNode: r.mitigationNode,
+      rt: r.rt,
+      occurredAt: new Date(this.now()).toISOString(),
+    };
   }
   private notification(
     t: LifecycleTarget,
     r: Pick<MitigationActionResult, 'verified' | 'customer' | 'device' | 'interface'>,
     event: MitigationNotification['event'],
     id: string,
+    simulation: boolean,
   ): MitigationNotification {
     return {
       event,
       eventId: id,
       profileId: t.profileId,
       addressFamily: t.addressFamily ?? null,
-      simulation: false,
-      verified: event !== 'MITIGATION_FAILED' && r.verified === true,
+      simulation,
+      verified: event !== 'MITIGATION_FAILED' && r.verified,
       customer: r.customer ?? t.customer,
-      device: r.device ?? null,
-      interfaceName: r.interface ?? null,
+      device: r.device,
+      interfaceName: r.interface,
       peer: t.peerAddresses[0] ?? null,
       affectedPeers: [...t.peerAddresses],
       detectedBandwidthBps: null,

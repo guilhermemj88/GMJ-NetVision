@@ -1,7 +1,7 @@
 # PROPOSTA. Nao instalar sem autorizacao explicita de publicacao/restart.
 # Nome deve ordenar apos todos os drop-ins existentes. Conferir EnvironmentFiles.
 [Service]
-WorkingDirectory=/opt/netvision-auto-ddos/releases/bdc3514f16b7e7833064abf61823a307d275a944/apps/api
+WorkingDirectory=/opt/netvision-auto-activate/releases/REPLACE_WITH_AUDITED_SHA/apps/api
 ExecStart=
-ExecStart=/usr/bin/node /opt/netvision-auto-ddos/releases/bdc3514f16b7e7833064abf61823a307d275a944/apps/api/dist/server.cjs
-EnvironmentFile=/etc/netvision/auto-ddos-e2e-stage0.env
+ExecStart=/usr/bin/node /opt/netvision-auto-activate/releases/REPLACE_WITH_AUDITED_SHA/apps/api/dist/server.cjs
+EnvironmentFile=/etc/netvision/auto-activate-manual-remove-stage0.env

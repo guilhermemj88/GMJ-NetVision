@@ -1,5 +1,7 @@
 # Homologação independente RC14-F
 
+Escopo atual IMPLANTAR: [AUTO ACTIVATE + REMOVE manual](AUTO_ACTIVATE_MANUAL_REMOVE_HOMOLOGATION.md). A matriz M8 abaixo continua aplicável com a barreira adicional: REMOVE AUTO é proibido mesmo com M8 ligado e é recusado antes do preflight. Os resultados RC14-F abaixo são históricos; a verificação atual consta no relatório da nova branch.
+
 Este documento estava ausente no SHA original `e1a00e6`. A documentação existente
 era `DDOS_DETECTION_ALERTS_RC14F.md`. O parecer e os hashes finais estão nas
 evidências `.artifacts/rc14f-codex/RELATORIO-RC14F-CODEX-AUDITORIA-FINAL.md`.

@@ -1,5 +1,7 @@
 # GMJ NetVision IMPLANTAR — preparação AUTO DDoS end-to-end
 
+**REGISTRO HISTÓRICO SUPERADO:** o escopo de AUTO REMOVE e de recuperação independente deste relatório foi cancelado pelo operador. Seus testes e hashes documentam somente a implementação anterior `bdc3514`. O escopo vigente é AUTO ACTIVATE + REMOVE exclusivamente manual, em `RELATORIO-AUTO-ACTIVATE-MANUAL-REMOVE.md` e `docs/AUTO_DDOS_ACTIVATION_PLAN.md`. Não utilizar fases, flags ou artefatos históricos para publicar a versão atual.
+
 Data: 29/10/2026. Trabalho exclusivamente em branch/worktree isolada e consultas de produção somente por leitura.
 
 **Decisão: GO técnico para revisão do código e preparação da fase API-only com AUTO=0. NO-GO para habilitar ACTIVATE/REMOVE AUTO agora.** Não houve publicação, restart, mudança de flag, migration, comando Huawei ou alteração no n8n de produção. VNT, Fibinet e o projeto principal Windows não foram modificados.

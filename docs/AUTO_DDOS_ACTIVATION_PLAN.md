@@ -1,113 +1,89 @@
-# IMPLANTAR — plano de ativação AUTO DDoS
+# IMPLANTAR — plano vigente: AUTO ACTIVATE + MANUAL REMOVE
 
-Preparação isolada de 29/10/2026. **Este documento não autoriza execução.** Não executar comandos desta seção sem aprovação da fase correspondente. WEB, MCP, observer FAST, VNT e Fibinet ficam fora da publicação.
+O operador decide exclusivamente o retorno do tráfego pelo Telegram ou UI. Este documento substitui o plano E2E anterior. Nenhuma etapa autoriza AUTO REMOVE. Nenhuma ação operacional foi executada nesta preparação.
 
-## Contrato implementado
-
-`MitigationAutoEngine` continua detectando; `AutoMitigationLifecycle` é o coordenador durável de escrita e recuperação. Toda escrita usa o mesmo `MitigationCommandService`, lock da policy, executor Huawei, preflight e readback das operações manuais. Não há executor SSH alternativo no coordenador. O status legado `AUTO_REMOVE_DISABLED` do motor representa sua decisão de observação; o coordenador separado decide a retirada e registra o resultado no journal.
-
-O ciclo exige instalação IMPLANTAR, persistência, lifecycle, M8, profile e dispositivo explicitamente permitidos. REMOVE exige ainda sua própria flag. Padrão: tudo desligado. As exceções legadas da allowlist do motor não passam pela autorização adicional do coordenador. AUTO nunca usa MOCK como resultado de produção.
-
-Policies compartilhadas e duas famílias AUTO na mesma interface são recusadas. Limite inicial: uma ownership AUTO ativa/em execução/incerta em toda a instalação. Incerteza consome capacidade e impede retry físico. Cooldown padrão 600 s; permanência mínima 900 s; recuperação mínima 60 s e `recoverySamples` novas; frescor e gap máximos 15 s. Configurações inválidas usam limites seguros ou bloqueiam. Thresholds são inteiros em bps; trigger estritamente `>` e recuperação estritamente `<`, com histerese.
-
-## Recuperação não pode ser inferida do desvio
-
-TX baixo na interface do cliente pode resultar da mitigação. REMOVE exige mapeamento explícito de uma **interface diferente**, no mesmo dispositivo, cuja direção meça o tráfego oferecido ao alvo mesmo durante o desvio. Validar causalmente esse ponto com a operação antes de configurar. Um agregado sem separação por cliente pode impedir recuperação; um contador que deixe de enxergar o ataque não serve.
-
-`MITIGATION_AUTO_RECOVERY_PROOF_JSON` tem formato:
-
-```json
-[
-  {
-    "profileId": "PERFIL_IPV4_APROVADO",
-    "interfaceId": "INTERFACE_INDEPENDENTE_HOMOLOGADA",
-    "direction": "rx"
-  }
-]
+```mermaid
+flowchart TD
+  A[Eth-Trunk do cliente identificado pela description] --> B[FAST TX em bps, amostras novas e frescas]
+  B --> C{Threshold superado por triggerSamples?}
+  C -->|Não| B
+  C -->|Sim| D{M8, allowlists, binding, cooldown, capacidade e escopo seguros?}
+  D -->|Não| E[Sem escrita; alerta de detecção quando aplicável]
+  D -->|Sim| F[Ownership e journal PLANNED duráveis]
+  F --> G[Lock da policy; preflight e revalidação; STARTED]
+  G --> H[ACTIVATE Huawei e readback real]
+  H --> I{Par, RT e readback verificados?}
+  I -->|Não| J[UNCERTAIN; preservar nodes; revisão humana]
+  I -->|Sim| K[ACTIVE e outbox MITIGATION_VERIFIED com botões]
+  K --> L[Espera indefinida; tráfego baixo não retira]
+  L --> M[Ação humana autenticada via Telegram ou UI]
+  M --> N[Confirmação de escopo quando necessária; lock e preflight]
+  N --> O[REMOVE manual e readback]
+  O --> P{Retirada física verificada e transação concluída?}
+  P -->|Não| J
+  P -->|Sim| Q[COOLDOWN; ownership liberada; episódio encerrado]
+  Q --> R[Outbox MITIGATION_REMOVED_VERIFIED]
+  R --> S[Cooldown cumprido e nova sequência iniciada depois dele]
+  S --> B
 ```
 
-Não preencher com a interface mitigada. O adapter verifica dispositivo, interface, UP administrativo/operacional atual, amostra utilizável, intervalo e frescor de até 15 s. Usa `InterfaceMetricSample.rxBps/txBps` em bits/s, sem multiplicar por oito. O polling convencional atual não comprovou essa cadência para uma fonte independente: **REMOVE permanece NO-GO até instrumentação/homologação**. Esta missão não alterou o polling.
+## Contrato e barreiras
 
-Múltiplas amostras distintas, duração mínima e permanência antecedem readback físico. Dentro do lock canônico, imediatamente antes da escrita, a fonte independente é lida novamente; prova ausente, stale, alta, com gap ou configuração diferente impede REMOVE. Readback divergente conserva a mitigação e exige reconciliação. ACTIVATE manual ou APPLY LOCAL revoga ownership AUTO, inclusive ACTIVATE idempotente. O sistema não adota uma mitigação legada/manual como sua.
+- Instalação IMPLANTAR; lifecycle e persistência explicitamente habilitados; M8 verificável; allowlist de perfil e dispositivo explícitas; maxActive=1 no piloto. VNT/Fibinet são recusados pelo lifecycle.
+- InterfaceId único no device correto, ifIndex positivo, Eth-Trunk UP, nome não ambíguo, cliente/banda derivados da description/alias canônico, direção explícita, banda persistida consistente. Não usar velocidade física do trunk como banda contratada. Reject de descrição de mitigação, scrub, uplink ou sem banda reconhecida. Override de banda continua explícito e auditável.
+- Piloto conservador somente TX/FAST. RX é resolvido e recusado para escrita AUTO; não inverter RX/TX automaticamente. Mudança de interface, descrição, cliente, banda, direção, peers, family, RT ou par altera revision e impede uso da ownership antiga.
+- Telemetria com idade e gap máximos de 15 s. Trigger estritamente `tráfego > banda efetiva × triggerPercent / 100`, não `>=`; `triggerSamples` amostras distintas. Revalidar frescor após preflight, antes da escrita. Amostra stale/ausente/duplicada não vale como sequência nova.
+- Scope físico é device+policy. Policies compartilhadas e outra família AUTO na mesma interface são bloqueadas nesta versão conservadora. Todos os preflights, prefix-lists, lock, family contention e readbacks canônicos continuam obrigatórios. Runtime NORMAL nunca substitui readback nem permite adotar mitigação preexistente.
+- O coordenador só despacha o literal ACTIVATE. Serviço canônico rejeita REMOVE com origin=AUTO, prefixo automático, autoEvidence ou autoOperationId antes de qualquer SSH. REMOVE=1 é inválido; produção exige REMOVE=0 literal. Não há fonte de recuperação, minHold ou caminho de timer para retirada. `recoverySamples` remanescente serve apenas à observação/fechamento de episódio de detecção sem mitigação; não autoriza escrita.
+- Ownership ACTIVE/MANUAL/UNCERTAIN bloqueia novas ativações indefinidamente. Após REMOVE humano, somente readback real verificado + runtime sincronizado + transação de resultado/outbox liberam ownership. Falha de DB após SSH preserva bloqueio. Cooldown mínimo 60 s, default 600 s; a primeira amostra da nova sequência deve ser posterior ao fim do cooldown e à retirada.
 
-## Persistência e migration
+## Persistência, restart e notificações
 
-Migration única nova: `20261029090000_auto_lifecycle_durable`, tabela aditiva `MitigationAutomationRecord` e um índice. Sem alteração ou remoção de tabelas/colunas existentes. Registra ownership, intent/result de comando, episódios atuais/históricos, outbox e recibo durável de rate limit.
+Mantida a migration aditiva `20261029090000_auto_lifecycle_durable` herdada do candidato E2E; nenhuma migration adicional para a correção de escopo. RC13 ainda não tem essa tabela. Não aplicar em produção nesta missão.
 
-Quatro checksums históricos diferem entre branch e banco exclusivamente por LF/CRLF. Os arquivos da release RC13 ativa coincidem com `_prisma_migrations`; sua conversão para LF coincide byte a byte com a branch. Arquivos históricos da branch e histórico do banco foram preservados. O ensaio isolado de compatibilidade reproduz os checksums CRLF antes da nova migration, sem alterar produção.
+Tabela `MitigationAutomationRecord`: ownership, journal AUTO ACTIVATE e comandos manuais, episódios, aliases, outbox e recibos. Transações curtas com advisory lock de automação; nenhum SSH/HTTP dentro dessas transações. Lock canônico da policy cobre preflight/escrita/readback e commit de ownership/journal/outbox. Tokens de confirmação e credenciais não são gravados no journal.
 
-Transações curtas usam advisory lock exclusivo de automação; nenhum SSH/HTTP ocorre dentro dessas transações. O lock canônico da policy continua protegendo preflight/escrita/readback e a revogação manual. Uma intenção `PLANNED` só pode virar `STARTED` uma vez, sob a policy lock. Sucesso exige comando iniciado pelo journal e resultado físico exato, sem erro de sincronização do runtime. Estado e notificação são gravados na mesma transação após o resultado.
+Manual STARTED/UNCERTAIN nunca é repetido após restart pelo mesmo requestId. VERIFIED permite recibo durável sem repetir SSH ou estender cooldown. Mudança de action/profile/scope com mesmo ID é recusada pelo journal. ACTIVE exige readback de reconciliação; ACTIVATE interrompido vira UNCERTAIN. Intents antigos REMOVING ficam em quarentena, sem replay. Configuração/revision divergente exige revisão humana; não apagar records para liberar escrita. Falha de inicialização da persistência não habilita AUTO.
 
-No restart, `ACTIVATING`/`REMOVING` viram `UNCERTAIN`, sem reexecutar. `ACTIVE` exige novo readback com par/RT/configuração iguais. Não inferir sucesso de um timeout SSH. O operador deve revisar journal, configuração e equipamento antes de qualquer liberação de estado incerto; não apagar records para liberar capacidade.
+Outbox e estado são atômicos; ACK é separado e não é fabricado. HTTP exige 2xx + `delivered=true`; `X-NetVision-Token` outbound não substitui Authorization/Bearer dos comandos de retorno. Preservar os três nodes HTTP de Command/Scope Confirm/Scope Cancel e seus segredos. O botão de retirada continua somente no ramo MITIGATION_VERIFIED; aviso de detecção, retirada já verificada e falha não têm botões de retirada.
 
-Migrations completas foram testadas em PostgreSQL 16 descartável; testes de store verificaram concorrência, rollback e restart de cliente. Antes da migração real: conferir checksums das migrations aplicadas, garantir que somente esta migration está pendente, backup validado e acesso para restauração. Aplicação futura pelo Prisma da release, com URL obtida de arquivo protegido, nunca impressa no terminal. Não usar `migrate dev` ou `db push` em produção.
+Entrega at-least-once: queda após Telegram aceitar e antes de gravar ACK pode duplicar aviso. IDs estáveis, lease 60 s, retry 30–600 s, 12 tentativas e FAILED retido; rate limit de detecção 30 min por perfil persiste. Falha de entrega não retira mitigação. Pendências e FAILED exigem revisão, sem apagar evidência.
 
-Rollback de schema: manter a tabela aditiva e seus dados. RC13/RC14-F anteriores a ignoram. O rollback de código/configuração não depende de removê-la. Se for necessária reversão estrutural, exportar e validar backup, desligar lifecycle/persistência e, em manutenção separadamente aprovada, renomear tabela/índice para arquivo histórico. O ensaio transacional de rename/rollback não remove evidências. Não executar DROP automático nem marcar migrations arbitrariamente como revertidas.
+O patch proposto `n8n/AUTO-DDOS-STATUS-OUTBOUND-PATCH.json` deriva do fixture RC7.1 disponível, não do export RC7.1.1 publicado. Deve ser mesclado e revisado no export real pelo operador. Teste n8n isolado usa Code sinks e credenciais falsas; não é Telegram físico homologado.
 
-## Outbox e n8n
+## Fase 0 — API-only, AUTO=0
 
-ID de evento estável; payload inicial preservado; lease 60 s; retries de 30 s até 600 s; máximo 12 tentativas, depois `FAILED` retido. Rate limit de detecção de 30 min por perfil persiste após restart. Retry independe de o ataque continuar ou de o perfil ainda constar na lista. Monitorar PENDING/SENDING envelhecidos e qualquer FAILED. Reenvio de FAILED exige revisão do recibo e autorização, pois pode duplicar entrega externa.
+Exige autorização futura de deploy/restart. Não usar `deploy/update.sh`, que compila/reinicia outros componentes.
 
-ACK exige HTTP 2xx **e** `delivered=true` em todos os eventos quando a persistência está ligada. Header outbound `X-NetVision-Token`; retorno de comandos continua com sua credencial Authorization/Bearer própria. Não substituir as credenciais `HTTP - NetVision Command`, `Scope Confirm` e `Scope Cancel`.
+1. Revalidar release/PID/CWD/hash API RC13, WEB/BUILD_ID, MCP, health 200, configuração efetiva dos 22 drop-ins + unit e EnvironmentFiles, disco e contagens de eventos. Interromper com divergência não explicada, serviços instáveis, health !=200, disco <5 GiB ou insuficiente para duas cópias +2 GiB.
+2. Selecionar SHA completo da implementação corrigida e worktree limpa. Fazer build API-only Linux com Node 24.19/lockfile, `npm ci --workspace @gmj/api --include-workspace-root --ignore-scripts --no-audit --no-fund` e `npm run build -w @gmj/api`. Validar hashes, runtime Prisma Linux e pacote. Não reutilizar artefato do E2E bdc3514 como release corrigida.
+3. Nova release isolada; não escrever na RC13 ativa nem `/opt/GMJ-NetVision`. Backup protegido e restaurável de unit/drop-ins/EnvironmentFiles antes da troca. Novo drop-in proposto deve ordenar após o último RC13, com reset apenas de ExecStart e CWD da API e último EnvironmentFile dedicado. Validar ordenação e precedência dos arquivos, não somente o nome do drop-in. Exemplos em `deploy/` não foram instalados.
+4. Configuração fase 0: `NETVISION_INSTALLATION_ID=IMPLANTAR`, `MITIGATION_AUTO_PERSISTENCE_ENABLED=0`, `MITIGATION_AUTO_LIFECYCLE_ENABLED=0`, `MITIGATION_AUTO_EXECUTION_ENABLED=0`, **`MITIGATION_AUTO_REMOVE_ENABLED=0`**, sweep/description promotion=0, allowlist de execução de perfis vazia e maxActive=1. Preservar demais flags FAST, executor Huawei e permissões manuais aprovadas. Não executar migration se não autorizada separadamente.
+5. Só após autorização: validar unit, daemon-reload e um restart exclusivo da API. Revalidar em até 60 s PID/CWD/hash, health demoMode=false/snmpPolling=true, NRestarts, flags reais em `/proc/PID/environ` e endpoint autenticado `/api/bgp/mitigation/auto/lifecycle` com removalPolicy=MANUAL_ONLY/removeEnabled=false. WEB/MCP/observer intactos; nenhuma ativação/retirada nova. Caches exigem aquecimento/discovery após restart; ausência de snapshot impede avanço.
 
-Proposta `docs/n8n/AUTO-DDOS-STATUS-OUTBOUND-PATCH.json`: alterações apenas de normalização/ACK e ramo de status para retirada verificada/falha, sem botões. Derivada do fixture RC7.1 disponível; **não é export da RC7.1.1 publicada**. Mesclar no export real revisado, nunca substituir o workflow inteiro. Preservar os fluxos IMPLANTAR/VNT/Fibinet existentes. Testes dinâmicos usaram n8n 2.45.4 em rede Docker interna e Code sinks no lugar do Telegram.
+## Fase 1 — migration e homologação física dedicada
 
-Entrega é **at-least-once**, não exactly-once. Telegram pode receber e o ACK se perder antes do commit; após lease expirar poderá haver duplicação. `eventId` permite auditoria, mas o workflow proposto não tem ledger transacional no destino. Rate limit não elimina essa janela. Não prometer ausência absoluta de duplicação, nem confirmação física com base nos mocks.
+Autorizações separadas para migration aditiva, revisão do n8n real, restart e operações físicas de um perfil/escopo/janela definidos. Conferir checksums históricos LF/CRLF contra a release RC13, única migration nova pendente e backup testado. Usar `migrate deploy` da release; nunca migrate dev/db push ou editar `_prisma_migrations`. Rollback de schema mantém tabela/dados aditivos; ensaio de reversão estrutural deve ser transacional/isolado, sem DROP automático.
 
-## Fase 0 — publicação API-only, sem AUTO
+Persistência=1, lifecycle=0, M8=0, REMOVE=0. Conferir outbox/ACK real sem backlog desconhecido. Recomendação: AGLINK IPv4, a confirmar por inventário/readback novos e aprovação explícita (matriz de homologação). Demonstrar ACTIVATE autorizado, nodes/RT/readback reais, Telegram com botão; manter mitigação mesmo com queda de tráfego; REMOVE somente por humano autenticado e scope token quando necessário, readback/Telegram de retirada reais. Nenhuma fonte independente de recuperação faz parte deste ensaio.
 
-GO técnico para revisão da implementação isolada; execução depende de autorização explícita para publicação e restart. NÃO aplicar migration nesta fase se a aprovação for apenas de código.
+## Fase 2 — AUTO ACTIVATE de um único perfil
 
-1. Revalidar PID/CWD/ExecStart/hash API RC13, PID/hash/BUILD_ID WEB, PID/hash MCP, `/health`, `/`, disco, logs e últimas contagens ACTIVATE/REMOVE. Interromper com saúde diferente de 200, produção diferente da inventariada, espaço menor que 5 GiB antes da cópia ou menor que duas vezes o pacote mais 2 GiB, ou mudança operacional não explicada.
-2. Selecionar SHA completo da implementação no relatório. Worktree limpa, source archive e lockfile íntegros. Linux Node 24.19, `npm ci --workspace @gmj/api --include-workspace-root --ignore-scripts --no-audit --no-fund`, `npm run build -w @gmj/api`. Build não recebe env/URL/credenciais de produção. Conferir manifesto/hash do bundle e runtime Prisma Linux. Não usar o client Prisma Windows no servidor.
-3. Preparar release nova sob `/opt/netvision-auto-ddos/releases/<SHA>`, sem alterar RC13 ativa ou `/opt/GMJ-NetVision`. Copiar somente API (`server.cjs`, mapa, runtime Prisma e dependências), manifests/lockfile e migrations para uso futuro. Não publicar WEB, MCP, worker ou observer.
-4. Guardar backup protegido do unit, todos os drop-ins, EnvironmentFiles e configuração efetiva. O levantamento encontrou 22 drop-ins + fragmento principal = 23 arquivos unit. Backup de 41 arquivos foi coletado por leitura e cifrado com Windows DPAPI; para execução real criar também backup protegido recuperável no servidor, com restauração ensaiada. Não depender de um único usuário Windows para recuperação.
-5. Propor um drop-in cujo nome ordene **depois** de `zzzzzzzzzzzzzzzzzzzz-rc13-d6c07f2.conf`. Resetar somente `ExecStart`, definir CWD/ExecStart da nova release e acrescentar um último EnvironmentFile dedicado. Conferir ordem real e todos os EnvironmentFiles: valores de EnvironmentFile podem sobrepor `Environment=`. Não presumir segurança só pela quantidade de letras `z`.
-6. Arquivo dedicado da fase 0, sem segredos:
+Autorizar explicitamente profileId, deviceId, IPv4, interface/ifIndex/description/TX, banda/threshold/samples, peer/RT/par e janela. Apenas esse ID na allowlist, maxActive=1, persistência=1/lifecycle=1/M8=1, **REMOVE=0 sempre**. Exigir homologaçāo física anterior e responsável disponível para retirada manual. Não gerar ataque sem autorização própria; definir previamente o estímulo aprovado e limites.
 
-```ini
-NETVISION_INSTALLATION_ID=IMPLANTAR
-MITIGATION_AUTO_PERSISTENCE_ENABLED=0
-MITIGATION_AUTO_LIFECYCLE_ENABLED=0
-MITIGATION_AUTO_EXECUTION_ENABLED=0
-MITIGATION_AUTO_REMOVE_ENABLED=0
-MITIGATION_AUTO_DESCRIPTION_ENABLED=0
-MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS=
-MITIGATION_AUTO_MAX_ACTIVE=1
-```
+Monitorar episódio, intent único, STARTED sob lock, ACTIVATE, readback, ACTIVE, outbox e Telegram recebido. Baixa de tráfego deve produzir zero REMOVE e zero segunda ativação. Retirada humana deve produzir readback, cooldown e nenhuma reativação por amostras anteriores; só nova sequência pós-cooldown pode rearmar.
 
-Preservar HUAWEI, LIVE_WRITE e device allowlist aprovados para operação manual. Somente a fase de rollback abaixo congela também a escrita manual. Preservar os demais arquivos e flags FAST.
-
-7. Só após aprovação: validar unit, daemon-reload e **um restart somente da API**. Nada disso foi executado nesta missão. Reinício perde caches em memória; aguardar discovery/readiness reais e registrar aquecimento, sem habilitar AUTO com snapshot ausente. WEB/MCP/observer não reiniciam.
-8. Em até 60 s exigir API active/running, PID novo esperado, CWD/hash corretos, health 200 `demoMode=false`, `snmpPolling=true`; verificar flags efetivas em `/proc/<PID>/environ` e status autenticado `/api/bgp/mitigation/auto/lifecycle`. NRestarts não cresce; WEB/MCP e seus hashes/PIDs ficam iguais; sem ACTIVATE/REMOVE novo. Falha de qualquer gate: interromper e aplicar rollback aprovado.
-
-## Fase 1 — migration, alertas duráveis e homologação IPv4
-
-Autorizações próprias: migration aditiva, patch no n8n real, restart de API e ensaio físico controlado de um perfil IPv4 dedicado. Aprovar cada operação real ACTIVATE/REMOVE e o escopo exato; esta missão não autoriza nenhuma delas.
-
-Aplicar somente migration aprovada; ligar persistência=1 com lifecycle=0/M8=0/REMOVE=0. Confirmar tabela/índice e outbox funcionando, alerta de teste pelo procedimento aprovado, secreto Header Auth correto, ACK real e conteúdo recebido pelo operador. Estado pendente não conta como entrega. Antes de qualquer piloto, zerar backlog por revisão, sem apagar evidência.
-
-Prioridades possíveis de homologação: 73S, AGLINK, CLICKING, PLAYCONNECT ou SUPERNET IPv4 (ver matriz/IDs exatos). Não escolher automaticamente. Confirmar banda contratada, TX, thresholds/samples, RT `268568:660`, nodes, peers e escopo dedicado por readback real recente. Demonstrar que a recuperação independente permanece mensurável durante a mitigação. Sem isso, NO-GO para REMOVE e para ciclo completo.
-
-## Fase 2 — um perfil AUTO aprovado
-
-Autorizar explicitamente profileId, deviceId, família IPv4, RT/par, interface/direção, fonte independente, limites, janela e responsáveis. Configurar allowlist com **um único ID**, maxActive=1, lifecycle=1, M8=1. REMOVE=1 somente se homologação independente já aprovada; caso contrário o piloto é apenas de ativação e requer plano manual de permanência/retirada, com aprovação específica dessa limitação.
-
-Antes/depois do restart autorizado verificar todas as flags, profileId, owner, revision, backend real HUAWEI e health. Observar detecção → journal → preflight → ACTIVATE → readback real → Telegram recebido. Recuperação exige samples novas/duração mínima/hold e ownership; REMOVE e Telegram só contam após readback real. Nunca gerar ataque nesta preparação; a fonte do estímulo e a janela de teste real precisam de autorização operacional própria.
-
-Interrupção imediata: escrita fora da allowlist, comando sem intent/STARTED, divergência de RT/nodes/família, policy compartilhada, estado UNCERTAIN, readback falho, perda/gap de telemetria, ausência de ACK/Telegram, flapping, restart inesperado ou degradação de cliente. Desligar novas escritas por procedimento aprovado; **não remover automaticamente mitigação ativa para limpar o ensaio**. Preservar evidência e passar ao operador.
+Parar imediatamente se houver escrita fora do ID/device, qualquer REMOVE AUTO, falta de journal, RT/par/family/binding divergentes, policy compartilhada, readback incerto, telemetria stale/gap, perda de ACK/Telegram, restart inesperado, flapping ou impacto no cliente. Congelar novas escritas por procedimento aprovado, preservar mitigação e chamar o operador. Nunca limpar o piloto removendo automaticamente nodes.
 
 ## Fase 3 — expansão
 
-Após um ciclo físico completo documentado e monitoramento em janela aprovada, promover um perfil dedicado por vez. Os sete AUTO de policies compartilhadas ficam bloqueados neste desenho conservador; os 26 ALERT_ONLY preservam seu modo. IPv6, compartilhamento e exceções exigem nova homologação/projeto; não ampliar allowlist em massa.
+Somente após evidência física do ciclo AUTO ACTIVATE + espera + REMOVE manual + rearme seguro. Um perfil dedicado por vez, com aprovação própria. IPv6 e policies compartilhadas permanecem fora do primeiro piloto. Os 26 ALERT_ONLY não são promovidos automaticamente. AUTO REMOVE está proibido em todas as fases.
 
 ## Rollback fail-closed
 
-Gatilhos: falha de saúde, erro de runtime/migration, escrita inesperada, readback incerto, instabilidade ou decisão do operador. Congelar novas execuções antes de voltar a código sem o M8 corrigido.
+Exige autorização operacional futura. Gatilhos: falha de saúde, DB/runtime, escrita inesperada, readback incerto ou decisão humana. Primeiro congelar novas escritas; não retirar nodes nem restaurar banco antigo sobre telemetria recente. Preferir RC14-F corrigida dfb7b362 se pacote Linux íntegro estiver aprovado. Para voltar à RC13, M8=0 sozinho é insuficiente.
 
-Preferir voltar ao bundle RC14-F corrigido `dfb7b362ad86bf9a72fdcf8b60a1a75b47c8a19c`, se release Linux íntegra aprovada estiver disponível. Se o destino for RC13 efetiva, exigir barreiras independentes; M8=0 da RC13 é insuficiente para AUTO manual.
-
-Último EnvironmentFile de rollback aprovado deve impor:
+Último EnvironmentFile efetivo deve impor:
 
 ```ini
 MITIGATION_MODE=SIMULATION_ONLY
@@ -122,20 +98,16 @@ MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS=
 MITIGATION_ALLOWED_DEVICE_IDS=host-377c554a-8d1e-47c4-baa4-f258693b4d91
 ```
 
-Preservar a allowlist do dispositivo e HUAWEI evita cair em MOCK com sincronização fictícia de runtime. LIVE_WRITE=false bloqueia fisicamente também ACTIVATE/REMOVE manual no executor Huawei; informar indisponibilidade temporária dessas operações. Não remover nodes/policies, não zerar runtimes nem outbox/ownership. Não restaurar banco antigo sobre telemetria recente como rollback padrão.
+HUAWEI e device allowlist permanecem; não usar MOCK para fabricar estado normal. LIVE_WRITE=false congela temporariamente ACTIVATE/REMOVE manuais também: avisar operador. Apontar API ao bundle anterior verificado e um restart autorizado. Confirmar flags em processo, CWD/hash, health 200, ausência de novos comandos e WEB/MCP intactos. Não zerar ownership/journal/outbox; manter tabela aditiva. Retomar operações manuais exige nova aprovação e readback físico. Barras independentes MODE/LIVE_WRITE são testadas em transporte fake, sem afirmar homologação física.
 
-Somente na janela aprovada: apontar o drop-in à release antiga verificada, aplicar flags fail-closed e restart único API. Verificar `/proc`, CWD/hash, health, NRestarts, WEB/MCP/observer intactos e ausência de ACTIVATE/REMOVE. A implementação RC13 dos módulos foi confrontada com o source map do bundle efetivo e as barreiras independentes têm testes comportamentais de transporte fake; nenhum ensaio físico foi feito. Retomada manual exige autorização adicional e readback verdadeiro, separadamente da recuperação da API. Não depender de allowlist vazia da RC13: vazio pode significar ausência de gate.
+## Decisões e autorizações restantes
 
-## GO/NO-GO e autorizações pendentes
-
-| Fase                       | Decisão nesta missão                   | Pendência para executar                                            |
-| -------------------------- | -------------------------------------- | ------------------------------------------------------------------ |
-| Código/testes isolados     | GO técnico, conforme evidências finais | Revisão do commit                                                  |
-| Publicação API-only AUTO=0 | Preparada; sem autorização de execução | Release Linux, backup recuperável, janela e autorização de restart |
-| Migration/outbox real      | NO-GO operacional                      | Aprovação migration + checksums/backup + n8n real                  |
-| Homologação física IPv4    | NO-GO                                  | Perfil/escopo/janela/operações reais explicitamente aprovados      |
-| AUTO ACTIVATE piloto       | NO-GO                                  | Homologação, allowlist e ativação explícita                        |
-| AUTO REMOVE/ciclo completo | NO-GO                                  | Prova independente de normalização + readback/Telegram reais       |
-| Expansão                   | NO-GO                                  | Ciclo físico completo e aprovação por perfil                       |
-
-Matriz detalhada: `docs/audits/auto-ddos-20261029/MATRIZ-38-PERFIS.csv`. Relatório final e manifesto informam commit exato, artefatos, testes, limitações e integridade da produção. Parar antes da primeira alteração operacional.
+| Fase                            | Recomendação                             | Autorização/condição restante                                                  |
+| ------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------ |
+| Implementação e testes isolados | GO técnico se verificações finais verdes | Revisão do commit e evidências                                                 |
+| API-only AUTO=0                 | Preparada, sem execução                  | Pacote Linux aprovado, backup, janela, deploy/restart                          |
+| Migration/outbox/n8n reais      | NO-GO operacional agora                  | Migration + backup/checksums; patch revisado do export publicado               |
+| Homologação IPv4 AGLINK         | Recomendação condicional                 | Readback/inventário novos; escopo/janela e ACTIVATE/REMOVE humanos autorizados |
+| Piloto AUTO ACTIVATE            | NO-GO operacional agora                  | Homologação física, Telegram, perfil único e habilitação explícita             |
+| AUTO REMOVE                     | PROIBIDO                                 | Fora do produto; não existe autorização pendente para habilitá-lo              |
+| Expansão                        | NO-GO agora                              | Evidências e aprovação por perfil                                              |

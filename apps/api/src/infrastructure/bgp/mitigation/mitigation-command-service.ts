@@ -84,6 +84,8 @@ export const RUNTIME_SYNC_FAILED_WARNING =
 export interface MitigationAutoEvidence {
   sampleAt: string;
   continuityKey: string;
+  sequenceStartedAt?: string;
+  samplesOver?: number;
 }
 
 export interface MitigationCommandInput {
@@ -263,6 +265,23 @@ export interface MitigationLiveExecutorPort {
 }
 
 export interface MitigationCommandDeps {
+  manualCommands?: {
+    begin(
+      input: MitigationCommandInput,
+      scope: { deviceId: string; policyName: string },
+    ): Promise<MitigationActionResult | null>;
+    authorize(input: MitigationCommandInput): Promise<boolean>;
+    complete(
+      input: MitigationCommandInput,
+      result: MitigationActionResult,
+      real: boolean,
+    ): Promise<void>;
+  };
+  afterAutomaticCommand?: (
+    input: MitigationCommandInput,
+    result: MitigationActionResult,
+    real: boolean,
+  ) => Promise<void>;
   requireAutomaticAuthorization?: boolean;
   autoWriteAuthorization?: (
     input: MitigationCommandInput,
@@ -372,6 +391,8 @@ export class MitigationCommandService {
   }
 
   async execute(input: MitigationCommandInput): Promise<MitigationCommandResult> {
+    // Never serve an old idempotency receipt as authorization for AUTO REMOVE.
+    if (input.action === 'REMOVE' && isAutomaticCommand(input)) return this.run(input);
     const mutating = MUTATING_ACTIONS.includes(input.action);
     if (mutating) {
       const previous = this.processed.get(input.requestId);
@@ -380,7 +401,7 @@ export class MitigationCommandService {
 
     const result = await this.run(input);
     if (mutating && result.ok) this.processed.set(input.requestId, result);
-    return { ...result, idempotent: false };
+    return { ...result, idempotent: result.idempotent };
   }
 
   private async run(input: MitigationCommandInput): Promise<MitigationCommandResult> {
@@ -432,12 +453,107 @@ export class MitigationCommandService {
     // (deviceId + policyName). A leitura fresca do runtime, o preflight, a
     // escrita Huawei, o read-back e a sincronizacao do escopo acontecem
     // DENTRO do lock; sem lock o caminho e o mesmo de antes.
+    if (input.action === 'REMOVE' && isAutomaticCommand(input)) {
+      return {
+        ...base,
+        ok: false,
+        status: this.autoExecutionBlocked(input)
+          ? AUTO_EXECUTION_DISABLED_STATUS
+          : 'AUTO_REMOVE_FORBIDDEN',
+        verified: false,
+        customer: null,
+        device: profile.deviceId,
+        interface: null,
+        interfaceId: profile.interfaceId,
+        addressFamily: profile.addressFamily,
+        policy: profile.policyName,
+        node: null,
+        bogonNode: null,
+        mitigationNode: null,
+        rt: profile.mitigationRt,
+        sharedPolicy: false,
+        sharedPolicyTargets: [],
+        affectedPeers: [],
+        commandPreview: [],
+        verification: null,
+        safeError:
+          'REMOVE exige acao manual autorizada no Telegram ou na interface NetVision; AUTO REMOVE e proibido.',
+      };
+    }
+    const scoped = async () => {
+      const journal = this.deps.manualCommands;
+      const manual = MUTATING_ACTIONS.includes(input.action) && !isAutomaticCommand(input);
+      if (manual && journal) {
+        try {
+          const cached = await journal.begin(input, policyExecutionScope(profile));
+          if (cached) return cached;
+        } catch {
+          return {
+            ...base,
+            ok: false,
+            status: 'MANUAL_RECONCILIATION_REQUIRED',
+            verified: false,
+            customer: null,
+            device: profile.deviceId,
+            interface: null,
+            interfaceId: profile.interfaceId,
+            addressFamily: profile.addressFamily,
+            policy: profile.policyName,
+            node: null,
+            bogonNode: null,
+            mitigationNode: null,
+            rt: profile.mitigationRt,
+            sharedPolicy: false,
+            sharedPolicyTargets: [],
+            affectedPeers: [],
+            commandPreview: [],
+            verification: null,
+            safeError:
+              'Journal manual indisponivel ou requestId exige reconciliacao; nenhuma nova escrita foi iniciada.',
+          };
+        }
+      }
+      const result = await this.executeScopedAction(input, outcome, profile, base);
+      if (manual && journal) {
+        try {
+          const host = await this.deps.hosts.getHost(profile.deviceId);
+          await journal.complete(
+            input,
+            result,
+            !!host && this.deps.live?.enabledFor(host) === true,
+          );
+        } catch {
+          return {
+            ...result,
+            ok: false,
+            safeError:
+              'Readback concluido, mas ownership/outbox manual nao foram sincronizados; reconciliacao obrigatoria.',
+          };
+        }
+      }
+      if (!manual && MUTATING_ACTIONS.includes(input.action) && this.deps.afterAutomaticCommand) {
+        try {
+          const host = await this.deps.hosts.getHost(profile.deviceId);
+          await this.deps.afterAutomaticCommand(
+            input,
+            result,
+            !!host && this.deps.live?.enabledFor(host) === true,
+          );
+        } catch {
+          return {
+            ...result,
+            ok: false,
+            safeError:
+              'Readback concluido, mas journal/outbox AUTO nao foram sincronizados; reconciliacao obrigatoria.',
+          };
+        }
+      }
+      return result;
+    };
     if (MUTATING_ACTIONS.includes(input.action) && this.deps.scopeLock) {
       const scope = policyExecutionScope(profile);
       try {
-        return await this.deps.scopeLock.run(scope, () =>
-          this.executeScopedAction(input, outcome, profile, base),
-        );
+        return await this.deps.scopeLock.run(scope, scoped);
       } catch (error) {
         if (error instanceof PolicyScopeBusyError) {
           return this.policyBusyResult(input, profile, base);
@@ -445,7 +561,7 @@ export class MitigationCommandService {
         throw error;
       }
     }
-    return this.executeScopedAction(input, outcome, profile, base);
+    return scoped();
   }
 
   /**
@@ -469,6 +585,10 @@ export class MitigationCommandService {
       await this.deps.beforeManualWrite?.(profile.deviceId, profile.policyName);
     }
     const timingsMs = { preflight: 0, execution: 0, readback: 0 };
+    const deferred =
+      !!this.deps.manualCommands &&
+      MUTATING_ACTIONS.includes(input.action) &&
+      !isAutomaticCommand(input);
     const timed = async <T>(stage: keyof typeof timingsMs, work: () => Promise<T>): Promise<T> => {
       const start = this.now().getTime();
       try {
@@ -704,6 +824,7 @@ export class MitigationCommandService {
           simulation: true,
         },
         outcome,
+        deferred,
       );
       return {
         ...common,
@@ -731,13 +852,15 @@ export class MitigationCommandService {
     }
     const authorizeWrite = async () => {
       if (isAutomaticCommand(input)) {
+        if (input.action !== 'ACTIVATE') throw new Error('AUTO_REMOVE_FORBIDDEN');
         if (
           this.deps.requireAutomaticAuthorization &&
           !(await this.deps.autoWriteAuthorization?.(input, pair).catch(() => false))
         ) {
           throw new Error('AUTO_DURABLE_OWNERSHIP_REQUIRED');
         }
-      }
+      } else if (this.deps.manualCommands && !(await this.deps.manualCommands.authorize(input)))
+        throw new Error('MANUAL_JOURNAL_AUTHORIZATION_FAILED');
       if (this.autoExecutionBlocked(input)) throw new Error('AUTO_EXECUTION_DISABLED');
     };
     /**
@@ -760,9 +883,9 @@ export class MitigationCommandService {
           // Fail-closed: sem preflight OK o equipamento NAO recebe escrita.
           if (!preflight?.ok) return this.preflightBlocked(common, preview, preflight);
           if (
-            input.requestId.startsWith('auto-activate-') &&
-            this.deps.autoEvidence &&
-            !(await this.deps.autoEvidence(profile.id, input.autoEvidence).catch(() => false))
+            isAutomaticCommand(input) &&
+            (this.deps.requireAutomaticAuthorization || this.deps.autoEvidence) &&
+            !(await this.deps.autoEvidence?.(profile.id, input.autoEvidence).catch(() => false))
           ) {
             return {
               ...common,
@@ -815,6 +938,7 @@ export class MitigationCommandService {
             simulation: !liveDevice,
           },
           outcome,
+          deferred,
         );
         return {
           ...common,
@@ -832,7 +956,7 @@ export class MitigationCommandService {
         };
       }
 
-      // REMOVE AUTO requires the durable lifecycle authorization as well as M8.
+      // This physical REMOVE branch is reachable only from an authorized human action.
       if (this.autoExecutionBlocked(input)) {
         return this.autoExecutionDisabledResult(common, preview, preflight);
       }
@@ -867,6 +991,7 @@ export class MitigationCommandService {
           simulation: !liveDevice,
         },
         outcome,
+        deferred,
       );
       return {
         ...common,
@@ -901,6 +1026,7 @@ export class MitigationCommandService {
           simulation: !liveDevice,
         },
         outcome,
+        deferred,
       );
       return {
         ...common,
@@ -1300,7 +1426,9 @@ export class MitigationCommandService {
       sharedPolicyTargets: MitigationSharedTargetSummary[];
     },
     outcome: MitigationNotificationOutcome,
+    deferred = false,
   ): Promise<void> {
+    if (deferred) return; // ownership, journal result and outbox commit together.
     const publisher = this.deps.notifications;
     if (!publisher) return;
     const notification: MitigationNotification = {

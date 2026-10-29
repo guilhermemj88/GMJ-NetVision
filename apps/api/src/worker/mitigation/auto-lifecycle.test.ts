@@ -1,4 +1,6 @@
-﻿import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
+import Fastify from 'fastify';
+import { registerN8nRoutes } from '../../n8n-routes';
 import type { HostRecord } from '@gmj/shared';
 import {
   AutoMitigationLifecycle,
@@ -8,6 +10,7 @@ import {
   type ScopeOwnership,
   type JournalCommand,
 } from './auto-lifecycle';
+import { resolveAutoClientBinding } from './auto-client-binding';
 import { MemoryAutomationStore } from './automation-store';
 import { DurableMitigationOutbox, type OutboxEntry } from './durable-mitigation-outbox';
 import { InMemoryMitigationRepository } from '../../infrastructure/bgp/mitigation/in-memory-mitigation-repository';
@@ -22,26 +25,35 @@ import {
 import { MockMitigationExecutor } from '../../infrastructure/bgp/mitigation/mitigation-executor';
 import { InMemoryPolicyScopeLock } from '../../infrastructure/bgp/mitigation/mitigation-policy-lock';
 import { MitigationAutoEngine, type MitigationAutoDecision } from './mitigation-auto-engine';
-import type { MitigationTrafficSample } from './mitigation-traffic-source';
 import type { MitigationNotification } from '../../infrastructure/bgp/mitigation/notification-publisher';
-import { recoveryMappings, independentRecoveryProof } from './auto-recovery-proof';
 
 const BW = 10_000_000_000n;
 class FakeSsh implements MitigationSshPort {
   active = false;
   writes: string[][] = [];
+  reads = 0;
   failWrite = false;
-  diverge = false;
   failRead = false;
+  diverge = false;
+  ignoreRemove = false;
+  baselineManual = false;
   beforePreflight: (() => void) | null = null;
   config() {
     return [
       ...(this.active
         ? [
-            `route-policy PL-TEST_IPv4-IN deny node 1`,
+            'route-policy PL-TEST_IPv4-IN deny node 1',
             ' if-match ip-prefix BOGONS',
-            `route-policy PL-TEST_IPv4-IN permit node 2`,
+            'route-policy PL-TEST_IPv4-IN permit node 2',
             ' if-match ip-prefix PREFIX8to24',
+            ' apply extcommunity rt 268568:660 additive',
+          ]
+        : []),
+      ...(this.baselineManual
+        ? [
+            'route-policy PL-TEST_IPv4-IN permit node 50',
+            ' if-match ip-prefix OPERATOR-ONLY',
+            ' apply local-preference 4000',
             ' apply extcommunity rt 268568:660 additive',
           ]
         : []),
@@ -49,6 +61,7 @@ class FakeSsh implements MitigationSshPort {
     ].join('\n');
   }
   async readMitigationConfiguration() {
+    this.reads++;
     this.beforePreflight?.();
     if (this.failRead) throw Error('read timeout');
     return {
@@ -59,12 +72,14 @@ class FakeSsh implements MitigationSshPort {
     };
   }
   async readMitigationRoutePolicy() {
+    this.reads++;
     if (this.failRead) throw Error('read timeout');
     return this.diverge ? 'route-policy PL-TEST_IPv4-IN permit node 11' : this.config();
   }
   async applyMitigationCommands(_h: HostRecord, commands: readonly string[]) {
     this.writes.push([...commands]);
-    this.active = !commands.some((c) => c.startsWith('undo route-policy'));
+    const remove = commands.some((c) => c.startsWith('undo route-policy'));
+    if (!remove || !this.ignoreRemove) this.active = !remove;
     if (this.failWrite) throw Error('SSH timeout after commit');
     return { ok: true, output: 'fake only' };
   }
@@ -89,13 +104,38 @@ async function harness() {
     plannedMitigationNode: 2,
     plannedNode: 2,
   });
+  const iface = {
+    id: 'client-if',
+    name: 'Eth-Trunk1.100',
+    ifIndex: 100,
+    description: 'FAKE-IP_10GB',
+    alias: null,
+    adminStatus: 'UP',
+    operStatus: 'UP',
+  };
+  const host = {
+    id: profile.deviceId,
+    hostname: 'FAKE',
+    interfaces: [iface],
+    sshEnabled: true,
+    ssh: { host: '192.0.2.254', port: 22, username: 'fake' },
+  } as unknown as HostRecord;
+  const bindingInput = {
+    profileId: profile.id,
+    deviceId: profile.deviceId,
+    interfaceId: profile.interfaceId,
+    customer: 'FAKE-IP',
+    direction: 'tx' as const,
+    detectedBandwidthBps: BW,
+    bandwidthOverrideBps: null,
+  };
   const t: LifecycleTarget = {
     enabled: true,
     profileId: profile.id,
     deviceId: profile.deviceId,
     policyName: profile.policyName,
     interfaceId: profile.interfaceId,
-    customer: 'OFFLINE',
+    customer: 'FAKE-IP',
     mode: 'AUTO',
     addressFamily: 'IPV4',
     direction: 'tx',
@@ -118,33 +158,28 @@ async function harness() {
     scopeMembers: 1,
     fast: true,
     otherFamilyAuto: false,
-    recoveryProofKey: 'dedicated-offered-traffic',
+    clientBinding: resolveAutoClientBinding(bindingInput, {
+      id: profile.deviceId,
+      interfaces: [iface],
+    }),
   };
   const config = {
     ...lifecycleConfig({}),
     installation: 'IMPLANTAR',
     enabled: true,
     executionEnabled: true,
-    removeEnabled: true,
     profiles: [profile.id],
     devices: [profile.deviceId],
-    minHoldMs: 60_000,
-    recoveryMs: 10_000,
-    cooldownMs: 60_000,
+    cooldownMs: 60000,
   };
-  const ssh = new FakeSsh();
-  const host = {
-    id: profile.deviceId,
-    hostname: 'FAKE',
-    sshEnabled: true,
-    ssh: { host: '192.0.2.254', port: 22, username: 'fake' },
-  } as unknown as HostRecord;
-  const live = new HuaweiMitigationExecutor({
-    ssh,
-    config: { executor: 'HUAWEI', liveWriteEnabled: true, allowedDeviceIds: [profile.deviceId] },
-  });
-  let proof: MitigationTrafficSample | null = null;
-  let lifecycle: AutoMitigationLifecycle;
+  const ssh = new FakeSsh(),
+    live = new HuaweiMitigationExecutor({
+      ssh,
+      config: { executor: 'HUAWEI', liveWriteEnabled: true, allowedDeviceIds: [profile.deviceId] },
+    });
+  let lifecycle: AutoMitigationLifecycle,
+    commands: MitigationCommandService,
+    engine: MitigationAutoEngine | undefined;
   const physical = vi.fn(async () => {
     if (ssh.failRead) throw Error('fake read timeout');
     return {
@@ -160,26 +195,34 @@ async function harness() {
     live,
     executor: new MockMitigationExecutor(),
     scopeLock: new InMemoryPolicyScopeLock(),
-    expectedNodes: async () => [11],
+    expectedNodes: async () => (ssh.baselineManual ? [11, 50] : [11]),
     now: () => new Date(now),
     autoExecutionEnabled: () => config.executionEnabled,
     autoEvidence: async () => true,
     requireAutomaticAuthorization: true,
     autoWriteAuthorization: (i, p) => lifecycle.authorize(i, p),
-    beforeManualWrite: (d, p) => lifecycle.manualMutation(d, p),
+    manualCommands: {
+      begin: (i, s) => lifecycle.beginManual(i, s.deviceId, s.policyName),
+      authorize: (i) => lifecycle.authorizeManual(i),
+      complete: (i, r, real) => lifecycle.completeManual(i, r, real),
+    },
+    afterAutomaticCommand: (i, r, real) => lifecycle.completeActivation(i, r, real),
+    onScopeRemoved: async (scope) => {
+      engine?.forgetProfiles(scope.profileIds);
+    },
   };
-  const commands = new MitigationCommandService(deps);
-  const create = () =>
-    new AutoMitigationLifecycle({
+  const create = () => {
+    commands = new MitigationCommandService(deps);
+    lifecycle = new AutoMitigationLifecycle({
       store,
       config: () => config,
       target: async () => t,
       execute: (i) => commands.execute(i),
       physical,
-      recoveryProof: async () => proof,
       now: () => now,
     });
-  lifecycle = create();
+  };
+  create();
   const decision = (traffic = 100_000_000n): MitigationAutoDecision => ({
     at: new Date(now).toISOString(),
     sampleAt: new Date(now).toISOString(),
@@ -194,7 +237,7 @@ async function harness() {
     samplesOver: 0,
     samplesBelow: 0,
     requiredSamples: 3,
-    runtimeState: 'MITIGATED',
+    runtimeState: 'NORMAL',
     sharedPolicy: false,
     direction: 'tx',
     requestId: null,
@@ -204,184 +247,180 @@ async function harness() {
     detail: null,
     episodeId: 'engine-episode-1',
   });
-  const advance = (ms: number) => {
-    now += ms;
-  };
-  const sample = (bps = 100_000_000n) => {
-    proof = {
-      bps,
-      sampleKey: String(now),
-      occurredAt: new Date(now),
-      continuityKey: t.recoveryProofKey!,
-    };
-  };
-  const activate = () =>
+  const activate = (start = now - 10000) =>
     lifecycle.activate({
       profileId: t.profileId,
-      autoEvidence: { sampleAt: new Date(now).toISOString(), continuityKey: 'fast-revision' },
+      autoEvidence: {
+        sampleAt: new Date(now).toISOString(),
+        continuityKey: 'fast-revision',
+        sequenceStartedAt: new Date(start).toISOString(),
+        samplesOver: 3,
+      },
     });
-  const recover = async () => {
-    advance(60_000);
-    for (let i = 0; i < 3; i++) {
-      sample();
-      await lifecycle.observe(decision());
-      advance(5000);
-    }
-  };
   const scope = () => store.transaction((tx) => tx.get<ScopeOwnership>(scopeKey(t)));
+  const manual = (id = 'manual-remove') =>
+    commands.execute({ requestId: id, action: 'REMOVE', profileId: t.profileId });
   return {
     t,
     store,
     repository,
     config,
     ssh,
-    commands,
     deps,
     physical,
-    advance,
-    sample,
+    iface,
+    bindingInput,
+    host,
     decision,
     activate,
-    recover,
     scope,
+    manual,
+    advance: (ms: number) => {
+      now += ms;
+    },
+    now: () => now,
     get lifecycle() {
       return lifecycle;
     },
+    get commands() {
+      return commands;
+    },
     restart: async () => {
-      lifecycle = create();
+      create();
       await lifecycle.reconcile();
     },
-    loseProof: () => {
-      proof = null;
+    attachEngine: () => {
+      let bps = 9_500_000_000n;
+      engine = new MitigationAutoEngine({
+        sampling: { maxAgeMs: 15000, maxGapMs: 15000 },
+        globalMode: 'AUTO',
+        execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [t.deviceId] },
+        executionControl: { enabled: true, allowedProfileIds: [t.profileId] },
+        targets: {
+          list: async () => [
+            { ...t, runtimeState: (await repository.getRuntime(t.profileId))!.state },
+          ],
+        },
+        traffic: {
+          sample: async () => bps,
+          sampleWithId: async () => ({
+            bps,
+            sampleKey: String(now),
+            occurredAt: new Date(now),
+            continuityKey: 'fast-revision',
+          }),
+        },
+        exclusions: { listPeerExclusions: async () => [] },
+        runtime: {
+          get: (id) => repository.getRuntime(id),
+          save: async (id, patch) => {
+            await repository.upsertRuntime(id, patch);
+          },
+        },
+        commands: {
+          execute: async (i) => {
+            const result = await lifecycle.activate(i);
+            if (['AUTO_COOLDOWN_ACTIVE', 'AUTO_NEW_EPISODE_REQUIRED'].includes(result.status ?? ''))
+              engine?.forgetProfiles([i.profileId]);
+            return result;
+          },
+        },
+        now: () => new Date(now),
+      });
+      return {
+        set: (value: bigint) => {
+          bps = value;
+        },
+        tick: async () => {
+          now += 5000;
+          for (const d of await engine!.tick()) await lifecycle.observe(d);
+        },
+      };
     },
-    now: () => now,
   };
 }
 
-describe('durable AUTO lifecycle: real command service + Huawei executor, fake SSH only', () => {
-  it('existing active reservation on another scope exhausts the global AUTO budget', async () => {
-    const h = await harness();
-    await h.store.transaction((tx) => tx.put('other', 'scope', 'ACTIVE', { phase: 'ACTIVE' }));
-    expect((await h.activate()).status).toBe('AUTO_CAPACITY_OR_SCOPE_BUSY');
-    expect(h.ssh.writes).toHaveLength(0);
-  });
-  it('idempotent manual ACTIVATE relinquishes ownership without removing the policy', async () => {
-    const h = await harness();
-    await h.activate();
-    await h.commands.execute({
-      requestId: 'operator-takes-ownership',
-      action: 'ACTIVATE',
-      profileId: h.t.profileId,
-    });
-    expect((await h.scope())?.phase).toBe('MANUAL');
-    await h.recover();
-    expect(h.ssh.writes).toHaveLength(1);
-  });
-  it('real engine detects three fresh FAST samples, activates through canonical transport and recovers', async () => {
-    const h = await harness();
-    let bps = 9_500_000_000n;
-    const source = {
-      sample: async () => bps,
-      sampleWithId: async () => ({
-        bps,
-        sampleKey: String(h.now()),
-        occurredAt: new Date(h.now()),
-        continuityKey: 'fast-revision',
-      }),
-    };
-    const engine = new MitigationAutoEngine({
-      sampling: { maxAgeMs: 15000, maxGapMs: 15000 },
-      globalMode: 'AUTO',
-      execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [h.t.deviceId] },
-      executionControl: { enabled: true, allowedProfileIds: [h.t.profileId] },
-      targets: {
-        list: async () => [
-          { ...h.t, runtimeState: (await h.repository.getRuntime(h.t.profileId))!.state },
-        ],
-      },
-      traffic: source,
-      exclusions: { listPeerExclusions: async () => [] },
-      runtime: {
-        get: (id) => h.repository.getRuntime(id),
-        save: async (id, patch) => {
-          await h.repository.upsertRuntime(id, patch);
-        },
-      },
-      commands: { execute: (i) => h.lifecycle.activate(i) },
-      now: () => new Date(h.now()),
-    });
-    for (let i = 0; i < 3; i++) {
-      h.advance(5000);
-      await engine.tick();
-    }
+describe('AUTO ACTIVATE + MANUAL REMOVE: canonical executor with fake SSH only', () => {
+  it('real engine -> three samples -> ACTIVATE -> indefinite hold -> manual REMOVE -> cooldown -> new episode', async () => {
+    const h = await harness(),
+      e = h.attachEngine();
+    for (let i = 0; i < 3; i++) await e.tick();
     expect(h.ssh.writes).toHaveLength(1);
     expect((await h.scope())?.phase).toBe('ACTIVE');
-    h.advance(60000);
-    bps = 100_000_000n;
-    for (let i = 0; i < 3; i++) {
-      h.sample();
-      for (const d of await engine.tick()) await h.lifecycle.observe(d);
-      h.advance(5000);
-    }
-    expect(h.ssh.writes).toHaveLength(2);
-    expect((await h.scope())?.phase).toBe('COOLDOWN');
-  });
-  it('AUTO cannot adopt a pre-existing physical manual mitigation even with stale NORMAL runtime', async () => {
-    const h = await harness();
-    h.ssh.active = true;
-    await h.activate();
-    expect((await h.scope())?.phase).toBe('UNCERTAIN');
-    await h.recover();
-    expect(h.ssh.writes).toHaveLength(0);
+    e.set(0n);
+    for (let i = 0; i < 20; i++) await e.tick();
+    expect(h.ssh.writes).toHaveLength(1);
     expect(h.ssh.active).toBe(true);
-  });
-  it('ACTIVATE, fresh independent recovery, REMOVE, readbacks and two durable notifications', async () => {
-    const h = await harness();
-    expect(await h.activate()).toMatchObject({
+    expect(await h.manual()).toMatchObject({
       ok: true,
       verified: true,
-      status: 'ACTIVATED_VERIFIED',
+      status: 'REMOVED_VERIFIED',
     });
-    expect((await h.scope())?.phase).toBe('ACTIVE');
-    await h.recover();
-    expect(h.ssh.writes).toHaveLength(2);
-    expect(h.ssh.active).toBe(false);
     expect((await h.scope())?.phase).toBe('COOLDOWN');
-    const alerts = await h.store.transaction((tx) => tx.list<OutboxEntry>('outbox'));
-    expect(alerts.map((a) => a.event)).toEqual([
+    e.set(9_500_000_000n);
+    for (let i = 0; i < 10; i++) await e.tick();
+    expect(h.ssh.writes).toHaveLength(2);
+    for (let i = 0; i < 10; i++) await e.tick();
+    expect(h.ssh.writes).toHaveLength(3);
+    const notices = await h.store.transaction((tx) => tx.list<OutboxEntry>('outbox'));
+    expect(notices.map((n) => n.event)).toEqual([
       'MITIGATION_VERIFIED',
       'MITIGATION_REMOVED_VERIFIED',
+      'MITIGATION_VERIFIED',
     ]);
-    expect(alerts.every((a) => a.payload.verified === true)).toBe(true);
-    expect(await h.activate()).toMatchObject({ ok: false, status: 'AUTO_CAPACITY_OR_SCOPE_BUSY' });
+    expect(notices.every((n) => n.payload.verified)).toBe(true);
   });
-  it.each(['VNT', 'FIBINET', ''])('installation %s cannot write', async (installation) => {
+  it('zero, stale, missing and repeated telemetry never removes even after 100 hours', async () => {
+    const h = await harness();
+    await h.activate();
+    for (let i = 0; i < 100; i++) {
+      h.advance(3600000);
+      await h.lifecycle.observe({
+        ...h.decision(0n),
+        sampleAt: i % 2 ? null : new Date(h.now()).toISOString(),
+        trafficBps: i % 3 ? null : '0',
+      });
+    }
+    expect(h.ssh.writes).toHaveLength(1);
+    expect((await h.scope())?.phase).toBe('ACTIVE');
+  });
+  it.each([
+    { origin: 'AUTO' as const },
+    { requestId: 'auto-remove-forbidden' },
+    { autoEvidence: { sampleAt: '2026-10-29T15:00:00Z', continuityKey: 'x' } },
+    { autoOperationId: 'old-remove-intent' },
+  ])('rejects every AUTO REMOVE marker before SSH even with M8 enabled: %j', async (marker) => {
+    const h = await harness();
+    const r = await h.commands.execute({
+      requestId: 'remove-marker',
+      action: 'REMOVE',
+      profileId: h.t.profileId,
+      ...marker,
+    });
+    expect(r.status).toBe('AUTO_REMOVE_FORBIDDEN');
+    expect(h.ssh.writes).toHaveLength(0);
+    expect(h.ssh.reads).toBe(0);
+  });
+  it('cannot authorize legacy automatic REMOVE journal', async () => {
+    const h = await harness();
+    expect(
+      await h.lifecycle.authorize(
+        {
+          requestId: 'auto-remove-old',
+          action: 'REMOVE',
+          profileId: h.t.profileId,
+          origin: 'AUTO',
+          autoOperationId: 'old',
+        },
+        { bogonNode: 1, mitigationNode: 2 },
+      ),
+    ).toBe(false);
+  });
+  it.each(['VNT', 'FIBINET', ''])('installation %s cannot activate', async (installation) => {
     const h = await harness();
     h.config.installation = installation;
     expect((await h.activate()).ok).toBe(false);
     expect(h.ssh.writes).toHaveLength(0);
-  });
-  it.each(['enabled', 'executionEnabled'] as const)(
-    '%s off prevents ACTIVATE and REMOVE without touching physical mitigation',
-    async (flag) => {
-      const h = await harness();
-      h.config[flag] = false;
-      await h.activate();
-      expect(h.ssh.writes).toHaveLength(0);
-      h.config[flag] = true;
-      await h.activate();
-      h.config[flag] = false;
-      await h.recover();
-      expect(h.ssh.writes).toHaveLength(1);
-      expect(h.ssh.active).toBe(true);
-    },
-  );
-  it('REMOVE flag off leaves active policy intact', async () => {
-    const h = await harness();
-    await h.activate();
-    h.config.removeEnabled = false;
-    await h.recover();
-    expect(h.ssh.writes).toHaveLength(1);
   });
   it.each([
     { scopeMembers: 2 },
@@ -389,175 +428,139 @@ describe('durable AUTO lifecycle: real command service + Huawei executor, fake S
     { otherFamilyAuto: true },
     { direction: 'rx' as const },
     { fast: false },
-    { bogonNode: 0 },
+    { bogonNode: 2 },
     { mitigationExcluded: true },
-    { readiness: 'NOT_READY' as const },
+    { readiness: 'BLOCKED' as const },
+    { clientBinding: null },
     { effectiveBandwidthBps: 0n },
-    { recoveryPercent: 90 },
-    { recoverySamples: 1 },
+    { triggerSamples: 0 },
   ])('rejects unsafe target %#', async (patch) => {
     const h = await harness();
     Object.assign(h.t, patch);
     expect((await h.activate()).ok).toBe(false);
     expect(h.ssh.writes).toHaveLength(0);
   });
-  it.each(['profiles', 'devices'] as const)('explicit %s allowlist is mandatory', async (key) => {
+  it.each(['profiles', 'devices'] as const)('requires explicit %s allowlist', async (key) => {
     const h = await harness();
     h.config[key] = [];
+    expect((await h.activate()).status).toBe('AUTO_NOT_ALLOWLISTED');
+    expect(h.ssh.writes).toHaveLength(0);
+  });
+  it('does not repeat activation while active, including after restart', async () => {
+    const h = await harness();
     await h.activate();
+    await h.activate();
+    await h.restart();
+    await h.activate();
+    expect(h.ssh.writes).toHaveLength(1);
+    expect((await h.scope())?.phase).toBe('ACTIVE');
+  });
+  it('runtime NORMAL cannot adopt physically existing manual mitigation', async () => {
+    const h = await harness();
+    h.ssh.active = true;
+    expect((await h.activate()).status).toBe('AUTO_PHYSICAL_SCOPE_NOT_NORMAL');
+    expect(h.ssh.writes).toHaveLength(0);
+    expect(await h.scope()).toBeNull();
+  });
+  it('physical read failure blocks activation', async () => {
+    const h = await harness();
+    h.ssh.failRead = true;
+    expect((await h.activate()).status).toBe('AUTO_PHYSICAL_READ_FAILED');
     expect(h.ssh.writes).toHaveLength(0);
   });
-  it('rejects missing/stale/future activation evidence', async () => {
+  it('manual REMOVE preserves operator nodes and local-preference without adopting them', async () => {
     const h = await harness();
-    for (const at of [null, '2020-01-01T00:00:00Z', '2099-01-01T00:00:00Z'])
-      expect(
-        (
-          await h.lifecycle.activate({
-            profileId: h.t.profileId,
-            ...(at ? { autoEvidence: { sampleAt: at, continuityKey: 'x' } } : {}),
-          })
-        ).ok,
-      ).toBe(false);
-    expect(h.ssh.writes).toHaveLength(0);
+    h.ssh.baselineManual = true;
+    await h.activate();
+    expect(await h.manual()).toMatchObject({ ok: true, verified: true });
+    expect(h.ssh.config()).toContain('node 50');
+    expect(h.ssh.config()).toContain('local-preference 4000');
+    expect(h.ssh.writes.flat().filter((c) => c.startsWith('undo route-policy'))).toEqual(
+      expect.arrayContaining([
+        'undo route-policy PL-TEST_IPv4-IN node 1',
+        'undo route-policy PL-TEST_IPv4-IN node 2',
+      ]),
+    );
+    expect(h.ssh.writes.flat().join('\n')).not.toContain(
+      'undo route-policy PL-TEST_IPv4-IN node 50',
+    );
   });
-  it('global capacity and same-scope concurrent attempts reserve only once', async () => {
+  it('verified manual removal releases ownership but requires entirely new post-cooldown evidence', async () => {
     const h = await harness();
-    const results = await Promise.all([h.activate(), h.activate(), h.activate()]);
+    await h.activate();
+    await h.manual();
+    const old = h.now();
+    expect((await h.activate()).status).toBe('AUTO_COOLDOWN_ACTIVE');
+    h.advance(61000);
+    expect((await h.activate(old)).status).toBe('AUTO_NEW_EPISODE_REQUIRED');
+    expect((await h.activate(h.now())).ok).toBe(true);
+  });
+  it('manual command receipt survives restart without repeating SSH or extending cooldown', async () => {
+    const h = await harness();
+    await h.activate();
+    await h.manual();
+    const before = await h.scope();
+    await h.restart();
+    h.advance(30000);
+    expect(await h.manual()).toMatchObject({ ok: true, idempotent: true });
+    expect(h.ssh.writes).toHaveLength(2);
+    expect((await h.scope())?.cooldownUntil).toBe(before?.cooldownUntil);
+  });
+  it('readback divergence after manual REMOVE does not release ownership', async () => {
+    const h = await harness();
+    await h.activate();
+    h.ssh.ignoreRemove = true;
+    expect((await h.manual()).verified).toBe(false);
+    expect((await h.scope())?.phase).toBe('UNCERTAIN');
+    h.advance(3600000);
+    expect((await h.activate()).ok).toBe(false);
+  });
+  it('manual SSH timeout never replays uncertain command after restart', async () => {
+    const h = await harness();
+    await h.activate();
+    h.ssh.failWrite = true;
+    await h.manual();
+    await h.restart();
+    expect((await h.manual()).status).toBe('MANUAL_RECONCILIATION_REQUIRED');
+    expect(h.ssh.writes).toHaveLength(2);
+    expect((await h.scope())?.phase).toBe('UNCERTAIN');
+  });
+  it('manual ACTIVATE is held indefinitely and legitimate REMOVE still works with M8 off', async () => {
+    const h = await harness();
+    h.config.executionEnabled = false;
+    expect((await h.activate()).ok).toBe(false);
+    expect(
+      (
+        await h.commands.execute({
+          requestId: 'manual-activate',
+          action: 'ACTIVATE',
+          profileId: h.t.profileId,
+        })
+      ).verified,
+    ).toBe(true);
+    h.advance(9999999);
+    await h.lifecycle.observe(h.decision(0n));
+    expect(h.ssh.writes).toHaveLength(1);
+    expect((await h.manual()).verified).toBe(true);
+    expect((await h.scope())?.phase).toBe('COOLDOWN');
+  });
+  it('global capacity serializes concurrent activations', async () => {
+    const h = await harness();
+    const results = await Promise.all([h.activate(), h.activate()]);
     expect(results.filter((r) => r.ok)).toHaveLength(1);
     expect(h.ssh.writes).toHaveLength(1);
   });
-  it('manual mitigation is never adopted and removed', async () => {
-    const h = await harness();
-    await h.commands.execute({
-      requestId: 'operator',
-      action: 'ACTIVATE',
-      profileId: h.t.profileId,
-    });
-    await h.recover();
-    expect(h.ssh.writes).toHaveLength(1);
-    expect(await h.scope()).toBeNull();
-  });
-  it('manual command revokes AUTO ownership under canonical policy lock', async () => {
-    const h = await harness();
-    await h.activate();
-    await h.commands.execute({
-      requestId: 'operator-remove',
-      action: 'REMOVE',
-      profileId: h.t.profileId,
-    });
-    expect((await h.scope())?.phase).toBe('MANUAL');
-    await h.recover();
-    expect(h.ssh.writes).toHaveLength(2);
-  });
-  it('cannot remove solely because diverted client TX is low', async () => {
-    const h = await harness();
-    await h.activate();
-    h.advance(60_000);
-    for (let i = 0; i < 20; i++) {
-      await h.lifecycle.observe(h.decision());
-      h.advance(5000);
-    }
-    expect(h.ssh.writes).toHaveLength(1);
-  });
-  it('duplicates do not accumulate recovery samples', async () => {
-    const h = await harness();
-    await h.activate();
-    h.advance(60_000);
-    h.sample();
-    for (let i = 0; i < 20; i++) await h.lifecycle.observe(h.decision());
-    expect((await h.scope())?.below).toBe(1);
-    expect(h.ssh.writes).toHaveLength(1);
-  });
-  it('stale/missing proof resets recovery without false normalization', async () => {
-    const h = await harness();
-    await h.activate();
-    h.advance(60_000);
-    h.sample();
-    await h.lifecycle.observe(h.decision());
-    h.advance(16000);
-    await h.lifecycle.observe(h.decision());
-    expect((await h.scope())?.below).toBe(0);
-    h.loseProof();
-    await h.lifecycle.observe(h.decision());
-    expect(h.ssh.writes).toHaveLength(1);
-  });
-  it('missing/stale client telemetry also blocks recovery', async () => {
-    const h = await harness();
-    await h.activate();
-    h.advance(60000);
-    for (let i = 0; i < 4; i++) {
-      h.sample();
-      const d = h.decision();
-      d.trafficBps = null;
-      await h.lifecycle.observe(d);
-      h.advance(5000);
-    }
-    expect(h.ssh.writes).toHaveLength(1);
-  });
-  it('flapping or a telemetry gap restarts the recovery sequence', async () => {
-    const h = await harness();
-    await h.activate();
-    h.advance(60000);
-    h.sample();
-    await h.lifecycle.observe(h.decision());
-    h.advance(5000);
-    h.sample(8_000_000_000n);
-    await h.lifecycle.observe(h.decision());
-    expect((await h.scope())?.below).toBe(0);
-    h.advance(5000);
-    h.sample();
-    await h.lifecycle.observe(h.decision());
-    h.advance(20000);
-    h.sample();
-    await h.lifecycle.observe(h.decision());
-    expect((await h.scope())?.below).toBe(1);
-    expect(h.ssh.writes).toHaveLength(1);
-  });
-  it('minimum hold prevents premature removal despite normal samples', async () => {
-    const h = await harness();
-    await h.activate();
-    for (let i = 0; i < 6; i++) {
-      h.advance(5000);
-      h.sample();
-      await h.lifecycle.observe(h.decision());
-    }
-    expect(h.ssh.writes).toHaveLength(1);
-  });
-  it('high telemetry appearing DURING REMOVE preflight prevents SSH write', async () => {
-    const h = await harness();
-    await h.activate();
-    h.ssh.beforePreflight = () => h.sample(9_900_000_000n);
-    await h.recover();
-    expect(h.ssh.writes).toHaveLength(1);
-    expect((await h.scope())?.phase).toBe('UNCERTAIN');
-  });
-  it('failed readback before removal preserves policy', async () => {
-    const h = await harness();
-    await h.activate();
-    h.ssh.failRead = true;
-    await h.recover();
-    expect(h.ssh.writes).toHaveLength(1);
-    expect(h.ssh.active).toBe(true);
-  });
-  it('configuration changes or divergent physical ownership require reconciliation', async () => {
-    const h = await harness();
-    await h.activate();
-    h.t.rt = '268568:661';
-    await h.recover();
-    expect((await h.scope())?.phase).toBe('UNCERTAIN');
-    expect(h.ssh.writes).toHaveLength(1);
-  });
-  it('verified ACTIVE survives restart after actual readback without replay', async () => {
-    const h = await harness();
-    await h.activate();
-    await h.restart();
-    expect((await h.scope())?.phase).toBe('ACTIVE');
-    expect(h.physical).toHaveBeenCalledOnce();
-    await h.recover();
-    expect(h.ssh.writes).toHaveLength(2);
-  });
+  it.each(['ACTIVE', 'MANUAL', 'UNCERTAIN'])(
+    'another %s scope exhausts AUTO budget',
+    async (phase) => {
+      const h = await harness();
+      await h.store.transaction((tx) => tx.put('other', 'scope', phase, { phase }));
+      expect((await h.activate()).status).toBe('AUTO_CAPACITY_OR_SCOPE_BUSY');
+      expect(h.ssh.writes).toHaveLength(0);
+    },
+  );
   it.each(['ACTIVATING', 'REMOVING'] as const)(
-    'restart during %s never replays ambiguous command',
+    'restart quarantines legacy/interrupted %s without write',
     async (phase) => {
       const h = await harness();
       await h.activate();
@@ -568,65 +571,241 @@ describe('durable AUTO lifecycle: real command service + Huawei executor, fake S
       });
       await h.restart();
       expect((await h.scope())?.phase).toBe('UNCERTAIN');
-      await h.recover();
       expect(h.ssh.writes).toHaveLength(1);
     },
   );
-  it('SSH timeout after partial write keeps uncertainty and never retries blindly', async () => {
+  it('ACTIVATE timeout remains uncertain without fabricated verified notification', async () => {
     const h = await harness();
     h.ssh.failWrite = true;
-    expect((await h.activate()).ok).toBe(false);
-    expect((await h.scope())?.phase).toBe('UNCERTAIN');
-    await h.restart();
     await h.activate();
+    expect((await h.scope())?.phase).toBe('UNCERTAIN');
+    expect(
+      (await h.store.transaction((tx) => tx.list<OutboxEntry>('outbox'))).every(
+        (n) => n.payload.verified === false,
+      ),
+    ).toBe(true);
+  });
+  it('M8 flipping off immediately before write blocks transport', async () => {
+    const h = await harness();
+    h.ssh.beforePreflight = () => {
+      h.config.executionEnabled = false;
+    };
+    await h.activate();
+    expect(h.ssh.writes).toHaveLength(0);
+  });
+  it('slow preflight cannot consume expired activation evidence', async () => {
+    const h = await harness();
+    h.ssh.beforePreflight = () => {
+      h.advance(16000);
+    };
+    await h.activate();
+    expect(h.ssh.writes).toHaveLength(0);
+  });
+  it('a corrupted runtime REMOVE flag cannot create an automatic withdrawal path', async () => {
+    const h = await harness();
+    await h.activate();
+    Object.assign(h.config, { removeEnabled: true });
+    for (let i = 0; i < 20; i++) {
+      h.advance(15000);
+      await h.lifecycle.observe(h.decision(0n));
+    }
+    await h.restart();
+    expect(h.ssh.writes).toHaveLength(1);
+    expect(h.ssh.active).toBe(true);
+  });
+  it('manual journal authorization failure blocks write', async () => {
+    const h = await harness();
+    h.deps.manualCommands!.authorize = async () => false;
+    await h.manual();
+    expect(h.ssh.writes).toHaveLength(0);
+  });
+  it('result transaction failure blocks rearm and leaves uncertain durable intent', async () => {
+    const h = await harness();
+    await h.activate();
+    h.deps.manualCommands!.complete = async () => {
+      throw Error('database unavailable');
+    };
+    expect((await h.manual()).ok).toBe(false);
+    await h.restart();
+    expect((await h.activate()).ok).toBe(false);
+    expect(h.ssh.writes).toHaveLength(2);
+  });
+  it('missing or failing telemetry revalidation is fail-closed even with journal authorization', async () => {
+    for (const check of [
+      undefined,
+      async () => {
+        throw Error('no telemetry');
+      },
+    ]) {
+      const h = await harness();
+      if (check) h.deps.autoEvidence = check;
+      else delete h.deps.autoEvidence;
+      await h.activate();
+      expect(h.ssh.writes).toHaveLength(0);
+      expect((await h.scope())?.phase).toBe('UNCERTAIN');
+    }
+  });
+  it('restart between manual write intent and result never replays or rearms', async () => {
+    const h = await harness();
+    await h.activate();
+    const input = {
+      requestId: 'interrupted-manual',
+      action: 'REMOVE' as const,
+      profileId: h.t.profileId,
+    };
+    await h.lifecycle.beginManual(input, h.t.deviceId, h.t.policyName!);
+    expect(await h.lifecycle.authorizeManual(input)).toBe(true);
+    await h.restart();
+    expect((await h.commands.execute(input)).status).toBe('MANUAL_RECONCILIATION_REQUIRED');
+    h.advance(3600000);
+    expect((await h.activate()).ok).toBe(false);
     expect(h.ssh.writes).toHaveLength(1);
   });
-  it('readback divergence never fabricates verified success', async () => {
-    const h = await harness();
-    h.ssh.diverge = true;
-    await h.activate();
-    expect((await h.scope())?.phase).toBe('UNCERTAIN');
-    const events = await h.store.transaction((tx) => tx.list<OutboxEntry>('outbox'));
-    expect(events[0]?.payload.verified).toBe(false);
-  });
-  it('missing or failed durable authorization blocks before every mutating SSH', async () => {
-    const h = await harness();
-    h.deps.autoWriteAuthorization = async () => {
-      throw Error('DB failure');
-    };
-    await h.activate();
-    expect(h.ssh.writes).toHaveLength(0);
-  });
-  it('kill switch is checked again after async durable authorization', async () => {
-    const h = await harness();
-    const original = h.deps.autoWriteAuthorization!;
-    h.deps.autoWriteAuthorization = async (i, p) => {
-      const result = await original(i, p);
-      h.config.executionEnabled = false;
-      return result;
-    };
-    await h.activate();
-    expect(h.ssh.writes).toHaveLength(0);
-  });
-  it('command authorization is single use across restart', async () => {
+  it('existing manual journal cannot be reused for another action', async () => {
     const h = await harness();
     await h.activate();
-    const s = (await h.scope())!;
+    await h.manual('same-id');
+    await h.restart();
     expect(
-      await h.lifecycle.authorize(
-        {
-          requestId: s.operationId,
-          autoOperationId: s.operationId,
+      (
+        await h.commands.execute({
+          requestId: 'same-id',
           action: 'ACTIVATE',
           profileId: h.t.profileId,
-          origin: 'AUTO',
-        },
-        { bogonNode: 1, mitigationNode: 2 },
+        })
+      ).status,
+    ).toBe('MANUAL_RECONCILIATION_REQUIRED');
+    expect(h.ssh.writes).toHaveLength(2);
+  });
+  it('shared scope needs a fresh Telegram token and Bearer; a boolean cannot authorize withdrawal', async () => {
+    const h = await harness();
+    await h.activate();
+    const other = await h.repository.upsertProfile({
+      deviceId: h.t.deviceId,
+      policyName: h.t.policyName!,
+      interfaceId: 'other-if',
+      addressFamily: 'IPV4',
+      detectedBandwidthBps: BW,
+      bandwidthSource: 'DESCRIPTION',
+    });
+    await h.repository.upsertRuntime(other.id, {
+      state: 'MITIGATED',
+      plannedBogonNode: 1,
+      plannedMitigationNode: 2,
+      plannedNode: 2,
+    });
+    const app = Fastify();
+    registerN8nRoutes(app, { commands: h.commands, commandToken: 'fake-inbound-only' });
+    await app.ready();
+    try {
+      const body = { requestId: 'telegram-remove', action: 'REMOVE', profileId: h.t.profileId };
+      const post = (payload: object, authorized = true) =>
+        app.inject({
+          method: 'POST',
+          url: '/api/integrations/n8n/mitigation-command',
+          payload,
+          headers: authorized
+            ? { authorization: 'Bearer fake-inbound-only' }
+            : { 'X-NetVision-Token': 'fake-inbound-only' },
+        });
+      expect((await post(body, false)).statusCode).toBe(401);
+      expect((await post({ ...body, acknowledgeScopeRemoval: true })).statusCode).toBe(400);
+      const blocked = (await post(body)).json();
+      expect(blocked.status).toBe('SCOPE_CONFIRMATION_REQUIRED');
+      expect(h.ssh.writes).toHaveLength(1);
+      expect((await h.scope())?.phase).toBe('MANUAL');
+      const result = (
+        await post({
+          ...body,
+          requestId: 'telegram-confirm',
+          scopeConfirmationToken: blocked.scopeConfirmation.token,
+        })
+      ).json();
+      expect(result).toMatchObject({ ok: true, verified: true, status: 'REMOVED_VERIFIED' });
+      expect((await h.scope())?.phase).toBe('COOLDOWN');
+      expect(h.ssh.writes).toHaveLength(2);
+      const journal = await h.store.transaction((tx) => tx.list<JournalCommand>('command'));
+      expect(JSON.stringify(journal)).not.toContain(blocked.scopeConfirmation.token);
+      expect(JSON.stringify(journal)).not.toContain('fake-inbound-only');
+    } finally {
+      await app.close();
+    }
+  });
+});
+
+describe('Eth-Trunk identity and removal policy', () => {
+  it.each([undefined, '1', 'true', 'false', 'yes'])(
+    'production requires literal REMOVE=0, rejects %s',
+    (value) => {
+      expect(() =>
+        lifecycleConfig({
+          NETVISION_INSTALLATION_ID: 'IMPLANTAR',
+          NODE_ENV: 'production',
+          MITIGATION_AUTO_REMOVE_ENABLED: value,
+        }),
+      ).toThrow('MUST_BE_0');
+    },
+  );
+  it('REMOVE=0 is accepted and defaults AUTO off', () => {
+    expect(
+      lifecycleConfig({
+        NETVISION_INSTALLATION_ID: 'IMPLANTAR',
+        NODE_ENV: 'production',
+        MITIGATION_AUTO_REMOVE_ENABLED: '0',
+      }),
+    ).toMatchObject({ removeEnabled: false, enabled: false, executionEnabled: false });
+  });
+  it('binds client description and contracted bandwidth, ignoring physical trunk capacity', async () => {
+    const h = await harness();
+    expect(h.t.clientBinding).toMatchObject({
+      interfaceName: 'Eth-Trunk1.100',
+      ifIndex: 100,
+      customer: 'FAKE-IP',
+      direction: 'tx',
+      detectedBandwidthBps: BW.toString(),
+    });
+  });
+  it.each(['MITIG-IP_10GB', 'SCRUB-IP_10GB', 'UPLINK-IP_10GB', 'NO-BANDWIDTH'])(
+    'rejects inappropriate source %s',
+    async (description) => {
+      const h = await harness();
+      expect(
+        resolveAutoClientBinding(h.bindingInput, {
+          id: h.t.deviceId,
+          interfaces: [{ ...h.iface, description }],
+        }),
+      ).toBeNull();
+    },
+  );
+  it.each([{ name: '100GE1/0/1' }, { operStatus: 'DOWN' }, { ifIndex: 0 }])(
+    'rejects unsafe source identity %j',
+    async (patch) => {
+      const h = await harness();
+      expect(
+        resolveAutoClientBinding(h.bindingInput, {
+          id: h.t.deviceId,
+          interfaces: [{ ...h.iface, ...patch }],
+        }),
+      ).toBeNull();
+    },
+  );
+  it('ambiguous duplicate interface name, wrong device or mismatched bandwidth cannot bind', async () => {
+    const h = await harness();
+    expect(
+      resolveAutoClientBinding(h.bindingInput, {
+        id: h.t.deviceId,
+        interfaces: [h.iface, { ...h.iface, id: 'duplicate' }],
+      }),
+    ).toBeNull();
+    expect(
+      resolveAutoClientBinding(h.bindingInput, { id: 'wrong', interfaces: [h.iface] }),
+    ).toBeNull();
+    expect(
+      resolveAutoClientBinding(
+        { ...h.bindingInput, detectedBandwidthBps: BW * 2n },
+        { id: h.t.deviceId, interfaces: [h.iface] },
       ),
-    ).toBe(false);
-    expect((await h.store.transaction((tx) => tx.get<JournalCommand>(s.operationId)))?.state).toBe(
-      'VERIFIED',
-    );
+    ).toBeNull();
   });
 });
 
@@ -821,43 +1000,5 @@ describe('persistent outbox and episodes', () => {
     expect(ids[2]).toBe(ids[0]); // old delivery retry after positive recovery
     await h.lifecycle.detection({ ...h.decision(), episodeId: 'new-attack' }, build);
     expect(ids[3]).not.toBe(ids[0]);
-  });
-});
-
-describe('independent recovery counter adapter', () => {
-  it('rejects malformed or ambiguous configuration', () => {
-    expect(() => recoveryMappings('{}')).toThrow();
-    expect(() =>
-      recoveryMappings(
-        '[{"profileId":"p","interfaceId":"i","direction":"rx"},{"profileId":"p","interfaceId":"j","direction":"tx"}]',
-      ),
-    ).toThrow();
-  });
-  it('requires separate UP/usable interface and preserves bps units', async () => {
-    const h = await harness();
-    const mappings = recoveryMappings(
-      JSON.stringify([{ profileId: h.t.profileId, interfaceId: 'offered-if', direction: 'rx' }]),
-    );
-    h.t.recoveryProofKey = mappings.get(h.t.profileId)!.key;
-    const now = Date.now();
-    const row = {
-      interfaceId: 'offered-if',
-      deviceId: h.t.deviceId,
-      rxBps: 1234567,
-      txBps: 9,
-      timestamp: new Date(now),
-      rateStartAt: new Date(now - 5000),
-      usable: true,
-      adminStatus: 'UP',
-      operStatus: 'UP',
-      currentOperStatus: 'UP',
-    };
-    const reader = { latestTraffic: async () => row };
-    expect((await independentRecoveryProof(h.t, mappings, reader, now))?.bps).toBe(1234567n);
-    row.usable = false;
-    expect(await independentRecoveryProof(h.t, mappings, reader, now)).toBeNull();
-    row.usable = true;
-    row.deviceId = 'other';
-    expect(await independentRecoveryProof(h.t, mappings, reader, now)).toBeNull();
   });
 });

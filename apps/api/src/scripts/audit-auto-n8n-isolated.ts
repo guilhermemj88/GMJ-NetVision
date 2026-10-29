@@ -75,7 +75,7 @@ async function main() {
   await queue.publish({
     ...n,
     event: 'MITIGATION_REMOVED_VERIFIED',
-    eventId: 'auto-remove-isolated',
+    eventId: 'manual-remove-isolated',
   });
   await queue.drain();
   assert.equal(receipts.at(-1)?.delivered, true);

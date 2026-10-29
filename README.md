@@ -1,5 +1,11 @@
 # GMJ NetVision
 
+## IMPLANTAR: AUTO ACTIVATE e REMOVE exclusivamente manual
+
+A implementação candidata automatiza somente a ativação DDoS: Eth-Trunk do cliente, FAST, threshold, amostras novas, preflight Huawei, ACTIVATE, readback e `MITIGATION_VERIFIED` com os botões existentes do Telegram. Tráfego baixo, timer e normalização nunca retiram uma mitigação. O operador decide a retirada pelo Telegram autenticado ou pela UI NetVision. Após REMOVE manual verificado, ownership e episódio anterior são encerrados; cooldown e uma sequência nova de amostras precedem outra ativação.
+
+`MITIGATION_AUTO_REMOVE_ENABLED=0` é obrigatório no IMPLANTAR em produção. Não existe fase para habilitar AUTO REMOVE nem dependência de fonte independente de recuperação. Plano vigente: [AUTO_DDOS_ACTIVATION_PLAN.md](docs/AUTO_DDOS_ACTIVATION_PLAN.md); matriz: [AUTO_ACTIVATE_MANUAL_REMOVE_HOMOLOGATION.md](docs/AUTO_ACTIVATE_MANUAL_REMOVE_HOMOLOGATION.md). Esta branch não autoriza deploy, migration, restart ou escrita Huawei.
+
 GMJ NetVision é uma plataforma map-first para construir, descobrir e observar topologias de rede. A aplicação abre diretamente no mapa: edição, consulta, tráfego e descoberta acontecem sem tirar o operador do contexto da topologia.
 
 Esta primeira versão funcional entrega um backbone ISP demonstrativo com 13 equipamentos, tráfego bidirecional animado, edição manual, drawers contextuais e histórico de interfaces. Ela roda integralmente com `DEMO_MODE=true`, sem Zabbix, SNMP, SSH ou PostgreSQL ativos.
@@ -122,17 +128,17 @@ O schema está em `apps/api/prisma/schema.prisma`. O repositório demo em memór
 
 ## Variáveis de ambiente
 
-| Variável                    | Uso                                       | Padrão                               |
-| --------------------------- | ----------------------------------------- | ------------------------------------ |
-| `DEMO_MODE`                 | habilita dados e métricas demonstrativos  | `true`                               |
-| `PORT`                      | porta da API Fastify                      | `3333`                               |
-| `NEXT_PUBLIC_API_URL`       | URL pública da API GMJ (nunca do Zabbix)  | `http://localhost:3333`              |
-| `DATABASE_URL`              | conexão PostgreSQL usada pelo Prisma      | exemplo no `.env.example`            |
-| `CREDENTIAL_ENCRYPTION_KEY` | chave base64 de 32 bytes para AES-256-GCM | obrigatória antes de salvar segredos |
-| `ZABBIX_URL`                | endpoint base do Zabbix                   | vazio                                |
-| `ZABBIX_TOKEN`              | token usado somente pela API              | vazio                                |
-| `ZABBIX_AUTH_MODE`          | `AUTH_FIELD` (Zabbix 6.0) ou `BEARER`     | `AUTH_FIELD`                         |
-| `OPTICAL_POLL_INTERVAL_SECONDS` | intervalo do enrichment óptico SNMP/SSH | `300` (mínimo `60`)                  |
+| Variável                        | Uso                                       | Padrão                               |
+| ------------------------------- | ----------------------------------------- | ------------------------------------ |
+| `DEMO_MODE`                     | habilita dados e métricas demonstrativos  | `true`                               |
+| `PORT`                          | porta da API Fastify                      | `3333`                               |
+| `NEXT_PUBLIC_API_URL`           | URL pública da API GMJ (nunca do Zabbix)  | `http://localhost:3333`              |
+| `DATABASE_URL`                  | conexão PostgreSQL usada pelo Prisma      | exemplo no `.env.example`            |
+| `CREDENTIAL_ENCRYPTION_KEY`     | chave base64 de 32 bytes para AES-256-GCM | obrigatória antes de salvar segredos |
+| `ZABBIX_URL`                    | endpoint base do Zabbix                   | vazio                                |
+| `ZABBIX_TOKEN`                  | token usado somente pela API              | vazio                                |
+| `ZABBIX_AUTH_MODE`              | `AUTH_FIELD` (Zabbix 6.0) ou `BEARER`     | `AUTH_FIELD`                         |
+| `OPTICAL_POLL_INTERVAL_SECONDS` | intervalo do enrichment óptico SNMP/SSH   | `300` (mínimo `60`)                  |
 
 ### Inventário global de Hosts
 

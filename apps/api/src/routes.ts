@@ -165,10 +165,7 @@ import {
   lifecycleConfig,
   type LifecycleTarget,
 } from './worker/mitigation/auto-lifecycle';
-import {
-  independentRecoveryProof,
-  recoveryMappings,
-} from './worker/mitigation/auto-recovery-proof';
+import { resolveAutoClientBinding } from './worker/mitigation/auto-client-binding';
 import { PrismaAutomationStore } from './worker/mitigation/automation-store';
 import { DurableMitigationOutbox } from './worker/mitigation/durable-mitigation-outbox';
 import { buildDetectionAlertNotification } from './application/mitigation-detection-alert';
@@ -839,8 +836,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     allowedProfiles: lifecycleSettings.profiles,
     allowedDevices: lifecycleSettings.devices,
     maxActive: lifecycleSettings.maxActive,
-    minHoldMs: lifecycleSettings.minHoldMs,
-    recoveryMs: lifecycleSettings.recoveryMs,
+    removalPolicy: 'MANUAL_ONLY',
     cooldownMs: lifecycleSettings.cooldownMs,
     records: automationStore
       ? await prismaClient.mitigationAutomationRecord.groupBy({
@@ -930,8 +926,30 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     requireAutomaticAuthorization: lifecycleSettings.enabled,
     autoWriteAuthorization: (input, pair) =>
       lifecycle?.authorize(input, pair) ?? Promise.resolve(false),
-    beforeManualWrite: (deviceId, policyName) =>
-      lifecycle?.manualMutation(deviceId, policyName) ?? Promise.resolve(),
+    ...(automationStore
+      ? {
+          manualCommands: {
+            begin: (
+              input: import('./infrastructure/bgp/mitigation/mitigation-command-service').MitigationCommandInput,
+              scope: { deviceId: string; policyName: string },
+            ) =>
+              lifecycle?.beginManual(input, scope.deviceId, scope.policyName) ??
+              Promise.reject(Error('MANUAL_LIFECYCLE_NOT_READY')),
+            authorize: (
+              input: import('./infrastructure/bgp/mitigation/mitigation-command-service').MitigationCommandInput,
+            ) => lifecycle?.authorizeManual(input) ?? Promise.resolve(false),
+            complete: (
+              input: import('./infrastructure/bgp/mitigation/mitigation-command-service').MitigationCommandInput,
+              result: import('./infrastructure/bgp/mitigation/mitigation-command-service').MitigationActionResult,
+              real: boolean,
+            ) =>
+              lifecycle?.completeManual(input, result, real) ??
+              Promise.reject(Error('MANUAL_LIFECYCLE_NOT_READY')),
+          },
+        }
+      : {}),
+    afterAutomaticCommand: (input, result, real) =>
+      lifecycle?.completeActivation(input, result, real) ?? Promise.resolve(),
     ...(mitigationExecutionConfig.executor === 'HUAWEI' ? { live: mitigationLiveExecutor } : {}),
     // Snapshot do discovery: o preflight compara existingNodes e aborta sem ele.
     expectedNodes: async (profileId) =>
@@ -1324,9 +1342,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     // Origem declarada pela fiacao (nunca pelo HTTP): o command service aplica
     // o kill switch a todo comando que sai do motor.
     commands: {
-      execute: (input) =>
-        lifecycle?.activate(input) ??
-        Promise.resolve({ ok: false, status: 'AUTO_EXECUTION_DISABLED', verified: false }),
+      execute: async (input) => {
+        const result = await (lifecycle?.activate(input) ??
+          Promise.resolve({ ok: false, status: 'AUTO_EXECUTION_DISABLED', verified: false }));
+        if (['AUTO_COOLDOWN_ACTIVE', 'AUTO_NEW_EPISODE_REQUIRED'].includes(result.status))
+          autoEngineRef.current?.forgetProfiles([input.profileId]);
+        return result;
+      },
     },
     sharedPolicyGuard: {
       enabled: sharedPolicyGuardEnabled,
@@ -1372,14 +1394,27 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
   autoEngineRef.current = mitigationAutoEngine;
   if (automationStore) {
-    const proofMappings = recoveryMappings(process.env.MITIGATION_AUTO_RECOVERY_PROOF_JSON);
-    const proofReader = new PrismaInterfaceTrafficReader(prismaClient);
     const lifecycleTarget = async (id: string): Promise<LifecycleTarget | null> => {
       const all = await autoTargets.list();
       const t = all.find((row) => row.profileId === id);
       if (!t) return null;
       const profile = await mitigationRepository.getProfile(id);
       if (!profile) return null;
+      const host = await hosts.getHost(profile.deviceId);
+      const clientBinding = host
+        ? resolveAutoClientBinding(
+            {
+              profileId: id,
+              deviceId: profile.deviceId,
+              interfaceId: profile.interfaceId,
+              customer: t.customer,
+              direction: t.direction,
+              detectedBandwidthBps: profile.detectedBandwidthBps,
+              bandwidthOverrideBps: profile.bandwidthOverrideBps,
+            },
+            host,
+          )
+        : null;
       return {
         ...t,
         rt: profile.mitigationRt,
@@ -1395,7 +1430,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
             p.mode === 'AUTO',
         ),
         fast: isFastRoutedProfile(id, { bridge: bridgeConfig, embedded: fastConfig }),
-        recoveryProofKey: proofMappings.get(id)?.key,
+        clientBinding,
       };
     };
     lifecycle = new AutoMitigationLifecycle({
@@ -1406,7 +1441,6 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       }),
       target: lifecycleTarget,
       execute: (input) => mitigationCommands.execute(input),
-      recoveryProof: (t) => independentRecoveryProof(t, proofMappings, proofReader),
       physical: async (t) => {
         const host = await hosts.getHost(t.deviceId);
         if (!host || !mitigationLiveExecutor.enabledFor(host))

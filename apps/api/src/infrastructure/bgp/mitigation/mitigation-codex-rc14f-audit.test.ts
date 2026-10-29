@@ -212,7 +212,7 @@ describe.skipIf(RC13)(
             });
           }
     it.each(['ACTIVATE', 'REMOVE'] as const)(
-      '%s rechecks M8 after asynchronous preflight',
+      '%s: ACTIVATE rechecks M8 after preflight; REMOVE is forbidden before preflight',
       async (action) => {
         let enabled = true;
         const h = await commandHarness('IPV4', () => enabled);
@@ -226,7 +226,10 @@ describe.skipIf(RC13)(
           profileId: h.profile.id,
           origin: 'AUTO',
         });
-        expect(result.status).toBe('AUTO_EXECUTION_DISABLED');
+        expect(result.status).toBe(
+          action === 'REMOVE' ? 'AUTO_REMOVE_FORBIDDEN' : 'AUTO_EXECUTION_DISABLED',
+        );
+        if (action === 'REMOVE') expect(enabled).toBe(true);
         expect(h.ssh.writes).toHaveLength(0);
       },
     );
