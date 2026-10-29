@@ -355,7 +355,13 @@ export interface MitigationFastBridgeStatusDto {
   }[];
   decisions: MitigationAutoDecisionDto[];
   shadow: { state: string; lastTickAt: string | null; lastError: string | null };
-  engine: { state: string; lastTickAt: string | null; lastError: string | null } | null;
+  engine: {
+    state: string;
+    lastTickAt: string | null;
+    lastError: string | null;
+    /** Operational decisions already returned by the API, including routed profiles. */
+    decisions?: MitigationAutoDecisionDto[];
+  } | null;
   responseBudgetMs: number;
 }
 
