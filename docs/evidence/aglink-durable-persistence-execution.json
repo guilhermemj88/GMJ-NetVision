@@ -1,0 +1,696 @@
+{
+  "decision": "GO for separately authorized physical AGLINK homologation; no physical test or automatic activation performed",
+  "sourceApiSha": "463769620a2f39f9803b60a43314851fe3a77e0e",
+  "bundleSha256": "5937a56815a08837de73d9b56e2fc1c9f44ab9b98ba86822f19e6e6e0352d08d",
+  "validatedPreparationSha": "fe50dd3badb907d91fd2aa720e43336ef2186e83",
+  "preflight": {
+    "allPreflightPassed": true,
+    "freshExternalBackupAndFullRestorePassed": true,
+    "keyCustodyAndConfigRecoveryRevalidated": true,
+    "onlyAuthorizedMigrationPending": true,
+    "freshDdlInspectionAsPostgres": true,
+    "noOtherDdlOrHuaweiOperation": true,
+    "apiMcpWindowAuthorizedCurrentMission": true,
+    "observedUtc": "2026-10-30T19:24:32.012113+00:00"
+  },
+  "migration": {
+    "name": "20261029090000_auto_lifecycle_durable",
+    "checksum": "a64023cfec58be1de1f0be53f411a994f8c3ef482e06a98e58a896344fddb795",
+    "startedUtc": "2026-10-30T19:24:34.265275+00:00",
+    "finishedUtc": "2026-10-30T19:24:39.116054+00:00",
+    "cliExit": 0,
+    "onlyExpectedMigrationAnnounced": true,
+    "previous42MigrationHistoryPreserved": true,
+    "completedTotal": 43,
+    "unfinished": 0,
+    "columns": [
+      {
+        "column_name": "id",
+        "data_type": "text",
+        "is_nullable": "NO",
+        "column_default": null,
+        "datetime_precision": null,
+        "ordinal_position": 1
+      },
+      {
+        "column_name": "kind",
+        "data_type": "text",
+        "is_nullable": "NO",
+        "column_default": null,
+        "datetime_precision": null,
+        "ordinal_position": 2
+      },
+      {
+        "column_name": "status",
+        "data_type": "text",
+        "is_nullable": "NO",
+        "column_default": null,
+        "datetime_precision": null,
+        "ordinal_position": 3
+      },
+      {
+        "column_name": "payload",
+        "data_type": "jsonb",
+        "is_nullable": "NO",
+        "column_default": null,
+        "datetime_precision": null,
+        "ordinal_position": 4
+      },
+      {
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP",
+        "datetime_precision": 3,
+        "ordinal_position": 5
+      },
+      {
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "is_nullable": "NO",
+        "column_default": null,
+        "datetime_precision": 3,
+        "ordinal_position": 6
+      }
+    ],
+    "constraints": [
+      {
+        "name": "MitigationAutomationRecord_createdAt_not_null",
+        "type": "n",
+        "validated": true
+      },
+      {
+        "name": "MitigationAutomationRecord_id_not_null",
+        "type": "n",
+        "validated": true
+      },
+      {
+        "name": "MitigationAutomationRecord_kind_not_null",
+        "type": "n",
+        "validated": true
+      },
+      {
+        "name": "MitigationAutomationRecord_payload_not_null",
+        "type": "n",
+        "validated": true
+      },
+      {
+        "name": "MitigationAutomationRecord_pkey",
+        "type": "p",
+        "validated": true
+      },
+      {
+        "name": "MitigationAutomationRecord_status_not_null",
+        "type": "n",
+        "validated": true
+      },
+      {
+        "name": "MitigationAutomationRecord_updatedAt_not_null",
+        "type": "n",
+        "validated": true
+      }
+    ],
+    "indexes": [
+      {
+        "name": "MitigationAutomationRecord_pkey",
+        "definition": "CREATE UNIQUE INDEX \"MitigationAutomationRecord_pkey\" ON public.\"MitigationAutomationRecord\" USING btree (id)",
+        "valid": true,
+        "ready": true,
+        "unique": true
+      },
+      {
+        "name": "MitigationAutomationRecord_kind_status_updatedAt_idx",
+        "definition": "CREATE INDEX \"MitigationAutomationRecord_kind_status_updatedAt_idx\" ON public.\"MitigationAutomationRecord\" USING btree (kind, status, \"updatedAt\")",
+        "valid": true,
+        "ready": true,
+        "unique": false
+      }
+    ],
+    "durableRecords": 0,
+    "automaticStarted": 0,
+    "apiRoleCanUseRecords": true
+  },
+  "configuration": {
+    "changedUtc": "2026-10-30T19:25:12.146742+00:00",
+    "environmentFile": "/etc/netvision/single-pilot-4637696-auto0.env",
+    "previousSha256": "77fea09f2e6f2cc58318ccd11d109ca902fe838a97fe73ba1b6a2bf2035c2056",
+    "newSha256": "acb8432fa57e86097934de5ab5af6742eab5fa6a8cc6a1b3f3fa552bc329e7ff",
+    "onlyPersistenceChanged": true,
+    "configuredFlags": {
+      "MITIGATION_AUTO_PERSISTENCE_ENABLED": "1",
+      "MITIGATION_AUTO_LIFECYCLE_ENABLED": "0",
+      "MITIGATION_AUTO_EXECUTION_ENABLED": "0",
+      "MITIGATION_AUTO_REMOVE_ENABLED": "0",
+      "MITIGATION_AUTO_DESCRIPTION_ENABLED": "0",
+      "MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS": "",
+      "MITIGATION_AUTO_MAX_ACTIVE": "1"
+    },
+    "uid": 0,
+    "gid": 0,
+    "mode": 416,
+    "atomicReplace": true,
+    "dropInsChanged": false,
+    "daemonReloadExecuted": false,
+    "restarted": false,
+    "apiPidStillOld": "3435626"
+  },
+  "effectiveFlags": {
+    "NETVISION_INSTALLATION_ID": "IMPLANTAR",
+    "MITIGATION_AUTO_PERSISTENCE_ENABLED": "1",
+    "MITIGATION_AUTO_LIFECYCLE_ENABLED": "0",
+    "MITIGATION_AUTO_EXECUTION_ENABLED": "0",
+    "MITIGATION_AUTO_REMOVE_ENABLED": "0",
+    "MITIGATION_AUTO_DESCRIPTION_ENABLED": "0",
+    "MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS": "",
+    "MITIGATION_AUTO_MAX_ACTIVE": "1"
+  },
+  "restart": {
+    "requestedUtc": "2026-10-30T19:25:17.470729+00:00",
+    "oldPids": {
+      "netvision-api": "3435626",
+      "netvision-web": "2976909",
+      "netvision-mcp": "3435627",
+      "netvision-fast-observer": "2594846"
+    },
+    "forwardRestartCount": 1,
+    "indirectMcpRestartAuthorized": true,
+    "exitCode": 0,
+    "state": "QUEUED"
+  },
+  "forwardRestartCount": 1,
+  "rollbackCount": 0,
+  "services": {
+    "netvision-api": {
+      "before": {
+        "MainPID": "3435626",
+        "cwd": "/opt/netvision-auto-activate/releases/463769620a2f39f9803b60a43314851fe3a77e0e/apps/api",
+        "ActiveState": "active",
+        "SubState": "running",
+        "NRestarts": "0",
+        "ExecMainStartTimestamp": "Fri 2026-10-30 17:32:27 UTC"
+      },
+      "after": {
+        "MainPID": "3440280",
+        "cwd": "/opt/netvision-auto-activate/releases/463769620a2f39f9803b60a43314851fe3a77e0e/apps/api",
+        "ActiveState": "active",
+        "SubState": "running",
+        "NRestarts": "0",
+        "ExecMainStartTimestamp": "Fri 2026-10-30 19:25:17 UTC"
+      }
+    },
+    "netvision-web": {
+      "before": {
+        "MainPID": "2976909",
+        "cwd": "/opt/GMJ-NetVision-web-responsive/releases/f4b31fc31dd0ffdc7d454157822a3e85c5a5e8b8/web/apps/web",
+        "ActiveState": "active",
+        "SubState": "running",
+        "NRestarts": "0",
+        "ExecMainStartTimestamp": "Mon 2026-10-26 21:10:07 UTC"
+      },
+      "after": {
+        "MainPID": "2976909",
+        "cwd": "/opt/GMJ-NetVision-web-responsive/releases/f4b31fc31dd0ffdc7d454157822a3e85c5a5e8b8/web/apps/web",
+        "ActiveState": "active",
+        "SubState": "running",
+        "NRestarts": "0",
+        "ExecMainStartTimestamp": "Mon 2026-10-26 21:10:07 UTC"
+      }
+    },
+    "netvision-mcp": {
+      "before": {
+        "MainPID": "3435627",
+        "cwd": "/opt/netvision-mcp/releases/mcp-5874fe0",
+        "ActiveState": "active",
+        "SubState": "running",
+        "NRestarts": "0",
+        "ExecMainStartTimestamp": "Fri 2026-10-30 17:32:27 UTC"
+      },
+      "after": {
+        "MainPID": "3440281",
+        "cwd": "/opt/netvision-mcp/releases/mcp-5874fe0",
+        "ActiveState": "active",
+        "SubState": "running",
+        "NRestarts": "0",
+        "ExecMainStartTimestamp": "Fri 2026-10-30 19:25:17 UTC"
+      }
+    },
+    "netvision-fast-observer": {
+      "before": {
+        "MainPID": "2594846",
+        "cwd": "/opt/netvision-fast-observer/releases/rc-aaafdde/runtime",
+        "ActiveState": "active",
+        "SubState": "running",
+        "NRestarts": "1",
+        "ExecMainStartTimestamp": "Fri 2026-10-23 06:22:08 UTC"
+      },
+      "after": {
+        "MainPID": "2594846",
+        "cwd": "/opt/netvision-fast-observer/releases/rc-aaafdde/runtime",
+        "ActiveState": "active",
+        "SubState": "running",
+        "NRestarts": "1",
+        "ExecMainStartTimestamp": "Fri 2026-10-23 06:22:08 UTC"
+      }
+    }
+  },
+  "httpHealth": {
+    "api": 200,
+    "web": 200,
+    "mcp": 200,
+    "observer": 200
+  },
+  "onlyChangedServices": ["netvision-api.service", "netvision-mcp.service"],
+  "webBuildIdUnchanged": "NSfXEDCQk4S1AmACLROnj",
+  "authenticatedLifecycle": {
+    "pilot": null,
+    "installation": "IMPLANTAR",
+    "persistenceEnabled": true,
+    "lifecycleReady": true,
+    "lifecycleEnabled": false,
+    "executionEnabled": false,
+    "removeEnabled": false,
+    "allowedProfiles": [],
+    "allowedDevices": ["host-377c554a-8d1e-47c4-baa4-f258693b4d91"],
+    "maxActive": 1,
+    "removalPolicy": "MANUAL_ONLY",
+    "cooldownMs": 600000,
+    "records": []
+  },
+  "ownSessionLoggedOut": true,
+  "inventoryHttp": 200,
+  "inventoryCounts": {
+    "sites": 3,
+    "racks": 3,
+    "assets": 7,
+    "templates": 134,
+    "connections": 3
+  },
+  "physicalRowsIncludingTimestamps": {
+    "observedUtc": "2026-10-30T19:30:50.355620+00:00",
+    "readOnly": true,
+    "timestampsIncluded": true,
+    "tables": {
+      "PhysicalEquipmentTemplate": {
+        "count": 134,
+        "sha256": "52b4dd79e0b65a5772d4d21354f10fe51b232ae9d9b8f537555c1a36106bcfed"
+      },
+      "PhysicalTemplateSlot": {
+        "count": 161,
+        "sha256": "391daff0616f6dd79f4504e5087e58e243d427ce835b68c1c508c7c613c7cc4d"
+      },
+      "PhysicalTemplatePort": {
+        "count": 1624,
+        "sha256": "60925fbaa97f865c340ca933e4f51c2d6abb7280478efa0d0bf1c83f2ac51f46"
+      },
+      "PhysicalModuleTemplate": {
+        "count": 35,
+        "sha256": "91a0117818662d6f559a2db475241ec07b2317d3c9581a53d473555cad099ef6"
+      },
+      "PhysicalModuleTemplatePort": {
+        "count": 412,
+        "sha256": "fb1242fa3d424cc9e13ae846b29bb48f6f92c31d04361b0928725a804d69f2d6"
+      },
+      "PhysicalTemplateSlotModule": {
+        "count": 218,
+        "sha256": "df62fef3306240d08037de4945629a51e5515bc8530c1b4df3a998e40ae33218"
+      },
+      "PhysicalSite": {
+        "count": 3,
+        "sha256": "75faf4bd6439f420017492706066ef0927222a36ca536529d01d79203f369679"
+      },
+      "PhysicalRack": {
+        "count": 3,
+        "sha256": "fb39967f1ebe7a47dc9d57479d974f6df50f6dc49a2c74d1b1fd35f8002267dd"
+      },
+      "PhysicalAsset": {
+        "count": 7,
+        "sha256": "bb2846db8e105c548d2cd0d8eda73263574dcfde2dc19e425f7470cc13bb2a1f"
+      },
+      "PhysicalSlot": {
+        "count": 20,
+        "sha256": "6ec4b202fab800dfcd04ebcb571b2e0729a36d8bab1d222b09e34bb7224eea2d"
+      },
+      "PhysicalModule": {
+        "count": 8,
+        "sha256": "f891b31521db86092d8d3287759b9997e57ff600b0bb7ca8521a4d7c0eae2a7f"
+      },
+      "PhysicalPort": {
+        "count": 300,
+        "sha256": "c896124f36b90201904a0bb80b3b8f91a712ae21e9771514538af414d9697a96"
+      },
+      "PhysicalConnection": {
+        "count": 3,
+        "sha256": "7f508c0a94842e33c019d84c06727ef19bdfa49c93ce21ebf3d5d8cfb99668ac"
+      }
+    }
+  },
+  "profileCount": 39,
+  "profilesExactlyPreserved": true,
+  "disabledRuntimePreserved": true,
+  "huawei": {
+    "readOnlyPhysicalReadback": true,
+    "device": "BHE-VTA-F1A-BGP-01",
+    "policy": "PL-AGLINK_IPv4-IN",
+    "family": "IPV4",
+    "interface": {
+      "id": "cmsxk21gs03pdssimims9ojlb",
+      "name": "Eth-Trunk1.3058",
+      "ifIndex": 236,
+      "description": "Eth-Trunk1.3058",
+      "alias": "AGLINK-IPV4_10GB",
+      "adminStatus": "UP",
+      "operStatus": "UP"
+    },
+    "nodesBefore": [
+      {
+        "node": 10,
+        "action": "permit",
+        "ifMatchIpPrefix": ["AGLINK-BLOCO-TODO-23"],
+        "routeTargets": ["268568:140"]
+      },
+      {
+        "node": 1000,
+        "action": "deny",
+        "ifMatchIpPrefix": [],
+        "routeTargets": []
+      }
+    ],
+    "nodesAfter": [
+      {
+        "node": 10,
+        "action": "permit",
+        "ifMatchIpPrefix": ["AGLINK-BLOCO-TODO-23"],
+        "routeTargets": ["268568:140"]
+      },
+      {
+        "node": 1000,
+        "action": "deny",
+        "ifMatchIpPrefix": [],
+        "routeTargets": []
+      }
+    ],
+    "peer": "10.200.201.2",
+    "importPolicy": "PL-AGLINK_IPv4-IN",
+    "nodes1And2Absent": true,
+    "commandsExecuted": [
+      "screen-length 0 temporary",
+      "display current-configuration configuration bgp",
+      "screen-length 0 temporary",
+      "display current-configuration configuration route-policy",
+      "screen-length 0 temporary",
+      "display current-configuration configuration route-policy",
+      "screen-length 0 temporary",
+      "display current-configuration | include ip-prefix"
+    ],
+    "mutatingCommandExecuted": false
+  },
+  "mitigationEventsBefore": [
+    {
+      "type": "ACTIVATE",
+      "count": 4,
+      "lastId": 10,
+      "lastCreatedAt": "2026-10-18T12:10:05.426",
+      "unverifiedOrFailed": 0
+    },
+    {
+      "type": "REMOVE",
+      "count": 4,
+      "lastId": 11,
+      "lastCreatedAt": "2026-10-19T18:59:43.701",
+      "unverifiedOrFailed": 0
+    },
+    {
+      "type": "SIMULATION",
+      "count": 3,
+      "lastId": 5,
+      "lastCreatedAt": "2026-09-30T18:46:12.577",
+      "unverifiedOrFailed": 3
+    }
+  ],
+  "mitigationEventsAfter": [
+    {
+      "type": "ACTIVATE",
+      "count": 4,
+      "lastId": 10,
+      "lastCreatedAt": "2026-10-18T12:10:05.426",
+      "unverifiedOrFailed": 0
+    },
+    {
+      "type": "REMOVE",
+      "count": 4,
+      "lastId": 11,
+      "lastCreatedAt": "2026-10-19T18:59:43.701",
+      "unverifiedOrFailed": 0
+    },
+    {
+      "type": "SIMULATION",
+      "count": 3,
+      "lastId": 5,
+      "lastCreatedAt": "2026-09-30T18:46:12.577",
+      "unverifiedOrFailed": 3
+    }
+  ],
+  "mitigationDeliveryLogsBefore": {
+    "count": 43,
+    "lastId": "cmvfmcdi02vsql70fa7zap4jf",
+    "lastAt": "2026-10-19T18:59:44.087"
+  },
+  "mitigationDeliveryLogsAfter": {
+    "count": 43,
+    "lastId": "cmvfmcdi02vsql70fa7zap4jf",
+    "lastAt": "2026-10-19T18:59:44.087"
+  },
+  "telegramOrMitigationOutbound": false,
+  "CATALOG_BOOTSTRAP": "DEGRADED",
+  "MITIGATION_DEPENDENCY": "NONE",
+  "logs": {
+    "sinceEpoch": 1793388316,
+    "observedUtc": "2026-10-30T19:30:41.026821+00:00",
+    "counts": {
+      "entries": 119,
+      "apiErrorLevel50": 1,
+      "apiFatalLevel60": 0,
+      "mcpErrorMessages": 0,
+      "catalogUniquenessErrors": 1,
+      "catalogYamlErrors": 0,
+      "catalogUnexpectedSyncErrors": 1,
+      "unhandledFailures": 0,
+      "automaticWriteMarkers": 0,
+      "http5xx": 0
+    },
+    "apiErrors": [
+      {
+        "pid": "3440280",
+        "message": "falha inesperada ao sincronizar o catálogo físico",
+        "isCatalogBootstrapOnly": true,
+        "uniqueConstraint": [
+          "Unique constraint failed on the fields: (`templateId`,`side`,`sortOrder`)"
+        ]
+      }
+    ],
+    "snapshotRehydration": [
+      {
+        "devices": 1,
+        "succeeded": 1,
+        "failed": 0
+      }
+    ],
+    "startup": [
+      {
+        "unit": "netvision-mcp.service",
+        "pid": "3440281"
+      },
+      {
+        "unit": "netvision-api.service",
+        "pid": "3440280"
+      },
+      {
+        "unit": "netvision-api.service",
+        "pid": "3440280"
+      }
+    ],
+    "rawLogValuesExported": false,
+    "readOnly": true
+  },
+  "backup": {
+    "status": "COMPLETE",
+    "startedUtc": "2026-10-30T19:07:49.415620+00:00",
+    "finishedUtc": "2026-10-30T19:18:09.034243+00:00",
+    "source": "IMPLANTAR PostgreSQL 18.6; pg_dump MVCC consistent snapshot READ ONLY",
+    "format": "pg_dump custom gzip:3",
+    "externalPath": "D:\\NetVision-Backups\\IMPLANTAR-AGLINK-EXEC-20261030T1905\\production.pgcustom.aesgcm",
+    "encryption": "AES-256-GCM",
+    "bytes": 2451057776,
+    "cipherSha256": "5e57b896a6c70a6cc2e059a55b23095ddad05c4c44d54a1e9844cfef2c42c53b",
+    "externalFreeBefore": 261855571968,
+    "externalFreeAfter": 259399106560,
+    "serverLocalDumpCreated": false
+  },
+  "configBackup": {
+    "readOnlySource": true,
+    "encryptedExternalPath": "D:\\NetVision-Backups\\IMPLANTAR-AGLINK-EXEC-20261030T1905\\operational-config.aesgcm",
+    "filesVerified": 48,
+    "cipherSha256": "e198cf5352793340c6a420e406d52c50b9c2f46896ee4f5f94196470b06a9d17",
+    "encryptedBytes": 10656,
+    "recoveryInMemoryVerified": true,
+    "keyCustodySeparate": true,
+    "productionFilesWritten": false
+  },
+  "restore": {
+    "status": "PASSED",
+    "startedUtc": "2026-10-30T19:18:31.066167+00:00",
+    "finishedUtc": "2026-10-30T19:23:57.540009+00:00",
+    "container": "netvision-aglink-exec-restore-pg-20261030",
+    "database": "aglink_restore_validation",
+    "pgRestoreExit": 0,
+    "aesGcmTagVerified": true,
+    "cipherSha256Verified": true,
+    "plainSha256Verified": true,
+    "rolesOwnershipAndAclRestored": true,
+    "singleTransaction": true,
+    "productionAccess": false,
+    "databaseHealth": {
+      "version": "PostgreSQL 18.6 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+      "sizeBytes": 22147716799,
+      "automationTablePresent": false,
+      "invalidIndexes": 0,
+      "unvalidatedConstraints": 0,
+      "userTables": 64,
+      "migrations": 42
+    },
+    "stableTables": {
+      "_prisma_migrations": {
+        "count": 42,
+        "matches": true
+      },
+      "BgpMitigationProfile": {
+        "count": 39,
+        "matches": true
+      },
+      "BgpMitigationProfilePeer": {
+        "count": 42,
+        "matches": true
+      },
+      "PhysicalEquipmentTemplate": {
+        "count": 134,
+        "matches": true
+      },
+      "PhysicalTemplateSlot": {
+        "count": 161,
+        "matches": true
+      },
+      "PhysicalTemplatePort": {
+        "count": 1624,
+        "matches": true
+      },
+      "PhysicalModuleTemplate": {
+        "count": 35,
+        "matches": true
+      },
+      "PhysicalModuleTemplatePort": {
+        "count": 412,
+        "matches": true
+      },
+      "PhysicalTemplateSlotModule": {
+        "count": 218,
+        "matches": true
+      },
+      "PhysicalSite": {
+        "count": 3,
+        "matches": true
+      },
+      "PhysicalRack": {
+        "count": 3,
+        "matches": true
+      },
+      "PhysicalAsset": {
+        "count": 7,
+        "matches": true
+      },
+      "PhysicalSlot": {
+        "count": 20,
+        "matches": true
+      },
+      "PhysicalModule": {
+        "count": 8,
+        "matches": true
+      },
+      "PhysicalPort": {
+        "count": 300,
+        "matches": true
+      },
+      "PhysicalConnection": {
+        "count": 3,
+        "matches": true
+      }
+    },
+    "plaintextBackupWrittenToDisk": false
+  },
+  "cleanup": {
+    "disposablePostgresAndDataVolumeRemoved": true,
+    "localDockerDesktopOnly": true,
+    "encryptedBackupsAndSeparateKeyPreserved": true,
+    "productionTouched": false
+  },
+  "acceptance": {
+    "accepted": true,
+    "phase": "final",
+    "checks": {
+      "apiExact4637696BundleAndCwd": true,
+      "allFourActiveRunning": true,
+      "allFourHttp200": true,
+      "apiAndMcpRestartedOnly": true,
+      "noApiMcpRestartLoop": true,
+      "webBuildAndObserverArtifactsPreserved": true,
+      "allUnitFilesUnchanged": true,
+      "onlyOneEnvironmentFileChanged": true,
+      "onlyPersistenceFlagChanged": true,
+      "profilesExactlyPreserved": true,
+      "disabledRuntimeAndStatesPreserved": true,
+      "previous42MigrationsAndHistoryPreserved": true,
+      "onlyAuthorizedMigrationCompleted": true,
+      "durableTableAvailableWithoutAutomaticIntent": true,
+      "catalogPersistedRowsPreserved": true,
+      "inventoryPersistedRowsPreserved": true,
+      "allPhysicalRowsAndTimestampsPreserved": true,
+      "existingInventoryAndCatalogConsultable": true,
+      "databaseHealthyAndNoLongTransaction": true,
+      "noOtherWriterOrScopeLock": true,
+      "noAdditionalHuaweiCommand": true,
+      "noTelegramOrMitigationOutbound": true,
+      "authenticatedLifecycleReadyButAutoOff": true,
+      "noFailureOutsideKnownCatalogBootstrap": true,
+      "mitigationSnapshotRehydrated": true,
+      "restartGraphStillOnlyApiMcp": true,
+      "diskReserve5GiB": true,
+      "atLeastFiveMinutesObserved": true,
+      "pidsStableThroughoutObservation": true
+    },
+    "elapsedSecondsSinceRestart": 324.472854,
+    "CATALOG_BOOTSTRAP": "DEGRADED",
+    "MITIGATION_DEPENDENCY": "NONE",
+    "migrationChecksum": "a64023cfec58be1de1f0be53f411a994f8c3ef482e06a98e58a896344fddb795",
+    "durableRecords": 0,
+    "effectiveFlags": {
+      "NETVISION_INSTALLATION_ID": "IMPLANTAR",
+      "MITIGATION_AUTO_PERSISTENCE_ENABLED": "1",
+      "MITIGATION_AUTO_LIFECYCLE_ENABLED": "0",
+      "MITIGATION_AUTO_EXECUTION_ENABLED": "0",
+      "MITIGATION_AUTO_REMOVE_ENABLED": "0",
+      "MITIGATION_AUTO_DESCRIPTION_ENABLED": "0",
+      "MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS": "",
+      "MITIGATION_AUTO_MAX_ACTIVE": "1"
+    },
+    "rollbackRequired": false,
+    "manualPermissionsChanged": false,
+    "GO_FOR_PHYSICAL_HOMOLOGATION_PREPARATION_ONLY": true,
+    "automaticActivationAuthorized": false
+  },
+  "freeBytes": 6136651776,
+  "runtimeCodeOrBundleChanged": false,
+  "webObserverN8nChanged": false,
+  "manualPermissionsChanged": false,
+  "autoActivateEnabled": false,
+  "autoRemoveEnabled": false,
+  "physicalTestAuthorizedOrExecuted": false
+}
