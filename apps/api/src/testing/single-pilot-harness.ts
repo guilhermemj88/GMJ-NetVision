@@ -42,25 +42,29 @@ export class PilotFakeHuawei implements MitigationSshPort {
   writes: string[][] = [];
   afterWrite?: () => Promise<void>;
   config() {
+    const sent = this.writes.at(-1) ?? [
+      `route-policy ${P.policy} deny node 1`,
+      ' if-match ip-prefix BOGONS',
+      `route-policy ${P.policy} permit node 2`,
+      ' if-match ip-prefix AGLINK-BLOCO-TODO-23',
+      ' apply local-preference 1100',
+      ` apply extcommunity rt ${P.rt}`,
+    ];
+    let installed = sent.filter((line) => line !== 'system-view' && line !== 'commit');
+    if (this.partial)
+      installed = installed.slice(
+        0,
+        installed.findIndex((line) => line.includes(' permit node 2')),
+      );
+    if (this.wrongRt) installed = installed.map((line) => line.replace(P.rt, '64500:999'));
     return [
-      ...(this.active
-        ? [
-            `route-policy ${P.policy} deny node 1`,
-            ' if-match ip-prefix BOGONS',
-            ...(!this.partial
-              ? [
-                  `route-policy ${P.policy} permit node 2`,
-                  ' if-match ip-prefix PREFIX8to24',
-                  ` apply extcommunity rt ${this.wrongRt ? '64500:999' : P.rt} additive`,
-                ]
-              : []),
-          ]
-        : []),
+      ...(this.active ? installed : []),
       ...(this.preexisting
         ? [`route-policy ${P.policy} permit node 50`, ' if-match ip-prefix OPERATOR-ONLY']
         : []),
       `route-policy ${P.policy} permit node 10`,
       ' if-match ip-prefix AGLINK-BLOCO-TODO-23',
+      ' apply local-preference 1100',
       ' apply extcommunity rt 268568:140 additive',
       `route-policy ${P.policy} deny node 1000`,
     ].join('\n');

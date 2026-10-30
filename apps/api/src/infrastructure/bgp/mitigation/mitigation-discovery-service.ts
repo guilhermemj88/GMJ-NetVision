@@ -1,4 +1,5 @@
 import type { HostRecord } from '@gmj/shared';
+import { bgpPlanLabels } from './aglink-bgp-plan';
 import type { BgpDiscoveryOutcome, DiscoveredBgpPeer } from '../bgp-discovery-service';
 import { effectiveBandwidthBps } from './bandwidth-parser';
 import { DEFAULT_MITIGATION_RT } from './mitigation-config';
@@ -19,10 +20,7 @@ import {
   prefixStatus,
   selectNodePair,
 } from './mitigation-planner';
-import type {
-  MitigationAddressFamily,
-  MitigationRepository,
-} from './mitigation-repository';
+import type { MitigationAddressFamily, MitigationRepository } from './mitigation-repository';
 import type { BandwidthSource, MitigationBlockReason, PrefixStatus } from './mitigation-types';
 
 // Discovery DDoS (Fase 4) - READ-ONLY e SIMULATION_ONLY.
@@ -355,9 +353,12 @@ export class BgpMitigationDiscoveryService {
 
       const policyNodes = nodeMap?.get(policyName) ?? null;
       const existingNodes = policyNodes ? allNodesOf(policyNodes) : [];
+      const targetPrefixList = bgpPlanLabels(policyName, {
+        targetPrefixList: DEFAULT_TARGET_PREFIX_LIST,
+      }).targetPrefixList;
       // Mitigacao = PERMIT + PREFIX8to24 + RT. RT sem a prefix-list nao vale.
       const mitigationNodes = policyNodes
-        ? mitigationPermitNodes(policyNodes, this.mitigationRt, DEFAULT_TARGET_PREFIX_LIST)
+        ? mitigationPermitNodes(policyNodes, this.mitigationRt, targetPrefixList)
         : [];
       // BOGONS = DENY + if-match da prefix-list. Um deny qualquer NAO entra.
       const bogonNodes = policyNodes ? bogonDenyNodes(policyNodes, DEFAULT_BOGON_PREFIX_LIST) : [];
@@ -509,7 +510,7 @@ export class BgpMitigationDiscoveryService {
         mitigationNodes,
         bogonNodes,
         bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST,
-        targetPrefixList: DEFAULT_TARGET_PREFIX_LIST,
+        targetPrefixList,
         firstNormalNode: nodeDecision?.firstNormalNode ?? null,
         plannedNode,
         plannedBogonNode,

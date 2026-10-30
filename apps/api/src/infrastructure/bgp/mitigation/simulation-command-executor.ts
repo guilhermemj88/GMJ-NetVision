@@ -1,3 +1,5 @@
+import { buildMitigationActivateCommands } from './mitigation-write-guard';
+
 /**
  * Executor de SIMULACAO: apenas monta os comandos que SERIAM enviados.
  *
@@ -35,15 +37,7 @@ export class SimulationCommandExecutor {
   ): CommandPreview {
     return {
       safe: true,
-      commands: [
-        'system-view',
-        `route-policy ${policyName} deny node ${pair.bogonNode}`,
-        ` if-match ip-prefix ${labels.bogonPrefixList}`,
-        `route-policy ${policyName} permit node ${pair.mitigationNode}`,
-        ` if-match ip-prefix ${labels.targetPrefixList}`,
-        ` apply extcommunity rt ${rt} additive`,
-        'commit',
-      ],
+      commands: buildMitigationActivateCommands({ policyName, ...pair, rt, ...labels }),
     };
   }
 

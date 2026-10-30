@@ -1,3 +1,5 @@
+import { AGLINK_BGP_PLAN, bgpPlanLabels } from './aglink-bgp-plan';
+
 /**
  * Guarda estrutural da ESCrita de mitigacao.
  *
@@ -71,14 +73,17 @@ function normalizePlan(plan: MitigationWritePlan): MitigationWritePlan {
  * entra primeiro (deny) e o node de mitigacao depois (permit + PREFIX8to24 + RT).
  */
 export function buildMitigationActivateCommands(plan: MitigationWritePlan): string[] {
-  const safe = normalizePlan(plan);
+  const safe = normalizePlan(bgpPlanLabels(plan.policyName, plan));
+  const aglink = safe.policyName === AGLINK_BGP_PLAN.policy;
+  if (aglink && safe.rt !== AGLINK_BGP_PLAN.rt) throw Error('AGLINK_MITIGATION_RT_MISMATCH');
   return [
     'system-view',
     `route-policy ${safe.policyName} deny node ${safe.bogonNode}`,
     ` if-match ip-prefix ${safe.bogonPrefixList}`,
     `route-policy ${safe.policyName} permit node ${safe.mitigationNode}`,
     ` if-match ip-prefix ${safe.targetPrefixList}`,
-    ` apply extcommunity rt ${safe.rt} additive`,
+    ...(aglink ? [` apply local-preference ${AGLINK_BGP_PLAN.localPreference}`] : []),
+    ` apply extcommunity rt ${safe.rt}${aglink ? '' : ' additive'}`,
     'commit',
   ];
 }
@@ -113,9 +118,7 @@ export function assertCanonicalMitigationCommands(
   }
   for (let index = 0; index < expected.length; index += 1) {
     if (commands[index] !== expected[index]) {
-      throw new Error(
-        `MITIGATION_WRITE_REJECTED: comando ${index + 1} fora do padrao canonico`,
-      );
+      throw new Error(`MITIGATION_WRITE_REJECTED: comando ${index + 1} fora do padrao canonico`);
     }
   }
 }

@@ -1,5 +1,11 @@
 import { parseHuaweiRoutePolicyNodesLenient } from './huawei-bgp-policy-parser';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
+import {
+  AGLINK_BGP_PLAN,
+  aglinkActivationIntact,
+  aglinkBaselineIntact,
+  bgpPlanLabels,
+} from './aglink-bgp-plan';
 
 // ESTRUTURA FISICA de mitigacao de UMA route-policy, a partir do read-back REAL
 // (`display route-policy`). A classificacao e deliberadamente conservadora:
@@ -47,10 +53,13 @@ export interface PolicyMitigationInspectionInput {
 export function inspectPolicyMitigation(
   input: PolicyMitigationInspectionInput,
 ): PolicyMitigationPhysical {
-  const labels = input.labels ?? {
-    bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST,
-    targetPrefixList: DEFAULT_TARGET_PREFIX_LIST,
-  };
+  const labels = bgpPlanLabels(
+    input.policyName,
+    input.labels ?? {
+      bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST,
+      targetPrefixList: DEFAULT_TARGET_PREFIX_LIST,
+    },
+  );
   const bogonNodes: number[] = [];
   const mitigationNodes: number[] = [];
   const partialNodes: PolicyMitigationPartialNode[] = [];
@@ -69,12 +78,26 @@ export function inspectPolicyMitigation(
   }
 
   const rts = new Set(input.rts.filter((rt) => rt.length > 0));
+  const aglink = input.policyName === AGLINK_BGP_PLAN.policy;
+  if (aglink && !aglinkBaselineIntact(input.readBack))
+    partialNodes.push({ node: 10, action: 'permit', reason: 'AGLINK baseline divergente' });
   for (const node of nodes) {
+    if (aglink && node.node === 10) continue; // existing customer permit, never temporary ownership
     const refsBogon = node.ifMatchIpPrefix.includes(labels.bogonPrefixList);
-    const refsTarget = node.ifMatchIpPrefix.includes(labels.targetPrefixList);
+    const refsTarget =
+      node.ifMatchIpPrefix.includes(labels.targetPrefixList) ||
+      (aglink && node.ifMatchIpPrefix.includes(DEFAULT_TARGET_PREFIX_LIST));
     // Node normal de outra funcionalidade: nao e mitigacao.
     if (!refsBogon && !refsTarget) continue;
     const matchingRts = node.routeTargets.filter((rt) => rts.has(rt));
+    if (aglink && refsTarget && !aglinkActivationIntact(input.readBack, node.node)) {
+      partialNodes.push({
+        node: node.node,
+        action: node.action,
+        reason: 'AGLINK mitigation attributes divergent',
+      });
+      continue;
+    }
     if (refsBogon && !refsTarget && node.action === 'deny') {
       bogonNodes.push(node.node);
       continue;

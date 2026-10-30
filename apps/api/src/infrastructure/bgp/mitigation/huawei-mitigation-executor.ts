@@ -1,4 +1,5 @@
 import type { HostRecord } from '@gmj/shared';
+import { AGLINK_BGP_PLAN, aglinkBaselineIntact, bgpPlanLabels } from './aglink-bgp-plan';
 import {
   allNodesOf,
   parseConfiguredIpPrefixNames,
@@ -16,10 +17,7 @@ import {
   type MitigationActivationInput,
   type MitigationRemovalInput,
 } from './mitigation-executor';
-import {
-  DEFAULT_BOGON_PREFIX_LIST,
-  DEFAULT_TARGET_PREFIX_LIST,
-} from './mitigation-planner';
+import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import {
   assertMitigationCommandShape,
   buildMitigationActivateCommands,
@@ -178,7 +176,9 @@ export class HuaweiMitigationExecutor {
     }
   }
 
-  private writePlan(input: MitigationActivationInput | MitigationRemovalInput): MitigationWritePlan {
+  private writePlan(
+    input: MitigationActivationInput | MitigationRemovalInput,
+  ): MitigationWritePlan {
     return {
       policyName: input.policyName,
       bogonNode: input.bogonNode,
@@ -218,6 +218,7 @@ export class HuaweiMitigationExecutor {
     device: HostRecord,
     input: MitigationPreflightInput,
   ): Promise<MitigationPreflightResult> {
+    input = bgpPlanLabels(input.policyName, input);
     const checks: MitigationPreflightCheck[] = [];
     const mode = input.mode;
     const deviceHost = device?.ssh?.host ?? null;
@@ -240,10 +241,23 @@ export class HuaweiMitigationExecutor {
 
     const routePolicyConfiguration = configuration?.routePolicyConfiguration ?? null;
     const prefixListConfiguration = configuration?.prefixListConfiguration ?? null;
+    if (input.policyName === AGLINK_BGP_PLAN.policy) {
+      const prefixLines = (prefixListConfiguration ?? '')
+        .split(/\r?\n/)
+        .map((line) => line.trim().replace(/\s+/g, ' '))
+        .filter((line) => line.startsWith('ip ip-prefix AGLINK-BLOCO-TODO-23 '));
+      checks.push({
+        id: 'aglink_bgp_semantics',
+        ok:
+          aglinkBaselineIntact(routePolicyConfiguration ?? '') &&
+          prefixLines.join() === AGLINK_BGP_PLAN.prefixDefinition,
+        detail:
+          'AGLINK: baseline localpref 1100/RT 140 e prefixo autorizado /23 ge23 le24 devem permanecer intactos',
+      });
+    }
     // O REMOVE so precisa da route-policy; o ACTIVATE tambem exige as ip-prefix.
     const sshReadBackOk =
-      routePolicyConfiguration !== null &&
-      (mode === 'REMOVE' || prefixListConfiguration !== null);
+      routePolicyConfiguration !== null && (mode === 'REMOVE' || prefixListConfiguration !== null);
     checks.push({
       id: 'ssh_read_back',
       ok: sshReadBackOk,
@@ -321,8 +335,7 @@ export class HuaweiMitigationExecutor {
     const bogonNodeExists = nodes.some((entry) => entry.node === input.bogonNode);
     const mitigationNodeExists = nodes.some((entry) => entry.node === input.mitigationNode);
     const bogonNodeMatches = routePolicyConfiguration !== null && verification.bogonOk;
-    const mitigationNodeMatches =
-      routePolicyConfiguration !== null && verification.mitigationOk;
+    const mitigationNodeMatches = routePolicyConfiguration !== null && verification.mitigationOk;
     const bothMatch = bogonNodeMatches && mitigationNodeMatches;
     const partial = (bogonNodeMatches || mitigationNodeMatches) && !bothMatch;
 
@@ -479,7 +492,10 @@ export class HuaweiMitigationExecutor {
     };
   }
 
-  async activate(device: HostRecord, input: MitigationActivationInput): Promise<{ output: string }> {
+  async activate(
+    device: HostRecord,
+    input: MitigationActivationInput,
+  ): Promise<{ output: string }> {
     this.assertWriteAllowed(device);
     const commands = buildMitigationActivateCommands(this.writePlan(input));
     assertMitigationCommandShape(commands);
@@ -537,7 +553,7 @@ export class HuaweiMitigationExecutor {
       .filter(
         (entry) =>
           entry.action === 'permit' &&
-          entry.ifMatchIpPrefix.includes(this.labels.targetPrefixList) &&
+          entry.ifMatchIpPrefix.includes(bgpPlanLabels(policyName, this.labels).targetPrefixList) &&
           entry.routeTargets.includes(rt),
       )
       .map((entry) => entry.node);

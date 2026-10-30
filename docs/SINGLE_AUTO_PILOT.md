@@ -1,5 +1,9 @@
 # Piloto AGLINK — código, testes e plano curto
 
+> Atualização BGP: o plano e pacote anteriores abaixo são históricos. O candidato
+> corrente usa [AGLINK_BGP_FINAL.md](AGLINK_BGP_FINAL.md): node 2 restrito ao cliente,
+> LP 1100 e RT 660 exclusivo; FAST/lifecycle permanecem os mesmos.
+
 Branch `fix/implant-auto-single-pilot`. Base API preparada e conferida:
 `0badeba52a5699e08287b7b17e19428f60d1d7b8`. WEB preparada conferida e separada:
 `59aecb321adea136cf2a16f0e71488913ad01ce0`. Nenhuma publicação nesta missão.

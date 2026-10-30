@@ -1,4 +1,10 @@
 import { parseHuaweiRoutePolicyNodesLenient } from './huawei-bgp-policy-parser';
+import {
+  AGLINK_BGP_PLAN,
+  aglinkActivationIntact,
+  aglinkBaselineIntact,
+  bgpPlanLabels,
+} from './aglink-bgp-plan';
 
 // Porta de execucao do motor de mitigacao.
 //
@@ -194,6 +200,7 @@ export function verifyActivation(
   rt: string,
   labels: MitigationPairLabelsInput,
 ): MitigationPairVerification {
+  labels = bgpPlanLabels(policyName, labels);
   // Read-back real vem do `display route-policy` (formato display); o parser
   // lenient entende esse formato E o de configuracao.
   const nodes = parseHuaweiRoutePolicyNodesLenient(readBack).get(policyName) ?? [];
@@ -227,7 +234,10 @@ export function verifyActivation(
     detalhes.push(`node de mitigacao ${pair.mitigationNode} sem a RT ${rt}`);
   }
 
-  const verified = bogonOk && mitigationOk;
+  const semanticOk =
+    policyName !== AGLINK_BGP_PLAN.policy || aglinkActivationIntact(readBack, pair.mitigationNode);
+  if (!semanticOk) detalhes.push('AGLINK: prefixos/local-preference/RT ou baseline divergentes');
+  const verified = bogonOk && mitigationOk && semanticOk;
   return {
     verified,
     bogonOk,
@@ -251,8 +261,10 @@ export function verifyRemoval(
   const nodes = parseHuaweiRoutePolicyNodesLenient(readBack).get(policyName) ?? [];
   const bogonSumiu = !nodes.some((entry) => entry.node === pair.bogonNode);
   const mitigationSumiu = !nodes.some((entry) => entry.node === pair.mitigationNode);
-  const verified = bogonSumiu && mitigationSumiu;
+  const baselineOk = policyName !== AGLINK_BGP_PLAN.policy || aglinkBaselineIntact(readBack);
+  const verified = bogonSumiu && mitigationSumiu && baselineOk;
   const restantes: string[] = [];
+  if (!baselineOk) restantes.push('baseline AGLINK divergente');
   if (!bogonSumiu) restantes.push(`BOGONS ${pair.bogonNode}`);
   if (!mitigationSumiu) restantes.push(`mitigacao ${pair.mitigationNode}`);
 
