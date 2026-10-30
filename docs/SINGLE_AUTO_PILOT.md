@@ -86,6 +86,28 @@ configurações. Tar/gzip normalizado e comparado duas vezes. Manifesto externo 
 source SHA, hashes/bytes de cada arquivo, contagem e versões efetivas, inclusive apt;
 não se promete reproduzir versões futuras do apt. Hashes finais acompanham a entrega.
 
+Fonte exata do pacote: `31b761423d58cec90eadf593e64e29b133a4e86b`
+(código `97976bb77c477a44800cd474ac908f5740f9dafd` + correção do empacotador PowerShell).
+SHA256 tar.gz: `55bf94326a94d1fa64cbe87a00adc10cb7d8f3965928d11475ddfd1ff653c1fa`.
+SHA256 server.cjs: `92ce503fee9da597e9d63516a01dcd6ac32dc8b20dab6be91bfad098370ea337`.
+10.070 arquivos, 300.448.052 bytes; arquivo comprimido 95.257.357 bytes.
+Todos os hashes internos foram conferidos. Manifesto completo e pacote em
+`C:/projetos/artifacts/netvision-single-pilot-31b7614/`.
+Smoke Linux em rede Docker interna, sem rota produtiva: Prisma Linux consultou
+PostgreSQL descartável e API DEMO respondeu health/lifecycle 200, todas as flags
+de execução/lifecycle/persistência/REMOVE desligadas. Exige runtime OpenSSL 3;
+imagem slim sem OpenSSL falhou e não foi aceita. IMPLANTAR já possui OpenSSL 3.5.5.
+O commit posterior de evidências não altera o código desse pacote.
+
+Produção antes/depois (13:10:45–13:35:21 UTC): API PID 3418797, WEB 2976909,
+MCP 3418799 e Observer 2594846 preservados, sem mudança de restarts, hashes,
+drop-ins/env, flags ou migrations. Health/API, WEB e MCP 200; API e78638a,
+demo=false, snmpPolling=true; 39 configurações de perfis e eventos ACTIVATE/REMOVE
+inalterados. Apenas telemetria/runtime naturalmente atualizados pelos serviços.
+Tabela durável continua ausente; AUTO continua 0. WEB BUILD_ID
+`NSfXEDCQk4S1AmACLROnj` preservado. Espaço livre 6,63 GB; backup integral de banco
+deve usar destino externo, sem tentar ocupá-lo nesse volume.
+
 ## Homologação física futura — requer autorização
 
 1. Aprovar SHA/hash; reservar janela **API e MCP**, pois systemd propaga restart.

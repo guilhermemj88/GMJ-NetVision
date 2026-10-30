@@ -161,5 +161,53 @@
     "No real ACTIVATE/REMOVE or Telegram send",
     "33 optional historical tests skipped",
     "External writer exclusivity not proven"
-  ]
+  ],
+  "package": {
+    "sourceSha": "31b761423d58cec90eadf593e64e29b133a4e86b",
+    "packageSha256": "55bf94326a94d1fa64cbe87a00adc10cb7d8f3965928d11475ddfd1ff653c1fa",
+    "packageBytes": 95257357,
+    "fileCountVerified": 10070,
+    "payloadBytes": 300448052,
+    "compiledArtifacts": {
+      "server.cjs": "92ce503fee9da597e9d63516a01dcd6ac32dc8b20dab6be91bfad098370ea337",
+      "server.cjs.map": "6280204ced3d8c35fbbfc61732503fea6a18483bb1a3a6eb5ccd71355e746ab9",
+      "catalog/physical-catalog-v1.yaml": "2a255fc270755c3511637b5763b859335ad1f574929625f461e01f674b143d64"
+    },
+    "manifestSha256": "019b94e7cb932752b52da1de810e93528a0d2814d139bcada96e03ea2297554c",
+    "allFileHashesVerified": true
+  },
+  "linuxSmoke": {
+    "passed": true,
+    "linuxPrismaQueries": true,
+    "durableRows": 3,
+    "health": 200,
+    "lifecycle": 200,
+    "execution": false,
+    "lifecycleEnabled": false,
+    "persistence": false,
+    "remove": false,
+    "manualOnly": true,
+    "demoMode": true,
+    "productionNetworkAccessible": false
+  },
+  "productionAfter": {
+    "observedUtc": "2026-10-30T13:35:21.229226+00:00",
+    "serviceIdentityAndConfigUnchanged": true,
+    "profileCount": 39,
+    "allProfileConfigurationsUnchanged": true,
+    "eventsUnchanged": true,
+    "migrationsUnchanged": true,
+    "flagsUnchanged": true,
+    "environmentFilesUnchanged": true,
+    "automationTableAbsent": true,
+    "health": {
+      "api": 200,
+      "web": 200,
+      "mcp": 200
+    },
+    "apiDemoMode": false,
+    "snmpPolling": true,
+    "webBuildId": "NSfXEDCQk4S1AmACLROnj",
+    "availableDiskBytes": 6634004480
+  }
 }
