@@ -1,0 +1,44 @@
+{
+  "api": {
+    "root": "C:\\projetos\\GMJ-NetVision-phase01-incidents\\apps\\api",
+    "files": {
+      "dist/server.cjs": {
+        "bytes": 2103436,
+        "sha256": "413d8dae0d7d9794f7206818975f7c678d7a9911460b4937c5cbc65ac84b3edc"
+      },
+      "dist/server.cjs.map": {
+        "bytes": 4067940,
+        "sha256": "5ed1a22b2d2f6e7fe9a313a09bea5c4e568bb2a73d6026572ce7fc0a93b6acb0"
+      },
+      "dist/catalog/physical-catalog-v1.yaml": {
+        "bytes": 126505,
+        "sha256": "2a255fc270755c3511637b5763b859335ad1f574929625f461e01f674b143d64"
+      }
+    },
+    "codeCommit": "205457452502d0d5ced1a5d0dc4daa29ce170ca4",
+    "platform": "Windows local validation build, not a Linux deployment package"
+  },
+  "web": {
+    "codeCommit": "59aecb321adea136cf2a16f0e71488913ad01ce0",
+    "BUILD_ID": "whv4844yme6PHcP_BMw61",
+    "installation": "IMPLANTAR",
+    "files": {
+      "BUILD_ID": {
+        "sha256": "2b5762277290ace6f6f4f6f8b00614fc39f784439204235bd51758139e76b4ce",
+        "bytes": 21
+      },
+      "build-manifest.json": {
+        "sha256": "fd939978ab1223a441eb047fd0c70bdd9b8d87067c6a9e892c1bba14e9e2a07e",
+        "bytes": 645
+      },
+      "server/app/page.js": {
+        "sha256": "3a11312e29a3365198ff7e2be356b35d00f17478f5a1212c6dbfbf27fde7877b",
+        "bytes": 874
+      },
+      "standalone/apps/web/server.js": {
+        "sha256": "e57b34362e6601bc62ac83de585aa4eb058b2aa162c8d650617d9b39e6a87350",
+        "bytes": 7644
+      }
+    }
+  }
+}

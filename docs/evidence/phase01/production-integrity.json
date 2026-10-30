@@ -1,0 +1,388 @@
+{
+  "beforeUtc": "2026-10-29T23:15:23.401689+00:00",
+  "afterUtc": "2026-10-29T23:58:28.907349+00:00",
+  "readOnly": true,
+  "authenticatedEndpoints": "NOT_VERIFIED: operator declined session; no login/session extraction attempted",
+  "checks": {
+    "servicePidsAndStartTicksUnchanged": true,
+    "restartCountsUnchanged": true,
+    "cwdAndArtifactHashesUnchanged": true,
+    "webBuildIdUnchanged": true,
+    "unitFilesUnchanged": true,
+    "effectiveFlagsAndEnvFilesUnchanged": true,
+    "profilesAndConfigurationUnchanged": true,
+    "runtimeStatesUnchanged": true,
+    "eventSummaryUnchanged": true,
+    "migrationHistoryUnchanged": true,
+    "automationTableStillAbsent": true,
+    "physicalTemplatesAndReferencesUnchanged": true,
+    "n8nContainerUnchanged": true,
+    "n8nWorkflowAndPublishedGraphUnchanged": true,
+    "n8nCredentialMetadataUnchanged": true,
+    "allManagedServicesActiveRunning": true,
+    "allFourHttpChecks200": true
+  },
+  "services": {
+    "netvision-api": {
+      "MainPID": "3418797",
+      "NRestarts": "0",
+      "ActiveState": "active",
+      "SubState": "running",
+      "cwd": "/opt/netvision-auto-activate/releases/e78638af51762db93f52f61195ca57d8c72d988e/apps/api",
+      "artifacts": {
+        "/opt/netvision-auto-activate/releases/e78638af51762db93f52f61195ca57d8c72d988e/apps/api/dist/server.cjs": "c8a71fbf1537199ce689627ce5774f8306261fb27f7c3ac1b2e423a515fa1c9c"
+      },
+      "unitFiles": [
+        {
+          "path": "/etc/systemd/system/netvision-api.service",
+          "sha256": "85a0f3db6fa074435cfc30398f7512fb0da40d6779988a8fd5f6e2f199a44e43"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zz-auto.conf",
+          "sha256": "5ac0acdd8193dd3226944fedb0b4f74621f196dbed1cfa7ce89048d30659e7a6"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zz-netvision-alarm-deploy.conf",
+          "sha256": "c024c3e9c5eb72bd7dd1239a8f72d72e1f0804ac6d76f6a3d237d69b079381d1"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzz-huawei-profiles.conf",
+          "sha256": "4c6229b54cd4ed5e16428c6220812e154b9bdbe3204197bea9119087db0293ed"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzz-snapshot-media.conf",
+          "sha256": "edd181010d697967b74358d5092638fd1c7f895b1eb6fcd5cabb5a3733d94c47"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzz-mitigation-auto-all.conf",
+          "sha256": "49f5ff24f80e0e4db013fc5a1b236a492164fcc04860182291187010d0ee0eda"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzz-rc2-shadow.conf",
+          "sha256": "fe57924b2bd8209664bfe4904c899f95ee2273b639602e5c4254c93a7e280dd8"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzz-gate3.conf",
+          "sha256": "21896be17473eef734623dc39bc79563cb66f980c2bcd7e462c38cf38a935a2f"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzz-rc4-8337ea8.conf",
+          "sha256": "fbc852c66e09ac6e72404e6f7d4d83c220c3c51ed9819d64e7219b3ab4b90f09"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzzz-rc6-2b39dcb.conf",
+          "sha256": "474a8f759a3a8cfabbe4811a53908a520bf58eb327774eebbf02ad1ae3fc91a0"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzzz-rc7-aaafdde.conf",
+          "sha256": "e8c922818fd00a6f06d78086d67d9210159d8d7043f502ef4e1c866c7c445840"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzzz-rc8-99b3dd9.conf",
+          "sha256": "2ad4a5db5c6d828247b4efa34631a8eb65c2399b408925d50c8ec3ceee1ebc16"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzzz-rc9-0f5bbe4.conf",
+          "sha256": "d6627917833f7378b968cf9fd4e87640e94dc4a58d80198ca451902235e1b6a1"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzzzz-rc9-pilot-a.conf",
+          "sha256": "63dbf9b8ac8ac5f394b431d6693ee3be52adc676d636c4c09d50dfc1ea105169"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzz-rc9-pilot-b.conf",
+          "sha256": "0151ecd9993fbbbb9004795394b4128844b006e7fe909824cdc0f0a47327cfec"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzz-rc10-c2e7d1d.conf",
+          "sha256": "18a19c9102bb68c47a6035d5d77fcfc230402e802dea30b064ea4cb21d1c22e9"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzz-rc10-batch8.conf",
+          "sha256": "dc0d7c7453dadc0ee5f267cd5221827b80429a6a754027151ec107a9e485aa42"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzz-rc10-exec-allow.conf",
+          "sha256": "11d2e890fd62fb72b830b13de2e16543512dbe24186073a95eada225dcfa788d"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzz-rc11-1ec5c47.conf",
+          "sha256": "2ad61433e33e4955121afd8c39ce6d5ed7cc11ebabe0e762aabcfa47b9592508"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzz-vsi-trust.conf",
+          "sha256": "d41fc7df0a7c54ab6e8b828b03f62aa4d8ff9a9fded87d1a4c3580bc07067405"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzz-rc12-753577c.conf",
+          "sha256": "b90edf81fb6aeaf7b07191629dd1f7677a383049ddd0cca46dfe01a6c3ab70fa"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzz-vsi-enabled.conf",
+          "sha256": "6b2cb1d61d0572783ce020380ee3cf4fb14fccc9853a98ac61de4e1bc095d65c"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzz-rc13-d6c07f2.conf",
+          "sha256": "126bc30d18661a71dcfe17b8048dc74e2e1c3b7d241199dfc43ad5f3a24112ef"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzzz-auto-activate-e78638a.conf",
+          "sha256": "471e695717f83547af28ea80a4d886eb8536200ad6af1d92b96454656beb8784"
+        }
+      ]
+    },
+    "netvision-web": {
+      "MainPID": "2976909",
+      "NRestarts": "0",
+      "ActiveState": "active",
+      "SubState": "running",
+      "cwd": "/opt/GMJ-NetVision-web-responsive/releases/f4b31fc31dd0ffdc7d454157822a3e85c5a5e8b8/web/apps/web",
+      "artifacts": {},
+      "unitFiles": [
+        {
+          "path": "/etc/systemd/system/netvision-web.service",
+          "sha256": "42c2b183144bb75bffd049f1fa9f88cd66db953940d8acd74cde4cbdafa5be60"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-web.service.d/override.conf",
+          "sha256": "efe9175a430d168f0e0343dcf06fbf1137ca7ff3f9f647adde958e1651086f15"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-web.service.d/zz-netvision-alarm-deploy.conf",
+          "sha256": "3ed87c6212eeae13575464b371c528ac3eba9cb720937644498bff6d46d676f7"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-web.service.d/zzz-huawei-profiles.conf",
+          "sha256": "3b41dea83ed02c579922ba38a10dc2dcc042209d457095bada16b9c733c50193"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-web.service.d/zzzz-mapv2-release.conf",
+          "sha256": "d4e88fba40ddabe60bffeb2b7c214cb701b75f2f111aaeed70a8ceb2dd837523"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-web.service.d/zzzzzz-diagnostics-integrated.conf",
+          "sha256": "c08f6048261ba63b60c993abb5a7e5f68040f9c417125596dd78213bbcb72b0e"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-web.service.d/zzzzzzzz-rc11-vsi.conf",
+          "sha256": "7f2f913ea303436b57a0faf82547116d6fecb6753b90d8571f6c3a667a70dc27"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-web.service.d/zzzzzzzzz-rc12-vsi.conf",
+          "sha256": "bf13f4ad0e5acbd29812ac2b64f93e1be8c7b98fa440f89a676ab9a8cab97ba3"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-web.service.d/zzzzzzzzzz-rc13-vsi.conf",
+          "sha256": "ee2926ebe105ab4241e6602bc08d5baf7cb2cc007449a267d1dbed01fea76e7c"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-web.service.d/zzzzzzzzzzzz-web-responsive-f4b31fc.conf",
+          "sha256": "15481392d1754c986fe423cf60369ca7a1e145b82ab614de33aac1f864deddc6"
+        }
+      ],
+      "BUILD_ID": "NSfXEDCQk4S1AmACLROnj"
+    },
+    "netvision-mcp": {
+      "MainPID": "3418799",
+      "NRestarts": "0",
+      "ActiveState": "active",
+      "SubState": "running",
+      "cwd": "/opt/netvision-mcp/releases/mcp-5874fe0",
+      "artifacts": {
+        "/opt/netvision-mcp/releases/mcp-5874fe0/dist/server.js": "ec5816c8a2c72a583861869df6ea7c4c4682eb6a20b0e451dcd5d3c8cbad9356"
+      },
+      "unitFiles": [
+        {
+          "path": "/etc/systemd/system/netvision-mcp.service",
+          "sha256": "3c422d2c2fdb48b1f7da303908862c2e91b377000c8af204639c399969efff9b"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-mcp.service.d/zzz-huawei-profiles.conf",
+          "sha256": "5974664c3f61865b89ea3a02e985cb95a809dabc22346b5724c72581043bf0d1"
+        },
+        {
+          "path": "/etc/systemd/system/netvision-mcp.service.d/zzzzzzzz-ssh-brief.conf",
+          "sha256": "b5d44537badc5eb5b1f20b4c70491e8cd0f10b2958b3cea4a9b452231d68be9d"
+        }
+      ]
+    },
+    "netvision-fast-observer": {
+      "MainPID": "2594846",
+      "NRestarts": "1",
+      "ActiveState": "active",
+      "SubState": "running",
+      "cwd": "/opt/netvision-fast-observer/releases/rc-aaafdde/runtime",
+      "artifacts": {
+        "/opt/netvision-fast-observer/current/dist/mitigation-fast-observer-main.cjs": "525466fe1e8744a11c7234adeb6841be39d5803e43ac3c8a7c883cbaca19ede5"
+      },
+      "unitFiles": [
+        {
+          "path": "/etc/systemd/system/netvision-fast-observer.service",
+          "sha256": "05d76382660303d60f6b8e3ca1f3f952bdcb7fba5fac54110376a0bf7199831b"
+        }
+      ]
+    }
+  },
+  "http": {
+    "api": {
+      "status": 200
+    },
+    "web": {
+      "status": 200
+    },
+    "mcp": {
+      "status": 200
+    },
+    "observer": {
+      "status": 200
+    }
+  },
+  "flags": {
+    "NETVISION_INSTALLATION_ID": {
+      "configured": "IMPLANTAR",
+      "runtime": "IMPLANTAR",
+      "source": "/etc/netvision/auto-activate-e78638a-stage0.env",
+      "matches": true
+    },
+    "MITIGATION_MODE": {
+      "configured": "AUTO",
+      "runtime": "AUTO",
+      "source": "Environment=",
+      "matches": true
+    },
+    "MITIGATION_EXECUTOR": {
+      "configured": "HUAWEI",
+      "runtime": "HUAWEI",
+      "source": "Environment=",
+      "matches": true
+    },
+    "MITIGATION_LIVE_WRITE_ENABLED": {
+      "configured": "true",
+      "runtime": "true",
+      "source": "Environment=",
+      "matches": true
+    },
+    "MITIGATION_AUTO_PERSISTENCE_ENABLED": {
+      "configured": "0",
+      "runtime": "0",
+      "source": "/etc/netvision/auto-activate-e78638a-stage0.env",
+      "matches": true
+    },
+    "MITIGATION_AUTO_LIFECYCLE_ENABLED": {
+      "configured": "0",
+      "runtime": "0",
+      "source": "/etc/netvision/auto-activate-e78638a-stage0.env",
+      "matches": true
+    },
+    "MITIGATION_AUTO_EXECUTION_ENABLED": {
+      "configured": "0",
+      "runtime": "0",
+      "source": "/etc/netvision/auto-activate-e78638a-stage0.env",
+      "matches": true
+    },
+    "MITIGATION_AUTO_REMOVE_ENABLED": {
+      "configured": "0",
+      "runtime": "0",
+      "source": "/etc/netvision/auto-activate-e78638a-stage0.env",
+      "matches": true
+    },
+    "MITIGATION_AUTO_DESCRIPTION_ENABLED": {
+      "configured": "0",
+      "runtime": "0",
+      "source": "/etc/netvision/auto-activate-e78638a-stage0.env",
+      "matches": true
+    },
+    "MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS": {
+      "configured": "",
+      "runtime": "",
+      "source": "/etc/netvision/auto-activate-e78638a-stage0.env",
+      "matches": true
+    },
+    "MITIGATION_AUTO_MAX_ACTIVE": {
+      "configured": "1",
+      "runtime": "1",
+      "source": "/etc/netvision/auto-activate-e78638a-stage0.env",
+      "matches": true
+    }
+  },
+  "profileCount": 39,
+  "profileModes": {
+    "AUTO": 12,
+    "ALERT_ONLY": 27
+  },
+  "runtimeStates": {
+    "NORMAL": 38,
+    "DISABLED": 1
+  },
+  "profileConfigurationSha256": "4efd3b46c0f4d5995e56bc17912fc7139369221c9d8fbbddd7075e7d7e008cd7",
+  "events": [
+    {
+      "type": "ACTIVATE",
+      "count": 4,
+      "lastId": 10,
+      "lastCreatedAt": "2026-10-18T12:10:05.426",
+      "unverifiedOrFailed": 0
+    },
+    {
+      "type": "REMOVE",
+      "count": 4,
+      "lastId": 11,
+      "lastCreatedAt": "2026-10-19T18:59:43.701",
+      "unverifiedOrFailed": 0
+    },
+    {
+      "type": "SIMULATION",
+      "count": 3,
+      "lastId": 5,
+      "lastCreatedAt": "2026-09-30T18:46:12.577",
+      "unverifiedOrFailed": 3
+    }
+  ],
+  "migrationCount": 42,
+  "databaseChecks": {
+    "version": "PostgreSQL 18.6 (Ubuntu 18.6-0ubuntu0.26.04.1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+    "inRecovery": false,
+    "sizeBytes": 25259374271,
+    "transactionReadOnly": "on",
+    "invalidIndexes": 0,
+    "unvalidatedConstraints": 0,
+    "waitingLocks": 0,
+    "automationTablePresent": false
+  },
+  "disk": {
+    "availableBytes": 6782140416,
+    "totalBytes": 76557455360
+  },
+  "n8n": {
+    "observedUtc": "2026-10-29T23:58:24.629058+00:00",
+    "container": {
+      "id": "3c94ab6379ba1ee4a9c2f098b5142ac0b27d94e758f5b44b0e5c80c733144f54",
+      "image": "n8nio/n8n:2.4.4",
+      "imageId": "sha256:f5b36596919f4f7ac56667dcfbde5cf2f593dd2dcc8ecb6a2291e7bf18a155fd",
+      "running": true,
+      "startedAt": "2026-10-27T19:03:18.907101804Z",
+      "restartCount": 0,
+      "n8nVersion": "2.4.4"
+    },
+    "workflow": {
+      "id": "SVh8Z-zUcSzQYOOJZ-DKP",
+      "name": "GMJ NetVision - Mitigacao DDoS - RC7.1.1 REVIEW-08 (fallback de grafico)",
+      "active": 1,
+      "versionId": "1f1405f8-e9bc-4d2e-91bc-4106dbb07285",
+      "activeVersionId": "6a97fe4a-31ea-49e6-b892-1ac55f85d115",
+      "updatedAt": "2026-10-29 18:21:39.441"
+    },
+    "nodesConnectionsSha256": "60af87618b6bfd2e1cf1678a16a769062151fa4ec320126fdb5498e3ee385870",
+    "lastPublication": {
+      "id": 168,
+      "versionId": "6a97fe4a-31ea-49e6-b892-1ac55f85d115",
+      "event": "activated",
+      "createdAt": "2026-10-29 18:19:48.951"
+    }
+  },
+  "apiHealth": {
+    "status": "ok",
+    "demoMode": false,
+    "snmpPolling": true
+  }
+}

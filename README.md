@@ -294,3 +294,8 @@ npm run format:check
 - os transportes concretos SNMP/SSH ainda precisam ser ligados aos contratos injetáveis; em `DEMO_MODE` a descoberta usa o adapter demonstrativo;
 - a descoberta é incremental e deliberadamente não recursiva; vizinhos desconhecidos podem ser adicionados como não monitorados;
 - não há autenticação/RBAC nesta primeira versão.
+
+
+## Estabilização IMPLANTAR — Fase 0.1
+
+Correções isoladas, evidências e gates para futura publicação: [relatório da auditoria corretiva](RELATORIO-FASE-0.1-AUDITORIA-CORRETIVA-IMPLANTAR.md) e [procedimentos de estabilização](docs/PHASE01_STABILIZATION.md). Esta documentação não autoriza deploy, restart ou habilitação AUTO.

@@ -1,0 +1,512 @@
+{
+  "observedUtc": "2026-10-29T23:06:19.016264+00:00",
+  "catalogFiles": [
+    {
+      "release": "old",
+      "overrideConfigured": false,
+      "candidates": [
+        {
+          "path": "/opt/netvision-fast-bridge/releases/rc13-d6c07f2/apps/api/apps/api/catalog/physical-catalog-v1.yaml",
+          "exists": false,
+          "sha256": null
+        },
+        {
+          "path": "/opt/netvision-fast-bridge/releases/rc13-d6c07f2/apps/api/catalog/physical-catalog-v1.yaml",
+          "exists": true,
+          "sha256": "da53cce4e9dad997809fb78fe0182f42e8631af0404ed644e41bd41e0f121932"
+        }
+      ]
+    },
+    {
+      "release": "current",
+      "overrideConfigured": false,
+      "candidates": [
+        {
+          "path": "/opt/netvision-auto-activate/releases/e78638af51762db93f52f61195ca57d8c72d988e/apps/api/apps/api/catalog/physical-catalog-v1.yaml",
+          "exists": false,
+          "sha256": null
+        },
+        {
+          "path": "/opt/netvision-auto-activate/releases/e78638af51762db93f52f61195ca57d8c72d988e/apps/api/catalog/physical-catalog-v1.yaml",
+          "exists": false,
+          "sha256": null
+        }
+      ]
+    }
+  ],
+  "physicalTimestampEvidence": {
+    "PhysicalEquipmentTemplate": {
+      "total": 134,
+      "createdDuringBoot": 13,
+      "updatedDuringBoot": 23,
+      "createdAtAvailable": true,
+      "updatedAtAvailable": true
+    },
+    "PhysicalTemplatePort": {
+      "total": 1624,
+      "createdDuringBoot": 0,
+      "updatedDuringBoot": 0,
+      "createdAtAvailable": false,
+      "updatedAtAvailable": false
+    },
+    "PhysicalTemplateSlot": {
+      "total": 161,
+      "createdDuringBoot": 8,
+      "updatedDuringBoot": 8,
+      "createdAtAvailable": true,
+      "updatedAtAvailable": true
+    },
+    "PhysicalModuleTemplate": {
+      "total": 35,
+      "createdDuringBoot": 1,
+      "updatedDuringBoot": 1,
+      "createdAtAvailable": true,
+      "updatedAtAvailable": true
+    },
+    "PhysicalModuleTemplatePort": {
+      "total": 412,
+      "createdDuringBoot": 4,
+      "updatedDuringBoot": 4,
+      "createdAtAvailable": true,
+      "updatedAtAvailable": true
+    },
+    "PhysicalTemplateSlotModule": {
+      "total": 218,
+      "createdDuringBoot": 0,
+      "updatedDuringBoot": 0,
+      "createdAtAvailable": false,
+      "updatedAtAvailable": false
+    }
+  },
+  "templatesCreatedDuringBoot": [
+    {
+      "catalogKey": "generic-olt-1u",
+      "name": "OLT genérica 1U",
+      "origin": "SYSTEM",
+      "createdAt": "2026-10-29T20:42:21.846",
+      "assets": 0,
+      "ports": 0,
+      "slots": 0,
+      "modules": 0
+    },
+    {
+      "catalogKey": "generic-chassis-8-slot",
+      "name": "Chassis genérico modular (8 slots)",
+      "origin": "SYSTEM",
+      "createdAt": "2026-10-29T20:42:22.018",
+      "assets": 0,
+      "ports": 0,
+      "slots": 8,
+      "modules": 1
+    },
+    {
+      "catalogKey": "huawei-ne8000-m8",
+      "name": "Huawei NE8000 M8",
+      "origin": "SYSTEM",
+      "createdAt": "2026-10-29T20:42:22.186",
+      "assets": 0,
+      "ports": 0,
+      "slots": 0,
+      "modules": 0
+    },
+    {
+      "catalogKey": "huawei-ne40e",
+      "name": "Huawei NE40E",
+      "origin": "SYSTEM",
+      "createdAt": "2026-10-29T20:42:22.194",
+      "assets": 0,
+      "ports": 0,
+      "slots": 0,
+      "modules": 0
+    },
+    {
+      "catalogKey": "huawei-s5700",
+      "name": "Huawei S5700",
+      "origin": "SYSTEM",
+      "createdAt": "2026-10-29T20:42:22.201",
+      "assets": 0,
+      "ports": 0,
+      "slots": 0,
+      "modules": 0
+    },
+    {
+      "catalogKey": "huawei-s5720",
+      "name": "Huawei S5720",
+      "origin": "SYSTEM",
+      "createdAt": "2026-10-29T20:42:22.21",
+      "assets": 0,
+      "ports": 0,
+      "slots": 0,
+      "modules": 0
+    },
+    {
+      "catalogKey": "huawei-s6720",
+      "name": "Huawei S6720",
+      "origin": "SYSTEM",
+      "createdAt": "2026-10-29T20:42:22.218",
+      "assets": 0,
+      "ports": 0,
+      "slots": 0,
+      "modules": 0
+    },
+    {
+      "catalogKey": "huawei-s6730",
+      "name": "Huawei S6730",
+      "origin": "SYSTEM",
+      "createdAt": "2026-10-29T20:42:22.226",
+      "assets": 0,
+      "ports": 0,
+      "slots": 0,
+      "modules": 0
+    },
+    {
+      "catalogKey": "huawei-s6750",
+      "name": "Huawei S6750",
+      "origin": "SYSTEM",
+      "createdAt": "2026-10-29T20:42:22.236",
+      "assets": 0,
+      "ports": 0,
+      "slots": 0,
+      "modules": 0
+    },
+    {
+      "catalogKey": "mikrotik-ccr1009",
+      "name": "MikroTik CCR1009",
+      "origin": "SYSTEM",
+      "createdAt": "2026-10-29T20:42:22.244",
+      "assets": 0,
+      "ports": 0,
+      "slots": 0,
+      "modules": 0
+    },
+    {
+      "catalogKey": "mikrotik-ccr1036",
+      "name": "MikroTik CCR1036",
+      "origin": "SYSTEM",
+      "createdAt": "2026-10-29T20:42:22.25",
+      "assets": 0,
+      "ports": 0,
+      "slots": 0,
+      "modules": 0
+    },
+    {
+      "catalogKey": "mikrotik-ccr1072",
+      "name": "MikroTik CCR1072",
+      "origin": "SYSTEM",
+      "createdAt": "2026-10-29T20:42:22.258",
+      "assets": 0,
+      "ports": 0,
+      "slots": 0,
+      "modules": 0
+    },
+    {
+      "catalogKey": "mikrotik-ccr2004",
+      "name": "MikroTik CCR2004",
+      "origin": "SYSTEM",
+      "createdAt": "2026-10-29T20:42:22.265",
+      "assets": 0,
+      "ports": 0,
+      "slots": 0,
+      "modules": 0
+    }
+  ],
+  "profilesOfInterest": [
+    {
+      "id": "cmuoavm4e00bysslhqd0h3q7u",
+      "policyName": "PL-AGLINK_IPv4-IN",
+      "mode": "AUTO",
+      "enabled": true,
+      "interfaceId": "cmsxk21gs03pdssimims9ojlb",
+      "addressFamily": "IPV4",
+      "autoModeExempt": false,
+      "autoPromotedBySweep": true,
+      "autoTrafficDirection": null,
+      "detectedBandwidthBps": 10000000000,
+      "bandwidthOverrideBps": null,
+      "triggerPercent": 90,
+      "triggerSamples": 3,
+      "mitigationRt": "268568:660",
+      "state": "NORMAL",
+      "plannedBogonNode": 1,
+      "plannedMitigationNode": 2,
+      "interface": "Eth-Trunk1.3058",
+      "alias": "AGLINK-IPV4_10GB",
+      "ifIndex": 236,
+      "speedBps": 300000000000,
+      "mitigationTrafficDirection": null,
+      "hostname": "BHE-VTA-F1A-BGP-01",
+      "events": 0,
+      "simulations": 0,
+      "peers": [
+        {
+          "peerAddress": "10.200.201.2",
+          "family": "IPV4",
+          "primary": true,
+          "peerId": null,
+          "state": null,
+          "receivedPrefixes": null,
+          "lastPollingAt": null,
+          "interfaceId": null
+        }
+      ]
+    },
+    {
+      "id": "cmuoavmgi00e7sslhgh7quv0f",
+      "policyName": "PL-WFREDES-V4-IN",
+      "mode": "ALERT_ONLY",
+      "enabled": true,
+      "interfaceId": "cmsxk21ay03mpssimsv4i7d1f",
+      "addressFamily": "IPV4",
+      "autoModeExempt": false,
+      "autoPromotedBySweep": false,
+      "autoTrafficDirection": null,
+      "detectedBandwidthBps": 10000000000,
+      "bandwidthOverrideBps": null,
+      "triggerPercent": 90,
+      "triggerSamples": 3,
+      "mitigationRt": "268568:660",
+      "state": "DISABLED",
+      "plannedBogonNode": 1,
+      "plannedMitigationNode": 2,
+      "interface": "Eth-Trunk1.1052",
+      "alias": "WF_Bonsucesso_02_10GB",
+      "ifIndex": 124,
+      "speedBps": 300000000000,
+      "mitigationTrafficDirection": null,
+      "hostname": "BHE-VTA-F1A-BGP-01",
+      "events": 0,
+      "simulations": 0,
+      "peers": [
+        {
+          "peerAddress": "10.200.201.122",
+          "family": "IPV4",
+          "primary": true,
+          "peerId": null,
+          "state": null,
+          "receivedPrefixes": null,
+          "lastPollingAt": null,
+          "interfaceId": null
+        }
+      ]
+    },
+    {
+      "id": "cmvu0f0vd00axl7ylpkznwlc2",
+      "policyName": "PL-WFREDES-V4-IN",
+      "mode": "ALERT_ONLY",
+      "enabled": true,
+      "interfaceId": "cmuvdh9mniwstssoz3clee39w",
+      "addressFamily": "IPV4",
+      "autoModeExempt": false,
+      "autoPromotedBySweep": false,
+      "autoTrafficDirection": null,
+      "detectedBandwidthBps": 10000000000,
+      "bandwidthOverrideBps": null,
+      "triggerPercent": 90,
+      "triggerSamples": 3,
+      "mitigationRt": "268568:660",
+      "state": "NORMAL",
+      "plannedBogonNode": 1,
+      "plannedMitigationNode": 2,
+      "interface": "Eth-Trunk1.1056",
+      "alias": "WF-REDES-IPv4_10GB",
+      "ifIndex": 339,
+      "speedBps": 300000000000,
+      "mitigationTrafficDirection": null,
+      "hostname": "BHE-VTA-F1A-BGP-01",
+      "events": 0,
+      "simulations": 0,
+      "peers": [
+        {
+          "peerAddress": "10.200.201.122",
+          "family": "IPV4",
+          "primary": true,
+          "peerId": null,
+          "state": null,
+          "receivedPrefixes": null,
+          "lastPollingAt": null,
+          "interfaceId": null
+        }
+      ]
+    }
+  ],
+  "targetedReadOnly": {
+    "readOnly": true,
+    "observedUtc": "2026-10-29T23:23:08.202440+00:00",
+    "bgpBindings": [
+      {
+        "id": "cmu9sxutl04trssd0pcs55w1f",
+        "peerAddress": "10.200.201.122",
+        "addressFamily": "IPV4",
+        "interfaceId": "cmuvdh9mniwstssoz3clee39w",
+        "name": "Eth-Trunk1.1056",
+        "alias": "WF-REDES-IPv4_10GB",
+        "ifIndex": 339,
+        "state": "ESTABLISHED",
+        "receivedPrefixes": 1,
+        "lastPollingAt": "2026-10-29T23:17:36.41",
+        "lastDiscoveryAt": "2026-10-26T19:16:06.749"
+      },
+      {
+        "id": "cmu9sxupi04sxssd0gfx28qan",
+        "peerAddress": "10.200.201.2",
+        "addressFamily": "IPV4",
+        "interfaceId": "cmsxk21gs03pdssimims9ojlb",
+        "name": "Eth-Trunk1.3058",
+        "alias": "AGLINK-IPV4_10GB",
+        "ifIndex": 236,
+        "state": "ESTABLISHED",
+        "receivedPrefixes": 3,
+        "lastPollingAt": "2026-10-29T23:17:36.41",
+        "lastDiscoveryAt": "2026-10-26T19:16:06.749"
+      }
+    ],
+    "aglinkDecisionLogs": [
+      {
+        "time": 1793306546759,
+        "msg": "auto: decisao",
+        "profileId": "cmuoavm4e00bysslhqd0h3q7u",
+        "outcome": "BLOCKED",
+        "reason": "SNAPSHOT_UNAVAILABLE",
+        "trafficBps": null,
+        "thresholdBps": null,
+        "direction": "tx",
+        "directionSource": "ENV",
+        "samplesOver": 0,
+        "requiredSamples": 3,
+        "runtimeState": "NORMAL",
+        "verified": false,
+        "commandStatus": null,
+        "at": "2026-10-29T20:42:26.754Z"
+      },
+      {
+        "time": 1793306581963,
+        "msg": "auto: decisao",
+        "profileId": "cmuoavm4e00bysslhqd0h3q7u",
+        "outcome": "NO_ACTION",
+        "reason": "THRESHOLD_NOT_EXCEEDED",
+        "trafficBps": "181353429",
+        "thresholdBps": "9000000000",
+        "direction": "tx",
+        "directionSource": "ENV",
+        "samplesOver": 0,
+        "requiredSamples": 3,
+        "runtimeState": "NORMAL",
+        "verified": false,
+        "commandStatus": null,
+        "at": "2026-10-29T20:43:01.946Z"
+      },
+      {
+        "time": 1793313157859,
+        "msg": "auto: decisao",
+        "profileId": "cmuoavm4e00bysslhqd0h3q7u",
+        "outcome": "BLOCKED",
+        "reason": "TELEMETRY_UNAVAILABLE",
+        "trafficBps": null,
+        "thresholdBps": null,
+        "direction": "tx",
+        "directionSource": "ENV",
+        "samplesOver": 0,
+        "requiredSamples": 3,
+        "runtimeState": "NORMAL",
+        "verified": false,
+        "commandStatus": null,
+        "at": "2026-10-29T22:32:37.847Z"
+      },
+      {
+        "time": 1793313188837,
+        "msg": "auto: decisao",
+        "profileId": "cmuoavm4e00bysslhqd0h3q7u",
+        "outcome": "NO_ACTION",
+        "reason": "THRESHOLD_NOT_EXCEEDED",
+        "trafficBps": "525377077",
+        "thresholdBps": "9000000000",
+        "direction": "tx",
+        "directionSource": "ENV",
+        "samplesOver": 0,
+        "requiredSamples": 3,
+        "runtimeState": "NORMAL",
+        "verified": false,
+        "commandStatus": null,
+        "at": "2026-10-29T22:33:08.837Z"
+      }
+    ],
+    "catalogErrors": [
+      {
+        "time": 1793306542344,
+        "nameUniqueViolation": true
+      }
+    ],
+    "noSessionCreated": true,
+    "noDiscoveryExecuted": true
+  },
+  "catalogComparison": {
+    "previousFileSha256": "da53cce4e9dad997809fb78fe0182f42e8631af0404ed644e41bd41e0f121932",
+    "candidateFileSha256": "2a255fc270755c3511637b5763b859335ad1f574929625f461e01f674b143d64",
+    "rawBytesEqual": false,
+    "normalizedScalarAndStructureDifferences": 0,
+    "normalization": "YAML parsed recursively; whitespace runs in strings normalized; all other values exact"
+  },
+  "actualCatalogNameConflicts": {
+    "fallbackTemplates": 42,
+    "conflicts": [
+      {
+        "fallbackKey": "mikrotik-ccr2116-12g-4s-plus",
+        "name": "MikroTik CCR2116-12G-4S+",
+        "existingCatalogKey": "mikrotik-ccr2116-12g-4splus",
+        "existingId": "cmucnvcn300ixssd69uxt6jls",
+        "origin": "SYSTEM",
+        "assets": 0,
+        "ports": 18,
+        "slots": 0,
+        "modules": 0
+      },
+      {
+        "fallbackKey": "mikrotik-crs305-1g-4s-plus-in",
+        "name": "MikroTik CRS305-1G-4S+IN",
+        "existingCatalogKey": "mikrotik-crs305-1g-4splus-in",
+        "existingId": "cmucnvcnm00jvssd67wqejg59",
+        "origin": "SYSTEM",
+        "assets": 0,
+        "ports": 5,
+        "slots": 0,
+        "modules": 0
+      },
+      {
+        "fallbackKey": "mikrotik-crs328-24p-4s-plus-rm",
+        "name": "MikroTik CRS328-24P-4S+RM",
+        "existingCatalogKey": "mikrotik-crs328-24p-4splus-rm",
+        "existingId": "cmucnvcpj00n2ssd68r0yunj6",
+        "origin": "SYSTEM",
+        "assets": 0,
+        "ports": 29,
+        "slots": 0,
+        "modules": 0
+      },
+      {
+        "fallbackKey": "mikrotik-crs354-48g-4s-plus-2q-plus-rm",
+        "name": "MikroTik CRS354-48G-4S+2Q+RM",
+        "existingCatalogKey": "mikrotik-crs354-48g-4splus-2qplus-rm",
+        "existingId": "cmucnvcqc00oossd6jk9qra7s",
+        "origin": "SYSTEM",
+        "assets": 0,
+        "ports": 56,
+        "slots": 0,
+        "modules": 0
+      }
+    ]
+  },
+  "aglinkFastConfiguration": {
+    "globalBridgeMode": "ENFORCE",
+    "configuredBridgeWrites": "true",
+    "profileIncludedInBridge": true,
+    "profileRoutedToFast": true,
+    "profileInEnforceList": false,
+    "globalM8": "0",
+    "authenticatedLiveResponse": "NOT_VERIFIED",
+    "codeEvidence": [
+      "routes.ts shadow targets exclude routed profiles",
+      "routes.ts bridge summary filters operational decisions to ENFORCE profiles",
+      "routes.ts engine.getStatus already returns operational decisions"
+    ]
+  }
+}

@@ -1,0 +1,59 @@
+{
+  "apiFull": {
+    "passed": 2594,
+    "failed": 0,
+    "skipped": 33,
+    "filesPassed": 179,
+    "filesSkipped": 5
+  },
+  "postgresSeparate": {
+    "passed": 10,
+    "failed": 0,
+    "engine": "PostgreSQL 18 disposable localhost only",
+    "testsWereSkippedInFullRun": true
+  },
+  "webFull": {
+    "passed": 1447,
+    "failed": 0,
+    "filesPassed": 119,
+    "TZ": "UTC"
+  },
+  "browser": {
+    "passed": 15,
+    "failed": 0,
+    "api": "offline mocks",
+    "viewports": [
+      "360x800",
+      "390x844",
+      "412x915",
+      "844x390",
+      "768x1024",
+      "820x1180",
+      "1024x768",
+      "1366x768",
+      "1920x1080"
+    ]
+  },
+  "systemdGraphUnitTests": {
+    "passed": 6
+  },
+  "systemdLabCases": {
+    "passed": 6,
+    "services": "fake only"
+  },
+  "typecheck": {
+    "api": "PASS",
+    "web": "PASS (included in production build)"
+  },
+  "eslint": {
+    "api": "PASS",
+    "web": "PASS"
+  },
+  "build": {
+    "api": "PASS",
+    "web": "PASS"
+  },
+  "remainingBaselineSkipped": 23,
+  "physicalHuaweiHomologation": "NOT_PERFORMED",
+  "authenticatedLiveLifecycleShadowFastBridge": "NOT_VERIFIED"
+}

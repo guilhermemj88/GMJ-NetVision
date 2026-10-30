@@ -1,5 +1,7 @@
 # IMPLANTAR — plano vigente: AUTO ACTIVATE + MANUAL REMOVE
 
+> Atualização Fase 0.1 (29/10/2026): a API efetiva já é e78638a, com AUTO/persistência/lifecycle/REMOVE desligados. A aceitação estrita da Fase 0 continua NO-GO. O grafo systemd propaga restart da API ao MCP; o antigo roteiro de restart exclusivo não está liberado. Aplicam-se os gates, isolamento de WEB responsiva, diagnóstico do catálogo e rollback em [PHASE01_STABILIZATION.md](PHASE01_STABILIZATION.md). n8n RC7.1.2 já está publicado; nenhuma alteração n8n faz parte desta estabilização. Nova publicação/restart/migration/piloto exige autorização separada.
+
 O operador decide exclusivamente o retorno do tráfego pelo Telegram ou UI. Este documento substitui o plano E2E anterior. Nenhuma etapa autoriza AUTO REMOVE. Nenhuma ação operacional foi executada nesta preparação.
 
 ```mermaid
@@ -55,11 +57,11 @@ O patch proposto `n8n/AUTO-DDOS-STATUS-OUTBOUND-PATCH.json` deriva do fixture RC
 
 Exige autorização futura de deploy/restart. Não usar `deploy/update.sh`, que compila/reinicia outros componentes.
 
-1. Revalidar release/PID/CWD/hash API RC13, WEB/BUILD_ID, MCP, health 200, configuração efetiva dos 22 drop-ins + unit e EnvironmentFiles, disco e contagens de eventos. Interromper com divergência não explicada, serviços instáveis, health !=200, disco <5 GiB ou insuficiente para duas cópias +2 GiB.
+1. Revalidar release/PID/CWD/hash API efetiva e78638a, WEB/BUILD_ID, MCP, health 200, configuração efetiva dos 23 drop-ins + unit e 12 EnvironmentFiles (recontar na janela), disco e contagens de eventos. Interromper com divergência não explicada, serviços instáveis, health !=200, disco <5 GiB ou insuficiente para duas cópias +2 GiB.
 2. Selecionar SHA completo da implementação corrigida e worktree limpa. Fazer build API-only Linux com Node 24.19/lockfile, `npm ci --workspace @gmj/api --include-workspace-root --ignore-scripts --no-audit --no-fund` e `npm run build -w @gmj/api`. Validar hashes, runtime Prisma Linux e pacote. Não reutilizar artefato do E2E bdc3514 como release corrigida.
 3. Nova release isolada; não escrever na RC13 ativa nem `/opt/GMJ-NetVision`. Backup protegido e restaurável de unit/drop-ins/EnvironmentFiles antes da troca. Novo drop-in proposto deve ordenar após o último RC13, com reset apenas de ExecStart e CWD da API e último EnvironmentFile dedicado. Validar ordenação e precedência dos arquivos, não somente o nome do drop-in. Exemplos em `deploy/` não foram instalados.
 4. Configuração fase 0: `NETVISION_INSTALLATION_ID=IMPLANTAR`, `MITIGATION_AUTO_PERSISTENCE_ENABLED=0`, `MITIGATION_AUTO_LIFECYCLE_ENABLED=0`, `MITIGATION_AUTO_EXECUTION_ENABLED=0`, **`MITIGATION_AUTO_REMOVE_ENABLED=0`**, sweep/description promotion=0, allowlist de execução de perfis vazia e maxActive=1. Preservar demais flags FAST, executor Huawei e permissões manuais aprovadas. Não executar migration se não autorizada separadamente.
-5. Só após autorização: validar unit, daemon-reload e um restart exclusivo da API. Revalidar em até 60 s PID/CWD/hash, health demoMode=false/snmpPolling=true, NRestarts, flags reais em `/proc/PID/environ` e endpoint autenticado `/api/bgp/mitigation/auto/lifecycle` com removalPolicy=MANUAL_ONLY/removeEnabled=false. WEB/MCP/observer intactos; nenhuma ativação/retirada nova. Caches exigem aquecimento/discovery após restart; ausência de snapshot impede avanço.
+5. Só após nova autorização e gates da Fase 0.1: validar unit e precedência. Na topologia atual, exigir janela conjunta API+MCP explicitamente autorizada; restart estritamente API-only permanece NO-GO. Não usar ignore-dependencies em produção com base apenas no teste simulado. Revalidar em até 60 s PID/CWD/hash, health demoMode=false/snmpPolling=true, NRestarts, flags reais em `/proc/PID/environ` e endpoint autenticado `/api/bgp/mitigation/auto/lifecycle` com removalPolicy=MANUAL_ONLY/removeEnabled=false. WEB/observer intactos; MCP deve permanecer no escopo explicitamente aprovado e retornar saudável; nenhuma ativação/retirada nova. Caches exigem aquecimento/discovery após restart; ausência de snapshot impede avanço.
 
 ## Fase 1 — migration e homologação física dedicada
 
@@ -98,14 +100,14 @@ MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS=
 MITIGATION_ALLOWED_DEVICE_IDS=host-377c554a-8d1e-47c4-baa4-f258693b4d91
 ```
 
-HUAWEI e device allowlist permanecem; não usar MOCK para fabricar estado normal. LIVE_WRITE=false congela temporariamente ACTIVATE/REMOVE manuais também: avisar operador. Apontar API ao bundle anterior verificado e um restart autorizado. Confirmar flags em processo, CWD/hash, health 200, ausência de novos comandos e WEB/MCP intactos. Não zerar ownership/journal/outbox; manter tabela aditiva. Retomar operações manuais exige nova aprovação e readback físico. Barras independentes MODE/LIVE_WRITE são testadas em transporte fake, sem afirmar homologação física.
+HUAWEI e device allowlist permanecem; não usar MOCK para fabricar estado normal. LIVE_WRITE=false congela temporariamente ACTIVATE/REMOVE manuais também: avisar operador. Apontar API ao bundle anterior verificado e um restart autorizado. Confirmar flags em processo, CWD/hash, health 200 e ausência de novos comandos; WEB/Observer intactos e MCP conforme janela explicitamente autorizada. Rollback com restart tem a mesma propagação systemd e não pode ser tratado como API-only sem nova prova. Não zerar ownership/journal/outbox; manter tabela aditiva. Retomar operações manuais exige nova aprovação e readback físico. Barras independentes MODE/LIVE_WRITE são testadas em transporte fake, sem afirmar homologação física.
 
 ## Decisões e autorizações restantes
 
 | Fase                            | Recomendação                             | Autorização/condição restante                                                  |
 | ------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------ |
 | Implementação e testes isolados | GO técnico se verificações finais verdes | Revisão do commit e evidências                                                 |
-| API-only AUTO=0                 | Preparada, sem execução                  | Pacote Linux aprovado, backup, janela, deploy/restart                          |
+| API-only AUTO=0 | e78638a publicada; aceitação estrita NO-GO | Correções Fase 0.1, pacote Linux, revisão e autorização de janela API/MCP |
 | Migration/outbox/n8n reais      | NO-GO operacional agora                  | Migration + backup/checksums; patch revisado do export publicado               |
 | Homologação IPv4 AGLINK         | Recomendação condicional                 | Readback/inventário novos; escopo/janela e ACTIVATE/REMOVE humanos autorizados |
 | Piloto AUTO ACTIVATE            | NO-GO operacional agora                  | Homologação física, Telegram, perfil único e habilitação explícita             |

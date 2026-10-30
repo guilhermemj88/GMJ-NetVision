@@ -1,0 +1,171 @@
+{
+  "readOnly": true,
+  "catalogIndexes": [
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalEquipmentTemplate",
+      "indexname": "PhysicalEquipmentTemplate_catalogKey_key",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalEquipmentTemplate_catalogKey_key\" ON public.\"PhysicalEquipmentTemplate\" USING btree (\"catalogKey\")"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalEquipmentTemplate",
+      "indexname": "PhysicalEquipmentTemplate_category_idx",
+      "indexdef": "CREATE INDEX \"PhysicalEquipmentTemplate_category_idx\" ON public.\"PhysicalEquipmentTemplate\" USING btree (category)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalEquipmentTemplate",
+      "indexname": "PhysicalEquipmentTemplate_manufacturer_idx",
+      "indexdef": "CREATE INDEX \"PhysicalEquipmentTemplate_manufacturer_idx\" ON public.\"PhysicalEquipmentTemplate\" USING btree (manufacturer)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalEquipmentTemplate",
+      "indexname": "PhysicalEquipmentTemplate_name_key",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalEquipmentTemplate_name_key\" ON public.\"PhysicalEquipmentTemplate\" USING btree (name)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalEquipmentTemplate",
+      "indexname": "PhysicalEquipmentTemplate_origin_idx",
+      "indexdef": "CREATE INDEX \"PhysicalEquipmentTemplate_origin_idx\" ON public.\"PhysicalEquipmentTemplate\" USING btree (origin)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalEquipmentTemplate",
+      "indexname": "PhysicalEquipmentTemplate_pkey",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalEquipmentTemplate_pkey\" ON public.\"PhysicalEquipmentTemplate\" USING btree (id)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalModuleTemplate",
+      "indexname": "PhysicalModuleTemplate_pkey",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalModuleTemplate_pkey\" ON public.\"PhysicalModuleTemplate\" USING btree (id)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalModuleTemplate",
+      "indexname": "PhysicalModuleTemplate_templateId_idx",
+      "indexdef": "CREATE INDEX \"PhysicalModuleTemplate_templateId_idx\" ON public.\"PhysicalModuleTemplate\" USING btree (\"templateId\")"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalModuleTemplate",
+      "indexname": "PhysicalModuleTemplate_templateId_name_key",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalModuleTemplate_templateId_name_key\" ON public.\"PhysicalModuleTemplate\" USING btree (\"templateId\", name)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalModuleTemplatePort",
+      "indexname": "PhysicalModuleTemplatePort_moduleTemplateId_idx",
+      "indexdef": "CREATE INDEX \"PhysicalModuleTemplatePort_moduleTemplateId_idx\" ON public.\"PhysicalModuleTemplatePort\" USING btree (\"moduleTemplateId\")"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalModuleTemplatePort",
+      "indexname": "PhysicalModuleTemplatePort_moduleTemplateId_name_key",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalModuleTemplatePort_moduleTemplateId_name_key\" ON public.\"PhysicalModuleTemplatePort\" USING btree (\"moduleTemplateId\", name)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalModuleTemplatePort",
+      "indexname": "PhysicalModuleTemplatePort_moduleTemplateId_sortOrder_key",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalModuleTemplatePort_moduleTemplateId_sortOrder_key\" ON public.\"PhysicalModuleTemplatePort\" USING btree (\"moduleTemplateId\", \"sortOrder\")"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalModuleTemplatePort",
+      "indexname": "PhysicalModuleTemplatePort_pkey",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalModuleTemplatePort_pkey\" ON public.\"PhysicalModuleTemplatePort\" USING btree (id)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalTemplatePort",
+      "indexname": "PhysicalTemplatePort_pairedTemplatePortId_key",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalTemplatePort_pairedTemplatePortId_key\" ON public.\"PhysicalTemplatePort\" USING btree (\"pairedTemplatePortId\")"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalTemplatePort",
+      "indexname": "PhysicalTemplatePort_pkey",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalTemplatePort_pkey\" ON public.\"PhysicalTemplatePort\" USING btree (id)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalTemplatePort",
+      "indexname": "PhysicalTemplatePort_templateId_idx",
+      "indexdef": "CREATE INDEX \"PhysicalTemplatePort_templateId_idx\" ON public.\"PhysicalTemplatePort\" USING btree (\"templateId\")"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalTemplatePort",
+      "indexname": "PhysicalTemplatePort_templateId_side_name_key",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalTemplatePort_templateId_side_name_key\" ON public.\"PhysicalTemplatePort\" USING btree (\"templateId\", side, name)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalTemplatePort",
+      "indexname": "PhysicalTemplatePort_templateId_side_sortOrder_key",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalTemplatePort_templateId_side_sortOrder_key\" ON public.\"PhysicalTemplatePort\" USING btree (\"templateId\", side, \"sortOrder\")"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalTemplateSlot",
+      "indexname": "PhysicalTemplateSlot_pkey",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalTemplateSlot_pkey\" ON public.\"PhysicalTemplateSlot\" USING btree (id)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalTemplateSlot",
+      "indexname": "PhysicalTemplateSlot_templateId_idx",
+      "indexdef": "CREATE INDEX \"PhysicalTemplateSlot_templateId_idx\" ON public.\"PhysicalTemplateSlot\" USING btree (\"templateId\")"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalTemplateSlot",
+      "indexname": "PhysicalTemplateSlot_templateId_index_key",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalTemplateSlot_templateId_index_key\" ON public.\"PhysicalTemplateSlot\" USING btree (\"templateId\", index)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalTemplateSlotModule",
+      "indexname": "PhysicalTemplateSlotModule_moduleTemplateId_idx",
+      "indexdef": "CREATE INDEX \"PhysicalTemplateSlotModule_moduleTemplateId_idx\" ON public.\"PhysicalTemplateSlotModule\" USING btree (\"moduleTemplateId\")"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalTemplateSlotModule",
+      "indexname": "PhysicalTemplateSlotModule_pkey",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalTemplateSlotModule_pkey\" ON public.\"PhysicalTemplateSlotModule\" USING btree (id)"
+    },
+    {
+      "schemaname": "public",
+      "tablename": "PhysicalTemplateSlotModule",
+      "indexname": "PhysicalTemplateSlotModule_slotId_moduleTemplateId_key",
+      "indexdef": "CREATE UNIQUE INDEX \"PhysicalTemplateSlotModule_slotId_moduleTemplateId_key\" ON public.\"PhysicalTemplateSlotModule\" USING btree (\"slotId\", \"moduleTemplateId\")"
+    }
+  ],
+  "templateReferencingConstraints": [
+    {
+      "conname": "PhysicalAsset_templateId_fkey",
+      "relname": "PhysicalAsset",
+      "definition": "FOREIGN KEY (\"templateId\") REFERENCES \"PhysicalEquipmentTemplate\"(id) ON UPDATE CASCADE ON DELETE SET NULL"
+    },
+    {
+      "conname": "PhysicalModuleTemplate_templateId_fkey",
+      "relname": "PhysicalModuleTemplate",
+      "definition": "FOREIGN KEY (\"templateId\") REFERENCES \"PhysicalEquipmentTemplate\"(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "PhysicalTemplatePort_templateId_fkey",
+      "relname": "PhysicalTemplatePort",
+      "definition": "FOREIGN KEY (\"templateId\") REFERENCES \"PhysicalEquipmentTemplate\"(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    },
+    {
+      "conname": "PhysicalTemplateSlot_templateId_fkey",
+      "relname": "PhysicalTemplateSlot",
+      "definition": "FOREIGN KEY (\"templateId\") REFERENCES \"PhysicalEquipmentTemplate\"(id) ON UPDATE CASCADE ON DELETE CASCADE"
+    }
+  ]
+}

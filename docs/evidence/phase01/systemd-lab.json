@@ -1,0 +1,201 @@
+{
+  "systemd": "systemd 259 (259.9-0ubuntu0.1)",
+  "initial": {
+    "phase01-lab-api.service": {
+      "ActiveState": "active",
+      "MainPID": "134",
+      "NRestarts": "0"
+    },
+    "phase01-lab-mcp.service": {
+      "ActiveState": "active",
+      "MainPID": "135",
+      "NRestarts": "0"
+    }
+  },
+  "cases": [
+    {
+      "operation": "restart",
+      "before": {
+        "phase01-lab-api.service": {
+          "ActiveState": "active",
+          "MainPID": "134",
+          "NRestarts": "0"
+        },
+        "phase01-lab-mcp.service": {
+          "ActiveState": "active",
+          "MainPID": "135",
+          "NRestarts": "0"
+        }
+      },
+      "after": {
+        "phase01-lab-api.service": {
+          "ActiveState": "active",
+          "MainPID": "150",
+          "NRestarts": "0"
+        },
+        "phase01-lab-mcp.service": {
+          "ActiveState": "active",
+          "MainPID": "152",
+          "NRestarts": "0"
+        }
+      },
+      "mcpRestarted": true
+    },
+    {
+      "operation": "try-restart",
+      "before": {
+        "phase01-lab-api.service": {
+          "ActiveState": "active",
+          "MainPID": "150",
+          "NRestarts": "0"
+        },
+        "phase01-lab-mcp.service": {
+          "ActiveState": "active",
+          "MainPID": "152",
+          "NRestarts": "0"
+        }
+      },
+      "after": {
+        "phase01-lab-api.service": {
+          "ActiveState": "active",
+          "MainPID": "161",
+          "NRestarts": "0"
+        },
+        "phase01-lab-mcp.service": {
+          "ActiveState": "active",
+          "MainPID": "163",
+          "NRestarts": "0"
+        }
+      },
+      "mcpRestarted": true
+    },
+    {
+      "operation": "stop",
+      "before": {
+        "phase01-lab-api.service": {
+          "ActiveState": "active",
+          "MainPID": "161",
+          "NRestarts": "0"
+        },
+        "phase01-lab-mcp.service": {
+          "ActiveState": "active",
+          "MainPID": "163",
+          "NRestarts": "0"
+        }
+      },
+      "after": {
+        "phase01-lab-api.service": {
+          "ActiveState": "inactive",
+          "MainPID": "0",
+          "NRestarts": "0"
+        },
+        "phase01-lab-mcp.service": {
+          "ActiveState": "inactive",
+          "MainPID": "0",
+          "NRestarts": "0"
+        }
+      },
+      "mcpStopped": true
+    },
+    {
+      "operation": "candidate-swap-simulation",
+      "jobMode": "ignore-dependencies",
+      "before": {
+        "phase01-lab-api.service": {
+          "ActiveState": "active",
+          "MainPID": "174",
+          "NRestarts": "0"
+        },
+        "phase01-lab-mcp.service": {
+          "ActiveState": "active",
+          "MainPID": "175",
+          "NRestarts": "0"
+        }
+      },
+      "after": {
+        "phase01-lab-api.service": {
+          "ActiveState": "active",
+          "MainPID": "186",
+          "NRestarts": "0"
+        },
+        "phase01-lab-mcp.service": {
+          "ActiveState": "active",
+          "MainPID": "175",
+          "NRestarts": "0"
+        }
+      }
+    },
+    {
+      "operation": "rollback-simulation",
+      "jobMode": "ignore-dependencies",
+      "before": {
+        "phase01-lab-api.service": {
+          "ActiveState": "active",
+          "MainPID": "186",
+          "NRestarts": "0"
+        },
+        "phase01-lab-mcp.service": {
+          "ActiveState": "active",
+          "MainPID": "175",
+          "NRestarts": "0"
+        }
+      },
+      "after": {
+        "phase01-lab-api.service": {
+          "ActiveState": "active",
+          "MainPID": "200",
+          "NRestarts": "0"
+        },
+        "phase01-lab-mcp.service": {
+          "ActiveState": "active",
+          "MainPID": "175",
+          "NRestarts": "0"
+        }
+      }
+    },
+    {
+      "operation": "API-process-crash",
+      "before": {
+        "phase01-lab-api.service": {
+          "ActiveState": "active",
+          "MainPID": "200",
+          "NRestarts": "0"
+        },
+        "phase01-lab-mcp.service": {
+          "ActiveState": "active",
+          "MainPID": "175",
+          "NRestarts": "0"
+        }
+      },
+      "after": {
+        "phase01-lab-api.service": {
+          "ActiveState": "active",
+          "MainPID": "214",
+          "NRestarts": "1"
+        },
+        "phase01-lab-mcp.service": {
+          "ActiveState": "active",
+          "MainPID": "215",
+          "NRestarts": "0"
+        }
+      }
+    }
+  ],
+  "fakeMcpConnectivityTransitions": [
+    "False",
+    "True",
+    "False",
+    "True",
+    "False",
+    "True",
+    "False",
+    "True",
+    "False",
+    "False",
+    "True"
+  ],
+  "limitations": [
+    "Fake services only; does not establish real MCP transport recovery",
+    "259.9 lab differs from 259.5 production; no production authorization"
+  ]
+}
