@@ -45,6 +45,8 @@ O inventário completo dos 38 perfis continua em `audits/auto-ddos-20261029/MATR
 
 ## Critérios para homologação física posterior
 
+Para AGLINK, aplicar o [plano COMPUTIZE-only vigente](AGLINK_COMPUTIZE_ONLY_PLAN.md): SEMPRE-DDoS é NEVER_MITIGATE e não integra a prontidão; exige bloqueio de exportação RT660 autorizado e verificado. Preservar SEMPRE normal. Essa decisão não habilita AUTO nem substitui a confirmação física de ACTIVATE/REMOVE.
+
 1. Aprovar somente AGLINK IPv4 (ou outro ID explicitamente substituído), device, interface/ifIndex/descrição, banda/threshold/samples, RT/par e scope completo; todos os peers relevantes ESTABLISHED. Inventário e readback recentes devem coincidir com os bindings do FAST; não usar fixtures como mapeamento real.
 2. Operador e acesso manual alternativo disponíveis; n8n real revisado, botões e autenticação/scope confirm/cancel preservados; backlog conhecido e ACK demonstrado. Aprovação própria para migration/restart/deploy e para cada teste físico.
 3. Primeiro publicar AUTO=0. Homologar preflight/ACTIVATE/readback/Telegram em janela autorizada, sem inventar tráfego de ataque. Depois autorizar M8=1 exclusivamente para o perfil aprovado, REMOVE=0 e maxActive=1.

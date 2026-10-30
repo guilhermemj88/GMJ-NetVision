@@ -1,0 +1,351 @@
+{
+  "decision": "Plan changed to COMPUTIZE-only; NO-GO physical write until permanent SEMPRE-DDoS export guard is authorized/applied/verified and COMPUTIZE readiness/window are confirmed",
+  "operatorDecision": {
+    "allowedMitigator": "198.19.4.145",
+    "neverMitigateDestination": "138.99.240.141",
+    "normalSemprePreserved": "138.99.240.117",
+    "sempreDdosReadinessRequired": false,
+    "exclusionScope": "permanent destination exclusion; all RT268568:660 on its export policy",
+    "productionApplied": false
+  },
+  "observedUtc": "2026-10-30T22:48:41.614Z",
+  "observedEndUtc": "2026-10-30T22:56:51.784831+00:00",
+  "readOnly": true,
+  "sempreSessionInvestigated": false,
+  "sourceApiSha": "463769620a2f39f9803b60a43314851fe3a77e0e",
+  "bundleSha256": "5937a56815a08837de73d9b56e2fc1c9f44ab9b98ba86822f19e6e6e0352d08d",
+  "peerExclusions": [
+    {
+      "id": "cmu9sxuxp04urssd024ysba5q",
+      "peer": "198.19.4.145",
+      "family": "IPV4",
+      "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+      "excluded": true,
+      "reason": "BACKBONE",
+      "note": "Peer de mitigacao/scrubbing AS270735 - Eth-Trunk100.2193"
+    },
+    {
+      "id": "cmu9sxuvk04u9ssd0yeep39nh",
+      "peer": "138.99.240.117",
+      "family": "IPV4",
+      "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+      "excluded": true,
+      "reason": "TRANSIT",
+      "note": "Upstream full-table AS28198 - Eth-Trunk1.1026"
+    },
+    {
+      "id": "cmu9sxuvs04ubssd0bvf6rgo4",
+      "peer": "138.99.240.141",
+      "family": "IPV4",
+      "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+      "excluded": true,
+      "reason": "BACKBONE",
+      "note": "Servico de mitigacao AS28198 - Eth-Trunk1.1027"
+    }
+  ],
+  "neverMitigateEnumExists": false,
+  "currentSempreExportPolicy": [
+    "route-policy PL-SEMPRE-DDoS-IPv4-OUT permit node 50\r\n if-match extcommunity-filter MITIGACAO",
+    "route-policy PL-SEMPRE-DDoS-IPv4-OUT deny node 100"
+  ],
+  "currentMitigationRtFilter": [
+    "ip extcommunity-filter basic MITIGACAO index 10 permit rt 268568:660"
+  ],
+  "proposedGuard": {
+    "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+    "action": "deny",
+    "node": 5,
+    "match": "extcommunity-filter MITIGACAO",
+    "applied": false,
+    "requiresSpecificHuaweiAuthorization": true,
+    "scopeIsGlobalForRt660": true,
+    "existingNodes50And100Preserved": true,
+    "sharedRtFilterModified": false
+  },
+  "currentPoliciesMatchApprovedEvidence": {
+    "PL-SEMPRE-IPv4-OUT": true,
+    "PL-SEMPRE-DDoS-IPv4-OUT": true,
+    "PL-SEABORN-IPv4-OUT": true,
+    "PL-SEABORN-BH-IPv4-OUT": true,
+    "PL-COMPUTIZE-IPv4-OUT": true,
+    "PL-CIRION-IPv4-OUT": true,
+    "PL-TUDDO-IPv4-OUT": true,
+    "PL-BGP_VS-IX_V4_OUT": true
+  },
+  "computizeObserved": [
+    "BGP Peer is 198.19.4.145,  remote AS 270735",
+    "BGP current state: Established, Up for 4d05h41m07s",
+    "BGP last state: OpenConfirm",
+    "Advertised total routes: 11",
+    "Last update    received: 2026-10-30 19:48:29-03:00",
+    "Last update    sent    : 2026-10-26 14:07:27-03:00",
+    "No export update filter list",
+    "No export prefix list",
+    "Export route policy is: PL-COMPUTIZE-IPv4-OUT",
+    "No export distribute policy",
+    "No export route filter"
+  ],
+  "computizeOperationalReadinessConfirmed": false,
+  "currentAdvertisements": [
+    {
+      "peer": "198.19.4.145",
+      "reportedTotal": 11,
+      "parsedTotal": 11,
+      "prefixes": [],
+      "warnings": []
+    },
+    {
+      "peer": "138.99.240.117",
+      "reportedTotal": 36,
+      "parsedTotal": 36,
+      "prefixes": ["167.250.126.0/23", "167.250.126.0/24", "167.250.127.0/24"],
+      "warnings": []
+    },
+    {
+      "peer": "198.18.1.152",
+      "reportedTotal": 33,
+      "parsedTotal": 33,
+      "prefixes": ["167.250.126.0/23", "167.250.126.0/24", "167.250.127.0/24"],
+      "warnings": []
+    },
+    {
+      "peer": "198.18.36.26",
+      "reportedTotal": 34,
+      "parsedTotal": 34,
+      "prefixes": ["167.250.126.0/23", "167.250.126.0/24", "167.250.127.0/24"],
+      "warnings": []
+    },
+    {
+      "peer": "200.194.223.85",
+      "reportedTotal": 34,
+      "parsedTotal": 34,
+      "prefixes": ["167.250.126.0/23", "167.250.126.0/24", "167.250.127.0/24"],
+      "warnings": []
+    },
+    {
+      "peer": "172.30.251.33",
+      "reportedTotal": 36,
+      "parsedTotal": 36,
+      "prefixes": ["167.250.126.0/23", "167.250.126.0/24", "167.250.127.0/24"],
+      "warnings": []
+    },
+    {
+      "peer": "45.163.144.6",
+      "reportedTotal": 40,
+      "parsedTotal": 40,
+      "prefixes": ["167.250.126.0/23", "167.250.126.0/24", "167.250.127.0/24"],
+      "warnings": [
+        "AS-PATH não interpretável em 45.163.144.0/25.",
+        "AS-PATH não interpretável em 45.163.144.128/25.",
+        "AS-PATH não interpretável em 45.163.145.0/25.",
+        "AS-PATH não interpretável em 45.163.145.128/25.",
+        "AS-PATH não interpretável em 45.163.146.128/25.",
+        "AS-PATH não interpretável em 45.163.147.0/25.",
+        "AS-PATH não interpretável em 45.163.147.128/25.",
+        "AS-PATH não interpretável em 100.64.0.0/16.",
+        "AS-PATH não interpretável em 100.65.0.0/16."
+      ]
+    }
+  ],
+  "aglinkNodesUnchanged": [
+    {
+      "node": 10,
+      "action": "permit",
+      "ifMatchIpPrefix": ["AGLINK-BLOCO-TODO-23"],
+      "routeTargets": ["268568:140"]
+    },
+    {
+      "node": 1000,
+      "action": "deny",
+      "ifMatchIpPrefix": [],
+      "routeTargets": []
+    }
+  ],
+  "aglinkNormalPolicy": [
+    "route-policy PL-AGLINK_IPv4-IN permit node 10\r\n if-match ip-prefix AGLINK-BLOCO-TODO-23\r\n apply local-preference 1100\r\n apply extcommunity rt 268568:140 additive",
+    "route-policy PL-AGLINK_IPv4-IN deny node 1000"
+  ],
+  "prefixes": ["167.250.126.0/23", "167.250.126.0/24", "167.250.127.0/24"],
+  "actualPostActivateExportsVerified": false,
+  "productionBefore": {
+    "peerExclusions": [
+      {
+        "id": "cmu9sxuxp04urssd024ysba5q",
+        "peer": "198.19.4.145",
+        "family": "IPV4",
+        "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+        "excluded": true,
+        "reason": "BACKBONE",
+        "note": "Peer de mitigacao/scrubbing AS270735 - Eth-Trunk100.2193"
+      },
+      {
+        "id": "cmu9sxuvk04u9ssd0yeep39nh",
+        "peer": "138.99.240.117",
+        "family": "IPV4",
+        "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+        "excluded": true,
+        "reason": "TRANSIT",
+        "note": "Upstream full-table AS28198 - Eth-Trunk1.1026"
+      },
+      {
+        "id": "cmu9sxuvs04ubssd0bvf6rgo4",
+        "peer": "138.99.240.141",
+        "family": "IPV4",
+        "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+        "excluded": true,
+        "reason": "BACKBONE",
+        "note": "Servico de mitigacao AS28198 - Eth-Trunk1.1027"
+      }
+    ],
+    "durableRecords": 0,
+    "uncertainRecords": 0,
+    "migrationCount": 43,
+    "events": {
+      "ACTIVATE": 4,
+      "SIMULATION": 3,
+      "REMOVE": 4
+    },
+    "mediaLogs": 43,
+    "observedUtc": "2026-10-30T22:48:02.330197+00:00",
+    "readOnly": true,
+    "apiPid": "3440280",
+    "cwd": "/opt/netvision-auto-activate/releases/463769620a2f39f9803b60a43314851fe3a77e0e/apps/api",
+    "bundleSha256": "5937a56815a08837de73d9b56e2fc1c9f44ab9b98ba86822f19e6e6e0352d08d",
+    "flags": {
+      "MITIGATION_AUTO_PERSISTENCE_ENABLED": "1",
+      "MITIGATION_AUTO_LIFECYCLE_ENABLED": "0",
+      "MITIGATION_AUTO_EXECUTION_ENABLED": "0",
+      "MITIGATION_AUTO_REMOVE_ENABLED": "0",
+      "MITIGATION_AUTO_DESCRIPTION_ENABLED": "0",
+      "MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS": "",
+      "MITIGATION_AUTO_MAX_ACTIVE": "1"
+    }
+  },
+  "productionAfter": {
+    "peerExclusions": [
+      {
+        "id": "cmu9sxuxp04urssd024ysba5q",
+        "peer": "198.19.4.145",
+        "family": "IPV4",
+        "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+        "excluded": true,
+        "reason": "BACKBONE",
+        "note": "Peer de mitigacao/scrubbing AS270735 - Eth-Trunk100.2193"
+      },
+      {
+        "id": "cmu9sxuvk04u9ssd0yeep39nh",
+        "peer": "138.99.240.117",
+        "family": "IPV4",
+        "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+        "excluded": true,
+        "reason": "TRANSIT",
+        "note": "Upstream full-table AS28198 - Eth-Trunk1.1026"
+      },
+      {
+        "id": "cmu9sxuvs04ubssd0bvf6rgo4",
+        "peer": "138.99.240.141",
+        "family": "IPV4",
+        "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+        "excluded": true,
+        "reason": "BACKBONE",
+        "note": "Servico de mitigacao AS28198 - Eth-Trunk1.1027"
+      }
+    ],
+    "durableRecords": 0,
+    "uncertainRecords": 0,
+    "migrationCount": 43,
+    "events": {
+      "ACTIVATE": 4,
+      "SIMULATION": 3,
+      "REMOVE": 4
+    },
+    "mediaLogs": 43,
+    "observedUtc": "2026-10-30T22:56:51.784831+00:00",
+    "readOnly": true,
+    "apiPid": "3440280",
+    "cwd": "/opt/netvision-auto-activate/releases/463769620a2f39f9803b60a43314851fe3a77e0e/apps/api",
+    "bundleSha256": "5937a56815a08837de73d9b56e2fc1c9f44ab9b98ba86822f19e6e6e0352d08d",
+    "flags": {
+      "MITIGATION_AUTO_PERSISTENCE_ENABLED": "1",
+      "MITIGATION_AUTO_LIFECYCLE_ENABLED": "0",
+      "MITIGATION_AUTO_EXECUTION_ENABLED": "0",
+      "MITIGATION_AUTO_REMOVE_ENABLED": "0",
+      "MITIGATION_AUTO_DESCRIPTION_ENABLED": "0",
+      "MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS": "",
+      "MITIGATION_AUTO_MAX_ACTIVE": "1"
+    }
+  },
+  "productionStatePreserved": true,
+  "tests": {
+    "numTotalTests": 55,
+    "numPassedTests": 55,
+    "numFailedTests": 0,
+    "numPendingTests": 0,
+    "success": true
+  },
+  "suiteCounts": {
+    "aglink-bgp-export.test.ts": 15,
+    "aglink-bgp-plan.test.ts": 15,
+    "aglink-prefix-contract-proposal.test.ts": 10,
+    "mitigation-peer-exclusion.test.ts": 15
+  },
+  "apiTypecheckPassed": true,
+  "testEslintPassed": true,
+  "telegramContract": {
+    "proposalOnly": true,
+    "field": "prefixes: string[] | null",
+    "missingEvidence": "null plus fieldsUnavailable prefixes",
+    "legacyPayloadCompatible": true,
+    "existingOutboxJsonAndRetryTested": true,
+    "prototypeRuntimeIntegrated": false,
+    "apiPublished": false,
+    "n8nChanged": false,
+    "futureN8nPresentationAuthorizationRequired": true
+  },
+  "commands": [
+    "screen-length 0 temporary",
+    "display current-configuration configuration bgp",
+    "screen-length 0 temporary",
+    "display current-configuration configuration route-policy",
+    "screen-length 0 temporary",
+    "display current-configuration configuration route-policy",
+    "screen-length 0 temporary",
+    "display current-configuration | include ip-prefix",
+    "screen-length 0 temporary",
+    "display current-configuration | include extcommunity-filter",
+    "display version",
+    "display bgp peer 198.19.4.145 verbose",
+    "display bgp routing-table peer 10.200.201.2 received-routes",
+    "display bgp routing-table 167.250.126.0 23",
+    "display bgp routing-table 167.250.126.0 24",
+    "display bgp routing-table 167.250.127.0 24",
+    "display bgp routing-table peer 198.19.4.145 advertised-routes",
+    "display bgp routing-table peer 138.99.240.117 advertised-routes",
+    "display bgp routing-table peer 198.18.1.152 advertised-routes",
+    "display bgp routing-table peer 198.18.36.26 advertised-routes",
+    "display bgp routing-table peer 200.194.223.85 advertised-routes",
+    "display bgp routing-table peer 172.30.251.33 advertised-routes",
+    "display bgp routing-table peer 45.163.144.6 advertised-routes",
+    "screen-length 0 temporary",
+    "display version",
+    "display bgp peer 198.19.4.145 verbose",
+    "display bgp routing-table peer 10.200.201.2 received-routes",
+    "display bgp routing-table 167.250.126.0 23",
+    "display bgp routing-table 167.250.126.0 24",
+    "display bgp routing-table 167.250.127.0 24",
+    "display bgp routing-table peer 198.19.4.145 advertised-routes",
+    "display bgp routing-table peer 138.99.240.117 advertised-routes",
+    "display bgp routing-table peer 198.18.1.152 advertised-routes",
+    "display bgp routing-table peer 198.18.36.26 advertised-routes",
+    "display bgp routing-table peer 200.194.223.85 advertised-routes",
+    "display bgp routing-table peer 172.30.251.33 advertised-routes",
+    "display bgp routing-table peer 45.163.144.6 advertised-routes"
+  ],
+  "huaweiWritten": false,
+  "peersRestarted": false,
+  "servicesRestarted": false,
+  "autoFlagsChanged": false,
+  "catalogChanged": false,
+  "migrationApplied": false,
+  "telegramSent": false
+}

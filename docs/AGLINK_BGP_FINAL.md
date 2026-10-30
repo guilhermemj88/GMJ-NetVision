@@ -1,5 +1,7 @@
 # AGLINK — verificação final do plano BGP
 
+> Atualização de escopo em 30/10/2026: o operador definiu COMPUTIZE como única mitigadora e SEMPRE-DDoS como NEVER_MITIGATE. O [plano vigente de uma mitigadora](AGLINK_COMPUTIZE_ONLY_PLAN.md) substitui o requisito de duas sessões e descreve o bloqueio de exportação ainda sujeito a autorização. As capturas e resultados abaixo permanecem históricos; não comprovam aplicação desse bloqueio.
+
 Branch isolada `fix/aglink-bgp-semantics`, sobre `cacfdbf`.
 FAST, lifecycle, flags, thresholds e arquitetura não foram alterados.
 Produção exclusivamente por leitura; nenhuma publicação ou escrita Huawei.

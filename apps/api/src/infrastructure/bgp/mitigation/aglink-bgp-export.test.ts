@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { InMemoryMitigationRepository } from './in-memory-mitigation-repository';
 
 const evidence = JSON.parse(
   readFileSync(
@@ -49,8 +50,13 @@ function rtMatch(name: string, rts: string[]): boolean {
   return false;
 }
 // Static reference evaluation of captured VRP clauses, not a live announcement.
-function allowed(policy: string, prefix: string, rts: string[]): boolean {
-  const blocks = evidence.policies[policy]!.split(/(?=^route-policy )/m);
+function allowed(
+  policy: string,
+  prefix: string,
+  rts: string[],
+  policies: Record<string, string> = evidence.policies,
+): boolean {
+  const blocks = policies[policy]!.split(/(?=^route-policy )/m);
   for (const block of blocks) {
     const h = /^route-policy \S+ (permit|deny) node (\d+)/.exec(block);
     if (!h) continue;
@@ -97,5 +103,84 @@ describe('captured IPv4 external export policies: normal announcements versus mi
     expect(allowed('PL-COMPUTIZE-IPv4-OUT', prefixes[0]!, ['268568:140', '268568:660'])).toBe(
       false,
     );
+  });
+});
+
+// Proposed export guard only. The captured production fixture remains unchanged.
+const proposedSingleMitigatorPolicies: Record<string, string> = {
+  ...evidence.policies,
+  'PL-SEMPRE-DDoS-IPv4-OUT':
+    'route-policy PL-SEMPRE-DDoS-IPv4-OUT deny node 5\n' +
+    ' if-match extcommunity-filter MITIGACAO\n' +
+    evidence.policies['PL-SEMPRE-DDoS-IPv4-OUT'],
+};
+
+describe('proposed AGLINK single mitigator: COMPUTIZE only; SEMPRE-DDoS NEVER_MITIGATE', () => {
+  it('administrative peer exclusion does not block outbound RT660 advertisements', async () => {
+    const repository = new InMemoryMitigationRepository();
+    for (const peer of ['138.99.240.141', '198.19.4.145']) {
+      await repository.setPeerExclusion({
+        peerId: peer,
+        peerAddress: peer,
+        deviceId: 'offline-only',
+        addressFamily: 'IPV4',
+        interfaceId: null,
+        excluded: true,
+        reason: 'BACKBONE',
+        note: 'Protect the provider as a mitigation target; not an export policy',
+      });
+      expect(await repository.getPeerExclusion(peer)).not.toBeNull();
+    }
+    expect(allowed('PL-SEMPRE-DDoS-IPv4-OUT', prefixes[0]!, ['268568:660'])).toBe(true);
+    expect(allowed('PL-COMPUTIZE-IPv4-OUT', prefixes[0]!, ['268568:660'])).toBe(true);
+  });
+
+  it.each(prefixes)(
+    '%s: RT660 is accepted only by COMPUTIZE among the eight scoped exits',
+    (prefix) => {
+      expect(
+        allowed('PL-COMPUTIZE-IPv4-OUT', prefix, ['268568:660'], proposedSingleMitigatorPolicies),
+      ).toBe(true);
+      for (const policy of Object.keys(evidence.policies).filter(
+        (name) => name !== 'PL-COMPUTIZE-IPv4-OUT',
+      ))
+        expect(allowed(policy, prefix, ['268568:660'], proposedSingleMitigatorPolicies)).toBe(
+          false,
+        );
+    },
+  );
+
+  it.each(prefixes)(
+    '%s: SEMPRE normal and the other normal exits survive manual recovery',
+    (prefix) => {
+      for (const policy of Object.keys(evidence.policies).filter(
+        (name) => !['PL-SEMPRE-DDoS-IPv4-OUT', 'PL-COMPUTIZE-IPv4-OUT'].includes(name),
+      )) {
+        expect(
+          allowed(policy, prefix, ['268568:140', '268568:330'], proposedSingleMitigatorPolicies),
+        ).toBe(true);
+        expect(proposedSingleMitigatorPolicies[policy]).toBe(evidence.policies[policy]);
+      }
+      expect(
+        allowed(
+          'PL-COMPUTIZE-IPv4-OUT',
+          prefix,
+          ['268568:140', '268568:330'],
+          proposedSingleMitigatorPolicies,
+        ),
+      ).toBe(false);
+    },
+  );
+
+  it.each([
+    ['268568:660'],
+    ['268568:140', '268568:660'],
+    ['268568:330', '268568:660'],
+    ['268568:140', '268568:330', '268568:660'],
+  ])('the permanent first deny rejects RT660, including mixed tags: %j', (...tags) => {
+    for (const prefix of [...prefixes, '192.0.2.0/24'])
+      expect(
+        allowed('PL-SEMPRE-DDoS-IPv4-OUT', prefix, tags, proposedSingleMitigatorPolicies),
+      ).toBe(false);
   });
 });

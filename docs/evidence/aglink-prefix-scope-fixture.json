@@ -1,0 +1,9 @@
+{
+  "source": "READ_ONLY_PRE_ACTIVATE_RECEIVED_ROUTES; fixture for isolated contract proposal, not mitigation verification",
+  "observedUtc": "2026-10-30T22:48:41.614Z",
+  "profileId": "cmuoavm4e00bysslhqd0h3q7u",
+  "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+  "policy": "PL-AGLINK_IPv4-IN",
+  "peer": "10.200.201.2",
+  "receivedRoutes": " \n BGP Local router ID is 45.163.144.1\n Status codes: * - valid, > - best, d - damped, x - best external, a - add path,\n               h - history,  i - internal, s - suppressed, S - Stale\n               Origin : i - IGP, e - EGP, ? - incomplete\n RPKI validation codes: V - valid, I - invalid, N - not-found\n\n\n Total Number of Routes: 3\n        Network            NextHop                       MED        LocPrf    PrefVal Path/Ogn\n\n *>     167.250.126.0/23   10.200.201.2                   0          1100       0      273811 273811i\n *>     167.250.126.0/24   10.200.201.2                   0          1100       0      273811 273811i\n *>     167.250.127.0/24   10.200.201.2                   0          1100       0      273811 273811i\n<BHE-VTA-F1A-BGP-01>"
+}
