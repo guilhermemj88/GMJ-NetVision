@@ -238,8 +238,12 @@ describe('BgpWorkspace', () => {
     expect(text).toContain('S6730 MPLS');
     expect(text).toContain('TRANSITO XYZ');
     expect(text).toContain('10.0.0.1');
-    expect(container.querySelectorAll('.bgp-state--up').length).toBe(2);
-    expect(container.querySelectorAll('.bgp-state--down').length).toBe(1);
+    // A tabela e a lista de cards mobile renderizam o mesmo peer; o estado é
+    // conferido no escopo da tabela para não somar as duas apresentações.
+    expect(container.querySelectorAll('table.bgp-table tr.is-up').length).toBe(2);
+    expect(container.querySelectorAll('table.bgp-table tr.is-down').length).toBe(1);
+    expect(container.querySelectorAll('table.bgp-table .bgp-state--up').length).toBe(2);
+    expect(container.querySelectorAll('table.bgp-table .bgp-state--down').length).toBe(1);
   });
 
   it('renders a dash for peers without ASN or interface traffic', () => {

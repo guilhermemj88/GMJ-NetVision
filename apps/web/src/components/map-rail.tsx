@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useSyncExternalStore } from 'react';
+import { useMemo, useState, useSyncExternalStore } from 'react';
 import { ChevronLeft, ChevronRight, Crosshair, Eye, Layers, SlidersHorizontal } from 'lucide-react';
 import { SegmentedControl, StatusPill } from '@gmj/ui';
 import { updateNetworkMap } from '@/lib/api';
@@ -11,6 +11,7 @@ import {
 } from '@/lib/map-layers-panel';
 import type { FocusHops, MapLayerFilter, VisualPreset } from '@/lib/map-focus';
 import { useMapFocus } from '@/lib/use-map-focus';
+import { useMediaQuery } from '@/lib/use-media-query';
 import { presetScalePatch, useMapStore, VISUAL_PRESETS } from '@/store/map-store';
 import { MapVisualControls } from './map-controls';
 
@@ -73,11 +74,14 @@ export function MapRail() {
    * Coluna recolhível: só a rail de camadas some — o painel de alarmes e o
    * canvas continuam independentes. A preferência fica em `localStorage`.
    */
-  const collapsed = useSyncExternalStore(
+  const collapsedPreference = useSyncExternalStore(
     subscribeMapLayersPanelCollapsed,
     getMapLayersPanelCollapsed,
     getMapLayersPanelCollapsed,
   );
+  const compact = useMediaQuery('(max-width: 720px), (max-width: 1024px) and (max-height: 500px)');
+  const [compactExpanded, setCompactExpanded] = useState(false);
+  const collapsed = compact ? !compactExpanded : collapsedPreference;
   const visualPreset = useMapStore((state) => state.visualPreset);
   const setVisualPreset = useMapStore((state) => state.setVisualPreset);
   const layerFilter = useMapStore((state) => state.layerFilter);
@@ -142,7 +146,10 @@ export function MapRail() {
 
   if (!map) return null;
 
-  const toggleCollapsed = () => setMapLayersPanelCollapsed(!collapsed);
+  const toggleCollapsed = () => {
+    if (compact) setCompactExpanded(!compactExpanded);
+    else setMapLayersPanelCollapsed(!collapsed);
+  };
 
   /**
    * Recolhida: nada de coluna vazia. Só uma rail fina com a seta invertida —
@@ -205,8 +212,8 @@ export function MapRail() {
           />
           <p className="map-rail__hint">{preset.hint}</p>
           <p className="map-rail__note">
-            Os quatro presets mostram os mesmos dados e o mesmo grafo. Nada é criado, duplicado
-            ou removido.
+            Os quatro presets mostram os mesmos dados e o mesmo grafo. Nada é criado, duplicado ou
+            removido.
           </p>
         </section>
 
@@ -331,7 +338,6 @@ export function MapRail() {
               : 'Selecione um equipamento no mapa para focar a vizinhança.'}
           </p>
         </section>
-
       </div>
 
       <footer className="map-rail__legend" aria-label="Legenda de estado">

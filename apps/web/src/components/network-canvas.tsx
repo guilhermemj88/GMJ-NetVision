@@ -19,12 +19,9 @@ import {
   type OnNodeDrag,
   type OnNodesChange,
 } from '@xyflow/react';
-import {
-  getMap,
-  getMaps,
-  updateNetworkMap,
-} from '@/lib/api';
+import { getMap, getMaps, updateNetworkMap } from '@/lib/api';
 import { useMapStore } from '@/store/map-store';
+import { useMediaQuery } from '@/lib/use-media-query';
 import { computeParallelLinkLayouts } from '@gmj/shared';
 import { countAlarmsByDevice, useActiveAlarms } from '@/lib/use-alarms';
 import { useMapFocus } from '@/lib/use-map-focus';
@@ -51,7 +48,10 @@ import {
 } from '@/lib/traffic-label-offsets';
 import { newestCollectionStamp } from '@/lib/map-freshness';
 import { isPreviewInstance, useMapVisualMode } from '@/lib/map-visual-v2-preview';
-import { resolveLinkV2AnimationModeForUi, useLinkV2AnimationMode } from '@/lib/map-visual-v2-animation';
+import {
+  resolveLinkV2AnimationModeForUi,
+  useLinkV2AnimationMode,
+} from '@/lib/map-visual-v2-animation';
 import { linkV2LabelPriority, resolveRealLinkV2 } from '@/lib/map-visual-v2-link';
 import { manualLabelOffset } from '@/lib/map-visual-v2-offsets';
 import {
@@ -68,11 +68,7 @@ import {
   WEATHER_LABEL_HALF_FRACTION,
   resolveWeatherMap,
 } from '@/lib/map-visual-v2-weathermap';
-import {
-  buildArcTable,
-  halfAnchorPoint,
-  splitGeometryAtLength,
-} from '@/lib/map-visual-v2-arc';
+import { buildArcTable, halfAnchorPoint, splitGeometryAtLength } from '@/lib/map-visual-v2-arc';
 import {
   resolveLinkV2LabelPlacements,
   type LinkV2LabelCandidate,
@@ -133,11 +129,21 @@ function linkAnchorPoint(
 }
 
 export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?: boolean }) {
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const compact = useMediaQuery('(max-width: 720px), (max-width: 1024px) and (max-height: 500px)');
   const storeReadOnly = useMapStore((state) => state.readOnly);
   const readOnly = forcedReadOnly || storeReadOnly;
   const flow = useReactFlow();
   const viewportMapId = useRef<string | null>(null);
-  const snappedPosition = useRef<{ nodeId: string; position: { x: number; y: number } } | null>(null);
+  const snappedPosition = useRef<{ nodeId: string; position: { x: number; y: number } } | null>(
+    null,
+  );
   const [alignmentGuides, setAlignmentGuides] = useState<AlignmentGuide[]>([]);
   const catalogQuery = useQuery({ queryKey: ['maps'], queryFn: getMaps, enabled: !readOnly });
   const activeMapId = useMapStore((state) => state.activeMapId);
@@ -198,9 +204,9 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
 
   const hasSavedViewport = Boolean(
     map?.settings.viewport &&
-      Number.isFinite(map.settings.viewport.x) &&
-      Number.isFinite(map.settings.viewport.y) &&
-      Number.isFinite(map.settings.viewport.zoom),
+    Number.isFinite(map.settings.viewport.x) &&
+    Number.isFinite(map.settings.viewport.y) &&
+    Number.isFinite(map.settings.viewport.zoom),
   );
 
   useEffect(() => {
@@ -209,10 +215,14 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
       return;
     }
     if (viewportMapId.current === map.id) return;
-    viewportMapId.current = map.id;
     if (hasSavedViewport) {
-      window.setTimeout(() => void flow.setViewport(map.settings.viewport, { duration: 280 }), 30);
+      const timer = window.setTimeout(() => {
+        viewportMapId.current = map.id;
+        void flow.setViewport(map.settings.viewport, { duration: 280 });
+      }, 30);
+      return () => window.clearTimeout(timer);
     }
+    viewportMapId.current = map.id;
   }, [flow, map, hasSavedViewport]);
 
   // Node identity is React Flow's cache key: `setNodes` keeps a node's measured
@@ -284,43 +294,47 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
       if (mapNode.deviceId) {
         const device = mapDevices.find((item) => item.id === mapNode.deviceId);
         if (!device || (!preferences.showOffline && device.status === 'DOWN')) return [];
-        return [{
-          id: device.id,
-          type: 'device',
+        return [
+          {
+            id: device.id,
+            type: 'device',
+            position: mapNode.position,
+            draggable: editMode && !mapNode.locked,
+            selected: device.id === selectedNodeId,
+            ...(measured ? { measured } : {}),
+            data: {
+              device,
+              mapNode,
+              editMode,
+              displayMode: nodeDisplayMode,
+              nodeScale,
+              labelScale,
+              alarmCount: alarmCountByDevice.get(device.id) ?? 0,
+              dimmed: focus.dimmedNodeIds.has(device.id),
+              glyphEngine,
+            },
+          },
+        ];
+      }
+      return [
+        {
+          id: mapNode.id,
+          type: 'generic',
           position: mapNode.position,
           draggable: editMode && !mapNode.locked,
-          selected: device.id === selectedNodeId,
+          selected: mapNode.id === selectedNodeId,
           ...(measured ? { measured } : {}),
           data: {
-            device,
             mapNode,
             editMode,
             displayMode: nodeDisplayMode,
             nodeScale,
             labelScale,
-            alarmCount: alarmCountByDevice.get(device.id) ?? 0,
-            dimmed: focus.dimmedNodeIds.has(device.id),
+            dimmed: focus.dimmedNodeIds.has(mapNode.id),
             glyphEngine,
           },
-        }];
-      }
-      return [{
-        id: mapNode.id,
-        type: 'generic',
-        position: mapNode.position,
-        draggable: editMode && !mapNode.locked,
-        selected: mapNode.id === selectedNodeId,
-        ...(measured ? { measured } : {}),
-        data: {
-          mapNode,
-          editMode,
-          displayMode: nodeDisplayMode,
-          nodeScale,
-          labelScale,
-          dimmed: focus.dimmedNodeIds.has(mapNode.id),
-          glyphEngine,
         },
-      }];
+      ];
     });
   }, [
     alarmCountByDevice,
@@ -379,10 +393,16 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
       };
     });
     const sizeByKey = new Map(
-      map.nodes.map((node, index) => [
-        node.deviceId ?? node.id,
-        { width: rects[index]?.width ?? DEFAULT_NODE_WIDTH, height: rects[index]?.height ?? DEFAULT_NODE_HEIGHT },
-      ] as const),
+      map.nodes.map(
+        (node, index) =>
+          [
+            node.deviceId ?? node.id,
+            {
+              width: rects[index]?.width ?? DEFAULT_NODE_WIDTH,
+              height: rects[index]?.height ?? DEFAULT_NODE_HEIGHT,
+            },
+          ] as const,
+      ),
     );
     const selectedLinkId = selection?.kind === 'link' ? selection.id : null;
     const selectedNodeId =
@@ -423,9 +443,10 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
       // Candidatos de rótulo: um por metade (o componente decide a visibilidade
       // por política, mas a anticolisão sempre tem uma posição pronta — inclusive
       // para o hover, que o canvas não conhece).
-      const paths = (link.visualPaths?.length
-        ? link.visualPaths
-        : [{ order: 0, label: null, customColor: null, curvature: 0, enabled: true }]
+      const paths = (
+        link.visualPaths?.length
+          ? link.visualPaths
+          : [{ order: 0, label: null, customColor: null, curvature: 0, enabled: true }]
       ).filter((path) => path.enabled);
       const primaryPath = paths[0];
       if (!primaryPath) continue;
@@ -436,10 +457,14 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         link.sourceHandleSide,
         link.targetHandleSide,
       );
-      const sourceSize =
-        sizeByKey.get(sourceKey) ?? { width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT };
-      const targetSize =
-        sizeByKey.get(targetKey) ?? { width: DEFAULT_NODE_WIDTH, height: DEFAULT_NODE_HEIGHT };
+      const sourceSize = sizeByKey.get(sourceKey) ?? {
+        width: DEFAULT_NODE_WIDTH,
+        height: DEFAULT_NODE_HEIGHT,
+      };
+      const targetSize = sizeByKey.get(targetKey) ?? {
+        width: DEFAULT_NODE_WIDTH,
+        height: DEFAULT_NODE_HEIGHT,
+      };
       const sourceAnchor = linkAnchorPoint(sourcePosition, sourceSize, handles.sourceHandle);
       const targetAnchor = linkAnchorPoint(targetPosition, targetSize, handles.targetHandle);
       const geometry = buildBezierGeometry({
@@ -550,25 +575,32 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
       const sourcePosition = positions.get(sourceKey);
       const targetPosition = positions.get(targetKey);
       if (!visible.has(sourceKey) || !visible.has(targetKey)) return [];
-      const handles = sourcePosition && targetPosition
-        ? resolveEdgeHandles(
-            sourcePosition,
-            targetPosition,
-            link.sourceHandleSide,
-            link.targetHandleSide,
-          )
-        : { sourceHandle: 'right' as const, targetHandle: 'left' as const };
+      const handles =
+        sourcePosition && targetPosition
+          ? resolveEdgeHandles(
+              sourcePosition,
+              targetPosition,
+              link.sourceHandleSide,
+              link.targetHandleSide,
+            )
+          : { sourceHandle: 'right' as const, targetHandle: 'left' as const };
       const sourceInterface = link.sourceDeviceId
-        ? devices.get(link.sourceDeviceId)?.interfaces.find((item) => item.id === link.sourceInterfaceId)
+        ? devices
+            .get(link.sourceDeviceId)
+            ?.interfaces.find((item) => item.id === link.sourceInterfaceId)
         : undefined;
       const targetInterface = link.targetDeviceId
-        ? devices.get(link.targetDeviceId)?.interfaces.find((item) => item.id === link.targetInterfaceId)
+        ? devices
+            .get(link.targetDeviceId)
+            ?.interfaces.find((item) => item.id === link.targetInterfaceId)
         : undefined;
       const selectedId =
         selection?.kind === 'device' || selection?.kind === 'node' ? selection.id : null;
-      const paths = (link.visualPaths?.length
-        ? link.visualPaths
-        : [{ order: 0, label: null, customColor: null, curvature: 0, enabled: true }])
+      const paths = (
+        link.visualPaths?.length
+          ? link.visualPaths
+          : [{ order: 0, label: null, customColor: null, curvature: 0, enabled: true }]
+      )
         .map((visualPath, pathIndex) => ({ visualPath, pathIndex }))
         .filter(({ visualPath }) => visualPath.enabled);
       return paths.map(({ visualPath, pathIndex }, visibleIndex): MapFlowEdge => {
@@ -613,30 +645,46 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
             readOnly,
             labelOffsets,
             labelMapId: activeMapId,
-          labelAdjust: labelAdjustMode,
-          dimmed: focus.dimmedLinkIds.has(link.id),
-          ...(sourceInterface ? { sourceInterface } : {}),
-          ...(targetInterface ? { targetInterface } : {}),
-          visualPath,
-          pathIndex,
-          isPrimaryPath: visibleIndex === 0,
-          autoOffset: parallelLayouts.get(link.id)?.offset ?? 0,
-          showTraffic: preferences.showTraffic,
-          showUtilization: preferences.showUtilization,
-          showLabels: preferences.showLabels,
-          showTrafficAnimation: preferences.showTrafficAnimation,
-          displayStyle: map.settings.linkDisplayStyle,
-          metricDisplay: map.settings.linkMetricDisplay,
-          trafficLabelMode: map.settings.trafficLabelMode,
-          linkScale: map.settings.linkScale,
-          labelScale: map.settings.labelScale,
-          related: !selectedId || sourceKey === selectedId || targetKey === selectedId,
-          emphasized: Boolean(selectedId) && (sourceKey === selectedId || targetKey === selectedId),
-        },
+            labelAdjust: labelAdjustMode,
+            dimmed: focus.dimmedLinkIds.has(link.id),
+            ...(sourceInterface ? { sourceInterface } : {}),
+            ...(targetInterface ? { targetInterface } : {}),
+            visualPath,
+            pathIndex,
+            isPrimaryPath: visibleIndex === 0,
+            autoOffset: parallelLayouts.get(link.id)?.offset ?? 0,
+            showTraffic: preferences.showTraffic,
+            showUtilization: preferences.showUtilization,
+            showLabels: preferences.showLabels,
+            showTrafficAnimation: preferences.showTrafficAnimation,
+            displayStyle: map.settings.linkDisplayStyle,
+            metricDisplay: map.settings.linkMetricDisplay,
+            trafficLabelMode: map.settings.trafficLabelMode,
+            linkScale: map.settings.linkScale,
+            labelScale: map.settings.labelScale,
+            related: !selectedId || sourceKey === selectedId || targetKey === selectedId,
+            emphasized:
+              Boolean(selectedId) && (sourceKey === selectedId || targetKey === selectedId),
+          },
         };
       });
     });
-  }, [activeMapId, domainNodes, focus.dimmedLinkIds, labelAdjustMode, labelOffsets, linkV2EdgeData, map, preferences.showLabels, preferences.showTraffic, preferences.showUtilization, preferences.showTrafficAnimation, selection, editMode, readOnly]);
+  }, [
+    activeMapId,
+    domainNodes,
+    focus.dimmedLinkIds,
+    labelAdjustMode,
+    labelOffsets,
+    linkV2EdgeData,
+    map,
+    preferences.showLabels,
+    preferences.showTraffic,
+    preferences.showUtilization,
+    preferences.showTrafficAnimation,
+    selection,
+    editMode,
+    readOnly,
+  ]);
 
   const [nodes, setNodes] = useNodesState<MapFlowNode>([]);
   const [edges, setEdges] = useEdgesState<MapFlowEdge>([]);
@@ -665,14 +713,16 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         node.type === 'generic' ? { kind: 'node', id: node.id } : { kind: 'device', id: node.id },
       );
       if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
-    }, [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
+    },
+    [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
   );
 
   const onEdgeClick: EdgeMouseHandler<MapFlowEdge> = useCallback(
     (_event, edge) => {
       setSelection({ kind: 'link', id: edge.data?.link?.id ?? edge.id });
       if (rotation.active && rotation.pauseOnInteraction) setRotationPaused(true);
-    }, [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
+    },
+    [rotation.active, rotation.pauseOnInteraction, setRotationPaused, setSelection],
   );
 
   const onNodeDrag: OnNodeDrag<MapFlowNode> = useCallback(
@@ -684,11 +734,12 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         const result = calculateSmartAlignment(dragged, others, 8 / flow.getZoom(), true);
         setAlignmentGuides(result.guides);
         snappedPosition.current = { nodeId: draggedNode.id, position: result.position };
-        return current.map((node) => node.id === draggedNode.id
-          ? { ...node, position: result.position }
-          : node);
+        return current.map((node) =>
+          node.id === draggedNode.id ? { ...node, position: result.position } : node,
+        );
       });
-    }, [editMode, flow, setNodes],
+    },
+    [editMode, flow, setNodes],
   );
 
   const clearAlignment = useCallback(() => {
@@ -698,10 +749,17 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
 
   const onConnect = useCallback(
     (connection: Connection) => {
-      if (!editMode || !connection.source || !connection.target || connection.source === connection.target) return;
+      if (
+        !editMode ||
+        !connection.source ||
+        !connection.target ||
+        connection.source === connection.target
+      )
+        return;
       setPendingLink({ sourceId: connection.source, targetId: connection.target });
       setPanel('create-link');
-    }, [editMode, setPanel, setPendingLink],
+    },
+    [editMode, setPanel, setPendingLink],
   );
 
   if ((catalogQuery.isPending || mapQuery.isPending) && !map) {
@@ -731,9 +789,10 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         }}
         onNodeDragStop={(_event, node) => {
           const mapNode = map?.nodes.find((item) => (item.deviceId ?? item.id) === node.id);
-          const finalPosition = snappedPosition.current?.nodeId === node.id
-            ? snappedPosition.current.position
-            : node.position;
+          const finalPosition =
+            snappedPosition.current?.nodeId === node.id
+              ? snappedPosition.current.position
+              : node.position;
           if (mapNode) moveNode(mapNode.id, finalPosition);
           clearAlignment();
         }}
@@ -750,14 +809,19 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
         selectionOnDrag={editMode}
         panOnDrag={!editMode || [1, 2]}
         onMoveEnd={(_event, viewport) => {
-          if (readOnly) return;
+          if (readOnly || !mounted.current) return;
           setViewport(viewport);
-          if (map) {
+          if (map && !compact) {
             void updateNetworkMap(map.id, { settings: { viewport } }).catch(() => undefined);
           }
         }}
       >
-        <Background variant={BackgroundVariant.Dots} gap={editMode ? 28 : 34} size={editMode ? 1.2 : 1} color={editMode ? '#26343f' : '#1b2832'} />
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={editMode ? 28 : 34}
+          size={editMode ? 1.2 : 1}
+          color={editMode ? '#26343f' : '#1b2832'}
+        />
         {map?.widgets
           .filter((widget) => widget.type === 'PPP_TOTAL' && widget.enabled)
           .map((widget) => (
@@ -772,9 +836,19 @@ export function NetworkCanvas({ readOnly: forcedReadOnly = false }: { readOnly?:
               <div key={`${guide.axis}-${guide.targetId}`}>
                 <div
                   className={`smart-guide smart-guide--${guide.axis}`}
-                  style={guide.axis === 'vertical'
-                    ? { left: guide.coordinate, top: guide.start, height: Math.max(1, guide.end - guide.start) }
-                    : { left: guide.start, top: guide.coordinate, width: Math.max(1, guide.end - guide.start) }}
+                  style={
+                    guide.axis === 'vertical'
+                      ? {
+                          left: guide.coordinate,
+                          top: guide.start,
+                          height: Math.max(1, guide.end - guide.start),
+                        }
+                      : {
+                          left: guide.start,
+                          top: guide.coordinate,
+                          width: Math.max(1, guide.end - guide.start),
+                        }
+                  }
                 />
                 <div
                   className="smart-guide-target"

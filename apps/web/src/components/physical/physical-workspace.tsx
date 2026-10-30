@@ -6,11 +6,13 @@ import type { PhysicalAsset, PhysicalInterfaceSyncReport } from '@gmj/shared';
 import { Button, MetaFact, ModuleHeader } from '@gmj/ui';
 import {
   Cable,
+  ChevronDown,
   CirclePlus,
   CircleDashed,
   CircleDot,
   Eye,
   EyeOff,
+  Palette,
   PanelRight,
   Plus,
   Radio,
@@ -55,19 +57,44 @@ import { applyPhysicalLinkPrecedence } from './physical-link-layer';
 import { buildPhysicalMapLinkGhosts, type PhysicalMapLinkSource } from './physical-map-link';
 import { physicalPortNameView } from './physical-port-name';
 import { createPhysicalPortNamingResolver } from './physical-port-naming';
-import type { PhysicalConnectionMode, PhysicalSelection, PhysicalVisualMode } from './physical-types';
+import type {
+  PhysicalConnectionMode,
+  PhysicalSelection,
+  PhysicalVisualMode,
+} from './physical-types';
 
 type CreateDialog = 'site' | 'rack' | 'asset' | null;
 
 /** Referência estável usada enquanto o mapa ainda não chegou. */
 const NO_MAP_LINKS: readonly PhysicalMapLinkSource[] = [];
 
-function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {
+function Modal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
   return (
     <div className="physical-modal" role="dialog" aria-modal="true" aria-label={title}>
-      <button className="physical-modal__backdrop" type="button" onClick={onClose} aria-label="Fechar" />
+      <button
+        className="physical-modal__backdrop"
+        type="button"
+        onClick={onClose}
+        aria-label="Fechar"
+      />
       <div className="physical-modal__panel">
-        <header><div><span>INVENTÁRIO FÍSICO</span><h2>{title}</h2></div><button type="button" onClick={onClose}><X size={16} /></button></header>
+        <header>
+          <div>
+            <span>INVENTÁRIO FÍSICO</span>
+            <h2>{title}</h2>
+          </div>
+          <button type="button" onClick={onClose}>
+            <X size={16} />
+          </button>
+        </header>
         {children}
       </div>
     </div>
@@ -130,6 +157,13 @@ export function PhysicalWorkspace() {
   const [visualMode, setVisualMode] = useState<PhysicalVisualMode>('TECHNICAL');
   const [query, setQuery] = useState('');
   const [dialog, setDialog] = useState<CreateDialog>(null);
+  /**
+   * Navegação e legenda no celular: a sidebar não cabe como coluna, então POP,
+   * racks e busca vivem num sheet, e a legenda vira um popover. Mesma fonte de
+   * verdade (`siteId`/`rackId`/`query`), só a apresentação muda.
+   */
+  const [navOpen, setNavOpen] = useState(false);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{
     level: 'error' | 'warning' | 'info';
@@ -180,7 +214,8 @@ export function PhysicalWorkspace() {
     if (!site) return;
     if (site.id !== siteId) setSiteId(site.id);
     const firstRack = site.racks[0];
-    if (firstRack && !site.racks.some((candidate) => candidate.id === rackId)) setRackId(firstRack.id);
+    if (firstRack && !site.racks.some((candidate) => candidate.id === rackId))
+      setRackId(firstRack.id);
   }, [rackId, site, siteId]);
 
   // Pedido externo de foco (ex.: "Localizar no Físico" vindo do mapa/BGP):
@@ -213,26 +248,28 @@ export function PhysicalWorkspace() {
   const searchResults = useMemo(() => {
     if (!inventory || !query.trim()) return [];
     const normalized = query.trim().toLocaleLowerCase('pt-BR');
-    return inventory.sites.flatMap((candidateSite) =>
-      candidateSite.racks.flatMap((candidateRack) =>
-        candidateRack.assets.flatMap((asset) => {
-          const assetMatch = [asset.name, asset.kind, asset.device?.hostname, asset.device?.model]
-            .filter(Boolean)
-            .join(' ')
-            .toLocaleLowerCase('pt-BR')
-            .includes(normalized);
-          const matchingPorts = asset.ports.filter((port) =>
-            [port.name, port.label, port.mappedInterface?.name, port.mappedInterface?.alias]
+    return inventory.sites
+      .flatMap((candidateSite) =>
+        candidateSite.racks.flatMap((candidateRack) =>
+          candidateRack.assets.flatMap((asset) => {
+            const assetMatch = [asset.name, asset.kind, asset.device?.hostname, asset.device?.model]
               .filter(Boolean)
               .join(' ')
               .toLocaleLowerCase('pt-BR')
-              .includes(normalized),
-          );
-          if (!assetMatch && !matchingPorts.length) return [];
-          return [{ site: candidateSite, rack: candidateRack, asset, ports: matchingPorts }];
-        }),
-      ),
-    ).slice(0, 30);
+              .includes(normalized);
+            const matchingPorts = asset.ports.filter((port) =>
+              [port.name, port.label, port.mappedInterface?.name, port.mappedInterface?.alias]
+                .filter(Boolean)
+                .join(' ')
+                .toLocaleLowerCase('pt-BR')
+                .includes(normalized),
+            );
+            if (!assetMatch && !matchingPorts.length) return [];
+            return [{ site: candidateSite, rack: candidateRack, asset, ports: matchingPorts }];
+          }),
+        ),
+      )
+      .slice(0, 30);
   }, [inventory, query]);
 
   async function run<T>(task: () => Promise<T>, complete?: (result: T) => void): Promise<void> {
@@ -243,7 +280,10 @@ export function PhysicalWorkspace() {
       await queryClient.invalidateQueries({ queryKey: ['physical'] });
       complete?.(result);
     } catch (error) {
-      setNotice({ level: 'error', message: error instanceof Error ? error.message : 'Falha ao atualizar o inventário físico' });
+      setNotice({
+        level: 'error',
+        message: error instanceof Error ? error.message : 'Falha ao atualizar o inventário físico',
+      });
     } finally {
       setBusy(false);
     }
@@ -259,7 +299,8 @@ export function PhysicalWorkspace() {
     if (report.created) parts.push(`${report.created} criadas`);
     if (report.skippedLogical) parts.push(`${report.skippedLogical} interfaces lógicas ignoradas`);
     if (report.skippedByPolicy) parts.push(`${report.skippedByPolicy} mantidas pelo template`);
-    if (report.skippedUnknown) parts.push(`${report.skippedUnknown} nomes não reconhecidos ignorados`);
+    if (report.skippedUnknown)
+      parts.push(`${report.skippedUnknown} nomes não reconhecidos ignorados`);
     return parts.join(' · ');
   }
 
@@ -271,7 +312,8 @@ export function PhysicalWorkspace() {
   function syncDiagnosticDetails(report: PhysicalInterfaceSyncReport): string[] | null {
     const lines = [
       ...report.unrecognized.map(
-        (item) => `Não reconhecida (${item.classification}): ${item.interfaceName} — ${item.reason}`,
+        (item) =>
+          `Não reconhecida (${item.classification}): ${item.interfaceName} — ${item.reason}`,
       ),
       ...report.ignoredLogical.map(
         (item) => `Lógica ignorada: ${item.interfaceName} — ${item.reason}`,
@@ -284,8 +326,16 @@ export function PhysicalWorkspace() {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     await run(
-      () => createPhysicalSite({ name: String(data.get('name')), code: String(data.get('code') ?? '') }),
-      (created) => { setSiteId(created.id); setRackId(''); setDialog(null); },
+      () =>
+        createPhysicalSite({
+          name: String(data.get('name')),
+          code: String(data.get('code') ?? ''),
+        }),
+      (created) => {
+        setSiteId(created.id);
+        setRackId('');
+        setDialog(null);
+      },
     );
   }
 
@@ -294,8 +344,15 @@ export function PhysicalWorkspace() {
     if (!site) return;
     const data = new FormData(event.currentTarget);
     await run(
-      () => createPhysicalRack(site.id, { name: String(data.get('name')), units: Number(data.get('units')) }),
-      (created) => { setRackId(created.id); setDialog(null); },
+      () =>
+        createPhysicalRack(site.id, {
+          name: String(data.get('name')),
+          units: Number(data.get('units')),
+        }),
+      (created) => {
+        setRackId(created.id);
+        setDialog(null);
+      },
     );
   }
 
@@ -318,8 +375,18 @@ export function PhysicalWorkspace() {
         const type = input.kind === 'DIO' ? ('FIBER' as const) : ('RJ45' as const);
         for (let index = 1; index <= passiveChannels; index += 1) {
           const name = String(index).padStart(2, '0');
-          const front = await createPhysicalPort(created.id, { name, order: index, side: 'FRONT', type });
-          const rear = await createPhysicalPort(created.id, { name, order: index, side: 'REAR', type });
+          const front = await createPhysicalPort(created.id, {
+            name,
+            order: index,
+            side: 'FRONT',
+            type,
+          });
+          const rear = await createPhysicalPort(created.id, {
+            name,
+            order: index,
+            side: 'REAR',
+            type,
+          });
           await pairPhysicalPorts(front.id, rear.id);
         }
       }
@@ -397,7 +464,10 @@ export function PhysicalWorkspace() {
       () => deletePhysicalAsset(assetId),
       () => {
         setSelection(null);
-        setNotice({ level: 'info', message: 'Equipamento removido. O Device vinculado foi mantido.' });
+        setNotice({
+          level: 'info',
+          message: 'Equipamento removido. O Device vinculado foi mantido.',
+        });
       },
     );
   }
@@ -406,21 +476,161 @@ export function PhysicalWorkspace() {
     setSiteId(result.site.id);
     setRackId(result.rack.id);
     setSelection(portId ? { kind: 'port', id: portId } : { kind: 'asset', id: result.asset.id });
+    setNavOpen(false);
   }
 
   if (inventoryQuery.isLoading) {
-    return <main className="physical-shell physical-loading"><span className="map-loading__radar" /><strong>Carregando inventário físico</strong></main>;
+    return (
+      <main className="physical-shell physical-loading">
+        <span className="map-loading__radar" />
+        <strong>Carregando inventário físico</strong>
+      </main>
+    );
   }
   if (inventoryQuery.isError || !inventory) {
-    return <main className="physical-shell physical-loading"><strong>Falha ao carregar a visão física</strong><Button compact variant="secondary" onClick={() => void inventoryQuery.refetch()}>Tentar novamente</Button></main>;
+    return (
+      <main className="physical-shell physical-loading">
+        <strong>Falha ao carregar a visão física</strong>
+        <Button compact variant="secondary" onClick={() => void inventoryQuery.refetch()}>
+          Tentar novamente
+        </Button>
+      </main>
+    );
   }
 
   const rackConnections = inventory.connections.filter(
     (item) => item.a.rackId === rack?.id || item.b.rackId === rack?.id,
   ).length;
 
+  /**
+   * Conteúdo de navegação do módulo. Renderizado uma vez na sidebar (tablet e
+   * desktop) e outra no sheet do celular — sempre sobre os MESMOS estados.
+   */
+  const navigation = (
+    <>
+      <section>
+        <div className="physical-sidebar__heading">
+          <span>POP / SITE</span>
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => {
+                setDialog('site');
+                setNavOpen(false);
+              }}
+              title="Adicionar POP"
+              aria-label="Adicionar POP"
+            >
+              <Plus size={14} />
+            </button>
+          ) : null}
+        </div>
+        <select
+          value={site?.id ?? ''}
+          onChange={(event) => {
+            setSiteId(event.target.value);
+            setRackId('');
+            setSelection(null);
+            setNavOpen(false);
+          }}
+        >
+          {inventory.sites.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.name}
+              {item.code ? ` · ${item.code}` : ''}
+            </option>
+          ))}
+        </select>
+      </section>
+      <section className="physical-sidebar__racks">
+        <div className="physical-sidebar__heading">
+          <span>RACKS</span>
+          {canEdit && site ? (
+            <button
+              type="button"
+              onClick={() => {
+                setDialog('rack');
+                setNavOpen(false);
+              }}
+              title="Adicionar rack"
+              aria-label="Adicionar rack"
+            >
+              <Plus size={14} />
+            </button>
+          ) : null}
+        </div>
+        {site?.racks.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={item.id === rack?.id ? 'is-active' : ''}
+            onClick={() => {
+              setRackId(item.id);
+              setSelection(null);
+              setNavOpen(false);
+            }}
+          >
+            <Warehouse size={14} />
+            <span>
+              <strong>{item.name}</strong>
+              <small>
+                {item.units}U · {item.assets.length} itens
+              </small>
+            </span>
+          </button>
+        ))}
+        {site && !site.racks.length ? <p>Nenhum rack neste POP.</p> : null}
+      </section>
+      <section className="physical-search">
+        <label>
+          <Search size={14} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Equipamento ou porta"
+            aria-label="Buscar equipamento ou porta"
+          />
+        </label>
+        {query.trim() ? (
+          <div className="physical-search__results">
+            {searchResults.map((result) => (
+              <div key={result.asset.id}>
+                <button type="button" onClick={() => openResult(result)}>
+                  <strong>{result.asset.name}</strong>
+                  <small>
+                    {result.site.name} / {result.rack.name}
+                  </small>
+                </button>
+                {result.ports.slice(0, 5).map((port) => {
+                  const portNamingView = portNaming?.forPort(result.asset, port) ?? null;
+                  const primary =
+                    portNamingView?.displayName ?? physicalPortNameView(port).displayName;
+                  const detail = portNamingView?.panelLabel
+                    ? `Porta física: ${portNamingView.panelLabel}`
+                    : port.side;
+                  return (
+                    <button
+                      key={port.id}
+                      type="button"
+                      className="is-port"
+                      onClick={() => openResult(result, port.id)}
+                    >
+                      {primary}
+                      <small>{detail}</small>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+            {!searchResults.length ? <p>Nenhum resultado.</p> : null}
+          </div>
+        ) : null}
+      </section>
+    </>
+  );
+
   return (
-    <main className="physical-shell">
+    <main className={`physical-shell${legendOpen ? ' is-legend-open' : ''}`}>
       <ModuleHeader
         eyebrow="INFRAESTRUTURA POR POP"
         title="Físico"
@@ -431,7 +641,11 @@ export function PhysicalWorkspace() {
         }
         meta={
           <>
-            <MetaFact icon={<Server size={12} />} value={rack?.assets.length ?? 0} label="equipamentos" />
+            <MetaFact
+              icon={<Server size={12} />}
+              value={rack?.assets.length ?? 0}
+              label="equipamentos"
+            />
             <MetaFact icon={<Cable size={12} />} value={rackConnections} label="cabos" />
             <MetaFact
               icon={<Radio size={12} />}
@@ -464,18 +678,93 @@ export function PhysicalWorkspace() {
         }
         actions={
           <>
+            {/*
+              Celular: a sidebar vira este botão e a legenda vira popover.
+              No tablet/desktop os dois ficam ocultos e o layout é o de sempre.
+            */}
+            <button
+              type="button"
+              className="physical-nav-trigger"
+              onClick={() => setNavOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={navOpen}
+            >
+              <Warehouse size={14} />
+              <span>
+                {site ? site.name : 'Sem POP'}
+                {rack ? ` · ${rack.name}` : ''}
+              </span>
+              <ChevronDown size={14} aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              className="physical-legend-trigger"
+              onClick={() => setLegendOpen((current) => !current)}
+              aria-expanded={legendOpen}
+            >
+              <Palette size={14} /> Legenda
+            </button>
             <div className="physical-mode" aria-label="Exibição de conexões">
-              <button type="button" title="Ocultar cabos" className={mode === 'hidden' ? 'is-active' : ''} onClick={() => setMode('hidden')}><EyeOff size={13} /> Ocultas</button>
-              <button type="button" title="Mostrar só o caminho selecionado" className={mode === 'selected' ? 'is-active' : ''} onClick={() => setMode('selected')}><PanelRight size={13} /> Selecionado</button>
-              <button type="button" title="Mostrar todos os cabos" className={mode === 'all' ? 'is-active' : ''} onClick={() => setMode('all')}><Eye size={13} /> Todas</button>
+              <button
+                type="button"
+                title="Ocultar cabos"
+                className={mode === 'hidden' ? 'is-active' : ''}
+                onClick={() => setMode('hidden')}
+              >
+                <EyeOff size={13} /> Ocultas
+              </button>
+              <button
+                type="button"
+                title="Mostrar só o caminho selecionado"
+                className={mode === 'selected' ? 'is-active' : ''}
+                onClick={() => setMode('selected')}
+              >
+                <PanelRight size={13} /> Selecionado
+              </button>
+              <button
+                type="button"
+                title="Mostrar todos os cabos"
+                className={mode === 'all' ? 'is-active' : ''}
+                onClick={() => setMode('all')}
+              >
+                <Eye size={13} /> Todas
+              </button>
             </div>
-            <div className="physical-mode" aria-label="Exibição das ligações detectadas (LLDP e fallback do mapa)">
-              <button type="button" title="Ocultar sugestões LLDP e o fallback do mapa" className={lldpMode === 'hidden' ? 'is-active' : ''} onClick={() => setLldpMode('hidden')}><EyeOff size={13} /> LLDP off</button>
-              <button type="button" title="Padrão: rack limpo sem seleção; ao clicar, aparece só o par escolhido" className={lldpMode === 'related' ? 'is-active' : ''} onClick={() => setLldpMode('related')}><PanelRight size={13} /> LLDP rel.</button>
-              <button type="button" title="Modo opcional: mostrar todas as relações READY e o fallback do mapa neste rack" className={lldpMode === 'all' ? 'is-active' : ''} onClick={() => setLldpMode('all')}><Radio size={13} /> LLDP todas</button>
+            <div
+              className="physical-mode"
+              aria-label="Exibição das ligações detectadas (LLDP e fallback do mapa)"
+            >
+              <button
+                type="button"
+                title="Ocultar sugestões LLDP e o fallback do mapa"
+                className={lldpMode === 'hidden' ? 'is-active' : ''}
+                onClick={() => setLldpMode('hidden')}
+              >
+                <EyeOff size={13} /> LLDP off
+              </button>
+              <button
+                type="button"
+                title="Padrão: rack limpo sem seleção; ao clicar, aparece só o par escolhido"
+                className={lldpMode === 'related' ? 'is-active' : ''}
+                onClick={() => setLldpMode('related')}
+              >
+                <PanelRight size={13} /> LLDP rel.
+              </button>
+              <button
+                type="button"
+                title="Modo opcional: mostrar todas as relações READY e o fallback do mapa neste rack"
+                className={lldpMode === 'all' ? 'is-active' : ''}
+                onClick={() => setLldpMode('all')}
+              >
+                <Radio size={13} /> LLDP todas
+              </button>
             </div>
             <PhysicalVisualToggle mode={visualMode} onChange={setVisualMode} />
-            {canEdit && rack ? <Button compact variant="primary" onClick={() => setDialog('asset')}><CirclePlus size={14} /> Equipamento</Button> : null}
+            {canEdit && rack ? (
+              <Button compact variant="primary" onClick={() => setDialog('asset')}>
+                <CirclePlus size={14} /> Equipamento
+              </Button>
+            ) : null}
           </>
         }
         toolbar={
@@ -507,41 +796,14 @@ export function PhysicalWorkspace() {
               </ul>
             </details>
           ) : null}
-          <button type="button" onClick={() => setNotice(null)}><X size={13} /></button>
+          <button type="button" onClick={() => setNotice(null)}>
+            <X size={13} />
+          </button>
         </div>
       ) : null}
 
       <div className="physical-layout">
-        <aside className="physical-sidebar">
-          <section>
-            <div className="physical-sidebar__heading"><span>POP / SITE</span>{canEdit ? <button type="button" onClick={() => setDialog('site')} title="Adicionar POP"><Plus size={14} /></button> : null}</div>
-            <select value={site?.id ?? ''} onChange={(event) => { setSiteId(event.target.value); setRackId(''); setSelection(null); }}>
-              {inventory.sites.map((item) => <option key={item.id} value={item.id}>{item.name}{item.code ? ` · ${item.code}` : ''}</option>)}
-            </select>
-          </section>
-          <section className="physical-sidebar__racks">
-            <div className="physical-sidebar__heading"><span>RACKS</span>{canEdit && site ? <button type="button" onClick={() => setDialog('rack')} title="Adicionar rack"><Plus size={14} /></button> : null}</div>
-            {site?.racks.map((item) => (
-              <button key={item.id} type="button" className={item.id === rack?.id ? 'is-active' : ''} onClick={() => { setRackId(item.id); setSelection(null); }}>
-                <Warehouse size={14} /><span><strong>{item.name}</strong><small>{item.units}U · {item.assets.length} itens</small></span>
-              </button>
-            ))}
-            {site && !site.racks.length ? <p>Nenhum rack neste POP.</p> : null}
-          </section>
-          <section className="physical-search">
-            <label><Search size={14} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Equipamento ou porta" /></label>
-            {query.trim() ? <div className="physical-search__results">{searchResults.map((result) => (
-              <div key={result.asset.id}><button type="button" onClick={() => openResult(result)}><strong>{result.asset.name}</strong><small>{result.site.name} / {result.rack.name}</small></button>{result.ports.slice(0, 5).map((port) => {
-                const portNamingView = portNaming?.forPort(result.asset, port) ?? null;
-                const primary = portNamingView?.displayName ?? physicalPortNameView(port).displayName;
-                const detail = portNamingView?.panelLabel
-                  ? `Porta física: ${portNamingView.panelLabel}`
-                  : port.side;
-                return <button key={port.id} type="button" className="is-port" onClick={() => openResult(result, port.id)}>{primary}<small>{detail}</small></button>;
-              })}</div>
-            ))}{!searchResults.length ? <p>Nenhum resultado.</p> : null}</div> : null}
-          </section>
-        </aside>
+        <aside className="physical-sidebar">{navigation}</aside>
 
         <section className="physical-stage">
           {rack ? (
@@ -569,7 +831,15 @@ export function PhysicalWorkspace() {
               onClear={() => setSelection(null)}
             />
           ) : (
-            <div className="physical-stage__empty"><Warehouse size={28} /><strong>{site ? 'Crie o primeiro rack deste POP' : 'Crie o primeiro POP'}</strong>{canEdit ? <Button compact variant="primary" onClick={() => setDialog(site ? 'rack' : 'site')}><Plus size={14} /> {site ? 'Novo rack' : 'Novo POP'}</Button> : null}</div>
+            <div className="physical-stage__empty">
+              <Warehouse size={28} />
+              <strong>{site ? 'Crie o primeiro rack deste POP' : 'Crie o primeiro POP'}</strong>
+              {canEdit ? (
+                <Button compact variant="primary" onClick={() => setDialog(site ? 'rack' : 'site')}>
+                  <Plus size={14} /> {site ? 'Novo rack' : 'Novo POP'}
+                </Button>
+              ) : null}
+            </div>
           )}
         </section>
 
@@ -586,13 +856,23 @@ export function PhysicalWorkspace() {
           onSyncPorts={(id) => void syncPorts(id)}
           onReconcilePorts={(id) => void reconcilePorts(id)}
           onDeleteAsset={(id) => void deleteAsset(id)}
-          onConnect={(input) => void run(() => createPhysicalConnection(input), (created) => setSelection({ kind: 'connection', id: created.id }))}
-          onUpdateConnection={(id, input) =>
-            void run(() => updatePhysicalConnection(id, input))
+          onConnect={(input) =>
+            void run(
+              () => createPhysicalConnection(input),
+              (created) => setSelection({ kind: 'connection', id: created.id }),
+            )
           }
-          onDeleteConnection={(id) => void run(() => deletePhysicalConnection(id), () => setSelection(null))}
+          onUpdateConnection={(id, input) => void run(() => updatePhysicalConnection(id, input))}
+          onDeleteConnection={(id) =>
+            void run(
+              () => deletePhysicalConnection(id),
+              () => setSelection(null),
+            )
+          }
           onUpdatePort={(id, input) => void run(() => updatePhysicalPort(id, input))}
-          onInstallModule={(assetId, input) => void run(() => installPhysicalModule(assetId, input))}
+          onInstallModule={(assetId, input) =>
+            void run(() => installPhysicalModule(assetId, input))
+          }
           onRemoveModule={(moduleId) => void run(() => removePhysicalModule(moduleId))}
           onConfirmLldp={(adjacencyId, medium) =>
             void run(
@@ -609,13 +889,89 @@ export function PhysicalWorkspace() {
         />
       </div>
 
-      {dialog === 'site' ? <Modal title="Novo POP" onClose={() => setDialog(null)}><form className="physical-form" onSubmit={(event) => void submitSite(event)}><label className="physical-field">Nome<input name="name" required maxLength={120} autoFocus /></label><label className="physical-field">Código<input name="code" maxLength={40} placeholder="Ex.: CTO" /></label><footer><Button compact variant="ghost" type="button" onClick={() => setDialog(null)}>Cancelar</Button><Button compact variant="primary" type="submit" disabled={busy}>Criar POP</Button></footer></form></Modal> : null}
-      {dialog === 'rack' && site ? <Modal title={`Novo rack · ${site.name}`} onClose={() => setDialog(null)}><form className="physical-form" onSubmit={(event) => void submitRack(event)}><label className="physical-field">Nome<input name="name" required maxLength={120} autoFocus /></label><label className="physical-field">Unidades U<input name="units" type="number" min={1} max={100} defaultValue={42} required /></label><footer><Button compact variant="ghost" type="button" onClick={() => setDialog(null)}>Cancelar</Button><Button compact variant="primary" type="submit" disabled={busy}>Criar rack</Button></footer></form></Modal> : null}
+      {/*
+        Sheet de navegação do celular: POP, racks e busca — o mesmo `navigation`
+        da sidebar. Fechar/abrir não mexe em nenhum outro estado.
+      */}
+      {navOpen ? (
+        <div
+          className="physical-sheet"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Navegação física"
+        >
+          <button
+            type="button"
+            className="physical-sheet__scrim"
+            aria-label="Fechar navegação"
+            onClick={() => setNavOpen(false)}
+          />
+          <div className="physical-sheet__panel">
+            <header className="physical-sheet__header">
+              <strong>POP · Rack</strong>
+              <button
+                type="button"
+                className="physical-sheet__close"
+                onClick={() => setNavOpen(false)}
+              >
+                Fechar
+              </button>
+            </header>
+            <div className="physical-sheet__body">{navigation}</div>
+          </div>
+        </div>
+      ) : null}
+
+      {dialog === 'site' ? (
+        <Modal title="Novo POP" onClose={() => setDialog(null)}>
+          <form className="physical-form" onSubmit={(event) => void submitSite(event)}>
+            <label className="physical-field">
+              Nome
+              <input name="name" required maxLength={120} autoFocus />
+            </label>
+            <label className="physical-field">
+              Código
+              <input name="code" maxLength={40} placeholder="Ex.: CTO" />
+            </label>
+            <footer>
+              <Button compact variant="ghost" type="button" onClick={() => setDialog(null)}>
+                Cancelar
+              </Button>
+              <Button compact variant="primary" type="submit" disabled={busy}>
+                Criar POP
+              </Button>
+            </footer>
+          </form>
+        </Modal>
+      ) : null}
+      {dialog === 'rack' && site ? (
+        <Modal title={`Novo rack · ${site.name}`} onClose={() => setDialog(null)}>
+          <form className="physical-form" onSubmit={(event) => void submitRack(event)}>
+            <label className="physical-field">
+              Nome
+              <input name="name" required maxLength={120} autoFocus />
+            </label>
+            <label className="physical-field">
+              Unidades U
+              <input name="units" type="number" min={1} max={100} defaultValue={42} required />
+            </label>
+            <footer>
+              <Button compact variant="ghost" type="button" onClick={() => setDialog(null)}>
+                Cancelar
+              </Button>
+              <Button compact variant="primary" type="submit" disabled={busy}>
+                Criar rack
+              </Button>
+            </footer>
+          </form>
+        </Modal>
+      ) : null}
       {dialog === 'asset' && rack ? (
         <Modal title={`Adicionar equipamento · ${rack.name}`} onClose={() => setDialog(null)}>
           {catalogQuery.isError ? (
             <p className="physical-form__hint">
-              Não foi possível carregar o catálogo de equipamentos. Recarregue a página para tentar novamente.
+              Não foi possível carregar o catálogo de equipamentos. Recarregue a página para tentar
+              novamente.
             </p>
           ) : (
             <PhysicalAssetDialog
