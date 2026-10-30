@@ -1,0 +1,573 @@
+{
+  "decision": "GO for one separately authorized migration plus persistence-only operation; not executed",
+  "sourceSha": "463769620a2f39f9803b60a43314851fe3a77e0e",
+  "bundleSha256": "5937a56815a08837de73d9b56e2fc1c9f44ab9b98ba86822f19e6e6e0352d08d",
+  "migrationName": "20261029090000_auto_lifecycle_durable",
+  "migrationSha256": "a64023cfec58be1de1f0be53f411a994f8c3ef482e06a98e58a896344fddb795",
+  "onlyPendingMigration": true,
+  "historicalLineEndings": [
+    {
+      "name": "20261018020000_mitigation_priority_traffic",
+      "releaseLfSha256": "fd2fb4070d97b6375b92768ecf274811f2c936c6384c0da58f236347ec9532ba",
+      "recordedCrlfSha256": "7abacaa909bc6639cfff8f260e70eebd0c1fbbc650349932cb72c8901e784c37",
+      "onlyLineEndingsDiffer": true
+    },
+    {
+      "name": "20261023000000_mitigation_direction_audit",
+      "releaseLfSha256": "318f4de6d11723e003e2b9fb4173c986ba70d28d511ecb57ab809199a84920a3",
+      "recordedCrlfSha256": "45c6a7d997cef667493614d6b05d9f0f7989316dffdef1cd4f389e473a0826c0",
+      "onlyLineEndingsDiffer": true
+    },
+    {
+      "name": "20261024000000_mitigation_fast_bridge",
+      "releaseLfSha256": "ef4495e0fd011fd609258317b2b59fb5591d06c7fd3450dda877a1829b1a6f6f",
+      "recordedCrlfSha256": "505cdd80843526f00cb6b0b4a9043956f821bc6fdcbf5e525cfc86272ee1aae5",
+      "onlyLineEndingsDiffer": true
+    },
+    {
+      "name": "20261025000000_interface_mitigation_traffic_direction",
+      "releaseLfSha256": "9d7962a6c1883a75e61a2d296630a67355b66b83e52afc917673b175995f3df2",
+      "recordedCrlfSha256": "bfd974ac738e5fe7ec5b4814c9c73b89f6dd83af636e89b415de77b4050a3011",
+      "onlyLineEndingsDiffer": true
+    }
+  ],
+  "migrationMetadata": {
+    "columns": [
+      {
+        "column_name": "id",
+        "data_type": "text",
+        "is_nullable": "NO",
+        "column_default": null,
+        "datetime_precision": null,
+        "ordinal_position": 1
+      },
+      {
+        "column_name": "kind",
+        "data_type": "text",
+        "is_nullable": "NO",
+        "column_default": null,
+        "datetime_precision": null,
+        "ordinal_position": 2
+      },
+      {
+        "column_name": "status",
+        "data_type": "text",
+        "is_nullable": "NO",
+        "column_default": null,
+        "datetime_precision": null,
+        "ordinal_position": 3
+      },
+      {
+        "column_name": "payload",
+        "data_type": "jsonb",
+        "is_nullable": "NO",
+        "column_default": null,
+        "datetime_precision": null,
+        "ordinal_position": 4
+      },
+      {
+        "column_name": "createdAt",
+        "data_type": "timestamp without time zone",
+        "is_nullable": "NO",
+        "column_default": "CURRENT_TIMESTAMP",
+        "datetime_precision": 3,
+        "ordinal_position": 5
+      },
+      {
+        "column_name": "updatedAt",
+        "data_type": "timestamp without time zone",
+        "is_nullable": "NO",
+        "column_default": null,
+        "datetime_precision": 3,
+        "ordinal_position": 6
+      }
+    ],
+    "constraints": [
+      {
+        "name": "MitigationAutomationRecord_id_not_null",
+        "type": "n",
+        "validated": true
+      },
+      {
+        "name": "MitigationAutomationRecord_kind_not_null",
+        "type": "n",
+        "validated": true
+      },
+      {
+        "name": "MitigationAutomationRecord_status_not_null",
+        "type": "n",
+        "validated": true
+      },
+      {
+        "name": "MitigationAutomationRecord_payload_not_null",
+        "type": "n",
+        "validated": true
+      },
+      {
+        "name": "MitigationAutomationRecord_createdAt_not_null",
+        "type": "n",
+        "validated": true
+      },
+      {
+        "name": "MitigationAutomationRecord_updatedAt_not_null",
+        "type": "n",
+        "validated": true
+      },
+      {
+        "name": "MitigationAutomationRecord_pkey",
+        "type": "p",
+        "validated": true
+      }
+    ],
+    "indexes": [
+      {
+        "name": "MitigationAutomationRecord_pkey",
+        "definition": "CREATE UNIQUE INDEX \"MitigationAutomationRecord_pkey\" ON public.\"MitigationAutomationRecord\" USING btree (id)",
+        "valid": true,
+        "ready": true,
+        "unique": true
+      },
+      {
+        "name": "MitigationAutomationRecord_kind_status_updatedAt_idx",
+        "definition": "CREATE INDEX \"MitigationAutomationRecord_kind_status_updatedAt_idx\" ON public.\"MitigationAutomationRecord\" USING btree (kind, status, \"updatedAt\")",
+        "valid": true,
+        "ready": true,
+        "unique": false
+      }
+    ],
+    "triggers": 0,
+    "migration": {
+      "name": "20261029090000_auto_lifecycle_durable",
+      "checksum": "a64023cfec58be1de1f0be53f411a994f8c3ef482e06a98e58a896344fddb795",
+      "finished": true,
+      "rolledBack": false
+    },
+    "behavioralConstraints": {
+      "duplicateIdRejected23505": true,
+      "missingUpdatedAtRejected23502": true,
+      "testTransactionsRolledBack": true
+    }
+  },
+  "apiDatabaseRolePermissions": {
+    "apiRoleCanCreatePublic": true,
+    "apiRoleCanUsePublic": true,
+    "apiRoleCanManageMigrationHistory": true,
+    "apiRoleCanUseAdvisoryLock": true,
+    "apiRoleCanConnect": true,
+    "roles": 7,
+    "customTablespaces": 0
+  },
+  "tests": [
+    {
+      "numTotalTests": 96,
+      "numPassedTests": 96,
+      "numFailedTests": 0,
+      "numPendingTests": 0,
+      "success": true
+    },
+    {
+      "numTotalTests": 4,
+      "numPassedTests": 4,
+      "numFailedTests": 0,
+      "numPendingTests": 0,
+      "success": true
+    }
+  ],
+  "totalTestsPassed": 100,
+  "apiTypecheckPassed": true,
+  "changedTestEslintPassed": true,
+  "backup": {
+    "status": "COMPLETE",
+    "startedUtc": "2026-10-30T17:57:27.554481+00:00",
+    "finishedUtc": "2026-10-30T18:07:30.979059+00:00",
+    "source": "IMPLANTAR PostgreSQL 18.6; pg_dump MVCC consistent snapshot READ ONLY",
+    "format": "pg_dump custom gzip:3",
+    "externalPath": "D:\\NetVision-Backups\\IMPLANTAR-AGLINK-20261030\\production.pgcustom.aesgcm",
+    "encryption": "AES-256-GCM",
+    "bytes": 2450078777,
+    "cipherSha256": "907e437f38a08c1369cf7a928f072f41dbdf25159db97e66feda09ce19f4d9b6",
+    "externalFreeBefore": 264326893568,
+    "externalFreeAfter": 261876068352,
+    "serverLocalDumpCreated": false
+  },
+  "globalsBackup": {
+    "path": "D:\\NetVision-Backups\\IMPLANTAR-AGLINK-20261030\\globals.sql.aesgcm",
+    "bytes": 2050,
+    "cipherSha256": "7aa025e4c55b1c80d162c552229a70a07e771e76ea8dca565a0ac77c6e9d5349",
+    "rolesPasswordsEncrypted": true,
+    "sourceReadOnly": true
+  },
+  "restore": {
+    "status": "PASSED",
+    "startedUtc": "2026-10-30T18:08:56.499422+00:00",
+    "finishedUtc": "2026-10-30T18:14:24.991990+00:00",
+    "container": "netvision-aglink-restore-pg-20261030",
+    "database": "aglink_restore_validation",
+    "pgRestoreExit": 0,
+    "aesGcmTagVerified": true,
+    "cipherSha256Verified": true,
+    "plainSha256Verified": true,
+    "rolesOwnershipAndAclRestored": true,
+    "singleTransaction": true,
+    "productionAccess": false,
+    "databaseHealth": {
+      "version": "PostgreSQL 18.6 on x86_64-pc-linux-musl, compiled by gcc (Alpine 15.2.0) 15.2.0, 64-bit",
+      "sizeBytes": 22138500799,
+      "automationTablePresent": false,
+      "invalidIndexes": 0,
+      "unvalidatedConstraints": 0,
+      "userTables": 64,
+      "migrations": 42
+    },
+    "stableTables": {
+      "_prisma_migrations": {
+        "count": 42,
+        "matches": true
+      },
+      "BgpMitigationProfile": {
+        "count": 39,
+        "matches": true
+      },
+      "BgpMitigationProfilePeer": {
+        "count": 42,
+        "matches": true
+      },
+      "PhysicalEquipmentTemplate": {
+        "count": 134,
+        "matches": true
+      },
+      "PhysicalTemplateSlot": {
+        "count": 161,
+        "matches": true
+      },
+      "PhysicalTemplatePort": {
+        "count": 1624,
+        "matches": true
+      },
+      "PhysicalModuleTemplate": {
+        "count": 35,
+        "matches": true
+      },
+      "PhysicalModuleTemplatePort": {
+        "count": 412,
+        "matches": true
+      },
+      "PhysicalTemplateSlotModule": {
+        "count": 218,
+        "matches": true
+      },
+      "PhysicalSite": {
+        "count": 3,
+        "matches": true
+      },
+      "PhysicalRack": {
+        "count": 3,
+        "matches": true
+      },
+      "PhysicalAsset": {
+        "count": 7,
+        "matches": true
+      },
+      "PhysicalSlot": {
+        "count": 20,
+        "matches": true
+      },
+      "PhysicalModule": {
+        "count": 8,
+        "matches": true
+      },
+      "PhysicalPort": {
+        "count": 300,
+        "matches": true
+      },
+      "PhysicalConnection": {
+        "count": 3,
+        "matches": true
+      }
+    },
+    "plaintextBackupWrittenToDisk": false
+  },
+  "migrationOnFullRestoredData": {
+    "status": "PASSED",
+    "exactArtifactLinuxPrismaCli": true,
+    "prismaVersion": "6.19.3",
+    "onlyMigrationApplied": "20261029090000_auto_lifecycle_durable",
+    "migrationCountBefore": 42,
+    "migrationCountAfter": 43,
+    "allExistingSeedTablesByteEquivalentIncludingRuntime": true,
+    "stableTableCounts": {
+      "_prisma_migrations": 43,
+      "BgpMitigationProfile": 39,
+      "BgpMitigationRuntime": 39,
+      "BgpMitigationProfilePeer": 42,
+      "PhysicalEquipmentTemplate": 134,
+      "PhysicalTemplateSlot": 161,
+      "PhysicalTemplatePort": 1624,
+      "PhysicalModuleTemplate": 35,
+      "PhysicalModuleTemplatePort": 412,
+      "PhysicalTemplateSlotModule": 218,
+      "PhysicalSite": 3,
+      "PhysicalRack": 3,
+      "PhysicalAsset": 7,
+      "PhysicalSlot": 20,
+      "PhysicalModule": 8,
+      "PhysicalPort": 300,
+      "PhysicalConnection": 3
+    },
+    "health": {
+      "records": 0,
+      "invalidIndexes": 0,
+      "unvalidatedConstraints": 0,
+      "migrationChecksum": "a64023cfec58be1de1f0be53f411a994f8c3ef482e06a98e58a896344fddb795"
+    },
+    "productionAccess": false,
+    "cliOutput": "Prisma schema loaded from prisma/schema.prisma\nDatasource \"db\": PostgreSQL database \"aglink_restore_validation\", schema \"public\" at \"netvision-aglink-restore-pg-20261030:5432\"\n\n43 migrations found in prisma/migrations\n\nApplying migration `20261029090000_auto_lifecycle_durable`\n\nThe following migration(s) have been applied:\n\nmigrations/\n  └─ 20261029090000_auto_lifecycle_durable/\n    └─ migration.sql\n      \nAll migrations have been successfully applied.",
+    "statusOutput": "Prisma schema loaded from prisma/schema.prisma\nDatasource \"db\": PostgreSQL database \"aglink_restore_validation\", schema \"public\" at \"netvision-aglink-restore-pg-20261030:5432\"\n\n43 migrations found in prisma/migrations\n\nDatabase schema is up to date!"
+  },
+  "runtimeLab": {
+    "artifact": {
+      "source": "463769620a2f39f9803b60a43314851fe3a77e0e",
+      "bundle": "5937a56815a08837de73d9b56e2fc1c9f44ab9b98ba86822f19e6e6e0352d08d"
+    },
+    "health": {
+      "status": "ok",
+      "demoMode": false,
+      "snmpPolling": false
+    },
+    "lifecycle": {
+      "status": 200,
+      "pilot": null,
+      "installation": "IMPLANTAR",
+      "persistenceEnabled": true,
+      "lifecycleReady": true,
+      "lifecycleEnabled": false,
+      "executionEnabled": false,
+      "removeEnabled": false,
+      "allowedProfiles": [],
+      "allowedDevices": [],
+      "maxActive": 1,
+      "removalPolicy": "MANUAL_ONLY",
+      "cooldownMs": 600000,
+      "records": [
+        {
+          "_count": {
+            "_all": 1
+          },
+          "kind": "outbox",
+          "status": "PENDING"
+        },
+        {
+          "_count": {
+            "_all": 1
+          },
+          "kind": "scope",
+          "status": "UNCERTAIN"
+        },
+        {
+          "_count": {
+            "_all": 1
+          },
+          "kind": "command",
+          "status": "UNCERTAIN"
+        }
+      ]
+    },
+    "apiNetworkInternalOnly": true,
+    "apiReadOnlyFilesystem": true,
+    "productionContacts": false,
+    "runtime": "Node24.19.0 OpenSSL3.0.22",
+    "labSetupCorrections": [
+      "ephemeral encryption key format corrected to base64/32bytes",
+      "lab runtime supplied matching OpenSSL3 library",
+      "lab login field corrected to usernameOrEmail"
+    ],
+    "apiCodeChanged": false
+  },
+  "runtimeRestart": {
+    "status": "PASSED",
+    "actualApiProcessRestart": true,
+    "startedBefore": "2026-10-30T18:04:36.772368424Z",
+    "startedAfter": "2026-10-30T18:06:57.567439132Z",
+    "recordCount": 3,
+    "kinds": ["command", "outbox", "scope"],
+    "journalAndOwnershipUnchanged": true,
+    "outboxPayloadAndEventIdUnchanged": true,
+    "uncertainRetained": true,
+    "executionAutoEnabled": false,
+    "removeAutoEnabled": false,
+    "productionAccess": false
+  },
+  "fullCloneRuntime": {
+    "status": "PASSED",
+    "exactBundle4637696": true,
+    "fullRestoredDatabase": true,
+    "health": {
+      "status": "ok",
+      "demoMode": false,
+      "snmpPolling": false
+    },
+    "lifecycle": {
+      "status": 200,
+      "pilot": null,
+      "installation": "IMPLANTAR",
+      "persistenceEnabled": true,
+      "lifecycleReady": true,
+      "lifecycleEnabled": false,
+      "executionEnabled": false,
+      "removeEnabled": false,
+      "allowedProfiles": [],
+      "allowedDevices": [],
+      "maxActive": 1,
+      "removalPolicy": "MANUAL_ONLY",
+      "cooldownMs": 600000,
+      "records": []
+    },
+    "counts": {
+      "profiles": 39,
+      "events": 11,
+      "durableRecords": 0
+    },
+    "apiStoppedAfterVerification": true,
+    "isolatedNetworkOnly": true,
+    "realCredentialKeyNotImported": true,
+    "huaweiExecutor": "MOCK",
+    "liveWriteEnabled": false,
+    "productionAccess": false,
+    "physicalReadbackHomologated": false,
+    "operatorOwnCredentialsUsedOnlyInClone": true,
+    "ownSessionLoggedOut": true
+  },
+  "production": {
+    "observedUtc": "2026-10-30T18:14:41.734202+00:00",
+    "servicesUnchanged": true,
+    "services": {
+      "netvision-api": {
+        "ActiveState": "active",
+        "SubState": "running",
+        "MainPID": "3435626",
+        "NRestarts": "0",
+        "ExecMainStartTimestamp": "Fri 2026-10-30 17:32:27 UTC",
+        "WorkingDirectory": "/opt/netvision-auto-activate/releases/463769620a2f39f9803b60a43314851fe3a77e0e/apps/api",
+        "cwd": "/opt/netvision-auto-activate/releases/463769620a2f39f9803b60a43314851fe3a77e0e/apps/api"
+      },
+      "netvision-mcp": {
+        "ActiveState": "active",
+        "SubState": "running",
+        "MainPID": "3435627",
+        "NRestarts": "0",
+        "ExecMainStartTimestamp": "Fri 2026-10-30 17:32:27 UTC",
+        "WorkingDirectory": "/opt/netvision-mcp/releases/mcp-5874fe0",
+        "cwd": "/opt/netvision-mcp/releases/mcp-5874fe0"
+      },
+      "netvision-web": {
+        "ActiveState": "active",
+        "SubState": "running",
+        "MainPID": "2976909",
+        "NRestarts": "0",
+        "ExecMainStartTimestamp": "Mon 2026-10-26 21:10:07 UTC",
+        "WorkingDirectory": "/opt/GMJ-NetVision-web-responsive/releases/f4b31fc31dd0ffdc7d454157822a3e85c5a5e8b8/web",
+        "cwd": "/opt/GMJ-NetVision-web-responsive/releases/f4b31fc31dd0ffdc7d454157822a3e85c5a5e8b8/web/apps/web"
+      },
+      "netvision-fast-observer": {
+        "ActiveState": "active",
+        "SubState": "running",
+        "MainPID": "2594846",
+        "NRestarts": "1",
+        "ExecMainStartTimestamp": "Fri 2026-10-23 06:22:08 UTC",
+        "WorkingDirectory": "/opt/netvision-fast-observer/current",
+        "cwd": "/opt/netvision-fast-observer/releases/rc-aaafdde/runtime"
+      }
+    },
+    "flagsUnchanged": true,
+    "flags": {
+      "NETVISION_INSTALLATION_ID": "IMPLANTAR",
+      "MITIGATION_AUTO_PERSISTENCE_ENABLED": "0",
+      "MITIGATION_AUTO_LIFECYCLE_ENABLED": "0",
+      "MITIGATION_AUTO_EXECUTION_ENABLED": "0",
+      "MITIGATION_AUTO_REMOVE_ENABLED": "0",
+      "MITIGATION_AUTO_DESCRIPTION_ENABLED": "0",
+      "MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS": "",
+      "MITIGATION_AUTO_MAX_ACTIVE": "1"
+    },
+    "migrationNotApplied": true,
+    "pending": ["20261029090000_auto_lifecycle_durable"],
+    "automationTablePresent": false,
+    "stableTablesUnchanged": [
+      "_prisma_migrations",
+      "BgpMitigationProfile",
+      "BgpMitigationProfilePeer",
+      "PhysicalEquipmentTemplate",
+      "PhysicalTemplateSlot",
+      "PhysicalTemplatePort",
+      "PhysicalModuleTemplate",
+      "PhysicalModuleTemplatePort",
+      "PhysicalTemplateSlotModule",
+      "PhysicalSite",
+      "PhysicalRack",
+      "PhysicalAsset",
+      "PhysicalSlot",
+      "PhysicalModule",
+      "PhysicalPort",
+      "PhysicalConnection"
+    ],
+    "runtimeCountersEvolvedNaturally": true,
+    "freeBytes": 6149349376,
+    "databaseHealth": {
+      "version": "PostgreSQL 18.6 (Ubuntu 18.6-0ubuntu0.26.04.1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+      "sizeBytes": 25431185087,
+      "readOnly": "on",
+      "inRecovery": false,
+      "tablePresent": false,
+      "invalidIndexes": 0,
+      "unvalidatedConstraints": 0,
+      "longTransactions": 0,
+      "waitingLocks": 0
+    },
+    "operational": {
+      "profiles": 39,
+      "modes": {
+        "AUTO": 12,
+        "ALERT_ONLY": 27
+      },
+      "events": {
+        "ACTIVATE": 4,
+        "SIMULATION": 3,
+        "REMOVE": 4
+      },
+      "disabledState": "DISABLED",
+      "runtimeStates": {
+        "DISABLED": 1,
+        "NORMAL": 38
+      },
+      "observedUtc": "2026-10-30T18:15:57.246885+00:00",
+      "readOnly": true
+    },
+    "apiHealthHttp": 200,
+    "apiDemoMode": false,
+    "apiSnmpPolling": true,
+    "apiMcpWebObserverActiveRunning": true,
+    "authenticatedProductionLoginPerformed": false
+  },
+  "cleanup": {
+    "status": "PASSED",
+    "localDockerDesktopOnly": true,
+    "containersAndAnonymousDataVolumesRemoved": [
+      "netvision-aglink-full-clone-api-20261030",
+      "netvision-aglink-durable-api-20261030",
+      "netvision-aglink-persistence-pg-20261030",
+      "netvision-aglink-restore-pg-20261030"
+    ],
+    "runtimeArtifactVolumeRemoved": true,
+    "isolatedNetworkRemoved": true,
+    "encryptedExternalBackupRetained": true,
+    "recoveryKeyRetainedSeparately": true,
+    "productionTouched": false
+  },
+  "limits": [
+    "No physical Huawei homologation; fake transport only",
+    "HTTP loopback fixture only; no real Telegram message",
+    "Lost HTTP ACK can cause at-least-once replay; stable event ID preserved",
+    "Outbox FAILED after retry budget needs operator review",
+    "No production migration, restart, flags change or configuration write"
+  ]
+}
