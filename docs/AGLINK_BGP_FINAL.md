@@ -92,6 +92,21 @@ capturadas, não uma hipótese de prefixo amplo ou um workflow novo.
 
 ## Validação e decisão
 
+Código/pacote exatos: `463769620a2f39f9803b60a43314851fe3a77e0e`.
+Pacote Linux API-only em `C:/projetos/artifacts/netvision-aglink-bgp-4637696/`;
+10.070 arquivos, 300.460.842 bytes, comprimido 95.272.185 bytes.
+SHA256 tar.gz: `f47210e4d018d954f1723d31e29a050995169d5e9dd57ce35ad7a01e68172afe`.
+SHA256 server.cjs: `5937a56815a08837de73d9b56e2fc1c9f44ab9b98ba86822f19e6e6e0352d08d`.
+Dois builds e tar/gzip comparados; todos os hashes internos conferidos. Smoke Linux
+em rede Docker interna: Prisma consultou banco descartável, health/lifecycle 200,
+todas as flags AUTO/lifecycle/persistência/REMOVE desligadas. Manifesto completo no
+diretório do pacote; resumo em [aglink-bgp-final.json](evidence/aglink-bgp-final.json).
+O commit posterior registra somente documentação/evidências.
+
+Produção às 15:05:24 UTC: PIDs/serviços, flags, configurações dos 39 perfis,
+histórico de comandos e migrations inalterados em relação à coleta anterior.
+API/WEB/MCP 200; AUTO=0. Nenhuma alteração operacional foi realizada.
+
 Testes novos verificam primeiro node, os três prefixos, LP/seleção, substituição
 de RT recebido, exportação normal versus mitigação, rejeição de prefixo estranho,
 readback incompleto/atributos divergentes, preview, classificação de discovery e
@@ -115,6 +130,13 @@ de correspondência física. Após futura operação autorizada, conferir best-r
 RT 660 exclusivo e anúncios nos dois peers DDoS; após REMOVE, conferir RTs originais
 e anúncios normais após reconvergência. Readback de policy não prova entrega do
 tráfego pelo provedor de mitigação.
+
+Rollback: versões anteriores esperam PREFIX8to24 no node temporário e podem não
+reconhecer o novo par específico. Com mitigação ativa, desarmar M8 e conservar
+esta API para eventual REMOVE humano; retornar ao pacote anterior somente depois
+de retirada humana autorizada/verificada e baseline restaurado. Não fazer REMOVE
+automático como parte do rollback. Pacote antigo `31b7614` não deve ser usado para
+armar este piloto; será substituído pelo pacote BGP corrigido na entrega.
 
 **NO-GO para o plano BGP antigo. GO técnico para o plano BGP corrigido**, condicionado
 ao pacote/testes registrados; não equivale a autorização de deploy ou homologação
