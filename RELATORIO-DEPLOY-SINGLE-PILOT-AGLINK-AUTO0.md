@@ -1,5 +1,7 @@
 # IMPLANTAR — publicação single-pilot AGLINK AUTO=0
 
+> Histórico da tentativa anterior. A retomada autorizada publicou a API 4637696 com AUTO=0; consulte o [relatório atual](RELATORIO-RETOMADA-DEPLOY-AGLINK-AUTO0.md). O resultado abaixo foi preservado como evidência histórica.
+
 **30/10/2026, America/Sao_Paulo. Resultado: NO-GO; rollback autorizado concluído.**
 
 A API 4637696 iniciou com o bundle aprovado e flags desligadas. O gate obrigatório

@@ -1,0 +1,98 @@
+{
+  "accepted": true,
+  "CATALOG_BOOTSTRAP": "DEGRADED",
+  "MITIGATION_DEPENDENCY": "NONE",
+  "nonBlockingOnlyUnderRevisedOperatorCriteria": true,
+  "rollbackRequired": false,
+  "checks": {
+    "approvedApiHashAndCwd": true,
+    "servicesHealthy": true,
+    "allFourHealth200": true,
+    "noRestartLoop": true,
+    "webAndObserverUnchanged": true,
+    "onlyApiMcpRestarted": true,
+    "mcpBundleAndConfigUnchanged": true,
+    "flagsRemainOff": true,
+    "manualPermissionsUnchanged": true,
+    "profilesPreserved": true,
+    "disabledRuntimePreserved": true,
+    "catalogPersistedRowsPreserved": true,
+    "inventoryPersistedRowsPreserved": true,
+    "existingInventoryFunctional": true,
+    "noPendingLongTransactionOrLock": true,
+    "noNewDatabaseIntegrityConcern": true,
+    "noMigrationOrDurableTable": true,
+    "noAdditionalMitigationEvent": true,
+    "huaweiPolicyUnchanged": true,
+    "noStandaloneWriter": true,
+    "n8nUnchangedHealthy": true,
+    "noFailureOutsideCatalog": true,
+    "mitigationSnapshotRehydrated": true,
+    "spaceReservePreserved": true,
+    "graphStillOnlyApiMcp": true
+  },
+  "phase": "final",
+  "catalogErrorEvidence": [
+    {
+      "pid": "3435626",
+      "message": "falha inesperada ao sincronizar o catálogo físico",
+      "isCatalogBootstrapOnly": true,
+      "uniqueConstraint": [
+        "Unique constraint failed on the fields: (`templateId`,`side`,`sortOrder`)"
+      ]
+    }
+  ],
+  "catalogTableCounts": {
+    "PhysicalEquipmentTemplate": {
+      "before": 134,
+      "after": 134
+    },
+    "PhysicalTemplateSlot": {
+      "before": 161,
+      "after": 161
+    },
+    "PhysicalTemplatePort": {
+      "before": 1624,
+      "after": 1624
+    },
+    "PhysicalModuleTemplate": {
+      "before": 35,
+      "after": 35
+    },
+    "PhysicalModuleTemplatePort": {
+      "before": 412,
+      "after": 412
+    },
+    "PhysicalTemplateSlotModule": {
+      "before": 218,
+      "after": 218
+    }
+  },
+  "inventoryTableCounts": {
+    "PhysicalSite": 3,
+    "PhysicalRack": 3,
+    "PhysicalAsset": 7,
+    "PhysicalSlot": 20,
+    "PhysicalModule": 8,
+    "PhysicalPort": 300,
+    "PhysicalConnection": 3
+  },
+  "inventoryApiCounts": {
+    "sites": 3,
+    "racks": 3,
+    "assets": 7,
+    "templates": 134,
+    "connections": 3
+  },
+  "profileCounts": {
+    "AUTO": 12,
+    "ALERT_ONLY": 27
+  },
+  "observedUtc": "2026-10-30T17:37:06.597126+00:00",
+  "freeBytes": 6137966592,
+  "acceptanceRuleNegativeTestsPassed": true,
+  "packageAndCodeUnchanged": true,
+  "forwardRestartCount": 1,
+  "rollbackCount": 0,
+  "migrationPreparation": "GO to prepare only; applying migration, enabling AUTO and physical tests need separate authorization"
+}
