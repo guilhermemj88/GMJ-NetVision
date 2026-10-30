@@ -1,0 +1,483 @@
+{
+  "decision": "NO-GO physical ACTIVATE; preflight stopped before first write",
+  "reason": "SEMPRE-DDoS 138.99.240.141 is Active, not Established",
+  "observedUtc": "2026-10-30T21:44:45.668Z",
+  "version": "Huawei Versatile Routing Platform Software\nVRP (R) software, Version 8.220 (NetEngine 8000 V800R022C00SPC600)\nHUAWEI NetEngine 8000 F1A-8H20Q uptime is 45 days, 15 hours, 9 minutes\nNetEngine 8000 F1A-8H20Q version information:",
+  "device": "BHE-VTA-F1A-BGP-01",
+  "profile": {
+    "id": "cmuoavm4e00bysslhqd0h3q7u",
+    "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+    "policy": "PL-AGLINK_IPv4-IN",
+    "family": "IPV4",
+    "mode": "AUTO",
+    "enabled": true,
+    "bandwidth": "10000000000",
+    "triggerPercent": 90,
+    "triggerSamples": 3,
+    "rt": "268568:660",
+    "scopeMembers": 1
+  },
+  "nodes": [
+    {
+      "node": 10,
+      "action": "permit",
+      "ifMatchIpPrefix": ["AGLINK-BLOCO-TODO-23"],
+      "routeTargets": ["268568:140"]
+    },
+    {
+      "node": 1000,
+      "action": "deny",
+      "ifMatchIpPrefix": [],
+      "routeTargets": []
+    }
+  ],
+  "targetPolicy": [
+    "route-policy PL-AGLINK_IPv4-IN permit node 10\r\n if-match ip-prefix AGLINK-BLOCO-TODO-23\r\n apply local-preference 1100\r\n apply extcommunity rt 268568:140 additive",
+    "route-policy PL-AGLINK_IPv4-IN deny node 1000"
+  ],
+  "threePrefixes": [
+    {
+      "prefix": "167.250.126.0/23",
+      "sourcePeer": "10.200.201.2",
+      "best": true,
+      "selected": true,
+      "localPreference": 1100,
+      "routeTargets": ["268568:140", "268568:330"],
+      "interface": "Eth-Trunk1.3058"
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "sourcePeer": "10.200.201.2",
+      "best": true,
+      "selected": true,
+      "localPreference": 1100,
+      "routeTargets": ["268568:140", "268568:330"],
+      "interface": "Eth-Trunk1.3058"
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "sourcePeer": "10.200.201.2",
+      "best": true,
+      "selected": true,
+      "localPreference": 1100,
+      "routeTargets": ["268568:140", "268568:330"],
+      "interface": "Eth-Trunk1.3058"
+    }
+  ],
+  "sessions": {
+    "10.200.201.2": {
+      "peer": "10.200.201.2",
+      "asn": 273811,
+      "messagesReceived": 6964,
+      "messagesSent": 2286133,
+      "duration": "0100h37m",
+      "state": "Established",
+      "prefixesReceived": 3
+    },
+    "45.163.144.6": {
+      "peer": "45.163.144.6",
+      "asn": 268568,
+      "messagesReceived": 11017316,
+      "messagesSent": 77231,
+      "duration": "1095h06m",
+      "state": "Established",
+      "prefixesReceived": 221589
+    },
+    "138.99.240.117": {
+      "peer": "138.99.240.117",
+      "asn": 28198,
+      "messagesReceived": 1538722,
+      "messagesSent": 7101,
+      "duration": "0100h37m",
+      "state": "Established",
+      "prefixesReceived": 1
+    },
+    "138.99.240.141": {
+      "peer": "138.99.240.141",
+      "asn": 28198,
+      "messagesReceived": 0,
+      "messagesSent": 0,
+      "duration": "0100h52m",
+      "state": "Active",
+      "prefixesReceived": 0
+    },
+    "172.30.251.33": {
+      "peer": "172.30.251.33",
+      "asn": 268696,
+      "messagesReceived": 1279050,
+      "messagesSent": 13973,
+      "duration": "0100h37m",
+      "state": "Established",
+      "prefixesReceived": 1094878
+    },
+    "198.18.1.152": {
+      "peer": "198.18.1.152",
+      "asn": 13786,
+      "messagesReceived": 1646362,
+      "messagesSent": 13932,
+      "duration": "0100h36m",
+      "state": "Established",
+      "prefixesReceived": 1079650
+    },
+    "198.18.36.26": {
+      "peer": "198.18.36.26",
+      "asn": 13786,
+      "messagesReceived": 574033,
+      "messagesSent": 3529,
+      "duration": "0025h15m",
+      "state": "Established",
+      "prefixesReceived": 1
+    },
+    "198.19.4.145": {
+      "peer": "198.19.4.145",
+      "asn": 270735,
+      "messagesReceived": 1271289,
+      "messagesSent": 13934,
+      "duration": "0100h37m",
+      "state": "Established",
+      "prefixesReceived": 0
+    },
+    "200.194.223.85": {
+      "peer": "200.194.223.85",
+      "asn": 3356,
+      "messagesReceived": 1328417,
+      "messagesSent": 13972,
+      "duration": "0100h37m",
+      "state": "Established",
+      "prefixesReceived": 1069206
+    }
+  },
+  "advertisements": [
+    {
+      "peer": "138.99.240.141",
+      "reportedTotal": null,
+      "parsedTotal": 0,
+      "targetPrefixes": [],
+      "cliError": false,
+      "prefixEnumerationComplete": false,
+      "nonTargetAttributeWarnings": ["A consulta não retornou saída do equipamento."]
+    },
+    {
+      "peer": "198.19.4.145",
+      "reportedTotal": 11,
+      "parsedTotal": 11,
+      "targetPrefixes": [],
+      "cliError": false,
+      "prefixEnumerationComplete": true,
+      "nonTargetAttributeWarnings": []
+    },
+    {
+      "peer": "138.99.240.117",
+      "reportedTotal": 36,
+      "parsedTotal": 36,
+      "targetPrefixes": ["167.250.126.0/23", "167.250.126.0/24", "167.250.127.0/24"],
+      "cliError": false,
+      "prefixEnumerationComplete": true,
+      "nonTargetAttributeWarnings": []
+    },
+    {
+      "peer": "198.18.1.152",
+      "reportedTotal": 33,
+      "parsedTotal": 33,
+      "targetPrefixes": ["167.250.126.0/23", "167.250.126.0/24", "167.250.127.0/24"],
+      "cliError": false,
+      "prefixEnumerationComplete": true,
+      "nonTargetAttributeWarnings": []
+    },
+    {
+      "peer": "198.18.36.26",
+      "reportedTotal": 34,
+      "parsedTotal": 34,
+      "targetPrefixes": ["167.250.126.0/23", "167.250.126.0/24", "167.250.127.0/24"],
+      "cliError": false,
+      "prefixEnumerationComplete": true,
+      "nonTargetAttributeWarnings": []
+    },
+    {
+      "peer": "200.194.223.85",
+      "reportedTotal": 34,
+      "parsedTotal": 34,
+      "targetPrefixes": ["167.250.126.0/23", "167.250.126.0/24", "167.250.127.0/24"],
+      "cliError": false,
+      "prefixEnumerationComplete": true,
+      "nonTargetAttributeWarnings": []
+    },
+    {
+      "peer": "172.30.251.33",
+      "reportedTotal": 36,
+      "parsedTotal": 36,
+      "targetPrefixes": ["167.250.126.0/23", "167.250.126.0/24", "167.250.127.0/24"],
+      "cliError": false,
+      "prefixEnumerationComplete": true,
+      "nonTargetAttributeWarnings": []
+    },
+    {
+      "peer": "45.163.144.6",
+      "reportedTotal": 40,
+      "parsedTotal": 40,
+      "targetPrefixes": ["167.250.126.0/23", "167.250.126.0/24", "167.250.127.0/24"],
+      "cliError": false,
+      "prefixEnumerationComplete": true,
+      "nonTargetAttributeWarnings": [
+        "AS-PATH não interpretável em 45.163.144.0/25.",
+        "AS-PATH não interpretável em 45.163.144.128/25.",
+        "AS-PATH não interpretável em 45.163.145.0/25.",
+        "AS-PATH não interpretável em 45.163.145.128/25.",
+        "AS-PATH não interpretável em 45.163.146.128/25.",
+        "AS-PATH não interpretável em 45.163.147.0/25.",
+        "AS-PATH não interpretável em 45.163.147.128/25.",
+        "AS-PATH não interpretável em 100.64.0.0/16.",
+        "AS-PATH não interpretável em 100.65.0.0/16."
+      ]
+    }
+  ],
+  "exportPoliciesMatchApprovedEvidence": {
+    "PL-SEMPRE-IPv4-OUT": true,
+    "PL-SEMPRE-DDoS-IPv4-OUT": true,
+    "PL-SEABORN-IPv4-OUT": true,
+    "PL-SEABORN-BH-IPv4-OUT": true,
+    "PL-COMPUTIZE-IPv4-OUT": true,
+    "PL-CIRION-IPv4-OUT": true,
+    "PL-TUDDO-IPv4-OUT": true,
+    "PL-BGP_VS-IX_V4_OUT": true
+  },
+  "requiredPrefixDefinitionsMatch": true,
+  "requiredRtDefinitionsMatch": true,
+  "preserved": {
+    "servicesPidsAndStarts": true,
+    "allServiceUnitFiles": true,
+    "allRuntimeFlags": true,
+    "allEnvironmentFiles": true,
+    "apiBundle": true,
+    "all39ProfileConfigurations": true,
+    "migrationHistory": true,
+    "mitigationHistory": true,
+    "durableRecordsZero": true,
+    "noMediaOrTelegramAttempt": true
+  },
+  "operatorWillAccompany": true,
+  "exclusiveWindowConfirmed": false,
+  "mitigatorOperationalReadinessConfirmed": false,
+  "physicalActivateAuthorizationReceived": false,
+  "activateCount": 0,
+  "removeCount": 0,
+  "refreshResetCount": 0,
+  "realTelegramEventProduced": false,
+  "n8n": {
+    "observedUtc": "2026-10-30T21:44:53.142090+00:00",
+    "readOnly": true,
+    "container": {
+      "running": true,
+      "restartCount": 0,
+      "startedAt": "2026-10-27T19:03:18.907101804Z"
+    },
+    "workflow": {
+      "id": "SVh8Z-zUcSzQYOOJZ-DKP",
+      "name": "GMJ NetVision - Mitigacao DDoS - RC7.1.1 REVIEW-08 (fallback de grafico)",
+      "active": 1,
+      "versionId": "1f1405f8-e9bc-4d2e-91bc-4106dbb07285",
+      "activeVersionId": "6a97fe4a-31ea-49e6-b892-1ac55f85d115",
+      "updatedAt": "2026-10-29 18:21:39.441"
+    },
+    "publishedNodes": 58,
+    "publishedGraphSha256": "60af87618b6bfd2e1cf1678a16a769062151fa4ec320126fdb5498e3ee385870",
+    "expectedRc712ActiveVersion": true,
+    "normalizerHandlesMitigationVerified": true,
+    "normalizerReferencesPrefixFields": false,
+    "normalizerReferencesRt": true,
+    "manualRemoveButtonNodesPresent": true,
+    "credentialValuesReadOrDecrypted": false,
+    "workflowModified": false,
+    "healthHttp": 200
+  },
+  "telegramPrefixListGap": "Current canonical manual notification and published normalizer do not carry/render an explicit list of the three prefixes",
+  "providerReception": "NOT_VERIFIED",
+  "effectiveForwardingDuringMitigation": "NOT_TESTED",
+  "autoActivateStillOff": true,
+  "autoRemoveStillOff": true,
+  "focusedReadObservedUtc": "2026-10-30T21:49:28.914Z",
+  "focusedReadings": {
+    "display bgp peer 138.99.240.141 verbose": [
+      "BGP Peer is 138.99.240.141,  remote AS 28198",
+      "BGP current state: Connect",
+      "BGP last state: Active"
+    ],
+    "display bgp peer 198.19.4.145 verbose": [
+      "BGP Peer is 198.19.4.145,  remote AS 270735",
+      "BGP current state: Established, Up for 4d04h41m58s",
+      "BGP last state: OpenConfirm"
+    ],
+    "display interface Eth-Trunk1.3058": [
+      "Eth-Trunk1.3058 current state : UP (ifindex: 236)",
+      "Line protocol current state : UP",
+      "Last 300 seconds input rate 21303512 bits/sec, 4328 packets/sec",
+      "Last 300 seconds output rate 442909856 bits/sec, 45898 packets/sec"
+    ],
+    "display ip routing-table 167.250.126.0 23 verbose": [
+      "Destination: 167.250.126.0/23",
+      "Protocol: EBGP               Process ID: 0",
+      "Preference: 255                      Cost: 0",
+      "NextHop: 10.200.201.2        Neighbour: 10.200.201.2",
+      "RelayNextHop: 10.200.201.2        Interface: Eth-Trunk1.3058"
+    ],
+    "display ip routing-table 167.250.126.0 24 verbose": [
+      "Destination: 167.250.126.0/24",
+      "Protocol: EBGP               Process ID: 0",
+      "Preference: 255                      Cost: 0",
+      "NextHop: 10.200.201.2        Neighbour: 10.200.201.2",
+      "RelayNextHop: 10.200.201.2        Interface: Eth-Trunk1.3058",
+      "BkNextHop: 200.194.223.85    BkInterface: Eth-Trunk1.3998"
+    ],
+    "display ip routing-table 167.250.127.0 24 verbose": [
+      "Destination: 167.250.127.0/24",
+      "Protocol: EBGP               Process ID: 0",
+      "Preference: 255                      Cost: 0",
+      "NextHop: 10.200.201.2        Neighbour: 10.200.201.2",
+      "RelayNextHop: 10.200.201.2        Interface: Eth-Trunk1.3058",
+      "BkNextHop: 200.194.223.85    BkInterface: Eth-Trunk1.3998"
+    ]
+  },
+  "sempreDdosDetailedState": "Connect; previous Active; not Established",
+  "onlyReadCommands": [
+    "display bgp peer",
+    "display bgp peer 138.99.240.141 verbose",
+    "display bgp peer 198.19.4.145 verbose",
+    "display bgp routing-table 167.250.126.0 23",
+    "display bgp routing-table 167.250.126.0 24",
+    "display bgp routing-table 167.250.127.0 24",
+    "display bgp routing-table peer 10.200.201.2 received-routes",
+    "display bgp routing-table peer 138.99.240.117 advertised-routes",
+    "display bgp routing-table peer 138.99.240.141 advertised-routes",
+    "display bgp routing-table peer 172.30.251.33 advertised-routes",
+    "display bgp routing-table peer 198.18.1.152 advertised-routes",
+    "display bgp routing-table peer 198.18.36.26 advertised-routes",
+    "display bgp routing-table peer 198.19.4.145 advertised-routes",
+    "display bgp routing-table peer 200.194.223.85 advertised-routes",
+    "display bgp routing-table peer 45.163.144.6 advertised-routes",
+    "display current-configuration configuration bgp",
+    "display current-configuration configuration route-policy",
+    "display current-configuration | include extcommunity-filter",
+    "display current-configuration | include ip-prefix",
+    "display interface Eth-Trunk1.3058",
+    "display ip routing-table 167.250.126.0 23 verbose",
+    "display ip routing-table 167.250.126.0 24 verbose",
+    "display ip routing-table 167.250.127.0 24 verbose",
+    "display version",
+    "screen-length 0 temporary"
+  ],
+  "backup": {
+    "externalBackupAvailable": true,
+    "cipherSha256Matches": true,
+    "keyAvailableAndSeparate": true,
+    "configurationRecoveryRevalidatedInMemory": true,
+    "previousFullPostgresRestorePassed": true,
+    "backupFinishedUtc": "2026-10-30T19:18:09.034243+00:00",
+    "restoreFinishedUtc": "2026-10-30T19:23:57.540009+00:00",
+    "bytes": 2451057776,
+    "cipherSha256": "5e57b896a6c70a6cc2e059a55b23095ddad05c4c44d54a1e9844cfef2c42c53b",
+    "backupPath": "D:\\NetVision-Backups\\IMPLANTAR-AGLINK-EXEC-20261030T1905\\production.pgcustom.aesgcm",
+    "sourceMigrationCountAtFullBackup": 42,
+    "currentMigrationCount": 43,
+    "currentDurableRecords": 0,
+    "newPhysicalWindowBackupAdequacy": "REVALIDATE_BEFORE_PHYSICAL_WRITE; current preflight already stopped",
+    "productionModified": false
+  },
+  "sourceApiSha": "463769620a2f39f9803b60a43314851fe3a77e0e",
+  "bundleSha256": "5937a56815a08837de73d9b56e2fc1c9f44ab9b98ba86822f19e6e6e0352d08d",
+  "flags": {
+    "MITIGATION_AUTO_PERSISTENCE_ENABLED": "1",
+    "MITIGATION_AUTO_LIFECYCLE_ENABLED": "0",
+    "MITIGATION_AUTO_EXECUTION_ENABLED": "0",
+    "MITIGATION_AUTO_REMOVE_ENABLED": "0",
+    "MITIGATION_AUTO_DESCRIPTION_ENABLED": "0",
+    "MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS": "",
+    "MITIGATION_AUTO_MAX_ACTIVE": "1"
+  },
+  "services": {
+    "netvision-api": {
+      "pid": "3440280",
+      "cwd": "/opt/netvision-auto-activate/releases/463769620a2f39f9803b60a43314851fe3a77e0e/apps/api",
+      "active": "active",
+      "substate": "running",
+      "NRestarts": "0"
+    },
+    "netvision-web": {
+      "pid": "2976909",
+      "cwd": "/opt/GMJ-NetVision-web-responsive/releases/f4b31fc31dd0ffdc7d454157822a3e85c5a5e8b8/web/apps/web",
+      "active": "active",
+      "substate": "running",
+      "NRestarts": "0"
+    },
+    "netvision-mcp": {
+      "pid": "3440281",
+      "cwd": "/opt/netvision-mcp/releases/mcp-5874fe0",
+      "active": "active",
+      "substate": "running",
+      "NRestarts": "0"
+    },
+    "netvision-fast-observer": {
+      "pid": "2594846",
+      "cwd": "/opt/netvision-fast-observer/releases/rc-aaafdde/runtime",
+      "active": "active",
+      "substate": "running",
+      "NRestarts": "1"
+    }
+  },
+  "http": {
+    "api": 200,
+    "web": 200,
+    "mcp": 200,
+    "observer": 200
+  },
+  "postgres": {
+    "version": "PostgreSQL 18.6 (Ubuntu 18.6-0ubuntu0.26.04.1) on x86_64-pc-linux-gnu, compiled by gcc (Ubuntu 15.2.0-16ubuntu1) 15.2.0, 64-bit",
+    "inRecovery": false,
+    "sizeBytes": 25462470335,
+    "transactionReadOnly": "on",
+    "invalidIndexes": 0,
+    "unvalidatedConstraints": 0,
+    "waitingLocks": 0,
+    "automationTablePresent": true
+  },
+  "durable": {
+    "migrationRows": 43,
+    "records": 0,
+    "automaticStarted": 0
+  },
+  "mitigationHistory": [
+    {
+      "type": "ACTIVATE",
+      "count": 4,
+      "lastId": 10,
+      "lastCreatedAt": "2026-10-18T12:10:05.426",
+      "unverifiedOrFailed": 0
+    },
+    {
+      "type": "REMOVE",
+      "count": 4,
+      "lastId": 11,
+      "lastCreatedAt": "2026-10-19T18:59:43.701",
+      "unverifiedOrFailed": 0
+    },
+    {
+      "type": "SIMULATION",
+      "count": 3,
+      "lastId": 5,
+      "lastCreatedAt": "2026-09-30T18:46:12.577",
+      "unverifiedOrFailed": 3
+    }
+  ],
+  "mediaDeliveryLogs": {
+    "count": 43,
+    "lastId": "cmvfmcdi02vsql70fa7zap4jf",
+    "lastAt": "2026-10-19T18:59:44.087"
+  },
+  "observedEndUtc": "2026-10-30T21:53:24.128728+00:00",
+  "operatorConfirmationSource": "Operator will accompany and authorize ACTIVATE/REMOVE separately; exclusivity and mitigator readiness explicitly not yet confirmed",
+  "physicalAuthorizationRequested": false,
+  "physicalAuthorizationGateReached": false,
+  "runtimeCodeChanged": false,
+  "n8nChanged": false,
+  "servicesRestarted": false,
+  "migrationsApplied": false
+}
