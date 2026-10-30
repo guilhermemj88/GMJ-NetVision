@@ -1,0 +1,345 @@
+{
+  "decision": "NO-GO: required catalog bootstrap gate failed, authorized rollback completed",
+  "previousApi": "e78638af51762db93f52f61195ca57d8c72d988e",
+  "attemptedApi": "463769620a2f39f9803b60a43314851fe3a77e0e",
+  "finalApi": "e78638af51762db93f52f61195ca57d8c72d988e",
+  "packageSha256": "f47210e4d018d954f1723d31e29a050995169d5e9dd57ce35ad7a01e68172afe",
+  "attemptedBundleSha256": "5937a56815a08837de73d9b56e2fc1c9f44ab9b98ba86822f19e6e6e0352d08d",
+  "finalBundleSha256": "c8a71fbf1537199ce689627ce5774f8306261fb27f7c3ac1b2e423a515fa1c9c",
+  "phases": {
+    "before": {
+      "netvision-api": {
+        "MainPID": "3418797",
+        "ExecMainStartTimestamp": "Thu 2026-10-29 20:42:19 UTC",
+        "ExecMainStartTimestampMonotonic": "6215016118538",
+        "cwd": "/opt/netvision-auto-activate/releases/e78638af51762db93f52f61195ca57d8c72d988e/apps/api",
+        "NRestarts": "0",
+        "ActiveState": "active",
+        "SubState": "running",
+        "BUILD_ID": null
+      },
+      "netvision-web": {
+        "MainPID": "2976909",
+        "ExecMainStartTimestamp": "Mon 2026-10-26 21:10:07 UTC",
+        "ExecMainStartTimestampMonotonic": "5957484864782",
+        "cwd": "/opt/GMJ-NetVision-web-responsive/releases/f4b31fc31dd0ffdc7d454157822a3e85c5a5e8b8/web/apps/web",
+        "NRestarts": "0",
+        "ActiveState": "active",
+        "SubState": "running",
+        "BUILD_ID": "NSfXEDCQk4S1AmACLROnj"
+      },
+      "netvision-mcp": {
+        "MainPID": "3418799",
+        "ExecMainStartTimestamp": "Thu 2026-10-29 20:42:19 UTC",
+        "ExecMainStartTimestampMonotonic": "6215016130189",
+        "cwd": "/opt/netvision-mcp/releases/mcp-5874fe0",
+        "NRestarts": "0",
+        "ActiveState": "active",
+        "SubState": "running",
+        "BUILD_ID": null
+      },
+      "netvision-fast-observer": {
+        "MainPID": "2594846",
+        "ExecMainStartTimestamp": "Fri 2026-10-23 06:22:08 UTC",
+        "ExecMainStartTimestampMonotonic": "5645005521996",
+        "cwd": "/opt/netvision-fast-observer/releases/rc-aaafdde/runtime",
+        "NRestarts": "1",
+        "ActiveState": "active",
+        "SubState": "running",
+        "BUILD_ID": null
+      }
+    },
+    "candidate": {
+      "netvision-api": {
+        "MainPID": "3432230",
+        "ExecMainStartTimestamp": "Fri 2026-10-30 16:24:14 UTC",
+        "ExecMainStartTimestampMonotonic": "6285931106138",
+        "cwd": "/opt/netvision-auto-activate/releases/463769620a2f39f9803b60a43314851fe3a77e0e/apps/api",
+        "NRestarts": "0",
+        "ActiveState": "active",
+        "SubState": "running",
+        "BUILD_ID": null
+      },
+      "netvision-web": {
+        "MainPID": "2976909",
+        "ExecMainStartTimestamp": "Mon 2026-10-26 21:10:07 UTC",
+        "ExecMainStartTimestampMonotonic": "5957484864782",
+        "cwd": "/opt/GMJ-NetVision-web-responsive/releases/f4b31fc31dd0ffdc7d454157822a3e85c5a5e8b8/web/apps/web",
+        "NRestarts": "0",
+        "ActiveState": "active",
+        "SubState": "running",
+        "BUILD_ID": "NSfXEDCQk4S1AmACLROnj"
+      },
+      "netvision-mcp": {
+        "MainPID": "3432233",
+        "ExecMainStartTimestamp": "Fri 2026-10-30 16:24:14 UTC",
+        "ExecMainStartTimestampMonotonic": "6285931115628",
+        "cwd": "/opt/netvision-mcp/releases/mcp-5874fe0",
+        "NRestarts": "0",
+        "ActiveState": "active",
+        "SubState": "running",
+        "BUILD_ID": null
+      },
+      "netvision-fast-observer": {
+        "MainPID": "2594846",
+        "ExecMainStartTimestamp": "Fri 2026-10-23 06:22:08 UTC",
+        "ExecMainStartTimestampMonotonic": "5645005521996",
+        "cwd": "/opt/netvision-fast-observer/releases/rc-aaafdde/runtime",
+        "NRestarts": "1",
+        "ActiveState": "active",
+        "SubState": "running",
+        "BUILD_ID": null
+      }
+    },
+    "restoredFinal": {
+      "netvision-api": {
+        "MainPID": "3433280",
+        "ExecMainStartTimestamp": "Fri 2026-10-30 16:31:09 UTC",
+        "ExecMainStartTimestampMonotonic": "6286346378211",
+        "cwd": "/opt/netvision-auto-activate/releases/e78638af51762db93f52f61195ca57d8c72d988e/apps/api",
+        "NRestarts": "0",
+        "ActiveState": "active",
+        "SubState": "running",
+        "BUILD_ID": null
+      },
+      "netvision-web": {
+        "MainPID": "2976909",
+        "ExecMainStartTimestamp": "Mon 2026-10-26 21:10:07 UTC",
+        "ExecMainStartTimestampMonotonic": "5957484864782",
+        "cwd": "/opt/GMJ-NetVision-web-responsive/releases/f4b31fc31dd0ffdc7d454157822a3e85c5a5e8b8/web/apps/web",
+        "NRestarts": "0",
+        "ActiveState": "active",
+        "SubState": "running",
+        "BUILD_ID": "NSfXEDCQk4S1AmACLROnj"
+      },
+      "netvision-mcp": {
+        "MainPID": "3433281",
+        "ExecMainStartTimestamp": "Fri 2026-10-30 16:31:09 UTC",
+        "ExecMainStartTimestampMonotonic": "6286346386360",
+        "cwd": "/opt/netvision-mcp/releases/mcp-5874fe0",
+        "NRestarts": "0",
+        "ActiveState": "active",
+        "SubState": "running",
+        "BUILD_ID": null
+      },
+      "netvision-fast-observer": {
+        "MainPID": "2594846",
+        "ExecMainStartTimestamp": "Fri 2026-10-23 06:22:08 UTC",
+        "ExecMainStartTimestampMonotonic": "5645005521996",
+        "cwd": "/opt/netvision-fast-observer/releases/rc-aaafdde/runtime",
+        "NRestarts": "1",
+        "ActiveState": "active",
+        "SubState": "running",
+        "BUILD_ID": null
+      }
+    }
+  },
+  "forwardRestart": {
+    "requestedUtc": "2026-10-30T16:24:13.664702+00:00",
+    "oldPids": {
+      "netvision-api": "3418797",
+      "netvision-web": "2976909",
+      "netvision-mcp": "3418799",
+      "netvision-fast-observer": "2594846"
+    },
+    "maximumApiRestarts": 1,
+    "mcpDependencyRestartAuthorized": true,
+    "state": "QUEUED",
+    "systemctlExit": 0
+  },
+  "authorizedRollback": {
+    "requestedUtc": "2026-10-30T16:31:09.244004+00:00",
+    "rollbackTo": "e78638af51762db93f52f61195ca57d8c72d988e",
+    "oldPids": {
+      "netvision-api": "3432230",
+      "netvision-web": "2976909",
+      "netvision-mcp": "3432233",
+      "netvision-fast-observer": "2594846"
+    },
+    "reason": "CATALOG_STARTUP_UNIQUENESS_GATE_FAILED",
+    "onlyNewDropInAndEnvironmentRemoved": true,
+    "previousConfigurationHashesVerified": true,
+    "backupRecoveredInMemoryAgain": true,
+    "systemdVerifyExit": 0,
+    "huaweiNodesPreserved": true,
+    "dataOrMigrationsChanged": false,
+    "maximumRollbackApiRestarts": 1,
+    "systemctlExit": 0,
+    "state": "QUEUED"
+  },
+  "startupCatalogErrors": [
+    {
+      "pid": "3432230",
+      "message": "falha inesperada ao sincronizar o catÃ¡logo fÃ­sico",
+      "uniqueness": ["Unique constraint failed on the fields: (`templateId`,`side`,`sortOrder`)"],
+      "modelHints": ["physicalTemplatePort.create"]
+    },
+    {
+      "pid": "3433280",
+      "message": "falha inesperada ao sincronizar o catÃ¡logo fÃ­sico",
+      "uniqueness": ["Unique constraint failed on the fields: (`name`)"],
+      "modelHints": ["physicalEquipmentTemplate.create"]
+    }
+  ],
+  "baselineRestoreValidation": {
+    "checks": {
+      "apiRestoredE786": true,
+      "apiMcpHealthyNoRestartLoop": true,
+      "allFourHealth200": true,
+      "autoFlagsOff": true,
+      "manualFlagsPreserved": true,
+      "apiConfigFilesRestored": true,
+      "webAndObserverPreserved": true,
+      "mcpConfigAndBundlePreserved": true,
+      "onlyApiMcpRestarted": true,
+      "profilesAndThresholdsPreserved": true,
+      "disabledRuntimePreserved": true,
+      "catalogPersistentRowsPreserved": true,
+      "eventsPreserved": true,
+      "migrationsPreserved": true,
+      "huaweiUnchanged": true,
+      "n8nUnchangedHealthy": true,
+      "authenticatedFlagsVerified": true,
+      "diskReserve": true,
+      "newOverridesRemoved": true,
+      "noCanonicalPolicyLocksOrStandaloneWriter": true
+    },
+    "baselineOperationallyRestored": true,
+    "publicationAccepted": false,
+    "decision": "NO-GO: candidate catalog bootstrap uniqueness failure; rollback completed",
+    "catalogCounts": {
+      "PhysicalEquipmentTemplate": {
+        "before": 134,
+        "after": 134,
+        "sameStructuralHash": true
+      },
+      "PhysicalTemplateSlot": {
+        "before": 161,
+        "after": 161,
+        "sameStructuralHash": true
+      },
+      "PhysicalTemplatePort": {
+        "before": 1624,
+        "after": 1624,
+        "sameStructuralHash": true
+      },
+      "PhysicalModuleTemplate": {
+        "before": 35,
+        "after": 35,
+        "sameStructuralHash": true
+      },
+      "PhysicalModuleTemplatePort": {
+        "before": 412,
+        "after": 412,
+        "sameStructuralHash": true
+      },
+      "PhysicalTemplateSlotModule": {
+        "before": 218,
+        "after": 218,
+        "sameStructuralHash": true
+      }
+    },
+    "profileCounts": {
+      "AUTO": 12,
+      "ALERT_ONLY": 27
+    },
+    "events": [
+      {
+        "type": "ACTIVATE",
+        "count": 4,
+        "lastId": 10,
+        "lastCreatedAt": "2026-10-18T12:10:05.426",
+        "unverifiedOrFailed": 0
+      },
+      {
+        "type": "REMOVE",
+        "count": 4,
+        "lastId": 11,
+        "lastCreatedAt": "2026-10-19T18:59:43.701",
+        "unverifiedOrFailed": 0
+      },
+      {
+        "type": "SIMULATION",
+        "count": 3,
+        "lastId": 5,
+        "lastCreatedAt": "2026-09-30T18:46:12.577",
+        "unverifiedOrFailed": 3
+      }
+    ],
+    "finalObservedUtc": "2026-10-30T16:36:16.553331+00:00",
+    "diskFreeBytes": 6131597312,
+    "migrationPreparation": "NO-GO pending corrected approved package",
+    "forwardRestarts": 1,
+    "rollbackRestarts": 1,
+    "mcpReadToolsResponded": true
+  },
+  "profileMetadataOnly": {
+    "rows": 38,
+    "fields": ["updatedAt"],
+    "source": "normal old-release snapshot rehydration during rollback startup"
+  },
+  "finalFlags": {
+    "MITIGATION_MODE": "AUTO",
+    "MITIGATION_EXECUTOR": "HUAWEI",
+    "MITIGATION_LIVE_WRITE_ENABLED": "true",
+    "MITIGATION_ALLOWED_DEVICE_IDS": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+    "MITIGATION_AUTO_TRAFFIC_DIRECTIONS": "cmuoavm4x00c3sslhworjdb9i:tx,cmuoavm2o00btsslh2qc6qbpg:tx,cmuoavm4e00bysslhqd0h3q7u:tx,cmuoavm5i00c8sslhed09lt8p:tx",
+    "MITIGATION_AUTO_TRAFFIC_MAX_AGE_SECONDS": "600",
+    "MITIGATION_AUTO_DESCRIPTION_ENABLED": "0",
+    "MITIGATION_AUTO_EXECUTION_ENABLED": "0",
+    "MITIGATION_AUTO_DUAL_DIRECTIONS": "0",
+    "MITIGATION_AUTO_DESCRIPTION_FAMILIES": "IPV4",
+    "MITIGATION_AUTO_DESCRIPTION_BATCH_SIZE": "8",
+    "MITIGATION_FAST_BRIDGE_MODE": "ENFORCE",
+    "MITIGATION_FAST_BRIDGE_PROFILE_IDS": "cmuoavm4x00c3sslhworjdb9i,cmuoavm5i00c8sslhed09lt8p,cmuoavm2o00btsslh2qc6qbpg,cmuoavm4e00bysslhqd0h3q7u,cmuoavmcz00d7sslh1likgnvw,cmuoavm6600cdsslhhw427w4r,cmv2wtr97700mssesf05j8ebm,cmuoavmfz00e2sslhbmo9ple7,cmuoavmed00dmsslhi3dzev57,cmuoavmev00dssslh7vhu7oqu,cmuoavm8x00cnsslhxa6wtmar,cmuoavmc000d2sslhre9siv0f",
+    "MITIGATION_FAST_ENFORCE_PROFILE_IDS": "cmuoavm4x00c3sslhworjdb9i",
+    "MITIGATION_FAST_BRIDGE_WRITES_ENABLED": "true",
+    "MITIGATION_FAST_POLL_MODE": "OFF",
+    "MITIGATION_AUTO_DESCRIPTION_ALLOWED_PROFILE_IDS": "cmuoavm6600cdsslhhw427w4r,cmuoavm8x00cnsslhxa6wtmar,cmuoavmed00dmsslhi3dzev57,cmuoavmev00dssslh7vhu7oqu,cmv2wtr97700mssesf05j8ebm,cmuoavmfz00e2sslhbmo9ple7,cmuoavmc000d2sslhre9siv0f,cmuoavmcz00d7sslh1likgnvw",
+    "MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS": "",
+    "MITIGATION_AUTO_EXECUTION_LEGACY_PROFILE_IDS": "cmuoavm4x00c3sslhworjdb9i",
+    "DEMO_MODE": "false",
+    "PORT": "3333",
+    "SNMP_POLLING_ENABLED": "true",
+    "MITIGATION_FAST_ROUTED_PROFILE_IDS": "cmuoavm4x00c3sslhworjdb9i,cmuoavm5i00c8sslhed09lt8p,cmuoavm2o00btsslh2qc6qbpg,cmuoavm4e00bysslhqd0h3q7u,cmuoavmcz00d7sslh1likgnvw,cmuoavm6600cdsslhhw427w4r,cmv2wtr97700mssesf05j8ebm,cmuoavmfz00e2sslhbmo9ple7,cmuoavmed00dmsslhi3dzev57,cmuoavmev00dssslh7vhu7oqu,cmuoavm8x00cnsslhxa6wtmar,cmuoavmc000d2sslhre9siv0f",
+    "MITIGATION_FAST_MAX_INTERFACES_PER_DEVICE": "32",
+    "NETVISION_INSTALLATION_ID": "IMPLANTAR",
+    "MITIGATION_AUTO_PERSISTENCE_ENABLED": "0",
+    "MITIGATION_AUTO_LIFECYCLE_ENABLED": "0",
+    "MITIGATION_AUTO_REMOVE_ENABLED": "0",
+    "MITIGATION_AUTO_MAX_ACTIVE": "1"
+  },
+  "finalHttp": {
+    "api": 200,
+    "web": 200,
+    "mcp": 200,
+    "observer": 200
+  },
+  "n8n": {
+    "activeVersionId": "6a97fe4a-31ea-49e6-b892-1ac55f85d115",
+    "publishedStructureSha256": "ef014dcbf89504ec266ac44fa146ad7175c28c5adb88148853a1497ce27e6442",
+    "rc712BaselineUnchanged": true,
+    "health": 200,
+    "containerRestartCountUnchanged": true
+  },
+  "backup": {
+    "priorConfigurationBackupRecoveredInMemory": true,
+    "updatedConfigurationBackupRecoveredOnBothHosts": true,
+    "filesVerified": 50,
+    "encryptedBytes": 1269235,
+    "sha256": "cfda840a4373e4ff53947c3b4581aefb75cd4c267690b234d76633b94fb55151",
+    "linuxBackup": "/var/backups/netvision-single-pilot-auto0-4637696-20261030/operational-config.aesgcm",
+    "linuxSeparateRootRecoveryKey": true,
+    "windowsSeparateRestrictedRecoveryKey": true,
+    "noPlaintextArchiveWritten": true,
+    "oldApiReleasePreserved": true,
+    "databaseDumpOrMutation": false
+  },
+  "releaseInstalledInactive": "/opt/netvision-auto-activate/releases/463769620a2f39f9803b60a43314851fe3a77e0e",
+  "packageRecompiledOrChanged": false,
+  "newOperationalOverridesRemoved": true,
+  "noHuaweiMutationsOrTelegramTest": true,
+  "noManualDatabaseWritesOrMigration": true,
+  "ownAuthorizedTemporaryAuthSessionsLoggedOut": true,
+  "finalObservedUtc": "2026-10-30T16:36:16.553331+00:00"
+}
