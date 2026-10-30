@@ -1,0 +1,165 @@
+{
+  "preparedApi": "0badeba52a5699e08287b7b17e19428f60d1d7b8",
+  "preparedWebSeparate": "59aecb321adea136cf2a16f0e71488913ad01ce0",
+  "readOnly": true,
+  "productionBeforeUtc": "2026-10-30T13:10:45.740094+00:00",
+  "productionApi": "e78638af51762db93f52f61195ca57d8c72d988e",
+  "servicesBefore": {
+    "netvision-api": {
+      "MainPID": "3418797",
+      "NRestarts": "0",
+      "ActiveState": "active",
+      "SubState": "running",
+      "cwd": "/opt/netvision-auto-activate/releases/e78638af51762db93f52f61195ca57d8c72d988e/apps/api",
+      "startTicks": "621501611"
+    },
+    "netvision-web": {
+      "MainPID": "2976909",
+      "NRestarts": "0",
+      "ActiveState": "active",
+      "SubState": "running",
+      "cwd": "/opt/GMJ-NetVision-web-responsive/releases/f4b31fc31dd0ffdc7d454157822a3e85c5a5e8b8/web/apps/web",
+      "startTicks": "595748486"
+    },
+    "netvision-mcp": {
+      "MainPID": "3418799",
+      "NRestarts": "0",
+      "ActiveState": "active",
+      "SubState": "running",
+      "cwd": "/opt/netvision-mcp/releases/mcp-5874fe0",
+      "startTicks": "621501613"
+    },
+    "netvision-fast-observer": {
+      "MainPID": "2594846",
+      "NRestarts": "1",
+      "ActiveState": "active",
+      "SubState": "running",
+      "cwd": "/opt/netvision-fast-observer/releases/rc-aaafdde/runtime",
+      "startTicks": "564500552"
+    }
+  },
+  "productionAutoFlags": {
+    "MITIGATION_AUTO_EXECUTION_ENABLED": {
+      "configured": "0",
+      "runtime": "0",
+      "source": "/etc/netvision/auto-activate-e78638a-stage0.env",
+      "matches": true
+    },
+    "MITIGATION_AUTO_LIFECYCLE_ENABLED": {
+      "configured": "0",
+      "runtime": "0",
+      "source": "/etc/netvision/auto-activate-e78638a-stage0.env",
+      "matches": true
+    },
+    "MITIGATION_AUTO_PERSISTENCE_ENABLED": {
+      "configured": "0",
+      "runtime": "0",
+      "source": "/etc/netvision/auto-activate-e78638a-stage0.env",
+      "matches": true
+    },
+    "MITIGATION_AUTO_REMOVE_ENABLED": {
+      "configured": "0",
+      "runtime": "0",
+      "source": "/etc/netvision/auto-activate-e78638a-stage0.env",
+      "matches": true
+    }
+  },
+  "physical": {
+    "observedUtc": "2026-10-30T13:25:57.887Z",
+    "physicalReadback": true,
+    "profile": {
+      "id": "cmuoavm4e00bysslhqd0h3q7u",
+      "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+      "policy": "PL-AGLINK_IPv4-IN",
+      "family": "IPV4",
+      "mode": "AUTO",
+      "enabled": true,
+      "bandwidth": "10000000000",
+      "triggerPercent": 90,
+      "triggerSamples": 3,
+      "rt": "268568:660",
+      "scopeMembers": 1
+    },
+    "interface": {
+      "id": "cmsxk21gs03pdssimims9ojlb",
+      "name": "Eth-Trunk1.3058",
+      "ifIndex": 236,
+      "description": "Eth-Trunk1.3058",
+      "alias": "AGLINK-IPV4_10GB",
+      "adminStatus": "UP",
+      "operStatus": "UP"
+    },
+    "boundPeers": [
+      {
+        "family": "IPV4",
+        "peer": "10.200.201.2"
+      }
+    ],
+    "nodes": [
+      {
+        "node": 10,
+        "action": "permit",
+        "ifMatchIpPrefix": ["AGLINK-BLOCO-TODO-23"],
+        "routeTargets": ["268568:140"]
+      },
+      {
+        "node": 1000,
+        "action": "deny",
+        "ifMatchIpPrefix": [],
+        "routeTargets": []
+      }
+    ],
+    "prefixDefinitions": [
+      "ip ip-prefix AGLINK-BLOCO-TODO-23 index 10 permit 167.250.126.0 23 greater-equal 23 less-equal 24",
+      "ip ip-prefix BOGONS index 40 permit 10.0.0.0 8 greater-equal 8 less-equal 32",
+      "ip ip-prefix BOGONS index 50 permit 100.64.0.0 10 greater-equal 10 less-equal 32",
+      "ip ip-prefix BOGONS index 60 permit 127.0.0.0 8 greater-equal 8 less-equal 32",
+      "ip ip-prefix BOGONS index 70 permit 169.254.0.0 16 greater-equal 16 less-equal 32",
+      "ip ip-prefix BOGONS index 80 permit 172.16.0.0 12 greater-equal 12 less-equal 32",
+      "ip ip-prefix BOGONS index 90 permit 192.0.0.0 24 greater-equal 24 less-equal 32",
+      "ip ip-prefix BOGONS index 100 permit 192.0.2.0 24 greater-equal 24 less-equal 32",
+      "ip ip-prefix BOGONS index 110 permit 192.88.99.0 24 greater-equal 24 less-equal 32",
+      "ip ip-prefix BOGONS index 120 permit 192.168.0.0 16 greater-equal 16 less-equal 32",
+      "ip ip-prefix BOGONS index 130 permit 198.18.0.0 15 greater-equal 15 less-equal 32",
+      "ip ip-prefix BOGONS index 140 permit 198.51.100.0 24 greater-equal 24 less-equal 32",
+      "ip ip-prefix BOGONS index 150 permit 203.0.113.0 24 greater-equal 24 less-equal 32",
+      "ip ip-prefix BOGONS index 160 permit 224.0.0.0 4 greater-equal 4 less-equal 32",
+      "ip ip-prefix BOGONS index 170 permit 240.0.0.0 4 greater-equal 4 less-equal 32",
+      "ip ip-prefix PREFIX8to24 index 10 permit 0.0.0.0 8 greater-equal 8 less-equal 24"
+    ],
+    "commands": [
+      "screen-length 0 temporary",
+      "display current-configuration configuration bgp",
+      "screen-length 0 temporary",
+      "display current-configuration configuration route-policy",
+      "screen-length 0 temporary",
+      "display current-configuration configuration route-policy",
+      "screen-length 0 temporary",
+      "display current-configuration | include ip-prefix"
+    ],
+    "credentialsExported": false
+  },
+  "pilotFastBefore": {
+    "interfaceId": "cmsxk21gs03pdssimims9ojlb",
+    "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+    "ifIndex": 236,
+    "interfaceName": "Eth-Trunk1.3058",
+    "collectedAt": "2026-10-30T13:10:40.29",
+    "intervalMs": 9993,
+    "quality": "VALID",
+    "operStatus": 1,
+    "ageSeconds": 2.876253
+  },
+  "tests": {
+    "numTotalTests": 2652,
+    "numPassedTests": 2619,
+    "numFailedTests": 0,
+    "numPendingTests": 33,
+    "success": true
+  },
+  "limitations": [
+    "No real ACTIVATE/REMOVE or Telegram send",
+    "33 optional historical tests skipped",
+    "External writer exclusivity not proven"
+  ]
+}

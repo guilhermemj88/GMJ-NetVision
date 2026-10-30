@@ -12,6 +12,14 @@ import type { MitigationNotification } from '../../infrastructure/bgp/mitigation
 import type { AutomationStore, AutomationTx } from './automation-store';
 import type { ClientBinding } from './auto-client-binding';
 import { enqueueNotification } from './durable-mitigation-outbox';
+import type { MitigationTrafficSource } from './mitigation-traffic-source';
+import {
+  SINGLE_AUTO_PILOT,
+  assertSinglePilotAuthorization,
+  singlePilotIdentityMatches,
+  nextPilotSequence,
+  type PilotSequence,
+} from './single-pilot-trigger';
 
 export interface LifecycleConfig {
   installation: string;
@@ -138,6 +146,8 @@ interface Episode {
   at: number;
 }
 export interface LifecycleDeps {
+  /** The existing FAST reader; supplied only for the single-client production path. */
+  pilotTraffic?: Pick<MitigationTrafficSource, 'sampleWithId'>;
   store: AutomationStore;
   config: () => LifecycleConfig;
   target: (id: string) => Promise<LifecycleTarget | null>;
@@ -161,11 +171,172 @@ const manualKey = (id: string) => 'manual-command:' + createHash('sha256').updat
 /** AUTO ACTIVATE only. No timer, observation or restart can dispatch REMOVE. */
 export class AutoMitigationLifecycle {
   private readonly now: () => number;
+  private pilotSequence: PilotSequence | null = null;
+  private pilotReconciled = false;
+  private pilotRunning = false;
+  private pilotAcceptAfter = 0;
+  private pilotView: {
+    state: 'IDLE' | 'ACTIVATING' | 'ACTIVE' | 'UNCERTAIN';
+    reason: string | null;
+  } = { state: 'UNCERTAIN', reason: 'RECONCILIATION_REQUIRED' };
   constructor(private readonly deps: LifecycleDeps) {
     this.now = deps.now ?? Date.now;
   }
+  pilotStatus() {
+    return this.deps.pilotTraffic ? { ...this.pilotView } : null;
+  }
+  forgetProfiles(ids: readonly string[]): void {
+    if (ids.includes(SINGLE_AUTO_PILOT.profileId)) this.pilotSequence = null;
+  }
+
+  /** One tick in the existing runtime, not another worker or Huawei executor. */
+  async tickPilot(): Promise<MitigationAutoDecision[]> {
+    if (!this.deps.pilotTraffic || this.pilotRunning) return [];
+    this.pilotRunning = true;
+    let t: LifecycleTarget | null = null;
+    const decision = (
+      reason: string | null,
+      outcome: MitigationAutoDecision['outcome'] = 'BLOCKED',
+      traffic: bigint | null = null,
+      sampleAt?: number,
+    ): MitigationAutoDecision[] => {
+      const d: MitigationAutoDecision = {
+        at: new Date(this.now()).toISOString(),
+        profileId: SINGLE_AUTO_PILOT.profileId,
+        deviceId: SINGLE_AUTO_PILOT.deviceId,
+        customer: t?.customer ?? null,
+        outcome,
+        reason: outcome === 'BLOCKED' ? 'TARGET_BLOCKED' : null,
+        detail: reason,
+        trafficBps: traffic?.toString() ?? null,
+        thresholdBps: SINGLE_AUTO_PILOT.thresholdBps.toString(),
+        recoveryThresholdBps: null,
+        samplesOver: this.pilotSequence?.over ?? 0,
+        samplesBelow: 0,
+        requiredSamples: 3,
+        runtimeState: t?.runtimeState ?? null,
+        sharedPolicy: t?.sharedPolicy ?? false,
+        direction: 'tx',
+        requestId: null,
+        commandStatus: null,
+        verified: false,
+        notification: null,
+        ...(sampleAt === undefined ? {} : { sampleAt: new Date(sampleAt).toISOString() }),
+      };
+      return [d];
+    };
+    try {
+      if (!this.pilotReconciled) return decision('RECONCILIATION_REQUIRED');
+      assertSinglePilotAuthorization(this.deps.config());
+      t = await this.deps.target(SINGLE_AUTO_PILOT.profileId);
+      if (!t) {
+        this.pilotSequence = null;
+        return decision('AUTO_TARGET_MISSING');
+      }
+      const owned = await this.deps.store.transaction((tx) => tx.get<ScopeOwnership>(scopeKey(t!)));
+      if (owned && owned.phase !== 'COOLDOWN') {
+        this.pilotSequence = null;
+        this.pilotView = {
+          state:
+            owned.phase === 'ACTIVE' ||
+            (owned.phase === 'MANUAL' && owned.reason === 'MANUAL_ACTIVATE_VERIFIED')
+              ? 'ACTIVE'
+              : owned.phase === 'ACTIVATING'
+                ? 'ACTIVATING'
+                : 'UNCERTAIN',
+          reason: owned.reason,
+        };
+        return decision(owned.reason ?? 'OWNERSHIP_HELD', 'NO_ACTION');
+      }
+      const blocked = this.allowed(t);
+      if (blocked || (owned && owned.cooldownUntil > this.now())) {
+        this.pilotSequence = null;
+        this.pilotAcceptAfter = this.now();
+        this.pilotView = { state: 'IDLE', reason: blocked ?? 'AUTO_COOLDOWN_ACTIVE' };
+        return decision(this.pilotView.reason);
+      }
+      if (t.runtimeState !== 'NORMAL' && t.runtimeState !== 'ALERT_ONLY') {
+        this.pilotSequence = null;
+        this.pilotView = { state: 'UNCERTAIN', reason: 'RUNTIME_REQUIRES_RECONCILIATION' };
+        return decision(this.pilotView.reason);
+      }
+      const sample = await this.deps.pilotTraffic.sampleWithId({
+        profileId: t.profileId,
+        deviceId: t.deviceId,
+        interfaceId: t.interfaceId,
+        bandwidthBps: t.effectiveBandwidthBps,
+        ...(t.configurationKey === undefined ? {} : { configurationKey: t.configurationKey }),
+      });
+      if (
+        sample?.occurredAt &&
+        sample.occurredAt.getTime() <=
+          Math.max(this.pilotAcceptAfter, owned?.cooldownUntil ?? 0, owned?.removedAt ?? 0)
+      ) {
+        this.pilotSequence = this.pilotSequence ? { ...this.pilotSequence, over: 0 } : null;
+        return decision('AUTO_NEW_EPISODE_REQUIRED');
+      }
+      const step = nextPilotSequence(
+        this.pilotSequence,
+        sample,
+        targetRevision(t),
+        this.now(),
+        this.deps.config().maxAgeMs,
+        this.deps.config().maxGapMs,
+      );
+      this.pilotSequence = step.sequence;
+      this.pilotView = { state: 'IDLE', reason: step.reason };
+      if (step.reason || !step.sequence || !sample)
+        return decision(
+          step.reason,
+          step.reason === 'TELEMETRY_UNAVAILABLE' ? 'BLOCKED' : 'NO_ACTION',
+          sample?.bps ?? null,
+          sample?.occurredAt?.getTime(),
+        );
+      this.pilotView = { state: 'ACTIVATING', reason: null };
+      const result = await this.activate({
+        profileId: t.profileId,
+        autoEvidence: {
+          sampleAt: new Date(step.sequence.at).toISOString(),
+          continuityKey: step.sequence.key,
+          sequenceStartedAt: new Date(step.sequence.start).toISOString(),
+          samplesOver: step.sequence.over,
+        },
+      });
+      this.pilotSequence = null;
+      if (['AUTO_PHYSICAL_READ_FAILED', 'AUTO_PHYSICAL_SCOPE_NOT_NORMAL'].includes(result.status))
+        await this.holdPilotUncertain(t, result.status);
+      const after = await this.deps.store.transaction((tx) => tx.get<ScopeOwnership>(scopeKey(t!)));
+      const verified = result.ok && result.verified && after?.phase === 'ACTIVE';
+      this.pilotView = {
+        state: after?.phase === 'ACTIVE' ? 'ACTIVE' : 'UNCERTAIN',
+        reason: result.ok && result.verified ? null : result.status,
+      };
+      const [d] = decision(
+        this.pilotView.reason,
+        verified ? 'ACTIVATED' : after?.phase === 'ACTIVE' ? 'NO_ACTION' : 'FAILED',
+        sample.bps,
+        step.sequence.at,
+      );
+      return [
+        {
+          ...d!,
+          verified,
+          requestId: verified ? after.operationId : null,
+          commandStatus: result.status,
+        },
+      ];
+    } catch {
+      this.pilotSequence = null;
+      this.pilotView = { state: 'UNCERTAIN', reason: 'PILOT_DEPENDENCY_UNAVAILABLE' };
+      return decision(this.pilotView.reason);
+    } finally {
+      this.pilotRunning = false;
+    }
+  }
   private allowed(t: LifecycleTarget): string | null {
     const c = this.deps.config();
+    if (this.deps.pilotTraffic && !singlePilotIdentityMatches(t))
+      return 'AUTO_SINGLE_PILOT_IDENTITY_MISMATCH';
     if (c.installation !== 'IMPLANTAR' || !c.enabled || !c.executionEnabled)
       return 'AUTO_EXECUTION_DISABLED';
     if (!c.profiles.includes(t.profileId) || !c.devices.includes(t.deviceId))
@@ -624,6 +795,8 @@ export class AutoMitigationLifecycle {
   }
   /** Legacy interrupted REMOVE intents are quarantined, never replayed. */
   async reconcile(): Promise<void> {
+    this.pilotReconciled = false;
+    this.pilotSequence = null;
     const scopes = await this.deps.store.transaction((tx) =>
       tx.list<ScopeOwnership>('scope', ['ACTIVATING', 'REMOVING', 'ACTIVE']),
     );
@@ -653,6 +826,73 @@ export class AutoMitigationLifecycle {
         await this.uncertain(s, 'RESTART_READBACK_FAILED');
       }
     }
+    if (this.deps.pilotTraffic) {
+      const t = await this.deps.target(SINGLE_AUTO_PILOT.profileId);
+      if (!t || !singlePilotIdentityMatches(t))
+        throw Error('PILOT_RECONCILIATION_IDENTITY_REQUIRED');
+      const s = await this.deps.store.transaction((tx) => tx.get<ScopeOwnership>(scopeKey(t)));
+      if (!s || s.phase === 'COOLDOWN') {
+        let normal = false;
+        try {
+          const physical = await this.deps.physical(t);
+          normal =
+            physical.state === 'NORMAL' &&
+            physical.bogon === null &&
+            physical.mitigation === null &&
+            physical.rt === null;
+        } catch {
+          /* unknown physical state must remain held */
+        }
+        if (!normal) {
+          await this.holdPilotUncertain(t, 'RESTART_PHYSICAL_STATE_UNPROVEN');
+        }
+      }
+      const current = await this.deps.store.transaction((tx) =>
+        tx.get<ScopeOwnership>(scopeKey(t)),
+      );
+      this.pilotView = {
+        state:
+          !current || current.phase === 'COOLDOWN'
+            ? 'IDLE'
+            : current.phase === 'ACTIVE'
+              ? 'ACTIVE'
+              : 'UNCERTAIN',
+        reason: current?.reason ?? null,
+      };
+    }
+    this.pilotReconciled = true;
+    this.pilotAcceptAfter = this.now();
+  }
+
+  private async holdPilotUncertain(t: LifecycleTarget, reason: string): Promise<void> {
+    const s = await this.deps.store.transaction((tx) => tx.get<ScopeOwnership>(scopeKey(t)));
+    const id = 'pilot-uncertain-' + randomUUID();
+    const held: ScopeOwnership = {
+      key: scopeKey(t),
+      profileId: t.profileId,
+      owner: id,
+      operationId: id,
+      revision: targetRevision(t),
+      phase: 'UNCERTAIN',
+      reason,
+      target: {
+        deviceId: t.deviceId,
+        policy: t.policyName!,
+        family: t.addressFamily!,
+        rt: t.rt,
+        bogon: t.bogonNode!,
+        mitigation: t.mitigationNode!,
+      },
+      activatedAt: 0,
+      cooldownUntil: s?.cooldownUntil ?? 0,
+      lastSample: null,
+    };
+    await this.deps.store.transaction(async (tx) => {
+      const current = await tx.get<ScopeOwnership>(held.key);
+      if (!current || current.phase === 'COOLDOWN')
+        await tx.put(held.key, 'scope', held.phase, held);
+    });
+    await this.uncertain(held, held.reason!);
   }
   private async uncertain(
     scope: ScopeOwnership,

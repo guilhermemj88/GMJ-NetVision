@@ -1,3 +1,9 @@
+import {
+  SINGLE_AUTO_PILOT,
+  assertSinglePilotAuthorization,
+  pilotEvidenceValid,
+  singlePilotPhysicalScopeMatches,
+} from './worker/mitigation/single-pilot-trigger';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import { singleEndedMonitoredSide } from '@gmj/shared';
@@ -820,6 +826,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     process.env.MITIGATION_AUTO_PERSISTENCE_ENABLED === '1';
   if (lifecycleSettings.enabled && !persistenceEnabled)
     throw new Error('AUTO_LIFECYCLE_REQUIRES_IMPLANTAR_PERSISTENCE');
+  assertSinglePilotAuthorization(lifecycleSettings);
   const automationStore = persistenceEnabled ? new PrismaAutomationStore(prismaClient) : null;
   const durableOutbox = automationStore
     ? new DurableMitigationOutbox(automationStore, mediaTransport)
@@ -827,6 +834,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   let lifecycle: AutoMitigationLifecycle | null = null;
   let lifecycleReady = false;
   app.get('/api/bgp/mitigation/auto/lifecycle', async () => ({
+    pilot: lifecycle?.pilotStatus() ?? null,
     installation: lifecycleSettings.installation,
     persistenceEnabled,
     lifecycleReady,
@@ -878,6 +886,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   // executor Huawei so entra quando `MITIGATION_EXECUTOR=HUAWEI`. A escrita real
   // continua exigindo `MITIGATION_LIVE_WRITE_ENABLED=true` E device na allowlist.
   const mitigationEngineConfig = mitigationConfigFromEnv();
+  if (lifecycleSettings.enabled && mitigationEngineConfig.mode !== 'AUTO')
+    throw Error('SINGLE_PILOT_REQUIRES_AUTO_MODE');
   const mitigationExecutionConfig = mitigationExecutionConfigFromEnv();
   const mitigationLabels = {
     bogonPrefixList: mitigationEngineConfig.bogonPrefixList,
@@ -959,7 +969,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     // qualquer escrita de origem AUTO (fail-closed se ausente/erro).
     autoExecutionEnabled: () => autoExecutionEnabled,
     // Retirada manual do escopo fisico: o AUTO perde a sequencia anterior.
-    onScopeRemoved: (scope) => autoEngineRef.current?.forgetProfiles(scope.profileIds),
+    onScopeRemoved: async (scope) => {
+      autoEngineRef.current?.forgetProfiles(scope.profileIds);
+      if (lifecycleSettings.enabled && scope.profileIds.includes(SINGLE_AUTO_PILOT.profileId))
+        await mitigationService.discover([scope.deviceId], { persistence: 'SNAPSHOT_ONLY' });
+    },
   });
 
   // ---- S5: DETECCAO separada da AUTORIZACAO de escrita ----------------------
@@ -1230,12 +1244,24 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     }
     const bandwidthBps = profile.bandwidthOverrideBps ?? profile.detectedBandwidthBps;
     if (!bandwidthBps) return false;
-    const sample = await effectiveTraffic.sampleWithId({
-      profileId: id,
-      deviceId: profile.deviceId,
-      interfaceId: profile.interfaceId,
-      bandwidthBps,
-    });
+    if (lifecycleSettings.enabled) {
+      const host = await hosts.getHost(profile.deviceId);
+      if (!host || host.hostname !== SINGLE_AUTO_PILOT.hostname) return false;
+      const bgp = await mitigationSsh.readBgpConfiguration(host);
+      const physical = await mitigationSsh.readMitigationConfiguration(host);
+      if (!singlePilotPhysicalScopeMatches({ ...physical, bgpConfiguration: bgp.bgpConfiguration }))
+        return false;
+    }
+    const sample = await (lifecycleSettings.enabled ? bridgeSource : effectiveTraffic).sampleWithId(
+      {
+        profileId: id,
+        deviceId: profile.deviceId,
+        interfaceId: profile.interfaceId,
+        bandwidthBps,
+      },
+    );
+    if (lifecycleSettings.enabled)
+      return id === SINGLE_AUTO_PILOT.profileId && pilotEvidenceValid(sample, evidence, Date.now());
     if (!matchesAutoEvidence(sample, evidence, samplingForProfile(id), Date.now())) return false;
     return sample.bps > (bandwidthBps * BigInt(profile.triggerPercent)) / 100n;
   };
@@ -1401,6 +1427,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       const profile = await mitigationRepository.getProfile(id);
       if (!profile) return null;
       const host = await hosts.getHost(profile.deviceId);
+      if (lifecycleSettings.enabled && host?.hostname !== SINGLE_AUTO_PILOT.hostname) return null;
       const clientBinding = host
         ? resolveAutoClientBinding(
             {
@@ -1417,6 +1444,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         : null;
       return {
         ...t,
+        ...(lifecycleSettings.enabled
+          ? { bogonNode: SINGLE_AUTO_PILOT.bogon, mitigationNode: SINGLE_AUTO_PILOT.mitigation }
+          : {}),
         rt: profile.mitigationRt,
         enabled: profile.enabled,
         scopeMembers: all.filter((p) => p.deviceId === t.deviceId && p.policyName === t.policyName)
@@ -1429,11 +1459,14 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
             p.addressFamily !== t.addressFamily &&
             p.mode === 'AUTO',
         ),
-        fast: isFastRoutedProfile(id, { bridge: bridgeConfig, embedded: fastConfig }),
+        fast: lifecycleSettings.enabled
+          ? bridgeConfig.mode !== 'OFF' && bridgeConfig.profileIds.includes(id)
+          : isFastRoutedProfile(id, { bridge: bridgeConfig, embedded: fastConfig }),
         clientBinding,
       };
     };
     lifecycle = new AutoMitigationLifecycle({
+      ...(lifecycleSettings.enabled ? { pilotTraffic: bridgeSource } : {}),
       store: automationStore,
       config: () => ({
         ...lifecycleSettings,
@@ -1463,7 +1496,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         };
       },
     });
+    if (lifecycleSettings.enabled) autoEngineRef.current = lifecycle;
     app.addHook('onReady', async () => {
+      if (lifecycleSettings.enabled) {
+        const hydration = await mitigationService.rehydrateSnapshots();
+        if (hydration.failed || !hydration.succeeded) throw Error('PILOT_SNAPSHOT_UNAVAILABLE');
+      }
       await lifecycle!.reconcile();
       lifecycleReady = true;
     });
@@ -1490,8 +1528,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     engine: {
       tick: async () => {
         const tick = async () => {
-          const decisions = await mitigationAutoEngine.tick();
-          if (lifecycle) for (const decision of decisions) await lifecycle.observe(decision);
+          const decisions = lifecycleSettings.enabled
+            ? await lifecycle!.tickPilot()
+            : await mitigationAutoEngine.tick();
+          if (lifecycle && !lifecycleSettings.enabled)
+            for (const decision of decisions) await lifecycle.observe(decision);
           if (bridgeConfig.mode === 'ENFORCE')
             await recordFastBridgeDecisions(
               prismaClient,
@@ -1588,7 +1629,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     responseBudgetMs: 60_000,
     sshMetrics: mitigationSshMetrics,
   }));
-  if (!config.DEMO_MODE && bridgeConfig.mode !== 'OFF') shadowRuntime.start();
+  if (!config.DEMO_MODE && !lifecycleSettings.enabled && bridgeConfig.mode !== 'OFF')
+    shadowRuntime.start();
   app.get('/api/bgp/mitigation/fast-poller', async () => ({
     ...fastPoller.status(),
     profiles: fastConfig.profileIds.map((profileId) => {
@@ -1631,7 +1673,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   // REMOVE permanece 100% manual. A promocao e GRADUAL (lotes) e a ordem e
   // deterministica; `batchSize=0` desliga o fatiamento (protecao de implantacao).
   const autoDescriptionSweep = new MitigationAutoDescriptionSweep({
-    enabled: autoDescriptionEnabled,
+    enabled: autoDescriptionEnabled && !lifecycleSettings.enabled,
     families: autoDescriptionFamilies,
     batchSize: autoDescriptionBatchSize,
     // PILOTO DIRECIONADO (opcional): vazio = todos os elegiveis (comportamento
@@ -1659,6 +1701,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     logger: (message, meta) => app.log.info(meta ?? {}, message),
   });
   const runAutoDescriptionSweep = async (): Promise<void> => {
+    if (lifecycleSettings.enabled) return;
     try {
       const summary = await autoDescriptionSweep.run();
       if (!summary.enabled) return;
@@ -1688,8 +1731,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       );
     }
   };
-  const autoDescriptionSweepTimer = setInterval(() => void runAutoDescriptionSweep(), 300_000);
-  autoDescriptionSweepTimer.unref();
+  const autoDescriptionSweepTimer = lifecycleSettings.enabled
+    ? null
+    : setInterval(() => void runAutoDescriptionSweep(), 300_000);
+  autoDescriptionSweepTimer?.unref();
   if (mitigationEngineConfig.mode === 'AUTO') {
     autoRuntimeRef.start();
     app.log.warn(
@@ -1706,7 +1751,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     autoRuntimeRef?.stop();
     shadowRuntime.stop();
     await observationDb?.$disconnect();
-    clearInterval(autoDescriptionSweepTimer);
+    if (autoDescriptionSweepTimer) clearInterval(autoDescriptionSweepTimer);
   });
   registerN8nRoutes(app, {
     commands: mitigationCommands,
@@ -1826,7 +1871,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     // Reidratação READ-ONLY dos snapshots de mitigação após restart: repovoa o
     // cache de discovery (cliente/interface/prefixos/readiness) sem clique manual
     // e sem qualquer escrita no Huawei. Não bloqueia o startup.
-    if (!config.DEMO_MODE) {
+    if (!config.DEMO_MODE && !lifecycleSettings.enabled) {
       void mitigationService.rehydrateSnapshots().then(
         (summary) => {
           app.log.info(

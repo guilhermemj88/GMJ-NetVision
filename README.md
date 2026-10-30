@@ -2,6 +2,10 @@
 
 ## IMPLANTAR: AUTO ACTIVATE e REMOVE exclusivamente manual
 
+Piloto candidato: somente AGLINK IPv4, um gatilho FAST e o serviço ACTIVATE existente.
+Código, testes, pacote e plano curto: [SINGLE_AUTO_PILOT.md](docs/SINGLE_AUTO_PILOT.md).
+Essa implementação não autoriza alterações operacionais.
+
 A implementação candidata automatiza somente a ativação DDoS: Eth-Trunk do cliente, FAST, threshold, amostras novas, preflight Huawei, ACTIVATE, readback e `MITIGATION_VERIFIED` com os botões existentes do Telegram. Tráfego baixo, timer e normalização nunca retiram uma mitigação. O operador decide a retirada pelo Telegram autenticado ou pela UI NetVision. Após REMOVE manual verificado, ownership e episódio anterior são encerrados; cooldown e uma sequência nova de amostras precedem outra ativação.
 
 `MITIGATION_AUTO_REMOVE_ENABLED=0` é obrigatório no IMPLANTAR em produção. Não existe fase para habilitar AUTO REMOVE nem dependência de fonte independente de recuperação. Plano vigente: [AUTO_DDOS_ACTIVATION_PLAN.md](docs/AUTO_DDOS_ACTIVATION_PLAN.md); matriz: [AUTO_ACTIVATE_MANUAL_REMOVE_HOMOLOGATION.md](docs/AUTO_ACTIVATE_MANUAL_REMOVE_HOMOLOGATION.md). Esta branch não autoriza deploy, migration, restart ou escrita Huawei.
@@ -294,7 +298,6 @@ npm run format:check
 - os transportes concretos SNMP/SSH ainda precisam ser ligados aos contratos injetáveis; em `DEMO_MODE` a descoberta usa o adapter demonstrativo;
 - a descoberta é incremental e deliberadamente não recursiva; vizinhos desconhecidos podem ser adicionados como não monitorados;
 - não há autenticação/RBAC nesta primeira versão.
-
 
 ## Estabilização IMPLANTAR — Fase 0.1
 

@@ -1,5 +1,8 @@
 # IMPLANTAR — plano vigente: AUTO ACTIVATE + MANUAL REMOVE
 
+> Candidato simplificado atual: [piloto único AGLINK](SINGLE_AUTO_PILOT.md).
+> Esse plano restrito substitui propostas de expansão e gatilhos paralelos nesta branch.
+
 > Atualização Fase 0.1 (29/10/2026): a API efetiva já é e78638a, com AUTO/persistência/lifecycle/REMOVE desligados. A aceitação estrita da Fase 0 continua NO-GO. O grafo systemd propaga restart da API ao MCP; o antigo roteiro de restart exclusivo não está liberado. Aplicam-se os gates, isolamento de WEB responsiva, diagnóstico do catálogo e rollback em [PHASE01_STABILIZATION.md](PHASE01_STABILIZATION.md). n8n RC7.1.2 já está publicado; nenhuma alteração n8n faz parte desta estabilização. Nova publicação/restart/migration/piloto exige autorização separada.
 
 O operador decide exclusivamente o retorno do tráfego pelo Telegram ou UI. Este documento substitui o plano E2E anterior. Nenhuma etapa autoriza AUTO REMOVE. Nenhuma ação operacional foi executada nesta preparação.
@@ -104,12 +107,12 @@ HUAWEI e device allowlist permanecem; não usar MOCK para fabricar estado normal
 
 ## Decisões e autorizações restantes
 
-| Fase                            | Recomendação                             | Autorização/condição restante                                                  |
-| ------------------------------- | ---------------------------------------- | ------------------------------------------------------------------------------ |
-| Implementação e testes isolados | GO técnico se verificações finais verdes | Revisão do commit e evidências                                                 |
-| API-only AUTO=0 | e78638a publicada; aceitação estrita NO-GO | Correções Fase 0.1, pacote Linux, revisão e autorização de janela API/MCP |
-| Migration/outbox/n8n reais      | NO-GO operacional agora                  | Migration + backup/checksums; patch revisado do export publicado               |
-| Homologação IPv4 AGLINK         | Recomendação condicional                 | Readback/inventário novos; escopo/janela e ACTIVATE/REMOVE humanos autorizados |
-| Piloto AUTO ACTIVATE            | NO-GO operacional agora                  | Homologação física, Telegram, perfil único e habilitação explícita             |
-| AUTO REMOVE                     | PROIBIDO                                 | Fora do produto; não existe autorização pendente para habilitá-lo              |
-| Expansão                        | NO-GO agora                              | Evidências e aprovação por perfil                                              |
+| Fase                            | Recomendação                               | Autorização/condição restante                                                  |
+| ------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------ |
+| Implementação e testes isolados | GO técnico se verificações finais verdes   | Revisão do commit e evidências                                                 |
+| API-only AUTO=0                 | e78638a publicada; aceitação estrita NO-GO | Correções Fase 0.1, pacote Linux, revisão e autorização de janela API/MCP      |
+| Migration/outbox/n8n reais      | NO-GO operacional agora                    | Migration + backup/checksums; patch revisado do export publicado               |
+| Homologação IPv4 AGLINK         | Recomendação condicional                   | Readback/inventário novos; escopo/janela e ACTIVATE/REMOVE humanos autorizados |
+| Piloto AUTO ACTIVATE            | NO-GO operacional agora                    | Homologação física, Telegram, perfil único e habilitação explícita             |
+| AUTO REMOVE                     | PROIBIDO                                   | Fora do produto; não existe autorização pendente para habilitá-lo              |
+| Expansão                        | NO-GO agora                                | Evidências e aprovação por perfil                                              |

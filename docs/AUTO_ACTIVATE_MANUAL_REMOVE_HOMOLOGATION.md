@@ -1,5 +1,8 @@
 # Matriz vigente — AUTO ACTIVATE e retirada manual
 
+> Matriz e resultados do candidato atual, restrito a AGLINK:
+> [SINGLE_AUTO_PILOT.md](SINGLE_AUTO_PILOT.md). Nenhum outro perfil integra este piloto.
+
 Escopo aprovado: ativação automática; retirada humana pelo Telegram/UI, com autenticação, confirmação de escopo e readback. **Nenhuma fonte de recuperação independente é necessária ou configurada. Tráfego baixo nunca prova retirada nem dispara REMOVE.**
 
 ## Testes e interpretação das evidências
