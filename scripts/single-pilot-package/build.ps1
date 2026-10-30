@@ -15,7 +15,14 @@ try {
   [IO.File]::WriteAllText("$out/input/build-input.json", ($inputData | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
   Copy-Item -LiteralPath "$PSScriptRoot/build.sh","$PSScriptRoot/package.mjs" -Destination "$out/input"
   $image = 'sha256:622f209f6c16ba5af4d9a337cae6577d096f17174b904cfc6a5b0c81a2679c24'
-  docker run --rm --name netvision-single-pilot-builder --mount "type=bind,source=$out/input,target=/audit,readonly" --mount "type=bind,source=$out,target=/output" --env NETVISION_INSTALLATION_ID=IMPLANTAR $image bash /audit/build.sh
-  if ($LASTEXITCODE) { throw 'Linux package build failed' }
+  # Windows PowerShell 5 treats native stderr warnings as terminating errors
+  # when callers redirect streams. Only the process exit code decides success.
+  $previousPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = 'Continue'
+    docker run --rm --name netvision-single-pilot-builder --mount "type=bind,source=$out/input,target=/audit,readonly" --mount "type=bind,source=$out,target=/output" --env NETVISION_INSTALLATION_ID=IMPLANTAR $image bash /audit/build.sh
+    $dockerExit = $LASTEXITCODE
+  } finally { $ErrorActionPreference = $previousPreference }
+  if ($dockerExit) { throw 'Linux package build failed' }
   Get-Content "$out/package.sha256"
 } finally { Pop-Location }
