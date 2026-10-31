@@ -1,0 +1,15 @@
+{
+  "workflowId": "SVh8Z-zUcSzQYOOJZ-DKP",
+  "baseActiveVersionId": "6a97fe4a-31ea-49e6-b892-1ac55f85d115",
+  "baseNodes": 58,
+  "baseEdges": 59,
+  "baseGraphSha256": "60af87618b6bfd2e1cf1678a16a769062151fa4ec320126fdb5498e3ee385870",
+  "candidateNodes": 58,
+  "candidateEdges": 59,
+  "candidateGraphSha256": "92b5ea7fd646ac827254eb0c09c26524732ac62188b12656d0c886827834ae6f",
+  "candidateFileSha256": "9916c9929b36a0720ff18360984445c00a7f1e29e3608711081a3b392cfb5d94",
+  "changedNode": "Normalizar Evento OUT",
+  "changedField": "parameters.jsonOutput",
+  "normalizerBeforeSha256": "b2894a5f32fd0577c9da83061da7567114cd81dfcc3ca7796ad6bb4b58697ee5",
+  "normalizerAfterSha256": "0b5e2984bda50c36bb68f7b625615e844d6f87cfbc9632f8c99c64d933573be4"
+}

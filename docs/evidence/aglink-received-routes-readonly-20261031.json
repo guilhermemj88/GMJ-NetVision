@@ -1,0 +1,80 @@
+{
+  "source": "READ_ONLY_RECEIVED_ROUTES via HuaweiBgpSshService.readReceivedRoutes @228262b (allowlist: screen-length 0 temporary + 1 display); DB default_transaction_read_only=on",
+  "observedUtc": "2026-10-31T21:21:00.786Z",
+  "device": "BHE-VTA-F1A-BGP-01",
+  "profileId": "cmuoavm4e00bysslhqd0h3q7u",
+  "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+  "policy": "PL-AGLINK_IPv4-IN",
+  "peer": "10.200.201.2",
+  "readStatus": "SUCCESS",
+  "commands": [
+    "screen-length 0 temporary",
+    "display bgp routing-table peer 10.200.201.2 received"
+  ],
+  "contextConfigured": false,
+  "configurationCommandsSent": 0,
+  "credentialsExported": false,
+  "receivedRoutesFullSessionStdout": "\r\nInfo: The max number of VTY users is 21, the number of current VTY users online is 1, and total number of terminal users online is 1.\r\n      The current login time is 2026-10-31 18:21:00-03:00.\r\n<BHE-VTA-F1A-BGP-01>screen-length 0 temporary\r\nInfo: The configuration takes effect on the current user terminal interface only.\r\n<BHE-VTA-F1A-BGP-01>\r\n<BHE-VTA-F1A-BGP-01>display bgp routing-table peer 10.200.201.2 received\r\n \r\n BGP Local router ID is 45.163.144.1\r\n Status codes: * - valid, > - best, d - damped, x - best external, a - add path,\r\n               h - history,  i - internal, s - suppressed, S - Stale\r\n               Origin : i - IGP, e - EGP, ? - incomplete\r\n RPKI validation codes: V - valid, I - invalid, N - not-found\r\n\r\n\r\n Total Number of Routes: 3\r\n        Network            NextHop                       MED        LocPrf    PrefVal Path/Ogn\r\n\r\n *>     167.250.126.0/23   10.200.201.2                   0          1100       0      273811 273811i\r\n *>     167.250.126.0/24   10.200.201.2                   0          1100       0      273811 273811i\r\n *>     167.250.127.0/24   10.200.201.2                   0          1100       0      273811 273811i\r\n<BHE-VTA-F1A-BGP-01>\r\n<BHE-VTA-F1A-BGP-01>quit\r\nInfo: The max number of VTY users is 21, and the number of current VTY users on line is 0.",
+  "receivedRoutesSha256": "6f2763e77ba7ef02b3f605245f668fc8365a85a8bd90612e4fb3ed4f7399ab6f",
+  "parsedOnServer": {
+    "reportedTotal": 3,
+    "routes": [
+      {
+        "prefix": "167.250.126.0/23",
+        "nextHop": "10.200.201.2",
+        "med": 0,
+        "localPreference": 1100,
+        "preferredValue": 0,
+        "asPath": [
+          "273811",
+          "273811"
+        ],
+        "origin": "i",
+        "prependLocal": 0
+      },
+      {
+        "prefix": "167.250.126.0/24",
+        "nextHop": "10.200.201.2",
+        "med": 0,
+        "localPreference": 1100,
+        "preferredValue": 0,
+        "asPath": [
+          "273811",
+          "273811"
+        ],
+        "origin": "i",
+        "prependLocal": 0
+      },
+      {
+        "prefix": "167.250.127.0/24",
+        "nextHop": "10.200.201.2",
+        "med": 0,
+        "localPreference": 1100,
+        "preferredValue": 0,
+        "asPath": [
+          "273811",
+          "273811"
+        ],
+        "origin": "i",
+        "prependLocal": 0
+      }
+    ],
+    "warnings": []
+  },
+  "selectionOnServer": {
+    "prefixes": [
+      "167.250.126.0/23",
+      "167.250.126.0/24",
+      "167.250.127.0/24"
+    ],
+    "fieldsUnavailable": []
+  },
+  "selectionOnServerWithLocalAs268568": {
+    "prefixes": [
+      "167.250.126.0/23",
+      "167.250.126.0/24",
+      "167.250.127.0/24"
+    ],
+    "fieldsUnavailable": []
+  }
+}

@@ -1,23 +1,42 @@
-"""Gera o workflow n8n RC7.1.2 (somente apresentacao de prefixos) a partir do RC7.1.
+"""Gera o candidato n8n "RC7.1.2 + prefixos" a partir da versao EFETIVAMENTE publicada.
 
-RC7.1.2 = RC7.1 + UMA alteracao: o no `Normalizar Evento OUT` passa a renderizar
-os prefixos reais do escopo verificado na mensagem de mitigacao verificada.
-Nenhum no, conexao, credencial, webhook ou ramo e adicionado/removido.
+Base: o activeVersion do workflow SVh8Z-zUcSzQYOOJZ-DKP publicado no IMPLANTAR
+(versionId 6a97fe4a-31ea-49e6-b892-1ac55f85d115, 58 nos / 59 arestas), lido de um
+snapshot somente leitura que NAO e versionado (fica fora do repositorio).
 
-Uso: python tools/n8n/build-rc712.py
+Candidato = publicado + UMA alteracao: o no `Normalizar Evento OUT` passa a
+renderizar os prefixos reais do escopo verificado na mensagem de mitigacao
+verificada. Nenhum no, conexao, credencial, webhook, id, posicao ou ramo muda.
+
+O gerador falha se a base nao for exatamente a publicada (id, activeVersionId,
+contagens e hash do grafo medido ao vivo) ou se qualquer coisa alem de
+`parameters.jsonOutput` do normalizador divergir.
+
+Uso: python -I tools/n8n/build-rc712.py <snapshot-publicado.json>
 """
 
 from __future__ import annotations
 
 import copy
+import difflib
+import hashlib
 import json
 import sys
 from pathlib import Path
 
 DOCS = Path(__file__).resolve().parents[2] / "docs" / "n8n"
-SRC = DOCS / "GMJ-NetVision-Telegram-RC7.1-WORKFLOW-COMPATIBILITY.json"
 DST = DOCS / "GMJ-NetVision-Telegram-RC7.1.2-PREFIXOS.json"
+DIFF = DOCS / "RC7.1.2-PREFIXOS-NORMALIZER.diff"
+MANIFEST = DOCS / "RC7.1.2-PREFIXOS-MANIFEST.json"
 NODE = "Normalizar Evento OUT"
+
+WORKFLOW_ID = "SVh8Z-zUcSzQYOOJZ-DKP"
+ACTIVE_VERSION_ID = "6a97fe4a-31ea-49e6-b892-1ac55f85d115"
+NODES = 58
+EDGES = 59
+# Hash do grafo publicado medido ao vivo (29/10 e 30/10) por leitura do
+# workflow_history: sha256(json.dumps({nodes, connections}, sort_keys=True)).
+GRAPH_SHA256 = "60af87618b6bfd2e1cf1678a16a769062151fa4ec320126fdb5498e3ee385870"
 
 ANCHOR = "  if (b.peer)\n    lines.push(`<b>Peer principal:</b> ${esc(b.peer)}`);\n"
 
@@ -47,28 +66,62 @@ OUTPUT_ADD = (
     "    QTD_PREFIXOS: scopePrefixes.length,\n"
 )
 
+# Campos de topo copiados do publicado: so o que o import/PATCH precisa.
+# Ficam de fora estado de runtime e de compartilhamento (shared, scopes,
+# activeVersion, staticData, checksum, versionId, contadores, datas).
+TOP_LEVEL = ("id", "name", "nodes", "connections", "settings", "meta", "tags")
 
-def main() -> int:
-    source = json.loads(SRC.read_text(encoding="utf-8"))
-    target = copy.deepcopy(source)
-    target["name"] = "GMJ NetVision - Telegram RC7.1.2 (prefixos do escopo verificado)"
+
+def graph_sha256(nodes: list, connections: dict) -> str:
+    raw = json.dumps({"nodes": nodes, "connections": connections}, sort_keys=True)
+    return hashlib.sha256(raw.encode()).hexdigest()
+
+
+def edges(connections: dict) -> int:
+    return sum(len(t) for v in connections.values() for outs in v.values() for t in outs)
+
+
+def fail(message: str) -> int:
+    print(f"ERRO: {message}", file=sys.stderr)
+    return 1
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 2:
+        return fail("uso: build-rc712.py <snapshot-publicado.json>")
+    snapshot = json.loads(Path(argv[1]).read_text(encoding="utf-8"))
+
+    published = snapshot.get("activeVersion") or {}
+    if snapshot.get("id") != WORKFLOW_ID:
+        return fail(f"workflow inesperado: {snapshot.get('id')}")
+    if snapshot.get("activeVersionId") != ACTIVE_VERSION_ID:
+        return fail(f"activeVersionId inesperado: {snapshot.get('activeVersionId')}")
+    if published.get("versionId") != ACTIVE_VERSION_ID:
+        return fail("activeVersion do snapshot nao e a versao publicada")
+    base_nodes, base_conn = published["nodes"], published["connections"]
+    if len(base_nodes) != NODES or edges(base_conn) != EDGES:
+        return fail(f"contagem inesperada: {len(base_nodes)} nos / {edges(base_conn)} arestas")
+    if graph_sha256(base_nodes, base_conn) != GRAPH_SHA256:
+        return fail("hash do grafo publicado diverge do medido ao vivo")
+
+    target = {key: copy.deepcopy(snapshot[key]) for key in TOP_LEVEL}
+    target["nodes"] = copy.deepcopy(base_nodes)
+    target["connections"] = copy.deepcopy(base_conn)
+    target["pinData"] = {}
+    target["active"] = False
 
     node = next((item for item in target["nodes"] if item["name"] == NODE), None)
     if node is None:
-        print(f"ERRO: no {NODE} ausente", file=sys.stderr)
-        return 1
-
-    code = node["parameters"]["jsonOutput"]
-    if ANCHOR not in code:
-        print("ERRO: ancora do corpo da mensagem nao encontrada", file=sys.stderr)
-        return 1
-    if OUTPUT_ANCHOR not in code:
-        print("ERRO: ancora de saida nao encontrada", file=sys.stderr)
-        return 1
-
-    code = code.replace(ANCHOR, ANCHOR + BLOCK, 1)
-    code = code.replace(OUTPUT_ANCHOR, OUTPUT_ADD, 1)
-    node["parameters"]["jsonOutput"] = code
+        return fail(f"no {NODE} ausente")
+    before = node["parameters"]["jsonOutput"]
+    if before.count(ANCHOR) != 1:
+        return fail("ancora do corpo da mensagem nao encontrada (ou repetida)")
+    if before.count(OUTPUT_ANCHOR) != 1:
+        return fail("ancora de saida nao encontrada (ou repetida)")
+    if "scopePrefixes" in before or "b.prefixes" in before:
+        return fail("normalizador publicado ja referencia prefixos")
+    after = before.replace(ANCHOR, ANCHOR + BLOCK, 1).replace(OUTPUT_ANCHOR, OUTPUT_ADD, 1)
+    node["parameters"]["jsonOutput"] = after
 
     DST.write_text(
         json.dumps(target, ensure_ascii=False, indent=2) + "\n",
@@ -76,25 +129,52 @@ def main() -> int:
         newline="\n",
     )
 
-    # Verificacao estrutural: nada alem do normalizador pode ter mudado.
+    # Verificacao estrutural relida do disco: so jsonOutput do normalizador muda.
     check = json.loads(DST.read_text(encoding="utf-8"))
-    if check["connections"] != source["connections"]:
-        print("ERRO: conexoes mudaram", file=sys.stderr)
-        return 1
-    by_name = {item["name"]: item for item in source["nodes"]}
-    if len(check["nodes"]) != len(source["nodes"]):
-        print("ERRO: quantidade de nos mudou", file=sys.stderr)
-        return 1
-    for item in check["nodes"]:
-        if item["name"] == NODE:
-            continue
-        if item.get("parameters") != by_name[item["name"]].get("parameters"):
-            print(f"ERRO: no alterado fora do normalizador: {item['name']}", file=sys.stderr)
-            return 1
+    if check["connections"] != base_conn:
+        return fail("conexoes mudaram")
+    if [item["name"] for item in check["nodes"]] != [item["name"] for item in base_nodes]:
+        return fail("conjunto/ordem de nos mudou")
+    for new, old in zip(check["nodes"], base_nodes):
+        if new["name"] == NODE:
+            rest_new = {k: v for k, v in new.items() if k != "parameters"}
+            rest_old = {k: v for k, v in old.items() if k != "parameters"}
+            params_new = {k: v for k, v in new["parameters"].items() if k != "jsonOutput"}
+            params_old = {k: v for k, v in old["parameters"].items() if k != "jsonOutput"}
+            if rest_new != rest_old or params_new != params_old:
+                return fail("normalizador mudou fora de parameters.jsonOutput")
+        elif new != old:
+            return fail(f"no alterado fora do normalizador: {new['name']}")
 
-    print(f"OK: {DST.name} ({len(check['nodes'])} nos, apenas {NODE} alterado)")
+    diff = difflib.unified_diff(
+        before.splitlines(keepends=True),
+        after.splitlines(keepends=True),
+        f"publicado/{ACTIVE_VERSION_ID}/{NODE}/jsonOutput",
+        f"candidato/{NODE}/jsonOutput",
+    )
+    DIFF.write_text("".join(diff), encoding="utf-8", newline="\n")
+
+    manifest = {
+        "workflowId": WORKFLOW_ID,
+        "baseActiveVersionId": ACTIVE_VERSION_ID,
+        "baseNodes": NODES,
+        "baseEdges": EDGES,
+        "baseGraphSha256": GRAPH_SHA256,
+        "candidateNodes": len(check["nodes"]),
+        "candidateEdges": edges(check["connections"]),
+        "candidateGraphSha256": graph_sha256(check["nodes"], check["connections"]),
+        "candidateFileSha256": hashlib.sha256(DST.read_bytes()).hexdigest(),
+        "changedNode": NODE,
+        "changedField": "parameters.jsonOutput",
+        "normalizerBeforeSha256": hashlib.sha256(before.encode()).hexdigest(),
+        "normalizerAfterSha256": hashlib.sha256(after.encode()).hexdigest(),
+    }
+    MANIFEST.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
+
+    print(f"OK: {DST.name} ({len(check['nodes'])} nos / {edges(check['connections'])} arestas,")
+    print(f"    base {ACTIVE_VERSION_ID}, apenas {NODE}.parameters.jsonOutput alterado)")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv))

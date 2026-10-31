@@ -1,102 +1,67 @@
-# n8n RC7.1.2 — apresentação dos prefixos do escopo verificado
+# n8n RC7.1.2 + prefixos — candidato derivado da versão PUBLICADA
 
 **Status: PREPARADO. NÃO PUBLICADO.** Nenhum n8n, Telegram ou webhook real foi
-acionado nesta missão.
+acionado.
 
-Arquivo: `docs/n8n/GMJ-NetVision-Telegram-RC7.1.2-PREFIXOS.json`
-Gerado por: `python tools/n8n/build-rc712.py` (determinístico e verificável)
-Base: `docs/n8n/GMJ-NetVision-Telegram-RC7.1-WORKFLOW-COMPATIBILITY.json`
+| Item                 | Valor                                                                         |
+| -------------------- | ----------------------------------------------------------------------------- |
+| Candidato            | `docs/n8n/GMJ-NetVision-Telegram-RC7.1.2-PREFIXOS.json`                       |
+| Diff                 | `docs/n8n/RC7.1.2-PREFIXOS-NORMALIZER.diff`                                   |
+| Manifesto/hashes     | `docs/n8n/RC7.1.2-PREFIXOS-MANIFEST.json`                                     |
+| Gerador              | `python -I tools/n8n/build-rc712.py <snapshot-publicado.json>`                |
+| Workflow             | `SVh8Z-zUcSzQYOOJZ-DKP` (nome global preservado)                              |
+| Base                 | activeVersion **`6a97fe4a-31ea-49e6-b892-1ac55f85d115`**, 58 nós / 59 arestas |
+| Hash grafo base      | `60af87618b6bfd2e1cf1678a16a769062151fa4ec320126fdb5498e3ee385870`            |
+| Hash grafo candidato | `92b5ea7fd646ac827254eb0c09c26524732ac62188b12656d0c886827834ae6f`            |
 
----
+> A versão anterior deste arquivo partia do RC7.1 (56 nós). Publicá-la teria
+> **removido** `Somente Status Mitigacao RC712?` / `Telegram - Status Mitigacao RC712`
+> e revertido 15 nós do RC7.1.2 (ACK estrito, webhooks, alarmes). Foi descartada.
 
-## 1. O que muda — exatamente uma coisa
+## 1. Origem da base
 
-| Item                                   | RC7.1                  | RC7.1.2            |
-| -------------------------------------- | ---------------------- | ------------------ |
-| Nós                                    | 56                     | **56 (idênticos)** |
-| Conexões                               | —                      | **idênticas**      |
-| Credenciais / webhooks / Header Auth   | 4 independentes        | **idênticos**      |
-| `lastNode` nos 3 canais de alarmes     | sim                    | **sim**            |
-| Ramo S5 de detecção bloqueada          | sim                    | **sim**            |
-| REENVIO v2 / `INCLUIR_DADOS_DE_ESCOPO` | sim                    | **sim**            |
-| Nó `Normalizar Evento OUT`             | não renderiza prefixos | **renderiza**      |
+Snapshot somente leitura `NETVISION-N8N-RC712-PUBLISHED-VERIFIED.json`
+(sha256 `c3b8b470…7257e`, registrado na publicação de 29/10), mantido fora do Git.
+O gerador recusa a base se `id`, `activeVersionId`, `activeVersion.versionId`,
+58/59 ou o hash do grafo divergirem. O hash `60af8761…` é o mesmo medido **ao vivo**
+no `workflow_history` em 29/10 e 30/10 (`json.dumps({nodes, connections}, sort_keys=True)`).
 
-O gerador falha se qualquer nó fora do normalizador mudar ou se as conexões
-divergirem. O teste `mitigation-workflow-rc712.test.ts` revalida isso.
+## 2. O que muda — só `Normalizar Evento OUT.parameters.jsonOutput`
 
-## 2. Alteração no normalizador
+Duas inserções (ver `.diff`):
 
-Bloco adicionado na mensagem de **mitigação verificada** (após o peer principal):
+1. após `Peer principal`, na mensagem de mitigação verificada: bloco
+   `Prefixos (N):` + um `• prefixo` por linha, ou `Prefixos: indisponível`;
+2. na saída: `PREFIXOS` (array) e `QTD_PREFIXOS` (number).
 
-```js
-const scopePrefixes = Array.isArray(b.prefixes)
-  ? b.prefixes.filter((p) => typeof p === 'string' && p.length > 0)
-  : [];
+Nós, ids, posições, credenciais (ids/nomes reais, sem valores), webhooks,
+`webhookId`, callbacks REMOVE, ACK estrito, ramo S5/detecção, REENVIO v2 e
+conexões: **idênticos**. Prova: retirar as duas inserções devolve exatamente o
+hash `60af8761…` (teste `mitigation-workflow-rc712.test.ts`).
 
-lines.push('');
+Topo do arquivo: `id`, `name`, `nodes`, `connections`, `settings`, `meta`, `tags`,
+`pinData: {}`, `active: false`. Fora: `shared`, `scopes`, `activeVersion`,
+`staticData`, `checksum`, `versionId`, contadores e datas.
 
-if (scopePrefixes.length > 0) {
-  lines.push(`<b>Prefixos (${scopePrefixes.length}):</b>`);
-  for (const item of scopePrefixes) lines.push(`• ${esc(item)}`);
-} else {
-  lines.push('<b>Prefixos:</b> <i>indisponível</i>');
-}
-```
+## 3. Publicação (autorização separada)
 
-Saída adicional no objeto do nó: `PREFIXOS` (array) e `QTD_PREFIXOS` (number).
+Pré-requisito: API com `prefixes` publicada antes (senão a linha mostra
+`indisponível`, sem erro).
 
-Regras de apresentação:
+1. Leitura: `activeVersionId` ainda `6a97fe4a…` e hash do grafo ativo `60af8761…`.
+   Se divergir, **parar** e regenerar a partir do novo snapshot.
+2. Backup do workflow atual (GET autenticado do editor).
+3. `PATCH /rest/workflows/SVh8Z-zUcSzQYOOJZ-DKP` com **somente** `nodes` +
+   `connections` do candidato + `expectedChecksum` (mesmo método de 29/10, sem CLI,
+   sem PUT público, sem restart).
+4. GET do rascunho: hash do grafo `92b5ea7f…`, `activeVersionId` ainda `6a97fe4a…`.
+5. `POST …/activate` com o `versionId` do rascunho. Conferir novo `activeVersionId`
+   e hash ativo `92b5ea7f…`.
+6. Homologação real só com mitigação real autorizada.
 
-- lista presente → um item por linha, escapado;
-- lista ausente/vazia → **`indisponível`** (nunca omitir, nunca inventar);
-- evento anterior ao campo → mesma linha `indisponível` (compatível);
-- simulação → continua **não** sendo mitigação real;
-- detecção bloqueada → **não** recebe a linha de prefixos (o texto de detecção é outro).
+## 4. Rollback
 
-## 3. Contrato consumido
-
-Só o campo aditivo `prefixes` do payload da API:
-
-```json
-{
-  "event": "MITIGATION_VERIFIED",
-  "verified": true,
-  "simulation": false,
-  "prefixes": ["167.250.126.0/23", "167.250.126.0/24", "167.250.127.0/24"],
-  "fieldsUnavailable": []
-}
-```
-
-Nenhuma expressão usa `$env`, nenhum token literal, nenhuma credencial nova.
-
----
-
-## 4. Procedimento de publicação (autorização separada)
-
-1. **Pré-requisito de API**: a release em produção precisa já enviar `prefixes`.
-   Ordem recomendada: publicar a API primeiro (com o campo) e depois o workflow —
-   assim o campo existe antes de a apresentação depender dele. Enquanto a API
-   antiga estiver no ar, a mensagem mostra `indisponível`, sem erro.
-2. Importar `GMJ-NetVision-Telegram-RC7.1.2-PREFIXOS.json` no n8n.
-3. Remapear as **quatro** credenciais Header Auth para as credenciais reais do
-   ambiente (o arquivo traz placeholders; nunca tokens).
-4. Comparar com o RC7.1 publicado nó a nó (diff deve ser apenas o normalizador).
-5. Teste isolado: payload sintético `MITIGATION_VERIFIED` com os três prefixos →
-   executar o nó normalizador e conferir o texto.
-6. Teste isolado: mesmo payload **sem** `prefixes` → linha `indisponível`.
-7. Publicar o workflow.
-8. Homologação real: só com mitigação real autorizada e mensagem real no Telegram,
-   com recibo. Nada disso foi feito aqui.
-
-## 5. Rollback
-
-Republicar o RC7.1 (`GMJ-NetVision-Telegram-RC7.1-WORKFLOW-COMPATIBILITY.json`).
-Como o único delta está no normalizador e o campo `prefixes` é aditivo, o rollback
-do workflow é independente do rollback da API.
-
-## 6. Pendências declaradas
-
-- **Sem n8n isolado neste ambiente** → nenhuma execução dinâmica foi feita.
-  A verificação é estática (estrutura + execução do normalizador em sandbox JS).
-- A homologação dinâmica permanece com o operador/Claude.
-- Não há publicação, nem merge, nem push nesta missão.
+Republicar a versão `6a97fe4a-31ea-49e6-b892-1ac55f85d115` pelo histórico do
+workflow (ativar o versionId anterior) ou PATCH dos `nodes`/`connections` do
+snapshot protegido + activate. Conferir hash ativo `60af8761…`. Independente do
+rollback da API (campo aditivo).

@@ -1,0 +1,35 @@
+--- publicado/6a97fe4a-31ea-49e6-b892-1ac55f85d115/Normalizar Evento OUT/jsonOutput
++++ candidato/Normalizar Evento OUT/jsonOutput
+@@ -445,6 +445,23 @@
+   if (b.peer)
+     lines.push(`<b>Peer principal:</b> ${esc(b.peer)}`);
+ 
++  // ==========================================================
++  // ESCOPO VERIFICADO - prefixos REAIS da mitigacao (campo aditivo)
++  // Sem lista => "indisponivel". Nunca inferir de profile/policy.
++  // ==========================================================
++  const scopePrefixes = Array.isArray(b.prefixes)
++    ? b.prefixes.filter((p) => typeof p === 'string' && p.length > 0)
++    : [];
++
++  lines.push('');
++
++  if (scopePrefixes.length > 0) {
++    lines.push(`<b>Prefixos (${scopePrefixes.length}):</b>`);
++    for (const item of scopePrefixes) lines.push(`\u2022 ${esc(item)}`);
++  } else {
++    lines.push('<b>Prefixos:</b> <i>indispon\u00edvel</i>');
++  }
++
+   lines.push('');
+   lines.push(
+     '✅ <b>MITIGAÇÃO ATIVADA E VERIFICADA NO EQUIPAMENTO</b>'
+@@ -535,6 +552,8 @@
+     BOGON_NODE: bogonNode,
+     MITIGATION_NODE: mitigationNode,
+     RT: b.rt ?? null,
++    PREFIXOS: scopePrefixes,
++    QTD_PREFIXOS: scopePrefixes.length,
+     POLICY_COMPARTILHADA: b.sharedPolicy === true,
+     OUTROS_TARGETS: b.sharedPolicyTargets ?? [],
+     OCORREU_EM: b.occurredAt ?? null,

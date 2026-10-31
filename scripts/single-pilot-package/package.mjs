@@ -46,7 +46,7 @@ function walk(dir) {
 walk(output);
 const manifest = {
   sourceSha: sha,
-  preparedApiBase: '0badeba52a5699e08287b7b17e19428f60d1d7b8',
+  preparedApiBase: '463769620a2f39f9803b60a43314851fe3a77e0e',
   sourceArchiveSha256: archiveHash,
   platform: process.platform,
   architecture: process.arch,

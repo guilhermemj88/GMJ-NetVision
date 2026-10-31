@@ -175,3 +175,43 @@ describe('escopo verificado: sem evidencia completa nao existe lista', () => {
     ).toEqual(UNAVAILABLE);
   });
 });
+
+describe('escopo verificado: captura REAL da sessao (31/10, READ-ONLY)', () => {
+  // stdout integral devolvido por readReceivedRoutes: banner, screen-length e quit inclusos.
+  const LIVE = JSON.parse(
+    readFileSync(
+      new URL(
+        '../../../../../../docs/evidence/aglink-received-routes-readonly-20261031.json',
+        import.meta.url,
+      ),
+      'utf8',
+    ),
+  ) as {
+    profileId: string;
+    policy: string;
+    peer: string;
+    commands: string[];
+    receivedRoutesFullSessionStdout: string;
+  };
+
+  it('somente comandos de leitura foram enviados', () => {
+    expect(LIVE.commands).toEqual([
+      'screen-length 0 temporary',
+      'display bgp routing-table peer 10.200.201.2 received',
+    ]);
+  });
+
+  it('a transcricao completa da sessao produz os tres prefixos', () => {
+    const selected = selectMitigationScopePrefixes({
+      evidence: {
+        profileId: LIVE.profileId,
+        policy: LIVE.policy,
+        peer: LIVE.peer,
+        receivedRoutes: LIVE.receivedRoutesFullSessionStdout,
+      },
+      expected: expected(),
+      localAs: 268568n,
+    });
+    expect(selected).toEqual({ prefixes: AGLINK_PREFIXES, fieldsUnavailable: [] });
+  });
+});
