@@ -40,6 +40,12 @@ const NODES = new Map(RC712.nodes.map((node) => [node.name, node]));
 
 const PUBLISHED_ACTIVE_VERSION = '6a97fe4a-31ea-49e6-b892-1ac55f85d115';
 const PUBLISHED_GRAPH_SHA256 = '60af87618b6bfd2e1cf1678a16a769062151fa4ec320126fdb5498e3ee385870';
+/** Rascunho salvo apos a publicacao: so move dois nos no canvas. */
+const DRAFT_GRAPH_SHA256 = '6bc74d79b499c68ac20c1fd273f75bd17bec3eae51694de29ac5d2b560bf9d23';
+const PUBLISHED_POSITIONS: Record<string, number[]> = {
+  'Somente Status Mitigacao RC712?': [-1650, 5100],
+  'Telegram - Status Mitigacao RC712': [-1350, 5100],
+};
 const AGLINK_PREFIXES = ['167.250.126.0/23', '167.250.126.0/24', '167.250.127.0/24'];
 const PROFILE_ID = 'cmuoavm4e00bysslhqd0h3q7u';
 
@@ -184,14 +190,28 @@ describe('RC7.1.2+prefixos - derivado da versao publicada', () => {
     expect(RC712.active).toBe(false);
     expect(MANIFEST['baseActiveVersionId']).toBe(PUBLISHED_ACTIVE_VERSION);
     expect(MANIFEST['baseGraphSha256']).toBe(PUBLISHED_GRAPH_SHA256);
+    expect(MANIFEST['draftVersionId']).toBe('1f1405f8-e9bc-4d2e-91bc-4106dbb07285');
+    expect(MANIFEST['draftGraphSha256']).toBe(DRAFT_GRAPH_SHA256);
     expect(NODES.has('Somente Status Mitigacao RC712?')).toBe(true);
     expect(NODES.has('Telegram - Status Mitigacao RC712')).toBe(true);
   });
 
-  it('candidato menos o delta do normalizador == grafo publicado (sha256)', () => {
-    expect(graphSha256(RC712)).not.toBe(PUBLISHED_GRAPH_SHA256);
+  it('candidato menos o delta do normalizador == rascunho 1f1405f8 (sha256)', () => {
+    expect(graphSha256(RC712)).not.toBe(DRAFT_GRAPH_SHA256);
     expect(graphSha256(RC712)).toBe(MANIFEST['candidateGraphSha256']);
-    expect(graphSha256(revertCandidate())).toBe(PUBLISHED_GRAPH_SHA256);
+    expect(graphSha256(revertCandidate())).toBe(DRAFT_GRAPH_SHA256);
+  });
+
+  it('rascunho com as duas posicoes publicadas == grafo publicado 6a97fe4a (sha256)', () => {
+    const draft = revertCandidate();
+    for (const [name, position] of Object.entries(PUBLISHED_POSITIONS)) {
+      const node = draft.nodes.find((item) => item.name === name) as WorkflowNode & {
+        position: number[];
+      };
+      expect(node.position).not.toEqual(position);
+      node.position = position;
+    }
+    expect(graphSha256(draft)).toBe(PUBLISHED_GRAPH_SHA256);
   });
 
   it('o manifesto confere com o arquivo versionado', () => {

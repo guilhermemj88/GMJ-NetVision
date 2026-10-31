@@ -4,10 +4,16 @@
   "baseNodes": 58,
   "baseEdges": 59,
   "baseGraphSha256": "60af87618b6bfd2e1cf1678a16a769062151fa4ec320126fdb5498e3ee385870",
+  "draftVersionId": "1f1405f8-e9bc-4d2e-91bc-4106dbb07285",
+  "draftGraphSha256": "6bc74d79b499c68ac20c1fd273f75bd17bec3eae51694de29ac5d2b560bf9d23",
+  "draftDeltaVsPublished": [
+    "Somente Status Mitigacao RC712?.position",
+    "Telegram - Status Mitigacao RC712.position"
+  ],
   "candidateNodes": 58,
   "candidateEdges": 59,
-  "candidateGraphSha256": "92b5ea7fd646ac827254eb0c09c26524732ac62188b12656d0c886827834ae6f",
-  "candidateFileSha256": "9916c9929b36a0720ff18360984445c00a7f1e29e3608711081a3b392cfb5d94",
+  "candidateGraphSha256": "5c76e86618ada3b73d2c2aabf974a8b1fdaf7c24a12813711f93b3a11b5b5154",
+  "candidateFileSha256": "85e8b071952235374a24e1879e3f58fd7d357adff1b1a5975603b63f44edce6c",
   "changedNode": "Normalizar Evento OUT",
   "changedField": "parameters.jsonOutput",
   "normalizerBeforeSha256": "b2894a5f32fd0577c9da83061da7567114cd81dfcc3ca7796ad6bb4b58697ee5",

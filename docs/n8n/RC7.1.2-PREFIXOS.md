@@ -12,11 +12,20 @@ acionado.
 | Workflow             | `SVh8Z-zUcSzQYOOJZ-DKP` (nome global preservado)                              |
 | Base                 | activeVersion **`6a97fe4a-31ea-49e6-b892-1ac55f85d115`**, 58 nós / 59 arestas |
 | Hash grafo base      | `60af87618b6bfd2e1cf1678a16a769062151fa4ec320126fdb5498e3ee385870`            |
-| Hash grafo candidato | `92b5ea7fd646ac827254eb0c09c26524732ac62188b12656d0c886827834ae6f`            |
+| Hash grafo candidato | `5c76e86618ada3b73d2c2aabf974a8b1fdaf7c24a12813711f93b3a11b5b5154`            |
 
 > A versão anterior deste arquivo partia do RC7.1 (56 nós). Publicá-la teria
 > **removido** `Somente Status Mitigacao RC712?` / `Telegram - Status Mitigacao RC712`
 > e revertido 15 nós do RC7.1.2 (ACK estrito, webhooks, alarmes). Foi descartada.
+
+## 0. Base efetiva = rascunho `1f1405f8`
+
+Depois da publicação de 29/10 o operador salvou o rascunho
+`1f1405f8-e9bc-4d2e-91bc-4106dbb07285` (hash `6bc74d79…`), que **só move**
+`Somente Status Mitigacao RC712?` e `Telegram - Status Mitigacao RC712` no canvas.
+Para o PATCH não apagar essa edição, o candidato parte do rascunho; o gerador
+recusa qualquer diferença rascunho×publicado além dessas duas posições.
+Fonte: `editor-last-verification.json` (protegido, fora do Git).
 
 ## 1. Origem da base
 
@@ -48,15 +57,16 @@ Topo do arquivo: `id`, `name`, `nodes`, `connections`, `settings`, `meta`, `tags
 Pré-requisito: API com `prefixes` publicada antes (senão a linha mostra
 `indisponível`, sem erro).
 
-1. Leitura: `activeVersionId` ainda `6a97fe4a…` e hash do grafo ativo `60af8761…`.
-   Se divergir, **parar** e regenerar a partir do novo snapshot.
+1. Leitura (`deploy/aglink-prefixes-bf7bc52/n8n-readonly-reconcile.py`): `activeVersionId`
+   `6a97fe4a…` / hash `60af8761…` **e** `versionId` `1f1405f8…` / hash `6bc74d79…`.
+   Gate `STOP_RECONCILE` → **parar**; não sobrescrever, regenerar do estado novo.
 2. Backup do workflow atual (GET autenticado do editor).
 3. `PATCH /rest/workflows/SVh8Z-zUcSzQYOOJZ-DKP` com **somente** `nodes` +
    `connections` do candidato + `expectedChecksum` (mesmo método de 29/10, sem CLI,
    sem PUT público, sem restart).
-4. GET do rascunho: hash do grafo `92b5ea7f…`, `activeVersionId` ainda `6a97fe4a…`.
+4. GET do rascunho: hash do grafo `5c76e866…`, `activeVersionId` ainda `6a97fe4a…`.
 5. `POST …/activate` com o `versionId` do rascunho. Conferir novo `activeVersionId`
-   e hash ativo `92b5ea7f…`.
+   e hash ativo `5c76e866…`.
 6. Homologação real só com mitigação real autorizada.
 
 ## 4. Rollback

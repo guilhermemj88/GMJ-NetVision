@@ -12,7 +12,10 @@ O gerador falha se a base nao for exatamente a publicada (id, activeVersionId,
 contagens e hash do grafo medido ao vivo) ou se qualquer coisa alem de
 `parameters.jsonOutput` do normalizador divergir.
 
-Uso: python -I tools/n8n/build-rc712.py <snapshot-publicado.json>
+Base efetiva: o RASCUNHO 1f1405f8 (salvo apos a publicacao), que difere do
+publicado apenas na posicao de dois nos; o gerador recusa qualquer outra diferenca.
+
+Uso: python -I tools/n8n/build-rc712.py <snapshot-do-editor.json>
 """
 
 from __future__ import annotations
@@ -37,6 +40,12 @@ EDGES = 59
 # Hash do grafo publicado medido ao vivo (29/10 e 30/10) por leitura do
 # workflow_history: sha256(json.dumps({nodes, connections}, sort_keys=True)).
 GRAPH_SHA256 = "60af87618b6bfd2e1cf1678a16a769062151fa4ec320126fdb5498e3ee385870"
+# Rascunho salvo DEPOIS da publicacao (29/10 15:24), ainda nao publicado: so move
+# dois nos no canvas. A base do candidato e esse rascunho, para que o PATCH nao
+# apague a edicao mais recente do operador.
+DRAFT_VERSION_ID = "1f1405f8-e9bc-4d2e-91bc-4106dbb07285"
+DRAFT_GRAPH_SHA256 = "6bc74d79b499c68ac20c1fd273f75bd17bec3eae51694de29ac5d2b560bf9d23"
+DRAFT_MOVED_NODES = {"Somente Status Mitigacao RC712?", "Telegram - Status Mitigacao RC712"}
 
 ANCHOR = "  if (b.peer)\n    lines.push(`<b>Peer principal:</b> ${esc(b.peer)}`);\n"
 
@@ -90,6 +99,7 @@ def main(argv: list[str]) -> int:
     if len(argv) != 2:
         return fail("uso: build-rc712.py <snapshot-publicado.json>")
     snapshot = json.loads(Path(argv[1]).read_text(encoding="utf-8"))
+    snapshot = snapshot.get("data", snapshot)
 
     published = snapshot.get("activeVersion") or {}
     if snapshot.get("id") != WORKFLOW_ID:
@@ -103,6 +113,22 @@ def main(argv: list[str]) -> int:
         return fail(f"contagem inesperada: {len(base_nodes)} nos / {edges(base_conn)} arestas")
     if graph_sha256(base_nodes, base_conn) != GRAPH_SHA256:
         return fail("hash do grafo publicado diverge do medido ao vivo")
+
+    # Rascunho: precisa ser o 1f1405f8 e diferir do publicado SOMENTE na posicao
+    # dos dois nos movidos. Qualquer outra diferenca exige reconciliacao manual.
+    if snapshot.get("versionId") != DRAFT_VERSION_ID:
+        return fail(f"rascunho inesperado: {snapshot.get('versionId')}")
+    if graph_sha256(snapshot["nodes"], snapshot["connections"]) != DRAFT_GRAPH_SHA256:
+        return fail("hash do rascunho diverge do registrado")
+    if snapshot["connections"] != base_conn:
+        return fail("rascunho altera conexoes")
+    if [n["name"] for n in snapshot["nodes"]] != [n["name"] for n in base_nodes]:
+        return fail("rascunho altera o conjunto de nos")
+    for draft, pub in zip(snapshot["nodes"], base_nodes):
+        keys = {k for k in set(draft) | set(pub) if draft.get(k) != pub.get(k)}
+        if keys and (keys != {"position"} or draft["name"] not in DRAFT_MOVED_NODES):
+            return fail(f"rascunho altera {draft['name']}: {sorted(keys)}")
+    base_nodes = snapshot["nodes"]
 
     target = {key: copy.deepcopy(snapshot[key]) for key in TOP_LEVEL}
     target["nodes"] = copy.deepcopy(base_nodes)
@@ -149,7 +175,7 @@ def main(argv: list[str]) -> int:
     diff = difflib.unified_diff(
         before.splitlines(keepends=True),
         after.splitlines(keepends=True),
-        f"publicado/{ACTIVE_VERSION_ID}/{NODE}/jsonOutput",
+        f"publicado/{ACTIVE_VERSION_ID}+rascunho/{DRAFT_VERSION_ID}/{NODE}/jsonOutput",
         f"candidato/{NODE}/jsonOutput",
     )
     DIFF.write_text("".join(diff), encoding="utf-8", newline="\n")
@@ -160,6 +186,9 @@ def main(argv: list[str]) -> int:
         "baseNodes": NODES,
         "baseEdges": EDGES,
         "baseGraphSha256": GRAPH_SHA256,
+        "draftVersionId": DRAFT_VERSION_ID,
+        "draftGraphSha256": DRAFT_GRAPH_SHA256,
+        "draftDeltaVsPublished": sorted(f"{name}.position" for name in DRAFT_MOVED_NODES),
         "candidateNodes": len(check["nodes"]),
         "candidateEdges": edges(check["connections"]),
         "candidateGraphSha256": graph_sha256(check["nodes"], check["connections"]),
@@ -172,7 +201,8 @@ def main(argv: list[str]) -> int:
     MANIFEST.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8", newline="\n")
 
     print(f"OK: {DST.name} ({len(check['nodes'])} nos / {edges(check['connections'])} arestas,")
-    print(f"    base {ACTIVE_VERSION_ID}, apenas {NODE}.parameters.jsonOutput alterado)")
+    print(f"    publicado {ACTIVE_VERSION_ID} + rascunho {DRAFT_VERSION_ID};")
+    print(f"    vs rascunho: apenas {NODE}.parameters.jsonOutput alterado)")
     return 0
 
 

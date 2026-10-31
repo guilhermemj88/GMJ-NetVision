@@ -10,17 +10,17 @@ sem catálogo/migration/restart, sem Telegram, motor FAST intacto.**
 `Somente Status Mitigacao RC712?` / `Telegram - Status Mitigacao RC712` e revertido 15 nós
 (ACK estrito, 4 webhooks, alarmes). Ele foi descartado.
 
-| Verificação                      | Resultado                                                                      |
-| -------------------------------- | ------------------------------------------------------------------------------ |
-| Fonte                            | snapshot protegido `NETVISION-N8N-RC712-PUBLISHED-VERIFIED.json` (`c3b8b470…`) |
-| Workflow / activeVersionId       | `SVh8Z-zUcSzQYOOJZ-DKP` / `6a97fe4a-31ea-49e6-b892-1ac55f85d115` ✅            |
-| Nome da revisão                  | `RC7.1.2 - NetVision strict Telegram ACK` ✅                                   |
-| Nós / arestas                    | 58 / 59 ✅                                                                     |
-| Hash do grafo (método do leitor) | `60af8761…5870` = medido **ao vivo** em 29/10 e 30/10 ✅                       |
-| Candidato: nós / arestas         | 58 / 59; hash `92b5ea7f…ae6f`; arquivo `9916c992…5d94`                         |
-| Diferença                        | **somente** `Normalizar Evento OUT.parameters.jsonOutput` (2 inserções)        |
-| Credenciais                      | 6 referências reais (id/nome) preservadas; nenhum valor; sem placeholder       |
-| Prova                            | candidato − delta → hash `60af8761…` exato (teste)                             |
+| Verificação                      | Resultado                                                                                                              |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Fonte                            | snapshot protegido `NETVISION-N8N-RC712-PUBLISHED-VERIFIED.json` (`c3b8b470…`)                                         |
+| Workflow / activeVersionId       | `SVh8Z-zUcSzQYOOJZ-DKP` / `6a97fe4a-31ea-49e6-b892-1ac55f85d115` ✅                                                    |
+| Nome da revisão                  | `RC7.1.2 - NetVision strict Telegram ACK` ✅                                                                           |
+| Nós / arestas                    | 58 / 59 ✅                                                                                                             |
+| Hash do grafo (método do leitor) | `60af8761…5870` = medido **ao vivo** em 29/10 e 30/10 ✅                                                               |
+| Candidato: nós / arestas         | 58 / 59; hash `5c76e866…5154`; arquivo `85e8b071…ce6c` (base rascunho `1f1405f8`, ver docs/n8n/RC7.1.2-PREFIXOS.md §0) |
+| Diferença                        | **somente** `Normalizar Evento OUT.parameters.jsonOutput` (2 inserções)                                                |
+| Credenciais                      | 6 referências reais (id/nome) preservadas; nenhum valor; sem placeholder                                               |
+| Prova                            | candidato − delta → hash `60af8761…` exato (teste)                                                                     |
 
 Artefatos: `docs/n8n/GMJ-NetVision-Telegram-RC7.1.2-PREFIXOS.json`,
 `docs/n8n/RC7.1.2-PREFIXOS-NORMALIZER.diff`, `docs/n8n/RC7.1.2-PREFIXOS-MANIFEST.json`,
@@ -83,7 +83,7 @@ pelos testes da API, não por n8n real; smoke sem PostgreSQL/Huawei/n8n por dese
    flags AUTO=0 e drop-ins; sem migration. Restart planejado só na janela aprovada; health e
    `SOURCE_SHA=bf7bc52`.
 2. **n8n:** reconferir `activeVersionId 6a97fe4a…` + hash `60af8761…`; backup; `PATCH` só de
-   `nodes`/`connections`; GET (hash `92b5ea7f…`); `activate`; conferir.
+   `nodes`/`connections`; GET (hash `5c76e866…`); `activate`; conferir.
 
 ## 5. Rollback
 

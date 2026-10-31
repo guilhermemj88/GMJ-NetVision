@@ -1589,8 +1589,8 @@
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
       "position": [
-        -1650,
-        5100
+        -10576,
+        11600
       ]
     },
     {
@@ -1607,8 +1607,8 @@
       "type": "n8n-nodes-base.telegram",
       "typeVersion": 1.2,
       "position": [
-        -1350,
-        5100
+        -10272,
+        11600
       ],
       "webhookId": "rc71-s5-tg-detection-hook",
       "credentials": {
