@@ -1,0 +1,256 @@
+{
+  "artifact": "n8n-incident-forensics",
+  "generatedAtUtc": "2026-10-31T23:50:00Z",
+  "scope": "READ-ONLY closure of the n8n workflow delete incident",
+  "productionMutation": "none",
+  "host": {
+    "name": "automacao.gmjtelecom.com.br",
+    "address": "179.189.80.25",
+    "container": "n8n",
+    "image": "n8nio/n8n:2.4.4",
+    "dataDir": "/storage/n8n-data",
+    "state": {
+      "status": "running",
+      "startedAt": "2026-10-31T23:30:30.171223697Z",
+      "restartCount": 0,
+      "oomKilled": false,
+      "restartPolicy": "unless-stopped"
+    }
+  },
+  "workflow": {
+    "id": "SVh8Z-zUcSzQYOOJZ-DKP",
+    "name": "GMJ NetVision - Mitigacao DDoS - RC7.1.1 REVIEW-08 (fallback de grafico)",
+    "active": 1,
+    "isArchived": 0,
+    "versionId": "1f1405f8-e9bc-4d2e-91bc-4106dbb07285",
+    "activeVersionId": "6a97fe4a-31ea-49e6-b892-1ac55f85d115",
+    "versionCounter": 332,
+    "nodes": 58,
+    "connections": 59,
+    "draftGraphSha256": "6bc74d79b499c68ac20c1fd273f75bd17bec3eae51694de29ac5d2b560bf9d23",
+    "activeGraphSha256": "60af87618b6bfd2e1cf1678a16a769062151fa4ec320126fdb5498e3ee385870",
+    "historyRows": 2,
+    "sharedRows": 1,
+    "webhookRows": 5,
+    "publishHistoryRowsRestored": 1,
+    "publishHistoryIdRestored": 168,
+    "credentialRefs": [
+      "Header Auth account",
+      "Header Auth account FIBINET",
+      "Header Auth account NetVision Alarmes",
+      "Header Auth account NetVision Mitigacao OUT",
+      "Header Auth account VNT",
+      "Telegram gmjflow_bot"
+    ],
+    "webhooks": [
+      { "path": "netvision-mitigation", "method": "POST", "node": "Webhook NetVision OUT" },
+      { "path": "5d4b610d-7fbb-49e7-9e8e-6149072f5a90/webhook", "method": "POST", "node": "Telegram Trigger - Callback" },
+      { "path": "netvision-alarmes", "method": "POST", "node": "Webhook NetVision Alarmes" },
+      { "path": "netvision-alarmes-vnt", "method": "POST", "node": "Webhook NetVision Alarmes - VNT" },
+      { "path": "netvision-alarmes-fibinet", "method": "POST", "node": "Webhook NetVision Alarmes - Fibinet" }
+    ]
+  },
+  "incidentWindow": {
+    "utc": ["2026-10-31T23:29:00Z", "2026-10-31T23:31:00Z"],
+    "sigterm": "23:29:44.874",
+    "n8nInitialized": "23:30:37.343",
+    "n8nReady": "23:30:38.381",
+    "workflowActivated": "23:30:52.763",
+    "downtimeSecondsApprox": 54,
+    "webhooksRegisteredAgainAfterSecondsApprox": 68,
+    "checks": {
+      "logLinesMatchingFourWebhookPaths": 0,
+      "unknownWebhookForFourPaths": 0,
+      "executionsInWindow": 0,
+      "newErrorsInWindow": 0,
+      "preExistingNoise": [
+        "POST zabbix unknown webhook",
+        "fc117bf5 unknown webhook",
+        "test unknown webhook",
+        "GET test/contact/submit unknown webhook",
+        "X-Forwarded-For ValidationError"
+      ]
+    },
+    "lostEvents": {
+      "mediaDeliveryLogTotal": 198,
+      "mediaDeliveryLogInWindow": 0,
+      "lastDeliveryUtc": "2026-10-30T14:10:00Z",
+      "mitigationAutomationRecordInWindow": 0,
+      "apiJournalMentionsOfWebhookMediaDeliveryN8n": 0,
+      "conclusion": "no event was lost; no delivery was attempted during the window"
+    }
+  },
+  "backups": [
+    {
+      "path": "/root/n8n-backup-20261031T232818Z.json",
+      "sizeBytes": 169627,
+      "sha256Prefix": "214ad4fb",
+      "contains": "workflow graph JSON captured immediately before the DELETE",
+      "usableForHistoryRecovery": false
+    },
+    {
+      "path": "/root/backup_n8n_2026-01-22/database.sqlite",
+      "sizeBytes": 477000000,
+      "dateUtc": "2026-01-22",
+      "workflows": 9,
+      "containsTargetWorkflow": false,
+      "usableForHistoryRecovery": false,
+      "reason": "workflow created 2026-09-29, absent from a January backup"
+    },
+    {
+      "path": "/root/n8n_backup.tgz",
+      "sizeBytes": 51000000,
+      "dateUtc": "2026-01-24",
+      "usableForHistoryRecovery": false
+    },
+    {
+      "path": "/root/n8n-pre-restore-20261031T232944Z",
+      "databaseMd5": "6fb6507cca01f5d1b026357c6b2d98d1",
+      "databaseBytes": 1323446272,
+      "walBytes": 11400000,
+      "capturedAfterDelete": true,
+      "capturedWithContainerStopped": true
+    },
+    {
+      "path": "/root/n8n-restored-20261031T233741Z.sqlite",
+      "sizeBytes": 1323446272,
+      "sha256": "0f56f7902530469135e8bf8788b344696ecc915b57eb04c6333628f6d4af52ee",
+      "method": "sqlite3 .backup from a read-only connection (file:...?mode=ro)",
+      "integrityCheck": "ok",
+      "foreignKeyCheckViolations": 0,
+      "workflows": 24,
+      "restorable": true
+    }
+  ],
+  "forensics": {
+    "tool": "sqlite3 3.34.1 .recover on the post-delete copy only",
+    "recoveredRowsTotal": 22543,
+    "recoveredRowsForTargetWorkflow": 0,
+    "sanityCheck": "an existing workflow id appears 10604 times in the recovered output, so the tool works",
+    "rawByteScan": {
+      "workflowIdOccurrences": 500,
+      "occurrencesWithNodesJsonWithin30KB": 224,
+      "occurrencesWithFullWorkflowHistorySignature": 184,
+      "normalizeNodeNameOccurrences": 156,
+      "activeVersionNameOccurrences": 1,
+      "sampleFragments": [
+        "netvision-alarmes-fibinet | POST | Webhook NetVision Alarmes - Fibinet",
+        "workflow_statistics rows with workflowId + event names"
+      ]
+    },
+    "conclusion": "deleted row payloads survive in cell holes inside allocated pages; .recover enumerates only live cells and freelist pages, so table-level recovery is impossible; a reliable reconstruction would require manual b-tree page carving, which is not recommended",
+    "securityNote": "deleted workflow content persists physically in the live database file and must be handled as sensitive material"
+  },
+  "isolatedDemonstration": {
+    "image": "n8nio/n8n:2.4.4",
+    "binding": "127.0.0.1:5688",
+    "productionPortTouched": false,
+    "productionMutatingEndpointsUsed": 0,
+    "candidateFile": "docs/n8n/GMJ-NetVision-Telegram-RC7.1.2-PREFIXOS.json",
+    "candidateFileSha256": "85e8b071952235374a24e1879e3f58fd7d357adff1b1a5975603b63f44edce6c",
+    "importedNodes": 58,
+    "importedGraphSha256": "5c76e86618ada3b73d2c2aabf974a8b1fdaf7c24a12813711f93b3a11b5b5154",
+    "manifestGraphSha256": "5c76e86618ada3b73d2c2aabf974a8b1fdaf7c24a12813711f93b3a11b5b5154",
+    "hashMatch": true,
+    "normalizerJsonOutputSha256": "0b5e2984bda50c36bb68f7b625615e844d6f87cfbc9632f8c99c64d933573be4",
+    "manifestNormalizerAfterSha256": "0b5e2984bda50c36bb68f7b625615e844d6f87cfbc9632f8c99c64d933573be4",
+    "cases": [
+      {
+        "case": "A",
+        "input": "prefixes with the three AGLINK prefixes",
+        "rc712Valid": true,
+        "route": "ACTIVATED",
+        "prefixes": ["167.250.126.0/23", "167.250.126.0/24", "167.250.127.0/24"],
+        "qtdPrefixos": 3,
+        "telegramLines": ["<b>Prefixos (3):</b>", "• 167.250.126.0/23", "• 167.250.126.0/24", "• 167.250.127.0/24"]
+      },
+      {
+        "case": "B",
+        "input": "legacy event without the prefixes field",
+        "rc712Valid": true,
+        "route": "ACTIVATED",
+        "prefixes": [],
+        "qtdPrefixos": 0,
+        "telegramLines": ["<b>Prefixos:</b> <i>indisponível</i>"]
+      },
+      {
+        "case": "C",
+        "input": "prefixes: [] (partial readback)",
+        "rc712Valid": true,
+        "route": "ACTIVATED",
+        "prefixes": [],
+        "qtdPrefixos": 0,
+        "telegramLines": ["<b>Prefixos:</b> <i>indisponível</i>"]
+      }
+    ],
+    "failClosedGuardsObserved": [
+      "IDENTITY_INVALID when profileId is missing or malformed",
+      "TIMESTAMP_INVALID when occurredAt cannot be parsed",
+      "ACTIVATION_UNVERIFIED_OR_SCOPE_INVALID when policy/rt/bogonNode/mitigationNode/addressFamily are incomplete or addressFamily is not uppercase IPV4|IPV6"
+    ],
+    "operationalFindings": [
+      "n8n 2.4.4 removed update:workflow --active; the CLI instructs to use publish:workflow --id=...",
+      "after publishing via CLI the container must be restarted for production webhooks to register"
+    ],
+    "cleanup": "test container and its data volume removed; temporary files removed"
+  },
+  "apiKeyRecommendation": {
+    "id": "h7LjVLsx9tnzXsYJ",
+    "label": "deepseek",
+    "createdAtUtc": "2026-10-31T23:26:14.758Z",
+    "scopeCount": 43,
+    "dangerousScopes": [
+      "workflow:delete",
+      "workflow:activate",
+      "workflow:deactivate",
+      "workflow:create",
+      "workflow:update",
+      "credential:create",
+      "credential:update",
+      "credential:delete",
+      "credential:move",
+      "user:create",
+      "user:delete",
+      "user:changeRole",
+      "user:enforceMfa",
+      "project:create",
+      "project:delete",
+      "project:update",
+      "variable:create",
+      "variable:update",
+      "variable:delete",
+      "execution:delete",
+      "execution:retry",
+      "securityAudit:generate",
+      "sourceControl:pull"
+    ],
+    "recommendedScopes": ["workflow:read", "workflow:list", "execution:read", "execution:list"],
+    "action": "revoke and recreate with minimal scope; not changed in this mission",
+    "keyStorage": "n8n stores only the SHA-256 hash of the key; plaintext is unrecoverable from the database"
+  },
+  "publicationGate": {
+    "state": "suspended by the operator",
+    "publicApiPatchSupport": "no (405 Method Not Allowed)",
+    "supportedPath": "official editor",
+    "changedNode": "Normalizar Evento OUT",
+    "changedField": "parameters.jsonOutput",
+    "expectedDraftGraphSha256AfterSave": "5c76e86618ada3b73d2c2aabf974a8b1fdaf7c24a12813711f93b3a11b5b5154",
+    "rollback": "republish version 6a97fe4a-31ea-49e6-b892-1ac55f85d115 (active graph 60af8761...)"
+  },
+  "irrecoverableLosses": [
+    "workflow_history versions older than the active and draft",
+    "workflow_publish_history ids 149-167 (19 rows)",
+    "execution_entity rows for the workflow",
+    "workflow_statistics counters",
+    "workflow_history draft name/description metadata"
+  ],
+  "independentReviewChecklist": [
+    "Confirm production n8n databases were never written by this mission except the isolated /root/n8n-restored-*.sqlite file.",
+    "Confirm the only writes on the n8n host were: /root/n8n-restored-20261031T233741Z.sqlite creation, isolated test container lifecycle, and removal of temporary files.",
+    "Re-derive the graph hashes from the exported graphs and compare with the values above.",
+    "Validate that no PUT/PATCH/POST/DELETE reached /api/v1 or /rest/ on production.",
+    "Validate that no Huawei, NetVision, VNT, Fibinet or AUTO flag was changed.",
+    "Review the decision to leave the 1.32 GB post-delete copy in place, given its residual-data sensitivity.",
+    "Confirm the editor publication procedure changes exactly one node field and preserves the two pre-existing position deltas."
+  ]
+}
