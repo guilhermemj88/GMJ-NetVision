@@ -35,8 +35,8 @@ Ordem obrigatória: API → (observação) → n8n. Rollbacks independentes.
 
 1. Gate de leitura no host do n8n: `python3 - < n8n-readonly-reconcile.py` → precisa `GO_CANDIDATE_APPLIES`
    (active `6a97fe4a…`/`60af8761…` **e** rascunho `1f1405f8…`/`6bc74d79…`). Senão: **parar**.
-2. 🔒 Publicação: procedimento de `docs/n8n/RC7.1.2-PREFIXOS.md` §3 (PATCH só de `nodes`/`connections`
-   - activate, sessão do editor do operador). Diff: `docs/n8n/RC7.1.2-PREFIXOS-NORMALIZER.diff`.
+2. 🔒 Publicação: procedimento de `docs/n8n/RC7.1.2-PREFIXOS.md` §3 (PATCH só de `nodes`/`connections`,
+   depois activate, sessão do editor do operador). Diff: `docs/n8n/RC7.1.2-PREFIXOS-NORMALIZER.diff`.
 3. Pós: gate de leitura deve mostrar active = hash `5c76e866…`.
 
 **Rollback n8n** 🔒: reativar `6a97fe4a…` (histórico) → hash ativo `60af8761…`.
