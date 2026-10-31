@@ -88,6 +88,17 @@ function advertisedRoutesCommand(addressFamily: BgpAddressFamily, peerAddress: s
     : `display bgp routing-table peer ${peerAddress} advertised-routes`;
 }
 
+/**
+ * Read-only, peer-scoped RECEIVED routes: what the customer announces to us.
+ * Same constraints as the advertised read — the address comes from the persisted
+ * peer and the command runs in user view.
+ */
+function receivedRoutesCommand(addressFamily: BgpAddressFamily, peerAddress: string): string {
+  return addressFamily === 'IPV6'
+    ? `display bgp ipv6 routing-table peer ${peerAddress} received`
+    : `display bgp routing-table peer ${peerAddress} received`;
+}
+
 function safeSshError(error: unknown): string {
   const message = error instanceof Error ? error.message.toLowerCase() : '';
   if (message.includes('auth')) return 'SSH authentication failed';
@@ -273,6 +284,55 @@ export class HuaweiBgpSshService {
         return {
           status: 'UNSUPPORTED',
           errorSafe: 'O equipamento não reconheceu o comando de anúncios nesta família.',
+        };
+      }
+      if (commandOutputError(result.stdout)) {
+        return { status: 'COMMAND_FAILED', errorSafe: 'SSH command failed' };
+      }
+      return { status: 'SUCCESS', output: result.stdout };
+    } catch (error) {
+      return { status: 'COMMAND_FAILED', errorSafe: safeSshError(error) };
+    }
+  }
+
+  /**
+   * Read-only, peer-scoped RECEIVED routes (`display bgp routing-table peer
+   * <peer> received`). Mirrors `readAdvertisedRoutes`: no configuration, nothing
+   * persisted, command validated by the READ-ONLY allowlist before the session.
+   */
+  async readReceivedRoutes(
+    device: HostRecord,
+    input: { peerAddress: string; addressFamily: BgpAddressFamily },
+  ): Promise<BgpAdvertisedRoutesReadResult> {
+    let client: SshClient;
+    try {
+      client = await this.createClient(device);
+    } catch (error) {
+      return { status: 'COMMAND_FAILED', errorSafe: safeSshError(error) };
+    }
+
+    const host = device.ssh!.host;
+    let command: string;
+    try {
+      command = assertReadOnlyCommand(
+        receivedRoutesCommand(input.addressFamily, input.peerAddress),
+      );
+    } catch {
+      return {
+        status: 'COMMAND_FAILED',
+        errorSafe: 'Comando de rotas recebidas rejeitado pela allowlist READ-ONLY',
+      };
+    }
+    try {
+      const results = await client.execute(host, ['screen-length 0 temporary', command]);
+      const result = results.at(-1);
+      if (!result || result.exitCode !== 0) {
+        return { status: 'COMMAND_FAILED', errorSafe: 'SSH command failed' };
+      }
+      if (unsupportedCommandOutput(result.stdout)) {
+        return {
+          status: 'UNSUPPORTED',
+          errorSafe: 'O equipamento não reconheceu o comando de rotas recebidas nesta família.',
         };
       }
       if (commandOutputError(result.stdout)) {

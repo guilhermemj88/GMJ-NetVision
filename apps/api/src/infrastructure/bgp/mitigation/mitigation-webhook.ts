@@ -57,6 +57,12 @@ export interface MitigationWebhookPayload {
   direction: 'rx' | 'tx' | null;
   directionSource: string | null;
   fieldsUnavailable: string[];
+  /**
+   * ESCOPO VERIFICADO: prefixos reais recebidos do cliente. `null` = sem
+   * evidencia completa (`fieldsUnavailable` contem `'prefixes'`). Aditivo: os
+   * consumidores antigos ignoram o campo.
+   */
+  prefixes: string[] | null;
 }
 
 /** O sender recebe os headers prontos: o token vai em HEADER, nunca na URL. */
@@ -110,6 +116,7 @@ export function buildMitigationWebhookPayload(
     direction: notification.direction ?? null,
     directionSource: notification.directionSource ?? null,
     fieldsUnavailable: notification.fieldsUnavailable ?? [],
+    prefixes: notification.prefixes ?? null,
   };
 }
 

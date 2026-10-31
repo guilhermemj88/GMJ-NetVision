@@ -62,6 +62,15 @@ export interface MitigationNotification {
    * "indisponivel" em vez de inventar valor.
    */
   fieldsUnavailable?: string[];
+  /**
+   * ESCOPO VERIFICADO: prefixos REAIS recebidos do cliente, lidos no mesmo
+   * escopo do comando (perfil + policy + peer). `null`/ausente = sem evidencia
+   * completa (`'prefixes'` entra em `fieldsUnavailable`).
+   *
+   * Identifica o ESCOPO afetado — nao substitui a prova fisica de RT/LP em cada
+   * rota e nunca promove `verified` nem `delivered`.
+   */
+  prefixes?: string[] | null;
   /** Sempre `true` nesta versão (SIMULATION_ONLY): nenhuma alteração foi feita. */
   simulation: boolean;
   customer: string | null;

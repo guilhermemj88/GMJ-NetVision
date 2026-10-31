@@ -35,6 +35,11 @@ import {
   type ScopeConfirmationRequester,
   type ScopeConfirmationScope,
 } from './mitigation-scope-confirmation';
+import {
+  selectMitigationScopePrefixes,
+  type MitigationScopePrefixReader,
+  type MitigationScopePrefixSelection,
+} from './mitigation-scope-prefixes';
 
 // Servico unico das acoes de mitigacao.
 //
@@ -328,6 +333,18 @@ export interface MitigationCommandDeps {
     policyName: string;
     profileIds: string[];
   }) => void | Promise<void>;
+  /**
+   * ESCOPO VERIFICADO: le os prefixos REAIS recebidos do cliente para o alvo.
+   *
+   * Consultado SOMENTE depois de uma escrita real verificada (ATIVACAO), para
+   * anexar `prefixes` ao evento `MITIGATION_VERIFIED`. Best effort por
+   * contrato: ausente, excecao ou leitura incompleta => `prefixes: null` e
+   * `'prefixes'` em `fieldsUnavailable`. Nunca altera `verified`, o resultado
+   * fisico, o `eventId` nem o ACK.
+   */
+  scopePrefixes?: MitigationScopePrefixReader;
+  /** ASN local do device (apenas `prependLocal` do parser de escopo). */
+  scopePrefixesLocalAs?: (deviceId: string) => Promise<bigint | null>;
 }
 
 type MitigationCommandBase = Omit<
@@ -927,6 +944,14 @@ export class MitigationCommandService {
           profile.mitigationRt,
           this.labels,
         );
+        // ESCOPO VERIFICADO: so depois de uma escrita REAL e verificada. Leitura
+        // READ-ONLY, best effort: nunca altera `check.verified` nem o resultado.
+        // Fora desse caminho o campo simplesmente NAO existe (consumidores
+        // antigos e eventos simulados seguem identicos).
+        const scopePrefixes =
+          check.verified && liveDevice
+            ? await this.readScopePrefixes(profile, primaryPeer)
+            : undefined;
         const sync = await this.record(profile, activate, check.verified, pair, null);
         await this.publish(
           check.verified ? 'MITIGATION_VERIFIED' : 'MITIGATION_FAILED',
@@ -936,6 +961,7 @@ export class MitigationCommandService {
             primaryPeer,
             effectiveBandwidthBps: effectiveBandwidth,
             simulation: !liveDevice,
+            scopePrefixes,
           },
           outcome,
           deferred,
@@ -1424,6 +1450,8 @@ export class MitigationCommandService {
       affectedPeers: string[];
       sharedPolicy: boolean;
       sharedPolicyTargets: MitigationSharedTargetSummary[];
+      /** ESCOPO VERIFICADO: presente na ativacao real verificada. */
+      scopePrefixes?: MitigationScopePrefixSelection | undefined;
     },
     outcome: MitigationNotificationOutcome,
     deferred = false,
@@ -1461,6 +1489,12 @@ export class MitigationCommandService {
         addressFamily: target.addressFamily,
       })),
       occurredAt: this.now().toISOString(),
+      ...(info.scopePrefixes
+        ? {
+            prefixes: info.scopePrefixes.prefixes,
+            fieldsUnavailable: info.scopePrefixes.fieldsUnavailable,
+          }
+        : {}),
     };
     // best-effort: falha de midia NUNCA afeta o motor
     const result = await this.read(() => publisher.publish(notification), {
@@ -1469,6 +1503,47 @@ export class MitigationCommandService {
     });
     outcome.published = result.published;
     outcome.skipped = result.skipped;
+  }
+
+  /**
+   * ESCOPO VERIFICADO (best effort, fail-closed).
+   *
+   * Le os prefixos REAIS recebidos do cliente no escopo ja mitigado. Qualquer
+   * ausencia/erro/ambiguidade resulta em `prefixes: null` + `fieldsUnavailable`,
+   * nunca em lista parcial e nunca em falha do comando: o resultado fisico ja
+   * foi verificado antes desta leitura.
+   */
+  private async readScopePrefixes(
+    profile: MitigationProfileRecord,
+    primaryPeer: string | null,
+  ): Promise<MitigationScopePrefixSelection> {
+    const reader = this.deps.scopePrefixes;
+    if (!reader || primaryPeer === null) return { prefixes: null, fieldsUnavailable: ['prefixes'] };
+    const localAs = await this.read(
+      () => this.deps.scopePrefixesLocalAs?.(profile.deviceId) ?? Promise.resolve(null),
+      null,
+    );
+    const evidence = await this.read(
+      () =>
+        reader({
+          profileId: profile.id,
+          deviceId: profile.deviceId,
+          policyName: profile.policyName,
+          peerAddress: primaryPeer,
+          addressFamily: (profile.addressFamily as 'IPV4' | 'IPV6' | null) ?? null,
+        }),
+      null,
+    );
+    return selectMitigationScopePrefixes({
+      evidence,
+      expected: {
+        profileId: profile.id,
+        policy: profile.policyName,
+        peer: primaryPeer,
+        addressFamily: (profile.addressFamily as 'IPV4' | 'IPV6' | null) ?? null,
+      },
+      localAs,
+    });
   }
 
   private async read<T>(operation: () => Promise<T>, fallback: T): Promise<T> {

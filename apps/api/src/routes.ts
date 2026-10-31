@@ -917,6 +917,44 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     lifecycleSettings.enabled &&
     /^(1|true|yes|on)$/i.test(process.env.MITIGATION_AUTO_EXECUTION_ENABLED?.trim() ?? '');
 
+  /**
+   * ESCOPO VERIFICADO: prefixos REAIS recebidos do cliente, lidos no escopo do
+   * comando. Vinculo conferido no BANCO (perfil -> device + policy) e no proprio
+   * peer; sem isso, nenhuma lista e produzida. READ-ONLY.
+   */
+  const readMitigationScopePrefixes = async (query: {
+    profileId: string;
+    deviceId: string;
+    policyName: string;
+    peerAddress: string | null;
+    addressFamily: 'IPV4' | 'IPV6' | null;
+  }) => {
+    const { peerAddress } = query;
+    if (peerAddress === null || query.addressFamily === null) return null;
+    const profile = await mitigationRepository.getProfile(query.profileId);
+    if (
+      !profile ||
+      profile.deviceId !== query.deviceId ||
+      profile.policyName !== query.policyName
+    )
+      return null;
+    const peers = await mitigationRepository.listProfilePeers(profile.id);
+    if (!peers.some((peer) => peer.peerAddress === peerAddress)) return null;
+    const host = await hosts.getHost(query.deviceId);
+    if (!host || !host.sshEnabled || !host.ssh?.host || !host.ssh.username) return null;
+    const reading = await mitigationSsh.readReceivedRoutes(host, {
+      peerAddress,
+      addressFamily: query.addressFamily,
+    });
+    if (reading.status !== 'SUCCESS') return null;
+    return {
+      profileId: profile.id,
+      policy: profile.policyName,
+      peer: peerAddress,
+      receivedRoutes: reading.output,
+    };
+  };
+
   const mitigationCommands = new MitigationCommandService({
     autoEvidence: (id, evidence) =>
       revalidateAutoEvidence?.(id, evidence) ?? Promise.resolve(false),
@@ -965,6 +1003,14 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     expectedNodes: async (profileId) =>
       mitigationService.discoverySnapshot(profileId)?.existingNodes ?? null,
     scopeLock: mitigationScopeLock,
+    // ESCOPO VERIFICADO: prefixos reais do cliente no evento verificado. So no
+    // executor HUAWEI (o caminho MOCK e simulacao e nunca le o equipamento).
+    ...(mitigationExecutionConfig.executor === 'HUAWEI'
+      ? {
+          scopePrefixes: readMitigationScopePrefixes,
+          scopePrefixesLocalAs: (deviceId: string) => bgpRepository.getDeviceLocalAs(deviceId),
+        }
+      : {}),
     // Kill switch reconsultado pelo command service imediatamente antes de
     // qualquer escrita de origem AUTO (fail-closed se ausente/erro).
     autoExecutionEnabled: () => autoExecutionEnabled,
