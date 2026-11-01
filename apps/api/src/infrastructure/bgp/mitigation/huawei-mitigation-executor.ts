@@ -18,6 +18,7 @@ import {
   type MitigationRemovalInput,
 } from './mitigation-executor';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
+import { planNodeOccupancy, type NodeOccupancyPlan } from './mitigation-node-snapshot';
 import {
   assertMitigationCommandShape,
   buildMitigationActivateCommands,
@@ -111,6 +112,8 @@ export interface MitigationPreflightResult {
   mitigationNodeMatches: boolean;
   /** Apenas UM dos nodes esta correto -> reconciliation required. */
   partial: boolean;
+  /** Ocupacao dos nodes do par + snapshot dos nodes preexistentes (Caso B). */
+  nodeOccupancy?: NodeOccupancyPlan | null;
   /** Nodes lidos pelo MESMO parser do read-back pos-commit (display route-policy). */
   readBackNodes: number[];
   /** Resumo do MESMO verify usado no pos-commit, sobre a saida real. */
@@ -282,6 +285,7 @@ export class HuaweiMitigationExecutor {
     // equipamento ANTES de qualquer escrita (fail-closed se nao interpretar).
     let readBackOutput: string | null = null;
     let readBackError: string | null = null;
+    let nodeOccupancy: NodeOccupancyPlan | null = null;
     try {
       readBackOutput = await this.deps.ssh.readMitigationRoutePolicy(device, input.policyName);
     } catch (error) {
@@ -359,6 +363,30 @@ export class HuaweiMitigationExecutor {
     });
 
     if (mode === 'ACTIVATE') {
+      // OCUPACAO DOS NODES TEMPORARIOS (Caso A x Caso B).
+      // Nodes livres: criar. Nodes ocupados: NUNCA sobrescrever - capturar o
+      // snapshot integral de cada node preexistente, identificar quais nodes
+      // conflitam e BLOQUEAR (nao existe procedimento de substituicao
+      // autorizado). O snapshot fica no resultado para informar o conflito e
+      // permitir restauracao exata se a substituicao for autorizada um dia.
+      const occupancy = planNodeOccupancy({
+        readBack: routePolicyConfiguration ?? '',
+        policyName: input.policyName,
+        pair: { bogonNode: input.bogonNode, mitigationNode: input.mitigationNode },
+        capturedAt: new Date().toISOString(),
+      });
+      nodeOccupancy = occupancy;
+      checks.push({
+        id: 'node_occupancy',
+        ok: !occupancy.blocked,
+        detail:
+          occupancy.status === 'FREE_PAIR'
+            ? `nodes ${input.bogonNode} e ${input.mitigationNode} livres (caso A)`
+            : `${occupancy.status}: nodes [${occupancy.conflictingNodes.join(', ')}] ja existem ` +
+              `(caso B) - snapshot ${occupancy.snapshots.length} capturado(s), ` +
+              `motivo ${occupancy.reason}`,
+      });
+
       const bogonFree =
         routePolicyConfiguration !== null && !existingNodes.includes(input.bogonNode);
       checks.push({
@@ -484,6 +512,7 @@ export class HuaweiMitigationExecutor {
       mitigationNodeExists,
       mitigationNodeMatches,
       partial,
+      nodeOccupancy,
       readBackNodes: readBackNodes.map((entry) => entry.node),
       readBackSummary,
       readBackExcerpt: readBackOutput ? excerpt(readBackOutput) : '',

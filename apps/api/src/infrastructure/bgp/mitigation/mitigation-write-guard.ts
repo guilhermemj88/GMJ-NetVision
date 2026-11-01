@@ -82,8 +82,8 @@ export function buildMitigationActivateCommands(plan: MitigationWritePlan): stri
     ` if-match ip-prefix ${safe.bogonPrefixList}`,
     `route-policy ${safe.policyName} permit node ${safe.mitigationNode}`,
     ` if-match ip-prefix ${safe.targetPrefixList}`,
-    ...(aglink ? [` apply local-preference ${AGLINK_BGP_PLAN.localPreference}`] : []),
-    ` apply extcommunity rt ${safe.rt}${aglink ? '' : ' additive'}`,
+    ...(aglink ? AGLINK_BGP_PLAN.activationApplyClauses.map((clause) => ` ${clause}`) : []),
+    ...(aglink ? [] : [` apply extcommunity rt ${safe.rt} additive`]),
     'commit',
   ];
 }

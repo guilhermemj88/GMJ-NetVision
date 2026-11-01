@@ -602,3 +602,71 @@ describe('read-back real (display route-policy)', () => {
     expect(result.blockedReasons.join(' ')).toMatch(/route_policy_readback/);
   });
 });
+
+describe('ocupacao dos nodes temporarios (caso A x caso B)', () => {
+  const OCCUPIED_BOTH = [
+    'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
+    ' if-match ip-prefix PREFIX-OPERADOR',
+    'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
+    ' if-match ip-prefix PREFIX-OPERADOR',
+    ' apply local-preference 900',
+    'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
+    ' if-match ip-prefix PREFIX-HORIZONTES-IPV4',
+    ' apply extcommunity rt 268568:110 additive',
+    'route-policy PL-HORIZONTES_IPv4-IN permit node 50',
+  ].join('\n');
+
+  const OCCUPIED_NODE1 = [
+    'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
+    ' if-match ip-prefix PREFIX-OPERADOR',
+    ROUTE_POLICY,
+  ].join('\n');
+
+  it('caso A: par livre passa e nao captura snapshot', async () => {
+    const result = await executor(new FakeSsh()).preflight(device(), { ...INPUT });
+    expect(result.ok).toBe(true);
+    expect(result.nodeOccupancy).toMatchObject({
+      status: 'FREE_PAIR',
+      blocked: false,
+      snapshots: [],
+      reason: 'NONE',
+    });
+    expect(result.checks.find((check) => check.id === 'node_occupancy')?.ok).toBe(true);
+  });
+
+  it('caso B total: bloqueia, captura snapshot integral e nao escreve', async () => {
+    const ssh = new FakeSsh();
+    ssh.routePolicyConfiguration = OCCUPIED_BOTH;
+    const result = await executor(ssh).preflight(device(), { ...INPUT });
+    expect(result.ok).toBe(false);
+    expect(result.nodeOccupancy).toMatchObject({
+      status: 'FULLY_OCCUPIED',
+      conflictingNodes: [1, 2],
+      blocked: true,
+      reason: 'NODE_OCCUPIED_REPLACEMENT_NOT_AUTHORIZED',
+    });
+    expect(result.nodeOccupancy?.snapshots.map((entry) => entry.node)).toEqual([1, 2]);
+    expect(result.nodeOccupancy?.snapshots[1]?.clauses).toEqual([
+      'if-match ip-prefix PREFIX-OPERADOR',
+      'apply local-preference 900',
+    ]);
+    expect(result.checks.find((check) => check.id === 'node_occupancy')?.detail).toContain(
+      'caso B',
+    );
+    expect(ssh.applied).toHaveLength(0);
+  });
+
+  it('caso B parcial: identifica exatamente o node ocupado', async () => {
+    const ssh = new FakeSsh();
+    ssh.routePolicyConfiguration = OCCUPIED_NODE1;
+    const result = await executor(ssh).preflight(device(), { ...INPUT });
+    expect(result.ok).toBe(false);
+    expect(result.nodeOccupancy).toMatchObject({
+      status: 'PARTIALLY_OCCUPIED',
+      bogon: 'OCCUPIED',
+      mitigation: 'FREE',
+      conflictingNodes: [1],
+    });
+    expect(result.nodeOccupancy?.snapshots).toHaveLength(1);
+  });
+});

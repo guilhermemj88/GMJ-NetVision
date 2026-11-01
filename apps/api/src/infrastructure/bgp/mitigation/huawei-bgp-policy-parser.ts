@@ -65,8 +65,23 @@ const FAMILY_HEADER = /^[ \t]*(ipv4|ipv6)-family[ \t]+(\S+)/i;
 /** `route-policy PL-IN permit node 11` */
 const ROUTE_POLICY_NODE =
   /^[ \t]*route-policy[ \t]+(\S+)[ \t]+(permit|deny)[ \t]+node[ \t]+(\d+)[ \t]*$/i;
-/** ` apply extcommunity rt 268568:660 additive` (dentro de um node) */
-const APPLY_EXTCOMMUNITY_RT = /^[ \t]*apply[ \t]+extcommunity[ \t]+rt[ \t]+(\S+)/i;
+/**
+ * ` apply extcommunity rt 268568:140 rt 268568:660 additive` (dentro de um node).
+ *
+ * Evidencia fisica (BHE-VTA-F1A, VRP 8.220): o equipamento NAO usa duas linhas
+ * `apply extcommunity` no mesmo node — zero ocorrencias — e usa a forma
+ * multi-RT em uma unica instrucao (`rt A rt B additive`, 1 ocorrencia real).
+ * Por isso a extracao varre TODAS as RTs da linha, nao apenas a primeira.
+ */
+const APPLY_EXTCOMMUNITY_RT = /^[ \t]*apply[ \t]+extcommunity[ \t]+rt[ \t]+(.+)$/i;
+const ROUTE_TARGET_VALUE = /\b(\d{1,10}:\d{1,10})\b/g;
+
+/** Todas as RTs de uma linha `apply extcommunity rt ...` (ordem preservada). */
+export function appliedRouteTargets(line: string): string[] {
+  const matched = APPLY_EXTCOMMUNITY_RT.exec(line);
+  if (!matched) return [];
+  return [...matched[1]!.matchAll(ROUTE_TARGET_VALUE)].map((entry) => entry[1]!);
+}
 /** ` if-match ip-prefix PREFIX8to24` (dentro de um node) */
 const IF_MATCH_IP_PREFIX = /^[ \t]*if-match[ \t]+ip-prefix[ \t]+(\S+)/i;
 
@@ -194,9 +209,8 @@ export function parseHuaweiRoutePolicyNodes(
       if (prefixList && !current.ifMatchIpPrefix.includes(prefixList)) {
         current.ifMatchIpPrefix.push(prefixList);
       }
-      const routeTarget = APPLY_EXTCOMMUNITY_RT.exec(line)?.[1];
-      if (routeTarget && !current.routeTargets.includes(routeTarget)) {
-        current.routeTargets.push(routeTarget);
+      for (const routeTarget of appliedRouteTargets(line)) {
+        if (!current.routeTargets.includes(routeTarget)) current.routeTargets.push(routeTarget);
       }
     }
 
@@ -342,9 +356,8 @@ export function parseHuaweiRoutePolicyDisplay(
     if (prefixList && !current.ifMatchIpPrefix.includes(prefixList)) {
       current.ifMatchIpPrefix.push(prefixList);
     }
-    const routeTarget = APPLY_EXTCOMMUNITY_RT.exec(line)?.[1];
-    if (routeTarget && !current.routeTargets.includes(routeTarget)) {
-      current.routeTargets.push(routeTarget);
+    for (const routeTarget of appliedRouteTargets(line)) {
+      if (!current.routeTargets.includes(routeTarget)) current.routeTargets.push(routeTarget);
     }
   }
 

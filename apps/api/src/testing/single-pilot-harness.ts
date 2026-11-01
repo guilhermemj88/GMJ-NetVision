@@ -48,7 +48,7 @@ export class PilotFakeHuawei implements MitigationSshPort {
       `route-policy ${P.policy} permit node 2`,
       ' if-match ip-prefix AGLINK-BLOCO-TODO-23',
       ' apply local-preference 1100',
-      ` apply extcommunity rt ${P.rt}`,
+      ' apply extcommunity rt 268568:140 rt 268568:660 additive',
     ];
     let installed = sent.filter((line) => line !== 'system-view' && line !== 'commit');
     if (this.partial)

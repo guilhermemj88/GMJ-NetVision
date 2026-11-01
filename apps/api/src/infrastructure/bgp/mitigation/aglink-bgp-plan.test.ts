@@ -39,9 +39,11 @@ function evaluate(config: string, prefix: string, incomingRts = ['268568:330']) 
     result.accepted = true;
     const lp = /apply local-preference (\d+)/.exec(block)?.[1];
     if (lp) result.localPreference = Number(lp);
-    for (const m of block.matchAll(/apply extcommunity rt (\d+:\d+)( additive)?/g)) {
-      if (!m[2]) result.rts = [];
-      if (!result.rts.includes(m[1]!)) result.rts.push(m[1]!);
+    for (const m of block.matchAll(/apply extcommunity rt ([^\n]+)/g)) {
+      const additive = /\badditive\b/.test(m[1]!);
+      const values = [...m[1]!.matchAll(/(\d+:\d+)/g)].map((x) => x[1]!);
+      if (!additive) result.rts = [];
+      for (const rt of values) if (!result.rts.includes(rt)) result.rts.push(rt);
     }
     return result; // additive is not continue/goto
   }
@@ -68,7 +70,7 @@ describe('AGLINK BGP semantics: transit export marking, not a different local fo
     },
   );
   it.each(prefixes)(
-    '%s stays selected and carries mitigation RT without the normal-export RT; manual REMOVE restores baseline',
+    '%s stays selected and carries mitigation RT on top of the normal attributes; manual REMOVE restores baseline',
     async (prefix) => {
       const h = await createPilotHarness();
       const before = evaluate(h.ssh.config(), prefix);
@@ -79,8 +81,10 @@ describe('AGLINK BGP semantics: transit export marking, not a different local fo
       const during = evaluate(h.ssh.config(), prefix);
       expect(before).toMatchObject({ accepted: true, node: 10, localPreference: 1100 });
       expect(before.rts).toEqual(['268568:330', '268568:140']);
+      // Contrato definitivo: LP1100 e RT140 preservados, RT660 acrescentada com
+      // additive e a RT330 recebida do peer intacta.
       expect(during).toMatchObject({ accepted: true, node: 2, localPreference: 1100 });
-      expect(during.rts).toEqual(['268568:660']);
+      expect(during.rts).toEqual(['268568:330', '268568:140', '268568:660']);
       expect(during.localPreference).toBeGreaterThan(800);
       const removed = await h.commands.execute({
         requestId: `human-${prefix}`,
@@ -105,7 +109,11 @@ describe('AGLINK BGP semantics: transit export marking, not a different local fo
     ).toEqual(commands);
     expect(commands).toContain(` if-match ip-prefix ${A.targetPrefixList}`);
     expect(commands).toContain(' apply local-preference 1100');
-    expect(commands.join('\n')).not.toMatch(/268568:140|goto next-node/);
+    // Forma fisica validada no equipamento: uma unica instrucao multi-RT.
+    expect(commands).toContain(' apply extcommunity rt 268568:140 rt 268568:660 additive');
+    expect(commands.join('\n')).not.toMatch(/goto next-node/);
+    expect(commands.filter((line) => line.includes('apply extcommunity'))).toHaveLength(1);
+    expect(commands.join('\n')).not.toMatch(/node (10|1000)\b/);
   });
   it('does not permit an unrelated public prefix previously caught by the broad wildcard', async () => {
     const h = await activate();
@@ -121,12 +129,13 @@ describe('AGLINK BGP semantics: transit export marking, not a different local fo
       const h = await activate();
       let text = h.ssh.config();
       if (fault === 'localpref')
-        text = text.replace('apply local-preference 1100', 'apply local-preference 100');
-      if (fault === 'normalRt')
         text = text.replace(
-          'apply extcommunity rt 268568:660',
-          'apply extcommunity rt 268568:660 rt 268568:140',
+          'apply local-preference 1100\n apply extcommunity rt 268568:140 rt 268568:660 additive',
+          'apply local-preference 100\n apply extcommunity rt 268568:140 rt 268568:660 additive',
         );
+      if (fault === 'normalRt')
+        // Sem `additive` o node passa a SUBSTITUIR as RTs: divergencia.
+        text = text.replace('rt 268568:660 additive', 'rt 268568:660');
       if (fault === 'scope')
         text = text.replace(
           `if-match ip-prefix ${A.targetPrefixList}`,
@@ -146,15 +155,16 @@ describe('AGLINK BGP semantics: transit export marking, not a different local fo
       false,
     );
   });
-  it('replaces a normal-export RT received from the peer instead of trusting additive', async () => {
+  it('adds the mitigation RT with additive, so the normal RT received from the peer is preserved', async () => {
     const h = await activate();
-    expect(evaluate(h.ssh.config(), prefixes[0]!, ['268568:140', '268568:330']).rts).toEqual([
-      A.rt,
-    ]);
+    const during = evaluate(h.ssh.config(), prefixes[0]!, ['268568:140', '268568:330']);
+    expect(during.rts).toEqual(['268568:140', '268568:330', '268568:660']);
+    expect(during.localPreference).toBe(1100);
+    // Remover o `additive` faria o node substituir as RTs: readback rejeita.
     expect(
       verifyActivation(
         A.policy,
-        h.ssh.config().replace('rt 268568:660', 'rt 268568:660 additive'),
+        h.ssh.config().replace('rt 268568:660 additive', 'rt 268568:660'),
         pair,
         A.rt,
         labels,

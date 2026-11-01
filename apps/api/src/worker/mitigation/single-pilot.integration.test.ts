@@ -39,7 +39,7 @@ describe('single pilot through real FAST adapter, command service, Huawei execut
       `route-policy ${P.policy} permit node 2`,
       ' if-match ip-prefix AGLINK-BLOCO-TODO-23',
       ' apply local-preference 1100',
-      ` apply extcommunity rt ${P.rt}`,
+      ' apply extcommunity rt 268568:140 rt 268568:660 additive',
       'commit',
     ]);
     expect(h.lifecycle.pilotStatus()?.state).toBe('ACTIVE');
