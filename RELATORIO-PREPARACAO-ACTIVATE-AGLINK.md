@@ -87,6 +87,8 @@ O VRP8 avalia em ordem crescente de sequência e **termina no primeiro node que 
 
 ## C.3 Por que remover RT140/RT330 é obrigatório (e não um defeito)
 
+> ⚠️ **SUPERSEDED (2026-11-01):** a decisão definitiva do responsável técnico determina **preservar** LP1100, RT140 e RT330 com `additive`. A implementação foi ajustada e está descrita em [`RELATORIO-CONTRATO-DEFINITIVO-MITIGACAO.md`](RELATORIO-CONTRATO-DEFINITIVO-MITIGACAO.md). O texto abaixo fica como registro do estado anterior, mas **não** representa mais o comportamento do código.
+
 Esta é a parte em que a premissa da missão não se sustenta no equipamento real. **As policies de exportação dos provedores normais não negam uma rota só por ela carregar RT660:**
 
 | Policy de exportação | Como trata RT660 |
