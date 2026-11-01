@@ -1,0 +1,118 @@
+{
+  "artifact": "sempre-ddos-rt660-isolation",
+  "authorizedChange": "create deny node 5 with if-match extcommunity-filter MITIGACAO in PL-SEMPRE-DDoS-IPv4-OUT",
+  "device": "BHE-VTA-F1A-BGP-01",
+  "model": "Huawei NetEngine 8000 F1A-8H20Q",
+  "vrp": "8.220 (V800R022C00SPC600)",
+  "windowUtc": "2026-11-01T13:03:12Z/2026-11-01T13:05:00Z",
+  "result": "PASS",
+  "before": {
+    "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+    "nodes": [
+      { "node": 50, "action": "permit", "match": "if-match extcommunity-filter MITIGACAO", "matchedCounts": 0 },
+      { "node": 100, "action": "deny", "matchedCounts": 0 }
+    ],
+    "node5Present": false,
+    "mitigacaoFilter": "index 10 permit rt : 268568:660",
+    "pendingCommit": "none - Info: The current configuration is the same as the next startup configuration file",
+    "configSessions": "only VTY 0 guilherme3, Lock column = -",
+    "capturedAtLocal": "2026-11-01 10:01:34-03:00"
+  },
+  "commandsSent": [
+    "system-view",
+    "route-policy PL-SEMPRE-DDoS-IPv4-OUT deny node 5",
+    "if-match extcommunity-filter MITIGACAO",
+    "quit"
+  ],
+  "deviceResponses": [
+    "[~BHE-VTA-F1A-BGP-01]route-policy PL-SEMPRE-DDoS-IPv4-OUT deny node 5",
+    "Info: New Sequence of this List",
+    "[*BHE-VTA-F1A-BGP-01-route-policy]if-match extcommunity-filter MITIGACAO",
+    "[*BHE-VTA-F1A-BGP-01-route-policy]quit",
+    "[*BHE-VTA-F1A-BGP-01]"
+  ],
+  "controlDeviation": {
+    "occurred": true,
+    "description": "The guarded-commit helper used 'display configuration changes', which on VRP8 compares running vs startup rather than candidate vs running. The guard therefore saw no expected lines and withheld an explicit commit. The discard path then answered 'y' to 'Uncommitted configurations found, commit them before exiting? [Y(yes)/N(no)/C(cancel)]', which commits instead of discarding.",
+    "netEffect": "commit executed at 2026-11-01 10:03:20-03:00 with exactly and only the authorized change in the running configuration",
+    "collateralImpact": "none, proven by the running vs startup diff containing exactly two lines",
+    "rootCause": "helper defect: wrong verification command and inverted discard response",
+    "severity": "process-level, no configuration impact"
+  },
+  "after": {
+    "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+    "nodes": [
+      { "node": 5, "action": "deny", "match": "if-match extcommunity-filter MITIGACAO", "matchedCounts": 0 },
+      { "node": 50, "action": "permit", "match": "if-match extcommunity-filter MITIGACAO", "matchedCounts": 0 },
+      { "node": 100, "action": "deny", "matchedCounts": 0 }
+    ],
+    "evaluationOrder": "5 -> 50 -> 100, so mitigated routes are denied before the permit 50",
+    "readbackAtLocal": "2026-11-01 10:04:00-03:00"
+  },
+  "provenSingleChange": {
+    "command": "display configuration changes",
+    "outputLines": [
+      "+ route-policy PL-SEMPRE-DDoS-IPv4-OUT deny node 5",
+      "+  if-match extcommunity-filter MITIGACAO"
+    ],
+    "unexpectedLines": 0
+  },
+  "bgpSessions": [
+    { "peer": "10.200.201.2", "name": "AGLINK", "before": "Established", "after": "Established", "uptime": "0139h56m" },
+    { "peer": "198.19.4.145", "name": "COMPUTIZE-DDoS", "before": "Established", "after": "Established", "uptime": "0139h56m" },
+    { "peer": "138.99.240.117", "name": "SEMPRE", "before": "Established", "after": "Established", "uptime": "0139h56m" },
+    { "peer": "138.99.240.141", "name": "SEMPRE-DDoS", "before": "Connect", "after": "Active", "established": false }
+  ],
+  "otherPolicies": {
+    "PL-AGLINK_IPv4-IN": "intact - permit 10 (AGLINK-BLOCO-TODO-23, local-preference 1100, extcommunity rt 268568:140 additive) + deny 1000; nodes 1 and 2 still absent",
+    "PL-COMPUTIZE-IPv4-OUT": "intact - permit 200, permit 300, deny 1000 unchanged",
+    "allOthers": "no differences in the running vs startup diff"
+  },
+  "commitHistory": [
+    { "commitId": 1000001962, "user": "guilherme3", "timestampLocal": "2026-11-01 10:03:20-03:00", "note": "this change" },
+    { "commitId": 1000001961, "user": "julioimp", "timestampLocal": "2026-10-28 21:49:45-03:00" },
+    { "commitId": 1000001960, "user": "julioimp", "timestampLocal": "2026-10-27 11:05:10-03:00" }
+  ],
+  "concurrency": "no third-party commit between baseline and change",
+  "autoFlags": {
+    "MITIGATION_AUTO_EXECUTION_ENABLED": "0",
+    "MITIGATION_AUTO_LIFECYCLE_ENABLED": "0",
+    "MITIGATION_AUTO_REMOVE_ENABLED": "0",
+    "MITIGATION_AUTO_PERSISTENCE_ENABLED": "1",
+    "MITIGATION_AUTO_MAX_ACTIVE": "1"
+  },
+  "mitigationState": { "NORMAL": 38, "DISABLED": 1, "MITIGATED": 0 },
+  "mitigationEvents": { "ACTIVATE": 4, "REMOVE": 4, "SIMULATION": 3, "newSinceLastReport": 0 },
+  "api": { "state": "active", "pid": 3460475, "restarts": 0, "health": 200 },
+  "startupPersistence": {
+    "saved": false,
+    "runningDiffersFromStartup": true,
+    "consequence": "change is active now; a reboot would revert it",
+    "recommendation": "authorize 'save' separately, with rollback ready"
+  },
+  "rollback": {
+    "command": "system-view ; undo route-policy PL-SEMPRE-DDoS-IPv4-OUT node 5 ; commit",
+    "precondition": "verify no concurrent commit since 1000001962",
+    "executed": false
+  },
+  "scopeCompliance": {
+    "aglinkPolicyModified": false,
+    "aglinkNodes1or2Created": false,
+    "computizePolicyModified": false,
+    "bgpSessionResetOrRefresh": false,
+    "activateOrRemove": false,
+    "autoEnabled": false,
+    "apiN8nTelegramChanged": false,
+    "otherConfigElementsModified": false,
+    "physicalHomologation": "not executed"
+  },
+  "verdict": {
+    "changeApplied": "PASS",
+    "noCollateralChange": "PASS",
+    "readback": "PASS",
+    "bgpSessionsStable": "PASS",
+    "autoOff": "PASS",
+    "guardedCommitProcedure": "FAIL - helper defect, documented, no configuration impact",
+    "startupPersistence": "PENDING separate authorization for save"
+  }
+}
