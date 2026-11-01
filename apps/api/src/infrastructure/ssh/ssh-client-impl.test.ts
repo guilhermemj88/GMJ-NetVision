@@ -308,6 +308,78 @@ describe('SshClientImpl — execucao sequencial por prompt', () => {
     expect(lastChannel().writes).toContain('display x\r\n');
     expect(lastChannel().writes.at(-1)).toBe('quit\r\n');
   });
+
+  it('J) sessao de ESCRITA: prompt [Y/N] no meio dos comandos aborta sem responder', async () => {
+    mockState.script = (command, channel) => {
+      if (command === 'quit' || command === 'return') return;
+      if (command === 'commit') {
+        // Depois do commit o VRP pede confirmacao (o prompt que ja commitou
+        // configuracao nao revisada numa sessao de operador).
+        channel.emitData(`<HUAWEI>${command}\r\n`);
+        channel.emitData(
+          'Warning: Uncommitted configurations found, commit them before exiting? [Y/N/C]:',
+        );
+        return;
+      }
+      echoWithPrompt(channel, command);
+    };
+    const client = new SshClientImpl({
+      port: 22,
+      username: 'u',
+      password: 'p',
+      commandIdleMs: FAST_IDLE,
+      exitMode: 'return-quit',
+      abortOnInteractivePrompt: true,
+    });
+
+    await expect(
+      client.execute('10.0.0.1', ['system-view', 'route-policy P permit node 2', 'commit']),
+    ).rejects.toThrow('SSH_INTERACTIVE_PROMPT_BLOCKED');
+
+    // Nada foi escrito depois do prompt: nem 'Y', nem o `return`/`quit` de saida.
+    const writes = lastChannel().writes;
+    expect(writes.some((w) => /^y\r\n$/i.test(w))).toBe(false);
+    expect(writes).not.toContain('return\r\n');
+    expect(writes).not.toContain('quit\r\n');
+  });
+
+  it('K) sessao de ESCRITA: `--More--` tambem aborta (paginacao inesperada)', async () => {
+    mockState.script = (command, channel) => {
+      if (command === 'quit') return;
+      channel.emitData(`<HUAWEI>${command}\r\n`);
+      channel.emitData('\r\n  ---- More ----');
+    };
+    const client = new SshClientImpl({
+      port: 22,
+      username: 'u',
+      password: 'p',
+      commandIdleMs: FAST_IDLE,
+      abortOnInteractivePrompt: true,
+    });
+
+    await expect(client.execute('10.0.0.1', ['display route-policy P'])).rejects.toThrow(
+      'SSH_INTERACTIVE_PROMPT_BLOCKED',
+    );
+    expect(lastChannel().writes).not.toContain('quit\r\n');
+  });
+
+  it('L) sessao READ-ONLY (flag desligada) nao aborta com [Y/N] no corpo da saida', async () => {
+    mockState.script = (command, channel) => {
+      if (command === 'quit') return;
+      echoWithPrompt(channel, command, [' route-policy P permit node 9 [Y/N] texto de config']);
+    };
+    const client = new SshClientImpl({
+      port: 22,
+      username: 'u',
+      password: 'p',
+      commandIdleMs: FAST_IDLE,
+    });
+
+    const [result] = await client.execute('10.0.0.1', ['display current-configuration']);
+    expect(result!.exitCode).toBe(0);
+    expect(result!.stdout).toContain('[Y/N]');
+    expect(lastChannel().writes.at(-1)).toBe('quit\r\n');
+  });
 });
 
 describe('SshClientImpl — contrato e comandos em lote', () => {

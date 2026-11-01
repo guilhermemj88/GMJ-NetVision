@@ -19,6 +19,9 @@ interface BgpSshClientOptions {
   username: string;
   password: string;
   contextCommand?: string | null;
+  exitMode?: 'quit' | 'return-quit';
+  shellTimeoutMs?: number;
+  abortOnInteractivePrompt?: boolean;
 }
 
 export type BgpSshClientFactory = (options: BgpSshClientOptions) => SshClient;
@@ -101,6 +104,7 @@ function receivedRoutesCommand(addressFamily: BgpAddressFamily, peerAddress: str
 
 function safeSshError(error: unknown): string {
   const message = error instanceof Error ? error.message.toLowerCase() : '';
+  if (message.includes('interactive_prompt')) return 'SSH interactive prompt blocked';
   if (message.includes('auth')) return 'SSH authentication failed';
   if (message.includes('timeout')) return 'SSH connection timeout';
   if (message.includes('unreachable') || message.includes('refused')) {
@@ -483,9 +487,12 @@ export class HuaweiBgpSshService {
   ): Promise<{ ok: boolean; output: string | null }> {
     // Sessao de ESCRITA: termina em system-view (apos o commit), entao precisa
     // de DOIS `quit` (volta para user view e encerra) e de um timeout maior.
+    // `abortOnInteractivePrompt`: se o VRP abrir qualquer confirmacao/paginacao
+    // no meio da escrita, a sessao e abandonada sem responder — nunca `Y`.
     const client = await this.createClient(device, {
       exitMode: 'return-quit',
       shellTimeoutMs: 30_000,
+      abortOnInteractivePrompt: true,
     });
     const raw = await this.executeRaw(client, device.ssh!.host, [
       'screen-length 0 temporary',
@@ -508,7 +515,11 @@ export class HuaweiBgpSshService {
 
   private async createClient(
     device: HostRecord,
-    options: { exitMode?: 'quit' | 'return-quit'; shellTimeoutMs?: number } = {},
+    options: {
+      exitMode?: 'quit' | 'return-quit';
+      shellTimeoutMs?: number;
+      abortOnInteractivePrompt?: boolean;
+    } = {},
   ): Promise<SshClient> {
     if (!device.sshEnabled || !device.ssh?.host || !device.ssh.username) {
       throw new Error('SSH não está habilitado para este host');
@@ -522,6 +533,9 @@ export class HuaweiBgpSshService {
       contextCommand: device.ssh.contextCommand ?? null,
       ...(options.exitMode === undefined ? {} : { exitMode: options.exitMode }),
       ...(options.shellTimeoutMs === undefined ? {} : { shellTimeoutMs: options.shellTimeoutMs }),
+      ...(options.abortOnInteractivePrompt === undefined
+        ? {}
+        : { abortOnInteractivePrompt: options.abortOnInteractivePrompt }),
     });
   }
 

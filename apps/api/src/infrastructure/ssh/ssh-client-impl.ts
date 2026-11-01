@@ -10,6 +10,13 @@ import {
 
 const diagnosticLoginNotice = 'Info: Lastest accessed IP: -  Time: -  Password will expire in: -';
 
+/**
+ * Pedido de confirmacao/paginacao do equipamento. Numa sessao de ESCRITA isso e
+ * sempre anomalia: nenhum comando canonico de mitigacao pergunta nada, e
+ * responder `Y` commitaria configuracao nao revisada.
+ */
+const INTERACTIVE_PROMPT = /\[Y\/N(?:\/[A-Z])?\]|\(y\/n\)|----\s*More\s*----|--More--|press\s+any\s+key/i;
+
 export interface SshExecutionMetrics {
   connectionMs: number | null;
   commandMs: number | null;
@@ -46,6 +53,16 @@ interface SshClientOptions {
    * quando o PROMPT nao volta a aparecer. O `quit` so e enviado depois disso.
    */
   commandIdleMs?: number;
+  /**
+   * Sessao de ESCRITA: aborta fail-closed se o equipamento abrir um prompt
+   * interativo NO MEIO dos comandos (`[Y/N]`, `[Y/N/C]`, `(y/n)`, `--More--`).
+   *
+   * Nunca responde ao prompt: um `Y` automatico ja commitou configuracao nao
+   * revisada numa sessao de operador. Como a sessao e encerrada sem escrever
+   * mais nada, um pedido de confirmacao pendente e simplesmente abandonado
+   * (o VRP descarta a candidata). Sessoes READ-ONLY nao ligam esta opcao.
+   */
+  abortOnInteractivePrompt?: boolean;
   /** Opt-in on-demand diagnostics; legacy/configuration callers are unchanged. */
   diagnostic?: {
     fingerprint: string;
@@ -201,6 +218,7 @@ export class SshClientImpl implements SshClient {
     const contextIndex = this.options.contextCommand
       ? commands.indexOf(this.options.contextCommand.trim())
       : -1;
+    const interactivePromptGuard = this.options.abortOnInteractivePrompt === true;
     return new Promise((resolve, reject) => {
       connection.shell({ term: 'vt100', rows: 200, cols: 240 }, (error, stream: ClientChannel) => {
         if (error) {
@@ -407,6 +425,22 @@ export class SshClientImpl implements SshClient {
             return;
           }
           stdout += chunk;
+          // ESCRITA: prompt interativo no meio dos comandos = abortar sem
+          // responder. Nenhum byte novo vai para o canal depois disto.
+          if (
+            interactivePromptGuard &&
+            !diagnostic &&
+            commandIndex > 0 &&
+            !exiting &&
+            INTERACTIVE_PROMPT.test(stdout.slice(-400))
+          ) {
+            settled = true;
+            clearTimeout(timeout);
+            clearIdle();
+            stream.close();
+            reject(new Error('SSH_INTERACTIVE_PROMPT_BLOCKED'));
+            return;
+          }
           if (diagnostic) {
             const slice = stripVTControlCharacters(stdout.slice(commandStartOffset));
             // Exact, noninteractive notice observed on BHE-VTA, only before the first command.

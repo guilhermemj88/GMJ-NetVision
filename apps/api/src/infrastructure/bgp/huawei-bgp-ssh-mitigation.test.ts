@@ -29,6 +29,7 @@ interface CapturedOptions {
   exitMode?: 'quit' | 'return-quit';
   shellTimeoutMs?: number;
   contextCommand?: string | null;
+  abortOnInteractivePrompt?: boolean;
 }
 
 function harness(output: string, exitCode = 0) {
@@ -60,7 +61,31 @@ describe('transporte SSH da escrita de mitigacao', () => {
     for (const options of captured) {
       expect(options.exitMode).toBeUndefined();
       expect(options.shellTimeoutMs).toBeUndefined();
+      expect(options.abortOnInteractivePrompt).toBeUndefined();
     }
+  });
+
+  it('a escrita liga o fail-safe de prompt interativo (nunca responde Y)', async () => {
+    const { service, captured } = harness('ok');
+    await service.applyMitigationCommands(DEVICE, ['system-view', 'commit']);
+    expect(captured[0]?.abortOnInteractivePrompt).toBe(true);
+  });
+
+  it('prompt interativo no meio da escrita vira falha explicita, sem mascarar', async () => {
+    const captured: CapturedOptions[] = [];
+    const client: SshClient = {
+      execute: async () => {
+        throw new Error('SSH_INTERACTIVE_PROMPT_BLOCKED');
+      },
+    };
+    const service = new HuaweiBgpSshService(repository(), (options) => {
+      captured.push(options as CapturedOptions);
+      return client;
+    });
+    const result = await service.applyMitigationCommands(DEVICE, ['system-view', 'commit']);
+    expect(result.ok).toBe(false);
+    expect(result.output).toBe('SSH interactive prompt blocked');
+    expect(captured[0]?.abortOnInteractivePrompt).toBe(true);
   });
 
   it('a escrita NAO mascara o texto do equipamento quando ele reporta erro', async () => {
