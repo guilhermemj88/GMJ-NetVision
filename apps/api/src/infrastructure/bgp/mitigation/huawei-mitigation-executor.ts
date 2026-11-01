@@ -19,7 +19,11 @@ import {
 } from './mitigation-executor';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import { planNodeOccupancy, type NodeOccupancyPlan } from './mitigation-node-snapshot';
-import { derivePreservedClauses, type PreservedClauses } from './mitigation-policy-clauses';
+import {
+  baselineNodesForRemoval,
+  derivePreservedClauses,
+  type PreservedClauses,
+} from './mitigation-policy-clauses';
 import {
   assertMitigationCommandShape,
   buildMitigationActivateCommands,
@@ -204,11 +208,13 @@ export class HuaweiMitigationExecutor {
   private inspectMitigation(
     input: MitigationPreflightInput,
     readBack: string | null,
+    baselineNodes?: readonly number[],
   ): PolicyMitigationPhysical {
     return inspectPolicyMitigation({
       policyName: input.policyName,
       readBack: readBack ?? '',
       rts: [input.rt, this.rt],
+      ...(baselineNodes ? { baselineNodes } : {}),
       labels: {
         bogonPrefixList: input.bogonPrefixList,
         targetPrefixList: input.targetPrefixList,
@@ -391,15 +397,17 @@ export class HuaweiMitigationExecutor {
       );
       checks.push({
         id: 'preserved_attributes',
-        // Informativo: sem node permit com a prefix-list alvo nao ha atributos
-        // identificaveis a repor, e o node de mitigacao leva apenas a RT com
-        // `additive`. Nunca bloqueia por si so.
-        ok: true,
+        // Fail-closed (auditoria): sem baseline derivavel, ou com baseline cuja
+        // estrutura nao conseguimos reproduzir fielmente, o ACTIVATE para aqui.
+        // Nunca criar um node 2 apenas com a RT nem um node 2 mais permissivo.
+        ok: preservedClauses.safe,
         detail:
           preservedClauses.baselineNode === null
-            ? `sem node permit com if-match ip-prefix ${input.targetPrefixList}: nada a preservar`
-            : `atributos derivados do node ${preservedClauses.baselineNode}: ` +
-              `[${preservedClauses.expectedClauses.join(' | ')}]`,
+            ? `MITIGATION_BASELINE_NOT_DERIVABLE: sem node permit com if-match ip-prefix ${input.targetPrefixList}`
+            : !preservedClauses.safe
+              ? `MITIGATION_BASELINE_UNSAFE: ${preservedClauses.unsafeReasons.join('; ')}`
+              : `atributos derivados do node ${preservedClauses.baselineNode}: ` +
+                `[${preservedClauses.expectedClauses.join(' | ')}]`,
       });
       checks.push({
         id: 'node_occupancy',
@@ -463,7 +471,13 @@ export class HuaweiMitigationExecutor {
       // verificacao pos-escrita; runtime e plano NAO decidem nada aqui.
       // Estrutura suspeita/parcial/multipla ou leitura inconclusiva BLOQUEIA
       // (reconciliacao obrigatoria) - o AUTO tambem passa por este preflight.
-      const physical = this.inspectMitigation(input, readBackOutput);
+      const physical = this.inspectMitigation(
+        input,
+        readBackOutput,
+        preservedClauses?.baselineNode === null || preservedClauses === null
+          ? []
+          : [preservedClauses.baselineNode],
+      );
       checks.push({
         id: 'policy_mitigation_scope',
         ok: physical.state === 'NORMAL',
@@ -474,8 +488,18 @@ export class HuaweiMitigationExecutor {
       // "as cegas" um node com conteudo diferente.
       // F3-REMOVE: com estrutura AMBIGUA (multiplos pares, nodes suspeitos ou
       // leitura inconclusiva) a retirada fica bloqueada - remover UM par e
-      // sincronizar o escopo como NORMAL esconderia o que sobrou.
-      const removalPhysical = this.inspectMitigation(input, readBackOutput);
+      // sincronizar o escopo como NORMAL esconderia o que sobrou. Os nodes
+      // normais do cliente (mesma lista autorizada, SEM a RT de mitigacao) sao
+      // baseline e nunca propriedade temporaria: sem isso a retirada ficaria
+      // travada em toda policy cujo node original referencia a lista do par.
+      const removalBaselineNodes = baselineNodesForRemoval(
+        readBackOutput ?? '',
+        input.policyName,
+        input.targetPrefixList,
+        [input.rt, this.rt],
+        { bogonNode: input.bogonNode, mitigationNode: input.mitigationNode },
+      );
+      const removalPhysical = this.inspectMitigation(input, readBackOutput, removalBaselineNodes);
       checks.push({
         id: 'policy_mitigation_scope',
         ok: removalPhysical.state !== 'RECONCILIATION_REQUIRED',
@@ -552,10 +576,7 @@ export class HuaweiMitigationExecutor {
     input: MitigationActivationInput,
   ): Promise<{ output: string }> {
     this.assertWriteAllowed(device);
-    const commands = buildMitigationActivateCommands(
-      this.writePlan(input),
-      input.preservedClauses,
-    );
+    const commands = buildMitigationActivateCommands(this.writePlan(input), input.preservedClauses);
     assertMitigationCommandShape(commands);
     const result = await this.deps.ssh.applyMitigationCommands(device, commands);
     if (!result.ok) {

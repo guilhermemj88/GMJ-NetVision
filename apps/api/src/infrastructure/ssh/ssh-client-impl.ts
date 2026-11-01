@@ -15,7 +15,12 @@ const diagnosticLoginNotice = 'Info: Lastest accessed IP: -  Time: -  Password w
  * sempre anomalia: nenhum comando canonico de mitigacao pergunta nada, e
  * responder `Y` commitaria configuracao nao revisada.
  */
-const INTERACTIVE_PROMPT = /\[Y\/N(?:\/[A-Z])?\]|\(y\/n\)|----\s*More\s*----|--More--|press\s+any\s+key/i;
+const INTERACTIVE_PROMPT =
+  /\[Y\/N(?:\/[A-Z])?\]|\(y\/n\)|----\s*More\s*----|--More--|press\s+any\s+key/i;
+
+/** Erro de CLI do VRP8 dentro da saida de UM comando. */
+const CLI_ERROR =
+  /(?:^|[\r\n])\s*(?:Error:|%\s*(?:Error|Unrecognized|Incomplete|Wrong|Too many|Ambiguous)|Info:\s+(?:Unrecognized|Wrong|Incomplete|Too many))/i;
 
 export interface SshExecutionMetrics {
   connectionMs: number | null;
@@ -63,6 +68,15 @@ interface SshClientOptions {
    * (o VRP descarta a candidata). Sessoes READ-ONLY nao ligam esta opcao.
    */
   abortOnInteractivePrompt?: boolean;
+  /**
+   * Sessao de ESCRITA: verifica a saida de CADA comando e, ao encontrar erro de
+   * CLI do VRP, aborta a sequencia imediatamente.
+   *
+   * Garante que o `commit` (ultimo comando da lista canonica) NUNCA seja
+   * enviado depois de um comando rejeitado — nao existe "commit parcial" por
+   * arrastar de comandos invalidos.
+   */
+  abortOnCommandError?: boolean;
   /** Opt-in on-demand diagnostics; legacy/configuration callers are unchanged. */
   diagnostic?: {
     fingerprint: string;
@@ -219,6 +233,7 @@ export class SshClientImpl implements SshClient {
       ? commands.indexOf(this.options.contextCommand.trim())
       : -1;
     const interactivePromptGuard = this.options.abortOnInteractivePrompt === true;
+    const commandErrorGuard = this.options.abortOnCommandError === true;
     return new Promise((resolve, reject) => {
       connection.shell({ term: 'vt100', rows: 200, cols: 240 }, (error, stream: ClientChannel) => {
         if (error) {
@@ -367,6 +382,20 @@ export class SshClientImpl implements SshClient {
           if (settled || exiting) return;
           if (!commandFinished()) {
             armIdle();
+            return;
+          }
+          // ESCRITA: erro de CLI no comando atual encerra a sequencia AQUI.
+          // O `commit` (proximo da lista canonica) nunca chega ao equipamento.
+          if (
+            commandErrorGuard &&
+            !diagnostic &&
+            CLI_ERROR.test(stdout.slice(commandStartOffset))
+          ) {
+            settled = true;
+            clearTimeout(timeout);
+            clearIdle();
+            stream.close();
+            reject(new Error('SSH_COMMAND_REJECTED'));
             return;
           }
           if (diagnostic) {

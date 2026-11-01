@@ -4,6 +4,8 @@ import { parseHuaweiRoutePolicyNodesLenient } from './huawei-bgp-policy-parser';
 export const AGLINK_BGP_PLAN = Object.freeze({
   policy: 'PL-AGLINK_IPv4-IN',
   targetPrefixList: 'AGLINK-BLOCO-TODO-23',
+  /** Node normal do cliente na policy de referencia (nunca e temporario). */
+  baselineNode: 10,
   rt: '268568:660',
   normalRt: '268568:140',
   localPreference: 1100,

@@ -48,6 +48,12 @@ export interface PolicyMitigationInspectionInput {
   /** RTs de mitigacao do escopo (normalmente uma por profile). */
   rts: readonly string[];
   labels?: { bogonPrefixList: string; targetPrefixList: string };
+  /**
+   * Nodes NORMAIS do cliente (o baseline de onde os atributos sao derivados).
+   * Eles referenciam a prefix-list autorizada e podem ate carregar a RT de
+   * mitigacao — nunca sao propriedade temporaria e nunca entram como par.
+   */
+  baselineNodes?: readonly number[];
 }
 
 export function inspectPolicyMitigation(
@@ -80,9 +86,23 @@ export function inspectPolicyMitigation(
   const rts = new Set(input.rts.filter((rt) => rt.length > 0));
   const aglink = input.policyName === AGLINK_BGP_PLAN.policy;
   if (aglink && !aglinkBaselineIntact(input.readBack))
-    partialNodes.push({ node: 10, action: 'permit', reason: 'AGLINK baseline divergente' });
+    partialNodes.push({
+      node: AGLINK_BGP_PLAN.baselineNode,
+      action: 'permit',
+      reason: 'AGLINK baseline divergente',
+    });
+  // Nodes normais do cliente (baseline). Vazio/ausente = usa o baseline
+  // historico da policy de referencia; o cliente continua sendo pulado para
+  // nunca ser classificado como propriedade temporaria da mitigacao.
+  const baselineNodes = new Set<number>(
+    input.baselineNodes && input.baselineNodes.length > 0
+      ? input.baselineNodes
+      : aglink
+        ? [AGLINK_BGP_PLAN.baselineNode]
+        : [],
+  );
   for (const node of nodes) {
-    if (aglink && node.node === 10) continue; // existing customer permit, never temporary ownership
+    if (baselineNodes.has(node.node)) continue; // node normal do cliente, nunca temporario
     const refsBogon = node.ifMatchIpPrefix.includes(labels.bogonPrefixList);
     const refsTarget =
       node.ifMatchIpPrefix.includes(labels.targetPrefixList) ||

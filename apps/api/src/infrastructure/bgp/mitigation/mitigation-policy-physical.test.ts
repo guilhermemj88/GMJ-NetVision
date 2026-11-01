@@ -178,3 +178,89 @@ describe('inspectPolicyMitigation', () => {
     expect(result.partialNodes).toEqual([]);
   });
 });
+
+// REGRESSAO (causa raiz comprovada): o executor chama o inspetor com
+// `baselineNodes: []` - default do parametro - quando o chamador nao informa os
+// nodes normais do cliente. Node do baseline referencia a prefix-list alvo e
+// ate carrega a RT de mitigacao, porem NAO e propriedade temporaria: se ele
+// fosse avaliado como node de mitigacao, todo REMOVE travaria com o baseline
+// fisicamente intacto.
+const AGLINK_POLICY = 'PL-AGLINK_IPv4-IN';
+const AGLINK_LABELS = { bogonPrefixList: 'BOGONS', targetPrefixList: 'AGLINK-BLOCO-TODO-23' };
+
+const AGLINK_ACTIVATED = [
+  `route-policy ${AGLINK_POLICY} deny node 1`,
+  ' if-match ip-prefix BOGONS',
+  `route-policy ${AGLINK_POLICY} permit node 2`,
+  ' if-match ip-prefix AGLINK-BLOCO-TODO-23',
+  ' apply local-preference 1100',
+  ' apply extcommunity rt 268568:140 rt 268568:660 additive',
+  `route-policy ${AGLINK_POLICY} permit node 10`,
+  ' if-match ip-prefix AGLINK-BLOCO-TODO-23',
+  ' apply local-preference 1100',
+  ' apply extcommunity rt 268568:140 additive',
+  `route-policy ${AGLINK_POLICY} deny node 1000`,
+].join('\n');
+
+const inspectAglink = (baselineNodes?: readonly number[]) =>
+  inspectPolicyMitigation({
+    policyName: AGLINK_POLICY,
+    readBack: AGLINK_ACTIVATED,
+    rts: [RT],
+    labels: AGLINK_LABELS,
+    ...(baselineNodes ? { baselineNodes } : {}),
+  });
+
+describe('inspectPolicyMitigation - baseline do cliente', () => {
+  it('baseline vazio (default do executor) nao vira node de mitigacao: par unico MITIGATED', () => {
+    const result = inspectAglink([]);
+
+    expect(result.state).toBe('MITIGATED');
+    expect(result.pair).toEqual({ bogonNode: 1, mitigationNode: 2 });
+    expect(result.mitigationNodes).toEqual([2]);
+    expect(result.partialNodes).toEqual([]);
+  });
+
+  it('sem baseline informado o baseline historico da policy e preservado', () => {
+    const result = inspectAglink();
+
+    expect(result.state).toBe('MITIGATED');
+    expect(result.partialNodes).toEqual([]);
+  });
+
+  it('baseline explicito [10] produz o mesmo resultado do fallback', () => {
+    const result = inspectAglink([10]);
+
+    expect(result.pair).toEqual({ bogonNode: 1, mitigationNode: 2 });
+    expect(result.partialNodes).toEqual([]);
+  });
+
+  it('node 10 com a MESMA prefix-list e SEM a RT de mitigacao nunca e propriedade temporaria', () => {
+    const result = inspectAglink();
+
+    expect(result.mitigationNodes).not.toContain(10);
+    expect(result.partialNodes.some((node) => node.node === 10)).toBe(false);
+  });
+
+  it('cliente generico: node normal so e reconhecido quando o baseline e informado', () => {
+    const readBack = [
+      `route-policy ${POLICY} deny node 1`,
+      ' if-match ip-prefix BOGONS',
+      `route-policy ${POLICY} permit node 2`,
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply extcommunity rt 268568:660 additive',
+      `route-policy ${POLICY} permit node 10`,
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply local-preference 1100',
+    ].join('\n');
+    const base = { policyName: POLICY, readBack, rts: [RT], labels: LABELS };
+
+    // Sem a informacao do baseline o inspetor e fail-closed (node suspeito).
+    expect(inspectPolicyMitigation(base).partialNodes.map((node) => node.node)).toEqual([10]);
+
+    const withBaseline = inspectPolicyMitigation({ ...base, baselineNodes: [10] });
+    expect(withBaseline.state).toBe('MITIGATED');
+    expect(withBaseline.partialNodes).toEqual([]);
+    expect(withBaseline.pair).toEqual({ bogonNode: 1, mitigationNode: 2 });
+  });
+});

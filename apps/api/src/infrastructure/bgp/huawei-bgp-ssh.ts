@@ -22,6 +22,7 @@ interface BgpSshClientOptions {
   exitMode?: 'quit' | 'return-quit';
   shellTimeoutMs?: number;
   abortOnInteractivePrompt?: boolean;
+  abortOnCommandError?: boolean;
 }
 
 export type BgpSshClientFactory = (options: BgpSshClientOptions) => SshClient;
@@ -105,6 +106,7 @@ function receivedRoutesCommand(addressFamily: BgpAddressFamily, peerAddress: str
 function safeSshError(error: unknown): string {
   const message = error instanceof Error ? error.message.toLowerCase() : '';
   if (message.includes('interactive_prompt')) return 'SSH interactive prompt blocked';
+  if (message.includes('command_rejected')) return 'SSH command rejected by device';
   if (message.includes('auth')) return 'SSH authentication failed';
   if (message.includes('timeout')) return 'SSH connection timeout';
   if (message.includes('unreachable') || message.includes('refused')) {
@@ -493,6 +495,7 @@ export class HuaweiBgpSshService {
       exitMode: 'return-quit',
       shellTimeoutMs: 30_000,
       abortOnInteractivePrompt: true,
+      abortOnCommandError: true,
     });
     const raw = await this.executeRaw(client, device.ssh!.host, [
       'screen-length 0 temporary',
@@ -519,6 +522,7 @@ export class HuaweiBgpSshService {
       exitMode?: 'quit' | 'return-quit';
       shellTimeoutMs?: number;
       abortOnInteractivePrompt?: boolean;
+      abortOnCommandError?: boolean;
     } = {},
   ): Promise<SshClient> {
     if (!device.sshEnabled || !device.ssh?.host || !device.ssh.username) {
@@ -536,6 +540,9 @@ export class HuaweiBgpSshService {
       ...(options.abortOnInteractivePrompt === undefined
         ? {}
         : { abortOnInteractivePrompt: options.abortOnInteractivePrompt }),
+      ...(options.abortOnCommandError === undefined
+        ? {}
+        : { abortOnCommandError: options.abortOnCommandError }),
     });
   }
 

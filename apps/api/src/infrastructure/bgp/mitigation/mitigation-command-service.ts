@@ -825,8 +825,13 @@ export class MitigationCommandService {
     }
 
     const preview = activate
-      ? this.preview.buildMitigation(profile.policyName, pair, profile.mitigationRt, this.labels)
-          .commands
+      ? this.preview.buildMitigation(
+          profile.policyName,
+          pair,
+          profile.mitigationRt,
+          this.labels,
+          activationInput.preservedClauses,
+        ).commands
       : this.preview.buildRecovery(profile.policyName, pair).commands;
 
     if (input.action === 'SIMULATE_ACTIVATE' || input.action === 'SIMULATE_REMOVE') {

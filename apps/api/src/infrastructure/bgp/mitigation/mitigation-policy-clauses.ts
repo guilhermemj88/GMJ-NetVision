@@ -22,6 +22,12 @@ export interface PolicyNodeClauses {
 export interface PreservedClauses {
   /** Node normal de onde os atributos foram derivados (referência/auditoria). */
   baselineNode: number | null;
+  /**
+   * Como o baseline foi identificado:
+   *  - `PREFIX_LIST`: node permit com `if-match ip-prefix <lista autorizada>`;
+   *  - `CATCH_ALL`: node permit sem nenhum `if-match` (cobre os prefixos).
+   */
+  baselineMatch: 'PREFIX_LIST' | 'CATCH_ALL' | null;
   /** `apply local-preference N` (último vence, como no VRP). */
   localPreference: string | null;
   /** RTs normais do cliente, na ordem em que aparecem. */
@@ -30,9 +36,22 @@ export interface PreservedClauses {
   otherApplies: string[];
   /** Cláusulas exatas esperadas no node de mitigacao (para o readback). */
   expectedClauses: string[];
+  /**
+   * `false` = o node de mitigacao NAO reproduz fielmente o comportamento do
+   * node original. Nesse caso o ACTIVATE e bloqueado (fail-closed) — nunca se
+   * cria um node 2 mais permissivo que o original.
+   */
+  safe: boolean;
+  /** Motivos objetivos da recusa (vazio quando `safe`). */
+  unsafeReasons: string[];
 }
 
-const POLICY_NODE_CONFIG = /^route-policy[ \t]+(\S+)[ \t]+(permit|deny)[ \t]+node[ \t]+(\d+)[ \t]*$/i;
+/** `apply` cuja semantica conseguimos reproduzir literalmente. */
+const REPRODUCIBLE_APPLY =
+  /^apply (local-preference \d+|extcommunity rt\b|community\b|as-path\b|cost\b|med \d+|origin \S+|preferred-value \d+)/i;
+
+const POLICY_NODE_CONFIG =
+  /^route-policy[ \t]+(\S+)[ \t]+(permit|deny)[ \t]+node[ \t]+(\d+)[ \t]*$/i;
 const POLICY_NODE_DISPLAY = /^Route-policy:[ \t]*(\S+)[ \t]*$/i;
 const NODE_HEADER_DISPLAY = /^(permit|deny)[ \t]*:[ \t]*(\d+)\b/i;
 const CLAUSE = /^(if-match|apply|goto)[ \t]+(?!clauses\b)\S/i;
@@ -96,7 +115,10 @@ export function policyNodeClauses(
   return found;
 }
 
-export function equalClauses(actual: readonly string[] | null, expected: readonly string[]): boolean {
+export function equalClauses(
+  actual: readonly string[] | null,
+  expected: readonly string[],
+): boolean {
   if (actual === null) return false;
   return JSON.stringify([...actual].sort()) === JSON.stringify([...expected].sort());
 }
@@ -119,7 +141,8 @@ export function derivePreservedClauses(
   targetPrefixList: string,
   mitigationRt: string,
 ): PreservedClauses {
-  const baseline = findBaselinePermitNode(text, policyName, targetPrefixList);
+  const nodes = policyNodes(text, policyName);
+  const baseline = findBaselinePermitNode(nodes, targetPrefixList);
   const clauses = baseline?.clauses ?? [];
   let localPreference: string | null = null;
   const routeTargets: string[] = [];
@@ -145,17 +168,126 @@ export function derivePreservedClauses(
     ...(localPreference ? [localPreference] : []),
     rtLine,
   ];
+  const unsafeReasons = baseline
+    ? baselineUnsafeReasons(nodes, baseline, targetPrefixList, clauses)
+    : [];
   return {
     baselineNode: baseline?.node ?? null,
+    baselineMatch: baseline?.match ?? null,
     localPreference,
     routeTargets,
     otherApplies,
     expectedClauses,
+    safe: baseline !== null && unsafeReasons.length === 0,
+    unsafeReasons,
   };
 }
 
+/**
+ * Valida que o node de mitigacao reproduz FIELMENTE o node original.
+ *
+ * Fail-closed e deliberadamente simples: qualquer construcao que nao sabemos
+ * reproduzir (if-match adicional, goto, `apply` desconhecido) ou qualquer node
+ * anterior que possa capturar as rotas antes do baseline BLOQUEIA o ACTIVATE.
+ * Nao e um interpretador de route-policy — e um portao.
+ */
+function baselineUnsafeReasons(
+  nodes: ReadonlyArray<{ node: number; action: 'permit' | 'deny'; clauses: string[] }>,
+  baseline: { node: number; clauses: string[]; match: 'PREFIX_LIST' | 'CATCH_ALL' },
+  targetPrefixList: string,
+  clauses: readonly string[],
+): string[] {
+  const reasons: string[] = [];
+  const wanted = `if-match ip-prefix ${targetPrefixList}`.toLowerCase();
+  const ifMatches = clauses.filter((clause) => /^if-match\b/i.test(clause));
+  if (ifMatches.length > 1) {
+    reasons.push(`if-match adicional nao reproduzido: [${ifMatches.join(' | ')}]`);
+  }
+  if (clauses.some((clause) => /^goto\b/i.test(clause))) {
+    reasons.push('node original usa goto');
+  }
+  for (const clause of clauses) {
+    if (!/^apply\b/i.test(clause)) continue;
+    if (!REPRODUCIBLE_APPLY.test(clause)) {
+      reasons.push(`apply sem semantica reproduzivel: ${clause}`);
+    }
+  }
+  for (const entry of nodes) {
+    if (entry.node >= baseline.node) continue;
+    const matchesTarget = entry.clauses.some((clause) => clause.toLowerCase() === wanted);
+    const catchAll = !entry.clauses.some((clause) => /^if-match\b/i.test(clause));
+    if (matchesTarget || catchAll) {
+      reasons.push(
+        `node anterior ${entry.node} (${entry.action}) pode capturar as rotas antes do node ${baseline.node}`,
+      );
+    }
+  }
+  return reasons;
+}
+
+function findBaselinePermitNode(
+  nodes: ReadonlyArray<{ node: number; action: 'permit' | 'deny'; clauses: string[] }>,
+  targetPrefixList: string,
+): { node: number; clauses: string[]; match: 'PREFIX_LIST' | 'CATCH_ALL' } | null {
+  const wanted = `if-match ip-prefix ${targetPrefixList}`.toLowerCase();
+  let byPrefix: { node: number; clauses: string[]; match: 'PREFIX_LIST' } | null = null;
+  let catchAll: { node: number; clauses: string[]; match: 'CATCH_ALL' } | null = null;
+  for (const entry of nodes) {
+    if (entry.action !== 'permit') continue;
+    const ifMatches = entry.clauses.filter((clause) => /^if-match\b/i.test(clause));
+    const matchesPrefix = entry.clauses.some((clause) => clause.toLowerCase() === wanted);
+    if (matchesPrefix) {
+      if (byPrefix === null || entry.node < byPrefix.node) {
+        byPrefix = { node: entry.node, clauses: entry.clauses, match: 'PREFIX_LIST' };
+      }
+      continue;
+    }
+    // Node PERMIT sem nenhum if-match cobre os prefixos (catch-all). Só vale
+    // como baseline quando NAO existe um node com a prefix-list autorizada —
+    // e o node de mitigacao sempre fica mais restritivo que ele.
+    if (ifMatches.length === 0 && (catchAll === null || entry.node < catchAll.node)) {
+      catchAll = { node: entry.node, clauses: entry.clauses, match: 'CATCH_ALL' };
+    }
+  }
+  return byPrefix ?? catchAll;
+}
+
+/**
+ * Nodes NORMAIS do cliente vistos no REMOVE: `permit` que referencia a lista
+ * autorizada e NAO carrega nenhuma RT de mitigacao. Eles nunca foram criados
+ * pela mitigacao, logo nao podem ser confundidos com propriedade temporaria.
+ *
+ * O par esperado (`bogonNode` / `mitigationNode`) fica de fora do conjunto: se
+ * ele nao casar exatamente, `resolveActivePair` continua bloqueando a retirada
+ * — a ambiguidade permanece fail-closed.
+ */
+export function baselineNodesForRemoval(
+  text: string,
+  policyName: string,
+  targetPrefixList: string,
+  mitigationRts: readonly string[],
+  pair: { bogonNode: number; mitigationNode: number },
+): number[] {
+  const rts = new Set(mitigationRts.filter((rt) => rt.length > 0));
+  const wanted = `if-match ip-prefix ${targetPrefixList}`.toLowerCase();
+  return policyNodes(text, policyName)
+    .filter((entry) => entry.node !== pair.bogonNode && entry.node !== pair.mitigationNode)
+    .filter((entry) => entry.action === 'permit')
+    .filter((entry) => entry.clauses.some((clause) => clause.toLowerCase() === wanted))
+    .filter((entry) =>
+      entry.clauses
+        .filter((clause) => /^apply extcommunity rt\b/i.test(clause))
+        .flatMap((clause) => rtValuesOf(clause))
+        .every((rt) => !rts.has(rt)),
+    )
+    .map((entry) => entry.node);
+}
+
 /** Todos os nodes de uma policy em UMA passada (config ou display). */
-export function policyNodes(text: string, policyName: string): Array<{
+export function policyNodes(
+  text: string,
+  policyName: string,
+): Array<{
   node: number;
   action: 'permit' | 'deny';
   clauses: string[];
@@ -205,21 +337,6 @@ export function policyNodes(text: string, policyName: string): Array<{
     if (current && CLAUSE.test(raw.trim())) current.clauses.push(normalizeClause(raw));
   }
   return nodes;
-}
-
-function findBaselinePermitNode(
-  text: string,
-  policyName: string,
-  targetPrefixList: string,
-): { node: number; clauses: string[] } | null {
-  const wanted = `if-match ip-prefix ${targetPrefixList}`.toLowerCase();
-  let best: { node: number; clauses: string[] } | null = null;
-  for (const entry of policyNodes(text, policyName)) {
-    if (entry.action !== 'permit') continue;
-    if (!entry.clauses.some((clause) => clause.toLowerCase() === wanted)) continue;
-    if (best === null || entry.node < best.node) best = { node: entry.node, clauses: entry.clauses };
-  }
-  return best;
 }
 
 /**

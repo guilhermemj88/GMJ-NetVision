@@ -1,10 +1,10 @@
 import { parseHuaweiRoutePolicyNodesLenient } from './huawei-bgp-policy-parser';
+import { AGLINK_BGP_PLAN, aglinkBaselineIntact, bgpPlanLabels } from './aglink-bgp-plan';
 import {
-  AGLINK_BGP_PLAN,
-  aglinkBaselineIntact,
-  bgpPlanLabels,
-} from './aglink-bgp-plan';
-import { equalClauses, policyNodeClauses, type PreservedClauses } from './mitigation-policy-clauses';
+  equalClauses,
+  policyNodeClauses,
+  type PreservedClauses,
+} from './mitigation-policy-clauses';
 
 // Porta de execucao do motor de mitigacao.
 //
@@ -259,8 +259,7 @@ export function verifyActivation(
   // Baseline AGLINK (compatibilidade): a policy de referencia continua exigindo
   // node 10 intacto. Nao e um caminho separado de escrita — e a mesma checagem
   // de "outros nodes nao foram alterados".
-  const semanticOk =
-    policyName !== AGLINK_BGP_PLAN.policy || aglinkBaselineIntact(readBack);
+  const semanticOk = policyName !== AGLINK_BGP_PLAN.policy || aglinkBaselineIntact(readBack);
   if (!semanticOk) detalhes.push('AGLINK: baseline (node 10/1000) divergente');
   const verified = bogonOk && mitigationOk && preservedOk && semanticOk;
   return {
