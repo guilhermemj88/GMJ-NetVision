@@ -2,7 +2,7 @@
 
 Worktree: `C:\projetos\GMJ-NetVision-aglink-activate-safety`
 Branch: `feature/aglink-activate-safety`
-Referencia: `a5d2f4a` / `7b1dd86` · **Commit B6: `146953f`**
+Referencia: `a5d2f4a` / `7b1dd86` · **Commit B6: `2ad62b8`**
 Suite: **2790 verdes / 41 skip (2831)** · `tsc --noEmit` 0 · `eslint --max-warnings=0` 0
 
 Zero deploy, zero escrita no Huawei, zero ACTIVATE fisico, n8n intocado,
