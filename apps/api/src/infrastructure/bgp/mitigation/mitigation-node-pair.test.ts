@@ -6,6 +6,7 @@ import {
   selectNodePair,
 } from './mitigation-planner';
 import { SimulationCommandExecutor } from './simulation-command-executor';
+import { testPreservedClauses } from './mitigation-test-support';
 import {
   MockMitigationExecutor,
   verifyActivation,
@@ -67,6 +68,7 @@ describe('Fase 12 - par de nodes da mitigacao', () => {
       { bogonNode: 1, mitigationNode: 2 },
       RT,
       LABELS,
+      testPreservedClauses(POLICY, LABELS.targetPrefixList, RT),
     );
     expect(preview.commands).toEqual([
       'system-view',

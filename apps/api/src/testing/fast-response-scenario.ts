@@ -36,6 +36,7 @@ import type { SnmpVarBind } from '../domain/ports';
 import { SnmpPoller } from '../infrastructure/snmp/snmp-poller';
 import { SnmpClientImpl } from '../infrastructure/snmp/snmp-client-impl';
 import type { SnmpService } from '../infrastructure/snmp/snmp-service';
+import { testPreservedClauses } from '../infrastructure/bgp/mitigation/mitigation-test-support';
 
 export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -315,6 +316,11 @@ export async function fastResponseScenario(options: {
           blockedReasons: options.preflightFails ? ['Synthetic preflight failed'] : [],
           mode: input.mode,
           existingNodes: [10, 100],
+          preservedClauses: testPreservedClauses(
+            input.policyName,
+            input.targetPrefixList,
+            input.rt,
+          ),
         } as never;
       },
       activate: async (_host, input) => {

@@ -132,16 +132,32 @@ function rtValuesOf(clause: string): string[] {
  * Deriva, do estado FISICO atual, o que o node de mitigacao deve repor.
  *
  * Regra: primeiro node `permit` cuja prefix-list seja a lista autorizada do
- * cliente (a mesma que a mitigacao usa). Sem esse node nao ha atributos a
- * preservar e a mitigacao segue apenas com a RT (`additive`).
+ * cliente (a mesma que a mitigacao usa). Sem esse node nao ha baseline
+ * derivavel e o ACTIVATE e bloqueado.
+ *
+ * `prefixListConfiguration` (opcional) e o dump `ip ip-prefix ...` do proprio
+ * equipamento: com ele os nodes ANTERIORES ao baseline tambem sao avaliados por
+ * sobreposicao real de faixas; sem ele, qualquer node anterior com outra
+ * `if-match ip-prefix` bloqueia (nao ha como provar ausencia de conflito).
  */
 export function derivePreservedClauses(
   text: string,
   policyName: string,
   targetPrefixList: string,
   mitigationRt: string,
+  options?: {
+    prefixListConfiguration?: string | null;
+    /** Nodes TEMPORARIOS da mitigacao: nunca sao baseline nem "node anterior". */
+    pair?: { bogonNode: number; mitigationNode: number };
+  },
 ): PreservedClauses {
-  const nodes = policyNodes(text, policyName);
+  const allNodes = policyNodes(text, policyName);
+  const nodes = options?.pair
+    ? allNodes.filter(
+        (entry) =>
+          entry.node !== options.pair!.bogonNode && entry.node !== options.pair!.mitigationNode,
+      )
+    : allNodes;
   const baseline = findBaselinePermitNode(nodes, targetPrefixList);
   const clauses = baseline?.clauses ?? [];
   let localPreference: string | null = null;
@@ -168,8 +184,9 @@ export function derivePreservedClauses(
     ...(localPreference ? [localPreference] : []),
     rtLine,
   ];
+  const lists = parseIpPrefixLists(options?.prefixListConfiguration ?? null);
   const unsafeReasons = baseline
-    ? baselineUnsafeReasons(nodes, baseline, targetPrefixList, clauses)
+    ? baselineUnsafeReasons(nodes, baseline, targetPrefixList, clauses, lists)
     : [];
   return {
     baselineNode: baseline?.node ?? null,
@@ -183,19 +200,134 @@ export function derivePreservedClauses(
   };
 }
 
+/** Faixa de enderecos coberta por uma entrada de `ip ip-prefix`. */
+interface PrefixRange {
+  start: number;
+  end: number;
+}
+
+interface PrefixListContent {
+  ranges: PrefixRange[];
+  /** false = contem entrada `deny` ou linha nao interpretavel (nao reproduzivel). */
+  safe: boolean;
+}
+
+const IP_PREFIX_ENTRY =
+  /^ip ip-prefix (\S+) index (\d+) (permit|deny) (\d{1,3}(?:\.\d{1,3}){3}) (\d{1,2})(?: greater-equal (\d{1,2}))?(?: less-equal (\d{1,2}))?$/i;
+
+function ipv4ToInt(address: string): number | null {
+  const parts = address.split('.');
+  if (parts.length !== 4) return null;
+  let value = 0;
+  for (const part of parts) {
+    const octet = Number(part);
+    if (!Number.isInteger(octet) || octet < 0 || octet > 255) return null;
+    value = value * 256 + octet;
+  }
+  return value;
+}
+
+/**
+ * Conteudo das `ip ip-prefix` do equipamento. Qualquer entrada `deny`, linha
+ * ilegivel ou lista inexistente torna o conflito NAO comprovavel - nunca
+ * tratamos como "sem sobreposicao".
+ */
+function parseIpPrefixLists(configuration: string | null): Map<string, PrefixListContent> | null {
+  if (configuration === null || configuration.trim().length === 0) return null;
+  const lists = new Map<string, PrefixListContent>();
+  for (const raw of configuration.split(/\r?\n/)) {
+    const line = raw.trim().replace(/\s+/g, ' ');
+    if (!/^ip ip-prefix\b/i.test(line)) continue;
+    const entry = IP_PREFIX_ENTRY.exec(line);
+    const name = entry?.[1] ?? line.split(' ')[2] ?? null;
+    if (name === null) continue;
+    const list = lists.get(name) ?? { ranges: [], safe: true };
+    if (!entry) {
+      list.safe = false;
+      lists.set(name, list);
+      continue;
+    }
+    const start = ipv4ToInt(entry[4]!);
+    const length = Number(entry[5]);
+    if (entry[3]!.toLowerCase() === 'deny' || start === null || length > 32) {
+      list.safe = false;
+      lists.set(name, list);
+      continue;
+    }
+    // greater-equal/less-equal restringem o COMPRIMENTO dos prefixos dentro do
+    // bloco: a faixa de enderecos coberta continua sendo o bloco base.
+    list.ranges.push({ start, end: start + 2 ** (32 - length) - 1 });
+    lists.set(name, list);
+  }
+  return lists;
+}
+
+function rangesOverlap(left: PrefixRange, right: PrefixRange): boolean {
+  return left.start <= right.end && right.start <= left.end;
+}
+
+function listsOverlap(left: PrefixListContent, right: PrefixListContent): boolean {
+  return left.ranges.some((a) => right.ranges.some((b) => rangesOverlap(a, b)));
+}
+
+/**
+ * B3: nodes ANTERIORES ao baseline podem restringir os prefixos que o node de
+ * mitigacao passaria a aceitar (deny de sub-bloco com OUTRA lista) ou capturar
+ * as rotas antes dele. Só liberamos quando conseguimos provar, pelas prefix-lists
+ * reais do equipamento, que NENHUMA faixa se sobrepoe.
+ */
+function earlierNodeConflictReasons(
+  entry: { node: number; action: 'permit' | 'deny'; clauses: string[] },
+  baselineNode: number,
+  targetPrefixList: string,
+  lists: Map<string, PrefixListContent> | null,
+): string[] {
+  const reasons: string[] = [];
+  const wanted = `if-match ip-prefix ${targetPrefixList}`.toLowerCase();
+  for (const clause of entry.clauses) {
+    if (!/^if-match\b/i.test(clause)) continue;
+    const prefixMatch = /^if-match ip-prefix (\S+)$/i.exec(clause);
+    if (!prefixMatch) {
+      reasons.push(
+        `node anterior ${entry.node} (${entry.action}) usa if-match nao reproduzivel: ${clause}`,
+      );
+      continue;
+    }
+    if (clause.toLowerCase() === wanted) continue; // ja bloqueado pelo caso do alvo
+    const name = prefixMatch[1]!;
+    const target = lists?.get(targetPrefixList);
+    const other = lists?.get(name);
+    if (!lists || !target || !other || !target.safe || !other.safe) {
+      reasons.push(
+        `node anterior ${entry.node} (${entry.action}) usa a lista ${name}: ` +
+          'ausencia de conflito com o bloco autorizado NAO pode ser comprovada',
+      );
+      continue;
+    }
+    if (listsOverlap(target, other)) {
+      reasons.push(
+        `node anterior ${entry.node} (${entry.action}) com a lista ${name} alcanca ` +
+          `prefixos do bloco autorizado ${targetPrefixList}`,
+      );
+    }
+  }
+  return reasons;
+}
+
 /**
  * Valida que o node de mitigacao reproduz FIELMENTE o node original.
  *
  * Fail-closed e deliberadamente simples: qualquer construcao que nao sabemos
  * reproduzir (if-match adicional, goto, `apply` desconhecido) ou qualquer node
- * anterior que possa capturar as rotas antes do baseline BLOQUEIA o ACTIVATE.
- * Nao e um interpretador de route-policy — e um portao.
+ * anterior que possa capturar/restringir as rotas antes do baseline BLOQUEIA o
+ * ACTIVATE. Nao e um interpretador de route-policy — e um portao.
  */
 function baselineUnsafeReasons(
   nodes: ReadonlyArray<{ node: number; action: 'permit' | 'deny'; clauses: string[] }>,
   baseline: { node: number; clauses: string[]; match: 'PREFIX_LIST' | 'CATCH_ALL' },
   targetPrefixList: string,
   clauses: readonly string[],
+  lists: Map<string, PrefixListContent> | null,
 ): string[] {
   const reasons: string[] = [];
   const wanted = `if-match ip-prefix ${targetPrefixList}`.toLowerCase();
@@ -220,6 +352,15 @@ function baselineUnsafeReasons(
       reasons.push(
         `node anterior ${entry.node} (${entry.action}) pode capturar as rotas antes do node ${baseline.node}`,
       );
+      continue;
+    }
+    for (const reason of earlierNodeConflictReasons(
+      entry,
+      baseline.node,
+      targetPrefixList,
+      lists,
+    )) {
+      if (!reasons.includes(reason)) reasons.push(reason);
     }
   }
   return reasons;
@@ -250,37 +391,6 @@ function findBaselinePermitNode(
     }
   }
   return byPrefix ?? catchAll;
-}
-
-/**
- * Nodes NORMAIS do cliente vistos no REMOVE: `permit` que referencia a lista
- * autorizada e NAO carrega nenhuma RT de mitigacao. Eles nunca foram criados
- * pela mitigacao, logo nao podem ser confundidos com propriedade temporaria.
- *
- * O par esperado (`bogonNode` / `mitigationNode`) fica de fora do conjunto: se
- * ele nao casar exatamente, `resolveActivePair` continua bloqueando a retirada
- * — a ambiguidade permanece fail-closed.
- */
-export function baselineNodesForRemoval(
-  text: string,
-  policyName: string,
-  targetPrefixList: string,
-  mitigationRts: readonly string[],
-  pair: { bogonNode: number; mitigationNode: number },
-): number[] {
-  const rts = new Set(mitigationRts.filter((rt) => rt.length > 0));
-  const wanted = `if-match ip-prefix ${targetPrefixList}`.toLowerCase();
-  return policyNodes(text, policyName)
-    .filter((entry) => entry.node !== pair.bogonNode && entry.node !== pair.mitigationNode)
-    .filter((entry) => entry.action === 'permit')
-    .filter((entry) => entry.clauses.some((clause) => clause.toLowerCase() === wanted))
-    .filter((entry) =>
-      entry.clauses
-        .filter((clause) => /^apply extcommunity rt\b/i.test(clause))
-        .flatMap((clause) => rtValuesOf(clause))
-        .every((rt) => !rts.has(rt)),
-    )
-    .map((entry) => entry.node);
 }
 
 /** Todos os nodes de uma policy em UMA passada (config ou display). */

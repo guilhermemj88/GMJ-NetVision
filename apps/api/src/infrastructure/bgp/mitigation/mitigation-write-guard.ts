@@ -78,26 +78,43 @@ function normalizePlan(plan: MitigationWritePlan): MitigationWritePlan {
  *             + atributos NORMAIS do cliente (derivados do baseline fisico)
  *             + `apply extcommunity rt <RTs normais> rt <RT mitigacao> additive`
  *
- * `preserved` vem do proprio equipamento (`derivePreservedClauses`). Sem ele, o
- * node de mitigacao leva apenas a RT com `additive`, o que continua correto
- * para policies sem atributos a repor.
+ * `preserved` vem do proprio equipamento (`derivePreservedClauses`). Sem ele o
+ * builder NAO gera comandos: um node de mitigacao apenas com a RT poderia
+ * aceitar prefixos que o node normal do cliente restringia.
  */
 export function buildMitigationActivateCommands(
   plan: MitigationWritePlan,
   preserved?: PreservedClauses,
 ): string[] {
   const safe = normalizePlan(bgpPlanLabels(plan.policyName, plan));
+  assertDerivedBaseline(preserved);
   return [
     'system-view',
     `route-policy ${safe.policyName} deny node ${safe.bogonNode}`,
     ` if-match ip-prefix ${safe.bogonPrefixList}`,
     `route-policy ${safe.policyName} permit node ${safe.mitigationNode}`,
     ` if-match ip-prefix ${safe.targetPrefixList}`,
-    ...(preserved?.otherApplies ?? []).map((clause) => ` ${clause}`),
-    ...(preserved?.localPreference ? [` ${preserved.localPreference}`] : []),
-    ` ${buildRouteTargetLine(preserved?.routeTargets ?? [], safe.rt)}`,
+    ...preserved.otherApplies.map((clause) => ` ${clause}`),
+    ...(preserved.localPreference ? [` ${preserved.localPreference}`] : []),
+    ` ${buildRouteTargetLine(preserved.routeTargets, safe.rt)}`,
     'commit',
   ];
+}
+
+/**
+ * Defesa em profundidade (auditoria B-final): o builder e o ULTIMO ponto antes
+ * de qualquer escrita — inclusive no executor MOCK — e recusa gerar a lista
+ * quando o baseline nao foi derivado ou quando a derivacao e insegura.
+ */
+function assertDerivedBaseline(
+  preserved?: PreservedClauses,
+): asserts preserved is PreservedClauses {
+  if (!preserved || preserved.baselineNode === null) {
+    throw new Error('MITIGATION_BASELINE_NOT_DERIVABLE');
+  }
+  if (!preserved.safe) {
+    throw new Error(`MITIGATION_BASELINE_UNSAFE: ${preserved.unsafeReasons.join('; ')}`);
+  }
 }
 
 /** Comandos canonicos do REMOVE (retirada dos DOIS nodes + commit). */

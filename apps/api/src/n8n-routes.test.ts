@@ -197,7 +197,8 @@ describe('canal IN (n8n -> NetVision)', () => {
       'commit',
     ]);
     expect(remove.json().status).toBe('WOULD_REMOVE');
-    expect(harness.executor.calls).toEqual([]);
+    // Simulacao nao escreve: so a leitura read-only do baseline e permitida.
+    expect(harness.executor.calls.filter((call) => !call.startsWith('display '))).toEqual([]);
   });
 
   it('ACTIVATE executa e confirma por read-back', async () => {

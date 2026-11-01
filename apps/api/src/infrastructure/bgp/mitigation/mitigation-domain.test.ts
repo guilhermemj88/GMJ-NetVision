@@ -20,6 +20,7 @@ import {
 } from './mitigation-planner';
 import { evaluateTraffic } from './mitigation-state-machine';
 import { SimulationCommandExecutor } from './simulation-command-executor';
+import { testPreservedClauses } from './mitigation-test-support';
 import {
   InMemoryNotificationPublisher,
   NoopNotificationPublisher,
@@ -257,6 +258,7 @@ describe('simulation command executor (nunca escreve)', () => {
       { bogonNode: 1, mitigationNode: 2 },
       '268568:660',
       { bogonPrefixList: 'BOGONS', targetPrefixList: 'PREFIX8to24' },
+      testPreservedClauses('PL-HORIZONTES_IPv4-IN', 'PREFIX8to24', '268568:660'),
     );
     expect(preview.commands).toEqual([
       'system-view',

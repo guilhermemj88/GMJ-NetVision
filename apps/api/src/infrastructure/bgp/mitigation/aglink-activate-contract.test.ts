@@ -296,17 +296,10 @@ describe('9) MECANISMO UNICO: qualquer cliente preserva os proprios atributos', 
       '268568:660',
     );
     expect(semBaseline.baselineNode).toBeNull();
-    expect(buildMitigationActivateCommands({ ...other, policyName: 'PL-VAZIA-IN' }, semBaseline)).toEqual(
-      [
-        'system-view',
-        'route-policy PL-VAZIA-IN deny node 1',
-        ' if-match ip-prefix BOGONS',
-        'route-policy PL-VAZIA-IN permit node 2',
-        ' if-match ip-prefix PREFIX-HORIZONTES-IPV4',
-        ' apply extcommunity rt 268568:660 additive',
-        'commit',
-      ],
-    );
+    // Builder fail-closed: sem baseline derivado NAO existe node 2 "so com a RT".
+    expect(() =>
+      buildMitigationActivateCommands({ ...other, policyName: 'PL-VAZIA-IN' }, semBaseline),
+    ).toThrow(/MITIGATION_BASELINE_NOT_DERIVABLE/);
   });
 
   it('o readback desse cliente tambem e verificado contra os atributos preservados', () => {

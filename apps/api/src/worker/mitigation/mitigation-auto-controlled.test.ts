@@ -6,6 +6,7 @@ import {
   type MitigationLiveExecutorPort,
 } from '../../infrastructure/bgp/mitigation/mitigation-command-service';
 import { MockMitigationExecutor } from '../../infrastructure/bgp/mitigation/mitigation-executor';
+import { testPreservedClauses } from '../../infrastructure/bgp/mitigation/mitigation-test-support';
 import type {
   MitigationPreflightInput,
   MitigationPreflightResult,
@@ -71,6 +72,7 @@ class CountingLiveExecutor implements MitigationLiveExecutorPort {
       targetPrefixList: input.targetPrefixList,
       targetPrefixListExists: true,
       rt: input.rt,
+      preservedClauses: testPreservedClauses(input.policyName, input.targetPrefixList, input.rt),
       sshReadBackOk: true,
       bogonNodeExists: false,
       bogonNodeMatches: false,

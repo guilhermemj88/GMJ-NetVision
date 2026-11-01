@@ -15,6 +15,7 @@ import { effectiveBandwidthBps } from './bandwidth-parser';
 import { interfaceMitigationScope } from './mitigation-scope';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import { SimulationCommandExecutor } from './simulation-command-executor';
+import { derivePreservedClauses } from './mitigation-policy-clauses';
 import type { MitigationNodePair } from './mitigation-planner';
 import type {
   MitigationNotification,
@@ -824,15 +825,54 @@ export class MitigationCommandService {
       };
     }
 
-    const preview = activate
-      ? this.preview.buildMitigation(
+    // MOCK: mesmo contrato do executor real — os atributos preservados vem do
+    // ESTADO DO "EQUIPAMENTO" simulado (baseline deterministico do estado
+    // inicial). Nunca inventamos clausulas para satisfazer o builder.
+    const liveDevice = live && host ? host : null;
+    if (activate && !liveDevice && !activationInput.preservedClauses) {
+      const simulatedReadBack = await this.read(
+        () => this.deps.executor.readRoutePolicy(profile.policyName),
+        null,
+      );
+      if (simulatedReadBack !== null) {
+        activationInput.preservedClauses = derivePreservedClauses(
+          simulatedReadBack,
           profile.policyName,
-          pair,
+          this.labels.targetPrefixList,
           profile.mitigationRt,
-          this.labels,
-          activationInput.preservedClauses,
-        ).commands
-      : this.preview.buildRecovery(profile.policyName, pair).commands;
+        );
+      }
+    }
+
+    let preview: string[];
+    try {
+      preview = activate
+        ? this.preview.buildMitigation(
+            profile.policyName,
+            pair,
+            profile.mitigationRt,
+            this.labels,
+            activationInput.preservedClauses,
+          ).commands
+        : this.preview.buildRecovery(profile.policyName, pair).commands;
+    } catch (error) {
+      // Builder fail-closed: sem baseline derivado/seguro NAO existe lista de
+      // comandos — nem em MOCK. Nada foi escrito e o runtime nao muda.
+      if (preflight) {
+        // A causa fisica real (estrutura/ocupacao/read-back) e mais informativa
+        // do que a falta de baseline derivado.
+        return this.preflightBlocked(common, [], preflight);
+      }
+      return {
+        ...common,
+        ok: false,
+        status: 'REVALIDATION_FAILED',
+        verified: false,
+        commandPreview: [],
+        verification: null,
+        safeError: executionReason(error),
+      };
+    }
 
     if (input.action === 'SIMULATE_ACTIVATE' || input.action === 'SIMULATE_REMOVE') {
       await this.publish(
@@ -862,7 +902,6 @@ export class MitigationCommandService {
     }
 
     // ---- execucao (MOCK por padrao; HUAWEI so com live_write + allowlist) ----
-    const liveDevice = live && host ? host : null;
     if (isAutomaticCommand(input) && this.deps.requireAutomaticAuthorization && !liveDevice) {
       return {
         ...common,

@@ -173,6 +173,7 @@ import {
 } from './worker/mitigation/auto-lifecycle';
 import { resolveAutoClientBinding } from './worker/mitigation/auto-client-binding';
 import { PrismaAutomationStore } from './worker/mitigation/automation-store';
+import { AutomationMitigationBaselineStore } from './worker/mitigation/baseline-store';
 import { DurableMitigationOutbox } from './worker/mitigation/durable-mitigation-outbox';
 import { buildDetectionAlertNotification } from './application/mitigation-detection-alert';
 import { inspectPolicyMitigation } from './infrastructure/bgp/mitigation/mitigation-policy-physical';
@@ -893,12 +894,20 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     bogonPrefixList: mitigationEngineConfig.bogonPrefixList,
     targetPrefixList: mitigationEngineConfig.targetPrefixList,
   };
-  const mitigationExecutor = new MockMitigationExecutor();
+  const mitigationExecutor = new MockMitigationExecutor({
+    // MOCK: cliente simulado com node normal preexistente (estado inicial
+    // deterministico). O ACTIVATE continua criando somente os nodes 1 e 2.
+    baseline: { node: 10, targetPrefixList: mitigationEngineConfig.targetPrefixList },
+  });
   const mitigationLiveExecutor = new HuaweiMitigationExecutor({
     ssh: mitigationSsh,
     config: mitigationExecutionConfig,
     rt: mitigationEngineConfig.mitigationRt,
     labels: mitigationLabels,
+    // B5: fingerprint dos nodes permanentes sobrevive a restart do processo.
+    ...(automationStore
+      ? { baseline: new AutomationMitigationBaselineStore(automationStore) }
+      : {}),
   });
   // F4: MESMA exclusao mutua para UI, n8n, AUTO e APPLY LOCAL do reconciler.
   const mitigationScopeLock = config.DEMO_MODE

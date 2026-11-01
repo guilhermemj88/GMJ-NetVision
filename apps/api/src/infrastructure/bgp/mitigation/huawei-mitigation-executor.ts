@@ -20,10 +20,14 @@ import {
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import { planNodeOccupancy, type NodeOccupancyPlan } from './mitigation-node-snapshot';
 import {
-  baselineNodesForRemoval,
-  derivePreservedClauses,
-  type PreservedClauses,
-} from './mitigation-policy-clauses';
+  baselineDriftReasons,
+  captureMitigationBaseline,
+  isBaselineRecordComplete,
+  MemoryMitigationBaselineStore,
+  type MitigationBaselineRecord,
+  type MitigationBaselineStore,
+} from './mitigation-baseline-record';
+import { derivePreservedClauses, type PreservedClauses } from './mitigation-policy-clauses';
 import {
   assertMitigationCommandShape,
   buildMitigationActivateCommands,
@@ -136,6 +140,11 @@ export interface HuaweiMitigationExecutorDeps {
   config: MitigationExecutionConfig;
   rt?: string;
   labels?: { bogonPrefixList: string; targetPrefixList: string };
+  /**
+   * Registro DURAVEL do baseline (B5). Ausente = store em memoria do processo
+   * (nunca persistente); producao injeta o store duravel.
+   */
+  baseline?: MitigationBaselineStore;
 }
 
 function safeErrorMessage(error: unknown): string {
@@ -164,6 +173,7 @@ function sameNodes(left: readonly number[], right: readonly number[]): boolean {
 export class HuaweiMitigationExecutor {
   private readonly rt: string;
   private readonly labels: { bogonPrefixList: string; targetPrefixList: string };
+  private readonly baseline: MitigationBaselineStore;
 
   constructor(private readonly deps: HuaweiMitigationExecutorDeps) {
     this.rt = deps.rt ?? DEFAULT_MITIGATION_RT;
@@ -171,11 +181,60 @@ export class HuaweiMitigationExecutor {
       bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST,
       targetPrefixList: DEFAULT_TARGET_PREFIX_LIST,
     };
+    this.baseline = deps.baseline ?? new MemoryMitigationBaselineStore();
   }
 
   /** Leitura real liberada para este device (HUAWEI + allowlist). */
   enabledFor(device: HostRecord | null | undefined): boolean {
     return canReadLive(this.deps.config, device?.id);
+  }
+
+  /**
+   * B5: grava o fingerprint dos nodes PERMANENTES imediatamente antes da
+   * escrita. Falha de leitura/registro interrompe o ACTIVATE antes de qualquer
+   * comando chegar ao equipamento.
+   */
+  private async captureAndSaveBaseline(
+    device: HostRecord,
+    input: MitigationActivationInput,
+  ): Promise<void> {
+    let readBack: string;
+    try {
+      readBack = await this.deps.ssh.readMitigationRoutePolicy(device, input.policyName);
+    } catch (error) {
+      throw new Error(`MITIGATION_BASELINE_RECORD_UNAVAILABLE: ${safeErrorMessage(error)}`);
+    }
+    const record = captureMitigationBaseline({
+      deviceId: device.id,
+      policyName: input.policyName,
+      readBack,
+      bogonNode: input.bogonNode,
+      mitigationNode: input.mitigationNode,
+    });
+    if (!record || !isBaselineRecordComplete(record)) {
+      throw new Error('MITIGATION_BASELINE_RECORD_UNAVAILABLE: policy nao reconhecida');
+    }
+    try {
+      await this.baseline.save(record);
+    } catch (error) {
+      throw new Error(`MITIGATION_BASELINE_RECORD_UNAVAILABLE: ${safeErrorMessage(error)}`);
+    }
+  }
+
+  /** Registro confiavel do ACTIVATE (escopo + integridade verificadas). */
+  private async loadBaseline(
+    device: HostRecord,
+    policyName: string,
+  ): Promise<MitigationBaselineRecord | null> {
+    let record: MitigationBaselineRecord | null;
+    try {
+      record = await this.baseline.load({ deviceId: device.id, policyName });
+    } catch {
+      return null;
+    }
+    if (!isBaselineRecordComplete(record)) return null;
+    if (record.deviceId !== device.id || record.policyName !== policyName) return null;
+    return record;
   }
 
   private assertWriteAllowed(device: HostRecord): void {
@@ -389,11 +448,17 @@ export class HuaweiMitigationExecutor {
 
       // Atributos NORMAIS do cliente (mecanismo unico para toda policy):
       // derivados do proprio baseline fisico e repostos no node de mitigacao.
+      // `prefixListConfiguration` habilita a checagem B3: nodes ANTERIORES ao
+      // baseline so passam quando as faixas das ip-prefix NAO se sobrepoem.
       preservedClauses = derivePreservedClauses(
         routePolicyConfiguration ?? '',
         input.policyName,
         input.targetPrefixList,
         input.rt,
+        {
+          prefixListConfiguration,
+          pair: { bogonNode: input.bogonNode, mitigationNode: input.mitigationNode },
+        },
       );
       checks.push({
         id: 'preserved_attributes',
@@ -488,18 +553,33 @@ export class HuaweiMitigationExecutor {
       // "as cegas" um node com conteudo diferente.
       // F3-REMOVE: com estrutura AMBIGUA (multiplos pares, nodes suspeitos ou
       // leitura inconclusiva) a retirada fica bloqueada - remover UM par e
-      // sincronizar o escopo como NORMAL esconderia o que sobrou. Os nodes
-      // normais do cliente (mesma lista autorizada, SEM a RT de mitigacao) sao
-      // baseline e nunca propriedade temporaria: sem isso a retirada ficaria
-      // travada em toda policy cujo node original referencia a lista do par.
-      const removalBaselineNodes = baselineNodesForRemoval(
-        readBackOutput ?? '',
-        input.policyName,
-        input.targetPrefixList,
-        [input.rt, this.rt],
-        { bogonNode: input.bogonNode, mitigationNode: input.mitigationNode },
+      // sincronizar o escopo como NORMAL esconderia o que sobrou.
+      //
+      // B5: o baseline NAO e mais heuristico. O registro gravado ANTES da
+      // primeira escrita do ACTIVATE e a unica fonte dos nodes permanentes;
+      // qualquer node novo/alterado/removido desde entao BLOQUEIA a retirada.
+      const baselineRecord = await this.loadBaseline(device, input.policyName);
+      const driftReasons =
+        baselineRecord === null || readBackOutput === null
+          ? ['registro de baseline ausente para esta mitigacao']
+          : baselineDriftReasons(baselineRecord, readBackOutput);
+      checks.push({
+        id: 'policy_baseline_record',
+        ok: baselineRecord !== null && driftReasons.length === 0,
+        detail:
+          baselineRecord === null
+            ? 'MITIGATION_BASELINE_RECORD_MISSING: sem registro confiavel do ACTIVATE ' +
+              '(a configuracao atual NAO e presumida original)'
+            : driftReasons.length > 0
+              ? `MITIGATION_BASELINE_DRIFT: ${driftReasons.join('; ')}`
+              : `nodes permanentes identicos ao registro ${baselineRecord.capturedAt} ` +
+                `[${baselineRecord.nodes.map((entry) => entry.node).join(', ') || 'nenhum'}]`,
+      });
+      const removalPhysical = this.inspectMitigation(
+        input,
+        readBackOutput,
+        baselineRecord?.nodes.map((entry) => entry.node) ?? [],
       );
-      const removalPhysical = this.inspectMitigation(input, readBackOutput, removalBaselineNodes);
       checks.push({
         id: 'policy_mitigation_scope',
         ok: removalPhysical.state !== 'RECONCILIATION_REQUIRED',
@@ -578,6 +658,9 @@ export class HuaweiMitigationExecutor {
     this.assertWriteAllowed(device);
     const commands = buildMitigationActivateCommands(this.writePlan(input), input.preservedClauses);
     assertMitigationCommandShape(commands);
+    // B5: o fingerprint dos nodes PERMANENTES e gravado ANTES da primeira
+    // escrita. Sem ele nao existe retirada confiavel depois.
+    await this.captureAndSaveBaseline(device, input);
     const result = await this.deps.ssh.applyMitigationCommands(device, commands);
     if (!result.ok) {
       throw new Error(`MITIGATION_WRITE_FAILED: ${deviceExcerpt(result.output)}`);

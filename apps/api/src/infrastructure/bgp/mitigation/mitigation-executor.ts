@@ -1,5 +1,6 @@
 import { parseHuaweiRoutePolicyNodesLenient } from './huawei-bgp-policy-parser';
 import { AGLINK_BGP_PLAN, aglinkBaselineIntact, bgpPlanLabels } from './aglink-bgp-plan';
+import { DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import {
   equalClauses,
   policyNodeClauses,
@@ -65,18 +66,48 @@ interface MockPolicy {
   nodes: Map<number, MockNode>;
 }
 
+export interface MockMitigationExecutorOptions {
+  /**
+   * Node NORMAL preexistente do "cliente" simulado, materializado junto com a
+   * policy. `null` = nenhum baseline (usado para exercitar o caminho
+   * fail-closed). Default: node 10 com `if-match ip-prefix <lista autorizada>`.
+   */
+  baseline?: { node: number; targetPrefixList: string } | null;
+}
+
 /**
  * Executor de simulacao: guarda o estado em memoria para que o read-back
  * realmente comprove o efeito (os DOIS nodes, com acao, prefix-list e RT).
  */
 export class MockMitigationExecutor implements MitigationExecutor {
   private readonly policies = new Map<string, MockPolicy>();
+  private readonly baseline: { node: number; targetPrefixList: string } | null;
   readonly calls: string[] = [];
+
+  constructor(
+    options: MockMitigationExecutorOptions = {
+      baseline: { node: 10, targetPrefixList: DEFAULT_TARGET_PREFIX_LIST },
+    },
+  ) {
+    this.baseline =
+      options.baseline === undefined
+        ? { node: 10, targetPrefixList: DEFAULT_TARGET_PREFIX_LIST }
+        : options.baseline;
+  }
 
   private policy(policyName: string): MockPolicy {
     const existente = this.policies.get(policyName);
     if (existente) return existente;
     const nova: MockPolicy = { nodes: new Map() };
+    // ESTADO INICIAL: um cliente real ja tem seu node normal na policy. O
+    // ACTIVATE continua criando SOMENTE os nodes 1 e 2.
+    if (this.baseline) {
+      nova.nodes.set(this.baseline.node, {
+        action: 'permit',
+        ifMatchIpPrefix: [this.baseline.targetPrefixList],
+        routeTargets: [],
+      });
+    }
     this.policies.set(policyName, nova);
     return nova;
   }

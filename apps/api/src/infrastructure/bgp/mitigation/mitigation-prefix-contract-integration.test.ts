@@ -20,6 +20,7 @@ import {
   buildMitigationActivateCommands,
   buildMitigationRemovalCommands,
 } from './mitigation-write-guard';
+import { testPreservedClauses } from './mitigation-test-support';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import type {
   MitigationPreflightInput,
@@ -126,14 +127,18 @@ class FakeLiveExecutor implements MitigationLiveExecutorPort {
   }
 
   async preflight(_device: HostRecord, input: MitigationPreflightInput) {
-    return { ...this.preflightValue, mode: input.mode };
+    return {
+      ...this.preflightValue,
+      mode: input.mode,
+      preservedClauses: testPreservedClauses(input.policyName, input.targetPrefixList, input.rt),
+    };
   }
 
   async activate(
     _device: HostRecord,
     input: MitigationActivationInput,
   ): Promise<{ output: string }> {
-    buildMitigationActivateCommands(input);
+    buildMitigationActivateCommands(input, input.preservedClauses);
     return { output: 'ok' };
   }
 

@@ -344,7 +344,10 @@ describe('CODEX independent engine and rollback guards', () => {
         profileId: h.profile.id,
       });
       expect(r.verified).toBe(false);
-      expect(r.safeError).toContain('MITIGATION_WRITE_DISABLED');
+      // ACTIVATE chega ao gate de escrita (LIVE_WRITE=false => bloqueado).
+      // REMOVE, sem registro duravel do ACTIVATE, e bloqueado antes no
+      // preflight (B5: a configuracao atual nunca e presumida original).
+      expect(r.safeError).toMatch(/MITIGATION_WRITE_DISABLED|Preflight read-only falhou/);
       expect(h.ssh.writes).toHaveLength(0);
       expect(h.ssh.active).toBe(active);
       expect(h.mock.calls).toHaveLength(0);

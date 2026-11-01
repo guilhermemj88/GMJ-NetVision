@@ -5,6 +5,11 @@ import type { MitigationExecutionConfig } from './mitigation-execution-config';
 import { SimulationCommandExecutor } from './simulation-command-executor';
 import { verifyActivation } from './mitigation-executor';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
+import { testPreservedClauses } from './mitigation-test-support';
+import {
+  captureMitigationBaseline,
+  MemoryMitigationBaselineStore,
+} from './mitigation-baseline-record';
 
 const DEVICE_ID = 'host-f1a';
 const POLICY = 'PL-HORIZONTES_IPv4-IN';
@@ -21,6 +26,7 @@ const ROUTE_POLICY = [
 const IP_PREFIX = [
   'ip ip-prefix BOGONS index 10 permit 10.0.0.0 8',
   'ip ip-prefix PREFIX8to24 index 10 permit 10.200.200.0 24',
+  'ip ip-prefix PREFIX-HORIZONTES-IPV4 index 10 permit 10.200.100.0 24',
 ].join('\n');
 
 function device(id = DEVICE_ID): HostRecord {
@@ -100,6 +106,30 @@ function executor(ssh: FakeSsh, cfg = config()): HuaweiMitigationExecutor {
   return new HuaweiMitigationExecutor({ ssh, config: cfg, rt: RT });
 }
 
+const PRESERVED = testPreservedClauses(POLICY, DEFAULT_TARGET_PREFIX_LIST, RT);
+
+/**
+ * Executor com o registro DURAVEL do ACTIVATE ja gravado (B5). Equivale a um
+ * ACTIVATE verificado anteriormente no mesmo device/policy.
+ */
+async function executorWithBaseline(
+  ssh: FakeSsh,
+  readBack: string,
+): Promise<HuaweiMitigationExecutor> {
+  const baseline = new MemoryMitigationBaselineStore();
+  const record = captureMitigationBaseline({
+    deviceId: DEVICE_ID,
+    policyName: POLICY,
+    readBack,
+    bogonNode: 1,
+    mitigationNode: 2,
+  });
+  if (!record) throw new Error('fixture sem baseline');
+  await baseline.save(record);
+  return new HuaweiMitigationExecutor({ ssh, config: config(), rt: RT, baseline });
+}
+
+
 const ACTIVATION = {
   policyName: POLICY,
   bogonNode: 1,
@@ -107,6 +137,7 @@ const ACTIVATION = {
   rt: RT,
   bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST,
   targetPrefixList: DEFAULT_TARGET_PREFIX_LIST,
+  preservedClauses: PRESERVED,
 };
 
 describe('HuaweiMitigationExecutor - gate fail-closed (zero escrita)', () => {
@@ -252,7 +283,8 @@ describe('HuaweiMitigationExecutor - preflight de REMOVE (par presente)', () => 
   it('3) REMOVE com o par correto presente -> OK (nao exige nodes livres)', async () => {
     const ssh = new FakeSsh();
     ssh.routePolicyConfiguration = ROUTE_POLICY_MITIGATED;
-    const result = await executor(ssh).preflight(device(), REMOVE_INPUT);
+    const exec = await executorWithBaseline(ssh, ROUTE_POLICY_MITIGATED);
+    const result = await exec.preflight(device(), REMOVE_INPUT);
     expect(result.ok).toBe(true);
     expect(result.mode).toBe('REMOVE');
     expect(result.existingNodes).toEqual([1, 2, 11, 50]);
@@ -373,7 +405,8 @@ describe('HuaweiMitigationExecutor - preflight de REMOVE (par presente)', () => 
     const ssh = new FakeSsh();
     ssh.routePolicyConfiguration = ROUTE_POLICY_MITIGATED;
     ssh.prefixListConfiguration = null;
-    const result = await executor(ssh).preflight(device(), REMOVE_INPUT);
+    const exec = await executorWithBaseline(ssh, ROUTE_POLICY_MITIGATED);
+    const result = await exec.preflight(device(), REMOVE_INPUT);
     expect(result.sshReadBackOk).toBe(true);
     expect(result.ok).toBe(true);
   });
@@ -450,6 +483,7 @@ describe('HuaweiMitigationExecutor - comandos exatos', () => {
         { bogonNode: 1, mitigationNode: 2 },
         RT,
         { bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST, targetPrefixList: DEFAULT_TARGET_PREFIX_LIST },
+        PRESERVED,
       ).commands,
     );
   });
@@ -578,7 +612,8 @@ describe('read-back real (display route-policy)', () => {
     const ssh = new FakeSsh();
     ssh.routePolicyConfiguration = ROUTE_POLICY_MITIGATED;
     ssh.readBack = DISPLAY_MITIGATED;
-    const result = await executor(ssh).preflight(device(), REMOVE_INPUT);
+    const exec = await executorWithBaseline(ssh, DISPLAY_MITIGATED);
+    const result = await exec.preflight(device(), REMOVE_INPUT);
     expect(result.ok).toBe(true);
     expect(result.readBackNodes).toEqual([1, 2, 11, 50]);
     expect(result.bogonNodeMatches).toBe(true);

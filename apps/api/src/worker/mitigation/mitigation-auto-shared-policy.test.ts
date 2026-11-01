@@ -6,6 +6,7 @@ import {
   type MitigationLiveExecutorPort,
 } from '../../infrastructure/bgp/mitigation/mitigation-command-service';
 import { MockMitigationExecutor } from '../../infrastructure/bgp/mitigation/mitigation-executor';
+import { testPreservedClauses } from '../../infrastructure/bgp/mitigation/mitigation-test-support';
 import type {
   MitigationActivationInput,
   MitigationRemovalInput,
@@ -117,6 +118,7 @@ class DeviceTruthExecutor implements MitigationLiveExecutorPort {
       targetPrefixList: input.targetPrefixList,
       targetPrefixListExists: true,
       rt: input.rt,
+      preservedClauses: testPreservedClauses(input.policyName, input.targetPrefixList, input.rt),
       sshReadBackOk: true,
       bogonNodeExists: this.nodes.has(input.bogonNode),
       bogonNodeMatches: this.nodes.has(input.bogonNode),

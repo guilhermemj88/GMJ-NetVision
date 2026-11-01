@@ -56,16 +56,19 @@ interface SshClientOptions {
   /**
    * Ocioso (ms) sem dados depois do comando para considerar a saida terminada
    * quando o PROMPT nao volta a aparecer. O `quit` so e enviado depois disso.
+   * Nao se aplica a sessoes com `requirePromptCompletion`.
    */
   commandIdleMs?: number;
   /**
    * Sessao de ESCRITA: aborta fail-closed se o equipamento abrir um prompt
-   * interativo NO MEIO dos comandos (`[Y/N]`, `[Y/N/C]`, `(y/n)`, `--More--`).
+   * interativo (`[Y/N]`, `[Y/N/C]`, `(y/n)`, `--More--`) — inclusive ANTES do
+   * primeiro comando.
    *
    * Nunca responde ao prompt: um `Y` automatico ja commitou configuracao nao
-   * revisada numa sessao de operador. Como a sessao e encerrada sem escrever
-   * mais nada, um pedido de confirmacao pendente e simplesmente abandonado
-   * (o VRP descarta a candidata). Sessoes READ-ONLY nao ligam esta opcao.
+   * revisada numa sessao de operador. A sessao e encerrada sem responder, mas
+   * ENCERRAR O CANAL NAO GARANTE DESCARTO: o estado do equipamento fica
+   * indeterminado e o chamador precisa tratar como reconciliacao obrigatoria.
+   * Sessoes READ-ONLY nao ligam esta opcao.
    */
   abortOnInteractivePrompt?: boolean;
   /**
@@ -77,6 +80,15 @@ interface SshClientOptions {
    * arrastar de comandos invalidos.
    */
   abortOnCommandError?: boolean;
+  /**
+   * Sessao de ESCRITA: o comando ATUAL so termina quando o prompt normal do
+   * equipamento aparecer. Silencio NUNCA significa "concluido" — sem prompt a
+   * sequencia e interrompida (`SSH_PROMPT_NOT_CONFIRMED`) e nada mais e
+   * enviado, em particular o `commit`.
+   */
+  requirePromptCompletion?: boolean;
+  /** Ocioso (ms) sem prompt em sessao de escrita antes de abortar. */
+  promptIdleMs?: number;
   /** Opt-in on-demand diagnostics; legacy/configuration callers are unchanged. */
   diagnostic?: {
     fingerprint: string;
@@ -234,6 +246,7 @@ export class SshClientImpl implements SshClient {
       : -1;
     const interactivePromptGuard = this.options.abortOnInteractivePrompt === true;
     const commandErrorGuard = this.options.abortOnCommandError === true;
+    const promptCompletionGuard = this.options.requirePromptCompletion === true;
     return new Promise((resolve, reject) => {
       connection.shell({ term: 'vt100', rows: 200, cols: 240 }, (error, stream: ClientChannel) => {
         if (error) {
@@ -278,6 +291,7 @@ export class SshClientImpl implements SshClient {
               ? 'quit\r\nquit\r\n'
               : 'quit\r\n';
         const idleMs = this.options.commandIdleMs ?? 2_500;
+        const promptIdleMs = this.options.promptIdleMs ?? 10_000;
         const diagnostic = this.options.diagnostic;
         const captureOutput = (): void => {
           diagnostic?.onOutput?.(
@@ -305,14 +319,40 @@ export class SshClientImpl implements SshClient {
           }
         };
 
+        /**
+         * Escrita interrompida: nada mais e enviado ao equipamento (em especial
+         * o `commit`) e o estado fisico passa a ser INDETERMINADO. Encerrar o
+         * canal NAO e prova de que a configuracao candidata foi descartada.
+         */
+        const abortWrite = (message: string): void => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          clearIdle();
+          stream.close();
+          reject(new Error(message));
+        };
+
         // O VRP ABORTA a saida que ainda esta sendo impressa quando recebe o
         // PROXIMO comando. Por isso a lista e enviada UMA POR VEZ: cada comando
         // so vai depois que o prompt do comando anterior volta.
         const armIdle = (): void => {
           clearIdle();
           idleTimer = setTimeout(
-            () => (diagnostic ? failDiagnostic('SSH_DIAGNOSTIC_INCOMPLETE') : advance()),
-            idleMs,
+            () => {
+              if (diagnostic) {
+                failDiagnostic('SSH_DIAGNOSTIC_INCOMPLETE');
+                return;
+              }
+              // ESCRITA: silencio NAO e conclusao. Sem o prompt normal nao ha
+              // como afirmar que o comando terminou — a sequencia para aqui.
+              if (promptCompletionGuard) {
+                abortWrite('SSH_PROMPT_NOT_CONFIRMED');
+                return;
+              }
+              advance();
+            },
+            promptCompletionGuard ? promptIdleMs : idleMs,
           );
         };
 
@@ -384,20 +424,8 @@ export class SshClientImpl implements SshClient {
             armIdle();
             return;
           }
-          // ESCRITA: erro de CLI no comando atual encerra a sequencia AQUI.
-          // O `commit` (proximo da lista canonica) nunca chega ao equipamento.
-          if (
-            commandErrorGuard &&
-            !diagnostic &&
-            CLI_ERROR.test(stdout.slice(commandStartOffset))
-          ) {
-            settled = true;
-            clearTimeout(timeout);
-            clearIdle();
-            stream.close();
-            reject(new Error('SSH_COMMAND_REJECTED'));
-            return;
-          }
+          // (Erro de CLI ja foi detectado em `handleStdout`, antes de qualquer
+          // avanco: aqui o comando terminou com prompt normal.)
           if (diagnostic) {
             const command = commands[commandIndex - 1]!;
             const output = stripVTControlCharacters(stdout.slice(commandStartOffset));
@@ -454,21 +482,26 @@ export class SshClientImpl implements SshClient {
             return;
           }
           stdout += chunk;
-          // ESCRITA: prompt interativo no meio dos comandos = abortar sem
-          // responder. Nenhum byte novo vai para o canal depois disto.
+          // ESCRITA: prompt interativo em QUALQUER ponto (inclusive antes do
+          // primeiro comando) = abortar sem responder. Nenhum byte novo vai
+          // para o canal depois disto.
           if (
             interactivePromptGuard &&
             !diagnostic &&
-            commandIndex > 0 &&
             !exiting &&
             INTERACTIVE_PROMPT.test(stdout.slice(-400))
           ) {
-            settled = true;
-            clearTimeout(timeout);
-            clearIdle();
-            stream.close();
-            reject(new Error('SSH_INTERACTIVE_PROMPT_BLOCKED'));
+            abortWrite('SSH_INTERACTIVE_PROMPT_BLOCKED');
             return;
+          }
+          // ESCRITA: erro de CLI detectado no acumulado — vale tambem quando o
+          // texto do erro chega dividido em varios chunks SSH. A sequencia para
+          // ANTES do `commit`.
+          if (commandErrorGuard && !diagnostic && commandIndex > 0) {
+            if (CLI_ERROR.test(stdout.slice(commandStartOffset))) {
+              abortWrite('SSH_COMMAND_REJECTED');
+              return;
+            }
           }
           if (diagnostic) {
             const slice = stripVTControlCharacters(stdout.slice(commandStartOffset));
@@ -514,7 +547,11 @@ export class SshClientImpl implements SshClient {
             }
           }
 
-          if (!declinedInitialPasswordChange && initialPasswordPrompt.test(stdout)) {
+          if (
+            !promptCompletionGuard &&
+            !declinedInitialPasswordChange &&
+            initialPasswordPrompt.test(stdout)
+          ) {
             declinedInitialPasswordChange = true;
             stream.write('N\r\n');
             return;

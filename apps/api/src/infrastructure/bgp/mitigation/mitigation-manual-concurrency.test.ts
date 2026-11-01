@@ -16,6 +16,7 @@ import type {
 } from './huawei-mitigation-executor';
 import { InMemoryPolicyScopeLock } from './mitigation-policy-lock';
 import { inspectPolicyMitigation } from './mitigation-policy-physical';
+import { testPreservedClauses } from './mitigation-test-support';
 import { MitigationAutoEngine } from '../../../worker/mitigation/mitigation-auto-engine';
 import { SequenceTrafficSource } from '../../../worker/mitigation/mitigation-traffic-source';
 
@@ -243,6 +244,7 @@ class ControlledDevice implements MitigationLiveExecutorPort {
     return {
       ok: reasons.length === 0,
       mode: input.mode,
+      preservedClauses: testPreservedClauses(input.policyName, input.targetPrefixList, input.rt),
       deviceId: _device.id,
       deviceName: _device.id,
       deviceHost: '10.0.0.1',

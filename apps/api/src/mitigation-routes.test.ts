@@ -493,18 +493,9 @@ describe('API de mitigacao DDoS (SIMULATION_ONLY)', () => {
       affectedPeers: ['10.200.200.10', '10.200.200.106'],
       persisted: true,
     });
-    expect(body.commandPreview).toEqual([
-      'system-view',
-      'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
-      ' if-match ip-prefix BOGONS',
-      'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
-      ' if-match ip-prefix PREFIX8to24',
-      ' apply extcommunity rt 268568:660 additive',
-      'commit',
-    ]);
-    for (const command of body.commandPreview) {
-      expect(typeof command).toBe('string');
-    }
+    // A simulacao de trafego NAO le o equipamento: sem baseline fisico o
+    // builder fail-closed nao gera lista (nunca um node 2 apenas com a RT).
+    expect(body.commandPreview).toEqual([]);
     // A simulacao nao dispara discovery/SSH nenhum.
     expect(harness.discovery.calls).toEqual([]);
   });
@@ -588,7 +579,7 @@ describe('API de mitigacao DDoS (SIMULATION_ONLY)', () => {
       blockedReason: null,
       prefixStatus: 'UNKNOWN',
     });
-    expect(body.commandPreview.length).toBeGreaterThan(0);
+    expect(body.commandPreview).toEqual([]);
   });
 
   it('simulacao exige autenticacao e 404 para profile inexistente', async () => {
@@ -770,7 +761,7 @@ describe('API de mitigacao DDoS (SIMULATION_ONLY)', () => {
     expect(simulated.json()).toMatchObject({
       result: 'WOULD_MITIGATE',
       persisted: false,
-      commandPreview: expect.arrayContaining(['commit']),
+      commandPreview: [],
     });
 
     await app3.close();

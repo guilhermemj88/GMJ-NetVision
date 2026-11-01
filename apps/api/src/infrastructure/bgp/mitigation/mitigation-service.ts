@@ -685,15 +685,22 @@ export class BgpMitigationService {
     let commandPreview: string[] = [];
     if (!blockedReason && plannedPair !== null) {
       if (result === 'WOULD_MITIGATE') {
-        commandPreview = this.executor.buildMitigation(
-          record.policyName,
-          plannedPair,
-          record.mitigationRt,
-          {
-            bogonPrefixList: config.bogonPrefixList,
-            targetPrefixList: config.targetPrefixList,
-          },
-        ).commands;
+        try {
+          commandPreview = this.executor.buildMitigation(
+            record.policyName,
+            plannedPair,
+            record.mitigationRt,
+            {
+              bogonPrefixList: config.bogonPrefixList,
+              targetPrefixList: config.targetPrefixList,
+            },
+          ).commands;
+        } catch {
+          // Sem baseline fisico derivado (esta simulacao nao le o equipamento)
+          // o builder recusa gerar comandos: a previsao fica vazia em vez de
+          // mostrar um node de mitigacao sem os atributos do cliente.
+          commandPreview = [];
+        }
       } else if (result === 'WOULD_RECOVER') {
         commandPreview = this.executor.buildRecovery(record.policyName, plannedPair).commands;
       }

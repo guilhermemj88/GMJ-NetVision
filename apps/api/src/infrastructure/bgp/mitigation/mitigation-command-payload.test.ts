@@ -200,8 +200,9 @@ describe('payload OUTBOUND da mitigacao (lane 1: NetVision -> n8n)', () => {
     expect(publisher.published[0]?.verified).toBeNull();
     expect(buildMitigationWebhookPayload(publisher.published[0]!).verified).toBeNull();
     expect(buildMitigationWebhookPayload(publisher.published[0]!).interface).toBe('Eth-Trunk1.3011');
-    // Simulacao nao escreve nada: o executor nem foi chamado.
-    expect(scenario.executor.calls).toEqual([]);
+    // Simulacao nao escreve nada: nenhuma escrita chegou ao executor (a unica
+    // chamada permitida e a leitura read-only que deriva o baseline).
+    expect(scenario.executor.calls.filter((call) => !call.startsWith('display '))).toEqual([]);
   });
 
   it('shared policy e AVISO: a mitigacao segue normalmente', async () => {

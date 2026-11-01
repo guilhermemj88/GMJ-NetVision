@@ -6,6 +6,7 @@ import {
   type MitigationLiveExecutorPort,
 } from './mitigation-command-service';
 import { MockMitigationExecutor } from './mitigation-executor';
+import { testPreservedClauses } from './mitigation-test-support';
 import type {
   MitigationActivationInput,
   MitigationRemovalInput,
@@ -108,6 +109,7 @@ class FakeLiveExecutor implements MitigationLiveExecutorPort {
       targetPrefixList: input.targetPrefixList,
       targetPrefixListExists: true,
       rt: input.rt,
+      preservedClauses: testPreservedClauses(input.policyName, input.targetPrefixList, input.rt),
       sshReadBackOk: true,
       bogonNodeExists: false,
       bogonNodeMatches: false,

@@ -4,6 +4,11 @@ import { HuaweiMitigationExecutor } from './huawei-mitigation-executor';
 import type { MitigationSshPort } from './huawei-mitigation-executor';
 import { buildMitigationActivateCommands } from './mitigation-write-guard';
 import { derivePreservedClauses } from './mitigation-policy-clauses';
+import {
+  captureMitigationBaseline,
+  MemoryMitigationBaselineStore,
+  type MitigationBaselineStore,
+} from './mitigation-baseline-record';
 
 /**
  * Correções da auditoria do Claude (fail-closed no preflight).
@@ -52,7 +57,7 @@ class FakeSsh implements MitigationSshPort {
   }
 }
 
-function executor(ssh: FakeSsh): HuaweiMitigationExecutor {
+function executor(ssh: FakeSsh, baseline?: MitigationBaselineStore): HuaweiMitigationExecutor {
   return new HuaweiMitigationExecutor({
     ssh,
     config: {
@@ -61,7 +66,29 @@ function executor(ssh: FakeSsh): HuaweiMitigationExecutor {
       allowedDeviceIds: [DEVICE_ID],
     },
     rt: RT,
+    ...(baseline ? { baseline } : {}),
   });
+}
+
+/**
+ * Executor com o registro DURAVEL do ACTIVATE (B5) gravado a partir do
+ * read-back informado — equivale a uma mitigacao ativa registrada.
+ */
+async function executorWithBaseline(
+  ssh: FakeSsh,
+  readBack: string,
+): Promise<HuaweiMitigationExecutor> {
+  const baseline = new MemoryMitigationBaselineStore();
+  const record = captureMitigationBaseline({
+    deviceId: DEVICE_ID,
+    policyName: POLICY,
+    readBack,
+    bogonNode: 1,
+    mitigationNode: 2,
+  });
+  if (!record) throw new Error('fixture sem baseline');
+  await baseline.save(record);
+  return executor(ssh, baseline);
 }
 
 const input = {
@@ -246,9 +273,21 @@ describe('8) preview e escrita sao identicos', () => {
       bogonPrefixList: 'BOGONS',
       targetPrefixList: 'PREFIX8to24',
     };
-    expect(buildMitigationActivateCommands(plan, preserved)).not.toEqual(
-      buildMitigationActivateCommands(plan),
+    // O builder e fail-closed: sem `preserved` NAO gera comandos, entao uma
+    // escrita divergente do preview e impossivel em vez de silenciosa.
+    expect(() => buildMitigationActivateCommands(plan)).toThrow(
+      /MITIGATION_BASELINE_NOT_DERIVABLE/,
     );
+    expect(buildMitigationActivateCommands(plan, preserved)).toEqual([
+      'system-view',
+      `route-policy ${POLICY} deny node 1`,
+      ' if-match ip-prefix BOGONS',
+      `route-policy ${POLICY} permit node 2`,
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply local-preference 1100',
+      ' apply extcommunity rt 268568:140 rt 268568:660 additive',
+      'commit',
+    ]);
   });
 });
 
@@ -295,9 +334,10 @@ describe('10) REMOVE nao sofre regressao', () => {
     ]);
   });
 
-  // Baseline do cliente com a MESMA lista autorizada e SEM a RT de mitigacao:
-  // e o node normal da policy (nunca propriedade temporaria). Sem reconhece-lo
-  // a retirada ficaria travada em TODA policy de cliente.
+  // B5: o baseline NAO e heuristico. O registro gravado antes da primeira
+  // escrita e a fonte dos nodes permanentes; o baseline do cliente (mesma lista
+  // autorizada, sem a RT de mitigacao) e reconhecido por ele - nunca por
+  // adivinhacao a partir do read-back do momento.
   const ACTIVATED_WITH_BASELINE = [
     `route-policy ${POLICY} deny node 1`,
     ' if-match ip-prefix BOGONS',
@@ -310,10 +350,67 @@ describe('10) REMOVE nao sofre regressao', () => {
 
   it('baseline com a mesma prefix-list e sem a RT de mitigacao nao bloqueia a retirada', async () => {
     const ssh = new FakeSsh(ACTIVATED_WITH_BASELINE);
-    const result = await executor(ssh).preflight(device(), { ...input, mode: 'REMOVE' });
+    const exec = await executorWithBaseline(ssh, ACTIVATED_WITH_BASELINE);
+    const result = await exec.preflight(device(), { ...input, mode: 'REMOVE' });
 
+    expect(check('policy_baseline_record', result)?.ok).toBe(true);
     expect(check('policy_mitigation_scope', result)?.ok).toBe(true);
     expect(result.ok).toBe(true);
+  });
+
+  it('registro de baseline ausente BLOQUEIA a retirada (nao presume original)', async () => {
+    const ssh = new FakeSsh(ACTIVATED_WITH_BASELINE);
+    const result = await executor(ssh).preflight(device(), { ...input, mode: 'REMOVE' });
+
+    expect(result.ok).toBe(false);
+    expect(check('policy_baseline_record', result)?.detail).toContain(
+      'MITIGATION_BASELINE_RECORD_MISSING',
+    );
+  });
+
+  it('node permanente ALTERADO desde o ACTIVATE bloqueia a retirada', async () => {
+    const ssh = new FakeSsh(
+      // Altera SO o node permanente (RT normal do cliente); o node 2 fica igual.
+      ACTIVATED_WITH_BASELINE.replace(
+        ' apply extcommunity rt 268568:140 additive',
+        ' apply extcommunity rt 268568:999 additive',
+      ),
+    );
+    const exec = await executorWithBaseline(ssh, ACTIVATED_WITH_BASELINE);
+    const result = await exec.preflight(device(), { ...input, mode: 'REMOVE' });
+
+    expect(result.ok).toBe(false);
+    expect(check('policy_baseline_record', result)?.detail).toContain('MITIGATION_BASELINE_DRIFT');
+    expect(ssh.applied).toHaveLength(0);
+  });
+
+  it('node permanente ACRESCENTADO desde o ACTIVATE bloqueia a retirada', async () => {
+    const ssh = new FakeSsh(
+      [ACTIVATED_WITH_BASELINE, `route-policy ${POLICY} permit node 70`].join('\n'),
+    );
+    const exec = await executorWithBaseline(ssh, ACTIVATED_WITH_BASELINE);
+    const result = await exec.preflight(device(), { ...input, mode: 'REMOVE' });
+
+    expect(result.ok).toBe(false);
+    expect(check('policy_baseline_record', result)?.detail).toContain('nao existia no ACTIVATE');
+  });
+
+  it('node permanente REMOVIDO desde o ACTIVATE bloqueia a retirada', async () => {
+    const ssh = new FakeSsh(
+      [
+        `route-policy ${POLICY} deny node 1`,
+        ' if-match ip-prefix BOGONS',
+        `route-policy ${POLICY} permit node 2`,
+        ' if-match ip-prefix PREFIX8to24',
+        ' apply local-preference 1100',
+        ' apply extcommunity rt 268568:140 rt 268568:660 additive',
+      ].join('\n'),
+    );
+    const exec = await executorWithBaseline(ssh, ACTIVATED_WITH_BASELINE);
+    const result = await exec.preflight(device(), { ...input, mode: 'REMOVE' });
+
+    expect(result.ok).toBe(false);
+    expect(check('policy_baseline_record', result)?.detail).toContain('nao existe mais');
   });
 
   it('segundo par instalado na policy continua bloqueando a retirada', async () => {
@@ -327,7 +424,8 @@ describe('10) REMOVE nao sofre regressao', () => {
         ' apply extcommunity rt 268568:660 additive',
       ].join('\n'),
     );
-    const result = await executor(ssh).preflight(device(), { ...input, mode: 'REMOVE' });
+    const exec = await executorWithBaseline(ssh, ACTIVATED_WITH_BASELINE);
+    const result = await exec.preflight(device(), { ...input, mode: 'REMOVE' });
 
     expect(result.ok).toBe(false);
     expect(check('policy_mitigation_scope', result)?.ok ?? false).toBe(false);
@@ -347,9 +445,10 @@ describe('10) REMOVE nao sofre regressao', () => {
         ' apply extcommunity rt 268568:660 additive',
       ].join('\n'),
     );
-    const result = await executor(ssh).preflight(device(), { ...input, mode: 'REMOVE' });
+    const exec = await executorWithBaseline(ssh, ACTIVATED_WITH_BASELINE);
+    const result = await exec.preflight(device(), { ...input, mode: 'REMOVE' });
 
     expect(result.ok).toBe(false);
-    expect(check('policy_mitigation_scope', result)?.ok ?? false).toBe(false);
+    expect(check('policy_baseline_record', result)?.ok ?? false).toBe(false);
   });
 });

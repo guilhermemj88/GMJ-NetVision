@@ -10,6 +10,7 @@ import {
   buildMitigationActivateCommands,
   buildMitigationRemovalCommands,
 } from './mitigation-write-guard';
+import { testPreservedClauses } from './mitigation-test-support';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import type {
   MitigationPreflightInput,
@@ -74,6 +75,7 @@ function preflightResult(overrides: Partial<MitigationPreflightResult> = {}): Mi
     readBackNodes: [11, 50],
     readBackSummary: 'par ausente (policy normal)',
     readBackExcerpt: 'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
+    preservedClauses: testPreservedClauses(POLICY, DEFAULT_TARGET_PREFIX_LIST, RT),
     checks: [],
     blockedReasons: [],
     ...overrides,
@@ -106,7 +108,7 @@ class FakeLiveExecutor implements MitigationLiveExecutorPort {
 
   async activate(_device: HostRecord, input: MitigationActivationInput): Promise<{ output: string }> {
     if (this.activateError) throw this.activateError;
-    this.applied.push(buildMitigationActivateCommands(input));
+    this.applied.push(buildMitigationActivateCommands(input, input.preservedClauses));
     return { output: 'ok' };
   }
 
@@ -386,7 +388,7 @@ class StatefulLiveExecutor implements MitigationLiveExecutorPort {
   }
 
   async activate(_device: HostRecord, input: MitigationActivationInput): Promise<{ output: string }> {
-    this.applied.push(buildMitigationActivateCommands(input));
+    this.applied.push(buildMitigationActivateCommands(input, input.preservedClauses));
     this.mitigated = true;
     return { output: 'ok' };
   }
