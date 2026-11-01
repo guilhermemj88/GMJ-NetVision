@@ -1,0 +1,188 @@
+{
+  "artifact": "aglink-computize-huawei-precheck",
+  "mode": "READ_ONLY",
+  "observedUtc": "2026-11-01T12:40:00Z/2026-11-01T12:52:00Z",
+  "device": {
+    "hostname": "BHE-VTA-F1A-BGP-01",
+    "model": "Huawei NetEngine 8000 F1A-8H20Q",
+    "vrp": "8.220 (V800R022C00SPC600)",
+    "uptime": "47 days, 6 hours",
+    "localAs": 268568,
+    "peersTotal": 60,
+    "peersEstablished": 42,
+    "accessPath": "ssh 45.163.144.1:2222 from IMPLANTAR (45.163.144.8), operator view prompt <BHE-VTA-F1A-BGP-01>",
+    "accessCredentialSource": "NetVision SshCredential vault, decrypted in memory, never printed or persisted",
+    "sessionPrep": "screen-length 0 temporary"
+  },
+  "commandsUsed": [
+    "display version",
+    "display bgp peer",
+    "display bgp peer <ip> verbose",
+    "display bgp routing-table peer <ip> received-routes",
+    "display bgp routing-table peer <ip> advertised-routes",
+    "display bgp routing-table <prefix>",
+    "display route-policy <name>",
+    "display ip ip-prefix <name>",
+    "display ip extcommunity-filter"
+  ],
+  "bgpPeers": [
+    { "name": "AGLINK", "peer": "10.200.201.2", "remoteAs": 273811, "state": "Established", "upFor": "5d19h32m", "importPolicy": "PL-AGLINK_IPv4-IN", "exportPolicy": "PL-AGLINK_IPv4-OUT" },
+    { "name": "COMPUTIZE-DDoS", "peer": "198.19.4.145", "remoteAs": 270735, "state": "Established", "upFor": "5d19h31m58s", "description": "COMPUTIZE-DDoS-MITIGACAO", "importPolicy": "PL-COMPUTIZE-IPv4-IN", "exportPolicy": "PL-COMPUTIZE-IPv4-OUT", "peerUpCount": 22, "negotiatedHold": 90, "keepalive": 30 },
+    { "name": "SEMPRE-DDoS", "peer": "138.99.240.141", "remoteAs": 28198, "state": "Connect", "lastState": "Active", "peerUpCount": 0, "importPolicy": "PL-SEMPRE-DDoS-IPv4-IN", "exportPolicy": "PL-SEMPRE-DDoS-IPv4-OUT", "blocking": false },
+    { "name": "SEMPRE", "peer": "138.99.240.117", "remoteAs": 28198, "state": "Established", "upFor": "5d19h32m24s" }
+  ],
+  "rtMitigationFilter": {
+    "named": "MITIGACAO",
+    "type": "Named Extended Community basic filter",
+    "index10": "permit rt 268568:660",
+    "verified": true
+  },
+  "computizeExportReadiness": {
+    "policy": "PL-COMPUTIZE-IPv4-OUT",
+    "totalLines": 99,
+    "mitigationNodes": [
+      { "node": 200, "action": "permit", "match": ["if-match ip-prefix 73S-MITIGACAO", "if-match extcommunity-filter MITIGACAO"], "matchedCounts": 12 },
+      { "node": 300, "action": "permit", "match": ["if-match extcommunity-filter MITIGACAO"], "matchedCounts": 37 }
+    ],
+    "catchAll": { "node": 1000, "action": "deny", "matchedCounts": 48638256 },
+    "bogonsNodePresent": false,
+    "bogonsNodeRequired": false,
+    "bogonsNodeNote": "verifyActivation reads the target policy PL-AGLINK_IPv4-IN, so a BOGONS node in the export policy is not required",
+    "verdict": "RT660 export PREPARED for COMPUTIZE"
+  },
+  "aglinkInPolicy": {
+    "policy": "PL-AGLINK_IPv4-IN",
+    "nodes": [
+      { "node": 10, "action": "permit", "ifMatch": "ip-prefix AGLINK-BLOCO-TODO-23", "apply": ["local-preference 1100", "extcommunity rt 268568:140 additive"], "matchedCounts": 77 },
+      { "node": 1000, "action": "deny", "matchedCounts": 0 }
+    ],
+    "baselineIntact": true,
+    "freeNodes": [1, 2, 5],
+    "plannedBogonNode": 1,
+    "plannedMitigationNode": 2,
+    "plannedNodesAvailable": true
+  },
+  "prefixLists": {
+    "AGLINK-BLOCO-TODO-23": { "index10": "permit 167.250.126.0/23 ge 23 le 24", "permitted": 77, "denied": 0 },
+    "BOGONS": { "permitted": 362, "samples": ["10.0.0.0/8 ge 8 le 32", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16"] },
+    "73S-MITIGACAO": { "permitted": 330 }
+  },
+  "receivedFromAglink": {
+    "totalRoutes": 3,
+    "prefixes": [
+      { "prefix": "167.250.126.0/23", "nextHop": "10.200.201.2", "med": 0, "localPreference": 1100, "asPath": "273811 273811i", "best": true, "select": true, "extCommunity": ["268568:140", "268568:330"], "origin": "igp" },
+      { "prefix": "167.250.126.0/24", "nextHop": "10.200.201.2", "med": 0, "localPreference": 1100, "asPath": "273811 273811i", "best": true, "select": true, "extCommunity": ["268568:140", "268568:330"] },
+      { "prefix": "167.250.127.0/24", "nextHop": "10.200.201.2", "med": 0, "localPreference": 1100, "asPath": "273811 273811i", "best": true, "select": true, "extCommunity": ["268568:140", "268568:330"] }
+    ],
+    "rt660Present": false,
+    "conclusion": "no active mitigation (independent confirmation)"
+  },
+  "advertisedToComputize": {
+    "totalRoutes": 11,
+    "aglinkPrefixesPresent": 0,
+    "expected": "pre-mitigation: node 300 requires RT660 which the routes do not carry"
+  },
+  "sempreDdosExportPolicy": {
+    "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+    "nodes": [
+      { "node": 50, "action": "permit", "match": "if-match extcommunity-filter MITIGACAO", "matchedCounts": 0 },
+      { "node": 100, "action": "deny", "matchedCounts": 0 }
+    ],
+    "rt660StillExportable": true,
+    "node5Free": true,
+    "denyNode5Assessment": {
+      "effect": "deny node 5 with if-match extcommunity-filter MITIGACAO is evaluated before permit 50 and blocks mitigated routes to SEMPRE-DDoS, leaving deny 100 as catch-all",
+      "alignment": "consistent with COMPUTIZE being the only mitigator and SEMPRE-DDoS as NEVER_MITIGATE",
+      "practicalNeed": "only risk is a session flap during the window; today the session is in Connect so nothing is being sent",
+      "blastRadius": "this session only; does not touch transit, backbone, IX or COMPUTIZE",
+      "recommendation": "apply before the physical window with separate authorization and readback; not a technical blocker",
+      "applied": false
+    }
+  },
+  "apiSide": {
+    "release": "bf7bc527a94681b2f40e5d0d9f4b6daa329b4f59",
+    "pid": 3460475,
+    "restarts": 0,
+    "health": 200,
+    "effectiveFlags": {
+      "MITIGATION_AUTO_EXECUTION_ENABLED": "0",
+      "MITIGATION_AUTO_LIFECYCLE_ENABLED": "0",
+      "MITIGATION_AUTO_REMOVE_ENABLED": "0",
+      "MITIGATION_AUTO_PERSISTENCE_ENABLED": "1",
+      "MITIGATION_AUTO_MAX_ACTIVE": "1",
+      "MITIGATION_EXECUTOR": "HUAWEI",
+      "MITIGATION_LIVE_WRITE_ENABLED": "true"
+    },
+    "autoExecutionAllowlist": ["cmuoavm6600cdsslhhw427w4r", "cmuoavmed00dmsslhi3dzev57", "cmuoavmfz00e2sslhbmo9ple7"],
+    "aglinkProfileInAllowlist": false,
+    "aglinkProfile": {
+      "id": "cmuoavm4e00bysslhqd0h3q7u",
+      "policyName": "PL-AGLINK_IPv4-IN",
+      "addressFamily": "IPV4",
+      "mode": "AUTO",
+      "enabled": true,
+      "mitigationRt": "268568:660",
+      "triggerPercent": 90,
+      "triggerSamples": 3,
+      "mitigationExcluded": false,
+      "autoModeExempt": false,
+      "scopePeer": "10.200.201.2",
+      "runtimeState": "NORMAL",
+      "triggerCounter": 0,
+      "recoveryCounter": 46,
+      "plannedBogonNode": 1,
+      "plannedMitigationNode": 2,
+      "lastSampleAt": "2026-11-01T12:41:07.297Z",
+      "lastValidatedAt": "2026-10-30T16:31:12.742Z"
+    },
+    "runtimeStates": { "NORMAL": 38, "DISABLED": 1, "MITIGATED": 0 },
+    "mitigationEvents": { "ACTIVATE": 4, "REMOVE": 4, "SIMULATION": 3, "last72h": 0 },
+    "adminActionLog": { "ENABLE": 7, "DISABLE": 6, "lastAt": "2026-10-20T22:48:09Z" }
+  },
+  "divergences": [
+    { "id": "D1", "finding": "SEMPRE-DDoS 138.99.240.141 is in Connect, peer up count 0 (same as 2026-10-30)", "blocking": false, "note": "does not affect COMPUTIZE-only homologation" },
+    { "id": "D2", "finding": "PL-SEMPRE-DDoS-IPv4-OUT node 50 still permits RT660", "blocking": false, "note": "closable with deny node 5" },
+    { "id": "D3", "finding": "MITIGATION_LIVE_WRITE_ENABLED=true", "blocking": false, "note": "required for manual REMOVE; contained by global kill switch plus allowlist" },
+    { "id": "D4", "finding": "MITIGATION_AUTO_DESCRIPTION_ENABLED=1", "blocking": false, "note": "AGLINK profile not in the description allowlist" }
+  ],
+  "notVerified": [
+    "COMPUTIZE accepts/imports the three prefixes with RT 268568:660",
+    "COMPUTIZE actually diverts/cleans traffic for the three prefixes and how fast",
+    "traffic returns to the normal AGLINK path after REMOVE without residual blackhole",
+    "COMPUTIZE technical attendance during the window",
+    "COMPUTIZE mitigation template/policy ready for these prefixes"
+  ],
+  "verdict": {
+    "huaweiInfrastructure": "GO",
+    "physicalHomologation": "NO-GO",
+    "reason": "item 4 remains NOT_VERIFIED for the four COMPUTIZE-only confirmations; D1 keeps a same-family DDoS session in Connect; D2 leaves the door open to duplicate announcement on flap",
+    "conditionsToConvertToGo": [
+      "written COMPUTIZE confirmation of session, import policy, cleaning template and window attendance",
+      "explicit one-shot authorization scoped to 10.200.201.2 <-> 198.19.4.145, prefixes 167.250.126.0/23, 167.250.126.0/24, 167.250.127.0/24, RT 268568:660, with window and duration",
+      "decision on deny node 5 for SEMPRE-DDoS (apply beforehand with readback and rollback, or formally accept the flap risk)",
+      "accept that AUTO_EXECUTION_ENABLED stays 0 and activation is manual with manual REMOVE authorized separately"
+    ]
+  },
+  "writeConfirmation": {
+    "systemView": 0,
+    "commit": 0,
+    "routePolicyChanges": 0,
+    "prefixListChanges": 0,
+    "rtFilterChanges": 0,
+    "bgpSessionChanges": 0,
+    "activate": 0,
+    "remove": 0,
+    "pingOrTrafficTests": 0,
+    "apiN8nTelegramOrFlagChanges": 0,
+    "serviceRestarts": 0,
+    "ephemeralAccessHelpersRemoved": true
+  },
+  "independentReviewChecklist": [
+    "Re-run display route-policy PL-COMPUTIZE-IPv4-OUT and confirm nodes 200/300 permit on extcommunity-filter MITIGACAO",
+    "Confirm the named extcommunity-filter MITIGACAO index 10 is rt 268568:660",
+    "Confirm PL-AGLINK_IPv4-IN still has only nodes 10 and 1000 with the expected clauses",
+    "Confirm the three AGLINK prefixes carry RT 140 and 330 but not 660",
+    "Judge whether node 50 in PL-SEMPRE-DDoS-IPv4-OUT warrants the deny node 5 before the window",
+    "Confirm no write occurred and API PID/restarts unchanged"
+  ]
+}
