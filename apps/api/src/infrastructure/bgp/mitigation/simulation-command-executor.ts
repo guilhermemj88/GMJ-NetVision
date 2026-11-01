@@ -1,4 +1,5 @@
 import { buildMitigationActivateCommands } from './mitigation-write-guard';
+import type { PreservedClauses } from './mitigation-policy-clauses';
 
 /**
  * Executor de SIMULACAO: apenas monta os comandos que SERIAM enviados.
@@ -34,10 +35,11 @@ export class SimulationCommandExecutor {
     pair: MitigationPairInput,
     rt: string,
     labels: MitigationPairLabels,
+    preserved?: PreservedClauses,
   ): CommandPreview {
     return {
       safe: true,
-      commands: buildMitigationActivateCommands({ policyName, ...pair, rt, ...labels }),
+      commands: buildMitigationActivateCommands({ policyName, ...pair, rt, ...labels }, preserved),
     };
   }
 

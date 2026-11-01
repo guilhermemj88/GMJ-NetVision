@@ -61,7 +61,7 @@ function clauses(text: string, policy: string, node: number): string[] | null {
     } else if (
       currentPolicy === policy &&
       currentNode === node &&
-      /^(if-match|apply|goto)\b/.test(line)
+      /^(if-match|apply|goto)[ \t]+(?!clauses\b)\S/i.test(line)
     )
       result.push(line);
     if (currentPolicy === policy && currentNode === node) found = true;

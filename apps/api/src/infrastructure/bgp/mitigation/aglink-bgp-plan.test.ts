@@ -4,12 +4,23 @@ import { AGLINK_BGP_PLAN as A } from './aglink-bgp-plan';
 import { verifyActivation, verifyRemoval } from './mitigation-executor';
 import { inspectPolicyMitigation } from './mitigation-policy-physical';
 import { buildMitigationActivateCommands } from './mitigation-write-guard';
+import { derivePreservedClauses } from './mitigation-policy-clauses';
 import { SimulationCommandExecutor } from './simulation-command-executor';
 
 const prefixes = ['167.250.126.0/23', '167.250.126.0/24', '167.250.127.0/24'];
 const pair = { bogonNode: 1, mitigationNode: 2 };
 const labels = { bogonPrefixList: 'BOGONS', targetPrefixList: 'PREFIX8to24' };
 const plan = { policyName: A.policy, ...pair, rt: A.rt, ...labels };
+
+/** Baseline fisico de referencia; os atributos sao derivados por este mesmo texto. */
+const BASELINE_CONFIG = [
+  `route-policy ${A.policy} permit node 10`,
+  ` if-match ip-prefix ${A.targetPrefixList}`,
+  ' apply local-preference 1100',
+  ' apply extcommunity rt 268568:140 additive',
+  `route-policy ${A.policy} deny node 1000`,
+].join('\n');
+const PRESERVED = derivePreservedClauses(BASELINE_CONFIG, A.policy, A.targetPrefixList, A.rt);
 async function activate() {
   const h = await createPilotHarness();
   for (const rate of [9_200_000_000n, 9_300_000_000n, 9_400_000_000n]) {
@@ -103,9 +114,10 @@ describe('AGLINK BGP semantics: transit export marking, not a different local fo
     },
   );
   it('matches preview to canonical SSH commands and keeps mitigation independent from node 10', () => {
-    const commands = buildMitigationActivateCommands(plan);
+    const commands = buildMitigationActivateCommands(plan, PRESERVED);
     expect(
-      new SimulationCommandExecutor().buildMitigation(A.policy, pair, A.rt, labels).commands,
+      new SimulationCommandExecutor().buildMitigation(A.policy, pair, A.rt, labels, PRESERVED)
+        .commands,
     ).toEqual(commands);
     expect(commands).toContain(` if-match ip-prefix ${A.targetPrefixList}`);
     expect(commands).toContain(' apply local-preference 1100');
@@ -129,10 +141,7 @@ describe('AGLINK BGP semantics: transit export marking, not a different local fo
       const h = await activate();
       let text = h.ssh.config();
       if (fault === 'localpref')
-        text = text.replace(
-          'apply local-preference 1100\n apply extcommunity rt 268568:140 rt 268568:660 additive',
-          'apply local-preference 100\n apply extcommunity rt 268568:140 rt 268568:660 additive',
-        );
+        text = text.replace('apply local-preference 1100', 'apply local-preference 100');
       if (fault === 'normalRt')
         // Sem `additive` o node passa a SUBSTITUIR as RTs: divergencia.
         text = text.replace('rt 268568:660 additive', 'rt 268568:660');
@@ -143,7 +152,7 @@ describe('AGLINK BGP semantics: transit export marking, not a different local fo
         );
       if (fault === 'baseline')
         text = text.replace('rt 268568:140 additive', 'rt 268568:999 additive');
-      expect(verifyActivation(A.policy, text, pair, A.rt, labels).verified).toBe(false);
+      expect(verifyActivation(A.policy, text, pair, A.rt, labels, PRESERVED).verified).toBe(false);
       expect(
         inspectPolicyMitigation({ policyName: A.policy, readBack: text, rts: [A.rt] }).state,
       ).toBe('RECONCILIATION_REQUIRED');
@@ -168,6 +177,7 @@ describe('AGLINK BGP semantics: transit export marking, not a different local fo
         pair,
         A.rt,
         labels,
+        PRESERVED,
       ).verified,
     ).toBe(false);
   });

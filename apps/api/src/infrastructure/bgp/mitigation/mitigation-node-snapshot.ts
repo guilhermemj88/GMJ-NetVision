@@ -65,8 +65,8 @@ export interface OccupancyInput {
 
 /** `route-policy PL-X permit node 10` (formato de configuracao). */
 const POLICY_NODE_HEADER = /^route-policy[ \t]+(\S+)[ \t]+(permit|deny)[ \t]+node[ \t]+(\d+)[ \t]*$/i;
-/** Clausulas relevantes dentro de um node. */
-const NODE_CLAUSE = /^(if-match|apply|goto)\b/i;
+/** Clausulas relevantes dentro de um node (`Apply clauses:` e cabecalho, nao clausula). */
+const NODE_CLAUSE = /^(if-match|apply|goto)[ \t]+(?!clauses\b)\S/i;
 
 function normalizeClause(line: string): string {
   return line.trim().replace(/\s+/g, ' ');

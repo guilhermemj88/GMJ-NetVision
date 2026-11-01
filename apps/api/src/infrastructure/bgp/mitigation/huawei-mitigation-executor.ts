@@ -19,6 +19,7 @@ import {
 } from './mitigation-executor';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import { planNodeOccupancy, type NodeOccupancyPlan } from './mitigation-node-snapshot';
+import { derivePreservedClauses, type PreservedClauses } from './mitigation-policy-clauses';
 import {
   assertMitigationCommandShape,
   buildMitigationActivateCommands,
@@ -114,6 +115,8 @@ export interface MitigationPreflightResult {
   partial: boolean;
   /** Ocupacao dos nodes do par + snapshot dos nodes preexistentes (Caso B). */
   nodeOccupancy?: NodeOccupancyPlan | null;
+  /** Atributos normais do cliente que o node de mitigacao deve repor. */
+  preservedClauses?: PreservedClauses | null;
   /** Nodes lidos pelo MESMO parser do read-back pos-commit (display route-policy). */
   readBackNodes: number[];
   /** Resumo do MESMO verify usado no pos-commit, sobre a saida real. */
@@ -286,6 +289,7 @@ export class HuaweiMitigationExecutor {
     let readBackOutput: string | null = null;
     let readBackError: string | null = null;
     let nodeOccupancy: NodeOccupancyPlan | null = null;
+    let preservedClauses: PreservedClauses | null = null;
     try {
       readBackOutput = await this.deps.ssh.readMitigationRoutePolicy(device, input.policyName);
     } catch (error) {
@@ -376,6 +380,27 @@ export class HuaweiMitigationExecutor {
         capturedAt: new Date().toISOString(),
       });
       nodeOccupancy = occupancy;
+
+      // Atributos NORMAIS do cliente (mecanismo unico para toda policy):
+      // derivados do proprio baseline fisico e repostos no node de mitigacao.
+      preservedClauses = derivePreservedClauses(
+        routePolicyConfiguration ?? '',
+        input.policyName,
+        input.targetPrefixList,
+        input.rt,
+      );
+      checks.push({
+        id: 'preserved_attributes',
+        // Informativo: sem node permit com a prefix-list alvo nao ha atributos
+        // identificaveis a repor, e o node de mitigacao leva apenas a RT com
+        // `additive`. Nunca bloqueia por si so.
+        ok: true,
+        detail:
+          preservedClauses.baselineNode === null
+            ? `sem node permit com if-match ip-prefix ${input.targetPrefixList}: nada a preservar`
+            : `atributos derivados do node ${preservedClauses.baselineNode}: ` +
+              `[${preservedClauses.expectedClauses.join(' | ')}]`,
+      });
       checks.push({
         id: 'node_occupancy',
         ok: !occupancy.blocked,
@@ -513,6 +538,7 @@ export class HuaweiMitigationExecutor {
       mitigationNodeMatches,
       partial,
       nodeOccupancy,
+      preservedClauses,
       readBackNodes: readBackNodes.map((entry) => entry.node),
       readBackSummary,
       readBackExcerpt: readBackOutput ? excerpt(readBackOutput) : '',
@@ -526,7 +552,10 @@ export class HuaweiMitigationExecutor {
     input: MitigationActivationInput,
   ): Promise<{ output: string }> {
     this.assertWriteAllowed(device);
-    const commands = buildMitigationActivateCommands(this.writePlan(input));
+    const commands = buildMitigationActivateCommands(
+      this.writePlan(input),
+      input.preservedClauses,
+    );
     assertMitigationCommandShape(commands);
     const result = await this.deps.ssh.applyMitigationCommands(device, commands);
     if (!result.ok) {

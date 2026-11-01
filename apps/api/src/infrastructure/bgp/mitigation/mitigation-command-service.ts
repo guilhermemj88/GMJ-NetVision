@@ -793,6 +793,7 @@ export class MitigationCommandService {
       rt: profile.mitigationRt,
       bogonPrefixList: this.labels.bogonPrefixList,
       targetPrefixList: this.labels.targetPrefixList,
+      ...(preflight?.preservedClauses ? { preservedClauses: preflight.preservedClauses } : {}),
     };
     const removalInput: MitigationRemovalInput = {
       policyName: profile.policyName,
@@ -943,6 +944,7 @@ export class MitigationCommandService {
           pair,
           profile.mitigationRt,
           this.labels,
+          activationInput.preservedClauses,
         );
         // ESCOPO VERIFICADO: so depois de uma escrita REAL e verificada. Leitura
         // READ-ONLY, best effort: nunca altera `check.verified` nem o resultado.

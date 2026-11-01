@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AGLINK_BGP_PLAN as A } from './aglink-bgp-plan';
 import { verifyActivation, verifyRemoval } from './mitigation-executor';
+import { derivePreservedClauses } from './mitigation-policy-clauses';
 import {
   buildMitigationActivateCommands,
   buildMitigationRemovalCommands,
@@ -89,6 +90,9 @@ const BASELINE = [
   `route-policy ${A.policy} deny node 1000`,
 ].join('\n');
 
+/** Atributos normais do cliente, derivados do MESMO mecanismo usado em producao. */
+const PRESERVED = derivePreservedClauses(BASELINE, A.policy, A.targetPrefixList, A.rt);
+
 /** Baseline + o par criado pelo ACTIVATE, como aparece em `display route-policy`. */
 const DISPLAY_AFTER = [
   `Route-policy: ${A.policy}`,
@@ -112,17 +116,17 @@ const DISPLAY_AFTER = [
 
 describe('1-2) criacao dos nodes 1 e 2 sem tocar em 10/1000', () => {
   it('gera exatamente a lista canonica do ACTIVATE', () => {
-    expect(buildMitigationActivateCommands(plan)).toEqual(CANONICAL_ACTIVATE);
+    expect(buildMitigationActivateCommands(plan, PRESERVED)).toEqual(CANONICAL_ACTIVATE);
   });
 
   it('nenhum comando referencia node 10 ou node 1000, nem remove nada', () => {
-    const text = buildMitigationActivateCommands(plan).join('\n');
+    const text = buildMitigationActivateCommands(plan, PRESERVED).join('\n');
     expect(text).not.toMatch(/node (10|1000)\b/);
     expect(text).not.toMatch(/\bundo\b/);
   });
 
   it('usa UMA instrucao apply extcommunity (forma fisica do equipamento)', () => {
-    const applies = buildMitigationActivateCommands(plan).filter((line) =>
+    const applies = buildMitigationActivateCommands(plan, PRESERVED).filter((line) =>
       line.includes('apply extcommunity'),
     );
     expect(applies).toHaveLength(1);
@@ -179,19 +183,19 @@ describe('3-5) LP1100 preservado, RT660 acrescentada, RT140 e RT330 mantidas', (
 
 describe('6-7) readback fisico e bloqueio de divergencias', () => {
   it('readback do estado ativado e verificado', () => {
-    expect(verifyActivation(A.policy, DISPLAY_AFTER, pair, A.rt, labels).verified).toBe(true);
+    expect(verifyActivation(A.policy, DISPLAY_AFTER, pair, A.rt, labels, PRESERVED).verified).toBe(true);
   });
 
   it('readback rejeita RT660 sem additive (substituiria RT140/RT330)', () => {
     const text = DISPLAY_AFTER.replace('rt 268568:660 additive', 'rt 268568:660');
-    expect(verifyActivation(A.policy, text, pair, A.rt, labels).verified).toBe(false);
+    expect(verifyActivation(A.policy, text, pair, A.rt, labels, PRESERVED).verified).toBe(false);
   });
 
   it('readback rejeita RT140 ausente no node de mitigacao', () => {
     const text = DISPLAY_AFTER.replace(APPLY_BOTH, 'apply extcommunity rt 268568:660 additive');
-    const v = verifyActivation(A.policy, text, pair, A.rt, labels);
+    const v = verifyActivation(A.policy, text, pair, A.rt, labels, PRESERVED);
     expect(v.verified).toBe(false);
-    expect(v.summary).toContain('AGLINK');
+    expect(v.summary).toContain('nao preserva os atributos normais');
   });
 
   it('readback rejeita prefix-list alvo trocada', () => {
@@ -199,19 +203,19 @@ describe('6-7) readback fisico e bloqueio de divergencias', () => {
       `if-match ip-prefix ${A.targetPrefixList}`,
       'if-match ip-prefix PREFIX8to24',
     );
-    expect(verifyActivation(A.policy, text, pair, A.rt, labels).verified).toBe(false);
+    expect(verifyActivation(A.policy, text, pair, A.rt, labels, PRESERVED).verified).toBe(false);
   });
 
   it('readback rejeita baseline alterado (node 10 sem RT140)', () => {
     const text = DISPLAY_AFTER.replace('rt 268568:140 additive', 'rt 268568:999 additive');
-    expect(verifyActivation(A.policy, text, pair, A.rt, labels).verified).toBe(false);
+    expect(verifyActivation(A.policy, text, pair, A.rt, labels, PRESERVED).verified).toBe(false);
   });
 
   it('readback rejeita par incompleto (so o node de mitigacao)', () => {
     const withoutBogon = DISPLAY_AFTER.split('\r\n')
       .filter((line) => !/deny : 1|node 1|if-match ip-prefix BOGONS/.test(line))
       .join('\r\n');
-    const v = verifyActivation(A.policy, withoutBogon, pair, A.rt, labels);
+    const v = verifyActivation(A.policy, withoutBogon, pair, A.rt, labels, PRESERVED);
     expect(v.verified).toBe(false);
     expect(v.partial).toBe(true);
   });
@@ -239,25 +243,99 @@ describe('8) REMOVE manual restaura o estado original', () => {
   });
 });
 
-describe('9) clientes com politica diferente nao herdam LP/RT da AGLINK', () => {
+describe('9) MECANISMO UNICO: qualquer cliente preserva os proprios atributos', () => {
+  // Policy de outro cliente: prefixo, LP e RT totalmente diferentes da AGLINK.
+  const OUTRO_BASELINE = [
+    'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
+    ' if-match ip-prefix PREFIX-HORIZONTES-IPV4',
+    ' apply local-preference 4000',
+    ' apply extcommunity rt 268568:110 additive',
+    'route-policy PL-HORIZONTES_IPv4-IN permit node 50',
+    ' if-match ip-prefix PREFIX-OUTRO-CLIENTE',
+    ' apply local-preference 200',
+  ].join('\n');
   const other = {
     policyName: 'PL-HORIZONTES_IPv4-IN',
     bogonNode: 1,
     mitigationNode: 2,
-    rt: '9999:1',
-    ...labels,
+    rt: '268568:660',
+    bogonPrefixList: 'BOGONS',
+    targetPrefixList: 'PREFIX-HORIZONTES-IPV4',
   };
+  const preserved = derivePreservedClauses(
+    OUTRO_BASELINE,
+    other.policyName,
+    other.targetPrefixList,
+    other.rt,
+  );
 
-  it('sem `apply local-preference` e com `additive`', () => {
-    const commands = buildMitigationActivateCommands(other);
-    expect(commands.join('\n')).not.toContain('local-preference');
-    expect(commands).toContain(' apply extcommunity rt 9999:1 additive');
-    expect(commands.join('\n')).not.toContain('268568');
+  it('deriva LP e RT do node normal daquele cliente (nao da AGLINK)', () => {
+    expect(preserved.baselineNode).toBe(11);
+    expect(preserved.localPreference).toBe('apply local-preference 4000');
+    expect(preserved.routeTargets).toEqual(['268568:110']);
   });
 
-  it('o guard rejeita RT diferente da planejada quando a policy e a da AGLINK', () => {
-    expect(() => buildMitigationActivateCommands({ ...plan, rt: '268568:999' })).toThrow(
-      'AGLINK_MITIGATION_RT_MISMATCH',
+  it('gera o mesmo par de nodes, com os atributos do cliente e a RT additive', () => {
+    expect(buildMitigationActivateCommands(other, preserved)).toEqual([
+      'system-view',
+      'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
+      ' if-match ip-prefix BOGONS',
+      'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
+      ' if-match ip-prefix PREFIX-HORIZONTES-IPV4',
+      ' apply local-preference 4000',
+      ' apply extcommunity rt 268568:110 rt 268568:660 additive',
+      'commit',
+    ]);
+  });
+
+  it('sem atributos derivaveis, aplica somente a RT de mitigacao com additive', () => {
+    const semBaseline = derivePreservedClauses(
+      'route-policy PL-VAZIA-IN deny node 99',
+      'PL-VAZIA-IN',
+      'PREFIX8to24',
+      '268568:660',
     );
+    expect(semBaseline.baselineNode).toBeNull();
+    expect(buildMitigationActivateCommands({ ...other, policyName: 'PL-VAZIA-IN' }, semBaseline)).toEqual(
+      [
+        'system-view',
+        'route-policy PL-VAZIA-IN deny node 1',
+        ' if-match ip-prefix BOGONS',
+        'route-policy PL-VAZIA-IN permit node 2',
+        ' if-match ip-prefix PREFIX-HORIZONTES-IPV4',
+        ' apply extcommunity rt 268568:660 additive',
+        'commit',
+      ],
+    );
+  });
+
+  it('o readback desse cliente tambem e verificado contra os atributos preservados', () => {
+    const display = [
+      'Route-policy: PL-HORIZONTES_IPv4-IN',
+      '  deny : 1 (matched counts: 0)',
+      '      if-match ip-prefix BOGONS',
+      '  permit : 2 (matched counts: 0)',
+      '      if-match ip-prefix PREFIX-HORIZONTES-IPV4',
+      '      apply local-preference 4000',
+      '      apply extcommunity rt 268568:110 rt 268568:660 additive',
+      '  permit : 11 (matched counts: 0)',
+      '      if-match ip-prefix PREFIX-HORIZONTES-IPV4',
+      '      apply local-preference 4000',
+      '      apply extcommunity rt 268568:110 additive',
+    ].join('\r\n');
+    const pair2 = { bogonNode: 1, mitigationNode: 2 };
+    expect(
+      verifyActivation(other.policyName, display, pair2, other.rt, other, preserved).verified,
+    ).toBe(true);
+    expect(
+      verifyActivation(
+        other.policyName,
+        display.replace('rt 268568:110 rt 268568:660', 'rt 268568:660'),
+        pair2,
+        other.rt,
+        other,
+        preserved,
+      ).verified,
+    ).toBe(false);
   });
 });

@@ -1,10 +1,10 @@
 import { parseHuaweiRoutePolicyNodesLenient } from './huawei-bgp-policy-parser';
 import {
   AGLINK_BGP_PLAN,
-  aglinkActivationIntact,
   aglinkBaselineIntact,
   bgpPlanLabels,
 } from './aglink-bgp-plan';
+import { equalClauses, policyNodeClauses, type PreservedClauses } from './mitigation-policy-clauses';
 
 // Porta de execucao do motor de mitigacao.
 //
@@ -29,6 +29,11 @@ export interface MitigationActivationInput {
   bogonPrefixList: string;
   /** Prefix-list do node que aplica a RT. */
   targetPrefixList: string;
+  /**
+   * Atributos NORMAIS do cliente que o node de mitigacao precisa repor
+   * (derivados do baseline fisico pelo mesmo mecanismo para toda policy).
+   */
+  preservedClauses?: PreservedClauses;
 }
 
 export interface MitigationRemovalInput {
@@ -199,6 +204,7 @@ export function verifyActivation(
   pair: { bogonNode: number; mitigationNode: number },
   rt: string,
   labels: MitigationPairLabelsInput,
+  preserved?: PreservedClauses,
 ): MitigationPairVerification {
   labels = bgpPlanLabels(policyName, labels);
   // Read-back real vem do `display route-policy` (formato display); o parser
@@ -234,17 +240,36 @@ export function verifyActivation(
     detalhes.push(`node de mitigacao ${pair.mitigationNode} sem a RT ${rt}`);
   }
 
+  // Atributos NORMAIS preservados: quando o baseline fisico foi derivado, o node
+  // de mitigacao precisa ter EXATAMENTE o conjunto esperado (prefix-list alvo +
+  // atributos do cliente + RT de mitigacao com additive). Mecanismo unico: vale
+  // para qualquer policy, sem tratamento por fornecedor.
+  const preservedOk =
+    preserved === undefined ||
+    equalClauses(
+      policyNodeClauses(readBack, policyName, pair.mitigationNode)?.clauses ?? null,
+      preserved.expectedClauses,
+    );
+  if (!preservedOk) {
+    detalhes.push(
+      `node de mitigacao ${pair.mitigationNode} nao preserva os atributos normais do cliente`,
+    );
+  }
+
+  // Baseline AGLINK (compatibilidade): a policy de referencia continua exigindo
+  // node 10 intacto. Nao e um caminho separado de escrita — e a mesma checagem
+  // de "outros nodes nao foram alterados".
   const semanticOk =
-    policyName !== AGLINK_BGP_PLAN.policy || aglinkActivationIntact(readBack, pair.mitigationNode);
-  if (!semanticOk) detalhes.push('AGLINK: prefixos/local-preference/RT ou baseline divergentes');
-  const verified = bogonOk && mitigationOk && semanticOk;
+    policyName !== AGLINK_BGP_PLAN.policy || aglinkBaselineIntact(readBack);
+  if (!semanticOk) detalhes.push('AGLINK: baseline (node 10/1000) divergente');
+  const verified = bogonOk && mitigationOk && preservedOk && semanticOk;
   return {
     verified,
     bogonOk,
     mitigationOk,
     partial: (bogonOk || mitigationOk) && !verified,
     summary: verified
-      ? `par ativo: deny node ${pair.bogonNode} (${labels.bogonPrefixList}) + permit node ${pair.mitigationNode} (${labels.targetPrefixList} + RT ${rt})`
+      ? `par ativo: deny node ${pair.bogonNode} (${labels.bogonPrefixList}) + permit node ${pair.mitigationNode} (${labels.targetPrefixList} + atributos preservados + RT ${rt})`
       : detalhes.join('; '),
   };
 }

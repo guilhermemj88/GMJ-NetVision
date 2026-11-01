@@ -1,4 +1,5 @@
-import { AGLINK_BGP_PLAN, bgpPlanLabels } from './aglink-bgp-plan';
+import { bgpPlanLabels } from './aglink-bgp-plan';
+import { buildRouteTargetLine, type PreservedClauses } from './mitigation-policy-clauses';
 
 /**
  * Guarda estrutural da ESCrita de mitigacao.
@@ -69,21 +70,32 @@ function normalizePlan(plan: MitigationWritePlan): MitigationWritePlan {
 }
 
 /**
- * Comandos canonicos do ACTIVATE (na mesma ordem do preview). O par BOGONS
- * entra primeiro (deny) e o node de mitigacao depois (permit + PREFIX8to24 + RT).
+ * Comandos canonicos do ACTIVATE (na mesma ordem do preview).
+ *
+ * MECANISMO UNICO para qualquer policy IN:
+ *   node 1 -> deny   + if-match <bogonPrefixList>
+ *   node 2 -> permit + if-match <targetPrefixList>
+ *             + atributos NORMAIS do cliente (derivados do baseline fisico)
+ *             + `apply extcommunity rt <RTs normais> rt <RT mitigacao> additive`
+ *
+ * `preserved` vem do proprio equipamento (`derivePreservedClauses`). Sem ele, o
+ * node de mitigacao leva apenas a RT com `additive`, o que continua correto
+ * para policies sem atributos a repor.
  */
-export function buildMitigationActivateCommands(plan: MitigationWritePlan): string[] {
+export function buildMitigationActivateCommands(
+  plan: MitigationWritePlan,
+  preserved?: PreservedClauses,
+): string[] {
   const safe = normalizePlan(bgpPlanLabels(plan.policyName, plan));
-  const aglink = safe.policyName === AGLINK_BGP_PLAN.policy;
-  if (aglink && safe.rt !== AGLINK_BGP_PLAN.rt) throw Error('AGLINK_MITIGATION_RT_MISMATCH');
   return [
     'system-view',
     `route-policy ${safe.policyName} deny node ${safe.bogonNode}`,
     ` if-match ip-prefix ${safe.bogonPrefixList}`,
     `route-policy ${safe.policyName} permit node ${safe.mitigationNode}`,
     ` if-match ip-prefix ${safe.targetPrefixList}`,
-    ...(aglink ? AGLINK_BGP_PLAN.activationApplyClauses.map((clause) => ` ${clause}`) : []),
-    ...(aglink ? [] : [` apply extcommunity rt ${safe.rt} additive`]),
+    ...(preserved?.otherApplies ?? []).map((clause) => ` ${clause}`),
+    ...(preserved?.localPreference ? [` ${preserved.localPreference}`] : []),
+    ` ${buildRouteTargetLine(preserved?.routeTargets ?? [], safe.rt)}`,
     'commit',
   ];
 }
