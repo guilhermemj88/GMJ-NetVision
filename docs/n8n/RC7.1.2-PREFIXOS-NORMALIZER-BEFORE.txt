@@ -1,0 +1,553 @@
+=
+{{
+(() => {
+/** RC7.1.2. Pure contract adapter; legacy contains the published message formatting. */
+function normalizeRc712(body, legacy) {
+  const b = body && typeof body === 'object' && !Array.isArray(body) ? body : {};
+  const identifier = (v, max = 160) =>
+    typeof v === 'string' && v.length > 0 && v.length <= max && /^[A-Za-z0-9_.:-]+$/.test(v);
+  const text = (v) => typeof v === 'string' && v.trim().length > 0;
+  const esc = (v) =>
+    String(v ?? 'indisponível')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;');
+  const base = {
+    EVENTO: b.event ?? null,
+    EVENT_ID: b.eventId ?? null,
+    PROFILE_ID: b.profileId ?? null,
+    EPISODIO_ID: b.episodeId ?? null,
+    REAL_ACTIVATED: false,
+    DETECTION_BLOCKED: false,
+    MITIGATION_STATUS: false,
+    RC712_VALID: false,
+    RC712_ROUTE: null,
+  };
+  const reject = (reason) => ({ ...base, MOTIVO: reason });
+  if (!identifier(b.profileId) || !identifier(b.eventId, 256)) return reject('IDENTITY_INVALID');
+  if (
+    b.occurredAt !== null &&
+    b.occurredAt !== undefined &&
+    (!text(b.occurredAt) || !Number.isFinite(Date.parse(b.occurredAt)))
+  )
+    return reject('TIMESTAMP_INVALID');
+  const node = (v) => Number.isInteger(v) && v > 0 && v <= 65535;
+  const scope = () =>
+    text(b.policy) &&
+    b.policy.length <= 128 &&
+    /^[A-Za-z0-9_.:-]+$/.test(b.policy) &&
+    node(b.bogonNode) &&
+    node(b.mitigationNode ?? b.node) &&
+    b.bogonNode !== (b.mitigationNode ?? b.node) &&
+    (b.node == null || b.node === (b.mitigationNode ?? b.node)) &&
+    typeof b.rt === 'string' &&
+    /^\d{1,10}:\d{1,10}$/.test(b.rt) &&
+    ['IPV4', 'IPV6'].includes(b.addressFamily);
+  const readback = (state) => {
+    const raw = b.readback ?? b.readBack;
+    const runtime = b.mitigationState ?? b.state;
+    if (runtime != null && runtime !== state) return false;
+    if (raw === undefined || raw === null) return true; // Candidate sends verified + identity, not a readback object.
+    if (
+      typeof raw !== 'object' ||
+      Array.isArray(raw) ||
+      raw.verified !== true ||
+      raw.state !== state ||
+      raw.policy !== b.policy
+    )
+      return false;
+    if (raw.bogonNode !== undefined && raw.bogonNode !== b.bogonNode) return false;
+    if (raw.mitigationNode !== undefined && raw.mitigationNode !== (b.mitigationNode ?? b.node))
+      return false;
+    return raw.rt === undefined || raw.rt === b.rt;
+  };
+  if (b.event === 'MITIGATION_VERIFIED') {
+    if (
+      b.simulation !== false ||
+      b.verified !== true ||
+      !scope() ||
+      !readback('MITIGATED') ||
+      ('remove_confirm|' + b.profileId).length > 64
+    )
+      return reject('ACTIVATION_UNVERIFIED_OR_SCOPE_INVALID');
+    return {
+      ...legacy(b),
+      ...base,
+      RC712_VALID: true,
+      RC712_ROUTE: 'ACTIVATED',
+      REAL_ACTIVATED: true,
+    };
+  }
+  if (b.event === 'MITIGATION_DETECTION_BLOCKED') {
+    if (
+      b.simulation !== true ||
+      b.verified !== false ||
+      !identifier(b.episodeId) ||
+      !text(b.blockedReason)
+    )
+      return reject('DETECTION_INVALID');
+    if (b.direction != null && !['rx', 'tx'].includes(b.direction))
+      return reject('DIRECTION_INVALID');
+    for (const field of ['trafficGbps', 'thresholdGbps', 'trafficMbps', 'thresholdMbps']) {
+      if (
+        b[field] != null &&
+        (typeof b[field] !== 'number' || !Number.isFinite(b[field]) || b[field] < 0)
+      )
+        return reject('RATE_INVALID');
+    }
+    return {
+      ...legacy(b),
+      ...base,
+      RC712_VALID: true,
+      RC712_ROUTE: 'DETECTION',
+      DETECTION_BLOCKED: true,
+    };
+  }
+  if (b.event === 'MITIGATION_STATUS_RESEND') {
+    if (b.simulation !== false || b.verified !== true || !scope() || !readback('MITIGATED'))
+      return reject('RESEND_INVALID');
+    const old = legacy(b);
+    if (old.RESEND_VALIDO !== true) return reject('RESEND_READBACK_REQUIRED');
+    return {
+      ...old,
+      ...base,
+      RC712_VALID: true,
+      RC712_ROUTE: 'STATUS',
+      MITIGATION_STATUS: true,
+      REENVIO: true,
+      statusText: old.telegramText,
+    };
+  }
+  const removed = b.event === 'MITIGATION_REMOVED_VERIFIED';
+  const failed = b.event === 'MITIGATION_FAILED';
+  if (!removed && !failed) return reject('UNKNOWN_EVENT');
+  if (b.simulation !== false || b.verified !== removed)
+    return reject('STATUS_VERIFICATION_INVALID');
+  if (removed && (!scope() || !readback('NORMAL')))
+    return reject('REMOVAL_UNVERIFIED_OR_SCOPE_INVALID');
+  const lines = [
+    removed
+      ? '<b>RETIRADA MANUAL VERIFICADA</b>'
+      : '<b>FALHA / ESTADO INCERTO — REVISÃO NECESSÁRIA</b>',
+    '',
+  ];
+  for (const [label, value] of [
+    ['Cliente', b.customer],
+    ['Perfil', b.profileId],
+    ['Equipamento', b.device],
+    ['Interface', b.interfaceName ?? b.interface],
+    ['Policy', b.policy],
+    ['Família', b.addressFamily],
+    ['RT', b.rt],
+    ['Node BOGONS', b.bogonNode],
+    ['Node mitigação', b.mitigationNode ?? b.node],
+    ['Operador', b.operatorRef ?? b.confirmedBy ?? b.operator],
+    ['Horário', b.occurredAt],
+  ])
+    lines.push('<b>' + label + ':</b> ' + esc(value));
+  lines.push(
+    '',
+    removed
+      ? 'Readback de retirada confirmado pela API. Retirada exclusivamente manual.'
+      : 'Estado físico não confirmado. Não inferir sucesso nem executar retirada automática; revisar readback e journal.',
+  );
+  return {
+    ...base,
+    RC712_VALID: true,
+    RC712_ROUTE: 'STATUS',
+    MITIGATION_STATUS: true,
+    statusText: lines.join('\n'),
+  };
+}
+
+function publishedFormatting(body) { const $json = {body}; return (() => {
+  // ==========================================================
+  // GMJ NETVISION - RC4 RESEND v2
+  // Reenvio operacional de mitigacao existente
+  // ==========================================================
+
+  const PATCH_VERSION = 'rc4-resend-v2';
+  const __rBody = $json.body ?? $json;
+
+  if (__rBody && __rBody.event === 'MITIGATION_STATUS_RESEND') {
+    const __rEsc = (v) =>
+      v === null || v === undefined
+        ? ''
+        : String(v)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/\r/g, '')
+            .trim();
+
+    const __rUp = (v) =>
+      typeof v === 'string' ? v.trim().toUpperCase() : '';
+
+    const __rProfileId = __rBody.profileId;
+
+    const __rProfileOk =
+      typeof __rProfileId === 'string' &&
+      __rProfileId.length > 0 &&
+      __rProfileId.length <= 160;
+
+    const __rSimulado = __rBody.simulation === true;
+    const __rVerificado = __rBody.verified === true;
+
+    const __rEstado = __rUp(
+      __rBody.mitigationState ??
+      __rBody.mitigationStatus ??
+      __rBody.state ??
+      __rBody.status
+    );
+
+    const __rEstadoOk = __rEstado === 'MITIGATED';
+    const __rRb = __rBody.readback ?? __rBody.readBack ?? null;
+    const __rBogon = __rBody.bogonNode ?? null;
+    const __rMit = __rBody.mitigationNode ?? __rBody.node ?? null;
+
+    // Fail-closed: condicao invalida bloqueia o envio.
+    let __rMotivo = null;
+
+    if (!__rProfileOk) {
+      __rMotivo = 'PROFILE_INVALIDO';
+    } else if (__rSimulado) {
+      __rMotivo = 'SIMULACAO';
+    } else if (!__rVerificado) {
+      __rMotivo = 'NAO_VERIFICADO';
+    } else if (!__rEstadoOk) {
+      __rMotivo = 'ESTADO_NAO_MITIGADO';
+    } else if (__rRb === null || typeof __rRb !== 'object') {
+      __rMotivo = 'READBACK_AUSENTE';
+    } else if (__rRb.verified !== true) {
+      __rMotivo = 'READBACK_NAO_VERIFICADO';
+    } else if (__rUp(__rRb.state) !== 'MITIGATED') {
+      __rMotivo = 'READBACK_ESTADO';
+    } else if (__rRb.policy !== (__rBody.policy ?? null)) {
+      __rMotivo = 'READBACK_POLICY';
+    } else if (__rBogon === null || __rMit === null) {
+      __rMotivo = 'READBACK_PAR_FALTANDO';
+    } else if (
+      Number(__rRb.bogonNode) !== Number(__rBogon) ||
+      Number(__rRb.mitigationNode) !== Number(__rMit)
+    ) {
+      __rMotivo = 'READBACK_PAR_DIVERGENTE';
+    } else if (
+      typeof __rRb.readAt !== 'string' ||
+      __rRb.readAt.trim().length === 0
+    ) {
+      __rMotivo = 'READBACK_SEM_READAT';
+    }
+
+    if (__rMotivo !== null) {
+      return {
+        EVENTO: __rBody.event,
+        PATCH: PATCH_VERSION,
+        REENVIO: true,
+        RESEND_VALIDO: false,
+        REAL_ACTIVATED: false,
+        MOTIVO: __rMotivo,
+        PROFILE_ID:
+          typeof __rProfileId === 'string' ? __rProfileId : null,
+        telegramText: '',
+      };
+    }
+
+    const __rIf =
+      __rBody.interfaceName ?? __rBody.interface;
+
+    const __rTargets = Array.isArray(__rBody.sharedPolicyTargets)
+      ? __rBody.sharedPolicyTargets
+      : [];
+
+    const __rPeers = Array.isArray(__rBody.affectedPeers)
+      ? __rBody.affectedPeers
+      : [];
+
+    const __rLines = [];
+
+    __rLines.push(
+      '🔄 <b>MITIGAÇÃO EXISTENTE — REENVIO PARA TESTE OPERACIONAL</b>'
+    );
+    __rLines.push('');
+
+    if (__rBody.customer)
+      __rLines.push('<b>Cliente:</b> ' + __rEsc(__rBody.customer));
+
+    if (__rBody.device)
+      __rLines.push('<b>Equipamento:</b> ' + __rEsc(__rBody.device));
+
+    if (__rIf)
+      __rLines.push('<b>Interface:</b> ' + __rEsc(__rIf));
+
+    if (__rBody.addressFamily)
+      __rLines.push('<b>Família:</b> ' + __rEsc(__rBody.addressFamily));
+
+    __rLines.push('');
+
+    if (__rBody.policy)
+      __rLines.push('<b>Policy:</b> ' + __rEsc(__rBody.policy));
+
+    if (__rBogon !== null)
+      __rLines.push('<b>Node BOGONS:</b> ' + __rEsc(__rBogon));
+
+    if (__rMit !== null)
+      __rLines.push('<b>Node mitigação:</b> ' + __rEsc(__rMit));
+
+    if (__rBody.rt)
+      __rLines.push('<b>RT:</b> ' + __rEsc(__rBody.rt));
+
+    if (__rBody.peer)
+      __rLines.push('<b>Peer principal:</b> ' + __rEsc(__rBody.peer));
+
+    if (__rPeers.length > 0)
+      __rLines.push(
+        '<b>Peers afetados:</b> ' + __rEsc(__rPeers.join(', '))
+      );
+
+    __rLines.push('');
+
+    __rLines.push(
+      'ℹ️ Estado <b>já ativo</b> no equipamento — reenvio operacional; <b>não</b> é uma nova ativação.'
+    );
+
+    __rLines.push(
+      '🏷️ <b>Perfil:</b> ' + __rEsc(__rProfileId)
+    );
+
+    __rLines.push(
+      '🕒 Readback verificado em ' + __rEsc(__rRb.readAt)
+    );
+
+    if (__rBody.sharedPolicy === true) {
+      __rLines.push('');
+      __rLines.push(
+        '⚠️ <b>POLICY COMPARTILHADA</b> — a retirada afeta <b>todos</b> os vínculos abaixo (' +
+        __rTargets.length +
+        '):'
+      );
+
+      for (const __rT of __rTargets) {
+        __rLines.push(
+          '• ' +
+          __rEsc(__rT.customer ?? '-') +
+          ' | ' +
+          __rEsc(__rT.interfaceName ?? __rT.interface ?? '-') +
+          ' | Peer: ' +
+          __rEsc(__rT.peerAddress ?? __rT.peer ?? '-') +
+          ' | ' +
+          __rEsc(__rT.addressFamily ?? '-')
+        );
+      }
+    }
+
+    return {
+      EVENTO: __rBody.event,
+      PATCH: PATCH_VERSION,
+      REENVIO: true,
+      RESEND_VALIDO: true,
+      REAL_ACTIVATED: true,
+      SIMULACAO: false,
+      VERIFICADO: true,
+      EVENT_ID: __rBody.eventId ?? null,
+      PROFILE_ID: __rProfileId,
+      CLIENTE: __rBody.customer ?? null,
+      EQUIPAMENTO: __rBody.device ?? null,
+      INTERFACE: __rIf ?? null,
+      FAMILIA: __rBody.addressFamily ?? null,
+      PEER: __rBody.peer ?? null,
+      PEERS_AFETADOS: __rPeers,
+      BANDA_GBPS: __rBody.bandwidthGbps ?? null,
+      TRAFEGO_GBPS: __rBody.trafficGbps ?? null,
+      LIMITE_GBPS: __rBody.thresholdGbps ?? null,
+      POLICY: __rBody.policy ?? null,
+      BOGON_NODE: __rBogon,
+      MITIGATION_NODE: __rMit,
+      RT: __rBody.rt ?? null,
+      POLICY_COMPARTILHADA: __rBody.sharedPolicy === true,
+      OUTROS_TARGETS: __rTargets,
+      OCORREU_EM: __rBody.occurredAt ?? null,
+      READBACK_READ_AT: __rRb.readAt,
+      telegramText: __rLines.join('\n'),
+    };
+  }
+
+  // ==========================================================
+  // CODIGO ORIGINAL - MITIGATION_VERIFIED
+  // ==========================================================
+
+  const b = $json.body ?? $json;
+  const esc = (v) => v == null ? '' : String(v)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/\r/g,'')
+    .trim();
+
+  const evento = b.event ?? null;
+  const simulation = b.simulation === true;
+  const verified = b.verified === true;
+  const profileId = b.profileId ?? null;
+
+  const bogonNode = b.bogonNode ?? null;
+  const mitigationNode = b.mitigationNode ?? b.node ?? null;
+
+  const realActivated =
+    evento === 'MITIGATION_VERIFIED' &&
+    simulation === false &&
+    verified === true &&
+    typeof profileId === 'string' &&
+    profileId.length > 0;
+
+  const lines = [
+    '🛡️ <b>ALERTA NETVISION - MITIGAÇÃO DDoS</b>',
+    ''
+  ];
+
+  if (b.customer)
+    lines.push(`<b>Cliente:</b> ${esc(b.customer)}`);
+
+  if (b.device)
+    lines.push(`<b>Equipamento:</b> ${esc(b.device)}`);
+
+  const interfaceName = b.interfaceName ?? b.interface;
+
+  if (interfaceName)
+    lines.push(`<b>Interface:</b> ${esc(interfaceName)}`);
+
+  if (b.addressFamily)
+    lines.push(`<b>Família:</b> ${esc(b.addressFamily)}`);
+
+  lines.push('');
+
+  if (b.trafficGbps != null)
+    lines.push(`<b>Tráfego:</b> ${esc(b.trafficGbps)} Gbps`);
+
+  if (b.bandwidthGbps != null)
+    lines.push(`<b>Banda:</b> ${esc(b.bandwidthGbps)} Gbps`);
+
+  if (b.thresholdGbps != null)
+    lines.push(`<b>Limite:</b> ${esc(b.thresholdGbps)} Gbps`);
+
+  lines.push('');
+
+  if (b.policy)
+    lines.push(`<b>Policy:</b> ${esc(b.policy)}`);
+
+  if (bogonNode != null)
+    lines.push(`<b>Node BOGONS:</b> ${esc(bogonNode)}`);
+
+  if (mitigationNode != null)
+    lines.push(`<b>Node mitigação:</b> ${esc(mitigationNode)}`);
+
+  if (b.rt)
+    lines.push(`<b>RT:</b> ${esc(b.rt)}`);
+
+  if (b.peer)
+    lines.push(`<b>Peer principal:</b> ${esc(b.peer)}`);
+
+  lines.push('');
+  lines.push(
+    '✅ <b>MITIGAÇÃO ATIVADA E VERIFICADA NO EQUIPAMENTO</b>'
+  );
+
+  if (b.sharedPolicy) {
+    lines.push('');
+    lines.push('⚠️ <b>POLICY COMPARTILHADA</b>');
+
+    for (const t of b.sharedPolicyTargets ?? []) {
+      lines.push(
+        `• ${esc(t.customer ?? '-')} | ${esc(t.interfaceName ?? '-')} | Peer: ${esc(t.peerAddress ?? '-')}`
+      );
+    }
+  }
+
+  // ==========================================================
+  // S5 / REVIEW-07 - DETECCAO BLOQUEADA (nenhuma escrita)
+  // Separado de `realActivated` por contrato: nunca e mitigacao aplicada.
+  // ==========================================================
+  const detectionBlocked =
+    evento === 'MITIGATION_DETECTION_BLOCKED' &&
+    simulation === true &&
+    verified === false;
+
+  const faltando = Array.isArray(b.fieldsUnavailable)
+    ? b.fieldsUnavailable
+    : [];
+
+  const det = (v) =>
+    v === null || v === undefined || v === ''
+      ? '<i>indisponível</i>'
+      : esc(v);
+
+  const rateTxt = (gbps, mbps) => {
+    if (gbps == null && mbps == null) return '<i>indisponível</i>';
+    if (gbps != null && Number(gbps) >= 1) return esc(gbps) + ' Gbps';
+    if (mbps != null) return esc(mbps) + ' Mbps';
+    return esc(gbps) + ' Gbps';
+  };
+
+  const detLines = [];
+
+  if (detectionBlocked) {
+    detLines.push('🚨 <b>NETVISION - ATAQUE DETECTADO</b>', '');
+    detLines.push('⚠️ <b>Mitigação automática NÃO aplicada</b> (execução desabilitada ou escrita não autorizada).');
+    detLines.push('Nenhuma alteração foi feita no equipamento.', '');
+    detLines.push(`<b>Cliente:</b> ${det(b.customer)}`);
+    detLines.push(`<b>Equipamento:</b> ${det(b.device)}`);
+    detLines.push(`<b>Interface:</b> ${det(interfaceName)}`);
+    detLines.push(`<b>Família:</b> ${det(b.addressFamily)}`);
+    detLines.push(`<b>Policy:</b> ${det(b.policy)}`);
+
+    if (b.sharedPolicy === true) detLines.push('⚠️ <b>POLICY COMPARTILHADA</b>');
+
+    detLines.push(`<b>Peer:</b> ${det(b.peer)}`, '');
+    detLines.push(`<b>Tráfego medido:</b> ${rateTxt(b.trafficGbps, b.trafficMbps)}`);
+    detLines.push(`<b>Limite:</b> ${rateTxt(b.thresholdGbps, b.thresholdMbps)}`);
+    detLines.push(`<b>Direção:</b> ${det(b.direction)} (origem: ${det(b.directionSource)})`, '');
+    detLines.push(`<b>Motivo do bloqueio:</b> ${det(b.blockedReason)}`);
+    detLines.push(`<b>Episódio:</b> ${det(b.episodeId)}`);
+    detLines.push(`<b>Detectado em:</b> ${det(b.occurredAt)}`);
+
+    if (faltando.length) {
+      detLines.push('', `⚠️ <b>Campos sem leitura:</b> ${esc(faltando.join(', '))}`);
+    }
+
+    detLines.push('', `Profile: <code>${det(profileId)}</code>`);
+  }
+
+  return {
+    EVENTO: evento,
+    SIMULACAO: simulation,
+    VERIFICADO: b.verified ?? null,
+    REAL_ACTIVATED: realActivated,
+    EVENT_ID: b.eventId ?? null,
+    PROFILE_ID: profileId,
+    CLIENTE: b.customer ?? null,
+    EQUIPAMENTO: b.device ?? null,
+    INTERFACE: interfaceName ?? null,
+    FAMILIA: b.addressFamily ?? null,
+    PEER: b.peer ?? null,
+    PEERS_AFETADOS: b.affectedPeers ?? [],
+    BANDA_GBPS: b.bandwidthGbps ?? null,
+    TRAFEGO_GBPS: b.trafficGbps ?? null,
+    LIMITE_GBPS: b.thresholdGbps ?? null,
+    POLICY: b.policy ?? null,
+    BOGON_NODE: bogonNode,
+    MITIGATION_NODE: mitigationNode,
+    RT: b.rt ?? null,
+    POLICY_COMPARTILHADA: b.sharedPolicy === true,
+    OUTROS_TARGETS: b.sharedPolicyTargets ?? [],
+    OCORREU_EM: b.occurredAt ?? null,
+    telegramText: lines.join('\n'),
+    DETECTION_BLOCKED: detectionBlocked,
+    MOTIVO_BLOQUEIO: b.blockedReason ?? null,
+    EPISODIO_ID: b.episodeId ?? null,
+    DIRECAO: b.direction ?? null,
+    ORIGEM_DIRECAO: b.directionSource ?? null,
+    CAMPOS_INDISPONIVEIS: faltando,
+    detectionText: detLines.join('\n')
+  };
+})(); }
+return normalizeRc712($json.body ?? $json, publishedFormatting);
+})()
+}}

@@ -1,0 +1,190 @@
+{
+  "artifact": "n8n-rc712-closure",
+  "generatedAtUtc": "2026-11-01T00:40:00Z",
+  "scope": "TASK 1 incident log analysis (read-only) + TASK 2 normalizer paste procedure validated in a disposable n8n 2.4.4",
+  "productionMutation": "none",
+  "task1_incidentLogs": {
+    "windowUtc": ["2026-10-31T23:28:00Z", "2026-10-31T23:32:00Z"],
+    "timeline": {
+      "lastPreDeleteSnapshot": "2026-10-31T23:28:18.633Z",
+      "deleteBoundedBetween": ["2026-10-31T23:28:18.633Z", "2026-10-31T23:29:44.874Z"],
+      "sigterm": "2026-10-31T23:29:44.874Z",
+      "n8nReady": "2026-10-31T23:30:38.381Z",
+      "workflowReactivated": "2026-10-31T23:30:52.763Z",
+      "processDownSeconds": 53.5,
+      "workflowInactiveWorstCaseSeconds": 154.1,
+      "workflowInactiveBestCaseSeconds": 68.0
+    },
+    "traefik": {
+      "accessLogPath": "/storage/traefik-app/logs/access.log",
+      "accessLogSizeBytes": 121198037,
+      "timestampZone": "UTC",
+      "windowLines": 331,
+      "requests": {
+        "netvision-mitigation": 0,
+        "netvision-alarmes": 0,
+        "netvision-alarmes-vnt": 0,
+        "netvision-alarmes-fibinet": 0,
+        "telegramCallback_5d4b610d": 0
+      },
+      "errorLogLinesInWindow": 0,
+      "errorLogNote": "no 502/504/connection-refused, therefore no request was attempted and failed at the proxy",
+      "observedTrafficToN8n": [
+        { "time": "23:28:03", "source": "186.232.160.198", "request": "POST /webhook/zabbix", "status": 404, "note": "unregistered route, pre-existing (37627 occurrences in the file)" },
+        { "time": "23:31:04", "source": "186.232.160.198", "request": "POST /webhook/zabbix", "status": 404 },
+        { "time": "23:31:40-23:33:37", "source": "192.168.250.229", "request": "/rest/* editor UI", "status": "200/304" },
+        { "time": "23:34:03, 23:37:03, 23:39:15", "source": "186.232.160.198", "request": "POST /webhook/zabbix", "status": 404 }
+      ]
+    },
+    "emitters": {
+      "netvisionApiJournal": {
+        "unit": "netvision-api",
+        "host": "netvision-implantar (45.163.144.8)",
+        "linesInWindow": 30,
+        "content": "all heartbeat windowSeconds entries (23:27:33, 23:28:27, 23:29:27, 23:30:27, 23:31:27, 23:32:49, 23:37:53) plus 2 health-check lines at 23:31:48",
+        "mentionsOfN8nWebhookOrDelivery": 0,
+        "significance": "process was alive and logging throughout the window, so the absence of delivery lines is observed fact, not a logging gap"
+      },
+      "webhookCadenceOn20261031": {
+        "hoursWithNetvisionWebhookTrafficUtc": ["04", "05"],
+        "requestsInThoseHours": 8,
+        "requestsBetween2200And0030Utc": 0
+      },
+      "gmjMonitorFibinetLinesInWindow": 0,
+      "mediaDeliveryLogRowsInWindow": 0,
+      "mediaDeliveryLogTotalRows": 198,
+      "lastDeliveryUtc": "2026-10-30T14:10:00Z"
+    },
+    "conclusion": "no evidence of any lost event; positive evidence that zero requests reached the four webhooks or the Telegram callback during the whole window, including the maximum-exposure period",
+    "limitations": [
+      "A: exact DELETE instant is not recorded - API calls went directly to the container IP (10.249.0.3:5678), bypassing Traefik; n8n does not log API mutations at info level; docker events retained nothing for the window. Proven interval is 86.241 s.",
+      "B: a failure before reaching Traefik (DNS/TCP/local timeout) would not appear in the access log; covered by the NetVision API journal showing no delivery attempt at all.",
+      "C: what Telegram attempted cannot be proven; what arrived is proven to be nothing, and no callback was expected since no message with buttons was active.",
+      "D: the forensic copy's WAL was checkpointed when opened at 23:36:12; the isolated -wal artifact no longer exists (content merged into the main file, no data loss)."
+    ]
+  },
+  "task2_normalizerProcedure": {
+    "workflowId": "SVh8Z-zUcSzQYOOJZ-DKP",
+    "field": "Normalizar Evento OUT.parameters.jsonOutput",
+    "nodeType": "n8n-nodes-base.set",
+    "nodeTypeVersion": 3.4,
+    "nodeMode": "raw",
+    "values": {
+      "before": { "bytes": 17652, "sha256": "b2894a5f32fd0577c9da83061da7567114cd81dfcc3ca7796ad6bb4b58697ee5", "matchesManifest": true },
+      "after": { "bytes": 18381, "sha256": "0b5e2984bda50c36bb68f7b625615e844d6f87cfbc9632f8c99c64d933573be4", "matchesManifest": true, "firstBytes": "=\\n{{\\n(" },
+      "deltaBytes": 729
+    },
+    "baseReconstructionProof": {
+      "method": "candidate workflow with jsonOutput reverted to the BEFORE value",
+      "nodes": 58,
+      "connectionKeys": 42,
+      "edges": 59,
+      "graphSha256": "6bc74d79b499c68ac20c1fd273f75bd17bec3eae51694de29ac5d2b560bf9d23",
+      "equalsProductionDraft": true,
+      "meaning": "the production draft is the correct base and the two visual position moves are already contained and preserved"
+    },
+    "candidateGraph": {
+      "nodes": 58,
+      "edges": 59,
+      "graphSha256": "5c76e86618ada3b73d2c2aabf974a8b1fdaf7c24a12813711f93b3a11b5b5154",
+      "verifiedByFullWorkflowImportIn244": true
+    },
+    "structuralDiff": {
+      "nodesChanged": 1,
+      "changedNodeNames": ["Normalizar Evento OUT"],
+      "connectionsIdentical": true,
+      "ackRemoveStatusNodes": [
+        "Telegram Trigger - Callback",
+        "Interpretar Callback",
+        "IF - Callback de Escopo?",
+        "Telegram - ACK Escopo",
+        "Somente Status Mitigacao RC712?",
+        "Telegram - Status Mitigacao RC712"
+      ],
+      "ackRemoveStatusNodesChanged": 0
+    },
+    "pasteSemanticsTested": [
+      {
+        "variant": "T1",
+        "description": "expression mode, paste file content WITHOUT the leading '='",
+        "storedValuePrefix": "=\\n{{\\n",
+        "storedBytes": 18381,
+        "runtime": "correct - returns JSON object with PREFIXOS",
+        "producesApprovedHash": true
+      },
+      {
+        "variant": "T2",
+        "description": "expression mode, paste the whole file INCLUDING the leading '='",
+        "storedValuePrefix": "==\\n{{",
+        "storedBytes": 18382,
+        "runtime": "executes in 2.4.4 (extra '=' tolerated) but the stored value changes",
+        "producesApprovedHash": false
+      },
+      {
+        "variant": "T3",
+        "description": "fixed mode, no '=' (literal value)",
+        "storedValuePrefix": "\\n{{\\n(",
+        "storedBytes": 18380,
+        "runtime": "HTTP 500 / execution error - the text becomes literal and JSON.parse fails",
+        "producesApprovedHash": false
+      }
+    ],
+    "conclusionOnPaste": "the field must remain in Expression mode and the pasted text must be the file without its first character '='; equivalently the field text starts with an empty line followed by '{{'. The hash gate is authoritative.",
+    "behaviouralAB": [
+      { "case": "MITIGATION_VERIFIED with 3 AGLINK prefixes", "before": "ROUTE=ACTIVATED, no prefix block", "after": "ROUTE=ACTIVATED, PREFIXOS=3, QTD_PREFIXOS=3" },
+      { "case": "MITIGATION_VERIFIED without prefixes field", "before": "ROUTE=ACTIVATED, no prefix block", "after": "PREFIXOS=[], QTD=0, fallback '<b>Prefixos:</b> <i>indisponível</i>'" },
+      { "case": "MITIGATION_VERIFIED with prefixes: []", "before": "ROUTE=ACTIVATED, no prefix block", "after": "PREFIXOS=[], QTD=0, same fallback" },
+      { "case": "MITIGATION_STATUS_RESEND", "before": "RESEND_READBACK_REQUIRED", "after": "RESEND_READBACK_REQUIRED (identical)" }
+    ],
+    "renderedMessage": [
+      "<b>Prefixos (3):</b>",
+      "• 167.250.126.0/23",
+      "• 167.250.126.0/24",
+      "• 167.250.127.0/24"
+    ],
+    "expectedHashes": {
+      "productionDraftBefore": "6bc74d79b499c68ac20c1fd273f75bd17bec3eae51694de29ac5d2b560bf9d23",
+      "productionActiveBefore": "60af87618b6bfd2e1cf1678a16a769062151fa4ec320126fdb5498e3ee385870",
+      "targetAfterSaveAndPublish": "5c76e86618ada3b73d2c2aabf974a8b1fdaf7c24a12813711f93b3a11b5b5154"
+    },
+    "rollback": [
+      "republish version 6a97fe4a-31ea-49e6-b892-1ac55f85d115 (active graph 60af8761...)",
+      "reimport docs/n8n/PRE-EDIT-draft-de-producao.json if the draft becomes inconsistent (equals 6bc74d79...)",
+      "last resort: stop the container and restore /root/n8n-restored-20261031T233741Z.sqlite (sha256 0f56f790...4af52ee)"
+    ]
+  },
+  "verdict": {
+    "decision": "GO_CONDITIONAL",
+    "conditions": [
+      "fresh backup before editing",
+      "graph hash gate 5c76e866... checked on the draft before publishing and on the active version after",
+      "no concurrent editor on the workflow",
+      "no PUT/PATCH/DELETE on the public API - editor only",
+      "rollback ready via republication of 6a97fe4a..."
+    ]
+  },
+  "isolatedEnvironment": {
+    "image": "n8nio/n8n:2.4.4",
+    "binding": "127.0.0.1:5688",
+    "productionTouched": false,
+    "productionMutatingEndpointsUsed": 0,
+    "cleanedUp": true
+  },
+  "finalProductionState": {
+    "workflowId": "SVh8Z-zUcSzQYOOJZ-DKP",
+    "active": 1,
+    "versionId": "1f1405f8-e9bc-4d2e-91bc-4106dbb07285",
+    "activeVersionId": "6a97fe4a-31ea-49e6-b892-1ac55f85d115",
+    "container": "running",
+    "restartCount": 0
+  },
+  "independentReviewChecklist": [
+    "Re-derive the Traefik access-log counts for the window and confirm zero requests to the four webhook paths and to the Telegram callback path.",
+    "Confirm error.log has no entries for the window, proving no proxy-level failure was logged.",
+    "Confirm the NetVision API journal lines in the window are heartbeats only and prove process liveness.",
+    "Recompute the BEFORE and AFTER normalizer hashes from the shipped files.",
+    "Re-derive graph hashes 6bc74d79..., 60af8761... and 5c76e866... with json.dumps(sort_keys=True).",
+    "Confirm the disposable instance was removed and no production write occurred (final state above).",
+    "Judgement call to review: T2 (double '=') executes in 2.4.4 but yields a different stored value and hash - decide whether the runbook should hard-fail on hash mismatch (current proposal) or also forbid the double-'=' paste explicitly in the UI instructions."
+  ]
+}
