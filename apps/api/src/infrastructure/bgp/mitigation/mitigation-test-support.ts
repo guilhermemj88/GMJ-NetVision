@@ -1,4 +1,10 @@
 import { derivePreservedClauses, type PreservedClauses } from './mitigation-policy-clauses';
+import {
+  baselineRecordId,
+  type MitigationBaselineRecord,
+  type MitigationBaselineScope,
+  type MitigationBaselineStore,
+} from './mitigation-baseline-record';
 
 /**
  * TEST-ONLY: `PreservedClauses` deterministico equivalente a um cliente cujo
@@ -20,4 +26,38 @@ export function testPreservedClauses(
     ` if-match ip-prefix ${targetPrefixList}`,
   ].join('\n');
   return derivePreservedClauses(text, policyName, targetPrefixList, rt);
+}
+
+/**
+ * Backend persistente simulado (B6): as linhas ficam em JSON, como no banco.
+ * Instancias INDEPENDENTES de `FakeDurableBaselineStore` sobre o mesmo backend
+ * representam processos diferentes lendo o mesmo PostgreSQL.
+ */
+export interface FakeDurableBackend {
+  readonly rows: Map<string, string>;
+}
+
+export function createFakeDurableBackend(): FakeDurableBackend {
+  return { rows: new Map<string, string>() };
+}
+
+export class FakeDurableBaselineStore implements MitigationBaselineStore {
+  /** Persistente por contrato: sobrevive a descarte da instancia do executor. */
+  readonly durable = true;
+
+  constructor(private readonly backend: FakeDurableBackend) {}
+
+  async save(record: MitigationBaselineRecord): Promise<void> {
+    this.backend.rows.set(baselineRecordId(record), JSON.stringify(record));
+  }
+
+  async load(scope: MitigationBaselineScope): Promise<MitigationBaselineRecord | null> {
+    const raw = this.backend.rows.get(baselineRecordId(scope));
+    return raw === undefined ? null : (JSON.parse(raw) as MitigationBaselineRecord);
+  }
+}
+
+/** Store duravel pronto para harnesses que so precisam do contrato. */
+export function testDurableBaselineStore(backend = createFakeDurableBackend()) {
+  return new FakeDurableBaselineStore(backend);
 }

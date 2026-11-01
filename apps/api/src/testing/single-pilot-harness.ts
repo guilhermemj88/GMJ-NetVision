@@ -19,6 +19,8 @@ import {
   type MitigationSshPort,
 } from '../infrastructure/bgp/mitigation/huawei-mitigation-executor';
 import { MockMitigationExecutor } from '../infrastructure/bgp/mitigation/mitigation-executor';
+import { AutomationMitigationBaselineStore } from '../worker/mitigation/baseline-store';
+import { testDurableBaselineStore } from '../infrastructure/bgp/mitigation/mitigation-test-support';
 import { InMemoryPolicyScopeLock } from '../infrastructure/bgp/mitigation/mitigation-policy-lock';
 import { inspectPolicyMitigation } from '../infrastructure/bgp/mitigation/mitigation-policy-physical';
 import { resolveAutoClientBinding } from '../worker/mitigation/auto-client-binding';
@@ -234,9 +236,18 @@ export async function createPilotHarness(store: AutomationStore = new MemoryAuto
     now: () => new Date(now),
   });
   const ssh = new PilotFakeHuawei();
+  // B6: a escrita real exige armazenamento DURAVEL do baseline. Com um store de
+  // persistencia, o registro vai para o banco; sem ele, backend duravel de teste.
+  const baselineStore =
+    store instanceof MemoryAutomationStore
+      ? testDurableBaselineStore()
+      : new AutomationMitigationBaselineStore(store);
   const live = new HuaweiMitigationExecutor({
     ssh,
     config: { executor: 'HUAWEI', liveWriteEnabled: true, allowedDeviceIds: [P.deviceId] },
+    // B6: escrita real exige armazenamento duravel do baseline. O harness usa o
+    // store persistente recebido; sem ele, um backend duravel de teste.
+    baseline: baselineStore,
   });
   let lifecycle: AutoMitigationLifecycle;
   let commands: MitigationCommandService;

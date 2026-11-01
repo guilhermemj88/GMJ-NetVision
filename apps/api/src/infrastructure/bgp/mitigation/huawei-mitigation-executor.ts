@@ -170,6 +170,61 @@ function sameNodes(left: readonly number[], right: readonly number[]): boolean {
   return left.every((value, index) => value === right[index]);
 }
 
+/**
+ * B6 (verificacao adicional): os comandos do ACTIVATE vem do baseline do
+ * PREFLIGHT, mas o snapshot persistido vem de uma segunda leitura fisica feita
+ * imediatamente antes da escrita. Se as duas leituras divergirem, a escrita e
+ * bloqueada — nunca se ajusta o comando automaticamente.
+ */
+function activationBaselineDiverged(
+  readBack: string,
+  prefixListConfiguration: string | null,
+  input: MitigationActivationInput,
+  engineLabels: { bogonPrefixList: string; targetPrefixList: string },
+): string[] {
+  const preserved = input.preservedClauses;
+  if (!preserved) return ['baseline derivado no preflight ausente'];
+  // Os comandos sao montados com os rotulos do MOTOR (`writePlan`), nunca com o
+  // que o chamador mandou; a comparacao usa exatamente os mesmos rotulos.
+  const labels = bgpPlanLabels(input.policyName, engineLabels);
+  const current = derivePreservedClauses(
+    readBack,
+    input.policyName,
+    labels.targetPrefixList,
+    input.rt,
+    {
+      prefixListConfiguration,
+      pair: { bogonNode: input.bogonNode, mitigationNode: input.mitigationNode },
+    },
+  );
+  const reasons: string[] = [];
+  if (current.baselineNode !== preserved.baselineNode) {
+    reasons.push(
+      `node de baseline ${preserved.baselineNode ?? 'ausente'} -> ${current.baselineNode ?? 'ausente'}`,
+    );
+  }
+  if (current.localPreference !== preserved.localPreference) {
+    reasons.push(
+      `local-preference ${preserved.localPreference ?? 'ausente'} -> ` +
+        `${current.localPreference ?? 'ausente'}`,
+    );
+  }
+  const rts = (list: readonly string[]) => JSON.stringify([...list].sort());
+  if (rts(current.routeTargets) !== rts(preserved.routeTargets)) {
+    reasons.push(
+      `route-targets [${preserved.routeTargets.join(', ')}] -> ` +
+        `[${current.routeTargets.join(', ')}]`,
+    );
+  }
+  if (rts(current.otherApplies) !== rts(preserved.otherApplies)) {
+    reasons.push('atributos adicionais do baseline mudaram');
+  }
+  if (!current.safe) {
+    reasons.push(`baseline atual nao reproduzivel: ${current.unsafeReasons.join('; ')}`);
+  }
+  return reasons;
+}
+
 export class HuaweiMitigationExecutor {
   private readonly rt: string;
   private readonly labels: { bogonPrefixList: string; targetPrefixList: string };
@@ -190,19 +245,44 @@ export class HuaweiMitigationExecutor {
   }
 
   /**
-   * B5: grava o fingerprint dos nodes PERMANENTES imediatamente antes da
-   * escrita. Falha de leitura/registro interrompe o ACTIVATE antes de qualquer
-   * comando chegar ao equipamento.
+   * B5/B6: grava o fingerprint dos nodes PERMANENTES imediatamente antes da
+   * escrita. Exige armazenamento DURAVEL (nunca memoria do processo), compara a
+   * leitura fisica com o baseline que gerou os comandos e confirma o registro
+   * relendo-o do proprio store. Qualquer falha interrompe o ACTIVATE antes de
+   * qualquer comando chegar ao equipamento.
    */
   private async captureAndSaveBaseline(
     device: HostRecord,
     input: MitigationActivationInput,
   ): Promise<void> {
+    if (this.baseline.durable !== true) {
+      throw new Error(
+        'MITIGATION_BASELINE_RECORD_UNAVAILABLE: escrita real exige armazenamento duravel ' +
+          'do baseline (MemoryMitigationBaselineStore so vale para MOCK/testes)',
+      );
+    }
     let readBack: string;
+    let prefixListConfiguration: string | null = null;
     try {
-      readBack = await this.deps.ssh.readMitigationRoutePolicy(device, input.policyName);
+      // Mesma leitura do preflight (config + ip-prefix): a comparacao das duas
+      // leituras usa exatamente as mesmas listas que geraram os comandos.
+      const configuration = await this.deps.ssh.readMitigationConfiguration(device);
+      readBack = configuration.routePolicyConfiguration ?? '';
+      prefixListConfiguration = configuration.prefixListConfiguration;
     } catch (error) {
       throw new Error(`MITIGATION_BASELINE_RECORD_UNAVAILABLE: ${safeErrorMessage(error)}`);
+    }
+    // Os comandos vieram do baseline do PREFLIGHT; o snapshot vem desta segunda
+    // leitura fisica. Divergencia entre as duas leituras bloqueia a escrita —
+    // nunca se adapta o comando automaticamente.
+    const diverged = activationBaselineDiverged(
+      readBack,
+      prefixListConfiguration,
+      input,
+      this.labels,
+    );
+    if (diverged.length > 0) {
+      throw new Error(`MITIGATION_BASELINE_DIVERGED: ${diverged.join('; ')}`);
     }
     const record = captureMitigationBaseline({
       deviceId: device.id,
@@ -218,6 +298,19 @@ export class HuaweiMitigationExecutor {
       await this.baseline.save(record);
     } catch (error) {
       throw new Error(`MITIGATION_BASELINE_RECORD_UNAVAILABLE: ${safeErrorMessage(error)}`);
+    }
+    // B6.5: prova de que o registro EXISTE no store, no escopo correto, antes da
+    // primeira escrita (vale tambem para o store persistente real).
+    const saved = await this.loadBaseline(device, input.policyName);
+    if (
+      saved === null ||
+      saved.readBackSha256 !== record.readBackSha256 ||
+      saved.bogonNode !== input.bogonNode ||
+      saved.mitigationNode !== input.mitigationNode
+    ) {
+      throw new Error(
+        'MITIGATION_BASELINE_RECORD_UNAVAILABLE: registro nao confirmado apos a gravacao',
+      );
     }
   }
 
@@ -432,6 +525,20 @@ export class HuaweiMitigationExecutor {
     });
 
     if (mode === 'ACTIVATE') {
+      // B6: escrita real exige registro DURAVEL do baseline. Sem store
+      // persistente (ausente/desabilitado) o ACTIVATE para aqui — a memoria do
+      // processo nunca e aceita como fallback (um restart perderia o registro e
+      // tornaria o REMOVE imprevisivel).
+      const baselineStoreOk =
+        !canWriteLive(this.deps.config, device.id) || this.baseline.durable === true;
+      checks.push({
+        id: 'baseline_record_store',
+        ok: baselineStoreOk,
+        detail: baselineStoreOk
+          ? 'armazenamento do baseline disponivel para escrita real'
+          : 'MITIGATION_BASELINE_RECORD_UNAVAILABLE: escrita real exige armazenamento ' +
+            'duravel do baseline (MemoryMitigationBaselineStore so vale para MOCK/testes)',
+      });
       // OCUPACAO DOS NODES TEMPORARIOS (Caso A x Caso B).
       // Nodes livres: criar. Nodes ocupados: NUNCA sobrescrever - capturar o
       // snapshot integral de cada node preexistente, identificar quais nodes

@@ -4,11 +4,8 @@ import { HuaweiMitigationExecutor } from './huawei-mitigation-executor';
 import type { MitigationSshPort } from './huawei-mitigation-executor';
 import { buildMitigationActivateCommands } from './mitigation-write-guard';
 import { derivePreservedClauses } from './mitigation-policy-clauses';
-import {
-  captureMitigationBaseline,
-  MemoryMitigationBaselineStore,
-  type MitigationBaselineStore,
-} from './mitigation-baseline-record';
+import { captureMitigationBaseline, type MitigationBaselineStore } from './mitigation-baseline-record';
+import { testDurableBaselineStore } from './mitigation-test-support';
 
 /**
  * Correções da auditoria do Claude (fail-closed no preflight).
@@ -66,7 +63,7 @@ function executor(ssh: FakeSsh, baseline?: MitigationBaselineStore): HuaweiMitig
       allowedDeviceIds: [DEVICE_ID],
     },
     rt: RT,
-    ...(baseline ? { baseline } : {}),
+    baseline: baseline ?? testDurableBaselineStore(),
   });
 }
 
@@ -78,7 +75,7 @@ async function executorWithBaseline(
   ssh: FakeSsh,
   readBack: string,
 ): Promise<HuaweiMitigationExecutor> {
-  const baseline = new MemoryMitigationBaselineStore();
+  const baseline = testDurableBaselineStore();
   const record = captureMitigationBaseline({
     deviceId: DEVICE_ID,
     policyName: POLICY,

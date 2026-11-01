@@ -12,6 +12,12 @@ import type { AutomationStore } from './automation-store';
  * schema novo nem migration: o payload e o proprio registro.
  */
 export class AutomationMitigationBaselineStore implements MitigationBaselineStore {
+  /**
+   * Persistente: o payload vive em `MitigationAutomationRecord` (PostgreSQL) e
+   * sobrevive a restart — unico tipo aceito pela escrita real (B6).
+   */
+  readonly durable = true;
+
   constructor(private readonly store: AutomationStore) {}
 
   async save(record: MitigationBaselineRecord): Promise<void> {

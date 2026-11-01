@@ -5,11 +5,9 @@ import type { MitigationExecutionConfig } from './mitigation-execution-config';
 import { SimulationCommandExecutor } from './simulation-command-executor';
 import { verifyActivation } from './mitigation-executor';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
-import { testPreservedClauses } from './mitigation-test-support';
-import {
-  captureMitigationBaseline,
-  MemoryMitigationBaselineStore,
-} from './mitigation-baseline-record';
+import { testDurableBaselineStore } from './mitigation-test-support';
+import { derivePreservedClauses } from './mitigation-policy-clauses';
+import { captureMitigationBaseline } from './mitigation-baseline-record';
 
 const DEVICE_ID = 'host-f1a';
 const POLICY = 'PL-HORIZONTES_IPv4-IN';
@@ -103,10 +101,21 @@ const INPUT = {
 };
 
 function executor(ssh: FakeSsh, cfg = config()): HuaweiMitigationExecutor {
-  return new HuaweiMitigationExecutor({ ssh, config: cfg, rt: RT });
+  // Escrita real: o executor exige armazenamento DURAVEL (B6).
+  return new HuaweiMitigationExecutor({
+    ssh,
+    config: cfg,
+    rt: RT,
+    baseline: testDurableBaselineStore(),
+  });
 }
 
-const PRESERVED = testPreservedClauses(POLICY, DEFAULT_TARGET_PREFIX_LIST, RT);
+// Derivado do MESMO read-back e das MESMAS prefix-lists do preflight: o
+// executor compara as duas leituras fisicas antes de escrever (B6).
+const PRESERVED = derivePreservedClauses(ROUTE_POLICY, POLICY, DEFAULT_TARGET_PREFIX_LIST, RT, {
+  prefixListConfiguration: IP_PREFIX,
+  pair: { bogonNode: 1, mitigationNode: 2 },
+});
 
 /**
  * Executor com o registro DURAVEL do ACTIVATE ja gravado (B5). Equivale a um
@@ -116,7 +125,7 @@ async function executorWithBaseline(
   ssh: FakeSsh,
   readBack: string,
 ): Promise<HuaweiMitigationExecutor> {
-  const baseline = new MemoryMitigationBaselineStore();
+  const baseline = testDurableBaselineStore();
   const record = captureMitigationBaseline({
     deviceId: DEVICE_ID,
     policyName: POLICY,

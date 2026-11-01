@@ -12,6 +12,7 @@ import {
 } from './auto-lifecycle';
 import { resolveAutoClientBinding } from './auto-client-binding';
 import { MemoryAutomationStore } from './automation-store';
+import { testDurableBaselineStore } from '../../infrastructure/bgp/mitigation/mitigation-test-support';
 import { DurableMitigationOutbox, type OutboxEntry } from './durable-mitigation-outbox';
 import { InMemoryMitigationRepository } from '../../infrastructure/bgp/mitigation/in-memory-mitigation-repository';
 import {
@@ -176,6 +177,8 @@ async function harness() {
     live = new HuaweiMitigationExecutor({
       ssh,
       config: { executor: 'HUAWEI', liveWriteEnabled: true, allowedDeviceIds: [profile.deviceId] },
+      // B6: escrita real exige armazenamento duravel do baseline.
+      baseline: testDurableBaselineStore(),
     });
   let lifecycle: AutoMitigationLifecycle,
     commands: MitigationCommandService,

@@ -44,6 +44,14 @@ export interface MitigationBaselineScope {
  * "configuracao atual e a original".
  */
 export interface MitigationBaselineStore {
+  /**
+   * `true` = armazenamento PERSISTENTE (sobrevive a restart do processo).
+   *
+   * Escrita real no Huawei exige `durable: true`: a memoria do processo nunca e
+   * aceita como fallback, porque um restart perderia o registro e o REMOVE
+   * passaria a operar sobre uma configuracao nao verificada.
+   */
+  readonly durable: boolean;
   save(record: MitigationBaselineRecord): Promise<void>;
   load(scope: MitigationBaselineScope): Promise<MitigationBaselineRecord | null>;
 }
@@ -153,6 +161,8 @@ export function baselineDriftReasons(record: MitigationBaselineRecord, readBack:
 
 /** Store em memoria: testes e processos sem persistencia duravel. */
 export class MemoryMitigationBaselineStore implements MitigationBaselineStore {
+  /** Nunca persistente: recusado pela escrita real no Huawei (B6). */
+  readonly durable = false;
   private readonly records = new Map<string, MitigationBaselineRecord>();
   async save(record: MitigationBaselineRecord): Promise<void> {
     this.records.set(baselineRecordId(record), structuredClone(record));

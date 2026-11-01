@@ -3,10 +3,10 @@ import type { HostRecord } from '@gmj/shared';
 import { HuaweiMitigationExecutor, type MitigationSshPort } from './huawei-mitigation-executor';
 import {
   captureMitigationBaseline,
-  MemoryMitigationBaselineStore,
   type MitigationBaselineRecord,
   type MitigationBaselineStore,
 } from './mitigation-baseline-record';
+import { testDurableBaselineStore } from './mitigation-test-support';
 
 /**
  * Correcoes finais B3, B4 (transporte coberto em ssh-client-write-guards) e B5.
@@ -108,7 +108,7 @@ function executor(ssh: FakeSsh, baseline?: MitigationBaselineStore): HuaweiMitig
     ssh,
     config: { executor: 'HUAWEI', liveWriteEnabled: true, allowedDeviceIds: [DEVICE_ID] },
     rt: RT,
-    ...(baseline ? { baseline } : {}),
+    baseline: baseline ?? testDurableBaselineStore(),
   });
 }
 
@@ -172,6 +172,7 @@ describe('B5 - fingerprint duravel dos nodes permanentes', () => {
   it('registro invalido (corrompido) bloqueia a retirada', async () => {
     const ssh = new FakeSsh(ACTIVATED_POLICY);
     const corrupt: MitigationBaselineStore = {
+      durable: true,
       save: async () => undefined,
       load: async () => ({ version: 1, nodes: [] }) as unknown as MitigationBaselineRecord,
     };
@@ -184,7 +185,7 @@ describe('B5 - fingerprint duravel dos nodes permanentes', () => {
   });
 
   it('ACTIVATE seguido de REMOVE continua funcionando ponta a ponta', async () => {
-    const baseline = new MemoryMitigationBaselineStore();
+    const baseline = testDurableBaselineStore();
     const ssh = new FakeSsh(NORMAL_POLICY);
     const exec = executor(ssh, baseline);
 

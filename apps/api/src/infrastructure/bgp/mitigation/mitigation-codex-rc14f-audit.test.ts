@@ -5,6 +5,7 @@ import { MitigationCommandService, type MitigationCommandDeps } from './mitigati
 import { MockMitigationExecutor } from './mitigation-executor';
 import { HuaweiMitigationExecutor, type MitigationSshPort } from './huawei-mitigation-executor';
 import { InMemoryPolicyScopeLock } from './mitigation-policy-lock';
+import { testDurableBaselineStore } from './mitigation-test-support';
 import {
   MitigationAutoEngine,
   type MitigationAutoTargetState,
@@ -85,6 +86,8 @@ async function commandHarness(
   const live = new HuaweiMitigationExecutor({
     ssh,
     config: { executor: 'HUAWEI', liveWriteEnabled: liveWrite, allowedDeviceIds: [DEVICE] },
+    // B6: a escrita real exige registro DURAVEL do baseline.
+    baseline: testDurableBaselineStore(),
   });
   const mock = new MockMitigationExecutor();
   const host = {
