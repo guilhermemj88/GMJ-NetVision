@@ -2,9 +2,10 @@
 # ETAPA B do deploy do motor B6 (REQUER AUTORIZACAO ESPECIFICA).
 # Ativa a release 2ad62b8 criando o drop-in e reiniciando SOMENTE netvision-api.
 #
-# Primeira publicacao: cria tambem o drop-in que mantem a ESCRITA REAL desligada
-# (MITIGATION_LIVE_WRITE_ENABLED=false), preservando leitura/preflight. A
-# habilitacao da escrita exige uma autorizacao separada.
+# Primeira publicacao: cria tambem o drop-in de flags com escrita real DESLIGADA
+# (MITIGATION_LIVE_WRITE_ENABLED=false) e AUTO/REMOVE explicitamente em 0,
+# preservando leitura/preflight e a persistencia durável do baseline.
+# A habilitacao da escrita exige uma autorizacao separada.
 #
 # Uso (no IMPLANTAR): sudo bash activate-release.sh [--keep-live-write]
 set -euo pipefail
@@ -31,10 +32,20 @@ ExecStart=/usr/bin/node $DEST/apps/api/dist/server.cjs
 CONF
 
 if [ "${1:-}" != "--keep-live-write" ]; then
-  # Escrita real DESLIGADA na primeira publicacao (leitura/preflight continuam).
-  printf '# Primeira publicacao B6: escrita real desligada (autorizacao separada).\n[Service]\nEnvironment=MITIGATION_LIVE_WRITE_ENABLED=false\n' \
-    > /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzzzzzzz-b6-live-write-off.conf
-  echo "MITIGATION_LIVE_WRITE_ENABLED=false aplicado por drop-in"
+  # Ordem do nome garante precedencia sobre zz-auto.conf (unico que define
+  # MITIGATION_LIVE_WRITE_ENABLED=true). As demais chaves repetem o que os
+  # EnvironmentFile ja trazem, fixando o valor desejado no proprio drop-in.
+  cat > /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzzzzzzzz-b6-flags.conf <<'CONF'
+# Primeira publicacao B6: escrita real desligada; AUTO e REMOVE em 0.
+# Persistencia durável do baseline habilitada (nao habilita execucao).
+[Service]
+Environment=MITIGATION_LIVE_WRITE_ENABLED=false
+Environment=MITIGATION_AUTO_EXECUTION_ENABLED=0
+Environment=MITIGATION_AUTO_LIFECYCLE_ENABLED=0
+Environment=MITIGATION_AUTO_REMOVE_ENABLED=0
+Environment=MITIGATION_AUTO_PERSISTENCE_ENABLED=1
+CONF
+  echo "flags B6 aplicadas por drop-in (LIVE_WRITE=false, AUTO_*=0, PERSISTENCE=1)"
 fi
 
 systemctl daemon-reload
@@ -47,7 +58,15 @@ for i in $(seq 1 30); do
   [ "$code" = "200" ] && { echo "health 200 apos ${i}s"; break; }
 done
 
-systemctl show netvision-api -p ExecStart --value | head -1
+PID=$(systemctl show netvision-api -p MainPID --value)
+echo "--- release efetiva:"
+systemctl show netvision-api -p WorkingDirectory -p ExecStart --value | head -2
+echo "--- flags efetivas no processo $PID:"
+for k in MITIGATION_LIVE_WRITE_ENABLED MITIGATION_AUTO_EXECUTION_ENABLED MITIGATION_AUTO_LIFECYCLE_ENABLED \
+         MITIGATION_AUTO_REMOVE_ENABLED MITIGATION_AUTO_PERSISTENCE_ENABLED NETVISION_INSTALLATION_ID; do
+  echo "  $k = $(tr '\0' '\n' < /proc/$PID/environ 2>/dev/null | grep "^$k=" | head -1 | cut -d= -f2- || echo '?')"
+done
+echo "--- health:"
 curl -s -o /dev/null -w 'api health=%{http_code}\n' http://127.0.0.1:3333/health
 curl -s -o /dev/null -w 'web %{http_code}\n' http://127.0.0.1/
 curl -s -o /dev/null -w 'mcp %{http_code}\n' http://127.0.0.1:3335/health
