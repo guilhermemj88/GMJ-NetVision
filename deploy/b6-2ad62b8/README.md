@@ -23,10 +23,14 @@ Pacote imutavel + scripts de instalacao, ativacao, validacao e rollback.
    — valida hashes/manifesto, exige ≥3 GB, compara migrations e instala a
    release **ao lado** da atual. A API continua servindo `bf7bc52`.
 2. `sudo bash activate-release.sh`
-   — cria o drop-in da release + (por padrao) o drop-in que deixa
-   `MITIGATION_LIVE_WRITE_ENABLED=false`, faz `daemon-reload` e reinicia
-   **somente** `netvision-api`. Use `--keep-live-write` apenas com autorizacao
-   para escrita real no primeiro deploy.
+   — cria o drop-in da release + (por padrao) o drop-in de flags
+   `zzzzzzzzzzzzzzzzzzzzzzzzzz-b6-flags.conf` com
+   `MITIGATION_LIVE_WRITE_ENABLED=false`, `MITIGATION_AUTO_EXECUTION_ENABLED=0`,
+   `MITIGATION_AUTO_LIFECYCLE_ENABLED=0`, `MITIGATION_AUTO_REMOVE_ENABLED=0` e
+   `MITIGATION_AUTO_PERSISTENCE_ENABLED=1`; faz `daemon-reload`, reinicia
+   **somente** `netvision-api` e reimprime as flags lidas do processo novo.
+   Use `--keep-live-write` apenas com autorizacao para escrita real no primeiro
+   deploy.
 3. `BASE=http://127.0.0.1:3333 TOKEN=… bash validate-readonly.sh <profileId>`
    — valida release ativa, flags efetivas, preflight via `SIMULATE_ACTIVATE`
    (sem escrita) e confirma `MitigationAutomationRecord` sem linhas novas.
@@ -39,4 +43,5 @@ Pacote imutavel + scripts de instalacao, ativacao, validacao e rollback.
 - `apps/web` e MCP: nenhum arquivo publicado, nenhum restart.
 - Banco: zero migration, zero DDL.
 - n8n: nenhuma alteracao; payload e assinatura inalterados.
-- `AUTO_EXECUTION_ENABLED=0` e `AUTO_LIFECYCLE_ENABLED=0` permanecem.
+- `AUTO_EXECUTION_ENABLED=0`, `AUTO_LIFECYCLE_ENABLED=0` e AUTO REMOVE=0 permanecem;
+  persistencia durável do baseline habilitada nao habilita execucao automatica.
