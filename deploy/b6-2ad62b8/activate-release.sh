@@ -7,7 +7,9 @@
 # preservando leitura/preflight e a persistencia durável do baseline.
 # A habilitacao da escrita exige uma autorizacao separada.
 #
-# Uso (no IMPLANTAR): sudo bash activate-release.sh [--keep-live-write]
+# Uso (no IMPLANTAR): sudo bash activate-release.sh [--keep-live-write | --prepare-only]
+#   --prepare-only cria os drop-ins e faz daemon-reload SEM reiniciar a API,
+#   permitindo conferir a precedencia antes da janela de ativacao.
 set -euo pipefail
 SHA=2ad62b8077250d99a25ef243d0b8ea632e85d757
 DEST=/opt/netvision-auto-activate/releases/$SHA
@@ -49,6 +51,19 @@ CONF
 fi
 
 systemctl daemon-reload
+
+echo "--- precedencia efetiva (antes do restart):"
+systemctl show netvision-api -p WorkingDirectory --value | sed 's/^/  WorkingDirectory=/'
+systemctl show netvision-api -p ExecStart --value | head -1 | sed 's/^/  ExecStart=/'
+systemctl show netvision-api -p Environment --value | tr ' ' '\n' \
+  | grep -E '^MITIGATION_(LIVE_WRITE|AUTO_EXECUTION|AUTO_LIFECYCLE|AUTO_REMOVE|AUTO_PERSISTENCE)' \
+  | sort | sed 's/^/  Environment= /'
+
+if [ "${1:-}" = "--prepare-only" ]; then
+  echo "PREPARADO sem restart. Rode novamente (sem --prepare-only) para ativar."
+  exit 0
+fi
+
 systemctl restart netvision-api
 
 for i in $(seq 1 30); do
