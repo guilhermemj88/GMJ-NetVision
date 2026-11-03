@@ -50,6 +50,54 @@ export type WebhookDeliverySender = (
 ) => Promise<WebhookDeliveryResult>;
 
 /**
+ * Eventos de simulacao: o workflow NAO os entrega - nao ha alerta Telegram a
+ * confirmar. O ACK correto e "processado e deliberadamente nao roteado"
+ * (`received:true`, `routed:false`, `delivered:false`). Exigir `delivered:true`
+ * aqui transforma um sucesso em retry eterno de um alerta que nunca existira.
+ */
+const SIMULATION_EVENTS: ReadonlySet<string> = new Set([
+  'MITIGATION_SIMULATION_TRIGGERED',
+  'MITIGATION_REMOVE_SIMULATED',
+]);
+
+type WebhookAck = Record<string, unknown>;
+
+function ackObject(body: unknown): WebhookAck | null {
+  return body !== null && typeof body === 'object' && !Array.isArray(body)
+    ? (body as WebhookAck)
+    : null;
+}
+
+/**
+ * Identidade do ACK: quando o corpo traz `event`/`eventId`, o valor precisa ser
+ * o do evento enviado. Ausente nao reprova (o contrato preve os campos, mas o
+ * que nao existe nao pode contradizer); divergente sempre reprova.
+ */
+function ackIdentityMatches(ack: WebhookAck, payload: MitigationWebhookPayload): boolean {
+  const same = (field: 'event' | 'eventId', expected: string | null): boolean => {
+    if (!(field in ack)) return true;
+    const value = ack[field];
+    if (value === null || value === undefined) return expected === null;
+    return expected !== null && value === expected;
+  };
+  return same('event', payload.event) && same('eventId', payload.eventId);
+}
+
+/** ACK de simulacao: recebido e explicitamente nao entregue, para ESTE evento. */
+function simulationAcknowledged(
+  ack: WebhookAck | null,
+  payload: MitigationWebhookPayload,
+): boolean {
+  return (
+    ack !== null &&
+    ack.received === true &&
+    ack.routed === false &&
+    ack.delivered === false &&
+    ackIdentityMatches(ack, payload)
+  );
+}
+
+/**
  * Sender real: HTTP POST com timeout. O token vai em HEADER
  * (`X-NetVision-Token`), nunca na URL/query. O tipo do payload e generico: o
  * MESMO sender atende mitigacao e alarmes, sem um segundo cliente HTTP.
@@ -248,11 +296,18 @@ export class N8nMediaTransport implements NotificationPublisher {
       const result = await this.deps.send(channel.url, input.payload, headers);
       // R5-4: alerta de deteccao so conta como entregue com confirmacao do
       // destino. Sem `delivered:true` o chamador agenda nova tentativa.
+      // Simulacao e a excecao: o workflow nao a entrega por contrato, entao o
+      // ACK cobrado e de PROCESSAMENTO (`received`/`routed`/`delivered=false`).
       if (input.event === 'MITIGATION_DETECTION_BLOCKED' || this.deps.requireAcknowledgement) {
-        const delivered =
-          (result.body as { delivered?: unknown } | null | undefined)?.delivered === true;
-        if (!delivered || result.httpStatus < 200 || result.httpStatus >= 300) {
-          const safeError = 'Webhook nao confirmou a entrega do alerta (delivered != true)';
+        const ack = ackObject(result.body);
+        const httpOk = result.httpStatus >= 200 && result.httpStatus < 300;
+        const accepted = SIMULATION_EVENTS.has(input.event)
+          ? httpOk && simulationAcknowledged(ack, input.payload)
+          : ack?.delivered === true && httpOk;
+        if (!accepted) {
+          const safeError = SIMULATION_EVENTS.has(input.event)
+            ? 'Webhook nao confirmou o processamento da simulacao (received/routed/delivered)'
+            : 'Webhook nao confirmou a entrega do alerta (delivered != true)';
           await this.deps.media.recordOutboundDelivery({
             integrationId: channel.integrationId,
             event: input.event,
