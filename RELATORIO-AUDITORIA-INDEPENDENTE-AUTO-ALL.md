@@ -1,5 +1,7 @@
 # Auditoria independente de prontidão AUTO-ALL — GMJ-NetVision IMPLANTAR
 
+> **Contrato corrigido pelo operador em 03/11/2026:** o node 2 deve aplicar exclusivamente RT268568:660, **sem additive**. O [adendo de RT exclusivo](docs/audits/auto-all-20261103/ADENDO-CONTRATO-RT660-EXCLUSIVO.md) substitui as orientações deste relatório de preservar RTs normais no node 2 ou revisar exportações para acomodar o additive. A01 passa a ser uma não conformidade do software publicado com o contrato obrigatório; com RT660 exclusivo, a matriz das oito saídas atende ao destino COMPUTIZE. Os demais bloqueios e o NO-GO permanecem. O corpo abaixo conserva a evidência histórica da versão efetivamente auditada.
+
 **Data: 03/11/2026, America/Sao_Paulo. Produção somente leitura. Nenhuma correção implementada.**
 
 ## A. Parecer executivo

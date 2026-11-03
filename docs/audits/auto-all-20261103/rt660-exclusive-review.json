@@ -1,0 +1,1290 @@
+{
+  "reviewDate": "2026-11-03",
+  "contract": "AUTO ACTIVATE / MANUAL REMOVE; temporary nodes 1,2; node2 RT set exactly [268568:660]; no additive; preserve local preference and all permanent nodes",
+  "softwareSha": "908e7b417502930d7945b3d73dded584a7012dd7",
+  "status": "BLOCKING_NONCONFORMITY_UNTIL_SOFTWARE_CORRECTION_AND_PHYSICAL_HOMOLOGATION",
+  "primarySource": {
+    "repository": "Huawei/yang",
+    "commit": "926ac3b33660d6b07caa035263d80d34cffd7b60",
+    "file": "network-router/8.22.0/ne8000-f1a/huawei-routing-policy.yang",
+    "url": "https://github.com/Huawei/yang/blob/926ac3b33660d6b07caa035263d80d34cffd7b60/network-router/8.22.0/ne8000-f1a/huawei-routing-policy.yang#L2625-L2664",
+    "downloadUrl": "https://raw.githubusercontent.com/Huawei/yang/926ac3b33660d6b07caa035263d80d34cffd7b60/network-router/8.22.0/ne8000-f1a/huawei-routing-policy.yang",
+    "sha256": "417a7e5dc55dc1dd9af62613322940d477cd2a49208a0aeac1fe8bba09c2aefd",
+    "firstLine": 2625,
+    "lastLine": 2664,
+    "revision": "2022-08-19",
+    "CLICommandReferenceRetrieved": false,
+    "limitations": "Official product-specific YANG confirms add versus replace for VPN-target RT. CLI command reference not retrieved; no physical replacement trial or universal claim about non-RT extended communities.",
+    "localLineEndingNormalizedMatch": true
+  },
+  "publishedBuilderAndVerificationProbe": {
+    "offline": true,
+    "noTransport": true,
+    "noMutation": true,
+    "softwareSha": "908e7b417502930d7945b3d73dded584a7012dd7",
+    "publishedBuilderCommands": [
+      "system-view",
+      "route-policy PL-AGLINK_IPv4-IN deny node 1",
+      " if-match ip-prefix BOGONS",
+      "route-policy PL-AGLINK_IPv4-IN permit node 2",
+      " if-match ip-prefix AGLINK-BLOCO-TODO-23",
+      " apply local-preference 1100",
+      " apply extcommunity rt 268568:140 rt 268568:660 additive",
+      "commit"
+    ],
+    "requiredExclusiveLine": "apply extcommunity rt 268568:660",
+    "cases": [
+      {
+        "name": "published_additive",
+        "clause": "apply extcommunity rt 268568:140 rt 268568:660 additive",
+        "currentVerification": {
+          "verified": true,
+          "bogonOk": true,
+          "mitigationOk": true,
+          "partial": false,
+          "summary": "par ativo: deny node 1 (BOGONS) + permit node 2 (AGLINK-BLOCO-TODO-23 + atributos preservados + RT 268568:660)"
+        },
+        "withoutPreservedVerification": {
+          "verified": true,
+          "bogonOk": true,
+          "mitigationOk": true,
+          "partial": false,
+          "summary": "par ativo: deny node 1 (BOGONS) + permit node 2 (AGLINK-BLOCO-TODO-23 + atributos preservados + RT 268568:660)"
+        },
+        "physical": {
+          "recognized": true,
+          "state": "MITIGATED",
+          "bogonNodes": [1],
+          "mitigationNodes": [2],
+          "partialNodes": [],
+          "pair": {
+            "bogonNode": 1,
+            "mitigationNode": 2
+          },
+          "detail": "par de mitigacao ativo: deny node 1 (BOGONS) + permit node 2 (AGLINK-BLOCO-TODO-23 + RT)"
+        },
+        "permanentBaselineDriftReasons": []
+      },
+      {
+        "name": "required_exclusive",
+        "clause": "apply extcommunity rt 268568:660",
+        "currentVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": true,
+          "partial": true,
+          "summary": "node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "withoutPreservedVerification": {
+          "verified": true,
+          "bogonOk": true,
+          "mitigationOk": true,
+          "partial": false,
+          "summary": "par ativo: deny node 1 (BOGONS) + permit node 2 (AGLINK-BLOCO-TODO-23 + atributos preservados + RT 268568:660)"
+        },
+        "physical": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [
+            {
+              "node": 2,
+              "action": "permit",
+              "reason": "AGLINK mitigation attributes divergent"
+            }
+          ],
+          "pair": null,
+          "detail": "estrutura de mitigacao incompativel: AGLINK mitigation attributes divergent"
+        },
+        "permanentBaselineDriftReasons": []
+      },
+      {
+        "name": "forbidden_additive_single",
+        "clause": "apply extcommunity rt 268568:660 additive",
+        "currentVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": true,
+          "partial": true,
+          "summary": "node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "withoutPreservedVerification": {
+          "verified": true,
+          "bogonOk": true,
+          "mitigationOk": true,
+          "partial": false,
+          "summary": "par ativo: deny node 1 (BOGONS) + permit node 2 (AGLINK-BLOCO-TODO-23 + atributos preservados + RT 268568:660)"
+        },
+        "physical": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [
+            {
+              "node": 2,
+              "action": "permit",
+              "reason": "AGLINK mitigation attributes divergent"
+            }
+          ],
+          "pair": null,
+          "detail": "estrutura de mitigacao incompativel: AGLINK mitigation attributes divergent"
+        },
+        "permanentBaselineDriftReasons": []
+      },
+      {
+        "name": "forbidden_extra_rt",
+        "clause": "apply extcommunity rt 268568:660 rt 268568:999",
+        "currentVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": true,
+          "partial": true,
+          "summary": "node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "withoutPreservedVerification": {
+          "verified": true,
+          "bogonOk": true,
+          "mitigationOk": true,
+          "partial": false,
+          "summary": "par ativo: deny node 1 (BOGONS) + permit node 2 (AGLINK-BLOCO-TODO-23 + atributos preservados + RT 268568:660)"
+        },
+        "physical": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [
+            {
+              "node": 2,
+              "action": "permit",
+              "reason": "AGLINK mitigation attributes divergent"
+            }
+          ],
+          "pair": null,
+          "detail": "estrutura de mitigacao incompativel: AGLINK mitigation attributes divergent"
+        },
+        "permanentBaselineDriftReasons": []
+      }
+    ],
+    "removalCommands": [
+      "system-view",
+      "undo route-policy PL-AGLINK_IPv4-IN node 1",
+      "undo route-policy PL-AGLINK_IPv4-IN node 2",
+      "commit"
+    ],
+    "normalAfterRemovingOnlyPair": {
+      "verified": true,
+      "bogonOk": true,
+      "mitigationOk": true,
+      "partial": false,
+      "summary": "par removido: nodes 1 e 2 ausentes"
+    }
+  },
+  "focusedExistingRegression": {
+    "numTotalTests": 93,
+    "numPassedTests": 93,
+    "numFailedTests": 0,
+    "numPendingTests": 0,
+    "success": true
+  },
+  "sourceFilesChanged": false,
+  "huaweiObservedUtc": "2026-11-03T19:26:14.913Z",
+  "version": "Huawei Versatile Routing Platform Software\nVRP (R) software, Version 8.220 (NetEngine 8000 V800R022C00SPC600)\nCopyright (C) 2012-2022 Huawei Technologies Co., Ltd.\nHUAWEI NetEngine 8000 F1A-8H20Q uptime is 49 days, 12 hours, 51 minutes\nPatch Version: V800R022SPH152",
+  "currentAgLinkBestRoutes": {
+    "display bgp routing-table 167.250.126.0 23": " \n BGP local router ID : 45.163.144.1\n Local AS number : 268568\n Paths:   1 available, 1 best, 1 select, 0 best-external, 0 add-path\n BGP routing table entry information of 167.250.126.0/23:\n From: 10.200.201.2 (167.250.126.0)\n Route Duration: 8d02h18m00s\n Direct Out-interface: Eth-Trunk1.3058\n Original nexthop: 10.200.201.2\n Qos information : 0x0\n Ext-Community: RT <268568 : 140>, RT <268568 : 330>\n AS-path 273811 273811, origin igp, MED 0, localpref 1100, pref-val 0, valid, external, best, select, pre 255\n Advertised to such 29 peers:\n    10.200.201.234\n    10.200.201.34\n    200.194.223.85\n    172.30.251.33\n    198.18.36.26\n    138.99.240.117\n    10.200.201.86\n    10.200.200.222\n    10.200.200.34\n    10.200.201.126\n    10.200.201.130\n    10.200.201.14\n    10.200.200.154\n    10.200.200.82\n    10.200.200.218\n    10.200.201.82\n    ...\n<BHE-VTA-F1A-BGP-01>",
+    "display bgp routing-table 167.250.126.0 24": " \n BGP local router ID : 45.163.144.1\n Local AS number : 268568\n Paths:   3 available, 1 best, 1 select, 0 best-external, 0 add-path\n BGP routing table entry information of 167.250.126.0/24:\n From: 10.200.201.2 (167.250.126.0)\n Route Duration: 8d02h18m00s\n Direct Out-interface: Eth-Trunk1.3058\n Original nexthop: 10.200.201.2\n Qos information : 0x0\n Ext-Community: RT <268568 : 140>, RT <268568 : 330>\n AS-path 273811 273811, origin igp, MED 0, localpref 1100, pref-val 0, valid, external, best, select, pre 255\n Advertised to such 29 peers:\n    10.200.201.234\n    10.200.201.34\n    200.194.223.85\n    172.30.251.33\n    198.18.36.26\n    138.99.240.117\n    10.200.201.86\n    10.200.200.222\n    10.200.200.34\n    10.200.201.126\n    10.200.201.130\n    10.200.201.14\n    10.200.200.154\n    10.200.200.82\n    10.200.200.218\n    10.200.201.82\n    ...\n\n BGP routing table entry information of 167.250.126.0/24:\n From: 200.194.223.85 (200.189.206.204)\n Route Duration: 5d23h52m46s\n Direct Out-interface: Eth-Trunk1.3998\n Original nexthop: 200.194.223.85\n Qos information : 0x0\n Community: <3356:5>, <3356:22>, <3356:100>, <3356:123>, <3356:800>, <3356:903>, <3356:2210>, <65000:10001>\n AS-path 3356 269096 273811, origin igp, MED 0, localpref 800, pref-val 0, valid, external, backup, pre 255, not preferred for Local_Pref\n Not advertised to any peer yet\n\n BGP routing table entry information of 167.250.126.0/24:\n From: 198.18.1.152 (207.135.210.10)\n Route Duration: 8d02h14m47s\n Direct Out-interface: Eth-Trunk1.2593\n Original nexthop: 198.18.1.152\n Qos information : 0x0\n Community: <13786:111>, <13786:4601>, <13786:5500>, <13786:5531>, <13786:10000>, <13786:15531>, <65000:10001>\n AS-path 13786 269096 273811, origin igp, localpref 50, pref-val 0, valid, external, pre 255, not preferred for Local_Pref\n Not advertised to any peer yet\n<BHE-VTA-F1A-BGP-01>",
+    "display bgp routing-table 167.250.127.0 24": " \n BGP local router ID : 45.163.144.1\n Local AS number : 268568\n Paths:   3 available, 1 best, 1 select, 0 best-external, 0 add-path\n BGP routing table entry information of 167.250.127.0/24:\n From: 10.200.201.2 (167.250.126.0)\n Route Duration: 8d02h18m00s\n Direct Out-interface: Eth-Trunk1.3058\n Original nexthop: 10.200.201.2\n Qos information : 0x0\n Ext-Community: RT <268568 : 140>, RT <268568 : 330>\n AS-path 273811 273811, origin igp, MED 0, localpref 1100, pref-val 0, valid, external, best, select, pre 255\n Advertised to such 29 peers:\n    10.200.201.234\n    10.200.201.34\n    200.194.223.85\n    172.30.251.33\n    198.18.36.26\n    138.99.240.117\n    10.200.201.86\n    10.200.200.222\n    10.200.200.34\n    10.200.201.126\n    10.200.201.130\n    10.200.201.14\n    10.200.200.154\n    10.200.200.82\n    10.200.200.218\n    10.200.201.82\n    ...\n\n BGP routing table entry information of 167.250.127.0/24:\n From: 200.194.223.85 (200.189.206.204)\n Route Duration: 5d23h52m46s\n Direct Out-interface: Eth-Trunk1.3998\n Original nexthop: 200.194.223.85\n Qos information : 0x0\n Community: <3356:5>, <3356:22>, <3356:100>, <3356:123>, <3356:800>, <3356:903>, <3356:2210>, <65000:10001>\n AS-path 3356 269096 273811, origin igp, MED 0, localpref 800, pref-val 0, valid, external, backup, pre 255, not preferred for Local_Pref\n Not advertised to any peer yet\n\n BGP routing table entry information of 167.250.127.0/24:\n From: 198.18.1.152 (207.135.210.10)\n Route Duration: 8d02h14m47s\n Direct Out-interface: Eth-Trunk1.2593\n Original nexthop: 198.18.1.152\n Qos information : 0x0\n Community: <13786:111>, <13786:4601>, <13786:5500>, <13786:5531>, <13786:10000>, <13786:15531>, <65000:10001>\n AS-path 13786 269096 273811, origin igp, localpref 50, pref-val 0, valid, external, pre 255, not preferred for Local_Pref\n Not advertised to any peer yet\n<BHE-VTA-F1A-BGP-01>\n<BHE-VTA-F1A-BGP-01>quit\nInfo: The max number of VTY users is 21, and the number of current VTY users on line is 2."
+  },
+  "capturedPolicies": "route-policy PL-AGLINK_IPv4-IN permit node 10\n if-match ip-prefix AGLINK-BLOCO-TODO-23\n apply local-preference 1100\n apply extcommunity rt 268568:140 additive\n#\nroute-policy PL-AGLINK_IPv4-IN deny node 1000\n#\nroute-policy PL-BGP_VS-IX_V4_OUT permit node 10\n if-match ip-prefix PREFIX-IMPLANTAR-22-TO-26\n#\nroute-policy PL-BGP_VS-IX_V4_OUT permit node 11\n if-match extcommunity-filter 40\n#\nroute-policy PL-BGP_VS-IX_V4_OUT permit node 20\n if-match ip-prefix PREFIX-Grandella-IPV4\n#\nroute-policy PL-BGP_VS-IX_V4_OUT permit node 25\n if-match ip-prefix TRIPLO_A-BLOCO-TODO\n#\nroute-policy PL-BGP_VS-IX_V4_OUT permit node 30\n if-match extcommunity-filter 20\n#\nroute-policy PL-BGP_VS-IX_V4_OUT permit node 35\n if-match extcommunity-filter 30\n#\nroute-policy PL-BGP_VS-IX_V4_OUT permit node 36\n if-match extcommunity-filter 140\n#\nroute-policy PL-BGP_VS-IX_V4_OUT permit node 37\n if-match extcommunity-filter 115\n#\nroute-policy PL-BGP_VS-IX_V4_OUT permit node 38\n if-match ip-prefix CGNAT\n#\nroute-policy PL-BGP_VS-IX_V4_OUT deny node 6000\n#\nroute-policy PL-CIRION-IPv4-OUT permit node 10\n if-match ip-prefix PREFIX-45.163.144-22\n apply as-path 268568 268568 additive\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 15\n if-match ip-prefix PREFIX-45.163.144-23\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 20\n if-match ip-prefix PREFIX-45.163.146-23\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 25\n if-match ip-prefix PREFIX-45.163.144-24\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 30\n if-match ip-prefix PREFIX-45.163.145-24\n apply as-path 268568 268568 additive\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 35\n if-match ip-prefix PREFIX-45.163.146-24\n apply as-path 268568 additive\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 40\n if-match ip-prefix PREFIX-45.163.147-24\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT permit node 41\n if-match ip-prefix LIKEE-24\n apply as-path 268568 268568 268568 268568 268568 additive\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 42\n if-match extcommunity-filter 40\n apply as-path 268568 268568 additive\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 45\n if-match extcommunity-filter 20\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT permit node 46\n if-match extcommunity-filter 30\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 47\n if-match ip-prefix TRIPLO_A-BLOCO-TODO\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT permit node 50\n if-match ip-prefix PREFIX-45.168.200-22\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 51\n if-match ip-prefix PREFIX-45.168.200-23\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 52\n if-match ip-prefix PREFIX-45.168.202-23\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 53\n if-match ip-prefix PREFIX-45.168.200-24\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 54\n if-match ip-prefix PREFIX-45.168.201-24\n apply as-path 268568 268568 additive\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 55\n if-match ip-prefix PREFIX-45.168.202-24\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 56\n if-match ip-prefix PREFIX-45.168.203-24\n apply as-path 268568 268568 268568 268568 additive\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT permit node 80\n if-match ip-prefix PREFIX-REDEWORKS-IPV4\n if-match extcommunity-filter 110\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT permit node 90\n if-match extcommunity-filter 140\n#\nroute-policy PL-CIRION-IPv4-OUT permit node 91\n if-match extcommunity-filter 115\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT permit node 95\n if-match extcommunity-filter 110\n apply community 65000:16735\n#\nroute-policy PL-CIRION-IPv4-OUT deny node 100\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT permit node 10\n if-match ip-prefix PREFIX-45.163.144-22\n apply as-path 268568 268568 additive\n apply community 65000:16735\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT permit node 15\n if-match ip-prefix PREFIX-45.163.144-23\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT permit node 20\n if-match ip-prefix PREFIX-45.163.146-23\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 25\n if-match ip-prefix PREFIX-45.163.144-24\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 30\n if-match ip-prefix PREFIX-45.163.145-24\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 35\n if-match ip-prefix PREFIX-45.163.146-24\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 40\n if-match ip-prefix PREFIX-45.163.147-24\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT permit node 41\n if-match ip-prefix LIKEE-24\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 42\n if-match extcommunity-filter 40\n apply as-path 268568 268568 additive\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 45\n if-match extcommunity-filter 20\n apply community 65000:16735\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT permit node 46\n if-match extcommunity-filter 30\n apply community 65000:16735\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 47\n if-match ip-prefix TRIPLO_A-BLOCO-TODO\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT permit node 50\n if-match ip-prefix PREFIX-45.168.200-22\n apply community 65000:16735\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT permit node 51\n if-match ip-prefix PREFIX-45.168.200-23\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT permit node 52\n if-match ip-prefix PREFIX-45.168.202-23\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 53\n if-match ip-prefix PREFIX-45.168.200-24\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 54\n if-match ip-prefix PREFIX-45.168.201-24\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 55\n if-match ip-prefix PREFIX-45.168.202-24\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 56\n if-match ip-prefix PREFIX-45.168.203-24\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 80\n if-match ip-prefix PREFIX-REDEWORKS-IPV4\n if-match extcommunity-filter 110\n apply community 65000:16735\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 90\n if-match extcommunity-filter 140\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 91\n if-match extcommunity-filter 115\n apply community 65000:16735\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 95\n if-match extcommunity-filter 110\n apply community 65000:16735\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT permit node 200\n if-match ip-prefix 73S-MITIGACAO\n if-match extcommunity-filter MITIGACAO\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT permit node 300\n if-match extcommunity-filter MITIGACAO\n#\nroute-policy PL-COMPUTIZE-IPv4-OUT deny node 1000\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 2\n if-match extcommunity-filter 50\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 5\n if-match extcommunity-filter MITIGACAO\n if-match extcommunity-filter NO-EXPORT-SEABORN\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT permit node 10\n if-match ip-prefix PREFIX-45.163.144-22\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 15\n if-match ip-prefix PREFIX-45.163.144-23\n apply as-path 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 20\n if-match ip-prefix PREFIX-45.163.146-23\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 25\n if-match ip-prefix PREFIX-45.163.144-24\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 30\n if-match ip-prefix PREFIX-45.163.145-24\n apply as-path 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 35\n if-match ip-prefix PREFIX-45.163.146-24\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 40\n if-match ip-prefix PREFIX-45.163.147-24\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT permit node 41\n if-match ip-prefix LIKEE-24\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 42\n if-match extcommunity-filter 40\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 45\n if-match extcommunity-filter 20\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 46\n if-match extcommunity-filter 30\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 47\n if-match ip-prefix TRIPLO_A-BLOCO-TODO\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT permit node 50\n if-match ip-prefix PREFIX-45.168.200-22\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 51\n if-match ip-prefix PREFIX-45.168.200-23\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 52\n if-match ip-prefix PREFIX-45.168.202-23\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 53\n if-match ip-prefix PREFIX-45.168.200-24\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 54\n if-match ip-prefix PREFIX-45.168.201-24\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 55\n if-match ip-prefix PREFIX-45.168.202-24\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 56\n if-match ip-prefix PREFIX-45.168.203-24\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT permit node 80\n if-match ip-prefix PREFIX-REDEWORKS-IPV4\n if-match extcommunity-filter 110\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT permit node 90\n if-match extcommunity-filter 140\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT permit node 91\n if-match extcommunity-filter 115\n apply as-path 268568 268568 268568 additive\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT permit node 95\n if-match extcommunity-filter 110\n#\nroute-policy PL-SEABORN-BH-IPv4-OUT deny node 100\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 2\n if-match extcommunity-filter 50\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 5\n if-match extcommunity-filter MITIGACAO\n if-match extcommunity-filter NO-EXPORT-SEABORN\n#\nroute-policy PL-SEABORN-IPv4-OUT permit node 10\n if-match ip-prefix PREFIX-45.163.144-22\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 15\n if-match ip-prefix PREFIX-45.163.144-23\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 20\n if-match ip-prefix PREFIX-45.163.146-23\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 25\n if-match ip-prefix PREFIX-45.163.144-24\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 30\n if-match ip-prefix PREFIX-45.163.145-24\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 35\n if-match ip-prefix PREFIX-45.163.146-24\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 40\n if-match ip-prefix PREFIX-45.163.147-24\n#\nroute-policy PL-SEABORN-IPv4-OUT permit node 41\n if-match ip-prefix LIKEE-24\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 42\n if-match extcommunity-filter 40\n apply as-path 268568 268568 additive\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 45\n if-match extcommunity-filter 20\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 46\n if-match extcommunity-filter 30\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 47\n if-match ip-prefix TRIPLO_A-BLOCO-TODO\n apply as-path 268568 additive\n#\nroute-policy PL-SEABORN-IPv4-OUT permit node 50\n if-match ip-prefix PREFIX-45.168.200-22\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 51\n if-match ip-prefix PREFIX-45.168.200-23\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 52\n if-match ip-prefix PREFIX-45.168.202-23\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 53\n if-match ip-prefix PREFIX-45.168.200-24\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 54\n if-match ip-prefix PREFIX-45.168.201-24\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 55\n if-match ip-prefix PREFIX-45.168.202-24\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 56\n if-match ip-prefix PREFIX-45.168.203-24\n#\nroute-policy PL-SEABORN-IPv4-OUT permit node 80\n if-match ip-prefix PREFIX-REDEWORKS-IPV4\n if-match extcommunity-filter 110\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 85\n if-match ip-prefix PREFIX-HORIZONTES-IPV4\n if-match extcommunity-filter 140\n#\nroute-policy PL-SEABORN-IPv4-OUT permit node 90\n if-match extcommunity-filter 140\n#\nroute-policy PL-SEABORN-IPv4-OUT permit node 91\n if-match extcommunity-filter 115\n#\nroute-policy PL-SEABORN-IPv4-OUT permit node 95\n if-match extcommunity-filter 110\n apply as-path 268568 additive\n#\nroute-policy PL-SEABORN-IPv4-OUT deny node 100\n#\nroute-policy PL-SEMPRE-DDoS-IPv4-OUT deny node 5\n if-match extcommunity-filter MITIGACAO\n#\nroute-policy PL-SEMPRE-DDoS-IPv4-OUT permit node 50\n if-match extcommunity-filter MITIGACAO\n#\nroute-policy PL-SEMPRE-DDoS-IPv4-OUT deny node 100\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 2\n if-match extcommunity-filter 50\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 5\n if-match extcommunity-filter MITIGACAO\n if-match extcommunity-filter NO-EXPORT-SEMPRE\n#\nroute-policy PL-SEMPRE-IPv4-OUT permit node 10\n if-match ip-prefix PREFIX-45.163.144-22\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 15\n if-match ip-prefix PREFIX-45.163.144-23\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 20\n if-match ip-prefix PREFIX-45.163.146-23\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 25\n if-match ip-prefix PREFIX-45.163.144-24\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 30\n if-match ip-prefix PREFIX-45.163.145-24\n apply as-path 268568 268568 additive\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 35\n if-match ip-prefix PREFIX-45.163.146-24\n apply as-path 268568 additive\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 40\n if-match ip-prefix PREFIX-45.163.147-24\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT permit node 41\n if-match ip-prefix LIKEE-24\n apply as-path 268568 268568 268568 268568 268568 additive\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 42\n if-match extcommunity-filter 40\n apply as-path 268568 268568 additive\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 45\n if-match extcommunity-filter 20\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT permit node 46\n if-match extcommunity-filter 30\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT permit node 47\n if-match ip-prefix TRIPLO_A-BLOCO-TODO\n apply as-path 268568 additive\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT permit node 50\n if-match ip-prefix PREFIX-45.168.200-22\n apply as-path 268568 additive\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 51\n if-match ip-prefix PREFIX-45.168.200-23\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 52\n if-match ip-prefix PREFIX-45.168.202-23\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 53\n if-match ip-prefix PREFIX-45.168.200-24\n apply as-path 268568 268568 additive\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 54\n if-match ip-prefix PREFIX-45.168.201-24\n apply as-path 268568 268568 additive\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 55\n if-match ip-prefix PREFIX-45.168.202-24\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 56\n if-match ip-prefix PREFIX-45.168.203-24\n apply as-path 268568 268568 268568 268568 additive\n apply community 65531:13786 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT permit node 80\n if-match ip-prefix PREFIX-REDEWORKS-IPV4\n if-match extcommunity-filter 110\n apply community 28198:65503 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT permit node 90\n if-match extcommunity-filter 140\n apply community 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT permit node 91\n if-match extcommunity-filter 115\n apply community 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT permit node 95\n if-match extcommunity-filter 110\n apply community 28198:65400 28198:65401 28198:65402 28198:65300 28198:65100 65531:16735\n#\nroute-policy PL-SEMPRE-IPv4-OUT deny node 100\n#\nroute-policy PL-TUDDO-IPv4-OUT permit node 10\n if-match ip-prefix PREFIX-45.163.144-22\n apply as-path 268568 268568 additive\n#\nroute-policy PL-TUDDO-IPv4-OUT deny node 15\n if-match ip-prefix PREFIX-45.163.144-23\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT deny node 20\n if-match ip-prefix PREFIX-45.163.146-23\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT deny node 25\n if-match ip-prefix PREFIX-45.163.144-24\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT deny node 30\n if-match ip-prefix PREFIX-45.163.145-24\n apply as-path 268568 268568 additive\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT deny node 35\n if-match ip-prefix PREFIX-45.163.146-24\n apply as-path 268568 additive\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT deny node 40\n if-match ip-prefix PREFIX-45.163.147-24\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT permit node 42\n if-match extcommunity-filter 40\n apply as-path 268568 268568 additive\n#\nroute-policy PL-TUDDO-IPv4-OUT deny node 45\n if-match extcommunity-filter 20\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT permit node 46\n if-match extcommunity-filter 30\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT permit node 47\n if-match ip-prefix TRIPLO_A-BLOCO-TODO\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT permit node 50\n if-match ip-prefix PREFIX-45.168.200-22\n apply as-path 268568 268568 additive\n#\nroute-policy PL-TUDDO-IPv4-OUT deny node 51\n if-match ip-prefix PREFIX-45.168.200-23\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT deny node 52\n if-match ip-prefix PREFIX-45.168.202-23\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT deny node 53\n if-match ip-prefix PREFIX-45.168.200-24\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT deny node 54\n if-match ip-prefix PREFIX-45.168.201-24\n apply as-path 268568 268568 additive\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT deny node 55\n if-match ip-prefix PREFIX-45.168.202-24\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT deny node 56\n if-match ip-prefix PREFIX-45.168.203-24\n apply as-path 268568 268568 268568 268568 additive\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT permit node 80\n if-match ip-prefix PREFIX-REDEWORKS-IPV4\n if-match extcommunity-filter 110\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT permit node 90\n if-match extcommunity-filter 140\n apply as-path 268568 268568 additive\n#\nroute-policy PL-TUDDO-IPv4-OUT permit node 91\n if-match extcommunity-filter 115\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT permit node 95\n if-match extcommunity-filter 110\n apply as-path 268568 268568 additive\n apply community 65000:16735\n#\nroute-policy PL-TUDDO-IPv4-OUT deny node 100",
+  "rtDefinitions": [
+    "ip extcommunity-filter 1 index 5 permit rt 268568:1001",
+    "ip extcommunity-filter 10 index 5 permit rt 268568:1",
+    "ip extcommunity-filter 11 index 5 permit rt 268568:2",
+    "ip extcommunity-filter 110 index 5 permit rt 268568:110",
+    "ip extcommunity-filter 115 index 5 permit rt 268568:115",
+    "ip extcommunity-filter 12 index 10 permit rt 268568:3",
+    "ip extcommunity-filter 130 index 5 permit rt 268568:130",
+    "ip extcommunity-filter 140 index 5 permit rt 268568:140",
+    "ip extcommunity-filter 150 index 5 permit rt 268568:150",
+    "ip extcommunity-filter 190 index 5 permit rt 268568:190",
+    "ip extcommunity-filter 2 index 5 permit rt 268568:1002",
+    "ip extcommunity-filter 20 index 5 permit rt 268568:20",
+    "ip extcommunity-filter 30 index 5 permit rt 268568:30",
+    "ip extcommunity-filter 40 index 5 permit rt 268568:100",
+    "ip extcommunity-filter 50 index 5 permit rt 268568:50",
+    "ip extcommunity-filter 222 index 10 permit rt 268568:222",
+    "ip extcommunity-filter 301 index 5 permit rt 268568:269096",
+    "ip extcommunity-filter basic MITIGACAO index 10 permit rt 268568:660",
+    "ip extcommunity-filter basic NO-EXPORT-G8 index 10 permit rt 268568:28329",
+    "ip extcommunity-filter basic NO-EXPORT-IX-BH index 5 permit rt 268568:330",
+    "ip extcommunity-filter basic NO-EXPORT-LVL3 index 10 permit rt 268568:3356",
+    "ip extcommunity-filter basic NO-EXPORT-NORTH index 10 permit rt 268568:26909",
+    "ip extcommunity-filter basic NO-EXPORT-SEABORN index 10 permit rt 268568:13786",
+    "ip extcommunity-filter basic NO-EXPORT-SEMPRE index 10 permit rt 268568:28198",
+    "ip extcommunity-filter advanced BLACKHOLE index 10 permit 268568:666"
+  ],
+  "prefixDefinitions": [
+    "ip ip-prefix 45.163.146.240-28 index 10 permit 45.163.146.240 28",
+    "ip ip-prefix 73S-MITIGACAO index 10 permit 179.97.21.0 24",
+    "ip ip-prefix 73S-MITIGACAO index 20 permit 179.97.17.0 24",
+    "ip ip-prefix 73S-MITIGACAO index 30 permit 179.97.19.0 24",
+    "ip ip-prefix 73S-MITIGACAO index 40 permit 131.72.129.0 24",
+    "ip ip-prefix 73S-MITIGACAO index 50 permit 45.164.185.0 24",
+    "ip ip-prefix 73S-MITIGACAO index 60 permit 45.164.184.0 24",
+    "ip ip-prefix AGLINK-BLOCO-TODO-23 index 10 permit 167.250.126.0 23 greater-equal 23 less-equal 24",
+    "ip ip-prefix BLOQUEIO-SITES index 10 permit 189.42.139.205 32",
+    "ip ip-prefix BLOQUEIO-SITES index 50 permit 104.22.32.0 20",
+    "ip ip-prefix BOGONS index 40 permit 10.0.0.0 8 greater-equal 8 less-equal 32",
+    "ip ip-prefix BOGONS index 50 permit 100.64.0.0 10 greater-equal 10 less-equal 32",
+    "ip ip-prefix BOGONS index 60 permit 127.0.0.0 8 greater-equal 8 less-equal 32",
+    "ip ip-prefix BOGONS index 70 permit 169.254.0.0 16 greater-equal 16 less-equal 32",
+    "ip ip-prefix BOGONS index 80 permit 172.16.0.0 12 greater-equal 12 less-equal 32",
+    "ip ip-prefix BOGONS index 90 permit 192.0.0.0 24 greater-equal 24 less-equal 32",
+    "ip ip-prefix BOGONS index 100 permit 192.0.2.0 24 greater-equal 24 less-equal 32",
+    "ip ip-prefix BOGONS index 110 permit 192.88.99.0 24 greater-equal 24 less-equal 32",
+    "ip ip-prefix BOGONS index 120 permit 192.168.0.0 16 greater-equal 16 less-equal 32",
+    "ip ip-prefix BOGONS index 130 permit 198.18.0.0 15 greater-equal 15 less-equal 32",
+    "ip ip-prefix BOGONS index 140 permit 198.51.100.0 24 greater-equal 24 less-equal 32",
+    "ip ip-prefix BOGONS index 150 permit 203.0.113.0 24 greater-equal 24 less-equal 32",
+    "ip ip-prefix BOGONS index 160 permit 224.0.0.0 4 greater-equal 4 less-equal 32",
+    "ip ip-prefix BOGONS index 170 permit 240.0.0.0 4 greater-equal 4 less-equal 32",
+    "ip ip-prefix CGNAT index 10 permit 100.64.0.0 16",
+    "ip ip-prefix CGNAT index 20 permit 100.65.0.0 16",
+    "ip ip-prefix CLICKING-MITIGACAO index 10 permit 45.175.72.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix DENY-CIRION-IPv4-IN index 10 permit 2.17.162.0 24",
+    "ip ip-prefix DENY-PREFIX-SEABORN-IN index 10 permit 47.254.64.0 18",
+    "ip ip-prefix DENY-PREFIX-SEABORN-IN index 20 permit 198.50.96.0 19",
+    "ip ip-prefix DENY-PREFIX-SEABORN-IN index 30 permit 149.28.96.0 20",
+    "ip ip-prefix DENY-PREFIX-SEABORN-IN index 40 permit 34.192.0.0 12",
+    "ip ip-prefix DENY-PREFIX-SEABORN-IN index 50 permit 107.21.64.0 18",
+    "ip ip-prefix DENY-PREFIX-SEABORN-IN index 60 permit 173.243.138.0 24",
+    "ip ip-prefix DENY-PREFIX-SEABORN-IN index 70 permit 179.184.240.0 22",
+    "ip ip-prefix DENY-PREFIX-SEMPRE-IN index 10 permit 54.232.0.0 17",
+    "ip ip-prefix DENY-PREFIX-SEMPRE-IN index 20 permit 143.107.0.0 16",
+    "ip ip-prefix DENY-PREFIX-SEMPRE-IN index 30 permit 161.148.164.0 22",
+    "ip ip-prefix DENY-PREFIX-SEMPRE-IN index 40 permit 179.184.240.0 22",
+    "ip ip-prefix DENY-PREFIX-SEMPRE-IN index 50 permit 177.36.32.0 23 greater-equal 23 less-equal 24",
+    "ip ip-prefix DENY-PREFIX-SEMPRE-IN index 60 permit 177.36.32.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix DENY-PREFIX-SEMPRE-IN index 70 permit 177.36.32.0 21 greater-equal 21 less-equal 24",
+    "ip ip-prefix DENY-PREFIX-SEMPRE-IN index 80 permit 168.195.24.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix DENY-SEMPRE index 10 permit 172.64.150.0 24",
+    "ip ip-prefix GLOBO index 10 permit 186.192.80.0 20 greater-equal 20 less-equal 24",
+    "ip ip-prefix INFINIT_PROVEDOR-IPv4 index 10 permit 200.192.151.0 24",
+    "ip ip-prefix INTEREDE index 10 permit 138.122.104.0 22",
+    "ip ip-prefix ITOP index 10 permit 131.108.150.0 24",
+    "ip ip-prefix ITOP index 15 permit 131.108.151.0 24",
+    "ip ip-prefix ITOP-V4 index 10 permit 131.108.148.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix LIKEE-24 index 10 permit 45.175.51.0 24",
+    "ip ip-prefix LOW-LOCALPREFERENCE-LEVEL3 index 10 permit 52.20.0.0 14",
+    "ip ip-prefix NEGA-ENTRADA index 20 permit 0.0.0.0 0",
+    "ip ip-prefix NEGA-ENTRADA index 30 permit 0.0.0.0 8 greater-equal 8 less-equal 8",
+    "ip ip-prefix NEGA-ENTRADA index 40 permit 10.0.0.0 8 greater-equal 8 less-equal 32",
+    "ip ip-prefix NEGA-ENTRADA index 50 permit 100.64.0.0 10 greater-equal 10 less-equal 32",
+    "ip ip-prefix NEGA-ENTRADA index 60 permit 127.0.0.0 8 greater-equal 8 less-equal 32",
+    "ip ip-prefix NEGA-ENTRADA index 70 permit 169.254.0.0 16 greater-equal 16 less-equal 32",
+    "ip ip-prefix NEGA-ENTRADA index 80 permit 172.16.0.0 12 greater-equal 12 less-equal 32",
+    "ip ip-prefix NEGA-ENTRADA index 90 permit 192.0.0.0 24 greater-equal 24 less-equal 32",
+    "ip ip-prefix NEGA-ENTRADA index 100 permit 192.0.2.0 24 greater-equal 24 less-equal 32",
+    "ip ip-prefix NEGA-ENTRADA index 110 permit 192.88.99.0 24 greater-equal 24 less-equal 32",
+    "ip ip-prefix NEGA-ENTRADA index 120 permit 192.168.0.0 16 greater-equal 16 less-equal 32",
+    "ip ip-prefix NEGA-ENTRADA index 130 permit 198.18.0.0 15 greater-equal 15 less-equal 32",
+    "ip ip-prefix NEGA-ENTRADA index 140 permit 198.51.100.0 24 greater-equal 24 less-equal 32",
+    "ip ip-prefix NEGA-ENTRADA index 150 permit 203.0.113.0 24 greater-equal 24 less-equal 32",
+    "ip ip-prefix NEGA-ENTRADA index 160 permit 224.0.0.0 4 greater-equal 4 less-equal 32",
+    "ip ip-prefix NEGA-ENTRADA index 170 permit 240.0.0.0 4 greater-equal 4 less-equal 32",
+    "ip ip-prefix PREFIX-45.163.144-22 index 10 permit 45.163.144.0 22",
+    "ip ip-prefix PREFIX-45.163.144-23 index 10 permit 45.163.144.0 23",
+    "ip ip-prefix PREFIX-45.163.144-24 index 10 permit 45.163.144.0 24",
+    "ip ip-prefix PREFIX-45.163.144-25 index 10 permit 45.163.144.0 25",
+    "ip ip-prefix PREFIX-45.163.144-25 index 20 permit 45.163.144.128 25",
+    "ip ip-prefix PREFIX-45.163.145-24 index 10 permit 45.163.145.0 24",
+    "ip ip-prefix PREFIX-45.163.145-25 index 10 permit 45.163.145.0 25",
+    "ip ip-prefix PREFIX-45.163.145-25 index 20 permit 45.163.145.128 25",
+    "ip ip-prefix PREFIX-45.163.146-23 index 10 permit 45.163.146.0 23",
+    "ip ip-prefix PREFIX-45.163.146-24 index 10 permit 45.163.146.0 24",
+    "ip ip-prefix PREFIX-45.163.146-25 index 10 permit 45.163.146.0 25",
+    "ip ip-prefix PREFIX-45.163.146-25 index 20 permit 45.163.146.128 25",
+    "ip ip-prefix PREFIX-45.163.147-24 index 10 permit 45.163.147.0 24",
+    "ip ip-prefix PREFIX-45.163.147-25 index 10 permit 45.163.147.0 25",
+    "ip ip-prefix PREFIX-45.163.147-25 index 20 permit 45.163.147.128 25",
+    "ip ip-prefix PREFIX-45.168.200-22 index 10 permit 45.168.200.0 22",
+    "ip ip-prefix PREFIX-45.168.200-23 index 10 permit 45.168.200.0 23",
+    "ip ip-prefix PREFIX-45.168.200-24 index 10 permit 45.168.200.0 24",
+    "ip ip-prefix PREFIX-45.168.201-24 index 10 permit 45.168.201.0 24",
+    "ip ip-prefix PREFIX-45.168.202-23 index 10 permit 45.168.202.0 23",
+    "ip ip-prefix PREFIX-45.168.202-24 index 10 permit 45.168.202.0 24",
+    "ip ip-prefix PREFIX-45.168.203-24 index 10 permit 45.168.203.0 24",
+    "ip ip-prefix PREFIX-45.172.83-24 index 10 permit 45.172.83.0 24",
+    "ip ip-prefix PREFIX-45.6.129.128-27 index 10 permit 45.6.129.128 27",
+    "ip ip-prefix PREFIX-73S-IPV4 index 10 permit 45.164.184.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-73S-IPV4 index 20 permit 45.171.176.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-73S-IPV4 index 30 permit 179.97.21.0 24",
+    "ip ip-prefix PREFIX-73S-IPV4 index 40 permit 179.97.17.0 24",
+    "ip ip-prefix PREFIX-73S-IPV4 index 50 permit 179.97.19.0 24",
+    "ip ip-prefix PREFIX-73S-IPV4 index 60 permit 131.72.129.0 24",
+    "ip ip-prefix PREFIX-73S-IPV4 index 70 permit 45.164.185.0 24",
+    "ip ip-prefix PREFIX-73S-IPV4 index 80 permit 45.164.184.0 24",
+    "ip ip-prefix PREFIX-73S-IPV4 index 90 permit 179.79.19.0 24",
+    "ip ip-prefix PREFIX-ACM-IPV4 index 10 permit 45.5.251.0 24",
+    "ip ip-prefix PREFIX-BHNET-IPV4 index 10 permit 187.94.4.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-BILFIBRA-189.36.128.-24 index 10 permit 189.36.128.0 24",
+    "ip ip-prefix PREFIX-BILFIBRA-189.36.129.-24 index 10 permit 189.36.129.0 24",
+    "ip ip-prefix PREFIX-BILFIBRA-189.36.130.-24 index 10 permit 189.36.130.0 24",
+    "ip ip-prefix PREFIX-BILFIBRA-CDN-IPV4 index 10 permit 189.36.128.0 22 greater-equal 23 less-equal 23",
+    "ip ip-prefix PREFIX-BILFIBRA-IPV4 index 10 permit 189.36.128.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-CETRO-V4 index 10 permit 186.196.68.0 24",
+    "ip ip-prefix PREFIX-CLICKING-IPV4 index 10 permit 186.226.218.0 24",
+    "ip ip-prefix PREFIX-CLICKING-IPV4 index 20 permit 177.86.231.0 24",
+    "ip ip-prefix PREFIX-CLICKING-IPV4 index 30 permit 45.225.52.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-CLICKING-IPV4 index 40 permit 45.175.72.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-CONNECT_BH-IPv4 index 10 permit 177.12.137.0 24",
+    "ip ip-prefix PREFIX-CONNECT_BH-IPv4 index 20 permit 177.12.143.0 24",
+    "ip ip-prefix PREFIX-DUALNET-V4 index 10 permit 45.175.72.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-FALCONNET-IPV4 index 10 permit 45.176.104.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-FIRE-TELECOM-V4 index 10 permit 45.166.202.0 24",
+    "ip ip-prefix PREFIX-FLASHTELECOM-IPV4 index 10 permit 179.191.225.0 24",
+    "ip ip-prefix PREFIX-GMTELECOM-IPV4 index 10 permit 45.5.248.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-GVC-IPV4 index 10 permit 45.231.8.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-Grandella-IPV4 index 10 permit 45.168.200.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-HORIZONTES-IPV4 index 10 permit 168.195.24.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-HYPER-80 index 10 permit 45.172.80.0 24",
+    "ip ip-prefix PREFIX-HYPER-CDN-IPV4 index 10 permit 45.172.80.0 22 greater-equal 24 less-equal 25",
+    "ip ip-prefix PREFIX-HYPER-IPV4 index 10 permit 45.172.80.0 22 greater-equal 22 less-equal 23",
+    "ip ip-prefix PREFIX-IMPLANTAR-22-TO-24 index 10 permit 45.163.144.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-IMPLANTAR-22-TO-26 index 10 permit 45.163.144.0 22 greater-equal 22 less-equal 26",
+    "ip ip-prefix PREFIX-IMPLANTAR-IPV4 index 10 permit 45.163.144.0 22 greater-equal 24 less-equal 25",
+    "ip ip-prefix PREFIX-JUSTNET-IPV4 index 20 permit 186.216.22.0 24",
+    "ip ip-prefix PREFIX-JUSTNET-IPV4 index 30 permit 143.0.240.0 24",
+    "ip ip-prefix PREFIX-JUSTNET-IPV4 index 40 permit 201.49.227.0 24",
+    "ip ip-prefix PREFIX-JUSTNET-IPV4 index 50 permit 200.106.176.0 24",
+    "ip ip-prefix PREFIX-JUSTNET-IPV4 index 60 permit 200.106.178.0 24",
+    "ip ip-prefix PREFIX-JUSTNET-IPV4 index 70 permit 177.21.223.0 24",
+    "ip ip-prefix PREFIX-MIX-TELECOM index 10 permit 45.163.145.64 29",
+    "ip ip-prefix PREFIX-NETSIX-IPV4 index 10 permit 201.49.224.0 20 greater-equal 20 less-equal 24",
+    "ip ip-prefix PREFIX-NETSIX-IPV4 index 20 permit 179.108.44.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-NETSIX-IPV4 index 30 permit 168.227.180.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-NETSIX-IPV4 index 40 permit 45.224.136.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-NETSIX-IPV4 index 50 permit 177.11.28.0 24",
+    "ip ip-prefix PREFIX-NETSIX-IPV4 index 60 permit 177.11.29.0 24",
+    "ip ip-prefix PREFIX-NJLOURENCO_PROVEDORES index 10 permit 38.210.67.0 24",
+    "ip ip-prefix PREFIX-PLAYCONNECT index 10 permit 45.71.179.0 24",
+    "ip ip-prefix PREFIX-PLAYCONNECT index 30 permit 200.50.224.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-PONTUALNET-V4 index 20 permit 186.196.76.0 24",
+    "ip ip-prefix PREFIX-PONTUALNET-V4 index 30 permit 200.106.178.0 24",
+    "ip ip-prefix PREFIX-REDEWORKS-IPV4 index 10 permit 128.201.56.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-REDEWORKS-IPV4 index 15 permit 179.48.100.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-REDEWORKS-IPV4 index 20 permit 181.233.32.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-REDEWORKS-IPV4 index 25 permit 45.185.117.0 24",
+    "ip ip-prefix PREFIX-REDEWORKS-IPV4 index 30 permit 170.238.47.0 24",
+    "ip ip-prefix PREFIX-REDEWORKS-IPV4 index 35 permit 177.105.246.0 23 greater-equal 23 less-equal 24",
+    "ip ip-prefix PREFIX-REDEWORKS-IPV4 index 40 permit 45.171.176.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-RHEOLI-V4 index 10 permit 177.53.29.0 24",
+    "ip ip-prefix PREFIX-RNJ-IPV4 index 10 permit 200.152.26.0 24 greater-equal 24 less-equal 24",
+    "ip ip-prefix PREFIX-SPARKNET index 10 permit 45.175.48.0 24",
+    "ip ip-prefix PREFIX-SUPERNET index 10 permit 181.191.115.0 24",
+    "ip ip-prefix PREFIX-TOPUM-V4 index 10 permit 177.53.29.0 24",
+    "ip ip-prefix PREFIX-TRIPLO-A-IPV4 index 10 permit 45.175.48.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix PREFIX-WFREDES-V4 index 10 permit 186.196.102.0 24",
+    "ip ip-prefix PREFIX8to24 index 10 permit 0.0.0.0 8 greater-equal 8 less-equal 24",
+    "ip ip-prefix TRIPLO_A-BLOCO-TODO index 30 permit 45.175.48.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix TRIPLO_A-BLOCO-TODO-23 index 30 permit 45.175.48.0 22 greater-equal 22 less-equal 23",
+    "ip ip-prefix UNE-138.36.165-24 index 10 permit 138.36.165.0 24",
+    "ip ip-prefix UNE-186.194.172-22 index 10 permit 186.194.172.0 22",
+    "ip ip-prefix UNE-BLOCO-TODO index 10 permit 177.91.160.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix UNE-BLOCO-TODO index 20 permit 138.36.164.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix UNE-BLOCO-TODO index 30 permit 186.194.172.0 22 greater-equal 22 less-equal 24",
+    "ip ip-prefix UNE-BLOCO-TODO index 50 permit 100.89.64.0 18 greater-equal 18 less-equal 24",
+    "ip ip-prefix VNT-BLOCO-TODO-20 index 10 permit 186.232.160.0 20 greater-equal 20 less-equal 32",
+    "ip ip-prefix WF_BOMSUCESSO index 10 permit 45.163.147.96 29",
+    "ip ip-prefix WF_BOMSUCESSO index 20 permit 45.163.147.96 28",
+    "ip ip-prefix WF_BOMSUCESSO index 30 permit 45.163.145.160 29",
+    "ip ip-prefix WF_BOMSUCESSO index 40 permit 45.163.147.180 31",
+    "ip ip-prefix WF_BOMSUCESSO index 50 permit 45.163.147.57 32",
+    "ip ip-prefix WF_BOMSUCESSO index 60 permit 45.163.147.224 31",
+    "ip ip-prefix WF_BOMSUCESSO index 70 permit 45.163.147.226 31",
+    "ip ip-prefix WF_BOMSUCESSO index 80 permit 45.163.145.156 30",
+    "ip ip-prefix WF_BOMSUCESSO index 90 permit 45.163.145.180 30",
+    "ip ip-prefix default-route index 10 permit 0.0.0.0 0",
+    "ip ip-prefix ospf index 10 deny 8.8.8.8 32",
+    "ip ip-prefix ospf index 11 deny 8.8.4.4 32",
+    "ip ip-prefix ospf index 12 deny 1.1.1.1 32",
+    "ip ip-prefix ospf index 13 deny 8.8.8.0 24",
+    "ip ip-prefix ospf index 50 permit 0.0.0.0 0 less-equal 32",
+    "ip ip-prefix roblox index 10 permit 128.116.0.0 16 greater-equal 16 less-equal 24"
+  ],
+  "exportReferenceMatrix": [
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "COMPUTIZE",
+      "policy": "PL-COMPUTIZE-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "SEMPRE-DDoS",
+      "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 100,
+      "firstMatchedConditions": {}
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "SEMPRE-normal",
+      "policy": "PL-SEMPRE-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "SEABORN",
+      "policy": "PL-SEABORN-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "SEABORN-BH",
+      "policy": "PL-SEABORN-BH-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "CIRION",
+      "policy": "PL-CIRION-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "IP-TUDDO",
+      "policy": "PL-TUDDO-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "VS-IX",
+      "policy": "PL-BGP_VS-IX_V4_OUT",
+      "allowed": true,
+      "firstMatch": 36,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "COMPUTIZE",
+      "policy": "PL-COMPUTIZE-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 300,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "SEMPRE-DDoS",
+      "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "SEMPRE-normal",
+      "policy": "PL-SEMPRE-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEMPRE"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "SEABORN",
+      "policy": "PL-SEABORN-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "SEABORN-BH",
+      "policy": "PL-SEABORN-BH-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "CIRION",
+      "policy": "PL-CIRION-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 100,
+      "firstMatchedConditions": {}
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "IP-TUDDO",
+      "policy": "PL-TUDDO-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 100,
+      "firstMatchedConditions": {}
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "VS-IX",
+      "policy": "PL-BGP_VS-IX_V4_OUT",
+      "allowed": false,
+      "firstMatch": 6000,
+      "firstMatchedConditions": {}
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "COMPUTIZE",
+      "policy": "PL-COMPUTIZE-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "SEMPRE-DDoS",
+      "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "SEMPRE-normal",
+      "policy": "PL-SEMPRE-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEMPRE"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "SEABORN",
+      "policy": "PL-SEABORN-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "SEABORN-BH",
+      "policy": "PL-SEABORN-BH-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "CIRION",
+      "policy": "PL-CIRION-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "IP-TUDDO",
+      "policy": "PL-TUDDO-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "VS-IX",
+      "policy": "PL-BGP_VS-IX_V4_OUT",
+      "allowed": true,
+      "firstMatch": 36,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "COMPUTIZE",
+      "policy": "PL-COMPUTIZE-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "SEMPRE-DDoS",
+      "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 100,
+      "firstMatchedConditions": {}
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "SEMPRE-normal",
+      "policy": "PL-SEMPRE-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "SEABORN",
+      "policy": "PL-SEABORN-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "SEABORN-BH",
+      "policy": "PL-SEABORN-BH-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "CIRION",
+      "policy": "PL-CIRION-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "IP-TUDDO",
+      "policy": "PL-TUDDO-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "VS-IX",
+      "policy": "PL-BGP_VS-IX_V4_OUT",
+      "allowed": true,
+      "firstMatch": 36,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "COMPUTIZE",
+      "policy": "PL-COMPUTIZE-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 300,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "SEMPRE-DDoS",
+      "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "SEMPRE-normal",
+      "policy": "PL-SEMPRE-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEMPRE"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "SEABORN",
+      "policy": "PL-SEABORN-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "SEABORN-BH",
+      "policy": "PL-SEABORN-BH-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "CIRION",
+      "policy": "PL-CIRION-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 100,
+      "firstMatchedConditions": {}
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "IP-TUDDO",
+      "policy": "PL-TUDDO-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 100,
+      "firstMatchedConditions": {}
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "VS-IX",
+      "policy": "PL-BGP_VS-IX_V4_OUT",
+      "allowed": false,
+      "firstMatch": 6000,
+      "firstMatchedConditions": {}
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "COMPUTIZE",
+      "policy": "PL-COMPUTIZE-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "SEMPRE-DDoS",
+      "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "SEMPRE-normal",
+      "policy": "PL-SEMPRE-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEMPRE"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "SEABORN",
+      "policy": "PL-SEABORN-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "SEABORN-BH",
+      "policy": "PL-SEABORN-BH-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "CIRION",
+      "policy": "PL-CIRION-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "IP-TUDDO",
+      "policy": "PL-TUDDO-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "VS-IX",
+      "policy": "PL-BGP_VS-IX_V4_OUT",
+      "allowed": true,
+      "firstMatch": 36,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "COMPUTIZE",
+      "policy": "PL-COMPUTIZE-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "SEMPRE-DDoS",
+      "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 100,
+      "firstMatchedConditions": {}
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "SEMPRE-normal",
+      "policy": "PL-SEMPRE-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "SEABORN",
+      "policy": "PL-SEABORN-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "SEABORN-BH",
+      "policy": "PL-SEABORN-BH-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "CIRION",
+      "policy": "PL-CIRION-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "IP-TUDDO",
+      "policy": "PL-TUDDO-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "normal",
+      "rts": ["268568:140", "268568:330"],
+      "exit": "VS-IX",
+      "policy": "PL-BGP_VS-IX_V4_OUT",
+      "allowed": true,
+      "firstMatch": 36,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "COMPUTIZE",
+      "policy": "PL-COMPUTIZE-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 300,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "SEMPRE-DDoS",
+      "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "SEMPRE-normal",
+      "policy": "PL-SEMPRE-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEMPRE"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "SEABORN",
+      "policy": "PL-SEABORN-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "SEABORN-BH",
+      "policy": "PL-SEABORN-BH-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "CIRION",
+      "policy": "PL-CIRION-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 100,
+      "firstMatchedConditions": {}
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "IP-TUDDO",
+      "policy": "PL-TUDDO-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 100,
+      "firstMatchedConditions": {}
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "required_exclusive",
+      "rts": ["268568:660"],
+      "exit": "VS-IX",
+      "policy": "PL-BGP_VS-IX_V4_OUT",
+      "allowed": false,
+      "firstMatch": 6000,
+      "firstMatchedConditions": {}
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "COMPUTIZE",
+      "policy": "PL-COMPUTIZE-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "SEMPRE-DDoS",
+      "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "SEMPRE-normal",
+      "policy": "PL-SEMPRE-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEMPRE"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "SEABORN",
+      "policy": "PL-SEABORN-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "SEABORN-BH",
+      "policy": "PL-SEABORN-BH-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "CIRION",
+      "policy": "PL-CIRION-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "IP-TUDDO",
+      "policy": "PL-TUDDO-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 90,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "published_additive",
+      "rts": ["268568:140", "268568:330", "268568:660"],
+      "exit": "VS-IX",
+      "policy": "PL-BGP_VS-IX_V4_OUT",
+      "allowed": true,
+      "firstMatch": 36,
+      "firstMatchedConditions": {
+        "extcommunity-filter": ["140"]
+      }
+    }
+  ],
+  "matrixIsStaticNotPhysicalAnnouncementProof": true,
+  "directPhysicalRtReplacementVerified": false,
+  "additionalNonRtCommunitiesBehaviorVerified": false,
+  "publicationOrHuaweiConfigurationExecuted": false,
+  "apiPid": "3527751",
+  "bundleSha256": "2c0068b6e3d8dde39e744e7d65871b6062aa7d8ecf3c6045ded7407b0bdda0ef",
+  "flags": {
+    "MITIGATION_LIVE_WRITE_ENABLED": "false",
+    "MITIGATION_AUTO_EXECUTION_ENABLED": "0",
+    "MITIGATION_AUTO_LIFECYCLE_ENABLED": "0",
+    "MITIGATION_AUTO_REMOVE_ENABLED": "0",
+    "MITIGATION_AUTO_PERSISTENCE_ENABLED": "1"
+  },
+  "productionPidsUnchanged": true,
+  "commandsReadOnly": [
+    "screen-length 0 temporary",
+    "display current-configuration configuration bgp",
+    "screen-length 0 temporary",
+    "display current-configuration configuration route-policy",
+    "screen-length 0 temporary",
+    "display current-configuration configuration route-policy",
+    "screen-length 0 temporary",
+    "display current-configuration | include ip-prefix",
+    "screen-length 0 temporary",
+    "display version",
+    "display bgp routing-table 167.250.126.0 23",
+    "display bgp routing-table 167.250.126.0 24",
+    "display bgp routing-table 167.250.127.0 24",
+    "screen-length 0 temporary",
+    "display current-configuration | include extcommunity-filter"
+  ]
+}
