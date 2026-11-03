@@ -24,6 +24,7 @@ import {
 export interface LifecycleConfig {
   installation: string;
   enabled: boolean;
+  expansionEnabled?: boolean;
   executionEnabled: boolean;
   removeEnabled: false;
   profiles: readonly string[];
@@ -61,6 +62,7 @@ export function lifecycleConfig(env: Record<string, string | undefined>): Lifecy
   return {
     installation: env.NETVISION_INSTALLATION_ID ?? '',
     enabled: flag('MITIGATION_AUTO_LIFECYCLE_ENABLED'),
+    expansionEnabled: flag('MITIGATION_AUTO_EXPANSION_ENABLED'),
     executionEnabled: flag('MITIGATION_AUTO_EXECUTION_ENABLED'),
     removeEnabled: false,
     profiles: list('MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS'),
@@ -171,7 +173,9 @@ const manualKey = (id: string) => 'manual-command:' + createHash('sha256').updat
 /** AUTO ACTIVATE only. No timer, observation or restart can dispatch REMOVE. */
 export class AutoMitigationLifecycle {
   private readonly now: () => number;
-  private pilotSequence: PilotSequence | null = null;
+  private readonly sequences = new Map<string, PilotSequence>();
+  private readonly acceptAfter = new Map<string, number>();
+  private readonly views = new Map<string, {state: string; reason: string | null}>();
   private pilotReconciled = false;
   private pilotRunning = false;
   private pilotAcceptAfter = 0;
@@ -186,13 +190,26 @@ export class AutoMitigationLifecycle {
     return this.deps.pilotTraffic ? { ...this.pilotView } : null;
   }
   forgetProfiles(ids: readonly string[]): void {
-    if (ids.includes(SINGLE_AUTO_PILOT.profileId)) this.pilotSequence = null;
+    for (const id of ids) { this.sequences.delete(id); this.acceptAfter.set(id, this.now()); }
   }
+  expansionStatus() { return Object.fromEntries(this.views); }
 
-  /** One tick in the existing runtime, not another worker or Huawei executor. */
+  /** Existing runtime, one global writer, independent per-profile sequence state. */
   async tickPilot(): Promise<MitigationAutoDecision[]> {
     if (!this.deps.pilotTraffic || this.pilotRunning) return [];
     this.pilotRunning = true;
+    try {
+      const config = this.deps.config();
+      const ids = config.expansionEnabled ? config.profiles : [SINGLE_AUTO_PILOT.profileId];
+      const result: MitigationAutoDecision[] = [];
+      for (const id of ids) result.push(...await this.tickProfile(id));
+      return result;
+    } finally { this.pilotRunning = false; }
+  }
+
+  private async tickProfile(profileId: string): Promise<MitigationAutoDecision[]> {
+    let sequence: PilotSequence | null = this.sequences.get(profileId) ?? null;
+    let acceptAfter = this.acceptAfter.get(profileId) ?? this.pilotAcceptAfter;
     let t: LifecycleTarget | null = null;
     const decision = (
       reason: string | null,
@@ -202,16 +219,16 @@ export class AutoMitigationLifecycle {
     ): MitigationAutoDecision[] => {
       const d: MitigationAutoDecision = {
         at: new Date(this.now()).toISOString(),
-        profileId: SINGLE_AUTO_PILOT.profileId,
-        deviceId: SINGLE_AUTO_PILOT.deviceId,
+        profileId: profileId,
+        deviceId: t?.deviceId ?? '',
         customer: t?.customer ?? null,
         outcome,
         reason: outcome === 'BLOCKED' ? 'TARGET_BLOCKED' : null,
         detail: reason,
         trafficBps: traffic?.toString() ?? null,
-        thresholdBps: SINGLE_AUTO_PILOT.thresholdBps.toString(),
+        thresholdBps: t?.effectiveBandwidthBps ? ((t.effectiveBandwidthBps * BigInt(t.triggerPercent)) / 100n).toString() : null,
         recoveryThresholdBps: null,
-        samplesOver: this.pilotSequence?.over ?? 0,
+        samplesOver: sequence?.over ?? 0,
         samplesBelow: 0,
         requiredSamples: 3,
         runtimeState: t?.runtimeState ?? null,
@@ -228,14 +245,14 @@ export class AutoMitigationLifecycle {
     try {
       if (!this.pilotReconciled) return decision('RECONCILIATION_REQUIRED');
       assertSinglePilotAuthorization(this.deps.config());
-      t = await this.deps.target(SINGLE_AUTO_PILOT.profileId);
+      t = await this.deps.target(profileId);
       if (!t) {
-        this.pilotSequence = null;
+        sequence = null;
         return decision('AUTO_TARGET_MISSING');
       }
       const owned = await this.deps.store.transaction((tx) => tx.get<ScopeOwnership>(scopeKey(t!)));
       if (owned && owned.phase !== 'COOLDOWN') {
-        this.pilotSequence = null;
+        sequence = null;
         this.pilotView = {
           state:
             owned.phase === 'ACTIVE' ||
@@ -250,17 +267,17 @@ export class AutoMitigationLifecycle {
       }
       const blocked = this.allowed(t);
       if (blocked || (owned && owned.cooldownUntil > this.now())) {
-        this.pilotSequence = null;
-        this.pilotAcceptAfter = this.now();
+        sequence = null;
+        acceptAfter = this.now();
         this.pilotView = { state: 'IDLE', reason: blocked ?? 'AUTO_COOLDOWN_ACTIVE' };
         return decision(this.pilotView.reason);
       }
       if (t.runtimeState !== 'NORMAL' && t.runtimeState !== 'ALERT_ONLY') {
-        this.pilotSequence = null;
+        sequence = null;
         this.pilotView = { state: 'UNCERTAIN', reason: 'RUNTIME_REQUIRES_RECONCILIATION' };
         return decision(this.pilotView.reason);
       }
-      const sample = await this.deps.pilotTraffic.sampleWithId({
+      const sample = await this.deps.pilotTraffic!.sampleWithId({
         profileId: t.profileId,
         deviceId: t.deviceId,
         interfaceId: t.interfaceId,
@@ -270,20 +287,22 @@ export class AutoMitigationLifecycle {
       if (
         sample?.occurredAt &&
         sample.occurredAt.getTime() <=
-          Math.max(this.pilotAcceptAfter, owned?.cooldownUntil ?? 0, owned?.removedAt ?? 0)
+          Math.max(acceptAfter, owned?.cooldownUntil ?? 0, owned?.removedAt ?? 0)
       ) {
-        this.pilotSequence = this.pilotSequence ? { ...this.pilotSequence, over: 0 } : null;
+        sequence = sequence ? { ...sequence, over: 0 } : null;
         return decision('AUTO_NEW_EPISODE_REQUIRED');
       }
       const step = nextPilotSequence(
-        this.pilotSequence,
+        sequence,
         sample,
         targetRevision(t),
         this.now(),
         this.deps.config().maxAgeMs,
         this.deps.config().maxGapMs,
+        (t.effectiveBandwidthBps! * BigInt(t.triggerPercent)) / 100n,
+        t.triggerSamples,
       );
-      this.pilotSequence = step.sequence;
+      sequence = step.sequence;
       this.pilotView = { state: 'IDLE', reason: step.reason };
       if (step.reason || !step.sequence || !sample)
         return decision(
@@ -302,7 +321,7 @@ export class AutoMitigationLifecycle {
           samplesOver: step.sequence.over,
         },
       });
-      this.pilotSequence = null;
+      sequence = null;
       if (['AUTO_PHYSICAL_READ_FAILED', 'AUTO_PHYSICAL_SCOPE_NOT_NORMAL'].includes(result.status))
         await this.holdPilotUncertain(t, result.status);
       const after = await this.deps.store.transaction((tx) => tx.get<ScopeOwnership>(scopeKey(t!)));
@@ -326,19 +345,22 @@ export class AutoMitigationLifecycle {
         },
       ];
     } catch {
-      this.pilotSequence = null;
+      sequence = null;
       this.pilotView = { state: 'UNCERTAIN', reason: 'PILOT_DEPENDENCY_UNAVAILABLE' };
       return decision(this.pilotView.reason);
     } finally {
-      this.pilotRunning = false;
+      if (sequence) this.sequences.set(profileId, sequence); else this.sequences.delete(profileId);
+      this.acceptAfter.set(profileId, acceptAfter);
+      this.views.set(profileId, {...this.pilotView});
     }
   }
   private allowed(t: LifecycleTarget): string | null {
     const c = this.deps.config();
-    if (this.deps.pilotTraffic && !singlePilotIdentityMatches(t))
+    if (this.deps.pilotTraffic && !c.expansionEnabled && !singlePilotIdentityMatches(t))
       return 'AUTO_SINGLE_PILOT_IDENTITY_MISMATCH';
     if (c.installation !== 'IMPLANTAR' || !c.enabled || !c.executionEnabled)
       return 'AUTO_EXECUTION_DISABLED';
+    if (t.addressFamily !== 'IPV4') return 'AUTO_IPV6_CONTRACT_NOT_AUTHORIZED';
     if (!c.profiles.includes(t.profileId) || !c.devices.includes(t.deviceId))
       return 'AUTO_NOT_ALLOWLISTED';
     if (
@@ -375,9 +397,9 @@ export class AutoMitigationLifecycle {
     if (
       !Number.isInteger(t.bogonNode) ||
       !Number.isInteger(t.mitigationNode) ||
-      t.bogonNode! <= 0 ||
-      t.mitigationNode! <= 0 ||
-      t.bogonNode === t.mitigationNode
+      t.bogonNode !== 1 ||
+      t.mitigationNode !== 2 ||
+      t.rt !== '268568:660'
     )
       return 'AUTO_PAIR_INVALID';
     if (
@@ -387,7 +409,7 @@ export class AutoMitigationLifecycle {
       t.triggerPercent <= 0 ||
       t.triggerPercent > 100 ||
       !Number.isInteger(t.triggerSamples) ||
-      t.triggerSamples < 1
+      t.triggerSamples < (c.expansionEnabled ? 3 : 1)
     )
       return 'AUTO_THRESHOLDS_INVALID';
     return null;
@@ -796,7 +818,8 @@ export class AutoMitigationLifecycle {
   /** Legacy interrupted REMOVE intents are quarantined, never replayed. */
   async reconcile(): Promise<void> {
     this.pilotReconciled = false;
-    this.pilotSequence = null;
+    this.sequences.clear();
+    this.acceptAfter.clear();
     const scopes = await this.deps.store.transaction((tx) =>
       tx.list<ScopeOwnership>('scope', ['ACTIVATING', 'REMOVING', 'ACTIVE']),
     );
@@ -826,9 +849,9 @@ export class AutoMitigationLifecycle {
         await this.uncertain(s, 'RESTART_READBACK_FAILED');
       }
     }
-    if (this.deps.pilotTraffic) {
-      const t = await this.deps.target(SINGLE_AUTO_PILOT.profileId);
-      if (!t || !singlePilotIdentityMatches(t))
+    if (this.deps.pilotTraffic) for (const id of this.deps.config().expansionEnabled ? this.deps.config().profiles : [SINGLE_AUTO_PILOT.profileId]) {
+      const t = await this.deps.target(id);
+      if (!t || t.addressFamily !== 'IPV4' || (!this.deps.config().expansionEnabled && !singlePilotIdentityMatches(t)))
         throw Error('PILOT_RECONCILIATION_IDENTITY_REQUIRED');
       const s = await this.deps.store.transaction((tx) => tx.get<ScopeOwnership>(scopeKey(t)));
       if (!s || s.phase === 'COOLDOWN') {

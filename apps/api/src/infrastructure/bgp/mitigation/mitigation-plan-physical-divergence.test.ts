@@ -9,8 +9,9 @@ import {
 
 // F2 CORRIGIDO: o reconciler avalia a POLICY INTEIRA no read-back, nunca apenas
 // a ausencia do par PLANEJADO. Um par fisico diferente do plano NAO vira NORMAL;
-// estrutura multipla/parcial/suspeita vira RECONCILIATION_REQUIRED; e o APPLY
-// (autorizado, local) propaga o par FISICO, reparando plano x equipamento.
+// estrutura parcial/suspeita (nodes 1/2 fora do contrato) vira
+// RECONCILIATION_REQUIRED; nodes fora de 1/2 sao configuracao permanente; e o
+// APPLY (autorizado, local) propaga o par FISICO, reparando plano x equipamento.
 
 const DEVICE_A = 'host-f1a';
 const POLICY = 'PL-FLASH-TELECOM_IPv4-IN';
@@ -41,8 +42,7 @@ function renderPolicy(
       `route-policy ${POLICY} deny node ${pair.bogonNode}`,
       ' if-match ip-prefix BOGONS',
       `route-policy ${POLICY} permit node ${pair.mitigationNode}`,
-      ' if-match ip-prefix PREFIX8to24',
-      ` apply extcommunity rt ${rt} additive`,
+      ` apply extcommunity rt ${rt}`,
     );
   }
   lines.push(`route-policy ${POLICY} permit node 10`);
@@ -95,7 +95,7 @@ describe('F2: assess do reconciler olha a POLICY INTEIRA', () => {
     expect(assessment.physical.mitigationNodes).toEqual([]);
   });
 
-  it('U) DOIS pares fisicos (1/2 + 3/4) => RECONCILIATION_REQUIRED', () => {
+  it('U) par legado completo fora de 1/2 (3/4) exige reconciliacao', () => {
     const assessment = assessPolicyPhysicalState({
       policyName: POLICY,
       readBack: READ_BACK_TWO_PAIRS,
@@ -103,11 +103,12 @@ describe('F2: assess do reconciler olha a POLICY INTEIRA', () => {
       targets: [target(PLAN_B)],
     });
 
+    // Contrato IPv4 definitivo: somente 1/2 sao propriedade da mitigacao. Um
+    // SEGUNDO par com a assinatura do contrato (deny BOGONS + permit RT660) fora
+    // de 1/2 e par legado: fail-closed, nunca coexistencia silenciosa.
     expect(assessment.state).toBe('RECONCILIATION_REQUIRED');
     expect(assessment.physical.pair).toBeNull();
-    expect(assessment.physical.bogonNodes).toEqual([1, 3]);
-    expect(assessment.physical.mitigationNodes).toEqual([2, 4]);
-    expect(assessment.detail).toContain('multipla');
+    expect(assessment.physical.partialNodes.map((n) => n.node)).toEqual([3, 4]);
   });
 
   it('L) estrutura PARCIAL (so o bogon) => RECONCILIATION_REQUIRED', () => {

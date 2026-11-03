@@ -172,18 +172,8 @@ export function selectNodePair(input: TemporaryNodeInput): NodePairSelection {
 
   const livres = nodesBeforeFirstNormal.filter((node) => !occupied.has(node));
 
-  for (let index = 0; index < livres.length - 1; index += 1) {
-    const bogonNode = livres[index]!;
-    const mitigationNode = livres.find((node) => node > bogonNode);
-    if (mitigationNode !== undefined) {
-      return {
-        pair: { bogonNode, mitigationNode },
-        firstNormalNode,
-        nodesBeforeFirstNormal,
-        blocked: false,
-        reason: null,
-      };
-    }
+  if (livres.includes(1) && livres.includes(2) && !input.normalNodes.some(n => n < 1)) {
+    return {pair: {bogonNode: 1, mitigationNode: 2}, firstNormalNode, nodesBeforeFirstNormal, blocked: false, reason: null};
   }
 
   return {

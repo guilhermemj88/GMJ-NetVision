@@ -6,6 +6,7 @@ import {
   parseHuaweiRoutePolicyNodes,
   parseHuaweiRoutePolicyNodesLenient,
 } from './huawei-bgp-policy-parser';
+import { assertIpv4MitigationContract } from './mitigation-contract';
 import { DEFAULT_MITIGATION_RT } from './mitigation-config';
 import {
   canReadLive,
@@ -27,7 +28,7 @@ import {
   type MitigationBaselineRecord,
   type MitigationBaselineStore,
 } from './mitigation-baseline-record';
-import { derivePreservedClauses, type PreservedClauses } from './mitigation-policy-clauses';
+import { type PreservedClauses } from './mitigation-policy-clauses';
 import {
   assertMitigationCommandShape,
   buildMitigationActivateCommands,
@@ -125,6 +126,7 @@ export interface MitigationPreflightResult {
   nodeOccupancy?: NodeOccupancyPlan | null;
   /** Atributos normais do cliente que o node de mitigacao deve repor. */
   preservedClauses?: PreservedClauses | null;
+  baselineRecord?: MitigationBaselineRecord | null;
   /** Nodes lidos pelo MESMO parser do read-back pos-commit (display route-policy). */
   readBackNodes: number[];
   /** Resumo do MESMO verify usado no pos-commit, sobre a saida real. */
@@ -178,51 +180,13 @@ function sameNodes(left: readonly number[], right: readonly number[]): boolean {
  */
 function activationBaselineDiverged(
   readBack: string,
-  prefixListConfiguration: string | null,
   input: MitigationActivationInput,
-  engineLabels: { bogonPrefixList: string; targetPrefixList: string },
 ): string[] {
-  const preserved = input.preservedClauses;
-  if (!preserved) return ['baseline derivado no preflight ausente'];
-  // Os comandos sao montados com os rotulos do MOTOR (`writePlan`), nunca com o
-  // que o chamador mandou; a comparacao usa exatamente os mesmos rotulos.
-  const labels = bgpPlanLabels(input.policyName, engineLabels);
-  const current = derivePreservedClauses(
-    readBack,
-    input.policyName,
-    labels.targetPrefixList,
-    input.rt,
-    {
-      prefixListConfiguration,
-      pair: { bogonNode: input.bogonNode, mitigationNode: input.mitigationNode },
-    },
-  );
-  const reasons: string[] = [];
-  if (current.baselineNode !== preserved.baselineNode) {
-    reasons.push(
-      `node de baseline ${preserved.baselineNode ?? 'ausente'} -> ${current.baselineNode ?? 'ausente'}`,
-    );
-  }
-  if (current.localPreference !== preserved.localPreference) {
-    reasons.push(
-      `local-preference ${preserved.localPreference ?? 'ausente'} -> ` +
-        `${current.localPreference ?? 'ausente'}`,
-    );
-  }
-  const rts = (list: readonly string[]) => JSON.stringify([...list].sort());
-  if (rts(current.routeTargets) !== rts(preserved.routeTargets)) {
-    reasons.push(
-      `route-targets [${preserved.routeTargets.join(', ')}] -> ` +
-        `[${current.routeTargets.join(', ')}]`,
-    );
-  }
-  if (rts(current.otherApplies) !== rts(preserved.otherApplies)) {
-    reasons.push('atributos adicionais do baseline mudaram');
-  }
-  if (!current.safe) {
-    reasons.push(`baseline atual nao reproduzivel: ${current.unsafeReasons.join('; ')}`);
-  }
-  return reasons;
+  const record = input.preflightBaseline;
+  if (!isBaselineRecordComplete(record) || record.policyName !== input.policyName ||
+      record.bogonNode !== 1 || record.mitigationNode !== 2)
+    return ['preflight permanent baseline evidence unavailable'];
+  return baselineDriftReasons(record, readBack);
 }
 
 export class HuaweiMitigationExecutor {
@@ -262,25 +226,29 @@ export class HuaweiMitigationExecutor {
       );
     }
     let readBack: string;
-    let prefixListConfiguration: string | null = null;
+
     try {
       // Mesma leitura do preflight (config + ip-prefix): a comparacao das duas
       // leituras usa exatamente as mesmas listas que geraram os comandos.
       const configuration = await this.deps.ssh.readMitigationConfiguration(device);
       readBack = configuration.routePolicyConfiguration ?? '';
-      prefixListConfiguration = configuration.prefixListConfiguration;
+
     } catch (error) {
       throw new Error(`MITIGATION_BASELINE_RECORD_UNAVAILABLE: ${safeErrorMessage(error)}`);
     }
     // Os comandos vieram do baseline do PREFLIGHT; o snapshot vem desta segunda
     // leitura fisica. Divergencia entre as duas leituras bloqueia a escrita —
     // nunca se adapta o comando automaticamente.
-    const diverged = activationBaselineDiverged(
-      readBack,
-      prefixListConfiguration,
-      input,
-      this.labels,
-    );
+    assertIpv4MitigationContract(input);
+    const occupancy = planNodeOccupancy({readBack, policyName: input.policyName,
+      pair: {bogonNode: 1, mitigationNode: 2}, capturedAt: new Date().toISOString()});
+    if (occupancy.blocked)
+      throw new Error(`MITIGATION_NODE_OCCUPIED: ${device.displayName || device.hostname} ${input.policyName} nodes [${occupancy.conflictingNodes.join(',')}]`);
+    if (!input.preflightBaseline)
+      throw new Error('MITIGATION_BASELINE_RECORD_UNAVAILABLE: preflight baseline record missing');
+    if (input.preflightBaseline.deviceId !== device.id)
+      throw new Error('MITIGATION_BASELINE_DIVERGED: device mismatch');
+    const diverged = activationBaselineDiverged(readBack, input);
     if (diverged.length > 0) {
       throw new Error(`MITIGATION_BASELINE_DIVERGED: ${diverged.join('; ')}`);
     }
@@ -360,13 +328,11 @@ export class HuaweiMitigationExecutor {
   private inspectMitigation(
     input: MitigationPreflightInput,
     readBack: string | null,
-    baselineNodes?: readonly number[],
   ): PolicyMitigationPhysical {
     return inspectPolicyMitigation({
       policyName: input.policyName,
       readBack: readBack ?? '',
       rts: [input.rt, this.rt],
-      ...(baselineNodes ? { baselineNodes } : {}),
       labels: {
         bogonPrefixList: input.bogonPrefixList,
         targetPrefixList: input.targetPrefixList,
@@ -447,7 +413,7 @@ export class HuaweiMitigationExecutor {
     let readBackOutput: string | null = null;
     let readBackError: string | null = null;
     let nodeOccupancy: NodeOccupancyPlan | null = null;
-    let preservedClauses: PreservedClauses | null = null;
+    const preservedClauses: PreservedClauses | null = null;
     try {
       readBackOutput = await this.deps.ssh.readMitigationRoutePolicy(device, input.policyName);
     } catch (error) {
@@ -553,34 +519,8 @@ export class HuaweiMitigationExecutor {
       });
       nodeOccupancy = occupancy;
 
-      // Atributos NORMAIS do cliente (mecanismo unico para toda policy):
-      // derivados do proprio baseline fisico e repostos no node de mitigacao.
-      // `prefixListConfiguration` habilita a checagem B3: nodes ANTERIORES ao
-      // baseline so passam quando as faixas das ip-prefix NAO se sobrepoem.
-      preservedClauses = derivePreservedClauses(
-        routePolicyConfiguration ?? '',
-        input.policyName,
-        input.targetPrefixList,
-        input.rt,
-        {
-          prefixListConfiguration,
-          pair: { bogonNode: input.bogonNode, mitigationNode: input.mitigationNode },
-        },
-      );
-      checks.push({
-        id: 'preserved_attributes',
-        // Fail-closed (auditoria): sem baseline derivavel, ou com baseline cuja
-        // estrutura nao conseguimos reproduzir fielmente, o ACTIVATE para aqui.
-        // Nunca criar um node 2 apenas com a RT nem um node 2 mais permissivo.
-        ok: preservedClauses.safe,
-        detail:
-          preservedClauses.baselineNode === null
-            ? `MITIGATION_BASELINE_NOT_DERIVABLE: sem node permit com if-match ip-prefix ${input.targetPrefixList}`
-            : !preservedClauses.safe
-              ? `MITIGATION_BASELINE_UNSAFE: ${preservedClauses.unsafeReasons.join('; ')}`
-              : `atributos derivados do node ${preservedClauses.baselineNode}: ` +
-                `[${preservedClauses.expectedClauses.join(' | ')}]`,
-      });
+      checks.push({id: 'ipv4_contract', ok: input.bogonNode === 1 && input.mitigationNode === 2 && input.bogonPrefixList === 'BOGONS' && input.rt === '268568:660', detail: 'exact fixed IPv4 node contract'});
+      checks.push({id: 'permanent_precedence', ok: !existingNodes.some(n => n < 1), detail: 'no permanent node precedes reserved pair'});
       checks.push({
         id: 'node_occupancy',
         ok: !occupancy.blocked,
@@ -630,26 +570,12 @@ export class HuaweiMitigationExecutor {
           ? `ip-prefix ${input.bogonPrefixList} definida`
           : `ip-prefix ${input.bogonPrefixList} ausente`,
       });
-      checks.push({
-        id: 'target_prefix_list',
-        ok: targetExists,
-        detail: targetExists
-          ? `ip-prefix ${input.targetPrefixList} definida`
-          : `ip-prefix ${input.targetPrefixList} ausente`,
-      });
-
       // F3: NUNCA instalar um SEGUNDO par de mitigacao na mesma policy fisica.
       // A prova e o read-back REAL (`display route-policy`), exatamente como a
       // verificacao pos-escrita; runtime e plano NAO decidem nada aqui.
       // Estrutura suspeita/parcial/multipla ou leitura inconclusiva BLOQUEIA
       // (reconciliacao obrigatoria) - o AUTO tambem passa por este preflight.
-      const physical = this.inspectMitigation(
-        input,
-        readBackOutput,
-        preservedClauses?.baselineNode === null || preservedClauses === null
-          ? []
-          : [preservedClauses.baselineNode],
-      );
+      const physical = this.inspectMitigation(input, readBackOutput);
       checks.push({
         id: 'policy_mitigation_scope',
         ok: physical.state === 'NORMAL',
@@ -682,11 +608,7 @@ export class HuaweiMitigationExecutor {
               : `nodes permanentes identicos ao registro ${baselineRecord.capturedAt} ` +
                 `[${baselineRecord.nodes.map((entry) => entry.node).join(', ') || 'nenhum'}]`,
       });
-      const removalPhysical = this.inspectMitigation(
-        input,
-        readBackOutput,
-        baselineRecord?.nodes.map((entry) => entry.node) ?? [],
-      );
+      const removalPhysical = this.inspectMitigation(input, readBackOutput);
       checks.push({
         id: 'policy_mitigation_scope',
         ok: removalPhysical.state !== 'RECONCILIATION_REQUIRED',
@@ -750,6 +672,7 @@ export class HuaweiMitigationExecutor {
       partial,
       nodeOccupancy,
       preservedClauses,
+      baselineRecord: mode === 'ACTIVATE' && routePolicyConfiguration ? captureMitigationBaseline({deviceId: device.id, policyName: input.policyName, readBack: routePolicyConfiguration, bogonNode: input.bogonNode, mitigationNode: input.mitigationNode}) : null,
       readBackNodes: readBackNodes.map((entry) => entry.node),
       readBackSummary,
       readBackExcerpt: readBackOutput ? excerpt(readBackOutput) : '',
@@ -811,23 +734,10 @@ export class HuaweiMitigationExecutor {
     }
     const source = configuration.routePolicyConfiguration;
     if (source === null) return null;
-    const nodes = parseHuaweiRoutePolicyNodes(source).get(policyName) ?? [];
-    const bogons = nodes
-      .filter(
-        (entry) =>
-          entry.action === 'deny' && entry.ifMatchIpPrefix.includes(this.labels.bogonPrefixList),
-      )
-      .map((entry) => entry.node);
-    const mitigations = nodes
-      .filter(
-        (entry) =>
-          entry.action === 'permit' &&
-          entry.ifMatchIpPrefix.includes(bgpPlanLabels(policyName, this.labels).targetPrefixList) &&
-          entry.routeTargets.includes(rt),
-      )
-      .map((entry) => entry.node);
-    if (bogons.length !== 1 || mitigations.length !== 1) return null;
-    return { bogonNode: bogons[0]!, mitigationNode: mitigations[0]! };
+    const record = await this.loadBaseline(device, policyName);
+    if (!record || record.bogonNode !== 1 || record.mitigationNode !== 2 || baselineDriftReasons(record, source).length) return null;
+    const verification = verifyActivation(policyName, source, {bogonNode: 1, mitigationNode: 2}, rt, this.labels);
+    return verification.verified ? {bogonNode: 1, mitigationNode: 2} : null;
   }
 
   /** READ-ONLY: estado atual da policy para o read-back obrigatorio. */

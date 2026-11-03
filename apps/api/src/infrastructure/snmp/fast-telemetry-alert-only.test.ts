@@ -214,12 +214,12 @@ describe('teto de interfaces por device', () => {
       logger: () => undefined,
     });
 
-  it('default preserva o limite publicado (8)', () => {
-    expect(fastPollerConfig({}).maxInterfacesPerDevice).toBe(8);
+  it('default preserva o limite publicado (32)', () => {
+    expect(fastPollerConfig({}).maxInterfacesPerDevice).toBe(32);
     expect(
-      fastPollerConfig({ MITIGATION_FAST_MAX_INTERFACES_PER_DEVICE: '32' })
+      fastPollerConfig({ MITIGATION_FAST_MAX_INTERFACES_PER_DEVICE: '64' })
         .maxInterfacesPerDevice,
-    ).toBe(32);
+    ).toBe(64);
     expect(() =>
       fastPollerConfig({ MITIGATION_FAST_MAX_INTERFACES_PER_DEVICE: '0' }),
     ).toThrow(/MAX_INTERFACES_PER_DEVICE/);

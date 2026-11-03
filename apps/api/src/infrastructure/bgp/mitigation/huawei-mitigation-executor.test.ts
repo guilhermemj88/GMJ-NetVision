@@ -139,6 +139,15 @@ async function executorWithBaseline(
 }
 
 
+const PREFLIGHT_BASELINE = captureMitigationBaseline({
+  deviceId: DEVICE_ID,
+  policyName: POLICY,
+  readBack: ROUTE_POLICY,
+  bogonNode: 1,
+  mitigationNode: 2,
+});
+if (!PREFLIGHT_BASELINE) throw new Error('fixture sem baseline');
+
 const ACTIVATION = {
   policyName: POLICY,
   bogonNode: 1,
@@ -147,6 +156,8 @@ const ACTIVATION = {
   bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST,
   targetPrefixList: DEFAULT_TARGET_PREFIX_LIST,
   preservedClauses: PRESERVED,
+  // B5: a escrita real recebe o registro duravel capturado no preflight.
+  preflightBaseline: PREFLIGHT_BASELINE,
 };
 
 describe('HuaweiMitigationExecutor - gate fail-closed (zero escrita)', () => {
@@ -222,13 +233,22 @@ describe('HuaweiMitigationExecutor - preflight READ-ONLY', () => {
     expect(result.blockedReasons.join(' ')).toMatch(/bogon_prefix_list/);
   });
 
-  it('aborta quando a ip-prefix PREFIX8to24 nao existe', async () => {
+  it('a ip-prefix alvo nao faz parte do ACTIVATE: ausencia nao bloqueia nem entra nos comandos', async () => {
     const ssh = new FakeSsh();
     ssh.prefixListConfiguration = 'ip ip-prefix BOGONS index 10 permit 10.0.0.0 8';
     const result = await executor(ssh).preflight(device(), INPUT);
-    expect(result.ok).toBe(false);
+    // Contrato definitivo: o node 2 e permit irrestrito (sem if-match), entao a
+    // lista alvo nao e referencia da escrita e sua ausencia nao bloqueia.
     expect(result.targetPrefixListExists).toBe(false);
-    expect(result.blockedReasons.join(' ')).toMatch(/target_prefix_list/);
+    expect(result.ok).toBe(true);
+    expect(result.blockedReasons).toEqual([]);
+    const commands = new SimulationCommandExecutor().buildMitigation(
+      POLICY,
+      { bogonNode: 1, mitigationNode: 2 },
+      RT,
+      { bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST, targetPrefixList: DEFAULT_TARGET_PREFIX_LIST },
+    ).commands;
+    expect(commands.join('\n')).not.toContain(DEFAULT_TARGET_PREFIX_LIST);
   });
 
   it('aborta sem snapshot de discovery (fail-closed)', async () => {
@@ -279,8 +299,7 @@ const ROUTE_POLICY_MITIGATED = [
   'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
   ' if-match ip-prefix BOGONS',
   'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
-  ' if-match ip-prefix PREFIX8to24',
-  ' apply extcommunity rt 268568:660 additive',
+  ' apply extcommunity rt 268568:660',
   'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
   'route-policy PL-HORIZONTES_IPv4-IN permit node 50',
 ].join('\n');
@@ -335,8 +354,7 @@ describe('HuaweiMitigationExecutor - preflight de REMOVE (par presente)', () => 
     const ssh = new FakeSsh();
     ssh.routePolicyConfiguration = [
       'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
-      ' if-match ip-prefix PREFIX8to24',
-      ' apply extcommunity rt 268568:660 additive',
+      ' apply extcommunity rt 268568:660',
       'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
     ].join('\n');
     const result = await executor(ssh).preflight(device(), REMOVE_INPUT);
@@ -430,10 +448,11 @@ describe('HuaweiMitigationExecutor - preflight de REMOVE (par presente)', () => 
 });
 
 describe('reconciliacao REMOVE: par ATIVO lido do equipamento', () => {
-  it('acha exatamente o par 1/2 ativo (deny+BOGONS / permit+PREFIX8to24+RT)', async () => {
+  it('acha exatamente o par 1/2 ativo (deny+BOGONS / permit irrestrito + RT exclusiva)', async () => {
     const ssh = new FakeSsh();
     ssh.routePolicyConfiguration = ROUTE_POLICY_MITIGATED;
-    const pair = await executor(ssh).resolveActivePair(device(), POLICY, RT);
+    const exec = await executorWithBaseline(ssh, ROUTE_POLICY_MITIGATED);
+    const pair = await exec.resolveActivePair(device(), POLICY, RT);
     expect(pair).toEqual({ bogonNode: 1, mitigationNode: 2 });
   });
 
@@ -471,7 +490,7 @@ describe('reconciliacao REMOVE: par ATIVO lido do equipamento', () => {
 });
 
 describe('HuaweiMitigationExecutor - comandos exatos', () => {
-  it('ACTIVATE envia exatamente os 7 comandos do preview', async () => {
+  it('ACTIVATE envia exatamente os 6 comandos do preview', async () => {
     const ssh = new FakeSsh();
     await executor(ssh).activate(device(), ACTIVATION);
 
@@ -481,8 +500,7 @@ describe('HuaweiMitigationExecutor - comandos exatos', () => {
       'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
       ' if-match ip-prefix BOGONS',
       'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
-      ' if-match ip-prefix PREFIX8to24',
-      ' apply extcommunity rt 268568:660 additive',
+      ' apply extcommunity rt 268568:660',
       'commit',
     ]);
     // Prova de equivalencia: o preview e a escrita montam a MESMA lista.
@@ -531,14 +549,19 @@ describe('HuaweiMitigationExecutor - comandos exatos', () => {
 
   it('prefix-lists vem SEMPRE da config do motor (nunca do chamador)', async () => {
     const ssh = new FakeSsh();
-    await executor(ssh).activate(device(), {
-      ...ACTIVATION,
-      bogonPrefixList: 'BOGONS-QUALQUER',
-      targetPrefixList: 'PREFIX8to24-QUALQUER',
-    });
-    // O valor do chamador e ignorado: o comando usa BOGONS/PREFIX8to24 do motor.
-    expect(ssh.applied[0]!.commands).toContain(' if-match ip-prefix BOGONS');
-    expect(ssh.applied[0]!.commands).toContain(' if-match ip-prefix PREFIX8to24');
+    const exec = executor(ssh);
+    // A lista BOGONS e parte do contrato: valor do chamador e rejeitado antes do SSH.
+    await expect(
+      exec.activate(device(), { ...ACTIVATION, bogonPrefixList: 'BOGONS-QUALQUER' }),
+    ).rejects.toThrow(/MITIGATION_CONTRACT_MISMATCH/);
+    expect(ssh.applied).toHaveLength(0);
+
+    // O node 2 nao tem if-match: a lista alvo do chamador nunca chega ao equipamento.
+    await exec.activate(device(), { ...ACTIVATION, targetPrefixList: 'PREFIX8to24-QUALQUER' });
+    const commands = ssh.applied[0]!.commands;
+    expect(commands).toContain(' if-match ip-prefix BOGONS');
+    expect(commands.join('\n')).not.toContain('PREFIX8to24-QUALQUER');
+    expect(commands).toContain(' apply extcommunity rt 268568:660');
   });
 
   it('falha do SSH na escrita nao vira sucesso', async () => {
@@ -582,8 +605,6 @@ const DISPLAY_MITIGATED = [
   '    Match clauses: ',
   '      if-match ip-prefix BOGONS',
   '  permit : 2 (matched counts: 0)',
-  '    Match clauses: ',
-  '      if-match ip-prefix PREFIX8to24',
   '    Apply clauses: ',
   '      apply extcommunity rt 268568:660',
   '  deny : 50 (matched counts: 0)',

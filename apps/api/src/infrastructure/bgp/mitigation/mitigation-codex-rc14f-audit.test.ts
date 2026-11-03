@@ -31,8 +31,7 @@ class AuditSsh implements MitigationSshPort {
             `route-policy ${this.policy} deny node 1`,
             ' if-match ip-prefix BOGONS',
             `route-policy ${this.policy} permit node 2`,
-            ' if-match ip-prefix PREFIX8to24',
-            ' apply extcommunity rt 268568:660 additive',
+            ' apply extcommunity rt 268568:660',
           ]
         : []),
       `route-policy ${this.policy} permit node 11`,

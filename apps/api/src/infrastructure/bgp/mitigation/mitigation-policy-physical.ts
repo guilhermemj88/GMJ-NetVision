@@ -1,9 +1,7 @@
+import { exactMitigationNodes } from './mitigation-contract';
 import { parseHuaweiRoutePolicyNodesLenient } from './huawei-bgp-policy-parser';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import {
-  AGLINK_BGP_PLAN,
-  aglinkActivationIntact,
-  aglinkBaselineIntact,
   bgpPlanLabels,
 } from './aglink-bgp-plan';
 
@@ -31,29 +29,28 @@ export interface PolicyMitigationPhysical {
   /** false = a policy nao apareceu no read-back (leitura inconclusiva). */
   recognized: boolean;
   state: PolicyMitigationPhysicalState;
-  /** Nodes deny + if-match da lista de BOGONS. */
+  /** Nodes 1 canonicos (deny + if-match ip-prefix BOGONS). */
   bogonNodes: number[];
-  /** Nodes permit + if-match da lista de alvos + RT de mitigacao. */
+  /** Nodes 2 canonicos (permit + somente apply extcommunity rt 268568:660). */
   mitigationNodes: number[];
-  /** Nodes que referenciam as listas de mitigacao fora do formato canonico. */
+  /** Node 1/2 ocupado fora do formato do contrato. */
   partialNodes: PolicyMitigationPartialNode[];
-  /** Par fisico quando existe EXATAMENTE um par completo e nada suspeito. */
+  /** Par fisico quando os dois nodes reservados estao exatamente no contrato. */
   pair: { bogonNode: number; mitigationNode: number } | null;
   detail: string;
 }
 
+/**
+ * Contrato IPv4 definitivo: apenas os nodes 1 e 2 sao reservados. Nodes
+ * permanentes (10, 1000, ...) sao ignorados aqui — nao sao propriedade da
+ * mitigacao e nao entram como par.
+ */
 export interface PolicyMitigationInspectionInput {
   policyName: string;
   readBack: string;
-  /** RTs de mitigacao do escopo (normalmente uma por profile). */
+  /** RTs de mitigacao do escopo; fora de 268568:660 o node 2 e divergente. */
   rts: readonly string[];
   labels?: { bogonPrefixList: string; targetPrefixList: string };
-  /**
-   * Nodes NORMAIS do cliente (o baseline de onde os atributos sao derivados).
-   * Eles referenciam a prefix-list autorizada e podem ate carregar a RT de
-   * mitigacao — nunca sao propriedade temporaria e nunca entram como par.
-   */
-  baselineNodes?: readonly number[];
 }
 
 export function inspectPolicyMitigation(
@@ -83,56 +80,45 @@ export function inspectPolicyMitigation(
     };
   }
 
-  const rts = new Set(input.rts.filter((rt) => rt.length > 0));
-  const aglink = input.policyName === AGLINK_BGP_PLAN.policy;
-  if (aglink && !aglinkBaselineIntact(input.readBack))
-    partialNodes.push({
-      node: AGLINK_BGP_PLAN.baselineNode,
-      action: 'permit',
-      reason: 'AGLINK baseline divergente',
-    });
-  // Nodes normais do cliente (baseline). Vazio/ausente = usa o baseline
-  // historico da policy de referencia; o cliente continua sendo pulado para
-  // nunca ser classificado como propriedade temporaria da mitigacao.
-  const baselineNodes = new Set<number>(
-    input.baselineNodes && input.baselineNodes.length > 0
-      ? input.baselineNodes
-      : aglink
-        ? [AGLINK_BGP_PLAN.baselineNode]
-        : [],
+  // Nodes 1/2 sao reservados. Fora deles, so a ASSINATURA do contrato antigo
+  // (if-match da lista alvo + RT de mitigacao no mesmo node) denuncia um par
+  // legado que nao pode coexistir com o novo — RT660 ou BOGONS isolados em node
+  // permanente do cliente nao provam ownership e sao ignorados.
+  const rt = input.rts[0] ?? '268568:660';
+  const exact = exactMitigationNodes(input.readBack, input.policyName);
+  const outsideBogon = nodes.filter(
+    (n) =>
+      n.node !== 1 &&
+      n.action === 'deny' &&
+      n.ifMatchIpPrefix.length === 1 &&
+      n.ifMatchIpPrefix[0] === labels.bogonPrefixList,
   );
+  const outsideMitigation = nodes.filter(
+    (n) =>
+      n.node !== 2 &&
+      ((n.action === 'permit' &&
+        n.ifMatchIpPrefix.length === 0 &&
+        n.routeTargets.length === 1 &&
+        n.routeTargets[0] === rt) ||
+        // forma legada: lista alvo + RT de mitigacao no mesmo node
+        (n.ifMatchIpPrefix.includes(labels.targetPrefixList) && n.routeTargets.includes(rt))),
+  );
+  // Um BOGONS isolado em node permanente do cliente (ex.: LIVINET node 5) e
+  // legitimo; o que nao pode existir e o PAR completo fora de 1/2.
+  const legacyPairOutside =
+    outsideBogon.length > 0 && outsideMitigation.length > 0
+      ? [...outsideBogon, ...outsideMitigation]
+      : [];
   for (const node of nodes) {
-    if (baselineNodes.has(node.node)) continue; // node normal do cliente, nunca temporario
-    const refsBogon = node.ifMatchIpPrefix.includes(labels.bogonPrefixList);
-    const refsTarget =
-      node.ifMatchIpPrefix.includes(labels.targetPrefixList) ||
-      (aglink && node.ifMatchIpPrefix.includes(DEFAULT_TARGET_PREFIX_LIST));
-    // Node normal de outra funcionalidade: nao e mitigacao.
-    if (!refsBogon && !refsTarget) continue;
-    const matchingRts = node.routeTargets.filter((rt) => rts.has(rt));
-    if (aglink && refsTarget && !aglinkActivationIntact(input.readBack, node.node)) {
-      partialNodes.push({
-        node: node.node,
-        action: node.action,
-        reason: 'AGLINK mitigation attributes divergent',
-      });
-      continue;
+    if (node.node === 1) {
+      if (exact.bogonOk) bogonNodes.push(1);
+      else partialNodes.push({node: 1, action: node.action, reason: 'reserved node occupied by noncanonical configuration'});
+    } else if (node.node === 2) {
+      if (exact.mitigationOk) mitigationNodes.push(2);
+      else partialNodes.push({node: 2, action: node.action, reason: 'reserved node occupied by noncanonical configuration'});
+    } else if (legacyPairOutside.some((entry) => entry.node === node.node)) {
+      partialNodes.push({node: node.node, action: node.action, reason: 'mitigation pair outside nodes 1/2'});
     }
-    if (refsBogon && !refsTarget && node.action === 'deny') {
-      bogonNodes.push(node.node);
-      continue;
-    }
-    if (refsTarget && !refsBogon && node.action === 'permit' && matchingRts.length > 0) {
-      mitigationNodes.push(node.node);
-      continue;
-    }
-    const parts: string[] = [`${node.action} node ${node.node}`];
-    if (refsBogon) parts.push(`if-match ${labels.bogonPrefixList}`);
-    if (refsTarget) {
-      parts.push(`if-match ${labels.targetPrefixList}`);
-      if (matchingRts.length === 0) parts.push('sem RT de mitigacao');
-    }
-    partialNodes.push({ node: node.node, action: node.action, reason: parts.join(' + ') });
   }
 
   const sortedBogon = [...bogonNodes].sort((left, right) => left - right);
@@ -173,7 +159,7 @@ export function inspectPolicyMitigation(
       mitigationNodes: sortedMitigation,
       partialNodes,
       pair,
-      detail: `par de mitigacao ativo: deny node ${pair.bogonNode} (${labels.bogonPrefixList}) + permit node ${pair.mitigationNode} (${labels.targetPrefixList} + RT)`,
+      detail: `par de mitigacao ativo: deny node ${pair.bogonNode} (${labels.bogonPrefixList}) + permit node ${pair.mitigationNode} (permit irrestrito + RT exclusiva)`,
     };
   }
 

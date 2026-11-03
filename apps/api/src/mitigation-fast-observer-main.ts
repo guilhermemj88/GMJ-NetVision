@@ -97,12 +97,13 @@ async function main(): Promise<void> {
     listTargets: () =>
       listFastTrafficTargets({
         profileIds: config.profileIds,
+        observeAllIpv4: config.observeAllIpv4 ?? false,
         telemetryProfileIds: config.telemetryProfileIds,
         allowedDeviceIds: allowed,
         hosts,
         listProfiles: async () =>
           (await source.bgpMitigationProfile.findMany({
-            where: { id: { in: config.profileIds } },
+            where: config.observeAllIpv4 ? { addressFamily: 'IPV4' } : { id: { in: config.profileIds } },
           })) as MitigationProfileRecord[],
         direction: (p) =>
           p.autoTrafficDirection === 'TX'

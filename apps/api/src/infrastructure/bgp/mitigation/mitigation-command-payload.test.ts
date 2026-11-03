@@ -259,8 +259,10 @@ describe('payload OUTBOUND da mitigacao (lane 1: NetVision -> n8n)', () => {
     expect(scenario.executor).toBeInstanceOf(MockMitigationExecutor);
     expect(scenario.executor.calls).toContain('route-policy PL-HORIZONTES_IPv4-IN deny node 1');
     expect(scenario.executor.calls).toContain(' if-match ip-prefix BOGONS');
+    // Node 2 e permit irrestrito: a unica clausula aplicada e a RT exclusiva.
     expect(scenario.executor.calls).toContain('route-policy PL-HORIZONTES_IPv4-IN permit node 2');
-    expect(scenario.executor.calls).toContain(' if-match ip-prefix PREFIX8to24');
+    expect(scenario.executor.calls).toContain(' apply extcommunity rt 268568:660');
+    expect(scenario.executor.calls).not.toContain(' if-match ip-prefix PREFIX8to24');
     // E o read-back e sempre feito apos a acao.
     expect(scenario.executor.calls).toContain('display route-policy PL-HORIZONTES_IPv4-IN');
   });

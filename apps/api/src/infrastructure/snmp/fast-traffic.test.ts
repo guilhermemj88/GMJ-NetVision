@@ -195,18 +195,18 @@ describe('bounded independent scheduler', () => {
       },
     };
   }
-  it('normal 20s changes to 10s from first high observation', async () => {
+  it('first high observation marks SUSPECTED_ATTACK and keeps the 10s cadence', async () => {
     const h = setup();
     await h.p.runDue();
     await h.p.drain();
     h.high();
-    vi.setSystemTime(120000);
+    vi.setSystemTime(110000);
     await h.p.runDue();
     await h.p.drain();
     expect(h.p.status().entries[0]!.state).toBe('SUSPECTED_ATTACK');
-    expect(h.p.status().entries[0]!.nextMeasurementAt).toBe(new Date(130000).toISOString());
+    expect(h.p.status().entries[0]!.nextMeasurementAt).toBe(new Date(120000).toISOString());
     expect(h.p.status().entries[0]!.contractedPercent.p).toBeGreaterThan(100);
-    vi.setSystemTime(130000);
+    vi.setSystemTime(120000);
     await h.p.runDue();
     await h.p.drain();
     expect(h.reader.read).toHaveBeenCalledTimes(3);
@@ -229,17 +229,17 @@ describe('bounded independent scheduler', () => {
     const h = setup();
     await h.p.runDue();
     await h.p.drain();
-    vi.setSystemTime(120000);
+    vi.setSystemTime(110000);
     await h.p.runDue();
     await h.p.drain();
     expect(h.p.isAvailable('i')).toBe(true);
-    vi.setSystemTime(140000);
+    vi.setSystemTime(120000);
     h.reader.read.mockRejectedValueOnce(new Error('timeout secret-not-logged'));
     await h.p.runDue();
     await h.p.drain();
     expect(h.p.isAvailable('i')).toBe(false);
     expect(h.store.rows).toHaveLength(2);
-    vi.setSystemTime(160000);
+    vi.setSystemTime(130000);
     await h.p.runDue();
     await h.p.drain();
     expect(h.store.rows.at(-1)!.quality).toBe('BASELINE');

@@ -8,13 +8,16 @@ import { captureMitigationBaseline, type MitigationBaselineStore } from './mitig
 import { testDurableBaselineStore } from './mitigation-test-support';
 
 /**
- * Correções da auditoria do Claude (fail-closed no preflight).
+ * Correções da auditoria (fail-closed no preflight) alinhadas ao contrato IPv4
+ * definitivo.
  *
  * Regras travadas aqui:
- *  - sem baseline derivavel nao existe ACTIVATE  -> MITIGATION_BASELINE_NOT_DERIVABLE
- *  - baseline cuja estrutura nao reproduzimos    -> MITIGATION_BASELINE_UNSAFE
+ *  - o contrato NAO depende de baseline derivavel nem copia atributos de nodes
+ *    permanentes: node 2 = permit irrestrito + RT 268568:660
+ *  - a forma do baseline do cliente nao reprova o ACTIVATE
  *  - node 1/2 ocupados seguem bloqueados
- *  - preview e escrita sao exatamente os mesmos comandos
+ *  - preview e escrita sao exatamente os mesmos comandos (lista canonica)
+ *  - o registro DURAVEL e a unica evidencia usada pelo REMOVE
  */
 
 const DEVICE_ID = 'host-f1a';
@@ -110,8 +113,8 @@ const AGLINK_SIMPLE = [
 const check = (id: string, result: { checks: { id: string; ok: boolean; detail: string }[] }) =>
   result.checks.find((entry) => entry.id === id);
 
-describe('1) baseline ausente bloqueia', () => {
-  it('policy sem node que cobre os prefixos: MITIGATION_BASELINE_NOT_DERIVABLE e nada escrito', async () => {
+describe('1) baseline derivavel nao e pre-requisito do contrato', () => {
+  it('node 10 com outra prefix-list nao bloqueia e nada e copiado', async () => {
     const ssh = new FakeSsh(
       [
         `route-policy ${POLICY} permit node 10`,
@@ -120,147 +123,162 @@ describe('1) baseline ausente bloqueia', () => {
         `route-policy ${POLICY} deny node 1000`,
       ].join('\n'),
     );
-    const result = await executor(ssh).preflight(device(), { ...input });
-    expect(result.ok).toBe(false);
-    expect(check('preserved_attributes', result)?.detail).toContain(
-      'MITIGATION_BASELINE_NOT_DERIVABLE',
-    );
+    const result = await executor(ssh).preflight(device(), {
+      ...input,
+      expectedExistingNodes: [10, 1000],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.preservedClauses).toBeNull();
+    expect(result.baselineRecord?.nodes.map((entry) => entry.node)).toEqual([10, 1000]);
     expect(ssh.applied).toHaveLength(0);
   });
 
   it('policy totalmente vazia tambem bloqueia', async () => {
     const ssh = new FakeSsh('');
     const result = await executor(ssh).preflight(device(), { ...input });
+
     expect(result.ok).toBe(false);
-    expect(result.preservedClauses?.baselineNode).toBeNull();
+    expect(result.preservedClauses).toBeNull();
   });
 });
 
-describe('2-4) baseline nao reproduzivel bloqueia', () => {
-  it('2) if-match adicional no node original', async () => {
-    const ssh = new FakeSsh(
-      [
-        `route-policy ${POLICY} permit node 10`,
-        ' if-match ip-prefix PREFIX8to24',
-        ' if-match community-filter CLIENTE-X',
-        ' apply local-preference 1100',
-        `route-policy ${POLICY} deny node 1000`,
-      ].join('\n'),
-    );
-    const result = await executor(ssh).preflight(device(), { ...input });
-    expect(result.ok).toBe(false);
-    const detail = check('preserved_attributes', result)?.detail ?? '';
-    expect(detail).toContain('MITIGATION_BASELINE_UNSAFE');
-    expect(detail).toContain('if-match adicional');
-    expect(ssh.applied).toHaveLength(0);
-  });
+const CANONICAL_ACTIVATE_COMMANDS = [
+  'system-view',
+  `route-policy ${POLICY} deny node 1`,
+  ' if-match ip-prefix BOGONS',
+  `route-policy ${POLICY} permit node 2`,
+  ' apply extcommunity rt 268568:660',
+  'commit',
+];
 
-  it('3) goto no node original', async () => {
-    const ssh = new FakeSsh(
-      [
-        `route-policy ${POLICY} permit node 10`,
-        ' if-match ip-prefix PREFIX8to24',
-        ' goto 50',
-        `route-policy ${POLICY} deny node 1000`,
-      ].join('\n'),
-    );
-    const result = await executor(ssh).preflight(device(), { ...input });
-    expect(result.ok).toBe(false);
-    expect(check('preserved_attributes', result)?.detail).toContain('goto');
-  });
+const BASELINE_SHAPES = [
+  {
+    nome: 'if-match adicional no node original',
+    expectedExistingNodes: [10, 1000],
+    readBack: [
+      `route-policy ${POLICY} permit node 10`,
+      ' if-match ip-prefix PREFIX8to24',
+      ' if-match community-filter CLIENTE-X',
+      ' apply local-preference 1100',
+      `route-policy ${POLICY} deny node 1000`,
+    ].join('\n'),
+  },
+  {
+    nome: 'goto no node original',
+    expectedExistingNodes: [10, 1000],
+    readBack: [
+      `route-policy ${POLICY} permit node 10`,
+      ' if-match ip-prefix PREFIX8to24',
+      ' goto 50',
+      `route-policy ${POLICY} deny node 1000`,
+    ].join('\n'),
+  },
+  {
+    nome: 'apply sem semantica reproduzivel',
+    expectedExistingNodes: [10, 1000],
+    readBack: [
+      `route-policy ${POLICY} permit node 10`,
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply traffic-index 7',
+      `route-policy ${POLICY} deny node 1000`,
+    ].join('\n'),
+  },
+  {
+    nome: 'node anterior catch-all',
+    expectedExistingNodes: [5, 10, 1000],
+    readBack: [
+      `route-policy ${POLICY} permit node 5`,
+      `route-policy ${POLICY} permit node 10`,
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply local-preference 1100',
+      `route-policy ${POLICY} deny node 1000`,
+    ].join('\n'),
+  },
+  {
+    nome: 'node anterior com a MESMA prefix-list',
+    expectedExistingNodes: [5, 10, 1000],
+    readBack: [
+      `route-policy ${POLICY} permit node 5`,
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply local-preference 200',
+      `route-policy ${POLICY} permit node 10`,
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply local-preference 1100',
+      `route-policy ${POLICY} deny node 1000`,
+    ].join('\n'),
+  },
+];
 
-  it('3b) apply sem semantica reproduzivel', async () => {
-    const ssh = new FakeSsh(
-      [
-        `route-policy ${POLICY} permit node 10`,
-        ' if-match ip-prefix PREFIX8to24',
-        ' apply traffic-index 7',
-        `route-policy ${POLICY} deny node 1000`,
-      ].join('\n'),
-    );
-    const result = await executor(ssh).preflight(device(), { ...input });
-    expect(result.ok).toBe(false);
-    expect(check('preserved_attributes', result)?.detail).toContain('sem semantica reproduzivel');
-  });
+describe('2-4) forma do baseline do cliente nao reprova o contrato fixo', () => {
+  it.each(BASELINE_SHAPES)(
+    '$nome: preflight aprova, nada e copiado e so os nodes 1/2 sao escritos',
+    async ({ readBack, expectedExistingNodes }) => {
+      const ssh = new FakeSsh(readBack);
+      const exec = executor(ssh);
+      const result = await exec.preflight(device(), {
+        ...input,
+        expectedExistingNodes,
+      });
 
-  it('4) node anterior catch-all pode capturar as rotas antes do baseline', async () => {
-    const ssh = new FakeSsh(
-      [
-        `route-policy ${POLICY} permit node 5`,
-        `route-policy ${POLICY} permit node 10`,
-        ' if-match ip-prefix PREFIX8to24',
-        ' apply local-preference 1100',
-        `route-policy ${POLICY} deny node 1000`,
-      ].join('\n'),
-    );
-    const result = await executor(ssh).preflight(device(), { ...input });
-    expect(result.ok).toBe(false);
-    expect(check('preserved_attributes', result)?.detail).toContain('pode capturar as rotas antes');
-    expect(ssh.applied).toHaveLength(0);
-  });
+      expect(result.ok).toBe(true);
+      expect(result.preservedClauses).toBeNull();
+      expect(result.checks.map((entry) => entry.id)).not.toContain('preserved_attributes');
 
-  it('4b) node anterior com a MESMA prefix-list vira o proprio baseline (nao bloqueia)', async () => {
-    const ssh = new FakeSsh(
-      [
-        `route-policy ${POLICY} permit node 5`,
-        ' if-match ip-prefix PREFIX8to24',
-        ' apply local-preference 200',
-        `route-policy ${POLICY} permit node 10`,
-        ' if-match ip-prefix PREFIX8to24',
-        ' apply local-preference 1100',
-        `route-policy ${POLICY} deny node 1000`,
-      ].join('\n'),
-    );
-    const result = await executor(ssh).preflight(device(), { ...input });
-    expect(result.preservedClauses).toMatchObject({ baselineNode: 5, safe: true });
-  });
+      await exec.activate(device(), {
+        ...input,
+        ...(result.baselineRecord ? { preflightBaseline: result.baselineRecord } : {}),
+      });
+
+      expect(ssh.applied).toHaveLength(1);
+      expect(ssh.applied[0]).toEqual(CANONICAL_ACTIVATE_COMMANDS);
+    },
+  );
 });
 
-describe('5) AGLINK simples continua aprovada', () => {
-  it('deriva LP e RT do baseline e aprova o preflight', async () => {
+describe('5) baseline simples continua aprovada', () => {
+  it('aprova o preflight e registra os nodes permanentes, sem derivar preserved', async () => {
     const ssh = new FakeSsh(AGLINK_SIMPLE);
     const result = await executor(ssh).preflight(device(), {
       ...input,
       expectedExistingNodes: [10, 1000],
     });
+
     expect(result.ok).toBe(true);
-    expect(result.preservedClauses).toMatchObject({
-      baselineNode: 10,
-      baselineMatch: 'PREFIX_LIST',
-      safe: true,
-      localPreference: 'apply local-preference 1100',
-      routeTargets: ['268568:140'],
-    });
-    expect(result.preservedClauses?.expectedClauses).toEqual([
-      'if-match ip-prefix PREFIX8to24',
-      'apply local-preference 1100',
-      'apply extcommunity rt 268568:140 rt 268568:660 additive',
-    ]);
+    expect(result.preservedClauses).toBeNull();
+    expect(result.baselineRecord?.nodes.map((entry) => entry.node)).toEqual([10, 1000]);
+    expect(ssh.applied).toHaveLength(0);
   });
 });
 
 describe('8) preview e escrita sao identicos', () => {
-  it('as mesmas preservadas geram os mesmos comandos no preview e na escrita', async () => {
+  it('a lista canonica do preview coincide com a escrita, sem preserved', async () => {
     const ssh = new FakeSsh(AGLINK_SIMPLE);
-    const result = await executor(ssh).preflight(device(), { ...input });
-    const preserved = result.preservedClauses!;
-    const preview = buildMitigationActivateCommands(
-      {
-        policyName: POLICY,
-        bogonNode: 1,
-        mitigationNode: 2,
-        rt: RT,
-        bogonPrefixList: 'BOGONS',
-        targetPrefixList: 'PREFIX8to24',
-      },
-      preserved,
-    );
-    await executor(ssh).activate(device(), { ...input, preservedClauses: preserved });
+    const exec = executor(ssh);
+    const result = await exec.preflight(device(), {
+      ...input,
+      expectedExistingNodes: [10, 1000],
+    });
+    const preview = buildMitigationActivateCommands({
+      policyName: POLICY,
+      bogonNode: 1,
+      mitigationNode: 2,
+      rt: RT,
+      bogonPrefixList: 'BOGONS',
+      targetPrefixList: 'PREFIX8to24',
+    });
+
+    await exec.activate(device(), {
+      ...input,
+      ...(result.baselineRecord ? { preflightBaseline: result.baselineRecord } : {}),
+    });
+
     expect(ssh.applied).toHaveLength(1);
     expect(ssh.applied[0]).toEqual(preview);
+    expect(preview).toEqual(CANONICAL_ACTIVATE_COMMANDS);
   });
 
-  it('a escrita SEM preserved (plano divergente) nunca coincide com o preview aprovado', () => {
+  it('o builder ignora preserved: a lista e a mesma com ou sem baseline', () => {
     const preserved = derivePreservedClauses(AGLINK_SIMPLE, POLICY, 'PREFIX8to24', RT);
     const plan = {
       policyName: POLICY,
@@ -270,21 +288,11 @@ describe('8) preview e escrita sao identicos', () => {
       bogonPrefixList: 'BOGONS',
       targetPrefixList: 'PREFIX8to24',
     };
-    // O builder e fail-closed: sem `preserved` NAO gera comandos, entao uma
-    // escrita divergente do preview e impossivel em vez de silenciosa.
-    expect(() => buildMitigationActivateCommands(plan)).toThrow(
-      /MITIGATION_BASELINE_NOT_DERIVABLE/,
+
+    expect(buildMitigationActivateCommands(plan, preserved)).toEqual(
+      buildMitigationActivateCommands(plan),
     );
-    expect(buildMitigationActivateCommands(plan, preserved)).toEqual([
-      'system-view',
-      `route-policy ${POLICY} deny node 1`,
-      ' if-match ip-prefix BOGONS',
-      `route-policy ${POLICY} permit node 2`,
-      ' if-match ip-prefix PREFIX8to24',
-      ' apply local-preference 1100',
-      ' apply extcommunity rt 268568:140 rt 268568:660 additive',
-      'commit',
-    ]);
+    expect(buildMitigationActivateCommands(plan)).toEqual(CANONICAL_ACTIVATE_COMMANDS);
   });
 });
 
@@ -339,9 +347,7 @@ describe('10) REMOVE nao sofre regressao', () => {
     `route-policy ${POLICY} deny node 1`,
     ' if-match ip-prefix BOGONS',
     `route-policy ${POLICY} permit node 2`,
-    ' if-match ip-prefix PREFIX8to24',
-    ' apply local-preference 1100',
-    ' apply extcommunity rt 268568:140 rt 268568:660 additive',
+    ' apply extcommunity rt 268568:660',
     AGLINK_SIMPLE,
   ].join('\n');
 
@@ -398,9 +404,7 @@ describe('10) REMOVE nao sofre regressao', () => {
         `route-policy ${POLICY} deny node 1`,
         ' if-match ip-prefix BOGONS',
         `route-policy ${POLICY} permit node 2`,
-        ' if-match ip-prefix PREFIX8to24',
-        ' apply local-preference 1100',
-        ' apply extcommunity rt 268568:140 rt 268568:660 additive',
+        ' apply extcommunity rt 268568:660',
       ].join('\n'),
     );
     const exec = await executorWithBaseline(ssh, ACTIVATED_WITH_BASELINE);
@@ -417,26 +421,27 @@ describe('10) REMOVE nao sofre regressao', () => {
         `route-policy ${POLICY} deny node 3`,
         ' if-match ip-prefix BOGONS',
         `route-policy ${POLICY} permit node 4`,
-        ' if-match ip-prefix PREFIX8to24',
-        ' apply extcommunity rt 268568:660 additive',
+        ' apply extcommunity rt 268568:660',
       ].join('\n'),
     );
     const exec = await executorWithBaseline(ssh, ACTIVATED_WITH_BASELINE);
     const result = await exec.preflight(device(), { ...input, mode: 'REMOVE' });
 
     expect(result.ok).toBe(false);
-    expect(check('policy_mitigation_scope', result)?.ok ?? false).toBe(false);
+    // Nodes fora do par reservado (1/2) nao sao propriedade da mitigacao: o
+    // bloqueio vem do registro DURAVEL (nodes 3/4 nao existiam no ACTIVATE).
+    expect(check('policy_baseline_record', result)?.ok ?? false).toBe(false);
+    expect(check('policy_baseline_record', result)?.detail).toContain('nao existia no ACTIVATE');
     expect(ssh.applied).toHaveLength(0);
   });
 
-  it('node com a prefix-list e COM a RT de mitigacao nunca vira baseline (ambiguidade)', async () => {
+  it('node permanente com a RT de mitigacao nunca substitui o registro duravel', async () => {
     const ssh = new FakeSsh(
       [
         `route-policy ${POLICY} deny node 1`,
         ' if-match ip-prefix BOGONS',
         `route-policy ${POLICY} permit node 2`,
-        ' if-match ip-prefix PREFIX8to24',
-        ' apply extcommunity rt 268568:660 additive',
+        ' apply extcommunity rt 268568:660',
         `route-policy ${POLICY} permit node 10`,
         ' if-match ip-prefix PREFIX8to24',
         ' apply extcommunity rt 268568:660 additive',

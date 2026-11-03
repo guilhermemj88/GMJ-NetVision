@@ -53,8 +53,7 @@ const READBACK_ACTIVE = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 2`,
-  ' if-match ip-prefix PREFIX8to24',
-  ` apply extcommunity rt ${RT} additive`,
+  ` apply extcommunity rt ${RT}`,
   `route-policy ${POLICY} permit node 10`,
 ].join('\n');
 const READBACK_NORMAL = `route-policy ${POLICY} permit node 10`;
@@ -495,7 +494,8 @@ describe('falha depois de uma escrita real possivel', () => {
     const h = buildHarness();
     const p1 = await h.seed('if-3066');
     const p2 = await h.seed('if-3065');
-    // P2 tinha um plano DIFERENTE; o par aplicado no equipamento foi o da P1.
+    // P2 carregava um plano LEGADO (5/6, contrato anterior sem realocacao):
+    // o par aplicado no equipamento e o unico do contrato, 1/2.
     await h.repository.upsertRuntime(p2.id, {
       plannedBogonNode: 5,
       plannedMitigationNode: 6,

@@ -1,5 +1,5 @@
-import { bgpPlanLabels } from './aglink-bgp-plan';
-import { buildRouteTargetLine, type PreservedClauses } from './mitigation-policy-clauses';
+import { assertIpv4MitigationContract } from './mitigation-contract';
+import { type PreservedClauses } from './mitigation-policy-clauses';
 
 /**
  * Guarda estrutural da ESCrita de mitigacao.
@@ -65,62 +65,32 @@ function normalizePlan(plan: MitigationWritePlan): MitigationWritePlan {
     mitigationNode: assertSafeNode(plan.mitigationNode, 'mitigationNode'),
     rt: assertSafeRouteTarget(plan.rt),
     bogonPrefixList: assertSafePrefixListName(plan.bogonPrefixList, 'bogonPrefixList'),
-    targetPrefixList: assertSafePrefixListName(plan.targetPrefixList, 'targetPrefixList'),
+    targetPrefixList: plan.targetPrefixList,
   };
 }
 
-/**
- * Comandos canonicos do ACTIVATE (na mesma ordem do preview).
- *
- * MECANISMO UNICO para qualquer policy IN:
- *   node 1 -> deny   + if-match <bogonPrefixList>
- *   node 2 -> permit + if-match <targetPrefixList>
- *             + atributos NORMAIS do cliente (derivados do baseline fisico)
- *             + `apply extcommunity rt <RTs normais> rt <RT mitigacao> additive`
- *
- * `preserved` vem do proprio equipamento (`derivePreservedClauses`). Sem ele o
- * builder NAO gera comandos: um node de mitigacao apenas com a RT poderia
- * aceitar prefixos que o node normal do cliente restringia.
- */
+/** Exact IPv4 plan. Unrestricted permit after BOGONS is operator-approved. */
 export function buildMitigationActivateCommands(
   plan: MitigationWritePlan,
-  preserved?: PreservedClauses,
+  _preserved?: PreservedClauses,
 ): string[] {
-  const safe = normalizePlan(bgpPlanLabels(plan.policyName, plan));
-  assertDerivedBaseline(preserved);
+  const safe = normalizePlan(plan);
+  assertIpv4MitigationContract(safe);
   return [
     'system-view',
-    `route-policy ${safe.policyName} deny node ${safe.bogonNode}`,
-    ` if-match ip-prefix ${safe.bogonPrefixList}`,
-    `route-policy ${safe.policyName} permit node ${safe.mitigationNode}`,
-    ` if-match ip-prefix ${safe.targetPrefixList}`,
-    ...preserved.otherApplies.map((clause) => ` ${clause}`),
-    ...(preserved.localPreference ? [` ${preserved.localPreference}`] : []),
-    ` ${buildRouteTargetLine(preserved.routeTargets, safe.rt)}`,
+    `route-policy ${safe.policyName} deny node 1`,
+    ' if-match ip-prefix BOGONS',
+    `route-policy ${safe.policyName} permit node 2`,
+    ' apply extcommunity rt 268568:660',
     'commit',
   ];
-}
-
-/**
- * Defesa em profundidade (auditoria B-final): o builder e o ULTIMO ponto antes
- * de qualquer escrita — inclusive no executor MOCK — e recusa gerar a lista
- * quando o baseline nao foi derivado ou quando a derivacao e insegura.
- */
-function assertDerivedBaseline(
-  preserved?: PreservedClauses,
-): asserts preserved is PreservedClauses {
-  if (!preserved || preserved.baselineNode === null) {
-    throw new Error('MITIGATION_BASELINE_NOT_DERIVABLE');
-  }
-  if (!preserved.safe) {
-    throw new Error(`MITIGATION_BASELINE_UNSAFE: ${preserved.unsafeReasons.join('; ')}`);
-  }
 }
 
 /** Comandos canonicos do REMOVE (retirada dos DOIS nodes + commit). */
 export function buildMitigationRemovalCommands(
   plan: Pick<MitigationWritePlan, 'policyName' | 'bogonNode' | 'mitigationNode'>,
 ): string[] {
+  assertIpv4MitigationContract(plan);
   const policyName = assertSafePolicyName(plan.policyName, 'policy');
   const bogonNode = assertSafeNode(plan.bogonNode, 'bogonNode');
   const mitigationNode = assertSafeNode(plan.mitigationNode, 'mitigationNode');

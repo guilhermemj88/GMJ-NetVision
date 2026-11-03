@@ -51,8 +51,7 @@ const READBACK_ACTIVE = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 2`,
-  ' if-match ip-prefix PREFIX8to24',
-  ' apply extcommunity rt 268568:660 additive',
+  ' apply extcommunity rt 268568:660',
   `route-policy ${POLICY} permit node 10`,
 ].join('\n');
 
@@ -428,7 +427,7 @@ describe('exclusao permanente de peers da mitigacao (Fase 13)', () => {
       profileId,
     });
     expect(result.status).toBe('WOULD_ACTIVATE');
-    expect(result.commandPreview).toHaveLength(7);
+    expect(result.commandPreview).toHaveLength(6);
     expect(live.activateCalls).toBe(0);
   });
 });

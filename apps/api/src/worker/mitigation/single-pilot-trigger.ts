@@ -25,6 +25,13 @@ export const SINGLE_AUTO_PILOT = Object.freeze({
 
 export function assertSinglePilotAuthorization(c: LifecycleConfig): void {
   if (!c.enabled) return;
+  if (c.expansionEnabled === true) {
+    if (c.installation !== 'IMPLANTAR' || !c.profiles.length || !c.devices.length ||
+        new Set(c.profiles).size !== c.profiles.length || c.profiles.length > 128 ||
+        !Number.isInteger(c.maxActive) || c.maxActive < 1 || c.maxActive > 10)
+      throw Error('AUTO_EXPANSION_EXPLICIT_AUTHORIZATION_REQUIRED');
+    return;
+  }
   if (
     c.installation !== 'IMPLANTAR' ||
     c.profiles.length !== 1 ||
@@ -124,6 +131,7 @@ export function pilotEvidenceValid(
   sample: MitigationTrafficSample | null,
   evidence: { sampleAt: string; continuityKey: string } | undefined,
   now: number,
+  thresholdBps: bigint = SINGLE_AUTO_PILOT.thresholdBps,
 ): boolean {
   if (!sample || !evidence || !sample.occurredAt || !sample.rateStartAt) return false;
   const at = +sample.occurredAt,
@@ -138,7 +146,7 @@ export function pilotEvidenceValid(
     previous < at &&
     at - previous <= 15_000 &&
     sample.continuityKey === evidence.continuityKey &&
-    sample.bps > SINGLE_AUTO_PILOT.thresholdBps &&
+    sample.bps > thresholdBps &&
     (at === trigger || previous === trigger)
   );
 }
@@ -151,6 +159,8 @@ export function nextPilotSequence(
   now: number,
   maxAge: number,
   maxGap: number,
+  thresholdBps: bigint = SINGLE_AUTO_PILOT.thresholdBps,
+  triggerSamples = 3,
 ): {
   sequence: PilotSequence | null;
   reason:
@@ -189,7 +199,7 @@ export function nextPilotSequence(
     old.key === sample.continuityKey &&
     start === old.at &&
     at - old.at <= maxGap;
-  const over = sample.bps > SINGLE_AUTO_PILOT.thresholdBps ? (continuous ? old.over : 0) + 1 : 0;
+  const over = sample.bps > thresholdBps ? (continuous ? old.over : 0) + 1 : 0;
   const sequence = {
     key: sample.continuityKey,
     revision,
@@ -200,6 +210,6 @@ export function nextPilotSequence(
   };
   return {
     sequence,
-    reason: over === 0 ? 'THRESHOLD_NOT_EXCEEDED' : over < 3 ? 'SAMPLES_INSUFFICIENT' : null,
+    reason: over === 0 ? 'THRESHOLD_NOT_EXCEEDED' : over < triggerSamples ? 'SAMPLES_INSUFFICIENT' : null,
   };
 }

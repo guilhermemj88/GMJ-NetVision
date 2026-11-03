@@ -13,7 +13,7 @@ export function deriveFastTraffic(
   current: FastCounterReading,
   previous: FastCounterReading | undefined,
   generation: string,
-  maxIntervalMs = 45_000,
+  maxIntervalMs = 15_000,
   maxRequestMs = 2_500,
 ): FastTrafficObservation {
   const intervalMs = previous

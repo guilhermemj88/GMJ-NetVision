@@ -11,23 +11,8 @@ export const AGLINK_BGP_PLAN = Object.freeze({
   localPreference: 1100,
   prefixDefinition:
     'ip ip-prefix AGLINK-BLOCO-TODO-23 index 10 permit 167.250.126.0 23 greater-equal 23 less-equal 24',
-  /**
-   * Contrato definitivo: o node de mitigacao PRESERVA o roteamento normal.
-   *
-   * O VRP termina a route-policy no primeiro node que casa, entao o node 2
-   * precisa repor sozinho o que o node 10 fazia (LP 1100 + RT 268568:140) e
-   * apenas ACRESCENTAR a RT de mitigacao. `additive` mantem intactas as
-   * extended communities ja recebidas do peer (incluindo RT 268568:330).
-   *
-   * Forma fisica validada no BHE-VTA-F1A (VRP 8.220): o equipamento nao usa
-   * duas linhas `apply extcommunity` no mesmo node (0 ocorrencias) e usa a
-   * forma multi-RT em uma unica instrucao (`apply extcommunity rt A rt B
-   * additive`, 1 ocorrencia real).
-   */
-  activationApplyClauses: [
-    'apply local-preference 1100',
-    'apply extcommunity rt 268568:140 rt 268568:660 additive',
-  ] as const,
+  /** Normal attributes below remain baseline evidence only. Never copied to node 2. */
+  activationApplyClauses: ['apply extcommunity rt 268568:660'] as const,
 });
 
 export function bgpPlanLabels<T extends { targetPrefixList: string }>(
@@ -93,7 +78,6 @@ export function aglinkActivationIntact(text: string, node: number): boolean {
   return (
     aglinkBaselineIntact(text) &&
     equalClauses(clauses(text, AGLINK_BGP_PLAN.policy, node), [
-      'if-match ip-prefix AGLINK-BLOCO-TODO-23',
       ...AGLINK_BGP_PLAN.activationApplyClauses,
     ])
   );

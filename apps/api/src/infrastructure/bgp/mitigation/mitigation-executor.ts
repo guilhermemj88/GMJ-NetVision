@@ -1,11 +1,10 @@
 import { parseHuaweiRoutePolicyNodesLenient } from './huawei-bgp-policy-parser';
 import { AGLINK_BGP_PLAN, aglinkBaselineIntact, bgpPlanLabels } from './aglink-bgp-plan';
 import { DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
-import {
-  equalClauses,
-  policyNodeClauses,
-  type PreservedClauses,
-} from './mitigation-policy-clauses';
+import type { PreservedClauses } from './mitigation-policy-clauses';
+import type { MitigationBaselineRecord } from './mitigation-baseline-record';
+import { exactMitigationNodes } from './mitigation-contract';
+import { buildMitigationActivateCommands } from './mitigation-write-guard';
 
 // Porta de execucao do motor de mitigacao.
 //
@@ -35,6 +34,7 @@ export interface MitigationActivationInput {
    * (derivados do baseline fisico pelo mesmo mecanismo para toda policy).
    */
   preservedClauses?: PreservedClauses;
+  preflightBaseline?: MitigationBaselineRecord;
 }
 
 export interface MitigationRemovalInput {
@@ -158,22 +158,14 @@ export class MockMitigationExecutor implements MitigationExecutor {
         lines.push(` if-match ip-prefix ${prefixList}`);
       }
       for (const rt of conteudo.routeTargets) {
-        lines.push(` apply extcommunity rt ${rt} additive`);
+        lines.push(` apply extcommunity rt ${rt}`);
       }
     }
     return lines.length ? `${lines.join('\n')}\n` : '';
   }
 
   async activate(input: MitigationActivationInput): Promise<MitigationExecutorResult> {
-    const commands = [
-      'system-view',
-      `route-policy ${input.policyName} deny node ${input.bogonNode}`,
-      ` if-match ip-prefix ${input.bogonPrefixList}`,
-      `route-policy ${input.policyName} permit node ${input.mitigationNode}`,
-      ` if-match ip-prefix ${input.targetPrefixList}`,
-      ` apply extcommunity rt ${input.rt} additive`,
-      'commit',
-    ];
+    const commands = buildMitigationActivateCommands(input);
     this.calls.push(...commands);
     const policy = this.policy(input.policyName);
     policy.nodes.set(input.bogonNode, {
@@ -183,7 +175,7 @@ export class MockMitigationExecutor implements MitigationExecutor {
     });
     policy.nodes.set(input.mitigationNode, {
       action: 'permit',
-      ifMatchIpPrefix: [input.targetPrefixList],
+      ifMatchIpPrefix: [],
       routeTargets: [input.rt],
     });
     return { output: 'MOCK: par de nodes aplicado em memoria' };
@@ -235,7 +227,7 @@ export function verifyActivation(
   pair: { bogonNode: number; mitigationNode: number },
   rt: string,
   labels: MitigationPairLabelsInput,
-  preserved?: PreservedClauses,
+  _preserved?: PreservedClauses,
 ): MitigationPairVerification {
   labels = bgpPlanLabels(policyName, labels);
   // Read-back real vem do `display route-policy` (formato display); o parser
@@ -244,62 +236,27 @@ export function verifyActivation(
   const bogon = nodes.find((entry) => entry.node === pair.bogonNode);
   const mitigation = nodes.find((entry) => entry.node === pair.mitigationNode);
 
-  const bogonOk =
-    Boolean(bogon) &&
-    bogon?.action === 'deny' &&
-    (bogon?.ifMatchIpPrefix ?? []).includes(labels.bogonPrefixList);
-  const mitigationOk =
-    Boolean(mitigation) &&
-    mitigation?.action === 'permit' &&
-    (mitigation?.ifMatchIpPrefix ?? []).includes(labels.targetPrefixList) &&
-    (mitigation?.routeTargets ?? []).includes(rt);
-
+  const exact = exactMitigationNodes(readBack, policyName);
+  const contractOk = pair.bogonNode === 1 && pair.mitigationNode === 2 && rt === '268568:660' && labels.bogonPrefixList === 'BOGONS';
+  const bogonOk = contractOk && exact.bogonOk;
+  const mitigationOk = contractOk && exact.mitigationOk;
   const detalhes: string[] = [];
-  if (!bogon) detalhes.push(`node BOGONS ${pair.bogonNode} ausente`);
-  else if (bogon.action !== 'deny') detalhes.push(`node BOGONS ${pair.bogonNode} nao e deny`);
-  else if (!bogon.ifMatchIpPrefix.includes(labels.bogonPrefixList)) {
-    detalhes.push(`node BOGONS ${pair.bogonNode} sem if-match ip-prefix ${labels.bogonPrefixList}`);
-  }
-  if (!mitigation) detalhes.push(`node de mitigacao ${pair.mitigationNode} ausente`);
-  else if (mitigation.action !== 'permit') {
-    detalhes.push(`node de mitigacao ${pair.mitigationNode} nao e permit`);
-  } else if (!mitigation.ifMatchIpPrefix.includes(labels.targetPrefixList)) {
-    detalhes.push(
-      `node de mitigacao ${pair.mitigationNode} sem if-match ip-prefix ${labels.targetPrefixList}`,
-    );
-  } else if (!mitigation.routeTargets.includes(rt)) {
-    detalhes.push(`node de mitigacao ${pair.mitigationNode} sem a RT ${rt}`);
-  }
-
-  // Atributos NORMAIS preservados: quando o baseline fisico foi derivado, o node
-  // de mitigacao precisa ter EXATAMENTE o conjunto esperado (prefix-list alvo +
-  // atributos do cliente + RT de mitigacao com additive). Mecanismo unico: vale
-  // para qualquer policy, sem tratamento por fornecedor.
-  const preservedOk =
-    preserved === undefined ||
-    equalClauses(
-      policyNodeClauses(readBack, policyName, pair.mitigationNode)?.clauses ?? null,
-      preserved.expectedClauses,
-    );
-  if (!preservedOk) {
-    detalhes.push(
-      `node de mitigacao ${pair.mitigationNode} nao preserva os atributos normais do cliente`,
-    );
-  }
+  if (!bogon || !bogonOk) detalhes.push('node 1 divergente: exige deny + somente if-match ip-prefix BOGONS');
+  if (!mitigation || !mitigationOk) detalhes.push('node 2 divergente: exige permit + somente apply extcommunity rt 268568:660, sem additive');
 
   // Baseline AGLINK (compatibilidade): a policy de referencia continua exigindo
   // node 10 intacto. Nao e um caminho separado de escrita — e a mesma checagem
   // de "outros nodes nao foram alterados".
   const semanticOk = policyName !== AGLINK_BGP_PLAN.policy || aglinkBaselineIntact(readBack);
   if (!semanticOk) detalhes.push('AGLINK: baseline (node 10/1000) divergente');
-  const verified = bogonOk && mitigationOk && preservedOk && semanticOk;
+  const verified = bogonOk && mitigationOk && semanticOk;
   return {
     verified,
     bogonOk,
     mitigationOk,
     partial: (bogonOk || mitigationOk) && !verified,
     summary: verified
-      ? `par ativo: deny node ${pair.bogonNode} (${labels.bogonPrefixList}) + permit node ${pair.mitigationNode} (${labels.targetPrefixList} + atributos preservados + RT ${rt})`
+      ? `par ativo: deny node ${pair.bogonNode} (${labels.bogonPrefixList}) + permit node ${pair.mitigationNode} (permit irrestrito + RT exclusiva ${rt})`
       : detalhes.join('; '),
   };
 }

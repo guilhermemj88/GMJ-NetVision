@@ -15,7 +15,6 @@ import { effectiveBandwidthBps } from './bandwidth-parser';
 import { interfaceMitigationScope } from './mitigation-scope';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import { SimulationCommandExecutor } from './simulation-command-executor';
-import { derivePreservedClauses } from './mitigation-policy-clauses';
 import type { MitigationNodePair } from './mitigation-planner';
 import type {
   MitigationNotification,
@@ -358,7 +357,8 @@ type MitigationCommandBase = Omit<
  * a primeira resposta, sem tocar no equipamento de novo.
  */
 export class MitigationCommandService {
-  private readonly processed = new Map<string, MitigationCommandResult>();
+  private readonly processed = new Map<string, {identity: string; result: MitigationCommandResult}>();
+  private readonly pending = new Map<string, {identity: string; promise: Promise<MitigationCommandResult>}>();
   private readonly now: () => Date;
   private readonly preview = new SimulationCommandExecutor();
   private readonly labels: { bogonPrefixList: string; targetPrefixList: string };
@@ -411,15 +411,23 @@ export class MitigationCommandService {
   async execute(input: MitigationCommandInput): Promise<MitigationCommandResult> {
     // Never serve an old idempotency receipt as authorization for AUTO REMOVE.
     if (input.action === 'REMOVE' && isAutomaticCommand(input)) return this.run(input);
-    const mutating = MUTATING_ACTIONS.includes(input.action);
-    if (mutating) {
-      const previous = this.processed.get(input.requestId);
-      if (previous) return { ...previous, idempotent: true };
+    if (!MUTATING_ACTIONS.includes(input.action)) return this.run(input);
+    const identity = JSON.stringify([input.profileId, input.action, input.origin ?? 'MANUAL', isAutomaticCommand(input), input.autoOperationId ?? null]);
+    const previous = this.processed.get(input.requestId);
+    const pending = this.pending.get(input.requestId);
+    if ((previous && previous.identity !== identity) || (pending && pending.identity !== identity)) {
+      const result = previous?.result ?? await pending!.promise;
+      return {...result, requestId: input.requestId, action: input.action, profileId: input.profileId, ok: false, verified: false, idempotent: false, status: 'IDEMPOTENCY_CONFLICT', commandPreview: [], safeError: 'requestId already belongs to a different command; no write attempted'};
     }
-
-    const result = await this.run(input);
-    if (mutating && result.ok) this.processed.set(input.requestId, result);
-    return { ...result, idempotent: result.idempotent };
+    if (previous) return {...previous.result, idempotent: true};
+    if (pending) return {...await pending.promise, idempotent: true};
+    const promise = this.run(input);
+    this.pending.set(input.requestId, {identity, promise});
+    try {
+      const result = await promise;
+      if (result.ok) this.processed.set(input.requestId, {identity, result});
+      return result;
+    } finally { this.pending.delete(input.requestId); }
   }
 
   private async run(input: MitigationCommandInput): Promise<MitigationCommandResult> {
@@ -794,7 +802,7 @@ export class MitigationCommandService {
       rt: profile.mitigationRt,
       bogonPrefixList: this.labels.bogonPrefixList,
       targetPrefixList: this.labels.targetPrefixList,
-      ...(preflight?.preservedClauses ? { preservedClauses: preflight.preservedClauses } : {}),
+      ...(preflight?.baselineRecord ? { preflightBaseline: preflight.baselineRecord } : {}),
     };
     const removalInput: MitigationRemovalInput = {
       policyName: profile.policyName,
@@ -825,25 +833,8 @@ export class MitigationCommandService {
       };
     }
 
-    // MOCK: mesmo contrato do executor real — os atributos preservados vem do
-    // ESTADO DO "EQUIPAMENTO" simulado (baseline deterministico do estado
-    // inicial). Nunca inventamos clausulas para satisfazer o builder.
+    // The same exact contract is used for preview, fake and real transports.
     const liveDevice = live && host ? host : null;
-    if (activate && !liveDevice && !activationInput.preservedClauses) {
-      const simulatedReadBack = await this.read(
-        () => this.deps.executor.readRoutePolicy(profile.policyName),
-        null,
-      );
-      if (simulatedReadBack !== null) {
-        activationInput.preservedClauses = derivePreservedClauses(
-          simulatedReadBack,
-          profile.policyName,
-          this.labels.targetPrefixList,
-          profile.mitigationRt,
-        );
-      }
-    }
-
     let preview: string[];
     try {
       preview = activate

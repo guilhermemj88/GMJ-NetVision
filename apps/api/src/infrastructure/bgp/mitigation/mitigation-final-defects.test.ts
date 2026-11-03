@@ -9,11 +9,12 @@ import {
 import { testDurableBaselineStore } from './mitigation-test-support';
 
 /**
- * Correcoes finais B3, B4 (transporte coberto em ssh-client-write-guards) e B5.
+ * Correcoes finais B3 e B5.
  *
- * B3: nodes ANTERIORES ao baseline so liberam quando as faixas das ip-prefix
- *     NAO se sobrepoem ao bloco autorizado — um `deny` de sub-bloco com OUTRA
- *     lista passaria a ser aceito pelo node 2.
+ * B3: o contrato IPv4 definitivo nao deriva nem copia atributos de nodes
+ *     permanentes. O node 2 e `permit` irrestrito com a RT exclusiva
+ *     (amplitude autorizada pelo operador), entao nodes ANTERIORES nao alteram
+ *     os comandos — o que se trava aqui e exatamente isso.
  * B5: o REMOVE usa o registro DURAVEL gravado antes da primeira escrita; node
  *     permanente novo/alterado/removido ou registro ausente/invalido bloqueiam.
  */
@@ -62,9 +63,7 @@ const ACTIVATED_POLICY = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 2`,
-  ' if-match ip-prefix PREFIX8to24',
-  ' apply local-preference 1100',
-  ' apply extcommunity rt 268568:140 rt 268568:660 additive',
+  ' apply extcommunity rt 268568:660',
   NORMAL_POLICY,
 ].join('\n');
 
@@ -128,33 +127,71 @@ const REMOVE_INPUT = { ...ACTIVATE_INPUT, mode: 'REMOVE' as const };
 const check = (id: string, result: { checks: { id: string; ok: boolean; detail: string }[] }) =>
   result.checks.find((entry) => entry.id === id);
 
-describe('B3 - nodes anteriores ao baseline', () => {
-  it('deny anterior com prefix-list diferente mas sobreposta BLOQUEIA', async () => {
-    const ssh = new FakeSsh(POLICY_WITH_OVERLAP);
-    const result = await executor(ssh).preflight(device(), { ...ACTIVATE_INPUT });
+const CANONICAL_ACTIVATE_COMMANDS = [
+  'system-view',
+  `route-policy ${POLICY} deny node 1`,
+  ' if-match ip-prefix BOGONS',
+  `route-policy ${POLICY} permit node 2`,
+  ' apply extcommunity rt 268568:660',
+  'commit',
+];
 
-    expect(result.ok).toBe(false);
-    const detail = check('preserved_attributes', result)?.detail ?? '';
-    expect(detail).toContain('MITIGATION_BASELINE_UNSAFE');
-    expect(detail).toContain('alcanca');
+describe('B3 - nodes anteriores ao baseline nao interferem no contrato fixo', () => {
+  it('deny anterior sobreposto nao bloqueia: o node 2 e permit irrestrito autorizado', async () => {
+    const ssh = new FakeSsh(POLICY_WITH_OVERLAP);
+    const result = await executor(ssh).preflight(device(), {
+      ...ACTIVATE_INPUT,
+      expectedExistingNodes: [5, 10, 1000],
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.preservedClauses).toBeNull();
+    expect(result.checks.map((entry) => entry.id)).not.toContain('preserved_attributes');
     expect(ssh.applied).toHaveLength(0);
   });
 
-  it('node anterior sem sobreposicao real continua aprovado', async () => {
+  it('node anterior sem sobreposicao real tambem nao altera o contrato', async () => {
     const ssh = new FakeSsh(POLICY_WITHOUT_OVERLAP);
-    const result = await executor(ssh).preflight(device(), { ...ACTIVATE_INPUT });
+    const result = await executor(ssh).preflight(device(), {
+      ...ACTIVATE_INPUT,
+      expectedExistingNodes: [5, 10, 1000],
+    });
 
-    expect(check('preserved_attributes', result)?.ok).toBe(true);
-    expect(result.preservedClauses?.baselineNode).toBe(10);
-    expect(result.preservedClauses?.safe).toBe(true);
+    expect(result.ok).toBe(true);
+    expect(result.preservedClauses).toBeNull();
   });
 
-  it('lista nao dumpada no node anterior BLOQUEIA (conflito nao comprovavel)', async () => {
+  it('lista nao dumpada no node anterior nao impede o ACTIVATE', async () => {
     const ssh = new FakeSsh(POLICY_WITH_UNKNOWN_LIST);
-    const result = await executor(ssh).preflight(device(), { ...ACTIVATE_INPUT });
+    const result = await executor(ssh).preflight(device(), {
+      ...ACTIVATE_INPUT,
+      expectedExistingNodes: [5, 10, 1000],
+    });
 
-    expect(result.ok).toBe(false);
-    expect(check('preserved_attributes', result)?.detail).toContain('NAO pode ser comprovada');
+    expect(result.ok).toBe(true);
+  });
+
+  it('nenhum atributo do node anterior e copiado para o node 2', async () => {
+    const ssh = new FakeSsh(POLICY_WITH_OVERLAP);
+    const exec = executor(ssh);
+    const preflight = await exec.preflight(device(), {
+      ...ACTIVATE_INPUT,
+      expectedExistingNodes: [5, 10, 1000],
+    });
+
+    await exec.activate(device(), {
+      policyName: POLICY,
+      bogonNode: 1,
+      mitigationNode: 2,
+      rt: RT,
+      bogonPrefixList: 'BOGONS',
+      targetPrefixList: 'PREFIX8to24',
+      ...(preflight.baselineRecord ? { preflightBaseline: preflight.baselineRecord } : {}),
+    });
+
+    expect(ssh.applied).toHaveLength(1);
+    expect(ssh.applied[0]!.commands).toEqual(CANONICAL_ACTIVATE_COMMANDS);
+    expect(ssh.applied[0]!.commands.join('\n')).not.toContain('local-preference');
   });
 });
 
@@ -198,7 +235,7 @@ describe('B5 - fingerprint duravel dos nodes permanentes', () => {
       rt: RT,
       bogonPrefixList: 'BOGONS',
       targetPrefixList: 'PREFIX8to24',
-      preservedClauses: preActivate.preservedClauses!,
+      ...(preActivate.baselineRecord ? { preflightBaseline: preActivate.baselineRecord } : {}),
     });
     expect(ssh.applied).toHaveLength(1);
     // O ACTIVATE cria SOMENTE os nodes 1 e 2 (node 10/1000 intactos).

@@ -1,3 +1,4 @@
+import { autoExpansionPhysicalScopeMatches } from './worker/mitigation/auto-expansion-scope';
 import {
   SINGLE_AUTO_PILOT,
   assertSinglePilotAuthorization,
@@ -1235,6 +1236,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     listTargets: () =>
       listFastTrafficTargets({
         profileIds: fastConfig.profileIds,
+        observeAllIpv4: fastConfig.observeAllIpv4 ?? false,
         telemetryProfileIds: fastConfig.telemetryProfileIds,
         allowedDeviceIds: mitigationExecutionConfig.allowedDeviceIds,
         listProfiles: () => mitigationRepository.listProfiles(),
@@ -1301,11 +1303,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     if (!bandwidthBps) return false;
     if (lifecycleSettings.enabled) {
       const host = await hosts.getHost(profile.deviceId);
-      if (!host || host.hostname !== SINGLE_AUTO_PILOT.hostname) return false;
+      if (!host || (!lifecycleSettings.expansionEnabled && host.hostname !== SINGLE_AUTO_PILOT.hostname)) return false;
       const bgp = await mitigationSsh.readBgpConfiguration(host);
       const physical = await mitigationSsh.readMitigationConfiguration(host);
-      if (!singlePilotPhysicalScopeMatches({ ...physical, bgpConfiguration: bgp.bgpConfiguration }))
-        return false;
+      if (lifecycleSettings.expansionEnabled) {
+        if (!autoExpansionPhysicalScopeMatches({ ...physical, bgpConfiguration: bgp.bgpConfiguration }, profile.policyName, currentPeers.map(p => p.peerAddress))) return false;
+      } else if (!singlePilotPhysicalScopeMatches({ ...physical, bgpConfiguration: bgp.bgpConfiguration })) return false;
     }
     const sample = await (lifecycleSettings.enabled ? bridgeSource : effectiveTraffic).sampleWithId(
       {
@@ -1316,7 +1319,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       },
     );
     if (lifecycleSettings.enabled)
-      return id === SINGLE_AUTO_PILOT.profileId && pilotEvidenceValid(sample, evidence, Date.now());
+      return (lifecycleSettings.expansionEnabled || id === SINGLE_AUTO_PILOT.profileId) && pilotEvidenceValid(sample, evidence, Date.now(), (bandwidthBps * BigInt(profile.triggerPercent)) / 100n);
     if (!matchesAutoEvidence(sample, evidence, samplingForProfile(id), Date.now())) return false;
     return sample.bps > (bandwidthBps * BigInt(profile.triggerPercent)) / 100n;
   };
@@ -1482,7 +1485,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       const profile = await mitigationRepository.getProfile(id);
       if (!profile) return null;
       const host = await hosts.getHost(profile.deviceId);
-      if (lifecycleSettings.enabled && host?.hostname !== SINGLE_AUTO_PILOT.hostname) return null;
+      if (lifecycleSettings.enabled && !lifecycleSettings.expansionEnabled && host?.hostname !== SINGLE_AUTO_PILOT.hostname) return null;
       const clientBinding = host
         ? resolveAutoClientBinding(
             {

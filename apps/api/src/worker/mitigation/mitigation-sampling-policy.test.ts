@@ -73,8 +73,8 @@ describe('sampling contract: LEGACY keeps freshness only, FAST keeps freshness a
       },
     );
     expect(samplingWindowForProfile('bhnet', embedded)).toEqual({
-      maxAgeMs: 45_000,
-      maxGapMs: 45_000,
+      maxAgeMs: 15_000,
+      maxGapMs: 15_000,
     });
   });
 });

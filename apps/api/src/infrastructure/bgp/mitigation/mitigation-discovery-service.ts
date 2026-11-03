@@ -1,5 +1,6 @@
 import type { HostRecord } from '@gmj/shared';
 import { bgpPlanLabels } from './aglink-bgp-plan';
+import { exactMitigationNodesFromParsed } from './mitigation-contract';
 import type { BgpDiscoveryOutcome, DiscoveredBgpPeer } from '../bgp-discovery-service';
 import { effectiveBandwidthBps } from './bandwidth-parser';
 import { DEFAULT_MITIGATION_RT } from './mitigation-config';
@@ -356,9 +357,19 @@ export class BgpMitigationDiscoveryService {
       const targetPrefixList = bgpPlanLabels(policyName, {
         targetPrefixList: DEFAULT_TARGET_PREFIX_LIST,
       }).targetPrefixList;
-      // Mitigacao = PERMIT + PREFIX8to24 + RT. RT sem a prefix-list nao vale.
+      // Mitigacao = node 2 CANONICO (permit + somente a RT, sem if-match) ou a
+      // forma legada (permit + lista alvo + RT), que precisa aparecer no DTO
+      // para o operador reconciliar. Nodes 1/2 continuam reservados no plano.
+      const contract = policyNodes
+        ? exactMitigationNodesFromParsed(policyNodes, this.mitigationRt)
+        : null;
       const mitigationNodes = policyNodes
-        ? mitigationPermitNodes(policyNodes, this.mitigationRt, targetPrefixList)
+        ? [
+            ...(contract?.mitigationOk ? [2] : []),
+            ...mitigationPermitNodes(policyNodes, this.mitigationRt, targetPrefixList).filter(
+              (node) => !(node === 2 && contract?.mitigationOk),
+            ),
+          ]
         : [];
       // BOGONS = DENY + if-match da prefix-list. Um deny qualquer NAO entra.
       const bogonNodes = policyNodes ? bogonDenyNodes(policyNodes, DEFAULT_BOGON_PREFIX_LIST) : [];

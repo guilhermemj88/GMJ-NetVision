@@ -10,6 +10,7 @@ import type {
 
 export interface FastPollerConfig {
   mode: 'OFF' | 'OBSERVE' | 'ENFORCE';
+  observeAllIpv4?: boolean;
   /** Escopo total de ids observados (união legada + roteados). */
   profileIds: string[];
   /**
@@ -54,19 +55,26 @@ export function fastPollerConfig(
   // que os operadores mantenham duas listas em sincronia.
   const telemetryProfileIds = list('MITIGATION_FAST_ROUTED_PROFILE_IDS');
   const profileIds = [...new Set([...list('MITIGATION_FAST_PROFILE_IDS'), ...telemetryProfileIds])];
-  if (mode !== 'OFF' && !profileIds.length)
+  const observeAllIpv4 = env.MITIGATION_FAST_ALL_IPV4_OBSERVATION_ENABLED === '1';
+  if (observeAllIpv4 && mode !== 'OBSERVE') throw new Error('ALL_IPV4_REQUIRES_OBSERVE');
+  if (mode !== 'OFF' && !profileIds.length && !observeAllIpv4)
     throw new Error('MITIGATION_FAST_PROFILE_IDS is required');
+  const normalIntervalMs = integer('MITIGATION_FAST_NORMAL_SECONDS', 10, 10, 30) * 1000;
   return {
     mode,
+    observeAllIpv4,
     profileIds,
     telemetryProfileIds,
-    normalIntervalMs: integer('MITIGATION_FAST_NORMAL_SECONDS', 20, 10, 30) * 1000,
-    suspectIntervalMs: 10_000,
-    maxGapMs: 45_000,
+    normalIntervalMs,
+    // A cadencia nominal ja e o piso (10 s); acelerar sob suspeita nao teria efeito.
+    suspectIntervalMs: normalIntervalMs,
+    // O limite de continuidade acompanha a cadencia (1,5x) e nunca fica abaixo de 15 s:
+    // com nominal de 10 s o default e exatamente 15 s, como o contrato exige.
+    maxGapMs: Math.max(15_000, normalIntervalMs * 1.5),
     timeoutMs: integer('MITIGATION_FAST_TIMEOUT_MS', 1500, 100, 2000),
     retries: integer('MITIGATION_FAST_RETRIES', 0, 0, 1),
     concurrency: integer('MITIGATION_FAST_CONCURRENCY', 2, 1, 4),
-    maxInterfacesPerDevice: integer('MITIGATION_FAST_MAX_INTERFACES_PER_DEVICE', 8, 1, 64),
+    maxInterfacesPerDevice: integer('MITIGATION_FAST_MAX_INTERFACES_PER_DEVICE', 32, 1, 64),
   };
 }
 
@@ -112,6 +120,9 @@ export class FastTrafficPoller {
   private failures = 0;
   private lateStarts = 0;
   private rejectedWrites = 0;
+  private readonly persistenceTimes: number[] = [];
+  private readonly collectionTimes: number[] = [];
+  private gapCount = 0;
   private lastError: string | null = null;
 
   constructor(
@@ -203,6 +214,10 @@ export class FastTrafficPoller {
       lateStarts: this.lateStarts,
       rejectedWrites: this.rejectedWrites,
       qualityCounts: { ...this.qualityCounts },
+      monitoredInterfaces: this.entries.size,
+      gapsOver15Seconds: this.gapCount,
+      persistenceLatencyMs: this.stats(this.persistenceTimes),
+      collectionLatencyMs: this.stats(this.collectionTimes),
       lastError: this.lastError,
       entries: [...this.entries.values()].map((e) => ({
         ...e,
@@ -280,7 +295,11 @@ export class FastTrafficPoller {
             continue;
           }
           stage = 'PERSISTENCE';
-          if (!(await this.deps.store.append(observation))) {
+          const persistStarted = performance.now();
+          const appended = await this.deps.store.append(observation);
+          this.persistenceTimes.push(performance.now() - persistStarted);
+          if (this.persistenceTimes.length > 360) this.persistenceTimes.shift();
+          if (!appended) {
             this.rejectedWrites++;
             this.invalidate(t, 'PERSISTENCE_REJECTED');
             continue;
@@ -292,7 +311,7 @@ export class FastTrafficPoller {
             observation.quality === 'VALID' &&
             t.profiles.some(
               (p) =>
-                (p.direction === 'tx' ? observation.txBps! : observation.rxBps!) >=
+                (p.direction === 'tx' ? observation.txBps! : p.direction === 'rx' ? observation.rxBps! : Math.max(observation.rxBps!, observation.txBps!)) >=
                 Number(p.thresholdBps),
             );
           suspect ||= high;
@@ -367,6 +386,9 @@ export class FastTrafficPoller {
 
   private updateEntry(t: FastTrafficTarget, o: FastTrafficObservation, high: boolean): void {
     const old = this.entries.get(t.interfaceId);
+    if (o.intervalMs !== null && o.intervalMs > 15000) this.gapCount++;
+    this.collectionTimes.push(o.collectedAt.getTime() - o.requestStartedAt.getTime());
+    if (this.collectionTimes.length > 360) this.collectionTimes.shift();
     this.qualityCounts[o.quality] = (this.qualityCounts[o.quality] ?? 0) + 1;
     if (old?.lastCollectedAt) {
       const intervals = this.intervals.get(t.interfaceId) ?? [];
@@ -389,7 +411,7 @@ export class FastTrafficPoller {
         o.quality === 'VALID'
           ? Object.fromEntries(
               t.profiles
-                .filter((p) => p.bandwidthBps && p.bandwidthBps > 0n)
+                .filter((p) => p.direction && p.bandwidthBps && p.bandwidthBps > 0n)
                 .map((p) => [
                   p.profileId,
                   (Number(p.direction === 'tx' ? o.txBps : o.rxBps) / Number(p.bandwidthBps)) * 100,
@@ -407,12 +429,14 @@ export class FastTrafficPoller {
     this.entries.set(t.interfaceId, entry);
   }
 
-  private intervalStats(id: string) {
-    const sorted = [...(this.intervals.get(id) ?? [])].sort((a, b) => a - b);
+  private intervalStats(id: string) { return this.stats(this.intervals.get(id) ?? []); }
+  private stats(values: number[]) {
+    const sorted = [...values].sort((a, b) => a - b);
     return {
       count: sorted.length,
       p50: sorted[Math.max(0, Math.ceil(sorted.length * 0.5) - 1)] ?? null,
       p95: sorted[Math.max(0, Math.ceil(sorted.length * 0.95) - 1)] ?? null,
+      p99: sorted[Math.max(0, Math.ceil(sorted.length * 0.99) - 1)] ?? null,
       max: sorted.at(-1) ?? null,
     };
   }

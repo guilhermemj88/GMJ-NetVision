@@ -95,10 +95,8 @@ const MITIGATION_PAIR_LINES = [
   '    Match clauses: ',
   '      if-match ip-prefix BOGONS',
   '  permit : 2 (matched counts: 0)',
-  '    Match clauses: ',
-  '      if-match ip-prefix PREFIX8to24',
   '    Apply clauses: ',
-  `      apply extcommunity rt ${RT} additive`,
+  `      apply extcommunity rt ${RT}`,
   '  deny : 999 (matched counts: 0)',
 ];
 
@@ -387,13 +385,14 @@ describe('hotfix do previewId volatil', () => {
     expect(await stateOf(h, h.profileIds[1]!)).toBe('NORMAL');
   });
 
-  it('15) par fisico diferente do PLANO => classificacao correta (MITIGATED com o par fisico)', async () => {
+  it('15) par fisico 1/2 reconhecido e propagado aos targets do escopo', async () => {
     const h = await harness();
     h.source.read = readBack({ policyLines: MITIGATION_PAIR_LINES });
     const preview = await h.reconciler.preview(h.scope);
 
     expect(preview.state).toBe('MITIGATED');
     expect(preview.physical.pair).toEqual({ bogonNode: 1, mitigationNode: 2 });
+    // O par do contrato e o UNICO possivel: o preview o propaga para todos.
     expect(preview.targets[0]?.proposedPair).toEqual({ bogonNode: 1, mitigationNode: 2 });
     expect(preview.targets[1]?.proposedPair).toEqual({ bogonNode: 1, mitigationNode: 2 });
   });

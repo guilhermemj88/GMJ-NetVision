@@ -43,8 +43,7 @@ const GOOD_READBACK = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 2`,
-  ' if-match ip-prefix PREFIX8to24',
-  ` apply extcommunity rt ${RT} additive`,
+  ` apply extcommunity rt ${RT}`,
   `route-policy ${POLICY} permit node 11`,
 ].join('\n');
 
@@ -230,7 +229,7 @@ describe('escrita real de mitigacao - fail-closed', () => {
     expect(body.safeError).toContain('MITIGATION_WRITE_DISABLED');
   });
 
-  it('ACTIVATE real aplica os 7 comandos e confirma por read-back', async () => {
+  it('ACTIVATE real aplica os 6 comandos e confirma por read-back', async () => {
     const live = new FakeLiveExecutor();
     const h = await harness({ live });
     const body = await h.commands.execute({
@@ -248,8 +247,7 @@ describe('escrita real de mitigacao - fail-closed', () => {
       `route-policy ${POLICY} deny node 1`,
       ' if-match ip-prefix BOGONS',
       `route-policy ${POLICY} permit node 2`,
-      ' if-match ip-prefix PREFIX8to24',
-      ` apply extcommunity rt ${RT} additive`,
+      ` apply extcommunity rt ${RT}`,
       'commit',
     ]);
   });
@@ -289,7 +287,8 @@ describe('escrita real de mitigacao - fail-closed', () => {
     });
     expect(body.verified).toBe(false);
     expect(body.status).toBe('REVALIDATION_FAILED');
-    expect(body.safeError).toContain('PREFIX8to24');
+    expect(body.safeError).toContain('node 1 divergente');
+    expect(body.safeError).toContain('node 2 divergente');
   });
 
   it('sem snapshot de discovery o preflight bloqueia a escrita', async () => {

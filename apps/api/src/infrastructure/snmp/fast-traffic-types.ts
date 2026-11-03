@@ -23,7 +23,7 @@ export interface FastTrafficTarget {
   speedBps: bigint | null;
   profiles: Array<{
     profileId: string;
-    direction: 'rx' | 'tx';
+    direction: 'rx' | 'tx' | null;
     thresholdBps: bigint;
     bandwidthBps?: bigint;
   }>;

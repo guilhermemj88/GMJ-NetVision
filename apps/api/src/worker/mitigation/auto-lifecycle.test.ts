@@ -46,8 +46,7 @@ class FakeSsh implements MitigationSshPort {
             'route-policy PL-TEST_IPv4-IN deny node 1',
             ' if-match ip-prefix BOGONS',
             'route-policy PL-TEST_IPv4-IN permit node 2',
-            ' if-match ip-prefix PREFIX8to24',
-            ' apply extcommunity rt 268568:660 additive',
+            ' apply extcommunity rt 268568:660',
           ]
         : []),
       ...(this.baselineManual

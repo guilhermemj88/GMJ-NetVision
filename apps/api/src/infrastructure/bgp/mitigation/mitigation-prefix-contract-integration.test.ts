@@ -56,8 +56,7 @@ const GOOD_READBACK = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 2`,
-  ' if-match ip-prefix PREFIX8to24',
-  ` apply extcommunity rt ${RT} additive`,
+  ` apply extcommunity rt ${RT}`,
   `route-policy ${POLICY} permit node 11`,
 ].join('\n');
 

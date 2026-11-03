@@ -163,8 +163,7 @@ class DeviceTruthExecutor implements MitigationLiveExecutorPort {
     if (this.nodes.has(PAIR.mitigationNode)) {
       lines.push(
         `route-policy ${policyName} permit node ${PAIR.mitigationNode}`,
-        ' if-match ip-prefix PREFIX8to24',
-        ` apply extcommunity rt ${RT} additive`,
+        ` apply extcommunity rt ${RT}`,
       );
     }
     lines.push(`route-policy ${policyName} permit node 10`);

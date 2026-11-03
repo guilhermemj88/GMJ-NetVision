@@ -45,7 +45,11 @@ const BANDWIDTH = 10_000_000_000n;
 const NOW = new Date('2026-10-12T15:00:00.000Z');
 const BASELINE_NODES = [10, 999];
 const PAIR_A = { bogonNode: 1, mitigationNode: 2 };
-const PAIR_B = { bogonNode: 5, mitigationNode: 6 };
+/**
+ * Plano LEGADO persistido (contrato anterior, realocacao dinamica). O contrato
+ * definitivo so admite 1/2: este valor nunca pode virar escrita nem no fake.
+ */
+const LEGACY_PAIR_B = { bogonNode: 5, mitigationNode: 6 };
 
 type NodePair = { bogonNode: number; mitigationNode: number };
 
@@ -174,8 +178,7 @@ class ControlledDevice implements MitigationLiveExecutorPort {
         `route-policy ${policyName} deny node ${pair.bogonNode}`,
         ' if-match ip-prefix BOGONS',
         `route-policy ${policyName} permit node ${pair.mitigationNode}`,
-        ' if-match ip-prefix PREFIX8to24',
-        ` apply extcommunity rt ${this.wrongRt ? '268568:999' : RT} additive`,
+        ` apply extcommunity rt ${this.wrongRt ? '268568:999' : RT}`,
       );
     }
     lines.push(`route-policy ${policyName} permit node 10`);
@@ -516,7 +519,7 @@ describe('F4: serializacao por deviceId + policyName', () => {
   });
 
   it('A2) ACTIVATE+ACTIVATE com planos divergentes: serializado, UMA escrita e ZERO par orfao', async () => {
-    const h = await setup({ pairs: [PAIR_A, PAIR_B] });
+    const h = await setup({ pairs: [PAIR_A, LEGACY_PAIR_B] });
     const [p1, p2] = h.profileIds as [string, string, ...string[]];
     const g = gate();
     h.live.afterWriteGates = [g];
@@ -530,7 +533,8 @@ describe('F4: serializacao por deviceId + policyName', () => {
     const [firstResult, secondResult] = await Promise.all([first, second]);
 
     expect(firstResult.verified).toBe(true);
-    // O segundo plano (5/6) ficaria LIVRE: so o F3 (policy ja mitigada) barra.
+    // O segundo plano (legado 5/6) ficaria LIVRE: so o F3 (policy ja mitigada)
+    // barra - e nenhum node fora do contrato 1/2 e escrito.
     expect(secondResult.status).toBe('REVALIDATION_FAILED');
     expect(secondResult.safeError ?? '').toContain('policy_mitigation_scope');
     expect(h.live.activations).toEqual([PAIR_A]);
@@ -803,7 +807,7 @@ describe('F4: serializacao por deviceId + policyName', () => {
 });
 
 describe('F3: segundo par proibido e estruturas ambiguas', () => {
-  it('I/J) profile NOVO (plano 3/4) com par 1/2 ativo: AUTO nao tenta (SCOPE_ALREADY_MITIGATED) e o manual e bloqueado no FISICO', async () => {
+  it('I/J) profile NOVO com par 1/2 ativo: AUTO nao tenta (SCOPE_ALREADY_MITIGATED) e o manual e bloqueado no FISICO', async () => {
     const h = await setup({
       runtimeStates: ['MITIGATED', 'NORMAL'],
       expectedNodes: async () => [1, 2, 10, 999],
@@ -811,12 +815,6 @@ describe('F3: segundo par proibido e estruturas ambiguas', () => {
     const [p1, p2] = h.profileIds as [string, string, ...string[]];
     h.live.nodes = new Set([1, 2, 10, 999]);
     h.live.pairs = [{ ...PAIR_A }];
-    await h.repository.upsertRuntime(p2, {
-      state: 'NORMAL',
-      plannedBogonNode: 3,
-      plannedMitigationNode: 4,
-      plannedNode: 4,
-    });
 
     // AUTO: o irmao MITIGATED do mesmo escopo interrompe antes do preflight.
     const traffic = new SequenceTrafficSource();
@@ -833,7 +831,7 @@ describe('F3: segundo par proibido e estruturas ambiguas', () => {
     expect(novo?.reason).toBe('SCOPE_ALREADY_MITIGATED');
     expect(h.live.preflights).toBe(0);
 
-    // Manual: o preflight fisico bloqueia (3/4 livres; SO o F3 pode barrar).
+    // Manual: o preflight fisico bloqueia (o par 1/2 ja esta ativo na policy).
     const manual = await h.commands.execute({
       requestId: 'ij-manual',
       action: 'ACTIVATE',
@@ -849,13 +847,15 @@ describe('F3: segundo par proibido e estruturas ambiguas', () => {
     expect(await stateOf(h.repository, p1)).toBe('MITIGATED');
   });
 
-  it('K) DOS pares fisicos (1/2 + 3/4): ACTIVATE e REMOVE bloqueados, zero escrita', async () => {
+  it('K) nodes 3/4 na faixa reservada: ACTIVATE e REMOVE bloqueados, zero escrita', async () => {
     const h = await setup({
       runtimeStates: ['MITIGATED', 'MITIGATED'],
       expectedNodes: async () => [1, 2, 3, 4, 10, 999],
     });
     const [p1, p2] = h.profileIds as [string, string, ...string[]];
     h.live.nodes = new Set([1, 2, 3, 4, 10, 999]);
+    // Nodes 3/4 estao na faixa reservada (1..9) fora do par canonico: estrutura
+    // incompativel - nunca um "segundo par" silencioso ao lado de 1/2.
     h.live.pairs = [{ ...PAIR_A }, { bogonNode: 3, mitigationNode: 4 }];
 
     const activate = await h.commands.execute({
@@ -864,7 +864,7 @@ describe('F3: segundo par proibido e estruturas ambiguas', () => {
       profileId: p2,
     });
     expect(activate.status).toBe('REVALIDATION_FAILED');
-    expect(activate.safeError ?? '').toContain('multipla');
+    expect(activate.safeError ?? '').toContain('incompativel');
 
     const remove = await h.commands.execute({
       requestId: 'k-rem',
@@ -872,7 +872,7 @@ describe('F3: segundo par proibido e estruturas ambiguas', () => {
       acknowledgeScopeRemoval: true,
       profileId: p1,
     });
-    // Retirar UM par deixaria o outro ativo "sem dono": bloqueado.
+    // Retirar 1/2 deixaria nodes reservados 3/4 "sem dono": bloqueado.
     expect(remove.status).toBe('REVALIDATION_FAILED');
     expect(remove.safeError ?? '').toContain('reconciliacao');
     expect(h.live.activations).toHaveLength(0);
@@ -947,9 +947,9 @@ describe('F3: segundo par proibido e estruturas ambiguas', () => {
     expect(h.live.activations).toHaveLength(0);
   });
 
-  it('O) RT INCORRETA no node de mitigacao: escrita bloqueada', async () => {
+  it('O) node 2 com RT fora do contrato: escrita bloqueada', async () => {
     const h = await setup({
-      pairs: [PAIR_A, PAIR_B],
+      pairs: [PAIR_A, LEGACY_PAIR_B],
       expectedNodes: async () => [1, 2, 10, 999],
     });
     const [p1, p2] = h.profileIds as [string, string, ...string[]];
@@ -958,14 +958,14 @@ describe('F3: segundo par proibido e estruturas ambiguas', () => {
     h.live.pairs = [{ ...PAIR_A }];
     h.live.wrongRt = true;
 
-    // p2 planeja 5/6 (livres): SO o node suspeito (RT errada) pode bloquear.
+    // O node 2 existe com a RT ERRADA: a ocupacao nao-canonica de 1/2 bloqueia.
     const activate = await h.commands.execute({
       requestId: 'o-act',
       action: 'ACTIVATE',
       profileId: p2,
     });
     expect(activate.status).toBe('REVALIDATION_FAILED');
-    expect(activate.safeError ?? '').toContain('RT de mitigacao');
+    expect(activate.safeError ?? '').toContain('incompativel');
     expect(h.live.activations).toHaveLength(0);
     expect(h.live.nodes.has(5)).toBe(false);
     expect(h.live.nodes.has(6)).toBe(false);

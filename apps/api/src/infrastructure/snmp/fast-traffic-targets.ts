@@ -16,6 +16,7 @@ import type { FastTrafficTarget } from './fast-traffic-types';
  */
 export async function listFastTrafficTargets(deps: {
   profileIds: readonly string[];
+  observeAllIpv4?: boolean;
   /** Perfis com telemetria autorizada explicitamente, em qualquer modo. */
   telemetryProfileIds?: readonly string[];
   allowedDeviceIds: readonly string[];
@@ -27,9 +28,9 @@ export async function listFastTrafficTargets(deps: {
   const grouped = new Map<string, FastTrafficTarget>();
   const profiles = (await deps.listProfiles()).filter(
     (p) =>
-      deps.profileIds.includes(p.id) &&
+      (deps.observeAllIpv4 === true || deps.profileIds.includes(p.id)) &&
       p.enabled &&
-      (p.mode === 'AUTO' || telemetrySelected.has(p.id)) &&
+      (deps.observeAllIpv4 === true || p.mode === 'AUTO' || telemetrySelected.has(p.id)) &&
       p.addressFamily === 'IPV4' &&
       !p.mitigationExcluded &&
       deps.allowedDeviceIds.includes(p.deviceId),
@@ -47,7 +48,7 @@ export async function listFastTrafficTargets(deps: {
     const networkInterface = host?.interfaces.find((i) => i.id === p.interfaceId);
     const bandwidthBps = p.bandwidthOverrideBps ?? p.detectedBandwidthBps;
     if (
-      !direction ||
+      (!direction && deps.observeAllIpv4 !== true) ||
       !networkInterface ||
       !host?.snmpEnabled ||
       host.snmp?.version !== 'SNMP_V2C' ||

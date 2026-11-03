@@ -45,10 +45,11 @@ describe('Fase 12 - par de nodes da mitigacao', () => {
     expect(decisao.firstNormalNode).toBe(11);
   });
 
-  it('B) node ocupado: [1,11,50] -> outro par seguro (2/3)', () => {
+  it('B) node 1 ocupado: sem realocacao dinamica o par 1/2 fica BLOQUEADO', () => {
     const decisao = selectNodePair({ normalNodes: [11, 50], occupiedNodes: [1, 11, 50] });
-    expect(decisao.blocked).toBe(false);
-    expect(decisao.pair).toEqual({ bogonNode: 2, mitigationNode: 3 });
+    expect(decisao.blocked).toBe(true);
+    expect(decisao.pair).toBeNull();
+    expect(decisao.reason).toBe('NO_SAFE_TEMPORARY_NODE');
   });
 
   it('C) sem par seguro antes do primeiro node normal -> bloqueado', () => {
@@ -62,7 +63,7 @@ describe('Fase 12 - par de nodes da mitigacao', () => {
     expect(lotado.reason).toBe('NO_SAFE_TEMPORARY_NODE');
   });
 
-  it('D) ativacao gera DENY BOGONS + PERMIT PREFIX8to24 + RT', () => {
+  it('D) ativacao gera DENY BOGONS node 1 + PERMIT node 2 com a RT exclusiva', () => {
     const preview = new SimulationCommandExecutor().buildMitigation(
       POLICY,
       { bogonNode: 1, mitigationNode: 2 },
@@ -75,38 +76,37 @@ describe('Fase 12 - par de nodes da mitigacao', () => {
       `route-policy ${POLICY} deny node 1`,
       ' if-match ip-prefix BOGONS',
       `route-policy ${POLICY} permit node 2`,
-      ' if-match ip-prefix PREFIX8to24',
-      ` apply extcommunity rt ${RT} additive`,
+      ` apply extcommunity rt ${RT}`,
       'commit',
     ]);
     expect(preview.safe).toBe(true);
   });
 
-  it('E) read-back com RT mas SEM PREFIX8to24 -> nao verificado', () => {
+  it('E) read-back com clausula extra no node 2 -> nao verificado', () => {
     const readBack = [
       `route-policy ${POLICY} deny node 1`,
       ' if-match ip-prefix BOGONS',
       `route-policy ${POLICY} permit node 2`,
-      ` apply extcommunity rt ${RT} additive`,
+      ' if-match ip-prefix PREFIX8to24',
+      ` apply extcommunity rt ${RT}`,
     ].join('\n');
     const check = verifyActivation(POLICY, readBack, { bogonNode: 1, mitigationNode: 2 }, RT, LABELS);
     expect(check.bogonOk).toBe(true);
     expect(check.mitigationOk).toBe(false);
     expect(check.verified).toBe(false);
-    expect(check.summary).toContain('PREFIX8to24');
+    expect(check.summary).toContain('node 2 divergente');
   });
 
   it('F) read-back sem o node BOGONS -> nao verificado', () => {
     const readBack = [
       `route-policy ${POLICY} permit node 2`,
-      ' if-match ip-prefix PREFIX8to24',
-      ` apply extcommunity rt ${RT} additive`,
+      ` apply extcommunity rt ${RT}`,
     ].join('\n');
     const check = verifyActivation(POLICY, readBack, { bogonNode: 1, mitigationNode: 2 }, RT, LABELS);
     expect(check.bogonOk).toBe(false);
     expect(check.mitigationOk).toBe(true);
     expect(check.verified).toBe(false);
-    expect(check.summary).toContain('node BOGONS 1 ausente');
+    expect(check.summary).toContain('node 1 divergente');
   });
 
   it('F2) deny qualquer NAO conta como BOGONS', () => {
@@ -114,8 +114,7 @@ describe('Fase 12 - par de nodes da mitigacao', () => {
       `route-policy ${POLICY} deny node 1`,
       ' if-match ip-prefix OUTRA-LISTA',
       `route-policy ${POLICY} permit node 2`,
-      ' if-match ip-prefix PREFIX8to24',
-      ` apply extcommunity rt ${RT} additive`,
+      ` apply extcommunity rt ${RT}`,
     ].join('\n');
     expect(verifyActivation(POLICY, readBack, { bogonNode: 1, mitigationNode: 2 }, RT, LABELS).verified).toBe(false);
   });

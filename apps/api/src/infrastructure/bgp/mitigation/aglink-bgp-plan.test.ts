@@ -4,7 +4,6 @@ import { AGLINK_BGP_PLAN as A } from './aglink-bgp-plan';
 import { verifyActivation, verifyRemoval } from './mitigation-executor';
 import { inspectPolicyMitigation } from './mitigation-policy-physical';
 import { buildMitigationActivateCommands } from './mitigation-write-guard';
-import { derivePreservedClauses } from './mitigation-policy-clauses';
 import { SimulationCommandExecutor } from './simulation-command-executor';
 
 const prefixes = ['167.250.126.0/23', '167.250.126.0/24', '167.250.127.0/24'];
@@ -12,15 +11,15 @@ const pair = { bogonNode: 1, mitigationNode: 2 };
 const labels = { bogonPrefixList: 'BOGONS', targetPrefixList: 'PREFIX8to24' };
 const plan = { policyName: A.policy, ...pair, rt: A.rt, ...labels };
 
-/** Baseline fisico de referencia; os atributos sao derivados por este mesmo texto. */
-const BASELINE_CONFIG = [
-  `route-policy ${A.policy} permit node 10`,
-  ` if-match ip-prefix ${A.targetPrefixList}`,
-  ' apply local-preference 1100',
-  ' apply extcommunity rt 268568:140 additive',
-  `route-policy ${A.policy} deny node 1000`,
-].join('\n');
-const PRESERVED = derivePreservedClauses(BASELINE_CONFIG, A.policy, A.targetPrefixList, A.rt);
+const COMMANDS = [
+  'system-view',
+  `route-policy ${A.policy} deny node 1`,
+  ' if-match ip-prefix BOGONS',
+  `route-policy ${A.policy} permit node 2`,
+  ' apply extcommunity rt 268568:660',
+  'commit',
+];
+
 async function activate() {
   const h = await createPilotHarness();
   for (const rate of [9_200_000_000n, 9_300_000_000n, 9_400_000_000n]) {
@@ -30,6 +29,7 @@ async function activate() {
   expect(h.ssh.writes).toHaveLength(1);
   return h;
 }
+
 // Independent, deliberately limited reference model: first matching node,
 // prefix match, local-pref and RT add/replace only. This is not physical VRP evidence.
 function evaluate(config: string, prefix: string, incomingRts = ['268568:330']) {
@@ -60,127 +60,125 @@ function evaluate(config: string, prefix: string, incomingRts = ['268568:330']) 
   }
   return result;
 }
-describe('AGLINK BGP semantics: transit export marking, not a different local forwarding path', () => {
+
+describe('contrato IPv4 definitivo: deny BOGONS node 1 + permit node 2 com RT660 exclusiva', () => {
   it.each(prefixes)(
-    '%s matches PREFIX8to24; legacy node 2 skips node 10 and can lose best-route selection',
+    '%s: durante a mitigacao casa no node 2 com RT set exatamente {268568:660}',
     async (prefix) => {
-      const h = await createPilotHarness();
-      const old = [
-        `route-policy ${A.policy} deny node 1`,
-        ' if-match ip-prefix BOGONS',
-        `route-policy ${A.policy} permit node 2`,
-        ' if-match ip-prefix PREFIX8to24',
-        ' apply extcommunity rt 268568:660 additive',
-        h.ssh.config(),
-      ].join('\n');
-      const r = evaluate(old, prefix);
-      expect(r).toMatchObject({ accepted: true, node: 2, localPreference: 100 });
-      expect(r.rts).toEqual(['268568:330', '268568:660']);
-      expect(r.rts).not.toContain(A.normalRt);
-      expect(r.localPreference).toBeLessThan(800); // observed competing /24 path
-    },
-  );
-  it.each(prefixes)(
-    '%s stays selected and carries mitigation RT on top of the normal attributes; manual REMOVE restores baseline',
-    async (prefix) => {
-      const h = await createPilotHarness();
-      const before = evaluate(h.ssh.config(), prefix);
-      for (const rate of [9_200_000_000n, 9_300_000_000n, 9_400_000_000n]) {
-        h.sample(rate);
-        await h.lifecycle.tickPilot();
-      }
+      const h = await activate();
       const during = evaluate(h.ssh.config(), prefix);
-      expect(before).toMatchObject({ accepted: true, node: 10, localPreference: 1100 });
-      expect(before.rts).toEqual(['268568:330', '268568:140']);
-      // Contrato definitivo: LP1100 e RT140 preservados, RT660 acrescentada com
-      // additive e a RT330 recebida do peer intacta.
-      expect(during).toMatchObject({ accepted: true, node: 2, localPreference: 1100 });
-      expect(during.rts).toEqual(['268568:330', '268568:140', '268568:660']);
-      expect(during.localPreference).toBeGreaterThan(800);
-      const removed = await h.commands.execute({
-        requestId: `human-${prefix}`,
-        action: 'REMOVE',
-        profileId: h.target.profileId,
-        origin: 'MANUAL',
-      });
-      expect(removed.verified).toBe(true);
-      expect(evaluate(h.ssh.config(), prefix)).toEqual(before);
-      expect(h.ssh.writes[1]).toEqual([
-        'system-view',
-        `undo route-policy ${A.policy} node 1`,
-        `undo route-policy ${A.policy} node 2`,
-        'commit',
-      ]);
+      expect(during).toMatchObject({ accepted: true, node: 2, localPreference: 100 });
+      // Sem additive o node 2 substitui o conjunto: RT140/RT330 recebidas nao permanecem.
+      expect(during.rts).toEqual(['268568:660']);
     },
   );
-  it('matches preview to canonical SSH commands and keeps mitigation independent from node 10', () => {
-    const commands = buildMitigationActivateCommands(plan, PRESERVED);
-    expect(
-      new SimulationCommandExecutor().buildMitigation(A.policy, pair, A.rt, labels, PRESERVED)
-        .commands,
-    ).toEqual(commands);
-    expect(commands).toContain(` if-match ip-prefix ${A.targetPrefixList}`);
-    expect(commands).toContain(' apply local-preference 1100');
-    // Forma fisica validada no equipamento: uma unica instrucao multi-RT.
-    expect(commands).toContain(' apply extcommunity rt 268568:140 rt 268568:660 additive');
-    expect(commands.join('\n')).not.toMatch(/goto next-node/);
-    expect(commands.filter((line) => line.includes('apply extcommunity'))).toHaveLength(1);
-    expect(commands.join('\n')).not.toMatch(/node (10|1000)\b/);
-  });
-  it('does not permit an unrelated public prefix previously caught by the broad wildcard', async () => {
-    const h = await activate();
-    expect(evaluate(h.ssh.config(), '198.51.100.0/24')).toMatchObject({
-      accepted: false,
-      node: 1000,
+
+  it.each(prefixes)('%s: REMOVE manual devolve exatamente o baseline', async (prefix) => {
+    const h = await createPilotHarness();
+    const before = evaluate(h.ssh.config(), prefix);
+    expect(before).toMatchObject({ accepted: true, node: 10, localPreference: 1100 });
+    expect(before.rts).toEqual(['268568:330', '268568:140']);
+    for (const rate of [9_200_000_000n, 9_300_000_000n, 9_400_000_000n]) {
+      h.sample(rate);
+      await h.lifecycle.tickPilot();
+    }
+    const removed = await h.commands.execute({
+      requestId: `human-${prefix}`,
+      action: 'REMOVE',
+      profileId: h.target.profileId,
+      origin: 'MANUAL',
     });
-    expect(evaluate(h.ssh.config(), '167.250.126.0/25').accepted).toBe(false);
+    expect(removed.verified).toBe(true);
+    expect(evaluate(h.ssh.config(), prefix)).toEqual(before);
+    expect(h.ssh.writes[1]).toEqual([
+      'system-view',
+      `undo route-policy ${A.policy} node 1`,
+      `undo route-policy ${A.policy} node 2`,
+      'commit',
+    ]);
   });
-  it.each(['localpref', 'normalRt', 'scope', 'baseline'] as const)(
-    'rejects %s divergence in readback',
+
+  it('preview identico aos comandos canonicos, sem clausula nao autorizada', () => {
+    const commands = buildMitigationActivateCommands(plan);
+    expect(new SimulationCommandExecutor().buildMitigation(A.policy, pair, A.rt, labels).commands)
+      .toEqual(commands);
+    expect(commands).toEqual(COMMANDS);
+    const text = commands.join('\n');
+    expect(text).not.toContain('apply local-preference');
+    expect(text).not.toContain('additive');
+    expect(commands.filter((line) => line.includes('if-match'))).toEqual([
+      ' if-match ip-prefix BOGONS',
+    ]);
+    expect(commands.filter((line) => line.includes('apply extcommunity'))).toHaveLength(1);
+    expect(text).not.toMatch(/goto next-node/);
+    expect(text).not.toMatch(/node (10|1000)\b/);
+  });
+
+  it('amplitude autorizada: prefixos fora da lista do cliente passam no node 2', async () => {
+    const h = await activate();
+    // Efeito aceito explicitamente pelo operador: o permit apos BOGONS cobre
+    // qualquer NLRI, nao apenas os prefixos que o node 10 autorizava.
+    for (const prefix of ['167.250.126.0/25', '167.250.128.0/24', '8.8.8.0/24', '0.0.0.0/0'])
+      expect(evaluate(h.ssh.config(), prefix)).toMatchObject({ accepted: true, node: 2 });
+    // BOGONS continua barrando no node 1 (o modelo cobre a faixa 10.0.0.0/8).
+    expect(evaluate(h.ssh.config(), '10.1.0.0/24')).toMatchObject({ accepted: false, node: 1 });
+  });
+
+  it.each(['ifMatch', 'localPreference', 'additive', 'extraRt', 'bogonCondition'] as const)(
+    'readback divergente (%s) exige reconciliacao',
     async (fault) => {
       const h = await activate();
       let text = h.ssh.config();
-      if (fault === 'localpref')
-        text = text.replace('apply local-preference 1100', 'apply local-preference 100');
-      if (fault === 'normalRt')
-        // Sem `additive` o node passa a SUBSTITUIR as RTs: divergencia.
-        text = text.replace('rt 268568:660 additive', 'rt 268568:660');
-      if (fault === 'scope')
+      if (fault === 'ifMatch')
         text = text.replace(
-          `if-match ip-prefix ${A.targetPrefixList}`,
-          'if-match ip-prefix PREFIX8to24',
+          ' apply extcommunity rt 268568:660',
+          ' if-match ip-prefix PREFIX8to24\n apply extcommunity rt 268568:660',
         );
-      if (fault === 'baseline')
-        text = text.replace('rt 268568:140 additive', 'rt 268568:999 additive');
-      expect(verifyActivation(A.policy, text, pair, A.rt, labels, PRESERVED).verified).toBe(false);
+      if (fault === 'localPreference')
+        text = text.replace(
+          ' apply extcommunity rt 268568:660',
+          ' apply local-preference 1100\n apply extcommunity rt 268568:660',
+        );
+      if (fault === 'additive')
+        text = text.replace(
+          'apply extcommunity rt 268568:660',
+          'apply extcommunity rt 268568:660 additive',
+        );
+      if (fault === 'extraRt')
+        text = text.replace(
+          'apply extcommunity rt 268568:660',
+          'apply extcommunity rt 268568:660 rt 268568:140',
+        );
+      if (fault === 'bogonCondition')
+        text = text.replace(
+          ' deny node 1\n if-match ip-prefix BOGONS',
+          ' deny node 1\n if-match ip-prefix PREFIX8to24',
+        );
+      expect(verifyActivation(A.policy, text, pair, A.rt, labels).verified).toBe(false);
       expect(
         inspectPolicyMitigation({ policyName: A.policy, readBack: text, rts: [A.rt] }).state,
       ).toBe('RECONCILIATION_REQUIRED');
     },
   );
-  it('does not declare REMOVE verified when original attributes were changed', async () => {
+
+  it('node permanente alterado bloqueia verificacao e retirada', async () => {
     const h = await createPilotHarness();
-    expect(verifyRemoval(A.policy, h.ssh.config().replace('1100', '100'), pair).verified).toBe(
-      false,
-    );
+    const changed = h.ssh
+      .config()
+      .replace('apply local-preference 1100', 'apply local-preference 100');
+    expect(verifyActivation(A.policy, changed, pair, A.rt, labels).verified).toBe(false);
+    expect(verifyRemoval(A.policy, changed, pair).verified).toBe(false);
   });
-  it('adds the mitigation RT with additive, so the normal RT received from the peer is preserved', async () => {
-    const h = await activate();
-    const during = evaluate(h.ssh.config(), prefixes[0]!, ['268568:140', '268568:330']);
-    expect(during.rts).toEqual(['268568:140', '268568:330', '268568:660']);
-    expect(during.localPreference).toBe(1100);
-    // Remover o `additive` faria o node substituir as RTs: readback rejeita.
+
+  it('RT660 ou BOGONS preexistentes em node permanente nao provam ownership', async () => {
+    const h = await createPilotHarness();
+    // Baseline normal (node 10/1000) sem par 1/2: estado NORMAL, nunca MITIGATED.
     expect(
-      verifyActivation(
-        A.policy,
-        h.ssh.config().replace('rt 268568:660 additive', 'rt 268568:660'),
-        pair,
-        A.rt,
-        labels,
-        PRESERVED,
-      ).verified,
-    ).toBe(false);
+      inspectPolicyMitigation({ policyName: A.policy, readBack: h.ssh.config(), rts: [A.rt] })
+        .state,
+    ).toBe('NORMAL');
   });
+
   it('blocks preflight on changed baseline before any SSH write', async () => {
     const h = await createPilotHarness();
     const config = h.ssh.config.bind(h.ssh);

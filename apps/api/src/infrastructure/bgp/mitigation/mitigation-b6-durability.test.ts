@@ -6,7 +6,7 @@ import {
   type MitigationBaselineRecord,
   type MitigationBaselineStore,
 } from './mitigation-baseline-record';
-import { MockMitigationExecutor } from './mitigation-executor';
+import { MockMitigationExecutor, type MitigationActivationInput } from './mitigation-executor';
 import {
   createFakeDurableBackend,
   FakeDurableBaselineStore,
@@ -42,9 +42,7 @@ const ACTIVATED_POLICY = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 2`,
-  ' if-match ip-prefix PREFIX8to24',
-  ' apply local-preference 1100',
-  ' apply extcommunity rt 268568:140 rt 268568:660 additive',
+  ' apply extcommunity rt 268568:660',
   NORMAL_POLICY,
 ].join('\n');
 
@@ -113,14 +111,18 @@ const ACTIVATE_INPUT = {
 
 const REMOVE_INPUT = { ...ACTIVATE_INPUT, mode: 'REMOVE' as const };
 
-const activation = (preserved: unknown) => ({
+const activation = (preflight: {
+  preservedClauses?: MitigationActivationInput['preservedClauses'] | null;
+  baselineRecord?: MitigationBaselineRecord | null;
+}) => ({
   policyName: POLICY,
   bogonNode: 1,
   mitigationNode: 2,
   rt: RT,
   bogonPrefixList: 'BOGONS',
   targetPrefixList: 'PREFIX8to24',
-  preservedClauses: preserved as never,
+  ...(preflight.preservedClauses ? { preservedClauses: preflight.preservedClauses } : {}),
+  ...(preflight.baselineRecord ? { preflightBaseline: preflight.baselineRecord } : {}),
 });
 
 const check = (id: string, result: { checks: { id: string; ok: boolean; detail: string }[] }) =>
@@ -139,7 +141,7 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
     expect(preflight.ok).toBe(false);
 
     await expect(
-      exec.activate(device(), activation(preflight.preservedClauses)),
+      exec.activate(device(), activation(preflight)),
     ).rejects.toThrow(/MITIGATION_BASELINE_RECORD_UNAVAILABLE/);
     expect(ssh.applied).toHaveLength(0);
   });
@@ -151,7 +153,7 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
 
     expect(preflight.ok).toBe(false);
     await expect(
-      exec.activate(device(), activation(preflight.preservedClauses)),
+      exec.activate(device(), activation(preflight)),
     ).rejects.toThrow(/MITIGATION_BASELINE_RECORD_UNAVAILABLE/);
     expect(ssh.applied).toHaveLength(0);
   });
@@ -171,7 +173,7 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
     const preflight = await exec.preflight(device(), { ...ACTIVATE_INPUT });
 
     await expect(
-      exec.activate(device(), activation(preflight.preservedClauses)),
+      exec.activate(device(), activation(preflight)),
     ).rejects.toThrow(/MITIGATION_BASELINE_RECORD_UNAVAILABLE/);
     expect(ssh.applied).toHaveLength(0);
   });
@@ -189,7 +191,7 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
     const preflight = await exec.preflight(device(), { ...ACTIVATE_INPUT });
 
     await expect(
-      exec.activate(device(), activation(preflight.preservedClauses)),
+      exec.activate(device(), activation(preflight)),
     ).rejects.toThrow(/MITIGATION_BASELINE_RECORD_UNAVAILABLE/);
     expect(ssh.applied).toHaveLength(0);
   });
@@ -205,7 +207,7 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
     const preflight = await exec.preflight(device(), { ...ACTIVATE_INPUT });
 
     await expect(
-      exec.activate(device(), activation(preflight.preservedClauses)),
+      exec.activate(device(), activation(preflight)),
     ).rejects.toThrow(/registro nao confirmado apos a gravacao/);
     expect(ssh.applied).toHaveLength(0);
   });
@@ -221,7 +223,7 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
     expect(preflight.ok).toBe(true);
 
     await expect(
-      exec.activate(device(), activation(preflight.preservedClauses)),
+      exec.activate(device(), activation(preflight)),
     ).rejects.toThrow(/MITIGATION_BASELINE_DIVERGED/);
     expect(ssh.applied).toHaveLength(0);
   });
@@ -233,7 +235,7 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
     const preflight = await exec.preflight(device(), { ...ACTIVATE_INPUT });
     expect(preflight.ok).toBe(true);
 
-    await exec.activate(device(), activation(preflight.preservedClauses));
+    await exec.activate(device(), activation(preflight));
 
     expect(ssh.applied).toHaveLength(1);
     expect(ssh.applied[0]!.commands).toContain('commit');
@@ -259,7 +261,7 @@ describe('B6 - recuperacao por instancia independente', () => {
     const sshA = new FakeSsh();
     const instanceA = executor(sshA, new FakeDurableBaselineStore(backend));
     const preflightA = await instanceA.preflight(device(), { ...ACTIVATE_INPUT });
-    await instanceA.activate(device(), activation(preflightA.preservedClauses));
+    await instanceA.activate(device(), activation(preflightA));
     expect(sshA.applied).toHaveLength(1);
 
     // Instancia A descartada: nada mais e reaproveitado dela (nem a memoria do
@@ -312,7 +314,7 @@ describe('B6 - MOCK continua funcionando', () => {
     mock.seedNode(POLICY, 10, { ifMatchIpPrefix: ['PREFIX8to24'] });
     const preserved = testPreservedClauses(POLICY, 'PREFIX8to24', RT);
 
-    await mock.activate(activation(preserved));
+    await mock.activate(activation({ preservedClauses: preserved }));
     const readBack = await mock.readRoutePolicy(POLICY);
 
     expect(readBack).toContain(`route-policy ${POLICY} deny node 1`);

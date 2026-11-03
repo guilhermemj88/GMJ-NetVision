@@ -20,7 +20,6 @@ import {
 } from './mitigation-planner';
 import { evaluateTraffic } from './mitigation-state-machine';
 import { SimulationCommandExecutor } from './simulation-command-executor';
-import { testPreservedClauses } from './mitigation-test-support';
 import {
   InMemoryNotificationPublisher,
   NoopNotificationPublisher,
@@ -258,15 +257,14 @@ describe('simulation command executor (nunca escreve)', () => {
       { bogonNode: 1, mitigationNode: 2 },
       '268568:660',
       { bogonPrefixList: 'BOGONS', targetPrefixList: 'PREFIX8to24' },
-      testPreservedClauses('PL-HORIZONTES_IPv4-IN', 'PREFIX8to24', '268568:660'),
     );
+    // Contrato IPv4 definitivo: node 2 e permit irrestrito com a RT exclusiva.
     expect(preview.commands).toEqual([
       'system-view',
       'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
       ' if-match ip-prefix BOGONS',
       'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
-      ' if-match ip-prefix PREFIX8to24',
-      ' apply extcommunity rt 268568:660 additive',
+      ' apply extcommunity rt 268568:660',
       'commit',
     ]);
     expect(preview.safe).toBe(true);

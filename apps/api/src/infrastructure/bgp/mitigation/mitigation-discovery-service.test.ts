@@ -368,7 +368,7 @@ describe('discovery de candidatos a mitigacao', () => {
     expect(result.profiles[0]?.plannedNode).toBe(2);
   });
 
-  it('14) node 1 ocupado empurra o par para BOGONS 2 + mitigacao 3', async () => {
+  it('14) node 1 ocupado bloqueia o par 1/2 (sem realocacao dinamica)', async () => {
     const harness = createHarness({
       bgp: bgpV4('peer 10.200.200.50 route-policy PL-PARCIAL-IN import'),
       routePolicy: [
@@ -383,8 +383,9 @@ describe('discovery de candidatos a mitigacao', () => {
 
     expect(result.profiles[0]?.existingNodes).toEqual([1, 11]);
     expect(result.profiles[0]?.firstNormalNode).toBe(11);
-    expect(result.profiles[0]?.plannedNode).toBe(3);
-    expect(result.profiles[0]?.readiness).toBe('READY');
+    expect(result.profiles[0]?.plannedNode).toBeNull();
+    expect(result.profiles[0]?.readiness).toBe('NOT_READY');
+    expect(result.profiles[0]?.blockedReason).toBe('NO_SAFE_TEMPORARY_NODE');
   });
 
   it('15) nodes 1..9 ocupados bloqueiam por falta de node seguro', async () => {
@@ -632,7 +633,7 @@ describe('node de mitigacao e definido pela RT do motor (nao por qualquer RT)', 
     expect(profile.readiness).toBe('READY');
   });
 
-  it('node 1 com RT 268568:660 E node de mitigacao e empurra o candidato para 2', async () => {
+  it('node 1 com RT 268568:660 E node de mitigacao e bloqueia o par 1/2', async () => {
     const harness = createHarness(
       rtFixture('PL-MIT-IN', [
         'route-policy PL-MIT-IN permit node 1',
@@ -647,10 +648,11 @@ describe('node de mitigacao e definido pela RT do motor (nao por qualquer RT)', 
 
     expect(profile.mitigationNodes).toEqual([1]);
     expect(profile.firstNormalNode).toBe(11);
-    expect(profile.plannedNode).toBe(3);
+    expect(profile.plannedNode).toBeNull();
+    expect(profile.blockedReason).toBe('NO_SAFE_TEMPORARY_NODE');
   });
 
-  it('node com duas RTs incluindo a de mitigacao E node de mitigacao', async () => {
+  it('node com duas RTs incluindo a de mitigacao E node de mitigacao (par 1/2 bloqueado)', async () => {
     const harness = createHarness(
       rtFixture('PL-DUPLA-IN', [
         'route-policy PL-DUPLA-IN permit node 1',
@@ -665,7 +667,8 @@ describe('node de mitigacao e definido pela RT do motor (nao por qualquer RT)', 
     const profile = result.profiles[0]!;
 
     expect(profile.mitigationNodes).toEqual([1]);
-    expect(profile.plannedNode).toBe(3);
+    expect(profile.plannedNode).toBeNull();
+    expect(profile.blockedReason).toBe('NO_SAFE_TEMPORARY_NODE');
   });
 
   it('node sem RT nenhuma NAO e node de mitigacao', async () => {
@@ -895,17 +898,16 @@ describe('retorno ao estado operacional apropriado', () => {
   });
 
   it('F1 CORRIGIDO: runtime RECONCILIATION_REQUIRED com par FISICO ativo e PRESERVADO', async () => {
-    // A policy do equipamento TEM o par de mitigacao instalado (deny BOGONS +
-    // permit PREFIX8to24 com RT): a leitura do discovery enxerga os nodes 1/2
-    // ocupados. O runtime, porem, foi marcado RECONCILIATION_REQUIRED pelo
+    // A policy do equipamento TEM o par de mitigacao instalado (deny BOGONS node 1
+    // + permit node 2 com a RT exclusiva): a leitura do discovery enxerga os nodes
+    // 1/2 ocupados. O runtime, porem, foi marcado RECONCILIATION_REQUIRED pelo
     // MitigationCommandService (escrita Huawei iniciada + read-back nao
     // comprovado) e `blockedReason` do discovery continua null.
     const routePolicy = [
       'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
       ' if-match ip-prefix BOGONS',
       'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
-      ' if-match ip-prefix PREFIX8to24',
-      ' apply extcommunity rt 268568:660 additive',
+      ' apply extcommunity rt 268568:660',
       'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
     ].join('\n');
     const harness = createHarness({ routePolicy });
@@ -915,26 +917,27 @@ describe('retorno ao estado operacional apropriado', () => {
 
     const result = await discover(harness, [makePeer({ peerAddress: '10.200.200.106' })]);
 
-    expect(result.profiles[0]?.readiness).toBe('READY');
+    // Com o par 1/2 ocupado nao existe plano possivel (o contrato so admite 1/2):
+    // o profile fica NOT_READY para NOVA ativacao - nunca com um par 3/4/5/6.
+    expect(result.profiles[0]?.readiness).toBe('NOT_READY');
+    expect(result.profiles[0]?.blockedReason).toBe('NO_SAFE_TEMPORARY_NODE');
     const runtime = await harness.repository.getRuntime(profile!.id);
     // F1 CORRIGIDO: sem prova fisica o discovery NUNCA rebaixa o estado. O
     // MESMO caminho roda na reidratacao pos-restart/redeploy
     // (mitigation-service.rehydrateSnapshots) - antes ele virava NORMAL.
     expect(runtime?.state).toBe('RECONCILIATION_REQUIRED');
-    // O planejamento continua sendo do discovery: o par 1/2 esta ocupado, o
-    // plano segue para 3/4 - e o reconciler (F2) passa a enxergar o par FISICO
-    // 1/2 no read-back em vez de declarar NORMAL.
-    expect(runtime?.plannedBogonNode).toBe(3);
-    expect(runtime?.plannedMitigationNode).toBe(4);
+    // O planejamento continua sendo do discovery: o par 1/2 esta ocupado e NAO
+    // existe realocacao dinamica - o plano fica vazio (nunca 3/4, 5/6...).
+    expect(runtime?.plannedBogonNode).toBeNull();
+    expect(runtime?.plannedMitigationNode).toBeNull();
   });
 
-  it('REPRODUCAO: com o par fisico 1/2 ATIVO o discovery preserva MITIGATED mas reescreve o plano para 3/4', async () => {
+  it('REPRODUCAO: com o par fisico 1/2 ATIVO o discovery preserva MITIGATED e nao aloca outro par', async () => {
     const routePolicy = [
       'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
       ' if-match ip-prefix BOGONS',
       'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
-      ' if-match ip-prefix PREFIX8to24',
-      ' apply extcommunity rt 268568:660 additive',
+      ' apply extcommunity rt 268568:660',
       'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
     ].join('\n');
     const harness = createHarness({ routePolicy });
@@ -947,11 +950,10 @@ describe('retorno ao estado operacional apropriado', () => {
     const runtime = await harness.repository.getRuntime(profile!.id);
     // O estado operacional em andamento e preservado (correto)...
     expect(runtime?.state).toBe('MITIGATED');
-    // ...mas o PLANO e reescrito para o menor par livre, divergindo do par
-    // FISICO ativo (1/2). O reconciler usa o plano para verificar a presenca:
-    // com plano 3/4 ele declara NORMAL mesmo com o par 1/2 ativo.
-    expect(runtime?.plannedBogonNode).toBe(3);
-    expect(runtime?.plannedMitigationNode).toBe(4);
+    // ...e o PLANO nao e reescrito para um par diferente do FISICO: com 1/2
+    // ocupados nao ha par seguro (o contrato nao permite 3/4 nem 5/6).
+    expect(runtime?.plannedBogonNode).toBeNull();
+    expect(runtime?.plannedMitigationNode).toBeNull();
   });
 });
 
