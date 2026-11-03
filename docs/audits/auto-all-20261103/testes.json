@@ -1,0 +1,176 @@
+{
+  "release": "908e7b417502930d7945b3d73dded584a7012dd7",
+  "functionalSourceChanged": false,
+  "runs": {
+    "api-default": {
+      "numTotalTests": 2855,
+      "numPassedTests": 2814,
+      "numFailedTests": 0,
+      "numPendingTests": 41,
+      "success": true
+    },
+    "postgresql-main": {
+      "numTotalTests": 39,
+      "numPassedTests": 31,
+      "numFailedTests": 0,
+      "numPendingTests": 8,
+      "success": false
+    },
+    "postgresql-bridge-after-setup": {
+      "numTotalTests": 8,
+      "numPassedTests": 8,
+      "numFailedTests": 0,
+      "numPendingTests": 0,
+      "success": true
+    },
+    "udp-opt-in": {
+      "numTotalTests": 5,
+      "numPassedTests": 5,
+      "numFailedTests": 0,
+      "numPendingTests": 0,
+      "success": true
+    }
+  },
+  "distinctCasesFinalStatus": {
+    "passed": 2855
+  },
+  "distinctCaseCount": 2855,
+  "explanation": "2814 default passes + 39 opt-in PostgreSQL cases + 2 additional opt-in UDP/clock cases; UDP command also repeats three already-passing tests. PostgreSQL bridge hook initially lacked its separate observation database; corrected local setup then all eight bridge tests passed. No source correction.",
+  "initialInvocationIssue": "Running from monorepo root with --root apps/api causes schema path ENOENT; canonical cwd apps/api passes without source edits. Two PG guards also rejected wrong port; corrected only disposable setup.",
+  "typecheck": "passed",
+  "lintAuditedPaths": "passed",
+  "build": "passed locally; Windows output hash differs from published Linux, tracked source map contents match 233/233",
+  "postgresqlLab": {
+    "image": "postgres:18",
+    "imageId": "sha256:29754c7520f4b9654cf8ff98e19ac73b88e255c3a53f6236ebe9d52249bb6df3",
+    "ports": ["127.0.0.1:55077", "127.0.0.1:55439"],
+    "sourceSha": "908e7b417502930d7945b3d73dded584a7012dd7",
+    "schemaMigrations": 43,
+    "realProductionConnectionUsed": false,
+    "isolationRecords": [
+      {
+        "name": "netvision-auto-all-audit-pg-20261103",
+        "id": "f235ca022cec28b0ec04e298098092dc312b95a2d828a14101570f32902788c6",
+        "imageId": "sha256:29754c7520f4b9654cf8ff98e19ac73b88e255c3a53f6236ebe9d52249bb6df3",
+        "tmpfs": {
+          "/var/lib/postgresql": "rw,size=1073741824"
+        },
+        "ports": {
+          "5432/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "55077"
+            }
+          ]
+        },
+        "memoryLimit": 536870912
+      },
+      {
+        "name": "netvision-auto-all-audit-fast-pg-20261103",
+        "id": "a8d12667de51de65a06bb7185a3d5bb725d09d4089e9a72bfc7e59941802ca1a",
+        "imageId": "sha256:29754c7520f4b9654cf8ff98e19ac73b88e255c3a53f6236ebe9d52249bb6df3",
+        "tmpfs": {
+          "/var/lib/postgresql": "rw,size=1073741824"
+        },
+        "ports": {
+          "5432/tcp": [
+            {
+              "HostIp": "127.0.0.1",
+              "HostPort": "55439"
+            }
+          ]
+        },
+        "memoryLimit": 536870912
+      }
+    ],
+    "ownEphemeralContainersRemovedAfterTests": true
+  },
+  "separateProcessesLab": {
+    "activateProcess": "ETAPA2 PASS",
+    "newProcessRemove": "ETAPA4 PASS",
+    "finalPolicyEqualsOriginal": true,
+    "simulatedCommits": 2,
+    "negativeCases": 6,
+    "allNegativesPass": true,
+    "realHuawei": false
+  },
+  "clockUdpEvidence": {
+    "syntheticDevice": true,
+    "realClock": true,
+    "transport": "real SNMPv2c UDP on 127.0.0.1, GET-only fixture",
+    "realHuawei": false,
+    "externalBridge": true,
+    "wallMs": 54159,
+    "requests": 5,
+    "collectionMs": [5, 3, 2, 2, 2],
+    "intervalMs": [20235, 10006, 10225, 10223],
+    "firstAbnormalAt": "2026-11-03T17:54:13.062Z",
+    "confirmationMs": 24825,
+    "commandMs": 9039,
+    "timingsMs": {
+      "preflight": 3010,
+      "execution": 4012,
+      "readback": 2013
+    },
+    "totalResponseMs": 33865,
+    "responseDeadlineExceeded": false
+  },
+  "independentOccupancyRace": {
+    "offlineOnly": true,
+    "noRealTransport": true,
+    "release": "908e7b417502930d7945b3d73dded584a7012dd7",
+    "results": [
+      {
+        "case": "node 1 occupied externally between preflight and second configuration read",
+        "preflightOk": true,
+        "configurationReads": 2,
+        "fakeWriteCalls": 1,
+        "commitInFakeCommands": true,
+        "blockedError": null,
+        "savedBaselineNodes": [10, 1000],
+        "simulatedConcurrentOccupancy": 1
+      },
+      {
+        "case": "node 2 occupied externally between preflight and second configuration read",
+        "preflightOk": true,
+        "configurationReads": 2,
+        "fakeWriteCalls": 1,
+        "commitInFakeCommands": true,
+        "blockedError": null,
+        "savedBaselineNodes": [10, 1000],
+        "simulatedConcurrentOccupancy": 2
+      }
+    ]
+  },
+  "independentReplayProbe": {
+    "offlineOnly": true,
+    "transport": "existing fake harness, no real SSH/HTTP",
+    "first": {
+      "ok": true,
+      "status": "ACTIVATED_VERIFIED",
+      "verified": true,
+      "action": "ACTIVATE",
+      "profileId": "cmuoavm4e00bysslhqd0h3q7u",
+      "idempotent": false
+    },
+    "removeWithSameRequestId": {
+      "ok": true,
+      "status": "ACTIVATED_VERIFIED",
+      "verified": true,
+      "action": "ACTIVATE",
+      "profileId": "cmuoavm4e00bysslhqd0h3q7u",
+      "idempotent": true
+    },
+    "otherProfileWithSameRequestId": {
+      "ok": true,
+      "status": "ACTIVATED_VERIFIED",
+      "verified": true,
+      "action": "ACTIVATE",
+      "profileId": "cmuoavm4e00bysslhqd0h3q7u",
+      "idempotent": true
+    },
+    "fakeWriteCount": 1
+  },
+  "exportEvaluationCases": 72,
+  "realPhysicalHomologationProven": false
+}

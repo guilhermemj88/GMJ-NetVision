@@ -1,0 +1,1856 @@
+{
+  "scope": "IMPLANTAR read-only audit; no production commands/migrations/restarts/publications",
+  "firstUtc": "2026-11-03T17:31:42.542301+00:00",
+  "lastStateUtc": "2026-11-03T17:58:19.211708+00:00",
+  "lastDatabaseUtc": "2026-11-03T17:56:35.916171+00:00",
+  "release": "908e7b417502930d7945b3d73dded584a7012dd7",
+  "bundleSha256": "2c0068b6e3d8dde39e744e7d65871b6062aa7d8ecf3c6045ded7407b0bdda0ef",
+  "sourceMapSha256": "cb6003241fce0942aebf45c20be1b045de5b28dad527f749e1e6330d0f965f34",
+  "localWindowsBuildSha256": "a9e706a849ec30cc737b8a7e43121bc351f3c7d822a628b294e99fbd7b4e10ea",
+  "sourceMapComparison": [
+    {
+      "path": "../src/generated/prisma/runtime/library.js",
+      "lfSha256": "5a72b6f69474641f48a0f5ffee45802dc939c6333467371ebbd9102353eb7aae",
+      "localMatches": true,
+      "generated": true
+    },
+    {
+      "path": "../src/generated/prisma/index.js",
+      "lfSha256": "82ea12702d61337a27c66a598c93ec1d96c5ecb875fa65cbc975a76c66ac666c",
+      "localMatches": false,
+      "generated": true
+    },
+    {
+      "path": "../src/app.ts",
+      "lfSha256": "cdb99b3b654762ce7da97459460fc566a11c1e525780471666f8416b29a28fc2",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/alarm-label.ts",
+      "lfSha256": "2c540cfd4a48ebf56ff4809202649821331acd1e435ba2c56d7fc7a685d3d0c4",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/alert-center.ts",
+      "lfSha256": "6a432af5a384442ee6d63a079fd16432d633b8f9746427cf63778e569e333ae3",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/alarm-suppression.ts",
+      "lfSha256": "6948f0f880dedf48fad6065f7ea2e2cdd1bdea322b543823e91f7d62fb842fc6",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/bgp-advertised-routes.ts",
+      "lfSha256": "8a0c8a92d6a00b0f9536fd32f2f274dc59f458dc8bc3842100689196e9ea0a3b",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/format.ts",
+      "lfSha256": "fef5e587cd7ac509ee960d891537d82cb49b4be6a0102744b7a3613f9aa9795f",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/demo.ts",
+      "lfSha256": "a57fd2634831192460686a7cec2d2bae886cbec1da5ec9bb46cfa790faba5693",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/history.ts",
+      "lfSha256": "1d573753358c7a2cbfeb504d46ac9f659bf06fd6769bbe6af98f8e4286908504",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/id.ts",
+      "lfSha256": "64f888cf2a29a637b053e82fed66baf926a9769b4e0716967798d66a46a43bac",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/ip.ts",
+      "lfSha256": "a81e52cde58242cd8383913a8e7bfa492d8e9191aebb744a6b322be716445193",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/link-handles.ts",
+      "lfSha256": "e62c47bde92eddd4d493653a56818c0517597e677380fdeb5a3b5fe82bde8dd7",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/link-telemetry.ts",
+      "lfSha256": "c6998dc523a849662db00a327e677f16e6b4f94f8d869ef318a8504d4c68d45b",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/mpls.ts",
+      "lfSha256": "b2ccf0fa3f562d39a4bcb454746151af49e4257d23083fc0095d1bf0a878c246",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/vsi-diagnostic.ts",
+      "lfSha256": "c2c913d3c511726988db2fcd9e2a8448c4a74b3ef50ffab514756376855f47cb",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/operational-occurrence.ts",
+      "lfSha256": "1b87befa4ee6cac194c2075668327602f388e984e650ece991731bc0ef408833",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/optical-history.ts",
+      "lfSha256": "93e28013d151c4b2bcd8eeb3186ca73ee2054dbfe297bce1ebf3ade9c0e88c8b",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/physical-interface.ts",
+      "lfSha256": "0b4a40238a02db254def725fecdf1f52e08c3f6ebe16186c6526ba7f4cd8c6a0",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/ppp.ts",
+      "lfSha256": "ce03340182cd41de9813a0766939e76b6668199299045c8b6ea11f9e33dd0d17",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/ssh-context.ts",
+      "lfSha256": "063a2200ee80f72d2202f15c065f626c1d1f88f541c0d7f5d4ecb85bbd65a4ab",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/types.ts",
+      "lfSha256": "51e49cc8e511d952409793b69241940f47de67ea79e33ea3535f30d5bc1edb0a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../../../packages/shared/src/diagnostics-cli.ts",
+      "lfSha256": "2efc91c9e962036b9835efe09059eb62f7f3b144dc500112e849815d17b7d7ad",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/huawei-bgp-policy-parser.ts",
+      "lfSha256": "c0f65ce20992aee89f171ec47b5e1ab991cc30f106d2f348b1ff2765e1bb1681",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/worker/mitigation/single-pilot-trigger.ts",
+      "lfSha256": "33b9afd5b0947258ac79d11d54ec9c08b439dde9deae1738c0e3663031cdf13a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/routes.ts",
+      "lfSha256": "f0df23643ef7ed0e3dc363a9518bad670a6c24d0ccfb77caa07ede30d5fedffe",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/application/credential-vault.ts",
+      "lfSha256": "88ee8199616e527a78d5d0026649675cfe4765819373bc1d8176262b512f55fd",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/application/discovery-service.ts",
+      "lfSha256": "73d7ca755d206a91659aced2819582f5a43b18765906611d65025aca5c4024bd",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/application/auth-service.ts",
+      "lfSha256": "2de4e3d18c125e4072e9c3a0bbf69ec224523d4f79fbd02b42c14e55680c2135",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/application/topology-apply-service.ts",
+      "lfSha256": "54d2f07e4dd2b2d2619d5614e8ce2da5c2222ce11dc65dc4df32b1e8a056ba68",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/topology/interface-correlation.ts",
+      "lfSha256": "9db225577a8900783a9aed1e092a14d529c1a15de4e5ee11876d71c1923e73b1",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/application/lldp-correlation-service.ts",
+      "lfSha256": "820f1df07dc569f94ced60e28bf7402829dc08205b1782f8a5814058293becce",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/application/topology-preview-service.ts",
+      "lfSha256": "5070bd5b19ba7b1f52617112a7197a7a3f0a5dfd6d99a59008408cf35bce406a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/config.ts",
+      "lfSha256": "f987ad4600bff81420e5a0b02939125689f985c27ccb51818704b587097fb280",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/host-routes.ts",
+      "lfSha256": "e5b76a0517cc60bfabd2139c75e91a989b6adc528c3dad86528d80d558aec3f7",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/metrics/zabbix-adapter.ts",
+      "lfSha256": "2efa4bdb8df5f92a166c8c5640d36fe35507e7765739228acd28760f5df3f36b",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/persistence/demo-map-repository.ts",
+      "lfSha256": "2dbd1ddd913019ca43a3ded53dfc984c3a8cbedf0b6b34ed978d653a082fa085",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/mpls-routes.ts",
+      "lfSha256": "4d85ee40566cc277edff54741dc459d2aa1193feca10656dcdff967fee41e92e",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/vsi-diagnostic-routes.ts",
+      "lfSha256": "e5dce4191f96573f355b4ee88e24f3bd9cd94fd6e0edec573d862b87a52b9cda",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/vsi-diagnostic-service.ts",
+      "lfSha256": "7e12ecb7330671049e9e8eb69fd113f2c945ef8bfba8d410e7e623409cae15f8",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/vsi-diagnostic-policy.ts",
+      "lfSha256": "7c4a41b7dd21cc4b4f910862b241050f02325cc744a6319631c6095d7cfcb833",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/vsi-diagnostic-parser.ts",
+      "lfSha256": "6d5509d0c713abf610390505ba04a0a4d482f13f460a6dc57b9c5a91a3e71046",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/vsi-diagnostic-observation.ts",
+      "lfSha256": "ff787f5a7086d80c7aa38cd44703b95c814560ffeb5a5aa04d8ebe6c62379659",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/vsi-diagnostic-reciprocal.ts",
+      "lfSha256": "7baac699abc01c68e2f5173d5b55a4dc7e696e4ca8164de3f16da05dc13e345f",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/vsi-probe-window.ts",
+      "lfSha256": "f7796bdb0a1b564c2b736801e38844580963530dd17169f9b78aa744db408b7e",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/vsi-probe-observation.ts",
+      "lfSha256": "270862883cab3f05e8fe38cccf2c3a51f1587da063b7d0606e0ce71cb61150d8",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/vsi-probe-correlation.ts",
+      "lfSha256": "0d9d0582baa1541fcace8cc8581494ffcbd430852744ddaf266081847d3f104d",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/vsi-diagnostic-inventory.ts",
+      "lfSha256": "a372f48b3f837b65701cae4cf3afe44ab223ae9b76d0e9d9038800fbb851bd69",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/vsi-diagnostic-ssh.ts",
+      "lfSha256": "4a2f77a457442d5deae6c2ec2a0869247583eb469cff6c90bc0ec718d044abab",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/ssh/ssh-client-impl.ts",
+      "lfSha256": "04631c90992f981422a29e2fee1e51ff892eeb4d873178636b553fcb508d4f26",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/ssh/ssh-context.ts",
+      "lfSha256": "dea16d42ec3fb7bf3d63f826ab0cc11f6a77310c724dacd6be04eb51c9a71073",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/ssh/diagnostic-session-preparation.ts",
+      "lfSha256": "2462e80bf6a5b3e93462e05069f24bd4d67c60f33229c0dc339e0bea7726cad8",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/vsi-diagnostic-approval.ts",
+      "lfSha256": "91bcf149493c1308fa31cd57f567070ab4c47561782c0829f81268d41435a7ee",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/bgp-routes.ts",
+      "lfSha256": "548b33595fe75662eb49e82c057c69bacd56c84d11416cd072052ec9de39ab70",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/bgp-admin-service.ts",
+      "lfSha256": "7fbee62c6edfcd7460008d1befd7bd4785c6f2a9057aa3a6fde68c0fce4de6b4",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/huawei-bgp-advertised-routes-parser.ts",
+      "lfSha256": "b8061bff263cf0e3a27fcee8c405ea8b692b3fd282e05a1307a941d89cf8eeb7",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/bgp-advertised-routes-service.ts",
+      "lfSha256": "525ca146c989ed51364386d4bbe3fea1a3d589d379497cf1b39d24e7d9d3aa1a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/physical-routes.ts",
+      "lfSha256": "c45f7cb2869d4210e33a933bd751a88ac7b020aea17abf4e65c1298a16817f23",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/physical/physical-repository.ts",
+      "lfSha256": "d9d8e225b9f5e535d9c54a46b7dad73004b1454a67eff91a68dc8a8d0c50cf34",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/physical/physical-domain.ts",
+      "lfSha256": "f8636e5caa70ec8c93da4b4f6bd922dcc7bd8d6fc5d65cd4018bd0c32c8f1cd6",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/physical/physical-catalog.ts",
+      "lfSha256": "c06dbd9f8525dc847535f647aff9585d16d31114a7f71cab36a8371e4c484f57",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/physical/physical-catalog-yaml.ts",
+      "lfSha256": "be3f04d2291ccf8419acf0ef684ea40424bc3cff48e5745c8fda66397b016e93",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/physical/physical-service.ts",
+      "lfSha256": "a1a9ec31e0bd3510690b93b61d0fd8fc2026f243d6366ed722efd378381eefa7",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/physical/demo-physical-repository.ts",
+      "lfSha256": "9d38b1ffbb150e72fe95f24559dc909a58a5b2d91fbe19256708b95403f7bef0",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/physical/prisma-physical-repository.ts",
+      "lfSha256": "d0accc6f9f127b799be5da7372e5bd22195219050e0e85f77355c6d26802e1ae",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/persistence/prisma-client.ts",
+      "lfSha256": "5ac8ec50343f050f08e0cfc23b1e538cc5fa134a6df981a012723cf69cc4fa18",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/read-only.ts",
+      "lfSha256": "a8279c03bf428c077c9d8998a88a396dc821dccf4b335cf03ef7378975f9ceef",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/metrics/demo-adapter.ts",
+      "lfSha256": "ed534a2ef902011cd897df21e297503ef5237fa789775a02fc899e3e47ce440d",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/persistence/demo-auth-repository.ts",
+      "lfSha256": "4783bfafdd819e10b5f7e886d26e31baeb664fd4001b9ace71f655555b570b1b",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/persistence/demo-host-repository-adapter.ts",
+      "lfSha256": "82fcd19ec5a9a7ee982dd4e18352f633e88a53c8175848242f6a3f002207cc6a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/persistence/demo-public-view-repository.ts",
+      "lfSha256": "0e96d6be3b5c8292d77b2a22e0856dc334e4064393488af3cbdc8f511831dcb2",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/persistence/in-memory-topology-preview-store.ts",
+      "lfSha256": "03b3c0fd503d6dde4de5f14af55b591e962ba1092bb06b219f028d3cd055985c",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/persistence/prisma-auth-repository.ts",
+      "lfSha256": "0cf0679f0200e961ba03f965361e0bd41271732d014e82578c8a1d0a96296bb4",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/persistence/prisma-map-repository.ts",
+      "lfSha256": "982adea44b86866cd42200e759bbffd11a18611de390895554c0db91785e20e6",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/persistence/prisma-public-view-repository.ts",
+      "lfSha256": "87cd42d1e25122ceb0a356ead0ac0c935c0095932657c7caaeb1f7a1a257e0ad",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/persistence/prisma-topology-preview-store.ts",
+      "lfSha256": "5a8dc5ea5ec565ae7cda2075beff6ee0d0d078c01a8ce11ff940121e9fd83e61",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/persistence/prisma-host-repository.ts",
+      "lfSha256": "70d1b85aed5e653419f910313b0ed5b459a6439560d7c75a2657124bbbd8c7e6",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/traffic-rate.ts",
+      "lfSha256": "1bf01ef707e3bc3935f1e4ecfc9483b7964d7fd8ccad98dc22b443a0a86fd57a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/persistence/traffic-sample-sql.ts",
+      "lfSha256": "53a64185f6db530beb0ddf0c9080fd392ef456a290307c1c79089075c773ff43",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/snmp-text.ts",
+      "lfSha256": "ce954696b4fca80ebb10c4d1e03754e57419a49678a66a079080a353e47fd537",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/topology/optical-thresholds.ts",
+      "lfSha256": "3ea2a38ea64371ed00ed2e6f182f3751cec2b529e0616fcabac6f177751d6bd8",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/snmp-client-impl.ts",
+      "lfSha256": "89acd8142bfcddfaf6368c79e138ed6531e9f2737770c5e84c39d553fca35805",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/snmp-poller.ts",
+      "lfSha256": "18ebb5befb2cfcf3d4e9df3577d920072513f76157da1bd4684cc72334e8a89a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/fast-traffic-poller.ts",
+      "lfSha256": "81533d7e374e6d8ef05a6b6e5149073d7e68eb3946afc08b3ea641ac9fbdfb40",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/fast-traffic-rate.ts",
+      "lfSha256": "f263d6f7f2256c0f1893897c5a8453445c25c08fe0a8cf9b0b03fc8f32802669",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/fast-snmp-reader.ts",
+      "lfSha256": "a9c4ba11b0067841970c95ab5cf334680b3dbcba80cf336941dd1f12b1b2bac8",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/prisma-fast-traffic-store.ts",
+      "lfSha256": "6af8761d5d2061d98697f42e2485a4598274f143c2564cad39aca3964e1bb7fc",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/fast-traffic-targets.ts",
+      "lfSha256": "bfd4ce76f6bdc71f6f6d845e319db70bab04e928c62b9829baa1971453663db1",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/worker/mitigation/fast-traffic-source.ts",
+      "lfSha256": "1fb165a697b199f62ddf264db2dad00ab39405fe361d2c29703f8afe8592a07b",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/worker/mitigation/fast-observation-bridge.ts",
+      "lfSha256": "0dacbe83ee77e76a58824d15f4b46d6d8b9762c16e681a61b92bc7b1e41d0757",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/worker/mitigation/mitigation-sampling-policy.ts",
+      "lfSha256": "05639e426e19f8a7abe55cb3a7834787be87f1be9896ea22305d25c3307fb934",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/topology/optical-power.ts",
+      "lfSha256": "70e2af511ae676f47b2770cc6af08a9c9223f775d47dbbede369e3ccf5270d39",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/topology/huawei-optical.ts",
+      "lfSha256": "b61ec89610aa59b6e70d50302141b3a5f897631a9d865cf5469527062e78886c",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/optical-capability.ts",
+      "lfSha256": "40743d722711e573e033d7ad1c0bc48e454ce3ad73e2e3933e78be3b25a8dbb3",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/profiles/generic-oids.ts",
+      "lfSha256": "0df4e01de12a1a616df7c148c6ba3eb6ec4b93eb54a90b680ee5c4859aaeb5ce",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/profiles/generic.ts",
+      "lfSha256": "ee6b5a0288b14e7e2b44d3ad903b5070ba5301e2dbbcb9cb0f75ba7b8dcc637e",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/profiles/ppp-oids.ts",
+      "lfSha256": "ba4b93a5b6cd6073efb929cf48b2a25ca8f5658a76f609538f9fd49e154008c2",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/profiles/huawei/generic.ts",
+      "lfSha256": "b3bbd51ab22d4047b3c5b794e4339278a5d22e89fa47abec3ae181121395abc6",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/profiles/huawei/ma5800.ts",
+      "lfSha256": "0876e1457aba71fd8e5f67d53dfaaa21617e61f089bceaeb2cebc43307678c96",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/profiles/huawei/ne8000.ts",
+      "lfSha256": "cf0b2d53b064e3fb27b0e2499bc0316a6880021c191ab959c1e9f35210512c06",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/profiles/huawei/s6730.ts",
+      "lfSha256": "02135686ff539c0360e65ed93b872ce5b8383fdd4ec26878d222743c2e431360",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/profiles/huawei/s6750.ts",
+      "lfSha256": "cfed90ad9ce455ca9113d7fcfe167c944bb8237d5123da966b31bd48ad996a87",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/profiles/mikrotik.ts",
+      "lfSha256": "b520ad96af76882405eb78e03c7b25d973011c2ce5c02fcebd0d758b6793e0ed",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/profiles/catalog.ts",
+      "lfSha256": "a922eea90c6e95419829ae2c3088855be604108cf776d8bf7500144556a4fe32",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/snmpv2c-discovery-adapter.ts",
+      "lfSha256": "50dec7fc06e4789e75a48062ce0360fa356697267d2fc99b81ab5d60b54a43d5",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/profile-metric-service.ts",
+      "lfSha256": "ae9de8779c29fa715660ff7cffb2f18e918ecc804dbdc591726960dded46b6af",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/counter-delta.ts",
+      "lfSha256": "428fffe3a8c0fff01984f81565b25daa3fc6b15e4eea272c1c637700c80ed431",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/etherlike-oids.ts",
+      "lfSha256": "d13c98525d7bac0525784634661ef436c4a601a35d21a31a120a873f78f193ac",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/snmp-service.ts",
+      "lfSha256": "5cab98e13ea16e6c737f2c07e1c2be3c78c201673208b92178dee0e52f5eb4b3",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/demo-mpls-repository.ts",
+      "lfSha256": "3472b9d5816d1fc3f86c23f30250e5d1491728166dbd0d220c282a1dfb2a052f",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/alarms/alarm-rule-schema.ts",
+      "lfSha256": "8086a8fe926a66c509c87da01c6cd539fda728689219b1a68236355a5edb6b1c",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/alarms/demo-alarm-repository.ts",
+      "lfSha256": "813a4a63c32a260cff184f2939e44e111f09af803f0b1313c5abd2181bb431c7",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/alarms/demo-alarm-rule-repository.ts",
+      "lfSha256": "816c18ce3c6968f32872c4f1dc5bce8704a96d8b10b2f5d4bd663ee9de305a50",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/alarms/demo-alarm-suppression-repository.ts",
+      "lfSha256": "362a030befd833c0cd88f754727bc3f9c5271d4bca183893588eb7d88f4d287e",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/alarms/prisma-alarm-repository.ts",
+      "lfSha256": "4734be65b182f31ba7e116300994363401e144026bf01ad21b2d9ae72245c3be",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/alarms/prisma-alarm-rule-repository.ts",
+      "lfSha256": "41ed950fe73b7d7bf867019e2c7f32072e90274452985ca10b5e685de19325f1",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/alarms/prisma-alarm-suppression-repository.ts",
+      "lfSha256": "2c1ce6d7b502e874b349af759876041e896bb2ee33630fc4ead6679bd5d8b755",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/application/alarm-service.ts",
+      "lfSha256": "8bba7a305d7c2a38265fe562050fb44933b4d8590566624142fef173746fbf4a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/application/alarm-suppression-service.ts",
+      "lfSha256": "57b03a7741bb14354a10b3cd3a3916d29cc8cfa3d1bd0894e63bda07c058d39b",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/application/alarm-engine.ts",
+      "lfSha256": "663dfa3900326f4f443e16c2083c4b0a34b2aa79be5f51df409410afa9d6c188",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/application/alarm-notification-service.ts",
+      "lfSha256": "b4ee2a87d31d065de060fa3472ab8af45d992682a99dd4449064d6c72c5ce9a3",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/media/media-secret-box.ts",
+      "lfSha256": "55fd104b7f86222af14731c2c98060282c1a67a5647588be63f24d6819ac8c16",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-webhook.ts",
+      "lfSha256": "134b996cd68abd186d163dd6f109f7e7462420e02c4127b5793b48002d6512c5",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/media/n8n-media-transport.ts",
+      "lfSha256": "68655ce318eb4c9434e1c6bc1b6156c7d7900bab1082b92036a3ddceedb9f9c8",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/alarms/alarm-test-fixtures.ts",
+      "lfSha256": "17d302899e5d913b0676f7df5248d72207b557b16e3a390f478af9a3c26dd45e",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/media/alarm-chart-snapshot.ts",
+      "lfSha256": "fc108a68f7103ad020b68dcadceef891d8b3228960cd796c3a5715b689b4b79a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/media/snapshot-token.ts",
+      "lfSha256": "7dc8e4a4e1ac0ca270a2f7719c6e758cca838b2e645d93e6e31193db5b04c61d",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/alarms/n8n-alarm-transport.ts",
+      "lfSha256": "c64a8adcc691349c2236fe54f2bdaf72b82acb7a3cea972832ca9bd4d5c62de0",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/media/snapshot-routes.ts",
+      "lfSha256": "4b03b009498aacf21db9c6d7ac698780c45611a052db0f3e2fc5a5bca4e51411",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/application/operational-occurrence-rules.ts",
+      "lfSha256": "1204d1cdb7955571701479c8c8de9c140778a5ebbbd57ef36be406d408bcd275",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/application/operational-occurrence-service.ts",
+      "lfSha256": "7b0335f0cdc398f7f7c95eb2f2aeca05d94af7c5a1d60b2bd8689778dfc94b80",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/alarms/alert-center-semantics.ts",
+      "lfSha256": "59517264f54a94114e6bccb2d94fe18d60d319735581113016bafaf134cc2c50",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/application/alert-center-service.ts",
+      "lfSha256": "e7166fd07c1a3075750a0ba5165ffc86756390e6a451c503f37a71c5ad64826c",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/alert-center-routes.ts",
+      "lfSha256": "9cc358f811b8cc59e34154c7ad85635edaba632bc7d3eb79fe2b45d511fba350",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/alarms/demo-alert-center-repository.ts",
+      "lfSha256": "9e6f76d6909295414bc161780aa6ae35086590abccf4342a5ca2495ac827687f",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/alarms/prisma-alert-center-repository.ts",
+      "lfSha256": "252b094f272e85d7f20e66430c1752bf5f3ac6a4de03220b82e22dcd0897379c",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/operational-occurrence-routes.ts",
+      "lfSha256": "ba0f27b30e879db1bd64c5f1d02b666d71425090785946db4742941094567d6b",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/alarms/demo-operational-occurrence-repository.ts",
+      "lfSha256": "f6725f905552b67fa73c982dc00274431ac165d1116029a7885ff22751633c2e",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/alarms/prisma-operational-occurrence-repository.ts",
+      "lfSha256": "9007cc0296f8df3c0c0989af9369b08a01b813d2be6784703c96ecb18c7a9c80",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/alarm-routes.ts",
+      "lfSha256": "2d45ce5eda89c4602bb03d8f11791e854d35fb32a7d32db4a1c5e87cfc0c9edd",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/huawei-vpls-oids.ts",
+      "lfSha256": "5942a9e3038fcdc91259656ceb291e04cd774fde5b8eab3081c4534d33806443",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/huawei-vpls-parser.ts",
+      "lfSha256": "96b27ab5e7e3ef2fb66b33eaf70a0ffdf4a666aa22c62bf1d36d4faa10dc9b39",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/huawei-vpls-snmp.ts",
+      "lfSha256": "f927ce6274c1d64fe61e02eb43a328ec061b1c110098ae9df3e9df5f11f51e7d",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/mpls-polling-service.ts",
+      "lfSha256": "b2c5536bd3c75a952157c054bd165a38bf63e0e1e0ca58cc936a3ae142fed6b0",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/mpls-state-events.ts",
+      "lfSha256": "2f5d3871f085d85da5ad8e87ea16f166ed852f924553e6ec642e85e14456f18b",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/mpls/prisma-mpls-repository.ts",
+      "lfSha256": "3344791ba13215a63ddbfac0548feafc0a4536f2966718055f8b0b9a1ea7e5ed",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/ppp/ppp-polling-service.ts",
+      "lfSha256": "2c087f2d4bca0dfa0b0e9cbcdec553cb80ceddf7f376ba0789b603ebfda80e17",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/ppp/prisma-ppp-repository.ts",
+      "lfSha256": "a5f6abb4c018fdf0adf82be1d86c4dc001e3e51c7254b645609425cd5fccd44c",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/bgp-polling-service.ts",
+      "lfSha256": "f0a6cdeb48a58053d2bf2604c0bd9fc21ef8f93d87ffdc1530296400ca2566a4",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/huawei-bgp-ssh-parser.ts",
+      "lfSha256": "11022a24ded285884b9a3d59b8c62a68784dce4c74d75d3832137812dae7521d",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/bgp-interface-correlation.ts",
+      "lfSha256": "547ea0cd9e379e2cde2c93c5db318716aa8f0422ffea2d210280434b1d85998a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/bgp-discovery-service.ts",
+      "lfSha256": "861deda6dc20cc5b0a25f62c33cbad83ea6ffe937f2da78d73ecf496255567aa",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/bgp-admin-audit.ts",
+      "lfSha256": "05040693b908281f172639d66632244137e10e9e6f3c0aa2e7d79bf400527cd4",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/prisma-bgp-admin-audit-repository.ts",
+      "lfSha256": "08426c82837d1d264f018e5db826af634aac51efe863f4561fa95ab20ab257c5",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/worker/mitigation/read-only-command-guard.ts",
+      "lfSha256": "5c482bb8c9c3947b80292e3584a66a1bea1e46502c9df7bf981a648a012ecd51",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/huawei-bgp-ssh.ts",
+      "lfSha256": "c97b5568b484d6d6d393b5a9fe201a12e1d56a8e6d5ed3ea28c1f571389f6d4c",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/bgp-persistence.ts",
+      "lfSha256": "c80a131d71f4cd17574fef726d5089df78957b3e19a6891f27b4bab526a60e8f",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/bgp-alerts.ts",
+      "lfSha256": "9bbaac53ae018d756993bd4194e9e23db4abe82bb1b9a7a9094ba4cf1c4b4b0d",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/demo-bgp-repository.ts",
+      "lfSha256": "9c6bb6661d978fb691af79f8feeaad71725998a3275951b6574110b47da7ebd3",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/bgp-oids.ts",
+      "lfSha256": "0b63dd98425a2b33b749c71f03c6aea2ad056db7e9310ba10526611fb795f205",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/bgp4-peer-parser.ts",
+      "lfSha256": "5d3c40147d409f61ec12f780e5eb7ad3760851454c4fc384c71431796af349d1",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/huawei-bgp-prefix-parser.ts",
+      "lfSha256": "202be434a6e50fe27329f611ea64a5464fb9a8f7dc7f92ac818dc9814b6505df",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/huawei-bgp-snmp.ts",
+      "lfSha256": "32f42a6ead934021f141bd9cb41e0949f8b58d48795f5c35a36c9a4ca9bbb9b3",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/prisma-bgp-repository.ts",
+      "lfSha256": "7de2d705289d53b3c7a6cac7729579001d4cd2456e040da0addbbad1a072c287",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/in-memory-mitigation-repository.ts",
+      "lfSha256": "3c2a451de4927f7d0ffc4510a500ab10ccec4d993c7867fcfd85156c6cee18dd",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/prisma-mitigation-repository.ts",
+      "lfSha256": "589e80bd8b233444f4715a66a6e1d0650013b29b02e73ddb6d1b50668c00e620",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/aglink-bgp-plan.ts",
+      "lfSha256": "a3311b0faa70b057f41cbfc2453567b434f41c7e0d12ec0ba904e7b50903d876",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/bandwidth-parser.ts",
+      "lfSha256": "3d92d2a86250d909931e7e8870031bca2b7e10fd7f968711d139e1af60ec4f22",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-config.ts",
+      "lfSha256": "dae02f2d0f5738f0fa86352da8b16de62cf5200622772fa42d1a70cf9fcf673f",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-scope.ts",
+      "lfSha256": "b0676026124d3514cead5da752c5e97d8112bd212a8af2e3d07a19dc5b2c6f7a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-planner.ts",
+      "lfSha256": "c176491ac403cf1915d7d31b0317bbee3c8c6cf7bc933158b3759a47f3b0935b",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-discovery-service.ts",
+      "lfSha256": "95a642d8ed94b9daf2deaa33385d4c6d4483cb5bf3d8d017dedfa0fea02a25c2",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/snmp-interface-metadata-refresher.ts",
+      "lfSha256": "ecd4cbedf4092d97476d7c081024159beda289173c85754a1d5702c54987279a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-config-source.ts",
+      "lfSha256": "27ccfe385724d138b7249553192bbbc27b48633382fef2a1e9953e61e035064e",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-persisted-peers.ts",
+      "lfSha256": "98085b703b99d30758a27a45cea1979dc6468e938747e6cecd76fc99ac2b4146",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-state-machine.ts",
+      "lfSha256": "f830f5ac365644943400a62377a33f60d103b8fcc82b82dca2dd92c52119a012",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-policy-clauses.ts",
+      "lfSha256": "8edde93168d929be8e1b430d0d82a658511c8b75b666570dc216e0ab684edcc3",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-write-guard.ts",
+      "lfSha256": "cbfe3630ce52d069e37b25eafab4b238c9924ec56b0e29ce020985c2a594d048",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/simulation-command-executor.ts",
+      "lfSha256": "abf1077ca16c8e0c5f060baa2b10dc18a4c52166c765b462e20a39a71571c42e",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-executor.ts",
+      "lfSha256": "8d401064a2045f33a0a0546dc5d46a8bb9ba95e236edd23397f5d6abdad9379d",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-policy-scope.ts",
+      "lfSha256": "a746ac1400798ce162c0fdef019e4411ceba1e233bdd923617c104cbe41ff085",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-policy-lock.ts",
+      "lfSha256": "beb49f9279d6ecbbb7897e4937746e700bc98ed5fb40939c7027807970febf2f",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-scope-confirmation.ts",
+      "lfSha256": "0794836e6d675ad2bd9c53d8a510527d5e98676d27a5c1f72289d26fe92f34b4",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-scope-prefixes.ts",
+      "lfSha256": "0cd5d763aefc78a888892d97993e928124d36652f2304c388c6aa8eccc249715",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-command-service.ts",
+      "lfSha256": "a328d0042d45712e4be3eb21236ade207490517838a8df8ffa1d790812a59447",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-auto-authorization.ts",
+      "lfSha256": "f0b441236d98d18080eec1c0ce23f5c4516195befde7ecd22a40f96a9c82850b",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-service.ts",
+      "lfSha256": "f04d3c78a7f835d7f38c4ac9a3e5e05673380203aea01a954ba03601b64bdba9",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-repository-router.ts",
+      "lfSha256": "8d53c3117281a1a4e4aab93db825d9f811c1da01deca15c02900699878b37015",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-schema-probe.ts",
+      "lfSha256": "9c59eb5a2acb1177e5221e276170e8ec5c925696a1d961a40a4ad111ce18c439",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/mitigation-routes.ts",
+      "lfSha256": "68c3fefca3630d30b5b5ec574ebdf9b0c3e3bd3edad5c020b77e913b8d2ada6a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-shared-policy.ts",
+      "lfSha256": "a6c6abe8a2c28e76685f16e77df9fac3a1ddb61971b7a27b78c5be47492149e8",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-direction-review.ts",
+      "lfSha256": "6dd55a8bd407c52e2316e725260b8b71bdfa102664cf6b64b89a660d265ee3ed",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-telemetry.ts",
+      "lfSha256": "4b98208481a3cc806867f2e77af53fd384ded7fcd14d9e4336b3e1c6390a5a86",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-policy-reconciler.ts",
+      "lfSha256": "b288cd6c920e0b7a8f9421819096d3f533cfeee5b63adbcdbf8816a496f76493",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-policy-physical.ts",
+      "lfSha256": "29dc3b2b887daeec3a47d63b9620a6ae7b2b8649c2073f9cc3598a389cb60977",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/prisma-mitigation-telemetry-reader.ts",
+      "lfSha256": "a36c6658c799e9c8b8281175d9e4dd1b22ef108f028cf21a7b9b15268e6ca8e7",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/prisma-direction-review-store.ts",
+      "lfSha256": "c394acff23375c0c2cf55721620196cf2e9e3bbb371db5a1a6e6aeae8ed6b9d1",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/n8n-routes.ts",
+      "lfSha256": "1d6a5f20c0e6186bdf4daef3048ce1208ac99b8317df39fa0b07fe92e9fb3217",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-execution-config.ts",
+      "lfSha256": "8080349bf79e556b8c9548b38e80f259c3a82e0ec90e4d926139e06edffaffec",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-node-snapshot.ts",
+      "lfSha256": "c2ba3407301316c9e2f1ea0eff0315bb96daef92945c1c2ac83dff1a05af696c",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-baseline-record.ts",
+      "lfSha256": "178115150bef76bbf84654846fc9b8af397aad8ce8258af5fdd6a3bea807dad9",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/huawei-mitigation-executor.ts",
+      "lfSha256": "2742c982aa3c129b020929a04ac4247f79feff6fad3b28c7c9f8a4f74d5752ce",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/prisma-interface-traffic-reader.ts",
+      "lfSha256": "1958342a72a3175a77bf144a6ec1dfb83fa9476161277b561a83f76e6c6eeb34",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/worker/mitigation/mitigation-auto-engine.ts",
+      "lfSha256": "0b54ab6dd44e5c1d416fc600cfcc809aefd1e5e3128c69ce92374b4821964109",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/worker/mitigation/mitigation-detection-alert-policy.ts",
+      "lfSha256": "014c2ea1f636a537f0cc9966ed7296d6bd1ee292543d5e335837dd6693d9adca",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/worker/mitigation/auto-lifecycle.ts",
+      "lfSha256": "b30b46e5ffb71ef98183f59b838a5ff71e84ddaf811e1d4fdbdae0dff5a01d0f",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/worker/mitigation/durable-mitigation-outbox.ts",
+      "lfSha256": "9b665cb81517200a017eb8380f39fb1d58d4caf52467f2281a40b426d8f8bca5",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/worker/mitigation/auto-client-binding.ts",
+      "lfSha256": "33dd42c9f8eecdeb27586ebc3b05a07383420a7151bdc744435f00aa8e1748fb",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/worker/mitigation/automation-store.ts",
+      "lfSha256": "26ee56be9549149ad309bb914230c474d4379ac5ff1c5220f1d9673b204599c7",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/worker/mitigation/baseline-store.ts",
+      "lfSha256": "3e9d0daee1d859e18d63a69c7d04904fe90798d19d56f51e6e5f86eecee2d156",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/application/mitigation-detection-alert.ts",
+      "lfSha256": "0025d750aa2ca38a2d93280bff57a848b15301d7dd71616533495c0eb0b4ae1a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/fast-observation-retention.ts",
+      "lfSha256": "2b8494c068267a2f3175a4a6136d25703e82ef6afa68299241cb9862defbe727",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/prisma-observer-traffic-store.ts",
+      "lfSha256": "88e940943548a0b8b60b7ff976fefae896afa0ca5aab466f7e187db281bc49ec",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/snmp/prisma-fast-bridge-reader.ts",
+      "lfSha256": "a2eff86d6cd2506a7de852a8c6e2f254623b6d2f210095468a9c408cc391a786",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/prisma-fast-shadow-runtime.ts",
+      "lfSha256": "e8f782aa1f4f84893d1a119bc781664e8a9a6b978cacea969bac09195274101c",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/prisma-policy-scope-lock.ts",
+      "lfSha256": "7bbeedbeeb72d7721b40284cea8b5a98dd49144637061d63a46b24a7d70feb45",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/worker/mitigation/mitigation-auto-runtime.ts",
+      "lfSha256": "2690af28ef99600bf6c235e6c7c8680b2206fe683b823392588673b403bd08df",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/worker/mitigation/mitigation-auto-shadow.ts",
+      "lfSha256": "fe270162d39ff5da8cc134b76375e55d1b0633a2a071cc1de3c38d3a679f3056",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/worker/mitigation/mitigation-traffic-source.ts",
+      "lfSha256": "f65709a9055c099a0d9a652753fbbf398a88c75ab4c99dbddd42903e1220739a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/bgp/mitigation/mitigation-auto-description-sweep.ts",
+      "lfSha256": "1c88f5b578d7c72df1c244f28bfd25fa4340a400f7e8dcf17dc172c5e7714fe7",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/media/in-memory-media-repository.ts",
+      "lfSha256": "6d4bd7db57165c23a56d9930895300ae4c636a2127ba79ae2e995e4b07894807",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/media/prisma-media-repository.ts",
+      "lfSha256": "d3eaca53f7b8962a70a36df2da5da5c5c4a24399b7a5af97104efbbcdfd2e7fc",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/media/media-schema-probe.ts",
+      "lfSha256": "46fda2cd2d898d08377bf8b129787b397c04750989c90ac08ba559ffbc1bde28",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/media/media-repository-router.ts",
+      "lfSha256": "bbdf249901d866ef481287836824c65814635dae61ab9d9f2aff3a49acfeb1d1",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/media/media-integration-service.ts",
+      "lfSha256": "3821d741b14376dce78ade5022cf54467488a3fba03d05a38468befd97cdee8d",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/media-routes.ts",
+      "lfSha256": "e966712856d61382c2dc78c733a6c7689871d98612f34f3c21ce4c169f19e85b",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/media/media-types.ts",
+      "lfSha256": "65858bf5ae1b026d36ef84221264dedfb5532f1b4f08ecfc6d3916356acc265d",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/topology/huawei-vrp-driver.ts",
+      "lfSha256": "0d214a39bda0ddfea69f389436a2a01685974c8ff577a7d6932cae9e594bc045",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/ssh/ssh-interface-service.ts",
+      "lfSha256": "6b7d38f148e9a3d3d0d92b3dc21da6589d61900e26097936553d01f3ba1938c1",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/ssh/optical-threshold-service.ts",
+      "lfSha256": "5ae9655c108a858e2bd53e0fddb1f5612484a00c08e1581aeb4e2ae10853572f",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/topology/demo-topology-adapter.ts",
+      "lfSha256": "58b94034cb6b9078c2120cfd74efb1e8d0b5807339995f40428f4648c207edf8",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/topology/lldp-snmp-adapter.ts",
+      "lfSha256": "a4c118da9eb2a425be2d2b02bc32274f0793f5bcf4d5ce87d5e248100654bdaa",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/infrastructure/topology/lldp-ssh-adapter.ts",
+      "lfSha256": "b7a10cebd52e035909fe8e3e385ce0812c92eacc33153ff13413afa077e4f87a",
+      "localMatches": true,
+      "generated": false
+    },
+    {
+      "path": "../src/server.ts",
+      "lfSha256": "af0f340f30ee64aa0f7c45cf21f882ee1a39e1e4ded56ab1ddff7da4ddd042be",
+      "localMatches": true,
+      "generated": false
+    }
+  ],
+  "migrations": {
+    "n": 43,
+    "last": "20261029090000_auto_lifecycle_durable",
+    "unfinished": 0
+  },
+  "profiles": 39,
+  "modes": {
+    "AUTO": 12,
+    "ALERT_ONLY": 27
+  },
+  "families": {
+    "IPV4": 23,
+    "IPV6": 16
+  },
+  "runtimeStates": {
+    "DISABLED": 1,
+    "NORMAL": 38
+  },
+  "servicesBefore": {
+    "netvision-api": {
+      "Requires": "-.mount sysinit.target system.slice",
+      "BindsTo": "",
+      "PartOf": "",
+      "After": "systemd-journald.socket system.slice -.mount network.target basic.target sysinit.target",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/etc/systemd/system/netvision-api.service",
+      "DropInPaths": "/etc/systemd/system/netvision-api.service.d/zz-auto.conf /etc/systemd/system/netvision-api.service.d/zz-netvision-alarm-deploy.conf /etc/systemd/system/netvision-api.service.d/zzz-huawei-profiles.conf /etc/systemd/system/netvision-api.service.d/zzzz-snapshot-media.conf /etc/systemd/system/netvision-api.service.d/zzzzzz-mitigation-auto-all.conf /etc/systemd/system/netvision-api.service.d/zzzzzzz-rc2-shadow.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzz-gate3.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzz-rc4-8337ea8.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzz-rc6-2b39dcb.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzz-rc7-aaafdde.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzz-rc8-99b3dd9.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzz-rc9-0f5bbe4.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzz-rc9-pilot-a.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzz-rc9-pilot-b.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzz-rc10-c2e7d1d.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzz-rc10-batch8.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzz-rc10-exec-allow.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzz-rc11-1ec5c47.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzz-vsi-trust.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzz-rc12-753577c.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzz-vsi-enabled.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzz-rc13-d6c07f2.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzzz-auto-activate-e78638a.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzzzz-single-pilot-4637696-auto0.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzzzzz-prefixes-bf7bc52.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzzzzzz-b6-2ad62b8.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzzzzzzzz-b6-flags.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzzzzzzzzzz-ack-908e7b4.conf",
+      "MainPID": "3527751",
+      "NRestarts": "0",
+      "ExecMainStartTimestamp": "Tue 2026-11-03 14:34:01 UTC",
+      "EnvironmentFiles": "/etc/netvision/single-pilot-4637696-auto0.env (ignore_errors=no)",
+      "cwd": "/opt/netvision-auto-activate/releases/908e7b417502930d7945b3d73dded584a7012dd7/apps/api",
+      "flags": {
+        "MITIGATION_MODE": "AUTO",
+        "MITIGATION_EXECUTOR": "HUAWEI",
+        "MITIGATION_LIVE_WRITE_ENABLED": "false",
+        "MITIGATION_ALLOWED_DEVICE_IDS": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+        "MITIGATION_AUTO_TRAFFIC_DIRECTIONS": "cmuoavm4x00c3sslhworjdb9i:tx,cmuoavm2o00btsslh2qc6qbpg:tx,cmuoavm4e00bysslhqd0h3q7u:tx,cmuoavm5i00c8sslhed09lt8p:tx",
+        "MITIGATION_AUTO_TRAFFIC_MAX_AGE_SECONDS": "600",
+        "MITIGATION_AUTO_DESCRIPTION_ENABLED": "0",
+        "MITIGATION_AUTO_EXECUTION_ENABLED": "0",
+        "MITIGATION_AUTO_DUAL_DIRECTIONS": "0",
+        "MITIGATION_AUTO_DESCRIPTION_FAMILIES": "IPV4",
+        "MITIGATION_AUTO_DESCRIPTION_BATCH_SIZE": "8",
+        "MITIGATION_FAST_BRIDGE_MODE": "ENFORCE",
+        "MITIGATION_FAST_BRIDGE_PROFILE_IDS": "cmuoavm4x00c3sslhworjdb9i,cmuoavm5i00c8sslhed09lt8p,cmuoavm2o00btsslh2qc6qbpg,cmuoavm4e00bysslhqd0h3q7u,cmuoavmcz00d7sslh1likgnvw,cmuoavm6600cdsslhhw427w4r,cmv2wtr97700mssesf05j8ebm,cmuoavmfz00e2sslhbmo9ple7,cmuoavmed00dmsslhi3dzev57,cmuoavmev00dssslh7vhu7oqu,cmuoavm8x00cnsslhxa6wtmar,cmuoavmc000d2sslhre9siv0f",
+        "MITIGATION_FAST_ENFORCE_PROFILE_IDS": "cmuoavm4x00c3sslhworjdb9i",
+        "MITIGATION_FAST_BRIDGE_WRITES_ENABLED": "true",
+        "MITIGATION_FAST_POLL_MODE": "OFF",
+        "MITIGATION_AUTO_DESCRIPTION_ALLOWED_PROFILE_IDS": "cmuoavm6600cdsslhhw427w4r,cmuoavm8x00cnsslhxa6wtmar,cmuoavmed00dmsslhi3dzev57,cmuoavmev00dssslh7vhu7oqu,cmv2wtr97700mssesf05j8ebm,cmuoavmfz00e2sslhbmo9ple7,cmuoavmc000d2sslhre9siv0f,cmuoavmcz00d7sslh1likgnvw",
+        "MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS": "",
+        "MITIGATION_AUTO_EXECUTION_LEGACY_PROFILE_IDS": "cmuoavm4x00c3sslhworjdb9i",
+        "MITIGATION_AUTO_LIFECYCLE_ENABLED": "0",
+        "MITIGATION_AUTO_REMOVE_ENABLED": "0",
+        "MITIGATION_AUTO_PERSISTENCE_ENABLED": "1",
+        "MITIGATION_FAST_ROUTED_PROFILE_IDS": "cmuoavm4x00c3sslhworjdb9i,cmuoavm5i00c8sslhed09lt8p,cmuoavm2o00btsslh2qc6qbpg,cmuoavm4e00bysslhqd0h3q7u,cmuoavmcz00d7sslh1likgnvw,cmuoavm6600cdsslhhw427w4r,cmv2wtr97700mssesf05j8ebm,cmuoavmfz00e2sslhbmo9ple7,cmuoavmed00dmsslhi3dzev57,cmuoavmev00dssslh7vhu7oqu,cmuoavm8x00cnsslhxa6wtmar,cmuoavmc000d2sslhre9siv0f",
+        "MITIGATION_FAST_MAX_INTERFACES_PER_DEVICE": "32",
+        "MITIGATION_AUTO_MAX_ACTIVE": "1"
+      },
+      "bundleSha256": "2c0068b6e3d8dde39e744e7d65871b6062aa7d8ecf3c6045ded7407b0bdda0ef",
+      "bundleSize": 2161086
+    },
+    "netvision-mcp": {
+      "Requires": "netvision-api.service -.mount sysinit.target system.slice",
+      "BindsTo": "",
+      "PartOf": "",
+      "After": "system.slice network.target -.mount netvision-api.service systemd-journald.socket basic.target sysinit.target",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/etc/systemd/system/netvision-mcp.service",
+      "DropInPaths": "/etc/systemd/system/netvision-mcp.service.d/zzz-huawei-profiles.conf /etc/systemd/system/netvision-mcp.service.d/zzzzzzzz-ssh-brief.conf",
+      "MainPID": "3527753",
+      "NRestarts": "0",
+      "ExecMainStartTimestamp": "Tue 2026-11-03 14:34:01 UTC",
+      "EnvironmentFiles": "/opt/GMJ-NetVision/.env (ignore_errors=no)",
+      "cwd": "/opt/netvision-mcp/releases/mcp-5874fe0"
+    },
+    "netvision-web": {
+      "Requires": "system.slice sysinit.target -.mount",
+      "BindsTo": "",
+      "PartOf": "",
+      "After": "netvision-api.service basic.target network.target systemd-journald.socket sysinit.target system.slice -.mount",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/etc/systemd/system/netvision-web.service",
+      "DropInPaths": "/etc/systemd/system/netvision-web.service.d/override.conf /etc/systemd/system/netvision-web.service.d/zz-netvision-alarm-deploy.conf /etc/systemd/system/netvision-web.service.d/zzz-huawei-profiles.conf /etc/systemd/system/netvision-web.service.d/zzzz-mapv2-release.conf /etc/systemd/system/netvision-web.service.d/zzzzzz-diagnostics-integrated.conf /etc/systemd/system/netvision-web.service.d/zzzzzzzz-rc11-vsi.conf /etc/systemd/system/netvision-web.service.d/zzzzzzzzz-rc12-vsi.conf /etc/systemd/system/netvision-web.service.d/zzzzzzzzzz-rc13-vsi.conf /etc/systemd/system/netvision-web.service.d/zzzzzzzzzzzz-web-responsive-f4b31fc.conf",
+      "MainPID": "2976909",
+      "NRestarts": "0",
+      "ExecMainStartTimestamp": "Mon 2026-10-26 21:10:07 UTC",
+      "EnvironmentFiles": "/opt/GMJ-NetVision/.env (ignore_errors=no)",
+      "cwd": "/opt/GMJ-NetVision-web-responsive/releases/f4b31fc31dd0ffdc7d454157822a3e85c5a5e8b8/web/apps/web"
+    },
+    "netvision-fast-observer": {
+      "Requires": "sysinit.target system.slice -.mount",
+      "BindsTo": "",
+      "PartOf": "",
+      "After": "tmp.mount systemd-journald.socket system.slice network-online.target basic.target postgresql.service -.mount systemd-tmpfiles-setup.service sysinit.target",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/etc/systemd/system/netvision-fast-observer.service",
+      "DropInPaths": "",
+      "MainPID": "2594846",
+      "NRestarts": "1",
+      "ExecMainStartTimestamp": "Fri 2026-10-23 06:22:08 UTC",
+      "EnvironmentFiles": "/etc/netvision-fast-observer.env (ignore_errors=no)",
+      "cwd": "/opt/netvision-fast-observer/releases/rc-aaafdde/runtime"
+    }
+  },
+  "servicesAfter": {
+    "netvision-api": {
+      "Requires": "-.mount sysinit.target system.slice",
+      "BindsTo": "",
+      "PartOf": "",
+      "After": "systemd-journald.socket system.slice -.mount network.target basic.target sysinit.target",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/etc/systemd/system/netvision-api.service",
+      "DropInPaths": "/etc/systemd/system/netvision-api.service.d/zz-auto.conf /etc/systemd/system/netvision-api.service.d/zz-netvision-alarm-deploy.conf /etc/systemd/system/netvision-api.service.d/zzz-huawei-profiles.conf /etc/systemd/system/netvision-api.service.d/zzzz-snapshot-media.conf /etc/systemd/system/netvision-api.service.d/zzzzzz-mitigation-auto-all.conf /etc/systemd/system/netvision-api.service.d/zzzzzzz-rc2-shadow.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzz-gate3.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzz-rc4-8337ea8.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzz-rc6-2b39dcb.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzz-rc7-aaafdde.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzz-rc8-99b3dd9.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzz-rc9-0f5bbe4.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzz-rc9-pilot-a.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzz-rc9-pilot-b.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzz-rc10-c2e7d1d.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzz-rc10-batch8.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzz-rc10-exec-allow.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzz-rc11-1ec5c47.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzz-vsi-trust.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzz-rc12-753577c.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzz-vsi-enabled.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzz-rc13-d6c07f2.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzzz-auto-activate-e78638a.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzzzz-single-pilot-4637696-auto0.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzzzzz-prefixes-bf7bc52.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzzzzzz-b6-2ad62b8.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzzzzzzzz-b6-flags.conf /etc/systemd/system/netvision-api.service.d/zzzzzzzzzzzzzzzzzzzzzzzzzzzz-ack-908e7b4.conf",
+      "MainPID": "3527751",
+      "NRestarts": "0",
+      "ExecMainStartTimestamp": "Tue 2026-11-03 14:34:01 UTC",
+      "EnvironmentFiles": "/etc/netvision/single-pilot-4637696-auto0.env (ignore_errors=no)",
+      "cwd": "/opt/netvision-auto-activate/releases/908e7b417502930d7945b3d73dded584a7012dd7/apps/api",
+      "flags": {
+        "MITIGATION_MODE": "AUTO",
+        "MITIGATION_EXECUTOR": "HUAWEI",
+        "MITIGATION_LIVE_WRITE_ENABLED": "false",
+        "MITIGATION_ALLOWED_DEVICE_IDS": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+        "MITIGATION_AUTO_TRAFFIC_DIRECTIONS": "cmuoavm4x00c3sslhworjdb9i:tx,cmuoavm2o00btsslh2qc6qbpg:tx,cmuoavm4e00bysslhqd0h3q7u:tx,cmuoavm5i00c8sslhed09lt8p:tx",
+        "MITIGATION_AUTO_TRAFFIC_MAX_AGE_SECONDS": "600",
+        "MITIGATION_AUTO_DESCRIPTION_ENABLED": "0",
+        "MITIGATION_AUTO_EXECUTION_ENABLED": "0",
+        "MITIGATION_AUTO_DUAL_DIRECTIONS": "0",
+        "MITIGATION_AUTO_DESCRIPTION_FAMILIES": "IPV4",
+        "MITIGATION_AUTO_DESCRIPTION_BATCH_SIZE": "8",
+        "MITIGATION_FAST_BRIDGE_MODE": "ENFORCE",
+        "MITIGATION_FAST_BRIDGE_PROFILE_IDS": "cmuoavm4x00c3sslhworjdb9i,cmuoavm5i00c8sslhed09lt8p,cmuoavm2o00btsslh2qc6qbpg,cmuoavm4e00bysslhqd0h3q7u,cmuoavmcz00d7sslh1likgnvw,cmuoavm6600cdsslhhw427w4r,cmv2wtr97700mssesf05j8ebm,cmuoavmfz00e2sslhbmo9ple7,cmuoavmed00dmsslhi3dzev57,cmuoavmev00dssslh7vhu7oqu,cmuoavm8x00cnsslhxa6wtmar,cmuoavmc000d2sslhre9siv0f",
+        "MITIGATION_FAST_ENFORCE_PROFILE_IDS": "cmuoavm4x00c3sslhworjdb9i",
+        "MITIGATION_FAST_BRIDGE_WRITES_ENABLED": "true",
+        "MITIGATION_FAST_POLL_MODE": "OFF",
+        "MITIGATION_AUTO_DESCRIPTION_ALLOWED_PROFILE_IDS": "cmuoavm6600cdsslhhw427w4r,cmuoavm8x00cnsslhxa6wtmar,cmuoavmed00dmsslhi3dzev57,cmuoavmev00dssslh7vhu7oqu,cmv2wtr97700mssesf05j8ebm,cmuoavmfz00e2sslhbmo9ple7,cmuoavmc000d2sslhre9siv0f,cmuoavmcz00d7sslh1likgnvw",
+        "MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS": "",
+        "MITIGATION_AUTO_EXECUTION_LEGACY_PROFILE_IDS": "cmuoavm4x00c3sslhworjdb9i",
+        "MITIGATION_AUTO_LIFECYCLE_ENABLED": "0",
+        "MITIGATION_AUTO_REMOVE_ENABLED": "0",
+        "MITIGATION_AUTO_PERSISTENCE_ENABLED": "1",
+        "MITIGATION_FAST_ROUTED_PROFILE_IDS": "cmuoavm4x00c3sslhworjdb9i,cmuoavm5i00c8sslhed09lt8p,cmuoavm2o00btsslh2qc6qbpg,cmuoavm4e00bysslhqd0h3q7u,cmuoavmcz00d7sslh1likgnvw,cmuoavm6600cdsslhhw427w4r,cmv2wtr97700mssesf05j8ebm,cmuoavmfz00e2sslhbmo9ple7,cmuoavmed00dmsslhi3dzev57,cmuoavmev00dssslh7vhu7oqu,cmuoavm8x00cnsslhxa6wtmar,cmuoavmc000d2sslhre9siv0f",
+        "MITIGATION_FAST_MAX_INTERFACES_PER_DEVICE": "32",
+        "MITIGATION_AUTO_MAX_ACTIVE": "1"
+      },
+      "publicConfiguration": {
+        "NETVISION_INSTALLATION_ID": "IMPLANTAR",
+        "NODE_ENV": null,
+        "SNMP_POLLING_ENABLED": "true"
+      },
+      "bundleSha256": "2c0068b6e3d8dde39e744e7d65871b6062aa7d8ecf3c6045ded7407b0bdda0ef",
+      "bundleSize": 2161086
+    },
+    "netvision-mcp": {
+      "Requires": "netvision-api.service -.mount sysinit.target system.slice",
+      "BindsTo": "",
+      "PartOf": "",
+      "After": "system.slice network.target -.mount netvision-api.service systemd-journald.socket basic.target sysinit.target",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/etc/systemd/system/netvision-mcp.service",
+      "DropInPaths": "/etc/systemd/system/netvision-mcp.service.d/zzz-huawei-profiles.conf /etc/systemd/system/netvision-mcp.service.d/zzzzzzzz-ssh-brief.conf",
+      "MainPID": "3527753",
+      "NRestarts": "0",
+      "ExecMainStartTimestamp": "Tue 2026-11-03 14:34:01 UTC",
+      "EnvironmentFiles": "/opt/GMJ-NetVision/.env (ignore_errors=no)",
+      "cwd": "/opt/netvision-mcp/releases/mcp-5874fe0"
+    },
+    "netvision-web": {
+      "Requires": "system.slice sysinit.target -.mount",
+      "BindsTo": "",
+      "PartOf": "",
+      "After": "netvision-api.service basic.target network.target systemd-journald.socket sysinit.target system.slice -.mount",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/etc/systemd/system/netvision-web.service",
+      "DropInPaths": "/etc/systemd/system/netvision-web.service.d/override.conf /etc/systemd/system/netvision-web.service.d/zz-netvision-alarm-deploy.conf /etc/systemd/system/netvision-web.service.d/zzz-huawei-profiles.conf /etc/systemd/system/netvision-web.service.d/zzzz-mapv2-release.conf /etc/systemd/system/netvision-web.service.d/zzzzzz-diagnostics-integrated.conf /etc/systemd/system/netvision-web.service.d/zzzzzzzz-rc11-vsi.conf /etc/systemd/system/netvision-web.service.d/zzzzzzzzz-rc12-vsi.conf /etc/systemd/system/netvision-web.service.d/zzzzzzzzzz-rc13-vsi.conf /etc/systemd/system/netvision-web.service.d/zzzzzzzzzzzz-web-responsive-f4b31fc.conf",
+      "MainPID": "2976909",
+      "NRestarts": "0",
+      "ExecMainStartTimestamp": "Mon 2026-10-26 21:10:07 UTC",
+      "EnvironmentFiles": "/opt/GMJ-NetVision/.env (ignore_errors=no)",
+      "cwd": "/opt/GMJ-NetVision-web-responsive/releases/f4b31fc31dd0ffdc7d454157822a3e85c5a5e8b8/web/apps/web"
+    },
+    "netvision-fast-observer": {
+      "Requires": "sysinit.target system.slice -.mount",
+      "BindsTo": "",
+      "PartOf": "",
+      "After": "tmp.mount systemd-journald.socket system.slice network-online.target basic.target postgresql.service -.mount systemd-tmpfiles-setup.service sysinit.target",
+      "ActiveState": "active",
+      "SubState": "running",
+      "FragmentPath": "/etc/systemd/system/netvision-fast-observer.service",
+      "DropInPaths": "",
+      "MainPID": "2594846",
+      "NRestarts": "1",
+      "ExecMainStartTimestamp": "Fri 2026-10-23 06:22:08 UTC",
+      "EnvironmentFiles": "/etc/netvision-fast-observer.env (ignore_errors=no)",
+      "cwd": "/opt/netvision-fast-observer/releases/rc-aaafdde/runtime"
+    }
+  },
+  "diskAfter": "Filesystem                          1B-blocks        Used   Available Use% Mounted on\n/dev/mapper/ubuntu--vg-ubuntu--lv 76557455360 60549873664 12071858176  84% /",
+  "databasePreservation": {
+    "profiles": true,
+    "eventsSummary": true,
+    "durable": true,
+    "migration": true,
+    "mediaSummary": true,
+    "huaweiConfigAfterRemovingLoginBanners": {
+      "bgpConfiguration": true,
+      "routePolicyConfiguration": true,
+      "prefixListConfiguration": true
+    },
+    "services": {
+      "netvision-api": {
+        "MainPID": true,
+        "NRestarts": true,
+        "cwd": true,
+        "ExecMainStartTimestamp": true
+      },
+      "netvision-mcp": {
+        "MainPID": true,
+        "NRestarts": true,
+        "cwd": true,
+        "ExecMainStartTimestamp": true
+      },
+      "netvision-web": {
+        "MainPID": true,
+        "NRestarts": true,
+        "cwd": true,
+        "ExecMainStartTimestamp": true
+      },
+      "netvision-fast-observer": {
+        "MainPID": true,
+        "NRestarts": true,
+        "cwd": true,
+        "ExecMainStartTimestamp": true
+      }
+    }
+  },
+  "events": [
+    {
+      "profileId": "cmv2wtr8a700hsses6imwannv",
+      "type": "REMOVE",
+      "success": true,
+      "verified": true,
+      "n": 1,
+      "first": "2026-10-10T22:28:18.489",
+      "last": "2026-10-10T22:28:18.489"
+    },
+    {
+      "profileId": "cmv2wtr97700mssesf05j8ebm",
+      "type": "ACTIVATE",
+      "success": true,
+      "verified": true,
+      "n": 1,
+      "first": "2026-10-10T21:33:30.8",
+      "last": "2026-10-10T21:33:30.8"
+    },
+    {
+      "profileId": "cmuoavm4x00c3sslhworjdb9i",
+      "type": "ACTIVATE",
+      "success": true,
+      "verified": true,
+      "n": 2,
+      "first": "2026-09-30T17:34:55.742",
+      "last": "2026-10-18T12:10:05.426"
+    },
+    {
+      "profileId": "cmuoavm4x00c3sslhworjdb9i",
+      "type": "SIMULATION",
+      "success": false,
+      "verified": false,
+      "n": 1,
+      "first": "2026-09-30T18:46:12.577",
+      "last": "2026-09-30T18:46:12.577"
+    },
+    {
+      "profileId": "cmv2wtra0700rssesjkdkn8vo",
+      "type": "ACTIVATE",
+      "success": true,
+      "verified": true,
+      "n": 1,
+      "first": "2026-10-10T21:34:08.22",
+      "last": "2026-10-10T21:34:08.22"
+    },
+    {
+      "profileId": "cmv2wtra0700rssesjkdkn8vo",
+      "type": "REMOVE",
+      "success": true,
+      "verified": true,
+      "n": 1,
+      "first": "2026-10-10T22:30:16.767",
+      "last": "2026-10-10T22:30:16.767"
+    },
+    {
+      "profileId": "cmuoavm4x00c3sslhworjdb9i",
+      "type": "REMOVE",
+      "success": true,
+      "verified": true,
+      "n": 2,
+      "first": "2026-09-30T17:37:49.857",
+      "last": "2026-10-19T18:59:43.701"
+    },
+    {
+      "profileId": "cmuoavm4x00c3sslhworjdb9i",
+      "type": "SIMULATION",
+      "success": true,
+      "verified": false,
+      "n": 2,
+      "first": "2026-09-30T17:34:04.381",
+      "last": "2026-09-30T17:34:04.594"
+    }
+  ],
+  "durable": [
+    {
+      "id": "outbox:MITIGATION_SIMULATION_TRIGGERED:sim-b6-1793652153",
+      "kind": "outbox",
+      "status": "FAILED",
+      "attempts": 12,
+      "event": "MITIGATION_SIMULATION_TRIGGERED",
+      "createdAt": "2026-11-02T20:42:40.724",
+      "updatedAt": "2026-11-02T21:59:03.116"
+    },
+    {
+      "id": "outbox:MITIGATION_SIMULATION_TRIGGERED:ack-908e7b4-1793716463",
+      "kind": "outbox",
+      "status": "SENT",
+      "attempts": 1,
+      "event": "MITIGATION_SIMULATION_TRIGGERED",
+      "createdAt": "2026-11-03T14:34:32.462",
+      "updatedAt": "2026-11-03T14:34:33.778"
+    }
+  ],
+  "media": [
+    {
+      "id": "cmuob01s5037zsslhh8wy2edg",
+      "name": "n8n — Mitigacao DDoS",
+      "purpose": "BGP_MITIGATION",
+      "enabled": true,
+      "outboundUrl": "https://automacao.gmjtelecom.com.br/webhook/netvision-mitigation",
+      "outboundSecretPresent": true,
+      "inboundEnabled": true,
+      "inboundSecretPresent": true,
+      "lastOutboundAttemptAt": "2026-11-03T14:34:33.734",
+      "lastOutboundSuccessAt": "2026-11-03T14:34:33.734",
+      "lastOutboundFailureAt": null,
+      "lastOutboundStatusCode": 200,
+      "lastOutboundEvent": "MITIGATION_SIMULATION_TRIGGERED",
+      "lastOutboundErrorSafe": null
+    }
+  ],
+  "mediaCounts": [
+    {
+      "direction": "INBOUND",
+      "event": null,
+      "status": "FAILED",
+      "httpStatus": 401,
+      "n": 5,
+      "last": "2026-10-19T18:41:24.163"
+    },
+    {
+      "direction": "OUTBOUND",
+      "event": "MITIGATION_REMOVED_VERIFIED",
+      "status": "SUCCESS",
+      "httpStatus": 200,
+      "n": 4,
+      "last": "2026-10-19T18:59:44.066"
+    },
+    {
+      "direction": "OUTBOUND",
+      "event": "MITIGATION_SIMULATION_TRIGGERED",
+      "status": "FAILED",
+      "httpStatus": 200,
+      "n": 12,
+      "last": "2026-11-02T21:59:03.074"
+    },
+    {
+      "direction": "INBOUND",
+      "event": null,
+      "status": "FAILED",
+      "httpStatus": 400,
+      "n": 1,
+      "last": "2026-10-19T18:49:11.25"
+    },
+    {
+      "direction": "OUTBOUND",
+      "event": "MITIGATION_TEST",
+      "status": "SUCCESS",
+      "httpStatus": 200,
+      "n": 1,
+      "last": "2026-10-08T17:28:26.754"
+    },
+    {
+      "direction": "INBOUND",
+      "event": null,
+      "status": "SUCCESS",
+      "httpStatus": 200,
+      "n": 7,
+      "last": "2026-11-03T14:34:32.488"
+    },
+    {
+      "direction": "OUTBOUND",
+      "event": "MITIGATION_SIMULATION_TRIGGERED",
+      "status": "SUCCESS",
+      "httpStatus": 200,
+      "n": 2,
+      "last": "2026-11-03T14:34:33.734"
+    },
+    {
+      "direction": "INBOUND",
+      "event": null,
+      "status": "FAILED",
+      "httpStatus": 200,
+      "n": 9,
+      "last": "2026-10-19T18:59:21.409"
+    },
+    {
+      "direction": "OUTBOUND",
+      "event": "MITIGATION_VERIFIED",
+      "status": "SUCCESS",
+      "httpStatus": 200,
+      "n": 4,
+      "last": "2026-10-18T12:10:07.003"
+    }
+  ],
+  "freshHealth": {
+    "api": 200,
+    "apiBody": {
+      "status": "ok",
+      "demoMode": false,
+      "snmpPolling": true
+    },
+    "source": "IMPLANTAR MCP api_health at beginning/end; no authenticated session created"
+  },
+  "auditCollectionIncident": "Initial collector mistakenly included a database connection field in tool output. Collector fixed and local evidence sanitized; previously emitted output cannot be recalled. No credential value or credential hash included here. No credential rotation authorized/performed."
+}
