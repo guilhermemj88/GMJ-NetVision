@@ -1,5 +1,7 @@
 # Matriz individual — AUTO-ALL / IMPLANTAR / 03-11-2026
 
+> **Matriz histórica do código publicado e contrato anterior.** Os marcadores P e a antiga exigência de LP/lista não são requisitos do contrato final. Consulte a [reavaliação dos 39 perfis](MATRIZ-CONTRATO-FINAL.md) e o [adendo corrigido](ADENDO-CONTRATO-RT660-EXCLUSIVO.md). Nenhuma liberação operacional foi concedida.
+
 Fonte: banco produtivo em READ ONLY, configurações `display` e avaliação offline do código 908e7b4. Nenhum caso é homologação física. Todos os perfis usam o mesmo NE8000 F1A-8H20Q / VRP8.220 / SPC600 / SPH152.
 
 39 perfis, 23 IPv4 e 16 IPv6; 12 AUTO e 27 ALERT_ONLY; 0 elegíveis E2E agora. IN=checks do executor offline assumindo snapshot fresco; isso não valida cache, transporte de escrita, exportação ou mitigadora.

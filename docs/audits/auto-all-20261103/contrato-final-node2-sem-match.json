@@ -1,0 +1,5824 @@
+{
+  "contract": {
+    "node1": ["deny", "if-match ip-prefix BOGONS"],
+    "node2": ["permit", "apply extcommunity rt 268568:660"],
+    "node2IfMatch": [],
+    "node2LocalPreference": null,
+    "node2Additive": false,
+    "deriveOrCopyPermanentClauses": false,
+    "removal": "MANUAL_ONLY_UNDO_NODES_1_2_WITH_PROVEN_OWNERSHIP"
+  },
+  "readOnlyProduction": true,
+  "functionalChanges": false,
+  "physicalHomologation": false,
+  "hardwareObservedUtc": "2026-11-03T19:56:22.692Z",
+  "productionObservedUtc": "2026-11-03T19:57:41.283458+00:00",
+  "counts": {
+    "profiles": 39,
+    "distinctPolicies": 24,
+    "ipv4": 23,
+    "ipv6": 16,
+    "oldBaselineFailures": 38,
+    "oldBaselineFailuresIpv4": 22,
+    "oldBaselineFailuresIpv6": 16,
+    "occupiedProfiles": 0,
+    "sharedPolicyProfiles": 27,
+    "finalContractReferenceCases": 8,
+    "currentCodeProbesIpv4": 23,
+    "currentCodeAcceptsFinalContract": 0,
+    "permanentFingerprintUnchangedInProbes": 23,
+    "normalTextAfterRemovalVerified": 23
+  },
+  "rows": [
+    {
+      "profileId": "cmuoavm2o00btsslh2qc6qbpg",
+      "customer": "73S TELECOM IP",
+      "policy": "PL-73S_IPv4-IN",
+      "family": "IPV4",
+      "mode": "AUTO",
+      "interface": "Eth-Trunk1.3534",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 1,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.234"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 100,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-73S-IPV4",
+            "apply local-preference 1100",
+            "apply extcommunity rt 268568:110 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuq7a6er002zssghj6f9j69v",
+      "customer": "73S TELECOM IP",
+      "policy": "PL-73S_IPv6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3534",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 1,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:2::2"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 100,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list PREFIX-73S-IPV6",
+            "apply local-preference 1100",
+            "apply extcommunity rt 268568:110 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavm4e00bysslhqd0h3q7u",
+      "customer": "AGLINK-IPV4",
+      "policy": "PL-AGLINK_IPv4-IN",
+      "family": "IPV4",
+      "mode": "AUTO",
+      "interface": "Eth-Trunk1.3058",
+      "previousBaselineBlocked": false,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "NOT_A_GATE",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 1,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.2"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix AGLINK-BLOCO-TODO-23",
+            "apply local-preference 1100",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        },
+        {
+          "node": 1000,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavm4x00c3sslhworjdb9i",
+      "customer": "BHNET-CEASA",
+      "policy": "PL-BHNET_IPv4-IN",
+      "family": "IPV4",
+      "mode": "AUTO",
+      "interface": "Eth-Trunk1.3043",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.200.222"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.200.226"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-BHNET-IPV4",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        },
+        {
+          "node": 100,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavm5i00c8sslhed09lt8p",
+      "customer": "BHNET-RBN",
+      "policy": "PL-BHNET_IPv4-IN",
+      "family": "IPV4",
+      "mode": "AUTO",
+      "interface": "Eth-Trunk1.3044",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.200.222"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.200.226"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-BHNET-IPV4",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        },
+        {
+          "node": 100,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuq7a6ia003jssghgzz5ali0",
+      "customer": "BHNET-CEASA",
+      "policy": "PL-BHNET_IPv6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3043",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::142"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::146"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list PREFIX-BHNET-IPV6",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        },
+        {
+          "node": 100,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "SHARED_POLICY_SCOPE",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuq7a6j4003ossghmi7eksq0",
+      "customer": "BHNET-RBN",
+      "policy": "PL-BHNET_IPv6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3044",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::142"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::146"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list PREFIX-BHNET-IPV6",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        },
+        {
+          "node": 100,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "SHARED_POLICY_SCOPE",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavm6600cdsslhhw427w4r",
+      "customer": "CLICKING-TELECOM",
+      "policy": "PL-CLICKING-V4-IN",
+      "family": "IPV4",
+      "mode": "AUTO",
+      "interface": "Eth-Trunk1.3528",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 1,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.214"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 50,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-DUALNET-V4",
+            "apply local-preference 4000",
+            "apply extcommunity rt 268568:660"
+          ]
+        },
+        {
+          "node": 100,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-CLICKING-IPV4",
+            "apply local-preference 4000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "PERMANENT_RT660_NOT_NETVISION_OWNERSHIP",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuq7a6kk003yssghxtnm6s9z",
+      "customer": "CLICKING-TELECOM",
+      "policy": "PL-CLICKING-V6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3528",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 1,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::1002"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 100,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list PREFIX-CLICKING-V6",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmvhe1ncq00bvl716tbn1xjb1",
+      "customer": "FIRE-TELECOM-TELMIG",
+      "policy": "PL-FIRE-TELECOM_IPv4-IN",
+      "family": "IPV4",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.502",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.126"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.130"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.134"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 100,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-FIRE-TELECOM-V4",
+            "apply local-preference 4000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmvkhszgn00bvl74ti0nx65c8",
+      "customer": "FIRE-TELECOM-TELMIG",
+      "policy": "PL-FIRE-TELECOM_IPv4-IN",
+      "family": "IPV4",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.501",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.126"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.130"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.134"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 100,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-FIRE-TELECOM-V4",
+            "apply local-preference 4000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmv2wtr8a700hsses6imwannv",
+      "customer": "FAST TELECOM CONTAGEM",
+      "policy": "PL-FLASH-TELECOM_IPv4-IN",
+      "family": "IPV4",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3065",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.22"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.94"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-FLASHTELECOM-IPV4",
+            "apply local-preference 3000",
+            "apply extcommunity rt 268568:140"
+          ]
+        },
+        {
+          "node": 999,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmv2wtr97700mssesf05j8ebm",
+      "customer": "FAST TELECOM",
+      "policy": "PL-FLASH-TELECOM_IPv4-IN",
+      "family": "IPV4",
+      "mode": "AUTO",
+      "interface": "Eth-Trunk1.3066",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.22"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.94"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-FLASHTELECOM-IPV4",
+            "apply local-preference 3000",
+            "apply extcommunity rt 268568:140"
+          ]
+        },
+        {
+          "node": 999,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmv2wtra0700rssesjkdkn8vo",
+      "customer": "FAST TELECOM CONTAGEM",
+      "policy": "PL-FLASH-TELECOM_IPv6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3065",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::c2"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::902"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list PREFIX-FLASHTELECOM-IPV6",
+            "apply local-preference 3000",
+            "apply extcommunity rt 268568:140"
+          ]
+        },
+        {
+          "node": 999,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "SHARED_POLICY_SCOPE",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmv2wtrau700yssestso3v22x",
+      "customer": "FAST TELECOM",
+      "policy": "PL-FLASH-TELECOM_IPv6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3066",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::c2"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::902"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list PREFIX-FLASHTELECOM-IPV6",
+            "apply local-preference 3000",
+            "apply extcommunity rt 268568:140"
+          ]
+        },
+        {
+          "node": 999,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "SHARED_POLICY_SCOPE",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavm8d00cisslhxzjwqygh",
+      "customer": "GM_TELECOM_CEASA",
+      "policy": "PL-GMTELECOM_IPv4-IN",
+      "family": "IPV4",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3042",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 1,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.200.218"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-GMTELECOM-IPV4",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        },
+        {
+          "node": 1000,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavm8x00cnsslhxa6wtmar",
+      "customer": "HORIZONTE_IP",
+      "policy": "PL-HORIZONTES_IPv4-IN",
+      "family": "IPV4",
+      "mode": "AUTO",
+      "interface": "Eth-Trunk1.3011",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.200.10"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.200.106"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 11,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-HORIZONTES-IPV4",
+            "apply local-preference 4000",
+            "apply extcommunity rt 268568:660"
+          ]
+        },
+        {
+          "node": 50,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "PERMANENT_RT660_NOT_NETVISION_OWNERSHIP",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavm9d00cssslhprlon66g",
+      "customer": "HORIZONTE_IP_02",
+      "policy": "PL-HORIZONTES_IPv4-IN",
+      "family": "IPV4",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3013",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.200.10"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.200.106"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 11,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-HORIZONTES-IPV4",
+            "apply local-preference 4000",
+            "apply extcommunity rt 268568:660"
+          ]
+        },
+        {
+          "node": 50,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "PERMANENT_RT660_NOT_NETVISION_OWNERSHIP",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuovv7km0042ssae9vds4b4s",
+      "customer": "HORIZONTE_IP",
+      "policy": "PL-HORIZONTES_IPv6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3011",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::66"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::76"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list PREFIX-HORIZONTES-IPV6",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 rt 268568:28329 additive"
+          ]
+        },
+        {
+          "node": 100,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "SHARED_POLICY_SCOPE",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuovv7ln0047ssaebn5m16zn",
+      "customer": "HORIZONTE_IP_02",
+      "policy": "PL-HORIZONTES_IPv6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3013",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::66"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::76"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list PREFIX-HORIZONTES-IPV6",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 rt 268568:28329 additive"
+          ]
+        },
+        {
+          "node": 100,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "SHARED_POLICY_SCOPE",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavmaz00cxsslhn2cuwcmx",
+      "customer": "JUSTNET L2L LIVINET",
+      "policy": "PL-JUSTNET-IPv4-IN",
+      "family": "IPV4",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3973",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 4,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.66"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.70"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.226"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.230"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.254"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 100,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-JUSTNET-IPV4",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavmc000d2sslhre9siv0f",
+      "customer": "JUSTNET-MANTIQUEIRA",
+      "policy": "PL-JUSTNET-IPv4-IN",
+      "family": "IPV4",
+      "mode": "AUTO",
+      "interface": "Eth-Trunk1.3962",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 4,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.66"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.70"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.226"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.230"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.254"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 100,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-JUSTNET-IPV4",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavmcz00d7sslh1likgnvw",
+      "customer": "2519-JUSTNET-IP-AS262663",
+      "policy": "PL-JUSTNET-IPv4-IN",
+      "family": "IPV4",
+      "mode": "AUTO",
+      "interface": "Eth-Trunk1.2519",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 4,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.66"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.70"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.226"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.230"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.254"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 100,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-JUSTNET-IPV4",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavmdj00dcsslhjbrxpv44",
+      "customer": "2518-JUSTNET-IP-AS271217",
+      "policy": "PL-JUSTNET-IPv4-IN",
+      "family": "IPV4",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.2518",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 4,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.66"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.70"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.226"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.230"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.254"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 100,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-JUSTNET-IPV4",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuq7a6re005cssgh50tsji04",
+      "customer": "JUSTNET L2L LIVINET",
+      "policy": "PL-JUSTNET-IPv6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3973",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 3,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::302"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::402"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::3002"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::7002"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 100,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list PREFIX-JUSTNET-V6",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "SHARED_POLICY_SCOPE",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuq7a6s7005hssghnxttb6yi",
+      "customer": "JUSTNET-MANTIQUEIRA",
+      "policy": "PL-JUSTNET-IPv6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3962",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 3,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::302"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::402"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::3002"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::7002"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 100,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list PREFIX-JUSTNET-V6",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "SHARED_POLICY_SCOPE",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuq7a6sv005mssghg7gxo53m",
+      "customer": "2519-JUSTNET-IP-AS262663",
+      "policy": "PL-JUSTNET-IPv6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.2519",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 3,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::302"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::402"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::3002"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::7002"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 100,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list PREFIX-JUSTNET-V6",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "SHARED_POLICY_SCOPE",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavmdy00dhsslh6ieobt62",
+      "customer": "GM_TELECOM_CEASA",
+      "policy": "PL-LIVINET_IPv4-IN",
+      "family": "IPV4",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3031",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 1,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.200.182"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 5,
+          "action": "deny",
+          "clauses": ["if-match ip-prefix BOGONS"]
+        },
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match as-path-filter LIVENET",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        },
+        {
+          "node": 1000,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavmed00dmsslhi3dzev57",
+      "customer": "PLAY CONNECT",
+      "policy": "PL-PLAYCONNECT_IPv4-IN",
+      "family": "IPV4",
+      "mode": "AUTO",
+      "interface": "Eth-Trunk1.3024",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 1,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.200.158"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.110"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-PLAYCONNECT",
+            "apply local-preference 2000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        },
+        {
+          "node": 1000,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuovv7pk0057ssaeu2vb1rrf",
+      "customer": "PLAY CONNECT",
+      "policy": "PL-PLAYCONNECT_IPv6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3024",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 1,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::12d"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list PREFIX-PLAYCONNECT",
+            "apply local-preference 2000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavmev00dssslh7vhu7oqu",
+      "customer": "RNJ",
+      "policy": "PL-RNJ_IPv4-IN",
+      "family": "IPV4",
+      "mode": "AUTO",
+      "interface": "Eth-Trunk1.3026",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.200.166"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.200.178"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-RNJ-IPV4",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        },
+        {
+          "node": 1000,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavmf800dxsslhb4eltgvq",
+      "customer": "RNJ-02",
+      "policy": "PL-RNJ_IPv4-IN",
+      "family": "IPV4",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3030",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.200.166"
+        },
+        {
+          "family": "IPV4",
+          "peer": "10.200.200.178"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-RNJ-IPV4",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        },
+        {
+          "node": 1000,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuovv7r5005mssaem9f2zfx1",
+      "customer": "RNJ",
+      "policy": "PL-RNJ_IPv6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3026",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::112"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::12a"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list PREFIX-RNJ-IPV6",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        },
+        {
+          "node": 1000,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "SHARED_POLICY_SCOPE",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuovv7rq005rssaeio7scfow",
+      "customer": "RNJ-02",
+      "policy": "PL-RNJ_IPv6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3030",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::112"
+        },
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::12a"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list PREFIX-RNJ-IPV6",
+            "apply local-preference 1000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        },
+        {
+          "node": 1000,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "SHARED_POLICY_SCOPE",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavmfz00e2sslhbmo9ple7",
+      "customer": "SUPERNET TELECOM",
+      "policy": "PL-SUPERNET-IPv4-IN",
+      "family": "IPV4",
+      "mode": "AUTO",
+      "interface": "Eth-Trunk1.3078",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 1,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.34"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-SUPERNET",
+            "apply local-preference 4000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuq7a6yc006wssghdxic1itf",
+      "customer": "SUPERNET TELECOM",
+      "policy": "PL-SUPERNET-IPv6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.3078",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 1,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::182"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list PREFIX-SUPERNET",
+            "apply local-preference 4000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuovv7sy0061ssaewrbbkgz5",
+      "customer": "WF_Bonsucesso_02",
+      "policy": "PL-WF_Bonsucesso_IPv6-IN",
+      "family": "IPV6",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.1052",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 1,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV6",
+          "peer": "2804:532c:0:1::6e"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 10,
+          "action": "permit",
+          "clauses": [
+            "if-match ipv6 address prefix-list WF_BOMSUCESSO_IPV6",
+            "apply local-preference 999"
+          ]
+        },
+        {
+          "node": 100,
+          "action": "deny",
+          "clauses": []
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "IPV6_OUTSIDE_EXPLICIT_IPV4_CONTRACT",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmuoavmgi00e7sslhgh7quv0f",
+      "customer": "WF_Bonsucesso_02",
+      "policy": "PL-WFREDES-V4-IN",
+      "family": "IPV4",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.1052",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.122"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 100,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-WFREDES-V4",
+            "apply local-preference 4000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    },
+    {
+      "profileId": "cmvu0f0vd00axl7ylpkznwlc2",
+      "customer": "WF-REDES-IPv4",
+      "policy": "PL-WFREDES-V4-IN",
+      "family": "IPV4",
+      "mode": "ALERT_ONLY",
+      "interface": "Eth-Trunk1.1056",
+      "previousBaselineBlocked": true,
+      "baselineDerivationRequiredByFinalContract": false,
+      "baselineDisposition": "OBSOLETE_REQUIREMENT",
+      "occupiedNodes": [],
+      "occupancyAssessment": "LIVRE_NO_SNAPSHOT",
+      "managedOwnershipProven": false,
+      "policyProfileCount": 2,
+      "peersAffectedBySamePolicy": [
+        {
+          "family": "IPV4",
+          "peer": "10.200.201.122"
+        }
+      ],
+      "permanentNodes": [
+        {
+          "node": 100,
+          "action": "permit",
+          "clauses": [
+            "if-match ip-prefix PREFIX-WFREDES-V4",
+            "apply local-preference 4000",
+            "apply extcommunity rt 268568:140 additive"
+          ]
+        }
+      ],
+      "independentClientPrefixFilter": "NOT_IDENTIFIED_IN_CAPTURED_BGP_CONFIGURATION",
+      "remainingRestrictions": [
+        "SHARED_POLICY_SCOPE",
+        "DIRECTION_UNCONFIGURED",
+        "ALERT_ONLY_PRESERVE",
+        "CURRENT_SOFTWARE_CONTRACT_MISMATCH",
+        "NO_NEW_PHYSICAL_HOMOLOGATION"
+      ],
+      "autoDecision": "NO_GO"
+    }
+  ],
+  "occupancyBlockers": [],
+  "configurationSemanticUnchangedSincePreviousCapture": false,
+  "configurationDifferencesSincePreviousCapture": [
+    {
+      "policy": "PL-HORIZONTES_IPv4-IN",
+      "node": 11,
+      "previous": {
+        "action": "permit",
+        "clauses": [
+          "if-match ip-prefix PREFIX-HORIZONTES-IPV4",
+          "apply local-preference 4000",
+          "apply extcommunity rt 268568:140"
+        ]
+      },
+      "current": {
+        "action": "permit",
+        "clauses": [
+          "if-match ip-prefix PREFIX-HORIZONTES-IPV4",
+          "apply local-preference 4000",
+          "apply extcommunity rt 268568:660"
+        ]
+      }
+    }
+  ],
+  "independentFiltering": {
+    "identifiedPrefixFiltersInCapturedBgpConfig": [],
+    "aglinkPeerConfiguration": [
+      "peer 10.200.201.2 as-number 273811",
+      "peer 10.200.201.2 description AGLINK",
+      "peer 10.200.201.2 enable",
+      "peer 10.200.201.2 route-policy PL-AGLINK_IPv4-IN import",
+      "peer 10.200.201.2 route-policy PL-AGLINK_IPv4-OUT export",
+      "peer 10.200.201.2 advertise-community",
+      "peer 10.200.201.2 advertise-ext-community",
+      "peer 10.200.201.2 default-route-advertise"
+    ],
+    "unicastFilterNotEstablishedByFlowspecValidationMode": true,
+    "offDeviceFiltering": "NOT_VERIFIED",
+    "bogonsDefinition": [
+      "ip ip-prefix BOGONS index 100 permit 192.0.2.0 24 greater-equal 24 less-equal 32",
+      "ip ip-prefix BOGONS index 110 permit 192.88.99.0 24 greater-equal 24 less-equal 32",
+      "ip ip-prefix BOGONS index 120 permit 192.168.0.0 16 greater-equal 16 less-equal 32",
+      "ip ip-prefix BOGONS index 130 permit 198.18.0.0 15 greater-equal 15 less-equal 32",
+      "ip ip-prefix BOGONS index 140 permit 198.51.100.0 24 greater-equal 24 less-equal 32",
+      "ip ip-prefix BOGONS index 150 permit 203.0.113.0 24 greater-equal 24 less-equal 32",
+      "ip ip-prefix BOGONS index 160 permit 224.0.0.0 4 greater-equal 4 less-equal 32",
+      "ip ip-prefix BOGONS index 170 permit 240.0.0.0 4 greater-equal 4 less-equal 32",
+      "ip ip-prefix BOGONS index 40 permit 10.0.0.0 8 greater-equal 8 less-equal 32",
+      "ip ip-prefix BOGONS index 50 permit 100.64.0.0 10 greater-equal 10 less-equal 32",
+      "ip ip-prefix BOGONS index 60 permit 127.0.0.0 8 greater-equal 8 less-equal 32",
+      "ip ip-prefix BOGONS index 70 permit 169.254.0.0 16 greater-equal 16 less-equal 32",
+      "ip ip-prefix BOGONS index 80 permit 172.16.0.0 12 greater-equal 12 less-equal 32",
+      "ip ip-prefix BOGONS index 90 permit 192.0.0.0 24 greater-equal 24 less-equal 32"
+    ],
+    "aglinkDefinition": [
+      "ip ip-prefix AGLINK-BLOCO-TODO-23 index 10 permit 167.250.126.0 23 greater-equal 23 less-equal 24"
+    ]
+  },
+  "referencePrefixCases": [
+    {
+      "prefix": "167.250.126.0/23",
+      "normalPolicyPermits": true,
+      "duringFinalContractPermits": true,
+      "duringFirstMatchNode": 2,
+      "duringExpectedRtSet": ["268568:660"],
+      "afterRemovalNormalPolicyPermits": true,
+      "syntheticCounterexampleOnly": false,
+      "notSentToRouter": true
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "normalPolicyPermits": true,
+      "duringFinalContractPermits": true,
+      "duringFirstMatchNode": 2,
+      "duringExpectedRtSet": ["268568:660"],
+      "afterRemovalNormalPolicyPermits": true,
+      "syntheticCounterexampleOnly": false,
+      "notSentToRouter": true
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "normalPolicyPermits": true,
+      "duringFinalContractPermits": true,
+      "duringFirstMatchNode": 2,
+      "duringExpectedRtSet": ["268568:660"],
+      "afterRemovalNormalPolicyPermits": true,
+      "syntheticCounterexampleOnly": false,
+      "notSentToRouter": true
+    },
+    {
+      "prefix": "167.250.126.0/25",
+      "normalPolicyPermits": false,
+      "duringFinalContractPermits": true,
+      "duringFirstMatchNode": 2,
+      "duringExpectedRtSet": ["268568:660"],
+      "afterRemovalNormalPolicyPermits": false,
+      "syntheticCounterexampleOnly": true,
+      "notSentToRouter": true
+    },
+    {
+      "prefix": "167.250.128.0/24",
+      "normalPolicyPermits": false,
+      "duringFinalContractPermits": true,
+      "duringFirstMatchNode": 2,
+      "duringExpectedRtSet": ["268568:660"],
+      "afterRemovalNormalPolicyPermits": false,
+      "syntheticCounterexampleOnly": true,
+      "notSentToRouter": true
+    },
+    {
+      "prefix": "8.8.8.0/24",
+      "normalPolicyPermits": false,
+      "duringFinalContractPermits": true,
+      "duringFirstMatchNode": 2,
+      "duringExpectedRtSet": ["268568:660"],
+      "afterRemovalNormalPolicyPermits": false,
+      "syntheticCounterexampleOnly": true,
+      "notSentToRouter": true
+    },
+    {
+      "prefix": "0.0.0.0/0",
+      "normalPolicyPermits": false,
+      "duringFinalContractPermits": true,
+      "duringFirstMatchNode": 2,
+      "duringExpectedRtSet": ["268568:660"],
+      "afterRemovalNormalPolicyPermits": false,
+      "syntheticCounterexampleOnly": true,
+      "notSentToRouter": true
+    },
+    {
+      "prefix": "10.1.0.0/24",
+      "normalPolicyPermits": false,
+      "duringFinalContractPermits": false,
+      "duringFirstMatchNode": 1,
+      "duringExpectedRtSet": [],
+      "afterRemovalNormalPolicyPermits": false,
+      "syntheticCounterexampleOnly": true,
+      "notSentToRouter": true
+    }
+  ],
+  "currentCodeProbe": {
+    "offline": true,
+    "realTransportImported": false,
+    "physicalChanges": false,
+    "productionCodeChanged": false,
+    "softwareSha": "908e7b417502930d7945b3d73dded584a7012dd7",
+    "observedHardwareAt": "2026-11-03T19:56:22.692Z",
+    "rows": [
+      {
+        "profileId": "cmuoavm2o00btsslh2qc6qbpg",
+        "customer": "73S TELECOM IP",
+        "policy": "PL-73S_IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-73S_IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-73S_IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-73S_IPv4-IN node 1",
+          "undo route-policy PL-73S_IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavm4e00bysslhqd0h3q7u",
+        "customer": "AGLINK-IPV4",
+        "policy": "PL-AGLINK_IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-AGLINK_IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-AGLINK_IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": [
+          "system-view",
+          "route-policy PL-AGLINK_IPv4-IN deny node 1",
+          " if-match ip-prefix BOGONS",
+          "route-policy PL-AGLINK_IPv4-IN permit node 2",
+          " if-match ip-prefix AGLINK-BLOCO-TODO-23",
+          " apply local-preference 1100",
+          " apply extcommunity rt 268568:140 rt 268568:660 additive",
+          "commit"
+        ],
+        "currentBuilderError": null,
+        "currentDerivedPlanSafe": true,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix AGLINK-BLOCO-TODO-23; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix AGLINK-BLOCO-TODO-23"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-AGLINK_IPv4-IN node 1",
+          "undo route-policy PL-AGLINK_IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavm4x00c3sslhworjdb9i",
+        "customer": "BHNET-CEASA",
+        "policy": "PL-BHNET_IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-BHNET_IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-BHNET_IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-BHNET_IPv4-IN node 1",
+          "undo route-policy PL-BHNET_IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavm5i00c8sslhed09lt8p",
+        "customer": "BHNET-RBN",
+        "policy": "PL-BHNET_IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-BHNET_IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-BHNET_IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-BHNET_IPv4-IN node 1",
+          "undo route-policy PL-BHNET_IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavm6600cdsslhhw427w4r",
+        "customer": "CLICKING-TELECOM",
+        "policy": "PL-CLICKING-V4-IN",
+        "exactTemporaryPair": "route-policy PL-CLICKING-V4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-CLICKING-V4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-CLICKING-V4-IN node 1",
+          "undo route-policy PL-CLICKING-V4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmvhe1ncq00bvl716tbn1xjb1",
+        "customer": "FIRE-TELECOM-TELMIG",
+        "policy": "PL-FIRE-TELECOM_IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-FIRE-TELECOM_IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-FIRE-TELECOM_IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-FIRE-TELECOM_IPv4-IN node 1",
+          "undo route-policy PL-FIRE-TELECOM_IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmvkhszgn00bvl74ti0nx65c8",
+        "customer": "FIRE-TELECOM-TELMIG",
+        "policy": "PL-FIRE-TELECOM_IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-FIRE-TELECOM_IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-FIRE-TELECOM_IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-FIRE-TELECOM_IPv4-IN node 1",
+          "undo route-policy PL-FIRE-TELECOM_IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmv2wtr8a700hsses6imwannv",
+        "customer": "FAST TELECOM CONTAGEM",
+        "policy": "PL-FLASH-TELECOM_IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-FLASH-TELECOM_IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-FLASH-TELECOM_IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-FLASH-TELECOM_IPv4-IN node 1",
+          "undo route-policy PL-FLASH-TELECOM_IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmv2wtr97700mssesf05j8ebm",
+        "customer": "FAST TELECOM",
+        "policy": "PL-FLASH-TELECOM_IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-FLASH-TELECOM_IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-FLASH-TELECOM_IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-FLASH-TELECOM_IPv4-IN node 1",
+          "undo route-policy PL-FLASH-TELECOM_IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavm8d00cisslhxzjwqygh",
+        "customer": "GM_TELECOM_CEASA",
+        "policy": "PL-GMTELECOM_IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-GMTELECOM_IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-GMTELECOM_IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-GMTELECOM_IPv4-IN node 1",
+          "undo route-policy PL-GMTELECOM_IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavm8x00cnsslhxa6wtmar",
+        "customer": "HORIZONTE_IP",
+        "policy": "PL-HORIZONTES_IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-HORIZONTES_IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-HORIZONTES_IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-HORIZONTES_IPv4-IN node 1",
+          "undo route-policy PL-HORIZONTES_IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavm9d00cssslhprlon66g",
+        "customer": "HORIZONTE_IP_02",
+        "policy": "PL-HORIZONTES_IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-HORIZONTES_IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-HORIZONTES_IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-HORIZONTES_IPv4-IN node 1",
+          "undo route-policy PL-HORIZONTES_IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavmaz00cxsslhn2cuwcmx",
+        "customer": "JUSTNET L2L LIVINET",
+        "policy": "PL-JUSTNET-IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-JUSTNET-IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-JUSTNET-IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-JUSTNET-IPv4-IN node 1",
+          "undo route-policy PL-JUSTNET-IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavmc000d2sslhre9siv0f",
+        "customer": "JUSTNET-MANTIQUEIRA",
+        "policy": "PL-JUSTNET-IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-JUSTNET-IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-JUSTNET-IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-JUSTNET-IPv4-IN node 1",
+          "undo route-policy PL-JUSTNET-IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavmcz00d7sslh1likgnvw",
+        "customer": "2519-JUSTNET-IP-AS262663",
+        "policy": "PL-JUSTNET-IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-JUSTNET-IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-JUSTNET-IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-JUSTNET-IPv4-IN node 1",
+          "undo route-policy PL-JUSTNET-IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavmdj00dcsslhjbrxpv44",
+        "customer": "2518-JUSTNET-IP-AS271217",
+        "policy": "PL-JUSTNET-IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-JUSTNET-IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-JUSTNET-IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-JUSTNET-IPv4-IN node 1",
+          "undo route-policy PL-JUSTNET-IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavmdy00dhsslh6ieobt62",
+        "customer": "GM_TELECOM_CEASA",
+        "policy": "PL-LIVINET_IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-LIVINET_IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-LIVINET_IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-LIVINET_IPv4-IN node 1",
+          "undo route-policy PL-LIVINET_IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavmed00dmsslhi3dzev57",
+        "customer": "PLAY CONNECT",
+        "policy": "PL-PLAYCONNECT_IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-PLAYCONNECT_IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-PLAYCONNECT_IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-PLAYCONNECT_IPv4-IN node 1",
+          "undo route-policy PL-PLAYCONNECT_IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavmev00dssslh7vhu7oqu",
+        "customer": "RNJ",
+        "policy": "PL-RNJ_IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-RNJ_IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-RNJ_IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-RNJ_IPv4-IN node 1",
+          "undo route-policy PL-RNJ_IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavmf800dxsslhb4eltgvq",
+        "customer": "RNJ-02",
+        "policy": "PL-RNJ_IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-RNJ_IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-RNJ_IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-RNJ_IPv4-IN node 1",
+          "undo route-policy PL-RNJ_IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavmfz00e2sslhbmo9ple7",
+        "customer": "SUPERNET TELECOM",
+        "policy": "PL-SUPERNET-IPv4-IN",
+        "exactTemporaryPair": "route-policy PL-SUPERNET-IPv4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-SUPERNET-IPv4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-SUPERNET-IPv4-IN node 1",
+          "undo route-policy PL-SUPERNET-IPv4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmuoavmgi00e7sslhgh7quv0f",
+        "customer": "WF_Bonsucesso_02",
+        "policy": "PL-WFREDES-V4-IN",
+        "exactTemporaryPair": "route-policy PL-WFREDES-V4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-WFREDES-V4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-WFREDES-V4-IN node 1",
+          "undo route-policy PL-WFREDES-V4-IN node 2",
+          "commit"
+        ]
+      },
+      {
+        "profileId": "cmvu0f0vd00axl7ylpkznwlc2",
+        "customer": "WF-REDES-IPv4",
+        "policy": "PL-WFREDES-V4-IN",
+        "exactTemporaryPair": "route-policy PL-WFREDES-V4-IN deny node 1\n if-match ip-prefix BOGONS\n#\nroute-policy PL-WFREDES-V4-IN permit node 2\n apply extcommunity rt 268568:660\n#\n",
+        "currentBuilderCommands": null,
+        "currentBuilderError": "MITIGATION_BASELINE_NOT_DERIVABLE",
+        "currentDerivedPlanSafe": false,
+        "currentActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24; node de mitigacao 2 nao preserva os atributos normais do cliente"
+        },
+        "currentLooseActivationVerification": {
+          "verified": false,
+          "bogonOk": true,
+          "mitigationOk": false,
+          "partial": true,
+          "summary": "node de mitigacao 2 sem if-match ip-prefix PREFIX8to24"
+        },
+        "currentPhysicalRecognition": {
+          "recognized": true,
+          "state": "RECONCILIATION_REQUIRED",
+          "bogonNodes": [1],
+          "mitigationNodes": [],
+          "partialNodes": [],
+          "pair": null,
+          "detail": "estrutura de mitigacao multipla/parcial: 1 node(s) BOGONS [1], 0 node(s) de mitigacao []"
+        },
+        "permanentBaselineDriftReasons": [],
+        "removalOfOnlyPairRestoresNormalText": true,
+        "removalCommands": [
+          "system-view",
+          "undo route-policy PL-WFREDES-V4-IN node 1",
+          "undo route-policy PL-WFREDES-V4-IN node 2",
+          "commit"
+        ]
+      }
+    ]
+  },
+  "exclusiveRtExportReferenceEvaluation": [
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "COMPUTIZE",
+      "policy": "PL-COMPUTIZE-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 300,
+      "trace": [
+        {
+          "node": 10,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-22"]
+          }
+        },
+        {
+          "node": 15,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-23"]
+          }
+        },
+        {
+          "node": 20,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-23"]
+          }
+        },
+        {
+          "node": 25,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-24"]
+          }
+        },
+        {
+          "node": 30,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.145-24"]
+          }
+        },
+        {
+          "node": 35,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-24"]
+          }
+        },
+        {
+          "node": 40,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.147-24"]
+          }
+        },
+        {
+          "node": 41,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["LIKEE-24"]
+          }
+        },
+        {
+          "node": 42,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["40"]
+          }
+        },
+        {
+          "node": 45,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["20"]
+          }
+        },
+        {
+          "node": 46,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["30"]
+          }
+        },
+        {
+          "node": 47,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["TRIPLO_A-BLOCO-TODO"]
+          }
+        },
+        {
+          "node": 50,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-22"]
+          }
+        },
+        {
+          "node": 51,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-23"]
+          }
+        },
+        {
+          "node": 52,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-23"]
+          }
+        },
+        {
+          "node": 53,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-24"]
+          }
+        },
+        {
+          "node": 54,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.201-24"]
+          }
+        },
+        {
+          "node": 55,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-24"]
+          }
+        },
+        {
+          "node": 56,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.203-24"]
+          }
+        },
+        {
+          "node": 80,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-REDEWORKS-IPV4"],
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 90,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["140"]
+          }
+        },
+        {
+          "node": 91,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["115"]
+          }
+        },
+        {
+          "node": 95,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 200,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["73S-MITIGACAO"],
+            "extcommunity-filter": ["MITIGACAO"]
+          }
+        },
+        {
+          "node": 300,
+          "action": "permit",
+          "matched": true,
+          "conditions": {
+            "extcommunity-filter": ["MITIGACAO"]
+          }
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "SEMPRE-DDoS",
+      "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "trace": [
+        {
+          "node": 5,
+          "action": "deny",
+          "matched": true,
+          "conditions": {
+            "extcommunity-filter": ["MITIGACAO"]
+          }
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "SEMPRE-normal",
+      "policy": "PL-SEMPRE-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "trace": [
+        {
+          "node": 2,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["50"]
+          }
+        },
+        {
+          "node": 5,
+          "action": "deny",
+          "matched": true,
+          "conditions": {
+            "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEMPRE"]
+          }
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "SEABORN",
+      "policy": "PL-SEABORN-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "trace": [
+        {
+          "node": 2,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["50"]
+          }
+        },
+        {
+          "node": 5,
+          "action": "deny",
+          "matched": true,
+          "conditions": {
+            "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+          }
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "SEABORN-BH",
+      "policy": "PL-SEABORN-BH-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "trace": [
+        {
+          "node": 2,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["50"]
+          }
+        },
+        {
+          "node": 5,
+          "action": "deny",
+          "matched": true,
+          "conditions": {
+            "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+          }
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "CIRION",
+      "policy": "PL-CIRION-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 100,
+      "trace": [
+        {
+          "node": 10,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-22"]
+          }
+        },
+        {
+          "node": 15,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-23"]
+          }
+        },
+        {
+          "node": 20,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-23"]
+          }
+        },
+        {
+          "node": 25,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-24"]
+          }
+        },
+        {
+          "node": 30,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.145-24"]
+          }
+        },
+        {
+          "node": 35,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-24"]
+          }
+        },
+        {
+          "node": 40,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.147-24"]
+          }
+        },
+        {
+          "node": 41,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["LIKEE-24"]
+          }
+        },
+        {
+          "node": 42,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["40"]
+          }
+        },
+        {
+          "node": 45,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["20"]
+          }
+        },
+        {
+          "node": 46,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["30"]
+          }
+        },
+        {
+          "node": 47,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["TRIPLO_A-BLOCO-TODO"]
+          }
+        },
+        {
+          "node": 50,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-22"]
+          }
+        },
+        {
+          "node": 51,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-23"]
+          }
+        },
+        {
+          "node": 52,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-23"]
+          }
+        },
+        {
+          "node": 53,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-24"]
+          }
+        },
+        {
+          "node": 54,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.201-24"]
+          }
+        },
+        {
+          "node": 55,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-24"]
+          }
+        },
+        {
+          "node": 56,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.203-24"]
+          }
+        },
+        {
+          "node": 80,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-REDEWORKS-IPV4"],
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 90,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["140"]
+          }
+        },
+        {
+          "node": 91,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["115"]
+          }
+        },
+        {
+          "node": 95,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 100,
+          "action": "deny",
+          "matched": true,
+          "conditions": {}
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "IP-TUDDO",
+      "policy": "PL-TUDDO-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 100,
+      "trace": [
+        {
+          "node": 10,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-22"]
+          }
+        },
+        {
+          "node": 15,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-23"]
+          }
+        },
+        {
+          "node": 20,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-23"]
+          }
+        },
+        {
+          "node": 25,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-24"]
+          }
+        },
+        {
+          "node": 30,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.145-24"]
+          }
+        },
+        {
+          "node": 35,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-24"]
+          }
+        },
+        {
+          "node": 40,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.147-24"]
+          }
+        },
+        {
+          "node": 42,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["40"]
+          }
+        },
+        {
+          "node": 45,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["20"]
+          }
+        },
+        {
+          "node": 46,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["30"]
+          }
+        },
+        {
+          "node": 47,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["TRIPLO_A-BLOCO-TODO"]
+          }
+        },
+        {
+          "node": 50,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-22"]
+          }
+        },
+        {
+          "node": 51,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-23"]
+          }
+        },
+        {
+          "node": 52,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-23"]
+          }
+        },
+        {
+          "node": 53,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-24"]
+          }
+        },
+        {
+          "node": 54,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.201-24"]
+          }
+        },
+        {
+          "node": 55,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-24"]
+          }
+        },
+        {
+          "node": 56,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.203-24"]
+          }
+        },
+        {
+          "node": 80,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-REDEWORKS-IPV4"],
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 90,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["140"]
+          }
+        },
+        {
+          "node": 91,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["115"]
+          }
+        },
+        {
+          "node": 95,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 100,
+          "action": "deny",
+          "matched": true,
+          "conditions": {}
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.126.0/23",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "VS-IX",
+      "policy": "PL-BGP_VS-IX_V4_OUT",
+      "allowed": false,
+      "firstMatch": 6000,
+      "trace": [
+        {
+          "node": 10,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-IMPLANTAR-22-TO-26"]
+          }
+        },
+        {
+          "node": 11,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["40"]
+          }
+        },
+        {
+          "node": 20,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-Grandella-IPV4"]
+          }
+        },
+        {
+          "node": 25,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["TRIPLO_A-BLOCO-TODO"]
+          }
+        },
+        {
+          "node": 30,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["20"]
+          }
+        },
+        {
+          "node": 35,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["30"]
+          }
+        },
+        {
+          "node": 36,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["140"]
+          }
+        },
+        {
+          "node": 37,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["115"]
+          }
+        },
+        {
+          "node": 38,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["CGNAT"]
+          }
+        },
+        {
+          "node": 6000,
+          "action": "deny",
+          "matched": true,
+          "conditions": {}
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "COMPUTIZE",
+      "policy": "PL-COMPUTIZE-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 300,
+      "trace": [
+        {
+          "node": 10,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-22"]
+          }
+        },
+        {
+          "node": 15,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-23"]
+          }
+        },
+        {
+          "node": 20,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-23"]
+          }
+        },
+        {
+          "node": 25,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-24"]
+          }
+        },
+        {
+          "node": 30,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.145-24"]
+          }
+        },
+        {
+          "node": 35,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-24"]
+          }
+        },
+        {
+          "node": 40,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.147-24"]
+          }
+        },
+        {
+          "node": 41,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["LIKEE-24"]
+          }
+        },
+        {
+          "node": 42,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["40"]
+          }
+        },
+        {
+          "node": 45,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["20"]
+          }
+        },
+        {
+          "node": 46,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["30"]
+          }
+        },
+        {
+          "node": 47,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["TRIPLO_A-BLOCO-TODO"]
+          }
+        },
+        {
+          "node": 50,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-22"]
+          }
+        },
+        {
+          "node": 51,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-23"]
+          }
+        },
+        {
+          "node": 52,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-23"]
+          }
+        },
+        {
+          "node": 53,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-24"]
+          }
+        },
+        {
+          "node": 54,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.201-24"]
+          }
+        },
+        {
+          "node": 55,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-24"]
+          }
+        },
+        {
+          "node": 56,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.203-24"]
+          }
+        },
+        {
+          "node": 80,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-REDEWORKS-IPV4"],
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 90,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["140"]
+          }
+        },
+        {
+          "node": 91,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["115"]
+          }
+        },
+        {
+          "node": 95,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 200,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["73S-MITIGACAO"],
+            "extcommunity-filter": ["MITIGACAO"]
+          }
+        },
+        {
+          "node": 300,
+          "action": "permit",
+          "matched": true,
+          "conditions": {
+            "extcommunity-filter": ["MITIGACAO"]
+          }
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "SEMPRE-DDoS",
+      "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "trace": [
+        {
+          "node": 5,
+          "action": "deny",
+          "matched": true,
+          "conditions": {
+            "extcommunity-filter": ["MITIGACAO"]
+          }
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "SEMPRE-normal",
+      "policy": "PL-SEMPRE-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "trace": [
+        {
+          "node": 2,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["50"]
+          }
+        },
+        {
+          "node": 5,
+          "action": "deny",
+          "matched": true,
+          "conditions": {
+            "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEMPRE"]
+          }
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "SEABORN",
+      "policy": "PL-SEABORN-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "trace": [
+        {
+          "node": 2,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["50"]
+          }
+        },
+        {
+          "node": 5,
+          "action": "deny",
+          "matched": true,
+          "conditions": {
+            "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+          }
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "SEABORN-BH",
+      "policy": "PL-SEABORN-BH-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "trace": [
+        {
+          "node": 2,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["50"]
+          }
+        },
+        {
+          "node": 5,
+          "action": "deny",
+          "matched": true,
+          "conditions": {
+            "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+          }
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "CIRION",
+      "policy": "PL-CIRION-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 100,
+      "trace": [
+        {
+          "node": 10,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-22"]
+          }
+        },
+        {
+          "node": 15,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-23"]
+          }
+        },
+        {
+          "node": 20,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-23"]
+          }
+        },
+        {
+          "node": 25,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-24"]
+          }
+        },
+        {
+          "node": 30,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.145-24"]
+          }
+        },
+        {
+          "node": 35,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-24"]
+          }
+        },
+        {
+          "node": 40,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.147-24"]
+          }
+        },
+        {
+          "node": 41,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["LIKEE-24"]
+          }
+        },
+        {
+          "node": 42,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["40"]
+          }
+        },
+        {
+          "node": 45,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["20"]
+          }
+        },
+        {
+          "node": 46,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["30"]
+          }
+        },
+        {
+          "node": 47,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["TRIPLO_A-BLOCO-TODO"]
+          }
+        },
+        {
+          "node": 50,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-22"]
+          }
+        },
+        {
+          "node": 51,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-23"]
+          }
+        },
+        {
+          "node": 52,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-23"]
+          }
+        },
+        {
+          "node": 53,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-24"]
+          }
+        },
+        {
+          "node": 54,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.201-24"]
+          }
+        },
+        {
+          "node": 55,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-24"]
+          }
+        },
+        {
+          "node": 56,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.203-24"]
+          }
+        },
+        {
+          "node": 80,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-REDEWORKS-IPV4"],
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 90,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["140"]
+          }
+        },
+        {
+          "node": 91,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["115"]
+          }
+        },
+        {
+          "node": 95,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 100,
+          "action": "deny",
+          "matched": true,
+          "conditions": {}
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "IP-TUDDO",
+      "policy": "PL-TUDDO-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 100,
+      "trace": [
+        {
+          "node": 10,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-22"]
+          }
+        },
+        {
+          "node": 15,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-23"]
+          }
+        },
+        {
+          "node": 20,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-23"]
+          }
+        },
+        {
+          "node": 25,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-24"]
+          }
+        },
+        {
+          "node": 30,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.145-24"]
+          }
+        },
+        {
+          "node": 35,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-24"]
+          }
+        },
+        {
+          "node": 40,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.147-24"]
+          }
+        },
+        {
+          "node": 42,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["40"]
+          }
+        },
+        {
+          "node": 45,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["20"]
+          }
+        },
+        {
+          "node": 46,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["30"]
+          }
+        },
+        {
+          "node": 47,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["TRIPLO_A-BLOCO-TODO"]
+          }
+        },
+        {
+          "node": 50,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-22"]
+          }
+        },
+        {
+          "node": 51,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-23"]
+          }
+        },
+        {
+          "node": 52,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-23"]
+          }
+        },
+        {
+          "node": 53,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-24"]
+          }
+        },
+        {
+          "node": 54,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.201-24"]
+          }
+        },
+        {
+          "node": 55,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-24"]
+          }
+        },
+        {
+          "node": 56,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.203-24"]
+          }
+        },
+        {
+          "node": 80,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-REDEWORKS-IPV4"],
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 90,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["140"]
+          }
+        },
+        {
+          "node": 91,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["115"]
+          }
+        },
+        {
+          "node": 95,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 100,
+          "action": "deny",
+          "matched": true,
+          "conditions": {}
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.126.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "VS-IX",
+      "policy": "PL-BGP_VS-IX_V4_OUT",
+      "allowed": false,
+      "firstMatch": 6000,
+      "trace": [
+        {
+          "node": 10,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-IMPLANTAR-22-TO-26"]
+          }
+        },
+        {
+          "node": 11,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["40"]
+          }
+        },
+        {
+          "node": 20,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-Grandella-IPV4"]
+          }
+        },
+        {
+          "node": 25,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["TRIPLO_A-BLOCO-TODO"]
+          }
+        },
+        {
+          "node": 30,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["20"]
+          }
+        },
+        {
+          "node": 35,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["30"]
+          }
+        },
+        {
+          "node": 36,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["140"]
+          }
+        },
+        {
+          "node": 37,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["115"]
+          }
+        },
+        {
+          "node": 38,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["CGNAT"]
+          }
+        },
+        {
+          "node": 6000,
+          "action": "deny",
+          "matched": true,
+          "conditions": {}
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "COMPUTIZE",
+      "policy": "PL-COMPUTIZE-IPv4-OUT",
+      "allowed": true,
+      "firstMatch": 300,
+      "trace": [
+        {
+          "node": 10,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-22"]
+          }
+        },
+        {
+          "node": 15,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-23"]
+          }
+        },
+        {
+          "node": 20,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-23"]
+          }
+        },
+        {
+          "node": 25,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-24"]
+          }
+        },
+        {
+          "node": 30,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.145-24"]
+          }
+        },
+        {
+          "node": 35,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-24"]
+          }
+        },
+        {
+          "node": 40,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.147-24"]
+          }
+        },
+        {
+          "node": 41,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["LIKEE-24"]
+          }
+        },
+        {
+          "node": 42,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["40"]
+          }
+        },
+        {
+          "node": 45,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["20"]
+          }
+        },
+        {
+          "node": 46,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["30"]
+          }
+        },
+        {
+          "node": 47,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["TRIPLO_A-BLOCO-TODO"]
+          }
+        },
+        {
+          "node": 50,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-22"]
+          }
+        },
+        {
+          "node": 51,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-23"]
+          }
+        },
+        {
+          "node": 52,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-23"]
+          }
+        },
+        {
+          "node": 53,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-24"]
+          }
+        },
+        {
+          "node": 54,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.201-24"]
+          }
+        },
+        {
+          "node": 55,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-24"]
+          }
+        },
+        {
+          "node": 56,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.203-24"]
+          }
+        },
+        {
+          "node": 80,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-REDEWORKS-IPV4"],
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 90,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["140"]
+          }
+        },
+        {
+          "node": 91,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["115"]
+          }
+        },
+        {
+          "node": 95,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 200,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["73S-MITIGACAO"],
+            "extcommunity-filter": ["MITIGACAO"]
+          }
+        },
+        {
+          "node": 300,
+          "action": "permit",
+          "matched": true,
+          "conditions": {
+            "extcommunity-filter": ["MITIGACAO"]
+          }
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "SEMPRE-DDoS",
+      "policy": "PL-SEMPRE-DDoS-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "trace": [
+        {
+          "node": 5,
+          "action": "deny",
+          "matched": true,
+          "conditions": {
+            "extcommunity-filter": ["MITIGACAO"]
+          }
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "SEMPRE-normal",
+      "policy": "PL-SEMPRE-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "trace": [
+        {
+          "node": 2,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["50"]
+          }
+        },
+        {
+          "node": 5,
+          "action": "deny",
+          "matched": true,
+          "conditions": {
+            "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEMPRE"]
+          }
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "SEABORN",
+      "policy": "PL-SEABORN-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "trace": [
+        {
+          "node": 2,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["50"]
+          }
+        },
+        {
+          "node": 5,
+          "action": "deny",
+          "matched": true,
+          "conditions": {
+            "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+          }
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "SEABORN-BH",
+      "policy": "PL-SEABORN-BH-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 5,
+      "trace": [
+        {
+          "node": 2,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["50"]
+          }
+        },
+        {
+          "node": 5,
+          "action": "deny",
+          "matched": true,
+          "conditions": {
+            "extcommunity-filter": ["MITIGACAO", "NO-EXPORT-SEABORN"]
+          }
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "CIRION",
+      "policy": "PL-CIRION-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 100,
+      "trace": [
+        {
+          "node": 10,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-22"]
+          }
+        },
+        {
+          "node": 15,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-23"]
+          }
+        },
+        {
+          "node": 20,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-23"]
+          }
+        },
+        {
+          "node": 25,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-24"]
+          }
+        },
+        {
+          "node": 30,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.145-24"]
+          }
+        },
+        {
+          "node": 35,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-24"]
+          }
+        },
+        {
+          "node": 40,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.147-24"]
+          }
+        },
+        {
+          "node": 41,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["LIKEE-24"]
+          }
+        },
+        {
+          "node": 42,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["40"]
+          }
+        },
+        {
+          "node": 45,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["20"]
+          }
+        },
+        {
+          "node": 46,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["30"]
+          }
+        },
+        {
+          "node": 47,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["TRIPLO_A-BLOCO-TODO"]
+          }
+        },
+        {
+          "node": 50,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-22"]
+          }
+        },
+        {
+          "node": 51,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-23"]
+          }
+        },
+        {
+          "node": 52,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-23"]
+          }
+        },
+        {
+          "node": 53,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-24"]
+          }
+        },
+        {
+          "node": 54,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.201-24"]
+          }
+        },
+        {
+          "node": 55,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-24"]
+          }
+        },
+        {
+          "node": 56,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.203-24"]
+          }
+        },
+        {
+          "node": 80,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-REDEWORKS-IPV4"],
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 90,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["140"]
+          }
+        },
+        {
+          "node": 91,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["115"]
+          }
+        },
+        {
+          "node": 95,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 100,
+          "action": "deny",
+          "matched": true,
+          "conditions": {}
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "IP-TUDDO",
+      "policy": "PL-TUDDO-IPv4-OUT",
+      "allowed": false,
+      "firstMatch": 100,
+      "trace": [
+        {
+          "node": 10,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-22"]
+          }
+        },
+        {
+          "node": 15,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-23"]
+          }
+        },
+        {
+          "node": 20,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-23"]
+          }
+        },
+        {
+          "node": 25,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.144-24"]
+          }
+        },
+        {
+          "node": 30,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.145-24"]
+          }
+        },
+        {
+          "node": 35,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.146-24"]
+          }
+        },
+        {
+          "node": 40,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.163.147-24"]
+          }
+        },
+        {
+          "node": 42,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["40"]
+          }
+        },
+        {
+          "node": 45,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["20"]
+          }
+        },
+        {
+          "node": 46,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["30"]
+          }
+        },
+        {
+          "node": 47,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["TRIPLO_A-BLOCO-TODO"]
+          }
+        },
+        {
+          "node": 50,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-22"]
+          }
+        },
+        {
+          "node": 51,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-23"]
+          }
+        },
+        {
+          "node": 52,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-23"]
+          }
+        },
+        {
+          "node": 53,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.200-24"]
+          }
+        },
+        {
+          "node": 54,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.201-24"]
+          }
+        },
+        {
+          "node": 55,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.202-24"]
+          }
+        },
+        {
+          "node": 56,
+          "action": "deny",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-45.168.203-24"]
+          }
+        },
+        {
+          "node": 80,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-REDEWORKS-IPV4"],
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 90,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["140"]
+          }
+        },
+        {
+          "node": 91,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["115"]
+          }
+        },
+        {
+          "node": 95,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["110"]
+          }
+        },
+        {
+          "node": 100,
+          "action": "deny",
+          "matched": true,
+          "conditions": {}
+        }
+      ]
+    },
+    {
+      "prefix": "167.250.127.0/24",
+      "state": "final_contract_exclusive_reference",
+      "rts": ["268568:660"],
+      "exit": "VS-IX",
+      "policy": "PL-BGP_VS-IX_V4_OUT",
+      "allowed": false,
+      "firstMatch": 6000,
+      "trace": [
+        {
+          "node": 10,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-IMPLANTAR-22-TO-26"]
+          }
+        },
+        {
+          "node": 11,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["40"]
+          }
+        },
+        {
+          "node": 20,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["PREFIX-Grandella-IPV4"]
+          }
+        },
+        {
+          "node": 25,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["TRIPLO_A-BLOCO-TODO"]
+          }
+        },
+        {
+          "node": 30,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["20"]
+          }
+        },
+        {
+          "node": 35,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["30"]
+          }
+        },
+        {
+          "node": 36,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["140"]
+          }
+        },
+        {
+          "node": 37,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "extcommunity-filter": ["115"]
+          }
+        },
+        {
+          "node": 38,
+          "action": "permit",
+          "matched": false,
+          "conditions": {
+            "ip-prefix": ["CGNAT"]
+          }
+        },
+        {
+          "node": 6000,
+          "action": "deny",
+          "matched": true,
+          "conditions": {}
+        }
+      ]
+    }
+  ],
+  "notProofOfBestPathOrPhysicalAnnouncements": true,
+  "productionState": {
+    "observedUtc": "2026-11-03T19:57:41.283458+00:00",
+    "services": {
+      "netvision-api": {
+        "ActiveState": "active",
+        "SubState": "running",
+        "MainPID": "3527751",
+        "NRestarts": "0",
+        "cwd": "/opt/netvision-auto-activate/releases/908e7b417502930d7945b3d73dded584a7012dd7/apps/api",
+        "flags": {
+          "MITIGATION_LIVE_WRITE_ENABLED": "false",
+          "MITIGATION_AUTO_EXECUTION_ENABLED": "0",
+          "MITIGATION_AUTO_LIFECYCLE_ENABLED": "0",
+          "MITIGATION_AUTO_REMOVE_ENABLED": "0",
+          "MITIGATION_AUTO_PERSISTENCE_ENABLED": "1"
+        },
+        "bundleSha256": "2c0068b6e3d8dde39e744e7d65871b6062aa7d8ecf3c6045ded7407b0bdda0ef",
+        "sourceSha": "908e7b417502930d7945b3d73dded584a7012dd7"
+      },
+      "netvision-mcp": {
+        "ActiveState": "active",
+        "SubState": "running",
+        "MainPID": "3527753",
+        "NRestarts": "0",
+        "cwd": "/opt/netvision-mcp/releases/mcp-5874fe0"
+      },
+      "netvision-web": {
+        "ActiveState": "active",
+        "SubState": "running",
+        "MainPID": "2976909",
+        "NRestarts": "0",
+        "cwd": "/opt/GMJ-NetVision-web-responsive/releases/f4b31fc31dd0ffdc7d454157822a3e85c5a5e8b8/web/apps/web"
+      },
+      "netvision-fast-observer": {
+        "ActiveState": "active",
+        "SubState": "running",
+        "MainPID": "2594846",
+        "NRestarts": "1",
+        "cwd": "/opt/netvision-fast-observer/releases/rc-aaafdde/runtime"
+      }
+    },
+    "database": {
+      "readOnly": "on",
+      "profiles": [
+        {
+          "id": "cmvkhszgn00bvl74ti0nx65c8",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-FIRE-TELECOM_IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmuvuzc6fw3m2ssozn0s36a9b",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmvhe1ncq00bvl716tbn1xjb1",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-FIRE-TELECOM_IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmvh6uekqh8f1l70f51tq15fo",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmv2wtr8a700hsses6imwannv",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-FLASH-TELECOM_IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21h903pnssimc43mues0",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmv2wtr97700mssesf05j8ebm",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-FLASH-TELECOM_IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "AUTO",
+          "interfaceId": "cmsxk21hc03ppssimjn0ukaxm",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavmf800dxsslhb4eltgvq",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-RNJ_IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21dc03nrssimfpd511kw",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuovv7r5005mssaem9f2zfx1",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-RNJ_IPv6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21d403nnssimm1iw1xvn",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuovv7rq005rssaeio7scfow",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-RNJ_IPv6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21dc03nrssimfpd511kw",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavmgi00e7sslhgh7quv0f",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-WFREDES-V4-IN",
+          "addressFamily": "IPV4",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21ay03mpssimsv4i7d1f",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavm2o00btsslh2qc6qbpg",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-73S_IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "AUTO",
+          "interfaceId": "cmsxk21kw03rdssimqrn9snbd",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuq7a6er002zssghj6f9j69v",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-73S_IPv6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21kw03rdssimqrn9snbd",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavm4e00bysslhqd0h3q7u",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-AGLINK_IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "AUTO",
+          "interfaceId": "cmsxk21gs03pdssimims9ojlb",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavm4x00c3sslhworjdb9i",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-BHNET_IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "AUTO",
+          "interfaceId": "cmsxk21el03odssimb81m5hjw",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavm5i00c8sslhed09lt8p",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-BHNET_IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "AUTO",
+          "interfaceId": "cmsxk21ep03ofssim8b1155z4",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuq7a6ia003jssghgzz5ali0",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-BHNET_IPv6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21el03odssimb81m5hjw",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuq7a6j4003ossghmi7eksq0",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-BHNET_IPv6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21ep03ofssim8b1155z4",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavm6600cdsslhhw427w4r",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-CLICKING-V4-IN",
+          "addressFamily": "IPV4",
+          "mode": "AUTO",
+          "interfaceId": "cmsxk21k303qzssimrp6izhkm",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuovv7km0042ssae9vds4b4s",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-HORIZONTES_IPv6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21c503n7ssim91i6ng3p",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuovv7ln0047ssaebn5m16zn",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-HORIZONTES_IPv6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21ce03nbssimw7110yd8",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavmaz00cxsslhn2cuwcmx",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-JUSTNET-IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21i203q3ssiml9qeil90",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavmc000d2sslhre9siv0f",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-JUSTNET-IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "AUTO",
+          "interfaceId": "cmsxk21i603q5ssimhj8wy2xd",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavmcz00d7sslh1likgnvw",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-JUSTNET-IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "AUTO",
+          "interfaceId": "cmsxk21kl03r9ssim9s3sz0l7",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuq7a6kk003yssghxtnm6s9z",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-CLICKING-V6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21k303qzssimrp6izhkm",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavmdj00dcsslhjbrxpv44",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-JUSTNET-IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21kp03rbssim09zv8eui",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuq7a6re005cssgh50tsji04",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-JUSTNET-IPv6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21i203q3ssiml9qeil90",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmv2wtra0700rssesjkdkn8vo",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-FLASH-TELECOM_IPv6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21h903pnssimc43mues0",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmv2wtrau700yssestso3v22x",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-FLASH-TELECOM_IPv6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21hc03ppssimjn0ukaxm",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuq7a6s7005hssghnxttb6yi",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-JUSTNET-IPv6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21i603q5ssimhj8wy2xd",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuq7a6sv005mssghg7gxo53m",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-JUSTNET-IPv6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21kl03r9ssim9s3sz0l7",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavmdy00dhsslh6ieobt62",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-LIVINET_IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21df03ntssimxx1prfyx",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavm8d00cisslhxzjwqygh",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-GMTELECOM_IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21eh03obssimro05gkhe",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavm8x00cnsslhxa6wtmar",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-HORIZONTES_IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "AUTO",
+          "interfaceId": "cmsxk21c503n7ssim91i6ng3p",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavm9d00cssslhprlon66g",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-HORIZONTES_IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21ce03nbssimw7110yd8",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavmev00dssslh7vhu7oqu",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-RNJ_IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "AUTO",
+          "interfaceId": "cmsxk21d403nnssimm1iw1xvn",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavmfz00e2sslhbmo9ple7",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-SUPERNET-IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "AUTO",
+          "interfaceId": "cmsxk21hl03ptssim6ti5dzkh",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuq7a6yc006wssghdxic1itf",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-SUPERNET-IPv6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21hl03ptssim6ti5dzkh",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuovv7sy0061ssaewrbbkgz5",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-WF_Bonsucesso_IPv6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21ay03mpssimsv4i7d1f",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmvu0f0vd00axl7ylpkznwlc2",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-WFREDES-V4-IN",
+          "addressFamily": "IPV4",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmuvdh9mniwstssoz3clee39w",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuoavmed00dmsslhi3dzev57",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-PLAYCONNECT_IPv4-IN",
+          "addressFamily": "IPV4",
+          "mode": "AUTO",
+          "interfaceId": "cmsxk21d003nlssim7pd0ehs4",
+          "mitigationRt": "268568:660"
+        },
+        {
+          "id": "cmuovv7pk0057ssaeu2vb1rrf",
+          "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+          "policyName": "PL-PLAYCONNECT_IPv6-IN",
+          "addressFamily": "IPV6",
+          "mode": "ALERT_ONLY",
+          "interfaceId": "cmsxk21d003nlssim7pd0ehs4",
+          "mitigationRt": "268568:660"
+        }
+      ],
+      "durable": [
+        {
+          "kind": "delivery-limit",
+          "status": "SENT",
+          "n": 1
+        },
+        {
+          "kind": "episode-alias",
+          "status": "MAPPED",
+          "n": 1
+        },
+        {
+          "kind": "episode-history",
+          "status": "OPEN",
+          "n": 1
+        },
+        {
+          "kind": "outbox",
+          "status": "SENT",
+          "n": 2
+        },
+        {
+          "kind": "episode",
+          "status": "OPEN",
+          "n": 1
+        },
+        {
+          "kind": "outbox",
+          "status": "FAILED",
+          "n": 1
+        }
+      ]
+    },
+    "readOnly": true
+  },
+  "evidenceHashesSha256": {
+    "huawei-final-contract.json": "8a8d7631155d6d3942fc0075ff74a71a364ebf8eedd08a6d3e5aa9187f497b80",
+    "final-contract-state.json": "28aa009792618f78eeb65b2e22960e7c0584f3bc8cf20b4a81e902ae24f80cf5",
+    "final-contract-probe.json": "37b41a03a20e4f93f28b99c69872182fe7cf7af9053d9fb4c9eaf689675e0502"
+  },
+  "primarySemanticsReference": "https://forum.huawei.com/enterprise/cn/zh/thread-372283.html",
+  "referenceScope": "Huawei route-policy generic semantics, not physical verification of exact firmware or announcements"
+}

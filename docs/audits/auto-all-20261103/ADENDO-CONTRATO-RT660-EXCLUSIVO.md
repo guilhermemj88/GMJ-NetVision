@@ -1,107 +1,145 @@
-# Adendo obrigatório — node 2 com RT660 exclusivo
+# Adendo corrigido — contrato final BGP, node 2 sem if-match
 
-**03/11/2026. Auditoria somente leitura. Não conformidade BLOQUEANTE para AUTO até correção e homologação.**
+**03/11/2026. Auditoria somente leitura em produção. NO-GO para AUTO até correção e homologação.**
 
-Este adendo substitui a premissa additive da auditoria `af9e692`. O software efetivamente publicado continua sendo `908e7b417502930d7945b3d73dded584a7012dd7`; nenhum arquivo funcional ou teste versionado foi alterado. Novas leituras Huawei: `2026-11-03T19:26:14.913Z` (16:26:14 de Brasília).
+Este documento substitui integralmente o adendo anterior e suas exigências não autorizadas de prefix-list e local-preference no node 2. Não há nova implementação. O código publicado continua `908e7b417502930d7945b3d73dded584a7012dd7`.
 
-## 1. Contrato vigente
+## 1. Contrato definitivo do operador
 
-- Node 1: deny com `if-match ip-prefix BOGONS`.
-- Node 2: permit da lista autorizada do cliente; preservar LP adequado, **substituir o conjunto de RTs por somente `268568:660`**.
-- A única cláusula RT do node 2 deve ser `apply extcommunity rt 268568:660`, sem `additive`, RT140, RT330 ou outra RT anterior.
-- Node 10 e demais nodes permanentes são intocados. A linha original do node 10 pode continuar contendo `additive`; a proibição incide no node 2 temporário.
-- REMOVE exclusivamente humano: excluir somente 1/2. A avaliação normal volta ao node 10. Não reescrever os RTs normais, não restaurar nodes permanentes por comandos compensatórios e não executar REMOVE por queda do tráfego.
+```text
+route-policy PL-CLIENTE_IPv4-IN deny node 1
+ if-match ip-prefix BOGONS
 
-Para a AGLINK, LP do node 2 continua **1100**, e a lista é `AGLINK-BLOCO-TODO-23`. Os três prefixos autorizados no escopo são `167.250.126.0/23`, `167.250.126.0/24` e `167.250.127.0/24`.
+route-policy PL-CLIENTE_IPv4-IN permit node 2
+ apply extcommunity rt 268568:660
+```
 
-## 2. Investigação da semântica Huawei
+Node 2 **não contém if-match, prefix-list, local-preference, additive, goto ou cópia/derivação de cláusulas de node permanente**. O conjunto efetivo de RTs da rota mitigada deve ser exatamente `{268568:660}`. Não se conserva RT140, RT330 ou qualquer outra RT anterior. Isso não exige apagar tipos diferentes de extended-community ou outros atributos BGP indiscriminadamente.
 
-O equipamento foi novamente identificado por leitura como NE8000 F1A-8H20Q, VRP8.220 / V800R022C00SPC600 / V800R022SPH152. A [fonte primária Huawei específica de NE8000-F1A/8.22.0](https://github.com/Huawei/yang/blob/926ac3b33660d6b07caa035263d80d34cffd7b60/network-router/8.22.0/ne8000-f1a/huawei-routing-policy.yang#L2625-L2664), no container `apply-ext-community`, distingue adição e substituição para VPN-target/RT. O modo replace troca o atributo original pelo conjunto configurado, em vez de uni-los.
+Nodes permanentes, incluindo 10/1000 quando existentes, permanecem intocados. A remoção é exclusivamente manual e exclui somente o par 1/2 cuja propriedade gerenciada esteja comprovada. A redução do tráfego não aciona REMOVE.
 
-Isso sustenta a semântica de **substituir as RTs anteriores por RT660**, que é a finalidade da forma CLI sem additive. Não se deve interpretar esse requisito como apagar AS-path, LP, communities padrão ou todos os outros tipos de extended-community.
+O modelo é explicitamente IPv4. Não foi inventado um contrato BOGONS/IPv6 nem estendida autorização aos 16 perfis IPv6.
 
-**Limite da comprovação:** foi obtido o modelo oficial do produto/versão, com commit e SHA256 registrados. Não foi recuperada uma referência CLI oficial que associe explicitamente a ausência do parâmetro ao modo replace nessa revisão de firmware; essa associação é a interpretação técnica esperada, não uma medição física nesta missão. Nenhuma rota foi alterada para demonstrar substituição de RT140/330 no SPC600/SPH152. O efeito físico exato, inclusive qualquer particularidade de outras extended-communities, fica **NOT_VERIFIED até homologação autorizada**. Não foi usada documentação Cisco/H3C como prova de comportamento Huawei.
+## 2. Leituras e ocupação física
 
-As policies preexistentes já contêm `apply extcommunity rt 268568:660` sem additive, mas observar sua configuração, isoladamente, não prova quais atributos uma rota possuía antes. A confirmação física futura precisa comparar o conjunto efetivo de RTs em cada rota, não somente o texto do node.
+Nova leitura do F1A: **2026-11-03T19:56:22.692Z**, 16:56:22 Brasília. NE8000 F1A-8H20Q, VRP8.220 / V800R022C00SPC600 / SPH152. Foram usados exclusivamente os leitores existentes e comandos display, sem importar/chamar o transporte de escrita. `screen-length 0 temporary` afeta somente a paginação da sessão de leitura.
 
-## 3. Não conformidade do motor publicado
+Resultado para **39 perfis / 24 policies**: **nenhum node 0, 1 ou 2 ocupado no conjunto consultado**. Logo, não há nesta captura cliente a listar como NÃO APTO por ocupação preexistente de 1/2. Isso é uma constatação de snapshot, não reserva de exclusividade nem autorização de ACTIVATE.
 
-O código está preservando RTs normais no node temporário, contrariando o contrato vigente:
+Regra de aptidão por ocupação, para a futura implementação:
 
-| Ponto                                               | Comportamento atual / dependência                                                                               |
-| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| `mitigation-policy-clauses.ts:146`, `:460`          | Deriva RTs do baseline e `buildRouteTargetLine` une RTs normais com RT660, sempre acrescentando `additive`      |
-| `mitigation-write-guard.ts:119`                     | Usa essa linha no builder canônico do ACTIVATE                                                                  |
-| `aglink-bgp-plan.ts:27`                             | Espera literalmente `apply extcommunity rt 268568:140 rt 268568:660 additive`                                   |
-| `mitigation-executor.ts:276`                        | Readback com `preservedClauses` compara clauses exatas contra o plano additive                                  |
-| `mitigation-policy-physical.ts:113`                 | Reconhecimento AGLINK exige o template antigo; uma ativação exclusiva correta fica divergente                   |
-| `huawei-mitigation-executor.ts:179`, `:560`, `:665` | Preflight e segunda leitura dependem das RTs do baseline; REMOVE também depende do reconhecimento físico do par |
-| `mitigation-executor.ts:149`, `:167`                | Mock serializa/aplica RT com additive e não modela substituição das RTs recebidas na rota BGP                   |
+- Qualquer node 1 ou 2 ocupado sem evidência durável e leitura coerente de ownership NetVision: **NÃO APTO**, informar cliente, device, policy e cada node ocupado. Não sobrescrever, adotar por semelhança, remover ou deslocar para outro par. O operador corrigirá manualmente no F1A.
+- Par comprovadamente gerenciado e ativo: reconciliar o estado e impedir segundo ACTIVATE. Apenas a forma textual ou RT660 não comprova ownership.
+- Par parcial, drift, leitura inconclusiva, journal/ownership incompatível ou operação em andamento: bloquear escrita. Runtime NORMAL não invalida presença física de nodes.
+- Repetir a verificação sob serialização e na leitura final antes da escrita. A corrida de ocupação identificada na auditoria anterior continua relevante.
 
-Reprodução isolada com funções reais da release, sem transporte:
+A captura anterior e a nova diferem em um node permanente: `PL-HORIZONTES_IPv4-IN`, node 11, passou de `apply extcommunity rt 268568:140` para `apply extcommunity rt 268568:660`. As demais cláusulas desse node permaneceram iguais. **Esta auditoria não executou a alteração e não atribui sua autoria.** O node fica intocado e seu ownership não é presumido. CLICKING também mantém RT660 preexistente no node 50. Nenhum deles é o par temporário gerenciado 1/2.
 
-| Node 2 apresentado ao verificador atual           | Readback com plano derivado | Reconhecimento físico AGLINK |
-| ------------------------------------------------- | --------------------------- | ---------------------------- |
-| RT140 + RT660 additive, contrato antigo           | **Aceita**                  | MITIGATED                    |
-| Somente RT660, sem additive, contrato obrigatório | **Rejeita**                 | RECONCILIATION_REQUIRED      |
-| Somente RT660 com additive                        | Rejeita com plano derivado  | RECONCILIATION_REQUIRED      |
-| RT660 + RT999 sem additive                        | Rejeita com plano derivado  | RECONCILIATION_REQUIRED      |
+## 3. Efeito do permit sem if-match e proteção de prefixos
 
-No helper `verifyActivation` **sem** `preservedClauses`, as quatro variantes são aceitas porque a verificação básica exige presença de RT660, não exclusividade. O caminho produtivo possui checagens adicionais; não se afirma que todas essas variantes seriam aceitas ponta a ponta. O achado mostra por que a correção futura precisa alinhar builder, leitura/verificação e reconhecimento físico, em vez de trocar apenas uma string de comando.
+A [explicação técnica publicada no fórum oficial Huawei](https://forum.huawei.com/enterprise/cn/zh/thread-372283.html) descreve que um permit sem condições abrange todas as rotas; a avaliação termina no primeiro node que casa. É referência de semântica geral Huawei, não homologação física desta revisão.
 
-As quatro variantes mantiveram zero divergências no fingerprint dos nodes permanentes. A verificação de retirada sobre o texto original, sem 1/2 e com 10/1000 intactos, passou. Isso comprova separação lógica no código, **não** retorno físico de tráfego.
+Assim, para as policies consultadas, sem node 0:
 
-## 4. Dependências das proteções B1–B6
+1. Node 1 rejeita as rotas que casarem com a definição real de BOGONS.
+2. Todas as demais rotas avaliadas por essa policy casam com node 2, recebem o tratamento RT exclusivo e não chegam aos nodes permanentes.
+3. Prefix-lists, AS-path, denies e aplicações de atributos nos nodes 5/10/11/50/100/1000 ficam fora desse caminho enquanto 1/2 estiverem presentes. O conteúdo desses nodes não é alterado.
 
-Os rótulos históricos B1/B2 não foram encontrados explicitamente nos relatórios rastreados; a tabela identifica os mecanismos de derivação/preservação avaliados, sem inventar uma numeração de teste ausente.
+**Proteção independente:** a configuração BGP completa capturada não apresentou `peer ip-prefix`, `filter-policy`, `as-path-filter`, route-filter, grupo com filtro herdado, nem validação de origem unicast demonstrada que imponha a lista de prefixos da AGLINK fora da sua policy IN. Os vínculos observados de `10.200.201.2` são import `PL-AGLINK_IPv4-IN` e export `PL-AGLINK_IPv4-OUT`. A definição `AGLINK-BLOCO-TODO-23` sozinha não filtra rotas quando o node que a referencia não é avaliado. A configuração de validação encontrada em IPv4 FlowSpec não comprova proteção do unicast. `undo check-first-as` também consta na configuração; não é uma validação de propriedade dos prefixos.
 
-| Proteção                                                                       | Depende de RT normal no node 2?                                            | Consequência para correção futura, não executada                                                                                                                                                  |
-| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| B1/B2 — baseline derivável, cláusulas reproduzíveis e expectativa de atributos | **A expectativa de RT/aplicação atual depende**; a proteção estrutural não | Preservar LP, restrição de prefixos, bloqueios por ambiguidade e registro dos RTs originais. Alterar somente a projeção RT do node 2 e as expectativas de readback para RT660 exclusivo           |
-| B3 — sobreposição de prefixos/nodes anteriores                                 | **Não**                                                                    | Manter fail-closed e validação das listas reais; ajustar fixtures do resultado temporário, sem relaxar o teste de escopo                                                                          |
-| B4 — transporte, prompt e erros antes de commit                                | **Não**                                                                    | Manter todos os abortos e a sequência canônica; revalidar igualdade entre preview e escrita com a nova linha RT                                                                                   |
-| B5 — fingerprint durável e drift dos nodes permanentes                         | **Não**; a inspeção física adjacente ainda usa o template antigo           | Registrar node 10 com seus RTs normais originais e comparar no REMOVE. Atualizar reconhecimento do par exclusivo; não apagar RTs do baseline nem reinterpretar nodes permanentes como temporários |
-| B6 — persistência obrigatória, gravação e releitura antes da escrita           | **Não**                                                                    | Manter store durável, scope, hash, transações, journal/outbox e recuperação após restart. Corrigir fixtures/asserções que acoplam o ciclo ao additive                                             |
+Não foi comprovado filtro no roteador do cliente, em outro equipamento ou outra proteção externa. ACL de transporte BGP, autenticação e limite de quantidade de rotas, isoladamente, não equivalem a validar quais NLRIs o cliente pode anunciar. **Não há proteção independente de prefixos comprovada para sustentar que só os três atuais serão aceitos.**
 
-`activationBaselineDiverged` compara RTs **originais do baseline** entre preflight e leitura final. Isso continua necessário. Não se deve esvaziar `preserved.routeTargets` indiscriminadamente para forçar o builder a emitir RT660: esses dados continuam sendo evidência do estado normal. O conjunto a aplicar no node 2 e o conjunto original a auditar têm funções distintas.
+Avaliação de referência sobre as listas reais, sem enviar qualquer prefixo ao Huawei:
 
-Testes relacionados: `aglink-activate-contract`, `aglink-bgp-plan`, `aglink-bgp-export`, `mitigation-audit-corrections`, `mitigation-final-defects`, `mitigation-b6-durability`, `ne8000-observed-readback` e `ssh-client-write-guards`. Foram reexecutados **93 testes, todos aprovados**, sem modificar suas expectativas. Estão verdes sob o contrato antigo; isso **não homologa o contrato corrigido**.
+| Prefixo          | Normal pela policy AGLINK | Durante o contrato solicitado | Após retirada manual de 1/2 |
+| ---------------- | ------------------------- | ----------------------------- | --------------------------- |
+| 167.250.126.0/23 | Permit node 10            | Permit node 2                 | Comportamento normal        |
+| 167.250.126.0/24 | Permit node 10            | Permit node 2                 | Comportamento normal        |
+| 167.250.127.0/24 | Permit node 10            | Permit node 2                 | Comportamento normal        |
+| 167.250.126.0/25 | Deny node 1000            | **Permit node 2**             | Deny node 1000              |
+| 167.250.128.0/24 | Deny node 1000            | **Permit node 2**             | Deny node 1000              |
+| 8.8.8.0/24       | Deny node 1000            | **Permit node 2**             | Deny node 1000              |
+| 0.0.0.0/0        | Deny node 1000            | **Permit node 2**             | Deny node 1000              |
+| 10.1.0.0/24      | Deny node 1000            | Deny node 1 / BOGONS          | Deny node 1000              |
 
-## 5. Exportação reavaliada com RT660 exclusivo
+Somente os três primeiros foram observados como rotas AGLINK existentes. Os demais são contraexemplos sintéticos de avaliação offline, não anúncios reais. A BOGONS capturada não barra a default route por esse match e não substitui uma lista de propriedade do cliente.
 
-A leitura nova confirma o deny permanente no node 5 da SEMPRE-DDoS e as policies de saída. A avaliação é estática, sobre configuração real capturada, cobrindo as oito saídas especificadas:
+**Risco concreto:** aceitação de anúncios adicionais ou indevidos e seu encaminhamento ao caminho de mitigação. A amplitude do node 2 alcança todos os peers que compartilhem a policy, não apenas a interface/perfil que detectou o limiar. O contrato não foi alterado para esconder esse efeito. Se for necessária proteção adicional em outra camada, sua definição e implantação dependem de decisão/autorização própria; nenhuma foi implementada aqui.
 
-| Saída                          | Resultado para cada um dos três prefixos com somente RT660 | Primeiro match |
-| ------------------------------ | ---------------------------------------------------------- | -------------- |
-| COMPUTIZE-DDoS — 198.19.4.145  | **Permit**                                                 | 300            |
-| SEMPRE-DDoS — 138.99.240.141   | Deny / NEVER_MITIGATE preservado                           | 5              |
-| SEMPRE normal — 138.99.240.117 | Deny                                                       | 5              |
-| SEABORN                        | Deny                                                       | 5              |
-| SEABORN-BH                     | Deny                                                       | 5              |
-| CIRION                         | Deny                                                       | 100            |
-| IP-TUDDO                       | Deny                                                       | 100            |
-| VS-IX                          | Deny                                                       | 6000           |
+## 4. Local-preference e RTs
 
-Sem RT140, o deny 90 da COMPUTIZE deixa de casar. Os três prefixos alcançam permit 300. Portanto, **o conflito anterior desaparece sob o contrato exclusivo**, e não há necessidade demonstrada de alterar essas policies OUT para acomodar os três prefixos. A causa bloqueante passa a ser o motor gerar/verificar RTs indevidas, além das demais pendências já registradas.
+A cláusula `apply local-preference 1100` permanece no node 10 da AGLINK, mas não é executada para rotas que terminam no node 2. **Não se promete LP1100 durante a mitigação e não se copia essa cláusula para node 2.** O LP efetivo passa a depender dos atributos e defaults aplicáveis fora do node 10, devendo ser lido na RIB em homologação autorizada. Não houve medição desse resultado nesta missão.
 
-| Prefixo          | Antes da mitigação, leitura real | Durante, resultado exigido ainda não aplicado           | Após REMOVE manual, resultado esperado               |
-| ---------------- | -------------------------------- | ------------------------------------------------------- | ---------------------------------------------------- |
-| 167.250.126.0/23 | RT140/330, LP1100                | **Só RT660**, LP1100; somente COMPUTIZE nas oito saídas | RT140/330, LP1100, comportamento normal pelo node 10 |
-| 167.250.126.0/24 | RT140/330, LP1100                | **Só RT660**, LP1100; somente COMPUTIZE nas oito saídas | RT140/330, LP1100, comportamento normal pelo node 10 |
-| 167.250.127.0/24 | RT140/330, LP1100                | **Só RT660**, LP1100; somente COMPUTIZE nas oito saídas | RT140/330, LP1100, comportamento normal pelo node 10 |
+| Estado                    | RTs esperadas AGLINK                                                      | Local-preference                                |
+| ------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------- |
+| Normal, leitura atual     | RT140/330                                                                 | 1100, node 10                                   |
+| Durante o contrato final  | Somente RT660                                                             | Não definido por node 2; **1100 não garantido** |
+| Após REMOVE manual de 1/2 | Comportamento normal; RT140/330 se atributos recebidos continuarem iguais | Node 10 volta a aplicar 1100                    |
 
-O retorno de RT330 depende dos atributos normais recebidos do cliente continuarem presentes na reavaliação da rota. Não se grava RT330 em node temporário nem se modifica node 10 para fabricar esse retorno. A captura demonstra o estado normal atual; o estado durante/depois só poderá ser comprovado em homologação física autorizada.
+O [modelo oficial Huawei NE8000-F1A/8.22.0](https://github.com/Huawei/yang/blob/926ac3b33660d6b07caa035263d80d34cffd7b60/network-router/8.22.0/ne8000-f1a/huawei-routing-policy.yang#L2625-L2664) documenta modos distintos de adição e substituição de RTs. A associação da CLI sem additive ao modo de substituição continua sendo a interpretação técnica esperada; a referência CLI exata e o efeito físico no SPC600/SPH152 continuam **NOT_VERIFIED**. A homologação deve comprovar RT set exatamente `{268568:660}`, não só sua presença no texto.
 
-## 6. Critérios obrigatórios para encerrar a divergência
+## 5. Reavaliação dos 38 bloqueios de baseline
 
-1. Em missão posterior autorizada, corrigir geração e validação para RT set **exatamente `{268568:660}`**, sem additive, mantendo LP e escopo da lista. Garantir que RT140/330/qualquer outra RT causem rejeição quando residirem no resultado mitigado.
-2. Manter B1–B6, M8, locks e journal. A corrida de ocupação de 1/2 e a colisão de recibos identificadas antes continuam pendentes; esta mudança de contrato não as resolve.
-3. Testar entrada sem RT, com RT140, RT330, múltiplas RTs e uma RT não prevista. Uma simulação futura precisa modelar replace, não apenas construir texto ou usar `.includes(660)`.
-4. Confirmar baseline e nodes permanentes idênticos antes/durante/depois, além de retirar apenas 1/2 por ação humana. Não reinterpretar ou remover automaticamente instalações antigas additive ou nodes de terceiros.
-5. Na homologação autorizada, exigir leitura da RIB dos **três** prefixos: LP1100, rota do cliente correta, nenhuma RT residual além de RT660; comprovar anúncios só à COMPUTIZE no escopo avaliado, aceitação/limpeza/retorno pela mitigadora e notificações verificadas. Depois de REMOVE humano, conferir retorno à semântica normal e aos anúncios originais.
+A exigência de achar uma prefix-list/baseline reproduzível para copiar suas cláusulas ao node 2 **foi retirada do contrato**, não removida do código nesta missão.
 
-## 7. Encerramento
+| Conjunto                                      | Resultado pelo contrato final                                                                                                                         |
+| --------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 22 perfis IPv4 antes bloqueados por derivação | Os 22 motivos de derivação ficam obsoletos. Nodes 1/2 livres na leitura. Isso não os torna automaticamente aptos E2E                                  |
+| 16 perfis IPv6 antes bloqueados por derivação | O motivo de derivação também não é requisito do novo modelo, mas permanecem fora do contrato físico IPv4; sem declarar aptidão ou inventar plano IPv6 |
+| AGLINK IPv4, antes passando no baseline       | Também não precisa derivar/copiar node 10; deve seguir o mesmo node 2 exato, sem exceção LP/lista                                                     |
 
-Evidência: [rt660-exclusive-review.json](rt660-exclusive-review.json), com fonte primária fixada por commit/hash, captura nova, matriz dos três estados de RT, resultados da reprodução de verificadores e 93 regressões. Não houve implementação, alteração de tests versionados, configuração Huawei, ACTIVATE/REMOVE, refresh, restart, flag, deploy ou migration.
+**38/38 bloqueios de derivação reclassificados como requisito obsoleto; zero liberações operacionais.** O código atual ainda contém essa exigência e continua barrando os 38 casos na avaliação antiga. Há 27 perfis em policies compartilhadas e os demais impedimentos independentes de direção, família, modo ALERT_ONLY, concorrência, identidade e homologação continuam separados. LIVINET ter BOGONS no node permanente 5 não ocupa 1/2 nem autoriza mexer no node 5.
 
-API permaneceu no mesmo PID/bundle e as flags efetivas continuaram LIVE_WRITE=false, AUTO=0, lifecycle=0, REMOVE=0, persistência=1. **NO-GO para AUTO até correção e homologação.** O parecer NO-GO físico manual/AUTO restrito/AUTO-ALL permanece pelas pendências descritas; a conclusão de exportação agora considera o contrato correto, RT660 exclusivo.
+A [matriz dos 39 perfis](MATRIZ-CONTRATO-FINAL.md), o [CSV](matriz-contrato-final.csv) e a [evidência estruturada](contrato-final-node2-sem-match.json) identificam cliente, policy, família, ocupação e restrições remanescentes individualmente.
+
+## 6. Divergência do software e proteções B1–B6
+
+O código publicado ainda gera cláusulas derivadas, lista de alvos, LP e RT additive. Portanto, diverge integralmente do novo node 2. Não foi corrigido funcionalmente.
+
+| Mecanismo auditado                                                           | Avaliação sob o contrato final                                                                                                                                                        |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Derivação/reprodução, correspondentes a B1/B2 sem rótulo histórico explícito | Deixa de ser requisito do node 2. Preservar evidência completa do estado permanente, sem copiá-la ao par temporário                                                                   |
+| B3, sobreposição/prefix-list do plano antigo                                 | Não exigir prefix-list no node 2 ou proibir a amplitude deliberada do contrato. Documentar o novo alcance; manter validação dos vínculos peer/policy/família e contenda compartilhada |
+| B4, transporte/prompt/erros/commit                                           | Preservar todas as barreiras e igualdade preview/escrita. Só um plano exato poderá ser autorizado na futura correção                                                                  |
+| B5, fingerprint/drift de nodes permanentes                                   | Preservar integralmente. Não excluir RTs/LP do baseline durável para forçar emissão do plano. Os atributos continuam como evidência, sem uso como cláusulas de node 2                 |
+| B6, persistência/journal/transações/releitura antes de escrever              | Preservar integralmente. UNCERTAIN, operação incompleta ou falha do store continuam bloqueando escrita e duplicidade após restart                                                     |
+
+Pontos que dependerão de correção futura: `mitigation-policy-clauses.ts`, builder em `mitigation-write-guard.ts`, template `aglink-bgp-plan.ts`, verificadores em `mitigation-executor.ts`, inspeção em `mitigation-policy-physical.ts` e chamadas em `huawei-mitigation-executor.ts`. Não basta alterar a linha RT: o reconhecimento físico atual exige a antiga lista de alvos.
+
+Readback futuro deve conferir **o node 1 deny com sua única condição BOGONS e node 2 permit com somente a linha RT660**, mais o fingerprint de todos os nodes permanentes. Qualquer RT adicional, additive, if-match, LP ou cláusula não contratada no node 2 deve ser divergência. Ownership deve estar comprovado independentemente da forma textual. Manual REMOVE continua exigindo autorização, escopo, lock e readback de ausência de 1/2 com permanentes intactos. Nenhum node preexistente de RT660 é adotado por inferência.
+
+## 7. Exportação para COMPUTIZE
+
+A referência estática foi reexecutada com a captura nova. Para **cada um dos três prefixos conhecidos**, supondo rota elegível à exportação e somente RT660:
+
+| Saída                        | Resultado / primeiro match               |
+| ---------------------------- | ---------------------------------------- |
+| COMPUTIZE 198.19.4.145       | Permit / node 300                        |
+| SEMPRE-DDoS 138.99.240.141   | Deny / node 5; NEVER_MITIGATE preservado |
+| SEMPRE normal 138.99.240.117 | Deny / node 5                            |
+| SEABORN / SEABORN-BH         | Deny / node 5                            |
+| CIRION / IP-TUDDO            | Deny / node 100                          |
+| VS-IX                        | Deny / node 6000                         |
+
+O conflito RT140/deny90 da COMPUTIZE continua resolvido pelo RT exclusivo. Não foi demonstrada necessidade de mudar essas policies OUT para os três prefixos. Entretanto, essa tabela **não prova anúncio físico, seleção best-path após mudança de LP, recebimento/scrubbing/retorno pela COMPUTIZE, nem exclusividade de exportação de qualquer prefixo adicional** que o node 2 agora possa aceitar. Não estender o resultado dos três a uma full table ou default route. SEMPRE-DDoS não foi investigada para recuperação.
+
+## 8. Verificações executadas e preservação da produção
+
+- 39 perfis reavaliados, 24 policies lidas, nenhum 1/2 ocupado; 38 motivos antigos de baseline reclassificados.
+- 8 casos de referência de prefixos, com expansão de aceitação explícita acima; todos atenderam ao modelo declarado. Não são testes físicos.
+- 23 probes IPv4, exclusivamente de funções locais da release, com o par final exato: **0/23 aceitos pelo verificador atual**, **23/23 RECONCILIATION_REQUIRED** no reconhecimento físico. Isso demonstra a incompatibilidade atual, sem simular sucesso Huawei.
+- Os mesmos 23 probes preservaram o fingerprint dos nodes permanentes e passaram na comparação textual de remoção apenas de 1/2. Não comprovam rollback físico nem operações reais.
+- 24 avaliações OUT exclusivas (3 prefixos × 8 saídas), todas com somente COMPUTIZE permitida; os 72 casos de três conjuntos RT usados como referência também foram reavaliados.
+- Os 93 testes de regressão da rodada anterior permanecem evidência do contrato antigo. Não foram alterados nem reexecutados como se homologassem o novo contrato. Nenhum build ou pacote novo foi gerado.
+
+Leitura produtiva **2026-11-03T19:57:41.283458Z**: API/MCP/WEB/Observer active/running, mesmos PIDs da captura anterior. API PID 3527751, NRestarts=0, source `908e7b417502930d7945b3d73dded584a7012dd7`; bundle SHA256 `2c0068b6e3d8dde39e744e7d65871b6062aa7d8ecf3c6045ded7407b0bdda0ef`. Os 39 perfis mantêm os vínculos/configuração identificadora comparados. Consultas SQL executadas em transação READ ONLY; sem login da API ou criação de sessão de aplicação.
+
+Flags efetivas preservadas: LIVE_WRITE=false, AUTO_EXECUTION=0, AUTO_LIFECYCLE=0, AUTO_REMOVE=0, AUTO_PERSISTENCE=1. Nenhuma escrita Huawei foi executada por esta auditoria, nem refresh, restart, migration, alteração de código/configuração operacional ou n8n. A diferença HORIZONTES observada foi explicitamente registrada, portanto não se declara que toda configuração Huawei permaneceu estática entre capturas.
+
+## 9. Decisão
+
+**NO-GO para AUTO.** A avaliação documental adota exatamente o contrato solicitado, sem lista, LP, additive ou derivação no node 2. Os 38 bloqueios antigos deixam de ser exigências do contrato; isso não publica uma correção nem declara aptidão física.
+
+Permanecem bloqueantes a incompatibilidade do código e de seus readbacks, as falhas de concorrência já documentadas, a ampliação de aceitação de NLRIs sem proteção independente comprovada e a ausência de homologação do comportamento real — RTs, LP/best-path, exportação e serviço pela COMPUTIZE. A decisão operacional sobre esse risco precisa ser explícita; não foi acrescentado filtro ao contrato para resolvê-lo unilateralmente.
+
+Parar nesta auditoria. Nenhuma alteração funcional ou física foi realizada.
