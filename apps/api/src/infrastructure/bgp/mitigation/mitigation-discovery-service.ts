@@ -1,6 +1,6 @@
 import type { HostRecord } from '@gmj/shared';
 import { bgpPlanLabels } from './aglink-bgp-plan';
-import { exactMitigationNodesFromParsed } from './mitigation-contract';
+import { exactMitigationNodesFromParsed, precedenceConflictNodes } from './mitigation-contract';
 import type { BgpDiscoveryOutcome, DiscoveredBgpPeer } from '../bgp-discovery-service';
 import { effectiveBandwidthBps } from './bandwidth-parser';
 import { DEFAULT_MITIGATION_RT } from './mitigation-config';
@@ -383,9 +383,17 @@ export class BgpMitigationDiscoveryService {
       const prefixCount = aggregatePrefixCount(sorted.map((item) => item.peer.cliReceivedPrefixes));
       const status = prefixStatus(prefixCount, this.prefixLimit);
 
+      // Node 0 precederia o par reservado 1/2: a policy nao esta no estado
+      // esperado pelo contrato (a mitigacao ficaria inerte). Bloqueia a sugestao.
+      const precedenceNodes = policyNodes ? precedenceConflictNodes(policyNodes) : [];
+      if (precedenceNodes.length > 0)
+        warnings.push(
+          `policy ${policyName}: node ${precedenceNodes.join(', ')} precede o par reservado 1/2`,
+        );
       const blockedReason = pickBlockReason([
         nodeMap === null ? 'READBACK_FAILED' : null,
         nodeMap !== null && policyNodes === null ? 'POLICY_NOT_FOUND' : null,
+        precedenceNodes.length > 0 ? 'POLICY_CHANGED' : null,
         status === 'EXCEEDED' ? 'PREFIX_LIMIT_EXCEEDED' : null,
         nodeDecision?.blocked ? 'NO_SAFE_TEMPORARY_NODE' : null,
       ]);

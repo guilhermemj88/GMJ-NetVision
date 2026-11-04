@@ -86,6 +86,14 @@ export const REMOVAL_SCOPE_ACTIVE_STATES: readonly MitigationState[] = [
 export const RUNTIME_SYNC_FAILED_WARNING =
   'Equipamento alterado, mas o runtime local não foi sincronizado por completo; revalide a policy (RECONCILIATION_REQUIRED).';
 
+/**
+ * A retirada fisica foi verificada, mas o registro do baseline nao pode ser
+ * descartado. O estado fisico esta correto; o ownership nao — o proximo REMOVE
+ * exigiria reconciliacao manual e o operador precisa saber disso.
+ */
+export const BASELINE_RELEASE_FAILED_WARNING =
+  'Retirada física verificada, mas o registro do baseline (ownership) não pôde ser descartado; reconciliação manual obrigatória antes do próximo REMOVE.';
+
 export interface MitigationAutoEvidence {
   sampleAt: string;
   continuityKey: string;
@@ -267,6 +275,11 @@ export interface MitigationLiveExecutorPort {
     policyName: string,
     rt: string,
   ): Promise<{ bogonNode: number; mitigationNode: number } | null>;
+  /**
+   * Ownership, sem comando: invalida o registro do baseline apos uma retirada
+   * verificada. Opcional para nao obrigar harnesses/fakes de leitura.
+   */
+  releaseBaseline?(device: HostRecord, policyName: string): Promise<void>;
 }
 
 export interface MitigationCommandDeps {
@@ -416,8 +429,37 @@ export class MitigationCommandService {
     const previous = this.processed.get(input.requestId);
     const pending = this.pending.get(input.requestId);
     if ((previous && previous.identity !== identity) || (pending && pending.identity !== identity)) {
-      const result = previous?.result ?? await pending!.promise;
-      return {...result, requestId: input.requestId, action: input.action, profileId: input.profileId, ok: false, verified: false, idempotent: false, status: 'IDEMPOTENCY_CONFLICT', commandPreview: [], safeError: 'requestId already belongs to a different command; no write attempted'};
+      // NUNCA reutilizar (nem esperar) o recibo de OUTRA operacao: `policy`,
+      // `interface`, `verification`, `notification` e `preflight` de outro
+      // perfil nao podem aparecer nesta resposta. Conflito e resposta completa
+      // por si so - nada aqui e herdado da operacao anterior.
+      return {
+        requestId: input.requestId,
+        action: input.action,
+        profileId: input.profileId,
+        idempotent: false,
+        executedAt: this.now().toISOString(),
+        ok: false,
+        status: 'IDEMPOTENCY_CONFLICT',
+        verified: false,
+        customer: null,
+        device: null,
+        interface: null,
+        interfaceId: null,
+        addressFamily: null,
+        policy: null,
+        node: null,
+        bogonNode: null,
+        mitigationNode: null,
+        rt: null,
+        sharedPolicy: false,
+        sharedPolicyTargets: [],
+        affectedPeers: [],
+        commandPreview: [],
+        verification: null,
+        notification: { published: false, skipped: true },
+        safeError: 'requestId already belongs to a different command; no write attempted',
+      };
     }
     if (previous) return {...previous.result, idempotent: true};
     if (pending) return {...await pending.promise, idempotent: true};
@@ -434,6 +476,27 @@ export class MitigationCommandService {
     const notification: MitigationNotificationOutcome = { published: false, skipped: true };
     const result = await this.executeAction(input, notification);
     return { ...result, notification };
+  }
+
+  /**
+   * Ownership do baseline, SEM comando no equipamento.
+   *
+   * Somente uma retirada VERIFICADA descarta o registro; qualquer outro
+   * desfecho o mantem (o par pode continuar no hardware). Executor MOCK/teste
+   * nao tem registro duravel — nada a fazer.
+   */
+  private async releaseBaselineAfterRemoval(
+    liveDevice: HostRecord | null,
+    policyName: string,
+    verified: boolean,
+  ): Promise<'RELEASED' | 'SKIPPED' | 'FAILED'> {
+    if (!verified || !liveDevice || !this.deps.live?.releaseBaseline) return 'SKIPPED';
+    try {
+      await this.deps.live.releaseBaseline(liveDevice, policyName);
+      return 'RELEASED';
+    } catch {
+      return 'FAILED';
+    }
   }
 
   private async executeAction(
@@ -1040,6 +1103,11 @@ export class MitigationCommandService {
         readBack = await this.deps.executor.readRoutePolicy(profile.policyName);
       }
       const check = verifyRemoval(profile.policyName, readBack, pair);
+      // D3: retirada VERIFICADA invalida o registro do baseline (ownership).
+      // Sem isso um par identico criado depois por terceiros seria adotado como
+      // NetVision. Falha aqui nao desmente o estado fisico: apenas obriga o
+      // operador a limpar o registro antes do proximo REMOVE.
+      const release = await this.releaseBaselineAfterRemoval(liveDevice, profile.policyName, check.verified);
       const sync = await this.record(profile, false, check.verified, pair, null);
       // A retirada INVALIDA a sequencia de amostras anterior: o AUTO precisa de
       // evidencia NOVA (triggerSamples amostras novas) antes de reativar.
@@ -1070,6 +1138,7 @@ export class MitigationCommandService {
         ...(pairSource === 'DEVICE' ? { pairSource } : {}),
         ...(sync.ok ? {} : { safeError: RUNTIME_SYNC_FAILED_WARNING }),
         ...(check.verified ? {} : { safeError: check.summary }),
+        ...(release === 'FAILED' ? { safeError: BASELINE_RELEASE_FAILED_WARNING } : {}),
       };
     } catch (error) {
       // Escrita iniciada + estado fisico NAO comprovado: o runtime do escopo

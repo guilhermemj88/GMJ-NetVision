@@ -1,5 +1,13 @@
 import { randomUUID } from 'node:crypto';
+import { fastContinuityWindowMs, readFastNormalIntervalMs } from './fast-cadence';
 import { deriveFastTraffic } from './fast-traffic-rate';
+
+/**
+ * Limiar da metrica historica `gapsOver15Seconds`. Fixo em 15 s de proposito:
+ * permite comparar cadências diferentes sem depender da configuracao do poller.
+ * O limite que vale para a decisao e `gapsOverContinuityLimit` (maxGapMs).
+ */
+const FAST_GAP_METRIC_MS = 15_000;
 import type {
   FastCounterReading,
   FastTrafficObservation,
@@ -59,7 +67,7 @@ export function fastPollerConfig(
   if (observeAllIpv4 && mode !== 'OBSERVE') throw new Error('ALL_IPV4_REQUIRES_OBSERVE');
   if (mode !== 'OFF' && !profileIds.length && !observeAllIpv4)
     throw new Error('MITIGATION_FAST_PROFILE_IDS is required');
-  const normalIntervalMs = integer('MITIGATION_FAST_NORMAL_SECONDS', 10, 10, 30) * 1000;
+  const normalIntervalMs = readFastNormalIntervalMs(env);
   return {
     mode,
     observeAllIpv4,
@@ -68,9 +76,9 @@ export function fastPollerConfig(
     normalIntervalMs,
     // A cadencia nominal ja e o piso (10 s); acelerar sob suspeita nao teria efeito.
     suspectIntervalMs: normalIntervalMs,
-    // O limite de continuidade acompanha a cadencia (1,5x) e nunca fica abaixo de 15 s:
-    // com nominal de 10 s o default e exatamente 15 s, como o contrato exige.
-    maxGapMs: Math.max(15_000, normalIntervalMs * 1.5),
+    // Janela de continuidade DERIVADA da cadencia (1,5x, piso de 15 s): a mesma
+    // funcao alimenta a decisao AUTO, para poller e motor nunca divergirem.
+    maxGapMs: fastContinuityWindowMs(normalIntervalMs),
     timeoutMs: integer('MITIGATION_FAST_TIMEOUT_MS', 1500, 100, 2000),
     retries: integer('MITIGATION_FAST_RETRIES', 0, 0, 1),
     concurrency: integer('MITIGATION_FAST_CONCURRENCY', 2, 1, 4),
@@ -123,6 +131,10 @@ export class FastTrafficPoller {
   private readonly persistenceTimes: number[] = [];
   private readonly collectionTimes: number[] = [];
   private gapCount = 0;
+  /** Gaps acima da janela de continuidade configurada (cadencia-aware). */
+  private continuityGapCount = 0;
+  /** Devices excluidos da coleta por exceder o teto de interfaces. */
+  private overLimit = new Map<string, number>();
   private lastError: string | null = null;
 
   constructor(
@@ -216,6 +228,12 @@ export class FastTrafficPoller {
       qualityCounts: { ...this.qualityCounts },
       monitoredInterfaces: this.entries.size,
       gapsOver15Seconds: this.gapCount,
+      gapsOverContinuityLimit: this.continuityGapCount,
+      overLimitDevices: [...this.overLimit].map(([deviceId, interfaces]) => ({
+        deviceId,
+        interfaces,
+        limit: this.deps.config.maxInterfacesPerDevice,
+      })),
       persistenceLatencyMs: this.stats(this.persistenceTimes),
       collectionLatencyMs: this.stats(this.collectionTimes),
       lastError: this.lastError,
@@ -250,10 +268,22 @@ export class FastTrafficPoller {
         this.epochs.delete(id);
         this.intervals.delete(id);
       }
+    const overLimit = new Map<string, number>();
     for (const [id, ts] of groups) {
-      // Reject an excessive scope rather than silently starving protected interfaces.
-      if (ts.length > this.deps.config.maxInterfacesPerDevice)
-        throw new Error('FAST_DEVICE_INTERFACE_LIMIT');
+      // D5: um device acima do teto e excluido SOZINHO da coleta. Antes o throw
+      // abortava o refresh inteiro e o chamador limpava TODAS as agendas: um
+      // equipamento com muitas interfaces derrubava a deteccao dos demais.
+      if (ts.length > this.deps.config.maxInterfacesPerDevice) {
+        overLimit.set(id, ts.length);
+        this.schedules.delete(id);
+        for (const t of ts) {
+          this.entries.delete(t.interfaceId);
+          this.baseline.delete(t.interfaceId);
+          this.epochs.delete(t.interfaceId);
+          this.intervals.delete(t.interfaceId);
+        }
+        continue;
+      }
       const old = this.schedules.get(id);
       this.schedules.set(id, {
         targets: ts,
@@ -261,7 +291,8 @@ export class FastTrafficPoller {
         suspected: old?.suspected ?? false,
       });
     }
-    this.lastError = null;
+    this.overLimit = overLimit;
+    this.lastError = overLimit.size > 0 ? 'FAST_DEVICE_INTERFACE_LIMIT' : null;
   }
 
   private async poll(schedule: DeviceSchedule): Promise<void> {
@@ -386,15 +417,21 @@ export class FastTrafficPoller {
 
   private updateEntry(t: FastTrafficTarget, o: FastTrafficObservation, high: boolean): void {
     const old = this.entries.get(t.interfaceId);
-    if (o.intervalMs !== null && o.intervalMs > 15000) this.gapCount++;
     this.collectionTimes.push(o.collectedAt.getTime() - o.requestStartedAt.getTime());
     if (this.collectionTimes.length > 360) this.collectionTimes.shift();
     this.qualityCounts[o.quality] = (this.qualityCounts[o.quality] ?? 0) + 1;
     if (old?.lastCollectedAt) {
+      // D6: o gap e o intervalo entre CHEGADAS consecutivas da interface, nao o
+      // intervalo do delta de contador. A amostra que vem depois de uma falha e
+      // BASELINE (`intervalMs === null`), mas o intervalo real existiu e precisa
+      // contar — antes ele era invisivel e a metrica subestimava as perdas.
+      const gap = o.collectedAt.getTime() - Date.parse(old.lastCollectedAt);
       const intervals = this.intervals.get(t.interfaceId) ?? [];
-      intervals.push(o.collectedAt.getTime() - Date.parse(old.lastCollectedAt));
+      intervals.push(gap);
       if (intervals.length > 360) intervals.shift();
       this.intervals.set(t.interfaceId, intervals);
+      if (gap > FAST_GAP_METRIC_MS) this.gapCount++;
+      if (gap > this.deps.config.maxGapMs) this.continuityGapCount++;
     }
     const state = o.quality !== 'VALID' ? 'UNAVAILABLE' : high ? 'SUSPECTED_ATTACK' : 'NORMAL';
     const entry: FastPollerHealthEntry = {

@@ -29,6 +29,21 @@ export function assertIpv4MitigationContract(plan: {
 }
 
 /**
+ * Nodes que PRECEDEM o par reservado (node 0 e o unico possivel no VRP).
+ *
+ * Um `permit node 0` captura todo NLRI antes do node 1: a mitigacao fica
+ * inerte e o read-back dos nodes 1/2 continua "correto". Por isso qualquer node
+ * com precedencia e tratado como conflito NAO AUTORIZADO: bloqueia a escrita e
+ * impede declarar MITIGATED. Nao existe regra aprovada para conviver com ele.
+ */
+export function precedenceConflictNodes(nodes: readonly { node: number }[]): number[] {
+  return nodes
+    .filter((entry) => entry.node < IPV4_MITIGATION_CONTRACT.bogonNode)
+    .map((entry) => entry.node)
+    .sort((left, right) => left - right);
+}
+
+/**
  * Mesmo contrato, a partir dos nodes ja parseados (sem o texto cru).
  *
  * Usado por camadas informativas (discovery) para nao classificar o node 2

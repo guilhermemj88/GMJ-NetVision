@@ -16,7 +16,6 @@ import {
   peersByPolicy,
   prefixStatus,
   safetyBlocks,
-  selectTemporaryNode,
 } from './mitigation-planner';
 import { evaluateTraffic } from './mitigation-state-machine';
 import { SimulationCommandExecutor } from './simulation-command-executor';
@@ -179,33 +178,6 @@ describe('state machine (trigger + recovery hysteresis)', () => {
         hysteresis,
       }).state,
     ).toBe('MITIGATED');
-  });
-});
-
-describe('temporary node selection', () => {
-  it('sem nodes existentes usa 1', () => {
-    expect(selectTemporaryNode({ normalNodes: [], occupiedNodes: [] }).node).toBe(1);
-  });
-
-  it('com primeiro node normal 11 usa 1', () => {
-    const selection = selectTemporaryNode({ normalNodes: [11, 12], occupiedNodes: [11, 12] });
-    expect(selection.node).toBe(1);
-    expect(selection.firstNormalNode).toBe(11);
-    expect(selection.nodesBeforeFirstNormal).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
-  });
-
-  it('node 1 ocupado usa 2', () => {
-    expect(selectTemporaryNode({ normalNodes: [11], occupiedNodes: [1, 11] }).node).toBe(2);
-  });
-
-  it('nodes 1..9 ocupados -> bloqueado, sem sobrescrever', () => {
-    const selection = selectTemporaryNode({
-      normalNodes: [11],
-      occupiedNodes: [1, 2, 3, 4, 5, 6, 7, 8, 9, 11],
-    });
-    expect(selection.node).toBeNull();
-    expect(selection.blocked).toBe(true);
-    expect(selection.reason).toBe('NO_SAFE_TEMPORARY_NODE');
   });
 });
 

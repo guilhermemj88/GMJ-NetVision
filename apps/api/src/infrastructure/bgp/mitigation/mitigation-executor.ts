@@ -3,8 +3,8 @@ import { AGLINK_BGP_PLAN, aglinkBaselineIntact, bgpPlanLabels } from './aglink-b
 import { DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import type { PreservedClauses } from './mitigation-policy-clauses';
 import type { MitigationBaselineRecord } from './mitigation-baseline-record';
-import { exactMitigationNodes } from './mitigation-contract';
-import { buildMitigationActivateCommands } from './mitigation-write-guard';
+import { exactMitigationNodes, precedenceConflictNodes } from './mitigation-contract';
+import { buildMitigationActivateCommands, buildMitigationRemovalCommands } from './mitigation-write-guard';
 
 // Porta de execucao do motor de mitigacao.
 //
@@ -182,12 +182,14 @@ export class MockMitigationExecutor implements MitigationExecutor {
   }
 
   async remove(input: MitigationRemovalInput): Promise<MitigationExecutorResult> {
-    const commands = [
-      'system-view',
-      `undo route-policy ${input.policyName} node ${input.bogonNode}`,
-      `undo route-policy ${input.policyName} node ${input.mitigationNode}`,
-      'commit',
-    ];
+    // Paridade com o executor real: o mock usa o MESMO builder canônico. Assim
+    // um par fora de 1/2 (ex.: nodes 10/1000) e recusado aqui também, em vez de
+    // "passar" num teste que o equipamento recusaria.
+    const commands = buildMitigationRemovalCommands({
+      policyName: input.policyName,
+      bogonNode: input.bogonNode,
+      mitigationNode: input.mitigationNode,
+    });
     this.calls.push(...commands);
     const policy = this.policies.get(input.policyName);
     if (policy) {
@@ -240,7 +242,16 @@ export function verifyActivation(
   const contractOk = pair.bogonNode === 1 && pair.mitigationNode === 2 && rt === '268568:660' && labels.bogonPrefixList === 'BOGONS';
   const bogonOk = contractOk && exact.bogonOk;
   const mitigationOk = contractOk && exact.mitigationOk;
+  // Node 0 (ou qualquer node anterior a 1) tem precedencia sobre o par: os
+  // nodes 1/2 podem estar exatamente corretos e a mitigacao continuar inerte.
+  // Nunca declarar verificado nesse caso.
+  const precedence = precedenceConflictNodes(nodes);
+  const precedenceOk = precedence.length === 0;
   const detalhes: string[] = [];
+  if (!precedenceOk)
+    detalhes.push(
+      `node ${precedence.join(', ')} precede o par reservado: mitigacao pode nao ser aplicada`,
+    );
   if (!bogon || !bogonOk) detalhes.push('node 1 divergente: exige deny + somente if-match ip-prefix BOGONS');
   if (!mitigation || !mitigationOk) detalhes.push('node 2 divergente: exige permit + somente apply extcommunity rt 268568:660, sem additive');
 
@@ -249,7 +260,7 @@ export function verifyActivation(
   // de "outros nodes nao foram alterados".
   const semanticOk = policyName !== AGLINK_BGP_PLAN.policy || aglinkBaselineIntact(readBack);
   if (!semanticOk) detalhes.push('AGLINK: baseline (node 10/1000) divergente');
-  const verified = bogonOk && mitigationOk && semanticOk;
+  const verified = bogonOk && mitigationOk && semanticOk && precedenceOk;
   return {
     verified,
     bogonOk,

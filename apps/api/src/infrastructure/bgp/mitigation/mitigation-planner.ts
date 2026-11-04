@@ -1,15 +1,5 @@
 import type { MitigationBlockReason, PrefixStatus } from './mitigation-types';
 
-export interface TemporaryNodeSelection {
-  /** Node escolhido (1–9) ou `null` quando bloqueado. */
-  node: number | null;
-  firstNormalNode: number | null;
-  /** Faixa completa de nodes disponíveis ANTES do primeiro node normal. */
-  nodesBeforeFirstNormal: number[];
-  blocked: boolean;
-  reason: MitigationBlockReason | null;
-}
-
 export interface TemporaryNodeInput {
   /** Nodes normais já existentes na route-policy (lidos do equipamento). */
   normalNodes: readonly number[];
@@ -19,48 +9,6 @@ export interface TemporaryNodeInput {
   maxCandidate?: number;
 }
 
-/**
- * Escolhe o node temporário de mitigação sem sobrescrever nada.
- *
- * A regra é: achar o menor node normal existente e usar o primeiro node livre
- * antes dele (preferindo 1, 2, 3…, limitado a `maxCandidate` = 9). Um node já
- * ocupado — normal ou temporário — nunca é reaproveitado.
- */
-export function selectTemporaryNode(
-  input: TemporaryNodeInput,
-): TemporaryNodeSelection {
-  const maxCandidate = input.maxCandidate ?? 9;
-  const normal = [...new Set(input.normalNodes)]
-    .filter((node) => Number.isInteger(node) && node > 0)
-    .sort((a, b) => a - b);
-  const occupied = new Set(
-    [...input.occupiedNodes].filter((node) => Number.isInteger(node) && node > 0),
-  );
-
-  const firstNormalNode = normal[0] ?? null;
-  const ceiling = firstNormalNode === null ? maxCandidate : Math.min(firstNormalNode - 1, maxCandidate);
-  const nodesBeforeFirstNormal: number[] = [];
-  for (let node = 1; node <= ceiling; node += 1) nodesBeforeFirstNormal.push(node);
-
-  const candidate = nodesBeforeFirstNormal.find((node) => !occupied.has(node)) ?? null;
-  if (candidate !== null) {
-    return {
-      node: candidate,
-      firstNormalNode,
-      nodesBeforeFirstNormal,
-      blocked: false,
-      reason: null,
-    };
-  }
-
-  return {
-    node: null,
-    firstNormalNode,
-    nodesBeforeFirstNormal,
-    blocked: true,
-    reason: 'NO_SAFE_TEMPORARY_NODE',
-  };
-}
 
 export function prefixStatus(prefixCount: number | null, limit: number): PrefixStatus {
   if (prefixCount === null || !Number.isFinite(prefixCount)) return 'UNKNOWN';

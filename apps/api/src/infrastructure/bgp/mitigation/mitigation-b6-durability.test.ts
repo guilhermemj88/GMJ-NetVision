@@ -168,6 +168,7 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
       load: async () => {
         throw new Error('ECONNREFUSED 5432');
       },
+      release: async () => undefined,
     };
     const exec = executor(ssh, offline);
     const preflight = await exec.preflight(device(), { ...ACTIVATE_INPUT });
@@ -186,6 +187,7 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
         throw new Error('write rejected');
       },
       load: async () => null,
+      release: async () => undefined,
     };
     const exec = executor(ssh, failingSave);
     const preflight = await exec.preflight(device(), { ...ACTIVATE_INPUT });
@@ -202,6 +204,7 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
       durable: true,
       save: async () => undefined,
       load: async () => null,
+      release: async () => undefined,
     };
     const exec = executor(ssh, amnesic);
     const preflight = await exec.preflight(device(), { ...ACTIVATE_INPUT });

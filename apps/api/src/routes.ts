@@ -1319,7 +1319,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       },
     );
     if (lifecycleSettings.enabled)
-      return (lifecycleSettings.expansionEnabled || id === SINGLE_AUTO_PILOT.profileId) && pilotEvidenceValid(sample, evidence, Date.now(), (bandwidthBps * BigInt(profile.triggerPercent)) / 100n);
+      return (lifecycleSettings.expansionEnabled || id === SINGLE_AUTO_PILOT.profileId) && pilotEvidenceValid(sample, evidence, Date.now(), (bandwidthBps * BigInt(profile.triggerPercent)) / 100n, { maxAgeMs: lifecycleSettings.maxAgeMs, maxGapMs: lifecycleSettings.maxGapMs });
     if (!matchesAutoEvidence(sample, evidence, samplingForProfile(id), Date.now())) return false;
     return sample.bps > (bandwidthBps * BigInt(profile.triggerPercent)) / 100n;
   };

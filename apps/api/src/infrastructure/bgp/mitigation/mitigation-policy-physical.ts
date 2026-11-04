@@ -1,4 +1,4 @@
-import { exactMitigationNodes } from './mitigation-contract';
+import { exactMitigationNodes, precedenceConflictNodes } from './mitigation-contract';
 import { parseHuaweiRoutePolicyNodesLenient } from './huawei-bgp-policy-parser';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import {
@@ -35,6 +35,11 @@ export interface PolicyMitigationPhysical {
   mitigationNodes: number[];
   /** Node 1/2 ocupado fora do formato do contrato. */
   partialNodes: PolicyMitigationPartialNode[];
+  /**
+   * Nodes que PRECEDEM o par reservado (node 0). Vazio = nenhum. Presente =
+   * conflito de precedencia nao autorizado: nunca MITIGATED, nunca escrita.
+   */
+  precedenceNodes: number[];
   /** Par fisico quando os dois nodes reservados estao exatamente no contrato. */
   pair: { bogonNode: number; mitigationNode: number } | null;
   detail: string;
@@ -75,6 +80,7 @@ export function inspectPolicyMitigation(
       bogonNodes,
       mitigationNodes,
       partialNodes,
+      precedenceNodes: [],
       pair: null,
       detail: `policy ${input.policyName} nao encontrada no read-back`,
     };
@@ -86,6 +92,7 @@ export function inspectPolicyMitigation(
   // permanente do cliente nao provam ownership e sao ignorados.
   const rt = input.rts[0] ?? '268568:660';
   const exact = exactMitigationNodes(input.readBack, input.policyName);
+  const precedence = precedenceConflictNodes(nodes);
   const outsideBogon = nodes.filter(
     (n) =>
       n.node !== 1 &&
@@ -104,13 +111,23 @@ export function inspectPolicyMitigation(
         (n.ifMatchIpPrefix.includes(labels.targetPrefixList) && n.routeTargets.includes(rt))),
   );
   // Um BOGONS isolado em node permanente do cliente (ex.: LIVINET node 5) e
-  // legitimo; o que nao pode existir e o PAR completo fora de 1/2.
+  // legitimo; o que nao pode existir fora de 1/2 e um node de MITIGACAO:
+  //  - par completo (BOGONS + RT) => par legado;
+  //  - so o node de RT (sem o BOGONS) => meio-par legado. Classificar como
+  //    NORMAL esconderia resquicio de mitigacao manual/antiga e permitiria que
+  //    o REMOVE tratasse esse node como configuracao original.
   const legacyPairOutside =
     outsideBogon.length > 0 && outsideMitigation.length > 0
       ? [...outsideBogon, ...outsideMitigation]
       : [];
   for (const node of nodes) {
-    if (node.node === 1) {
+    if (precedence.includes(node.node)) {
+      partialNodes.push({
+        node: node.node,
+        action: node.action,
+        reason: `node ${node.node} precede o par reservado (conflito de precedencia nao autorizado)`,
+      });
+    } else if (node.node === 1) {
       if (exact.bogonOk) bogonNodes.push(1);
       else partialNodes.push({node: 1, action: node.action, reason: 'reserved node occupied by noncanonical configuration'});
     } else if (node.node === 2) {
@@ -118,6 +135,12 @@ export function inspectPolicyMitigation(
       else partialNodes.push({node: 2, action: node.action, reason: 'reserved node occupied by noncanonical configuration'});
     } else if (legacyPairOutside.some((entry) => entry.node === node.node)) {
       partialNodes.push({node: node.node, action: node.action, reason: 'mitigation pair outside nodes 1/2'});
+    } else if (outsideMitigation.some((entry) => entry.node === node.node)) {
+      partialNodes.push({
+        node: node.node,
+        action: node.action,
+        reason: 'mitigation node outside nodes 1/2 without the BOGONS pair (half-legacy mitigation)',
+      });
     }
   }
 
@@ -131,6 +154,7 @@ export function inspectPolicyMitigation(
       bogonNodes: sortedBogon,
       mitigationNodes: sortedMitigation,
       partialNodes,
+      precedenceNodes: precedence,
       pair: null,
       detail: `estrutura de mitigacao incompativel: ${partialNodes
         .map((entry) => entry.reason)
@@ -145,6 +169,7 @@ export function inspectPolicyMitigation(
       bogonNodes: sortedBogon,
       mitigationNodes: sortedMitigation,
       partialNodes,
+      precedenceNodes: precedence,
       pair: null,
       detail: 'nenhum node de mitigacao presente na policy',
     };
@@ -158,6 +183,7 @@ export function inspectPolicyMitigation(
       bogonNodes: sortedBogon,
       mitigationNodes: sortedMitigation,
       partialNodes,
+      precedenceNodes: precedence,
       pair,
       detail: `par de mitigacao ativo: deny node ${pair.bogonNode} (${labels.bogonPrefixList}) + permit node ${pair.mitigationNode} (permit irrestrito + RT exclusiva)`,
     };
@@ -169,6 +195,7 @@ export function inspectPolicyMitigation(
     bogonNodes: sortedBogon,
     mitigationNodes: sortedMitigation,
     partialNodes,
+    precedenceNodes: precedence,
     pair: null,
     detail:
       `estrutura de mitigacao multipla/parcial: ${sortedBogon.length} node(s) ${labels.bogonPrefixList} ` +

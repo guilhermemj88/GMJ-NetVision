@@ -111,3 +111,79 @@ locks por policy, journal, ownership e REMOVE exclusivamente humano.
   continuam **NOT_VERIFIED** até homologação autorizada.
 - `MITIGATION_TEST` (botão TESTAR WEBHOOK) segue exigindo `delivered=true` — pendência
   separada, fora deste escopo.
+
+## 7. Correções pós-auditoria (D1–D12)
+
+Aplicadas na branch `feature/auto-all-ipv4-fast-fixes`. Nenhum mecanismo de segurança foi
+afrouxado: as correções endurecem ou consertam gates.
+
+### 7.1 D1 — node 0 (precedência sobre o par reservado)
+
+- `parseHuaweiRoutePolicyNodes` e `parseHuaweiRoutePolicyDisplay` deixaram de descartar
+  node 0 (`node <= 0` / `node > 0` → `node < 0` / `node >= 0`). O parser agora descreve o
+  que existe no equipamento; quem decide é a camada de mitigação.
+- `precedenceConflictNodes()` (em `mitigation-contract.ts`) é a fonte única.
+- Bloqueiam a escrita e/ou a classificação:
+  - preflight (`permanent_precedence`) — `MITIGATION_NODE_OCCUPIED`;
+  - segunda leitura física antes do `commit`;
+  - `verifyActivation` — node 0 ⇒ **nunca** `verified`;
+  - `inspectPolicyMitigation` — `RECONCILIATION_REQUIRED` + `precedenceNodes`;
+  - discovery (`POLICY_CHANGED`) e `autoExpansionPhysicalScopeMatches`.
+- Não foi inventada regra de convivência com node 0: ele sempre bloqueia.
+
+### 7.2 D9 — meio-par legado e RT de mitigação fora de 1/2
+
+- `deny BOGONS` isolado em node permanente continua **legítimo** (política do cliente).
+- Node **de mitigação** fora de 1/2 (RT 268568:660 exclusiva sem `if-match`, ou a forma
+  legada `if-match PREFIX8to24 + RT`) ⇒ `RECONCILIATION_REQUIRED`, com motivo
+  `mitigation pair outside nodes 1/2` (par completo) ou
+  `mitigation node outside nodes 1/2 without the BOGONS pair (half-legacy mitigation)`.
+- Nenhum node é adotado, renumerado ou removido por essa classificação.
+
+### 7.3 D2 — `IDEMPOTENCY_CONFLICT` sem recibo alheio
+
+- A resposta de conflito é montada do zero: `policy`, `interface`, `interfaceId`,
+  `customer`, `verification`, `preflight`, `notification`, `commandPreview` e
+  `executedAt` **nunca** vêm da operação anterior, e o conflito **não espera** a outra
+  operação terminar.
+- A repetição idempotente da **mesma** operação continua devolvendo o mesmo recibo.
+
+### 7.4 D3 — ownership do baseline
+
+- `MitigationBaselineStore` ganhou `release(scope)`: uma retirada **verificada** descarta o
+  registro do escopo (o store durável grava um marcador `RELEASED` datado).
+- Consequência: um par textualmente idêntico criado **depois** por terceiros já não é
+  adotado — `resolveActivePair` e o preflight de REMOVE voltam a exigir um novo ACTIVATE,
+  que recaptura o baseline antes da primeira escrita.
+- Se o descarte falhar, a retirada continua reportada como verificada (fato físico) **com
+  aviso** de reconciliação obrigatória.
+
+### 7.5 D4 — janela de decisão derivada da cadência
+
+- `infrastructure/snmp/fast-cadence.ts` é a fonte única:
+  `fastContinuityWindowMs(cadência) = max(15 s; 1,5 × cadência)`.
+- O poller **e** a decisão (`lifecycleConfig.maxAgeMs/maxGapMs`, `pilotEvidenceValid`)
+  usam a mesma função. 10 s → 15 s (inalterado), 15 s → 22,5 s, 30 s → 45 s.
+- Nenhum limite foi afrouxado: 5 s continua fora da faixa (exige homologação própria).
+
+### 7.6 D5 — teto de interfaces por device
+
+- Um device acima de `MITIGATION_FAST_MAX_INTERFACES_PER_DEVICE` é excluído **sozinho**;
+  os demais continuam coletando (`overLimitDevices` no `status()`).
+- Antes o `throw` no refresh provocava `schedules.clear()` global.
+
+### 7.7 D6 — contagem de gaps
+
+- O gap passa a ser o intervalo entre **chegadas consecutivas** da interface (wall clock),
+  inclusive quando a amostra seguinte é `BASELINE`/`STALE_INTERVAL` por causa de falha.
+- `gapsOver15Seconds` permanece fixo em 15 s (comparável entre cadências) e há o novo
+  `gapsOverContinuityLimit`, que usa a janela configurada.
+
+### 7.8 D8 / D12 — higiene
+
+- `MockMitigationExecutor.remove` usa `buildMitigationRemovalCommands`: par fora de 1/2 é
+  recusado com `MITIGATION_CONTRACT_MISMATCH`, igual ao executor real.
+- Mensagem do preflight de REMOVE corrigida (não cita mais `if-match PREFIX8to24`).
+- `selectTemporaryNode` **removido** após comprovar que só era referenciado pelo próprio
+  teste (nenhum fluxo de produção dependia da API).
+

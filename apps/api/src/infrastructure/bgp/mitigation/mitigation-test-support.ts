@@ -55,6 +55,10 @@ export class FakeDurableBaselineStore implements MitigationBaselineStore {
     const raw = this.backend.rows.get(baselineRecordId(scope));
     return raw === undefined ? null : (JSON.parse(raw) as MitigationBaselineRecord);
   }
+
+  async release(scope: MitigationBaselineScope): Promise<void> {
+    this.backend.rows.delete(baselineRecordId(scope));
+  }
 }
 
 /** Store duravel pronto para harnesses que so precisam do contrato. */

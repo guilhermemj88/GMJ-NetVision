@@ -130,7 +130,9 @@ describe.skipIf(!url)(
       });
       try {
         const id = h.profiles[0]!.id;
-        for (const t of [0, 20000, 30000, 40000]) {
+        // Cadencia de 10 s: a janela de continuidade derivada (15 s) aceita o
+        // intervalo e a sequencia de 3 amostras novas confirma.
+        for (const t of [0, 10000, 20000, 30000]) {
           vi.setSystemTime(start + t);
           await h.poller.runDue();
           await h.poller.drain();

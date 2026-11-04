@@ -54,6 +54,41 @@ export interface MitigationBaselineStore {
   readonly durable: boolean;
   save(record: MitigationBaselineRecord): Promise<void>;
   load(scope: MitigationBaselineScope): Promise<MitigationBaselineRecord | null>;
+  /**
+   * DESCARTA o registro do escopo depois de uma retirada VERIFICADA.
+   *
+   * Sem isso o registro sobreviveria para sempre e um par textualmente
+   * identico, criado DEPOIS por terceiros, seria adotado como propriedade do
+   * NetVision no preflight de REMOVE e em `resolveActivePair` (adocao de node
+   * alheio). Depois do descarte, qualquer REMOVE exige um NOVO ACTIVATE — que
+   * recaptura o baseline antes da primeira escrita.
+   */
+  release(scope: MitigationBaselineScope): Promise<void>;
+}
+
+/**
+ * Marcador gravado no lugar do registro quando a mitigacao foi retirada.
+ *
+ * Nao e um registro valido (`version !== 1`): qualquer leitura o trata como
+ * ausencia e o preflight de REMOVE volta a exigir um novo ACTIVATE. Fica com
+ * trilha datada para auditoria em vez de simplesmente desaparecer.
+ */
+export interface MitigationBaselineReleaseMarker {
+  version: 0;
+  released: true;
+  deviceId: string;
+  policyName: string;
+  releasedAt: string;
+}
+
+export function baselineReleaseMarker(scope: MitigationBaselineScope): MitigationBaselineReleaseMarker {
+  return {
+    version: 0,
+    released: true,
+    deviceId: scope.deviceId,
+    policyName: scope.policyName,
+    releasedAt: new Date().toISOString(),
+  };
 }
 
 export function baselineRecordId(scope: MitigationBaselineScope): string {
@@ -169,6 +204,9 @@ export class MemoryMitigationBaselineStore implements MitigationBaselineStore {
   }
   async load(scope: MitigationBaselineScope): Promise<MitigationBaselineRecord | null> {
     const found = this.records.get(baselineRecordId(scope));
-    return found ? structuredClone(found) : null;
+    return isBaselineRecordComplete(found) ? structuredClone(found) : null;
+  }
+  async release(scope: MitigationBaselineScope): Promise<void> {
+    this.records.delete(baselineRecordId(scope));
   }
 }

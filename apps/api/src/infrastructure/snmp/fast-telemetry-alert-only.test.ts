@@ -228,23 +228,51 @@ describe('teto de interfaces por device', () => {
     ).toThrow(/MAX_INTERFACES_PER_DEVICE/);
   });
 
-  it('escopo acima do teto falha o refresh (fail-closed, sem coleta)', async () => {
+  it('device acima do teto e excluido sozinho e informado no status', async () => {
     const subject = poller(8, manyTargets(12));
     await subject.runDue();
-    expect(subject.status().lastError).toBe('TARGET_REFRESH_FAILED');
+    // D5: o refresh NAO falha e NAO limpa a agenda dos outros devices.
+    expect(subject.status().lastError).toBe('FAST_DEVICE_INTERFACE_LIMIT');
+    expect(subject.status().monitoredDevices).toBe(0);
     expect(subject.status().entries).toEqual([]);
+    expect(subject.status().overLimitDevices).toEqual([
+      { deviceId: DEVICE, interfaces: 12, limit: 8 },
+    ]);
   });
 
   it('teto explícito admite os 12 perfis roteados', async () => {
     const subject = poller(12, manyTargets(12));
     await subject.runDue();
     expect(subject.status().lastError).toBeNull();
+    expect(subject.status().overLimitDevices).toEqual([]);
   });
 
   it('teto explícito continua fail-closed ao exceder', async () => {
     const subject = poller(12, manyTargets(13));
     await subject.runDue();
-    expect(subject.status().lastError).toBe('TARGET_REFRESH_FAILED');
+    expect(subject.status().lastError).toBe('FAST_DEVICE_INTERFACE_LIMIT');
+    expect(subject.status().monitoredDevices).toBe(0);
+  });
+
+  it('um device acima do teto NAO derruba a coleta dos demais', async () => {
+    const over = manyTargets(12);
+    const healthy = manyTargets(3).map((target) => ({
+      ...target,
+      deviceId: 'device-2',
+      interfaceId: `d2-${target.interfaceId}`,
+    }));
+    const subject = poller(8, [...over, ...healthy]);
+    await subject.runDue();
+    // `runDue` dispara a coleta em paralelo; flush para observar o resultado.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const status = subject.status();
+    // O device saudavel continua monitorado e coletando; o excedente fica de fora.
+    expect(status.monitoredDevices).toBe(1);
+    expect(status.overLimitDevices).toEqual([
+      { deviceId: DEVICE, interfaces: 12, limit: 8 },
+    ]);
+    expect(status.entries.every((entry) => entry.deviceId === 'device-2')).toBe(true);
+    expect(status.entries.length).toBe(3);
   });
 });
 

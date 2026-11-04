@@ -193,7 +193,11 @@ export function parseHuaweiRoutePolicyNodes(
       const name = nodeMatch[1];
       const action = nodeMatch[2]?.toLowerCase();
       const node = Number(nodeMatch[3]);
-      if (!name || (action !== 'permit' && action !== 'deny') || !Number.isInteger(node) || node <= 0) {
+      // Node 0 e VALIDO no VRP e tem precedencia sobre o par reservado 1/2.
+      // Descartar node <= 0 escondia um conflito real do preflight, do read-back
+      // e do reconhecimento fisico - quem decide o que fazer com ele e a camada
+      // de mitigacao, nunca o parser.
+      if (!name || (action !== 'permit' && action !== 'deny') || !Number.isInteger(node) || node < 0) {
         current = null;
         continue;
       }
@@ -342,7 +346,9 @@ export function parseHuaweiRoutePolicyDisplay(
     if (nodeMatch && currentPolicy) {
       const action = nodeMatch[1]?.toLowerCase();
       const node = Number(nodeMatch[2]);
-      if ((action === 'permit' || action === 'deny') && Number.isInteger(node) && node > 0) {
+      // Node 0 e valido no VRP e precede o par reservado: o parser de display
+      // precisa ve-lo, ou o read-back nunca detecta o conflito de precedencia.
+      if ((action === 'permit' || action === 'deny') && Number.isInteger(node) && node >= 0) {
         current = { node, action, ifMatchIpPrefix: [], routeTargets: [] };
         policies.get(currentPolicy)!.push(current);
       } else {

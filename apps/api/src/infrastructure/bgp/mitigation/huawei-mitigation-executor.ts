@@ -6,7 +6,7 @@ import {
   parseHuaweiRoutePolicyNodes,
   parseHuaweiRoutePolicyNodesLenient,
 } from './huawei-bgp-policy-parser';
-import { assertIpv4MitigationContract } from './mitigation-contract';
+import { assertIpv4MitigationContract, precedenceConflictNodes } from './mitigation-contract';
 import { DEFAULT_MITIGATION_RT } from './mitigation-config';
 import {
   canReadLive,
@@ -240,6 +240,16 @@ export class HuaweiMitigationExecutor {
     // leitura fisica. Divergencia entre as duas leituras bloqueia a escrita —
     // nunca se adapta o comando automaticamente.
     assertIpv4MitigationContract(input);
+    // Node 0 surgido entre o preflight e esta segunda leitura: mesma familia de
+    // conflito de ocupacao — nunca escrever por cima de precedencia alheia.
+    const secondReadPrecedence = precedenceConflictNodes(
+      parseHuaweiRoutePolicyNodes(readBack).get(input.policyName) ?? [],
+    );
+    if (secondReadPrecedence.length > 0)
+      throw new Error(
+        `MITIGATION_NODE_OCCUPIED: ${device.displayName || device.hostname} ${input.policyName} ` +
+          `node [${secondReadPrecedence.join(',')}] precede o par reservado`,
+      );
     const occupancy = planNodeOccupancy({readBack, policyName: input.policyName,
       pair: {bogonNode: 1, mitigationNode: 2}, capturedAt: new Date().toISOString()});
     if (occupancy.blocked)
@@ -520,7 +530,17 @@ export class HuaweiMitigationExecutor {
       nodeOccupancy = occupancy;
 
       checks.push({id: 'ipv4_contract', ok: input.bogonNode === 1 && input.mitigationNode === 2 && input.bogonPrefixList === 'BOGONS' && input.rt === '268568:660', detail: 'exact fixed IPv4 node contract'});
-      checks.push({id: 'permanent_precedence', ok: !existingNodes.some(n => n < 1), detail: 'no permanent node precedes reserved pair'});
+      // Node 0 tem precedencia sobre o par: com ele a mitigacao fica inerte e
+      // nao ha regra aprovada de convivencia. Bloqueia (fail-closed).
+      const precedence = precedenceConflictNodes(nodes);
+      checks.push({
+        id: 'permanent_precedence',
+        ok: precedence.length === 0,
+        detail:
+          precedence.length === 0
+            ? 'nenhum node precede o par reservado 1/2'
+            : `node(s) ${precedence.join(', ')} precedem o par reservado 1/2 (conflito de precedencia nao autorizado)`,
+      });
       checks.push({
         id: 'node_occupancy',
         ok: !occupancy.blocked,
@@ -633,8 +653,8 @@ export class HuaweiMitigationExecutor {
         detail: !mitigationNodeExists
           ? `node de mitigacao ${input.mitigationNode} ausente`
           : mitigationNodeMatches
-            ? `node ${input.mitigationNode} = permit + if-match ${input.targetPrefixList} + RT ${input.rt}`
-            : `node de mitigacao ${input.mitigationNode} diferente do esperado`,
+            ? `node ${input.mitigationNode} = permit + apply extcommunity rt ${input.rt} (sem if-match)`
+            : `node de mitigacao ${input.mitigationNode} diferente do esperado (permit + somente apply extcommunity rt ${input.rt}, sem additive)`,
       });
     }
 
@@ -743,5 +763,15 @@ export class HuaweiMitigationExecutor {
   /** READ-ONLY: estado atual da policy para o read-back obrigatorio. */
   async readRoutePolicy(device: HostRecord, policyName: string): Promise<string> {
     return this.deps.ssh.readMitigationRoutePolicy(device, policyName);
+  }
+
+  /**
+   * OWNERSHIP (nenhum comando no equipamento): descarta o registro do baseline
+   * do escopo depois de uma retirada VERIFICADA. A partir daqui um par igual
+   * que apareca na policy nao pertence mais ao NetVision e o REMOVE volta a
+   * exigir um ACTIVATE novo (que recaptura o baseline antes de escrever).
+   */
+  async releaseBaseline(device: HostRecord, policyName: string): Promise<void> {
+    await this.baseline.release({ deviceId: device.id, policyName });
   }
 }

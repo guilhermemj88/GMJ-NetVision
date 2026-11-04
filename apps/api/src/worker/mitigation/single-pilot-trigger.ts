@@ -1,10 +1,23 @@
 import type { LifecycleConfig, LifecycleTarget } from './auto-lifecycle';
 import type { MitigationTrafficSample } from './mitigation-traffic-source';
 import {
+  fastContinuityWindowMs,
+  readFastNormalIntervalMs,
+} from '../../infrastructure/snmp/fast-cadence';
+import {
   parseHuaweiBgpPolicyConfiguration,
   resolvePeerInboundPolicy,
   parseHuaweiRoutePolicyNodes,
 } from '../../infrastructure/bgp/mitigation/huawei-bgp-policy-parser';
+
+/**
+ * Janela do contrato publicado quando o chamador nao informa a cadencia:
+ * cadencia nominal de 10 s => 15 s de frescor/continuidade.
+ */
+export const FAST_DEFAULT_WINDOW = Object.freeze({
+  maxAgeMs: fastContinuityWindowMs(readFastNormalIntervalMs({})),
+  maxGapMs: fastContinuityWindowMs(readFastNormalIntervalMs({})),
+});
 
 /** Reviewed pilot identity. These are planned nodes, never evidence of occupancy. */
 export const SINGLE_AUTO_PILOT = Object.freeze({
@@ -132,6 +145,11 @@ export function pilotEvidenceValid(
   evidence: { sampleAt: string; continuityKey: string } | undefined,
   now: number,
   thresholdBps: bigint = SINGLE_AUTO_PILOT.thresholdBps,
+  /**
+   * D4: janela DERIVADA da cadencia do coletor (mesma do poller). Ausente =
+   * janela do contrato publicado (cadencia 10 s -> 15 s), sem afrouxar nada.
+   */
+  window: { maxAgeMs: number; maxGapMs: number } = FAST_DEFAULT_WINDOW,
 ): boolean {
   if (!sample || !evidence || !sample.occurredAt || !sample.rateStartAt) return false;
   const at = +sample.occurredAt,
@@ -140,11 +158,11 @@ export function pilotEvidenceValid(
   return (
     Number.isFinite(trigger) &&
     trigger <= now &&
-    now - trigger <= 15_000 &&
+    now - trigger <= window.maxAgeMs &&
     at <= now &&
-    now - at <= 15_000 &&
+    now - at <= window.maxAgeMs &&
     previous < at &&
-    at - previous <= 15_000 &&
+    at - previous <= window.maxGapMs &&
     sample.continuityKey === evidence.continuityKey &&
     sample.bps > thresholdBps &&
     (at === trigger || previous === trigger)

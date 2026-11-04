@@ -80,22 +80,50 @@ describe('inspectPolicyMitigation — nodes 1/2 reservados pelo contrato IPv4', 
     ).toBeGreaterThan(0);
   });
 
-  it('policy sem nodes 1/2 e NORMAL, mesmo com RT660 ou BOGONS em nodes permanentes', () => {
-    const text = [
+  it('BOGONS em node permanente e legitimo, mas node com RT660 exclusiva fora de 1/2 e meio-par legado', () => {
+    // Um `deny BOGONS` cedo e politica legitima do cliente.
+    const bogonOnly = [
       header('permit', 10),
       ' if-match ip-prefix BOGONS',
-      rtLine,
-      header('permit', 50),
-      rtLine,
       header('deny', 1000),
     ].join('\n');
-    expect(inspect(text)).toMatchObject({
+    expect(inspect(bogonOnly)).toMatchObject({
       state: 'NORMAL',
       bogonNodes: [],
       mitigationNodes: [],
       partialNodes: [],
       pair: null,
     });
+
+    // D9: so o node de mitigacao (RT660 exclusiva, sem o BOGONS) NAO e NORMAL —
+    // e resquicio de mitigacao manual/antiga e nunca pode ser adotado.
+    const halfLegacy = inspect([header('permit', 50), rtLine].join('\n'));
+    expect(halfLegacy.state).toBe('RECONCILIATION_REQUIRED');
+    expect(halfLegacy.pair).toBeNull();
+    expect(halfLegacy.partialNodes).toEqual([
+      expect.objectContaining({ node: 50, reason: expect.stringContaining('half-legacy') }),
+    ]);
+
+    // RT660 junto de outra RT nao e assinatura de mitigacao: node normal.
+    const normalNode = [header('permit', 60), ` apply extcommunity rt ${RT} rt 268568:140`].join('\n');
+    expect(inspect(normalNode).state).toBe('NORMAL');
+  });
+
+  it('node 0 bloqueia a policy: precedencia nao autorizada sobre o par reservado', () => {
+    const text = [
+      header('permit', 0),
+      header('deny', 1),
+      ' if-match ip-prefix BOGONS',
+      header('permit', 2),
+      rtLine,
+    ].join('\n');
+    const result = inspect(text);
+    expect(result.state).toBe('RECONCILIATION_REQUIRED');
+    expect(result.pair).toBeNull();
+    expect(result.precedenceNodes).toEqual([0]);
+    expect(result.partialNodes).toEqual([
+      expect.objectContaining({ node: 0, action: 'permit' }),
+    ]);
   });
 
   it('policy ausente no read-back nao e conclusiva', () => {

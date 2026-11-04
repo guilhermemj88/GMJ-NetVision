@@ -10,6 +10,7 @@ import type {
 } from '../../infrastructure/bgp/mitigation/mitigation-command-service';
 import type { MitigationNotification } from '../../infrastructure/bgp/mitigation/notification-publisher';
 import type { AutomationStore, AutomationTx } from './automation-store';
+import { fastContinuityWindowMs, readFastNormalIntervalMs } from '../../infrastructure/snmp/fast-cadence';
 import type { ClientBinding } from './auto-client-binding';
 import { enqueueNotification } from './durable-mitigation-outbox';
 import type { MitigationTrafficSource } from './mitigation-traffic-source';
@@ -69,8 +70,11 @@ export function lifecycleConfig(env: Record<string, string | undefined>): Lifecy
     devices: list('MITIGATION_ALLOWED_DEVICE_IDS'),
     maxActive: Number.isInteger(max) && max >= 1 && max <= 10 ? max : 1,
     cooldownMs: Number.isInteger(cooldown) && cooldown >= 60 ? cooldown * 1000 : 600_000,
-    maxAgeMs: 15000,
-    maxGapMs: 15000,
+    // D4: a janela de decisao e DERIVADA da cadencia real do coletor embutido
+    // (mesma funcao do poller). 10 s -> 15 s (inalterado); 15 s -> 22,5 s;
+    // 30 s -> 45 s. Antes era 15 s fixos e a cadencia nao valia na decisao.
+    maxAgeMs: fastContinuityWindowMs(readFastNormalIntervalMs(env)),
+    maxGapMs: fastContinuityWindowMs(readFastNormalIntervalMs(env)),
   };
 }
 export function scopeKey(t: Pick<LifecycleTarget, 'deviceId' | 'policyName'>) {

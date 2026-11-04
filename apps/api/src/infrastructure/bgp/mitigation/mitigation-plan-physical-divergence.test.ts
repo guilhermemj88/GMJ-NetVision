@@ -134,20 +134,37 @@ describe('F2: assess do reconciler olha a POLICY INTEIRA', () => {
     expect(assessment.detail).toContain('incompativel');
   });
 
-  it('nodes NORMAIS (RT sem prefix-list de alvos) nao sao confundidos com mitigacao', () => {
-    const readBack = [
+  it('nodes NORMAIS: RT diferente nao e mitigacao; RT660 exclusiva fora de 1/2 e meio-par legado', () => {
+    // Node normal com OUTRA RT: nunca e confundido com mitigacao.
+    const normal = [
+      `route-policy ${POLICY} permit node 7`,
+      ' apply extcommunity rt 268568:140 additive',
+      `route-policy ${POLICY} permit node 10`,
+    ].join('\n');
+    expect(
+      assessPolicyPhysicalState({
+        policyName: POLICY,
+        readBack: normal,
+        labels: LABELS,
+        targets: [target(PLAN_B)],
+      }).state,
+    ).toBe('NORMAL');
+
+    // D9: a RT DE MITIGACAO fora de 1/2, sem o BOGONS, e resquicio de
+    // mitigacao (manual/antiga) — nunca NORMAL.
+    const halfLegacy = [
       `route-policy ${POLICY} permit node 7`,
       ' apply extcommunity rt 268568:660 additive',
       `route-policy ${POLICY} permit node 10`,
     ].join('\n');
-    const assessment = assessPolicyPhysicalState({
-      policyName: POLICY,
-      readBack,
-      labels: LABELS,
-      targets: [target(PLAN_B)],
-    });
-
-    expect(assessment.state).toBe('NORMAL');
+    expect(
+      assessPolicyPhysicalState({
+        policyName: POLICY,
+        readBack: halfLegacy,
+        labels: LABELS,
+        targets: [target(PLAN_B)],
+      }).state,
+    ).toBe('RECONCILIATION_REQUIRED');
   });
 });
 
