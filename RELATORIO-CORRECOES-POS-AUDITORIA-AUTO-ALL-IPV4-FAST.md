@@ -154,3 +154,54 @@ homologação física mede isso.
   sendo 5 (73S, AGLINK, PLAY CONNECT, SUPERNET e CLICKING **somente após** reconciliação do
   node 50).
 - IPv6 (16 perfis) segue fora da execução física automática.
+
+---
+
+## 7. Resultados finais (PostgreSQL descartável + D9 + FAST)
+
+### 7.1 PostgreSQL (Fase 1 concluída)
+
+Dois containers descartáveis `postgres:16-alpine` em `127.0.0.1:55077` e `127.0.0.1:55439`,
+credenciais próprias, 43 migrações aplicadas em cada banco
+(`mitigation_baseline_test`, `single_pilot_test`, `aglink_persistence_readiness`,
+`phase01`, `netvision_ddos_fast_test`, `netvision_ddos_telemetry_test`,
+`netvision_ddos_observe_test`, `fast_observation_test`, `fast_source_test`).
+Nenhuma conexão com banco produtivo; containers removidos ao final.
+
+- Suíte completa com as suítes PostgreSQL habilitadas: **2891 aprovados · 1 ignorado · 0 falhas**.
+- Único ignorado: teste de tempo real (`FAST_REALTIME_TEST=1`).
+- `fast-bridge-postgres` exigia o banco `netvision_ddos_observe_test` migrado: corrigido o
+  ambiente, não o teste.
+
+### 7.2 D9 — classificação final (sem inferir ownership por RT660)
+
+| Forma | Classificação |
+| --- | --- |
+| `permit` com if-match de lista do cliente + LP + RT660 (CLICKING node 50) | **NORMAL** |
+| `permit` com if-match + LP + RT140 (HORIZONTES node 11) | **NORMAL** |
+| `permit` com RT660 exclusiva e sem if-match, isolada | **NORMAL** + `ambiguousNodes` (informativo) |
+| `deny BOGONS` isolado em node permanente | **NORMAL** |
+| `if-match PREFIX8to24` + RT660 sem o BOGONS (assinatura do contrato antigo) | **RECONCILIATION_REQUIRED** |
+| `deny BOGONS` + node de mitigação fora de 1/2 | **RECONCILIATION_REQUIRED** |
+| qualquer node 0 | **RECONCILIATION_REQUIRED** |
+
+### 7.3 D3 — falha de persistência do descarte
+
+Injeção de falha em `release`: retirada física enviada e verificada, mas `verified=false`,
+`REVALIDATION_FAILED`, runtime em `RECONCILIATION_REQUIRED`, aviso de reconciliação e
+**nenhum** node permanente tocado. Nenhuma operação nova é liberada no escopo.
+
+### 7.4 FAST — simulador determinístico (código real de taxa + janela real)
+
+| Cadência | Timeouts | 1ª amostra anormal p50/p95/p99 | Confirmação p50/p95/p99 | Confirmações | Falsos positivos | Gaps > janela |
+| --- | --- | --- | --- | --- | --- | --- |
+| 10 s | 0 % | 4,99 / 9,46 / 10,04 s | 25,1 / 29,6 / 29,8 s | 40/40 | 0 | 0 |
+| 15 s | 0 % | 7,44 / 14,15 / 14,91 s | 37,6 / 44,3 / 44,6 s | 40/40 | 0 | 0 |
+| 30 s | 0 % | 14,81 / 28,23 / 29,52 s | 74,9 / 88,4 / 89,3 s | 40/40 | 0 | 0 |
+| 10 s | 3 % | 5,29 / 11,25 / 29,50 s | 25,7 / 49,7 / 71,4 s | 40/40 | 0 | 11 (15 timeouts) |
+
+Cadência de 5 s: rejeitada explicitamente (`Invalid MITIGATION_FAST_NORMAL_SECONDS`).
+Antes de D4, 15 s confirmava em 6/40 e 30 s **nunca**; agora 40/40 nas três cadências.
+
+**Não medido**: CPU/RSS/I-O do observer e latência real de SSH (NOT_VERIFIED até homologação).
+Os números acima são de relógio sintético, não de produção.
