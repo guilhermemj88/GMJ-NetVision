@@ -223,6 +223,11 @@ export class AutoMitigationLifecycle {
   }
 
   private async tickProfile(profileId: string): Promise<MitigationAutoDecision[]> {
+    // Visao LOCAL do perfil: nunca herda a razao do perfil processado antes.
+    let view: { state: 'IDLE' | 'ACTIVATING' | 'ACTIVE' | 'UNCERTAIN'; reason: string | null } = {
+      state: 'IDLE',
+      reason: 'RECONCILIATION_REQUIRED',
+    };
     let sequence: PilotSequence | null = this.sequences.get(profileId) ?? null;
     let acceptAfter = this.acceptAfter.get(profileId) ?? this.pilotAcceptAfter;
     let t: LifecycleTarget | null = null;
@@ -268,7 +273,7 @@ export class AutoMitigationLifecycle {
       const owned = await this.deps.store.transaction((tx) => tx.get<ScopeOwnership>(scopeKey(t!)));
       if (owned && owned.phase !== 'COOLDOWN') {
         sequence = null;
-        this.pilotView = {
+        view = {
           state:
             owned.phase === 'ACTIVE' ||
             (owned.phase === 'MANUAL' && owned.reason === 'MANUAL_ACTIVATE_VERIFIED')
@@ -284,13 +289,13 @@ export class AutoMitigationLifecycle {
       if (blocked || (owned && owned.cooldownUntil > this.now())) {
         sequence = null;
         acceptAfter = this.now();
-        this.pilotView = { state: 'IDLE', reason: blocked ?? 'AUTO_COOLDOWN_ACTIVE' };
-        return decision(this.pilotView.reason);
+        view = { state: 'IDLE', reason: blocked ?? 'AUTO_COOLDOWN_ACTIVE' };
+        return decision(view.reason);
       }
       if (t.runtimeState !== 'NORMAL' && t.runtimeState !== 'ALERT_ONLY') {
         sequence = null;
-        this.pilotView = { state: 'UNCERTAIN', reason: 'RUNTIME_REQUIRES_RECONCILIATION' };
-        return decision(this.pilotView.reason);
+        view = { state: 'UNCERTAIN', reason: 'RUNTIME_REQUIRES_RECONCILIATION' };
+        return decision(view.reason);
       }
       const sample = await this.deps.pilotTraffic!.sampleWithId({
         profileId: t.profileId,
@@ -318,7 +323,7 @@ export class AutoMitigationLifecycle {
         t.triggerSamples,
       );
       sequence = step.sequence;
-      this.pilotView = { state: 'IDLE', reason: step.reason };
+      view = { state: 'IDLE', reason: step.reason };
       if (step.reason || !step.sequence || !sample)
         return decision(
           step.reason,
@@ -326,7 +331,7 @@ export class AutoMitigationLifecycle {
           sample?.bps ?? null,
           sample?.occurredAt?.getTime(),
         );
-      this.pilotView = { state: 'ACTIVATING', reason: null };
+      view = { state: 'ACTIVATING', reason: null };
       const result = await this.activate({
         profileId: t.profileId,
         autoEvidence: {
@@ -341,12 +346,12 @@ export class AutoMitigationLifecycle {
         await this.holdPilotUncertain(t, result.status);
       const after = await this.deps.store.transaction((tx) => tx.get<ScopeOwnership>(scopeKey(t!)));
       const verified = result.ok && result.verified && after?.phase === 'ACTIVE';
-      this.pilotView = {
+      view = {
         state: after?.phase === 'ACTIVE' ? 'ACTIVE' : 'UNCERTAIN',
         reason: result.ok && result.verified ? null : result.status,
       };
       const [d] = decision(
-        this.pilotView.reason,
+        view.reason,
         verified ? 'ACTIVATED' : after?.phase === 'ACTIVE' ? 'NO_ACTION' : 'FAILED',
         sample.bps,
         step.sequence.at,
@@ -361,12 +366,14 @@ export class AutoMitigationLifecycle {
       ];
     } catch {
       sequence = null;
-      this.pilotView = { state: 'UNCERTAIN', reason: 'PILOT_DEPENDENCY_UNAVAILABLE' };
-      return decision(this.pilotView.reason);
+      view = { state: 'UNCERTAIN', reason: 'PILOT_DEPENDENCY_UNAVAILABLE' };
+      return decision(view.reason);
     } finally {
       if (sequence) this.sequences.set(profileId, sequence); else this.sequences.delete(profileId);
       this.acceptAfter.set(profileId, acceptAfter);
-      this.views.set(profileId, {...this.pilotView});
+      // D12: cada perfil guarda a SUA visao; a visao do piloto so e escrita pelo piloto.
+      this.views.set(profileId, { ...view });
+      if (profileId === SINGLE_AUTO_PILOT.profileId) this.pilotView = { ...view };
     }
   }
   private allowed(t: LifecycleTarget): string | null {
