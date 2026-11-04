@@ -1,0 +1,15 @@
+{
+  "onlyAuditContainersRemoved": true,
+  "removed": [
+    {
+      "name": "nv-auto-all-f1f4-55077",
+      "id": "2c3a4ab32448cfc4527074c9df28b6482155782fe9d85af8648ea0ff30f9d879",
+      "tmpfsOnly": true
+    },
+    {
+      "name": "nv-auto-all-f1f4-55439",
+      "id": "2c7db6797266baf3793c6525231f003ddc57d689a9e9998de45691fc6c465df5",
+      "tmpfsOnly": true
+    }
+  ]
+}

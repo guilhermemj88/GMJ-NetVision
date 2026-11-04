@@ -1,0 +1,101 @@
+[
+  {
+    "container": "nv-auto-all-f1f4-55077",
+    "port": 55077,
+    "database": "mitigation_baseline_test",
+    "imageId": "sha256:81bd698b4594e751a3269e4dcd3e03a4a0ec0daf7b72e7aa1abd43cce9887542",
+    "version": "16.15",
+    "completedMigrations": 43,
+    "migrationMs": 2531,
+    "loopbackOnly": true,
+    "tmpfsOnly": true
+  },
+  {
+    "container": "nv-auto-all-f1f4-55077",
+    "port": 55077,
+    "database": "single_pilot_test",
+    "imageId": "sha256:81bd698b4594e751a3269e4dcd3e03a4a0ec0daf7b72e7aa1abd43cce9887542",
+    "version": "16.15",
+    "completedMigrations": 43,
+    "migrationMs": 2344,
+    "loopbackOnly": true,
+    "tmpfsOnly": true
+  },
+  {
+    "container": "nv-auto-all-f1f4-55077",
+    "port": 55077,
+    "database": "aglink_persistence_readiness",
+    "imageId": "sha256:81bd698b4594e751a3269e4dcd3e03a4a0ec0daf7b72e7aa1abd43cce9887542",
+    "version": "16.15",
+    "completedMigrations": 43,
+    "migrationMs": 2265,
+    "loopbackOnly": true,
+    "tmpfsOnly": true
+  },
+  {
+    "container": "nv-auto-all-f1f4-55077",
+    "port": 55077,
+    "database": "phase01",
+    "imageId": "sha256:81bd698b4594e751a3269e4dcd3e03a4a0ec0daf7b72e7aa1abd43cce9887542",
+    "version": "16.15",
+    "completedMigrations": 43,
+    "migrationMs": 2532,
+    "loopbackOnly": true,
+    "tmpfsOnly": true
+  },
+  {
+    "container": "nv-auto-all-f1f4-55439",
+    "port": 55439,
+    "database": "netvision_ddos_fast_test",
+    "imageId": "sha256:81bd698b4594e751a3269e4dcd3e03a4a0ec0daf7b72e7aa1abd43cce9887542",
+    "version": "16.15",
+    "completedMigrations": 43,
+    "migrationMs": 2375,
+    "loopbackOnly": true,
+    "tmpfsOnly": true
+  },
+  {
+    "container": "nv-auto-all-f1f4-55439",
+    "port": 55439,
+    "database": "netvision_ddos_telemetry_test",
+    "imageId": "sha256:81bd698b4594e751a3269e4dcd3e03a4a0ec0daf7b72e7aa1abd43cce9887542",
+    "version": "16.15",
+    "completedMigrations": 43,
+    "migrationMs": 2344,
+    "loopbackOnly": true,
+    "tmpfsOnly": true
+  },
+  {
+    "container": "nv-auto-all-f1f4-55439",
+    "port": 55439,
+    "database": "netvision_ddos_observe_test",
+    "imageId": "sha256:81bd698b4594e751a3269e4dcd3e03a4a0ec0daf7b72e7aa1abd43cce9887542",
+    "version": "16.15",
+    "completedMigrations": 43,
+    "migrationMs": 2454,
+    "loopbackOnly": true,
+    "tmpfsOnly": true
+  },
+  {
+    "container": "nv-auto-all-f1f4-55439",
+    "port": 55439,
+    "database": "fast_observation_test",
+    "imageId": "sha256:81bd698b4594e751a3269e4dcd3e03a4a0ec0daf7b72e7aa1abd43cce9887542",
+    "version": "16.15",
+    "completedMigrations": 43,
+    "migrationMs": 2485,
+    "loopbackOnly": true,
+    "tmpfsOnly": true
+  },
+  {
+    "container": "nv-auto-all-f1f4-55439",
+    "port": 55439,
+    "database": "fast_source_test",
+    "imageId": "sha256:81bd698b4594e751a3269e4dcd3e03a4a0ec0daf7b72e7aa1abd43cce9887542",
+    "version": "16.15",
+    "completedMigrations": 43,
+    "migrationMs": 2406,
+    "loopbackOnly": true,
+    "tmpfsOnly": true
+  }
+]

@@ -1,0 +1,134 @@
+{
+  "base": "640a7014b4b077c54f2adc7fe0e1098d6bb985f9",
+  "candidate": "1c37f15a076de9bc9c2fcf83d6caa6024db02c98",
+  "implementerDifferentialRecheck": true,
+  "syntheticOnly": true,
+  "realHuawei": false,
+  "d9": {
+    "expected": "NORMAL for a legitimate isolated permanent deny BOGONS",
+    "actual": {
+      "recognized": true,
+      "state": "NORMAL",
+      "bogonNodes": [],
+      "mitigationNodes": [],
+      "partialNodes": [],
+      "ambiguousNodes": [],
+      "precedenceNodes": [],
+      "pair": null,
+      "detail": "nenhum node de mitigacao presente na policy"
+    },
+    "input": "route-policy PL-LIVINET_IPv4-IN deny node 5\n if-match ip-prefix BOGONS\nroute-policy PL-LIVINET_IPv4-IN permit node 10\n if-match as-path-filter CLIENT\nroute-policy PL-LIVINET_IPv4-IN deny node 1000",
+    "mutatedHardware": false
+  },
+  "d3": {
+    "failedRemoval": {
+      "status": "REVALIDATION_FAILED",
+      "verified": false,
+      "safeError": "Retirada física verificada, mas o registro do baseline (ownership) não pôde ser descartado; reconciliação manual obrigatória antes do próximo REMOVE."
+    },
+    "afterFailedRemoval": {
+      "key": "scope:17dbc45a54e1c044ff5ecd2a24352224c23772d05612cab762263bcd6634ef33",
+      "profileId": "cmuoavm4e00bysslhqd0h3q7u",
+      "owner": "da848853-c5d6-4bea-8eb6-9196f10ec05e",
+      "revision": "6d06a25495aaaa6e73ca905fadeffa4f67a92910491f5c6a6204d1714a9bae43",
+      "phase": "UNCERTAIN",
+      "target": {
+        "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+        "policy": "PL-AGLINK_IPv4-IN",
+        "family": "IPV4",
+        "rt": "268568:660",
+        "bogon": 1,
+        "mitigation": 2
+      },
+      "activatedAt": 1793361630000,
+      "cooldownUntil": 0,
+      "lastSample": 1793361630000,
+      "operationId": "manual-command:8170acb966adf75e7a47f675b43afb74ad7e7448b81ed8117a3bf81df65f0d84",
+      "reason": "REVALIDATION_FAILED"
+    },
+    "staleBaselineStillValid": false,
+    "afterRestart": {
+      "key": "scope:17dbc45a54e1c044ff5ecd2a24352224c23772d05612cab762263bcd6634ef33",
+      "profileId": "cmuoavm4e00bysslhqd0h3q7u",
+      "owner": "da848853-c5d6-4bea-8eb6-9196f10ec05e",
+      "revision": "6d06a25495aaaa6e73ca905fadeffa4f67a92910491f5c6a6204d1714a9bae43",
+      "phase": "UNCERTAIN",
+      "target": {
+        "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+        "policy": "PL-AGLINK_IPv4-IN",
+        "family": "IPV4",
+        "rt": "268568:660",
+        "bogon": 1,
+        "mitigation": 2
+      },
+      "activatedAt": 1793361630000,
+      "cooldownUntil": 0,
+      "lastSample": 1793361630000,
+      "operationId": "manual-command:8170acb966adf75e7a47f675b43afb74ad7e7448b81ed8117a3bf81df65f0d84",
+      "reason": "REVALIDATION_FAILED"
+    },
+    "foreignPairInstalledInFake": true,
+    "retry": {
+      "status": "MANUAL_RECONCILIATION_REQUIRED",
+      "verified": false,
+      "safeError": "Journal manual indisponivel ou requestId exige reconciliacao; nenhuma nova escrita foi iniciada."
+    },
+    "additionalMutantWrites": 0,
+    "scopeAfterRetry": {
+      "key": "scope:17dbc45a54e1c044ff5ecd2a24352224c23772d05612cab762263bcd6634ef33",
+      "profileId": "cmuoavm4e00bysslhqd0h3q7u",
+      "owner": "da848853-c5d6-4bea-8eb6-9196f10ec05e",
+      "revision": "6d06a25495aaaa6e73ca905fadeffa4f67a92910491f5c6a6204d1714a9bae43",
+      "phase": "UNCERTAIN",
+      "target": {
+        "deviceId": "host-377c554a-8d1e-47c4-baa4-f258693b4d91",
+        "policy": "PL-AGLINK_IPv4-IN",
+        "family": "IPV4",
+        "rt": "268568:660",
+        "bogon": 1,
+        "mitigation": 2
+      },
+      "activatedAt": 1793361630000,
+      "cooldownUntil": 0,
+      "lastSample": 1793361630000,
+      "operationId": "manual-command:8170acb966adf75e7a47f675b43afb74ad7e7448b81ed8117a3bf81df65f0d84",
+      "reason": "REVALIDATION_FAILED"
+    }
+  },
+  "d12": {
+    "aglinkPhysicalState": "NORMAL",
+    "otherPhysicalState": "UNKNOWN",
+    "beforeFirstTick": {
+      "pilotStatus": {
+        "state": "IDLE",
+        "reason": null
+      },
+      "expansionStatus": {
+        "cmuoavm4e00bysslhqd0h3q7u": {
+          "state": "IDLE",
+          "reason": null
+        },
+        "other-ipv4": {
+          "state": "UNCERTAIN",
+          "reason": "RESTART_PHYSICAL_STATE_UNPROVEN"
+        }
+      }
+    },
+    "afterFirstTick": {
+      "pilotStatus": {
+        "state": "IDLE",
+        "reason": "TELEMETRY_UNAVAILABLE"
+      },
+      "expansionStatus": {
+        "cmuoavm4e00bysslhqd0h3q7u": {
+          "state": "IDLE",
+          "reason": "TELEMETRY_UNAVAILABLE"
+        },
+        "other-ipv4": {
+          "state": "UNCERTAIN",
+          "reason": "RESTART_PHYSICAL_STATE_UNPROVEN"
+        }
+      }
+    }
+  }
+}

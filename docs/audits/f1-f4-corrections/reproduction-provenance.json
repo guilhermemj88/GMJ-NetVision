@@ -1,0 +1,22 @@
+[
+  {
+    "file": "reproduce.mts",
+    "originalSha256": "4de19db8e7d14d79e29378d4c2fe4d509b3b3ab7fd25d2f3daf60e2ec10e653b",
+    "changes": "candidate/output path and fixed-result assertions; no original audit files changed"
+  },
+  {
+    "file": "reproduce-postgres.mts",
+    "originalSha256": "dc91e243430a953b56712c38bb3a15452fe6e6030cc0279ec57c0d8756ed2387",
+    "changes": "candidate/output path and fixed-result assertions; no original audit files changed"
+  },
+  {
+    "file": "guards.mts",
+    "originalSha256": "568470cf3a9cccc20bada0eb5072e32a08a8a28d45ca73c8495d7adf4a16219a",
+    "changes": "candidate/output path and fixed-result assertions; no original audit files changed"
+  },
+  {
+    "file": "counter-simulation.mts",
+    "originalSha256": "73be56a6566a71e14d208f48e1fad08d626c5461854694a0a905a641a9a57ed1",
+    "changes": "candidate/output path and fixed-result assertions; no original audit files changed"
+  }
+]

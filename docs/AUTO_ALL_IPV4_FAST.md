@@ -51,12 +51,12 @@ peers que compartilham a policy, não apenas a interface que detectou o limiar.
 
 ## 2. Correções de concorrência e idempotência
 
-| Defeito | Correção |
-| --- | --- |
-| Corrida de ocupação 1/2 entre preflight e escrita | rechecagem em `activate()` sobre a leitura fresca, antes de qualquer comando, com erro `MITIGATION_NODE_OCCUPIED` |
-| Colisão de `requestId` entre ações/perfis | identidade `(profileId, action, origin, isAutomatic, autoOperationId)`; resposta `IDEMPOTENCY_CONFLICT` sem escrita; chamadas concorrentes com o mesmo `requestId` são serializadas e recebem o mesmo resultado |
-| Readbacks que rejeitavam o contrato novo | `verifyActivation`/`inspectPolicyMitigation` passaram a exigir exatamente o node 1/2 do contrato |
-| Reconciliação após restart/timeout/estado incerto | mantida via runtime `UNCERTAIN` + journal + baseline durável (`MITIGATION_BASELINE_RECORD_UNAVAILABLE`, `MITIGATION_BASELINE_DIVERGED`), agora comparando o registro com a leitura fresca |
+| Defeito                                           | Correção                                                                                                                                                                                                        |
+| ------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Corrida de ocupação 1/2 entre preflight e escrita | rechecagem em `activate()` sobre a leitura fresca, antes de qualquer comando, com erro `MITIGATION_NODE_OCCUPIED`                                                                                               |
+| Colisão de `requestId` entre ações/perfis         | identidade `(profileId, action, origin, isAutomatic, autoOperationId)`; resposta `IDEMPOTENCY_CONFLICT` sem escrita; chamadas concorrentes com o mesmo `requestId` são serializadas e recebem o mesmo resultado |
+| Readbacks que rejeitavam o contrato novo          | `verifyActivation`/`inspectPolicyMitigation` passaram a exigir exatamente o node 1/2 do contrato                                                                                                                |
+| Reconciliação após restart/timeout/estado incerto | mantida via runtime `UNCERTAIN` + journal + baseline durável (`MITIGATION_BASELINE_RECORD_UNAVAILABLE`, `MITIGATION_BASELINE_DIVERGED`), agora comparando o registro com a leitura fresca                       |
 
 ## 3. Proteções preservadas
 
@@ -187,3 +187,20 @@ afrouxado: as correções endurecem ou consertam gates.
 - `selectTemporaryNode` **removido** após comprovar que só era referenciado pelo próprio
   teste (nenhum fluxo de produção dependia da API).
 
+### 7.9 Correções diferenciais F1–F4
+
+- REMOVE humano exige intenção durável `REMOVING` antes da escrita. O snapshot
+  original fica retido; a intenção v2 não é ownership reutilizável. Falha de banco
+  mantém quarentena por device/policy, inclusive para outro requestId/perfil.
+- A reconciliação explícita interna exige par ausente, permanentes sem drift,
+  operação/ator/motivo e o lock comum. Grava recibo sem escrita e sem fabricar
+  VERIFIED. Não há retirada por timer nem endpoint novo para liberar quarentena.
+- Deny BOGONS permanente isolado não é par legado. RT660 isolada não é ownership.
+- O simulador usa poller, Counter64, fonte e lifecycle reais, com controles sem
+  ataque. Relógio e transporte fake continuam sem valor de homologação física.
+- As visões individuais são preenchidas durante reconcile; pilotView pertence
+  exclusivamente à AGLINK.
+
+Resultados, riscos e matriz D1–D12 no
+[relatório F1–F4](../RELATORIO-CORRECAO-FINAL-F1-F4-AUTO-ALL-IPV4-FAST.md).
+Aprovação operacional continua pendente de auditoria diferencial independente.

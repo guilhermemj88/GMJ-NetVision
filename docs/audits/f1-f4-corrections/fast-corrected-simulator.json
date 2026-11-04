@@ -1,0 +1,2470 @@
+{
+  "synthetic": true,
+  "statistics": "N=40 per cohort, nearest-rank p99 is sample maximum, no physical SLA",
+  "matrix": [
+    {
+      "synthetic": true,
+      "physicalHuawei": false,
+      "cadenceSeconds": 10,
+      "timeoutRate": 0,
+      "attackTrials": 40,
+      "benignTrials": 40,
+      "confirmed": 40,
+      "falsePositives": 0,
+      "firstAbnormalMs": {
+        "n": 40,
+        "p50": 13424,
+        "p95": 18294,
+        "p99": 18648,
+        "max": 18648
+      },
+      "confirmationMs": {
+        "n": 40,
+        "p50": 33735,
+        "p95": 38505,
+        "p99": 38942,
+        "max": 38942
+      },
+      "decisionDelayMs": {
+        "n": 40,
+        "p50": 4512,
+        "p95": 4762,
+        "p99": 4762,
+        "max": 4762
+      },
+      "commandMs": {
+        "n": 40,
+        "p50": 165,
+        "p95": 165,
+        "p99": 165,
+        "max": 165
+      },
+      "readbackMs": {
+        "n": 40,
+        "p50": 10,
+        "p95": 10,
+        "p99": 10,
+        "max": 10
+      },
+      "totalVerifiedSinceAttackMs": {
+        "n": 40,
+        "p50": 38158,
+        "p95": 42932,
+        "p99": 43619,
+        "max": 43619
+      },
+      "timeouts": 0,
+      "gapsOver15Seconds": 0,
+      "perTrial": [
+        {
+          "attackAtMs": 7143,
+          "firstAbnormalMs": 13424,
+          "confirmationMs": 33735,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 38162,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 7833,
+          "firstAbnormalMs": 12577,
+          "confirmationMs": 33048,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 37475,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 8524,
+          "firstAbnormalMs": 11670,
+          "confirmationMs": 32020,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 36697,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 9214,
+          "firstAbnormalMs": 11073,
+          "confirmationMs": 31582,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 36009,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 9904,
+          "firstAbnormalMs": 10756,
+          "confirmationMs": 31144,
+          "decisionDelayMs": 4012,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 35321,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 594,
+          "firstAbnormalMs": 9815,
+          "confirmationMs": 30137,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 34814,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 1285,
+          "firstAbnormalMs": 8860,
+          "confirmationMs": 29153,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 34080,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 1975,
+          "firstAbnormalMs": 18405,
+          "confirmationMs": 38211,
+          "decisionDelayMs": 12,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 38388,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 2665,
+          "firstAbnormalMs": 17809,
+          "confirmationMs": 37994,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 42671,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 3356,
+          "firstAbnormalMs": 17211,
+          "confirmationMs": 37306,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 41983,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 4046,
+          "firstAbnormalMs": 16334,
+          "confirmationMs": 36558,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 41235,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 4736,
+          "firstAbnormalMs": 15459,
+          "confirmationMs": 35592,
+          "decisionDelayMs": 12,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 35769,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 5426,
+          "firstAbnormalMs": 15142,
+          "confirmationMs": 35154,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 39831,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 6117,
+          "firstAbnormalMs": 14263,
+          "confirmationMs": 34435,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 39112,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 6807,
+          "firstAbnormalMs": 13667,
+          "confirmationMs": 33968,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 38395,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 7497,
+          "firstAbnormalMs": 12850,
+          "confirmationMs": 32810,
+          "decisionDelayMs": 12,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 32987,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 8188,
+          "firstAbnormalMs": 12192,
+          "confirmationMs": 32531,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 37208,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 8878,
+          "firstAbnormalMs": 11596,
+          "confirmationMs": 31815,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 36492,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 9568,
+          "firstAbnormalMs": 10719,
+          "confirmationMs": 31097,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 35774,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 258,
+          "firstAbnormalMs": 10238,
+          "confirmationMs": 30188,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 35115,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 949,
+          "firstAbnormalMs": 9284,
+          "confirmationMs": 29485,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 34412,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 1639,
+          "firstAbnormalMs": 18648,
+          "confirmationMs": 38942,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 43619,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 2329,
+          "firstAbnormalMs": 18051,
+          "confirmationMs": 38505,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 42932,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 3019,
+          "firstAbnormalMs": 17205,
+          "confirmationMs": 37538,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 42215,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 3710,
+          "firstAbnormalMs": 16857,
+          "confirmationMs": 37349,
+          "decisionDelayMs": 4012,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 41526,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 4400,
+          "firstAbnormalMs": 16011,
+          "confirmationMs": 36102,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 40779,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 5090,
+          "firstAbnormalMs": 15104,
+          "confirmationMs": 35355,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 40282,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 5781,
+          "firstAbnormalMs": 14536,
+          "confirmationMs": 34666,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 39593,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 6471,
+          "firstAbnormalMs": 14190,
+          "confirmationMs": 34229,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 38906,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 7161,
+          "firstAbnormalMs": 13313,
+          "confirmationMs": 33481,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 38158,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 7851,
+          "firstAbnormalMs": 12466,
+          "confirmationMs": 32794,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 37471,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 8542,
+          "firstAbnormalMs": 11589,
+          "confirmationMs": 31796,
+          "decisionDelayMs": 12,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 31973,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 9232,
+          "firstAbnormalMs": 11242,
+          "confirmationMs": 31608,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 36035,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 9922,
+          "firstAbnormalMs": 10645,
+          "confirmationMs": 30640,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 35317,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 612,
+          "firstAbnormalMs": 9680,
+          "confirmationMs": 30009,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 34686,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 1303,
+          "firstAbnormalMs": 9005,
+          "confirmationMs": 29055,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 33982,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 1993,
+          "firstAbnormalMs": 18294,
+          "confirmationMs": 38737,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 43414,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 2683,
+          "firstAbnormalMs": 17698,
+          "confirmationMs": 38020,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 42697,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 3374,
+          "firstAbnormalMs": 17100,
+          "confirmationMs": 37332,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 42009,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 4064,
+          "firstAbnormalMs": 16253,
+          "confirmationMs": 36614,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 41291,
+          "observations": 18
+        }
+      ]
+    },
+    {
+      "synthetic": true,
+      "physicalHuawei": false,
+      "cadenceSeconds": 10,
+      "timeoutRate": 0.03,
+      "attackTrials": 40,
+      "benignTrials": 40,
+      "confirmed": 40,
+      "falsePositives": 0,
+      "firstAbnormalMs": {
+        "n": 40,
+        "p50": 14190,
+        "p95": 18648,
+        "p99": 33786,
+        "max": 33786
+      },
+      "confirmationMs": {
+        "n": 40,
+        "p50": 34435,
+        "p95": 54060,
+        "p99": 78827,
+        "max": 78827
+      },
+      "decisionDelayMs": {
+        "n": 40,
+        "p50": 4512,
+        "p95": 4762,
+        "p99": 4762,
+        "max": 4762
+      },
+      "commandMs": {
+        "n": 40,
+        "p50": 165,
+        "p95": 165,
+        "p99": 165,
+        "max": 165
+      },
+      "readbackMs": {
+        "n": 40,
+        "p50": 10,
+        "p95": 10,
+        "p99": 10,
+        "max": 10
+      },
+      "totalVerifiedSinceAttackMs": {
+        "n": 40,
+        "p50": 38906,
+        "p95": 58487,
+        "p99": 83254,
+        "max": 83254
+      },
+      "timeouts": 19,
+      "gapsOver15Seconds": 16,
+      "perTrial": [
+        {
+          "attackAtMs": 7143,
+          "firstAbnormalMs": 13424,
+          "confirmationMs": 33735,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 38162,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 7833,
+          "firstAbnormalMs": 12577,
+          "confirmationMs": 33048,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 37475,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 8524,
+          "firstAbnormalMs": 11670,
+          "confirmationMs": 32020,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 36697,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 9214,
+          "firstAbnormalMs": 11073,
+          "confirmationMs": 31582,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 36009,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 9904,
+          "firstAbnormalMs": 10756,
+          "confirmationMs": 31144,
+          "decisionDelayMs": 4012,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 35321,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 594,
+          "firstAbnormalMs": 29761,
+          "confirmationMs": 50107,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 54784,
+          "observations": 17
+        },
+        {
+          "attackAtMs": 1285,
+          "firstAbnormalMs": 8860,
+          "confirmationMs": 29153,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 34080,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 1975,
+          "firstAbnormalMs": 18405,
+          "confirmationMs": 78827,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 83254,
+          "observations": 17
+        },
+        {
+          "attackAtMs": 2665,
+          "firstAbnormalMs": 17809,
+          "confirmationMs": 37994,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 42671,
+          "observations": 17
+        },
+        {
+          "attackAtMs": 3356,
+          "firstAbnormalMs": 17211,
+          "confirmationMs": 37306,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 41983,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 4046,
+          "firstAbnormalMs": 16334,
+          "confirmationMs": 36558,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 41235,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 4736,
+          "firstAbnormalMs": 15459,
+          "confirmationMs": 35592,
+          "decisionDelayMs": 12,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 35769,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 5426,
+          "firstAbnormalMs": 15142,
+          "confirmationMs": 35154,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 39831,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 6117,
+          "firstAbnormalMs": 14263,
+          "confirmationMs": 34435,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 39112,
+          "observations": 17
+        },
+        {
+          "attackAtMs": 6807,
+          "firstAbnormalMs": 33786,
+          "confirmationMs": 54060,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 58487,
+          "observations": 17
+        },
+        {
+          "attackAtMs": 7497,
+          "firstAbnormalMs": 12850,
+          "confirmationMs": 32810,
+          "decisionDelayMs": 12,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 32987,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 8188,
+          "firstAbnormalMs": 12192,
+          "confirmationMs": 32531,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 37208,
+          "observations": 17
+        },
+        {
+          "attackAtMs": 8878,
+          "firstAbnormalMs": 11438,
+          "confirmationMs": 72290,
+          "decisionDelayMs": 4012,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 76467,
+          "observations": 15
+        },
+        {
+          "attackAtMs": 9568,
+          "firstAbnormalMs": 10719,
+          "confirmationMs": 31097,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 35774,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 258,
+          "firstAbnormalMs": 10238,
+          "confirmationMs": 30188,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 35115,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 949,
+          "firstAbnormalMs": 9284,
+          "confirmationMs": 29485,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 34412,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 1639,
+          "firstAbnormalMs": 18648,
+          "confirmationMs": 38942,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 43619,
+          "observations": 17
+        },
+        {
+          "attackAtMs": 2329,
+          "firstAbnormalMs": 18051,
+          "confirmationMs": 38505,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 42932,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 3019,
+          "firstAbnormalMs": 17205,
+          "confirmationMs": 37538,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 42215,
+          "observations": 16
+        },
+        {
+          "attackAtMs": 3710,
+          "firstAbnormalMs": 16545,
+          "confirmationMs": 36993,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 41670,
+          "observations": 16
+        },
+        {
+          "attackAtMs": 4400,
+          "firstAbnormalMs": 16011,
+          "confirmationMs": 36102,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 40779,
+          "observations": 17
+        },
+        {
+          "attackAtMs": 5090,
+          "firstAbnormalMs": 15104,
+          "confirmationMs": 35355,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 40282,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 5781,
+          "firstAbnormalMs": 14536,
+          "confirmationMs": 34666,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 39593,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 6471,
+          "firstAbnormalMs": 14190,
+          "confirmationMs": 34229,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 38906,
+          "observations": 15
+        },
+        {
+          "attackAtMs": 7161,
+          "firstAbnormalMs": 13313,
+          "confirmationMs": 33481,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 38158,
+          "observations": 17
+        },
+        {
+          "attackAtMs": 7851,
+          "firstAbnormalMs": 12466,
+          "confirmationMs": 32794,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 37471,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 8542,
+          "firstAbnormalMs": 11589,
+          "confirmationMs": 31796,
+          "decisionDelayMs": 12,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 31973,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 9232,
+          "firstAbnormalMs": 11242,
+          "confirmationMs": 31608,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 36035,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 9922,
+          "firstAbnormalMs": 10645,
+          "confirmationMs": 30640,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 35317,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 612,
+          "firstAbnormalMs": 9680,
+          "confirmationMs": 30009,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 34686,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 1303,
+          "firstAbnormalMs": 9005,
+          "confirmationMs": 29055,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 33982,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 1993,
+          "firstAbnormalMs": 18294,
+          "confirmationMs": 38737,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 43414,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 2683,
+          "firstAbnormalMs": 17698,
+          "confirmationMs": 38020,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 42697,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 3374,
+          "firstAbnormalMs": 17100,
+          "confirmationMs": 37332,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 42009,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 4064,
+          "firstAbnormalMs": 16253,
+          "confirmationMs": 36614,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 41291,
+          "observations": 18
+        }
+      ]
+    },
+    {
+      "synthetic": true,
+      "physicalHuawei": false,
+      "cadenceSeconds": 15,
+      "timeoutRate": 0,
+      "attackTrials": 40,
+      "benignTrials": 40,
+      "confirmed": 40,
+      "falsePositives": 0,
+      "firstAbnormalMs": {
+        "n": 40,
+        "p50": 19852,
+        "p95": 27297,
+        "p99": 27829,
+        "max": 27829
+      },
+      "confirmationMs": {
+        "n": 40,
+        "p50": 50163,
+        "p95": 57340,
+        "p99": 58123,
+        "max": 58123
+      },
+      "decisionDelayMs": {
+        "n": 40,
+        "p50": 4512,
+        "p95": 4762,
+        "p99": 4762,
+        "max": 4762
+      },
+      "commandMs": {
+        "n": 40,
+        "p50": 165,
+        "p95": 165,
+        "p99": 165,
+        "max": 165
+      },
+      "readbackMs": {
+        "n": 40,
+        "p50": 10,
+        "p95": 10,
+        "p99": 10,
+        "max": 10
+      },
+      "totalVerifiedSinceAttackMs": {
+        "n": 40,
+        "p50": 54577,
+        "p95": 61767,
+        "p99": 62800,
+        "max": 62800
+      },
+      "timeouts": 0,
+      "gapsOver15Seconds": 582,
+      "perTrial": [
+        {
+          "attackAtMs": 10715,
+          "firstAbnormalMs": 19852,
+          "confirmationMs": 50163,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 54590,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 11750,
+          "firstAbnormalMs": 18660,
+          "confirmationMs": 49131,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 53558,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 12785,
+          "firstAbnormalMs": 17409,
+          "confirmationMs": 47759,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 52436,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 13821,
+          "firstAbnormalMs": 16466,
+          "confirmationMs": 46975,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 51402,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 14856,
+          "firstAbnormalMs": 15804,
+          "confirmationMs": 46192,
+          "decisionDelayMs": 4012,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 50369,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 892,
+          "firstAbnormalMs": 14517,
+          "confirmationMs": 44839,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 49516,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 1927,
+          "firstAbnormalMs": 13218,
+          "confirmationMs": 43511,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 48438,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 2963,
+          "firstAbnormalMs": 27417,
+          "confirmationMs": 57223,
+          "decisionDelayMs": 12,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 57400,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 3998,
+          "firstAbnormalMs": 26476,
+          "confirmationMs": 56661,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 61338,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 5033,
+          "firstAbnormalMs": 25534,
+          "confirmationMs": 55629,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 60306,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 6069,
+          "firstAbnormalMs": 24311,
+          "confirmationMs": 54535,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 59212,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 7104,
+          "firstAbnormalMs": 23091,
+          "confirmationMs": 53224,
+          "decisionDelayMs": 12,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 53401,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 8140,
+          "firstAbnormalMs": 22428,
+          "confirmationMs": 52440,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 57117,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 9175,
+          "firstAbnormalMs": 21205,
+          "confirmationMs": 51377,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 56054,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 10210,
+          "firstAbnormalMs": 20264,
+          "confirmationMs": 50565,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 54992,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 11246,
+          "firstAbnormalMs": 19101,
+          "confirmationMs": 49061,
+          "decisionDelayMs": 12,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 49238,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 12281,
+          "firstAbnormalMs": 18099,
+          "confirmationMs": 48438,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 53115,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 13317,
+          "firstAbnormalMs": 17157,
+          "confirmationMs": 47376,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 52053,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 14352,
+          "firstAbnormalMs": 15935,
+          "confirmationMs": 46313,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 50990,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 388,
+          "firstAbnormalMs": 15108,
+          "confirmationMs": 45058,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 49985,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 1423,
+          "firstAbnormalMs": 13810,
+          "confirmationMs": 44011,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 48938,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 2458,
+          "firstAbnormalMs": 27829,
+          "confirmationMs": 58123,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 62800,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 3494,
+          "firstAbnormalMs": 26886,
+          "confirmationMs": 57340,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 61767,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 4529,
+          "firstAbnormalMs": 25695,
+          "confirmationMs": 56028,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 60705,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 5565,
+          "firstAbnormalMs": 25002,
+          "confirmationMs": 55494,
+          "decisionDelayMs": 4012,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 59671,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 6600,
+          "firstAbnormalMs": 23811,
+          "confirmationMs": 53902,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 58579,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 7635,
+          "firstAbnormalMs": 22559,
+          "confirmationMs": 52810,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 57737,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 8671,
+          "firstAbnormalMs": 21646,
+          "confirmationMs": 51776,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 56703,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 9706,
+          "firstAbnormalMs": 20955,
+          "confirmationMs": 50994,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 55671,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 10742,
+          "firstAbnormalMs": 19732,
+          "confirmationMs": 49900,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 54577,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 11777,
+          "firstAbnormalMs": 18540,
+          "confirmationMs": 48868,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 53545,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 12812,
+          "firstAbnormalMs": 17319,
+          "confirmationMs": 47526,
+          "decisionDelayMs": 12,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 47703,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 13848,
+          "firstAbnormalMs": 16626,
+          "confirmationMs": 46992,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 51419,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 14883,
+          "firstAbnormalMs": 15684,
+          "confirmationMs": 45679,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 50356,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 919,
+          "firstAbnormalMs": 14373,
+          "confirmationMs": 44702,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 49379,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 1954,
+          "firstAbnormalMs": 13354,
+          "confirmationMs": 43404,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 48331,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 2990,
+          "firstAbnormalMs": 27297,
+          "confirmationMs": 57740,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 62417,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 4025,
+          "firstAbnormalMs": 26356,
+          "confirmationMs": 56678,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 61355,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 5060,
+          "firstAbnormalMs": 25414,
+          "confirmationMs": 55646,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 60323,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 6096,
+          "firstAbnormalMs": 24221,
+          "confirmationMs": 54582,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 59259,
+          "observations": 18
+        }
+      ]
+    },
+    {
+      "synthetic": true,
+      "physicalHuawei": false,
+      "cadenceSeconds": 30,
+      "timeoutRate": 0,
+      "attackTrials": 40,
+      "benignTrials": 40,
+      "confirmed": 40,
+      "falsePositives": 0,
+      "firstAbnormalMs": {
+        "n": 40,
+        "p50": 39138,
+        "p95": 54308,
+        "p99": 55370,
+        "max": 55370
+      },
+      "confirmationMs": {
+        "n": 40,
+        "p50": 99449,
+        "p95": 114261,
+        "p99": 115664,
+        "max": 115664
+      },
+      "decisionDelayMs": {
+        "n": 40,
+        "p50": 4512,
+        "p95": 4762,
+        "p99": 4762,
+        "max": 4762
+      },
+      "commandMs": {
+        "n": 40,
+        "p50": 165,
+        "p95": 165,
+        "p99": 165,
+        "max": 165
+      },
+      "readbackMs": {
+        "n": 40,
+        "p50": 10,
+        "p95": 10,
+        "p99": 10,
+        "max": 10
+      },
+      "totalVerifiedSinceAttackMs": {
+        "n": 40,
+        "p50": 103876,
+        "p95": 118274,
+        "p99": 120341,
+        "max": 120341
+      },
+      "timeouts": 0,
+      "gapsOver15Seconds": 680,
+      "perTrial": [
+        {
+          "attackAtMs": 21429,
+          "firstAbnormalMs": 39138,
+          "confirmationMs": 99449,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 103876,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 23500,
+          "firstAbnormalMs": 36910,
+          "confirmationMs": 97381,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 101808,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 25571,
+          "firstAbnormalMs": 34623,
+          "confirmationMs": 94973,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 99650,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 27642,
+          "firstAbnormalMs": 32645,
+          "confirmationMs": 93154,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 97581,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 29713,
+          "firstAbnormalMs": 30947,
+          "confirmationMs": 91335,
+          "decisionDelayMs": 4012,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 95512,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 1783,
+          "firstAbnormalMs": 28626,
+          "confirmationMs": 88948,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 93625,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 3854,
+          "firstAbnormalMs": 26291,
+          "confirmationMs": 86584,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 91511,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 5925,
+          "firstAbnormalMs": 54455,
+          "confirmationMs": 114261,
+          "decisionDelayMs": 12,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 114438,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 7996,
+          "firstAbnormalMs": 52478,
+          "confirmationMs": 112663,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 117340,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 10067,
+          "firstAbnormalMs": 50500,
+          "confirmationMs": 110595,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 115272,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 12138,
+          "firstAbnormalMs": 48242,
+          "confirmationMs": 108466,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 113143,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 14208,
+          "firstAbnormalMs": 45987,
+          "confirmationMs": 106120,
+          "decisionDelayMs": 12,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 106297,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 16279,
+          "firstAbnormalMs": 44289,
+          "confirmationMs": 104301,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 108978,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 18350,
+          "firstAbnormalMs": 42030,
+          "confirmationMs": 102202,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 106879,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 20421,
+          "firstAbnormalMs": 40053,
+          "confirmationMs": 100354,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 104781,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 22492,
+          "firstAbnormalMs": 37855,
+          "confirmationMs": 97815,
+          "decisionDelayMs": 12,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 97992,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 24563,
+          "firstAbnormalMs": 35817,
+          "confirmationMs": 96156,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 100833,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 26633,
+          "firstAbnormalMs": 33841,
+          "confirmationMs": 94060,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 98737,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 28704,
+          "firstAbnormalMs": 31583,
+          "confirmationMs": 91961,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 96638,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 775,
+          "firstAbnormalMs": 29721,
+          "confirmationMs": 89671,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 94598,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 2846,
+          "firstAbnormalMs": 27387,
+          "confirmationMs": 87588,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 92515,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 4917,
+          "firstAbnormalMs": 55370,
+          "confirmationMs": 115664,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 120341,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 6987,
+          "firstAbnormalMs": 53393,
+          "confirmationMs": 113847,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 118274,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 9058,
+          "firstAbnormalMs": 51166,
+          "confirmationMs": 111499,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 116176,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 11129,
+          "firstAbnormalMs": 49438,
+          "confirmationMs": 109930,
+          "decisionDelayMs": 4012,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 114107,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 13200,
+          "firstAbnormalMs": 47211,
+          "confirmationMs": 107302,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 111979,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 15271,
+          "firstAbnormalMs": 44923,
+          "confirmationMs": 105174,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 110101,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 17342,
+          "firstAbnormalMs": 42975,
+          "confirmationMs": 103105,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 108032,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 19412,
+          "firstAbnormalMs": 41249,
+          "confirmationMs": 101288,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 105965,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 21483,
+          "firstAbnormalMs": 38991,
+          "confirmationMs": 99159,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 103836,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 23554,
+          "firstAbnormalMs": 36763,
+          "confirmationMs": 97091,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 101768,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 25625,
+          "firstAbnormalMs": 34506,
+          "confirmationMs": 94713,
+          "decisionDelayMs": 12,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 94890,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 27696,
+          "firstAbnormalMs": 32778,
+          "confirmationMs": 93144,
+          "decisionDelayMs": 4262,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 97571,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 29767,
+          "firstAbnormalMs": 30800,
+          "confirmationMs": 90795,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 95472,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 1837,
+          "firstAbnormalMs": 28455,
+          "confirmationMs": 88784,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 93461,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 3908,
+          "firstAbnormalMs": 26400,
+          "confirmationMs": 86450,
+          "decisionDelayMs": 4762,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 91377,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 5979,
+          "firstAbnormalMs": 54308,
+          "confirmationMs": 114751,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 119428,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 8050,
+          "firstAbnormalMs": 52331,
+          "confirmationMs": 112653,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 117330,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 10121,
+          "firstAbnormalMs": 50353,
+          "confirmationMs": 110585,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 115262,
+          "observations": 18
+        },
+        {
+          "attackAtMs": 12192,
+          "firstAbnormalMs": 48125,
+          "confirmationMs": 108486,
+          "decisionDelayMs": 4512,
+          "commandMs": 165,
+          "timingsMs": {
+            "preflight": 25,
+            "execution": 115,
+            "readback": 10
+          },
+          "totalVerifiedSinceAttackMs": 113163,
+          "observations": 18
+        }
+      ]
+    }
+  ]
+}

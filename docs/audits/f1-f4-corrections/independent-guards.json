@@ -1,0 +1,58 @@
+{
+  "candidate": "1c37f15a076de9bc9c2fcf83d6caa6024db02c98",
+  "syntheticOnly": true,
+  "rows": [
+    {
+      "test": "node appears at second read",
+      "node": 0,
+      "blocked": true,
+      "writes": 0
+    },
+    {
+      "test": "node appears at second read",
+      "node": 1,
+      "blocked": true,
+      "writes": 0
+    },
+    {
+      "test": "node appears at second read",
+      "node": 2,
+      "blocked": true,
+      "writes": 0
+    },
+    {
+      "test": "parallel identity collision",
+      "profileId": "cmuoavm4e00bysslhqd0h3q7u",
+      "action": "REMOVE",
+      "status": "IDEMPOTENCY_CONFLICT",
+      "noForeignReceipt": true
+    },
+    {
+      "test": "parallel identity collision",
+      "profileId": "another-profile",
+      "action": "ACTIVATE",
+      "status": "IDEMPOTENCY_CONFLICT",
+      "noForeignReceipt": true
+    },
+    {
+      "test": "same identity simultaneous replay",
+      "mutantWrites": 1
+    },
+    {
+      "test": "global AUTO switch OFF",
+      "samples": 5,
+      "writes": 0
+    },
+    {
+      "test": "automatic REMOVE forbidden",
+      "status": "AUTO_EXECUTION_DISABLED",
+      "writes": 0
+    },
+    {
+      "test": "non-durable baseline store",
+      "blocked": true,
+      "writes": 0
+    }
+  ],
+  "implementerDifferentialRecheck": true
+}

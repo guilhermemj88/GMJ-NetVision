@@ -1,0 +1,113 @@
+{
+  "scope": "Implementer verification F1-F4, not independent GO",
+  "base": "640a7014b4b077c54f2adc7fe0e1098d6bb985f9",
+  "branch": "feature/auto-all-ipv4-fast-fixes",
+  "tests": {
+    "numTotalTests": 2912,
+    "numPassedTests": 2912,
+    "numFailedTests": 0,
+    "numPendingTests": 0,
+    "numTotalTestSuites": 653,
+    "success": true
+  },
+  "execution": {
+    "exitCode": 0,
+    "wallSeconds": 169.25,
+    "workers": 1,
+    "fastRealtimeEnabled": true,
+    "databaseTargets": "loopback-only disposable PostgreSQL16, six explicit test URL variables",
+    "productionConnectionConfigured": false
+  },
+  "checks": {
+    "typecheckAllWorkspaces": "PASS",
+    "eslint": "PASS",
+    "apiBuild": "PASS",
+    "prettierChangedFiles": "PASS",
+    "gitDiffCheck": "PASS"
+  },
+  "priorSuite": {
+    "passed": 2908,
+    "failed": 3,
+    "reason": "Legacy direct REMOVE fixtures lacked durable ownership; seeded existing baseline helper, preserved command assertions; added missing ownership rejection test."
+  },
+  "databaseIntegrationFiles": [
+    {
+      "file": "apps/api/src/infrastructure/snmp/fast-lifecycle-simulation.postgres.test.ts",
+      "count": 2
+    },
+    {
+      "file": "apps/api/src/infrastructure/snmp/fast-traffic-postgres.test.ts",
+      "count": 6
+    },
+    {
+      "file": "apps/api/src/worker/mitigation/baseline-store.postgres.test.ts",
+      "count": 2
+    },
+    {
+      "file": "apps/api/src/worker/mitigation/durable-persistence-readiness.postgres.test.ts",
+      "count": 4
+    },
+    {
+      "file": "apps/api/src/worker/mitigation/fast-bridge-postgres.test.ts",
+      "count": 8
+    },
+    {
+      "file": "apps/api/src/worker/mitigation/manual-release-quarantine.postgres.test.ts",
+      "count": 3
+    },
+    {
+      "file": "apps/api/src/worker/mitigation/single-pilot.postgres.test.ts",
+      "count": 2
+    },
+    {
+      "file": "apps/api/src/infrastructure/bgp/mitigation/mitigation-phase01-postgres.test.ts",
+      "count": 10
+    },
+    {
+      "file": "apps/api/src/infrastructure/bgp/mitigation/mitigation-telemetry-postgres.test.ts",
+      "count": 7
+    }
+  ],
+  "build": [
+    {
+      "file": "apps/api/dist/mitigation-fast-observer-main.cjs",
+      "bytes": 691530,
+      "sha256": "fb9bb6e14c002964a5d21fb730002c422edcf4705077084690ed7e8834973a2c"
+    },
+    {
+      "file": "apps/api/dist/mitigation-worker-main.cjs",
+      "bytes": 20760,
+      "sha256": "db8619096ffa9433b6913580d24ef1ae0898707c3435a57d6c54323b09c7a839"
+    },
+    {
+      "file": "apps/api/dist/server.cjs",
+      "bytes": 2173187,
+      "sha256": "0d56a63b54f4792cfe7657f5c0299c9a3ee000b3d2abd9b6ca3ba2d4700ff40d"
+    }
+  ],
+  "runtimeSourceSha256": {
+    "apps/api/src/infrastructure/bgp/mitigation/huawei-mitigation-executor.ts": "260e9d190b5d36360525dbe6c41e21493015e5a17eb43b983f272f8d7a17fc22",
+    "apps/api/src/infrastructure/bgp/mitigation/mitigation-baseline-record.ts": "360b87a7038500ef1eebba258862a4ddbdd679d4da49ab2a2a089588a53bd99f",
+    "apps/api/src/infrastructure/bgp/mitigation/mitigation-command-service.ts": "3d5a8f3d84be5c11c867d857700982fdc6760bafad41d1f6149ffca9f56424b8",
+    "apps/api/src/infrastructure/bgp/mitigation/mitigation-executor.ts": "377bd1b9c309a4762d0ebfaa09601c08e6e678aa9ec166eeb6954397e5ee867e",
+    "apps/api/src/infrastructure/bgp/mitigation/mitigation-policy-physical.ts": "3bcacf904ec71f1ceefd5d6957d1b4f389d769e37439411ae1e009ef34a610fd",
+    "apps/api/src/infrastructure/bgp/mitigation/mitigation-test-support.ts": "647111ab5c6254748995eccc7a1472c1b1719c4ca914e156b85451eb7ca56f51",
+    "apps/api/src/routes.ts": "4acd970244c5065162e683ac1560dda0c86faecb5381a6028c1d3f9d9ac37188",
+    "apps/api/src/testing/single-pilot-harness.ts": "97d2ec66c3e50269c927f6de2a337292cf2a0247c68ce3366d201c4671c8e70c",
+    "apps/api/src/worker/mitigation/auto-lifecycle.ts": "f7652c55a24155f3b0f80b11f37f758127123dfcbc770e4792dc1a025a706ac4",
+    "apps/api/src/worker/mitigation/baseline-store.ts": "3406b9fc2888a0a4d00396e92b069bdc5897c059dec0dd632c7793ecad6dbc59"
+  },
+  "restrictions": {
+    "productionConnections": 0,
+    "productionWrites": 0,
+    "realHuaweiCommands": 0,
+    "realTelegramMessages": 0,
+    "productionFlagsChanged": false,
+    "auditWorktreeModified": false,
+    "physicalHomologation": false,
+    "independentDifferentialAuditPending": true
+  },
+  "codeCommit": "1c37f15a076de9bc9c2fcf83d6caa6024db02c98",
+  "testFiles": 209,
+  "auditWorktreeHead": "5d5f9a13af67e6eebc2335eff12160d1d85102bd"
+}

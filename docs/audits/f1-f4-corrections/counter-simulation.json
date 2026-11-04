@@ -1,0 +1,96 @@
+{
+  "syntheticClock": true,
+  "physicalHomologation": false,
+  "counterModel": "time integral of offered bps, counters continue during timeouts; actual nextPilotSequence; failures invalidate baseline",
+  "rows": [
+    {
+      "cadenceMs": 10000,
+      "timeoutRate": 0,
+      "trials": 40,
+      "confirmed": 40,
+      "firstAbnormalMs": {
+        "n": 40,
+        "p50": 12951,
+        "p95": 18028,
+        "p99": 18457,
+        "max": 18457
+      },
+      "confirmationMs": {
+        "n": 40,
+        "p50": 33071,
+        "p95": 38064,
+        "p99": 38609,
+        "max": 38609
+      },
+      "timeouts": 0
+    },
+    {
+      "cadenceMs": 15000,
+      "timeoutRate": 0,
+      "trials": 40,
+      "confirmed": 40,
+      "firstAbnormalMs": {
+        "n": 40,
+        "p50": 19373,
+        "p95": 27031,
+        "p99": 27638,
+        "max": 27638
+      },
+      "confirmationMs": {
+        "n": 40,
+        "p50": 49499,
+        "p95": 57076,
+        "p99": 57790,
+        "max": 57790
+      },
+      "timeouts": 0
+    },
+    {
+      "cadenceMs": 30000,
+      "timeoutRate": 0,
+      "trials": 40,
+      "confirmed": 40,
+      "firstAbnormalMs": {
+        "n": 40,
+        "p50": 38659,
+        "p95": 54042,
+        "p99": 55179,
+        "max": 55179
+      },
+      "confirmationMs": {
+        "n": 40,
+        "p50": 98785,
+        "p95": 114114,
+        "p99": 115331,
+        "max": 115331
+      },
+      "timeouts": 0
+    },
+    {
+      "cadenceMs": 10000,
+      "timeoutRate": 0.03,
+      "trials": 40,
+      "confirmed": 40,
+      "firstAbnormalMs": {
+        "n": 40,
+        "p50": 13814,
+        "p95": 18457,
+        "p99": 33369,
+        "max": 33369
+      },
+      "confirmationMs": {
+        "n": 40,
+        "p50": 34012,
+        "p95": 53392,
+        "p99": 78232,
+        "max": 78232
+      },
+      "timeouts": 15
+    }
+  ],
+  "benignTrials": 1000,
+  "falsePositives": 0,
+  "commandSshMs": null,
+  "physicalReadbackMs": null,
+  "bgpEffectiveMitigationMs": null
+}
