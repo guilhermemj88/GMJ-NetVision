@@ -80,33 +80,74 @@ describe('inspectPolicyMitigation — nodes 1/2 reservados pelo contrato IPv4', 
     ).toBeGreaterThan(0);
   });
 
-  it('BOGONS em node permanente e legitimo, mas node com RT660 exclusiva fora de 1/2 e meio-par legado', () => {
-    // Um `deny BOGONS` cedo e politica legitima do cliente.
+  it('RT660 em node permanente NAO e ownership: CLICKING/HORIZONTES e RT660 sem if-match continuam NORMAL', () => {
+    // Formas REAIS dos snapshots (03/11): CLICKING node 50 e HORIZONTES node 11.
+    const clicking = [
+      header('permit', 50),
+      ' if-match ip-prefix PREFIX-DUALNET-V4',
+      ' apply local-preference 4000',
+      rtLine,
+      header('permit', 100),
+      ' if-match ip-prefix PREFIX-CLICKING-IPV4',
+      ' apply local-preference 4000',
+      ' apply extcommunity rt 268568:140 additive',
+    ].join('\n');
+    expect(inspect(clicking)).toMatchObject({ state: 'NORMAL', pair: null, partialNodes: [] });
+
+    const horizontes = [
+      header('permit', 11),
+      ' if-match ip-prefix PREFIX-HORIZONTES-IPV4',
+      ' apply local-preference 4000',
+      ' apply extcommunity rt 268568:140',
+      header('deny', 50),
+    ].join('\n');
+    expect(inspect(horizontes)).toMatchObject({ state: 'NORMAL', pair: null, partialNodes: [] });
+
+    // RT660 sozinha, sem if-match nenhum: continua sendo configuracao permanente
+    // do cliente. Fica apenas INFORMATIVA, nunca bloqueia.
+    const rtOnly = inspect([header('permit', 50), rtLine].join('\n'));
+    expect(rtOnly.state).toBe('NORMAL');
+    expect(rtOnly.pair).toBeNull();
+    expect(rtOnly.partialNodes).toEqual([]);
+    expect(rtOnly.ambiguousNodes).toEqual([expect.objectContaining({ node: 50 })]);
+
+    // Um `deny BOGONS` cedo tambem e politica legitima do cliente.
     const bogonOnly = [
       header('permit', 10),
       ' if-match ip-prefix BOGONS',
       header('deny', 1000),
     ].join('\n');
-    expect(inspect(bogonOnly)).toMatchObject({
-      state: 'NORMAL',
-      bogonNodes: [],
-      mitigationNodes: [],
-      partialNodes: [],
-      pair: null,
-    });
+    expect(inspect(bogonOnly)).toMatchObject({ state: 'NORMAL', pair: null, partialNodes: [] });
+  });
 
-    // D9: so o node de mitigacao (RT660 exclusiva, sem o BOGONS) NAO e NORMAL —
-    // e resquicio de mitigacao manual/antiga e nunca pode ser adotado.
-    const halfLegacy = inspect([header('permit', 50), rtLine].join('\n'));
-    expect(halfLegacy.state).toBe('RECONCILIATION_REQUIRED');
-    expect(halfLegacy.pair).toBeNull();
-    expect(halfLegacy.partialNodes).toEqual([
-      expect.objectContaining({ node: 50, reason: expect.stringContaining('half-legacy') }),
+  it('meio-par legado IDENTIFICAVEL (assinatura do contrato antigo) bloqueia', () => {
+    // if-match da prefix-list de ALVOS de mitigacao + RT no mesmo node, sem o
+    // BOGONS: essa combinacao e a assinatura do node 2 antigo, nao politica comum.
+    const halfLegacy = [
+      header('permit', 6),
+      ' if-match ip-prefix PREFIX8to24',
+      rtLine,
+    ].join('\n');
+    const result = inspect(halfLegacy);
+    expect(result.state).toBe('RECONCILIATION_REQUIRED');
+    expect(result.pair).toBeNull();
+    expect(result.partialNodes).toEqual([
+      expect.objectContaining({ node: 6, reason: expect.stringContaining('half-legacy') }),
     ]);
+  });
 
-    // RT660 junto de outra RT nao e assinatura de mitigacao: node normal.
-    const normalNode = [header('permit', 60), ` apply extcommunity rt ${RT} rt 268568:140`].join('\n');
-    expect(inspect(normalNode).state).toBe('NORMAL');
+  it('par legado completo fora de 1/2 bloqueia', () => {
+    const legacyPair = [
+      header('deny', 5),
+      ' if-match ip-prefix BOGONS',
+      header('permit', 6),
+      ' if-match ip-prefix PREFIX8to24',
+      ` apply extcommunity rt ${RT} additive`,
+    ].join('\n');
+    const result = inspect(legacyPair);
+    expect(result.state).toBe('RECONCILIATION_REQUIRED');
+    expect(result.partialNodes.map((entry) => entry.node).sort()).toEqual([5, 6]);
+    expect(result.partialNodes.every((entry) => entry.reason === 'mitigation pair outside nodes 1/2')).toBe(true);
   });
 
   it('node 0 bloqueia a policy: precedencia nao autorizada sobre o par reservado', () => {

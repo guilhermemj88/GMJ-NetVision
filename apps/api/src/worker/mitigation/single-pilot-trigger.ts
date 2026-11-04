@@ -41,6 +41,8 @@ export function assertSinglePilotAuthorization(c: LifecycleConfig): void {
   if (c.expansionEnabled === true) {
     if (c.installation !== 'IMPLANTAR' || !c.profiles.length || !c.devices.length ||
         new Set(c.profiles).size !== c.profiles.length || c.profiles.length > 128 ||
+        // D12: device duplicado e configuracao ambigua (o mesmo device contado duas vezes).
+        new Set(c.devices).size !== c.devices.length || c.devices.length > 64 ||
         !Number.isInteger(c.maxActive) || c.maxActive < 1 || c.maxActive > 10)
       throw Error('AUTO_EXPANSION_EXPLICIT_AUTHORIZATION_REQUIRED');
     return;

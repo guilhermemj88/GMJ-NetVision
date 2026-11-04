@@ -58,7 +58,8 @@ export function lifecycleConfig(env: Record<string, string | undefined>): Lifecy
       .split(',')
       .map((s) => s.trim())
       .filter(Boolean);
-  const max = Number(env.MITIGATION_AUTO_MAX_ACTIVE),
+  const rawMax = env.MITIGATION_AUTO_MAX_ACTIVE;
+  const max = Number(rawMax),
     cooldown = Number(env.MITIGATION_AUTO_COOLDOWN_SECONDS);
   return {
     installation: env.NETVISION_INSTALLATION_ID ?? '',
@@ -68,7 +69,16 @@ export function lifecycleConfig(env: Record<string, string | undefined>): Lifecy
     removeEnabled: false,
     profiles: list('MITIGATION_AUTO_EXECUTION_ALLOWED_PROFILE_IDS'),
     devices: list('MITIGATION_ALLOWED_DEVICE_IDS'),
-    maxActive: Number.isInteger(max) && max >= 1 && max <= 10 ? max : 1,
+    // D12: valor AUSENTE usa o default 1; valor PRESENTE e invalido falha no boot
+    // (nunca cai silenciosamente para 1, que mudaria o significado da configuracao).
+    maxActive:
+      rawMax === undefined
+        ? 1
+        : Number.isInteger(max) && max >= 1 && max <= 10
+          ? max
+          : (() => {
+              throw Error('MITIGATION_AUTO_MAX_ACTIVE_INVALID');
+            })(),
     cooldownMs: Number.isInteger(cooldown) && cooldown >= 60 ? cooldown * 1000 : 600_000,
     // D4: a janela de decisao e DERIVADA da cadencia real do coletor embutido
     // (mesma funcao do poller). 10 s -> 15 s (inalterado); 15 s -> 22,5 s;
@@ -183,6 +193,7 @@ export class AutoMitigationLifecycle {
   private pilotReconciled = false;
   private pilotRunning = false;
   private pilotAcceptAfter = 0;
+  /** D12: visao do PILOTO (perfil unico). Cada perfil tem a sua em views. */
   private pilotView: {
     state: 'IDLE' | 'ACTIVATING' | 'ACTIVE' | 'UNCERTAIN';
     reason: string | null;

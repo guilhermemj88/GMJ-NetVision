@@ -1108,15 +1108,20 @@ export class MitigationCommandService {
       // NetVision. Falha aqui nao desmente o estado fisico: apenas obriga o
       // operador a limpar o registro antes do proximo REMOVE.
       const release = await this.releaseBaselineAfterRemoval(liveDevice, profile.policyName, check.verified);
-      const sync = await this.record(profile, false, check.verified, pair, null);
+      // D3 fail-closed: sem a persistencia do descarte, o ownership fica INCERTO.
+      // A retirada fisica aconteceu, mas a operacao NAO e dada por concluida: o
+      // runtime vai para reconciliacao e nenhuma operacao nova e liberada nesse
+      // escopo (um par identico criado depois nao pode ser adotado).
+      const removed = check.verified && release !== 'FAILED';
+      const sync = await this.record(profile, false, removed, pair, null);
       // A retirada INVALIDA a sequencia de amostras anterior: o AUTO precisa de
       // evidencia NOVA (triggerSamples amostras novas) antes de reativar.
       await this.resetScopeSequences(profile);
       await this.publish(
-        check.verified ? 'MITIGATION_REMOVED_VERIFIED' : 'MITIGATION_FAILED',
+        removed ? 'MITIGATION_REMOVED_VERIFIED' : 'MITIGATION_FAILED',
         {
           ...common,
-          verified: check.verified,
+          verified: removed,
           primaryPeer,
           effectiveBandwidthBps: effectiveBandwidth,
           simulation: !liveDevice,
@@ -1126,19 +1131,22 @@ export class MitigationCommandService {
       );
       return {
         ...common,
-        ok: check.verified,
-        status: check.verified ? 'REMOVED_VERIFIED' : 'REVALIDATION_FAILED',
-        verified: check.verified,
+        ok: removed,
+        status: removed ? 'REMOVED_VERIFIED' : 'REVALIDATION_FAILED',
+        verified: removed,
         commandPreview: preview,
         verification: {
           command: `display route-policy ${profile.policyName}`,
-          summary: check.summary,
+          summary: check.verified
+            ? release === 'FAILED'
+              ? `${check.summary}; ${BASELINE_RELEASE_FAILED_WARNING}`
+              : check.summary
+            : check.summary,
         },
         ...(preflight ? { preflight } : {}),
         ...(pairSource === 'DEVICE' ? { pairSource } : {}),
         ...(sync.ok ? {} : { safeError: RUNTIME_SYNC_FAILED_WARNING }),
-        ...(check.verified ? {} : { safeError: check.summary }),
-        ...(release === 'FAILED' ? { safeError: BASELINE_RELEASE_FAILED_WARNING } : {}),
+        ...(removed ? {} : { safeError: release === 'FAILED' ? BASELINE_RELEASE_FAILED_WARNING : check.summary }),
       };
     } catch (error) {
       // Escrita iniciada + estado fisico NAO comprovado: o runtime do escopo

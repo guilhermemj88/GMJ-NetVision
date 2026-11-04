@@ -134,11 +134,14 @@ describe('F2: assess do reconciler olha a POLICY INTEIRA', () => {
     expect(assessment.detail).toContain('incompativel');
   });
 
-  it('nodes NORMAIS: RT diferente nao e mitigacao; RT660 exclusiva fora de 1/2 e meio-par legado', () => {
-    // Node normal com OUTRA RT: nunca e confundido com mitigacao.
+  it('nodes NORMAIS: RT de mitigacao em node permanente nao e confundido com mitigacao', () => {
+    // RT660 com if-match de outra lista + LP: configuracao permanente (CLICKING
+    // node 50 no snapshot real). Nunca e ownership do NetVision.
     const normal = [
       `route-policy ${POLICY} permit node 7`,
-      ' apply extcommunity rt 268568:140 additive',
+      ' if-match ip-prefix PREFIX-DUALNET-V4',
+      ' apply local-preference 4000',
+      ' apply extcommunity rt 268568:660 additive',
       `route-policy ${POLICY} permit node 10`,
     ].join('\n');
     expect(
@@ -150,11 +153,12 @@ describe('F2: assess do reconciler olha a POLICY INTEIRA', () => {
       }).state,
     ).toBe('NORMAL');
 
-    // D9: a RT DE MITIGACAO fora de 1/2, sem o BOGONS, e resquicio de
-    // mitigacao (manual/antiga) — nunca NORMAL.
+    // Meio-par legado identificavel (assinatura do contrato antigo: prefix-list
+    // de ALVOS + RT no mesmo node, sem o BOGONS) continua bloqueando.
     const halfLegacy = [
-      `route-policy ${POLICY} permit node 7`,
-      ' apply extcommunity rt 268568:660 additive',
+      `route-policy ${POLICY} permit node 6`,
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply extcommunity rt 268568:660',
       `route-policy ${POLICY} permit node 10`,
     ].join('\n');
     expect(

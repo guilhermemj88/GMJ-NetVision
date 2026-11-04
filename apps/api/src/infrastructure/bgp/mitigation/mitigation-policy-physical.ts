@@ -36,6 +36,12 @@ export interface PolicyMitigationPhysical {
   /** Node 1/2 ocupado fora do formato do contrato. */
   partialNodes: PolicyMitigationPartialNode[];
   /**
+   * Nodes com a RT de mitigacao fora de 1/2 que NAO carregam a assinatura do
+   * contrato antigo. Informativos: RT660 isolada em node permanente NAO e prova
+   * de ownership do NetVision e nao pode classificar a policy como suspeita.
+   */
+  ambiguousNodes: PolicyMitigationPartialNode[];
+  /**
    * Nodes que PRECEDEM o par reservado (node 0). Vazio = nenhum. Presente =
    * conflito de precedencia nao autorizado: nunca MITIGATED, nunca escrita.
    */
@@ -80,16 +86,18 @@ export function inspectPolicyMitigation(
       bogonNodes,
       mitigationNodes,
       partialNodes,
+      ambiguousNodes: [],
       precedenceNodes: [],
       pair: null,
       detail: `policy ${input.policyName} nao encontrada no read-back`,
     };
   }
 
-  // Nodes 1/2 sao reservados. Fora deles, so a ASSINATURA do contrato antigo
-  // (if-match da lista alvo + RT de mitigacao no mesmo node) denuncia um par
-  // legado que nao pode coexistir com o novo — RT660 ou BOGONS isolados em node
-  // permanente do cliente nao provam ownership e sao ignorados.
+  // Nodes 1/2 sao reservados. Fora deles so a ASSINATURA DO CONTRATO ANTIGO
+  // (if-match da prefix-list alvo de mitigacao + RT de mitigacao no MESMO node)
+  // denuncia residuo de mitigacao. RT660 sozinha - com qualquer outro if-match,
+  // com LP, com outra RT ou sem if-match nenhum - e configuracao permanente do
+  // cliente e NUNCA e tratada como ownership do NetVision (D9).
   const rt = input.rts[0] ?? '268568:660';
   const exact = exactMitigationNodes(input.readBack, input.policyName);
   const precedence = precedenceConflictNodes(nodes);
@@ -100,26 +108,49 @@ export function inspectPolicyMitigation(
       n.ifMatchIpPrefix.length === 1 &&
       n.ifMatchIpPrefix[0] === labels.bogonPrefixList,
   );
-  const outsideMitigation = nodes.filter(
+  const legacySignature = nodes.filter(
     (n) =>
       n.node !== 2 &&
-      ((n.action === 'permit' &&
-        n.ifMatchIpPrefix.length === 0 &&
-        n.routeTargets.length === 1 &&
-        n.routeTargets[0] === rt) ||
-        // forma legada: lista alvo + RT de mitigacao no mesmo node
-        (n.ifMatchIpPrefix.includes(labels.targetPrefixList) && n.routeTargets.includes(rt))),
+      n.action === 'permit' &&
+      n.ifMatchIpPrefix.includes(labels.targetPrefixList) &&
+      n.routeTargets.includes(rt),
+  );
+  // Forma canonica do node 2 (permit irrestrito + RT exclusiva). Sozinha NAO
+  // prova ownership (D9); combinada a um `deny BOGONS` fora de 1/2, forma o PAR
+  // com a assinatura da mitigacao.
+  const canonicalPermitOutside = nodes.filter(
+    (n) =>
+      n.node !== 2 &&
+      n.action === 'permit' &&
+      n.ifMatchIpPrefix.length === 0 &&
+      n.routeTargets.length === 1 &&
+      n.routeTargets[0] === rt,
   );
   // Um BOGONS isolado em node permanente do cliente (ex.: LIVINET node 5) e
-  // legitimo; o que nao pode existir fora de 1/2 e um node de MITIGACAO:
-  //  - par completo (BOGONS + RT) => par legado;
-  //  - so o node de RT (sem o BOGONS) => meio-par legado. Classificar como
-  //    NORMAL esconderia resquicio de mitigacao manual/antiga e permitiria que
-  //    o REMOVE tratasse esse node como configuracao original.
+  // legitimo. O que nao pode existir fora de 1/2 e o par legado completo ou o
+  // node legado de mitigacao sem o BOGONS (meio-par identificavel).
   const legacyPairOutside =
-    outsideBogon.length > 0 && outsideMitigation.length > 0
-      ? [...outsideBogon, ...outsideMitigation]
+    outsideBogon.length > 0
+      ? [...outsideBogon, ...legacySignature, ...canonicalPermitOutside]
       : [];
+  // Informativo (nao bloqueia): RT de mitigacao fora de 1/2 sem a assinatura do
+  // contrato antigo. Pode ser politica permanente do cliente ou mitigacao manual;
+  // nos dois casos nao afeta os nodes 1/2 e nao prova ownership.
+  const ambiguousNodes = nodes
+    .filter(
+      (n) =>
+        n.node !== 1 &&
+        n.node !== 2 &&
+        n.action === 'permit' &&
+        n.routeTargets.includes(rt) &&
+        !legacySignature.some((entry) => entry.node === n.node),
+    )
+    .map((n) => ({
+      node: n.node,
+      action: n.action,
+      reason:
+        'RT de mitigacao em node fora de 1/2 sem assinatura do contrato antigo (nao e prova de ownership)',
+    }));
   for (const node of nodes) {
     if (precedence.includes(node.node)) {
       partialNodes.push({
@@ -135,11 +166,12 @@ export function inspectPolicyMitigation(
       else partialNodes.push({node: 2, action: node.action, reason: 'reserved node occupied by noncanonical configuration'});
     } else if (legacyPairOutside.some((entry) => entry.node === node.node)) {
       partialNodes.push({node: node.node, action: node.action, reason: 'mitigation pair outside nodes 1/2'});
-    } else if (outsideMitigation.some((entry) => entry.node === node.node)) {
+    } else if (legacySignature.some((entry) => entry.node === node.node)) {
       partialNodes.push({
         node: node.node,
         action: node.action,
-        reason: 'mitigation node outside nodes 1/2 without the BOGONS pair (half-legacy mitigation)',
+        reason:
+          'legacy mitigation node outside nodes 1/2 without the BOGONS pair (half-legacy mitigation signature)',
       });
     }
   }
@@ -154,6 +186,7 @@ export function inspectPolicyMitigation(
       bogonNodes: sortedBogon,
       mitigationNodes: sortedMitigation,
       partialNodes,
+      ambiguousNodes,
       precedenceNodes: precedence,
       pair: null,
       detail: `estrutura de mitigacao incompativel: ${partialNodes
@@ -169,9 +202,12 @@ export function inspectPolicyMitigation(
       bogonNodes: sortedBogon,
       mitigationNodes: sortedMitigation,
       partialNodes,
+      ambiguousNodes,
       precedenceNodes: precedence,
       pair: null,
-      detail: 'nenhum node de mitigacao presente na policy',
+      detail: ambiguousNodes.length === 0
+        ? 'nenhum node de mitigacao presente na policy'
+        : `nenhum node de mitigacao presente; RT de mitigacao em node permanente (informativo): [${ambiguousNodes.map((entry) => entry.node).join(', ')}]`,
     };
   }
 
@@ -183,6 +219,7 @@ export function inspectPolicyMitigation(
       bogonNodes: sortedBogon,
       mitigationNodes: sortedMitigation,
       partialNodes,
+      ambiguousNodes,
       precedenceNodes: precedence,
       pair,
       detail: `par de mitigacao ativo: deny node ${pair.bogonNode} (${labels.bogonPrefixList}) + permit node ${pair.mitigationNode} (permit irrestrito + RT exclusiva)`,
@@ -195,6 +232,7 @@ export function inspectPolicyMitigation(
     bogonNodes: sortedBogon,
     mitigationNodes: sortedMitigation,
     partialNodes,
+    ambiguousNodes,
     precedenceNodes: precedence,
     pair: null,
     detail:

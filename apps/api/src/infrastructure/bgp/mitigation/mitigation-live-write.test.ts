@@ -4,6 +4,7 @@ import { InMemoryMitigationRepository } from './in-memory-mitigation-repository'
 import {
   MitigationCommandService,
   type MitigationLiveExecutorPort,
+  BASELINE_RELEASE_FAILED_WARNING,
 } from './mitigation-command-service';
 import { MockMitigationExecutor } from './mitigation-executor';
 import {
@@ -90,6 +91,14 @@ class FakeLiveExecutor implements MitigationLiveExecutorPort {
   preflightCalls = 0;
   /** Par ATIVO que o equipamento mostraria (reconciliacao do REMOVE). */
   devicePair: { bogonNode: number; mitigationNode: number } | null = null;
+  /** Falha injetada na persistencia do descarte do baseline (D3). */
+  releaseError: Error | null = null;
+  readonly released: string[] = [];
+
+  async releaseBaseline(_device: HostRecord, policyName: string): Promise<void> {
+    if (this.releaseError) throw this.releaseError;
+    this.released.push(policyName);
+  }
 
   enabledFor(): boolean {
     return true;
@@ -271,6 +280,35 @@ describe('escrita real de mitigacao - fail-closed', () => {
     ]);
   });
 
+  it('D3: falha ao persistir o descarte do baseline NAO conclui a retirada', async () => {
+    const live = new FakeLiveExecutor();
+    live.readBacks = [NORMAL_READBACK];
+    live.releaseError = new Error('ECONNREFUSED 5432');
+    const h = await harness({ live });
+
+    const body = await h.commands.execute({
+      requestId: 'live-rem-release-fail',
+      action: 'REMOVE',
+      profileId: h.profileId,
+    });
+
+    // A retirada fisica foi enviada e verificada no read-back...
+    expect(live.removals[0]).toEqual([
+      'system-view',
+      `undo route-policy ${POLICY} node 1`,
+      `undo route-policy ${POLICY} node 2`,
+      'commit',
+    ]);
+    // ...mas SEM ownership duravel a operacao NAO e dada por concluida.
+    expect(body.verified).toBe(false);
+    expect(body.ok).toBe(false);
+    expect(body.status).toBe('REVALIDATION_FAILED');
+    expect(body.safeError).toBe(BASELINE_RELEASE_FAILED_WARNING);
+    expect(body.verification?.summary).toContain(BASELINE_RELEASE_FAILED_WARNING);
+    expect((await h.repository.getRuntime(h.profileId))?.state).toBe('RECONCILIATION_REQUIRED');
+    // Nenhum node permanente e tocado pelo REMOVE.
+    expect(live.removals[0]?.some((command) => /node (10|11|50|1000)\b/.test(command))).toBe(false);
+  });
   it('read-back incorreto NAO vira verified', async () => {
     const live = new FakeLiveExecutor();
     live.readBacks = [
