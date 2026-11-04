@@ -11,11 +11,12 @@ import { pilotEvidenceValid, FAST_DEFAULT_WINDOW } from '../../worker/mitigation
 const BW = 1_000_000_000n;
 
 describe('D4: cadencia e janela de continuidade (fonte unica)', () => {
-  it('cadencia nominal: default 10 s e faixa 10..30 s (5 s exige homologacao propria)', () => {
+  it('cadencia nominal: default 10 s e faixa 5..30 s', () => {
     expect(readFastNormalIntervalMs({})).toBe(10_000);
+    expect(readFastNormalIntervalMs({ MITIGATION_FAST_NORMAL_SECONDS: '5' })).toBe(5_000);
     expect(readFastNormalIntervalMs({ MITIGATION_FAST_NORMAL_SECONDS: '15' })).toBe(15_000);
     expect(readFastNormalIntervalMs({ MITIGATION_FAST_NORMAL_SECONDS: '30' })).toBe(30_000);
-    expect(() => readFastNormalIntervalMs({ MITIGATION_FAST_NORMAL_SECONDS: '5' })).toThrow(
+    expect(() => readFastNormalIntervalMs({ MITIGATION_FAST_NORMAL_SECONDS: '4' })).toThrow(
       /MITIGATION_FAST_NORMAL_SECONDS/,
     );
     expect(() => readFastNormalIntervalMs({ MITIGATION_FAST_NORMAL_SECONDS: '31' })).toThrow(
@@ -30,8 +31,8 @@ describe('D4: cadencia e janela de continuidade (fonte unica)', () => {
     expect(fastContinuityWindowMs(30_000)).toBe(45_000);
   });
 
-  it('poller e decisao AUTO usam a MESMA janela para 10/15/30 s', () => {
-    for (const seconds of [10, 15, 30]) {
+  it('poller e decisao AUTO usam a MESMA janela para 5/10/15/30 s', () => {
+    for (const seconds of [5, 10, 15, 30]) {
       const env = { MITIGATION_FAST_NORMAL_SECONDS: String(seconds) };
       const poller = fastPollerConfig(env);
       const lifecycle = lifecycleConfig(env);

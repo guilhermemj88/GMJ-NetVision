@@ -82,6 +82,12 @@ import { SnmpClientImpl } from './infrastructure/snmp/snmp-client-impl';
 import { SnmpPoller } from './infrastructure/snmp/snmp-poller';
 import { FastTrafficPoller, fastPollerConfig } from './infrastructure/snmp/fast-traffic-poller';
 import { FastSnmpReader } from './infrastructure/snmp/fast-snmp-reader';
+import {
+  createFastPollerLease,
+  fastPollerLeaseKey,
+  withSingleConnection,
+  type FastPollerLeaseClient,
+} from './infrastructure/snmp/fast-poller-lease';
 import { PrismaFastTrafficStore } from './infrastructure/snmp/prisma-fast-traffic-store';
 import { listFastTrafficTargets } from './infrastructure/snmp/fast-traffic-targets';
 import { PriorityTrafficSource } from './worker/mitigation/fast-traffic-source';
@@ -1196,6 +1202,22 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
 
   const fastConfig = fastPollerConfig();
+  // Posse unica (opt-in): sem `MITIGATION_FAST_SINGLE_OWNER=1` o comportamento
+  // legado continua identico. Com a flag ligada, o poller so inicia se este
+  // processo ganhar o advisory lock — dois processos nunca coletam o mesmo
+  // ifIndex em paralelo.
+  const fastSingleOwner = process.env.MITIGATION_FAST_SINGLE_OWNER === '1';
+  const fastLeaseDbUrl = process.env.DATABASE_URL ?? '';
+  const fastLeaseDb =
+    fastSingleOwner && fastLeaseDbUrl
+      ? new PrismaClient({
+          datasources: { db: { url: withSingleConnection(fastLeaseDbUrl) } },
+        })
+      : null;
+  const fastLease = createFastPollerLease({
+    client: (fastLeaseDb as unknown as FastPollerLeaseClient | null) ?? null,
+    key: fastPollerLeaseKey(process.env.NETVISION_INSTALLATION_ID),
+  });
   const bridgeConfig = fastBridgeConfig();
   const observationUrl = process.env.MITIGATION_FAST_OBSERVATION_DATABASE_URL;
   if (
@@ -1722,6 +1744,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     shadowRuntime.start();
   app.get('/api/bgp/mitigation/fast-poller', async () => ({
     ...fastPoller.status(),
+    lease: fastLease.status(),
     profiles: fastConfig.profileIds.map((profileId) => {
       const decision =
         mitigationAutoEngine.getDecisions().find((d) => d.profileId === profileId) ?? null;
@@ -1754,7 +1777,33 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       )
       .map((d) => d.profileId),
   }));
-  if (!config.DEMO_MODE) fastPoller.start();
+  if (!config.DEMO_MODE) {
+    if (fastLease.status().enabled) {
+      void fastLease.acquire().then((acquired) => {
+        if (acquired) {
+          fastPoller.start();
+          return;
+        }
+        app.log.warn(
+          { key: fastLease.status().key, error: fastLease.status().lastError },
+          'fast-poller: lease nao adquirida — coleta NAO iniciada neste processo',
+        );
+      });
+    } else {
+      fastPoller.start();
+    }
+  }
+  // Perda da posse (conexao caiu) para a coleta imediatamente: fail-closed.
+  const fastLeaseTimer = fastLease.status().enabled
+    ? setInterval(() => {
+        void fastLease.verify().then((held) => {
+          if (held) return;
+          app.log.error({ key: fastLease.status().key }, 'fast-poller: lease perdida — parando coleta');
+          void fastPoller.stop();
+        });
+      }, 15_000)
+    : null;
+  fastLeaseTimer?.unref?.();
   // ---- AUTO-ALL: AUTO derivado da DESCRIPTION ------------------------------
   // Sweep idempotente que escreve SOMENTE `mode` + a PROVENIENCIA do AUTO.
   // Nunca toca runtime, mitigacao, Huawei, exclusoes administrativas ou direcao.
@@ -1836,7 +1885,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     );
   }
   app.addHook('onClose', async () => {
+    if (fastLeaseTimer) clearInterval(fastLeaseTimer);
     await fastPoller.stop();
+    await fastLease.release();
+    await fastLeaseDb?.$disconnect();
     autoRuntimeRef?.stop();
     shadowRuntime.stop();
     await observationDb?.$disconnect();

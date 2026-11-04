@@ -172,9 +172,27 @@ describe('F3: actual poller, persisted FAST quality, source, lifecycle and fake 
     expect(recovered.commands[0]!.input.action).toBe('ACTIVATE');
     expect(recovered.scope?.phase).toBe('ACTIVE');
   });
-  it('5 seconds remains rejected by the actual poller configuration', () => {
-    expect(() => fastPollerConfig({ MITIGATION_FAST_NORMAL_SECONDS: '5' })).toThrow(
+  it('5 s e aceito pela configuracao real do poller com janela de 15 s', () => {
+    const config = fastPollerConfig({ MITIGATION_FAST_NORMAL_SECONDS: '5' });
+    expect(config.normalIntervalMs).toBe(5_000);
+    // 1,5 x 5 s = 7,5 s continua abaixo do piso: a janela nao afrouxa.
+    expect(config.maxGapMs).toBe(15_000);
+    // Abaixo de 5 s continua barrado (nunca um valor arbitrario).
+    expect(() => fastPollerConfig({ MITIGATION_FAST_NORMAL_SECONDS: '4' })).toThrow(
       'Invalid MITIGATION_FAST_NORMAL_SECONDS',
     );
+  });
+
+  it('com 5 s a deteccao confirma em 3 amostras dentro da meta de 30 s', async () => {
+    const result = await fastLifecycleScenario({
+      cadenceSeconds: 5,
+      seed: 4242,
+      attackDurationMs: 60000,
+    });
+    expect(result.commands).toHaveLength(1);
+    expect(result.commands[0]!.input.action).toBe('ACTIVATE');
+    expect(result.confirmationSamples).toBe(3);
+    expect(result.confirmationMs).not.toBeNull();
+    expect(result.confirmationMs!).toBeLessThanOrEqual(30_000);
   });
 });

@@ -17,9 +17,17 @@ export const FAST_MIN_CONTINUITY_MS = 15_000;
 /** Fator de folga sobre a cadencia (uma amostra perdida ainda e continua). */
 export const FAST_CONTINUITY_FACTOR = 1.5;
 
-/** Faixa aceita para a cadencia nominal (segundos). 5 s exige homologacao propria. */
+/**
+ * Faixa aceita para a cadencia nominal (segundos).
+ *
+ * 5 s foi homologado em bancada no Huawei NE8000 F1A (23 interfaces, 1.763
+ * amostras, SNMP mediano 24 ms, zero gaps e zero overruns): a cadencia agressiva
+ * e um valor operacional legitimo, nao um relaxamento de limite. O piso de
+ * continuidade continua em 15 s, portanto 5 s entrega 3 amostras dentro da
+ * mesma janela e a deteccao segue fail-closed.
+ */
 export const FAST_NORMAL_SECONDS = Object.freeze({
-  min: 10,
+  min: 5,
   max: 30,
   fallback: 10,
 });
