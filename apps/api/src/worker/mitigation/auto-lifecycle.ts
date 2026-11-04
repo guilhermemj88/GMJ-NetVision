@@ -422,7 +422,13 @@ export class AutoMitigationLifecycle {
     if (c.installation !== 'IMPLANTAR' || !c.enabled || !c.executionEnabled)
       return 'AUTO_EXECUTION_DISABLED';
     if (t.addressFamily !== 'IPV4') return 'AUTO_IPV6_CONTRACT_NOT_AUTHORIZED';
-    if (!c.profiles.includes(t.profileId) || !c.devices.includes(t.deviceId))
+    // `*` e uma AUTORIZACAO EXPLICITA de escopo (AUTO-ALL), nunca um curinga
+    // implicito: o perfil ainda precisa ter sido descoberto como AUTO elegivel
+    // pelo coletor e passar por todos os gates abaixo.
+    if (
+      (!c.profiles.includes(t.profileId) && !c.profiles.includes('*')) ||
+      !c.devices.includes(t.deviceId)
+    )
       return 'AUTO_NOT_ALLOWLISTED';
     if (
       !t.enabled ||

@@ -13,51 +13,145 @@ import type { FastTrafficTarget } from './fast-traffic-types';
  *
  * Sem a lista — ou para um perfil fora dela — vale exatamente a regra anterior:
  * só `mode = AUTO` é coletado.
+ *
+ * AUTO-ALL ENFORCE (`autoAllEnforce`): o escopo deixa de ser a lista estática de
+ * pilotos e passa a ser DESCOBERTO a cada refresh — todos os perfis que já são
+ * `mode = AUTO` e passam pelos mesmos gates de elegibilidade. A descoberta não
+ * promove ninguém: MANUAL/HOLD continuam fora, e um perfil só entra se tiver
+ * interface SNMP identificada, banda contratada válida e direção resolvida.
+ * Perfil sem direção NÃO entra no ENFORCE (ao contrário do modo observação, que
+ * aceita direção nula).
  */
-export async function listFastTrafficTargets(deps: {
+
+/** Motivo estável de bloqueio — o painel mostra este código, nunca texto livre. */
+export type AutoAllBlockReason =
+  | 'PROFILE_DISABLED'
+  | 'MODE_NOT_AUTO'
+  | 'NOT_IPV4'
+  | 'MITIGATION_EXCLUDED'
+  | 'DEVICE_NOT_ALLOWED'
+  | 'INTERFACE_UNKNOWN'
+  | 'SNMP_DISABLED'
+  | 'SNMP_NOT_V2C'
+  | 'BANDWIDTH_UNKNOWN'
+  | 'DIRECTION_UNRESOLVED';
+
+export interface AutoAllEligibility {
+  profileId: string;
+  deviceId: string;
+  mode: string;
+  eligible: boolean;
+  reasons: AutoAllBlockReason[];
+  bandwidthBps: string | null;
+  ifIndex: number | null;
+  interfaceId: string | null;
+  direction: 'rx' | 'tx' | null;
+  triggerPercent: number;
+}
+
+export interface FastTrafficSelectionDeps {
   profileIds: readonly string[];
   observeAllIpv4?: boolean;
+  /** AUTO-ALL no caminho ENFORCE: escopo descoberto, nunca promovido. */
+  autoAllEnforce?: boolean;
   /** Perfis com telemetria autorizada explicitamente, em qualquer modo. */
   telemetryProfileIds?: readonly string[];
   allowedDeviceIds: readonly string[];
   listProfiles(): Promise<MitigationProfileRecord[]>;
   hosts: Pick<FastSnmpHostPort, 'getHost'>;
   direction(profile: MitigationProfileRecord): 'rx' | 'tx' | null;
-}): Promise<FastTrafficTarget[]> {
+}
+
+interface HostLike {
+  snmpEnabled?: boolean;
+  snmp?: { version?: string } | null;
+  interfaces: Array<{ id: string; ifIndex: number; name: string; speedBps?: string | null }>;
+}
+
+interface Evaluated {
+  profile: MitigationProfileRecord;
+  reasons: AutoAllBlockReason[];
+  networkInterface: { id: string; ifIndex: number; name: string; speedBps?: string | null } | null;
+  direction: 'rx' | 'tx' | null;
+  bandwidthBps: bigint | null;
+}
+
+/** Uma avaliação por perfil, usada tanto pelo coletor quanto pela API. */
+async function evaluate(deps: FastTrafficSelectionDeps): Promise<Evaluated[]> {
   const telemetrySelected = new Set(deps.telemetryProfileIds ?? []);
-  const grouped = new Map<string, FastTrafficTarget>();
-  const profiles = (await deps.listProfiles()).filter(
-    (p) =>
-      (deps.observeAllIpv4 === true || deps.profileIds.includes(p.id)) &&
-      p.enabled &&
-      (deps.observeAllIpv4 === true || p.mode === 'AUTO' || telemetrySelected.has(p.id)) &&
-      p.addressFamily === 'IPV4' &&
-      !p.mitigationExcluded &&
-      deps.allowedDeviceIds.includes(p.deviceId),
-  );
-  const hosts = new Map(
+  const inScope = (p: MitigationProfileRecord): boolean => {
+    if (deps.observeAllIpv4 === true) return true;
+    if (deps.autoAllEnforce === true) return p.mode === 'AUTO';
+    return deps.profileIds.includes(p.id) && (p.mode === 'AUTO' || telemetrySelected.has(p.id));
+  };
+  const profiles = (await deps.listProfiles()).filter(inScope);
+  const hostIds = [...new Set(profiles.map((p) => p.deviceId))];
+  const hosts = new Map<string, HostLike | undefined>(
     await Promise.all(
-      [...new Set(profiles.map((p) => p.deviceId))].map(
-        async (id) => [id, await deps.hosts.getHost(id)] as const,
-      ),
+      hostIds.map(async (id) => [id, (await deps.hosts.getHost(id)) as HostLike | undefined] as const),
     ),
   );
-  for (const p of profiles) {
-    const direction = deps.direction(p);
-    const host = hosts.get(p.deviceId);
-    const networkInterface = host?.interfaces.find((i) => i.id === p.interfaceId);
-    const bandwidthBps = p.bandwidthOverrideBps ?? p.detectedBandwidthBps;
+  return profiles.map((p) => {
+    const reasons: AutoAllBlockReason[] = [];
+    if (!p.enabled) reasons.push('PROFILE_DISABLED');
+    // Em AUTO-ALL o escopo já é `mode === AUTO`; o motivo existe para a lista
+    // explícita (onde ALERT_ONLY só entra por telemetria) e para o painel.
+    // Observação total é, por definição, independente do modo.
     if (
-      (!direction && deps.observeAllIpv4 !== true) ||
-      !networkInterface ||
-      !host?.snmpEnabled ||
-      host.snmp?.version !== 'SNMP_V2C' ||
-      !bandwidthBps ||
-      bandwidthBps <= 0n
+      deps.observeAllIpv4 !== true &&
+      deps.autoAllEnforce !== true &&
+      p.mode !== 'AUTO' &&
+      !telemetrySelected.has(p.id)
     )
-      continue;
+      reasons.push('MODE_NOT_AUTO');
+    if (p.addressFamily !== 'IPV4') reasons.push('NOT_IPV4');
+    if (p.mitigationExcluded) reasons.push('MITIGATION_EXCLUDED');
+    if (!deps.allowedDeviceIds.includes(p.deviceId)) reasons.push('DEVICE_NOT_ALLOWED');
+    const host = hosts.get(p.deviceId);
+    const networkInterface = host?.interfaces.find((i) => i.id === p.interfaceId) ?? null;
+    if (!networkInterface) reasons.push('INTERFACE_UNKNOWN');
+    if (!host?.snmpEnabled) reasons.push('SNMP_DISABLED');
+    else if (host.snmp?.version !== 'SNMP_V2C') reasons.push('SNMP_NOT_V2C');
+    const bandwidthBps = p.bandwidthOverrideBps ?? p.detectedBandwidthBps;
+    if (!bandwidthBps || bandwidthBps <= 0n) reasons.push('BANDWIDTH_UNKNOWN');
+    const direction = deps.direction(p);
+    // Observação aceita direção nula; ENFORCE nunca — sem direção não há limiar.
+    if (!direction && deps.observeAllIpv4 !== true) reasons.push('DIRECTION_UNRESOLVED');
+    return { profile: p, reasons, networkInterface, direction, bandwidthBps };
+  });
+}
+
+/**
+ * Elegibilidade por cliente para a API. Mesma regra do coletor: o que aparece
+ * aqui é exatamente o que ele avalia — nada é elegível só por estar no banco.
+ */
+export async function describeAutoAllEligibility(
+  deps: FastTrafficSelectionDeps,
+): Promise<AutoAllEligibility[]> {
+  const evaluated = await evaluate(deps);
+  return evaluated.map((e) => ({
+    profileId: e.profile.id,
+    deviceId: e.profile.deviceId,
+    mode: e.profile.mode,
+    eligible: e.reasons.length === 0,
+    reasons: e.reasons,
+    bandwidthBps: e.bandwidthBps?.toString() ?? null,
+    ifIndex: e.networkInterface?.ifIndex ?? null,
+    interfaceId: e.networkInterface?.id ?? null,
+    direction: e.direction,
+    triggerPercent: e.profile.triggerPercent,
+  }));
+}
+
+export async function listFastTrafficTargets(
+  deps: FastTrafficSelectionDeps,
+): Promise<FastTrafficTarget[]> {
+  const grouped = new Map<string, FastTrafficTarget>();
+  for (const e of await evaluate(deps)) {
+    if (e.reasons.length > 0) continue;
+    const networkInterface = e.networkInterface!;
     const t = grouped.get(networkInterface.id) ?? {
-      deviceId: p.deviceId,
+      deviceId: e.profile.deviceId,
       interfaceId: networkInterface.id,
       ifIndex: networkInterface.ifIndex,
       interfaceName: networkInterface.name,
@@ -65,10 +159,10 @@ export async function listFastTrafficTargets(deps: {
       profiles: [],
     };
     t.profiles.push({
-      profileId: p.id,
-      direction,
-      bandwidthBps,
-      thresholdBps: (bandwidthBps * BigInt(p.triggerPercent)) / 100n,
+      profileId: e.profile.id,
+      direction: e.direction,
+      bandwidthBps: e.bandwidthBps!,
+      thresholdBps: (e.bandwidthBps! * BigInt(e.profile.triggerPercent)) / 100n,
     });
     grouped.set(t.interfaceId, t);
   }

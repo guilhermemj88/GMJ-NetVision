@@ -19,6 +19,8 @@ import type {
 export interface FastPollerConfig {
   mode: 'OFF' | 'OBSERVE' | 'ENFORCE';
   observeAllIpv4?: boolean;
+  /** AUTO-ALL no caminho ENFORCE: escopo descoberto, exige lease distribuida. */
+  autoAllEnforce?: boolean;
   /** Escopo total de ids observados (união legada + roteados). */
   profileIds: string[];
   /**
@@ -65,12 +67,18 @@ export function fastPollerConfig(
   const profileIds = [...new Set([...list('MITIGATION_FAST_PROFILE_IDS'), ...telemetryProfileIds])];
   const observeAllIpv4 = env.MITIGATION_FAST_ALL_IPV4_OBSERVATION_ENABLED === '1';
   if (observeAllIpv4 && mode !== 'OBSERVE') throw new Error('ALL_IPV4_REQUIRES_OBSERVE');
-  if (mode !== 'OFF' && !profileIds.length && !observeAllIpv4)
+  // AUTO-ALL ENFORCE e uma flag PROPRIA: nao herda a de observacao, exige o modo
+  // ENFORCE e exige posse unica (verificado no boot da API).
+  const autoAllEnforce = env.MITIGATION_FAST_AUTO_ALL_ENFORCE_ENABLED === '1';
+  if (autoAllEnforce && mode !== 'ENFORCE') throw new Error('AUTO_ALL_ENFORCE_REQUIRES_ENFORCE');
+  if (autoAllEnforce && observeAllIpv4) throw new Error('AUTO_ALL_ENFORCE_EXCLUDES_OBSERVE_ALL');
+  if (mode !== 'OFF' && !profileIds.length && !observeAllIpv4 && !autoAllEnforce)
     throw new Error('MITIGATION_FAST_PROFILE_IDS is required');
   const normalIntervalMs = readFastNormalIntervalMs(env);
   return {
     mode,
     observeAllIpv4,
+    autoAllEnforce,
     profileIds,
     telemetryProfileIds,
     normalIntervalMs,

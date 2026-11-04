@@ -448,6 +448,18 @@ describe('AUTO ACTIVATE + MANUAL REMOVE: canonical executor with fake SSH only',
     expect((await h.activate()).status).toBe('AUTO_NOT_ALLOWLISTED');
     expect(h.ssh.writes).toHaveLength(0);
   });
+  it("'*' autoriza o escopo AUTO-ALL sem perder os demais gates", async () => {
+    const wildcard = await harness();
+    wildcard.config.profiles = ['*'];
+    expect((await wildcard.activate()).ok).toBe(true);
+
+    // O curinga NAO autoriza outro device: a allowlist de equipamento continua.
+    const otherDevice = await harness();
+    otherDevice.config.profiles = ['*'];
+    otherDevice.config.devices = ['device-nao-autorizado'];
+    expect((await otherDevice.activate()).status).toBe('AUTO_NOT_ALLOWLISTED');
+    expect(otherDevice.ssh.writes).toHaveLength(0);
+  });
   it('does not repeat activation while active, including after restart', async () => {
     const h = await harness();
     await h.activate();

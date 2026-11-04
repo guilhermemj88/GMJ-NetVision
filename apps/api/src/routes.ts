@@ -89,7 +89,10 @@ import {
   type FastPollerLeaseClient,
 } from './infrastructure/snmp/fast-poller-lease';
 import { PrismaFastTrafficStore } from './infrastructure/snmp/prisma-fast-traffic-store';
-import { listFastTrafficTargets } from './infrastructure/snmp/fast-traffic-targets';
+import {
+  describeAutoAllEligibility,
+  listFastTrafficTargets,
+} from './infrastructure/snmp/fast-traffic-targets';
 import { PriorityTrafficSource } from './worker/mitigation/fast-traffic-source';
 import {
   isFastRoutedProfile,
@@ -1202,12 +1205,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
 
   const fastConfig = fastPollerConfig();
-  // Posse unica (opt-in): sem `MITIGATION_FAST_SINGLE_OWNER=1` o comportamento
-  // legado continua identico. Com a flag ligada, o poller so inicia se este
-  // processo ganhar o advisory lock — dois processos nunca coletam o mesmo
-  // ifIndex em paralelo.
-  const fastSingleOwner = process.env.MITIGATION_FAST_SINGLE_OWNER === '1';
+  // Posse unica: AUTO-ALL ENFORCE NUNCA depende de flag opcional — descoberta
+  // dinamica sem lease permitiria dois coletores medindo o mesmo ifIndex.
+  const fastSingleOwner =
+    process.env.MITIGATION_FAST_SINGLE_OWNER === '1' || fastConfig.autoAllEnforce === true;
   const fastLeaseDbUrl = process.env.DATABASE_URL ?? '';
+  if (fastConfig.autoAllEnforce === true && !fastLeaseDbUrl)
+    throw new Error('AUTO_ALL_ENFORCE_REQUIRES_DATABASE_URL_FOR_LEASE');
   const fastLeaseDb =
     fastSingleOwner && fastLeaseDbUrl
       ? new PrismaClient({
@@ -1218,6 +1222,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     client: (fastLeaseDb as unknown as FastPollerLeaseClient | null) ?? null,
     key: fastPollerLeaseKey(process.env.NETVISION_INSTALLATION_ID),
   });
+  if (fastConfig.autoAllEnforce === true && fastLease.status().enabled !== true)
+    throw new Error('AUTO_ALL_ENFORCE_REQUIRES_LEASE');
+  // Autorizar `*` (todos os descobertos) exige o escopo AUTO-ALL ligado. Sem
+  // isso o curinga autorizaria perfis que o coletor nem mede.
+  if (lifecycleSettings.profiles.includes('*') && fastConfig.autoAllEnforce !== true)
+    throw new Error('AUTO_ALLOW_ALL_REQUIRES_AUTO_ALL_ENFORCE');
   const bridgeConfig = fastBridgeConfig();
   const observationUrl = process.env.MITIGATION_FAST_OBSERVATION_DATABASE_URL;
   if (
@@ -1249,19 +1259,36 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     profile: (id) => bridgeProfiles.get(id) ?? null,
   });
   const fastStore = new PrismaFastTrafficStore(prismaClient);
+  /** Direcao unica para coleta e para o painel (nunca implicita por volume). */
+  const fastDirection = (p: {
+    id: string;
+    autoTrafficDirection?: 'RX' | 'TX' | null;
+    interfaceTrafficDirection?: 'RX' | 'TX' | null;
+  }) =>
+    resolveAutoDirection(p.id, p.autoTrafficDirection ?? null, p.interfaceTrafficDirection ?? null)
+      ?.direction ?? null;
+  // Em AUTO-ALL o escopo e descoberto: o status/API reporta o que o coletor
+  // realmente avaliou (unido as decisoes ja emitidas), nunca uma lista estatica.
+  const fastScopeProfileIds = (): string[] => {
+    if (fastConfig.autoAllEnforce !== true) return fastConfig.profileIds;
+    const discovered = new Set<string>();
+    for (const entry of fastPoller.status().entries)
+      for (const profileId of entry.profileIds) discovered.add(profileId);
+    for (const decision of mitigationAutoEngine.getDecisions()) discovered.add(decision.profileId);
+    return [...discovered].sort();
+  };
   const fastPoller = new FastTrafficPoller({
     config: fastConfig,
     listTargets: () =>
       listFastTrafficTargets({
         profileIds: fastConfig.profileIds,
         observeAllIpv4: fastConfig.observeAllIpv4 ?? false,
+        autoAllEnforce: fastConfig.autoAllEnforce ?? false,
         telemetryProfileIds: fastConfig.telemetryProfileIds,
         allowedDeviceIds: mitigationExecutionConfig.allowedDeviceIds,
         listProfiles: () => mitigationRepository.listProfiles(),
         hosts,
-        direction: (p) =>
-          resolveAutoDirection(p.id, p.autoTrafficDirection, p.interfaceTrafficDirection)
-            ?.direction ?? null,
+        direction: (p) => fastDirection(p),
       }),
     reader: new FastSnmpReader(hosts, new SnmpClientImpl(fastConfig.timeoutMs, fastConfig.retries)),
     store: fastStore,
@@ -1742,10 +1769,68 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   }));
   if (!config.DEMO_MODE && !lifecycleSettings.enabled && bridgeConfig.mode !== 'OFF')
     shadowRuntime.start();
+  app.get('/api/bgp/mitigation/auto-all', async () => {
+    const eligibility = await describeAutoAllEligibility({
+      profileIds: fastConfig.profileIds,
+      observeAllIpv4: fastConfig.observeAllIpv4 ?? false,
+      autoAllEnforce: fastConfig.autoAllEnforce ?? false,
+      telemetryProfileIds: fastConfig.telemetryProfileIds,
+      allowedDeviceIds: mitigationExecutionConfig.allowedDeviceIds,
+      listProfiles: () => mitigationRepository.listProfiles(),
+      hosts,
+      direction: (p) => fastDirection(p),
+    });
+    const decisions = new Map(
+      mitigationAutoEngine.getDecisions().map((d) => [d.profileId, d] as const),
+    );
+    return {
+      generatedAt: new Date().toISOString(),
+      // Tres estados que NAO podem ser confundidos: implementado, observando e
+      // autorizado a escrita fisica.
+      phases: {
+        implemented: true,
+        observation:
+          fastConfig.mode !== 'OFF' && (fastConfig.autoAllEnforce ?? false) === false
+            ? 'EXPLICIT_LIST_ONLY'
+            : fastConfig.mode === 'OFF'
+              ? 'OFF'
+              : 'AUTO_ALL',
+        enforcementScope: fastConfig.autoAllEnforce === true ? 'AUTO_ALL' : 'EXPLICIT_LIST',
+        physicalExecutionAuthorized: lifecycleSettings.enabled && lifecycleSettings.executionEnabled,
+        fastMode: fastConfig.mode,
+        cadenceMs: fastConfig.normalIntervalMs,
+        requiredSamples: null as number | null,
+        maxActive: lifecycleSettings.maxActive,
+        cooldownMs: lifecycleSettings.cooldownMs,
+      },
+      lease: fastLease.status(),
+      clients: eligibility.map((row) => {
+        const decision = decisions.get(row.profileId) ?? null;
+        return {
+          ...row,
+          score: decision
+            ? {
+                samplesOver: decision.samplesOver,
+                requiredSamples: decision.requiredSamples,
+                progress: `${Math.min(decision.samplesOver, decision.requiredSamples)}/${decision.requiredSamples}`,
+                outcome: decision.outcome,
+                reason: decision.reason,
+                trafficBps: decision.trafficBps,
+                thresholdBps: decision.thresholdBps,
+                firstAbnormalAt: decision.firstAbnormalAt ?? null,
+                decisionMs: decision.decisionMs ?? null,
+                runtimeState: decision.runtimeState,
+                direction: decision.direction ?? null,
+              }
+            : null,
+        };
+      }),
+    };
+  });
   app.get('/api/bgp/mitigation/fast-poller', async () => ({
     ...fastPoller.status(),
     lease: fastLease.status(),
-    profiles: fastConfig.profileIds.map((profileId) => {
+    profiles: fastScopeProfileIds().map((profileId) => {
       const decision =
         mitigationAutoEngine.getDecisions().find((d) => d.profileId === profileId) ?? null;
       const phase = mitigationAutoEngine.isBusy(profileId)
