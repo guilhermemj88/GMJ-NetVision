@@ -54,8 +54,11 @@ export interface MitigationBaselineStore {
   readonly durable: boolean;
   save(record: MitigationBaselineRecord): Promise<void>;
   load(scope: MitigationBaselineScope): Promise<MitigationBaselineRecord | null>;
+  /** Invalidate ownership durably BEFORE the first physical REMOVE command. */
+  beginRemoval(scope: MitigationBaselineScope, requestId?: string): Promise<void>;
   /**
-   * DESCARTA o registro do escopo depois de uma retirada VERIFICADA.
+   * Invalida ownership depois de uma retirada VERIFICADA, preservando o
+   * snapshot original como evidencia historica no marcador RELEASED.
    *
    * Sem isso o registro sobreviveria para sempre e um par textualmente
    * identico, criado DEPOIS por terceiros, seria adotado como propriedade do
@@ -79,15 +82,62 @@ export interface MitigationBaselineReleaseMarker {
   deviceId: string;
   policyName: string;
   releasedAt: string;
+  baseline?: MitigationBaselineRecord;
 }
 
-export function baselineReleaseMarker(scope: MitigationBaselineScope): MitigationBaselineReleaseMarker {
+export interface MitigationBaselineRemovalIntent {
+  version: 2;
+  state: 'REMOVING';
+  deviceId: string;
+  policyName: string;
+  requestId: string | null;
+  startedAt: string;
+  baseline: MitigationBaselineRecord;
+}
+
+/** Old snapshots are retained for audit, but only a version-1 record proves ownership. */
+export function retainedBaseline(value: unknown): MitigationBaselineRecord | null {
+  if (isBaselineRecordComplete(value as MitigationBaselineRecord))
+    return value as MitigationBaselineRecord;
+  if (!value || typeof value !== 'object') return null;
+  const baseline = (value as { baseline?: unknown }).baseline;
+  return isBaselineRecordComplete(baseline as MitigationBaselineRecord)
+    ? (baseline as MitigationBaselineRecord)
+    : null;
+}
+
+export function baselineRemovalIntent(
+  scope: MitigationBaselineScope,
+  value: unknown,
+  requestId?: string,
+): MitigationBaselineRemovalIntent {
+  if (
+    !isBaselineRecordComplete(value as MitigationBaselineRecord) ||
+    (value as MitigationBaselineRecord).deviceId !== scope.deviceId ||
+    (value as MitigationBaselineRecord).policyName !== scope.policyName
+  )
+    throw Error('MITIGATION_BASELINE_OWNERSHIP_UNAVAILABLE');
+  return {
+    version: 2,
+    state: 'REMOVING',
+    ...scope,
+    requestId: requestId ?? null,
+    startedAt: new Date().toISOString(),
+    baseline: value as MitigationBaselineRecord,
+  };
+}
+
+export function baselineReleaseMarker(
+  scope: MitigationBaselineScope,
+  baseline?: MitigationBaselineRecord,
+): MitigationBaselineReleaseMarker {
   return {
     version: 0,
     released: true,
     deviceId: scope.deviceId,
     policyName: scope.policyName,
     releasedAt: new Date().toISOString(),
+    ...(baseline ? { baseline } : {}),
   };
 }
 
@@ -198,15 +248,30 @@ export function baselineDriftReasons(record: MitigationBaselineRecord, readBack:
 export class MemoryMitigationBaselineStore implements MitigationBaselineStore {
   /** Nunca persistente: recusado pela escrita real no Huawei (B6). */
   readonly durable = false;
-  private readonly records = new Map<string, MitigationBaselineRecord>();
+  private readonly records = new Map<string, unknown>();
   async save(record: MitigationBaselineRecord): Promise<void> {
+    if (
+      (this.records.get(baselineRecordId(record)) as { version?: number } | undefined)?.version ===
+      2
+    )
+      throw Error('MITIGATION_BASELINE_REMOVAL_PENDING');
     this.records.set(baselineRecordId(record), structuredClone(record));
   }
   async load(scope: MitigationBaselineScope): Promise<MitigationBaselineRecord | null> {
     const found = this.records.get(baselineRecordId(scope));
-    return isBaselineRecordComplete(found) ? structuredClone(found) : null;
+    return isBaselineRecordComplete(found as MitigationBaselineRecord)
+      ? structuredClone(found as MitigationBaselineRecord)
+      : null;
+  }
+  async beginRemoval(scope: MitigationBaselineScope, requestId?: string): Promise<void> {
+    const key = baselineRecordId(scope);
+    this.records.set(key, baselineRemovalIntent(scope, this.records.get(key), requestId));
   }
   async release(scope: MitigationBaselineScope): Promise<void> {
-    this.records.delete(baselineRecordId(scope));
+    const key = baselineRecordId(scope);
+    this.records.set(
+      key,
+      baselineReleaseMarker(scope, retainedBaseline(this.records.get(key)) ?? undefined),
+    );
   }
 }

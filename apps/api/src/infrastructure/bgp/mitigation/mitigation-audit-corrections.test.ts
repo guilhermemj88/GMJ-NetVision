@@ -4,7 +4,10 @@ import { HuaweiMitigationExecutor } from './huawei-mitigation-executor';
 import type { MitigationSshPort } from './huawei-mitigation-executor';
 import { buildMitigationActivateCommands } from './mitigation-write-guard';
 import { derivePreservedClauses } from './mitigation-policy-clauses';
-import { captureMitigationBaseline, type MitigationBaselineStore } from './mitigation-baseline-record';
+import {
+  captureMitigationBaseline,
+  type MitigationBaselineStore,
+} from './mitigation-baseline-record';
 import { testDurableBaselineStore } from './mitigation-test-support';
 
 /**
@@ -325,12 +328,12 @@ describe('10) REMOVE nao sofre regressao', () => {
         `route-policy ${POLICY} deny node 1`,
         ' if-match ip-prefix BOGONS',
         `route-policy ${POLICY} permit node 2`,
-        ' if-match ip-prefix PREFIX8to24',
-        ' apply extcommunity rt 268568:660 additive',
+        ' apply extcommunity rt 268568:660',
         AGLINK_SIMPLE,
       ].join('\n'),
     );
-    await executor(ssh).remove(device(), { policyName: POLICY, bogonNode: 1, mitigationNode: 2 });
+    const exec = await executorWithBaseline(ssh, AGLINK_SIMPLE);
+    await exec.remove(device(), { policyName: POLICY, bogonNode: 1, mitigationNode: 2 });
     expect(ssh.applied[0]).toEqual([
       'system-view',
       `undo route-policy ${POLICY} node 1`,

@@ -30,6 +30,7 @@ import {
 } from '../worker/mitigation/fast-observation-bridge';
 import { deriveFastTraffic } from '../infrastructure/snmp/fast-traffic-rate';
 import type { FastCounterReading } from '../infrastructure/snmp/fast-traffic-types';
+import type { MitigationTrafficSource } from '../worker/mitigation/mitigation-traffic-source';
 
 /** Fake only at the transport boundary. Real executor/preflight/parser build the result. */
 export class PilotFakeHuawei implements MitigationSshPort {
@@ -92,7 +93,13 @@ export class PilotFakeHuawei implements MitigationSshPort {
   }
 }
 
-export async function createPilotHarness(store: AutomationStore = new MemoryAutomationStore()) {
+export async function createPilotHarness(
+  store: AutomationStore = new MemoryAutomationStore(),
+  options: {
+    traffic?: Pick<MitigationTrafficSource, 'sampleWithId'>;
+    cadenceSeconds?: number;
+  } = {},
+) {
   let now = Date.parse('2026-10-30T12:00:00Z');
   const repository = new InMemoryMitigationRepository();
   const profile = await repository.upsertProfile({
@@ -176,7 +183,11 @@ export async function createPilotHarness(store: AutomationStore = new MemoryAuto
     ),
   };
   const config = {
-    ...lifecycleConfig({}),
+    ...lifecycleConfig(
+      options.cadenceSeconds === undefined
+        ? {}
+        : { MITIGATION_FAST_NORMAL_SECONDS: String(options.cadenceSeconds) },
+    ),
     installation: 'IMPLANTAR',
     enabled: true,
     executionEnabled: true,
@@ -234,6 +245,7 @@ export async function createPilotHarness(store: AutomationStore = new MemoryAuto
     now: () => new Date(now),
   });
   const ssh = new PilotFakeHuawei();
+  const traffic = options.traffic ?? source;
   // B6: a escrita real exige armazenamento DURAVEL do baseline. Com um store de
   // persistencia, o registro vai para o banco; sem ele, backend duravel de teste.
   const baselineStore =
@@ -266,12 +278,13 @@ export async function createPilotHarness(store: AutomationStore = new MemoryAuto
     };
   };
   const create = () => {
+    const scopeLock = new InMemoryPolicyScopeLock();
     commands = new MitigationCommandService({
       repository,
       hosts: { getHost: async () => host },
       live,
       executor: new MockMitigationExecutor(),
-      scopeLock: new InMemoryPolicyScopeLock(),
+      scopeLock,
       expectedNodes: async () => [10, 1000],
       now: () => new Date(now),
       autoExecutionEnabled: () => config.executionEnabled,
@@ -283,7 +296,7 @@ export async function createPilotHarness(store: AutomationStore = new MemoryAuto
         return (
           singlePilotPhysicalScopeMatches({ ...physical, bgpConfiguration }) &&
           pilotEvidenceValid(
-            await source.sampleWithId({
+            await traffic.sampleWithId({
               profileId: P.profileId,
               deviceId: P.deviceId,
               interfaceId: P.interfaceId,
@@ -291,6 +304,8 @@ export async function createPilotHarness(store: AutomationStore = new MemoryAuto
             }),
             e,
             now,
+            P.thresholdBps,
+            { maxAgeMs: config.maxAgeMs, maxGapMs: config.maxGapMs },
           )
         );
       },
@@ -305,9 +320,11 @@ export async function createPilotHarness(store: AutomationStore = new MemoryAuto
       onScopeRemoved: (s) => lifecycle.forgetProfiles(s.profileIds),
     });
     lifecycle = new AutoMitigationLifecycle({
+      scopeLock,
+      readPolicy: async () => ssh.readMitigationRoutePolicy(),
       store,
       config: () => config,
-      pilotTraffic: source,
+      pilotTraffic: traffic,
       target: async (id) =>
         id === P.profileId
           ? { ...target, runtimeState: (await repository.getRuntime(id))?.state ?? null }

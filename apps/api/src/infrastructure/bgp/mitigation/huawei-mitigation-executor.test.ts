@@ -138,7 +138,6 @@ async function executorWithBaseline(
   return new HuaweiMitigationExecutor({ ssh, config: config(), rt: RT, baseline });
 }
 
-
 const PREFLIGHT_BASELINE = captureMitigationBaseline({
   deviceId: DEVICE_ID,
   policyName: POLICY,
@@ -509,7 +508,10 @@ describe('HuaweiMitigationExecutor - comandos exatos', () => {
         POLICY,
         { bogonNode: 1, mitigationNode: 2 },
         RT,
-        { bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST, targetPrefixList: DEFAULT_TARGET_PREFIX_LIST },
+        {
+          bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST,
+          targetPrefixList: DEFAULT_TARGET_PREFIX_LIST,
+        },
         PRESERVED,
       ).commands,
     );
@@ -517,7 +519,8 @@ describe('HuaweiMitigationExecutor - comandos exatos', () => {
 
   it('REMOVE envia exatamente os 4 comandos de retirada', async () => {
     const ssh = new FakeSsh();
-    await executor(ssh).remove(device(), ACTIVATION);
+    const exec = await executorWithBaseline(ssh, ROUTE_POLICY);
+    await exec.remove(device(), ACTIVATION);
     expect(ssh.applied[0]!.commands).toEqual([
       'system-view',
       'undo route-policy PL-HORIZONTES_IPv4-IN node 1',
@@ -533,6 +536,14 @@ describe('HuaweiMitigationExecutor - comandos exatos', () => {
         mitigationNode: 2,
       }).commands,
     );
+  });
+
+  it('REMOVE direto sem ownership duravel nao chega ao transporte', async () => {
+    const ssh = new FakeSsh();
+    await expect(executor(ssh).remove(device(), ACTIVATION)).rejects.toThrow(
+      'MITIGATION_BASELINE_OWNERSHIP_UNAVAILABLE',
+    );
+    expect(ssh.applied).toHaveLength(0);
   });
 
   it('nome de policy malicioso e rejeitado ANTES do SSH', async () => {
@@ -576,7 +587,8 @@ describe('HuaweiMitigationExecutor - comandos exatos', () => {
     const ssh = new FakeSsh();
     ssh.applyOk = false;
     ssh.applyOutput = 'Error: The route-policy does not exist.';
-    await expect(executor(ssh).remove(device(), ACTIVATION)).rejects.toThrow(
+    const exec = await executorWithBaseline(ssh, ROUTE_POLICY);
+    await expect(exec.remove(device(), ACTIVATION)).rejects.toThrow(
       /Error: The route-policy does not exist\./,
     );
   });

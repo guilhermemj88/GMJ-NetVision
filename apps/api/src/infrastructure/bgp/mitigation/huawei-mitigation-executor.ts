@@ -178,13 +178,14 @@ function sameNodes(left: readonly number[], right: readonly number[]): boolean {
  * imediatamente antes da escrita. Se as duas leituras divergirem, a escrita e
  * bloqueada — nunca se ajusta o comando automaticamente.
  */
-function activationBaselineDiverged(
-  readBack: string,
-  input: MitigationActivationInput,
-): string[] {
+function activationBaselineDiverged(readBack: string, input: MitigationActivationInput): string[] {
   const record = input.preflightBaseline;
-  if (!isBaselineRecordComplete(record) || record.policyName !== input.policyName ||
-      record.bogonNode !== 1 || record.mitigationNode !== 2)
+  if (
+    !isBaselineRecordComplete(record) ||
+    record.policyName !== input.policyName ||
+    record.bogonNode !== 1 ||
+    record.mitigationNode !== 2
+  )
     return ['preflight permanent baseline evidence unavailable'];
   return baselineDriftReasons(record, readBack);
 }
@@ -232,7 +233,6 @@ export class HuaweiMitigationExecutor {
       // leituras usa exatamente as mesmas listas que geraram os comandos.
       const configuration = await this.deps.ssh.readMitigationConfiguration(device);
       readBack = configuration.routePolicyConfiguration ?? '';
-
     } catch (error) {
       throw new Error(`MITIGATION_BASELINE_RECORD_UNAVAILABLE: ${safeErrorMessage(error)}`);
     }
@@ -250,10 +250,16 @@ export class HuaweiMitigationExecutor {
         `MITIGATION_NODE_OCCUPIED: ${device.displayName || device.hostname} ${input.policyName} ` +
           `node [${secondReadPrecedence.join(',')}] precede o par reservado`,
       );
-    const occupancy = planNodeOccupancy({readBack, policyName: input.policyName,
-      pair: {bogonNode: 1, mitigationNode: 2}, capturedAt: new Date().toISOString()});
+    const occupancy = planNodeOccupancy({
+      readBack,
+      policyName: input.policyName,
+      pair: { bogonNode: 1, mitigationNode: 2 },
+      capturedAt: new Date().toISOString(),
+    });
     if (occupancy.blocked)
-      throw new Error(`MITIGATION_NODE_OCCUPIED: ${device.displayName || device.hostname} ${input.policyName} nodes [${occupancy.conflictingNodes.join(',')}]`);
+      throw new Error(
+        `MITIGATION_NODE_OCCUPIED: ${device.displayName || device.hostname} ${input.policyName} nodes [${occupancy.conflictingNodes.join(',')}]`,
+      );
     if (!input.preflightBaseline)
       throw new Error('MITIGATION_BASELINE_RECORD_UNAVAILABLE: preflight baseline record missing');
     if (input.preflightBaseline.deviceId !== device.id)
@@ -529,7 +535,15 @@ export class HuaweiMitigationExecutor {
       });
       nodeOccupancy = occupancy;
 
-      checks.push({id: 'ipv4_contract', ok: input.bogonNode === 1 && input.mitigationNode === 2 && input.bogonPrefixList === 'BOGONS' && input.rt === '268568:660', detail: 'exact fixed IPv4 node contract'});
+      checks.push({
+        id: 'ipv4_contract',
+        ok:
+          input.bogonNode === 1 &&
+          input.mitigationNode === 2 &&
+          input.bogonPrefixList === 'BOGONS' &&
+          input.rt === '268568:660',
+        detail: 'exact fixed IPv4 node contract',
+      });
       // Node 0 tem precedencia sobre o par: com ele a mitigacao fica inerte e
       // nao ha regra aprovada de convivencia. Bloqueia (fail-closed).
       const precedence = precedenceConflictNodes(nodes);
@@ -692,7 +706,16 @@ export class HuaweiMitigationExecutor {
       partial,
       nodeOccupancy,
       preservedClauses,
-      baselineRecord: mode === 'ACTIVATE' && routePolicyConfiguration ? captureMitigationBaseline({deviceId: device.id, policyName: input.policyName, readBack: routePolicyConfiguration, bogonNode: input.bogonNode, mitigationNode: input.mitigationNode}) : null,
+      baselineRecord:
+        mode === 'ACTIVATE' && routePolicyConfiguration
+          ? captureMitigationBaseline({
+              deviceId: device.id,
+              policyName: input.policyName,
+              readBack: routePolicyConfiguration,
+              bogonNode: input.bogonNode,
+              mitigationNode: input.mitigationNode,
+            })
+          : null,
       readBackNodes: readBackNodes.map((entry) => entry.node),
       readBackSummary,
       readBackExcerpt: readBackOutput ? excerpt(readBackOutput) : '',
@@ -726,6 +749,15 @@ export class HuaweiMitigationExecutor {
       mitigationNode: input.mitigationNode,
     });
     assertMitigationCommandShape(commands);
+    // F1: invalidate the old ownership BEFORE touching hardware, retaining its
+    // complete baseline. A timeout or failed RELEASED can never reactivate it.
+    if (this.baseline.durable !== true) throw Error('MITIGATION_BASELINE_RECORD_UNAVAILABLE');
+    await this.baseline.beginRemoval(
+      { deviceId: device.id, policyName: input.policyName },
+      input.requestId,
+    );
+    if ((await this.baseline.load({ deviceId: device.id, policyName: input.policyName })) !== null)
+      throw Error('MITIGATION_BASELINE_REMOVAL_INTENT_UNCONFIRMED');
     const result = await this.deps.ssh.applyMitigationCommands(device, commands);
     if (!result.ok) {
       throw new Error(`MITIGATION_WRITE_FAILED: ${deviceExcerpt(result.output)}`);
@@ -755,9 +787,21 @@ export class HuaweiMitigationExecutor {
     const source = configuration.routePolicyConfiguration;
     if (source === null) return null;
     const record = await this.loadBaseline(device, policyName);
-    if (!record || record.bogonNode !== 1 || record.mitigationNode !== 2 || baselineDriftReasons(record, source).length) return null;
-    const verification = verifyActivation(policyName, source, {bogonNode: 1, mitigationNode: 2}, rt, this.labels);
-    return verification.verified ? {bogonNode: 1, mitigationNode: 2} : null;
+    if (
+      !record ||
+      record.bogonNode !== 1 ||
+      record.mitigationNode !== 2 ||
+      baselineDriftReasons(record, source).length
+    )
+      return null;
+    const verification = verifyActivation(
+      policyName,
+      source,
+      { bogonNode: 1, mitigationNode: 2 },
+      rt,
+      this.labels,
+    );
+    return verification.verified ? { bogonNode: 1, mitigationNode: 2 } : null;
   }
 
   /** READ-ONLY: estado atual da policy para o read-back obrigatorio. */

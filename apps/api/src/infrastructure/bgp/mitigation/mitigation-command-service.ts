@@ -370,8 +370,14 @@ type MitigationCommandBase = Omit<
  * a primeira resposta, sem tocar no equipamento de novo.
  */
 export class MitigationCommandService {
-  private readonly processed = new Map<string, {identity: string; result: MitigationCommandResult}>();
-  private readonly pending = new Map<string, {identity: string; promise: Promise<MitigationCommandResult>}>();
+  private readonly processed = new Map<
+    string,
+    { identity: string; result: MitigationCommandResult }
+  >();
+  private readonly pending = new Map<
+    string,
+    { identity: string; promise: Promise<MitigationCommandResult> }
+  >();
   private readonly now: () => Date;
   private readonly preview = new SimulationCommandExecutor();
   private readonly labels: { bogonPrefixList: string; targetPrefixList: string };
@@ -425,10 +431,19 @@ export class MitigationCommandService {
     // Never serve an old idempotency receipt as authorization for AUTO REMOVE.
     if (input.action === 'REMOVE' && isAutomaticCommand(input)) return this.run(input);
     if (!MUTATING_ACTIONS.includes(input.action)) return this.run(input);
-    const identity = JSON.stringify([input.profileId, input.action, input.origin ?? 'MANUAL', isAutomaticCommand(input), input.autoOperationId ?? null]);
+    const identity = JSON.stringify([
+      input.profileId,
+      input.action,
+      input.origin ?? 'MANUAL',
+      isAutomaticCommand(input),
+      input.autoOperationId ?? null,
+    ]);
     const previous = this.processed.get(input.requestId);
     const pending = this.pending.get(input.requestId);
-    if ((previous && previous.identity !== identity) || (pending && pending.identity !== identity)) {
+    if (
+      (previous && previous.identity !== identity) ||
+      (pending && pending.identity !== identity)
+    ) {
       // NUNCA reutilizar (nem esperar) o recibo de OUTRA operacao: `policy`,
       // `interface`, `verification`, `notification` e `preflight` de outro
       // perfil nao podem aparecer nesta resposta. Conflito e resposta completa
@@ -461,15 +476,17 @@ export class MitigationCommandService {
         safeError: 'requestId already belongs to a different command; no write attempted',
       };
     }
-    if (previous) return {...previous.result, idempotent: true};
-    if (pending) return {...await pending.promise, idempotent: true};
+    if (previous) return { ...previous.result, idempotent: true };
+    if (pending) return { ...(await pending.promise), idempotent: true };
     const promise = this.run(input);
-    this.pending.set(input.requestId, {identity, promise});
+    this.pending.set(input.requestId, { identity, promise });
     try {
       const result = await promise;
-      if (result.ok) this.processed.set(input.requestId, {identity, result});
+      if (result.ok) this.processed.set(input.requestId, { identity, result });
       return result;
-    } finally { this.pending.delete(input.requestId); }
+    } finally {
+      this.pending.delete(input.requestId);
+    }
   }
 
   private async run(input: MitigationCommandInput): Promise<MitigationCommandResult> {
@@ -868,6 +885,7 @@ export class MitigationCommandService {
       ...(preflight?.baselineRecord ? { preflightBaseline: preflight.baselineRecord } : {}),
     };
     const removalInput: MitigationRemovalInput = {
+      requestId: input.requestId,
       policyName: profile.policyName,
       bogonNode: pair?.bogonNode ?? 0,
       mitigationNode: pair?.mitigationNode ?? 0,
@@ -1107,7 +1125,11 @@ export class MitigationCommandService {
       // Sem isso um par identico criado depois por terceiros seria adotado como
       // NetVision. Falha aqui nao desmente o estado fisico: apenas obriga o
       // operador a limpar o registro antes do proximo REMOVE.
-      const release = await this.releaseBaselineAfterRemoval(liveDevice, profile.policyName, check.verified);
+      const release = await this.releaseBaselineAfterRemoval(
+        liveDevice,
+        profile.policyName,
+        check.verified,
+      );
       // D3 fail-closed: sem a persistencia do descarte, o ownership fica INCERTO.
       // A retirada fisica aconteceu, mas a operacao NAO e dada por concluida: o
       // runtime vai para reconciliacao e nenhuma operacao nova e liberada nesse
@@ -1146,7 +1168,9 @@ export class MitigationCommandService {
         ...(preflight ? { preflight } : {}),
         ...(pairSource === 'DEVICE' ? { pairSource } : {}),
         ...(sync.ok ? {} : { safeError: RUNTIME_SYNC_FAILED_WARNING }),
-        ...(removed ? {} : { safeError: release === 'FAILED' ? BASELINE_RELEASE_FAILED_WARNING : check.summary }),
+        ...(removed
+          ? {}
+          : { safeError: release === 'FAILED' ? BASELINE_RELEASE_FAILED_WARNING : check.summary }),
       };
     } catch (error) {
       // Escrita iniciada + estado fisico NAO comprovado: o runtime do escopo

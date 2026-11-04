@@ -4,7 +4,10 @@ import { DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import type { PreservedClauses } from './mitigation-policy-clauses';
 import type { MitigationBaselineRecord } from './mitigation-baseline-record';
 import { exactMitigationNodes, precedenceConflictNodes } from './mitigation-contract';
-import { buildMitigationActivateCommands, buildMitigationRemovalCommands } from './mitigation-write-guard';
+import {
+  buildMitigationActivateCommands,
+  buildMitigationRemovalCommands,
+} from './mitigation-write-guard';
 
 // Porta de execucao do motor de mitigacao.
 //
@@ -41,6 +44,7 @@ export interface MitigationRemovalInput {
   policyName: string;
   bogonNode: number;
   mitigationNode: number;
+  requestId?: string;
 }
 
 export interface MitigationExecutorResult {
@@ -239,7 +243,11 @@ export function verifyActivation(
   const mitigation = nodes.find((entry) => entry.node === pair.mitigationNode);
 
   const exact = exactMitigationNodes(readBack, policyName);
-  const contractOk = pair.bogonNode === 1 && pair.mitigationNode === 2 && rt === '268568:660' && labels.bogonPrefixList === 'BOGONS';
+  const contractOk =
+    pair.bogonNode === 1 &&
+    pair.mitigationNode === 2 &&
+    rt === '268568:660' &&
+    labels.bogonPrefixList === 'BOGONS';
   const bogonOk = contractOk && exact.bogonOk;
   const mitigationOk = contractOk && exact.mitigationOk;
   // Node 0 (ou qualquer node anterior a 1) tem precedencia sobre o par: os
@@ -252,8 +260,12 @@ export function verifyActivation(
     detalhes.push(
       `node ${precedence.join(', ')} precede o par reservado: mitigacao pode nao ser aplicada`,
     );
-  if (!bogon || !bogonOk) detalhes.push('node 1 divergente: exige deny + somente if-match ip-prefix BOGONS');
-  if (!mitigation || !mitigationOk) detalhes.push('node 2 divergente: exige permit + somente apply extcommunity rt 268568:660, sem additive');
+  if (!bogon || !bogonOk)
+    detalhes.push('node 1 divergente: exige deny + somente if-match ip-prefix BOGONS');
+  if (!mitigation || !mitigationOk)
+    detalhes.push(
+      'node 2 divergente: exige permit + somente apply extcommunity rt 268568:660, sem additive',
+    );
 
   // Baseline AGLINK (compatibilidade): a policy de referencia continua exigindo
   // node 10 intacto. Nao e um caminho separado de escrita — e a mesma checagem

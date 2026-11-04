@@ -6,6 +6,8 @@ import type {
 import {
   baselineRecordId,
   baselineReleaseMarker,
+  baselineRemovalIntent,
+  retainedBaseline,
   isBaselineRecordComplete,
 } from '../../infrastructure/bgp/mitigation/mitigation-baseline-record';
 import type { AutomationStore } from './automation-store';
@@ -26,7 +28,22 @@ export class AutomationMitigationBaselineStore implements MitigationBaselineStor
 
   async save(record: MitigationBaselineRecord): Promise<void> {
     await this.store.transaction(async (tx) => {
+      const old = await tx.get<{ version?: number }>(baselineRecordId(record));
+      if (old?.version === 2) throw Error('MITIGATION_BASELINE_REMOVAL_PENDING');
       await tx.put(baselineRecordId(record), 'mitigation-baseline', 'ACTIVE', record);
+    });
+  }
+
+  async beginRemoval(scope: MitigationBaselineScope, requestId?: string): Promise<void> {
+    await this.store.transaction(async (tx) => {
+      const id = baselineRecordId(scope);
+      const old = await tx.get(id);
+      await tx.put(
+        id,
+        'mitigation-baseline',
+        'REMOVING',
+        baselineRemovalIntent(scope, old, requestId),
+      );
     });
   }
 
@@ -44,11 +61,12 @@ export class AutomationMitigationBaselineStore implements MitigationBaselineStor
    */
   async release(scope: MitigationBaselineScope): Promise<void> {
     await this.store.transaction(async (tx) => {
+      const old = await tx.get(baselineRecordId(scope));
       await tx.put(
         baselineRecordId(scope),
         'mitigation-baseline',
         'RELEASED',
-        baselineReleaseMarker(scope),
+        baselineReleaseMarker(scope, retainedBaseline(old) ?? undefined),
       );
     });
   }

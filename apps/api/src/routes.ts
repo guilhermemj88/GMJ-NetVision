@@ -942,11 +942,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     const { peerAddress } = query;
     if (peerAddress === null || query.addressFamily === null) return null;
     const profile = await mitigationRepository.getProfile(query.profileId);
-    if (
-      !profile ||
-      profile.deviceId !== query.deviceId ||
-      profile.policyName !== query.policyName
-    )
+    if (!profile || profile.deviceId !== query.deviceId || profile.policyName !== query.policyName)
       return null;
     const peers = await mitigationRepository.listProfilePeers(profile.id);
     if (!peers.some((peer) => peer.peerAddress === peerAddress)) return null;
@@ -1303,12 +1299,26 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     if (!bandwidthBps) return false;
     if (lifecycleSettings.enabled) {
       const host = await hosts.getHost(profile.deviceId);
-      if (!host || (!lifecycleSettings.expansionEnabled && host.hostname !== SINGLE_AUTO_PILOT.hostname)) return false;
+      if (
+        !host ||
+        (!lifecycleSettings.expansionEnabled && host.hostname !== SINGLE_AUTO_PILOT.hostname)
+      )
+        return false;
       const bgp = await mitigationSsh.readBgpConfiguration(host);
       const physical = await mitigationSsh.readMitigationConfiguration(host);
       if (lifecycleSettings.expansionEnabled) {
-        if (!autoExpansionPhysicalScopeMatches({ ...physical, bgpConfiguration: bgp.bgpConfiguration }, profile.policyName, currentPeers.map(p => p.peerAddress))) return false;
-      } else if (!singlePilotPhysicalScopeMatches({ ...physical, bgpConfiguration: bgp.bgpConfiguration })) return false;
+        if (
+          !autoExpansionPhysicalScopeMatches(
+            { ...physical, bgpConfiguration: bgp.bgpConfiguration },
+            profile.policyName,
+            currentPeers.map((p) => p.peerAddress),
+          )
+        )
+          return false;
+      } else if (
+        !singlePilotPhysicalScopeMatches({ ...physical, bgpConfiguration: bgp.bgpConfiguration })
+      )
+        return false;
     }
     const sample = await (lifecycleSettings.enabled ? bridgeSource : effectiveTraffic).sampleWithId(
       {
@@ -1319,7 +1329,16 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       },
     );
     if (lifecycleSettings.enabled)
-      return (lifecycleSettings.expansionEnabled || id === SINGLE_AUTO_PILOT.profileId) && pilotEvidenceValid(sample, evidence, Date.now(), (bandwidthBps * BigInt(profile.triggerPercent)) / 100n, { maxAgeMs: lifecycleSettings.maxAgeMs, maxGapMs: lifecycleSettings.maxGapMs });
+      return (
+        (lifecycleSettings.expansionEnabled || id === SINGLE_AUTO_PILOT.profileId) &&
+        pilotEvidenceValid(
+          sample,
+          evidence,
+          Date.now(),
+          (bandwidthBps * BigInt(profile.triggerPercent)) / 100n,
+          { maxAgeMs: lifecycleSettings.maxAgeMs, maxGapMs: lifecycleSettings.maxGapMs },
+        )
+      );
     if (!matchesAutoEvidence(sample, evidence, samplingForProfile(id), Date.now())) return false;
     return sample.bps > (bandwidthBps * BigInt(profile.triggerPercent)) / 100n;
   };
@@ -1485,7 +1504,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       const profile = await mitigationRepository.getProfile(id);
       if (!profile) return null;
       const host = await hosts.getHost(profile.deviceId);
-      if (lifecycleSettings.enabled && !lifecycleSettings.expansionEnabled && host?.hostname !== SINGLE_AUTO_PILOT.hostname) return null;
+      if (
+        lifecycleSettings.enabled &&
+        !lifecycleSettings.expansionEnabled &&
+        host?.hostname !== SINGLE_AUTO_PILOT.hostname
+      )
+        return null;
       const clientBinding = host
         ? resolveAutoClientBinding(
             {
@@ -1524,6 +1548,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       };
     };
     lifecycle = new AutoMitigationLifecycle({
+      scopeLock: mitigationScopeLock,
+      readPolicy: async (t) => {
+        const host = await hosts.getHost(t.deviceId);
+        if (!host || !mitigationLiveExecutor.enabledFor(host))
+          throw Error('RECONCILIATION_READ_UNAVAILABLE');
+        return mitigationLiveExecutor.readRoutePolicy(host, t.policyName!);
+      },
       ...(lifecycleSettings.enabled ? { pilotTraffic: bridgeSource } : {}),
       store: automationStore,
       config: () => ({

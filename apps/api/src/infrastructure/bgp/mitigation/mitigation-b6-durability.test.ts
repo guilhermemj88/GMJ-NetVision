@@ -86,10 +86,7 @@ class FakeSsh implements MitigationSshPort {
   }
 }
 
-function executor(
-  ssh: FakeSsh,
-  baseline?: MitigationBaselineStore,
-): HuaweiMitigationExecutor {
+function executor(ssh: FakeSsh, baseline?: MitigationBaselineStore): HuaweiMitigationExecutor {
   return new HuaweiMitigationExecutor({
     ssh,
     config: { executor: 'HUAWEI', liveWriteEnabled: true, allowedDeviceIds: [DEVICE_ID] },
@@ -140,9 +137,9 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
     );
     expect(preflight.ok).toBe(false);
 
-    await expect(
-      exec.activate(device(), activation(preflight)),
-    ).rejects.toThrow(/MITIGATION_BASELINE_RECORD_UNAVAILABLE/);
+    await expect(exec.activate(device(), activation(preflight))).rejects.toThrow(
+      /MITIGATION_BASELINE_RECORD_UNAVAILABLE/,
+    );
     expect(ssh.applied).toHaveLength(0);
   });
 
@@ -152,9 +149,9 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
     const preflight = await exec.preflight(device(), { ...ACTIVATE_INPUT });
 
     expect(preflight.ok).toBe(false);
-    await expect(
-      exec.activate(device(), activation(preflight)),
-    ).rejects.toThrow(/MITIGATION_BASELINE_RECORD_UNAVAILABLE/);
+    await expect(exec.activate(device(), activation(preflight))).rejects.toThrow(
+      /MITIGATION_BASELINE_RECORD_UNAVAILABLE/,
+    );
     expect(ssh.applied).toHaveLength(0);
   });
 
@@ -168,14 +165,15 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
       load: async () => {
         throw new Error('ECONNREFUSED 5432');
       },
+      beginRemoval: async () => undefined,
       release: async () => undefined,
     };
     const exec = executor(ssh, offline);
     const preflight = await exec.preflight(device(), { ...ACTIVATE_INPUT });
 
-    await expect(
-      exec.activate(device(), activation(preflight)),
-    ).rejects.toThrow(/MITIGATION_BASELINE_RECORD_UNAVAILABLE/);
+    await expect(exec.activate(device(), activation(preflight))).rejects.toThrow(
+      /MITIGATION_BASELINE_RECORD_UNAVAILABLE/,
+    );
     expect(ssh.applied).toHaveLength(0);
   });
 
@@ -187,14 +185,15 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
         throw new Error('write rejected');
       },
       load: async () => null,
+      beginRemoval: async () => undefined,
       release: async () => undefined,
     };
     const exec = executor(ssh, failingSave);
     const preflight = await exec.preflight(device(), { ...ACTIVATE_INPUT });
 
-    await expect(
-      exec.activate(device(), activation(preflight)),
-    ).rejects.toThrow(/MITIGATION_BASELINE_RECORD_UNAVAILABLE/);
+    await expect(exec.activate(device(), activation(preflight))).rejects.toThrow(
+      /MITIGATION_BASELINE_RECORD_UNAVAILABLE/,
+    );
     expect(ssh.applied).toHaveLength(0);
   });
 
@@ -204,14 +203,15 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
       durable: true,
       save: async () => undefined,
       load: async () => null,
+      beginRemoval: async () => undefined,
       release: async () => undefined,
     };
     const exec = executor(ssh, amnesic);
     const preflight = await exec.preflight(device(), { ...ACTIVATE_INPUT });
 
-    await expect(
-      exec.activate(device(), activation(preflight)),
-    ).rejects.toThrow(/registro nao confirmado apos a gravacao/);
+    await expect(exec.activate(device(), activation(preflight))).rejects.toThrow(
+      /registro nao confirmado apos a gravacao/,
+    );
     expect(ssh.applied).toHaveLength(0);
   });
 
@@ -225,9 +225,9 @@ describe('B6 - escrita real exige armazenamento DURAVEL do baseline', () => {
     const preflight = await exec.preflight(device(), { ...ACTIVATE_INPUT });
     expect(preflight.ok).toBe(true);
 
-    await expect(
-      exec.activate(device(), activation(preflight)),
-    ).rejects.toThrow(/MITIGATION_BASELINE_DIVERGED/);
+    await expect(exec.activate(device(), activation(preflight))).rejects.toThrow(
+      /MITIGATION_BASELINE_DIVERGED/,
+    );
     expect(ssh.applied).toHaveLength(0);
   });
 

@@ -60,10 +60,7 @@ describe('inspectPolicyMitigation — nodes 1/2 reservados pelo contrato IPv4', 
     ['node 1 com lista diferente', [header('deny', 1), ' if-match ip-prefix OUTRA']],
     ['node 1 permit', [header('permit', 1), ' if-match ip-prefix BOGONS']],
     ['node 2 com if-match', [header('permit', 2), ' if-match ip-prefix CLIENTE', rtLine]],
-    [
-      'node 2 com local-preference',
-      [header('permit', 2), ' apply local-preference 1100', rtLine],
-    ],
+    ['node 2 com local-preference', [header('permit', 2), ' apply local-preference 1100', rtLine]],
     ['node 2 com additive', [header('permit', 2), ` apply extcommunity rt ${RT} additive`]],
     ['node 2 com RT extra', [header('permit', 2), ` apply extcommunity rt ${RT} rt 268568:140`]],
     ['node 2 com BOGONS', [header('permit', 2), ' if-match ip-prefix BOGONS']],
@@ -112,22 +109,16 @@ describe('inspectPolicyMitigation — nodes 1/2 reservados pelo contrato IPv4', 
     expect(rtOnly.ambiguousNodes).toEqual([expect.objectContaining({ node: 50 })]);
 
     // Um `deny BOGONS` cedo tambem e politica legitima do cliente.
-    const bogonOnly = [
-      header('permit', 10),
-      ' if-match ip-prefix BOGONS',
-      header('deny', 1000),
-    ].join('\n');
+    const bogonOnly = [header('deny', 5), ' if-match ip-prefix BOGONS', header('deny', 1000)].join(
+      '\n',
+    );
     expect(inspect(bogonOnly)).toMatchObject({ state: 'NORMAL', pair: null, partialNodes: [] });
   });
 
   it('meio-par legado IDENTIFICAVEL (assinatura do contrato antigo) bloqueia', () => {
     // if-match da prefix-list de ALVOS de mitigacao + RT no mesmo node, sem o
     // BOGONS: essa combinacao e a assinatura do node 2 antigo, nao politica comum.
-    const halfLegacy = [
-      header('permit', 6),
-      ' if-match ip-prefix PREFIX8to24',
-      rtLine,
-    ].join('\n');
+    const halfLegacy = [header('permit', 6), ' if-match ip-prefix PREFIX8to24', rtLine].join('\n');
     const result = inspect(halfLegacy);
     expect(result.state).toBe('RECONCILIATION_REQUIRED');
     expect(result.pair).toBeNull();
@@ -147,7 +138,9 @@ describe('inspectPolicyMitigation — nodes 1/2 reservados pelo contrato IPv4', 
     const result = inspect(legacyPair);
     expect(result.state).toBe('RECONCILIATION_REQUIRED');
     expect(result.partialNodes.map((entry) => entry.node).sort()).toEqual([5, 6]);
-    expect(result.partialNodes.every((entry) => entry.reason === 'mitigation pair outside nodes 1/2')).toBe(true);
+    expect(
+      result.partialNodes.every((entry) => entry.reason === 'mitigation pair outside nodes 1/2'),
+    ).toBe(true);
   });
 
   it('node 0 bloqueia a policy: precedencia nao autorizada sobre o par reservado', () => {
@@ -162,9 +155,7 @@ describe('inspectPolicyMitigation — nodes 1/2 reservados pelo contrato IPv4', 
     expect(result.state).toBe('RECONCILIATION_REQUIRED');
     expect(result.pair).toBeNull();
     expect(result.precedenceNodes).toEqual([0]);
-    expect(result.partialNodes).toEqual([
-      expect.objectContaining({ node: 0, action: 'permit' }),
-    ]);
+    expect(result.partialNodes).toEqual([expect.objectContaining({ node: 0, action: 'permit' })]);
   });
 
   it('policy ausente no read-back nao e conclusiva', () => {
@@ -176,9 +167,12 @@ describe('inspectPolicyMitigation — nodes 1/2 reservados pelo contrato IPv4', 
   });
 
   it('nodes 1 e 3 (par fora do contrato) nao viram MITIGATED', () => {
-    const text = [header('deny', 1), ' if-match ip-prefix BOGONS', header('permit', 3), rtLine].join(
-      '\n',
-    );
+    const text = [
+      header('deny', 1),
+      ' if-match ip-prefix BOGONS',
+      header('permit', 3),
+      rtLine,
+    ].join('\n');
     const result = inspect(text);
     expect(result.state).toBe('RECONCILIATION_REQUIRED');
     expect(result.mitigationNodes).toEqual([]);

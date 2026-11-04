@@ -1,6 +1,10 @@
 import { derivePreservedClauses, type PreservedClauses } from './mitigation-policy-clauses';
 import {
   baselineRecordId,
+  baselineRemovalIntent,
+  baselineReleaseMarker,
+  isBaselineRecordComplete,
+  retainedBaseline,
   type MitigationBaselineRecord,
   type MitigationBaselineScope,
   type MitigationBaselineStore,
@@ -48,16 +52,38 @@ export class FakeDurableBaselineStore implements MitigationBaselineStore {
   constructor(private readonly backend: FakeDurableBackend) {}
 
   async save(record: MitigationBaselineRecord): Promise<void> {
+    const old = this.backend.rows.get(baselineRecordId(record));
+    if (old && (JSON.parse(old) as { version?: number }).version === 2)
+      throw Error('MITIGATION_BASELINE_REMOVAL_PENDING');
     this.backend.rows.set(baselineRecordId(record), JSON.stringify(record));
   }
 
   async load(scope: MitigationBaselineScope): Promise<MitigationBaselineRecord | null> {
     const raw = this.backend.rows.get(baselineRecordId(scope));
-    return raw === undefined ? null : (JSON.parse(raw) as MitigationBaselineRecord);
+    const value: unknown = raw === undefined ? null : JSON.parse(raw);
+    return isBaselineRecordComplete(value as MitigationBaselineRecord)
+      ? (value as MitigationBaselineRecord)
+      : null;
+  }
+
+  async beginRemoval(scope: MitigationBaselineScope, requestId?: string): Promise<void> {
+    const id = baselineRecordId(scope);
+    const raw = this.backend.rows.get(id);
+    this.backend.rows.set(
+      id,
+      JSON.stringify(baselineRemovalIntent(scope, raw ? JSON.parse(raw) : null, requestId)),
+    );
   }
 
   async release(scope: MitigationBaselineScope): Promise<void> {
-    this.backend.rows.delete(baselineRecordId(scope));
+    const id = baselineRecordId(scope);
+    const raw = this.backend.rows.get(id);
+    this.backend.rows.set(
+      id,
+      JSON.stringify(
+        baselineReleaseMarker(scope, retainedBaseline(raw ? JSON.parse(raw) : null) ?? undefined),
+      ),
+    );
   }
 }
 

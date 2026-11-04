@@ -212,6 +212,7 @@ describe('B5 - fingerprint duravel dos nodes permanentes', () => {
       durable: true,
       save: async () => undefined,
       load: async () => ({ version: 1, nodes: [] }) as unknown as MitigationBaselineRecord,
+      beginRemoval: async () => undefined,
       release: async () => undefined,
     };
     const result = await executor(ssh, corrupt).preflight(device(), { ...REMOVE_INPUT });

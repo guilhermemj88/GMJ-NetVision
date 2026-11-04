@@ -1,9 +1,7 @@
 import { exactMitigationNodes, precedenceConflictNodes } from './mitigation-contract';
 import { parseHuaweiRoutePolicyNodesLenient } from './huawei-bgp-policy-parser';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
-import {
-  bgpPlanLabels,
-} from './aglink-bgp-plan';
+import { bgpPlanLabels } from './aglink-bgp-plan';
 
 // ESTRUTURA FISICA de mitigacao de UMA route-policy, a partir do read-back REAL
 // (`display route-policy`). A classificacao e deliberadamente conservadora:
@@ -130,7 +128,7 @@ export function inspectPolicyMitigation(
   // legitimo. O que nao pode existir fora de 1/2 e o par legado completo ou o
   // node legado de mitigacao sem o BOGONS (meio-par identificavel).
   const legacyPairOutside =
-    outsideBogon.length > 0
+    outsideBogon.length > 0 && (legacySignature.length > 0 || canonicalPermitOutside.length > 0)
       ? [...outsideBogon, ...legacySignature, ...canonicalPermitOutside]
       : [];
   // Informativo (nao bloqueia): RT de mitigacao fora de 1/2 sem a assinatura do
@@ -160,12 +158,26 @@ export function inspectPolicyMitigation(
       });
     } else if (node.node === 1) {
       if (exact.bogonOk) bogonNodes.push(1);
-      else partialNodes.push({node: 1, action: node.action, reason: 'reserved node occupied by noncanonical configuration'});
+      else
+        partialNodes.push({
+          node: 1,
+          action: node.action,
+          reason: 'reserved node occupied by noncanonical configuration',
+        });
     } else if (node.node === 2) {
       if (exact.mitigationOk) mitigationNodes.push(2);
-      else partialNodes.push({node: 2, action: node.action, reason: 'reserved node occupied by noncanonical configuration'});
+      else
+        partialNodes.push({
+          node: 2,
+          action: node.action,
+          reason: 'reserved node occupied by noncanonical configuration',
+        });
     } else if (legacyPairOutside.some((entry) => entry.node === node.node)) {
-      partialNodes.push({node: node.node, action: node.action, reason: 'mitigation pair outside nodes 1/2'});
+      partialNodes.push({
+        node: node.node,
+        action: node.action,
+        reason: 'mitigation pair outside nodes 1/2',
+      });
     } else if (legacySignature.some((entry) => entry.node === node.node)) {
       partialNodes.push({
         node: node.node,
@@ -205,9 +217,10 @@ export function inspectPolicyMitigation(
       ambiguousNodes,
       precedenceNodes: precedence,
       pair: null,
-      detail: ambiguousNodes.length === 0
-        ? 'nenhum node de mitigacao presente na policy'
-        : `nenhum node de mitigacao presente; RT de mitigacao em node permanente (informativo): [${ambiguousNodes.map((entry) => entry.node).join(', ')}]`,
+      detail:
+        ambiguousNodes.length === 0
+          ? 'nenhum node de mitigacao presente na policy'
+          : `nenhum node de mitigacao presente; RT de mitigacao em node permanente (informativo): [${ambiguousNodes.map((entry) => entry.node).join(', ')}]`,
     };
   }
 
