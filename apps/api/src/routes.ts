@@ -88,6 +88,10 @@ import {
   withSingleConnection,
   type FastPollerLeaseClient,
 } from './infrastructure/snmp/fast-poller-lease';
+import {
+  createSimulatedFastTrafficReader,
+  fastReaderModeFromEnv,
+} from './infrastructure/snmp/fast-reader-simulation';
 import { PrismaFastTrafficStore } from './infrastructure/snmp/prisma-fast-traffic-store';
 import {
   describeAutoAllEligibility,
@@ -1205,6 +1209,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
 
   const fastConfig = fastPollerConfig();
+  const fastReaderMode = fastReaderModeFromEnv(process.env);
   // Posse unica: AUTO-ALL ENFORCE NUNCA depende de flag opcional — descoberta
   // dinamica sem lease permitiria dois coletores medindo o mesmo ifIndex.
   const fastSingleOwner =
@@ -1290,7 +1295,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         hosts,
         direction: (p) => fastDirection(p),
       }),
-    reader: new FastSnmpReader(hosts, new SnmpClientImpl(fastConfig.timeoutMs, fastConfig.retries)),
+    // Leitor: SNMP real por padrao; SIMULATED so com MITIGATION_FAST_READER
+    // explicito e fora de producao (guardas em fastReaderModeFromEnv). O poller,
+    // o motor e o lifecycle sao os mesmos nos dois casos.
+    reader:
+      fastReaderMode === 'SIMULATED'
+        ? createSimulatedFastTrafficReader()
+        : new FastSnmpReader(hosts, new SnmpClientImpl(fastConfig.timeoutMs, fastConfig.retries)),
     store: fastStore,
     logger: (message, meta) => app.log.info(meta, message),
   });
