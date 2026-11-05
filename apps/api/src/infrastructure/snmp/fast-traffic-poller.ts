@@ -14,6 +14,7 @@ import type {
   FastTrafficReader,
   FastTrafficStore,
   FastTrafficTarget,
+  FastTrafficObserver,
 } from './fast-traffic-types';
 
 export interface FastPollerConfig {
@@ -151,6 +152,7 @@ export class FastTrafficPoller {
       listTargets(): Promise<FastTrafficTarget[]>;
       reader: FastTrafficReader;
       store: FastTrafficStore;
+      observer?: FastTrafficObserver;
       now?: () => Date;
       logger?: (message: string, meta: Record<string, unknown>) => void;
     },
@@ -301,6 +303,7 @@ export class FastTrafficPoller {
     }
     this.overLimit = overLimit;
     this.lastError = overLimit.size > 0 ? 'FAST_DEVICE_INTERFACE_LIMIT' : null;
+    this.observe(() => this.deps.observer?.refresh([...this.schedules.values()].flatMap((s) => s.targets)));
   }
 
   private async poll(schedule: DeviceSchedule): Promise<void> {
@@ -354,6 +357,7 @@ export class FastTrafficPoller {
                 Number(p.thresholdBps),
             );
           suspect ||= high;
+          this.observe(() => this.deps.observer?.record(t, observation));
           this.updateEntry(t, observation, high);
         }
       } catch (error) {
@@ -405,6 +409,7 @@ export class FastTrafficPoller {
   }
 
   private invalidate(t: FastTrafficTarget, quality: string): void {
+    this.observe(() => this.deps.observer?.unavailable(t));
     this.baseline.delete(t.interfaceId);
     this.epochs.set(t.interfaceId, randomUUID());
     const old = this.entries.get(t.interfaceId);
@@ -475,6 +480,13 @@ export class FastTrafficPoller {
   }
 
   private intervalStats(id: string) { return this.stats(this.intervals.get(id) ?? []); }
+  private observe(callback: () => void): void {
+    try {
+      callback();
+    } catch {
+      // Informational Growth must never change quality, persistence, scheduling or AUTO.
+    }
+  }
   private stats(values: number[]) {
     const sorted = [...values].sort((a, b) => a - b);
     return {

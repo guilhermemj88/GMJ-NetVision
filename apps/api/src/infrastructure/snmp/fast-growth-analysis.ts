@@ -82,8 +82,12 @@ export class FastGrowthTracker {
   private readonly frozen = new Map<string, GrowthAnalysis>();
 
   record(interfaceId: string, atMs: number, utilizationPct: number | null): void {
+    if (!Number.isFinite(atMs)) return;
     const buffer = this.samples.get(interfaceId) ?? [];
-    buffer.push({ atMs, utilizationPct });
+    if (buffer.length && atMs <= buffer.at(-1)!.atMs) return;
+    const valid = utilizationPct !== null && Number.isFinite(utilizationPct) && utilizationPct >= 0;
+    buffer.push({ atMs, utilizationPct: valid ? utilizationPct : null });
+    while (buffer.length && buffer[0]!.atMs < atMs - GROWTH_WINDOW_MS) buffer.shift();
     // Circular: mantem no maximo 60 amostras (5 min a 5 s).
     while (buffer.length > GROWTH_WINDOW_SAMPLES) buffer.shift();
     this.samples.set(interfaceId, buffer);
@@ -101,7 +105,11 @@ export class FastGrowthTracker {
     const recent = buffer.filter((s) => s.atMs >= now - GROWTH_WINDOW_MS);
     const valid = recent.filter((s) => s.utilizationPct !== null && Number.isFinite(s.utilizationPct));
     if (valid.length < 2 || current?.utilizationPct === null || current === undefined)
-      return { ...emptyAnalysis(), samples5m: valid.length };
+      return {
+        ...emptyAnalysis(),
+        currentUtilizationPct: current?.utilizationPct == null ? null : round1(current.utilizationPct),
+        samples5m: valid.length,
+      };
 
     const currentPct = current.utilizationPct as number;
     // Baseline exclui a amostra atual: a referencia e o ANTES do disparo.
@@ -149,7 +157,7 @@ export class FastGrowthTracker {
   ): GrowthAnalysis {
     const existing = this.frozen.get(interfaceId);
     if (existing) return existing;
-    const analysis = { ...this.analyze(interfaceId, thresholds, nowMs), frozen: true };
+    const analysis = Object.freeze({ ...this.analyze(interfaceId, thresholds, nowMs), frozen: true });
     this.frozen.set(interfaceId, analysis);
     return analysis;
   }
@@ -157,6 +165,11 @@ export class FastGrowthTracker {
   /** Libera o congelamento quando o cliente volta ao normal. */
   clearFreeze(interfaceId: string): void {
     this.frozen.delete(interfaceId);
+  }
+
+  /** Missing telemetry breaks history continuity, never proves recovery. */
+  clearSamples(interfaceId: string): void {
+    this.samples.delete(interfaceId);
   }
 
   frozenAnalysis(interfaceId: string): GrowthAnalysis | null {

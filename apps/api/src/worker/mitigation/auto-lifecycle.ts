@@ -173,6 +173,8 @@ interface Episode {
   at: number;
 }
 export interface LifecycleDeps {
+  /** Presentation only, before durable enqueue; failure cannot change lifecycle. */
+  enrichNotification?: (notification: MitigationNotification, direction?: 'rx' | 'tx' | null, confirmedAtMs?: number | null) => MitigationNotification;
   /** Required only for explicit, non-physical release reconciliation. */
   scopeLock?: PolicyScopeLock;
   readPolicy?: (target: LifecycleTarget) => Promise<string>;
@@ -630,6 +632,7 @@ export class AutoMitigationLifecycle {
           good ? 'MITIGATION_VERIFIED' : 'MITIGATION_FAILED',
           s.operationId,
           !real,
+          s.lastSample,
         ),
         this.now(),
       );
@@ -1183,7 +1186,7 @@ export class AutoMitigationLifecycle {
       await tx.put(aliasKey, 'episode-alias', 'MAPPED', { id: e.id });
       return e;
     });
-    const n = await build({ ...d, episodeId: ep.id });
+    const n = this.enrich(await build({ ...d, episodeId: ep.id }));
     return {
       delivered: await this.deps.store.transaction((tx) => enqueueNotification(tx, n, this.now())),
     };
@@ -1234,7 +1237,7 @@ export class AutoMitigationLifecycle {
     id: string,
     simulation: boolean,
   ): MitigationNotification {
-    return {
+    return this.enrich({
       event,
       eventId: id,
       profileId: r.profileId,
@@ -1259,7 +1262,7 @@ export class AutoMitigationLifecycle {
       mitigationNode: r.mitigationNode,
       rt: r.rt,
       occurredAt: new Date(this.now()).toISOString(),
-    };
+    });
   }
   private notification(
     t: LifecycleTarget,
@@ -1267,8 +1270,9 @@ export class AutoMitigationLifecycle {
     event: MitigationNotification['event'],
     id: string,
     simulation: boolean,
+    confirmedAtMs?: number | null,
   ): MitigationNotification {
-    return {
+    return this.enrich({
       event,
       eventId: id,
       profileId: t.profileId,
@@ -1291,6 +1295,14 @@ export class AutoMitigationLifecycle {
       mitigationNode: t.mitigationNode,
       rt: t.rt,
       occurredAt: new Date(this.now()).toISOString(),
-    };
+    }, event === 'MITIGATION_VERIFIED' ? t.activationDirection ?? t.direction : t.direction, confirmedAtMs);
+  }
+
+  private enrich(notification: MitigationNotification, direction?: 'rx' | 'tx' | null, confirmedAtMs?: number | null): MitigationNotification {
+    try {
+      return this.deps.enrichNotification?.(notification, direction, confirmedAtMs) ?? notification;
+    } catch {
+      return notification;
+    }
   }
 }

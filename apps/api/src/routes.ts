@@ -81,6 +81,7 @@ import type { PublicViewRecord } from './infrastructure/persistence/public-view-
 import { SnmpClientImpl } from './infrastructure/snmp/snmp-client-impl';
 import { SnmpPoller } from './infrastructure/snmp/snmp-poller';
 import { FastTrafficPoller, fastPollerConfig } from './infrastructure/snmp/fast-traffic-poller';
+import { FastGrowthNotifications } from './application/fast-growth-notifications';
 import { FastSnmpReader } from './infrastructure/snmp/fast-snmp-reader';
 import {
   createFastPollerLease,
@@ -833,6 +834,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     media: mediaService,
     send: webhookSender,
   });
+  const fastConfig = fastPollerConfig();
+  const fastGrowth = new FastGrowthNotifications(fastConfig.maxGapMs, (profileId) =>
+    isFastRoutedProfile(profileId, { bridge: bridgeConfig, embedded: fastConfig }) ||
+    (lifecycleSettings.enabled && bridgeConfig.mode !== 'OFF' && bridgeConfig.profileIds.includes(profileId)),
+  );
   // Ligacao tardia: o transporte resolve URL/token pela camada de midias.
   const lifecycleSettings = lifecycleConfig(process.env);
   const persistenceEnabled =
@@ -987,7 +993,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         // Automatic result and outbox entry commit together in the journal.
         if (lifecycle && /^(auto-activate-|auto-remove-)/.test(notification.eventId ?? ''))
           return Promise.resolve({ published: false, skipped: true });
-        return (durableOutbox ?? mediaTransport).publish(notification);
+        return (durableOutbox ?? mediaTransport).publish(fastGrowth.enrich(notification));
       },
     },
     requireAutomaticAuthorization: lifecycleSettings.enabled,
@@ -1070,7 +1076,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   // Handler do alerta de deteccao: modulo testavel em application/.
   const publishBlockedDetection = createDetectionAlertPublisher({
     hosts,
-    transport: mediaTransport,
+    transport: { publish: (notification) => mediaTransport.publish(fastGrowth.enrich(notification)) },
   });
 
   // ---- Motor AUTO real: mesmo caminho canônico do ACTIVATE (UI/n8n) --------
@@ -1208,7 +1214,6 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     envDirections: autoDirections,
   });
 
-  const fastConfig = fastPollerConfig();
   const fastReaderMode = fastReaderModeFromEnv(process.env);
   // Posse unica: AUTO-ALL ENFORCE NUNCA depende de flag opcional — descoberta
   // dinamica sem lease permitiria dois coletores medindo o mesmo ifIndex.
@@ -1262,6 +1267,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     config: bridgeConfig,
     reader: bridgeReader,
     profile: (id) => bridgeProfiles.get(id) ?? null,
+    observer: (profile, row) => fastGrowth.recordBridge(profile, row),
   });
   const fastStore = new PrismaFastTrafficStore(prismaClient);
   /** Direcao unica para coleta e para o painel (nunca implicita por volume). */
@@ -1303,6 +1309,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         ? createSimulatedFastTrafficReader()
         : new FastSnmpReader(hosts, new SnmpClientImpl(fastConfig.timeoutMs, fastConfig.retries)),
     store: fastStore,
+    observer: fastGrowth,
     logger: (message, meta) => app.log.info(meta, message),
   });
   const legacyTraffic = new InterfaceTrafficSource(new PrismaInterfaceTrafficReader(prismaClient), {
@@ -1429,12 +1436,24 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
             profile: record,
             direction: resolved?.direction ?? null,
           });
+          const growthBandwidth = record?.bandwidthOverrideBps ?? record?.detectedBandwidthBps;
           bridgeProfiles.set(dto.id, {
             profileId: dto.id,
             deviceId: dto.deviceId,
             interfaceId: dto.interfaceId,
             direction: resolved?.direction ?? null,
             revision,
+            ...(record && growthBandwidth && growthBandwidth > 0n
+              ? { growth: {
+                  profileId: dto.id,
+                  direction: resolved?.direction ?? null,
+                  bandwidthBps: growthBandwidth,
+                  thresholdBps: (growthBandwidth * BigInt(record.triggerPercent ?? mitigationEngineConfig.triggerPercent)) / 100n,
+                  triggerPercent: record.triggerPercent ?? mitigationEngineConfig.triggerPercent,
+                  recoveryThresholdBps: (growthBandwidth * BigInt(record.recoveryPercent ?? mitigationEngineConfig.recoveryPercent)) / 100n,
+                  recoverySamples: record.recoverySamples ?? mitigationEngineConfig.recoverySamples,
+                } }
+              : {}),
           });
           return {
             ...(bridgeConfig.profileIds.includes(dto.id) ? { configurationKey: revision } : {}),
@@ -1608,6 +1627,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       };
     };
     lifecycle = new AutoMitigationLifecycle({
+      enrichNotification: (notification, direction, confirmedAtMs) => fastGrowth.enrich(notification, direction, confirmedAtMs),
       scopeLock: mitigationScopeLock,
       readPolicy: async (t) => {
         const host = await hosts.getHost(t.deviceId);

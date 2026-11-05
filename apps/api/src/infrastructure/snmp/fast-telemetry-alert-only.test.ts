@@ -76,7 +76,8 @@ describe('seleção de telemetria FAST independente do modo', () => {
     expect(targets).toHaveLength(1);
     expect(targets[0]).toMatchObject({ interfaceId: 'if-1', ifIndex: 287 });
     expect(targets[0]!.profiles).toEqual([
-      { profileId: 'p-alert', direction: 'tx', bandwidthBps: BW, thresholdBps: (BW * 90n) / 100n },
+      { profileId: 'p-alert', direction: 'tx', bandwidthBps: BW, thresholdBps: (BW * 90n) / 100n,
+        triggerPercent: 90 },
     ]);
     expect(p.mode).toBe('ALERT_ONLY');
   });

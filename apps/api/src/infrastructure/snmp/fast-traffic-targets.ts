@@ -163,6 +163,11 @@ export async function listFastTrafficTargets(
       direction: e.direction,
       bandwidthBps: e.bandwidthBps!,
       thresholdBps: (e.bandwidthBps! * BigInt(e.profile.triggerPercent)) / 100n,
+      triggerPercent: e.profile.triggerPercent,
+      ...(Number.isInteger(e.profile.recoveryPercent)
+        ? { recoveryThresholdBps: (e.bandwidthBps! * BigInt(e.profile.recoveryPercent)) / 100n }
+        : {}),
+      recoverySamples: e.profile.recoverySamples,
     });
     grouped.set(t.interfaceId, t);
   }

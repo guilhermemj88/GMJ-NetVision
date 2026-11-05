@@ -26,6 +26,10 @@ export interface FastTrafficTarget {
     direction: 'rx' | 'tx' | null;
     thresholdBps: bigint;
     bandwidthBps?: bigint;
+    /** Presentation metadata only; never used to authorize collection or AUTO. */
+    triggerPercent?: number;
+    recoveryThresholdBps?: bigint;
+    recoverySamples?: number;
   }>;
 }
 
@@ -65,4 +69,11 @@ export interface FastTrafficStore {
 export interface FastTrafficReader {
   /** A single batch GET: sysUpTime + HC octets, identity, state and continuity. */
   read(targets: FastTrafficTarget[]): Promise<FastCounterReading[]>;
+}
+
+/** Synchronous, best-effort observer of existing persisted measurements. */
+export interface FastTrafficObserver {
+  record(target: FastTrafficTarget, observation: FastTrafficObservation): void;
+  unavailable(target: FastTrafficTarget): void;
+  refresh(targets: FastTrafficTarget[]): void;
 }

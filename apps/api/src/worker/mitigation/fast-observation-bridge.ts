@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { FastTrafficObservation } from '../../infrastructure/snmp/fast-traffic-types';
+import type { FastTrafficObservation, FastTrafficTarget } from '../../infrastructure/snmp/fast-traffic-types';
 import { deriveFastTraffic } from '../../infrastructure/snmp/fast-traffic-rate';
 import type {
   MitigationTrafficSample,
@@ -108,6 +108,8 @@ export interface FastBridgeReader {
   snapshot(interfaceId: string, profileId: string): Promise<FastBridgeSnapshot>;
 }
 export interface FastBridgeProfile {
+  /** Optional Growth presentation metadata; excluded from all authorization checks. */
+  growth?: FastTrafficTarget['profiles'][number];
   profileId: string;
   deviceId: string;
   interfaceId: string | null;
@@ -138,6 +140,7 @@ export class FastObservationSource implements MitigationTrafficSource {
       config: FastBridgeConfig;
       reader: FastBridgeReader;
       profile(id: string): FastBridgeProfile | null;
+      observer?: (profile: FastBridgeProfile, row: FastTrafficObservation | null) => void;
       now?: () => Date;
     },
   ) {}
@@ -165,6 +168,11 @@ export class FastObservationSource implements MitigationTrafficSource {
         collectorReason,
         healthRechecked,
       });
+      try {
+        if (profile) this.deps.observer?.(profile, reason === null ? row : null);
+      } catch {
+        // An informational consumer must not change the bridge result or gates.
+      }
       if (reason || !row || !profile?.direction) return null;
       const raw = profile.direction === 'tx' ? row.txBps : row.rxBps;
       return {
