@@ -63,6 +63,72 @@ export interface MitigationWebhookPayload {
    * consumidores antigos ignoram o campo.
    */
   prefixes: string[] | null;
+  /**
+   * INFORMATIVO (n8n): analise de crescimento do trafego antes do limiar.
+   * Nunca participa de decisao, gate, lease ou estado ENFORCE. Ausente em
+   * eventos antigos — consumidores antigos ignoram o campo.
+   */
+  growth?: GrowthWebhookBlock | null;
+}
+
+export type GrowthClassificationDto = 'BRUSCO' | 'MODERADO' | 'GRADUAL_OU_ESTAVEL' | 'INDETERMINADO';
+
+export interface GrowthWebhookBlock {
+  baselineAverage5mPct: number | null;
+  currentUtilizationPct: number | null;
+  deltaPercentagePoints: number | null;
+  delta30sPercentagePoints: number | null;
+  growthClassification: GrowthClassificationDto;
+  samples5m: number;
+  samples30s: number;
+  /** Limiar REAL do perfil; nunca fixo no codigo. */
+  thresholdPct: number | null;
+  thresholdReachedAt: string | null;
+  trafficDirection: 'rx' | 'tx' | null;
+  /**
+   * Nunca inferido de utilizacao alta: so existe estado real por tras.
+   * `SIMULACAO` cobre observacao sem escrita BGP.
+   */
+  mitigationStatus: 'APLICADA' | 'NAO_APLICADA' | 'SIMULACAO' | 'DESCONHECIDA';
+  mitigationReason: string | null;
+  /** Mensagem humana pronta para o canal. */
+  message: string;
+}
+
+/** Mensagem humana do alerta — sem afirmar mitigacao que nao ocorreu. */
+export function buildGrowthMessage(input: {
+  customer: string | null;
+  currentUtilizationPct: number | null;
+  baselineAverage5mPct: number | null;
+  deltaPercentagePoints: number | null;
+  growthClassification: GrowthClassificationDto;
+  mitigationStatus: GrowthWebhookBlock['mitigationStatus'];
+}): string {
+  const who = input.customer ?? 'Cliente';
+  const now = input.currentUtilizationPct === null ? '—' : `${input.currentUtilizationPct}%`;
+  const before =
+    input.baselineAverage5mPct === null ? '—' : `${input.baselineAverage5mPct}%`;
+  const delta =
+    input.deltaPercentagePoints === null
+      ? '—'
+      : `${input.deltaPercentagePoints >= 0 ? '+' : ''}${input.deltaPercentagePoints}`;
+  const classification =
+    input.growthClassification === 'GRADUAL_OU_ESTAVEL'
+      ? 'GRADUAL'
+      : input.growthClassification;
+  const status =
+    input.mitigationStatus === 'APLICADA'
+      ? 'Mitigação aplicada.'
+      : input.mitigationStatus === 'SIMULACAO'
+        ? 'Alerta confirmado — mitigação não executada (simulação).'
+        : 'Alerta confirmado — mitigação não executada.';
+  return (
+    `${who} atingiu ${now} da banda contratada. ` +
+    `Média anterior de 5 minutos: ${before}. ` +
+    `Variação: ${delta} pontos percentuais. ` +
+    `Crescimento: ${classification}. ` +
+    `Motivo: limiar de utilização atingido. ${status}`
+  );
 }
 
 /** O sender recebe os headers prontos: o token vai em HEADER, nunca na URL. */
@@ -117,6 +183,7 @@ export function buildMitigationWebhookPayload(
     directionSource: notification.directionSource ?? null,
     fieldsUnavailable: notification.fieldsUnavailable ?? [],
     prefixes: notification.prefixes ?? null,
+    growth: (notification.growth as GrowthWebhookBlock | null | undefined) ?? null,
   };
 }
 

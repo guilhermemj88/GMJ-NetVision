@@ -73,6 +73,11 @@ export interface MitigationNotification {
   prefixes?: string[] | null;
   /** Sempre `true` nesta versão (SIMULATION_ONLY): nenhuma alteração foi feita. */
   simulation: boolean;
+  /**
+   * INFORMATIVO: analise de crescimento do trafego. O motor NUNCA le este
+   * campo para decidir — ele so viaja ate o transporte (n8n).
+   */
+  growth?: object | null;
   customer: string | null;
   device: string | null;
   interfaceName: string | null;
