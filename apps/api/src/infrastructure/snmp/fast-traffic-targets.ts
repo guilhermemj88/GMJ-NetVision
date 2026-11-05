@@ -1,6 +1,7 @@
 import type { MitigationProfileRecord } from '../bgp/mitigation/mitigation-repository';
 import type { FastSnmpHostPort } from './fast-snmp-reader';
 import type { FastTrafficTarget } from './fast-traffic-types';
+import { fastGrowthProfile } from './fast-growth-profile';
 
 /**
  * Seleção de TELEMETRIA: conceder observação não autoriza nada.
@@ -149,6 +150,9 @@ export async function listFastTrafficTargets(
   const grouped = new Map<string, FastTrafficTarget>();
   for (const e of await evaluate(deps)) {
     if (e.reasons.length > 0) continue;
+    // Invalid trigger configuration stays fail-closed for this profile only.
+    // A Float in the database must not abort collection for every other client.
+    if (!Number.isInteger(e.profile.triggerPercent) || e.profile.triggerPercent <= 0 || e.profile.triggerPercent > 100) continue;
     const networkInterface = e.networkInterface!;
     const t = grouped.get(networkInterface.id) ?? {
       deviceId: e.profile.deviceId,
@@ -158,16 +162,16 @@ export async function listFastTrafficTargets(
       speedBps: networkInterface.speedBps ? BigInt(networkInterface.speedBps) : null,
       profiles: [],
     };
-    t.profiles.push({
+    const growth = fastGrowthProfile({ profileId: e.profile.id, direction: e.direction,
+      bandwidthBps: e.bandwidthBps, triggerPercent: e.profile.triggerPercent,
+      recoveryPercent: e.profile.recoveryPercent, recoverySamples: e.profile.recoverySamples });
+    t.profiles.push(growth ?? {
       profileId: e.profile.id,
       direction: e.direction,
       bandwidthBps: e.bandwidthBps!,
       thresholdBps: (e.bandwidthBps! * BigInt(e.profile.triggerPercent)) / 100n,
       triggerPercent: e.profile.triggerPercent,
-      ...(Number.isInteger(e.profile.recoveryPercent)
-        ? { recoveryThresholdBps: (e.bandwidthBps! * BigInt(e.profile.recoveryPercent)) / 100n }
-        : {}),
-      recoverySamples: e.profile.recoverySamples,
+      growthEligible: false,
     });
     grouped.set(t.interfaceId, t);
   }

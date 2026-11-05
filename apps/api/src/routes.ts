@@ -82,6 +82,7 @@ import { SnmpClientImpl } from './infrastructure/snmp/snmp-client-impl';
 import { SnmpPoller } from './infrastructure/snmp/snmp-poller';
 import { FastTrafficPoller, fastPollerConfig } from './infrastructure/snmp/fast-traffic-poller';
 import { FastGrowthNotifications } from './application/fast-growth-notifications';
+import { fastGrowthEnabled, fastGrowthProfile } from './infrastructure/snmp/fast-growth-profile';
 import { FastSnmpReader } from './infrastructure/snmp/fast-snmp-reader';
 import {
   createFastPollerLease,
@@ -838,6 +839,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const fastGrowth = new FastGrowthNotifications(fastConfig.maxGapMs, (profileId) =>
     isFastRoutedProfile(profileId, { bridge: bridgeConfig, embedded: fastConfig }) ||
     (lifecycleSettings.enabled && bridgeConfig.mode !== 'OFF' && bridgeConfig.profileIds.includes(profileId)),
+    () => fastGrowthEnabled(),
   );
   // Ligacao tardia: o transporte resolve URL/token pela camada de midias.
   const lifecycleSettings = lifecycleConfig(process.env);
@@ -1076,7 +1078,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   // Handler do alerta de deteccao: modulo testavel em application/.
   const publishBlockedDetection = createDetectionAlertPublisher({
     hosts,
-    transport: { publish: (notification) => mediaTransport.publish(fastGrowth.enrich(notification)) },
+    transport: mediaTransport,
+    enrichNotification: (notification, decision) => fastGrowth.enrich(notification, decision.direction, Date.parse(decision.sampleAt ?? decision.at)),
   });
 
   // ---- Motor AUTO real: mesmo caminho canônico do ACTIVATE (UI/n8n) --------
@@ -1437,23 +1440,19 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
             direction: resolved?.direction ?? null,
           });
           const growthBandwidth = record?.bandwidthOverrideBps ?? record?.detectedBandwidthBps;
+          const growth = record ? fastGrowthProfile({
+            profileId: dto.id, direction: resolved?.direction ?? null, bandwidthBps: growthBandwidth,
+            triggerPercent: record.triggerPercent ?? mitigationEngineConfig.triggerPercent,
+            recoveryPercent: record.recoveryPercent ?? mitigationEngineConfig.recoveryPercent,
+            recoverySamples: record.recoverySamples ?? mitigationEngineConfig.recoverySamples,
+          }) : undefined;
           bridgeProfiles.set(dto.id, {
             profileId: dto.id,
             deviceId: dto.deviceId,
             interfaceId: dto.interfaceId,
             direction: resolved?.direction ?? null,
             revision,
-            ...(record && growthBandwidth && growthBandwidth > 0n
-              ? { growth: {
-                  profileId: dto.id,
-                  direction: resolved?.direction ?? null,
-                  bandwidthBps: growthBandwidth,
-                  thresholdBps: (growthBandwidth * BigInt(record.triggerPercent ?? mitigationEngineConfig.triggerPercent)) / 100n,
-                  triggerPercent: record.triggerPercent ?? mitigationEngineConfig.triggerPercent,
-                  recoveryThresholdBps: (growthBandwidth * BigInt(record.recoveryPercent ?? mitigationEngineConfig.recoveryPercent)) / 100n,
-                  recoverySamples: record.recoverySamples ?? mitigationEngineConfig.recoverySamples,
-                } }
-              : {}),
+            ...(growth ? { growth } : {}),
           });
           return {
             ...(bridgeConfig.profileIds.includes(dto.id) ? { configurationKey: revision } : {}),

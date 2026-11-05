@@ -1186,7 +1186,7 @@ export class AutoMitigationLifecycle {
       await tx.put(aliasKey, 'episode-alias', 'MAPPED', { id: e.id });
       return e;
     });
-    const n = this.enrich(await build({ ...d, episodeId: ep.id }));
+    const n = this.enrich(await build({ ...d, episodeId: ep.id }), d.direction, Date.parse(d.sampleAt ?? d.at));
     return {
       delivered: await this.deps.store.transaction((tx) => enqueueNotification(tx, n, this.now())),
     };

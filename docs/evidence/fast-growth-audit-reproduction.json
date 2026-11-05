@@ -1,0 +1,78 @@
+{
+  "auditedCommit": "97622af",
+  "externalClaudeHarnessProvided": false,
+  "F1": {
+    "reproduced": true,
+    "original": {
+      "baselineAverage5mPct": 20,
+      "currentUtilizationPct": 95,
+      "deltaPercentagePoints": 75,
+      "delta30sPercentagePoints": 75,
+      "growthClassification": "BRUSCO",
+      "samples5m": 12,
+      "samples30s": 2,
+      "thresholdPct": 95,
+      "thresholdReachedAt": "2026-11-05T12:01:00.000Z",
+      "trafficDirection": "tx",
+      "mitigationStatus": "SIMULACAO",
+      "mitigationReason": null,
+      "message": "Crescimento informativo: BRUSCO."
+    },
+    "afterTenMinuteGap": {
+      "baselineAverage5mPct": 20,
+      "currentUtilizationPct": 95,
+      "deltaPercentagePoints": 75,
+      "delta30sPercentagePoints": 75,
+      "growthClassification": "BRUSCO",
+      "samples5m": 12,
+      "samples30s": 2,
+      "thresholdPct": 95,
+      "thresholdReachedAt": "2026-11-05T12:01:00.000Z",
+      "trafficDirection": "tx",
+      "mitigationStatus": "SIMULACAO",
+      "mitigationReason": null,
+      "message": "Crescimento informativo: BRUSCO."
+    }
+  },
+  "F2": {
+    "reproduced": true,
+    "recoveryPercent": 70.5,
+    "missingRecoveryThreshold": true,
+    "secondEpisode": {
+      "baselineAverage5mPct": 20,
+      "currentUtilizationPct": 95,
+      "deltaPercentagePoints": 75,
+      "delta30sPercentagePoints": 75,
+      "growthClassification": "BRUSCO",
+      "samples5m": 12,
+      "samples30s": 2,
+      "thresholdPct": 95,
+      "thresholdReachedAt": "2026-11-05T12:01:00.000Z",
+      "trafficDirection": "tx",
+      "mitigationStatus": "SIMULACAO",
+      "mitigationReason": null,
+      "message": "Crescimento informativo: BRUSCO."
+    }
+  },
+  "F6": {
+    "reproduced": true,
+    "source": "Exact projection snippet from audited routes.ts, isolated VM",
+    "failures": [
+      {
+        "triggerPercent": 95.5,
+        "recoveryPercent": 70,
+        "error": "RangeError: The number 95.5 cannot be converted to a BigInt because it is not an integer"
+      },
+      {
+        "triggerPercent": 95,
+        "recoveryPercent": 70.5,
+        "error": "RangeError: The number 70.5 cannot be converted to a BigInt because it is not an integer"
+      },
+      {
+        "triggerPercent": 95.5,
+        "recoveryPercent": 70.5,
+        "error": "RangeError: The number 95.5 cannot be converted to a BigInt because it is not an integer"
+      }
+    ]
+  }
+}

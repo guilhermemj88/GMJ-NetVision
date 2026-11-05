@@ -1,0 +1,99 @@
+{
+  "base": "97622af0d186257ad98be1ad1aceb2906c61e2ce",
+  "protectedFiles": [
+    {
+      "file": "apps/api/prisma/schema.prisma",
+      "identicalAfterLfNormalization": true,
+      "sha256": "feb55fb93e5537e6b0885337e1aba26781171eeabb03c8ab54f52774022642be"
+    },
+    {
+      "file": "apps/api/src/infrastructure/bgp/mitigation/huawei-mitigation-executor.ts",
+      "identicalAfterLfNormalization": true,
+      "sha256": "260e9d190b5d36360525dbe6c41e21493015e5a17eb43b983f272f8d7a17fc22"
+    },
+    {
+      "file": "apps/api/src/infrastructure/bgp/mitigation/mitigation-auto-authorization.ts",
+      "identicalAfterLfNormalization": true,
+      "sha256": "f0b441236d98d18080eec1c0ce23f5c4516195befde7ecd22a40f96a9c82850b"
+    },
+    {
+      "file": "apps/api/src/infrastructure/bgp/mitigation/mitigation-command-service.ts",
+      "identicalAfterLfNormalization": true,
+      "sha256": "3d5a8f3d84be5c11c867d857700982fdc6760bafad41d1f6149ffca9f56424b8"
+    },
+    {
+      "file": "apps/api/src/infrastructure/bgp/mitigation/mitigation-executor.ts",
+      "identicalAfterLfNormalization": true,
+      "sha256": "377bd1b9c309a4762d0ebfaa09601c08e6e678aa9ec166eeb6954397e5ee867e"
+    },
+    {
+      "file": "apps/api/src/infrastructure/bgp/mitigation/mitigation-webhook.ts",
+      "identicalAfterLfNormalization": true,
+      "sha256": "1bf0a0b5b450b6cd3bfd5ea08397ea811e7b81b82997f2421cf29c79f87b225d"
+    },
+    {
+      "file": "apps/api/src/infrastructure/bgp/mitigation/notification-publisher.ts",
+      "identicalAfterLfNormalization": true,
+      "sha256": "781d7dc844c60eef1fdb0267630c21e412a632e71886b88bd770ecb4ea28d5c6"
+    },
+    {
+      "file": "apps/api/src/infrastructure/bgp/mitigation/simulation-command-executor.ts",
+      "identicalAfterLfNormalization": true,
+      "sha256": "abf1077ca16c8e0c5f060baa2b10dc18a4c52166c765b462e20a39a71571c42e"
+    },
+    {
+      "file": "apps/api/src/infrastructure/snmp/fast-poller-lease.ts",
+      "identicalAfterLfNormalization": true,
+      "sha256": "f9c20f02ada2246698b4fbf41e1380f1ff228e803ab2377f674a1919aa8aff42"
+    },
+    {
+      "file": "apps/api/src/infrastructure/snmp/fast-traffic-poller.ts",
+      "identicalAfterLfNormalization": true,
+      "sha256": "bf323dd60d836e2bf83b3a5d3f5da0e90cd0b203be977ffd45b93182469d6b7a"
+    },
+    {
+      "file": "apps/api/src/mitigation-routes.ts",
+      "identicalAfterLfNormalization": true,
+      "sha256": "68c3fefca3630d30b5b5ec574ebdf9b0c3e3bd3edad5c020b77e913b8d2ada6a"
+    },
+    {
+      "file": "apps/api/src/worker/mitigation/durable-mitigation-outbox.ts",
+      "identicalAfterLfNormalization": true,
+      "sha256": "9b665cb81517200a017eb8380f39fb1d58d4caf52467f2281a40b426d8f8bca5"
+    },
+    {
+      "file": "apps/api/src/worker/mitigation/legacy-auto-engine.fc790ad.ts",
+      "identicalAfterLfNormalization": true,
+      "sha256": "5fc347def853bf99db2f86a04a35c3cbb29f4f7d45380f8fc8a1f0e564f0615e"
+    },
+    {
+      "file": "apps/api/src/worker/mitigation/mitigation-auto-engine.ts",
+      "identicalAfterLfNormalization": true,
+      "sha256": "0b54ab6dd44e5c1d416fc600cfcc809aefd1e5e3128c69ce92374b4821964109"
+    },
+    {
+      "file": "apps/api/src/worker/mitigation/mitigation-sampling-policy.ts",
+      "identicalAfterLfNormalization": true,
+      "sha256": "05639e426e19f8a7abe55cb3a7834787be87f1be9896ea22305d25c3307fb934"
+    },
+    {
+      "file": "docs/evidence/fast-growth-http.json",
+      "identicalAfterLfNormalization": true,
+      "sha256": "6075c25b69410f11a4885021fad302641c360758f55a51d9c2fe1d5cc61051b1"
+    },
+    {
+      "file": "package-lock.json",
+      "identicalAfterLfNormalization": true,
+      "sha256": "b06ad8210a0905e41c602bc8b65fca1fa9b271253d837fb3c3ff032618cd303f"
+    },
+    {
+      "file": "package.json",
+      "identicalAfterLfNormalization": true,
+      "sha256": "2f35c017eea92aa9de14fabeab0ff40faf040fabea2f571bf847517e80a491aa"
+    }
+  ],
+  "lifecycleOnlyChangeIsNotificationContext": true,
+  "pilotSnapshotGuardAndSurroundingsIdentical": true,
+  "originalWorktreeCleanAndUnchanged": true,
+  "noProductionOrDeviceConnectionRequired": true
+}

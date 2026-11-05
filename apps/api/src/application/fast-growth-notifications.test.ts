@@ -1,7 +1,7 @@
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { writeFile } from 'node:fs/promises';
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { FastGrowthNotifications } from './fast-growth-notifications';
 import { buildDetectionAlertNotification } from './mitigation-detection-alert';
 import { FastTrafficPoller, fastPollerConfig } from '../infrastructure/snmp/fast-traffic-poller';
@@ -36,6 +36,10 @@ import { PriorityTrafficSource } from '../worker/mitigation/fast-traffic-source'
 import { FastObservationSource } from '../worker/mitigation/fast-observation-bridge';
 
 const T0 = Date.parse('2026-11-05T12:00:00Z');
+let latestAt = T0;
+beforeEach(() => {
+  latestAt = T0;
+});
 const BW = 1_000_000_000n;
 const target = (profileId = 'customer-a', interfaceId = 'interface-a'): FastTrafficTarget => ({
   deviceId: 'offline-device',
@@ -61,6 +65,7 @@ function observation(
   txPct: number,
   rxPct = 10,
 ): FastTrafficObservation {
+  latestAt = Math.max(latestAt, at);
   return {
     deviceId: t.deviceId,
     interfaceId: t.interfaceId,
@@ -85,7 +90,7 @@ function observation(
     txBps: (Number(BW) * txPct) / 100,
   };
 }
-function notification(profileId = 'customer-a', at = T0 + 1_000_000): MitigationNotification {
+function notification(profileId = 'customer-a', at = latestAt): MitigationNotification {
   return {
     event: 'MITIGATION_DETECTION_BLOCKED',
     eventId: 'original-event-id',
@@ -233,9 +238,15 @@ describe('FAST Growth sidecar, informational only', () => {
     feed(g, t, [60, 60], at);
     g.unavailable(t);
     feed(g, t, [60], at + 30000);
-    expect(block(g.enrich(notification()))).toEqual(first);
+    expect(block(g.enrich(notification()))).toMatchObject({
+      growthClassification: 'INDETERMINADO',
+      thresholdReachedAt: null,
+    });
     g.record(t, { ...observation(t, at + 40000, 0), quality: 'SNMP_ERROR' });
-    expect(block(g.enrich(notification()))).toEqual(first);
+    expect(block(g.enrich(notification()))).toMatchObject({
+      growthClassification: 'INDETERMINADO',
+      thresholdReachedAt: null,
+    });
   });
   it('invalid rates, out-of-order duplicates, remapping and removal cannot contaminate another episode', () => {
     const g = new FastGrowthNotifications(15000),

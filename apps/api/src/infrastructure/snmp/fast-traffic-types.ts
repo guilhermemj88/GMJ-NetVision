@@ -30,6 +30,7 @@ export interface FastTrafficTarget {
     triggerPercent?: number;
     recoveryThresholdBps?: bigint;
     recoverySamples?: number;
+    growthEligible?: boolean;
   }>;
 }
 

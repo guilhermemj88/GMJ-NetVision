@@ -3,6 +3,9 @@
 Integração baseada em `ddb9368` (que já inclui `b5b70e4`). A análise é
 informativa: nenhuma nova condição de ataque, autorização ou escrita BGP.
 
+As correções posteriores à auditoria de `97622af`, os testes PostgreSQL e o
+GO condicionado para homologação estão em [FAST_GROWTH_AUDIT_FIXES.md](FAST_GROWTH_AUDIT_FIXES.md).
+
 ## Caminho real
 
 1. `FastTrafficPoller.poll()` deriva a taxa dos contadores já coletados e chama
@@ -41,8 +44,10 @@ também recebe os metadados, sem alterar sua autorização ou bootstrap.
 - A recuperação usa o limiar e número de amostras do perfil, apenas para soltar
   o snapshot informativo. Esses contadores não alimentam o motor AUTO.
 - Lacunas, geração nova, remapeamento, remoção e amostras inválidas não são
-  recuperação. Quebram a continuidade do histórico; o episódio congelado só
-  termina mediante evidência positiva configurada.
+  recuperação. Invalidam a referência informativa corrente sem encerrar o
+  episódio decisório. Uma referência com mais de cinco minutos também expira.
+  Uma nova leitura alta sem cruzamento observado gera `INDETERMINADO`, sem
+  inventar horário de cruzamento.
 - Após recuperação, o próximo episódio obtém outra referência. Até oito
   referências encerradas por direção são retidas somente para correlacionar
   notificações já confirmadas que terminem com atraso; não voltam ao baseline.
@@ -70,7 +75,7 @@ faz parte deste commit.
 
 ## Evidência e testes
 
-Validação final nesta implementação:
+Validação histórica do candidato `97622af` (resultados atuais no relatório de auditoria):
 
 | Verificação                              | Resultado                               |
 | ---------------------------------------- | --------------------------------------- |
@@ -121,8 +126,9 @@ npm test
 O build precede a suíte porque um teste existente verifica o arquivo compilado
 do observador. `TZ=UTC` corresponde à expectativa existente do teste de gráfico
 do frontend; não altera a configuração de execução da aplicação. As integrações
-opcionais PostgreSQL dependem de bancos de teste explicitamente configurados e
-não foram habilitadas nesta tarefa.
+opcionais PostgreSQL dependem de bancos de teste explicitamente configurados.
+As 46 anteriormente pendentes foram executadas posteriormente, com sucesso,
+conforme o relatório de correções da auditoria.
 
 Para gerar outra evidência, antes do teste configurar `FAST_GROWTH_EVIDENCE_PATH`
 com um arquivo local desejado e executar

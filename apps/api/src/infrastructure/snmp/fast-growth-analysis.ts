@@ -154,10 +154,16 @@ export class FastGrowthTracker {
     interfaceId: string,
     thresholds: GrowthThresholds = DEFAULT_GROWTH_THRESHOLDS,
     nowMs?: number,
+    observedCrossing = true,
   ): GrowthAnalysis {
     const existing = this.frozen.get(interfaceId);
     if (existing) return existing;
-    const analysis = Object.freeze({ ...this.analyze(interfaceId, thresholds, nowMs), frozen: true });
+    const current = this.analyze(interfaceId, thresholds, nowMs);
+    const analysis = Object.freeze({
+      ...(observedCrossing ? current : { ...emptyAnalysis(),
+        currentUtilizationPct: current.currentUtilizationPct, samples5m: current.samples5m }),
+      frozen: true,
+    });
     this.frozen.set(interfaceId, analysis);
     return analysis;
   }

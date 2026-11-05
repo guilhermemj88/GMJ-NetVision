@@ -1,5 +1,7 @@
 import {
   FastGrowthTracker,
+  emptyAnalysis,
+  GROWTH_WINDOW_MS,
   type GrowthAnalysis,
 } from '../infrastructure/snmp/fast-growth-analysis';
 import type { GrowthWebhookBlock } from '../infrastructure/bgp/mitigation/mitigation-webhook';
@@ -20,9 +22,18 @@ interface Context {
   generation: string | null;
   below: Record<Direction, number>;
   thresholdAt: Partial<Record<Direction, number>>;
+  crossingKnown: Record<Direction, boolean>;
+  lastRate: Record<Direction, number | null>;
+  interrupted: Record<Direction, boolean>;
   closed: Record<
     Direction,
-    Array<{ analysis: GrowthAnalysis; thresholdAt: number; recoveredAt: number }>
+    Array<{
+      analysis: GrowthAnalysis;
+      thresholdAt: number;
+      validUntil: number;
+      crossingKnown: boolean;
+      cause: 'RECOVERY' | 'INTERRUPTION' | 'AGE';
+    }>
   >;
 }
 const directions: Direction[] = ['rx', 'tx'];
@@ -40,11 +51,24 @@ const events = new Set<MitigationNotification['event']>([
 export class FastGrowthNotifications implements FastTrafficObserver {
   private readonly tracker = new FastGrowthTracker();
   private readonly contexts = new Map<string, Context>();
+  private pollerProfiles = new Set<string>();
+  private readonly bridgeProfiles = new Set<string>();
 
   constructor(
     private readonly maxGapMs: number,
     private readonly isFastRouted: (profileId: string) => boolean = () => true,
+    private readonly isEnabled: () => boolean = () => true,
+    private readonly now: () => number = Date.now,
   ) {}
+
+  private enabled(): boolean {
+    if (this.isEnabled()) return true;
+    this.tracker.reset();
+    this.contexts.clear();
+    this.pollerProfiles.clear();
+    this.bridgeProfiles.clear();
+    return false;
+  }
 
   private key(c: Context, direction: Direction): string {
     return JSON.stringify([
@@ -61,36 +85,57 @@ export class FastGrowthNotifications implements FastTrafficObserver {
   }
 
   refresh(targets: FastTrafficTarget[]): void {
+    if (!this.enabled()) return;
     const current = new Set(targets.flatMap((t) => t.profiles.map((p) => p.profileId)));
-    for (const c of this.contexts.values()) if (!current.has(c.profile.profileId)) this.remove(c);
-    for (const target of targets) {
-      for (const profile of target.profiles) {
-        const revision = JSON.stringify([
-          target.deviceId,
-          target.interfaceId,
-          target.ifIndex,
-          profile.direction,
-          profile.bandwidthBps?.toString(),
-          profile.thresholdBps.toString(),
-          profile.triggerPercent,
-          profile.recoveryThresholdBps?.toString(),
-          profile.recoverySamples,
-        ]);
-        const old = this.contexts.get(profile.profileId);
-        if (old?.revision === revision) continue;
-        if (old) this.remove(old);
-        this.contexts.set(profile.profileId, {
-          revision,
-          target,
-          profile,
-          lastAt: null,
-          generation: null,
-          below: { rx: 0, tx: 0 },
-          thresholdAt: {},
-          closed: { rx: [], tx: [] },
-        });
-      }
+    for (const id of this.pollerProfiles) {
+      const c = this.contexts.get(id);
+      if (c && !current.has(id) && !this.bridgeProfiles.has(id)) this.remove(c);
     }
+    this.pollerProfiles = current;
+    for (const target of targets) {
+      for (const profile of target.profiles) this.upsert(target, profile);
+    }
+  }
+
+  private upsert(target: FastTrafficTarget, profile: Profile): void {
+    if (
+      profile.growthEligible === false ||
+      (profile.triggerPercent !== undefined && !Number.isInteger(profile.triggerPercent)) ||
+      typeof profile.recoveryThresholdBps !== 'bigint' ||
+      !Number.isInteger(profile.recoverySamples) ||
+      profile.recoverySamples! <= 0
+    ) {
+      const old = this.contexts.get(profile.profileId);
+      if (old) this.remove(old);
+      return;
+    }
+    const revision = JSON.stringify([
+      target.deviceId,
+      target.interfaceId,
+      target.ifIndex,
+      profile.direction,
+      profile.bandwidthBps?.toString(),
+      profile.thresholdBps.toString(),
+      profile.triggerPercent,
+      profile.recoveryThresholdBps?.toString(),
+      profile.recoverySamples,
+    ]);
+    const old = this.contexts.get(profile.profileId);
+    if (old?.revision === revision) return;
+    if (old) this.remove(old);
+    this.contexts.set(profile.profileId, {
+      revision,
+      target,
+      profile,
+      lastAt: null,
+      generation: null,
+      below: { rx: 0, tx: 0 },
+      thresholdAt: {},
+      crossingKnown: { rx: false, tx: false },
+      lastRate: { rx: null, tx: null },
+      interrupted: { rx: false, tx: false },
+      closed: { rx: [], tx: [] },
+    });
   }
 
   /** External observer mode: reuse the row already validated/read by the bridge. */
@@ -98,9 +143,14 @@ export class FastGrowthNotifications implements FastTrafficObserver {
     profile: { profileId: string; growth?: Profile },
     row: FastTrafficObservation | null,
   ): void {
+    if (!this.enabled()) return;
     if (!row || !profile.growth) {
+      if (!profile.growth) this.bridgeProfiles.delete(profile.profileId);
       const c = this.contexts.get(profile.profileId);
-      if (c) this.breakContinuity(c);
+      if (c) {
+        if (!profile.growth) this.remove(c);
+        else this.breakContinuity(c);
+      }
       return;
     }
     const target: FastTrafficTarget = {
@@ -111,31 +161,63 @@ export class FastGrowthNotifications implements FastTrafficObserver {
       speedBps: row.speedBps,
       profiles: [profile.growth],
     };
-    const others = [...this.contexts.values()]
-      .filter((c) => c.profile.profileId !== profile.profileId)
-      .map((c) => ({ ...c.target, profiles: [c.profile] }));
-    this.refresh([...others, target]);
-    this.record(target, row);
+    this.bridgeProfiles.add(profile.profileId);
+    this.upsert(target, profile.growth);
+    this.consume(target, row);
+  }
+
+  private archive(
+    c: Context,
+    direction: Direction,
+    validUntil: number,
+    cause: 'RECOVERY' | 'INTERRUPTION' | 'AGE',
+  ): void {
+    const key = this.key(c, direction),
+      analysis = this.tracker.frozenAnalysis(key);
+    const thresholdAt = c.thresholdAt[direction];
+    if (analysis && thresholdAt !== undefined) {
+      c.closed[direction].push({
+        analysis,
+        thresholdAt,
+        validUntil: Math.min(validUntil, thresholdAt + GROWTH_WINDOW_MS + 1),
+        crossingKnown: c.crossingKnown[direction],
+        cause,
+      });
+      if (c.closed[direction].length > 8) c.closed[direction].shift();
+      c.interrupted[direction] = cause !== 'RECOVERY';
+    }
+    this.tracker.clearFreeze(key);
+    delete c.thresholdAt[direction];
+    c.crossingKnown[direction] = false;
   }
 
   private breakContinuity(c: Context): void {
-    for (const direction of directions) this.tracker.clearSamples(this.key(c, direction));
+    for (const direction of directions) {
+      this.archive(c, direction, (c.lastAt ?? 0) + 1, 'INTERRUPTION');
+      this.tracker.clearSamples(this.key(c, direction));
+    }
     c.below = { rx: 0, tx: 0 };
+    c.lastRate = { rx: null, tx: null };
   }
 
   unavailable(target: FastTrafficTarget): void {
+    if (!this.enabled()) return;
     for (const p of target.profiles) {
       const c = this.contexts.get(p.profileId);
-      if (c) this.breakContinuity(c); // Frozen episode survives missing SNMP, never a synthetic zero.
+      if (c) this.breakContinuity(c); // Invalidates the reference, never confirms recovery.
     }
   }
 
   record(target: FastTrafficTarget, observation: FastTrafficObservation): void {
-    // refresh() normally precedes collection; callers can feed one target directly too.
-    if (target.profiles.some((p) => !this.contexts.has(p.profileId))) {
-      const active = [...this.contexts.values()].map((c) => c.target);
-      this.refresh([...active, target]);
+    if (!this.enabled()) return;
+    for (const profile of target.profiles) {
+      this.pollerProfiles.add(profile.profileId);
+      this.upsert(target, profile);
     }
+    this.consume(target, observation);
+  }
+
+  private consume(target: FastTrafficTarget, observation: FastTrafficObservation): void {
     const at = observation.collectedAt.getTime();
     if (
       observation.quality !== 'VALID' ||
@@ -148,7 +230,8 @@ export class FastGrowthNotifications implements FastTrafficObserver {
       return;
     }
     for (const profile of target.profiles) {
-      const c = this.contexts.get(profile.profileId)!;
+      const c = this.contexts.get(profile.profileId);
+      if (!c) continue;
       if (c.lastAt !== null && at <= c.lastAt) continue;
       if (
         c.generation !== observation.generation ||
@@ -162,16 +245,28 @@ export class FastGrowthNotifications implements FastTrafficObserver {
       for (const direction of directions) {
         const rate = direction === 'rx' ? observation.rxBps : observation.txBps;
         const key = this.key(c, direction);
+        const thresholdAt = c.thresholdAt[direction];
+        if (thresholdAt !== undefined && at - thresholdAt > GROWTH_WINDOW_MS)
+          this.archive(c, direction, thresholdAt + GROWTH_WINDOW_MS + 1, 'AGE');
         if (rate === null || !Number.isFinite(rate) || rate < 0) {
+          this.archive(c, direction, at, 'INTERRUPTION');
           this.tracker.clearSamples(key);
           c.below[direction] = 0;
+          c.lastRate[direction] = null;
           continue;
         }
         this.tracker.record(key, at, (rate / bandwidth) * 100);
         if (rate >= Number(profile.thresholdBps)) {
-          if (c.thresholdAt[direction] === undefined) c.thresholdAt[direction] = at;
-          this.tracker.freezeAtThreshold(key, undefined, at);
+          if (c.thresholdAt[direction] === undefined) {
+            c.thresholdAt[direction] = at;
+            c.crossingKnown[direction] =
+              c.lastRate[direction] !== null &&
+              c.lastRate[direction]! < Number(profile.thresholdBps);
+            c.interrupted[direction] = false;
+          }
+          this.tracker.freezeAtThreshold(key, undefined, at, c.crossingKnown[direction]);
         }
+        c.lastRate[direction] = rate;
         const low =
           profile.recoveryThresholdBps !== undefined && rate < Number(profile.recoveryThresholdBps);
         c.below[direction] = low ? c.below[direction] + 1 : 0;
@@ -180,16 +275,8 @@ export class FastGrowthNotifications implements FastTrafficObserver {
           profile.recoverySamples! > 0 &&
           c.below[direction] >= profile.recoverySamples!
         ) {
-          const analysis = this.tracker.frozenAnalysis(key);
-          const thresholdAt = c.thresholdAt[direction];
-          if (analysis && thresholdAt !== undefined) {
-            c.closed[direction].push({ analysis, thresholdAt, recoveredAt: at });
-            // Only correlation for notifications already confirmed before recovery.
-            // This archive never participates in a new episode or traffic baseline.
-            if (c.closed[direction].length > 8) c.closed[direction].shift();
-          }
-          this.tracker.clearFreeze(key);
-          delete c.thresholdAt[direction];
+          this.archive(c, direction, at, 'RECOVERY');
+          c.interrupted[direction] = false;
         }
       }
     }
@@ -202,6 +289,7 @@ export class FastGrowthNotifications implements FastTrafficObserver {
     confirmedAtMs?: number | null,
   ): MitigationNotification {
     try {
+      if (!this.enabled()) return notification;
       if (!notification.profileId || notification.growth != null || !events.has(notification.event))
         return notification;
       if (!this.isFastRouted(notification.profileId)) return notification;
@@ -211,17 +299,30 @@ export class FastGrowthNotifications implements FastTrafficObserver {
       if (!direction) return notification;
       const eventAt =
         confirmedAtMs ??
-        (notification.occurredAt == null ? null : Date.parse(notification.occurredAt));
+        (notification.occurredAt == null ? this.now() : Date.parse(notification.occurredAt));
+      if (!Number.isFinite(eventAt)) return notification;
       const prior =
         eventAt === null
           ? undefined
           : [...c.closed[direction]]
               .reverse()
-              .find((s) => s.thresholdAt <= eventAt && eventAt < s.recoveredAt);
-      const analysis = prior?.analysis ?? this.tracker.frozenAnalysis(this.key(c, direction));
+              .find((s) => s.thresholdAt <= eventAt && eventAt < s.validUntil);
+      const frozen = this.tracker.frozenAnalysis(this.key(c, direction));
       const thresholdAt = prior?.thresholdAt ?? c.thresholdAt[direction];
-      if (!analysis || thresholdAt === undefined) return notification;
-      if (eventAt !== null && eventAt < thresholdAt) return notification;
+      if (!prior && !frozen && !c.interrupted[direction]) return notification;
+      if (thresholdAt !== undefined && eventAt < thresholdAt) return notification;
+      const fresh = c.lastAt !== null && eventAt - c.lastAt <= this.maxGapMs;
+      const supported =
+        prior || (fresh && thresholdAt !== undefined && eventAt - thresholdAt <= GROWTH_WINDOW_MS);
+      const analysis = supported
+        ? (prior?.analysis ?? frozen!)
+        : {
+            ...emptyAnalysis(),
+            currentUtilizationPct:
+              fresh && c.lastRate[direction] !== null && c.profile.bandwidthBps
+                ? Math.round((c.lastRate[direction]! / Number(c.profile.bandwidthBps)) * 1000) / 10
+                : null,
+          };
       const mitigationStatus =
         notification.event === 'MITIGATION_VERIFIED' &&
         notification.verified === true &&
@@ -236,7 +337,12 @@ export class FastGrowthNotifications implements FastTrafficObserver {
         thresholdPct:
           c.profile.triggerPercent ??
           (Number(c.profile.thresholdBps) / Number(c.profile.bandwidthBps)) * 100,
-        thresholdReachedAt: new Date(thresholdAt).toISOString(),
+        thresholdReachedAt:
+          supported &&
+          thresholdAt !== undefined &&
+          (prior?.crossingKnown ?? c.crossingKnown[direction])
+            ? new Date(thresholdAt).toISOString()
+            : null,
         trafficDirection: direction,
         mitigationStatus,
         mitigationReason: notification.blockedReason ?? null,

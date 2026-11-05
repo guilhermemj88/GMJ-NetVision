@@ -25,6 +25,7 @@ export interface DetectionAlertHosts {
 export interface DetectionAlertPublisherDeps {
   hosts: DetectionAlertHosts;
   transport: Pick<NotificationPublisher, 'publish'>;
+  enrichNotification?: (notification: MitigationNotification, decision: MitigationAutoDecision) => MitigationNotification;
 }
 
 export interface DetectionAlertDeliveryResult {
@@ -115,7 +116,9 @@ export function createDetectionAlertPublisher(deps: DetectionAlertPublisherDeps)
       // Best effort: alerta nunca falha por lookup de inventario.
     }
 
-    const notification = buildDetectionAlertNotification({ decision, deviceName, interfaceName });
+    let notification = buildDetectionAlertNotification({ decision, deviceName, interfaceName });
+    try { notification = deps.enrichNotification?.(notification, decision) ?? notification; }
+    catch { /* Informational enrichment cannot interrupt the original event. */ }
     try {
       const result = await deps.transport.publish(notification);
       return {

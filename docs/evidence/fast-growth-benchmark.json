@@ -1,0 +1,96 @@
+{
+  "node": "v24.19.0",
+  "platform": "win32",
+  "operation": "recordBridge only; preallocated scope; 10 warmup + 150 measured calls; normal 20% traffic",
+  "estimatedSweepIsExtrapolation": true,
+  "results": [
+    {
+      "profiles": 23,
+      "version": "97622af",
+      "calls": 150,
+      "meanMs": 0.02462066666666601,
+      "medianMs": 0.020499999999969987,
+      "p95Ms": 0.05360000000001719,
+      "maxMs": 0.2676999999999907,
+      "estimatedSweepMs": 0.5662753333333183,
+      "contextsAfter": 23
+    },
+    {
+      "profiles": 23,
+      "version": "fixed",
+      "calls": 150,
+      "meanMs": 0.004530666666665487,
+      "medianMs": 0.004200000000025739,
+      "p95Ms": 0.0056000000000153705,
+      "maxMs": 0.01619999999996935,
+      "estimatedSweepMs": 0.1042053333333062,
+      "contextsAfter": 23
+    },
+    {
+      "profiles": 100,
+      "version": "97622af",
+      "calls": 150,
+      "meanMs": 0.06485866666666804,
+      "medianMs": 0.05279999999999063,
+      "p95Ms": 0.11520000000001573,
+      "maxMs": 0.2614000000000374,
+      "estimatedSweepMs": 6.485866666666803,
+      "contextsAfter": 100
+    },
+    {
+      "profiles": 100,
+      "version": "fixed",
+      "calls": 150,
+      "meanMs": 0.005973333333336086,
+      "medianMs": 0.0044999999999504325,
+      "p95Ms": 0.0072999999999865395,
+      "maxMs": 0.08809999999999718,
+      "estimatedSweepMs": 0.5973333333336086,
+      "contextsAfter": 100
+    },
+    {
+      "profiles": 1000,
+      "version": "97622af",
+      "calls": 150,
+      "meanMs": 0.5458980000000001,
+      "medianMs": 0.4800000000000182,
+      "p95Ms": 0.8007999999999811,
+      "maxMs": 1.0006999999999948,
+      "estimatedSweepMs": 545.8980000000001,
+      "contextsAfter": 1000
+    },
+    {
+      "profiles": 1000,
+      "version": "fixed",
+      "calls": 150,
+      "meanMs": 0.003935333333333802,
+      "medianMs": 0.00329999999996744,
+      "p95Ms": 0.007799999999974716,
+      "maxMs": 0.03489999999999327,
+      "estimatedSweepMs": 3.9353333333338014,
+      "contextsAfter": 1000
+    },
+    {
+      "profiles": 3000,
+      "version": "97622af",
+      "calls": 150,
+      "meanMs": 1.6557739999999979,
+      "medianMs": 1.5587000000000444,
+      "p95Ms": 2.344799999999964,
+      "maxMs": 2.8186000000000604,
+      "estimatedSweepMs": 4967.321999999994,
+      "contextsAfter": 3000
+    },
+    {
+      "profiles": 3000,
+      "version": "fixed",
+      "calls": 150,
+      "meanMs": 0.0029606666666685062,
+      "medianMs": 0.0026000000000294676,
+      "p95Ms": 0.003300000000081127,
+      "maxMs": 0.021600000000034925,
+      "estimatedSweepMs": 8.882000000005519,
+      "contextsAfter": 3000
+    }
+  ]
+}

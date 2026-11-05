@@ -1,0 +1,98 @@
+{
+  "baseCommit": "97622af0d186257ad98be1ad1aceb2906c61e2ce",
+  "branch": "fix/fast-growth-audit",
+  "checks": [
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "log": "typecheck.log"
+    },
+    {
+      "command": "npm run typecheck -w @gmj/api (after final added test)",
+      "exitCode": 0,
+      "log": "api-typecheck-final.log"
+    },
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "log": "build.log"
+    },
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "log": "tests-full.log",
+      "passed": 4561,
+      "optionalSkippedInThisInvocation": 48
+    },
+    {
+      "command": "vitest run (cwd apps/api, final code)",
+      "exitCode": 0,
+      "log": "api-final.log",
+      "passed": 2955,
+      "optionalSkippedInThisInvocation": 48
+    },
+    {
+      "command": "native isolated integration runner",
+      "exitCode": 0,
+      "log": "integrations-summary.json",
+      "previouslyPendingPassed": 46,
+      "existingUnitTestsRerun": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "command": "new real PostgreSQL Growth tests",
+      "exitCode": 0,
+      "log": "growth-postgres.json",
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "command": "eslint changed TypeScript --max-warnings=0",
+      "exitCode": 0,
+      "log": "lint-changes.log"
+    },
+    {
+      "command": "npm run lint",
+      "exitCode": 1,
+      "log": "lint.log",
+      "errors": 0,
+      "warnings": 5,
+      "reason": "Preexisting unused eslint-disable directives in unchanged server.ts; reproduced on audited worktree",
+      "baselineLog": "lint-baseline-server.log"
+    }
+  ],
+  "discardedInvocation": {
+    "log": "api-wrong-cwd.log",
+    "reason": "--root apps/api from repository root did not change process.cwd(); legacy schema/artifact tests require cwd apps/api. Correct workspace invocation rerun passed."
+  },
+  "uniqueCoverageAfterCombiningRuns": {
+    "api": 3003,
+    "snapshotRenderer": 10,
+    "web": 1406,
+    "shared": 191,
+    "passed": 4610,
+    "failed": 0,
+    "skippedUnresolved": 0
+  },
+  "newTestsSinceAuditedCommit": 27,
+  "autoLogic": {
+    "decisionsIdenticalOffOnBroken": true,
+    "mixedInvalidAndValidFailClosed": true,
+    "realBgpCalls": 0,
+    "fakeExecutorCountsIdentical": true,
+    "extraSnmpReadsForGrowth": 0
+  },
+  "postgres": {
+    "newDisposableContainerOnly": true,
+    "preflight": "postgres-preflight.json",
+    "allowlist": "postgres-allowlist.json",
+    "existing23ProfilesAccessed": false
+  },
+  "operationalDecision": {
+    "isolatedIntegratedHomologation": "GO",
+    "productionOrPhysicalExecution": "NO-GO",
+    "pilotSnapshotGuardUnchanged": true
+  }
+}

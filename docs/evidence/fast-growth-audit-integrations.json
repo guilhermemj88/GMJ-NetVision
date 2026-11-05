@@ -1,0 +1,350 @@
+{
+  "containerId": "f7c0bb9b8e065965fcc66268e03fcef74cd5caae9ded8ff46a469c32a7b71bcc",
+  "disposableOnly": true,
+  "results": [
+    {
+      "file": "worker/mitigation/baseline-store.postgres.test.ts",
+      "database": "mitigation_baseline_test",
+      "host": "127.0.0.1",
+      "port": 55077,
+      "exitCode": 0,
+      "tests": [
+        {
+          "name": "baseline duravel com PostgreSQL real (B6) persiste o registro e recupera por uma instancia nova do adaptador",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "baseline duravel com PostgreSQL real (B6) devolve null para escopo sem registro",
+          "status": "PASS",
+          "failureMessages": []
+        }
+      ]
+    },
+    {
+      "file": "worker/mitigation/manual-release-quarantine.postgres.test.ts",
+      "database": "mitigation_baseline_test",
+      "host": "127.0.0.1",
+      "port": 55077,
+      "exitCode": 0,
+      "tests": [
+        {
+          "name": "F1: durable manual-removal quarantine, real PostgreSQL16 and fake Huawei A-F: failed RELEASED + DB reconnect/restart + identical foreign pair cannot be removed or overwritten by any new request/profile",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "F1: durable manual-removal quarantine, real PostgreSQL16 and fake Huawei G-H: complete database outage after physical REMOVE remains quarantined; explicit absence reconciliation is atomic, durable and never adopts a foreign pair",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "F1: durable manual-removal quarantine, real PostgreSQL16 and fake Huawei no removal-intent persistence means zero physical commands, including before any RELEASED transition",
+          "status": "PASS",
+          "failureMessages": []
+        }
+      ]
+    },
+    {
+      "file": "worker/mitigation/durable-persistence-readiness.postgres.test.ts",
+      "database": "aglink_persistence_readiness",
+      "host": "127.0.0.1",
+      "port": 55077,
+      "exitCode": 0,
+      "tests": [
+        {
+          "name": "durable readiness with PostgreSQL and fake external transports serializes competing transactions and rolls back journal/outbox together",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "durable readiness with PostgreSQL and fake external transports holds ACTIVE across restart/normalization and releases only on verified manual REMOVE",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "durable readiness with PostgreSQL and fake external transports retains UNCERTAIN and forbids replay after a timeout following the write",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "durable readiness with PostgreSQL and fake external transports keeps the outbox/event ID through an HTTP NACK, reconnect and positive ACK",
+          "status": "PASS",
+          "failureMessages": []
+        }
+      ]
+    },
+    {
+      "file": "worker/mitigation/single-pilot.postgres.test.ts",
+      "database": "single_pilot_test",
+      "host": "127.0.0.1",
+      "port": 55077,
+      "exitCode": 0,
+      "tests": [
+        {
+          "name": "single pilot with real PostgreSQL ownership, journal and outbox survives a new DB client/coordinator and retries the same event without another ACTIVATE",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "single pilot with real PostgreSQL ownership, journal and outbox reconciles a restart after SSH write but before completion to durable UNCERTAIN",
+          "status": "PASS",
+          "failureMessages": []
+        }
+      ]
+    },
+    {
+      "file": "infrastructure/snmp/fast-traffic-postgres.test.ts",
+      "database": "netvision_ddos_fast_test",
+      "host": "127.0.0.1",
+      "port": 55439,
+      "exitCode": 0,
+      "tests": [
+        {
+          "name": "priority persistence, real isolated PostgreSQL duplicate simultaneous commits persist exactly one immutable observation",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "priority persistence, real isolated PostgreSQL out-of-order commit cannot regress the latest observation",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "priority persistence, real isolated PostgreSQL invalid latest observation is visible; no fallback to a high valid row",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "priority persistence, real isolated PostgreSQL general polling persistence cannot change priority rate or baseline",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "priority persistence, real isolated PostgreSQL legacy reader returns latest invalid row atomically instead of stale high rate",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "priority persistence, real isolated PostgreSQL ifIndex mapping change prevents both reading and committing obsolete observations",
+          "status": "PASS",
+          "failureMessages": []
+        }
+      ]
+    },
+    {
+      "file": "infrastructure/snmp/fast-lifecycle-simulation.postgres.test.ts",
+      "database": "netvision_ddos_fast_test",
+      "host": "127.0.0.1",
+      "port": 55439,
+      "exitCode": 0,
+      "tests": [
+        {
+          "name": "F3: actual PostgreSQL observation persistence before lifecycle confirmation durably stores Counter64 observations used by the actual source/lifecycle",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "F3: actual PostgreSQL observation persistence before lifecycle confirmation an append outage invalidates the sequence; only a new baseline and three committed deltas can activate",
+          "status": "PASS",
+          "failureMessages": []
+        }
+      ]
+    },
+    {
+      "file": "infrastructure/bgp/mitigation/mitigation-telemetry-postgres.test.ts",
+      "database": "netvision_ddos_telemetry_test",
+      "host": "127.0.0.1",
+      "port": 55439,
+      "exitCode": 0,
+      "tests": [
+        {
+          "name": "real isolated PostgreSQL direction transaction and atomic sample commits all directions plus audit once; modes, provenance and samples remain unchanged",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "real isolated PostgreSQL direction transaction and atomic sample rejects concurrent promotion atomically without partial batch writes",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "real isolated PostgreSQL direction transaction and atomic sample allows one concurrent preview only and rejects the second stale revision",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "real isolated PostgreSQL direction transaction and atomic sample aplica direcao de INTERFACE no banco, audita e mantem modo/proveniencia",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "real isolated PostgreSQL direction transaction and atomic sample lote de interface e atomico sob concorrencia: um vence, o outro fica STALE",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "real isolated PostgreSQL direction transaction and atomic sample recusa perfil AUTO surgido dentro da transacao e nao grava direcao nem auditoria",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "real isolated PostgreSQL direction transaction and atomic sample does not fall back to older valid traffic when latest row is invalid",
+          "status": "PASS",
+          "failureMessages": []
+        }
+      ]
+    },
+    {
+      "file": "worker/mitigation/fast-bridge-postgres.test.ts",
+      "database": "netvision_ddos_telemetry_test",
+      "host": "127.0.0.1",
+      "port": 55439,
+      "exitCode": 0,
+      "tests": [
+        {
+          "name": "real PostgreSQL databases, canonical command service, synthetic Huawei consumes separate read-only observations, persists one activation and audit, preserves general stream",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "real PostgreSQL databases, canonical command service, synthetic Huawei cross-process policy/global-tick locks exclude a second writer and release on failure",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "real PostgreSQL databases, canonical command service, synthetic Huawei shadow counters persist separately and cannot overwrite operational mitigation state",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "real PostgreSQL databases, canonical command service, synthetic Huawei operational database connection failure cannot produce a source sample",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "real PostgreSQL databases, canonical command service, synthetic Huawei observational database connection failure cannot produce a source sample",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "real PostgreSQL databases, canonical command service, synthetic Huawei real 126s LEGACY samples remain usable beside SHADOW without touching existing mitigation",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "real PostgreSQL databases, canonical command service, synthetic Huawei recovers a health publication race using two real databases and the SELECT-only source role",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "real PostgreSQL databases, canonical command service, synthetic Huawei rejects a read-write observation connection rather than silently trusting credentials",
+          "status": "PASS",
+          "failureMessages": []
+        }
+      ]
+    },
+    {
+      "file": "infrastructure/bgp/mitigation/mitigation-phase01-postgres.test.ts",
+      "database": "phase01",
+      "host": "127.0.0.1",
+      "port": 55439,
+      "exitCode": 0,
+      "tests": [
+        {
+          "name": "phase01 real PostgreSQL atomicity and discovery empty catalog, repeat bootstrap and unchanged updatedAt",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "phase01 real PostgreSQL atomicity and discovery two concurrent initializations serialize without duplicates",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "phase01 real PostgreSQL atomicity and discovery conflicting name rolls back preceding writes and never adopts CUSTOM",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "phase01 real PostgreSQL atomicity and discovery failure creating dependent ports rolls back template and permits corrected retry",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "phase01 real PostgreSQL atomicity and discovery canonical YAML imports twice; emergency catalog conflict cannot partially mutate it",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "phase01 real PostgreSQL atomicity and discovery repeated boot and absent snapshot do not create profiles",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "phase01 real PostgreSQL atomicity and discovery explicit registration is ALERT_ONLY; repeat discovery does not change profile updatedAt",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "phase01 real PostgreSQL atomicity and discovery AUTO, DISABLED, manual override and timestamps survive boot and changed snapshots",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "phase01 real PostgreSQL atomicity and discovery optimistic reconciliation cannot overwrite a concurrent verified command or initialize over it",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "phase01 real PostgreSQL atomicity and discovery same policy on another interface is another identity, not a duplicate",
+          "status": "PASS",
+          "failureMessages": []
+        }
+      ]
+    },
+    {
+      "file": "infrastructure/snmp/fast-observer.test.ts",
+      "database": "netvision_ddos_fast_test",
+      "host": "127.0.0.1",
+      "port": 55439,
+      "exitCode": 0,
+      "tests": [
+        {
+          "name": "observer cannot execute mitigation built artifact contains no engine, command service or SSH transport",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "observer cannot execute mitigation rejects ENFORCE before opening database or SNMP connections",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "observer cannot execute mitigation HTTP exposes GET diagnostics only, bound by caller to loopback",
+          "status": "PASS",
+          "failureMessages": []
+        },
+        {
+          "name": "observer isolated startup / stop / restart rollback read-only source, separate database, real UDP, stop and resume without altering profile",
+          "status": "PASS",
+          "failureMessages": []
+        }
+      ]
+    },
+    {
+      "file": "worker/mitigation/mitigation-fast-realtime.test.ts",
+      "database": null,
+      "host": "loopback UDP only",
+      "port": null,
+      "exitCode": 0,
+      "tests": [
+        {
+          "name": "real clock and real UDP: first abnormal observation to verified readback <=60s",
+          "status": "PASS",
+          "failureMessages": []
+        }
+      ]
+    }
+  ]
+}

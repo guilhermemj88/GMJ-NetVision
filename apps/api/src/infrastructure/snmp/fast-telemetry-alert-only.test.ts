@@ -77,7 +77,7 @@ describe('seleção de telemetria FAST independente do modo', () => {
     expect(targets[0]).toMatchObject({ interfaceId: 'if-1', ifIndex: 287 });
     expect(targets[0]!.profiles).toEqual([
       { profileId: 'p-alert', direction: 'tx', bandwidthBps: BW, thresholdBps: (BW * 90n) / 100n,
-        triggerPercent: 90 },
+        triggerPercent: 90, growthEligible: false },
     ]);
     expect(p.mode).toBe('ALERT_ONLY');
   });
@@ -93,6 +93,25 @@ describe('seleção de telemetria FAST independente do modo', () => {
     });
     expect(targets).toHaveLength(1);
     expect(targets[0]!.profiles[0]!.profileId).toBe('p-auto');
+  });
+
+  it('percentuais fracionários isolam apenas o perfil inválido, sem abortar os outros clientes', async () => {
+    const profiles = [
+      profile({ id: 'valid', mode: 'AUTO', triggerPercent: 95, recoveryPercent: 70, recoverySamples: 3 }),
+      profile({ id: 'bad-trigger', mode: 'AUTO', triggerPercent: 95.5, recoveryPercent: 70, recoverySamples: 3 }),
+      profile({ id: 'bad-recovery', mode: 'AUTO', triggerPercent: 95, recoveryPercent: 70.5, recoverySamples: 3 }),
+    ];
+    const targets = await targetsFor(profiles, { profileIds: profiles.map((p) => p.id) });
+    expect(targets).toHaveLength(1);
+    expect(targets[0]!.profiles.map((p) => p.profileId)).toEqual(['valid', 'bad-recovery']);
+    expect(targets[0]!.profiles[0]).toMatchObject({
+      thresholdBps: (BW * 95n) / 100n, recoveryThresholdBps: (BW * 70n) / 100n,
+    });
+    expect(targets[0]!.profiles[1]).toMatchObject({
+      thresholdBps: (BW * 95n) / 100n, growthEligible: false,
+    });
+    expect(profiles[1]!.triggerPercent).toBe(95.5);
+    expect(profiles[2]!.recoveryPercent).toBe(70.5);
   });
 
   it('perfil roteado sem direção efetiva não é coletado (fail-closed)', async () => {
