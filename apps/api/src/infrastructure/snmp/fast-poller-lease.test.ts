@@ -113,8 +113,14 @@ describe('posse unica do coletor FAST (advisory lock de sessao)', () => {
     expect(url).toContain('connection_limit=1');
     expect(url).toContain('pool_timeout=10');
     expect(url).toContain('schema=public');
-    // Idempotente: nao sobrescreve o que o operador ja definiu.
-    const custom = withSingleConnection('postgresql://u:p@db:5432/nv?connection_limit=3');
-    expect(custom).toContain('connection_limit=3');
+    expect(url).toContain('max_idle_connection_lifetime=0');
+    expect(url).toContain('max_connection_lifetime=0');
+    // The dedicated lease pool overrides incompatible general-pool settings.
+    const custom = withSingleConnection('postgresql://u:p@db:5432/nv?connection_limit=3&max_idle_connection_lifetime=3&max_connection_lifetime=3&application_name=test');
+    expect(custom).toContain('connection_limit=1');
+    expect(custom).toContain('max_idle_connection_lifetime=0');
+    expect(custom).toContain('max_connection_lifetime=0');
+    expect(custom).toContain('application_name=test');
+    expect(withSingleConnection(custom)).toBe(custom);
   });
 });

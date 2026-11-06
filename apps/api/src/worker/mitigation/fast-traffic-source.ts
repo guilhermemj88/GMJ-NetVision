@@ -1,5 +1,6 @@
 import type { FastTrafficStore } from '../../infrastructure/snmp/fast-traffic-types';
 import type { FastPollerConfig } from '../../infrastructure/snmp/fast-traffic-poller';
+import { embeddedFastRoutingActive } from './embedded-fast-routing';
 import type {
   MitigationTrafficSource,
   MitigationTrafficTarget,
@@ -21,9 +22,7 @@ export class PriorityTrafficSource implements MitigationTrafficSource {
   ) {}
 
   private priority(target: MitigationTrafficTarget): boolean {
-    return (
-      this.deps.config.mode === 'ENFORCE' && this.deps.config.profileIds.includes(target.profileId)
-    );
+    return embeddedFastRoutingActive(target.profileId, this.deps.config);
   }
 
   private async directions(

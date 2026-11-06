@@ -64,7 +64,11 @@ export function fastPollerLeaseKey(installation: string | undefined): string {
 export function withSingleConnection(url: string): string {
   try {
     const parsed = new URL(url);
-    if (!parsed.searchParams.has('connection_limit')) parsed.searchParams.set('connection_limit', '1');
+    // This dedicated pool holds a SESSION advisory lock. General application
+    // pool settings cannot be inherited: extra/recycled connections lose ownership.
+    parsed.searchParams.set('connection_limit', '1');
+    parsed.searchParams.set('max_connection_lifetime', '0');
+    parsed.searchParams.set('max_idle_connection_lifetime', '0');
     if (!parsed.searchParams.has('pool_timeout')) parsed.searchParams.set('pool_timeout', '10');
     return parsed.toString();
   } catch {

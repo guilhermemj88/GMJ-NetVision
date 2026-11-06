@@ -93,6 +93,7 @@ import {
 import {
   createSimulatedFastTrafficReader,
   fastReaderModeFromEnv,
+  type FastSimulationScript,
 } from './infrastructure/snmp/fast-reader-simulation';
 import { PrismaFastTrafficStore } from './infrastructure/snmp/prisma-fast-traffic-store';
 import {
@@ -491,6 +492,7 @@ const deviceSchema = z.object({
 interface RouteRegistrationOptions {
   credentialEncryptionKey?: string | null;
   requireAuth?: boolean;
+  simulatedFastTrafficScript?: FastSimulationScript;
 }
 
 /** ENV numerica opcional: ausente/vazia vira `undefined` (usa default). */
@@ -843,6 +845,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   );
   // Ligacao tardia: o transporte resolve URL/token pela camada de midias.
   const lifecycleSettings = lifecycleConfig(process.env);
+  // Embedded AUTO-ALL in HOLD must evaluate through the canonical engine,
+  // including its execution-disabled gate and durable detection publisher.
+  // Physical execution and the reviewed external pilot retain their original path.
+  const usePilotRuntime = lifecycleSettings.enabled &&
+    !(fastConfig.autoAllEnforce === true && !lifecycleSettings.executionEnabled);
   const persistenceEnabled =
     !config.DEMO_MODE &&
     lifecycleSettings.installation === 'IMPLANTAR' &&
@@ -862,6 +869,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     persistenceEnabled,
     lifecycleReady,
     lifecycleEnabled: lifecycleSettings.enabled,
+    runtimePath: usePilotRuntime ? 'EXTERNAL_PILOT' : 'CANONICAL_ENGINE',
     executionEnabled: lifecycleSettings.executionEnabled,
     removeEnabled: lifecycleSettings.removeEnabled,
     allowedProfiles: lifecycleSettings.profiles,
@@ -1218,6 +1226,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
 
   const fastReaderMode = fastReaderModeFromEnv(process.env);
+  if (options.simulatedFastTrafficScript && fastReaderMode !== 'SIMULATED')
+    throw new Error('SIMULATION_SCRIPT_REQUIRES_SIMULATED_READER');
   // Posse unica: AUTO-ALL ENFORCE NUNCA depende de flag opcional — descoberta
   // dinamica sem lease permitiria dois coletores medindo o mesmo ifIndex.
   const fastSingleOwner =
@@ -1309,7 +1319,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     // o motor e o lifecycle sao os mesmos nos dois casos.
     reader:
       fastReaderMode === 'SIMULATED'
-        ? createSimulatedFastTrafficReader()
+        ? createSimulatedFastTrafficReader(options.simulatedFastTrafficScript ? { script: options.simulatedFastTrafficScript } : {})
         : new FastSnmpReader(hosts, new SnmpClientImpl(fastConfig.timeoutMs, fastConfig.retries)),
     store: fastStore,
     observer: fastGrowth,
@@ -1634,7 +1644,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
           throw Error('RECONCILIATION_READ_UNAVAILABLE');
         return mitigationLiveExecutor.readRoutePolicy(host, t.policyName!);
       },
-      ...(lifecycleSettings.enabled ? { pilotTraffic: bridgeSource } : {}),
+      ...(usePilotRuntime ? { pilotTraffic: bridgeSource } : {}),
       store: automationStore,
       config: () => ({
         ...lifecycleSettings,
@@ -1664,7 +1674,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         };
       },
     });
-    if (lifecycleSettings.enabled) autoEngineRef.current = lifecycle;
+    if (usePilotRuntime) autoEngineRef.current = lifecycle;
     app.addHook('onReady', async () => {
       if (lifecycleSettings.enabled) {
         const hydration = await mitigationService.rehydrateSnapshots();
@@ -1696,10 +1706,14 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     engine: {
       tick: async () => {
         const tick = async () => {
-          const decisions = lifecycleSettings.enabled
+          if (lifecycleSettings.enabled && !lifecycleReady) return [];
+          // A second API may serve diagnostics, but cannot independently count
+          // the owner's FAST observations. Known lease loss also stops decisions.
+          if (fastConfig.autoAllEnforce === true && !fastLease.status().acquired) return [];
+          const decisions = usePilotRuntime
             ? await lifecycle!.tickPilot()
             : await mitigationAutoEngine.tick();
-          if (lifecycle && !lifecycleSettings.enabled)
+          if (lifecycle && !usePilotRuntime)
             for (const decision of decisions) await lifecycle.observe(decision);
           if (bridgeConfig.mode === 'ENFORCE')
             await recordFastBridgeDecisions(

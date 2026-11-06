@@ -80,6 +80,12 @@ describe('sampling contract: LEGACY keeps freshness only, FAST keeps freshness a
 });
 
 describe('withinSamplingWindow', () => {
+  it('AUTO-ALL dynamic profiles use the strict embedded window and are Growth eligible', () => {
+    const dynamic = config({}, { MITIGATION_FAST_POLL_MODE: 'ENFORCE',
+      MITIGATION_FAST_AUTO_ALL_ENFORCE_ENABLED: '1', MITIGATION_FAST_NORMAL_SECONDS: '5' });
+    expect(isFastRoutedProfile('newly-discovered', dynamic)).toBe(true);
+    expect(samplingWindowForProfile('newly-discovered', dynamic)).toEqual({ maxAgeMs:15000, maxGapMs:15000 });
+  });
   const legacy = legacySamplingWindow(600_000);
 
   it('accepts the real BHNET cadence (126 s and 248 s) under LEGACY', () => {

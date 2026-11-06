@@ -2,6 +2,7 @@ import type { FastBridgeConfig } from './fast-observation-bridge';
 import { fastRoutingActive } from './fast-observation-bridge';
 import type { FastPollerConfig } from '../../infrastructure/snmp/fast-traffic-poller';
 import type { MitigationTrafficSample } from './mitigation-traffic-source';
+import { embeddedFastRoutingActive } from './embedded-fast-routing';
 
 /**
  * Contrato temporal de UMA fonte de telemetria.
@@ -37,7 +38,7 @@ export function isFastRoutedProfile(
   config: { bridge: FastBridgeConfig; embedded: FastPollerConfig },
 ): boolean {
   if (fastRoutingActive(config.bridge, profileId)) return true;
-  return config.embedded.mode === 'ENFORCE' && config.embedded.profileIds.includes(profileId);
+  return embeddedFastRoutingActive(profileId, config.embedded);
 }
 
 /**
@@ -56,7 +57,7 @@ export function samplingWindowForProfile(
 ): MitigationSamplingWindow {
   if (fastRoutingActive(config.bridge, profileId))
     return { maxAgeMs: config.bridge.maxAgeMs, maxGapMs: config.bridge.maxGapMs };
-  if (config.embedded.mode === 'ENFORCE' && config.embedded.profileIds.includes(profileId))
+  if (embeddedFastRoutingActive(profileId, config.embedded))
     return { maxAgeMs: config.embedded.maxGapMs, maxGapMs: config.embedded.maxGapMs };
   return legacySamplingWindow(config.legacyMaxAgeMs);
 }

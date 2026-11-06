@@ -179,6 +179,18 @@ describe('atomic traffic identity', () => {
     }).sampleWithId({ ...target, bandwidthBps: null });
     expect(legacyCalls).toBe(1);
   });
+  it('dynamic AUTO-ALL never falls back to legacy when its static profile list is empty', async () => {
+    let legacyCalls = 0;
+    const config = fastPollerConfig({ MITIGATION_FAST_POLL_MODE: 'ENFORCE',
+      MITIGATION_FAST_AUTO_ALL_ENFORCE_ENABLED: '1', MITIGATION_FAST_NORMAL_SECONDS: '5' });
+    const source = new PriorityTrafficSource({ config,
+      legacy: { sample: async () => null, sampleWithId: async () => { legacyCalls++; return null; } },
+      store: { latest: async () => null, append: async () => false },
+      direction: () => 'tx', available: () => false,
+    });
+    expect(await source.sampleWithId({ ...target, profileId: 'newly-discovered', bandwidthBps: null })).toBeNull();
+    expect(legacyCalls).toBe(0);
+  });
 });
 
 describe('explicit temporal continuity', () => {

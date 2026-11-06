@@ -8,10 +8,13 @@ import { PhysicalInventoryError } from './infrastructure/physical/physical-repos
 import { Prisma } from './generated/prisma';
 import { MediaSecretUnavailableError } from './infrastructure/media/media-integration-service';
 import { ReadOnlyViolationError, registerReadOnlyGuard } from './read-only';
+import type { FastSimulationScript } from './infrastructure/snmp/fast-reader-simulation';
 
 export interface BuildAppOptions {
   credentialEncryptionKey?: string | null;
   requireAuth?: boolean;
+  /** Counter equipment fixture only; rejected unless the guarded SIMULATED reader is selected. */
+  simulatedFastTrafficScript?: FastSimulationScript;
 }
 
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
