@@ -1,0 +1,12 @@
+{
+  "taskContainerId": "463dee9e974a37c870d644e7864136771c813b1107d65508db904ea79875976e",
+  "taskContainerRunning": true,
+  "host": "127.0.0.1",
+  "port": 55448,
+  "database": "pilot_auto_all_homolog_verified_20261105",
+  "existingContainerId": "a414726479038ab03582f96bc2ed2cdb04fe9f250bb8ab7cb69a6673a094aeec",
+  "existingContainerStartedAt": "2026-11-05T12:30:37.331554955Z",
+  "existingContainerUnchanged": true,
+  "noSqlConnectionToExistingContainer": true,
+  "noTaskDatabaseDeleted": true
+}

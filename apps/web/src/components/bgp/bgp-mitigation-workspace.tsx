@@ -13,6 +13,7 @@ import type {
   MitigationRuntimeState,
 } from '@gmj/shared';
 import { MitigationFastBridgeFacts } from './mitigation-fast-bridge';
+import { MitigationAutoAllPanel } from './mitigation-auto-all';
 import { Search } from 'lucide-react';
 import { MitigationDirectionReviewPanel } from './mitigation-direction-review';
 import { MitigationTelemetryFacts, telemetryReasonLabel } from './mitigation-telemetry';
@@ -505,6 +506,7 @@ export function BgpMitigationWorkspace() {
 
   return (
     <section className="mitigation-shell" aria-label="Mitigação DDoS">
+      <MitigationAutoAllPanel names={Object.fromEntries(rows.map(row => [row.id, row.customer ?? row.interfaceName ?? row.id]))} />
       <div
         className={`mitigation-banner mitigation-banner--${engineStatus.tone}`}
         role="status"

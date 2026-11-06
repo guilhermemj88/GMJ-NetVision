@@ -1,0 +1,8 @@
+{
+  "containerId": "463dee9e974a37c870d644e7864136771c813b1107d65508db904ea79875976e",
+  "host": "127.0.0.1",
+  "port": 55448,
+  "database": "pilot_auto_all_homolog_verified_20261105",
+  "verifiedBeforeSchema": true,
+  "existingTaskAndPriorDatabasesPreserved": true
+}

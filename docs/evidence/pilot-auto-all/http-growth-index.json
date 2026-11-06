@@ -1,0 +1,3825 @@
+{
+  "synthetic": true,
+  "source": "http-growth.json (complete original in external evidence package)",
+  "originalPreserved": true,
+  "events": [
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:58.663Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-01",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1001",
+          "peer": "192.0.2.1",
+          "affectedPeers": [
+            "192.0.2.1"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-1-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-44528460-d71f-47f9-8b5e-81b185d2c9ef",
+          "profileId": "cmw47kkqm001cn70sd66ozchb",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.710Z",
+          "episodeId": "44528460-d71f-47f9-8b5e-81b185d2c9ef",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.234Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-01\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1001\",\"peer\":\"192.0.2.1\",\"affectedPeers\":[\"192.0.2.1\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-1-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-44528460-d71f-47f9-8b5e-81b185d2c9ef\",\"profileId\":\"cmw47kkqm001cn70sd66ozchb\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.710Z\",\"episodeId\":\"44528460-d71f-47f9-8b5e-81b185d2c9ef\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.234Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:58.663Z",
+          "ack": false,
+          "rawSha256": "1caf9658889541e08cdc2543afdf764c332a940b04a35575840b5593667f5a25"
+        },
+        {
+          "at": "2026-11-06T00:03:29.718Z",
+          "ack": false,
+          "rawSha256": "1caf9658889541e08cdc2543afdf764c332a940b04a35575840b5593667f5a25"
+        },
+        {
+          "at": "2026-11-06T00:04:29.802Z",
+          "ack": false,
+          "rawSha256": "1caf9658889541e08cdc2543afdf764c332a940b04a35575840b5593667f5a25"
+        },
+        {
+          "at": "2026-11-06T00:06:30.042Z",
+          "ack": false,
+          "rawSha256": "1caf9658889541e08cdc2543afdf764c332a940b04a35575840b5593667f5a25"
+        },
+        {
+          "at": "2026-11-06T00:10:30.322Z",
+          "ack": false,
+          "rawSha256": "1caf9658889541e08cdc2543afdf764c332a940b04a35575840b5593667f5a25"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:58.715Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-10",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1010",
+          "peer": "192.0.2.10",
+          "affectedPeers": [
+            "192.0.2.10"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-10-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-4d9bc9d3-9fc4-401d-b345-720fcbecad31",
+          "profileId": "cmw47kkr6001hn70s2av9r35j",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.711Z",
+          "episodeId": "4d9bc9d3-9fc4-401d-b345-720fcbecad31",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.234Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-10\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1010\",\"peer\":\"192.0.2.10\",\"affectedPeers\":[\"192.0.2.10\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-10-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-4d9bc9d3-9fc4-401d-b345-720fcbecad31\",\"profileId\":\"cmw47kkr6001hn70s2av9r35j\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.711Z\",\"episodeId\":\"4d9bc9d3-9fc4-401d-b345-720fcbecad31\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.234Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:58.715Z",
+          "ack": false,
+          "rawSha256": "1a66bc77b2d30619e940b47f5179739191869b54ad39ecf8476a5df13154b2c3"
+        },
+        {
+          "at": "2026-11-06T00:03:29.818Z",
+          "ack": false,
+          "rawSha256": "1a66bc77b2d30619e940b47f5179739191869b54ad39ecf8476a5df13154b2c3"
+        },
+        {
+          "at": "2026-11-06T00:04:29.897Z",
+          "ack": false,
+          "rawSha256": "1a66bc77b2d30619e940b47f5179739191869b54ad39ecf8476a5df13154b2c3"
+        },
+        {
+          "at": "2026-11-06T00:06:30.146Z",
+          "ack": false,
+          "rawSha256": "1a66bc77b2d30619e940b47f5179739191869b54ad39ecf8476a5df13154b2c3"
+        },
+        {
+          "at": "2026-11-06T00:10:30.346Z",
+          "ack": false,
+          "rawSha256": "1a66bc77b2d30619e940b47f5179739191869b54ad39ecf8476a5df13154b2c3"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:58.762Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-11",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1011",
+          "peer": "192.0.2.11",
+          "affectedPeers": [
+            "192.0.2.11"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-11-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-c527a89e-a562-4bbf-a553-fdc55bcbece7",
+          "profileId": "cmw47kkrg001mn70sn6lnlxnd",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.716Z",
+          "episodeId": "c527a89e-a562-4bbf-a553-fdc55bcbece7",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.234Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-11\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1011\",\"peer\":\"192.0.2.11\",\"affectedPeers\":[\"192.0.2.11\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-11-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-c527a89e-a562-4bbf-a553-fdc55bcbece7\",\"profileId\":\"cmw47kkrg001mn70sn6lnlxnd\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.716Z\",\"episodeId\":\"c527a89e-a562-4bbf-a553-fdc55bcbece7\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.234Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:58.762Z",
+          "ack": false,
+          "rawSha256": "25a956122c458025e0285824fb3489f61d5821675616ac3568eefc179bd584e1"
+        },
+        {
+          "at": "2026-11-06T00:03:29.855Z",
+          "ack": false,
+          "rawSha256": "25a956122c458025e0285824fb3489f61d5821675616ac3568eefc179bd584e1"
+        },
+        {
+          "at": "2026-11-06T00:04:29.922Z",
+          "ack": false,
+          "rawSha256": "25a956122c458025e0285824fb3489f61d5821675616ac3568eefc179bd584e1"
+        },
+        {
+          "at": "2026-11-06T00:06:30.176Z",
+          "ack": false,
+          "rawSha256": "25a956122c458025e0285824fb3489f61d5821675616ac3568eefc179bd584e1"
+        },
+        {
+          "at": "2026-11-06T00:10:30.374Z",
+          "ack": false,
+          "rawSha256": "25a956122c458025e0285824fb3489f61d5821675616ac3568eefc179bd584e1"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:58.809Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-12",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1012",
+          "peer": "192.0.2.12",
+          "affectedPeers": [
+            "192.0.2.12"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-12-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-62b0b711-d8c0-4531-acab-eb3652a291d1",
+          "profileId": "cmw47kkrr001rn70sigor5pv6",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.717Z",
+          "episodeId": "62b0b711-d8c0-4531-acab-eb3652a291d1",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.234Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-12\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1012\",\"peer\":\"192.0.2.12\",\"affectedPeers\":[\"192.0.2.12\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-12-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-62b0b711-d8c0-4531-acab-eb3652a291d1\",\"profileId\":\"cmw47kkrr001rn70sigor5pv6\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.717Z\",\"episodeId\":\"62b0b711-d8c0-4531-acab-eb3652a291d1\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.234Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:58.809Z",
+          "ack": false,
+          "rawSha256": "003935825140a4f3ecb2d8ff3b9ecf5597e99748801e026f64ed9f521fec2907"
+        },
+        {
+          "at": "2026-11-06T00:03:29.884Z",
+          "ack": false,
+          "rawSha256": "003935825140a4f3ecb2d8ff3b9ecf5597e99748801e026f64ed9f521fec2907"
+        },
+        {
+          "at": "2026-11-06T00:04:29.949Z",
+          "ack": false,
+          "rawSha256": "003935825140a4f3ecb2d8ff3b9ecf5597e99748801e026f64ed9f521fec2907"
+        },
+        {
+          "at": "2026-11-06T00:06:30.204Z",
+          "ack": false,
+          "rawSha256": "003935825140a4f3ecb2d8ff3b9ecf5597e99748801e026f64ed9f521fec2907"
+        },
+        {
+          "at": "2026-11-06T00:10:30.402Z",
+          "ack": false,
+          "rawSha256": "003935825140a4f3ecb2d8ff3b9ecf5597e99748801e026f64ed9f521fec2907"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:58.839Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-14",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1014",
+          "peer": "192.0.2.14",
+          "affectedPeers": [
+            "192.0.2.14"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-14-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-60c81e00-3e39-485f-8a6a-51b0772e63d2",
+          "profileId": "cmw47kksc0021n70skpgluyv6",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.727Z",
+          "episodeId": "60c81e00-3e39-485f-8a6a-51b0772e63d2",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.260Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-14\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1014\",\"peer\":\"192.0.2.14\",\"affectedPeers\":[\"192.0.2.14\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-14-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-60c81e00-3e39-485f-8a6a-51b0772e63d2\",\"profileId\":\"cmw47kksc0021n70skpgluyv6\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.727Z\",\"episodeId\":\"60c81e00-3e39-485f-8a6a-51b0772e63d2\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.260Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:58.839Z",
+          "ack": false,
+          "rawSha256": "d209c4684ba0a4e498100ba44507d082b6c2cebaa9c6822529c280fbc77fa0b3"
+        },
+        {
+          "at": "2026-11-06T00:03:29.909Z",
+          "ack": false,
+          "rawSha256": "d209c4684ba0a4e498100ba44507d082b6c2cebaa9c6822529c280fbc77fa0b3"
+        },
+        {
+          "at": "2026-11-06T00:04:29.971Z",
+          "ack": false,
+          "rawSha256": "d209c4684ba0a4e498100ba44507d082b6c2cebaa9c6822529c280fbc77fa0b3"
+        },
+        {
+          "at": "2026-11-06T00:06:30.231Z",
+          "ack": false,
+          "rawSha256": "d209c4684ba0a4e498100ba44507d082b6c2cebaa9c6822529c280fbc77fa0b3"
+        },
+        {
+          "at": "2026-11-06T00:10:30.431Z",
+          "ack": false,
+          "rawSha256": "d209c4684ba0a4e498100ba44507d082b6c2cebaa9c6822529c280fbc77fa0b3"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:58.870Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-15",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1015",
+          "peer": "192.0.2.15",
+          "affectedPeers": [
+            "192.0.2.15"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-15-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-0f3b5b68-7c22-4207-a237-f303feadb095",
+          "profileId": "cmw47kksm0026n70sqg5jbao3",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.734Z",
+          "episodeId": "0f3b5b68-7c22-4207-a237-f303feadb095",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.260Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-15\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1015\",\"peer\":\"192.0.2.15\",\"affectedPeers\":[\"192.0.2.15\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-15-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-0f3b5b68-7c22-4207-a237-f303feadb095\",\"profileId\":\"cmw47kksm0026n70sqg5jbao3\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.734Z\",\"episodeId\":\"0f3b5b68-7c22-4207-a237-f303feadb095\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.260Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:58.870Z",
+          "ack": false,
+          "rawSha256": "114edbc27e4c3bafc93eaa35277d12c8b61a1f5042c483073b6975e2aad755aa"
+        },
+        {
+          "at": "2026-11-06T00:03:29.934Z",
+          "ack": false,
+          "rawSha256": "114edbc27e4c3bafc93eaa35277d12c8b61a1f5042c483073b6975e2aad755aa"
+        },
+        {
+          "at": "2026-11-06T00:04:29.994Z",
+          "ack": false,
+          "rawSha256": "114edbc27e4c3bafc93eaa35277d12c8b61a1f5042c483073b6975e2aad755aa"
+        },
+        {
+          "at": "2026-11-06T00:06:30.270Z",
+          "ack": false,
+          "rawSha256": "114edbc27e4c3bafc93eaa35277d12c8b61a1f5042c483073b6975e2aad755aa"
+        },
+        {
+          "at": "2026-11-06T00:10:30.457Z",
+          "ack": false,
+          "rawSha256": "114edbc27e4c3bafc93eaa35277d12c8b61a1f5042c483073b6975e2aad755aa"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:58.901Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-13",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1013",
+          "peer": "192.0.2.13",
+          "affectedPeers": [
+            "192.0.2.13"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-13-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-9f4c569d-6c7a-4c5c-86a5-a0dd1cfb2e7f",
+          "profileId": "cmw47kks2001wn70s8rydzn2u",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.725Z",
+          "episodeId": "9f4c569d-6c7a-4c5c-86a5-a0dd1cfb2e7f",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.260Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-13\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1013\",\"peer\":\"192.0.2.13\",\"affectedPeers\":[\"192.0.2.13\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-13-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-9f4c569d-6c7a-4c5c-86a5-a0dd1cfb2e7f\",\"profileId\":\"cmw47kks2001wn70s8rydzn2u\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.725Z\",\"episodeId\":\"9f4c569d-6c7a-4c5c-86a5-a0dd1cfb2e7f\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.260Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:58.901Z",
+          "ack": false,
+          "rawSha256": "b5ed55aaaba82ab94a8b1c3c318812930887310992014bb981dabefb97057e0e"
+        },
+        {
+          "at": "2026-11-06T00:03:29.958Z",
+          "ack": false,
+          "rawSha256": "b5ed55aaaba82ab94a8b1c3c318812930887310992014bb981dabefb97057e0e"
+        },
+        {
+          "at": "2026-11-06T00:04:30.018Z",
+          "ack": false,
+          "rawSha256": "b5ed55aaaba82ab94a8b1c3c318812930887310992014bb981dabefb97057e0e"
+        },
+        {
+          "at": "2026-11-06T00:06:30.312Z",
+          "ack": false,
+          "rawSha256": "b5ed55aaaba82ab94a8b1c3c318812930887310992014bb981dabefb97057e0e"
+        },
+        {
+          "at": "2026-11-06T00:10:30.480Z",
+          "ack": false,
+          "rawSha256": "b5ed55aaaba82ab94a8b1c3c318812930887310992014bb981dabefb97057e0e"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:58.931Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-16",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1016",
+          "peer": "192.0.2.16",
+          "affectedPeers": [
+            "192.0.2.16"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-16-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-2ea03409-7259-4419-bb57-d6a73e0677c8",
+          "profileId": "cmw47kksx002bn70s3zmdt55z",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.736Z",
+          "episodeId": "2ea03409-7259-4419-bb57-d6a73e0677c8",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.260Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-16\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1016\",\"peer\":\"192.0.2.16\",\"affectedPeers\":[\"192.0.2.16\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-16-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-2ea03409-7259-4419-bb57-d6a73e0677c8\",\"profileId\":\"cmw47kksx002bn70s3zmdt55z\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.736Z\",\"episodeId\":\"2ea03409-7259-4419-bb57-d6a73e0677c8\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.260Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:58.931Z",
+          "ack": false,
+          "rawSha256": "483a6223252dd96d1cf8e3eaccb4da8e9e87a39fd22e4262d18c81caedc594ca"
+        },
+        {
+          "at": "2026-11-06T00:03:29.982Z",
+          "ack": false,
+          "rawSha256": "483a6223252dd96d1cf8e3eaccb4da8e9e87a39fd22e4262d18c81caedc594ca"
+        },
+        {
+          "at": "2026-11-06T00:04:30.043Z",
+          "ack": false,
+          "rawSha256": "483a6223252dd96d1cf8e3eaccb4da8e9e87a39fd22e4262d18c81caedc594ca"
+        },
+        {
+          "at": "2026-11-06T00:06:30.344Z",
+          "ack": false,
+          "rawSha256": "483a6223252dd96d1cf8e3eaccb4da8e9e87a39fd22e4262d18c81caedc594ca"
+        },
+        {
+          "at": "2026-11-06T00:10:30.503Z",
+          "ack": false,
+          "rawSha256": "483a6223252dd96d1cf8e3eaccb4da8e9e87a39fd22e4262d18c81caedc594ca"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:58.960Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-17",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1017",
+          "peer": "192.0.2.17",
+          "affectedPeers": [
+            "192.0.2.17"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-17-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-647bed88-5001-47e9-9257-1092abbaf4a7",
+          "profileId": "cmw47kkt7002gn70sealkjrtq",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.747Z",
+          "episodeId": "647bed88-5001-47e9-9257-1092abbaf4a7",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.283Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-17\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1017\",\"peer\":\"192.0.2.17\",\"affectedPeers\":[\"192.0.2.17\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-17-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-647bed88-5001-47e9-9257-1092abbaf4a7\",\"profileId\":\"cmw47kkt7002gn70sealkjrtq\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.747Z\",\"episodeId\":\"647bed88-5001-47e9-9257-1092abbaf4a7\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.283Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:58.960Z",
+          "ack": false,
+          "rawSha256": "fd0f7d977c620f911662e91162e72f2255d62117eed87ba61e09de3d397f598e"
+        },
+        {
+          "at": "2026-11-06T00:03:30.011Z",
+          "ack": false,
+          "rawSha256": "fd0f7d977c620f911662e91162e72f2255d62117eed87ba61e09de3d397f598e"
+        },
+        {
+          "at": "2026-11-06T00:04:30.066Z",
+          "ack": false,
+          "rawSha256": "fd0f7d977c620f911662e91162e72f2255d62117eed87ba61e09de3d397f598e"
+        },
+        {
+          "at": "2026-11-06T00:06:30.369Z",
+          "ack": false,
+          "rawSha256": "fd0f7d977c620f911662e91162e72f2255d62117eed87ba61e09de3d397f598e"
+        },
+        {
+          "at": "2026-11-06T00:10:30.526Z",
+          "ack": false,
+          "rawSha256": "fd0f7d977c620f911662e91162e72f2255d62117eed87ba61e09de3d397f598e"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:58.994Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-18",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1018",
+          "peer": "192.0.2.18",
+          "affectedPeers": [
+            "192.0.2.18"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-18-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-ed2da886-920f-49ae-8454-d3685e018ecb",
+          "profileId": "cmw47kkth002ln70skuwp75bs",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.767Z",
+          "episodeId": "ed2da886-920f-49ae-8454-d3685e018ecb",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.283Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-18\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1018\",\"peer\":\"192.0.2.18\",\"affectedPeers\":[\"192.0.2.18\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-18-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-ed2da886-920f-49ae-8454-d3685e018ecb\",\"profileId\":\"cmw47kkth002ln70skuwp75bs\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.767Z\",\"episodeId\":\"ed2da886-920f-49ae-8454-d3685e018ecb\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.283Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:58.994Z",
+          "ack": false,
+          "rawSha256": "089aa2059f508ddc2db46619a2db3d7a15585cec40616230523eec4f79d48b46"
+        },
+        {
+          "at": "2026-11-06T00:03:30.037Z",
+          "ack": false,
+          "rawSha256": "089aa2059f508ddc2db46619a2db3d7a15585cec40616230523eec4f79d48b46"
+        },
+        {
+          "at": "2026-11-06T00:04:30.090Z",
+          "ack": false,
+          "rawSha256": "089aa2059f508ddc2db46619a2db3d7a15585cec40616230523eec4f79d48b46"
+        },
+        {
+          "at": "2026-11-06T00:06:30.394Z",
+          "ack": false,
+          "rawSha256": "089aa2059f508ddc2db46619a2db3d7a15585cec40616230523eec4f79d48b46"
+        },
+        {
+          "at": "2026-11-06T00:10:30.549Z",
+          "ack": false,
+          "rawSha256": "089aa2059f508ddc2db46619a2db3d7a15585cec40616230523eec4f79d48b46"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:59.699Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-19",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1019",
+          "peer": "192.0.2.19",
+          "affectedPeers": [
+            "192.0.2.19"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-19-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-50e6b789-5023-4880-9a9f-210dd7c19295",
+          "profileId": "cmw47kkts002qn70szsp53ylx",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.782Z",
+          "episodeId": "50e6b789-5023-4880-9a9f-210dd7c19295",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.283Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-19\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1019\",\"peer\":\"192.0.2.19\",\"affectedPeers\":[\"192.0.2.19\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-19-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-50e6b789-5023-4880-9a9f-210dd7c19295\",\"profileId\":\"cmw47kkts002qn70szsp53ylx\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.782Z\",\"episodeId\":\"50e6b789-5023-4880-9a9f-210dd7c19295\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.283Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:59.699Z",
+          "ack": false,
+          "rawSha256": "1a015c3a2d9f20db239dacdeade15a630ace2b355ae8f6966b3c0bf0f76a384a"
+        },
+        {
+          "at": "2026-11-06T00:03:33.632Z",
+          "ack": false,
+          "rawSha256": "1a015c3a2d9f20db239dacdeade15a630ace2b355ae8f6966b3c0bf0f76a384a"
+        },
+        {
+          "at": "2026-11-06T00:04:33.695Z",
+          "ack": false,
+          "rawSha256": "1a015c3a2d9f20db239dacdeade15a630ace2b355ae8f6966b3c0bf0f76a384a"
+        },
+        {
+          "at": "2026-11-06T00:06:33.952Z",
+          "ack": false,
+          "rawSha256": "1a015c3a2d9f20db239dacdeade15a630ace2b355ae8f6966b3c0bf0f76a384a"
+        },
+        {
+          "at": "2026-11-06T00:10:34.386Z",
+          "ack": false,
+          "rawSha256": "1a015c3a2d9f20db239dacdeade15a630ace2b355ae8f6966b3c0bf0f76a384a"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:59.746Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-02",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1002",
+          "peer": "192.0.2.2",
+          "affectedPeers": [
+            "192.0.2.2"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-2-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-97b612ba-0706-4830-bfcd-515c9bcf4426",
+          "profileId": "cmw47kku2002vn70szvuix9n1",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.802Z",
+          "episodeId": "97b612ba-0706-4830-bfcd-515c9bcf4426",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.283Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-02\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1002\",\"peer\":\"192.0.2.2\",\"affectedPeers\":[\"192.0.2.2\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-2-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-97b612ba-0706-4830-bfcd-515c9bcf4426\",\"profileId\":\"cmw47kku2002vn70szvuix9n1\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.802Z\",\"episodeId\":\"97b612ba-0706-4830-bfcd-515c9bcf4426\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.283Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:59.746Z",
+          "ack": false,
+          "rawSha256": "ff2f4ba28e835db4444a2fc7efa399658229b2092adbfb45bba8669b882e5cf3"
+        },
+        {
+          "at": "2026-11-06T00:03:33.664Z",
+          "ack": false,
+          "rawSha256": "ff2f4ba28e835db4444a2fc7efa399658229b2092adbfb45bba8669b882e5cf3"
+        },
+        {
+          "at": "2026-11-06T00:04:33.726Z",
+          "ack": false,
+          "rawSha256": "ff2f4ba28e835db4444a2fc7efa399658229b2092adbfb45bba8669b882e5cf3"
+        },
+        {
+          "at": "2026-11-06T00:06:33.992Z",
+          "ack": false,
+          "rawSha256": "ff2f4ba28e835db4444a2fc7efa399658229b2092adbfb45bba8669b882e5cf3"
+        },
+        {
+          "at": "2026-11-06T00:10:34.417Z",
+          "ack": false,
+          "rawSha256": "ff2f4ba28e835db4444a2fc7efa399658229b2092adbfb45bba8669b882e5cf3"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:59.776Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-20",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1020",
+          "peer": "192.0.2.20",
+          "affectedPeers": [
+            "192.0.2.20"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-20-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-f42053d8-9a5a-4d66-9cc0-bb93f669909b",
+          "profileId": "cmw47kkuc0030n70s8vrnhsbp",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.806Z",
+          "episodeId": "f42053d8-9a5a-4d66-9cc0-bb93f669909b",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.305Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-20\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1020\",\"peer\":\"192.0.2.20\",\"affectedPeers\":[\"192.0.2.20\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-20-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-f42053d8-9a5a-4d66-9cc0-bb93f669909b\",\"profileId\":\"cmw47kkuc0030n70s8vrnhsbp\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.806Z\",\"episodeId\":\"f42053d8-9a5a-4d66-9cc0-bb93f669909b\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.305Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:59.776Z",
+          "ack": false,
+          "rawSha256": "1c73194edb757685b6a8d3cea605d1ba29e444cc581b019da273c90a312490e0"
+        },
+        {
+          "at": "2026-11-06T00:03:33.695Z",
+          "ack": false,
+          "rawSha256": "1c73194edb757685b6a8d3cea605d1ba29e444cc581b019da273c90a312490e0"
+        },
+        {
+          "at": "2026-11-06T00:04:33.757Z",
+          "ack": false,
+          "rawSha256": "1c73194edb757685b6a8d3cea605d1ba29e444cc581b019da273c90a312490e0"
+        },
+        {
+          "at": "2026-11-06T00:06:34.022Z",
+          "ack": false,
+          "rawSha256": "1c73194edb757685b6a8d3cea605d1ba29e444cc581b019da273c90a312490e0"
+        },
+        {
+          "at": "2026-11-06T00:10:34.448Z",
+          "ack": false,
+          "rawSha256": "1c73194edb757685b6a8d3cea605d1ba29e444cc581b019da273c90a312490e0"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:59.804Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-21",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1021",
+          "peer": "192.0.2.21",
+          "affectedPeers": [
+            "192.0.2.21"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-21-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-83e9264d-f043-43a6-a58b-d2b7964f08f0",
+          "profileId": "cmw47kkul0035n70skg8djwcd",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.808Z",
+          "episodeId": "83e9264d-f043-43a6-a58b-d2b7964f08f0",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.305Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-21\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1021\",\"peer\":\"192.0.2.21\",\"affectedPeers\":[\"192.0.2.21\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-21-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-83e9264d-f043-43a6-a58b-d2b7964f08f0\",\"profileId\":\"cmw47kkul0035n70skg8djwcd\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.808Z\",\"episodeId\":\"83e9264d-f043-43a6-a58b-d2b7964f08f0\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.305Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:59.804Z",
+          "ack": false,
+          "rawSha256": "8d63e9eb7a5d245135e7012b9ed456d8628cf204852833a50aea341e31c4f752"
+        },
+        {
+          "at": "2026-11-06T00:03:33.726Z",
+          "ack": false,
+          "rawSha256": "8d63e9eb7a5d245135e7012b9ed456d8628cf204852833a50aea341e31c4f752"
+        },
+        {
+          "at": "2026-11-06T00:04:33.788Z",
+          "ack": false,
+          "rawSha256": "8d63e9eb7a5d245135e7012b9ed456d8628cf204852833a50aea341e31c4f752"
+        },
+        {
+          "at": "2026-11-06T00:06:34.048Z",
+          "ack": false,
+          "rawSha256": "8d63e9eb7a5d245135e7012b9ed456d8628cf204852833a50aea341e31c4f752"
+        },
+        {
+          "at": "2026-11-06T00:10:34.479Z",
+          "ack": false,
+          "rawSha256": "8d63e9eb7a5d245135e7012b9ed456d8628cf204852833a50aea341e31c4f752"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:59.831Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-22",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1022",
+          "peer": "192.0.2.22",
+          "affectedPeers": [
+            "192.0.2.22"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-22-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-66bba5f2-b8cf-49f0-9b7c-879c994717c5",
+          "profileId": "cmw47kkuv003an70sur53uzjg",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.830Z",
+          "episodeId": "66bba5f2-b8cf-49f0-9b7c-879c994717c5",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.305Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-22\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1022\",\"peer\":\"192.0.2.22\",\"affectedPeers\":[\"192.0.2.22\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-22-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-66bba5f2-b8cf-49f0-9b7c-879c994717c5\",\"profileId\":\"cmw47kkuv003an70sur53uzjg\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.830Z\",\"episodeId\":\"66bba5f2-b8cf-49f0-9b7c-879c994717c5\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.305Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:59.831Z",
+          "ack": false,
+          "rawSha256": "9bf99ddf572bb510427c8f395cb5c2a2877bfeffdb2702b9a8212eb180ea2bda"
+        },
+        {
+          "at": "2026-11-06T00:03:33.758Z",
+          "ack": false,
+          "rawSha256": "9bf99ddf572bb510427c8f395cb5c2a2877bfeffdb2702b9a8212eb180ea2bda"
+        },
+        {
+          "at": "2026-11-06T00:04:33.850Z",
+          "ack": false,
+          "rawSha256": "9bf99ddf572bb510427c8f395cb5c2a2877bfeffdb2702b9a8212eb180ea2bda"
+        },
+        {
+          "at": "2026-11-06T00:06:34.086Z",
+          "ack": false,
+          "rawSha256": "9bf99ddf572bb510427c8f395cb5c2a2877bfeffdb2702b9a8212eb180ea2bda"
+        },
+        {
+          "at": "2026-11-06T00:10:34.510Z",
+          "ack": false,
+          "rawSha256": "9bf99ddf572bb510427c8f395cb5c2a2877bfeffdb2702b9a8212eb180ea2bda"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:59.856Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-23",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1023",
+          "peer": "192.0.2.23",
+          "affectedPeers": [
+            "192.0.2.23"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-23-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-d43a813b-56f4-4e98-b6c9-8cec7098e8e7",
+          "profileId": "cmw47kkv5003fn70sqwv3if72",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.834Z",
+          "episodeId": "d43a813b-56f4-4e98-b6c9-8cec7098e8e7",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.305Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-23\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1023\",\"peer\":\"192.0.2.23\",\"affectedPeers\":[\"192.0.2.23\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-23-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-d43a813b-56f4-4e98-b6c9-8cec7098e8e7\",\"profileId\":\"cmw47kkv5003fn70sqwv3if72\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.834Z\",\"episodeId\":\"d43a813b-56f4-4e98-b6c9-8cec7098e8e7\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.305Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:59.856Z",
+          "ack": false,
+          "rawSha256": "e99fdd96f671933d8a8402b851c77fa8475104e4a0b7bc9e60dee42075d271c3"
+        },
+        {
+          "at": "2026-11-06T00:03:33.788Z",
+          "ack": false,
+          "rawSha256": "e99fdd96f671933d8a8402b851c77fa8475104e4a0b7bc9e60dee42075d271c3"
+        },
+        {
+          "at": "2026-11-06T00:04:33.881Z",
+          "ack": false,
+          "rawSha256": "e99fdd96f671933d8a8402b851c77fa8475104e4a0b7bc9e60dee42075d271c3"
+        },
+        {
+          "at": "2026-11-06T00:06:34.117Z",
+          "ack": false,
+          "rawSha256": "e99fdd96f671933d8a8402b851c77fa8475104e4a0b7bc9e60dee42075d271c3"
+        },
+        {
+          "at": "2026-11-06T00:10:34.541Z",
+          "ack": false,
+          "rawSha256": "e99fdd96f671933d8a8402b851c77fa8475104e4a0b7bc9e60dee42075d271c3"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:59.881Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-04",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1004",
+          "peer": "192.0.2.4",
+          "affectedPeers": [
+            "192.0.2.4"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-4-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-1d1aa3d7-ad20-4dbd-b9f0-b6a28eece46c",
+          "profileId": "cmw47kkvp003pn70sxtzy5mkh",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.841Z",
+          "episodeId": "1d1aa3d7-ad20-4dbd-b9f0-b6a28eece46c",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.328Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-04\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1004\",\"peer\":\"192.0.2.4\",\"affectedPeers\":[\"192.0.2.4\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-4-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-1d1aa3d7-ad20-4dbd-b9f0-b6a28eece46c\",\"profileId\":\"cmw47kkvp003pn70sxtzy5mkh\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.841Z\",\"episodeId\":\"1d1aa3d7-ad20-4dbd-b9f0-b6a28eece46c\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.328Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:59.881Z",
+          "ack": false,
+          "rawSha256": "3be9178a25c378f59f93d8edbff1c4ebdbea8e53e06bf6a4d99af321832b8f36"
+        },
+        {
+          "at": "2026-11-06T00:03:33.835Z",
+          "ack": false,
+          "rawSha256": "3be9178a25c378f59f93d8edbff1c4ebdbea8e53e06bf6a4d99af321832b8f36"
+        },
+        {
+          "at": "2026-11-06T00:04:33.912Z",
+          "ack": false,
+          "rawSha256": "3be9178a25c378f59f93d8edbff1c4ebdbea8e53e06bf6a4d99af321832b8f36"
+        },
+        {
+          "at": "2026-11-06T00:06:34.148Z",
+          "ack": false,
+          "rawSha256": "3be9178a25c378f59f93d8edbff1c4ebdbea8e53e06bf6a4d99af321832b8f36"
+        },
+        {
+          "at": "2026-11-06T00:10:34.572Z",
+          "ack": false,
+          "rawSha256": "3be9178a25c378f59f93d8edbff1c4ebdbea8e53e06bf6a4d99af321832b8f36"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:59.908Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-03",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1003",
+          "peer": "192.0.2.3",
+          "affectedPeers": [
+            "192.0.2.3"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-3-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-81fb5b9c-5488-4b34-854f-0f208d44016d",
+          "profileId": "cmw47kkvf003kn70sryhs747l",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.841Z",
+          "episodeId": "81fb5b9c-5488-4b34-854f-0f208d44016d",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.328Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-03\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1003\",\"peer\":\"192.0.2.3\",\"affectedPeers\":[\"192.0.2.3\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-3-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-81fb5b9c-5488-4b34-854f-0f208d44016d\",\"profileId\":\"cmw47kkvf003kn70sryhs747l\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.841Z\",\"episodeId\":\"81fb5b9c-5488-4b34-854f-0f208d44016d\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.328Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:59.908Z",
+          "ack": false,
+          "rawSha256": "3fecf34148550bc66edd3ed31e1cbf59c51a4865112d951ee92732391a8578b1"
+        },
+        {
+          "at": "2026-11-06T00:03:33.865Z",
+          "ack": false,
+          "rawSha256": "3fecf34148550bc66edd3ed31e1cbf59c51a4865112d951ee92732391a8578b1"
+        },
+        {
+          "at": "2026-11-06T00:04:33.943Z",
+          "ack": false,
+          "rawSha256": "3fecf34148550bc66edd3ed31e1cbf59c51a4865112d951ee92732391a8578b1"
+        },
+        {
+          "at": "2026-11-06T00:06:34.179Z",
+          "ack": false,
+          "rawSha256": "3fecf34148550bc66edd3ed31e1cbf59c51a4865112d951ee92732391a8578b1"
+        },
+        {
+          "at": "2026-11-06T00:10:34.603Z",
+          "ack": false,
+          "rawSha256": "3fecf34148550bc66edd3ed31e1cbf59c51a4865112d951ee92732391a8578b1"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:59.936Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-06",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1006",
+          "peer": "192.0.2.6",
+          "affectedPeers": [
+            "192.0.2.6"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-6-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-9ff53d99-a468-4730-b4a5-c679c3c67150",
+          "profileId": "cmw47kkw9003zn70s28rymgse",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.850Z",
+          "episodeId": "9ff53d99-a468-4730-b4a5-c679c3c67150",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.328Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-06\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1006\",\"peer\":\"192.0.2.6\",\"affectedPeers\":[\"192.0.2.6\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-6-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-9ff53d99-a468-4730-b4a5-c679c3c67150\",\"profileId\":\"cmw47kkw9003zn70s28rymgse\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.850Z\",\"episodeId\":\"9ff53d99-a468-4730-b4a5-c679c3c67150\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.328Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:59.936Z",
+          "ack": false,
+          "rawSha256": "b629c8806d661d9c5ae22b6a2e6537b128bad33d8e81b8ac062160b96c90f343"
+        },
+        {
+          "at": "2026-11-06T00:03:33.896Z",
+          "ack": false,
+          "rawSha256": "b629c8806d661d9c5ae22b6a2e6537b128bad33d8e81b8ac062160b96c90f343"
+        },
+        {
+          "at": "2026-11-06T00:04:33.974Z",
+          "ack": false,
+          "rawSha256": "b629c8806d661d9c5ae22b6a2e6537b128bad33d8e81b8ac062160b96c90f343"
+        },
+        {
+          "at": "2026-11-06T00:06:34.210Z",
+          "ack": false,
+          "rawSha256": "b629c8806d661d9c5ae22b6a2e6537b128bad33d8e81b8ac062160b96c90f343"
+        },
+        {
+          "at": "2026-11-06T00:10:34.634Z",
+          "ack": false,
+          "rawSha256": "b629c8806d661d9c5ae22b6a2e6537b128bad33d8e81b8ac062160b96c90f343"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:02:59.960Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-07",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1007",
+          "peer": "192.0.2.7",
+          "affectedPeers": [
+            "192.0.2.7"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-7-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-4b7a53a1-38bb-46d5-b8a7-cdc681bc6827",
+          "profileId": "cmw47kkwj0044n70sa2ae87ky",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.857Z",
+          "episodeId": "4b7a53a1-38bb-46d5-b8a7-cdc681bc6827",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.351Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-07\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1007\",\"peer\":\"192.0.2.7\",\"affectedPeers\":[\"192.0.2.7\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-7-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-4b7a53a1-38bb-46d5-b8a7-cdc681bc6827\",\"profileId\":\"cmw47kkwj0044n70sa2ae87ky\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.857Z\",\"episodeId\":\"4b7a53a1-38bb-46d5-b8a7-cdc681bc6827\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.351Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:02:59.960Z",
+          "ack": false,
+          "rawSha256": "f043387988549f0530a5653e913fa08dafc51dae3ead29e5c2b9f9fd76f7e72f"
+        },
+        {
+          "at": "2026-11-06T00:03:33.928Z",
+          "ack": false,
+          "rawSha256": "f043387988549f0530a5653e913fa08dafc51dae3ead29e5c2b9f9fd76f7e72f"
+        },
+        {
+          "at": "2026-11-06T00:04:34.006Z",
+          "ack": false,
+          "rawSha256": "f043387988549f0530a5653e913fa08dafc51dae3ead29e5c2b9f9fd76f7e72f"
+        },
+        {
+          "at": "2026-11-06T00:06:34.241Z",
+          "ack": false,
+          "rawSha256": "f043387988549f0530a5653e913fa08dafc51dae3ead29e5c2b9f9fd76f7e72f"
+        },
+        {
+          "at": "2026-11-06T00:10:34.665Z",
+          "ack": false,
+          "rawSha256": "f043387988549f0530a5653e913fa08dafc51dae3ead29e5c2b9f9fd76f7e72f"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:03:03.603Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-08",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1008",
+          "peer": "192.0.2.8",
+          "affectedPeers": [
+            "192.0.2.8"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-8-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-05037022-d190-4212-939f-c110dbbfc2e6",
+          "profileId": "cmw47kkwt0049n70s7t0rpt02",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.867Z",
+          "episodeId": "05037022-d190-4212-939f-c110dbbfc2e6",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.351Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-08\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1008\",\"peer\":\"192.0.2.8\",\"affectedPeers\":[\"192.0.2.8\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-8-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-05037022-d190-4212-939f-c110dbbfc2e6\",\"profileId\":\"cmw47kkwt0049n70s7t0rpt02\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.867Z\",\"episodeId\":\"05037022-d190-4212-939f-c110dbbfc2e6\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.351Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:03:03.603Z",
+          "ack": false,
+          "rawSha256": "d8473bc63b7f749dd3fe0c9b683ae6c88d5d460952106e817b794c9ec9c8e0c1"
+        },
+        {
+          "at": "2026-11-06T00:03:34.707Z",
+          "ack": false,
+          "rawSha256": "d8473bc63b7f749dd3fe0c9b683ae6c88d5d460952106e817b794c9ec9c8e0c1"
+        },
+        {
+          "at": "2026-11-06T00:04:34.798Z",
+          "ack": false,
+          "rawSha256": "d8473bc63b7f749dd3fe0c9b683ae6c88d5d460952106e817b794c9ec9c8e0c1"
+        },
+        {
+          "at": "2026-11-06T00:06:35.024Z",
+          "ack": false,
+          "rawSha256": "d8473bc63b7f749dd3fe0c9b683ae6c88d5d460952106e817b794c9ec9c8e0c1"
+        },
+        {
+          "at": "2026-11-06T00:10:35.334Z",
+          "ack": false,
+          "rawSha256": "d8473bc63b7f749dd3fe0c9b683ae6c88d5d460952106e817b794c9ec9c8e0c1"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:03:03.625Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-05",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1005",
+          "peer": "192.0.2.5",
+          "affectedPeers": [
+            "192.0.2.5"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-5-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-19a8be8b-07bf-4d0f-ae57-6c2eb62d5cff",
+          "profileId": "cmw47kkvz003un70sxusfr2sa",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.869Z",
+          "episodeId": "19a8be8b-07bf-4d0f-ae57-6c2eb62d5cff",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.328Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-05\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1005\",\"peer\":\"192.0.2.5\",\"affectedPeers\":[\"192.0.2.5\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-5-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-19a8be8b-07bf-4d0f-ae57-6c2eb62d5cff\",\"profileId\":\"cmw47kkvz003un70sxusfr2sa\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.869Z\",\"episodeId\":\"19a8be8b-07bf-4d0f-ae57-6c2eb62d5cff\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.328Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:03:03.625Z",
+          "ack": false,
+          "rawSha256": "bd53ba844cae94adee614199682839a663b8eae8390e36ed3c71df3fd292150b"
+        },
+        {
+          "at": "2026-11-06T00:03:34.738Z",
+          "ack": false,
+          "rawSha256": "bd53ba844cae94adee614199682839a663b8eae8390e36ed3c71df3fd292150b"
+        },
+        {
+          "at": "2026-11-06T00:04:34.820Z",
+          "ack": false,
+          "rawSha256": "bd53ba844cae94adee614199682839a663b8eae8390e36ed3c71df3fd292150b"
+        },
+        {
+          "at": "2026-11-06T00:06:35.053Z",
+          "ack": false,
+          "rawSha256": "bd53ba844cae94adee614199682839a663b8eae8390e36ed3c71df3fd292150b"
+        },
+        {
+          "at": "2026-11-06T00:10:35.358Z",
+          "ack": false,
+          "rawSha256": "bd53ba844cae94adee614199682839a663b8eae8390e36ed3c71df3fd292150b"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:03:03.650Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-09",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1009",
+          "peer": "192.0.2.9",
+          "affectedPeers": [
+            "192.0.2.9"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.98,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 980,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-9-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-adbf26fb-e872-47d6-a8e0-ab9458433b6f",
+          "profileId": "cmw47kkx5004en70skwb0m81c",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:02:54.876Z",
+          "episodeId": "adbf26fb-e872-47d6-a8e0-ab9458433b6f",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 24,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:02:38.351Z",
+            "baselineAverage5mPct": 20,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 75,
+            "delta30sPercentagePoints": 75
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-09\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1009\",\"peer\":\"192.0.2.9\",\"affectedPeers\":[\"192.0.2.9\"],\"bandwidthGbps\":null,\"trafficGbps\":0.98,\"thresholdGbps\":0.95,\"trafficMbps\":980,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-9-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-adbf26fb-e872-47d6-a8e0-ab9458433b6f\",\"profileId\":\"cmw47kkx5004en70skwb0m81c\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:02:54.876Z\",\"episodeId\":\"adbf26fb-e872-47d6-a8e0-ab9458433b6f\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":24,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:02:38.351Z\",\"baselineAverage5mPct\":20,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":75,\"delta30sPercentagePoints\":75}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:03:03.650Z",
+          "ack": false,
+          "rawSha256": "48960d59b759ee38704520075c8692baeaaedfd9501381e6713d41b9f6366b85"
+        },
+        {
+          "at": "2026-11-06T00:03:34.767Z",
+          "ack": false,
+          "rawSha256": "48960d59b759ee38704520075c8692baeaaedfd9501381e6713d41b9f6366b85"
+        },
+        {
+          "at": "2026-11-06T00:04:34.843Z",
+          "ack": false,
+          "rawSha256": "48960d59b759ee38704520075c8692baeaaedfd9501381e6713d41b9f6366b85"
+        },
+        {
+          "at": "2026-11-06T00:06:35.078Z",
+          "ack": false,
+          "rawSha256": "48960d59b759ee38704520075c8692baeaaedfd9501381e6713d41b9f6366b85"
+        },
+        {
+          "at": "2026-11-06T00:10:35.382Z",
+          "ack": false,
+          "rawSha256": "48960d59b759ee38704520075c8692baeaaedfd9501381e6713d41b9f6366b85"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:19.239Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-01",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1001",
+          "peer": "192.0.2.1",
+          "affectedPeers": [
+            "192.0.2.1"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-1-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-44ba9cc5-9ffa-4c9f-bb4b-dd79faf39e2b",
+          "profileId": "cmw47kkqm001cn70sd66ozchb",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.242Z",
+          "episodeId": "44ba9cc5-9ffa-4c9f-bb4b-dd79faf39e2b",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.579Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-01\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1001\",\"peer\":\"192.0.2.1\",\"affectedPeers\":[\"192.0.2.1\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-1-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-44ba9cc5-9ffa-4c9f-bb4b-dd79faf39e2b\",\"profileId\":\"cmw47kkqm001cn70sd66ozchb\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.242Z\",\"episodeId\":\"44ba9cc5-9ffa-4c9f-bb4b-dd79faf39e2b\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.579Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:19.239Z",
+          "ack": false,
+          "rawSha256": "0fd1b67ddd4538c00ea8ffd111c72d18276e87839798b88fd9469ad5ff4b006d"
+        },
+        {
+          "at": "2026-11-06T00:09:49.283Z",
+          "ack": false,
+          "rawSha256": "0fd1b67ddd4538c00ea8ffd111c72d18276e87839798b88fd9469ad5ff4b006d"
+        },
+        {
+          "at": "2026-11-06T00:10:49.420Z",
+          "ack": false,
+          "rawSha256": "0fd1b67ddd4538c00ea8ffd111c72d18276e87839798b88fd9469ad5ff4b006d"
+        },
+        {
+          "at": "2026-11-06T00:12:49.632Z",
+          "ack": false,
+          "rawSha256": "0fd1b67ddd4538c00ea8ffd111c72d18276e87839798b88fd9469ad5ff4b006d"
+        },
+        {
+          "at": "2026-11-06T00:16:50.043Z",
+          "ack": true,
+          "rawSha256": "0fd1b67ddd4538c00ea8ffd111c72d18276e87839798b88fd9469ad5ff4b006d"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:19.280Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-10",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1010",
+          "peer": "192.0.2.10",
+          "affectedPeers": [
+            "192.0.2.10"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-10-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-92c0bdea-9933-4f17-9b73-bd6a2de6b9ed",
+          "profileId": "cmw47kkr6001hn70s2av9r35j",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.242Z",
+          "episodeId": "92c0bdea-9933-4f17-9b73-bd6a2de6b9ed",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.579Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-10\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1010\",\"peer\":\"192.0.2.10\",\"affectedPeers\":[\"192.0.2.10\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-10-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-92c0bdea-9933-4f17-9b73-bd6a2de6b9ed\",\"profileId\":\"cmw47kkr6001hn70s2av9r35j\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.242Z\",\"episodeId\":\"92c0bdea-9933-4f17-9b73-bd6a2de6b9ed\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.579Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:19.280Z",
+          "ack": false,
+          "rawSha256": "e8de8f4f1f59cbd8432ed6196572f3e94d8f6f04883914c70bf3fdf68e934109"
+        },
+        {
+          "at": "2026-11-06T00:09:49.330Z",
+          "ack": false,
+          "rawSha256": "e8de8f4f1f59cbd8432ed6196572f3e94d8f6f04883914c70bf3fdf68e934109"
+        },
+        {
+          "at": "2026-11-06T00:10:49.452Z",
+          "ack": false,
+          "rawSha256": "e8de8f4f1f59cbd8432ed6196572f3e94d8f6f04883914c70bf3fdf68e934109"
+        },
+        {
+          "at": "2026-11-06T00:12:49.659Z",
+          "ack": false,
+          "rawSha256": "e8de8f4f1f59cbd8432ed6196572f3e94d8f6f04883914c70bf3fdf68e934109"
+        },
+        {
+          "at": "2026-11-06T00:16:50.095Z",
+          "ack": true,
+          "rawSha256": "e8de8f4f1f59cbd8432ed6196572f3e94d8f6f04883914c70bf3fdf68e934109"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:19.311Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-12",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1012",
+          "peer": "192.0.2.12",
+          "affectedPeers": [
+            "192.0.2.12"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-12-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-af3bd5fe-6747-4644-9167-45fe066dd410",
+          "profileId": "cmw47kkrr001rn70sigor5pv6",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.250Z",
+          "episodeId": "af3bd5fe-6747-4644-9167-45fe066dd410",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.579Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-12\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1012\",\"peer\":\"192.0.2.12\",\"affectedPeers\":[\"192.0.2.12\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-12-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-af3bd5fe-6747-4644-9167-45fe066dd410\",\"profileId\":\"cmw47kkrr001rn70sigor5pv6\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.250Z\",\"episodeId\":\"af3bd5fe-6747-4644-9167-45fe066dd410\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.579Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:19.311Z",
+          "ack": false,
+          "rawSha256": "586ffa0da5fe682375feae536bdd1dc5f985c4d89c8c95522ceee994a7f50070"
+        },
+        {
+          "at": "2026-11-06T00:09:49.361Z",
+          "ack": false,
+          "rawSha256": "586ffa0da5fe682375feae536bdd1dc5f985c4d89c8c95522ceee994a7f50070"
+        },
+        {
+          "at": "2026-11-06T00:10:49.483Z",
+          "ack": false,
+          "rawSha256": "586ffa0da5fe682375feae536bdd1dc5f985c4d89c8c95522ceee994a7f50070"
+        },
+        {
+          "at": "2026-11-06T00:12:49.690Z",
+          "ack": false,
+          "rawSha256": "586ffa0da5fe682375feae536bdd1dc5f985c4d89c8c95522ceee994a7f50070"
+        },
+        {
+          "at": "2026-11-06T00:16:50.141Z",
+          "ack": true,
+          "rawSha256": "586ffa0da5fe682375feae536bdd1dc5f985c4d89c8c95522ceee994a7f50070"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:19.342Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-11",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1011",
+          "peer": "192.0.2.11",
+          "affectedPeers": [
+            "192.0.2.11"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-11-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-34e4a611-f775-4841-a593-1c6b707aad64",
+          "profileId": "cmw47kkrg001mn70sn6lnlxnd",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.250Z",
+          "episodeId": "34e4a611-f775-4841-a593-1c6b707aad64",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.579Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-11\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1011\",\"peer\":\"192.0.2.11\",\"affectedPeers\":[\"192.0.2.11\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-11-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-34e4a611-f775-4841-a593-1c6b707aad64\",\"profileId\":\"cmw47kkrg001mn70sn6lnlxnd\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.250Z\",\"episodeId\":\"34e4a611-f775-4841-a593-1c6b707aad64\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.579Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:19.342Z",
+          "ack": false,
+          "rawSha256": "acdf236b1dc4cf96b01b39d1e9bba1dd3ca383fdea6ee23ab6d4cf2773c288de"
+        },
+        {
+          "at": "2026-11-06T00:09:49.391Z",
+          "ack": false,
+          "rawSha256": "acdf236b1dc4cf96b01b39d1e9bba1dd3ca383fdea6ee23ab6d4cf2773c288de"
+        },
+        {
+          "at": "2026-11-06T00:10:49.514Z",
+          "ack": false,
+          "rawSha256": "acdf236b1dc4cf96b01b39d1e9bba1dd3ca383fdea6ee23ab6d4cf2773c288de"
+        },
+        {
+          "at": "2026-11-06T00:12:49.721Z",
+          "ack": false,
+          "rawSha256": "acdf236b1dc4cf96b01b39d1e9bba1dd3ca383fdea6ee23ab6d4cf2773c288de"
+        },
+        {
+          "at": "2026-11-06T00:16:50.187Z",
+          "ack": true,
+          "rawSha256": "acdf236b1dc4cf96b01b39d1e9bba1dd3ca383fdea6ee23ab6d4cf2773c288de"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:19.373Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-13",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1013",
+          "peer": "192.0.2.13",
+          "affectedPeers": [
+            "192.0.2.13"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-13-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-8d2c6f41-319e-4d2f-9957-5c1aa295e781",
+          "profileId": "cmw47kks2001wn70s8rydzn2u",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.256Z",
+          "episodeId": "8d2c6f41-319e-4d2f-9957-5c1aa295e781",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.602Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-13\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1013\",\"peer\":\"192.0.2.13\",\"affectedPeers\":[\"192.0.2.13\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-13-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-8d2c6f41-319e-4d2f-9957-5c1aa295e781\",\"profileId\":\"cmw47kks2001wn70s8rydzn2u\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.256Z\",\"episodeId\":\"8d2c6f41-319e-4d2f-9957-5c1aa295e781\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.602Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:19.373Z",
+          "ack": false,
+          "rawSha256": "5531597bf688e51f728847bb454718e87c697ccf95ee478acb9669b3b2675e75"
+        },
+        {
+          "at": "2026-11-06T00:09:49.423Z",
+          "ack": false,
+          "rawSha256": "5531597bf688e51f728847bb454718e87c697ccf95ee478acb9669b3b2675e75"
+        },
+        {
+          "at": "2026-11-06T00:10:49.545Z",
+          "ack": false,
+          "rawSha256": "5531597bf688e51f728847bb454718e87c697ccf95ee478acb9669b3b2675e75"
+        },
+        {
+          "at": "2026-11-06T00:12:49.752Z",
+          "ack": false,
+          "rawSha256": "5531597bf688e51f728847bb454718e87c697ccf95ee478acb9669b3b2675e75"
+        },
+        {
+          "at": "2026-11-06T00:16:50.234Z",
+          "ack": true,
+          "rawSha256": "5531597bf688e51f728847bb454718e87c697ccf95ee478acb9669b3b2675e75"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:19.404Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-14",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1014",
+          "peer": "192.0.2.14",
+          "affectedPeers": [
+            "192.0.2.14"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-14-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-0ec1da55-ad8f-4b6f-8c50-0f8724ed35ae",
+          "profileId": "cmw47kksc0021n70skpgluyv6",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.259Z",
+          "episodeId": "0ec1da55-ad8f-4b6f-8c50-0f8724ed35ae",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.602Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-14\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1014\",\"peer\":\"192.0.2.14\",\"affectedPeers\":[\"192.0.2.14\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-14-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-0ec1da55-ad8f-4b6f-8c50-0f8724ed35ae\",\"profileId\":\"cmw47kksc0021n70skpgluyv6\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.259Z\",\"episodeId\":\"0ec1da55-ad8f-4b6f-8c50-0f8724ed35ae\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.602Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:19.404Z",
+          "ack": false,
+          "rawSha256": "ee8d26a243ef65998bd1a83a576344de1a93f5fad8188faa03bff1da9a1cd9e9"
+        },
+        {
+          "at": "2026-11-06T00:09:49.454Z",
+          "ack": false,
+          "rawSha256": "ee8d26a243ef65998bd1a83a576344de1a93f5fad8188faa03bff1da9a1cd9e9"
+        },
+        {
+          "at": "2026-11-06T00:10:49.577Z",
+          "ack": false,
+          "rawSha256": "ee8d26a243ef65998bd1a83a576344de1a93f5fad8188faa03bff1da9a1cd9e9"
+        },
+        {
+          "at": "2026-11-06T00:12:49.783Z",
+          "ack": false,
+          "rawSha256": "ee8d26a243ef65998bd1a83a576344de1a93f5fad8188faa03bff1da9a1cd9e9"
+        },
+        {
+          "at": "2026-11-06T00:16:50.297Z",
+          "ack": true,
+          "rawSha256": "ee8d26a243ef65998bd1a83a576344de1a93f5fad8188faa03bff1da9a1cd9e9"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:19.435Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-15",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1015",
+          "peer": "192.0.2.15",
+          "affectedPeers": [
+            "192.0.2.15"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-15-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-3522b99c-142f-4762-817c-09d4d6efc82f",
+          "profileId": "cmw47kksm0026n70sqg5jbao3",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.269Z",
+          "episodeId": "3522b99c-142f-4762-817c-09d4d6efc82f",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.602Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-15\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1015\",\"peer\":\"192.0.2.15\",\"affectedPeers\":[\"192.0.2.15\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-15-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-3522b99c-142f-4762-817c-09d4d6efc82f\",\"profileId\":\"cmw47kksm0026n70sqg5jbao3\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.269Z\",\"episodeId\":\"3522b99c-142f-4762-817c-09d4d6efc82f\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.602Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:19.435Z",
+          "ack": false,
+          "rawSha256": "508d9e649fffb7a0f3609952c15b0a10230c35f368988a06fac0978bbcb3399c"
+        },
+        {
+          "at": "2026-11-06T00:09:49.485Z",
+          "ack": false,
+          "rawSha256": "508d9e649fffb7a0f3609952c15b0a10230c35f368988a06fac0978bbcb3399c"
+        },
+        {
+          "at": "2026-11-06T00:10:49.607Z",
+          "ack": false,
+          "rawSha256": "508d9e649fffb7a0f3609952c15b0a10230c35f368988a06fac0978bbcb3399c"
+        },
+        {
+          "at": "2026-11-06T00:12:49.814Z",
+          "ack": false,
+          "rawSha256": "508d9e649fffb7a0f3609952c15b0a10230c35f368988a06fac0978bbcb3399c"
+        },
+        {
+          "at": "2026-11-06T00:16:50.342Z",
+          "ack": true,
+          "rawSha256": "508d9e649fffb7a0f3609952c15b0a10230c35f368988a06fac0978bbcb3399c"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:19.466Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-16",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1016",
+          "peer": "192.0.2.16",
+          "affectedPeers": [
+            "192.0.2.16"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-16-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-f0041cf7-6051-4b20-b520-8b1d81f61938",
+          "profileId": "cmw47kksx002bn70s3zmdt55z",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.291Z",
+          "episodeId": "f0041cf7-6051-4b20-b520-8b1d81f61938",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.602Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-16\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1016\",\"peer\":\"192.0.2.16\",\"affectedPeers\":[\"192.0.2.16\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-16-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-f0041cf7-6051-4b20-b520-8b1d81f61938\",\"profileId\":\"cmw47kksx002bn70s3zmdt55z\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.291Z\",\"episodeId\":\"f0041cf7-6051-4b20-b520-8b1d81f61938\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.602Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:19.466Z",
+          "ack": false,
+          "rawSha256": "b6404f21d7a6de349ffe2401ba33b817eea2bb218de5ab219cf6e50515d145da"
+        },
+        {
+          "at": "2026-11-06T00:09:49.516Z",
+          "ack": false,
+          "rawSha256": "b6404f21d7a6de349ffe2401ba33b817eea2bb218de5ab219cf6e50515d145da"
+        },
+        {
+          "at": "2026-11-06T00:10:49.638Z",
+          "ack": false,
+          "rawSha256": "b6404f21d7a6de349ffe2401ba33b817eea2bb218de5ab219cf6e50515d145da"
+        },
+        {
+          "at": "2026-11-06T00:12:49.845Z",
+          "ack": false,
+          "rawSha256": "b6404f21d7a6de349ffe2401ba33b817eea2bb218de5ab219cf6e50515d145da"
+        },
+        {
+          "at": "2026-11-06T00:16:50.373Z",
+          "ack": true,
+          "rawSha256": "b6404f21d7a6de349ffe2401ba33b817eea2bb218de5ab219cf6e50515d145da"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:19.497Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-17",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1017",
+          "peer": "192.0.2.17",
+          "affectedPeers": [
+            "192.0.2.17"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-17-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-50ab1a36-c071-4e35-bb57-48871f8b3f48",
+          "profileId": "cmw47kkt7002gn70sealkjrtq",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.293Z",
+          "episodeId": "50ab1a36-c071-4e35-bb57-48871f8b3f48",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.623Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-17\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1017\",\"peer\":\"192.0.2.17\",\"affectedPeers\":[\"192.0.2.17\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-17-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-50ab1a36-c071-4e35-bb57-48871f8b3f48\",\"profileId\":\"cmw47kkt7002gn70sealkjrtq\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.293Z\",\"episodeId\":\"50ab1a36-c071-4e35-bb57-48871f8b3f48\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.623Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:19.497Z",
+          "ack": false,
+          "rawSha256": "546f74e36e8ce1f6ba09678d48af2ebb6ebf65d5ec4d83688b5f7b5f0a35de7b"
+        },
+        {
+          "at": "2026-11-06T00:09:49.547Z",
+          "ack": false,
+          "rawSha256": "546f74e36e8ce1f6ba09678d48af2ebb6ebf65d5ec4d83688b5f7b5f0a35de7b"
+        },
+        {
+          "at": "2026-11-06T00:10:49.670Z",
+          "ack": false,
+          "rawSha256": "546f74e36e8ce1f6ba09678d48af2ebb6ebf65d5ec4d83688b5f7b5f0a35de7b"
+        },
+        {
+          "at": "2026-11-06T00:12:49.877Z",
+          "ack": false,
+          "rawSha256": "546f74e36e8ce1f6ba09678d48af2ebb6ebf65d5ec4d83688b5f7b5f0a35de7b"
+        },
+        {
+          "at": "2026-11-06T00:16:50.404Z",
+          "ack": true,
+          "rawSha256": "546f74e36e8ce1f6ba09678d48af2ebb6ebf65d5ec4d83688b5f7b5f0a35de7b"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:19.528Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-19",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1019",
+          "peer": "192.0.2.19",
+          "affectedPeers": [
+            "192.0.2.19"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-19-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-416b2471-357f-4008-9492-175d837456b2",
+          "profileId": "cmw47kkts002qn70szsp53ylx",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.300Z",
+          "episodeId": "416b2471-357f-4008-9492-175d837456b2",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.623Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-19\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1019\",\"peer\":\"192.0.2.19\",\"affectedPeers\":[\"192.0.2.19\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-19-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-416b2471-357f-4008-9492-175d837456b2\",\"profileId\":\"cmw47kkts002qn70szsp53ylx\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.300Z\",\"episodeId\":\"416b2471-357f-4008-9492-175d837456b2\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.623Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:19.528Z",
+          "ack": false,
+          "rawSha256": "ba508f4d86350a28c405b074d0251e622e7f92835e02c4c3bc201cdecf7c1bb1"
+        },
+        {
+          "at": "2026-11-06T00:09:49.578Z",
+          "ack": false,
+          "rawSha256": "ba508f4d86350a28c405b074d0251e622e7f92835e02c4c3bc201cdecf7c1bb1"
+        },
+        {
+          "at": "2026-11-06T00:10:49.700Z",
+          "ack": false,
+          "rawSha256": "ba508f4d86350a28c405b074d0251e622e7f92835e02c4c3bc201cdecf7c1bb1"
+        },
+        {
+          "at": "2026-11-06T00:12:49.907Z",
+          "ack": false,
+          "rawSha256": "ba508f4d86350a28c405b074d0251e622e7f92835e02c4c3bc201cdecf7c1bb1"
+        },
+        {
+          "at": "2026-11-06T00:16:50.435Z",
+          "ack": true,
+          "rawSha256": "ba508f4d86350a28c405b074d0251e622e7f92835e02c4c3bc201cdecf7c1bb1"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:20.204Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-02",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1002",
+          "peer": "192.0.2.2",
+          "affectedPeers": [
+            "192.0.2.2"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-2-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-edae1599-57fb-474a-a391-8242ebdddd8b",
+          "profileId": "cmw47kku2002vn70szvuix9n1",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.307Z",
+          "episodeId": "edae1599-57fb-474a-a391-8242ebdddd8b",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.623Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-02\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1002\",\"peer\":\"192.0.2.2\",\"affectedPeers\":[\"192.0.2.2\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-2-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-edae1599-57fb-474a-a391-8242ebdddd8b\",\"profileId\":\"cmw47kku2002vn70szvuix9n1\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.307Z\",\"episodeId\":\"edae1599-57fb-474a-a391-8242ebdddd8b\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.623Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:20.204Z",
+          "ack": false,
+          "rawSha256": "1f04a5fc84ecfb1585b596bc3dea89a2f3ae4354e77aab30348cd1f7862382fa"
+        },
+        {
+          "at": "2026-11-06T00:09:50.249Z",
+          "ack": false,
+          "rawSha256": "1f04a5fc84ecfb1585b596bc3dea89a2f3ae4354e77aab30348cd1f7862382fa"
+        },
+        {
+          "at": "2026-11-06T00:10:50.372Z",
+          "ack": false,
+          "rawSha256": "1f04a5fc84ecfb1585b596bc3dea89a2f3ae4354e77aab30348cd1f7862382fa"
+        },
+        {
+          "at": "2026-11-06T00:12:50.584Z",
+          "ack": false,
+          "rawSha256": "1f04a5fc84ecfb1585b596bc3dea89a2f3ae4354e77aab30348cd1f7862382fa"
+        },
+        {
+          "at": "2026-11-06T00:16:50.959Z",
+          "ack": true,
+          "rawSha256": "1f04a5fc84ecfb1585b596bc3dea89a2f3ae4354e77aab30348cd1f7862382fa"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:20.233Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-20",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1020",
+          "peer": "192.0.2.20",
+          "affectedPeers": [
+            "192.0.2.20"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-20-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-c14b8c65-0cdf-496f-bab3-460d83e2544d",
+          "profileId": "cmw47kkuc0030n70s8vrnhsbp",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.317Z",
+          "episodeId": "c14b8c65-0cdf-496f-bab3-460d83e2544d",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.644Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-20\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1020\",\"peer\":\"192.0.2.20\",\"affectedPeers\":[\"192.0.2.20\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-20-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-c14b8c65-0cdf-496f-bab3-460d83e2544d\",\"profileId\":\"cmw47kkuc0030n70s8vrnhsbp\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.317Z\",\"episodeId\":\"c14b8c65-0cdf-496f-bab3-460d83e2544d\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.644Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:20.233Z",
+          "ack": false,
+          "rawSha256": "3f831b3a426ac783f1fb246a66e0677bc5827df5caa92dc8c51b98d886538228"
+        },
+        {
+          "at": "2026-11-06T00:09:50.304Z",
+          "ack": false,
+          "rawSha256": "3f831b3a426ac783f1fb246a66e0677bc5827df5caa92dc8c51b98d886538228"
+        },
+        {
+          "at": "2026-11-06T00:10:50.433Z",
+          "ack": false,
+          "rawSha256": "3f831b3a426ac783f1fb246a66e0677bc5827df5caa92dc8c51b98d886538228"
+        },
+        {
+          "at": "2026-11-06T00:12:50.666Z",
+          "ack": false,
+          "rawSha256": "3f831b3a426ac783f1fb246a66e0677bc5827df5caa92dc8c51b98d886538228"
+        },
+        {
+          "at": "2026-11-06T00:16:51.002Z",
+          "ack": true,
+          "rawSha256": "3f831b3a426ac783f1fb246a66e0677bc5827df5caa92dc8c51b98d886538228"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:20.261Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-18",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1018",
+          "peer": "192.0.2.18",
+          "affectedPeers": [
+            "192.0.2.18"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-18-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-749e6729-c757-4f57-91a7-aaef9bd4ab39",
+          "profileId": "cmw47kkth002ln70skuwp75bs",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.321Z",
+          "episodeId": "749e6729-c757-4f57-91a7-aaef9bd4ab39",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.623Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-18\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1018\",\"peer\":\"192.0.2.18\",\"affectedPeers\":[\"192.0.2.18\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-18-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-749e6729-c757-4f57-91a7-aaef9bd4ab39\",\"profileId\":\"cmw47kkth002ln70skuwp75bs\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.321Z\",\"episodeId\":\"749e6729-c757-4f57-91a7-aaef9bd4ab39\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.623Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:20.261Z",
+          "ack": false,
+          "rawSha256": "8c5a10c4e700bb45303ff795e6cfaabd0718aea1e07c943b0de346066875f385"
+        },
+        {
+          "at": "2026-11-06T00:09:50.334Z",
+          "ack": false,
+          "rawSha256": "8c5a10c4e700bb45303ff795e6cfaabd0718aea1e07c943b0de346066875f385"
+        },
+        {
+          "at": "2026-11-06T00:10:50.458Z",
+          "ack": false,
+          "rawSha256": "8c5a10c4e700bb45303ff795e6cfaabd0718aea1e07c943b0de346066875f385"
+        },
+        {
+          "at": "2026-11-06T00:12:50.696Z",
+          "ack": false,
+          "rawSha256": "8c5a10c4e700bb45303ff795e6cfaabd0718aea1e07c943b0de346066875f385"
+        },
+        {
+          "at": "2026-11-06T00:16:51.047Z",
+          "ack": true,
+          "rawSha256": "8c5a10c4e700bb45303ff795e6cfaabd0718aea1e07c943b0de346066875f385"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:20.287Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-21",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1021",
+          "peer": "192.0.2.21",
+          "affectedPeers": [
+            "192.0.2.21"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-21-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-1c6ed1d8-df99-4fc8-8095-76abcb1fab6d",
+          "profileId": "cmw47kkul0035n70skg8djwcd",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.324Z",
+          "episodeId": "1c6ed1d8-df99-4fc8-8095-76abcb1fab6d",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.644Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-21\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1021\",\"peer\":\"192.0.2.21\",\"affectedPeers\":[\"192.0.2.21\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-21-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-1c6ed1d8-df99-4fc8-8095-76abcb1fab6d\",\"profileId\":\"cmw47kkul0035n70skg8djwcd\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.324Z\",\"episodeId\":\"1c6ed1d8-df99-4fc8-8095-76abcb1fab6d\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.644Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:20.287Z",
+          "ack": false,
+          "rawSha256": "113ba5b37d011772af9088157d8913cf3f6a4e87a064478b8884fc12f0e3f0b2"
+        },
+        {
+          "at": "2026-11-06T00:09:50.358Z",
+          "ack": false,
+          "rawSha256": "113ba5b37d011772af9088157d8913cf3f6a4e87a064478b8884fc12f0e3f0b2"
+        },
+        {
+          "at": "2026-11-06T00:10:50.485Z",
+          "ack": false,
+          "rawSha256": "113ba5b37d011772af9088157d8913cf3f6a4e87a064478b8884fc12f0e3f0b2"
+        },
+        {
+          "at": "2026-11-06T00:12:50.725Z",
+          "ack": false,
+          "rawSha256": "113ba5b37d011772af9088157d8913cf3f6a4e87a064478b8884fc12f0e3f0b2"
+        },
+        {
+          "at": "2026-11-06T00:16:51.093Z",
+          "ack": true,
+          "rawSha256": "113ba5b37d011772af9088157d8913cf3f6a4e87a064478b8884fc12f0e3f0b2"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:20.348Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-22",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1022",
+          "peer": "192.0.2.22",
+          "affectedPeers": [
+            "192.0.2.22"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-22-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-7f73eca8-5f78-407c-bdd9-8013c51741ea",
+          "profileId": "cmw47kkuv003an70sur53uzjg",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.328Z",
+          "episodeId": "7f73eca8-5f78-407c-bdd9-8013c51741ea",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.644Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-22\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1022\",\"peer\":\"192.0.2.22\",\"affectedPeers\":[\"192.0.2.22\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-22-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-7f73eca8-5f78-407c-bdd9-8013c51741ea\",\"profileId\":\"cmw47kkuv003an70sur53uzjg\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.328Z\",\"episodeId\":\"7f73eca8-5f78-407c-bdd9-8013c51741ea\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.644Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:20.348Z",
+          "ack": false,
+          "rawSha256": "b4264bfd3cae44e24180e00f3f1ecd6a23e956d46eeea20f80887a1bbe1679e7"
+        },
+        {
+          "at": "2026-11-06T00:09:50.390Z",
+          "ack": false,
+          "rawSha256": "b4264bfd3cae44e24180e00f3f1ecd6a23e956d46eeea20f80887a1bbe1679e7"
+        },
+        {
+          "at": "2026-11-06T00:10:50.512Z",
+          "ack": false,
+          "rawSha256": "b4264bfd3cae44e24180e00f3f1ecd6a23e956d46eeea20f80887a1bbe1679e7"
+        },
+        {
+          "at": "2026-11-06T00:12:50.758Z",
+          "ack": false,
+          "rawSha256": "b4264bfd3cae44e24180e00f3f1ecd6a23e956d46eeea20f80887a1bbe1679e7"
+        },
+        {
+          "at": "2026-11-06T00:16:51.128Z",
+          "ack": true,
+          "rawSha256": "b4264bfd3cae44e24180e00f3f1ecd6a23e956d46eeea20f80887a1bbe1679e7"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:20.374Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-23",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1023",
+          "peer": "192.0.2.23",
+          "affectedPeers": [
+            "192.0.2.23"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-23-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-c7e688c2-19e9-40f5-b631-5743f7f79b0c",
+          "profileId": "cmw47kkv5003fn70sqwv3if72",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.333Z",
+          "episodeId": "c7e688c2-19e9-40f5-b631-5743f7f79b0c",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.644Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-23\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1023\",\"peer\":\"192.0.2.23\",\"affectedPeers\":[\"192.0.2.23\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-23-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-c7e688c2-19e9-40f5-b631-5743f7f79b0c\",\"profileId\":\"cmw47kkv5003fn70sqwv3if72\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.333Z\",\"episodeId\":\"c7e688c2-19e9-40f5-b631-5743f7f79b0c\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.644Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:20.374Z",
+          "ack": false,
+          "rawSha256": "f5c78e9d547e6526bee421252ebad2ea1a6dcb179284ddef3487a43a02be1b1b"
+        },
+        {
+          "at": "2026-11-06T00:09:50.413Z",
+          "ack": false,
+          "rawSha256": "f5c78e9d547e6526bee421252ebad2ea1a6dcb179284ddef3487a43a02be1b1b"
+        },
+        {
+          "at": "2026-11-06T00:10:50.538Z",
+          "ack": false,
+          "rawSha256": "f5c78e9d547e6526bee421252ebad2ea1a6dcb179284ddef3487a43a02be1b1b"
+        },
+        {
+          "at": "2026-11-06T00:12:50.785Z",
+          "ack": false,
+          "rawSha256": "f5c78e9d547e6526bee421252ebad2ea1a6dcb179284ddef3487a43a02be1b1b"
+        },
+        {
+          "at": "2026-11-06T00:16:51.162Z",
+          "ack": true,
+          "rawSha256": "f5c78e9d547e6526bee421252ebad2ea1a6dcb179284ddef3487a43a02be1b1b"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:20.404Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-03",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1003",
+          "peer": "192.0.2.3",
+          "affectedPeers": [
+            "192.0.2.3"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-3-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-adccde5c-4a79-4a05-a379-0684a70d0a46",
+          "profileId": "cmw47kkvf003kn70sryhs747l",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.340Z",
+          "episodeId": "adccde5c-4a79-4a05-a379-0684a70d0a46",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.667Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-03\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1003\",\"peer\":\"192.0.2.3\",\"affectedPeers\":[\"192.0.2.3\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-3-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-adccde5c-4a79-4a05-a379-0684a70d0a46\",\"profileId\":\"cmw47kkvf003kn70sryhs747l\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.340Z\",\"episodeId\":\"adccde5c-4a79-4a05-a379-0684a70d0a46\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.667Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:20.404Z",
+          "ack": false,
+          "rawSha256": "34d749374f38f2d46f5f966b952694e33b4b053c8e4c3ba7d0e98301543529fc"
+        },
+        {
+          "at": "2026-11-06T00:09:50.439Z",
+          "ack": false,
+          "rawSha256": "34d749374f38f2d46f5f966b952694e33b4b053c8e4c3ba7d0e98301543529fc"
+        },
+        {
+          "at": "2026-11-06T00:10:50.566Z",
+          "ack": false,
+          "rawSha256": "34d749374f38f2d46f5f966b952694e33b4b053c8e4c3ba7d0e98301543529fc"
+        },
+        {
+          "at": "2026-11-06T00:12:50.810Z",
+          "ack": false,
+          "rawSha256": "34d749374f38f2d46f5f966b952694e33b4b053c8e4c3ba7d0e98301543529fc"
+        },
+        {
+          "at": "2026-11-06T00:16:51.191Z",
+          "ack": true,
+          "rawSha256": "34d749374f38f2d46f5f966b952694e33b4b053c8e4c3ba7d0e98301543529fc"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:20.430Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-04",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1004",
+          "peer": "192.0.2.4",
+          "affectedPeers": [
+            "192.0.2.4"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-4-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-534798cd-7ca5-4994-94b0-f25a664a74c3",
+          "profileId": "cmw47kkvp003pn70sxtzy5mkh",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.349Z",
+          "episodeId": "534798cd-7ca5-4994-94b0-f25a664a74c3",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.667Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-04\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1004\",\"peer\":\"192.0.2.4\",\"affectedPeers\":[\"192.0.2.4\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-4-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-534798cd-7ca5-4994-94b0-f25a664a74c3\",\"profileId\":\"cmw47kkvp003pn70sxtzy5mkh\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.349Z\",\"episodeId\":\"534798cd-7ca5-4994-94b0-f25a664a74c3\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.667Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:20.430Z",
+          "ack": false,
+          "rawSha256": "bfbd5b24fb252c939f1bbe4c3be4de2bcbc46101252e91b29b29ff3f10c6f623"
+        },
+        {
+          "at": "2026-11-06T00:09:50.463Z",
+          "ack": false,
+          "rawSha256": "bfbd5b24fb252c939f1bbe4c3be4de2bcbc46101252e91b29b29ff3f10c6f623"
+        },
+        {
+          "at": "2026-11-06T00:10:50.591Z",
+          "ack": false,
+          "rawSha256": "bfbd5b24fb252c939f1bbe4c3be4de2bcbc46101252e91b29b29ff3f10c6f623"
+        },
+        {
+          "at": "2026-11-06T00:12:50.836Z",
+          "ack": false,
+          "rawSha256": "bfbd5b24fb252c939f1bbe4c3be4de2bcbc46101252e91b29b29ff3f10c6f623"
+        },
+        {
+          "at": "2026-11-06T00:16:51.228Z",
+          "ack": true,
+          "rawSha256": "bfbd5b24fb252c939f1bbe4c3be4de2bcbc46101252e91b29b29ff3f10c6f623"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:20.454Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-05",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1005",
+          "peer": "192.0.2.5",
+          "affectedPeers": [
+            "192.0.2.5"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-5-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-f2561569-2f8b-4ee1-99e4-d9c82896f116",
+          "profileId": "cmw47kkvz003un70sxusfr2sa",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:15.357Z",
+          "episodeId": "f2561569-2f8b-4ee1-99e4-d9c82896f116",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.667Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-05\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1005\",\"peer\":\"192.0.2.5\",\"affectedPeers\":[\"192.0.2.5\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-5-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-f2561569-2f8b-4ee1-99e4-d9c82896f116\",\"profileId\":\"cmw47kkvz003un70sxusfr2sa\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:15.357Z\",\"episodeId\":\"f2561569-2f8b-4ee1-99e4-d9c82896f116\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.667Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:20.454Z",
+          "ack": false,
+          "rawSha256": "7dd3cd0133e005cbb740125f14d0e74f6478e43917a7e61c742505a3fbf73192"
+        },
+        {
+          "at": "2026-11-06T00:09:50.490Z",
+          "ack": false,
+          "rawSha256": "7dd3cd0133e005cbb740125f14d0e74f6478e43917a7e61c742505a3fbf73192"
+        },
+        {
+          "at": "2026-11-06T00:10:50.619Z",
+          "ack": false,
+          "rawSha256": "7dd3cd0133e005cbb740125f14d0e74f6478e43917a7e61c742505a3fbf73192"
+        },
+        {
+          "at": "2026-11-06T00:12:50.863Z",
+          "ack": false,
+          "rawSha256": "7dd3cd0133e005cbb740125f14d0e74f6478e43917a7e61c742505a3fbf73192"
+        },
+        {
+          "at": "2026-11-06T00:16:51.263Z",
+          "ack": true,
+          "rawSha256": "7dd3cd0133e005cbb740125f14d0e74f6478e43917a7e61c742505a3fbf73192"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:20.477Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-06",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1006",
+          "peer": "192.0.2.6",
+          "affectedPeers": [
+            "192.0.2.6"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-6-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-620bea0e-1962-41e9-8988-9d86476a6882",
+          "profileId": "cmw47kkw9003zn70s28rymgse",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:20.282Z",
+          "episodeId": "620bea0e-1962-41e9-8988-9d86476a6882",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:08:54.667Z",
+            "baselineAverage5mPct": 40,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 95,
+            "deltaPercentagePoints": 55,
+            "delta30sPercentagePoints": 55
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-06\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1006\",\"peer\":\"192.0.2.6\",\"affectedPeers\":[\"192.0.2.6\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-6-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-620bea0e-1962-41e9-8988-9d86476a6882\",\"profileId\":\"cmw47kkw9003zn70s28rymgse\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:20.282Z\",\"episodeId\":\"620bea0e-1962-41e9-8988-9d86476a6882\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:08:54.667Z\",\"baselineAverage5mPct\":40,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":95,\"deltaPercentagePoints\":55,\"delta30sPercentagePoints\":55}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:20.477Z",
+          "ack": false,
+          "rawSha256": "30b610c70f147c9b9c4391d4a90c24dfe8959c4ac732d32d6baad5d6a6efc933"
+        },
+        {
+          "at": "2026-11-06T00:09:50.515Z",
+          "ack": false,
+          "rawSha256": "30b610c70f147c9b9c4391d4a90c24dfe8959c4ac732d32d6baad5d6a6efc933"
+        },
+        {
+          "at": "2026-11-06T00:10:50.645Z",
+          "ack": false,
+          "rawSha256": "30b610c70f147c9b9c4391d4a90c24dfe8959c4ac732d32d6baad5d6a6efc933"
+        },
+        {
+          "at": "2026-11-06T00:12:50.888Z",
+          "ack": false,
+          "rawSha256": "30b610c70f147c9b9c4391d4a90c24dfe8959c4ac732d32d6baad5d6a6efc933"
+        },
+        {
+          "at": "2026-11-06T00:16:51.295Z",
+          "ack": true,
+          "rawSha256": "30b610c70f147c9b9c4391d4a90c24dfe8959c4ac732d32d6baad5d6a6efc933"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:24.234Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-07",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1007",
+          "peer": "192.0.2.7",
+          "affectedPeers": [
+            "192.0.2.7"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-7-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-0c564d09-a7be-43a1-a66d-e4ef64461cc8",
+          "profileId": "cmw47kkwj0044n70sa2ae87ky",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:20.286Z",
+          "episodeId": "0c564d09-a7be-43a1-a66d-e4ef64461cc8",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:09:04.982Z",
+            "baselineAverage5mPct": 41.9,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 99,
+            "deltaPercentagePoints": 57.1,
+            "delta30sPercentagePoints": 59
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-07\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1007\",\"peer\":\"192.0.2.7\",\"affectedPeers\":[\"192.0.2.7\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-7-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-0c564d09-a7be-43a1-a66d-e4ef64461cc8\",\"profileId\":\"cmw47kkwj0044n70sa2ae87ky\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:20.286Z\",\"episodeId\":\"0c564d09-a7be-43a1-a66d-e4ef64461cc8\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:09:04.982Z\",\"baselineAverage5mPct\":41.9,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":99,\"deltaPercentagePoints\":57.1,\"delta30sPercentagePoints\":59}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:24.234Z",
+          "ack": false,
+          "rawSha256": "d13d223b8a6c845b2f65e0957050267e84780f39b98c83ca311fa3a798aa2c3d"
+        },
+        {
+          "at": "2026-11-06T00:09:54.292Z",
+          "ack": false,
+          "rawSha256": "d13d223b8a6c845b2f65e0957050267e84780f39b98c83ca311fa3a798aa2c3d"
+        },
+        {
+          "at": "2026-11-06T00:10:54.454Z",
+          "ack": false,
+          "rawSha256": "d13d223b8a6c845b2f65e0957050267e84780f39b98c83ca311fa3a798aa2c3d"
+        },
+        {
+          "at": "2026-11-06T00:12:54.631Z",
+          "ack": false,
+          "rawSha256": "d13d223b8a6c845b2f65e0957050267e84780f39b98c83ca311fa3a798aa2c3d"
+        },
+        {
+          "at": "2026-11-06T00:16:55.044Z",
+          "ack": true,
+          "rawSha256": "d13d223b8a6c845b2f65e0957050267e84780f39b98c83ca311fa3a798aa2c3d"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:24.267Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-08",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1008",
+          "peer": "192.0.2.8",
+          "affectedPeers": [
+            "192.0.2.8"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-8-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-2bdc3de7-55d6-44a7-ae28-f022f2e03519",
+          "profileId": "cmw47kkwt0049n70s7t0rpt02",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:20.287Z",
+          "episodeId": "2bdc3de7-55d6-44a7-ae28-f022f2e03519",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:09:04.982Z",
+            "baselineAverage5mPct": 41.9,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 99,
+            "deltaPercentagePoints": 57.1,
+            "delta30sPercentagePoints": 59
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-08\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1008\",\"peer\":\"192.0.2.8\",\"affectedPeers\":[\"192.0.2.8\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-8-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-2bdc3de7-55d6-44a7-ae28-f022f2e03519\",\"profileId\":\"cmw47kkwt0049n70s7t0rpt02\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:20.287Z\",\"episodeId\":\"2bdc3de7-55d6-44a7-ae28-f022f2e03519\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:09:04.982Z\",\"baselineAverage5mPct\":41.9,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":99,\"deltaPercentagePoints\":57.1,\"delta30sPercentagePoints\":59}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:24.267Z",
+          "ack": false,
+          "rawSha256": "0429cc520cfadc1696f47a7f906dbc483a2f24c2ef6ba8186746fcd84c0c9a64"
+        },
+        {
+          "at": "2026-11-06T00:09:54.317Z",
+          "ack": false,
+          "rawSha256": "0429cc520cfadc1696f47a7f906dbc483a2f24c2ef6ba8186746fcd84c0c9a64"
+        },
+        {
+          "at": "2026-11-06T00:10:54.497Z",
+          "ack": false,
+          "rawSha256": "0429cc520cfadc1696f47a7f906dbc483a2f24c2ef6ba8186746fcd84c0c9a64"
+        },
+        {
+          "at": "2026-11-06T00:12:54.664Z",
+          "ack": false,
+          "rawSha256": "0429cc520cfadc1696f47a7f906dbc483a2f24c2ef6ba8186746fcd84c0c9a64"
+        },
+        {
+          "at": "2026-11-06T00:16:55.077Z",
+          "ack": true,
+          "rawSha256": "0429cc520cfadc1696f47a7f906dbc483a2f24c2ef6ba8186746fcd84c0c9a64"
+        }
+      ]
+    },
+    {
+      "firstReceipt": {
+        "at": "2026-11-06T00:09:24.298Z",
+        "body": {
+          "event": "MITIGATION_DETECTION_BLOCKED",
+          "simulation": true,
+          "customer": "SYNTHETIC-CLIENT-09",
+          "device": "SYNTHETIC LOOPBACK ROUTER",
+          "interface": "Eth-Trunk1.1009",
+          "peer": "192.0.2.9",
+          "affectedPeers": [
+            "192.0.2.9"
+          ],
+          "bandwidthGbps": null,
+          "trafficGbps": 0.99,
+          "thresholdGbps": 0.95,
+          "trafficMbps": 990,
+          "thresholdMbps": 950,
+          "policy": "PL-SYNTHETIC-9-IN",
+          "node": null,
+          "bogonNode": null,
+          "mitigationNode": null,
+          "rt": null,
+          "verified": false,
+          "eventId": "auto-detection-11016d08-e522-4a11-99a6-6b1a585e1e01",
+          "profileId": "cmw47kkx5004en70skwb0m81c",
+          "addressFamily": "IPV4",
+          "sharedPolicy": false,
+          "sharedPolicyTargets": [],
+          "occurredAt": "2026-11-06T00:09:20.291Z",
+          "episodeId": "11016d08-e522-4a11-99a6-6b1a585e1e01",
+          "blockedReason": "AUTO_EXECUTION_DISABLED",
+          "direction": "tx",
+          "directionSource": "INTERFACE",
+          "fieldsUnavailable": [],
+          "prefixes": null,
+          "growth": {
+            "message": "Crescimento informativo: BRUSCO.",
+            "samples5m": 58,
+            "samples30s": 2,
+            "thresholdPct": 95,
+            "mitigationReason": "AUTO_EXECUTION_DISABLED",
+            "mitigationStatus": "SIMULACAO",
+            "trafficDirection": "tx",
+            "thresholdReachedAt": "2026-11-06T00:09:04.982Z",
+            "baselineAverage5mPct": 41.9,
+            "growthClassification": "BRUSCO",
+            "currentUtilizationPct": 99,
+            "deltaPercentagePoints": 57.1,
+            "delta30sPercentagePoints": 59
+          }
+        },
+        "raw": "{\"event\":\"MITIGATION_DETECTION_BLOCKED\",\"simulation\":true,\"customer\":\"SYNTHETIC-CLIENT-09\",\"device\":\"SYNTHETIC LOOPBACK ROUTER\",\"interface\":\"Eth-Trunk1.1009\",\"peer\":\"192.0.2.9\",\"affectedPeers\":[\"192.0.2.9\"],\"bandwidthGbps\":null,\"trafficGbps\":0.99,\"thresholdGbps\":0.95,\"trafficMbps\":990,\"thresholdMbps\":950,\"policy\":\"PL-SYNTHETIC-9-IN\",\"node\":null,\"bogonNode\":null,\"mitigationNode\":null,\"rt\":null,\"verified\":false,\"eventId\":\"auto-detection-11016d08-e522-4a11-99a6-6b1a585e1e01\",\"profileId\":\"cmw47kkx5004en70skwb0m81c\",\"addressFamily\":\"IPV4\",\"sharedPolicy\":false,\"sharedPolicyTargets\":[],\"occurredAt\":\"2026-11-06T00:09:20.291Z\",\"episodeId\":\"11016d08-e522-4a11-99a6-6b1a585e1e01\",\"blockedReason\":\"AUTO_EXECUTION_DISABLED\",\"direction\":\"tx\",\"directionSource\":\"INTERFACE\",\"fieldsUnavailable\":[],\"prefixes\":null,\"growth\":{\"message\":\"Crescimento informativo: BRUSCO.\",\"samples5m\":58,\"samples30s\":2,\"thresholdPct\":95,\"mitigationReason\":\"AUTO_EXECUTION_DISABLED\",\"mitigationStatus\":\"SIMULACAO\",\"trafficDirection\":\"tx\",\"thresholdReachedAt\":\"2026-11-06T00:09:04.982Z\",\"baselineAverage5mPct\":41.9,\"growthClassification\":\"BRUSCO\",\"currentUtilizationPct\":99,\"deltaPercentagePoints\":57.1,\"delta30sPercentagePoints\":59}}",
+        "ack": false
+      },
+      "attempts": [
+        {
+          "at": "2026-11-06T00:09:24.298Z",
+          "ack": false,
+          "rawSha256": "9321b0a76ef407d994d7c4149c7878890a2e287a03f6399a5fd915d567e4be5d"
+        },
+        {
+          "at": "2026-11-06T00:09:54.341Z",
+          "ack": false,
+          "rawSha256": "9321b0a76ef407d994d7c4149c7878890a2e287a03f6399a5fd915d567e4be5d"
+        },
+        {
+          "at": "2026-11-06T00:10:54.528Z",
+          "ack": false,
+          "rawSha256": "9321b0a76ef407d994d7c4149c7878890a2e287a03f6399a5fd915d567e4be5d"
+        },
+        {
+          "at": "2026-11-06T00:12:54.695Z",
+          "ack": false,
+          "rawSha256": "9321b0a76ef407d994d7c4149c7878890a2e287a03f6399a5fd915d567e4be5d"
+        },
+        {
+          "at": "2026-11-06T00:16:55.108Z",
+          "ack": true,
+          "rawSha256": "9321b0a76ef407d994d7c4149c7878890a2e287a03f6399a5fd915d567e4be5d"
+        }
+      ]
+    }
+  ]
+}

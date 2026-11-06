@@ -1,0 +1,1390 @@
+{
+  "synthetic": true,
+  "readOnlyValidation": true,
+  "source": "actual persisted FAST observations and unchanged audited sidecar",
+  "observations": 5704,
+  "events": 46,
+  "allIdentical": true,
+  "results": [
+    {
+      "eventId": "auto-detection-4d9bc9d3-9fc4-401d-b345-720fcbecad31",
+      "profileId": "cmw47kkr6001hn70s2av9r35j",
+      "identical": true,
+      "previousSample": {
+        "id": "ee8f6ae7-a83b-49dc-a8e3-17e67292424f",
+        "at": "2026-11-06T00:02:33.097Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "29a4a5a6-d5be-4290-aab1-556a81167bd1",
+        "at": "2026-11-06T00:02:38.234Z",
+        "txBps": 950000000.0000001
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.234Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-c527a89e-a562-4bbf-a553-fdc55bcbece7",
+      "profileId": "cmw47kkrg001mn70sn6lnlxnd",
+      "identical": true,
+      "previousSample": {
+        "id": "f61cbad8-1b45-4e1e-8ac8-7f5167b1fa71",
+        "at": "2026-11-06T00:02:33.097Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "160369eb-ff2b-445c-b545-a42aa3b33653",
+        "at": "2026-11-06T00:02:38.234Z",
+        "txBps": 950000000.0000001
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.234Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-af3bd5fe-6747-4644-9167-45fe066dd410",
+      "profileId": "cmw47kkrr001rn70sigor5pv6",
+      "identical": true,
+      "previousSample": {
+        "id": "1ccec3dc-8c20-4231-be92-9eea7128eb6d",
+        "at": "2026-11-06T00:08:49.440Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "6a37db14-1f93-419b-a7b8-045d59bc5a24",
+        "at": "2026-11-06T00:08:54.579Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.579Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-60c81e00-3e39-485f-8a6a-51b0772e63d2",
+      "profileId": "cmw47kksc0021n70skpgluyv6",
+      "identical": true,
+      "previousSample": {
+        "id": "138e26fd-7b43-4b91-b322-904383f376cd",
+        "at": "2026-11-06T00:02:33.121Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "d3b098e5-a8a6-40cf-bc57-901e6ec53568",
+        "at": "2026-11-06T00:02:38.260Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.260Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-9f4c569d-6c7a-4c5c-86a5-a0dd1cfb2e7f",
+      "profileId": "cmw47kks2001wn70s8rydzn2u",
+      "identical": true,
+      "previousSample": {
+        "id": "70ce0a7f-aaad-4a2d-aee8-82a2dfe1f09d",
+        "at": "2026-11-06T00:02:33.121Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "5a703bd0-7b75-400a-adb0-105c3b6c5f9b",
+        "at": "2026-11-06T00:02:38.260Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.260Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-2ea03409-7259-4419-bb57-d6a73e0677c8",
+      "profileId": "cmw47kksx002bn70s3zmdt55z",
+      "identical": true,
+      "previousSample": {
+        "id": "e4387c36-35a7-49e1-a057-9c7c3ce3d9d2",
+        "at": "2026-11-06T00:02:33.121Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "da1f1e34-ebff-4de8-9b04-bc3de27c2941",
+        "at": "2026-11-06T00:02:38.260Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.260Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-c7e688c2-19e9-40f5-b631-5743f7f79b0c",
+      "profileId": "cmw47kkv5003fn70sqwv3if72",
+      "identical": true,
+      "previousSample": {
+        "id": "947edaf1-ba80-47be-a44a-d0521d73db28",
+        "at": "2026-11-06T00:08:49.504Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "7446c48a-0660-4f74-aa5c-7e57b1ad55cd",
+        "at": "2026-11-06T00:08:54.644Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.644Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-749e6729-c757-4f57-91a7-aaef9bd4ab39",
+      "profileId": "cmw47kkth002ln70skuwp75bs",
+      "identical": true,
+      "previousSample": {
+        "id": "3a71e1c7-e794-44e4-85d8-6c084a91fc91",
+        "at": "2026-11-06T00:08:49.484Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "1786e445-3a49-49cd-9e0e-2464b40597b4",
+        "at": "2026-11-06T00:08:54.623Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.623Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-1c6ed1d8-df99-4fc8-8095-76abcb1fab6d",
+      "profileId": "cmw47kkul0035n70skg8djwcd",
+      "identical": true,
+      "previousSample": {
+        "id": "72e97626-aadb-40a6-b475-d582264c15bd",
+        "at": "2026-11-06T00:08:49.504Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "33dc4c7c-359d-4202-967a-4eeed20bfd33",
+        "at": "2026-11-06T00:08:54.644Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.644Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-66bba5f2-b8cf-49f0-9b7c-879c994717c5",
+      "profileId": "cmw47kkuv003an70sur53uzjg",
+      "identical": true,
+      "previousSample": {
+        "id": "578786fc-95c9-4fc5-b1c8-c1ff58382b8a",
+        "at": "2026-11-06T00:02:33.166Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "1687a293-8ea0-43da-bcd2-9ef722fadb62",
+        "at": "2026-11-06T00:02:38.305Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.305Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-34e4a611-f775-4841-a593-1c6b707aad64",
+      "profileId": "cmw47kkrg001mn70sn6lnlxnd",
+      "identical": true,
+      "previousSample": {
+        "id": "943d6af4-47f9-4cb2-a9eb-74d0eff83bae",
+        "at": "2026-11-06T00:08:49.440Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "1e3f47bb-061d-4bc2-b91e-1acfe06f8cb8",
+        "at": "2026-11-06T00:08:54.579Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.579Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-7f73eca8-5f78-407c-bdd9-8013c51741ea",
+      "profileId": "cmw47kkuv003an70sur53uzjg",
+      "identical": true,
+      "previousSample": {
+        "id": "8aff8170-9be0-4ced-89df-af655dc7257a",
+        "at": "2026-11-06T00:08:49.504Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "1b1b09ed-e1db-4677-80b1-1b2e31313c30",
+        "at": "2026-11-06T00:08:54.644Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.644Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-97b612ba-0706-4830-bfcd-515c9bcf4426",
+      "profileId": "cmw47kku2002vn70szvuix9n1",
+      "identical": true,
+      "previousSample": {
+        "id": "e7816581-f32f-4006-a0d8-ad9e2a794ecd",
+        "at": "2026-11-06T00:02:33.144Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "94bec9ed-6958-4087-ad74-ad3ef553254d",
+        "at": "2026-11-06T00:02:38.283Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.283Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-620bea0e-1962-41e9-8988-9d86476a6882",
+      "profileId": "cmw47kkw9003zn70s28rymgse",
+      "identical": true,
+      "previousSample": {
+        "id": "42bc2333-4ad2-4a0f-8354-0d46564d7a1e",
+        "at": "2026-11-06T00:08:49.527Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "b383cea8-eb97-44d4-ba42-d0e27313c4b1",
+        "at": "2026-11-06T00:08:54.667Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.667Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-f42053d8-9a5a-4d66-9cc0-bb93f669909b",
+      "profileId": "cmw47kkuc0030n70s8vrnhsbp",
+      "identical": true,
+      "previousSample": {
+        "id": "0cee188c-76ec-4f64-8c5b-fbae04e20c2d",
+        "at": "2026-11-06T00:02:33.166Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "7aff9a10-135f-4950-af2f-ff39001bf2f6",
+        "at": "2026-11-06T00:02:38.305Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.305Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-44528460-d71f-47f9-8b5e-81b185d2c9ef",
+      "profileId": "cmw47kkqm001cn70sd66ozchb",
+      "identical": true,
+      "previousSample": {
+        "id": "c4b4fd30-c401-47b2-95c7-bdaf45cfa5ed",
+        "at": "2026-11-06T00:02:33.097Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "a4eab2a2-133e-4dec-9c51-18c18f85bf70",
+        "at": "2026-11-06T00:02:38.234Z",
+        "txBps": 950000000.0000001
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.234Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-62b0b711-d8c0-4531-acab-eb3652a291d1",
+      "profileId": "cmw47kkrr001rn70sigor5pv6",
+      "identical": true,
+      "previousSample": {
+        "id": "fa68b825-7b17-4be3-a2de-5457ccf8607f",
+        "at": "2026-11-06T00:02:33.097Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "73c03632-dbb4-4f5f-9cfb-eaaed1a8a763",
+        "at": "2026-11-06T00:02:38.234Z",
+        "txBps": 950000000.0000001
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.234Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-8d2c6f41-319e-4d2f-9957-5c1aa295e781",
+      "profileId": "cmw47kks2001wn70s8rydzn2u",
+      "identical": true,
+      "previousSample": {
+        "id": "faee5d68-b8c9-4e8c-aa93-95aedc67d7cd",
+        "at": "2026-11-06T00:08:49.463Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "193cbde9-321b-4913-8ca0-556680ea9d79",
+        "at": "2026-11-06T00:08:54.602Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.602Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-0f3b5b68-7c22-4207-a237-f303feadb095",
+      "profileId": "cmw47kksm0026n70sqg5jbao3",
+      "identical": true,
+      "previousSample": {
+        "id": "8b0f13ab-7344-4a7c-8acb-7dcab66c6caf",
+        "at": "2026-11-06T00:02:33.121Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "f1a6c41d-dfc7-47ad-8371-535a6d3731ac",
+        "at": "2026-11-06T00:02:38.260Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.260Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-647bed88-5001-47e9-9257-1092abbaf4a7",
+      "profileId": "cmw47kkt7002gn70sealkjrtq",
+      "identical": true,
+      "previousSample": {
+        "id": "ff56e989-d08a-4564-a6c7-c6cd995a3fdf",
+        "at": "2026-11-06T00:02:33.144Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "dc64f504-cd10-4394-b972-92a792a75404",
+        "at": "2026-11-06T00:02:38.283Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.283Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-ed2da886-920f-49ae-8454-d3685e018ecb",
+      "profileId": "cmw47kkth002ln70skuwp75bs",
+      "identical": true,
+      "previousSample": {
+        "id": "a648c6ee-9086-49d4-85b9-36bf2a89aa57",
+        "at": "2026-11-06T00:02:33.144Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "fd4857bb-e4cf-4e6a-9f3d-1f75fd42604d",
+        "at": "2026-11-06T00:02:38.283Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.283Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-416b2471-357f-4008-9492-175d837456b2",
+      "profileId": "cmw47kkts002qn70szsp53ylx",
+      "identical": true,
+      "previousSample": {
+        "id": "6ece1549-2774-4f3d-ad32-1b72f6f5c960",
+        "at": "2026-11-06T00:08:49.484Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "f970838f-f5b9-4763-9b69-44b8739307eb",
+        "at": "2026-11-06T00:08:54.623Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.623Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-50e6b789-5023-4880-9a9f-210dd7c19295",
+      "profileId": "cmw47kkts002qn70szsp53ylx",
+      "identical": true,
+      "previousSample": {
+        "id": "6a7e7511-8a0b-4cb9-9127-2b6877f35bbf",
+        "at": "2026-11-06T00:02:33.144Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "0742eb32-2a92-4007-9e1b-09cbca3a834a",
+        "at": "2026-11-06T00:02:38.283Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.283Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-83e9264d-f043-43a6-a58b-d2b7964f08f0",
+      "profileId": "cmw47kkul0035n70skg8djwcd",
+      "identical": true,
+      "previousSample": {
+        "id": "f7e65d71-09cb-417e-8e3b-ffbe327b5756",
+        "at": "2026-11-06T00:02:33.166Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "64b5f321-931c-4ca5-b633-ffc1df7172e1",
+        "at": "2026-11-06T00:02:38.305Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.305Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-adbf26fb-e872-47d6-a8e0-ab9458433b6f",
+      "profileId": "cmw47kkx5004en70skwb0m81c",
+      "identical": true,
+      "previousSample": {
+        "id": "e8c14ca8-8e78-4e57-aa37-8a04fcaa649b",
+        "at": "2026-11-06T00:02:33.211Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "52b88fdf-503a-4581-bb3d-cc85ac2984c0",
+        "at": "2026-11-06T00:02:38.351Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.351Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-44ba9cc5-9ffa-4c9f-bb4b-dd79faf39e2b",
+      "profileId": "cmw47kkqm001cn70sd66ozchb",
+      "identical": true,
+      "previousSample": {
+        "id": "18b127ac-80e5-4f50-a89a-5b0e49572ee6",
+        "at": "2026-11-06T00:08:49.440Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "44ca5e15-528d-4380-a77d-9e278829347b",
+        "at": "2026-11-06T00:08:54.579Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.579Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-92c0bdea-9933-4f17-9b73-bd6a2de6b9ed",
+      "profileId": "cmw47kkr6001hn70s2av9r35j",
+      "identical": true,
+      "previousSample": {
+        "id": "0b97ec9a-2d55-4034-9d1a-728729c2f4ce",
+        "at": "2026-11-06T00:08:49.440Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "aa08889e-77bb-4931-8662-374fd11bc24b",
+        "at": "2026-11-06T00:08:54.579Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.579Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-d43a813b-56f4-4e98-b6c9-8cec7098e8e7",
+      "profileId": "cmw47kkv5003fn70sqwv3if72",
+      "identical": true,
+      "previousSample": {
+        "id": "d72d8c7c-bdbe-4551-8931-e3e716196ae5",
+        "at": "2026-11-06T00:02:33.166Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "55e0f81a-0b4b-4499-85e5-095dad2b1541",
+        "at": "2026-11-06T00:02:38.305Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.305Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-3522b99c-142f-4762-817c-09d4d6efc82f",
+      "profileId": "cmw47kksm0026n70sqg5jbao3",
+      "identical": true,
+      "previousSample": {
+        "id": "505a2961-246c-4228-b8a5-87b68454c300",
+        "at": "2026-11-06T00:08:49.463Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "ed39c9b1-330b-4412-954a-407fe4e451ad",
+        "at": "2026-11-06T00:08:54.602Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.602Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-f0041cf7-6051-4b20-b520-8b1d81f61938",
+      "profileId": "cmw47kksx002bn70s3zmdt55z",
+      "identical": true,
+      "previousSample": {
+        "id": "c4981129-0d44-40a0-80f1-a2336c25b932",
+        "at": "2026-11-06T00:08:49.463Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "dac39834-83eb-463c-b648-9d1ceac7897f",
+        "at": "2026-11-06T00:08:54.602Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.602Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-0c564d09-a7be-43a1-a66d-e4ef64461cc8",
+      "profileId": "cmw47kkwj0044n70sa2ae87ky",
+      "identical": true,
+      "previousSample": {
+        "id": "e9e67c8b-2978-436e-9bfa-88a0729ad50f",
+        "at": "2026-11-06T00:08:59.920Z",
+        "txBps": 949999999.9999999
+      },
+      "crossingSample": {
+        "id": "32313c6a-5b2f-4628-80c9-99e6e04c6d10",
+        "at": "2026-11-06T00:09:04.982Z",
+        "txBps": 990000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 41.9,
+        "currentUtilizationPct": 99,
+        "deltaPercentagePoints": 57.1,
+        "delta30sPercentagePoints": 59,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:09:04.982Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-1d1aa3d7-ad20-4dbd-b9f0-b6a28eece46c",
+      "profileId": "cmw47kkvp003pn70sxtzy5mkh",
+      "identical": true,
+      "previousSample": {
+        "id": "e444cd64-0745-470f-811f-d7fd291fc82b",
+        "at": "2026-11-06T00:02:33.188Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "c30b613d-f7eb-4861-9ca7-76e4f92ff973",
+        "at": "2026-11-06T00:02:38.328Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.328Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-50ab1a36-c071-4e35-bb57-48871f8b3f48",
+      "profileId": "cmw47kkt7002gn70sealkjrtq",
+      "identical": true,
+      "previousSample": {
+        "id": "a8f6689e-8064-4020-a372-04274260b945",
+        "at": "2026-11-06T00:08:49.484Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "b2914f7a-79e7-4127-837b-2c6a95c22499",
+        "at": "2026-11-06T00:08:54.623Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.623Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-c14b8c65-0cdf-496f-bab3-460d83e2544d",
+      "profileId": "cmw47kkuc0030n70s8vrnhsbp",
+      "identical": true,
+      "previousSample": {
+        "id": "988883c3-a2e3-4ba4-a03a-7e6657506c80",
+        "at": "2026-11-06T00:08:49.504Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "9a090df8-721c-4885-b140-b18d09a511b3",
+        "at": "2026-11-06T00:08:54.644Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.644Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-81fb5b9c-5488-4b34-854f-0f208d44016d",
+      "profileId": "cmw47kkvf003kn70sryhs747l",
+      "identical": true,
+      "previousSample": {
+        "id": "bda385e0-43b8-4be1-ab98-09b0cc547339",
+        "at": "2026-11-06T00:02:33.188Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "21097b8f-24ab-4209-aa8e-a35eb5ba2182",
+        "at": "2026-11-06T00:02:38.328Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.328Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-9ff53d99-a468-4730-b4a5-c679c3c67150",
+      "profileId": "cmw47kkw9003zn70s28rymgse",
+      "identical": true,
+      "previousSample": {
+        "id": "79eac6a6-df6b-43d0-9f03-0aa3fdaaafbf",
+        "at": "2026-11-06T00:02:33.188Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "b0f28ba3-fa86-4556-987f-010414755e71",
+        "at": "2026-11-06T00:02:38.328Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.328Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-edae1599-57fb-474a-a391-8242ebdddd8b",
+      "profileId": "cmw47kku2002vn70szvuix9n1",
+      "identical": true,
+      "previousSample": {
+        "id": "43ba58e4-b81a-4300-8435-3cc472537315",
+        "at": "2026-11-06T00:08:49.484Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "a7965465-fecc-48d3-9869-ef9396027907",
+        "at": "2026-11-06T00:08:54.623Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.623Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-4b7a53a1-38bb-46d5-b8a7-cdc681bc6827",
+      "profileId": "cmw47kkwj0044n70sa2ae87ky",
+      "identical": true,
+      "previousSample": {
+        "id": "2e47b0ce-0231-4860-afe9-14509161bbaf",
+        "at": "2026-11-06T00:02:33.211Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "b4737472-fa1d-4809-a3e8-f6a1d01323e6",
+        "at": "2026-11-06T00:02:38.351Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.351Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-11016d08-e522-4a11-99a6-6b1a585e1e01",
+      "profileId": "cmw47kkx5004en70skwb0m81c",
+      "identical": true,
+      "previousSample": {
+        "id": "c4472ae1-b8a7-4c6e-af50-e517852a4463",
+        "at": "2026-11-06T00:08:59.920Z",
+        "txBps": 949999999.9999999
+      },
+      "crossingSample": {
+        "id": "af0701cf-6890-4957-9243-a46c4aa57ff4",
+        "at": "2026-11-06T00:09:04.982Z",
+        "txBps": 990000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 41.9,
+        "currentUtilizationPct": 99,
+        "deltaPercentagePoints": 57.1,
+        "delta30sPercentagePoints": 59,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:09:04.982Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-05037022-d190-4212-939f-c110dbbfc2e6",
+      "profileId": "cmw47kkwt0049n70s7t0rpt02",
+      "identical": true,
+      "previousSample": {
+        "id": "1fc853ea-17c0-4b87-a53e-7d4950497844",
+        "at": "2026-11-06T00:02:33.211Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "6367c75e-9bc6-4068-aed2-48094905b087",
+        "at": "2026-11-06T00:02:38.351Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.351Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-19a8be8b-07bf-4d0f-ae57-6c2eb62d5cff",
+      "profileId": "cmw47kkvz003un70sxusfr2sa",
+      "identical": true,
+      "previousSample": {
+        "id": "77bc42cc-77c0-46fa-aa97-5f88bb7dcc26",
+        "at": "2026-11-06T00:02:33.188Z",
+        "txBps": 200000000
+      },
+      "crossingSample": {
+        "id": "9cc4200f-f84d-44f0-aab8-866ae99d53fd",
+        "at": "2026-11-06T00:02:38.328Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 20,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 75,
+        "delta30sPercentagePoints": 75,
+        "growthClassification": "BRUSCO",
+        "samples5m": 24,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:02:38.328Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-534798cd-7ca5-4994-94b0-f25a664a74c3",
+      "profileId": "cmw47kkvp003pn70sxtzy5mkh",
+      "identical": true,
+      "previousSample": {
+        "id": "3791e0f5-7b14-4c53-b97a-92b84c972577",
+        "at": "2026-11-06T00:08:49.527Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "5a05933e-5239-40f1-831d-5e31c9bed7b1",
+        "at": "2026-11-06T00:08:54.667Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.667Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-0ec1da55-ad8f-4b6f-8c50-0f8724ed35ae",
+      "profileId": "cmw47kksc0021n70skpgluyv6",
+      "identical": true,
+      "previousSample": {
+        "id": "65325ab1-8eae-49e1-89b6-9d86760cd54e",
+        "at": "2026-11-06T00:08:49.463Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "ecfbe4df-0bf7-4422-a5f9-4e6bd56dc91c",
+        "at": "2026-11-06T00:08:54.602Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.602Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-adccde5c-4a79-4a05-a379-0684a70d0a46",
+      "profileId": "cmw47kkvf003kn70sryhs747l",
+      "identical": true,
+      "previousSample": {
+        "id": "efd57950-23e1-4ef9-ba1a-3207b305798d",
+        "at": "2026-11-06T00:08:49.527Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "f2c7803a-4592-4799-ad53-725a030a324b",
+        "at": "2026-11-06T00:08:54.667Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.667Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-f2561569-2f8b-4ee1-99e4-d9c82896f116",
+      "profileId": "cmw47kkvz003un70sxusfr2sa",
+      "identical": true,
+      "previousSample": {
+        "id": "ffe9c26a-9dae-4f93-acef-dcaf89e30d40",
+        "at": "2026-11-06T00:08:49.527Z",
+        "txBps": 400000000
+      },
+      "crossingSample": {
+        "id": "6c1520b3-c09d-40c0-af58-8b314006ec8c",
+        "at": "2026-11-06T00:08:54.667Z",
+        "txBps": 950000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 40,
+        "currentUtilizationPct": 95,
+        "deltaPercentagePoints": 55,
+        "delta30sPercentagePoints": 55,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:08:54.667Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    },
+    {
+      "eventId": "auto-detection-2bdc3de7-55d6-44a7-ae28-f022f2e03519",
+      "profileId": "cmw47kkwt0049n70s7t0rpt02",
+      "identical": true,
+      "previousSample": {
+        "id": "aaba74dc-ef56-4385-bf95-b68154e453b1",
+        "at": "2026-11-06T00:08:59.920Z",
+        "txBps": 949999999.9999999
+      },
+      "crossingSample": {
+        "id": "d105a0e2-a867-4cc8-a94b-0d36bccf0092",
+        "at": "2026-11-06T00:09:04.982Z",
+        "txBps": 990000000
+      },
+      "growth": {
+        "baselineAverage5mPct": 41.9,
+        "currentUtilizationPct": 99,
+        "deltaPercentagePoints": 57.1,
+        "delta30sPercentagePoints": 59,
+        "growthClassification": "BRUSCO",
+        "samples5m": 58,
+        "samples30s": 2,
+        "thresholdPct": 95,
+        "thresholdReachedAt": "2026-11-06T00:09:04.982Z",
+        "trafficDirection": "tx",
+        "mitigationStatus": "SIMULACAO",
+        "mitigationReason": "AUTO_EXECUTION_DISABLED",
+        "message": "Crescimento informativo: BRUSCO."
+      }
+    }
+  ]
+}

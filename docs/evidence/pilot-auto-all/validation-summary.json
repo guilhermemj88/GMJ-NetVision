@@ -1,0 +1,61 @@
+{
+  "base": "2046278d6f593faae9fbf54f2513ffad3199a761",
+  "branch": "fix/pilot-snapshot-homolog",
+  "status": "GO_FOR_INDEPENDENT_REVIEW_AND_ISOLATED_HOLD_ONLY",
+  "results": {
+    "snapshotGuardNegativeAndPositive": "PASS",
+    "23ClientsTwoEpisodes": "PASS",
+    "firstThresholdGrowthReplay46Events": "PASS",
+    "rawIdenticalRetries46Events": "PASS",
+    "leaseConcurrencyAndLoss": "PASS",
+    "controlledClockTemporalBoundaries3Tests": "PASS",
+    "typecheck": "PASS",
+    "build": "PASS",
+    "changedSourceLint": "PASS",
+    "globalLint": "FAIL_PREEXISTING_5_UNUSED_DIRECTIVES",
+    "realThirtyMinuteWindow": "PENDENTE_USER_REQUESTED_NO_WAIT"
+  },
+  "tests": {
+    "standardRegressionPassed": 4566,
+    "newTemporalPassed": 3,
+    "newPostgresLeasePassed": 1,
+    "totalUniquePassedThisTask": 4570,
+    "standardOptionalSkipped": 49,
+    "newOptionalExecutedSeparately": 1,
+    "previouslyApprovedOptionalNotRepeated": 48
+  },
+  "http": {
+    "events": 46,
+    "receipts": 230,
+    "identicalRawRetries": true,
+    "ackConfirmedEvents": 23
+  },
+  "timings": {
+    "confirmationMs": {
+      "min": 10355,
+      "max": 15320
+    },
+    "decisionMs": {
+      "min": 1,
+      "max": 9
+    },
+    "sampleToDecisionMs": {
+      "min": 42,
+      "max": 4981
+    }
+  },
+  "outbox": {
+    "PENDING": 23,
+    "SENT": 23
+  },
+  "safety": {
+    "physicalBgpEnabled": false,
+    "removeEnabled": false,
+    "realHuaweiConnections": 0,
+    "productionN8nConnections": 0,
+    "systemClockChanged": false,
+    "databaseTimestampsManuallyModified": false,
+    "dedupAndBackoffModified": false,
+    "databasePreserved": true
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "passed": true,
+  "fault": {
+    "atUtc": "2026-11-06T00:25:06.328889+00:00",
+    "containerId": "463dee9e974a37c870d644e7864136771c813b1107d65508db904ea79875976e",
+    "database": "pilot_auto_all_homolog_verified_20261105",
+    "pid": 357,
+    "ownerVerified": [
+      {
+        "pid": 357,
+        "datname": "pilot_auto_all_homolog_verified_20261105",
+        "usename": "pilot_homolog"
+      }
+    ],
+    "terminated": true
+  },
+  "detectedAt": "2026-11-06T00:25:15.096Z",
+  "lease": {
+    "enabled": true,
+    "key": "netvision:fast-poller:IMPLANTAR",
+    "acquired": false,
+    "holderBackendPid": 357,
+    "acquiredAt": "2026-11-06T00:00:29.496Z",
+    "lastVerifiedAt": "2026-11-06T00:25:15.117Z",
+    "lost": true,
+    "lastError": "\nInvalid `prisma.$queryRawUnsafe()` invocation:\n\n\nServer has closed the connection."
+  },
+  "collectorRunning": false,
+  "observationsBefore": 6647,
+  "observationsAfter11Seconds": 6647,
+  "secondaryRequests": 0,
+  "secondaryDecisions": 0,
+  "atUtc": "2026-11-06T00:25:56.278646+00:00"
+}

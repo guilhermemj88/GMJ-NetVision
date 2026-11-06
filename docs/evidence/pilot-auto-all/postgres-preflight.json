@@ -1,0 +1,34 @@
+{
+  "containerId": "463dee9e974a37c870d644e7864136771c813b1107d65508db904ea79875976e",
+  "name": "gmj-pilot-homolog-4d8154ed73",
+  "host": "127.0.0.1",
+  "port": 55448,
+  "databases": [
+    "pilot_auto_all_homolog_20261105",
+    "pilot_snapshot_negative_20261105"
+  ],
+  "tmpfs": true,
+  "identityVerifiedBeforeSchema": true,
+  "existingContainersUntouched": [
+    {
+      "Command": "\"docker-entrypoint.sh postgres\"",
+      "CreatedAt": "2026-11-05 09:30:37 -0300 -03",
+      "HealthStatus": "none",
+      "ID": "a414726479038ab03582f96bc2ed2cdb04fe9f250bb8ab7cb69a6673a094aeec",
+      "Image": "postgres:18-alpine",
+      "Labels": "desktop.docker.io/ports.scheme=v2,desktop.docker.io/ports/5432/tcp=:55433",
+      "LocalVolumes": "1",
+      "Mounts": "cf5da912562ec3f9539247ca59aec05ed9da26a8ac05814199e70407799b5f8d",
+      "Names": "nv-autoatest-pg",
+      "Networks": "bridge",
+      "Platform": null,
+      "Ports": "0.0.0.0:55433->5432/tcp, [::]:55433->5432/tcp",
+      "RunningFor": "11 hours ago",
+      "Size": "68B (virtual 304MB)",
+      "State": "running",
+      "Status": "Up 11 hours"
+    }
+  ],
+  "originalDatabaseUrlPresent": false,
+  "originalFastDatabaseUrlPresent": false
+}

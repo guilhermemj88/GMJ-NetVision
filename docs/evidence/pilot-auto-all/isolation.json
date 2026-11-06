@@ -1,0 +1,104 @@
+{
+  "base": "2046278d6f593faae9fbf54f2513ffad3199a761",
+  "protectedFiles": [
+    {
+      "path": "apps/api/src/worker/mitigation/mitigation-auto-engine.ts",
+      "identicalToBase": true,
+      "sha256Lf": "0b54ab6dd44e5c1d416fc600cfcc809aefd1e5e3128c69ce92374b4821964109"
+    },
+    {
+      "path": "apps/api/src/worker/mitigation/auto-lifecycle.ts",
+      "identicalToBase": true,
+      "sha256Lf": "a9d6e0bbe609664e4c76aa12f0b35c7f0318d9323d03ca59920daae3ea0e5a75"
+    },
+    {
+      "path": "apps/api/src/worker/mitigation/single-pilot-trigger.ts",
+      "identicalToBase": true,
+      "sha256Lf": "c89bbdb0089d786132c4dd3e003fd586204443ef34306b2b0dfe83d81286bb1e"
+    },
+    {
+      "path": "apps/api/src/worker/mitigation/durable-mitigation-outbox.ts",
+      "identicalToBase": true,
+      "sha256Lf": "9b665cb81517200a017eb8380f39fb1d58d4caf52467f2281a40b426d8f8bca5"
+    },
+    {
+      "path": "apps/api/src/application/fast-growth-notifications.ts",
+      "identicalToBase": true,
+      "sha256Lf": "d231f3857a74dd8b49e02b4c950d171d557e2e30725ff0c79d4d202c77f5bc81"
+    },
+    {
+      "path": "apps/api/src/infrastructure/snmp/fast-growth-analysis.ts",
+      "identicalToBase": true,
+      "sha256Lf": "ec16cb22e4745483ae07a85d17a20f6354eaf786d8bf200baed66996b2aa20b9"
+    },
+    {
+      "path": "apps/api/src/infrastructure/snmp/fast-traffic-poller.ts",
+      "identicalToBase": true,
+      "sha256Lf": "bf323dd60d836e2bf83b3a5d3f5da0e90cd0b203be977ffd45b93182469d6b7a"
+    },
+    {
+      "path": "apps/api/src/infrastructure/bgp/mitigation/mitigation-service.ts",
+      "identicalToBase": true,
+      "sha256Lf": "f04d3c78a7f835d7f38c4ac9a3e5e05673380203aea01a954ba03601b64bdba9"
+    },
+    {
+      "path": "apps/api/src/infrastructure/bgp/mitigation/mitigation-discovery-service.ts",
+      "identicalToBase": true,
+      "sha256Lf": "a5bdbe16b70d64bc6edcf78588124af40941cfcead0df1854022582e7ea39570"
+    },
+    {
+      "path": "apps/api/src/infrastructure/bgp/mitigation/mitigation-command-service.ts",
+      "identicalToBase": true,
+      "sha256Lf": "3d5a8f3d84be5c11c867d857700982fdc6760bafad41d1f6149ffca9f56424b8"
+    },
+    {
+      "path": "apps/api/src/infrastructure/bgp/mitigation/mitigation-execution-config.ts",
+      "identicalToBase": true,
+      "sha256Lf": "8080349bf79e556b8c9548b38e80f259c3a82e0ec90e4d926139e06edffaffec"
+    },
+    {
+      "path": "apps/api/src/infrastructure/bgp/mitigation/mitigation-auto-authorization.ts",
+      "identicalToBase": true,
+      "sha256Lf": "f0b441236d98d18080eec1c0ce23f5c4516195befde7ecd22a40f96a9c82850b"
+    },
+    {
+      "path": "apps/api/src/infrastructure/media/n8n-media-transport.ts",
+      "identicalToBase": true,
+      "sha256Lf": "68655ce318eb4c9434e1c6bc1b6156c7d7900bab1082b92036a3ddceedb9f9c8"
+    },
+    {
+      "path": "apps/api/src/infrastructure/bgp/mitigation/mitigation-webhook.ts",
+      "identicalToBase": true,
+      "sha256Lf": "1bf0a0b5b450b6cd3bfd5ea08397ea811e7b81b82997f2421cf29c79f87b225d"
+    },
+    {
+      "path": "apps/api/src/infrastructure/bgp/mitigation/notification-publisher.ts",
+      "identicalToBase": true,
+      "sha256Lf": "781d7dc844c60eef1fdb0267630c21e412a632e71886b88bd770ecb4ea28d5c6"
+    },
+    {
+      "path": "apps/api/prisma/schema.prisma",
+      "identicalToBase": true,
+      "sha256Lf": "feb55fb93e5537e6b0885337e1aba26781171eeabb03c8ab54f52774022642be"
+    },
+    {
+      "path": "apps/api/src/server.ts",
+      "identicalToBase": true,
+      "sha256Lf": "00a3ef8820fc392b1626ddd776250b3a194c997133178b197c6a7a63948a1214"
+    },
+    {
+      "path": "eslint.config.mjs",
+      "identicalToBase": true,
+      "sha256Lf": "5bc7b8338c18d085ad5bb4e76db23b7eefeb13b0215367a1212ada8a761a97f6"
+    },
+    {
+      "path": "package-lock.json",
+      "identicalToBase": true,
+      "sha256Lf": "b06ad8210a0905e41c602bc8b65fca1fa9b271253d837fb3c3ff032618cd303f"
+    }
+  ],
+  "snapshotGuardAndReconciliationUnchanged": true,
+  "leaseAcquisitionVerificationAndReleaseUnchanged": true,
+  "onlyDedicatedLeasePoolParametersChanged": true,
+  "noProductionConnectionRequired": true
+}
