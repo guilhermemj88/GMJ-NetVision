@@ -98,6 +98,18 @@ describe('AUTO-ALL physical execution through the embedded FAST (simulated execu
     expect(h.ssh.writes).toHaveLength(1);
   });
 
+  it('the activation read scope wraps only authorized attempts (never other profiles)', async () => {
+    const h = await createAutoAllHarness();
+    await warm(h);
+    for (let i = 0; i < 4; i++)
+      await h.cycle({
+        [P.profileId]: HIGH,
+        [OTHER.profileId]: HIGH,
+        [LEGACY_EXEMPT.profileId]: HIGH,
+      });
+    expect(h.scopeCalls).toEqual([P.profileId]);
+  });
+
   it('other AUTO profiles and the legacy-exempt profile never get physical authorization', async () => {
     const h = await createAutoAllHarness();
     await warm(h);
@@ -167,25 +179,34 @@ describe('AUTO-ALL physical execution through the embedded FAST (simulated execu
     expect(h.used).toEqual({ bridge: 0, legacy: 0 });
   });
 
-  it('SSH latency budget: stale evidence is rejected fail-closed (no relaxed freshness)', async () => {
-    const outcome = async (latencyMs: number) => {
-      const h = await createAutoAllHarness({ sshLatencyMs: latencyMs });
+  it('SSH latency budget: stale evidence is rejected fail-closed (no relaxed freshness); the read scope widens the budget', async () => {
+    const outcome = async (latencyMs: number, useReadScope: boolean, decisionDelayMs: number) => {
+      const h = await createAutoAllHarness({
+        sshLatencyMs: latencyMs,
+        useReadScope,
+        decisionDelayMs,
+      });
       await warm(h);
-      for (let i = 0; i < 4; i++) await h.cycle({ [P.profileId]: HIGH });
+      for (let i = 0; i < 3; i++) await h.cycle({ [P.profileId]: HIGH });
       return h.ssh.writes.length;
     };
-    const results: Record<number, number> = {};
-    for (const ms of [0, 1000, 1500, 2000, 2250, 2500, 2750, 3000, 5000])
-      results[ms] = await outcome(ms);
-    console.log(
-      'SSH_LATENCY_BUDGET writes per per-operation latency (ms):',
-      JSON.stringify(results),
-    );
-    const probe = await createAutoAllHarness();
-    await warm(probe);
-    for (let i = 0; i < 3; i++) await probe.cycle({ [P.profileId]: HIGH });
-    console.log('SSH_OPERATIONS_PER_ACTIVATION:', probe.sshOps(), JSON.stringify(probe.sshOpLog()));
-    expect(results[0]).toBe(1);
-    expect(results[5000]).toBe(0);
+    const sweep = async (useReadScope: boolean, decisionDelayMs: number) => {
+      const out: Record<number, number> = {};
+      for (const ms of [0, 1000, 2000, 3000, 4000, 5000, 6000, 8000])
+        out[ms] = await outcome(ms, useReadScope, decisionDelayMs);
+      return out;
+    };
+    for (const delay of [0, 2500, 4900]) {
+      console.log(
+        `SSH_BUDGET decision ${delay} ms after the sample | per-operation latency without scope:`,
+        JSON.stringify(await sweep(false, delay)),
+        '| per-snapshot latency with scope:',
+        JSON.stringify(await sweep(true, delay)),
+      );
+    }
+    expect(await outcome(0, false, 0)).toBe(1);
+    expect(await outcome(2500, false, 0)).toBe(0);
+    expect(await outcome(3500, true, 4900)).toBe(1);
+    expect(await outcome(8000, true, 4900)).toBe(0);
   });
 });

@@ -46,25 +46,46 @@ import { PilotFakeHuawei } from './single-pilot-harness';
 class SlowFakeHuawei extends PilotFakeHuawei {
   calls = 0;
   ops: string[] = [];
+  /** Emulates HuaweiBgpSshService.withActivationReadScope: one paid snapshot, then free reads until the first write. */
+  scope: { paid: boolean; closed: boolean } | null = null;
+  private async cost(kind: 'read' | 'write') {
+    const scope = this.scope;
+    if (kind === 'write' && scope) scope.closed = true;
+    if (kind === 'read' && scope && !scope.closed) {
+      if (scope.paid) return;
+      scope.paid = true;
+    }
+    await this.delay();
+  }
   constructor(private readonly delay: () => Promise<void>) {
     super();
+  }
+  mark(name: string) {
+    this.ops.push(name);
+  }
+  /** routes.ts evidence closure reads the BGP configuration (one more equipment read). */
+  async readBgp(bgpConfiguration: string) {
+    this.calls += 1;
+    this.ops.push('readBgpConfiguration');
+    await this.cost('read');
+    return { bgpConfiguration };
   }
   override async readMitigationConfiguration() {
     this.calls += 1;
     this.ops.push('readMitigationConfiguration');
-    await this.delay();
+    await this.cost('read');
     return super.readMitigationConfiguration();
   }
   override async readMitigationRoutePolicy() {
     this.calls += 1;
     this.ops.push('readMitigationRoutePolicy');
-    await this.delay();
+    await this.cost('read');
     return super.readMitigationRoutePolicy();
   }
   override async applyMitigationCommands(host: HostRecord, commands: readonly string[]) {
     this.calls += 1;
     this.ops.push('applyMitigationCommands');
-    await this.delay();
+    await this.cost('write');
     return super.applyMitigationCommands(host, commands);
   }
 }
@@ -107,6 +128,10 @@ export interface AutoAllHarnessOptions {
   sshLatencyMs?: number;
   allowlist?: string[];
   cadenceMs?: number;
+  /** Wire the activation read scope (option B). Default: true, as in routes.ts. */
+  useReadScope?: boolean;
+  /** ms between the FAST sample and the engine tick that evaluates it (0..cadence). */
+  decisionDelayMs?: number;
 }
 
 /**
@@ -375,6 +400,7 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
     };
   };
 
+  const scopeCalls: string[] = [];
   let lifecycle: AutoMitigationLifecycle;
   let commands: MitigationCommandService;
   let engine: MitigationAutoEngine;
@@ -397,8 +423,12 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
       autoEvidence: async (id, e) => {
         const t = targets.get(id);
         if (!t) return false;
+        ssh.mark('--evidence-closure-start--');
+        // routes.ts order: BGP configuration first, then the mitigation configuration.
+        const { bgpConfiguration } = await ssh.readBgp(
+          `bgp 64500\n ipv4-family unicast\n  peer ${t.peerAddresses[0]} route-policy ${t.policyName} import`,
+        );
         const physicalConfig = await ssh.readMitigationConfiguration();
-        const bgpConfiguration = `bgp 64500\n ipv4-family unicast\n  peer ${t.peerAddresses[0]} route-policy ${t.policyName} import`;
         if (
           !autoExpansionPhysicalScopeMatches(
             { ...physicalConfig, bgpConfiguration },
@@ -407,6 +437,7 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
           )
         )
           return false;
+        ssh.mark('--evidence-final-sample--');
         const sample = await evidenceSource.sampleWithId({
           profileId: id,
           deviceId: t.deviceId,
@@ -442,7 +473,20 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
       // AUTO-ALL: NO pilotTraffic (the external pilot runtime is not used).
       target: lifecycleTarget,
       execute: (i) => commands.execute(i),
-      physical: (t) => physical(t),
+      readScope: async (t, run) => {
+        scopeCalls.push(t.profileId);
+        if (options.useReadScope === false) return run();
+        ssh.scope = { paid: false, closed: false };
+        try {
+          return await run();
+        } finally {
+          ssh.scope = null;
+        }
+      },
+      physical: (t) => {
+        ssh.mark('--lifecycle.physical--');
+        return physical(t);
+      },
       now: () => now,
     });
     engine = new MitigationAutoEngine({
@@ -528,8 +572,10 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
       currentBps = bpsByProfile;
       now = Math.max(now, lastFeedAt + cadence);
       await feedAll();
+      await advanceTime(options.decisionDelayMs ?? 0);
       return engine!.tick();
     },
+    scopeCalls,
     sshOps: () => ssh.calls,
     sshOpLog: () => [...ssh.ops],
     usesExternalPilotRuntime: usesExternalPilotRuntime(wiring),

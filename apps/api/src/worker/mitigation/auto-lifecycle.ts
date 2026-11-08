@@ -180,6 +180,11 @@ export interface LifecycleDeps {
   readPolicy?: (target: LifecycleTarget) => Promise<string>;
   /** The existing FAST reader; supplied only for the single-client production path. */
   pilotTraffic?: Pick<MitigationTrafficSource, 'sampleWithId'>;
+  /**
+   * Optional scope around the whole equipment-facing part of an AUTO activation attempt (reads
+   * share one SSH snapshot; the first write closes it). Absent = every read hits the equipment.
+   */
+  readScope?: <R>(target: LifecycleTarget, run: () => Promise<R>) => Promise<R>;
   store: AutomationStore;
   config: () => LifecycleConfig;
   target: (id: string) => Promise<LifecycleTarget | null>;
@@ -510,6 +515,17 @@ export class AutoMitigationLifecycle {
     const prior = await this.deps.store.transaction((tx) => tx.get<ScopeOwnership>(scopeKey(t)));
     const gate = this.activationGate(prior, start);
     if (gate) return rejected(gate);
+    // One shared READ-ONLY equipment snapshot for every pre-write read of this attempt (see
+    // HuaweiBgpSshService.withActivationReadScope). Gates, freshness and the read-back are unchanged.
+    const run = () => this.activatePhysical(t, e, at, start);
+    return this.deps.readScope ? this.deps.readScope(t, run) : run();
+  }
+  private async activatePhysical(
+    t: LifecycleTarget,
+    e: NonNullable<MitigationCommandInput['autoEvidence']>,
+    at: number,
+    start: number,
+  ): Promise<MitigationAutoCommandResult> {
     let p: Awaited<ReturnType<LifecycleDeps['physical']>>;
     try {
       p = await this.deps.physical(t);

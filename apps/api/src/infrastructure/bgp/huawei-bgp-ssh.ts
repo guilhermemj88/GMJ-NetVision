@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import type { BgpAddressFamily, BgpAdminAction, HostRecord } from '@gmj/shared';
 import type { SshClient } from '../../domain/ports';
 import type { HostRepository } from '../persistence/host-repository';
@@ -148,11 +149,89 @@ export interface HuaweiBgpConfigReading {
   warnings: string[];
 }
 
+/**
+ * One READ-ONLY snapshot of equipment state (four concurrent short sessions), taken once per AUTO activation attempt.
+ * Every field is the output of the SAME display command the individual reads issue.
+ */
+export interface ActivationReadSnapshot {
+  routePolicyConfiguration: string | null;
+  prefixListConfiguration: string | null;
+  bgpConfiguration: string | null;
+  routePolicyDisplay: string | null;
+}
+interface ActivationReadScope {
+  deviceId: string;
+  policyName: string;
+  snapshot: Promise<ActivationReadSnapshot> | null;
+  /** Closed at the first write: every later read hits the equipment again (read-back). */
+  closed: boolean;
+}
+
 export class HuaweiBgpSshService {
   constructor(
     private readonly repository: HostRepository,
     private readonly clientFactory: BgpSshClientFactory = (options) => new SshClientImpl(options),
   ) {}
+
+  private readonly activationScope = new AsyncLocalStorage<ActivationReadScope>();
+
+  /**
+   * Runs one AUTO activation attempt with ONE shared read-only SSH snapshot. Inside the scope the
+   * pre-write reads (route-policy display, mitigation configuration, BGP configuration) are served
+   * from one concurrent snapshot instead of a sequence of sessions (the same reads repeated). The scope closes at the first write, so
+   * the read-back after the write always reads the equipment. Freshness and gates are unchanged:
+   * the data is the output of the same commands, taken seconds before the checks that use it.
+   */
+  withActivationReadScope<T>(
+    scope: { deviceId: string; policyName: string },
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    return this.activationScope.run({ ...scope, snapshot: null, closed: false }, fn);
+  }
+
+  private scopedSnapshot(
+    device: HostRecord,
+    policyName?: string,
+  ): Promise<ActivationReadSnapshot> | null {
+    const scope = this.activationScope.getStore();
+    if (!scope || scope.closed || scope.deviceId !== device.id) return null;
+    if (policyName !== undefined && policyName !== scope.policyName) return null;
+    scope.snapshot ??= this.readActivationSnapshot(device, scope.policyName);
+    return scope.snapshot;
+  }
+
+  /**
+   * READ-ONLY: the four pre-write reads of an activation, issued CONCURRENTLY (one short session
+   * each, exactly the commands and the strict per-command checks of the individual reads), so the
+   * wall time is the slowest single read instead of the sum of all of them.
+   */
+  async readActivationSnapshot(
+    device: HostRecord,
+    policyName: string,
+  ): Promise<ActivationReadSnapshot> {
+    const client = await this.createClient(device);
+    const host = device.ssh!.host;
+    const screenLength = assertReadOnlyCommand('screen-length 0 temporary');
+    const read = (command: string) =>
+      this.executeStrict(client, host, [screenLength, assertReadOnlyCommand(command)]);
+    const [
+      routePolicyConfiguration,
+      prefixListConfiguration,
+      bgpConfiguration,
+      routePolicyDisplay,
+    ] = await Promise.all([
+      read('display current-configuration configuration route-policy'),
+      read('display current-configuration | include ip-prefix'),
+      read('display current-configuration configuration bgp'),
+      read(`display route-policy ${policyName}`),
+    ]);
+    return {
+      routePolicyConfiguration,
+      prefixListConfiguration,
+      bgpConfiguration,
+      routePolicyDisplay,
+    };
+  }
 
   async discover(device: HostRecord): Promise<HuaweiBgpSshDiscovery> {
     const client = await this.createClient(device);
@@ -394,6 +473,26 @@ export class HuaweiBgpSshService {
   // Todo comando passa pelo read-only guard antes de chegar ao SSH.
   async readBgpConfiguration(device: HostRecord): Promise<HuaweiBgpConfigReading> {
     const warnings: string[] = [];
+    const scoped = this.scopedSnapshot(device);
+    if (scoped) {
+      try {
+        const snapshot = await scoped;
+        if (snapshot.bgpConfiguration === null) warnings.push('BGP: SSH command failed');
+        if (snapshot.routePolicyConfiguration === null)
+          warnings.push('route-policy: SSH command failed');
+        return {
+          bgpConfiguration: snapshot.bgpConfiguration,
+          routePolicyConfiguration: snapshot.routePolicyConfiguration,
+          warnings,
+        };
+      } catch (error) {
+        return {
+          bgpConfiguration: null,
+          routePolicyConfiguration: null,
+          warnings: [safeSshError(error)],
+        };
+      }
+    }
 
     let client: SshClient;
     try {
@@ -432,6 +531,27 @@ export class HuaweiBgpSshService {
     warnings: string[];
   }> {
     const warnings: string[] = [];
+    const scoped = this.scopedSnapshot(device);
+    if (scoped) {
+      try {
+        const snapshot = await scoped;
+        if (snapshot.routePolicyConfiguration === null)
+          warnings.push('route-policy: SSH command failed');
+        if (snapshot.prefixListConfiguration === null)
+          warnings.push('ip-prefix: SSH command failed');
+        return {
+          routePolicyConfiguration: snapshot.routePolicyConfiguration,
+          prefixListConfiguration: snapshot.prefixListConfiguration,
+          warnings,
+        };
+      } catch (error) {
+        return {
+          routePolicyConfiguration: null,
+          prefixListConfiguration: null,
+          warnings: [safeSshError(error)],
+        };
+      }
+    }
 
     let client: SshClient;
     try {
@@ -471,6 +591,12 @@ export class HuaweiBgpSshService {
   /** READ-ONLY: dump textual da route-policy para o read-back obrigatorio. */
   async readMitigationRoutePolicy(device: HostRecord, policyName: string): Promise<string> {
     // O nome ja foi validado pela guarda de escrita antes de chegar aqui.
+    const scoped = this.scopedSnapshot(device, policyName);
+    if (scoped) {
+      const output = (await scoped).routePolicyDisplay;
+      if (output === null) throw new Error('SSH command failed');
+      return output;
+    }
     const command = assertReadOnlyCommand(`display route-policy ${policyName}`);
     const client = await this.createClient(device);
     const output = await this.executeStrict(client, device.ssh!.host, [
@@ -489,6 +615,9 @@ export class HuaweiBgpSshService {
     device: HostRecord,
     commands: readonly string[],
   ): Promise<{ ok: boolean; output: string | null }> {
+    // Any write closes the activation read scope: the read-back must hit the equipment.
+    const activationScope = this.activationScope.getStore();
+    if (activationScope) activationScope.closed = true;
     // Sessao de ESCRITA: termina em system-view (apos o commit), entao precisa
     // de DOIS `quit` (volta para user view e encerra) e de um timeout maior.
     // `abortOnInteractivePrompt`: se o VRP abrir qualquer confirmacao/paginacao

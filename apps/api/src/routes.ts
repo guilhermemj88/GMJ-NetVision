@@ -1700,6 +1700,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         return mitigationLiveExecutor.readRoutePolicy(host, t.policyName!);
       },
       ...(usePilotRuntime ? { pilotTraffic: bridgeSource } : {}),
+      readScope: (t, run) =>
+        mitigationSsh.withActivationReadScope(
+          { deviceId: t.deviceId, policyName: t.policyName! },
+          run,
+        ),
       store: automationStore,
       config: () => ({
         ...lifecycleSettings,
