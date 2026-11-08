@@ -558,6 +558,18 @@ describe('AUTO ACTIVATE + MANUAL REMOVE: canonical executor with fake SSH only',
     expect((await h.manual()).verified).toBe(true);
     expect((await h.scope())?.phase).toBe('COOLDOWN');
   });
+  it('observe resolves the target through the per-tick resolver (O(N) bookkeeping), not a fresh listing', async () => {
+    const h = await harness();
+    const calls: string[] = [];
+    const resolver = async (profileId: string) => {
+      calls.push(profileId);
+      return null;
+    };
+    await h.lifecycle.observe(h.decision(0n), resolver);
+    await h.lifecycle.observe(h.decision(0n), resolver);
+    expect(calls).toEqual([h.t.profileId, h.t.profileId]);
+    expect(h.ssh.writes).toHaveLength(0);
+  });
   it('global capacity serializes concurrent activations', async () => {
     const h = await harness();
     const results = await Promise.all([h.activate(), h.activate()]);

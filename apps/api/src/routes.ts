@@ -182,7 +182,7 @@ import { mitigationExecutionConfigFromEnv } from './infrastructure/bgp/mitigatio
 import { HuaweiMitigationExecutor } from './infrastructure/bgp/mitigation/huawei-mitigation-executor';
 import { MitigationPolicyReconciler } from './infrastructure/bgp/mitigation/mitigation-policy-reconciler';
 import { PrismaInterfaceTrafficReader } from './infrastructure/bgp/mitigation/prisma-interface-traffic-reader';
-import { MitigationAutoEngine } from './worker/mitigation/mitigation-auto-engine';
+import { MitigationAutoEngine, type MitigationAutoDecision } from './worker/mitigation/mitigation-auto-engine';
 import {
   AutoMitigationLifecycle,
   lifecycleConfig,
@@ -862,6 +862,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     ? new DurableMitigationOutbox(automationStore, mediaTransport)
     : null;
   let lifecycle: AutoMitigationLifecycle | null = null;
+  let observeTargets: (decisions: MitigationAutoDecision[]) => Promise<void> = async () => undefined;
   let lifecycleReady = false;
   app.get('/api/bgp/mitigation/auto/lifecycle', async () => ({
     pilot: lifecycle?.pilotStatus() ?? null,
@@ -1585,13 +1586,33 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   });
   autoEngineRef.current = mitigationAutoEngine;
   if (automationStore) {
-    const lifecycleTarget = async (id: string): Promise<LifecycleTarget | null> => {
-      const all = await autoTargets.list();
+    type AutoTargetRows = Awaited<ReturnType<typeof autoTargets.list>>;
+    /** Per-tick read-through memo: bookkeeping reads within ONE tick share profile/host lookups. */
+    const newTickMemo = () => ({
+      profiles: new Map<string, ReturnType<typeof mitigationRepository.getProfile>>(),
+      hosts: new Map<string, ReturnType<typeof hosts.getHost>>(),
+    });
+    const lifecycleTargetFrom = async (
+      all: AutoTargetRows,
+      id: string,
+      memo?: ReturnType<typeof newTickMemo>,
+    ): Promise<LifecycleTarget | null> => {
       const t = all.find((row) => row.profileId === id);
       if (!t) return null;
-      const profile = await mitigationRepository.getProfile(id);
+      const readProfile = (profileId: string) => {
+        if (!memo) return mitigationRepository.getProfile(profileId);
+        if (!memo.profiles.has(profileId))
+          memo.profiles.set(profileId, mitigationRepository.getProfile(profileId));
+        return memo.profiles.get(profileId)!;
+      };
+      const readHost = (deviceId: string) => {
+        if (!memo) return hosts.getHost(deviceId);
+        if (!memo.hosts.has(deviceId)) memo.hosts.set(deviceId, hosts.getHost(deviceId));
+        return memo.hosts.get(deviceId)!;
+      };
+      const profile = await readProfile(id);
       if (!profile) return null;
-      const host = await hosts.getHost(profile.deviceId);
+      const host = await readHost(profile.deviceId);
       if (
         lifecycleSettings.enabled &&
         !lifecycleSettings.expansionEnabled &&
@@ -1634,6 +1655,18 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
           : isFastRoutedProfile(id, { bridge: bridgeConfig, embedded: fastConfig }),
         clientBinding,
       };
+    };
+    // Execution paths (tickPilot/activate/reconcile) keep the FRESH resolver: every call re-reads.
+    const lifecycleTarget = async (id: string): Promise<LifecycleTarget | null> =>
+      lifecycleTargetFrom(await autoTargets.list(), id);
+    observeTargets = async (decisions) => {
+      if (!decisions.length) return;
+      // O(N), not O(N^2): ONE target listing and ONE profile/host lookup per tick for the
+      // episode bookkeeping of all decisions. Gates, execution and reconciliation are untouched.
+      const all = await autoTargets.list();
+      const memo = newTickMemo();
+      const resolve = (id: string) => lifecycleTargetFrom(all, id, memo);
+      for (const decision of decisions) await lifecycle!.observe(decision, resolve);
     };
     lifecycle = new AutoMitigationLifecycle({
       enrichNotification: (notification, direction, confirmedAtMs) => fastGrowth.enrich(notification, direction, confirmedAtMs),
@@ -1713,8 +1746,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
           const decisions = usePilotRuntime
             ? await lifecycle!.tickPilot()
             : await mitigationAutoEngine.tick();
-          if (lifecycle && !usePilotRuntime)
-            for (const decision of decisions) await lifecycle.observe(decision);
+          if (lifecycle && !usePilotRuntime) await observeTargets(decisions);
           if (bridgeConfig.mode === 'ENFORCE')
             await recordFastBridgeDecisions(
               prismaClient,

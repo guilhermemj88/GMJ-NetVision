@@ -694,8 +694,11 @@ export class AutoMitigationLifecycle {
     });
   }
   /** No observation can write to Huawei. While owned, even zero traffic holds. */
-  async observe(d: MitigationAutoDecision): Promise<void> {
-    const t = await this.deps.target(d.profileId);
+  async observe(
+    d: MitigationAutoDecision,
+    resolveTarget: (profileId: string) => Promise<LifecycleTarget | null> = this.deps.target,
+  ): Promise<void> {
+    const t = await resolveTarget(d.profileId);
     if (!t) return;
     const at = Date.parse(d.sampleAt ?? ''),
       fresh =
