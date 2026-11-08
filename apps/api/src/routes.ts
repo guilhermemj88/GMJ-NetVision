@@ -184,6 +184,11 @@ import { MitigationPolicyReconciler } from './infrastructure/bgp/mitigation/miti
 import { PrismaInterfaceTrafficReader } from './infrastructure/bgp/mitigation/prisma-interface-traffic-reader';
 import { MitigationAutoEngine, type MitigationAutoDecision } from './worker/mitigation/mitigation-auto-engine';
 import {
+  engineLegacyExemptProfileIds,
+  physicalEvidenceSource,
+  usesExternalPilotRuntime,
+} from './worker/mitigation/auto-all-wiring';
+import {
   AutoMitigationLifecycle,
   lifecycleConfig,
   type LifecycleTarget,
@@ -848,8 +853,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   // Embedded AUTO-ALL in HOLD must evaluate through the canonical engine,
   // including its execution-disabled gate and durable detection publisher.
   // Physical execution and the reviewed external pilot retain their original path.
-  const usePilotRuntime = lifecycleSettings.enabled &&
-    !(fastConfig.autoAllEnforce === true && !lifecycleSettings.executionEnabled);
+  // AUTO-ALL has ONE collection path (embedded FAST) and ONE decision path (canonical engine)
+  // for HOLD and for physical execution; the external pilot runtime is not used with it.
+  const autoAllWiring = {
+    autoAllEnforce: fastConfig.autoAllEnforce === true,
+    lifecycleEnabled: lifecycleSettings.enabled,
+  };
+  const usePilotRuntime = usesExternalPilotRuntime(autoAllWiring);
   const persistenceEnabled =
     !config.DEMO_MODE &&
     lifecycleSettings.installation === 'IMPLANTAR' &&
@@ -871,6 +881,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     lifecycleReady,
     lifecycleEnabled: lifecycleSettings.enabled,
     runtimePath: usePilotRuntime ? 'EXTERNAL_PILOT' : 'CANONICAL_ENGINE',
+    telemetrySource: physicalEvidenceSource(autoAllWiring),
     executionEnabled: lifecycleSettings.executionEnabled,
     removeEnabled: lifecycleSettings.removeEnabled,
     allowedProfiles: lifecycleSettings.profiles,
@@ -1053,7 +1064,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     // Retirada manual do escopo fisico: o AUTO perde a sequencia anterior.
     onScopeRemoved: async (scope) => {
       autoEngineRef.current?.forgetProfiles(scope.profileIds);
-      if (lifecycleSettings.enabled && scope.profileIds.includes(SINGLE_AUTO_PILOT.profileId))
+      if (
+        lifecycleSettings.enabled &&
+        scope.profileIds.some(
+          (id) => id === SINGLE_AUTO_PILOT.profileId || lifecycleSettings.profiles.includes(id),
+        )
+      )
         await mitigationService.discover([scope.deviceId], { persistence: 'SNAPSHOT_ONLY' });
     },
   });
@@ -1401,7 +1417,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       )
         return false;
     }
-    const sample = await (lifecycleSettings.enabled ? bridgeSource : effectiveTraffic).sampleWithId(
+    const evidenceSource =
+      physicalEvidenceSource(autoAllWiring) === 'EXTERNAL_BRIDGE' ? bridgeSource : effectiveTraffic;
+    const sample = await evidenceSource.sampleWithId(
       {
         profileId: id,
         deviceId: profile.deviceId,
@@ -1555,10 +1573,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         .split(',')
         .map((part) => part.trim())
         .filter((part) => part.length > 0),
-      legacyExemptProfileIds: (process.env.MITIGATION_AUTO_EXECUTION_LEGACY_PROFILE_IDS ?? '')
-        .split(',')
-        .map((part) => part.trim())
-        .filter((part) => part.length > 0),
+      legacyExemptProfileIds: engineLegacyExemptProfileIds(
+        autoAllWiring,
+        (process.env.MITIGATION_AUTO_EXECUTION_LEGACY_PROFILE_IDS ?? '')
+          .split(',')
+          .map((part) => part.trim())
+          .filter((part) => part.length > 0),
+      ),
     },
     // Decisao normal repetida NAO vira linha INFO: transicoes de estado/motivo,
     // operacoes reais e falhas continuam no INFO; o detalhe por tick fica no
@@ -1650,9 +1671,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
             p.addressFamily !== t.addressFamily &&
             p.mode === 'AUTO',
         ),
-        fast: lifecycleSettings.enabled
-          ? bridgeConfig.mode !== 'OFF' && bridgeConfig.profileIds.includes(id)
-          : isFastRoutedProfile(id, { bridge: bridgeConfig, embedded: fastConfig }),
+        fast:
+          lifecycleSettings.enabled && !autoAllWiring.autoAllEnforce
+            ? bridgeConfig.mode !== 'OFF' && bridgeConfig.profileIds.includes(id)
+            : isFastRoutedProfile(id, { bridge: bridgeConfig, embedded: fastConfig }),
         clientBinding,
       };
     };

@@ -570,6 +570,31 @@ describe('AUTO ACTIVATE + MANUAL REMOVE: canonical executor with fake SSH only',
     expect(calls).toEqual([h.t.profileId, h.t.profileId]);
     expect(h.ssh.writes).toHaveLength(0);
   });
+  it('observe with the per-tick resolver is state-equivalent to the fresh resolver (episode bookkeeping)', async () => {
+    const fresh = await harness();
+    const memo = await harness();
+    const open = (id: string) => ({ id: 'episode-1', profileId: id, closed: false, below: 0, lastSample: null });
+    for (const h of [fresh, memo])
+      await h.store.transaction((tx) => tx.put('episode-current:' + h.t.profileId, 'episode', 'OPEN', open(h.t.profileId)));
+    const resolver = async () => ({ ...memo.t, runtimeState: 'NORMAL' as const });
+    // low traffic, stale, missing and reordered samples: identical bookkeeping on both paths
+    for (let i = 0; i < 20; i++) {
+      for (const h of [fresh, memo]) h.advance(5000);
+      const mk = (h: typeof fresh) => ({
+        ...h.decision(i % 7 === 3 ? 9_500_000_000n : 100_000_000n),
+        sampleAt: i % 5 === 4 ? null : new Date(h.now() - (i % 6 === 5 ? 60000 : 0)).toISOString(),
+      });
+      await fresh.lifecycle.observe(mk(fresh));
+      await memo.lifecycle.observe(mk(memo), resolver);
+    }
+    const read = (h: typeof fresh) =>
+      h.store.transaction((tx) => tx.get('episode-current:' + h.t.profileId));
+    const a = await read(fresh);
+    const b = await read(memo);
+    expect(a).toBeTruthy();
+    expect({ ...(b as object), profileId: 'x' }).toEqual({ ...(a as object), profileId: 'x' });
+    expect(memo.ssh.writes).toHaveLength(fresh.ssh.writes.length);
+  });
   it('global capacity serializes concurrent activations', async () => {
     const h = await harness();
     const results = await Promise.all([h.activate(), h.activate()]);
