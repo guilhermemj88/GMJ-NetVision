@@ -1705,6 +1705,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
           { deviceId: t.deviceId, policyName: t.policyName! },
           run,
         ),
+      closeReadScope: () => mitigationSsh.closeActivationReadScope(),
       store: automationStore,
       config: () => ({
         ...lifecycleSettings,

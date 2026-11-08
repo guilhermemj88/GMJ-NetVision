@@ -1,6 +1,10 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { BgpAddressFamily, BgpAdminAction, HostRecord } from '@gmj/shared';
 import type { SshClient } from '../../domain/ports';
+import {
+  parseHuaweiRoutePolicyNodes,
+  parseHuaweiRoutePolicyNodesLenient,
+} from './mitigation/huawei-bgp-policy-parser';
 import type { HostRepository } from '../persistence/host-repository';
 import { assertReadOnlyCommand } from '../../worker/mitigation/read-only-command-guard';
 import { SshClientImpl } from '../ssh/ssh-client-impl';
@@ -159,10 +163,15 @@ export interface ActivationReadSnapshot {
   bgpConfiguration: string | null;
   routePolicyDisplay: string | null;
 }
+/** A snapshot is only valid inside the current attempt and never longer than this. */
+const ACTIVATION_SNAPSHOT_MAX_AGE_MS = 15_000;
+
 interface ActivationReadScope {
   deviceId: string;
   policyName: string;
   snapshot: Promise<ActivationReadSnapshot> | null;
+  /** Monotonic time (ms) when the snapshot completed; a snapshot older than the limit is never served. */
+  takenAt: number | null;
   /** Closed at the first write: every later read hits the equipment again (read-back). */
   closed: boolean;
 }
@@ -186,7 +195,7 @@ export class HuaweiBgpSshService {
     scope: { deviceId: string; policyName: string },
     fn: () => Promise<T>,
   ): Promise<T> {
-    return this.activationScope.run({ ...scope, snapshot: null, closed: false }, fn);
+    return this.activationScope.run({ ...scope, snapshot: null, takenAt: null, closed: false }, fn);
   }
 
   private scopedSnapshot(
@@ -196,8 +205,25 @@ export class HuaweiBgpSshService {
     const scope = this.activationScope.getStore();
     if (!scope || scope.closed || scope.deviceId !== device.id) return null;
     if (policyName !== undefined && policyName !== scope.policyName) return null;
-    scope.snapshot ??= this.readActivationSnapshot(device, scope.policyName);
+    if (
+      scope.takenAt !== null &&
+      performance.now() - scope.takenAt > ACTIVATION_SNAPSHOT_MAX_AGE_MS
+    )
+      return Promise.reject(new Error('ACTIVATION_SNAPSHOT_EXPIRED'));
+    scope.snapshot ??= this.readActivationSnapshot(device, scope.policyName).then((snapshot) => {
+      scope.takenAt = performance.now();
+      return snapshot;
+    });
     return scope.snapshot;
+  }
+
+  /**
+   * Closes the activation read scope of the current attempt: every later read hits the equipment.
+   * Called by the lifecycle authorization (immediately before the write path) and by any write.
+   */
+  closeActivationReadScope(): void {
+    const scope = this.activationScope.getStore();
+    if (scope) scope.closed = true;
   }
 
   /**
@@ -225,6 +251,27 @@ export class HuaweiBgpSshService {
       read('display current-configuration configuration bgp'),
       read(`display route-policy ${policyName}`),
     ]);
+    // Fail-closed: a snapshot is all-or-nothing. A single failed read, or two reads of the same
+    // policy that disagree, invalidates the whole attempt (never a partial or contradictory view).
+    if (
+      routePolicyConfiguration === null ||
+      prefixListConfiguration === null ||
+      bgpConfiguration === null ||
+      routePolicyDisplay === null
+    )
+      throw new Error('ACTIVATION_SNAPSHOT_INCOMPLETE');
+    const signature = (nodes: Array<{ node: number; action: string }> | undefined) =>
+      (nodes ?? [])
+        .map((n) => `${n.node}:${n.action}`)
+        .sort()
+        .join(',');
+    const fromConfiguration = signature(
+      parseHuaweiRoutePolicyNodes(routePolicyConfiguration).get(policyName),
+    );
+    const fromDisplay = signature(
+      parseHuaweiRoutePolicyNodesLenient(routePolicyDisplay).get(policyName),
+    );
+    if (fromConfiguration !== fromDisplay) throw new Error('ACTIVATION_SNAPSHOT_CONTRADICTORY');
     return {
       routePolicyConfiguration,
       prefixListConfiguration,
@@ -616,8 +663,7 @@ export class HuaweiBgpSshService {
     commands: readonly string[],
   ): Promise<{ ok: boolean; output: string | null }> {
     // Any write closes the activation read scope: the read-back must hit the equipment.
-    const activationScope = this.activationScope.getStore();
-    if (activationScope) activationScope.closed = true;
+    this.closeActivationReadScope();
     // Sessao de ESCRITA: termina em system-view (apos o commit), entao precisa
     // de DOIS `quit` (volta para user view e encerra) e de um timeout maior.
     // `abortOnInteractivePrompt`: se o VRP abrir qualquer confirmacao/paginacao

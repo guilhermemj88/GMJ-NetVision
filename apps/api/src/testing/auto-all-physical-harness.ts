@@ -48,13 +48,15 @@ class SlowFakeHuawei extends PilotFakeHuawei {
   ops: string[] = [];
   /** Emulates HuaweiBgpSshService.withActivationReadScope: one paid snapshot, then free reads until the first write. */
   scope: { paid: boolean; closed: boolean } | null = null;
-  private async cost(kind: 'read' | 'write') {
+  paidOps: string[] = [];
+  private async cost(kind: 'read' | 'write', name = '') {
     const scope = this.scope;
     if (kind === 'write' && scope) scope.closed = true;
     if (kind === 'read' && scope && !scope.closed) {
       if (scope.paid) return;
       scope.paid = true;
     }
+    this.paidOps.push(`${kind}:${name}`);
     await this.delay();
   }
   constructor(private readonly delay: () => Promise<void>) {
@@ -67,25 +69,25 @@ class SlowFakeHuawei extends PilotFakeHuawei {
   async readBgp(bgpConfiguration: string) {
     this.calls += 1;
     this.ops.push('readBgpConfiguration');
-    await this.cost('read');
+    await this.cost('read', 'readBgpConfiguration');
     return { bgpConfiguration };
   }
   override async readMitigationConfiguration() {
     this.calls += 1;
     this.ops.push('readMitigationConfiguration');
-    await this.cost('read');
+    await this.cost('read', 'readMitigationConfiguration');
     return super.readMitigationConfiguration();
   }
   override async readMitigationRoutePolicy() {
     this.calls += 1;
     this.ops.push('readMitigationRoutePolicy');
-    await this.cost('read');
+    await this.cost('read', 'readMitigationRoutePolicy');
     return super.readMitigationRoutePolicy();
   }
   override async applyMitigationCommands(host: HostRecord, commands: readonly string[]) {
     this.calls += 1;
     this.ops.push('applyMitigationCommands');
-    await this.cost('write');
+    await this.cost('write', 'apply');
     return super.applyMitigationCommands(host, commands);
   }
 }
@@ -473,6 +475,9 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
       // AUTO-ALL: NO pilotTraffic (the external pilot runtime is not used).
       target: lifecycleTarget,
       execute: (i) => commands.execute(i),
+      closeReadScope: () => {
+        if (ssh.scope) ssh.scope.closed = true;
+      },
       readScope: async (t, run) => {
         scopeCalls.push(t.profileId);
         if (options.useReadScope === false) return run();
@@ -578,6 +583,7 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
     scopeCalls,
     sshOps: () => ssh.calls,
     sshOpLog: () => [...ssh.ops],
+    paidOps: () => [...ssh.paidOps],
     usesExternalPilotRuntime: usesExternalPilotRuntime(wiring),
   };
 }

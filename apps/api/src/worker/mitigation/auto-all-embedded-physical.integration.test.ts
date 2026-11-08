@@ -179,6 +179,21 @@ describe('AUTO-ALL physical execution through the embedded FAST (simulated execu
     expect(h.used).toEqual({ bridge: 0, legacy: 0 });
   });
 
+  it('the last physical read before the write and the read-back never come from the snapshot', async () => {
+    const h = await createAutoAllHarness({ sshLatencyMs: 200 });
+    await warm(h);
+    for (let i = 0; i < 3; i++) await h.cycle({ [P.profileId]: HIGH });
+    expect(h.ssh.writes).toHaveLength(1);
+    const paid = h.paidOps();
+    // 1 snapshot (first pre-write read), then the baseline capture right before the write, the write and the read-back
+    expect(paid[0]).toMatch(/^read:/);
+    expect(paid.slice(1)).toEqual([
+      'read:readMitigationConfiguration',
+      'write:apply',
+      'read:readMitigationRoutePolicy',
+    ]);
+  });
+
   it('SSH latency budget: stale evidence is rejected fail-closed (no relaxed freshness); the read scope widens the budget', async () => {
     const outcome = async (latencyMs: number, useReadScope: boolean, decisionDelayMs: number) => {
       const h = await createAutoAllHarness({

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { HostRecord } from '@gmj/shared';
 import { HuaweiBgpSshService } from './huawei-bgp-ssh';
 import type { CommandResult, SshClient } from '../../domain/ports';
@@ -14,17 +14,24 @@ const DEVICE = {
 const OTHER = { ...DEVICE, id: 'host-other' } as unknown as HostRecord;
 const POLICY = 'PL-AGLINK_IPv4-IN';
 
+const CMD = {
+  policyConfig: 'display current-configuration configuration route-policy',
+  prefix: 'display current-configuration | include ip-prefix',
+  bgp: 'display current-configuration configuration bgp',
+  policyDisplay: `display route-policy ${POLICY}`,
+};
 const OUT: Record<string, string> = {
-  'display current-configuration configuration route-policy': 'route-policy ALL permit node 10',
-  'display current-configuration | include ip-prefix':
-    'ip ip-prefix BOGONS index 40 permit 10.0.0.0 8',
-  'display current-configuration configuration bgp':
-    'bgp 64500\n peer 10.0.0.2 route-policy X import',
-  [`display route-policy ${POLICY}`]: 'Route-policy: PL-AGLINK_IPv4-IN\n permit : 10',
+  [CMD.policyConfig]: `route-policy ${POLICY} permit node 10\n if-match ip-prefix CLIENT`,
+  [CMD.prefix]: 'ip ip-prefix BOGONS index 40 permit 10.0.0.0 8',
+  [CMD.bgp]: `bgp 64500\n peer 10.0.0.2 route-policy ${POLICY} import`,
+  [CMD.policyDisplay]: `Route-policy: ${POLICY}\n permit : 10 (matched counts: 0)\n  if-match ip-prefix CLIENT`,
 };
 
-function harness(options: { failExecute?: boolean; badCommand?: string } = {}) {
+function harness(
+  options: { failExecute?: boolean; badCommand?: string; outputs?: Record<string, string> } = {},
+) {
   const sessions: string[][] = [];
+  const outputs = { ...OUT, ...(options.outputs ?? {}) };
   const service = new HuaweiBgpSshService(
     {
       getDecryptedSshCredentials: async () => ({ username: 'u', password: 'p' }),
@@ -39,7 +46,7 @@ function harness(options: { failExecute?: boolean; badCommand?: string } = {}) {
               ? { stdout: '', stderr: '', exitCode: 0 }
               : c === options.badCommand
                 ? { stdout: 'Error: Unrecognized command', stderr: '', exitCode: 0 }
-                : { stdout: OUT[c] ?? 'ok', stderr: '', exitCode: 0 },
+                : { stdout: outputs[c] ?? 'ok', stderr: '', exitCode: 0 },
           );
         },
       }) as SshClient,
@@ -53,33 +60,26 @@ const reads = async (s: HuaweiBgpSshService) => [
   await s.readBgpConfiguration(DEVICE),
   await s.readMitigationConfiguration(DEVICE),
 ];
+const scope = { deviceId: DEVICE.id, policyName: POLICY };
+
+afterEach(() => vi.restoreAllMocks());
 
 describe('activation read scope (one read-only SSH snapshot per AUTO activation attempt)', () => {
   it('outside a scope every read keeps its own sessions (unchanged behavior)', async () => {
     const { service, sessions } = harness();
     await reads(service);
-    // A=1, B=2, A=1, C=2, B=2
-    expect(sessions).toHaveLength(8);
+    expect(sessions).toHaveLength(8); // A=1, B=2, A=1, C=2, B=2
   });
 
   it('inside the scope the pre-write reads share ONE concurrent snapshot and return the same data', async () => {
     const plain = harness();
     const expected = await reads(plain.service);
     const scoped = harness();
-    const got = await scoped.service.withActivationReadScope(
-      { deviceId: DEVICE.id, policyName: POLICY },
-      () => reads(scoped.service),
-    );
+    const got = await scoped.service.withActivationReadScope(scope, () => reads(scoped.service));
     expect(got).toEqual(expected);
-    // 5 reads (A,B,A,C,B = 8 sessions outside the scope) -> one snapshot of 4 short sessions
     expect(scoped.sessions).toHaveLength(4);
     expect(scoped.sessions.map((s) => s.slice(1).join('|')).sort()).toEqual(
-      [
-        'display current-configuration configuration bgp',
-        'display current-configuration configuration route-policy',
-        'display current-configuration | include ip-prefix',
-        `display route-policy ${POLICY}`,
-      ].sort(),
+      Object.values(CMD).sort(),
     );
     for (const session of scoped.sessions) {
       expect(session[0]).toBe('screen-length 0 temporary');
@@ -89,7 +89,7 @@ describe('activation read scope (one read-only SSH snapshot per AUTO activation 
 
   it('the first write closes the scope: the read-back hits the equipment again', async () => {
     const { service, sessions } = harness();
-    await service.withActivationReadScope({ deviceId: DEVICE.id, policyName: POLICY }, async () => {
+    await service.withActivationReadScope(scope, async () => {
       await service.readMitigationRoutePolicy(DEVICE, POLICY);
       expect(sessions).toHaveLength(4);
       await service.applyMitigationCommands(DEVICE, ['system-view', 'commit']);
@@ -100,9 +100,22 @@ describe('activation read scope (one read-only SSH snapshot per AUTO activation 
     });
   });
 
+  it('closeActivationReadScope() (write authorization) sends every later read to the equipment', async () => {
+    const { service, sessions } = harness();
+    await service.withActivationReadScope(scope, async () => {
+      await service.readMitigationConfiguration(DEVICE);
+      expect(sessions).toHaveLength(4);
+      await service.readMitigationConfiguration(DEVICE); // still the snapshot
+      expect(sessions).toHaveLength(4);
+      service.closeActivationReadScope();
+      await service.readMitigationConfiguration(DEVICE); // baseline capture right before the write
+      expect(sessions).toHaveLength(6);
+    });
+  });
+
   it('other devices, other policies and calls outside the async scope are never served from it', async () => {
     const { service, sessions } = harness();
-    await service.withActivationReadScope({ deviceId: DEVICE.id, policyName: POLICY }, async () => {
+    await service.withActivationReadScope(scope, async () => {
       await service.readMitigationRoutePolicy(DEVICE, POLICY);
       await service.readMitigationRoutePolicy(OTHER, POLICY);
       await service.readMitigationRoutePolicy(DEVICE, 'PL-OTHER_IPv4-IN');
@@ -113,45 +126,79 @@ describe('activation read scope (one read-only SSH snapshot per AUTO activation 
     expect(sessions.length).toBe(before + 1);
   });
 
-  it('concurrent attempts keep independent snapshots', async () => {
+  it('no cache between attempts: every attempt takes its own snapshot', async () => {
     const { service, sessions } = harness();
-    await Promise.all([
-      service.withActivationReadScope({ deviceId: DEVICE.id, policyName: POLICY }, () =>
-        reads(service),
-      ),
-      service.withActivationReadScope({ deviceId: DEVICE.id, policyName: POLICY }, () =>
-        reads(service),
-      ),
-    ]);
+    await service.withActivationReadScope(scope, () => reads(service));
+    await service.withActivationReadScope(scope, () => reads(service));
     expect(sessions).toHaveLength(8);
+    await Promise.all([
+      service.withActivationReadScope(scope, () => reads(service)),
+      service.withActivationReadScope(scope, () => reads(service)),
+    ]);
+    expect(sessions).toHaveLength(16);
   });
 
-  it('failures stay fail-closed: transport error and per-command error', async () => {
+  it('a snapshot older than 15 s is never served (fail-closed)', async () => {
+    const { service } = harness();
+    let t = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => t);
+    await service.withActivationReadScope(scope, async () => {
+      await service.readMitigationRoutePolicy(DEVICE, POLICY);
+      t += 14_000;
+      await expect(service.readMitigationRoutePolicy(DEVICE, POLICY)).resolves.toContain(POLICY);
+      t += 2_000;
+      await expect(service.readMitigationRoutePolicy(DEVICE, POLICY)).rejects.toThrow(
+        'ACTIVATION_SNAPSHOT_EXPIRED',
+      );
+      const config = await service.readMitigationConfiguration(DEVICE);
+      expect(config.routePolicyConfiguration).toBeNull();
+      expect(config.warnings.length).toBeGreaterThan(0);
+    });
+  });
+
+  it('transport failure: the whole attempt is fail-closed (no partial data)', async () => {
     const down = harness({ failExecute: true });
-    await down.service.withActivationReadScope(
-      { deviceId: DEVICE.id, policyName: POLICY },
-      async () => {
-        await expect(down.service.readMitigationRoutePolicy(DEVICE, POLICY)).rejects.toThrow(
-          'SSH command failed',
+    await down.service.withActivationReadScope(scope, async () => {
+      await expect(down.service.readMitigationRoutePolicy(DEVICE, POLICY)).rejects.toThrow(
+        'ACTIVATION_SNAPSHOT_INCOMPLETE',
+      );
+      const config = await down.service.readMitigationConfiguration(DEVICE);
+      expect(config.routePolicyConfiguration).toBeNull();
+      expect(config.prefixListConfiguration).toBeNull();
+      expect(config.warnings.length).toBeGreaterThan(0);
+      expect((await down.service.readBgpConfiguration(DEVICE)).bgpConfiguration).toBeNull();
+    });
+  });
+
+  it('ONE failed read invalidates all of them: no partial result is accepted', async () => {
+    for (const bad of [CMD.prefix, CMD.bgp, CMD.policyConfig, CMD.policyDisplay]) {
+      const partial = harness({ badCommand: bad });
+      await partial.service.withActivationReadScope(scope, async () => {
+        await expect(partial.service.readMitigationRoutePolicy(DEVICE, POLICY)).rejects.toThrow(
+          'ACTIVATION_SNAPSHOT_INCOMPLETE',
         );
-        const config = await down.service.readMitigationConfiguration(DEVICE);
+        const config = await partial.service.readMitigationConfiguration(DEVICE);
         expect(config.routePolicyConfiguration).toBeNull();
         expect(config.prefixListConfiguration).toBeNull();
-        expect(config.warnings.length).toBeGreaterThan(0);
+        const bgp = await partial.service.readBgpConfiguration(DEVICE);
+        expect(bgp.bgpConfiguration).toBeNull();
+        expect(bgp.routePolicyConfiguration).toBeNull();
+      });
+    }
+  });
+
+  it('contradictory reads of the same policy invalidate the snapshot', async () => {
+    const contradictory = harness({
+      outputs: {
+        [CMD.policyDisplay]: `Route-policy: ${POLICY}\n permit : 10\n permit : 2\n  apply extcommunity rt 268568:660`,
       },
-    );
-    const partial = harness({ badCommand: 'display current-configuration | include ip-prefix' });
-    await partial.service.withActivationReadScope(
-      { deviceId: DEVICE.id, policyName: POLICY },
-      async () => {
-        const config = await partial.service.readMitigationConfiguration(DEVICE);
-        expect(config.routePolicyConfiguration).not.toBeNull();
-        expect(config.prefixListConfiguration).toBeNull();
-        expect(config.warnings).toContain('ip-prefix: SSH command failed');
-        expect(
-          (await partial.service.readBgpConfiguration(DEVICE)).bgpConfiguration,
-        ).not.toBeNull();
-      },
-    );
+    });
+    await contradictory.service.withActivationReadScope(scope, async () => {
+      await expect(contradictory.service.readMitigationRoutePolicy(DEVICE, POLICY)).rejects.toThrow(
+        'ACTIVATION_SNAPSHOT_CONTRADICTORY',
+      );
+      const config = await contradictory.service.readMitigationConfiguration(DEVICE);
+      expect(config.routePolicyConfiguration).toBeNull();
+    });
   });
 });

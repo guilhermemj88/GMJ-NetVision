@@ -185,6 +185,8 @@ export interface LifecycleDeps {
    * share one SSH snapshot; the first write closes it). Absent = every read hits the equipment.
    */
   readScope?: <R>(target: LifecycleTarget, run: () => Promise<R>) => Promise<R>;
+  /** Closes the read scope of the current attempt (called when the write is authorized). */
+  closeReadScope?: () => void;
   store: AutomationStore;
   config: () => LifecycleConfig;
   target: (id: string) => Promise<LifecycleTarget | null>;
@@ -683,6 +685,9 @@ export class AutoMitigationLifecycle {
       evidence.samplesOver! < t.triggerSamples
     )
       return false;
+    // From here on (the write path) nothing may be served from the pre-write snapshot: the last
+    // physical read before the write (baseline capture) and the read-back hit the equipment.
+    this.deps.closeReadScope?.();
     return this.deps.store.transaction(async (tx) => {
       const s = await tx.get<ScopeOwnership>(scopeKey(t)),
         j = await tx.get<JournalCommand>(input.autoOperationId!);
