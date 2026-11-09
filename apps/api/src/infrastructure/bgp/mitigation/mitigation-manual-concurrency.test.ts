@@ -16,7 +16,7 @@ import type {
 } from './huawei-mitigation-executor';
 import { InMemoryPolicyScopeLock } from './mitigation-policy-lock';
 import { inspectPolicyMitigation } from './mitigation-policy-physical';
-import { testPreservedClauses } from './mitigation-test-support';
+import { testMitigationContract, testPreservedClauses } from './mitigation-test-support';
 import { MitigationAutoEngine } from '../../../worker/mitigation/mitigation-auto-engine';
 import { SequenceTrafficSource } from '../../../worker/mitigation/mitigation-traffic-source';
 
@@ -178,10 +178,17 @@ class ControlledDevice implements MitigationLiveExecutorPort {
         `route-policy ${policyName} deny node ${pair.bogonNode}`,
         ' if-match ip-prefix BOGONS',
         `route-policy ${policyName} permit node ${pair.mitigationNode}`,
+        ' if-match ip-prefix PREFIX8to24',
+        ' apply local-preference 1100',
         ` apply extcommunity rt ${this.wrongRt ? '268568:999' : RT}`,
       );
     }
-    lines.push(`route-policy ${policyName} permit node 10`);
+    lines.push(
+      `route-policy ${policyName} permit node 10`,
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply local-preference 1100',
+      ' apply extcommunity rt 268568:140 additive',
+    );
     lines.push(`route-policy ${policyName} deny node 999`);
     return lines.join('\n');
   }
@@ -248,6 +255,7 @@ class ControlledDevice implements MitigationLiveExecutorPort {
       ok: reasons.length === 0,
       mode: input.mode,
       preservedClauses: testPreservedClauses(input.policyName, input.targetPrefixList, input.rt),
+      mitigationContract: testMitigationContract(input.policyName, input.targetPrefixList),
       deviceId: _device.id,
       deviceName: _device.id,
       deviceHost: '10.0.0.1',

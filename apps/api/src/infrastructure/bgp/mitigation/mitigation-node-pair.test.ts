@@ -6,7 +6,7 @@ import {
   selectNodePair,
 } from './mitigation-planner';
 import { SimulationCommandExecutor } from './simulation-command-executor';
-import { testPreservedClauses } from './mitigation-test-support';
+import { testMitigationContract, testPermanentClientNode } from './mitigation-test-support';
 import {
   MockMitigationExecutor,
   verifyActivation,
@@ -69,13 +69,15 @@ describe('Fase 12 - par de nodes da mitigacao', () => {
       { bogonNode: 1, mitigationNode: 2 },
       RT,
       LABELS,
-      testPreservedClauses(POLICY, LABELS.targetPrefixList, RT),
+      testMitigationContract(POLICY, LABELS.targetPrefixList),
     );
     expect(preview.commands).toEqual([
       'system-view',
       `route-policy ${POLICY} deny node 1`,
       ' if-match ip-prefix BOGONS',
       `route-policy ${POLICY} permit node 2`,
+      ` if-match ip-prefix PREFIX8to24`,
+      ` apply local-preference 1100`,
       ` apply extcommunity rt ${RT}`,
       'commit',
     ]);
@@ -100,7 +102,10 @@ describe('Fase 12 - par de nodes da mitigacao', () => {
   it('F) read-back sem o node BOGONS -> nao verificado', () => {
     const readBack = [
       `route-policy ${POLICY} permit node 2`,
+      ` if-match ip-prefix PREFIX8to24`,
+      ` apply local-preference 1100`,
       ` apply extcommunity rt ${RT}`,
+      ...testPermanentClientNode(POLICY),
     ].join('\n');
     const check = verifyActivation(POLICY, readBack, { bogonNode: 1, mitigationNode: 2 }, RT, LABELS);
     expect(check.bogonOk).toBe(false);
@@ -114,6 +119,8 @@ describe('Fase 12 - par de nodes da mitigacao', () => {
       `route-policy ${POLICY} deny node 1`,
       ' if-match ip-prefix OUTRA-LISTA',
       `route-policy ${POLICY} permit node 2`,
+      ` if-match ip-prefix PREFIX8to24`,
+      ` apply local-preference 1100`,
       ` apply extcommunity rt ${RT}`,
     ].join('\n');
     expect(verifyActivation(POLICY, readBack, { bogonNode: 1, mitigationNode: 2 }, RT, LABELS).verified).toBe(false);
@@ -128,6 +135,7 @@ describe('Fase 12 - par de nodes da mitigacao', () => {
       mitigationNode: 2,
       rt: RT,
       ...LABELS,
+      mitigationContract: testMitigationContract(POLICY, LABELS.targetPrefixList),
     });
     const ativo = await executor.readRoutePolicy(POLICY);
     expect(verifyActivation(POLICY, ativo, { bogonNode: 1, mitigationNode: 2 }, RT, LABELS).verified).toBe(true);
@@ -137,8 +145,8 @@ describe('Fase 12 - par de nodes da mitigacao', () => {
     const check = verifyRemoval(POLICY, depois, { bogonNode: 1, mitigationNode: 2 });
     expect(check.verified).toBe(true);
     expect(check.partial).toBe(false);
-    expect(depois).not.toContain('deny node 1');
-    expect(depois).not.toContain('permit node 2');
+    expect(depois).not.toMatch(/deny node 1$/m);
+    expect(depois).not.toMatch(/permit node 2$/m);
   });
 
   it('H) retirada parcial -> partial true e nao verificado', () => {

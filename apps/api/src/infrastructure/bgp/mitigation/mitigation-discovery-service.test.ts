@@ -907,6 +907,8 @@ describe('retorno ao estado operacional apropriado', () => {
       'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
       ' if-match ip-prefix BOGONS',
       'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply local-preference 1100',
       ' apply extcommunity rt 268568:660',
       'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
     ].join('\n');
@@ -937,6 +939,8 @@ describe('retorno ao estado operacional apropriado', () => {
       'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
       ' if-match ip-prefix BOGONS',
       'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply local-preference 1100',
       ' apply extcommunity rt 268568:660',
       'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
     ].join('\n');

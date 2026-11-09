@@ -27,9 +27,13 @@ const LABELS = { bogonPrefixList: 'BOGONS', targetPrefixList: 'PREFIX8to24' };
 const PERMANENT_AND_CONTRACT = [
   `route-policy ${POLICY} permit node 10`,
   ' if-match ip-prefix PREFIX8to24',
+  ' apply local-preference 1100',
+  ' apply extcommunity rt 268568:140 additive',
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 2`,
+  ` if-match ip-prefix PREFIX8to24`,
+  ` apply local-preference 1100`,
   ` apply extcommunity rt ${RT}`,
 ].join('\n');
 
@@ -37,6 +41,8 @@ const CONTRACT = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 2`,
+  ` if-match ip-prefix PREFIX8to24`,
+  ` apply local-preference 1100`,
   ` apply extcommunity rt ${RT}`,
 ].join('\n');
 
@@ -81,7 +87,8 @@ describe('D1: node 0 tem precedencia sobre o par reservado 1/2', () => {
 
     // Sem node 0 o mesmo read-back e aceito (o endurecimento nao quebra o caso bom).
     expect(
-      verifyActivation(POLICY, CONTRACT, { bogonNode: 1, mitigationNode: 2 }, RT, LABELS).verified,
+      verifyActivation(POLICY, PERMANENT_AND_CONTRACT, { bogonNode: 1, mitigationNode: 2 }, RT, LABELS)
+        .verified,
     ).toBe(true);
   });
 

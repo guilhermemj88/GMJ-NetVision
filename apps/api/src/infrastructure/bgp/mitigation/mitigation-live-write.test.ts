@@ -11,7 +11,12 @@ import {
   buildMitigationActivateCommands,
   buildMitigationRemovalCommands,
 } from './mitigation-write-guard';
-import { testPreservedClauses } from './mitigation-test-support';
+import {
+  testMitigationContract,
+  testMitigationPairNodes,
+  testPermanentClientNode,
+  testPreservedClauses,
+} from './mitigation-test-support';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import type {
   MitigationPreflightInput,
@@ -40,15 +45,12 @@ function device(): HostRecord {
   } as unknown as HostRecord;
 }
 
-const GOOD_READBACK = [
-  `route-policy ${POLICY} deny node 1`,
-  ' if-match ip-prefix BOGONS',
-  `route-policy ${POLICY} permit node 2`,
-  ` apply extcommunity rt ${RT}`,
-  `route-policy ${POLICY} permit node 11`,
-].join('\n');
+const NORMAL_READBACK = testPermanentClientNode(POLICY, { node: 11 }).join('\n');
 
-const NORMAL_READBACK = [`route-policy ${POLICY} permit node 11`].join('\n');
+const GOOD_READBACK = [
+  ...testMitigationPairNodes(POLICY),
+  ...testPermanentClientNode(POLICY, { node: 11 }),
+].join('\n');
 
 function preflightResult(overrides: Partial<MitigationPreflightResult> = {}): MitigationPreflightResult {
   return {
@@ -76,6 +78,7 @@ function preflightResult(overrides: Partial<MitigationPreflightResult> = {}): Mi
     readBackSummary: 'par ausente (policy normal)',
     readBackExcerpt: 'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
     preservedClauses: testPreservedClauses(POLICY, DEFAULT_TARGET_PREFIX_LIST, RT),
+    mitigationContract: testMitigationContract(POLICY, DEFAULT_TARGET_PREFIX_LIST, 1100, 11),
     checks: [],
     blockedReasons: [],
     ...overrides,
@@ -116,7 +119,7 @@ class FakeLiveExecutor implements MitigationLiveExecutorPort {
 
   async activate(_device: HostRecord, input: MitigationActivationInput): Promise<{ output: string }> {
     if (this.activateError) throw this.activateError;
-    this.applied.push(buildMitigationActivateCommands(input, input.preservedClauses));
+    this.applied.push(buildMitigationActivateCommands(input, input.mitigationContract));
     return { output: 'ok' };
   }
 
@@ -256,6 +259,8 @@ describe('escrita real de mitigacao - fail-closed', () => {
       `route-policy ${POLICY} deny node 1`,
       ' if-match ip-prefix BOGONS',
       `route-policy ${POLICY} permit node 2`,
+      ` if-match ip-prefix ${DEFAULT_TARGET_PREFIX_LIST}`,
+      ' apply local-preference 1100',
       ` apply extcommunity rt ${RT}`,
       'commit',
     ]);
@@ -315,6 +320,7 @@ describe('escrita real de mitigacao - fail-closed', () => {
       [
         `route-policy ${POLICY} permit node 2`,
         ` apply extcommunity rt ${RT} additive`,
+        ...testPermanentClientNode(POLICY, { node: 11 }),
       ].join('\n'),
     ];
     const h = await harness({ live });
@@ -425,7 +431,7 @@ class StatefulLiveExecutor implements MitigationLiveExecutorPort {
   }
 
   async activate(_device: HostRecord, input: MitigationActivationInput): Promise<{ output: string }> {
-    this.applied.push(buildMitigationActivateCommands(input, input.preservedClauses));
+    this.applied.push(buildMitigationActivateCommands(input, input.mitigationContract));
     this.mitigated = true;
     return { output: 'ok' };
   }

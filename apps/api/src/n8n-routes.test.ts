@@ -192,6 +192,8 @@ describe('canal IN (n8n -> NetVision)', () => {
       `route-policy ${POLICY} deny node 1`,
       ' if-match ip-prefix BOGONS',
       `route-policy ${POLICY} permit node 2`,
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply local-preference 1100',
       ' apply extcommunity rt 268568:660',
       'commit',
     ]);

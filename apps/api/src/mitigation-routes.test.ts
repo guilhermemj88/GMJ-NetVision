@@ -493,16 +493,10 @@ describe('API de mitigacao DDoS (SIMULATION_ONLY)', () => {
       affectedPeers: ['10.200.200.10', '10.200.200.106'],
       persisted: true,
     });
-    // A simulacao de trafego NAO le o equipamento: o preview e apenas textual
-    // com o contrato IPv4 fixo (nodes 1/2 + RT exclusiva), nunca uma escrita.
-    expect(body.commandPreview).toEqual([
-      'system-view',
-      'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
-      ' if-match ip-prefix BOGONS',
-      'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
-      ' apply extcommunity rt 268568:660',
-      'commit',
-    ]);
+    // O node 2 e o clone estreito do node permanente do cliente (lista + LP), que so existe
+    // no baseline FISICO lido no preflight: sem leitura do equipamento nao ha preview (nunca um
+    // node 2 inventado).
+    expect(body.commandPreview).toEqual([]);
     // A simulacao nao dispara discovery/SSH nenhum.
     expect(harness.discovery.calls).toEqual([]);
   });
@@ -586,14 +580,10 @@ describe('API de mitigacao DDoS (SIMULATION_ONLY)', () => {
       blockedReason: null,
       prefixStatus: 'UNKNOWN',
     });
-    expect(body.commandPreview).toEqual([
-      'system-view',
-      'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
-      ' if-match ip-prefix BOGONS',
-      'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
-      ' apply extcommunity rt 268568:660',
-      'commit',
-    ]);
+    // O node 2 e o clone estreito do node permanente do cliente (lista + LP), que so existe
+    // no baseline FISICO lido no preflight: sem leitura do equipamento nao ha preview (nunca um
+    // node 2 inventado).
+    expect(body.commandPreview).toEqual([]);
   });
 
   it('simulacao exige autenticacao e 404 para profile inexistente', async () => {
@@ -775,14 +765,8 @@ describe('API de mitigacao DDoS (SIMULATION_ONLY)', () => {
     expect(simulated.json()).toMatchObject({
       result: 'WOULD_MITIGATE',
       persisted: false,
-      commandPreview: [
-        'system-view',
-        'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
-        ' if-match ip-prefix BOGONS',
-        'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
-        ' apply extcommunity rt 268568:660',
-        'commit',
-      ],
+      // Sem baseline fisico (lista + LP do cliente) nao existe preview do node 2.
+      commandPreview: [],
     });
 
     await app3.close();

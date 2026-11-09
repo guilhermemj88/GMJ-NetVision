@@ -12,7 +12,11 @@ import {
 } from './auto-lifecycle';
 import { resolveAutoClientBinding } from './auto-client-binding';
 import { MemoryAutomationStore } from './automation-store';
-import { testDurableBaselineStore } from '../../infrastructure/bgp/mitigation/mitigation-test-support';
+import {
+  testDurableBaselineStore,
+  testPermanentClientNode,
+} from '../../infrastructure/bgp/mitigation/mitigation-test-support';
+import { GenericPhysicalDisplays } from '../../testing/physical-bgp-simulator';
 import { DurableMitigationOutbox, type OutboxEntry } from './durable-mitigation-outbox';
 import { InMemoryMitigationRepository } from '../../infrastructure/bgp/mitigation/in-memory-mitigation-repository';
 import {
@@ -29,6 +33,8 @@ import { MitigationAutoEngine, type MitigationAutoDecision } from './mitigation-
 import type { MitigationNotification } from '../../infrastructure/bgp/mitigation/notification-publisher';
 
 const BW = 10_000_000_000n;
+const PREFIX_LISTS =
+  'ip ip-prefix BOGONS index 10 permit 10.0.0.0 8\nip ip-prefix PREFIX8to24 index 10 permit 192.0.2.0 24';
 class FakeSsh implements MitigationSshPort {
   active = false;
   writes: string[][] = [];
@@ -46,19 +52,29 @@ class FakeSsh implements MitigationSshPort {
             'route-policy PL-TEST_IPv4-IN deny node 1',
             ' if-match ip-prefix BOGONS',
             'route-policy PL-TEST_IPv4-IN permit node 2',
+            ' if-match ip-prefix PREFIX8to24',
+            ' apply local-preference 1100',
             ' apply extcommunity rt 268568:660',
           ]
         : []),
+      // Node permanente do cliente elegivel ao contrato do node 2 (lista + LP + RT 140).
+      ...testPermanentClientNode('PL-TEST_IPv4-IN', { node: 11 }),
+      // Node do OPERADOR depois do node do cliente: nunca adotado nem removido pelo REMOVE.
       ...(this.baselineManual
-        ? [
-            'route-policy PL-TEST_IPv4-IN permit node 50',
-            ' if-match ip-prefix OPERATOR-ONLY',
-            ' apply local-preference 4000',
-            ' apply extcommunity rt 268568:660 additive',
-          ]
+        ? ['route-policy PL-TEST_IPv4-IN deny node 50', ' if-match ip-prefix OPERATOR-ONLY']
         : []),
-      'route-policy PL-TEST_IPv4-IN permit node 11',
     ].join('\n');
+  }
+  private displays: GenericPhysicalDisplays | null = null;
+  async readMitigationDisplays(_h: HostRecord, commands: readonly string[]) {
+    this.displays ??= new GenericPhysicalDisplays({
+      policyName: 'PL-TEST_IPv4-IN',
+      customerPeers: ['192.0.2.1'],
+      routePolicy: () => this.config(),
+      prefixLists: () => PREFIX_LISTS,
+      mitigated: () => this.active,
+    });
+    return this.displays.read([...commands]);
   }
   async readMitigationConfiguration() {
     this.reads++;
@@ -66,8 +82,7 @@ class FakeSsh implements MitigationSshPort {
     if (this.failRead) throw Error('read timeout');
     return {
       routePolicyConfiguration: this.config(),
-      prefixListConfiguration:
-        'ip ip-prefix BOGONS index 10 permit 10.0.0.0 8\nip ip-prefix PREFIX8to24 index 10 permit 192.0.2.0 24',
+      prefixListConfiguration: PREFIX_LISTS,
       warnings: [],
     };
   }
@@ -488,7 +503,7 @@ describe('AUTO ACTIVATE + MANUAL REMOVE: canonical executor with fake SSH only',
     await h.activate();
     expect(await h.manual()).toMatchObject({ ok: true, verified: true });
     expect(h.ssh.config()).toContain('node 50');
-    expect(h.ssh.config()).toContain('local-preference 4000');
+    expect(h.ssh.config()).toContain('OPERATOR-ONLY');
     expect(h.ssh.writes.flat().filter((c) => c.startsWith('undo route-policy'))).toEqual(
       expect.arrayContaining([
         'undo route-policy PL-TEST_IPv4-IN node 1',

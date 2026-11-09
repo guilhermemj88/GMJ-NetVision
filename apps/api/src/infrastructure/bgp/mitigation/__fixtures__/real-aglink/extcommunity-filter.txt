@@ -1,0 +1,28 @@
+Extended Community filter Number 11
+    index: 5             permit     rt : 268568:2
+Extended Community filter Number 20
+    index: 5             permit     rt : 268568:20
+Extended Community filter Number 30
+    index: 5             permit     rt : 268568:30
+Extended Community filter Number 40
+    index: 5             permit     rt : 268568:100
+Extended Community filter Number 50
+    index: 5             permit     rt : 268568:50
+Extended Community filter Number 110
+    index: 5             permit     rt : 268568:110
+Extended Community filter Number 115
+    index: 5             permit     rt : 268568:115
+Extended Community filter Number 130
+    index: 5             permit     rt : 268568:130
+Extended Community filter Number 140
+    index: 5             permit     rt : 268568:140
+Extended Community filter Number 150
+    index: 5             permit     rt : 268568:150
+Named Extended Community basic filter: MITIGACAO
+    index: 10            permit     rt : 268568:660
+Named Extended Community advanced filter: BLACKHOLE
+    index: 10            permit     268568:666
+Named Extended Community basic filter: NO-EXPORT-SEABORN
+    index: 10            permit     rt : 268568:13786
+Named Extended Community basic filter: NO-EXPORT-SEMPRE
+    index: 10            permit     rt : 268568:28198

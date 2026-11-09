@@ -8,7 +8,7 @@ import {
   type MitigationLiveExecutorPort,
 } from './mitigation-command-service';
 import { MockMitigationExecutor } from './mitigation-executor';
-import { testPreservedClauses } from './mitigation-test-support';
+import { testMitigationContract, testPreservedClauses } from './mitigation-test-support';
 import { BgpMitigationService } from './mitigation-service';
 import type {
   MitigationPreflightInput,
@@ -76,6 +76,8 @@ const READBACK_ACTIVE = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 2`,
+  ' if-match ip-prefix PREFIX8to24',
+  ' apply local-preference 1100',
   ' apply extcommunity rt 268568:660',
   `route-policy ${POLICY} permit node 10`,
 ].join('\n');
@@ -120,6 +122,7 @@ class CountingLiveExecutor implements MitigationLiveExecutorPort {
       targetPrefixListExists: true,
       rt: input.rt,
       preservedClauses: testPreservedClauses(input.policyName, input.targetPrefixList, input.rt),
+      mitigationContract: testMitigationContract(input.policyName, input.targetPrefixList),
       sshReadBackOk: true,
       bogonNodeExists: true,
       bogonNodeMatches: true,
@@ -596,7 +599,7 @@ describe('exclusao preventiva por peer BGP (Caminho 3)', () => {
     });
 
     expect(result.status).toBe('WOULD_ACTIVATE');
-    expect(result.commandPreview).toHaveLength(6);
+    expect(result.commandPreview).toHaveLength(8);
     expect(live.activateCalls).toBe(0);
   });
 });

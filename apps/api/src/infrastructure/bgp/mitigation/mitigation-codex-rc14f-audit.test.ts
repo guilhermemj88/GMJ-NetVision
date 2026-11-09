@@ -5,7 +5,8 @@ import { MitigationCommandService, type MitigationCommandDeps } from './mitigati
 import { MockMitigationExecutor } from './mitigation-executor';
 import { HuaweiMitigationExecutor, type MitigationSshPort } from './huawei-mitigation-executor';
 import { InMemoryPolicyScopeLock } from './mitigation-policy-lock';
-import { testDurableBaselineStore } from './mitigation-test-support';
+import { testDurableBaselineStore, testPermanentClientNode } from './mitigation-test-support';
+import { GenericPhysicalDisplays } from '../../../testing/physical-bgp-simulator';
 import {
   MitigationAutoEngine,
   type MitigationAutoTargetState,
@@ -16,6 +17,9 @@ const RC13 = process.env.CODEX_AUDIT_RC13_BASELINE === 'true';
 const NOW = new Date('2026-10-28T20:00:00Z');
 const DEVICE = 'codex-fake-device';
 const BW = 10_000_000_000n;
+
+const PREFIX_LISTS =
+  'ip ip-prefix BOGONS index 10 permit 10.0.0.0 8\nip ip-prefix PREFIX8to24 index 10 permit 192.0.2.0 24';
 
 /** In-memory physical policy. This port has no network client or real credentials. */
 class AuditSsh implements MitigationSshPort {
@@ -31,19 +35,31 @@ class AuditSsh implements MitigationSshPort {
             `route-policy ${this.policy} deny node 1`,
             ' if-match ip-prefix BOGONS',
             `route-policy ${this.policy} permit node 2`,
+            ' if-match ip-prefix PREFIX8to24',
+            ' apply local-preference 1100',
             ' apply extcommunity rt 268568:660',
           ]
         : []),
-      `route-policy ${this.policy} permit node 11`,
+      ...testPermanentClientNode(this.policy, { node: 11 }),
     ].join('\n');
+  }
+  private displays: GenericPhysicalDisplays | null = null;
+  async readMitigationDisplays(_device: HostRecord, commands: readonly string[]) {
+    this.displays ??= new GenericPhysicalDisplays({
+      policyName: this.policy,
+      customerPeers: ['192.0.2.1'],
+      routePolicy: () => this.configuration(),
+      prefixLists: () => PREFIX_LISTS,
+      mitigated: () => this.active,
+    });
+    return this.displays.read([...commands]);
   }
   async readMitigationConfiguration() {
     this.reads++;
     this.beforeRead?.();
     return {
       routePolicyConfiguration: this.configuration(),
-      prefixListConfiguration:
-        'ip ip-prefix BOGONS index 10 permit 10.0.0.0 8\nip ip-prefix PREFIX8to24 index 10 permit 192.0.2.0 24',
+      prefixListConfiguration: PREFIX_LISTS,
       warnings: [],
     };
   }
@@ -73,7 +89,8 @@ async function commandHarness(
     bandwidthSource: 'DESCRIPTION',
   });
   await repository.replaceProfilePeers(profile.id, [
-    { peerAddress: family === 'IPV4' ? '192.0.2.1' : '2001:db8::1', primary: true },
+    // A verificacao fisica e do contrato IPv4: ambos os perfis usam um peer IPv4 sintetico.
+    { peerAddress: '192.0.2.1', primary: true },
   ]);
   await repository.upsertRuntime(profile.id, {
     state: 'NORMAL',
@@ -125,7 +142,9 @@ describe('CODEX independent: complete manual IPv4/IPv6 operations with M8 off', 
       expect(h.ssh.writes).toHaveLength(1);
       expect(h.ssh.active).toBe(true);
       expect(h.ssh.writes[0]).toContain('commit');
-      expect(h.ssh.writes[0]!.join('\n')).not.toContain('local-preference');
+      // Node 2 estreito: LP do node permanente do cliente, RT 660 sem additive.
+      expect(h.ssh.writes[0]!.join('\n')).toContain('apply local-preference 1100');
+      expect(h.ssh.writes[0]!.join('\n')).not.toContain('additive');
       expect((await h.repository.getRuntime(h.profile.id))?.state).toBe('MITIGATED');
       const removed = await h.commands.execute({
         requestId: 'manual-remove',

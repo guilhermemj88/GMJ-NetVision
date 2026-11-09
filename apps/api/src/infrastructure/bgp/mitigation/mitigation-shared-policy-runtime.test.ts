@@ -6,7 +6,7 @@ import {
   type MitigationLiveExecutorPort,
 } from './mitigation-command-service';
 import { MockMitigationExecutor } from './mitigation-executor';
-import { testPreservedClauses } from './mitigation-test-support';
+import { testMitigationContract, testPreservedClauses } from './mitigation-test-support';
 import type {
   MitigationActivationInput,
   MitigationRemovalInput,
@@ -49,19 +49,28 @@ function device(id: string): HostRecord {
   } as unknown as HostRecord;
 }
 
+/** Node permanente do cliente elegivel ao contrato do node 2. */
+const PERMANENT_NODE = [
+  `route-policy ${POLICY} permit node 10`,
+  ' if-match ip-prefix PREFIX8to24',
+  ' apply local-preference 1100',
+  ' apply extcommunity rt 268568:140 additive',
+];
 const READBACK_ACTIVE = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 2`,
+  ` if-match ip-prefix PREFIX8to24`,
+  ` apply local-preference 1100`,
   ` apply extcommunity rt ${RT}`,
-  `route-policy ${POLICY} permit node 10`,
+  ...PERMANENT_NODE,
 ].join('\n');
-const READBACK_NORMAL = `route-policy ${POLICY} permit node 10`;
+const READBACK_NORMAL = PERMANENT_NODE.join('\n');
 /** BOGON presente, node de mitigacao AUSENTE: estado parcial. */
 const READBACK_PARTIAL = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
-  `route-policy ${POLICY} permit node 10`,
+  ...PERMANENT_NODE,
 ].join('\n');
 
 class FakeLiveExecutor implements MitigationLiveExecutorPort {
@@ -109,6 +118,7 @@ class FakeLiveExecutor implements MitigationLiveExecutorPort {
       targetPrefixListExists: true,
       rt: input.rt,
       preservedClauses: testPreservedClauses(input.policyName, input.targetPrefixList, input.rt),
+      mitigationContract: testMitigationContract(input.policyName, input.targetPrefixList),
       sshReadBackOk: true,
       bogonNodeExists: false,
       bogonNodeMatches: false,

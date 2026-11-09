@@ -42,10 +42,18 @@ function renderPolicy(
       `route-policy ${POLICY} deny node ${pair.bogonNode}`,
       ' if-match ip-prefix BOGONS',
       `route-policy ${POLICY} permit node ${pair.mitigationNode}`,
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply local-preference 1100',
       ` apply extcommunity rt ${rt}`,
     );
   }
-  lines.push(`route-policy ${POLICY} permit node 10`);
+  // Node permanente do cliente elegivel ao contrato do node 2.
+  lines.push(
+    `route-policy ${POLICY} permit node 10`,
+    ' if-match ip-prefix PREFIX8to24',
+    ' apply local-preference 1100',
+    ' apply extcommunity rt 268568:140 additive',
+  );
   return lines.join('\n');
 }
 
@@ -56,6 +64,9 @@ const READ_BACK_PARTIAL = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 10`,
+  ' if-match ip-prefix PREFIX8to24',
+  ' apply local-preference 1100',
+  ' apply extcommunity rt 268568:140 additive',
 ].join('\n');
 
 const target = (pair: { bogonNode: number; mitigationNode: number } | null) => ({
@@ -108,7 +119,8 @@ describe('F2: assess do reconciler olha a POLICY INTEIRA', () => {
     // de 1/2 e par legado: fail-closed, nunca coexistencia silenciosa.
     expect(assessment.state).toBe('RECONCILIATION_REQUIRED');
     expect(assessment.physical.pair).toBeNull();
-    expect(assessment.physical.partialNodes.map((n) => n.node)).toEqual([3, 4]);
+    // O segundo permit com a RT 660 invalida tambem o reconhecimento do node 2 (dois permits).
+    expect(assessment.physical.partialNodes.map((n) => n.node)).toEqual([2, 3, 4]);
   });
 
   it('L) estrutura PARCIAL (so o bogon) => RECONCILIATION_REQUIRED', () => {

@@ -20,7 +20,7 @@ import {
   buildMitigationActivateCommands,
   buildMitigationRemovalCommands,
 } from './mitigation-write-guard';
-import { testPreservedClauses } from './mitigation-test-support';
+import { testMitigationContract, testPreservedClauses } from './mitigation-test-support';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import type {
   MitigationPreflightInput,
@@ -56,6 +56,8 @@ const GOOD_READBACK = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 2`,
+  ` if-match ip-prefix PREFIX8to24`,
+  ` apply local-preference 1100`,
   ` apply extcommunity rt ${RT}`,
   `route-policy ${POLICY} permit node 11`,
 ].join('\n');
@@ -130,6 +132,7 @@ class FakeLiveExecutor implements MitigationLiveExecutorPort {
       ...this.preflightValue,
       mode: input.mode,
       preservedClauses: testPreservedClauses(input.policyName, input.targetPrefixList, input.rt),
+      mitigationContract: testMitigationContract(input.policyName, input.targetPrefixList),
     };
   }
 
@@ -137,7 +140,7 @@ class FakeLiveExecutor implements MitigationLiveExecutorPort {
     _device: HostRecord,
     input: MitigationActivationInput,
   ): Promise<{ output: string }> {
-    buildMitigationActivateCommands(input, input.preservedClauses);
+    buildMitigationActivateCommands(input, input.mitigationContract);
     return { output: 'ok' };
   }
 

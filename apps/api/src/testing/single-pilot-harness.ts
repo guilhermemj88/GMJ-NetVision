@@ -1,4 +1,5 @@
 import type { HostRecord } from '@gmj/shared';
+import { PhysicalBgpSimulator } from './physical-bgp-simulator';
 import {
   AutoMitigationLifecycle,
   lifecycleConfig,
@@ -44,11 +45,18 @@ export class PilotFakeHuawei implements MitigationSshPort {
   sharedBinding = false;
   writes: string[][] = [];
   afterWrite?: () => Promise<void>;
+  /** Evidencia fisica BGP (captura real sanitizada + transformacao sintetica de mitigacao). */
+  readonly physical = new PhysicalBgpSimulator(() => this.active);
+  async readMitigationDisplays(_device: HostRecord, commands: readonly string[]) {
+    return this.physical.read([...commands]);
+  }
   config() {
     const sent = this.writes.at(-1) ?? [
       `route-policy ${P.policy} deny node 1`,
       ' if-match ip-prefix BOGONS',
       `route-policy ${P.policy} permit node 2`,
+      ' if-match ip-prefix AGLINK-BLOCO-TODO-23',
+      ' apply local-preference 1100',
       ' apply extcommunity rt 268568:660',
     ];
     let installed = sent.filter((line) => line !== 'system-view' && line !== 'commit');
@@ -258,6 +266,11 @@ export async function createPilotHarness(
     // B6: escrita real exige armazenamento duravel do baseline. O harness usa o
     // store persistente recebido; sem ele, um backend duravel de teste.
     baseline: baselineStore,
+    // Verificacao fisica pos-escrita: tentativas imediatas (sem esperar o intervalo real).
+    physical: {
+      timing: { maxAttempts: 3, intervalMs: 1, budgetMs: 1_000 },
+      sleep: async () => undefined,
+    },
   });
   let lifecycle: AutoMitigationLifecycle;
   let commands: MitigationCommandService;

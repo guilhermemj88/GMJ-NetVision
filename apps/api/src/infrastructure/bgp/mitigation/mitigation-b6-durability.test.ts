@@ -10,6 +10,7 @@ import { MockMitigationExecutor, type MitigationActivationInput } from './mitiga
 import {
   createFakeDurableBackend,
   FakeDurableBaselineStore,
+  testMitigationContract,
   testPreservedClauses,
 } from './mitigation-test-support';
 
@@ -42,6 +43,8 @@ const ACTIVATED_POLICY = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 2`,
+  ' if-match ip-prefix PREFIX8to24',
+  ' apply local-preference 1100',
   ' apply extcommunity rt 268568:660',
   NORMAL_POLICY,
 ].join('\n');
@@ -110,6 +113,7 @@ const REMOVE_INPUT = { ...ACTIVATE_INPUT, mode: 'REMOVE' as const };
 
 const activation = (preflight: {
   preservedClauses?: MitigationActivationInput['preservedClauses'] | null;
+  mitigationContract?: MitigationActivationInput['mitigationContract'] | null;
   baselineRecord?: MitigationBaselineRecord | null;
 }) => ({
   policyName: POLICY,
@@ -119,6 +123,7 @@ const activation = (preflight: {
   bogonPrefixList: 'BOGONS',
   targetPrefixList: 'PREFIX8to24',
   ...(preflight.preservedClauses ? { preservedClauses: preflight.preservedClauses } : {}),
+  ...(preflight.mitigationContract ? { mitigationContract: preflight.mitigationContract } : {}),
   ...(preflight.baselineRecord ? { preflightBaseline: preflight.baselineRecord } : {}),
 });
 
@@ -314,10 +319,20 @@ describe('B6 - recuperacao por instancia independente', () => {
 describe('B6 - MOCK continua funcionando', () => {
   it('executor MOCK nao exige baseline duravel', async () => {
     const mock = new MockMitigationExecutor();
-    mock.seedNode(POLICY, 10, { ifMatchIpPrefix: ['PREFIX8to24'] });
+    mock.seedNode(POLICY, 10, {
+      ifMatchIpPrefix: ['PREFIX8to24'],
+      localPreference: 1100,
+      routeTargets: ['268568:140'],
+      routeTargetsAdditive: true,
+    });
     const preserved = testPreservedClauses(POLICY, 'PREFIX8to24', RT);
 
-    await mock.activate(activation({ preservedClauses: preserved }));
+    await mock.activate(
+      activation({
+        preservedClauses: preserved,
+        mitigationContract: testMitigationContract(POLICY, 'PREFIX8to24'),
+      }),
+    );
     const readBack = await mock.readRoutePolicy(POLICY);
 
     expect(readBack).toContain(`route-policy ${POLICY} deny node 1`);

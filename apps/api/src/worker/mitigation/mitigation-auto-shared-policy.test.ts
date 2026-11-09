@@ -6,7 +6,7 @@ import {
   type MitigationLiveExecutorPort,
 } from '../../infrastructure/bgp/mitigation/mitigation-command-service';
 import { MockMitigationExecutor } from '../../infrastructure/bgp/mitigation/mitigation-executor';
-import { testPreservedClauses } from '../../infrastructure/bgp/mitigation/mitigation-test-support';
+import { testMitigationContract, testPreservedClauses } from '../../infrastructure/bgp/mitigation/mitigation-test-support';
 import type {
   MitigationActivationInput,
   MitigationRemovalInput,
@@ -119,6 +119,7 @@ class DeviceTruthExecutor implements MitigationLiveExecutorPort {
       targetPrefixListExists: true,
       rt: input.rt,
       preservedClauses: testPreservedClauses(input.policyName, input.targetPrefixList, input.rt),
+      mitigationContract: testMitigationContract(input.policyName, input.targetPrefixList),
       sshReadBackOk: true,
       bogonNodeExists: this.nodes.has(input.bogonNode),
       bogonNodeMatches: this.nodes.has(input.bogonNode),
@@ -166,10 +167,17 @@ class DeviceTruthExecutor implements MitigationLiveExecutorPort {
     if (this.nodes.has(PAIR.mitigationNode)) {
       lines.push(
         `route-policy ${policyName} permit node ${PAIR.mitigationNode}`,
+        ' if-match ip-prefix PREFIX8to24',
+        ' apply local-preference 1100',
         ` apply extcommunity rt ${RT}`,
       );
     }
-    lines.push(`route-policy ${policyName} permit node 10`);
+    lines.push(
+      `route-policy ${policyName} permit node 10`,
+      ' if-match ip-prefix PREFIX8to24',
+      ' apply local-preference 1100',
+      ' apply extcommunity rt 268568:140 additive',
+    );
     return lines.join('\n');
   }
 

@@ -4,6 +4,7 @@ import { AGLINK_BGP_PLAN as A } from './aglink-bgp-plan';
 import { verifyActivation, verifyRemoval } from './mitigation-executor';
 import { inspectPolicyMitigation } from './mitigation-policy-physical';
 import { buildMitigationActivateCommands } from './mitigation-write-guard';
+import { testMitigationContract } from './mitigation-test-support';
 import { SimulationCommandExecutor } from './simulation-command-executor';
 
 const prefixes = ['167.250.126.0/23', '167.250.126.0/24', '167.250.127.0/24'];
@@ -16,9 +17,13 @@ const COMMANDS = [
   `route-policy ${A.policy} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${A.policy} permit node 2`,
+  ` if-match ip-prefix ${A.targetPrefixList}`,
+  ' apply local-preference 1100',
   ' apply extcommunity rt 268568:660',
   'commit',
 ];
+
+const contract = testMitigationContract(A.policy, A.targetPrefixList, 1100);
 
 async function activate() {
   const h = await createPilotHarness();
@@ -67,7 +72,8 @@ describe('contrato IPv4 definitivo: deny BOGONS node 1 + permit node 2 com RT660
     async (prefix) => {
       const h = await activate();
       const during = evaluate(h.ssh.config(), prefix);
-      expect(during).toMatchObject({ accepted: true, node: 2, localPreference: 100 });
+      // LP 1100 PRESERVADA: a rota direta segue vencendo o backup CIRION (LP 800).
+      expect(during).toMatchObject({ accepted: true, node: 2, localPreference: 1100 });
       // Sem additive o node 2 substitui o conjunto: RT140/RT330 recebidas nao permanecem.
       expect(during.rts).toEqual(['268568:660']);
     },
@@ -99,27 +105,37 @@ describe('contrato IPv4 definitivo: deny BOGONS node 1 + permit node 2 com RT660
   });
 
   it('preview identico aos comandos canonicos, sem clausula nao autorizada', () => {
-    const commands = buildMitigationActivateCommands(plan);
-    expect(new SimulationCommandExecutor().buildMitigation(A.policy, pair, A.rt, labels).commands)
-      .toEqual(commands);
+    const commands = buildMitigationActivateCommands(plan, contract);
+    expect(
+      new SimulationCommandExecutor().buildMitigation(A.policy, pair, A.rt, labels, contract)
+        .commands,
+    ).toEqual(commands);
     expect(commands).toEqual(COMMANDS);
     const text = commands.join('\n');
-    expect(text).not.toContain('apply local-preference');
+    expect(text).toContain('apply local-preference 1100');
     expect(text).not.toContain('additive');
     expect(commands.filter((line) => line.includes('if-match'))).toEqual([
       ' if-match ip-prefix BOGONS',
+      ` if-match ip-prefix ${A.targetPrefixList}`,
     ]);
     expect(commands.filter((line) => line.includes('apply extcommunity'))).toHaveLength(1);
     expect(text).not.toMatch(/goto next-node/);
     expect(text).not.toMatch(/node (10|1000)\b/);
   });
 
-  it('amplitude autorizada: prefixos fora da lista do cliente passam no node 2', async () => {
+  it('a verificacao fisica pos-escrita prova o efeito (PASS) antes de MITIGATION_VERIFIED', async () => {
     const h = await activate();
-    // Efeito aceito explicitamente pelo operador: o permit apos BOGONS cobre
-    // qualquer NLRI, nao apenas os prefixos que o node 10 autorizava.
+    expect((await h.scope())?.phase).toBe('ACTIVE');
+    expect(h.ssh.physical.batches.flat()).toContain(
+      'display bgp routing-table peer 198.19.4.145 advertised-routes',
+    );
+  });
+
+  it('SEM permit-all: prefixos fora da lista do cliente NAO casam no node 2', async () => {
+    const h = await activate();
+    // Fora da lista /23 ge23 le24: seguem para os nodes permanentes, como antes da mitigacao.
     for (const prefix of ['167.250.126.0/25', '167.250.128.0/24', '8.8.8.0/24', '0.0.0.0/0'])
-      expect(evaluate(h.ssh.config(), prefix)).toMatchObject({ accepted: true, node: 2 });
+      expect(evaluate(h.ssh.config(), prefix).node).not.toBe(2);
     // BOGONS continua barrando no node 1 (o modelo cobre a faixa 10.0.0.0/8).
     expect(evaluate(h.ssh.config(), '10.1.0.0/24')).toMatchObject({ accepted: false, node: 1 });
   });
@@ -131,13 +147,13 @@ describe('contrato IPv4 definitivo: deny BOGONS node 1 + permit node 2 com RT660
       let text = h.ssh.config();
       if (fault === 'ifMatch')
         text = text.replace(
-          ' apply extcommunity rt 268568:660',
-          ' if-match ip-prefix PREFIX8to24\n apply extcommunity rt 268568:660',
+          ` if-match ip-prefix ${A.targetPrefixList}\n apply local-preference 1100\n apply extcommunity rt 268568:660`,
+          ' if-match ip-prefix PREFIX8to24\n apply local-preference 1100\n apply extcommunity rt 268568:660',
         );
       if (fault === 'localPreference')
         text = text.replace(
-          ' apply extcommunity rt 268568:660',
           ' apply local-preference 1100\n apply extcommunity rt 268568:660',
+          ' apply local-preference 100\n apply extcommunity rt 268568:660',
         );
       if (fault === 'additive')
         text = text.replace(

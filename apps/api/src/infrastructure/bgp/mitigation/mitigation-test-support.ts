@@ -1,4 +1,5 @@
 import { derivePreservedClauses, type PreservedClauses } from './mitigation-policy-clauses';
+import type { MitigationNode2Contract } from './mitigation-node2-contract';
 import {
   baselineRecordId,
   baselineRemovalIntent,
@@ -30,6 +31,58 @@ export function testPreservedClauses(
     ` if-match ip-prefix ${targetPrefixList}`,
   ].join('\n');
   return derivePreservedClauses(text, policyName, targetPrefixList, rt);
+}
+
+/**
+ * TEST-ONLY: contrato do node 2 (clone estreito do node permanente do cliente) para fakes
+ * de executor/preflight. O executor REAL deriva o mesmo objeto do equipamento.
+ */
+export function testMitigationContract(
+  policyName: string,
+  prefixList = 'PREFIX8to24',
+  localPreference = 1100,
+  baselineNode = 10,
+): MitigationNode2Contract {
+  return {
+    version: 1,
+    policyName,
+    baselineNode,
+    prefixList,
+    localPreference,
+    rt: '268568:660',
+    rtMode: 'REPLACE',
+    baselineRt: '268568:140',
+    baselineRtAdditive: true,
+    prefixListEntries: [],
+  };
+}
+
+/** TEST-ONLY: node permanente do cliente elegivel ao contrato (config VRP). */
+export function testPermanentClientNode(
+  policyName: string,
+  options: { node?: number; prefixList?: string; localPreference?: number; additive?: boolean } = {},
+): string[] {
+  return [
+    `route-policy ${policyName} permit node ${options.node ?? 10}`,
+    ` if-match ip-prefix ${options.prefixList ?? 'PREFIX8to24'}`,
+    ` apply local-preference ${options.localPreference ?? 1100}`,
+    ` apply extcommunity rt 268568:140${options.additive === false ? '' : ' additive'}`,
+  ];
+}
+
+/** TEST-ONLY: nodes 1 e 2 do contrato (config VRP) para a lista/LP do cliente. */
+export function testMitigationPairNodes(
+  policyName: string,
+  options: { prefixList?: string; localPreference?: number } = {},
+): string[] {
+  return [
+    `route-policy ${policyName} deny node 1`,
+    ' if-match ip-prefix BOGONS',
+    `route-policy ${policyName} permit node 2`,
+    ` if-match ip-prefix ${options.prefixList ?? 'PREFIX8to24'}`,
+    ` apply local-preference ${options.localPreference ?? 1100}`,
+    ' apply extcommunity rt 268568:660',
+  ];
 }
 
 /**

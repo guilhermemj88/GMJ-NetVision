@@ -6,7 +6,7 @@ import {
   type MitigationLiveExecutorPort,
 } from '../../infrastructure/bgp/mitigation/mitigation-command-service';
 import { MockMitigationExecutor } from '../../infrastructure/bgp/mitigation/mitigation-executor';
-import { testPreservedClauses } from '../../infrastructure/bgp/mitigation/mitigation-test-support';
+import { testMitigationContract, testPreservedClauses } from '../../infrastructure/bgp/mitigation/mitigation-test-support';
 import type {
   MitigationActivationInput,
   MitigationRemovalInput,
@@ -45,6 +45,8 @@ const READBACK_ACTIVE = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 2`,
+  ' if-match ip-prefix PREFIX8to24',
+  ' apply local-preference 1100',
   ' apply extcommunity rt 268568:660',
   `route-policy ${POLICY} permit node 10`,
 ].join('\n');
@@ -89,6 +91,7 @@ class CountingLiveExecutor implements MitigationLiveExecutorPort {
       targetPrefixListExists: true,
       rt: input.rt,
       preservedClauses: testPreservedClauses(input.policyName, input.targetPrefixList, input.rt),
+      mitigationContract: testMitigationContract(input.policyName, input.targetPrefixList),
       sshReadBackOk: true,
       bogonNodeExists: false,
       bogonNodeMatches: false,

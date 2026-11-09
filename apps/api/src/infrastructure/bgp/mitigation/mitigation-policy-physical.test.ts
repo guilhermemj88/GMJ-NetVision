@@ -11,11 +11,24 @@ const header = (action: 'deny' | 'permit', node: number) =>
   `route-policy ${POLICY} ${action} node ${node}`;
 const rtLine = ` apply extcommunity rt ${RT}`;
 
+const PERMANENT = [
+  header('permit', 10),
+  ' if-match ip-prefix CLIENTE-BLOCO',
+  ' apply local-preference 1100',
+  ' apply extcommunity rt 268568:140 additive',
+  header('deny', 1000),
+];
+const NODE2 = [
+  header('permit', 2),
+  ' if-match ip-prefix CLIENTE-BLOCO',
+  ' apply local-preference 1100',
+  rtLine,
+];
+
 const EXACT_PAIR = [
   header('deny', 1),
   ' if-match ip-prefix BOGONS',
-  header('permit', 2),
-  rtLine,
+  ...NODE2,
   header('permit', 10),
   ' if-match ip-prefix CLIENTE-BLOCO',
   ' apply local-preference 1100',
@@ -46,7 +59,7 @@ describe('inspectPolicyMitigation — nodes 1/2 reservados pelo contrato IPv4', 
   });
 
   it('somente node 2 canonico: parcial, exige reconciliacao', () => {
-    const text = [header('permit', 2), rtLine].join('\n');
+    const text = [...NODE2, ...PERMANENT].join('\n');
     expect(inspect(text)).toMatchObject({
       state: 'RECONCILIATION_REQUIRED',
       bogonNodes: [],
@@ -148,14 +161,17 @@ describe('inspectPolicyMitigation — nodes 1/2 reservados pelo contrato IPv4', 
       header('permit', 0),
       header('deny', 1),
       ' if-match ip-prefix BOGONS',
-      header('permit', 2),
-      rtLine,
+      ...NODE2,
+      ...PERMANENT,
     ].join('\n');
     const result = inspect(text);
     expect(result.state).toBe('RECONCILIATION_REQUIRED');
     expect(result.pair).toBeNull();
     expect(result.precedenceNodes).toEqual([0]);
-    expect(result.partialNodes).toEqual([expect.objectContaining({ node: 0, action: 'permit' })]);
+    // O node 0 e o conflito de precedencia; o node 2 deixa de ser reconhecido (dois permits).
+    expect(result.partialNodes).toEqual(
+      expect.arrayContaining([expect.objectContaining({ node: 0, action: 'permit' })]),
+    );
   });
 
   it('policy ausente no read-back nao e conclusiva', () => {

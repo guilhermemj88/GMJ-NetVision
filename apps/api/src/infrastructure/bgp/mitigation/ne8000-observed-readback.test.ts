@@ -8,10 +8,16 @@ const observed = readFileSync(
   'utf8',
 );
 
-/** Mesma policy real observada, reescrita no contrato final (node 2 sem if-match nem additive). */
+/**
+ * Mesma policy real observada, reescrita no contrato final: node 2 estreito = lista + LP do node
+ * permanente 10 + RT 660 sem additive (a RT 140 do cliente e a que a 660 substitui).
+ */
 const compliant = observed
-  .replace('      if-match ip-prefix PREFIX8to24\n', '')
-  .replace('apply extcommunity rt 64512:660 additive', 'apply extcommunity rt 268568:660');
+  .replace(
+    '      if-match ip-prefix PREFIX8to24\n    Apply clauses:\n      apply extcommunity rt 64512:660 additive',
+    '      if-match ip-prefix PREFIX-FIXTURE-IPV4\n    Apply clauses:\n      apply local-preference 1000\n      apply extcommunity rt 268568:660',
+  )
+  .replace('apply extcommunity rt 64512:140 additive', 'apply extcommunity rt 268568:140 additive');
 
 const verify = (content: string) =>
   verifyActivation(
@@ -30,7 +36,7 @@ it('parses the real NE8000 display shape and requires the exact final contract',
   // A forma antiga (if-match de lista + RT additive) NAO e o contrato final.
   expect(verify(observed).verified).toBe(false);
 
-  // A mesma policy no contrato final: node 1 deny+BOGONS, node 2 so com a RT660.
+  // A mesma policy no contrato final: node 1 deny+BOGONS, node 2 = lista + LP do cliente + RT660.
   expect(verify(compliant).verified).toBe(true);
 });
 

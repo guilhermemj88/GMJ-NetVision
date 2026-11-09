@@ -7,6 +7,7 @@ import { verifyActivation } from './mitigation-executor';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import { testDurableBaselineStore } from './mitigation-test-support';
 import { derivePreservedClauses } from './mitigation-policy-clauses';
+import { deriveMitigationNode2Contract } from './mitigation-node2-contract';
 import { captureMitigationBaseline } from './mitigation-baseline-record';
 
 const DEVICE_ID = 'host-f1a';
@@ -17,8 +18,9 @@ const RT = '268568:660';
 const ROUTE_POLICY = [
   'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
   ' if-match ip-prefix PREFIX-HORIZONTES-IPV4',
-  ' apply extcommunity rt 268568:110 additive',
-  'route-policy PL-HORIZONTES_IPv4-IN permit node 50',
+  ' apply local-preference 4000',
+  ' apply extcommunity rt 268568:140 additive',
+  'route-policy PL-HORIZONTES_IPv4-IN deny node 50',
 ].join('\n');
 
 const IP_PREFIX = [
@@ -147,7 +149,14 @@ const PREFLIGHT_BASELINE = captureMitigationBaseline({
 });
 if (!PREFLIGHT_BASELINE) throw new Error('fixture sem baseline');
 
+const DERIVED = deriveMitigationNode2Contract(ROUTE_POLICY, POLICY, {
+  prefixListConfiguration: IP_PREFIX,
+  requirePrefixListProof: true,
+});
+if (!DERIVED.eligible) throw new Error('fixture inelegivel');
+
 const ACTIVATION = {
+  mitigationContract: DERIVED.contract,
   policyName: POLICY,
   bogonNode: 1,
   mitigationNode: 2,
@@ -232,22 +241,29 @@ describe('HuaweiMitigationExecutor - preflight READ-ONLY', () => {
     expect(result.blockedReasons.join(' ')).toMatch(/bogon_prefix_list/);
   });
 
-  it('a ip-prefix alvo nao faz parte do ACTIVATE: ausencia nao bloqueia nem entra nos comandos', async () => {
+  it('a ip-prefix do cliente referenciada pelo node 2 e OBRIGATORIA: ausencia bloqueia o preflight', async () => {
     const ssh = new FakeSsh();
     ssh.prefixListConfiguration = 'ip ip-prefix BOGONS index 10 permit 10.0.0.0 8';
     const result = await executor(ssh).preflight(device(), INPUT);
-    // Contrato definitivo: o node 2 e permit irrestrito (sem if-match), entao a
-    // lista alvo nao e referencia da escrita e sua ausencia nao bloqueia.
-    expect(result.targetPrefixListExists).toBe(false);
+    expect(result.ok).toBe(false);
+    expect(result.mitigationContract).toBeNull();
+    expect(result.blockedReasons.join(' ')).toMatch(
+      /mitigation_contract: MITIGATION_CONTRACT_UNSUPPORTED.*PREFIX-HORIZONTES-IPV4 inexistente/,
+    );
+  });
+
+  it('preflight elegivel devolve o contrato derivado do baseline (lista, LP, RT 140 -> 660 REPLACE)', async () => {
+    const result = await executor(new FakeSsh()).preflight(device(), INPUT);
     expect(result.ok).toBe(true);
-    expect(result.blockedReasons).toEqual([]);
-    const commands = new SimulationCommandExecutor().buildMitigation(
-      POLICY,
-      { bogonNode: 1, mitigationNode: 2 },
-      RT,
-      { bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST, targetPrefixList: DEFAULT_TARGET_PREFIX_LIST },
-    ).commands;
-    expect(commands.join('\n')).not.toContain(DEFAULT_TARGET_PREFIX_LIST);
+    expect(result.mitigationContract).toMatchObject({
+      prefixList: 'PREFIX-HORIZONTES-IPV4',
+      localPreference: 4000,
+      rt: '268568:660',
+      rtMode: 'REPLACE',
+      baselineRt: '268568:140',
+      baselineNode: 11,
+    });
+    expect(result.checks.find((check) => check.id === 'mitigation_contract')?.ok).toBe(true);
   });
 
   it('aborta sem snapshot de discovery (fail-closed)', async () => {
@@ -298,9 +314,14 @@ const ROUTE_POLICY_MITIGATED = [
   'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
   ' if-match ip-prefix BOGONS',
   'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
+  ' if-match ip-prefix PREFIX-HORIZONTES-IPV4',
+  ' apply local-preference 4000',
   ' apply extcommunity rt 268568:660',
   'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
-  'route-policy PL-HORIZONTES_IPv4-IN permit node 50',
+  ' if-match ip-prefix PREFIX-HORIZONTES-IPV4',
+  ' apply local-preference 4000',
+  ' apply extcommunity rt 268568:140 additive',
+  'route-policy PL-HORIZONTES_IPv4-IN deny node 50',
 ].join('\n');
 
 /** Monta o input do preflight de REMOVE (sem snapshot, sem exigir nodes livres). */
@@ -353,8 +374,13 @@ describe('HuaweiMitigationExecutor - preflight de REMOVE (par presente)', () => 
     const ssh = new FakeSsh();
     ssh.routePolicyConfiguration = [
       'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
+      ' if-match ip-prefix PREFIX-HORIZONTES-IPV4',
+      ' apply local-preference 4000',
       ' apply extcommunity rt 268568:660',
       'route-policy PL-HORIZONTES_IPv4-IN permit node 11',
+      ' if-match ip-prefix PREFIX-HORIZONTES-IPV4',
+      ' apply local-preference 4000',
+      ' apply extcommunity rt 268568:140 additive',
     ].join('\n');
     const result = await executor(ssh).preflight(device(), REMOVE_INPUT);
     expect(result.ok).toBe(false);
@@ -499,6 +525,8 @@ describe('HuaweiMitigationExecutor - comandos exatos', () => {
       'route-policy PL-HORIZONTES_IPv4-IN deny node 1',
       ' if-match ip-prefix BOGONS',
       'route-policy PL-HORIZONTES_IPv4-IN permit node 2',
+      ' if-match ip-prefix PREFIX-HORIZONTES-IPV4',
+      ' apply local-preference 4000',
       ' apply extcommunity rt 268568:660',
       'commit',
     ]);
@@ -512,7 +540,7 @@ describe('HuaweiMitigationExecutor - comandos exatos', () => {
           bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST,
           targetPrefixList: DEFAULT_TARGET_PREFIX_LIST,
         },
-        PRESERVED,
+        DERIVED.contract,
       ).commands,
     );
   });
@@ -613,11 +641,17 @@ const DISPLAY_MITIGATED = [
   '  permit : 11 (matched counts: 0)',
   '    Match clauses: ',
   '      if-match ip-prefix PREFIX-HORIZONTES-IPV4',
+  '    Apply clauses: ',
+  '      apply local-preference 4000',
+  '      apply extcommunity rt 268568:140 additive',
   '  deny : 1 (matched counts: 0)',
   '    Match clauses: ',
   '      if-match ip-prefix BOGONS',
   '  permit : 2 (matched counts: 0)',
+  '    Match clauses: ',
+  '      if-match ip-prefix PREFIX-HORIZONTES-IPV4',
   '    Apply clauses: ',
+  '      apply local-preference 4000',
   '      apply extcommunity rt 268568:660',
   '  deny : 50 (matched counts: 0)',
 ].join('\n');

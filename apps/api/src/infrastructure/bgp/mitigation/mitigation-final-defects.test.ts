@@ -11,10 +11,10 @@ import { testDurableBaselineStore } from './mitigation-test-support';
 /**
  * Correcoes finais B3 e B5.
  *
- * B3: o contrato IPv4 definitivo nao deriva nem copia atributos de nodes
- *     permanentes. O node 2 e `permit` irrestrito com a RT exclusiva
- *     (amplitude autorizada pelo operador), entao nodes ANTERIORES nao alteram
- *     os comandos — o que se trava aqui e exatamente isso.
+ * B3: o node 2 precede TODOS os nodes permanentes. Um `deny` anterior ao node do
+ *     cliente que alcance a lista do cliente passaria a ser contornado, entao o
+ *     contrato so e emitido quando a AUSENCIA de sobreposicao e comprovada pelas
+ *     prefix-lists reais; caso contrario o preflight recusa (fail-closed).
  * B5: o REMOVE usa o registro DURAVEL gravado antes da primeira escrita; node
  *     permanente novo/alterado/removido ou registro ausente/invalido bloqueiam.
  */
@@ -63,6 +63,8 @@ const ACTIVATED_POLICY = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 2`,
+  ' if-match ip-prefix PREFIX8to24',
+  ' apply local-preference 1100',
   ' apply extcommunity rt 268568:660',
   NORMAL_POLICY,
 ].join('\n');
@@ -132,25 +134,29 @@ const CANONICAL_ACTIVATE_COMMANDS = [
   `route-policy ${POLICY} deny node 1`,
   ' if-match ip-prefix BOGONS',
   `route-policy ${POLICY} permit node 2`,
+  ' if-match ip-prefix PREFIX8to24',
+  ' apply local-preference 1100',
   ' apply extcommunity rt 268568:660',
   'commit',
 ];
 
-describe('B3 - nodes anteriores ao baseline nao interferem no contrato fixo', () => {
-  it('deny anterior sobreposto nao bloqueia: o node 2 e permit irrestrito autorizado', async () => {
+describe('B3 - nodes anteriores ao baseline (precedencia do node 2)', () => {
+  it('deny anterior SOBREPOSTO a lista do cliente e RECUSADO (o node 2 o contornaria)', async () => {
     const ssh = new FakeSsh(POLICY_WITH_OVERLAP);
     const result = await executor(ssh).preflight(device(), {
       ...ACTIVATE_INPUT,
       expectedExistingNodes: [5, 10, 1000],
     });
 
-    expect(result.ok).toBe(true);
-    expect(result.preservedClauses).toBeNull();
-    expect(result.checks.map((entry) => entry.id)).not.toContain('preserved_attributes');
+    expect(result.ok).toBe(false);
+    expect(result.mitigationContract).toBeNull();
+    expect(check('mitigation_contract', result)?.detail).toMatch(
+      /MITIGATION_CONTRACT_UNSUPPORTED.*node deny 5 \(lista SUB-BLOCO\) antecede o 10 e alcanca prefixos de PREFIX8to24/,
+    );
     expect(ssh.applied).toHaveLength(0);
   });
 
-  it('node anterior sem sobreposicao real tambem nao altera o contrato', async () => {
+  it('node anterior sem sobreposicao real mantem o contrato elegivel', async () => {
     const ssh = new FakeSsh(POLICY_WITHOUT_OVERLAP);
     const result = await executor(ssh).preflight(device(), {
       ...ACTIVATE_INPUT,
@@ -159,20 +165,24 @@ describe('B3 - nodes anteriores ao baseline nao interferem no contrato fixo', ()
 
     expect(result.ok).toBe(true);
     expect(result.preservedClauses).toBeNull();
+    expect(result.mitigationContract?.baselineNode).toBe(10);
   });
 
-  it('lista nao dumpada no node anterior nao impede o ACTIVATE', async () => {
+  it('lista nao dumpada no node anterior: ausencia de conflito nao comprovavel => RECUSA', async () => {
     const ssh = new FakeSsh(POLICY_WITH_UNKNOWN_LIST);
     const result = await executor(ssh).preflight(device(), {
       ...ACTIVATE_INPUT,
       expectedExistingNodes: [5, 10, 1000],
     });
 
-    expect(result.ok).toBe(true);
+    expect(result.ok).toBe(false);
+    expect(check('mitigation_contract', result)?.detail).toMatch(
+      /LISTA-NAO-DUMPADA.*NAO pode ser comprovada/,
+    );
   });
 
   it('nenhum atributo do node anterior e copiado para o node 2', async () => {
-    const ssh = new FakeSsh(POLICY_WITH_OVERLAP);
+    const ssh = new FakeSsh(POLICY_WITHOUT_OVERLAP);
     const exec = executor(ssh);
     const preflight = await exec.preflight(device(), {
       ...ACTIVATE_INPUT,
@@ -186,12 +196,14 @@ describe('B3 - nodes anteriores ao baseline nao interferem no contrato fixo', ()
       rt: RT,
       bogonPrefixList: 'BOGONS',
       targetPrefixList: 'PREFIX8to24',
+      ...(preflight.mitigationContract ? { mitigationContract: preflight.mitigationContract } : {}),
       ...(preflight.baselineRecord ? { preflightBaseline: preflight.baselineRecord } : {}),
     });
 
     expect(ssh.applied).toHaveLength(1);
     expect(ssh.applied[0]!.commands).toEqual(CANONICAL_ACTIVATE_COMMANDS);
-    expect(ssh.applied[0]!.commands.join('\n')).not.toContain('local-preference');
+    // Somente o contrato do node permanente 10 (lista + LP); nada do deny do node 5.
+    expect(ssh.applied[0]!.commands.join('\n')).not.toContain('OUTRA-REDE');
   });
 });
 
@@ -237,6 +249,7 @@ describe('B5 - fingerprint duravel dos nodes permanentes', () => {
       rt: RT,
       bogonPrefixList: 'BOGONS',
       targetPrefixList: 'PREFIX8to24',
+      ...(preActivate.mitigationContract ? { mitigationContract: preActivate.mitigationContract } : {}),
       ...(preActivate.baselineRecord ? { preflightBaseline: preActivate.baselineRecord } : {}),
     });
     expect(ssh.applied).toHaveLength(1);
