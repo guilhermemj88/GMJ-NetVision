@@ -26,7 +26,8 @@ import {
 } from '../../infrastructure/bgp/mitigation/mitigation-baseline-record';
 import { inspectPolicyMitigation } from '../../infrastructure/bgp/mitigation/mitigation-policy-physical';
 import {
-  PHYSICAL_UNVERIFIED_EVENT,
+  PHYSICAL_UNVERIFIED_FAILURE_KIND,
+  PHYSICAL_UNVERIFIED_MESSAGE,
   PHYSICAL_UNVERIFIED_STATUS,
 } from '../../infrastructure/bgp/mitigation/mitigation-physical-verification';
 import {
@@ -224,6 +225,18 @@ async function scopeQuarantined(
   if (baseline?.version === 2) return true;
   const pending = await tx.list<JournalCommand>('command', ['STARTED', 'UNCERTAIN']);
   return pending.length >= 1000 || pending.some((j) => j.scope === scope);
+}
+
+/** `MITIGATION_FAILED` com subtipo UNVERIFIED_PHYSICAL (escrita aplicada; efeito nao comprovado). */
+function unverifiedPhysicalExtras(r: {
+  status?: string;
+}): Pick<MitigationNotification, 'failureKind' | 'failureMessage'> {
+  return r.status === PHYSICAL_UNVERIFIED_STATUS
+    ? {
+        failureKind: PHYSICAL_UNVERIFIED_FAILURE_KIND,
+        failureMessage: PHYSICAL_UNVERIFIED_MESSAGE,
+      }
+    : {};
 }
 
 /** AUTO ACTIVATE only. No timer, observation or restart can dispatch REMOVE. */
@@ -651,11 +664,7 @@ export class AutoMitigationLifecycle {
         this.notification(
           t,
           result,
-          good
-            ? 'MITIGATION_VERIFIED'
-            : result.status === PHYSICAL_UNVERIFIED_STATUS
-              ? PHYSICAL_UNVERIFIED_EVENT
-              : 'MITIGATION_FAILED',
+          good ? 'MITIGATION_VERIFIED' : 'MITIGATION_FAILED',
           s.operationId,
           !real,
           s.lastSample,
@@ -923,9 +932,7 @@ export class AutoMitigationLifecycle {
         ? input.action === 'REMOVE'
           ? 'MITIGATION_REMOVED_VERIFIED'
           : 'MITIGATION_VERIFIED'
-        : result.status === PHYSICAL_UNVERIFIED_STATUS
-          ? PHYSICAL_UNVERIFIED_EVENT
-          : 'MITIGATION_FAILED';
+        : 'MITIGATION_FAILED';
       await enqueueNotification(
         tx,
         this.resultNotification(result, event, input.requestId, !real),
@@ -1272,12 +1279,13 @@ export class AutoMitigationLifecycle {
     simulation: boolean,
   ): MitigationNotification {
     return this.enrich({
+      ...unverifiedPhysicalExtras(r),
       event,
       eventId: id,
       profileId: r.profileId,
       addressFamily: (r.addressFamily as 'IPV4' | 'IPV6' | null) ?? null,
       simulation,
-      verified: event !== 'MITIGATION_FAILED' && event !== PHYSICAL_UNVERIFIED_EVENT && r.verified,
+      verified: event !== 'MITIGATION_FAILED' && r.verified,
       customer: r.customer,
       device: r.device,
       interfaceName: r.interface,
@@ -1300,19 +1308,21 @@ export class AutoMitigationLifecycle {
   }
   private notification(
     t: LifecycleTarget,
-    r: Pick<MitigationActionResult, 'verified' | 'customer' | 'device' | 'interface'>,
+    r: Pick<MitigationActionResult, 'verified' | 'customer' | 'device' | 'interface'> &
+      Partial<Pick<MitigationActionResult, 'status'>>,
     event: MitigationNotification['event'],
     id: string,
     simulation: boolean,
     confirmedAtMs?: number | null,
   ): MitigationNotification {
     return this.enrich({
+      ...unverifiedPhysicalExtras(r),
       event,
       eventId: id,
       profileId: t.profileId,
       addressFamily: t.addressFamily ?? null,
       simulation,
-      verified: event !== 'MITIGATION_FAILED' && event !== PHYSICAL_UNVERIFIED_EVENT && r.verified,
+      verified: event !== 'MITIGATION_FAILED' && r.verified,
       customer: r.customer ?? t.customer,
       device: r.device,
       interfaceName: r.interface,

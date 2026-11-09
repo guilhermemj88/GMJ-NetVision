@@ -30,6 +30,9 @@ import {
 } from './mitigation-baseline-record';
 import { type PreservedClauses } from './mitigation-policy-clauses';
 import {
+  BGP_CONFIGURATION_COMMAND,
+  EXTCOMMUNITY_FILTER_COMMAND,
+  ROUTE_POLICY_CONFIGURATION_COMMAND,
   captureBeforeEvidence,
   verifyMitigationPhysical,
   type DisplayReader,
@@ -37,6 +40,7 @@ import {
   type PhysicalBeforeEvidence,
   type PhysicalVerificationTiming,
 } from './mitigation-physical-verification';
+import { checkMitigationExport, MITIGATION_EXPORT_SHADOWED } from './mitigation-export-shadow';
 import {
   contractRefusalMessage,
   deriveMitigationNode2Contract,
@@ -86,10 +90,10 @@ export interface MitigationSshPort {
     commands: readonly string[],
   ): Promise<{ ok: boolean; output: string | null }>;
   /**
-   * READ-ONLY: `display` de evidencia fisica (peer, rotas, routing-table...). Ausente =
-   * a verificacao fisica pos-escrita e INCONCLUSIVA (nunca sucesso).
+   * READ-ONLY: `display` de evidencia fisica (peer, rotas, routing-table...). OBRIGATORIA:
+   * sem ela o executor real nem e construido (nunca VERIFIED sem prova fisica).
    */
-  readMitigationDisplays?(
+  readMitigationDisplays(
     device: HostRecord,
     commands: readonly string[],
   ): Promise<Array<{ command: string; output: string | null }>>;
@@ -229,6 +233,12 @@ export class HuaweiMitigationExecutor {
   private readonly baseline: MitigationBaselineStore;
 
   constructor(private readonly deps: HuaweiMitigationExecutorDeps) {
+    if (typeof deps.ssh?.readMitigationDisplays !== 'function') {
+      throw new Error(
+        'MITIGATION_PHYSICAL_PORT_REQUIRED: o transporte precisa de readMitigationDisplays ' +
+          '(verificacao fisica obrigatoria)',
+      );
+    }
     this.rt = deps.rt ?? DEFAULT_MITIGATION_RT;
     this.labels = deps.labels ?? {
       bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST,
@@ -426,6 +436,9 @@ export class HuaweiMitigationExecutor {
         : 'device sem SSH habilitado/configurado',
     });
 
+    // Evidencia do EXPORT (config BGP + extcommunity-filter) lida em paralelo ao resto.
+    const exportEvidence =
+      mode === 'ACTIVATE' && deviceOk ? this.readExportEvidence(device) : Promise.resolve(null);
     let configuration: MitigationSshConfiguration | null = null;
     let readError = 'SSH indisponivel';
     try {
@@ -605,6 +618,29 @@ export class HuaweiMitigationExecutor {
           ? derivation.notes.join('; ')
           : contractRefusalMessage(derivation),
       });
+      if (derivation.eligible) {
+        // O export do peer de mitigacao precisa deixar a rota 660 do cliente chegar ao
+        // permit MITIGACAO (nenhum deny anterior pode casar a lista do cliente).
+        const evidence = await exportEvidence;
+        const shadow = evidence
+          ? checkMitigationExport({
+              contract: derivation.contract,
+              routePolicyConfiguration: evidence.routePolicyConfiguration,
+              prefixListConfiguration,
+              bgpConfiguration: evidence.bgpConfiguration,
+              extcommunityFilterOutput: evidence.extcommunityFilterOutput,
+            })
+          : null;
+        checks.push({
+          id: 'mitigation_export',
+          ok: shadow?.ok === true,
+          detail: !shadow
+            ? `${MITIGATION_EXPORT_SHADOWED}: leitura do export (config BGP / extcommunity-filter) indisponivel`
+            : shadow.ok
+              ? `export ${shadow.exportPolicy} do peer ${shadow.mitigationPeer}: nenhum deny anterior ao permit MITIGACAO casa a lista do cliente`
+              : `${MITIGATION_EXPORT_SHADOWED}: ${shadow.reasons.join('; ')}`,
+        });
+      }
       checks.push({
         id: 'ipv4_contract',
         ok:
@@ -878,6 +914,30 @@ export class HuaweiMitigationExecutor {
     return verification.verified ? { bogonNode: 1, mitigationNode: 2 } : null;
   }
 
+  /** Leitura best-effort (nunca lanca) da evidencia de export; `null` = indisponivel. */
+  private async readExportEvidence(device: HostRecord): Promise<{
+    bgpConfiguration: string;
+    routePolicyConfiguration: string;
+    extcommunityFilterOutput: string;
+  } | null> {
+    try {
+      const reads = await this.deps.ssh.readMitigationDisplays(device, [
+        BGP_CONFIGURATION_COMMAND,
+        ROUTE_POLICY_CONFIGURATION_COMMAND,
+        EXTCOMMUNITY_FILTER_COMMAND,
+      ]);
+      const by = new Map(reads.map((read) => [read.command, read.output]));
+      const bgpConfiguration = by.get(BGP_CONFIGURATION_COMMAND) ?? null;
+      const routePolicyConfiguration = by.get(ROUTE_POLICY_CONFIGURATION_COMMAND) ?? null;
+      const extcommunityFilterOutput = by.get(EXTCOMMUNITY_FILTER_COMMAND) ?? null;
+      return bgpConfiguration && routePolicyConfiguration && extcommunityFilterOutput
+        ? { bgpConfiguration, routePolicyConfiguration, extcommunityFilterOutput }
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
   private displayReader(device: HostRecord): DisplayReader | null {
     const reader = this.deps.ssh.readMitigationDisplays;
     return reader ? (commands) => reader.call(this.deps.ssh, device, commands) : null;
@@ -953,6 +1013,53 @@ export class HuaweiMitigationExecutor {
         eligiblePrefixes: [],
         customerPeers: [...input.customerPeers],
       };
+    }
+  }
+
+  /**
+   * READ-ONLY, M4: REEXECUTA a verificacao fisica de uma mitigacao JA aplicada (reconciliacao).
+   * Deriva o contrato da configuracao atual (sem estado PRE: ver `reverify`). Nunca lanca.
+   */
+  async reverifyMitigationPhysical(
+    device: HostRecord,
+    input: { policyName: string; customerPeers: readonly string[] },
+  ): Promise<MitigationPhysicalVerification> {
+    const inconclusive = (detail: string): MitigationPhysicalVerification => ({
+      outcome: 'INCONCLUSIVE',
+      summary: `verificacao fisica INCONCLUSIVE: ${detail}`,
+      checks: [{ id: 'reverify', outcome: 'INCONCLUSIVE', detail }],
+      attempts: 0,
+      elapsedMs: 0,
+      mitigationPeer: null,
+      eligiblePrefixes: [],
+      customerPeers: [...input.customerPeers],
+    });
+    const read = this.displayReader(device);
+    if (!read) return inconclusive('transporte sem leitura de evidencia fisica');
+    try {
+      const configuration = await this.deps.ssh.readMitigationConfiguration(device);
+      const derived = deriveMitigationNode2Contract(
+        configuration.routePolicyConfiguration ?? '',
+        input.policyName,
+        {
+          prefixListConfiguration: configuration.prefixListConfiguration,
+          requirePrefixListProof: true,
+          bogonPrefixList: this.labels.bogonPrefixList,
+        },
+      );
+      if (!derived.eligible) return inconclusive(contractRefusalMessage(derived));
+      return await verifyMitigationPhysical({
+        read,
+        contract: derived.contract,
+        customerPeers: input.customerPeers,
+        before: null,
+        reverify: true,
+        ...(this.deps.physical?.timing ? { timing: this.deps.physical.timing } : {}),
+        ...(this.deps.physical?.sleep ? { sleep: this.deps.physical.sleep } : {}),
+        ...(this.deps.physical?.clock ? { clock: this.deps.physical.clock } : {}),
+      });
+    } catch (error) {
+      return inconclusive(safeErrorMessage(error));
     }
   }
 

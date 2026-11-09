@@ -54,6 +54,9 @@ export interface MitigationWebhookPayload {
   /** S5 (deteccao bloqueada): episodio, motivo, direcao e campos ausentes. */
   episodeId: string | null;
   blockedReason: string | null;
+  /** Subtipo de MITIGATION_FAILED (ex.: UNVERIFIED_PHYSICAL). Aditivo. */
+  failureKind: string | null;
+  failureMessage: string | null;
   direction: 'rx' | 'tx' | null;
   directionSource: string | null;
   fieldsUnavailable: string[];
@@ -179,6 +182,8 @@ export function buildMitigationWebhookPayload(
     occurredAt: notification.occurredAt ?? null,
     episodeId: notification.episodeId ?? null,
     blockedReason: notification.blockedReason ?? null,
+    failureKind: notification.failureKind ?? null,
+    failureMessage: notification.failureMessage ?? null,
     direction: notification.direction ?? null,
     directionSource: notification.directionSource ?? null,
     fieldsUnavailable: notification.fieldsUnavailable ?? [],

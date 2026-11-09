@@ -16,11 +16,6 @@ export type MitigationNotificationEvent =
   | 'MITIGATION_RECOVERY_STARTED'
   | 'MITIGATION_ENDED'
   | 'MITIGATION_FAILED'
-  /**
-   * A policy foi escrita e o read-back de texto confere, mas a verificacao FISICA
-   * (efeito no BGP) falhou ou ficou inconclusiva. NUNCA e sucesso; sem rollback automatico.
-   */
-  | 'MITIGATION_UNVERIFIED_PHYSICAL'
   | 'SSH_DISCONNECTED'
   | 'SSH_RECONNECTED'
   | 'MITIGATION_SIMULATION_TRIGGERED'
@@ -59,6 +54,14 @@ export interface MitigationNotification {
   episodeId?: string | null;
   /** S5: motivo pelo qual a escrita NAO foi autorizada. */
   blockedReason?: string | null;
+  /**
+   * Subtipo de `MITIGATION_FAILED`. `UNVERIFIED_PHYSICAL`: a policy foi escrita e o read-back
+   * de texto confere, mas a verificacao FISICA (efeito no BGP) falhou ou ficou inconclusiva.
+   * O workflow n8n RC7.1.2 so entrega tipos conhecidos, entao NAO existe um tipo de evento novo.
+   */
+  failureKind?: string | null;
+  /** Texto explicito do subtipo (aparece no payload; o n8n atual usa o seu proprio texto). */
+  failureMessage?: string | null;
   /** S5: direcao efetiva da telemetria e sua origem. */
   direction?: 'rx' | 'tx' | null;
   directionSource?: string | null;

@@ -2116,6 +2116,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     readPolicy: (device, policyName) => mitigationLiveExecutor.readRoutePolicy(device, policyName),
     labels: mitigationLabels,
     lock: mitigationScopeLock,
+    // M4: a promocao a MITIGATED exige a verificacao fisica reexecutada (somente leitura).
+    physicalVerifier: (device, scope, customerPeers) =>
+      mitigationLiveExecutor.reverifyMitigationPhysical(device, {
+        policyName: scope.policyName,
+        customerPeers,
+      }),
   });
 
   registerMitigationRoutes(app, {

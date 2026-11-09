@@ -62,6 +62,16 @@ export interface PolicyReconcileDeps {
   labels?: { bogonPrefixList: string; targetPrefixList: string };
   /** F4: o APPLY LOCAL entra na MESMA serializacao do command service. */
   lock?: PolicyScopeLock;
+  /**
+   * M4: REEXECUTA a verificacao fisica (somente leitura). O APPLY LOCAL so promove a
+   * MITIGATED se ela der PASS; sem verificador, ou com FAIL/INCONCLUSIVE, o runtime permanece
+   * RECONCILIATION_REQUIRED (UNCERTAIN). O texto da policy sozinho nao promove.
+   */
+  physicalVerifier?: (
+    device: HostRecord,
+    scope: PolicyExecutionScope,
+    customerPeers: readonly string[],
+  ) => Promise<{ outcome: 'PASS' | 'FAIL' | 'INCONCLUSIVE'; summary: string }>;
   now?: () => Date;
 }
 
@@ -338,22 +348,38 @@ export class MitigationPolicyReconciler {
         'Leitura fisica inconclusiva: APPLY bloqueado; nenhuma escrita local foi feita. Revise a policy no equipamento e gere novo preview.',
       );
     }
+    // M4: promover a MITIGATED so com a verificacao fisica REEXECUTADA e PASS.
+    let appliedState: PolicyPhysicalState = fresh.assessment.state;
+    if (appliedState === 'MITIGATED') {
+      const host = await this.deps.hosts.getHost(scope.deviceId);
+      const profiles = await profilesForPolicyScope(this.deps.repository, scope);
+      const peers = new Set<string>();
+      for (const profile of profiles) {
+        for (const peer of await this.deps.repository.listProfilePeers(profile.id)) {
+          peers.add(peer.peerAddress);
+        }
+      }
+      const verdict =
+        host && this.deps.physicalVerifier
+          ? await this.deps.physicalVerifier(host, scope, [...peers]).catch(() => null)
+          : null;
+      if (verdict?.outcome !== 'PASS') appliedState = 'RECONCILIATION_REQUIRED';
+    }
     // MITIGATED: propaga o par FISICO para todos os profiles do escopo,
     // reparando plano x equipamento sob autorizacao explicita do operador.
-    const activePair =
-      fresh.assessment.state === 'MITIGATED' ? fresh.assessment.physical.pair : null;
+    const activePair = appliedState === 'MITIGATED' ? fresh.assessment.physical.pair : null;
     await this.deps.beforeApply?.(scope.deviceId, scope.policyName);
     const synced = await syncPolicyRuntime(
       this.deps.repository,
       scope,
-      fresh.assessment.state,
+      appliedState,
       this.now(),
       activePair,
     );
     return {
       deviceId: scope.deviceId,
       policyName: scope.policyName,
-      state: fresh.assessment.state,
+      state: appliedState,
       previewId,
       readAt: fresh.readAt.toISOString(),
       applied: synced.updated,

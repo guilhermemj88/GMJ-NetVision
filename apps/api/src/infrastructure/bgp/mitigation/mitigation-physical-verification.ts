@@ -8,7 +8,6 @@ import {
   type IpPrefixEntry,
   type MitigationNode2Contract,
 } from './mitigation-node2-contract';
-import { policyNodes } from './mitigation-policy-clauses';
 
 /**
  * VERIFICACAO FISICA POS-ESCRITA (somente leitura, fail-closed).
@@ -20,17 +19,30 @@ import { policyNodes } from './mitigation-policy-clauses';
  *    proprio peer, com a LP do contrato, com RT 660 e SEM a RT 140;
  *  - os prefixos chegam ao peer de mitigacao (descoberto pela configuracao, nunca
  *    fixo no codigo): `display bgp routing-table peer <P> advertised-routes`;
- *  - o peer do cliente segue Established e com o mesmo numero de rotas recebidas;
- *  - prefixos fora da lista nao mudam.
+ *  - o peer do cliente segue Established, SEM flap (`BGP Peer Up count` igual ao
+ *    pre) e com o mesmo numero de rotas recebidas;
+ *  - prefixos fora da lista nao mudam;
+ *  - CAUSALIDADE: o anuncio ao peer de mitigacao estava AUSENTE no pre. Se ja
+ *    estava anunciado (ex.: sessao MITIGACAO paralela do mesmo cliente), o
+ *    anuncio nao prova o efeito do node 2 => INCONCLUSIVE, nunca PASS.
  *
- * Resultado: PASS (unico que permite `MITIGATION_VERIFIED`), FAIL (evidencia
- * contraria) ou INCONCLUSIVE (timeout, parsing ambiguo, descoberta ambigua,
- * propagacao nao observada). FAIL e INCONCLUSIVE viram
- * `MITIGATION_UNVERIFIED_PHYSICAL`: nunca sucesso e SEM rollback automatico.
+ * Resultado: PASS (unico que permite `MITIGATION_VERIFIED`), FAIL (SOMENTE
+ * evidencia positiva contraria: best de outro caminho, LP errada, RT 140
+ * presente, peer caido, flap, contagem diferente) ou INCONCLUSIVE (timeout,
+ * parsing ambiguo, descoberta ambigua, "ainda nao anunciado" ao fim do
+ * orcamento, anuncio ja existente no pre). Qualquer nao-PASS vira
+ * `ACTIVATED_UNVERIFIED_PHYSICAL`, publicado como `MITIGATION_FAILED` com
+ * `failureKind: 'UNVERIFIED_PHYSICAL'` (o workflow n8n so entrega tipos
+ * conhecidos), SEM rollback automatico.
  */
 
 export const PHYSICAL_UNVERIFIED_STATUS = 'ACTIVATED_UNVERIFIED_PHYSICAL';
-export const PHYSICAL_UNVERIFIED_EVENT = 'MITIGATION_UNVERIFIED_PHYSICAL';
+/** Valor de `failureKind` do payload `MITIGATION_FAILED` (n8n RC7.1.2 nao muda). */
+export const PHYSICAL_UNVERIFIED_FAILURE_KIND = 'UNVERIFIED_PHYSICAL';
+/** Prefixo do `safeError`/journal (nao e um tipo de evento de notificacao). */
+export const PHYSICAL_UNVERIFIED_TAG = 'MITIGATION_UNVERIFIED_PHYSICAL';
+export const PHYSICAL_UNVERIFIED_MESSAGE =
+  'escrita aplicada; verificacao fisica nao comprovada; retirada so por CLI + reconciliacao';
 
 export type PhysicalOutcome = 'PASS' | 'FAIL' | 'INCONCLUSIVE';
 
@@ -45,6 +57,10 @@ export type DisplayReader = (commands: string[]) => Promise<DisplayRead[]>;
 export interface PhysicalBeforeEvidence {
   capturedAt: string;
   peers: Array<{ peer: string; verbose: string | null; received: string | null }>;
+  /** Peer de mitigacao descoberto ANTES da escrita (`null` = ausente/ambiguo). */
+  mitigationPeer?: string | null;
+  /** `advertised-routes` do peer de mitigacao ANTES da escrita (causalidade). */
+  advertisedBefore?: string | null;
 }
 
 export interface PhysicalCheck {
@@ -73,14 +89,23 @@ export interface PhysicalVerificationTiming {
   budgetMs: number;
 }
 
+/**
+ * Orcamento TOTAL de 90 s com tentativas a cada 5 s: maior que o MRAI de eBGP (30 s),
+ * para o anuncio ao peer de mitigacao ter tempo de aparecer. O orcamento e conferido
+ * ANTES de cada leitura e cada leitura e limitada ao que resta dele.
+ */
 export const DEFAULT_PHYSICAL_TIMING: PhysicalVerificationTiming = Object.freeze({
-  maxAttempts: 6,
-  intervalMs: 4_000,
-  budgetMs: 28_000,
+  maxAttempts: 18,
+  intervalMs: 5_000,
+  budgetMs: 90_000,
 });
 
-/** Teto de prefixos consultados individualmente (acima disto a prova e inconclusiva). */
-const MAX_ELIGIBLE_PREFIXES = 16;
+/**
+ * Teto de prefixos consultados individualmente (acima disto a prova e inconclusiva e o
+ * perfil nunca chega a PASS). NAO aumentar sem medir: cada prefixo e um `display` na
+ * mesma sessao, repetido a cada tentativa.
+ */
+export const MAX_ELIGIBLE_PREFIXES = 16;
 const OUTSIDE_SAMPLE = 3;
 
 const IPV4 = /^(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)$/;
@@ -141,11 +166,17 @@ export function isMitigationEvidenceCommand(command: string): boolean {
 export function parsePeerVerbose(output: string | null): {
   state: string | null;
   receivedTotal: number | null;
+  upCount: number | null;
 } {
-  if (!output) return { state: null, receivedTotal: null };
+  if (!output) return { state: null, receivedTotal: null, upCount: null };
   const state = /BGP current state:\s*([A-Za-z]+)/i.exec(output)?.[1] ?? null;
   const total = /Received total routes:\s*(\d+)/i.exec(output)?.[1];
-  return { state, receivedTotal: total === undefined ? null : Number(total) };
+  const up = /BGP Peer Up count:\s*(\d+)/i.exec(output)?.[1];
+  return {
+    state,
+    receivedTotal: total === undefined ? null : Number(total),
+    upCount: up === undefined ? null : Number(up),
+  };
 }
 
 export interface RoutingTablePath {
@@ -235,6 +266,8 @@ export function parseExtcommunityFilters(
 export interface MitigationPeerDiscovery {
   /** Peer unico de mitigacao; `null` = ausente ou ambiguo (resultado inconclusivo). */
   peer: string | null;
+  /** Export policy do peer de mitigacao (somente com `peer` unico). */
+  exportPolicy?: string | null;
   candidates: string[];
   detail: string;
 }
@@ -242,8 +275,11 @@ export interface MitigationPeerDiscovery {
 /**
  * Descobre, pela CONFIGURACAO, o peer ao qual a RT de mitigacao e anunciada:
  *  1. filtros de extcommunity com `permit rt 268568:660`;
- *  2. policies cujo PRIMEIRO node generico (somente esse filtro) e `permit`
- *     (um `deny` primeiro, como nos exports SEABORN/SEMPRE, exclui a policy);
+ *  2. policies cujo PRIMEIRO node de condicao unica (somente esse filtro) e `permit`.
+ *     Nos exports SEABORN/SEMPRE o node 5 tem DUAS condicoes (MITIGACAO e
+ *     NO-EXPORT-x): nao e node de condicao unica, logo a policy e excluida aqui. O que
+ *     de fato tira a rota 660 desses transitos e a saida da RT 140 (REPLACE), da qual o
+ *     node 90 depende;
  *  3. peers IPv4 unicast com `route-policy <policy> export`.
  * Zero ou mais de um peer => ambiguo.
  */
@@ -272,16 +308,37 @@ export function discoverMitigationPeer(input: {
   if (mitigationFilters.size === 0) {
     return { peer: null, candidates: [], detail: `nenhum extcommunity-filter permite a RT ${rt}` };
   }
-  const policyNames = new Set<string>();
-  for (const line of input.routePolicyConfiguration.split(/\r?\n/)) {
-    const match = /^route-policy (\S+) (?:permit|deny) node \d+\s*$/i.exec(line.trim());
-    if (match) policyNames.add(match[1]!);
+  // UMA passada: policy -> nodes (a config real tem ~2000 linhas e dezenas de policies).
+  const byPolicy = new Map<
+    string,
+    Array<{ node: number; action: 'permit' | 'deny'; clauses: string[] }>
+  >();
+  let current: { node: number; action: 'permit' | 'deny'; clauses: string[] } | null = null;
+  for (const raw of input.routePolicyConfiguration.split(/\r?\n/)) {
+    const line = raw.trim();
+    const header = /^route-policy (\S+) (permit|deny) node (\d+)$/i.exec(line);
+    if (header) {
+      current = {
+        node: Number(header[3]),
+        action: header[2]!.toLowerCase() as 'permit' | 'deny',
+        clauses: [],
+      };
+      const list = byPolicy.get(header[1]!) ?? [];
+      list.push(current);
+      byPolicy.set(header[1]!, list);
+      continue;
+    }
+    if (line === '#' || (line.length > 0 && !/^[ \t]/.test(raw))) {
+      current = null;
+      continue;
+    }
+    if (current && /^(if-match|apply|goto)[ \t]+(?!clauses\b)\S/i.test(line)) {
+      current.clauses.push(line.replace(/\s+/g, ' '));
+    }
   }
   const exporting = new Set<string>();
-  for (const policy of policyNames) {
-    const nodes = policyNodes(input.routePolicyConfiguration, policy).sort(
-      (a, b) => a.node - b.node,
-    );
+  for (const [policy, list] of byPolicy) {
+    const nodes = [...list].sort((a, b) => a.node - b.node);
     for (const node of nodes) {
       const conditions = node.clauses.filter((clause) => /^if-match\b/i.test(clause));
       const filterClause =
@@ -294,6 +351,7 @@ export function discoverMitigationPeer(input: {
     }
   }
   const peers = new Set<string>();
+  const policyOf = new Map<string, string>();
   const ambiguous: string[] = [];
   let family: string | null = null;
   for (const raw of input.bgpConfiguration.split(/\r?\n/)) {
@@ -308,8 +366,10 @@ export function discoverMitigationPeer(input: {
     }
     const exportLine = /^\s*peer\s+(\S+)\s+route-policy\s+(\S+)\s+export\s*$/i.exec(raw);
     if (!exportLine || family !== 'ipv4-unicast' || !exporting.has(exportLine[2]!)) continue;
-    if (isIpv4Literal(exportLine[1]!)) peers.add(exportLine[1]!);
-    else ambiguous.push(exportLine[1]!);
+    if (isIpv4Literal(exportLine[1]!)) {
+      peers.add(exportLine[1]!);
+      policyOf.set(exportLine[1]!, exportLine[2]!);
+    } else ambiguous.push(exportLine[1]!);
   }
   const candidates = [...peers].sort();
   if (ambiguous.length > 0) {
@@ -331,6 +391,7 @@ export function discoverMitigationPeer(input: {
   }
   return {
     peer: candidates[0]!,
+    exportPolicy: policyOf.get(candidates[0]!) ?? null,
     candidates,
     detail: `peer de mitigacao ${candidates[0]} (export por filtro ${[...mitigationFilters].join(', ')})`,
   };
@@ -349,8 +410,27 @@ export async function captureBeforeEvidence(
   peers: readonly string[],
   now: () => Date = () => new Date(),
 ): Promise<PhysicalBeforeEvidence> {
-  const reads = await read(beforeEvidenceCommands(peers));
+  // Sessao 1: peers do cliente + configuracao para descobrir o peer de mitigacao.
+  const reads = await read([
+    ...beforeEvidenceCommands(peers),
+    BGP_CONFIGURATION_COMMAND,
+    ROUTE_POLICY_CONFIGURATION_COMMAND,
+    EXTCOMMUNITY_FILTER_COMMAND,
+  ]);
   const byCommand = new Map(reads.map((entry) => [entry.command, entry.output]));
+  const discovery = discoverMitigationPeer({
+    bgpConfiguration: byCommand.get(BGP_CONFIGURATION_COMMAND) ?? null,
+    routePolicyConfiguration: byCommand.get(ROUTE_POLICY_CONFIGURATION_COMMAND) ?? null,
+    extcommunityFilterOutput: byCommand.get(EXTCOMMUNITY_FILTER_COMMAND) ?? null,
+  });
+  // Sessao 2: o anuncio ao peer de mitigacao ANTES da escrita (causalidade).
+  let advertisedBefore: string | null = null;
+  if (discovery.peer) {
+    const second = await read([advertisedRoutesCommand(discovery.peer)]).catch(
+      () => [] as DisplayRead[],
+    );
+    advertisedBefore = second[0]?.output ?? null;
+  }
   return {
     capturedAt: now().toISOString(),
     peers: peers.map((peer) => ({
@@ -358,6 +438,8 @@ export async function captureBeforeEvidence(
       verbose: byCommand.get(peerVerboseCommand(peer)) ?? null,
       received: byCommand.get(receivedRoutesCommand(peer)) ?? null,
     })),
+    mitigationPeer: discovery.peer,
+    advertisedBefore,
   };
 }
 
@@ -391,10 +473,44 @@ export interface VerifyPhysicalInput {
   contract: MitigationNode2Contract;
   customerPeers: readonly string[];
   before: PhysicalBeforeEvidence | null;
+  /**
+   * REVERIFICACAO (reconciliacao M4): a mitigacao JA esta aplicada, entao nao existe estado PRE.
+   * O estado atual dos peers vira a referencia (sem flap/contagem comparaveis ao pre) e a
+   * causalidade do anuncio NAO e reprovada nem provada: PASS exige o efeito observavel agora
+   * (best/select do proprio peer, LP, 660 sem 140, anuncio presente, peer Established).
+   */
+  reverify?: boolean;
   timing?: PhysicalVerificationTiming;
   sleep?: (ms: number) => Promise<void>;
   /** Relogio monotonico (ms). */
   clock?: () => number;
+}
+
+type BeforeByPeer = Map<
+  string,
+  {
+    total: number | null;
+    upCount: number | null;
+    prefixes: Map<string, number | null>;
+    reportedTotal: number | null;
+  }
+>;
+
+/** Executa a leitura limitada ao que resta do orcamento (nunca excede a janela). */
+async function readWithin(
+  read: DisplayReader,
+  commands: string[],
+  remainingMs: number,
+): Promise<DisplayRead[]> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<DisplayRead[]>((resolve) => {
+    timer = setTimeout(() => resolve([]), Math.max(1_000, remainingMs));
+  });
+  try {
+    return await Promise.race([read(commands).catch(() => [] as DisplayRead[]), limit]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 function aggregate(checks: readonly PhysicalCheck[]): PhysicalOutcome {
@@ -447,7 +563,12 @@ export async function verifyMitigationPhysical(
       'peer do cliente nao IPv4: verificacao fisica nao suportada',
     );
   }
-  if (!input.before || input.before.peers.length !== customerPeers.length) {
+  let beforeEvidence = input.before;
+  if (input.reverify) {
+    beforeEvidence = await captureBeforeEvidence(input.read, customerPeers).catch(() => null);
+  }
+  const skipCausality = input.reverify === true;
+  if (!beforeEvidence || beforeEvidence.peers.length !== customerPeers.length) {
     return inconclusive(
       'before_evidence',
       'evidencia PRE-escrita (peer/rotas recebidas) indisponivel',
@@ -462,11 +583,8 @@ export async function verifyMitigationPhysical(
   }
 
   // PRE: prefixos recebidos por peer, elegiveis x fora da lista.
-  const beforeByPeer = new Map<
-    string,
-    { total: number | null; prefixes: Map<string, number | null>; reportedTotal: number | null }
-  >();
-  for (const item of input.before.peers) {
+  const beforeByPeer: BeforeByPeer = new Map();
+  for (const item of beforeEvidence.peers) {
     const received = parseReceived(item.received);
     if (!received) {
       return inconclusive(
@@ -483,6 +601,7 @@ export async function verifyMitigationPhysical(
     }
     beforeByPeer.set(item.peer, {
       total: verbose.receivedTotal,
+      upCount: verbose.upCount,
       prefixes: received.prefixes,
       reportedTotal: received.reportedTotal,
     });
@@ -553,13 +672,11 @@ export async function verifyMitigationPhysical(
   let attempts = 0;
   let checks: PhysicalCheck[] = [];
   for (;;) {
+    // O orcamento e conferido ANTES de cada leitura (a primeira sempre acontece).
+    const remaining = timing.budgetMs - (clock() - started);
+    if (attempts > 0 && remaining <= 0) break;
     attempts += 1;
-    let reads: DisplayRead[] = [];
-    try {
-      reads = await input.read(uniqueCommands);
-    } catch {
-      reads = [];
-    }
+    const reads = await readWithin(input.read, uniqueCommands, remaining);
     const outputs = new Map(reads.map((entry) => [entry.command, entry.output]));
     checks = evaluate({
       contract: input.contract,
@@ -569,12 +686,15 @@ export async function verifyMitigationPhysical(
       outsideSample,
       outsideAll: outside,
       mitigationPeer,
+      beforeMitigationPeer: beforeEvidence.mitigationPeer ?? null,
+      beforeAdvertised: beforeEvidence.advertisedBefore ?? null,
+      skipCausality,
       discoveryDetail: discovery.detail,
       outputs,
     });
     if (aggregate(checks) === 'PASS') break;
     const elapsed = clock() - started;
-    if (attempts >= timing.maxAttempts || elapsed + timing.intervalMs > timing.budgetMs) break;
+    if (attempts >= timing.maxAttempts || elapsed + timing.intervalMs >= timing.budgetMs) break;
     await sleep(timing.intervalMs);
   }
   return finish(aggregate(checks), checks, attempts, { mitigationPeer, eligiblePrefixes });
@@ -583,14 +703,14 @@ export async function verifyMitigationPhysical(
 function evaluate(ctx: {
   contract: MitigationNode2Contract;
   customerPeers: readonly string[];
-  beforeByPeer: Map<
-    string,
-    { total: number | null; prefixes: Map<string, number | null>; reportedTotal: number | null }
-  >;
+  beforeByPeer: BeforeByPeer;
   eligible: Array<{ peer: string; prefix: string }>;
   outsideSample: Array<{ peer: string; prefix: string }>;
   outsideAll: Array<{ peer: string; prefix: string }>;
   mitigationPeer: string | null;
+  beforeMitigationPeer: string | null;
+  beforeAdvertised: string | null;
+  skipCausality: boolean;
   discoveryDetail: string;
   outputs: Map<string, string | null>;
 }): PhysicalCheck[] {
@@ -626,6 +746,18 @@ function evaluate(ctx: {
           id: `peer:${peer}`,
           outcome: 'INCONCLUSIVE',
           detail: 'total de rotas recebidas ilegivel',
+        });
+      } else if (verbose.upCount === null || before.upCount === null) {
+        checks.push({
+          id: `peer:${peer}`,
+          outcome: 'INCONCLUSIVE',
+          detail: 'BGP Peer Up count ilegivel: flap nao descartavel',
+        });
+      } else if (verbose.upCount !== before.upCount) {
+        checks.push({
+          id: `peer:${peer}`,
+          outcome: 'FAIL',
+          detail: `flap do peer ${peer}: BGP Peer Up count ${before.upCount} antes x ${verbose.upCount} depois`,
         });
       } else if (verbose.receivedTotal !== before.total) {
         checks.push({
@@ -740,6 +872,12 @@ function evaluate(ctx: {
 
   if (!ctx.mitigationPeer || advertisedCmd === null) {
     checks.push({ id: 'advertised', outcome: 'INCONCLUSIVE', detail: ctx.discoveryDetail });
+  } else if (!ctx.skipCausality && ctx.beforeMitigationPeer !== ctx.mitigationPeer) {
+    checks.push({
+      id: 'advertised',
+      outcome: 'INCONCLUSIVE',
+      detail: `peer de mitigacao pre (${ctx.beforeMitigationPeer ?? 'nao descoberto'}) diferente do pos (${ctx.mitigationPeer}): causalidade nao comprovavel`,
+    });
   } else if (unreadable(advertisedCmd)) {
     checks.push({
       id: 'advertised',
@@ -759,22 +897,52 @@ function evaluate(ctx: {
         detail: 'advertised-routes ilegivel',
       });
     } else {
+      const before =
+        ctx.beforeAdvertised === null
+          ? null
+          : parseHuaweiAdvertisedRoutes(ctx.beforeAdvertised, {
+              localAs: null,
+              addressFamily: 'IPV4',
+            });
+      const beforeReadable =
+        ctx.skipCausality ||
+        (before !== null && !(before.routes.length === 0 && before.reportedTotal !== 0));
+      const beforeSet = new Set(
+        ctx.skipCausality ? [] : (before?.routes.map((route) => route.prefix) ?? []),
+      );
+      const alreadyThere = ctx.eligible
+        .map((item) => item.prefix)
+        .filter((prefix) => beforeSet.has(prefix));
       const missing = ctx.eligible
         .map((item) => item.prefix)
         .filter((prefix) => !advertised.has(prefix));
-      checks.push(
-        missing.length === 0
-          ? {
-              id: 'advertised',
-              outcome: 'PASS',
-              detail: `${ctx.eligible.length} prefixo(s) anunciado(s) ao peer ${ctx.mitigationPeer}`,
-            }
-          : {
-              id: 'advertised',
-              outcome: 'FAIL',
-              detail: `nao anunciados a ${ctx.mitigationPeer}: ${missing.join(', ')}`,
-            },
-      );
+      if (!beforeReadable) {
+        checks.push({
+          id: 'advertised',
+          outcome: 'INCONCLUSIVE',
+          detail: 'anuncio PRE-escrita indisponivel/ilegivel: causalidade nao comprovavel',
+        });
+      } else if (alreadyThere.length > 0) {
+        checks.push({
+          id: 'advertised',
+          outcome: 'INCONCLUSIVE',
+          detail: `ja anunciado a ${ctx.mitigationPeer} ANTES da escrita (${alreadyThere.join(', ')}): o anuncio nao prova o efeito do node 2`,
+        });
+      } else if (missing.length === 0) {
+        checks.push({
+          id: 'advertised',
+          outcome: 'PASS',
+          detail: `${ctx.eligible.length} prefixo(s) ausente(s) no pre e agora anunciado(s) ao peer ${ctx.mitigationPeer}`,
+        });
+      } else {
+        // "Ainda nao anunciado" NAO e evidencia contraria: dentro do orcamento continua
+        // tentando e, ao esgotar, o resultado e INCONCLUSIVE (nunca FAIL).
+        checks.push({
+          id: 'advertised',
+          outcome: 'INCONCLUSIVE',
+          detail: `ainda nao anunciados a ${ctx.mitigationPeer}: ${missing.join(', ')}`,
+        });
+      }
     }
   }
   return checks;

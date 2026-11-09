@@ -20,9 +20,17 @@ import { policyNodes } from './mitigation-policy-clauses';
  * DECISAO DE RT: `rtMode: 'REPLACE'` (sem `additive`). A pratica operacional
  * comprovada (MITIGACAO-73S/CLICKING/GNA-V4-IN) substitui a RT 140 pela 660.
  * Efeito: durante a mitigacao a RT 140 SAI da rota; os exports que casam com a
- * 140 (CIRION node 90, SWITCH node 100 etc.) deixam de anunciar; a COMPUTIZE
- * anuncia pelo filtro MITIGACAO (RT 660, nodes 200/300); SEABORN e SEMPRE negam
- * por `deny node 5` (extcommunity-filter MITIGACAO).
+ * 140 (CIRION node 90, SWITCH node 100, SEABORN/SEMPRE/TUDDO node 90 etc.) deixam
+ * de anunciar; a COMPUTIZE anuncia pelo filtro MITIGACAO (RT 660, node 300). O
+ * `deny node 5` de SEABORN/SEMPRE tem DUAS condicoes (MITIGACAO e NO-EXPORT-x): pela
+ * regra AND do VRP uma rota so com a RT 660 NAO o casa. O que tira a rota desses
+ * transitos e a saida da RT 140. Por isso o REPLACE e obrigatorio: com `additive` a
+ * rota (140 + 660) continuaria exportada por esses nodes 90 e seria NEGADA pela
+ * COMPUTIZE no node 90.
+ *
+ * Elegibilidade tambem exige: BOGONS (node 1) NAO intersecta a lista do cliente, e
+ * (no preflight) o export do peer de mitigacao nao sombreia a lista do cliente
+ * (`mitigation-export-shadow.ts`).
  *
  * Fail-closed: qualquer forma que nao se prove segura e RECUSADA com
  * `MITIGATION_CONTRACT_UNSUPPORTED` e motivos explicitos. Nada aqui presume que
@@ -207,7 +215,10 @@ export function ipPrefixListPermits(
 }
 
 /** Conservador: as listas se sobrepoem se QUALQUER bloco base se tocar. */
-function listsOverlap(left: readonly IpPrefixEntry[], right: readonly IpPrefixEntry[]): boolean {
+export function listsOverlap(
+  left: readonly IpPrefixEntry[],
+  right: readonly IpPrefixEntry[],
+): boolean {
   return left.some((a) => {
     const blockA = blockOf(a.network, a.length);
     return right.some((b) => {
@@ -388,6 +399,20 @@ export function deriveMitigationNode2Contract(
         reasons.push(`prefix-list ${prefixList} ilegivel/vazia`);
       } else {
         entries = targetEntries.map((entry) => entry.text);
+        // BOGONS (node 1, deny) precede o node 2: se intersectar a lista do cliente, o node 1
+        // passaria a negar prefixos que o node permanente aceitava.
+        if (options.requirePrefixListProof) {
+          const bogons = parseIpPrefixEntries(lists, bogonList);
+          if (!bogons || bogons.length === 0) {
+            reasons.push(
+              `lista ${bogonList} inexistente/ilegivel: intersecao BOGONS x ${prefixList} nao comprovavel`,
+            );
+          } else if (listsOverlap(targetEntries, bogons)) {
+            reasons.push(
+              `${bogonList} intersecta a lista do cliente ${prefixList}: o node 1 negaria prefixos que o node permanente aceita`,
+            );
+          }
+        }
       }
     } else if (options.requirePrefixListProof) {
       reasons.push(

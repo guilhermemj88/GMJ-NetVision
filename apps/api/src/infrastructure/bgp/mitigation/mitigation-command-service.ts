@@ -37,8 +37,10 @@ import {
 } from './mitigation-scope-confirmation';
 import { contractRefusalMessage, type MitigationNode2Contract } from './mitigation-node2-contract';
 import {
-  PHYSICAL_UNVERIFIED_EVENT,
+  PHYSICAL_UNVERIFIED_FAILURE_KIND,
+  PHYSICAL_UNVERIFIED_MESSAGE,
   PHYSICAL_UNVERIFIED_STATUS,
+  PHYSICAL_UNVERIFIED_TAG,
   type MitigationPhysicalVerification,
   type PhysicalBeforeEvidence,
 } from './mitigation-physical-verification';
@@ -297,12 +299,12 @@ export interface MitigationLiveExecutorPort {
    * READ-ONLY, PRE-escrita (em paralelo ao preflight): estado dos peers do cliente.
    * Ausente (fakes de leitura) = sem verificacao fisica; o executor Huawei real a implementa.
    */
-  captureMitigationEvidence?(
+  captureMitigationEvidence(
     device: HostRecord,
     customerPeers: readonly string[],
   ): Promise<PhysicalBeforeEvidence | null>;
   /** READ-ONLY, POS-escrita: prova o efeito no BGP. Nunca lanca. */
-  verifyMitigationPhysical?(
+  verifyMitigationPhysical(
     device: HostRecord,
     input: {
       contract: MitigationNode2Contract;
@@ -1127,7 +1129,7 @@ export class MitigationCommandService {
         // conferiu. Prova o EFEITO no BGP; PASS e a unica forma de MITIGATION_VERIFIED.
         // Falha/inconclusivo NUNCA e sucesso e NAO dispara rollback automatico.
         let physical: MitigationPhysicalVerification | null = null;
-        if (check.verified && liveDevice && live?.verifyMitigationPhysical) {
+        if (check.verified && liveDevice && live) {
           physical = activationInput.mitigationContract
             ? await live.verifyMitigationPhysical(liveDevice, {
                 contract: activationInput.mitigationContract,
@@ -1151,7 +1153,7 @@ export class MitigationCommandService {
         const physicalFailed = physical !== null && physical.outcome !== 'PASS';
         const finalVerified = check.verified && !physicalFailed;
         const physicalError = physicalFailed
-          ? `${PHYSICAL_UNVERIFIED_EVENT}: ${physical!.summary}`
+          ? `${PHYSICAL_UNVERIFIED_TAG}: ${physical!.summary}`
           : null;
         // ESCOPO VERIFICADO: so depois de uma escrita REAL e verificada. Leitura
         // READ-ONLY, best effort: nunca altera `check.verified` nem o resultado.
@@ -1163,11 +1165,7 @@ export class MitigationCommandService {
             : undefined;
         const sync = await this.record(profile, activate, finalVerified, pair, physicalError);
         await this.publish(
-          finalVerified
-            ? 'MITIGATION_VERIFIED'
-            : physicalFailed
-              ? PHYSICAL_UNVERIFIED_EVENT
-              : 'MITIGATION_FAILED',
+          finalVerified ? 'MITIGATION_VERIFIED' : 'MITIGATION_FAILED',
           {
             ...common,
             verified: finalVerified,
@@ -1175,6 +1173,7 @@ export class MitigationCommandService {
             effectiveBandwidthBps: effectiveBandwidth,
             simulation: !liveDevice,
             scopePrefixes,
+            ...(physicalFailed ? { failureKind: PHYSICAL_UNVERIFIED_FAILURE_KIND } : {}),
           },
           outcome,
           deferred,
@@ -1694,6 +1693,8 @@ export class MitigationCommandService {
       sharedPolicyTargets: MitigationSharedTargetSummary[];
       /** ESCOPO VERIFICADO: presente na ativacao real verificada. */
       scopePrefixes?: MitigationScopePrefixSelection | undefined;
+      /** Subtipo de MITIGATION_FAILED (ex.: UNVERIFIED_PHYSICAL). */
+      failureKind?: string;
     },
     outcome: MitigationNotificationOutcome,
     deferred = false,
@@ -1731,6 +1732,9 @@ export class MitigationCommandService {
         addressFamily: target.addressFamily,
       })),
       occurredAt: this.now().toISOString(),
+      ...(info.failureKind
+        ? { failureKind: info.failureKind, failureMessage: PHYSICAL_UNVERIFIED_MESSAGE }
+        : {}),
       ...(info.scopePrefixes
         ? {
             prefixes: info.scopePrefixes.prefixes,
