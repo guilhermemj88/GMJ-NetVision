@@ -1,4 +1,9 @@
 import { equalClauses, policyNodeClauses } from './mitigation-policy-clauses';
+import {
+  deriveMitigationNode2Contract,
+  mitigationNode2Clauses,
+  type MitigationNode2Contract,
+} from './mitigation-node2-contract';
 
 /** Operator-approved IPv4 contract. Baseline attributes are evidence, never commands. */
 export const IPV4_MITIGATION_CONTRACT = Object.freeze({
@@ -8,14 +13,32 @@ export const IPV4_MITIGATION_CONTRACT = Object.freeze({
   rt: '268568:660',
 });
 
-export function exactMitigationNodes(text: string, policy: string) {
+/**
+ * Read-back EXATO dos nodes 1 e 2.
+ *
+ * O node 2 deve ser exatamente o clone estreito do node permanente do cliente
+ * (if-match + local-preference + RT 660, sem additive). `contract` (do
+ * preflight) e a referencia quando existe; sem ele o contrato e derivado dos
+ * nodes PERMANENTES do proprio texto lido - que o drift check garante
+ * identicos ao baseline. Policy sem contrato derivavel NUNCA tem node 2 ok.
+ */
+export function exactMitigationNodes(
+  text: string,
+  policy: string,
+  contract?: MitigationNode2Contract | null,
+) {
   const bogon = policyNodeClauses(text, policy, 1);
   const mitigation = policyNodeClauses(text, policy, 2);
+  let expected: string[] | null = null;
+  if (contract) expected = mitigationNode2Clauses(contract);
+  else {
+    const derived = deriveMitigationNode2Contract(text, policy);
+    if (derived.eligible) expected = mitigationNode2Clauses(derived.contract);
+  }
   return {
     bogonOk: bogon?.action === 'deny' && equalClauses(bogon.clauses, ['if-match ip-prefix BOGONS']),
     mitigationOk:
-      mitigation?.action === 'permit' &&
-      equalClauses(mitigation.clauses, ['apply extcommunity rt 268568:660']),
+      mitigation?.action === 'permit' && expected !== null && equalClauses(mitigation.clauses, expected),
   };
 }
 
@@ -67,7 +90,7 @@ export function exactMitigationNodesFromParsed(
       bogon.ifMatchIpPrefix[0] === 'BOGONS',
     mitigationOk:
       mitigation?.action === 'permit' &&
-      mitigation.ifMatchIpPrefix.length === 0 &&
+      mitigation.ifMatchIpPrefix.length === 1 &&
       mitigation.routeTargets.length === 1 &&
       mitigation.routeTargets[0] === rt,
   };

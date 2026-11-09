@@ -1,5 +1,10 @@
 import { assertIpv4MitigationContract } from './mitigation-contract';
-import { type PreservedClauses } from './mitigation-policy-clauses';
+import {
+  isMitigationNode2Contract,
+  MITIGATION_CONTRACT_UNSUPPORTED,
+  mitigationNode2Clauses,
+  type MitigationNode2Contract,
+} from './mitigation-node2-contract';
 
 /**
  * Guarda estrutural da ESCrita de mitigacao.
@@ -69,19 +74,37 @@ function normalizePlan(plan: MitigationWritePlan): MitigationWritePlan {
   };
 }
 
-/** Exact IPv4 plan. Unrestricted permit after BOGONS is operator-approved. */
+/**
+ * Plano IPv4 exato. O node 2 NAO e mais um permit irrestrito: e o clone estreito
+ * do node permanente do cliente (if-match + local-preference + RT 660 sem
+ * additive), vindo do contrato derivado e validado pelo preflight. Sem contrato
+ * valido nenhuma lista de comandos existe (fail-closed, nem em simulacao).
+ */
 export function buildMitigationActivateCommands(
   plan: MitigationWritePlan,
-  _preserved?: PreservedClauses,
+  contract?: MitigationNode2Contract | null,
 ): string[] {
   const safe = normalizePlan(plan);
   assertIpv4MitigationContract(safe);
+  if (
+    !isMitigationNode2Contract(contract) ||
+    contract.policyName !== safe.policyName ||
+    contract.rt !== safe.rt
+  ) {
+    throw new Error(
+      `${MITIGATION_CONTRACT_UNSUPPORTED}: contrato do node 2 ausente, invalido ou de outra policy`,
+    );
+  }
+  assertSafePrefixListName(contract.prefixList, 'prefix-list do cliente');
+  const [ifMatch, localPreference, routeTarget] = mitigationNode2Clauses(contract);
   return [
     'system-view',
     `route-policy ${safe.policyName} deny node 1`,
     ' if-match ip-prefix BOGONS',
     `route-policy ${safe.policyName} permit node 2`,
-    ' apply extcommunity rt 268568:660',
+    ` ${ifMatch}`,
+    ` ${localPreference}`,
+    ` ${routeTarget}`,
     'commit',
   ];
 }

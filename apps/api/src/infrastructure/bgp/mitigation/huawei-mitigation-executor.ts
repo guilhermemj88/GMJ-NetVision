@@ -30,6 +30,20 @@ import {
 } from './mitigation-baseline-record';
 import { type PreservedClauses } from './mitigation-policy-clauses';
 import {
+  captureBeforeEvidence,
+  verifyMitigationPhysical,
+  type DisplayReader,
+  type MitigationPhysicalVerification,
+  type PhysicalBeforeEvidence,
+  type PhysicalVerificationTiming,
+} from './mitigation-physical-verification';
+import {
+  contractRefusalMessage,
+  deriveMitigationNode2Contract,
+  sameMitigationNode2Contract,
+  type MitigationNode2Contract,
+} from './mitigation-node2-contract';
+import {
   assertMitigationCommandShape,
   buildMitigationActivateCommands,
   buildMitigationRemovalCommands,
@@ -71,6 +85,14 @@ export interface MitigationSshPort {
     device: HostRecord,
     commands: readonly string[],
   ): Promise<{ ok: boolean; output: string | null }>;
+  /**
+   * READ-ONLY: `display` de evidencia fisica (peer, rotas, routing-table...). Ausente =
+   * a verificacao fisica pos-escrita e INCONCLUSIVA (nunca sucesso).
+   */
+  readMitigationDisplays?(
+    device: HostRecord,
+    commands: readonly string[],
+  ): Promise<Array<{ command: string; output: string | null }>>;
 }
 
 export type MitigationPreflightMode = 'ACTIVATE' | 'REMOVE';
@@ -126,6 +148,11 @@ export interface MitigationPreflightResult {
   nodeOccupancy?: NodeOccupancyPlan | null;
   /** Atributos normais do cliente que o node de mitigacao deve repor. */
   preservedClauses?: PreservedClauses | null;
+  /**
+   * ACTIVATE: contrato do node 2 derivado e validado do baseline fisico
+   * (`null` = policy inelegivel; o motivo esta no check `mitigation_contract`).
+   */
+  mitigationContract?: MitigationNode2Contract | null;
   baselineRecord?: MitigationBaselineRecord | null;
   /** Nodes lidos pelo MESMO parser do read-back pos-commit (display route-policy). */
   readBackNodes: number[];
@@ -147,6 +174,12 @@ export interface HuaweiMitigationExecutorDeps {
    * (nunca persistente); producao injeta o store duravel.
    */
   baseline?: MitigationBaselineStore;
+  /** Verificacao fisica pos-escrita: tempos/relogio injetaveis (testes). */
+  physical?: {
+    timing?: PhysicalVerificationTiming;
+    sleep?: (ms: number) => Promise<void>;
+    clock?: () => number;
+  };
 }
 
 function safeErrorMessage(error: unknown): string {
@@ -227,11 +260,12 @@ export class HuaweiMitigationExecutor {
       );
     }
     let readBack: string;
+    let configuration: MitigationSshConfiguration;
 
     try {
       // Mesma leitura do preflight (config + ip-prefix): a comparacao das duas
       // leituras usa exatamente as mesmas listas que geraram os comandos.
-      const configuration = await this.deps.ssh.readMitigationConfiguration(device);
+      configuration = await this.deps.ssh.readMitigationConfiguration(device);
       readBack = configuration.routePolicyConfiguration ?? '';
     } catch (error) {
       throw new Error(`MITIGATION_BASELINE_RECORD_UNAVAILABLE: ${safeErrorMessage(error)}`);
@@ -268,6 +302,22 @@ export class HuaweiMitigationExecutor {
     if (diverged.length > 0) {
       throw new Error(`MITIGATION_BASELINE_DIVERGED: ${diverged.join('; ')}`);
     }
+    // O contrato do node 2 vem do preflight; a segunda leitura fisica (policy + ip-prefix)
+    // precisa derivar EXATAMENTE o mesmo contrato (lista, LP, RT e entradas da lista).
+    const secondContract = deriveMitigationNode2Contract(readBack, input.policyName, {
+      prefixListConfiguration: configuration.prefixListConfiguration,
+      requirePrefixListProof: true,
+      bogonPrefixList: this.labels.bogonPrefixList,
+    });
+    if (!secondContract.eligible)
+      throw new Error(contractRefusalMessage(secondContract));
+    if (
+      !input.mitigationContract ||
+      !sameMitigationNode2Contract(input.mitigationContract, secondContract.contract)
+    )
+      throw new Error(
+        'MITIGATION_CONTRACT_DIVERGED: contrato do node 2 do preflight diverge da segunda leitura fisica',
+      );
     const record = captureMitigationBaseline({
       deviceId: device.id,
       policyName: input.policyName,
@@ -430,6 +480,7 @@ export class HuaweiMitigationExecutor {
     let readBackError: string | null = null;
     let nodeOccupancy: NodeOccupancyPlan | null = null;
     const preservedClauses: PreservedClauses | null = null;
+    let mitigationContract: MitigationNode2Contract | null = null;
     try {
       readBackOutput = await this.deps.ssh.readMitigationRoutePolicy(device, input.policyName);
     } catch (error) {
@@ -535,6 +586,26 @@ export class HuaweiMitigationExecutor {
       });
       nodeOccupancy = occupancy;
 
+      // CONTRATO DO NODE 2: clone estreito do node permanente do cliente, provado
+      // pelo baseline fisico (um permit com if-match/LP/RT 140, prefix-list existente,
+      // sem deny anterior que alcance a lista). Inelegivel => nenhum comando existe.
+      const derivation = deriveMitigationNode2Contract(
+        routePolicyConfiguration ?? '',
+        input.policyName,
+        {
+          prefixListConfiguration,
+          requirePrefixListProof: true,
+          bogonPrefixList: input.bogonPrefixList,
+        },
+      );
+      mitigationContract = derivation.eligible ? derivation.contract : null;
+      checks.push({
+        id: 'mitigation_contract',
+        ok: derivation.eligible,
+        detail: derivation.eligible
+          ? derivation.notes.join('; ')
+          : contractRefusalMessage(derivation),
+      });
       checks.push({
         id: 'ipv4_contract',
         ok:
@@ -706,6 +777,7 @@ export class HuaweiMitigationExecutor {
       partial,
       nodeOccupancy,
       preservedClauses,
+      mitigationContract,
       baselineRecord:
         mode === 'ACTIVATE' && routePolicyConfiguration
           ? captureMitigationBaseline({
@@ -729,7 +801,10 @@ export class HuaweiMitigationExecutor {
     input: MitigationActivationInput,
   ): Promise<{ output: string }> {
     this.assertWriteAllowed(device);
-    const commands = buildMitigationActivateCommands(this.writePlan(input), input.preservedClauses);
+    const commands = buildMitigationActivateCommands(
+      this.writePlan(input),
+      input.mitigationContract,
+    );
     assertMitigationCommandShape(commands);
     // B5: o fingerprint dos nodes PERMANENTES e gravado ANTES da primeira
     // escrita. Sem ele nao existe retirada confiavel depois.
@@ -802,6 +877,86 @@ export class HuaweiMitigationExecutor {
       this.labels,
     );
     return verification.verified ? { bogonNode: 1, mitigationNode: 2 } : null;
+  }
+
+  private displayReader(device: HostRecord): DisplayReader | null {
+    const reader = this.deps.ssh.readMitigationDisplays;
+    return reader ? (commands) => reader.call(this.deps.ssh, device, commands) : null;
+  }
+
+  /**
+   * READ-ONLY, PRE-escrita: estado dos peers do cliente (Established, rotas recebidas).
+   * Roda em paralelo ao preflight, sem somar ao tempo pre-escrita. `null` = indisponivel
+   * (a verificacao fisica sera inconclusiva).
+   */
+  async captureMitigationEvidence(
+    device: HostRecord,
+    customerPeers: readonly string[],
+  ): Promise<PhysicalBeforeEvidence | null> {
+    const read = this.displayReader(device);
+    if (!read || customerPeers.length === 0) return null;
+    try {
+      return await captureBeforeEvidence(read, customerPeers);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * READ-ONLY, POS-escrita e read-back: prova o EFEITO da mitigacao no BGP. Nunca lanca:
+   * qualquer falha vira INCONCLUSIVE. Sem rollback automatico.
+   */
+  async verifyMitigationPhysical(
+    device: HostRecord,
+    input: {
+      contract: MitigationNode2Contract;
+      customerPeers: readonly string[];
+      before: PhysicalBeforeEvidence | null;
+    },
+  ): Promise<MitigationPhysicalVerification> {
+    const read = this.displayReader(device);
+    if (!read) {
+      return {
+        outcome: 'INCONCLUSIVE',
+        summary: 'verificacao fisica INCONCLUSIVE: transporte sem leitura de evidencia fisica',
+        checks: [
+          {
+            id: 'transport',
+            outcome: 'INCONCLUSIVE',
+            detail: 'transporte sem leitura de evidencia fisica',
+          },
+        ],
+        attempts: 0,
+        elapsedMs: 0,
+        mitigationPeer: null,
+        eligiblePrefixes: [],
+        customerPeers: [...input.customerPeers],
+      };
+    }
+    try {
+      return await verifyMitigationPhysical({
+        read,
+        contract: input.contract,
+        customerPeers: input.customerPeers,
+        before: input.before,
+        ...(this.deps.physical?.timing ? { timing: this.deps.physical.timing } : {}),
+        ...(this.deps.physical?.sleep ? { sleep: this.deps.physical.sleep } : {}),
+        ...(this.deps.physical?.clock ? { clock: this.deps.physical.clock } : {}),
+      });
+    } catch (error) {
+      return {
+        outcome: 'INCONCLUSIVE',
+        summary: `verificacao fisica INCONCLUSIVE: ${safeErrorMessage(error)}`,
+        checks: [
+          { id: 'verification', outcome: 'INCONCLUSIVE', detail: safeErrorMessage(error) },
+        ],
+        attempts: 0,
+        elapsedMs: 0,
+        mitigationPeer: null,
+        eligiblePrefixes: [],
+        customerPeers: [...input.customerPeers],
+      };
+    }
   }
 
   /** READ-ONLY: estado atual da policy para o read-back obrigatorio. */

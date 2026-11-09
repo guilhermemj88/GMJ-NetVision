@@ -2,6 +2,11 @@ import { parseHuaweiRoutePolicyNodesLenient } from './huawei-bgp-policy-parser';
 import { AGLINK_BGP_PLAN, aglinkBaselineIntact, bgpPlanLabels } from './aglink-bgp-plan';
 import { DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import type { PreservedClauses } from './mitigation-policy-clauses';
+import {
+  deriveMitigationNode2Contract,
+  type MitigationContractDerivation,
+  type MitigationNode2Contract,
+} from './mitigation-node2-contract';
 import type { MitigationBaselineRecord } from './mitigation-baseline-record';
 import { exactMitigationNodes, precedenceConflictNodes } from './mitigation-contract';
 import {
@@ -37,6 +42,11 @@ export interface MitigationActivationInput {
    * (derivados do baseline fisico pelo mesmo mecanismo para toda policy).
    */
   preservedClauses?: PreservedClauses;
+  /**
+   * Contrato do node 2 (clone estreito do node permanente do cliente), derivado e
+   * validado pelo preflight. Sem ele o ACTIVATE nao gera comandos (fail-closed).
+   */
+  mitigationContract?: MitigationNode2Contract;
   preflightBaseline?: MitigationBaselineRecord;
 }
 
@@ -55,6 +65,11 @@ export interface MitigationExecutorResult {
 export interface MitigationExecutor {
   /** READ-ONLY: estado atual da route-policy, usado no read-back. */
   readRoutePolicy(policyName: string): Promise<string>;
+  /**
+   * Opcional (MOCK/simulacao): contrato do node 2 derivado do estado atual da
+   * policy simulada. O executor real recebe o contrato do preflight fisico.
+   */
+  mitigationContract?(policyName: string): Promise<MitigationContractDerivation>;
   activate(input: MitigationActivationInput): Promise<MitigationExecutorResult>;
   remove(input: MitigationRemovalInput): Promise<MitigationExecutorResult>;
 }
@@ -63,6 +78,10 @@ interface MockNode {
   action: 'permit' | 'deny';
   ifMatchIpPrefix: string[];
   routeTargets: string[];
+  /** `apply local-preference N` (node permanente do cliente / node 2 de mitigacao). */
+  localPreference?: number;
+  /** Mostra a RT com `additive` (forma do node permanente do cliente). */
+  routeTargetsAdditive?: boolean;
 }
 
 interface MockPolicy {
@@ -109,19 +128,30 @@ export class MockMitigationExecutor implements MitigationExecutor {
       nova.nodes.set(this.baseline.node, {
         action: 'permit',
         ifMatchIpPrefix: [this.baseline.targetPrefixList],
-        routeTargets: [],
+        // Cliente real: LP + RT 140 additive (forma elegivel ao contrato do node 2).
+        localPreference: 1100,
+        routeTargets: ['268568:140'],
+        routeTargetsAdditive: true,
       });
     }
     this.policies.set(policyName, nova);
     return nova;
   }
 
-  /** Pre-carrega uma policy como se ja existisse no equipamento (nodes PERMIT). */
+  /**
+   * Pre-carrega uma policy como se ja existisse no equipamento. Os nodes semeados apenas
+   * OCUPAM numeros (nodes 1/2: permit vazio; demais: deny vazio). O unico node de cliente
+   * (permit elegivel ao contrato do node 2) e o baseline do proprio mock.
+   */
   seedPolicy(policyName: string, nodes: readonly number[]): void {
     const policy = this.policy(policyName);
     for (const node of nodes) {
       if (!policy.nodes.has(node)) {
-        policy.nodes.set(node, { action: 'permit', ifMatchIpPrefix: [], routeTargets: [] });
+        policy.nodes.set(node, {
+          action: node <= 2 ? 'permit' : 'deny',
+          ifMatchIpPrefix: [],
+          routeTargets: [],
+        });
       }
     }
   }
@@ -141,13 +171,24 @@ export class MockMitigationExecutor implements MitigationExecutor {
   seedNode(
     policyName: string,
     node: number,
-    conteudo: Partial<Pick<MockNode, 'action' | 'ifMatchIpPrefix' | 'routeTargets'>>,
+    conteudo: Partial<
+      Pick<
+        MockNode,
+        'action' | 'ifMatchIpPrefix' | 'routeTargets' | 'localPreference' | 'routeTargetsAdditive'
+      >
+    >,
   ): void {
     const policy = this.policy(policyName);
     policy.nodes.set(node, {
       action: conteudo.action ?? 'permit',
       ifMatchIpPrefix: [...(conteudo.ifMatchIpPrefix ?? [])],
       routeTargets: [...(conteudo.routeTargets ?? [])],
+      ...(conteudo.localPreference === undefined
+        ? {}
+        : { localPreference: conteudo.localPreference }),
+      ...(conteudo.routeTargetsAdditive === undefined
+        ? {}
+        : { routeTargetsAdditive: conteudo.routeTargetsAdditive }),
     });
   }
 
@@ -161,15 +202,45 @@ export class MockMitigationExecutor implements MitigationExecutor {
       for (const prefixList of conteudo.ifMatchIpPrefix) {
         lines.push(` if-match ip-prefix ${prefixList}`);
       }
+      if (conteudo.localPreference !== undefined) {
+        lines.push(` apply local-preference ${conteudo.localPreference}`);
+      }
       for (const rt of conteudo.routeTargets) {
-        lines.push(` apply extcommunity rt ${rt}`);
+        lines.push(
+          ` apply extcommunity rt ${rt}${conteudo.routeTargetsAdditive === true ? ' additive' : ''}`,
+        );
       }
     }
     return lines.length ? `${lines.join('\n')}\n` : '';
   }
 
+  /** Contrato do node 2 derivado do estado ATUAL do mock (mesma derivacao do read-back). */
+  async mitigationContract(
+    policyName: string,
+  ): Promise<ReturnType<typeof deriveMitigationNode2Contract>> {
+    const policy = this.policy(policyName);
+    const lines: string[] = [];
+    for (const [node, conteudo] of [...policy.nodes.entries()].sort((a, b) => a[0] - b[0])) {
+      lines.push(`route-policy ${policyName} ${conteudo.action} node ${node}`);
+      for (const list of conteudo.ifMatchIpPrefix) lines.push(` if-match ip-prefix ${list}`);
+      if (conteudo.localPreference !== undefined)
+        lines.push(` apply local-preference ${conteudo.localPreference}`);
+      for (const rt of conteudo.routeTargets)
+        lines.push(
+          ` apply extcommunity rt ${rt}${conteudo.routeTargetsAdditive === true ? ' additive' : ''}`,
+        );
+    }
+    return deriveMitigationNode2Contract(lines.join('\n'), policyName);
+  }
+
   async activate(input: MitigationActivationInput): Promise<MitigationExecutorResult> {
-    const commands = buildMitigationActivateCommands(input);
+    const contract = input.mitigationContract;
+    if (!contract) {
+      throw new Error(
+        'MITIGATION_CONTRACT_UNSUPPORTED: o contrato do node 2 deve vir do preflight/servico',
+      );
+    }
+    const commands = buildMitigationActivateCommands(input, contract);
     this.calls.push(...commands);
     const policy = this.policy(input.policyName);
     policy.nodes.set(input.bogonNode, {
@@ -179,7 +250,8 @@ export class MockMitigationExecutor implements MitigationExecutor {
     });
     policy.nodes.set(input.mitigationNode, {
       action: 'permit',
-      ifMatchIpPrefix: [],
+      ifMatchIpPrefix: [contract.prefixList],
+      localPreference: contract.localPreference,
       routeTargets: [input.rt],
     });
     return { output: 'MOCK: par de nodes aplicado em memoria' };
@@ -233,7 +305,7 @@ export function verifyActivation(
   pair: { bogonNode: number; mitigationNode: number },
   rt: string,
   labels: MitigationPairLabelsInput,
-  _preserved?: PreservedClauses,
+  contract?: MitigationNode2Contract | null,
 ): MitigationPairVerification {
   labels = bgpPlanLabels(policyName, labels);
   // Read-back real vem do `display route-policy` (formato display); o parser
@@ -242,7 +314,7 @@ export function verifyActivation(
   const bogon = nodes.find((entry) => entry.node === pair.bogonNode);
   const mitigation = nodes.find((entry) => entry.node === pair.mitigationNode);
 
-  const exact = exactMitigationNodes(readBack, policyName);
+  const exact = exactMitigationNodes(readBack, policyName, contract);
   const contractOk =
     pair.bogonNode === 1 &&
     pair.mitigationNode === 2 &&
@@ -264,7 +336,7 @@ export function verifyActivation(
     detalhes.push('node 1 divergente: exige deny + somente if-match ip-prefix BOGONS');
   if (!mitigation || !mitigationOk)
     detalhes.push(
-      'node 2 divergente: exige permit + somente apply extcommunity rt 268568:660, sem additive',
+      'node 2 divergente: exige permit + if-match ip-prefix <lista do cliente> + apply local-preference <LP do cliente> + apply extcommunity rt 268568:660 (sem additive), identico ao contrato derivado',
     );
 
   // Baseline AGLINK (compatibilidade): a policy de referencia continua exigindo
@@ -279,7 +351,7 @@ export function verifyActivation(
     mitigationOk,
     partial: (bogonOk || mitigationOk) && !verified,
     summary: verified
-      ? `par ativo: deny node ${pair.bogonNode} (${labels.bogonPrefixList}) + permit node ${pair.mitigationNode} (permit irrestrito + RT exclusiva ${rt})`
+      ? `par ativo: deny node ${pair.bogonNode} (${labels.bogonPrefixList}) + permit node ${pair.mitigationNode} (if-match da lista do cliente + local-preference + RT exclusiva ${rt})`
       : detalhes.join('; '),
   };
 }

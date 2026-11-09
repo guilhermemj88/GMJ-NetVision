@@ -16,6 +16,11 @@ export type MitigationNotificationEvent =
   | 'MITIGATION_RECOVERY_STARTED'
   | 'MITIGATION_ENDED'
   | 'MITIGATION_FAILED'
+  /**
+   * A policy foi escrita e o read-back de texto confere, mas a verificacao FISICA
+   * (efeito no BGP) falhou ou ficou inconclusiva. NUNCA e sucesso; sem rollback automatico.
+   */
+  | 'MITIGATION_UNVERIFIED_PHYSICAL'
   | 'SSH_DISCONNECTED'
   | 'SSH_RECONNECTED'
   | 'MITIGATION_SIMULATION_TRIGGERED'

@@ -26,6 +26,10 @@ import {
 } from '../../infrastructure/bgp/mitigation/mitigation-baseline-record';
 import { inspectPolicyMitigation } from '../../infrastructure/bgp/mitigation/mitigation-policy-physical';
 import {
+  PHYSICAL_UNVERIFIED_EVENT,
+  PHYSICAL_UNVERIFIED_STATUS,
+} from '../../infrastructure/bgp/mitigation/mitigation-physical-verification';
+import {
   SINGLE_AUTO_PILOT,
   assertSinglePilotAuthorization,
   singlePilotIdentityMatches,
@@ -647,7 +651,11 @@ export class AutoMitigationLifecycle {
         this.notification(
           t,
           result,
-          good ? 'MITIGATION_VERIFIED' : 'MITIGATION_FAILED',
+          good
+            ? 'MITIGATION_VERIFIED'
+            : result.status === PHYSICAL_UNVERIFIED_STATUS
+              ? PHYSICAL_UNVERIFIED_EVENT
+              : 'MITIGATION_FAILED',
           s.operationId,
           !real,
           s.lastSample,
@@ -915,7 +923,9 @@ export class AutoMitigationLifecycle {
         ? input.action === 'REMOVE'
           ? 'MITIGATION_REMOVED_VERIFIED'
           : 'MITIGATION_VERIFIED'
-        : 'MITIGATION_FAILED';
+        : result.status === PHYSICAL_UNVERIFIED_STATUS
+          ? PHYSICAL_UNVERIFIED_EVENT
+          : 'MITIGATION_FAILED';
       await enqueueNotification(
         tx,
         this.resultNotification(result, event, input.requestId, !real),
@@ -1267,7 +1277,7 @@ export class AutoMitigationLifecycle {
       profileId: r.profileId,
       addressFamily: (r.addressFamily as 'IPV4' | 'IPV6' | null) ?? null,
       simulation,
-      verified: event !== 'MITIGATION_FAILED' && r.verified,
+      verified: event !== 'MITIGATION_FAILED' && event !== PHYSICAL_UNVERIFIED_EVENT && r.verified,
       customer: r.customer,
       device: r.device,
       interfaceName: r.interface,
@@ -1302,7 +1312,7 @@ export class AutoMitigationLifecycle {
       profileId: t.profileId,
       addressFamily: t.addressFamily ?? null,
       simulation,
-      verified: event !== 'MITIGATION_FAILED' && r.verified,
+      verified: event !== 'MITIGATION_FAILED' && event !== PHYSICAL_UNVERIFIED_EVENT && r.verified,
       customer: r.customer ?? t.customer,
       device: r.device,
       interfaceName: r.interface,

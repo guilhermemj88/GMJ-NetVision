@@ -36,6 +36,16 @@ import {
   type ScopeConfirmationScope,
 } from './mitigation-scope-confirmation';
 import {
+  contractRefusalMessage,
+  type MitigationNode2Contract,
+} from './mitigation-node2-contract';
+import {
+  PHYSICAL_UNVERIFIED_EVENT,
+  PHYSICAL_UNVERIFIED_STATUS,
+  type MitigationPhysicalVerification,
+  type PhysicalBeforeEvidence,
+} from './mitigation-physical-verification';
+import {
   selectMitigationScopePrefixes,
   type MitigationScopePrefixReader,
   type MitigationScopePrefixSelection,
@@ -239,6 +249,12 @@ export interface MitigationCommandResult {
    * HUAWEI esta habilitado para o device; o caminho MOCK nao o inclui.
    */
   preflight?: MitigationPreflightResult;
+  /**
+   * Verificacao FISICA pos-escrita (efeito no BGP), presente na ativacao real cujo
+   * read-back de texto conferiu. `outcome !== 'PASS'` => status
+   * `ACTIVATED_UNVERIFIED_PHYSICAL` (nunca sucesso, sem rollback automatico).
+   */
+  physicalVerification?: MitigationPhysicalVerification;
   /** Presente apenas quando o REMOVE foi reconciliado com o PAR ATIVO do equipamento. */
   pairSource?: 'RUNTIME' | 'DEVICE';
   /** Motivo de bloqueio administrativo (ex.: MITIGATION_EXCLUDED). */
@@ -280,6 +296,23 @@ export interface MitigationLiveExecutorPort {
    * verificada. Opcional para nao obrigar harnesses/fakes de leitura.
    */
   releaseBaseline?(device: HostRecord, policyName: string): Promise<void>;
+  /**
+   * READ-ONLY, PRE-escrita (em paralelo ao preflight): estado dos peers do cliente.
+   * Ausente (fakes de leitura) = sem verificacao fisica; o executor Huawei real a implementa.
+   */
+  captureMitigationEvidence?(
+    device: HostRecord,
+    customerPeers: readonly string[],
+  ): Promise<PhysicalBeforeEvidence | null>;
+  /** READ-ONLY, POS-escrita: prova o efeito no BGP. Nunca lanca. */
+  verifyMitigationPhysical?(
+    device: HostRecord,
+    input: {
+      contract: MitigationNode2Contract;
+      customerPeers: readonly string[];
+      before: PhysicalBeforeEvidence | null;
+    },
+  ): Promise<MitigationPhysicalVerification>;
 }
 
 export interface MitigationCommandDeps {
@@ -853,6 +886,7 @@ export class MitigationCommandService {
       input.action === 'SIMULATE_ACTIVATE' || input.action === 'ACTIVATE' ? 'ACTIVATE' : 'REMOVE';
 
     let preflight: MitigationPreflightResult | null = null;
+    let beforeEvidence: PhysicalBeforeEvidence | null = null;
     if (live && host && pair) {
       // O snapshot do discovery faz sentido apenas no ACTIVATE: depois de uma
       // ativacao real os nodes 1 e 2 passam a existir (esperado [1,2,11,50]),
@@ -861,18 +895,47 @@ export class MitigationCommandService {
         liveMode === 'ACTIVATE' && this.deps.expectedNodes
           ? await this.read(() => this.deps.expectedNodes!(profile.id), null)
           : null;
-      preflight = await timed('preflight', () =>
-        live.preflight(host, {
-          mode: liveMode,
-          policyName: profile.policyName,
-          bogonNode: pair.bogonNode,
-          mitigationNode: pair.mitigationNode,
-          rt: profile.mitigationRt,
-          bogonPrefixList: this.labels.bogonPrefixList,
-          targetPrefixList: this.labels.targetPrefixList,
-          expectedExistingNodes,
-        }),
+      // A evidencia PRE-escrita dos peers do cliente roda EM PARALELO ao preflight: nao soma ao
+      // tempo pre-escrita. Falha => `null` (a verificacao fisica pos-escrita fica inconclusiva).
+      const captureEvidence =
+        input.action === 'ACTIVATE' && live.captureMitigationEvidence
+          ? live
+              .captureMitigationEvidence(
+                host,
+                peers.map((peer) => peer.peerAddress),
+              )
+              .catch(() => null)
+          : Promise.resolve(null);
+      const [preflightResult, evidence] = await timed('preflight', () =>
+        Promise.all([
+          live.preflight(host, {
+            mode: liveMode,
+            policyName: profile.policyName,
+            bogonNode: pair.bogonNode,
+            mitigationNode: pair.mitigationNode,
+            rt: profile.mitigationRt,
+            bogonPrefixList: this.labels.bogonPrefixList,
+            targetPrefixList: this.labels.targetPrefixList,
+            expectedExistingNodes,
+          }),
+          captureEvidence,
+        ]),
       );
+      preflight = preflightResult;
+      beforeEvidence = evidence;
+    }
+
+    // CONTRATO DO NODE 2: caminho real = derivado e validado pelo preflight fisico; caminho
+    // MOCK/simulacao = derivado da policy simulada. Sem contrato nao existe lista de comandos.
+    let mitigationContract: MitigationNode2Contract | null = preflight?.mitigationContract ?? null;
+    let contractRefusal: string | null = null;
+    if (activate && !preflight && this.deps.executor.mitigationContract) {
+      const derived = await this.read(
+        () => this.deps.executor.mitigationContract!(profile.policyName),
+        null,
+      );
+      if (derived?.eligible) mitigationContract = derived.contract;
+      else if (derived) contractRefusal = contractRefusalMessage(derived);
     }
 
     const activationInput: MitigationActivationInput = {
@@ -883,6 +946,7 @@ export class MitigationCommandService {
       bogonPrefixList: this.labels.bogonPrefixList,
       targetPrefixList: this.labels.targetPrefixList,
       ...(preflight?.baselineRecord ? { preflightBaseline: preflight.baselineRecord } : {}),
+      ...(mitigationContract ? { mitigationContract } : {}),
     };
     const removalInput: MitigationRemovalInput = {
       requestId: input.requestId,
@@ -924,7 +988,7 @@ export class MitigationCommandService {
             pair,
             profile.mitigationRt,
             this.labels,
-            activationInput.preservedClauses,
+            activationInput.mitigationContract,
           ).commands
         : this.preview.buildRecovery(profile.policyName, pair).commands;
     } catch (error) {
@@ -942,7 +1006,7 @@ export class MitigationCommandService {
         verified: false,
         commandPreview: [],
         verification: null,
-        safeError: executionReason(error),
+        safeError: contractRefusal ?? executionReason(error),
       };
     }
 
@@ -1060,22 +1124,56 @@ export class MitigationCommandService {
           pair,
           profile.mitigationRt,
           this.labels,
-          activationInput.preservedClauses,
+          activationInput.mitigationContract,
         );
+        // VERIFICACAO FISICA (somente leitura): so depois de escrita REAL cujo read-back de texto
+        // conferiu. Prova o EFEITO no BGP; PASS e a unica forma de MITIGATION_VERIFIED.
+        // Falha/inconclusivo NUNCA e sucesso e NAO dispara rollback automatico.
+        let physical: MitigationPhysicalVerification | null = null;
+        if (check.verified && liveDevice && live?.verifyMitigationPhysical) {
+          physical = activationInput.mitigationContract
+            ? await live.verifyMitigationPhysical(liveDevice, {
+                contract: activationInput.mitigationContract,
+                customerPeers: peers.map((peer) => peer.peerAddress),
+                before: beforeEvidence,
+              })
+            : null;
+          if (physical === null) {
+            physical = {
+              outcome: 'INCONCLUSIVE',
+              summary: 'verificacao fisica INCONCLUSIVE: contrato do node 2 ausente',
+              checks: [],
+              attempts: 0,
+              elapsedMs: 0,
+              mitigationPeer: null,
+              eligiblePrefixes: [],
+              customerPeers: peers.map((peer) => peer.peerAddress),
+            };
+          }
+        }
+        const physicalFailed = physical !== null && physical.outcome !== 'PASS';
+        const finalVerified = check.verified && !physicalFailed;
+        const physicalError = physicalFailed
+          ? `${PHYSICAL_UNVERIFIED_EVENT}: ${physical!.summary}`
+          : null;
         // ESCOPO VERIFICADO: so depois de uma escrita REAL e verificada. Leitura
         // READ-ONLY, best effort: nunca altera `check.verified` nem o resultado.
         // Fora desse caminho o campo simplesmente NAO existe (consumidores
         // antigos e eventos simulados seguem identicos).
         const scopePrefixes =
-          check.verified && liveDevice
+          finalVerified && liveDevice
             ? await this.readScopePrefixes(profile, primaryPeer)
             : undefined;
-        const sync = await this.record(profile, activate, check.verified, pair, null);
+        const sync = await this.record(profile, activate, finalVerified, pair, physicalError);
         await this.publish(
-          check.verified ? 'MITIGATION_VERIFIED' : 'MITIGATION_FAILED',
+          finalVerified
+            ? 'MITIGATION_VERIFIED'
+            : physicalFailed
+              ? PHYSICAL_UNVERIFIED_EVENT
+              : 'MITIGATION_FAILED',
           {
             ...common,
-            verified: check.verified,
+            verified: finalVerified,
             primaryPeer,
             effectiveBandwidthBps: effectiveBandwidth,
             simulation: !liveDevice,
@@ -1086,17 +1184,26 @@ export class MitigationCommandService {
         );
         return {
           ...common,
-          ok: check.verified,
-          status: check.verified ? 'ACTIVATED_VERIFIED' : 'REVALIDATION_FAILED',
-          verified: check.verified,
+          ok: finalVerified,
+          status: finalVerified
+            ? 'ACTIVATED_VERIFIED'
+            : physicalFailed
+              ? PHYSICAL_UNVERIFIED_STATUS
+              : 'REVALIDATION_FAILED',
+          verified: finalVerified,
           commandPreview: preview,
           verification: {
             command: `display route-policy ${profile.policyName}`,
-            summary: check.summary,
+            summary: physicalFailed ? `${check.summary}; ${physical!.summary}` : check.summary,
           },
           ...(preflight ? { preflight } : {}),
+          ...(physical ? { physicalVerification: physical } : {}),
           ...(sync.ok ? {} : { safeError: RUNTIME_SYNC_FAILED_WARNING }),
-          ...(check.verified ? {} : { safeError: check.summary }),
+          ...(check.verified
+            ? physicalFailed
+              ? { safeError: physicalError! }
+              : {}
+            : { safeError: check.summary }),
         };
       }
 

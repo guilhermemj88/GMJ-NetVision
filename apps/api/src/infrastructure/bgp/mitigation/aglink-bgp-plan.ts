@@ -1,6 +1,11 @@
 import { parseHuaweiRoutePolicyNodesLenient } from './huawei-bgp-policy-parser';
 
-/** AGLINK transit: keep the customer route selected; export through mitigation RT only. */
+/**
+ * AGLINK transit: keep the customer route selected (LP 1100) and export through the mitigation RT.
+ * Node 2 is a NARROW clone of node 10 (same prefix-list and local-preference) whose RT 660
+ * REPLACES the RT 140 (rtMode REPLACE). It is never a permit-all: prefixes outside the list
+ * do not match node 2 and keep flowing to the permanent nodes.
+ */
 export const AGLINK_BGP_PLAN = Object.freeze({
   policy: 'PL-AGLINK_IPv4-IN',
   targetPrefixList: 'AGLINK-BLOCO-TODO-23',
@@ -11,8 +16,12 @@ export const AGLINK_BGP_PLAN = Object.freeze({
   localPreference: 1100,
   prefixDefinition:
     'ip ip-prefix AGLINK-BLOCO-TODO-23 index 10 permit 167.250.126.0 23 greater-equal 23 less-equal 24',
-  /** Normal attributes below remain baseline evidence only. Never copied to node 2. */
-  activationApplyClauses: ['apply extcommunity rt 268568:660'] as const,
+  /** Exact clauses of the mitigation node 2 (derived from node 10; RT 140 is replaced, not copied). */
+  activationApplyClauses: [
+    'if-match ip-prefix AGLINK-BLOCO-TODO-23',
+    'apply local-preference 1100',
+    'apply extcommunity rt 268568:660',
+  ] as const,
 });
 
 export function bgpPlanLabels<T extends { targetPrefixList: string }>(
