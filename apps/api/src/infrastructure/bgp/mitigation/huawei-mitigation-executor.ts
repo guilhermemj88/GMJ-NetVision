@@ -309,8 +309,7 @@ export class HuaweiMitigationExecutor {
       requirePrefixListProof: true,
       bogonPrefixList: this.labels.bogonPrefixList,
     });
-    if (!secondContract.eligible)
-      throw new Error(contractRefusalMessage(secondContract));
+    if (!secondContract.eligible) throw new Error(contractRefusalMessage(secondContract));
     if (
       !input.mitigationContract ||
       !sameMitigationNode2Contract(input.mitigationContract, secondContract.contract)
@@ -947,9 +946,7 @@ export class HuaweiMitigationExecutor {
       return {
         outcome: 'INCONCLUSIVE',
         summary: `verificacao fisica INCONCLUSIVE: ${safeErrorMessage(error)}`,
-        checks: [
-          { id: 'verification', outcome: 'INCONCLUSIVE', detail: safeErrorMessage(error) },
-        ],
+        checks: [{ id: 'verification', outcome: 'INCONCLUSIVE', detail: safeErrorMessage(error) }],
         attempts: 0,
         elapsedMs: 0,
         mitigationPeer: null,

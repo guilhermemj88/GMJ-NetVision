@@ -249,7 +249,9 @@ describe('B5 - fingerprint duravel dos nodes permanentes', () => {
       rt: RT,
       bogonPrefixList: 'BOGONS',
       targetPrefixList: 'PREFIX8to24',
-      ...(preActivate.mitigationContract ? { mitigationContract: preActivate.mitigationContract } : {}),
+      ...(preActivate.mitigationContract
+        ? { mitigationContract: preActivate.mitigationContract }
+        : {}),
       ...(preActivate.baselineRecord ? { preflightBaseline: preActivate.baselineRecord } : {}),
     });
     expect(ssh.applied).toHaveLength(1);

@@ -60,7 +60,12 @@ export function testMitigationContract(
 /** TEST-ONLY: node permanente do cliente elegivel ao contrato (config VRP). */
 export function testPermanentClientNode(
   policyName: string,
-  options: { node?: number; prefixList?: string; localPreference?: number; additive?: boolean } = {},
+  options: {
+    node?: number;
+    prefixList?: string;
+    localPreference?: number;
+    additive?: boolean;
+  } = {},
 ): string[] {
   return [
     `route-policy ${policyName} permit node ${options.node ?? 10}`,

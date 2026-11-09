@@ -35,10 +35,7 @@ import {
   type ScopeConfirmationRequester,
   type ScopeConfirmationScope,
 } from './mitigation-scope-confirmation';
-import {
-  contractRefusalMessage,
-  type MitigationNode2Contract,
-} from './mitigation-node2-contract';
+import { contractRefusalMessage, type MitigationNode2Contract } from './mitigation-node2-contract';
 import {
   PHYSICAL_UNVERIFIED_EVENT,
   PHYSICAL_UNVERIFIED_STATUS,

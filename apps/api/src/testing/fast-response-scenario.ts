@@ -36,7 +36,10 @@ import type { SnmpVarBind } from '../domain/ports';
 import { SnmpPoller } from '../infrastructure/snmp/snmp-poller';
 import { SnmpClientImpl } from '../infrastructure/snmp/snmp-client-impl';
 import type { SnmpService } from '../infrastructure/snmp/snmp-service';
-import { testMitigationContract, testPreservedClauses } from '../infrastructure/bgp/mitigation/mitigation-test-support';
+import {
+  testMitigationContract,
+  testPreservedClauses,
+} from '../infrastructure/bgp/mitigation/mitigation-test-support';
 
 export const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 

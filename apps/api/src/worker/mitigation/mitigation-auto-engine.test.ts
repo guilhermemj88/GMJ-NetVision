@@ -6,7 +6,10 @@ import {
   type MitigationLiveExecutorPort,
 } from '../../infrastructure/bgp/mitigation/mitigation-command-service';
 import { MockMitigationExecutor } from '../../infrastructure/bgp/mitigation/mitigation-executor';
-import { testMitigationContract, testPreservedClauses } from '../../infrastructure/bgp/mitigation/mitigation-test-support';
+import {
+  testMitigationContract,
+  testPreservedClauses,
+} from '../../infrastructure/bgp/mitigation/mitigation-test-support';
 import type {
   MitigationActivationInput,
   MitigationRemovalInput,
