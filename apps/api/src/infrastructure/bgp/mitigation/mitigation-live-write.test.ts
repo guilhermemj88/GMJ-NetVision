@@ -1,3 +1,4 @@
+import { testLivePhysicalPort } from './mitigation-test-support';
 import { describe, expect, it } from 'vitest';
 import type { HostRecord } from '@gmj/shared';
 import { InMemoryMitigationRepository } from './in-memory-mitigation-repository';
@@ -86,6 +87,8 @@ function preflightResult(overrides: Partial<MitigationPreflightResult> = {}): Mi
 }
 
 class FakeLiveExecutor implements MitigationLiveExecutorPort {
+  captureMitigationEvidence = testLivePhysicalPort.captureMitigationEvidence;
+  verifyMitigationPhysical = testLivePhysicalPort.verifyMitigationPhysical;
   readonly applied: string[][] = [];
   removals: string[][] = [];
   preflightValue: MitigationPreflightResult = preflightResult();
@@ -386,6 +389,8 @@ class CapturePublisher implements NotificationPublisher {
  * preflight de REMOVE aceita o par presente (bug corrigido nesta sessao).
  */
 class StatefulLiveExecutor implements MitigationLiveExecutorPort {
+  captureMitigationEvidence = testLivePhysicalPort.captureMitigationEvidence;
+  verifyMitigationPhysical = testLivePhysicalPort.verifyMitigationPhysical;
   applied: string[][] = [];
   removals: string[][] = [];
   modes: string[] = [];

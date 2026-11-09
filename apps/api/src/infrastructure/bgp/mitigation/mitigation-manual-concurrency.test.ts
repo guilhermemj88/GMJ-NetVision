@@ -1,3 +1,4 @@
+import { testLivePhysicalPort } from './mitigation-test-support';
 import { describe, expect, it } from 'vitest';
 import type { HostRecord } from '@gmj/shared';
 import { InMemoryMitigationRepository } from './in-memory-mitigation-repository';
@@ -100,6 +101,8 @@ function gate(): Gate {
  * ocupados e snapshot do discovery bloqueiam o ACTIVATE.
  */
 class ControlledDevice implements MitigationLiveExecutorPort {
+  captureMitigationEvidence = testLivePhysicalPort.captureMitigationEvidence;
+  verifyMitigationPhysical = testLivePhysicalPort.verifyMitigationPhysical;
   /** Estado fisico POR POLICY: cada policy tem nodes/pares proprios. */
   private readonly states = new Map<string, { nodes: Set<number>; pairs: NodePair[] }>();
   activations: NodePair[] = [];

@@ -1,3 +1,4 @@
+import { testLivePhysicalPort } from '../../infrastructure/bgp/mitigation/mitigation-test-support';
 import { describe, expect, it } from 'vitest';
 import type { HostRecord } from '@gmj/shared';
 import { InMemoryMitigationRepository } from '../../infrastructure/bgp/mitigation/in-memory-mitigation-repository';
@@ -45,6 +46,8 @@ function host(): HostRecord {
 }
 
 class CountingLiveExecutor implements MitigationLiveExecutorPort {
+  captureMitigationEvidence = testLivePhysicalPort.captureMitigationEvidence;
+  verifyMitigationPhysical = testLivePhysicalPort.verifyMitigationPhysical;
   preflightCalls = 0;
   activateCalls = 0;
   removeCalls = 0;

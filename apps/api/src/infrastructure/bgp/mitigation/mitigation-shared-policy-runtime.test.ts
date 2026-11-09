@@ -1,3 +1,4 @@
+import { testLivePhysicalPort } from './mitigation-test-support';
 import { describe, expect, it, vi } from 'vitest';
 import type { HostRecord } from '@gmj/shared';
 import { InMemoryMitigationRepository } from './in-memory-mitigation-repository';
@@ -74,6 +75,8 @@ const READBACK_PARTIAL = [
 ].join('\n');
 
 class FakeLiveExecutor implements MitigationLiveExecutorPort {
+  captureMitigationEvidence = testLivePhysicalPort.captureMitigationEvidence;
+  verifyMitigationPhysical = testLivePhysicalPort.verifyMitigationPhysical;
   activateCalls = 0;
   removeCalls = 0;
   readBacks: string[] = [];

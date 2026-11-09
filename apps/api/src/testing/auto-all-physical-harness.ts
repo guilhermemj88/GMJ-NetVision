@@ -384,6 +384,11 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
     ssh,
     config: { executor: 'HUAWEI', liveWriteEnabled: true, allowedDeviceIds: [P.deviceId] },
     baseline: testDurableBaselineStore(),
+    // Verificacao fisica pos-escrita sem esperas reais (o relogio do cenario e virtual).
+    physical: {
+      timing: { maxAttempts: 3, intervalMs: 1, budgetMs: 1_000 },
+      sleep: async () => undefined,
+    },
   });
   const physical = async (t: Pick<LifecycleTarget, 'policyName' | 'rt'>) => {
     const state = inspectPolicyMitigation({

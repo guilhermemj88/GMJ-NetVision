@@ -37,6 +37,7 @@ import { SnmpPoller } from '../infrastructure/snmp/snmp-poller';
 import { SnmpClientImpl } from '../infrastructure/snmp/snmp-client-impl';
 import type { SnmpService } from '../infrastructure/snmp/snmp-service';
 import {
+  testLivePhysicalPort,
   testMitigationContract,
   testPreservedClauses,
 } from '../infrastructure/bgp/mitigation/mitigation-test-support';
@@ -310,6 +311,7 @@ export async function fastResponseScenario(options: {
       );
     },
     live: {
+      ...testLivePhysicalPort,
       enabledFor: () => true,
       resolveActivePair: async () => null,
       preflight: async (_host, input) => {

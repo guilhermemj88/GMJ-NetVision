@@ -11,6 +11,7 @@ import {
 import { AGLINK_BGP_PLAN as A } from './aglink-bgp-plan';
 import {
   captureBeforeEvidence,
+  DEFAULT_PHYSICAL_TIMING,
   discoverMitigationPeer,
   isMitigationEvidenceCommand,
   parseExtcommunityFilters,
@@ -60,7 +61,11 @@ describe('parsers sobre a captura REAL sanitizada do equipamento', () => {
   it('peer verbose: Established e 3 rotas recebidas', () => {
     const sim = new PhysicalBgpSimulator(() => false);
     return sim.read([`display bgp peer ${SIM_CUSTOMER_PEER} verbose`]).then(([read]) => {
-      expect(parsePeerVerbose(read!.output)).toEqual({ state: 'Established', receivedTotal: 3 });
+      expect(parsePeerVerbose(read!.output)).toEqual({
+        state: 'Established',
+        receivedTotal: 3,
+        upCount: 11,
+      });
     });
   });
 
@@ -177,8 +182,8 @@ describe('verificacao fisica pos-escrita', () => {
     ['wrong-lp', /localpref 100 \(esperado 1100\)/],
     ['rt140', /RT 268568:140 ainda presente/],
     ['not-best', /nao e best\/select/],
-    ['not-advertised', /nao anunciados a 198\.19\.4\.145/],
     ['peer-down', /deixou de estar Established/],
+    ['flap', /flap do peer 10\.200\.201\.2: BGP Peer Up count 11 antes x 12 depois/],
     ['count-changed', /rotas recebidas de 10\.200\.201\.2: 3 antes x 2 depois/],
   ] as const)('FAIL quando %s', async (mode, expected) => {
     const h = harness();
@@ -302,5 +307,113 @@ describe('allowlist de leitura da verificacao fisica (somente estes display)', (
     ]) {
       expect(isMitigationEvidenceCommand(command), command).toBe(false);
     }
+  });
+});
+
+describe('M1: orcamento de 90 s, "ainda nao anunciado" e INCONCLUSIVE, nunca FAIL', () => {
+  it('padrao: 90 s no total, tentativas a cada 5 s (maior que o MRAI de eBGP de 30 s)', () => {
+    expect(DEFAULT_PHYSICAL_TIMING).toEqual({
+      maxAttempts: 18,
+      intervalMs: 5_000,
+      budgetMs: 90_000,
+    });
+    expect(DEFAULT_PHYSICAL_TIMING.budgetMs).toBeGreaterThan(30_000);
+  });
+
+  it('not-advertised: continua tentando dentro do orcamento e, ao esgotar, e INCONCLUSIVE', async () => {
+    const h = harness();
+    h.sim.mode = 'not-advertised';
+    const before = await h.before();
+    h.activate();
+    const result = await h.verify(before);
+    expect(result.outcome).toBe('INCONCLUSIVE');
+    expect(result.attempts).toBe(FAST.maxAttempts);
+    expect(result.summary).toMatch(/ainda nao anunciados a 198\.19\.4\.145/);
+    expect(result.checks.some((check) => check.outcome === 'FAIL')).toBe(false);
+  });
+
+  it('anuncio aparece tarde (apos varias tentativas) e passa', async () => {
+    const h = harness();
+    h.sim.propagationDelayAttempts = 3;
+    const before = await h.before();
+    h.activate();
+    const result = await h.verify(before);
+    expect(result.outcome).toBe('PASS');
+    expect(result.attempts).toBe(4);
+  });
+
+  it('o orcamento e respeitado ANTES de cada leitura, inclusive quando a leitura demora', async () => {
+    let clock = 0;
+    const sim = new PhysicalBgpSimulator(() => true);
+    sim.propagationDelayAttempts = 99;
+    const before = await captureBeforeEvidence((c) => sim.read(c), [SIM_CUSTOMER_PEER]);
+    let reads = 0;
+    const result = await verifyMitigationPhysical({
+      read: async (commands) => {
+        if (commands.some((c) => c.startsWith('display bgp routing-table'))) {
+          reads += 1;
+          clock += 40_000; // cada leitura consome 40 s do relogio
+        }
+        return sim.read(commands);
+      },
+      contract: CONTRACT,
+      customerPeers: [SIM_CUSTOMER_PEER],
+      before,
+      timing: { maxAttempts: 50, intervalMs: 5_000, budgetMs: 90_000 },
+      sleep: async (ms) => {
+        clock += ms;
+      },
+      clock: () => clock,
+    });
+    // t=0 leitura(40) +5 sleep=45 leitura(85) -> 85+5>=90: para. Nenhuma leitura apos o orcamento.
+    expect(reads).toBe(2);
+    expect(result.attempts).toBe(2);
+    expect(clock).toBeLessThanOrEqual(90_000);
+  });
+});
+
+describe('M2: flap do peer (Peer Up count)', () => {
+  it('mesmo Established e mesma contagem, mas Up count maior => FAIL', async () => {
+    const h = harness();
+    h.sim.mode = 'flap';
+    const before = await h.before();
+    h.activate();
+    const result = await h.verify(before);
+    expect(result.outcome).toBe('FAIL');
+    expect(result.checks.find((c) => c.id === 'peer:10.200.201.2')?.detail).toMatch(/flap/);
+  });
+});
+
+describe('M3: causalidade do anuncio ao peer de mitigacao', () => {
+  it('ja anunciado ANTES da escrita (sessao MITIGACAO paralela) => INCONCLUSIVE, nunca PASS', async () => {
+    const h = harness();
+    h.sim.mode = 'already-advertised';
+    const before = await h.before();
+    h.activate();
+    const result = await h.verify(before);
+    expect(result.outcome).toBe('INCONCLUSIVE');
+    expect(result.checks.find((c) => c.id === 'advertised')?.detail).toMatch(
+      /ja anunciado a 198\.19\.4\.145 ANTES da escrita/,
+    );
+    // O efeito no proprio peer esta provado (best/select, LP, 660): so a causalidade nao.
+    expect(
+      result.checks.filter((c) => c.id.startsWith('route:')).every((c) => c.outcome === 'PASS'),
+    ).toBe(true);
+  });
+
+  it('sem o anuncio PRE (leitura indisponivel) => INCONCLUSIVE', async () => {
+    const h = harness();
+    const before = await h.before();
+    before.advertisedBefore = null;
+    h.activate();
+    expect((await h.verify(before)).outcome).toBe('INCONCLUSIVE');
+  });
+
+  it('peer de mitigacao diferente entre pre e pos => INCONCLUSIVE', async () => {
+    const h = harness();
+    const before = await h.before();
+    before.mitigationPeer = '198.19.4.99';
+    h.activate();
+    expect((await h.verify(before)).outcome).toBe('INCONCLUSIVE');
   });
 });

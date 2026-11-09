@@ -99,8 +99,27 @@ describe('HuaweiBgpSshService.readMitigationDisplays', () => {
   });
 });
 
-describe('executor sem leitura de evidencia fisica no transporte', () => {
-  it('verifyMitigationPhysical e INCONCLUSIVE (fail-closed), nunca PASS', async () => {
+describe('porta de verificacao fisica obrigatoria no executor real (B2)', () => {
+  it('sem readMitigationDisplays o executor NEM e construido (nunca VERIFIED sem prova fisica)', () => {
+    expect(
+      () =>
+        new HuaweiMitigationExecutor({
+          ssh: {
+            readMitigationConfiguration: async () => ({
+              routePolicyConfiguration: '',
+              prefixListConfiguration: '',
+              warnings: [],
+            }),
+            readMitigationRoutePolicy: async () => '',
+            applyMitigationCommands: async () => ({ ok: true, output: '' }),
+          } as never,
+          config: { executor: 'HUAWEI', liveWriteEnabled: true, allowedDeviceIds: [DEVICE.id] },
+          baseline: testDurableBaselineStore(),
+        }),
+    ).toThrow(/MITIGATION_PHYSICAL_PORT_REQUIRED/);
+  });
+
+  it('leitura que falha/vem vazia: verifyMitigationPhysical e INCONCLUSIVE, nunca PASS', async () => {
     const executor = new HuaweiMitigationExecutor({
       ssh: {
         readMitigationConfiguration: async () => ({
@@ -108,6 +127,9 @@ describe('executor sem leitura de evidencia fisica no transporte', () => {
           prefixListConfiguration: '',
           warnings: [],
         }),
+        readMitigationDisplays: async () => {
+          throw new Error('SSH command failed');
+        },
         readMitigationRoutePolicy: async () => '',
         applyMitigationCommands: async () => ({ ok: true, output: '' }),
       },

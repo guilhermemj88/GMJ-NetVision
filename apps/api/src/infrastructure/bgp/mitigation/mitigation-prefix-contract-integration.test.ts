@@ -1,3 +1,4 @@
+import { testLivePhysicalPort } from './mitigation-test-support';
 /**
  * ESCOPO VERIFICADO — contrato REAL de notificacao (integracao).
  *
@@ -115,6 +116,8 @@ function preflightResult(over: Partial<MitigationPreflightResult> = {}): Mitigat
 }
 
 class FakeLiveExecutor implements MitigationLiveExecutorPort {
+  captureMitigationEvidence = testLivePhysicalPort.captureMitigationEvidence;
+  verifyMitigationPhysical = testLivePhysicalPort.verifyMitigationPhysical;
   removed = false;
   preflightValue: MitigationPreflightResult = preflightResult();
   readBacks: string[] = [GOOD_READBACK, NORMAL_READBACK];

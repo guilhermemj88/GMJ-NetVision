@@ -1,5 +1,5 @@
 import type { HostRecord } from '@gmj/shared';
-import { PhysicalBgpSimulator } from './physical-bgp-simulator';
+import { PhysicalBgpSimulator, syntheticExportPrefixLists } from './physical-bgp-simulator';
 import {
   AutoMitigationLifecycle,
   lifecycleConfig,
@@ -83,7 +83,9 @@ export class PilotFakeHuawei implements MitigationSshPort {
     return {
       routePolicyConfiguration: this.config(),
       prefixListConfiguration: this.prefixes
-        ? 'ip ip-prefix BOGONS index 40 permit 10.0.0.0 8 greater-equal 8 less-equal 32\nip ip-prefix PREFIX8to24 index 10 permit 0.0.0.0 8 greater-equal 8 less-equal 24\nip ip-prefix AGLINK-BLOCO-TODO-23 index 10 permit 167.250.126.0 23 greater-equal 23 less-equal 24'
+        ? 'ip ip-prefix BOGONS index 40 permit 10.0.0.0 8 greater-equal 8 less-equal 32\nip ip-prefix PREFIX8to24 index 10 permit 0.0.0.0 8 greater-equal 8 less-equal 24\nip ip-prefix AGLINK-BLOCO-TODO-23 index 10 permit 167.250.126.0 23 greater-equal 23 less-equal 24\n' +
+          // Listas citadas pelo export real da COMPUTIZE (definicoes SINTETICAS; a captura nao as traz).
+          syntheticExportPrefixLists()
         : '',
       warnings: [],
     };

@@ -1,3 +1,4 @@
+import { testLivePhysicalPort } from '../../infrastructure/bgp/mitigation/mitigation-test-support';
 import { describe, expect, it } from 'vitest';
 import type { HostRecord } from '@gmj/shared';
 import { InMemoryMitigationRepository } from '../../infrastructure/bgp/mitigation/in-memory-mitigation-repository';
@@ -51,6 +52,8 @@ function device(id: string): HostRecord {
 
 /** Executor live que carrega o estado REAL da policy no "equipamento". */
 class DeviceTruthExecutor implements MitigationLiveExecutorPort {
+  captureMitigationEvidence = testLivePhysicalPort.captureMitigationEvidence;
+  verifyMitigationPhysical = testLivePhysicalPort.verifyMitigationPhysical;
   /** Nodes presentes na policy do equipamento (identidade fisica). */
   nodes = new Set<number>(BASELINE_NODES);
   activateCalls = 0;

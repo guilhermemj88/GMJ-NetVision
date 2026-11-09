@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { HostRecord } from '@gmj/shared';
-import { REAL_ROUTE_POLICY_CONFIG } from '../../../testing/physical-bgp-simulator';
+import {
+  REAL_ROUTE_POLICY_CONFIG,
+  realConfigDisplayRead,
+  syntheticExportPrefixLists,
+} from '../../../testing/physical-bgp-simulator';
 import { AGLINK_BGP_PLAN as A } from './aglink-bgp-plan';
 import { HuaweiMitigationExecutor, type MitigationSshPort } from './huawei-mitigation-executor';
 import { testDurableBaselineStore } from './mitigation-test-support';
@@ -17,9 +21,12 @@ const PREFIX_LISTS = [
   A.prefixDefinition,
   'ip ip-prefix PREFIX-HORIZONTES-IPV4 index 10 permit 198.51.100.0 24',
   'ip ip-prefix PREFIX-FLASHTELECOM-IPV4 index 10 permit 203.0.113.0 24',
+  // Definicoes SINTETICAS das listas citadas pelo export real (a captura nao as traz).
+  syntheticExportPrefixLists(),
 ].join('\n');
 
 class RealConfigSsh implements MitigationSshPort {
+  readMitigationDisplays = realConfigDisplayRead;
   readonly applied: string[][] = [];
   async readMitigationConfiguration() {
     return {
@@ -92,6 +99,58 @@ describe('preflight com a configuracao real: contrato elegivel x inelegivel', ()
       /mitigation_contract: MITIGATION_CONTRACT_UNSUPPORTED: .*node 11: o node permanente ja aplica a RT de mitigacao 268568:660/,
     );
     expect(ssh.applied).toHaveLength(0);
+  });
+
+  it('A2 UAY: contrato elegivel, mas o export da COMPUTIZE (deny node 47 TRIPLO_A-BLOCO-TODO) a sombreia => FAIL', async () => {
+    const ssh = new RealConfigSsh();
+    const result = await executor(ssh).preflight(device, input('PL-UAY_IPv4-IN', [10, 1000]));
+    expect(result.checks.find((c) => c.id === 'mitigation_contract')?.ok).toBe(true);
+    const check = result.checks.find((c) => c.id === 'mitigation_export');
+    expect(check?.ok).toBe(false);
+    expect(check?.detail).toMatch(
+      /^MITIGATION_EXPORT_SHADOWED: PL-COMPUTIZE-IPv4-OUT node 47 \(deny\) antecede o permit MITIGACAO.*TRIPLO_A-BLOCO-TODO/,
+    );
+    expect(result.ok).toBe(false);
+    expect(ssh.applied).toHaveLength(0);
+  });
+
+  it('A2 AGLINK: export da COMPUTIZE nao sombreia a lista (PASS) e o check cita o peer/policy', async () => {
+    const result = await executor(new RealConfigSsh()).preflight(
+      device,
+      input(A.policy, [10, 1000]),
+    );
+    const check = result.checks.find((c) => c.id === 'mitigation_export');
+    expect(check?.ok).toBe(true);
+    expect(check?.detail).toMatch(/PL-COMPUTIZE-IPv4-OUT do peer 198\.19\.4\.145/);
+  });
+
+  it('A2: leitura do export indisponivel => nao comprovavel => inelegivel', async () => {
+    const ssh = new RealConfigSsh();
+    ssh.readMitigationDisplays = async () => {
+      throw new Error('SSH command failed');
+    };
+    const result = await executor(ssh).preflight(device, input(A.policy, [10, 1000]));
+    expect(result.ok).toBe(false);
+    expect(result.checks.find((c) => c.id === 'mitigation_export')?.detail).toMatch(
+      /^MITIGATION_EXPORT_SHADOWED: leitura do export/,
+    );
+  });
+
+  it('B4: BOGONS que intersecta a lista do cliente torna a policy inelegivel', async () => {
+    const ssh = new RealConfigSsh();
+    ssh.readMitigationConfiguration = async () => ({
+      routePolicyConfiguration: REAL_ROUTE_POLICY_CONFIG,
+      prefixListConfiguration: PREFIX_LISTS.replace(
+        'ip ip-prefix BOGONS index 10 permit 10.0.0.0 8 greater-equal 8 less-equal 32',
+        'ip ip-prefix BOGONS index 10 permit 167.250.0.0 16 greater-equal 16 less-equal 32',
+      ),
+      warnings: [],
+    });
+    const result = await executor(ssh).preflight(device, input(A.policy, [10, 1000]));
+    expect(result.ok).toBe(false);
+    expect(result.checks.find((c) => c.id === 'mitigation_contract')?.detail).toMatch(
+      /BOGONS intersecta a lista do cliente AGLINK-BLOCO-TODO-23/,
+    );
   });
 
   it('FLASH (RT 140 sem additive, deny 999): PASS', async () => {

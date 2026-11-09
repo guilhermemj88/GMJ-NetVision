@@ -149,3 +149,25 @@ export class FakeDurableBaselineStore implements MitigationBaselineStore {
 export function testDurableBaselineStore(backend = createFakeDurableBackend()) {
   return new FakeDurableBaselineStore(backend);
 }
+
+/**
+ * TEST-ONLY: porta de verificacao fisica de um executor FALSO (fakes de `live`). Devolve PASS
+ * sem evidencia - serve aos testes que nao tratam de verificacao fisica. O executor REAL nunca
+ * usa isto: ele exige `readMitigationDisplays` e prova o efeito com `display`.
+ */
+export const testLivePhysicalPort = {
+  captureMitigationEvidence: async () => null,
+  verifyMitigationPhysical: async (
+    _device: unknown,
+    input: { customerPeers: readonly string[] },
+  ) => ({
+    outcome: 'PASS' as const,
+    summary: 'verificacao fisica PASS (executor falso de teste)',
+    checks: [],
+    attempts: 1,
+    elapsedMs: 0,
+    mitigationPeer: null,
+    eligiblePrefixes: [],
+    customerPeers: [...input.customerPeers],
+  }),
+};

@@ -1,3 +1,4 @@
+import { cleanExportDisplayRead } from '../../../testing/physical-bgp-simulator';
 import { describe, expect, it } from 'vitest';
 import type { HostRecord } from '@gmj/shared';
 import { HuaweiMitigationExecutor, type MitigationSshPort } from './huawei-mitigation-executor';
@@ -25,8 +26,8 @@ const RT = '268568:660';
 
 const PREFIX_LISTS = [
   'ip ip-prefix BOGONS index 10 permit 10.0.0.0 8',
-  'ip ip-prefix PREFIX8to24 index 10 permit 10.200.200.0 24 less-equal 24',
-  'ip ip-prefix SUB-BLOCO index 10 permit 10.200.200.128 25',
+  'ip ip-prefix PREFIX8to24 index 10 permit 198.51.100.0 24 less-equal 24',
+  'ip ip-prefix SUB-BLOCO index 10 permit 198.51.100.128 25',
   'ip ip-prefix OUTRA-REDE index 10 permit 192.0.2.0 24',
 ].join('\n');
 
@@ -81,6 +82,7 @@ function device(): HostRecord {
 }
 
 class FakeSsh implements MitigationSshPort {
+  readMitigationDisplays = cleanExportDisplayRead;
   readonly applied: { commands: string[] }[] = [];
   constructor(public routePolicyConfiguration: string) {}
 

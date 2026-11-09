@@ -185,7 +185,11 @@ describe('F2: assess do reconciler olha a POLICY INTEIRA', () => {
 });
 
 describe('F2/V/W: preview, apply local e preview STALE', () => {
-  async function harness(readBackRef: { current: string }) {
+  async function harness(
+    readBackRef: { current: string },
+    verdict?: 'PASS' | 'FAIL' | 'INCONCLUSIVE',
+    calls?: Array<{ policy: string; peers: readonly string[] }>,
+  ) {
     const repository = new InMemoryMitigationRepository();
     const profileIds: string[] = [];
     for (let index = 0; index < 2; index += 1) {
@@ -214,13 +218,30 @@ describe('F2/V/W: preview, apply local e preview STALE', () => {
       readPolicy: async () => readBackRef.current,
       labels: LABELS,
       now: () => NOW,
+      ...(verdict
+        ? {
+            physicalVerifier: async (
+              _device: HostRecord,
+              scope: { policyName: string },
+              peers: readonly string[],
+            ) => {
+              calls?.push({ policy: scope.policyName, peers });
+              return { outcome: verdict, summary: `verificacao fisica ${verdict}` };
+            },
+          }
+        : {}),
     });
-    return { repository, reconciler, profileIds, scope: { deviceId: DEVICE_A, policyName: POLICY } };
+    return {
+      repository,
+      reconciler,
+      profileIds,
+      scope: { deviceId: DEVICE_A, policyName: POLICY },
+    };
   }
 
   it('preview expõe physical/proposedPair e o apply propaga o par FISICO 1/2', async () => {
     const readBack = { current: READ_BACK_PAIR_1_2 };
-    const h = await harness(readBack);
+    const h = await harness(readBack, 'PASS');
 
     const preview = await h.reconciler.preview(h.scope);
 
@@ -241,6 +262,35 @@ describe('F2/V/W: preview, apply local e preview STALE', () => {
       expect(runtime?.plannedBogonNode).toBe(PAIR_A.bogonNode);
       expect(runtime?.plannedMitigationNode).toBe(PAIR_A.mitigationNode);
     }
+  });
+
+  it.each([
+    ['sem verificador fisico', undefined],
+    ['verificacao FAIL', 'FAIL'],
+    ['verificacao INCONCLUSIVE', 'INCONCLUSIVE'],
+  ] as const)(
+    'M4: %s => o texto da policy sozinho NAO promove a MITIGATED (permanece RECONCILIATION_REQUIRED)',
+    async (_label, verdict) => {
+      const h = await harness({ current: READ_BACK_PAIR_1_2 }, verdict);
+      const preview = await h.reconciler.preview(h.scope);
+      expect(preview.state).toBe('MITIGATED');
+      const applied = await h.reconciler.applyLocal(h.scope, preview.previewId);
+      expect(applied.state).toBe('RECONCILIATION_REQUIRED');
+      for (const profileId of h.profileIds) {
+        const runtime = await h.repository.getRuntime(profileId);
+        expect(runtime?.state).toBe('RECONCILIATION_REQUIRED');
+      }
+    },
+  );
+
+  it('M4: o verificador recebe o device e os peers do cliente do escopo (reexecucao somente leitura)', async () => {
+    const calls: Array<{ policy: string; peers: readonly string[] }> = [];
+    const h = await harness({ current: READ_BACK_PAIR_1_2 }, 'PASS', calls);
+    const preview = await h.reconciler.preview(h.scope);
+    await h.reconciler.applyLocal(h.scope, preview.previewId);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.policy).toBe(POLICY);
+    expect([...calls[0]!.peers].sort()).toEqual(['10.200.201.20', '10.200.201.21']);
   });
 
   it('V) mudanca FISICA depois do preview => stale (zero escrita local)', async () => {

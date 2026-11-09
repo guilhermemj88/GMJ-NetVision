@@ -37,7 +37,11 @@ export type PhysicalSimMode =
   | 'ambiguous-peer'
   | 'no-mitigation-peer'
   | 'outside-changed'
-  | 'outside-rt660';
+  | 'outside-rt660'
+  /** Peer cai e volta dentro da janela com as mesmas rotas (Peer Up count aumenta). */
+  | 'flap'
+  /** O prefixo ja era anunciado ao peer de mitigacao ANTES da escrita (sessao paralela). */
+  | 'already-advertised';
 
 export class PhysicalBgpSimulator {
   mode: PhysicalSimMode = 'ok';
@@ -61,6 +65,12 @@ export class PhysicalBgpSimulator {
     text = text.replace(/Received total routes: \d+/, `Received total routes: ${total}`);
     if (this.mode === 'peer-down' && this.mitigated()) {
       text = text.replace('BGP current state: Established', 'BGP current state: Active');
+    }
+    if (this.mode === 'flap' && this.mitigated()) {
+      text = text.replace(
+        /BGP Peer Up count:\s*(\d+)/,
+        (_m, n: string) => `BGP Peer Up count: ${Number(n) + 1}`,
+      );
     }
     if (this.mode === 'count-changed' && this.mitigated()) {
       text = text.replace(/Received total routes: \d+/, `Received total routes: ${total - 1}`);
@@ -151,7 +161,9 @@ export class PhysicalBgpSimulator {
     ];
     const base = ['45.163.144.0/22', '45.168.200.0/22'];
     const shown =
-      this.propagated() && this.mode !== 'not-advertised' ? [...base, ...SIM_ELIGIBLE] : base;
+      this.mode === 'already-advertised' || (this.propagated() && this.mode !== 'not-advertised')
+        ? [...base, ...SIM_ELIGIBLE]
+        : base;
     return [
       ...header,
       ` Total Number of Routes: ${shown.length}`,
@@ -175,13 +187,14 @@ export class PhysicalBgpSimulator {
 
   private output(command: string): string | null {
     if (command === 'display current-configuration configuration bgp') {
-      if (this.mode === 'ambiguous-peer') {
+      // Descoberta ambigua/ausente so APOS a escrita (antes dela o export e provado no preflight).
+      if (this.mode === 'ambiguous-peer' && this.mitigated()) {
         return REAL_BGP_CONFIG.replace(
           /(\s+peer 198\.19\.4\.145 route-policy PL-COMPUTIZE-IPv4-OUT export)/,
           '$1\n  peer 198.19.4.146 route-policy PL-COMPUTIZE-IPv4-OUT export',
         );
       }
-      if (this.mode === 'no-mitigation-peer') {
+      if (this.mode === 'no-mitigation-peer' && this.mitigated()) {
         return REAL_BGP_CONFIG.replace(
           /\s+peer 198\.19\.4\.145 route-policy PL-COMPUTIZE-IPv4-OUT export/,
           '',
@@ -262,15 +275,8 @@ export class GenericPhysicalDisplays {
     const mitigated = this.options.mitigated();
     const mitigationPeer = this.options.mitigationPeer ?? SIM_MITIGATION_PEER;
     return commands.map((command) => {
-      if (command === 'display current-configuration configuration bgp') {
-        return { command, output: REAL_BGP_CONFIG };
-      }
-      if (command === 'display current-configuration configuration route-policy') {
-        return { command, output: REAL_ROUTE_POLICY_CONFIG };
-      }
-      if (command === 'display ip extcommunity-filter') {
-        return { command, output: REAL_EXTCOMMUNITY_FILTER };
-      }
+      const clean = cleanExportDisplay(command);
+      if (clean !== undefined) return { command, output: clean };
       if (!model || this.mode === 'unreadable') return { command, output: null };
       const verbose = /^display bgp peer (\S+) verbose$/.exec(command);
       if (verbose) {
@@ -346,4 +352,114 @@ export class GenericPhysicalDisplays {
       return { command, output: null };
     });
   }
+}
+
+// ---------------------------------------------------------------------------
+// Export "limpo" minimo (testes com SSH falso proprio) e listas sinteticas do export real
+// ---------------------------------------------------------------------------
+
+export const CLEAN_EXPORT_BGP_CONFIG = [
+  'bgp 268568',
+  ' ipv4-family unicast',
+  `  peer ${SIM_MITIGATION_PEER} route-policy PL-MIT-OUT export`,
+  '#',
+].join('\n');
+export const CLEAN_EXPORT_ROUTE_POLICY = [
+  'route-policy PL-MIT-OUT permit node 300',
+  ' if-match extcommunity-filter MITIGACAO',
+  '#',
+].join('\n');
+export const CLEAN_EXPORT_EXTCOMMUNITY_FILTER = [
+  'Named Extended Community basic filter: MITIGACAO',
+  '    index: 10            permit     rt : 268568:660',
+].join('\n');
+
+/** Saida dos 3 `display` de configuracao para um export sem nenhum deny anterior. */
+export function cleanExportDisplay(command: string): string | undefined {
+  if (command === 'display current-configuration configuration bgp') return CLEAN_EXPORT_BGP_CONFIG;
+  if (command === 'display current-configuration configuration route-policy') {
+    return CLEAN_EXPORT_ROUTE_POLICY;
+  }
+  if (command === 'display ip extcommunity-filter') return CLEAN_EXPORT_EXTCOMMUNITY_FILTER;
+  return undefined;
+}
+
+/** Leitor de displays para SSH falsos que so precisam do export limpo (preflight). */
+export async function cleanExportDisplayRead(
+  _device: unknown,
+  commands: readonly string[],
+): Promise<Array<{ command: string; output: string | null }>> {
+  return commands.map((command) => ({ command, output: cleanExportDisplay(command) ?? null }));
+}
+
+/**
+ * ip-prefix SINTETICO para as listas citadas pelo export REAL (PL-COMPUTIZE-IPv4-OUT): a
+ * captura real nao traz as definicoes. Nomes `PREFIX-A.B.C-L` viram A.B.C.0/L; os demais
+ * recebem um /24 distinto em 100.64.0.0/10. NAO e evidencia fisica.
+ */
+export function syntheticExportPrefixLists(): string {
+  const names = new Set<string>();
+  let inExport = false;
+  for (const line of REAL_ROUTE_POLICY_CONFIG.split(/\r?\n/)) {
+    const header = /^route-policy (\S+) /.exec(line);
+    if (header) inExport = header[1] === 'PL-COMPUTIZE-IPv4-OUT';
+    const match = inExport ? /if-match ip-prefix (\S+)/.exec(line) : null;
+    if (match) names.add(match[1]!);
+  }
+  let index = 0;
+  const lines: string[] = [];
+  for (const name of [...names].sort()) {
+    if (['BOGONS', 'PREFIX8to24', 'default-route'].includes(name)) continue;
+    const m = /^PREFIX-(\d+\.\d+\.\d+)-(\d+)$/.exec(name);
+    lines.push(
+      m
+        ? `ip ip-prefix ${name} index 10 permit ${m[1]}.0 ${m[2]}`
+        : `ip ip-prefix ${name} index 10 permit 100.64.${(index += 1)}.0 24`,
+    );
+  }
+  return lines.join('\n');
+}
+
+/**
+ * ip-prefix SINTETICO para TODAS as listas citadas pela config real (cada uma ganha um /24
+ * distinto em 100.64.0.0/10, exceto `PREFIX-A.B.C-L` que vira A.B.C.0/L). Serve a matriz de
+ * elegibilidade: nao ha sobreposicao acidental entre listas de nomes diferentes. NAO e
+ * evidencia fisica (a captura real nao traz as definicoes).
+ */
+export function syntheticAllPrefixLists(): string {
+  const names = new Set<string>();
+  for (const match of REAL_ROUTE_POLICY_CONFIG.matchAll(/if-match ip-prefix (\S+)/g)) {
+    names.add(match[1]!);
+  }
+  let index = 0;
+  const lines: string[] = [];
+  for (const name of [...names].sort()) {
+    if (['BOGONS', 'PREFIX8to24', 'default-route'].includes(name)) continue;
+    const m = /^PREFIX-(\d+\.\d+\.\d+)-(\d+)$/.exec(name);
+    index += 1;
+    lines.push(
+      m
+        ? `ip ip-prefix ${name} index 10 permit ${m[1]}.0 ${m[2]}`
+        : `ip ip-prefix ${name} index 10 permit 100.${64 + Math.floor(index / 250)}.${index % 250}.0 24`,
+    );
+  }
+  return lines.join('\n');
+}
+
+/** Leitor de displays que serve a config REAL (export da COMPUTIZE etc.) ao preflight. */
+export async function realConfigDisplayRead(
+  _device: unknown,
+  commands: readonly string[],
+): Promise<Array<{ command: string; output: string | null }>> {
+  return commands.map((command) => ({
+    command,
+    output:
+      command === 'display current-configuration configuration bgp'
+        ? REAL_BGP_CONFIG
+        : command === 'display current-configuration configuration route-policy'
+          ? REAL_ROUTE_POLICY_CONFIG
+          : command === 'display ip extcommunity-filter'
+            ? REAL_EXTCOMMUNITY_FILTER
+            : null,
+  }));
 }

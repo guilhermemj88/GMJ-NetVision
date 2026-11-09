@@ -1,3 +1,4 @@
+import { testLivePhysicalPort } from './mitigation-test-support';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { ZodError } from 'zod';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -84,6 +85,8 @@ const READBACK_ACTIVE = [
 
 /** Executor "real" falso: conta TODA interacao (tem de ficar zerado quando bloqueado). */
 class CountingLiveExecutor implements MitigationLiveExecutorPort {
+  captureMitigationEvidence = testLivePhysicalPort.captureMitigationEvidence;
+  verifyMitigationPhysical = testLivePhysicalPort.verifyMitigationPhysical;
   preflightCalls = 0;
   activateCalls = 0;
   removeCalls = 0;

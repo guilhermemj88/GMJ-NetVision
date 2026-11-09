@@ -1,3 +1,4 @@
+import { cleanExportDisplayRead } from '../../../testing/physical-bgp-simulator';
 import { describe, expect, it } from 'vitest';
 import type { HostRecord } from '@gmj/shared';
 import { HuaweiMitigationExecutor, type MitigationSshPort } from './huawei-mitigation-executor';
@@ -25,8 +26,8 @@ const ROUTE_POLICY = [
 
 const IP_PREFIX = [
   'ip ip-prefix BOGONS index 10 permit 10.0.0.0 8',
-  'ip ip-prefix PREFIX8to24 index 10 permit 10.200.200.0 24',
-  'ip ip-prefix PREFIX-HORIZONTES-IPV4 index 10 permit 10.200.100.0 24',
+  'ip ip-prefix PREFIX8to24 index 10 permit 198.51.100.0 24',
+  'ip ip-prefix PREFIX-HORIZONTES-IPV4 index 10 permit 203.0.113.0 24',
 ].join('\n');
 
 function device(id = DEVICE_ID): HostRecord {
@@ -50,6 +51,7 @@ function config(overrides: Partial<MitigationExecutionConfig> = {}): MitigationE
 }
 
 class FakeSsh implements MitigationSshPort {
+  readMitigationDisplays = cleanExportDisplayRead;
   readonly applied: { deviceId: string; commands: string[] }[] = [];
   routePolicyConfiguration: string | null = ROUTE_POLICY;
   prefixListConfiguration: string | null = IP_PREFIX;
@@ -234,7 +236,7 @@ describe('HuaweiMitigationExecutor - preflight READ-ONLY', () => {
 
   it('aborta quando a ip-prefix BOGONS nao existe', async () => {
     const ssh = new FakeSsh();
-    ssh.prefixListConfiguration = 'ip ip-prefix PREFIX8to24 index 10 permit 10.200.200.0 24';
+    ssh.prefixListConfiguration = 'ip ip-prefix PREFIX8to24 index 10 permit 198.51.100.0 24';
     const result = await executor(ssh).preflight(device(), INPUT);
     expect(result.ok).toBe(false);
     expect(result.bogonPrefixListExists).toBe(false);
