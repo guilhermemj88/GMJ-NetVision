@@ -7,6 +7,7 @@ import {
 } from './mitigation/huawei-bgp-policy-parser';
 import type { HostRepository } from '../persistence/host-repository';
 import { assertReadOnlyCommand } from '../../worker/mitigation/read-only-command-guard';
+import { isMitigationEvidenceCommand } from './mitigation/mitigation-physical-verification';
 import { SshClientImpl } from '../ssh/ssh-client-impl';
 import type { BgpRouteCommandResult } from './bgp-interface-correlation';
 import {
@@ -652,6 +653,46 @@ export class HuaweiBgpSshService {
     ]);
     if (output === null) throw new Error('SSH command failed');
     return output;
+  }
+
+  /**
+   * READ-ONLY: varios `display` de EVIDENCIA FISICA da mitigacao numa unica
+   * sessao curta (peer verbose, received/advertised-routes, routing-table de um
+   * prefixo, extcommunity-filter e as configuracoes BGP/route-policy). Cada
+   * comando passa pelo guard read-only E pelo conjunto estrito desta verificacao
+   * (somente esses `display`) antes de tocar o SSH.
+   */
+  async readMitigationDisplays(
+    device: HostRecord,
+    commands: readonly string[],
+  ): Promise<Array<{ command: string; output: string | null }>> {
+    const validated = commands.map((command) => {
+      const normalized = assertReadOnlyCommand(command);
+      if (!isMitigationEvidenceCommand(normalized)) {
+        throw new Error('READ_ONLY_VIOLATION: comando fora do conjunto de evidencia fisica');
+      }
+      return normalized;
+    });
+    if (validated.length === 0) return [];
+    const client = await this.createClient(device);
+    const host = device.ssh!.host;
+    const screenLength = assertReadOnlyCommand('screen-length 0 temporary');
+    // UMA sessao (limite de VTYs do equipamento): os comandos rodam em sequencia e uma
+    // falha isolada vira `output: null` (inconclusivo), nunca uma lista parcial.
+    try {
+      const results = await client.execute(host, [screenLength, ...validated]);
+      const own = results.slice(-validated.length);
+      if (own.length !== validated.length) {
+        return validated.map((command) => ({ command, output: null }));
+      }
+      return validated.map((command, index) => {
+        const result = own[index]!;
+        const failed = result.exitCode !== 0 || commandOutputError(result.stdout);
+        return { command, output: failed ? null : result.stdout };
+      });
+    } catch {
+      return validated.map((command) => ({ command, output: null }));
+    }
   }
 
   /**

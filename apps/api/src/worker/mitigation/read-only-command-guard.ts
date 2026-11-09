@@ -42,6 +42,7 @@ const ALLOWED_COMMAND_PREFIXES: readonly string[] = [
   'display interface',
   'display ip interface brief',
   'display ip routing-table',
+  'display ip extcommunity-filter',
   'display bgp peer',
   'display bgp routing-table',
   'display current-configuration configuration bgp',
