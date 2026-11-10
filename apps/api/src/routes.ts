@@ -957,7 +957,9 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   // F4: MESMA exclusao mutua para UI, n8n, AUTO e APPLY LOCAL do reconciler.
   const mitigationScopeLock = config.DEMO_MODE
     ? new InMemoryPolicyScopeLock()
-    : new PrismaPolicyScopeLock(prismaClient);
+    : // 240 s: o pior caso de SSH lento (~110 s antes da verificacao) ainda deixa os 90 s da
+      // verificacao fisica + reserva DENTRO do lock; a operacao confere a posse antes de escrever.
+      new PrismaPolicyScopeLock(prismaClient, 240_000);
   // Ligacao tardia: o servico de comandos e criado ANTES do motor AUTO.
   const autoEngineRef: { current: { forgetProfiles(ids: readonly string[]): void } | null } = {
     current: null,

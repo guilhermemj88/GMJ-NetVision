@@ -34,6 +34,7 @@ import {
   EXTCOMMUNITY_FILTER_COMMAND,
   ROUTE_POLICY_CONFIGURATION_COMMAND,
   captureBeforeEvidence,
+  DEFAULT_PHYSICAL_TIMING,
   verifyMitigationPhysical,
   type DisplayReader,
   type MitigationPhysicalVerification,
@@ -971,9 +972,38 @@ export class HuaweiMitigationExecutor {
       contract: MitigationNode2Contract;
       customerPeers: readonly string[];
       before: PhysicalBeforeEvidence | null;
+      /**
+       * Teto do orcamento TOTAL em ms (o tempo que resta do lock da policy). A verificacao
+       * nunca passa dele; orcamento insuficiente => INCONCLUSIVE (nunca sucesso).
+       */
+      maxBudgetMs?: number;
     },
   ): Promise<MitigationPhysicalVerification> {
     const read = this.displayReader(device);
+    const baseTiming = this.deps.physical?.timing ?? DEFAULT_PHYSICAL_TIMING;
+    const timing =
+      input.maxBudgetMs !== undefined && Number.isFinite(input.maxBudgetMs)
+        ? { ...baseTiming, budgetMs: Math.max(0, Math.min(baseTiming.budgetMs, input.maxBudgetMs)) }
+        : this.deps.physical?.timing;
+    if (timing && timing.budgetMs <= 0) {
+      return {
+        outcome: 'INCONCLUSIVE',
+        summary:
+          'verificacao fisica INCONCLUSIVE: sem tempo restante no lock da policy para verificar',
+        checks: [
+          {
+            id: 'lock_budget',
+            outcome: 'INCONCLUSIVE',
+            detail: 'sem tempo restante no lock da policy para a verificacao fisica',
+          },
+        ],
+        attempts: 0,
+        elapsedMs: 0,
+        mitigationPeer: null,
+        eligiblePrefixes: [],
+        customerPeers: [...input.customerPeers],
+      };
+    }
     if (!read) {
       return {
         outcome: 'INCONCLUSIVE',
@@ -998,7 +1028,7 @@ export class HuaweiMitigationExecutor {
         contract: input.contract,
         customerPeers: input.customerPeers,
         before: input.before,
-        ...(this.deps.physical?.timing ? { timing: this.deps.physical.timing } : {}),
+        ...(timing ? { timing } : {}),
         ...(this.deps.physical?.sleep ? { sleep: this.deps.physical.sleep } : {}),
         ...(this.deps.physical?.clock ? { clock: this.deps.physical.clock } : {}),
       });

@@ -6,8 +6,16 @@ import {
   MitigationCommandService,
   type MitigationLiveExecutorPort,
   BASELINE_RELEASE_FAILED_WARNING,
+  LOCK_POST_VERIFICATION_RESERVE_MS,
 } from './mitigation-command-service';
 import { MockMitigationExecutor } from './mitigation-executor';
+import {
+  PolicyScopeLostError,
+  type PolicyScopeKey,
+  type PolicyScopeLease,
+  type PolicyScopeLock,
+} from './mitigation-policy-lock';
+import { PrismaPolicyScopeLock } from './prisma-policy-scope-lock';
 import {
   buildMitigationActivateCommands,
   buildMitigationRemovalCommands,
@@ -53,7 +61,9 @@ const GOOD_READBACK = [
   ...testPermanentClientNode(POLICY, { node: 11 }),
 ].join('\n');
 
-function preflightResult(overrides: Partial<MitigationPreflightResult> = {}): MitigationPreflightResult {
+function preflightResult(
+  overrides: Partial<MitigationPreflightResult> = {},
+): MitigationPreflightResult {
   return {
     ok: true,
     mode: 'ACTIVATE',
@@ -120,7 +130,10 @@ class FakeLiveExecutor implements MitigationLiveExecutorPort {
     return { ...this.preflightValue, mode: input.mode };
   }
 
-  async activate(_device: HostRecord, input: MitigationActivationInput): Promise<{ output: string }> {
+  async activate(
+    _device: HostRecord,
+    input: MitigationActivationInput,
+  ): Promise<{ output: string }> {
     if (this.activateError) throw this.activateError;
     this.applied.push(buildMitigationActivateCommands(input, input.mitigationContract));
     return { output: 'ok' };
@@ -143,6 +156,7 @@ async function harness(
     expectedNodes?: number[] | null;
     notifications?: NotificationPublisher;
     runtimePlan?: 'PAIR' | 'NONE';
+    scopeLock?: PolicyScopeLock;
   } = {},
 ) {
   const repository = new InMemoryMitigationRepository();
@@ -173,6 +187,7 @@ async function harness(
     executor: mock,
     ...(options.live ? { live: options.live } : {}),
     ...(options.notifications ? { notifications: options.notifications } : {}),
+    ...(options.scopeLock ? { scopeLock: options.scopeLock } : {}),
     expectedNodes: async () =>
       options.expectedNodes === undefined ? [11, 50] : options.expectedNodes,
     now: () => FIXED_NOW,
@@ -435,7 +450,10 @@ class StatefulLiveExecutor implements MitigationLiveExecutorPort {
     return this.mitigated ? { bogonNode: 1, mitigationNode: 2 } : null;
   }
 
-  async activate(_device: HostRecord, input: MitigationActivationInput): Promise<{ output: string }> {
+  async activate(
+    _device: HostRecord,
+    input: MitigationActivationInput,
+  ): Promise<{ output: string }> {
     this.applied.push(buildMitigationActivateCommands(input, input.mitigationContract));
     this.mitigated = true;
     return { output: 'ok' };
@@ -500,7 +518,11 @@ describe('ciclo real ACTIVATE -> REMOVE (preflight por modo)', () => {
   it('SIMULATE_REMOVE prova o preflight de retirada sobre o par ativo', async () => {
     const live = new StatefulLiveExecutor();
     const h = await harness({ live });
-    await h.commands.execute({ requestId: 'sim-rem-act', action: 'ACTIVATE', profileId: h.profileId });
+    await h.commands.execute({
+      requestId: 'sim-rem-act',
+      action: 'ACTIVATE',
+      profileId: h.profileId,
+    });
 
     const sim = await h.commands.execute({
       requestId: 'sim-rem-1',
@@ -545,7 +567,11 @@ describe('notificacao: simulation reflete o caminho executado', () => {
     const live = new StatefulLiveExecutor();
     const publisher = new CapturePublisher();
     const h = await harness({ live, notifications: publisher });
-    await h.commands.execute({ requestId: 'n-sim', action: 'SIMULATE_ACTIVATE', profileId: h.profileId });
+    await h.commands.execute({
+      requestId: 'n-sim',
+      action: 'SIMULATE_ACTIVATE',
+      profileId: h.profileId,
+    });
     expect(publisher.published[0]?.simulation).toBe(true);
   });
 });
@@ -601,5 +627,150 @@ describe('reconciliacao do REMOVE com o par ATIVO do equipamento', () => {
     expect(body.ok).toBe(false);
     expect(body.status).toBe('REVALIDATION_FAILED');
     expect(live.applied).toHaveLength(0);
+  });
+});
+
+/** Lock falso com lease controlavel (posse e tempo restante). */
+class LeasedLock implements PolicyScopeLock {
+  held = true;
+  remaining = Number.POSITIVE_INFINITY;
+  asserts = 0;
+  async run<T>(scope: PolicyScopeKey, operation: (lease: PolicyScopeLease) => Promise<T>) {
+    return operation({
+      remainingMs: () => this.remaining,
+      assertHeld: async () => {
+        this.asserts += 1;
+        if (!this.held) throw new PolicyScopeLostError(scope);
+      },
+    });
+  }
+}
+
+describe('lease do lock da policy: fencing antes da escrita e verificacao dentro do prazo', () => {
+  it('ACTIVATE com a posse do lock perdida NAO escreve e nao altera o runtime', async () => {
+    const live = new FakeLiveExecutor();
+    const lock = new LeasedLock();
+    lock.held = false;
+    const h = await harness({ live, scopeLock: lock });
+    const body = await h.commands.execute({
+      requestId: 'lease-lost-activate',
+      action: 'ACTIVATE',
+      profileId: h.profileId,
+    });
+    expect(body.ok).toBe(false);
+    expect(body.verified).toBe(false);
+    expect(body.safeError).toContain('POLICY_LOCK_LOST');
+    expect(live.applied).toHaveLength(0);
+    expect((await h.repository.getRuntime(h.profileId))?.state).toBe('NORMAL');
+  });
+
+  it('REMOVE com a posse do lock perdida NAO escreve', async () => {
+    const live = new FakeLiveExecutor();
+    const lock = new LeasedLock();
+    const h = await harness({ live, scopeLock: lock });
+    const on = await h.commands.execute({
+      requestId: 'lease-ok-activate',
+      action: 'ACTIVATE',
+      profileId: h.profileId,
+    });
+    expect(on.status).toBe('ACTIVATED_VERIFIED');
+    expect(lock.asserts).toBe(1); // a posse foi conferida antes da escrita
+    live.devicePair = { bogonNode: 1, mitigationNode: 2 };
+    live.preflightValue = preflightResult({
+      mode: 'REMOVE',
+      bogonNodeExists: true,
+      bogonNodeMatches: true,
+      mitigationNodeExists: true,
+      mitigationNodeMatches: true,
+    });
+    lock.held = false;
+    const off = await h.commands.execute({
+      requestId: 'lease-lost-remove',
+      action: 'REMOVE',
+      profileId: h.profileId,
+    });
+    expect(off.ok).toBe(false);
+    expect(live.removals).toHaveLength(0);
+  });
+
+  it('a verificacao fisica recebe como teto o tempo restante do lock menos a reserva', async () => {
+    const live = new FakeLiveExecutor();
+    const budgets: Array<number | undefined> = [];
+    live.verifyMitigationPhysical = async (device, input) => {
+      budgets.push((input as { maxBudgetMs?: number }).maxBudgetMs);
+      return testLivePhysicalPort.verifyMitigationPhysical(device, input);
+    };
+    const lock = new LeasedLock();
+    lock.remaining = 65_000;
+    const h = await harness({ live, scopeLock: lock });
+    await h.commands.execute({
+      requestId: 'lease-budget',
+      action: 'ACTIVATE',
+      profileId: h.profileId,
+    });
+    expect(budgets).toEqual([65_000 - LOCK_POST_VERIFICATION_RESERVE_MS]);
+  });
+
+  it('sem lock (ou lock sem prazo) nenhum teto e imposto', async () => {
+    const live = new FakeLiveExecutor();
+    const budgets: Array<number | undefined> = [];
+    live.verifyMitigationPhysical = async (device, input) => {
+      budgets.push((input as { maxBudgetMs?: number }).maxBudgetMs);
+      return testLivePhysicalPort.verifyMitigationPhysical(device, input);
+    };
+    const h = await harness({ live, scopeLock: new LeasedLock() });
+    await h.commands.execute({
+      requestId: 'lease-unbounded',
+      action: 'ACTIVATE',
+      profileId: h.profileId,
+    });
+    expect(budgets).toEqual([undefined]);
+  });
+});
+
+describe('PrismaPolicyScopeLock: lease com prazo e prova de posse', () => {
+  function fakeDb(options: { acquired?: boolean; probeFails?: () => boolean } = {}) {
+    const queries: string[] = [];
+    const tx = {
+      $queryRaw: async (strings: TemplateStringsArray) => {
+        const sql = strings.join('?');
+        queries.push(sql);
+        if (sql.includes('pg_try_advisory_xact_lock'))
+          return [{ acquired: options.acquired ?? true }];
+        if (options.probeFails?.()) throw new Error('Transaction already closed');
+        return [{ ok: 1 }];
+      },
+    };
+    const db = {
+      $transaction: async <T>(work: (t: typeof tx) => Promise<T>) => work(tx),
+    };
+    return { db: db as never, queries };
+  }
+
+  it('remainingMs decresce com o relogio e assertHeld consulta a transacao', async () => {
+    let now = 1_000;
+    const { db, queries } = fakeDb();
+    const lock = new PrismaPolicyScopeLock(db, 240_000, () => now);
+    await lock.run({ deviceId: 'd', policyName: 'p' }, async (lease) => {
+      expect(lease.remainingMs()).toBe(240_000);
+      now += 100_000;
+      expect(lease.remainingMs()).toBe(140_000);
+      await lease.assertHeld();
+    });
+    expect(queries.filter((q) => q.includes('SELECT 1'))).toHaveLength(1);
+  });
+
+  it('prazo esgotado ou transacao fechada => PolicyScopeLostError', async () => {
+    let now = 0;
+    let closed = false;
+    const { db } = fakeDb({ probeFails: () => closed });
+    const lock = new PrismaPolicyScopeLock(db, 180_000, () => now);
+    await lock.run({ deviceId: 'd', policyName: 'p' }, async (lease) => {
+      closed = true;
+      await expect(lease.assertHeld()).rejects.toBeInstanceOf(PolicyScopeLostError);
+      closed = false;
+      now = 180_001;
+      await expect(lease.assertHeld()).rejects.toBeInstanceOf(PolicyScopeLostError);
+    });
   });
 });

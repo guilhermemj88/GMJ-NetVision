@@ -27,7 +27,12 @@ import type {
   MitigationPreflightMode,
   MitigationPreflightResult,
 } from './huawei-mitigation-executor';
-import { PolicyScopeBusyError, type PolicyScopeLock } from './mitigation-policy-lock';
+import {
+  PolicyScopeBusyError,
+  UNBOUNDED_POLICY_LEASE,
+  type PolicyScopeLease,
+  type PolicyScopeLock,
+} from './mitigation-policy-lock';
 import {
   ScopeConfirmationStore,
   scopeConfirmationHash,
@@ -310,9 +315,14 @@ export interface MitigationLiveExecutorPort {
       contract: MitigationNode2Contract;
       customerPeers: readonly string[];
       before: PhysicalBeforeEvidence | null;
+      /** Teto do orcamento total (ms): o tempo que resta do lock da policy. */
+      maxBudgetMs?: number;
     },
   ): Promise<MitigationPhysicalVerification>;
 }
+
+/** Tempo reservado, dentro do lock da policy, para o que vem depois da verificacao fisica. */
+export const LOCK_POST_VERIFICATION_RESERVE_MS = 20_000;
 
 export interface MitigationCommandDeps {
   manualCommands?: {
@@ -618,7 +628,7 @@ export class MitigationCommandService {
           'REMOVE exige acao manual autorizada no Telegram ou na interface NetVision; AUTO REMOVE e proibido.',
       };
     }
-    const scoped = async () => {
+    const scoped = async (lease: PolicyScopeLease = UNBOUNDED_POLICY_LEASE) => {
       const journal = this.deps.manualCommands;
       const manual = MUTATING_ACTIONS.includes(input.action) && !isAutomaticCommand(input);
       if (manual && journal) {
@@ -651,7 +661,7 @@ export class MitigationCommandService {
           };
         }
       }
-      const result = await this.executeScopedAction(input, outcome, profile, base);
+      const result = await this.executeScopedAction(input, outcome, profile, base, lease);
       if (manual && journal) {
         try {
           const host = await this.deps.hosts.getHost(profile.deviceId);
@@ -717,6 +727,7 @@ export class MitigationCommandService {
       idempotent: boolean;
       executedAt: string;
     },
+    lease: PolicyScopeLease = UNBOUNDED_POLICY_LEASE,
   ): Promise<MitigationActionResult> {
     if (MUTATING_ACTIONS.includes(input.action) && !isAutomaticCommand(input)) {
       // Manual intent also revokes ownership on an idempotent ACTIVATE.
@@ -1101,6 +1112,8 @@ export class MitigationCommandService {
           if (this.autoExecutionBlocked(input)) {
             return this.autoExecutionDisabledResult(common, preview, preflight);
           }
+          // FENCING: a posse do lock da policy e provada imediatamente antes da escrita real.
+          await lease.assertHeld();
           await authorizeWrite();
           writeAttempted = true;
           await timed('execution', () => live.activate(liveDevice, activationInput));
@@ -1135,6 +1148,10 @@ export class MitigationCommandService {
                 contract: activationInput.mitigationContract,
                 customerPeers: peers.map((peer) => peer.peerAddress),
                 before: beforeEvidence,
+                // A verificacao termina DENTRO do lock: reserva para persistencia/outbox.
+                ...(Number.isFinite(lease.remainingMs())
+                  ? { maxBudgetMs: lease.remainingMs() - LOCK_POST_VERIFICATION_RESERVE_MS }
+                  : {}),
               })
             : null;
           if (physical === null) {
@@ -1209,6 +1226,8 @@ export class MitigationCommandService {
       }
       if (liveDevice && live) {
         if (!preflight?.ok) return this.preflightBlocked(common, preview, preflight);
+        // FENCING: a posse do lock da policy e provada imediatamente antes da escrita real.
+        await lease.assertHeld();
         await authorizeWrite();
         writeAttempted = true;
         writeStarted = true;

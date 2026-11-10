@@ -18,6 +18,36 @@ export interface PolicyScopeKey {
   policyName: string;
 }
 
+/**
+ * POSSE do lock durante a operacao. Um lock com prazo (transacao no PostgreSQL) pode ser
+ * perdido com a operacao ainda rodando: o chamador confere a posse imediatamente antes de
+ * qualquer escrita (fencing) e dimensiona o trabalho pos-escrita ao tempo que resta.
+ */
+export interface PolicyScopeLease {
+  /** ms de posse ainda garantida; `Infinity` quando o lock nao tem prazo. */
+  remainingMs(): number;
+  /** Lanca `PolicyScopeLostError` quando a posse nao pode mais ser provada. */
+  assertHeld(): Promise<void>;
+}
+
+export class PolicyScopeLostError extends Error {
+  readonly code = 'POLICY_LOCK_LOST';
+
+  constructor(readonly scope: PolicyScopeKey) {
+    super(
+      `POLICY_LOCK_LOST: a posse do lock da policy ${scope.policyName} do equipamento ` +
+        `${scope.deviceId} nao pode ser provada; nenhuma escrita foi iniciada`,
+    );
+    this.name = 'PolicyScopeLostError';
+  }
+}
+
+/** Lease de um lock sem prazo (em memoria): posse valida enquanto a operacao roda. */
+export const UNBOUNDED_POLICY_LEASE: PolicyScopeLease = Object.freeze({
+  remainingMs: () => Number.POSITIVE_INFINITY,
+  assertHeld: async () => undefined,
+});
+
 export interface PolicyScopeLock {
   /**
    * Executa `operation` com exclusividade no escopo. Espera no maximo
@@ -25,7 +55,7 @@ export interface PolicyScopeLock {
    * operacao NAO roda (nenhuma escrita acontece). O lock e sempre liberado em
    * `finally`, inclusive quando `operation` lanca.
    */
-  run<T>(scope: PolicyScopeKey, operation: () => Promise<T>): Promise<T>;
+  run<T>(scope: PolicyScopeKey, operation: (lease: PolicyScopeLease) => Promise<T>): Promise<T>;
 }
 
 export class PolicyScopeBusyError extends Error {
@@ -62,7 +92,10 @@ export class InMemoryPolicyScopeLock implements PolicyScopeLock {
     this.timeoutMs = options.timeoutMs ?? 30_000;
   }
 
-  async run<T>(scope: PolicyScopeKey, operation: () => Promise<T>): Promise<T> {
+  async run<T>(
+    scope: PolicyScopeKey,
+    operation: (lease: PolicyScopeLease) => Promise<T>,
+  ): Promise<T> {
     const key = `${scope.deviceId}\u0000${scope.policyName}`;
     const previous = this.tails.get(key) ?? Promise.resolve();
     let release!: () => void;
@@ -74,7 +107,10 @@ export class InMemoryPolicyScopeLock implements PolicyScopeLock {
     this.tails.set(key, mine);
 
     try {
-      await this.waitForTurn(previous.catch(() => undefined), scope);
+      await this.waitForTurn(
+        previous.catch(() => undefined),
+        scope,
+      );
     } catch (error) {
       release();
       if (this.tails.get(key) === mine) this.tails.delete(key);
@@ -82,7 +118,7 @@ export class InMemoryPolicyScopeLock implements PolicyScopeLock {
     }
 
     try {
-      return await operation();
+      return await operation(UNBOUNDED_POLICY_LEASE);
     } finally {
       release();
       if (this.tails.get(key) === mine) this.tails.delete(key);
