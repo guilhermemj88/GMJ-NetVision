@@ -211,8 +211,11 @@ const rejected = (reason: string): MitigationAutoCommandResult => ({
   safeError: reason,
 });
 /**
- * No command outlives the policy lock (240 s) plus its bounded tail: a PLANNED/STARTED command
- * younger than this may still be running and its scope is never released by reconciliation.
+ * A PLANNED/STARTED command younger than this may still be running and its scope is never
+ * released by reconciliation. The age counts from the last transition (PLANNED, then STARTED
+ * right before the write): after STARTED a command is bounded by the SSH write/read timeouts
+ * and the physical verification budget, well below this value. A command that still completes
+ * after its scope was released re-quarantines the scope (see `completeManual`).
  */
 export const QUARANTINE_RELEASE_MIN_AGE_MS = 300_000;
 const manualKey = (id: string) => 'manual-command:' + createHash('sha256').update(id).digest('hex');
@@ -637,9 +640,13 @@ export class AutoMitigationLifecycle {
     if (input.action !== 'ACTIVATE' || !input.autoOperationId) return;
     const t = await this.deps.target(input.profileId);
     if (!t) throw Error('AUTO_RESULT_TARGET_MISSING');
-    await this.deps.store.transaction(async (tx) => {
+    const late = await this.deps.store.transaction(async (tx) => {
       const j = await tx.get<JournalCommand>(input.autoOperationId!);
       if (!j || j.origin !== 'AUTO' || j.action !== 'ACTIVATE') throw Error('AUTO_JOURNAL_MISSING');
+      if (j.state === 'RECONCILED') {
+        await this.requarantine(tx, j, result, j.id, !real);
+        return true;
+      }
       const s = await tx.get<ScopeOwnership>(j.scope);
       if (!s || s.operationId !== j.id || s.phase !== 'ACTIVATING')
         throw Error('AUTO_OWNERSHIP_CHANGED');
@@ -676,7 +683,9 @@ export class AutoMitigationLifecycle {
         ),
         this.now(),
       );
+      return false;
     });
+    if (late) throw Error('AUTO_COMMAND_COMPLETED_AFTER_RELEASE');
   }
   private activationGate(s: ScopeOwnership | null, start: number): string | null {
     if (!s) return null;
@@ -732,6 +741,7 @@ export class AutoMitigationLifecycle {
       if (s.removedAt !== undefined && start <= Math.max(s.removedAt, s.cooldownUntil))
         return false;
       j.state = 'STARTED';
+      j.at = this.now();
       await tx.put(j.id, 'command', j.state, j);
       return true;
     });
@@ -837,12 +847,17 @@ export class AutoMitigationLifecycle {
     const inFlight = (j: JournalCommand | null) =>
       !!j && ['PLANNED', 'STARTED'].includes(j.state) && now - j.at < QUARANTINE_RELEASE_MIN_AGE_MS;
     const s = await tx.get<ScopeOwnership>(key);
-    const pending = await tx.list<JournalCommand>('command', ['STARTED', 'UNCERTAIN']);
+    // PLANNED included: a command still in preflight is also "possibly running"; once
+    // RECONCILED it can no longer be authorized to write.
+    const pending = await tx.list<JournalCommand>('command', ['PLANNED', 'STARTED', 'UNCERTAIN']);
     if (pending.length >= 1000) throw Error('RECONCILIATION_COMMAND_SET_INCOMPLETE');
     const mine = pending.filter((j) => j.scope === key);
     const current = s ? await tx.get<JournalCommand>(s.operationId) : null;
-    if (mine.some(inFlight) || inFlight(current)) throw Error('MANUAL_RECONCILIATION_REQUIRED');
-    return current && current.state === 'PLANNED' ? [...mine, current] : mine;
+    if (mine.some(inFlight) || inFlight(current))
+      throw Error('RECONCILIATION_COMMAND_IN_FLIGHT: aguarde 5 minutos desde o ultimo comando');
+    return current && current.state === 'PLANNED' && !mine.some((j) => j.id === current.id)
+      ? [...mine, current]
+      : mine;
   }
   /**
    * Explicit operator release of a quarantined scope whose mitigation pair is PROVEN ABSENT.
@@ -971,16 +986,46 @@ export class AutoMitigationLifecycle {
       )
         return false;
       j.state = 'STARTED';
+      j.at = this.now();
       await tx.put(j.id, 'command', j.state, j);
       return true;
     });
+  }
+  /**
+   * A command finished AFTER its scope was released by reconciliation: its write was authorized,
+   * so the physical state is unknown again. Never recorded as success or as a mere rejection:
+   * the scope goes back to quarantine and the operator is told.
+   */
+  private async requarantine(
+    tx: AutomationTx,
+    j: JournalCommand,
+    result: MitigationActionResult,
+    eventId: string,
+    simulation: boolean,
+  ): Promise<void> {
+    j.state = 'UNCERTAIN';
+    j.result = { ...result };
+    j.at = this.now();
+    await tx.put(j.id, 'command', j.state, j);
+    const s = await tx.get<ScopeOwnership>(j.scope);
+    if (s) {
+      s.phase = 'UNCERTAIN';
+      s.reason = 'COMMAND_COMPLETED_AFTER_RELEASE';
+      s.operationId = j.id;
+      await tx.put(s.key, 'scope', s.phase, s);
+    }
+    await enqueueNotification(
+      tx,
+      this.resultNotification(result, 'MITIGATION_FAILED', eventId + ':after-release', simulation),
+      this.now(),
+    );
   }
   async completeManual(
     input: MitigationCommandInput,
     result: MitigationActionResult,
     real: boolean,
   ): Promise<void> {
-    await this.deps.store.transaction(async (tx) => {
+    const late = await this.deps.store.transaction(async (tx) => {
       const j = await tx.get<JournalCommand>(manualKey(input.requestId));
       if (
         !j ||
@@ -989,6 +1034,10 @@ export class AutoMitigationLifecycle {
         j.profileId !== input.profileId
       )
         throw Error('MANUAL_JOURNAL_MISSING');
+      if (j.state === 'RECONCILED') {
+        await this.requarantine(tx, j, result, input.requestId, !real);
+        return true;
+      }
       const verified =
         real &&
         j.state === 'STARTED' &&
@@ -1067,7 +1116,10 @@ export class AutoMitigationLifecycle {
         this.resultNotification(result, event, input.requestId, !real),
         this.now(),
       );
+      return false;
     });
+    // Thrown AFTER the commit: the caller reports the command as not synchronized (never ok).
+    if (late) throw Error('MANUAL_COMMAND_COMPLETED_AFTER_RELEASE');
   }
   /**
    * Explicit operator reconciliation. No Huawei mutation and no node adoption.

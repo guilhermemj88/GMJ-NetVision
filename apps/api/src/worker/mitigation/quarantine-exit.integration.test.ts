@@ -232,9 +232,9 @@ describe('comando possivelmente em execucao e concorrencia', () => {
     expect((await command(h, 'e0-remove', 'REMOVE')).status).toBe('MANUAL_RECONCILIATION_REQUIRED');
     cliRemove(h);
     // ausencia e BGP ja provados, mas o comando STARTED e recente: pode estar em execucao
-    expect(await reconcile(h)).toContain('MANUAL_RECONCILIATION_REQUIRED');
+    expect(await reconcile(h)).toContain('RECONCILIATION_COMMAND_IN_FLIGHT');
     h.advance(QUARANTINE_RELEASE_MIN_AGE_MS - 5_000);
-    expect(await reconcile(h)).toContain('MANUAL_RECONCILIATION_REQUIRED');
+    expect(await reconcile(h)).toContain('RECONCILIATION_COMMAND_IN_FLIGHT');
     expect(await journals(h)).toEqual(['STARTED']);
     h.advance(10_000);
     expect(await reconcile(h)).toBe('NORMAL');
@@ -331,5 +331,146 @@ describe('lock em memoria (demo/testes)', () => {
     open();
     await running;
     await expect(lock.run(scopeOf, async () => 'z')).resolves.toBe('z');
+  });
+});
+
+describe('achados da revisao independente', () => {
+  /** Altera as saidas de `display` na borda SSH (leitura perdida, truncada, etc.). */
+  const tamper = (h: H, change: (command: string, output: string | null) => string | null) => {
+    const original = h.ssh.readMitigationDisplays.bind(h.ssh);
+    h.ssh.readMitigationDisplays = async (device, commands) =>
+      (await original(device, commands)).map((entry) => ({
+        ...entry,
+        output: change(entry.command, entry.output),
+      }));
+    return () => {
+      h.ssh.readMitigationDisplays = original;
+    };
+  };
+  const quarantinedAndCliRemoved = async () => {
+    const h = await harness();
+    await uncertainActivate(h, 'unverified');
+    cliRemove(h);
+    return h;
+  };
+
+  it('F1: comando que conclui DEPOIS da liberacao volta a quarentena (nunca sucesso nem simples rejeicao)', async () => {
+    const h = await harness();
+    let open!: () => void;
+    h.ssh.afterWrite = () =>
+      new Promise<void>((resolve) => {
+        open = resolve;
+      });
+    const running = command(h, 'e0-activate', 'ACTIVATE');
+    await flush(() => h.ssh.writes.length === 1);
+    expect(await journals(h)).toEqual(['STARTED']);
+    // lock perdido + comando travado ha mais de 5 min; o operador limpou pelo CLI e reconciliou
+    cliRemove(h);
+    h.advance(QUARANTINE_RELEASE_MIN_AGE_MS + 1_000);
+    expect(await reconcile(h)).toBe('NORMAL');
+    expect(await journals(h)).toEqual(['RECONCILED']);
+    // o comando antigo termina agora
+    delete h.ssh.afterWrite;
+    open();
+    const late = await running;
+    expect(late.ok).toBe(false);
+    expect(await journals(h)).toEqual(['UNCERTAIN']);
+    expect(await events(h)).toContain('MITIGATION_FAILED');
+    expect(await events(h)).not.toContain('MITIGATION_VERIFIED');
+    expect((await command(h, 'e0-remove', 'REMOVE')).status).toBe('MANUAL_RECONCILIATION_REQUIRED');
+    // o mesmo requestId nao devolve um recibo de sucesso
+    expect((await command(h, 'e0-activate', 'ACTIVATE')).ok).toBe(false);
+    expect(h.ssh.writes).toHaveLength(1);
+    // com tudo parado e a ausencia provada, a reconciliacao volta a liberar
+    expect(await reconcile(h)).toBe('NORMAL');
+  });
+
+  it('F1: STARTED renova a idade do comando (os 5 min contam da autorizacao da escrita)', async () => {
+    const h = await harness();
+    const realConfig = h.ssh.readMitigationConfiguration.bind(h.ssh);
+    // preflight lento: 4 min entre o inicio do comando e a autorizacao da escrita
+    let slowed = false;
+    h.ssh.readMitigationConfiguration = async () => {
+      if (!slowed) {
+        slowed = true;
+        h.advance(240_000);
+      }
+      return realConfig();
+    };
+    h.ssh.afterWrite = () => new Promise<void>(() => undefined);
+    void command(h, 'e0-activate', 'ACTIVATE');
+    await flush(() => h.ssh.writes.length === 1);
+    delete h.ssh.afterWrite;
+    h.ssh.readMitigationConfiguration = realConfig;
+    cliRemove(h);
+    h.advance(120_000); // 6 min desde o inicio, 2 min desde a escrita
+    expect(await reconcile(h)).toContain('RECONCILIATION_COMMAND_IN_FLIGHT');
+    h.advance(QUARANTINE_RELEASE_MIN_AGE_MS);
+    expect(await reconcile(h)).toBe('NORMAL');
+  });
+
+  it('controle: anuncio ao peer de mitigacao ainda presente -> quarentena mantida', async () => {
+    const h = await quarantinedAndCliRemoved();
+    h.ssh.physical.mode = 'already-advertised';
+    const refused = await reconcile(h);
+    expect(refused).toContain('RECONCILIATION_ROUTING_NOT_RESTORED');
+    expect(refused).toContain('ainda anunciado');
+    h.ssh.physical.mode = 'ok';
+    expect(await reconcile(h)).toBe('NORMAL');
+  });
+
+  it('F2: leitura de configuracao BGP perdida nunca dispensa a checagem do anuncio', async () => {
+    const h = await quarantinedAndCliRemoved();
+    h.ssh.physical.mode = 'already-advertised';
+    const restore = tamper(h, (cmd, output) =>
+      cmd === 'display current-configuration configuration bgp' ? null : output,
+    );
+    const refused = await reconcile(h);
+    expect(refused).toContain('RECONCILIATION_ROUTING_NOT_RESTORED');
+    expect(refused).toContain('configuracao BGP incompleta');
+    restore();
+    expect(await journals(h)).toEqual(['UNCERTAIN']);
+  });
+
+  it('F3: advertised-routes truncado (total declarado maior que as linhas) nao prova a retirada', async () => {
+    const h = await quarantinedAndCliRemoved();
+    h.ssh.physical.mode = 'already-advertised';
+    tamper(h, (cmd, output) =>
+      output && / advertised-routes$/.test(cmd)
+        ? output
+            .split('\n')
+            .filter((line) => !/167\.250\.12[67]\./.test(line))
+            .join('\n')
+        : output,
+    );
+    const refused = await reconcile(h);
+    expect(refused).toContain('RECONCILIATION_ROUTING_NOT_RESTORED');
+    expect(refused).toContain('incompleto');
+    expect(await journals(h)).toEqual(['UNCERTAIN']);
+  });
+
+  it('F4: rota sem a linha de Ext-Community nao vale como "RT de mitigacao ausente"', async () => {
+    const h = await quarantinedAndCliRemoved();
+    const restore = tamper(h, (cmd, output) =>
+      output && /^display bgp routing-table \d/.test(cmd)
+        ? output
+            .split('\n')
+            .filter((line) => !/Ext-Community/i.test(line))
+            .join('\n')
+        : output,
+    );
+    const refused = await reconcile(h);
+    expect(refused).toContain('RECONCILIATION_ROUTING_NOT_RESTORED');
+    expect(refused).toContain('RT permanente');
+    restore();
+    expect(await reconcile(h)).toBe('NORMAL');
+  });
+
+  it('peer de mitigacao nao identificavel: anuncio nao verificavel -> quarentena mantida', async () => {
+    const h = await quarantinedAndCliRemoved();
+    tamper(h, (cmd, output) => (cmd === 'display ip extcommunity-filter' ? 'nada' : output));
+    const refused = await reconcile(h);
+    expect(refused).toContain('RECONCILIATION_ROUTING_NOT_RESTORED');
+    expect(refused).toContain('peer de mitigacao nao identificado');
   });
 });

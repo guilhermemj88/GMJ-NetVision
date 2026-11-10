@@ -1005,13 +1005,42 @@ export async function verifyRestorationPhysical(input: {
   if (!entries || entries.length === 0)
     return inconclusive('prefix_list', 'entradas da prefix-list do contrato indisponiveis');
 
-  const evidence = await captureBeforeEvidence(input.read, customerPeers).catch(() => null);
-  if (!evidence || evidence.peers.length !== customerPeers.length)
-    return inconclusive('evidence', 'leitura dos peers do cliente indisponivel');
+  // Sessao 1: peers do cliente + configuracao para identificar o peer de mitigacao.
+  const first = await input
+    .read([
+      ...beforeEvidenceCommands(customerPeers),
+      BGP_CONFIGURATION_COMMAND,
+      ROUTE_POLICY_CONFIGURATION_COMMAND,
+      EXTCOMMUNITY_FILTER_COMMAND,
+    ])
+    .catch(() => null);
+  if (!first) return inconclusive('evidence', 'leitura dos peers do cliente indisponivel');
+  const firstByCommand = new Map(first.map((entry) => [entry.command, entry.output]));
+  const configuration = {
+    bgpConfiguration: firstByCommand.get(BGP_CONFIGURATION_COMMAND) ?? null,
+    routePolicyConfiguration: firstByCommand.get(ROUTE_POLICY_CONFIGURATION_COMMAND) ?? null,
+    extcommunityFilterOutput: firstByCommand.get(EXTCOMMUNITY_FILTER_COMMAND) ?? null,
+  };
+  // Sem a configuracao completa nao se sabe a QUEM a rota de mitigacao e anunciada: o anuncio
+  // nao pode ser dado como retirado.
+  if (Object.values(configuration).some((output) => output === null))
+    return inconclusive('configuration', 'leitura de configuracao BGP incompleta');
+  const discovery = discoverMitigationPeer({ ...configuration, rt });
+  if (!discovery.peer)
+    return inconclusive(
+      'mitigation_peer',
+      `peer de mitigacao nao identificado (${discovery.detail}): anuncio nao verificavel`,
+    );
+  const mitigationPeer = discovery.peer;
+  const evidencePeers = customerPeers.map((peer) => ({
+    peer,
+    verbose: firstByCommand.get(peerVerboseCommand(peer)) ?? null,
+    received: firstByCommand.get(receivedRoutesCommand(peer)) ?? null,
+  }));
 
   const checks: PhysicalCheck[] = [];
   const eligible: string[] = [];
-  for (const item of evidence.peers) {
+  for (const item of evidencePeers) {
     if (item.verbose === null) {
       checks.push({
         id: `peer:${item.peer}`,
@@ -1058,7 +1087,6 @@ export async function verifyRestorationPhysical(input: {
       detail: `Established, ${received.prefixes.size} rota(s) recebida(s)`,
     });
   }
-  const mitigationPeer = evidence.mitigationPeer ?? null;
   if (eligible.length > MAX_ELIGIBLE_PREFIXES) {
     checks.push({
       id: 'eligible_prefixes',
@@ -1069,10 +1097,14 @@ export async function verifyRestorationPhysical(input: {
   }
 
   // RT de mitigacao fora de TODAS as rotas elegiveis recebidas do cliente.
+  const second = await input
+    .read([
+      ...eligible.map((prefix) => routingTableCommand(prefix)),
+      advertisedRoutesCommand(mitigationPeer),
+    ])
+    .catch(() => [] as DisplayRead[]);
+  const outputs = new Map(second.map((entry) => [entry.command, entry.output]));
   if (eligible.length > 0) {
-    const commands = eligible.map((prefix) => routingTableCommand(prefix));
-    const reads = await input.read(commands).catch(() => [] as DisplayRead[]);
-    const outputs = new Map(reads.map((entry) => [entry.command, entry.output]));
     for (const prefix of eligible) {
       const paths = parseRoutingTableEntry(outputs.get(routingTableCommand(prefix)) ?? null);
       const mine = paths?.filter((path) => path.from !== null && customerPeers.includes(path.from));
@@ -1087,6 +1119,14 @@ export async function verifyRestorationPhysical(input: {
           id: `route:${prefix}`,
           outcome: 'FAIL',
           detail: `a rota ainda carrega a RT de mitigacao ${rt}`,
+        });
+      } else if (!mine.every((path) => path.extCommunities.includes(input.contract.baselineRt))) {
+        // Sem a RT permanente do cliente a leitura nao PROVA a restauracao (bloco truncado,
+        // policy ainda nao reaplicada): ausencia de evidencia nunca e sucesso.
+        checks.push({
+          id: `route:${prefix}`,
+          outcome: 'INCONCLUSIVE',
+          detail: `a rota nao mostra a RT permanente ${input.contract.baselineRt}: restauracao nao comprovada`,
         });
       } else {
         checks.push({
@@ -1103,20 +1143,18 @@ export async function verifyRestorationPhysical(input: {
     }
   }
 
-  // Anuncio ao peer de mitigacao retirado (somente quando o peer e identificavel).
-  if (mitigationPeer) {
-    const output = evidence.advertisedBefore ?? null;
-    const parsed = output
-      ? parseHuaweiAdvertisedRoutes(output, { localAs: null, addressFamily: 'IPV4' })
-      : null;
-    if (!parsed || (parsed.routes.length === 0 && parsed.reportedTotal !== 0)) {
+  // Anuncio ao peer de mitigacao retirado. Leitura incompleta (total declarado diferente das
+  // linhas interpretadas) nunca vale como "nao anunciado".
+  {
+    const parsed = parseReceived(outputs.get(advertisedRoutesCommand(mitigationPeer)) ?? null);
+    if (!parsed || parsed.reportedTotal === null) {
       checks.push({
         id: 'advertised',
         outcome: 'INCONCLUSIVE',
-        detail: `advertised-routes de ${mitigationPeer} indisponivel/ilegivel`,
+        detail: `advertised-routes de ${mitigationPeer} indisponivel/ilegivel/incompleto`,
       });
     } else {
-      const advertised = new Set(parsed.routes.map((route) => route.prefix));
+      const advertised = new Set(parsed.prefixes.keys());
       const still = eligible.filter((prefix) => advertised.has(prefix));
       checks.push(
         still.length > 0
