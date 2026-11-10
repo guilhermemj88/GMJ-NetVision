@@ -6,6 +6,7 @@ import {
   MitigationCommandService,
   type MitigationLiveExecutorPort,
   BASELINE_RELEASE_FAILED_WARNING,
+  LOCK_MIN_MS_BEFORE_WRITE,
   LOCK_POST_VERIFICATION_RESERVE_MS,
 } from './mitigation-command-service';
 import { MockMitigationExecutor } from './mitigation-executor';
@@ -701,14 +702,14 @@ describe('lease do lock da policy: fencing antes da escrita e verificacao dentro
       return testLivePhysicalPort.verifyMitigationPhysical(device, input);
     };
     const lock = new LeasedLock();
-    lock.remaining = 65_000;
+    lock.remaining = 100_000;
     const h = await harness({ live, scopeLock: lock });
     await h.commands.execute({
       requestId: 'lease-budget',
       action: 'ACTIVATE',
       profileId: h.profileId,
     });
-    expect(budgets).toEqual([65_000 - LOCK_POST_VERIFICATION_RESERVE_MS]);
+    expect(budgets).toEqual([100_000 - LOCK_POST_VERIFICATION_RESERVE_MS]);
   });
 
   it('sem lock (ou lock sem prazo) nenhum teto e imposto', async () => {
@@ -725,6 +726,78 @@ describe('lease do lock da policy: fencing antes da escrita e verificacao dentro
       profileId: h.profileId,
     });
     expect(budgets).toEqual([undefined]);
+  });
+});
+
+describe('lease do lock: margem antes da escrita e leitura opcional pos-verificacao', () => {
+  it('lock com menos que a margem minima: NAO escreve (escrita + read-back nao caberiam no lock)', async () => {
+    const live = new FakeLiveExecutor();
+    const lock = new LeasedLock();
+    lock.remaining = LOCK_MIN_MS_BEFORE_WRITE - 1;
+    const h = await harness({ live, scopeLock: lock });
+    const body = await h.commands.execute({
+      requestId: 'lease-margin',
+      action: 'ACTIVATE',
+      profileId: h.profileId,
+    });
+    expect(body.ok).toBe(false);
+    expect(body.safeError).toContain('POLICY_LOCK_LOST');
+    expect(live.applied).toHaveLength(0);
+    expect(lock.asserts).toBe(0); // recusado pela margem, antes mesmo da prova de posse
+    expect((await h.repository.getRuntime(h.profileId))?.state).toBe('NORMAL');
+  });
+
+  it('exatamente a margem minima: escreve normalmente', async () => {
+    const live = new FakeLiveExecutor();
+    const lock = new LeasedLock();
+    lock.remaining = LOCK_MIN_MS_BEFORE_WRITE;
+    const h = await harness({ live, scopeLock: lock });
+    const body = await h.commands.execute({
+      requestId: 'lease-margin-ok',
+      action: 'ACTIVATE',
+      profileId: h.profileId,
+    });
+    expect(body.status).toBe('ACTIVATED_VERIFIED');
+    expect(live.applied).toHaveLength(1);
+  });
+});
+
+describe('PrismaPolicyScopeLock: operacao concluida com o fechamento da transacao falhando', () => {
+  it('devolve o resultado ja produzido (nunca um erro tardio depois do veredito)', async () => {
+    const tx = { $queryRaw: async () => [{ acquired: true }] };
+    const db = {
+      $transaction: async <T>(work: (t: typeof tx) => Promise<T>) => {
+        await work(tx);
+        throw new Error('Transaction already closed: timeout');
+      },
+    };
+    const lock = new PrismaPolicyScopeLock(db as never, 240_000);
+    await expect(
+      lock.run({ deviceId: 'd', policyName: 'p' }, async () => 'veredito'),
+    ).resolves.toBe('veredito');
+  });
+
+  it('operacao que NAO concluiu continua propagando o erro (inclusive policy ocupada)', async () => {
+    const tx = { $queryRaw: async () => [{ acquired: false }] };
+    const db = { $transaction: async <T>(work: (t: typeof tx) => Promise<T>) => work(tx) };
+    const lock = new PrismaPolicyScopeLock(db as never, 240_000);
+    await expect(
+      lock.run({ deviceId: 'd', policyName: 'p' }, async () => 'x'),
+    ).rejects.toMatchObject({
+      code: 'POLICY_BUSY',
+    });
+    const failing = new PrismaPolicyScopeLock(
+      {
+        $transaction: async <T>(work: (t: typeof tx) => Promise<T>) =>
+          work({ $queryRaw: async () => [{ acquired: true }] }),
+      } as never,
+      240_000,
+    );
+    await expect(
+      failing.run({ deviceId: 'd', policyName: 'p' }, async () => {
+        throw new Error('falha real');
+      }),
+    ).rejects.toThrow('falha real');
   });
 });
 

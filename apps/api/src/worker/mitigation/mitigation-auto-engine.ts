@@ -685,8 +685,9 @@ export class MitigationAutoEngine {
     // de tráfego ainda acima do limiar ou da presença atual do perfil na lista.
     this.retryDetectionDeliveries();
     // M1-AUTO: resultados FINAIS dos ACTIVATE concluidos fora do tick desde o tick anterior.
-    const completed = this.completedExecutions.splice(0);
     const targets = await this.deps.targets.list();
+    // (esvaziada so depois da listagem: uma falha acima nao perde o resultado final)
+    const completed = this.completedExecutions.splice(0);
     const result: MitigationAutoDecision[] = [];
     let nextIndex = 0;
     const worker = async () => {

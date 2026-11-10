@@ -29,6 +29,7 @@ import type {
 } from './huawei-mitigation-executor';
 import {
   PolicyScopeBusyError,
+  PolicyScopeLostError,
   UNBOUNDED_POLICY_LEASE,
   type PolicyScopeLease,
   type PolicyScopeLock,
@@ -322,7 +323,14 @@ export interface MitigationLiveExecutorPort {
 }
 
 /** Tempo reservado, dentro do lock da policy, para o que vem depois da verificacao fisica. */
-export const LOCK_POST_VERIFICATION_RESERVE_MS = 20_000;
+export const LOCK_POST_VERIFICATION_RESERVE_MS = 35_000;
+/**
+ * Posse minima do lock exigida ANTES de iniciar uma escrita real: cobre a sessao de escrita
+ * (ate 8 s de conexao + 30 s de shell) e o read-back (ate 23 s). Abaixo disso nada e escrito.
+ */
+export const LOCK_MIN_MS_BEFORE_WRITE = 70_000;
+/** Folga minima de lock para a leitura OPCIONAL do escopo de prefixos (uma sessao SSH). */
+export const LOCK_MIN_MS_FOR_SCOPE_PREFIXES = 30_000;
 
 export interface MitigationCommandDeps {
   manualCommands?: {
@@ -716,6 +724,16 @@ export class MitigationCommandService {
    * Corpo da acao com escopo reconciliado (runtime -> preflight -> escrita ->
    * read-back -> persistencia). Extraido para rodar sob o lock de escopo (F4).
    */
+  /** Posse do lock provada E com margem suficiente para escrita + read-back. */
+  private async assertLeaseForWrite(
+    lease: PolicyScopeLease,
+    profile: MitigationProfileRecord,
+  ): Promise<void> {
+    if (lease.remainingMs() < LOCK_MIN_MS_BEFORE_WRITE)
+      throw new PolicyScopeLostError(policyExecutionScope(profile));
+    await lease.assertHeld();
+  }
+
   private async executeScopedAction(
     input: MitigationCommandInput,
     outcome: MitigationNotificationOutcome,
@@ -1112,8 +1130,9 @@ export class MitigationCommandService {
           if (this.autoExecutionBlocked(input)) {
             return this.autoExecutionDisabledResult(common, preview, preflight);
           }
-          // FENCING: a posse do lock da policy e provada imediatamente antes da escrita real.
-          await lease.assertHeld();
+          // FENCING: a posse do lock da policy e provada imediatamente antes da escrita real,
+          // com margem para a escrita e o read-back terminarem DENTRO do lock.
+          await this.assertLeaseForWrite(lease, profile);
           await authorizeWrite();
           writeAttempted = true;
           await timed('execution', () => live.activate(liveDevice, activationInput));
@@ -1177,7 +1196,7 @@ export class MitigationCommandService {
         // Fora desse caminho o campo simplesmente NAO existe (consumidores
         // antigos e eventos simulados seguem identicos).
         const scopePrefixes =
-          finalVerified && liveDevice
+          finalVerified && liveDevice && lease.remainingMs() >= LOCK_MIN_MS_FOR_SCOPE_PREFIXES
             ? await this.readScopePrefixes(profile, primaryPeer)
             : undefined;
         const sync = await this.record(profile, activate, finalVerified, pair, physicalError);
@@ -1226,8 +1245,9 @@ export class MitigationCommandService {
       }
       if (liveDevice && live) {
         if (!preflight?.ok) return this.preflightBlocked(common, preview, preflight);
-        // FENCING: a posse do lock da policy e provada imediatamente antes da escrita real.
-        await lease.assertHeld();
+        // FENCING: a posse do lock da policy e provada imediatamente antes da escrita real,
+        // com margem para a escrita e o read-back terminarem DENTRO do lock.
+        await this.assertLeaseForWrite(lease, profile);
         await authorizeWrite();
         writeAttempted = true;
         writeStarted = true;

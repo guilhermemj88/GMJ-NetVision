@@ -25,6 +25,27 @@ export class PrismaPolicyScopeLock implements PolicyScopeLock {
     scope: PolicyScopeKey,
     operation: (lease: PolicyScopeLease) => Promise<T>,
   ): Promise<T> {
+    // A transacao do lock nao grava dados: se a operacao CONCLUIU e apenas o fechamento da
+    // transacao falhou (prazo expirado na cauda), o resultado ja persistido pela operacao e
+    // o verdadeiro. Relancar aqui produziria um "erro" depois de um resultado registrado.
+    let completed: { value: T } | null = null;
+    try {
+      return await this.runLocked(scope, async (lease) => {
+        const value = await operation(lease);
+        completed = { value };
+        return value;
+      });
+    } catch (error) {
+      const done = completed as { value: T } | null;
+      if (done) return done.value;
+      throw error;
+    }
+  }
+
+  private runLocked<T>(
+    scope: PolicyScopeKey,
+    operation: (lease: PolicyScopeLease) => Promise<T>,
+  ): Promise<T> {
     return this.db.$transaction(
       async (tx) => {
         const key = JSON.stringify(['netvision-mitigation', scope.deviceId, scope.policyName]);

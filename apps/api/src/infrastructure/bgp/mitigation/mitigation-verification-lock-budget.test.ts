@@ -18,7 +18,7 @@ const CONTRACT = {
   prefixListEntries: [A.prefixDefinition],
 };
 
-function harness(mitigated: () => boolean) {
+function harness(mitigated: () => boolean, readCostMs = 0) {
   const sim = new PhysicalBgpSimulator(mitigated);
   let clock = 0;
   let reads = 0;
@@ -33,14 +33,15 @@ function harness(mitigated: () => boolean) {
       applyMitigationCommands: async () => {
         throw new Error('ESCRITA PROIBIDA NO TESTE');
       },
-      readMitigationDisplays: async (_device, commands) => {
+      readMitigationDisplays: async (_device: HostRecord, commands: readonly string[]) => {
         reads += 1;
+        clock += readCostMs;
         return sim.read([...commands]);
       },
     },
     config: { executor: 'HUAWEI', liveWriteEnabled: false, allowedDeviceIds: [DEVICE.id] },
     physical: {
-      sleep: async (ms) => {
+      sleep: async (ms: number) => {
         clock += ms;
       },
       clock: () => clock,
@@ -84,6 +85,21 @@ describe('verificacao fisica limitada ao tempo restante do lock da policy', () =
     expect(result.outcome).not.toBe('PASS');
     expect(h.elapsed()).toBeLessThanOrEqual(12_000);
     mitigated = true;
+  });
+
+  it('leituras LENTAS: a descoberta consome o orcamento e nenhuma leitura comeca depois dele', async () => {
+    // cada sessao custa 9 s; teto de 8 s: a descoberta ja esgota o orcamento
+    const h = harness(() => true, 9_000);
+    const before = await captureBeforeEvidence((c) => h.sim.read(c), [SIM_CUSTOMER_PEER]);
+    const result = await h.executor.verifyMitigationPhysical(DEVICE, {
+      contract: CONTRACT,
+      customerPeers: [SIM_CUSTOMER_PEER],
+      before,
+      maxBudgetMs: 8_000,
+    });
+    expect(result.outcome).toBe('INCONCLUSIVE');
+    expect(result.checks.map((check) => check.id)).toEqual(['budget']);
+    expect(h.reads()).toBe(1); // so a descoberta; a evidencia nao foi lida fora do orcamento
   });
 
   it('com a mitigacao aplicada e teto suficiente: PASS', async () => {

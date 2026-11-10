@@ -613,6 +613,14 @@ export class AutoMitigationLifecycle {
         autoEvidence: e,
       });
     } catch {
+      // A excecao pode chegar DEPOIS de o comando ter gravado o veredito (journal). Um
+      // resultado ja registrado nunca e rebaixado nem renotificado por um erro tardio.
+      const settled = await this.deps.store
+        .transaction((tx) => tx.get<JournalCommand>(reservation.operationId))
+        .catch(() => null);
+      if (settled?.state === 'VERIFIED' && settled.result?.ok && settled.result.verified)
+        return settled.result;
+      if (settled?.state === 'UNCERTAIN') return rejected('AUTO_RECONCILIATION_REQUIRED');
       return this.uncertain(reservation, 'COMMAND_TRANSPORT_FAILED');
     }
     const journal = await this.deps.store.transaction((tx) =>

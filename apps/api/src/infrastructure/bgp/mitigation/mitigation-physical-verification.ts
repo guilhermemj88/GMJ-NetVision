@@ -645,13 +645,12 @@ export async function verifyMitigationPhysical(
   }
 
   // Descoberta do peer de mitigacao (leituras frescas, uma vez).
-  const discoveryReads = await input
-    .read([
-      BGP_CONFIGURATION_COMMAND,
-      ROUTE_POLICY_CONFIGURATION_COMMAND,
-      EXTCOMMUNITY_FILTER_COMMAND,
-    ])
-    .catch(() => [] as DisplayRead[]);
+  // A descoberta consome o MESMO orcamento total (limitada ao que resta dele).
+  const discoveryReads = await readWithin(
+    input.read,
+    [BGP_CONFIGURATION_COMMAND, ROUTE_POLICY_CONFIGURATION_COMMAND, EXTCOMMUNITY_FILTER_COMMAND],
+    timing.budgetMs - (clock() - started),
+  );
   const discovered = new Map(discoveryReads.map((entry) => [entry.command, entry.output]));
   const discovery = discoverMitigationPeer({
     bgpConfiguration: discovered.get(BGP_CONFIGURATION_COMMAND) ?? null,
@@ -672,9 +671,20 @@ export async function verifyMitigationPhysical(
   let attempts = 0;
   let checks: PhysicalCheck[] = [];
   for (;;) {
-    // O orcamento e conferido ANTES de cada leitura (a primeira sempre acontece).
+    // O orcamento e conferido ANTES de cada leitura, inclusive da primeira: sem tempo
+    // restante nenhuma leitura e iniciada e o resultado e INCONCLUSIVE (nunca sucesso).
     const remaining = timing.budgetMs - (clock() - started);
-    if (attempts > 0 && remaining <= 0) break;
+    if (remaining <= 0) {
+      if (attempts === 0)
+        checks = [
+          {
+            id: 'budget',
+            outcome: 'INCONCLUSIVE',
+            detail: 'orcamento da verificacao esgotado antes da primeira leitura de evidencia',
+          },
+        ];
+      break;
+    }
     attempts += 1;
     const reads = await readWithin(input.read, uniqueCommands, remaining);
     const outputs = new Map(reads.map((entry) => [entry.command, entry.output]));
