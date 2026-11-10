@@ -201,6 +201,24 @@ describe('workflow candidato RC7.1.3 x API: retirada vinculada a mitigacao', () 
     await t.app.close();
   });
 
+  it('profileId longo demais para caber com a referencia: o alerta sai sem ela (nunca estoura 64 bytes)', async () => {
+    const t = await setup();
+    const body = await t.activate('ui-activate-1');
+    const long = { ...body, profileId: 'p'.repeat(40) };
+    const normalized = { PROFILE_ID: long.profileId } as Json;
+    const button = nodeOf(CANDIDATE, 'Telegram - Alerta com Botoes').parameters['inlineKeyboard']
+      .rows[0].row.buttons[0];
+    const data = String(
+      evaluate(button.additionalFields.callback_data, normalized, {
+        'Webhook NetVision OUT': { body: long },
+      }),
+    );
+    expect(data).toBe(`remove_confirm|${'p'.repeat(40)}|`);
+    expect(Buffer.byteLength(data)).toBeLessThanOrEqual(64);
+    expect(t.press(CANDIDATE, data)).toMatchObject({ authorized: false, staleButton: true });
+    await t.app.close();
+  });
+
   it('botao ANTIGO (mitigacao anterior) nao retira a mitigacao nova', async () => {
     const t = await setup();
     const oldAlert = t.alertButton(CANDIDATE, await t.activate('ui-activate-1'));

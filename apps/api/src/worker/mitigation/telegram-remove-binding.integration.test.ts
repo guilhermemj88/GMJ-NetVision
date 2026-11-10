@@ -135,6 +135,54 @@ describe('botao de retirada vinculado a mitigacao que o gerou', () => {
   });
 });
 
+describe('o botao da mitigacao ATUAL continua valendo depois de comandos recusados', () => {
+  it('ACTIVATE repetido (recusado) nao mata o botao de uma mitigacao manual', async () => {
+    const h = await createPilotHarness();
+    await activate(h, 'ui-activate-1');
+    const [ref] = await refs(h);
+    const again = await activate(h, 'ui-activate-again');
+    expect(again.ok).toBe(false);
+    expect(h.ssh.writes).toHaveLength(1);
+    expect((await remove(h, 'cb-1', ref)).status).toBe('REMOVED_VERIFIED');
+  });
+
+  it('REMOVE que falha ANTES da escrita pode ser repetido com o mesmo botao', async () => {
+    const h = await createPilotHarness();
+    await activate(h, 'ui-activate-1');
+    const [ref] = await refs(h);
+    h.ssh.readFails = true;
+    const failed = await remove(h, 'cb-1', ref);
+    expect(failed.ok).toBe(false);
+    expect(undoWrites(h)).toBe(0);
+    h.ssh.readFails = false;
+    expect((await remove(h, 'cb-2', ref)).status).toBe('REMOVED_VERIFIED');
+  });
+
+  it('mitigacao AUTO: um comando manual recusado nao invalida o botao do alerta AUTO', async () => {
+    const h = await createPilotHarness();
+    for (const rate of [9_200_000_000n, 9_300_000_000n, 9_400_000_000n]) {
+      h.sample(rate);
+      await h.lifecycle.tickPilot();
+    }
+    expect((await h.scope())?.phase).toBe('ACTIVE');
+    const [ref] = await refs(h);
+    expect((await activate(h, 'ui-activate-over-auto')).ok).toBe(false);
+    expect((await remove(h, 'cb-1', ref)).status).toBe('REMOVED_VERIFIED');
+  });
+
+  it('escrita de resultado incerto derruba o vinculo: nenhum botao retira um escopo em quarentena', async () => {
+    const h = await createPilotHarness();
+    await activate(h, 'ui-activate-1');
+    const [ref] = await refs(h);
+    h.ssh.timeout = true;
+    expect((await remove(h, 'cb-1', ref)).ok).toBe(false);
+    h.ssh.timeout = false;
+    const retry = await remove(h, 'cb-2', ref);
+    expect(['MITIGATION_REFERENCE_STALE', 'MANUAL_RECONCILIATION_REQUIRED']).toContain(retry.status);
+    expect(undoWrites(h)).toBe(1);
+  });
+});
+
 describe('canal n8n: campo mitigationRef e exigencia opcional', () => {
   const server = async (h: H, requireRemoveRef: boolean) => {
     const app = Fastify();
@@ -182,6 +230,30 @@ describe('canal n8n: campo mitigationRef e exigencia opcional', () => {
     expect((await post({ ...base, requestId: 'telegram-new', mitigationRef: ref })).body['status']).toBe(
       'REMOVED_VERIFIED',
     );
+    await app.close();
+  });
+
+  it('com a exigencia ligada, token de escopo junto de profileId NAO isenta a referencia', async () => {
+    const h = await createPilotHarness();
+    await activate(h, 'ui-activate-1');
+    const { app, post } = await server(h, true);
+    const bogus = await post({
+      requestId: 'telegram-bogus',
+      action: 'REMOVE',
+      profileId: h.target.profileId,
+      scopeConfirmationToken: 'x'.repeat(32),
+    });
+    expect(bogus.body).toMatchObject({ ok: false, status: 'MITIGATION_REFERENCE_REQUIRED' });
+    expect(JSON.stringify(bogus.body)).not.toContain('token');
+    expect(h.ssh.active).toBe(true);
+    // callback de escopo legitimo (so o token): token desconhecido nao resolve perfil nem executa
+    const unknown = await post({
+      requestId: 'telegram-rmx',
+      action: 'REMOVE',
+      scopeConfirmationToken: 'y'.repeat(32),
+    });
+    expect(unknown.body['status']).toBe('SCOPE_CONFIRMATION_TOKEN_UNKNOWN');
+    expect(h.ssh.active).toBe(true);
     await app.close();
   });
 });

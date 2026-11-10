@@ -156,6 +156,12 @@ export interface ScopeOwnership {
   operationId: string;
   reason: string | null;
   removedAt?: number;
+  /**
+   * `eventId` of the MITIGATION_VERIFIED event of the mitigation this scope currently holds
+   * (AUTO operation id or request id of the verified manual ACTIVATE); `null` when it holds
+   * none. Independent of `phase`/`reason`, which later rejected commands overwrite.
+   */
+  activeEventId?: string | null;
 }
 export interface JournalCommand {
   id: string;
@@ -226,6 +232,8 @@ export const QUARANTINE_RELEASE_MIN_AGE_MS = 300_000;
  */
 export function activeMitigationEventId(s: ScopeOwnership | null): string | null {
   if (!s) return null;
+  if (s.activeEventId !== undefined) return s.activeEventId;
+  // Records written before the dedicated field existed.
   if (s.phase === 'ACTIVE') return s.operationId;
   if (
     s.phase === 'MANUAL' &&
@@ -681,6 +689,7 @@ export class AutoMitigationLifecycle {
       s.phase = good ? 'ACTIVE' : 'UNCERTAIN';
       s.reason = good ? null : result.status;
       if (good) s.activatedAt = this.now();
+      s.activeEventId = good ? s.operationId : null;
       await tx.put(s.key, 'scope', s.phase, s);
       await tx.put(j.id, 'command', good ? 'VERIFIED' : 'UNCERTAIN', {
         ...j,
@@ -854,6 +863,8 @@ export class AutoMitigationLifecycle {
       if (s) {
         s.phase = 'MANUAL';
         s.reason = 'MANUAL_RECONCILIATION';
+        // Reconciled to anything but the same proven mitigation: no button refers to it any more.
+        if (proof?.state !== 'MITIGATED' || !proof.pairPresent) s.activeEventId = null;
         await tx.put(key, 'scope', s.phase, s);
       }
     });
@@ -916,6 +927,7 @@ export class AutoMitigationLifecycle {
         owner: 'released:' + id,
         operationId: id,
         reason: 'EXPLICIT_MANUAL_RELEASE_RECONCILED',
+        activeEventId: null,
         removedAt: now,
         cooldownUntil: now + this.deps.config().cooldownMs,
         lastSample: null,
@@ -1035,6 +1047,7 @@ export class AutoMitigationLifecycle {
     if (s) {
       s.phase = 'UNCERTAIN';
       s.reason = 'COMMAND_COMPLETED_AFTER_RELEASE';
+      s.activeEventId = null;
       s.operationId = j.id;
       await tx.put(s.key, 'scope', s.phase, s);
     }
@@ -1099,6 +1112,7 @@ export class AutoMitigationLifecycle {
           lastSample: null,
           operationId: j.id,
           reason: 'MANUAL_ACTIVATE_VERIFIED',
+          activeEventId: input.requestId,
         };
       }
       if (s) {
@@ -1106,6 +1120,7 @@ export class AutoMitigationLifecycle {
           s.phase = 'COOLDOWN';
           s.owner = 'released:' + input.requestId;
           s.reason = 'MANUAL_REMOVE_VERIFIED';
+          s.activeEventId = null;
           s.removedAt = this.now();
           s.cooldownUntil = this.now() + this.deps.config().cooldownMs;
           s.lastSample = null;
@@ -1114,6 +1129,11 @@ export class AutoMitigationLifecycle {
         } else {
           s.phase = verified ? 'MANUAL' : j.state === 'STARTED' ? 'UNCERTAIN' : 'MANUAL';
           s.reason = verified ? 'MANUAL_ACTIVATE_VERIFIED' : result.status;
+          // Verified ACTIVATE: this is now THE mitigation of the scope. A write with unknown
+          // outcome drops the binding. A rejection before any write leaves it untouched, so the
+          // button of the current mitigation keeps working after a refused/duplicate command.
+          if (verified) s.activeEventId = input.requestId;
+          else if (j.state === 'STARTED') s.activeEventId = null;
         }
         s.operationId = j.id;
         if (verified && input.action === 'ACTIVATE') s.owner = 'manual:' + input.requestId;
@@ -1217,6 +1237,7 @@ export class AutoMitigationLifecycle {
           owner: 'released:' + id,
           operationId: id,
           reason: 'EXPLICIT_MANUAL_RELEASE_RECONCILED',
+          activeEventId: null,
           removedAt: this.now(),
           cooldownUntil: this.now() + this.deps.config().cooldownMs,
           lastSample: null,
@@ -1377,6 +1398,7 @@ export class AutoMitigationLifecycle {
       if (!s || s.owner !== scope.owner) return;
       s.phase = 'UNCERTAIN';
       s.reason = reason;
+      s.activeEventId = null;
       await tx.put(s.key, 'scope', s.phase, s);
       const j = await tx.get<JournalCommand>(scope.operationId);
       if (j) {

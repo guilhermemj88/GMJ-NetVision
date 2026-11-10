@@ -229,7 +229,10 @@ export function registerN8nRoutes(app: FastifyInstance, dependencies: N8nRouteDe
       requireRemoveRef &&
       parsed.data.action === 'REMOVE' &&
       !parsed.data.mitigationRef &&
-      !parsed.data.scopeConfirmationToken
+      // Isento apenas o callback de confirmacao de escopo (token SEM profileId): o token so e
+      // emitido por um REMOVE que ja passou pela referencia. Token junto de profileId nao isenta
+      // (um token invalido faria o gate emitir um novo sem referencia alguma).
+      !(parsed.data.scopeConfirmationToken && !parsed.data.profileId)
     ) {
       const safeError =
         'Retirada sem referencia da mitigacao (botao antigo); nenhuma escrita foi iniciada. Use o alerta da mitigacao atual.';

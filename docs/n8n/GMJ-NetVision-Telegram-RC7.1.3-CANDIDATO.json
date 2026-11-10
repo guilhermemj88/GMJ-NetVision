@@ -53,7 +53,7 @@
                   {
                     "text": "⛔ RETIRAR MITIGAÇÃO",
                     "additionalFields": {
-                      "callback_data": "=remove_confirm|{{ $json.PROFILE_ID }}|{{ /^[a-f0-9]{16}$/.test(String($('Webhook NetVision OUT').first().json.body?.mitigationRef ?? '')) ? $('Webhook NetVision OUT').first().json.body.mitigationRef : '' }}"
+                      "callback_data": "=remove_confirm|{{ $json.PROFILE_ID }}|{{ (() => { const r = String($('Webhook NetVision OUT').first().json.body?.mitigationRef ?? ''); return /^[a-f0-9]{16}$/.test(r) && String($json.PROFILE_ID ?? '').length <= 32 ? r : ''; })() }}"
                     }
                   }
                 ]
