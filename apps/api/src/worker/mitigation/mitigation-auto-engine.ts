@@ -383,6 +383,18 @@ export interface MitigationAutoEngineDeps {
   maxRetriesPerSample?: number;
   /** Bounded evaluation of independent profiles; canonical policy locks still serialize writes. */
   evaluationConcurrency?: number;
+  /**
+   * M1-AUTO: o ACTIVATE (preflight, escrita, read-back e verificacao fisica de ate ~90 s) roda
+   * FORA do tick. O tick devolve a decisao de progresso (`TRIGGER_PENDING`/`IN_FLIGHT`) e segue
+   * avaliando os demais perfis; o resultado FINAL entra no proximo tick. Ausente/false = o
+   * comportamento sincrono anterior (o tick aguarda o comando).
+   */
+  asyncExecution?: boolean;
+  /**
+   * M1-AUTO: teto de ACTIVATE simultaneos neste processo (contando os em andamento). Ausente =
+   * sem teto local; a reserva duravel (MAX_ACTIVE) continua sendo a barreira final.
+   */
+  maxConcurrentExecutions?: number;
 }
 
 interface DirectionCounters {
@@ -569,6 +581,8 @@ export class MitigationAutoEngine {
   private readonly counters = new Map<string, AutoCounters>();
   private readonly configurationKeys = new Map<string, string>();
   private readonly inFlight = new Set<string>();
+  /** M1-AUTO: escopo fisico (device:policy) de cada ACTIVATE em andamento, por perfil. */
+  private readonly inFlightScopes = new Map<string, string>();
   /** Cadeia de avaliações por profile (serializa ticks concorrentes). */
   private readonly chains = new Map<string, Promise<void>>();
   private readonly decisions = new Map<string, MitigationAutoDecision>();
@@ -583,6 +597,10 @@ export class MitigationAutoEngine {
   private readonly lastEmissionAtMs = new Map<string, number>();
   /** Entregas em voo (settle em testes/desligamento). */
   private readonly pendingDeliveries = new Set<Promise<void>>();
+  /** M1-AUTO: ACTIVATE em andamento fora do tick. */
+  private readonly pendingExecutions = new Set<Promise<void>>();
+  /** M1-AUTO: decisoes FINAIS concluidas fora do tick, entregues no tick seguinte. */
+  private readonly completedExecutions: MitigationAutoDecision[] = [];
   private resolvedPolicy: DetectionAlertPolicy | null = null;
   private lastVerifiedActivate: MitigationAutoDecision | null = null;
   private readonly now: () => Date;
@@ -624,6 +642,18 @@ export class MitigationAutoEngine {
     return this.inFlight.has(profileId);
   }
 
+  /** M1-AUTO: perfis com ACTIVATE em andamento (observabilidade). */
+  inFlightProfiles(): string[] {
+    return [...this.inFlight];
+  }
+
+  /** M1-AUTO: aguarda os ACTIVATE em andamento (testes/desligamento). Nunca lanca. */
+  async settleExecutions(): Promise<void> {
+    while (this.pendingExecutions.size > 0) {
+      await Promise.allSettled([...this.pendingExecutions]);
+    }
+  }
+
   /**
    * RETIRADA MANUAL DO ESCOPO FISICO: a sequencia de amostras pertence a
    * evidencia ANTERIOR a retirada. Substitui os contadores em memoria por uma
@@ -654,6 +684,8 @@ export class MitigationAutoEngine {
     // Retry é responsabilidade do transporte, não depende de nova amostra,
     // de tráfego ainda acima do limiar ou da presença atual do perfil na lista.
     this.retryDetectionDeliveries();
+    // M1-AUTO: resultados FINAIS dos ACTIVATE concluidos fora do tick desde o tick anterior.
+    const completed = this.completedExecutions.splice(0);
     const targets = await this.deps.targets.list();
     const result: MitigationAutoDecision[] = [];
     let nextIndex = 0;
@@ -664,7 +696,10 @@ export class MitigationAutoEngine {
         // Erro em UM profile nunca derruba a avaliacao dos outros.
         try {
           const decision = await this.evaluate(target);
-          this.decisions.set(target.profileId, decision);
+          // M1-AUTO: o progresso de um ACTIVATE que JA concluiu fora do tick nao sobrescreve
+          // a decisao final registrada por ele.
+          if (decision.commandStatus !== 'IN_FLIGHT' || this.inFlight.has(target.profileId))
+            this.decisions.set(target.profileId, decision);
           result[index] = decision;
         } catch (error) {
           const decision = this.record({
@@ -707,7 +742,7 @@ export class MitigationAutoEngine {
     );
     // Resumo agregado das decisoes normais (substitui o log por tick).
     this.flushSummaryIfDue();
-    return result;
+    return completed.length ? [...completed, ...result] : result;
   }
 
   /**
@@ -1229,6 +1264,14 @@ export class MitigationAutoEngine {
     if (!this.autoExecutionEnabled()) {
       return decided('AUTO_EXECUTION_DISABLED', 'WOULD_ACTIVATE');
     }
+    // M1-AUTO: teto local de ACTIVATE simultaneos; os que ainda rodam fora do tick contam.
+    if (
+      this.deps.asyncExecution &&
+      (this.inFlight.size >= (this.deps.maxConcurrentExecutions ?? Number.POSITIVE_INFINITY) ||
+        [...this.inFlightScopes.values()].includes(scopeKey))
+    ) {
+      return decided('SCOPE_OPERATION_IN_FLIGHT', 'SKIPPED');
+    }
     this.attempts.set(scopeKey, {
       startedAtMs: at.getTime(),
       lastOutcomeAtMs: attempt?.lastOutcomeAtMs ?? null,
@@ -1247,9 +1290,10 @@ export class MitigationAutoEngine {
       ? `auto-activate-${target.profileId}-${counters.triggerStartedAtMs ?? at.getTime()}-${observationHash}`
       : `auto-activate-${target.profileId}-${counters.triggerStartedAtMs ?? at.getTime()}`;
     this.inFlight.add(target.profileId);
+    this.inFlightScopes.set(target.profileId, scopeKey);
     // Publish progress while the canonical operation is awaiting SSH/readback.
     // Three confirmations are not a verified mitigation.
-    this.decisions.set(target.profileId, {
+    const progress: MitigationAutoDecision = {
       ...withValues,
       samplesOver: counters.over,
       samplesBelow: counters.below,
@@ -1258,88 +1302,107 @@ export class MitigationAutoEngine {
       requestId,
       commandStatus: 'IN_FLIGHT',
       verified: false,
-    });
+    };
+    this.decisions.set(target.profileId, progress);
     this.deps.logger?.('auto: disparando ACTIVATE', {
       profileId: target.profileId,
       deviceId: target.deviceId,
       requestId,
       ...(retryAttempt !== null ? { retryAttempt } : {}),
     });
-    let attemptVerified = false;
-    try {
-      const commandStarted = this.now().getTime();
-      const result = await this.deps.commands.execute({
-        requestId,
-        action: 'ACTIVATE',
-        profileId: target.profileId,
-        ...(autoEvidence
-          ? {
-              autoEvidence: {
-                ...autoEvidence,
-                ...(counters.triggerStartedAtMs !== null
-                  ? {
-                      sequenceStartedAt: new Date(counters.triggerStartedAtMs).toISOString(),
-                      samplesOver: counters.over,
-                    }
-                  : {}),
-              },
-            }
-          : {}),
-      });
-      const verified = result.ok && result.verified && result.status === 'ACTIVATED_VERIFIED';
-      attemptVerified = verified;
-      const decision = this.record({
-        ...withValues,
-        samplesOver: counters.over,
-        samplesBelow: counters.below,
-        retryAttempt,
-        requestId,
-        commandStatus: result.status,
-        verified,
-        notification: result.notification ?? null,
-        commandMs: this.now().getTime() - commandStarted,
-        ...(result.timingsMs ? { timingsMs: result.timingsMs } : {}),
-        totalResponseMs:
-          counters.triggerStartedAtMs === null
-            ? null
-            : this.now().getTime() - counters.triggerStartedAtMs,
-        responseDeadlineExceeded:
-          counters.triggerStartedAtMs !== null &&
-          this.now().getTime() - counters.triggerStartedAtMs > 60_000,
-        outcome: verified ? 'ACTIVATED' : 'FAILED',
-        reason: verified
-          ? null
-          : result.status === 'ACTIVATED_VERIFIED'
-            ? 'VERIFY_FAILED'
-            : this.mapCommandReason(result),
-        detail: verified ? null : (result.safeError ?? result.status),
-      });
-      if (verified) this.lastVerifiedActivate = decision;
-      return decision;
-    } catch (error) {
-      return this.record({
-        ...withValues,
-        samplesOver: counters.over,
-        samplesBelow: counters.below,
-        retryAttempt,
-        requestId,
-        outcome: 'FAILED',
-        reason: 'ACTIVATE_FAILED',
-        detail: error instanceof Error ? error.message : 'falha no ACTIVATE',
-      });
-    } finally {
-      this.inFlight.delete(target.profileId);
-      // A tentativa so conta como "concluida" aqui: o cooldown de sucesso ou o
-      // backoff de falha comecam a partir deste instante, nunca do inicio.
-      const current = this.attempts.get(scopeKey);
-      if (current && current.startedAtMs === at.getTime()) {
-        this.attempts.set(scopeKey, {
-          ...current,
-          lastOutcomeAtMs: this.now().getTime(),
-          failures: attemptVerified ? 0 : current.failures + 1,
+    const execution = (async (): Promise<MitigationAutoDecision> => {
+      let attemptVerified = false;
+      try {
+        const commandStarted = this.now().getTime();
+        const result = await this.deps.commands.execute({
+          requestId,
+          action: 'ACTIVATE',
+          profileId: target.profileId,
+          ...(autoEvidence
+            ? {
+                autoEvidence: {
+                  ...autoEvidence,
+                  ...(counters.triggerStartedAtMs !== null
+                    ? {
+                        sequenceStartedAt: new Date(counters.triggerStartedAtMs).toISOString(),
+                        samplesOver: counters.over,
+                      }
+                    : {}),
+                },
+              }
+            : {}),
         });
+        const verified = result.ok && result.verified && result.status === 'ACTIVATED_VERIFIED';
+        attemptVerified = verified;
+        const decision = this.record({
+          ...withValues,
+          samplesOver: counters.over,
+          samplesBelow: counters.below,
+          retryAttempt,
+          requestId,
+          commandStatus: result.status,
+          verified,
+          notification: result.notification ?? null,
+          commandMs: this.now().getTime() - commandStarted,
+          ...(result.timingsMs ? { timingsMs: result.timingsMs } : {}),
+          totalResponseMs:
+            counters.triggerStartedAtMs === null
+              ? null
+              : this.now().getTime() - counters.triggerStartedAtMs,
+          responseDeadlineExceeded:
+            counters.triggerStartedAtMs !== null &&
+            this.now().getTime() - counters.triggerStartedAtMs > 60_000,
+          outcome: verified ? 'ACTIVATED' : 'FAILED',
+          reason: verified
+            ? null
+            : result.status === 'ACTIVATED_VERIFIED'
+              ? 'VERIFY_FAILED'
+              : this.mapCommandReason(result),
+          detail: verified ? null : (result.safeError ?? result.status),
+        });
+        if (verified) this.lastVerifiedActivate = decision;
+        return decision;
+      } catch (error) {
+        return this.record({
+          ...withValues,
+          samplesOver: counters.over,
+          samplesBelow: counters.below,
+          retryAttempt,
+          requestId,
+          outcome: 'FAILED',
+          reason: 'ACTIVATE_FAILED',
+          detail: error instanceof Error ? error.message : 'falha no ACTIVATE',
+        });
+      } finally {
+        this.inFlight.delete(target.profileId);
+        this.inFlightScopes.delete(target.profileId);
+        // A tentativa so conta como "concluida" aqui: o cooldown de sucesso ou o
+        // backoff de falha comecam a partir deste instante, nunca do inicio.
+        const current = this.attempts.get(scopeKey);
+        if (current && current.startedAtMs === at.getTime()) {
+          this.attempts.set(scopeKey, {
+            ...current,
+            lastOutcomeAtMs: this.now().getTime(),
+            failures: attemptVerified ? 0 : current.failures + 1,
+          });
+        }
       }
-    }
+    })();
+    if (!this.deps.asyncExecution) return execution;
+    // M1-AUTO: o tick nao espera o comando. O resultado final (ja registrado por `record`)
+    // e entregue no proximo tick; `inFlight` impede um segundo ACTIVATE do mesmo perfil.
+    const tracked: Promise<void> = execution
+      .then(
+        (decision) => {
+          this.completedExecutions.push(decision);
+        },
+        () => undefined,
+      )
+      .finally(() => {
+        this.pendingExecutions.delete(tracked);
+      });
+    this.pendingExecutions.add(tracked);
+    return progress;
   }
 
   private mapCommandReason(result: MitigationAutoCommandResult): MitigationAutoBlockReason {

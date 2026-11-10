@@ -874,6 +874,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   let lifecycle: AutoMitigationLifecycle | null = null;
   let observeTargets: (decisions: MitigationAutoDecision[]) => Promise<void> = async () => undefined;
   let lifecycleReady = false;
+  const autoEngineInFlight: { current: (() => string[]) | null } = { current: null };
   app.get('/api/bgp/mitigation/auto/lifecycle', async () => ({
     pilot: lifecycle?.pilotStatus() ?? null,
     installation: lifecycleSettings.installation,
@@ -887,6 +888,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     allowedProfiles: lifecycleSettings.profiles,
     allowedDevices: lifecycleSettings.devices,
     maxActive: lifecycleSettings.maxActive,
+    // M1-AUTO: perfis com ACTIVATE AUTO em andamento fora do tick (vazio em HOLD).
+    activationsInFlight: autoEngineInFlight.current?.() ?? [],
     removalPolicy: 'MANUAL_ONLY',
     cooldownMs: lifecycleSettings.cooldownMs,
     records: automationStore
@@ -1532,6 +1535,10 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     requireRuntimeRead: (target) =>
       isFastRoutedProfile(target.profileId, { bridge: bridgeConfig, embedded: fastConfig }),
     evaluationConcurrency: fastConfig.mode === 'OFF' && bridgeConfig.mode === 'OFF' ? 1 : 2,
+    // M1-AUTO: o ACTIVATE (com a verificacao fisica de ate ~90 s) roda FORA do tick e do lock
+    // AUTO_ENGINE_SINGLE_WRITER; no maximo MAX_ACTIVE em andamento neste processo.
+    asyncExecution: true,
+    maxConcurrentExecutions: lifecycleSettings.maxActive,
     globalMode: mitigationEngineConfig.mode,
     execution: {
       executor: mitigationExecutionConfig.executor,
@@ -1606,6 +1613,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     detectionAlertPolicy,
   });
   autoEngineRef.current = mitigationAutoEngine;
+  autoEngineInFlight.current = () => mitigationAutoEngine.inFlightProfiles();
   if (automationStore) {
     type AutoTargetRows = Awaited<ReturnType<typeof autoTargets.list>>;
     /** Per-tick read-through memo: bookkeeping reads within ONE tick share profile/host lookups. */

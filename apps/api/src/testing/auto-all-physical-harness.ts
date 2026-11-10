@@ -134,6 +134,8 @@ export interface AutoAllHarnessOptions {
   useReadScope?: boolean;
   /** ms between the FAST sample and the engine tick that evaluates it (0..cadence). */
   decisionDelayMs?: number;
+  /** M1-AUTO: ACTIVATE outside the tick, as wired in routes.ts. Default false (synchronous). */
+  asyncExecution?: boolean;
 }
 
 /**
@@ -509,6 +511,9 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
       evaluationScope: 'OPERATIONAL',
       requireRuntimeRead: true,
       evaluationConcurrency: 2,
+      ...(options.asyncExecution
+        ? { asyncExecution: true, maxConcurrentExecutions: lcConfig.maxActive }
+        : {}),
       globalMode: 'AUTO',
       execution: { executor: 'HUAWEI', liveWrite: true, allowedDeviceIds: [P.deviceId] },
       targets: {
