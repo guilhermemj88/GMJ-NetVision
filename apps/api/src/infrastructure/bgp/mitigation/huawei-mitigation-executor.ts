@@ -35,6 +35,8 @@ import {
   ROUTE_POLICY_CONFIGURATION_COMMAND,
   captureBeforeEvidence,
   verifyMitigationPhysical,
+  verifyRestorationPhysical,
+  type RestorationPhysicalVerification,
   type DisplayReader,
   type MitigationPhysicalVerification,
   type PhysicalBeforeEvidence,
@@ -1057,6 +1059,46 @@ export class HuaweiMitigationExecutor {
         ...(this.deps.physical?.timing ? { timing: this.deps.physical.timing } : {}),
         ...(this.deps.physical?.sleep ? { sleep: this.deps.physical.sleep } : {}),
         ...(this.deps.physical?.clock ? { clock: this.deps.physical.clock } : {}),
+      });
+    } catch (error) {
+      return inconclusive(safeErrorMessage(error));
+    }
+  }
+
+  /**
+   * READ-ONLY: prova que o efeito BGP de uma mitigacao foi DESFEITO (reconciliacao de escopo em
+   * quarentena). Deriva o contrato da configuracao atual. Nunca lanca: falha vira INCONCLUSIVE.
+   */
+  async verifyRestorationPhysical(
+    device: HostRecord,
+    input: { policyName: string; customerPeers: readonly string[] },
+  ): Promise<RestorationPhysicalVerification> {
+    const inconclusive = (detail: string): RestorationPhysicalVerification => ({
+      outcome: 'INCONCLUSIVE',
+      summary: `restauracao BGP INCONCLUSIVE: ${detail}`,
+      checks: [{ id: 'restoration', outcome: 'INCONCLUSIVE', detail }],
+      mitigationPeer: null,
+      eligiblePrefixes: [],
+      customerPeers: [...input.customerPeers],
+    });
+    const read = this.displayReader(device);
+    if (!read) return inconclusive('transporte sem leitura de evidencia fisica');
+    try {
+      const configuration = await this.deps.ssh.readMitigationConfiguration(device);
+      const derived = deriveMitigationNode2Contract(
+        configuration.routePolicyConfiguration ?? '',
+        input.policyName,
+        {
+          prefixListConfiguration: configuration.prefixListConfiguration,
+          requirePrefixListProof: true,
+          bogonPrefixList: this.labels.bogonPrefixList,
+        },
+      );
+      if (!derived.eligible) return inconclusive(contractRefusalMessage(derived));
+      return await verifyRestorationPhysical({
+        read,
+        contract: derived.contract,
+        customerPeers: input.customerPeers,
       });
     } catch (error) {
       return inconclusive(safeErrorMessage(error));

@@ -76,8 +76,12 @@ export class InMemoryPolicyScopeLock implements PolicyScopeLock {
     try {
       await this.waitForTurn(previous.catch(() => undefined), scope);
     } catch (error) {
+      // Desistir da FILA nao libera o escopo: o detentor atual continua rodando. A cauda so some
+      // quando ele termina; apaga-la aqui deixaria o proximo chamador entrar junto com ele.
       release();
-      if (this.tails.get(key) === mine) this.tails.delete(key);
+      void mine.then(() => {
+        if (this.tails.get(key) === mine) this.tails.delete(key);
+      });
       throw error;
     }
 

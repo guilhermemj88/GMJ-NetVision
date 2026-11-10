@@ -16,8 +16,11 @@ import { InMemoryMitigationRepository } from '../infrastructure/bgp/mitigation/i
 import { MitigationCommandService } from '../infrastructure/bgp/mitigation/mitigation-command-service';
 import { HuaweiMitigationExecutor } from '../infrastructure/bgp/mitigation/huawei-mitigation-executor';
 import { MockMitigationExecutor } from '../infrastructure/bgp/mitigation/mitigation-executor';
-import { testDurableBaselineStore } from '../infrastructure/bgp/mitigation/mitigation-test-support';
-import { InMemoryPolicyScopeLock } from '../infrastructure/bgp/mitigation/mitigation-policy-lock';
+import { AutomationMitigationBaselineStore } from '../worker/mitigation/baseline-store';
+import {
+  InMemoryPolicyScopeLock,
+  type PolicyScopeLock,
+} from '../infrastructure/bgp/mitigation/mitigation-policy-lock';
 import { inspectPolicyMitigation } from '../infrastructure/bgp/mitigation/mitigation-policy-physical';
 import { resolveAutoClientBinding } from '../worker/mitigation/auto-client-binding';
 import {
@@ -134,6 +137,8 @@ export interface AutoAllHarnessOptions {
   useReadScope?: boolean;
   /** ms between the FAST sample and the engine tick that evaluates it (0..cadence). */
   decisionDelayMs?: number;
+  /** Policy lock factory (default: in-memory FIFO). Tests of busy semantics inject a try-lock. */
+  scopeLock?: () => PolicyScopeLock;
 }
 
 /**
@@ -383,7 +388,8 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
   const live = new HuaweiMitigationExecutor({
     ssh,
     config: { executor: 'HUAWEI', liveWriteEnabled: true, allowedDeviceIds: [P.deviceId] },
-    baseline: testDurableBaselineStore(),
+    // Same durable store as production (routes.ts): ownership lives beside scope/journal.
+    baseline: new AutomationMitigationBaselineStore(store),
     // Verificacao fisica pos-escrita sem esperas reais (o relogio do cenario e virtual).
     physical: {
       timing: { maxAttempts: 3, intervalMs: 1, budgetMs: 1_000 },
@@ -416,7 +422,7 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
     return t ? { ...t, runtimeState: (await repository.getRuntime(id))?.state ?? null } : null;
   };
   const create = () => {
-    const scopeLock = new InMemoryPolicyScopeLock();
+    const scopeLock = options.scopeLock?.() ?? new InMemoryPolicyScopeLock();
     commands = new MitigationCommandService({
       repository,
       hosts: { getHost: async () => host },
@@ -546,6 +552,7 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
     repository,
     store,
     ssh,
+    live,
     host,
     used,
     wiring,
