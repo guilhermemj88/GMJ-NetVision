@@ -123,6 +123,57 @@ function safeSshError(error: unknown): string {
   return 'SSH command failed';
 }
 
+/**
+ * O `SshClientImpl` real roda os comandos num shell interativo e devolve UM unico
+ * `CommandResult` com o stdout da sessao inteira (nao um por comando). Separa a saida de
+ * cada comando pelo eco `<PROMPT>comando`, na ordem enviada; cada trecho vai do eco
+ * (inclusive) ate a proxima linha que comeca com o mesmo prompt (exclusive).
+ *
+ * O prompt e aprendido do eco do PRIMEIRO comando (o `screen-length` da sessao). Prompt nao
+ * reconhecido, eco ausente ou fora de ordem => TODOS `null` (inconclusivo): nunca atribui a
+ * um comando a saida de outro. Formato confirmado no BHE-VTA-F1A-BGP-01 (VRP) em 10/11/2026.
+ */
+export function splitHuaweiSessionOutput(
+  stdout: string,
+  commands: readonly string[],
+): Array<string | null> {
+  const none = commands.map(() => null);
+  if (commands.length === 0) return [];
+  const promptPattern = /^<[A-Za-z0-9_.:-]{1,120}>/;
+  const lines = stdout.replace(/\r/g, '').split('\n');
+  const first = commands[0]!;
+  const promptLine = lines.find((line) => {
+    const text = line.trimEnd();
+    return promptPattern.test(text) && text.endsWith(`>${first}`);
+  });
+  if (!promptLine) return none;
+  const prompt = promptPattern.exec(promptLine)![0];
+  const echoes: number[] = [];
+  let from = 0;
+  for (const command of commands) {
+    let found = -1;
+    for (let index = from; index < lines.length; index += 1) {
+      if (lines[index]!.trimEnd() === `${prompt}${command}`) {
+        found = index;
+        break;
+      }
+    }
+    if (found < 0) return none;
+    echoes.push(found);
+    from = found + 1;
+  }
+  return echoes.map((start) => {
+    let end = lines.length;
+    for (let index = start + 1; index < lines.length; index += 1) {
+      if (lines[index]!.startsWith(prompt)) {
+        end = index;
+        break;
+      }
+    }
+    return lines.slice(start, end).join('\n');
+  });
+}
+
 function commandOutputError(output: string): boolean {
   return /(?:unrecognized\s+command|wrong\s+parameter|incomplete\s+command|error\s*:)/i.test(
     output,
@@ -680,14 +731,27 @@ export class HuaweiBgpSshService {
     // UMA sessao (limite de VTYs do equipamento): os comandos rodam em sequencia e uma
     // falha isolada vira `output: null` (inconclusivo), nunca uma lista parcial.
     try {
-      const results = await client.execute(host, [screenLength, ...validated]);
-      const own = results.slice(-validated.length);
-      if (own.length !== validated.length) {
+      const sent = [screenLength, ...validated];
+      const results = await client.execute(host, sent);
+      let own: Array<{ stdout: string | null; exitCode: number }>;
+      if (results.length === sent.length) {
+        // Transporte com um resultado por comando.
+        own = results
+          .slice(1)
+          .map((result) => ({ stdout: result.stdout, exitCode: result.exitCode }));
+      } else if (results.length === 1) {
+        // SshClientImpl real: UM resultado com o stdout da sessao inteira (shell interativo).
+        const session = results[0]!;
+        own = splitHuaweiSessionOutput(session.stdout, sent)
+          .slice(1)
+          .map((stdout) => ({ stdout, exitCode: session.exitCode }));
+      } else {
         return validated.map((command) => ({ command, output: null }));
       }
       return validated.map((command, index) => {
         const result = own[index]!;
-        const failed = result.exitCode !== 0 || commandOutputError(result.stdout);
+        const failed =
+          result.stdout === null || result.exitCode !== 0 || commandOutputError(result.stdout);
         return { command, output: failed ? null : result.stdout };
       });
     } catch {

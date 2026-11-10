@@ -1,0 +1,284 @@
+
+Info: The max number of VTY users is 21, the number of current VTY users online is 2, and total number of terminal users online is 2.
+      The current login time is 2026-11-09 22:51:27-03:00.
+<BHE-VTA-F1A-BGP-01>screen-length 0 temporary
+Info: The configuration takes effect on the current user terminal interface only.
+<BHE-VTA-F1A-BGP-01>
+<BHE-VTA-F1A-BGP-01>display bgp peer 10.200.201.2 verbose
+
+         BGP Peer is 10.200.201.2,  remote AS 273811
+         Type: EBGP link
+         Peer's description: "AGLINK"
+         BGP version 4, Remote router ID 167.250.126.0
+         Update-group ID: 29
+         BGP current state: Established, Up for 14d08h43m24s
+         BGP current event: KATimerExpired
+         BGP last state: OpenConfirm
+         BGP Peer Up count: 11
+         Received total routes: 3
+         Received active routes total: 3
+         Advertised total routes: 1099219
+         Port: Local - 179        Remote - 64641
+         Configured: Connect-retry Time: 32 sec
+         Configured: Min Hold Time: 0 sec
+         Configured: Active Hold Time: 180 sec   Keepalive Time:60 sec
+         Received  : Active Hold Time: 180 sec
+         Negotiated: Active Hold Time: 180 sec   Keepalive Time:60 sec
+         Peer optional capabilities:
+         Peer supports bgp multi-protocol extension
+         Peer supports bgp route refresh capability
+         Peer supports bgp 4-byte-as capability
+         Address family IPv4 Unicast: advertised and received
+ Received: Total 24001 messages
+                  Update messages                6
+                  Open messages                  1
+                  KeepAlive messages             23857
+                  Notification messages          0
+                  Refresh messages               137
+ Sent: Total 31043853 messages
+                  Update messages                31019694
+                  Open messages                  1
+                  KeepAlive messages             24158
+                  Notification messages          0
+                  Refresh messages               0
+ Last keepalive received: 2026-11-09 22:51:00-03:00
+ Last keepalive sent    : 2026-11-09 22:51:19-03:00
+ Last update    received: 2026-11-07 11:31:31-03:00
+ Last update    sent    : 2026-11-09 22:51:27-03:00
+ Last refresh   received: 2026-11-09 22:48:17-03:00
+ No refresh sent since peer has been configured
+ Minimum route advertisement interval is 30 seconds
+ Optional capabilities:
+ Route refresh capability has been enabled
+ 4-byte-as capability has been enabled
+ Send community has been configured
+ Send extend community has been configured
+ Default route advertise has been configured
+ Peer Preferred Value: 0
+ No check first as has been enabled
+ Memory Priority: medium
+ Routing policy configured:
+ No import update filter list
+ No export update filter list
+ No import prefix list
+ No export prefix list
+ Import route policy is: PL-AGLINK_IPv4-IN
+ Export route policy is: PL-AGLINK_IPv4-OUT
+ No import distribute policy
+ No export distribute policy
+ No import route filter
+ No export route filter
+<BHE-VTA-F1A-BGP-01>
+<BHE-VTA-F1A-BGP-01>display bgp routing-table peer 10.200.201.2 received-routes
+ 
+ BGP Local router ID is 45.163.144.1
+ Status codes: * - valid, > - best, d - damped, x - best external, a - add path,
+               h - history,  i - internal, s - suppressed, S - Stale
+               Origin : i - IGP, e - EGP, ? - incomplete
+ RPKI validation codes: V - valid, I - invalid, N - not-found
+
+
+ Total Number of Routes: 3
+        Network            NextHop                       MED        LocPrf    PrefVal Path/Ogn
+
+ *>     167.250.126.0/23   10.200.201.2                   0          1100       0      273811i
+ *>     167.250.126.0/24   10.200.201.2                   0          1100       0      273811 273811 273811 273811i
+ *>     167.250.127.0/24   10.200.201.2                   0          1100       0      273811 273811 273811 273811i
+<BHE-VTA-F1A-BGP-01>
+<BHE-VTA-F1A-BGP-01>display bgp routing-table 167.250.126.0 23
+ 
+ BGP local router ID : 45.163.144.1
+ Local AS number : 268568
+ Paths:   1 available, 1 best, 1 select, 0 best-external, 0 add-path
+ BGP routing table entry information of 167.250.126.0/23:
+ From: 10.200.201.2 (167.250.126.0)
+ Route Duration: 2d11h19m46s
+ Direct Out-interface: Eth-Trunk1.3058
+ Original nexthop: 10.200.201.2
+ Qos information : 0x0
+ Ext-Community: RT <268568 : 140>, RT <268568 : 330>
+ AS-path 273811, origin igp, MED 0, localpref 1100, pref-val 0, valid, external, best, select, pre 255
+ Advertised to such 29 peers:
+    10.200.200.106
+    10.200.201.234
+    10.200.201.34
+    200.194.223.85
+    172.30.251.33
+    198.18.36.26
+    10.200.200.34
+    10.200.201.86
+    10.200.201.134
+    10.200.200.222
+    10.200.201.130
+    10.200.201.14
+    10.200.200.154
+    10.200.200.82
+    10.200.200.218
+    10.200.202.10
+    ...
+<BHE-VTA-F1A-BGP-01>
+<BHE-VTA-F1A-BGP-01>display bgp routing-table 167.250.126.0 24
+ 
+ BGP local router ID : 45.163.144.1
+ Local AS number : 268568
+ Paths:   3 available, 1 best, 1 select, 0 best-external, 0 add-path
+ BGP routing table entry information of 167.250.126.0/24:
+ From: 10.200.201.2 (167.250.126.0)
+ Route Duration: 2d11h19m46s
+ Direct Out-interface: Eth-Trunk1.3058
+ Original nexthop: 10.200.201.2
+ Qos information : 0x0
+ Ext-Community: RT <268568 : 140>, RT <268568 : 330>
+ AS-path 273811 273811 273811 273811, origin igp, MED 0, localpref 1100, pref-val 0, valid, external, best, select, pre 255
+ Advertised to such 29 peers:
+    10.200.200.106
+    10.200.201.234
+    10.200.201.34
+    200.194.223.85
+    172.30.251.33
+    198.18.36.26
+    10.200.200.34
+    10.200.201.86
+    10.200.201.134
+    10.200.200.222
+    10.200.201.130
+    10.200.201.14
+    10.200.200.154
+    10.200.200.82
+    10.200.200.218
+    10.200.202.10
+    ...
+
+ BGP routing table entry information of 167.250.126.0/24:
+ From: 200.194.223.85 (200.189.206.204)
+ Route Duration: 0d07h03m51s
+ Direct Out-interface: Eth-Trunk1.3998
+ Original nexthop: 200.194.223.85
+ Qos information : 0x0
+ Community: <3356:5>, <3356:22>, <3356:100>, <3356:123>, <3356:800>, <3356:901>, <3356:2210>, <65000:10001>
+ AS-path 3356 269096 273811 273811, origin igp, MED 0, localpref 800, pref-val 0, valid, external, backup, pre 255, not preferred for Local_Pref
+ Not advertised to any peer yet
+
+ BGP routing table entry information of 167.250.126.0/24:
+ From: 198.18.1.152 (207.135.210.10)
+ Route Duration: 0d07h07m04s
+ Direct Out-interface: Eth-Trunk1.2593
+ Original nexthop: 198.18.1.152
+ Qos information : 0x0
+ Community: <13786:110>, <13786:4601>, <13786:5500>, <13786:5531>, <13786:10000>, <13786:15531>, <65000:10001>
+ AS-path 13786 269096 273811 273811, origin igp, localpref 50, pref-val 0, valid, external, pre 255, not preferred for Local_Pref
+ Not advertised to any peer yet
+<BHE-VTA-F1A-BGP-01>
+<BHE-VTA-F1A-BGP-01>display bgp routing-table 167.250.127.0 24
+ 
+ BGP local router ID : 45.163.144.1
+ Local AS number : 268568
+ Paths:   3 available, 1 best, 1 select, 0 best-external, 0 add-path
+ BGP routing table entry information of 167.250.127.0/24:
+ From: 10.200.201.2 (167.250.126.0)
+ Route Duration: 2d11h19m47s
+ Direct Out-interface: Eth-Trunk1.3058
+ Original nexthop: 10.200.201.2
+ Qos information : 0x0
+ Ext-Community: RT <268568 : 140>, RT <268568 : 330>
+ AS-path 273811 273811 273811 273811, origin igp, MED 0, localpref 1100, pref-val 0, valid, external, best, select, pre 255
+ Advertised to such 29 peers:
+    10.200.200.106
+    10.200.201.234
+    10.200.201.34
+    200.194.223.85
+    172.30.251.33
+    198.18.36.26
+    10.200.200.34
+    10.200.201.86
+    10.200.201.134
+    10.200.200.222
+    10.200.201.130
+    10.200.201.14
+    10.200.200.154
+    10.200.200.82
+    10.200.200.218
+    10.200.202.10
+    ...
+
+ BGP routing table entry information of 167.250.127.0/24:
+ From: 200.194.223.85 (200.189.206.204)
+ Route Duration: 0d07h03m52s
+ Direct Out-interface: Eth-Trunk1.3998
+ Original nexthop: 200.194.223.85
+ Qos information : 0x0
+ Community: <3356:5>, <3356:22>, <3356:100>, <3356:123>, <3356:800>, <3356:901>, <3356:2210>, <65000:10001>
+ AS-path 3356 269096 273811 273811, origin igp, MED 0, localpref 800, pref-val 0, valid, external, backup, pre 255, not preferred for Local_Pref
+ Not advertised to any peer yet
+
+ BGP routing table entry information of 167.250.127.0/24:
+ From: 198.18.1.152 (207.135.210.10)
+ Route Duration: 0d07h07m05s
+ Direct Out-interface: Eth-Trunk1.2593
+ Original nexthop: 198.18.1.152
+ Qos information : 0x0
+ Community: <13786:110>, <13786:4601>, <13786:5500>, <13786:5531>, <13786:10000>, <13786:15531>, <65000:10001>
+ AS-path 13786 269096 273811 273811, origin igp, localpref 50, pref-val 0, valid, external, pre 255, not preferred for Local_Pref
+ Not advertised to any peer yet
+<BHE-VTA-F1A-BGP-01>
+<BHE-VTA-F1A-BGP-01>display bgp routing-table peer 198.19.4.145 advertised-routes
+ 
+ BGP Local router ID is 45.163.144.1
+ Status codes: * - valid, > - best, d - damped, x - best external, a - add path,
+               h - history,  i - internal, s - suppressed, S - Stale
+               Origin : i - IGP, e - EGP, ? - incomplete
+ RPKI validation codes: V - valid, I - invalid, N - not-found
+
+
+ Total Number of Routes: 16
+        Network            NextHop                       MED        LocPrf    PrefVal Path/Ogn
+
+ *>i    45.163.144.0/22    198.19.4.146                                         0      268568 268568 268568i
+ *>i    45.163.144.0/23    198.19.4.146                                         0      268568i
+ *>i    45.163.146.0/23    198.19.4.146                                         0      268568i
+ *>     45.164.184.0/24    198.19.4.146                                         0      268568 268633i
+ *>     45.168.200.0/22    198.19.4.146                                         0      268568 268144i
+ *>     45.168.200.0/23    198.19.4.146                                         0      268568 268144i
+ *>     45.168.202.0/23    198.19.4.146                                         0      268568 268144i
+ *>     45.175.51.0/24     198.19.4.146                                         0      268568 268884i
+ *>     45.175.72.0/24     198.19.4.146                                         0      268568 262957 268888?
+ *>     45.175.75.0/24     198.19.4.146                                         0      268568 262957 268888?
+ *>     131.72.129.0/24    198.19.4.146                                         0      268568 268633 61744i
+ *>     168.195.24.0/23    198.19.4.146                                         0      268568 265424?
+ *>     168.195.26.0/23    198.19.4.146                                         0      268568 265424?
+ *>     179.97.17.0/24     198.19.4.146                                         0      268568 268633 28181i
+ *>     179.97.19.0/24     198.19.4.146                                         0      268568 268633 28181i
+ *>     179.97.21.0/24     198.19.4.146                                         0      268568 268633 28181i
+<BHE-VTA-F1A-BGP-01>
+<BHE-VTA-F1A-BGP-01>display ip extcommunity-filter
+Extended Community filter Number 11
+    index: 5             permit     rt : 268568:2
+Extended Community filter Number 20
+    index: 5             permit     rt : 268568:20
+Extended Community filter Number 30
+    index: 5             permit     rt : 268568:30
+Extended Community filter Number 40
+    index: 5             permit     rt : 268568:100
+Extended Community filter Number 50
+    index: 5             permit     rt : 268568:50
+Extended Community filter Number 110
+    index: 5             permit     rt : 268568:110
+Extended Community filter Number 115
+    index: 5             permit     rt : 268568:115
+Extended Community filter Number 130
+    index: 5             permit     rt : 268568:130
+Extended Community filter Number 140
+    index: 5             permit     rt : 268568:140
+Extended Community filter Number 150
+    index: 5             permit     rt : 268568:150
+Named Extended Community basic filter: MITIGACAO
+    index: 10            permit     rt : 268568:660
+Named Extended Community advanced filter: BLACKHOLE
+    index: 10            permit     268568:666
+Named Extended Community basic filter: NO-EXPORT-SEABORN
+    index: 10            permit     rt : 268568:13786
+Named Extended Community basic filter: NO-EXPORT-SEMPRE
+    index: 10            permit     rt : 268568:28198
+<BHE-VTA-F1A-BGP-01>
+<BHE-VTA-F1A-BGP-01>quit
+Info: The max number of VTY users is 21, and the number of current VTY users on line is 1.
