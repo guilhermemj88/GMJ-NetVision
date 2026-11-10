@@ -1,3 +1,4 @@
+import { mitigationRefOf } from './mitigation-ref';
 import type {
   MitigationNotification,
   NotificationPublisher,
@@ -41,6 +42,11 @@ export interface MitigationWebhookPayload {
   verified: boolean | null;
   /** Campos novos (Fase 7) - os antigos continuam identicos. */
   eventId: string | null;
+  /**
+   * Somente em MITIGATION_VERIFIED: referencia da ativacao, devolvida pelo botao de retirada
+   * (`mitigationRef` no inbound) para que um botao antigo nao retire uma mitigacao nova.
+   */
+  mitigationRef?: string;
   profileId: string | null;
   addressFamily: string | null;
   sharedPolicy: boolean;
@@ -175,6 +181,9 @@ export function buildMitigationWebhookPayload(
     rt: notification.rt,
     verified: notification.verified,
     eventId: notification.eventId ?? null,
+    ...(notification.event === 'MITIGATION_VERIFIED' && notification.eventId
+      ? { mitigationRef: mitigationRefOf(notification.eventId) }
+      : {}),
     profileId: notification.profileId ?? null,
     addressFamily: notification.addressFamily ?? null,
     sharedPolicy: notification.sharedPolicy ?? false,

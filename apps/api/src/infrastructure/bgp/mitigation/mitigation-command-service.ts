@@ -136,6 +136,12 @@ export interface MitigationCommandInput {
    * outro perfil, expirado ou reutilizado).
    */
   scopeConfirmationToken?: string;
+  /**
+   * REMOVE vinculado a UMA mitigacao (botao do Telegram): referencia recebida no evento
+   * MITIGATION_VERIFIED. Presente, o REMOVE so executa se ela for a mitigacao ATIVA do escopo;
+   * caso contrario `MITIGATION_REFERENCE_STALE`, sem preflight e sem escrita.
+   */
+  mitigationRef?: string;
   /** Identidade do operador no Telegram (auditoria; nunca autoriza sozinha). */
   confirmedBy?: string | null;
   /**
@@ -621,11 +627,42 @@ export class MitigationCommandService {
     const scoped = async () => {
       const journal = this.deps.manualCommands;
       const manual = MUTATING_ACTIONS.includes(input.action) && !isAutomaticCommand(input);
+      const staleReference = (safeError: string) => ({
+        ...base,
+        ok: false,
+        status: 'MITIGATION_REFERENCE_STALE',
+        verified: false,
+        customer: null,
+        device: profile.deviceId,
+        interface: null,
+        interfaceId: profile.interfaceId,
+        addressFamily: profile.addressFamily,
+        policy: profile.policyName,
+        node: null,
+        bogonNode: null,
+        mitigationNode: null,
+        rt: profile.mitigationRt,
+        sharedPolicy: false,
+        sharedPolicyTargets: [],
+        affectedPeers: [],
+        commandPreview: [],
+        verification: null,
+        safeError,
+      });
+      // Sem journal duravel a referencia nao pode ser conferida: fail-closed.
+      if (manual && input.mitigationRef && !journal)
+        return staleReference(
+          'Referencia de mitigacao nao verificavel neste ambiente; nenhuma escrita foi iniciada.',
+        );
       if (manual && journal) {
         try {
           const cached = await journal.begin(input, policyExecutionScope(profile));
           if (cached) return cached;
-        } catch {
+        } catch (error) {
+          if (error instanceof Error && error.message === 'MITIGATION_REFERENCE_STALE')
+            return staleReference(
+              'Este botao pertence a uma mitigacao anterior, que nao e a mitigacao ativa deste cliente; nenhuma escrita foi iniciada. Use o alerta da mitigacao atual.',
+            );
           return {
             ...base,
             ok: false,

@@ -5,6 +5,7 @@ import {
   MITIGATION_COMMAND_ACTIONS,
   type MitigationCommandService,
 } from './infrastructure/bgp/mitigation/mitigation-command-service';
+import { MITIGATION_REF_PATTERN } from './infrastructure/bgp/mitigation/mitigation-ref';
 
 // Canal INBOUND: n8n -> NetVision.
 //
@@ -29,6 +30,11 @@ export const n8nCommandSchema = z
     profileId: z.string().min(1).max(160).optional(),
     /** Token opaco emitido pelo gate de escopo. Nunca e um comando nem um id de perfil. */
     scopeConfirmationToken: z.string().min(16).max(128).optional(),
+    /**
+     * Referencia da mitigacao (evento MITIGATION_VERIFIED) carregada pelo botao de retirada.
+     * Vincula o REMOVE a UMA mitigacao: botao antigo nao retira mitigacao nova.
+     */
+    mitigationRef: z.string().regex(MITIGATION_REF_PATTERN).optional(),
     /** Operador do Telegram (auditoria). Nunca autoriza sozinho. */
     confirmedBy: z.string().min(1).max(120).optional(),
     /**
@@ -78,6 +84,11 @@ export interface N8nRouteDependencies {
    * ele vence o ENV legado.
    */
   resolveCommandToken?: () => Promise<string | null>;
+  /**
+   * Exige `mitigationRef` em todo REMOVE do canal (exceto a confirmacao de escopo por token, que
+   * ja e de uso unico). Ligar somente DEPOIS de o workflow do n8n enviar a referencia.
+   */
+  requireRemoveRef?: boolean;
   /** Observabilidade: chamado apos cada requisicao (sem segredo). */
   onCommandResult?: (log: N8nInboundLog) => Promise<void> | void;
 }
@@ -97,7 +108,8 @@ function safeEqual(left: string, right: string): boolean {
 }
 
 export function registerN8nRoutes(app: FastifyInstance, dependencies: N8nRouteDependencies): void {
-  const { commands, commandToken, resolveCommandToken, onCommandResult } = dependencies;
+  const { commands, commandToken, resolveCommandToken, onCommandResult, requireRemoveRef } =
+    dependencies;
 
   const record = async (log: N8nInboundLog): Promise<void> => {
     if (!onCommandResult) return;
@@ -213,6 +225,34 @@ export function registerN8nRoutes(app: FastifyInstance, dependencies: N8nRouteDe
       });
     }
 
+    if (
+      requireRemoveRef &&
+      parsed.data.action === 'REMOVE' &&
+      !parsed.data.mitigationRef &&
+      !parsed.data.scopeConfirmationToken
+    ) {
+      const safeError =
+        'Retirada sem referencia da mitigacao (botao antigo); nenhuma escrita foi iniciada. Use o alerta da mitigacao atual.';
+      await record({
+        requestId: parsed.data.requestId,
+        action: parsed.data.action,
+        profileId,
+        status: 'MITIGATION_REFERENCE_REQUIRED',
+        httpStatus: 200,
+        ok: false,
+        idempotent: null,
+        safeError,
+      });
+      return reply.code(200).send({
+        ok: false,
+        status: 'MITIGATION_REFERENCE_REQUIRED',
+        requestId: parsed.data.requestId,
+        action: parsed.data.action,
+        profileId,
+        safeError,
+      });
+    }
+
     // exactOptionalPropertyTypes: campos opcionais so entram quando presentes.
     const result = await commands.execute({
       requestId: parsed.data.requestId,
@@ -221,6 +261,9 @@ export function registerN8nRoutes(app: FastifyInstance, dependencies: N8nRouteDe
       ...(parsed.data.scopeConfirmationToken === undefined
         ? {}
         : { scopeConfirmationToken: parsed.data.scopeConfirmationToken }),
+      ...(parsed.data.mitigationRef === undefined
+        ? {}
+        : { mitigationRef: parsed.data.mitigationRef }),
       ...(parsed.data.confirmedBy === undefined ? {} : { confirmedBy: parsed.data.confirmedBy }),
       ...(parsed.data.chatId === undefined ? {} : { chatId: parsed.data.chatId }),
     });

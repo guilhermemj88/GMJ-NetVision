@@ -18,6 +18,7 @@ import type { ClientBinding } from './auto-client-binding';
 import { enqueueNotification } from './durable-mitigation-outbox';
 import type { MitigationTrafficSource } from './mitigation-traffic-source';
 import type { PolicyScopeLock } from '../../infrastructure/bgp/mitigation/mitigation-policy-lock';
+import { mitigationRefOf } from '../../infrastructure/bgp/mitigation/mitigation-ref';
 import {
   baselineRecordId,
   baselineReleaseMarker,
@@ -218,6 +219,22 @@ const rejected = (reason: string): MitigationAutoCommandResult => ({
  * after its scope was released re-quarantines the scope (see `completeManual`).
  */
 export const QUARANTINE_RELEASE_MIN_AGE_MS = 300_000;
+/**
+ * `eventId` of the MITIGATION_VERIFIED event of the mitigation currently owned by the scope:
+ * the AUTO operation id, or the request id of a verified manual ACTIVATE. `null` when the scope
+ * holds no verified activation (nothing a bound REMOVE could refer to).
+ */
+export function activeMitigationEventId(s: ScopeOwnership | null): string | null {
+  if (!s) return null;
+  if (s.phase === 'ACTIVE') return s.operationId;
+  if (
+    s.phase === 'MANUAL' &&
+    s.reason === 'MANUAL_ACTIVATE_VERIFIED' &&
+    s.owner.startsWith('manual:')
+  )
+    return s.owner.slice('manual:'.length);
+  return null;
+}
 const manualKey = (id: string) => 'manual-command:' + createHash('sha256').update(id).digest('hex');
 
 /** Scope-wide, not request/profile-wide: quarantine cannot be bypassed by a new id. */
@@ -944,9 +961,16 @@ export class AutoMitigationLifecycle {
       if (old?.state === 'VERIFIED' && old.result) return { ...old.result, idempotent: true };
       if (old && ['STARTED', 'UNCERTAIN', 'RECONCILED'].includes(old.state))
         throw Error('MANUAL_RECONCILIATION_REQUIRED');
+      const s = await tx.get<ScopeOwnership>(key);
+      // REMOVE bound to ONE mitigation (Telegram button): only the ACTIVE mitigation of the
+      // scope may be removed with it. A button from an earlier mitigation never removes a new one.
+      if (input.action === 'REMOVE' && input.mitigationRef) {
+        const active = activeMitigationEventId(s);
+        if (!active || mitigationRefOf(active) !== input.mitigationRef)
+          throw Error('MITIGATION_REFERENCE_STALE');
+      }
       if (await scopeQuarantined(tx, key, deviceId, policyName))
         throw Error('MANUAL_RECONCILIATION_REQUIRED');
-      const s = await tx.get<ScopeOwnership>(key);
       if (s) {
         s.phase = 'MANUAL';
         s.reason = 'MANUAL_COMMAND_PENDING';
