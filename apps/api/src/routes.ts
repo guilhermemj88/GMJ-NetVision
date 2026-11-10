@@ -2119,8 +2119,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   // Reconciliacao por policy fisica: leitura SEMPRE pelo mesmo executor
   // read-only do comando (display route-policy); o apply grava apenas runtime.
   const mitigationReconciler = new MitigationPolicyReconciler({
-    beforeApply: (deviceId, policyName) =>
-      lifecycle?.manualMutation(deviceId, policyName) ?? Promise.resolve(),
+    beforeApply: (deviceId, policyName, proof) =>
+      lifecycle?.manualMutation(deviceId, policyName, proof) ?? Promise.resolve(),
     repository: mitigationRepository,
     hosts,
     readPolicy: (device, policyName) => mitigationLiveExecutor.readRoutePolicy(device, policyName),

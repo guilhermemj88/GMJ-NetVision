@@ -53,8 +53,24 @@ export interface PolicyScopeAssessment {
   physical: PolicyMitigationPhysical;
 }
 
+/**
+ * Prova FISICA do APPLY LOCAL: leitura fresca da policy feita DENTRO do lock do escopo, na mesma
+ * operacao. E a unica evidencia que permite liberar um escopo em quarentena (ver
+ * AutoMitigationLifecycle.manualMutation).
+ */
+export interface PolicyReconcileProof {
+  state: PolicyPhysicalState;
+  /** Existe par de mitigacao (completo) na leitura. */
+  pairPresent: boolean;
+  readBack: string;
+}
+
 export interface PolicyReconcileDeps {
-  beforeApply?: (deviceId: string, policyName: string) => Promise<void>;
+  beforeApply?: (
+    deviceId: string,
+    policyName: string,
+    proof: PolicyReconcileProof,
+  ) => Promise<void>;
   repository: MitigationRepository;
   hosts: { getHost(id: string): Promise<HostRecord | null> };
   /** Leitura READ-ONLY do read-back real da policy (display route-policy). */
@@ -368,7 +384,11 @@ export class MitigationPolicyReconciler {
     // MITIGATED: propaga o par FISICO para todos os profiles do escopo,
     // reparando plano x equipamento sob autorizacao explicita do operador.
     const activePair = appliedState === 'MITIGATED' ? fresh.assessment.physical.pair : null;
-    await this.deps.beforeApply?.(scope.deviceId, scope.policyName);
+    await this.deps.beforeApply?.(scope.deviceId, scope.policyName, {
+      state: appliedState,
+      pairPresent: fresh.assessment.physical.pair != null,
+      readBack: fresh.readBack,
+    });
     const synced = await syncPolicyRuntime(
       this.deps.repository,
       scope,
@@ -391,6 +411,7 @@ export class MitigationPolicyReconciler {
     assessment: Omit<PolicyScopeAssessment, 'deviceId'>;
     previewId: string;
     readAt: Date;
+    readBack: string;
   }> {
     const host = await this.deps.hosts.getHost(scope.deviceId);
     if (!host) throw new Error(`Equipamento nao encontrado: ${scope.deviceId}`);
@@ -423,6 +444,7 @@ export class MitigationPolicyReconciler {
         physical: assessment.physical,
       }),
       readAt: this.now(),
+      readBack,
     };
   }
 }

@@ -210,6 +210,11 @@ const rejected = (reason: string): MitigationAutoCommandResult => ({
   status: reason,
   safeError: reason,
 });
+/**
+ * No command outlives the policy lock (240 s) plus its bounded tail: a PLANNED/STARTED command
+ * younger than this may still be running and its scope is never released by reconciliation.
+ */
+export const QUARANTINE_RELEASE_MIN_AGE_MS = 300_000;
 const manualKey = (id: string) => 'manual-command:' + createHash('sha256').update(id).digest('hex');
 
 /** Scope-wide, not request/profile-wide: quarantine cannot be bypassed by a new id. */
@@ -770,13 +775,29 @@ export class AutoMitigationLifecycle {
       await this.observeUnmitigatedEpisode(tx, t, d, fresh ? at : null);
     });
   }
-  /** APPLY LOCAL changes ownership only, never rearms or removes a policy. */
-  async manualMutation(deviceId: string, policyName: string): Promise<void> {
+  /**
+   * APPLY LOCAL changes ownership only, never rearms or removes a policy.
+   *
+   * Runs under the policy lock of the reconciler. A QUARANTINED scope (uncertain command,
+   * interrupted operation, retained removal intent) is released ONLY with the fresh physical
+   * proof of that same APPLY: policy read back NORMAL with no mitigation pair. Without that
+   * proof the quarantine holds, exactly as before. Nothing is written to the equipment.
+   */
+  async manualMutation(
+    deviceId: string,
+    policyName: string,
+    proof?: { state: string; pairPresent: boolean; readBack: string },
+  ): Promise<void> {
+    let released: string | null = null;
     await this.deps.store.transaction(async (tx) => {
       const key = scopeKey({ deviceId, policyName }),
         s = await tx.get<ScopeOwnership>(key);
-      if (await scopeQuarantined(tx, key, deviceId, policyName))
-        throw Error('MANUAL_RECONCILIATION_REQUIRED');
+      if (await scopeQuarantined(tx, key, deviceId, policyName)) {
+        if (!proof || proof.state !== 'NORMAL' || proof.pairPresent)
+          throw Error('MANUAL_RECONCILIATION_REQUIRED');
+        released = await this.releaseProvenAbsent(tx, key, deviceId, policyName, proof.readBack);
+        return;
+      }
       // An explicit absence reconciliation already released ownership. Applying
       // the reviewed NORMAL runtime must not put that scope back into MANUAL.
       if (s?.phase === 'COOLDOWN' && s.reason === 'EXPLICIT_MANUAL_RELEASE_RECONCILED') return;
@@ -786,6 +807,75 @@ export class AutoMitigationLifecycle {
         await tx.put(key, 'scope', s.phase, s);
       }
     });
+    if (released) this.forgetProfiles([released]);
+  }
+  /**
+   * Explicit operator release of a quarantined scope whose mitigation pair is PROVEN ABSENT.
+   * Never forges a result: pending commands become RECONCILED (original result retained), the
+   * baseline ownership is dropped (a pair created later is never adopted) and the scope goes to
+   * COOLDOWN. An operation that may still be running is never released.
+   */
+  private async releaseProvenAbsent(
+    tx: AutomationTx,
+    key: string,
+    deviceId: string,
+    policyName: string,
+    readBack: string,
+  ): Promise<string | null> {
+    const now = this.now();
+    const inFlight = (j: JournalCommand | null) =>
+      !!j && ['PLANNED', 'STARTED'].includes(j.state) && now - j.at < QUARANTINE_RELEASE_MIN_AGE_MS;
+    const s = await tx.get<ScopeOwnership>(key);
+    const pending = await tx.list<JournalCommand>('command', ['STARTED', 'UNCERTAIN']);
+    if (pending.length >= 1000) throw Error('RECONCILIATION_COMMAND_SET_INCOMPLETE');
+    const mine = pending.filter((j) => j.scope === key);
+    const current = s ? await tx.get<JournalCommand>(s.operationId) : null;
+    if (mine.some(inFlight) || inFlight(current)) throw Error('MANUAL_RECONCILIATION_REQUIRED');
+    const id = 'manual-reconciliation-' + randomUUID();
+    for (const command of current && current.state === 'PLANNED' ? [...mine, current] : mine) {
+      command.state = 'RECONCILED'; // Retain the original result; never forge VERIFIED.
+      await tx.put(command.id, 'command', command.state, command);
+    }
+    const baselineId = baselineRecordId({ deviceId, policyName });
+    const raw = await tx.get<{ version?: number }>(baselineId);
+    const owned = raw?.version === 1 || raw?.version === 2;
+    const baseline = owned ? retainedBaseline(raw) : null;
+    if (owned)
+      await tx.put(
+        baselineId,
+        'mitigation-baseline',
+        'RELEASED',
+        baselineReleaseMarker({ deviceId, policyName }, baseline ?? undefined),
+      );
+    if (s) {
+      const resolved: ScopeOwnership = {
+        ...s,
+        phase: 'COOLDOWN',
+        owner: 'released:' + id,
+        operationId: id,
+        reason: 'EXPLICIT_MANUAL_RELEASE_RECONCILED',
+        removedAt: now,
+        cooldownUntil: now + this.deps.config().cooldownMs,
+        lastSample: null,
+      };
+      await tx.put(resolved.key, 'scope', resolved.phase, resolved);
+      await this.closeEpisode(tx, resolved.profileId);
+    }
+    await tx.put(id, 'reconciliation', 'RESOLVED_NO_WRITE', {
+      id,
+      scope: key,
+      deviceId,
+      policyName,
+      previousOperationId: s?.operationId ?? null,
+      previousPhase: s?.phase ?? null,
+      reconciledCommands: mine.map((j) => j.id),
+      at: now,
+      physicalReadbackSha256: createHash('sha256').update(readBack).digest('hex'),
+      baselineSha256: baseline?.readBackSha256 ?? null,
+      baselineDrift: baseline ? baselineDriftReasons(baseline, readBack) : [],
+      action: 'RELEASE_WITHOUT_PHYSICAL_WRITE',
+    });
+    return s?.profileId ?? null;
   }
   /** These callbacks run under the same policy lock as preflight/write/readback. */
   async beginManual(
