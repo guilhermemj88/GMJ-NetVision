@@ -819,6 +819,39 @@ describe('lease do lock: a posse e provada DEPOIS de authorizeWrite, imediatamen
     expect(lock.asserts).toBe(assertsAtAuthorize + 1); // a prova de posse veio DEPOIS da autorizacao
   });
 
+  it('REMOVE: authorizeWrite consome a margem do lock -> NENHUM undo e escrito (mesma ordem do ACTIVATE)', async () => {
+    const live = new FakeLiveExecutor();
+    const lock = new LeasedLock();
+    let authorizations = 0;
+    const h = await harness({
+      live,
+      scopeLock: lock,
+      manualCommands: {
+        begin: async () => null,
+        authorize: async () => {
+          authorizations += 1;
+          if (authorizations === 2) lock.remaining = LOCK_MIN_MS_BEFORE_WRITE - 1; // 2a escrita = REMOVE
+          return true;
+        },
+        complete: async () => undefined,
+      } as never,
+    });
+    const on = await h.commands.execute({
+      requestId: 'lease-remove-activate',
+      action: 'ACTIVATE',
+      profileId: h.profileId,
+    });
+    expect(on.status).toBe('ACTIVATED_VERIFIED');
+    const off = await h.commands.execute({
+      requestId: 'lease-remove-margin',
+      action: 'REMOVE',
+      profileId: h.profileId,
+    });
+    expect(off.ok).toBe(false);
+    expect(off.safeError).toContain('POLICY_LOCK_LOST');
+    expect(live.removals).toHaveLength(0);
+  });
+
   it('com a posse intacta apos a autorizacao: escreve normalmente (nada mudou no caminho feliz)', async () => {
     const live = new FakeLiveExecutor();
     const lock = new LeasedLock();

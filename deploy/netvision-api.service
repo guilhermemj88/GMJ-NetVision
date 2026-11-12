@@ -11,6 +11,8 @@ Environment=NODE_ENV=production
 ExecStart=/usr/bin/env npm run start -w @gmj/api
 Restart=always
 RestartSec=5
+# Encerramento gracioso (M1-AUTO): app.close() espera o ACTIVATE fisico em andamento (teto MITIGATION_SHUTDOWN_SETTLE_MS=270 s).
+TimeoutStopSec=330
 
 [Install]
 WantedBy=multi-user.target

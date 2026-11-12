@@ -247,6 +247,7 @@ import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-ada
 import { HuaweiVrpDriver } from './infrastructure/topology/huawei-vrp-driver';
 import { LldpSnmpDiscoveryAdapter } from './infrastructure/topology/lldp-snmp-adapter';
 import { LldpSshDiscoveryAdapter } from './infrastructure/topology/lldp-ssh-adapter';
+import { settleBeforeClose } from './worker/mitigation/shutdown-settle';
 import {
   AUTO_TICK_LOCK_TIMEOUT_MS,
   InMemoryPolicyScopeLock,
@@ -2089,32 +2090,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     );
   }
   app.addHook('onClose', async () => {
-    // ORDEM DE ENCERRAMENTO (M1-AUTO): (1) para de AGENDAR e de DISPARAR trabalho novo; (2) deixa terminar o
-    // ACTIVATE fisico ja em andamento, com a lease do FAST, o poller (evidencia) e o banco ainda de pe; so
-    // entao (3) libera lease/poller/conexoes. Limitado: o lock da policy expira em 240 s, entao esperar
-    // alem disso nao protege nada. O systemd precisa de TimeoutStopSec > SHUTDOWN_SETTLE_MS.
-    autoRuntimeRef?.stop();
-    shadowRuntime.stop();
-    mitigationAutoEngine.beginShutdown();
-    {
-      const capMs = Number(process.env.MITIGATION_SHUTDOWN_SETTLE_MS ?? 270_000);
-      const pending = mitigationAutoEngine.inFlightProfiles();
-      if (pending.length) app.log.warn({ pending }, 'encerrando com ACTIVATE em andamento: aguardando');
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const timedOut = await Promise.race([
-        mitigationAutoEngine.settleExecutions().then(() => false),
-        new Promise<boolean>((resolve) => {
-          timer = setTimeout(() => resolve(true), Number.isFinite(capMs) && capMs > 0 ? capMs : 270_000);
-          timer.unref?.();
-        }),
-      ]);
-      if (timer) clearTimeout(timer);
-      if (timedOut)
-        app.log.error(
-          { pending: mitigationAutoEngine.inFlightProfiles() },
-          'SHUTDOWN_SETTLE_TIMEOUT: ACTIVATE ainda em andamento; estado fisico a conferir na reconciliacao',
-        );
-    }
+    // (a espera pelo ACTIVATE em andamento esta no hook registrado POR ULTIMO, que roda PRIMEIRO)
     if (fastLeaseTimer) clearInterval(fastLeaseTimer);
     await fastPoller.stop();
     await fastLease.release();
@@ -2303,6 +2279,15 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     // disconnect encerra todas as conexoes do processo.
     await physicalRepository.disconnect();
     await disconnectPrismaClient();
+  });
+
+  // ENCERRAMENTO ORDENADO (M1-AUTO): hooks onClose rodam na ordem INVERSA de registro; este e o ULTIMO registrado,
+  // logo roda PRIMEIRO: para de agendar/disparar e deixa o ACTIVATE fisico em andamento terminar com banco, lease e
+  // poller ainda de pe. So depois os demais hooks liberam poller/lease/conexoes.
+  app.addHook('onClose', async () => {
+    autoRuntimeRef?.stop();
+    shadowRuntime.stop();
+    await settleBeforeClose(mitigationAutoEngine, app.log);
   });
 
   app.get('/health', async () => ({
