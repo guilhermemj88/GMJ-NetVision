@@ -29,6 +29,7 @@ import type {
 } from './infrastructure/bgp/mitigation/mitigation-discovery-service';
 
 const OPERATOR = { id: 'u1', username: 'operador', role: 'OPERATOR' } as unknown as AuthUser;
+const ADMIN = { id: 'u0', username: 'admin', role: 'ADMIN' } as unknown as AuthUser;
 const FIXED_NOW = new Date('2026-01-01T12:00:00.000Z');
 
 function host(id: string, label: string): HostRecord {
@@ -98,6 +99,8 @@ async function buildHarness(
   options: {
     migrationReady?: boolean;
     authenticated?: boolean;
+    /** Sessao ADMIN (a aplicacao da reconciliacao exige ADMIN). */
+    admin?: boolean;
     /** Presente = registro das rotas de reconciliacao, com estas leituras. */
     readPolicyQueue?: string[];
   } = {},
@@ -133,7 +136,8 @@ async function buildHarness(
           }),
         }
       : {}),
-    currentUser: async () => (options.authenticated === false ? null : OPERATOR),
+    currentUser: async () =>
+      options.authenticated === false ? null : options.admin ? ADMIN : OPERATOR,
   });
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof ZodError) {
@@ -915,7 +919,10 @@ describe('API de reconciliacao por policy fisica (preview / apply local)', () =>
   });
 
   it('apply com previewId invalido responde 409 e NAO grava nada', async () => {
-    const harness = await buildHarness({ readPolicyQueue: [NORMAL_READBACK, NORMAL_READBACK] });
+    const harness = await buildHarness({
+      admin: true,
+      readPolicyQueue: [NORMAL_READBACK, NORMAL_READBACK],
+    });
     app = harness.app;
     const profile = await seedProfile(harness.repository);
     await harness.repository.upsertRuntime(profile.id, { state: 'MITIGATED' });
@@ -932,7 +939,10 @@ describe('API de reconciliacao por policy fisica (preview / apply local)', () =>
   });
 
   it('apply valido grava somente o runtime (NORMAL) do escopo', async () => {
-    const harness = await buildHarness({ readPolicyQueue: [NORMAL_READBACK, NORMAL_READBACK] });
+    const harness = await buildHarness({
+      admin: true,
+      readPolicyQueue: [NORMAL_READBACK, NORMAL_READBACK],
+    });
     app = harness.app;
     const profile = await seedProfile(harness.repository);
     await harness.repository.upsertRuntime(profile.id, { state: 'MITIGATED' });

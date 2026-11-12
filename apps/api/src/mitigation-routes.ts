@@ -208,6 +208,22 @@ export function registerMitigationRoutes(
     return user;
   };
 
+  /** Escrita no painel: so ADMIN/OPERATOR (VIEWER le, simula e consulta STATUS). */
+  const WRITER_ROLES: readonly AuthUser['role'][] = ['ADMIN', 'OPERATOR'];
+  const requireWriter = async (
+    request: FastifyRequest,
+    reply: import('fastify').FastifyReply,
+    roles: readonly AuthUser['role'][] = WRITER_ROLES,
+  ): Promise<AuthUser | null> => {
+    const user = await requireUser(request, reply);
+    if (!user) return null;
+    if (!roles.includes(user.role)) {
+      reply.code(403).send({ code: 'OPERATOR_REQUIRED', message: 'Perfil de usuario sem permissao de escrita' });
+      return null;
+    }
+    return user;
+  };
+
   if (dependencies.directionReview) {
     const changeSchema = z.object({ profileId: z.string().min(1).max(160), direction: z.enum(['RX', 'TX']).nullable() }).strict();
     const interfaceChangeSchema = z.object({ interfaceId: z.string().min(1).max(160), direction: z.enum(['RX', 'TX']).nullable() }).strict();
@@ -237,7 +253,7 @@ export function registerMitigationRoutes(
   }
 
   app.post('/api/bgp/mitigation/discover', async (request, reply) => {
-    const user = await requireUser(request, reply);
+    const user = await requireWriter(request, reply);
     if (!user) return undefined;
 const payload = discoverSchema.parse(request.body ?? {});
 const deviceIds = payload.deviceIds ?? (payload.deviceId ? [payload.deviceId] : []);
@@ -267,7 +283,12 @@ return service.discover(deviceIds, { refreshInterfaceMetadata: true });
   // MitigationCommandService que o n8n usa (sem logica paralela).
   if (commands) {
     app.post('/api/bgp/mitigation/profiles/:id/command', async (request, reply) => {
-      const user = await requireUser(request, reply);
+      // RBAC no backend: ACTIVATE/REMOVE exigem ADMIN/OPERATOR; VIEWER so STATUS/SIMULATE_*.
+      const rawAction = (request.body as { action?: unknown } | null | undefined)?.action;
+      const user =
+        rawAction === 'ACTIVATE' || rawAction === 'REMOVE'
+          ? await requireWriter(request, reply)
+          : await requireUser(request, reply);
       if (!user) return undefined;
       const { id } = profileParams.parse(request.params);
       const payload = commandSchema.parse(request.body ?? {});
@@ -275,6 +296,7 @@ return service.discover(deviceIds, { refreshInterfaceMetadata: true });
         requestId: payload.requestId,
         action: payload.action,
         profileId: id,
+        actorRole: user.role,
         ...(payload.acknowledgeScopeRemoval === undefined
           ? {}
           : { acknowledgeScopeRemoval: payload.acknowledgeScopeRemoval }),
@@ -297,7 +319,8 @@ return service.discover(deviceIds, { refreshInterfaceMetadata: true });
     // APPLY LOCAL: grava SOMENTE o runtime no banco do NetVision; revalida o
     // preview contra uma leitura NOVA do equipamento e recusa preview velho.
     app.post('/api/bgp/mitigation/policies/reconcile/apply', async (request, reply) => {
-      const user = await requireUser(request, reply);
+      // Libera/ajusta posse e quarentena: so ADMIN (acesso administrativo de emergencia).
+      const user = await requireWriter(request, reply, ['ADMIN']);
       if (!user) return undefined;
       const payload = reconcileApplySchema.parse(request.body ?? {});
       try {
@@ -319,7 +342,7 @@ return service.discover(deviceIds, { refreshInterfaceMetadata: true });
   // banda declarada). Persistencia pura: sem discovery e sem SSH.
   if (peers) {
     app.patch('/api/bgp/peers/:peerId/mitigation-exclusion', async (request, reply) => {
-      const user = await requireUser(request, reply);
+      const user = await requireWriter(request, reply);
       if (!user) return undefined;
       const { peerId } = peerParams.parse(request.params);
       const payload = exclusionSchema.parse(request.body ?? {});
