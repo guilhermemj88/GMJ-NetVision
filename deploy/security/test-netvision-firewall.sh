@@ -18,7 +18,7 @@ case "$op" in
   -C) c=$1; shift; [ -e "$D/$c.chain" ] && grep -Fxq -- "$*" "$D/$c.chain" ;;
   -D) c=$1; shift; [ -e "$D/$c.chain" ] || exit 1; grep -Fxq -- "$*" "$D/$c.chain" || exit 1
       n=$(grep -Fxn -- "$*" "$D/$c.chain" | head -1 | cut -d: -f1); sed -i "${n}d" "$D/$c.chain" ;;
-  -S) c=${1:-INPUT}; [ -e "$D/$c.chain" ] || exit 1; while IFS= read -r l; do echo "-A $c $l"; done <"$D/$c.chain" ;;
+  -S) [ $# -eq 0 ] && exit 0; c=${1:-INPUT}; [ -e "$D/$c.chain" ] || exit 1; while IFS= read -r l; do echo "-A $c $l"; done <"$D/$c.chain" ;;
 esac
 STUB
 chmod +x "$T/bin/fakefw"
@@ -76,5 +76,20 @@ echo "7) regra alheia no INPUT e preservada"
 echo "-p tcp --dport 2222 -j ACCEPT" >>"$FW/v4/INPUT.chain" 2>/dev/null || { mkdir -p "$FW/v4"; echo "-p tcp --dport 2222 -j ACCEPT" >"$FW/v4/INPUT.chain"; }
 N8N_EGRESS=179.189.80.25 PANEL_CIDRS=10.1.0.0/16 run apply >/dev/null; run remove >/dev/null
 ok "regra alheia (SSH) intacta apos apply+remove" $([ "$(input v4)" = "-p tcp --dport 2222 -j ACCEPT" ] && echo 1 || echo 0)
+
+echo "8) ip6tables indisponivel (kernel sem a tabela filter v6)"
+printf '#!/usr/bin/env bash
+exit 3
+' >"$T/bin/ip6tables"
+printf '00000000000000000000000000000001 01 80 10 80       lo
+' >"$T/if_inet6_none"
+printf '20010db8000000000000000000000001 02 40 00 80     eth0
+' >"$T/if_inet6_global"
+rc=$(IF_INET6_FILE="$T/if_inet6_none" N8N_EGRESS=179.189.80.25 PANEL_CIDRS=10.1.0.0/16 run apply)
+ok "sem IPv6 global: aplica so o IPv4 com aviso (rc=0)" $(b "$rc")
+ok "IPv4 filtrado mesmo assim" $([ "$(input v4 | grep -c 'netvision-fw')" = 1 ] && echo 1 || echo 0)
+run remove >/dev/null
+rc=$(IF_INET6_FILE="$T/if_inet6_global" N8N_EGRESS=179.189.80.25 PANEL_CIDRS=10.1.0.0/16 run apply)
+ok "COM IPv6 global e sem ip6tables: RECUSA e nao deixa regra parcial" $([ "$rc" != 0 ] && [ "$(input v4 | grep -c netvision-fw)" = 0 ] && echo 1 || echo 0)
 
 echo; echo "RESULTADO: $pass ok, $fail falha(s)"; [ $fail = 0 ]

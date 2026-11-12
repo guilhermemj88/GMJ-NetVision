@@ -29,6 +29,9 @@ v4() { [[ "$1" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}(/([0-9]|[12][0-9]|3[0-2]))?$ ]]; 
 v6() { [[ "$1" =~ ^[0-9a-fA-F:]+(/[0-9]{1,3})?$ ]] && [[ "$1" == *:* ]]; }
 csv() { local IFS=,; read -ra _o <<<"$1"; printf '%s\n' "${_o[@]}" | sed '/^$/d'; }
 
+# Endereco IPv6 de escopo global (ignora loopback e link-local): so entao o IPv6 e um caminho de entrada.
+has_global_v6() { awk '$4=="00"{f=1} END{exit !f}' "${IF_INET6_FILE:-/proc/net/if_inet6}" 2>/dev/null; }
+
 jump() { "$1" -C INPUT -m comment --comment "$TAG" -j "$CHAIN" 2>/dev/null; }
 
 purge() { # $1 = iptables|ip6tables : remove TODAS as ligacoes e a cadeia (idempotente)
@@ -67,8 +70,13 @@ case "$MODE" in
     while read -r c; do v4 "$c" || { echo "ERRO: PANEL_CIDRS invalido: $c"; exit 2; }; done < <(csv "$PANEL_CIDRS")
     while read -r c; do [ -n "$c" ] && { v6 "$c" || { echo "ERRO: PANEL_CIDRS6 invalido: $c"; exit 2; }; }; done < <(csv "$PANEL_CIDRS6")
     build iptables 4 || { purge iptables; echo "ERRO: IPv4 nao aplicado; regras REMOVIDAS (estado anterior)"; exit 1; }
-    if command -v ip6tables >/dev/null 2>&1; then
+    if command -v ip6tables >/dev/null 2>&1 && ip6tables -S >/dev/null 2>&1; then
       build ip6tables 6 || { purge ip6tables; purge iptables; echo "ERRO: IPv6 nao aplicado; tudo REMOVIDO"; exit 1; }
+    elif has_global_v6; then
+      # IPv6 alcancavel de fora e sem como filtra-lo: NAO deixar o servidor meio protegido.
+      purge iptables; echo "ERRO: o host tem endereco IPv6 global mas o ip6tables esta indisponivel; nada aplicado (tudo REMOVIDO)"; exit 1
+    else
+      echo "AVISO: ip6tables indisponivel e o host nao tem IPv6 global: apenas IPv4 filtrado."
     fi
     echo "FIREWALL NETVISION ATIVO (n8n=$N8N_EGRESS:$N8N_PORT, painel=$PANEL_CIDRS:$PANEL_PORTS)."
     echo "PROVA (de fora): :$API_PORT e :$WEB_PORT = 000 para quem nao e o n8n; do n8n: curl http://<servidor>:$API_PORT/health = 200."
@@ -81,6 +89,7 @@ case "$MODE" in
     rc=0
     for fw in iptables ip6tables; do
       command -v "$fw" >/dev/null 2>&1 || continue
+      "$fw" -S >/dev/null 2>&1 || continue   # ip6tables sem tabela filter (kernel sem IPv6): nada a reportar
       if jump "$fw"; then echo "$fw: ATIVO"; "$fw" -S "$CHAIN"; else echo "$fw: ausente"; rc=1; fi
     done
     exit $rc
