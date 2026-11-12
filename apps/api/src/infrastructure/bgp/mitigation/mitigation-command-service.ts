@@ -416,6 +416,12 @@ export class MitigationCommandService {
     string,
     { identity: string; promise: Promise<MitigationCommandResult> }
   >();
+  /**
+   * REMOVE MANUAL de UMA mitigacao (perfil + referencia) em execucao NESTE processo. Um segundo REMOVE da
+   * MESMA mitigacao com outro requestId (segundo toque do Telegram) e recusado como REMOVE_IN_PROGRESS, sem
+   * disputar o lock e sem escrita. Vive so durante a operacao (nunca durante todo o periodo MITIGATED).
+   */
+  private readonly removeInFlight = new Map<string, string>();
   private readonly now: () => Date;
   private readonly preview = new SimulationCommandExecutor();
   private readonly labels: { bogonPrefixList: string; targetPrefixList: string };
@@ -727,6 +733,17 @@ export class MitigationCommandService {
     };
     if (MUTATING_ACTIONS.includes(input.action) && this.deps.scopeLock) {
       const scope = policyExecutionScope(profile);
+      const inFlightKey =
+        input.action === 'REMOVE' && input.mitigationRef && !isAutomaticCommand(input)
+          ? `${input.profileId}|${input.mitigationRef}`
+          : null;
+      if (inFlightKey) {
+        const holder = this.removeInFlight.get(inFlightKey);
+        if (holder !== undefined && holder !== input.requestId) {
+          return this.policyBusyResult(input, profile, base, 'REMOVE_IN_PROGRESS');
+        }
+        this.removeInFlight.set(inFlightKey, input.requestId);
+      }
       try {
         return await this.deps.scopeLock.run(scope, scoped);
       } catch (error) {
@@ -734,6 +751,10 @@ export class MitigationCommandService {
           return this.policyBusyResult(input, profile, base);
         }
         throw error;
+      } finally {
+        if (inFlightKey && this.removeInFlight.get(inFlightKey) === input.requestId) {
+          this.removeInFlight.delete(inFlightKey);
+        }
       }
     }
     return scoped();
@@ -1502,13 +1523,14 @@ export class MitigationCommandService {
       idempotent: boolean;
       executedAt: string;
     },
+    busyStatus: 'POLICY_BUSY' | 'REMOVE_IN_PROGRESS' = 'POLICY_BUSY',
   ): Promise<MitigationActionResult> {
     const host = await this.read(() => this.deps.hosts.getHost(profile.deviceId), null);
     const label = resolveInterfaceLabel(host, profile.interfaceId);
     return {
       ...base,
       ok: false,
-      status: 'POLICY_BUSY',
+      status: busyStatus,
       customer: label.customer,
       device: host ? host.displayName || host.hostname : profile.deviceId,
       interface: label.interfaceName ?? profile.interfaceId,
@@ -1526,7 +1548,9 @@ export class MitigationCommandService {
       commandPreview: [],
       verification: null,
       safeError:
-        'Policy ocupada por outra operacao no mesmo equipamento (deviceId + policy). Nenhuma escrita foi feita; tente novamente.',
+        busyStatus === 'REMOVE_IN_PROGRESS'
+          ? 'Ja existe uma retirada desta mitigacao em execucao (IN_PROGRESS). Nenhuma escrita foi feita por este comando; aguarde a confirmacao da retirada em curso.'
+          : 'Policy ocupada por outra operacao no mesmo equipamento (deviceId + policy). Nenhuma escrita foi feita; tente novamente.',
     };
   }
 

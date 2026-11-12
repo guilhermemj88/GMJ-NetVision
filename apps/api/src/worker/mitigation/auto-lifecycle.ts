@@ -978,8 +978,14 @@ export class AutoMitigationLifecycle {
       // scope may be removed with it. A button from an earlier mitigation never removes a new one.
       if (input.action === 'REMOVE' && input.mitigationRef) {
         const active = activeMitigationEventId(s);
-        if (!active || mitigationRefOf(active) !== input.mitigationRef)
+        if (!active || mitigationRefOf(active) !== input.mitigationRef) {
+          // Escopo em quarentena/incerto (REMOVE anterior nao verificado, comando STARTED, reinicio no meio):
+          // a ausencia de mitigacao ativa NAO prova que ela foi retirada. Nunca responder "ja retirada" nesse
+          // caso: exigir reconciliacao (o operador confere no painel/CLI).
+          if (await scopeQuarantined(tx, key, deviceId, policyName))
+            throw Error('MANUAL_RECONCILIATION_REQUIRED');
           throw Error('MITIGATION_REFERENCE_STALE');
+        }
       }
       if (await scopeQuarantined(tx, key, deviceId, policyName))
         throw Error('MANUAL_RECONCILIATION_REQUIRED');
