@@ -148,6 +148,11 @@ export interface MitigationCommandInput {
    * caso contrario `MITIGATION_REFERENCE_STALE`, sem preflight e sem escrita.
    */
   mitigationRef?: string;
+  /**
+   * Papel da SESSAO do painel/API administrativa que originou o comando (nunca preenchido pelo canal
+   * n8n/AUTO). Unico uso: retirada de EMERGENCIA de um perfil fora da lista de escrita manual (so ADMIN).
+   */
+  actorRole?: 'ADMIN' | 'OPERATOR' | 'VIEWER';
   /** Identidade do operador no Telegram (auditoria; nunca autoriza sozinha). */
   confirmedBy?: string | null;
   /**
@@ -384,6 +389,13 @@ export interface MitigationCommandDeps {
    * comportamento anterior (sem lock). UI, n8n e AUTO usam ESTE servico.
    */
   scopeLock?: PolicyScopeLock;
+  /**
+   * Perfis com escrita MANUAL autorizada (painel, API administrativa e n8n/Telegram). Presente: ACTIVATE/REMOVE
+   * manual de qualquer outro perfil e recusado (`PROFILE_NOT_ALLOWED`) sem preflight e sem escrita; so a RETIRADA
+   * por sessao ADMIN (acesso de emergencia) escapa da lista. Ausente = sem restricao (somente com escrita
+   * fisica desligada; ver `manualProfilePolicyFromEnv`).
+   */
+  manualProfilePolicy?: { allowedProfileIds: readonly string[] };
   now?: () => Date;
   /**
    * Confirmacoes de retirada por escopo fisico (canal n8n/Telegram). Ausente =
@@ -646,6 +658,37 @@ export class MitigationCommandService {
         verification: null,
         safeError:
           'REMOVE exige acao manual autorizada no Telegram ou na interface NetVision; AUTO REMOVE e proibido.',
+      };
+    }
+    if (
+      this.deps.manualProfilePolicy &&
+      MUTATING_ACTIONS.includes(input.action) &&
+      !isAutomaticCommand(input) &&
+      !this.deps.manualProfilePolicy.allowedProfileIds.includes(profile.id) &&
+      !(input.action === 'REMOVE' && input.actorRole === 'ADMIN')
+    ) {
+      return {
+        ...base,
+        ok: false,
+        status: 'PROFILE_NOT_ALLOWED',
+        verified: false,
+        customer: null,
+        device: profile.deviceId,
+        interface: null,
+        interfaceId: profile.interfaceId,
+        addressFamily: profile.addressFamily,
+        policy: profile.policyName,
+        node: null,
+        bogonNode: null,
+        mitigationNode: null,
+        rt: profile.mitigationRt,
+        sharedPolicy: false,
+        sharedPolicyTargets: [],
+        affectedPeers: [],
+        commandPreview: [],
+        verification: null,
+        safeError:
+          'Este perfil nao esta na lista de escrita manual autorizada; nenhuma escrita foi iniciada.',
       };
     }
     const scoped = async (lease: PolicyScopeLease = UNBOUNDED_POLICY_LEASE) => {

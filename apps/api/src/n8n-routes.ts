@@ -89,6 +89,11 @@ export interface N8nRouteDependencies {
    * ja e de uso unico). Ligar somente DEPOIS de o workflow do n8n enviar a referencia.
    */
   requireRemoveRef?: boolean;
+  /**
+   * Origens TCP (IP do socket) autorizadas a chamar o canal. Vazio/ausente = sem filtro (o firewall e o token seguem
+   * valendo). Nunca usa X-Forwarded-For.
+   */
+  allowedSourceIps?: readonly string[];
   /** Observabilidade: chamado apos cada requisicao (sem segredo). */
   onCommandResult?: (log: N8nInboundLog) => Promise<void> | void;
 }
@@ -97,6 +102,11 @@ function readBearer(header: string | undefined): string | null {
   const match = /^Bearer\s+(.+)$/i.exec(header.trim());
   const value = match?.[1]?.trim();
   return value ? value : null;
+}
+
+/** IPv4 mapeado em IPv6 (`::ffff:1.2.3.4`) vale como o IPv4. */
+function normalizeIp(value: string): string {
+  return value.trim().toLowerCase().replace(/^::ffff:/, '');
 }
 
 /** Comparacao em tempo constante: tamanho diferente nao vaza posicao. */
@@ -110,6 +120,7 @@ function safeEqual(left: string, right: string): boolean {
 export function registerN8nRoutes(app: FastifyInstance, dependencies: N8nRouteDependencies): void {
   const { commands, commandToken, resolveCommandToken, onCommandResult, requireRemoveRef } =
     dependencies;
+  const allowedSourceIps = (dependencies.allowedSourceIps ?? []).map(normalizeIp);
 
   const record = async (log: N8nInboundLog): Promise<void> => {
     if (!onCommandResult) return;
@@ -133,6 +144,24 @@ export function registerN8nRoutes(app: FastifyInstance, dependencies: N8nRouteDe
   };
 
   app.post('/api/integrations/n8n/mitigation-command', async (request, reply) => {
+    // Origem = endereco do SOCKET (nunca X-Forwarded-For, que um cliente direto forjaria).
+    if (allowedSourceIps.length > 0 && !allowedSourceIps.includes(normalizeIp(request.socket.remoteAddress ?? ''))) {
+      await record({
+        requestId: null,
+        action: null,
+        profileId: null,
+        status: 'SOURCE_NOT_ALLOWED',
+        httpStatus: 403,
+        ok: false,
+        idempotent: null,
+        safeError: 'Origem nao autorizada para o canal de comando',
+      });
+      return reply.code(403).send({
+        ok: false,
+        status: 'SOURCE_NOT_ALLOWED',
+        safeError: 'Origem nao autorizada para o canal de comando',
+      });
+    }
     const configured = await expectedToken();
     if (!configured) {
       await record({

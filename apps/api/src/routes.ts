@@ -175,6 +175,7 @@ import { MitigationDirectionReview } from './infrastructure/bgp/mitigation/mitig
 import { PrismaDirectionReviewStore } from './infrastructure/bgp/mitigation/prisma-direction-review-store';
 import { registerN8nRoutes } from './n8n-routes';
 import { MitigationCommandService } from './infrastructure/bgp/mitigation/mitigation-command-service';
+import { manualProfilePolicyFromEnv } from './infrastructure/bgp/mitigation/mitigation-manual-policy';
 import type { MitigationAutoEvidence } from './infrastructure/bgp/mitigation/mitigation-command-service';
 import { MockMitigationExecutor } from './infrastructure/bgp/mitigation/mitigation-executor';
 import { mitigationConfigFromEnv } from './infrastructure/bgp/mitigation/mitigation-config';
@@ -1007,7 +1008,13 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     };
   };
 
+  // RBAC de escopo: com escrita fisica ligada a lista de perfis com escrita manual e OBRIGATORIA (fail-closed no boot).
+  const manualProfilePolicy = manualProfilePolicyFromEnv(
+    process.env,
+    mitigationExecutionConfig.liveWriteEnabled,
+  );
   const mitigationCommands = new MitigationCommandService({
+    ...(manualProfilePolicy ? { manualProfilePolicy } : {}),
     autoEvidence: (id, evidence) =>
       revalidateAutoEvidence?.(id, evidence) ?? Promise.resolve(false),
     repository: mitigationRepository,
@@ -2099,6 +2106,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     commandToken: process.env.NETVISION_N8N_COMMAND_TOKEN?.trim() || null,
     // Ligar somente depois de o workflow do n8n enviar `mitigationRef` no botao de retirada.
     requireRemoveRef: process.env.NETVISION_N8N_REMOVE_REQUIRES_REF?.trim() === '1',
+    // Defesa em profundidade (alem do firewall e do token): so estas origens TCP alcancam o canal de comando.
+    allowedSourceIps: (process.env.NETVISION_N8N_ALLOWED_SOURCE_IPS ?? '')
+      .split(',')
+      .map((ip) => ip.trim())
+      .filter(Boolean),
     // Token persistido na tela de MIDIAS vence o ENV quando existir.
     resolveCommandToken: async () => (await mediaService.resolveInboundToken()).token,
     onCommandResult: async (log) => {
