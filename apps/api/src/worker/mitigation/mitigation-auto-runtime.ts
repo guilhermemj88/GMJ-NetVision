@@ -45,6 +45,7 @@ export interface MitigationAutoRuntimeOptions {
 export class MitigationAutoRuntime {
   private timer: ReturnType<typeof setInterval> | null = null;
   private ticking = false;
+  private currentTick: Promise<unknown> | null = null;
   private state: MitigationAutoEngineState = 'OFF';
   private startedAt: string | null = null;
   private lastTickAt: string | null = null;
@@ -109,13 +110,27 @@ export class MitigationAutoRuntime {
     this.state = 'STOPPED';
   }
 
+  /**
+   * Aguarda o tick EM ANDAMENTO terminar (nunca lanca). No caminho do piloto o ACTIVATE roda DENTRO do tick e nao
+   * entra em `pendingExecutions` do motor: sem isto o encerramento mataria a operacao no meio. Chamar depois de `stop()`.
+   */
+  async waitIdle(): Promise<void> {
+    await this.currentTick?.catch(() => undefined);
+  }
+
   /** Um ciclo. Nunca sobrepõe: se já existe tick em andamento, retorna vazio. */
-  async tickOnce(): Promise<MitigationAutoDecision[]> {
+  tickOnce(): Promise<MitigationAutoDecision[]> {
     if (this.ticking) {
       this.skippedTicks += 1;
-      return [];
+      return Promise.resolve([]);
     }
     this.ticking = true;
+    const run = this.runTick();
+    this.currentTick = run;
+    return run;
+  }
+
+  private async runTick(): Promise<MitigationAutoDecision[]> {
     try {
       const decisions = await this.options.engine.tick();
       const at = this.now().toISOString();

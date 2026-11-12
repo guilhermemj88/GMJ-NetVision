@@ -247,6 +247,7 @@ import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-ada
 import { HuaweiVrpDriver } from './infrastructure/topology/huawei-vrp-driver';
 import { LldpSnmpDiscoveryAdapter } from './infrastructure/topology/lldp-snmp-adapter';
 import { LldpSshDiscoveryAdapter } from './infrastructure/topology/lldp-ssh-adapter';
+import { registerHttpDrain } from './graceful-shutdown';
 import { settleBeforeClose } from './worker/mitigation/shutdown-settle';
 import {
   AUTO_TICK_LOCK_TIMEOUT_MS,
@@ -2281,13 +2282,30 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     await disconnectPrismaClient();
   });
 
+  // preClose roda ANTES do server.close() do Fastify (que por sua vez roda antes de TODOS os onClose do usuario): e aqui que
+  // o motor AUTO para de agendar/disparar, senao um tick poderia iniciar um ACTIVATE NOVO durante o drain HTTP.
+  const httpDrain = registerHttpDrain(app as never);
+  app.addHook('preClose', async () => {
+    autoRuntimeRef?.stop();
+    shadowRuntime.stop();
+    mitigationAutoEngine.beginShutdown();
+    httpDrain.begin();
+  });
   // ENCERRAMENTO ORDENADO (M1-AUTO): hooks onClose rodam na ordem INVERSA de registro; este e o ULTIMO registrado,
   // logo roda PRIMEIRO: para de agendar/disparar e deixa o ACTIVATE fisico em andamento terminar com banco, lease e
   // poller ainda de pe. So depois os demais hooks liberam poller/lease/conexoes.
   app.addHook('onClose', async () => {
     autoRuntimeRef?.stop();
     shadowRuntime.stop();
-    await settleBeforeClose(mitigationAutoEngine, app.log);
+    await settleBeforeClose(
+      {
+        beginShutdown: () => mitigationAutoEngine.beginShutdown(),
+        settleExecutions: () => mitigationAutoEngine.settleExecutions(),
+        inFlightProfiles: () => mitigationAutoEngine.inFlightProfiles(),
+        waitTickIdle: () => autoRuntimeRef?.waitIdle() ?? Promise.resolve(),
+      },
+      app.log,
+    );
   });
 
   app.get('/health', async () => ({

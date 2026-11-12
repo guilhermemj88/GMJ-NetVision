@@ -35,3 +35,24 @@ export function installGracefulShutdown(
   proc.on('SIGTERM', () => shutdown('SIGTERM'));
   proc.on('SIGINT', () => shutdown('SIGINT'));
 }
+
+/**
+ * Drenagem HTTP no encerramento: depois de `begin()`, toda resposta sai com `Connection: close` e as conexoes ociosas sao
+ * fechadas, entao o `server.close()` do Fastify (que roda ANTES dos hooks onClose do usuario) termina assim que a ultima
+ * requisicao em voo responde, em vez de esperar o keepAliveTimeout (72 s) de um cliente keep-alive. Registrar ANTES de `ready()`.
+ */
+export function registerHttpDrain(app: {
+  addHook(name: 'onSend', fn: (req: unknown, reply: { header(k: string, v: string): unknown }) => Promise<void>): unknown;
+  server?: { closeIdleConnections?: () => void };
+}): { begin(): void } {
+  let draining = false;
+  app.addHook('onSend', async (_req, reply) => {
+    if (draining) reply.header('connection', 'close');
+  });
+  return {
+    begin() {
+      draining = true;
+      app.server?.closeIdleConnections?.();
+    },
+  };
+}

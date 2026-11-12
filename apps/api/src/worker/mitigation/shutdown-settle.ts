@@ -7,6 +7,8 @@
 export const DEFAULT_SHUTDOWN_SETTLE_MS = 270_000;
 
 export interface SettleEngine {
+  /** Opcional: aguarda o tick do runtime em andamento (piloto: o ACTIVATE roda DENTRO do tick). */
+  waitTickIdle?(): Promise<void>;
   beginShutdown(): void;
   settleExecutions(): Promise<void>;
   inFlightProfiles(): string[];
@@ -30,7 +32,7 @@ export async function settleBeforeClose(
   if (pending.length) log.warn({ pending }, 'encerrando com ACTIVATE em andamento: aguardando');
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timedOut = await Promise.race([
-    engine.settleExecutions().then(
+    Promise.all([engine.waitTickIdle?.(), engine.settleExecutions()]).then(
       () => false,
       () => false,
     ),
