@@ -98,8 +98,8 @@ async function main() {
   app.addHook('onClose', async () => {
     mark('SETTLE_BEGIN', { inFlight: engine.inFlightProfiles() });
     const r = await settleBeforeClose(engine, {
-      warn: (o, m) => mark('LOG_WARN', { m, ...o }),
-      error: (o, m) => mark('LOG_ERROR', { m, ...o }),
+      warn: (o, m) => mark('LOG_WARN', { msg: m, ...o }),
+      error: (o, m) => mark('LOG_ERROR', { msg: m, ...o }),
     });
     mark('SETTLE_END', { timedOut: r.timedOut });
   });
