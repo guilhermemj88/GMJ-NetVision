@@ -1,0 +1,18 @@
+# Reaplica a politica permanente de firewall do NetVision a cada boot (as regras do iptables nao sobrevivem a reinicio).
+# NAO instalado automaticamente. Instalacao (com autorizacao): copiar o script para /usr/local/sbin, este arquivo para
+# /etc/systemd/system, criar /etc/netvision/firewall.env (N8N_EGRESS=..., PANEL_CIDRS=...) e `systemctl enable --now`.
+[Unit]
+Description=NetVision - firewall permanente das superficies de comando
+After=network-pre.target
+Before=network.target netvision-api.service
+Wants=network-pre.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+EnvironmentFile=/etc/netvision/firewall.env
+ExecStart=/usr/local/sbin/netvision-firewall.sh apply
+ExecStop=/usr/local/sbin/netvision-firewall.sh remove
+
+[Install]
+WantedBy=multi-user.target
