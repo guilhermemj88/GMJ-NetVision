@@ -1,5 +1,5 @@
 import { buildApp } from './app';
-import { shutdownSettleCapMs } from './worker/mitigation/shutdown-settle';
+import { installGracefulShutdown } from './graceful-shutdown';
 import { config } from './config';
 
 /**
@@ -74,23 +74,8 @@ async function main(): Promise<void> {
     await app.listen({ port: config.PORT, host: config.HOST });
     checkpoint('LISTEN_DONE', { port: config.PORT, host: config.HOST });
     clearInterval(keepAlive);
-    // Encerramento gracioso: app.close() aguarda o ACTIVATE fisico em andamento (ate o teto do settle) antes de
-    // liberar banco/lease. Sem isto o SIGTERM do systemd matava o processo no meio da operacao. Segundo sinal ou o
-    // prazo duro encerram de qualquer forma; o estado fisico incerto vira quarentena no proximo boot.
-    let closing = false;
-    const shutdown = (signal: string) => {
-      if (closing) process.exit(1);
-      closing = true;
-      checkpoint('SHUTDOWN_SIGNAL', { signal });
-      const hard = setTimeout(() => process.exit(1), shutdownSettleCapMs() + 20_000);
-      hard.unref();
-      app.close().then(
-        () => process.exit(0),
-        () => process.exit(1),
-      );
-    };
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT', () => shutdown('SIGINT'));
+    // Encerramento gracioso (ver graceful-shutdown.ts): app.close() aguarda o ACTIVATE fisico em andamento.
+    installGracefulShutdown(app, { onSignal: (signal) => checkpoint('SHUTDOWN_SIGNAL', { signal }) });
   } catch (error) {
     fail(error);
     clearInterval(keepAlive);
