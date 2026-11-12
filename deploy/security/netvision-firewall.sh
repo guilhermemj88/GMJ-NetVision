@@ -49,7 +49,9 @@ build() { # $1 fw, $2 familia (4|6)
   "$fw" -A "$CHAIN" -i lo -j RETURN || return 1
   "$fw" -A "$CHAIN" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN || return 1
   if [ "$fam" = 4 ]; then
-    "$fw" -A "$CHAIN" -p tcp -s "$N8N_EGRESS" --dport "$N8N_PORT" -j RETURN || return 1
+    while read -r c; do
+      [ -n "$c" ] && { "$fw" -A "$CHAIN" -p tcp -s "$c" --dport "$N8N_PORT" -j RETURN || return 1; }
+    done < <(csv "$N8N_EGRESS")
     while read -r c; do
       [ -n "$c" ] && "$fw" -A "$CHAIN" -p tcp -s "$c" -m multiport --dports "$PANEL_PORTS" -j RETURN
     done < <(csv "$PANEL_CIDRS")
@@ -65,7 +67,9 @@ build() { # $1 fw, $2 familia (4|6)
 
 case "$MODE" in
   apply)
-    v4 "$N8N_EGRESS" && [[ "$N8N_EGRESS" != */* ]] || { echo "ERRO: defina N8N_EGRESS=<ip unico do n8n>"; exit 2; }
+    # N8N_EGRESS: um ou mais IPv4 UNICOS (csv) — o n8n da GMJ chega por mais de um endereco de origem (ex.: .1 e .25).
+    [ -n "$N8N_EGRESS" ] || { echo "ERRO: defina N8N_EGRESS=<ip[,ip]> do n8n"; exit 2; }
+    while read -r c; do { v4 "$c" && [[ "$c" != */* ]]; } || { echo "ERRO: N8N_EGRESS invalido (somente IPv4 unico, sem mascara): $c"; exit 2; }; done < <(csv "$N8N_EGRESS")
     [ -n "$PANEL_CIDRS" ] || { echo "ERRO: defina PANEL_CIDRS=<redes dos operadores> (vazio = painel fechado para todos; use 127.0.0.1/32 se for esse o desejo)"; exit 2; }
     while read -r c; do v4 "$c" || { echo "ERRO: PANEL_CIDRS invalido: $c"; exit 2; }; done < <(csv "$PANEL_CIDRS")
     while read -r c; do [ -n "$c" ] && { v6 "$c" || { echo "ERRO: PANEL_CIDRS6 invalido: $c"; exit 2; }; }; done < <(csv "$PANEL_CIDRS6")

@@ -55,6 +55,16 @@ echo "3) trocar o IP do n8n"
 N8N_EGRESS=5.6.7.8 PANEL_CIDRS=10.1.0.0/16 run apply >/dev/null
 ok "so o IP novo permitido" $(rules v4 | grep -q -- '-s 5.6.7.8 ' && ! rules v4 | grep -q 179.189.80.25 && echo 1 || echo 0)
 
+echo "3b) n8n com DOIS enderecos de origem (.1 e .25 observados em producao)"
+rc=$(N8N_EGRESS=179.189.80.1,179.189.80.25 PANEL_CIDRS=10.1.0.0/16 run apply)
+ok "apply com 2 IPs rc=0" $(b "$rc")
+ok "os dois IPs liberados so na porta do n8n" $([ "$(rules v4 | grep -cE -- '-s 179\.189\.80\.(1|25) --dport 3333 -j RETURN')" = 2 ] && echo 1 || echo 0)
+ok "REJECT continua sendo a ultima regra" $(rules v4 | tail -1 | grep -q REJECT && echo 1 || echo 0)
+rc=$(N8N_EGRESS=179.189.80.1,10.0.0.0/8 PANEL_CIDRS=10.1.0.0/16 run apply)
+ok "CIDR na lista do n8n e recusado (rc=2)" $([ "$rc" = 2 ] && echo 1 || echo 0)
+rc=$(N8N_EGRESS=lixo PANEL_CIDRS=10.1.0.0/16 run apply)
+ok "valor invalido recusado (rc=2)" $([ "$rc" = 2 ] && echo 1 || echo 0)
+
 echo "4) status"
 rc=$(run status); ok "status ativo rc=0" $(b "$rc")
 
