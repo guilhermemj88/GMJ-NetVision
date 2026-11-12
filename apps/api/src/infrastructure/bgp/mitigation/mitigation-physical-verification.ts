@@ -957,3 +957,229 @@ function evaluate(ctx: {
   }
   return checks;
 }
+
+export interface RestorationPhysicalVerification {
+  outcome: PhysicalOutcome;
+  summary: string;
+  checks: PhysicalCheck[];
+  mitigationPeer: string | null;
+  eligiblePrefixes: string[];
+  customerPeers: string[];
+}
+
+/**
+ * READ-ONLY: prova que o EFEITO BGP da mitigacao foi desfeito (reconciliacao de um escopo em
+ * quarentena depois de retirada manual). A ausencia TEXTUAL dos nodes nao basta: enquanto uma
+ * rota do cliente ainda carregar a RT de mitigacao, ou um prefixo elegivel ainda for anunciado
+ * ao peer de mitigacao, o resultado e FAIL. Leitura indisponivel/ilegivel e INCONCLUSIVE.
+ * Somente PASS autoriza a liberacao. Uma leitura, sem repeticao e sem escrita.
+ */
+export async function verifyRestorationPhysical(input: {
+  read: DisplayReader;
+  contract: MitigationNode2Contract;
+  customerPeers: readonly string[];
+  rt?: string;
+}): Promise<RestorationPhysicalVerification> {
+  const rt = input.rt ?? MITIGATION_RT;
+  const customerPeers = [...input.customerPeers];
+  const finish = (
+    checks: PhysicalCheck[],
+    extra: { mitigationPeer?: string | null; eligiblePrefixes?: string[] } = {},
+  ): RestorationPhysicalVerification => {
+    const outcome = aggregate(checks);
+    return {
+      outcome,
+      checks,
+      mitigationPeer: extra.mitigationPeer ?? null,
+      eligiblePrefixes: extra.eligiblePrefixes ?? [],
+      customerPeers,
+      summary:
+        outcome === 'PASS'
+          ? `restauracao BGP PASS (${checks.length} checks)`
+          : `restauracao BGP ${outcome}: ${checks
+              .filter((check) => check.outcome !== 'PASS')
+              .map((check) => `${check.id}: ${check.detail}`)
+              .join('; ')}`,
+    };
+  };
+  const inconclusive = (id: string, detail: string) =>
+    finish([{ id, outcome: 'INCONCLUSIVE', detail }]);
+
+  if (customerPeers.length === 0) return inconclusive('customer_peer', 'perfil sem peer do cliente');
+  if (customerPeers.some((peer) => !isIpv4Literal(peer)))
+    return inconclusive('customer_peer', 'peer do cliente nao IPv4: verificacao nao suportada');
+  const entries = parseIpPrefixEntries(
+    input.contract.prefixListEntries.join('\n'),
+    input.contract.prefixList,
+  );
+  if (!entries || entries.length === 0)
+    return inconclusive('prefix_list', 'entradas da prefix-list do contrato indisponiveis');
+
+  // Sessao 1: peers do cliente + configuracao para identificar o peer de mitigacao.
+  const first = await input
+    .read([
+      ...beforeEvidenceCommands(customerPeers),
+      BGP_CONFIGURATION_COMMAND,
+      ROUTE_POLICY_CONFIGURATION_COMMAND,
+      EXTCOMMUNITY_FILTER_COMMAND,
+    ])
+    .catch(() => null);
+  if (!first) return inconclusive('evidence', 'leitura dos peers do cliente indisponivel');
+  const firstByCommand = new Map(first.map((entry) => [entry.command, entry.output]));
+  const configuration = {
+    bgpConfiguration: firstByCommand.get(BGP_CONFIGURATION_COMMAND) ?? null,
+    routePolicyConfiguration: firstByCommand.get(ROUTE_POLICY_CONFIGURATION_COMMAND) ?? null,
+    extcommunityFilterOutput: firstByCommand.get(EXTCOMMUNITY_FILTER_COMMAND) ?? null,
+  };
+  // Sem a configuracao completa nao se sabe a QUEM a rota de mitigacao e anunciada: o anuncio
+  // nao pode ser dado como retirado.
+  if (Object.values(configuration).some((output) => output === null))
+    return inconclusive('configuration', 'leitura de configuracao BGP incompleta');
+  const discovery = discoverMitigationPeer({ ...configuration, rt });
+  if (!discovery.peer)
+    return inconclusive(
+      'mitigation_peer',
+      `peer de mitigacao nao identificado (${discovery.detail}): anuncio nao verificavel`,
+    );
+  const mitigationPeer = discovery.peer;
+  const evidencePeers = customerPeers.map((peer) => ({
+    peer,
+    verbose: firstByCommand.get(peerVerboseCommand(peer)) ?? null,
+    received: firstByCommand.get(receivedRoutesCommand(peer)) ?? null,
+  }));
+
+  const checks: PhysicalCheck[] = [];
+  const eligible: string[] = [];
+  for (const item of evidencePeers) {
+    if (item.verbose === null) {
+      checks.push({
+        id: `peer:${item.peer}`,
+        outcome: 'INCONCLUSIVE',
+        detail: 'estado do peer do cliente ilegivel',
+      });
+      continue;
+    }
+    const verbose = parsePeerVerbose(item.verbose);
+    if (verbose.state === null) {
+      checks.push({
+        id: `peer:${item.peer}`,
+        outcome: 'INCONCLUSIVE',
+        detail: 'estado do peer do cliente desconhecido',
+      });
+      continue;
+    }
+    if (verbose.state !== 'Established') {
+      // Sem sessao nao ha rota do cliente instalada: nada carrega a RT de mitigacao.
+      checks.push({
+        id: `peer:${item.peer}`,
+        outcome: 'PASS',
+        detail: `peer ${verbose.state}: nenhuma rota do cliente instalada`,
+      });
+      continue;
+    }
+    const received = parseReceived(item.received);
+    if (!received) {
+      checks.push({
+        id: `received:${item.peer}`,
+        outcome: 'INCONCLUSIVE',
+        detail: 'rotas recebidas do cliente ilegiveis/incompletas',
+      });
+      continue;
+    }
+    for (const prefix of received.prefixes.keys()) {
+      const split = splitPrefix(prefix);
+      if (split && ipPrefixListPermits(entries, split) && !eligible.includes(prefix))
+        eligible.push(prefix);
+    }
+    checks.push({
+      id: `peer:${item.peer}`,
+      outcome: 'PASS',
+      detail: `Established, ${received.prefixes.size} rota(s) recebida(s)`,
+    });
+  }
+  if (eligible.length > MAX_ELIGIBLE_PREFIXES) {
+    checks.push({
+      id: 'eligible_prefixes',
+      outcome: 'INCONCLUSIVE',
+      detail: `${eligible.length} prefixos elegiveis excedem o limite de ${MAX_ELIGIBLE_PREFIXES} consultas`,
+    });
+    return finish(checks, { mitigationPeer, eligiblePrefixes: eligible });
+  }
+
+  // RT de mitigacao fora de TODAS as rotas elegiveis recebidas do cliente.
+  const second = await input
+    .read([
+      ...eligible.map((prefix) => routingTableCommand(prefix)),
+      advertisedRoutesCommand(mitigationPeer),
+    ])
+    .catch(() => [] as DisplayRead[]);
+  const outputs = new Map(second.map((entry) => [entry.command, entry.output]));
+  if (eligible.length > 0) {
+    for (const prefix of eligible) {
+      const paths = parseRoutingTableEntry(outputs.get(routingTableCommand(prefix)) ?? null);
+      const mine = paths?.filter((path) => path.from !== null && customerPeers.includes(path.from));
+      if (!paths || !mine || mine.length === 0) {
+        checks.push({
+          id: `route:${prefix}`,
+          outcome: 'INCONCLUSIVE',
+          detail: 'rota do cliente ilegivel na tabela BGP',
+        });
+      } else if (mine.some((path) => path.extCommunities.includes(rt))) {
+        checks.push({
+          id: `route:${prefix}`,
+          outcome: 'FAIL',
+          detail: `a rota ainda carrega a RT de mitigacao ${rt}`,
+        });
+      } else if (!mine.every((path) => path.extCommunities.includes(input.contract.baselineRt))) {
+        // Sem a RT permanente do cliente a leitura nao PROVA a restauracao (bloco truncado,
+        // policy ainda nao reaplicada): ausencia de evidencia nunca e sucesso.
+        checks.push({
+          id: `route:${prefix}`,
+          outcome: 'INCONCLUSIVE',
+          detail: `a rota nao mostra a RT permanente ${input.contract.baselineRt}: restauracao nao comprovada`,
+        });
+      } else {
+        checks.push({
+          id: `route:${prefix}`,
+          outcome: 'PASS',
+          detail: mine
+            .map(
+              (path) =>
+                `LP ${path.localPreference ?? '?'}, RT [${path.extCommunities.join(' ')}]${path.best ? ', best' : ''}`,
+            )
+            .join(' | '),
+        });
+      }
+    }
+  }
+
+  // Anuncio ao peer de mitigacao retirado. Leitura incompleta (total declarado diferente das
+  // linhas interpretadas) nunca vale como "nao anunciado".
+  {
+    const parsed = parseReceived(outputs.get(advertisedRoutesCommand(mitigationPeer)) ?? null);
+    if (!parsed || parsed.reportedTotal === null) {
+      checks.push({
+        id: 'advertised',
+        outcome: 'INCONCLUSIVE',
+        detail: `advertised-routes de ${mitigationPeer} indisponivel/ilegivel/incompleto`,
+      });
+    } else {
+      const advertised = new Set(parsed.prefixes.keys());
+      const still = eligible.filter((prefix) => advertised.has(prefix));
+      checks.push(
+        still.length > 0
+          ? {
+              id: 'advertised',
+              outcome: 'FAIL',
+              detail: `ainda anunciado(s) ao peer de mitigacao ${mitigationPeer}: ${still.join(', ')}`,
+            }
+          : {
+              id: 'advertised',
+              outcome: 'PASS',
+              detail: `nenhum prefixo elegivel anunciado a ${mitigationPeer}`,
+            },
+      );
+    }
+  }
+  return finish(checks, { mitigationPeer, eligiblePrefixes: eligible });
+}

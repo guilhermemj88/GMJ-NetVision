@@ -142,6 +142,12 @@ export interface MitigationCommandInput {
    * outro perfil, expirado ou reutilizado).
    */
   scopeConfirmationToken?: string;
+  /**
+   * REMOVE vinculado a UMA mitigacao (botao do Telegram): referencia recebida no evento
+   * MITIGATION_VERIFIED. Presente, o REMOVE so executa se ela for a mitigacao ATIVA do escopo;
+   * caso contrario `MITIGATION_REFERENCE_STALE`, sem preflight e sem escrita.
+   */
+  mitigationRef?: string;
   /** Identidade do operador no Telegram (auditoria; nunca autoriza sozinha). */
   confirmedBy?: string | null;
   /**
@@ -428,6 +434,12 @@ export class MitigationCommandService {
     string,
     { identity: string; promise: Promise<MitigationCommandResult> }
   >();
+  /**
+   * REMOVE MANUAL de UMA mitigacao (perfil + referencia) em execucao NESTE processo. Um segundo REMOVE da
+   * MESMA mitigacao com outro requestId (segundo toque do Telegram) e recusado como REMOVE_IN_PROGRESS, sem
+   * disputar o lock e sem escrita. Vive so durante a operacao (nunca durante todo o periodo MITIGATED).
+   */
+  private readonly removeInFlight = new Map<string, string>();
   private readonly now: () => Date;
   private readonly preview = new SimulationCommandExecutor();
   private readonly labels: { bogonPrefixList: string; targetPrefixList: string };
@@ -639,11 +651,42 @@ export class MitigationCommandService {
     const scoped = async (lease: PolicyScopeLease = UNBOUNDED_POLICY_LEASE) => {
       const journal = this.deps.manualCommands;
       const manual = MUTATING_ACTIONS.includes(input.action) && !isAutomaticCommand(input);
+      const staleReference = (safeError: string) => ({
+        ...base,
+        ok: false,
+        status: 'MITIGATION_REFERENCE_STALE',
+        verified: false,
+        customer: null,
+        device: profile.deviceId,
+        interface: null,
+        interfaceId: profile.interfaceId,
+        addressFamily: profile.addressFamily,
+        policy: profile.policyName,
+        node: null,
+        bogonNode: null,
+        mitigationNode: null,
+        rt: profile.mitigationRt,
+        sharedPolicy: false,
+        sharedPolicyTargets: [],
+        affectedPeers: [],
+        commandPreview: [],
+        verification: null,
+        safeError,
+      });
+      // Sem journal duravel a referencia nao pode ser conferida: fail-closed.
+      if (manual && input.mitigationRef && !journal)
+        return staleReference(
+          'Referencia de mitigacao nao verificavel neste ambiente; nenhuma escrita foi iniciada.',
+        );
       if (manual && journal) {
         try {
           const cached = await journal.begin(input, policyExecutionScope(profile));
           if (cached) return cached;
-        } catch {
+        } catch (error) {
+          if (error instanceof Error && error.message === 'MITIGATION_REFERENCE_STALE')
+            return staleReference(
+              'Este botao pertence a uma mitigacao anterior, que nao e a mitigacao ativa deste cliente; nenhuma escrita foi iniciada. Use o alerta da mitigacao atual.',
+            );
           return {
             ...base,
             ok: false,
@@ -708,6 +751,17 @@ export class MitigationCommandService {
     };
     if (MUTATING_ACTIONS.includes(input.action) && this.deps.scopeLock) {
       const scope = policyExecutionScope(profile);
+      const inFlightKey =
+        input.action === 'REMOVE' && input.mitigationRef && !isAutomaticCommand(input)
+          ? `${input.profileId}|${input.mitigationRef}`
+          : null;
+      if (inFlightKey) {
+        const holder = this.removeInFlight.get(inFlightKey);
+        if (holder !== undefined && holder !== input.requestId) {
+          return this.policyBusyResult(input, profile, base, 'REMOVE_IN_PROGRESS');
+        }
+        this.removeInFlight.set(inFlightKey, input.requestId);
+      }
       try {
         return await this.deps.scopeLock.run(scope, scoped);
       } catch (error) {
@@ -715,6 +769,10 @@ export class MitigationCommandService {
           return this.policyBusyResult(input, profile, base);
         }
         throw error;
+      } finally {
+        if (inFlightKey && this.removeInFlight.get(inFlightKey) === input.requestId) {
+          this.removeInFlight.delete(inFlightKey);
+        }
       }
     }
     return scoped();
@@ -1504,13 +1562,14 @@ export class MitigationCommandService {
       idempotent: boolean;
       executedAt: string;
     },
+    busyStatus: 'POLICY_BUSY' | 'REMOVE_IN_PROGRESS' = 'POLICY_BUSY',
   ): Promise<MitigationActionResult> {
     const host = await this.read(() => this.deps.hosts.getHost(profile.deviceId), null);
     const label = resolveInterfaceLabel(host, profile.interfaceId);
     return {
       ...base,
       ok: false,
-      status: 'POLICY_BUSY',
+      status: busyStatus,
       customer: label.customer,
       device: host ? host.displayName || host.hostname : profile.deviceId,
       interface: label.interfaceName ?? profile.interfaceId,
@@ -1528,7 +1587,9 @@ export class MitigationCommandService {
       commandPreview: [],
       verification: null,
       safeError:
-        'Policy ocupada por outra operacao no mesmo equipamento (deviceId + policy). Nenhuma escrita foi feita; tente novamente.',
+        busyStatus === 'REMOVE_IN_PROGRESS'
+          ? 'Ja existe uma retirada desta mitigacao em execucao (IN_PROGRESS). Nenhuma escrita foi feita por este comando; aguarde a confirmacao da retirada em curso.'
+          : 'Policy ocupada por outra operacao no mesmo equipamento (deviceId + policy). Nenhuma escrita foi feita; tente novamente.',
     };
   }
 

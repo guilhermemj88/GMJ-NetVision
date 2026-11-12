@@ -63,6 +63,11 @@ export interface PolicyReconcileProof {
   /** Existe par de mitigacao (completo) na leitura. */
   pairPresent: boolean;
   readBack: string;
+  /**
+   * Prova (somente leitura, sob demanda) de que o EFEITO BGP foi desfeito. Ausente = sem
+   * verificador configurado: nenhuma quarentena e liberada.
+   */
+  restoration?: () => Promise<{ outcome: 'PASS' | 'FAIL' | 'INCONCLUSIVE'; summary: string }>;
 }
 
 export interface PolicyReconcileDeps {
@@ -84,6 +89,15 @@ export interface PolicyReconcileDeps {
    * RECONCILIATION_REQUIRED (UNCERTAIN). O texto da policy sozinho nao promove.
    */
   physicalVerifier?: (
+    device: HostRecord,
+    scope: PolicyExecutionScope,
+    customerPeers: readonly string[],
+  ) => Promise<{ outcome: 'PASS' | 'FAIL' | 'INCONCLUSIVE'; summary: string }>;
+  /**
+   * Prova READ-ONLY de que o efeito BGP da mitigacao foi desfeito. Usada apenas para liberar um
+   * escopo em quarentena: ausencia textual dos nodes sem esta prova (PASS) nao libera.
+   */
+  restorationVerifier?: (
     device: HostRecord,
     scope: PolicyExecutionScope,
     customerPeers: readonly string[],
@@ -384,11 +398,35 @@ export class MitigationPolicyReconciler {
     // MITIGATED: propaga o par FISICO para todos os profiles do escopo,
     // reparando plano x equipamento sob autorizacao explicita do operador.
     const activePair = appliedState === 'MITIGATED' ? fresh.assessment.physical.pair : null;
-    await this.deps.beforeApply?.(scope.deviceId, scope.policyName, {
-      state: appliedState,
-      pairPresent: fresh.assessment.physical.pair != null,
-      readBack: fresh.readBack,
-    });
+    const restorationVerifier = this.deps.restorationVerifier;
+    try {
+      await this.deps.beforeApply?.(scope.deviceId, scope.policyName, {
+        state: appliedState,
+        pairPresent: fresh.assessment.physical.pair != null,
+        readBack: fresh.readBack,
+        ...(restorationVerifier
+          ? {
+              restoration: async () => {
+                const host = await this.deps.hosts.getHost(scope.deviceId);
+                if (!host) return { outcome: 'INCONCLUSIVE', summary: 'equipamento nao encontrado' };
+                const peers = new Set<string>();
+                for (const profile of await profilesForPolicyScope(this.deps.repository, scope))
+                  for (const peer of await this.deps.repository.listProfilePeers(profile.id))
+                    peers.add(peer.peerAddress);
+                return restorationVerifier(host, scope, [...peers]);
+              },
+            }
+          : {}),
+      });
+    } catch (error) {
+      // Quarentena mantida: resposta de negocio (409), nunca erro interno. Nada foi gravado.
+      const reason = error instanceof Error ? error.message : '';
+      if (/^(MANUAL_RECONCILIATION_REQUIRED|RECONCILIATION_)/.test(reason))
+        throw new PolicyReconcileStaleError(
+          `Escopo em quarentena, APPLY bloqueado (${reason}); nenhuma escrita local foi feita.`,
+        );
+      throw error;
+    }
     const synced = await syncPolicyRuntime(
       this.deps.repository,
       scope,

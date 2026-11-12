@@ -18,6 +18,7 @@ import type { ClientBinding } from './auto-client-binding';
 import { enqueueNotification } from './durable-mitigation-outbox';
 import type { MitigationTrafficSource } from './mitigation-traffic-source';
 import type { PolicyScopeLock } from '../../infrastructure/bgp/mitigation/mitigation-policy-lock';
+import { mitigationRefOf } from '../../infrastructure/bgp/mitigation/mitigation-ref';
 import {
   baselineRecordId,
   baselineReleaseMarker,
@@ -155,6 +156,12 @@ export interface ScopeOwnership {
   operationId: string;
   reason: string | null;
   removedAt?: number;
+  /**
+   * `eventId` of the MITIGATION_VERIFIED event of the mitigation this scope currently holds
+   * (AUTO operation id or request id of the verified manual ACTIVATE); `null` when it holds
+   * none. Independent of `phase`/`reason`, which later rejected commands overwrite.
+   */
+  activeEventId?: string | null;
 }
 export interface JournalCommand {
   id: string;
@@ -211,10 +218,31 @@ const rejected = (reason: string): MitigationAutoCommandResult => ({
   safeError: reason,
 });
 /**
- * No command outlives the policy lock (240 s) plus its bounded tail: a PLANNED/STARTED command
- * younger than this may still be running and its scope is never released by reconciliation.
+ * A PLANNED/STARTED command younger than this may still be running and its scope is never
+ * released by reconciliation. The age counts from the last transition (PLANNED, then STARTED
+ * right before the write): after STARTED a command is bounded by the SSH write/read timeouts
+ * and the physical verification budget, well below this value. A command that still completes
+ * after its scope was released re-quarantines the scope (see `completeManual`).
  */
 export const QUARANTINE_RELEASE_MIN_AGE_MS = 300_000;
+/**
+ * `eventId` of the MITIGATION_VERIFIED event of the mitigation currently owned by the scope:
+ * the AUTO operation id, or the request id of a verified manual ACTIVATE. `null` when the scope
+ * holds no verified activation (nothing a bound REMOVE could refer to).
+ */
+export function activeMitigationEventId(s: ScopeOwnership | null): string | null {
+  if (!s) return null;
+  if (s.activeEventId !== undefined) return s.activeEventId;
+  // Records written before the dedicated field existed.
+  if (s.phase === 'ACTIVE') return s.operationId;
+  if (
+    s.phase === 'MANUAL' &&
+    s.reason === 'MANUAL_ACTIVATE_VERIFIED' &&
+    s.owner.startsWith('manual:')
+  )
+    return s.owner.slice('manual:'.length);
+  return null;
+}
 const manualKey = (id: string) => 'manual-command:' + createHash('sha256').update(id).digest('hex');
 
 /** Scope-wide, not request/profile-wide: quarantine cannot be bypassed by a new id. */
@@ -645,9 +673,13 @@ export class AutoMitigationLifecycle {
     if (input.action !== 'ACTIVATE' || !input.autoOperationId) return;
     const t = await this.deps.target(input.profileId);
     if (!t) throw Error('AUTO_RESULT_TARGET_MISSING');
-    await this.deps.store.transaction(async (tx) => {
+    const late = await this.deps.store.transaction(async (tx) => {
       const j = await tx.get<JournalCommand>(input.autoOperationId!);
       if (!j || j.origin !== 'AUTO' || j.action !== 'ACTIVATE') throw Error('AUTO_JOURNAL_MISSING');
+      if (j.state === 'RECONCILED') {
+        await this.requarantine(tx, j, result, j.id, !real);
+        return true;
+      }
       const s = await tx.get<ScopeOwnership>(j.scope);
       if (!s || s.operationId !== j.id || s.phase !== 'ACTIVATING')
         throw Error('AUTO_OWNERSHIP_CHANGED');
@@ -665,6 +697,7 @@ export class AutoMitigationLifecycle {
       s.phase = good ? 'ACTIVE' : 'UNCERTAIN';
       s.reason = good ? null : result.status;
       if (good) s.activatedAt = this.now();
+      s.activeEventId = good ? s.operationId : null;
       await tx.put(s.key, 'scope', s.phase, s);
       await tx.put(j.id, 'command', good ? 'VERIFIED' : 'UNCERTAIN', {
         ...j,
@@ -684,7 +717,9 @@ export class AutoMitigationLifecycle {
         ),
         this.now(),
       );
+      return false;
     });
+    if (late) throw Error('AUTO_COMMAND_COMPLETED_AFTER_RELEASE');
   }
   private activationGate(s: ScopeOwnership | null, start: number): string | null {
     if (!s) return null;
@@ -740,6 +775,7 @@ export class AutoMitigationLifecycle {
       if (s.removedAt !== undefined && start <= Math.max(s.removedAt, s.cooldownUntil))
         return false;
       j.state = 'STARTED';
+      j.at = this.now();
       await tx.put(j.id, 'command', j.state, j);
       return true;
     });
@@ -780,34 +816,84 @@ export class AutoMitigationLifecycle {
    *
    * Runs under the policy lock of the reconciler. A QUARANTINED scope (uncertain command,
    * interrupted operation, retained removal intent) is released ONLY with the fresh physical
-   * proof of that same APPLY: policy read back NORMAL with no mitigation pair. Without that
+   * proof of that same APPLY: policy read back NORMAL with no mitigation pair AND the BGP effect
+   * proven undone (mitigation RT off the customer routes, announcement withdrawn). Without that
    * proof the quarantine holds, exactly as before. Nothing is written to the equipment.
    */
   async manualMutation(
     deviceId: string,
     policyName: string,
-    proof?: { state: string; pairPresent: boolean; readBack: string },
+    proof?: {
+      state: string;
+      pairPresent: boolean;
+      readBack: string;
+      restoration?: () => Promise<{ outcome: string; summary: string }>;
+    },
   ): Promise<void> {
-    let released: string | null = null;
+    const key = scopeKey({ deviceId, policyName });
+    const quarantined = await this.deps.store.transaction(async (tx) => {
+      if (!(await scopeQuarantined(tx, key, deviceId, policyName))) return false;
+      if (!proof || proof.state !== 'NORMAL' || proof.pairPresent || !proof.restoration)
+        throw Error('MANUAL_RECONCILIATION_REQUIRED');
+      await this.assertNothingInFlight(tx, key);
+      return true;
+    });
+    if (quarantined) {
+      // Equipment read OUTSIDE the store transaction (the caller holds the policy lock).
+      const routing = await proof!.restoration!().catch(() => null);
+      if (routing?.outcome !== 'PASS')
+        throw Error(
+          'RECONCILIATION_ROUTING_NOT_RESTORED: ' + (routing?.summary ?? 'leitura BGP indisponivel'),
+        );
+      const released = await this.deps.store.transaction(async (tx) => {
+        // Released meanwhile by a concurrent reconciliation: nothing left to do.
+        if (!(await scopeQuarantined(tx, key, deviceId, policyName))) return null;
+        return this.releaseProvenAbsent(
+          tx,
+          key,
+          deviceId,
+          policyName,
+          proof!.readBack,
+          routing.summary,
+        );
+      });
+      if (released) this.forgetProfiles([released]);
+      return;
+    }
     await this.deps.store.transaction(async (tx) => {
-      const key = scopeKey({ deviceId, policyName }),
-        s = await tx.get<ScopeOwnership>(key);
-      if (await scopeQuarantined(tx, key, deviceId, policyName)) {
-        if (!proof || proof.state !== 'NORMAL' || proof.pairPresent)
-          throw Error('MANUAL_RECONCILIATION_REQUIRED');
-        released = await this.releaseProvenAbsent(tx, key, deviceId, policyName, proof.readBack);
-        return;
-      }
+      const s = await tx.get<ScopeOwnership>(key);
+      // Quarantined again between the two transactions: hold.
+      if (await scopeQuarantined(tx, key, deviceId, policyName))
+        throw Error('MANUAL_RECONCILIATION_REQUIRED');
       // An explicit absence reconciliation already released ownership. Applying
       // the reviewed NORMAL runtime must not put that scope back into MANUAL.
       if (s?.phase === 'COOLDOWN' && s.reason === 'EXPLICIT_MANUAL_RELEASE_RECONCILED') return;
       if (s) {
         s.phase = 'MANUAL';
         s.reason = 'MANUAL_RECONCILIATION';
+        // Reconciled to anything but the same proven mitigation: no button refers to it any more.
+        if (proof?.state !== 'MITIGATED' || !proof.pairPresent) s.activeEventId = null;
         await tx.put(key, 'scope', s.phase, s);
       }
     });
-    if (released) this.forgetProfiles([released]);
+  }
+  /** A PLANNED/STARTED command younger than the release age may still be running. */
+  private async assertNothingInFlight(tx: AutomationTx, key: string): Promise<JournalCommand[]> {
+    const now = this.now();
+    const inFlight = (j: JournalCommand | null) =>
+      !!j && ['PLANNED', 'STARTED'].includes(j.state) && now - j.at < QUARANTINE_RELEASE_MIN_AGE_MS;
+    const s = await tx.get<ScopeOwnership>(key);
+    // PLANNED included: a command still in preflight is also "possibly running"; once
+    // RECONCILED it can no longer be authorized to write.
+    const pending = await tx.list<JournalCommand>('command', ['PLANNED', 'STARTED', 'UNCERTAIN']);
+    if (pending.length >= 1000) throw Error('RECONCILIATION_COMMAND_SET_INCOMPLETE');
+    const mine = pending.filter((j) => j.scope === key);
+    const current = s ? await tx.get<JournalCommand>(s.operationId) : null;
+    if (mine.some(inFlight) || inFlight(current))
+      throw Error('RECONCILIATION_COMMAND_IN_FLIGHT: aguarde 5 minutos desde o ultimo comando');
+    return current && current.state === 'PLANNED' && !mine.some((j) => j.id === current.id)
+      ? [...mine, current]
+      : mine;
   }
   /**
    * Explicit operator release of a quarantined scope whose mitigation pair is PROVEN ABSENT.
@@ -821,18 +907,13 @@ export class AutoMitigationLifecycle {
     deviceId: string,
     policyName: string,
     readBack: string,
+    routingProof: string,
   ): Promise<string | null> {
     const now = this.now();
-    const inFlight = (j: JournalCommand | null) =>
-      !!j && ['PLANNED', 'STARTED'].includes(j.state) && now - j.at < QUARANTINE_RELEASE_MIN_AGE_MS;
     const s = await tx.get<ScopeOwnership>(key);
-    const pending = await tx.list<JournalCommand>('command', ['STARTED', 'UNCERTAIN']);
-    if (pending.length >= 1000) throw Error('RECONCILIATION_COMMAND_SET_INCOMPLETE');
-    const mine = pending.filter((j) => j.scope === key);
-    const current = s ? await tx.get<JournalCommand>(s.operationId) : null;
-    if (mine.some(inFlight) || inFlight(current)) throw Error('MANUAL_RECONCILIATION_REQUIRED');
+    const mine = await this.assertNothingInFlight(tx, key);
     const id = 'manual-reconciliation-' + randomUUID();
-    for (const command of current && current.state === 'PLANNED' ? [...mine, current] : mine) {
+    for (const command of mine) {
       command.state = 'RECONCILED'; // Retain the original result; never forge VERIFIED.
       await tx.put(command.id, 'command', command.state, command);
     }
@@ -854,6 +935,7 @@ export class AutoMitigationLifecycle {
         owner: 'released:' + id,
         operationId: id,
         reason: 'EXPLICIT_MANUAL_RELEASE_RECONCILED',
+        activeEventId: null,
         removedAt: now,
         cooldownUntil: now + this.deps.config().cooldownMs,
         lastSample: null,
@@ -871,6 +953,7 @@ export class AutoMitigationLifecycle {
       reconciledCommands: mine.map((j) => j.id),
       at: now,
       physicalReadbackSha256: createHash('sha256').update(readBack).digest('hex'),
+      routingProof,
       baselineSha256: baseline?.readBackSha256 ?? null,
       baselineDrift: baseline ? baselineDriftReasons(baseline, readBack) : [],
       action: 'RELEASE_WITHOUT_PHYSICAL_WRITE',
@@ -898,9 +981,22 @@ export class AutoMitigationLifecycle {
       if (old?.state === 'VERIFIED' && old.result) return { ...old.result, idempotent: true };
       if (old && ['STARTED', 'UNCERTAIN', 'RECONCILED'].includes(old.state))
         throw Error('MANUAL_RECONCILIATION_REQUIRED');
+      const s = await tx.get<ScopeOwnership>(key);
+      // REMOVE bound to ONE mitigation (Telegram button): only the ACTIVE mitigation of the
+      // scope may be removed with it. A button from an earlier mitigation never removes a new one.
+      if (input.action === 'REMOVE' && input.mitigationRef) {
+        const active = activeMitigationEventId(s);
+        if (!active || mitigationRefOf(active) !== input.mitigationRef) {
+          // Escopo em quarentena/incerto (REMOVE anterior nao verificado, comando STARTED, reinicio no meio):
+          // a ausencia de mitigacao ativa NAO prova que ela foi retirada. Nunca responder "ja retirada" nesse
+          // caso: exigir reconciliacao (o operador confere no painel/CLI).
+          if (await scopeQuarantined(tx, key, deviceId, policyName))
+            throw Error('MANUAL_RECONCILIATION_REQUIRED');
+          throw Error('MITIGATION_REFERENCE_STALE');
+        }
+      }
       if (await scopeQuarantined(tx, key, deviceId, policyName))
         throw Error('MANUAL_RECONCILIATION_REQUIRED');
-      const s = await tx.get<ScopeOwnership>(key);
       if (s) {
         s.phase = 'MANUAL';
         s.reason = 'MANUAL_COMMAND_PENDING';
@@ -940,16 +1036,47 @@ export class AutoMitigationLifecycle {
       )
         return false;
       j.state = 'STARTED';
+      j.at = this.now();
       await tx.put(j.id, 'command', j.state, j);
       return true;
     });
+  }
+  /**
+   * A command finished AFTER its scope was released by reconciliation: its write was authorized,
+   * so the physical state is unknown again. Never recorded as success or as a mere rejection:
+   * the scope goes back to quarantine and the operator is told.
+   */
+  private async requarantine(
+    tx: AutomationTx,
+    j: JournalCommand,
+    result: MitigationActionResult,
+    eventId: string,
+    simulation: boolean,
+  ): Promise<void> {
+    j.state = 'UNCERTAIN';
+    j.result = { ...result };
+    j.at = this.now();
+    await tx.put(j.id, 'command', j.state, j);
+    const s = await tx.get<ScopeOwnership>(j.scope);
+    if (s) {
+      s.phase = 'UNCERTAIN';
+      s.reason = 'COMMAND_COMPLETED_AFTER_RELEASE';
+      s.activeEventId = null;
+      s.operationId = j.id;
+      await tx.put(s.key, 'scope', s.phase, s);
+    }
+    await enqueueNotification(
+      tx,
+      this.resultNotification(result, 'MITIGATION_FAILED', eventId + ':after-release', simulation),
+      this.now(),
+    );
   }
   async completeManual(
     input: MitigationCommandInput,
     result: MitigationActionResult,
     real: boolean,
   ): Promise<void> {
-    await this.deps.store.transaction(async (tx) => {
+    const late = await this.deps.store.transaction(async (tx) => {
       const j = await tx.get<JournalCommand>(manualKey(input.requestId));
       if (
         !j ||
@@ -958,6 +1085,10 @@ export class AutoMitigationLifecycle {
         j.profileId !== input.profileId
       )
         throw Error('MANUAL_JOURNAL_MISSING');
+      if (j.state === 'RECONCILED') {
+        await this.requarantine(tx, j, result, input.requestId, !real);
+        return true;
+      }
       const verified =
         real &&
         j.state === 'STARTED' &&
@@ -995,6 +1126,7 @@ export class AutoMitigationLifecycle {
           lastSample: null,
           operationId: j.id,
           reason: 'MANUAL_ACTIVATE_VERIFIED',
+          activeEventId: input.requestId,
         };
       }
       if (s) {
@@ -1002,6 +1134,7 @@ export class AutoMitigationLifecycle {
           s.phase = 'COOLDOWN';
           s.owner = 'released:' + input.requestId;
           s.reason = 'MANUAL_REMOVE_VERIFIED';
+          s.activeEventId = null;
           s.removedAt = this.now();
           s.cooldownUntil = this.now() + this.deps.config().cooldownMs;
           s.lastSample = null;
@@ -1010,6 +1143,11 @@ export class AutoMitigationLifecycle {
         } else {
           s.phase = verified ? 'MANUAL' : j.state === 'STARTED' ? 'UNCERTAIN' : 'MANUAL';
           s.reason = verified ? 'MANUAL_ACTIVATE_VERIFIED' : result.status;
+          // Verified ACTIVATE: this is now THE mitigation of the scope. A write with unknown
+          // outcome drops the binding. A rejection before any write leaves it untouched, so the
+          // button of the current mitigation keeps working after a refused/duplicate command.
+          if (verified) s.activeEventId = input.requestId;
+          else if (j.state === 'STARTED') s.activeEventId = null;
         }
         s.operationId = j.id;
         if (verified && input.action === 'ACTIVATE') s.owner = 'manual:' + input.requestId;
@@ -1036,7 +1174,10 @@ export class AutoMitigationLifecycle {
         this.resultNotification(result, event, input.requestId, !real),
         this.now(),
       );
+      return false;
     });
+    // Thrown AFTER the commit: the caller reports the command as not synchronized (never ok).
+    if (late) throw Error('MANUAL_COMMAND_COMPLETED_AFTER_RELEASE');
   }
   /**
    * Explicit operator reconciliation. No Huawei mutation and no node adoption.
@@ -1110,6 +1251,7 @@ export class AutoMitigationLifecycle {
           owner: 'released:' + id,
           operationId: id,
           reason: 'EXPLICIT_MANUAL_RELEASE_RECONCILED',
+          activeEventId: null,
           removedAt: this.now(),
           cooldownUntil: this.now() + this.deps.config().cooldownMs,
           lastSample: null,
@@ -1270,6 +1412,7 @@ export class AutoMitigationLifecycle {
       if (!s || s.owner !== scope.owner) return;
       s.phase = 'UNCERTAIN';
       s.reason = reason;
+      s.activeEventId = null;
       await tx.put(s.key, 'scope', s.phase, s);
       const j = await tx.get<JournalCommand>(scope.operationId);
       if (j) {

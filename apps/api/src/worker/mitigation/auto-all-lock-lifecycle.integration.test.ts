@@ -61,6 +61,9 @@ const reconciler = (h: H) =>
     repository: h.repository,
     hosts: { getHost: async () => h.host },
     readPolicy: async () => h.ssh.readMitigationRoutePolicy(),
+    // Quarentena canonica (producao): so a prova READ-ONLY de que o efeito BGP foi desfeito libera o escopo.
+    restorationVerifier: (device, scope, customerPeers) =>
+      h.live.verifyRestorationPhysical(device, { policyName: scope.policyName, customerPeers }),
     now: () => new Date(h.now()),
   });
 const scopeOf = { deviceId: P.deviceId, policyName: P.policy };
@@ -190,11 +193,11 @@ describe('estado incerto: quarentena sem escrita cega e SAIDA por reconciliacao 
     expect(await events(h)).not.toContain('MITIGATION_VERIFIED');
     expect((await telegram(h, 'cb-1')).status).toBe('MANUAL_RECONCILIATION_REQUIRED');
     // par AINDA presente no equipamento: a reconciliacao nao libera
-    expect(await reconcile(h)).toBe('REFUSED:MANUAL_RECONCILIATION_REQUIRED');
+    expect(await reconcile(h)).toMatch(/^REFUSED:.*MANUAL_RECONCILIATION_REQUIRED/);
     // operador retira pelo CLI
     h.ssh.active = false;
-    // comando STARTED recente pode ainda estar em execucao: nao libera
-    expect(await reconcile(h)).toBe('REFUSED:MANUAL_RECONCILIATION_REQUIRED');
+    // comando STARTED recente pode ainda estar em execucao: nao libera (codigo canonico da producao)
+    expect(await reconcile(h)).toMatch(/^REFUSED:.*RECONCILIATION_COMMAND_IN_FLIGHT/);
     h.advance(QUARANTINE_RELEASE_MIN_AGE_MS + 1_000);
     expect(await reconcile(h)).toBe('NORMAL');
     expect(await runtime(h)).toBe('NORMAL');
@@ -215,7 +218,7 @@ describe('estado incerto: quarentena sem escrita cega e SAIDA por reconciliacao 
     expect(await runtime(h)).toBe('RECONCILIATION_REQUIRED');
     expect(await events(h)).toEqual(['MITIGATION_FAILED']);
     expect((await telegram(h, 'e0-remove')).status).toBe('MANUAL_RECONCILIATION_REQUIRED');
-    expect(await reconcile(h)).toBe('REFUSED:MANUAL_RECONCILIATION_REQUIRED');
+    expect(await reconcile(h)).toMatch(/^REFUSED:.*MANUAL_RECONCILIATION_REQUIRED/);
     h.ssh.active = false; // retirada pelo CLI do operador
     expect(await reconcile(h)).toBe('NORMAL');
     expect(await runtime(h)).toBe('NORMAL');

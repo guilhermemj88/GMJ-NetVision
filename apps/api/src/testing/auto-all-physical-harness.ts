@@ -557,6 +557,7 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
     repository,
     store,
     ssh,
+    live,
     host,
     used,
     wiring,

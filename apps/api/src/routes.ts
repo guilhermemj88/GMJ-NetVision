@@ -2097,6 +2097,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     commands: mitigationCommands,
     // ENV legado continua valendo como fallback.
     commandToken: process.env.NETVISION_N8N_COMMAND_TOKEN?.trim() || null,
+    // Ligar somente depois de o workflow do n8n enviar `mitigationRef` no botao de retirada.
+    requireRemoveRef: process.env.NETVISION_N8N_REMOVE_REQUIRES_REF?.trim() === '1',
     // Token persistido na tela de MIDIAS vence o ENV quando existir.
     resolveCommandToken: async () => (await mediaService.resolveInboundToken()).token,
     onCommandResult: async (log) => {
@@ -2126,6 +2128,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     readPolicy: (device, policyName) => mitigationLiveExecutor.readRoutePolicy(device, policyName),
     labels: mitigationLabels,
     lock: mitigationScopeLock,
+    // Liberacao de quarentena: exige a prova (somente leitura) de que o efeito BGP foi desfeito.
+    restorationVerifier: (device, scope, customerPeers) =>
+      mitigationLiveExecutor.verifyRestorationPhysical(device, {
+        policyName: scope.policyName,
+        customerPeers,
+      }),
     // M4: a promocao a MITIGATED exige a verificacao fisica reexecutada (somente leitura).
     physicalVerifier: (device, scope, customerPeers) =>
       mitigationLiveExecutor.reverifyMitigationPhysical(device, {
