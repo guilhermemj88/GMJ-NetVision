@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  MAX_AUTO_CONCURRENT_EXECUTIONS,
   MitigationAutoEngine,
+  effectiveMaxConcurrentExecutions,
   type MitigationAutoCommandResult,
   type MitigationAutoTargetState,
 } from './mitigation-auto-engine';
@@ -289,5 +291,81 @@ describe('M1-AUTO: ACTIVATE fora do tick (asyncExecution)', () => {
     h.pending[0]!.resolve(VERIFIED);
     const decisions = await third;
     expect(decisions[0]).toMatchObject({ outcome: 'ACTIVATED', verified: true });
+  });
+});
+
+describe('M1-AUTO pos-SHADOW: teto absoluto de ACTIVATE fisicos simultaneos e encerramento', () => {
+  const many = (n: number) =>
+    Array.from({ length: n }, (_, i) => target('P' + i, 'PL-' + i));
+  const burst = async (h: ReturnType<typeof harness>, n: number) => {
+    const values = Object.fromEntries(Array.from({ length: n }, (_, i) => ['P' + i, OVER]));
+    for (let i = 0; i < 4; i += 1) await h.tick(values);
+  };
+
+  it('o teto efetivo nunca passa de 2, nem com MAX_ACTIVE=10, ausente, NaN ou Infinity; minimo 1', () => {
+    expect(MAX_AUTO_CONCURRENT_EXECUTIONS).toBe(2);
+    expect(effectiveMaxConcurrentExecutions(10)).toBe(2);
+    expect(effectiveMaxConcurrentExecutions(undefined)).toBe(2);
+    expect(effectiveMaxConcurrentExecutions(Number.POSITIVE_INFINITY)).toBe(2);
+    expect(effectiveMaxConcurrentExecutions(Number.NaN)).toBe(2);
+    expect(effectiveMaxConcurrentExecutions(1)).toBe(1);
+    expect(effectiveMaxConcurrentExecutions(0)).toBe(1);
+    expect(effectiveMaxConcurrentExecutions(-3)).toBe(1);
+    expect(effectiveMaxConcurrentExecutions(2.9)).toBe(2);
+  });
+
+  it('MAX_ACTIVE=10 configurado: 6 perfis em gatilho disparam NO MAXIMO 2 ACTIVATE em paralelo', async () => {
+    const h = harness({ asyncExecution: true, maxConcurrentExecutions: 10, targets: many(6) });
+    await burst(h, 6);
+    expect(h.executed).toHaveLength(2);
+    expect(h.engine.inFlightProfiles()).toHaveLength(2);
+    // liberando um, o proximo pode entrar, sem nunca passar de 2 simultaneos
+    h.pending[0]!.resolve(VERIFIED);
+    await new Promise((r) => setTimeout(r, 5));
+    const values = Object.fromEntries(many(6).map((t) => [t.profileId, OVER]));
+    for (let i = 0; i < 4; i += 1) await h.tick(values);
+    expect(h.engine.inFlightProfiles().length).toBeLessThanOrEqual(2);
+    expect(h.executed.length).toBeLessThanOrEqual(3);
+    for (const p of h.pending) p.resolve(VERIFIED);
+    await h.engine.settleExecutions();
+  });
+
+  it('sem maxConcurrentExecutions (ausente) em modo async tambem fica em 2, nao ilimitado', async () => {
+    const h = harness({ asyncExecution: true, targets: many(5) });
+    await burst(h, 5);
+    expect(h.executed).toHaveLength(2);
+  });
+
+  it('beginShutdown: nenhum ACTIVATE novo parte, o em andamento NAO e abandonado e settle espera por ele', async () => {
+    const h = harness({
+      asyncExecution: true,
+      maxConcurrentExecutions: 2,
+      targets: [target('A', 'PL-A'), target('B', 'PL-B')],
+    });
+    for (let i = 0; i < 3; i += 1) await h.tick({ A: OVER, B: UNDER });
+    expect(h.executed).toEqual(['A']);
+    h.engine.beginShutdown();
+    // B passa a exceder o limiar durante o encerramento: nao dispara
+    for (let i = 0; i < 4; i += 1) await h.tick({ A: OVER, B: OVER });
+    expect(h.executed).toEqual(['A']);
+    let settled = false;
+    const wait = h.engine.settleExecutions().then(() => {
+      settled = true;
+    });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(settled).toBe(false); // esperando o ACTIVATE fisico, sem abandona-lo
+    h.pending[0]!.resolve(VERIFIED);
+    await wait;
+    expect(settled).toBe(true);
+    expect(h.engine.inFlightProfiles()).toEqual([]);
+  });
+
+  it('settleExecutions e as falhas do comando em andamento: nunca lanca e nao trava (sem deadlock)', async () => {
+    const h = harness({ asyncExecution: true, maxConcurrentExecutions: 1, targets: [target('A', 'PL-A')] });
+    for (let i = 0; i < 3; i += 1) await h.tick({ A: OVER });
+    h.engine.beginShutdown();
+    h.pending[0]!.reject(new Error('SSH caiu'));
+    await expect(h.engine.settleExecutions()).resolves.toBeUndefined();
+    expect(h.engine.inFlightProfiles()).toEqual([]);
   });
 });

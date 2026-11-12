@@ -175,6 +175,13 @@ describe.skipIf(!url)(
         actor: 'operator-test',
         reason: 'confirmed absent pair and unchanged permanent nodes',
       };
+      // Comando recem-gravado no escopo: pode ainda estar rodando. A liberacao explicita espera a MESMA
+      // idade minima do caminho canonico (antes disso era liberado na hora, sem essa protecao).
+      await expect(h.lifecycle.reconcileManualRelease(evidence)).rejects.toThrow(
+        /RECONCILIATION_COMMAND_IN_FLIGHT/,
+      );
+      expect((await h.scope())?.phase).toBe('UNCERTAIN');
+      h.advance(6 * 60_000);
       failRelease = true;
       await expect(h.lifecycle.reconcileManualRelease(evidence)).rejects.toThrow(
         'injected RELEASED failure',
@@ -237,6 +244,87 @@ describe.skipIf(!url)(
       expect(result.verified).toBe(false);
       expect(h.ssh.writes).toHaveLength(writes);
       expect((await h.scope())?.phase).toBe('UNCERTAIN');
+    });
+
+    it('pos-SHADOW: policy limpa NAO basta: sem a prova de roteamento (ou com FAIL/erro) a quarentena permanece, sem escrita e sem recibo', async () => {
+      const h = await createPilotHarness(store);
+      await activate(h);
+      h.ssh.afterWrite = async () => {
+        databaseUnavailable = true;
+      };
+      await h.commands.execute({ requestId: 'remove-db-outage-2', action: 'REMOVE', profileId: P.profileId });
+      databaseUnavailable = false;
+      delete h.ssh.afterWrite;
+      await reconnect();
+      await h.restart();
+      const held = (await h.scope())!;
+      expect(held.phase).toBe('UNCERTAIN');
+      const writes = h.ssh.writes.length;
+      const evidence = {
+        profileId: P.profileId,
+        expectedOperationId: held.operationId,
+        actor: 'operator-test',
+        reason: 'policy absent, routing NOT yet proven',
+      };
+      for (const proof of [
+        { outcome: 'FAIL', summary: 'RT de mitigacao ainda anunciado' },
+        { outcome: 'INCONCLUSIVE', summary: 'leitura BGP indisponivel' },
+      ]) {
+        h.setRoutingProof(proof);
+        await expect(h.lifecycle.reconcileManualRelease(evidence)).rejects.toThrow(
+          'RECONCILIATION_ROUTING_NOT_RESTORED',
+        );
+        expect((await h.scope())?.phase).toBe('UNCERTAIN');
+        expect(await db.mitigationAutomationRecord.count({ where: { kind: 'reconciliation' } })).toBe(0);
+        expect(h.ssh.writes).toHaveLength(writes);
+      }
+      // a prova que lanca excecao tambem e recusa (nunca libera)
+      h.setRoutingProof(undefined as never);
+      await expect(h.lifecycle.reconcileManualRelease(evidence)).rejects.toThrow();
+      expect((await h.scope())?.phase).toBe('UNCERTAIN');
+      // com a prova PASS (mesma do contrato canonico) libera, atomicamente e sem escrever
+      h.setRoutingProof({ outcome: 'PASS', summary: 'roteamento restaurado' });
+      h.advance(6 * 60_000); // idade minima do comando possivelmente em andamento
+      const done = await h.lifecycle.reconcileManualRelease(evidence);
+      expect(done.status).toBe('RECONCILED_RELEASED');
+      expect(h.ssh.writes).toHaveLength(writes);
+      expect(
+        await db.mitigationAutomationRecord.findUniqueOrThrow({ where: { id: done.reconciliationId } }),
+      ).toMatchObject({ kind: 'reconciliation', payload: { routingProof: 'roteamento restaurado' } });
+    });
+
+    it('pos-SHADOW: operacao ainda possivelmente em andamento (STARTED recente) nunca e liberada pela reconciliacao explicita', async () => {
+      const h = await createPilotHarness(store);
+      await activate(h);
+      h.ssh.afterWrite = async () => {
+        databaseUnavailable = true;
+      };
+      await h.commands.execute({ requestId: 'remove-db-outage-3', action: 'REMOVE', profileId: P.profileId });
+      databaseUnavailable = false;
+      delete h.ssh.afterWrite;
+      await reconnect();
+      await h.restart();
+      const held = (await h.scope())!;
+      // um comando STARTED jovem no mesmo escopo (processo irmao ainda escrevendo)
+      await db.mitigationAutomationRecord.create({
+        data: {
+          id: 'inflight-sibling',
+          kind: 'command',
+          status: 'STARTED',
+          payload: { id: 'inflight-sibling', scope: held.key, state: 'STARTED', origin: 'MANUAL', at: Date.now() },
+        } as never,
+      });
+      const writes = h.ssh.writes.length;
+      await expect(
+        h.lifecycle.reconcileManualRelease({
+          profileId: P.profileId,
+          expectedOperationId: held.operationId,
+          actor: 'operator-test',
+          reason: 'must be refused while a command may still run',
+        }),
+      ).rejects.toThrow(/RECONCILIATION_COMMAND_IN_FLIGHT/);
+      expect((await h.scope())?.phase).toBe('UNCERTAIN');
+      expect(h.ssh.writes).toHaveLength(writes);
     });
   },
 );

@@ -190,6 +190,12 @@ export interface LifecycleDeps {
   /** Required only for explicit, non-physical release reconciliation. */
   scopeLock?: PolicyScopeLock;
   readPolicy?: (target: LifecycleTarget) => Promise<string>;
+  /**
+   * Prova de roteamento (mitigation RT fora das rotas do cliente / anuncio retirado) exigida por
+   * `reconcileManualRelease`, a MESMA do contrato canonico (`manualMutation`). Ausente = a liberacao
+   * explicita e recusada (fail-closed): nenhuma quarentena e liberada so com a leitura da policy.
+   */
+  restorationProof?: (target: LifecycleTarget) => Promise<{ outcome: string; summary: string }>;
   /** The existing FAST reader; supplied only for the single-client production path. */
   pilotTraffic?: Pick<MitigationTrafficSource, 'sampleWithId'>;
   /**
@@ -1196,6 +1202,7 @@ export class AutoMitigationLifecycle {
     const t = await this.deps.target(input.profileId);
     if (!t?.policyName || !this.deps.scopeLock || !this.deps.readPolicy)
       throw Error('RECONCILIATION_DEPENDENCIES_REQUIRED');
+    if (!this.deps.restorationProof) throw Error('RECONCILIATION_ROUTING_PROOF_REQUIRED');
     return this.deps.scopeLock.run({ deviceId: t.deviceId, policyName: t.policyName }, async () => {
       const baselineId = baselineRecordId({ deviceId: t.deviceId, policyName: t.policyName! });
       const before = await this.deps.store.transaction(async (tx) => ({
@@ -1224,6 +1231,12 @@ export class AutoMitigationLifecycle {
         baselineDriftReasons(baseline, readBack).length
       )
         throw Error('RECONCILIATION_PHYSICAL_ABSENCE_NOT_PROVEN');
+      // Mesma prova do canonico: a policy limpa NAO basta, o roteamento do cliente precisa estar restaurado.
+      const routing = await this.deps.restorationProof!(t).catch(() => null);
+      if (routing?.outcome !== 'PASS')
+        throw Error(
+          'RECONCILIATION_ROUTING_NOT_RESTORED: ' + (routing?.summary ?? 'leitura BGP indisponivel'),
+        );
       const id = 'manual-reconciliation-' + randomUUID();
       await this.deps.store.transaction(async (tx) => {
         const current = await tx.get<ScopeOwnership>(scopeKey(t));
@@ -1233,7 +1246,9 @@ export class AutoMitigationLifecycle {
           JSON.stringify(currentBaseline) !== JSON.stringify(before.baseline)
         )
           throw Error('RECONCILIATION_SCOPE_CHANGED');
-        const commands = await tx.list<JournalCommand>('command', ['STARTED', 'UNCERTAIN']);
+        // Uma operacao que ainda pode estar rodando (PLANNED/STARTED recente) nunca e liberada.
+        await this.assertNothingInFlight(tx, scopeKey(t));
+        const commands = await tx.list<JournalCommand>('command', ['PLANNED', 'STARTED', 'UNCERTAIN']);
         if (commands.length >= 1000) throw Error('RECONCILIATION_COMMAND_SET_INCOMPLETE');
         for (const command of commands.filter((j) => j.scope === scopeKey(t))) {
           command.state = 'RECONCILED'; // Retain the original failed result; never forge VERIFIED.
@@ -1267,6 +1282,7 @@ export class AutoMitigationLifecycle {
           at: this.now(),
           physicalReadbackSha256: createHash('sha256').update(readBack).digest('hex'),
           baselineSha256: baseline.readBackSha256,
+          routingProof: routing.summary,
           action: 'RELEASE_WITHOUT_PHYSICAL_WRITE',
         });
       });

@@ -1190,8 +1190,10 @@ export class MitigationCommandService {
           }
           // FENCING: a posse do lock da policy e provada imediatamente antes da escrita real,
           // com margem para a escrita e o read-back terminarem DENTRO do lock.
-          await this.assertLeaseForWrite(lease, profile);
           await authorizeWrite();
+          // A prova de posse e a ULTIMA coisa antes do primeiro byte de escrita: authorizeWrite persiste o
+          // journal (pode demorar) e consumiria justamente a margem que o lease acabou de provar.
+          await this.assertLeaseForWrite(lease, profile);
           writeAttempted = true;
           await timed('execution', () => live.activate(liveDevice, activationInput));
           readBack = await timed('readback', () =>
@@ -1202,6 +1204,7 @@ export class MitigationCommandService {
             return this.autoExecutionDisabledResult(common, preview, preflight);
           }
           await authorizeWrite();
+          await this.assertLeaseForWrite(lease, profile);
           await timed('execution', () => this.deps.executor.activate(activationInput));
           readBack = await timed('readback', () =>
             this.deps.executor.readRoutePolicy(profile.policyName),
@@ -1305,8 +1308,8 @@ export class MitigationCommandService {
         if (!preflight?.ok) return this.preflightBlocked(common, preview, preflight);
         // FENCING: a posse do lock da policy e provada imediatamente antes da escrita real,
         // com margem para a escrita e o read-back terminarem DENTRO do lock.
-        await this.assertLeaseForWrite(lease, profile);
         await authorizeWrite();
+        await this.assertLeaseForWrite(lease, profile);
         writeAttempted = true;
         writeStarted = true;
         await live.remove(liveDevice, removalInput);
@@ -1315,6 +1318,7 @@ export class MitigationCommandService {
         // Mesma semantica do caminho real: assim que o executor e acionado, o
         // estado fisico e desconhecido e uma excecao exige reconciliacao.
         await authorizeWrite();
+        await this.assertLeaseForWrite(lease, profile);
         writeAttempted = true;
         writeStarted = true;
         await this.deps.executor.remove(removalInput);

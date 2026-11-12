@@ -247,7 +247,11 @@ import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-ada
 import { HuaweiVrpDriver } from './infrastructure/topology/huawei-vrp-driver';
 import { LldpSnmpDiscoveryAdapter } from './infrastructure/topology/lldp-snmp-adapter';
 import { LldpSshDiscoveryAdapter } from './infrastructure/topology/lldp-ssh-adapter';
-import { InMemoryPolicyScopeLock } from './infrastructure/bgp/mitigation/mitigation-policy-lock';
+import {
+  AUTO_TICK_LOCK_TIMEOUT_MS,
+  InMemoryPolicyScopeLock,
+  POLICY_SCOPE_LOCK_TIMEOUT_MS,
+} from './infrastructure/bgp/mitigation/mitigation-policy-lock';
 
 const mapIdParams = z.object({ mapId: z.string().min(1) });
 const nodeParams = z.object({ mapId: z.string().min(1), nodeId: z.string().min(1) });
@@ -959,7 +963,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     ? new InMemoryPolicyScopeLock()
     : // 240 s: o pior caso de SSH lento (~110 s antes da verificacao) ainda deixa os 90 s da
       // verificacao fisica + reserva DENTRO do lock; a operacao confere a posse antes de escrever.
-      new PrismaPolicyScopeLock(prismaClient, 240_000);
+      new PrismaPolicyScopeLock(prismaClient, POLICY_SCOPE_LOCK_TIMEOUT_MS);
   // Ligacao tardia: o servico de comandos e criado ANTES do motor AUTO.
   const autoEngineRef: { current: { forgetProfiles(ids: readonly string[]): void } | null } = {
     current: null,
@@ -1540,7 +1544,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     // M1-AUTO: o ACTIVATE (com a verificacao fisica de ate ~90 s) roda FORA do tick e do lock
     // AUTO_ENGINE_SINGLE_WRITER; no maximo MAX_ACTIVE em andamento neste processo.
     asyncExecution: true,
-    maxConcurrentExecutions: lifecycleSettings.maxActive,
+    // Teto de pool/VTY: o motor ainda aplica min(2, valor); MAX_ACTIVE segue como limite duravel de mitigacoes.
+    maxConcurrentExecutions: Math.min(lifecycleSettings.maxActive, 2),
     globalMode: mitigationEngineConfig.mode,
     execution: {
       executor: mitigationExecutionConfig.executor,
@@ -1772,7 +1777,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   app.addHook('onClose', async () => {
     if (outboxTimer) clearInterval(outboxTimer);
   });
-  const autoTickLock = new PrismaPolicyScopeLock(prismaClient);
+  const autoTickLock = new PrismaPolicyScopeLock(prismaClient, AUTO_TICK_LOCK_TIMEOUT_MS);
   autoRuntimeRef = new MitigationAutoRuntime({
     engine: {
       tick: async () => {
@@ -2084,12 +2089,36 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     );
   }
   app.addHook('onClose', async () => {
+    // ORDEM DE ENCERRAMENTO (M1-AUTO): (1) para de AGENDAR e de DISPARAR trabalho novo; (2) deixa terminar o
+    // ACTIVATE fisico ja em andamento, com a lease do FAST, o poller (evidencia) e o banco ainda de pe; so
+    // entao (3) libera lease/poller/conexoes. Limitado: o lock da policy expira em 240 s, entao esperar
+    // alem disso nao protege nada. O systemd precisa de TimeoutStopSec > SHUTDOWN_SETTLE_MS.
+    autoRuntimeRef?.stop();
+    shadowRuntime.stop();
+    mitigationAutoEngine.beginShutdown();
+    {
+      const capMs = Number(process.env.MITIGATION_SHUTDOWN_SETTLE_MS ?? 270_000);
+      const pending = mitigationAutoEngine.inFlightProfiles();
+      if (pending.length) app.log.warn({ pending }, 'encerrando com ACTIVATE em andamento: aguardando');
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timedOut = await Promise.race([
+        mitigationAutoEngine.settleExecutions().then(() => false),
+        new Promise<boolean>((resolve) => {
+          timer = setTimeout(() => resolve(true), Number.isFinite(capMs) && capMs > 0 ? capMs : 270_000);
+          timer.unref?.();
+        }),
+      ]);
+      if (timer) clearTimeout(timer);
+      if (timedOut)
+        app.log.error(
+          { pending: mitigationAutoEngine.inFlightProfiles() },
+          'SHUTDOWN_SETTLE_TIMEOUT: ACTIVATE ainda em andamento; estado fisico a conferir na reconciliacao',
+        );
+    }
     if (fastLeaseTimer) clearInterval(fastLeaseTimer);
     await fastPoller.stop();
     await fastLease.release();
     await fastLeaseDb?.$disconnect();
-    autoRuntimeRef?.stop();
-    shadowRuntime.stop();
     await observationDb?.$disconnect();
     if (autoDescriptionSweepTimer) clearInterval(autoDescriptionSweepTimer);
   });

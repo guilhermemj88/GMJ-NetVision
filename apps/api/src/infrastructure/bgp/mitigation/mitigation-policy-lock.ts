@@ -42,6 +42,17 @@ export class PolicyScopeLostError extends Error {
   }
 }
 
+/**
+ * DOIS mecanismos distintos, com prazos distintos (nao confundir):
+ *  - lock de ESCOPO da policy (device+policy): seguro por TODA operacao fisica (ACTIVATE/REMOVE manual ou AUTO).
+ *    240 s = pior caso de SSH lento antes da verificacao (~110 s) + verificacao fisica (90 s) + reserva (35 s) = 235 s.
+ *  - lock do TICK do motor (AUTO_ENGINE_SINGLE_WRITER, global): seguro so durante a AVALIACAO. Com `asyncExecution`
+ *    o ACTIVATE roda FORA dele, entao 180 s e folga ampla sobre um tick de segundos. Nao e preciso mexer em nenhum dos dois.
+ * Qualquer mudanca de valor exige atualizar `mitigation-lock-timing.test.ts`, que prova as invariantes.
+ */
+export const POLICY_SCOPE_LOCK_TIMEOUT_MS = 240_000;
+export const AUTO_TICK_LOCK_TIMEOUT_MS = 180_000;
+
 /** Lease de um lock sem prazo (em memoria): posse valida enquanto a operacao roda. */
 export const UNBOUNDED_POLICY_LEASE: PolicyScopeLease = Object.freeze({
   remainingMs: () => Number.POSITIVE_INFINITY,

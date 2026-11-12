@@ -4,6 +4,7 @@ import type { HostRecord } from '@gmj/shared';
 import { InMemoryMitigationRepository } from './in-memory-mitigation-repository';
 import {
   MitigationCommandService,
+  type MitigationCommandDeps,
   type MitigationLiveExecutorPort,
   BASELINE_RELEASE_FAILED_WARNING,
   LOCK_MIN_MS_BEFORE_WRITE,
@@ -158,6 +159,7 @@ async function harness(
     notifications?: NotificationPublisher;
     runtimePlan?: 'PAIR' | 'NONE';
     scopeLock?: PolicyScopeLock;
+    manualCommands?: MitigationCommandDeps['manualCommands'];
   } = {},
 ) {
   const repository = new InMemoryMitigationRepository();
@@ -189,6 +191,7 @@ async function harness(
     ...(options.live ? { live: options.live } : {}),
     ...(options.notifications ? { notifications: options.notifications } : {}),
     ...(options.scopeLock ? { scopeLock: options.scopeLock } : {}),
+    ...(options.manualCommands ? { manualCommands: options.manualCommands } : {}),
     expectedNodes: async () =>
       options.expectedNodes === undefined ? [11, 50] : options.expectedNodes,
     now: () => FIXED_NOW,
@@ -754,6 +757,74 @@ describe('lease do lock: margem antes da escrita e leitura opcional pos-verifica
     const h = await harness({ live, scopeLock: lock });
     const body = await h.commands.execute({
       requestId: 'lease-margin-ok',
+      action: 'ACTIVATE',
+      profileId: h.profileId,
+    });
+    expect(body.status).toBe('ACTIVATED_VERIFIED');
+    expect(live.applied).toHaveLength(1);
+  });
+});
+
+describe('lease do lock: a posse e provada DEPOIS de authorizeWrite, imediatamente antes da escrita', () => {
+  const journal = (onAuthorize: () => void) => ({
+    begin: async () => null,
+    authorize: async () => {
+      onAuthorize(); // o journal (STARTED) consome tempo/estado do lock ANTES do primeiro byte de escrita
+      return true;
+    },
+    complete: async () => undefined,
+  });
+
+  it('authorizeWrite consome a margem do lock: ACTIVATE NAO escreve (checagem posterior a autorizacao)', async () => {
+    const live = new FakeLiveExecutor();
+    const lock = new LeasedLock();
+    lock.remaining = 200_000;
+    const h = await harness({
+      live,
+      scopeLock: lock,
+      manualCommands: journal(() => {
+        lock.remaining = LOCK_MIN_MS_BEFORE_WRITE - 1;
+      }) as never,
+    });
+    const body = await h.commands.execute({
+      requestId: 'lease-after-authorize-margin',
+      action: 'ACTIVATE',
+      profileId: h.profileId,
+    });
+    expect(body.ok).toBe(false);
+    expect(body.safeError).toContain('POLICY_LOCK_LOST');
+    expect(live.applied).toHaveLength(0);
+  });
+
+  it('posse perdida durante authorizeWrite: assertHeld e chamado depois dele e a escrita nao ocorre', async () => {
+    const live = new FakeLiveExecutor();
+    const lock = new LeasedLock();
+    let assertsAtAuthorize = -1;
+    const h = await harness({
+      live,
+      scopeLock: lock,
+      manualCommands: journal(() => {
+        assertsAtAuthorize = lock.asserts;
+        lock.held = false;
+      }) as never,
+    });
+    const body = await h.commands.execute({
+      requestId: 'lease-after-authorize-lost',
+      action: 'ACTIVATE',
+      profileId: h.profileId,
+    });
+    expect(body.ok).toBe(false);
+    expect(body.safeError).toContain('POLICY_LOCK_LOST');
+    expect(live.applied).toHaveLength(0);
+    expect(lock.asserts).toBe(assertsAtAuthorize + 1); // a prova de posse veio DEPOIS da autorizacao
+  });
+
+  it('com a posse intacta apos a autorizacao: escreve normalmente (nada mudou no caminho feliz)', async () => {
+    const live = new FakeLiveExecutor();
+    const lock = new LeasedLock();
+    const h = await harness({ live, scopeLock: lock, manualCommands: journal(() => undefined) as never });
+    const body = await h.commands.execute({
+      requestId: 'lease-after-authorize-ok',
       action: 'ACTIVATE',
       profileId: h.profileId,
     });

@@ -275,6 +275,7 @@ export async function createPilotHarness(
     },
   });
   let lifecycle: AutoMitigationLifecycle;
+  let routingProof: { outcome: string; summary: string } = { outcome: 'PASS', summary: 'harness: roteamento restaurado' };
   let commands: MitigationCommandService;
   const physical = async () => {
     const state = inspectPolicyMitigation({
@@ -337,6 +338,7 @@ export async function createPilotHarness(
     lifecycle = new AutoMitigationLifecycle({
       scopeLock,
       readPolicy: async () => ssh.readMitigationRoutePolicy(),
+      restorationProof: async () => routingProof,
       store,
       config: () => config,
       pilotTraffic: traffic,
@@ -352,6 +354,10 @@ export async function createPilotHarness(
   create();
   await lifecycle!.reconcile();
   return {
+    /** Prova de roteamento devolvida ao `reconcileManualRelease` (padrao: restaurado). */
+    setRoutingProof: (p: { outcome: string; summary: string }) => {
+      routingProof = p;
+    },
     repository,
     config,
     target,

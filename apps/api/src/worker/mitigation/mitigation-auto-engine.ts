@@ -73,6 +73,8 @@ export type MitigationAutoBlockReason =
   | 'VERIFY_FAILED'
   | 'SCOPE_ALREADY_MITIGATED'
   | 'SCOPE_OPERATION_IN_FLIGHT'
+  /** O processo esta encerrando: nenhum ACTIVATE novo parte; os em andamento terminam. */
+  | 'ENGINE_SHUTTING_DOWN'
   /**
    * A sequencia de amostras foi descartada (retirada manual do escopo fisico)
    * no meio desta avaliacao: nada a fazer com evidencia anterior a retirada.
@@ -575,6 +577,18 @@ function engineOwnsState(state: MitigationState | null | undefined): boolean {
   return state === null || state === undefined || state === 'NORMAL' || state === 'TRIGGER_PENDING';
 }
 
+/**
+ * Teto ABSOLUTO de ACTIVATE simultaneos por processo, independente de MAX_ACTIVE (que continua sendo o
+ * limite DURAVEL de mitigacoes ativas, reservado na transacao do journal). Cada ACTIVATE segura uma
+ * transacao de lock (ate 240 s), uma conexao do pool Prisma e uma sessao VTY no Huawei: MAX_ACTIVE ate 10 nao pode
+ * virar 10 execucoes fisicas paralelas. Ausente/invalido => o proprio teto.
+ */
+export const MAX_AUTO_CONCURRENT_EXECUTIONS = 2;
+export function effectiveMaxConcurrentExecutions(configured: number | undefined): number {
+  if (configured === undefined || !Number.isFinite(configured)) return MAX_AUTO_CONCURRENT_EXECUTIONS;
+  return Math.min(MAX_AUTO_CONCURRENT_EXECUTIONS, Math.max(1, Math.floor(configured)));
+}
+
 export class MitigationAutoEngine {
   private readonly history = new Map<string, MitigationAutoDecision[]>();
   private readonly attempts = new Map<string, ScopeAttempt>();
@@ -599,6 +613,7 @@ export class MitigationAutoEngine {
   private readonly pendingDeliveries = new Set<Promise<void>>();
   /** M1-AUTO: ACTIVATE em andamento fora do tick. */
   private readonly pendingExecutions = new Set<Promise<void>>();
+  private shuttingDown = false;
   /** M1-AUTO: decisoes FINAIS concluidas fora do tick, entregues no tick seguinte. */
   private readonly completedExecutions: MitigationAutoDecision[] = [];
   private resolvedPolicy: DetectionAlertPolicy | null = null;
@@ -645,6 +660,14 @@ export class MitigationAutoEngine {
   /** M1-AUTO: perfis com ACTIVATE em andamento (observabilidade). */
   inFlightProfiles(): string[] {
     return [...this.inFlight];
+  }
+
+  /**
+   * Encerramento: a partir daqui nenhum ACTIVATE NOVO e disparado (as avaliacoes seguem, so que sem
+   * escrita), mas os ja em andamento NAO sao abandonados: o chamador aguarda `settleExecutions()`.
+   */
+  beginShutdown(): void {
+    this.shuttingDown = true;
   }
 
   /** M1-AUTO: aguarda os ACTIVATE em andamento (testes/desligamento). Nunca lanca. */
@@ -1265,10 +1288,11 @@ export class MitigationAutoEngine {
     if (!this.autoExecutionEnabled()) {
       return decided('AUTO_EXECUTION_DISABLED', 'WOULD_ACTIVATE');
     }
+    if (this.shuttingDown) return decided('ENGINE_SHUTTING_DOWN', 'SKIPPED');
     // M1-AUTO: teto local de ACTIVATE simultaneos; os que ainda rodam fora do tick contam.
     if (
       this.deps.asyncExecution &&
-      (this.inFlight.size >= (this.deps.maxConcurrentExecutions ?? Number.POSITIVE_INFINITY) ||
+      (this.inFlight.size >= effectiveMaxConcurrentExecutions(this.deps.maxConcurrentExecutions) ||
         [...this.inFlightScopes.values()].includes(scopeKey))
     ) {
       return decided('SCOPE_OPERATION_IN_FLIGHT', 'SKIPPED');

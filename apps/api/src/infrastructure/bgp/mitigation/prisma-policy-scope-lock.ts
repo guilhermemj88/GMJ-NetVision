@@ -1,6 +1,7 @@
 import type { PrismaClient } from '../../../generated/prisma/index.js';
 import {
   PolicyScopeBusyError,
+  AUTO_TICK_LOCK_TIMEOUT_MS,
   PolicyScopeLostError,
   type PolicyScopeKey,
   type PolicyScopeLease,
@@ -18,7 +19,7 @@ import {
 export class PrismaPolicyScopeLock implements PolicyScopeLock {
   constructor(
     private readonly db: PrismaClient,
-    private readonly timeoutMs = 180_000,
+    private readonly timeoutMs = AUTO_TICK_LOCK_TIMEOUT_MS,
     private readonly now: () => number = Date.now,
   ) {}
   async run<T>(
