@@ -5,7 +5,9 @@
  * (PrismaPolicyScopeLock). O "ACTIVATE" e um comando simulado que segura o lock da policy por ACTIVATE_MS e NAO escreve
  * em nenhum equipamento. Cada linha de stdout e um marcador que o ensaio confere.
  *
- * env: SHUTDOWN_LAB_DATABASE_URL, LAB_PROFILES (1..2), LAB_ACTIVATE_MS, MITIGATION_SHUTDOWN_SETTLE_MS
+ * env: SHUTDOWN_LAB_DATABASE_URL, LAB_PROFILES (1..4), LAB_ACTIVATE_MS, MITIGATION_SHUTDOWN_SETTLE_MS,
+ *      LAB_TICKING=1 (runtime real com tick continuo a cada 200 ms e amostras sempre acima do limiar: prova que nenhum
+ *      ACTIVATE NOVO parte depois do SIGTERM), LAB_PORT (padrao 0)
  */
 import Fastify from 'fastify';
 import { PrismaClient } from '../../generated/prisma/index.js';
@@ -18,7 +20,8 @@ import {
 } from '../../worker/mitigation/mitigation-auto-engine';
 import { SequenceTrafficSource } from '../../worker/mitigation/mitigation-traffic-source';
 import { settleBeforeClose } from '../../worker/mitigation/shutdown-settle';
-import { installGracefulShutdown } from '../../graceful-shutdown';
+import { installGracefulShutdown, registerHttpDrain } from '../../graceful-shutdown';
+import { MitigationAutoRuntime } from '../../worker/mitigation/mitigation-auto-runtime';
 
 const mark = (m: string, extra: Record<string, unknown> = {}) =>
   process.stdout.write(JSON.stringify({ m, t: Date.now(), ...extra }) + '\n');
@@ -89,21 +92,51 @@ const engine = new MitigationAutoEngine({
 
 async function main() {
   const app = Fastify();
+  const drain = registerHttpDrain(app as never);
+  const ticking = process.env.LAB_TICKING === '1';
+  const runtime = new MitigationAutoRuntime({
+    engine: {
+      tick: async () => {
+        for (const t of targets) traffic.push(t.profileId, OVER);
+        return engine.tick();
+      },
+    },
+    intervalMs: 200,
+  } as never);
+  app.get('/slow', async () => {
+    await new Promise((r) => setTimeout(r, 1000));
+    return { ok: true };
+  });
   // Mesma ordem de routes.ts: o hook que desconecta o banco e registrado ANTES...
   app.addHook('onClose', async () => {
     mark('PRISMA_DISCONNECT');
     await db.$disconnect();
   });
-  // ...e o de settle POR ULTIMO (roda PRIMEIRO no encerramento).
+  // ...o de settle POR ULTIMO (roda PRIMEIRO entre os onClose)...
   app.addHook('onClose', async () => {
     mark('SETTLE_BEGIN', { inFlight: engine.inFlightProfiles() });
-    const r = await settleBeforeClose(engine, {
-      warn: (o, m) => mark('LOG_WARN', { msg: m, ...o }),
-      error: (o, m) => mark('LOG_ERROR', { msg: m, ...o }),
-    });
+    const r = await settleBeforeClose(
+      {
+        beginShutdown: () => engine.beginShutdown(),
+        settleExecutions: () => engine.settleExecutions(),
+        inFlightProfiles: () => engine.inFlightProfiles(),
+        waitTickIdle: () => runtime.waitIdle(),
+      },
+      {
+        warn: (o, m) => mark('LOG_WARN', { msg: m, ...o }),
+        error: (o, m) => mark('LOG_ERROR', { msg: m, ...o }),
+      },
+    );
     mark('SETTLE_END', { timedOut: r.timedOut });
   });
-  await app.listen({ port: 0, host: '127.0.0.1' });
+  // ...e o preClose (antes do server.close do Fastify) para o motor, como em routes.ts.
+  app.addHook('preClose', async () => {
+    mark('PRECLOSE');
+    runtime.stop();
+    engine.beginShutdown();
+    drain.begin();
+  });
+  await app.listen({ port: Number(process.env.LAB_PORT ?? 0), host: '127.0.0.1' });
   installGracefulShutdown(app, {
     onSignal: (s) => mark('SIGNAL', { s }),
     exit: (code) => {
@@ -111,10 +144,14 @@ async function main() {
       process.exit(code);
     },
   });
-  // dispara o(s) ACTIVATE(s): 3 amostras acima do limiar por perfil
-  for (let i = 0; i < 3; i++) {
-    for (const t of targets) traffic.push(t.profileId, OVER);
-    await engine.tick();
+  if (ticking) {
+    runtime.start();
+  } else {
+    // dispara o(s) ACTIVATE(s): 3 amostras acima do limiar por perfil
+    for (let i = 0; i < 3; i++) {
+      for (const t of targets) traffic.push(t.profileId, OVER);
+      await engine.tick();
+    }
   }
   mark('READY', { inFlight: engine.inFlightProfiles() });
 }

@@ -165,6 +165,30 @@ describe.skipIf(!enabled)(
       expect(await waitNoLocks()).toBe(0);
     }, 90_000);
 
+    it('F: runtime com tick continuo e 3 perfis acima do limiar (teto 2): NENHUM ACTIVATE novo parte depois do SIGTERM', async () => {
+      const r = run('child-engine.ts', {
+        LAB_PROFILES: '3',
+        LAB_TICKING: '1',
+        LAB_ACTIVATE_MS: '3000',
+        MITIGATION_SHUTDOWN_SETTLE_MS: '30000',
+      });
+      await r.until(() => r.count('ACTIVATE_START') === 2);
+      expect(r.count('ACTIVATE_START')).toBe(2); // teto absoluto de 2 simultaneos
+      await new Promise((x) => setTimeout(x, 600)); // o terceiro continua esperando: o runtime segue ticando
+      expect(r.count('ACTIVATE_START')).toBe(2);
+      r.child.kill('SIGTERM');
+      const { code } = await r.exited;
+      expect(code).toBe(0);
+      const signalAt = r.at('SIGNAL');
+      // a terceira execucao teria partido assim que uma das duas terminasse (durante o settle): nao pode
+      expect(r.lines.filter((l) => l.m === 'ACTIVATE_START' && l.t > signalAt)).toHaveLength(0);
+      expect(r.count('ACTIVATE_START')).toBe(2);
+      expect(r.count('ACTIVATE_END')).toBe(2);
+      expect(r.at('PRECLOSE')).toBeLessThanOrEqual(r.at('SETTLE_BEGIN'));
+      expect(r.at('PRECLOSE')).toBeGreaterThanOrEqual(signalAt);
+      expect(await waitNoLocks()).toBe(0);
+    }, 90_000);
+
     it('E1: SIGKILL no meio do ACTIVATE: o lock advisory cai sozinho e uma nova instancia assume a policy', async () => {
       const r = run('child-engine.ts', {
         LAB_PROFILES: '1',
