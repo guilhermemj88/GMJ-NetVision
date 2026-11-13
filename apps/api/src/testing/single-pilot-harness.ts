@@ -9,7 +9,7 @@ import {
 } from '../worker/mitigation/auto-lifecycle';
 import {
   SINGLE_AUTO_PILOT as P,
-  pilotEvidenceValid,
+  refreshPilotEvidence,
   singlePilotPhysicalScopeMatches,
 } from '../worker/mitigation/single-pilot-trigger';
 import { MemoryAutomationStore, type AutomationStore } from '../worker/mitigation/automation-store';
@@ -311,7 +311,7 @@ export async function createPilotHarness(
           (ssh.sharedBinding ? `\n  peer 192.0.2.2 route-policy ${P.policy} import` : '');
         return (
           singlePilotPhysicalScopeMatches({ ...physical, bgpConfiguration }) &&
-          pilotEvidenceValid(
+          (refreshPilotEvidence(
             await traffic.sampleWithId({
               profileId: P.profileId,
               deviceId: P.deviceId,
@@ -322,7 +322,7 @@ export async function createPilotHarness(
             now,
             P.thresholdBps,
             { maxAgeMs: config.maxAgeMs, maxGapMs: config.maxGapMs },
-          )
+          ) ?? false)
         );
       },
       requireAutomaticAuthorization: true,

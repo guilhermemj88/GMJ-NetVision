@@ -217,12 +217,21 @@ export interface LifecycleDeps {
   }>;
   now?: () => number;
 }
-const rejected = (reason: string): MitigationAutoCommandResult => ({
+const rejected = (reason: string, detail?: string): MitigationAutoCommandResult => ({
   ok: false,
   verified: false,
   status: reason,
-  safeError: reason,
+  safeError: detail ? `${reason}:${detail}` : reason,
 });
+/**
+ * Closed-vocabulary detail for a failed physical read (e.g. `ACTIVATION_SNAPSHOT_SSH_FAILED:SSH_TIMEOUT`).
+ * Only upper-case tokens built by the SSH layer pass through; any other text (raw SSH output, host,
+ * credentials) is replaced by `UNCLASSIFIED`, so the detail is always safe to log and to display.
+ */
+const safeReadFailureDetail = (error: unknown): string =>
+  error instanceof Error && /^[A-Z][A-Z0-9_]{2,60}(:[A-Z][A-Z0-9_]{2,40})?$/.test(error.message)
+    ? error.message
+    : 'UNCLASSIFIED';
 /**
  * A PLANNED/STARTED command younger than this may still be running and its scope is never
  * released by reconciliation. The age counts from the last transition (PLANNED, then STARTED
@@ -587,8 +596,10 @@ export class AutoMitigationLifecycle {
     let p: Awaited<ReturnType<LifecycleDeps['physical']>>;
     try {
       p = await this.deps.physical(t);
-    } catch {
-      return rejected('AUTO_PHYSICAL_READ_FAILED');
+    } catch (error) {
+      // The status stays AUTO_PHYSICAL_READ_FAILED (fail-closed, nothing reserved, nothing written);
+      // the classified cause is no longer swallowed: it travels in `safeError` into the decision.
+      return rejected('AUTO_PHYSICAL_READ_FAILED', safeReadFailureDetail(error));
     }
     if (p.state !== 'NORMAL' || p.bogon !== null || p.mitigation !== null || p.rt !== null)
       return rejected('AUTO_PHYSICAL_SCOPE_NOT_NORMAL');

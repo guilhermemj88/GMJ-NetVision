@@ -206,7 +206,7 @@ export interface HuaweiBgpConfigReading {
 }
 
 /**
- * One READ-ONLY snapshot of equipment state (four concurrent short sessions), taken once per AUTO activation attempt.
+ * One READ-ONLY snapshot of equipment state (four display commands in ONE short session), taken once per AUTO activation attempt.
  * Every field is the output of the SAME display command the individual reads issue.
  */
 export interface ActivationReadSnapshot {
@@ -217,6 +217,53 @@ export interface ActivationReadSnapshot {
 }
 /** A snapshot is only valid inside the current attempt and never longer than this. */
 const ACTIVATION_SNAPSHOT_MAX_AGE_MS = 15_000;
+
+/**
+ * Safe, closed vocabulary for why the pre-write snapshot could not be taken. The text is built
+ * ONLY from these constants: it never carries the raw SSH error, host, user or credentials, so it
+ * can be logged and shown in the decision `detail` (e.g. `AUTO_PHYSICAL_READ_FAILED:…`).
+ */
+export type SshReadFailureClass =
+  | 'SSH_AUTH_FAILED'
+  | 'SSH_TIMEOUT'
+  | 'SSH_UNREACHABLE'
+  | 'SSH_PROMPT_BLOCKED'
+  | 'SSH_COMMAND_REJECTED'
+  | 'SSH_SESSION_FAILED';
+
+export class ActivationSnapshotError extends Error {
+  constructor(
+    readonly reason:
+      | 'ACTIVATION_SNAPSHOT_INCOMPLETE'
+      | 'ACTIVATION_SNAPSHOT_CONTRADICTORY'
+      | 'ACTIVATION_SNAPSHOT_EXPIRED'
+      | 'ACTIVATION_SNAPSHOT_SSH_FAILED',
+    readonly failureClass?: SshReadFailureClass,
+  ) {
+    super(failureClass ? `${reason}:${failureClass}` : reason);
+    this.name = 'ActivationSnapshotError';
+  }
+}
+
+/** Maps a raw SSH failure to the closed vocabulary above (the raw text is discarded). */
+export function classifySshReadFailure(error: unknown): SshReadFailureClass {
+  const message = error instanceof Error ? error.message.toLowerCase() : '';
+  if (message.includes('auth')) return 'SSH_AUTH_FAILED';
+  if (message.includes('timeout') || message.includes('timed out')) return 'SSH_TIMEOUT';
+  if (message.includes('interactive_prompt') || message.includes('prompt_not_confirmed'))
+    return 'SSH_PROMPT_BLOCKED';
+  if (message.includes('command_rejected')) return 'SSH_COMMAND_REJECTED';
+  if (
+    message.includes('unreachable') ||
+    message.includes('refused') ||
+    message.includes('econnreset') ||
+    message.includes('reset by peer') ||
+    message.includes('closed') ||
+    message.includes('handshake')
+  )
+    return 'SSH_UNREACHABLE';
+  return 'SSH_SESSION_FAILED';
+}
 
 interface ActivationReadScope {
   deviceId: string;
@@ -261,7 +308,7 @@ export class HuaweiBgpSshService {
       scope.takenAt !== null &&
       performance.now() - scope.takenAt > ACTIVATION_SNAPSHOT_MAX_AGE_MS
     )
-      return Promise.reject(new Error('ACTIVATION_SNAPSHOT_EXPIRED'));
+      return Promise.reject(new ActivationSnapshotError('ACTIVATION_SNAPSHOT_EXPIRED'));
     scope.snapshot ??= this.readActivationSnapshot(device, scope.policyName).then((snapshot) => {
       scope.takenAt = performance.now();
       return snapshot;
@@ -279,9 +326,19 @@ export class HuaweiBgpSshService {
   }
 
   /**
-   * READ-ONLY: the four pre-write reads of an activation, issued CONCURRENTLY (one short session
-   * each, exactly the commands and the strict per-command checks of the individual reads), so the
-   * wall time is the slowest single read instead of the sum of all of them.
+   * READ-ONLY: the four pre-write reads of an activation, taken in ONE short SSH session (the
+   * same four display commands, each with the strict per-command checks of the individual reads).
+   *
+   * Why ONE session: the equipment has a very small VTY pool (5 channels on the F1A). The first
+   * real AUTO attempt saw it exhausted (`hwVtyExceed` 5/5) exactly while this snapshot opened four
+   * concurrent sessions next to the operator and the pollers, and the attempt failed with
+   * AUTO_PHYSICAL_READ_FAILED. One session costs one VTY. The commands, their parsing and the
+   * all-or-nothing contract are unchanged; the wall time is one login plus the four displays
+   * instead of the slowest of four logins.
+   *
+   * A failure never leaves the attempt half-informed: SSH errors are thrown with a SAFE
+   * classification (see `ActivationSnapshotError`; never the raw error text, never credentials).
+   * The client closes its connection in a `finally` on success, error and timeout.
    */
   async readActivationSnapshot(
     device: HostRecord,
@@ -289,20 +346,16 @@ export class HuaweiBgpSshService {
   ): Promise<ActivationReadSnapshot> {
     const client = await this.createClient(device);
     const host = device.ssh!.host;
-    const screenLength = assertReadOnlyCommand('screen-length 0 temporary');
-    const read = (command: string) =>
-      this.executeStrict(client, host, [screenLength, assertReadOnlyCommand(command)]);
-    const [
-      routePolicyConfiguration,
-      prefixListConfiguration,
-      bgpConfiguration,
-      routePolicyDisplay,
-    ] = await Promise.all([
-      read('display current-configuration configuration route-policy'),
-      read('display current-configuration | include ip-prefix'),
-      read('display current-configuration configuration bgp'),
-      read(`display route-policy ${policyName}`),
+    const outputs = await this.readCommandsInOneSession(client, host, [
+      'display current-configuration configuration route-policy',
+      'display current-configuration | include ip-prefix',
+      'display current-configuration configuration bgp',
+      `display route-policy ${policyName}`,
     ]);
+    const routePolicyConfiguration = outputs[0] ?? null;
+    const prefixListConfiguration = outputs[1] ?? null;
+    const bgpConfiguration = outputs[2] ?? null;
+    const routePolicyDisplay = outputs[3] ?? null;
     // Fail-closed: a snapshot is all-or-nothing. A single failed read, or two reads of the same
     // policy that disagree, invalidates the whole attempt (never a partial or contradictory view).
     if (
@@ -311,7 +364,7 @@ export class HuaweiBgpSshService {
       bgpConfiguration === null ||
       routePolicyDisplay === null
     )
-      throw new Error('ACTIVATION_SNAPSHOT_INCOMPLETE');
+      throw new ActivationSnapshotError('ACTIVATION_SNAPSHOT_INCOMPLETE');
     const signature = (nodes: Array<{ node: number; action: string }> | undefined) =>
       (nodes ?? [])
         .map((n) => `${n.node}:${n.action}`)
@@ -323,7 +376,8 @@ export class HuaweiBgpSshService {
     const fromDisplay = signature(
       parseHuaweiRoutePolicyNodesLenient(routePolicyDisplay).get(policyName),
     );
-    if (fromConfiguration !== fromDisplay) throw new Error('ACTIVATION_SNAPSHOT_CONTRADICTORY');
+    if (fromConfiguration !== fromDisplay)
+      throw new ActivationSnapshotError('ACTIVATION_SNAPSHOT_CONTRADICTORY');
     return {
       routePolicyConfiguration,
       prefixListConfiguration,
@@ -852,6 +906,52 @@ export class HuaweiBgpSshService {
     } catch (error) {
       return { output: safeSshError(error), failed: true };
     }
+  }
+
+  /**
+   * READ-ONLY: runs several `display` commands in ONE SSH session (one VTY) and returns one output
+   * per command, in order; `null` marks a command whose output is missing, errored or could not be
+   * attributed to it (the caller treats any `null` as an incomplete, fail-closed read).
+   *
+   * Transport shapes, both accepted: one result per command (test doubles / other transports) or a
+   * SINGLE result with the stdout of the whole interactive session (the real `SshClientImpl`),
+   * split by the prompt echo of each command in the order sent. An unrecognizable prompt, a
+   * missing echo or an out-of-order echo yields ALL `null`: the output of one command is never
+   * attributed to another. A transport failure is rethrown as a classified, credential-free error.
+   */
+  private async readCommandsInOneSession(
+    client: SshClient,
+    host: string,
+    commands: readonly string[],
+  ): Promise<Array<string | null>> {
+    const guarded = commands.map((command) => assertReadOnlyCommand(command));
+    const screenLength = assertReadOnlyCommand('screen-length 0 temporary');
+    const sent = [screenLength, ...guarded];
+    let results: Awaited<ReturnType<SshClient['execute']>>;
+    try {
+      results = await client.execute(host, sent);
+    } catch (error) {
+      throw new ActivationSnapshotError(
+        'ACTIVATION_SNAPSHOT_SSH_FAILED',
+        classifySshReadFailure(error),
+      );
+    }
+    let own: Array<{ stdout: string | null; exitCode: number }>;
+    if (results.length === sent.length) {
+      own = results.slice(1).map((r) => ({ stdout: r.stdout, exitCode: r.exitCode }));
+    } else if (results.length === 1) {
+      const session = results[0]!;
+      own = splitHuaweiSessionOutput(session.stdout, sent)
+        .slice(1)
+        .map((stdout) => ({ stdout, exitCode: session.exitCode }));
+    } else {
+      return guarded.map(() => null);
+    }
+    return guarded.map((_, index) => {
+      const r = own[index];
+      if (!r || r.stdout === null || r.exitCode !== 0 || commandOutputError(r.stdout)) return null;
+      return r.stdout;
+    });
   }
 
   /** Returns the raw output, or null when the command reported an error. */

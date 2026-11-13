@@ -196,7 +196,7 @@ describe('AUTO-ALL physical execution through the embedded FAST (simulated execu
     ]);
   });
 
-  it('SSH latency budget: stale evidence is rejected fail-closed (no relaxed freshness); the read scope widens the budget', async () => {
+  it('SSH latency budget: a slow preflight no longer invalidates a mitigation whose traffic is still above the threshold (evidence is re-anchored to the current FAST sample)', async () => {
     const outcome = async (latencyMs: number, useReadScope: boolean, decisionDelayMs: number) => {
       const h = await createAutoAllHarness({
         sshLatencyMs: latencyMs,
@@ -221,9 +221,14 @@ describe('AUTO-ALL physical execution through the embedded FAST (simulated execu
         JSON.stringify(await sweep(true, delay)),
       );
     }
+    // BEFORE the fix (first real AUTO attempt, 12/11): 2.5 s per equipment operation without the read scope, or an
+    // 8 s snapshot after a 4.9 s decision delay, already made the post-preflight check reject a valid mitigation
+    // (the check was tied to the 15 s-old TRIGGER sample). Now the freshness proof is the CURRENT sample, which the
+    // embedded poller keeps producing while the preflight runs. Stale/absent/discontinuous telemetry is still
+    // rejected: see auto-evidence-revalidation.test.ts (lost samples, falling traffic, other continuity, deadline).
     expect(await outcome(0, false, 0)).toBe(1);
-    expect(await outcome(2500, false, 0)).toBe(0);
+    expect(await outcome(2500, false, 0)).toBe(1);
     expect(await outcome(3500, true, 4900)).toBe(1);
-    expect(await outcome(8000, true, 4900)).toBe(0);
+    expect(await outcome(8000, true, 4900)).toBe(1);
   });
 });

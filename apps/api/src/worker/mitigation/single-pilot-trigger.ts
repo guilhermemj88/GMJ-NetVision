@@ -171,6 +171,66 @@ export function pilotEvidenceValid(
   );
 }
 
+/**
+ * Backstop for the ORIGINAL trigger sample when the evidence is re-validated after the preflight.
+ * It is NOT the freshness limit (that stays `window.maxAgeMs`, 15 s, and is applied to the CURRENT
+ * sample): it is the same 60 s response deadline the engine already reports as
+ * `responseDeadlineExceeded`, so a sequence that is older than the whole response budget can never
+ * be revived by a newer sample.
+ */
+export const AUTO_TRIGGER_EVIDENCE_DEADLINE_MS = 60_000;
+
+/**
+ * Post-preflight re-validation of the AUTO evidence (FAST → detection → dispatch → PREFLIGHT →
+ * THIS → reservation/authorization → executor).
+ *
+ * `pilotEvidenceValid` ties the write to the ORIGINAL trigger sample: it must be at most 15 s old and
+ * the freshest sample must be that very sample or the one right after it. The preflight (physical
+ * reads + 18 checks) legitimately takes ~7 s and the dispatch ~7 s before it, so with a 5 s FAST
+ * cadence that rule is arithmetically unsatisfiable (the first real AUTO attempt was rejected with
+ * AUTO_TELEMETRY_UNAVAILABLE at ~15.3 s although traffic stayed at ~7x the threshold).
+ *
+ * This keeps every safety property but moves the freshness proof to where it belongs — the sample
+ * that is about to authorize the write:
+ *  - the CURRENT sample is valid telemetry of the SAME continuity (`continuityKey`, which embeds the
+ *    FAST generation, device, interface, ifIndex and direction) and is not older than `maxAgeMs`;
+ *  - its own rate window is continuous (`previous < at`, gap ≤ `maxGapMs`): lost samples widen it
+ *    and are rejected;
+ *  - it is NOT older than the trigger and its window does not reach back before the trigger
+ *    (`at === trigger || previous >= trigger`);
+ *  - traffic is STILL above the threshold in that sample (`bps > threshold`, strict);
+ *  - the original trigger is within the response deadline (`deadlineMs`), never revived beyond it.
+ * Missing/invalid telemetry, a changed continuity or traffic at/below the threshold return `null`
+ * (block). On success it returns the evidence REFRESHED to the current sample (`sampleAt`), which
+ * is what the write authorization must see; the sequence identity/start/count are untouched.
+ */
+export function refreshPilotEvidence<E extends { sampleAt: string; continuityKey: string }>(
+  sample: MitigationTrafficSample | null,
+  evidence: E | undefined,
+  now: number,
+  thresholdBps: bigint,
+  window: { maxAgeMs: number; maxGapMs: number },
+  deadlineMs: number = AUTO_TRIGGER_EVIDENCE_DEADLINE_MS,
+): E | null {
+  if (!sample || !evidence || !sample.occurredAt || !sample.rateStartAt) return null;
+  const at = +sample.occurredAt,
+    previous = +sample.rateStartAt,
+    trigger = Date.parse(evidence.sampleAt);
+  if (!Number.isFinite(at) || !Number.isFinite(previous) || !Number.isFinite(trigger)) return null;
+  const valid =
+    trigger <= now &&
+    now - trigger <= deadlineMs &&
+    at <= now &&
+    now - at <= window.maxAgeMs &&
+    previous < at &&
+    at - previous <= window.maxGapMs &&
+    sample.continuityKey === evidence.continuityKey &&
+    sample.bps > thresholdBps &&
+    at >= trigger &&
+    (at === trigger || previous >= trigger);
+  return valid ? { ...evidence, sampleAt: new Date(at).toISOString() } : null;
+}
+
 /** Pure counter only. It cannot write hardware, store ownership, or send HTTP. */
 export function nextPilotSequence(
   old: PilotSequence | null,

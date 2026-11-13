@@ -367,8 +367,15 @@ export interface MitigationCommandDeps {
     pair: { bogonNode: number; mitigationNode: number } | null,
   ) => Promise<boolean>;
   beforeManualWrite?: (deviceId: string, policyName: string) => Promise<void>;
-  /** AUTO only: recheck recent UP telemetry AFTER preflight, BEFORE any write. */
-  autoEvidence?: (profileId: string, evidence?: MitigationAutoEvidence) => Promise<boolean>;
+  /**
+   * AUTO only: recheck recent UP telemetry AFTER preflight, BEFORE any write. `false` blocks; `true`
+   * accepts the evidence as sent; an evidence OBJECT accepts it re-anchored to the current sample
+   * (the write authorization then validates that refreshed evidence — see `refreshPilotEvidence`).
+   */
+  autoEvidence?: (
+    profileId: string,
+    evidence?: MitigationAutoEvidence,
+  ) => Promise<boolean | MitigationAutoEvidence>;
   /**
    * KILL SWITCH GLOBAL (`MITIGATION_AUTO_EXECUTION_ENABLED`). Ausente ou erro =
    * execucao automatica DESLIGADA (fail-closed). Manual nunca e afetado.
@@ -1177,12 +1184,23 @@ export class MitigationCommandService {
         verification: null,
       };
     }
+    /**
+     * Evidence RE-VALIDATED after the preflight (see `autoEvidence`): the write authorization must
+     * judge the sample that just proved the traffic is still above the threshold, not the (older)
+     * trigger sample. Stays `undefined` when the validator only answers true/false.
+     */
+    let refreshedAutoEvidence: MitigationAutoEvidence | undefined;
     const authorizeWrite = async () => {
       if (isAutomaticCommand(input)) {
         if (input.action !== 'ACTIVATE') throw new Error('AUTO_REMOVE_FORBIDDEN');
         if (
           this.deps.requireAutomaticAuthorization &&
-          !(await this.deps.autoWriteAuthorization?.(input, pair).catch(() => false))
+          !(await this.deps
+            .autoWriteAuthorization?.(
+              refreshedAutoEvidence ? { ...input, autoEvidence: refreshedAutoEvidence } : input,
+              pair,
+            )
+            .catch(() => false))
         ) {
           throw new Error('AUTO_DURABLE_OWNERSHIP_REQUIRED');
         }
@@ -1211,20 +1229,27 @@ export class MitigationCommandService {
           if (!preflight?.ok) return this.preflightBlocked(common, preview, preflight);
           if (
             isAutomaticCommand(input) &&
-            (this.deps.requireAutomaticAuthorization || this.deps.autoEvidence) &&
-            !(await this.deps.autoEvidence?.(profile.id, input.autoEvidence).catch(() => false))
+            (this.deps.requireAutomaticAuthorization || this.deps.autoEvidence)
           ) {
-            return {
-              ...common,
-              ok: false,
-              status: 'AUTO_TELEMETRY_UNAVAILABLE',
-              verified: false,
-              commandPreview: preview,
-              verification: null,
-              preflight,
-              safeError:
-                'AUTO: telemetria recente, UP e acima do limiar indisponivel apos preflight',
-            };
+            // false/undefined/error = no valid evidence = BLOCK (fail-closed, nothing is written).
+            // true = valid as sent; an object = valid and RE-ANCHORED to the current sample.
+            const verdict = await this.deps.autoEvidence?.(profile.id, input.autoEvidence).catch(
+              () => false,
+            );
+            if (!verdict) {
+              return {
+                ...common,
+                ok: false,
+                status: 'AUTO_TELEMETRY_UNAVAILABLE',
+                verified: false,
+                commandPreview: preview,
+                verification: null,
+                preflight,
+                safeError:
+                  'AUTO: telemetria recente, UP e acima do limiar indisponivel apos preflight',
+              };
+            }
+            if (typeof verdict === 'object') refreshedAutoEvidence = verdict;
           }
           // KILL SWITCH (ultima barreira): reconsultado APOS preflight e
           // revalidacao da evidencia, imediatamente antes da escrita Huawei.

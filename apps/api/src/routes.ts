@@ -2,7 +2,7 @@ import { autoExpansionPhysicalScopeMatches } from './worker/mitigation/auto-expa
 import {
   SINGLE_AUTO_PILOT,
   assertSinglePilotAuthorization,
-  pilotEvidenceValid,
+  refreshPilotEvidence,
   singlePilotPhysicalScopeMatches,
 } from './worker/mitigation/single-pilot-trigger';
 import type { FastifyInstance } from 'fastify';
@@ -662,7 +662,11 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   // Runtime do motor AUTO (atribuído depois das dependências canônicas).
   let autoRuntimeRef: MitigationAutoRuntime | null = null;
   let revalidateAutoEvidence:
-    ((profileId: string, evidence?: MitigationAutoEvidence) => Promise<boolean>) | null = null;
+    | ((
+        profileId: string,
+        evidence?: MitigationAutoEvidence,
+      ) => Promise<boolean | MitigationAutoEvidence>)
+    | null = null;
   const mitigationService = new BgpMitigationService({
     repository: mitigationRepository,
     discovery: new BgpMitigationDiscoveryService({
@@ -1445,17 +1449,21 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         bandwidthBps,
       },
     );
-    if (lifecycleSettings.enabled)
+    if (lifecycleSettings.enabled) {
+      if (!(lifecycleSettings.expansionEnabled || id === SINGLE_AUTO_PILOT.profileId)) return false;
+      // Post-preflight: the preflight legitimately outlives the 15 s freshness of the ORIGINAL trigger
+      // sample, so the proof is re-anchored to the CURRENT sample (same continuity, <= maxAgeMs old,
+      // continuous, still above the threshold). Returns the refreshed evidence, or false (block).
       return (
-        (lifecycleSettings.expansionEnabled || id === SINGLE_AUTO_PILOT.profileId) &&
-        pilotEvidenceValid(
+        refreshPilotEvidence(
           sample,
           evidence,
           Date.now(),
           (bandwidthBps * BigInt(profile.triggerPercent)) / 100n,
           { maxAgeMs: lifecycleSettings.maxAgeMs, maxGapMs: lifecycleSettings.maxGapMs },
-        )
+        ) ?? false
       );
+    }
     if (!matchesAutoEvidence(sample, evidence, samplingForProfile(id), Date.now())) return false;
     return sample.bps > (bandwidthBps * BigInt(profile.triggerPercent)) / 100n;
   };

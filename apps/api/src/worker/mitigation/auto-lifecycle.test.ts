@@ -497,6 +497,39 @@ describe('AUTO ACTIVATE + MANUAL REMOVE: canonical executor with fake SSH only',
     expect((await h.activate()).status).toBe('AUTO_PHYSICAL_READ_FAILED');
     expect(h.ssh.writes).toHaveLength(0);
   });
+  it('a physical read failure reports its SAFE classified cause and reserves/persists nothing (retry stays possible)', async () => {
+    const h = await harness();
+    h.physical.mockRejectedValueOnce(new Error('ACTIVATION_SNAPSHOT_SSH_FAILED:SSH_UNREACHABLE'));
+    const failed = await h.activate();
+    expect(failed.status).toBe('AUTO_PHYSICAL_READ_FAILED'); // status unchanged: same fail-closed contract
+    expect(failed.ok).toBe(false);
+    expect(failed.safeError).toBe(
+      'AUTO_PHYSICAL_READ_FAILED:ACTIVATION_SNAPSHOT_SSH_FAILED:SSH_UNREACHABLE',
+    );
+    expect(h.ssh.writes).toHaveLength(0);
+    expect(await h.scope()).toBeNull(); // nothing reserved: no scope, no command, no quarantine...
+    // ...so a LEGITIMATE next attempt (equipment reachable again) is not blocked by the earlier failure
+    const next = await h.activate();
+    expect(next.status).toBe('ACTIVATED_VERIFIED');
+    expect(h.ssh.writes).toHaveLength(1);
+  });
+  it('an unclassified or sensitive physical-read error text never reaches the result', async () => {
+    const h = await harness();
+    for (const raw of [
+      'connect ECONNREFUSED 10.200.1.1:22 password=hunter2 user=netvision',
+      'ssh: handshake failed',
+      '',
+    ]) {
+      h.physical.mockRejectedValueOnce(new Error(raw));
+      const failed = await h.activate();
+      expect(failed.status).toBe('AUTO_PHYSICAL_READ_FAILED');
+      expect(failed.safeError).toBe('AUTO_PHYSICAL_READ_FAILED:UNCLASSIFIED');
+      expect(JSON.stringify(failed)).not.toMatch(/hunter2|netvision|10\.200\.1\.1|ECONNREFUSED/);
+    }
+    h.physical.mockRejectedValueOnce('not even an Error');
+    expect((await h.activate()).safeError).toBe('AUTO_PHYSICAL_READ_FAILED:UNCLASSIFIED');
+    expect(h.ssh.writes).toHaveLength(0);
+  });
   it('manual REMOVE preserves operator nodes and local-preference without adopting them', async () => {
     const h = await harness();
     h.ssh.baselineManual = true;

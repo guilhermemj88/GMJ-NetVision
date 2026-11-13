@@ -8,7 +8,7 @@ import {
 } from '../worker/mitigation/auto-lifecycle';
 import {
   SINGLE_AUTO_PILOT as P,
-  pilotEvidenceValid,
+  refreshPilotEvidence,
 } from '../worker/mitigation/single-pilot-trigger';
 import { autoExpansionPhysicalScopeMatches } from '../worker/mitigation/auto-expansion-scope';
 import { MemoryAutomationStore } from '../worker/mitigation/automation-store';
@@ -137,6 +137,13 @@ export interface AutoAllHarnessOptions {
   useReadScope?: boolean;
   /** ms between the FAST sample and the engine tick that evaluates it (0..cadence). */
   decisionDelayMs?: number;
+  /**
+   * TEST HOOK, called at the start of EVERY equipment operation (read/write) with its 0-based index.
+   * Return `'STALL'` to stop the FAST poller from producing samples from then on (lost samples while
+   * the preflight runs; resumes at the next `cycle`), or a rate map to change the traffic the poller
+   * reports for the rest of the operation (e.g. traffic falling below the threshold mid-preflight).
+   */
+  duringSsh?: (operationIndex: number) => 'STALL' | Record<string, bigint> | void;
   /** M1-AUTO: ACTIVATE outside the tick, as wired in routes.ts. Default false (synchronous). */
   asyncExecution?: boolean;
   /** Policy lock factory (default: in-memory FIFO). Tests of busy semantics inject a try-lock. */
@@ -376,8 +383,14 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
     for (const d of defs) await feedOne(d, currentBps[d.id] ?? 100_000_000n, cadence);
     lastFeedAt = now;
   };
+  let stalled = false;
+  let sshOperation = 0;
   const advanceTime = async (ms: number) => {
     const target = now + ms;
+    if (stalled) {
+      now = target; // the collector produced nothing: time passes, no new sample exists
+      return;
+    }
     while (lastFeedAt + cadence <= target) {
       now = lastFeedAt + cadence;
       await feedAll();
@@ -386,7 +399,12 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
   };
 
   // ---- physical boundary (fake only at SSH) ---------------------------------------------------
-  const ssh = new SlowFakeHuawei(() => advanceTime(options.sshLatencyMs ?? 0));
+  const ssh = new SlowFakeHuawei(() => {
+    const hook = options.duringSsh?.(sshOperation++);
+    if (hook === 'STALL') stalled = true;
+    else if (hook) currentBps = hook;
+    return advanceTime(options.sshLatencyMs ?? 0);
+  });
   const live = new HuaweiMitigationExecutor({
     ssh,
     config: { executor: 'HUAWEI', liveWriteEnabled: true, allowedDeviceIds: [P.deviceId] },
@@ -459,13 +477,13 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
           interfaceId: t.interfaceId,
           bandwidthBps: P.bandwidthBps,
         });
-        return pilotEvidenceValid(
+        return refreshPilotEvidence(
           sample,
           e,
           now,
           (P.bandwidthBps * BigInt(t.triggerPercent)) / 100n,
           { maxAgeMs: lcConfig.maxAgeMs, maxGapMs: lcConfig.maxGapMs },
-        );
+        ) ?? false;
       },
       requireAutomaticAuthorization: true,
       autoWriteAuthorization: (i, pair) => lifecycle.authorize(i, pair),
@@ -591,6 +609,7 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
     },
     /** FAST cadence step then ONE engine tick, exactly like the runtime timer would do. */
     cycle: async (bpsByProfile: Record<string, bigint>) => {
+      stalled = false;
       currentBps = bpsByProfile;
       now = Math.max(now, lastFeedAt + cadence);
       await feedAll();
