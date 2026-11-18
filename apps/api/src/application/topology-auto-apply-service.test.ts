@@ -149,6 +149,8 @@ describe('TopologyAutoApplyService', () => {
     // Capacidade usa o menor lado e a evidencia original e preservada.
     expect(repository.links[0]!.input.capacityBps).toBe(1_000_000_000);
     expect(repository.links[0]!.source).toBe('LLDP_SNMP');
+    // Enlace descoberto monitora uma ponta so.
+    expect(repository.links[0]!.input.trafficMode).toBe('SINGLE_ENDED');
   });
 
   it('nao cria enlace PROBABLE por padrao e explica o motivo', async () => {

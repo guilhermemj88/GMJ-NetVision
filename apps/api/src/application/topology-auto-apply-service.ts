@@ -233,7 +233,11 @@ export class TopologyAutoApplyService {
         capacityBps,
         autoCapacityBps: capacityBps,
         capacitySource: 'AUTO',
-        trafficMode: 'BIDIRECTIONAL',
+        // Enlace descoberto por LLDP: apenas UMA ponta e monitorada. O motor de
+        // telemetria ja escolhe o lado com interface real; BIDIRECIONAL exigiria
+        // contadores confiaveis dos dois equipamentos, o que nao vale para um
+        // enlace descoberto automaticamente.
+        trafficMode: 'SINGLE_ENDED',
         customColor: null,
         animationEnabled: null,
         label: '',
