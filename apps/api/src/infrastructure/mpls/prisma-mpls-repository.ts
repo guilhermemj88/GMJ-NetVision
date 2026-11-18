@@ -148,6 +148,9 @@ export class PrismaMplsRepository implements MplsRepository {
       ...(collection.ldpPeers === undefined
         ? {}
         : { ldpPeers: collection.ldpPeers as unknown as object }),
+      ...(collection.l2vcCircuits === undefined
+        ? {}
+        : { l2vcCircuits: collection.l2vcCircuits as unknown as object }),
       ...(collection.conflicts === undefined
         ? {}
         : { conflicts: collection.conflicts as unknown as object }),
@@ -593,6 +596,7 @@ export class PrismaMplsRepository implements MplsRepository {
       discoveryState,
       sources: (state?.sources ?? []) as MplsHostOverview['sources'],
       ldpPeers: (state?.ldpPeers ?? []) as unknown as MplsHostOverview['ldpPeers'],
+      l2vcCircuits: (state?.l2vcCircuits ?? []) as unknown as MplsHostOverview['l2vcCircuits'],
       conflicts: (state?.conflicts ?? []) as unknown as MplsHostOverview['conflicts'],
     };
     if (!state || !state.vsiSupported) {
@@ -614,9 +618,9 @@ export class PrismaMplsRepository implements MplsRepository {
     }
     const vsis = await this.listVsis(hostId);
     return {
-      // `supported` da API significa "existe VSI para exibir"; o resultado da
+      // `supported` da API significa "existe algo para exibir"; o resultado da
       // descoberta (inclusive NOT_FOUND/INCOMPLETE) vai em `discoveryState`.
-      supported: vsis.length > 0,
+      supported: vsis.length > 0 || shared.l2vcCircuits.length > 0,
       ...shared,
       capabilities: {
         vsi: state.vsiSupported,

@@ -12,10 +12,12 @@ import {
 } from './huawei-vsi-commands';
 import {
   parseHuaweiL2vc,
+  parseHuaweiL2vcSummary,
   parseHuaweiLdpRemotePeers,
   parseHuaweiLdpSessions,
   parseHuaweiVsiNames,
   parseHuaweiVsiVerbose,
+  type HuaweiL2vcSummary,
   type ParsedL2vc,
   type ParsedLdpRemotePeer,
   type ParsedVsi,
@@ -47,6 +49,8 @@ export interface HuaweiVsiSshReading {
   vsis: ParsedVsi[];
   ldpPeers: MplsLdpPeer[];
   l2vcs: ParsedL2vc[];
+  /** Linha de totais do l2vc, quando impressa (evidencia de coleta completa). */
+  l2vcSummary?: HuaweiL2vcSummary | undefined;
   warnings: string[];
   /** Erro seguro da leitura principal, quando ela nao concluiu. */
   errorSafe: string | null;
@@ -75,7 +79,7 @@ function unsupportedCommandOutput(output: string): boolean {
   );
 }
 
-/** Rotula a sessao LDP com o nome do remote-peer, quando o VRP o declara. */
+/** Rotula a sessao LDP com o nome do remote-peer, casando pelo IP do vizinho. */
 function withRemotePeerNames(
   peers: MplsLdpPeer[],
   remotePeers: ParsedLdpRemotePeer[],
@@ -84,9 +88,7 @@ function withRemotePeerNames(
   return peers.map((peer) => {
     if (peer.name) return peer;
     const peerIp = peer.peerLdpId.split(':')[0];
-    const match = remotePeers.find(
-      (remote) => remote.ldpId === peer.peerLdpId || (peerIp && remote.ipAddress === peerIp),
-    );
+    const match = remotePeers.find((remote) => peerIp && remote.ipAddress === peerIp);
     return match ? { ...peer, name: match.name } : peer;
   });
 }
@@ -151,7 +153,17 @@ export class HuaweiVsiSshService {
       await this.readLdpSessions(client, host, warnings),
       await this.readLdpRemotePeers(client, host),
     );
-    const l2vcs = await this.readL2vcs(client, host, warnings);
+    const l2vc = await this.readL2vcs(client, host, warnings);
+    const l2vcSummary = parseHuaweiL2vcSummary(l2vc.output ?? '');
+    if (
+      l2vcSummary.total !== null &&
+      l2vc.rows.length > 0 &&
+      l2vc.rows.length < l2vcSummary.total
+    ) {
+      warnings.push(
+        `L2VC: ${l2vc.rows.length} de ${l2vcSummary.total} circuitos foram lidos`,
+      );
+    }
 
     return {
       available: true,
@@ -159,7 +171,8 @@ export class HuaweiVsiSshService {
       collectedAt: new Date(),
       vsis,
       ldpPeers,
-      l2vcs,
+      l2vcs: l2vc.rows,
+      l2vcSummary,
       warnings,
       errorSafe: null,
     };
@@ -242,15 +255,17 @@ export class HuaweiVsiSshService {
     client: SshClient,
     host: string,
     warnings: string[],
-  ): Promise<ParsedL2vc[]> {
+  ): Promise<{ rows: ParsedL2vc[]; output: string | null }> {
     const outcome = await this.executeCommand(client, host, L2VC_COMMAND);
-    if (outcome.status === 'SUCCESS') return parseHuaweiL2vc(outcome.output);
+    if (outcome.status === 'SUCCESS') {
+      return { rows: parseHuaweiL2vc(outcome.output), output: outcome.output };
+    }
     warnings.push(
       outcome.status === 'UNSUPPORTED'
         ? 'L2VC: comando não suportado pelo VRP'
         : `L2VC: ${outcome.errorSafe}`,
     );
-    return [];
+    return { rows: [], output: null };
   }
 
   private async executeCommand(

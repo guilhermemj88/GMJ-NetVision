@@ -7,7 +7,7 @@ import {
   HUAWEI_VPLS_VSI_WALK_COLUMNS,
 } from './huawei-vpls-oids';
 import type { HuaweiVsiSshReading } from './huawei-vsi-ssh';
-import { parseHuaweiVsiVerbose } from './huawei-vsi-ssh-parser';
+import { parseHuaweiL2vc, parseHuaweiVsiVerbose } from './huawei-vsi-ssh-parser';
 import { mergeMplsDiscovery } from './mpls-discovery-service';
 
 const COLLECTED_AT = new Date('2026-11-18T12:00:00.000Z');
@@ -248,6 +248,64 @@ describe('mergeMplsDiscovery', () => {
     expect(result.discoveryState).toBe('NOT_FOUND');
     expect(result.collection.supported).toBe(true);
     expect(result.collection.vsis).toEqual([]);
+  });
+
+  // Cenario real homologado no S6730S: MIB vazia, `display vsi` sem VSI e 20
+  // circuitos L2VC (VPWS) sinalizados por LDP.
+  it('reconhece servico L2VC quando o equipamento nao tem VSI', () => {
+    const l2vcs = parseHuaweiL2vc(` *client interface       : Vlanif900 is up
+  session state          : up
+  AC status              : up
+  VC state               : up
+  VC ID                  : 900
+  VC type                : VLAN
+  destination            : 10.0.0.5
+  local VC label         : 1024         remote VC label      : 1024
+  local VC MTU           : 1500         remote VC MTU        : 1500
+ *client interface       : Vlanif901 is down
+  session state          : up
+  AC status              : down
+  VC state               : down
+  VC ID                  : 901
+  destination            : 10.0.0.6`);
+
+    const result = mergeMplsDiscovery({
+      snmp: snmpCollection(),
+      ssh: sshReading('', { l2vcs, l2vcSummary: { total: 2, up: 1, down: 1 } }),
+    });
+
+    expect(result.discoveryState).toBe('FOUND_L2VC');
+    expect(result.collection.supported).toBe(true);
+    expect(result.collection.vsis).toEqual([]);
+    expect(result.l2vcCircuits).toEqual([
+      expect.objectContaining({
+        name: 'Vlanif900',
+        vcId: 900,
+        destination: '10.0.0.5',
+        state: 'UP',
+        acState: 'UP',
+        mtu: 1500,
+        localLabel: 1024,
+        remoteLabel: 1024,
+        source: 'SSH',
+      }),
+      expect.objectContaining({ name: 'Vlanif901', state: 'DOWN', acState: 'DOWN' }),
+    ]);
+  });
+
+  it('nao substitui evidencia SNMP valida por leitura SSH incompleta', () => {
+    const result = mergeMplsDiscovery({
+      snmp: snmpCollection([snmpVsi('VSI-GERENCIA', { signalingType: 'LDP' })]),
+      // VSI sem estado lido: a CLI nao confirmou nada.
+      ssh: sshReading('**VSI Name               : VSI-GERENCIA\n'),
+    });
+
+    expect(result.collection.vsis[0]).toMatchObject({
+      status: 'UP',
+      operationalStatus: 'UP',
+      signalingType: 'LDP',
+    });
+    expect(result.conflicts).toEqual([]);
   });
 
   it('propaga as sessoes LDP como transporte, com peer DOWN visivel', () => {

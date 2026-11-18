@@ -14,6 +14,7 @@ CREATE TYPE "MplsDiscoveryState" AS ENUM (
   'FOUND_UP',
   'FOUND_DOWN',
   'FOUND_MIXED',
+  'FOUND_L2VC',
   'NOT_FOUND',
   'INCOMPLETE',
   'UNSUPPORTED',
@@ -24,6 +25,7 @@ ALTER TABLE "MplsDeviceState"
   ADD COLUMN "discoveryState" "MplsDiscoveryState" NOT NULL DEFAULT 'UNKNOWN',
   ADD COLUMN "sources" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[],
   ADD COLUMN "ldpPeers" JSONB,
+  ADD COLUMN "l2vcCircuits" JSONB,
   ADD COLUMN "conflicts" JSONB;
 
 -- Descoberta de membros (STATIC/DYNAMIC) observada na CLI, quando o VRP a expoe.

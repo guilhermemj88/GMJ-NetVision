@@ -15,6 +15,7 @@ const unavailable = (): MplsHostOverview => ({
   source: 'SNMP',
   sources: [],
   ldpPeers: [],
+  l2vcCircuits: [],
   conflicts: [],
   lastPollingAt: null,
   lastSuccessAt: null,

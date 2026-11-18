@@ -3341,7 +3341,8 @@ button {
   line-height: 1.6;
   overflow-wrap: anywhere;
 }
-.mpls-ldp h4 {
+.mpls-ldp h4,
+.mpls-l2vc h4 {
   margin: 0 0 7px;
   color: var(--muted);
   font: 600 9px var(--font-mono);

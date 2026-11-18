@@ -3,7 +3,12 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { MplsHostOverview, MplsPw } from '@gmj/shared';
 import { describe, expect, it } from 'vitest';
-import { MplsCollectionWarning, MplsContent, MplsUnavailableState } from './mpls-panel';
+import {
+  MplsCollectionWarning,
+  MplsContent,
+  MplsUnavailableState,
+  mplsDiscoveryStateLabel,
+} from './mpls-panel';
 
 function pw(remoteIp: string, pwId: number, status: MplsPw['status']): MplsPw {
   return {
@@ -40,6 +45,7 @@ const overview: MplsHostOverview = {
   source: 'SNMP',
   sources: ['SNMP'],
   ldpPeers: [],
+  l2vcCircuits: [],
   conflicts: [],
   lastPollingAt: '2026-08-25T12:00:00.000Z',
   lastSuccessAt: '2026-08-25T12:00:00.000Z',
@@ -216,8 +222,7 @@ describe('MplsContent', () => {
     expect(html).toContain('mpls-source-tag');
   });
 
-  it('shows both evidences when SNMP and SSH disagree', () => {
-    const html = renderToStaticMarkup(
+  it('shows both evidences when SNMP and SSH disagree', () => {    const html = renderToStaticMarkup(
       <MplsContent
         overview={{
           ...overview,
@@ -318,5 +323,72 @@ describe('MplsContent', () => {
       />,
     );
     expect(html).toContain('Unknown');
+  });
+
+  // Cenário homologado no S6730S: sem VSI, serviço existe como L2VC (VPWS).
+  it('lista serviços L2VC (VPWS) quando o equipamento não tem VSI', () => {
+    const html = renderToStaticMarkup(
+      <MplsContent
+        overview={{
+          ...overview,
+          supported: true,
+          discoveryState: 'FOUND_L2VC',
+          sources: ['SNMP', 'SSH'],
+          vsis: [],
+          summary: {
+            ...overview.summary,
+            vsiTotal: 0,
+            vsiUp: 0,
+            vsiDegraded: 0,
+            pwTotal: 0,
+            pwUp: 0,
+            pwDown: 0,
+          },
+          l2vcCircuits: [
+            {
+              name: 'Vlanif900',
+              vcId: 900,
+              destination: '10.0.0.5',
+              state: 'UP',
+              acState: 'UP',
+              sessionState: 'UP',
+              vcType: 'VLAN',
+              mtu: 1500,
+              localLabel: 1024,
+              remoteLabel: 1024,
+              tunnelPolicy: null,
+              source: 'SSH',
+            },
+            {
+              name: 'Vlanif901',
+              vcId: 901,
+              destination: '10.0.0.6',
+              state: 'DOWN',
+              acState: 'DOWN',
+              sessionState: 'UP',
+              vcType: 'VLAN',
+              mtu: null,
+              localLabel: 1025,
+              remoteLabel: 1025,
+              tunnelPolicy: null,
+              source: 'SSH',
+            },
+          ],
+        }}
+        events={[]}
+      />,
+    );
+
+    expect(html).toContain('Serviços ponto a ponto · L2VC (VPWS)');
+    expect(html).toContain('Vlanif900');
+    expect(html).toContain('10.0.0.5');
+    expect(html).toContain('labels 1024/1024');
+    expect(html).toContain('Vlanif901');
+    expect(html).toContain('Nenhuma VSI/VPLS configurada');
+    expect(html).toContain('Fonte: SSH');
+  });
+
+  it('rotula o estado FOUND_L2VC', () => {
+    expect(mplsDiscoveryStateLabel('FOUND_L2VC')).toContain('L2VC');
   });
 });

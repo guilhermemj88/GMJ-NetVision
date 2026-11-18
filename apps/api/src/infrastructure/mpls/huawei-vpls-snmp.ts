@@ -3,6 +3,7 @@ import type {
   MplsAdminStatus,
   MplsConflict,
   MplsDiscoveryState,
+  MplsL2vcCircuit,
   MplsLdpPeer,
   MplsPwState,
   MplsPwStatus,
@@ -117,6 +118,7 @@ export interface HuaweiVplsCollection {
   sources?: MplsSource[];
   /** `undefined` = SSH nao foi consultado nesta rodada (preserva evidencia). */
   ldpPeers?: MplsLdpPeer[] | undefined;
+  l2vcCircuits?: MplsL2vcCircuit[] | undefined;
   conflicts?: MplsConflict[] | undefined;
 }
 

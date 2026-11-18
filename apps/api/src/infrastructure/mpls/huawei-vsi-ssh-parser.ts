@@ -48,7 +48,12 @@ export interface ParsedL2vc {
   vcId: number | null;
   destination: string | null;
   state: 'UP' | 'DOWN' | 'UNKNOWN';
+  /** Estado do AC impresso pelo VRP (`AC status` ou `is up/down` no cabecalho). */
+  acState: 'UP' | 'DOWN' | 'UNKNOWN';
+  /** Estado da sessao LDP do VC (`session state`), quando impresso. */
+  sessionState: 'UP' | 'DOWN' | 'UNKNOWN';
   vcType: string | null;
+  mtu: number | null;
   localLabel: number | null;
   remoteLabel: number | null;
   tunnelPolicy: string | null;
@@ -56,8 +61,9 @@ export interface ParsedL2vc {
 
 export interface ParsedLdpRemotePeer {
   name: string;
-  ldpId: string | null;
   ipAddress: string | null;
+  /** LDP ID local do equipamento, como o VRP imprime neste comando. */
+  localLdpId: string | null;
 }
 
 const VSI_HEADER = /^\s*\*{0,3}\s*VSI\s+Name\s*:\s*(.+?)\s*$/i;
@@ -80,6 +86,31 @@ function cleanValue(value: string | undefined): string | null {
   const trimmed = value?.trim();
   if (!trimmed || trimmed === '-' || trimmed === '--') return null;
   return trimmed;
+}
+
+/** Remove as aspas que o VRP usa em nomes (`"6730-sw-alfenas"`). */
+function unquote(value: string | null): string | null {
+  if (!value) return null;
+  const unquoted = /^".*"$/.test(value) ? value.slice(1, -1).trim() : value;
+  return unquoted || null;
+}
+
+/**
+ * Uma linha pode trazer DOIS pares chave/valor separados por espacos largos,
+ * como no `display mpls l2vc` real:
+ *   local VC label : 1024         remote VC label : 1024
+ * O corte usa "2+ espacos + rotulo + ':'" como delimitador do proximo par.
+ */
+function pairsOf(line: string): Array<{ label: string; value: string | null }> {
+  const pairs: Array<{ label: string; value: string | null }> = [];
+  const pattern =
+    /([A-Za-z][A-Za-z0-9 /()._-]*?)\s*:\s*(.*?)(?=\s{2,}[A-Za-z][A-Za-z0-9 /()._-]*?\s*:|$)/g;
+  for (const match of line.matchAll(pattern)) {
+    const label = labelOf(match[1] ?? '');
+    if (!label) continue;
+    pairs.push({ label, value: cleanValue(match[2]) });
+  }
+  return pairs;
 }
 
 function integer(value: string | null): number | null {
@@ -399,35 +430,66 @@ export function parseHuaweiLdpSessions(output: string): MplsLdpPeer[] {
   return [...peers.values()];
 }
 
-const L2VC_HEADER = /^\s*\*{0,3}\s*Client\s+Interface\s*:\s*(\S+)\s*$/i;
+const L2VC_HEADER = /^\s*\*{0,3}\s*client\s+interface\s*:\s*(\S+?)(?:\s+is\s+(up|down))?\s*$/i;
+
+export interface HuaweiL2vcSummary {
+  total: number | null;
+  up: number | null;
+  down: number | null;
+}
+
+/** Linha de totais do `display mpls l2vc`: `Total LDP VC : 20  12 up  8 down`. */
+export function parseHuaweiL2vcSummary(output: string): HuaweiL2vcSummary {
+  const match = output.match(/Total\s+LDP\s+VC\s*:\s*(\d+)\s+(\d+)\s+up\s+(\d+)\s+down/i);
+  return {
+    total: match?.[1] ? Number(match[1]) : null,
+    up: match?.[2] ? Number(match[2]) : null,
+    down: match?.[3] ? Number(match[3]) : null,
+  };
+}
 
 /**
- * `display mpls ldp remote-peer`: nome configurado do remote-peer. Serve apenas
- * para rotular a sessao LDP; ausencia de bloco nao invalida nada.
+ * `display mpls ldp remote-peer`: nome configurado do remote-peer, usado apenas
+ * para rotular a sessao LDP. No S6730S o `LDP ID` impresso e o LOCAL, e o
+ * `Remote Peer IP` e o que identifica o vizinho; o nome vem entre aspas.
  */
 export function parseHuaweiLdpRemotePeers(output: string): ParsedLdpRemotePeer[] {
   const peers: ParsedLdpRemotePeer[] = [];
   let current: ParsedLdpRemotePeer | null = null;
 
   for (const line of output.split(/\r?\n/)) {
-    const pair = line.match(KEY_VALUE);
-    if (!pair?.[1]) continue;
-    const label = labelOf(pair[1]);
-    const value = cleanValue(pair[2]);
-    if (label === 'peer name' || label === 'remote peer name') {
-      current = value ? { name: value, ldpId: null, ipAddress: null } : null;
-      if (current) peers.push(current);
-      continue;
+    for (const { label, value } of pairsOf(line)) {
+      if (label === 'remote peer name' || label === 'peer name') {
+        const name = unquote(value);
+        current = name ? { name, ipAddress: null, localLdpId: null } : null;
+        if (current) peers.push(current);
+        continue;
+      }
+      if (!current) continue;
+      if (label === 'remote peer ip' || label === 'peer ip address' || label === 'peer ip') {
+        current.ipAddress ??= value;
+      } else if (label === 'ldp id' || label === 'local ldp id') {
+        current.localLdpId ??= value;
+      }
     }
-    if (!current || !value) continue;
-    if (label === 'peer ldp id' || label === 'ldp id') current.ldpId ??= value;
-    if (label === 'peer ip address' || label === 'ip address') current.ipAddress ??= value;
   }
 
   return peers;
 }
 
-/** `display mpls l2vc`: um bloco por AC, com VC ID, destino, estado e labels. */
+/**
+ * `display mpls l2vc`: um bloco por AC, com VC ID, destino, estado e labels.
+ *
+ * Formato real do S6730S usa DUAS chaves por linha e o estado no cabecalho:
+ *
+ *   *client interface : Vlanif100 is down
+ *    AC status        : down
+ *    session state    : up
+ *    VC state         : down
+ *    local VC label   : 1024     remote VC label : 1024
+ *
+ * O parser aceita tambem o formato de uma chave por linha.
+ */
 export function parseHuaweiL2vc(output: string): ParsedL2vc[] {
   const rows: ParsedL2vc[] = [];
   let current: ParsedL2vc | null = null;
@@ -435,12 +497,16 @@ export function parseHuaweiL2vc(output: string): ParsedL2vc[] {
   for (const line of output.split(/\r?\n/)) {
     const header = line.match(L2VC_HEADER);
     if (header?.[1]) {
+      const headerState = header[2]?.toLowerCase();
       current = {
         acInterfaceName: header[1],
         vcId: null,
         destination: null,
         state: 'UNKNOWN',
+        acState: headerState === 'up' ? 'UP' : headerState === 'down' ? 'DOWN' : 'UNKNOWN',
+        sessionState: 'UNKNOWN',
         vcType: null,
+        mtu: null,
         localLabel: null,
         remoteLabel: null,
         tunnelPolicy: null,
@@ -450,33 +516,48 @@ export function parseHuaweiL2vc(output: string): ParsedL2vc[] {
     }
     if (!current) continue;
 
-    const pair = line.match(KEY_VALUE);
-    if (!pair?.[1]) continue;
-    const value = cleanValue(pair[2]);
-    switch (labelOf(pair[1])) {
-      case 'vc id':
-        current.vcId ??= integer(value);
-        break;
-      case 'vc state':
-        current.state = cliState(value) === 'UP' ? 'UP' : cliState(value) === 'UNKNOWN' ? 'UNKNOWN' : 'DOWN';
-        break;
-      case 'vc type':
-        current.vcType ??= cliVcType(value);
-        break;
-      case 'destination':
-        current.destination ??= value;
-        break;
-      case 'local vc label':
-        current.localLabel ??= integer(value);
-        break;
-      case 'remote vc label':
-        current.remoteLabel ??= integer(value);
-        break;
-      case 'tunnel policy':
-        current.tunnelPolicy ??= value;
-        break;
-      default:
-        break;
+    for (const { label, value } of pairsOf(line)) {
+      switch (label) {
+        case 'vc id':
+          current.vcId ??= integer(value);
+          break;
+        case 'vc state': {
+          const state = cliState(value);
+          if (state !== 'UNKNOWN') current.state = state === 'UP' ? 'UP' : 'DOWN';
+          break;
+        }
+        case 'ac status': {
+          const state = cliState(value);
+          if (state !== 'UNKNOWN') current.acState = state === 'UP' ? 'UP' : 'DOWN';
+          break;
+        }
+        case 'session state': {
+          const state = cliState(value);
+          if (state !== 'UNKNOWN') current.sessionState = state === 'UP' ? 'UP' : 'DOWN';
+          break;
+        }
+        case 'vc type':
+          current.vcType ??= cliVcType(value);
+          break;
+        case 'destination':
+          current.destination ??= value;
+          break;
+        case 'local vc label':
+          current.localLabel ??= integer(value);
+          break;
+        case 'remote vc label':
+          current.remoteLabel ??= integer(value);
+          break;
+        case 'local vc mtu':
+          current.mtu ??= integer(value);
+          break;
+        case 'tunnel policy name':
+        case 'tunnel policy':
+          current.tunnelPolicy ??= value;
+          break;
+        default:
+          break;
+      }
     }
   }
 

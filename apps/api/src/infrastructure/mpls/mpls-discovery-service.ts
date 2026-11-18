@@ -1,6 +1,7 @@
 import type {
   MplsConflict,
   MplsDiscoveryState,
+  MplsL2vcCircuit,
   MplsLdpPeer,
   MplsPwState,
   MplsPwStatus,
@@ -43,6 +44,7 @@ export interface MplsDiscoveryResult {
   discoveryState: MplsDiscoveryState;
   conflicts: MplsConflict[];
   ldpPeers: MplsLdpPeer[];
+  l2vcCircuits: MplsL2vcCircuit[];
   sources: MplsSource[];
 }
 
@@ -132,6 +134,23 @@ function sshVsiFrom(parsed: ParsedVsi, l2vcs: ParsedL2vc[]): CollectedMplsVsi {
   return { ...base, status: aggregateMplsVsiStatus(base, pws.length > 0 ? true : null) };
 }
 
+function l2vcCircuitFrom(parsed: ParsedL2vc): MplsL2vcCircuit {
+  return {
+    name: parsed.acInterfaceName,
+    vcId: parsed.vcId,
+    destination: parsed.destination,
+    state: parsed.state,
+    acState: parsed.acState,
+    sessionState: parsed.sessionState,
+    vcType: parsed.vcType,
+    mtu: parsed.mtu,
+    localLabel: parsed.localLabel,
+    remoteLabel: parsed.remoteLabel,
+    tunnelPolicy: parsed.tunnelPolicy,
+    source: 'SSH',
+  };
+}
+
 function knownStatus(status: string): boolean {
   return status !== 'UNKNOWN';
 }
@@ -144,6 +163,7 @@ function collectConflict(
   sshValue: string | number | null,
 ): void {
   if (snmpValue === null || sshValue === null) return;
+  if (String(snmpValue) === 'UNKNOWN' || String(sshValue) === 'UNKNOWN') return;
   if (String(snmpValue) === String(sshValue)) return;
   conflicts.push({
     vsiName,
@@ -155,27 +175,41 @@ function collectConflict(
 
 /**
  * SSH vence o conflito (e a leitura viva da CLI, a mesma que o operador usa) e
- * as duas evidencias ficam registradas em `conflicts`.
+ * as duas evidencias ficam registradas em `conflicts`. A preferencia so vale
+ * quando a leitura CLI e mais nova que a SNMP e trouxe valor DEFINITIVO: leitura
+ * incompleta nunca substitui evidencia SNMP valida.
  */
-function mergeVsi(snmp: CollectedMplsVsi | undefined, ssh: CollectedMplsVsi, conflicts: MplsConflict[]): CollectedMplsVsi {
+function mergeVsi(
+  snmp: CollectedMplsVsi | undefined,
+  ssh: CollectedMplsVsi,
+  conflicts: MplsConflict[],
+  preferSsh: boolean,
+): CollectedMplsVsi {
   if (!snmp) return ssh;
 
-  collectConflict(conflicts, ssh.name, 'status', snmp.status, ssh.status);
-  collectConflict(conflicts, ssh.name, 'signalingType', snmp.signalingType, ssh.signalingType);
-  collectConflict(conflicts, ssh.name, 'vsiId', snmp.vsiId, ssh.vsiId);
-  collectConflict(conflicts, ssh.name, 'mtu', snmp.mtu, ssh.mtu);
-  collectConflict(conflicts, ssh.name, 'vcType', snmp.vcType, ssh.vcType);
+  if (preferSsh) {
+    collectConflict(conflicts, ssh.name, 'status', snmp.status, ssh.status);
+    collectConflict(conflicts, ssh.name, 'signalingType', snmp.signalingType, ssh.signalingType);
+    collectConflict(conflicts, ssh.name, 'vsiId', snmp.vsiId, ssh.vsiId);
+    collectConflict(conflicts, ssh.name, 'mtu', snmp.mtu, ssh.mtu);
+    collectConflict(conflicts, ssh.name, 'vcType', snmp.vcType, ssh.vcType);
+  }
 
   const merged: CollectedMplsVsi = {
     name: ssh.name,
-    signalingType: ssh.signalingType !== 'UNKNOWN' ? ssh.signalingType : snmp.signalingType,
+    signalingType:
+      preferSsh && ssh.signalingType !== 'UNKNOWN' ? ssh.signalingType : snmp.signalingType,
     rd: ssh.rd ?? snmp.rd,
     vsiId: ssh.vsiId ?? snmp.vsiId,
-    operationalStatus:
-      ssh.operationalStatus !== 'UNKNOWN' ? ssh.operationalStatus : snmp.operationalStatus,
-    adminStatus: ssh.adminStatus !== 'UNKNOWN' ? ssh.adminStatus : snmp.adminStatus,
+    operationalStatus: preferSsh
+      ? ssh.operationalStatus !== 'UNKNOWN'
+        ? ssh.operationalStatus
+        : snmp.operationalStatus
+      : snmp.operationalStatus,
+    adminStatus:
+      ssh.adminStatus !== 'UNKNOWN' ? ssh.adminStatus : snmp.adminStatus,
     mtu: ssh.mtu ?? snmp.mtu,
-    vcType: ssh.vcType !== 'UNKNOWN' ? ssh.vcType : snmp.vcType,
+    vcType: preferSsh && ssh.vcType !== 'UNKNOWN' ? ssh.vcType : snmp.vcType,
     tunnelPolicy: ssh.tunnelPolicy ?? snmp.tunnelPolicy,
     description: ssh.description ?? snmp.description,
     peerDiscovery: ssh.peerDiscovery ?? snmp.peerDiscovery ?? null,
@@ -188,10 +222,11 @@ function mergeVsi(snmp: CollectedMplsVsi | undefined, ssh: CollectedMplsVsi, con
     status: 'UNKNOWN',
     source: ssh.source ?? 'SNMP',
   };
-  if (ssh.pws.length) {
+  if (preferSsh && ssh.pws.length) {
     merged.status = aggregateMplsVsiStatus(merged, true);
   } else {
-    merged.status = ssh.status !== 'UNKNOWN' ? ssh.status : snmp.status;
+    merged.status =
+      preferSsh && ssh.status !== 'UNKNOWN' ? ssh.status : (snmp.status ?? ssh.status);
   }
   return merged;
 }
@@ -223,12 +258,17 @@ function stateForVsis(vsis: CollectedMplsVsi[], conflicts: MplsConflict[]): Mpls
   return 'INCOMPLETE';
 }
 
-function stateWithoutVsis(input: MplsDiscoveryInput): MplsDiscoveryState {
+function stateWithoutVsis(
+  input: MplsDiscoveryInput,
+  l2vcCircuits: MplsL2vcCircuit[],
+): MplsDiscoveryState {
   const snmpConclusive = input.snmp !== null && input.snmp.supported === false;
   const sshConclusive = input.ssh?.available === true;
   // `false` = o VRP recusou o comando; `null` = nao deu para saber.
   const sshUnsupported = input.ssh?.supported === false;
 
+  // Sem VSI, mas com circuito L2VC lido: o servico existe (VPWS), nao e ausencia.
+  if (l2vcCircuits.length) return 'FOUND_L2VC';
   // Sem VSI e sem NENHUMA leitura concluida: inconclusivo, nunca "inexistente".
   if (sshUnsupported && (snmpConclusive || input.snmp === null)) return 'UNSUPPORTED';
   if (sshConclusive) return 'NOT_FOUND';
@@ -241,6 +281,11 @@ export function mergeMplsDiscovery(input: MplsDiscoveryInput): MplsDiscoveryResu
   if (input.snmp) sources.push('SNMP');
   if (input.ssh?.available) sources.push('SSH');
 
+  // A CLI so prevalece quando e a leitura mais nova e trouxe estado observado.
+  const preferSsh =
+    input.ssh !== null &&
+    (!input.snmp || input.ssh.collectedAt.getTime() >= input.snmp.collectedAt.getTime());
+
   const conflicts: MplsConflict[] = [];
   const sshVsis = input.ssh
     ? input.ssh.vsis.map((parsed) => sshVsiFrom(parsed, input.ssh!.l2vcs))
@@ -251,18 +296,20 @@ export function mergeMplsDiscovery(input: MplsDiscoveryInput): MplsDiscoveryResu
   const merged: CollectedMplsVsi[] = [];
   for (const snmpVsi of snmpVsis) {
     const sshVsi = sshByName.get(snmpVsi.name);
-    merged.push(sshVsi ? mergeVsi(snmpVsi, sshVsi, conflicts) : snmpVsi);
+    merged.push(sshVsi ? mergeVsi(snmpVsi, sshVsi, conflicts, preferSsh) : snmpVsi);
     if (sshVsi) sshByName.delete(snmpVsi.name);
   }
   for (const sshVsi of sshByName.values()) merged.push(sshVsi);
 
+  const l2vcCircuits = input.ssh?.l2vcs.map(l2vcCircuitFrom) ?? [];
   const vsis = merged.sort((left, right) => left.name.localeCompare(right.name, 'pt-BR'));
   const discoveryState = vsis.length
     ? stateForVsis(vsis, conflicts)
-    : stateWithoutVsis(input);
+    : stateWithoutVsis(input, l2vcCircuits);
 
   const supported =
     vsis.length > 0 ||
+    l2vcCircuits.length > 0 ||
     (discoveryState !== 'INCOMPLETE' && discoveryState !== 'UNSUPPORTED');
   const sshContributed = input.ssh?.available === true;
   const snmpErrors = input.snmp?.errors ?? [];
@@ -274,6 +321,7 @@ export function mergeMplsDiscovery(input: MplsDiscoveryInput): MplsDiscoveryResu
     discoveryState,
     sources,
     ldpPeers: input.ssh ? input.ssh.ldpPeers : undefined,
+    l2vcCircuits: input.ssh ? l2vcCircuits : undefined,
     conflicts: input.ssh ? conflicts : undefined,
     collectedAt: input.ssh?.available ? input.ssh.collectedAt : (input.snmp?.collectedAt ?? new Date()),
     errors,
@@ -295,6 +343,7 @@ export function mergeMplsDiscovery(input: MplsDiscoveryInput): MplsDiscoveryResu
     discoveryState,
     conflicts,
     ldpPeers: input.ssh?.ldpPeers ?? [],
+    l2vcCircuits,
     sources,
   };
 }
@@ -308,6 +357,8 @@ export function describeMplsDiscoveryState(state: MplsDiscoveryState): string {
       return 'VSI encontrada DOWN';
     case 'FOUND_MIXED':
       return 'VSIs UP e DOWN';
+    case 'FOUND_L2VC':
+      return 'Circuito L2VC (VPWS) encontrado';
     case 'NOT_FOUND':
       return 'Nenhuma VSI encontrada';
     case 'INCOMPLETE':

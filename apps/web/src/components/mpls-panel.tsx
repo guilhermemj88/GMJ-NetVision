@@ -135,6 +135,12 @@ export function mplsUnavailableNotice(overview: MplsHostOverview): {
         detail: 'As fontes consultadas responderam e não há VSI/VPLS neste equipamento.',
         alert: false,
       };
+    case 'FOUND_L2VC':
+      return {
+        title: 'Circuito L2VC (VPWS) encontrado',
+        detail: 'O equipamento não tem VSI, mas opera serviços ponto a ponto sinalizados por LDP.',
+        alert: false,
+      };
     case 'UNSUPPORTED':
       return {
         title: 'MPLS não disponível',
@@ -168,6 +174,8 @@ export function mplsDiscoveryStateLabel(state: MplsDiscoveryState): string {
       return 'VSI encontrada DOWN';
     case 'FOUND_MIXED':
       return 'VSIs UP e DOWN';
+    case 'FOUND_L2VC':
+      return 'Circuito L2VC (VPWS) encontrado';
     case 'NOT_FOUND':
       return 'Nenhuma VSI configurada';
     case 'INCOMPLETE':
@@ -205,6 +213,56 @@ export function MplsLdpSessions({ overview }: { overview: MplsHostOverview }) {
         ))}
       </div>
       <small className="mpls-ldp-source">Fonte: {overview.ldpPeers[0]?.source ?? 'SSH'}</small>
+    </section>
+  );
+}
+
+/** Serviços ponto a ponto (L2VC/VPWS), distintos de VSI e de transporte LDP. */
+export function MplsL2vcCircuits({ overview }: { overview: MplsHostOverview }) {
+  if (!overview.l2vcCircuits.length) return null;
+  const up = overview.l2vcCircuits.filter((circuit) => circuit.state === 'UP').length;
+  return (
+    <section className="drawer-section mpls-l2vc">
+      <h4>Serviços ponto a ponto · L2VC (VPWS)</h4>
+      <div className="mpls-summary">
+        <div>
+          <strong>{overview.l2vcCircuits.length}</strong>
+          <span>Circuitos</span>
+        </div>
+        <div className="up">
+          <strong>{up}</strong>
+          <span>UP</span>
+        </div>
+        <div className="down">
+          <strong>{overview.l2vcCircuits.length - up}</strong>
+          <span>DOWN</span>
+        </div>
+      </div>
+      <div className="mpls-ldp-list">
+        {overview.l2vcCircuits.map((circuit) => (
+          <div
+            key={`${circuit.name}|${circuit.vcId ?? 'N/D'}`}
+            className={`mpls-ldp-peer status-${circuit.state.toLowerCase()}`}
+          >
+            <span className="port-dot" />
+            <div>
+              <strong>{circuit.name}</strong>
+              <small>
+                VC {circuit.vcId ?? 'N/D'} · {circuit.destination ?? 'destino N/D'}
+                {circuit.localLabel === null
+                  ? ''
+                  : ` · labels ${circuit.localLabel}/${circuit.remoteLabel ?? 'N/D'}`}
+                {circuit.mtu === null ? '' : ` · MTU ${circuit.mtu}`}
+                {circuit.acState === 'UNKNOWN' ? '' : ` · AC ${circuit.acState}`}
+              </small>
+            </div>
+            <Badge tone={circuit.state}>{circuit.state}</Badge>
+          </div>
+        ))}
+      </div>
+      <small className="mpls-ldp-source">
+        Fonte: {overview.l2vcCircuits[0]?.source ?? 'SSH'}
+      </small>
     </section>
   );
 }
@@ -335,6 +393,7 @@ export function MplsContent({
 
       <MplsConflicts overview={overview} />
       <MplsLdpSessions overview={overview} />
+      <MplsL2vcCircuits overview={overview} />
 
       <section className="drawer-section mpls-controls">
         <div className="mpls-filters" aria-label="Filtros MPLS">
@@ -360,6 +419,12 @@ export function MplsContent({
       </section>
 
       <section className="mpls-vsi-list">
+        {vsis.length === 0 && overview.l2vcCircuits.length > 0 && (
+          <div className="mpls-capability-note">
+            Nenhuma VSI/VPLS configurada: os serviços MPLS deste equipamento estão em L2VC
+            (VPWS), listados acima.
+          </div>
+        )}
         {vsis.map((vsi) => {
           const isCollapsed = collapsed.has(vsi.name) && vsi.pws.length > 3;
           const visiblePws = isCollapsed ? vsi.pws.slice(0, 3) : vsi.pws;

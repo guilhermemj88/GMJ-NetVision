@@ -195,6 +195,7 @@ enum MplsDiscoveryState {
   FOUND_UP
   FOUND_DOWN
   FOUND_MIXED
+  FOUND_L2VC
   NOT_FOUND
   INCOMPLETE
   UNSUPPORTED
@@ -860,6 +861,8 @@ model MplsDeviceState {
   sources       String[]   @default([])
   /// Sessoes LDP observadas (transporte MPLS), com a leitura integral.
   ldpPeers      Json?
+  /// Circuitos L2VC/VPWS observados na CLI (servico ponto a ponto).
+  l2vcCircuits  Json?
   /// Divergencias SNMP x SSH preservadas como evidencia.
   conflicts     Json?
   lastPollingAt DateTime?

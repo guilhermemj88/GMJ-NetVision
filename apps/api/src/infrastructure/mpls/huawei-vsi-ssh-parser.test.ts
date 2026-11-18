@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   parseHuaweiL2vc,
+  parseHuaweiL2vcSummary,
   parseHuaweiLdpRemotePeers,
   parseHuaweiLdpSessions,
   parseHuaweiVsiNames,
@@ -205,13 +206,33 @@ describe('parseHuaweiLdpRemotePeers', () => {
     const peers = parseHuaweiLdpRemotePeers(`
 Remote Peer Information
 -------------------------
- Peer Name           : rr-sba
- Peer LDP ID         : 10.20.30.40:0
- Peer IP Address     : 10.20.30.40
+ Remote Peer Name     : rr-sba
+ Remote Peer IP       : 10.20.30.40
+ LDP ID               : 10.20.30.41:0
 `);
 
     expect(peers).toEqual([
-      { name: 'rr-sba', ldpId: '10.20.30.40:0', ipAddress: '10.20.30.40' },
+      { name: 'rr-sba', ipAddress: '10.20.30.40', localLdpId: '10.20.30.41:0' },
+    ]);
+  });
+
+  // Fixture sanitizada do S6730S real: nome entre aspas, IP do vizinho e LDP ID
+  // local na mesma linha (duas chaves por linha).
+  it('le o formato real com aspas e LDP ID local', () => {
+    const peers = parseHuaweiLdpRemotePeers(`
+                         LDP Remote Entity Information
+ ------------------------------------------------------------------------------
+ Remote Peer Name  : "sw-lab-alfenas"
+ Remote Peer IP    : 10.0.0.1       LDP ID        : 10.0.0.9:0
+ Transport Address : 10.0.0.9       Entity Status : Active
+ ------------------------------------------------------------------------------
+ Remote Peer Name  : "sw-lab-paraguacu"
+ Remote Peer IP    : 10.0.0.2       LDP ID        : 10.0.0.9:0
+ Transport Address : 10.0.0.9       Entity Status : Active`);
+
+    expect(peers).toEqual([
+      { name: 'sw-lab-alfenas', ipAddress: '10.0.0.1', localLdpId: '10.0.0.9:0' },
+      { name: 'sw-lab-paraguacu', ipAddress: '10.0.0.2', localLdpId: '10.0.0.9:0' },
     ]);
   });
 
@@ -238,11 +259,74 @@ describe('parseHuaweiL2vc', () => {
       vcId: 100,
       destination: '10.20.30.40',
       state: 'UP',
+      acState: 'UNKNOWN',
+      sessionState: 'UNKNOWN',
       vcType: 'VLAN',
+      mtu: null,
       localLabel: 1024,
       remoteLabel: 1025,
       tunnelPolicy: 'LDP',
     });
+  });
+
+  // Fixture sanitizada do S6730S real (ELOI MENDES - SW MPLS): duas chaves por
+  // linha, estado no cabecalho do AC e total impresso.
+  const S6730S_L2VC = ` Total LDP VC : 2     1 up       1 down
+
+ *client interface       : Vlanif900 is up
+  Administrator PW       : no
+  session state          : up
+  AC status              : up
+  VC state               : up
+  VC ID                  : 900
+  VC type                : VLAN
+  destination            : 10.0.0.5
+  local VC label         : 1024         remote VC label      : 1024
+  local VC MTU           : 1500         remote VC MTU        : 1500
+  tunnel policy name     : --
+  PW template name       : sw-lab-template
+
+ *client interface       : Vlanif901 is down
+  session state          : up
+  AC status              : down
+  VC state               : down
+  VC ID                  : 901
+  VC type                : VLAN
+  destination            : 10.0.0.6
+  local VC label         : 1025         remote VC label      : 1025
+`;
+
+  it('le o formato real do S6730S com duas chaves por linha', () => {
+    const [up, down] = parseHuaweiL2vc(S6730S_L2VC);
+
+    expect(up).toEqual({
+      acInterfaceName: 'Vlanif900',
+      vcId: 900,
+      destination: '10.0.0.5',
+      state: 'UP',
+      acState: 'UP',
+      sessionState: 'UP',
+      vcType: 'VLAN',
+      mtu: 1500,
+      localLabel: 1024,
+      remoteLabel: 1024,
+      tunnelPolicy: null,
+    });
+    expect(down).toMatchObject({
+      acInterfaceName: 'Vlanif901',
+      vcId: 901,
+      state: 'DOWN',
+      acState: 'DOWN',
+      sessionState: 'UP',
+      destination: '10.0.0.6',
+      localLabel: 1025,
+      remoteLabel: 1025,
+    });
+  });
+
+  it('le a linha de totais do l2vc', () => {
+    expect(parseHuaweiL2vcSummary(S6730S_L2VC)).toEqual({ total: 2, up: 1, down: 1 });
+    expect(parseHuaweiL2vcSummary('sem total')).toEqual({ total: null, up: null, down: null });
   });
 
   it('devolve lista vazia para saida nao reconhecida', () => {

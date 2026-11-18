@@ -10,12 +10,33 @@ export type MplsDiscoveryState =
   | 'FOUND_UP'
   | 'FOUND_DOWN'
   | 'FOUND_MIXED'
+  | 'FOUND_L2VC'
   | 'NOT_FOUND'
   | 'INCOMPLETE'
   | 'UNSUPPORTED'
   | 'CONFLICT';
 
 export type MplsLdpSessionState = 'UP' | 'DOWN' | 'UNKNOWN';
+
+/**
+ * Circuito L2VC (VPWS / Martini) — servico MPLS ponto a ponto observado na CLI,
+ * distinto de uma VSI (VPLS multiponto). O S6730S pode operar apenas com l2vc.
+ */
+export interface MplsL2vcCircuit {
+  /** Nome do AC como o equipamento o imprime (ex.: `Vlanif100`). */
+  name: string;
+  vcId: number | null;
+  destination: string | null;
+  state: MplsLdpSessionState;
+  acState: MplsLdpSessionState;
+  sessionState: MplsLdpSessionState;
+  vcType: string | null;
+  mtu: number | null;
+  localLabel: number | null;
+  remoteLabel: number | null;
+  tunnelPolicy: string | null;
+  source: MplsSource;
+}
 
 /** Sessão LDP: transporte MPLS, distinta do serviço VSI. */
 export interface MplsLdpPeer {
@@ -167,6 +188,8 @@ export interface MplsHostOverview {
   /** Fontes que responderam nesta coleta (SNMP, SSH ou ambas). */
   sources: MplsSource[];
   ldpPeers: MplsLdpPeer[];
+  /** Circuitos L2VC/VPWS observados na CLI (vazio quando nao ha nenhum). */
+  l2vcCircuits: MplsL2vcCircuit[];
   conflicts: MplsConflict[];
   lastPollingAt: string | null;
   lastSuccessAt: string | null;
