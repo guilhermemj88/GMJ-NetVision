@@ -22,15 +22,32 @@ const TABS: Array<{ id: Tab; label: string }> = [
 export function EvidenceDrawer({
   evidence,
   onClose,
+  hostLabel,
+  timeLabel,
+  note,
+  highlightLines,
+  initialTab = 'resumo',
+  wide = false,
 }: {
   evidence: VsiDiagnosticEvidence | null;
   onClose: () => void;
+  /** Nome do equipamento a exibir no lugar do hostId. */
+  hostLabel?: string | undefined;
+  /** Substitui os horarios quando a precisao nao e de instante (ex.: captura manual sem hora). */
+  timeLabel?: string | undefined;
+  note?: string | null;
+  /** Linhas (base 1) da saida bruta consumidas pelo diagnostico. */
+  highlightLines?: number[] | undefined;
+  initialTab?: Tab;
+  /** Painel mais largo, para saida de equipamento em colunas. */
+  wide?: boolean;
 }) {
-  const [tab, setTab] = useState<Tab>('resumo');
+  const [tab, setTab] = useState<Tab>(initialTab);
+  const host = hostLabel ?? evidence?.hostId ?? '';
 
   useEffect(() => {
-    setTab('resumo');
-  }, [evidence?.id]);
+    setTab(initialTab);
+  }, [evidence?.id, initialTab]);
 
   useEffect(() => {
     if (!evidence) return;
@@ -47,7 +64,7 @@ export function EvidenceDrawer({
     <>
       <button className={styles.scrim} aria-label="Fechar evidência" onClick={onClose} />
       <aside
-        className={styles.drawer}
+        className={wide ? `${styles.drawer} ${styles.drawerWide}` : styles.drawer}
         role="dialog"
         aria-modal="true"
         aria-label={`Evidência ${evidence.id}`}
@@ -55,7 +72,7 @@ export function EvidenceDrawer({
         <header className={styles.drawerHeader}>
           <div>
             <strong>{evidence.source}</strong>
-            <span className={styles.drawerHost}>{evidence.hostId}</span>
+            <span className={styles.drawerHost}>{host}</span>
           </div>
           <button className={styles.drawerClose} onClick={onClose} aria-label="Fechar">
             <X size={16} />
@@ -78,20 +95,29 @@ export function EvidenceDrawer({
             <dl className={styles.evidenceMeta}>
               <div>
                 <dt>Host</dt>
-                <dd>{evidence.hostId}</dd>
+                <dd>{host}</dd>
               </div>
               <div>
                 <dt>Fonte</dt>
                 <dd>{evidence.source}</dd>
               </div>
-              <div>
-                <dt>Observado em</dt>
-                <dd>{formatUtc(evidence.observedAt)}</dd>
-              </div>
-              <div>
-                <dt>Coletado em</dt>
-                <dd>{formatUtc(evidence.collectedAt)}</dd>
-              </div>
+              {timeLabel ? (
+                <div>
+                  <dt>Coletado em</dt>
+                  <dd>{timeLabel}</dd>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <dt>Observado em</dt>
+                    <dd>{formatUtc(evidence.observedAt)}</dd>
+                  </div>
+                  <div>
+                    <dt>Coletado em</dt>
+                    <dd>{formatUtc(evidence.collectedAt)}</dd>
+                  </div>
+                </>
+              )}
               <div>
                 <dt>Duração</dt>
                 <dd>{evidence.durationMs === undefined ? '—' : `${evidence.durationMs} ms`}</dd>
@@ -114,6 +140,12 @@ export function EvidenceDrawer({
                   </dd>
                 </div>
               ) : null}
+              {note ? (
+                <div>
+                  <dt>Observação</dt>
+                  <dd>{note}</dd>
+                </div>
+              ) : null}
               <div>
                 <dt>Resumo</dt>
                 <dd>{evidenceSummary(evidence) || '—'}</dd>
@@ -123,7 +155,25 @@ export function EvidenceDrawer({
           {tab === 'comando' && (
             <pre className={styles.pre}>{evidence.command ?? 'sem comando associado'}</pre>
           )}
-          {tab === 'saida' && <pre className={styles.pre}>{evidence.output}</pre>}
+          {tab === 'saida' &&
+            (highlightLines && highlightLines.length > 0 ? (
+              <>
+                <p className={styles.preLegend}>Faixa destacada: linhas usadas pelo diagnóstico.</p>
+                <pre className={`${styles.pre} ${styles.preComfortable}`}>
+                  {evidence.output.split('\n').map((line, index) => (
+                    <span
+                      key={index}
+                      className={highlightLines.includes(index + 1) ? styles.preLineUsed : styles.preLine}
+                      data-used={highlightLines.includes(index + 1) ? 'true' : undefined}
+                    >
+                      {line || ' '}
+                    </span>
+                  ))}
+                </pre>
+              </>
+            ) : (
+              <pre className={styles.pre}>{evidence.output}</pre>
+            ))}
           {tab === 'json' && <pre className={styles.pre}>{evidenceJson(evidence)}</pre>}
         </div>
       </aside>

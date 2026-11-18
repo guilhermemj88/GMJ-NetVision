@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { getMe, login as loginRequest, logout as logoutRequest } from '@/lib/api';
 import { isMapVisualLabEnabled } from '@/lib/map-visual-lab';
+import { isVsiDiagnosticPreviewEnabled } from '@/lib/vsi-diagnostic-preview';
 import type { AuthUser, LoginInput } from '@gmj/shared';
 
 interface AuthState {
@@ -45,7 +46,9 @@ export function isPublicPath(pathname: string): boolean {
     pathname === '/login' ||
     pathname.startsWith('/view/') ||
     pathname.startsWith('/snapshot/') ||
-    (isMapVisualLabEnabled() && pathname.startsWith('/map-visual-preview'))
+    (isMapVisualLabEnabled() && pathname.startsWith('/map-visual-preview')) ||
+    // Preview do Diagnostico VSI/VPLS: so fixtures, so em dev/preview (em producao a pagina e 404).
+    (isVsiDiagnosticPreviewEnabled() && pathname.startsWith('/vsi-diagnostic-preview'))
   );
 }
 

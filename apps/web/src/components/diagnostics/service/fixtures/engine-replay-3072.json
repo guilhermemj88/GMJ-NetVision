@@ -1,0 +1,1002 @@
+{
+  "schemaVersion": 1,
+  "engine": "VSI_MCP",
+  "engineVersion": "replay",
+  "runId": "33333333-3333-4333-8333-333333333333",
+  "origin": "REPLAY",
+  "connectivity": {
+    "evaluated": false,
+    "underlayClassification": null,
+    "probes": []
+  },
+  "vsiName": "3072-QinQ-CDB-MANTIQUEIRA",
+  "operator": {
+    "username": "admin",
+    "role": "ADMIN"
+  },
+  "startedAt": "2026-11-16T14:00:00.000Z",
+  "completedAt": "2026-11-16T14:00:00.000Z",
+  "demonstration": {
+    "label": "Replay em DEV",
+    "provenance": "Resposta do motor VSI/MCP e do agregador, gerada em teste a partir das capturas reais de 16/11/2026 (E-Trunk, LACP, configuração dos trunks) e do inventário SNMP. Nenhum SSH foi aberto. Comandos sem captura gravada (display vsi, configuração das subinterfaces) aparecem como saída incompleta. O horário das evidências é o do replay, não o da captura original."
+  },
+  "verdict": {
+    "status": "INCONCLUSIVE",
+    "clauses": [
+      {
+        "code": "VERDICT_INCONCLUSIVE",
+        "params": {}
+      },
+      {
+        "code": "REDUNDANCY_ROLE_NOT_ASSIGNED",
+        "params": {
+          "hosts": "BHE-LIKEE-6730-MPLS-01, BHE-VTA-6730-MPLS-01"
+        }
+      },
+      {
+        "code": "SERVICE_NOT_CONFIRMED",
+        "params": {
+          "read": 0,
+          "total": 3
+        }
+      },
+      {
+        "code": "MAC_NOT_READ",
+        "params": {
+          "total": 3
+        }
+      }
+    ]
+  },
+  "axes": {
+    "redundancy": {
+      "state": "NOT_CONFIRMED",
+      "clause": {
+        "code": "REDUNDANCY_ROLE_NOT_ASSIGNED",
+        "params": {
+          "hosts": "BHE-LIKEE-6730-MPLS-01, BHE-VTA-6730-MPLS-01"
+        }
+      }
+    },
+    "service": {
+      "state": "NOT_CONFIRMED",
+      "clause": {
+        "code": "SERVICE_NOT_CONFIRMED",
+        "params": {
+          "read": 0,
+          "total": 3
+        }
+      }
+    },
+    "mac": {
+      "state": "NOT_READ",
+      "clause": {
+        "code": "MAC_NOT_READ",
+        "params": {
+          "total": 3
+        }
+      }
+    },
+    "evidence": {
+      "state": "NOT_CONFIRMED",
+      "clause": {
+        "code": "EVIDENCE_PARTIAL",
+        "params": {
+          "read": 0,
+          "total": 3
+        }
+      }
+    }
+  },
+  "endpoints": [
+    {
+      "hostId": "h-likee",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "platform": "S6730_V200",
+      "loopback": "10.100.101.3",
+      "discoveredBy": "REQUESTED",
+      "collection": "PARTIAL",
+      "accessRole": "ROLE_UNKNOWN",
+      "vsi": {
+        "value": null,
+        "basis": "COLLECTION_FAILED",
+        "readingId": "inv-h-likee",
+        "evidenceId": null,
+        "observedAt": null,
+        "freshness": null,
+        "inventoryHint": {
+          "value": {
+            "state": "UP",
+            "signaling": null,
+            "encapsulation": null,
+            "mtu": 2000,
+            "rd": "268568:53072"
+          },
+          "observedAt": "2026-11-16T13:50:19.000Z",
+          "stale": false,
+          "evidenceId": "inv:h-likee"
+        }
+      },
+      "acs": [
+        {
+          "interfaceName": "Eth-Trunk17.3072",
+          "state": {
+            "value": null,
+            "basis": "COLLECTION_FAILED",
+            "readingId": "inv-h-likee",
+            "evidenceId": null,
+            "observedAt": null,
+            "freshness": null,
+            "inventoryHint": {
+              "value": "UP",
+              "observedAt": "2026-11-16T13:50:19.000Z",
+              "stale": false,
+              "evidenceId": "inv:h-likee"
+            }
+          },
+          "blocked": null,
+          "role": null,
+          "carrier": null,
+          "vlan": null
+        }
+      ],
+      "pws": [
+        {
+          "peerAddress": "10.100.101.2",
+          "peerHostId": "h-mqt",
+          "state": {
+            "value": null,
+            "basis": "COLLECTION_FAILED",
+            "readingId": "inv-h-likee",
+            "evidenceId": null,
+            "observedAt": null,
+            "freshness": null,
+            "inventoryHint": {
+              "value": "UP",
+              "observedAt": "2026-11-16T13:50:19.000Z",
+              "stale": false,
+              "evidenceId": "inv:h-likee"
+            }
+          },
+          "localLabel": 36706,
+          "remoteLabel": 35842,
+          "tunnel": null,
+          "stale": false,
+          "detail": null
+        }
+      ],
+      "ethTrunks": [
+        {
+          "name": "Eth-Trunk17",
+          "operStatus": {
+            "value": "UP",
+            "basis": "LIVE_SSH",
+            "readingId": "ssh-h-likee",
+            "evidenceId": "h-likee:live:e625cb70257d:3",
+            "observedAt": "2026-11-16T14:00:00.000Z",
+            "freshness": "CURRENT"
+          },
+          "workingMode": "LACP",
+          "selected": 1,
+          "members": [
+            {
+              "port": "XGigabitEthernet0/0/3",
+              "status": "SELECTED"
+            }
+          ],
+          "eTrunkId": 4,
+          "remoteEthTrunkId": 26,
+          "role": "ROLE_UNKNOWN",
+          "memberCausation": null,
+          "detail": null
+        }
+      ],
+      "eTrunks": [
+        {
+          "id": 4,
+          "state": {
+            "value": "MASTER",
+            "basis": "LIVE_SSH",
+            "readingId": "ssh-h-likee",
+            "evidenceId": "h-likee:live:cf9cc0cd8104:4",
+            "observedAt": "2026-11-16T14:00:00.000Z",
+            "freshness": "CURRENT"
+          },
+          "causation": null,
+          "priority": null,
+          "peerPriority": null,
+          "peerIp": "10.100.101.0",
+          "members": [],
+          "detail": "tabela de membros não lida (só o resumo)"
+        }
+      ],
+      "mac": {
+        "value": null,
+        "basis": "NOT_READ",
+        "readingId": null,
+        "evidenceId": null,
+        "observedAt": null,
+        "freshness": null
+      },
+      "missingEvidence": [
+        "display vsi name 3072-QinQ-CDB-MANTIQUEIRA verbose (sem ela o papel ativo/standby não é correlacionado)",
+        "não avaliado pelo motor: estado da VSI, estado do AC, estado dos PWs, binding do AC, encapsulamento"
+      ],
+      "notAssessed": [
+        "aprendizado MAC: não solicitado nesta execução"
+      ],
+      "serviceState": "NOT_CONFIRMED"
+    },
+    {
+      "hostId": "h-vta",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "platform": "S6730_V200",
+      "loopback": null,
+      "discoveredBy": "REQUESTED",
+      "collection": "PARTIAL",
+      "accessRole": "ROLE_UNKNOWN",
+      "vsi": {
+        "value": null,
+        "basis": "COLLECTION_FAILED",
+        "readingId": "inv-h-vta",
+        "evidenceId": null,
+        "observedAt": null,
+        "freshness": null,
+        "inventoryHint": {
+          "value": {
+            "state": "DOWN",
+            "signaling": null,
+            "encapsulation": null,
+            "mtu": 2000,
+            "rd": "268568:53072"
+          },
+          "observedAt": "2026-11-16T13:51:10.000Z",
+          "stale": false,
+          "evidenceId": "inv:h-vta"
+        }
+      },
+      "acs": [
+        {
+          "interfaceName": "Eth-Trunk26.3072",
+          "state": {
+            "value": null,
+            "basis": "COLLECTION_FAILED",
+            "readingId": "inv-h-vta",
+            "evidenceId": null,
+            "observedAt": null,
+            "freshness": null,
+            "inventoryHint": {
+              "value": "DOWN",
+              "observedAt": "2026-11-16T13:51:10.000Z",
+              "stale": false,
+              "evidenceId": "inv:h-vta"
+            }
+          },
+          "blocked": null,
+          "role": null,
+          "carrier": null,
+          "vlan": null
+        }
+      ],
+      "pws": [
+        {
+          "peerAddress": "10.100.101.2",
+          "peerHostId": "h-mqt",
+          "state": {
+            "value": null,
+            "basis": "COLLECTION_FAILED",
+            "readingId": "inv-h-vta",
+            "evidenceId": null,
+            "observedAt": null,
+            "freshness": null,
+            "inventoryHint": {
+              "value": "UP",
+              "observedAt": "2026-10-27T01:24:40.000Z",
+              "stale": true,
+              "evidenceId": "inv:h-vta"
+            }
+          },
+          "localLabel": 41335,
+          "remoteLabel": 35840,
+          "tunnel": null,
+          "stale": true,
+          "detail": "registro mais antigo que a leitura da própria VSI no inventário"
+        }
+      ],
+      "ethTrunks": [
+        {
+          "name": "Eth-Trunk26",
+          "operStatus": {
+            "value": "DOWN",
+            "basis": "LIVE_SSH",
+            "readingId": "ssh-h-vta",
+            "evidenceId": "h-vta:live:ec336eff0053:3",
+            "observedAt": "2026-11-16T14:00:00.000Z",
+            "freshness": "CURRENT"
+          },
+          "workingMode": "LACP",
+          "selected": 0,
+          "members": [
+            {
+              "port": "XGigabitEthernet0/0/48",
+              "status": "UNSELECTED"
+            }
+          ],
+          "eTrunkId": null,
+          "remoteEthTrunkId": 17,
+          "role": "ROLE_UNKNOWN",
+          "memberCausation": "PEER_MEMBER_UP",
+          "detail": "configuração do trunk não coletada ou incompleta"
+        }
+      ],
+      "eTrunks": [
+        {
+          "id": 4,
+          "state": {
+            "value": "BACKUP",
+            "basis": "LIVE_SSH",
+            "readingId": "ssh-h-vta",
+            "evidenceId": "h-vta:live:5449b58f52d3:5",
+            "observedAt": "2026-11-16T14:00:00.000Z",
+            "freshness": "CURRENT"
+          },
+          "causation": "PRI",
+          "priority": 30,
+          "peerPriority": 20,
+          "peerIp": "10.100.101.3",
+          "members": [
+            {
+              "interfaceName": "Eth-Trunk13",
+              "state": "BACKUP",
+              "causation": "PEER_MEMBER_UP",
+              "remoteId": 21
+            },
+            {
+              "interfaceName": "Eth-Trunk26",
+              "state": "BACKUP",
+              "causation": "PEER_MEMBER_UP",
+              "remoteId": 17
+            }
+          ],
+          "detail": "BFD likee · revert-delay 120 s"
+        }
+      ],
+      "mac": {
+        "value": null,
+        "basis": "NOT_READ",
+        "readingId": null,
+        "evidenceId": null,
+        "observedAt": null,
+        "freshness": null
+      },
+      "missingEvidence": [
+        "display vsi name 3072-QinQ-CDB-MANTIQUEIRA verbose (sem ela o papel ativo/standby não é correlacionado)",
+        "não avaliado pelo motor: estado da VSI, estado do AC, estado dos PWs, binding do AC, encapsulamento"
+      ],
+      "notAssessed": [
+        "aprendizado MAC: não solicitado nesta execução"
+      ],
+      "serviceState": "NOT_CONFIRMED"
+    },
+    {
+      "hostId": "h-mqt",
+      "hostName": "BHE-MQT-6730-MPLS-01",
+      "platform": null,
+      "loopback": "10.100.101.2",
+      "discoveredBy": "PW_PEER",
+      "collection": "NOT_READ",
+      "accessRole": null,
+      "vsi": {
+        "value": null,
+        "basis": "NOT_READ",
+        "readingId": "inv-h-mqt",
+        "evidenceId": null,
+        "observedAt": null,
+        "freshness": null,
+        "inventoryHint": {
+          "value": {
+            "state": "UP",
+            "signaling": null,
+            "encapsulation": null,
+            "mtu": null,
+            "rd": null
+          },
+          "observedAt": "2026-11-16T13:52:00.000Z",
+          "stale": false,
+          "evidenceId": "inv:h-mqt"
+        }
+      },
+      "acs": [
+        {
+          "interfaceName": "XGigabitEthernet0/0/4.3072",
+          "state": {
+            "value": null,
+            "basis": "NOT_READ",
+            "readingId": "inv-h-mqt",
+            "evidenceId": null,
+            "observedAt": null,
+            "freshness": null,
+            "inventoryHint": {
+              "value": "UP",
+              "observedAt": "2026-11-16T13:52:00.000Z",
+              "stale": false,
+              "evidenceId": "inv:h-mqt"
+            }
+          },
+          "blocked": null,
+          "role": null,
+          "carrier": null,
+          "vlan": null
+        }
+      ],
+      "pws": [
+        {
+          "peerAddress": "10.100.101.3",
+          "peerHostId": "h-likee",
+          "state": {
+            "value": null,
+            "basis": "NOT_READ",
+            "readingId": "inv-h-mqt",
+            "evidenceId": null,
+            "observedAt": null,
+            "freshness": null,
+            "inventoryHint": {
+              "value": "UP",
+              "observedAt": "2026-11-16T13:52:00.000Z",
+              "stale": false,
+              "evidenceId": "inv:h-mqt"
+            }
+          },
+          "localLabel": 35842,
+          "remoteLabel": 36706,
+          "tunnel": null,
+          "stale": false,
+          "detail": null
+        }
+      ],
+      "ethTrunks": [],
+      "eTrunks": [],
+      "mac": {
+        "value": null,
+        "basis": "NOT_READ",
+        "readingId": null,
+        "evidenceId": null,
+        "observedAt": null,
+        "freshness": null
+      },
+      "missingEvidence": [
+        "toda a leitura ao vivo desta ponta"
+      ],
+      "serviceState": "NOT_CONFIRMED"
+    }
+  ],
+  "links": [
+    {
+      "aHostId": "h-likee",
+      "bHostId": "h-mqt",
+      "bAddress": "10.100.101.2",
+      "state": "NOT_CONFIRMED",
+      "labelsMatch": true,
+      "findingIds": []
+    },
+    {
+      "aHostId": "h-vta",
+      "bHostId": "h-mqt",
+      "bAddress": "10.100.101.2",
+      "state": "STALE",
+      "labelsMatch": null,
+      "findingIds": []
+    }
+  ],
+  "findings": [
+    {
+      "id": "h-likee:VSI_EVIDENCE_MISSING:0",
+      "code": "VSI_EVIDENCE_MISSING",
+      "severity": "WARNING",
+      "certainty": "INCONCLUSIVE",
+      "impactCertainty": "INCONCLUSIVE",
+      "origin": "ENGINE",
+      "hostId": "h-likee",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "component": "VSI",
+      "title": "Saida da VSI ausente ou incompleta",
+      "explanation": "Sem a saida completa de `display vsi name <vsi> verbose` nenhuma conclusao sobre VSI, AC ou PW e possivel.",
+      "caveat": null,
+      "evidenceIds": [
+        "h-likee:live:e3b0c44298fc:0"
+      ],
+      "nextStepIds": [],
+      "kind": "INCONCLUSIVE"
+    },
+    {
+      "id": "h-likee:collect:0",
+      "code": "COLLECTION_OUTPUT_INCOMPLETE",
+      "severity": "INFO",
+      "certainty": "CONFIRMED",
+      "impactCertainty": "INCONCLUSIVE",
+      "origin": "ENGINE",
+      "hostId": "h-likee",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "component": "COLLECTION",
+      "title": "Saída incompleta: display vsi name 3072-QinQ-CDB-MANTIQUEIRA verbose",
+      "explanation": "Saida sem o prompt final (paginada, truncada ou recusada): nao foi usada pela metade.",
+      "caveat": "Problema de coleta. Não diz nada sobre o estado do serviço.",
+      "evidenceIds": [
+        "h-likee:live:e3b0c44298fc:0"
+      ],
+      "nextStepIds": [],
+      "kind": "COLLECTION"
+    },
+    {
+      "id": "h-likee:collect:1",
+      "code": "COLLECTION_OUTPUT_INCOMPLETE",
+      "severity": "INFO",
+      "certainty": "CONFIRMED",
+      "impactCertainty": "INCONCLUSIVE",
+      "origin": "ENGINE",
+      "hostId": "h-likee",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "component": "COLLECTION",
+      "title": "Saída incompleta: display current-configuration interface Eth-Trunk17.3072",
+      "explanation": "Saida sem o prompt final (paginada, truncada ou recusada): nao foi usada pela metade.",
+      "caveat": "Problema de coleta. Não diz nada sobre o estado do serviço.",
+      "evidenceIds": [
+        "h-likee:live:e3b0c44298fc:1"
+      ],
+      "nextStepIds": [],
+      "kind": "COLLECTION"
+    },
+    {
+      "id": "h-likee:collect:2",
+      "code": "COLLECTION_OUTPUT_INCOMPLETE",
+      "severity": "INFO",
+      "certainty": "CONFIRMED",
+      "impactCertainty": "INCONCLUSIVE",
+      "origin": "ENGINE",
+      "hostId": "h-likee",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "component": "COLLECTION",
+      "title": "Saída incompleta: display e-trunk 4",
+      "explanation": "Saida sem o prompt final (paginada, truncada ou recusada): nao foi usada pela metade.",
+      "caveat": "Problema de coleta. Não diz nada sobre o estado do serviço.",
+      "evidenceIds": [
+        "h-likee:live:e3b0c44298fc:5"
+      ],
+      "nextStepIds": [],
+      "kind": "COLLECTION"
+    },
+    {
+      "id": "h-vta:VSI_EVIDENCE_MISSING:0",
+      "code": "VSI_EVIDENCE_MISSING",
+      "severity": "WARNING",
+      "certainty": "INCONCLUSIVE",
+      "impactCertainty": "INCONCLUSIVE",
+      "origin": "ENGINE",
+      "hostId": "h-vta",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "component": "VSI",
+      "title": "Saida da VSI ausente ou incompleta",
+      "explanation": "Sem a saida completa de `display vsi name <vsi> verbose` nenhuma conclusao sobre VSI, AC ou PW e possivel.",
+      "caveat": null,
+      "evidenceIds": [
+        "h-vta:live:e3b0c44298fc:0"
+      ],
+      "nextStepIds": [],
+      "kind": "INCONCLUSIVE"
+    },
+    {
+      "id": "h-vta:collect:0",
+      "code": "COLLECTION_OUTPUT_INCOMPLETE",
+      "severity": "INFO",
+      "certainty": "CONFIRMED",
+      "impactCertainty": "INCONCLUSIVE",
+      "origin": "ENGINE",
+      "hostId": "h-vta",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "component": "COLLECTION",
+      "title": "Saída incompleta: display vsi name 3072-QinQ-CDB-MANTIQUEIRA verbose",
+      "explanation": "Saida sem o prompt final (paginada, truncada ou recusada): nao foi usada pela metade.",
+      "caveat": "Problema de coleta. Não diz nada sobre o estado do serviço.",
+      "evidenceIds": [
+        "h-vta:live:e3b0c44298fc:0"
+      ],
+      "nextStepIds": [],
+      "kind": "COLLECTION"
+    },
+    {
+      "id": "h-vta:collect:1",
+      "code": "COLLECTION_OUTPUT_INCOMPLETE",
+      "severity": "INFO",
+      "certainty": "CONFIRMED",
+      "impactCertainty": "INCONCLUSIVE",
+      "origin": "ENGINE",
+      "hostId": "h-vta",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "component": "COLLECTION",
+      "title": "Saída incompleta: display current-configuration interface Eth-Trunk26.3072",
+      "explanation": "Saida sem o prompt final (paginada, truncada ou recusada): nao foi usada pela metade.",
+      "caveat": "Problema de coleta. Não diz nada sobre o estado do serviço.",
+      "evidenceIds": [
+        "h-vta:live:e3b0c44298fc:1"
+      ],
+      "nextStepIds": [],
+      "kind": "COLLECTION"
+    },
+    {
+      "id": "h-vta:collect:2",
+      "code": "COLLECTION_OUTPUT_INCOMPLETE",
+      "severity": "INFO",
+      "certainty": "CONFIRMED",
+      "impactCertainty": "INCONCLUSIVE",
+      "origin": "ENGINE",
+      "hostId": "h-vta",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "component": "COLLECTION",
+      "title": "Saída incompleta: display current-configuration interface Eth-Trunk26",
+      "explanation": "Saida sem o prompt final (paginada, truncada ou recusada): nao foi usada pela metade.",
+      "caveat": "Problema de coleta. Não diz nada sobre o estado do serviço.",
+      "evidenceIds": [
+        "h-vta:live:82f1ba489e52:2"
+      ],
+      "nextStepIds": [],
+      "kind": "COLLECTION"
+    },
+    {
+      "id": "agg-not-read-h-mqt",
+      "code": "ENDPOINT_SERVICE_NOT_READ",
+      "severity": "INFO",
+      "certainty": "CONFIRMED",
+      "impactCertainty": "INCONCLUSIVE",
+      "origin": "AGGREGATOR",
+      "hostId": "h-mqt",
+      "hostName": "BHE-MQT-6730-MPLS-01",
+      "component": "VSI",
+      "title": "VSI, AC e PW não foram lidos diretamente em BHE-MQT-6730-MPLS-01",
+      "explanation": "Só existe o registro do inventário (VSI up), que não é leitura do equipamento e não comprova o estado atual.",
+      "caveat": null,
+      "evidenceIds": [
+        "inv:h-mqt"
+      ],
+      "nextStepIds": [],
+      "kind": "INCONCLUSIVE"
+    }
+  ],
+  "nextSteps": [
+    {
+      "id": "step-read-h-likee",
+      "hostId": "h-likee",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "title": "Ler a VSI diretamente neste PE",
+      "command": "display vsi name 3072-QinQ-CDB-MANTIQUEIRA verbose",
+      "homologated": null,
+      "reason": "A leitura da VSI não foi obtida nesta execução.",
+      "reasonFindingIds": [
+        "h-likee:VSI_EVIDENCE_MISSING:0"
+      ],
+      "evidenceIds": [
+        "inv:h-likee"
+      ]
+    },
+    {
+      "id": "step-read-h-vta",
+      "hostId": "h-vta",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "title": "Ler a VSI diretamente neste PE",
+      "command": "display vsi name 3072-QinQ-CDB-MANTIQUEIRA verbose",
+      "homologated": null,
+      "reason": "A leitura da VSI não foi obtida nesta execução.",
+      "reasonFindingIds": [
+        "h-vta:VSI_EVIDENCE_MISSING:0"
+      ],
+      "evidenceIds": [
+        "inv:h-vta"
+      ]
+    },
+    {
+      "id": "step-read-h-mqt",
+      "hostId": "h-mqt",
+      "hostName": "BHE-MQT-6730-MPLS-01",
+      "title": "Ler a VSI diretamente neste PE",
+      "command": "display vsi name 3072-QinQ-CDB-MANTIQUEIRA verbose",
+      "homologated": null,
+      "reason": "Este PE participa do serviço e não foi lido.",
+      "reasonFindingIds": [
+        "agg-not-read-h-mqt"
+      ],
+      "evidenceIds": [
+        "inv:h-mqt"
+      ]
+    }
+  ],
+  "readings": [
+    {
+      "id": "ssh-h-likee",
+      "kind": "SSH_SESSION",
+      "hostId": "h-likee",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "startedAt": "2026-11-16T14:00:00.000Z",
+      "inThisRun": true,
+      "outcome": "PARTIAL",
+      "scope": "6 comando(s) somente leitura · 1 sessão(ões)"
+    },
+    {
+      "id": "inv-h-likee",
+      "kind": "SNMP_CYCLE",
+      "hostId": "h-likee",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "startedAt": "2026-11-16T13:50:19.000Z",
+      "inThisRun": false,
+      "outcome": "OK",
+      "scope": "inventário: VSI, AC, PW"
+    },
+    {
+      "id": "ssh-h-vta",
+      "kind": "SSH_SESSION",
+      "hostId": "h-vta",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "startedAt": "2026-11-16T14:00:00.000Z",
+      "inThisRun": true,
+      "outcome": "PARTIAL",
+      "scope": "6 comando(s) somente leitura · 1 sessão(ões)"
+    },
+    {
+      "id": "inv-h-vta",
+      "kind": "SNMP_CYCLE",
+      "hostId": "h-vta",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "startedAt": "2026-11-16T13:51:10.000Z",
+      "inThisRun": false,
+      "outcome": "OK",
+      "scope": "inventário: VSI, AC, PW"
+    },
+    {
+      "id": "inv-h-mqt",
+      "kind": "SNMP_CYCLE",
+      "hostId": "h-mqt",
+      "hostName": "BHE-MQT-6730-MPLS-01",
+      "startedAt": "2026-11-16T13:52:00.000Z",
+      "inThisRun": false,
+      "outcome": "OK",
+      "scope": "inventário: VSI, AC, PW"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "h-likee:live:e3b0c44298fc:0",
+      "readingId": "ssh-h-likee",
+      "hostId": "h-likee",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "source": "LIVE_SSH",
+      "command": "display vsi name 3072-QinQ-CDB-MANTIQUEIRA verbose",
+      "collectedAt": "2026-11-16T14:00:00.000Z",
+      "observedAt": "2026-11-16T14:00:00.000Z",
+      "complete": false,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": "",
+      "outputTruncated": false,
+      "note": null
+    },
+    {
+      "id": "h-likee:live:e3b0c44298fc:1",
+      "readingId": "ssh-h-likee",
+      "hostId": "h-likee",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "source": "LIVE_SSH",
+      "command": "display current-configuration interface Eth-Trunk17.3072",
+      "collectedAt": "2026-11-16T14:00:00.000Z",
+      "observedAt": "2026-11-16T14:00:00.000Z",
+      "complete": false,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": "",
+      "outputTruncated": false,
+      "note": null
+    },
+    {
+      "id": "h-likee:live:f414ff154a42:2",
+      "readingId": "ssh-h-likee",
+      "hostId": "h-likee",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "source": "LIVE_SSH",
+      "command": "display current-configuration interface Eth-Trunk17",
+      "collectedAt": "2026-11-16T14:00:00.000Z",
+      "observedAt": "2026-11-16T14:00:00.000Z",
+      "complete": true,
+      "bytes": 316,
+      "sha256": "f414ff154a4208bd012983d0a8575e59b8a74d4ad1287c5a7547ce48ebc1d821",
+      "output": "<BHE-LIKEE-6730-MPLS-01>display current-configuration interface Eth-Trunk17\n#\ninterface Eth-Trunk17\n description <REMOVIDO>\n port link-type trunk\n undo port trunk allow-pass vlan 1\n port trunk allow-pass vlan 820 3015 to 3016 3332 3502 3884\n mode lacp\n e-trunk 4 remote-eth-trunk 26\n#\nreturn\n<BHE-LIKEE-6730-MPLS-01>",
+      "outputTruncated": false,
+      "note": null
+    },
+    {
+      "id": "h-likee:live:e625cb70257d:3",
+      "readingId": "ssh-h-likee",
+      "hostId": "h-likee",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "source": "LIVE_SSH",
+      "command": "display eth-trunk 17",
+      "collectedAt": "2026-11-16T14:00:00.000Z",
+      "observedAt": "2026-11-16T14:00:00.000Z",
+      "complete": true,
+      "bytes": 885,
+      "sha256": "e625cb70257d352debea5ae339497a7fd3a65e17d1163b35c0e55f34eb436d14",
+      "output": "<BHE-LIKEE-6730-MPLS-01>display eth-trunk 17\nEth-Trunk17's state information is:\nLocal:\nLAG ID: 17                  WorkingMode: LACP\nPreempt Delay: Disabled     Hash arithmetic: According to SIP-XOR-DIP\nSystem Priority: 1          System ID: 00e0-fc00-0000\nLeast Active-linknumber: 1  Max Active-linknumber: 32\nOperate status: up          Number Of Up Port In Trunk: 1\n--------------------------------------------------------------------------------\nActorPortName          Status   PortType PortPri PortNo PortKey PortState Weight\nXGigabitEthernet0/0/3  Selected 10GE     32768   32770  33857   10111100  1\n\nPartner:\n--------------------------------------------------------------------------------\nActorPortName          SysPri   SystemID        PortPri PortNo PortKey PortState\nXGigabitEthernet0/0/3  65535    48a9-8ab6-0001  255     1      33      10111100\n\n<BHE-LIKEE-6730-MPLS-01>",
+      "outputTruncated": false,
+      "note": null
+    },
+    {
+      "id": "h-likee:live:cf9cc0cd8104:4",
+      "readingId": "ssh-h-likee",
+      "hostId": "h-likee",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "source": "LIVE_SSH",
+      "command": "display e-trunk brief",
+      "collectedAt": "2026-11-16T14:00:00.000Z",
+      "observedAt": "2026-11-16T14:00:00.000Z",
+      "complete": true,
+      "bytes": 580,
+      "sha256": "cf9cc0cd8104eacb833fd2291e2b741a3c616d1fea5dde265dfd4d48244d3081",
+      "output": "<BHE-LIKEE-6730-MPLS-01>display e-trunk brief\nE-TRUNK-ID    State        Peer-IP          Source-IP\n-----------------------------------------------------------\n2             Backup       10.100.101.8     10.100.101.3\n3             Master       10.100.101.1     10.100.101.3\n4             Master       10.100.101.0     10.100.101.3\n5             Master       10.100.101.4     10.100.101.3\n12            Backup       10.100.101.8     10.100.101.3\n-----------------------------------------------------------\nTotal:5       Master:3     Backup:2         Init:0\n<BHE-LIKEE-6730-MPLS-01>",
+      "outputTruncated": false,
+      "note": null
+    },
+    {
+      "id": "h-likee:live:e3b0c44298fc:5",
+      "readingId": "ssh-h-likee",
+      "hostId": "h-likee",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "source": "LIVE_SSH",
+      "command": "display e-trunk 4",
+      "collectedAt": "2026-11-16T14:00:00.000Z",
+      "observedAt": "2026-11-16T14:00:00.000Z",
+      "complete": false,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": "",
+      "outputTruncated": false,
+      "note": null
+    },
+    {
+      "id": "inv:h-likee",
+      "readingId": "inv-h-likee",
+      "hostId": "h-likee",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "source": "PERSISTED_SNMP",
+      "command": null,
+      "collectedAt": "2026-11-16T13:50:19.000Z",
+      "observedAt": "2026-11-16T13:50:19.000Z",
+      "complete": true,
+      "bytes": 369,
+      "sha256": null,
+      "output": "Inventário SNMP (banco do NetVision) — não é saída de equipamento\nVSI 3072-QinQ-CDB-MANTIQUEIRA @ BHE-LIKEE-6730-MPLS-01\n  leitura: 2026-11-16T13:50:19.000Z\n  operationalStatus: UP   mtu: 2000   rd: 268568:53072\n  AC  Eth-Trunk17.3072   status UP   lido 2026-11-16T13:50:19.000Z\n  PW  10.100.101.2   state UP   labels 36706 / 35842   lido 2026-11-16T13:50:19.000Z",
+      "note": "Registro do banco do NetVision. Não é saída de equipamento e não comprova o estado atual."
+    },
+    {
+      "id": "h-vta:live:e3b0c44298fc:0",
+      "readingId": "ssh-h-vta",
+      "hostId": "h-vta",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "source": "LIVE_SSH",
+      "command": "display vsi name 3072-QinQ-CDB-MANTIQUEIRA verbose",
+      "collectedAt": "2026-11-16T14:00:00.000Z",
+      "observedAt": "2026-11-16T14:00:00.000Z",
+      "complete": false,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": "",
+      "outputTruncated": false,
+      "note": null
+    },
+    {
+      "id": "h-vta:live:e3b0c44298fc:1",
+      "readingId": "ssh-h-vta",
+      "hostId": "h-vta",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "source": "LIVE_SSH",
+      "command": "display current-configuration interface Eth-Trunk26.3072",
+      "collectedAt": "2026-11-16T14:00:00.000Z",
+      "observedAt": "2026-11-16T14:00:00.000Z",
+      "complete": false,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "output": "",
+      "outputTruncated": false,
+      "note": null
+    },
+    {
+      "id": "h-vta:live:82f1ba489e52:2",
+      "readingId": "ssh-h-vta",
+      "hostId": "h-vta",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "source": "LIVE_SSH",
+      "command": "display current-configuration interface Eth-Trunk26",
+      "collectedAt": "2026-11-16T14:00:00.000Z",
+      "observedAt": "2026-11-16T14:00:00.000Z",
+      "complete": false,
+      "bytes": 280,
+      "sha256": "82f1ba489e521cefd36f62b157d6e50777767a43d3bb145d8607a57cc1938e26",
+      "output": "<BHE-VTA-6730-MPLS-01>display current-configuration interface Eth-Trunk26\n#\ninterface Eth-Trunk26\n description <REMOVIDO>\n port link-type trunk\n undo port trunk allow-pass vlan 1\n port trunk allow-pass vlan 820 3015 to 3016 3332 3502 3884\n mode lacp\n e-trunk 4 remote-eth-trunk 17",
+      "outputTruncated": false,
+      "note": null
+    },
+    {
+      "id": "h-vta:live:ec336eff0053:3",
+      "readingId": "ssh-h-vta",
+      "hostId": "h-vta",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "source": "LIVE_SSH",
+      "command": "display eth-trunk 26",
+      "collectedAt": "2026-11-16T14:00:00.000Z",
+      "observedAt": "2026-11-16T14:00:00.000Z",
+      "complete": true,
+      "bytes": 881,
+      "sha256": "ec336eff00535e9c912cfb6381065e0ecb111de9da01b7b8bab8f799fabe2606",
+      "output": "<BHE-VTA-6730-MPLS-01>display eth-trunk 26\nEth-Trunk26's state information is:\nLocal:\nLAG ID: 26                  WorkingMode: LACP\nPreempt Delay: Disabled     Hash arithmetic: According to SIP-XOR-DIP\nSystem Priority: 1          System ID: 00e0-fc00-0000\nLeast Active-linknumber: 1  Max Active-linknumber: 32\nOperate status: down        Number Of Up Port In Trunk: 0\n--------------------------------------------------------------------------------\nActorPortName          Status   PortType PortPri PortNo PortKey PortState Weight\nXGigabitEthernet0/0/48 Unselect 10GE     32768   24     33857   10100000  1\n\nPartner:\n--------------------------------------------------------------------------------\nActorPortName          SysPri   SystemID        PortPri PortNo PortKey PortState\nXGigabitEthernet0/0/48 65535    48a9-8ab6-0001  255     2      33      10110000\n\n<BHE-VTA-6730-MPLS-01>",
+      "outputTruncated": false,
+      "note": null
+    },
+    {
+      "id": "h-vta:live:66106135763f:4",
+      "readingId": "ssh-h-vta",
+      "hostId": "h-vta",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "source": "LIVE_SSH",
+      "command": "display e-trunk brief",
+      "collectedAt": "2026-11-16T14:00:00.000Z",
+      "observedAt": "2026-11-16T14:00:00.000Z",
+      "complete": true,
+      "bytes": 955,
+      "sha256": "66106135763f06f999ced646475569e06610aff9a0f5f4fc6012f105773269c6",
+      "output": "<BHE-VTA-6730-MPLS-01>display e-trunk\n                                      ^\nError:Incomplete command found at '^' position.\n<BHE-VTA-6730-MPLS-01>display e-trunk ?\n  INTEGER<1-16>      The E-Trunk ID\n  brief              Brief information\n  packet-statistics  Packet Statistics\n\n<BHE-VTA-6730-MPLS-01>display e-trunk br\n<BHE-VTA-6730-MPLS-01>display e-trunk brief\nE-TRUNK-ID    State        Peer-IP          Source-IP\n-----------------------------------------------------------\n1             Backup       10.100.101.4     10.100.101.0\n2             Master       10.100.101.4     10.100.101.0\n4             Backup       10.100.101.3     10.100.101.0\n5             Master       10.100.101.5     10.100.101.0\n11            Master       10.100.101.11    10.100.101.0\n13            Master       10.100.101.8     10.100.101.0\n-----------------------------------------------------------\nTotal:6       Master:4     Backup:2         Init:0\n<BHE-VTA-6730-MPLS-01>",
+      "outputTruncated": false,
+      "note": null
+    },
+    {
+      "id": "h-vta:live:5449b58f52d3:5",
+      "readingId": "ssh-h-vta",
+      "hostId": "h-vta",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "source": "LIVE_SSH",
+      "command": "display e-trunk 4",
+      "collectedAt": "2026-11-16T14:00:00.000Z",
+      "observedAt": "2026-11-16T14:00:00.000Z",
+      "complete": true,
+      "bytes": 1063,
+      "sha256": "5449b58f52d37fdfa34738f697375efbf0122b46bf6962bb0dcfbdc6b9a22b86",
+      "output": "<BHE-VTA-6730-MPLS-01>display e-trunk 4\n                            The E-Trunk information\nE-TRUNK-ID : 4                          Revert-Delay-Time (s) : 120\nPriority : 30                           System-ID : 2811-ecea-0002\nPeer-IP : 10.100.101.3                  Source-IP : 10.100.101.0\nState : Backup                          Causation : PRI\nSend-Period (100ms) : 9                 Fail-Time (100ms) : 27\nReceive : 41241076                      Send : 41249753\nRecDrop : 29                            SndDrop : 2576\nPeer-Priority : 20                      Peer-System-ID : 6ce8-7430-0003\nPeer-Fail-Time (100ms) : 27             BFD-Session : likee\nDescription : -\nSequence : Disable\n--------------------------------------------------------------------------------\n                            The Member information\nType      ID  LocalPhyState  Work-Mode     State   Causation        Remote-ID\nEth-Trunk 13  Down           auto          Backup  PEER_MEMBER_UP   21\nEth-Trunk 26  Down           auto          Backup  PEER_MEMBER_UP   17\n<BHE-VTA-6730-MPLS-01>",
+      "outputTruncated": false,
+      "note": null
+    },
+    {
+      "id": "inv:h-vta",
+      "readingId": "inv-h-vta",
+      "hostId": "h-vta",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "source": "PERSISTED_SNMP",
+      "command": null,
+      "collectedAt": "2026-11-16T13:51:10.000Z",
+      "observedAt": "2026-11-16T13:51:10.000Z",
+      "complete": true,
+      "bytes": 371,
+      "sha256": null,
+      "output": "Inventário SNMP (banco do NetVision) — não é saída de equipamento\nVSI 3072-QinQ-CDB-MANTIQUEIRA @ BHE-VTA-6730-MPLS-01\n  leitura: 2026-11-16T13:51:10.000Z\n  operationalStatus: DOWN   mtu: 2000   rd: 268568:53072\n  AC  Eth-Trunk26.3072   status DOWN   lido 2026-11-16T13:51:10.000Z\n  PW  10.100.101.2   state UP   labels 41335 / 35840   lido 2026-10-27T01:24:40.000Z",
+      "note": "Registro do banco do NetVision. Não é saída de equipamento e não comprova o estado atual."
+    },
+    {
+      "id": "inv:h-mqt",
+      "readingId": "inv-h-mqt",
+      "hostId": "h-mqt",
+      "hostName": "BHE-MQT-6730-MPLS-01",
+      "source": "PERSISTED_SNMP",
+      "command": null,
+      "collectedAt": "2026-11-16T13:52:00.000Z",
+      "observedAt": "2026-11-16T13:52:00.000Z",
+      "complete": true,
+      "bytes": 367,
+      "sha256": null,
+      "output": "Inventário SNMP (banco do NetVision) — não é saída de equipamento\nVSI 3072-QinQ-CDB-MANTIQUEIRA @ BHE-MQT-6730-MPLS-01\n  leitura: 2026-11-16T13:52:00.000Z\n  operationalStatus: UP   mtu: —   rd: —\n  AC  XGigabitEthernet0/0/4.3072   status UP   lido 2026-11-16T13:52:00.000Z\n  PW  10.100.101.3   state UP   labels 35842 / 36706   lido 2026-11-16T13:52:00.000Z",
+      "note": "Registro do banco do NetVision. Não é saída de equipamento e não comprova o estado atual."
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import { Badge } from '@gmj/ui';
 import { AlertTriangle, ChevronDown, ChevronUp, Clock3, Network, Search } from 'lucide-react';
 import {
   formatDuration,
+  type MplsDiscoveryState,
   type MplsHostOverview,
   type MplsPw,
   type MplsStateEvent,
@@ -108,24 +109,193 @@ export function MplsPanel({ hostId, readOnly }: { hostId: string; readOnly: bool
 }
 
 export function MplsUnavailableState({ overview }: { overview: MplsHostOverview }) {
-  const collectionFailed = Boolean(overview.lastErrorSafe);
-  const capabilityChecked = Boolean(overview.lastSuccessAt);
-  const title = collectionFailed
-    ? 'Falha na coleta MPLS'
-    : capabilityChecked
-      ? 'MPLS não disponível'
-      : 'MPLS ainda não coletado';
+  const notice = mplsUnavailableNotice(overview);
   return (
-    <section className="drawer-section mpls-empty" role={collectionFailed ? 'alert' : undefined}>
-      {collectionFailed ? <AlertTriangle size={20} /> : <Network size={20} />}
-      <strong>{title}</strong>
-      <span>
-        {overview.lastErrorSafe ??
-          (capabilityChecked
-            ? 'Nenhuma entrada VSI válida foi encontrada na HUAWEI-VPLS-EXT-MIB.'
-            : 'Aguardando a primeira verificação da capability MPLS.')}
-      </span>
-      <small>Última tentativa: {dateLabel(overview.lastPollingAt)}</small>
+    <section className="drawer-section mpls-empty" role={notice.alert ? 'alert' : undefined}>
+      {notice.alert ? <AlertTriangle size={20} /> : <Network size={20} />}
+      <strong>{notice.title}</strong>
+      <span>{overview.lastErrorSafe ?? notice.detail}</span>
+      <small>
+        Última tentativa: {dateLabel(overview.lastPollingAt)}
+        {overview.sources.length ? ` · Fontes: ${overview.sources.join(' + ')}` : ''}
+      </small>
+    </section>
+  );
+}
+
+/**
+ * Uma MIB vazia nunca autoriza dizer que o MPLS nao existe. A mensagem segue o
+ * estado da descoberta, nao o booleano antigo de "suportado".
+ */
+export function mplsUnavailableNotice(overview: MplsHostOverview): {
+  title: string;
+  detail: string;
+  alert: boolean;
+} {
+  switch (overview.discoveryState) {
+    case 'INCOMPLETE':
+      return {
+        title: 'Coleta MPLS incompleta',
+        detail:
+          'A leitura não concluiu — isto não comprova ausência de VSI. Verifique SSH e a comunidade SNMP do equipamento.',
+        alert: true,
+      };
+    case 'NOT_FOUND':
+      return {
+        title: 'Nenhuma VSI configurada',
+        detail: 'As fontes consultadas responderam e não há VSI/VPLS neste equipamento.',
+        alert: false,
+      };
+    case 'FOUND_L2VC':
+      return {
+        title: 'Circuito L2VC (VPWS) encontrado',
+        detail: 'O equipamento não tem VSI, mas opera serviços ponto a ponto sinalizados por LDP.',
+        alert: false,
+      };
+    case 'UNSUPPORTED':
+      return {
+        title: 'MPLS não disponível',
+        detail: 'O equipamento não reconhece a leitura de VSI/VPLS (CLI e MIB indisponíveis).',
+        alert: false,
+      };
+    default:
+      if (overview.lastErrorSafe) {
+        return { title: 'Falha na coleta MPLS', detail: '', alert: true };
+      }
+      if (overview.lastSuccessAt) {
+        return {
+          title: 'Nenhuma VSI encontrada',
+          detail: 'A última coleta concluiu sem VSI/VPLS para exibir.',
+          alert: false,
+        };
+      }
+      return {
+        title: 'MPLS ainda não coletado',
+        detail: 'Aguardando a primeira verificação da capability MPLS.',
+        alert: false,
+      };
+  }
+}
+
+export function mplsDiscoveryStateLabel(state: MplsDiscoveryState): string {
+  switch (state) {
+    case 'FOUND_UP':
+      return 'VSI encontrada UP';
+    case 'FOUND_DOWN':
+      return 'VSI encontrada DOWN';
+    case 'FOUND_MIXED':
+      return 'VSIs UP e DOWN';
+    case 'FOUND_L2VC':
+      return 'Circuito L2VC (VPWS) encontrado';
+    case 'NOT_FOUND':
+      return 'Nenhuma VSI configurada';
+    case 'INCOMPLETE':
+      return 'Coleta incompleta';
+    case 'UNSUPPORTED':
+      return 'Descoberta não suportada';
+    case 'CONFLICT':
+      return 'Informações conflitantes';
+    default:
+      return 'Ainda não coletado';
+  }
+}
+
+/** Transporte MPLS (sessões LDP), separado do serviço VSI. */
+export function MplsLdpSessions({ overview }: { overview: MplsHostOverview }) {
+  if (!overview.ldpPeers.length) return null;
+  return (
+    <section className="drawer-section mpls-ldp">
+      <h4>Transporte MPLS · sessões LDP</h4>
+      <div className="mpls-ldp-list">
+        {overview.ldpPeers.map((peer) => (
+          <div key={peer.peerLdpId} className={`mpls-ldp-peer status-${peer.state.toLowerCase()}`}>
+            <span className="port-dot" />
+            <div>
+              <strong>{peer.name ?? peer.peerLdpId}</strong>
+              <small>
+                {peer.name ? `${peer.peerLdpId} · ` : ''}
+                {peer.localLdpId ? `local ${peer.localLdpId}` : 'LDP ID local N/D'}
+                {peer.role ? ` · ${peer.role}` : ''}
+                {peer.sessionAgeSeconds === null ? '' : ` · há ${formatDuration(peer.sessionAgeSeconds)}`}
+              </small>
+            </div>
+            <Badge tone={peer.state}>{peer.statusText ?? peer.state}</Badge>
+          </div>
+        ))}
+      </div>
+      <small className="mpls-ldp-source">Fonte: {overview.ldpPeers[0]?.source ?? 'SSH'}</small>
+    </section>
+  );
+}
+
+/** Serviços ponto a ponto (L2VC/VPWS), distintos de VSI e de transporte LDP. */
+export function MplsL2vcCircuits({ overview }: { overview: MplsHostOverview }) {
+  if (!overview.l2vcCircuits.length) return null;
+  const up = overview.l2vcCircuits.filter((circuit) => circuit.state === 'UP').length;
+  return (
+    <section className="drawer-section mpls-l2vc">
+      <h4>Serviços ponto a ponto · L2VC (VPWS)</h4>
+      <div className="mpls-summary">
+        <div>
+          <strong>{overview.l2vcCircuits.length}</strong>
+          <span>Circuitos</span>
+        </div>
+        <div className="up">
+          <strong>{up}</strong>
+          <span>UP</span>
+        </div>
+        <div className="down">
+          <strong>{overview.l2vcCircuits.length - up}</strong>
+          <span>DOWN</span>
+        </div>
+      </div>
+      <div className="mpls-ldp-list">
+        {overview.l2vcCircuits.map((circuit) => (
+          <div
+            key={`${circuit.name}|${circuit.vcId ?? 'N/D'}`}
+            className={`mpls-ldp-peer status-${circuit.state.toLowerCase()}`}
+          >
+            <span className="port-dot" />
+            <div>
+              <strong>{circuit.name}</strong>
+              <small>
+                VC {circuit.vcId ?? 'N/D'} · {circuit.destination ?? 'destino N/D'}
+                {circuit.interfaceAlias ? ` · ${circuit.interfaceAlias}` : ''}
+                {circuit.localLabel === null
+                  ? ''
+                  : ` · labels ${circuit.localLabel}/${circuit.remoteLabel ?? 'N/D'}`}
+                {circuit.mtu === null ? '' : ` · MTU ${circuit.mtu}`}
+                {circuit.acState === 'UNKNOWN' ? '' : ` · AC ${circuit.acState}`}
+              </small>
+            </div>
+            <Badge tone={circuit.state}>{circuit.state}</Badge>
+          </div>
+        ))}
+      </div>
+      <small className="mpls-ldp-source">
+        Fonte: {overview.l2vcCircuits[0]?.source ?? 'SSH'}
+      </small>
+    </section>
+  );
+}
+
+/** Divergências SNMP x SSH preservadas como evidência. */
+export function MplsConflicts({ overview }: { overview: MplsHostOverview }) {
+  if (!overview.conflicts.length) return null;
+  return (
+    <section className="drawer-section mpls-conflicts" role="alert">
+      <AlertTriangle size={17} />
+      <div>
+        <strong>Informações conflitantes entre SNMP e SSH</strong>
+        <ul>
+          {overview.conflicts.map((conflict, index) => (
+            <li key={`${conflict.vsiName}-${conflict.field}-${index}`}>
+              <strong>{conflict.vsiName}</strong> · {conflict.field}: SNMP {conflict.snmpValue} × SSH{' '}
+              {conflict.sshValue}
+            </li>
+          ))}
+        </ul>
+      </div>
     </section>
   );
 }
@@ -201,7 +371,8 @@ export function MplsContent({
             <Network size={15} /> MPLS
           </span>
           <small>
-            <Clock3 size={12} /> {dateLabel(overview.lastPollingAt)}
+            <Clock3 size={12} /> {dateLabel(overview.lastSuccessAt ?? overview.lastPollingAt)}
+            {overview.sources.length ? ` · ${overview.sources.join(' + ')}` : ''}
           </small>
         </div>
         <div className="mpls-summary">
@@ -233,10 +404,14 @@ export function MplsContent({
           <strong>
             {overview.capabilities.pw
               ? `${overview.summary.pwUp} / ${overview.summary.pwTotal} UP`
-              : 'N/D — não disponível via SNMP'}
+              : 'N/D — não disponível nas fontes consultadas'}
           </strong>
         </div>
       </section>
+
+      <MplsConflicts overview={overview} />
+      <MplsLdpSessions overview={overview} />
+      <MplsL2vcCircuits overview={overview} />
 
       <section className="drawer-section mpls-controls">
         <div className="mpls-filters" aria-label="Filtros MPLS">
@@ -262,6 +437,12 @@ export function MplsContent({
       </section>
 
       <section className="mpls-vsi-list">
+        {vsis.length === 0 && overview.l2vcCircuits.length > 0 && (
+          <div className="mpls-capability-note">
+            Nenhuma VSI/VPLS configurada: os serviços MPLS deste equipamento estão em L2VC
+            (VPWS), listados acima.
+          </div>
+        )}
         {vsis.map((vsi) => {
           const isCollapsed = collapsed.has(vsi.name) && vsi.pws.length > 3;
           const visiblePws = isCollapsed ? vsi.pws.slice(0, 3) : vsi.pws;
@@ -272,6 +453,9 @@ export function MplsContent({
                 <div>
                   <strong>{vsi.name}</strong>
                   <span>VLAN {vsi.vlanId ?? 'N/D'}</span>
+                  <span className="mpls-source-tag" title="Fonte da última leitura">
+                    {vsi.source}
+                  </span>
                 </div>
                 <Badge tone={vsi.status}>
                   {vsi.status === 'ADMIN_DOWN' ? 'ADMIN DOWN' : vsi.status}
@@ -353,6 +537,7 @@ export function MplsContent({
                   <Technical label="MTU" value={vsi.mtu} />
                   <Technical label="VC Type" value={vsi.vcType} />
                   <Technical label="Sinalização" value={vsi.signalingType} />
+                  <Technical label="Descoberta de membros" value={vsi.memberDiscovery} />
                   <Technical label="Tunnel Policy" value={vsi.tunnelPolicy} />
                   <Technical
                     label="Admin / Oper"
