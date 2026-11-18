@@ -4854,6 +4854,13 @@ label > small {
   color: #b8cbd3;
   font: 600 10px var(--font-mono);
 }
+.auto-discovery-option input[type='checkbox'] {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: #55aec5;
+  flex: 0 0 auto;
+}
 .auto-discovery-option {
   display: flex;
   align-items: center;

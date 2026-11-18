@@ -1,6 +1,28 @@
 import type { Device, DiscoveredNeighbor, NetworkInterface } from '@gmj/shared';
 import type { DeviceIdentity, TopologyDiscoveryAdapter } from '../../domain/ports';
 
+/**
+ * Fibra sintetica usada apenas em DEMO_MODE. Nunca toca equipamento real.
+ *
+ * Cada entrada e [portaLocal, hostnameRemoto, portaRemota]. Adjacencias
+ * reciprocas (os dois lados apontando um para o outro na mesma porta) chegam
+ * como CONFIRMED; um lado sozinho fica PROBABLE; vizinho fora do inventario
+ * fica UNKNOWN_NEIGHBOR. Assim o fluxo automatico tem material real para
+ * homologar os tres estados.
+ */
+const DEMO_FABRIC: Record<string, ReadonlyArray<readonly [string, string, string]>> = {
+  'core-01': [
+    ['100GE1/0/1', 'agg-centro-01', '100GE1/0/1'],
+    ['100GE1/0/2', 'bgp-edge-01', '100GE1/0/1'],
+    ['10GE1/0/3', 'SW-FORA-DO-INVENTARIO', 'XGE0/0/1'],
+  ],
+  'agg-centro': [
+    ['100GE1/0/1', 'core-bh-01', '100GE1/0/1'],
+    ['100GE1/0/2', 'agg-norte-01', '100GE1/0/1'],
+  ],
+  'edge-01': [['100GE1/0/1', 'core-bh-01', '100GE1/0/2']],
+};
+
 export class DemoTopologyAdapter implements TopologyDiscoveryAdapter {
   readonly kind = 'LLDP_SNMP' as const;
 
@@ -17,26 +39,16 @@ export class DemoTopologyAdapter implements TopologyDiscoveryAdapter {
   }
 
   async discoverNeighbors(device: Device): Promise<DiscoveredNeighbor[]> {
-    const names =
-      device.id === 'core-01'
-        ? [
-            ['100GE1/0/1', 'AGG-CENTRO-01', '100GE1/0/48'],
-            ['100GE1/0/2', 'BGP-EDGE-01', '100GE0/0/0'],
-            ['10GE1/0/8', 'SW-UNKNOWN', 'XGE0/0/1'],
-          ]
-        : [
-            [device.interfaces[0]?.name ?? 'GE0/0/1', 'CORE-BH-01', '100GE1/0/24'],
-            [device.interfaces[1]?.name ?? 'GE0/0/2', 'NEW-ACCESS-01', 'GE0/0/48'],
-          ];
-    return names.map(([localPort, remoteSystemName, remotePort], index) => ({
+    const entries = DEMO_FABRIC[device.id] ?? [];
+    return entries.map(([localPort, remoteSystemName, remotePort], index) => ({
       id: `demo-discovery-${device.id}-${index}`,
       localDeviceId: device.id,
-      localPort: localPort ?? 'Unknown',
-      remoteSystemName: remoteSystemName ?? 'Unknown',
-      remotePort: remotePort ?? 'Unknown',
+      localPort,
+      remoteSystemName,
+      remotePort,
       capabilities: ['bridge', 'router'],
-      source: 'LLDP_SNMP',
-      matchStatus: 'UNMATCHED',
+      source: 'LLDP_SNMP' as const,
+      matchStatus: 'UNMATCHED' as const,
     }));
   }
 }
