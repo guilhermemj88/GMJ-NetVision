@@ -79,17 +79,27 @@ function unsupportedCommandOutput(output: string): boolean {
   );
 }
 
-/** Rotula a sessao LDP com o nome do remote-peer, casando pelo IP do vizinho. */
-function withRemotePeerNames(
+/**
+ * Rotula a sessao LDP com o nome do remote-peer e completa o LDP ID local.
+ *
+ * O `display mpls ldp session` real do S6730S nao imprime o LDP ID local; quem
+ * traz esse dado e o `display mpls ldp remote-peer`. O casamento e sempre pelo
+ * IP do vizinho e nada e preenchido quando o equipamento nao informou.
+ */
+export function withRemotePeerNames(
   peers: MplsLdpPeer[],
   remotePeers: ParsedLdpRemotePeer[],
 ): MplsLdpPeer[] {
   if (!remotePeers.length) return peers;
   return peers.map((peer) => {
-    if (peer.name) return peer;
     const peerIp = peer.peerLdpId.split(':')[0];
     const match = remotePeers.find((remote) => peerIp && remote.ipAddress === peerIp);
-    return match ? { ...peer, name: match.name } : peer;
+    if (!match) return peer;
+    const name = peer.name ?? match.name;
+    const localLdpId = peer.localLdpId ?? match.localLdpId;
+    return name === peer.name && localLdpId === peer.localLdpId
+      ? peer
+      : { ...peer, name, localLdpId };
   });
 }
 

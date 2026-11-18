@@ -151,7 +151,8 @@ describe('HuaweiVsiSshService', () => {
     const execute = simulator({
       'display vsi verbose': VSI_VERBOSE,
       'display mpls ldp session': LDP_TABLE,
-      'display mpls ldp remote-peer': ' Peer Name : rr-sba\n Peer IP Address : 10.20.30.40',
+      'display mpls ldp remote-peer':
+        ' Remote Peer Name  : "rr-sba"\n Remote Peer IP    : 10.20.30.40   LDP ID : 10.20.30.41:0',
       'display mpls l2vc': L2VC,
     });
     const service = new HuaweiVsiSshService(repository(), () => ({ execute } as unknown as SshClient));
@@ -159,6 +160,39 @@ describe('HuaweiVsiSshService', () => {
     const reading = await service.readVsi(host());
 
     expect(reading.ldpPeers[0]).toMatchObject({ peerLdpId: '10.20.30.40:0', name: 'rr-sba' });
+  });
+
+  it('completa o LDP ID local com o que o remote-peer imprimiu, sem inventar', async () => {
+    const execute = simulator({
+      'display vsi verbose': VSI_VERBOSE,
+      'display mpls ldp session': LDP_TABLE,
+      'display mpls ldp remote-peer':
+        ' Remote Peer Name  : "rr-sba"\n Remote Peer IP    : 10.20.30.40   LDP ID : 10.20.30.41:0',
+      'display mpls l2vc': L2VC,
+    });
+    const service = new HuaweiVsiSshService(repository(), () => ({ execute } as unknown as SshClient));
+
+    const reading = await service.readVsi(host());
+
+    // A sessao veio sem LDP ID local; o valor sai do remote-peer (evidencia real).
+    expect(reading.ldpPeers[0]).toMatchObject({
+      name: 'rr-sba',
+      localLdpId: '10.20.30.41:0',
+    });
+  });
+
+  it('deixa o LDP ID local nulo quando o VRP nao imprime o dado', async () => {
+    const execute = simulator({
+      'display vsi verbose': VSI_VERBOSE,
+      'display mpls ldp session': LDP_TABLE,
+      'display mpls ldp remote-peer': '',
+      'display mpls l2vc': L2VC,
+    });
+    const service = new HuaweiVsiSshService(repository(), () => ({ execute } as unknown as SshClient));
+
+    const reading = await service.readVsi(host());
+
+    expect(reading.ldpPeers[0]?.localLdpId ?? null).toBeNull();
   });
 
   it('nao aceita nome de VSI com caracteres de comando', async () => {
