@@ -124,7 +124,16 @@ export class SshClientImpl implements SshClient {
       rejectConnectionFailure = reject;
     });
 
+    /**
+     * O `quit` faz o VRP derrubar a conexao, e o `ssh2` emite `error` na
+     * conexao antes de o canal fechar. Nessa altura todos os comandos ja
+     * terminaram e a saida esta completa: deixar esse erro tardio vencer a
+     * `Promise.race` transformava leitura bem-sucedida em FALSO negativo.
+     */
+    let outputCollected = false;
+
     connection.on('error', (error) => {
+      if (outputCollected) return;
       rejectConnectionFailure(this.safeError(error));
     });
 
@@ -136,7 +145,9 @@ export class SshClientImpl implements SshClient {
     try {
       await Promise.race([ready, connectionFailure]);
       const result = await Promise.race([
-        this.executeShell(connection, commands),
+        this.executeShell(connection, commands, () => {
+          outputCollected = true;
+        }),
         connectionFailure,
       ]);
       return result;
@@ -145,7 +156,11 @@ export class SshClientImpl implements SshClient {
     }
   }
 
-  private executeShell(connection: Client, commands: string[]): Promise<CommandResult> {
+  private executeShell(
+    connection: Client,
+    commands: string[],
+    onOutputCollected?: () => void,
+  ): Promise<CommandResult> {
     return new Promise((resolve, reject) => {
       connection.shell({ term: 'vt100', rows: 200, cols: 240 }, (error, stream: ClientChannel) => {
         if (error) {
@@ -215,6 +230,9 @@ export class SshClientImpl implements SshClient {
           if (exiting || settled) return;
           exiting = true;
           clearIdle();
+          // Todos os comandos responderam: a saida ja esta completa mesmo que o
+          // equipamento feche a conexao imediatamente depois do `quit`.
+          onOutputCollected?.();
           stream.end(quitSequence);
         };
 
@@ -290,6 +308,12 @@ export class SshClientImpl implements SshClient {
           if (settled) return;
           settled = true;
           clearTimeout(timeout);
+          // Mesmo caso do erro de conexao: erro tardio pos-`quit` nao invalida
+          // a saida que ja foi coletada.
+          if (exiting) {
+            resolve({ stdout, stderr, exitCode: 0 });
+            return;
+          }
           reject(this.safeError(streamError));
         });
       });

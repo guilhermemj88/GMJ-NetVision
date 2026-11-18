@@ -15,6 +15,8 @@ const mockState = vi.hoisted(() => ({
   connectConfigs: [] as unknown[],
   /** Erros a emitir no proximo `connect()`, consumidos em ordem. */
   connectErrors: [] as Error[],
+  /** Instancias de Client criadas, para simular erros tardios da conexao. */
+  clients: [] as { emit: (event: string, ...args: unknown[]) => boolean }[],
 }));
 
 vi.mock('ssh2', async () => {
@@ -57,6 +59,7 @@ vi.mock('ssh2', async () => {
   class FakeClient extends EventEmitter {
     connect(config?: unknown) {
       mockState.connectConfigs.push(config);
+      mockState.clients.push(this as unknown as { emit: (event: string, ...args: unknown[]) => boolean });
       const failure = mockState.connectErrors.shift();
       if (failure) {
         queueMicrotask(() => this.emit('error', failure));
@@ -333,6 +336,57 @@ describe('SshClientImpl — contrato e comandos em lote', () => {
     expect(mockState.channels.at(-1)!.writes.join('')).toBe(
       'screen-length 0 temporary\r\nswitch virtual-system IMPLANTAR-IXBR\r\ndisplay ip routing-table 200.150.1.193\r\nquit\r\nquit\r\n',
     );
+  });
+});
+
+describe('SshClientImpl — erro tardio da conexao depois do quit (Huawei VRP)', () => {
+  const COMMANDS = ['screen-length 0 temporary', 'display interface description'];
+
+  beforeEach(() => {
+    mockState.channels.length = 0;
+    mockState.clients.length = 0;
+    mockState.script = null;
+    mockState.initialOutput = '<HUAWEI>';
+  });
+
+  afterEach(() => {
+    mockState.channels.length = 0;
+    mockState.clients.length = 0;
+    mockState.script = null;
+    mockState.initialOutput = '<HUAWEI>';
+  });
+
+  it('aceita a coleta quando o DISCONNECT chega antes do close do canal', async () => {
+    mockState.script = (command, channel) => {
+      if (command === 'quit') return;
+      echoWithPrompt(channel, command, [`saida de ${command}`]);
+      if (command === COMMANDS.at(-1)) {
+        // O VRP derruba a conexao logo apos o CHANNEL_CLOSE do `quit`; o `error`
+        // da conexao chega antes do evento `close` do stream.
+        mockState.clients.at(-1)!.emit('error', new Error('The connection is closed by SSH server'));
+      }
+    };
+    const client = new SshClientImpl({ port: 22, username: 'u', password: 'p', commandIdleMs: FAST_IDLE });
+
+    const [result] = await client.execute('10.0.0.1', COMMANDS);
+
+    expect(result!.exitCode).toBe(0);
+    expect(result!.stdout).toContain('saida de display interface description');
+    expect(mockState.channels.at(-1)!.writes.at(-1)).toBe('quit\r\n');
+  });
+
+  it('continua falhando quando o erro chega ANTES de a coleta terminar', async () => {
+    mockState.script = (command, channel) => {
+      if (command === 'quit') return;
+      if (command === COMMANDS.at(-1)) {
+        mockState.clients.at(-1)!.emit('error', new Error('The connection is closed by SSH server'));
+        return;
+      }
+      echoWithPrompt(channel, command, ['ok']);
+    };
+    const client = new SshClientImpl({ port: 22, username: 'u', password: 'p', commandIdleMs: FAST_IDLE });
+
+    await expect(client.execute('10.0.0.1', COMMANDS)).rejects.toThrow(/SSH transport failed/);
   });
 });
 
