@@ -197,6 +197,21 @@ enum PublicViewType {
 
 enum MplsSource {
   SNMP
+  /// Leitura complementar por CLI (read-only): VSI/VPLS, LDP e L2VC/VPWS.
+  SSH
+}
+
+/// Resultado da descoberta MPLS. "MIB vazia" nunca vira ausencia de servico.
+enum MplsDiscoveryState {
+  UNKNOWN
+  FOUND_UP
+  FOUND_DOWN
+  FOUND_MIXED
+  FOUND_L2VC
+  NOT_FOUND
+  INCOMPLETE
+  UNSUPPORTED
+  CONFLICT
 }
 
 enum MplsStatus {
@@ -619,6 +634,12 @@ model BgpPeer {
   addressFamily          BgpAddressFamily           @default(IPV4)
   peerDescription        String?
   remoteAs               BigInt?
+  /**
+   * AS local DESTA sessao. Obrigatorio para Juniper (um MX usa local-as
+   * diferente por grupo/peer); Huawei mantem `Device.bgpLocalAs` e usa este
+   * campo como opcional. NULL = desconhecido, nunca 0.
+   */
+  localAs                BigInt?
   interfaceId            String?
   monitoringEnabled      Boolean                    @default(true)
   role                   BgpPeerRole                @default(OTHER)
@@ -914,13 +935,59 @@ model MplsDeviceState {
   acSupported   Boolean    @default(false)
   pwSupported   Boolean    @default(false)
   source        MplsSource @default(SNMP)
+  /// Resultado da ultima descoberta (nunca infere ausencia por MIB vazia).
+  discoveryState MplsDiscoveryState @default(UNKNOWN)
+  /// Fontes que responderam na ultima coleta (SNMP, SSH).
+  sources       String[]   @default([])
+  /// Sessoes LDP observadas (transporte MPLS), com a leitura integral.
+  ldpPeers      Json?
+  /// Circuitos L2VC/VPWS observados na CLI (servico ponto a ponto).
+  l2vcCircuits  Json?
+  /// Divergencias SNMP x SSH preservadas como evidencia.
+  conflicts     Json?
   lastPollingAt DateTime?
   lastSuccessAt DateTime?
   lastFailureAt DateTime?
   lastErrorSafe String?
+  /// A1: fallback CLI (SSH) habilitado EXPLICITAMENTE para este equipamento.
+  /// Desligado por padrao: `sshEnabled` no host nao basta para receber CLI.
+  sshFallbackEnabled Boolean @default(false)
   host          Device     @relation(fields: [hostId], references: [id], onDelete: Cascade)
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
+}
+
+/// P6 (2a auditoria): orcamento de sessoes SSH do MPLS compartilhado entre
+/// processos. Fica no banco para sobreviver a restart e a troca de release;
+/// linhas sem `finishedAt` expiram pela janela (`staleAfterMs`) em caso de
+/// processo morto no meio de uma leitura.
+model MplsSshSessionLog {
+  id         String    @id @default(cuid())
+  hostId     String
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  @@index([startedAt])
+  @@index([hostId, startedAt])
+}
+
+/// A1-e (3a auditoria): trilha AUDITAVEL do opt-in do fallback CLI MPLS.
+/// Sem FK para `Device` de proposito — a trilha sobrevive a remocao do
+/// cadastro e continua respondendo "quem mudou o que, quando e por que".
+model MplsSshFallbackAudit {
+  id            String   @id @default(cuid())
+  hostId        String
+  actorId       String?
+  actorUsername String?
+  previousValue Boolean
+  newValue      Boolean
+  /// ALLOWED | DENIED_NOT_ADMIN | DENIED_PLATFORM | DENIED_AUTO_ALL | DENIED_UNSUPPORTED
+  result        String
+  reason        String   @default("")
+  createdAt     DateTime @default(now())
+
+  @@index([hostId, createdAt])
+  @@index([createdAt])
 }
 
 model MplsVsi {
@@ -937,6 +1004,8 @@ model MplsVsi {
   vcType            String                   @default("UNKNOWN")
   tunnelPolicy      String?
   description       String?
+  /// Descoberta de membros observada na CLI (STATIC/DYNAMIC).
+  memberDiscovery   String?
   vlanId            Int?
   localInterfaceId  String?
   source            MplsSource               @default(SNMP)

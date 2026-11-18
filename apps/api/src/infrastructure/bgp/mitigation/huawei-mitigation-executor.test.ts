@@ -33,7 +33,7 @@ const IP_PREFIX = [
 function device(id = DEVICE_ID): HostRecord {
   return {
     id,
-    hostname: 'BHE-VTA-F1A-BGP-01',
+    hostname: 'BHE-VTA-F1A-BGP-01',    vendor: 'Huawei',    model: 'NE8000',
     displayName: 'BHE-VTA-F1A-BGP-01',
     name: 'BHE-VTA-F1A-BGP-01',
     sshEnabled: true,

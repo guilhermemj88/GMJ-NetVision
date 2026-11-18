@@ -98,8 +98,13 @@ function fixture(
   };
   const overview = (v: MplsVsi, pw: boolean): MplsHostOverview => ({
     supported: true,
+    discoveryState: 'FOUND_UP',
     capabilities: { vsi: true, ac: true, pw },
     source: 'SNMP',
+    sources: ['SNMP'],
+    ldpPeers: [],
+    l2vcCircuits: [],
+    conflicts: [],
     lastPollingAt: new Date().toISOString(),
     lastSuccessAt: new Date().toISOString(),
     lastErrorSafe: null,

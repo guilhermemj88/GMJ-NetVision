@@ -93,6 +93,7 @@ import {
   type ZabbixImportPreview,
   type ZabbixImportResult,
 } from '@gmj/shared';
+import { normalizeMplsOverview } from './mpls-overview';
 
 function apiUrl(): string {
   const configured = process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/+$/, '');
@@ -655,7 +656,7 @@ export function getHostMpls(
   const path = publicToken
     ? `/api/public/view/${encodeURIComponent(publicToken)}/hosts/${encodedHost}/mpls`
     : `/api/hosts/${encodedHost}/mpls`;
-  return request<MplsHostOverview>(path);
+  return request<unknown>(path).then(normalizeMplsOverview);
 }
 
 export function getHostMplsVsis(hostId: string): Promise<MplsVsi[]> {

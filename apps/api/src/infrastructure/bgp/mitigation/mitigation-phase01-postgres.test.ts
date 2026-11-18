@@ -160,6 +160,7 @@ describe.skipIf(!url)('phase01 real PostgreSQL atomicity and discovery', () => {
       {
         peerAddress: '192.0.2.1',
         addressFamily: 'IPV4',
+        localAs: null,
         remoteAs: 64501n,
         stateCode: 6,
         state: 'ESTABLISHED',

@@ -1,0 +1,56 @@
+<BHE-LIKEE-6730-MPLS-01>display vsi name 3072-QinQ-CDB-MANTIQUEIRA verbose
+ 
+ ***VSI Name               : 3072-QinQ-CDB-MANTIQUEIRA
+    Administrator VSI      : no
+    Isolate Spoken         : disable
+    VSI Index              : 28
+    PW Signaling           : bgp
+    Member Discovery Style : --
+    PW MAC Learn Style     : unqualify
+    Encapsulation Type     : vlan
+    MTU                    : 2000
+    Diffserv Mode          : uniform
+    Mpls Exp               : --
+    DomainId               : 255
+    Domain Name            : 
+    Ignore AcState         : disable
+    P2P VSI                : disable
+    Create Time            : 542 days, 10 hours, 31 minutes, 15 seconds
+    VSI State              : up
+ 
+    BGP RD                 : 268568:53072
+    SiteID/Range/Offset    : 3/30/1
+    Import vpn target      : 268568:53072           
+    Export vpn target      : 268568:53072           
+    Remote Label Block     : 35840/30/1 
+    Local Label Block      : 0/36680/30/1 
+
+    Interface Name         : Eth-Trunk17.3072
+    State                  : up
+    Access Port            : false
+    Last Up Time           : 2026/10/26 22:29:11
+    Total Up Time          : 505 days, 8 hours, 57 minutes, 24 seconds
+
+  **PW Information:
+
+   *Peer Ip Address        : 10.100.101.2
+    PW State               : up
+    Local VC Label         : 36706
+    Remote VC Label        : 35842
+    PW Type                : label 
+    Local  VCCV            : --
+    Remote VCCV            : --
+    Tunnel ID              : 0x48007263 
+    Broadcast Tunnel ID    : 0x48007263 
+    Broad BackupTunnel ID  : 0x0 
+    Ckey                   : 0x88
+    Nkey                   : 0x23
+    Main PW Token          : 0x48007263 
+    Slave PW Token         : 0x0 
+    Tnl Type               : LSP 
+    OutInterface           : Vlanif1504 
+    Backup OutInterface    :  
+    Stp Enable             : 0 
+    PW Last Up Time        : 2026/10/26 22:29:11
+    PW Total Up Time       : 20 days, 22 hours, 46 minutes, 9 seconds
+<BHE-LIKEE-6730-MPLS-01>

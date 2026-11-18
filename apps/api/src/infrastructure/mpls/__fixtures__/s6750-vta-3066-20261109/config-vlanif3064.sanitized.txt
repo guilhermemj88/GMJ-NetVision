@@ -1,0 +1,9 @@
+
+<BHE-VTA-S6750-MPLS-01>display current-configuration interface Vlanif3064
+#
+interface Vlanif3064
+ description 3064-PONTUALNET-IP-BHE-MQT
+ l2 binding vsi 3064-PONTUALNET-IP-BHE-MQT
+#
+return
+<BHE-VTA-S6750-MPLS-01>

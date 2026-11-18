@@ -206,7 +206,12 @@ describe('BgpWorkspace', () => {
       message: 'Sessão BGP desabilitada e confirmada por read-back (ADMIN: IGNORADO).',
       executedAt: '2026-09-21T10:00:00.000Z',
     });
-    api.pollHost.mockResolvedValue({ hostId: 'ne8000-1', polledAt: 'x', interfacesChecked: 0, interfaceSamples: 0 });
+    api.pollHost.mockResolvedValue({
+      hostId: 'ne8000-1',
+      polledAt: 'x',
+      interfacesChecked: 0,
+      interfaceSamples: 0,
+    });
     container = document.createElement('div');
     document.body.appendChild(container);
     root = createRoot(container);
@@ -214,13 +219,7 @@ describe('BgpWorkspace', () => {
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
     await act(async () => {
-      root.render(
-        createElement(
-          QueryClientProvider,
-          { client },
-          createElement(BgpWorkspace),
-        ),
-      );
+      root.render(createElement(QueryClientProvider, { client }, createElement(BgpWorkspace)));
     });
     await settle();
   });
@@ -238,8 +237,10 @@ describe('BgpWorkspace', () => {
     expect(text).toContain('S6730 MPLS');
     expect(text).toContain('TRANSITO XYZ');
     expect(text).toContain('10.0.0.1');
-    expect(container.querySelectorAll('.bgp-state--up').length).toBe(2);
-    expect(container.querySelectorAll('.bgp-state--down').length).toBe(1);
+    expect(container.querySelectorAll('.bgp-device table .bgp-state--up').length).toBe(2);
+    expect(container.querySelectorAll('.bgp-device table .bgp-state--down').length).toBe(1);
+    expect(container.querySelectorAll('.bgp-card .bgp-state--up').length).toBe(2);
+    expect(container.querySelectorAll('.bgp-card .bgp-state--down').length).toBe(1);
   });
 
   it('renders a dash for peers without ASN or interface traffic', () => {
@@ -268,9 +269,7 @@ describe('BgpWorkspace', () => {
       allButton.click();
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     });
-    expect(api.getBgpDashboard).toHaveBeenCalledWith(
-      expect.objectContaining({ scope: 'all' }),
-    );
+    expect(api.getBgpDashboard).toHaveBeenCalledWith(expect.objectContaining({ scope: 'all' }));
   });
 
   it('loads peer history only when a peer is opened', async () => {
@@ -287,8 +286,18 @@ describe('BgpWorkspace', () => {
 
   it('toggles bgpMonitoringEnabled locally and saves only changed hosts', async () => {
     api.getHosts.mockResolvedValue([
-      { id: 'ne8000-1', hostname: 'NE8000-1', displayName: 'NE-8K POP CENTRO', bgpMonitoringEnabled: true },
-      { id: 's6730-1', hostname: 'S6730-MPLS-01', displayName: 'S6730 MPLS', bgpMonitoringEnabled: false },
+      {
+        id: 'ne8000-1',
+        hostname: 'NE8000-1',
+        displayName: 'NE-8K POP CENTRO',
+        bgpMonitoringEnabled: true,
+      },
+      {
+        id: 's6730-1',
+        hostname: 'S6730-MPLS-01',
+        displayName: 'S6730 MPLS',
+        bgpMonitoringEnabled: false,
+      },
     ]);
     const manage = findButton(container, 'Gerenciar equipamentos');
     await act(async () => {
@@ -318,7 +327,12 @@ describe('BgpWorkspace', () => {
 
   it('does not PATCH when the manager is cancelled', async () => {
     api.getHosts.mockResolvedValue([
-      { id: 's6730-1', hostname: 'S6730-MPLS-01', displayName: 'S6730 MPLS', bgpMonitoringEnabled: false },
+      {
+        id: 's6730-1',
+        hostname: 'S6730-MPLS-01',
+        displayName: 'S6730 MPLS',
+        bgpMonitoringEnabled: false,
+      },
     ]);
     const manage = findButton(container, 'Gerenciar equipamentos');
     await act(async () => {
@@ -339,7 +353,12 @@ describe('BgpWorkspace', () => {
 
   it('shows an error when a PATCH fails during save', async () => {
     api.getHosts.mockResolvedValue([
-      { id: 's6730-1', hostname: 'S6730-MPLS-01', displayName: 'S6730 MPLS', bgpMonitoringEnabled: false },
+      {
+        id: 's6730-1',
+        hostname: 'S6730-MPLS-01',
+        displayName: 'S6730 MPLS',
+        bgpMonitoringEnabled: false,
+      },
     ]);
     api.updateHost.mockRejectedValue(new Error('Falha de rede'));
     const manage = findButton(container, 'Gerenciar equipamentos');
@@ -446,9 +465,7 @@ describe('BgpWorkspace', () => {
       familySelect.dispatchEvent(new Event('change', { bubbles: true }));
       await new Promise((resolve) => window.setTimeout(resolve, 0));
     });
-    expect(api.getBgpDashboard).toHaveBeenCalledWith(
-      expect.objectContaining({ family: 'IPV6' }),
-    );
+    expect(api.getBgpDashboard).toHaveBeenCalledWith(expect.objectContaining({ family: 'IPV6' }));
   });
 
   it('requires human confirmation before disabling a peer session', async () => {
@@ -518,7 +535,10 @@ describe('BgpWorkspace', () => {
     api.getBgpDashboard.mockResolvedValue({
       ...dashboard,
       devices: [
-        { ...dashboard.devices[0]!, peers: [peerWithoutLocalAs, ...dashboard.devices[0]!.peers.slice(1)] },
+        {
+          ...dashboard.devices[0]!,
+          peers: [peerWithoutLocalAs, ...dashboard.devices[0]!.peers.slice(1)],
+        },
         dashboard.devices[1]!,
       ],
     } as BgpDashboardResponse);
@@ -535,9 +555,7 @@ describe('BgpWorkspace', () => {
     });
     await settle();
 
-    expect(container.textContent).toContain(
-      'ASN local do processo BGP ainda não foi identificado',
-    );
+    expect(container.textContent).toContain('ASN local do processo BGP ainda não foi identificado');
     const disable = findButton(container, 'Desabilitar sessão BGP');
     expect(disable.disabled).toBe(true);
     await act(async () => {
@@ -687,9 +705,7 @@ describe('BgpWorkspace · exposição da mitigação DDoS', () => {
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
     await act(async () => {
-      root.render(
-        createElement(QueryClientProvider, { client }, createElement(BgpWorkspace)),
-      );
+      root.render(createElement(QueryClientProvider, { client }, createElement(BgpWorkspace)));
     });
     await settle();
   });
@@ -718,9 +734,7 @@ describe('BgpWorkspace · exposição da mitigação DDoS', () => {
     vi.stubEnv('NEXT_PUBLIC_DDOS_MITIGATION_UI', 'true');
     // re-render com a flag aplicada
     await act(async () => {
-      root.render(
-        createElement(QueryClientProvider, { client }, createElement(BgpWorkspace)),
-      );
+      root.render(createElement(QueryClientProvider, { client }, createElement(BgpWorkspace)));
     });
     const tabs = [...container.querySelectorAll('[role="tab"]')].map((tab) =>
       tab.textContent?.trim(),
@@ -739,9 +753,7 @@ describe('BgpWorkspace · exposição da mitigação DDoS', () => {
     vi.unstubAllEnvs();
     vi.stubEnv('NEXT_PUBLIC_INSTALLATION_HOSTNAME', 'netvision-implantar');
     await act(async () => {
-      root.render(
-        createElement(QueryClientProvider, { client }, createElement(BgpWorkspace)),
-      );
+      root.render(createElement(QueryClientProvider, { client }, createElement(BgpWorkspace)));
     });
     await settle();
     const tabs = [...container.querySelectorAll('[role="tab"]')].map((tab) =>
@@ -755,9 +767,7 @@ describe('BgpWorkspace · exposição da mitigação DDoS', () => {
     vi.unstubAllEnvs();
     vi.stubEnv('NEXT_PUBLIC_INSTALLATION_HOSTNAME', 'netvision-vnt');
     await act(async () => {
-      root.render(
-        createElement(QueryClientProvider, { client }, createElement(BgpWorkspace)),
-      );
+      root.render(createElement(QueryClientProvider, { client }, createElement(BgpWorkspace)));
     });
     await settle();
     const tabs = [...container.querySelectorAll('[role="tab"]')].map((tab) =>

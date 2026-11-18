@@ -1,0 +1,14 @@
+
+<BHE-VTA-S6750-MPLS-01>display mac-address vsi 3066-BGP-FLASHTELECOM
+Flags: * - Backup
+       # - forwarding logical interface, operations cannot be performed based 
+           on the interface.
+BD   : bridge-domain   Age : dynamic MAC learned time in seconds
+-------------------------------------------------------------------------------
+MAC Address    VLAN/VSI/BD   Learned-From        Type                Age
+-------------------------------------------------------------------------------
+14eb-08bf-0001 -/3066-BGP-FLASHTELECOM/- Eth-Trunk1          dynamic          131161
+f0a9-511e-0002 -/3066-BGP-FLASHTELECOM/- Eth-Trunk6          dynamic          131156
+-------------------------------------------------------------------------------
+Total items: 2
+<BHE-VTA-S6750-MPLS-01>

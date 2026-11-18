@@ -231,8 +231,7 @@ export async function createAutoAllHarness(options: AutoAllHarnessOptions = {}) 
       adminStatus: 'UP',
       operStatus: 'UP',
     })),
-    sshEnabled: true,
-    ssh: { host: '192.0.2.254', port: 22, username: 'synthetic' },
+    vendor: 'Huawei',    model: 'NE8000',    sshEnabled: true,    ssh: { host: '192.0.2.254', port: 22, username: 'synthetic' },
   } as unknown as HostRecord;
 
   const allowlist = options.allowlist ?? [P.profileId];

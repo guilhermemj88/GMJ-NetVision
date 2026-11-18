@@ -130,7 +130,7 @@ async function harness() {
   };
   const host = {
     id: profile.deviceId,
-    hostname: 'FAKE',
+    hostname: 'FAKE',    vendor: 'Huawei',    model: 'NE8000',
     interfaces: [iface],
     sshEnabled: true,
     ssh: { host: '192.0.2.254', port: 22, username: 'fake' },

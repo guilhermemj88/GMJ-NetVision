@@ -7,6 +7,7 @@ import { createServer } from "node:http";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
+import { decideMcpRole, registerVsiMcpTools, type RoleDecision } from "./vsi-tools.js";
 
 const execFileAsync = promisify(execFile);
 const currentFile = fileURLToPath(import.meta.url);
@@ -16,6 +17,8 @@ const apiRoot = path.join(repoRoot, "apps/api");
 const PORT = Number(process.env.MCP_PORT ?? 3334);
 const HOST = process.env.MCP_HOST ?? "127.0.0.1";
 const API_BASE_URL = process.env.NETVISION_API_URL ?? "http://127.0.0.1:3333";
+// A chamada ao vivo abre SSH (ate 45 s/sessao, 2 sessoes, prazo de 90 s na API): o padrao de 30 s cortaria a resposta.
+const VSI_TOOL_TIMEOUT_MS = 120_000;
 const API_HEALTH_URL = process.env.NETVISION_API_HEALTH_URL ?? `${API_BASE_URL}/health`;
 const SERVICE_CANDIDATES = [
   "netvision-api",
@@ -171,7 +174,7 @@ interface ApiRequestResult {
   body: unknown;
 }
 
-async function apiFetchRaw(method: "GET" | "POST" | "PATCH", route: string, requestBody?: unknown): Promise<ApiRequestResult> {
+async function apiFetchRaw(method: "GET" | "POST" | "PATCH", route: string, requestBody?: unknown, timeoutMs = 30_000): Promise<ApiRequestResult> {
   const headers: Record<string, string> = { accept: "application/json" };
   if (requestBody !== undefined) headers["content-type"] = "application/json";
   if (cachedSessionCookie) headers["cookie"] = cachedSessionCookie;
@@ -179,7 +182,7 @@ async function apiFetchRaw(method: "GET" | "POST" | "PATCH", route: string, requ
     method,
     headers,
     body: requestBody !== undefined ? JSON.stringify(requestBody) : undefined,
-    signal: AbortSignal.timeout(30_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   const text = await response.text();
   let body: unknown = text;
@@ -187,18 +190,18 @@ async function apiFetchRaw(method: "GET" | "POST" | "PATCH", route: string, requ
   return { status: response.status, ok: response.ok, body };
 }
 
-async function apiRequestJson(method: "GET" | "POST" | "PATCH", route: string, requestBody?: unknown): Promise<ApiRequestResult> {
+async function apiRequestJson(method: "GET" | "POST" | "PATCH", route: string, requestBody?: unknown, timeoutMs?: number): Promise<ApiRequestResult> {
   const credentials = await mcpCredentials();
-  if (!credentials) return apiFetchRaw(method, route, requestBody);
+  if (!credentials) return apiFetchRaw(method, route, requestBody, timeoutMs);
 
   if (!cachedSessionCookie) await loginAndCacheSession();
 
-  let result = await apiFetchRaw(method, route, requestBody);
+  let result = await apiFetchRaw(method, route, requestBody, timeoutMs);
   if (result.status === 401) {
     // Session may have expired: drop it, authenticate again and retry once.
     cachedSessionCookie = null;
     const cookie = await loginAndCacheSession();
-    if (cookie) result = await apiFetchRaw(method, route, requestBody);
+    if (cookie) result = await apiFetchRaw(method, route, requestBody, timeoutMs);
   }
   return result;
 }
@@ -207,9 +210,27 @@ function apiErrorText(result: ApiRequestResult): string {
   return JSON.stringify({ status: result.status, ok: false, body: sanitize(result.body) }, null, 2);
 }
 
-async function apiRequest(method: "GET" | "POST" | "PATCH", route: string, requestBody?: unknown): Promise<string> {
+let roleCache: { at: number; decision: RoleDecision } | null = null;
+
+async function vsiOperationalRoleGuard(): Promise<RoleDecision> {
+  const now = Date.now();
+  // positivo: 60 s; negativo: 10 s (volta a conferir logo, mas nao martela a API)
+  if (roleCache && now - roleCache.at < (roleCache.decision.allowed ? 60_000 : 10_000)) return roleCache.decision;
+  let decision: RoleDecision;
   try {
-    const result = await apiRequestJson(method, route, requestBody);
+    const result = await apiRequestJson("GET", "/api/auth/me", undefined, 10_000);
+    const role = result.ok ? ((result.body as { user?: { role?: unknown } } | null)?.user?.role) : undefined;
+    decision = decideMcpRole(role);
+  } catch {
+    decision = decideMcpRole(undefined);
+  }
+  roleCache = { at: now, decision };
+  return decision;
+}
+
+async function apiRequest(method: "GET" | "POST" | "PATCH", route: string, requestBody?: unknown, timeoutMs?: number): Promise<string> {
+  try {
+    const result = await apiRequestJson(method, route, requestBody, timeoutMs);
     return JSON.stringify({ status: result.status, ok: result.ok, body: sanitize(result.body) }, null, 2);
   } catch (error) {
     return JSON.stringify({ ok: false, error: error instanceof Error ? error.message : String(error) }, null, 2);
@@ -494,6 +515,11 @@ export function createNetVisionMcpServer() {
     const host = result.body as Record<string, unknown>;
     return textResult(JSON.stringify({ hostId, hostname: host.hostname ?? null, bgpMonitoringEnabled: host.bgpMonitoringEnabled ?? enabled }, null, 2));
   });
+
+  // Diagnostico VSI/MPLS somente-consulta. As 8 ferramentas apenas repassam a /api/vsi-mcp/tools/:tool,
+  // onde ficam autorizacao, aprovacao one-shot, politica de comandos e limites. A execucao OPERACIONAL (SSH) so e habilitada
+  // se a conta de servico do MCP tiver papel OPERATOR (verificado em /api/auth/me).
+  registerVsiMcpTools(server, (tool, args) => apiRequest("POST", `/api/vsi-mcp/tools/${tool}`, args, VSI_TOOL_TIMEOUT_MS), vsiOperationalRoleGuard);
 
   return server;
 }

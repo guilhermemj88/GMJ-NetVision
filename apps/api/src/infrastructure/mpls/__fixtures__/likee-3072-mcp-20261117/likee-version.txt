@@ -1,0 +1,28 @@
+<BHE-LIKEE-6730-MPLS-01>display version
+Huawei Versatile Routing Platform Software
+VRP (R) software, Version 5.170 (S6730 V200R021C00SPC100)
+Copyright (C) 2000-2021 HUAWEI TECH Co., Ltd.
+HUAWEI S6730-H24X6C Routing Switch uptime is 94 weeks, 6 days, 17 hours, 45 minutes
+
+ES6D2S30S003 0(Master)  : uptime is 94 weeks, 6 days, 17 hours, 44 minutes
+DDR             Memory Size : 4096  M bytes
+FLASH Total     Memory Size : 2048  M bytes
+FLASH Available Memory Size : 740   M bytes
+Pcb           Version   : VER.A
+MAB           Version   : 0
+BootROM       Version   : 0000.051a
+BootLoad      Version   : 0215.0000
+CPLD          Version   : 0107 
+Software      Version   : VRP (R) Software, Version 5.170 (V200R021C00SPC100)
+FLASH         Version   : 0000.0000
+PWR1 information
+Pcb           Version   : PWR VER.B
+FAN1 information
+Pcb           Version   : NA
+FAN2 information
+Pcb           Version   : NA
+FAN3 information
+Pcb           Version   : NA
+FAN4 information
+Pcb           Version   : NA
+<BHE-LIKEE-6730-MPLS-01>

@@ -1,0 +1,5 @@
+dist/
+host.json
+profiles.json
+secrets.json
+*.pass

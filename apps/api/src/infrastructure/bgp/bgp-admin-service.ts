@@ -5,6 +5,7 @@ import type {
   BgpPeerAdminStateResponse,
 } from '@gmj/shared';
 import { ipAddressFamily } from '@gmj/shared';
+import { bgpPlatformFor, isHuaweiVrpDevice } from './bgp-vendor';
 import type { BgpAdminAuditRepository } from './bgp-admin-audit';
 import type { BgpRepository } from './bgp-repository';
 import type { HuaweiBgpSshService } from './huawei-bgp-ssh';
@@ -68,6 +69,19 @@ export class BgpAdminService {
 
     const host = await this.dependencies.hosts.getHost(peer.deviceId);
     if (!host) throw new BgpAdminActionError('Equipamento não encontrado', 404);
+
+    // M1/M2: escrita administrativa exige plataforma Huawei VRP identificada.
+    // Juniper e somente leitura; fabricante ausente/inconsistente (UNSUPPORTED)
+    // e OLT NAO herdam o caminho legado — nenhum comando Huawei e enviado.
+    if (!isHuaweiVrpDevice(host)) {
+      throw new BgpAdminActionError(
+        bgpPlatformFor(host.vendor, host.model) === 'JUNIPER_JUNOS'
+          ? 'Habilitar/desabilitar vizinho não é suportado nesta plataforma (Junos é somente leitura)'
+          : 'Plataforma do equipamento não identificada com segurança (fabricante/modelo). ' +
+            'Ação administrativa bloqueada; corrija o cadastro do equipamento.',
+        409,
+      );
+    }
 
     // The stored address must be valid for the stored family; the request never
     // carries an address, so this also blocks corrupted rows.

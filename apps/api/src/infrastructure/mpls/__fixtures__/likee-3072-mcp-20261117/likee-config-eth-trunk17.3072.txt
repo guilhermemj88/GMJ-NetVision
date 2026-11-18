@@ -1,0 +1,11 @@
+<BHE-LIKEE-6730-MPLS-01>display current-configuration interface Eth-Trunk17.3072
+#
+interface Eth-Trunk17.3072
+ description <REMOVIDO>
+ qinq stacking vid 3072 to 3073 pe-vid 3072
+ qinq stacking vid 3951 pe-vid 3072
+ l2 binding vsi 3072-QinQ-CDB-MANTIQUEIRA
+ statistic enable both
+#
+return
+<BHE-LIKEE-6730-MPLS-01>

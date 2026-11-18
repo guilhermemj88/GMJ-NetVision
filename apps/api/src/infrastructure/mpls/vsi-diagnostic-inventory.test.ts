@@ -21,8 +21,13 @@ function snapshot() {
   } as unknown as MplsVsi;
   const overview: VsiInventoryOverview = {
     supported: true,
+    discoveryState: 'FOUND_UP',
     capabilities: { vsi: true, ac: true, pw: false },
     source: 'SNMP',
+    sources: ['SNMP'],
+    ldpPeers: [],
+    l2vcCircuits: [],
+    conflicts: [],
     lastPollingAt: stamp,
     lastSuccessAt: stamp,
     lastErrorSafe: null,

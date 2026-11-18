@@ -46,7 +46,7 @@ class RealConfigSsh implements MitigationSshPort {
 
 const device = {
   id: DEVICE_ID,
-  hostname: 'BHE-VTA-F1A-BGP-01',
+  hostname: 'BHE-VTA-F1A-BGP-01',  vendor: 'Huawei',  model: 'NE8000',
   displayName: 'BHE-VTA-F1A-BGP-01',
   sshEnabled: true,
   ssh: { host: '10.200.1.1', port: 22, username: 'netvision' },

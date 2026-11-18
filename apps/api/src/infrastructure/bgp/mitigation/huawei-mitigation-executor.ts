@@ -18,6 +18,8 @@ import {
   type MitigationActivationInput,
   type MitigationRemovalInput,
 } from './mitigation-executor';
+import { createPlatformGuardedMitigationSsh } from './mitigation-platform-guard';
+import { isHuaweiVrpDevice } from '../bgp-vendor';
 import { DEFAULT_BOGON_PREFIX_LIST, DEFAULT_TARGET_PREFIX_LIST } from './mitigation-planner';
 import { planNodeOccupancy, type NodeOccupancyPlan } from './mitigation-node-snapshot';
 import {
@@ -234,14 +236,17 @@ export class HuaweiMitigationExecutor {
   private readonly rt: string;
   private readonly labels: { bogonPrefixList: string; targetPrefixList: string };
   private readonly baseline: MitigationBaselineStore;
+  private readonly deps: HuaweiMitigationExecutorDeps;
 
-  constructor(private readonly deps: HuaweiMitigationExecutorDeps) {
+  constructor(deps: HuaweiMitigationExecutorDeps) {
     if (typeof deps.ssh?.readMitigationDisplays !== 'function') {
       throw new Error(
         'MITIGATION_PHYSICAL_PORT_REQUIRED: o transporte precisa de readMitigationDisplays ' +
           '(verificacao fisica obrigatoria)',
       );
     }
+    // M1: toda leitura/escrita passa pela porta; o gate de plataforma fica nela.
+    this.deps = { ...deps, ssh: createPlatformGuardedMitigationSsh(deps.ssh) };
     this.rt = deps.rt ?? DEFAULT_MITIGATION_RT;
     this.labels = deps.labels ?? {
       bogonPrefixList: DEFAULT_BOGON_PREFIX_LIST,
@@ -250,8 +255,9 @@ export class HuaweiMitigationExecutor {
     this.baseline = deps.baseline ?? new MemoryMitigationBaselineStore();
   }
 
-  /** Leitura real liberada para este device (HUAWEI + allowlist). */
+  /** Leitura real liberada para este device (HUAWEI VRP + allowlist). */
   enabledFor(device: HostRecord | null | undefined): boolean {
+    if (!device || !isHuaweiVrpDevice(device)) return false;
     return canReadLive(this.deps.config, device?.id);
   }
 

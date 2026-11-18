@@ -1,0 +1,64 @@
+{
+  "device": "BHE-VTA-S6750-MPLS-01",
+  "model": "S6750-H36C (YunShan OS)",
+  "version": "1.24.0.1 (S6700 V600R024C00SPC500)",
+  "patch": "V600R024SPH221",
+  "vsi": "3066-BGP-FLASHTELECOM",
+  "capturedAt": "2026-11-09T14:46Z",
+  "path": "MCP(dev) -> API(dev) -> SSH, aprovacao one-shot vsi-name:3066-BGP-FLASHTELECOM",
+  "note": "Execucao 1 (14:46Z): sessao 1 de 2 (sessao 2 barrada por bug de intervalo, corrigido). Execucao 2 (18:24Z): sessao unica completa. Execucao 3 (21:16Z, aprovacao 5bcdf092): 8 comandos em 1 sessao; display vlan 3066 e config de Eth-Trunk1/6 reais. Proveniencia dos fixtures: vsi-verbose = exec. 1 (PW Total Up Time 118059 s); mac-vsi = exec. 2 (Age 131161/131156; na exec. 3: 141470/141465). Relogio do equipamento ~ UTC+69 s. Eth-Trunk6 (fora da VLAN 3066) teve o MAC aprendido 5 s apos o ultimo up do PW: origem indeterminada (ver docs/HOMOLOGACAO_VSI_MCP_VLAN_MAC.md secao 6).",
+  "sanitization": "sem segredos; enderecos MAC substituidos (OUI preservado, 16 bits finais trocados); IP de peer privado de loopback MPLS mantido; Eth-Trunk: description removida e allow-pass de Eth-Trunk1 reduzido a subconjunto representativo (VLANs de outros clientes omitidas); display vlan sem alteracao",
+  "files": {
+    "preparation.sanitized.txt": {
+      "command": "screen-length 0 temporary",
+      "sha256": "d7924d1dd2e3e153e4bb020daa1c8bbf4064c95e5bf6692ec62ae2c3d0352106",
+      "bytes": 133
+    },
+    "version.sanitized.txt": {
+      "command": "display version",
+      "sha256": "b3391ad5d1e278720e09eae23f62d7c76527813cde3224554631f5e3451f36f3",
+      "bytes": 708
+    },
+    "vsi-verbose.sanitized.txt": {
+      "command": "display vsi name 3066-BGP-FLASHTELECOM verbose",
+      "sha256": "650ec50a2b7e33f9c1d69cb2def84c7d014a24b6869462748fbe93953b00778e",
+      "bytes": 2272
+    },
+    "config-vlanif3064.sanitized.txt": {
+      "command": "display current-configuration interface Vlanif3064",
+      "sha256": "37f542cbdce04267054d898c6afa6fe367de77ec5617cfd220dbf110b628fe12",
+      "bytes": 221
+    },
+    "config-vlanif3066.sanitized.txt": {
+      "command": "display current-configuration interface Vlanif3066",
+      "sha256": "3416e004394a6fdbde855536949c407dd6801029a29e25bb767bd6f32dcb68c4",
+      "bytes": 211
+    },
+    "mac-vsi.sanitized.txt": {
+      "command": "display mac-address vsi 3066-BGP-FLASHTELECOM",
+      "sha256": "dadf8d5c672a4c70ba0426ea2a6568eccf048f0502661a13a756f631aa48a93f",
+      "bytes": 795
+    },
+    "vlan-3066.sanitized.txt": {
+      "command": "display vlan 3066",
+      "sha256": "06c22d9f7bbe830a1b335216238d0d6d4ba5995f46665331449052e87cad2147",
+      "bytes": 883
+    },
+    "config-eth-trunk1.sanitized.txt": {
+      "command": "display current-configuration interface Eth-Trunk1",
+      "sha256": "1528a739fbbc9d8df4e014c8e7ce2c067d00a0db805e467997b0f42e8bd0b1e9",
+      "bytes": 501
+    },
+    "config-eth-trunk6.sanitized.txt": {
+      "command": "display current-configuration interface Eth-Trunk6",
+      "sha256": "1db3f4953d1cf655eff35b69e9e8ae4d052633619dba8d6c9484f2d447620e90",
+      "bytes": 277
+    }
+  },
+  "run2": {
+    "capturedAt": "2026-11-09T18:24Z",
+    "approval": "one-shot vsi-name:3066-BGP-FLASHTELECOM",
+    "sessions": 1,
+    "note": "sessao unica: version + verbose + config Vlanif3064 + config Vlanif3066 + mac (todos aceitos)"
+  }
+}

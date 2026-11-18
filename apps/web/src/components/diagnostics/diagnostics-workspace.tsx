@@ -5,6 +5,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/app/providers';
 import { getHostMpls, getHosts, getVsiDiagnosticStatus } from '@/lib/api';
 import { VsiDiagnosticPanel } from '../vsi-diagnostic-panel';
+import { VsiServiceWorkspace } from './service/service-workspace';
 import styles from './diagnostics-workspace.module.css';
 
 function freshnessLabel(value: string | null): string {
@@ -129,6 +130,8 @@ export function DiagnosticsWorkspace() {
         )}
         <p className={styles.future}>Espaço reservado para futuros diagnósticos.</p>
       </section>
+      {/* Diagnostico por servico (varios PEs): somente leitura de resultados guardados; some quando a API nao o habilita. */}
+      <VsiServiceWorkspace vsiName={selectedVsi?.name ?? null} />
     </section>
   );
 }

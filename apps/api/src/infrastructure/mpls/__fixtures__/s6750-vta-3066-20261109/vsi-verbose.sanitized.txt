@@ -1,0 +1,63 @@
+
+<BHE-VTA-S6750-MPLS-01>display vsi name 3066-BGP-FLASHTELECOM verbose
+
+ ***VSI Name               : 3066-BGP-FLASHTELECOM
+    Work Mode              : normal
+    Administrator VSI      : no
+    Isolate Spoken         : disable
+    VSI Index              : 28
+    PW Signaling           : bgp
+    Member Discovery Style : --
+    PW MAC Learn Style     : unqualify
+    Encapsulation Type     : vlan
+    MTU                    : 1500
+    Diffserv Mode          : uniform
+    Service Class          : cs-
+    Color                  : --
+    DomainId               : -
+    Domain Name            : -
+    Ignore AcState         : disable
+    P2P VSI                : disable
+    Multicast Fast Switch  : disable
+    Create Time            : 13 days, 21 hours, 39 minutes, 30 seconds
+    VSI State              : up
+    Resource Status        : --
+
+    BGP RD                 : 268568:3066
+    SiteID/Range/Offset    : 25/30/1
+    Import vpn target      : 268568:3066            
+    Export vpn target      : 268568:3066            
+    Remote Label Block     : 36440/30/1 
+    Local Label Block      : 0/1016792/8/1 
+ 
+    Interface Name         : Vlanif3066
+    State                  : up
+    Ac Block State         : unblocked
+    Access Port            : false
+    Last Up Time           : 2026/10/26 17:07:57
+    Total Up Time          : 13 days, 21 hours, 39 minutes, 29 seconds
+
+  **PW Information:
+
+   *Peer Ip Address        : 10.100.101.6
+    PW State               : up
+    Local VC Label         : 1016797
+    Remote VC Label        : 36464
+    Remote Control Word    : disable
+    Negotiated Control Word: disable
+    PW Type                : label
+    Tunnel ID              : 0x0000000001004c4b4f 
+    Broadcast Tunnel ID    : --
+    Broad BackupTunnel ID  : --
+    Ckey                   : 4164
+    Nkey                   : 16777794
+    Main PW Token          : 0x0
+    Slave PW Token         : 0x0
+    Tnl Type               : ldp
+    OutInterface           : --
+    Backup OutInterface    : --
+    Stp Enable             : 0
+    Mac Flapping           : 0
+    PW Last Up Time        : 2026/11/08 05:59:47
+    PW Total Up Time       : 1 days, 8 hours, 47 minutes, 39 seconds
+<BHE-VTA-S6750-MPLS-01>

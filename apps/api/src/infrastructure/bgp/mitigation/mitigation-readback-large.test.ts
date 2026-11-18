@@ -77,6 +77,7 @@ function makePeer(over: Partial<DiscoveredBgpPeer> & Pick<DiscoveredBgpPeer, 'pe
   return {
     addressFamily: 'IPV4',
     remoteAs: 6939n,
+    localAs: null,
     stateCode: 6,
     state: 'ESTABLISHED' as DiscoveredBgpPeer['state'],
     sessionUptimeSeconds: 3600,

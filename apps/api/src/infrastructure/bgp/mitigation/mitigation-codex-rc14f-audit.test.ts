@@ -108,7 +108,7 @@ async function commandHarness(
   const mock = new MockMitigationExecutor();
   const host = {
     id: DEVICE,
-    hostname: 'FAKE-CODEX',
+    hostname: 'FAKE-CODEX',    vendor: 'Huawei',    model: 'NE8000',
     displayName: 'FAKE-CODEX',
     sshEnabled: true,
     ssh: { host: '192.0.2.254', port: 22, username: 'in-memory-only' },

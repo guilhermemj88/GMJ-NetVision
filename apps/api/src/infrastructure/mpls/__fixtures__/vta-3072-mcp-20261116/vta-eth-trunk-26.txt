@@ -1,0 +1,18 @@
+<BHE-VTA-6730-MPLS-01>display eth-trunk 26
+Eth-Trunk26's state information is:
+Local:
+LAG ID: 26                  WorkingMode: LACP                                 
+Preempt Delay: Disabled     Hash arithmetic: According to SIP-XOR-DIP         
+System Priority: 1          System ID: 00e0-fc00-0000                         
+Least Active-linknumber: 1  Max Active-linknumber: 32                         
+Operate status: down        Number Of Up Port In Trunk: 0                     
+--------------------------------------------------------------------------------
+ActorPortName          Status   PortType PortPri PortNo PortKey PortState Weight
+XGigabitEthernet0/0/48 Unselect 10GE     32768   24     33857   10100000  1     
+
+Partner:
+--------------------------------------------------------------------------------
+ActorPortName          SysPri   SystemID        PortPri PortNo PortKey PortState
+XGigabitEthernet0/0/48 65535    48a9-8ab6-0001  255     2      33      10110000
+    
+<BHE-VTA-6730-MPLS-01>

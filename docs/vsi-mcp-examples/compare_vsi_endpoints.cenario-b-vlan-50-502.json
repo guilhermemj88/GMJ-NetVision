@@ -1,0 +1,267 @@
+{
+  "request": {
+    "tool": "compare_vsi_endpoints",
+    "arguments": {
+      "a": {
+        "hostId": "h-a",
+        "vsiName": "SVC-50-502",
+        "approvalId": "11111111-1111-4111-8111-111111111111",
+        "peerAddress": "10.0.0.9"
+      },
+      "b": {
+        "hostId": "h-b",
+        "vsiName": "SVC-50-502",
+        "approvalId": "22222222-2222-4222-8222-222222222222",
+        "peerAddress": "10.0.0.1"
+      },
+      "includeMac": true,
+      "homologation": true
+    }
+  },
+  "response": {
+    "tool": "compare_vsi_endpoints",
+    "generatedAt": "2026-11-09T12:00:00.000Z",
+    "hostId": null,
+    "vsiName": null,
+    "data": {
+      "comparison": {
+        "status": "WARNING",
+        "findings": [
+          {
+            "code": "NO_MAC_FROM_AC",
+            "severity": "INFO",
+            "certainty": "CONFIRMED",
+            "impactCertainty": "HYPOTHESIS",
+            "title": "Nenhum MAC aprendido via AC no momento da consulta",
+            "explanation": "0 MAC(s) via AC, 0 via PW. Isso sozinho nao prova falha: pode ser aging ou ausencia de trafego.",
+            "caveat": "So e relevante se houver trafego esperado e outros sinais de falha.",
+            "evidence": [
+              "h-b:live:2bf67a1348a8:2"
+            ],
+            "hostId": "h-b"
+          },
+          {
+            "code": "VLAN_TRANSFORM_ASYMMETRIC",
+            "severity": "WARNING",
+            "certainty": "CONFIRMED",
+            "impactCertainty": "HYPOTHESIS",
+            "title": "Tratamento de VLAN diferente entre as pontas",
+            "explanation": "Ponta A: QINQ_STACKING (GigabitEthernet2/0/1.50: QINQ_STACKING in=50 out=502/50). Ponta B: DOT1Q_TERMINATION (GigabitEthernet3/0/2.502: DOT1Q_TERMINATION in=502). Se uma ponta converte/empilha a VLAN (mapping, QinQ stacking, rewrite) e a outra apenas termina Dot1Q, o numero de tags ou o VID transportado no PW pode divergir entre as pontas.",
+            "caveat": "HIPOTESE: sem captura de trafego no PW (ou contadores por AC) nao ha como afirmar que esta e a causa da falha.",
+            "evidence": [
+              "h-a:live:899778aff65f:1",
+              "h-b:live:df40681fdea7:1"
+            ],
+            "hostId": null
+          },
+          {
+            "code": "TAG_COUNT_MISMATCH_PROBABLE",
+            "severity": "WARNING",
+            "certainty": "PROBABLE",
+            "impactCertainty": "HYPOTHESIS",
+            "title": "Quantidade de tags apos o AC difere entre as pontas",
+            "explanation": "A ponta A entrega 2 tag(s) a VSI e a ponta B 0.",
+            "caveat": "Deducao a partir de diretivas de configuracao; o comportamento real depende da versao e do Encapsulation Type.",
+            "evidence": [
+              "h-a:live:899778aff65f:1",
+              "h-b:live:df40681fdea7:1"
+            ],
+            "hostId": null
+          },
+          {
+            "code": "TRAFFIC_STOPS_AFTER_STAGE",
+            "severity": "WARNING",
+            "certainty": "PROBABLE",
+            "impactCertainty": "HYPOTHESIS",
+            "title": "Ultimo ponto com MAC aprendido: A_PW",
+            "explanation": "O aprendizado de MAC cessa apos este estagio na ordem A_AC -> A_PW -> B_PW -> B_AC.",
+            "caveat": "MAC aprendido e evidencia indireta de trafego; a ausencia pode ser aging ou falta de trafego no momento.",
+            "evidence": [
+              "h-a:live:be56971edfea:2",
+              "h-b:live:2bf67a1348a8:2"
+            ],
+            "hostId": null
+          }
+        ],
+        "vlanComparison": {
+          "a": [
+            {
+              "interfaceName": "GigabitEthernet2/0/1.50",
+              "directives": [
+                "qinq stacking vlan 50 stack-vlan 502"
+              ],
+              "mode": "QINQ_STACKING",
+              "ingress": [
+                "50"
+              ],
+              "transported": [
+                "502",
+                "50"
+              ],
+              "tagCount": 2
+            }
+          ],
+          "b": [
+            {
+              "interfaceName": "GigabitEthernet3/0/2.502",
+              "directives": [
+                "encapsulation dot1q vid 502"
+              ],
+              "mode": "DOT1Q_TERMINATION",
+              "ingress": [
+                "502"
+              ],
+              "transported": [],
+              "tagCount": 0
+            }
+          ]
+        },
+        "trafficObservation": {
+          "stages": [
+            {
+              "stage": "A_AC",
+              "macCount": 1
+            },
+            {
+              "stage": "A_PW",
+              "macCount": 1
+            },
+            {
+              "stage": "B_PW",
+              "macCount": 0
+            },
+            {
+              "stage": "B_AC",
+              "macCount": 0
+            }
+          ],
+          "lastObservedStage": "A_PW",
+          "note": "Baseado apenas em aprendizado MAC; nao substitui captura de pacotes."
+        }
+      },
+      "endpoints": [
+        {
+          "hostId": "h-a",
+          "hostName": "PE-A",
+          "vsiName": "SVC-50-502"
+        },
+        {
+          "hostId": "h-b",
+          "hostName": "PE-B",
+          "vsiName": "SVC-50-502"
+        }
+      ]
+    },
+    "evidence": [
+      {
+        "id": "h-a:live:8b4ddca86974:0",
+        "source": "LIVE_SSH",
+        "hostId": "h-a",
+        "hostName": "PE-A",
+        "collectedAt": "2026-11-09T12:00:00.000Z",
+        "observedAt": null,
+        "command": "display version",
+        "sha256": "8b4ddca86974349dec27b0493c8f9b4b1d60190d92a4cd06e214fc55b8ffac96",
+        "bytes": 248,
+        "complete": true,
+        "excerpt": "<NE8-LAB>display version\nHuawei Versatile Routing Platform Software\nVRP (R) software, Version 8.221 (NE8000 V800R022C10SPC500)\nCopyright (C) 2012-2024 Huawei Technologies Co., Ltd.\nHUAWEI NE8000 F1A uptime is 120 days, 3 hours, 11 minutes\n<NE8-LAB>"
+      },
+      {
+        "id": "h-a:live:72a3f9f0f0b5:1",
+        "source": "LIVE_SSH",
+        "hostId": "h-a",
+        "hostName": "PE-A",
+        "collectedAt": "2026-11-09T12:00:00.000Z",
+        "observedAt": null,
+        "command": "display vsi name SVC-50-502 verbose",
+        "sha256": "72a3f9f0f0b5bead8a98e5086da7707d8daa640874982397bf41c1b009e0f300",
+        "bytes": 761,
+        "complete": true,
+        "excerpt": "<NE8-A>display vsi name SVC-50-502 verbose\n\n ***VSI Name               : SVC-50-502\n    Work Mode              : normal\n    VSI Index              : 7\n    PW Signaling           : ldp\n    Encapsulation Type     : vlan\n    MTU                    : 1500\n    VSI State              : up\n\n    Interface Name         : GigabitEthernet2/0/1.50\n    State                  : up\n    Ac Block State         : unblocked\n    Access Port            : false\n\n  **PW Information:\n\n   *Peer Ip Address        : 10.0.0.9\n    PW State               : up\n    Local VC Label         : 3000\n    Remote VC Label        : 4000\n    PW Type                : label\n    Tunnel ID              : 0x0000000001004c4b81\n    Tnl Type               : ldp\n    OutInterface           : --\n<NE8-A>"
+      },
+      {
+        "id": "h-a:live:899778aff65f:1",
+        "source": "LIVE_SSH",
+        "hostId": "h-a",
+        "hostName": "PE-A",
+        "collectedAt": "2026-11-09T12:00:00.000Z",
+        "observedAt": null,
+        "command": "display current-configuration interface GigabitEthernet2/0/1.50",
+        "sha256": "899778aff65f6ee5c8b32865d588cd831a8d0fedf919239ea8a3d94333be920d",
+        "bytes": 189,
+        "complete": true,
+        "excerpt": "<NE8-A>display current-configuration interface GigabitEthernet2/0/1.50\n#\ninterface GigabitEthernet2/0/1.50 mode l2\n qinq stacking vlan 50 stack-vlan 502\n l2 binding vsi SVC-50-502\n#\n<NE8-A>"
+      },
+      {
+        "id": "h-a:live:be56971edfea:2",
+        "source": "LIVE_SSH",
+        "hostId": "h-a",
+        "hostName": "PE-A",
+        "collectedAt": "2026-11-09T12:00:00.000Z",
+        "observedAt": null,
+        "command": "display mac-address vsi SVC-50-502",
+        "sha256": "be56971edfea140d6aea2fa9f0c65fdd4d2a3de0e68a0d7f590eca19d878dbce",
+        "bytes": 448,
+        "complete": true,
+        "excerpt": "<PE>display mac-address vsi X\nMAC Address    VLAN/VSI/BD                       Learned-From        Type\n-------------------------------------------------------------------------------\n0011-2233-4455 -/-/X                             GE2/0/1.50          dynamic\n0011-2233-4466 -/-/X                             10.0.0.2            dynamic\n-------------------------------------------------------------------------------\nTotal items displayed = 2\n<PE>"
+      },
+      {
+        "id": "h-b:live:8b4ddca86974:0",
+        "source": "LIVE_SSH",
+        "hostId": "h-b",
+        "hostName": "PE-B",
+        "collectedAt": "2026-11-09T12:00:00.000Z",
+        "observedAt": null,
+        "command": "display version",
+        "sha256": "8b4ddca86974349dec27b0493c8f9b4b1d60190d92a4cd06e214fc55b8ffac96",
+        "bytes": 248,
+        "complete": true,
+        "excerpt": "<NE8-LAB>display version\nHuawei Versatile Routing Platform Software\nVRP (R) software, Version 8.221 (NE8000 V800R022C10SPC500)\nCopyright (C) 2012-2024 Huawei Technologies Co., Ltd.\nHUAWEI NE8000 F1A uptime is 120 days, 3 hours, 11 minutes\n<NE8-LAB>"
+      },
+      {
+        "id": "h-b:live:b24d9fc8985c:1",
+        "source": "LIVE_SSH",
+        "hostId": "h-b",
+        "hostName": "PE-B",
+        "collectedAt": "2026-11-09T12:00:00.000Z",
+        "observedAt": null,
+        "command": "display vsi name SVC-50-502 verbose",
+        "sha256": "b24d9fc8985c647cecd9ec3432eaf501fc15d040df36b4b7560d1499566b765f",
+        "bytes": 764,
+        "complete": true,
+        "excerpt": "<NE40-B>display vsi name SVC-50-502 verbose\n\n ***VSI Name               : SVC-50-502\n    Work Mode              : normal\n    VSI Index              : 7\n    PW Signaling           : ldp\n    Encapsulation Type     : vlan\n    MTU                    : 1500\n    VSI State              : up\n\n    Interface Name         : GigabitEthernet3/0/2.502\n    State                  : up\n    Ac Block State         : unblocked\n    Access Port            : false\n\n  **PW Information:\n\n   *Peer Ip Address        : 10.0.0.1\n    PW State               : up\n    Local VC Label         : 4000\n    Remote VC Label        : 3000\n    PW Type                : label\n    Tunnel ID              : 0x0000000001004c4b81\n    Tnl Type               : ldp\n    OutInterface           : --\n<NE40-B>"
+      },
+      {
+        "id": "h-b:live:df40681fdea7:1",
+        "source": "LIVE_SSH",
+        "hostId": "h-b",
+        "hostName": "PE-B",
+        "collectedAt": "2026-11-09T12:00:00.000Z",
+        "observedAt": null,
+        "command": "display current-configuration interface GigabitEthernet3/0/2.502",
+        "sha256": "df40681fdea704ed0f781982e29b780c8bb25a7754dabbc50e39d2f09a041d44",
+        "bytes": 184,
+        "complete": true,
+        "excerpt": "<NE40-B>display current-configuration interface GigabitEthernet3/0/2.502\n#\ninterface GigabitEthernet3/0/2.502 mode l2\n encapsulation dot1q vid 502\n l2 binding vsi SVC-50-502\n#\n<NE40-B>"
+      },
+      {
+        "id": "h-b:live:2bf67a1348a8:2",
+        "source": "LIVE_SSH",
+        "hostId": "h-b",
+        "hostName": "PE-B",
+        "collectedAt": "2026-11-09T12:00:00.000Z",
+        "observedAt": null,
+        "command": "display mac-address vsi SVC-50-502",
+        "sha256": "2bf67a1348a8f63c9f357e67eae9633c1e4b8c5f0f3364214b9eb8ef1fdf6619",
+        "bytes": 60,
+        "complete": true,
+        "excerpt": "<PE>display mac-address vsi X\nTotal items displayed = 0\n<PE>"
+      }
+    ],
+    "skipped": [],
+    "warnings": [],
+    "errors": [],
+    "status": "OK",
+    "collectionIssues": []
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "device": "BHE-VTA-F1A-BGP-01",
+  "model": "NetEngine 8000 F1A-8H20Q",
+  "vrp": "8.220",
+  "release": "V800R022C00SPC600",
+  "patch": "V800R022SPH152",
+  "capturedAt": "2026-11-09T14:18Z",
+  "path": "MCP(dev) -> API(dev) -> SSH, aprovacao one-shot vsi-host:discovery",
+  "sanitization": "nenhum IP/serial/segredo presente; nome do host mantido como nos demais fixtures bhe-vta",
+  "files": {
+    "preparation.sanitized.txt": {
+      "command": "screen-length 0 temporary",
+      "sha256": "e4498161eda1742c040d18bf06b131af009cabd4c2b8dc334d2acce209143228",
+      "bytes": 130
+    },
+    "version.sanitized.txt": {
+      "command": "display version",
+      "sha256": "2c0a1ca6d8f6934968efbec4c91c47f95350488649da85595fb9f467992fe28d",
+      "bytes": 1775
+    },
+    "vsi.sanitized.txt": {
+      "command": "display vsi",
+      "sha256": "30270f29ba9de9b4caedd3abc2b0d3921e23e7230475cb84dd058cdb163597d8",
+      "bytes": 33
+    }
+  }
+}

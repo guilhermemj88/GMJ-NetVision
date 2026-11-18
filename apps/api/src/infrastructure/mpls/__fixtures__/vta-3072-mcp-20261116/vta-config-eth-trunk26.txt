@@ -1,0 +1,12 @@
+<BHE-VTA-6730-MPLS-01>display current-configuration interface Eth-Trunk26
+#
+interface Eth-Trunk26
+ description <REMOVIDO>
+ port link-type trunk
+ undo port trunk allow-pass vlan 1
+ port trunk allow-pass vlan 820 3015 to 3016 3332 3502 3884
+ mode lacp
+ e-trunk 4 remote-eth-trunk 17
+#
+return
+<BHE-VTA-6730-MPLS-01>

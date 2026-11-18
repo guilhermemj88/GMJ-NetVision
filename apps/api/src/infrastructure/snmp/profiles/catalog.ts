@@ -4,6 +4,7 @@ import { huaweiMa5800Profile } from './huawei/ma5800';
 import { huaweiNe8000Profile } from './huawei/ne8000';
 import { huaweiS6730Profile } from './huawei/s6730';
 import { huaweiS6750Profile } from './huawei/s6750';
+import { juniperProfile } from './juniper';
 import { mikrotikProfile } from './mikrotik';
 import type { SnmpProfile, SnmpProfileIdentity } from './types';
 import {
@@ -17,6 +18,7 @@ export const SNMP_PROFILES: SnmpProfile[] = [
   huaweiMa5800Profile,
   huaweiS6750Profile,
   huaweiS6730Profile,
+  juniperProfile,
   mikrotikProfile,
   huaweiGenericProfile,
   genericProfile,

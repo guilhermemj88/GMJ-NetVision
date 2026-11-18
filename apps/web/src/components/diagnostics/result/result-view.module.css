@@ -689,3 +689,31 @@
 .contextCount {
   opacity: 0.7;
 }
+
+/* Evidencia: destaque das linhas consumidas pelo diagnostico (usado pela visao por servico). */
+.preLine,
+.preLineUsed {
+  display: block;
+}
+.preLineUsed {
+  background: rgba(69, 183, 217, 0.15);
+  box-shadow: inset 3px 0 var(--cyan);
+}
+.preLegend {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.preComfortable {
+  font-size: 13px;
+  white-space: pre;
+  word-break: normal;
+  padding: 10px 0;
+}
+.preComfortable .preLine,
+.preComfortable .preLineUsed {
+  padding: 0 12px;
+}
+.drawerWide {
+  width: min(780px, 100vw);
+}

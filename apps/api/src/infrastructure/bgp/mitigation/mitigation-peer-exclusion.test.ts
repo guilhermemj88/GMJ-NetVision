@@ -239,7 +239,7 @@ function serviceFor(
 
 async function appFor(
   service: BgpMitigationService,
-  options: { peer?: BgpPeerDetail | null } = {},
+  options: { peer?: BgpPeerDetail | null; device?: Record<string, unknown> | null } = {},
 ): Promise<FastifyInstance> {
   const app = Fastify();
   registerMitigationRoutes(app, {
@@ -249,6 +249,9 @@ async function appFor(
       getPeerDetail: async (peerId) =>
         options.peer === null ? null : (options.peer ?? peerDetail({ id: peerId })),
     },
+    ...(options.device === undefined
+      ? {}
+      : { hosts: { getHost: async () => options.device as never } }),
   });
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof ZodError) return reply.code(400).send({ message: 'Invalid request' });
@@ -577,8 +580,7 @@ describe('exclusao preventiva por peer BGP (Caminho 3)', () => {
     expect(await repository.getPeerExclusion('peer-1')).toBeNull();
   });
 
-  it('14) PATCH responde 404 para peer inexistente e nao escreve nada', async () => {
-    const repository = new InMemoryMitigationRepository();
+  it('14) PATCH responde 404 para peer inexistente e nao escreve nada', async () => {    const repository = new InMemoryMitigationRepository();
     app = await appFor(serviceFor(repository), { peer: null });
 
     const response = await app.inject({
@@ -588,6 +590,79 @@ describe('exclusao preventiva por peer BGP (Caminho 3)', () => {
     });
     expect(response.statusCode).toBe(404);
     expect(await repository.listPeerExclusions()).toEqual([]);
+  });
+
+  it('14b) P7: Juniper pode ser EXCLUIDO, mas nao pode ser REABILITADO (409)', async () => {
+    const repository = new InMemoryMitigationRepository();
+    const juniper = {
+      id: 'device-1',
+      vendor: 'Juniper',
+      model: 'MX204',
+      deviceType: 'ROUTER',
+    };
+    app = await appFor(serviceFor(repository), { peer: peerDetail(), device: juniper });
+
+    const excluir = await app.inject({
+      method: 'PATCH',
+      url: '/api/bgp/peers/peer-1/mitigation-exclusion',
+      payload: { excluded: true, reason: 'TRANSIT' },
+    });
+    expect(excluir.statusCode).toBe(200);
+    expect(await repository.getPeerExclusion('peer-1')).not.toBeNull();
+
+    const reabilitar = await app.inject({
+      method: 'PATCH',
+      url: '/api/bgp/peers/peer-1/mitigation-exclusion',
+      payload: { excluded: false },
+    });
+    expect(reabilitar.statusCode).toBe(409);
+    expect(reabilitar.json().code).toBe('MITIGATION_PLATFORM_NOT_SUPPORTED');
+    // Fail-closed: o peer continua excluido.
+    expect(await repository.getPeerExclusion('peer-1')).not.toBeNull();
+  });
+
+  it('14c) P7: reabilitar em Huawei VRP identificado continua funcionando', async () => {
+    const repository = new InMemoryMitigationRepository();
+    const huawei = {
+      id: 'device-1',
+      vendor: 'Huawei',
+      model: 'NE40E-X8A',
+      deviceType: 'ROUTER',
+    };
+    app = await appFor(serviceFor(repository), { peer: peerDetail(), device: huawei });
+    await repository.setPeerExclusion({
+      peerId: 'peer-1',
+      deviceId: 'device-1',
+      peerAddress: '198.18.1.152',
+      addressFamily: 'IPV4',
+      interfaceId: 'if-transit',
+      excluded: true,
+      reason: 'TRANSIT',
+    });
+
+    const reabilitar = await app.inject({
+      method: 'PATCH',
+      url: '/api/bgp/peers/peer-1/mitigation-exclusion',
+      payload: { excluded: false },
+    });
+    expect(reabilitar.statusCode).toBe(200);
+    expect(await repository.getPeerExclusion('peer-1')).toBeNull();
+  });
+
+  it('14d) P7: fabricante desconhecido tambem nao reabilita', async () => {
+    const repository = new InMemoryMitigationRepository();
+    app = await appFor(serviceFor(repository), {
+      peer: peerDetail(),
+      device: { id: 'device-1', vendor: null, model: null, deviceType: null },
+    });
+
+    const reabilitar = await app.inject({
+      method: 'PATCH',
+      url: '/api/bgp/peers/peer-1/mitigation-exclusion',
+      payload: { excluded: false },
+    });
+    expect(reabilitar.statusCode).toBe(409);
+    expect(reabilitar.json().code).toBe('MITIGATION_PLATFORM_NOT_SUPPORTED');
   });
 
   it('15) sem exclusao o gate por peer nao interfere no caminho normal', async () => {

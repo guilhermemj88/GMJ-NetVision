@@ -19,6 +19,7 @@ export function persistedPeersToBgpOutcome(
     peerAddress: peer.peerAddress,
     addressFamily: peer.addressFamily,
     remoteAs: toBigInt(peer.remoteAs),
+    localAs: toBigInt(peer.localAs),
     stateCode: peer.stateCode,
     state: peer.state,
     sessionUptimeSeconds: null,

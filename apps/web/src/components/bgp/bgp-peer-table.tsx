@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import type { BgpDashboardDevice, BgpDashboardPeer } from '@gmj/shared';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, ChevronRight } from 'lucide-react';
 import { formatBgpTraffic, formatBgpUptime, formatRouteCount } from '@/lib/bgp-format';
 import { formatRelative } from '@/lib/bgp-format';
 import { nextSort, sortBgpPeers, type BgpSort, type BgpSortKey } from '@/lib/bgp-sort';
@@ -55,10 +55,7 @@ function FlapCell({
   return (
     <span className="bgp-flaps">
       {flaps > 0 && (
-        <em
-          className={flaps > 1 ? 'is-many' : ''}
-          title={`${flaps} queda(s) nas últimas 48h`}
-        >
+        <em className={flaps > 1 ? 'is-many' : ''} title={`${flaps} queda(s) nas últimas 48h`}>
           {flaps}×
         </em>
       )}
@@ -68,6 +65,110 @@ function FlapCell({
         </small>
       ) : null}
     </span>
+  );
+}
+
+/**
+ * Card do peer para o celular.
+ *
+ * Mesma fonte de dados da tabela: recebe o peer já ordenado, as quedas de 48h
+ * e o início da indisponibilidade corrente. Nada é recalculado nem inferido —
+ * `DOWN há` só aparece quando existe alerta ativo com data.
+ */
+function BgpPeerCard({
+  peer,
+  flaps,
+  downSince,
+  now,
+  onSelect,
+}: {
+  peer: BgpDashboardPeer;
+  flaps: number;
+  downSince: string | null;
+  now?: number | undefined;
+  onSelect: (peer: BgpDashboardPeer) => void;
+}) {
+  const startedAt = downSince ? Date.parse(downSince) : Number.NaN;
+  const downFor =
+    downSince && now !== undefined && Number.isFinite(startedAt)
+      ? formatRelative(now - startedAt)
+      : null;
+  const uptime = formatBgpUptime(peer.establishedSince);
+
+  return (
+    <button
+      type="button"
+      className={`bgp-card${peer.established ? ' is-up' : ' is-down'}`}
+      onClick={() => onSelect(peer)}
+    >
+      <span className="bgp-card__top">
+        <span className="bgp-card__identity">
+          <strong>{peer.peerAddress}</strong>
+          <small>{peer.displayName}</small>
+        </span>
+        <span className={`bgp-state bgp-state--${peer.established ? 'up' : 'down'}`}>
+          <span />
+          {peer.established ? 'UP' : 'DOWN'}
+        </span>
+      </span>
+
+      <span className="bgp-card__device">{peer.deviceDisplayName || peer.deviceHostname}</span>
+
+      <span className="bgp-card__meta">
+        <span className={`bgp-family bgp-family--${peer.addressFamily.toLowerCase()}`}>
+          {familyLabel(peer.addressFamily)}
+        </span>
+        <span className="bgp-card__asn">ASN {peer.remoteAs ?? '—'}</span>
+        {/* Estado técnico do BGP fica ao lado, sem competir com o DOWN. */}
+        {!peer.established && peer.state !== 'UNKNOWN' ? (
+          <span className="bgp-card__state-tech">{peer.state}</span>
+        ) : null}
+        {roleLabel(peer.role) ? <span className="bgp-role">{roleLabel(peer.role)}</span> : null}
+        {peer.adminState === 'IGNORED' ? (
+          <span className="bgp-admin bgp-admin--ignored">IGNORADO</span>
+        ) : null}
+      </span>
+
+      <span className="bgp-card__metrics">
+        <span className="bgp-card__metric">
+          <em>Rotas</em>
+          <strong>{formatRouteCount(peer.receivedPrefixes)}</strong>
+        </span>
+        {peer.interface ? (
+          <>
+            <span className="bgp-card__metric bgp-card__metric--rx">
+              <em>↓ RX</em>
+              <strong>{formatBgpTraffic(peer.interface.rxBps)}</strong>
+            </span>
+            <span className="bgp-card__metric bgp-card__metric--tx">
+              <em>↑ TX</em>
+              <strong>{formatBgpTraffic(peer.interface.txBps)}</strong>
+            </span>
+          </>
+        ) : (
+          <span className="bgp-card__metric bgp-card__metric--empty">
+            <em>RX/TX</em>
+            <strong>—</strong>
+          </span>
+        )}
+      </span>
+
+      <span className="bgp-card__footer">
+        {peer.established ? (
+          <span className="bgp-card__uptime">UP há {uptime}</span>
+        ) : downFor ? (
+          <span className="bgp-card__uptime is-down">DOWN {downFor}</span>
+        ) : (
+          <span className="bgp-card__uptime is-down">DOWN</span>
+        )}
+        {flaps > 0 ? (
+          <span className={`bgp-card__flaps${flaps > 1 ? ' is-many' : ''}`}>
+            {flaps} queda{flaps > 1 ? 's' : ''} / 48h
+          </span>
+        ) : null}
+        <ChevronRight className="bgp-card__chevron" size={16} aria-hidden="true" />
+      </span>
+    </button>
   );
 }
 
@@ -145,7 +246,9 @@ export function BgpPeerTable({
       {devices.map((device) => (
         <section key={device.id} className="bgp-device">
           <header className="bgp-device__header">
-            <span className={`host-status host-status--${device.bgpMonitoringEnabled ? 'up' : 'warning'}`} />
+            <span
+              className={`host-status host-status--${device.bgpMonitoringEnabled ? 'up' : 'warning'}`}
+            />
             <strong>{device.displayName || device.hostname}</strong>
             <small>{device.hostname}</small>
             <em>{device.peers.length} peer(s)</em>
@@ -206,7 +309,9 @@ export function BgpPeerTable({
                   </td>
                   <td data-label="ASN">
                     <span>{peer.remoteAs ?? '-'}</span>
-                    {roleLabel(peer.role) && <small className="bgp-role">{roleLabel(peer.role)}</small>}
+                    {roleLabel(peer.role) && (
+                      <small className="bgp-role">{roleLabel(peer.role)}</small>
+                    )}
                   </td>
                   <td data-label="Rotas">
                     <span className="bgp-routes">{formatRouteCount(peer.receivedPrefixes)}</span>
@@ -235,9 +340,29 @@ export function BgpPeerTable({
               ))}
             </tbody>
           </table>
+          {/*
+            Celular: a lista de cards substitui as duas tabelas (cabeçalho de
+            ordenação e linhas). Continua dentro da seção do equipamento, então
+            o agrupamento peer -> equipamento é o mesmo do desktop.
+          */}
+          <ul
+            className="bgp-cards"
+            aria-label={`Peers BGP de ${device.displayName || device.hostname}`}
+          >
+            {sortBgpPeers(device.peers, sort).map((peer) => (
+              <li key={peer.id}>
+                <BgpPeerCard
+                  peer={peer}
+                  flaps={flapsByPeer?.get(peer.id) ?? 0}
+                  downSince={downSinceByPeer?.get(peer.id) ?? null}
+                  now={now}
+                  onSelect={onSelectPeer}
+                />
+              </li>
+            ))}
+          </ul>
         </section>
       ))}
     </div>
   );
 }
-

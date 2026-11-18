@@ -1,0 +1,65 @@
+{
+  "case": "CDB TELECOM - E-Trunk 4 entre BHE-LIKEE-6730-MPLS-01 (Eth-Trunk17, Master) e BHE-VTA-6730-MPLS-01 (Eth-Trunk26, Backup)",
+  "capturedAt": "2026-11-16",
+  "platform": "Huawei S6730 V200 (BHE-VTA-6730-MPLS-01 = S6730-H48X6C V200R022C00SPC500 pela captura de 2026-10-22; `display version` NAO foi coletado nestas sessoes e a versao do BHE-LIKEE nao esta comprovada por captura)",
+  "provenance": "CAPTURAS REAIS. Saidas coletadas diretamente nos switches pelo operador (sessao manual) e entregues em texto em 2026-11-16. NAO passaram pelo fluxo MCP -> API -> SSH do NetVision: comprovam sintaxe e formato de saida, nao o caminho de coleta da ferramenta. Horario exato da coleta nao informado.",
+  "sanitization": "sem segredos; `description` dos Eth-Trunks substituida por <REMOVIDO>; enderecos MAC/System-ID com OUI preservado e 16 bits finais trocados (48a9-8ab6-0001 = Partner SystemID, 2811-ecea-0002 = System-ID local do E-Trunk, 6ce8-7430-0003 = Peer-System-ID); System ID LACP 00e0-fc00-0000 mantido (valor padrao configurado para E-Trunk, igual nos dois PEs); loopbacks MPLS privados mantidos; nenhuma outra linha alterada. Os sha256 sao dos arquivos sanitizados (LF).",
+  "observed": {
+    "eTrunk4": "VTA-01 Backup (Causation PRI, Priority 30 x Peer-Priority 20, BFD-Session likee, Revert-Delay 120 s); LIKEE Master (pelo brief). Peer/Source cruzados: 10.100.101.0 <-> 10.100.101.3.",
+    "members": "No VTA-01 o E-Trunk 4 tem DOIS membros em Backup/PEER_MEMBER_UP: Eth-Trunk26 (Remote-ID 17) e Eth-Trunk13 (Remote-ID 21).",
+    "lacp": "Eth-Trunk26: Operate status down, 0 portas, XGigabitEthernet0/0/48 Unselect. Eth-Trunk17: Operate status up, 1 porta, XGigabitEthernet0/0/3 Selected.",
+    "config": "Os dois trunks: port link-type trunk, allow-pass 820 3015 to 3016 3332 3502 3884, mode lacp, e-trunk 4 remote-eth-trunk <trunk do par>."
+  },
+  "notCaptured": [
+    "`display e-trunk 4` no BHE-LIKEE (estado e causa do membro Eth-Trunk17)",
+    "`display vsi name 3072-QinQ-CDB-MANTIQUEIRA verbose` e config das subinterfaces .3072 nos dois PEs",
+    "`display version` nas sessoes de 2026-11-16",
+    "Estado Master no comando completo `display e-trunk <id>` (so Backup foi observado); modo manual de Eth-Trunk"
+  ],
+  "files": {
+    "vta-eth-trunk-26.sanitized.txt": {
+      "device": "BHE-VTA-6730-MPLS-01",
+      "command": "display eth-trunk 26",
+      "sha256": "55cf02aa1fb0294fb442b106690ef94c938322c6de76f307199154bda69235fe",
+      "bytes": 882
+    },
+    "vta-e-trunk-brief.sanitized.txt": {
+      "device": "BHE-VTA-6730-MPLS-01",
+      "command": "display e-trunk brief",
+      "sha256": "4606e3a55a550028a7dfbbf5e5eba76cb64fb7a63c7d8a9ff6ad92bd65b1f3ed",
+      "bytes": 956,
+      "note": "Trecho de sessao mantido como recebido: inclui `display e-trunk` (erro de comando incompleto), a ajuda `display e-trunk ?` (ids 1-16, brief, packet-statistics) e a abreviacao `display e-trunk br` antes do comando valido. O parser le so a saida do ultimo eco exato do comando."
+    },
+    "vta-e-trunk-4.sanitized.txt": {
+      "device": "BHE-VTA-6730-MPLS-01",
+      "command": "display e-trunk 4",
+      "sha256": "773820ccb4328817a6af0e15d5ca54020f8e650bbd564afac22ca9fd6fb91d0e",
+      "bytes": 1064
+    },
+    "vta-config-eth-trunk26.truncated.sanitized.txt": {
+      "device": "BHE-VTA-6730-MPLS-01",
+      "command": "display current-configuration interface Eth-Trunk26",
+      "sha256": "533df69079fd11dd6f43b2142ea57b1303443fb6a40be800a22addbc4f3a235b",
+      "bytes": 281,
+      "note": "Captura recebida SEM o `#`/`return`/prompt finais. parseInterfaceConfig a recusa (complete=false); nao foi completada no arquivo. Os testes que precisam da lista de VLANs acrescentam o terminador em memoria e dizem isso."
+    },
+    "likee-e-trunk-brief.sanitized.txt": {
+      "device": "BHE-LIKEE-6730-MPLS-01",
+      "command": "display e-trunk brief",
+      "sha256": "d5068760e228a857ec09bd63c221934c08a90f055443d2145e468a705dc711a0",
+      "bytes": 581
+    },
+    "likee-eth-trunk-17.sanitized.txt": {
+      "device": "BHE-LIKEE-6730-MPLS-01",
+      "command": "display eth-trunk 17",
+      "sha256": "bcfa52b4a4f788323b3ca9c2f95123749ac7ca3ff27dcfafc76170f8cccfb417",
+      "bytes": 886
+    },
+    "likee-config-eth-trunk17.sanitized.txt": {
+      "device": "BHE-LIKEE-6730-MPLS-01",
+      "command": "display current-configuration interface Eth-Trunk17",
+      "sha256": "89079287c34aa125894b01eed10763e8540eba7bb45c67f7fc42facb6b770c90",
+      "bytes": 317
+    }
+  }
+}

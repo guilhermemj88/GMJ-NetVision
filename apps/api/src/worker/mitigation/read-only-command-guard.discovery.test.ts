@@ -50,6 +50,8 @@ describe('leitura de configuracao do HuaweiBgpSshService', () => {
     const service = new HuaweiBgpSshService(repository, () => client);
     const device = {
       id: 'device-1',
+      vendor: 'Huawei',
+      model: 'NE8000',
       sshEnabled: true,
       ssh: { host: '10.0.0.1', port: 22, username: 'netvision', contextCommand: null },
     } as unknown as HostRecord;

@@ -1,0 +1,18 @@
+<BHE-LIKEE-6730-MPLS-01>display eth-trunk 17
+Eth-Trunk17's state information is:
+Local:
+LAG ID: 17                  WorkingMode: LACP                                 
+Preempt Delay: Disabled     Hash arithmetic: According to SIP-XOR-DIP         
+System Priority: 1          System ID: 00e0-fc00-0000                         
+Least Active-linknumber: 1  Max Active-linknumber: 32                         
+Operate status: up          Number Of Up Port In Trunk: 1                     
+--------------------------------------------------------------------------------
+ActorPortName          Status   PortType PortPri PortNo PortKey PortState Weight
+XGigabitEthernet0/0/3  Selected 10GE     32768   32770  33857   10111100  1     
+
+Partner:
+--------------------------------------------------------------------------------
+ActorPortName          SysPri   SystemID        PortPri PortNo PortKey PortState
+XGigabitEthernet0/0/3  65535    48a9-8ab6-0001  255     1      33      10111100
+    
+<BHE-LIKEE-6730-MPLS-01>

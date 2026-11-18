@@ -4,6 +4,8 @@ import { makeInterface } from '../../test-fixtures';
 import {
   bgpPeerDisplayName,
   correlateBgpPeerInterface as correlateBgpPeerInterfaceFamily,
+  correlateFromLookup,
+  parentInterfaceCandidates,
   type BgpRouteCommandResult,
 } from './bgp-interface-correlation';
 
@@ -217,6 +219,96 @@ Interface    : 100GE1/0/4                         Flags        : RD`,
       },
       [networkInterface('100GE1/0/3')],
     );
+    expect(result).toMatchObject({ correlationStatus: 'NO_SAFE_INTERFACE', interfaceId: null });
+  });
+});
+
+describe('Junos logical-unit correlation', () => {
+  const junosDeviceId = 'mx-ouropreto';
+
+  function junosInterface(name: string, id = `if-${name}`): NetworkInterface {
+    return makeInterface({ id, deviceId: junosDeviceId, name, ifIndex: 20 });
+  }
+
+  function lookup(interfaceNames: string[]) {
+    return {
+      status: 'SUCCESS' as const,
+      lookup: { routeFound: true, unresolvedRoute: false, interfaceNames },
+    };
+  }
+
+  it('matches the exact logical unit when the inventory has it', () => {
+    const result = correlateFromLookup(
+      junosDeviceId,
+      '167.250.0.94',
+      lookup(['ae0.2800']),
+      [junosInterface('ae0', 'if-ae0'), junosInterface('ae0.2800', 'if-ae0-2800')],
+      { allowLogicalUnitFallback: true },
+    );
+
+    expect(result).toMatchObject({
+      correlationStatus: 'MATCHED',
+      interfaceId: 'if-ae0-2800',
+      interfaceName: 'ae0.2800',
+    });
+  });
+
+  it('falls back to the unique parent when only ae0 exists', () => {
+    const result = correlateFromLookup(
+      junosDeviceId,
+      '167.250.0.94',
+      lookup(['ae0.2800']),
+      [junosInterface('ae0', 'if-ae0')],
+      { allowLogicalUnitFallback: true },
+    );
+
+    expect(result).toMatchObject({
+      correlationStatus: 'MATCHED',
+      interfaceId: 'if-ae0',
+      interfaceName: 'ae0',
+    });
+  });
+
+  it('keeps the fallback disabled where the vendor does not declare it', () => {
+    const result = correlateFromLookup(
+      junosDeviceId,
+      '167.250.0.94',
+      lookup(['ae0.2800']),
+      [junosInterface('ae0', 'if-ae0')],
+    );
+
+    expect(result).toMatchObject({ correlationStatus: 'NO_SAFE_INTERFACE', interfaceId: null });
+  });
+
+  it('never strips the :lane breakout suffix', () => {
+    const result = correlateFromLookup(
+      junosDeviceId,
+      '167.250.0.94',
+      lookup(['et-0/0/0:0']),
+      [junosInterface('et-0/0/0', 'if-et')],
+      { allowLogicalUnitFallback: true },
+    );
+
+    expect(result).toMatchObject({ correlationStatus: 'NO_SAFE_INTERFACE', interfaceId: null });
+    expect(parentInterfaceCandidates('et-0/0/0:0')).toEqual([]);
+  });
+
+  it('only offers the .unit parent as candidate', () => {
+    expect(parentInterfaceCandidates('ae0.2800')).toEqual(['ae0']);
+    expect(parentInterfaceCandidates('xe-0/0/0.100')).toEqual(['xe-0/0/0']);
+    expect(parentInterfaceCandidates('ae0')).toEqual([]);
+    expect(parentInterfaceCandidates('et-0/0/0:1')).toEqual([]);
+  });
+
+  it('refuses an ambiguous parent fallback', () => {
+    const result = correlateFromLookup(
+      junosDeviceId,
+      '167.250.0.94',
+      lookup(['ae0.2800']),
+      [junosInterface('ae0', 'if-ae0-a'), junosInterface('ae0', 'if-ae0-b')],
+      { allowLogicalUnitFallback: true },
+    );
+
     expect(result).toMatchObject({ correlationStatus: 'NO_SAFE_INTERFACE', interfaceId: null });
   });
 });

@@ -1,0 +1,16 @@
+{
+  "case": "CDB TELECOM - VSI 3072-QinQ-CDB-MANTIQUEIRA no BHE-VTA-6730-MPLS-01 (lado Backup do E-Trunk 4)",
+  "capturedAt": "2026-11-16T19:37:04Z a 19:37:10Z",
+  "platform": "Huawei S6730-H48X6C, VRP 5.170, V200R022C00SPC500 (display version da propria sessao)",
+  "provenance": "CAPTURAS REAIS pelo fluxo MCP -> SSH do NetVision (instancia DEV em 127.0.0.1, aprovacao ADMIN one-shot): UMA sessao, `screen-length 0 temporary` e 7 comandos display, todos completos. Primeira captura com `display vsi` da 3072 e com a subinterface de stacking (`qinq stacking vid ... pe-vid ...`).",
+  "sanitization": "sem segredos; `description` substituida por <REMOVIDO>; System-ID/Peer-System-ID/Partner SystemID com os 16 bits finais trocados, com o mesmo mapeamento de ../cdb-etrunk-20261116; cabecalhos do coletor (# command, # completedAt) removidos; nenhuma outra linha alterada.",
+  "files": {
+    "vta-version.txt": "display version",
+    "vta-vsi-verbose.txt": "display vsi name 3072-QinQ-CDB-MANTIQUEIRA verbose",
+    "vta-config-eth-trunk26.3072.txt": "display current-configuration interface Eth-Trunk26.3072",
+    "vta-config-eth-trunk26.txt": "display current-configuration interface Eth-Trunk26",
+    "vta-eth-trunk-26.txt": "display eth-trunk 26",
+    "vta-e-trunk-brief.txt": "display e-trunk brief",
+    "vta-e-trunk-4.txt": "display e-trunk 4"
+  }
+}

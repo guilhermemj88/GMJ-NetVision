@@ -147,8 +147,7 @@ export async function createPilotHarness(
     hostname: P.hostname,
     displayName: P.hostname,
     interfaces: [iface],
-    sshEnabled: true,
-    ssh: { host: '192.0.2.254', port: 22, username: 'synthetic' },
+    vendor: 'Huawei',    model: 'NE8000',    sshEnabled: true,    ssh: { host: '192.0.2.254', port: 22, username: 'synthetic' },
   } as unknown as HostRecord;
   const target: LifecycleTarget = {
     profileId: P.profileId,

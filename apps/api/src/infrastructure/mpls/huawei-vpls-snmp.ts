@@ -1,9 +1,14 @@
 import type {
   MplsAcStatus,
   MplsAdminStatus,
+  MplsConflict,
+  MplsDiscoveryState,
+  MplsL2vcCircuit,
+  MplsLdpPeer,
   MplsPwState,
   MplsPwStatus,
   MplsPwWorkingState,
+  MplsSource,
   MplsStatus,
   MplsVsiOperationalStatus,
 } from '@gmj/shared';
@@ -54,16 +59,22 @@ export interface CollectedMplsPw {
   upStartTime: Date | null;
   upSumTime: bigint | null;
   statusObserved: boolean;
+  /** Origem da leitura; ausente equivale a SNMP (compatibilidade). */
+  source?: MplsSource;
 }
 
 export interface CollectedMplsAc {
   key: string;
   vsiName: string;
-  ifIndex: number;
+  /** `null` quando a fonte e SSH e so o nome da interface e conhecido. */
+  ifIndex: number | null;
+  /** Nome da interface AC como o equipamento o imprime (fonte SSH). */
+  interfaceName?: string | null;
   status: MplsAcStatus;
   upStartTimeRaw: string | null;
   upSumTimeRaw: bigint | null;
   statusObserved: boolean;
+  source?: MplsSource;
 }
 
 export interface CollectedMplsVsi {
@@ -78,10 +89,13 @@ export interface CollectedMplsVsi {
   vcType: string;
   tunnelPolicy: string | null;
   description: string | null;
+  /** Descoberta de membros da VSI (STATIC/DYNAMIC), quando o CLI a declara. */
+  peerDiscovery?: string | null;
   statusObserved: boolean;
   statusComplete: boolean;
   acs: CollectedMplsAc[];
   pws: CollectedMplsPw[];
+  source?: MplsSource;
 }
 
 export interface HuaweiVplsCollection {
@@ -99,6 +113,13 @@ export interface HuaweiVplsCollection {
     pw: number[];
   };
   vsis: CollectedMplsVsi[];
+  /** Resultado explicito da descoberta (SNMP + SSH); ausente em coletas antigas. */
+  discoveryState?: MplsDiscoveryState;
+  sources?: MplsSource[];
+  /** `undefined` = SSH nao foi consultado nesta rodada (preserva evidencia). */
+  ldpPeers?: MplsLdpPeer[] | undefined;
+  l2vcCircuits?: MplsL2vcCircuit[] | undefined;
+  conflicts?: MplsConflict[] | undefined;
 }
 
 interface ColumnWalkFailure {

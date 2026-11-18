@@ -73,7 +73,7 @@ const ACTIVATED_POLICY = [
 function device(): HostRecord {
   return {
     id: DEVICE_ID,
-    hostname: 'BHE-VTA-F1A-BGP-01',
+    hostname: 'BHE-VTA-F1A-BGP-01',    vendor: 'Huawei',    model: 'NE8000',
     displayName: 'BHE-VTA-F1A-BGP-01',
     name: 'BHE-VTA-F1A-BGP-01',
     sshEnabled: true,

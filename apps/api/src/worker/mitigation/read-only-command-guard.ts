@@ -60,6 +60,11 @@ const ALLOWED_COMMAND_PREFIXES: readonly string[] = [
   'display vlan',
   'display ospf peer',
   'display isis peer',
+  // VSI/VPLS e LDP: leitura de serviço e de transporte MPLS (Huawei S-series).
+  'display vsi',
+  'display mpls ldp session',
+  'display mpls ldp remote-peer',
+  'display mpls l2vc',
 ];
 
 /**

@@ -1,0 +1,9 @@
+
+<BHE-VTA-S6750-MPLS-01>display current-configuration interface Vlanif3066
+#
+interface Vlanif3066
+ description 3066-BGP-FLASHTELECOM
+ l2 binding vsi 3066-BGP-FLASHTELECOM
+#
+return
+<BHE-VTA-S6750-MPLS-01>

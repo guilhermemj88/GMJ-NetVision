@@ -1,6 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import type { AuthUser, BgpPeerDetail, MitigationAutoShadowReportDto } from '@gmj/shared';
+import type { AuthUser, BgpPeerDetail, HostRecord, MitigationAutoShadowReportDto } from '@gmj/shared';
+import { isHuaweiVrpDevice, bgpPlatformFor } from './infrastructure/bgp/bgp-vendor';
 import {
   sharedPolicyAutomationBlocked,
   sharedPolicyScopes,
@@ -133,6 +134,12 @@ export interface MitigationRouteDependencies {
    */
   peers?: { getPeerDetail(peerId: string): Promise<BgpPeerDetail | null> };
   /**
+   * P7 (2a auditoria): reabilitar a mitigacao exige plataforma Huawei VRP
+   * comprovada. Sem isso a UI mostraria o peer como mitigavel enquanto o
+   * executor (M1) recusaria a sessao — estado impossivel de sustentar.
+   */
+  hosts?: { getHost(id: string): Promise<HostRecord | null> };
+  /**
    * Reconciliacao por policy fisica: PREVIEW (somente leitura do Huawei) e
    * APPLY LOCAL (somente runtime no banco do NetVision).
    */
@@ -164,7 +171,7 @@ export function registerMitigationRoutes(
   app: FastifyInstance,
   dependencies: MitigationRouteDependencies,
 ): void {
-  const { service, currentUser, commands, peers, reconciler, autoShadow, autoEnablement } =
+  const { service, currentUser, commands, peers, hosts, reconciler, autoShadow, autoEnablement } =
     dependencies;
 
   // Leitura: mesma exposicao do BGP (protegida pelo hook global de autenticacao).
@@ -348,6 +355,20 @@ return service.discover(deviceIds, { refreshInterfaceMetadata: true });
       const payload = exclusionSchema.parse(request.body ?? {});
       const peer = await peers.getPeerDetail(peerId);
       if (!peer) return reply.code(404).send({ message: 'Peer BGP nao encontrado' });
+      // P7: DESABILITAR a mitigacao e sempre permitido (acao de seguranca).
+      // REABILITAR so faz sentido onde o executor realmente consegue agir.
+      if (!payload.excluded && hosts) {
+        const device = await hosts.getHost(peer.deviceId);
+        if (!device || !isHuaweiVrpDevice(device)) {
+          return reply.code(409).send({
+            code: 'MITIGATION_PLATFORM_NOT_SUPPORTED',
+            message:
+              'Reabilitar a mitigacao exige Huawei VRP identificado (fabricante/modelo). ' +
+              `Plataforma atual: ${device ? bgpPlatformFor(device.vendor, device.model) : 'DESCONHECIDA'}. ` +
+              'O peer continua excluido.',
+          });
+        }
+      }
       return service.setPeerMitigationExclusion({
         peerId: peer.id,
         deviceId: peer.deviceId,

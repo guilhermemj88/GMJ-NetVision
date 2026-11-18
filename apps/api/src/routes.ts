@@ -40,6 +40,14 @@ import { config } from './config';
 import { registerHostRoutes } from './host-routes';
 import { registerMplsRoutes } from './mpls-routes';
 import { registerVsiDiagnosticRoutes } from './vsi-diagnostic-routes';
+import { registerVsiMcpRoutes } from './vsi-mcp-routes';
+import { registerVsiServiceDiagnosticRoutes, vsiServiceDiagnosticEnabled } from './vsi-service-diagnostic-routes';
+import { VsiServiceDiagnosticService } from './infrastructure/mpls/vsi-service/service';
+import { vsiServiceResultArchive } from './infrastructure/mpls/vsi-service/archive';
+import { readVsiMcpProfiles, vsiMcpEnabled, vsiMcpServiceAccounts } from './infrastructure/mpls/vsi-mcp/access-profile';
+import { SshVsiMcpLiveCollector } from './infrastructure/mpls/vsi-mcp/live-collector';
+import { SshCredentialBroker } from './infrastructure/mpls/vsi-mcp/ssh-credential-broker';
+import { VsiMcpTools } from './infrastructure/mpls/vsi-mcp/tools';
 import { VsiDiagnosticService } from './infrastructure/mpls/vsi-diagnostic-service';
 import { VsiDiagnosticApprovalStore } from './infrastructure/mpls/vsi-diagnostic-approval';
 import { InventoryVsiDiagnosticRunner } from './infrastructure/mpls/vsi-diagnostic-ssh';
@@ -134,6 +142,7 @@ import { DemoOperationalOccurrenceRepository } from './infrastructure/alarms/dem
 import { PrismaOperationalOccurrenceRepository } from './infrastructure/alarms/prisma-operational-occurrence-repository';
 import { registerAlarmRoutes } from './alarm-routes';
 import { HuaweiVplsSnmpCollector } from './infrastructure/mpls/huawei-vpls-snmp';
+import { HuaweiVsiSshService } from './infrastructure/mpls/huawei-vsi-ssh';
 import { MplsPollingService } from './infrastructure/mpls/mpls-polling-service';
 import { PrismaMplsRepository } from './infrastructure/mpls/prisma-mpls-repository';
 import { PppPollingService } from './infrastructure/ppp/ppp-polling-service';
@@ -147,6 +156,10 @@ import { PrismaBgpAdminAuditRepository } from './infrastructure/bgp/prisma-bgp-a
 import { HuaweiBgpSshService } from './infrastructure/bgp/huawei-bgp-ssh';
 import { DemoBgpRepository } from './infrastructure/bgp/demo-bgp-repository';
 import { HuaweiBgpSnmpCollector } from './infrastructure/bgp/huawei-bgp-snmp';
+import { JuniperBgpSnmpCollector } from './infrastructure/bgp/juniper-bgp-snmp';
+import { HuaweiBgpDiscoveryProvider } from './infrastructure/bgp/huawei-bgp-discovery-provider';
+import { JuniperJunosBgpSshProvider } from './infrastructure/bgp/juniper-junos-bgp-ssh';
+import { BgpPlatformProviders } from './infrastructure/bgp/bgp-platform-providers';
 import { PrismaBgpRepository } from './infrastructure/bgp/prisma-bgp-repository';
 import { InMemoryMitigationRepository } from './infrastructure/bgp/mitigation/in-memory-mitigation-repository';
 import { PrismaMitigationRepository } from './infrastructure/bgp/mitigation/prisma-mitigation-repository';
@@ -180,6 +193,8 @@ import type { MitigationAutoEvidence } from './infrastructure/bgp/mitigation/mit
 import { MockMitigationExecutor } from './infrastructure/bgp/mitigation/mitigation-executor';
 import { mitigationConfigFromEnv } from './infrastructure/bgp/mitigation/mitigation-config';
 import { mitigationExecutionConfigFromEnv } from './infrastructure/bgp/mitigation/mitigation-execution-config';
+import { evaluateAutoAllProtection } from './infrastructure/platform/auto-all-protection';
+import { runAutoPrecheck } from './infrastructure/platform/auto-precheck-diagnosis';
 import { HuaweiMitigationExecutor } from './infrastructure/bgp/mitigation/huawei-mitigation-executor';
 import { MitigationPolicyReconciler } from './infrastructure/bgp/mitigation/mitigation-policy-reconciler';
 import { PrismaInterfaceTrafficReader } from './infrastructure/bgp/mitigation/prisma-interface-traffic-reader';
@@ -246,6 +261,7 @@ import { SshInterfaceService } from './infrastructure/ssh/ssh-interface-service'
 import { OpticalThresholdService } from './infrastructure/ssh/optical-threshold-service';
 import { DemoTopologyAdapter } from './infrastructure/topology/demo-topology-adapter';
 import { HuaweiVrpDriver } from './infrastructure/topology/huawei-vrp-driver';
+import { JuniperJunosDriver } from './infrastructure/topology/juniper-junos-driver';
 import { LldpSnmpDiscoveryAdapter } from './infrastructure/topology/lldp-snmp-adapter';
 import { LldpSshDiscoveryAdapter } from './infrastructure/topology/lldp-ssh-adapter';
 import { registerHttpDrain } from './graceful-shutdown';
@@ -553,7 +569,8 @@ function buildTopologyAdapters(hosts: HostRepository): TopologyDiscoveryAdapter[
 
   return [
     new LldpSnmpDiscoveryAdapter(snmpClient, snmpTargetProvider),
-    new LldpSshDiscoveryAdapter([new HuaweiVrpDriver()], sshSessionFactory),
+    // Selecao por vendor: Huawei nunca recebe comando Junos e vice-versa.
+    new LldpSshDiscoveryAdapter([new HuaweiVrpDriver(), new JuniperJunosDriver()], sshSessionFactory),
   ];
 }
 
@@ -584,19 +601,25 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const mplsPolling = new MplsPollingService(
     new HuaweiVplsSnmpCollector(new SnmpClientImpl(3000, 1)),
     mplsRepository,
+    new HuaweiVsiSshService(hosts),
   );
   const pppRepository = config.DEMO_MODE ? null : new PrismaPppRepository(prismaClient);
   const pppPolling = pppRepository
-    ? new PppPollingService(new SnmpClientImpl(3000, 1), pppRepository)
+    ? new PppPollingService(new SnmpClientImpl(3000, 1), pppRepository, new SnmpClientImpl(3000, 1))
     : undefined;
-  const bgpRepository = config.DEMO_MODE
-    ? new DemoBgpRepository()
-    : new PrismaBgpRepository(prismaClient);
+  const bgpRepository = config.DEMO_MODE ? new DemoBgpRepository() : new PrismaBgpRepository(prismaClient);
+  // Selecao por plataforma num unico ponto (sem `if vendor` espalhado).
+  const bgpPlatforms = new BgpPlatformProviders({
+    huaweiSsh: new HuaweiBgpDiscoveryProvider(new HuaweiBgpSshService(hosts)),
+    juniperSsh: new JuniperJunosBgpSshProvider(hosts),
+    huaweiSnmp: new HuaweiBgpSnmpCollector(new SnmpClientImpl(3000, 1)),
+    juniperSnmp: new JuniperBgpSnmpCollector(new SnmpClientImpl(3000, 1)),
+  });
   const bgpPolling = new BgpPollingService(
-    new HuaweiBgpSnmpCollector(new SnmpClientImpl(3000, 1)),
+    (device) => bgpPlatforms.snmpFor(device),
     bgpRepository,
   );
-  const bgpDiscovery = new BgpDiscoveryService(new HuaweiBgpSshService(hosts), bgpRepository);
+  const bgpDiscovery = new BgpDiscoveryService(bgpPlatforms, bgpRepository);
   const bgpAudit = config.DEMO_MODE
     ? new InMemoryBgpAdminAuditRepository()
     : new PrismaBgpAdminAuditRepository(prismaClient);
@@ -606,10 +629,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     ssh: new HuaweiBgpSshService(hosts),
     audit: bgpAudit,
   });
+  const juniperBgpSsh = new JuniperJunosBgpSshProvider(hosts);
   const bgpAdvertisedRoutes = new BgpAdvertisedRoutesService({
     bgp: bgpRepository,
     hosts,
     ssh: new HuaweiBgpSshService(hosts),
+    juniper: juniperBgpSsh,
   });
   // Mitigacao DDoS: SIMULATION_ONLY. Em DEMO_MODE o repositorio e em memoria;
   // em producao o Prisma fica pronto, mas a leitura tolera schema ausente
@@ -777,7 +802,41 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const topologyApply = new TopologyApplyService(maps, hosts);
 
   registerHostRoutes(app, { legacyMaps, mapMembership: maps, hosts, discovery, snmp, ssh, zabbix });
-  registerMplsRoutes(app, { hosts, mpls: mplsRepository });
+  registerMplsRoutes(app, {
+    hosts,
+    mpls: mplsRepository,
+    currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
+    // A1-e: equipamentos protegidos pelo AUTO-ALL (inclui a F1A) nao recebem
+    // habilitacao do fallback CLI sem politica explicita. Fail-closed: se nao
+    // for possivel confirmar os profiles AUTO, o equipamento conta como
+    // protegido e nada e alterado.
+    autoAllProtection: async (host) => {
+      const base = {
+        deviceId: host.id,
+        hostname: host.hostname,
+        mitigationAllowlist: mitigationExecutionConfigFromEnv().allowedDeviceIds,
+        singlePilot: {
+          deviceId: SINGLE_AUTO_PILOT.deviceId,
+          hostname: SINGLE_AUTO_PILOT.hostname,
+        },
+      };
+      try {
+        const profiles = await mitigationService.listProfiles();
+        return evaluateAutoAllProtection({
+          ...base,
+          autoProfileDeviceIds: profiles
+            .filter((profile) => profile.mode === 'AUTO')
+            .map((profile) => profile.deviceId),
+        });
+      } catch {
+        return {
+          protected: true,
+          by: 'AUTO_PROFILE',
+          detail: 'nao foi possivel confirmar os profiles AUTO (fail-closed)',
+        };
+      }
+    },
+  });
   const vsiApprovals = new VsiDiagnosticApprovalStore();
   const vsiDiagnostics = new VsiDiagnosticService(
     hosts,
@@ -795,6 +854,54 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     vsiApprovals,
   );
   app.addHook('onClose', () => vsiDiagnostics.close());
+  // Diagnostico VSI/MPLS por MCP (extensao do diagnostico acima). Default desligado:
+  // sem VSI_MCP_ENABLED=true nenhum coletor e criado e nenhum SSH e possivel.
+  // Unico caminho do motor ate a senha SSH: reutiliza o cofre do inventario; so existe com a flag ligada.
+  const vsiCredentialBroker = vsiMcpEnabled()
+    ? new SshCredentialBroker({
+        hosts,
+        // Fonte AUTORITATIVA dos perfis: o broker le o arquivo; o coletor nao entrega nem escolhe perfil.
+        profiles: () => readVsiMcpProfiles(process.env.VSI_MCP_ACCESS_FILE),
+        consumeApproval: (approvalId, hostId, scope, executor) => vsiApprovals.consume(approvalId, hostId, scope, Date.now(), executor),
+        serviceAccounts: () => vsiMcpServiceAccounts(process.env),
+        audit: (event) => app.log.info(event, 'ssh-credential-broker'),
+      })
+    : null;
+  const vsiMcpTools = vsiCredentialBroker
+    ? new VsiMcpTools({
+        hosts,
+        mpls: mplsRepository,
+        live: new SshVsiMcpLiveCollector(hosts, vsiCredentialBroker),
+        // A aprovacao one-shot so e consumida pelo broker, que registra o grant exigido para descriptografar.
+        consumeApproval: (approvalId, hostId, scope, operator) => vsiCredentialBroker.consumeApproval(approvalId, hostId, scope, operator),
+        peekApproval: (approvalId, hostId, scope, operator) => void vsiApprovals.peek(approvalId, hostId, scope, Date.now(), operator.username),
+        audit: (event) => app.log.info(event, 'vsi-mcp: comando somente leitura'),
+      })
+    : null;
+  registerVsiMcpRoutes(
+    app,
+    vsiMcpTools,
+    (request) => auth.userForToken(request.cookies.netvision_session),
+    vsiApprovals,
+  );
+  // Diagnostico VSI por SERVICO (varios PEs). Default desligado (VSI_SERVICE_DIAGNOSTIC_ENABLED);
+  // usa o MESMO VsiMcpTools acima: nenhum coletor, aprovacao ou comando novo.
+  registerVsiServiceDiagnosticRoutes(
+    app,
+    vsiServiceDiagnosticEnabled() && vsiMcpTools
+      ? new VsiServiceDiagnosticService({
+          hosts,
+          mpls: mplsRepository,
+          tools: vsiMcpTools,
+          engineVersion: process.env.NETVISION_RELEASE ?? 'dev',
+        })
+      : null,
+    vsiDiagnostics,
+    (request) => auth.userForToken(request.cookies.netvision_session),
+    process.env,
+    // Pasta de resultados guardados (somente leitura). So e consultada com VSI_SERVICE_DIAGNOSTIC_ENABLED=true.
+    vsiServiceDiagnosticEnabled() ? vsiServiceResultArchive() : null,
+  );
   registerAlarmRoutes(app, {
     alarms: alarmRepository,
     rules: alarmRuleRepository,
@@ -1423,8 +1530,32 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         (!lifecycleSettings.expansionEnabled && host.hostname !== SINGLE_AUTO_PILOT.hostname)
       )
         return false;
-      const bgp = await mitigationSsh.readBgpConfiguration(host);
-      const physical = await mitigationSsh.readMitigationConfiguration(host);
+      // P4 (2a auditoria): a pre-checagem AUTO le CLI Huawei. Se a plataforma
+      // nao for Huawei VRP, o transporte recusa antes de abrir sessao.
+      // P4-b (3a auditoria): a recusa continua fail-closed, mas o motivo e
+      // classificado — falha de transporte NUNCA vira "fabricante incompativel".
+      const precheck = await runAutoPrecheck(
+        async () => ({
+          bgp: await mitigationSsh.readBgpConfiguration(host),
+          physical: await mitigationSsh.readMitigationConfiguration(host),
+        }),
+        (diagnosis) =>
+          app.log.warn(
+            {
+              event: 'mitigation:auto-precheck',
+              profileId: id,
+              deviceId: host.id,
+              hostname: host.hostname,
+              policyName: profile.policyName,
+              code: diagnosis.code,
+              ineligible: diagnosis.ineligible,
+              detail: diagnosis.detail.slice(0, 200),
+            },
+            'pre-check do AUTO recusou o alvo',
+          ),
+      );
+      if (!precheck) return false;
+      const { bgp, physical } = precheck;
       if (lifecycleSettings.expansionEnabled) {
         if (
           !autoExpansionPhysicalScopeMatches(
@@ -2176,6 +2307,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     commands: mitigationCommands,
     // identidade do peer para a exclusao preventiva (sem profile)
     peers: bgpRepository,
+    // P7: reabilitar mitigacao exige plataforma Huawei VRP comprovada
+    hosts,
     reconciler: mitigationReconciler,
     currentUser: (request) => auth.userForToken(request.cookies.netvision_session),
     // Relatorio de SOMBRA do AUTO (somente leitura): decisoes por perfil +

@@ -1,0 +1,19 @@
+<BHE-VTA-6730-MPLS-01>display e-trunk 4
+                            The E-Trunk information
+E-TRUNK-ID : 4                          Revert-Delay-Time (s) : 120
+Priority : 30                           System-ID : 2811-ecea-0002
+Peer-IP : 10.100.101.3                  Source-IP : 10.100.101.0
+State : Backup                          Causation : PRI
+Send-Period (100ms) : 9                 Fail-Time (100ms) : 27
+Receive : 41241076                      Send : 41249753
+RecDrop : 29                            SndDrop : 2576
+Peer-Priority : 20                      Peer-System-ID : 6ce8-7430-0003
+Peer-Fail-Time (100ms) : 27             BFD-Session : likee
+Description : -
+Sequence : Disable
+--------------------------------------------------------------------------------
+                            The Member information
+Type      ID  LocalPhyState  Work-Mode     State   Causation        Remote-ID
+Eth-Trunk 13  Down           auto          Backup  PEER_MEMBER_UP   21
+Eth-Trunk 26  Down           auto          Backup  PEER_MEMBER_UP   17
+<BHE-VTA-6730-MPLS-01>

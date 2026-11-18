@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { closeSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, writeSync } from 'node:fs';
 import { join } from 'node:path';
 import { z } from 'zod';
 import { VsiDiagnosticError } from './vsi-diagnostic-service';
@@ -68,11 +68,28 @@ export class VsiDiagnosticApprovalStore {
     return approval;
   }
 
-  consume(
+  /**
+   * Valida SEM consumir: existe, e do host/escopo, nao expirou, ainda nao foi usada e (se `executor`) nao foi criada por
+   * ele. E o que se exige ANTES de qualquer acao quando a aprovacao tem de estar "previamente consumivel".
+   */
+  peek(
     approvalId: string | undefined,
     hostId: string,
     vsiId: string,
     now = Date.now(),
+    executor?: string,
+  ): VsiDiagnosticApproval {
+    const approval = this.validate(approvalId, hostId, vsiId, now, executor);
+    if (existsSync(join(this.dir, `${approval.approvalId}.consumed`))) throw approvalRequired('Aprovacao ja utilizada');
+    return approval;
+  }
+
+  private validate(
+    approvalId: string | undefined,
+    hostId: string,
+    vsiId: string,
+    now: number,
+    executor: string | undefined,
   ): VsiDiagnosticApproval {
     if (!approvalId) throw approvalRequired('Aprovacao one-shot obrigatoria para executar o diagnostico');
     const approval = this.read(approvalId);
@@ -81,6 +98,21 @@ export class VsiDiagnosticApprovalStore {
       throw approvalRequired('Aprovacao nao autoriza este host/VSI');
     if (!Number.isFinite(Date.parse(approval.expiresAt)) || Date.parse(approval.expiresAt) <= now)
       throw approvalRequired('Aprovacao expirada');
+    // ANTES de marcar como consumida: quem aprovou nao pode executar, e a aprovacao continua utilizavel por outro.
+    if (executor !== undefined && executor === approval.createdBy)
+      throw approvalRequired('Aprovacao nao pode ser usada por quem a criou');
+    return approval;
+  }
+
+  consume(
+    approvalId: string | undefined,
+    hostId: string,
+    vsiId: string,
+    now = Date.now(),
+    /** Identidade de quem EXECUTA. Se informada, nao pode ser quem criou a aprovacao (separacao de funcoes). */
+    executor?: string,
+  ): VsiDiagnosticApproval {
+    const approval = this.validate(approvalId, hostId, vsiId, now, executor);
     try {
       closeSync(openSync(join(this.dir, `${approval.approvalId}.consumed`), 'wx', 0o600));
     } catch (error) {

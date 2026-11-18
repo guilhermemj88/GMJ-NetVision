@@ -12,7 +12,13 @@ import { testMitigationContract } from './mitigation-test-support';
  * a posse do lock expira, e orcamento insuficiente e INCONCLUSIVE (nunca sucesso).
  */
 
-const DEVICE = { id: 'host-f1a', hostname: 'F1A', sshEnabled: true } as unknown as HostRecord;
+const DEVICE = {
+  id: 'host-f1a',
+  hostname: 'F1A',
+  vendor: 'Huawei',
+  model: 'NE8000',
+  sshEnabled: true,
+} as unknown as HostRecord;
 const CONTRACT = {
   ...testMitigationContract(A.policy, A.targetPrefixList, 1100),
   prefixListEntries: [A.prefixDefinition],

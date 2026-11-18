@@ -10,6 +10,8 @@ import { assertReadOnlyCommand } from '../../worker/mitigation/read-only-command
 import { isMitigationEvidenceCommand } from './mitigation/mitigation-physical-verification';
 import { SshClientImpl } from '../ssh/ssh-client-impl';
 import type { BgpRouteCommandResult } from './bgp-interface-correlation';
+import { isHuaweiVrpDevice } from './bgp-vendor';
+import { normalizePeerDescription, parseBgpPeerConfiguration } from './bgp-peer-config-parser';
 import {
   isAdminIgnoredCliState,
   mergeHuaweiBgpPeerDetails,
@@ -44,6 +46,8 @@ export interface HuaweiBgpSshDiscovery {
   localAsAmbiguous: boolean;
   /** False when `display bgp ipv6 peer` is unsupported on this device. */
   ipv6Supported: boolean;
+  /** True quando AS/descricao de algum peer vieram da configuracao em execucao. */
+  configUsed?: boolean;
   warnings: string[];
 }
 
@@ -451,6 +455,31 @@ export class HuaweiBgpSshService {
       }
     }
 
+    // AS remoto e descricao por peer saem da MESMA configuracao ja lida para o
+    // AS local (nenhum comando extra). O `display bgp peer` nao traz descricao e
+    // o verbose nem sempre e lido, entao sem isso a tela fica com "AS -" e sem
+    // nome. Nunca inventa valor: so preenche o que esta nulo.
+    let configUsed = false;
+    if (localAsReading.configuration && peers.length) {
+      const peerConfiguration = parseBgpPeerConfiguration(localAsReading.configuration);
+      for (const peer of peers) {
+        const configured = peerConfiguration.get(peer.peerAddress.trim().toLowerCase());
+        if (!configured) continue;
+        if (peer.remoteAs === null && configured.remoteAs !== null) {
+          peer.remoteAs = BigInt(configured.remoteAs);
+          configUsed = true;
+        }
+        if (peer.bgpPeerDescription === null) {
+          const description =
+            normalizePeerDescription(peer.bgpPeerDescription) ?? configured.description;
+          if (description) {
+            peer.bgpPeerDescription = description;
+            configUsed = true;
+          }
+        }
+      }
+    }
+
     return {
       peers,
       routeCommands,
@@ -458,6 +487,7 @@ export class HuaweiBgpSshService {
       localAs: localAsReading.localAs,
       localAsAmbiguous: localAsReading.ambiguous,
       ipv6Supported,
+      configUsed,
       warnings,
     };
   }
@@ -821,6 +851,15 @@ export class HuaweiBgpSshService {
     device: HostRecord,
     commands: readonly string[],
   ): Promise<{ ok: boolean; output: string | null }> {
+    // M1 (defesa em profundidade): comandos de mitigacao sao Huawei VRP
+    // (`system-view`, `route-policy`, `commit`). Se a plataforma nao for
+    // Huawei VRP — Juniper, OLT ou fabricante desconhecido — nada e enviado.
+    if (!isHuaweiVrpDevice(device)) {
+      return {
+        ok: false,
+        output: 'MITIGATION_PLATFORM_NOT_SUPPORTED: plataforma nao e Huawei VRP',
+      };
+    }
     // Any write closes the activation read scope: the read-back must hit the equipment.
     this.closeActivationReadScope();
     // Sessao de ESCRITA: termina em system-view (apos o commit), entao precisa
@@ -841,16 +880,20 @@ export class HuaweiBgpSshService {
     return { ok: !raw.failed, output: raw.output };
   }
 
+  /**
+   * A configuracao BGP em execucao, lida no inicio do discovery. Reaproveitada
+   * para AS/descricao por peer e para o AS local: um comando, dois usos.
+   */
   private async learnLocalAs(
     client: SshClient,
     host: string,
-  ): Promise<{ localAs: bigint | null; ambiguous: boolean }> {
+  ): Promise<{ localAs: bigint | null; ambiguous: boolean; configuration: string | null }> {
     const output = await this.executeStrict(client, host, [
       'screen-length 0 temporary',
       'display current-configuration configuration bgp',
     ]);
-    if (output === null) return { localAs: null, ambiguous: false };
-    return parseHuaweiBgpLocalAs(output);
+    if (output === null) return { localAs: null, ambiguous: false, configuration: null };
+    return { ...parseHuaweiBgpLocalAs(output), configuration: output };
   }
 
   private async createClient(
@@ -863,6 +906,16 @@ export class HuaweiBgpSshService {
       requirePromptCompletion?: boolean;
     } = {},
   ): Promise<SshClient> {
+    // P4 (2a auditoria): este e o transporte da CLI Huawei. Toda operacao passa
+    // por aqui — descoberta BGP, rotas anunciadas, configuracao de mitigacao,
+    // route-policy, evidencia fisica, admin e escrita. Plataforma nao-Huawei
+    // (Juniper, OLT, fabricante ausente/inconsistente) nao abre sessao.
+    if (!isHuaweiVrpDevice(device)) {
+      throw new Error(
+        'HUAWEI_CLI_PLATFORM_NOT_SUPPORTED: equipamento nao e Huawei VRP; ' +
+          'nenhum comando Huawei foi enviado',
+      );
+    }
     if (!device.sshEnabled || !device.ssh?.host || !device.ssh.username) {
       throw new Error('SSH não está habilitado para este host');
     }

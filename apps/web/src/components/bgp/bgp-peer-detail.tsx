@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type {
   BgpAdminAction,
   BgpDashboardPeer,
+  BgpDeviceCapabilities,
   BgpHistoryPeriod,
   BgpPeerAdminStateResponse,
   MetricPoint,
@@ -40,6 +41,28 @@ const TABS = [
 
 type PeerTab = (typeof TABS)[number][0];
 
+/**
+ * `adminActions` só é exigido quando o backend afirma explicitamente que a
+ * plataforma é read-only (Juniper). Respostas antigas sem `capabilities`
+ * continuam mostrando a ação e a barreira final segue no backend.
+ */
+function canUseAdminActions(capabilities?: BgpDeviceCapabilities): boolean {
+  return capabilities?.adminActions !== false;
+}
+
+function canReadAdvertisedRoutes(capabilities?: BgpDeviceCapabilities): boolean {
+  return capabilities?.advertisedRoutes !== false;
+}
+
+/**
+ * Mitigação é uma capability de ESCRITA. `mitigation: false` (Juniper/Junos) é
+ * definitivo: nenhum controle mutável de mitigação é montado. Sem `capabilities`
+ * (contrato antigo) o comportamento compatível anterior é preservado.
+ */
+function canUseMitigationActions(capabilities?: BgpDeviceCapabilities): boolean {
+  return capabilities?.mitigation !== false;
+}
+
 function timeLabel(value: string): string {
   const date = new Date(value);
   return date.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
@@ -62,11 +85,14 @@ function adminLabel(peer: BgpDashboardPeer): string {
 export function BgpPeerDetail({
   peer,
   period,
+  capabilities,
   onClose,
   onRefreshed,
 }: {
   peer: BgpDashboardPeer;
   period: BgpHistoryPeriod;
+  /** Capacidades do equipamento dono do peer (vem do dashboard BGP). */
+  capabilities?: BgpDeviceCapabilities;
   onClose: () => void;
   /** Runs SSH discovery + SNMP polling and reloads this peer after an action. */
   onRefreshed?: (peerId: string, deviceId: string) => Promise<void> | void;
@@ -103,6 +129,11 @@ export function BgpPeerDetail({
 
   const adminIgnored = peer.adminState === 'IGNORED';
   const localAsUnknown = !peer.localAs;
+  const adminActionsAllowed = canUseAdminActions(capabilities);
+  const advertisedAllowed = canReadAdvertisedRoutes(capabilities);
+  const mitigationActionsAllowed = canUseMitigationActions(capabilities);
+  // Aba escondida não pode continuar montada como "ativa".
+  const visibleTab: PeerTab = tab === 'ADVERTISED' && !advertisedAllowed ? 'SUMMARY' : tab;
 
   async function refreshAfterAction(): Promise<void> {
     setRefreshing(true);
@@ -115,7 +146,7 @@ export function BgpPeerDetail({
   }
 
   async function runAction(): Promise<void> {
-    if (!pendingAction || actionInFlight.current) return;
+    if (!pendingAction || actionInFlight.current || !adminActionsAllowed) return;
     const action = pendingAction;
     actionInFlight.current = true;
     setActionBusy(true);
@@ -171,21 +202,23 @@ export function BgpPeerDetail({
         </header>
         <div className="panel-body bgp-detail__body">
           <nav className="bgp-detail__tabs" role="tablist" aria-label="Seções do peer BGP">
-            {TABS.map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={tab === value}
-                className={tab === value ? 'bgp-detail__tab is-active' : 'bgp-detail__tab'}
-                onClick={() => setTab(value)}
-              >
-                {label}
-              </button>
-            ))}
+            {TABS.filter(([value]) => value !== 'ADVERTISED' || advertisedAllowed).map(
+              ([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={visibleTab === value}
+                  className={visibleTab === value ? 'bgp-detail__tab is-active' : 'bgp-detail__tab'}
+                  onClick={() => setTab(value)}
+                >
+                  {label}
+                </button>
+              ),
+            )}
           </nav>
 
-          <div className="bgp-detail__tabpanel" hidden={tab !== 'SUMMARY'}>
+          <div className="bgp-detail__tabpanel" hidden={visibleTab !== 'SUMMARY'}>
           <section className="bgp-detail__hero">
             <div>
               <span>PEER</span>
@@ -269,26 +302,33 @@ export function BgpPeerDetail({
               >
                 <RefreshCw size={13} className={refreshing ? 'spin' : ''} /> Atualizar agora
               </button>
-              {adminIgnored ? (
-                <button
-                  type="button"
-                  className="bgp-actions__enable"
-                  disabled={localAsUnknown || refreshing}
-                  onClick={() => setPendingAction('ENABLE')}
-                >
-                  Reabilitar sessão BGP
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="bgp-actions__disable"
-                  disabled={localAsUnknown || refreshing}
-                  onClick={() => setPendingAction('DISABLE')}
-                >
-                  <ShieldAlert size={13} /> Desabilitar sessão BGP
-                </button>
-              )}
+              {adminActionsAllowed &&
+                (adminIgnored ? (
+                  <button
+                    type="button"
+                    className="bgp-actions__enable"
+                    disabled={localAsUnknown || refreshing}
+                    onClick={() => setPendingAction('ENABLE')}
+                  >
+                    Reabilitar sessão BGP
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="bgp-actions__disable"
+                    disabled={localAsUnknown || refreshing}
+                    onClick={() => setPendingAction('DISABLE')}
+                  >
+                    <ShieldAlert size={13} /> Desabilitar sessão BGP
+                  </button>
+                ))}
             </div>
+            {!adminActionsAllowed && (
+              <p className="bgp-actions__note" role="note">
+                Equipamento em modo somente leitura: habilitar ou desabilitar sessão BGP não é
+                suportado nesta plataforma.
+              </p>
+            )}
 
             <div className="bgp-actions__nav">
               <button type="button" onClick={() => openHostDetails(peer.deviceId)}>
@@ -331,10 +371,22 @@ export function BgpPeerDetail({
           {/*
            * Camada PREVENTIVA: entrada OPERACIONAL da mitigação (vale mesmo sem
            * profile DDoS para este peer). Só aparece com a flag ligada — no
-           * NetVision geral a mitigação não é exposta na interface.
-           */}
-          {isDdosMitigationUiEnabled() ? (
-            <PeerMitigationExclusionEditor key={peer.id} peer={peer} />
+           * NetVision geral a mitigação não é exposta na interface. A capability
+           * `mitigation` é a segunda condição: equipamento read-only (Juniper)
+           * não recebe controle mutável de mitigação.
+          */}
+          {isDdosMitigationUiEnabled() && mitigationActionsAllowed ? (
+            <PeerMitigationExclusionEditor
+              key={peer.id}
+              peer={peer}
+              allowed={mitigationActionsAllowed}
+            />
+          ) : null}
+          {isDdosMitigationUiEnabled() && !mitigationActionsAllowed ? (
+            <p className="bgp-actions__note mitigation-exclusion__readonly" role="note">
+              Equipamento em modo somente leitura: a exclusão de mitigação deste peer não é
+              suportada nesta plataforma.
+            </p>
           ) : null}
 
           <section className="bgp-detail__grid">
@@ -384,7 +436,7 @@ export function BgpPeerDetail({
           </section>
           </div>
 
-          <div className="bgp-detail__tabpanel" hidden={tab !== 'TRAFFIC'}>
+          <div className="bgp-detail__tabpanel" hidden={visibleTab !== 'TRAFFIC'}>
           <section className="bgp-detail__chart">
             <div className="chart-heading">
               <div>
@@ -496,13 +548,13 @@ export function BgpPeerDetail({
           </section>
           </div>
 
-          <div className="bgp-detail__tabpanel" hidden={tab !== 'ADVERTISED'}>
+          <div className="bgp-detail__tabpanel" hidden={visibleTab !== 'ADVERTISED'}>
             <BgpAdvertisedRoutesPanel peer={peer} />
           </div>
         </div>
       </div>
 
-      {pendingAction && (
+      {pendingAction && adminActionsAllowed && (
         <div
           className="panel-overlay bgp-confirm"
           role="dialog"
@@ -599,7 +651,14 @@ export function BgpPeerDetail({
  * mitigacao (uplink/transit/IX/backbone sem banda declarada). Persistencia pura:
  * nenhuma chamada SSH e nenhum comando e enviado ao equipamento.
  */
-function PeerMitigationExclusionEditor({ peer }: { peer: BgpDashboardPeer }) {
+function PeerMitigationExclusionEditor({
+  peer,
+  allowed = true,
+}: {
+  peer: BgpDashboardPeer;
+  /** `capabilities.mitigation === false` desmonta o controle por completo. */
+  allowed?: boolean;
+}) {
   const queryClient = useQueryClient();
   const [excluded, setExcluded] = useState(peer.mitigationExcluded === true);
   const [reason, setReason] = useState<MitigationExclusionReason>(
@@ -621,7 +680,7 @@ function PeerMitigationExclusionEditor({ peer }: { peer: BgpDashboardPeer }) {
     (excluded && note.trim() !== (saved.note ?? ''));
 
   async function save(): Promise<void> {
-    if (saving) return;
+    if (saving || !allowed) return;
     setSaving(true);
     setError(null);
     setNotice(null);
@@ -643,6 +702,8 @@ function PeerMitigationExclusionEditor({ peer }: { peer: BgpDashboardPeer }) {
       setSaving(false);
     }
   }
+
+  if (!allowed) return null;
 
   return (
     <section className="bgp-actions mitigation-exclusion" aria-label="Proteção contra mitigação">

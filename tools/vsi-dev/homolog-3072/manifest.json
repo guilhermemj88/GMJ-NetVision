@@ -1,0 +1,169 @@
+{
+  "vsiName": "3072-QinQ-CDB-MANTIQUEIRA",
+  "engineVersion": "PREENCHER-COM-BUNDLE_COMMIT",
+  "operator": {
+    "username": "guilherme",
+    "role": "ADMIN"
+  },
+  "participants": [
+    {
+      "hostId": "host-57c13918-ec93-4421-9163-54b698751bde",
+      "hostName": "BHE-LIKEE-6730-MPLS-01",
+      "loopback": "10.100.101.3",
+      "discoveredBy": "REQUESTED",
+      "resultFile": "likee.json",
+      "inventory": {
+        "id": "inv-host-57c13918-ec93-4421-9163-54b698751bde",
+        "hostId": "host-57c13918-ec93-4421-9163-54b698751bde",
+        "name": "3072-QinQ-CDB-MANTIQUEIRA",
+        "rd": "268568:53072",
+        "mtu": 2000,
+        "operationalStatus": "UP",
+        "status": "UP",
+        "lastSeenAt": "2026-11-16T13:50:19.000Z",
+        "createdAt": "2026-11-16T13:50:19.000Z",
+        "updatedAt": "2026-11-16T13:50:19.000Z",
+        "source": "SNMP",
+        "acs": [
+          {
+            "id": "ac-h-likee",
+            "hostId": "host-57c13918-ec93-4421-9163-54b698751bde",
+            "ifIndex": 0,
+            "interface": {
+              "id": "i",
+              "name": "Eth-Trunk17.3072",
+              "alias": "",
+              "ifIndex": 0
+            },
+            "status": "UP",
+            "lastSeenAt": "2026-11-16T13:50:19.000Z",
+            "createdAt": "2026-11-16T13:50:19.000Z",
+            "updatedAt": "2026-11-16T13:50:19.000Z",
+            "source": "SNMP"
+          }
+        ],
+        "pws": [
+          {
+            "id": "pw-h-likee",
+            "hostId": "host-57c13918-ec93-4421-9163-54b698751bde",
+            "remoteIp": "10.100.101.2",
+            "remoteHostId": "peer:10.100.101.2",
+            "state": "UP",
+            "inboundLabel": 36706,
+            "outboundLabel": 35842,
+            "lastSeenAt": "2026-11-16T13:50:19.000Z",
+            "createdAt": "2026-11-16T13:50:19.000Z",
+            "updatedAt": "2026-11-16T13:50:19.000Z",
+            "source": "SNMP"
+          }
+        ]
+      }
+    },
+    {
+      "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+      "hostName": "BHE-VTA-6730-MPLS-01",
+      "loopback": "10.100.101.0",
+      "discoveredBy": "REQUESTED",
+      "resultFile": "vta.json",
+      "inventory": {
+        "id": "inv-host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+        "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+        "name": "3072-QinQ-CDB-MANTIQUEIRA",
+        "rd": "268568:53072",
+        "mtu": 2000,
+        "operationalStatus": "DOWN",
+        "status": "DOWN",
+        "lastSeenAt": "2026-11-16T13:51:10.000Z",
+        "createdAt": "2026-11-16T13:51:10.000Z",
+        "updatedAt": "2026-11-16T13:51:10.000Z",
+        "source": "SNMP",
+        "acs": [
+          {
+            "id": "ac-h-vta",
+            "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+            "ifIndex": 0,
+            "interface": {
+              "id": "i",
+              "name": "Eth-Trunk26.3072",
+              "alias": "",
+              "ifIndex": 0
+            },
+            "status": "DOWN",
+            "lastSeenAt": "2026-11-16T13:51:10.000Z",
+            "createdAt": "2026-11-16T13:51:10.000Z",
+            "updatedAt": "2026-11-16T13:51:10.000Z",
+            "source": "SNMP"
+          }
+        ],
+        "pws": [
+          {
+            "id": "pw-h-vta",
+            "hostId": "host-fd85f870-8f1c-4ff8-9b3c-e8077b10cf3c",
+            "remoteIp": "10.100.101.2",
+            "remoteHostId": "peer:10.100.101.2",
+            "state": "UP",
+            "inboundLabel": 41335,
+            "outboundLabel": 35840,
+            "lastSeenAt": "2026-10-27T01:24:40.000Z",
+            "createdAt": "2026-10-27T01:24:40.000Z",
+            "updatedAt": "2026-10-27T01:24:40.000Z",
+            "source": "SNMP"
+          }
+        ]
+      }
+    },
+    {
+      "hostId": "peer:10.100.101.2",
+      "hostName": "BHE-MQT-6730-MPLS-01",
+      "loopback": "10.100.101.2",
+      "discoveredBy": "PW_PEER",
+      "resultFile": null,
+      "inventory": {
+        "id": "inv-peer:10.100.101.2",
+        "hostId": "peer:10.100.101.2",
+        "name": "3072-QinQ-CDB-MANTIQUEIRA",
+        "rd": null,
+        "mtu": null,
+        "operationalStatus": "UP",
+        "status": "UP",
+        "lastSeenAt": "2026-11-16T13:52:00.000Z",
+        "createdAt": "2026-11-16T13:52:00.000Z",
+        "updatedAt": "2026-11-16T13:52:00.000Z",
+        "source": "SNMP",
+        "acs": [
+          {
+            "id": "ac-h-mqt",
+            "hostId": "peer:10.100.101.2",
+            "ifIndex": 0,
+            "interface": {
+              "id": "i",
+              "name": "XGigabitEthernet0/0/4.3072",
+              "alias": "",
+              "ifIndex": 0
+            },
+            "status": "UP",
+            "lastSeenAt": "2026-11-16T13:52:00.000Z",
+            "createdAt": "2026-11-16T13:52:00.000Z",
+            "updatedAt": "2026-11-16T13:52:00.000Z",
+            "source": "SNMP"
+          }
+        ],
+        "pws": [
+          {
+            "id": "pw-h-mqt",
+            "hostId": "peer:10.100.101.2",
+            "remoteIp": "10.100.101.3",
+            "remoteHostId": "host-57c13918-ec93-4421-9163-54b698751bde",
+            "state": "UP",
+            "inboundLabel": 35842,
+            "outboundLabel": 36706,
+            "lastSeenAt": "2026-11-16T13:52:00.000Z",
+            "createdAt": "2026-11-16T13:52:00.000Z",
+            "updatedAt": "2026-11-16T13:52:00.000Z",
+            "source": "SNMP"
+          }
+        ]
+      }
+    }
+  ]
+}

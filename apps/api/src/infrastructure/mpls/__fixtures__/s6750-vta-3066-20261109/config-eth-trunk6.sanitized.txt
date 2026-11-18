@@ -1,0 +1,13 @@
+
+<BHE-VTA-S6750-MPLS-01>display current-configuration interface Eth-Trunk6
+#
+interface Eth-Trunk6
+ description <REMOVIDO>
+ port link-type trunk
+ undo port trunk allow-pass vlan 1
+ port trunk allow-pass vlan 1602
+ stp disable
+ mode lacp-dynamic
+#
+return
+<BHE-VTA-S6750-MPLS-01>

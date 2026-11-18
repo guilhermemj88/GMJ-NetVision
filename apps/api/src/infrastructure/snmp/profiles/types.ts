@@ -51,6 +51,19 @@ export interface SnmpCliDialect {
   version?: string;
 }
 
+/**
+ * Capability declarativa de contagem PPPoE via subscriber table. Os valores de
+ * enum sao os comprovados em campo (Junos 19.2R1.8 e 19.4R3-S10.3).
+ */
+export interface PppSubscriberTableCapability {
+  source: 'SNMP_JUNIPER';
+  clientTypeOid: string;
+  stateOid: string;
+  clientTypePppoe: number;
+  stateActive: number;
+  intervalSeconds: number;
+}
+
 export interface SnmpProfile {
   id: string;
   vendor: string;
@@ -79,6 +92,12 @@ export interface SnmpProfile {
    * supporting PPP polling — no value is ever invented.
    */
   pppOnlineOid?: string;
+  /**
+   * Estrategia por subscriber table (JUNIPER-SUBSCRIBER-MIB). Usada quando o
+   * vendor nao expoe um scalar de PPPoE online: a contagem vem do join das
+   * colunas clientType/state pelo indice <HandleHiWord>.<HandleLoWord>.
+   */
+  pppSubscriberTable?: PppSubscriberTableCapability;
   /** Universal SNMPv2-MIB base OIDs (complemented by specific profiles). */
   systemOids?: Readonly<Record<string, string>>;
   /** Universal IF-MIB base OIDs (complemented by specific profiles). */

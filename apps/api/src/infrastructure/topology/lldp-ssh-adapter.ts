@@ -54,10 +54,28 @@ export class LldpSshDiscoveryAdapter implements TopologyDiscoveryAdapter {
     if (driver) return driver;
 
     // Inventory imported before vendor enrichment commonly has an empty or
-    // unknown vendor. With a single registered driver there is no ambiguity;
-    // known non-Huawei vendors still fail closed instead of receiving VRP commands.
-    if ((!vendor || vendor === 'unknown') && this.drivers.length === 1) return this.drivers[0]!;
+    // unknown vendor. The legacy behaviour is preserved: a registered Huawei
+    // driver still serves those hosts, and with a single driver there is no
+    // ambiguity. A KNOWN third-party vendor still fails closed instead of
+    // receiving VRP commands.
+    if (!vendor || vendor === 'unknown') {
+      const legacyHuawei = this.drivers.find(
+        (candidate) => candidate.vendor.split(' ')[0]?.toLowerCase() === 'huawei',
+      );
+      if (legacyHuawei) return legacyHuawei;
+      if (this.drivers.length === 1) return this.drivers[0]!;
+    }
     throw new Error(`No SSH driver configured for vendor ${device.vendor || 'unknown'}`);
+  }
+
+  /**
+   * Identity discovery recebe apenas um host, sem vendor: com mais de um
+   * driver nao ha como escolher sem risco de mandar comando VRP para um Junos
+   * (ou o contrario). Nesse caso falha fechado.
+   */
+  private identityDriver(): SshDeviceDriver {
+    if (this.drivers.length === 1) return this.drivers[0]!;
+    throw new Error('SSH identity discovery requires a vendor-scoped driver');
   }
 
   private stdout(results: Awaited<ReturnType<SshClient['execute']>>): string {
@@ -69,8 +87,7 @@ export class LldpSshDiscoveryAdapter implements TopologyDiscoveryAdapter {
   }
 
   async getDeviceIdentity(host: string): Promise<DeviceIdentity> {
-    const driver = this.drivers[0];
-    if (!driver) throw new Error('No SSH device driver configured');
+    const driver = this.identityDriver();
     const { client, host: targetHost } = await this.session(this.deviceForHost(host));
     const results = await client.execute(targetHost, driver.identityCommands());
     return driver.parseIdentity(results.map((result) => result.stdout).join('\n'));

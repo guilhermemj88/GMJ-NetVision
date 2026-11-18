@@ -9,6 +9,7 @@ import { CredentialVault } from '../../application/credential-vault';
 import { PrismaHostRepository } from '../../infrastructure/persistence/prisma-host-repository';
 import { PrismaBgpRepository } from '../../infrastructure/bgp/prisma-bgp-repository';
 import { HuaweiBgpSshService } from '../../infrastructure/bgp/huawei-bgp-ssh';
+import { HuaweiBgpDiscoveryProvider } from '../../infrastructure/bgp/huawei-bgp-discovery-provider';
 import { BgpDiscoveryService } from '../../infrastructure/bgp/bgp-discovery-service';
 import { BgpMitigationDiscoveryService } from '../../infrastructure/bgp/mitigation/mitigation-discovery-service';
 import { HuaweiBgpMitigationConfigSource } from '../../infrastructure/bgp/mitigation/mitigation-config-source';
@@ -257,7 +258,7 @@ export async function seed(config: HomologConfig, negative = false): Promise<str
     const hosts = new PrismaHostRepository(db, vault),
       bgpRepository = new PrismaBgpRepository(db);
     const ssh = new HuaweiBgpSshService(hosts),
-      bgpDiscovery = new BgpDiscoveryService(ssh, bgpRepository);
+      bgpDiscovery = new BgpDiscoveryService(new HuaweiBgpDiscoveryProvider(ssh), bgpRepository);
     const discovery = new BgpMitigationDiscoveryService({
       repository,
       bgpDiscovery,

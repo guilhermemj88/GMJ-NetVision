@@ -1,0 +1,17 @@
+{
+  "case": "CDB TELECOM - VSI 3072-QinQ-CDB-MANTIQUEIRA no BHE-LIKEE-6730-MPLS-01 (lado Master do E-Trunk 4)",
+  "capturedAt": "2026-11-17T00:15:24Z a 00:15:30Z",
+  "platform": "Huawei S6730, V200R021C00SPC100 (display version da propria sessao)",
+  "provenance": "CAPTURAS REAIS pelo fluxo MCP -> SSH do NetVision (instancia DEV em 127.0.0.1, aprovacao ADMIN one-shot, chave de host fixada por TOFU autorizado pelo operador): UMA sessao, `screen-length 0 temporary` e 8 comandos display, todos completos. Inclui a tabela MAC da VSI: 127 entradas, 125 em Eth-Trunk1 e 2 em Eth-Trunk17.",
+  "sanitization": "sem segredos; `description` substituida por <REMOVIDO>; System-ID/Peer-System-ID/Partner SystemID com os 16 bits finais trocados (mesmo mapeamento de ../cdb-etrunk-20261116); enderecos MAC da tabela com os 6 digitos finais trocados por um contador (OUI/primeiros 6 digitos preservados, unicidade mantida); cabecalhos do coletor removidos; nenhuma outra linha alterada.",
+  "files": {
+    "likee-version.txt": "display version",
+    "likee-vsi-verbose.txt": "display vsi name 3072-QinQ-CDB-MANTIQUEIRA verbose",
+    "likee-config-eth-trunk17.3072.txt": "display current-configuration interface Eth-Trunk17.3072",
+    "likee-config-eth-trunk17.txt": "display current-configuration interface Eth-Trunk17",
+    "likee-eth-trunk-17.txt": "display eth-trunk 17",
+    "likee-e-trunk-brief.txt": "display e-trunk brief",
+    "likee-e-trunk-4.txt": "display e-trunk 4",
+    "likee-mac-vsi.txt": "display mac-address vsi 3072-QinQ-CDB-MANTIQUEIRA"
+  }
+}

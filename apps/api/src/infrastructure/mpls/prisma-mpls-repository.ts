@@ -3,6 +3,7 @@ import {
   summarizeMpls,
   type MplsAc,
   type MplsHostOverview,
+  type MplsL2vcCircuit,
   type MplsPw,
   type MplsStateEvent,
   type MplsVsi,
@@ -17,6 +18,7 @@ import {
 } from './huawei-vpls-oids';
 import type { MplsRepository } from './mpls-repository';
 import { isRealMplsStateChange } from './mpls-state-events';
+import { interfaceNameKeys } from '../topology/interface-correlation';
 
 const remoteHostSelect = { id: true, name: true, hostname: true } as const;
 const pwInclude = { remoteHost: { select: remoteHostSelect } } as const;
@@ -97,6 +99,7 @@ function toVsi(row: VsiRow): MplsVsi {
     vcType: row.vcType,
     tunnelPolicy: row.tunnelPolicy,
     description: row.description,
+    memberDiscovery: row.memberDiscovery,
     vlanId: row.vlanId,
     localInterfaceId: row.localInterfaceId,
     source: row.source,
@@ -136,8 +139,181 @@ export class PrismaMplsRepository implements MplsRepository {
     await this.prisma.$disconnect();
   }
 
+  /**
+   * A1: o fallback CLI so roda com habilitacao explicita gravada por
+   * equipamento. Sem linha no estado MPLS, `false` (fail-closed).
+   */
+  async isSshFallbackEnabled(hostId: string): Promise<boolean> {
+    const state = await this.prisma.mplsDeviceState.findUnique({
+      where: { hostId },
+      select: { sshFallbackEnabled: true },
+    });
+    return state?.sshFallbackEnabled === true;
+  }
+
+  /** P6: caminho administrativo (sem UPDATE SQL manual), default false. */
+  async setSshFallbackEnabled(hostId: string, enabled: boolean): Promise<void> {
+    await this.prisma.mplsDeviceState.upsert({
+      where: { hostId },
+      create: { hostId, sshFallbackEnabled: enabled },
+      update: { sshFallbackEnabled: enabled },
+    });
+  }
+
+  /**
+   * P6: orcamento de sessoes SSH do MPLS compartilhado entre processos.
+   *
+   * A transacao serializa com um advisory lock, conta as sessoes ATIVAS (linhas
+   * sem `finishedAt` dentro da janela de staleness) e o total da ultima hora.
+   * Linhas de processos mortos expiram pela janela; as mais antigas sao
+   * removidas como housekeeping.
+   */
+  async acquireSshLease(
+    hostId: string,
+    limits: { maxConcurrentSessions: number; sessionBudgetPerHour: number; staleAfterMs: number },
+  ): Promise<{ ok: true; leaseId: string } | { ok: false; denial: 'CONCURRENCY' | 'BUDGET' }> {
+    const staleCutoff = new Date(Date.now() - limits.staleAfterMs);
+    const hourCutoff = new Date(Date.now() - 3_600_000);
+    const dayCutoff = new Date(Date.now() - 86_400_000);
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$queryRawUnsafe(
+        'SELECT 1 AS ok FROM (SELECT pg_advisory_xact_lock(hashtext($1))) AS l',
+        'netvision:mpls-ssh-budget',
+      );
+      await tx.mplsSshSessionLog.deleteMany({ where: { startedAt: { lt: dayCutoff } } });
+
+      const active = await tx.mplsSshSessionLog.count({
+        where: { finishedAt: null, startedAt: { gt: staleCutoff } },
+      });
+      if (active >= limits.maxConcurrentSessions) {
+        return { ok: false as const, denial: 'CONCURRENCY' as const };
+      }
+      const lastHour = await tx.mplsSshSessionLog.count({
+        where: { startedAt: { gt: hourCutoff } },
+      });
+      if (lastHour >= limits.sessionBudgetPerHour) {
+        return { ok: false as const, denial: 'BUDGET' as const };
+      }
+      const lease = await tx.mplsSshSessionLog.create({ data: { hostId } });
+      return { ok: true as const, leaseId: lease.id };
+    });
+  }
+
+  async releaseSshLease(leaseId: string): Promise<void> {
+    await this.prisma.mplsSshSessionLog.updateMany({
+      where: { id: leaseId, finishedAt: null },
+      data: { finishedAt: new Date() },
+    });
+  }
+
+  /** A1-e: toda tentativa de mudanca do opt-in fica registrada. */
+  async recordSshFallbackAudit(entry: {
+    hostId: string;
+    actorId?: string | null;
+    actorUsername?: string | null;
+    previousValue: boolean;
+    newValue: boolean;
+    result: string;
+    reason?: string;
+  }): Promise<void> {
+    await this.prisma.mplsSshFallbackAudit.create({
+      data: {
+        hostId: entry.hostId,
+        actorId: entry.actorId ?? null,
+        actorUsername: entry.actorUsername ?? null,
+        previousValue: entry.previousValue,
+        newValue: entry.newValue,
+        result: entry.result,
+        reason: entry.reason ?? '',
+      },
+    });
+  }
+
+  /**
+   * Liga cada circuito L2VC ao inventario de interfaces do host pelo nome do AC
+   * (o VRP imprime `Vlanif100`, o inventario guarda `Vlanif100`/`GigabitEthernet`).
+   * Sem correspondencia o circuito continua valido, apenas sem correlacao.
+   */
+  private async correlateL2vcCircuits(
+    hostId: string,
+    circuits: MplsL2vcCircuit[] | undefined,
+  ): Promise<MplsL2vcCircuit[] | undefined> {
+    if (!circuits?.length) return circuits;
+    const interfaces = await this.prisma.interface.findMany({
+      where: { deviceId: hostId },
+      select: { id: true, ifIndex: true, name: true, alias: true },
+    });
+    const byKey = new Map<string, (typeof interfaces)[number]>();
+    for (const item of interfaces) {
+      for (const key of interfaceNameKeys(item.name)) {
+        if (!byKey.has(key)) byKey.set(key, item);
+      }
+    }
+    return circuits.map((circuit) => {
+      const match = interfaceNameKeys(circuit.name)
+        .map((key) => byKey.get(key))
+        .find((item) => item !== undefined);
+      return match
+        ? { ...circuit, ifIndex: match.ifIndex, interfaceId: match.id, interfaceAlias: match.alias }
+        : circuit;
+    });
+  }
+
   async saveCollection(hostId: string, collection: HuaweiVplsCollection): Promise<void> {
     const now = collection.collectedAt;
+    const discoveryState = collection.discoveryState ?? (collection.supported ? 'FOUND_UP' : 'INCOMPLETE');
+    // Circuitos L2VC sao JSON: a correlacao com o inventario e feita aqui, uma
+    // vez por coleta, antes de gravar as evidencias.
+    const l2vcCircuits = await this.correlateL2vcCircuits(hostId, collection.l2vcCircuits);
+    const discoveryMetadata = {
+      discoveryState,
+      sources: collection.sources ?? [],
+      // Ausente = fonte nao consultada nesta rodada; preserva a evidencia anterior.
+      ...(collection.ldpPeers === undefined
+        ? {}
+        : { ldpPeers: collection.ldpPeers as unknown as object }),
+      ...(l2vcCircuits === undefined
+        ? {}
+        : { l2vcCircuits: l2vcCircuits as unknown as object }),
+      ...(collection.conflicts === undefined
+        ? {}
+        : { conflicts: collection.conflicts as unknown as object }),
+    };
+
+    // Coleta inconclusiva SEM VSI lida NAO apaga o que ja era conhecido: o
+    // estado e a mensagem mudam, mas as VSIs persistidas continuam visiveis.
+    if (
+      (discoveryState === 'INCOMPLETE' || discoveryState === 'UNKNOWN') &&
+      collection.vsis.length === 0
+    ) {
+      await this.prisma.mplsDeviceState.upsert({
+        where: { hostId },
+        create: {
+          hostId,
+          supported: false,
+          vsiSupported: false,
+          acSupported: false,
+          pwSupported: false,
+          lastPollingAt: now,
+          lastFailureAt: now,
+          lastErrorSafe: collection.errors.length
+            ? `Coleta MPLS incompleta: ${collection.errors.join('; ')}`.slice(0, 500)
+            : 'Coleta MPLS incompleta: nenhuma fonte concluiu a leitura.',
+          ...discoveryMetadata,
+        },
+        update: {
+          lastPollingAt: now,
+          lastFailureAt: now,
+          lastErrorSafe: collection.errors.length
+            ? `Coleta MPLS incompleta: ${collection.errors.join('; ')}`.slice(0, 500)
+            : 'Coleta MPLS incompleta: nenhuma fonte concluiu a leitura.',
+          ...discoveryMetadata,
+        },
+      });
+      return;
+    }
+
     if (!collection.supported) {
       await this.prisma.mplsDeviceState.upsert({
         where: { hostId },
@@ -149,6 +325,7 @@ export class PrismaMplsRepository implements MplsRepository {
           pwSupported: false,
           lastPollingAt: now,
           lastSuccessAt: now,
+          ...discoveryMetadata,
         },
         update: {
           supported: false,
@@ -158,6 +335,7 @@ export class PrismaMplsRepository implements MplsRepository {
           lastPollingAt: now,
           lastSuccessAt: now,
           lastErrorSafe: null,
+          ...discoveryMetadata,
         },
       });
       return;
@@ -174,7 +352,20 @@ export class PrismaMplsRepository implements MplsRepository {
     const collectedAcColumns = new Set(collection.collectedColumns.ac);
     const collectedPwColumns = new Set(collection.collectedColumns.pw);
     const acIfIndexes = [
-      ...new Set(collection.vsis.flatMap((vsi) => vsi.acs.map((ac) => ac.ifIndex))),
+      ...new Set(
+        collection.vsis.flatMap((vsi) =>
+          vsi.acs.map((ac) => ac.ifIndex).filter((ifIndex): ifIndex is number => ifIndex !== null),
+        ),
+      ),
+    ];
+    const acInterfaceNames = [
+      ...new Set(
+        collection.vsis.flatMap((vsi) =>
+          vsi.acs
+            .map((ac) => ac.interfaceName ?? null)
+            .filter((name): name is string => Boolean(name)),
+        ),
+      ),
     ];
     const interfaces = acIfIndexes.length
       ? await this.prisma.interface.findMany({
@@ -183,6 +374,20 @@ export class PrismaMplsRepository implements MplsRepository {
         })
       : [];
     const interfaceByIfIndex = new Map(interfaces.map((item) => [item.ifIndex, item]));
+    // A leitura SSH entrega o nome da porta AC, nao o ifIndex: o inventario do
+    // proprio host e a unica fonte confiavel para correlacionar.
+    const interfaceByName = new Map<string, (typeof interfaces)[number]>();
+    if (acInterfaceNames.length) {
+      const deviceInterfaces = await this.prisma.interface.findMany({
+        where: { deviceId: hostId },
+        select: { id: true, ifIndex: true, name: true, alias: true },
+      });
+      for (const item of deviceInterfaces) {
+        for (const key of interfaceNameKeys(item.name)) {
+          if (!interfaceByName.has(key)) interfaceByName.set(key, item);
+        }
+      }
+    }
     const remoteIps = [
       ...new Set(collection.vsis.flatMap((vsi) => vsi.pws.map((pw) => pw.remoteIp))),
     ];
@@ -218,6 +423,11 @@ export class PrismaMplsRepository implements MplsRepository {
 
     for (const vsi of collection.vsis) {
       const existing = existingVsiByName.get(vsi.name);
+      // Entidade vinda do SSH tem todos os campos lidos na CLI; entidade SNMP
+      // continua restrita as colunas que o walk realmente devolveu.
+      const vsiSource = vsi.source ?? 'SNMP';
+      const observedVsi = (column: number): boolean =>
+        vsiSource === 'SSH' || collectedVsiColumns.has(column);
       const collectedPwKeys = new Set(vsi.pws.map((pw) => pw.key));
       const allKnownPwsPresent =
         collection.capabilities.pw === false ||
@@ -226,7 +436,7 @@ export class PrismaMplsRepository implements MplsRepository {
       const mayUpdateStatus =
         vsi.statusObserved && vsi.statusComplete && allKnownPwsPresent && vsi.status !== 'UNKNOWN';
       const correlatedAcs = vsi.acs
-        .map((ac) => interfaceByIfIndex.get(ac.ifIndex))
+        .map((ac) => (ac.ifIndex === null ? undefined : interfaceByIfIndex.get(ac.ifIndex)))
         .filter((item) => item !== undefined)
         .sort((left, right) => left.ifIndex - right.ifIndex);
       const primaryInterface = correlatedAcs[0];
@@ -275,76 +485,89 @@ export class PrismaMplsRepository implements MplsRepository {
             vcType: vsi.vcType,
             tunnelPolicy: vsi.tunnelPolicy,
             description: vsi.description,
+            memberDiscovery: vsi.peerDiscovery ?? null,
             localInterfaceId: primaryInterface?.id ?? null,
             vlanId: correlatedVlanId,
-            source: 'SNMP',
+            source: vsiSource,
             lastSeenAt: now,
           },
           update: {
-            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.signalingType)
+            ...(observedVsi(HUAWEI_VPLS_VSI_COLUMNS.signalingType)
               ? { signalingType: vsi.signalingType }
               : {}),
-            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.rd) ? { rd: vsi.rd } : {}),
-            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.vsiId) ? { vsiId: vsi.vsiId } : {}),
+            ...(observedVsi(HUAWEI_VPLS_VSI_COLUMNS.rd) ? { rd: vsi.rd } : {}),
+            ...(observedVsi(HUAWEI_VPLS_VSI_COLUMNS.vsiId) ? { vsiId: vsi.vsiId } : {}),
             ...(mayUpdateStatus ? { status: vsi.status } : {}),
-            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.operationalStatus)
+            ...(observedVsi(HUAWEI_VPLS_VSI_COLUMNS.operationalStatus)
               ? { operationalStatus: vsi.operationalStatus }
               : {}),
-            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.adminStatus)
+            ...(observedVsi(HUAWEI_VPLS_VSI_COLUMNS.adminStatus)
               ? { adminStatus: vsi.adminStatus }
               : {}),
-            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.mtu) ? { mtu: vsi.mtu } : {}),
-            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.vcType)
-              ? { vcType: vsi.vcType }
-              : {}),
-            ...(collectedVsiColumns.has(HUAWEI_VPLS_VSI_COLUMNS.tunnelPolicy)
+            ...(observedVsi(HUAWEI_VPLS_VSI_COLUMNS.mtu) ? { mtu: vsi.mtu } : {}),
+            ...(observedVsi(HUAWEI_VPLS_VSI_COLUMNS.vcType) ? { vcType: vsi.vcType } : {}),
+            ...(observedVsi(HUAWEI_VPLS_VSI_COLUMNS.tunnelPolicy)
               ? { tunnelPolicy: vsi.tunnelPolicy }
               : {}),
+            ...(vsi.peerDiscovery ? { memberDiscovery: vsi.peerDiscovery } : {}),
             ...(collection.capabilities.ac === true && primaryInterface
               ? { localInterfaceId: primaryInterface.id, vlanId: correlatedVlanId }
               : {}),
-            source: 'SNMP',
+            source: vsiSource,
             lastSeenAt: now,
           },
         }),
       );
 
       for (const ac of vsi.acs) {
-        const correlatedInterface = correlateMplsAcInterface(
-          ac.ifIndex,
-          interfaceByIfIndex,
-        )?.interface;
+        const byName = ac.interfaceName
+          ? interfaceNameKeys(ac.interfaceName)
+              .map((key) => interfaceByName.get(key))
+              .find((item) => item !== undefined)
+          : undefined;
+        const resolvedIfIndex = ac.ifIndex ?? byName?.ifIndex ?? null;
+        // Sem ifIndex nao existe chave estavel para o AC: registra apenas o que
+        // da para correlacionar com o inventario, sem inventar identificador.
+        if (resolvedIfIndex === null) continue;
+        const correlatedInterface =
+          byName ?? correlateMplsAcInterface(resolvedIfIndex, interfaceByIfIndex)?.interface;
+        const acSource = ac.source ?? vsiSource;
+        const observedAc = (column: number): boolean =>
+          acSource === 'SSH' || collectedAcColumns.has(column);
         operations.push(
           this.prisma.mplsAc.upsert({
             where: {
-              hostId_vsiName_ifIndex: { hostId, vsiName: vsi.name, ifIndex: ac.ifIndex },
+              hostId_vsiName_ifIndex: {
+                hostId,
+                vsiName: vsi.name,
+                ifIndex: resolvedIfIndex,
+              },
             },
             create: {
               vsiName: vsi.name,
-              ifIndex: ac.ifIndex,
+              ifIndex: resolvedIfIndex,
               ...(correlatedInterface
                 ? { interface: { connect: { id: correlatedInterface.id } } }
                 : {}),
               status: ac.status,
               upStartTimeRaw: ac.upStartTimeRaw,
               upSumTimeRaw: ac.upSumTimeRaw,
-              source: 'SNMP',
+              source: acSource,
               lastSeenAt: now,
               host: { connect: { id: hostId } },
               vsi: { connect: { hostId_name: { hostId, name: vsi.name } } },
             },
             update: {
               interfaceId: correlatedInterface?.id ?? null,
-              ...(collectedAcColumns.has(HUAWEI_VPLS_AC_COLUMNS.status)
-                ? { status: ac.status }
-                : {}),
+              ...(observedAc(HUAWEI_VPLS_AC_COLUMNS.status) ? { status: ac.status } : {}),
+              // Tempos de UP so existem no SNMP: o CLI nao os devolve.
               ...(collectedAcColumns.has(HUAWEI_VPLS_AC_COLUMNS.upStartTime)
                 ? { upStartTimeRaw: ac.upStartTimeRaw }
                 : {}),
               ...(collectedAcColumns.has(HUAWEI_VPLS_AC_COLUMNS.upSumTime)
                 ? { upSumTimeRaw: ac.upSumTimeRaw }
                 : {}),
-              source: 'SNMP',
+              source: acSource,
               lastSeenAt: now,
             },
           }),
@@ -353,6 +576,9 @@ export class PrismaMplsRepository implements MplsRepository {
 
       for (const pw of vsi.pws) {
         const existingPw = existingPwByKey.get(pw.key);
+        const pwSource = pw.source ?? vsiSource;
+        const observedPw = (column: number): boolean =>
+          pwSource === 'SSH' || collectedPwColumns.has(column);
         const mayUpdatePwStatus = pw.statusObserved && pw.status !== 'UNKNOWN';
         if (
           existingPw &&
@@ -401,26 +627,24 @@ export class PrismaMplsRepository implements MplsRepository {
               workingState: pw.workingState,
               upStartTime: pw.upStartTime,
               upSumTime: pw.upSumTime,
-              source: 'SNMP',
+              source: pwSource,
               lastSeenAt: now,
             },
             update: {
               remoteHostId: remoteHostIds.get(pw.remoteIp) ?? null,
-              ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.tunnelPolicy)
+              ...(observedPw(HUAWEI_VPLS_PW_COLUMNS.tunnelPolicy)
                 ? { tunnelPolicy: pw.tunnelPolicy }
                 : {}),
-              ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.pwType)
-                ? { pwType: pw.pwType }
-                : {}),
-              ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.inboundLabel)
+              ...(observedPw(HUAWEI_VPLS_PW_COLUMNS.pwType) ? { pwType: pw.pwType } : {}),
+              ...(observedPw(HUAWEI_VPLS_PW_COLUMNS.inboundLabel)
                 ? { inboundLabel: pw.inboundLabel }
                 : {}),
-              ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.outboundLabel)
+              ...(observedPw(HUAWEI_VPLS_PW_COLUMNS.outboundLabel)
                 ? { outboundLabel: pw.outboundLabel }
                 : {}),
               ...(mayUpdatePwStatus ? { status: pw.status } : {}),
-              ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.state) ? { state: pw.state } : {}),
-              ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.workingState)
+              ...(observedPw(HUAWEI_VPLS_PW_COLUMNS.state) ? { state: pw.state } : {}),
+              ...(observedPw(HUAWEI_VPLS_PW_COLUMNS.workingState)
                 ? { workingState: pw.workingState }
                 : {}),
               ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.upStartTime)
@@ -429,7 +653,7 @@ export class PrismaMplsRepository implements MplsRepository {
               ...(collectedPwColumns.has(HUAWEI_VPLS_PW_COLUMNS.upSumTime)
                 ? { upSumTime: pw.upSumTime }
                 : {}),
-              source: 'SNMP',
+              source: pwSource,
               lastSeenAt: now,
             },
           }),
@@ -448,6 +672,7 @@ export class PrismaMplsRepository implements MplsRepository {
           pwSupported: collection.capabilities.pw ?? false,
           lastPollingAt: now,
           lastSuccessAt: now,
+          ...discoveryMetadata,
         },
         update: {
           supported: true,
@@ -460,11 +685,26 @@ export class PrismaMplsRepository implements MplsRepository {
             : { pwSupported: collection.capabilities.pw }),
           lastPollingAt: now,
           lastSuccessAt: now,
-          lastErrorSafe: null,
+          lastErrorSafe:
+            discoveryState === 'INCOMPLETE'
+              ? 'Coleta MPLS incompleta: status das VSIs não confirmado por nenhuma fonte.'
+              : null,
+          ...discoveryMetadata,
         },
       }),
     );
     await this.prisma.$transaction(operations);
+  }
+
+  /**
+   * Rodada sem evidencia nova (CLI no intervalo de cadencia): so o carimbo do
+   * polling avanca, sem tocar em estado, fontes ou mensagem de erro.
+   */
+  async touchPolling(hostId: string, occurredAt: Date): Promise<void> {
+    await this.prisma.mplsDeviceState.updateMany({
+      where: { hostId },
+      data: { lastPollingAt: occurredAt },
+    });
   }
 
   async saveFailure(hostId: string, occurredAt: Date, safeMessage: string): Promise<void> {
@@ -487,15 +727,24 @@ export class PrismaMplsRepository implements MplsRepository {
 
   async getHostOverview(hostId: string): Promise<MplsHostOverview> {
     const state = await this.prisma.mplsDeviceState.findUnique({ where: { hostId } });
+    const discoveryState = state?.discoveryState ?? 'UNKNOWN';
+    const shared = {
+      discoveryState,
+      sources: (state?.sources ?? []) as MplsHostOverview['sources'],
+      ldpPeers: (state?.ldpPeers ?? []) as unknown as MplsHostOverview['ldpPeers'],
+      l2vcCircuits: (state?.l2vcCircuits ?? []) as unknown as MplsHostOverview['l2vcCircuits'],
+      conflicts: (state?.conflicts ?? []) as unknown as MplsHostOverview['conflicts'],
+    };
     if (!state || !state.vsiSupported) {
       return {
         supported: false,
+        ...shared,
         capabilities: {
           vsi: state?.vsiSupported ?? false,
           ac: state?.acSupported ?? false,
           pw: state?.pwSupported ?? false,
         },
-        source: 'SNMP',
+        source: state?.source ?? 'SNMP',
         lastPollingAt: state?.lastPollingAt?.toISOString() ?? null,
         lastSuccessAt: state?.lastSuccessAt?.toISOString() ?? null,
         lastErrorSafe: state?.lastErrorSafe ?? null,
@@ -505,7 +754,10 @@ export class PrismaMplsRepository implements MplsRepository {
     }
     const vsis = await this.listVsis(hostId);
     return {
-      supported: true,
+      // `supported` da API significa "existe algo para exibir"; o resultado da
+      // descoberta (inclusive NOT_FOUND/INCOMPLETE) vai em `discoveryState`.
+      supported: vsis.length > 0 || shared.l2vcCircuits.length > 0,
+      ...shared,
       capabilities: {
         vsi: state.vsiSupported,
         ac: state.acSupported,

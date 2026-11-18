@@ -1,0 +1,778 @@
+<title>Diagnóstico VSI NetVision</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: veredito no topo; abaixo, problemas e topologia lado a lado no monitor de NOC, em coluna no notebook;
+   depois equipamentos, proximos passos e evidencias recolhidas. Tema unico escuro: e a identidade do NetVision. */
+:root {
+  color-scheme: dark;
+  --bg: #091016; --panel: #101920; --panel-2: #142029; --line: #263642; --line-soft: #1c2a33;
+  --text: #dce8ee; --muted: #8497a3; --cyan: #45b7d9; --cyan-bright: #65cce7;
+  --green: #43c59e; --amber: #d9a24b; --red: #d25e61; --violet: #a98bd6; --slate: #8a9fb0;
+  --green-bg: rgba(67,197,158,.10); --amber-bg: rgba(217,162,75,.10); --red-bg: rgba(210,94,97,.11);
+  --violet-bg: rgba(169,139,214,.10); --slate-bg: rgba(138,159,176,.09); --cyan-bg: rgba(69,183,217,.09);
+  --font-sans: 'Inter', system-ui, sans-serif; --font-mono: 'IBM Plex Mono', ui-monospace, Consolas, monospace;
+  --r: 8px;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--text); font-family: var(--font-sans); font-size: 14px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 16px 48px; }
+code, pre, .mono { font-family: var(--font-mono); font-size: 12.5px; }
+h1, h2, h3, p { margin: 0; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, summary:focus-visible, a:focus-visible { outline: 2px solid var(--cyan-bright); outline-offset: 2px; }
+.wrap { max-width: 1720px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+/* faixa de prototipo */
+.demo { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 8px 12px; border: 1px dashed var(--amber);
+  border-radius: var(--r); background: var(--amber-bg); font-size: 12.5px; }
+.demo strong { letter-spacing: .06em; color: var(--amber); }
+
+/* barra do modulo */
+.bar { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; justify-content: space-between; }
+.bar h1 { font-size: 18px; font-weight: 600; }
+.bar h1 span { color: var(--muted); font-weight: 400; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab { padding: 7px 12px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel); color: var(--muted); font-size: 13px; }
+.tab[aria-pressed="true"] { color: var(--text); border-color: var(--cyan); background: var(--cyan-bg); }
+
+/* superficie base */
+.panel { background: var(--panel); border: 1px solid var(--line-soft); border-radius: var(--r); padding: 14px 16px; min-width: 0; }
+.panel > h2 { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin-bottom: 10px;
+  display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+.panel > h2 small { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 12.5px; }
+
+/* veredito */
+.verdict { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 24px; padding: 16px 18px; border-left: 4px solid var(--tone); background: var(--panel); border-radius: var(--r);
+  border-top: 1px solid var(--line-soft); border-right: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+.verdict .vsi { font-family: var(--font-mono); font-size: 15px; color: var(--cyan-bright); overflow-wrap: anywhere; }
+.verdict .state { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 6px 0 6px; }
+.verdict .state b { font-size: 20px; font-weight: 700; color: var(--tone); letter-spacing: .01em; }
+.verdict .say { font-size: 15px; max-width: 78ch; }
+.counts { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-top: 10px; }
+.count { border: 1px solid var(--line); border-radius: 6px; padding: 3px 9px; font-size: 12.5px; color: var(--muted); }
+.count b { color: var(--text); font-weight: 600; }
+.prov { display: flex; flex-direction: column; gap: 6px; min-width: 250px; }
+.prov h3 { font-size: 11.5px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.src { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; font-size: 12.5px; align-items: baseline; }
+.src dt { color: var(--muted); } .src dd { margin: 0; }
+
+/* selos */
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 2px 9px 2px 7px; border-radius: 999px; border: 1px solid var(--tone); color: var(--tone);
+  background: var(--tone-bg); font-size: 12px; font-weight: 600; white-space: nowrap; }
+.badge svg { width: 13px; height: 13px; flex: none; }
+.t-ok { --tone: var(--green); --tone-bg: var(--green-bg); } .t-warn { --tone: var(--amber); --tone-bg: var(--amber-bg); }
+.t-crit { --tone: var(--red); --tone-bg: var(--red-bg); } .t-unk { --tone: var(--violet); --tone-bg: var(--violet-bg); }
+.t-standby { --tone: var(--slate); --tone-bg: var(--slate-bg); } .t-stale { --tone: var(--muted); --tone-bg: var(--slate-bg); }
+.t-collect { --tone: var(--cyan); --tone-bg: var(--cyan-bg); }
+
+.grid { display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 1600px) { .grid.two { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; } }
+
+/* achados */
+.group + .group { margin-top: 14px; }
+.group > h3 { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; color: var(--tone); margin-bottom: 6px; }
+.group > h3 span { color: var(--muted); font-weight: 400; }
+.issue { border: 1px solid var(--line-soft); border-left: 3px solid var(--tone); border-radius: 6px; background: var(--panel-2); }
+.issue + .issue { margin-top: 6px; }
+.issue summary { list-style: none; display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 10px; padding: 9px 12px; cursor: pointer; align-items: start; }
+.issue summary::-webkit-details-marker { display: none; }
+.issue .what { font-weight: 500; }
+.issue .where { grid-column: 2; color: var(--muted); font-size: 12.5px; }
+.issue .chev { color: var(--muted); transition: transform .15s; } .issue[open] .chev { transform: rotate(90deg); }
+@media (prefers-reduced-motion: reduce) { .issue .chev { transition: none; } }
+.issue .body { padding: 2px 12px 12px 12px; display: grid; gap: 8px; font-size: 13.5px; }
+.kv { display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 4px 10px; }
+.kv dt { color: var(--muted); font-size: 12.5px; } .kv dd { margin: 0; }
+@media (max-width: 520px) { .kv { grid-template-columns: 1fr; } .kv dt { margin-top: 4px; } }
+.evlink { background: none; border: 0; padding: 0; color: var(--cyan-bright); text-decoration: underline; text-underline-offset: 2px; font-size: 12.5px; text-align: left; }
+.evlinks { display: flex; flex-wrap: wrap; gap: 4px 14px; }
+.quiet { color: var(--muted); font-size: 13px; }
+
+/* topologia */
+.topo { overflow-x: auto; border: 1px solid var(--line-soft); border-radius: 6px; background: var(--bg); }
+.topo svg { display: block; min-width: 780px; width: 100%; height: auto; }
+.topo text { font-family: var(--font-sans); fill: var(--text); font-size: 13.5px; }
+.topo .m { fill: var(--muted); font-size: 12.5px; } .topo .mono { font-family: var(--font-mono); font-size: 12.5px; }
+.topo .box { fill: var(--panel-2); stroke: var(--line); stroke-width: 1.2; }
+.topo .box.unread { fill: none; stroke: var(--muted); stroke-dasharray: 2 4; }
+.topo .l-active { stroke: var(--green); stroke-width: 3.2; fill: none; }
+.topo .l-standby { stroke: var(--slate); stroke-width: 2.2; stroke-dasharray: 9 6; fill: none; }
+.topo .l-unread { stroke: var(--muted); stroke-width: 1.6; stroke-dasharray: 2 5; fill: none; }
+.topo .l-unk { stroke: var(--violet); stroke-width: 1.8; stroke-dasharray: 2 5; fill: none; }
+.topo .l-ctl { stroke: var(--cyan); stroke-width: 1.4; fill: none; }
+.topo .f-green { fill: var(--green); } .topo .f-slate { fill: var(--slate); } .topo .f-violet { fill: var(--violet); } .topo .f-cyan { fill: var(--cyan-bright); } .topo .f-amber { fill: var(--amber); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 10px; font-size: 12.5px; color: var(--muted); }
+.legend span { display: inline-flex; align-items: center; gap: 7px; }
+.legend i { display: inline-block; width: 34px; height: 0; border-top: 3px solid var(--green); }
+.legend i.s { border-top: 2px dashed var(--slate); } .legend i.u { border-top: 2px dotted var(--muted); } .legend i.q { border-top: 2px dotted var(--violet); } .legend i.c { border-top: 1.5px solid var(--cyan); }
+
+/* equipamentos */
+.eps { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr)); align-items: start; }
+.ep { border: 1px solid var(--line-soft); border-radius: var(--r); background: var(--panel-2); min-width: 0; }
+.ep summary { list-style: none; cursor: pointer; padding: 11px 14px; display: grid; gap: 6px; }
+.ep summary::-webkit-details-marker { display: none; }
+.ep .head { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; justify-content: space-between; }
+.ep .name { font-family: var(--font-mono); font-size: 13.5px; font-weight: 500; overflow-wrap: anywhere; }
+.ep .line { display: flex; flex-wrap: wrap; gap: 5px 6px; }
+.chip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 5px; padding: 1px 7px; font-size: 12px; color: var(--muted); }
+.chip b { font-weight: 600; color: var(--tone, var(--text)); } .chip svg { width: 11px; height: 11px; color: var(--tone, var(--muted)); }
+.ep .body { border-top: 1px solid var(--line-soft); padding: 10px 14px 13px; display: grid; gap: 10px; }
+.rows { display: grid; gap: 0; }
+.row { display: grid; grid-template-columns: 96px minmax(0, 1fr) auto; gap: 4px 10px; padding: 6px 0; border-bottom: 1px solid var(--line-soft); align-items: baseline; }
+.row:last-child { border-bottom: 0; }
+.row .k { color: var(--muted); font-size: 12.5px; } .row .v { min-width: 0; overflow-wrap: anywhere; }
+.row .v small { display: block; color: var(--muted); font-size: 12.5px; }
+.origin { font-size: 11.5px; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 6px; white-space: nowrap; }
+.origin.ssh { color: var(--green); border-color: rgba(67,197,158,.45); } .origin.snmp { color: var(--amber); border-color: rgba(217,162,75,.45); } .origin.none { color: var(--violet); border-color: rgba(169,139,214,.45); }
+@media (max-width: 520px) { .row { grid-template-columns: minmax(0, 1fr) auto; } .row .k { grid-column: 1 / -1; } }
+.missing { border: 1px dashed var(--violet); border-radius: 6px; padding: 8px 10px; font-size: 13px; background: var(--violet-bg); }
+.missing b { color: var(--violet); }
+
+/* passos */
+.steps { counter-reset: s; display: grid; gap: 8px; padding: 0; margin: 0; list-style: none; }
+.steps li { counter-increment: s; display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 4px 10px; padding: 9px 12px; border: 1px solid var(--line-soft); border-radius: 6px; background: var(--panel-2); }
+.steps li::before { content: counter(s); grid-row: span 3; width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--cyan); color: var(--cyan-bright); display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+.steps .why { color: var(--muted); font-size: 12.5px; }
+.steps code { color: var(--cyan-bright); overflow-wrap: anywhere; }
+
+/* evidencias */
+.evs { display: grid; gap: 4px; }
+.ev { display: grid; grid-template-columns: minmax(0, 190px) minmax(0, 1fr) auto auto; gap: 4px 12px; align-items: baseline; width: 100%; text-align: left; padding: 7px 10px;
+  border: 1px solid var(--line-soft); border-radius: 6px; background: var(--panel-2); }
+.ev:hover { border-color: var(--cyan); }
+.ev .h { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; } .ev .c { font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; } .ev .a { color: var(--muted); font-size: 12px; white-space: nowrap; }
+@media (max-width: 760px) { .ev { grid-template-columns: minmax(0, 1fr) auto; } .ev .h, .ev .c { grid-column: 1 / -1; } }
+details.fold > summary { cursor: pointer; list-style: none; display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary small { text-transform: none; letter-spacing: 0; font-weight: 400; font-size: 12.5px; }
+details.fold > summary::before { content: '▸'; } details.fold[open] > summary::before { content: '▾'; }
+details.fold[open] > summary { margin-bottom: 10px; }
+
+/* drawer */
+.scrim { position: fixed; inset: 0; background: rgba(2,6,12,.62); border: 0; z-index: 20; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(660px, 100vw); background: var(--panel); border-left: 1px solid var(--line); z-index: 21; display: flex; flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.drawer header { display: flex; gap: 12px; justify-content: space-between; align-items: start; padding: 14px 16px; border-bottom: 1px solid var(--line-soft); }
+.drawer header .c { font-family: var(--font-mono); font-size: 13px; color: var(--cyan-bright); overflow-wrap: anywhere; }
+.drawer .x { border: 1px solid var(--line); background: var(--panel-2); border-radius: 6px; width: 30px; height: 30px; flex: none; }
+.drawer .meta { padding: 12px 16px; border-bottom: 1px solid var(--line-soft); }
+.drawer pre { margin: 0; padding: 14px 16px; overflow: auto; flex: 1; white-space: pre; background: var(--bg); color: var(--text); line-height: 1.45; }
+.note { border-left: 3px solid var(--tone); background: var(--tone-bg); padding: 7px 10px; border-radius: 4px; font-size: 13px; margin-top: 8px; }
+
+/* ---------- refinamento v2: legibilidade, matriz por PE, eixos do veredito ---------- */
+:root { --muted: #9bb0bc; }
+body { font-size: 15px; }
+code, pre, .mono { font-size: 13.5px; }
+.wrap { max-width: 2040px; }
+.quiet, .issue .where, .kv dt, .steps .why, .ev .h, .ev .c, .evlink, .legend, .src { font-size: 13.5px; }
+.origin { font-size: 12.5px; padding: 1px 7px; }
+.badge { font-size: 12.5px; }
+.panel > h2 { font-size: 12.5px; } .panel > h2 small { font-size: 13.5px; }
+.issue .body { font-size: 14.5px; }
+.kv { grid-template-columns: 150px minmax(0, 1fr); }
+@media (max-width: 520px) { .kv { grid-template-columns: minmax(0, 1fr); } }
+.topo text { font-size: 14.5px; } .topo .m, .topo .mono { font-size: 13.5px; }
+.topo svg { min-width: 880px; }
+.topo-hint { display: none; color: var(--muted); font-size: 13px; margin-top: 6px; }
+@media (max-width: 900px) { .topo-hint { display: block; } }
+
+.verdict { grid-template-columns: minmax(0, 1fr) minmax(280px, auto); }
+@media (max-width: 900px) { .verdict { grid-template-columns: minmax(0, 1fr); } }
+.verdict .say { font-size: 16px; max-width: 86ch; }
+.axes { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 8px; }
+.axis { border: 1px solid var(--line-soft); border-left: 3px solid var(--tone); border-radius: 6px; background: var(--panel-2); padding: 8px 12px; min-width: 0; }
+.axis .k { font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+.axis .v { display: flex; align-items: center; gap: 7px; font-weight: 700; font-size: 15.5px; color: var(--tone); margin: 2px 0; }
+.axis .v svg { width: 15px; height: 15px; flex: none; }
+.axis .d { font-size: 13.5px; color: var(--text); }
+
+/* matriz: uma coluna por PE, uma linha por camada */
+.mx-scroll { overflow-x: auto; }
+.mx { display: grid; grid-template-columns: 132px repeat(var(--n), minmax(270px, 1fr)); border: 1px solid var(--line-soft); border-radius: var(--r); background: var(--panel-2); }
+.mx > * { padding: 10px 13px; border-bottom: 1px solid var(--line-soft); min-width: 0; }
+.mx-head, .mx-cell { border-left: 1px solid var(--line-soft); }
+.mx-head { background: var(--panel); display: grid; gap: 5px; align-content: start; }
+.mx-head .name { font-family: var(--font-mono); font-size: 14.5px; font-weight: 500; overflow-wrap: anywhere; }
+.mx-head .line { display: flex; flex-wrap: wrap; gap: 5px; }
+.mx-corner { background: var(--panel); }
+.mx-group { grid-column: 1 / -1; background: var(--bg); color: var(--cyan-bright); font-size: 12px; font-weight: 600; letter-spacing: .09em; text-transform: uppercase; padding-block: 5px; }
+.mx-lab { color: var(--muted); font-size: 13.5px; position: sticky; left: 0; background: var(--panel-2); }
+.mx-cell { overflow-wrap: anywhere; }
+.mx-cell .lab { display: none; }
+.mx-cell .st { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; justify-content: space-between; margin-bottom: 3px; }
+.stv { display: inline-flex; align-items: center; gap: 6px; font-weight: 700; font-size: 13px; letter-spacing: .03em; color: var(--tone); }
+.stv svg { width: 13px; height: 13px; flex: none; }
+.mx-cell small { display: block; color: var(--muted); font-size: 13.5px; }
+.mx-cell.miss { background: var(--violet-bg); font-size: 14px; }
+@media (max-width: 900px) {
+  .mx { grid-template-columns: minmax(0, 1fr); }
+  .mx-corner, .mx-lab, .mx-group { display: none; }
+  .mx-head, .mx-cell { order: var(--o); border-left: 0; }
+  .mx-head { border-top: 3px solid var(--cyan); }
+  .mx-cell .lab { display: block; font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); margin-bottom: 3px; }
+}
+
+/* passos e evidencias */
+.steps li { grid-template-columns: 26px minmax(0, 1fr) auto; }
+.steps li > * { grid-column: 2; }
+.steps li .cmdline { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+.copy { border: 1px solid var(--line); background: var(--panel); border-radius: 5px; padding: 1px 8px; font-size: 12.5px; color: var(--muted); }
+.copy:hover { color: var(--text); border-color: var(--cyan); }
+.steps li:target, .steps li.flash { border-color: var(--cyan); }
+.ev { padding: 9px 12px; }
+.drawer { width: min(760px, 100vw); }
+.drawer pre { font-size: 13.5px; padding: 12px 0; }
+.drawer pre .ln { display: block; padding: 0 16px; min-height: 1.45em; }
+.drawer pre .ln.hl { background: rgba(69,183,217,.15); box-shadow: inset 3px 0 var(--cyan); }
+.drawer .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+</style>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="i-ok" viewBox="0 0 16 16"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+  <symbol id="i-active" viewBox="0 0 16 16"><path d="M8 2.5l6 11H2z" fill="currentColor"/></symbol>
+  <symbol id="i-standby" viewBox="0 0 16 16"><rect x="3.5" y="3" width="3.2" height="10" fill="currentColor"/><rect x="9.3" y="3" width="3.2" height="10" fill="currentColor"/></symbol>
+  <symbol id="i-crit" viewBox="0 0 16 16"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="i-unk" viewBox="0 0 16 16"><path d="M5.2 6a2.9 2.9 0 1 1 4.4 2.5c-.9.6-1.6 1.1-1.6 2.3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="8" cy="13.4" r="1.2" fill="currentColor"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 16 16"><path d="M8 2l6.5 11.5h-13z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M8 6.3v3.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="8" cy="11.6" r=".9" fill="currentColor"/></symbol>
+  <symbol id="i-stale" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.8" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M8 4.8V8l2.3 1.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></symbol>
+  <symbol id="i-collect" viewBox="0 0 16 16"><path d="M2 8h4M10 8h4M6 5.5v5M10 5.5v5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M7.2 3l1.6 10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></symbol>
+</svg>
+
+<div class="wrap">
+  <div class="demo"><strong>PROTÓTIPO · DADOS DE DEMONSTRAÇÃO</strong>
+    <span>Página estática fora da rota operacional. Os valores vêm de evidências reais já coletadas (09/11 e 16/11/2026) e não se atualizam. Nenhum estado aqui é o estado atual da rede.</span></div>
+  <div class="bar">
+    <h1>Diagnóstico <span>/ VSI · VPLS</span></h1>
+    <div class="tabs" role="group" aria-label="Cenário">
+      <button class="tab" data-s="vsi-3066" id="tab-3066">Cenário 1 · 3066-BGP-FLASHTELECOM</button>
+      <button class="tab" data-s="vsi-3072" id="tab-3072">Cenário 2 · CDB TELECOM / VSI 3072</button>
+    </div>
+  </div>
+  <main id="app" class="wrap" style="gap:14px"></main>
+</div>
+<div id="drawer-root"></div>
+
+<script>
+const ICON = { ok:'i-ok', warn:'i-warn', crit:'i-crit', unk:'i-unk', standby:'i-standby', stale:'i-stale', collect:'i-collect', active:'i-active' };
+const ico = (n) => `<svg aria-hidden="true"><use href="#${ICON[n]}"/></svg>`;
+const badge = (tone, icon, label) => `<span class="badge t-${tone}">${ico(icon)}${label}</span>`;
+const ROLE = {
+  ACTIVE: ['ok', 'active', 'ATIVO'], STANDBY_EXPECTED: ['standby', 'standby', 'STANDBY ESPERADO'],
+  DOWN_UNEXPECTED: ['crit', 'crit', 'FALHA'], ROLE_UNKNOWN: ['unk', 'unk', 'PAPEL INDETERMINADO'],
+};
+const roleBadge = (r) => badge(...ROLE[r]);
+const CAT = {
+  crit: ['crit', 'crit', 'Falha comprovada'], warn: ['warn', 'warn', 'Risco ou degradação'], unk: ['unk', 'unk', 'Inconclusivo'],
+  stale: ['stale', 'stale', 'Dado obsoleto'], collect: ['collect', 'collect', 'Falha de coleta (não é falha do serviço)'], standby: ['standby', 'standby', 'Standby esperado (não é problema)'],
+};
+const ORDER = ['crit', 'warn', 'unk', 'collect', 'stale', 'standby'];
+
+/* ---------------- evidencias reais (fixtures sanitizadas do repositorio) ---------------- */
+const OUT = {
+vsi3066: `<BHE-VTA-S6750-MPLS-01>display vsi name 3066-BGP-FLASHTELECOM verbose
+
+ ***VSI Name               : 3066-BGP-FLASHTELECOM
+    PW Signaling           : bgp
+    Encapsulation Type     : vlan
+    MTU                    : 1500
+    VSI State              : up
+
+    BGP RD                 : 268568:3066
+    SiteID/Range/Offset    : 25/30/1
+    Remote Label Block     : 36440/30/1
+    Local Label Block      : 0/1016792/8/1
+
+    Interface Name         : Vlanif3066
+    State                  : up
+    Ac Block State         : unblocked
+    Last Up Time           : 2026/10/26 17:07:57
+
+  **PW Information:
+
+   *Peer Ip Address        : 10.100.101.6
+    PW State               : up
+    Local VC Label         : 1016797
+    Remote VC Label        : 36464
+    Negotiated Control Word: disable
+    Tnl Type               : ldp
+    OutInterface           : --
+    Mac Flapping           : 0
+    PW Last Up Time        : 2026/11/08 05:59:47
+<BHE-VTA-S6750-MPLS-01>`,
+mac3066: `<BHE-VTA-S6750-MPLS-01>display mac-address vsi 3066-BGP-FLASHTELECOM
+-------------------------------------------------------------------------------
+MAC Address    VLAN/VSI/BD   Learned-From        Type                Age
+-------------------------------------------------------------------------------
+14eb-08bf-0001 -/3066-BGP-FLASHTELECOM/- Eth-Trunk1          dynamic          141470
+f0a9-511e-0002 -/3066-BGP-FLASHTELECOM/- Eth-Trunk6          dynamic          141465
+-------------------------------------------------------------------------------
+Total items: 2
+<BHE-VTA-S6750-MPLS-01>`,
+vlan3066: `<BHE-VTA-S6750-MPLS-01>display vlan 3066
+VID          Ports
+--------------------------------------------------------------------------------
+3066         TG:Eth-Trunk1(U)
+
+VID  Type     Status  Property  MAC-LRN STAT    BC  MC  UC  Description
+--------------------------------------------------------------------------------
+3066 common   enable  default   enable  disable FWD FWD FWD VLAN 3066
+<BHE-VTA-S6750-MPLS-01>`,
+trunk6: `<BHE-VTA-S6750-MPLS-01>display current-configuration interface Eth-Trunk6
+#
+interface Eth-Trunk6
+ description <REMOVIDO>
+ port link-type trunk
+ undo port trunk allow-pass vlan 1
+ port trunk allow-pass vlan 1602
+ stp disable
+ mode lacp-dynamic
+#
+return
+<BHE-VTA-S6750-MPLS-01>`,
+vif3064: `<BHE-VTA-S6750-MPLS-01>display current-configuration interface Vlanif3064
+#
+interface Vlanif3064
+ description 3064-PONTUALNET-IP-BHE-MQT
+ l2 binding vsi 3064-PONTUALNET-IP-BHE-MQT
+#
+return
+<BHE-VTA-S6750-MPLS-01>`,
+lag26: `<BHE-VTA-6730-MPLS-01>display eth-trunk 26
+Eth-Trunk26's state information is:
+Local:
+LAG ID: 26                  WorkingMode: LACP
+Preempt Delay: Disabled     Hash arithmetic: According to SIP-XOR-DIP
+System Priority: 1          System ID: 00e0-fc00-0000
+Least Active-linknumber: 1  Max Active-linknumber: 32
+Operate status: down        Number Of Up Port In Trunk: 0
+--------------------------------------------------------------------------------
+ActorPortName          Status   PortType PortPri PortNo PortKey PortState Weight
+XGigabitEthernet0/0/48 Unselect 10GE     32768   24     33857   10100000  1
+
+Partner:
+--------------------------------------------------------------------------------
+ActorPortName          SysPri   SystemID        PortPri PortNo PortKey PortState
+XGigabitEthernet0/0/48 65535    48a9-8ab6-0001  255     2      33      10110000
+
+<BHE-VTA-6730-MPLS-01>`,
+et4: `<BHE-VTA-6730-MPLS-01>display e-trunk 4
+                            The E-Trunk information
+E-TRUNK-ID : 4                          Revert-Delay-Time (s) : 120
+Priority : 30                           System-ID : 2811-ecea-0002
+Peer-IP : 10.100.101.3                  Source-IP : 10.100.101.0
+State : Backup                          Causation : PRI
+Send-Period (100ms) : 9                 Fail-Time (100ms) : 27
+Peer-Priority : 20                      Peer-System-ID : 6ce8-7430-0003
+Peer-Fail-Time (100ms) : 27             BFD-Session : likee
+--------------------------------------------------------------------------------
+                            The Member information
+Type      ID  LocalPhyState  Work-Mode     State   Causation        Remote-ID
+Eth-Trunk 13  Down           auto          Backup  PEER_MEMBER_UP   21
+Eth-Trunk 26  Down           auto          Backup  PEER_MEMBER_UP   17
+<BHE-VTA-6730-MPLS-01>`,
+briefVta: `<BHE-VTA-6730-MPLS-01>display e-trunk brief
+E-TRUNK-ID    State        Peer-IP          Source-IP
+-----------------------------------------------------------
+1             Backup       10.100.101.4     10.100.101.0
+2             Master       10.100.101.4     10.100.101.0
+4             Backup       10.100.101.3     10.100.101.0
+5             Master       10.100.101.5     10.100.101.0
+11            Master       10.100.101.11    10.100.101.0
+13            Master       10.100.101.8     10.100.101.0
+-----------------------------------------------------------
+Total:6       Master:4     Backup:2         Init:0
+<BHE-VTA-6730-MPLS-01>`,
+cfg26: `<BHE-VTA-6730-MPLS-01>display current-configuration interface Eth-Trunk26
+#
+interface Eth-Trunk26
+ description <REMOVIDO>
+ port link-type trunk
+ undo port trunk allow-pass vlan 1
+ port trunk allow-pass vlan 820 3015 to 3016 3332 3502 3884
+ mode lacp
+ e-trunk 4 remote-eth-trunk 17`,
+briefLikee: `<BHE-LIKEE-6730-MPLS-01>display e-trunk brief
+E-TRUNK-ID    State        Peer-IP          Source-IP
+-----------------------------------------------------------
+2             Backup       10.100.101.8     10.100.101.3
+3             Master       10.100.101.1     10.100.101.3
+4             Master       10.100.101.0     10.100.101.3
+5             Master       10.100.101.4     10.100.101.3
+12            Backup       10.100.101.8     10.100.101.3
+-----------------------------------------------------------
+Total:5       Master:3     Backup:2         Init:0
+<BHE-LIKEE-6730-MPLS-01>`,
+lag17: `<BHE-LIKEE-6730-MPLS-01>display eth-trunk 17
+Eth-Trunk17's state information is:
+Local:
+LAG ID: 17                  WorkingMode: LACP
+Preempt Delay: Disabled     Hash arithmetic: According to SIP-XOR-DIP
+System Priority: 1          System ID: 00e0-fc00-0000
+Least Active-linknumber: 1  Max Active-linknumber: 32
+Operate status: up          Number Of Up Port In Trunk: 1
+--------------------------------------------------------------------------------
+ActorPortName          Status   PortType PortPri PortNo PortKey PortState Weight
+XGigabitEthernet0/0/3  Selected 10GE     32768   32770  33857   10111100  1
+
+Partner:
+--------------------------------------------------------------------------------
+ActorPortName          SysPri   SystemID        PortPri PortNo PortKey PortState
+XGigabitEthernet0/0/3  65535    48a9-8ab6-0001  255     1      33      10111100
+
+<BHE-LIKEE-6730-MPLS-01>`,
+cfg17: `<BHE-LIKEE-6730-MPLS-01>display current-configuration interface Eth-Trunk17
+#
+interface Eth-Trunk17
+ description <REMOVIDO>
+ port link-type trunk
+ undo port trunk allow-pass vlan 1
+ port trunk allow-pass vlan 820 3015 to 3016 3332 3502 3884
+ mode lacp
+ e-trunk 4 remote-eth-trunk 26
+#
+return
+<BHE-LIKEE-6730-MPLS-01>`,
+snmpLikee: `Inventário SNMP (banco do NetVision) — não é saída de equipamento
+VSI 3072-QinQ-CDB-MANTIQUEIRA @ BHE-LIKEE-6730-MPLS-01
+  leitura: 2026-11-16 13:50:19Z
+  operationalStatus: UP   mtu: 2000   rd: 268568:53072
+  AC  Eth-Trunk17.3072   status UP
+  PW  10.100.101.2       state UP   labels 36706 / 35842   lido 13:50:19Z`,
+snmpVta: `Inventário SNMP (banco do NetVision) — não é saída de equipamento
+VSI 3072-QinQ-CDB-MANTIQUEIRA @ BHE-VTA-6730-MPLS-01
+  leitura: 2026-11-16 13:51:10Z
+  operationalStatus: DOWN   mtu: 2000   rd: 268568:53072
+  AC  Eth-Trunk26.3072   status DOWN
+  PW  10.100.101.2       state UP   labels 41335 / 35840   lido 2026-10-27 01:24:40Z  <- 20 dias antes da VSI
+Interface Eth-Trunk26: adminStatus UP, operStatus UP (ifOperStatus)`,
+};
+
+/* ---------------- cenarios ---------------- */
+const S = {};
+
+S['vsi-3066'] = {
+  vsi: '3066-BGP-FLASHTELECOM',
+  verdict: { tone: 'stale', icon: 'stale', label: 'SEM LEITURA ATUAL',
+    say: 'Na última leitura direta, há 7 dias, a VSI, o AC e o PW estavam up. A origem de um MAC exibido no Eth-Trunk6 não foi comprovada. O estado de hoje só se afirma com nova coleta.' },
+  fresh: badge('stale', 'stale', 'EVIDÊNCIA ANTIGA · 09/11'),
+  axes: [
+    ['unk', 'unk', 'Redundância do acesso', 'NÃO LIDA', 'nenhum E-Trunk descoberto; a proteção não foi consultada'],
+    ['stale', 'stale', 'Serviço · VSI, AC, PW', 'UP EM 09/11', 'leitura direta de 7 dias atrás; hoje não confirmado'],
+    ['unk', 'unk', 'Aprendizado MAC', 'INCONCLUSIVO', '1 MAC local · 1 de origem indeterminada'],
+    ['stale', 'stale', 'Evidência', 'ANTIGA · 1 DE 2 PEs', 'duas leituras em 09/11; nenhuma hoje'],
+  ],
+  sources: [['Motor', 'VSI/MCP · tela montada à mão neste protótipo'], ['Leitura 1', 'SSH · BHE-VTA-S6750 · 09/11 14:46Z · VSI, AC, PW'], ['Leitura 2', 'SSH · BHE-VTA-S6750 · 09/11 21:16Z · MAC, VLAN, config'], ['Inventário', 'SNMP · ponta remota · não é leitura direta'], ['Leitura de hoje', 'nenhuma']],
+  issues: [
+    { cat: 'unk', host: 'BHE-VTA-S6750-MPLS-01', comp: 'Tabela MAC da VSI', what: 'MAC da VSI exibido no Eth-Trunk6, que não carrega a VLAN 3066',
+      detected: 'A tabela MAC da VSI lista um MAC dinâmico aprendido em Eth-Trunk6. O Eth-Trunk6 só permite a VLAN 1602 e não consta em display vlan 3066.',
+      why: 'Se for a interface de saída do túnel do PW, é o MAC remoto e está tudo certo. Se não for, há tráfego da VSI entrando por um trunk que não deveria carregá-la. A leitura não distingue os dois casos.',
+      certainty: 'Hipótese mais consistente: MAC remoto do PW exibido com a interface física de saída do túnel. Não comprovado.',
+      ev: ['e-mac3066', 'e-vlan3066', 'e-trunk6'], next: 'Ler a interface de saída do LSP até 10.100.101.6.' },
+    { cat: 'unk', host: 'RNS-FLOR-6730-MPLS-01', comp: 'Ponta remota', what: 'Estado e encapsulamento da ponta remota nunca foram lidos ao vivo',
+      detected: 'Os labels do PW (1016797 / 36464) conferem com o registro SNMP da outra ponta, mas esse registro é do banco, não do equipamento.',
+      why: 'VSI e PW up em um lado não comprovam o AC nem o tagging do outro lado.', certainty: 'Lacuna de evidência, não indício de falha.',
+      ev: ['e-vsi3066'], next: 'Executar a mesma leitura no RNS-FLOR e comparar as duas pontas.' },
+    { cat: 'stale', host: 'BHE-VTA-S6750-MPLS-01', comp: 'Inventário NetVision', what: 'Vlanif3064 consta no banco como AC desta VSI, mas pertence a outra',
+      detected: 'O equipamento lista só Vlanif3066 como AC. A configuração de Vlanif3064 faz l2 binding para a VSI 3064-PONTUALNET-IP-BHE-MQT. O registro do banco é de 15/09.',
+      why: 'Não afeta o circuito. Afeta quem consulta o inventário e vê um AC que não existe.', certainty: 'Fato confirmado pelo equipamento.',
+      ev: ['e-vif3064', 'e-vsi3066'], next: 'Nenhum teste de rede. Tratar na coleta SNMP, que não remove ACs antigos.' },
+  ],
+  topoTitle: 'Somente o que foi lido em 09/11 21:16Z',
+  topo: `<svg viewBox="0 0 950 262" role="img" aria-label="Topologia descoberta da VSI 3066: Eth-Trunk1 leva a VLAN 3066 ao AC Vlanif3066 no S6750, que tem um pseudowire up para 10.100.101.6. A ponta remota não foi lida. Um MAC da VSI aparece no Eth-Trunk6, de origem indeterminada.">
+    <rect class="box" x="14" y="44" width="190" height="72" rx="6"/>
+    <text x="26" y="66">Eth-Trunk1</text><text class="m" x="26" y="84">VLAN 3066 tagged · up</text><text class="m" x="26" y="102">1 MAC local aprendido</text>
+    <path class="l-active" d="M204 80 H330"/><text class="m" x="222" y="70">AC Vlanif3066</text><text class="f-green" x="222" y="98" font-size="12.5">▲ up</text>
+    <rect class="box" x="330" y="26" width="250" height="108" rx="6"/>
+    <text x="344" y="48" class="mono">BHE-VTA-S6750-MPLS-01</text>
+    <text x="344" y="70">VSI <tspan class="f-green">✓ up</tspan> · BGP · MTU 1500</text>
+    <text class="m" x="344" y="88">AC ✓ up · desbloqueado</text><text class="m" x="344" y="106">PW ✓ up desde 08/11 05:59</text><text class="m" x="344" y="124">lido por SSH há 7 dias</text>
+    <path class="l-active" d="M580 80 H740"/><text class="m" x="596" y="70">PW · túnel LDP</text><text class="m mono" x="596" y="98">1016797 / 36464</text>
+    <rect class="box unread" x="740" y="38" width="200" height="84" rx="6"/>
+    <text x="752" y="60" class="mono">RNS-FLOR-6730</text><text class="m" x="752" y="78">10.100.101.6</text><text class="f-violet" x="752" y="96" font-size="12.5">? não lido ao vivo</text><text class="m" x="752" y="112">labels do banco conferem</text>
+    <path class="l-unk" d="M455 134 V186"/>
+    <rect class="box unread" x="330" y="186" width="250" height="62" rx="6" style="stroke:var(--violet)"/>
+    <text x="344" y="208">Eth-Trunk6 · só VLAN 1602</text><text class="f-violet" x="344" y="226" font-size="12.5">? 1 MAC da VSI exibido aqui</text><text class="m" x="344" y="241">origem indeterminada</text>
+    <text class="m" x="600" y="214">Provável saída do túnel do PW.</text><text class="m" x="600" y="230">Não comprovado nesta leitura.</text>
+  </svg>`,
+  endpoints: [
+    { name: 'BHE-VTA-S6750-MPLS-01', sub: 'S6750-H36C · YunShan V600R024C00SPC500',
+      badges: [['stale', 'stale', 'SERVIÇO UP EM 09/11'], ['unk', 'unk', 'REDUNDÂNCIA NÃO LIDA']],
+      cells: {
+        etrunk: ['unk', 'unk', 'NÃO LIDO', 'Nenhum E-Trunk descoberto', 'a configuração de proteção não foi consultada: ausência não comprovada', 'none', 'não lido', null],
+        lag: ['stale', 'stale', 'UP EM 09/11', 'Eth-Trunk1 transporta a VLAN 3066 (tagged)', 'pelo display vlan 3066 · estado LACP do trunk não lido', 'ssh', 'SSH 09/11 21:16Z', 'e-vlan3066'],
+        vsi: ['stale', 'stale', 'UP EM 09/11', 'Sinalização BGP · encapsulamento vlan · MTU 1500', 'RD 268568:3066', 'ssh', 'SSH 09/11 14:46Z', 'e-vsi3066'],
+        ac: ['stale', 'stale', 'UP EM 09/11', 'Vlanif3066 · desbloqueado', 'binding confere com a configuração', 'ssh', 'SSH 09/11 14:46Z', 'e-vsi3066'],
+        pw: ['stale', 'stale', 'UP EM 09/11', '10.100.101.6 · up desde 08/11 05:59', 'labels 1016797 / 36464 · túnel LDP · control-word desabilitado · MAC flapping 0', 'ssh', 'SSH 09/11 14:46Z', 'e-vsi3066'],
+        mac: ['unk', 'unk', 'INCONCLUSIVO', '2 dinâmicos: 1 local em Eth-Trunk1 · 1 em Eth-Trunk6', 'origem do segundo indeterminada · nenhuma linha com o peer do PW · idade de 39 h', 'ssh', 'SSH 09/11 21:16Z', 'e-mac3066'],
+      },
+      missing: 'leitura de hoje · interface de saída do LSP até 10.100.101.6 · tempo de aging da tabela MAC' },
+    { name: 'RNS-FLOR-6730-MPLS-01', sub: '10.100.101.6 · peer do PW',
+      badges: [['unk', 'unk', 'NÃO LIDO']],
+      cells: {
+        etrunk: ['unk', 'unk', 'NÃO LIDO', 'Redundância não consultada', '', 'none', 'não lido', null],
+        lag: ['unk', 'unk', 'NÃO LIDO', 'Sem leitura direta', '', 'none', 'não lido', null],
+        vsi: ['unk', 'unk', 'NÃO CONFIRMADO', 'Sem leitura direta', '', 'none', 'não lido', null],
+        ac: ['unk', 'unk', 'NÃO CONFIRMADO', 'Sem leitura direta', 'tagging desta ponta desconhecido', 'none', 'não lido', null],
+        pw: ['unk', 'unk', 'NÃO CONFIRMADO', 'Sem leitura direta', 'inventário: labels 36464 / 1016797, que conferem com o outro lado', 'snmp', 'SNMP', null],
+        mac: ['unk', 'unk', 'NÃO LIDO', 'Tabela não coletada', '', 'none', 'não lido', null],
+      },
+      missing: 'toda a leitura ao vivo desta ponta' },
+  ],
+  steps: [
+    { text: 'Fazer nova coleta no BHE-VTA-S6750 antes de afirmar o estado atual.', cmd: 'display vsi name 3066-BGP-FLASHTELECOM verbose', why: 'A última leitura tem 7 dias.', ev: 'e-vsi3066' },
+    { text: 'Ler a interface de saída do LSP até o peer do PW.', cmd: 'display mpls lsp include 10.100.101.6 32 verbose', why: 'Se sair por Eth-Trunk6, o MAC indeterminado é o MAC remoto do PW. Comando ainda não homologado no YunShan.', ev: 'e-mac3066' },
+    { text: 'Ler o tempo de aging da tabela MAC.', cmd: 'display mac-address aging-time', why: 'Exclui ou confirma a hipótese de entrada residual. Comando ainda não homologado.', ev: 'e-mac3066' },
+    { text: 'Ler a mesma VSI no RNS-FLOR e comparar as duas pontas.', cmd: 'compare_vsi_endpoints', why: 'A ponta remota nunca foi lida ao vivo.', ev: 'e-vsi3066' },
+  ],
+  evidence: [
+    { id: 'e-vsi3066', host: 'BHE-VTA-S6750-MPLS-01', cmd: 'display vsi name 3066-BGP-FLASHTELECOM verbose', at: '09/11 14:46Z', src: 'ssh', out: OUT.vsi3066, note: ['stale', 'Trecho resumido da captura real (campos sem uso na tela foram omitidos).'] },
+    { id: 'e-mac3066', host: 'BHE-VTA-S6750-MPLS-01', cmd: 'display mac-address vsi 3066-BGP-FLASHTELECOM', at: '09/11 21:16Z', src: 'ssh', out: OUT.mac3066, note: ['stale', 'MACs sanitizados: OUI preservado, 16 bits finais trocados.'] },
+    { id: 'e-vlan3066', host: 'BHE-VTA-S6750-MPLS-01', cmd: 'display vlan 3066', at: '09/11 21:16Z', src: 'ssh', out: OUT.vlan3066 },
+    { id: 'e-trunk6', host: 'BHE-VTA-S6750-MPLS-01', cmd: 'display current-configuration interface Eth-Trunk6', at: '09/11 21:16Z', src: 'ssh', out: OUT.trunk6 },
+    { id: 'e-vif3064', host: 'BHE-VTA-S6750-MPLS-01', cmd: 'display current-configuration interface Vlanif3064', at: '09/11 21:16Z', src: 'ssh', out: OUT.vif3064 },
+  ],
+};
+
+S['vsi-3072'] = {
+  vsi: '3072-QinQ-CDB-MANTIQUEIRA',
+  verdict: { tone: 'unk', icon: 'unk', label: 'INCONCLUSIVO',
+    say: 'A redundância do acesso está comprovada: E-Trunk 4 em Master no BHE-LIKEE e em Backup no BHE-VTA-01. Isso não comprova que a VSI encaminha: o estado da VSI, do AC e dos PWs ainda não foi lido em nenhum equipamento.' },
+  fresh: badge('unk', 'unk', 'EVIDÊNCIA PARCIAL'),
+  axes: [
+    ['ok', 'ok', 'Redundância do acesso', 'COMPROVADA', 'E-Trunk 4: Master no LIKEE · Backup no VTA-01'],
+    ['unk', 'unk', 'Serviço · VSI, AC, PW', 'NÃO CONFIRMADO', 'nenhum dos 3 PEs lido diretamente'],
+    ['unk', 'unk', 'Aprendizado MAC', 'NÃO LIDO', 'tabela não coletada em nenhum PE'],
+    ['unk', 'unk', 'Evidência', 'PARCIAL', 'SSH só da redundância; serviço só no inventário'],
+  ],
+  sources: [['Motor', 'VSI/MCP · tela montada à mão neste protótipo'], ['Leitura SSH', 'manual · 16/11 · horário não informado · E-Trunk, LACP, config'], ['Inventário', 'SNMP · 16/11 13:50Z a 13:52Z · VSI, AC, PW · não é leitura direta'], ['Leitura da VSI', 'nenhuma']],
+  issues: [
+    { cat: 'unk', host: 'BHE-LIKEE e BHE-VTA-01', comp: 'VSI · AC · PW', what: 'A VSI 3072 não foi lida diretamente em nenhum PE',
+      detected: 'Existem só os valores do inventário SNMP: VSI up no LIKEE e down no VTA-01. Nenhum display vsi foi executado.',
+      why: 'Sem a leitura não se liga o estado dos ACs aos papéis Master e Backup. O down do VTA-01 é provavelmente o standby, mas isso ainda não está comprovado para a VSI.',
+      certainty: 'O papel dos trunks está comprovado. O papel dos ACs da VSI, não.', ev: ['e-snmp-likee', 'e-snmp-vta'], next: 'Ler a VSI e a subinterface .3072 nos dois PEs.' },
+    { cat: 'collect', host: 'BHE-VTA-6730-MPLS-01', comp: 'Coleta', what: 'A captura da configuração do Eth-Trunk26 veio incompleta',
+      detected: 'A saída terminou sem o fim do bloco e sem o prompt. O diagnóstico a descartou em vez de usar pela metade.',
+      why: 'É um problema do procedimento de coleta. Não diz nada sobre o serviço. O vínculo do trunk com o E-Trunk 4 foi obtido por outra fonte, a tabela de membros.',
+      certainty: 'Fato: saída truncada.', ev: ['e-cfg26', 'e-et4'], next: 'Repetir a leitura da configuração do Eth-Trunk26.' },
+    { cat: 'stale', host: 'BHE-VTA-6730-MPLS-01', comp: 'Inventário NetVision', what: 'PW para 10.100.101.2 gravado como UP, visto pela última vez em 27/10',
+      detected: 'O banco mostra o PW up, mas a última leitura dele é 20 dias anterior à leitura da própria VSI.',
+      why: 'O registro não representa o estado atual. Lido ao pé da letra, daria um falso "PW up com VSI down".',
+      certainty: 'Fato: registro antigo. A coleta SNMP não remove PWs que deixaram de existir.', ev: ['e-snmp-vta'], next: 'Nenhum teste de rede. Não tratar esse PW como up.' },
+    { cat: 'stale', host: 'BHE-VTA-6730-MPLS-01', comp: 'Inventário NetVision', what: 'O inventário mostra o Eth-Trunk26 UP/UP; o equipamento diz Operate status down',
+      detected: 'O ifOperStatus do SNMP está UP enquanto display eth-trunk 26 mostra o trunk fora de operação, com 0 membros em uso.',
+      why: 'O estado da interface no inventário não serve para decidir se um caminho encaminha.', certainty: 'Divergência confirmada entre as duas fontes; causa não investigada.',
+      ev: ['e-lag26', 'e-snmp-vta'], next: 'Usar o estado do LACP e do E-Trunk, nunca só o da interface.' },
+    { cat: 'standby', host: 'BHE-VTA-6730-MPLS-01', comp: 'Eth-Trunk26 · E-Trunk 4', what: 'Eth-Trunk26 fora de operação por estar em Backup',
+      detected: 'Membro do E-Trunk 4 em Backup com causa PEER_MEMBER_UP. LACP sem membro em uso (XGE0/0/48 Unselect).',
+      why: 'É o comportamento esperado do lado reserva. Não se espera tráfego nem MAC por este caminho.', certainty: 'Comprovado por duas leituras do equipamento.',
+      ev: ['e-et4', 'e-lag26', 'e-brief-vta'], next: 'Nenhum. Refazer o diagnóstico após um failover.' },
+  ],
+  topoTitle: 'Só o acesso está comprovado; VSI e PWs vêm do inventário',
+  topo: `<svg viewBox="0 0 1010 332" role="img" aria-label="Topologia descoberta da VSI 3072: um mesmo parceiro LACP liga-se ao BHE-LIKEE pelo Eth-Trunk17, ativo, e ao BHE-VTA-01 pelo Eth-Trunk26, em standby. Os dois pertencem ao E-Trunk 4. Os pseudowires para o BHE-MQT constam só no inventário e não foram lidos.">
+    <rect class="box" x="12" y="124" width="158" height="84" rx="6"/>
+    <text x="24" y="146">Parceiro LACP</text><text class="m" x="24" y="164">mesmo System ID</text><text class="m" x="24" y="180">nos dois trunks</text><text class="m" x="24" y="196">(acesso CDB)</text>
+    <path class="l-active" d="M170 148 C240 148 270 74 352 74"/>
+    <text x="178" y="52">Eth-Trunk17</text><text class="f-green" x="178" y="68" font-size="12.5">▲ LACP 1/1 Selected</text>
+    <path class="l-standby" d="M170 184 C240 184 270 258 352 258"/>
+    <text x="178" y="288">Eth-Trunk26</text><text class="f-slate" x="178" y="304" font-size="12.5">⏸ LACP 0/1 Unselect</text>
+    <rect class="box" x="352" y="22" width="300" height="106" rx="6"/>
+    <text x="366" y="44" class="mono">BHE-LIKEE-6730-MPLS-01</text>
+    <text x="366" y="66">E-Trunk 4 · <tspan class="f-green">▲ MASTER</tspan></text><text class="f-green" x="366" y="84" font-size="12.5">▲ acesso ATIVO · XGE0/0/3</text>
+    <text class="f-violet" x="366" y="102" font-size="12.5">? VSI NÃO CONFIRMADA</text><text class="m" x="366" y="118">inventário: VSI up · AC up</text>
+    <rect class="box" x="352" y="204" width="300" height="106" rx="6"/>
+    <text x="366" y="226" class="mono">BHE-VTA-6730-MPLS-01</text>
+    <text x="366" y="248">E-Trunk 4 · <tspan class="f-slate">⏸ BACKUP</tspan> · causa PRI</text><text class="f-slate" x="366" y="266" font-size="12.5">⏸ STANDBY · PEER_MEMBER_UP</text>
+    <text class="f-violet" x="366" y="284" font-size="12.5">? VSI NÃO CONFIRMADA</text><text class="m" x="366" y="300">inventário: VSI down · AC down</text>
+    <path class="l-ctl" d="M502 128 V204"/><text class="f-cyan" x="512" y="162" font-size="12.5">E-Trunk 4</text><text class="m" x="512" y="178">BFD likee · revert 120 s</text>
+    <path class="l-unread" d="M652 74 C730 74 730 150 806 150"/><text class="m" x="674" y="62">PW · inventário: up</text><text class="f-violet" x="674" y="46" font-size="12.5">? não lido</text>
+    <path class="l-unread" d="M652 258 C730 258 730 184 806 184"/><text class="m" x="674" y="282">PW · registro de 27/10</text><text class="f-amber" x="674" y="298" font-size="12.5">dado obsoleto</text>
+    <rect class="box unread" x="806" y="122" width="192" height="90" rx="6"/>
+    <text x="818" y="144" class="mono">BHE-MQT-6730</text><text class="m" x="818" y="162">10.100.101.2</text><text class="f-violet" x="818" y="180" font-size="12.5">? não lido</text><text class="m" x="818" y="198">consta só no inventário</text>
+  </svg>`,
+  endpoints: [
+    { name: 'BHE-LIKEE-6730-MPLS-01', sub: 'S6730 · 10.100.101.3',
+      badges: [['ok', 'active', 'ACESSO ATIVO'], ['unk', 'unk', 'SERVIÇO NÃO CONFIRMADO']],
+      cells: {
+        etrunk: ['ok', 'active', 'MASTER', 'E-Trunk 4 · peer 10.100.101.0', 'lido pelo resumo (brief); a linha do membro Eth-Trunk17 não foi lida', 'ssh', 'SSH 16/11', 'e-brief-likee'],
+        lag: ['ok', 'ok', 'EM OPERAÇÃO · 1/1 SELECTED', 'Eth-Trunk17 · XGigabitEthernet0/0/3', 'mode lacp · e-trunk 4 remote-eth-trunk 26', 'ssh', 'SSH 16/11', 'e-lag17'],
+        vsi: ['unk', 'unk', 'NÃO CONFIRMADO', 'Sem leitura direta', 'inventário: up · MTU 2000 · RD 268568:53072', 'snmp', 'SNMP 13:50Z', 'e-snmp-likee'],
+        ac: ['unk', 'unk', 'NÃO CONFIRMADO', 'Eth-Trunk17.3072 · sem leitura direta', 'inventário: up', 'snmp', 'SNMP 13:50Z', 'e-snmp-likee'],
+        pw: ['unk', 'unk', 'NÃO CONFIRMADO', '10.100.101.2 · sem leitura direta', 'inventário: up · labels 36706 / 35842', 'snmp', 'SNMP 13:50Z', 'e-snmp-likee'],
+        mac: ['unk', 'unk', 'NÃO LIDO', 'Tabela não coletada', 'quando lida, o MAC local aparece no Eth-Trunk17 (interface lógica), não na porta física', 'none', 'não lido', null],
+      },
+      missing: 'display vsi da 3072 · configuração de Eth-Trunk17.3072 · display e-trunk 4 (linha do membro) · tabela MAC' },
+    { name: 'BHE-VTA-6730-MPLS-01', sub: 'S6730-H48X6C · 10.100.101.0',
+      badges: [['standby', 'standby', 'ACESSO EM STANDBY ESPERADO'], ['unk', 'unk', 'SERVIÇO NÃO CONFIRMADO']],
+      cells: {
+        etrunk: ['standby', 'standby', 'BACKUP', 'E-Trunk 4 · causa PRI (prioridade 30 contra 20 do par)', 'peer 10.100.101.3 · BFD likee · revert-delay 120 s · brief e comando completo concordam', 'ssh', 'SSH 16/11', 'e-et4'],
+        lag: ['standby', 'standby', 'STANDBY · 0/1 UNSELECT', 'Eth-Trunk26 · membro Backup, causa PEER_MEMBER_UP · XGigabitEthernet0/0/48', 'par remoto Eth-Trunk17 · o E-Trunk 4 tem outro membro, Eth-Trunk13 (remoto 21), de outro serviço', 'ssh', 'SSH 16/11', 'e-lag26'],
+        vsi: ['unk', 'unk', 'NÃO CONFIRMADO', 'Sem leitura direta', 'inventário: down · MTU 2000 · RD 268568:53072', 'snmp', 'SNMP 13:51Z', 'e-snmp-vta'],
+        ac: ['unk', 'unk', 'NÃO CONFIRMADO', 'Eth-Trunk26.3072 · sem leitura direta', 'inventário: down', 'snmp', 'SNMP 13:51Z', 'e-snmp-vta'],
+        pw: ['stale', 'stale', 'OBSOLETO', '10.100.101.2 · registro de 27/10', '20 dias mais antigo que a leitura da VSI · não conta como up', 'snmp', 'SNMP 27/10', 'e-snmp-vta'],
+        mac: ['standby', 'standby', 'NÃO ESPERADO', 'Sem aprendizado esperado enquanto em Backup', 'tabela não coletada', 'none', 'não lido', null],
+      },
+      missing: 'display vsi da 3072 · configuração de Eth-Trunk26.3072 · configuração completa do Eth-Trunk26' },
+    { name: 'BHE-MQT-6730-MPLS-01', sub: '10.100.101.2 · peer dos PWs no inventário',
+      badges: [['unk', 'unk', 'NÃO LIDO']],
+      cells: {
+        etrunk: ['unk', 'unk', 'NÃO LIDO', 'Redundância não consultada', '', 'none', 'não lido', null],
+        lag: ['unk', 'unk', 'NÃO LIDO', 'Sem leitura direta', '', 'none', 'não lido', null],
+        vsi: ['unk', 'unk', 'NÃO CONFIRMADO', 'Sem leitura direta', 'inventário: up', 'snmp', 'SNMP 13:52Z', null],
+        ac: ['unk', 'unk', 'NÃO CONFIRMADO', 'XGigabitEthernet0/0/4.3072 · sem leitura direta', 'inventário: up', 'snmp', 'SNMP 13:52Z', null],
+        pw: ['unk', 'unk', 'NÃO CONFIRMADO', 'Para 10.100.101.3 · sem leitura direta', 'inventário: up · labels 35842 / 36706, que conferem com o LIKEE', 'snmp', 'SNMP 13:52Z', null],
+        mac: ['unk', 'unk', 'NÃO LIDO', 'Tabela não coletada', '', 'none', 'não lido', null],
+      },
+      missing: 'toda a leitura ao vivo desta ponta' },
+  ],
+  steps: [
+    { text: 'Ler a VSI 3072 no BHE-LIKEE.', cmd: 'display vsi name 3072-QinQ-CDB-MANTIQUEIRA verbose', why: 'O estado da VSI, do AC e do PW vem só do inventário.', ev: 'e-snmp-likee' },
+    { text: 'Ler a VSI 3072 no BHE-VTA-01.', cmd: 'display vsi name 3072-QinQ-CDB-MANTIQUEIRA verbose', why: 'Confirma que o AC down corresponde ao Backup do E-Trunk 4.', ev: 'e-et4' },
+    { text: 'Repetir a configuração do Eth-Trunk26.', cmd: 'display current-configuration interface Eth-Trunk26', why: 'A captura veio truncada.', ev: 'e-cfg26' },
+    { text: 'Ler a linha do membro no lado Master.', cmd: 'display e-trunk 4', why: 'No LIKEE só o resumo foi lido; falta o estado e a causa do membro Eth-Trunk17.', ev: 'e-brief-likee' },
+  ],
+  evidence: [
+    { id: 'e-et4', host: 'BHE-VTA-6730-MPLS-01', cmd: 'display e-trunk 4', at: '16/11', src: 'ssh', out: OUT.et4, note: ['stale', 'Contadores de pacotes omitidos; System-ID sanitizados.'] },
+    { id: 'e-lag26', host: 'BHE-VTA-6730-MPLS-01', cmd: 'display eth-trunk 26', at: '16/11', src: 'ssh', out: OUT.lag26 },
+    { id: 'e-brief-vta', host: 'BHE-VTA-6730-MPLS-01', cmd: 'display e-trunk brief', at: '16/11', src: 'ssh', out: OUT.briefVta },
+    { id: 'e-cfg26', host: 'BHE-VTA-6730-MPLS-01', cmd: 'display current-configuration interface Eth-Trunk26', at: '16/11', src: 'ssh', incomplete: true, out: OUT.cfg26, note: ['collect', 'Captura incompleta: sem o fim do bloco e sem o prompt. Descartada pelo diagnóstico.'] },
+    { id: 'e-lag17', host: 'BHE-LIKEE-6730-MPLS-01', cmd: 'display eth-trunk 17', at: '16/11', src: 'ssh', out: OUT.lag17 },
+    { id: 'e-brief-likee', host: 'BHE-LIKEE-6730-MPLS-01', cmd: 'display e-trunk brief', at: '16/11', src: 'ssh', out: OUT.briefLikee },
+    { id: 'e-cfg17', host: 'BHE-LIKEE-6730-MPLS-01', cmd: 'display current-configuration interface Eth-Trunk17', at: '16/11', src: 'ssh', out: OUT.cfg17 },
+    { id: 'e-snmp-likee', host: 'BHE-LIKEE-6730-MPLS-01', cmd: 'inventário SNMP · VSI 3072', at: '16/11 13:50Z', src: 'snmp', out: OUT.snmpLikee },
+    { id: 'e-snmp-vta', host: 'BHE-VTA-6730-MPLS-01', cmd: 'inventário SNMP · VSI 3072', at: '16/11 13:51Z', src: 'snmp', out: OUT.snmpVta },
+  ],
+};
+
+/* ---------------- render ---------------- */
+const SRC = { ssh: ['ssh', 'SSH'], snmp: ['snmp', 'SNMP'], none: ['none', 'não lido'] };
+const esc = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const LAYERS = [['g', 'Redundância do acesso'], ['etrunk', 'Papel E-Trunk'], ['lag', 'Eth-Trunk · LACP'],
+  ['g', 'Serviço'], ['vsi', 'VSI'], ['ac', 'AC'], ['pw', 'Pseudowire'], ['mac', 'Aprendizado MAC'],
+  ['g', 'Evidência'], ['missing', 'Falta ler']];
+/* passo ligado a cada achado (indice do achado -> numero do passo) e linhas da saida usadas pela tela */
+const STEP = { 'vsi-3066': [2, 4, null], 'vsi-3072': [1, 3, null, null, null] };
+const HL = { 'e-et4': ['State : Backup', 'Eth-Trunk 26'], 'e-lag26': ['Operate status', 'Unselect'], 'e-lag17': ['Operate status', 'Selected'],
+  'e-brief-vta': ['4             Backup'], 'e-brief-likee': ['4             Master'], 'e-cfg17': ['e-trunk 4', 'mode lacp'], 'e-cfg26': ['e-trunk 4', 'mode lacp'],
+  'e-vsi3066': ['VSI State', 'PW State', '    State   '], 'e-mac3066': ['Eth-Trunk6'], 'e-vlan3066': ['TG:Eth-Trunk1'], 'e-trunk6': ['allow-pass vlan 1602'],
+  'e-vif3064': ['l2 binding'], 'e-snmp-vta': ['2026-10-27', 'operStatus UP'], 'e-snmp-likee': ['operationalStatus'] };
+let current = null, currentId = null;
+
+function evLinks(s, ids) {
+  return `<span class="evlinks">${ids.map((id) => { const e = s.evidence.find((x) => x.id === id); return `<button class="evlink" data-ev="${id}">${esc(e.cmd)} · ${e.host.replace(/-MPLS-0\d$/, '')}</button>`; }).join('')}</span>`;
+}
+
+function matrix(s) {
+  let h = `<div class="mx-scroll"><div class="mx" style="--n:${s.endpoints.length}"><div class="mx-corner"></div>`;
+  h += s.endpoints.map((e, c) => `<div class="mx-head" style="--o:${(c + 1) * 100}"><div class="name">${e.name}</div><div class="quiet">${e.sub}</div>
+    <div class="line">${e.badges.map((b) => badge(...b)).join('')}</div></div>`).join('');
+  LAYERS.forEach(([key, label], r) => {
+    if (key === 'g') { h += `<div class="mx-group">${label}</div>`; return; }
+    h += `<div class="mx-lab">${label}</div>`;
+    s.endpoints.forEach((e, c) => {
+      const o = (c + 1) * 100 + r + 1;
+      if (key === 'missing') { h += `<div class="mx-cell miss" style="--o:${o}"><span class="lab">Falta ler</span>${e.missing}</div>`; return; }
+      const [tone, icon, st, text, small, src, when, ev] = e.cells[key];
+      h += `<div class="mx-cell t-${tone}" style="--o:${o}"><span class="lab">${label}</span>
+        <div class="st"><span class="stv">${ico(icon)}${st}</span><span class="origin ${src}">${when}</span></div>
+        <div>${text}</div>${small ? `<small>${small}</small>` : ''}${ev ? `<button class="evlink" data-ev="${ev}">ver evidência</button>` : ''}</div>`;
+    });
+  });
+  return h + '</div></div>';
+}
+
+function render(id) {
+  const s = S[id]; current = s; currentId = id;
+  document.querySelectorAll('.tab').forEach((t) => t.setAttribute('aria-pressed', String(t.dataset.s === id)));
+  const groups = ORDER.map((c) => [c, s.issues.filter((i) => i.cat === c)]).filter(([, l]) => l.length);
+  const problems = groups.filter(([c]) => c !== 'standby');
+  const failures = s.issues.filter((i) => i.cat === 'crit').length;
+  const stepOf = (i) => STEP[id][s.issues.indexOf(i)];
+  document.getElementById('app').innerHTML = `
+  <section class="verdict t-${s.verdict.tone}" aria-label="Veredito">
+    <div>
+      <div class="vsi">${s.vsi}</div>
+      <div class="state">${ico(s.verdict.icon).replace('<svg', '<svg style="width:22px;height:22px;color:var(--tone)"')}<b>${s.verdict.label}</b>${s.fresh}
+        ${failures === 0 ? '<span class="quiet">Nenhuma falha comprovada na evidência disponível.</span>' : ''}</div>
+      <p class="say">${s.verdict.say}</p>
+    </div>
+    <div class="prov"><h3>Origem e idade</h3><dl class="src">${s.sources.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl></div>
+    <div class="axes">${s.axes.map(([t, i, k, v, d]) => `<div class="axis t-${t}"><div class="k">${k}</div><div class="v">${ico(i)}${v}</div><div class="d">${d}</div></div>`).join('')}</div>
+  </section>
+
+  <div class="grid two">
+    <section class="panel" aria-label="Achados"><h2>Achados <small>${problems.reduce((n, [, l]) => n + l.length, 0)} pendência(s), por gravidade</small></h2>
+      ${groups.map(([c, list]) => `<div class="group t-${CAT[c][0]}"><h3>${ico(CAT[c][1]).replace('<svg', '<svg style="width:15px;height:15px"')}${CAT[c][2]} <span>${list.length}</span></h3>
+        ${list.map((i) => `<details class="issue"${c === 'crit' || c === 'unk' ? ' open' : ''}><summary><span>${ico(CAT[c][1]).replace('<svg', '<svg style="width:15px;height:15px;color:var(--tone);margin-top:4px"')}</span>
+          <span class="what">${i.what}</span><span class="chev" aria-hidden="true">▸</span><span class="where">${i.host} · ${i.comp}</span></summary>
+          <div class="body"><dl class="kv"><dt>O que foi detectado</dt><dd>${i.detected}</dd><dt>Por que importa</dt><dd>${i.why}</dd><dt>Grau de certeza</dt><dd>${i.certainty}</dd>
+          <dt>Evidência</dt><dd>${evLinks(s, i.ev)}</dd><dt>Próximo teste</dt><dd>${stepOf(i) ? `<button class="evlink" data-step="${stepOf(i)}">Passo ${stepOf(i)} · ${i.next}</button>` : i.next}</dd></dl></div></details>`).join('')}</div>`).join('')}
+    </section>
+    <section class="panel" aria-label="Topologia"><h2>Topologia <small>${s.topoTitle}</small></h2>
+      <div class="topo">${s.topo}</div>
+      <div class="topo-hint">Deslize o diagrama para os lados. A comparação por equipamento logo abaixo traz os mesmos dados em formato de lista.</div>
+      <div class="legend"><span><i></i>▲ ativo</span><span><i class="s"></i>⏸ standby esperado</span><span><i class="u"></i>? não lido</span><span><i class="q"></i>? indeterminado</span><span><i class="c"></i>relação E-Trunk</span></div>
+    </section>
+  </div>
+
+  <section class="panel" aria-label="Comparação por equipamento"><h2>Por equipamento <small>${s.endpoints.length} PE(s) lado a lado · cada célula traz o estado, a origem e a hora da leitura</small></h2>
+    ${matrix(s)}
+  </section>
+
+  <div class="grid two">
+  <section class="panel" aria-label="Próximos passos"><h2>Próximos passos <small>verificações sugeridas, não causas comprovadas</small></h2>
+    <ol class="steps">${s.steps.map((p, n) => `<li id="step-${n + 1}"><span>${p.text}</span>
+      <span class="cmdline"><code>${esc(p.cmd)}</code><button class="copy" data-copy="${esc(p.cmd)}">copiar</button></span>
+      <span class="why">Motivo: ${p.why} ${evLinks(s, [p.ev])}</span></li>`).join('')}</ol>
+  </section>
+
+  <section class="panel" aria-label="Evidências técnicas"><h2>Evidências técnicas <small>${s.evidence.length} itens · clique para ver a saída bruta</small></h2>
+    <div class="evs">${s.evidence.map((e) => `<button class="ev" data-ev="${e.id}"><span class="h">${e.host}</span><span class="c">${esc(e.cmd)}</span><span class="a">${e.at}</span>
+      <span class="origin ${e.incomplete ? 'none' : SRC[e.src][0]}">${e.incomplete ? 'incompleta' : SRC[e.src][1]}</span></button>`).join('')}</div>
+  </section>
+  </div>`;
+}
+
+function openEvidence(id) {
+  const e = current.evidence.find((x) => x.id === id); if (!e) return;
+  const hl = HL[id] || [];
+  const body = e.out.split('\n').map((l) => `<span class="ln${hl.some((k) => l.includes(k)) ? ' hl' : ''}">${esc(l)}</span>`).join('');
+  const isCmd = e.src === 'ssh';
+  document.getElementById('drawer-root').innerHTML = `<button class="scrim" aria-label="Fechar evidência"></button>
+  <aside class="drawer" role="dialog" aria-modal="true" aria-label="Evidência">
+    <header><div><div class="c">${esc(e.cmd)}</div><div class="quiet">${e.host}</div></div><button class="x" aria-label="Fechar" id="drawer-close">✕</button></header>
+    <div class="meta"><dl class="kv"><dt>Origem</dt><dd><span class="origin ${SRC[e.src][0]}">${isCmd ? 'SSH · saída do equipamento' : 'SNMP · banco do NetVision'}</span></dd>
+      <dt>Coletado em</dt><dd>${e.at}/2026</dd><dt>Completa</dt><dd>${e.incomplete ? 'não · descartada pelo diagnóstico' : 'sim'}</dd></dl>
+      ${e.note ? `<div class="note t-${e.note[0]}">${e.note[1]}</div>` : ''}
+      <div class="tools">${isCmd ? `<button class="copy" data-copy="${esc(e.cmd)}">copiar comando</button>` : ''}<button class="copy" data-copy-out="${id}">copiar saída</button>
+        ${hl.length ? '<span class="quiet">Faixa azul: linhas usadas nesta tela.</span>' : ''}</div></div>
+    <pre>${body}</pre></aside>`;
+  document.getElementById('drawer-close').focus();
+}
+const closeEvidence = () => { document.getElementById('drawer-root').innerHTML = ''; };
+
+async function copyText(btn, text) {
+  try { await navigator.clipboard.writeText(text); btn.textContent = 'copiado'; }
+  catch { btn.textContent = 'copie manualmente'; }
+}
+
+document.addEventListener('click', (ev) => {
+  const t = ev.target.closest('[data-ev], [data-step], [data-copy], [data-copy-out], .tab, .scrim, #drawer-close'); if (!t) return;
+  if (t.dataset.copy) { copyText(t, t.dataset.copy); }
+  else if (t.dataset.copyOut) { copyText(t, current.evidence.find((x) => x.id === t.dataset.copyOut).out); }
+  else if (t.dataset.step) { const li = document.getElementById('step-' + t.dataset.step); li.scrollIntoView({ block: 'center' }); li.classList.add('flash'); }
+  else if (t.dataset.ev) { ev.preventDefault(); openEvidence(t.dataset.ev); }
+  else if (t.classList.contains('tab')) { location.hash = t.dataset.s; }
+  else closeEvidence();
+});
+document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeEvidence(); });
+
+function route() {
+  const h = location.hash.replace('#', '');
+  const id = Object.keys(S).find((k) => h.startsWith(k)) || 'vsi-3072';
+  closeEvidence(); render(id);
+  const ev = /-ev-(.+)$/.exec(h); if (ev) openEvidence(ev[1]);
+}
+window.addEventListener('hashchange', route);
+route();
+</script>

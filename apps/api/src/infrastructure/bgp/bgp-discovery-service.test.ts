@@ -6,6 +6,7 @@ import type { HostRepository } from '../persistence/host-repository';
 import { BgpDiscoveryService } from './bgp-discovery-service';
 import type { BgpRepository } from './bgp-repository';
 import { HuaweiBgpSshService } from './huawei-bgp-ssh';
+import { HuaweiBgpDiscoveryProvider } from './huawei-bgp-discovery-provider';
 
 function host(interfaces: NetworkInterface[] = []): HostRecord {
   return makeHost({
@@ -79,8 +80,10 @@ function simulator(responses: Record<string, string | null>, fallback = 'Summary
   });
 }
 
-function sshWith(execute: ReturnType<typeof vi.fn>): HuaweiBgpSshService {
-  return new HuaweiBgpSshService(repository(), () => ({ execute } as unknown as SshClient));
+function sshWith(execute: ReturnType<typeof vi.fn>): HuaweiBgpDiscoveryProvider {
+  return new HuaweiBgpDiscoveryProvider(
+    new HuaweiBgpSshService(repository(), () => ({ execute } as unknown as SshClient)),
+  );
 }
 
 describe('BGP SSH discovery service', () => {
@@ -263,7 +266,7 @@ Prefixes current: 1099912`,
     const device = host();
     device.ssh = { ...device.ssh!, contextCommand: 'switch virtual-system IMPLANTAR-IXBR' };
 
-    const result = await new BgpDiscoveryService(ssh, bgpRepository()).discover(device);
+    const result = await new BgpDiscoveryService(new HuaweiBgpDiscoveryProvider(ssh), bgpRepository()).discover(device);
 
     expect(result.localAs).toBe(268568n);
     expect(factory).toHaveBeenCalledWith(
@@ -319,7 +322,7 @@ Prefixes current: 1099912`,
       contextCommand: 'switch virtual-system IMPLANTAR-IXBR',
     };
 
-    await new BgpDiscoveryService(ssh, bgpRepository()).discover(device);
+    await new BgpDiscoveryService(new HuaweiBgpDiscoveryProvider(ssh), bgpRepository()).discover(device);
 
     expect(factory).toHaveBeenCalledWith(
       expect.objectContaining({ contextCommand: 'switch virtual-system IMPLANTAR-IXBR' }),
@@ -331,8 +334,59 @@ Prefixes current: 1099912`,
     const factory = vi.fn(() => ({ execute } as unknown as SshClient));
     const ssh = new HuaweiBgpSshService(repository(), factory);
 
-    await new BgpDiscoveryService(ssh, bgpRepository()).discover(host());
+    await new BgpDiscoveryService(new HuaweiBgpDiscoveryProvider(ssh), bgpRepository()).discover(host());
 
     expect(factory).toHaveBeenCalledWith(expect.objectContaining({ contextCommand: null }));
   });
-});
+  it('preenche AS e descricao pela configuracao BGP ja lida para o AS local', async () => {
+    const execute = simulator({
+      'display current-configuration configuration bgp': `#
+bgp 268568
+ router-id 45.163.144.1
+ peer 200.150.1.193 as-number 12345
+ peer 200.150.1.193 description "TRANSITO CENTURY"
+#
+return`,
+      'display bgp peer': '200.150.1.193 4 12345 10 10 0 18d04h Established 1099912',
+      'display ip routing-table 200.150.1.193': `Summary Count : 1
+200.150.1.192/30 Direct 0 0 D 200.150.1.194 HundredGigabitEthernet 1/0/3`,
+    });
+    const persistence = bgpRepository();
+
+    const result = await new BgpDiscoveryService(sshWith(execute), persistence).discover(
+      host([networkInterface()]),
+    );
+
+    expect(result.peers[0]).toMatchObject({
+      peerAddress: '200.150.1.193',
+      remoteAs: 12345n,
+      bgpPeerDescription: 'TRANSITO CENTURY',
+      displayName: 'TRANSITO CENTURY',
+    });
+    // A configuracao ja era lida para o AS local: nenhum comando extra no aparelho.
+    const commands = execute.mock.calls.flatMap((call) => call[1] as string[]);
+    expect(
+      commands.filter((command) => command.includes('current-configuration configuration bgp')),
+    ).toHaveLength(1);
+  });
+
+  it('nao deixa a configuracao sobrescrever a descricao lida no verbose', async () => {
+    const execute = simulator({
+      'display current-configuration configuration bgp': `#
+bgp 268568
+ peer 200.150.1.193 as-number 12345
+ peer 200.150.1.193 description "DA CONFIG"
+#
+return`,
+      'display bgp peer': '200.150.1.193 4 12345 10 10 0 18d04h Established 1099912',
+      'display ip routing-table 200.150.1.193': `Summary Count : 1
+200.150.1.192/30 Direct 0 0 D 200.150.1.194 HundredGigabitEthernet 1/0/3`,
+    });
+    const persistence = bgpRepository();
+
+    const result = await new BgpDiscoveryService(sshWith(execute), persistence).discover(
+      host([networkInterface()]),
+    );
+
+    expect(result.peers[0]?.bgpPeerDescription).toBe('DA CONFIG');
+  });});
