@@ -226,6 +226,14 @@ function BgpSessionsPanel() {
       : 'Nenhum peer BGP descoberto.';
 
   const lastUpdatedAt = dashboard.dataUpdatedAt;
+  /**
+   * Capacidades vêm do equipamento dono do peer. Sem capabilities na resposta
+   * (contrato antigo) a UI mantém o comportamento anterior; `adminActions:
+   * false` é a única situação que esconde ações administrativas de sessão.
+   */
+  const selectedCapabilities = selectedPeer
+    ? devices.find((device) => device.id === selectedPeer.deviceId)?.capabilities
+    : undefined;
 
   return (
     <main className="hosts-shell bgp-shell">
@@ -407,6 +415,7 @@ function BgpSessionsPanel() {
         <BgpPeerDetail
           peer={selectedPeer}
           period={period}
+          {...(selectedCapabilities ? { capabilities: selectedCapabilities } : {})}
           onClose={() => setSelectedPeer(null)}
           onRefreshed={refreshPeerAfterAction}
         />

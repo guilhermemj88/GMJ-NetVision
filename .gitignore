@@ -11,3 +11,12 @@ apps/api/src/generated/
 .artifacts/
 
 .env.backup-*
+
+# Harness de preview responsivo (Playwright): saida local, nao versionada
+e2e/.results/
+e2e/screenshots/
+playwright-report/
+
+# Arquivos gerados pelo `next dev` (regras de agente do Next 16)
+apps/web/AGENTS.md
+apps/web/CLAUDE.md

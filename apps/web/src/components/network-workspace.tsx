@@ -6,6 +6,8 @@ import { ActionPanels } from './action-panels';
 import { ContextDrawer } from './context-drawer';
 import { NetworkCanvas } from './network-canvas';
 import { TopBar } from './top-bar';
+import { MobileNav } from './mobile-nav';
+import { MobileActionsSheet } from './mobile-actions-sheet';
 import { NocControls } from './noc-controls';
 import { MapRail } from './map-rail';
 import { useMapStore } from '@/store/map-store';
@@ -59,6 +61,12 @@ export function NetworkWorkspace({ publicMode = false }: { publicMode?: boolean 
           <ContextDrawer />
           {!publicMode && <ActionPanels />}
           <NocControls />
+        </>
+      )}
+      {!publicMode && !fullBleed && (
+        <>
+          <MobileNav />
+          <MobileActionsSheet />
         </>
       )}
       {toast && (

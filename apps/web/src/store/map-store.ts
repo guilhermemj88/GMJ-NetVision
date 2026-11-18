@@ -229,6 +229,8 @@ interface MapState {
   readOnly: boolean;
   publicMaps: NetworkMap[];
   view: WorkspaceView;
+  /** Menu overflow do celular (acoes secundarias da topbar). */
+  mobileMenuOpen: boolean;
   editMode: boolean;
   /**
    * Modo "Ajustar labels": liga o arrasto das labels de tráfego. É só uma
@@ -297,6 +299,7 @@ interface MapState {
   setReadOnly: (value: boolean) => void;
   loadPublicMaps: (maps: NetworkMap[]) => void;
   setView: (view: WorkspaceView) => void;
+  setMobileMenuOpen: (open: boolean) => void;
   setEditMode: (enabled: boolean) => void;
   setSelection: (selection: Selection) => void;
   openInterfaceOnMap: (result: InterfaceSearchResult, mapId: string) => void;
@@ -454,6 +457,7 @@ export const useMapStore = create<MapState>((set, get) => ({
   readOnly: false,
   publicMaps: [],
   view: 'MAP',
+  mobileMenuOpen: false,
   editMode: false,
   labelAdjustMode: false,
   selection: null,
@@ -706,6 +710,7 @@ export const useMapStore = create<MapState>((set, get) => ({
   setReadOnly: (readOnly) => set({ readOnly }),
   loadPublicMaps: (publicMaps) => set({ publicMaps }),
   setView: (view) => set({ view, editMode: false, labelAdjustMode: false, selection: null, panel: null }),
+  setMobileMenuOpen: (open) => set({ mobileMenuOpen: open }),
   setLabelAdjustMode: (labelAdjustMode) => set({ labelAdjustMode }),
   setEditMode: (editMode) => set({ editMode, panel: null }),
   setSelection: (selection) => set({ selection }),

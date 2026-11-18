@@ -21,3 +21,11 @@ export function useMediaQuery(query: string): boolean {
 
   return matches;
 }
+
+/**
+ * Mesma condicao do shell mobile em `app/mobile-responsive.css`: celular em pe
+ * (`<= 720px`) ou celular deitado (largura curta e altura baixa). Em JS ela
+ * decide o enquadramento do canvas, porque o viewport salvo no mapa foi
+ * escolhido numa tela grande e nao serve para um aparelho pequeno.
+ */
+export const MOBILE_SHELL_QUERY = '(max-width: 720px), (max-width: 1024px) and (max-height: 500px)';

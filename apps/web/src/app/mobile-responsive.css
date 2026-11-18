@@ -1,0 +1,1524 @@
+/*
+ * Camada responsiva do GMJ NetVision (do desktop grande ao celular).
+ *
+ * Importada DEPOIS de globals.css de proposito: aqui so acrescentamos
+ * comportamento em telas menores. Nenhuma regra existente e removida — o
+ * desktop continua exatamente como estava e todo o responsivo que ja existia
+ * (context-drawer narrow, topbar, rack, mitigation, alerts) permanece ativo.
+ *
+ * Breakpoints do produto (nao inventar outros numeros):
+ *   PHONE    <= 720px  (shell mobile + navegacao inferior)
+ *   TABLET   721 .. 1024px  (topbar compacta + actions sheet, sem nav inferior)
+ *   DESKTOP  1025 .. 1440px  (acoes secundarias em icone + menu "Mais")
+ *   DESKTOP  1441 .. 1899px  (rotulos de volta, sem coluna de status)
+ *   WIDE     >= 1900px  (topbar completa, como sempre foi)
+ *
+ * Os valores ficam em custom properties para que novos componentes usem o token
+ * em vez de repetir numeros soltos.
+ */
+
+:root {
+  --nv-bp-phone: 720px;
+  --nv-bp-tablet: 1024px;
+
+  /* Alvos tactis: area clicavel minima recomendada em telas de toque. */
+  --nv-touch: 44px;
+
+  /* Safe areas (iPhone notch / home indicator). Zeradas quando nao existem. */
+  --nv-safe-top: env(safe-area-inset-top, 0px);
+  --nv-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --nv-safe-left: env(safe-area-inset-left, 0px);
+  --nv-safe-right: env(safe-area-inset-right, 0px);
+
+  --nv-topbar-h: 62px;
+  --nv-mobile-topbar-h: 56px;
+  --nv-mobile-nav-h: 58px;
+}
+
+/*
+ * Gate de overflow: a pagina nunca pode rolar horizontalmente por acidente.
+ * Containers tecnicos (rack, tabelas, code, tabs) continuam rolando por conta
+ * propria, porque cada um declara seu `overflow-x`.
+ */
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* ------------------------------------------------------------------ */
+/* Elementos exclusivos do celular: invisiveis no desktop              */
+/* ------------------------------------------------------------------ */
+
+.topbar__mobile-menu,
+.mobile-nav,
+.mobile-sheet {
+  display: none;
+}
+
+.topbar__mobile-menu {
+  align-items: center;
+  justify-content: center;
+  width: var(--nv-touch);
+  height: var(--nv-touch);
+  margin-left: calc(-1 * var(--nv-safe-left));
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text, #dfe9f0);
+  cursor: pointer;
+}
+
+.topbar__mobile-menu:hover {
+  border-color: var(--line, #23313b);
+  background: rgba(69, 183, 217, 0.08);
+}
+
+/* A navegacao inferior e o sheet sao montados sempre; o CSS decide a exibicao. */
+@media (max-width: 720px), (max-width: 1024px) and (max-height: 500px) {
+  .topbar__mobile-menu {
+    display: inline-flex;
+  }
+  .mobile-nav {
+    display: flex;
+  }
+  .mobile-sheet {
+    display: block;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* PHONE (retrato) e CELULAR DEITADO                                   */
+/* ------------------------------------------------------------------ */
+/*
+ * Celular deitado (844x390, 915x412) e mais largo que 720px, mas tem pouca
+ * altura. Sem esta segunda condicao ele caia no layout de desktop e ficava sem
+ * navegacao inferior, com a topbar completa estourando a tela. Por isso o
+ * shell mobile vale para `largura <= 720px` OU `largura <= 1024px e altura
+ * baixa`. Desktop e tablet em pe seguem intocados.
+ */
+@media (max-width: 720px), (max-width: 1024px) and (max-height: 500px) {
+  /*
+   * `min-height: 640px` no shell existe para o desktop nunca colapsar. Em
+   * celular (inclusive landscape 844x390) ele cria rolagem vertical artificial,
+   * entao o shell passa a respeitar apenas o viewport dinamico.
+   */
+  .netvision-app {
+    min-height: 0;
+    height: 100dvh;
+    padding-left: var(--nv-safe-left);
+    padding-right: var(--nv-safe-right);
+  }
+
+  /* ---- topbar compacta: marca + busca + menu ---- */
+  .topbar {
+    height: calc(var(--nv-mobile-topbar-h) + var(--nv-safe-top));
+    gap: 8px;
+    padding: var(--nv-safe-top) 8px 0;
+  }
+  .topbar__divider,
+  .topbar > .primary-nav,
+  .topbar > .map-selector,
+  .topbar > .source-status,
+  .topbar > .freshness,
+  .topbar > .nv-badge,
+  .topbar > .topbar__spacer,
+  .topbar > .topbar-user {
+    display: none;
+  }
+  /* Acoes secundarias migram para o MobileActionsSheet. */
+  .topbar > button:not(.topbar__mobile-menu) {
+    display: none;
+  }
+  .topbar .brand {
+    flex: 0 0 auto;
+    min-width: 0;
+    gap: 8px;
+  }
+  .topbar .brand > div > span {
+    display: none;
+  }
+
+  /* ---- busca global: ocupa a sobra e abre popover de largura util ---- */
+  .topbar .global-interface-search {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .topbar .global-interface-search input {
+    width: 100%;
+    min-width: 0;
+    height: var(--nv-touch);
+  }
+  .topbar .global-interface-search__popover {
+    position: fixed;
+    top: calc(var(--nv-mobile-topbar-h) + var(--nv-safe-top) + 4px);
+    left: calc(8px + var(--nv-safe-left));
+    right: calc(8px + var(--nv-safe-right));
+    max-height: 60dvh;
+    overflow-y: auto;
+  }
+
+  /* ---- workspace: desconta topbar e navegacao inferior ---- */
+  .map-workspace {
+    inset: calc(var(--nv-mobile-topbar-h) + var(--nv-safe-top)) 0 0;
+  }
+  .netvision-app--noc-no-topbar .map-workspace {
+    inset: 0 0 0;
+  }
+
+  /* ---- MapRail: deixa de consumir largura, vira overlay compacto ---- */
+  /*
+   * A rail nunca pode cobrir o canvas inteiro: no celular ela fica ancorada
+   * acima da navegacao inferior (so a area que sobra para o mapa importa) e o
+   * estado recolhido vira uma pilula no topo, liberando o mapa para toque.
+   */
+  .map-workspace .map-rail {
+    position: absolute;
+    z-index: 18;
+    top: auto;
+    bottom: calc(var(--nv-mobile-nav-h) + var(--nv-safe-bottom) + 8px);
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: min(40dvh, calc(100% - 24px));
+    overflow-y: auto;
+    border-radius: 12px;
+  }
+  .map-workspace .map-rail--collapsed {
+    top: 8px;
+    bottom: auto;
+    right: auto;
+    width: var(--nv-touch);
+    max-width: var(--nv-touch);
+    border: 1px solid var(--line, #23313b);
+    border-radius: 12px;
+    background: rgba(16, 26, 33, 0.92);
+    overflow: hidden;
+  }
+  /* No celular o rotulo vertical nao cabe: so o icone, com alvo de 44px. */
+  .map-workspace .map-rail--collapsed .map-rail__restore {
+    flex-direction: row;
+    justify-content: center;
+    gap: 0;
+    height: var(--nv-touch);
+    padding: 0;
+  }
+  .map-workspace .map-rail--collapsed .map-rail__restore-label {
+    display: none;
+  }
+
+  /* ---- HostDetail (M1.3): mesmo tratamento de bottom sheet ---- */
+  /*
+   * Sem isso o painel de detalhes do host fica `fixed` com `width: 46vw` e
+   * `top: 62px`: no celular vira uma coluna estreita cortada embaixo pela
+   * navegacao inferior.
+   */
+  .host-detail {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: none;
+    max-height: 85dvh;
+    border-left: 0;
+    border-top: 1px solid #2b414d;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: calc(var(--nv-mobile-nav-h) + var(--nv-safe-bottom));
+    box-shadow: 0 -18px 45px rgba(0, 0, 0, 0.45);
+    animation: nv-sheet-up 0.22s ease-out;
+  }
+  .host-detail__body {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  /* Seis acoes no rodape: no celular elas quebram em duas linhas em vez de
+     sair da tela. */
+  .host-detail > footer {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px 8px;
+  }
+  .host-detail > footer > * {
+    flex: 1 1 calc(50% - 4px);
+    min-height: var(--nv-touch);
+    justify-content: center;
+  }
+
+  /* ---- ContextDrawer: bottom sheet ---- */
+  .context-drawer {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    max-width: none;
+    max-height: 85dvh;
+    display: flex;
+    flex-direction: column;
+    border-left: 0;
+    border-top: 1px solid #2b3d48;
+    border-radius: 16px 16px 0 0;
+    /* A navegacao inferior fica por cima do sheet: reserva a faixa dela para
+       o conteudo nao terminar escondido atras dos botoes. */
+    padding-bottom: calc(var(--nv-mobile-nav-h) + var(--nv-safe-bottom));
+    box-shadow: 0 -18px 45px rgba(0, 0, 0, 0.45);
+    animation: nv-sheet-up 0.22s ease-out;
+  }
+  .context-drawer .drawer-header {
+    flex: 0 0 auto;
+    height: auto;
+    min-height: 64px;
+    gap: 8px;
+    padding: 10px 12px;
+  }
+  /* O fechar precisa continuar alcancavel mesmo com identidade longa. */
+  .context-drawer .drawer-header > button {
+    flex: 0 0 auto;
+    min-width: var(--nv-touch);
+    min-height: var(--nv-touch);
+  }
+  .context-drawer .drawer-header strong,
+  .context-drawer .drawer-header h2 {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Conteudo do drawer rola sozinho, sem empurrar o cabecalho. */
+  .context-drawer > :not(.drawer-header) {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+  /* Abas horizontais: rolam dentro do proprio container. */
+  .context-drawer [role='tablist'],
+  .context-drawer .drawer-tabs {
+    display: flex;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+  .context-drawer [role='tablist']::-webkit-scrollbar,
+  .context-drawer .drawer-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .context-drawer [role='tablist'] > *,
+  .context-drawer .drawer-tabs > * {
+    flex: 0 0 auto;
+    min-height: var(--nv-touch);
+  }
+
+  /* ---- alvos tactis genericos nos paineis operacionais ---- */
+  .context-drawer button,
+  .mobile-nav__item,
+  .mobile-sheet button,
+  .mobile-sheet select {
+    min-height: var(--nv-touch);
+  }
+
+  /* Nada depende de :hover para descobrir acao essencial. */
+  .context-drawer button:focus-visible,
+  .mobile-nav__item:focus-visible,
+  .mobile-sheet button:focus-visible,
+  .topbar__mobile-menu:focus-visible {
+    outline: 2px solid var(--cyan, #45b7d9);
+    outline-offset: 2px;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Navegacao inferior (PHONE)                                          */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 720px), (max-width: 1024px) and (max-height: 500px) {
+  .mobile-nav {
+    position: fixed;
+    z-index: 30;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(var(--nv-mobile-nav-h) + var(--nv-safe-bottom));
+    padding: 0 var(--nv-safe-left) var(--nv-safe-bottom) var(--nv-safe-right);
+    align-items: stretch;
+    background: rgba(12, 19, 25, 0.98);
+    border-top: 1px solid #23313b;
+    box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.35);
+  }
+}
+
+.mobile-nav__item {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 4px 2px;
+  border: 0;
+  background: transparent;
+  color: var(--muted, #8ba3b4);
+  font: inherit;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
+.mobile-nav__item span {
+  line-height: 1;
+}
+
+.mobile-nav__item.is-active {
+  color: var(--cyan-bright, #7fd4ea);
+}
+
+/* Indicador de area ativa (nao depende so de cor). */
+.mobile-nav__item.is-active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  width: 34%;
+  height: 2px;
+  border-radius: 0 0 2px 2px;
+  background: currentColor;
+}
+
+.mobile-nav__item {
+  position: relative;
+}
+
+/* ------------------------------------------------------------------ */
+/* Sheet de acoes (PHONE)                                              */
+/* ------------------------------------------------------------------ */
+
+.mobile-sheet {
+  position: fixed;
+  z-index: 40;
+  inset: 0;
+}
+
+.mobile-sheet__scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: rgba(3, 8, 12, 0.6);
+}
+
+.mobile-sheet__panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 85dvh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px calc(14px + var(--nv-safe-bottom));
+  background: #0e161c;
+  border-top: 1px solid #2b3d48;
+  border-radius: 16px 16px 0 0;
+  animation: nv-sheet-up 0.2s ease-out;
+}
+
+.mobile-sheet__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mobile-sheet__header strong {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--cyan-bright, #7fd4ea);
+}
+
+.mobile-sheet__close {
+  flex: 0 0 auto;
+  min-height: var(--nv-touch);
+  padding: 0 14px;
+  border: 1px solid var(--line, #23313b);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.mobile-sheet__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.mobile-sheet__field > span {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--muted, #8ba3b4);
+}
+
+.mobile-sheet__field > div {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.mobile-sheet__field select {
+  width: 100%;
+  padding: 0 32px 0 12px;
+  border: 1px solid var(--line, #23313b);
+  border-radius: 10px;
+  background: #101b22;
+  color: inherit;
+  font: inherit;
+}
+
+.mobile-sheet__field svg {
+  position: absolute;
+  right: 10px;
+  pointer-events: none;
+}
+
+.mobile-sheet__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mobile-sheet__actions button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 0 12px;
+  border: 1px solid var(--line, #23313b);
+  border-radius: 10px;
+  background: #101b22;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mobile-sheet__actions button:hover,
+.mobile-sheet__actions button:focus-visible {
+  border-color: var(--cyan, #45b7d9);
+}
+
+.mobile-sheet__actions button.is-danger {
+  color: var(--amber, #d9a24b);
+}
+
+@keyframes nv-sheet-up {
+  from {
+    transform: translateY(14px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* Respeita quem pediu menos animacao no sistema. */
+@media (prefers-reduced-motion: reduce) {
+  .mobile-sheet__panel,
+  .context-drawer {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* TABLET (721 .. 1024): topbar compacta + actions sheet                */
+/* ------------------------------------------------------------------ */
+/*
+ * Sem largura para a topbar completa e sem espaco vertical que justifique a
+ * navegacao inferior: a marca e a navegacao principal ficam na topbar, a busca
+ * absorve a sobra e tudo que e secundario vai para o sheet do hamburguer.
+ */
+
+@media (min-width: 721px) and (max-width: 1024px) and (min-height: 501px) {
+  .topbar__mobile-menu {
+    display: inline-flex;
+  }
+  .mobile-sheet {
+    display: block;
+  }
+  .topbar > .primary-nav {
+    display: flex;
+  }
+  .topbar > .map-selector,
+  .topbar > .source-status,
+  .topbar > .freshness,
+  .topbar > .nv-badge,
+  .topbar > .topbar__divider,
+  .topbar > .topbar__spacer,
+  .topbar > .topbar-user {
+    display: none;
+  }
+  /* Acoes do mapa vivem no sheet; so o hamburguer e a busca permanecem. */
+  .topbar > button:not(.topbar__mobile-menu) {
+    display: none;
+  }
+  .topbar .brand > div > span {
+    display: none;
+  }
+  .topbar .brand {
+    flex: 0 0 auto;
+  }
+  .topbar .global-interface-search {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 420px;
+  }
+  .topbar .global-interface-search input {
+    width: 100%;
+    min-width: 0;
+  }
+  .context-drawer {
+    width: min(480px, calc(100vw - 16px));
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* BGP (M1.5): cards no celular, tabela no tablet/desktop               */
+/* ------------------------------------------------------------------ */
+
+/*
+ * A tabela de peers tem oito colunas e `table-layout: fixed`. No celular ela
+ * espreme em vez de rolar, então a lista de cards assume — dentro da mesma
+ * seção de equipamento, para o agrupamento peer -> equipamento continuar
+ * existindo. Do tablet para cima nada muda.
+ */
+
+.bgp-cards {
+  display: none;
+}
+
+@media (max-width: 720px), (max-width: 1024px) and (max-height: 500px) {
+  .bgp-shell {
+    padding: 12px 12px 20px;
+  }
+
+  /* ---- filtros: busca inteira, selects e toggles com 44px ---- */
+  .bgp-filters {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 10px;
+    border-bottom: 1px solid #21323c;
+  }
+  .bgp-filters .toggle-option {
+    flex: 1 1 100%;
+    min-height: var(--nv-touch);
+  }
+  .bgp-filters .toggle-option button {
+    min-height: var(--nv-touch);
+  }
+  .bgp-filters .bgp-select {
+    flex: 1 1 42%;
+    min-height: var(--nv-touch);
+  }
+  .bgp-filters .bgp-select select {
+    min-height: var(--nv-touch);
+  }
+  .bgp-filters .nv-search {
+    flex: 1 1 100%;
+    min-width: 0;
+    height: var(--nv-touch);
+    min-height: var(--nv-touch);
+  }
+  .bgp-filters .nv-search input {
+    min-height: 0;
+    height: 100%;
+  }
+
+  /* ---- summary: 2 colunas, sem comprimir tudo numa linha ---- */
+  .bgp-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .bgp-summary__card {
+    padding: 10px 12px;
+  }
+  .bgp-summary__card strong {
+    font-size: 18px;
+  }
+
+  /* ---- avisos que precisam quebrar linha, nunca cortar ---- */
+  .bgp-notice {
+    flex-wrap: wrap;
+    gap: 6px;
+    line-height: 1.45;
+  }
+  .bgp-notice__list li {
+    display: block;
+    padding: 4px 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* ---- alertas do módulo descem para baixo da lista ---- */
+  .bgp-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* ---- aguardando primeira coleta vira card/linha empilhada ---- */
+  .bgp-onboarding__row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+  .bgp-onboarding__row button {
+    min-height: var(--nv-touch);
+  }
+
+  /* ---- tabela fora de cena; cards no lugar ---- */
+  .bgp-table {
+    display: none;
+  }
+  .bgp-table-wrap {
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .bgp-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 0;
+    padding: 8px 0 0;
+    list-style: none;
+  }
+  .bgp-device {
+    border: 1px solid #21323c;
+    border-radius: 10px;
+    overflow: hidden;
+    background: rgba(12, 21, 27, 0.92);
+  }
+  .bgp-device__header {
+    height: auto;
+    min-height: var(--nv-touch);
+    flex-wrap: wrap;
+    gap: 6px 8px;
+    padding: 8px 10px;
+  }
+  .bgp-device__header strong {
+    font-size: 11px;
+    overflow-wrap: anywhere;
+  }
+  .bgp-device__header em {
+    font-size: 8px;
+  }
+  .bgp-device__refresh {
+    min-height: var(--nv-touch);
+    padding: 0 10px;
+  }
+
+  /* ---- card do peer ---- */
+  .bgp-card {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #22343e;
+    border-radius: 8px;
+    background: #0d171d;
+    color: var(--text, #dfe9f0);
+    text-align: left;
+    cursor: pointer;
+  }
+  .bgp-card.is-down {
+    border-color: #7a3030;
+    background: linear-gradient(180deg, rgba(120, 32, 32, 0.28), rgba(13, 23, 29, 0.95));
+  }
+  .bgp-card__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .bgp-card__identity {
+    min-width: 0;
+  }
+  .bgp-card__identity strong {
+    display: block;
+    font: 700 13px var(--font-mono);
+    overflow-wrap: anywhere;
+  }
+  .bgp-card__identity small {
+    display: block;
+    margin-top: 2px;
+    color: #8ba3af;
+    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bgp-card__top .bgp-state {
+    flex: 0 0 auto;
+    min-height: 22px;
+    padding: 0 8px;
+  }
+  .bgp-card__device {
+    color: #5f7782;
+    font: 600 8px var(--font-mono);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bgp-card__meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 10px;
+    color: #9db3bc;
+  }
+  .bgp-card__asn {
+    font: 600 10px var(--font-mono);
+  }
+  .bgp-card__state-tech {
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(255, 138, 138, 0.16);
+    color: #ff9d9d;
+    font: 650 8px var(--font-mono);
+    letter-spacing: 0.08em;
+  }
+  .bgp-card__metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .bgp-card__metric {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.03);
+    min-width: 0;
+  }
+  .bgp-card__metric em {
+    color: #5f7782;
+    font: 650 7px var(--font-mono);
+    letter-spacing: 0.08em;
+    font-style: normal;
+    text-transform: uppercase;
+  }
+  .bgp-card__metric strong {
+    font: 600 12px var(--font-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .bgp-card__metric--rx strong {
+    color: #70c3d5;
+  }
+  .bgp-card__metric--tx strong {
+    color: #b39ddb;
+  }
+  .bgp-card__metric--empty strong {
+    color: #536a75;
+  }
+  .bgp-card__footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding-right: 22px;
+    color: #8ba3af;
+    font: 600 9px var(--font-mono);
+  }
+  .bgp-card__uptime.is-down {
+    color: #ff8a8a;
+    font-weight: 700;
+  }
+  .bgp-card__flaps {
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(179, 157, 219, 0.16);
+    color: #c9b6e8;
+  }
+  .bgp-card__flaps.is-many {
+    background: rgba(255, 138, 138, 0.16);
+    color: #ff9d9d;
+  }
+  .bgp-card__chevron {
+    position: absolute;
+    right: 10px;
+    bottom: 12px;
+    color: #536a75;
+  }
+
+  /* ---- detalhe do peer: bottom sheet com scroll interno ---- */
+  .panel-overlay:has(.bgp-detail) {
+    align-items: end;
+    padding: 0;
+  }
+  .bgp-detail {
+    width: 100%;
+    max-width: none;
+    max-height: 88dvh;
+    border-radius: 16px 16px 0 0;
+    border-left: 0;
+    border-bottom: 0;
+    padding-bottom: calc(var(--nv-mobile-nav-h) + var(--nv-safe-bottom));
+    animation: nv-sheet-up 0.22s ease-out;
+  }
+  .bgp-detail__body {
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    /* Sem isso o grid espreme a barra de abas (o item de altura automática
+       pode colapsar para 1px quando o conteúdo seguinte é alto). */
+    align-content: start;
+  }
+  /* Abas técnicas: rolagem horizontal controlada dentro do próprio bloco. */
+  .bgp-detail__tabs {
+    min-height: calc(var(--nv-touch) + 4px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    flex-wrap: nowrap;
+    scrollbar-width: none;
+  }
+  .bgp-detail__tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .bgp-detail__tabs > * {
+    flex: 0 0 auto;
+    min-height: var(--nv-touch);
+  }
+  .bgp-detail__hero {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .bgp-detail__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* Rotas anunciadas e tabelas técnicas rolam dentro do container. */
+  .bgp-detail__body table,
+  .bgp-detail__body .bgp-advertised-routes__table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* HOSTS (M1.3): tabela no tablet/desktop, cards no celular             */
+/* ------------------------------------------------------------------ */
+/*
+ * A tabela de hosts tem 9 colunas com `table-layout: fixed`: no celular ela
+ * espreme o conteudo em vez de rolar. Por isso o celular usa uma lista de
+ * cards com o que decide alguma coisa; a tabela continua intacta do tablet
+ * para cima.
+ */
+
+.hosts-cards {
+  display: none;
+}
+
+@media (max-width: 720px), (max-width: 1024px) and (max-height: 500px) {
+  .hosts-shell {
+    height: calc(
+      100dvh - var(--nv-mobile-topbar-h) - var(--nv-mobile-nav-h) - var(--nv-safe-top) -
+        var(--nv-safe-bottom)
+    );
+    padding: 12px 12px 20px;
+  }
+
+  .hosts-filters {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 10px;
+    border-bottom: 1px solid #21323c;
+  }
+  .hosts-filters .nv-search {
+    flex: 1 1 100%;
+    min-width: 0;
+    height: var(--nv-touch);
+    min-height: var(--nv-touch);
+  }
+  .hosts-filters .nv-search input {
+    min-height: 0;
+    height: 100%;
+  }
+  .hosts-filters select,
+  .hosts-filters .sort-direction {
+    flex: 1 1 132px;
+    min-height: var(--nv-touch);
+  }
+  .hosts-status-filter {
+    flex: 1 1 100%;
+    max-width: 100%;
+    min-height: var(--nv-touch);
+    overflow-x: auto;
+  }
+  .hosts-status-filter button {
+    min-height: var(--nv-touch);
+    white-space: nowrap;
+  }
+  .hosts-count {
+    flex: 0 0 auto;
+  }
+
+  .hosts-cards {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 1540px;
+    margin: 0 auto;
+    padding: 0 0 8px;
+    list-style: none;
+  }
+  .hosts-cards > li {
+    margin: 0;
+  }
+
+  .hosts-card {
+    position: relative;
+    display: block;
+    width: 100%;
+    padding: 12px 34px 12px 12px;
+    border: 1px solid #21323c;
+    border-radius: 10px;
+    background: rgba(12, 21, 27, 0.92);
+    color: var(--text, #dfe9f0);
+    text-align: left;
+    cursor: pointer;
+  }
+  .hosts-card.is-selected {
+    border-color: #3f7f93;
+    box-shadow: inset 0 0 0 1px rgba(69, 183, 217, 0.35);
+  }
+  .hosts-card__top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .hosts-card__top strong {
+    min-width: 0;
+    font: 700 13px var(--font-mono);
+    overflow-wrap: anywhere;
+  }
+  .hosts-card__name {
+    display: block;
+    margin-top: 2px;
+    color: #8ba3af;
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hosts-card__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 10px;
+    margin-top: 10px;
+    font-size: 11px;
+    color: #c6d6de;
+  }
+  .hosts-card__grid > span {
+    display: block;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hosts-card__label {
+    display: block;
+    color: #536a75;
+    font: 650 8px var(--font-mono);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .hosts-card__chevron {
+    position: absolute;
+    top: 50%;
+    right: 10px;
+    transform: translateY(-50%);
+    color: #536a75;
+  }
+
+  /* A tabela sai de cena; o wrap continua servindo de moldura para o
+     carregando/vazio que o componente ja renderiza. */
+  .hosts-table {
+    display: none;
+  }
+  .hosts-table-wrap {
+    border-radius: 10px;
+  }
+}
+/* ------------------------------------------------------------------ */
+/* DESKTOP DENSO (1025 .. 1440): icones + menu "Mais"                   */
+/* ------------------------------------------------------------------ */
+/*
+ * Abaixo de ~1900px a topbar completa nao cabe (medido: 1908px de conteudo em
+ * 1366px). Nesta faixa a navegacao principal continua visivel, as acoes
+ * secundarias viram icone e as menos usadas entram num unico menu "Mais" — o
+ * operador nunca perde controle por corte silencioso.
+ */
+
+@media (min-width: 1025px) and (max-width: 1440px) {
+  .topbar {
+    gap: 8px;
+  }
+  .topbar > .source-status,
+  .topbar > .freshness,
+  .topbar > .topbar-user,
+  .topbar > .nv-badge {
+    display: none;
+  }
+  /* A busca cede largura antes de qualquer acao sair da tela. */
+  .topbar .global-interface-search {
+    flex: 1 1 160px;
+    min-width: 96px;
+    max-width: 240px;
+  }
+  .topbar .global-interface-search input {
+    width: 100%;
+    min-width: 0;
+  }
+  .topbar .map-selector {
+    flex: 0 1 auto;
+    min-width: 0;
+  }
+  .topbar .map-selector select {
+    max-width: 170px;
+    text-overflow: ellipsis;
+  }
+}
+
+/* Menu "Mais": um popover so, ancorado no proprio botao. */
+.topbar__more {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+}
+
+.topbar__more-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  min-width: 210px;
+  padding: 6px;
+  border: 1px solid var(--line, #23313b);
+  border-radius: 12px;
+  background: #0f1a21;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+}
+
+.topbar__more-menu button {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text, #dfe9f0);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.topbar__more-menu button:hover,
+.topbar__more-menu button:focus-visible {
+  background: rgba(69, 183, 217, 0.12);
+}
+
+/* ------------------------------------------------------------------ */
+/* DESKTOP MEDIO (1441 .. 1899): rotulos de volta, sem coluna de status */
+/* ------------------------------------------------------------------ */
+
+@media (min-width: 1441px) and (max-width: 1899px) {
+  .topbar {
+    gap: 8px;
+  }
+  .topbar > .source-status,
+  .topbar > .freshness,
+  .topbar > .topbar-user {
+    display: none;
+  }
+  .topbar .global-interface-search {
+    flex: 1 1 180px;
+    min-width: 120px;
+    max-width: 280px;
+  }
+}
+
+/* Em nenhuma faixa um controle pode ser cortado: quem encolhe e a busca. */
+@media (min-width: 721px) and (min-height: 501px) {
+  .topbar {
+    flex-wrap: nowrap;
+  }
+  .topbar > button,
+  .topbar > .topbar__more,
+  .topbar .brand,
+  .topbar .primary-nav,
+  .topbar .source-status {
+    flex: 0 0 auto;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* FISICO (M1.7): navegacao em sheet, palco full width, inspetor sheet  */
+/* ------------------------------------------------------------------ */
+/*
+ * O layout fisico e uma grade de tres colunas (sidebar 244 / palco / inspetor
+ * 340). No celular isso nao cabe: a sidebar vira um sheet de navegacao, o
+ * palco passa a ocupar a largura toda e o inspetor vira bottom sheet. O rack
+ * continua com a largura tecnica real — quem rola e o palco, nunca o
+ * documento.
+ */
+
+.physical-nav-trigger,
+.physical-legend-trigger,
+.physical-sheet {
+  display: none;
+}
+
+@media (max-width: 720px), (max-width: 1024px) and (max-height: 500px) {
+  .physical-shell {
+    position: relative;
+    /* Topbar compacta + navegacao inferior: o modulo rola por dentro. */
+    height: calc(
+      100dvh - var(--nv-mobile-topbar-h) - var(--nv-mobile-nav-h) - var(--nv-safe-top) -
+        var(--nv-safe-bottom)
+    );
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 12px 12px 16px;
+  }
+  .physical-shell .nv-module-header {
+    flex: 0 0 auto;
+  }
+
+  /* ---- cabecalho: identidade, meta e acoes em linhas separadas ---- */
+  .physical-shell .nv-module-header__row {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .physical-shell .nv-module-header__identity {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+  .physical-shell .nv-module-header__actions {
+    flex: 1 1 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    gap: 8px;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+  .physical-shell .nv-module-header__actions > * {
+    flex: 0 0 auto;
+  }
+  /* Os dois gatilhos dividem a primeira linha; os modos descem para a 2a. */
+  .physical-nav-trigger,
+  .physical-legend-trigger {
+    flex: 1 1 45%;
+  }
+
+  .physical-nav-trigger,
+  .physical-legend-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: var(--nv-touch);
+    max-width: 100%;
+    padding: 0 12px;
+    border: 1px solid #2a3d47;
+    border-radius: 8px;
+    background: #101b22;
+    color: #c6d6de;
+    font: 600 11px var(--font-mono);
+    cursor: pointer;
+  }
+  .physical-nav-trigger span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* A legenda deixa de ocupar linha fixa: vira popover do botao Legenda. */
+  .physical-shell .nv-module-header__toolbar {
+    display: none;
+  }
+  .physical-shell.is-legend-open .nv-module-header__toolbar {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 45;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    max-width: calc(100% - 16px);
+    padding: 10px;
+    border: 1px solid #2a3d47;
+    border-radius: 10px;
+    background: #101920;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+  }
+
+  /* ---- palco: largura total, sidebar fora do fluxo ---- */
+  .physical-layout {
+    flex: 0 0 auto;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .physical-sidebar {
+    display: none;
+  }
+  .physical-stage {
+    /* Altura definida: quem rola é o canvas dentro do palco, não o módulo. */
+    height: 52dvh;
+    min-height: 320px;
+    overflow: hidden;
+  }
+  .physical-canvas-scroll {
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  /* Nada de `transform: scale()`: o rack mantem a largura tecnica e rola. */
+  .physical-canvas {
+    margin: 16px auto;
+  }
+
+  /* ---- inspetor: bottom sheet ---- */
+  .physical-inspector {
+    position: fixed;
+    z-index: 60;
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    max-height: 88dvh;
+    border-left: 0;
+    border-top: 1px solid #22313b;
+    border-radius: 16px 16px 0 0;
+    padding-bottom: calc(var(--nv-mobile-nav-h) + var(--nv-safe-bottom));
+    box-shadow: 0 -18px 45px rgba(0, 0, 0, 0.45);
+    animation: nv-sheet-up 0.22s ease-out;
+  }
+  .physical-inspector__header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    flex: 0 0 auto;
+    gap: 10px;
+    background: #0d151b;
+  }
+  .physical-inspector__header > :first-child {
+    min-width: 0;
+  }
+  .physical-inspector__header h2,
+  .physical-inspector__header strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .physical-inspector__header button {
+    flex: 0 0 auto;
+    min-width: var(--nv-touch);
+    min-height: var(--nv-touch);
+  }
+  .physical-inspector > section,
+  .physical-inspector__body {
+    min-height: 0;
+  }
+  /* Caminho de porta: lista vertical em vez de faixa horizontal. */
+  .physical-path {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  /* ---- formularios e modais ---- */
+  .physical-modal {
+    padding: 0;
+  }
+  .physical-modal__panel {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    padding-bottom: calc(var(--nv-mobile-nav-h) + var(--nv-safe-bottom));
+  }
+  .physical-modal__panel > header {
+    flex: 0 0 auto;
+    padding-top: calc(12px + var(--nv-safe-top));
+  }
+  .physical-modal__panel > header button {
+    min-width: var(--nv-touch);
+    min-height: var(--nv-touch);
+  }
+  .physical-modal__panel > *:not(header) {
+    min-height: 0;
+    overflow-y: auto;
+  }
+  .physical-form {
+    gap: 12px;
+  }
+  .physical-form footer {
+    position: sticky;
+    bottom: 0;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding-top: 8px;
+    background: #101920;
+  }
+  .physical-form footer > * {
+    flex: 1 1 140px;
+    min-height: var(--nv-touch);
+    justify-content: center;
+  }
+  .physical-field input,
+  .physical-field select,
+  .physical-sidebar select {
+    min-height: var(--nv-touch);
+    width: 100%;
+  }
+
+  /* ---- alvos de toque ---- */
+  .physical-mode button,
+  .physical-sidebar__heading button,
+  .physical-search button,
+  .physical-inspector button {
+    min-height: var(--nv-touch);
+  }
+  .physical-sidebar__heading button {
+    min-width: var(--nv-touch);
+  }
+
+  /* ---- avisos: quebram linha, nunca cortam ---- */
+  .physical-notice {
+    flex-wrap: wrap;
+    gap: 6px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+  .physical-notice__details ul {
+    padding-left: 16px;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Sheet de navegacao (POP / racks / busca)                             */
+/* ------------------------------------------------------------------ */
+
+@media (max-width: 720px), (max-width: 1024px) and (max-height: 500px) {
+  .physical-sheet {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: block;
+  }
+  .physical-sheet__scrim {
+    position: absolute;
+    inset: 0;
+    border: 0;
+    background: rgba(2, 6, 9, 0.66);
+    backdrop-filter: blur(2px);
+  }
+  .physical-sheet__panel {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    display: flex;
+    flex-direction: column;
+    max-height: 88dvh;
+    border-top: 1px solid #22313b;
+    border-radius: 16px 16px 0 0;
+    background: #0d151b;
+    box-shadow: 0 -18px 45px rgba(0, 0, 0, 0.5);
+    padding-bottom: calc(var(--nv-mobile-nav-h) + var(--nv-safe-bottom));
+    animation: nv-sheet-up 0.22s ease-out;
+  }
+  .physical-sheet__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex: 0 0 auto;
+    padding: 10px 12px;
+    border-bottom: 1px solid #22313b;
+  }
+  .physical-sheet__header strong {
+    color: #c6d6de;
+    font: 650 10px var(--font-mono);
+    letter-spacing: 0.08em;
+  }
+  .physical-sheet__close {
+    min-height: var(--nv-touch);
+    padding: 0 14px;
+    border: 1px solid #2a3d47;
+    border-radius: 10px;
+    background: transparent;
+    color: #c6d6de;
+    font: 600 11px var(--font-mono);
+    cursor: pointer;
+  }
+  .physical-sheet__body {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .physical-sheet__body .physical-sidebar__racks button {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-height: var(--nv-touch);
+    text-align: left;
+  }
+  /* Busca do módulo: `label` global empilha, aqui é uma linha só. */
+  .physical-sheet__body .physical-search label,
+  .physical-sidebar .physical-search label {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    min-height: var(--nv-touch);
+    padding: 0 10px;
+    border: 1px solid #2a3d47;
+    border-radius: 8px;
+    background: #0c141a;
+  }
+  .physical-sheet__body .physical-search label input,
+  .physical-sidebar .physical-search label input {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text, #dfe9f0);
+  }
+  .physical-sheet__body .physical-search__results button {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    width: 100%;
+    min-height: var(--nv-touch);
+    text-align: left;
+  }
+}

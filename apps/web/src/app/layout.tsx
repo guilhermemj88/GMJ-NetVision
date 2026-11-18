@@ -5,6 +5,8 @@ import './globals.css';
 import './physical-preview.css';
 import './responsive-content.css';
 import './responsive.css';
+// Camada mobile (M1) por ultimo: aditiva sobre a base responsiva do RC13.
+import './mobile-responsive.css';
 import { Providers } from './providers';
 import { PreviewBanner } from '@/components/preview-banner';
 import { isPreviewMode } from '@/lib/preview-mode';
@@ -16,11 +18,20 @@ const mono = IBM_Plex_Mono({
   variable: '--font-mono',
 });
 
-export const viewport: Viewport = { width: 'device-width', initialScale: 1, viewportFit: 'cover' };
-
 export const metadata: Metadata = {
   title: 'GMJ NetVision',
   description: 'Topologia de rede, descoberta e observabilidade em um único mapa.',
+};
+
+/**
+ * `viewportFit: 'cover'` habilita `env(safe-area-inset-*)` no iPhone com
+ * notch/home indicator; sem ele o WebKit reporta as insets como 0.
+ */
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+  themeColor: '#091016',
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

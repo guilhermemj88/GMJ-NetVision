@@ -10,6 +10,7 @@ import {
   Globe,
   LogOut,
   MapPinned,
+  Menu,
   MonitorPlay,
   Network,
   Server,
@@ -55,6 +56,8 @@ export function TopBar() {
   const view = useMapStore((state) => state.view);
   const setView = useMapStore((state) => state.setView);
   const { ref, singleRow } = useTopbarLayout(view);
+  const setMobileMenuOpen = useMapStore((state) => state.setMobileMenuOpen);
+
   const { user, logout } = useAuth();
   const authRequired = Boolean(user);
   // Mesma leitura da Central (cache compartilhado): nada de polling paralelo.
@@ -78,6 +81,8 @@ export function TopBar() {
   // pode reabrir "inteligente" sem escolha explícita do operador).
   useDiscardLegacyPreviewAnimation();
 
+
+
   return (
     <header
       ref={ref}
@@ -85,6 +90,18 @@ export function TopBar() {
       data-view={view}
     >
       <div className="topbar__primary">
+        {/**
+         * Hamburger do shell mobile (M1): abre a MobileActionsSheet. No
+         * desktop o CSS esconde o botao; a topbar completa continua igual.
+         */}
+        <button
+          type="button"
+          className="topbar__mobile-menu"
+          aria-label="Abrir menu de ações"
+          onClick={() => setMobileMenuOpen(true)}
+        >
+          <Menu size={20} aria-hidden="true" />
+        </button>
         <div className="brand">
           <span className="brand__mark">
             <span />
