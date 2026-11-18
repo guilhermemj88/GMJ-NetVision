@@ -185,6 +185,20 @@ enum PublicViewType {
 
 enum MplsSource {
   SNMP
+  SSH
+}
+
+/// Resultado explicito da descoberta MPLS (SNMP + SSH). MIB vazia nunca vira
+/// ausencia de servico: sem leitura concluida o estado e INCOMPLETE.
+enum MplsDiscoveryState {
+  UNKNOWN
+  FOUND_UP
+  FOUND_DOWN
+  FOUND_MIXED
+  NOT_FOUND
+  INCOMPLETE
+  UNSUPPORTED
+  CONFLICT
 }
 
 enum MplsStatus {
@@ -841,6 +855,13 @@ model MplsDeviceState {
   acSupported   Boolean    @default(false)
   pwSupported   Boolean    @default(false)
   source        MplsSource @default(SNMP)
+  discoveryState MplsDiscoveryState @default(UNKNOWN)
+  /// Fontes que responderam na ultima coleta (SNMP, SSH).
+  sources       String[]   @default([])
+  /// Sessoes LDP observadas (transporte MPLS), com a leitura integral.
+  ldpPeers      Json?
+  /// Divergencias SNMP x SSH preservadas como evidencia.
+  conflicts     Json?
   lastPollingAt DateTime?
   lastSuccessAt DateTime?
   lastFailureAt DateTime?
@@ -864,6 +885,8 @@ model MplsVsi {
   vcType            String                   @default("UNKNOWN")
   tunnelPolicy      String?
   description       String?
+  /// Descoberta de membros observada na CLI (STATIC/DYNAMIC).
+  memberDiscovery   String?
   vlanId            Int?
   localInterfaceId  String?
   source            MplsSource               @default(SNMP)

@@ -96,6 +96,7 @@ import { DemoOperationalOccurrenceRepository } from './infrastructure/alarms/dem
 import { PrismaOperationalOccurrenceRepository } from './infrastructure/alarms/prisma-operational-occurrence-repository';
 import { registerAlarmRoutes } from './alarm-routes';
 import { HuaweiVplsSnmpCollector } from './infrastructure/mpls/huawei-vpls-snmp';
+import { HuaweiVsiSshService } from './infrastructure/mpls/huawei-vsi-ssh';
 import { MplsPollingService } from './infrastructure/mpls/mpls-polling-service';
 import { PrismaMplsRepository } from './infrastructure/mpls/prisma-mpls-repository';
 import { PppPollingService } from './infrastructure/ppp/ppp-polling-service';
@@ -481,6 +482,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
   const mplsPolling = new MplsPollingService(
     new HuaweiVplsSnmpCollector(new SnmpClientImpl(3000, 1)),
     mplsRepository,
+    new HuaweiVsiSshService(hosts),
   );
   const pppRepository = config.DEMO_MODE ? null : new PrismaPppRepository(prismaClient);
   const pppPolling = pppRepository

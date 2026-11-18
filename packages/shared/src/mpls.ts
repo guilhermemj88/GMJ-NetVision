@@ -1,4 +1,43 @@
-export type MplsSource = 'SNMP';
+export type MplsSource = 'SNMP' | 'SSH';
+
+/**
+ * Resultado de uma descoberta MPLS, sempre explícito sobre o que foi (e o que
+ * não foi) comprovado. `NOT_FOUND` exige que alguma fonte tenha concluído a
+ * leitura; MIB vazia sozinha nunca vira ausência de serviço.
+ */
+export type MplsDiscoveryState =
+  | 'UNKNOWN'
+  | 'FOUND_UP'
+  | 'FOUND_DOWN'
+  | 'FOUND_MIXED'
+  | 'NOT_FOUND'
+  | 'INCOMPLETE'
+  | 'UNSUPPORTED'
+  | 'CONFLICT';
+
+export type MplsLdpSessionState = 'UP' | 'DOWN' | 'UNKNOWN';
+
+/** Sessão LDP: transporte MPLS, distinta do serviço VSI. */
+export interface MplsLdpPeer {
+  peerLdpId: string;
+  state: MplsLdpSessionState;
+  /** Texto exato devolvido pelo equipamento (ex.: `Operational`). */
+  statusText: string | null;
+  localLdpId: string | null;
+  role: string | null;
+  /** Nome do remote-peer LDP, quando o VRP o expõe. */
+  name: string | null;
+  sessionAgeSeconds: number | null;
+  source: MplsSource;
+}
+
+/** Divergência entre fontes, com as duas leituras preservadas. */
+export interface MplsConflict {
+  vsiName: string;
+  field: string;
+  snmpValue: string;
+  sshValue: string;
+}
 
 export type MplsStatus = 'UP' | 'DOWN' | 'DEGRADED' | 'ADMIN_DOWN' | 'UNKNOWN';
 export type MplsVsiOperationalStatus = 'UP' | 'DOWN' | 'ADMIN_DOWN' | 'UNKNOWN';
@@ -83,6 +122,8 @@ export interface MplsVsi {
   vcType: string;
   tunnelPolicy: string | null;
   description: string | null;
+  /** Descoberta de membros da VSI: `STATIC`, `DYNAMIC` ou `UNKNOWN`. */
+  memberDiscovery: string | null;
   vlanId: number | null;
   localInterfaceId: string | null;
   source: MplsSource;
@@ -120,8 +161,13 @@ export interface MplsStateEvent {
 
 export interface MplsHostOverview {
   supported: boolean;
+  discoveryState: MplsDiscoveryState;
   capabilities: MplsCapabilities;
   source: MplsSource;
+  /** Fontes que responderam nesta coleta (SNMP, SSH ou ambas). */
+  sources: MplsSource[];
+  ldpPeers: MplsLdpPeer[];
+  conflicts: MplsConflict[];
   lastPollingAt: string | null;
   lastSuccessAt: string | null;
   lastErrorSafe: string | null;

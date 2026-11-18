@@ -35,8 +35,12 @@ function pw(remoteIp: string, pwId: number, status: MplsPw['status']): MplsPw {
 const peers = ['10.100.101.0', '10.100.101.3', '10.100.101.5', '10.100.101.11', '10.100.101.255'];
 const overview: MplsHostOverview = {
   supported: true,
+  discoveryState: 'FOUND_MIXED',
   capabilities: { vsi: true, ac: false, pw: true },
   source: 'SNMP',
+  sources: ['SNMP'],
+  ldpPeers: [],
+  conflicts: [],
   lastPollingAt: '2026-08-25T12:00:00.000Z',
   lastSuccessAt: '2026-08-25T12:00:00.000Z',
   lastErrorSafe: null,
@@ -66,6 +70,7 @@ const overview: MplsHostOverview = {
       vcType: 'UNKNOWN',
       tunnelPolicy: 'LDP',
       description: 'Gestão',
+      memberDiscovery: null,
       vlanId: null,
       localInterfaceId: null,
       source: 'SNMP',
@@ -100,6 +105,7 @@ describe('MplsContent', () => {
     const failedOverview: MplsHostOverview = {
       ...overview,
       supported: false,
+      discoveryState: 'UNKNOWN',
       lastErrorSafe: 'SNMP timeout',
       vsis: [],
     };
@@ -109,7 +115,12 @@ describe('MplsContent', () => {
 
     const unsupportedHtml = renderToStaticMarkup(
       <MplsUnavailableState
-        overview={{ ...failedOverview, lastErrorSafe: null, lastSuccessAt: overview.lastSuccessAt }}
+        overview={{
+          ...failedOverview,
+          discoveryState: 'UNSUPPORTED',
+          lastErrorSafe: null,
+          lastSuccessAt: overview.lastSuccessAt,
+        }}
       />,
     );
     expect(unsupportedHtml).toContain('MPLS não disponível');
@@ -117,11 +128,116 @@ describe('MplsContent', () => {
 
     const pendingHtml = renderToStaticMarkup(
       <MplsUnavailableState
-        overview={{ ...failedOverview, lastErrorSafe: null, lastSuccessAt: null }}
+        overview={{
+          ...failedOverview,
+          discoveryState: 'UNKNOWN',
+          lastErrorSafe: null,
+          lastSuccessAt: null,
+        }}
       />,
     );
     expect(pendingHtml).toContain('MPLS ainda não coletado');
     expect(pendingHtml).not.toContain('MPLS não disponível');
+  });
+
+  it('never claims MPLS absence when the discovery was merely inconclusive', () => {
+    const inconclusive: MplsHostOverview = {
+      ...overview,
+      supported: false,
+      discoveryState: 'INCOMPLETE',
+      sources: ['SNMP'],
+      lastErrorSafe: null,
+      lastSuccessAt: overview.lastSuccessAt,
+      vsis: [],
+    };
+    const html = renderToStaticMarkup(<MplsUnavailableState overview={inconclusive} />);
+
+    expect(html).toContain('Coleta MPLS incompleta');
+    expect(html).toContain('não comprova ausência de VSI');
+    expect(html).not.toContain('MPLS não disponível');
+    expect(html).not.toContain('HUAWEI-VPLS-EXT-MIB');
+  });
+
+  it('reports an empty but conclusive read as no VSI configured', () => {
+    const empty: MplsHostOverview = {
+      ...overview,
+      supported: false,
+      discoveryState: 'NOT_FOUND',
+      sources: ['SNMP', 'SSH'],
+      lastErrorSafe: null,
+      vsis: [],
+    };
+    const html = renderToStaticMarkup(<MplsUnavailableState overview={empty} />);
+
+    expect(html).toContain('Nenhuma VSI configurada');
+    expect(html).toContain('Fontes: SNMP + SSH');
+    expect(html).not.toContain('MPLS não disponível');
+  });
+
+  it('separates LDP transport from the VSI service and shows the source', () => {
+    const html = renderToStaticMarkup(
+      <MplsContent
+        overview={{
+          ...overview,
+          sources: ['SNMP', 'SSH'],
+          ldpPeers: [
+            {
+              peerLdpId: '10.20.30.40:0',
+              state: 'UP',
+              statusText: 'Operational',
+              localLdpId: '10.20.30.41:0',
+              role: 'Passive',
+              name: 'rr-sba',
+              sessionAgeSeconds: 3661,
+              source: 'SSH',
+            },
+            {
+              peerLdpId: '10.20.30.50:0',
+              state: 'DOWN',
+              statusText: 'OpenSent',
+              localLdpId: null,
+              role: 'Active',
+              name: null,
+              sessionAgeSeconds: null,
+              source: 'SSH',
+            },
+          ],
+        }}
+        events={[]}
+      />,
+    );
+
+    expect(html).toContain('Transporte MPLS · sessões LDP');
+    expect(html).toContain('10.20.30.40:0');
+    expect(html).toContain('Operational');
+    expect(html).toContain('local 10.20.30.41:0');
+    expect(html).toContain('OpenSent');
+    expect(html).toContain('Fonte: SSH');
+    expect(html).toContain('mpls-source-tag');
+  });
+
+  it('shows both evidences when SNMP and SSH disagree', () => {
+    const html = renderToStaticMarkup(
+      <MplsContent
+        overview={{
+          ...overview,
+          discoveryState: 'CONFLICT',
+          sources: ['SNMP', 'SSH'],
+          conflicts: [
+            {
+              vsiName: 'GERENCIA',
+              field: 'status',
+              snmpValue: 'DOWN',
+              sshValue: 'UP',
+            },
+          ],
+        }}
+        events={[]}
+      />,
+    );
+
+    expect(html).toContain('Informações conflitantes entre SNMP e SSH');
+    expect(html).toContain('SNMP DOWN × SSH UP');
   });
 
   it('warns about a partial failure while keeping supported MPLS data visible', () => {
@@ -185,7 +301,7 @@ describe('MplsContent', () => {
     expect(html).toContain('Vlanif99');
     expect(html).toContain('99-GERENCIA');
     expect(html).toContain('ifIndex 43');
-    expect(html).toContain('N/D — não disponível via SNMP');
+    expect(html).toContain('N/D — não disponível nas fontes consultadas');
     expect(html).toContain('PW não disponível via SNMP neste equipamento');
     expect(html).not.toContain('0 / 0 UP');
   });
