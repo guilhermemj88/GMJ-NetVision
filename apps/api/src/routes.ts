@@ -1714,11 +1714,33 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     try {
       const preview = await topologyPreview.discover(mapId, { deepValidation });
       await physicalService.recordLldpPreview(preview);
-      const report = await topologyAutoApply.apply(mapId, preview, {
-        confirmed,
-        probable,
-        maxLinks,
-      });
+      // Transito = peer BGP com muitas rotas recebidas. A leitura e tolerante a
+      // falha: sem BGP coletado a descoberta LLDP continua valendo.
+      type PeerRow = { deviceId?: string; peerAddress?: string; receivedPrefixes?: number | null };
+      let bgpPeers: PeerRow[] = [];
+      try {
+        const listed = await (bgpRepository as unknown as {
+          listDashboardPeers: (input: unknown) => Promise<PeerRow[]>;
+        }).listDashboardPeers({});
+        bgpPeers = Array.isArray(listed) ? listed : [];
+      } catch {
+        bgpPeers = [];
+      }
+      const transitPeers = bgpPeers.flatMap((peer) =>
+        peer.deviceId && peer.peerAddress && peer.receivedPrefixes
+          ? [{
+              deviceId: peer.deviceId,
+              peerAddress: peer.peerAddress,
+              receivedPrefixes: Number(peer.receivedPrefixes),
+            }]
+          : [],
+      );
+      const report = await topologyAutoApply.apply(
+        mapId,
+        preview,
+        { confirmed, probable, maxLinks },
+        { peers: transitPeers, minPrefixes: config.BGP_TRANSIT_MIN_PREFIXES },
+      );
       return { preview, report };
     } catch (error) {
       return reply.code(404).send({
