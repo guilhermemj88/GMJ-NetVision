@@ -338,4 +338,95 @@ Prefixes current: 1099912`,
 
     expect(factory).toHaveBeenCalledWith(expect.objectContaining({ contextCommand: null }));
   });
+
+  it('completes AS and description from the running configuration', async () => {
+    const execute = simulator({
+      'display current-configuration configuration bgp': `
+#
+bgp 268568
+ router-id 45.163.144.1
+ peer 172.16.16.7 as-number 28306
+ peer 172.16.16.7 description VOLUY-MH
+ peer 172.16.16.7 ebgp-max-hop 4
+#
+return
+`,
+      'display bgp peer': '172.16.16.7 4 - 10 10 0 18d04h Established 123456',
+    });
+
+    const result = await new BgpDiscoveryService(sshWith(execute), bgpRepository()).discover(host());
+
+    expect(result.peers[0]).toMatchObject({
+      peerAddress: '172.16.16.7',
+      remoteAs: 28306n,
+      bgpPeerDescription: 'VOLUY-MH',
+      displayName: 'VOLUY-MH',
+    });
+  });
+
+  it('runs the peer configuration read once per discovery, not once per peer', async () => {
+    const execute = simulator({
+      'display current-configuration configuration bgp': `
+bgp 268568
+ peer 172.16.16.7 as-number 28306
+ peer 172.16.16.7 description VOLUY-MH
+ peer 172.16.16.8 as-number 64500
+ peer 172.16.16.8 description AKAMAI-1
+`,
+      'display bgp peer': `172.16.16.7 4 - 10 10 0 18d04h Established 10
+172.16.16.8 4 - 10 10 0 18d04h Established 10`,
+    });
+
+    const result = await new BgpDiscoveryService(sshWith(execute), bgpRepository()).discover(host());
+
+    expect(result.peers.map((peer) => [peer.remoteAs, peer.bgpPeerDescription])).toEqual([
+      [28306n, 'VOLUY-MH'],
+      [64500n, 'AKAMAI-1'],
+    ]);
+    // Uma leitura para o AS local, já feita pelo discover, e uma para os peers:
+    // o número de execuções não acompanha o número de peers.
+    expect(
+      execute.mock.calls.filter(
+        (call) => call[1].at(-1) === 'display current-configuration configuration bgp',
+      ),
+    ).toHaveLength(2);
+  });
+
+  it('keeps the summary when the peer configuration cannot be read', async () => {
+    const execute = simulator({
+      'display current-configuration configuration bgp': null,
+      'display bgp peer': '200.150.1.193 4 12345 10 10 0 18d04h Established 1099912',
+    });
+
+    const result = await new BgpDiscoveryService(sshWith(execute), bgpRepository()).discover(host());
+
+    expect(result.peers[0]).toMatchObject({
+      remoteAs: 12345n,
+      bgpPeerDescription: null,
+      displayName: '200.150.1.193',
+    });
+  });
+
+  it('prefers the peer description of the device over the configured one', async () => {
+    const execute = simulator({
+      'display current-configuration configuration bgp': `
+bgp 268568
+ peer 200.150.1.193 as-number 12345
+ peer 200.150.1.193 description CONFIGURED-NAME
+`,
+      'display bgp peer': '200.150.1.193 4 12345 10 10 0 - Established',
+      'display bgp peer verbose': `BGP Peer is 200.150.1.193, remote AS 12345
+Peer Description: TRANSITO LEVEL3
+BGP current state: Established, Up for 18d04h
+Prefixes current: 1099912`,
+    });
+
+    const result = await new BgpDiscoveryService(sshWith(execute), bgpRepository()).discover(host());
+
+    expect(result.peers[0]).toMatchObject({
+      remoteAs: 12345n,
+      bgpPeerDescription: 'TRANSITO LEVEL3',
+      displayName: 'TRANSITO LEVEL3',
+    });
+  });
 });

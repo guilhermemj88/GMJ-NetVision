@@ -5,6 +5,10 @@ import { assertReadOnlyCommand } from '../../worker/mitigation/read-only-command
 import { SshClientImpl } from '../ssh/ssh-client-impl';
 import type { BgpRouteCommandResult } from './bgp-interface-correlation';
 import {
+  parseBgpPeerConfiguration,
+  type BgpPeerConfiguration,
+} from './bgp-peer-config-parser';
+import {
   isAdminIgnoredCliState,
   mergeHuaweiBgpPeerDetails,
   parseHuaweiBgpLocalAs,
@@ -209,6 +213,32 @@ export class HuaweiBgpSshService {
       ipv6Supported,
       warnings,
     };
+  }
+
+  /**
+   * READ-ONLY: AS remoto e descricao de cada peer, direto da configuracao do
+   * processo BGP.
+   *
+   * `display bgp peer` nao tem descricao e, neste firmware, o AS do sumario nem
+   * sempre e confiavel. A configuracao corrente e a unica fonte dos dois campos
+   * ao mesmo tempo: uma execucao por device alimenta todos os peers, porque o
+   * resultado ja vem indexado pelo endereco.
+   */
+  async readPeerConfiguration(
+    device: HostRecord,
+  ): Promise<Map<string, BgpPeerConfiguration> | null> {
+    let client: SshClient;
+    try {
+      client = await this.createClient(device);
+    } catch {
+      return null;
+    }
+
+    const output = await this.executeStrict(client, device.ssh!.host, [
+      assertReadOnlyCommand('screen-length 0 temporary'),
+      assertReadOnlyCommand('display current-configuration configuration bgp'),
+    ]);
+    return output === null ? null : parseBgpPeerConfiguration(output);
   }
 
   /**

@@ -55,9 +55,11 @@ describe('leitura de configuracao do HuaweiBgpSshService', () => {
     } as unknown as HostRecord;
 
     const reading = await service.readBgpConfiguration(device);
+    const peerConfiguration = await service.readPeerConfiguration(device);
 
     expect(reading.bgpConfiguration).not.toBeNull();
     expect(reading.routePolicyConfiguration).not.toBeNull();
+    expect(peerConfiguration).not.toBeNull();
     expect(sent).toContain('display current-configuration configuration route-policy');
     expect(sent.length).toBeGreaterThan(0);
     for (const command of sent) {

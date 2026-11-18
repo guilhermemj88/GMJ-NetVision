@@ -3,6 +3,7 @@ import { parseHuaweiRouteLookup } from './huawei-bgp-ssh-parser';
 import type { HuaweiBgpSshService } from './huawei-bgp-ssh';
 import type { BgpRouteLookup } from './bgp-interface-correlation';
 import type { BgpSshDiscoveryProvider, BgpSshDiscoveryReading } from './bgp-ssh-discovery';
+import type { BgpPeerConfiguration } from './bgp-peer-config-parser';
 
 /**
  * Adapter Huawei: mantém INTACTA a semântica existente do
@@ -14,6 +15,13 @@ import type { BgpSshDiscoveryProvider, BgpSshDiscoveryReading } from './bgp-ssh-
  */
 export class HuaweiBgpDiscoveryProvider implements BgpSshDiscoveryProvider {
   constructor(private readonly ssh: HuaweiBgpSshService) {}
+
+  /** AS remoto e descrição por peer, da configuração do processo BGP. */
+  async readPeerConfiguration(
+    device: HostRecord,
+  ): Promise<Map<string, BgpPeerConfiguration> | null> {
+    return this.ssh.readPeerConfiguration(device);
+  }
 
   async discover(device: HostRecord): Promise<BgpSshDiscoveryReading> {
     const discovery = await this.ssh.discover(device);

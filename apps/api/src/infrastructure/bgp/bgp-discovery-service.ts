@@ -5,7 +5,7 @@ import {
   type BgpInterfaceCorrelationStatus,
   type BgpRouteLookup,
 } from './bgp-interface-correlation';
-import type { BgpSshDiscoveryProvider } from './bgp-ssh-discovery';
+import type { BgpSshDiscoveryProvider, BgpPeerConfigurationReading } from './bgp-ssh-discovery';
 import type { BgpRepository } from './bgp-repository';
 
 export interface DiscoveredBgpPeer {
@@ -55,6 +55,12 @@ export class BgpDiscoveryService {
     const discovery = await this.provider.discover(device);
     const discoveredAt = this.now();
 
+    // Só há o que enriquecer quando o resumo trouxe peers, e a leitura extra
+    // nunca derruba o discovery: sem configuração os campos ficam como vieram.
+    const peerConfiguration = discovery.peers.length
+      ? await this.readPeerConfiguration(device)
+      : null;
+
     // A local ASN is only persisted when the context exposed exactly one BGP
     // process; an inconclusive or ambiguous read never erases the stored value.
     if (discovery.localAs !== null) {
@@ -70,11 +76,17 @@ export class BgpDiscoveryService {
         device.interfaces,
         { allowLogicalUnitFallback: discovery.logicalUnitFallback },
       );
-      const bgpPeerDescription = peer.bgpPeerDescription?.trim() || null;
+      // O resumo do VRP não tem descrição e nem sempre traz o AS confiável; a
+      // configuração corrente completa os dois campos sem sobrescrever o que o
+      // equipamento já expôs no comando por peer.
+      const configured = peerConfiguration?.get(peer.peerAddress.toLowerCase());
+      const configuredAs = configured?.remoteAs == null ? null : BigInt(configured.remoteAs);
+      const bgpPeerDescription =
+        peer.bgpPeerDescription?.trim() || configured?.description?.trim() || null;
       return {
         peerAddress: peer.peerAddress,
         addressFamily: peer.addressFamily,
-        remoteAs: peer.remoteAs,
+        remoteAs: peer.remoteAs ?? configuredAs,
         localAs: peer.localAs,
         stateCode: peer.stateCode,
         state: peer.state,
@@ -93,5 +105,20 @@ export class BgpDiscoveryService {
       ipv6Supported: discovery.ipv6Supported,
       warnings: discovery.warnings,
     };
+  }
+
+  /**
+   * Leitura opcional da configuração por peer. Fabricante que não a implementa
+   * (Junos) e falha de SSH devolvem `null`: o discovery segue com o resumo.
+   */
+  private async readPeerConfiguration(
+    device: HostRecord,
+  ): Promise<Map<string, BgpPeerConfigurationReading> | null> {
+    if (!this.provider.readPeerConfiguration) return null;
+    try {
+      return await this.provider.readPeerConfiguration(device);
+    } catch {
+      return null;
+    }
   }
 }

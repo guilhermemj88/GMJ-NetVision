@@ -124,4 +124,17 @@ describe('BgpPlatformProviders', () => {
     });
     expect(platforms.isJuniper(unknown)).toBe(false);
   });
+
+  it('reads the peer configuration only from the platform of the device', async () => {
+    const configuration = new Map([['10.0.0.1', { remoteAs: 65001, description: 'UPSTREAM' }]]);
+    const platforms = new BgpPlatformProviders({
+      huaweiSsh: { ...provider('huawei-ssh'), readPeerConfiguration: async () => configuration },
+      juniperSsh: provider('juniper-ssh'),
+      huaweiSnmp: collector('huawei-snmp'),
+      juniperSnmp: collector('juniper-snmp'),
+    });
+
+    await expect(platforms.readPeerConfiguration(huawei)).resolves.toBe(configuration);
+    await expect(platforms.readPeerConfiguration(juniper)).resolves.toBeNull();
+  });
 });

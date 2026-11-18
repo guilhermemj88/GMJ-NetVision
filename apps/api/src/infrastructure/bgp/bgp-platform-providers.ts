@@ -1,6 +1,10 @@
 import type { HostRecord } from '@gmj/shared';
 import { bgpCapabilitiesFor } from './bgp-vendor';
-import type { BgpSshDiscoveryProvider, BgpSshDiscoveryReading } from './bgp-ssh-discovery';
+import type {
+  BgpPeerConfigurationReading,
+  BgpSshDiscoveryProvider,
+  BgpSshDiscoveryReading,
+} from './bgp-ssh-discovery';
 import type { BgpSnmpCollector } from './bgp-snmp-collector';
 
 export interface BgpPlatformProvidersOptions {
@@ -26,6 +30,18 @@ export class BgpPlatformProviders implements BgpSshDiscoveryProvider {
   async discover(device: HostRecord): Promise<BgpSshDiscoveryReading> {
     if (this.isJuniper(device)) return this.options.juniperSsh.discover(device);
     return this.options.huaweiSsh.discover(device);
+  }
+
+  /**
+   * Só o provider da plataforma pode (e sabe) ler a configuração por peer;
+   * quando ele não implementa, o resultado é `null` — nunca uma leitura
+   * inventada em equipamento de outro fabricante.
+   */
+  async readPeerConfiguration(
+    device: HostRecord,
+  ): Promise<Map<string, BgpPeerConfigurationReading> | null> {
+    const provider = this.isJuniper(device) ? this.options.juniperSsh : this.options.huaweiSsh;
+    return (await provider.readPeerConfiguration?.(device)) ?? null;
   }
 
   /** Coletor do polling periódico para este equipamento. */

@@ -35,6 +35,22 @@ export interface BgpSshDiscoveryReading {
   warnings: string[];
 }
 
+/** AS remoto e descricao de um peer, como a configuracao corrente os declara. */
+export interface BgpPeerConfigurationReading {
+  remoteAs: number | null;
+  description: string | null;
+}
+
 export interface BgpSshDiscoveryProvider {
   discover(device: HostRecord): Promise<BgpSshDiscoveryReading>;
+  /**
+   * Configuracao por peer, indexada pelo endereco em minusculas.
+   *
+   * Opcional: nem todo fabricante expoe AS e descricao num comando de
+   * configuracao (Junos nao expoe). `null` significa "nao foi possivel ler" -
+   * nunca "vazio" - para que o discovery preserve o que o resumo ja trouxe.
+   */
+  readPeerConfiguration?(
+    device: HostRecord,
+  ): Promise<Map<string, BgpPeerConfigurationReading> | null>;
 }
