@@ -61,7 +61,7 @@ interface SshClientOptions {
    * Finalizacao da sessao depois dos comandos (nunca faz parte da lista
    * canonica de configuracao):
    *
-   *  - 'quit' (default): sessao que termina em USER VIEW (todo READ-ONLY) — o
+   *  - 'quit' (default): sessao que termina em USER VIEW (todo READ-ONLY) â€” o
    *    proprio `quit` encerra a sessao.
    *
    *  - 'return-quit': sessao de ESCRITA, que termina em SYSTEM-VIEW depois do
@@ -171,7 +171,7 @@ export class SshClientImpl implements SshClient {
         let stdout = '';
         let stderr = '';
         let settled = false;
-        let declinedInitialPasswordChange = false;
+
         let exiting = false;
         let idleTimer: ReturnType<typeof setTimeout> | null = null;
         /** Indice do PROXIMO comando a enviar; 0 = nada enviado ainda. */
@@ -195,6 +195,15 @@ export class SshClientImpl implements SshClient {
          */
         const initialPasswordPrompt =
           /(initial password poses security risks|password needs to be changed|password has expired|change the (?:initial )?password|must be changed|change now\?\s*\[y\/n\]\s*:|\[y\/n\]\s*:\s*$)/i;
+        /**
+         * O VRP repete o aviso de senha inicial: depois do primeiro "N" ele
+         * pergunta de novo. Responder uma unica vez deixava a segunda pergunta
+         * sem resposta, o equipamento estourava o timeout e a coleta morria.
+         * Por isso contamos as ocorrencias no stdout e respondemos enquanto
+         * houver pergunta nova, com teto para nunca entrar em loop.
+         */
+        let passwordPromptsAnswered = 0;
+        const MAX_PASSWORD_PROMPTS = 5;
         /**
          * Prompt de linha de comando reconhecido no FIM da linha:
          *
@@ -283,8 +292,9 @@ export class SshClientImpl implements SshClient {
         const handleStdout = (chunk: string): void => {
           stdout += chunk;
 
-          if (!declinedInitialPasswordChange && initialPasswordPrompt.test(stdout)) {
-            declinedInitialPasswordChange = true;
+          const promptsSeen = (stdout.match(new RegExp(initialPasswordPrompt.source, 'gi')) ?? []).length;
+          if (promptsSeen > passwordPromptsAnswered && passwordPromptsAnswered < MAX_PASSWORD_PROMPTS) {
+            passwordPromptsAnswered = promptsSeen;
             stream.write('N\r\n');
             return;
           }
