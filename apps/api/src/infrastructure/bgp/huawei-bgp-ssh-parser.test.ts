@@ -146,6 +146,26 @@ Prefixes current: 1099912
       bgpPeerDescription: 'IX SP',
     });
   });
+
+  it('strips the quotes the device prints around a verbose description', () => {
+    const verbose = parseHuaweiBgpPeerVerbose(`
+BGP Peer is 187.16.220.8, remote AS 20940
+Peer Description: "AKAMAI-1"
+BGP current state: Established, Up for 18d04h
+Prefixes current: 1099912
+`);
+    expect(verbose[0]?.bgpPeerDescription).toBe('AKAMAI-1');
+  });
+
+  it('keeps a placeholding dash as no description', () => {
+    const verbose = parseHuaweiBgpPeerVerbose(`
+BGP Peer is 187.16.220.8, remote AS 20940
+Peer Description: -
+BGP current state: Established, Up for 18d04h
+Prefixes current: 1099912
+`);
+    expect(verbose[0]?.bgpPeerDescription).toBeNull();
+  });
 });
 
 describe('Huawei BGP IPv6 parser', () => {

@@ -26,11 +26,13 @@ function key(address: string): string {
 }
 
 /**
- * O VRP grava aspas quando a descricao tem espacos ou caracteres especiais.
- * Elas sao sintaxe do comando, nao parte do nome que o operador cadastrou.
+ * Normaliza a descricao de um peer como o VRP a escreve: `-` e vazio nao sao
+ * nomes, e as aspas que o equipamento usa quando a descricao tem espacos ou
+ * caracteres especiais sao sintaxe do comando, nao parte do nome.
  */
-function normalizedDescription(value: string): string | null {
-  const trimmed = value.trim();
+export function normalizePeerDescription(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed || trimmed === '-') return null;
   const unquoted = /^".*"$/.test(trimmed) ? trimmed.slice(1, -1).trim() : trimmed;
   return unquoted || null;
 }
@@ -59,7 +61,7 @@ export function parseBgpPeerConfiguration(output: string): Map<string, BgpPeerCo
     }
     const description = line.match(DESCRIPTION);
     if (description?.[1] && description[2]) {
-      const parsed = normalizedDescription(description[2]);
+      const parsed = normalizePeerDescription(description[2]);
       if (parsed !== null) entry(description[1]).description = parsed;
     }
   }

@@ -1,6 +1,7 @@
 import type { BgpAddressFamily } from '@gmj/shared';
 import { ipAddressFamily, normalizeIpAddress, normalizeIpv6 } from '@gmj/shared';
 import type { BgpPeerState } from './bgp4-peer-parser';
+import { normalizePeerDescription } from './bgp-peer-config-parser';
 
 export interface ParsedHuaweiBgpPeer {
   /** Canonical address (IPv6 compressed/lower-case, IPv4 dotted quad). */
@@ -155,12 +156,6 @@ export function isAdminIgnoredCliState(cliStateToken: string | null): boolean {
   return Boolean(cliStateToken && /idle\s*\(\s*admin\s*\)/i.test(cliStateToken));
 }
 
-function cleanPeerDescription(value: string | undefined): string | null {
-  const trimmed = value?.trim();
-  if (!trimmed || trimmed === '-') return null;
-  return trimmed;
-}
-
 export function parseHuaweiBgpPeerVerbose(
   output: string,
   addressFamily: BgpAddressFamily = 'IPV4',
@@ -181,7 +176,7 @@ export function parseHuaweiBgpPeerVerbose(
     const prefixValue = block.match(
       /(?:Prefixes\s+current|Received\s+prefixes|PrefRcv)\s*[:=]\s*(\d+)/i,
     )?.[1];
-    const description = cleanPeerDescription(
+    const description = normalizePeerDescription(
       block.match(/Peer\s+Description\s*[:=]\s*(.+?)\s*$/im)?.[1]
         ?? block.match(/Description\s*[:=]\s*(.+?)\s*$/im)?.[1],
     );
