@@ -90,10 +90,10 @@ export class TopologyPreviewService {
     const queried = hosts.filter((host) => host.snmpEnabled || host.sshEnabled);
 
     for (const host of queried) {
-      const { observations: hostObservations, hostProduced } =
+      const { observations: hostObservations, hostFailed } =
         await this.discoverHostObservations(host, hosts, deepValidation, warnings);
       observations.push(...hostObservations);
-      if (!hostProduced) hostsFailed += 1;
+      if (hostFailed) hostsFailed += 1;
     }
 
     const adjacencies = this.buildAdjacencies(observations, existingLinkKeys, existingLinkIds, warnings, hosts);
@@ -139,20 +139,20 @@ export class TopologyPreviewService {
     const warnings: string[] = [];
 
     if (!host.snmpEnabled && !host.sshEnabled) {
-      warnings.push(`${hostLabel(host)}: SNMP e SSH desabilitados — configure um acesso para descobrir vizinhos`);
+      warnings.push(`${hostLabel(host)}: SNMP e SSH desabilitados â€” configure um acesso para descobrir vizinhos`);
     }
 
-    const { observations, hostProduced } =
+    const { observations, hostFailed } =
       await this.discoverHostObservations(host, hosts, deepValidation, warnings);
 
     if (observations.length === 0) {
-      warnings.push(`${hostLabel(host)}: nenhuma adjacência LLDP encontrada`);
+      warnings.push(`${hostLabel(host)}: nenhuma adjacÃªncia LLDP encontrada`);
     }
 
     const adjacencies = this.buildAdjacencies(observations, existingLinkKeys, existingLinkIds, warnings, hosts);
     const stats: LldpTopologyPreview['stats'] = {
       hostsQueried: 1,
-      hostsFailed: hostProduced ? 0 : 1,
+      hostsFailed: hostFailed ? 1 : 0,
       adjacencies: adjacencies.length,
       confirmed: adjacencies.filter((item) => item.confidence === 'CONFIRMED').length,
       probable: adjacencies.filter((item) => item.confidence === 'PROBABLE').length,
@@ -177,7 +177,7 @@ export class TopologyPreviewService {
     hosts: HostRecord[],
     deepValidation: boolean,
     warnings: string[],
-  ): Promise<{ observations: LldpObservation[]; hostProduced: boolean }> {
+  ): Promise<{ observations: LldpObservation[]; hostProduced: boolean; hostFailed: boolean }> {
     const snmpAdapters = host.snmpEnabled
       ? this.adapters.filter((adapter) => adapter.kind === 'LLDP_SNMP')
       : [];
@@ -188,6 +188,12 @@ export class TopologyPreviewService {
     const observations: LldpObservation[] = [];
     const snmpNeighbors: DiscoveredNeighbor[] = [];
     let hostProduced = false;
+    /**
+     * Coleta bem-sucedida sem vizinhos NAO e falha: um equipamento pode
+     * simplesmente nao ter LLDP ativo ou nao ter vizinhos. So conta como falha
+     * quando nenhuma fonte conseguiu responder.
+     */
+    let anySourceSucceeded = false;
 
     // SNMP LLDP is the primary source.
     for (const adapter of snmpAdapters) {
@@ -195,6 +201,7 @@ export class TopologyPreviewService {
         const result = await adapter.discoverNeighbors(host);
         snmpNeighbors.push(...result);
         hostProduced = hostProduced || result.length > 0;
+        anySourceSucceeded = true;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         warnings.push(`${hostLabel(host)}: ${adapter.kind} falhou de forma segura (${message})`);
@@ -213,6 +220,7 @@ export class TopologyPreviewService {
         try {
           const result = await adapter.discoverNeighbors(host);
           hostProduced = hostProduced || result.length > 0;
+          anySourceSucceeded = true;
           for (const neighbor of result) {
             observations.push(this.correlation.observe(neighbor, hosts));
           }
@@ -223,7 +231,13 @@ export class TopologyPreviewService {
       }
     }
 
-    return { observations, hostProduced };
+    return {
+      observations,
+      hostProduced,
+      // Falha = nenhuma fonte conseguiu responder (inclui host sem acesso
+      // configurado). Coleta que respondeu "zero vizinhos" nao e falha.
+      hostFailed: !anySourceSucceeded,
+    };
   }
 
   private rawResults(observations: LldpObservation[]): TopologyRawDiscoveryResult[] {
@@ -360,15 +374,15 @@ export class TopologyPreviewService {
 
     const reasons: string[] = [];
     reasons.push(`Visto por ${hostLabel(sourceHost) ?? neighbor.localDeviceId} em ${neighbor.localPort}`);
-    if (observation.matchedBy) reasons.push(`Correlação por ${observation.matchedBy}`);
-    if (reverseConfirmed) reasons.push('Vizinho confirma a adjacência no sentido oposto');
-    if (reverseCompatible) reasons.push('Interfaces compatíveis nos dois sentidos');
-    if (duplicate) reasons.push('Enlace já existente no mapa');
-    if (!observation.sourceInterface) reasons.push('Interface local não resolvida no inventário');
-    if (targetHost && !observation.targetInterface) reasons.push('Interface remota não resolvida no inventário');
+    if (observation.matchedBy) reasons.push(`CorrelaÃ§Ã£o por ${observation.matchedBy}`);
+    if (reverseConfirmed) reasons.push('Vizinho confirma a adjacÃªncia no sentido oposto');
+    if (reverseCompatible) reasons.push('Interfaces compatÃ­veis nos dois sentidos');
+    if (duplicate) reasons.push('Enlace jÃ¡ existente no mapa');
+    if (!observation.sourceInterface) reasons.push('Interface local nÃ£o resolvida no inventÃ¡rio');
+    if (targetHost && !observation.targetInterface) reasons.push('Interface remota nÃ£o resolvida no inventÃ¡rio');
 
     if (duplicate && existingLinkId) {
-      warnings.push(`${hostLabel(sourceHost)}: enlace LLDP já existente ignorado`);
+      warnings.push(`${hostLabel(sourceHost)}: enlace LLDP jÃ¡ existente ignorado`);
     }
 
     return {

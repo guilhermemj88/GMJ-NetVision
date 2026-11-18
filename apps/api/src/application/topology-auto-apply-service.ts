@@ -238,7 +238,9 @@ export class TopologyAutoApplyService {
         animationEnabled: null,
         label: '',
         metricSource: this.metricSource(source, target),
-        visualStyle: null,
+        // Enlace visto por um lado so e desenhado em MINIMAL para nao se
+        // confundir com o confirmado pelos dois lados (FLOW padrao).
+        visualStyle: adjacency.confidence === 'PROBABLE' ? 'MINIMAL' : null,
         metricDisplay: null,
       };
 

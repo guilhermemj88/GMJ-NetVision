@@ -313,4 +313,21 @@ describe('TopologyAutoApplyService', () => {
     // Nenhum enlace foi criado para a adjacencia incompleta.
     expect(repository.links).toHaveLength(1);
   });
+
+  it('marca enlace PROBABLE com estilo MINIMAL e CONFIRMED com o padrao', async () => {
+    const repository = new FakeRepository(emptyMap());
+    const service = new TopologyAutoApplyService(repository, hostsSource);
+
+    await service.apply(
+      'map-1',
+      preview([
+        adjacency({ id: 'c', confidence: 'CONFIRMED' }),
+        adjacency({ id: 'p', confidence: 'PROBABLE', sourceInterfaceId: 'if-a9', targetInterfaceId: 'if-b9' }),
+      ]),
+      { probable: true },
+    );
+
+    expect(repository.links[0]!.input.visualStyle).toBeNull();
+    expect(repository.links[1]!.input.visualStyle).toBe('MINIMAL');
+  });
 });
