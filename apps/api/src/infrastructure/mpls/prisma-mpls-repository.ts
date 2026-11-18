@@ -3,6 +3,7 @@ import {
   summarizeMpls,
   type MplsAc,
   type MplsHostOverview,
+  type MplsL2vcCircuit,
   type MplsPw,
   type MplsStateEvent,
   type MplsVsi,
@@ -138,9 +139,42 @@ export class PrismaMplsRepository implements MplsRepository {
     await this.prisma.$disconnect();
   }
 
+  /**
+   * Liga cada circuito L2VC ao inventario de interfaces do host pelo nome do AC
+   * (o VRP imprime `Vlanif100`, o inventario guarda `Vlanif100`/`GigabitEthernet`).
+   * Sem correspondencia o circuito continua valido, apenas sem correlacao.
+   */
+  private async correlateL2vcCircuits(
+    hostId: string,
+    circuits: MplsL2vcCircuit[] | undefined,
+  ): Promise<MplsL2vcCircuit[] | undefined> {
+    if (!circuits?.length) return circuits;
+    const interfaces = await this.prisma.interface.findMany({
+      where: { deviceId: hostId },
+      select: { id: true, ifIndex: true, name: true, alias: true },
+    });
+    const byKey = new Map<string, (typeof interfaces)[number]>();
+    for (const item of interfaces) {
+      for (const key of interfaceNameKeys(item.name)) {
+        if (!byKey.has(key)) byKey.set(key, item);
+      }
+    }
+    return circuits.map((circuit) => {
+      const match = interfaceNameKeys(circuit.name)
+        .map((key) => byKey.get(key))
+        .find((item) => item !== undefined);
+      return match
+        ? { ...circuit, ifIndex: match.ifIndex, interfaceId: match.id, interfaceAlias: match.alias }
+        : circuit;
+    });
+  }
+
   async saveCollection(hostId: string, collection: HuaweiVplsCollection): Promise<void> {
     const now = collection.collectedAt;
     const discoveryState = collection.discoveryState ?? (collection.supported ? 'FOUND_UP' : 'INCOMPLETE');
+    // Circuitos L2VC sao JSON: a correlacao com o inventario e feita aqui, uma
+    // vez por coleta, antes de gravar as evidencias.
+    const l2vcCircuits = await this.correlateL2vcCircuits(hostId, collection.l2vcCircuits);
     const discoveryMetadata = {
       discoveryState,
       sources: collection.sources ?? [],
@@ -148,9 +182,9 @@ export class PrismaMplsRepository implements MplsRepository {
       ...(collection.ldpPeers === undefined
         ? {}
         : { ldpPeers: collection.ldpPeers as unknown as object }),
-      ...(collection.l2vcCircuits === undefined
+      ...(l2vcCircuits === undefined
         ? {}
-        : { l2vcCircuits: collection.l2vcCircuits as unknown as object }),
+        : { l2vcCircuits: l2vcCircuits as unknown as object }),
       ...(collection.conflicts === undefined
         ? {}
         : { conflicts: collection.conflicts as unknown as object }),

@@ -249,6 +249,7 @@ export function MplsL2vcCircuits({ overview }: { overview: MplsHostOverview }) {
               <strong>{circuit.name}</strong>
               <small>
                 VC {circuit.vcId ?? 'N/D'} · {circuit.destination ?? 'destino N/D'}
+                {circuit.interfaceAlias ? ` · ${circuit.interfaceAlias}` : ''}
                 {circuit.localLabel === null
                   ? ''
                   : ` · labels ${circuit.localLabel}/${circuit.remoteLabel ?? 'N/D'}`}

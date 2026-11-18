@@ -25,6 +25,10 @@ export type MplsLdpSessionState = 'UP' | 'DOWN' | 'UNKNOWN';
 export interface MplsL2vcCircuit {
   /** Nome do AC como o equipamento o imprime (ex.: `Vlanif100`). */
   name: string;
+  /** Correlacao com o inventario de interfaces, quando existir. */
+  ifIndex?: number | null;
+  interfaceId?: string | null;
+  interfaceAlias?: string | null;
   vcId: number | null;
   destination: string | null;
   state: MplsLdpSessionState;

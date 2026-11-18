@@ -341,6 +341,60 @@ describe('mergeMplsDiscovery', () => {
     expect(result.collection.ldpPeers).toHaveLength(2);
   });
 
+  it('mantem VSI e L2VC no mesmo equipamento sem esconder nenhum dos dois', () => {
+    const l2vcs = parseHuaweiL2vc(` *client interface       : Vlanif900 is up
+  session state          : up
+  AC status              : up
+  VC state               : up
+  VC ID                  : 900
+  destination            : 10.0.0.5
+  local VC label         : 1024         remote VC label      : 1024`);
+
+    const result = mergeMplsDiscovery({
+      snmp: snmpCollection([snmpVsi('VSI-BGP')]),
+      ssh: sshReading('', { l2vcs, l2vcSummary: { total: 1, up: 1, down: 0 } }),
+    });
+
+    // A VSI manda no estado agregado; o circuito L2VC continua visivel.
+    expect(result.discoveryState).toBe('FOUND_UP');
+    expect(result.collection.vsis.map((vsi) => vsi.name)).toEqual(['VSI-BGP']);
+    expect(result.l2vcCircuits).toEqual([expect.objectContaining({ name: 'Vlanif900', vcId: 900 })]);
+    expect(result.sources).toEqual(['SNMP', 'SSH']);
+  });
+
+  it('e deterministico: repetir a mesma coleta nao duplica VSI, L2VC nem sessao LDP', () => {
+    const l2vcs = parseHuaweiL2vc(` *client interface       : Vlanif900 is up
+  session state          : up
+  AC status              : up
+  VC state               : up
+  VC ID                  : 900
+  destination            : 10.0.0.5`);
+    const ldpPeers: MplsLdpPeer[] = [
+      {
+        peerLdpId: '10.20.30.40:0',
+        state: 'UP',
+        statusText: 'Operational',
+        localLdpId: '10.20.30.41:0',
+        role: 'Passive',
+        name: 'rr-sba',
+        sessionAgeSeconds: 30,
+        source: 'SSH',
+      },
+    ];
+    const input = {
+      snmp: snmpCollection([snmpVsi('VSI-GERENCIA', { signalingType: 'LDP' })]),
+      ssh: sshReading(LDP_UP, { l2vcs, ldpPeers, l2vcSummary: { total: 1, up: 1, down: 0 } }),
+    };
+
+    const first = mergeMplsDiscovery(input);
+    const second = mergeMplsDiscovery(input);
+
+    expect(second).toEqual(first);
+    expect(second.collection.vsis).toHaveLength(1);
+    expect(second.l2vcCircuits).toHaveLength(1);
+    expect(second.ldpPeers).toHaveLength(1);
+  });
+
   it('nao inventa pseudowire quando o link id nao veio no CLI', () => {
     const result = mergeMplsDiscovery({
       snmp: null,
