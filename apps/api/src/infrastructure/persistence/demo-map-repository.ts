@@ -414,6 +414,34 @@ export class DemoMapRepository {
     return node.id;
   }
 
+  ensureGenericNode(mapId: string, genericType: string, label: string, position: Position): string | null {
+    const map = this.findMap(mapId);
+    if (!map) return null;
+    const existing = map.nodes.find(
+      (node) => node.nodeKind === 'GENERIC' && node.genericType === genericType && node.label === label,
+    );
+    if (existing) return existing.id;
+    const node: MapNode = {
+      id: createLocalId('node'),
+      mapId,
+      deviceId: null,
+      nodeKind: 'GENERIC',
+      genericType,
+      label,
+      position,
+      locked: false,
+      positionSource: 'AUTO',
+      pppDisplayMode: 'AUTO',
+      pppPosition: 'BOTTOM',
+      pppColor: null,
+      pppFontSize: 14,
+    };
+    map.nodes.push(node);
+    this.touch(map);
+    this.refreshMembership();
+    return node.id;
+  }
+
   touchDiscoveredLink(mapId: string, linkId: string): boolean {
     const map = this.findMap(mapId);
     if (!map) return false;

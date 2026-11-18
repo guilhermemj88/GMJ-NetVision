@@ -719,6 +719,38 @@ export class PrismaMapRepository {
   }
 
   /**
+   * Garante um no conceitual (nuvem de transito, IX, cliente...) identificado
+   * pelo rotulo. Idempotente: redescobertas reaproveitam o no existente e nao
+   * movem o que o usuario ajustou.
+   */
+  async ensureGenericNode(
+    mapId: string,
+    genericType: string,
+    label: string,
+    position: Position,
+  ): Promise<string | null> {
+    const existing = await this.prisma.mapNode.findFirst({
+      where: { mapId, nodeKind: 'GENERIC', genericType, label },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+    const created = await this.prisma.mapNode.create({
+      data: {
+        mapId,
+        deviceId: null,
+        nodeKind: 'GENERIC',
+        genericType,
+        label,
+        x: position.x,
+        y: position.y,
+        positionSource: 'AUTO',
+      },
+      select: { id: true },
+    });
+    return created.id;
+  }
+
+  /**
    * Renova o "visto por ultimo" de um enlace descoberto que continua presente
    * na topologia. Sem isso todo enlace antigo pareceria desatualizado e o mapa
    * nao teria como distinguir descoberta fresca de evidencia velha.

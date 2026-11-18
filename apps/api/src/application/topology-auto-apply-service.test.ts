@@ -93,6 +93,7 @@ function preview(adjacencies: LldpAdjacencyProposal[]): LldpTopologyPreview {
 
 class FakeRepository implements AutoApplyRepository {
   nodes: Array<{ id: string; deviceId: string; position: Position }> = [];
+  generic: Array<{ id: string; genericType: string; label: string }> = [];
   links: Array<{ id: string; input: CreateLinkInput; source: DiscoverySource }> = [];
   touched: string[] = [];
   private sequence = 0;
@@ -109,6 +110,20 @@ class FakeRepository implements AutoApplyRepository {
     const node = { id: `node-${deviceId}`, deviceId, position };
     this.nodes.push(node);
     return node.id;
+  }
+
+  async ensureGenericNode(
+    _mapId: string,
+    genericType: string,
+    label: string,
+    position: Position,
+  ): Promise<string> {
+    const id = `cloud-${label}`;
+    if (!this.nodes.some((node) => node.id === id)) {
+      this.nodes.push({ id, deviceId: '', position });
+      this.generic.push({ id, genericType, label });
+    }
+    return id;
   }
 
   async createDiscoveredLink(

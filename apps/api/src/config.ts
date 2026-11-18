@@ -15,6 +15,8 @@ const envSchema = z.object({
     .string()
     .default('false')
     .transform((value) => value === 'true'),
+  /** Rotas recebidas a partir das quais um peer BGP vira transito no mapa. */
+  BGP_TRANSIT_MIN_PREFIXES: z.coerce.number().int().min(1).default(100_000),
   SNMP_POLL_INTERVAL_SECONDS: z.coerce.number().int().min(15).default(60),
   OPTICAL_POLL_INTERVAL_SECONDS: z.coerce.number().int().min(60).default(300),
   /** Validade dos thresholds opticos coletados por SSH (slow path). */
@@ -28,7 +30,7 @@ const envSchema = z.object({
   DEFAULT_ADMIN_NAME: z.string().default('Administrador'),
   DEFAULT_ADMIN_PASSWORD: z.string().min(1).default('admin'),
   /**
-   * Snapshot do gráfico do alarme (renderer isolado em 127.0.0.1:3351). Sem
+   * Snapshot do grÃ¡fico do alarme (renderer isolado em 127.0.0.1:3351). Sem
    * estas variaveis o recurso fica DESLIGADO e o alarme segue texto-only.
    */
   SNAPSHOT_RENDERER_URL: z.string().optional(),

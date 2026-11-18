@@ -16,7 +16,7 @@ export type DeviceType =
   | 'ix'
   | 'customers'
   | 'generic';
-export type DiscoverySource = 'MANUAL' | 'LLDP_SNMP' | 'LLDP_SSH';
+export type DiscoverySource = 'MANUAL' | 'LLDP_SNMP' | 'LLDP_SSH' | 'BGP_TRANSIT';
 export type MetricSource = 'DEMO' | 'ZABBIX';
 export type DiscoveryMethod = 'AUTO' | 'SNMP' | 'SSH' | 'MANUAL';
 export type MatchStatus = 'MATCHED' | 'UNMATCHED' | 'AMBIGUOUS';
@@ -105,7 +105,7 @@ export const NETWORK_ALARM_TEST_TYPE_LABELS: Record<NetworkAlarmTestType, string
   INTERFACE_CRC: 'CRC/FCS',
   INTERFACE_DISCARDS: 'Discards',
   INTERFACE_ERRORS: 'Erros de interface',
-  OPTICAL_RX_DEGRADATION: 'Degradação óptica',
+  OPTICAL_RX_DEGRADATION: 'DegradaÃ§Ã£o Ã³ptica',
 };
 
 export interface NetworkAlarmTestSelection {
@@ -158,8 +158,8 @@ export function resolveNetworkAlarmTestSelection(
 /**
  * Slots de regra gerenciados pela aba BASICO de Alarmes (F9.6).
  *
- * `AlarmRule.managedKey` garante no máximo UMA regra por slot; regras criadas
- * no AVANÇADO ficam com `managedKey = null` (custom).
+ * `AlarmRule.managedKey` garante no mÃ¡ximo UMA regra por slot; regras criadas
+ * no AVANÃ‡ADO ficam com `managedKey = null` (custom).
  */
 export const BASIC_ALARM_RULE_KEYS = [
   'BASIC_INTERFACE_CRC',
@@ -236,7 +236,7 @@ export interface AlarmMetadata {
    * severidade e o maximo entre eles), ex.: `["RAPID_DROP","PROXIMITY"]`.
    */
   triggerReasons?: OpticalTriggerReason[] | undefined;
-  /** Fonte da potencia ATUAL (SNMP/SSH) — nunca misturada com thresholdSource. */
+  /** Fonte da potencia ATUAL (SNMP/SSH) â€” nunca misturada com thresholdSource. */
   currentPowerSource?: 'SNMP' | 'SSH' | null | undefined;
   thresholdSource?: OpticalThresholdSource | null | undefined;
   speedBps?: number | undefined;
@@ -360,7 +360,7 @@ export interface AlarmRuleDto {
   mediaEnabled: boolean;
   scope: AlarmRuleScope;
   config: AlarmRuleConfig;
-  /** Slot gerenciado pela aba BASICO; `null` em regra custom (Avançado). */
+  /** Slot gerenciado pela aba BASICO; `null` em regra custom (AvanÃ§ado). */
   managedKey: BasicAlarmRuleKey | null;
   createdAt: string;
   updatedAt: string;
@@ -857,10 +857,10 @@ export interface ZabbixHostCandidate {
   matchedHostId: string | null;
   interfaceCount: number;
   /**
-   * Metadados públicos da interface SNMP do Zabbix para o preview. A community
-   * NUNCA entra no candidato — ela existe apenas em estrutura interna do
-   * backend durante a importação. A versão também só é resolvida na importação
-   * privada (o preview não solicita `details`) e por isso vem null aqui.
+   * Metadados pÃºblicos da interface SNMP do Zabbix para o preview. A community
+   * NUNCA entra no candidato â€” ela existe apenas em estrutura interna do
+   * backend durante a importaÃ§Ã£o. A versÃ£o tambÃ©m sÃ³ Ã© resolvida na importaÃ§Ã£o
+   * privada (o preview nÃ£o solicita `details`) e por isso vem null aqui.
    */
   snmpAvailable?: boolean;
   snmpVersion?: SnmpVersion | null;
@@ -1060,9 +1060,9 @@ export interface MapPreferences {
   showInterfaces: boolean;
   showTrafficAnimation: boolean;
   /**
-   * MAP-VISUAL-V2 — modo visual do mapa. OPCIONAL e ADITIVO: mapas antigos não
-   * têm o campo e continuam na V1. Nada é escrito aqui pelo laboratório; o
-   * padrão do produto é sempre V1.
+   * MAP-VISUAL-V2 â€” modo visual do mapa. OPCIONAL e ADITIVO: mapas antigos nÃ£o
+   * tÃªm o campo e continuam na V1. Nada Ã© escrito aqui pelo laboratÃ³rio; o
+   * padrÃ£o do produto Ã© sempre V1.
    */
   visualMode?: MapVisualMode;
 }

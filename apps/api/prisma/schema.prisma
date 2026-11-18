@@ -112,6 +112,7 @@ enum DiscoverySource {
   MANUAL
   LLDP_SNMP
   LLDP_SSH
+  BGP_TRANSIT
 }
 
 enum DiscoveryJobStatus {
@@ -592,8 +593,8 @@ model BgpPeer {
   peerDescription        String?
   remoteAs               BigInt?
   /**
-   * AS local DESTA sessão. Obrigatório para Juniper (um MX usa local-as
-   * diferente por grupo/peer); Huawei mantém `Device.bgpLocalAs` e usa este
+   * AS local DESTA sessÃ£o. ObrigatÃ³rio para Juniper (um MX usa local-as
+   * diferente por grupo/peer); Huawei mantÃ©m `Device.bgpLocalAs` e usa este
    * campo como opcional. NULL = desconhecido, nunca 0.
    */
   localAs                BigInt?
@@ -680,8 +681,8 @@ model BgpPeerStateEvent {
 }
 
 /**
- * Perfil de mitigação DDoS de um cliente/policy BGP. É a unidade de operação do
- * motor: associa device → interface → policy → peers → banda. O modo padrão é
+ * Perfil de mitigaÃ§Ã£o DDoS de um cliente/policy BGP. Ã‰ a unidade de operaÃ§Ã£o do
+ * motor: associa device â†’ interface â†’ policy â†’ peers â†’ banda. O modo padrÃ£o Ã©
  * `ALERT_ONLY` (nenhum cliente novo entra em AUTO sozinho).
  * Nunca armazenamos credencial, token ou output SSH cru.
  */
@@ -749,8 +750,8 @@ model BgpMitigationProfilePeer {
 }
 
 /**
- * Estado de execução por perfil, separado do perfil para o worker reconstruir
- * o estado após restart/reconnect a partir do PostgreSQL — nunca da memória.
+ * Estado de execuÃ§Ã£o por perfil, separado do perfil para o worker reconstruir
+ * o estado apÃ³s restart/reconnect a partir do PostgreSQL â€” nunca da memÃ³ria.
  */
 model BgpMitigationRuntime {
   id                    String             @id @default(cuid())
@@ -776,8 +777,8 @@ model BgpMitigationRuntime {
 }
 
 /**
- * Simulações executadas pelo operador. `commandPreview` guarda apenas o texto
- * dos comandos que SERIAM enviados (nunca são enviados nesta versão).
+ * SimulaÃ§Ãµes executadas pelo operador. `commandPreview` guarda apenas o texto
+ * dos comandos que SERIAM enviados (nunca sÃ£o enviados nesta versÃ£o).
  */
 model BgpMitigationSimulation {
   id                          String                        @id @default(cuid())
@@ -806,8 +807,8 @@ model BgpMitigationSimulation {
 }
 
 /**
- * Histórico auditável do motor: estado antes/depois, tráfego, threshold, node,
- * policy e o desfecho (com read-back/verificação). Sem output SSH bruto.
+ * HistÃ³rico auditÃ¡vel do motor: estado antes/depois, trÃ¡fego, threshold, node,
+ * policy e o desfecho (com read-back/verificaÃ§Ã£o). Sem output SSH bruto.
  */
 model BgpMitigationEvent {
   id            BigInt              @id @default(autoincrement())

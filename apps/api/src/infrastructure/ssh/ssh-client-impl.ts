@@ -187,7 +187,14 @@ export class SshClientImpl implements SshClient {
           reject(new Error('SSH command timeout'));
         }, this.options.shellTimeoutMs ?? (this.options.readyTimeout ?? 8_000) + 7_000);
 
-        const initialPasswordPrompt = /(initial password poses security risks|password needs to be changed|change now\?\s*\[y\/n\]\s*:)/i;
+        /**
+         * O VRP avisa que a senha e inicial/expirou e oferece troca-la. Recusar
+         * ("N") e obrigatorio: aceitar abriria um fluxo interativo de troca de
+         * senha que nunca termina sozinho e derrubaria a coleta. O equipamento
+         * usa varios textos conforme a versao, por isso o regex e amplo.
+         */
+        const initialPasswordPrompt =
+          /(initial password poses security risks|password needs to be changed|password has expired|change the (?:initial )?password|must be changed|change now\?\s*\[y\/n\]\s*:|\[y\/n\]\s*:\s*$)/i;
         /**
          * Prompt de linha de comando reconhecido no FIM da linha:
          *

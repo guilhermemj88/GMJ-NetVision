@@ -27,6 +27,12 @@ export interface AutoApplyRepository {
     deviceId: string,
     position: Position,
   ): Promise<string | null> | string | null;
+  ensureGenericNode(
+    mapId: string,
+    genericType: string,
+    label: string,
+    position: Position,
+  ): Promise<string | null> | string | null;
   createDiscoveredLink(
     mapId: string,
     input: CreateLinkInput,
@@ -57,6 +63,13 @@ export interface AutoApplySkip {
   reason: string;
 }
 
+/** Peer BGP candidato a transito: muitas rotas recebidas = provedor de transito. */
+export interface TransitPeer {
+  deviceId: string;
+  peerAddress: string;
+  receivedPrefixes: number;
+}
+
 export interface AutoApplyReport extends LldpApplyResult {
   nodesCreated: string[];
   nodesReused: string[];
@@ -64,6 +77,9 @@ export interface AutoApplyReport extends LldpApplyResult {
   reusedLinks: string[];
   skippedDetails: AutoApplySkip[];
   policy: AutoApplyPolicy;
+  /** Nos de transito (nuvem) criados/reaproveitados e enlaces NE -> nuvem. */
+  transitNodesCreated: string[];
+  transitLinksCreated: string[];
 }
 
 const DEFAULT_CAPACITY_BPS = 1_000_000_000;
@@ -108,6 +124,7 @@ export class TopologyAutoApplyService {
     mapId: string,
     preview: LldpTopologyPreview,
     policy: Partial<AutoApplyPolicy> = {},
+    transit: { peers: TransitPeer[]; minPrefixes: number } = { peers: [], minPrefixes: 0 },
   ): Promise<AutoApplyReport> {
     const effective: AutoApplyPolicy = { ...DEFAULT_AUTO_APPLY_POLICY, ...policy };
     const map = await this.repository.getMap(mapId);
@@ -259,6 +276,72 @@ export class TopologyAutoApplyService {
       existingByKey.set(linkKey(input.sourceInterfaceId, input.targetInterfaceId), link.id);
     }
 
+    const transitNodesCreated: string[] = [];
+    const transitLinksCreated: string[] = [];
+    const transitKeys = new Set(
+      map.links.map((link) => `${link.sourceNodeId ?? ''}>${link.targetNodeId ?? ''}`),
+    );
+
+    /**
+     * Transito: um peer BGP com muitas rotas recebidas e um provedor, nao um
+     * equipamento do inventario. Vira no conceitual CLOUD ligado ao roteador,
+     * de forma idempotente (o rotulo identifica o peer).
+     */
+    for (const peer of transit.peers) {
+      if (peer.receivedPrefixes < transit.minPrefixes) continue;
+      let deviceNodeId = nodeByDevice.get(peer.deviceId);
+      if (!deviceNodeId) {
+        const position = freePosition(undefined);
+        const created = await this.repository.ensureMapNode(mapId, peer.deviceId, position);
+        if (!created) continue;
+        deviceNodeId = created;
+        nodeByDevice.set(peer.deviceId, created);
+        nodesCreated.push(created);
+        placed.set(created, position);
+        occupied.add(positionKey(position));
+      }
+      const label = `TRANSITO ${peer.peerAddress}`;
+      const cloudNodeId = await this.repository.ensureGenericNode(
+        mapId,
+        'CLOUD',
+        label,
+        freePosition(deviceNodeId),
+      );
+      if (!cloudNodeId) continue;
+      if (!nodeByDevice.has(`cloud:${label}`)) transitNodesCreated.push(cloudNodeId);
+      nodeByDevice.set(`cloud:${label}`, cloudNodeId);
+      placed.set(cloudNodeId, placed.get(cloudNodeId) ?? { x: GRID_ORIGIN_X, y: GRID_ORIGIN_Y });
+
+      const key = `${deviceNodeId}>${cloudNodeId}`;
+      if (transitKeys.has(key)) continue;
+      const link = await this.repository.createDiscoveredLink(
+        mapId,
+        {
+          sourceDeviceId: peer.deviceId,
+          sourceInterfaceId: null,
+          targetDeviceId: null,
+          targetInterfaceId: null,
+          sourceNodeId: deviceNodeId,
+          targetNodeId: cloudNodeId,
+          capacityBps: DEFAULT_CAPACITY_BPS,
+          autoCapacityBps: DEFAULT_CAPACITY_BPS,
+          capacitySource: 'AUTO',
+          trafficMode: 'SINGLE_ENDED',
+          customColor: null,
+          animationEnabled: null,
+          label: `${peer.receivedPrefixes.toLocaleString('pt-BR')} prefixos`,
+          metricSource: 'DEMO',
+          visualStyle: null,
+          metricDisplay: null,
+        },
+        'BGP_TRANSIT',
+      );
+      if (link) {
+        transitLinksCreated.push(link.id);
+        transitKeys.add(key);
+      }
+    }
+
     return {
       mapId,
       createdLinks,
@@ -269,6 +352,8 @@ export class TopologyAutoApplyService {
       reusedLinks: [...new Set(reusedLinks)],
       skippedDetails,
       policy: effective,
+      transitNodesCreated,
+      transitLinksCreated,
     };
   }
 
