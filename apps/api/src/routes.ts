@@ -28,6 +28,7 @@ import { CredentialVault } from './application/credential-vault';
 import { DiscoveryService } from './application/discovery-service';
 import { AuthService, randomToken, UserAlreadyExistsError } from './application/auth-service';
 import { TopologyApplyService } from './application/topology-apply-service';
+import { TopologyAutoApplyService } from './application/topology-auto-apply-service';
 import { TopologyPreviewService } from './application/topology-preview-service';
 import { config } from './config';
 import { registerHostRoutes } from './host-routes';
@@ -645,6 +646,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
     topologyPreviewStore,
   );
   const topologyApply = new TopologyApplyService(maps, hosts);
+  const topologyAutoApply = new TopologyAutoApplyService(maps, hosts);
 
   registerHostRoutes(app, { legacyMaps, mapMembership: maps, hosts, discovery, snmp, ssh, zabbix });
   registerMplsRoutes(app, { hosts, mpls: mplsRepository });
@@ -1687,6 +1689,37 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       });
     }
   });
+  /**
+   * Descoberta + aplicacao automaticas: constroi o mapa sem revisao humana.
+   * Somente adjacencias CONFIRMED viram enlace por default; PROBABLE entra
+   * apenas quando o chamador habilita explicitamente.
+   */
+  app.post('/api/topology/auto-discover', async (request, reply) => {
+    const { mapId, deepValidation, confirmed, probable, maxLinks } = z
+      .object({
+        mapId: z.string().min(1),
+        deepValidation: z.boolean().optional().default(false),
+        confirmed: z.boolean().optional().default(true),
+        probable: z.boolean().optional().default(false),
+        maxLinks: z.number().int().min(1).max(5_000).optional().default(500),
+      })
+      .parse(request.body);
+    try {
+      const preview = await topologyPreview.discover(mapId, { deepValidation });
+      await physicalService.recordLldpPreview(preview);
+      const report = await topologyAutoApply.apply(mapId, preview, {
+        confirmed,
+        probable,
+        maxLinks,
+      });
+      return { preview, report };
+    } catch (error) {
+      return reply.code(404).send({
+        message: error instanceof Error ? error.message : 'Falha segura na descoberta automatica',
+      });
+    }
+  });
+
   app.post('/api/hosts/:hostId/lldp/discover', async (request, reply) => {
     const { hostId } = z.object({ hostId: z.string().min(1) }).parse(request.params);
     const { mapId, deepValidation } = z

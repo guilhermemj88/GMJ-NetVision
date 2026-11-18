@@ -693,6 +693,44 @@ export class PrismaMapRepository {
     return this.materializeLink(row, await this.hosts.listHosts());
   }
 
+  /**
+   * Garante que o equipamento exista como no do mapa. Idempotente: o schema tem
+   * `@@unique([mapId, deviceId])`, entao uma nova descoberta reaproveita o no
+   * existente e NUNCA sobrescreve a posicao ajustada pelo usuario.
+   */
+  async ensureMapNode(mapId: string, deviceId: string, position: Position): Promise<string | null> {
+    const existing = await this.prisma.mapNode.findUnique({
+      where: { mapId_deviceId: { mapId, deviceId } },
+      select: { id: true },
+    });
+    if (existing) return existing.id;
+    const created = await this.prisma.mapNode.create({
+      data: {
+        mapId,
+        deviceId,
+        nodeKind: 'DEVICE',
+        x: position.x,
+        y: position.y,
+        positionSource: 'AUTO',
+      },
+      select: { id: true },
+    });
+    return created.id;
+  }
+
+  /**
+   * Renova o "visto por ultimo" de um enlace descoberto que continua presente
+   * na topologia. Sem isso todo enlace antigo pareceria desatualizado e o mapa
+   * nao teria como distinguir descoberta fresca de evidencia velha.
+   */
+  async touchDiscoveredLink(mapId: string, linkId: string): Promise<boolean> {
+    const result = await this.prisma.link.updateMany({
+      where: { id: linkId, mapId, discoverySource: { not: 'MANUAL' } },
+      data: { updatedAt: new Date() },
+    });
+    return result.count > 0;
+  }
+
   async updateLink(
     mapId: string,
     linkId: string,

@@ -387,6 +387,42 @@ export class DemoMapRepository {
     return { device: structuredClone(host), node: structuredClone(node) };
   }
 
+  /** Idempotente, como no repositorio Prisma: nunca sobrescreve o no existente. */
+  ensureMapNode(mapId: string, deviceId: string, position: Position): string | null {
+    const map = this.findMap(mapId);
+    if (!map) return null;
+    const existing = map.nodes.find((node) => node.deviceId === deviceId);
+    if (existing) return existing.id;
+    const node: MapNode = {
+      id: createLocalId('node'),
+      mapId,
+      deviceId,
+      nodeKind: 'DEVICE',
+      genericType: null,
+      label: null,
+      position,
+      locked: false,
+      positionSource: 'AUTO',
+      pppDisplayMode: 'AUTO',
+      pppPosition: 'BOTTOM',
+      pppColor: null,
+      pppFontSize: 14,
+    };
+    map.nodes.push(node);
+    this.touch(map);
+    this.refreshMembership();
+    return node.id;
+  }
+
+  touchDiscoveredLink(mapId: string, linkId: string): boolean {
+    const map = this.findMap(mapId);
+    if (!map) return false;
+    const link = map.links.find((item) => item.id === linkId);
+    if (!link || link.discoverySource === 'MANUAL') return false;
+    this.touch(map);
+    return true;
+  }
+
   addHostsToMap(
     mapId: string,
     deviceIds: string[],
