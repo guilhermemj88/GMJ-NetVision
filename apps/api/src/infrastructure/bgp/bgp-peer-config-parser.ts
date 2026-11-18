@@ -25,6 +25,16 @@ function key(address: string): string {
   return address.trim().toLowerCase();
 }
 
+/**
+ * O VRP grava aspas quando a descricao tem espacos ou caracteres especiais.
+ * Elas sao sintaxe do comando, nao parte do nome que o operador cadastrou.
+ */
+function normalizedDescription(value: string): string | null {
+  const trimmed = value.trim();
+  const unquoted = /^".*"$/.test(trimmed) ? trimmed.slice(1, -1).trim() : trimmed;
+  return unquoted || null;
+}
+
 export function parseBgpPeerConfiguration(output: string): Map<string, BgpPeerConfiguration> {
   const peers = new Map<string, BgpPeerConfiguration>();
   const entry = (address: string): BgpPeerConfiguration => {
@@ -49,7 +59,8 @@ export function parseBgpPeerConfiguration(output: string): Map<string, BgpPeerCo
     }
     const description = line.match(DESCRIPTION);
     if (description?.[1] && description[2]) {
-      entry(description[1]).description = description[2].trim();
+      const parsed = normalizedDescription(description[2]);
+      if (parsed !== null) entry(description[1]).description = parsed;
     }
   }
 

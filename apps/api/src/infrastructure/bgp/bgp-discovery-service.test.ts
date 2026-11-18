@@ -346,7 +346,7 @@ Prefixes current: 1099912`,
 bgp 268568
  router-id 45.163.144.1
  peer 172.16.16.7 as-number 28306
- peer 172.16.16.7 description VOLUY-MH
+ peer 172.16.16.7 description "VOLUY-MH"
  peer 172.16.16.7 ebgp-max-hop 4
 #
 return

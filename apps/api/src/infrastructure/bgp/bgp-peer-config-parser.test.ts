@@ -16,7 +16,7 @@ bgp 266260
  peer 172.18.255.2 as-number 273590
  peer 172.18.255.2 description CDN_PVN-IPV4
  peer 187.16.220.8 as-number 20940
- peer 187.16.220.8 description AKAMAI-1
+ peer 187.16.220.8 description "AKAMAI-1"
  peer 200.169.9.137 as-number 21574
  peer 200.169.9.137 description IP-TRANSITO-CENTURY-IPV4
  peer 2001:12F8::24 as-number 396986
@@ -54,6 +54,23 @@ describe('parseBgpPeerConfiguration', () => {
       remoteAs: 396986,
       description: 'BYTEDANCE-IPV6-2',
     });
+  });
+
+  it('remove as aspas que o VRP usa na sintaxe da descricao', () => {
+    const peers = parseBgpPeerConfiguration(SAMPLE);
+    // No equipamento: peer 187.16.220.8 description "AKAMAI-1"
+    expect(peers.get('187.16.220.8')?.description).toBe('AKAMAI-1');
+  });
+
+  it('nao devolve descricao vazia nem apenas aspas', () => {
+    const peers = parseBgpPeerConfiguration(`
+ peer 10.0.0.1 as-number 65001
+ peer 10.0.0.1 description ""
+ peer 10.0.0.2 as-number 65002
+ peer 10.0.0.2 description    `);
+
+    expect(peers.get('10.0.0.1')).toMatchObject({ remoteAs: 65001, description: null });
+    expect(peers.get('10.0.0.2')).toMatchObject({ remoteAs: 65002, description: null });
   });
 
   it('peer sem descricao mantem null e nao inventa valor', () => {
