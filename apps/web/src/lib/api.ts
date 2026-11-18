@@ -742,6 +742,37 @@ export function applyLldp(mapId: string, previewId: string, selections: LldpAppl
   });
 }
 
+export interface TopologyAutoDiscoverReport {
+  mapId: string;
+  createdLinks: string[];
+  skipped: string[];
+  nodesCreated: string[];
+  nodesReused: string[];
+  confirmedLinks: string[];
+  reusedLinks: string[];
+  skippedDetails: Array<{
+    adjacencyId: string;
+    confidence: string;
+    reason: string;
+  }>;
+  policy: { confirmed: boolean; probable: boolean; maxLinks: number };
+}
+
+export interface TopologyAutoDiscoverResult {
+  preview: LldpTopologyPreview;
+  report: TopologyAutoDiscoverReport;
+}
+
+export function autoDiscoverTopology(
+  mapId: string,
+  options: { deepValidation?: boolean; probable?: boolean; maxLinks?: number } = {},
+) {
+  return request<TopologyAutoDiscoverResult>(`/api/topology/auto-discover`, {
+    method: 'POST',
+    body: JSON.stringify({ mapId, ...options }),
+  });
+}
+
 export function applyAssistedDiscovery(
   hostId: string,
   previewId: string,

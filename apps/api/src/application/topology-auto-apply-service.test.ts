@@ -237,4 +237,80 @@ describe('TopologyAutoApplyService', () => {
     expect(report.createdLinks).toHaveLength(2);
     expect(report.skippedDetails[0]!.reason).toBe('limite de enlaces por execucao atingido');
   });
+
+  it('nao posiciona equipamento novo sobre no existente', async () => {
+    const repository = new FakeRepository(
+      emptyMap([], [{ id: 'node-x', deviceId: 'x', position: { x: 120, y: 120 }, positionSource: 'AUTO', locked: false }] as NetworkMap['nodes']),
+    );
+    const service = new TopologyAutoApplyService(repository, hostsSource);
+
+    await service.apply('map-1', preview([adjacency({})]));
+
+    const created = repository.nodes.map((node) => node.position);
+    expect(created).not.toContainEqual({ x: 120, y: 120 });
+    const unique = new Set(created.map((position) => `${position.x}:${position.y}`));
+    expect(unique.size).toBe(created.length);
+  });
+
+  it('coloca o equipamento novo ao lado do vizinho ja posicionado', async () => {
+    const repository = new FakeRepository(
+      emptyMap([], [{ id: 'node-a', deviceId: 'a', position: { x: 500, y: 400 }, positionSource: 'AUTO', locked: false }] as NetworkMap['nodes']),
+    );
+    const service = new TopologyAutoApplyService(repository, hostsSource);
+
+    await service.apply('map-1', preview([adjacency({})]));
+
+    const placedB = repository.nodes.find((node) => node.deviceId === 'b');
+    // Primeiro offset livre a direita do vizinho ja posicionado.
+    expect(placedB?.position).toEqual({ x: 760, y: 400 });
+  });
+
+  it('redescoberta e idempotente: nao duplica nos nem enlaces', async () => {
+    const map = emptyMap();
+    const repository = new FakeRepository(map);
+    const service = new TopologyAutoApplyService(repository, hostsSource);
+
+    const first = await service.apply('map-1', preview([adjacency({})]));
+    expect(first.createdLinks).toHaveLength(1);
+    expect(first.nodesCreated).toHaveLength(2);
+
+    // Segunda execucao sobre o mesmo mapa ja refletido no repositorio.
+    map.nodes = repository.nodes.map((node) => ({
+      id: node.id,
+      deviceId: node.deviceId,
+      position: node.position,
+    })) as unknown as NetworkMap['nodes'];
+    map.links = [{ id: 'link-1', sourceInterfaceId: 'if-a1', targetInterfaceId: 'if-b2' }] as NetworkMap['links'];
+
+    const second = await service.apply('map-1', preview([adjacency({ duplicate: true })]));
+
+    expect(second.createdLinks).toEqual([]);
+    expect(second.nodesCreated).toEqual([]);
+    expect(second.reusedLinks).toEqual(['link-1']);
+    expect(repository.nodes).toHaveLength(2);
+  });
+
+  it('falha parcial: sem interface em um dos lados nao cria enlace parcial', async () => {
+    const repository = new FakeRepository(emptyMap());
+    const service = new TopologyAutoApplyService(repository, hostsSource);
+
+    const report = await service.apply(
+      'map-1',
+      preview([
+        adjacency({ id: 'ok' }),
+        adjacency({ id: 'meio', targetInterfaceId: null }),
+      ]),
+    );
+
+    expect(report.createdLinks).toHaveLength(1);
+    expect(report.skippedDetails).toEqual([
+      {
+        adjacencyId: 'meio',
+        confidence: 'CONFIRMED',
+        reason: 'interface nao resolvida em um dos lados',
+      },
+    ]);
+    // Nenhum enlace foi criado para a adjacencia incompleta.
+    expect(repository.links).toHaveLength(1);
+  });
 });

@@ -42,15 +42,18 @@ import {
 import {
   addDevice,
   addHostsToMap,
+  autoDiscoverTopology,
   createGenericNode,
   createLink,
   createNetworkMap,
   deleteNetworkMap,
   duplicateNetworkMap,
   getHosts,
+  getMap,
   savePlaylist,
   updateNetworkMap,
   type AddDeviceInput,
+  type TopologyAutoDiscoverResult,
 } from '@/lib/api';
 import { GENERIC_NODE_TYPES } from '@/lib/device-appearance';
 import { useMapStore } from '@/store/map-store';
@@ -896,6 +899,108 @@ function AddDevicePanel() {
   );
 }
 
+/**
+ * Descoberta automatica da rede inteira. Nao inventa progresso: enquanto roda,
+ * mostra apenas o que esta acontecendo; os numeros vem todos do preview real
+ * devolvido pela API (que ja correlaciona LLDP SNMP/SSH).
+ */
+function TopologyAutoDiscovery({ mapId }: { mapId: string }) {
+  const applyMapRefresh = useMapStore((state) => state.applyMapRefresh);
+  const [includeProbable, setIncludeProbable] = useState(false);
+  const [result, setResult] = useState<TopologyAutoDiscoverResult | null>(null);
+
+  const mutation = useMutation({
+    mutationFn: () => autoDiscoverTopology(mapId, { probable: includeProbable }),
+    onSuccess: async (data) => {
+      setResult(data);
+      applyMapRefresh(await getMap(mapId));
+    },
+  });
+
+  if (!mapId) return null;
+  const stats = result?.preview.stats;
+  const report = result?.report;
+
+  return (
+    <div className="auto-discovery">
+      <div className="auto-discovery-head">
+        <Radar size={18} />
+        <span>
+          <small>REDE INTEIRA</small>
+          <strong>Descobrir topologia</strong>
+        </span>
+      </div>
+      <label className="auto-discovery-option">
+        <input
+          type="checkbox"
+          checked={includeProbable}
+          onChange={(event) => setIncludeProbable(event.target.checked)}
+        />
+        Incluir enlaces vistos por apenas um lado (PROBABLE)
+      </label>
+      <Button variant="primary" onClick={() => mutation.mutate()} disabled={mutation.isPending}>
+        {mutation.isPending ? <LoaderCircle size={15} /> : <Radar size={15} />}
+        {mutation.isPending ? 'Coletando LLDP…' : 'Descobrir topologia'}
+      </Button>
+      {mutation.isPending ? (
+        <p className="auto-discovery-note">
+          Consultando LLDP via SNMP e SSH em todos os equipamentos elegíveis. O tempo depende da
+          quantidade de equipamentos e pode levar minutos.
+        </p>
+      ) : null}
+      {mutation.isError ? (
+        <p className="auto-discovery-error">
+          {mutation.error instanceof Error ? mutation.error.message : 'Falha na descoberta'}
+        </p>
+      ) : null}
+      {stats && report ? (
+        <div className="auto-discovery-report">
+          <div className="auto-discovery-counts">
+            <Badge tone="info">{stats.hostsQueried} equipamentos analisados</Badge>
+            <Badge tone="info">{stats.confirmed} CONFIRMED</Badge>
+            <Badge tone="neutral">{stats.probable} PROBABLE</Badge>
+            <Badge tone="neutral">{stats.ambiguous} AMBIGUOUS</Badge>
+            <Badge tone="neutral">{stats.unknownNeighbor} UNKNOWN</Badge>
+          </div>
+          <div className="auto-discovery-counts">
+            <Badge tone="info">{report.createdLinks.length} enlaces criados</Badge>
+            <Badge tone="neutral">{report.reusedLinks.length} reconfirmados</Badge>
+            <Badge tone="neutral">{report.skippedDetails.length} ignorados</Badge>
+            <Badge tone="neutral">{report.nodesCreated.length} nós novos</Badge>
+          </div>
+          {stats.hostsFailed ? (
+            <p className="auto-discovery-note">
+              {stats.hostsFailed} equipamento(s) falharam na coleta e foram ignorados.
+            </p>
+          ) : null}
+          {result.preview.warnings.length ? (
+            <details className="auto-discovery-details">
+              <summary>Avisos da coleta ({result.preview.warnings.length})</summary>
+              <ul className="auto-discovery-list">
+                {result.preview.warnings.slice(0, 40).map((warning, index) => (
+                  <li key={index}>{warning}</li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+          {report.skippedDetails.length ? (
+            <details className="auto-discovery-details">
+              <summary>Motivos de exclusão ({report.skippedDetails.length})</summary>
+              <ul className="auto-discovery-list">
+                {report.skippedDetails.slice(0, 40).map((item) => (
+                  <li key={item.adjacencyId}>
+                    <strong>{item.confidence}</strong> — {item.reason}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function DiscoveryPanel() {
   const map = useMapStore((state) => state.map);
   const selection = useMapStore((state) => state.selection);
@@ -910,8 +1015,9 @@ function DiscoveryPanel() {
   );
   const source = devices.find((device) => device.id === deviceId);
   return (
-    <PanelShell eyebrow="TOPOLOGY ENGINE" title="Descoberta assistida">
+    <PanelShell eyebrow="TOPOLOGY ENGINE" title="Descoberta de topologia">
       <div className="panel-body discovery-panel">
+        <TopologyAutoDiscovery mapId={map?.id ?? ''} />
         <div className="discovery-source">
           <div>
             <Radar size={20} />

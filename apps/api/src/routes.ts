@@ -1694,6 +1694,7 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
    * Somente adjacencias CONFIRMED viram enlace por default; PROBABLE entra
    * apenas quando o chamador habilita explicitamente.
    */
+  const autoDiscoveryInFlight = new Set<string>();
   app.post('/api/topology/auto-discover', async (request, reply) => {
     const { mapId, deepValidation, confirmed, probable, maxLinks } = z
       .object({
@@ -1704,6 +1705,12 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
         maxLinks: z.number().int().min(1).max(5_000).optional().default(500),
       })
       .parse(request.body);
+    // Uma execucao por mapa: descoberta e coleta pesada e nao deve rodar em
+    // paralelo consigo mesma contra os mesmos equipamentos.
+    if (autoDiscoveryInFlight.has(mapId)) {
+      return reply.code(409).send({ message: 'Já existe uma descoberta em execução para este mapa' });
+    }
+    autoDiscoveryInFlight.add(mapId);
     try {
       const preview = await topologyPreview.discover(mapId, { deepValidation });
       await physicalService.recordLldpPreview(preview);
@@ -1717,6 +1724,8 @@ export function registerRoutes(app: FastifyInstance, options: RouteRegistrationO
       return reply.code(404).send({
         message: error instanceof Error ? error.message : 'Falha segura na descoberta automatica',
       });
+    } finally {
+      autoDiscoveryInFlight.delete(mapId);
     }
   });
 

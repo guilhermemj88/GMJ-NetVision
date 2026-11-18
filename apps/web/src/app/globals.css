@@ -4824,6 +4824,83 @@ label > small {
   flex: none;
   color: #4ba9c1;
 }
+/* Descoberta automatica da rede inteira (LLDP SNMP/SSH -> mapa). */
+.auto-discovery {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 13px;
+  border: 1px solid #2b404a;
+  border-radius: 5px;
+  background: #101c22;
+}
+.auto-discovery-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #55aec5;
+}
+.auto-discovery-head span {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.auto-discovery-head small {
+  color: #627983;
+  font: 600 7px var(--font-mono);
+  letter-spacing: 0.1em;
+}
+.auto-discovery-head strong {
+  color: #b8cbd3;
+  font: 600 10px var(--font-mono);
+}
+.auto-discovery-option {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #8fa2ab;
+  font: 500 9px var(--font-mono);
+  cursor: pointer;
+}
+.auto-discovery-note {
+  margin: 0;
+  color: #7e939c;
+  font: 500 9px var(--font-mono);
+  line-height: 1.5;
+}
+.auto-discovery-error {
+  margin: 0;
+  color: #e0705f;
+  font: 500 9px var(--font-mono);
+}
+.auto-discovery-report {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.auto-discovery-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.auto-discovery-details summary {
+  color: #8fa2ab;
+  font: 600 9px var(--font-mono);
+  cursor: pointer;
+}
+.auto-discovery-list {
+  margin: 6px 0 0;
+  padding-left: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #7e939c;
+  font: 500 9px var(--font-mono);
+  line-height: 1.5;
+  max-height: 220px;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
 .discovery-source {
   display: grid;
   grid-template-columns: 1fr 165px auto auto;

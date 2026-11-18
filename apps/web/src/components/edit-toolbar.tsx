@@ -26,6 +26,7 @@ import {
 import { useMapStore } from '@/store/map-store';
 
 export function EditToolbar() {
+  const [confirmLayout, setConfirmLayout] = useState(false);
   const [pendingRemoval, setPendingRemoval] = useState<
     { kind: 'link' | 'node' | 'device'; id: string; label: string } | null
   >(null);
@@ -126,6 +127,23 @@ export function EditToolbar() {
     showToast('Mapa auto-organizado; posições manuais preservadas');
   };
 
+  /**
+   * Reorganizacao global e uma acao explicita: a previa informa quantos nos
+   * serao movidos e quantos ficam onde estao, porque a confirmacao precisa ser
+   * honesta sobre o impacto antes de qualquer posicao mudar.
+   */
+  const layoutPreview = createAutoLayout(map);
+  const layoutMoves = map.nodes.filter((node) => {
+    const next = layoutPreview.get(node.id);
+    return next && (next.x !== node.position.x || next.y !== node.position.y);
+  });
+  const layoutKeeps = map.nodes.length - layoutMoves.length;
+
+  const confirmAutoLayout = () => {
+    setConfirmLayout(false);
+    autoLayout();
+  };
+
   return (
     <div className="edit-toolbar">
       <span className="edit-toolbar__mode">
@@ -145,7 +163,7 @@ export function EditToolbar() {
         <Trash2 size={15} /> Excluir
       </Button>
       <div className="edit-toolbar__separator" />
-      <Button compact variant="ghost" onClick={autoLayout}>
+      <Button compact variant="ghost" onClick={() => setConfirmLayout(true)}>
         <AlignHorizontalDistributeCenter size={15} /> Auto-layout
       </Button>
       <Button
@@ -205,6 +223,21 @@ export function EditToolbar() {
         confirmLabel={pendingRemoval?.kind === 'device' ? 'Remover do mapa' : 'Excluir'}
         onConfirm={confirmRemoval}
         onCancel={() => setPendingRemoval(null)}
+      />
+      <ConfirmDialog
+        open={confirmLayout}
+        title="Reorganizar o mapa inteiro?"
+        description="Os nós são redistribuídos por layout automático. Equipamentos com posição manual ou bloqueados permanecem onde estão."
+        details={
+          <span>
+            {layoutMoves.length} node(s) serão movidos · {layoutKeeps} preservado(s) ·{' '}
+            {map.links.length} enlace(s) não são alterados
+          </span>
+        }
+        confirmLabel="Reorganizar"
+        tone="neutral"
+        onConfirm={confirmAutoLayout}
+        onCancel={() => setConfirmLayout(false)}
       />
     </div>
   );

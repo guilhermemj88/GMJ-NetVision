@@ -69,9 +69,22 @@ export interface AutoApplyReport extends LldpApplyResult {
 const DEFAULT_CAPACITY_BPS = 1_000_000_000;
 const GRID_ORIGIN_X = 120;
 const GRID_ORIGIN_Y = 120;
-const GRID_COLUMNS = 4;
+const GRID_COLUMNS = 6;
 const GRID_STEP_X = 260;
 const GRID_STEP_Y = 180;
+/** Deslocamentos tentados ao redor de um equipamento ja posicionado. */
+const NEIGHBOR_OFFSETS: ReadonlyArray<Position> = [
+  { x: GRID_STEP_X, y: 0 },
+  { x: 0, y: GRID_STEP_Y },
+  { x: -GRID_STEP_X, y: 0 },
+  { x: 0, y: -GRID_STEP_Y },
+  { x: GRID_STEP_X, y: GRID_STEP_Y },
+  { x: -GRID_STEP_X, y: GRID_STEP_Y },
+];
+
+function positionKey(position: Position): string {
+  return `${Math.round(position.x)}:${Math.round(position.y)}`;
+}
 
 function linkKey(
   interfaceA: string | null | undefined,
@@ -120,7 +133,31 @@ export class TopologyAutoApplyService {
     const skippedDetails: AutoApplySkip[] = [];
     const nodesCreated: string[] = [];
     const nodesReused: string[] = [];
-    let gridIndex = map.nodes.length;
+    const placed = new Map(map.nodes.map((node) => [node.id, node.position]));
+    const occupied = new Set(map.nodes.map((node) => positionKey(node.position)));
+
+    /**
+     * Posicao determinista e livre: primeiro tenta um vizinho do equipamento ja
+     * posicionado (mantem o enlace curto e legivel), depois varre a grade. Como
+     * nos existentes nunca se movem, uma nova descoberta produz o mesmo layout.
+     */
+    const freePosition = (anchorNodeId: string | undefined): Position => {
+      const anchor = anchorNodeId ? placed.get(anchorNodeId) : undefined;
+      if (anchor) {
+        for (const offset of NEIGHBOR_OFFSETS) {
+          const candidate = { x: anchor.x + offset.x, y: anchor.y + offset.y };
+          if (!occupied.has(positionKey(candidate))) return candidate;
+        }
+      }
+      for (let index = 0; index < 5_000; index += 1) {
+        const candidate = {
+          x: GRID_ORIGIN_X + (index % GRID_COLUMNS) * GRID_STEP_X,
+          y: GRID_ORIGIN_Y + Math.floor(index / GRID_COLUMNS) * GRID_STEP_Y,
+        };
+        if (!occupied.has(positionKey(candidate))) return candidate;
+      }
+      return { x: GRID_ORIGIN_X, y: GRID_ORIGIN_Y };
+    };
 
     const skip = (adjacency: LldpAdjacencyProposal, reason: string): void => {
       skipped.push(adjacency.id);
@@ -164,15 +201,15 @@ export class TopologyAutoApplyService {
           nodesReused.push(nodeByDevice.get(deviceId) as string);
           continue;
         }
-        const position = {
-          x: GRID_ORIGIN_X + (gridIndex % GRID_COLUMNS) * GRID_STEP_X,
-          y: GRID_ORIGIN_Y + Math.floor(gridIndex / GRID_COLUMNS) * GRID_STEP_Y,
-        };
+        const anchorDeviceId = pair.find((candidate) => candidate !== deviceId);
+        const anchorNodeId = anchorDeviceId ? nodeByDevice.get(anchorDeviceId) : undefined;
+        const position = freePosition(anchorNodeId);
         const nodeId = await this.repository.ensureMapNode(mapId, deviceId, position);
         if (nodeId) {
           nodeByDevice.set(deviceId, nodeId);
           nodesCreated.push(nodeId);
-          gridIndex += 1;
+          placed.set(nodeId, position);
+          occupied.add(positionKey(position));
         }
       }
 
