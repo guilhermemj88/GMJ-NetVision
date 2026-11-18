@@ -4,7 +4,7 @@ import type { CollectedMplsVsi, HuaweiVplsSnmpCollector } from './huawei-vpls-sn
 import type { HuaweiVsiSshService } from './huawei-vsi-ssh';
 import type { MplsRepository } from './mpls-repository';
 import { MplsPollingService } from './mpls-polling-service';
-import { parseHuaweiVsiVerbose } from './huawei-vsi-ssh-parser';
+import { parseHuaweiL2vc, parseHuaweiVsiVerbose } from './huawei-vsi-ssh-parser';
 
 const COLLECTED_AT = new Date('2026-08-25T12:00:00.000Z');
 
@@ -76,6 +76,7 @@ describe('MplsPollingService', () => {
     } as unknown as HuaweiVplsSnmpCollector;
     const repository = {
       saveCollection: vi.fn().mockResolvedValue(undefined),
+      touchPolling: vi.fn().mockResolvedValue(undefined),
       saveFailure: vi.fn().mockResolvedValue(undefined),
     } as unknown as MplsRepository;
 
@@ -112,6 +113,7 @@ describe('MplsPollingService', () => {
     } as unknown as HuaweiVplsSnmpCollector;
     const repository = {
       saveCollection: vi.fn().mockResolvedValue(undefined),
+      touchPolling: vi.fn().mockResolvedValue(undefined),
       saveFailure: vi.fn().mockResolvedValue(undefined),
     } as unknown as MplsRepository;
 
@@ -143,6 +145,7 @@ describe('MplsPollingService', () => {
     } as unknown as HuaweiVplsSnmpCollector;
     const repository = {
       saveCollection: vi.fn().mockResolvedValue(undefined),
+      touchPolling: vi.fn().mockResolvedValue(undefined),
       saveFailure: vi.fn().mockResolvedValue(undefined),
     } as unknown as MplsRepository;
 
@@ -171,6 +174,7 @@ describe('MplsPollingService', () => {
     const collector = { collect: vi.fn() } as unknown as HuaweiVplsSnmpCollector;
     const repository = {
       saveCollection: vi.fn().mockResolvedValue(undefined),
+      touchPolling: vi.fn().mockResolvedValue(undefined),
       saveFailure: vi.fn().mockResolvedValue(undefined),
     } as unknown as MplsRepository;
 
@@ -210,6 +214,7 @@ describe('MplsPollingService', () => {
     } as unknown as HuaweiVplsSnmpCollector;
     const repository = {
       saveCollection: vi.fn().mockResolvedValue(undefined),
+      touchPolling: vi.fn().mockResolvedValue(undefined),
       saveFailure: vi.fn().mockResolvedValue(undefined),
     } as unknown as MplsRepository;
 
@@ -260,6 +265,7 @@ describe('MplsPollingService', () => {
     } as unknown as HuaweiVplsSnmpCollector;
     const repository = {
       saveCollection: vi.fn().mockResolvedValue(undefined),
+      touchPolling: vi.fn().mockResolvedValue(undefined),
       saveFailure: vi.fn().mockResolvedValue(undefined),
     } as unknown as MplsRepository;
     const ssh = sshService({
@@ -299,6 +305,7 @@ describe('MplsPollingService', () => {
     } as unknown as HuaweiVplsSnmpCollector;
     const repository = {
       saveCollection: vi.fn().mockResolvedValue(undefined),
+      touchPolling: vi.fn().mockResolvedValue(undefined),
       saveFailure: vi.fn().mockResolvedValue(undefined),
     } as unknown as MplsRepository;
     const ssh = sshService({
@@ -323,5 +330,135 @@ describe('MplsPollingService', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+it('nao sobrescreve o estado quando a rodada e so SNMP e a MIB segue sem VSI', async () => {
+    // Host so de L2VC: a evidencia vem da CLI. Na rodada em que a CLI ainda
+    // esta no intervalo de cadencia nao ha nada novo para gravar.
+    const collector = {
+      collect: vi.fn().mockResolvedValue({
+        supported: false,
+        collectedAt: COLLECTED_AT,
+        errors: [],
+        capabilities: { vsi: false, ac: false, pw: false },
+        collectedColumns: { vsi: [], ac: [], pw: [] },
+        vsis: [],
+      }),
+    } as unknown as HuaweiVplsSnmpCollector;
+    const repository = {
+      saveCollection: vi.fn().mockResolvedValue(undefined),
+      touchPolling: vi.fn().mockResolvedValue(undefined),
+      saveFailure: vi.fn().mockResolvedValue(undefined),
+    } as unknown as MplsRepository;
+    const ssh = sshService({
+      available: true,
+      supported: true,
+      collectedAt: COLLECTED_AT,
+      vsis: [],
+      ldpPeers: [],
+      l2vcs: parseHuaweiL2vc(` *client interface       : Vlanif900 is up
+  session state          : up
+  AC status              : up
+  VC state               : up
+  VC ID                  : 900
+  destination            : 10.0.0.5`),
+      l2vcSummary: { total: 1, up: 1, down: 0 },
+      warnings: [],
+      errorSafe: null,
+    });
+    const service = new MplsPollingService(collector, repository, ssh);
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-11-18T12:00:00.000Z'));
+      const first = await service.poll(host(), 'community');
+      vi.setSystemTime(new Date('2026-11-18T12:01:00.000Z'));
+      const second = await service.poll(host(), 'community');
+
+      expect(first.discoveryState).toBe('FOUND_L2VC');
+      expect(repository.saveCollection).toHaveBeenCalledTimes(1);
+      expect(repository.touchPolling).toHaveBeenCalledTimes(1);
+      expect(second.discoveryState).toBe('UNKNOWN');
+      expect(ssh.readVsi).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('continua gravando quando a MIB entrega VSI, mesmo com a CLI no intervalo', async () => {
+    const collector = {
+      collect: vi.fn().mockResolvedValue({
+        supported: true,
+        collectedAt: COLLECTED_AT,
+        errors: [],
+        capabilities: { vsi: true, ac: true, pw: true },
+        collectedColumns: { vsi: [1], ac: [1], pw: [1] },
+        vsis: [snmpVsi()],
+      }),
+    } as unknown as HuaweiVplsSnmpCollector;
+    const repository = {
+      saveCollection: vi.fn().mockResolvedValue(undefined),
+      touchPolling: vi.fn().mockResolvedValue(undefined),
+      saveFailure: vi.fn().mockResolvedValue(undefined),
+    } as unknown as MplsRepository;
+    const ssh = sshService({
+      available: true,
+      supported: true,
+      collectedAt: COLLECTED_AT,
+      vsis: SSH_VSI,
+      ldpPeers: [],
+      l2vcs: [],
+      warnings: [],
+      errorSafe: null,
+    });
+    const service = new MplsPollingService(collector, repository, ssh);
+
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date('2026-11-18T12:00:00.000Z'));
+      await service.poll(host(), 'community');
+      vi.setSystemTime(new Date('2026-11-18T12:01:00.000Z'));
+      await service.poll(host(), 'community');
+
+      expect(repository.saveCollection).toHaveBeenCalledTimes(2);
+      expect(repository.touchPolling).not.toHaveBeenCalled();
+      expect(ssh.readVsi).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('grava INCOMPLETE quando a CLI foi tentada e nao respondeu', async () => {
+    const collector = {
+      collect: vi.fn().mockResolvedValue({
+        supported: false,
+        collectedAt: COLLECTED_AT,
+        errors: [],
+        capabilities: { vsi: false, ac: false, pw: false },
+        collectedColumns: { vsi: [], ac: [], pw: [] },
+        vsis: [],
+      }),
+    } as unknown as HuaweiVplsSnmpCollector;
+    const repository = {
+      saveCollection: vi.fn().mockResolvedValue(undefined),
+      touchPolling: vi.fn().mockResolvedValue(undefined),
+      saveFailure: vi.fn().mockResolvedValue(undefined),
+    } as unknown as MplsRepository;
+    const ssh = sshService({
+      available: false,
+      supported: null,
+      collectedAt: COLLECTED_AT,
+      vsis: [],
+      ldpPeers: [],
+      l2vcs: [],
+      warnings: [],
+      errorSafe: 'SSH connection timeout',
+    });
+    const service = new MplsPollingService(collector, repository, ssh);
+
+    const outcome = await service.poll(host(), 'community');
+
+    expect(outcome.discoveryState).toBe('INCOMPLETE');
+    expect(repository.saveCollection).toHaveBeenCalledTimes(1);
+    expect(repository.touchPolling).not.toHaveBeenCalled();
   });
 });

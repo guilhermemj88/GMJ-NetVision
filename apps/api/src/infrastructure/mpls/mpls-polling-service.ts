@@ -75,9 +75,30 @@ export class MplsPollingService {
       };
     }
 
-    const [snmp, ssh] = await this.readBoth(device, community, snmpAvailable, sshAvailable);
+    const [snmp, ssh, sshAttempted] = await this.readBoth(
+      device,
+      community,
+      snmpAvailable,
+      sshAvailable,
+    );
     if (snmp.errorSafe) {
       await this.safeSaveFailure(device.id, attemptedAt, snmp.errorSafe);
+    }
+
+    // Rodada SO SNMP (CLI no intervalo de cadencia) e MIB sem VSI: nao ha
+    // evidencia nova. Gravar aqui marcaria INCOMPLETE a cada minuto em cima de
+    // um FOUND_L2VC/FOUND_UP legítimo da rodada anterior; o polling so avanca.
+    const snmpOnlyWithoutVsi =
+      Boolean(this.ssh) && sshAvailable && !sshAttempted && !(snmp.collection?.vsis.length);
+    if (snmpOnlyWithoutVsi) {
+      await this.repository.touchPolling(device.id, attemptedAt);
+      return {
+        supported: null,
+        discoveryState: 'UNKNOWN',
+        sources: [],
+        collectedAt: attemptedAt.toISOString(),
+        error: snmp.errorSafe,
+      };
     }
 
     const result = mergeMplsDiscovery({ snmp: snmp.collection, ssh: ssh.reading });
@@ -108,15 +129,16 @@ export class MplsPollingService {
     [
       { collection: HuaweiVplsCollection | null; errorSafe: string | null },
       { reading: HuaweiVsiSshReading | null },
+      boolean,
     ]
   > {
     // SNMP primeiro: ele decide se o CLI precisa entrar como fallback agora.
     const snmp = await this.readSnmp(device, community, snmpAvailable);
     if (!sshAvailable || !this.shouldReadSsh(device.id, snmp.collection)) {
-      return [snmp, { reading: null }];
+      return [snmp, { reading: null }, false];
     }
     this.lastSshAt.set(device.id, Date.now());
-    return [snmp, await this.readSsh(device, sshAvailable)];
+    return [snmp, await this.readSsh(device, sshAvailable), true];
   }
 
   private async readSnmp(

@@ -605,6 +605,17 @@ export class PrismaMplsRepository implements MplsRepository {
     await this.prisma.$transaction(operations);
   }
 
+  /**
+   * Rodada sem evidencia nova (CLI no intervalo de cadencia): so o carimbo do
+   * polling avanca, sem tocar em estado, fontes ou mensagem de erro.
+   */
+  async touchPolling(hostId: string, occurredAt: Date): Promise<void> {
+    await this.prisma.mplsDeviceState.updateMany({
+      where: { hostId },
+      data: { lastPollingAt: occurredAt },
+    });
+  }
+
   async saveFailure(hostId: string, occurredAt: Date, safeMessage: string): Promise<void> {
     await this.prisma.mplsDeviceState.upsert({
       where: { hostId },

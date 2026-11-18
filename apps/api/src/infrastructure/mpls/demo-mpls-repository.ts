@@ -26,6 +26,7 @@ const unavailable = (): MplsHostOverview => ({
 
 export class DemoMplsRepository implements MplsRepository {
   async saveCollection(_hostId: string, _collection: HuaweiVplsCollection): Promise<void> {}
+  async touchPolling(_hostId: string, _occurredAt: Date): Promise<void> {}
   async saveFailure(_hostId: string, _occurredAt: Date, _safeMessage: string): Promise<void> {}
   async getHostOverview(_hostId: string): Promise<MplsHostOverview> {
     return unavailable();
